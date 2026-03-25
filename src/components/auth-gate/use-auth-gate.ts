@@ -24,43 +24,17 @@ export const useAuthGate = (require: AuthRequirement): AuthGateState => {
   const hasToken = Boolean(getAuthToken())
   const resolvedRef = useRef<ResolvedState | null>(null)
 
+  const effectivelyAuthenticated = isAuthenticated || hasToken
+  const matchesRequirement = require === 'authenticated' ? effectivelyAuthenticated : !effectivelyAuthenticated
+
   if (isPending) {
-    // Optimistic: if token exists and route requires auth, allow immediately
-    if (hasToken && require === 'authenticated') {
+    if (matchesRequirement) {
       return { status: 'allowed' }
     }
-    // Optimistic: if no token and route requires unauthenticated, allow immediately
-    if (!hasToken && require === 'unauthenticated') {
-      return { status: 'allowed' }
-    }
-    // For other pending cases, use cached result if available
-    if (resolvedRef.current) {
-      return resolvedRef.current
-    }
-    return { status: 'loading' }
+    return resolvedRef.current ?? { status: 'loading' }
   }
 
-  // Session resolved. If require=authenticated:
-  // - Session valid -> allowed
-  // - Session null BUT token exists -> allowed (network error; trust the token)
-  // - Session null AND no token -> redirect (genuinely unauthenticated)
-  if (require === 'authenticated') {
-    if (isAuthenticated || hasToken) {
-      resolvedRef.current = { status: 'allowed' }
-      return { status: 'allowed' }
-    }
-    resolvedRef.current = { status: 'redirect' }
-    return { status: 'redirect' }
-  }
-
-  // require === 'unauthenticated':
-  // - Session valid -> redirect (user is logged in, send away from login page)
-  // - Session null AND no token -> allowed (show login page)
-  // - Session null BUT token exists -> redirect (user has token, don't show login page)
-  if (isAuthenticated || hasToken) {
-    resolvedRef.current = { status: 'redirect' }
-    return { status: 'redirect' }
-  }
-  resolvedRef.current = { status: 'allowed' }
-  return { status: 'allowed' }
+  const result: ResolvedState = matchesRequirement ? { status: 'allowed' } : { status: 'redirect' }
+  resolvedRef.current = result
+  return result
 }

@@ -90,47 +90,32 @@ export const createAuth = (database: typeof DbType) =>
 
           const normalizedEmail = normalizeEmail(email)
 
-          // Check if user already has an account (existing users bypass waitlist)
+          // Existing users bypass waitlist entirely
           const existingUser = await getUserByEmail(database, normalizedEmail)
 
-          // If user doesn't exist, check waitlist status
           if (!existingUser) {
             const waitlistEntry = await getWaitlistByEmail(database, normalizedEmail)
+            const autoApproved = isAutoApprovedDomain(normalizedEmail)
 
             if (!waitlistEntry) {
-              // New user -- check if their domain qualifies for auto-approval
-              if (isAutoApprovedDomain(normalizedEmail)) {
-                // Auto-approve: create approved entry and send OTP
-                await createWaitlistEntry(database, {
-                  id: crypto.randomUUID(),
-                  email: normalizedEmail,
-                  status: 'approved',
-                })
-                // Fall through to send OTP below
-              } else {
-                // Not auto-approved: create pending entry and send joined email
-                await createWaitlistEntry(database, {
-                  id: crypto.randomUUID(),
-                  email: normalizedEmail,
-                  status: 'pending',
-                })
+              await createWaitlistEntry(database, {
+                id: crypto.randomUUID(),
+                email: normalizedEmail,
+                status: autoApproved ? 'approved' : 'pending',
+              })
+              if (!autoApproved) {
                 await sendWaitlistJoinedEmail({ email: normalizedEmail })
                 return
               }
             } else if (waitlistEntry.status !== 'approved') {
-              // Existing pending entry -- check if they now qualify for auto-approval
-              if (isAutoApprovedDomain(normalizedEmail)) {
+              if (autoApproved) {
                 await approveWaitlistEntry(database, waitlistEntry.id)
-                // Fall through to send OTP below
               } else {
-                // Still pending, send not-ready email
                 console.info('Handling sign-in for non-approved email (sending waitlist email)')
                 await sendWaitlistNotReadyEmail({ email: normalizedEmail })
                 return
               }
             }
-            // If we reach here: user is approved (existing approved entry, or just auto-approved)
-            // Fall through to send OTP
           }
 
           const origin = getValidatedOrigin(trustedOrigins, ctx?.request)

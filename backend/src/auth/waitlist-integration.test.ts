@@ -46,6 +46,8 @@ describe('Auth Waitlist Integration', () => {
   })
 
   afterEach(async () => {
+    delete process.env.WAITLIST_AUTO_APPROVE_DOMAINS
+    clearSettingsCache()
     await cleanup()
   })
 
@@ -162,10 +164,6 @@ describe('Auth Waitlist Integration', () => {
       const entries = await db.select().from(waitlist).where(eq(waitlist.email, 'newuser@autoapprove.com'))
       expect(entries).toHaveLength(1)
       expect(entries[0].status).toBe('approved')
-
-      // Cleanup
-      delete process.env.WAITLIST_AUTO_APPROVE_DOMAINS
-      clearSettingsCache()
     })
 
     it('should upgrade pending user to approved when domain becomes auto-approved', async () => {
@@ -191,9 +189,6 @@ describe('Auth Waitlist Integration', () => {
       const entries = await db.select().from(waitlist).where(eq(waitlist.email, email))
       expect(entries).toHaveLength(1)
       expect(entries[0].status).toBe('approved')
-
-      delete process.env.WAITLIST_AUTO_APPROVE_DOMAINS
-      clearSettingsCache()
     })
 
     it('should deterministically send OTP for approved user on repeated calls', async () => {

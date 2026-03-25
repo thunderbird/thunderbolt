@@ -6,12 +6,10 @@ import { getWaitlistAutoApproveDomains, getSettings } from '@/config/settings'
 
 /**
  * Check if an email domain is in the auto-approved list.
- * Uses the last @ character to handle edge-case RFC 5321 addresses with quoted local parts.
  */
 export const isAutoApprovedDomain = (email: string): boolean => {
-  const parts = email.split('@')
-  const domain = parts.length > 1 ? parts[parts.length - 1].toLowerCase() : null
-  return domain ? getWaitlistAutoApproveDomains(getSettings()).includes(domain) : false
+  const domain = email.split('@').pop()!.toLowerCase()
+  return getWaitlistAutoApproveDomains(getSettings()).includes(domain)
 }
 
 type SendWaitlistEmailParams = {

@@ -1,5 +1,6 @@
 import { useRef } from 'react'
 import { useAuth } from '@/contexts'
+import { getAuthToken } from '@/lib/auth-token'
 
 export type AuthRequirement = 'authenticated' | 'unauthenticated'
 
@@ -11,25 +12,52 @@ type ResolvedState = { status: 'allowed' } | { status: 'redirect' }
  * Hook that determines route access based on authentication state.
  * Returns a state object indicating whether to show loading, allow access, or redirect.
  * Once resolved, never returns loading again for this mount so refetches (e.g. tab focus) don't unmount children.
+ *
+ * Token-first: if a local auth token exists, the user is treated as optimistically authenticated
+ * during pending/loading states and when the session fetch fails (e.g. network error).
+ * The token is only cleared on a 401 response (see auth-context.tsx onError handler).
  */
 export const useAuthGate = (require: AuthRequirement): AuthGateState => {
   const authClient = useAuth()
   const { data: session, isPending } = authClient.useSession()
   const isAuthenticated = !!session?.user
+  const hasToken = Boolean(getAuthToken())
   const resolvedRef = useRef<ResolvedState | null>(null)
 
   if (isPending) {
+    // Optimistic: if token exists and route requires auth, allow immediately
+    if (hasToken && require === 'authenticated') {
+      return { status: 'allowed' }
+    }
+    // Optimistic: if no token and route requires unauthenticated, allow immediately
+    if (!hasToken && require === 'unauthenticated') {
+      return { status: 'allowed' }
+    }
+    // For other pending cases, use cached result if available
     if (resolvedRef.current) {
       return resolvedRef.current
     }
     return { status: 'loading' }
   }
 
-  if (require === 'authenticated' && !isAuthenticated) {
+  // Session resolved. If require=authenticated:
+  // - Session valid -> allowed
+  // - Session null BUT token exists -> allowed (network error; trust the token)
+  // - Session null AND no token -> redirect (genuinely unauthenticated)
+  if (require === 'authenticated') {
+    if (isAuthenticated || hasToken) {
+      resolvedRef.current = { status: 'allowed' }
+      return { status: 'allowed' }
+    }
     resolvedRef.current = { status: 'redirect' }
     return { status: 'redirect' }
   }
-  if (require === 'unauthenticated' && isAuthenticated) {
+
+  // require === 'unauthenticated':
+  // - Session valid -> redirect (user is logged in, send away from login page)
+  // - Session null AND no token -> allowed (show login page)
+  // - Session null BUT token exists -> redirect (user has token, don't show login page)
+  if (isAuthenticated || hasToken) {
     resolvedRef.current = { status: 'redirect' }
     return { status: 'redirect' }
   }

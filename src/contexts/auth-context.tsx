@@ -1,6 +1,6 @@
 import { usePowerSyncCredentialsInvalidListener } from '@/hooks/use-powersync-credentials-invalid-listener'
 import { useSettings } from '@/hooks/use-settings'
-import { getAuthToken, setAuthToken } from '@/lib/auth-token'
+import { clearAuthToken, getAuthToken, setAuthToken } from '@/lib/auth-token'
 import { getPlatform } from '@/lib/platform'
 import { emailOTPClient } from 'better-auth/client/plugins'
 import { createAuthClient } from 'better-auth/react'
@@ -35,6 +35,11 @@ const buildFetchOptions = (platform: string) => ({
     const token = ctx.response.headers.get('set-auth-token')
     if (token) {
       setAuthToken(token)
+    }
+  },
+  onError: (ctx: { response: Response }) => {
+    if (ctx.response?.status === 401) {
+      clearAuthToken()
     }
   },
 })

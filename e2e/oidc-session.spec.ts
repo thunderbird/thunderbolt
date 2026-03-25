@@ -8,7 +8,8 @@ test.describe('OIDC session', () => {
     // Verify the chat textarea is interactive
     const textarea = page.locator('textarea')
     await expect(textarea).toBeVisible()
-    await textarea.fill('Hello from e2e test')
+    await textarea.click()
+    await textarea.pressSequentially('Hello from e2e test')
     await expect(textarea).toHaveValue('Hello from e2e test')
   })
 

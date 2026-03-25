@@ -1,6 +1,7 @@
 import { ResponsiveModal, ResponsiveModalContent } from '@/components/ui/responsive-modal'
 import { Button } from '@/components/ui/button'
 import { useSyncSetup } from '@/hooks/use-sync-setup'
+import { useApprovalPolling } from '@/hooks/use-approval-polling'
 import { RecoveryKeyDisplayStep } from './recovery-key-display-step'
 import { ApprovalWaitingStep } from './approval-waiting-step'
 import { RecoveryKeyEntryStep } from './recovery-key-entry-step'
@@ -54,8 +55,7 @@ export const SyncSetupModal = ({ open, onOpenChange, onComplete }: SyncSetupModa
   const handleContinueIntro = async () => {
     const result = await setup.continueIntro()
     if (result === 'already-trusted') {
-      onComplete()
-      handleClose()
+      completeAndClose()
     }
   }
 
@@ -69,6 +69,11 @@ export const SyncSetupModal = ({ open, onOpenChange, onComplete }: SyncSetupModa
       showSuccess()
     }
   }
+
+  const { isPolling } = useApprovalPolling({
+    enabled: setup.step === 'approval-waiting',
+    onApproved: completeAndClose,
+  })
 
   const handleRecoveryKeySubmit = async () => {
     const success = await setup.submitRecoveryKey()
@@ -142,7 +147,7 @@ export const SyncSetupModal = ({ open, onOpenChange, onComplete }: SyncSetupModa
             onContinue={handleApprovalContinue}
             onUseRecoveryKey={setup.goToRecoveryKeyEntry}
             isLoading={setup.isLoading}
-            isPolling={false}
+            isPolling={isPolling}
           />
         )}
 

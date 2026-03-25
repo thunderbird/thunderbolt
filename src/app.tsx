@@ -48,6 +48,7 @@ import Loading from './loading'
 import SettingsLayout from './settings/layout'
 import type { InitData } from './types'
 import { useSettings } from './hooks/use-settings'
+import ky from 'ky'
 import { isOidcMode } from './lib/auth-mode'
 import { isPrPreview, isTauri } from './lib/platform'
 import { getPowerSyncInstance } from './db/powersync'
@@ -72,28 +73,24 @@ const OidcRedirect = () => {
 
     // Use credentials: 'include' so the browser stores Better Auth's OAuth state cookie.
     // Without it, the state cookie is lost and the callback fails with state_mismatch.
-    fetch(`${baseUrl}/v1/api/auth/sign-in/oauth2`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      credentials: 'include',
-      body: JSON.stringify({ providerId: 'oidc', callbackURL: window.location.origin + '/' }),
-      signal: abortController.signal,
-    })
-      .then((res) => {
-        if (!res.ok) {
-          throw new Error(`OIDC sign-in request failed with status ${res.status}`)
-        }
-        return res.json()
-      })
-      .then((data: { url: string }) => {
+    const redirectToOidc = async () => {
+      try {
+        const data = await ky
+          .post(`${baseUrl}/v1/api/auth/sign-in/oauth2`, {
+            json: { providerId: 'oidc', callbackURL: window.location.origin + '/' },
+            credentials: 'include',
+            signal: abortController.signal,
+          })
+          .json<{ url: string }>()
+
         window.location.href = data.url
-      })
-      .catch((err: unknown) => {
-        if (err instanceof DOMException && err.name === 'AbortError') {
-          return
-        }
+      } catch (err) {
+        if (err instanceof DOMException && err.name === 'AbortError') return
         console.error('OIDC redirect failed:', err)
-      })
+      }
+    }
+
+    redirectToOidc()
 
     return () => abortController.abort()
   }, [cloudUrl.isLoading, cloudUrl.value])

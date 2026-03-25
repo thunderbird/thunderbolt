@@ -30,14 +30,14 @@ const trustedOrigins = parseTrustedOrigins(process.env.TRUSTED_ORIGINS)
 const buildOidcPlugins = () => {
   const settings = getSettings()
 
-  if (settings.authMode !== 'oidc' || !settings.oidcIssuer) {
+  if (settings.authMode !== 'oidc') {
     return []
   }
 
-  if (!settings.oidcClientId || !settings.oidcClientSecret) {
+  if (!settings.oidcIssuer || !settings.oidcClientId || !settings.oidcClientSecret) {
     throw new Error(
-      'OIDC is enabled (AUTH_MODE=oidc) but OIDC_CLIENT_ID and/or OIDC_CLIENT_SECRET are missing. ' +
-        'Set both environment variables to configure OIDC authentication.',
+      'OIDC is enabled (AUTH_MODE=oidc) but one or more required env vars are missing: ' +
+        'OIDC_ISSUER, OIDC_CLIENT_ID, OIDC_CLIENT_SECRET. Set all three to configure OIDC authentication.',
     )
   }
 

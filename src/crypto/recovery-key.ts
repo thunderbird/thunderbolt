@@ -1,34 +1,40 @@
+import { entropyToMnemonic, mnemonicToEntropy } from '@scure/bip39'
+import { wordlist } from '@scure/bip39/wordlists/english.js'
+
 import { ValidationError } from './errors'
 
 /**
- * Encode an extractable CK as a 64-character hex string (recovery key).
+ * Encode an extractable CK as a 24-word BIP-39 mnemonic (recovery phrase).
  * CK must be extractable — this is only valid during first device setup.
  */
 export const encodeRecoveryKey = async (ck: CryptoKey): Promise<string> => {
   const raw = await crypto.subtle.exportKey('raw', ck)
-  return Array.from(new Uint8Array(raw))
-    .map((b) => b.toString(16).padStart(2, '0'))
-    .join('')
+  return entropyToMnemonic(new Uint8Array(raw), wordlist)
 }
 
 /**
- * Decode a 64-character hex recovery key into an extractable AES-256-GCM CryptoKey.
+ * Decode a 24-word BIP-39 mnemonic into an extractable AES-256-GCM CryptoKey.
+ * Validates checksum per BIP-39 spec.
  * Extractable because the recovery flow needs to wrap it for the device's envelope.
  * Caller must reimport as non-extractable before storing in IndexedDB.
  */
-export const decodeRecoveryKey = async (hex: string): Promise<CryptoKey> => {
-  const cleaned = hex.replace(/\s/g, '')
+export const decodeRecoveryKey = async (mnemonic: string): Promise<CryptoKey> => {
+  const normalized = mnemonic.trim().toLowerCase().replace(/\s+/g, ' ')
 
-  if (cleaned.length !== 64) {
-    throw new ValidationError('Recovery key must be 64 hex characters (32 bytes).')
+  let bytes: Uint8Array
+  try {
+    bytes = mnemonicToEntropy(normalized, wordlist)
+  } catch {
+    throw new ValidationError(
+      'Invalid recovery phrase. Please check that all 24 words are correct and in the right order.',
+    )
   }
-  if (!/^[0-9a-f]+$/i.test(cleaned)) {
-    throw new ValidationError('Recovery key must contain only hex characters (0-9, a-f).')
+
+  if (bytes.length !== 32) {
+    throw new ValidationError('Recovery phrase must be exactly 24 words (256-bit key).')
   }
 
-  const bytes = new Uint8Array(cleaned.match(/.{2}/g)!.map((byte) => parseInt(byte, 16)))
-
-  return crypto.subtle.importKey('raw', bytes, { name: 'AES-GCM', length: 256 }, true, [
+  return crypto.subtle.importKey('raw', bytes.buffer as ArrayBuffer, { name: 'AES-GCM', length: 256 }, true, [
     'encrypt',
     'decrypt',
     'wrapKey',

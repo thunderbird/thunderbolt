@@ -173,7 +173,10 @@ export const useSyncSetup = () => {
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Recovery failed'
       if (message === 'Invalid recovery key') {
-        dispatch({ type: 'SET_RECOVERY_KEY_ERROR', payload: 'Invalid recovery key. Please check and try again.' })
+        dispatch({
+          type: 'SET_RECOVERY_KEY_ERROR',
+          payload: 'Invalid recovery phrase. Please check that all words are correct and in the right order.',
+        })
       } else {
         dispatch({ type: 'SET_RECOVERY_KEY_ERROR', payload: message })
       }

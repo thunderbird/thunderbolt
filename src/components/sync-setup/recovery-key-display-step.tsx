@@ -13,6 +13,8 @@ export const RecoveryKeyDisplayStep = ({ recoveryKey, onDone, onConfirmedChange 
   const [copied, setCopied] = useState(false)
   const [confirmed, setConfirmed] = useState(false)
 
+  const words = recoveryKey.split(' ')
+
   const handleCopy = async () => {
     await navigator.clipboard.writeText(recoveryKey)
     setCopied(true)
@@ -36,7 +38,14 @@ export const RecoveryKeyDisplayStep = ({ recoveryKey, onDone, onConfirmedChange 
 
       <div className="pt-5 space-y-4">
         <div className="rounded-xl bg-muted p-4">
-          <p className="text-sm font-medium leading-relaxed">{recoveryKey}</p>
+          <div className="grid grid-cols-3 gap-x-4 gap-y-2">
+            {words.map((word, i) => (
+              <div key={i} className="flex items-center gap-2">
+                <span className="text-xs text-muted-foreground w-5 text-right tabular-nums">{i + 1}.</span>
+                <span className="text-sm font-medium">{word}</span>
+              </div>
+            ))}
+          </div>
         </div>
 
         <Button variant="outline" className="w-full" onClick={handleCopy}>

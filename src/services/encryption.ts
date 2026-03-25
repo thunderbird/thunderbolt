@@ -156,10 +156,10 @@ export const checkApprovalAndUnwrap = async (httpClient: KyInstance): Promise<bo
  * Recover encryption access using a recovery key.
  * Verifies the key against the canary, then creates a new envelope for this device.
  */
-export const recoverWithKey = async (httpClient: KyInstance, recoveryKeyHex: string): Promise<void> => {
-  // Fetch canary and verify recovery key
+export const recoverWithKey = async (httpClient: KyInstance, recoveryPhrase: string): Promise<void> => {
+  // Fetch canary and verify recovery phrase
   const { canaryIv, canaryCtext } = await fetchCanary(httpClient)
-  const ck = await decodeRecoveryKey(recoveryKeyHex)
+  const ck = await decodeRecoveryKey(recoveryPhrase)
   const valid = await verifyCanary(ck, canaryIv, canaryCtext)
   if (!valid) {
     throw new Error('Invalid recovery key')

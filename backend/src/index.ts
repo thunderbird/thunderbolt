@@ -4,6 +4,7 @@ import { createGoogleAuthRoutes } from '@/auth/google'
 import { createMicrosoftAuthRoutes } from '@/auth/microsoft'
 import { createLoggerMiddleware, createStandaloneLogger } from '@/config/logger'
 import { getCorsOriginsList, getSettings } from '@/config/settings'
+import { runMigrations } from '@/db/client'
 import { createInferenceRoutes } from '@/inference/routes'
 import { createErrorHandlingMiddleware } from '@/middleware/error-handling'
 import { createHttpLoggingMiddleware } from '@/middleware/http-logging'
@@ -109,7 +110,6 @@ const startServer = async () => {
 
   try {
     // Run PGLite migrations before creating the app (no-op for Postgres)
-    const { runMigrations } = await import('@/db/client')
     await runMigrations()
 
     const app = await createApp()

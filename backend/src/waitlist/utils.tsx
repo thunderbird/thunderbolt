@@ -2,6 +2,17 @@ import { sendEmail, shouldSkipEmail } from '@/lib/resend'
 import { WaitlistJoinedEmail } from '@/emails/waitlist-joined'
 import { WaitlistReminderEmail } from '@/emails/waitlist-reminder'
 import { WaitlistNotReadyEmail } from '@/emails/waitlist-not-ready'
+import { getWaitlistAutoApproveDomains, getSettings } from '@/config/settings'
+
+/**
+ * Check if an email domain is in the auto-approved list.
+ * Uses the last @ character to handle edge-case RFC 5321 addresses with quoted local parts.
+ */
+export const isAutoApprovedDomain = (email: string): boolean => {
+  const parts = email.split('@')
+  const domain = parts.length > 1 ? parts[parts.length - 1].toLowerCase() : null
+  return domain ? getWaitlistAutoApproveDomains(getSettings()).includes(domain) : false
+}
 
 type SendWaitlistEmailParams = {
   email: string

@@ -1,6 +1,7 @@
 import { mock } from 'bun:test'
 import * as authUtils from '@/auth/utils'
 import * as waitlistUtils from '@/waitlist/utils'
+import { clearSettingsCache } from '@/config/settings'
 
 // Mock only the email-sending functions, preserve all other exports
 const mockSendSignInEmail = mock(() => Promise.resolve())
@@ -115,6 +116,104 @@ describe('Auth Waitlist Integration', () => {
 
       expect(mockSendSignInEmail).toHaveBeenCalledTimes(1)
       expect(mockSendWaitlistNotReadyEmail).toHaveBeenCalledTimes(0)
+    })
+
+    it('should send OTP when user exists in both users table and waitlist as approved', async () => {
+      // This is the exact scenario from the bug report (chris@cjroth.com)
+      const email = 'dual-entry@example.com'
+
+      await db.insert(user).values({
+        id: crypto.randomUUID(),
+        email,
+        name: 'Dual Entry User',
+        emailVerified: true,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      })
+
+      await db.insert(waitlist).values({
+        id: crypto.randomUUID(),
+        email,
+        status: 'approved',
+      })
+
+      await auth.api.sendVerificationOTP({
+        body: { email, type: 'sign-in' },
+      })
+
+      expect(mockSendSignInEmail).toHaveBeenCalledTimes(1)
+      expect(mockSendWaitlistNotReadyEmail).toHaveBeenCalledTimes(0)
+      expect(mockSendWaitlistJoinedEmail).toHaveBeenCalledTimes(0)
+    })
+
+    it('should auto-approve and send OTP for auto-approve domain user (via hook path)', async () => {
+      // Set auto-approve domain
+      process.env.WAITLIST_AUTO_APPROVE_DOMAINS = 'autoapprove.com'
+      clearSettingsCache()
+
+      await auth.api.sendVerificationOTP({
+        body: { email: 'newuser@autoapprove.com', type: 'sign-in' },
+      })
+
+      expect(mockSendSignInEmail).toHaveBeenCalledTimes(1)
+      expect(mockSendWaitlistJoinedEmail).toHaveBeenCalledTimes(0)
+
+      // Verify the waitlist entry was created as approved
+      const entries = await db.select().from(waitlist).where(eq(waitlist.email, 'newuser@autoapprove.com'))
+      expect(entries).toHaveLength(1)
+      expect(entries[0].status).toBe('approved')
+
+      // Cleanup
+      delete process.env.WAITLIST_AUTO_APPROVE_DOMAINS
+      clearSettingsCache()
+    })
+
+    it('should upgrade pending user to approved when domain becomes auto-approved', async () => {
+      const email = 'upgrader@newlyapproved.com'
+
+      await db.insert(waitlist).values({
+        id: crypto.randomUUID(),
+        email,
+        status: 'pending',
+      })
+
+      process.env.WAITLIST_AUTO_APPROVE_DOMAINS = 'newlyapproved.com'
+      clearSettingsCache()
+
+      await auth.api.sendVerificationOTP({
+        body: { email, type: 'sign-in' },
+      })
+
+      expect(mockSendSignInEmail).toHaveBeenCalledTimes(1)
+      expect(mockSendWaitlistNotReadyEmail).toHaveBeenCalledTimes(0)
+
+      // Verify the waitlist entry was upgraded to approved
+      const entries = await db.select().from(waitlist).where(eq(waitlist.email, email))
+      expect(entries).toHaveLength(1)
+      expect(entries[0].status).toBe('approved')
+
+      delete process.env.WAITLIST_AUTO_APPROVE_DOMAINS
+      clearSettingsCache()
+    })
+
+    it('should deterministically send OTP for approved user on repeated calls', async () => {
+      await db.insert(waitlist).values({
+        id: crypto.randomUUID(),
+        email: 'deterministic@example.com',
+        status: 'approved',
+      })
+
+      // Call twice
+      await auth.api.sendVerificationOTP({
+        body: { email: 'deterministic@example.com', type: 'sign-in' },
+      })
+      await auth.api.sendVerificationOTP({
+        body: { email: 'deterministic@example.com', type: 'sign-in' },
+      })
+
+      expect(mockSendSignInEmail).toHaveBeenCalledTimes(2)
+      expect(mockSendWaitlistNotReadyEmail).toHaveBeenCalledTimes(0)
+      expect(mockSendWaitlistJoinedEmail).toHaveBeenCalledTimes(0)
     })
 
     it('should normalize email consistently between waitlist and auth', async () => {

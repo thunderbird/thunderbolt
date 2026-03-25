@@ -1,4 +1,4 @@
-import { createWaitlistEntry, getUserByEmail, getWaitlistByEmail, markUserNotNew } from '@/dal'
+import { approveWaitlistEntry, createWaitlistEntry, getUserByEmail, getWaitlistByEmail, markUserNotNew } from '@/dal'
 import type { db as DbType } from '@/db/client'
 import * as schema from '@/db/schema'
 import { normalizeEmail } from '@/lib/email'
@@ -6,7 +6,7 @@ import { createAuthMiddleware } from 'better-auth/api'
 import { betterAuth } from 'better-auth'
 import { drizzleAdapter } from 'better-auth/adapters/drizzle'
 import { bearer, emailOTP } from 'better-auth/plugins'
-import { sendWaitlistJoinedEmail, sendWaitlistNotReadyEmail } from '@/waitlist/utils'
+import { isAutoApprovedDomain, sendWaitlistJoinedEmail, sendWaitlistNotReadyEmail } from '@/waitlist/utils'
 import { buildVerifyUrl, getValidatedOrigin, parseTrustedOrigins, sendSignInEmail } from './utils'
 
 /**
@@ -97,29 +97,40 @@ export const createAuth = (database: typeof DbType) =>
           if (!existingUser) {
             const waitlistEntry = await getWaitlistByEmail(database, normalizedEmail)
 
-            // For non-approved users, send appropriate email but don't reveal status
-            // (they'll see the OTP screen but won't receive the actual code)
-            if (!waitlistEntry || waitlistEntry.status !== 'approved') {
-              console.info('📧 Handling sign-in for non-approved email (sending waitlist email)')
-
-              if (!waitlistEntry) {
-                // Add to waitlist if not already there (helpful UX)
-                // Use onConflictDoNothing to handle rare race condition gracefully
+            if (!waitlistEntry) {
+              // New user -- check if their domain qualifies for auto-approval
+              if (isAutoApprovedDomain(normalizedEmail)) {
+                // Auto-approve: create approved entry and send OTP
+                await createWaitlistEntry(database, {
+                  id: crypto.randomUUID(),
+                  email: normalizedEmail,
+                  status: 'approved',
+                })
+                // Fall through to send OTP below
+              } else {
+                // Not auto-approved: create pending entry and send joined email
                 await createWaitlistEntry(database, {
                   id: crypto.randomUUID(),
                   email: normalizedEmail,
                   status: 'pending',
                 })
                 await sendWaitlistJoinedEmail({ email: normalizedEmail })
-              } else {
-                // On waitlist but not approved — send a "not ready yet" email
-                await sendWaitlistNotReadyEmail({ email: normalizedEmail })
+                return
               }
-
-              // Return without sending OTP - user will see OTP screen but won't have the code
-              // This prevents revealing whether an email is on the waitlist or not
-              return
+            } else if (waitlistEntry.status !== 'approved') {
+              // Existing pending entry -- check if they now qualify for auto-approval
+              if (isAutoApprovedDomain(normalizedEmail)) {
+                await approveWaitlistEntry(database, waitlistEntry.id)
+                // Fall through to send OTP below
+              } else {
+                // Still pending, send not-ready email
+                console.info('Handling sign-in for non-approved email (sending waitlist email)')
+                await sendWaitlistNotReadyEmail({ email: normalizedEmail })
+                return
+              }
             }
+            // If we reach here: user is approved (existing approved entry, or just auto-approved)
+            // Fall through to send OTP
           }
 
           const origin = getValidatedOrigin(trustedOrigins, ctx?.request)

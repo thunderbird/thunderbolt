@@ -58,7 +58,7 @@ export const SyncSetupModal = ({ open, onOpenChange, onComplete }: SyncSetupModa
   const handleContinueIntro = async () => {
     const result = await setup.continueIntro()
     if (result === 'already-trusted') {
-      completeAndClose()
+      showSuccess()
     }
   }
 
@@ -76,7 +76,7 @@ export const SyncSetupModal = ({ open, onOpenChange, onComplete }: SyncSetupModa
   const { isPolling } = useApprovalPolling({
     enabled: setup.step === 'approval-waiting',
     checkApproval: () => checkApprovalAndUnwrap(httpClient),
-    onApproved: completeAndClose,
+    onApproved: showSuccess,
   })
 
   const handleRecoveryKeySubmit = async () => {
@@ -245,6 +245,34 @@ type FirstDeviceSetupStepProps = {
   isLoading: boolean
   error: string | null
 }
+
+// =============================================================================
+// Setup complete step — success confirmation for additional device flows
+// =============================================================================
+
+const SetupCompleteStep = ({ onDone }: { onDone: () => void }) => (
+  <div className="w-full flex flex-col">
+    <div className="text-center space-y-4">
+      <IconCircle>
+        <CheckCircle className="w-8 h-8 text-green-600 dark:text-green-400" />
+      </IconCircle>
+      <h2 className="text-2xl font-bold">You&apos;re all set!</h2>
+      <p className="text-muted-foreground">
+        This device has been approved and sync is now enabled across your devices.
+      </p>
+    </div>
+
+    <div className="pt-5">
+      <Button className="w-full" onClick={onDone}>
+        Done
+      </Button>
+    </div>
+  </div>
+)
+
+// =============================================================================
+// First device setup step — explanation before key generation
+// =============================================================================
 
 const FirstDeviceSetupStep = ({ onContinue, isLoading, error }: FirstDeviceSetupStepProps) => (
   <div className="w-full flex flex-col">

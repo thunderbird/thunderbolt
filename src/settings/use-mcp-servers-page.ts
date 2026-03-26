@@ -7,18 +7,58 @@ import { useDatabase } from '@/contexts'
 import { mcpServersTable } from '@/db/tables'
 import { useMcpSync } from '@/hooks/use-mcp-sync'
 import { useMcpServerFormState } from '@/hooks/use-mcp-server-form'
-import type { McpTransportType } from '@/types/mcp'
+import type { McpAuthType, McpTransportType } from '@/types/mcp'
 import { type McpServer } from '@/types'
 import { useMutation } from '@tanstack/react-query'
 import { useQuery } from '@powersync/tanstack-react-query'
 import { eq } from 'drizzle-orm'
-import { useEffect, useRef, useState, type KeyboardEvent } from 'react'
+import { useEffect, useReducer, useRef, type KeyboardEvent } from 'react'
 import { v7 as uuidv7 } from 'uuid'
 import { createMCPClient } from '@ai-sdk/mcp'
 import { toCompilableQuery } from '@powersync/drizzle-driver'
 
 type ServerTools = {
   [serverId: string]: string[]
+}
+
+type PageState = {
+  isAddDialogOpen: boolean
+  serverTools: ServerTools
+  selectedTools: { [serverId: string]: { [tool: string]: boolean } }
+  deleteConfirmOpen: string | null
+  copiedUrl: string | null
+}
+
+type PageAction =
+  | { type: 'SET_ADD_DIALOG_OPEN'; payload: boolean }
+  | { type: 'SET_SERVER_TOOLS'; payload: ServerTools }
+  | { type: 'MERGE_SELECTED_TOOLS'; payload: { [serverId: string]: { [tool: string]: boolean } } }
+  | { type: 'SET_DELETE_CONFIRM_OPEN'; payload: string | null }
+  | { type: 'SET_COPIED_URL'; payload: string | null }
+
+const initialPageState: PageState = {
+  isAddDialogOpen: false,
+  serverTools: {},
+  selectedTools: {},
+  deleteConfirmOpen: null,
+  copiedUrl: null,
+}
+
+const pageReducer = (state: PageState, action: PageAction): PageState => {
+  switch (action.type) {
+    case 'SET_ADD_DIALOG_OPEN':
+      return { ...state, isAddDialogOpen: action.payload }
+    case 'SET_SERVER_TOOLS':
+      return { ...state, serverTools: action.payload }
+    case 'MERGE_SELECTED_TOOLS':
+      return { ...state, selectedTools: { ...state.selectedTools, ...action.payload } }
+    case 'SET_DELETE_CONFIRM_OPEN':
+      return { ...state, deleteConfirmOpen: action.payload }
+    case 'SET_COPIED_URL':
+      return { ...state, copiedUrl: action.payload }
+    default:
+      return state
+  }
 }
 
 /**
@@ -52,11 +92,8 @@ export const useMcpServersPageState = () => {
   const { servers: mcpServers } = useMcpSync()
   const { reconnectServer } = useMCP()
   const credentialStoreRef = useRef(createCredentialStore(db))
-  const [isAddDialogOpen, setIsAddDialogOpen] = useState(false)
-  const [serverTools, setServerTools] = useState<ServerTools>({})
-  const [selectedTools, setSelectedTools] = useState<{ [serverId: string]: { [tool: string]: boolean } }>({})
-  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState<string | null>(null)
-  const [copiedUrl, setCopiedUrl] = useState<string | null>(null)
+  const [pageState, dispatch] = useReducer(pageReducer, initialPageState)
+  const { isAddDialogOpen, serverTools, selectedTools, deleteConfirmOpen, copiedUrl } = pageState
   const testAbortRef = useRef<AbortController | null>(null)
   const titleRefs = useRef<{ [key: string]: HTMLElement | null }>({})
 
@@ -99,9 +136,9 @@ export const useMcpServersPageState = () => {
         }
       }
 
-      setServerTools(newServerTools)
+      dispatch({ type: 'SET_SERVER_TOOLS', payload: newServerTools })
       if (Object.keys(newSelectedTools).length > 0) {
-        setSelectedTools((prev) => ({ ...prev, ...newSelectedTools }))
+        dispatch({ type: 'MERGE_SELECTED_TOOLS', payload: newSelectedTools })
       }
     }
 
@@ -113,7 +150,7 @@ export const useMcpServersPageState = () => {
 
   useEffect(() => {
     if (copiedUrl) {
-      const timer = setTimeout(() => setCopiedUrl(null), 2000)
+      const timer = setTimeout(() => dispatch({ type: 'SET_COPIED_URL', payload: null }), 2000)
       return () => clearTimeout(timer)
     }
   }, [copiedUrl])
@@ -130,23 +167,25 @@ export const useMcpServersPageState = () => {
   const addServerMutation = useMutation({
     mutationFn: async (server: {
       name: string
-      type: 'http' | 'stdio' | 'sse'
+      type: McpTransportType
       url?: string
       command?: string
       args?: string
-      authType?: 'none' | 'bearer' | 'oauth'
+      authType?: McpAuthType
       bearerToken?: string
     }) => {
       const id = uuidv7()
+
+      // Save credential FIRST so it's available when useMcpSync fires after the server row is inserted
+      if (server.bearerToken && server.authType === 'bearer') {
+        await credentialStoreRef.current.save(id, { type: 'bearer', token: server.bearerToken })
+      }
+
       const { bearerToken, ...serverData } = server
       await createMcpServer(db, { id, ...serverData, enabled: 1 })
-
-      if (bearerToken && server.authType === 'bearer') {
-        await credentialStoreRef.current.save(id, { type: 'bearer', token: bearerToken })
-      }
     },
     onSuccess: () => {
-      setIsAddDialogOpen(false)
+      dispatch({ type: 'SET_ADD_DIALOG_OPEN', payload: false })
       formDispatch({ type: 'RESET' })
     },
   })
@@ -154,7 +193,7 @@ export const useMcpServersPageState = () => {
   const deleteServerMutation = useMutation({
     mutationFn: (id: string) => deleteMcpServer(db, id),
     onSuccess: () => {
-      setDeleteConfirmOpen(null)
+      dispatch({ type: 'SET_DELETE_CONFIRM_OPEN', payload: null })
     },
   })
 
@@ -274,7 +313,7 @@ export const useMcpServersPageState = () => {
 
   const handleCopyUrl = async (url: string) => {
     await navigator.clipboard.writeText(url)
-    setCopiedUrl(url)
+    dispatch({ type: 'SET_COPIED_URL', payload: url })
   }
 
   const handleArgsInput = (value: string) => {
@@ -357,11 +396,11 @@ export const useMcpServersPageState = () => {
     }
   }
 
-  const openAddDialog = () => setIsAddDialogOpen(true)
+  const openAddDialog = () => dispatch({ type: 'SET_ADD_DIALOG_OPEN', payload: true })
   const closeAddDialog = () => {
     testAbortRef.current?.abort()
     testAbortRef.current = null
-    setIsAddDialogOpen(false)
+    dispatch({ type: 'SET_ADD_DIALOG_OPEN', payload: false })
     formDispatch({ type: 'RESET' })
   }
 
@@ -374,7 +413,7 @@ export const useMcpServersPageState = () => {
     serverTools,
     selectedTools,
     deleteConfirmOpen,
-    setDeleteConfirmOpen,
+    setDeleteConfirmOpen: (id: string | null) => dispatch({ type: 'SET_DELETE_CONFIRM_OPEN', payload: id }),
     copiedUrl,
     titleRefs,
     formState,

@@ -1,5 +1,5 @@
 import type { PowerSyncTableName } from '@shared/powersync-tables'
-import { DrizzleAppSchema } from '@powersync/drizzle-driver'
+import { DrizzleAppSchema, type DrizzleTableWithPowerSyncOptions } from '@powersync/drizzle-driver'
 import * as tables from '../tables'
 
 /**
@@ -21,7 +21,16 @@ export const drizzleSchema = {
   devices: tables.devicesTable,
 } satisfies Record<PowerSyncTableName, unknown>
 
+/** Local-only table — not in PowerSyncTableName, never synced */
+const mcpCredentialsLocalOnly: DrizzleTableWithPowerSyncOptions = {
+  tableDefinition: tables.mcpCredentialsTable,
+  options: { localOnly: true },
+}
+
 /**
  * PowerSync AppSchema derived from Drizzle table definitions.
  */
-export const AppSchema = new DrizzleAppSchema(drizzleSchema)
+export const AppSchema = new DrizzleAppSchema({
+  ...drizzleSchema,
+  mcp_credentials: mcpCredentialsLocalOnly,
+})

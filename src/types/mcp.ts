@@ -5,19 +5,14 @@ import type { createMCPClient } from '@ai-sdk/mcp'
 /** MCP client instance from the AI SDK */
 type McpClient = Awaited<ReturnType<typeof createMCPClient>>
 
+/** Configuration for creating an MCP transport */
+type McpTransportConfig = { type: 'http' | 'sse'; url: string } | { type: 'stdio'; command: string; args?: string[] }
+
 /** Transport types supported by the app */
-type McpTransportType = 'http' | 'sse' | 'stdio'
+type McpTransportType = McpTransportConfig['type']
 
 /** Authentication types supported by the app */
 type McpAuthType = 'none' | 'bearer' | 'oauth'
-
-/** Configuration for creating an MCP transport */
-type McpTransportConfig = {
-  type: McpTransportType
-  url?: string
-  command?: string
-  args?: string[]
-}
 
 /** Configuration for MCP authentication */
 type McpAuthConfig = {

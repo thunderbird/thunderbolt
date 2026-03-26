@@ -114,8 +114,6 @@ export const mcpServersTable = sqliteTable(
     command: text('command'),
     args: text('args'),
     authType: text('auth_type', { enum: ['none', 'bearer', 'oauth'] }).default('none'),
-    encryptedCredential: text('encrypted_credential'),
-    oauthAccountId: text('oauth_account_id'),
     enabled: integer('enabled').default(1),
     createdAt: text('created_at').default(sql`(datetime('now'))`),
     updatedAt: text('updated_at').default(sql`(datetime('now'))`),
@@ -128,6 +126,12 @@ export const mcpServersTable = sqliteTable(
       .where(sql`${table.deletedAt} IS NULL`),
   ],
 )
+
+/** Local-only table — credentials are never synced via PowerSync */
+export const mcpCredentialsTable = sqliteTable('mcp_credentials', {
+  id: text('id').primaryKey(),
+  encryptedCredential: text('encrypted_credential'),
+})
 
 export const promptsTable = sqliteTable(
   'prompts',

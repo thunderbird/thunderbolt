@@ -26,8 +26,7 @@ email = [
 ]
 embeddings = ["dep:thunderbolt-embeddings"]
 bridge = ["dep:thunderbolt-bridge"]
-native_fetch = []
-all = ["libsql", "email", "embeddings", "bridge", "native_fetch"]
+all = ["libsql", "email", "embeddings", "bridge"]
 
 [workspace]
 members = [
@@ -82,7 +81,7 @@ thunderbolt-libsql = { package = "thunderbolt-libsql", path = "./thunderbolt_lib
 thunderbolt-email = { package = "thunderbolt-email", path = "./thunderbolt_email", optional = true }
 tauri-plugin-deep-link = "2.3"
 tauri-plugin-haptics = "2.3"
-tauri-plugin-shell = "2"
+tauri-plugin-shell = "2.3"
 tauri-plugin-updater = "2.3"
 
 [profile.dev]

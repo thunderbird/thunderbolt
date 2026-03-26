@@ -1,6 +1,6 @@
 import { updateSettings } from '@/dal'
 import { getDb } from '@/db/database'
-import { type MCPClient } from '@/lib/mcp-provider'
+import { type McpClient as MCPClient } from '@/types/mcp'
 import { trackEvent } from '@/lib/posthog'
 import type { AutomationRun, ChatThread, Mode, Model, ThunderboltUIMessage } from '@/types'
 import { create } from 'zustand'

@@ -4,8 +4,8 @@
  * When adding a table: add here, then to src/db/tables.ts, backend/src/db/powersync-schema.ts,
  * src/db/powersync/schema.ts, and powersync-service/config/config.yaml.
  *
- * NOTE: mcp_servers uses an explicit column list in config.yaml (not SELECT *) to exclude
- * the `encrypted_credential` column — credentials are device-local and must never sync.
+ * NOTE: mcp_credentials is a local-only table (not listed here) and is never synced.
+ * Credentials are stored device-locally via AES-GCM encryption.
  */
 
 export const powersyncTableNames = [

@@ -24,6 +24,7 @@ const settingsSchema = z.object({
   // General settings
   logLevel: z.enum(['DEBUG', 'INFO', 'WARN', 'ERROR']).default('INFO'),
   port: z.coerce.number().default(8000),
+  appUrl: z.string().default('http://localhost:1420'),
 
   // Analytics settings
   posthogHost: z.string().default('https://us.i.posthog.com'),
@@ -49,7 +50,7 @@ const settingsSchema = z.object({
   corsAllowHeaders: z
     .string()
     .default(
-      'Content-Type,Authorization,Accept,Accept-Encoding,Accept-Language,Cache-Control,User-Agent,X-Requested-With,X-Client-Platform,X-Device-ID,X-Device-Name',
+      'Content-Type,Authorization,Accept,Accept-Encoding,Accept-Language,Cache-Control,User-Agent,X-Requested-With,X-Client-Platform,X-Device-ID,X-Device-Name,X-Mcp-Target-Url,Mcp-Session-Id,Mcp-Protocol-Version',
     ),
   corsExposeHeaders: z.string().default('mcp-session-id,set-auth-token'),
 })
@@ -74,6 +75,7 @@ const parseSettings = (): Settings => {
     microsoftClientSecret: process.env.MICROSOFT_CLIENT_SECRET || '',
     logLevel: (process.env.LOG_LEVEL || 'INFO').toUpperCase(),
     port: process.env.PORT || '8000',
+    appUrl: process.env.APP_URL || 'http://localhost:1420',
     posthogHost: process.env.POSTHOG_HOST || 'https://us.i.posthog.com',
     posthogApiKey: process.env.POSTHOG_API_KEY || '',
     waitlistEnabled: process.env.WAITLIST_ENABLED === 'true',
@@ -90,7 +92,7 @@ const parseSettings = (): Settings => {
     corsAllowMethods: process.env.CORS_ALLOW_METHODS || 'GET,POST,PUT,DELETE,PATCH,OPTIONS',
     corsAllowHeaders:
       process.env.CORS_ALLOW_HEADERS ||
-      'Content-Type,Authorization,Accept,Accept-Encoding,Accept-Language,Cache-Control,User-Agent,X-Requested-With,X-Client-Platform,X-Device-ID,X-Device-Name',
+      'Content-Type,Authorization,Accept,Accept-Encoding,Accept-Language,Cache-Control,User-Agent,X-Requested-With,X-Client-Platform,X-Device-ID,X-Device-Name,X-Mcp-Target-Url,Mcp-Session-Id,Mcp-Protocol-Version',
     corsExposeHeaders: process.env.CORS_EXPOSE_HEADERS || 'mcp-session-id,set-auth-token',
   }
 

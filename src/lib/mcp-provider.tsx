@@ -27,6 +27,7 @@ export const MCPProvider = ({ children }: { children: ReactNode }) => {
   const retryTimeouts = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map())
   const serversRef = useRef<McpServerConnection[]>([])
   const credentialStoreRef = useRef(createCredentialStore(db))
+  const cloudUrlRef = useRef(import.meta.env.VITE_THUNDERBOLT_CLOUD_URL ?? 'http://localhost:8000/v1')
 
   // Keep ref in sync with state
   useEffect(() => {
@@ -34,7 +35,9 @@ export const MCPProvider = ({ children }: { children: ReactNode }) => {
   }, [servers])
 
   const createClient = async (config: McpServerConfig): Promise<McpClient> => {
-    const { transport } = await createTransport(config, credentialStoreRef.current)
+    const { transport } = await createTransport(config, credentialStoreRef.current, {
+      cloudUrl: cloudUrlRef.current,
+    })
     const client = await createMCPClient({ transport })
     // Store transport only after successful connection to avoid orphaned refs on failure
     transportRefs.current.set(config.id, transport)
@@ -218,6 +221,3 @@ export const useMCP = () => {
   }
   return context
 }
-
-// Export the MCPClient type for use in other files
-export type { McpClient as MCPClient }

@@ -4,6 +4,7 @@ import { mcpServersTable } from '../db/tables'
 import { clearNullableColumns, nowIso } from '../lib/utils'
 import { type McpServer } from '@/types'
 import type { DrizzleQueryWithPromise } from '@/types'
+import type { McpTransportType, McpAuthType } from '@/types/mcp'
 
 /**
  * Gets all MCP servers from the database (excluding soft-deleted)
@@ -44,38 +45,13 @@ export const createMcpServer = async (
   server: {
     id: string
     name: string
-    type?: 'http' | 'stdio' | 'sse'
+    type?: McpTransportType
     url?: string
     command?: string
     args?: string
-    authType?: 'none' | 'bearer' | 'oauth'
-    encryptedCredential?: string
-    oauthAccountId?: string
+    authType?: McpAuthType
     enabled?: number
   },
 ): Promise<void> => {
   await db.insert(mcpServersTable).values(server)
-}
-
-/**
- * Updates the auth configuration on an existing MCP server.
- * Only updates auth-related fields; does not touch transport config.
- */
-export const updateMcpServerAuth = async (
-  db: AnyDrizzleDatabase,
-  serverId: string,
-  auth: {
-    authType: 'none' | 'bearer' | 'oauth'
-    encryptedCredential?: string
-    oauthAccountId?: string
-  },
-): Promise<void> => {
-  await db
-    .update(mcpServersTable)
-    .set({
-      authType: auth.authType as McpServer['authType'],
-      encryptedCredential: auth.encryptedCredential ?? null,
-      oauthAccountId: auth.oauthAccountId ?? null,
-    })
-    .where(and(eq(mcpServersTable.id, serverId), isNull(mcpServersTable.deletedAt)))
 }

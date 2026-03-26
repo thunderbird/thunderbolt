@@ -7,6 +7,16 @@ import { toCompilableQuery } from '@powersync/drizzle-driver'
 import { useQuery } from '@powersync/tanstack-react-query'
 import { useEffect, useRef } from 'react'
 
+/** Parses a JSON string as a string array, returning an empty array on invalid input. */
+const parseJsonArray = (value: string): string[] => {
+  try {
+    const parsed = JSON.parse(value)
+    return Array.isArray(parsed) ? parsed : []
+  } catch {
+    return []
+  }
+}
+
 export const useMcpSync = () => {
   const db = useDatabase()
   const { servers, addServer, removeServer, updateServerStatus } = useMCP()
@@ -36,16 +46,17 @@ export const useMcpSync = () => {
             id: dbServer.id,
             name: dbServer.name ?? 'Unnamed Server',
             enabled: dbServer.enabled === 1,
-            transport: {
-              type: (dbServer.type as McpTransportType) ?? 'http',
-              url: dbServer.url ?? undefined,
-              command: dbServer.command ?? undefined,
-              args: dbServer.args ? (JSON.parse(dbServer.args) as string[]) : undefined,
-            },
+            transport:
+              dbServer.type === 'stdio'
+                ? {
+                    type: 'stdio' as const,
+                    command: dbServer.command ?? '',
+                    args: dbServer.args ? parseJsonArray(dbServer.args) : undefined,
+                  }
+                : { type: (dbServer.type as 'http' | 'sse') ?? 'http', url: dbServer.url ?? '' },
             auth: {
               authType: (dbServer.authType as McpAuthType) ?? 'none',
-              credentialKey: dbServer.encryptedCredential ? dbServer.id : undefined,
-              oauthAccountId: dbServer.oauthAccountId ?? undefined,
+              credentialKey: dbServer.authType && dbServer.authType !== 'none' ? dbServer.id : undefined,
             },
           })
         }

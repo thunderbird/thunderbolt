@@ -8,6 +8,7 @@ import { createInferenceRoutes } from '@/inference/routes'
 import { createErrorHandlingMiddleware } from '@/middleware/error-handling'
 import { createHttpLoggingMiddleware } from '@/middleware/http-logging'
 import { createWaitlistAuthMiddleware } from '@/middleware/waitlist-auth'
+import { createMcpProxyRoutes } from '@/mcp-proxy/routes'
 import { createPostHogRoutes } from '@/posthog/routes'
 import { createProToolsRoutes } from '@/pro/routes'
 import { createWaitlistRoutes } from '@/waitlist/routes'
@@ -82,6 +83,7 @@ export const createApp = async (deps?: AppDeps) => {
       .use(createProToolsRoutes(fetchFn))
       .use(createInferenceRoutes())
       .use(createPostHogRoutes(fetchFn))
+      .use(createMcpProxyRoutes(fetchFn))
       .use(createWaitlistRoutes({ database, auth, emailService: deps?.waitlistEmailService }))
       .use(createPowerSyncRoutes(auth, settings, database))
       .use(createAccountRoutes(auth, database))

@@ -1,16 +1,14 @@
 import { getDb } from '@/db/database'
-import { mcpServersTable } from '@/db/tables'
+import { mcpCredentialsTable, mcpServersTable } from '@/db/tables'
 import { afterAll, beforeAll, beforeEach, describe, expect, it, mock } from 'bun:test'
 import { v7 as uuidv7 } from 'uuid'
 import { resetTestDatabase, setupTestDatabase, teardownTestDatabase } from '@/dal/test-utils'
 import { createCredentialStore, resetKeyCache } from './credential-store'
 import type { McpCredential } from '@/types/mcp'
 
-// Mock @tauri-apps/plugin-fs so getDeviceId returns a stable test value
-mock.module('@tauri-apps/plugin-fs', () => ({
-  readTextFile: async () => 'test-device-id',
-  writeTextFile: async () => {},
-  BaseDirectory: { AppData: 0 },
+// Mock @/lib/auth-token so getDeviceId returns a stable test value
+mock.module('@/lib/auth-token', () => ({
+  getDeviceId: () => 'test-device-id',
 }))
 
 beforeAll(async () => {
@@ -62,7 +60,9 @@ describe('CredentialStore', () => {
       const token = 'super-secret-token'
       await store.save(serverId, { type: 'bearer', token })
 
-      const rows = await db.select({ encryptedCredential: mcpServersTable.encryptedCredential }).from(mcpServersTable)
+      const rows = await db
+        .select({ encryptedCredential: mcpCredentialsTable.encryptedCredential })
+        .from(mcpCredentialsTable)
 
       const raw = rows[0]?.encryptedCredential ?? ''
       expect(raw).not.toContain(token)
@@ -82,10 +82,25 @@ describe('CredentialStore', () => {
       await store.save(serverId1, credential)
       await store.save(serverId2, credential)
 
-      const rows = await db.select({ encryptedCredential: mcpServersTable.encryptedCredential }).from(mcpServersTable)
+      const rows = await db
+        .select({ encryptedCredential: mcpCredentialsTable.encryptedCredential })
+        .from(mcpCredentialsTable)
 
       const [enc1, enc2] = rows.map((r) => r.encryptedCredential)
       expect(enc1).not.toEqual(enc2)
+    })
+
+    it('overwrites an existing credential on re-save', async () => {
+      const db = getDb()
+      const serverId = uuidv7()
+      await seedServer(serverId)
+
+      const store = createCredentialStore(db)
+      await store.save(serverId, { type: 'bearer', token: 'original-token' })
+      await store.save(serverId, { type: 'bearer', token: 'updated-token' })
+
+      const loaded = await store.load(serverId)
+      expect(loaded).toEqual({ type: 'bearer', token: 'updated-token' })
     })
   })
 

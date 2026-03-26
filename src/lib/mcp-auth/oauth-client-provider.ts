@@ -12,7 +12,8 @@ import type { CredentialStore } from '@/types/mcp'
  * Static client ID for Thunderbolt published as a Client ID Metadata Document (CIMD).
  * Authorization servers that support CIMD will fetch this to verify the client.
  */
-const thunderboltClientId = 'https://thunderbolt.io/.well-known/oauth-client/thunderbolt'
+const thunderboltDomain = import.meta.env.VITE_THUNDERBOLT_DOMAIN ?? 'thunderbolt.io'
+const thunderboltClientId = `https://${thunderboltDomain}/.well-known/oauth-client/thunderbolt`
 
 /**
  * OAuth 2.1 client provider for MCP servers.

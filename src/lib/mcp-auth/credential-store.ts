@@ -1,6 +1,7 @@
 import { eq } from 'drizzle-orm'
 import type { AnyDrizzleDatabase } from '@/db/database-interface'
-import { mcpServersTable } from '@/db/tables'
+import { mcpCredentialsTable } from '@/db/tables'
+import { getDeviceId } from '@/lib/auth-token'
 import type { CredentialStore, McpCredential } from '@/types/mcp'
 
 /** Application-specific salt prefix mixed with the device hostname */
@@ -21,13 +22,9 @@ type EncryptedBlob = {
  */
 const deriveKey = async (hostname: string): Promise<CryptoKey> => {
   const encoder = new TextEncoder()
-  const keyMaterial = await crypto.subtle.importKey(
-    'raw',
-    encoder.encode(appSaltPrefix + hostname),
-    'PBKDF2',
-    false,
-    ['deriveKey'],
-  )
+  const keyMaterial = await crypto.subtle.importKey('raw', encoder.encode(appSaltPrefix + hostname), 'PBKDF2', false, [
+    'deriveKey',
+  ])
 
   return crypto.subtle.deriveKey(
     {
@@ -72,65 +69,47 @@ const decrypt = async (key: CryptoKey, encryptedJson: string): Promise<string> =
   return new TextDecoder().decode(plaintext)
 }
 
-/**
- * Returns a persistent device-unique identifier for key derivation.
- * Generates a random UUID on first run and stores it in the app data directory.
- * Falls back to a static identifier in non-Tauri environments (tests).
- */
-const getDeviceId = async (): Promise<string> => {
-  // Dynamic import fails outside Tauri (tests, web) — fall back to static identifier
-  const fs = await import('@tauri-apps/plugin-fs').catch(() => null)
-  if (!fs) {
-    return 'thunderbolt-local'
-  }
-
-  try {
-    return await fs.readTextFile('mcp-device-id', { baseDir: fs.BaseDirectory.AppData })
-  } catch {
-    // File doesn't exist yet — generate and persist a new device ID
-    const id = crypto.randomUUID()
-    await fs.writeTextFile('mcp-device-id', id, { baseDir: fs.BaseDirectory.AppData })
-    return id
-  }
-}
-
 /** Promise-based singleton prevents concurrent PBKDF2 derivations */
 let keyPromise: Promise<CryptoKey> | null = null
 
 const getEncryptionKey = (): Promise<CryptoKey> => {
-  keyPromise ??= getDeviceId()
-    .then(deriveKey)
-    .catch((err) => {
-      keyPromise = null
-      throw err
-    })
+  keyPromise ??= deriveKey(getDeviceId()).catch((err) => {
+    keyPromise = null
+    throw err
+  })
   return keyPromise
 }
 
 /**
  * Creates an encrypted credential store that persists credentials
- * in the `mcp_servers.encrypted_credential` column using AES-GCM encryption.
+ * in the local-only `mcp_credentials` table using AES-GCM encryption.
  *
- * Key derivation: PBKDF2(appSaltPrefix + hostname) -> 256-bit AES-GCM key.
+ * Key derivation: PBKDF2(appSaltPrefix + deviceId) -> 256-bit AES-GCM key.
  * Storage format: `{ iv: base64, ciphertext: base64 }` serialized as JSON.
  *
  * Credentials are never stored in plaintext — only the encrypted blob reaches SQLite.
+ * The `mcp_credentials` table is local-only and never synced via PowerSync.
  */
 const createCredentialStore = (db: AnyDrizzleDatabase): CredentialStore => {
   const save = async (serverId: string, credential: McpCredential): Promise<void> => {
     const key = await getEncryptionKey()
     const encryptedCredential = await encrypt(key, JSON.stringify(credential))
-    await db.update(mcpServersTable).set({ encryptedCredential }).where(eq(mcpServersTable.id, serverId))
+    await db
+      .insert(mcpCredentialsTable)
+      .values({ id: serverId, encryptedCredential })
+      .onConflictDoUpdate({ target: mcpCredentialsTable.id, set: { encryptedCredential } })
   }
 
   const load = async (serverId: string): Promise<McpCredential | null> => {
     const rows = await db
-      .select({ encryptedCredential: mcpServersTable.encryptedCredential })
-      .from(mcpServersTable)
-      .where(eq(mcpServersTable.id, serverId))
+      .select({ encryptedCredential: mcpCredentialsTable.encryptedCredential })
+      .from(mcpCredentialsTable)
+      .where(eq(mcpCredentialsTable.id, serverId))
 
     const row = rows[0]
-    if (!row?.encryptedCredential) { return null }
+    if (!row?.encryptedCredential) {
+      return null
+    }
 
     const key = await getEncryptionKey()
     const plaintext = await decrypt(key, row.encryptedCredential)
@@ -138,7 +117,7 @@ const createCredentialStore = (db: AnyDrizzleDatabase): CredentialStore => {
   }
 
   const deleteCredential = async (serverId: string): Promise<void> => {
-    await db.update(mcpServersTable).set({ encryptedCredential: null }).where(eq(mcpServersTable.id, serverId))
+    await db.delete(mcpCredentialsTable).where(eq(mcpCredentialsTable.id, serverId))
   }
 
   return { save, load, delete: deleteCredential }

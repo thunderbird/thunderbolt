@@ -1,6 +1,7 @@
 import { describe, it, expect, mock } from 'bun:test'
 import { createTransport } from './transport-factory'
-import { validateCommand, validateArgs, TauriStdioTransport } from './tauri-stdio-transport'
+import { TauriStdioTransport } from './tauri-stdio-transport'
+import { validateStdioCommand as validateCommand, validateStdioArgs as validateArgs } from '@/lib/mcp-utils'
 import type { McpServerConfig, CredentialStore, McpCredential } from '@/types/mcp'
 
 // Mock Tauri plugins so tests can run outside a Tauri runtime
@@ -127,7 +128,7 @@ describe('createTransport', () => {
   })
 
   it('throws for unknown transport type', async () => {
-    const config = makeConfig({ transport: { type: 'unknown' as 'http' } })
+    const config = makeConfig({ transport: { type: 'unknown' as 'http', url: 'https://example.com' } })
     await expect(createTransport(config, makeCredentialStore())).rejects.toThrow('Unknown MCP transport type')
   })
 })
@@ -162,8 +163,8 @@ describe('validateArgs', () => {
     expect(() => validateArgs(['--flag', 'value', '-x'])).not.toThrow()
   })
 
-  it('accepts undefined args', () => {
-    expect(() => validateArgs(undefined)).not.toThrow()
+  it('accepts empty args', () => {
+    expect(() => validateArgs([])).not.toThrow()
   })
 
   it('rejects args containing null bytes', () => {

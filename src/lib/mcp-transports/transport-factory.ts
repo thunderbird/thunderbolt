@@ -1,6 +1,7 @@
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js'
 import { SSEClientTransport } from '@modelcontextprotocol/sdk/client/sse.js'
 import { isTauri } from '@/lib/platform'
+import { isLocalMcpServer } from '@/lib/mcp-utils'
 import type { McpServerConfig, McpTransportResult, CredentialStore } from '@/types/mcp'
 
 /**
@@ -12,11 +13,12 @@ import type { McpServerConfig, McpTransportResult, CredentialStore } from '@/typ
 export const createTransport = async (
   config: McpServerConfig,
   credentialStore: CredentialStore,
+  options?: { cloudUrl?: string },
 ): Promise<McpTransportResult> => {
   const { transport, auth } = config
 
   if (transport.type === 'http') {
-    const url = new URL(transport.url!)
+    const url = new URL(transport.url)
     const requestInit = await buildRequestInit(config.id, auth.authType, credentialStore)
     const opts = requestInit ? { requestInit } : undefined
 
@@ -24,11 +26,19 @@ export const createTransport = async (
       const { createTauriHttpTransport } = await import('./tauri-http-transport')
       return { transport: createTauriHttpTransport(url, opts) }
     }
+
+    if (options?.cloudUrl && !isLocalMcpServer(transport.url)) {
+      const { createProxiedFetch } = await import('./proxied-fetch')
+      return {
+        transport: new StreamableHTTPClientTransport(url, { ...opts, fetch: createProxiedFetch(options.cloudUrl) }),
+      }
+    }
+
     return { transport: new StreamableHTTPClientTransport(url, opts) }
   }
 
   if (transport.type === 'sse') {
-    const url = new URL(transport.url!)
+    const url = new URL(transport.url)
     const requestInit = await buildRequestInit(config.id, auth.authType, credentialStore)
     const opts = requestInit ? { requestInit } : undefined
 
@@ -36,6 +46,12 @@ export const createTransport = async (
       const { createTauriSseTransport } = await import('./tauri-sse-transport')
       return { transport: createTauriSseTransport(url, opts) }
     }
+
+    if (options?.cloudUrl && !isLocalMcpServer(transport.url)) {
+      const { createProxiedFetch } = await import('./proxied-fetch')
+      return { transport: new SSEClientTransport(url, { ...opts, fetch: createProxiedFetch(options.cloudUrl) }) }
+    }
+
     return { transport: new SSEClientTransport(url, opts) }
   }
 
@@ -44,7 +60,7 @@ export const createTransport = async (
     const env = await buildStdioEnv(config.id, auth.authType, credentialStore)
     return {
       transport: new TauriStdioTransport({
-        command: transport.command!,
+        command: transport.command,
         args: transport.args,
         env,
       }),
@@ -63,10 +79,10 @@ const buildRequestInit = async (
   authType: McpServerConfig['auth']['authType'],
   credentialStore: CredentialStore,
 ): Promise<RequestInit | undefined> => {
-  if (authType !== 'bearer') { return undefined }
+  if (authType !== 'bearer') return undefined
 
   const credential = await credentialStore.load(serverId)
-  if (!credential || credential.type !== 'bearer') { return undefined }
+  if (!credential || credential.type !== 'bearer') return undefined
 
   return {
     headers: { Authorization: `Bearer ${credential.token}` },
@@ -83,10 +99,10 @@ const buildStdioEnv = async (
   authType: McpServerConfig['auth']['authType'],
   credentialStore: CredentialStore,
 ): Promise<Record<string, string> | undefined> => {
-  if (authType !== 'bearer') { return undefined }
+  if (authType !== 'bearer') return undefined
 
   const credential = await credentialStore.load(serverId)
-  if (!credential || credential.type !== 'bearer') { return undefined }
+  if (!credential || credential.type !== 'bearer') return undefined
 
   return { MCP_BEARER_TOKEN: credential.token }
 }

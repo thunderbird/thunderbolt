@@ -2,9 +2,7 @@ import { Command } from '@tauri-apps/plugin-shell'
 import type { Child } from '@tauri-apps/plugin-shell'
 import type { Transport } from '@modelcontextprotocol/sdk/shared/transport.js'
 import type { JSONRPCMessage } from '@modelcontextprotocol/sdk/types.js'
-
-/** Regex for validating stdio command names — no shell meta-characters */
-const commandPattern = /^[a-zA-Z0-9._/-]+$/
+import { validateStdioCommand, validateStdioArgs } from '@/lib/mcp-utils'
 
 /** Options for TauriStdioTransport */
 type TauriStdioTransportOptions = {
@@ -33,12 +31,15 @@ export class TauriStdioTransport implements Transport {
   private lineBuffer = ''
 
   constructor(options: TauriStdioTransportOptions) {
-    validateCommand(options.command)
-    validateArgs(options.args)
+    validateStdioCommand(options.command)
+    validateStdioArgs(options.args ?? [])
     this.options = options
   }
 
   async start(): Promise<void> {
+    if (this.child) {
+      return
+    }
     const { command, args = [], env } = this.options
 
     const cmd = Command.create(command, args, env ? { env } : undefined)
@@ -62,12 +63,12 @@ export class TauriStdioTransport implements Transport {
   }
 
   async send(message: JSONRPCMessage): Promise<void> {
-    if (!this.child) { throw new Error('Transport not started') }
+    if (!this.child) throw new Error('Transport not started')
     await this.child.write(JSON.stringify(message) + '\n')
   }
 
   async close(): Promise<void> {
-    if (!this.child) { return }
+    if (!this.child) return
     const child = this.child
     this.child = null
     await child.kill()
@@ -82,7 +83,7 @@ export class TauriStdioTransport implements Transport {
     // All complete lines are all but the last element (which may be incomplete)
     for (let i = 0; i < lines.length - 1; i++) {
       const line = lines[i].trim()
-      if (!line) { continue }
+      if (!line) continue
       this.parseAndEmitMessage(line)
     }
 
@@ -95,31 +96,6 @@ export class TauriStdioTransport implements Transport {
       this.onmessage?.(message)
     } catch {
       this.onerror?.(new Error(`Failed to parse JSON-RPC message from stdio: ${line}`))
-    }
-  }
-}
-
-/**
- * Validates that a stdio command contains only safe characters.
- * Rejects shell meta-characters to prevent injection.
- */
-export const validateCommand = (command: string): void => {
-  if (!commandPattern.test(command)) {
-    throw new Error(
-      `Invalid MCP stdio command "${command}": only alphanumeric characters, dots, underscores, hyphens, and forward slashes are allowed`,
-    )
-  }
-}
-
-/**
- * Validates that stdio args contain no null bytes, which could be used to
- * truncate argument strings in certain environments.
- */
-export const validateArgs = (args?: string[]): void => {
-  if (!args) { return }
-  for (const arg of args) {
-    if (arg.includes('\0')) {
-      throw new Error('MCP stdio arguments must not contain null bytes')
     }
   }
 }

@@ -4,7 +4,7 @@ import type { McpTransportType } from '@/types/mcp'
 type PlatformCategory = 'desktop' | 'mobile' | 'web'
 
 /** Transport types supported on each platform */
-const platformTransports: Record<PlatformCategory, McpTransportType[]> = {
+const PLATFORM_TRANSPORTS: Record<PlatformCategory, McpTransportType[]> = {
   desktop: ['http', 'sse', 'stdio'],
   mobile: ['http', 'sse'],
   web: ['http', 'sse'],
@@ -12,13 +12,13 @@ const platformTransports: Record<PlatformCategory, McpTransportType[]> = {
 
 /** Returns the platform category for transport filtering */
 const getPlatformCategory = (): PlatformCategory => {
-  if (isDesktop()) { return 'desktop' }
-  if (isMobile()) { return 'mobile' }
+  if (isDesktop()) return 'desktop'
+  if (isMobile()) return 'mobile'
   return 'web'
 }
 
 /** Returns the transport types available on the current platform */
-export const getSupportedTransports = (): McpTransportType[] => platformTransports[getPlatformCategory()]
+export const getSupportedTransports = (): McpTransportType[] => PLATFORM_TRANSPORTS[getPlatformCategory()]
 
 /** Checks if a transport type is supported on the current platform */
 export const isSupportedTransport = (type: McpTransportType): boolean => getSupportedTransports().includes(type)
@@ -43,7 +43,7 @@ export const validateMcpUrl = (url: string): URL => {
  * Rejects shell meta-characters.
  */
 export const validateStdioCommand = (command: string): void => {
-  if (!command.trim()) { throw new Error('Command is required') }
+  if (!command.trim()) throw new Error('Command is required')
   if (!/^[a-zA-Z0-9._/-]+$/.test(command)) {
     throw new Error('Command contains invalid characters')
   }
@@ -58,5 +58,15 @@ export const validateStdioArgs = (args: string[]): void => {
     if (arg.includes('\0')) {
       throw new Error('Arguments must not contain null bytes')
     }
+  }
+}
+
+/** Returns true when an MCP server URL targets localhost/loopback (no CORS proxy needed) */
+export const isLocalMcpServer = (url: string): boolean => {
+  try {
+    const hostname = new URL(url).hostname.toLowerCase()
+    return hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '::1' || hostname === '0.0.0.0'
+  } catch {
+    return false
   }
 }

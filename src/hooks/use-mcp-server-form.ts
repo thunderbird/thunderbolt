@@ -30,9 +30,15 @@ const formReducer = (state: McpServerFormState, action: McpServerFormAction): Mc
     case 'SET_URL':
       return { ...state, url: action.payload, connectionStatus: 'idle', connectionError: null, serverCapabilities: [] }
     case 'SET_COMMAND':
-      return { ...state, command: action.payload }
+      return {
+        ...state,
+        command: action.payload,
+        connectionStatus: 'idle',
+        connectionError: null,
+        serverCapabilities: [],
+      }
     case 'SET_ARGS':
-      return { ...state, args: action.payload }
+      return { ...state, args: action.payload, connectionStatus: 'idle', connectionError: null, serverCapabilities: [] }
     case 'SET_AUTH_TYPE':
       return {
         ...state,
@@ -72,7 +78,7 @@ export const useMcpServerFormState = () => {
     } catch {
       return false
     }
-  }, [state])
+  }, [state.transportType, state.command, state.args, state.url])
 
   return { state, dispatch, isValid }
 }

@@ -1,4 +1,5 @@
 import { motion } from 'framer-motion'
+import { useEffect, useState } from 'react'
 import { AnimatedSection } from '@/components/shared/animated-section'
 
 const container = {
@@ -14,7 +15,86 @@ const item = {
   },
 }
 
-export const Hero = () => (
+const TYPE_SPEED = 40
+const DELETE_SPEED = 50
+const PAUSE_BEFORE_DELETE = 800
+const PAUSE_BEFORE_RETYPE = 300
+
+type Phase = 'typing' | 'deleting' | 'retyping' | 'done'
+
+/**
+ * Types "The privacy-first / AI assistant for / enterprise",
+ * then backspaces "enterprise" and retypes "your enterprise"
+ * where "your" is marked for italic rendering.
+ */
+const useTypewriter = (startDelay: number) => {
+  const base = 'The privacy-first\nAI assistant for\n'
+  const firstEnding = 'enterprise'
+  const secondEnding = 'your enterprise'
+  const fullFirst = base + firstEnding
+
+  const [phase, setPhase] = useState<Phase>('typing')
+  const [idx, setIdx] = useState(0)
+  const [started, setStarted] = useState(false)
+
+  useEffect(() => {
+    const t = setTimeout(() => setStarted(true), startDelay)
+    return () => clearTimeout(t)
+  }, [startDelay])
+
+  useEffect(() => {
+    if (!started) return
+
+    if (phase === 'typing') {
+      if (idx >= fullFirst.length) {
+        const t = setTimeout(() => { setPhase('deleting'); setIdx(firstEnding.length) }, PAUSE_BEFORE_DELETE)
+        return () => clearTimeout(t)
+      }
+      const t = setTimeout(() => setIdx((i) => i + 1), TYPE_SPEED)
+      return () => clearTimeout(t)
+    }
+
+    if (phase === 'deleting') {
+      if (idx <= 0) {
+        const t = setTimeout(() => { setPhase('retyping'); setIdx(0) }, PAUSE_BEFORE_RETYPE)
+        return () => clearTimeout(t)
+      }
+      const t = setTimeout(() => setIdx((i) => i - 1), DELETE_SPEED)
+      return () => clearTimeout(t)
+    }
+
+    if (phase === 'retyping') {
+      if (idx >= secondEnding.length) { setPhase('done'); return }
+      const t = setTimeout(() => setIdx((i) => i + 1), TYPE_SPEED)
+      return () => clearTimeout(t)
+    }
+  }, [started, phase, idx, fullFirst.length, firstEnding.length, secondEnding.length])
+
+  // Build the visible text
+  let visibleText: string
+  let italicEnd = 0 // how many chars of the last line are italic
+
+  if (phase === 'typing') {
+    visibleText = fullFirst.slice(0, idx)
+  } else if (phase === 'deleting') {
+    visibleText = base + firstEnding.slice(0, idx)
+  } else {
+    // retyping or done — "your " (5 chars) is italic
+    const typed = secondEnding.slice(0, idx)
+    visibleText = base + typed
+    italicEnd = Math.min(5, idx) // "your " = 5 chars including space
+  }
+
+  const lines = visibleText.split('\n')
+  const done = phase === 'done'
+
+  return { lines, italicEnd, done, started }
+}
+
+export const Hero = () => {
+  const { lines, italicEnd, done, started } = useTypewriter(400)
+
+  return (
   <section className="relative overflow-hidden pt-24 md:pt-28">
     <motion.div
       variants={container}
@@ -26,13 +106,31 @@ export const Hero = () => (
       <div className="flex flex-col gap-8 lg:flex-row lg:items-end lg:justify-between">
         <motion.h1
           variants={item}
-          className="max-w-2xl text-[clamp(2.5rem,5.5vw,5.5rem)] leading-[1.02] font-medium tracking-[-0.04em] text-black"
+          className="min-h-[calc(1.02em*3+0.1em)] max-w-2xl text-[clamp(2.5rem,5.5vw,5.5rem)] leading-[1.02] font-medium tracking-[-0.04em] text-black"
         >
-          The privacy-first
-          <br />
-          AI assistant for
-          <br />
-          enterprise
+          {lines.map((line, i, arr) => {
+            const isLast = i === arr.length - 1
+            return (
+              <span key={i}>
+                {isLast && italicEnd > 0 ? (
+                  <>
+                    <em className="italic">{line.slice(0, italicEnd)}</em>
+                    {line.slice(italicEnd)}
+                  </>
+                ) : (
+                  line
+                )}
+                {i < arr.length - 1 && <br />}
+              </span>
+            )
+          })}
+          {started && (
+            <span
+              className={`inline-block h-[1em] w-[2px] translate-y-[0.1em] bg-black align-baseline ${
+                done ? 'animate-blink' : ''
+              }`}
+            />
+          )}
         </motion.h1>
 
         <motion.div variants={item} className="max-w-md lg:pb-2">
@@ -74,7 +172,8 @@ export const Hero = () => (
       <LogoTicker />
     </AnimatedSection>
   </section>
-)
+  )
+}
 
 /* ------------------------------------------------------------------ */
 /*  Animated shield / data-sovereignty visualization                   */

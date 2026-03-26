@@ -48,57 +48,16 @@ import Loading from './loading'
 import SettingsLayout from './settings/layout'
 import type { InitData } from './types'
 import { useSettings } from './hooks/use-settings'
-import ky from 'ky'
 import { isOidcMode } from './lib/auth-mode'
 import { isPrPreview, isTauri } from './lib/platform'
 import { getPowerSyncInstance } from './db/powersync'
-import { type ComponentProps, useEffect } from 'react'
+import { type ComponentProps, Suspense, lazy, useEffect } from 'react'
+
+// Lazily import OIDC components so non-enterprise deployments don't pay
+// for the extra bundle size and attack surface.
+const OidcRedirect = lazy(() => import('@/components/oidc-redirect'))
 
 const queryClient = new QueryClient()
-
-/**
- * In OIDC mode, redirects unauthenticated users to the backend's OIDC sign-in endpoint,
- * which in turn redirects to the OIDC provider. The user never sees a login page on our app.
- */
-const OidcRedirect = () => {
-  const { cloudUrl } = useSettings({ cloud_url: String })
-
-  useEffect(() => {
-    if (cloudUrl.isLoading || !cloudUrl.value) {
-      return
-    }
-
-    const abortController = new AbortController()
-    const baseUrl = cloudUrl.value.replace(/\/v1$/, '')
-
-    // Use credentials: 'include' so the browser stores Better Auth's OAuth state cookie.
-    // Without it, the state cookie is lost and the callback fails with state_mismatch.
-    const redirectToOidc = async () => {
-      try {
-        const data = await ky
-          .post(`${baseUrl}/v1/api/auth/sign-in/oauth2`, {
-            json: { providerId: 'oidc', callbackURL: window.location.origin + '/' },
-            credentials: 'include',
-            signal: abortController.signal,
-          })
-          .json<{ url: string }>()
-
-        window.location.href = data.url
-      } catch (err) {
-        if (err instanceof DOMException && err.name === 'AbortError') {
-          return
-        }
-        console.error('OIDC redirect failed:', err)
-      }
-    }
-
-    redirectToOidc()
-
-    return () => abortController.abort()
-  }, [cloudUrl.isLoading, cloudUrl.value])
-
-  return <Loading />
-}
 
 const AppContent = ({ initData }: { initData: InitData }) => {
   useMcpSync()
@@ -132,7 +91,16 @@ const AppRoutes = ({ initData }: { initData: InitData }) => {
       <Route path="/auth/verify" element={<MagicLinkVerify />} />
 
       {/* OIDC redirect route — no guard, only in OIDC mode */}
-      {oidcMode && <Route path="/oidc-redirect" element={<OidcRedirect />} />}
+      {oidcMode && (
+        <Route
+          path="/oidc-redirect"
+          element={
+            <Suspense fallback={<Loading />}>
+              <OidcRedirect />
+            </Suspense>
+          }
+        />
+      )}
 
       {/* Waitlist routes - unauthenticated only (skip when bypass or OIDC mode) */}
       {!oidcMode && !shouldBypassWaitlist && (

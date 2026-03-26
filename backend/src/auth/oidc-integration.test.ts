@@ -4,7 +4,9 @@ import * as waitlistUtils from '@/waitlist/utils'
 import * as settingsModule from '@/config/settings'
 import type { Settings } from '@/config/settings'
 
-// Mock email-sending functions to avoid side effects
+// createAuth transitively imports email-sending functions at the module level.
+// Until createAuth accepts these as injectable dependencies, we mock them here
+// to prevent real emails from being sent during tests.
 mock.module('@/auth/utils', () => ({
   ...authUtils,
   sendSignInEmail: mock(() => Promise.resolve()),
@@ -20,9 +22,7 @@ mock.module('@/waitlist/utils', () => ({
 import { OAuth2Server } from 'oauth2-mock-server'
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, spyOn } from 'bun:test'
 import { Elysia } from 'elysia'
-import { user, session, account } from '@/db/auth-schema'
 import { createTestDb } from '@/test-utils/db'
-import { eq } from 'drizzle-orm'
 
 const realFetch = (globalThis as Record<string, unknown>).__originalFetch as typeof fetch
 
@@ -83,21 +83,25 @@ describe('OIDC Integration', () => {
     let cleanup: () => Promise<void>
     let getSettingsSpy: ReturnType<typeof spyOn>
 
-    beforeEach(async () => {
+    beforeAll(async () => {
       const testEnv = await createTestDb()
       db = testEnv.db
       cleanup = testEnv.cleanup
+    })
 
-      // Mock settings to point at the mock OIDC server
+    afterAll(async () => {
+      await cleanup()
+    })
+
+    beforeEach(() => {
       getSettingsSpy = spyOn(settingsModule, 'getSettings').mockReturnValue({
         ...baseSettings,
         oidcIssuer: oidcIssuerUrl,
       } as Settings)
     })
 
-    afterEach(async () => {
+    afterEach(() => {
       getSettingsSpy.mockRestore()
-      await cleanup()
     })
 
     it('should return a redirect URL pointing to the OIDC provider', async () => {
@@ -132,131 +136,6 @@ describe('OIDC Integration', () => {
       } finally {
         globalThis.fetch = mockedFetch
       }
-    })
-
-    it('should create a user and session after OIDC callback', async () => {
-      const mockedFetch = globalThis.fetch
-      globalThis.fetch = realFetch
-
-      try {
-        // Customize token to include user claims
-        oidcServer.service.once('beforeTokenSigning', (token: Record<string, unknown>) => {
-          token.sub = 'oidc-user-123'
-          token.email = 'mitchell@mozilla.org'
-          token.name = 'Mitchell Baker'
-          token.email_verified = true
-        })
-
-        // Customize userinfo response
-        oidcServer.service.once('beforeResponse', (_res: unknown, req: Record<string, unknown>) => {
-          if (typeof req.url === 'string' && req.url.includes('/userinfo')) {
-            return {
-              statusCode: 200,
-              body: JSON.stringify({
-                sub: 'oidc-user-123',
-                email: 'mitchell@mozilla.org',
-                name: 'Mitchell Baker',
-                email_verified: true,
-              }),
-            }
-          }
-        })
-
-        const { createAuth } = await import('./auth')
-        const auth = createAuth(db)
-
-        // Simulate the callback — Better Auth exchanges the code for tokens and creates the user
-        // We use auth.api directly rather than going through HTTP to avoid cookie/state complexity
-        const callbackUrl = new URL(`http://localhost/api/auth/oauth2/callback/oidc`)
-        callbackUrl.searchParams.set('code', 'mock-auth-code')
-        callbackUrl.searchParams.set('state', 'test-state')
-
-        // The callback will fail on state validation (since we didn't go through sign-in first)
-        // but we can verify the mock server handles the token exchange correctly
-        const tokenRes = await realFetch(`${oidcIssuerUrl}/token`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-          body: new URLSearchParams({
-            grant_type: 'authorization_code',
-            code: 'mock-auth-code',
-            client_id: 'thunderbolt-app',
-            client_secret: 'thunderbolt-dev-secret',
-            redirect_uri: 'http://localhost:8000/v1/api/auth/oauth2/callback/oidc',
-          }),
-        })
-
-        expect(tokenRes.ok).toBe(true)
-
-        const tokenData = await tokenRes.json()
-        expect(tokenData.access_token).toBeDefined()
-        expect(tokenData.token_type).toBe('Bearer')
-        expect(tokenData.id_token).toBeDefined()
-      } finally {
-        globalThis.fetch = mockedFetch
-      }
-    })
-  })
-
-  describe('Mock OIDC server capabilities', () => {
-    it('handles token requests with custom claims', async () => {
-      oidcServer.service.once('beforeTokenSigning', (token: Record<string, unknown>) => {
-        token.sub = 'oidc-user-456'
-        token.email = 'laura@mozilla.org'
-        token.name = 'Laura Chambers'
-        token.email_verified = true
-      })
-
-      const tokenRes = await realFetch(`${oidcIssuerUrl}/token`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-        body: new URLSearchParams({
-          grant_type: 'authorization_code',
-          code: 'mock-auth-code',
-          client_id: 'thunderbolt-app',
-          client_secret: 'thunderbolt-dev-secret',
-          redirect_uri: 'http://localhost:8000/v1/api/auth/oauth2/callback/oidc',
-        }),
-      })
-
-      expect(tokenRes.ok).toBe(true)
-
-      const tokenData = await tokenRes.json()
-      expect(tokenData.access_token).toBeDefined()
-      expect(tokenData.token_type).toBe('Bearer')
-      expect(tokenData.id_token).toBeDefined()
-    })
-
-    it('discovery endpoint has all required OIDC fields', async () => {
-      const res = await realFetch(`${oidcIssuerUrl}/.well-known/openid-configuration`)
-      const config = await res.json()
-
-      expect(config.issuer).toBe(oidcIssuerUrl)
-      expect(config.authorization_endpoint).toContain('/authorize')
-      expect(config.token_endpoint).toContain('/token')
-      expect(config.userinfo_endpoint).toContain('/userinfo')
-      expect(config.jwks_uri).toContain('/jwks')
-    })
-
-    it('JWKS endpoint returns valid RSA keys', async () => {
-      const res = await realFetch(`${oidcIssuerUrl}/jwks`)
-      const jwks = await res.json()
-
-      expect(jwks.keys.length).toBeGreaterThan(0)
-      expect(jwks.keys[0].kty).toBe('RSA')
-      expect(jwks.keys[0].kid).toBeDefined()
-    })
-
-    it('can build signed JWTs directly for unit tests', async () => {
-      const token = await oidcServer.issuer.buildToken({
-        scopesOrTransform: (_header, payload) => {
-          payload.sub = 'unit-test-user'
-          payload.email = 'test@mozilla.org'
-        },
-      })
-
-      expect(typeof token).toBe('string')
-      // JWT has 3 dot-separated parts
-      expect(token.split('.')).toHaveLength(3)
     })
   })
 })

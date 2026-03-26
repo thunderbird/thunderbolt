@@ -1,6 +1,6 @@
 import { OAuth2Server } from 'oauth2-mock-server'
 
-const MOCK_OIDC_PORT = 9876
+const mockOidcPort = Number(process.env.MOCK_OIDC_PORT ?? 9876)
 
 const globalSetup = async () => {
   const server = new OAuth2Server()
@@ -27,8 +27,8 @@ const globalSetup = async () => {
     },
   )
 
-  await server.start(MOCK_OIDC_PORT, 'localhost')
-  console.log(`Mock OIDC server started on port ${MOCK_OIDC_PORT}`)
+  await server.start(mockOidcPort, 'localhost')
+  console.log(`Mock OIDC server started on port ${mockOidcPort}`)
 
   // Store reference for teardown
   ;(globalThis as Record<string, unknown>).__oidcServer = server

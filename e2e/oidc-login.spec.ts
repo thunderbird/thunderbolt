@@ -34,9 +34,9 @@ test.describe('OIDC login flow', () => {
 
     // Navigate around to exercise the app
     await page.goto('/settings')
-    await page.waitForTimeout(1000)
+    await expect(page.getByText('Settings').first()).toBeVisible({ timeout: 10_000 })
     await page.goto('/chats/new')
-    await page.waitForTimeout(1000)
+    await expect(page.locator('textarea')).toBeVisible({ timeout: 10_000 })
 
     expect(errors).toHaveLength(0)
   })

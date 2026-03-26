@@ -1,10 +1,10 @@
 import { defineConfig, devices } from '@playwright/test'
 
 const isCI = !!process.env.CI
-const MOCK_OIDC_PORT = 9876
+const mockOidcPort = process.env.MOCK_OIDC_PORT ?? '9876'
 // Use a dedicated Vite port to avoid conflicts with dev server.
 // Backend uses the standard 8000 to match the default cloud_url setting.
-const E2E_VITE_PORT = 1421
+const e2eVitePort = 1421
 
 export default defineConfig({
   testDir: './e2e',
@@ -17,7 +17,7 @@ export default defineConfig({
   globalSetup: './e2e/global-setup.ts',
   globalTeardown: './e2e/global-teardown.ts',
   use: {
-    baseURL: `http://localhost:${E2E_VITE_PORT}`,
+    baseURL: `http://localhost:${e2eVitePort}`,
     trace: 'on-first-retry',
     screenshot: 'only-on-failure',
     // Fresh storage state per test to avoid stale IndexedDB/OPFS data
@@ -31,29 +31,30 @@ export default defineConfig({
   ],
   webServer: [
     {
-      command: `bun run dev -- --port ${E2E_VITE_PORT}`,
-      url: `http://localhost:${E2E_VITE_PORT}`,
-      reuseExistingServer: false,
+      command: `bun run dev -- --port ${e2eVitePort}`,
+      url: `http://localhost:${e2eVitePort}`,
+      reuseExistingServer: !isCI,
       timeout: 30_000,
       env: {
         VITE_AUTH_MODE: 'oidc',
+        VITE_SKIP_ONBOARDING: 'true',
       },
     },
     {
       command: 'cd backend && bun run dev',
       url: 'http://localhost:8000/v1/health',
-      reuseExistingServer: false,
+      reuseExistingServer: !isCI,
       timeout: 30_000,
       env: {
         AUTH_MODE: 'oidc',
         OIDC_CLIENT_ID: 'thunderbolt-app',
         OIDC_CLIENT_SECRET: 'thunderbolt-dev-secret',
-        OIDC_ISSUER: `http://localhost:${MOCK_OIDC_PORT}`,
+        OIDC_ISSUER: `http://localhost:${mockOidcPort}`,
         BETTER_AUTH_URL: 'http://localhost:8000',
-        APP_URL: `http://localhost:${E2E_VITE_PORT}`,
-        CORS_ORIGINS: `http://localhost:${E2E_VITE_PORT}`,
+        APP_URL: `http://localhost:${e2eVitePort}`,
+        CORS_ORIGINS: `http://localhost:${e2eVitePort}`,
         CORS_ORIGIN_REGEX: '',
-        TRUSTED_ORIGINS: `http://localhost:${E2E_VITE_PORT}`,
+        TRUSTED_ORIGINS: `http://localhost:${e2eVitePort}`,
       },
     },
   ],

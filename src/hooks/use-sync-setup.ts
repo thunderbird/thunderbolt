@@ -1,7 +1,8 @@
 import { useReducer } from 'react'
 
-// Mock recovery key for UI testing (replaced with real crypto in PR 5)
-const mockRecoveryKey = 'a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8e9f0a1b2'
+// Mock recovery phrase for UI testing (replaced with real BIP-39 mnemonic in PR 5)
+const mockRecoveryPhrase =
+  'abandon ability able about above absent absorb abstract absurd abuse access accident alcohol alien alpha already amateur amazing among amount amused analyst anchor annual'
 
 type SyncSetupStep =
   | 'intro'
@@ -10,58 +11,73 @@ type SyncSetupStep =
   | 'recovery-key-display'
   | 'approval-waiting'
   | 'recovery-key-entry'
+  | 'setup-complete'
 
 type SyncSetupState = {
   step: SyncSetupStep
   recoveryKey: string
   recoveryKeyInput: string
   recoveryKeyError: string | null
-  approvalChecked: boolean
   approvalError: string | null
+  isLoading: boolean
+  error: string | null
 }
 
 type SyncSetupAction =
   | { type: 'CONTINUE_INTRO' }
-  | { type: 'CHOOSE_FIRST_DEVICE' }
-  | { type: 'CONTINUE_FIRST_DEVICE_SETUP' }
-  | { type: 'CHOOSE_ADDITIONAL_DEVICE' }
+  | { type: 'DETECTED_FIRST_DEVICE' }
+  | { type: 'DETECTED_ADDITIONAL_DEVICE' }
+  | { type: 'SET_RECOVERY_KEY'; payload: string }
   | { type: 'GO_TO_RECOVERY_KEY_ENTRY' }
   | { type: 'SET_RECOVERY_KEY_INPUT'; payload: string }
   | { type: 'SET_RECOVERY_KEY_ERROR'; payload: string | null }
-  | { type: 'SET_APPROVAL_CHECKED'; payload: boolean }
   | { type: 'SET_APPROVAL_ERROR'; payload: string | null }
+  | { type: 'START_LOADING' }
+  | { type: 'STOP_LOADING' }
+  | { type: 'SET_ERROR'; payload: string }
+  | { type: 'CLEAR_ERROR' }
+  | { type: 'SETUP_COMPLETE' }
   | { type: 'GO_BACK' }
   | { type: 'RESET' }
 
 const initialState: SyncSetupState = {
   step: 'intro',
-  recoveryKey: mockRecoveryKey,
+  recoveryKey: '',
   recoveryKeyInput: '',
   recoveryKeyError: null,
-  approvalChecked: false,
   approvalError: null,
+  isLoading: false,
+  error: null,
 }
 
 const reducer = (state: SyncSetupState, action: SyncSetupAction): SyncSetupState => {
   switch (action.type) {
     case 'CONTINUE_INTRO':
-      return { ...state, step: 'detecting' }
-    case 'CHOOSE_FIRST_DEVICE':
-      return { ...state, step: 'first-device-setup' }
-    case 'CONTINUE_FIRST_DEVICE_SETUP':
-      return { ...state, step: 'recovery-key-display' }
-    case 'CHOOSE_ADDITIONAL_DEVICE':
-      return { ...state, step: 'approval-waiting' }
+      return { ...state, step: 'detecting', isLoading: true, error: null }
+    case 'DETECTED_FIRST_DEVICE':
+      return { ...state, step: 'first-device-setup', isLoading: false }
+    case 'DETECTED_ADDITIONAL_DEVICE':
+      return { ...state, step: 'approval-waiting', isLoading: false }
+    case 'SET_RECOVERY_KEY':
+      return { ...state, recoveryKey: action.payload, step: 'recovery-key-display', isLoading: false }
     case 'GO_TO_RECOVERY_KEY_ENTRY':
       return { ...state, step: 'recovery-key-entry', recoveryKeyInput: '', recoveryKeyError: null }
     case 'SET_RECOVERY_KEY_INPUT':
       return { ...state, recoveryKeyInput: action.payload, recoveryKeyError: null }
     case 'SET_RECOVERY_KEY_ERROR':
-      return { ...state, recoveryKeyError: action.payload }
-    case 'SET_APPROVAL_CHECKED':
-      return { ...state, approvalChecked: action.payload, approvalError: null }
+      return { ...state, recoveryKeyError: action.payload, isLoading: false }
     case 'SET_APPROVAL_ERROR':
-      return { ...state, approvalError: action.payload }
+      return { ...state, approvalError: action.payload, isLoading: false }
+    case 'START_LOADING':
+      return { ...state, isLoading: true, error: null }
+    case 'STOP_LOADING':
+      return { ...state, isLoading: false }
+    case 'SET_ERROR':
+      return { ...state, error: action.payload, isLoading: false }
+    case 'CLEAR_ERROR':
+      return { ...state, error: null }
+    case 'SETUP_COMPLETE':
+      return { ...state, step: 'setup-complete', isLoading: false }
     case 'GO_BACK':
       return { ...initialState, step: 'intro' }
     case 'RESET':
@@ -78,54 +94,58 @@ const reducer = (state: SyncSetupState, action: SyncSetupAction): SyncSetupState
 export const useSyncSetup = () => {
   const [state, dispatch] = useReducer(reducer, initialState)
 
-  const continueIntro = () => dispatch({ type: 'CONTINUE_INTRO' })
+  // Stub: In PR 5, this will call registerThisDevice() and auto-detect first vs additional
+  const continueIntro = () => {
+    dispatch({ type: 'CONTINUE_INTRO' })
+    // Mock auto-detection: always treats as first device
+    dispatch({ type: 'DETECTED_FIRST_DEVICE' })
+  }
+
   const goBack = () => dispatch({ type: 'GO_BACK' })
-  const chooseFirstDevice = () => dispatch({ type: 'CHOOSE_FIRST_DEVICE' })
-  const continueFirstDeviceSetup = () => dispatch({ type: 'CONTINUE_FIRST_DEVICE_SETUP' })
-  const chooseAdditionalDevice = () => dispatch({ type: 'CHOOSE_ADDITIONAL_DEVICE' })
+
+  // Stub: In PR 5, this will call completeFirstDeviceSetup() to generate real keys
+  const continueFirstDeviceSetup = () => {
+    dispatch({ type: 'SET_RECOVERY_KEY', payload: mockRecoveryPhrase })
+  }
+
+  const chooseAdditionalDevice = () => dispatch({ type: 'DETECTED_ADDITIONAL_DEVICE' })
   const goToRecoveryKeyEntry = () => dispatch({ type: 'GO_TO_RECOVERY_KEY_ENTRY' })
 
   const setRecoveryKeyInput = (value: string) => dispatch({ type: 'SET_RECOVERY_KEY_INPUT', payload: value })
 
   const submitRecoveryKey = () => {
-    const cleaned = state.recoveryKeyInput.replace(/\s/g, '')
-    if (cleaned.length !== 64) {
-      dispatch({ type: 'SET_RECOVERY_KEY_ERROR', payload: 'Recovery key must be 64 characters.' })
+    const normalized = state.recoveryKeyInput.trim().toLowerCase().replace(/\s+/g, ' ')
+    const wordCount = normalized.split(' ').length
+
+    if (wordCount !== 24) {
+      dispatch({
+        type: 'SET_RECOVERY_KEY_ERROR',
+        payload: `Recovery phrase must be 24 words (you entered ${wordCount}).`,
+      })
       return false
     }
-    if (!/^[0-9a-f]+$/i.test(cleaned)) {
-      dispatch({ type: 'SET_RECOVERY_KEY_ERROR', payload: 'Recovery key must contain only hex characters (0-9, a-f).' })
-      return false
-    }
+
     // Stub: In PR 5, this will verify via canary decryption
     return true
   }
 
-  const setApprovalChecked = (checked: boolean) => dispatch({ type: 'SET_APPROVAL_CHECKED', payload: checked })
+  // Stub: In PR 5, this will call checkApprovalAndUnwrap()
+  const confirmApproval = () => true
 
-  const confirmApproval = () => {
-    if (!state.approvalChecked) {
-      return false
-    }
-    // Stub: In PR 5, this will call GET /devices/me/envelope to check if approved
-    // For now, always succeed
-    return true
-  }
-
+  const completeSetup = () => dispatch({ type: 'SETUP_COMPLETE' })
   const reset = () => dispatch({ type: 'RESET' })
 
   return {
     ...state,
     continueIntro,
     goBack,
-    chooseFirstDevice,
     continueFirstDeviceSetup,
-    chooseAdditionalDevice,
     goToRecoveryKeyEntry,
+    chooseAdditionalDevice,
     setRecoveryKeyInput,
     submitRecoveryKey,
-    setApprovalChecked,
     confirmApproval,
+    completeSetup,
     reset,
   }
 }

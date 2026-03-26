@@ -1,20 +1,20 @@
 import { Button } from '@/components/ui/button'
-import { Checkbox } from '@/components/ui/checkbox'
+import { Loader2 } from 'lucide-react'
 
 type ApprovalWaitingStepProps = {
-  checked: boolean
   error: string | null
-  onCheckedChange: (checked: boolean) => void
   onContinue: () => void
   onUseRecoveryKey: () => void
+  isLoading?: boolean
+  isPolling?: boolean
 }
 
 export const ApprovalWaitingStep = ({
-  checked,
   error,
-  onCheckedChange,
   onContinue,
   onUseRecoveryKey,
+  isLoading,
+  isPolling,
 }: ApprovalWaitingStepProps) => (
   <div className="w-full flex flex-col">
     <div className="text-center space-y-4">
@@ -22,21 +22,29 @@ export const ApprovalWaitingStep = ({
       <p className="text-muted-foreground">
         Open Thunderbolt on one of your trusted devices and go to Settings &rarr; Devices to approve this device.
       </p>
+      {isPolling && (
+        <p className="flex items-center justify-center gap-2 text-sm text-muted-foreground">
+          <Loader2 className="h-3 w-3 animate-spin" />
+          Checking automatically…
+        </p>
+      )}
     </div>
 
     <div className="pt-5 space-y-4">
-      <label className="flex items-start gap-3 cursor-pointer">
-        <Checkbox checked={checked} onCheckedChange={(v) => onCheckedChange(v === true)} className="mt-0.5" />
-        <span className="text-sm">I have approved this device on another device</span>
-      </label>
-
       {error && <p className="text-sm text-destructive">{error}</p>}
 
-      <Button className="w-full" onClick={onContinue} disabled={!checked}>
-        Continue
+      <Button className="w-full" onClick={onContinue} disabled={isLoading}>
+        {isLoading ? (
+          <>
+            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+            Checking…
+          </>
+        ) : (
+          'Check now'
+        )}
       </Button>
 
-      <Button variant="ghost" className="w-full" onClick={onUseRecoveryKey}>
+      <Button variant="ghost" className="w-full" onClick={onUseRecoveryKey} disabled={isLoading}>
         Use my recovery key
       </Button>
     </div>

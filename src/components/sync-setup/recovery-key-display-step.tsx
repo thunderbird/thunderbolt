@@ -1,6 +1,6 @@
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
-import { Copy, Check } from 'lucide-react'
+import { Check, Copy } from 'lucide-react'
 import { useState } from 'react'
 
 type RecoveryKeyDisplayStepProps = {
@@ -8,9 +8,6 @@ type RecoveryKeyDisplayStepProps = {
   onDone: () => void
   onConfirmedChange: (confirmed: boolean) => void
 }
-
-/** Formats a 64-char hex string into 8-char groups separated by spaces */
-const formatRecoveryKey = (key: string): string => key.match(/.{1,8}/g)?.join(' ') ?? key
 
 export const RecoveryKeyDisplayStep = ({ recoveryKey, onDone, onConfirmedChange }: RecoveryKeyDisplayStepProps) => {
   const [copied, setCopied] = useState(false)
@@ -30,16 +27,16 @@ export const RecoveryKeyDisplayStep = ({ recoveryKey, onDone, onConfirmedChange 
   return (
     <div className="w-full flex flex-col">
       <div className="text-center space-y-4">
-        <h2 className="text-2xl font-bold">Save your recovery key</h2>
+        <h2 className="text-2xl font-bold">Save your recovery phrase</h2>
         <p className="text-muted-foreground">
-          Store this key somewhere safe. You&apos;ll need it to recover your data if you lose access to all your
-          devices. This key won&apos;t be shown again.
+          Write down these 24 words in order and store them somewhere safe. You&apos;ll need them to recover your data
+          if you lose access to all your devices. This phrase won&apos;t be shown again.
         </p>
       </div>
 
       <div className="pt-5 space-y-4">
         <div className="rounded-xl bg-muted p-4">
-          <p className="font-mono text-sm text-center break-all leading-relaxed">{formatRecoveryKey(recoveryKey)}</p>
+          <p className="text-sm font-medium leading-relaxed">{recoveryKey}</p>
         </div>
 
         <Button variant="outline" className="w-full" onClick={handleCopy}>
@@ -58,7 +55,7 @@ export const RecoveryKeyDisplayStep = ({ recoveryKey, onDone, onConfirmedChange 
 
         <label className="flex items-start gap-3 cursor-pointer">
           <Checkbox checked={confirmed} onCheckedChange={(v) => handleConfirmedChange(v === true)} className="mt-0.5" />
-          <span className="text-sm">I have saved my recovery key</span>
+          <span className="text-sm">I have saved my recovery phrase</span>
         </label>
 
         <Button className="w-full" onClick={onDone} disabled={!confirmed}>

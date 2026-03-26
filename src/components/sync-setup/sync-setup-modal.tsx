@@ -5,8 +5,8 @@ import { RecoveryKeyDisplayStep } from './recovery-key-display-step'
 import { ApprovalWaitingStep } from './approval-waiting-step'
 import { RecoveryKeyEntryStep } from './recovery-key-entry-step'
 import { IconCircle } from '@/components/onboarding/icon-circle'
-import { ArrowLeft, Lock, Monitor, Plus, ShieldCheck } from 'lucide-react'
-import { useState } from 'react'
+import { ArrowLeft, CheckCircle, Loader2, Lock, ShieldCheck } from 'lucide-react'
+import { useRef, useState } from 'react'
 
 type SyncSetupModalProps = {
   open: boolean
@@ -17,42 +17,59 @@ type SyncSetupModalProps = {
 /**
  * Multi-step wizard for sync/encryption setup.
  *
- * Flow: intro → detecting → (first-device-setup → recovery-key-display | approval-waiting)
- *
- * The "detecting" step uses test buttons for now. In PR 5 it will make a
- * BE request to determine firstDevice automatically.
+ * Flow: intro → detecting (auto) → (first-device-setup → recovery-key-display | approval-waiting)
  */
 export const SyncSetupModal = ({ open, onOpenChange, onComplete }: SyncSetupModalProps) => {
   const setup = useSyncSetup()
   const [_recoveryKeyConfirmed, setRecoveryKeyConfirmed] = useState(false)
+  const hasCompletedRef = useRef(false)
 
   const isRecoveryKeyStep = setup.step === 'recovery-key-display'
-  const canDismiss = !isRecoveryKeyStep
+  const canDismiss = !isRecoveryKeyStep && !setup.isLoading
 
   const handleClose = () => {
     setup.reset()
     setRecoveryKeyConfirmed(false)
+    hasCompletedRef.current = false
     onOpenChange(false)
   }
 
-  const handleFirstDeviceDone = () => {
+  const completeAndClose = () => {
+    if (hasCompletedRef.current) {
+      return
+    }
+    hasCompletedRef.current = true
     onComplete()
     handleClose()
+  }
+
+  const showSuccess = () => {
+    setup.completeSetup()
+  }
+
+  const handleFirstDeviceDone = () => {
+    completeAndClose()
+  }
+
+  const handleContinueIntro = () => {
+    setup.continueIntro()
+  }
+
+  const handleContinueFirstDeviceSetup = () => {
+    setup.continueFirstDeviceSetup()
   }
 
   const handleApprovalContinue = () => {
     const success = setup.confirmApproval()
     if (success) {
-      onComplete()
-      handleClose()
+      showSuccess()
     }
   }
 
   const handleRecoveryKeySubmit = () => {
     const success = setup.submitRecoveryKey()
     if (success) {
-      onComplete()
-      handleClose()
+      showSuccess()
     }
   }
 
@@ -61,7 +78,11 @@ export const SyncSetupModal = ({ open, onOpenChange, onComplete }: SyncSetupModa
       open={open}
       onOpenChange={(isOpen) => {
         if (!isOpen && canDismiss) {
-          handleClose()
+          if (setup.step === 'setup-complete') {
+            completeAndClose()
+          } else {
+            handleClose()
+          }
         }
       }}
       className="sm:min-h-0 sm:h-auto"
@@ -89,13 +110,19 @@ export const SyncSetupModal = ({ open, onOpenChange, onComplete }: SyncSetupModa
       )}
 
       <ResponsiveModalContent>
-        {setup.step === 'intro' && <IntroStep onContinue={setup.continueIntro} />}
+        {setup.step === 'intro' && <IntroStep onContinue={handleContinueIntro} isLoading={setup.isLoading} />}
 
         {setup.step === 'detecting' && (
-          <DetectingStep onFirstDevice={setup.chooseFirstDevice} onAdditionalDevice={setup.chooseAdditionalDevice} />
+          <DetectingStep isLoading={setup.isLoading} error={setup.error} onRetry={handleContinueIntro} />
         )}
 
-        {setup.step === 'first-device-setup' && <FirstDeviceSetupStep onContinue={setup.continueFirstDeviceSetup} />}
+        {setup.step === 'first-device-setup' && (
+          <FirstDeviceSetupStep
+            onContinue={handleContinueFirstDeviceSetup}
+            isLoading={setup.isLoading}
+            error={setup.error}
+          />
+        )}
 
         {setup.step === 'recovery-key-display' && (
           <RecoveryKeyDisplayStep
@@ -107,11 +134,11 @@ export const SyncSetupModal = ({ open, onOpenChange, onComplete }: SyncSetupModa
 
         {setup.step === 'approval-waiting' && (
           <ApprovalWaitingStep
-            checked={setup.approvalChecked}
             error={setup.approvalError}
-            onCheckedChange={setup.setApprovalChecked}
             onContinue={handleApprovalContinue}
             onUseRecoveryKey={setup.goToRecoveryKeyEntry}
+            isLoading={setup.isLoading}
+            isPolling={false}
           />
         )}
 
@@ -121,18 +148,21 @@ export const SyncSetupModal = ({ open, onOpenChange, onComplete }: SyncSetupModa
             error={setup.recoveryKeyError}
             onChange={setup.setRecoveryKeyInput}
             onSubmit={handleRecoveryKeySubmit}
+            isLoading={setup.isLoading}
           />
         )}
+
+        {setup.step === 'setup-complete' && <SetupCompleteStep onDone={completeAndClose} />}
       </ResponsiveModalContent>
     </ResponsiveModal>
   )
 }
 
 // =============================================================================
-// Intro step — user-facing welcome screen
+// Intro step
 // =============================================================================
 
-const IntroStep = ({ onContinue }: { onContinue: () => void }) => (
+const IntroStep = ({ onContinue, isLoading }: { onContinue: () => void; isLoading: boolean }) => (
   <div className="w-full flex flex-col">
     <div className="text-center space-y-4">
       <IconCircle>
@@ -146,56 +176,64 @@ const IntroStep = ({ onContinue }: { onContinue: () => void }) => (
     </div>
 
     <div className="pt-5">
-      <Button className="w-full" onClick={onContinue}>
-        Continue
+      <Button className="w-full" onClick={onContinue} disabled={isLoading}>
+        {isLoading ? (
+          <>
+            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+            Setting up…
+          </>
+        ) : (
+          'Continue'
+        )}
       </Button>
     </div>
   </div>
 )
 
 // =============================================================================
-// Detecting step — test buttons for now, BE auto-detection in PR 5
+// Detecting step — auto-detects via server, shows spinner or error
 // =============================================================================
 
 type DetectingStepProps = {
-  onFirstDevice: () => void
-  onAdditionalDevice: () => void
+  isLoading: boolean
+  error: string | null
+  onRetry: () => void
 }
 
-const DetectingStep = ({ onFirstDevice, onAdditionalDevice }: DetectingStepProps) => (
+const DetectingStep = ({ isLoading, error, onRetry }: DetectingStepProps) => (
   <div className="w-full flex flex-col">
     <div className="text-center space-y-4">
-      <h2 className="text-2xl font-bold">Detecting your devices…</h2>
-      <p className="text-xs text-muted-foreground/60">
-        (Testing only — in production this step auto-detects via BE request)
-      </p>
-    </div>
-
-    <div className="flex flex-col gap-3 pt-5">
-      <Button variant="outline" className="w-full h-auto py-4 justify-start gap-3" onClick={onFirstDevice}>
-        <Monitor className="w-6 h-6 shrink-0" />
-        <div className="text-left">
-          <div className="font-medium">First device</div>
-          <div className="text-xs text-muted-foreground">No other devices have sync enabled yet</div>
-        </div>
-      </Button>
-
-      <Button variant="outline" className="w-full h-auto py-4 justify-start gap-3" onClick={onAdditionalDevice}>
-        <Plus className="w-6 h-6 shrink-0" />
-        <div className="text-left">
-          <div className="font-medium">Additional device</div>
-          <div className="text-xs text-muted-foreground">Other trusted devices already exist</div>
-        </div>
-      </Button>
+      {isLoading && (
+        <>
+          <Loader2 className="mx-auto h-8 w-8 animate-spin text-muted-foreground" />
+          <h2 className="text-2xl font-bold">Setting up encryption…</h2>
+          <p className="text-muted-foreground">Registering this device and detecting your account status.</p>
+        </>
+      )}
+      {error && (
+        <>
+          <h2 className="text-2xl font-bold">Something went wrong</h2>
+          <p className="text-sm text-destructive">{error}</p>
+          <div className="pt-2">
+            <Button onClick={onRetry}>Try again</Button>
+          </div>
+        </>
+      )}
     </div>
   </div>
 )
 
 // =============================================================================
-// First device setup step — explanation before recovery key
+// First device setup step — explanation before key generation
 // =============================================================================
 
-const FirstDeviceSetupStep = ({ onContinue }: { onContinue: () => void }) => (
+type FirstDeviceSetupStepProps = {
+  onContinue: () => void
+  isLoading: boolean
+  error: string | null
+}
+
+const FirstDeviceSetupStep = ({ onContinue, isLoading, error }: FirstDeviceSetupStepProps) => (
   <div className="w-full flex flex-col">
     <div className="text-center space-y-4">
       <IconCircle>
@@ -210,11 +248,43 @@ const FirstDeviceSetupStep = ({ onContinue }: { onContinue: () => void }) => (
         Please store your recovery key somewhere safe — you&apos;ll need it to access your data if you ever lose all
         your devices.
       </p>
+      {error && <p className="text-sm text-destructive">{error}</p>}
     </div>
 
     <div className="pt-5">
-      <Button className="w-full" onClick={onContinue}>
-        Continue
+      <Button className="w-full" onClick={onContinue} disabled={isLoading}>
+        {isLoading ? (
+          <>
+            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+            Generating keys…
+          </>
+        ) : (
+          'Continue'
+        )}
+      </Button>
+    </div>
+  </div>
+)
+
+// =============================================================================
+// Setup complete step — success confirmation for additional device flows
+// =============================================================================
+
+const SetupCompleteStep = ({ onDone }: { onDone: () => void }) => (
+  <div className="w-full flex flex-col">
+    <div className="text-center space-y-4">
+      <IconCircle>
+        <CheckCircle className="w-8 h-8 text-green-600 dark:text-green-400" />
+      </IconCircle>
+      <h2 className="text-2xl font-bold">You&apos;re all set!</h2>
+      <p className="text-muted-foreground">
+        This device has been approved and sync is now enabled across your devices.
+      </p>
+    </div>
+
+    <div className="pt-5">
+      <Button className="w-full" onClick={onDone}>
+        Done
       </Button>
     </div>
   </div>

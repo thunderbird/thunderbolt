@@ -19,7 +19,10 @@ export const envelopesTable = pgTable(
       .references(() => user.id, { onDelete: 'cascade' }),
     wrappedCk: text('wrapped_ck').notNull(),
     createdAt: timestamp('created_at').defaultNow().notNull(),
-    updatedAt: timestamp('updated_at').defaultNow().notNull(),
+    updatedAt: timestamp('updated_at')
+      .defaultNow()
+      .$onUpdate(() => /* @__PURE__ */ new Date())
+      .notNull(),
   },
   (table) => [index('idx_envelopes_user_id').on(table.userId)],
 )

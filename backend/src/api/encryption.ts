@@ -115,46 +115,63 @@ export const createEncryptionRoutes = (auth: Auth, database: typeof DbType) =>
           return { error: 'Device has been revoked' }
         }
 
-        // Verify caller is a TRUSTED device (or this is a first-device bootstrap)
+        // Reject if target device is already TRUSTED (prevents envelope overwrite attacks)
+        // Only the device itself can re-key its own envelope
         const callerDeviceId = request.headers.get('x-device-id')?.trim()
         if (!callerDeviceId) {
           set.status = 400
           return { error: 'X-Device-ID header is required' }
         }
 
-        const envelopesExist = await hasEnvelopesForUser(database, userId)
-        const isFirstDeviceBootstrap = !envelopesExist && callerDeviceId === deviceId
-
-        if (!isFirstDeviceBootstrap) {
-          const callerDevice = await getDeviceById(database, callerDeviceId)
-          if (!callerDevice || callerDevice.userId !== userId) {
-            set.status = 403
-            return { error: 'Caller device not found' }
-          }
-          if (callerDevice.status !== 'TRUSTED') {
-            set.status = 403
-            return { error: 'Only trusted devices can store envelopes' }
-          }
+        if (device.status === 'TRUSTED' && callerDeviceId !== deviceId) {
+          set.status = 409
+          return { error: 'Cannot overwrite envelope of an already-trusted device' }
         }
 
-        // Store envelope
-        await upsertEnvelope(database, {
-          deviceId,
-          userId,
-          wrappedCk: wrappedCK,
-        })
+        // Use a transaction for atomicity (prevents race conditions on first-device bootstrap)
+        try {
+          await database.transaction(async (tx) => {
+            const txDb = tx as unknown as typeof database
 
-        // Store canary if provided (first device setup — idempotent)
-        if (canaryIv && canaryCtext) {
-          await insertEncryptionMetadataIfNotExists(database, {
-            userId,
-            canaryIv,
-            canaryCtext,
+            const envelopesExist = await hasEnvelopesForUser(txDb, userId)
+            const isFirstDeviceBootstrap = !envelopesExist && callerDeviceId === deviceId
+
+            if (!isFirstDeviceBootstrap) {
+              const callerDevice = await getDeviceById(txDb, callerDeviceId)
+              if (!callerDevice || callerDevice.userId !== userId) {
+                throw new Error('FORBIDDEN:Caller device not found')
+              }
+              if (callerDevice.status !== 'TRUSTED') {
+                throw new Error('FORBIDDEN:Only trusted devices can store envelopes')
+              }
+            }
+
+            // Store envelope
+            await upsertEnvelope(txDb, {
+              deviceId,
+              userId,
+              wrappedCk: wrappedCK,
+            })
+
+            // Store canary if provided (first device setup — idempotent)
+            if (canaryIv && canaryCtext) {
+              await insertEncryptionMetadataIfNotExists(txDb, {
+                userId,
+                canaryIv,
+                canaryCtext,
+              })
+            }
+
+            // Mark device as trusted
+            await updateDeviceStatus(txDb, deviceId, userId, 'TRUSTED')
           })
+        } catch (err) {
+          if (err instanceof Error && err.message.startsWith('FORBIDDEN:')) {
+            set.status = 403
+            return { error: err.message.slice('FORBIDDEN:'.length) }
+          }
+          throw err
         }
-
-        // Mark device as trusted
-        await updateDeviceStatus(database, deviceId, userId, 'TRUSTED')
 
         return { status: 'TRUSTED' as const }
       },

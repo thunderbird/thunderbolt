@@ -15,14 +15,14 @@ export const getDeviceById = async (database: typeof DbType, deviceId: string) =
     .limit(1)
     .then((rows) => rows[0] ?? null)
 
-/** Upsert a device: insert new or update lastSeen/name for existing. Only updates if userId matches. */
+/** Upsert a device: insert new with APPROVAL_PENDING or update lastSeen/name for existing. Only updates if userId matches. */
 export const upsertDevice = async (
   database: typeof DbType,
   device: { id: string; userId: string; name: string; lastSeen: Date; createdAt: Date },
 ) =>
   database
     .insert(devicesTable)
-    .values(device)
+    .values({ ...device, status: 'APPROVAL_PENDING' })
     .onConflictDoUpdate({
       target: devicesTable.id,
       set: { lastSeen: device.lastSeen, name: device.name },

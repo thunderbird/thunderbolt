@@ -98,7 +98,7 @@ export const createEncryptionRoutes = (auth: Auth, database: typeof DbType) =>
     )
     .post(
       '/devices/:deviceId/envelope',
-      async ({ params, body, set, user: sessionUser }) => {
+      async ({ params, body, request, set, user: sessionUser }) => {
         const userId = sessionUser!.id
         const { deviceId } = params
         const { wrappedCK, canaryIv, canaryCtext } = body
@@ -113,6 +113,28 @@ export const createEncryptionRoutes = (auth: Auth, database: typeof DbType) =>
         if (device.status === 'REVOKED') {
           set.status = 403
           return { error: 'Device has been revoked' }
+        }
+
+        // Verify caller is a TRUSTED device (or this is a first-device bootstrap)
+        const callerDeviceId = request.headers.get('x-device-id')?.trim()
+        if (!callerDeviceId) {
+          set.status = 400
+          return { error: 'X-Device-ID header is required' }
+        }
+
+        const envelopesExist = await hasEnvelopesForUser(database, userId)
+        const isFirstDeviceBootstrap = !envelopesExist && callerDeviceId === deviceId
+
+        if (!isFirstDeviceBootstrap) {
+          const callerDevice = await getDeviceById(database, callerDeviceId)
+          if (!callerDevice || callerDevice.userId !== userId) {
+            set.status = 403
+            return { error: 'Caller device not found' }
+          }
+          if (callerDevice.status !== 'TRUSTED') {
+            set.status = 403
+            return { error: 'Only trusted devices can store envelopes' }
+          }
         }
 
         // Store envelope

@@ -13,9 +13,9 @@ import {
 import { SelectableCard, type DataOption } from '@/components/ui/selectable-card'
 import { useAuth } from '@/contexts'
 import { setSyncEnabled } from '@/db/powersync'
-import { clearAuthToken } from '@/lib/auth-token'
+import { clearAuthToken, clearDeviceId } from '@/lib/auth-token'
 import { resetAppDir } from '@/lib/fs'
-import { handleSignOut, handleFullWipe } from '@/services/encryption'
+import { handleFullWipe } from '@/services/encryption'
 
 type LogoutModalProps = {
   open: boolean
@@ -37,13 +37,10 @@ export const LogoutModal = ({ open, onOpenChange }: LogoutModalProps) => {
       console.error('Failed to disable sync:', error)
     }
 
-    // Clear encryption keys before signing out
+    // Clear all encryption keys — device ID is also cleared below,
+    // so the old key pair is orphaned regardless of keep/delete choice
     try {
-      if (selectedOption === 'delete') {
-        await handleFullWipe()
-      } else {
-        await handleSignOut()
-      }
+      await handleFullWipe()
     } catch (error) {
       console.error('Failed to clear encryption keys:', error)
     }
@@ -54,8 +51,9 @@ export const LogoutModal = ({ open, onOpenChange }: LogoutModalProps) => {
       console.error('Failed to sign out:', error)
     }
 
-    // Clear local bearer token (mobile auth)
+    // Clear local bearer token and device ID (forces new UUID on next login)
     await clearAuthToken()
+    clearDeviceId()
 
     try {
       if (selectedOption === 'delete') {

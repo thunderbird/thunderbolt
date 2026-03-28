@@ -13,7 +13,7 @@ const validTables = new Set<string>(powersyncTableNames)
 
 /** DB column names that clients cannot set via PowerSync upload (server-managed fields). */
 const uploadDenyColumns: Partial<Record<PowerSyncTableName, string[]>> = {
-  devices: ['revoked_at'],
+  devices: ['revoked_at', 'status', 'public_key'],
 }
 
 type PowerSyncOperation = {

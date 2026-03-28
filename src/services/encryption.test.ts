@@ -211,20 +211,28 @@ describe('encryption service', () => {
       expect(result).toBe(true)
     })
 
-    it('returns false when envelope fetch fails', async () => {
+    it('returns false when envelope fetch returns 404 (not yet approved)', async () => {
+      const notFoundError = Object.assign(new Error('Not found'), { response: { status: 404 } })
       apiMocks.fetchMyEnvelope.mockImplementation(async () => {
-        throw new Error('Not found')
+        throw notFoundError
       })
 
       const result = await checkApprovalAndUnwrap(mockHttpClient)
       expect(result).toBe(false)
     })
 
-    it('returns false when key pair is missing', async () => {
+    it('throws when envelope fetch fails with non-404 error', async () => {
+      apiMocks.fetchMyEnvelope.mockImplementation(async () => {
+        throw new Error('Network error')
+      })
+
+      await expect(checkApprovalAndUnwrap(mockHttpClient)).rejects.toThrow('Network error')
+    })
+
+    it('throws when key pair is missing', async () => {
       cryptoMocks.getKeyPair.mockImplementation(async () => null)
 
-      const result = await checkApprovalAndUnwrap(mockHttpClient)
-      expect(result).toBe(false)
+      await expect(checkApprovalAndUnwrap(mockHttpClient)).rejects.toThrow('Key pair not found')
     })
   })
 

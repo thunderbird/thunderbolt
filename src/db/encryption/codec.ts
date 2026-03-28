@@ -1,5 +1,4 @@
 import { encrypt, decrypt, getCK } from '@/crypto'
-import { decodeIfValidBase64 } from '@/lib/base64'
 
 const encPrefix = '__enc:'
 const legacyB64Prefix = 'b64:'
@@ -76,7 +75,7 @@ export const codec: EncryptionCodec = {
       }
     }
 
-    // Legacy unprefixed base64 (from earlier testing)
-    return decodeIfValidBase64(encoded)
+    // No recognized prefix — return as-is (plaintext)
+    return encoded
   },
 }

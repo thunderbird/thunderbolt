@@ -9,6 +9,7 @@ import { createDefaultModelProfile, deleteModelProfileForModel } from './model-p
 
 const modelsShadow = getShadowTable('models')
 const modelsSelect = decryptedSelectFor('models')
+const decryptedModelName = decryptedCol(modelsShadow, modelsTable, 'name')
 const settingsShadow = getShadowTable('settings')
 const decryptedSettingsValue = decryptedCol(settingsShadow, settingsTable, 'value')
 
@@ -22,7 +23,7 @@ export const getAllModels = (db: AnyDrizzleDatabase) => {
     .from(modelsTable)
     .leftJoin(modelsShadow, decryptedJoin(modelsTable, modelsShadow))
     .where(isNull(modelsTable.deletedAt))
-    .orderBy(desc(modelsTable.isSystem), modelsTable.name)
+    .orderBy(desc(modelsTable.isSystem), decryptedModelName)
 
   return query as typeof query & DrizzleQueryWithPromise<Model>
 }
@@ -37,7 +38,7 @@ export const getAvailableModels = (db: AnyDrizzleDatabase) => {
     .from(modelsTable)
     .leftJoin(modelsShadow, decryptedJoin(modelsTable, modelsShadow))
     .where(and(eq(modelsTable.enabled, 1), isNull(modelsTable.deletedAt)))
-    .orderBy(desc(modelsTable.isSystem), modelsTable.name)
+    .orderBy(desc(modelsTable.isSystem), decryptedModelName)
 
   return query as typeof query & DrizzleQueryWithPromise<Model>
 }
@@ -70,7 +71,7 @@ export const getSelectedModelQuery = (db: AnyDrizzleDatabase) => {
         or(eq(modelsTable.isSystem, 1), sql`${decryptedSettingsValue} = ${modelsTable.id}`),
       ),
     )
-    .orderBy(sql`CASE WHEN ${decryptedSettingsValue} IS NOT NULL THEN 0 ELSE 1 END`, modelsTable.name)
+    .orderBy(sql`CASE WHEN ${decryptedSettingsValue} IS NOT NULL THEN 0 ELSE 1 END`, decryptedModelName)
     .limit(1)
 
   return query as typeof query & DrizzleQueryWithPromise<Model>
@@ -90,7 +91,7 @@ export const getSystemModel = async (db: AnyDrizzleDatabase): Promise<Model | nu
     .from(modelsTable)
     .leftJoin(modelsShadow, decryptedJoin(modelsTable, modelsShadow))
     .where(and(eq(modelsTable.isSystem, 1), isNull(modelsTable.deletedAt)))
-    .orderBy(modelsTable.name)
+    .orderBy(decryptedModelName)
     .get()
   return systemModel ? (systemModel as Model) : null
 }

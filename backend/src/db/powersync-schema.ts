@@ -232,7 +232,7 @@ export const devicesTable = powersyncSchema.table(
     name: text('name'),
     status: text('status', { enum: ['APPROVAL_PENDING', 'TRUSTED', 'REVOKED'] })
       .notNull()
-      .default('TRUSTED'),
+      .default('APPROVAL_PENDING'),
     publicKey: text('public_key'),
     lastSeen: timestamp('last_seen').defaultNow(),
     createdAt: timestamp('created_at').defaultNow(),

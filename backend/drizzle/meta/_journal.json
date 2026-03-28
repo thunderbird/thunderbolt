@@ -64,6 +64,13 @@
       "when": 1775092014614,
       "tag": "0008_known_shockwave",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1774726749138,
+      "tag": "0009_cheerful_bulldozer",
+      "breakpoints": true
     }
   ]
 }

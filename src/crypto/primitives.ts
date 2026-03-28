@@ -155,7 +155,13 @@ export const decrypt = async (data: EncryptedData, ck: CryptoKey): Promise<strin
 // Base64 helpers
 // =============================================================================
 
-const uint8ArrayToBase64 = (bytes: Uint8Array): string => btoa(String.fromCharCode(...bytes))
+const uint8ArrayToBase64 = (bytes: Uint8Array): string => {
+  let binary = ''
+  for (let i = 0; i < bytes.length; i++) {
+    binary += String.fromCharCode(bytes[i])
+  }
+  return btoa(binary)
+}
 
 const base64ToUint8Array = (base64: string): Uint8Array<ArrayBuffer> =>
   new Uint8Array(Array.from(atob(base64), (c) => c.charCodeAt(0)))

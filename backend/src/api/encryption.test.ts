@@ -23,10 +23,11 @@ const BASE = 'http://localhost'
  * the second run hits unique-constraint violations on user/device/session rows left
  * behind by the first run.
  *
- * Fix: a monotonic runId is incremented in beforeEach and used by p() to prefix every
- * ID, so each run's data is unique even if prior data was never rolled back.
+ * Fix: p() prefixes every ID with a globalThis counter that survives module re-evaluation
+ * (bun's --rerun-each reloads the module, resetting module-scope variables).
  */
-let runId = 0
+const counterKey = Symbol.for('encryption-test-runId')
+;(globalThis as Record<symbol, number>)[counterKey] ??= 0
 
 describe('Encryption API', () => {
   let app: ReturnType<typeof createEncryptionRoutes>
@@ -96,7 +97,7 @@ describe('Encryption API', () => {
   }
 
   beforeEach(async () => {
-    const rid = ++runId
+    const rid = ++(globalThis as Record<symbol, number>)[counterKey]
     p = (id: string) => `${rid}-${id}`
     const testEnv = await createTestDb()
     db = testEnv.db

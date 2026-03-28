@@ -24,9 +24,11 @@ const signToken = (token: string): string => {
  * CI runs each file 5× (test:backend:5x), so the second run would hit
  * unique-constraint violations without unique IDs.
  *
- * Fix: a monotonic runId prefixed onto every ID via p() ensures no collisions.
+ * Fix: p() prefixes every ID with a globalThis counter that survives module re-evaluation
+ * (bun's --rerun-each reloads the module, resetting module-scope variables).
  */
-let runId = 0
+const counterKey = Symbol.for('account-test-runId')
+;(globalThis as Record<symbol, number>)[counterKey] ??= 0
 
 describe('Account API', () => {
   let app: ReturnType<typeof createAccountRoutes>
@@ -36,7 +38,7 @@ describe('Account API', () => {
   let p: (id: string) => string
 
   beforeEach(async () => {
-    const rid = ++runId
+    const rid = ++(globalThis as Record<symbol, number>)[counterKey]
     p = (id: string) => `${rid}-${id}`
     const testEnv = await createTestDb()
     db = testEnv.db

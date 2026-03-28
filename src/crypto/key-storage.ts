@@ -30,8 +30,14 @@ const putKey = async (id: string, key: CryptoKey): Promise<void> => {
   return new Promise((resolve, reject) => {
     const tx = db.transaction(storeName, 'readwrite')
     tx.objectStore(storeName).put(key, id)
-    tx.oncomplete = () => resolve()
-    tx.onerror = () => reject(new StorageError(`Failed to store key: ${id}`, { cause: tx.error }))
+    tx.oncomplete = () => {
+      db.close()
+      resolve()
+    }
+    tx.onerror = () => {
+      db.close()
+      reject(new StorageError(`Failed to store key: ${id}`, { cause: tx.error }))
+    }
   })
 }
 
@@ -40,8 +46,14 @@ const getKey = async (id: string): Promise<CryptoKey | null> => {
   return new Promise((resolve, reject) => {
     const tx = db.transaction(storeName, 'readonly')
     const request = tx.objectStore(storeName).get(id)
-    request.onsuccess = () => resolve((request.result as CryptoKey) ?? null)
-    request.onerror = () => reject(new StorageError(`Failed to get key: ${id}`, { cause: request.error }))
+    request.onsuccess = () => {
+      db.close()
+      resolve((request.result as CryptoKey) ?? null)
+    }
+    request.onerror = () => {
+      db.close()
+      reject(new StorageError(`Failed to get key: ${id}`, { cause: request.error }))
+    }
   })
 }
 
@@ -50,8 +62,14 @@ const deleteKey = async (id: string): Promise<void> => {
   return new Promise((resolve, reject) => {
     const tx = db.transaction(storeName, 'readwrite')
     tx.objectStore(storeName).delete(id)
-    tx.oncomplete = () => resolve()
-    tx.onerror = () => reject(new StorageError(`Failed to delete key: ${id}`, { cause: tx.error }))
+    tx.oncomplete = () => {
+      db.close()
+      resolve()
+    }
+    tx.onerror = () => {
+      db.close()
+      reject(new StorageError(`Failed to delete key: ${id}`, { cause: tx.error }))
+    }
   })
 }
 

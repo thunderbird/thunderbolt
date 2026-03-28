@@ -15,12 +15,29 @@ const signToken = (token: string): string => {
   return `${token}.${sig}`
 }
 
+/**
+ * Unique-ID strategy for PGlite + nested transactions:
+ *
+ * The revoke endpoint calls database.transaction() internally. In PGlite's
+ * single-connection model this commits the outer test transaction (started by
+ * createTestDb's BEGIN), so ROLLBACK in afterEach becomes a no-op and rows persist.
+ * CI runs each file 5× (test:backend:5x), so the second run would hit
+ * unique-constraint violations without unique IDs.
+ *
+ * Fix: a monotonic runId prefixed onto every ID via p() ensures no collisions.
+ */
+let runId = 0
+
 describe('Account API', () => {
   let app: ReturnType<typeof createAccountRoutes>
   let db: Awaited<ReturnType<typeof createTestDb>>['db']
   let cleanup: () => Promise<void>
+  /** Prefix IDs with the current runId — see top-of-file comment for why. */
+  let p: (id: string) => string
 
   beforeEach(async () => {
+    const rid = ++runId
+    p = (id: string) => `${rid}-${id}`
     const testEnv = await createTestDb()
     db = testEnv.db
     cleanup = testEnv.cleanup
@@ -219,9 +236,9 @@ describe('Account API', () => {
     })
 
     it('returns 204 and revokes device + deletes envelope', async () => {
-      const userId = 'revoke-user'
-      const token = 'revoke-token'
-      const deviceId = 'device-to-revoke'
+      const userId = p('revoke-user')
+      const token = p('revoke-token')
+      const deviceId = p('device-to-revoke')
       const now = await createUserAndSession(userId, token)
 
       await db.insert(devicesTable).values({
@@ -258,13 +275,13 @@ describe('Account API', () => {
     })
 
     it('does not revoke device belonging to different user', async () => {
-      const userAId = 'user-a-revoke'
-      const userBId = 'user-b-revoke'
-      const tokenA = 'token-user-a'
-      const deviceId = 'device-user-b'
+      const userAId = p('user-a-revoke')
+      const userBId = p('user-b-revoke')
+      const tokenA = p('token-user-a')
+      const deviceId = p('device-user-b')
 
       await createUserAndSession(userAId, tokenA)
-      const now = await createUserAndSession(userBId, 'token-user-b')
+      const now = await createUserAndSession(userBId, p('token-user-b'))
 
       await db.insert(devicesTable).values({
         id: deviceId,
@@ -290,12 +307,12 @@ describe('Account API', () => {
     })
 
     it('returns 204 for non-existent device (no-op)', async () => {
-      const userId = 'revoke-nonexistent-user'
-      const token = 'revoke-nonexistent-token'
+      const userId = p('revoke-nonexistent-user')
+      const token = p('revoke-nonexistent-token')
       await createUserAndSession(userId, token)
 
       const response = await app.handle(
-        new Request('http://localhost/v1/account/devices/does-not-exist/revoke', {
+        new Request(`http://localhost/v1/account/devices/${p('does-not-exist')}/revoke`, {
           method: 'POST',
           headers: { Authorization: `Bearer ${token}` },
         }),
@@ -305,9 +322,9 @@ describe('Account API', () => {
     })
 
     it('returns 204 when revoking already-revoked device (idempotent)', async () => {
-      const userId = 'revoke-idempotent-user'
-      const token = 'revoke-idempotent-token'
-      const deviceId = 'device-already-revoked'
+      const userId = p('revoke-idempotent-user')
+      const token = p('revoke-idempotent-token')
+      const deviceId = p('device-already-revoked')
       const now = await createUserAndSession(userId, token)
 
       await db.insert(devicesTable).values({
@@ -343,9 +360,9 @@ describe('Account API', () => {
     })
 
     it('handles device with no envelope gracefully', async () => {
-      const userId = 'revoke-no-envelope-user'
-      const token = 'revoke-no-envelope-token'
-      const deviceId = 'device-no-envelope'
+      const userId = p('revoke-no-envelope-user')
+      const token = p('revoke-no-envelope-token')
+      const deviceId = p('device-no-envelope')
       const now = await createUserAndSession(userId, token)
 
       await db.insert(devicesTable).values({

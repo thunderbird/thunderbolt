@@ -1,5 +1,6 @@
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
+import { useCopyToClipboard } from '@/hooks/use-copy-to-clipboard'
 import { Check, Copy } from 'lucide-react'
 import { useState } from 'react'
 
@@ -10,14 +11,10 @@ type RecoveryKeyDisplayStepProps = {
 }
 
 export const RecoveryKeyDisplayStep = ({ recoveryKey, onDone, onConfirmedChange }: RecoveryKeyDisplayStepProps) => {
-  const [copied, setCopied] = useState(false)
+  const { copy, isCopied: copied } = useCopyToClipboard()
   const [confirmed, setConfirmed] = useState(false)
 
-  const handleCopy = async () => {
-    await navigator.clipboard.writeText(recoveryKey)
-    setCopied(true)
-    setTimeout(() => setCopied(false), 2000)
-  }
+  const handleCopy = () => copy(recoveryKey)
 
   const handleConfirmedChange = (checked: boolean) => {
     setConfirmed(checked)

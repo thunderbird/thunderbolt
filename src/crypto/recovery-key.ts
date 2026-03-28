@@ -34,10 +34,11 @@ export const decodeRecoveryKey = async (mnemonic: string): Promise<CryptoKey> =>
     throw new ValidationError('Recovery phrase must be exactly 24 words (256-bit key).')
   }
 
-  return crypto.subtle.importKey('raw', bytes.buffer as ArrayBuffer, { name: 'AES-GCM', length: 256 }, true, [
-    'encrypt',
-    'decrypt',
-    'wrapKey',
-    'unwrapKey',
-  ])
+  return crypto.subtle.importKey(
+    'raw',
+    bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer,
+    { name: 'AES-GCM', length: 256 },
+    true,
+    ['encrypt', 'decrypt', 'wrapKey', 'unwrapKey'],
+  )
 }

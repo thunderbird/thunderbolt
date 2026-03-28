@@ -143,8 +143,16 @@ export const checkApprovalAndUnwrap = async (httpClient: KyInstance): Promise<bo
     const ck = await unwrapCK(wrappedCK, keyPair.privateKey)
     await storeCK(ck)
     return true
-  } catch {
-    return false
+  } catch (err) {
+    // 404 = not yet approved, return false so caller can retry
+    if (err instanceof Error && 'response' in err) {
+      const status = (err as Error & { response: { status: number } }).response.status
+      if (status === 404) {
+        return false
+      }
+    }
+    // Re-throw transient/unexpected errors so they surface properly
+    throw err
   }
 }
 

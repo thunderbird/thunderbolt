@@ -26,15 +26,7 @@ export const decodeIfBase64 = (str: string): string => {
     }
   }
 
-  // Legacy unprefixed format: try round-trip detection for backward compatibility
-  try {
-    if (btoa(atob(str)) === str) {
-      return decodeURIComponent(escape(atob(str)))
-    }
-  } catch {
-    // not base64
-  }
-
+  // No recognized prefix — return as-is (plaintext)
   return str
 }
 

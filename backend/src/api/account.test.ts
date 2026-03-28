@@ -1,5 +1,6 @@
 import { createAuth } from '@/auth/auth'
-import { user } from '@/db/auth-schema'
+import { session as sessionTable, user } from '@/db/auth-schema'
+import { envelopesTable } from '@/db/encryption-schema'
 import { chatThreadsTable, devicesTable, settingsTable, tasksTable } from '@/db/schema'
 import { createTestDb } from '@/test-utils/db'
 import { createHmac } from 'crypto'
@@ -169,6 +170,208 @@ describe('Account API', () => {
 
       const threadsLeft = await db.select().from(chatThreadsTable).where(eq(chatThreadsTable.userId, userId))
       expect(threadsLeft).toHaveLength(0)
+    })
+  })
+
+  describe('POST /v1/account/devices/:id/revoke', () => {
+    const createUserAndSession = async (userId: string, token: string) => {
+      const now = new Date()
+      const expiresAt = new Date(now.getTime() + 3600 * 1000)
+
+      await db.insert(user).values({
+        id: userId,
+        name: 'Test User',
+        email: `${userId}@example.com`,
+        emailVerified: true,
+        createdAt: now,
+        updatedAt: now,
+      })
+
+      await db.insert(sessionTable).values({
+        id: `session-${userId}`,
+        expiresAt,
+        token,
+        createdAt: now,
+        updatedAt: now,
+        userId,
+      })
+
+      return now
+    }
+
+    it('returns 401 without auth', async () => {
+      const response = await app.handle(
+        new Request('http://localhost/v1/account/devices/some-device/revoke', {
+          method: 'POST',
+        }),
+      )
+      expect(response.status).toBe(401)
+    })
+
+    it('returns 401 with invalid token', async () => {
+      const response = await app.handle(
+        new Request('http://localhost/v1/account/devices/some-device/revoke', {
+          method: 'POST',
+          headers: { Authorization: 'Bearer bogus-token' },
+        }),
+      )
+      expect(response.status).toBe(401)
+    })
+
+    it('returns 204 and revokes device + deletes envelope', async () => {
+      const userId = 'revoke-user'
+      const token = 'revoke-token'
+      const deviceId = 'device-to-revoke'
+      const now = await createUserAndSession(userId, token)
+
+      await db.insert(devicesTable).values({
+        id: deviceId,
+        userId,
+        name: 'My Device',
+        lastSeen: now,
+        createdAt: now,
+        status: 'TRUSTED',
+      })
+
+      await db.insert(envelopesTable).values({
+        deviceId,
+        userId,
+        wrappedCk: 'wrapped-key-data',
+        updatedAt: now,
+      })
+
+      const response = await app.handle(
+        new Request(`http://localhost/v1/account/devices/${deviceId}/revoke`, {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${token}` },
+        }),
+      )
+
+      expect(response.status).toBe(204)
+
+      const [device] = await db.select().from(devicesTable).where(eq(devicesTable.id, deviceId))
+      expect(device.status).toBe('REVOKED')
+      expect(device.revokedAt).not.toBeNull()
+
+      const envelopes = await db.select().from(envelopesTable).where(eq(envelopesTable.deviceId, deviceId))
+      expect(envelopes).toHaveLength(0)
+    })
+
+    it('does not revoke device belonging to different user', async () => {
+      const userAId = 'user-a-revoke'
+      const userBId = 'user-b-revoke'
+      const tokenA = 'token-user-a'
+      const deviceId = 'device-user-b'
+
+      await createUserAndSession(userAId, tokenA)
+      const now = await createUserAndSession(userBId, 'token-user-b')
+
+      await db.insert(devicesTable).values({
+        id: deviceId,
+        userId: userBId,
+        name: 'User B Device',
+        lastSeen: now,
+        createdAt: now,
+        status: 'TRUSTED',
+      })
+
+      const response = await app.handle(
+        new Request(`http://localhost/v1/account/devices/${deviceId}/revoke`, {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${tokenA}` },
+        }),
+      )
+
+      expect(response.status).toBe(204)
+
+      const [device] = await db.select().from(devicesTable).where(eq(devicesTable.id, deviceId))
+      expect(device.status).toBe('TRUSTED')
+      expect(device.revokedAt).toBeNull()
+    })
+
+    it('returns 204 for non-existent device (no-op)', async () => {
+      const userId = 'revoke-nonexistent-user'
+      const token = 'revoke-nonexistent-token'
+      await createUserAndSession(userId, token)
+
+      const response = await app.handle(
+        new Request('http://localhost/v1/account/devices/does-not-exist/revoke', {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${token}` },
+        }),
+      )
+
+      expect(response.status).toBe(204)
+    })
+
+    it('returns 204 when revoking already-revoked device (idempotent)', async () => {
+      const userId = 'revoke-idempotent-user'
+      const token = 'revoke-idempotent-token'
+      const deviceId = 'device-already-revoked'
+      const now = await createUserAndSession(userId, token)
+
+      await db.insert(devicesTable).values({
+        id: deviceId,
+        userId,
+        name: 'Already Revoked',
+        lastSeen: now,
+        createdAt: now,
+        status: 'TRUSTED',
+      })
+
+      // First revoke
+      await app.handle(
+        new Request(`http://localhost/v1/account/devices/${deviceId}/revoke`, {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${token}` },
+        }),
+      )
+
+      // Second revoke
+      const response = await app.handle(
+        new Request(`http://localhost/v1/account/devices/${deviceId}/revoke`, {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${token}` },
+        }),
+      )
+
+      expect(response.status).toBe(204)
+
+      const [device] = await db.select().from(devicesTable).where(eq(devicesTable.id, deviceId))
+      expect(device.status).toBe('REVOKED')
+      expect(device.revokedAt).not.toBeNull()
+    })
+
+    it('handles device with no envelope gracefully', async () => {
+      const userId = 'revoke-no-envelope-user'
+      const token = 'revoke-no-envelope-token'
+      const deviceId = 'device-no-envelope'
+      const now = await createUserAndSession(userId, token)
+
+      await db.insert(devicesTable).values({
+        id: deviceId,
+        userId,
+        name: 'Pending Device',
+        lastSeen: now,
+        createdAt: now,
+        status: 'APPROVAL_PENDING',
+      })
+
+      const response = await app.handle(
+        new Request(`http://localhost/v1/account/devices/${deviceId}/revoke`, {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${token}` },
+        }),
+      )
+
+      expect(response.status).toBe(204)
+
+      const [device] = await db.select().from(devicesTable).where(eq(devicesTable.id, deviceId))
+      expect(device.status).toBe('REVOKED')
+      expect(device.revokedAt).not.toBeNull()
+
+      const envelopes = await db.select().from(envelopesTable).where(eq(envelopesTable.deviceId, deviceId))
+      expect(envelopes).toHaveLength(0)
     })
   })
 })

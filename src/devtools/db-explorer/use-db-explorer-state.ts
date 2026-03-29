@@ -98,19 +98,15 @@ export const useDbExplorerState = (adapter: SqliteExplorerAdapter) => {
         }
 
         if (objectType === 'trigger') {
-          // For triggers: show the CREATE TRIGGER SQL definition
+          // For triggers: display the SQL definition as a read-only result (not executable)
           const definition = obj?.sqlDefinition ?? 'No SQL definition available'
-          const infoQuery = `SELECT sql FROM sqlite_master WHERE type = 'trigger' AND name = '${name.replace(/'/g, "''")}'`
           dispatch({ type: 'SELECT_OBJECT', name, columns: [] })
-          dispatch({ type: 'SET_CUSTOM_SQL', sql: `-- Trigger definition:\n-- ${definition}` })
-          dispatch({ type: 'SET_LOADING', loading: true })
-          const start = performance.now()
-          const result = await adapter.execute(infoQuery)
+          dispatch({ type: 'SET_CUSTOM_SQL', sql: '' })
           dispatch({
             type: 'SET_QUERY_RESULT',
-            result,
-            totalRows: result.rows.length,
-            queryTimeMs: performance.now() - start,
+            result: { columns: ['SQL Definition'], rows: [[definition]] },
+            totalRows: 1,
+            queryTimeMs: 0,
           })
           return
         }

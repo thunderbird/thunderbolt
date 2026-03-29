@@ -41,9 +41,14 @@ export type SqliteExplorerAdapter = {
 
 // ---- Component state ----
 
+export type ViewMode = 'query' | 'definition'
+
 export type DbExplorerState = {
   objects: DbObject[]
   selectedObject: string | null
+  viewMode: ViewMode
+  /** SQL definition shown read-only for indexes/triggers */
+  sqlDefinition: string | null
   columns: ColumnInfo[]
   queryResult: QueryResult | null
   customSql: string
@@ -58,6 +63,7 @@ export type DbExplorerState = {
 export type DbExplorerAction =
   | { type: 'SET_OBJECTS'; objects: DbObject[] }
   | { type: 'SELECT_OBJECT'; name: string; columns: ColumnInfo[] }
+  | { type: 'SET_DEFINITION_VIEW'; sqlDefinition: string | null }
   | { type: 'SET_QUERY_RESULT'; result: QueryResult; totalRows: number; queryTimeMs: number }
   | { type: 'SET_CUSTOM_SQL'; sql: string }
   | { type: 'SET_LOADING'; loading: boolean }

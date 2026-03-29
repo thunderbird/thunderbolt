@@ -6,6 +6,8 @@ const DEFAULT_PAGE_SIZE = 50
 const initialState: DbExplorerState = {
   objects: [],
   selectedObject: null,
+  viewMode: 'query',
+  sqlDefinition: null,
   columns: [],
   queryResult: null,
   customSql: '',
@@ -26,7 +28,18 @@ const reducer = (state: DbExplorerState, action: DbExplorerAction): DbExplorerSt
         ...state,
         selectedObject: action.name,
         columns: action.columns,
+        viewMode: 'query',
+        sqlDefinition: null,
         page: 0,
+        queryResult: null,
+        error: null,
+        queryTimeMs: null,
+      }
+    case 'SET_DEFINITION_VIEW':
+      return {
+        ...state,
+        viewMode: 'definition',
+        sqlDefinition: action.sqlDefinition,
         queryResult: null,
         error: null,
         queryTimeMs: null,
@@ -77,37 +90,10 @@ export const useDbExplorerState = (adapter: SqliteExplorerAdapter) => {
       const objectType = obj?.type ?? 'table'
 
       try {
-        if (objectType === 'index') {
-          // For indexes: show PRAGMA index_info and the CREATE statement
-          const pragmaQuery = `PRAGMA index_info("${name}")`
+        if (objectType === 'index' || objectType === 'trigger') {
+          // For indexes and triggers: show SQL definition read-only, no table/execution
           dispatch({ type: 'SELECT_OBJECT', name, columns: [] })
-          dispatch({
-            type: 'SET_CUSTOM_SQL',
-            sql: obj?.sqlDefinition ? `-- ${obj.sqlDefinition}\n\n${pragmaQuery}` : pragmaQuery,
-          })
-          dispatch({ type: 'SET_LOADING', loading: true })
-          const start = performance.now()
-          const result = await adapter.execute(pragmaQuery)
-          dispatch({
-            type: 'SET_QUERY_RESULT',
-            result,
-            totalRows: result.rows.length,
-            queryTimeMs: performance.now() - start,
-          })
-          return
-        }
-
-        if (objectType === 'trigger') {
-          // For triggers: display the SQL definition as a read-only result (not executable)
-          const definition = obj?.sqlDefinition ?? 'No SQL definition available'
-          dispatch({ type: 'SELECT_OBJECT', name, columns: [] })
-          dispatch({ type: 'SET_CUSTOM_SQL', sql: '' })
-          dispatch({
-            type: 'SET_QUERY_RESULT',
-            result: { columns: ['SQL Definition'], rows: [[definition]] },
-            totalRows: 1,
-            queryTimeMs: 0,
-          })
+          dispatch({ type: 'SET_DEFINITION_VIEW', sqlDefinition: obj?.sqlDefinition ?? null })
           return
         }
 

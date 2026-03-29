@@ -1,6 +1,7 @@
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from '@/components/ui/resizable'
 import { DataTable } from './data-table'
 import { ObjectList } from './object-list'
+import { SqlDefinition } from './sql-definition'
 import { SqlEditor } from './sql-editor'
 import type { SqliteExplorerAdapter } from './types'
 import { useDbExplorerState } from './use-db-explorer-state'
@@ -15,7 +16,7 @@ export const DbExplorer = ({ adapter }: DbExplorerProps) => {
   return (
     <div className="flex h-full flex-col overflow-hidden">
       <ResizablePanelGroup direction="horizontal">
-        {/* Sidebar: table/view list */}
+        {/* Sidebar: object list */}
         <ResizablePanel defaultSize={22} minSize={15} maxSize={40}>
           <div className="border-r flex h-full flex-col overflow-hidden">
             <div className="border-b px-3 py-2 text-xs font-semibold">Database Objects</div>
@@ -30,29 +31,33 @@ export const DbExplorer = ({ adapter }: DbExplorerProps) => {
 
         <ResizableHandle />
 
-        {/* Main: SQL editor + data table */}
+        {/* Main content */}
         <ResizablePanel defaultSize={78}>
-          <div className="flex h-full flex-col overflow-hidden">
-            <div className="border-b p-3">
-              <SqlEditor
-                value={state.customSql}
-                onChange={setCustomSql}
-                onRun={runQuery}
+          {state.viewMode === 'definition' ? (
+            <SqlDefinition value={state.sqlDefinition ?? 'No SQL definition available'} />
+          ) : (
+            <div className="flex h-full flex-col overflow-hidden">
+              <div className="border-b p-3">
+                <SqlEditor
+                  value={state.customSql}
+                  onChange={setCustomSql}
+                  onRun={runQuery}
+                  isLoading={state.isLoading}
+                  error={state.error}
+                  queryTimeMs={state.queryTimeMs}
+                />
+              </div>
+              <DataTable
+                result={state.queryResult}
                 isLoading={state.isLoading}
-                error={state.error}
-                queryTimeMs={state.queryTimeMs}
+                page={state.page}
+                pageSize={state.pageSize}
+                totalRows={state.totalRows}
+                onPageChange={fetchPage}
+                onPageSizeChange={setPageSize}
               />
             </div>
-            <DataTable
-              result={state.queryResult}
-              isLoading={state.isLoading}
-              page={state.page}
-              pageSize={state.pageSize}
-              totalRows={state.totalRows}
-              onPageChange={fetchPage}
-              onPageSizeChange={setPageSize}
-            />
-          </div>
+          )}
         </ResizablePanel>
       </ResizablePanelGroup>
     </div>

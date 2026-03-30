@@ -67,7 +67,7 @@ export const createEncryptionRoutes = (auth: Auth, database: typeof DbType) =>
           }
 
           // Revoked — device cannot re-register
-          if (existingDevice.status === 'REVOKED') {
+          if (existingDevice.status === 'REVOKED' || existingDevice.revokedAt != null) {
             set.status = 403
             return { error: 'Device has been revoked' }
           }
@@ -110,7 +110,7 @@ export const createEncryptionRoutes = (auth: Auth, database: typeof DbType) =>
           return { error: 'Device not found' }
         }
 
-        if (device.status === 'REVOKED') {
+        if (device.status === 'REVOKED' || device.revokedAt != null) {
           set.status = 403
           return { error: 'Device has been revoked' }
         }
@@ -135,6 +135,12 @@ export const createEncryptionRoutes = (auth: Auth, database: typeof DbType) =>
 
             const envelopesExist = await hasEnvelopesForUser(txDb, userId)
             const isFirstDeviceBootstrap = !envelopesExist && callerDeviceId === deviceId
+
+            // Re-check target device inside transaction to close race window
+            const targetDevice = await getDeviceById(txDb, deviceId)
+            if (!targetDevice || targetDevice.status === 'REVOKED' || targetDevice.revokedAt != null) {
+              throw new Error('FORBIDDEN:Device has been revoked')
+            }
 
             if (!isFirstDeviceBootstrap) {
               const callerDevice = await getDeviceById(txDb, callerDeviceId)
@@ -199,7 +205,7 @@ export const createEncryptionRoutes = (auth: Auth, database: typeof DbType) =>
         return { error: 'Device not found' }
       }
 
-      if (device.status === 'REVOKED') {
+      if (device.status === 'REVOKED' || device.revokedAt != null) {
         set.status = 403
         return { error: 'Device has been revoked' }
       }

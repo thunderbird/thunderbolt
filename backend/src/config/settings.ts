@@ -60,7 +60,7 @@ const settingsSchema = z.object({
   corsAllowHeaders: z
     .string()
     .default(
-      'Content-Type,Authorization,Accept,Accept-Encoding,Accept-Language,Cache-Control,User-Agent,X-Requested-With,X-Client-Platform,X-Device-ID,X-Device-Name',
+      'Content-Type,Authorization,Accept,Accept-Encoding,Accept-Language,Cache-Control,User-Agent,X-Requested-With,X-Client-Platform,X-Device-ID,X-Device-Name,X-Mcp-Target-Url,Mcp-Session-Id,Mcp-Protocol-Version',
     ),
   corsExposeHeaders: z.string().default('mcp-session-id,set-auth-token'),
 })
@@ -106,7 +106,7 @@ const parseSettings = (): Settings => {
     corsAllowMethods: process.env.CORS_ALLOW_METHODS || 'GET,POST,PUT,DELETE,PATCH,OPTIONS',
     corsAllowHeaders:
       process.env.CORS_ALLOW_HEADERS ||
-      'Content-Type,Authorization,Accept,Accept-Encoding,Accept-Language,Cache-Control,User-Agent,X-Requested-With,X-Client-Platform,X-Device-ID,X-Device-Name',
+      'Content-Type,Authorization,Accept,Accept-Encoding,Accept-Language,Cache-Control,User-Agent,X-Requested-With,X-Client-Platform,X-Device-ID,X-Device-Name,X-Mcp-Target-Url,Mcp-Session-Id,Mcp-Protocol-Version',
     corsExposeHeaders: process.env.CORS_EXPOSE_HEADERS || 'mcp-session-id,set-auth-token',
   }
 

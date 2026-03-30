@@ -19,7 +19,7 @@ type FetchCanaryResponse = { canaryIv: string; canaryCtext: string }
 // Auth headers helper
 // =============================================================================
 
-const authHeaders = (): Record<string, string> => {
+export const authHeaders = (): Record<string, string> => {
   const headers: Record<string, string> = {}
   const token = getAuthToken()
   if (token) {

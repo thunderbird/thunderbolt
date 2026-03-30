@@ -61,6 +61,7 @@ const handleProxy = async (
     method: ctx.request.method,
     headers,
     body: ctx.request.body as BodyInit,
+    redirect: 'manual',
   })
 
   const responseHeaders = extractResponseHeaders(response.headers)

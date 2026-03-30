@@ -142,7 +142,7 @@ export const useMcpServerFormState = () => {
   const [state, dispatch] = useReducer(formReducer, initialFormState)
 
   const urlValidation = useCallback(() => {
-    if (state.transportType === 'stdio') return { valid: true }
+    if (state.transportType === 'stdio') { return { valid: true } }
     return validateMcpServerUrl(state.url)
   }, [state.transportType, state.url])
 

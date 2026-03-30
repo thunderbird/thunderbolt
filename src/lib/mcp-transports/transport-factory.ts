@@ -1,7 +1,6 @@
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js'
 import { SSEClientTransport } from '@modelcontextprotocol/sdk/client/sse.js'
 import { isTauri } from '@/lib/platform'
-import { isLocalMcpServer } from '@/lib/mcp-utils'
 import type { McpServerConfig, McpTransportResult, CredentialStore } from '@/types/mcp'
 
 /**
@@ -20,39 +19,51 @@ export const createTransport = async (
   if (transport.type === 'http') {
     const url = new URL(transport.url)
     const requestInit = await buildRequestInit(config.id, auth.authType, credentialStore)
-    const opts = requestInit ? { requestInit } : undefined
+    const authProvider = await buildAuthProvider(config.id, auth.authType, credentialStore, transport.url)
+    const opts = { ...(requestInit ? { requestInit } : {}), ...(authProvider ? { authProvider } : {}) }
 
     if (isTauri()) {
       const { createTauriHttpTransport } = await import('./tauri-http-transport')
-      return { transport: createTauriHttpTransport(url, opts) }
+      return { transport: createTauriHttpTransport(url, Object.keys(opts).length > 0 ? opts : undefined), authProvider }
     }
 
-    if (options?.cloudUrl && !isLocalMcpServer(transport.url)) {
+    // On web, use CORS proxy for cross-origin requests (including localhost with different ports)
+    const isSameOrigin = typeof window !== 'undefined' && url.origin === window.location.origin
+    if (options?.cloudUrl && !isSameOrigin) {
       const { createProxiedFetch } = await import('./proxied-fetch')
       return {
         transport: new StreamableHTTPClientTransport(url, { ...opts, fetch: createProxiedFetch(options.cloudUrl) }),
+        authProvider,
       }
     }
 
-    return { transport: new StreamableHTTPClientTransport(url, opts) }
+    return {
+      transport: new StreamableHTTPClientTransport(url, Object.keys(opts).length > 0 ? opts : undefined),
+      authProvider,
+    }
   }
 
   if (transport.type === 'sse') {
     const url = new URL(transport.url)
     const requestInit = await buildRequestInit(config.id, auth.authType, credentialStore)
-    const opts = requestInit ? { requestInit } : undefined
+    const authProvider = await buildAuthProvider(config.id, auth.authType, credentialStore, transport.url)
+    const opts = { ...(requestInit ? { requestInit } : {}), ...(authProvider ? { authProvider } : {}) }
 
     if (isTauri()) {
       const { createTauriSseTransport } = await import('./tauri-sse-transport')
-      return { transport: createTauriSseTransport(url, opts) }
+      return { transport: createTauriSseTransport(url, Object.keys(opts).length > 0 ? opts : undefined), authProvider }
     }
 
-    if (options?.cloudUrl && !isLocalMcpServer(transport.url)) {
+    const isSseOriginSame = typeof window !== 'undefined' && url.origin === window.location.origin
+    if (options?.cloudUrl && !isSseOriginSame) {
       const { createProxiedFetch } = await import('./proxied-fetch')
-      return { transport: new SSEClientTransport(url, { ...opts, fetch: createProxiedFetch(options.cloudUrl) }) }
+      return {
+        transport: new SSEClientTransport(url, { ...opts, fetch: createProxiedFetch(options.cloudUrl) }),
+        authProvider,
+      }
     }
 
-    return { transport: new SSEClientTransport(url, opts) }
+    return { transport: new SSEClientTransport(url, Object.keys(opts).length > 0 ? opts : undefined), authProvider }
   }
 
   if (transport.type === 'stdio') {
@@ -105,4 +116,23 @@ const buildStdioEnv = async (
   if (!credential || credential.type !== 'bearer') return undefined
 
   return { MCP_BEARER_TOKEN: credential.token }
+}
+
+/**
+ * Creates an OAuth auth provider for MCP servers that require OAuth 2.1.
+ * On desktop, starts the loopback OAuth server for redirect capture.
+ * Returns undefined for non-OAuth auth types.
+ */
+const buildAuthProvider = async (
+  serverId: string,
+  authType: McpServerConfig['auth']['authType'],
+  credentialStore: CredentialStore,
+  serverUrl?: string,
+) => {
+  if (authType !== 'oauth') {
+    return undefined
+  }
+
+  const { createMcpOAuthProvider } = await import('@/lib/mcp-auth')
+  return await createMcpOAuthProvider(serverId, credentialStore, serverUrl)
 }

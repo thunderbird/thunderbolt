@@ -39,7 +39,22 @@
           "url": "http://127.0.0.1:*"
         },
         {
-          "url": "https://**"
+          "url": "https://api.openai.com"
+        },
+        {
+          "url": "https://router.huggingface.co"
+        },
+        {
+          "url": "https://accounts.google.com"
+        },
+        {
+          "url": "https://www.googleapis.com"
+        },
+        {
+          "url": "https://login.microsoftonline.com"
+        },
+        {
+          "url": "https://graph.microsoft.com"
         }
       ]
     },

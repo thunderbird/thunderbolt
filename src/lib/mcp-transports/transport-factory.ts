@@ -1,6 +1,7 @@
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js'
 import { SSEClientTransport } from '@modelcontextprotocol/sdk/client/sse.js'
 import { isTauri } from '@/lib/platform'
+import { isLocalMcpServer } from '@/lib/mcp-utils'
 import type { McpServerConfig, McpTransportResult, CredentialStore } from '@/types/mcp'
 
 /**
@@ -22,12 +23,13 @@ export const createTransport = async (
     const authProvider = await buildAuthProvider(config.id, auth.authType, credentialStore, transport.url)
     const opts = { ...(requestInit ? { requestInit } : {}), ...(authProvider ? { authProvider } : {}) }
 
-    if (isTauri()) {
+    if (isTauri() && isLocalMcpServer(transport.url)) {
+      // Localhost MCP servers → Tauri plugin (direct, no proxy needed)
       const { createTauriHttpTransport } = await import('./tauri-http-transport')
       return { transport: createTauriHttpTransport(url, Object.keys(opts).length > 0 ? opts : undefined), authProvider }
     }
 
-    // On web, use CORS proxy for cross-origin requests (including localhost with different ports)
+    // Remote servers on all platforms + cross-origin on web → route through backend proxy
     const isSameOrigin = typeof window !== 'undefined' && url.origin === window.location.origin
     if (options?.cloudUrl && !isSameOrigin) {
       const { createProxiedFetch } = await import('./proxied-fetch')
@@ -49,7 +51,7 @@ export const createTransport = async (
     const authProvider = await buildAuthProvider(config.id, auth.authType, credentialStore, transport.url)
     const opts = { ...(requestInit ? { requestInit } : {}), ...(authProvider ? { authProvider } : {}) }
 
-    if (isTauri()) {
+    if (isTauri() && isLocalMcpServer(transport.url)) {
       const { createTauriSseTransport } = await import('./tauri-sse-transport')
       return { transport: createTauriSseTransport(url, Object.keys(opts).length > 0 ? opts : undefined), authProvider }
     }

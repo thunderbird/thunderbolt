@@ -27,6 +27,7 @@ type AddMcpServerDialogProps = {
   canTestConnection: boolean
   canAddServer: boolean
   isValid: () => boolean
+  urlValidation: () => { valid: boolean; error?: string }
   trigger: ReactNode
 }
 
@@ -42,6 +43,7 @@ export const AddMcpServerDialog = ({
   canTestConnection,
   canAddServer,
   isValid,
+  urlValidation,
   trigger,
 }: AddMcpServerDialogProps) => {
   const [showToken, setShowToken] = useState(false)
@@ -87,6 +89,9 @@ export const AddMcpServerDialog = ({
                 onChange={(e) => formDispatch({ type: 'SET_URL', payload: e.target.value })}
                 onKeyDown={onUrlKeyDown}
               />
+              {formState.url && !urlValidation().valid && (
+                <p className="text-xs text-destructive">{urlValidation().error}</p>
+              )}
             </div>
           )}
 

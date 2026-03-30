@@ -37,6 +37,7 @@ const McpServersPage = () => {
     canTestConnection,
     canAddServer,
     isValid,
+    urlValidation,
     reconnectServer,
     authorizeServer,
   } = useMcpServersPageState()
@@ -76,6 +77,7 @@ const McpServersPage = () => {
           canTestConnection={canTestConnection}
           canAddServer={canAddServer}
           isValid={isValid}
+          urlValidation={urlValidation}
           trigger={
             <Button variant="outline" size="icon" className="rounded-lg">
               <Plus />

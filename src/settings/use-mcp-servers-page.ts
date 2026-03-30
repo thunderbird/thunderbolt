@@ -71,7 +71,8 @@ const createTestTransport = async (
   opts?: { requestInit: { headers: { Authorization: string } } },
   cloudUrl?: string,
 ) => {
-  if (isTauri()) {
+  // Localhost on Tauri → use native HTTP plugin (direct, no proxy)
+  if (isTauri() && isLocalMcpServer(url.toString())) {
     if (transportType === 'sse') {
       const { createTauriSseTransport } = await import('@/lib/mcp-transports/tauri-sse-transport')
       return createTauriSseTransport(url, opts)
@@ -80,7 +81,7 @@ const createTestTransport = async (
     return createTauriHttpTransport(url, opts)
   }
 
-  // Web + remote → proxy through backend to bypass CORS
+  // Remote on all platforms → proxy through backend
   if (cloudUrl && !isLocalMcpServer(url.toString())) {
     const { createProxiedFetch } = await import('@/lib/mcp-transports/proxied-fetch')
     if (transportType === 'sse') {
@@ -134,7 +135,7 @@ export const useMcpServersPageState = () => {
   const { isAddDialogOpen, serverTools, selectedTools, deleteConfirmOpen, copiedUrl } = pageState
   const testAbortRef = useRef<AbortController | null>(null)
 
-  const { state: formState, dispatch: formDispatch, isValid } = useMcpServerFormState()
+  const { state: formState, dispatch: formDispatch, isValid, urlValidation } = useMcpServerFormState()
 
   const { data: servers = [] } = useQuery({
     queryKey: ['mcp-servers'],
@@ -444,6 +445,7 @@ export const useMcpServersPageState = () => {
     canTestConnection,
     canAddServer,
     isValid,
+    urlValidation,
     reconnectServer,
     authorizeServer,
   }

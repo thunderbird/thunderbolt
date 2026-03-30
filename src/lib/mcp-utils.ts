@@ -61,6 +61,25 @@ export const validateStdioArgs = (args: string[]): void => {
   }
 }
 
+/**
+ * Validates an MCP server URL for security and platform support.
+ * Blocks plain HTTP to non-localhost addresses (insecure over the network).
+ */
+export const validateMcpServerUrl = (url: string): { valid: boolean; error?: string } => {
+  try {
+    const parsed = new URL(url)
+    if (!['http:', 'https:'].includes(parsed.protocol)) {
+      return { valid: false, error: 'URL must use http: or https: protocol' }
+    }
+    if (parsed.protocol === 'http:' && !isLocalMcpServer(url)) {
+      return { valid: false, error: 'Plain HTTP is only supported for localhost servers. Use HTTPS for remote servers.' }
+    }
+    return { valid: true }
+  } catch {
+    return { valid: false, error: 'Invalid URL format' }
+  }
+}
+
 /** Returns true when an MCP server URL targets localhost/loopback (no CORS proxy needed) */
 export const isLocalMcpServer = (url: string): boolean => {
   try {

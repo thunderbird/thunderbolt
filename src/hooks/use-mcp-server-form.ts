@@ -1,6 +1,6 @@
 import { useCallback, useReducer } from 'react'
 import type { McpServerFormAction, McpServerFormState, McpTransportType } from '@/types/mcp'
-import { validateMcpUrl, validateStdioArgs, validateStdioCommand } from '@/lib/mcp-utils'
+import { validateMcpServerUrl, validateStdioArgs, validateStdioCommand } from '@/lib/mcp-utils'
 
 /** Generic command runners whose name isn't meaningful — use the first arg instead */
 const genericRunners = new Set(['npx', 'uvx', 'bunx', 'node', 'python', 'python3', 'bun', 'deno'])
@@ -141,6 +141,11 @@ const formReducer = (state: McpServerFormState, action: McpServerFormAction): Mc
 export const useMcpServerFormState = () => {
   const [state, dispatch] = useReducer(formReducer, initialFormState)
 
+  const urlValidation = useCallback(() => {
+    if (state.transportType === 'stdio') return { valid: true }
+    return validateMcpServerUrl(state.url)
+  }, [state.transportType, state.url])
+
   const isValid = useCallback(() => {
     try {
       if (state.transportType === 'stdio') {
@@ -148,12 +153,12 @@ export const useMcpServerFormState = () => {
         validateStdioArgs(state.args)
         return true
       }
-      validateMcpUrl(state.url)
-      return true
+      const validation = validateMcpServerUrl(state.url)
+      return validation.valid
     } catch {
       return false
     }
   }, [state.transportType, state.command, state.args, state.url])
 
-  return { state, dispatch, isValid }
+  return { state, dispatch, isValid, urlValidation }
 }

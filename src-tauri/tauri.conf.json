@@ -71,6 +71,7 @@
           "host": "thunderbolt.io",
           "pathPrefix": [
             "/oauth/callback",
+            "/mcp/oauth/callback",
             "/auth/verify"
           ],
           "appLink": true

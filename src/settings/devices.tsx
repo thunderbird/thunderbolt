@@ -21,6 +21,7 @@ import { CheckCircle2, Loader2, Smartphone, Trash2 } from 'lucide-react'
 import { useState } from 'react'
 import { useQuery } from '@powersync/tanstack-react-query'
 import { toCompilableQuery } from '@powersync/drizzle-driver'
+import { authHeaders } from '@/api/encryption'
 import { approveDevice } from '@/services/encryption'
 
 const formatLastSeen = (ts: string | null): string => {
@@ -51,7 +52,13 @@ export default function DevicesSettingsPage() {
   const visibleDevices = devices.filter((d) => d.revokedAt == null || dayjs().diff(dayjs(d.revokedAt), 'hour') < 24)
 
   const revokeMutation = useMutation({
-    mutationFn: (deviceId: string) => httpClient.post(`account/devices/${encodeURIComponent(deviceId)}/revoke`),
+    mutationFn: (deviceId: string) =>
+      httpClient
+        .post(`account/devices/${encodeURIComponent(deviceId)}/revoke`, {
+          headers: authHeaders(),
+          credentials: 'omit',
+        })
+        .then(() => {}),
     onSuccess: () => {
       setRevokeTarget(null)
     },

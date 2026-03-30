@@ -113,6 +113,18 @@ export const AddMcpServerDialog = ({
             </>
           )}
 
+          {formState.name !== '' && (
+            <div className="grid gap-2">
+              <Label htmlFor="server-name">Name</Label>
+              <Input
+                id="server-name"
+                placeholder="Server name for tool prefixing"
+                value={formState.name}
+                onChange={(e) => formDispatch({ type: 'SET_NAME', payload: e.target.value })}
+              />
+            </div>
+          )}
+
           <div className="grid gap-2">
             <Label htmlFor="auth-type">Authentication</Label>
             <Select
@@ -158,15 +170,12 @@ export const AddMcpServerDialog = ({
           )}
 
           {formState.authType === 'oauth' && (
-            <div className="grid gap-2">
-              <Button variant="outline" className="w-full" disabled>
-                Connect with OAuth
-                <span className="ml-2 text-xs text-muted-foreground">(coming soon)</span>
-              </Button>
+            <div className="grid gap-2 text-sm text-muted-foreground">
+              After adding, click the Authorize button on the server card to start the OAuth flow.
             </div>
           )}
 
-          {formState.transportType !== 'stdio' && isValid() && (
+          {formState.transportType !== 'stdio' && formState.authType !== 'oauth' && isValid() && (
             <Button onClick={onTestConnection} disabled={!canTestConnection} variant="outline" className="w-full">
               {formState.connectionStatus === 'testing' ? 'Testing Connection...' : 'Test Connection'}
             </Button>
@@ -181,7 +190,7 @@ export const AddMcpServerDialog = ({
               {formState.serverCapabilities.length > 0 && (
                 <div className="mt-3">
                   <p className="text-sm text-green-700 font-medium">Available tools:</p>
-                  <ul className="text-sm text-green-600 mt-1 space-y-1">
+                  <ul className="text-sm text-green-600 mt-1 space-y-1 max-h-40 overflow-y-auto">
                     {formState.serverCapabilities.map((capability, index) => (
                       <li key={index} className="flex items-center gap-2">
                         <div className="w-1 h-1 bg-green-600 rounded-full" />

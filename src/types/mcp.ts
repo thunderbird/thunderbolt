@@ -45,10 +45,17 @@ type McpServerConnection = {
   enabled: boolean
 }
 
+/** Auth provider with platform-aware OAuth support */
+type McpOAuthProviderWithWait = OAuthClientProvider & {
+  pendingAuthUrl: string | null
+  waitForAuthCode(): Promise<string>
+  startOAuthRedirect(): Promise<void>
+}
+
 /** Result of creating a transport (transport + optional auth provider) */
 type McpTransportResult = {
   transport: Transport
-  authProvider?: OAuthClientProvider
+  authProvider?: McpOAuthProviderWithWait
 }
 
 /** Credential data stored in secure storage */
@@ -75,6 +82,8 @@ type CredentialStore = {
 
 /** Form state for the add/edit server dialog */
 type McpServerFormState = {
+  name: string
+  nameManuallyEdited: boolean
   transportType: McpTransportType
   url: string
   command: string
@@ -87,6 +96,7 @@ type McpServerFormState = {
 }
 
 type McpServerFormAction =
+  | { type: 'SET_NAME'; payload: string }
   | { type: 'SET_TRANSPORT_TYPE'; payload: McpTransportType }
   | { type: 'SET_URL'; payload: string }
   | { type: 'SET_COMMAND'; payload: string }

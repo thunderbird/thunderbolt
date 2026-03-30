@@ -8,7 +8,6 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip
 import type { McpTransportType, McpAuthType } from '@/types/mcp'
 import type { McpServer } from '@/types'
 import { Check, Copy, Globe, Key, RefreshCw, Terminal, Trash2 } from 'lucide-react'
-import type { MutableRefObject } from 'react'
 
 const transportLabel: Record<McpTransportType, string> = {
   http: 'HTTP',
@@ -42,14 +41,14 @@ type McpServerCardProps = {
   errorMessage: string | null
   copiedUrl: string | null
   deleteConfirmOpen: string | null
-  titleRefs: MutableRefObject<{ [key: string]: HTMLElement | null }>
   onToggle: (id: string, enabled: boolean) => void
   onDelete: (id: string) => void
   onCopyUrl: (url: string) => void
   onDeleteConfirmChange: (id: string | null) => void
   onRetry: (id: string) => void
+  onAuthorize: (id: string) => void
   getStatusTooltipText: (status: string) => string
-  formatServerTitle: (url: string, serverId: string) => string
+  formatServerTitle: (url: string) => string
 }
 
 export const McpServerCard = ({
@@ -60,12 +59,12 @@ export const McpServerCard = ({
   errorMessage,
   copiedUrl,
   deleteConfirmOpen,
-  titleRefs,
   onToggle,
   onDelete,
   onCopyUrl,
   onDeleteConfirmChange,
   onRetry,
+  onAuthorize,
   getStatusTooltipText,
   formatServerTitle,
 }: McpServerCardProps) => {
@@ -92,16 +91,11 @@ export const McpServerCard = ({
               </TooltipContent>
             </Tooltip>
             <div className="min-w-0 flex-1">
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 flex-wrap">
                 <Popover>
                   <PopoverTrigger asChild>
-                    <CardTitle
-                      ref={(el) => {
-                        titleRefs.current[server.id] = el
-                      }}
-                      className="text-lg font-medium cursor-pointer"
-                    >
-                      {formatServerTitle(server.url ?? server.command ?? '', server.id)}
+                    <CardTitle className="text-lg font-medium cursor-pointer truncate">
+                      {formatServerTitle(server.url ?? server.command ?? '')}
                     </CardTitle>
                   </PopoverTrigger>
                   <PopoverContent className="w-auto p-2" side="bottom" align="start">
@@ -145,8 +139,21 @@ export const McpServerCard = ({
                 <TransportBadge type={serverTransport} />
                 <AuthBadge authType={serverAuthType} />
               </div>
-              {status === 'error' && errorMessage && (
-                <p className="text-xs text-destructive mt-0.5 truncate max-w-xs">{errorMessage}</p>
+              {errorMessage === 'needsAuth' && (
+                <div className="flex items-center gap-2 mt-0.5">
+                  <p className="text-xs text-amber-600">Authorization required</p>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="h-5 px-2 text-xs"
+                    onClick={() => onAuthorize(server.id)}
+                  >
+                    Authorize
+                  </Button>
+                </div>
+              )}
+              {errorMessage && errorMessage !== 'needsAuth' && (
+                <p className="text-xs text-muted-foreground mt-0.5">{errorMessage}</p>
               )}
             </div>
           </div>

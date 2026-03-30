@@ -1,6 +1,6 @@
 import { createMcpServer, deleteMcpServer, getAllMcpServers } from '@/dal'
 import { createCredentialStore } from '@/lib/mcp-auth'
-import { isSupportedTransport, isCorsRestricted } from '@/lib/mcp-utils'
+import { isSupportedTransport, isLocalMcpServer } from '@/lib/mcp-utils'
 import { isTauri } from '@/lib/platform'
 import { useMCP } from '@/lib/mcp-provider'
 import { useDatabase } from '@/contexts'
@@ -69,6 +69,7 @@ const createTestTransport = async (
   transportType: 'http' | 'sse',
   url: URL,
   opts?: { requestInit: { headers: { Authorization: string } } },
+  cloudUrl?: string,
 ) => {
   if (isTauri()) {
     if (transportType === 'sse') {
@@ -79,6 +80,18 @@ const createTestTransport = async (
     return createTauriHttpTransport(url, opts)
   }
 
+  // Web + remote → proxy through backend to bypass CORS
+  if (cloudUrl && !isLocalMcpServer(url.toString())) {
+    const { createProxiedFetch } = await import('@/lib/mcp-transports/proxied-fetch')
+    if (transportType === 'sse') {
+      const { SSEClientTransport } = await import('@modelcontextprotocol/sdk/client/sse.js')
+      return new SSEClientTransport(url, { ...opts, fetch: createProxiedFetch(cloudUrl) })
+    }
+    const { StreamableHTTPClientTransport } = await import('@modelcontextprotocol/sdk/client/streamableHttp.js')
+    return new StreamableHTTPClientTransport(url, { ...opts, fetch: createProxiedFetch(cloudUrl) })
+  }
+
+  // Web + localhost → direct browser fetch
   if (transportType === 'sse') {
     const { SSEClientTransport } = await import('@modelcontextprotocol/sdk/client/sse.js')
     return new SSEClientTransport(url, opts)
@@ -87,15 +100,39 @@ const createTestTransport = async (
   return new StreamableHTTPClientTransport(url, opts)
 }
 
+/** Extracts a human-readable error message from MCP connection failures. */
+const getConnectionErrorMessage = (error: unknown): string => {
+  const message = error instanceof Error ? error.message : String(error)
+  const lowerMessage = message.toLowerCase()
+
+  if (lowerMessage.includes('unauthorized') || lowerMessage.includes('401')) {
+    return 'Authentication failed. Please check your access token or credentials.'
+  }
+  if (lowerMessage.includes('forbidden') || lowerMessage.includes('403')) {
+    return 'Access denied. The server rejected the request.'
+  }
+  if (lowerMessage.includes('not found') || lowerMessage.includes('404')) {
+    return 'Server not found. Please check the URL.'
+  }
+  if (lowerMessage.includes('timed out') || lowerMessage.includes('timeout')) {
+    return 'Connection timed out. The server may be unreachable.'
+  }
+  if (lowerMessage.includes('failed to fetch') || lowerMessage.includes('networkerror')) {
+    return 'Network error. The server may be down or unreachable.'
+  }
+
+  return `Could not connect to the MCP server: ${message}`
+}
+
 export const useMcpServersPageState = () => {
   const db = useDatabase()
   const { servers: mcpServers } = useMcpSync()
-  const { reconnectServer } = useMCP()
+  const { reconnectServer, authorizeServer } = useMCP()
   const credentialStoreRef = useRef(createCredentialStore(db))
+  const cloudUrl = import.meta.env.VITE_THUNDERBOLT_CLOUD_URL ?? 'http://localhost:8000/v1'
   const [pageState, dispatch] = useReducer(pageReducer, initialPageState)
   const { isAddDialogOpen, serverTools, selectedTools, deleteConfirmOpen, copiedUrl } = pageState
   const testAbortRef = useRef<AbortController | null>(null)
-  const titleRefs = useRef<{ [key: string]: HTMLElement | null }>({})
 
   const { state: formState, dispatch: formDispatch, isValid } = useMcpServerFormState()
 
@@ -225,7 +262,7 @@ export const useMcpServersPageState = () => {
         formState.authType === 'bearer' && formState.bearerToken
           ? { requestInit: { headers: { Authorization: `Bearer ${formState.bearerToken}` } } }
           : undefined
-      const transport = await createTestTransport(formState.transportType as 'http' | 'sse', url, opts)
+      const transport = await createTestTransport(formState.transportType as 'http' | 'sse', url, opts, cloudUrl)
 
       const connectWithTimeout = async () => {
         const client = await createMCPClient({ transport })
@@ -254,16 +291,14 @@ export const useMcpServersPageState = () => {
       } else {
         formDispatch({ type: 'SET_CAPABILITIES', payload: ['Connection successful — no tools listed'] })
       }
-    } catch {
+    } catch (error) {
       if (abortController.signal.aborted) {
         return
       }
       formDispatch({ type: 'SET_CONNECTION_STATUS', payload: 'error' })
       formDispatch({
         type: 'SET_CONNECTION_ERROR',
-        payload: isCorsRestricted()
-          ? 'Could not connect. Remote servers may be blocked by CORS. Localhost servers work without restriction.'
-          : 'Could not connect to the MCP server. Please check the URL and try again.',
+        payload: getConnectionErrorMessage(error),
       })
     } finally {
       if (mcpClient?.close) {
@@ -280,9 +315,10 @@ export const useMcpServersPageState = () => {
     const authType = formState.authType !== 'none' ? formState.authType : undefined
     const bearerToken = formState.authType === 'bearer' ? formState.bearerToken : undefined
 
+    const name = formState.name || 'Unnamed Server'
+
     if (formState.transportType === 'stdio') {
       const cleanArgs = formState.args.filter(Boolean)
-      const name = `${formState.command} ${cleanArgs.join(' ')}`.trim()
       addServerMutation.mutate({
         name,
         type: 'stdio',
@@ -294,8 +330,6 @@ export const useMcpServersPageState = () => {
       return
     }
 
-    const url = new URL(formState.url)
-    const name = `${url.hostname}${url.port ? `:${url.port}` : ''} MCP Server`
     addServerMutation.mutate({ name, type: formState.transportType, url: formState.url, authType, bearerToken })
   }
 
@@ -359,40 +393,12 @@ export const useMcpServersPageState = () => {
     return ('errorMessage' in mcpServer ? (mcpServer.errorMessage as string) : null) ?? mcpServer.error?.message ?? null
   }
 
-  const formatServerTitle = (url: string, serverId: string) => {
+  const formatServerTitle = (url: string) => {
     try {
       const urlObj = new URL(url)
-      const cleanUrl = `${urlObj.host}${urlObj.pathname.replace(/\/$/, '')}`
-
-      const titleElement = titleRefs.current[serverId]
-      if (titleElement) {
-        const containerWidth = titleElement.parentElement?.offsetWidth || 0
-        const switchWidth = 60
-        const availableWidth = containerWidth - switchWidth - 100
-
-        const tempElement = document.createElement('span')
-        tempElement.style.visibility = 'hidden'
-        tempElement.style.position = 'absolute'
-        tempElement.style.fontSize = '18px'
-        tempElement.style.fontWeight = '500'
-        tempElement.textContent = cleanUrl
-        document.body.appendChild(tempElement)
-
-        const textWidth = tempElement.offsetWidth
-        document.body.removeChild(tempElement)
-
-        if (textWidth > availableWidth && cleanUrl.length > 30) {
-          return cleanUrl.substring(0, 30) + '...'
-        }
-      }
-
-      return cleanUrl
+      return `${urlObj.host}${urlObj.pathname.replace(/\/$/, '')}`
     } catch {
-      const cleanUrl = url.replace(/^https?:\/\//, '')
-      if (cleanUrl.length > 40) {
-        return cleanUrl.substring(0, 37) + '...'
-      }
-      return cleanUrl
+      return url.replace(/^https?:\/\//, '')
     }
   }
 
@@ -405,7 +411,10 @@ export const useMcpServersPageState = () => {
   }
 
   const canTestConnection = isValid() && formState.connectionStatus !== 'testing'
-  const canAddServer = isValid() && (formState.transportType === 'stdio' || formState.connectionStatus === 'success')
+  // OAuth servers can be added without testing — the auth flow happens on connect
+  const canAddServer =
+    isValid() &&
+    (formState.transportType === 'stdio' || formState.authType === 'oauth' || formState.connectionStatus === 'success')
 
   return {
     supportedServers,
@@ -415,7 +424,6 @@ export const useMcpServersPageState = () => {
     deleteConfirmOpen,
     setDeleteConfirmOpen: (id: string | null) => dispatch({ type: 'SET_DELETE_CONFIRM_OPEN', payload: id }),
     copiedUrl,
-    titleRefs,
     formState,
     formDispatch,
     isAddDialogOpen,
@@ -437,5 +445,6 @@ export const useMcpServersPageState = () => {
     canAddServer,
     isValid,
     reconnectServer,
+    authorizeServer,
   }
 }

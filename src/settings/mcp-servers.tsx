@@ -1,12 +1,15 @@
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { PageHeader } from '@/components/ui/page-header'
-import { Plus } from 'lucide-react'
+import { useMcpOAuthCallback } from '@/hooks/use-mcp-oauth-callback'
+import Loading from '@/loading'
+import { Plus, Server } from 'lucide-react'
 import { useMcpServersPageState } from './use-mcp-servers-page'
 import { McpServerCard } from './mcp-server-card'
 import { AddMcpServerDialog } from './add-mcp-server-dialog'
 
-export default function McpServersPage() {
+const McpServersPage = () => {
+  const { isProcessingOAuth, oauthError } = useMcpOAuthCallback()
   const {
     supportedServers,
     hasUnsupportedServers,
@@ -15,7 +18,6 @@ export default function McpServersPage() {
     deleteConfirmOpen,
     setDeleteConfirmOpen,
     copiedUrl,
-    titleRefs,
     formState,
     formDispatch,
     isAddDialogOpen,
@@ -36,10 +38,25 @@ export default function McpServersPage() {
     canAddServer,
     isValid,
     reconnectServer,
+    authorizeServer,
   } = useMcpServersPageState()
 
+  if (isProcessingOAuth) {
+    return (
+      <div className="flex flex-col items-center justify-center py-24 gap-4">
+        <Loading />
+        <p className="text-sm text-muted-foreground">Completing MCP server authorization...</p>
+      </div>
+    )
+  }
+
   return (
-    <div className="flex flex-col gap-4 p-4 w-full max-w-[760px] mx-auto">
+    <div className="flex flex-col gap-6 p-4 w-full max-w-[760px] mx-auto">
+      {oauthError && (
+        <div className="p-4 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700">
+          OAuth authorization failed: {oauthError}
+        </div>
+      )}
       <PageHeader title="MCP Servers">
         <AddMcpServerDialog
           isOpen={isAddDialogOpen}
@@ -78,12 +95,12 @@ export default function McpServersPage() {
             errorMessage={getServerErrorMessage(server)}
             copiedUrl={copiedUrl}
             deleteConfirmOpen={deleteConfirmOpen}
-            titleRefs={titleRefs}
             onToggle={(id, enabled) => toggleServerMutation.mutate({ id, enabled })}
             onDelete={(id) => deleteServerMutation.mutate(id)}
             onCopyUrl={handleCopyUrl}
             onDeleteConfirmChange={setDeleteConfirmOpen}
             onRetry={reconnectServer}
+            onAuthorize={authorizeServer}
             getStatusTooltipText={getStatusTooltipText}
             formatServerTitle={formatServerTitle}
           />
@@ -92,9 +109,7 @@ export default function McpServersPage() {
         {supportedServers.length === 0 && (
           <Card className="border-dashed border-2 border-muted-foreground/25">
             <CardContent className="flex flex-col items-center justify-center py-12 text-center">
-              <div className="w-12 h-12 rounded-full bg-muted flex items-center justify-center mb-4">
-                <Plus className="h-6 w-6 text-muted-foreground" />
-              </div>
+              <Server className="size-10 text-muted-foreground mb-4" />
               <h3 className="font-medium text-foreground mb-1">No MCP servers configured</h3>
               <p className="text-sm text-muted-foreground mb-4">
                 {hasUnsupportedServers
@@ -112,3 +127,5 @@ export default function McpServersPage() {
     </div>
   )
 }
+
+export default McpServersPage

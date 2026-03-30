@@ -73,15 +73,54 @@ const deleteKey = async (id: string): Promise<void> => {
   })
 }
 
+const putKeys = async (entries: Array<{ id: string; key: CryptoKey }>): Promise<void> => {
+  const db = await openDB()
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(storeName, 'readwrite')
+    const store = tx.objectStore(storeName)
+    for (const { id, key } of entries) {
+      store.put(key, id)
+    }
+    tx.oncomplete = () => {
+      db.close()
+      resolve()
+    }
+    tx.onerror = () => {
+      db.close()
+      reject(new StorageError('Failed to store keys', { cause: tx.error }))
+    }
+  })
+}
+
+const deleteKeys = async (ids: string[]): Promise<void> => {
+  const db = await openDB()
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(storeName, 'readwrite')
+    const store = tx.objectStore(storeName)
+    for (const id of ids) {
+      store.delete(id)
+    }
+    tx.oncomplete = () => {
+      db.close()
+      resolve()
+    }
+    tx.onerror = () => {
+      db.close()
+      reject(new StorageError('Failed to delete keys', { cause: tx.error }))
+    }
+  })
+}
+
 // =============================================================================
 // Key pair (RSA-OAEP)
 // =============================================================================
 
-/** Store the device key pair in IndexedDB. */
-export const storeKeyPair = async (privateKey: CryptoKey, publicKey: CryptoKey): Promise<void> => {
-  await putKey(privateKeyId, privateKey)
-  await putKey(publicKeyId, publicKey)
-}
+/** Store the device key pair in IndexedDB (single atomic transaction). */
+export const storeKeyPair = async (privateKey: CryptoKey, publicKey: CryptoKey): Promise<void> =>
+  putKeys([
+    { id: privateKeyId, key: privateKey },
+    { id: publicKeyId, key: publicKey },
+  ])
 
 /** Get the device key pair from IndexedDB. Returns null if either key is missing. */
 export const getKeyPair = async (): Promise<{ privateKey: CryptoKey; publicKey: CryptoKey } | null> => {
@@ -110,9 +149,5 @@ export const clearCK = async (): Promise<void> => deleteKey(ckId)
 // Full wipe
 // =============================================================================
 
-/** Clear all keys from IndexedDB (for full data wipe / revocation). */
-export const clearAllKeys = async (): Promise<void> => {
-  await deleteKey(privateKeyId)
-  await deleteKey(publicKeyId)
-  await deleteKey(ckId)
-}
+/** Clear all keys from IndexedDB (single atomic transaction for full data wipe / revocation). */
+export const clearAllKeys = async (): Promise<void> => deleteKeys([privateKeyId, publicKeyId, ckId])

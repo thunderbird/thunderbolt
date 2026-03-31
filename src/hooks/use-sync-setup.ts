@@ -43,7 +43,7 @@ type SyncSetupAction =
   | { type: 'GO_BACK' }
   | { type: 'RESET' }
 
-const initialState: SyncSetupState = {
+export const initialState: SyncSetupState = {
   step: 'intro',
   recoveryKey: '',
   recoveryKeyInput: '',
@@ -53,7 +53,7 @@ const initialState: SyncSetupState = {
   error: null,
 }
 
-const reducer = (state: SyncSetupState, action: SyncSetupAction): SyncSetupState => {
+export const reducer = (state: SyncSetupState, action: SyncSetupAction): SyncSetupState => {
   switch (action.type) {
     case 'CONTINUE_INTRO':
       return { ...state, step: 'detecting', isLoading: true, error: null }

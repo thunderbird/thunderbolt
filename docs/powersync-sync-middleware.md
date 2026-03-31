@@ -8,7 +8,7 @@ This document explains the data transformation middleware built on top of PowerS
 
 PowerSync syncs data from the server (PostgreSQL) to the local SQLite database. By default, sync data arrives from the server and is written to SQLite as-is. The middleware layer intercepts sync data **before it is written**, allowing transformations such as decoding, normalization, or decryption.
 
-The current implementation uses base64 decode as a test. The long-term goal is full E2E decryption of fields before local storage.
+The implementation uses AES-256-GCM decryption to decrypt all encrypted columns before local storage. See [e2e-encryption.md](e2e-encryption.md) for the full encryption architecture.
 
 ---
 
@@ -20,7 +20,7 @@ The current implementation uses base64 decode as a test. The long-term goal is f
 |------|------|
 | [src/db/powersync/TransformableBucketStorage.ts](../src/db/powersync/TransformableBucketStorage.ts) | Extends `SqliteBucketStorage` to intercept sync data and run the transformer pipeline |
 | [src/db/powersync/ThunderboltPowerSyncDatabase.ts](../src/db/powersync/ThunderboltPowerSyncDatabase.ts) | Extends `PowerSyncDatabase` to inject `TransformableBucketStorage` as the storage adapter |
-| [src/db/powersync/middleware/EncryptionMiddleware.ts](../src/db/powersync/middleware/EncryptionMiddleware.ts) | Example middleware: base64-decodes `tasks.item` on incoming sync data |
+| [src/db/powersync/middleware/EncryptionMiddleware.ts](../src/db/powersync/middleware/EncryptionMiddleware.ts) | Decrypts all encrypted columns (defined in [`encryptedColumnsMap`](../src/db/encryption/config.ts)) using AES-256-GCM via the codec |
 | [src/db/powersync/worker/ThunderboltSharedSyncImplementation.ts](../src/db/powersync/worker/ThunderboltSharedSyncImplementation.ts) | Extends `SharedSyncImplementation` to inject `TransformableBucketStorage` inside the SharedWorker |
 | [src/db/powersync/worker/ThunderboltSharedSyncImplementation.worker.ts](../src/db/powersync/worker/ThunderboltSharedSyncImplementation.worker.ts) | SharedWorker entry point — mirrors PowerSync's original but uses the custom implementation |
 | [src/db/powersync/database.ts](../src/db/powersync/database.ts) | Database config — wires up the custom SharedWorker for Chrome/Edge/Firefox |
@@ -46,7 +46,7 @@ flowchart TD
     subgraph SharedWorker["SharedWorker — ThunderboltSharedSyncImplementation.worker.ts"]
         TSSI["ThunderboltSharedSyncImplementation<br/>extends SharedSyncImplementation<br/><br/>generateStreamingImplementation()<br/>→ creates TransformableBucketStorage<br/>  + registers encryptionMiddleware"]
         TBS["TransformableBucketStorage<br/>extends SqliteBucketStorage<br/><br/>control(PROCESS_TEXT_LINE)<br/>→ parse → transform → super.control()"]
-        MW["encryptionMiddleware<br/>(base64 decode tasks.item)"]
+        MW["encryptionMiddleware<br/>(AES-GCM decryption via codec)"]
         SBS["SqliteBucketStorage<br/>super.control()"]
     end
 
@@ -68,7 +68,7 @@ flowchart TD
     subgraph MainThread["Main Thread"]
         TPS["ThunderboltPowerSyncDatabase<br/>extends PowerSyncDatabase<br/><br/>generateBucketStorageAdapter()<br/>→ creates TransformableBucketStorage<br/>  + registers encryptionMiddleware"]
         TBS["TransformableBucketStorage<br/>extends SqliteBucketStorage<br/><br/>control(PROCESS_TEXT_LINE)<br/>→ parse → transform → super.control()"]
-        MW["encryptionMiddleware<br/>(base64 decode tasks.item)"]
+        MW["encryptionMiddleware<br/>(AES-GCM decryption via codec)"]
         SBS["SqliteBucketStorage<br/>super.control()"]
         Drizzle["Drizzle / DAL<br/>(reads decrypted data)"]
         SQLite[("SQLite<br/>(decrypted)")]
@@ -176,7 +176,7 @@ Vite detects the `new SharedWorker(new URL(...))` pattern and bundles the worker
 ### Why this works
 
 - Transformer **logic** lives in the worker bundle (compiled at build time) — no serialization needed
-- Transformer **keys** (for future real encryption) are serializable data — can be passed via `postMessage` before `setParams()` is called
+- The content key (CK) is accessed directly via IndexedDB inside the SharedWorker — no `postMessage` needed
 - Multi-tab sync efficiency is preserved: SharedWorker still manages a single connection
 
 ### Accessing `SharedSyncImplementation` internals
@@ -220,48 +220,27 @@ For Safari/Tauri, `ThunderboltPowerSyncDatabase.generateBucketStorageAdapter()` 
 
 ---
 
-## Adding a new transformer
+## Adding encrypted columns
 
-1. Create a file in `src/db/powersync/middleware/` implementing `DataTransformMiddleware`:
+To encrypt a new column, add the table and column name to `encryptedColumnsMap` in [src/db/encryption/config.ts](../src/db/encryption/config.ts). The existing `encryptionMiddleware` handles all columns in the map automatically — both download decryption and upload encryption.
 
-```typescript
-export const myMiddleware: DataTransformMiddleware = {
-  transform(batch) {
-    for (const bucket of batch.buckets) {
-      for (const entry of bucket.data) {
-        if (entry.object_type !== 'my_table' || !entry.data) continue
-        const row = JSON.parse(entry.data)
-        row.my_field = decode(row.my_field)
-        entry.data = JSON.stringify(row)
-      }
-    }
-    return batch
-  }
-}
-```
+See [e2e-encryption.md](e2e-encryption.md#adding-a-new-encrypted-column) for details.
 
+## Adding a non-encryption transformer
+
+If you need a non-encryption transformation (e.g. data normalization, decompression):
+
+1. Create a file in `src/db/powersync/middleware/` implementing `DataTransformMiddleware`.
 2. Register it in **two places** (both paths must be kept in sync):
-   - `getPowerSyncOptions()` in [src/db/powersync/database.ts](../src/db/powersync/database.ts) — `transformers: [myMiddleware]` (used by the Safari/Tauri main-thread path)
+   - `getPowerSyncOptions()` in [src/db/powersync/database.ts](../src/db/powersync/database.ts) — `transformers: [encryptionMiddleware, myMiddleware]` (used by the Safari/Tauri main-thread path)
    - `ThunderboltSharedSyncImplementation.generateStreamingImplementation()` in [src/db/powersync/worker/ThunderboltSharedSyncImplementation.ts](../src/db/powersync/worker/ThunderboltSharedSyncImplementation.ts) — `storage.addTransformer(myMiddleware)` (used by the Chrome/Edge/Firefox SharedWorker path)
 
 ---
 
-## Future: real E2E encryption with key passing
+## CK access in the SharedWorker
 
-When moving from base64 to real encryption (AES-GCM, ChaCha20, etc.), the encryption key needs to reach the SharedWorker. Since keys are serializable data (unlike functions), they can be passed before the worker connects:
+The SharedWorker has direct `indexedDB` access, so the codec loads the content key (CK) lazily from IndexedDB without needing `postMessage`. The CK is cached in a module-scoped variable inside the worker for the process lifetime.
 
-```typescript
-// In database.ts — default config
-sync: {
-  worker: () => {
-    const worker = new SharedWorker(
-      new URL('./worker/ThunderboltSharedSyncImplementation.worker.ts', import.meta.url),
-      { type: 'module', name: `shared-sync-${dbFilename}` },
-    )
-    worker.port.postMessage({ type: 'SET_KEY', key: derivedEncryptionKey })
-    return worker
-  }
-}
-```
+**Known limitation:** `invalidateCKCache()` called on the main thread (during sign-out/wipe) does not reach the worker's cache. The worker will reload from IndexedDB (which is cleared) on the next `getCK()` call, but there is a brief window where a stale CK could be used.
 
-In `ThunderboltSharedSyncImplementation`, listen for the key before `setParams()` is called, store it, and pass it to the middleware when `generateStreamingImplementation()` runs.
+See [e2e-encryption.md](e2e-encryption.md) for the full encryption architecture.

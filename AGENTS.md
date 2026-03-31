@@ -75,7 +75,9 @@
 
 See [docs/powersync-account-devices.md](docs/powersync-account-devices.md) for: synced table requirements, adding a new table (frontend + backend + schema + config.yaml + production), account deletion, device management, and backend token/revoke API.
 
-See [docs/powersync-sync-middleware.md](docs/powersync-sync-middleware.md) for: sync data transformation middleware, custom SharedWorker (multi-tab + encryption), adding new transformers, and the future E2E encryption key-passing pattern.
+See [docs/powersync-sync-middleware.md](docs/powersync-sync-middleware.md) for: sync data transformation middleware, custom SharedWorker (multi-tab + encryption), and adding new transformers.
+
+See [docs/e2e-encryption.md](docs/e2e-encryption.md) for: E2E encryption architecture, key hierarchy, device approval flows, encrypted columns configuration, API endpoints, and user flows.
 
 **Deploying new synced tables (two-PR process):**
 

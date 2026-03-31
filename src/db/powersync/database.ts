@@ -49,6 +49,8 @@ export const syncEnabledChangeEvent = 'powersync_sync_enabled_change'
 export const getPowerSyncInstance = (): PowerSyncDatabase | null => {
   try {
     const database = getDatabaseInstance()
+    // PowerSyncDatabaseImpl exposes powerSyncInstance as a typed getter, but getDatabaseInstance()
+    // returns the DatabaseInterface union which doesn't include PowerSync-specific properties.
     if ('powerSyncInstance' in database) {
       return (database as { powerSyncInstance: PowerSyncDatabase | null }).powerSyncInstance
     }

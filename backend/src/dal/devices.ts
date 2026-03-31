@@ -68,6 +68,8 @@ export const registerDevice = async (
       createdAt: new Date(),
       lastSeen: new Date(),
     })
+    // Defensive: handles concurrent re-registration race. The API handler returns early
+    // for existing devices, so this branch rarely executes — it prevents a hard insert failure.
     .onConflictDoUpdate({
       target: devicesTable.id,
       set: { publicKey: device.publicKey, lastSeen: new Date() },

@@ -11,6 +11,11 @@ export type EncryptionCodec = {
 // =============================================================================
 // CK cache — lazy-loaded from IndexedDB, invalidated on sign-out/wipe.
 // Works in both main thread and SharedWorker (both have indexedDB access).
+//
+// TODO: In SharedWorker mode, this is a separate module instance from the main thread.
+// invalidateCKCache() on sign-out doesn't reach the worker's cache. The worker will
+// reload from IndexedDB (which is cleared) on next getCK(), but there's a brief window
+// where stale CK could be used. Consider postMessage-based invalidation.
 // =============================================================================
 
 let cachedCK: CryptoKey | null = null

@@ -124,7 +124,8 @@ export const createEncryptionRoutes = (auth: Auth, database: typeof DbType) =>
         const { deviceId } = params
         const { wrappedCK, canaryIv, canaryCtext } = body
 
-        // Verify the target device exists and belongs to this user
+        // Pre-transaction check: fast-path rejection for missing/wrong-user/revoked devices
+        // without starting a transaction. Re-checked inside tx (line ~170) to close race window.
         const device = await getDeviceById(database, deviceId)
         if (!device || device.userId !== userId) {
           set.status = 404

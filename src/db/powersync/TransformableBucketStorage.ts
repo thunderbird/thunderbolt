@@ -87,8 +87,8 @@ export class TransformableBucketStorage extends SqliteBucketStorage {
           })
           return super.control(op, transformedPayload)
         }
-      } catch {
-        // Fall through to super on parse/transform error
+      } catch (err) {
+        console.warn('[TransformableBucketStorage] Transform failed, falling through:', err)
       }
     }
     return super.control(op, payload)

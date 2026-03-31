@@ -30,8 +30,8 @@ const decryptEntry = async (entry: SyncEntry) => {
     if (changed) {
       entry.data = JSON.stringify(obj)
     }
-  } catch {
-    // Leave entry.data unchanged on parse error
+  } catch (err) {
+    console.warn('[EncryptionMiddleware] Failed to decrypt entry, leaving unchanged:', err)
   }
 }
 

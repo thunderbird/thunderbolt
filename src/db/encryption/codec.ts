@@ -61,7 +61,8 @@ export const codec: EncryptionCodec = {
 
       try {
         return await decrypt({ iv, ciphertext }, ck)
-      } catch {
+      } catch (err) {
+        console.warn('[codec] Decryption failed, returning raw value:', err)
         return encoded
       }
     }

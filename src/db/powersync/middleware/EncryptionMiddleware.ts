@@ -19,13 +19,15 @@ const decryptEntry = async (entry: SyncEntry) => {
     const obj = JSON.parse(entry.data) as Record<string, unknown>
     let changed = false
 
-    for (const col of columns) {
-      const val = obj[col]
-      if (typeof val === 'string') {
-        obj[col] = await codec.decode(val)
-        changed = true
-      }
-    }
+    await Promise.all(
+      columns.map(async (col) => {
+        const val = obj[col]
+        if (typeof val === 'string') {
+          obj[col] = await codec.decode(val)
+          changed = true
+        }
+      }),
+    )
 
     if (changed) {
       entry.data = JSON.stringify(obj)

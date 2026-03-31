@@ -23,12 +23,14 @@ export const encodeForUpload = async (operation: CrudOperation): Promise<CrudOpe
   }
 
   const encodedData = { ...operation.data }
-  for (const col of columns) {
-    const value = encodedData[col]
-    if (typeof value === 'string') {
-      encodedData[col] = await codec.encode(value)
-    }
-  }
+  await Promise.all(
+    columns.map(async (col) => {
+      const value = encodedData[col]
+      if (typeof value === 'string') {
+        encodedData[col] = await codec.encode(value)
+      }
+    }),
+  )
 
   return { ...operation, data: encodedData }
 }

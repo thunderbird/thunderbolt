@@ -294,8 +294,8 @@ describe('Encryption API', () => {
         .where(eq(devicesTable.id, p('d-empty-name')))
       expect(deviceEmpty.name).toBe('Unknown device')
 
-      // Name > 100 chars
-      await app.handle(
+      // Name > 100 chars — rejected by Elysia schema validation (maxLength: 100)
+      const longNameResponse = await app.handle(
         new Request(`${BASE}/devices`, {
           method: 'POST',
           headers: {
@@ -305,12 +305,7 @@ describe('Encryption API', () => {
           body: JSON.stringify({ deviceId: p('d-long-name'), publicKey: 'pk7b', name: 'x'.repeat(101) }),
         }),
       )
-
-      const [deviceLong] = await db
-        .select()
-        .from(devicesTable)
-        .where(eq(devicesTable.id, p('d-long-name')))
-      expect(deviceLong.name).toBe('Unknown device')
+      expect(longNameResponse.status).toBe(422)
     })
   })
 

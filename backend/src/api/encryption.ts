@@ -74,7 +74,7 @@ export const createEncryptionRoutes = (auth: Auth, database: typeof DbType) =>
         }
 
         // New device — register with APPROVAL_PENDING
-        const deviceName = name && name.length > 0 && name.length <= 100 ? name : 'Unknown device'
+        const deviceName = name || 'Unknown device'
         await registerDevice(database, {
           id: deviceId,
           userId,
@@ -92,7 +92,7 @@ export const createEncryptionRoutes = (auth: Auth, database: typeof DbType) =>
         body: t.Object({
           deviceId: t.String(),
           publicKey: t.String(),
-          name: t.Optional(t.String()),
+          name: t.Optional(t.String({ maxLength: 100 })),
         }),
       },
     )

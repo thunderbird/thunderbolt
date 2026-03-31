@@ -52,7 +52,7 @@ describe('MCP Proxy Routes', () => {
 
   beforeAll(() => {
     consoleSpies = setupConsoleSpy()
-    getSettingsSpy = spyOn(settingsModule, 'getSettings').mockReturnValue(mockSettings)
+    getSettingsSpy = spyOn(settingsModule, 'getSettings').mockReturnValue(mockSettings as ReturnType<typeof settingsModule.getSettings>)
     mockFetch = mock(() => Promise.resolve(createMockResponse('{"ok":true}')))
     // No auth passed — tests run without authentication guard
     app = new Elysia().use(createMcpProxyRoutes(mockFetch as unknown as typeof fetch))

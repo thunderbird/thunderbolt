@@ -11,10 +11,7 @@ import {
   ResponsiveModalTitle,
 } from '@/components/ui/responsive-modal'
 import { SelectableCard, type DataOption } from '@/components/ui/selectable-card'
-import { setSyncEnabled } from '@/db/powersync'
-import { clearAuthToken, clearDeviceId } from '@/lib/auth-token'
-import { resetAppDir } from '@/lib/fs'
-import { handleFullWipe } from '@/services/encryption'
+import { clearLocalData } from '@/lib/cleanup'
 
 type RevokedDeviceModalProps = {
   open: boolean
@@ -28,33 +25,12 @@ export const RevokedDeviceModal = ({ open }: RevokedDeviceModalProps) => {
     setIsProcessing(true)
 
     try {
-      await setSyncEnabled(false)
+      await clearLocalData({ clearDatabase: selectedOption === 'delete' })
     } catch (error) {
-      console.error('Failed to disable sync:', error)
+      console.error('Failed to clear local data:', error)
     }
 
-    // Clear all encryption keys on revocation
-    try {
-      await handleFullWipe()
-    } catch (error) {
-      console.error('Failed to clear encryption keys:', error)
-    }
-
-    try {
-      if (selectedOption === 'delete') {
-        await resetAppDir()
-      }
-    } catch (error) {
-      console.error('Failed to process device revocation:', error)
-    } finally {
-      if (selectedOption === 'delete') {
-        localStorage.clear()
-      } else {
-        clearAuthToken()
-        clearDeviceId()
-      }
-      window.location.replace('/')
-    }
+    window.location.replace('/')
   }
 
   return (

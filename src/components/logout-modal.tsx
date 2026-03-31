@@ -12,10 +12,7 @@ import {
 } from '@/components/ui/responsive-modal'
 import { SelectableCard, type DataOption } from '@/components/ui/selectable-card'
 import { useAuth } from '@/contexts'
-import { setSyncEnabled } from '@/db/powersync'
-import { clearAuthToken, clearDeviceId } from '@/lib/auth-token'
-import { resetAppDir } from '@/lib/fs'
-import { handleFullWipe } from '@/services/encryption'
+import { clearLocalData } from '@/lib/cleanup'
 
 type LogoutModalProps = {
   open: boolean
@@ -30,37 +27,16 @@ export const LogoutModal = ({ open, onOpenChange }: LogoutModalProps) => {
   const handleLogout = async () => {
     setIsLoggingOut(true)
 
-    // Disable sync before signing out
-    try {
-      await setSyncEnabled(false)
-    } catch (error) {
-      console.error('Failed to disable sync:', error)
-    }
-
-    // Clear all encryption keys — device ID is also cleared below,
-    // so the old key pair is orphaned regardless of keep/delete choice
-    try {
-      await handleFullWipe()
-    } catch (error) {
-      console.error('Failed to clear encryption keys:', error)
-    }
-
     try {
       await authClient.signOut()
     } catch (error) {
       console.error('Failed to sign out:', error)
     }
 
-    // Clear local bearer token and device ID (forces new UUID on next login)
-    await clearAuthToken()
-    clearDeviceId()
-
     try {
-      if (selectedOption === 'delete') {
-        await resetAppDir()
-      }
+      await clearLocalData({ clearDatabase: selectedOption === 'delete' })
     } catch (error) {
-      console.error('Failed to delete local data:', error)
+      console.error('Failed to clear local data:', error)
     }
 
     window.location.reload()

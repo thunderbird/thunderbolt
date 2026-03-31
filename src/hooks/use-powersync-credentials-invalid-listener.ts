@@ -1,11 +1,10 @@
 import { useDatabase } from '@/contexts'
 import { getDevice } from '@/dal'
-import { setSyncEnabled } from '@/db/powersync'
 import { powersyncCredentialsInvalid } from '@/db/powersync/connector'
 import type { CredentialsInvalidReason } from '@/db/powersync/connector'
 import { showRevokedDeviceModalEvent } from '@/hooks/use-credential-events'
 import { getAuthToken, getDeviceId } from '@/lib/auth-token'
-import { resetAppDir } from '@/lib/fs'
+import { clearLocalData } from '@/lib/cleanup'
 import { toCompilableQuery } from '@powersync/drizzle-driver'
 import { useQuery } from '@powersync/tanstack-react-query'
 import { useEffect, useRef } from 'react'
@@ -16,15 +15,8 @@ import { useEffect, useRef } from 'react'
  * Leaves the user in a clean signed-out state so they can sign in again or use the app offline.
  */
 const performCredentialsInvalidReset = async (redirectTo: string): Promise<void> => {
-  try {
-    await setSyncEnabled(false)
-    await resetAppDir()
-  } catch (error) {
-    console.error('Failed to perform credentials invalid reset:', error)
-  } finally {
-    localStorage.clear()
-    window.location.replace(redirectTo)
-  }
+  await clearLocalData()
+  window.location.replace(redirectTo)
 }
 
 /**

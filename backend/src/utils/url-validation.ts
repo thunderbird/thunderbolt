@@ -45,3 +45,59 @@ export const isLoopback = (hostname: string): boolean => {
   const h = hostname.toLowerCase()
   return h === 'localhost' || h === '127.0.0.1' || h === '::1'
 }
+
+/**
+ * Creates a fetch wrapper that resolves DNS before connecting and validates
+ * all resolved IPs against the private address blocklist. Prevents DNS rebinding
+ * SSRF attacks where a hostname resolves to a private IP at connection time.
+ *
+ * Uses IP pinning: resolves the hostname, validates IPs, then connects directly
+ * to the resolved IP with the original Host header for TLS SNI / virtual hosting.
+ */
+export const createSafeFetch = (
+  fetchFn: typeof fetch,
+  options?: { allowLoopback?: boolean },
+) => {
+  const { allowLoopback = false } = options ?? {}
+
+  return async (input: string | URL | Request, init?: RequestInit): Promise<Response> => {
+    const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url
+    const parsed = new URL(url)
+    const hostname = parsed.hostname
+
+    // Direct IP in URL — validate immediately, no DNS needed
+    const { isIP } = await import('node:net')
+    if (isIP(hostname)) {
+      if (allowLoopback && isLoopback(hostname)) {
+        return fetchFn(input, init)
+      }
+      if (isPrivateAddress(hostname)) {
+        throw new Error(`Blocked: ${hostname} is a private/internal address`)
+      }
+      return fetchFn(input, init)
+    }
+
+    // Allow loopback hostnames directly (no IP pinning needed for localhost)
+    if (allowLoopback && isLoopback(hostname)) {
+      return fetchFn(input, init)
+    }
+
+    // Resolve DNS and validate ALL resolved IPs
+    const dns = await import('node:dns')
+    const addresses = await dns.promises.lookup(hostname, { all: true })
+
+    for (const { address } of addresses) {
+      if (isPrivateAddress(address)) {
+        throw new Error(`Blocked: ${hostname} resolves to private/internal address ${address}`)
+      }
+    }
+
+    // Pin to resolved IP, preserve Host header for TLS SNI + virtual hosting
+    const pinnedUrl = new URL(url)
+    pinnedUrl.hostname = addresses[0].address
+    const headers = new Headers(init?.headers)
+    headers.set('Host', hostname)
+
+    return fetchFn(pinnedUrl.toString(), { ...init, headers })
+  }
+}

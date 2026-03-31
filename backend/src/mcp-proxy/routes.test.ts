@@ -230,11 +230,15 @@ describe('MCP Proxy Routes', () => {
     )
 
     const [, callOpts] = mockFetch.mock.calls[0]
-    const hdrs = callOpts.headers instanceof Headers ? Object.fromEntries(callOpts.headers.entries()) : callOpts.headers
+    // Headers may be a Headers instance or plain object depending on the safeFetch path
+    const hdrs = typeof callOpts.headers?.get === 'function'
+      ? Object.fromEntries((callOpts.headers as Headers).entries())
+      : callOpts.headers
 
     expect(hdrs.authorization).toBe('Bearer test-token')
     expect(hdrs['mcp-session-id']).toBe('session-123')
-    expect(hdrs['host']).toBeUndefined()
+    // host is set by safeFetch for IP pinning (original hostname for TLS SNI)
+    // cookie and x-mcp-target-url are stripped by filterHeaders
     expect(hdrs['cookie']).toBeUndefined()
     expect(hdrs['x-mcp-target-url']).toBeUndefined()
   })

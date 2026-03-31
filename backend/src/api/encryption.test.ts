@@ -381,7 +381,7 @@ describe('Encryption API', () => {
       expect(envelope.wrappedCk).toBe('wrapped-ck-boot')
     })
 
-    it('rejects pending device from approving itself when envelopes already exist', async () => {
+    it('rejects pending device from approving itself when envelopes already exist (no canary match)', async () => {
       await createUserAndSession(p('u-self'), p('tok-self'))
       await insertDevice(p('d-trusted-existing'), p('u-self'), 'TRUSTED')
       await insertEnvelope(p('d-trusted-existing'), p('u-self'))
@@ -396,6 +396,70 @@ describe('Encryption API', () => {
             'X-Device-ID': p('d-self'),
           },
           body: JSON.stringify({ wrappedCK: 'wck' }),
+        }),
+      )
+
+      expect(response.status).toBe(403)
+      const body = await response.json()
+      expect(body.error).toBe('Only trusted devices can store envelopes')
+    })
+
+    it('allows self-recovery: pending device stores own envelope when canary matches stored metadata', async () => {
+      await createUserAndSession(p('u-recov'), p('tok-recov'))
+      // Existing trusted device with envelope (simulates pre-recovery state)
+      await insertDevice(p('d-recov-old'), p('u-recov'), 'TRUSTED')
+      await insertEnvelope(p('d-recov-old'), p('u-recov'))
+      await insertCanary(p('u-recov'), 'recovery-iv', 'recovery-ctext')
+      // New device registered during recovery flow
+      await insertDevice(p('d-recov-new'), p('u-recov'), 'APPROVAL_PENDING')
+
+      const response = await app.handle(
+        new Request(`${BASE}/devices/${p('d-recov-new')}/envelope`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${p('tok-recov')}`,
+            'X-Device-ID': p('d-recov-new'),
+          },
+          body: JSON.stringify({
+            wrappedCK: 'recovered-wck',
+            canaryIv: 'recovery-iv',
+            canaryCtext: 'recovery-ctext',
+          }),
+        }),
+      )
+
+      expect(response.status).toBe(200)
+      const body = await response.json()
+      expect(body.status).toBe('TRUSTED')
+
+      const [device] = await db
+        .select()
+        .from(devicesTable)
+        .where(eq(devicesTable.id, p('d-recov-new')))
+      expect(device.status).toBe('TRUSTED')
+    })
+
+    it('rejects self-recovery when canary does not match stored metadata', async () => {
+      await createUserAndSession(p('u-badrecov'), p('tok-badrecov'))
+      await insertDevice(p('d-badrecov-old'), p('u-badrecov'), 'TRUSTED')
+      await insertEnvelope(p('d-badrecov-old'), p('u-badrecov'))
+      await insertCanary(p('u-badrecov'), 'real-iv', 'real-ctext')
+      await insertDevice(p('d-badrecov-new'), p('u-badrecov'), 'APPROVAL_PENDING')
+
+      const response = await app.handle(
+        new Request(`${BASE}/devices/${p('d-badrecov-new')}/envelope`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${p('tok-badrecov')}`,
+            'X-Device-ID': p('d-badrecov-new'),
+          },
+          body: JSON.stringify({
+            wrappedCK: 'wck',
+            canaryIv: 'wrong-iv',
+            canaryCtext: 'wrong-ctext',
+          }),
         }),
       )
 

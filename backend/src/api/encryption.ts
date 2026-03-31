@@ -136,13 +136,22 @@ export const createEncryptionRoutes = (auth: Auth, database: typeof DbType) =>
             const envelopesExist = await hasEnvelopesForUser(txDb, userId)
             const isFirstDeviceBootstrap = !envelopesExist && callerDeviceId === deviceId
 
+            // Recovery: device is self-storing and provided canary that matches stored metadata.
+            // This means the client fetched the canary, verified the recovery key against it,
+            // and is now re-bootstrapping with the recovered CK.
+            let isSelfRecovery = false
+            if (!isFirstDeviceBootstrap && callerDeviceId === deviceId && canaryIv && canaryCtext) {
+              const metadata = await getEncryptionMetadata(txDb, userId)
+              isSelfRecovery = !!metadata && metadata.canaryIv === canaryIv && metadata.canaryCtext === canaryCtext
+            }
+
             // Re-check target device inside transaction to close race window
             const targetDevice = await getDeviceById(txDb, deviceId)
             if (!targetDevice || targetDevice.status === 'REVOKED' || targetDevice.revokedAt != null) {
               throw new Error('FORBIDDEN:Device has been revoked')
             }
 
-            if (!isFirstDeviceBootstrap) {
+            if (!isFirstDeviceBootstrap && !isSelfRecovery) {
               const callerDevice = await getDeviceById(txDb, callerDeviceId)
               if (!callerDevice || callerDevice.userId !== userId) {
                 throw new Error('FORBIDDEN:Caller device not found')

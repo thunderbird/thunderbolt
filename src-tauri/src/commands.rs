@@ -116,7 +116,7 @@ pub async fn get_bridge_connection_status() -> Result<serde_json::Value, String>
 /// Desktop: no-op.
 /// style: "system" | "light" | "dark"
 #[command]
-pub fn set_interface_style(style: String) {
+pub fn set_interface_style(style: String) -> Result<(), String> {
     #[cfg(target_os = "ios")]
     {
         use objc2_foundation::MainThreadMarker;
@@ -128,13 +128,14 @@ pub fn set_interface_style(style: String) {
             _ => UIUserInterfaceStyle::Unspecified,
         };
 
-        if let Some(mtm) = MainThreadMarker::new() {
-            let app = UIApplication::sharedApplication(mtm);
-            for scene in app.connectedScenes() {
-                if let Some(window_scene) = scene.downcast_ref::<UIWindowScene>() {
-                    for window in window_scene.windows() {
-                        window.setOverrideUserInterfaceStyle(ui_style);
-                    }
+        let mtm = MainThreadMarker::new()
+            .ok_or_else(|| "set_interface_style must run on the main thread".to_string())?;
+
+        let app = UIApplication::sharedApplication(mtm);
+        for scene in app.connectedScenes() {
+            if let Some(window_scene) = scene.downcast_ref::<UIWindowScene>() {
+                for window in window_scene.windows() {
+                    window.setOverrideUserInterfaceStyle(ui_style);
                 }
             }
         }
@@ -144,6 +145,8 @@ pub fn set_interface_style(style: String) {
     {
         let _ = style;
     }
+
+    Ok(())
 }
 
 // === Capabilities ============================================================================

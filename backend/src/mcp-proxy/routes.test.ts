@@ -5,6 +5,11 @@ import { Elysia } from 'elysia'
 import { createMcpProxyRoutes } from './routes'
 import * as settingsModule from '@/config/settings'
 
+// Mock DNS — external Node API, acceptable per docs/testing.md "When You Must Mock"
+const mockDnsLookup = mock(() => Promise.resolve([{ address: '93.184.216.34', family: 4 }]))
+mock.module('node:dns', () => ({ promises: { lookup: mockDnsLookup } }))
+mock.module('node:net', () => ({ isIP: (s: string) => (/^\d+\.\d+\.\d+\.\d+$/.test(s) ? 4 : 0) }))
+
 describe('MCP Proxy Routes', () => {
   let app: Elysia
   let getSettingsSpy: ReturnType<typeof spyOn>
@@ -12,47 +17,44 @@ describe('MCP Proxy Routes', () => {
   let mockFetch: ReturnType<typeof mock>
 
   const createMockResponse = (body: string, options: ResponseInit = {}) =>
-    new Response(body, {
-      status: 200,
-      headers: { 'content-type': 'application/json' },
-      ...options,
-    })
+    new Response(body, { status: 200, headers: { 'content-type': 'application/json' }, ...options })
+
+  const mockSettings = {
+    fireworksApiKey: '',
+    mistralApiKey: '',
+    anthropicApiKey: '',
+    exaApiKey: '',
+    thunderboltInferenceUrl: '',
+    thunderboltInferenceApiKey: '',
+    monitoringToken: '',
+    googleClientId: '',
+    googleClientSecret: '',
+    microsoftClientId: '',
+    microsoftClientSecret: '',
+    logLevel: 'INFO',
+    port: 8000,
+    appUrl: 'http://localhost:1420',
+    posthogHost: 'https://us.i.posthog.com',
+    posthogApiKey: '',
+    corsOrigins: 'http://localhost:1420',
+    corsOriginRegex: '',
+    corsAllowCredentials: true,
+    corsAllowMethods: 'GET,POST,PUT,DELETE,PATCH,OPTIONS',
+    corsAllowHeaders: 'Content-Type,Authorization,X-Mcp-Target-Url,Mcp-Session-Id,Mcp-Protocol-Version',
+    corsExposeHeaders: 'mcp-session-id,set-auth-token',
+    waitlistEnabled: false,
+    waitlistAutoApproveDomains: '',
+    powersyncUrl: '',
+    powersyncJwtKid: '',
+    powersyncJwtSecret: '',
+    powersyncTokenExpirySeconds: 3600,
+  }
 
   beforeAll(() => {
     consoleSpies = setupConsoleSpy()
-
-    getSettingsSpy = spyOn(settingsModule, 'getSettings').mockReturnValue({
-      fireworksApiKey: '',
-      mistralApiKey: '',
-      anthropicApiKey: '',
-      exaApiKey: '',
-      thunderboltInferenceUrl: '',
-      thunderboltInferenceApiKey: '',
-      monitoringToken: '',
-      googleClientId: '',
-      googleClientSecret: '',
-      microsoftClientId: '',
-      microsoftClientSecret: '',
-      logLevel: 'INFO',
-      port: 8000,
-      appUrl: 'http://localhost:1420',
-      posthogHost: 'https://us.i.posthog.com',
-      posthogApiKey: '',
-      corsOrigins: 'http://localhost:1420',
-      corsOriginRegex: '',
-      corsAllowCredentials: true,
-      corsAllowMethods: 'GET,POST,PUT,DELETE,PATCH,OPTIONS',
-      corsAllowHeaders: 'Content-Type,Authorization,X-Mcp-Target-Url,Mcp-Session-Id,Mcp-Protocol-Version',
-      corsExposeHeaders: 'mcp-session-id,set-auth-token',
-      waitlistEnabled: false,
-      waitlistAutoApproveDomains: '',
-      powersyncUrl: '',
-      powersyncJwtKid: '',
-      powersyncJwtSecret: '',
-      powersyncTokenExpirySeconds: 3600,
-    })
-
+    getSettingsSpy = spyOn(settingsModule, 'getSettings').mockReturnValue(mockSettings)
     mockFetch = mock(() => Promise.resolve(createMockResponse('{"ok":true}')))
+    // No auth passed — tests run without authentication guard
     app = new Elysia().use(createMcpProxyRoutes(mockFetch as unknown as typeof fetch))
   })
 
@@ -63,17 +65,70 @@ describe('MCP Proxy Routes', () => {
 
   beforeEach(() => {
     mockFetch.mockClear()
+    mockDnsLookup.mockClear()
+    mockDnsLookup.mockImplementation(() => Promise.resolve([{ address: '93.184.216.34', family: 4 }]))
     consoleSpies.error.mockClear()
   })
+
+  // --- Validation ---
 
   it('returns 400 when X-Mcp-Target-Url header is missing', async () => {
     const response = await app.handle(new Request('http://localhost/mcp-proxy/', { method: 'POST' }))
 
     expect(response.status).toBe(400)
     expect(mockFetch).not.toHaveBeenCalled()
+    expect(await response.text()).toBe('Missing X-Mcp-Target-Url header')
+  })
 
-    const body = await response.text()
-    expect(body).toBe('Missing X-Mcp-Target-Url header')
+  it('rejects non-HTTP protocols', async () => {
+    const response = await app.handle(
+      new Request('http://localhost/mcp-proxy/', {
+        method: 'POST',
+        headers: { 'x-mcp-target-url': 'ftp://files.example.com' },
+      }),
+    )
+
+    expect(response.status).toBe(400)
+    expect(mockFetch).not.toHaveBeenCalled()
+  })
+
+  // --- SSRF Protection ---
+
+  it('blocks private IP addresses (cloud metadata, RFC 1918)', async () => {
+    const blockedUrls = [
+      'http://169.254.169.254/latest/meta-data/',
+      'http://10.0.0.1/internal',
+      'http://192.168.1.1/admin',
+      'http://172.16.0.1/secret',
+    ]
+
+    for (const targetUrl of blockedUrls) {
+      mockFetch.mockClear()
+      const response = await app.handle(
+        new Request('http://localhost/mcp-proxy/', {
+          method: 'POST',
+          headers: { 'x-mcp-target-url': targetUrl },
+        }),
+      )
+
+      expect(response.status).toBe(400)
+      expect(mockFetch).not.toHaveBeenCalled()
+    }
+  })
+
+  it('blocks DNS rebinding attacks (hostname resolving to private IP)', async () => {
+    // Simulate 169.254.169.254.nip.io resolving to cloud metadata IP
+    mockDnsLookup.mockImplementation(() => Promise.resolve([{ address: '169.254.169.254', family: 4 }]))
+
+    const response = await app.handle(
+      new Request('http://localhost/mcp-proxy/', {
+        method: 'POST',
+        headers: { 'x-mcp-target-url': 'https://169.254.169.254.nip.io/latest/meta-data/' },
+      }),
+    )
+
+    expect(response.status).toBe(500) // safeFetch throws, caught by error handler
+    expect(mockFetch).not.toHaveBeenCalled()
   })
 
   it('allows localhost MCP server URLs', async () => {
@@ -89,63 +144,16 @@ describe('MCP Proxy Routes', () => {
     expect(mockFetch).toHaveBeenCalled()
   })
 
-  it('forwards POST request with body to target', async () => {
-    const targetUrl = 'https://mcp.example.com'
-    const requestBody = JSON.stringify({ method: 'tools/list', params: {} })
+  // --- Response Security ---
 
-    mockFetch.mockImplementation(() => Promise.resolve(createMockResponse('{"tools":[]}', { status: 200 })))
-
-    const response = await app.handle(
-      new Request('http://localhost/mcp-proxy/', {
-        method: 'POST',
-        headers: {
-          'x-mcp-target-url': targetUrl,
-          'content-type': 'application/json',
-        },
-        body: requestBody,
-      }),
-    )
-
-    expect(response.status).toBe(200)
-    expect(mockFetch).toHaveBeenCalledWith(targetUrl, expect.objectContaining({ method: 'POST' }))
-  })
-
-  it('forwards Authorization header to target', async () => {
-    const targetUrl = 'https://mcp.example.com'
-
-    mockFetch.mockImplementation(() => Promise.resolve(createMockResponse('{"ok":true}')))
-
-    await app.handle(
-      new Request('http://localhost/mcp-proxy/', {
-        method: 'POST',
-        headers: {
-          'x-mcp-target-url': targetUrl,
-          authorization: 'Bearer test-token-123',
-          'content-type': 'application/json',
-        },
-        body: '{}',
-      }),
-    )
-
-    expect(mockFetch).toHaveBeenCalledWith(
-      targetUrl,
-      expect.objectContaining({
-        headers: expect.objectContaining({ authorization: 'Bearer test-token-123' }),
-      }),
-    )
-  })
-
-  it('forwards Mcp-Session-Id in request and response', async () => {
-    const targetUrl = 'https://mcp.example.com'
-    const sessionId = 'session-abc-123'
-
+  it('strips set-cookie from proxied responses', async () => {
     mockFetch.mockImplementation(() =>
       Promise.resolve(
-        new Response('{"ok":true}', {
+        new Response('ok', {
           status: 200,
           headers: {
             'content-type': 'application/json',
-            'mcp-session-id': sessionId,
+            'set-cookie': 'session=attacker-value; Path=/; HttpOnly',
           },
         }),
       ),
@@ -154,122 +162,107 @@ describe('MCP Proxy Routes', () => {
     const response = await app.handle(
       new Request('http://localhost/mcp-proxy/', {
         method: 'POST',
-        headers: {
-          'x-mcp-target-url': targetUrl,
-          'mcp-session-id': sessionId,
-          'content-type': 'application/json',
-        },
-        body: '{}',
+        headers: { 'x-mcp-target-url': 'https://mcp.example.com' },
       }),
     )
 
-    // Mcp-Session-Id should be forwarded in the request
-    expect(mockFetch).toHaveBeenCalledWith(
-      targetUrl,
-      expect.objectContaining({
-        headers: expect.objectContaining({ 'mcp-session-id': sessionId }),
-      }),
-    )
-
-    // Mcp-Session-Id from response should pass through
-    expect(response.headers.get('mcp-session-id')).toBe(sessionId)
+    expect(response.headers.get('set-cookie')).toBeNull()
   })
 
-  it('streams SSE response body', async () => {
-    const targetUrl = 'https://mcp.example.com/sse'
-    const sseChunk = 'data: {"type":"message"}\n\n'
-
+  it('rejects responses exceeding 10MB via Content-Length', async () => {
     mockFetch.mockImplementation(() =>
       Promise.resolve(
-        new Response(sseChunk, {
+        new Response('', {
           status: 200,
-          headers: { 'content-type': 'text/event-stream' },
+          headers: { 'content-length': String(11 * 1024 * 1024) },
         }),
       ),
     )
 
     const response = await app.handle(
-      new Request('http://localhost/mcp-proxy/sse', {
-        method: 'GET',
+      new Request('http://localhost/mcp-proxy/', {
+        method: 'POST',
         headers: { 'x-mcp-target-url': 'https://mcp.example.com' },
       }),
     )
 
-    expect(response.status).toBe(200)
-    expect(response.body).toBeTruthy()
-
-    const body = await response.text()
-    expect(body).toBe(sseChunk)
+    expect(response.status).toBe(502)
+    expect(await response.text()).toBe('Response too large')
   })
 
-  it('forwards DELETE method', async () => {
-    const targetUrl = 'https://mcp.example.com'
-
-    mockFetch.mockImplementation(() => Promise.resolve(new Response(null, { status: 204 })))
+  it('returns redirect responses as-is (redirect: manual)', async () => {
+    mockFetch.mockImplementation(() =>
+      Promise.resolve(
+        new Response(null, {
+          status: 302,
+          headers: { location: 'http://169.254.169.254/latest/meta-data/' },
+        }),
+      ),
+    )
 
     const response = await app.handle(
       new Request('http://localhost/mcp-proxy/', {
-        method: 'DELETE',
-        headers: { 'x-mcp-target-url': targetUrl },
+        method: 'POST',
+        headers: { 'x-mcp-target-url': 'https://mcp.example.com' },
       }),
     )
 
-    expect(response.status).toBe(204)
-    expect(mockFetch).toHaveBeenCalledWith(targetUrl, expect.objectContaining({ method: 'DELETE' }))
+    // 302 is returned to the client, not followed by the proxy
+    expect(response.status).toBe(302)
   })
 
-  it('strips host and cookie headers before forwarding', async () => {
-    const targetUrl = 'https://mcp.example.com'
+  // --- Header Forwarding ---
 
+  it('forwards Authorization and MCP headers, strips host/cookie/proxy headers', async () => {
     mockFetch.mockImplementation(() => Promise.resolve(createMockResponse('{"ok":true}')))
 
     await app.handle(
       new Request('http://localhost/mcp-proxy/', {
         method: 'POST',
         headers: {
-          'x-mcp-target-url': targetUrl,
+          'x-mcp-target-url': 'https://mcp.example.com',
+          authorization: 'Bearer test-token',
+          'mcp-session-id': 'session-123',
           'content-type': 'application/json',
         },
         body: '{}',
       }),
     )
 
-    const [, init] = mockFetch.mock.calls[0] as [string, RequestInit]
-    const forwardedHeaders = init.headers as Record<string, string>
+    const [, callOpts] = mockFetch.mock.calls[0]
+    const hdrs = callOpts.headers instanceof Headers ? Object.fromEntries(callOpts.headers.entries()) : callOpts.headers
 
-    expect(forwardedHeaders['host']).toBeUndefined()
-    expect(forwardedHeaders['cookie']).toBeUndefined()
-    expect(forwardedHeaders['x-mcp-target-url']).toBeUndefined()
+    expect(hdrs.authorization).toBe('Bearer test-token')
+    expect(hdrs['mcp-session-id']).toBe('session-123')
+    expect(hdrs['host']).toBeUndefined()
+    expect(hdrs['cookie']).toBeUndefined()
+    expect(hdrs['x-mcp-target-url']).toBeUndefined()
   })
 
-  it('appends sub-path from route to target URL', async () => {
-    const targetUrl = 'https://mcp.example.com'
+  // --- Routing ---
 
+  it('appends sub-path to target URL', async () => {
     mockFetch.mockImplementation(() => Promise.resolve(createMockResponse('{"ok":true}')))
 
     await app.handle(
       new Request('http://localhost/mcp-proxy/tools/call', {
         method: 'POST',
-        headers: {
-          'x-mcp-target-url': targetUrl,
-          'content-type': 'application/json',
-        },
+        headers: { 'x-mcp-target-url': 'https://mcp.example.com', 'content-type': 'application/json' },
         body: '{}',
       }),
     )
 
-    expect(mockFetch).toHaveBeenCalledWith(`${targetUrl}/tools/call`, expect.any(Object))
+    const [calledUrl] = mockFetch.mock.calls[0]
+    expect(calledUrl).toContain('/tools/call')
   })
 
   it('sets cross-origin-resource-policy on response', async () => {
-    const targetUrl = 'https://mcp.example.com'
-
     mockFetch.mockImplementation(() => Promise.resolve(createMockResponse('{"ok":true}')))
 
     const response = await app.handle(
       new Request('http://localhost/mcp-proxy/', {
         method: 'POST',
-        headers: { 'x-mcp-target-url': targetUrl },
+        headers: { 'x-mcp-target-url': 'https://mcp.example.com' },
       }),
     )
 

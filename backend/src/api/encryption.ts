@@ -12,6 +12,27 @@ import {
 import type { db as DbType } from '@/db/client'
 import { Elysia, t } from 'elysia'
 
+class ForbiddenError extends Error {
+  constructor(message: string) {
+    super(message)
+    this.name = 'ForbiddenError'
+  }
+}
+
+/** Check if the caller is performing a self-recovery by verifying canary match. */
+const checkSelfRecovery = async (
+  txDb: typeof DbType,
+  userId: string,
+  callerDeviceId: string,
+  deviceId: string,
+  canaryIv?: string,
+  canaryCtext?: string,
+): Promise<boolean> => {
+  if (callerDeviceId !== deviceId || !canaryIv || !canaryCtext) return false
+  const metadata = await getEncryptionMetadata(txDb, userId)
+  return !!metadata && metadata.canaryIv === canaryIv && metadata.canaryCtext === canaryCtext
+}
+
 /**
  * Encryption API routes for device registration, envelope management, and canary.
  * All routes require authentication via session.
@@ -139,25 +160,23 @@ export const createEncryptionRoutes = (auth: Auth, database: typeof DbType) =>
             // Recovery: device is self-storing and provided canary that matches stored metadata.
             // This means the client fetched the canary, verified the recovery key against it,
             // and is now re-bootstrapping with the recovered CK.
-            let isSelfRecovery = false
-            if (!isFirstDeviceBootstrap && callerDeviceId === deviceId && canaryIv && canaryCtext) {
-              const metadata = await getEncryptionMetadata(txDb, userId)
-              isSelfRecovery = !!metadata && metadata.canaryIv === canaryIv && metadata.canaryCtext === canaryCtext
-            }
+            const isSelfRecovery = isFirstDeviceBootstrap
+              ? false
+              : await checkSelfRecovery(txDb, userId, callerDeviceId, deviceId, canaryIv, canaryCtext)
 
             // Re-check target device inside transaction to close race window
             const targetDevice = await getDeviceById(txDb, deviceId)
             if (!targetDevice || targetDevice.status === 'REVOKED' || targetDevice.revokedAt != null) {
-              throw new Error('FORBIDDEN:Device has been revoked')
+              throw new ForbiddenError('Device has been revoked')
             }
 
             if (!isFirstDeviceBootstrap && !isSelfRecovery) {
               const callerDevice = await getDeviceById(txDb, callerDeviceId)
               if (!callerDevice || callerDevice.userId !== userId) {
-                throw new Error('FORBIDDEN:Caller device not found')
+                throw new ForbiddenError('Caller device not found')
               }
               if (callerDevice.status !== 'TRUSTED') {
-                throw new Error('FORBIDDEN:Only trusted devices can store envelopes')
+                throw new ForbiddenError('Only trusted devices can store envelopes')
               }
             }
 
@@ -181,9 +200,9 @@ export const createEncryptionRoutes = (auth: Auth, database: typeof DbType) =>
             await updateDeviceStatus(txDb, deviceId, userId, 'TRUSTED')
           })
         } catch (err) {
-          if (err instanceof Error && err.message.startsWith('FORBIDDEN:')) {
+          if (err instanceof ForbiddenError) {
             set.status = 403
-            return { error: err.message.slice('FORBIDDEN:'.length) }
+            return { error: err.message }
           }
           throw err
         }

@@ -84,6 +84,18 @@ describe('encodeForUpload', () => {
     expect(result.data?.order).toBe(5)
   })
 
+  it('encrypts encrypted columns for PATCH operations', async () => {
+    const op = {
+      op: 'PATCH' as const,
+      type: 'tasks',
+      id: '123',
+      data: { item: 'Updated task' },
+    }
+
+    const result = await encodeForUpload(op)
+    expect((result.data?.item as string).startsWith('__enc:')).toBe(true)
+  })
+
   it('encrypts multiple columns', async () => {
     const op = {
       op: 'PUT' as const,

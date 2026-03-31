@@ -2,6 +2,7 @@ import { describe, expect, it, beforeEach, afterEach, mock } from 'bun:test'
 
 const mockCK = 'mock-ck' as unknown as CryptoKey
 let mockGetCKReturn: CryptoKey | null = null
+const mockGetCK = mock(async () => mockGetCKReturn)
 
 /** Safe base64 that handles unicode via URI encoding */
 const safeEncode = (str: string) => btoa(unescape(encodeURIComponent(str)))
@@ -23,7 +24,7 @@ const mockDecrypt = mock(async (data: { iv: string; ciphertext: string }, _ck: C
 mock.module('@/crypto', () => ({
   encrypt: mockEncrypt,
   decrypt: mockDecrypt,
-  getCK: async () => mockGetCKReturn,
+  getCK: mockGetCK,
   generateKeyPair: async () => ({}),
   generateCK: async () => ({}),
   reimportAsNonExtractable: async () => ({}),
@@ -53,6 +54,7 @@ describe('AES-GCM codec', () => {
   beforeEach(() => {
     mockEncrypt.mockClear()
     mockDecrypt.mockClear()
+    mockGetCK.mockClear()
     invalidateCKCache()
     mockGetCKReturn = mockCK
   })
@@ -135,6 +137,7 @@ describe('AES-GCM codec', () => {
     it('caches CK across calls', async () => {
       await codec.encode('a')
       await codec.encode('b')
+      expect(mockGetCK).toHaveBeenCalledTimes(1)
       expect(mockEncrypt).toHaveBeenCalledTimes(2)
     })
 

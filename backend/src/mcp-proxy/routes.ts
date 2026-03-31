@@ -112,14 +112,16 @@ export const createMcpProxyRoutes = (fetchFn: typeof fetch = globalThis.fetch, a
       }),
     )
 
-  // Require authentication when auth is available
+  // Require authentication when auth is available (skip OPTIONS for CORS preflight)
   if (auth) {
     app
       .derive(async ({ request }) => {
+        if (request.method === 'OPTIONS') { return { user: null } }
         const session = await auth.api.getSession({ headers: request.headers })
         return { user: session?.user ?? null }
       })
-      .onBeforeHandle(({ user, set }) => {
+      .onBeforeHandle(({ user, set, request }) => {
+        if (request.method === 'OPTIONS') { return }
         if (!user) {
           set.status = 401
           return new Response('Authentication required', { status: 401, headers: { 'Content-Type': 'text/plain' } })

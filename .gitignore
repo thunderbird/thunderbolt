@@ -59,5 +59,10 @@ src-tauri/gen/apple/.bundle/
 
 .worktrees/
 
+# Playwright / e2e
+test-results/
+playwright-report/
+blob-report/
+
 # Powersync
 public/@powersync/**

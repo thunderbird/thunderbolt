@@ -9,7 +9,7 @@ import { ApprovalWaitingStep } from './approval-waiting-step'
 import { RecoveryKeyEntryStep } from './recovery-key-entry-step'
 import { IconCircle } from '@/components/onboarding/icon-circle'
 import { ArrowLeft, CheckCircle, Loader2, Lock, ShieldCheck } from 'lucide-react'
-import { useRef, useState } from 'react'
+import { useRef } from 'react'
 
 type SyncSetupModalProps = {
   open: boolean
@@ -25,7 +25,6 @@ type SyncSetupModalProps = {
 export const SyncSetupModal = ({ open, onOpenChange, onComplete }: SyncSetupModalProps) => {
   const setup = useSyncSetup()
   const httpClient = useHttpClient()
-  const [_recoveryKeyConfirmed, setRecoveryKeyConfirmed] = useState(false)
   const hasCompletedRef = useRef(false)
 
   const isRecoveryKeyStep = setup.step === 'recovery-key-display'
@@ -33,7 +32,6 @@ export const SyncSetupModal = ({ open, onOpenChange, onComplete }: SyncSetupModa
 
   const handleClose = () => {
     setup.reset()
-    setRecoveryKeyConfirmed(false)
     hasCompletedRef.current = false
     onOpenChange(false)
   }
@@ -138,11 +136,7 @@ export const SyncSetupModal = ({ open, onOpenChange, onComplete }: SyncSetupModa
         )}
 
         {setup.step === 'recovery-key-display' && (
-          <RecoveryKeyDisplayStep
-            recoveryKey={setup.recoveryKey}
-            onDone={handleFirstDeviceDone}
-            onConfirmedChange={setRecoveryKeyConfirmed}
-          />
+          <RecoveryKeyDisplayStep recoveryKey={setup.recoveryKey} onDone={handleFirstDeviceDone} />
         )}
 
         {setup.step === 'approval-waiting' && (

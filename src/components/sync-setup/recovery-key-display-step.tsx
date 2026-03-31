@@ -6,7 +6,7 @@ import { useState } from 'react'
 type RecoveryKeyDisplayStepProps = {
   recoveryKey: string
   onDone: () => void
-  onConfirmedChange: (confirmed: boolean) => void
+  onConfirmedChange?: (confirmed: boolean) => void
 }
 
 export const RecoveryKeyDisplayStep = ({ recoveryKey, onDone, onConfirmedChange }: RecoveryKeyDisplayStepProps) => {
@@ -21,7 +21,7 @@ export const RecoveryKeyDisplayStep = ({ recoveryKey, onDone, onConfirmedChange 
 
   const handleConfirmedChange = (checked: boolean) => {
     setConfirmed(checked)
-    onConfirmedChange(checked)
+    onConfirmedChange?.(checked)
   }
 
   return (

@@ -1,6 +1,7 @@
 import { invoke, isTauri as isTauriCore } from '@tauri-apps/api/core'
 import { platform, type Platform } from '@tauri-apps/plugin-os'
 import type { DatabaseType } from '../db/database'
+import type { AgentType } from '@/acp/types'
 import { memoize } from './memoize'
 
 /** Matches Render PR preview hostnames: thunderbolt-pr-{number}.onrender.com */
@@ -107,7 +108,7 @@ export const isWebDesktopPlatform = (): boolean => {
  * Checks if an agent type can run on the current platform.
  * Local agents require Tauri desktop; built-in and remote agents work everywhere.
  */
-export const isAgentAvailableOnPlatform = (agentType: string): boolean => {
+export const isAgentAvailableOnPlatform = (agentType: AgentType): boolean => {
   if (agentType === 'local') {
     return isTauri() && isDesktop()
   }

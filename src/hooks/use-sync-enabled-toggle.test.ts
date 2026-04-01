@@ -20,17 +20,29 @@ mock.module('@/lib/posthog', () => ({
   trackEvent: mockTrackEvent,
 }))
 
+mock.module('@/db/encryption', () => ({
+  isEncryptionEnabled: () => true,
+}))
+
+const mockGetCK = mock(() => Promise.resolve(null))
+mock.module('@/crypto/key-storage', () => ({
+  getCK: mockGetCK,
+}))
+
 import { useSyncEnabledToggle } from './use-sync-enabled-toggle'
 
 describe('useSyncEnabledToggle', () => {
   beforeEach(() => {
     mockSetSyncEnabled.mockClear()
     mockTrackEvent.mockClear()
+    mockGetCK.mockClear()
+    mockGetCK.mockImplementation(() => Promise.resolve(null))
   })
 
   afterEach(() => {
     mockSetSyncEnabled.mockRestore?.()
     mockTrackEvent.mockRestore?.()
+    mockGetCK.mockRestore?.()
   })
 
   it('returns sync toggle state and handlers', () => {

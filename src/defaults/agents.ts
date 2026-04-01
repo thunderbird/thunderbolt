@@ -40,7 +40,7 @@ type LocalAgentSpec = {
  * Canonical list of supported local CLI agents.
  * Add new entries here to extend local agent discovery — each entry maps to a DB Agent.
  */
-export const SUPPORTED_LOCAL_AGENTS: ReadonlyArray<LocalAgentSpec> = [
+export const supportedLocalAgents: ReadonlyArray<LocalAgentSpec> = [
   { id: 'agent-claude-code', name: 'Claude Code', command: 'claude-agent-acp', args: null, icon: 'terminal' },
   { id: 'agent-codex', name: 'Codex', command: 'codex', args: ['--acp'], icon: 'code' },
 ]
@@ -65,10 +65,10 @@ export const defaultAgents: ReadonlyArray<Agent> = [defaultAgentBuiltIn] as cons
 
 /**
  * Local CLI agent candidates for runtime discovery on desktop.
- * Derived from SUPPORTED_LOCAL_AGENTS — not seeded into the DB directly,
+ * Derived from supportedLocalAgents — not seeded into the DB directly,
  * only added when the command is detected on PATH.
  */
-export const localAgentCandidates: ReadonlyArray<Agent> = SUPPORTED_LOCAL_AGENTS.map((entry) => ({
+export const localAgentCandidates: ReadonlyArray<Agent> = supportedLocalAgents.map((entry) => ({
   ...agentDefaults,
   id: entry.id,
   name: entry.name,

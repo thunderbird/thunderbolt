@@ -14,8 +14,8 @@ export type WebSocketLike = {
 export const wsOpen = 1
 export const wsClosed = 3
 
-const MAX_RETRIES = 3
-const BASE_DELAY_MS = 1000
+const maxRetries = 3
+const baseDelayMs = 1000
 
 type ReconnectOptions = {
   /** Called with each newly opened WebSocket on connect and reconnect. */
@@ -28,8 +28,8 @@ type ReconnectOptions = {
 /**
  * Manage a WebSocket connection with exponential backoff reconnection.
  * Calls onConnect with each new WebSocket upon a successful open.
- * Retries up to MAX_RETRIES (3) times on unexpected close, doubling the delay
- * each attempt starting from BASE_DELAY_MS (1000ms).
+ * Retries up to maxRetries (3) times on unexpected close, doubling the delay
+ * each attempt starting from baseDelayMs (1000ms).
  * Does not reconnect on normal close (code 1000).
  */
 export const connectWithReconnect = ({ onConnect, onGiveUp, createWebSocket }: ReconnectOptions): void => {
@@ -47,11 +47,11 @@ export const connectWithReconnect = ({ onConnect, onGiveUp, createWebSocket }: R
       if ((event as { code?: number }).code === 1000) {
         return
       }
-      if (retries >= MAX_RETRIES) {
+      if (retries >= maxRetries) {
         onGiveUp()
         return
       }
-      const delay = BASE_DELAY_MS * Math.pow(2, retries)
+      const delay = baseDelayMs * Math.pow(2, retries)
       retries++
       setTimeout(attempt, delay)
     })

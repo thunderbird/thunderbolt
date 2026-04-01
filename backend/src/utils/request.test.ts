@@ -148,13 +148,13 @@ describe('Utils - Request', () => {
       expect(extractClientIp(headers)).toBe('203.0.113.42')
     })
 
-    it('should prefer X-Forwarded-For over other headers', () => {
+    it('should prefer CF-Connecting-IP over all other headers', () => {
       const headers = new Headers({
         'x-forwarded-for': '203.0.113.42',
         'cf-connecting-ip': '198.51.100.1',
         'x-real-ip': '10.0.0.1',
       })
-      expect(extractClientIp(headers)).toBe('203.0.113.42')
+      expect(extractClientIp(headers)).toBe('198.51.100.1')
     })
 
     it('should fall back to CF-Connecting-IP', () => {

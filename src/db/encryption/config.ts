@@ -1,3 +1,6 @@
+/** Whether E2E encryption is enabled. Defaults to true. */
+export const isEncryptionEnabled = (): boolean => import.meta.env.VITE_ENCRYPTION_ENABLED !== 'false'
+
 /**
  * Single source of truth for encrypted tables and their columns.
  * Uses DB column names (snake_case) — matches both PowerSync sync data and CRUD upload operations.

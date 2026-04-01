@@ -1,4 +1,4 @@
-import { encryptedColumnsMap } from './config'
+import { encryptedColumnsMap, isEncryptionEnabled } from './config'
 import { codec } from './codec'
 
 type CrudOperation = {
@@ -13,7 +13,7 @@ type CrudOperation = {
  * Returns the operation unchanged if the table has no encrypted columns or op is DELETE.
  */
 export const encodeForUpload = async (operation: CrudOperation): Promise<CrudOperation> => {
-  if (operation.op === 'DELETE' || !operation.data) {
+  if (!isEncryptionEnabled() || operation.op === 'DELETE' || !operation.data) {
     return operation
   }
 

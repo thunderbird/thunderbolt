@@ -1,3 +1,4 @@
+import { isEncryptionEnabled } from '@/db/encryption'
 import { isSyncEnabled, setSyncEnabled, syncEnabledChangeEvent } from '@/db/powersync'
 import { trackEvent } from '@/lib/posthog'
 import { useEffect, useState } from 'react'
@@ -26,6 +27,12 @@ export const useSyncEnabledToggle = () => {
       await setSyncEnabled(false)
       setSyncEnabledState(false)
       trackEvent('settings_sync_disabled')
+      return
+    }
+    if (!isEncryptionEnabled()) {
+      await setSyncEnabled(true)
+      setSyncEnabledState(true)
+      trackEvent('settings_sync_enabled')
       return
     }
     setSyncSetupOpen(true)

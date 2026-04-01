@@ -1,6 +1,6 @@
 import type { SyncDataBatch } from '@powersync/common'
 import type { DataTransformMiddleware } from '../TransformableBucketStorage'
-import { encryptedColumnsMap } from '@/db/encryption/config'
+import { encryptedColumnsMap, isEncryptionEnabled } from '@/db/encryption/config'
 import { codec } from '@/db/encryption/codec'
 
 type SyncEntry = SyncDataBatch['buckets'][number]['data'][number]
@@ -45,6 +45,9 @@ const decryptEntry = async (entry: SyncEntry) => {
  */
 export const encryptionMiddleware: DataTransformMiddleware = {
   async transform(batch) {
+    if (!isEncryptionEnabled()) {
+      return batch
+    }
     for (const bucket of batch.buckets) {
       for (const entry of bucket.data) {
         await decryptEntry(entry)

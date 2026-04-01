@@ -64,7 +64,8 @@ export const createModel = async (modelConfig: Model) => {
       const db = getDb()
       const { cloudUrl } = await getSettings(db, { cloud_url: 'http://localhost:8000/v1' })
       // Include credentials so the session cookie is sent with inference requests
-      const backendFetch: typeof globalThis.fetch = (input, init) => fetch(input, { ...init, credentials: 'include' })
+      const backendFetch = ((input: RequestInfo | URL, init?: RequestInit) =>
+        fetch(input, { ...init, credentials: 'include' })) as typeof fetch
       // GPT OSS (vendor: 'openai') uses createOpenAI with .chat() to force Chat Completions API
       // (AI SDK 5 defaults createOpenAI to Responses API which our backend doesn't support)
       if (modelConfig.vendor === 'openai') {

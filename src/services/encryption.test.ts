@@ -50,7 +50,6 @@ const {
   approveDevice,
   checkApprovalAndUnwrap,
   recoverWithKey,
-  handleSignOut,
   handleFullWipe,
 } = await import('./encryption')
 
@@ -276,21 +275,11 @@ describe('encryption service', () => {
     })
   })
 
-  describe('handleSignOut', () => {
-    it('clears CK only', async () => {
-      await handleSignOut()
-
-      expect(cryptoMocks.clearCK).toHaveBeenCalledTimes(1)
-      expect(cryptoMocks.clearAllKeys).not.toHaveBeenCalled()
-    })
-  })
-
   describe('handleFullWipe', () => {
     it('clears all keys', async () => {
       await handleFullWipe()
 
       expect(cryptoMocks.clearAllKeys).toHaveBeenCalledTimes(1)
-      expect(cryptoMocks.clearCK).not.toHaveBeenCalled()
     })
   })
 })

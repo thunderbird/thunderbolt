@@ -6,24 +6,33 @@ import { sql } from 'drizzle-orm'
 /**
  * Postgres-backed rate limit context for elysia-rate-limit.
  * Uses an atomic UPSERT query with a sliding window per IP.
+ * Keys are prefixed with a tier name to prevent counter interference across tiers.
  */
 export class PostgresRateLimitContext implements RateLimitContext {
   private duration = 60_000
   private database: typeof DbType
+  private tier: string
 
-  constructor(database: typeof DbType) {
+  constructor(database: typeof DbType, tier = 'standard') {
     this.database = database
+    this.tier = tier
   }
 
   init(options: Omit<Options, 'context'>) {
     this.duration = options.duration
   }
 
+  /** Prefix the raw IP key with the tier to isolate counters across rate limit tiers. */
+  private prefixedKey(key: string) {
+    return `${this.tier}:${key}`
+  }
+
   async increment(key: string) {
+    const prefixed = this.prefixedKey(key)
     const durationSecs = this.duration / 1000
     const result = await this.database.execute<{ count: number; window_start: string }>(sql`
       INSERT INTO rate_limits (ip, count, window_start)
-      VALUES (${key}, 1, NOW())
+      VALUES (${prefixed}, 1, NOW())
       ON CONFLICT (ip)
       DO UPDATE SET
         count = CASE
@@ -48,14 +57,16 @@ export class PostgresRateLimitContext implements RateLimitContext {
   }
 
   async decrement(key: string) {
+    const prefixed = this.prefixedKey(key)
     await this.database.execute(sql`
-      UPDATE rate_limits SET count = GREATEST(count - 1, 0) WHERE ip = ${key}
+      UPDATE rate_limits SET count = GREATEST(count - 1, 0) WHERE ip = ${prefixed}
     `)
   }
 
   async reset(key?: string) {
     if (key) {
-      await this.database.execute(sql`DELETE FROM rate_limits WHERE ip = ${key}`)
+      const prefixed = this.prefixedKey(key)
+      await this.database.execute(sql`DELETE FROM rate_limits WHERE ip = ${prefixed}`)
     } else {
       await this.database.execute(sql`DELETE FROM rate_limits`)
     }
@@ -83,12 +94,17 @@ const exemptPaths = new Set(['/v1/health', '/v1/posthog/config', '/v1/posthog/ev
 const exemptPrefixes = ['/v1/api/auth/get-session']
 
 /** Create a rate limiter scoped to a specific tier. */
-const createTieredRateLimit = (database: typeof DbType, tier: RateLimitTier, skip?: (req: Request) => boolean) =>
+const createTieredRateLimit = (
+  database: typeof DbType,
+  tierName: string,
+  tier: RateLimitTier,
+  skip?: (req: Request) => boolean,
+) =>
   rateLimit({
     max: tier.max,
     duration: tier.duration,
     scoping: 'scoped',
-    context: new PostgresRateLimitContext(database),
+    context: new PostgresRateLimitContext(database, tierName),
     generator: (req, server) => extractClientIp(req.headers, server?.requestIP(req)?.address ?? 'unknown'),
     errorResponse: new Response(JSON.stringify({ error: 'Too many requests. Please try again later.' }), {
       status: 429,
@@ -100,19 +116,19 @@ const createTieredRateLimit = (database: typeof DbType, tier: RateLimitTier, ski
 /** Create rate limit middleware for inference routes. */
 export const createInferenceRateLimit = (database: typeof DbType, settings: RateLimitSettings) => {
   if (!settings.enabled) return rateLimit({ max: Number.MAX_SAFE_INTEGER, duration: 1 })
-  return createTieredRateLimit(database, settings.inference)
+  return createTieredRateLimit(database, 'inference', settings.inference)
 }
 
 /** Create rate limit middleware for auth routes. */
 export const createAuthRateLimit = (database: typeof DbType, settings: RateLimitSettings) => {
   if (!settings.enabled) return rateLimit({ max: Number.MAX_SAFE_INTEGER, duration: 1 })
-  return createTieredRateLimit(database, settings.auth)
+  return createTieredRateLimit(database, 'auth', settings.auth)
 }
 
 /** Create rate limit middleware for standard routes. */
 export const createStandardRateLimit = (database: typeof DbType, settings: RateLimitSettings) => {
   if (!settings.enabled) return rateLimit({ max: Number.MAX_SAFE_INTEGER, duration: 1 })
-  return createTieredRateLimit(database, settings.standard, (req) => {
+  return createTieredRateLimit(database, 'standard', settings.standard, (req) => {
     const path = new URL(req.url).pathname
     return exemptPaths.has(path) || exemptPrefixes.some((p) => path.startsWith(p))
   })

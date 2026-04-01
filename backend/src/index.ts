@@ -8,7 +8,7 @@ import { runMigrations } from '@/db/client'
 import { createInferenceRoutes } from '@/inference/routes'
 import { createErrorHandlingMiddleware } from '@/middleware/error-handling'
 import { createHttpLoggingMiddleware } from '@/middleware/http-logging'
-import { createStandardRateLimit } from '@/middleware/rate-limit'
+import { createAuthRateLimit, createInferenceRateLimit, createStandardRateLimit } from '@/middleware/rate-limit'
 import { createWaitlistAuthMiddleware } from '@/middleware/waitlist-auth'
 import { createPostHogRoutes } from '@/posthog/routes'
 import { createProToolsRoutes } from '@/pro/routes'
@@ -66,6 +66,16 @@ export const createApp = async (deps?: AppDeps) => {
     standard: { max: settings.rateLimitStandardMax, duration: 60_000 },
   }
 
+  // Auth routes with stricter rate limit (e.g. 10 req / 15 min)
+  const authRoutesWithRateLimit = new Elysia()
+    .use(createAuthRateLimit(database, rateLimitSettings))
+    .use(betterAuthPlugin)
+
+  // Inference routes with dedicated rate limit (e.g. 20 req / min)
+  const inferenceRoutesWithRateLimit = new Elysia()
+    .use(createInferenceRateLimit(database, rateLimitSettings))
+    .use(createInferenceRoutes(auth))
+
   return (
     configuredApp
       .use(
@@ -82,8 +92,8 @@ export const createApp = async (deps?: AppDeps) => {
       .use(createErrorHandlingMiddleware())
       // Global rate limit — applies to all routes (health exempt)
       .use(createStandardRateLimit(database, rateLimitSettings))
-      // Better Auth handler (mounted at /api/auth/*)
-      .use(betterAuthPlugin)
+      // Better Auth handler with auth-specific rate limit (mounted at /api/auth/*)
+      .use(authRoutesWithRateLimit)
       // Waitlist auth middleware - enforces auth on protected routes when WAITLIST_ENABLED=true
       .use(createWaitlistAuthMiddleware(settings, auth))
       // Mount route groups
@@ -91,7 +101,8 @@ export const createApp = async (deps?: AppDeps) => {
       .use(createGoogleAuthRoutes(fetchFn))
       .use(createMicrosoftAuthRoutes(fetchFn))
       .use(createProToolsRoutes(auth, fetchFn))
-      .use(createInferenceRoutes(auth))
+      // Inference routes with inference-specific rate limit
+      .use(inferenceRoutesWithRateLimit)
       .use(createPostHogRoutes(fetchFn))
       .use(createWaitlistRoutes({ database, auth, emailService: deps?.waitlistEmailService }))
       .use(createPowerSyncRoutes(auth, settings, database))

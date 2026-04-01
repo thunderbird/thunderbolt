@@ -6,11 +6,14 @@ import type {
   CancelNotification,
   InitializeRequest,
   InitializeResponse,
+  LoadSessionRequest,
+  LoadSessionResponse,
   NewSessionRequest,
   NewSessionResponse,
   PromptRequest,
   PromptResponse,
 } from '@agentclientprotocol/sdk'
+import { RequestError } from '@agentclientprotocol/sdk'
 import type { HaystackClient } from './client'
 import type { HaystackDocumentMeta, HaystackPipelineConfig, HaystackReferenceMeta } from './types'
 import { parseSSE, extractReferences, extractDocuments } from './sse-parser'
@@ -18,6 +21,8 @@ import { parseSSE, extractReferences, extractDocuments } from './sse-parser'
 type HaystackAcpAgentDeps = {
   client: HaystackClient
   pipelineConfig: HaystackPipelineConfig
+  /** Injected persistent session map (for testing). Falls back to module-level map. */
+  persistentSessions?: Map<string, string>
 }
 
 type SessionState = {
@@ -26,10 +31,21 @@ type SessionState = {
 }
 
 /**
+ * Module-level persistent map: ACP sessionId -> Haystack searchSessionId.
+ * Survives individual WebSocket connection lifecycles so loadSession can
+ * restore sessions across reconnects.
+ */
+const defaultPersistentSessions = new Map<string, string>()
+
+/**
  * Create an ACP Agent handler that wraps a Deepset/Haystack pipeline.
  * Streams chat responses via ACP session updates with _meta for citations.
  */
-export const createHaystackAcpAgent = ({ client, pipelineConfig }: HaystackAcpAgentDeps) => {
+export const createHaystackAcpAgent = ({
+  client,
+  pipelineConfig,
+  persistentSessions = defaultPersistentSessions,
+}: HaystackAcpAgentDeps) => {
   const sessions = new Map<string, SessionState>()
 
   /** Abort all in-flight prompts and clear session state. Call on disconnect. */
@@ -45,6 +61,7 @@ export const createHaystackAcpAgent = ({ client, pipelineConfig }: HaystackAcpAg
       agentInfo: { name: pipelineConfig.name, version: '1.0.0' },
       protocolVersion: 1,
       agentCapabilities: {
+        loadSession: true,
         promptCapabilities: {
           image: false,
           audio: false,
@@ -59,10 +76,20 @@ export const createHaystackAcpAgent = ({ client, pipelineConfig }: HaystackAcpAg
       const { searchSessionId } = await client.createSession()
       const sessionId = crypto.randomUUID()
       sessions.set(sessionId, { haystackSessionId: searchSessionId, abortController: null })
+      persistentSessions.set(sessionId, searchSessionId)
 
       return {
         sessionId,
       }
+    },
+
+    loadSession: async (params: LoadSessionRequest): Promise<LoadSessionResponse> => {
+      const haystackSessionId = persistentSessions.get(params.sessionId)
+      if (!haystackSessionId) {
+        throw RequestError.resourceNotFound(params.sessionId)
+      }
+      sessions.set(params.sessionId, { haystackSessionId, abortController: null })
+      return {}
     },
 
     prompt: async (params: PromptRequest): Promise<PromptResponse> => {

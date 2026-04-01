@@ -237,6 +237,102 @@ describe('createHaystackAcpAgent', () => {
     expect((result._meta as Record<string, unknown>).haystackDocuments).toEqual([])
   })
 
+  it('should advertise loadSession capability', async () => {
+    const mockFetch = mock(() =>
+      Promise.resolve(new Response(JSON.stringify({ search_session_id: 's1' }), { status: 201 })),
+    )
+    const client = new HaystackClient(testHaystackConfig, mockFetch as unknown as typeof fetch)
+    const { clientStream, agentStream } = createInProcessStreams()
+
+    const { handler: agentHandler } = createHaystackAcpAgent({ client, pipelineConfig: testPipelineConfig })
+    new AgentSideConnection(agentHandler, agentStream)
+
+    const clientHandler: (agent: Agent) => Client = () => ({
+      sessionUpdate: async () => {},
+      requestPermission: async () => ({ outcome: { outcome: 'cancelled' as const } }),
+    })
+    const conn = new ClientSideConnection(clientHandler, clientStream)
+
+    const initResult = await conn.initialize({
+      clientInfo: { name: 'Test', version: '1.0.0' },
+      protocolVersion: 1,
+      clientCapabilities: { fs: { readTextFile: false, writeTextFile: false }, terminal: false },
+    })
+
+    expect(initResult.agentCapabilities?.loadSession).toBe(true)
+  })
+
+  it('should store session mapping and restore via loadSession', async () => {
+    const persistentSessions = new Map<string, string>()
+    const mockFetch = mock(() =>
+      Promise.resolve(new Response(JSON.stringify({ search_session_id: 'haystack-abc' }), { status: 201 })),
+    )
+    const client = new HaystackClient(testHaystackConfig, mockFetch as unknown as typeof fetch)
+
+    // First connection: create session
+    const streams1 = createInProcessStreams()
+    const { handler: handler1 } = createHaystackAcpAgent({ client, pipelineConfig: testPipelineConfig, persistentSessions })
+    new AgentSideConnection(handler1, streams1.agentStream)
+
+    const clientHandler: (agent: Agent) => Client = () => ({
+      sessionUpdate: async () => {},
+      requestPermission: async () => ({ outcome: { outcome: 'cancelled' as const } }),
+    })
+    const conn1 = new ClientSideConnection(clientHandler, streams1.clientStream)
+
+    await conn1.initialize({
+      clientInfo: { name: 'Test', version: '1.0.0' },
+      protocolVersion: 1,
+      clientCapabilities: { fs: { readTextFile: false, writeTextFile: false }, terminal: false },
+    })
+    const session = await conn1.newSession({ cwd: '.', mcpServers: [] })
+
+    // Verify persistent map was populated
+    expect(persistentSessions.get(session.sessionId)).toBe('haystack-abc')
+
+    // Second connection: load session (simulating reconnect)
+    const streams2 = createInProcessStreams()
+    const { handler: handler2 } = createHaystackAcpAgent({ client, pipelineConfig: testPipelineConfig, persistentSessions })
+    new AgentSideConnection(handler2, streams2.agentStream)
+
+    const conn2 = new ClientSideConnection(clientHandler, streams2.clientStream)
+    await conn2.initialize({
+      clientInfo: { name: 'Test', version: '1.0.0' },
+      protocolVersion: 1,
+      clientCapabilities: { fs: { readTextFile: false, writeTextFile: false }, terminal: false },
+    })
+
+    // loadSession should succeed with the known sessionId
+    const loadResult = await conn2.loadSession({ sessionId: session.sessionId, cwd: '.', mcpServers: [] })
+    expect(loadResult).toBeDefined()
+  })
+
+  it('should reject loadSession for unknown session ID', async () => {
+    const persistentSessions = new Map<string, string>()
+    const mockFetch = mock(() =>
+      Promise.resolve(new Response(JSON.stringify({ search_session_id: 's1' }), { status: 201 })),
+    )
+    const client = new HaystackClient(testHaystackConfig, mockFetch as unknown as typeof fetch)
+    const { clientStream, agentStream } = createInProcessStreams()
+
+    const { handler: agentHandler } = createHaystackAcpAgent({ client, pipelineConfig: testPipelineConfig, persistentSessions })
+    new AgentSideConnection(agentHandler, agentStream)
+
+    const clientHandler: (agent: Agent) => Client = () => ({
+      sessionUpdate: async () => {},
+      requestPermission: async () => ({ outcome: { outcome: 'cancelled' as const } }),
+    })
+    const conn = new ClientSideConnection(clientHandler, clientStream)
+
+    await conn.initialize({
+      clientInfo: { name: 'Test', version: '1.0.0' },
+      protocolVersion: 1,
+      clientCapabilities: { fs: { readTextFile: false, writeTextFile: false }, terminal: false },
+    })
+
+    await expect(conn.loadSession({ sessionId: 'nonexistent', cwd: '.', mcpServers: [] })).rejects.toThrow()
+  })
+
   it('should use search endpoint for DOCUMENT-type pipelines', async () => {
     const searchResult = {
       results: [

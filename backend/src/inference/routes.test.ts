@@ -16,6 +16,13 @@ const mockAuth = {
   },
 } as unknown as Auth
 
+/** Mock auth that always returns null (unauthenticated) */
+const mockAuthUnauthenticated = {
+  api: {
+    getSession: () => Promise.resolve(null),
+  },
+} as unknown as Auth
+
 describe('Inference Routes', () => {
   let app: Elysia
   let getInferenceClientSpy: ReturnType<typeof spyOn>
@@ -365,6 +372,28 @@ describe('Inference Routes', () => {
 
       // Reset for other tests
       isPostHogConfiguredSpy.mockReturnValue(false)
+    })
+  })
+
+  describe('authentication', () => {
+    it('should return 401 when session is null', async () => {
+      mockCreateCompletion.mockClear()
+      const unauthenticatedApp = new Elysia().use(createInferenceRoutes(mockAuthUnauthenticated))
+
+      const response = await unauthenticatedApp.handle(
+        new Request('http://localhost/chat/completions', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            model: 'mistral-large-3',
+            messages: [{ role: 'user', content: 'Hello' }],
+            stream: true,
+          }),
+        }),
+      )
+
+      expect(response.status).toBe(401)
+      expect(mockCreateCompletion).not.toHaveBeenCalled()
     })
   })
 

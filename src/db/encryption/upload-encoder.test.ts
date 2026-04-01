@@ -1,40 +1,24 @@
 import { describe, expect, it, beforeEach, mock } from 'bun:test'
+import { generateCK } from '@/crypto'
 
-mock.module('@/crypto', () => ({
-  encrypt: async (plaintext: string) => ({
-    iv: btoa('iv'),
-    ciphertext: btoa(`ct-${plaintext}`),
-  }),
-  decrypt: async () => '',
-  getCK: async () => 'mock-ck' as unknown as CryptoKey,
-  generateKeyPair: async () => ({}),
-  generateCK: async () => ({}),
-  reimportAsNonExtractable: async () => ({}),
-  exportPublicKey: async () => '',
-  importPublicKey: async () => ({}),
-  wrapCK: async () => '',
-  unwrapCK: async () => ({}),
-  createCanary: async () => ({ canaryIv: '', canaryCtext: '' }),
-  verifyCanary: async () => true,
-  encodeRecoveryKey: async () => '',
-  decodeRecoveryKey: async () => ({}),
+let mockCK: CryptoKey | null = null
+
+mock.module('@/crypto/key-storage', () => ({
+  getCK: async () => mockCK,
+  storeCK: async () => {},
   storeKeyPair: async () => {},
   getKeyPair: async () => null,
-  storeCK: async () => {},
   clearCK: async () => {},
   clearAllKeys: async () => {},
-  EncryptionError: class extends Error {},
-  DecryptionError: class extends Error {},
-  StorageError: class extends Error {},
-  ValidationError: class extends Error {},
 }))
 
 const { invalidateCKCache } = await import('./codec')
 const { encodeForUpload } = await import('./upload-encoder')
 
 describe('encodeForUpload', () => {
-  beforeEach(() => {
+  beforeEach(async () => {
     invalidateCKCache()
+    mockCK = await generateCK()
   })
 
   it('encrypts encrypted columns for known tables', async () => {

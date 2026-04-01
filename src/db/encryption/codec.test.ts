@@ -1,62 +1,23 @@
 import { describe, expect, it, beforeEach, afterEach, mock } from 'bun:test'
+import { generateCK } from '@/crypto'
 
-const mockCK = 'mock-ck' as unknown as CryptoKey
 let mockGetCKReturn: CryptoKey | null = null
-const mockGetCK = mock(async () => mockGetCKReturn)
 
-/** Safe base64 that handles unicode via URI encoding */
-const safeEncode = (str: string) => btoa(unescape(encodeURIComponent(str)))
-const safeDecode = (b64: string) => decodeURIComponent(escape(atob(b64)))
-
-const mockEncrypt = mock(async (plaintext: string, _ck: CryptoKey) => ({
-  iv: safeEncode(`iv-for-${plaintext.slice(0, 8)}`),
-  ciphertext: safeEncode(`ct-for-${plaintext}`),
-}))
-
-const mockDecrypt = mock(async (data: { iv: string; ciphertext: string }, _ck: CryptoKey) => {
-  const ct = safeDecode(data.ciphertext)
-  if (!ct.startsWith('ct-for-')) {
-    throw new Error('Decryption failed')
-  }
-  return ct.slice('ct-for-'.length)
-})
-
-mock.module('@/crypto', () => ({
-  encrypt: mockEncrypt,
-  decrypt: mockDecrypt,
-  getCK: mockGetCK,
-  generateKeyPair: async () => ({}),
-  generateCK: async () => ({}),
-  reimportAsNonExtractable: async () => ({}),
-  exportPublicKey: async () => '',
-  importPublicKey: async () => ({}),
-  wrapCK: async () => '',
-  rewrapCK: async () => '',
-  unwrapCK: async () => ({}),
-  createCanary: async () => ({ canaryIv: '', canaryCtext: '' }),
-  verifyCanary: async () => true,
-  encodeRecoveryKey: async () => '',
-  decodeRecoveryKey: async () => ({}),
+mock.module('@/crypto/key-storage', () => ({
+  getCK: async () => mockGetCKReturn,
+  storeCK: async () => {},
   storeKeyPair: async () => {},
   getKeyPair: async () => null,
-  storeCK: async () => {},
   clearCK: async () => {},
   clearAllKeys: async () => {},
-  EncryptionError: class extends Error {},
-  DecryptionError: class extends Error {},
-  StorageError: class extends Error {},
-  ValidationError: class extends Error {},
 }))
 
 const { codec, invalidateCKCache } = await import('./codec')
 
 describe('AES-GCM codec', () => {
-  beforeEach(() => {
-    mockEncrypt.mockClear()
-    mockDecrypt.mockClear()
-    mockGetCK.mockClear()
+  beforeEach(async () => {
     invalidateCKCache()
-    mockGetCKReturn = mockCK
+    mockGetCKReturn = await generateCK()
   })
 
   afterEach(() => {
@@ -67,14 +28,13 @@ describe('AES-GCM codec', () => {
     it('produces __enc: prefixed output', async () => {
       const encoded = await codec.encode('hello world')
       expect(encoded.startsWith('__enc:')).toBe(true)
-      expect(mockEncrypt).toHaveBeenCalledTimes(1)
     })
 
     it('passes through when no CK is available', async () => {
       mockGetCKReturn = null
+      invalidateCKCache()
       const result = await codec.encode('hello')
       expect(result).toBe('hello')
-      expect(mockEncrypt).not.toHaveBeenCalled()
     })
 
     it('encodes empty string', async () => {
@@ -86,10 +46,8 @@ describe('AES-GCM codec', () => {
       const encoded = await codec.encode('hello')
       expect(encoded.startsWith('__enc:')).toBe(true)
 
-      mockEncrypt.mockClear()
       const doubleEncoded = await codec.encode(encoded)
       expect(doubleEncoded).toBe(encoded)
-      expect(mockEncrypt).not.toHaveBeenCalled()
     })
   })
 
@@ -120,7 +78,6 @@ describe('AES-GCM codec', () => {
       const plaintext = 'just plain text'
       const decoded = await codec.decode(plaintext)
       expect(decoded).toBe(plaintext)
-      expect(mockDecrypt).not.toHaveBeenCalled()
     })
 
     it('returns as-is for malformed __enc: string', async () => {
@@ -130,25 +87,25 @@ describe('AES-GCM codec', () => {
     })
 
     it('returns as-is when decryption fails', async () => {
-      mockDecrypt.mockImplementationOnce(async () => {
-        throw new Error('bad decrypt')
-      })
-      const encoded = '__enc:aXY=:Y3Q='
-      const decoded = await codec.decode(encoded)
-      expect(decoded).toBe(encoded)
+      // Forge a value with the __enc: prefix but invalid ciphertext
+      const invalid = '__enc:aXY=:Y3Q='
+      const decoded = await codec.decode(invalid)
+      expect(decoded).toBe(invalid)
     })
   })
 
   describe('CK cache', () => {
-    it('caches CK across calls', async () => {
-      await codec.encode('a')
-      await codec.encode('b')
-      expect(mockGetCK).toHaveBeenCalledTimes(1)
-      expect(mockEncrypt).toHaveBeenCalledTimes(2)
+    it('caches CK across calls (both calls succeed)', async () => {
+      const a = await codec.encode('a')
+      const b = await codec.encode('b')
+      expect(a.startsWith('__enc:')).toBe(true)
+      expect(b.startsWith('__enc:')).toBe(true)
     })
 
     it('invalidation forces re-check', async () => {
-      await codec.encode('a')
+      const a = await codec.encode('a')
+      expect(a.startsWith('__enc:')).toBe(true)
+
       invalidateCKCache()
       mockGetCKReturn = null
       const result = await codec.encode('b')

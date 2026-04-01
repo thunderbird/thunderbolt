@@ -4,9 +4,11 @@ import { createHaystackProvider } from './haystack-provider'
 import type { AgentProvider } from './types'
 
 /** Swaps http(s) → ws(s) and keeps the host + /v1 prefix. */
-const getWsBaseUrl = (requestUrl: string): string => {
-  const url = new URL(requestUrl)
-  const wsProtocol = url.protocol === 'https:' ? 'wss:' : 'ws:'
+const getWsBaseUrl = (request: Request): string => {
+  const url = new URL(request.url)
+  const forwardedProto = request.headers.get('x-forwarded-proto')
+  const isSecure = forwardedProto === 'https' || url.protocol === 'https:'
+  const wsProtocol = isSecure ? 'wss:' : 'ws:'
   return `${wsProtocol}//${url.host}/v1`
 }
 
@@ -18,7 +20,7 @@ export const createAgentsRoutes = () => {
   const router = new Elysia({ prefix: '/agents' })
 
   router.get('/', ({ request }) => {
-    const wsBaseUrl = getWsBaseUrl(request.url)
+    const wsBaseUrl = getWsBaseUrl(request)
 
     const providers: AgentProvider[] = [...(pipelines.length > 0 ? [createHaystackProvider(pipelines, wsBaseUrl)] : [])]
 

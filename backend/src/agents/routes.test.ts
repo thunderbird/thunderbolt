@@ -166,4 +166,26 @@ describe('createAgentsRoutes', () => {
 
     expect(data.data[0].url).toBe('wss://api.example.com/v1/haystack/ws/docs')
   })
+
+  it('should use wss when X-Forwarded-Proto is https (reverse proxy)', async () => {
+    process.env.HAYSTACK_API_KEY = 'test-key'
+    process.env.HAYSTACK_WORKSPACE_NAME = 'test-workspace'
+    process.env.HAYSTACK_PIPELINE_NAME = 'docs'
+    process.env.HAYSTACK_PIPELINE_ID = 'p1'
+    clearSettingsCache()
+
+    const { createAgentsRoutes } = await import('./routes')
+    const { Elysia } = await import('elysia')
+
+    const app = new Elysia().use(createAgentsRoutes())
+
+    const response = await app.handle(
+      new Request('http://localhost/agents', {
+        headers: { 'x-forwarded-proto': 'https' },
+      }),
+    )
+    const data = (await response.json()) as { data: Array<Record<string, unknown>> }
+
+    expect(data.data[0].url).toBe('wss://localhost/v1/haystack/ws/docs')
+  })
 })

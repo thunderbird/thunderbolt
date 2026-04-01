@@ -8,10 +8,11 @@ import { useIntegrationStatus, type IntegrationStatus } from '@/hooks/use-integr
 import { useQueryClient } from '@tanstack/react-query'
 import { v7 as uuidv7 } from 'uuid'
 import { updateMessageCache } from '@/dal/chat-messages'
-import { sendAcpPrompt } from '@/chats/use-acp-chat'
+import { sendAcpPrompt as sendAcpPrompt_default } from '@/chats/use-acp-chat'
 
 type UseHandleIntegrationCompletionParams = {
   saveMessages: SaveMessagesFunction
+  sendPrompt?: typeof sendAcpPrompt_default
 }
 
 /**
@@ -131,7 +132,10 @@ const waitForMessageInSession = async (
  * When an integration is connected, it automatically retries the user's original request
  * by sending a new message with the original text and triggering a response.
  */
-export const useHandleIntegrationCompletion = ({ saveMessages }: UseHandleIntegrationCompletionParams): void => {
+export const useHandleIntegrationCompletion = ({
+  saveMessages,
+  sendPrompt = sendAcpPrompt_default,
+}: UseHandleIntegrationCompletionParams): void => {
   const db = useDatabase()
   const oauthRetryHandledRef = useRef<Set<string>>(new Set())
 
@@ -217,7 +221,7 @@ export const useHandleIntegrationCompletion = ({ saveMessages }: UseHandleIntegr
 
         await waitForSessionReady(sessionId!)
 
-        await sendAcpPrompt({
+        await sendPrompt({
           sessionId: sessionId!,
           text: retryText,
           metadata: { oauthRetry: true },
@@ -231,5 +235,5 @@ export const useHandleIntegrationCompletion = ({ saveMessages }: UseHandleIntegr
 
     window.addEventListener(oauthRetryEvent, handleOAuthComplete as unknown as (event: Event) => void)
     return () => window.removeEventListener(oauthRetryEvent, handleOAuthComplete as unknown as (event: Event) => void)
-  }, [sessionId, sessionStatus, messages, integrationStatus, queryClient, saveMessages])
+  }, [sessionId, sessionStatus, messages, integrationStatus, queryClient, saveMessages, sendPrompt])
 }

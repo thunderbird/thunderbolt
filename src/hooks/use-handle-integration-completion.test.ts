@@ -16,10 +16,6 @@ import { getClock } from '@/testing-library'
 
 const mockSendAcpPrompt = mock(() => Promise.resolve())
 
-mock.module('@/chats/use-acp-chat', () => ({
-  sendAcpPrompt: mockSendAcpPrompt,
-}))
-
 const mockAddEventListener = mock()
 const mockRemoveEventListener = mock()
 
@@ -128,7 +124,7 @@ describe('useHandleIntegrationCompletion', () => {
       integrations_microsoft_credentials: '',
     })
 
-    renderHook(() => useHandleIntegrationCompletion({ saveMessages: mockSaveMessages }), {
+    renderHook(() => useHandleIntegrationCompletion({ saveMessages: mockSaveMessages, sendPrompt: mockSendAcpPrompt }), {
       wrapper: createQueryTestWrapper(),
     })
 
@@ -152,7 +148,7 @@ describe('useHandleIntegrationCompletion', () => {
       integrations_microsoft_credentials: '',
     })
 
-    const { unmount } = renderHook(() => useHandleIntegrationCompletion({ saveMessages: mockSaveMessages }), {
+    const { unmount } = renderHook(() => useHandleIntegrationCompletion({ saveMessages: mockSaveMessages, sendPrompt: mockSendAcpPrompt }), {
       wrapper: createQueryTestWrapper(),
     })
 
@@ -178,7 +174,7 @@ describe('useHandleIntegrationCompletion', () => {
       integrations_microsoft_credentials: '',
     })
 
-    renderHook(() => useHandleIntegrationCompletion({ saveMessages: mockSaveMessages }), {
+    renderHook(() => useHandleIntegrationCompletion({ saveMessages: mockSaveMessages, sendPrompt: mockSendAcpPrompt }), {
       wrapper: createQueryTestWrapper(),
     })
 
@@ -208,7 +204,7 @@ describe('useHandleIntegrationCompletion', () => {
       integrations_microsoft_credentials: '',
     })
 
-    renderHook(() => useHandleIntegrationCompletion({ saveMessages: mockSaveMessages }), {
+    renderHook(() => useHandleIntegrationCompletion({ saveMessages: mockSaveMessages, sendPrompt: mockSendAcpPrompt }), {
       wrapper: createQueryTestWrapper(),
     })
 
@@ -265,7 +261,7 @@ describe('useHandleIntegrationCompletion', () => {
       integrations_microsoft_credentials: '',
     })
 
-    renderHook(() => useHandleIntegrationCompletion({ saveMessages: mockSaveMessages }), {
+    renderHook(() => useHandleIntegrationCompletion({ saveMessages: mockSaveMessages, sendPrompt: mockSendAcpPrompt }), {
       wrapper: createQueryTestWrapper({
         defaultOptions: {
           queries: {
@@ -352,7 +348,7 @@ describe('useHandleIntegrationCompletion', () => {
       integrations_microsoft_credentials: '',
     })
 
-    renderHook(() => useHandleIntegrationCompletion({ saveMessages: mockSaveMessages }), {
+    renderHook(() => useHandleIntegrationCompletion({ saveMessages: mockSaveMessages, sendPrompt: mockSendAcpPrompt }), {
       wrapper: createQueryTestWrapper({
         defaultOptions: {
           queries: {
@@ -428,7 +424,7 @@ describe('useHandleIntegrationCompletion', () => {
       integrations_microsoft_credentials: '',
     })
 
-    renderHook(() => useHandleIntegrationCompletion({ saveMessages: mockSaveMessages }), {
+    renderHook(() => useHandleIntegrationCompletion({ saveMessages: mockSaveMessages, sendPrompt: mockSendAcpPrompt }), {
       wrapper: createQueryTestWrapper({
         defaultOptions: {
           queries: {
@@ -491,7 +487,7 @@ describe('useHandleIntegrationCompletion', () => {
     const consoleWarnSpy = mock(() => {})
     console.warn = consoleWarnSpy
 
-    renderHook(() => useHandleIntegrationCompletion({ saveMessages: mockSaveMessages }), {
+    renderHook(() => useHandleIntegrationCompletion({ saveMessages: mockSaveMessages, sendPrompt: mockSendAcpPrompt }), {
       wrapper: createQueryTestWrapper({
         defaultOptions: {
           queries: {
@@ -556,7 +552,7 @@ describe('useHandleIntegrationCompletion', () => {
     const consoleWarnSpy = mock(() => {})
     console.warn = consoleWarnSpy
 
-    renderHook(() => useHandleIntegrationCompletion({ saveMessages: mockSaveMessages }), {
+    renderHook(() => useHandleIntegrationCompletion({ saveMessages: mockSaveMessages, sendPrompt: mockSendAcpPrompt }), {
       wrapper: createQueryTestWrapper({
         defaultOptions: {
           queries: {
@@ -627,7 +623,7 @@ describe('useHandleIntegrationCompletion', () => {
         integrations_microsoft_credentials: '',
       })
 
-      renderHook(() => useHandleIntegrationCompletion({ saveMessages: mockSaveMessages }), {
+      renderHook(() => useHandleIntegrationCompletion({ saveMessages: mockSaveMessages, sendPrompt: mockSendAcpPrompt }), {
         wrapper: createQueryTestWrapper({
           defaultOptions: {
             queries: {

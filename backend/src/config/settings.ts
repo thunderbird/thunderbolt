@@ -173,14 +173,15 @@ export const getCorsMethodsList = (settings: Settings): string[] => {
     .filter((method) => method.length > 0)
 }
 
-export type { HaystackPipelineConfig } from '@/haystack/types'
+import type { HaystackPipelineConfig } from '@/haystack/types'
+export type { HaystackPipelineConfig }
 
 /**
  * Get configured Haystack pipelines. Supports either:
  * - HAYSTACK_PIPELINES: JSON array of pipeline configs
  * - Individual HAYSTACK_PIPELINE_NAME/ID env vars (creates single pipeline)
  */
-export const getHaystackPipelines = (settings: Settings): import('@/haystack/types').HaystackPipelineConfig[] => {
+export const getHaystackPipelines = (settings: Settings): HaystackPipelineConfig[] => {
   if (!settings.haystackApiKey || !settings.haystackWorkspace) {
     return []
   }

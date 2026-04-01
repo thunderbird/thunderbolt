@@ -34,20 +34,13 @@ export const createHaystackRoutes = (fetchFn: typeof fetch = globalThis.fetch) =
     ]),
   )
 
+  // All pipelines share the same workspace/auth, so any client works for file downloads
+  const anyClient = clients.values().next().value as HaystackClient
+
   router.get(
     '/files/:fileId',
     async ({ params }) => {
-      if (!/^[\w-]+$/.test(params.fileId)) {
-        throw new Error('Invalid file ID')
-      }
-
-      // Use any client — they share the same workspace/auth
-      const client = clients.values().next().value
-      if (!client) {
-        throw new Error('No Haystack client available')
-      }
-
-      const response = await client.downloadFile(params.fileId)
+      const response = await anyClient.downloadFile(params.fileId)
 
       // Pass through content type and disposition headers
       const headers: Record<string, string> = {}
@@ -71,17 +64,7 @@ export const createHaystackRoutes = (fetchFn: typeof fetch = globalThis.fetch) =
     const client = clients.get(pipeline.slug)!
     const handler = createHaystackWebSocketHandler(pipeline, client)
 
-    router.ws(`/ws/${pipeline.slug}`, {
-      open(ws) {
-        handler.open(ws as unknown as Parameters<typeof handler.open>[0])
-      },
-      message(ws, message) {
-        handler.message(ws as unknown as Parameters<typeof handler.message>[0], message as unknown as string | Buffer)
-      },
-      close(ws) {
-        handler.close(ws as unknown as Parameters<typeof handler.close>[0])
-      },
-    })
+    router.ws(`/ws/${pipeline.slug}`, handler)
   }
 
   return router

@@ -9,7 +9,7 @@ import { useCallback, useRef } from 'react'
 
 type SessionUpdate = SessionNotification['update']
 
-export const maxRetries = 3
+export { maxRetries } from './constants'
 
 type SendPromptOptions = {
   sessionId: string

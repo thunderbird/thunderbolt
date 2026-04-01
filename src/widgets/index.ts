@@ -89,7 +89,7 @@ export const widgetSchemas = widgetRegistry.map((widget) => widget.module.schema
  */
 export const widgetComponents = Object.fromEntries(
   widgetRegistry.map((widget) => [widget.name, widget.module.Component]),
-) as Record<WidgetName, ComponentType<any>>
+) as Record<WidgetName, ComponentType<Record<string, unknown>>>
 
 /**
  * Union type of all widget cache data - auto-generated from registry

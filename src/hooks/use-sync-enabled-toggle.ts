@@ -10,7 +10,8 @@ import { useEffect, useState } from 'react'
  * and event listener for external changes (e.g. sign-in flow).
  *
  * On mount, detects pre-encryption users (sync ON + encryption enabled + no CK)
- * and auto-disables sync, opening the wizard so they can set up encryption.
+ * and auto-disables sync. The user re-enables sync via the toggle, which opens
+ * the wizard through the normal flow.
  */
 export const useSyncEnabledToggle = () => {
   const [syncEnabled, setSyncEnabledState] = useState(isSyncEnabled())
@@ -36,10 +37,10 @@ export const useSyncEnabledToggle = () => {
       if (ck) {
         return
       }
-      // Pre-encryption user: disable sync and open wizard
+      // Pre-encryption user: disable sync silently.
+      // User will notice sync is off, toggle it on, and the normal wizard flow handles the rest.
       await setSyncEnabled(false)
       setSyncEnabledState(false)
-      setSyncSetupOpen(true)
     }
     checkEncryptionMigration()
   }, [])
@@ -52,6 +53,14 @@ export const useSyncEnabledToggle = () => {
       return
     }
     if (!isEncryptionEnabled()) {
+      await setSyncEnabled(true)
+      setSyncEnabledState(true)
+      trackEvent('settings_sync_enabled')
+      return
+    }
+    // Encryption already set up (CK exists) — just enable sync, no wizard needed
+    const ck = await getCK()
+    if (ck) {
       await setSyncEnabled(true)
       setSyncEnabledState(true)
       trackEvent('settings_sync_enabled')

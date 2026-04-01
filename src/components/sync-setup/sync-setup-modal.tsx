@@ -27,12 +27,18 @@ export const SyncSetupModal = ({ open, onOpenChange, onComplete }: SyncSetupModa
   const httpClient = useHttpClient()
   const hasCompletedRef = useRef(false)
 
+  // Reset wizard state when modal opens (not on close — avoids step flash during close animation)
+  const prevOpen = useRef(false)
+  if (open && !prevOpen.current) {
+    setup.reset()
+    hasCompletedRef.current = false
+  }
+  prevOpen.current = open
+
   const isRecoveryKeyStep = setup.step === 'recovery-key-display'
   const canDismiss = !isRecoveryKeyStep && !setup.isLoading
 
   const handleClose = () => {
-    setup.reset()
-    hasCompletedRef.current = false
     onOpenChange(false)
   }
 
@@ -42,7 +48,7 @@ export const SyncSetupModal = ({ open, onOpenChange, onComplete }: SyncSetupModa
     }
     hasCompletedRef.current = true
     onComplete()
-    handleClose()
+    onOpenChange(false)
   }
 
   const showSuccess = () => {

@@ -112,12 +112,10 @@ export const useSyncSetup = () => {
           dispatch({ type: 'STOP_LOADING' })
           return 'already-trusted' as const
         }
-        // Envelope missing — treat as first device scenario
-        dispatch({ type: 'DETECTED_FIRST_DEVICE' })
-        return 'first-device' as const
+        // Trusted but no envelope — fall through to canary check below
       }
 
-      // Not trusted: use canary to determine first vs additional device
+      // Use canary to determine first vs additional device
       const hasCanary = await checkCanaryExists(httpClient)
       if (!hasCanary) {
         dispatch({ type: 'DETECTED_FIRST_DEVICE' })

@@ -64,11 +64,12 @@ export const registerDevice = async (
       createdAt: new Date(),
       lastSeen: new Date(),
     })
-    // Defensive: handles concurrent re-registration race. The API handler returns early
-    // for existing devices, so this branch rarely executes — it prevents a hard insert failure.
+    // On conflict: update publicKey, reset trusted to false (device must go through
+    // approval flow again), and update lastSeen. This handles both concurrent re-registration
+    // races and pre-encryption devices that were backfilled as trusted without an envelope.
     .onConflictDoUpdate({
       target: devicesTable.id,
-      set: { publicKey: device.publicKey, lastSeen: new Date() },
+      set: { publicKey: device.publicKey, trusted: false, lastSeen: new Date() },
       setWhere: eq(devicesTable.userId, device.userId),
     })
     .returning()

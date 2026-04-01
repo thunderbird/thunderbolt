@@ -81,6 +81,16 @@ describe('AES-GCM codec', () => {
       const encoded = await codec.encode('')
       expect(encoded.startsWith('__enc:')).toBe(true)
     })
+
+    it('skips already-encrypted values (no double encryption)', async () => {
+      const encoded = await codec.encode('hello')
+      expect(encoded.startsWith('__enc:')).toBe(true)
+
+      mockEncrypt.mockClear()
+      const doubleEncoded = await codec.encode(encoded)
+      expect(doubleEncoded).toBe(encoded)
+      expect(mockEncrypt).not.toHaveBeenCalled()
+    })
   })
 
   describe('decode', () => {
@@ -112,9 +122,11 @@ describe('AES-GCM codec', () => {
       expect(decoded).toBe('hello')
     })
 
-    it('passes through plaintext (no prefix)', async () => {
-      const decoded = await codec.decode('just plain text')
-      expect(decoded).toBe('just plain text')
+    it('passes through plaintext (no double decryption attempt)', async () => {
+      const plaintext = 'just plain text'
+      const decoded = await codec.decode(plaintext)
+      expect(decoded).toBe(plaintext)
+      expect(mockDecrypt).not.toHaveBeenCalled()
     })
 
     it('returns as-is for malformed __enc: string', async () => {

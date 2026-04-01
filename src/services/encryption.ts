@@ -15,7 +15,6 @@ import {
   storeKeyPair,
   getKeyPair,
   storeCK,
-  clearCK,
   clearAllKeys,
 } from '@/crypto'
 import { getDeviceId } from '@/lib/auth-token'
@@ -204,16 +203,7 @@ export const recoverWithKey = async (httpClient: KyInstance, recoveryPhrase: str
 }
 
 // =============================================================================
-// Flow G — Sign out (clear CK, keep key pair)
-// =============================================================================
-
-export const handleSignOut = async (): Promise<void> => {
-  await clearCK()
-  invalidateCKCache()
-}
-
-// =============================================================================
-// Flow H — Full wipe (clear all keys)
+// Flow G — Full wipe (clear all keys)
 // =============================================================================
 
 export const handleFullWipe = async (): Promise<void> => {

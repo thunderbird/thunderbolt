@@ -93,15 +93,13 @@ export class HaystackClient {
 
     try {
       const url = `${this.baseApiUrl}/pipelines/${this.config.pipelineName}`
-      const response = await this.fetchFn(url, { method: 'GET', headers: this.headers })
-      if (response.ok) {
-        const parsed = outputTypeSchema.safeParse(await response.json())
-        if (!parsed.success) {
-          console.warn('[HaystackClient] getOutputType: unexpected response shape, defaulting to CHAT')
-        } else {
-          this.cachedOutputType = parsed.data.output_type === 'DOCUMENT' ? 'DOCUMENT' : 'CHAT'
-          return this.cachedOutputType
-        }
+      const response = await this.fetchWithPipelineRetry(url, { method: 'GET', headers: this.headers })
+      const parsed = outputTypeSchema.safeParse(await response.json())
+      if (!parsed.success) {
+        console.warn('[HaystackClient] getOutputType: unexpected response shape, defaulting to CHAT')
+      } else {
+        this.cachedOutputType = parsed.data.output_type === 'DOCUMENT' ? 'DOCUMENT' : 'CHAT'
+        return this.cachedOutputType
       }
     } catch {
       // Fall back to CHAT if the metadata endpoint is unavailable

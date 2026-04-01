@@ -85,7 +85,7 @@ export class HaystackClient {
     })
   }
 
-  /** Auto-detect pipeline output type from the Haystack API. Cached after first call. */
+  /** Auto-detect pipeline output type from the Haystack API. Cached after first successful call. */
   async getOutputType(): Promise<HaystackOutputType> {
     if (this.cachedOutputType) {
       return this.cachedOutputType
@@ -100,14 +100,14 @@ export class HaystackClient {
           console.warn('[HaystackClient] getOutputType: unexpected response shape, defaulting to CHAT')
         } else {
           this.cachedOutputType = parsed.data.output_type === 'DOCUMENT' ? 'DOCUMENT' : 'CHAT'
+          return this.cachedOutputType
         }
       }
     } catch {
       // Fall back to CHAT if the metadata endpoint is unavailable
     }
 
-    this.cachedOutputType ??= 'CHAT'
-    return this.cachedOutputType
+    return 'CHAT'
   }
 
   async createSession(): Promise<HaystackSessionResponse> {

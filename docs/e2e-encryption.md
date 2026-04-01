@@ -16,7 +16,7 @@ For the sync pipeline integration (how encrypted data flows through PowerSync), 
 | **Content key (CK)** | A single AES-256-GCM key that encrypts all user data. Identical across all devices. Stored in IndexedDB as non-extractable CryptoKey after first setup. |
 | **Device envelope** | CK wrapped with a specific device's public key. Stored server-side in a non-syncable table. Only that device's private key can unwrap it. |
 | **Recovery key** | CK encoded as a 24-word BIP-39 mnemonic. Shown once at first setup. The only way to access data if all devices are lost. |
-| **Canary** | A fixed plaintext (`thunderbolt-canary-v1`) encrypted with CK and stored server-side. Used to verify a recovery key is correct before creating a new envelope. |
+| **Canary** | A fixed plaintext (`thunderbolt-canary-v1`) encrypted with CK and stored server-side. Used to verify a recovery key is correct before creating a new envelope. Also used by the FE to detect whether encryption has been set up for an account (`GET /encryption/canary` returns 404 if not). |
 
 ---
 
@@ -110,18 +110,18 @@ Three server-side tables handle the encryption layer. Only `devices` is syncable
 
 ### `devices` table — syncable
 
-Synced to all trusted devices via PowerSync. Contains device identity and status — no key material except the public key (which is intentionally visible to all trusted devices for the approval flow).
+Synced to all trusted devices via PowerSync. Contains device identity — no key material except the public key (which is intentionally visible to all trusted devices for the approval flow).
 
 | Column | Type | Notes |
 | --- | --- | --- |
 | `id` | text (PK) | Generated locally on FE at sign-in |
 | `user_id` | text (FK → users) | |
 | `name` | text | e.g. "Chrome on MacBook" (encrypted) |
-| `status` | enum | `APPROVAL_PENDING` \| `TRUSTED` \| `REVOKED` |
-| `public_key` | text | Base64 RSA public key — set when user enables sync |
+| `trusted` | boolean | `false` = pending approval, `true` = has envelope and can sync. Revocation tracked by `revoked_at`. |
+| `public_key` | text | Base64 RSA public key — set when user enables sync. `null` for pre-encryption devices. |
 | `last_seen` | timestamp | |
 | `created_at` | timestamp | |
-| `revoked_at` | timestamp | |
+| `revoked_at` | timestamp | When set, device is revoked regardless of `trusted` value. |
 
 ### `envelopes` table — server-side only
 
@@ -137,7 +137,7 @@ One row per trusted device. Each device fetches only its own row via API — nev
 
 ### `encryption_metadata` table — server-side only
 
-One row per user account. Created at first device setup. Used for canary verification during recovery key entry.
+One row per user account. Created at first device setup. Used for canary verification during recovery key entry, and to detect whether encryption has been set up for an account.
 
 | Column | Type | Notes |
 | --- | --- | --- |
@@ -171,11 +171,15 @@ thunderbolt_ck              CryptoKey    extractable: false, usage: encrypt/decr
 
 ## Device States
 
-| State | Description |
-| --- | --- |
-| `APPROVAL_PENDING` | Key pair generated and sent to server. Waiting for a trusted device to approve. |
-| `TRUSTED` | Device has an envelope. CK available. Sync enabled. |
-| `REVOKED` | Envelope deleted. Device can no longer decrypt data or receive sync updates. |
+Devices use a `trusted` boolean and a `revoked_at` timestamp. The `trusted` column is synced via PowerSync so the frontend can show device states without querying server-only tables.
+
+| State | Columns | Description |
+| --- | --- | --- |
+| Pending approval | `trusted = false`, `revoked_at = null` | Key pair generated and sent to server. Waiting for a trusted device to approve. |
+| Trusted | `trusted = true`, `revoked_at = null` | Device has an envelope. CK available. Sync enabled. |
+| Revoked | `revoked_at ≠ null` | Envelope deleted. Device can no longer decrypt data or receive sync updates. |
+
+> **Note:** `trusted` is redundant with the `envelopes` table on the backend (a device is trusted iff it has an envelope). It exists solely as a sync signal for the frontend, which cannot query the server-only `envelopes` table.
 
 ---
 
@@ -188,16 +192,17 @@ Register a device with its public key. Returns the device's current state.
 **Body:** `{ deviceId, publicKey, name? }`
 
 **Responses:**
-- Device already `TRUSTED`: `{ status: "TRUSTED", envelope: string | null }`
-- Device already `APPROVAL_PENDING`: `{ status: "APPROVAL_PENDING", firstDevice: boolean }`
-- Device `REVOKED`: `403 { error: "Device has been revoked" }`
-- New device: creates row with `APPROVAL_PENDING`, returns `{ status: "APPROVAL_PENDING", firstDevice: boolean }`
+- Device already trusted (has publicKey): `{ trusted: true, envelope: string | null }`
+- Device not yet trusted (has publicKey): `{ trusted: false }`
+- Pre-encryption device (no publicKey on server): re-registers with publicKey, returns `{ trusted: false }`
+- Device revoked: `403 { error: "Device has been revoked" }`
+- New device: creates row, returns `{ trusted: false }`
 
-The `firstDevice` flag tells the FE whether to generate CK locally (true) or wait for approval (false).
+The FE then calls `GET /encryption/canary` to determine whether to generate CK locally (canary 404 = first device) or wait for approval (canary 200 = additional device).
 
 ### `POST /devices/:deviceId/envelope`
 
-Store a wrapped CK for a device. Marks the device as `TRUSTED` on success.
+Store a wrapped CK for a device. Marks the device as trusted on success.
 
 **Body:** `{ wrappedCK, canaryIv?, canaryCtext? }`
 **Headers:** `X-Device-ID` (caller's device ID)
@@ -205,7 +210,7 @@ Store a wrapped CK for a device. Marks the device as `TRUSTED` on success.
 **Authorization logic** (inside transaction):
 - **First device bootstrap:** no envelopes exist and caller is the device → allowed
 - **Self-recovery:** caller is the device and provided canary matches stored metadata → allowed
-- **Trusted device approving another:** caller must be `TRUSTED` → allowed
+- **Trusted device approving another:** caller must be trusted → allowed
 - All other cases → `403`
 
 Also stores canary in `encryption_metadata` if provided (idempotent — first device setup only).
@@ -216,17 +221,17 @@ Fetch the calling device's own wrapped CK.
 
 **Headers:** `X-Device-ID`
 
-Returns `{ status, wrappedCK }` or `404` if no envelope exists (not yet approved).
+Returns `{ trusted, wrappedCK }` or `404` if no envelope exists (not yet approved).
 
 ### `GET /encryption/canary`
 
-Fetch the canary for recovery key verification.
+Fetch the canary for recovery key verification. Also used to detect whether encryption has been bootstrapped for an account.
 
 Returns `{ canaryIv, canaryCtext }` or `404` if encryption not set up.
 
 ### `POST /v1/account/devices/:id/revoke`
 
-Revoke a device. Runs in a transaction: deletes the device's envelope, then sets `status` to `REVOKED` and `revoked_at`. Returns `204`.
+Revoke a device. Runs in a transaction: deletes the device's envelope, then sets `revoked_at`. Returns `204`.
 
 ---
 
@@ -239,30 +244,33 @@ Two round trips drive the first-device flow. All other flows are a single round 
 
 POST /devices { deviceId, publicKey }
 
-→ device already known, status TRUSTED
-      returns { status: TRUSTED, envelope }
+→ device already known, trusted, has publicKey
+      returns { trusted: true, envelope }
 
-→ device already known, status APPROVAL_PENDING
-      returns { status: APPROVAL_PENDING, firstDevice: false }
+→ device already known, not trusted, has publicKey
+      returns { trusted: false }
 
-→ device unknown, envelopes exist for this user
-      creates device row (APPROVAL_PENDING)
-      returns { status: APPROVAL_PENDING, firstDevice: false }
+→ device already known, no publicKey (pre-encryption device)
+      re-registers with publicKey
+      returns { trusted: false }
 
-→ device unknown, NO envelopes exist for this user
-      creates device row (APPROVAL_PENDING)
-      returns { status: APPROVAL_PENDING, firstDevice: true }
-      ← FE detects firstDevice: true and generates CK entirely on the client
+→ device unknown
+      creates device row (trusted: false)
+      returns { trusted: false }
 
-─── Round trip 2 (firstDevice: true path only) ─────────────────
+FE then calls GET /encryption/canary:
+  → 404 (no canary) → FE generates CK locally (first device)
+  → 200 (canary exists) → FE waits for approval or uses recovery key
+
+─── Round trip 2 (first device path only) ─────────────────────
 
 POST /devices/:deviceId/envelope { wrappedCK, canaryIv, canaryCtext }
 
       stores wrappedCK in envelopes table
       stores canary in encryption_metadata
         (only if row does not yet exist for this user)
-      updates device status to TRUSTED
-      returns { status: TRUSTED }
+      marks device as trusted
+      returns { trusted: true }
 ```
 
 ---
@@ -282,23 +290,24 @@ POST /devices/:deviceId/envelope { wrappedCK, canaryIv, canaryCtext }
 3. Sync remains OFF. Data stays local.
 4. No key pair generated yet. No device record on server yet.
 
-### Flow C — First Device (firstDevice: true)
+### Flow C — First Device (no canary exists)
 
-Runs when the user enables sync and no envelopes exist for this account. CK is generated entirely on the FE — the server never sees it in plaintext.
+Runs when the user enables sync and no canary exists for this account (meaning encryption has never been bootstrapped). CK is generated entirely on the FE — the server never sees it in plaintext.
 
 1. User toggles "Enable Sync".
 2. FE generates key pair → stores in IndexedDB (non-extractable).
 3. FE sends `POST /devices { deviceId, publicKey }`.
-4. Server detects no existing envelopes → returns `{ status: APPROVAL_PENDING, firstDevice: true }`.
-5. FE detects `firstDevice: true` → generates CK locally (extractable at this moment only).
-6. FE encodes CK as BIP-39 24-word mnemonic → recovery key held in memory briefly.
-7. FE encrypts `"thunderbolt-canary-v1"` with CK → `{ canaryIv, canaryCtext }`.
-8. FE wraps CK with own public key via `SubtleCrypto.wrapKey` → `wrappedCK`.
-9. FE sends `POST /devices/:deviceId/envelope { wrappedCK, canaryIv, canaryCtext }`.
-10. Server stores envelope and canary → marks device `TRUSTED`.
-11. FE re-imports CK as non-extractable → stores in IndexedDB. Extractable version discarded.
-12. Sync enabled. Data begins encrypting and uploading.
-13. FE shows recovery key screen:
+4. Server returns `{ trusted: false }`.
+5. FE calls `GET /encryption/canary` → 404 (no canary) → first device flow.
+6. FE generates CK locally (extractable at this moment only).
+7. FE encodes CK as BIP-39 24-word mnemonic → recovery key held in memory briefly.
+8. FE encrypts `"thunderbolt-canary-v1"` with CK → `{ canaryIv, canaryCtext }`.
+9. FE wraps CK with own public key via `SubtleCrypto.wrapKey` → `wrappedCK`.
+10. FE sends `POST /devices/:deviceId/envelope { wrappedCK, canaryIv, canaryCtext }`.
+11. Server stores envelope and canary → marks device trusted.
+12. FE re-imports CK as non-extractable → stores in IndexedDB. Extractable version discarded.
+13. Sync enabled. Data begins encrypting and uploading.
+14. FE shows recovery key screen:
 
 ```
 ┌─────────────────────────────────────────────────────┐
@@ -319,24 +328,25 @@ Runs when the user enables sync and no envelopes exist for this account. CK is g
 
 ### Flow D — Additional Device (approval flow)
 
-Runs when the user enables sync on a new device and trusted devices already exist.
+Runs when the user enables sync on a new device and a canary already exists (encryption was previously bootstrapped).
 
 **On the new device (Device 2):**
 
 1. User toggles "Enable Sync".
 2. FE generates key pair → stores in IndexedDB (non-extractable).
 3. FE sends `POST /devices { deviceId, publicKey }`.
-4. Server detects existing envelopes → creates device with `APPROVAL_PENDING`.
-5. FE shows approval waiting screen with polling.
+4. Server returns `{ trusted: false }`.
+5. FE calls `GET /encryption/canary` → 200 → additional device flow.
+6. FE shows approval waiting screen with polling.
 
 **On the trusted device (Device 1) — simultaneously:**
 
-1. PowerSync delivers new `APPROVAL_PENDING` device row to Device 1.
+1. PowerSync delivers new untrusted device row to Device 1.
 2. User opens Settings → Devices → sees pending device → taps "Approve".
 3. FE reads Device 2's public key from the synced device row.
 4. FE wraps CK with Device 2's public key via `SubtleCrypto.wrapKey`.
 5. FE sends `POST /devices/:device2Id/envelope { wrappedCK }`.
-6. Server stores Device 2's envelope → updates status to `TRUSTED`.
+6. Server stores Device 2's envelope → marks device trusted.
 
 **Back on Device 2:**
 
@@ -345,7 +355,7 @@ Runs when the user enables sync on a new device and trusted devices already exis
 3. FE re-imports CK as non-extractable → stores in IndexedDB.
 4. Sync enabled.
 
-> **Page refresh during approval:** The key pair persists in IndexedDB. On reload, `POST /devices` returns `APPROVAL_PENDING` and the approval screen is shown again. Device 1 can still approve — the public key has not changed.
+> **Page refresh during approval:** The key pair persists in IndexedDB. On reload, `POST /devices` returns `{ trusted: false }` and the approval screen is shown again. Device 1 can still approve — the public key has not changed.
 
 ### Flow E — Recovery Key (no trusted device available)
 
@@ -360,7 +370,7 @@ Accessed via "Use recovery key instead" on the approval waiting screen.
 5. FE registers device: `POST /devices { deviceId, publicKey }`.
 6. FE wraps CK with own public key.
 7. FE sends `POST /devices/:deviceId/envelope { wrappedCK, canaryIv, canaryCtext }`.
-8. Server stores envelope (self-recovery path: canary match bypasses trusted-device check) → marks device `TRUSTED`.
+8. Server stores envelope (self-recovery path: canary match bypasses trusted-device check) → marks device trusted.
 9. FE re-imports CK as non-extractable → stores in IndexedDB.
 10. Sync enabled.
 
@@ -370,7 +380,7 @@ Key pair still present, CK missing (e.g. partial storage clear).
 
 1. App loads → CK not found → key pair found.
 2. App sends `GET /devices/me/envelope`.
-3. Server returns envelope (device is `TRUSTED`).
+3. Server returns envelope (device is trusted).
 4. FE unwraps → stores CK → sync resumes.
 
 > If the key pair is also missing, treat as Flow H (data wipe).
@@ -379,7 +389,7 @@ Key pair still present, CK missing (e.g. partial storage clear).
 
 1. User signs out.
 2. FE clears CK from IndexedDB. Keeps key pair and device ID.
-3. On next sign-in: `POST /devices` returns `TRUSTED` + envelope → CK restored.
+3. On next sign-in: `POST /devices` returns `{ trusted: true, envelope }` → CK restored.
 
 > Sign-out is not a security boundary for the local device. To fully remove access, use Revoke.
 
@@ -389,16 +399,17 @@ All local data gone — device ID, key pair, CK.
 
 1. User signs in → new device ID generated.
 2. User enables sync → new key pair → `POST /devices` with new device ID.
-3. Server sees unknown device, existing envelopes → `APPROVAL_PENDING`.
-4. → Flow D (approval) or Flow E (recovery key).
+3. Server sees unknown device → returns `{ trusted: false }`.
+4. FE checks canary → 200 → additional device flow.
+5. → Flow D (approval) or Flow E (recovery key).
 
 > The old device record becomes orphaned and can be revoked from Settings → Devices.
 
 ### Flow I — Revoke a Device
 
 1. User opens Settings → Devices → selects device → "Revoke".
-2. `POST /v1/account/devices/:id/revoke` → transaction: delete envelope + set status `REVOKED`.
-3. PowerSync propagates the status change.
+2. `POST /v1/account/devices/:id/revoke` → transaction: delete envelope + set `revoked_at`.
+3. PowerSync propagates the change.
 4. Revoked device: server returns 403 → app clears CK, disables sync.
 
 > Revoking does not change CK. Data already on the device remains locally readable until storage is cleared.
@@ -406,6 +417,22 @@ All local data gone — device ID, key pair, CK.
 ### Flow J — Change Email or 2FA
 
 No impact on encryption. Device envelopes are tied to device key pairs, not credentials. All trusted devices remain trusted.
+
+### Flow K — Pre-Encryption User Migration
+
+Handles existing production users who enabled sync before E2E encryption was implemented. These users have devices in the table but no publicKey, no envelopes, and no canary.
+
+1. App loads with sync ON + encryption enabled + no CK in IndexedDB.
+2. FE detects migration state → auto-disables sync → opens encryption wizard.
+3. FE calls `POST /devices { deviceId, publicKey }`.
+4. Server detects pre-encryption device (no publicKey) → re-registers with publicKey → returns `{ trusted: false }`.
+5. FE calls `GET /encryption/canary` → 404 → first device flow (Flow C).
+6. User completes wizard → sync re-enabled with encryption.
+
+**Multi-device race condition:** If two devices start the wizard simultaneously:
+- Both see canary 404 → both attempt first device setup.
+- The backend's transaction ensures only one succeeds (first to store an envelope wins).
+- The second device gets 403 → FE re-checks canary → finds it → switches to additional device flow (Flow D/E).
 
 ---
 
@@ -457,6 +484,8 @@ The codec (`src/db/encryption/codec.ts`) lazy-loads CK from IndexedDB on first a
 | `src/db/encryption/upload-encoder.ts` | Pre-upload column encryption |
 | `src/services/encryption.ts` | Service layer orchestrating all flows |
 | `src/api/encryption.ts` | Frontend API client |
+| `src/hooks/use-sync-setup.ts` | Sync setup wizard state machine |
+| `src/hooks/use-sync-enabled-toggle.ts` | Sync toggle + pre-encryption migration detection |
 | `backend/src/api/encryption.ts` | Backend API routes |
 | `backend/src/db/encryption-schema.ts` | `envelopes` and `encryption_metadata` tables |
 | `backend/src/dal/encryption.ts` | Backend data access layer |
@@ -475,6 +504,7 @@ The codec (`src/db/encryption/codec.ts`) lazy-loads CK from IndexedDB on first a
 | Data wipe | H | Email + 2FA + approval or recovery key |
 | Revoke a device | I | Email + 2FA |
 | Change email or 2FA | J | Current credential verification |
+| Pre-encryption user migration | K | Email + 2FA (auto-triggered) |
 
 ---
 

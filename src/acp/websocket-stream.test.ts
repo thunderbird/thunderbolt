@@ -1,7 +1,13 @@
 import { describe, expect, mock, test } from 'bun:test'
-import { createWebSocketStream, wsOpen, type WebSocketLike } from './websocket-stream'
+import { getClock } from '@/testing-library'
+import { connectWithReconnect, createWebSocketStream, wsOpen, type WebSocketLike } from './websocket-stream'
 
-const createMockWebSocket = (readyState = wsOpen): WebSocketLike & { _listeners: Map<string, Set<Function>> } => {
+type MockWebSocket = WebSocketLike & {
+  _listeners: Map<string, Set<Function>>
+  _trigger: (event: string, data?: unknown) => void
+}
+
+const createMockWebSocket = (readyState = wsOpen): MockWebSocket => {
   const listeners = new Map<string, Set<Function>>()
 
   return {
@@ -17,6 +23,9 @@ const createMockWebSocket = (readyState = wsOpen): WebSocketLike & { _listeners:
     },
     removeEventListener: (event: string, handler: Function) => {
       listeners.get(event)?.delete(handler)
+    },
+    _trigger: (event: string, data?: unknown) => {
+      listeners.get(event)?.forEach((h) => h(data ?? {}))
     },
   }
 }
@@ -144,5 +153,125 @@ describe('createWebSocketStream', () => {
     const writer = stream.writable.getWriter()
     const testMsg = { jsonrpc: '2.0' as const, method: 'test', id: 1 }
     await expect(writer.write(testMsg)).rejects.toThrow('WebSocket is not open')
+  })
+})
+
+describe('connectWithReconnect', () => {
+  test('calls onConnect when WebSocket opens', () => {
+    const onConnect = mock((_ws: WebSocketLike) => {})
+    const onGiveUp = mock(() => {})
+
+    const ws = createMockWebSocket()
+    connectWithReconnect({
+      onConnect,
+      onGiveUp,
+      createWebSocket: () => ws,
+    })
+
+    ws._trigger('open')
+
+    expect(onConnect).toHaveBeenCalledWith(ws)
+    expect(onGiveUp).not.toHaveBeenCalled()
+  })
+
+  test('does not reconnect on normal close (code 1000)', () => {
+    const createWebSocket = mock(() => createMockWebSocket())
+    const onGiveUp = mock(() => {})
+
+    const ws = createWebSocket.mock.results[0]?.value ?? createMockWebSocket()
+    connectWithReconnect({
+      onConnect: () => {},
+      onGiveUp,
+      createWebSocket,
+    })
+
+    const firstWs = createWebSocket.mock.results[0]?.value as MockWebSocket
+    firstWs._trigger('close', { code: 1000 })
+
+    getClock().tick(10000)
+
+    expect(createWebSocket).toHaveBeenCalledTimes(1)
+    expect(onGiveUp).not.toHaveBeenCalled()
+  })
+
+  test('reconnects with exponential backoff on unexpected close', () => {
+    const sockets: MockWebSocket[] = []
+    const createWebSocket = mock(() => {
+      const ws = createMockWebSocket()
+      sockets.push(ws)
+      return ws
+    })
+    const onGiveUp = mock(() => {})
+
+    connectWithReconnect({ onConnect: () => {}, onGiveUp, createWebSocket })
+
+    // First connect
+    expect(sockets).toHaveLength(1)
+    sockets[0]._trigger('close', { code: 1001 }) // unexpected close
+
+    // First retry after 1000ms
+    getClock().tick(999)
+    expect(sockets).toHaveLength(1)
+    getClock().tick(1)
+    expect(sockets).toHaveLength(2)
+
+    sockets[1]._trigger('close', { code: 1001 })
+
+    // Second retry after 2000ms
+    getClock().tick(1999)
+    expect(sockets).toHaveLength(2)
+    getClock().tick(1)
+    expect(sockets).toHaveLength(3)
+  })
+
+  test('resets retry counter after successful reconnect', () => {
+    const sockets: MockWebSocket[] = []
+    const createWebSocket = mock(() => {
+      const ws = createMockWebSocket()
+      sockets.push(ws)
+      return ws
+    })
+
+    connectWithReconnect({ onConnect: () => {}, onGiveUp: () => {}, createWebSocket })
+
+    // First connect fails then succeeds
+    sockets[0]._trigger('close', { code: 1001 })
+    getClock().tick(1000)
+    expect(sockets).toHaveLength(2)
+
+    sockets[1]._trigger('open')
+    sockets[1]._trigger('close', { code: 1001 })
+
+    // After successful reconnect, retry counter resets — next delay should be 1000ms again
+    getClock().tick(999)
+    expect(sockets).toHaveLength(2)
+    getClock().tick(1)
+    expect(sockets).toHaveLength(3)
+  })
+
+  test('calls onGiveUp after max retries exhausted', () => {
+    const sockets: MockWebSocket[] = []
+    const createWebSocket = mock(() => {
+      const ws = createMockWebSocket()
+      sockets.push(ws)
+      return ws
+    })
+    const onGiveUp = mock(() => {})
+
+    connectWithReconnect({ onConnect: () => {}, onGiveUp, createWebSocket })
+
+    // Exhaust all 3 retries
+    sockets[0]._trigger('close', { code: 1001 })
+    getClock().tick(1000)
+    sockets[1]._trigger('close', { code: 1001 })
+    getClock().tick(2000)
+    sockets[2]._trigger('close', { code: 1001 })
+    getClock().tick(4000)
+    sockets[3]._trigger('close', { code: 1001 })
+
+    expect(onGiveUp).toHaveBeenCalledTimes(1)
+    // No more sockets created after give up
+    getClock().tick(10000)
+    expect(sockets).toHaveLength(4)
   })
 })

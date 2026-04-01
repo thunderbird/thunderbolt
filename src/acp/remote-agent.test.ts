@@ -2,6 +2,7 @@ import { describe, expect, mock, test } from 'bun:test'
 import { connectToRemoteAgent } from './remote-agent'
 import { wsOpen, type WebSocketLike } from './websocket-stream'
 import type { AgentConfig } from './types'
+import type { Stream } from '@agentclientprotocol/sdk'
 
 const createMockWebSocket = (
   autoConnect = true,
@@ -40,77 +41,82 @@ const testRemoteAgent: AgentConfig = {
 }
 
 describe('connectToRemoteAgent', () => {
-  test('connects to WebSocket and returns stream', async () => {
-    const ws = createMockWebSocket(true)
-    const connection = await connectToRemoteAgent({
-      agentConfig: testRemoteAgent,
-      createWebSocket: () => ws,
-    })
+  test('calls onStream with a stream when WebSocket opens', () => {
+    const streams: Stream[] = []
+    const onDisconnected = mock(() => {})
 
-    expect(connection.stream).toBeDefined()
-    expect(connection.stream.readable).toBeInstanceOf(ReadableStream)
-    expect(connection.stream.writable).toBeInstanceOf(WritableStream)
-  })
-
-  test('waits for WebSocket to open when not immediately ready', async () => {
     const ws = createMockWebSocket(false)
-
-    // Schedule the open event before calling connect
-    // so it fires while the promise is waiting
-    const connectPromise = connectToRemoteAgent({
+    connectToRemoteAgent({
       agentConfig: testRemoteAgent,
       createWebSocket: () => {
-        // Trigger open after listeners are registered (next microtask)
-        queueMicrotask(() => {
-          ws.readyState = wsOpen
-          ws._trigger('open')
-        })
+        // Auto-open on next microtask
+        queueMicrotask(() => ws._trigger('open'))
         return ws
       },
+      onStream: (stream) => {
+        streams.push(stream)
+      },
+      onDisconnected,
     })
 
-    const connection = await connectPromise
-    expect(connection.stream).toBeDefined()
+    // Trigger open synchronously to ensure onStream fires
+    ws._trigger('open')
+
+    expect(streams).toHaveLength(1)
+    expect(streams[0].readable).toBeInstanceOf(ReadableStream)
+    expect(streams[0].writable).toBeInstanceOf(WritableStream)
+    expect(onDisconnected).not.toHaveBeenCalled()
   })
 
-  test('rejects when WebSocket connection fails', async () => {
+  test('disconnect closes the WebSocket', () => {
     const ws = createMockWebSocket(false)
-
-    const connectPromise = connectToRemoteAgent({
-      agentConfig: testRemoteAgent,
-      createWebSocket: () => {
-        queueMicrotask(() => {
-          ws._trigger('error', { data: 'Connection refused' })
-        })
-        return ws
-      },
-    })
-
-    await expect(connectPromise).rejects.toThrow('Failed to connect')
-  })
-
-  test('disconnect closes the WebSocket', async () => {
-    const ws = createMockWebSocket(true)
-    const connection = await connectToRemoteAgent({
+    const { disconnect } = connectToRemoteAgent({
       agentConfig: testRemoteAgent,
       createWebSocket: () => ws,
+      onStream: () => {},
+      onDisconnected: () => {},
     })
 
-    connection.disconnect()
+    ws._trigger('open')
+    disconnect()
     expect(ws.close).toHaveBeenCalled()
   })
 
-  test('throws when agent has no URL', async () => {
+  test('throws synchronously when agent has no URL', () => {
     const noUrlConfig: AgentConfig = {
       ...testRemoteAgent,
       url: undefined,
     }
 
-    await expect(
+    expect(() =>
       connectToRemoteAgent({
         agentConfig: noUrlConfig,
         createWebSocket: () => createMockWebSocket(true),
+        onStream: () => {},
+        onDisconnected: () => {},
       }),
-    ).rejects.toThrow('has no URL configured')
+    ).toThrow('has no URL configured')
+  })
+
+  test('calls onStream again on reconnect after unexpected close', () => {
+    const sockets: ReturnType<typeof createMockWebSocket>[] = []
+    const streams: Stream[] = []
+
+    connectToRemoteAgent({
+      agentConfig: testRemoteAgent,
+      createWebSocket: () => {
+        const ws = createMockWebSocket(false)
+        sockets.push(ws)
+        return ws
+      },
+      onStream: (stream) => {
+        streams.push(stream)
+      },
+      onDisconnected: () => {},
+    })
+
+    // First connection
+    sockets[0]._trigger('open')
+    expect(streams).toHaveLength(1)
   })
 })

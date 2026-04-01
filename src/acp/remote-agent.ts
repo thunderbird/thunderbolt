@@ -1,63 +1,53 @@
 import type { Stream } from '@agentclientprotocol/sdk'
 import type { AgentConfig } from './types'
-import { createWebSocketStream, type WebSocketLike, wsOpen } from './websocket-stream'
+import { connectWithReconnect, createWebSocketStream, type WebSocketLike } from './websocket-stream'
 
 type WebSocketFactory = (url: string) => WebSocketLike
 
 type RemoteAgentConnectionOptions = {
   agentConfig: AgentConfig
   createWebSocket?: WebSocketFactory
-}
-
-type RemoteAgentConnection = {
-  stream: Stream
-  disconnect: () => void
+  onStream: (stream: Stream) => void
+  onDisconnected: () => void
 }
 
 const defaultWebSocketFactory: WebSocketFactory = (url: string) => new WebSocket(url) as unknown as WebSocketLike
 
 /**
- * Connect to a remote ACP agent over WebSocket.
- * Returns the ACP stream and a disconnect function.
+ * Connect to a remote ACP agent over WebSocket with automatic reconnection.
+ * Calls onStream on initial connect and every successful reconnect.
+ * Calls onDisconnected when all retries are exhausted.
  */
-export const connectToRemoteAgent = async ({
+export const connectToRemoteAgent = ({
   agentConfig,
   createWebSocket = defaultWebSocketFactory,
-}: RemoteAgentConnectionOptions): Promise<RemoteAgentConnection> => {
+  onStream,
+  onDisconnected,
+}: RemoteAgentConnectionOptions): { disconnect: () => void } => {
   const url = agentConfig.url
   if (!url) {
     throw new Error(`Agent "${agentConfig.name}" has no URL configured`)
   }
 
-  const ws = createWebSocket(url)
+  let currentWs: WebSocketLike | null = null
 
-  // Wait for connection to open
-  await new Promise<void>((resolve, reject) => {
-    if (ws.readyState === wsOpen) {
-      resolve()
-      return
-    }
-
-    const onOpen = () => {
-      ws.removeEventListener('open', onOpen)
-      ws.removeEventListener('error', onError)
-      resolve()
-    }
-
-    const onError = () => {
-      ws.removeEventListener('open', onOpen)
-      ws.removeEventListener('error', onError)
-      reject(new Error(`Failed to connect to agent "${agentConfig.name}" at ${url}`))
-    }
-
-    ws.addEventListener('open', onOpen)
-    ws.addEventListener('error', onError)
+  connectWithReconnect({
+    createWebSocket: () => createWebSocket(url),
+    onConnect: (ws) => {
+      currentWs = ws
+      const stream = createWebSocketStream(ws)
+      onStream(stream)
+    },
+    onGiveUp: () => {
+      currentWs = null
+      onDisconnected()
+    },
   })
 
-  const stream = createWebSocketStream(ws)
-
   return {
-    stream,
-    disconnect: () => ws.close(),
+    disconnect: () => {
+      currentWs?.close()
+      currentWs = null
+    },
   }
 }

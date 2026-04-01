@@ -36,15 +36,11 @@ export const defaultResponseDenylist = [
 
 /**
  * Extract client IP address from request headers.
- * Checks standard proxy headers in order of preference.
+ * Checks infrastructure-set proxy headers in order of preference.
+ * The RFC 7239 `Forwarded` header is intentionally excluded because its
+ * `for=` value is attacker-controlled (first hop), making it spoofable.
  */
 export const extractClientIp = (headers: Headers, fallback = 'unknown'): string => {
-  const forwarded = headers.get('forwarded')
-  if (forwarded) {
-    const match = forwarded.match(/for="?([^;"]+)/i)
-    if (match?.[1]) return match[1]
-  }
-
   const xff = headers.get('x-forwarded-for')
   if (xff) return xff.split(',').at(-1)!.trim()
 

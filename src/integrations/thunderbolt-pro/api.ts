@@ -26,6 +26,7 @@ export const search = async (params: SearchParams, httpClient: HttpClient = ky):
     const { cloudUrl } = await getSettings(db, { cloud_url: 'http://localhost:8000/v1' })
     const response = await httpClient
       .post(`${cloudUrl}/pro/search`, {
+        credentials: 'include',
         timeout: requestTimeout,
         json: {
           query: params.query,
@@ -56,6 +57,7 @@ export const fetchContent = async (
     const { cloudUrl } = await getSettings(db, { cloud_url: 'http://localhost:8000/v1' })
     const response = await httpClient
       .post(`${cloudUrl}/pro/fetch-content`, {
+        credentials: 'include',
         timeout: requestTimeout,
         json: {
           url: params.url,
@@ -87,6 +89,7 @@ export const fetchLinkPreview = async (
     const { cloudUrl } = await getSettings(db, { cloud_url: 'http://localhost:8000/v1' })
     const response = await httpClient
       .get(`${cloudUrl}/pro/link-preview/${encodeURIComponent(params.url)}`, {
+        credentials: 'include',
         timeout: requestTimeout,
       })
       .json<{ data: LinkPreviewData | null; success: boolean; error?: string }>()
@@ -115,6 +118,7 @@ export const getCurrentWeather = async (params: WeatherParams, httpClient: HttpC
 
     const response = await httpClient
       .post(`${cloudUrl}/pro/weather/current`, {
+        credentials: 'include',
         timeout: requestTimeout,
         json: {
           location: params.location,
@@ -154,6 +158,7 @@ export const getWeatherForecast = async (
 
     const response = await httpClient
       .post(`${cloudUrl}/pro/weather/forecast`, {
+        credentials: 'include',
         timeout: requestTimeout,
         json: {
           location: params.location,
@@ -192,6 +197,7 @@ export const searchLocations = async (params: SearchLocationParams, httpClient: 
 
     const response = await httpClient
       .post(`${cloudUrl}/pro/locations/search`, {
+        credentials: 'include',
         timeout: requestTimeout,
         json: {
           query: params.query,

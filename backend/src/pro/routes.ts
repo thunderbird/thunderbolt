@@ -1,3 +1,4 @@
+import type { Auth } from '@/auth/elysia-plugin'
 import { safeErrorHandler } from '@/middleware/error-handling'
 import { Elysia, t } from 'elysia'
 import { exaPlugin } from './exa'
@@ -25,12 +26,26 @@ type WeatherPreferences = {
 /**
  * Create pro tools routes
  */
-export const createProToolsRoutes = (fetchFn: typeof fetch = globalThis.fetch) => {
+export const createProToolsRoutes = (auth: Auth, fetchFn: typeof fetch = globalThis.fetch) => {
   // Initialize the tool clients with injected fetch
   const weatherClient = new OpenMeteoWeather(fetchFn)
 
   return new Elysia({ prefix: '/pro' })
     .onError(safeErrorHandler)
+    .derive(async ({ request, set }) => {
+      const session = await auth.api.getSession({ headers: request.headers })
+      if (!session) {
+        set.status = 401
+        return { user: null }
+      }
+      return { user: session.user }
+    })
+    .onBeforeHandle(({ user, set }) => {
+      if (!user) {
+        set.status = 401
+        return { error: 'Unauthorized' }
+      }
+    })
     .use(exaPlugin)
     .use(createProxyRoutes(fetchFn))
     .use(createLinkPreviewRoutes(fetchFn))

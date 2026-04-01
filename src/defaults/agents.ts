@@ -18,6 +18,25 @@ export const hashAgent = (agent: Agent): string => {
   ])
 }
 
+/**
+ * Canonical list of supported local CLI agents.
+ * Add new entries here to extend local agent discovery.
+ */
+export const SUPPORTED_LOCAL_AGENTS = [
+  { name: 'Claude Code', command: 'claude-agent-acp', args: [] as string[] },
+  { name: 'Codex', command: 'codex', args: ['--acp'] },
+] as const
+
+const agentDefaults = {
+  url: null,
+  authMethod: null,
+  isSystem: 1,
+  enabled: 1,
+  deletedAt: null,
+  defaultHash: null,
+  userId: null,
+} as const
+
 export const defaultAgentBuiltIn: Agent = {
   id: 'agent-built-in',
   name: 'Thunderbolt',
@@ -25,14 +44,8 @@ export const defaultAgentBuiltIn: Agent = {
   transport: 'in-process',
   command: null,
   args: null,
-  url: null,
-  authMethod: null,
   icon: 'zap',
-  isSystem: 1,
-  enabled: 1,
-  deletedAt: null,
-  defaultHash: null,
-  userId: null,
+  ...agentDefaults,
 }
 
 export const defaultAgentClaudeCode: Agent = {
@@ -42,14 +55,8 @@ export const defaultAgentClaudeCode: Agent = {
   transport: 'stdio',
   command: 'claude-agent-acp',
   args: null,
-  url: null,
-  authMethod: null,
   icon: 'terminal',
-  isSystem: 1,
-  enabled: 1,
-  deletedAt: null,
-  defaultHash: null,
-  userId: null,
+  ...agentDefaults,
 }
 
 export const defaultAgentCodex: Agent = {
@@ -59,14 +66,8 @@ export const defaultAgentCodex: Agent = {
   transport: 'stdio',
   command: 'codex',
   args: JSON.stringify(['--acp']),
-  url: null,
-  authMethod: null,
   icon: 'code',
-  isSystem: 1,
-  enabled: 1,
-  deletedAt: null,
-  defaultHash: null,
-  userId: null,
+  ...agentDefaults,
 }
 
 /**

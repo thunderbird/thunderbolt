@@ -35,9 +35,9 @@ const cryptoMocks = {
 mock.module('@/crypto', () => cryptoMocks)
 
 const apiMocks = {
-  registerDevice: mock(async () => ({ status: 'APPROVAL_PENDING' as const, firstDevice: true })),
-  storeEnvelope: mock(async () => ({ status: 'TRUSTED' as const })),
-  fetchMyEnvelope: mock(async () => ({ status: 'TRUSTED', wrappedCK: 'mock-wrapped-ck' })),
+  registerDevice: mock(async () => ({ trusted: false as const })),
+  storeEnvelope: mock(async () => ({ trusted: true as const })),
+  fetchMyEnvelope: mock(async () => ({ trusted: true, wrappedCK: 'mock-wrapped-ck' })),
   fetchCanary: mock(async () => ({ canaryIv: 'mock-iv', canaryCtext: 'mock-ctext' })),
 }
 
@@ -84,9 +84,9 @@ const resetAllMocks = () => {
   cryptoMocks.clearCK.mockImplementation(async () => {})
   cryptoMocks.clearAllKeys.mockImplementation(async () => {})
 
-  apiMocks.registerDevice.mockImplementation(async () => ({ status: 'APPROVAL_PENDING' as const, firstDevice: true }))
-  apiMocks.storeEnvelope.mockImplementation(async () => ({ status: 'TRUSTED' as const }))
-  apiMocks.fetchMyEnvelope.mockImplementation(async () => ({ status: 'TRUSTED', wrappedCK: 'mock-wrapped-ck' }))
+  apiMocks.registerDevice.mockImplementation(async () => ({ trusted: false as const }))
+  apiMocks.storeEnvelope.mockImplementation(async () => ({ trusted: true as const }))
+  apiMocks.fetchMyEnvelope.mockImplementation(async () => ({ trusted: true, wrappedCK: 'mock-wrapped-ck' }))
   apiMocks.fetchCanary.mockImplementation(async () => ({ canaryIv: 'mock-iv', canaryCtext: 'mock-ctext' }))
 }
 
@@ -112,7 +112,7 @@ describe('encryption service', () => {
       expect(cryptoMocks.storeKeyPair).toHaveBeenCalledWith(mockKeyPair.privateKey, mockKeyPair.publicKey)
       expect(cryptoMocks.exportPublicKey).toHaveBeenCalledWith(mockKeyPair.publicKey)
       expect(apiMocks.registerDevice).toHaveBeenCalledTimes(1)
-      expect(result).toEqual({ status: 'APPROVAL_PENDING', firstDevice: true })
+      expect(result).toEqual({ trusted: false })
     })
 
     it('reuses existing key pair', async () => {

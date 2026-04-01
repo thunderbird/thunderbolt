@@ -5,13 +5,11 @@ import { getAuthToken, getDeviceId } from '@/lib/auth-token'
 // Response types (matching backend)
 // =============================================================================
 
-export type RegisterDeviceResponse =
-  | { status: 'TRUSTED'; envelope: string | null }
-  | { status: 'APPROVAL_PENDING'; firstDevice: boolean }
+export type RegisterDeviceResponse = { trusted: true; envelope: string | null } | { trusted: false }
 
-type StoreEnvelopeResponse = { status: 'TRUSTED' }
+type StoreEnvelopeResponse = { trusted: true }
 
-type FetchEnvelopeResponse = { status: string; wrappedCK: string }
+type FetchEnvelopeResponse = { trusted: boolean; wrappedCK: string }
 
 type FetchCanaryResponse = { canaryIv: string; canaryCtext: string }
 
@@ -81,3 +79,18 @@ export const fetchCanary = async (httpClient: KyInstance): Promise<FetchCanaryRe
       credentials: 'omit',
     })
     .json<FetchCanaryResponse>()
+
+/** Check if the user has encryption set up (canary exists on server). */
+export const checkCanaryExists = async (httpClient: KyInstance): Promise<boolean> => {
+  try {
+    await httpClient
+      .get('encryption/canary', {
+        headers: authHeaders(),
+        credentials: 'omit',
+      })
+      .json()
+    return true
+  } catch {
+    return false
+  }
+}

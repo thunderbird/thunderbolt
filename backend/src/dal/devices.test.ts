@@ -37,6 +37,8 @@ describe('devices DAL', () => {
       const result = await getDeviceById(db, 'd1')
       expect(result).not.toBeNull()
       expect(result!.userId).toBe(userId)
+      expect(result!.trusted).toBe(false)
+      expect(result!.publicKey).toBeNull()
       expect(result!.revokedAt).toBeNull()
     })
 

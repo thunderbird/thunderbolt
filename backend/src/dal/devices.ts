@@ -2,12 +2,13 @@ import type { db as DbType } from '@/db/client'
 import { devicesTable } from '@/db/schema'
 import { and, eq } from 'drizzle-orm'
 
-/** Get a device by ID. Returns userId, status, and revokedAt, or null if not found. */
+/** Get a device by ID. Returns userId, trusted, publicKey, and revokedAt, or null if not found. */
 export const getDeviceById = async (database: typeof DbType, deviceId: string) =>
   database
     .select({
       userId: devicesTable.userId,
-      status: devicesTable.status,
+      trusted: devicesTable.trusted,
+      publicKey: devicesTable.publicKey,
       revokedAt: devicesTable.revokedAt,
     })
     .from(devicesTable)
@@ -15,14 +16,14 @@ export const getDeviceById = async (database: typeof DbType, deviceId: string) =
     .limit(1)
     .then((rows) => rows[0] ?? null)
 
-/** Upsert a device: insert new with APPROVAL_PENDING or update lastSeen/name for existing. Only updates if userId matches. */
+/** Upsert a device: insert new (untrusted) or update lastSeen/name for existing. Only updates if userId matches. */
 export const upsertDevice = async (
   database: typeof DbType,
   device: { id: string; userId: string; name: string; lastSeen: Date; createdAt: Date },
 ) =>
   database
     .insert(devicesTable)
-    .values({ ...device, status: 'APPROVAL_PENDING' })
+    .values(device)
     .onConflictDoUpdate({
       target: devicesTable.id,
       set: { lastSeen: device.lastSeen, name: device.name },
@@ -30,28 +31,24 @@ export const upsertDevice = async (
     })
     .returning()
 
-/** Revoke a device for a specific user. Sets both status and revokedAt. */
+/** Revoke a device for a specific user. Sets revokedAt timestamp. */
 export const revokeDevice = async (database: typeof DbType, deviceId: string, userId: string) =>
   database
     .update(devicesTable)
-    .set({ status: 'REVOKED', revokedAt: new Date() })
+    .set({ revokedAt: new Date() })
     .where(and(eq(devicesTable.id, deviceId), eq(devicesTable.userId, userId)))
 
-/** Update a device's status. */
-export const updateDeviceStatus = async (
-  database: typeof DbType,
-  deviceId: string,
-  userId: string,
-  status: 'APPROVAL_PENDING' | 'TRUSTED' | 'REVOKED',
-) =>
+/** Mark a device as trusted. Called when an envelope is stored for the device. */
+export const markDeviceTrusted = async (database: typeof DbType, deviceId: string, userId: string) =>
   database
     .update(devicesTable)
-    .set({ status })
+    .set({ trusted: true })
     .where(and(eq(devicesTable.id, deviceId), eq(devicesTable.userId, userId)))
 
 /**
- * Register a device with APPROVAL_PENDING status and a public key.
+ * Register a device with a public key for encryption.
  * Used during the encryption setup flow when the FE sends POST /devices.
+ * Inserts as untrusted (default); on conflict updates publicKey and lastSeen.
  */
 export const registerDevice = async (
   database: typeof DbType,
@@ -64,7 +61,6 @@ export const registerDevice = async (
       userId: device.userId,
       name: device.name,
       publicKey: device.publicKey,
-      status: 'APPROVAL_PENDING',
       createdAt: new Date(),
       lastSeen: new Date(),
     })

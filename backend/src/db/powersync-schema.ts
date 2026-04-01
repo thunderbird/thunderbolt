@@ -2,6 +2,7 @@ import type { PowerSyncTableName } from '@shared/powersync-tables'
 import {
   type AnyPgColumn,
   type AnyPgTable,
+  boolean,
   index,
   integer,
   pgSchema,
@@ -230,9 +231,7 @@ export const devicesTable = powersyncSchema.table(
       .notNull()
       .references(() => user.id, { onDelete: 'cascade' }),
     name: text('name'),
-    status: text('status', { enum: ['APPROVAL_PENDING', 'TRUSTED', 'REVOKED'] })
-      .notNull()
-      .default('APPROVAL_PENDING'),
+    trusted: boolean('trusted').notNull().default(false),
     publicKey: text('public_key'),
     lastSeen: timestamp('last_seen').defaultNow(),
     createdAt: timestamp('created_at').defaultNow(),

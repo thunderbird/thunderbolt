@@ -6,6 +6,7 @@ import {
   checkApprovalAndUnwrap,
   recoverWithKey,
 } from '@/services/encryption'
+import { checkCanaryExists } from '@/api/encryption'
 
 type SyncSetupStep =
   | 'intro'
@@ -104,12 +105,10 @@ export const useSyncSetup = () => {
     try {
       const result = await registerThisDevice(httpClient)
 
-      if (result.status === 'TRUSTED') {
+      if (result.trusted) {
         // Device already trusted — try to unwrap CK from existing envelope
         const unwrapped = await checkApprovalAndUnwrap(httpClient)
         if (unwrapped) {
-          // CK recovered — signal completion via a special state
-          // The caller (modal) should detect this and call onComplete
           dispatch({ type: 'STOP_LOADING' })
           return 'already-trusted' as const
         }
@@ -118,7 +117,9 @@ export const useSyncSetup = () => {
         return 'first-device' as const
       }
 
-      if ('firstDevice' in result && result.firstDevice) {
+      // Not trusted: use canary to determine first vs additional device
+      const hasCanary = await checkCanaryExists(httpClient)
+      if (!hasCanary) {
         dispatch({ type: 'DETECTED_FIRST_DEVICE' })
         return 'first-device' as const
       }
@@ -142,6 +143,17 @@ export const useSyncSetup = () => {
       dispatch({ type: 'SET_RECOVERY_KEY', payload: recoveryKey })
       return true
     } catch (err) {
+      // Another device may have completed first-device setup — check canary and switch flow
+      if (err instanceof Error && 'response' in err) {
+        const status = (err as Error & { response: { status: number } }).response.status
+        if (status === 403) {
+          const hasCanary = await checkCanaryExists(httpClient)
+          if (hasCanary) {
+            dispatch({ type: 'DETECTED_ADDITIONAL_DEVICE' })
+            return true
+          }
+        }
+      }
       const message = err instanceof Error ? err.message : 'Failed to set up encryption'
       dispatch({ type: 'SET_ERROR', payload: message })
       return false

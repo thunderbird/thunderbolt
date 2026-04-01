@@ -62,18 +62,18 @@ describe('Encryption API', () => {
   const insertDevice = async (
     id: string,
     userId: string,
-    status: 'APPROVAL_PENDING' | 'TRUSTED' | 'REVOKED' = 'APPROVAL_PENDING',
-    publicKey = 'pk-test',
+    options: { trusted?: boolean; publicKey?: string; revokedAt?: Date } = {},
   ) => {
+    const { trusted = false, publicKey = 'pk-test', revokedAt } = options
     await db.insert(devicesTable).values({
       id,
       userId,
       name: 'Test Device',
-      status,
+      trusted,
       publicKey,
       lastSeen: now,
       createdAt: now,
-      ...(status === 'REVOKED' ? { revokedAt: now } : {}),
+      ...(revokedAt ? { revokedAt } : {}),
     })
   }
 
@@ -138,7 +138,7 @@ describe('Encryption API', () => {
       expect(response.status).toBe(401)
     })
 
-    it('registers new device as APPROVAL_PENDING with firstDevice=true', async () => {
+    it('registers new device as untrusted', async () => {
       await createUserAndSession(p('u1'), p('tok-u1'))
 
       const response = await app.handle(
@@ -154,8 +154,7 @@ describe('Encryption API', () => {
 
       expect(response.status).toBe(200)
       const body = await response.json()
-      expect(body.status).toBe('APPROVAL_PENDING')
-      expect(body.firstDevice).toBe(true)
+      expect(body.trusted).toBe(false)
 
       const [device] = await db
         .select()
@@ -164,12 +163,12 @@ describe('Encryption API', () => {
       expect(device).toBeDefined()
       expect(device.userId).toBe(p('u1'))
       expect(device.name).toBe('My Device')
-      expect(device.status).toBe('APPROVAL_PENDING')
+      expect(device.trusted).toBe(false)
     })
 
-    it('registers new device as APPROVAL_PENDING with firstDevice=false when envelopes exist', async () => {
+    it('registers new device as untrusted when envelopes exist', async () => {
       await createUserAndSession(p('u2'), p('tok-u2'))
-      await insertDevice(p('d-existing'), p('u2'), 'TRUSTED')
+      await insertDevice(p('d-existing'), p('u2'), { trusted: true })
       await insertEnvelope(p('d-existing'), p('u2'))
 
       const response = await app.handle(
@@ -185,13 +184,12 @@ describe('Encryption API', () => {
 
       expect(response.status).toBe(200)
       const body = await response.json()
-      expect(body.status).toBe('APPROVAL_PENDING')
-      expect(body.firstDevice).toBe(false)
+      expect(body.trusted).toBe(false)
     })
 
-    it('returns TRUSTED with envelope for already-trusted device', async () => {
+    it('returns trusted with envelope for already-trusted device', async () => {
       await createUserAndSession(p('u3'), p('tok-u3'))
-      await insertDevice(p('d-trusted'), p('u3'), 'TRUSTED')
+      await insertDevice(p('d-trusted'), p('u3'), { trusted: true })
       await insertEnvelope(p('d-trusted'), p('u3'), 'my-wrapped-ck')
 
       const response = await app.handle(
@@ -207,13 +205,13 @@ describe('Encryption API', () => {
 
       expect(response.status).toBe(200)
       const body = await response.json()
-      expect(body.status).toBe('TRUSTED')
+      expect(body.trusted).toBe(true)
       expect(body.envelope).toBe('my-wrapped-ck')
     })
 
-    it('returns APPROVAL_PENDING for already-pending device', async () => {
+    it('returns untrusted for already-pending device', async () => {
       await createUserAndSession(p('u4'), p('tok-u4'))
-      await insertDevice(p('d-pending'), p('u4'), 'APPROVAL_PENDING')
+      await insertDevice(p('d-pending'), p('u4'))
 
       const response = await app.handle(
         new Request(`${BASE}/devices`, {
@@ -228,8 +226,7 @@ describe('Encryption API', () => {
 
       expect(response.status).toBe(200)
       const body = await response.json()
-      expect(body.status).toBe('APPROVAL_PENDING')
-      expect(body.firstDevice).toBe(true)
+      expect(body.trusted).toBe(false)
     })
 
     it('returns 409 when deviceId belongs to different user', async () => {
@@ -255,7 +252,7 @@ describe('Encryption API', () => {
 
     it('returns 403 when re-registering a revoked device', async () => {
       await createUserAndSession(p('u6'), p('tok-u6'))
-      await insertDevice(p('d-revoked'), p('u6'), 'REVOKED')
+      await insertDevice(p('d-revoked'), p('u6'), { revokedAt: now })
 
       const response = await app.handle(
         new Request(`${BASE}/devices`, {
@@ -345,7 +342,7 @@ describe('Encryption API', () => {
 
     it('allows first-device bootstrap: pending device submits own envelope when no envelopes exist', async () => {
       await createUserAndSession(p('u-boot'), p('tok-boot'))
-      await insertDevice(p('d-boot'), p('u-boot'), 'APPROVAL_PENDING')
+      await insertDevice(p('d-boot'), p('u-boot'))
 
       const response = await app.handle(
         new Request(`${BASE}/devices/${p('d-boot')}/envelope`, {
@@ -361,13 +358,13 @@ describe('Encryption API', () => {
 
       expect(response.status).toBe(200)
       const body = await response.json()
-      expect(body.status).toBe('TRUSTED')
+      expect(body.trusted).toBe(true)
 
       const [device] = await db
         .select()
         .from(devicesTable)
         .where(eq(devicesTable.id, p('d-boot')))
-      expect(device.status).toBe('TRUSTED')
+      expect(device.trusted).toBe(true)
 
       const [envelope] = await db
         .select()
@@ -378,9 +375,9 @@ describe('Encryption API', () => {
 
     it('rejects pending device from approving itself when envelopes already exist (no canary match)', async () => {
       await createUserAndSession(p('u-self'), p('tok-self'))
-      await insertDevice(p('d-trusted-existing'), p('u-self'), 'TRUSTED')
+      await insertDevice(p('d-trusted-existing'), p('u-self'), { trusted: true })
       await insertEnvelope(p('d-trusted-existing'), p('u-self'))
-      await insertDevice(p('d-self'), p('u-self'), 'APPROVAL_PENDING')
+      await insertDevice(p('d-self'), p('u-self'))
 
       const response = await app.handle(
         new Request(`${BASE}/devices/${p('d-self')}/envelope`, {
@@ -402,11 +399,11 @@ describe('Encryption API', () => {
     it('allows self-recovery: pending device stores own envelope when canary matches stored metadata', async () => {
       await createUserAndSession(p('u-recov'), p('tok-recov'))
       // Existing trusted device with envelope (simulates pre-recovery state)
-      await insertDevice(p('d-recov-old'), p('u-recov'), 'TRUSTED')
+      await insertDevice(p('d-recov-old'), p('u-recov'), { trusted: true })
       await insertEnvelope(p('d-recov-old'), p('u-recov'))
       await insertCanary(p('u-recov'), 'recovery-iv', 'recovery-ctext')
       // New device registered during recovery flow
-      await insertDevice(p('d-recov-new'), p('u-recov'), 'APPROVAL_PENDING')
+      await insertDevice(p('d-recov-new'), p('u-recov'))
 
       const response = await app.handle(
         new Request(`${BASE}/devices/${p('d-recov-new')}/envelope`, {
@@ -426,21 +423,21 @@ describe('Encryption API', () => {
 
       expect(response.status).toBe(200)
       const body = await response.json()
-      expect(body.status).toBe('TRUSTED')
+      expect(body.trusted).toBe(true)
 
       const [device] = await db
         .select()
         .from(devicesTable)
         .where(eq(devicesTable.id, p('d-recov-new')))
-      expect(device.status).toBe('TRUSTED')
+      expect(device.trusted).toBe(true)
     })
 
     it('rejects self-recovery when canary does not match stored metadata', async () => {
       await createUserAndSession(p('u-badrecov'), p('tok-badrecov'))
-      await insertDevice(p('d-badrecov-old'), p('u-badrecov'), 'TRUSTED')
+      await insertDevice(p('d-badrecov-old'), p('u-badrecov'), { trusted: true })
       await insertEnvelope(p('d-badrecov-old'), p('u-badrecov'))
       await insertCanary(p('u-badrecov'), 'real-iv', 'real-ctext')
-      await insertDevice(p('d-badrecov-new'), p('u-badrecov'), 'APPROVAL_PENDING')
+      await insertDevice(p('d-badrecov-new'), p('u-badrecov'))
 
       const response = await app.handle(
         new Request(`${BASE}/devices/${p('d-badrecov-new')}/envelope`, {
@@ -466,10 +463,10 @@ describe('Encryption API', () => {
     it('rejects pending device from approving another pending device', async () => {
       await createUserAndSession(p('u-pp'), p('tok-pp'))
       // Need envelopes to exist so it's not first-device bootstrap
-      await insertDevice(p('d-pp-trusted'), p('u-pp'), 'TRUSTED')
+      await insertDevice(p('d-pp-trusted'), p('u-pp'), { trusted: true })
       await insertEnvelope(p('d-pp-trusted'), p('u-pp'))
-      await insertDevice(p('d-pp-caller'), p('u-pp'), 'APPROVAL_PENDING')
-      await insertDevice(p('d-pp-target'), p('u-pp'), 'APPROVAL_PENDING')
+      await insertDevice(p('d-pp-caller'), p('u-pp'))
+      await insertDevice(p('d-pp-target'), p('u-pp'))
 
       const response = await app.handle(
         new Request(`${BASE}/devices/${p('d-pp-target')}/envelope`, {
@@ -491,9 +488,9 @@ describe('Encryption API', () => {
     it('returns 404 when target device belongs to different user', async () => {
       await createUserAndSession(p('u-diff1'), p('tok-diff1'), `${p('diff1')}@test.com`)
       await createUserAndSession(p('u-diff2'), p('tok-diff2'), `${p('diff2')}@test.com`)
-      await insertDevice(p('d-diff-caller'), p('u-diff1'), 'TRUSTED')
+      await insertDevice(p('d-diff-caller'), p('u-diff1'), { trusted: true })
       await insertEnvelope(p('d-diff-caller'), p('u-diff1'))
-      await insertDevice(p('d-diff-target'), p('u-diff2'), 'APPROVAL_PENDING')
+      await insertDevice(p('d-diff-target'), p('u-diff2'))
 
       const response = await app.handle(
         new Request(`${BASE}/devices/${p('d-diff-target')}/envelope`, {
@@ -515,11 +512,11 @@ describe('Encryption API', () => {
     it('returns 403 when caller device belongs to different user', async () => {
       await createUserAndSession(p('u-cdiff1'), p('tok-cdiff1'), `${p('cdiff1')}@test.com`)
       await createUserAndSession(p('u-cdiff2'), p('tok-cdiff2'), `${p('cdiff2')}@test.com`)
-      await insertDevice(p('d-cdiff-target'), p('u-cdiff1'), 'APPROVAL_PENDING')
-      await insertDevice(p('d-cdiff-caller'), p('u-cdiff2'), 'TRUSTED')
+      await insertDevice(p('d-cdiff-target'), p('u-cdiff1'))
+      await insertDevice(p('d-cdiff-caller'), p('u-cdiff2'), { trusted: true })
       await insertEnvelope(p('d-cdiff-caller'), p('u-cdiff2'))
       // Need envelopes for u-cdiff1 to avoid first-device bootstrap
-      await insertDevice(p('d-cdiff-existing'), p('u-cdiff1'), 'TRUSTED')
+      await insertDevice(p('d-cdiff-existing'), p('u-cdiff1'), { trusted: true })
       await insertEnvelope(p('d-cdiff-existing'), p('u-cdiff1'))
 
       const response = await app.handle(
@@ -541,9 +538,9 @@ describe('Encryption API', () => {
 
     it('returns 403 when target device is revoked', async () => {
       await createUserAndSession(p('u-trev'), p('tok-trev'))
-      await insertDevice(p('d-trev-caller'), p('u-trev'), 'TRUSTED')
+      await insertDevice(p('d-trev-caller'), p('u-trev'), { trusted: true })
       await insertEnvelope(p('d-trev-caller'), p('u-trev'))
-      await insertDevice(p('d-trev-target'), p('u-trev'), 'REVOKED')
+      await insertDevice(p('d-trev-target'), p('u-trev'), { revokedAt: now })
 
       const response = await app.handle(
         new Request(`${BASE}/devices/${p('d-trev-target')}/envelope`, {
@@ -564,10 +561,10 @@ describe('Encryption API', () => {
 
     it('returns 403 when caller device is revoked', async () => {
       await createUserAndSession(p('u-crev'), p('tok-crev'))
-      await insertDevice(p('d-crev-caller'), p('u-crev'), 'REVOKED')
-      await insertDevice(p('d-crev-target'), p('u-crev'), 'APPROVAL_PENDING')
+      await insertDevice(p('d-crev-caller'), p('u-crev'), { revokedAt: now })
+      await insertDevice(p('d-crev-target'), p('u-crev'))
       // Need envelopes so it's not bootstrap
-      await insertDevice(p('d-crev-existing'), p('u-crev'), 'TRUSTED')
+      await insertDevice(p('d-crev-existing'), p('u-crev'), { trusted: true })
       await insertEnvelope(p('d-crev-existing'), p('u-crev'))
 
       const response = await app.handle(
@@ -589,9 +586,9 @@ describe('Encryption API', () => {
 
     it('returns 409 when overwriting trusted device envelope from another device', async () => {
       await createUserAndSession(p('u-ow'), p('tok-ow'))
-      await insertDevice(p('d-ow-caller'), p('u-ow'), 'TRUSTED')
+      await insertDevice(p('d-ow-caller'), p('u-ow'), { trusted: true })
       await insertEnvelope(p('d-ow-caller'), p('u-ow'))
-      await insertDevice(p('d-ow-target'), p('u-ow'), 'TRUSTED')
+      await insertDevice(p('d-ow-target'), p('u-ow'), { trusted: true })
       await insertEnvelope(p('d-ow-target'), p('u-ow'))
 
       const response = await app.handle(
@@ -613,7 +610,7 @@ describe('Encryption API', () => {
 
     it('allows trusted device to re-key its own envelope', async () => {
       await createUserAndSession(p('u-rekey'), p('tok-rekey'))
-      await insertDevice(p('d-rekey'), p('u-rekey'), 'TRUSTED')
+      await insertDevice(p('d-rekey'), p('u-rekey'), { trusted: true })
       await insertEnvelope(p('d-rekey'), p('u-rekey'), 'old-wck')
 
       const response = await app.handle(
@@ -630,7 +627,7 @@ describe('Encryption API', () => {
 
       expect(response.status).toBe(200)
       const body = await response.json()
-      expect(body.status).toBe('TRUSTED')
+      expect(body.trusted).toBe(true)
 
       const [envelope] = await db
         .select()
@@ -641,7 +638,7 @@ describe('Encryption API', () => {
 
     it('returns 404 when target deviceId does not exist', async () => {
       await createUserAndSession(p('u-nodev'), p('tok-nodev'))
-      await insertDevice(p('d-nodev-caller'), p('u-nodev'), 'TRUSTED')
+      await insertDevice(p('d-nodev-caller'), p('u-nodev'), { trusted: true })
       await insertEnvelope(p('d-nodev-caller'), p('u-nodev'))
 
       const response = await app.handle(
@@ -663,9 +660,9 @@ describe('Encryption API', () => {
 
     it('returns 403 when caller deviceId does not exist (non-first-device scenario)', async () => {
       await createUserAndSession(p('u-nocaller'), p('tok-nocaller'))
-      await insertDevice(p('d-nocaller-target'), p('u-nocaller'), 'APPROVAL_PENDING')
+      await insertDevice(p('d-nocaller-target'), p('u-nocaller'))
       // Need envelopes to exist
-      await insertDevice(p('d-nocaller-existing'), p('u-nocaller'), 'TRUSTED')
+      await insertDevice(p('d-nocaller-existing'), p('u-nocaller'), { trusted: true })
       await insertEnvelope(p('d-nocaller-existing'), p('u-nocaller'))
 
       const response = await app.handle(
@@ -687,9 +684,9 @@ describe('Encryption API', () => {
 
     it('allows trusted device to approve a pending device', async () => {
       await createUserAndSession(p('u-approve'), p('tok-approve'))
-      await insertDevice(p('d-approve-caller'), p('u-approve'), 'TRUSTED')
+      await insertDevice(p('d-approve-caller'), p('u-approve'), { trusted: true })
       await insertEnvelope(p('d-approve-caller'), p('u-approve'))
-      await insertDevice(p('d-approve-target'), p('u-approve'), 'APPROVAL_PENDING')
+      await insertDevice(p('d-approve-target'), p('u-approve'))
 
       const response = await app.handle(
         new Request(`${BASE}/devices/${p('d-approve-target')}/envelope`, {
@@ -705,13 +702,13 @@ describe('Encryption API', () => {
 
       expect(response.status).toBe(200)
       const body = await response.json()
-      expect(body.status).toBe('TRUSTED')
+      expect(body.trusted).toBe(true)
 
       const [device] = await db
         .select()
         .from(devicesTable)
         .where(eq(devicesTable.id, p('d-approve-target')))
-      expect(device.status).toBe('TRUSTED')
+      expect(device.trusted).toBe(true)
 
       const [envelope] = await db
         .select()
@@ -722,7 +719,7 @@ describe('Encryption API', () => {
 
     it('stores canary on first-device bootstrap', async () => {
       await createUserAndSession(p('u-canary'), p('tok-canary'))
-      await insertDevice(p('d-canary'), p('u-canary'), 'APPROVAL_PENDING')
+      await insertDevice(p('d-canary'), p('u-canary'))
 
       const response = await app.handle(
         new Request(`${BASE}/devices/${p('d-canary')}/envelope`, {
@@ -753,10 +750,10 @@ describe('Encryption API', () => {
 
     it('does not overwrite existing canary on subsequent envelope submissions', async () => {
       await createUserAndSession(p('u-noow'), p('tok-noow'))
-      await insertDevice(p('d-noow-caller'), p('u-noow'), 'TRUSTED')
+      await insertDevice(p('d-noow-caller'), p('u-noow'), { trusted: true })
       await insertEnvelope(p('d-noow-caller'), p('u-noow'))
       await insertCanary(p('u-noow'), 'original-iv', 'original-ctext')
-      await insertDevice(p('d-noow-target'), p('u-noow'), 'APPROVAL_PENDING')
+      await insertDevice(p('d-noow-target'), p('u-noow'))
 
       const response = await app.handle(
         new Request(`${BASE}/devices/${p('d-noow-target')}/envelope`, {
@@ -809,7 +806,7 @@ describe('Encryption API', () => {
 
     it('returns envelope for trusted device', async () => {
       await createUserAndSession(p('u-me2'), p('tok-me2'))
-      await insertDevice(p('d-me2'), p('u-me2'), 'TRUSTED')
+      await insertDevice(p('d-me2'), p('u-me2'), { trusted: true })
       await insertEnvelope(p('d-me2'), p('u-me2'), 'my-wrapped-ck')
 
       const response = await app.handle(
@@ -823,14 +820,14 @@ describe('Encryption API', () => {
 
       expect(response.status).toBe(200)
       const body = await response.json()
-      expect(body.status).toBe('TRUSTED')
+      expect(body.trusted).toBe(true)
       expect(body.wrappedCK).toBe('my-wrapped-ck')
     })
 
     it('returns 404 when device belongs to different user', async () => {
       await createUserAndSession(p('u-me3a'), p('tok-me3a'), `${p('me3a')}@test.com`)
       await createUserAndSession(p('u-me3b'), p('tok-me3b'), `${p('me3b')}@test.com`)
-      await insertDevice(p('d-me3'), p('u-me3b'), 'TRUSTED')
+      await insertDevice(p('d-me3'), p('u-me3b'), { trusted: true })
       await insertEnvelope(p('d-me3'), p('u-me3b'))
 
       const response = await app.handle(
@@ -849,7 +846,7 @@ describe('Encryption API', () => {
 
     it('returns 403 when device is revoked', async () => {
       await createUserAndSession(p('u-me4'), p('tok-me4'))
-      await insertDevice(p('d-me4'), p('u-me4'), 'REVOKED')
+      await insertDevice(p('d-me4'), p('u-me4'), { revokedAt: now })
 
       const response = await app.handle(
         new Request(`${BASE}/devices/me/envelope`, {
@@ -867,7 +864,7 @@ describe('Encryption API', () => {
 
     it('returns 404 when device has no envelope (pending device)', async () => {
       await createUserAndSession(p('u-me5'), p('tok-me5'))
-      await insertDevice(p('d-me5'), p('u-me5'), 'APPROVAL_PENDING')
+      await insertDevice(p('d-me5'), p('u-me5'))
 
       const response = await app.handle(
         new Request(`${BASE}/devices/me/envelope`, {

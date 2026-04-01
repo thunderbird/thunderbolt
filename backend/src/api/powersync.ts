@@ -39,7 +39,7 @@ const validateDeviceNotRevoked = async (
     if (deviceRow.userId !== userId) {
       return { ok: false, status: 409, body: { code: 'DEVICE_ID_TAKEN' } }
     }
-    if (deviceRow.status === 'REVOKED' || deviceRow.revokedAt != null) {
+    if (deviceRow.revokedAt != null) {
       return { ok: false, status: 403, body: { code: 'DEVICE_DISCONNECTED' } }
     }
   }

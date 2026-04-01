@@ -54,7 +54,7 @@ describe('encryption API client', () => {
 
   describe('registerDevice', () => {
     it('sends POST /devices with correct body and auth headers', async () => {
-      const mockResponse = { status: 'APPROVAL_PENDING' as const, firstDevice: true }
+      const mockResponse = { trusted: false as const }
       const { httpClient, getLastRequest } = createCapturingHttpClient(mockResponse)
 
       const result = await registerDevice(httpClient, {
@@ -73,7 +73,7 @@ describe('encryption API client', () => {
     })
 
     it('returns TRUSTED response with envelope', async () => {
-      const mockResponse = { status: 'TRUSTED' as const, envelope: 'wrapped-ck-base64' }
+      const mockResponse = { trusted: true as const, envelope: 'wrapped-ck-base64' }
       const { httpClient } = createCapturingHttpClient(mockResponse)
 
       const result = await registerDevice(httpClient, {
@@ -87,7 +87,7 @@ describe('encryption API client', () => {
 
   describe('storeEnvelope', () => {
     it('sends POST /devices/:id/envelope with correct body', async () => {
-      const mockResponse = { status: 'TRUSTED' as const }
+      const mockResponse = { trusted: true as const }
       const { httpClient, getLastRequest } = createCapturingHttpClient(mockResponse)
 
       const result = await storeEnvelope(httpClient, {
@@ -109,7 +109,7 @@ describe('encryption API client', () => {
     })
 
     it('URL-encodes device ID', async () => {
-      const { httpClient, getLastRequest } = createCapturingHttpClient({ status: 'TRUSTED' })
+      const { httpClient, getLastRequest } = createCapturingHttpClient({ trusted: true })
 
       await storeEnvelope(httpClient, {
         deviceId: 'dev/special',
@@ -123,7 +123,7 @@ describe('encryption API client', () => {
 
   describe('fetchMyEnvelope', () => {
     it('sends GET /devices/me/envelope with auth headers', async () => {
-      const mockResponse = { status: 'TRUSTED', wrappedCK: 'wrapped-base64' }
+      const mockResponse = { trusted: true, wrappedCK: 'wrapped-base64' }
       const { httpClient, getLastRequest } = createCapturingHttpClient(mockResponse)
 
       const result = await fetchMyEnvelope(httpClient)

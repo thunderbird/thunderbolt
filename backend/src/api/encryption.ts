@@ -2,7 +2,7 @@ import type { Auth } from '@/auth/elysia-plugin'
 import {
   getDeviceById,
   registerDevice,
-  updateDeviceStatus,
+  markDeviceTrusted,
   getEnvelopeByDeviceId,
   hasEnvelopesForUser,
   upsertEnvelope,
@@ -69,32 +69,28 @@ export const createEncryptionRoutes = (auth: Auth, database: typeof DbType) =>
             return { error: 'Device ID already taken' }
           }
 
-          // Already trusted — return envelope
-          if (existingDevice.status === 'TRUSTED') {
-            const envelope = await getEnvelopeByDeviceId(database, deviceId, userId)
-            return {
-              status: 'TRUSTED' as const,
-              envelope: envelope?.wrappedCk ?? null,
-            }
-          }
-
-          // Already pending — return status + firstDevice hint
-          if (existingDevice.status === 'APPROVAL_PENDING') {
-            const envelopesExist = await hasEnvelopesForUser(database, userId)
-            return {
-              status: 'APPROVAL_PENDING' as const,
-              firstDevice: !envelopesExist,
-            }
-          }
-
           // Revoked — device cannot re-register
-          if (existingDevice.status === 'REVOKED' || existingDevice.revokedAt != null) {
+          if (existingDevice.revokedAt != null) {
             set.status = 403
             return { error: 'Device has been revoked' }
           }
+
+          // Encryption-registered device (has publicKey): return current state
+          if (existingDevice.publicKey) {
+            if (existingDevice.trusted) {
+              const envelope = await getEnvelopeByDeviceId(database, deviceId, userId)
+              return {
+                trusted: true as const,
+                envelope: envelope?.wrappedCk ?? null,
+              }
+            }
+            return { trusted: false as const }
+          }
+
+          // Pre-encryption device (no publicKey): fall through to register with publicKey
         }
 
-        // New device — register with APPROVAL_PENDING
+        // New device OR pre-encryption device — register with publicKey
         const deviceName = name || 'Unknown device'
         await registerDevice(database, {
           id: deviceId,
@@ -103,11 +99,7 @@ export const createEncryptionRoutes = (auth: Auth, database: typeof DbType) =>
           publicKey,
         })
 
-        const envelopesExist = await hasEnvelopesForUser(database, userId)
-        return {
-          status: 'APPROVAL_PENDING' as const,
-          firstDevice: !envelopesExist,
-        }
+        return { trusted: false as const }
       },
       {
         body: t.Object({
@@ -125,19 +117,19 @@ export const createEncryptionRoutes = (auth: Auth, database: typeof DbType) =>
         const { wrappedCK, canaryIv, canaryCtext } = body
 
         // Pre-transaction check: fast-path rejection for missing/wrong-user/revoked devices
-        // without starting a transaction. Re-checked inside tx (line ~170) to close race window.
+        // without starting a transaction. Re-checked inside tx to close race window.
         const device = await getDeviceById(database, deviceId)
         if (!device || device.userId !== userId) {
           set.status = 404
           return { error: 'Device not found' }
         }
 
-        if (device.status === 'REVOKED' || device.revokedAt != null) {
+        if (device.revokedAt != null) {
           set.status = 403
           return { error: 'Device has been revoked' }
         }
 
-        // Reject if target device is already TRUSTED (prevents envelope overwrite attacks)
+        // Reject if target device is already trusted (prevents envelope overwrite attacks)
         // Only the device itself can re-key its own envelope
         const callerDeviceId = request.headers.get('x-device-id')?.trim()
         if (!callerDeviceId) {
@@ -145,7 +137,7 @@ export const createEncryptionRoutes = (auth: Auth, database: typeof DbType) =>
           return { error: 'X-Device-ID header is required' }
         }
 
-        if (device.status === 'TRUSTED' && callerDeviceId !== deviceId) {
+        if (device.trusted && callerDeviceId !== deviceId) {
           set.status = 409
           return { error: 'Cannot overwrite envelope of an already-trusted device' }
         }
@@ -167,7 +159,7 @@ export const createEncryptionRoutes = (auth: Auth, database: typeof DbType) =>
 
             // Re-check target device inside transaction to close race window
             const targetDevice = await getDeviceById(txDb, deviceId)
-            if (!targetDevice || targetDevice.status === 'REVOKED' || targetDevice.revokedAt != null) {
+            if (!targetDevice || targetDevice.revokedAt != null) {
               throw new ForbiddenError('Device has been revoked')
             }
 
@@ -176,7 +168,7 @@ export const createEncryptionRoutes = (auth: Auth, database: typeof DbType) =>
               if (!callerDevice || callerDevice.userId !== userId) {
                 throw new ForbiddenError('Caller device not found')
               }
-              if (callerDevice.status !== 'TRUSTED') {
+              if (!callerDevice.trusted) {
                 throw new ForbiddenError('Only trusted devices can store envelopes')
               }
             }
@@ -198,7 +190,7 @@ export const createEncryptionRoutes = (auth: Auth, database: typeof DbType) =>
             }
 
             // Mark device as trusted
-            await updateDeviceStatus(txDb, deviceId, userId, 'TRUSTED')
+            await markDeviceTrusted(txDb, deviceId, userId)
           })
         } catch (err) {
           if (err instanceof ForbiddenError) {
@@ -208,7 +200,7 @@ export const createEncryptionRoutes = (auth: Auth, database: typeof DbType) =>
           throw err
         }
 
-        return { status: 'TRUSTED' as const }
+        return { trusted: true as const }
       },
       {
         body: t.Object({
@@ -234,7 +226,7 @@ export const createEncryptionRoutes = (auth: Auth, database: typeof DbType) =>
         return { error: 'Device not found' }
       }
 
-      if (device.status === 'REVOKED' || device.revokedAt != null) {
+      if (device.revokedAt != null) {
         set.status = 403
         return { error: 'Device has been revoked' }
       }
@@ -246,7 +238,7 @@ export const createEncryptionRoutes = (auth: Auth, database: typeof DbType) =>
       }
 
       return {
-        status: device.status,
+        trusted: device.trusted,
         wrappedCK: envelope.wrappedCk,
       }
     })

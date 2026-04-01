@@ -224,7 +224,7 @@ export const devicesTable = sqliteTable('devices', {
   id: text('id').primaryKey(),
   userId: text('user_id'),
   name: text('name'),
-  status: text('status'),
+  trusted: integer('trusted'),
   publicKey: text('public_key'),
   lastSeen: text('last_seen'),
   createdAt: text('created_at'),

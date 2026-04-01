@@ -96,4 +96,4 @@ export {
 } from './model-profiles'
 
 // Devices
-export { getAllDevices, getDevice, getPendingDevices, type Device, type DeviceStatus } from './devices'
+export { getAllDevices, getDevice, getPendingDevices, type Device } from './devices'

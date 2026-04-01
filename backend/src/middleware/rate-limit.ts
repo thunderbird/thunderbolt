@@ -93,6 +93,17 @@ const exemptPaths = new Set(['/v1/health', '/v1/posthog/config', '/v1/posthog/ev
 
 const exemptPrefixes = ['/v1/api/auth/get-session']
 
+/**
+ * Auth paths that are abuse-prone and should be rate-limited.
+ * All other auth paths (session checks, OIDC callbacks, etc.) are exempt.
+ */
+const rateLimitedAuthPrefixes = [
+  '/v1/api/auth/sign-in',
+  '/v1/api/auth/sign-up',
+  '/v1/api/auth/forget-password',
+  '/v1/api/auth/reset-password',
+]
+
 /** Create a rate limiter scoped to a specific tier. */
 const createTieredRateLimit = (
   database: typeof DbType,
@@ -119,10 +130,13 @@ export const createInferenceRateLimit = (database: typeof DbType, settings: Rate
   return createTieredRateLimit(database, 'inference', settings.inference)
 }
 
-/** Create rate limit middleware for auth routes. */
+/** Create rate limit middleware for auth routes (only credential-based sign-in/sign-up). */
 export const createAuthRateLimit = (database: typeof DbType, settings: RateLimitSettings) => {
   if (!settings.enabled) return rateLimit({ max: Number.MAX_SAFE_INTEGER, duration: 1 })
-  return createTieredRateLimit(database, 'auth', settings.auth)
+  return createTieredRateLimit(database, 'auth', settings.auth, (req) => {
+    const path = new URL(req.url).pathname
+    return !rateLimitedAuthPrefixes.some((p) => path.startsWith(p))
+  })
 }
 
 /** Create rate limit middleware for standard routes. */

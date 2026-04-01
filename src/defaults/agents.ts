@@ -18,15 +18,6 @@ export const hashAgent = (agent: Agent): string => {
   ])
 }
 
-/**
- * Canonical list of supported local CLI agents.
- * Add new entries here to extend local agent discovery.
- */
-export const SUPPORTED_LOCAL_AGENTS = [
-  { name: 'Claude Code', command: 'claude-agent-acp', args: [] as string[] },
-  { name: 'Codex', command: 'codex', args: ['--acp'] },
-] as const
-
 const agentDefaults = {
   url: null,
   authMethod: null,
@@ -36,6 +27,23 @@ const agentDefaults = {
   defaultHash: null,
   userId: null,
 } as const
+
+type LocalAgentSpec = {
+  id: string
+  name: string
+  command: string
+  args: string[] | null
+  icon: string
+}
+
+/**
+ * Canonical list of supported local CLI agents.
+ * Add new entries here to extend local agent discovery — each entry maps to a DB Agent.
+ */
+export const SUPPORTED_LOCAL_AGENTS: ReadonlyArray<LocalAgentSpec> = [
+  { id: 'agent-claude-code', name: 'Claude Code', command: 'claude-agent-acp', args: null, icon: 'terminal' },
+  { id: 'agent-codex', name: 'Codex', command: 'codex', args: ['--acp'], icon: 'code' },
+]
 
 export const defaultAgentBuiltIn: Agent = {
   id: 'agent-built-in',
@@ -48,28 +56,6 @@ export const defaultAgentBuiltIn: Agent = {
   ...agentDefaults,
 }
 
-export const defaultAgentClaudeCode: Agent = {
-  id: 'agent-claude-code',
-  name: 'Claude Code',
-  type: 'local',
-  transport: 'stdio',
-  command: 'claude-agent-acp',
-  args: null,
-  icon: 'terminal',
-  ...agentDefaults,
-}
-
-export const defaultAgentCodex: Agent = {
-  id: 'agent-codex',
-  name: 'Codex',
-  type: 'local',
-  transport: 'stdio',
-  command: 'codex',
-  args: JSON.stringify(['--acp']),
-  icon: 'code',
-  ...agentDefaults,
-}
-
 /**
  * Agents seeded into the database on all platforms.
  * Only the built-in agent is seeded — local CLI agents (Claude Code, Codex)
@@ -79,6 +65,16 @@ export const defaultAgents: ReadonlyArray<Agent> = [defaultAgentBuiltIn] as cons
 
 /**
  * Local CLI agent candidates for runtime discovery on desktop.
- * These are NOT seeded into the DB — they're added only when detected on PATH.
+ * Derived from SUPPORTED_LOCAL_AGENTS — not seeded into the DB directly,
+ * only added when the command is detected on PATH.
  */
-export const localAgentCandidates: ReadonlyArray<Agent> = [defaultAgentClaudeCode, defaultAgentCodex] as const
+export const localAgentCandidates: ReadonlyArray<Agent> = SUPPORTED_LOCAL_AGENTS.map((entry) => ({
+  ...agentDefaults,
+  id: entry.id,
+  name: entry.name,
+  type: 'local' as const,
+  transport: 'stdio' as const,
+  command: entry.command,
+  args: Array.isArray(entry.args) ? JSON.stringify(entry.args) : entry.args,
+  icon: entry.icon,
+}))

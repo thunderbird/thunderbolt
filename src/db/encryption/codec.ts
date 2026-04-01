@@ -40,6 +40,9 @@ export const invalidateCKCache = () => {
 /** AES-256-GCM codec using CK from IndexedDB. Passes through when CK is unavailable. */
 export const codec: EncryptionCodec = {
   async encode(plaintext: string): Promise<string> {
+    if (plaintext.startsWith(encPrefix)) {
+      return plaintext
+    }
     const ck = await getCachedCK()
     if (!ck) {
       return plaintext

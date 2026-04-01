@@ -116,12 +116,6 @@ describe('AES-GCM codec', () => {
       expect(decoded).toBe(encoded)
     })
 
-    it('handles legacy b64: prefix', async () => {
-      const legacy = 'b64:' + btoa(unescape(encodeURIComponent('hello')))
-      const decoded = await codec.decode(legacy)
-      expect(decoded).toBe('hello')
-    })
-
     it('passes through plaintext (no double decryption attempt)', async () => {
       const plaintext = 'just plain text'
       const decoded = await codec.decode(plaintext)

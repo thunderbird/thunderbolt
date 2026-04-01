@@ -1,8 +1,6 @@
 import { encrypt, decrypt, getCK } from '@/crypto'
 
 const encPrefix = '__enc:'
-const legacyB64Prefix = 'b64:'
-
 export type EncryptionCodec = {
   encode: (plaintext: string) => Promise<string>
   decode: (encoded: string) => Promise<string>
@@ -71,15 +69,6 @@ export const codec: EncryptionCodec = {
         return await decrypt({ iv, ciphertext }, ck)
       } catch (err) {
         console.warn('[codec] Decryption failed, returning raw value:', err)
-        return encoded
-      }
-    }
-
-    // Legacy base64 format: b64:<base64> (backward compat with 6.1 PoC data)
-    if (encoded.startsWith(legacyB64Prefix)) {
-      try {
-        return decodeURIComponent(escape(atob(encoded.slice(legacyB64Prefix.length))))
-      } catch {
         return encoded
       }
     }

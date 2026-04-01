@@ -40,7 +40,7 @@ const decryptEntry = async (entry: SyncEntry) => {
 /**
  * Decrypts encrypted columns in sync data before it reaches SQLite.
  * Config-driven: uses encryptedColumnsMap to determine which columns to decrypt.
- * Handles __enc: (AES-GCM), b64: (legacy base64), and unprefixed base64 formats.
+ * Handles __enc: (AES-GCM) format.
  * Passes through when no CK is available (pre-setup or CK cleared).
  */
 export const encryptionMiddleware: DataTransformMiddleware = {

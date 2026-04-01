@@ -427,7 +427,7 @@ Encryption is config-driven. A single source of truth in [src/db/encryption/conf
 | `modes` | `name`, `label`, `icon`, `system_prompt` |
 | `devices` | `name` |
 
-**Wire format:** `__enc:<iv-base64>:<ciphertext-base64>`. Legacy format `b64:<base64>` also supported for backward compatibility.
+**Wire format:** `__enc:<iv-base64>:<ciphertext-base64>`.
 
 ### Adding a new encrypted column
 

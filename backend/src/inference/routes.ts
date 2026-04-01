@@ -1,5 +1,6 @@
 import type { Auth } from '@/auth/elysia-plugin'
 import { safeErrorHandler } from '@/middleware/error-handling'
+import { createSessionGuard } from '@/middleware/session-guard'
 import { isPostHogConfigured } from '@/posthog/client'
 import { createSSEStreamFromCompletion } from '@/utils/streaming'
 import type { OpenAI as PostHogOpenAI } from '@posthog/ai'
@@ -48,20 +49,7 @@ export const createInferenceRoutes = (auth: Auth) => {
     prefix: '/chat',
   })
     .onError(safeErrorHandler)
-    .derive(async ({ request, set }) => {
-      const session = await auth.api.getSession({ headers: request.headers })
-      if (!session) {
-        set.status = 401
-        return { user: null }
-      }
-      return { user: session.user }
-    })
-    .onBeforeHandle(({ user, set }) => {
-      if (!user) {
-        set.status = 401
-        return { error: 'Unauthorized' }
-      }
-    })
+    .use(createSessionGuard(auth))
     .post('/completions', async (ctx) => {
       const body = await ctx.request.json()
 

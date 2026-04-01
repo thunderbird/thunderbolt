@@ -1,5 +1,6 @@
 import type { Auth } from '@/auth/elysia-plugin'
 import { safeErrorHandler } from '@/middleware/error-handling'
+import { createSessionGuard } from '@/middleware/session-guard'
 import { Elysia, t } from 'elysia'
 import { exaPlugin } from './exa'
 import { createLinkPreviewRoutes } from './link-preview'
@@ -32,20 +33,7 @@ export const createProToolsRoutes = (auth: Auth, fetchFn: typeof fetch = globalT
 
   return new Elysia({ prefix: '/pro' })
     .onError(safeErrorHandler)
-    .derive(async ({ request, set }) => {
-      const session = await auth.api.getSession({ headers: request.headers })
-      if (!session) {
-        set.status = 401
-        return { user: null }
-      }
-      return { user: session.user }
-    })
-    .onBeforeHandle(({ user, set }) => {
-      if (!user) {
-        set.status = 401
-        return { error: 'Unauthorized' }
-      }
-    })
+    .use(createSessionGuard(auth))
     .use(exaPlugin)
     .use(createProxyRoutes(fetchFn))
     .use(createLinkPreviewRoutes(fetchFn))

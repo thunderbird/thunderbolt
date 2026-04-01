@@ -63,13 +63,15 @@ export const createModel = async (modelConfig: Model) => {
     case 'thunderbolt': {
       const db = getDb()
       const { cloudUrl } = await getSettings(db, { cloud_url: 'http://localhost:8000/v1' })
+      // Include credentials so the session cookie is sent with inference requests
+      const backendFetch: typeof globalThis.fetch = (input, init) => fetch(input, { ...init, credentials: 'include' })
       // GPT OSS (vendor: 'openai') uses createOpenAI with .chat() to force Chat Completions API
       // (AI SDK 5 defaults createOpenAI to Responses API which our backend doesn't support)
       if (modelConfig.vendor === 'openai') {
-        const provider = createOpenAI({ baseURL: cloudUrl, apiKey: 'thunderbolt', fetch })
+        const provider = createOpenAI({ baseURL: cloudUrl, apiKey: 'thunderbolt', fetch: backendFetch })
         return provider.chat(modelConfig.model)
       }
-      const provider = createOpenAICompatible({ name: 'thunderbolt', baseURL: cloudUrl, fetch })
+      const provider = createOpenAICompatible({ name: 'thunderbolt', baseURL: cloudUrl, fetch: backendFetch })
       return provider(modelConfig.model)
     }
     case 'anthropic': {

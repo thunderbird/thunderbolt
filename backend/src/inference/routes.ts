@@ -1,3 +1,4 @@
+import type { Auth } from '@/auth/elysia-plugin'
 import { safeErrorHandler } from '@/middleware/error-handling'
 import { isPostHogConfigured } from '@/posthog/client'
 import { createSSEStreamFromCompletion } from '@/utils/streaming'
@@ -42,11 +43,25 @@ export const supportedModels: Record<string, ModelConfig> = {
 /**
  * Inference API routes
  */
-export const createInferenceRoutes = () => {
+export const createInferenceRoutes = (auth: Auth) => {
   return new Elysia({
     prefix: '/chat',
   })
     .onError(safeErrorHandler)
+    .derive(async ({ request, set }) => {
+      const session = await auth.api.getSession({ headers: request.headers })
+      if (!session) {
+        set.status = 401
+        return { user: null }
+      }
+      return { user: session.user }
+    })
+    .onBeforeHandle(({ user, set }) => {
+      if (!user) {
+        set.status = 401
+        return { error: 'Unauthorized' }
+      }
+    })
     .post('/completions', async (ctx) => {
       const body = await ctx.request.json()
 

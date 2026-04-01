@@ -1,3 +1,4 @@
+import type { Auth } from '@/auth/elysia-plugin'
 import * as posthogClient from '@/posthog/client'
 import type { ConsoleSpies } from '@/test-utils/console-spies'
 import { setupConsoleSpy } from '@/test-utils/console-spies'
@@ -7,6 +8,13 @@ import { Elysia } from 'elysia'
 import type OpenAI from 'openai'
 import * as inferenceClient from './client'
 import { createInferenceRoutes, supportedModels } from './routes'
+
+/** Mock auth that always returns a valid session */
+const mockAuth = {
+  api: {
+    getSession: () => Promise.resolve({ user: { id: 'test-user' }, session: {} }),
+  },
+} as unknown as Auth
 
 describe('Inference Routes', () => {
   let app: Elysia
@@ -54,7 +62,7 @@ describe('Inference Routes', () => {
     isPostHogConfiguredSpy = spyOn(posthogClient, 'isPostHogConfigured').mockReturnValue(false)
     createSSEStreamSpy = spyOn(streamingUtils, 'createSSEStreamFromCompletion').mockReturnValue(createMockSSEStream())
 
-    app = new Elysia().use(createInferenceRoutes())
+    app = new Elysia().use(createInferenceRoutes(mockAuth))
   })
 
   afterAll(() => {

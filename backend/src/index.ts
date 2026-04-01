@@ -8,6 +8,7 @@ import { runMigrations } from '@/db/client'
 import { createInferenceRoutes } from '@/inference/routes'
 import { createErrorHandlingMiddleware } from '@/middleware/error-handling'
 import { createHttpLoggingMiddleware } from '@/middleware/http-logging'
+import { createStandardRateLimit } from '@/middleware/rate-limit'
 import { createWaitlistAuthMiddleware } from '@/middleware/waitlist-auth'
 import { createPostHogRoutes } from '@/posthog/routes'
 import { createProToolsRoutes } from '@/pro/routes'
@@ -58,6 +59,13 @@ export const createApp = async (deps?: AppDeps) => {
   // Create auth plugin with the database instance
   const { plugin: betterAuthPlugin, auth } = createBetterAuthPlugin(database)
 
+  const rateLimitSettings = {
+    enabled: settings.rateLimitEnabled,
+    inference: { max: settings.rateLimitInferenceMax, duration: 60_000 },
+    auth: { max: settings.rateLimitAuthMax, duration: 900_000 },
+    standard: { max: settings.rateLimitStandardMax, duration: 60_000 },
+  }
+
   return (
     configuredApp
       .use(
@@ -72,6 +80,8 @@ export const createApp = async (deps?: AppDeps) => {
       .use(createLoggerMiddleware(settings))
       .use(createHttpLoggingMiddleware())
       .use(createErrorHandlingMiddleware())
+      // Global rate limit — applies to all routes (health exempt)
+      .use(createStandardRateLimit(database, rateLimitSettings))
       // Better Auth handler (mounted at /api/auth/*)
       .use(betterAuthPlugin)
       // Waitlist auth middleware - enforces auth on protected routes when WAITLIST_ENABLED=true

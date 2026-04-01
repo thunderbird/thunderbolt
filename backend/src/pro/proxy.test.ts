@@ -63,6 +63,10 @@ describe('Proxy Routes', () => {
       oidcClientSecret: '',
       oidcIssuer: '',
       betterAuthUrl: 'http://localhost:8000',
+      rateLimitEnabled: true,
+      rateLimitInferenceMax: 20,
+      rateLimitAuthMax: 10,
+      rateLimitStandardMax: 100,
     })
 
     // Create mock fetch

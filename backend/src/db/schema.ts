@@ -6,3 +6,6 @@ export * from './waitlist-schema'
 
 // Re-export PowerSync schema tables
 export * from './powersync-schema'
+
+// Re-export rate limit schema
+export * from './rate-limit-schema'

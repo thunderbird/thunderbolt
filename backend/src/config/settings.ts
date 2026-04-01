@@ -60,6 +60,12 @@ const settingsSchema = z.object({
       'Content-Type,Authorization,Accept,Accept-Encoding,Accept-Language,Cache-Control,User-Agent,X-Requested-With,X-Client-Platform,X-Device-ID,X-Device-Name',
     ),
   corsExposeHeaders: z.string().default('mcp-session-id,set-auth-token'),
+
+  // Rate limiting
+  rateLimitEnabled: z.boolean().default(true),
+  rateLimitInferenceMax: z.coerce.number().default(20),
+  rateLimitAuthMax: z.coerce.number().default(10),
+  rateLimitStandardMax: z.coerce.number().default(100),
 })
 
 export type Settings = z.infer<typeof settingsSchema>
@@ -106,6 +112,10 @@ const parseSettings = (): Settings => {
       process.env.CORS_ALLOW_HEADERS ||
       'Content-Type,Authorization,Accept,Accept-Encoding,Accept-Language,Cache-Control,User-Agent,X-Requested-With,X-Client-Platform,X-Device-ID,X-Device-Name',
     corsExposeHeaders: process.env.CORS_EXPOSE_HEADERS || 'mcp-session-id,set-auth-token',
+    rateLimitEnabled: process.env.RATE_LIMIT_ENABLED !== 'false',
+    rateLimitInferenceMax: process.env.RATE_LIMIT_INFERENCE_MAX || '20',
+    rateLimitAuthMax: process.env.RATE_LIMIT_AUTH_MAX || '10',
+    rateLimitStandardMax: process.env.RATE_LIMIT_STANDARD_MAX || '100',
   }
 
   return settingsSchema.parse(env)

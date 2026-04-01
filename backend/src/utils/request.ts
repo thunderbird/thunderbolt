@@ -35,6 +35,23 @@ export const defaultResponseDenylist = [
 ]
 
 /**
+ * Extract client IP address from request headers.
+ * Checks standard proxy headers in order of preference.
+ */
+export const extractClientIp = (headers: Headers, fallback = 'unknown'): string => {
+  const forwarded = headers.get('forwarded')
+  if (forwarded) {
+    const match = forwarded.match(/for="?([^;"]+)/i)
+    if (match?.[1]) return match[1]
+  }
+
+  const xff = headers.get('x-forwarded-for')
+  if (xff) return xff.split(',')[0].trim()
+
+  return headers.get('cf-connecting-ip') || headers.get('true-client-ip') || headers.get('x-real-ip') || fallback
+}
+
+/**
  * Build a stable user identifier from request metadata.
  *
  * Uses the User-Agent and client IP to produce a simple, stable identifier

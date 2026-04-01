@@ -8,7 +8,9 @@ type ConnectionState = {
   cleanup: () => void
 }
 
-// Per-connection state keyed by Elysia's ws.id
+// Per-connection state keyed by Elysia's ws.id.
+// NOTE: This works correctly for single-process deployments. For multi-process
+// clustering, this would need to move to a shared store (e.g. Redis).
 const connections = new Map<string, ConnectionState>()
 const encoder = new TextEncoder()
 
@@ -22,7 +24,7 @@ type ElysiaWS = {
  * Each WebSocket connection creates a fresh ACP AgentSideConnection.
  */
 export const createHaystackWebSocketHandler = (pipelineConfig: HaystackPipelineConfig, client: HaystackClient) => ({
-  open(ws: ElysiaWS) {
+  open: (ws: ElysiaWS) => {
     const clientToAgent = new TransformStream<Uint8Array>()
     const agentToClient = new TransformStream<Uint8Array>()
 
@@ -64,7 +66,7 @@ export const createHaystackWebSocketHandler = (pipelineConfig: HaystackPipelineC
     })
   },
 
-  message(ws: ElysiaWS, message: unknown) {
+  message: (ws: ElysiaWS, message: unknown) => {
     const state = connections.get(ws.id)
     if (!state) {
       return
@@ -75,7 +77,7 @@ export const createHaystackWebSocketHandler = (pipelineConfig: HaystackPipelineC
     state.writer.write(encoder.encode(data + '\n')).catch(() => {})
   },
 
-  close(ws: ElysiaWS) {
+  close: (ws: ElysiaWS) => {
     const state = connections.get(ws.id)
     state?.cleanup()
     connections.delete(ws.id)

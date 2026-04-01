@@ -198,7 +198,7 @@ export const App = () => {
   }
 
   return (
-    <ThemeProvider defaultTheme="system" storageKey="ui_theme">
+    <ThemeProvider defaultTheme="system">
       {renderAppContent()}
       <RevokedDeviceModal open={revokedDeviceOpen} />
     </ThemeProvider>

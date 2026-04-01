@@ -44,7 +44,7 @@ const isValidTheme = (value: string | null): value is Theme =>
 export const ThemeProvider = ({
   children,
   defaultTheme = 'system',
-  storageKey = 'ui-theme',
+  storageKey = 'ui_theme',
   ...props
 }: ThemeProviderProps) => {
   const savedTheme = window.localStorage.getItem(storageKey)

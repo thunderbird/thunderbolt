@@ -1,8 +1,8 @@
 import { testDbManager } from '@/test-utils/db'
 import type { db as DbType } from '@/db/client'
+import { deleteAllRateLimits } from '@/dal'
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'bun:test'
 import { Elysia } from 'elysia'
-import { sql } from 'drizzle-orm'
 import { PostgresRateLimitContext, createStandardRateLimit } from './rate-limit'
 
 describe('Rate Limiting', () => {
@@ -21,7 +21,7 @@ describe('Rate Limiting', () => {
   })
 
   beforeEach(async () => {
-    await database.execute(sql`DELETE FROM rate_limits`)
+    await deleteAllRateLimits(database)
   })
 
   describe('PostgresRateLimitContext', () => {

@@ -1,7 +1,7 @@
 import type { db as DbType } from '@/db/client'
+import { incrementRateLimit, decrementRateLimit, deleteRateLimitByIp, deleteAllRateLimits } from '@/dal'
 import { extractClientIp } from '@/utils/request'
 import { rateLimit, type Context as RateLimitContext, type Options } from 'elysia-rate-limit'
-import { sql } from 'drizzle-orm'
 
 /**
  * Postgres-backed rate limit context for elysia-rate-limit.
@@ -30,45 +30,23 @@ export class PostgresRateLimitContext implements RateLimitContext {
   async increment(key: string) {
     const prefixed = this.prefixedKey(key)
     const durationSecs = this.duration / 1000
-    const result = await this.database.execute<{ count: number; window_start: string }>(sql`
-      INSERT INTO rate_limits (ip, count, window_start)
-      VALUES (${prefixed}, 1, NOW())
-      ON CONFLICT (ip)
-      DO UPDATE SET
-        count = CASE
-          WHEN rate_limits.window_start + make_interval(secs => ${durationSecs}) < NOW()
-          THEN 1
-          ELSE rate_limits.count + 1
-        END,
-        window_start = CASE
-          WHEN rate_limits.window_start + make_interval(secs => ${durationSecs}) < NOW()
-          THEN NOW()
-          ELSE rate_limits.window_start
-        END
-      RETURNING count, window_start
-    `)
-
-    const row = Array.isArray(result)
-      ? result[0]
-      : (result as unknown as { rows: { count: number; window_start: string }[] }).rows[0]
-    const nextReset = new Date(new Date(row.window_start).getTime() + this.duration)
+    const row = await incrementRateLimit(this.database, prefixed, durationSecs)
+    const nextReset = new Date(row.windowStart.getTime() + this.duration)
 
     return { count: row.count, nextReset }
   }
 
   async decrement(key: string) {
     const prefixed = this.prefixedKey(key)
-    await this.database.execute(sql`
-      UPDATE rate_limits SET count = GREATEST(count - 1, 0) WHERE ip = ${prefixed}
-    `)
+    await decrementRateLimit(this.database, prefixed)
   }
 
   async reset(key?: string) {
     if (key) {
       const prefixed = this.prefixedKey(key)
-      await this.database.execute(sql`DELETE FROM rate_limits WHERE ip = ${prefixed}`)
+      await deleteRateLimitByIp(this.database, prefixed)
     } else {
-      await this.database.execute(sql`DELETE FROM rate_limits`)
+      await deleteAllRateLimits(this.database)
     }
   }
 

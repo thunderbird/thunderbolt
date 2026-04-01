@@ -12,3 +12,6 @@ export { getWaitlistByEmail, createWaitlistEntry, approveWaitlistEntry } from '.
 
 // PowerSync
 export { applyOperation } from './powersync'
+
+// Rate Limiting
+export { incrementRateLimit, decrementRateLimit, deleteRateLimitByIp, deleteAllRateLimits } from './ip-rate-limit'

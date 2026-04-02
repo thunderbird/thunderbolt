@@ -148,23 +148,36 @@ describe('Utils - Request', () => {
       expect(extractClientIp(headers)).toBe('203.0.113.42')
     })
 
-    it('should prefer CF-Connecting-IP over all other headers', () => {
+    it('should prefer CF-Connecting-IP when trustedProxy is cloudflare', () => {
       const headers = new Headers({
         'x-forwarded-for': '203.0.113.42',
         'cf-connecting-ip': '198.51.100.1',
         'x-real-ip': '10.0.0.1',
       })
-      expect(extractClientIp(headers)).toBe('198.51.100.1')
+      expect(extractClientIp(headers, 'unknown', 'cloudflare')).toBe('198.51.100.1')
     })
 
-    it('should fall back to CF-Connecting-IP', () => {
+    it('should ignore CF-Connecting-IP when trustedProxy is not cloudflare', () => {
+      const headers = new Headers({
+        'cf-connecting-ip': '198.51.100.1',
+        'x-forwarded-for': '203.0.113.42',
+      })
+      expect(extractClientIp(headers)).toBe('203.0.113.42')
+    })
+
+    it('should use CF-Connecting-IP when trustedProxy is cloudflare', () => {
       const headers = new Headers({ 'cf-connecting-ip': '198.51.100.1' })
-      expect(extractClientIp(headers)).toBe('198.51.100.1')
+      expect(extractClientIp(headers, 'unknown', 'cloudflare')).toBe('198.51.100.1')
     })
 
-    it('should fall back to True-Client-IP', () => {
+    it('should use True-Client-IP when trustedProxy is akamai', () => {
       const headers = new Headers({ 'true-client-ip': '198.51.100.2' })
-      expect(extractClientIp(headers)).toBe('198.51.100.2')
+      expect(extractClientIp(headers, 'unknown', 'akamai')).toBe('198.51.100.2')
+    })
+
+    it('should ignore True-Client-IP when trustedProxy is not akamai', () => {
+      const headers = new Headers({ 'true-client-ip': '198.51.100.2' })
+      expect(extractClientIp(headers)).toBe('unknown')
     })
 
     it('should fall back to X-Real-IP', () => {

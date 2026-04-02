@@ -1,4 +1,3 @@
-import type { Auth } from '@/auth/elysia-plugin'
 import type { db as DbType } from '@/db/client'
 import { rateLimits } from '@/db/rate-limit-schema'
 import { extractClientIp } from '@/utils/request'
@@ -17,6 +16,7 @@ export type RateLimitSettings = {
   inference: RateLimitTierConfig
   auth: RateLimitTierConfig
   standard: RateLimitTierConfig
+  trustedProxy: '' | 'cloudflare' | 'akamai'
 }
 
 const exemptPaths = new Set(['/v1/health', '/v1/posthog/config', '/v1/posthog/events'])
@@ -57,20 +57,24 @@ const setRateLimitHeaders = (
   headers['RateLimit-Reset'] = String(resetSecs)
 }
 
-/** Extract client IP from request. */
-const getClientIp = (req: Request, server: Elysia['server']): string =>
-  extractClientIp(req.headers, server?.requestIP(req)?.address ?? 'unknown')
+/** Extract client IP from request, respecting the trusted proxy setting. */
+const getClientIp = (req: Request, server: Elysia['server'], trustedProxy: RateLimitSettings['trustedProxy']): string =>
+  extractClientIp(req.headers, server?.requestIP(req)?.address ?? 'unknown', trustedProxy)
 
 /**
  * Build an IP-based rate limit middleware (no auth context needed).
  * Used for unauthenticated routes like auth endpoints and the global standard limit.
  */
-const createIpRateLimitMiddleware = (limiter: RateLimiterDrizzle, skip?: (req: Request) => boolean) =>
+const createIpRateLimitMiddleware = (
+  limiter: RateLimiterDrizzle,
+  trustedProxy: RateLimitSettings['trustedProxy'],
+  skip?: (req: Request) => boolean,
+) =>
   new Elysia()
     .onBeforeHandle(async ({ request, set, server }) => {
       if (skip?.(request)) return
 
-      const key = getClientIp(request, server)
+      const key = getClientIp(request, server, trustedProxy)
 
       try {
         const res = await limiter.consume(key)
@@ -89,16 +93,17 @@ const createIpRateLimitMiddleware = (limiter: RateLimiterDrizzle, skip?: (req: R
 
 /**
  * Build a user-based rate limit middleware for authenticated routes.
- * Keys on user:<userId> when the session guard has derived a user,
- * falls back to ip:<address> defensively.
+ * Reads the `user` already derived by createSessionGuard to avoid a
+ * redundant getSession() call; falls back to IP-based keying when
+ * the user context is unavailable.
  * Must be .use()'d AFTER createSessionGuard so the user is derived.
  */
-const createUserRateLimitMiddleware = (limiter: RateLimiterDrizzle, auth: Auth) =>
+const createUserRateLimitMiddleware = (limiter: RateLimiterDrizzle, trustedProxy: RateLimitSettings['trustedProxy']) =>
   new Elysia()
-    .onBeforeHandle(async ({ request, set, server }) => {
-      // Try to get user from session for per-user keying
-      const session = await auth.api.getSession({ headers: request.headers })
-      const key = session?.user?.id ? `user:${session.user.id}` : `ip:${getClientIp(request, server)}`
+    .onBeforeHandle(async (ctx) => {
+      const { request, set, server } = ctx
+      const user = (ctx as Record<string, unknown>).user as { id: string } | null | undefined
+      const key = user?.id ? `user:${user.id}` : `ip:${getClientIp(request, server, trustedProxy)}`
 
       try {
         const res = await limiter.consume(key)
@@ -116,17 +121,17 @@ const createUserRateLimitMiddleware = (limiter: RateLimiterDrizzle, auth: Auth) 
     .as('scoped')
 
 /** Create rate limit middleware for inference routes (keyed by user). */
-export const createInferenceRateLimit = (database: typeof DbType, settings: RateLimitSettings, auth: Auth) => {
+export const createInferenceRateLimit = (database: typeof DbType, settings: RateLimitSettings) => {
   if (!settings.enabled) return new Elysia()
   const limiter = createLimiter(database, 'inference', settings.inference)
-  return createUserRateLimitMiddleware(limiter, auth)
+  return createUserRateLimitMiddleware(limiter, settings.trustedProxy)
 }
 
 /** Create rate limit middleware for auth routes (IP-based, only credential paths). */
 export const createAuthRateLimit = (database: typeof DbType, settings: RateLimitSettings) => {
   if (!settings.enabled) return new Elysia()
   const limiter = createLimiter(database, 'auth', settings.auth)
-  return createIpRateLimitMiddleware(limiter, (req) => {
+  return createIpRateLimitMiddleware(limiter, settings.trustedProxy, (req) => {
     const path = new URL(req.url).pathname
     return !rateLimitedAuthPrefixes.some((p) => path.startsWith(p))
   })
@@ -136,7 +141,7 @@ export const createAuthRateLimit = (database: typeof DbType, settings: RateLimit
 export const createStandardRateLimit = (database: typeof DbType, settings: RateLimitSettings) => {
   if (!settings.enabled) return new Elysia()
   const limiter = createLimiter(database, 'standard', settings.standard)
-  return createIpRateLimitMiddleware(limiter, (req) => {
+  return createIpRateLimitMiddleware(limiter, settings.trustedProxy, (req) => {
     const path = new URL(req.url).pathname
     return exemptPaths.has(path) || exemptPrefixes.some((p) => path.startsWith(p))
   })

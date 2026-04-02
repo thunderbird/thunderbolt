@@ -64,6 +64,7 @@ export const createApp = async (deps?: AppDeps) => {
     inference: { max: settings.rateLimitInferenceMax, durationSecs: 60 },
     auth: { max: settings.rateLimitAuthMax, durationSecs: 900 },
     standard: { max: settings.rateLimitStandardMax, durationSecs: 60 },
+    trustedProxy: settings.trustedProxy,
   }
 
   // Auth routes with stricter rate limit (e.g. 10 req / 15 min)
@@ -74,7 +75,7 @@ export const createApp = async (deps?: AppDeps) => {
   // Inference routes with dedicated per-user rate limit (e.g. 20 req / min)
   const inferenceRoutesWithRateLimit = new Elysia()
     .use(createInferenceRoutes(auth))
-    .use(createInferenceRateLimit(database, rateLimitSettings, auth))
+    .use(createInferenceRateLimit(database, rateLimitSettings))
 
   return (
     configuredApp

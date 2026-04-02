@@ -60,6 +60,7 @@ describe('Authentication Routes', () => {
       rateLimitInferenceMax: 20,
       rateLimitAuthMax: 10,
       rateLimitStandardMax: 100,
+      trustedProxy: '',
     })
 
     // Create mock fetch

@@ -36,21 +36,35 @@ export const defaultResponseDenylist = [
 
 /**
  * Extract client IP address from request headers.
- * Checks infrastructure-set proxy headers in order of preference.
- * CF-Connecting-IP is checked first because Cloudflare sets it to the true
- * client IP and it can't be spoofed. XFF rightmost is a fallback for
- * non-Cloudflare deployments.
- * The RFC 7239 `Forwarded` header is intentionally excluded because its
- * `for=` value is attacker-controlled (first hop), making it spoofable.
+ *
+ * Infrastructure-specific headers (`cf-connecting-ip`, `true-client-ip`) are
+ * only trusted when the corresponding `trustedProxy` value is set, because
+ * without the actual proxy in front any client can forge these headers and
+ * bypass rate limiting.
+ *
+ * `x-forwarded-for` (rightmost value) is used as a general fallback for
+ * reverse-proxy deployments. The RFC 7239 `Forwarded` header is intentionally
+ * excluded because its `for=` value is attacker-controlled (first hop).
  */
-export const extractClientIp = (headers: Headers, fallback = 'unknown'): string => {
-  const cfIp = headers.get('cf-connecting-ip')
-  if (cfIp) return cfIp
+export const extractClientIp = (
+  headers: Headers,
+  fallback = 'unknown',
+  trustedProxy: '' | 'cloudflare' | 'akamai' = '',
+): string => {
+  if (trustedProxy === 'cloudflare') {
+    const cfIp = headers.get('cf-connecting-ip')
+    if (cfIp) return cfIp
+  }
+
+  if (trustedProxy === 'akamai') {
+    const trueClientIp = headers.get('true-client-ip')
+    if (trueClientIp) return trueClientIp
+  }
 
   const xff = headers.get('x-forwarded-for')
   if (xff) return xff.split(',').at(-1)!.trim()
 
-  return headers.get('true-client-ip') || headers.get('x-real-ip') || fallback
+  return headers.get('x-real-ip') || fallback
 }
 
 /**

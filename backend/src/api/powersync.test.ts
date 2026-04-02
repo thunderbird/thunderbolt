@@ -46,6 +46,7 @@ const powersyncSettings: Settings = {
   rateLimitInferenceMax: 20,
   rateLimitAuthMax: 10,
   rateLimitStandardMax: 100,
+  trustedProxy: '',
 }
 
 describe('PowerSync API', () => {

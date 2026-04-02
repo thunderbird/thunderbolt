@@ -66,6 +66,11 @@ const settingsSchema = z.object({
   rateLimitInferenceMax: z.coerce.number().default(20),
   rateLimitAuthMax: z.coerce.number().default(10),
   rateLimitStandardMax: z.coerce.number().default(100),
+
+  // Trusted proxy (controls which proxy headers are trusted for IP extraction)
+  // Set to 'cloudflare' to trust CF-Connecting-IP, 'akamai' for True-Client-IP,
+  // or leave empty to only trust X-Forwarded-For and socket IP
+  trustedProxy: z.enum(['', 'cloudflare', 'akamai']).default(''),
 })
 
 export type Settings = z.infer<typeof settingsSchema>
@@ -116,6 +121,7 @@ const parseSettings = (): Settings => {
     rateLimitInferenceMax: process.env.RATE_LIMIT_INFERENCE_MAX || '20',
     rateLimitAuthMax: process.env.RATE_LIMIT_AUTH_MAX || '10',
     rateLimitStandardMax: process.env.RATE_LIMIT_STANDARD_MAX || '100',
+    trustedProxy: (process.env.TRUSTED_PROXY || '').toLowerCase(),
   }
 
   return settingsSchema.parse(env)

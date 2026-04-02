@@ -1,27 +1,40 @@
-import { beforeAll, describe, expect, it } from 'bun:test'
+import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import { getClock } from '@/testing-library'
 import { waitForOAuthCallback } from './oauth-callback'
 
-const postFromOrigin = (origin: string, data: unknown) => {
-  window.dispatchEvent(new MessageEvent('message', { origin, data }))
-}
+const origin = 'http://localhost:1420'
 
 describe('waitForOAuthCallback', () => {
-  // Restore real event APIs — other test files replace them with mocks and never restore
-  beforeAll(() => {
-    const iframe = document.createElement('iframe')
-    document.body.appendChild(iframe)
-    const win = iframe.contentWindow!
-    window.addEventListener = win.addEventListener.bind(window)
-    window.removeEventListener = win.removeEventListener.bind(window)
-    window.dispatchEvent = win.dispatchEvent.bind(window)
-    document.body.removeChild(iframe)
+  let target: EventTarget
+  const originalLocation = window.location
+
+  beforeEach(() => {
+    target = new EventTarget()
+    // Other test files replace window.location with partial mocks and never restore.
+    // We need a real origin for the handler's origin check.
+    Object.defineProperty(window, 'location', {
+      value: { ...originalLocation, origin },
+      configurable: true,
+      writable: true,
+    })
   })
 
-  it('resolves with code and state from same-origin postMessage', async () => {
-    const promise = waitForOAuthCallback(null)
+  afterEach(() => {
+    Object.defineProperty(window, 'location', {
+      value: originalLocation,
+      configurable: true,
+      writable: true,
+    })
+  })
 
-    postFromOrigin(window.location.origin, {
+  const post = (origin: string, data: unknown) => {
+    target.dispatchEvent(new MessageEvent('message', { origin, data }))
+  }
+
+  it('resolves with code and state from same-origin postMessage', async () => {
+    const promise = waitForOAuthCallback(null, target)
+
+    post(origin, {
       type: 'oauth-callback',
       code: 'auth-code-123',
       state: 'state-abc',
@@ -32,17 +45,17 @@ describe('waitForOAuthCallback', () => {
   })
 
   it('ignores postMessage from a different origin', async () => {
-    const promise = waitForOAuthCallback(null)
+    const promise = waitForOAuthCallback(null, target)
 
     // Cross-origin message — should be silently dropped
-    postFromOrigin('https://evil.com', {
+    post('https://evil.com', {
       type: 'oauth-callback',
       code: 'stolen-code',
       state: 'stolen-state',
     })
 
     // Legitimate message to unblock
-    postFromOrigin(window.location.origin, {
+    post(origin, {
       type: 'oauth-callback',
       code: 'real-code',
       state: 'real-state',
@@ -53,16 +66,16 @@ describe('waitForOAuthCallback', () => {
   })
 
   it('ignores postMessage with wrong type', async () => {
-    const promise = waitForOAuthCallback(null)
+    const promise = waitForOAuthCallback(null, target)
 
     // Wrong type — handler should skip
-    postFromOrigin(window.location.origin, {
+    post(origin, {
       type: 'unrelated-event',
       code: 'wrong-type-code',
     })
 
     // Correct message to unblock
-    postFromOrigin(window.location.origin, {
+    post(origin, {
       type: 'oauth-callback',
       code: 'correct-code',
       state: 'correct-state',
@@ -73,10 +86,10 @@ describe('waitForOAuthCallback', () => {
   })
 
   it('rejects when callback contains an error', async () => {
-    const promise = waitForOAuthCallback(null)
+    const promise = waitForOAuthCallback(null, target)
     promise.catch(() => {}) // prevent unhandled rejection before handler attaches
 
-    postFromOrigin(window.location.origin, {
+    post(origin, {
       type: 'oauth-callback',
       error: 'access_denied',
     })
@@ -85,10 +98,10 @@ describe('waitForOAuthCallback', () => {
   })
 
   it('rejects when callback is missing code or state', async () => {
-    const promise = waitForOAuthCallback(null)
+    const promise = waitForOAuthCallback(null, target)
     promise.catch(() => {}) // prevent unhandled rejection before handler attaches
 
-    postFromOrigin(window.location.origin, {
+    post(origin, {
       type: 'oauth-callback',
     })
 
@@ -99,9 +112,9 @@ describe('waitForOAuthCallback', () => {
     let closed = false
     const popup = { closed: false, close: () => (closed = true) } as unknown as Window
 
-    const promise = waitForOAuthCallback(popup)
+    const promise = waitForOAuthCallback(popup, target)
 
-    postFromOrigin(window.location.origin, {
+    post(origin, {
       type: 'oauth-callback',
       code: 'code',
       state: 'state',
@@ -115,9 +128,9 @@ describe('waitForOAuthCallback', () => {
     let closeCalled = false
     const popup = { closed: true, close: () => (closeCalled = true) } as unknown as Window
 
-    const promise = waitForOAuthCallback(popup)
+    const promise = waitForOAuthCallback(popup, target)
 
-    postFromOrigin(window.location.origin, {
+    post(origin, {
       type: 'oauth-callback',
       code: 'code',
       state: 'state',
@@ -128,7 +141,7 @@ describe('waitForOAuthCallback', () => {
   })
 
   it('times out after 10 minutes', async () => {
-    const promise = waitForOAuthCallback(null)
+    const promise = waitForOAuthCallback(null, target)
     promise.catch(() => {}) // prevent unhandled rejection before handler attaches
 
     await getClock().tickAsync(10 * 60 * 1000)

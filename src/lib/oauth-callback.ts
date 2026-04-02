@@ -3,33 +3,37 @@
  * Only accepts messages whose origin matches `window.location.origin` to prevent
  * cross-origin spoofing.
  */
-export const waitForOAuthCallback = (popup: Window | null): Promise<{ code: string; state: string }> =>
+export const waitForOAuthCallback = (
+  popup: Window | null,
+  eventTarget: EventTarget = window,
+): Promise<{ code: string; state: string }> =>
   new Promise<{ code: string; state: string }>((resolve, reject) => {
-    const handler = (event: MessageEvent) => {
-      if (event.origin !== window.location.origin) {
+    const handler = (event: Event) => {
+      const msg = event as MessageEvent
+      if (msg.origin !== window.location.origin) {
         return
       }
-      if (event.data?.type === 'oauth-callback') {
-        window.removeEventListener('message', handler)
+      if (msg.data?.type === 'oauth-callback') {
+        eventTarget.removeEventListener('message', handler)
         if (popup && !popup.closed) {
           popup.close()
         }
 
-        if (event.data.error) {
-          reject(new Error(event.data.error))
-        } else if (event.data.code && event.data.state) {
-          resolve({ code: event.data.code, state: event.data.state })
+        if (msg.data.error) {
+          reject(new Error(msg.data.error))
+        } else if (msg.data.code && msg.data.state) {
+          resolve({ code: msg.data.code, state: msg.data.state })
         } else {
           reject(new Error('Invalid OAuth callback: missing code or state'))
         }
       }
     }
 
-    window.addEventListener('message', handler)
+    eventTarget.addEventListener('message', handler)
 
     setTimeout(
       () => {
-        window.removeEventListener('message', handler)
+        eventTarget.removeEventListener('message', handler)
         reject(new Error('OAuth timeout - please try again'))
       },
       10 * 60 * 1000,

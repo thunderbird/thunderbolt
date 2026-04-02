@@ -26,7 +26,7 @@ const powersyncSettings: Settings = {
   posthogHost: '',
   posthogApiKey: '',
   corsOrigins: '',
-  corsOriginRegex: '',
+  corsOriginRegex: null,
   corsAllowCredentials: true,
   corsAllowMethods: '',
   corsAllowHeaders: '',

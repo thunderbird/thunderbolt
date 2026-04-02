@@ -49,7 +49,10 @@ const settingsSchema = z.object({
 
   // CORS settings
   corsOrigins: z.string().default('http://localhost:1420'),
-  corsOriginRegex: z.string().default('^(tauri://localhost|http://tauri\\.localhost|http://localhost:\\d+)$'),
+  corsOriginRegex: z
+    .string()
+    .default('^(tauri://localhost|http://tauri\\.localhost|http://localhost:\\d+)$')
+    .transform((val) => (val ? new RegExp(val) : null)),
   corsAllowCredentials: z.boolean().default(true),
   corsAllowMethods: z.string().default('GET,POST,PUT,DELETE,PATCH,OPTIONS'),
   corsAllowHeaders: z
@@ -142,7 +145,7 @@ export const getCorsOriginsList = (settings: Settings): string[] => {
  * Get CORS origins as either a RegExp pattern or array of strings
  */
 export const getCorsOrigins = (settings: Settings): RegExp | string[] => {
-  return settings.corsOriginRegex ? new RegExp(settings.corsOriginRegex) : getCorsOriginsList(settings)
+  return settings.corsOriginRegex ?? getCorsOriginsList(settings)
 }
 
 export const getCorsMethodsList = (settings: Settings): string[] => {

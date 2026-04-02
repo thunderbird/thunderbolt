@@ -3,7 +3,7 @@ import { createBetterAuthPlugin } from '@/auth/elysia-plugin'
 import { createGoogleAuthRoutes } from '@/auth/google'
 import { createMicrosoftAuthRoutes } from '@/auth/microsoft'
 import { createLoggerMiddleware, createStandaloneLogger } from '@/config/logger'
-import { getCorsOriginsList, getSettings } from '@/config/settings'
+import { getCorsOrigins, getCorsOriginsList, getSettings } from '@/config/settings'
 import { runMigrations } from '@/db/client'
 import { createInferenceRoutes } from '@/inference/routes'
 import { createErrorHandlingMiddleware } from '@/middleware/error-handling'
@@ -62,7 +62,7 @@ export const createApp = async (deps?: AppDeps) => {
     configuredApp
       .use(
         cors({
-          origin: settings.corsOriginRegex ? new RegExp(settings.corsOriginRegex) : getCorsOriginsList(settings),
+          origin: getCorsOrigins(settings),
           credentials: settings.corsAllowCredentials,
           methods: settings.corsAllowMethods,
           allowedHeaders: settings.corsAllowHeaders,

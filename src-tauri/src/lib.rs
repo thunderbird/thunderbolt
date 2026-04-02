@@ -3,14 +3,8 @@
 #[allow(dead_code)]
 pub mod commands;
 pub mod oauth_server;
-#[allow(dead_code)]
-pub mod state;
 
-#[cfg(feature = "bridge")]
-use crate::state::AppState;
 use tauri::Manager;
-#[cfg(feature = "bridge")]
-use tokio::sync::Mutex;
 
 // Shared app builder function
 pub fn create_app() -> tauri::Builder<tauri::Wry> {
@@ -45,22 +39,9 @@ pub fn create_app() -> tauri::Builder<tauri::Wry> {
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_store::Builder::default().build())
         .setup(|_app| {
-            #[cfg(feature = "bridge")]
-            _app.manage(Mutex::new(AppState::default()));
-
             #[cfg(feature = "libsql")]
             _app.manage(tokio::sync::Mutex::new(
                 thunderbolt_libsql::LibsqlState::new(),
-            ));
-
-            #[cfg(feature = "email")]
-            _app.manage(tokio::sync::Mutex::new(
-                thunderbolt_email::EmailState::default(),
-            ));
-
-            #[cfg(feature = "embeddings")]
-            _app.manage(tokio::sync::Mutex::new(
-                thunderbolt_embeddings::EmbeddingsState::default(),
             ));
 
             Ok(())
@@ -70,14 +51,6 @@ pub fn create_app() -> tauri::Builder<tauri::Wry> {
             commands::capabilities,
             commands::set_interface_style,
             commands::start_oauth_server,
-            #[cfg(feature = "bridge")]
-            commands::init_bridge,
-            #[cfg(feature = "bridge")]
-            commands::set_bridge_enabled,
-            #[cfg(feature = "bridge")]
-            commands::get_bridge_status,
-            #[cfg(feature = "bridge")]
-            commands::get_bridge_connection_status,
             #[cfg(feature = "libsql")]
             thunderbolt_libsql::init_libsql,
             #[cfg(feature = "libsql")]
@@ -86,22 +59,6 @@ pub fn create_app() -> tauri::Builder<tauri::Wry> {
             thunderbolt_libsql::select,
             #[cfg(feature = "libsql")]
             thunderbolt_libsql::close,
-            #[cfg(feature = "email")]
-            thunderbolt_email::init_imap,
-            #[cfg(feature = "email")]
-            thunderbolt_email::init_imap_sync,
-            #[cfg(feature = "email")]
-            thunderbolt_email::fetch_inbox,
-            #[cfg(feature = "email")]
-            thunderbolt_email::fetch_messages,
-            #[cfg(feature = "email")]
-            thunderbolt_email::list_mailboxes,
-            #[cfg(feature = "email")]
-            thunderbolt_email::sync_mailbox,
-            #[cfg(feature = "embeddings")]
-            thunderbolt_embeddings::init_embedder,
-            #[cfg(feature = "embeddings")]
-            thunderbolt_embeddings::generate_embeddings
         ]);
 
     #[cfg(debug_assertions)]

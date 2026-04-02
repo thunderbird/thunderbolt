@@ -6641,11 +6641,6 @@ dependencies = [
  "tauri-plugin-single-instance",
  "tauri-plugin-store",
  "tauri-plugin-updater",
- "thunderbolt-bridge",
- "thunderbolt-email",
- "thunderbolt-embeddings",
- "thunderbolt-imap-client",
- "thunderbolt-imap-sync",
  "thunderbolt-libsql",
  "tokio",
 ]

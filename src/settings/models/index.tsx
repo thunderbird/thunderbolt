@@ -293,8 +293,6 @@ export default function ModelsPage() {
     })
 
     try {
-      console.log('Testing model connection:', values)
-
       // Create a temporary model configuration
       const modelConfig = {
         id: 'test',

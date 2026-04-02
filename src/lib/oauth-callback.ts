@@ -17,8 +17,10 @@ export const waitForOAuthCallback = (popup: Window | null): Promise<{ code: stri
 
         if (event.data.error) {
           reject(new Error(event.data.error))
-        } else {
+        } else if (event.data.code && event.data.state) {
           resolve({ code: event.data.code, state: event.data.state })
+        } else {
+          reject(new Error('Invalid OAuth callback: missing code or state'))
         }
       }
     }

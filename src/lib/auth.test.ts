@@ -97,6 +97,18 @@ describe('waitForOAuthCallback', () => {
     await expect(promise).rejects.toThrow('access_denied')
   })
 
+  it('rejects when callback is missing code or state', async () => {
+    const promise = waitForOAuthCallback(null)
+    promise.catch(() => {}) // prevent unhandled rejection before handler attaches
+
+    postFromOrigin(ORIGIN, {
+      type: 'oauth-callback',
+    })
+
+    await getClock().tickAsync(0)
+    await expect(promise).rejects.toThrow('Invalid OAuth callback: missing code or state')
+  })
+
   it('closes the popup after receiving callback', async () => {
     let closed = false
     const popup = { closed: false, close: () => (closed = true) } as unknown as Window

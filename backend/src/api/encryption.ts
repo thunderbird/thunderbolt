@@ -19,6 +19,13 @@ class ForbiddenError extends Error {
   }
 }
 
+class ValidationError extends Error {
+  constructor(message: string) {
+    super(message)
+    this.name = 'ValidationError'
+  }
+}
+
 /** Hash a canary secret using SHA-256. Returns hex-encoded hash. */
 const hashCanarySecret = async (secret: string): Promise<string> => {
   const encoded = new TextEncoder().encode(secret)
@@ -162,6 +169,11 @@ export const createEncryptionRoutes = (auth: Auth, database: typeof DbType) =>
             const envelopesExist = await hasEnvelopesForUser(txDb, userId)
             const isFirstDeviceBootstrap = !envelopesExist && callerDeviceId === deviceId
 
+            // First device bootstrap requires canary data for recovery to work
+            if (isFirstDeviceBootstrap && (!canaryIv || !canaryCtext || !canarySecret)) {
+              throw new ValidationError('First device bootstrap requires canaryIv, canaryCtext, and canarySecret')
+            }
+
             // Recovery: device is self-storing and provided canary that matches stored metadata.
             // This means the client fetched the canary, verified the recovery key against it,
             // and is now re-bootstrapping with the recovered CK.
@@ -207,6 +219,10 @@ export const createEncryptionRoutes = (auth: Auth, database: typeof DbType) =>
             await markDeviceTrusted(txDb, deviceId, userId)
           })
         } catch (err) {
+          if (err instanceof ValidationError) {
+            set.status = 400
+            return { error: err.message }
+          }
           if (err instanceof ForbiddenError) {
             set.status = 403
             return { error: err.message }

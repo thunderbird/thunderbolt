@@ -90,7 +90,7 @@ const FeatureCards = () => (
     </div>
     <div className="mx-auto grid max-w-[1120px] gap-0 px-6 md:grid-cols-3 lg:px-0">
       {/* Control Your Data */}
-      <div className="flex h-[360px] flex-col justify-end border-[0.5px] border-[#eaecf0]/50 bg-white/5 px-8 pb-8 backdrop-blur-[7px]">
+      <div className="flex flex-col justify-end border-[0.5px] border-[#eaecf0]/50 bg-white/5 px-8 pb-8 backdrop-blur-[7px] md:h-[360px]">
         <div className="relative mb-4 h-[180px] w-[181px]">
           <div className="absolute left-[40px] top-[20px] h-[185px] w-[134px] rounded-[67px] bg-[#98a2b3] opacity-70 blur-[25px]" />
           <img src="/enterprise/control-data.png" alt="" className="relative size-full object-contain object-bottom" />
@@ -130,7 +130,7 @@ const FeatureCards = () => (
       </div>
 
       {/* Built for Enterprise */}
-      <div className="flex h-[360px] flex-col border-[0.5px] border-[#eaecf0]/50 bg-white/5 px-8 pt-8 backdrop-blur-[5px]">
+      <div className="flex flex-col border-[0.5px] border-[#eaecf0]/50 bg-white/5 px-8 py-8 backdrop-blur-[5px] md:h-[360px] md:pb-0">
         <h3 className="text-2xl font-medium leading-8 tracking-[-0.48px] text-[#101828]">Built for Enterprise</h3>
         <p className="mt-2 text-base leading-6 text-[#667085]">
           Native apps across web, desktop, and mobile. MCP integration with your systems. Forward-Deployed Engineering from trusted partners. Open source you can audit and customize as your business needs evolve.
@@ -152,7 +152,7 @@ const features = [
 ]
 
 const CompromiseSection = () => (
-  <section className="pt-24">
+  <section className="pt-12 md:pt-24">
     <div className="mx-auto max-w-[1120px] px-6 lg:px-0">
       <div className="flex flex-col items-start justify-between gap-6 md:flex-row md:items-end">
         <div>
@@ -168,9 +168,9 @@ const CompromiseSection = () => (
         </div>
         <GetStartedButton />
       </div>
-      <div className="mt-6 grid gap-2 md:grid-cols-3">
+      <div className="mt-6 grid grid-cols-2 gap-2 md:grid-cols-3">
         {features.map((f) => (
-          <div key={f.title} className="flex h-[144px] flex-col border border-[#d0d5dd]/50 bg-[#f9fafb]/30 p-4 shadow-[0px_7px_12px_0px_rgba(0,0,0,0.07)] backdrop-blur-[1px]">
+          <div key={f.title} className="flex min-h-[144px] flex-col border border-[#d0d5dd]/50 bg-[#f9fafb]/30 p-4 shadow-[0px_7px_12px_0px_rgba(0,0,0,0.07)] backdrop-blur-[1px]">
             <img src={f.icon} alt="" className="size-6" />
             <h3 className="mt-4 text-lg font-semibold leading-7 text-[#101828]">{f.title}</h3>
             <p className="mt-0.5 text-sm leading-5 text-[#667085]">{f.desc}</p>

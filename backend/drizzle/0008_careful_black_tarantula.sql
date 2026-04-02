@@ -20,4 +20,4 @@ ALTER TABLE "encryption_metadata" ADD CONSTRAINT "encryption_metadata_user_id_us
 ALTER TABLE "envelopes" ADD CONSTRAINT "envelopes_device_id_devices_id_fk" FOREIGN KEY ("device_id") REFERENCES "powersync"."devices"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "envelopes" ADD CONSTRAINT "envelopes_user_id_user_id_fk" FOREIGN KEY ("user_id") REFERENCES "public"."user"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 CREATE INDEX "idx_envelopes_user_id" ON "envelopes" USING btree ("user_id");--> statement-breakpoint
-UPDATE "powersync"."devices" SET "trusted" = true;
+UPDATE "powersync"."devices" SET "trusted" = true WHERE "revoked_at" IS NULL;

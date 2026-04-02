@@ -1,3 +1,4 @@
+import type { Settings } from '@/config/settings'
 import { extractClientIp } from '@/utils/request'
 import { Elysia } from 'elysia'
 
@@ -5,7 +6,7 @@ import { Elysia } from 'elysia'
  * HTTP request/response logging middleware
  * Logs requests in Apache Common Log format with response time
  */
-export const createHttpLoggingMiddleware = () => {
+export const createHttpLoggingMiddleware = (trustedProxy: Settings['trustedProxy'] = '') => {
   return new Elysia({ name: 'http-logging' })
     .onRequest((ctx) => {
       const url = new URL(ctx.request.url)
@@ -48,7 +49,7 @@ export const createHttpLoggingMiddleware = () => {
       }
 
       // Determine client address (best-effort behind proxies)
-      const client = extractClientIp(ctx.request.headers, '-')
+      const client = extractClientIp(ctx.request.headers, '-', trustedProxy)
       const httpVersion = 'HTTP/1.1'
       const statusText = statusTextMap[String(status)] || ''
       const rt = responseTime !== undefined ? ` ${responseTime}ms` : ''

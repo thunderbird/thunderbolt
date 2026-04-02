@@ -89,7 +89,7 @@ export const createApp = async (deps?: AppDeps) => {
         }),
       )
       .use(createLoggerMiddleware(settings))
-      .use(createHttpLoggingMiddleware())
+      .use(createHttpLoggingMiddleware(settings.trustedProxy))
       .use(createErrorHandlingMiddleware())
       // Global rate limit — applies to all routes (health exempt)
       .use(createStandardRateLimit(database, rateLimitSettings))

@@ -133,79 +133,78 @@ describe('Utils - Request', () => {
   })
 
   describe('extractClientIp', () => {
-    it('should return rightmost X-Forwarded-For entry', () => {
-      const headers = new Headers({ 'x-forwarded-for': 'spoofed, 10.0.0.1, 203.0.113.42' })
-      expect(extractClientIp(headers)).toBe('203.0.113.42')
-    })
-
-    it('should return single X-Forwarded-For entry', () => {
-      const headers = new Headers({ 'x-forwarded-for': '192.168.1.1' })
-      expect(extractClientIp(headers)).toBe('192.168.1.1')
-    })
-
-    it('should trim whitespace from X-Forwarded-For', () => {
-      const headers = new Headers({ 'x-forwarded-for': '10.0.0.1,  203.0.113.42 ' })
-      expect(extractClientIp(headers)).toBe('203.0.113.42')
-    })
-
-    it('should prefer CF-Connecting-IP when trustedProxy is cloudflare', () => {
-      const headers = new Headers({
-        'x-forwarded-for': '203.0.113.42',
-        'cf-connecting-ip': '198.51.100.1',
-        'x-real-ip': '10.0.0.1',
+    describe('without trustedProxy (default)', () => {
+      it('should return fallback when no trustedProxy is set, ignoring all headers', () => {
+        const headers = new Headers({
+          'x-forwarded-for': '203.0.113.42',
+          'cf-connecting-ip': '198.51.100.1',
+          'x-real-ip': '10.0.0.1',
+        })
+        expect(extractClientIp(headers, '172.16.0.1')).toBe('172.16.0.1')
       })
-      expect(extractClientIp(headers, 'unknown', 'cloudflare')).toBe('198.51.100.1')
-    })
 
-    it('should ignore CF-Connecting-IP when trustedProxy is not cloudflare', () => {
-      const headers = new Headers({
-        'cf-connecting-ip': '198.51.100.1',
-        'x-forwarded-for': '203.0.113.42',
+      it('should return default fallback when no headers present', () => {
+        const headers = new Headers()
+        expect(extractClientIp(headers)).toBe('unknown')
       })
-      expect(extractClientIp(headers)).toBe('203.0.113.42')
-    })
 
-    it('should use CF-Connecting-IP when trustedProxy is cloudflare', () => {
-      const headers = new Headers({ 'cf-connecting-ip': '198.51.100.1' })
-      expect(extractClientIp(headers, 'unknown', 'cloudflare')).toBe('198.51.100.1')
-    })
-
-    it('should use True-Client-IP when trustedProxy is akamai', () => {
-      const headers = new Headers({ 'true-client-ip': '198.51.100.2' })
-      expect(extractClientIp(headers, 'unknown', 'akamai')).toBe('198.51.100.2')
-    })
-
-    it('should ignore True-Client-IP when trustedProxy is not akamai', () => {
-      const headers = new Headers({ 'true-client-ip': '198.51.100.2' })
-      expect(extractClientIp(headers)).toBe('unknown')
-    })
-
-    it('should fall back to X-Real-IP', () => {
-      const headers = new Headers({ 'x-real-ip': '10.0.0.5' })
-      expect(extractClientIp(headers)).toBe('10.0.0.5')
-    })
-
-    it('should return fallback when no headers present', () => {
-      const headers = new Headers()
-      expect(extractClientIp(headers)).toBe('unknown')
-    })
-
-    it('should return custom fallback when provided', () => {
-      const headers = new Headers()
-      expect(extractClientIp(headers, '127.0.0.1')).toBe('127.0.0.1')
-    })
-
-    it('should not use the Forwarded header (attacker-controlled)', () => {
-      const headers = new Headers({ forwarded: 'for=attacker-ip' })
-      expect(extractClientIp(headers)).toBe('unknown')
-    })
-
-    it('should ignore Forwarded even when XFF is also present', () => {
-      const headers = new Headers({
-        forwarded: 'for=attacker-ip',
-        'x-forwarded-for': '10.0.0.1, 203.0.113.42',
+      it('should return custom fallback when provided', () => {
+        const headers = new Headers()
+        expect(extractClientIp(headers, '127.0.0.1')).toBe('127.0.0.1')
       })
-      expect(extractClientIp(headers)).toBe('203.0.113.42')
+
+      it('should not use the Forwarded header (attacker-controlled)', () => {
+        const headers = new Headers({ forwarded: 'for=attacker-ip' })
+        expect(extractClientIp(headers)).toBe('unknown')
+      })
+    })
+
+    describe('with trustedProxy=cloudflare', () => {
+      it('should prefer CF-Connecting-IP over all other headers', () => {
+        const headers = new Headers({
+          'x-forwarded-for': '203.0.113.42',
+          'cf-connecting-ip': '198.51.100.1',
+          'x-real-ip': '10.0.0.1',
+        })
+        expect(extractClientIp(headers, 'unknown', 'cloudflare')).toBe('198.51.100.1')
+      })
+
+      it('should fall back to XFF rightmost when CF header is absent', () => {
+        const headers = new Headers({ 'x-forwarded-for': 'spoofed, 10.0.0.1, 203.0.113.42' })
+        expect(extractClientIp(headers, 'unknown', 'cloudflare')).toBe('203.0.113.42')
+      })
+
+      it('should trim whitespace from X-Forwarded-For', () => {
+        const headers = new Headers({ 'x-forwarded-for': '10.0.0.1,  203.0.113.42 ' })
+        expect(extractClientIp(headers, 'unknown', 'cloudflare')).toBe('203.0.113.42')
+      })
+
+      it('should fall back to X-Real-IP', () => {
+        const headers = new Headers({ 'x-real-ip': '10.0.0.5' })
+        expect(extractClientIp(headers, 'unknown', 'cloudflare')).toBe('10.0.0.5')
+      })
+
+      it('should fall back to fallback when no proxy headers present', () => {
+        const headers = new Headers()
+        expect(extractClientIp(headers, 'socket-ip', 'cloudflare')).toBe('socket-ip')
+      })
+    })
+
+    describe('with trustedProxy=akamai', () => {
+      it('should prefer True-Client-IP', () => {
+        const headers = new Headers({ 'true-client-ip': '198.51.100.2' })
+        expect(extractClientIp(headers, 'unknown', 'akamai')).toBe('198.51.100.2')
+      })
+
+      it('should fall back to XFF when True-Client-IP is absent', () => {
+        const headers = new Headers({ 'x-forwarded-for': '203.0.113.42' })
+        expect(extractClientIp(headers, 'unknown', 'akamai')).toBe('203.0.113.42')
+      })
+
+      it('should not trust CF-Connecting-IP', () => {
+        const headers = new Headers({ 'cf-connecting-ip': '198.51.100.1' })
+        expect(extractClientIp(headers, 'socket-ip', 'akamai')).toBe('socket-ip')
+      })
     })
   })
 })

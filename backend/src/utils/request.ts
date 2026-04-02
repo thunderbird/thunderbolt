@@ -37,20 +37,24 @@ export const defaultResponseDenylist = [
 /**
  * Extract client IP address from request headers.
  *
- * Infrastructure-specific headers (`cf-connecting-ip`, `true-client-ip`) are
- * only trusted when the corresponding `trustedProxy` value is set, because
- * without the actual proxy in front any client can forge these headers and
- * bypass rate limiting.
+ * Proxy headers are only trusted when `trustedProxy` is set, because without
+ * a proxy in front, any client can forge these headers to bypass rate limiting.
  *
- * `x-forwarded-for` (rightmost value) is used as a general fallback for
- * reverse-proxy deployments. The RFC 7239 `Forwarded` header is intentionally
- * excluded because its `for=` value is attacker-controlled (first hop).
+ * When `trustedProxy` is set:
+ * - `cloudflare`: trusts `CF-Connecting-IP` first, then falls back to XFF/X-Real-IP
+ * - `akamai`: trusts `True-Client-IP` first, then falls back to XFF/X-Real-IP
+ *
+ * When `trustedProxy` is empty (no proxy), only the socket IP (passed as
+ * `fallback`) is used. The RFC 7239 `Forwarded` header is always excluded
+ * because its `for=` value is attacker-controlled.
  */
 export const extractClientIp = (
   headers: Headers,
   fallback = 'unknown',
   trustedProxy: '' | 'cloudflare' | 'akamai' = '',
 ): string => {
+  if (!trustedProxy) return fallback
+
   if (trustedProxy === 'cloudflare') {
     const cfIp = headers.get('cf-connecting-ip')
     if (cfIp) return cfIp

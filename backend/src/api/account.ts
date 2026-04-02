@@ -12,11 +12,16 @@ export const createAccountRoutes = (auth: Auth, database: typeof DbType) => {
       '/devices/:id/revoke',
       async ({ params, set, user: sessionUser }) => {
         const userId = sessionUser!.id
-        await database.transaction(async (tx) => {
+        const revoked = await database.transaction(async (tx) => {
           const txDb = tx as unknown as typeof database
           await deleteEnvelope(txDb, params.id, userId)
-          await revokeDevice(txDb, params.id, userId)
+          const rows = await revokeDevice(txDb, params.id, userId)
+          return rows.length > 0
         })
+        if (!revoked) {
+          set.status = 404
+          return { error: 'Device not found' }
+        }
         set.status = 204
       },
       { auth: true },

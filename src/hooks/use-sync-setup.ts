@@ -109,7 +109,7 @@ export const useSyncSetup = () => {
         // Device already trusted — try to unwrap CK from existing envelope
         const unwrapped = await checkApprovalAndUnwrap(httpClient)
         if (unwrapped) {
-          dispatch({ type: 'STOP_LOADING' })
+          dispatch({ type: 'SETUP_COMPLETE' })
           return 'already-trusted' as const
         }
         // Trusted but no envelope — fall through to canary check below

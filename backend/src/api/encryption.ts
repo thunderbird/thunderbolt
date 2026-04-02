@@ -115,8 +115,8 @@ export const createEncryptionRoutes = (auth: Auth, database: typeof DbType) =>
       },
       {
         body: t.Object({
-          deviceId: t.String(),
-          publicKey: t.String(),
+          deviceId: t.String({ maxLength: 36 }),
+          publicKey: t.String({ maxLength: 500 }),
           name: t.Optional(t.String({ maxLength: 100 })),
         }),
       },
@@ -218,10 +218,10 @@ export const createEncryptionRoutes = (auth: Auth, database: typeof DbType) =>
       },
       {
         body: t.Object({
-          wrappedCK: t.String(),
-          canaryIv: t.Optional(t.String()),
-          canaryCtext: t.Optional(t.String()),
-          canarySecret: t.Optional(t.String()),
+          wrappedCK: t.String({ maxLength: 500 }),
+          canaryIv: t.Optional(t.String({ maxLength: 500 })),
+          canaryCtext: t.Optional(t.String({ maxLength: 500 })),
+          canarySecret: t.Optional(t.String({ maxLength: 500 })),
         }),
       },
     )

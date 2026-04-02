@@ -37,6 +37,7 @@ export const revokeDevice = async (database: typeof DbType, deviceId: string, us
     .update(devicesTable)
     .set({ revokedAt: new Date() })
     .where(and(eq(devicesTable.id, deviceId), eq(devicesTable.userId, userId)))
+    .returning()
 
 /** Mark a device as trusted. Called when an envelope is stored for the device. */
 export const markDeviceTrusted = async (database: typeof DbType, deviceId: string, userId: string) =>

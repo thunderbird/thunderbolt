@@ -10,8 +10,7 @@ import type { SyncDataBucketJSON } from '@powersync/common'
 /**
  * A middleware that transforms sync data before it is written to the local database.
  *
- * Use for: data normalization, format conversion, decompression, etc.
- * Do NOT use for decryption—use mirror tables for true E2E encryption.
+ * Use for: data normalization, format conversion, decompression, decryption, etc.
  */
 export type DataTransformMiddleware = {
   /** Receives a batch of sync data; returns the transformed batch. */
@@ -88,7 +87,8 @@ export class TransformableBucketStorage extends SqliteBucketStorage {
           return super.control(op, transformedPayload)
         }
       } catch (err) {
-        console.warn('[TransformableBucketStorage] Transform failed, falling through:', err)
+        console.warn('[TransformableBucketStorage] Transform failed:', err)
+        throw err
       }
     }
     return super.control(op, payload)

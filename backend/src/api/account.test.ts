@@ -300,14 +300,14 @@ describe('Account API', () => {
         }),
       )
 
-      expect(response.status).toBe(204)
+      expect(response.status).toBe(404)
 
       const [device] = await db.select().from(devicesTable).where(eq(devicesTable.id, deviceId))
       expect(device.trusted).toBe(true)
       expect(device.revokedAt).toBeNull()
     })
 
-    it('returns 204 for non-existent device (no-op)', async () => {
+    it('returns 404 for non-existent device', async () => {
       const userId = p('revoke-nonexistent-user')
       const token = p('revoke-nonexistent-token')
       await createUserAndSession(userId, token)
@@ -319,7 +319,7 @@ describe('Account API', () => {
         }),
       )
 
-      expect(response.status).toBe(204)
+      expect(response.status).toBe(404)
     })
 
     it('returns 204 when revoking already-revoked device (idempotent)', async () => {

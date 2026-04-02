@@ -10,6 +10,7 @@ import {
 } from '@/ai/step-logic'
 import { getModel, getModelProfile, getSettings } from '@/dal'
 import { getDb } from '@/db/database'
+import { getAuthToken } from '@/lib/auth-token'
 import { fetch } from '@/lib/fetch'
 import { createToolset, getAvailableTools } from '@/lib/tools'
 import type { Model, SaveMessagesFunction, ThunderboltUIMessage } from '@/types'
@@ -63,16 +64,14 @@ export const createModel = async (modelConfig: Model) => {
     case 'thunderbolt': {
       const db = getDb()
       const { cloudUrl } = await getSettings(db, { cloud_url: 'http://localhost:8000/v1' })
-      // Include credentials so the session cookie is sent with inference requests
-      const backendFetch = ((input: RequestInfo | URL, init?: RequestInit) =>
-        fetch(input, { ...init, credentials: 'include' })) as typeof fetch
+      const token = getAuthToken() ?? ''
       // GPT OSS (vendor: 'openai') uses createOpenAI with .chat() to force Chat Completions API
       // (AI SDK 5 defaults createOpenAI to Responses API which our backend doesn't support)
       if (modelConfig.vendor === 'openai') {
-        const provider = createOpenAI({ baseURL: cloudUrl, apiKey: 'thunderbolt', fetch: backendFetch })
+        const provider = createOpenAI({ baseURL: cloudUrl, apiKey: token, fetch })
         return provider.chat(modelConfig.model)
       }
-      const provider = createOpenAICompatible({ name: 'thunderbolt', baseURL: cloudUrl, fetch: backendFetch })
+      const provider = createOpenAICompatible({ name: 'thunderbolt', baseURL: cloudUrl, apiKey: token, fetch })
       return provider(modelConfig.model)
     }
     case 'anthropic': {

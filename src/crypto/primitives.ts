@@ -24,8 +24,19 @@ export const exportPublicKey = async (publicKey: CryptoKey): Promise<string> => 
 }
 
 /** Import a public key from base64 (for wrapping CK with another device's key). */
-export const importPublicKey = async (base64: string): Promise<CryptoKey> =>
-  crypto.subtle.importKey('raw', base64ToUint8Array(base64), { name: ecdhAlgorithm, namedCurve: ecdhCurve }, true, [])
+export const importPublicKey = async (base64: string): Promise<CryptoKey> => {
+  try {
+    return await crypto.subtle.importKey(
+      'raw',
+      base64ToUint8Array(base64),
+      { name: ecdhAlgorithm, namedCurve: ecdhCurve },
+      true,
+      [],
+    )
+  } catch (err) {
+    throw new EncryptionError('Failed to import public key', { cause: err })
+  }
+}
 
 // =============================================================================
 // AES-256-GCM Content Key (CK)

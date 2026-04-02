@@ -1,5 +1,5 @@
 import { describe, expect, mock, test } from 'bun:test'
-import { connectToLocalAgent } from './local-agent'
+import { connectToLocalAgent, resolveSpawnCommand } from './local-agent'
 import type { AgentConfig } from './types'
 import type { SubprocessHandle, SubprocessSpawner } from './stdio-stream'
 
@@ -89,5 +89,107 @@ describe('connectToLocalAgent', () => {
     await connectToLocalAgent({ agentConfig: noArgsConfig, spawner })
 
     expect(spawner.spawn).toHaveBeenCalledWith('claude', [])
+  })
+
+  test('spawns NPX agent via node command', async () => {
+    const spawner = createMockSpawner()
+    const npxConfig: AgentConfig & Record<string, any> = {
+      ...testAgentConfig,
+      command: '/app-data/agents/claude-acp/node_modules/.bin/claude-agent-acp',
+      args: ['--acp'],
+      distributionType: 'npx',
+      installPath: '/app-data/agents/claude-acp',
+    }
+
+    await connectToLocalAgent({ agentConfig: npxConfig, spawner })
+
+    expect(spawner.spawn).toHaveBeenCalledWith('node', [
+      '/app-data/agents/claude-acp/node_modules/.bin/claude-agent-acp',
+      '--acp',
+    ])
+  })
+
+  test('spawns UVX agent via uvx command', async () => {
+    const spawner = createMockSpawner()
+    const uvxConfig: AgentConfig & Record<string, any> = {
+      ...testAgentConfig,
+      command: '/app-data/agents/fast-agent/bin/fast-agent',
+      args: ['acp'],
+      distributionType: 'uvx',
+      installPath: '/app-data/agents/fast-agent',
+      packageName: 'fast-agent@0.6.10',
+    }
+
+    await connectToLocalAgent({ agentConfig: uvxConfig, spawner })
+
+    expect(spawner.spawn).toHaveBeenCalledWith('uvx', ['fast-agent@0.6.10', 'acp'])
+  })
+
+  test('spawns custom agent directly', async () => {
+    const spawner = createMockSpawner()
+    const customConfig: AgentConfig & Record<string, any> = {
+      ...testAgentConfig,
+      command: '/usr/local/bin/my-agent',
+      args: ['--verbose'],
+      distributionType: 'custom',
+    }
+
+    await connectToLocalAgent({ agentConfig: customConfig, spawner })
+
+    expect(spawner.spawn).toHaveBeenCalledWith('/usr/local/bin/my-agent', ['--verbose'])
+  })
+})
+
+describe('resolveSpawnCommand', () => {
+  test('uses node for NPX-installed agents', () => {
+    const config: AgentConfig & Record<string, any> = {
+      ...testAgentConfig,
+      command: '/path/to/node_modules/.bin/agent',
+      args: ['--acp'],
+      distributionType: 'npx',
+      installPath: '/path/to',
+    }
+    const result = resolveSpawnCommand(config)
+    expect(result.command).toBe('node')
+    expect(result.args[0]).toBe('/path/to/node_modules/.bin/agent')
+  })
+
+  test('uses uvx for UVX-installed agents', () => {
+    const config: AgentConfig & Record<string, any> = {
+      ...testAgentConfig,
+      command: '/path/to/bin/agent',
+      args: ['acp'],
+      distributionType: 'uvx',
+      installPath: '/path/to',
+      packageName: 'agent@1.0.0',
+    }
+    const result = resolveSpawnCommand(config)
+    expect(result.command).toBe('uvx')
+    expect(result.args[0]).toBe('agent@1.0.0')
+  })
+
+  test('falls back to direct command for NPX without installPath', () => {
+    const config: AgentConfig & Record<string, any> = {
+      ...testAgentConfig,
+      command: 'some-agent',
+      distributionType: 'npx',
+    }
+    const result = resolveSpawnCommand(config)
+    expect(result.command).toBe('some-agent')
+  })
+
+  test('falls back to direct command for UVX without packageName', () => {
+    const config: AgentConfig & Record<string, any> = {
+      ...testAgentConfig,
+      command: 'some-agent',
+      distributionType: 'uvx',
+    }
+    const result = resolveSpawnCommand(config)
+    expect(result.command).toBe('some-agent')
+  })
+
+  test('throws when command is missing', () => {
+    const config: AgentConfig = { ...testAgentConfig, command: undefined }
+    expect(() => resolveSpawnCommand(config)).toThrow('no command configured')
   })
 })

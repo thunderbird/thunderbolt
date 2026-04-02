@@ -3,6 +3,55 @@ import { getSettings, getHaystackPipelines, getEnabledAgentIds } from '@/config/
 import { createHaystackProvider } from './haystack-provider'
 import type { AgentProvider } from './types'
 
+const ACP_REGISTRY_URL = 'https://cdn.agentclientprotocol.com/registry/v1/latest/registry.json'
+const REGISTRY_CACHE_TTL_MS = 60 * 60 * 1000 // 1 hour
+
+type RegistryEntry = {
+  id: string
+  name: string
+  version: string
+  description: string
+  authors: string[]
+  license: string
+  distribution: Record<string, unknown>
+  icon?: string
+  repository?: string
+  website?: string
+}
+
+type RegistryResponse = {
+  version: string
+  agents: RegistryEntry[]
+  extensions: unknown[]
+}
+
+// ── Registry cache ────────────────────────────────────────────────────────────
+
+let registryCache: { data: RegistryEntry[]; fetchedAt: number } | null = null
+
+const fetchRegistryEntries = async (): Promise<RegistryEntry[]> => {
+  if (registryCache && Date.now() - registryCache.fetchedAt < REGISTRY_CACHE_TTL_MS) {
+    return registryCache.data
+  }
+
+  try {
+    const response = await fetch(ACP_REGISTRY_URL)
+    if (!response.ok) {
+      console.warn(`Failed to fetch ACP registry: ${response.status}`)
+      return registryCache?.data ?? []
+    }
+    const json = (await response.json()) as RegistryResponse
+    const entries = Array.isArray(json?.agents) ? json.agents : []
+    registryCache = { data: entries, fetchedAt: Date.now() }
+    return entries
+  } catch (error) {
+    console.warn('Failed to fetch ACP registry:', error)
+    return registryCache?.data ?? []
+  }
+}
+
+// ── Remote agent → registry entry conversion ──────────────────────────────────
+
 /** Swaps http(s) → ws(s) and keeps the host + /v1 prefix. */
 const getWsBaseUrl = (request: Request): string => {
   const url = new URL(request.url)
@@ -12,22 +61,53 @@ const getWsBaseUrl = (request: Request): string => {
   return `${wsProtocol}//${url.host}/v1`
 }
 
+const remoteAgentsToRegistryEntries = (providers: AgentProvider[]): RegistryEntry[] =>
+  providers.flatMap((p) =>
+    p.getAgents().map((agent) => ({
+      id: agent.id,
+      name: agent.name,
+      version: '1.0.0',
+      description: '',
+      authors: [],
+      license: 'proprietary',
+      distribution: {
+        remote: {
+          url: agent.url,
+          transport: agent.transport,
+          icon: agent.icon,
+        },
+      },
+    })),
+  )
+
+// ── Routes ────────────────────────────────────────────────────────────────────
+
 export const createAgentsRoutes = () => {
   const settings = getSettings()
   const pipelines = getHaystackPipelines(settings)
 
   const router = new Elysia({ prefix: '/agents' })
 
-  router.get('/', ({ request }) => {
+  router.get('/', async ({ request }) => {
     const wsBaseUrl = getWsBaseUrl(request)
     const enabledIds = getEnabledAgentIds(getSettings())
 
-    const providers: AgentProvider[] = [...(pipelines.length > 0 ? [createHaystackProvider(pipelines, wsBaseUrl)] : [])]
+    // Fetch ACP registry entries
+    const registryEntries = await fetchRegistryEntries()
 
-    const allAgents = providers.flatMap((p) => p.getAgents())
+    // Convert remote agents to registry format
+    const providers: AgentProvider[] = [...(pipelines.length > 0 ? [createHaystackProvider(pipelines, wsBaseUrl)] : [])]
+    const remoteEntries = remoteAgentsToRegistryEntries(providers)
+
+    // Merge: registry entries + remote entries
+    const allAgents = [...registryEntries, ...remoteEntries]
     const agents = enabledIds ? allAgents.filter((a) => enabledIds.includes(a.id)) : allAgents
 
-    return { data: agents }
+    return {
+      version: '1.0.0',
+      agents,
+      extensions: [],
+    } satisfies RegistryResponse
   })
 
   return router

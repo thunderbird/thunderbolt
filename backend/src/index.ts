@@ -16,6 +16,7 @@ import { createAccountRoutes } from '@/api/account'
 import { createPowerSyncRoutes } from '@/api/powersync'
 import { createAgentsRoutes } from '@/agents/routes'
 import { createHaystackRoutes } from '@/haystack/routes'
+import { createWsTicketRoutes } from '@/auth/ws-ticket-routes'
 import type { AppDeps } from '@/types'
 import { cors } from '@elysiajs/cors'
 import { Elysia } from 'elysia'
@@ -89,6 +90,7 @@ export const createApp = async (deps?: AppDeps) => {
       .use(createPowerSyncRoutes(auth, settings, database))
       .use(createAccountRoutes(auth, database))
       .use(createAgentsRoutes())
+      .use(createWsTicketRoutes(auth))
       .use(createHaystackRoutes(auth, fetchFn))
   )
 }

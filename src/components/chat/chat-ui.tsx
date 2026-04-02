@@ -6,7 +6,9 @@ import { SuggestionButtons } from './suggestion-buttons'
 import { useChatScrollHandler } from '@/chats/use-chat-scroll-handler'
 import { ChatMessages } from './chat-messages'
 import { ChatPromptInput, type ChatPromptInputRef } from './chat-prompt-input'
+import { NoAgentsMessage } from './no-agents-message'
 import { useCurrentChatSession } from '@/chats/chat-store'
+import { useChatStore } from '@/chats/chat-store'
 import { useChatAutomation } from '@/chats/use-chat-automation'
 import { ScrollToBottomButton } from './scroll-to-bottom-button'
 import { AppLogo } from '../app-logo'
@@ -18,7 +20,9 @@ type ChatUIProps = {
 
 const ChatUI = ({ saveMessages }: ChatUIProps) => {
   const { messages, agentConfig } = useCurrentChatSession()
+  const agents = useChatStore((s) => s.agents)
   const isBuiltInAgent = agentConfig.type === 'built-in'
+  const hasNoAgents = agents.length === 0
 
   useChatAutomation()
 
@@ -48,6 +52,14 @@ const ChatUI = ({ saveMessages }: ChatUIProps) => {
       }
     }
   }, [hasMessages, scrollToBottom])
+
+  if (hasNoAgents) {
+    return (
+      <div className="h-full w-full flex items-center justify-center">
+        <NoAgentsMessage />
+      </div>
+    )
+  }
 
   return (
     <div className="h-full w-full">

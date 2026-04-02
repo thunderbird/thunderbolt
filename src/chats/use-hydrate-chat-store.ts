@@ -14,7 +14,7 @@ import {
   saveMessagesWithContextUpdate,
 } from '@/dal'
 import { getAgent } from '@/dal/agents'
-import { discoverAndSeedLocalAgents, discoverAndSeedRemoteAgents } from '@/acp/discovery'
+import { discoverAndSeedRemoteAgents } from '@/acp/discovery'
 import { modeFromAcpSession, modelFromAcpSession } from '@/acp/session-adapters'
 import { isTauri, isDesktop, isAgentAvailableOnPlatform } from '@/lib/platform'
 import { getOrCreateChatThread, updateChatThread } from '@/dal/chat-threads'
@@ -149,10 +149,8 @@ export const useHydrateChatStore = ({
       getChatMessages(db, id),
       getAllModes(db),
       getAvailableModels(db),
-      // Discover agents in parallel with other queries
-      Promise.all([discoverAndSeedLocalAgents(db), discoverAndSeedRemoteAgents(db, settings.cloudUrl)]).then(() =>
-        getAvailableAgents(db),
-      ),
+      // Discover remote agents and get available agents
+      discoverAndSeedRemoteAgents(db, settings.cloudUrl).then(() => getAvailableAgents(db)),
       getTriggerPromptForThread(db, id),
       getEnabledClients(),
     ])

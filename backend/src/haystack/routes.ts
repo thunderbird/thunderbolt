@@ -1,4 +1,5 @@
 import type { Auth } from '@/auth/elysia-plugin'
+import { consumeWsTicket } from '@/auth/ws-ticket'
 import { Elysia, t } from 'elysia'
 import { getSettings, getHaystackPipelines } from '@/config/settings'
 import { HaystackClient } from './client'
@@ -19,24 +20,6 @@ export const createHaystackRoutes = (auth: Auth, fetchFn: typeof fetch = globalT
     return router
   }
 
-  router
-    .derive(async ({ request, set }) => {
-      const session = await auth.api.getSession({ headers: request.headers })
-
-      if (!session) {
-        set.status = 401
-        return { user: null }
-      }
-
-      return { user: session.user }
-    })
-    .onBeforeHandle(({ user: sessionUser, set }) => {
-      if (!sessionUser) {
-        set.status = 401
-        return { error: 'Unauthorized' }
-      }
-    })
-
   const clients = new Map(
     pipelines.map((p) => [
       p.slug,
@@ -53,15 +36,20 @@ export const createHaystackRoutes = (auth: Auth, fetchFn: typeof fetch = globalT
     ]),
   )
 
-  // All pipelines share the same workspace/auth, so any client works for file downloads
   const anyClient = clients.values().next().value as HaystackClient
 
+  // File proxy route — uses session-based auth (normal HTTP with cookies)
   router.get(
     '/files/:fileId',
-    async ({ params }) => {
+    async ({ params, request, set }) => {
+      const session = await auth.api.getSession({ headers: request.headers })
+      if (!session) {
+        set.status = 401
+        return { error: 'Unauthorized' }
+      }
+
       const response = await anyClient.downloadFile(params.fileId)
 
-      // Pass through content type and disposition headers
       const headers: Record<string, string> = {}
       const contentType = response.headers.get('content-type')
       if (contentType) {
@@ -79,11 +67,30 @@ export const createHaystackRoutes = (auth: Auth, fetchFn: typeof fetch = globalT
     },
   )
 
+  // WebSocket routes — use ticket-based auth (browsers can't send cookies with WS)
   for (const pipeline of pipelines) {
     const client = clients.get(pipeline.slug)!
-    const handler = createHaystackWebSocketHandler(pipeline, client)
+    const baseHandler = createHaystackWebSocketHandler(pipeline, client)
 
-    router.ws(`/ws/${pipeline.slug}`, handler)
+    router.ws(`/ws/${pipeline.slug}`, {
+      open: (ws) => {
+        const ticketId = (ws as any).data?.query?.ticket as string | undefined
+        if (!ticketId) {
+          console.warn(`[haystack] WebSocket rejected — no ticket for ${pipeline.slug}`)
+          ws.close(4001, 'Unauthorized')
+          return
+        }
+        const userId = consumeWsTicket(ticketId)
+        if (!userId) {
+          console.warn(`[haystack] WebSocket rejected — invalid/expired ticket for ${pipeline.slug}`)
+          ws.close(4001, 'Unauthorized')
+          return
+        }
+        baseHandler.open(ws as any)
+      },
+      message: baseHandler.message as any,
+      close: baseHandler.close as any,
+    })
   }
 
   return router

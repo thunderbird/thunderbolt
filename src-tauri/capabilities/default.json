@@ -58,6 +58,9 @@
         },
         {
           "url": "http://localhost:8000"
+        },
+        {
+          "url": "https://cdn.agentclientprotocol.com"
         }
       ]
     },
@@ -84,6 +87,36 @@
           "cmd": "which",
           "args": [{ "validator": "\\S+" }],
           "sidecar": false
+        },
+        {
+          "name": "npm",
+          "cmd": "npm",
+          "args": true,
+          "sidecar": false
+        },
+        {
+          "name": "node",
+          "cmd": "node",
+          "args": true,
+          "sidecar": false
+        },
+        {
+          "name": "uv",
+          "cmd": "uv",
+          "args": true,
+          "sidecar": false
+        },
+        {
+          "name": "tar",
+          "cmd": "tar",
+          "args": true,
+          "sidecar": false
+        },
+        {
+          "name": "unzip",
+          "cmd": "unzip",
+          "args": true,
+          "sidecar": false
         }
       ]
     },
@@ -91,15 +124,15 @@
       "identifier": "shell:allow-spawn",
       "allow": [
         {
-          "name": "claude-agent-acp",
-          "cmd": "claude-agent-acp",
+          "name": "node",
+          "cmd": "node",
           "args": true,
           "sidecar": false
         },
         {
-          "name": "codex",
-          "cmd": "codex",
-          "args": ["--acp"],
+          "name": "uvx",
+          "cmd": "uvx",
+          "args": true,
           "sidecar": false
         }
       ]

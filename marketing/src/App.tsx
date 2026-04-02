@@ -1,5 +1,11 @@
+import { ContactPage } from '@/components/sections/contact-page'
 import { EnterprisePage } from '@/components/sections/enterprise-page'
 
-const App = () => <EnterprisePage />
+const App = () => {
+  const path = window.location.pathname
+
+  if (path === '/contact') return <ContactPage />
+  return <EnterprisePage />
+}
 
 export default App

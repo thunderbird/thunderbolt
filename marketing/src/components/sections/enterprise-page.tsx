@@ -2,7 +2,7 @@
 
 const GetStartedButton = () => (
   <a
-    href="https://thunderbolt.so"
+    href="/contact"
     className="inline-flex h-[46px] w-[131px] items-center justify-center bg-[#344054] font-mono text-sm font-bold uppercase tracking-wider text-white transition-colors hover:bg-[#344054]/90"
   >
     Get Started
@@ -110,10 +110,10 @@ const FeatureCards = () => (
           Connect any ACP-compatible agent or OpenAI-compatible model - Claude, Codex, OpenClaw, Deepset, OpenCode, OpenAI, etc.
         </p>
         {/* Model logos — sine wave layout from Figma Group 42 */}
-        <div className="relative -ml-[55px] mt-4 h-[173px] w-[402px]">
+        <div className="relative mx-auto mt-4 h-[173px] w-[402px] md:-ml-[55px] md:mx-0">
           {[
             { src: '/enterprise/chatgpt.png', alt: 'ChatGPT', size: 38, x: 0, y: 23, z: 3 },
-            { src: '/enterprise/anthropic.png', alt: 'Anthropic', size: 48, x: 80, y: 88, z: 1 },
+            { src: '/enterprise/anthropic.png', alt: 'Anthropic', size: 48, x: 80, y: 88, z: 6 },
             { src: '/enterprise/gemini.png', alt: 'Gemini', size: 32, x: 158, y: 42, z: 5 },
             { src: '/enterprise/mistral-logo.png', alt: 'Mistral', size: 22, x: 238, y: 0, z: 4 },
             { src: '/enterprise/meta.png', alt: 'Meta', size: 32, x: 317, y: 34, z: 2 },
@@ -130,7 +130,7 @@ const FeatureCards = () => (
       </div>
 
       {/* Built for Enterprise */}
-      <div className="flex flex-col border-[0.5px] border-[#eaecf0]/50 bg-white/5 px-8 py-8 backdrop-blur-[5px] md:h-[360px] md:pb-0">
+      <div className="flex flex-col border-[0.5px] border-[#eaecf0]/50 bg-[#f9fafb] px-8 py-8 md:h-[360px] md:pb-0">
         <h3 className="text-2xl font-medium leading-8 tracking-[-0.48px] text-[#101828]">Built for Enterprise</h3>
         <p className="mt-2 text-base leading-6 text-[#667085]">
           Native apps across web, desktop, and mobile. MCP integration with your systems. Forward-Deployed Engineering from trusted partners. Open source you can audit and customize as your business needs evolve.

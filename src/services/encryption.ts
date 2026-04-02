@@ -200,6 +200,7 @@ export const recoverWithKey = async (httpClient: KyInstance, recoveryPhrase: str
   // Re-import as non-extractable for local storage
   const nonExtractableCK = await reimportAsNonExtractable(ck)
   await storeCK(nonExtractableCK)
+  invalidateCKCache()
 }
 
 // =============================================================================

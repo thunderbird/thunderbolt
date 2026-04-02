@@ -49,7 +49,12 @@ export default function DevicesSettingsPage() {
   const [revokeTarget, setRevokeTarget] = useState<string | null>(null)
   const [approveTarget, setApproveTarget] = useState<string | null>(null)
 
-  const visibleDevices = devices.filter((d) => d.revokedAt == null || dayjs().diff(dayjs(d.revokedAt), 'hour') < 24)
+  const visibleDevices = devices.filter((d) => {
+    if (d.revokedAt != null) {
+      return dayjs().diff(dayjs(d.revokedAt), 'hour') < 24
+    }
+    return !!d.trusted
+  })
 
   const revokeMutation = useMutation({
     mutationFn: (deviceId: string) =>

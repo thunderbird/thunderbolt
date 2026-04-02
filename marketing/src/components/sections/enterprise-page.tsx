@@ -1,5 +1,3 @@
-import { Zap } from 'lucide-react'
-
 /* ─── Shared ──────────────────────────────────────────── */
 
 const GetStartedButton = () => (
@@ -40,12 +38,9 @@ const Header = () => (
     <div className="mx-auto flex h-full max-w-[1440px] items-center justify-between px-6 lg:px-[160px]">
       <div className="flex items-center gap-2">
         <a href="/" className="flex items-center gap-[7px]">
-          <Zap className="size-[23px] fill-[#101828] text-[#101828]" />
+          <img src="/enterprise/thunderbolt-logo.svg" alt="Thunderbolt" className="size-[23px]" />
           <span className="text-xl font-medium leading-7 tracking-[-0.4px] text-[#101828]">Thunderbolt</span>
         </a>
-        <span className="flex items-center gap-0.5 font-mono text-sm font-bold uppercase text-[#344054]">
-          [<img src="/enterprise/icon-factory-16.svg" alt="" className="inline size-4" />enterprises]
-        </span>
       </div>
       <GetStartedButton />
     </div>
@@ -153,7 +148,7 @@ const features = [
   { icon: '/enterprise/icon-ai-scan.svg', title: 'Automations', desc: 'Reusable workflows for recurring tasks' },
   { icon: '/enterprise/icon-earth.svg', title: 'European Delivery', desc: 'Trusted partners for sovereign deployments' },
   { icon: '/enterprise/icon-heart.svg', title: 'All Platforms', desc: 'Web, Windows, macOS, Linux, iOS, Android' },
-  { icon: '/enterprise/icon-directions.svg', title: 'Model + Agent Agnostic', desc: 'Connect any ACP-compatible agent or AI-compatible model' },
+  { icon: '/enterprise/icon-directions.svg', title: 'Model + Agent Agnostic', desc: 'Connect any ACP-compatible agent or OpenAI-compatible model' },
 ]
 
 const CompromiseSection = () => (
@@ -209,7 +204,7 @@ const QuoteSection = () => (
         <div className="absolute left-0 top-0 hidden size-3 bg-[#d0d5dd] lg:block" />
         <div className="border border-[#d0d5dd] bg-white p-10 shadow-[0px_48px_100px_0px_rgba(17,12,46,0.15)] md:ml-[6px] md:mt-[6px]">
           <p className="max-w-[768px] text-[32px] font-medium leading-[1.2] tracking-[-1.12px] text-[#101828] md:text-[56px]">
-            &ldquo;Organizations across sectors are recognizing that AI is too strategic to outsource.&rdquo;
+            &ldquo;Organizations across sectors are recognizing that AI is too important to outsource.&rdquo;
           </p>
           <p className="mt-6 text-xl font-bold leading-7 tracking-[-0.4px] text-[#667085]">
             Ryan Sipes,<br />CEO, Mozilla Thunderbird
@@ -225,7 +220,7 @@ const QuoteSection = () => (
 const CTASection = () => (
   <section className="py-24">
     <div className="mx-auto max-w-[737px] px-6 text-center">
-      <Zap className="mx-auto size-6 text-[#101828]" />
+      <img src="/enterprise/icon-zap-pixel.svg" alt="Thunderbolt" className="mx-auto size-6" />
       <h2 className="mt-2 text-[32px] font-medium leading-[1.2] tracking-[-0.96px] text-[#101828] md:text-[48px]">
         Ready to Take Control?
       </h2>
@@ -242,10 +237,10 @@ const CTASection = () => (
 /* ─── Footer ──────────────────────────────────────────── */
 
 const FooterSection = () => (
-  <footer className="pb-16">
+  <footer className="relative z-10 bg-[#f9fafb] pb-16">
     <div className="mx-auto max-w-[1120px] px-6 lg:px-0">
       <div className="flex items-center justify-center gap-2">
-        <Zap className="size-[34px] fill-[#101828] text-[#101828]" />
+        <img src="/enterprise/thunderbolt-logo.svg" alt="Thunderbolt" className="size-[34px]" />
         <span className="text-xl font-medium tracking-tight text-[#101828]">Thunderbolt</span>
       </div>
       <div className="mx-auto mt-6 h-px max-w-[1118px] bg-[#eaecf0]" />
@@ -253,11 +248,11 @@ const FooterSection = () => (
         <img src="/enterprise/mozilla-logo.svg" alt="Mozilla" className="h-6 w-auto" />
         <p className="max-w-[638px] text-xs leading-4 text-[#667085]">
           Thunderbolt is part of{' '}
-          <a href="https://blog.thunderbird.net/2020/01/thunderbirds-new-home/" className="underline" target="_blank" rel="noopener noreferrer">
+          <a href="https://blog.thunderbird.net/2020/01/thunderbirds-new-home/" className="border-b border-[#667085]/40" target="_blank" rel="noopener noreferrer">
             MZLA Technologies Corporation
           </a>
           , a wholly owned subsidiary of Mozilla Foundation. Portions of this content are &copy;1998&ndash;2026 by individual contributors. Content available under a{' '}
-          <a href="https://www.mozilla.org/foundation/licensing/website-content/" className="underline" target="_blank" rel="noopener noreferrer">
+          <a href="https://www.mozilla.org/foundation/licensing/website-content/" className="border-b border-[#667085]/40" target="_blank" rel="noopener noreferrer">
             Creative Commons license
           </a>
           .

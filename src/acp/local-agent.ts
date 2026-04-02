@@ -22,7 +22,7 @@ type LocalAgentConnection = {
  * (node -e strips -e and the script from process.argv).
  * Pipes stdin/stdout for ACP communication and inherits stderr for diagnostics.
  */
-const BINARY_BRIDGE_SCRIPT = [
+const binaryBridgeScript = [
   'const{spawn}=require("child_process");',
   'const c=spawn(process.argv[1],process.argv.slice(2),{stdio:["pipe","pipe","inherit"]});',
   'process.stdin.pipe(c.stdin);',
@@ -59,7 +59,7 @@ const resolveSpawnCommand = (agentConfig: AgentConfig): { command: string; args:
 
   // Binary agents: bridge through node since Tauri only allows named spawn commands
   if (agentConfig.distributionType === 'binary' && agentConfig.installPath) {
-    return { command: 'node', args: ['-e', BINARY_BRIDGE_SCRIPT, command, ...baseArgs] }
+    return { command: 'node', args: ['-e', binaryBridgeScript, command, ...baseArgs] }
   }
 
   // ── Fallback heuristics when distributionType is missing ───────────────────
@@ -73,12 +73,12 @@ const resolveSpawnCommand = (agentConfig: AgentConfig): { command: string; args:
 
   // Any other absolute path → use node bridge to spawn the binary
   if (isAbsolutePath) {
-    return { command: 'node', args: ['-e', BINARY_BRIDGE_SCRIPT, command, ...baseArgs] }
+    return { command: 'node', args: ['-e', binaryBridgeScript, command, ...baseArgs] }
   }
 
   // Bare command name (no path) — bridge through node so child_process resolves it on PATH.
   // Direct spawn only works for commands in shell:allow-spawn (node, uvx).
-  return { command: 'node', args: ['-e', BINARY_BRIDGE_SCRIPT, command, ...baseArgs] }
+  return { command: 'node', args: ['-e', binaryBridgeScript, command, ...baseArgs] }
 }
 
 /**

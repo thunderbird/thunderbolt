@@ -87,7 +87,9 @@ const sendJsonRpc = async (
   const read = async (): Promise<Record<string, unknown>> => {
     while (true) {
       const { value, done } = await reader.read()
-      if (done) throw new Error('Stream ended before response')
+      if (done) {
+        throw new Error('Stream ended before response')
+      }
       buffer += decoder.decode(value, { stream: true })
       const newlineIdx = buffer.indexOf('\n')
       if (newlineIdx !== -1) {

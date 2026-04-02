@@ -1,9 +1,10 @@
 import { describe, expect, it, beforeEach } from 'bun:test'
 import { render, screen, cleanup } from '@testing-library/react'
 import { BrowserRouter } from 'react-router'
+import type { ReactElement } from 'react'
 import { NoAgentsMessage } from './no-agents-message'
 
-const renderWithRouter = (ui: React.ReactElement) => render(<BrowserRouter>{ui}</BrowserRouter>)
+const renderWithRouter = (ui: ReactElement) => render(<BrowserRouter>{ui}</BrowserRouter>)
 
 describe('NoAgentsMessage', () => {
   beforeEach(() => {

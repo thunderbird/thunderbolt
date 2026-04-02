@@ -12,7 +12,7 @@ import { isNotNull, isNull, and, or, eq } from 'drizzle-orm'
 import { useSettings } from '@/hooks/use-settings'
 import { isAgentAvailableOnPlatform } from '@/lib/platform'
 import { Bot, Plus, Terminal } from 'lucide-react'
-import { useCallback, useState } from 'react'
+import { useCallback, useState, type ReactNode } from 'react'
 import { useQuery as useTanstackQuery, useQueryClient } from '@tanstack/react-query'
 import { AgentCard } from './agent-card'
 import { AddCustomAgentDialogContent, type AddAgentParams } from './add-custom-agent-dialog'
@@ -32,7 +32,7 @@ import {
   uninstallAgent as uninstallAgentFromDisk,
 } from '@/acp/agent-installer'
 
-const AgentSection = ({ title, children }: { title: string; children: React.ReactNode }) => (
+const AgentSection = ({ title, children }: { title: string; children: ReactNode }) => (
   <div className="grid gap-3">
     <h3 className="text-xs font-medium text-muted-foreground uppercase tracking-wider">{title}</h3>
     {children}
@@ -107,14 +107,18 @@ export default function AgentsSettingsPage() {
   }
 
   const handleInstallClick = useCallback((agent: MergedAgent) => {
-    if (!agent.registryEntry) return
+    if (!agent.registryEntry) {
+      return
+    }
     setPendingInstallAgent(agent)
   }, [])
 
   const handleInstallConfirm = useCallback(async () => {
     const agent = pendingInstallAgent
     setPendingInstallAgent(null)
-    if (!agent?.registryEntry) return
+    if (!agent?.registryEntry) {
+      return
+    }
 
     setAgentErrors((prev) => {
       const next = new Map(prev)
@@ -200,7 +204,9 @@ export default function AgentsSettingsPage() {
 
   const handleUninstall = useCallback(
     async (agent: MergedAgent) => {
-      if (!agent.agentId) return
+      if (!agent.agentId) {
+        return
+      }
 
       setBusy(agent.registryId, 'uninstalling')
       try {

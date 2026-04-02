@@ -32,7 +32,9 @@ export const AddCustomAgentDialogContent = ({ onAdd, onClose, remoteOnly }: AddC
   const canSubmit = agentType === 'local' ? name.trim() && command.trim() : name.trim() && url.trim()
 
   const handleSubmit = () => {
-    if (!canSubmit) return
+    if (!canSubmit) {
+      return
+    }
 
     if (agentType === 'local') {
       onAdd({

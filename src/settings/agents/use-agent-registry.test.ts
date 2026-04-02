@@ -43,9 +43,15 @@ mock.module('@/acp/registry', () => ({
   getRegistryPlatformKey: () => 'darwin-aarch64',
   isAgentAvailableForPlatform: () => true,
   getPreferredDistribution: (dist: any) => {
-    if (dist.binary?.['darwin-aarch64']) return { type: 'binary', target: dist.binary['darwin-aarch64'] }
-    if (dist.npx) return { type: 'npx', target: dist.npx }
-    if (dist.uvx) return { type: 'uvx', target: dist.uvx }
+    if (dist.binary?.['darwin-aarch64']) {
+      return { type: 'binary', target: dist.binary['darwin-aarch64'] }
+    }
+    if (dist.npx) {
+      return { type: 'npx', target: dist.npx }
+    }
+    if (dist.uvx) {
+      return { type: 'uvx', target: dist.uvx }
+    }
     return null
   },
 }))

@@ -22,14 +22,18 @@ import { PromptInput } from '../ui/prompt-input'
  * plain strings, and generic Error objects.
  */
 const extractErrorDisplay = (error: Error | null | undefined): string => {
-  if (!error?.message) return 'Connection failed'
+  if (!error?.message) {
+    return 'Connection failed'
+  }
 
   // Try to parse as JSON-RPC error (e.g. from ACP agents)
   try {
     const parsed = JSON.parse(error.message)
     // Prefer the nested data.message (most specific), fall back to top-level message
     const message = parsed?.data?.message ?? parsed?.data?.details ?? parsed?.message
-    if (typeof message === 'string') return message
+    if (typeof message === 'string') {
+      return message
+    }
   } catch {
     // Not JSON — use the raw message
   }

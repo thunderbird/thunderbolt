@@ -127,10 +127,18 @@ export const mergeRegistryWithInstalled = (
 }
 
 const getPreferredDistType = (entry: RegistryEntry): string | null => {
-  if (entry.distribution.remote) return 'remote'
-  if (entry.distribution.binary) return 'binary'
-  if (entry.distribution.npx) return 'npx'
-  if (entry.distribution.uvx) return 'uvx'
+  if (entry.distribution.remote) {
+    return 'remote'
+  }
+  if (entry.distribution.binary) {
+    return 'binary'
+  }
+  if (entry.distribution.npx) {
+    return 'npx'
+  }
+  if (entry.distribution.uvx) {
+    return 'uvx'
+  }
   return null
 }
 
@@ -161,7 +169,9 @@ export const filterByStatus = (
     case 'not-installed':
       return agents.filter((a) => !a.isInstalled)
     case 'available':
-      if (canInstallLocal) return agents
+      if (canInstallLocal) {
+        return agents
+      }
       return agents.filter((a) => a.isRemote || a.isBuiltIn)
   }
 }

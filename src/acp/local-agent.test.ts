@@ -292,7 +292,7 @@ describe('resolveSpawnCommand', () => {
 // installed agent types. This is the critical invariant — Tauri rejects
 // Command.create() calls for programs not in the capability list.
 
-const ALLOWED_SPAWN_COMMANDS = new Set(['node', 'uvx'])
+const allowedSpawnCommands = new Set(['node', 'uvx'])
 
 describe('Tauri capability compliance', () => {
   test('NPX agents resolve to an allowed spawn command', () => {
@@ -305,7 +305,7 @@ describe('Tauri capability compliance', () => {
       packageName: '@autohand/code-acp@1.0.0',
     }
     const result = resolveSpawnCommand(config)
-    expect(ALLOWED_SPAWN_COMMANDS.has(result.command)).toBe(true)
+    expect(allowedSpawnCommands.has(result.command)).toBe(true)
   })
 
   test('UVX agents resolve to an allowed spawn command', () => {
@@ -318,7 +318,7 @@ describe('Tauri capability compliance', () => {
       packageName: 'fast-agent@0.6.10',
     }
     const result = resolveSpawnCommand(config)
-    expect(ALLOWED_SPAWN_COMMANDS.has(result.command)).toBe(true)
+    expect(allowedSpawnCommands.has(result.command)).toBe(true)
   })
 
   test('binary agents resolve to an allowed spawn command', () => {
@@ -330,7 +330,7 @@ describe('Tauri capability compliance', () => {
       installPath: '/app-data/agents/goose',
     }
     const result = resolveSpawnCommand(config)
-    expect(ALLOWED_SPAWN_COMMANDS.has(result.command)).toBe(true)
+    expect(allowedSpawnCommands.has(result.command)).toBe(true)
   })
 
   test('all distribution types with installPath resolve to allowed commands', () => {
@@ -345,7 +345,7 @@ describe('Tauri capability compliance', () => {
         packageName: distType === 'uvx' ? 'test-agent@1.0.0' : undefined,
       }
       const result = resolveSpawnCommand(config)
-      expect(ALLOWED_SPAWN_COMMANDS.has(result.command)).toBe(true)
+      expect(allowedSpawnCommands.has(result.command)).toBe(true)
     }
   })
 
@@ -357,7 +357,7 @@ describe('Tauri capability compliance', () => {
       // No distributionType set — simulates missing DB column data
     }
     const result = resolveSpawnCommand(config)
-    expect(ALLOWED_SPAWN_COMMANDS.has(result.command)).toBe(true)
+    expect(allowedSpawnCommands.has(result.command)).toBe(true)
   })
 
   test('node_modules path with missing distributionType still resolves to node', () => {
@@ -367,7 +367,7 @@ describe('Tauri capability compliance', () => {
       args: ['--acp'],
     }
     const result = resolveSpawnCommand(config)
-    expect(ALLOWED_SPAWN_COMMANDS.has(result.command)).toBe(true)
+    expect(allowedSpawnCommands.has(result.command)).toBe(true)
   })
 })
 

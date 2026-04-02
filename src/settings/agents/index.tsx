@@ -13,7 +13,7 @@ import { useSettings } from '@/hooks/use-settings'
 import { isAgentAvailableOnPlatform } from '@/lib/platform'
 import { Bot, Plus, Terminal } from 'lucide-react'
 import { useCallback, useState } from 'react'
-import { useQuery as useTanstackQuery } from '@tanstack/react-query'
+import { useQuery as useTanstackQuery, useQueryClient } from '@tanstack/react-query'
 import { AgentCard } from './agent-card'
 import { AddCustomAgentDialogContent, type AddAgentParams } from './add-custom-agent-dialog'
 import { InstallWarningDialogContent } from './install-warning-dialog'
@@ -41,10 +41,12 @@ const AgentSection = ({ title, children }: { title: string; children: React.Reac
 
 export default function AgentsSettingsPage() {
   const db = useDatabase()
+  const queryClient = useQueryClient()
   const { cloudUrl } = useSettings({ cloud_url: 'http://localhost:8000/v1' })
   const [searchQuery, setSearchQuery] = useState('')
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false)
   const [busyAgents, setBusyAgents] = useState<Map<string, 'installing' | 'uninstalling'>>(new Map())
+  const [agentErrors, setAgentErrors] = useState<Map<string, string>>(new Map())
   const [pendingInstallAgent, setPendingInstallAgent] = useState<MergedAgent | null>(null)
 
   const canInstallLocal = isAgentAvailableOnPlatform('local')
@@ -114,6 +116,11 @@ export default function AgentsSettingsPage() {
     setPendingInstallAgent(null)
     if (!agent?.registryEntry) return
 
+    setAgentErrors((prev) => {
+      const next = new Map(prev)
+      next.delete(agent.registryId)
+      return next
+    })
     setBusy(agent.registryId, 'installing')
     try {
       const entry = agent.registryEntry
@@ -183,10 +190,13 @@ export default function AgentsSettingsPage() {
       })
     } catch (error) {
       console.error('Failed to install agent:', error)
+      const message = error instanceof Error ? error.message : 'Installation failed'
+      setAgentErrors((prev) => new Map(prev).set(agent.registryId, message))
     } finally {
       setBusy(agent.registryId, null)
+      queryClient.invalidateQueries({ queryKey: ['installed-agents'] })
     }
-  }, [db, canInstallLocal, pendingInstallAgent])
+  }, [db, queryClient, canInstallLocal, pendingInstallAgent])
 
   const handleUninstall = useCallback(
     async (agent: MergedAgent) => {
@@ -203,15 +213,17 @@ export default function AgentsSettingsPage() {
         console.error('Failed to uninstall agent:', error)
       } finally {
         setBusy(agent.registryId, null)
+        queryClient.invalidateQueries({ queryKey: ['installed-agents'] })
       }
     },
-    [db],
+    [db, queryClient],
   )
 
   const handleToggle = useCallback(
     async (agent: MergedAgent, enabled: boolean) => {
       if (agent.agentId) {
         await toggleAgent(db, agent.agentId, enabled)
+        queryClient.invalidateQueries({ queryKey: ['installed-agents'] })
         return
       }
 
@@ -230,9 +242,10 @@ export default function AgentsSettingsPage() {
         if (!enabled) {
           await toggleAgent(db, `agent-registry-${agent.registryEntry.id}`, false)
         }
+        queryClient.invalidateQueries({ queryKey: ['installed-agents'] })
       }
     },
-    [db],
+    [db, queryClient],
   )
 
   const handleAddCustom = useCallback(
@@ -278,6 +291,7 @@ export default function AgentsSettingsPage() {
                 proxyBase={cloudUrl.value}
                 isInstalling={busyAgents.get(agent.registryId) === 'installing'}
                 isUninstalling={busyAgents.get(agent.registryId) === 'uninstalling'}
+                error={agentErrors.get(agent.registryId)}
                 desktopOnly={!canInstallLocal}
                 onInstall={handleInstallClick}
                 onUninstall={handleUninstall}
@@ -296,6 +310,7 @@ export default function AgentsSettingsPage() {
                 proxyBase={cloudUrl.value}
                 isInstalling={busyAgents.get(agent.registryId) === 'installing'}
                 isUninstalling={busyAgents.get(agent.registryId) === 'uninstalling'}
+                error={agentErrors.get(agent.registryId)}
                 desktopOnly={!canInstallLocal}
                 onInstall={handleInstallClick}
                 onUninstall={handleUninstall}
@@ -314,6 +329,7 @@ export default function AgentsSettingsPage() {
                 proxyBase={cloudUrl.value}
                 isInstalling={busyAgents.get(agent.registryId) === 'installing'}
                 isUninstalling={busyAgents.get(agent.registryId) === 'uninstalling'}
+                error={agentErrors.get(agent.registryId)}
                 desktopOnly={!canInstallLocal}
                 onInstall={handleInstallClick}
                 onUninstall={handleUninstall}

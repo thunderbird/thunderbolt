@@ -1,5 +1,6 @@
 import { getDb } from '@/db/database'
 import { agentsTable, settingsTable } from '@/db/tables'
+import { eq } from 'drizzle-orm'
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'bun:test'
 import { v7 as uuidv7 } from 'uuid'
 import {
@@ -192,7 +193,8 @@ describe('Agents DAL', () => {
       expect(agent.id).toBe('agent-registry-claude-acp')
     })
 
-    it('rejects duplicate registryId', async () => {
+    it('updates existing agent on duplicate registryId', async () => {
+      const db = getDb()
       const params = {
         registryId: 'claude-acp',
         name: 'Claude Agent',
@@ -202,8 +204,41 @@ describe('Agents DAL', () => {
         command: '/mock/agents/claude-acp/bin/agent',
       }
 
-      await installRegistryAgent(getDb(), params)
-      await expect(installRegistryAgent(getDb(), params)).rejects.toThrow()
+      await installRegistryAgent(db, params)
+      const updated = await installRegistryAgent(db, {
+        ...params,
+        name: 'Claude Agent v2',
+        version: '0.25.0',
+        command: '/mock/agents/claude-acp/bin/agent-v2',
+      })
+
+      expect(updated.id).toBe('agent-registry-claude-acp')
+      expect(updated.name).toBe('Claude Agent v2')
+      expect(updated.installedVersion).toBe('0.25.0')
+      expect(updated.command).toBe('/mock/agents/claude-acp/bin/agent-v2')
+    })
+
+    it('re-enables a soft-deleted agent on reinstall', async () => {
+      const db = getDb()
+      const params = {
+        registryId: 'claude-acp',
+        name: 'Claude Agent',
+        version: '0.24.2',
+        distributionType: 'npx' as const,
+        installPath: '/mock/agents/claude-acp',
+        command: '/mock/agents/claude-acp/bin/agent',
+      }
+
+      await installRegistryAgent(db, params)
+      // Soft-delete
+      await db
+        .update(agentsTable)
+        .set({ deletedAt: new Date().toISOString(), enabled: 0 })
+        .where(eq(agentsTable.id, 'agent-registry-claude-acp'))
+
+      const reinstalled = await installRegistryAgent(db, params)
+      expect(reinstalled.deletedAt).toBeNull()
+      expect(reinstalled.enabled).toBe(1)
     })
   })
 

@@ -104,6 +104,11 @@ type InstallRegistryAgentParams = {
 /**
  * Installs a registry-managed agent into the database.
  * Uses a deterministic ID based on the registryId.
+ * If the agent already exists (e.g. previously uninstalled via soft-delete),
+ * it updates the record and clears deletedAt to re-enable it.
+ *
+ * Uses select-then-insert/update because PowerSync exposes views,
+ * and SQLite cannot UPSERT into a view.
  */
 export const installRegistryAgent = async (
   db: AnyDrizzleDatabase,
@@ -111,24 +116,49 @@ export const installRegistryAgent = async (
 ): Promise<Agent> => {
   const id = `agent-registry-${params.registryId}`
 
-  await db.insert(agentsTable).values({
-    id,
-    name: params.name,
-    type: 'local',
-    transport: 'stdio',
-    command: params.command,
-    args: params.args ? JSON.stringify(params.args) : null,
-    icon: params.icon ?? null,
-    isSystem: 0,
-    enabled: 1,
-    registryId: params.registryId,
-    installedVersion: params.version,
-    registryVersion: params.version,
-    distributionType: params.distributionType,
-    installPath: params.installPath,
-    packageName: params.packageName ?? null,
-    description: params.description ?? null,
-  })
+  const existing = await db.select().from(agentsTable).where(eq(agentsTable.id, id)).get()
+
+  if (existing) {
+    await db
+      .update(agentsTable)
+      .set({
+        name: params.name,
+        type: 'local',
+        transport: 'stdio',
+        command: params.command,
+        args: params.args ? JSON.stringify(params.args) : null,
+        icon: params.icon ?? null,
+        enabled: 1,
+        registryId: params.registryId,
+        installedVersion: params.version,
+        registryVersion: params.version,
+        distributionType: params.distributionType,
+        installPath: params.installPath,
+        packageName: params.packageName ?? null,
+        description: params.description ?? null,
+        deletedAt: null,
+      })
+      .where(eq(agentsTable.id, id))
+  } else {
+    await db.insert(agentsTable).values({
+      id,
+      name: params.name,
+      type: 'local',
+      transport: 'stdio',
+      command: params.command,
+      args: params.args ? JSON.stringify(params.args) : null,
+      icon: params.icon ?? null,
+      isSystem: 0,
+      enabled: 1,
+      registryId: params.registryId,
+      installedVersion: params.version,
+      registryVersion: params.version,
+      distributionType: params.distributionType,
+      installPath: params.installPath,
+      packageName: params.packageName ?? null,
+      description: params.description ?? null,
+    })
+  }
 
   const result = await db.select().from(agentsTable).where(eq(agentsTable.id, id)).get()
   return result as Agent

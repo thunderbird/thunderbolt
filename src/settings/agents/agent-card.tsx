@@ -3,7 +3,7 @@ import { Card } from '@/components/ui/card'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { Switch } from '@/components/ui/switch'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
-import { ArrowUpCircle, Download, Globe, Loader2, Terminal, Trash2, Zap } from 'lucide-react'
+import { AlertTriangle, ArrowUpCircle, Download, Globe, Loader2, Terminal, Trash2, Zap } from 'lucide-react'
 import { useState } from 'react'
 import { getDistributionLabel, isLocalDistribution, type MergedAgent } from './use-agent-registry'
 
@@ -12,6 +12,7 @@ type AgentCardProps = {
   proxyBase: string
   isInstalling: boolean
   isUninstalling: boolean
+  error?: string
   /** When true, local agent install buttons are disabled with a tooltip */
   desktopOnly?: boolean
   onInstall: (agent: MergedAgent) => void
@@ -33,6 +34,7 @@ export const AgentCard = ({
   proxyBase,
   isInstalling,
   isUninstalling,
+  error,
   desktopOnly,
   onInstall,
   onUninstall,
@@ -174,6 +176,12 @@ export const AgentCard = ({
           </div>
         </div>
       </div>
+      {error && (
+        <div className="flex items-start gap-2 px-5 pb-4 -mt-1">
+          <AlertTriangle className="size-3.5 text-destructive flex-shrink-0 mt-0.5" />
+          <p className="text-xs text-destructive">{error}</p>
+        </div>
+      )}
     </Card>
   )
 }

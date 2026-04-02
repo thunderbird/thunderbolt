@@ -1,7 +1,8 @@
 import { type FormEvent, useReducer } from 'react'
 
-const MAILCHIMP_URL =
-  'https://thunderbird.us12.list-manage.com/subscribe/post?u=f8051cc8637cf3ff79661f382&id=61b3bbfdaa&f_id=00bfaae0f0'
+/** Mailchimp JSONP endpoint — swap /subscribe/post for /subscribe/post-json to get a JSONP response instead of a redirect. */
+const MAILCHIMP_JSONP_URL =
+  'https://thunderbird.us12.list-manage.com/subscribe/post-json?u=f8051cc8637cf3ff79661f382&id=61b3bbfdaa&f_id=00bfaae0f0'
 
 type FormState = {
   firstName: string
@@ -10,12 +11,15 @@ type FormState = {
   email: string
   help: string
   org: string
-  submitted: boolean
+  status: 'idle' | 'submitting' | 'success' | 'error'
+  errorMessage: string
 }
 
 type FormAction =
   | { type: 'SET_FIELD'; field: keyof FormState; value: string }
-  | { type: 'SUBMIT' }
+  | { type: 'SUBMITTING' }
+  | { type: 'SUCCESS' }
+  | { type: 'ERROR'; message: string }
 
 const initialState: FormState = {
   firstName: '',
@@ -24,14 +28,52 @@ const initialState: FormState = {
   email: '',
   help: '',
   org: '',
-  submitted: false,
+  status: 'idle',
+  errorMessage: '',
 }
 
 const reducer = (state: FormState, action: FormAction): FormState => {
   if (action.type === 'SET_FIELD') return { ...state, [action.field]: action.value }
-  if (action.type === 'SUBMIT') return { ...state, submitted: true }
+  if (action.type === 'SUBMITTING') return { ...state, status: 'submitting', errorMessage: '' }
+  if (action.type === 'SUCCESS') return { ...state, status: 'success' }
+  if (action.type === 'ERROR') return { ...state, status: 'error', errorMessage: action.message }
   return state
 }
+
+/** Submit to Mailchimp via JSONP (no CORS issues, no redirect). */
+const submitToMailchimp = (params: URLSearchParams): Promise<{ result: string; msg: string }> =>
+  new Promise((resolve, reject) => {
+    const callbackName = `mc_callback_${Date.now()}`
+    const script = document.createElement('script')
+
+    // Cleanup after response or timeout
+    const cleanup = () => {
+      delete (window as Record<string, unknown>)[callbackName]
+      script.remove()
+    }
+
+    ;(window as Record<string, unknown>)[callbackName] = (data: { result: string; msg: string }) => {
+      cleanup()
+      resolve(data)
+    }
+
+    const timeout = setTimeout(() => {
+      cleanup()
+      reject(new Error('Request timed out'))
+    }, 10000)
+
+    script.src = `${MAILCHIMP_JSONP_URL}&c=${callbackName}&${params.toString()}`
+    script.onerror = () => {
+      clearTimeout(timeout)
+      cleanup()
+      reject(new Error('Failed to submit'))
+    }
+
+    document.body.appendChild(script)
+
+    // Clear timeout on success (callback will resolve before timeout)
+    script.onload = () => clearTimeout(timeout)
+  })
 
 const inputClass =
   'w-full border border-[#d0d5dd] bg-white px-4 py-3 text-sm text-[#101828] placeholder:text-[#667085] outline-none focus:border-[#344054] focus:ring-1 focus:ring-[#344054]'
@@ -81,12 +123,34 @@ export const ContactPage = () => {
   const set = (field: keyof FormState) => (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) =>
     dispatch({ type: 'SET_FIELD', field, value: e.target.value })
 
-  const handleSubmit = (_e: FormEvent) => {
-    // Delay showing the thank-you page so the browser can complete the native form submission first
-    setTimeout(() => dispatch({ type: 'SUBMIT' }), 500)
+  const handleSubmit = async (e: FormEvent) => {
+    e.preventDefault()
+    dispatch({ type: 'SUBMITTING' })
+
+    const params = new URLSearchParams({
+      FNAME: state.firstName,
+      LNAME: state.lastName,
+      EMAIL: state.email,
+      TITLE: state.title,
+      ORG: state.org,
+      HELP: state.help,
+    })
+
+    try {
+      const data = await submitToMailchimp(params)
+      if (data.result === 'success') {
+        dispatch({ type: 'SUCCESS' })
+      } else {
+        // Mailchimp returns HTML in error messages — strip tags
+        const cleanMsg = data.msg.replace(/<[^>]*>/g, '')
+        dispatch({ type: 'ERROR', message: cleanMsg })
+      }
+    } catch {
+      dispatch({ type: 'ERROR', message: 'Something went wrong. Please try again.' })
+    }
   }
 
-  if (state.submitted) {
+  if (state.status === 'success') {
     return (
       <div className="min-h-screen bg-[#f9fafb]">
         <Header />
@@ -118,54 +182,48 @@ export const ContactPage = () => {
           Tell us about your organization and how we can help.
         </p>
 
-        <form
-          action={MAILCHIMP_URL}
-          method="post"
-          target="_blank"
-          onSubmit={handleSubmit}
-          className="mt-8 flex flex-col gap-5"
-        >
+        <form onSubmit={handleSubmit} className="mt-8 flex flex-col gap-5">
           <div className="grid grid-cols-2 gap-4">
             <div>
               <label htmlFor="mce-FNAME" className={labelClass}>First Name</label>
-              <input type="text" name="FNAME" id="mce-FNAME" value={state.firstName} onChange={set('firstName')} className={inputClass} />
+              <input type="text" id="mce-FNAME" value={state.firstName} onChange={set('firstName')} className={inputClass} />
             </div>
             <div>
               <label htmlFor="mce-LNAME" className={labelClass}>Last Name</label>
-              <input type="text" name="LNAME" id="mce-LNAME" value={state.lastName} onChange={set('lastName')} className={inputClass} />
+              <input type="text" id="mce-LNAME" value={state.lastName} onChange={set('lastName')} className={inputClass} />
             </div>
           </div>
 
           <div>
             <label htmlFor="mce-EMAIL" className={labelClass}>Email Address <span className="text-red-500">*</span></label>
-            <input type="email" name="EMAIL" id="mce-EMAIL" value={state.email} onChange={set('email')} required className={inputClass} />
+            <input type="email" id="mce-EMAIL" value={state.email} onChange={set('email')} required className={inputClass} />
           </div>
 
           <div>
             <label htmlFor="mce-TITLE" className={labelClass}>Title</label>
-            <input type="text" name="TITLE" id="mce-TITLE" value={state.title} onChange={set('title')} className={inputClass} />
+            <input type="text" id="mce-TITLE" value={state.title} onChange={set('title')} className={inputClass} />
           </div>
 
           <div>
             <label htmlFor="mce-ORG" className={labelClass}>Company / Organization</label>
-            <input type="text" name="ORG" id="mce-ORG" value={state.org} onChange={set('org')} className={inputClass} />
+            <input type="text" id="mce-ORG" value={state.org} onChange={set('org')} className={inputClass} />
           </div>
 
           <div>
             <label htmlFor="mce-HELP" className={labelClass}>How can we help?</label>
-            <textarea name="HELP" id="mce-HELP" value={state.help} onChange={set('help')} rows={4} className={inputClass} />
+            <textarea id="mce-HELP" value={state.help} onChange={set('help')} rows={4} className={inputClass} />
           </div>
 
-          {/* Mailchimp honeypot */}
-          <div style={{ position: 'absolute', left: -5000 }} aria-hidden="true">
-            <input type="text" name="b_f8051cc8637cf3ff79661f382_61b3bbfdaa" tabIndex={-1} defaultValue="" />
-          </div>
+          {state.status === 'error' && (
+            <p className="text-sm text-red-600">{state.errorMessage}</p>
+          )}
 
           <button
             type="submit"
-            className="inline-flex h-[46px] w-full items-center justify-center bg-[#344054] font-mono text-sm font-bold uppercase tracking-wider text-white transition-colors hover:bg-[#344054]/90"
+            disabled={state.status === 'submitting'}
+            className="inline-flex h-[46px] w-full items-center justify-center bg-[#344054] font-mono text-sm font-bold uppercase tracking-wider text-white transition-colors hover:bg-[#344054]/90 disabled:opacity-50"
           >
-            Submit
+            {state.status === 'submitting' ? 'Submitting...' : 'Submit'}
           </button>
         </form>
       </main>

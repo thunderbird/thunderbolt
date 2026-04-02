@@ -52,6 +52,8 @@ const settingsSchema = z.object({
   corsOriginRegex: z
     .string()
     .default('^(tauri://localhost|http://tauri\\.localhost|http://localhost:\\d+)$')
+    // Value is from CORS_ORIGIN_REGEX env var set by the server deployer, not user input.
+    // nosemgrep: javascript.lang.security.audit.detect-non-literal-regexp.detect-non-literal-regexp
     .transform((val) => (val ? new RegExp(val) : null)),
   corsAllowCredentials: z.boolean().default(true),
   corsAllowMethods: z.string().default('GET,POST,PUT,DELETE,PATCH,OPTIONS'),

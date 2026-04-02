@@ -63,10 +63,6 @@ const settingsSchema = z.object({
 
   // Rate limiting
   rateLimitEnabled: z.boolean().default(true),
-  rateLimitInferenceMax: z.coerce.number().default(20),
-  rateLimitProMax: z.coerce.number().default(50),
-  rateLimitAuthMax: z.coerce.number().default(10),
-  rateLimitStandardMax: z.coerce.number().default(100),
 
   // Trusted proxy (controls which proxy headers are trusted for IP extraction)
   // Set to 'cloudflare' to trust CF-Connecting-IP, 'akamai' for True-Client-IP,
@@ -119,10 +115,6 @@ const parseSettings = (): Settings => {
       'Content-Type,Authorization,Accept,Accept-Encoding,Accept-Language,Cache-Control,User-Agent,X-Requested-With,X-Client-Platform,X-Device-ID,X-Device-Name',
     corsExposeHeaders: process.env.CORS_EXPOSE_HEADERS || 'mcp-session-id,set-auth-token',
     rateLimitEnabled: process.env.RATE_LIMIT_ENABLED !== 'false',
-    rateLimitInferenceMax: process.env.RATE_LIMIT_INFERENCE_MAX || '20',
-    rateLimitProMax: process.env.RATE_LIMIT_PRO_MAX || '50',
-    rateLimitAuthMax: process.env.RATE_LIMIT_AUTH_MAX || '10',
-    rateLimitStandardMax: process.env.RATE_LIMIT_STANDARD_MAX || '100',
     trustedProxy: (process.env.TRUSTED_PROXY || '').toLowerCase(),
   }
 

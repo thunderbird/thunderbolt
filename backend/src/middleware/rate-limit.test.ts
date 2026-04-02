@@ -27,10 +27,6 @@ describe('Rate Limiting', () => {
   describe('createStandardRateLimit integration', () => {
     const rateLimitSettings: RateLimitSettings = {
       enabled: true,
-      inference: { max: 20, durationSecs: 60 },
-      pro: { max: 50, durationSecs: 60 },
-      auth: { max: 10, durationSecs: 900 },
-      standard: { max: 5, durationSecs: 60 },
       trustedProxy: '',
     }
 
@@ -53,7 +49,7 @@ describe('Rate Limiting', () => {
     it('should return 429 after exceeding the limit', async () => {
       const app = createTestApp()
 
-      for (let i = 0; i < 5; i++) {
+      for (let i = 0; i < 100; i++) {
         await app.handle(new Request('http://localhost/v1/test'))
       }
 
@@ -69,15 +65,15 @@ describe('Rate Limiting', () => {
 
       const response = await app.handle(new Request('http://localhost/v1/test'))
 
-      expect(response.headers.get('ratelimit-limit')).toBe('5')
-      expect(response.headers.get('ratelimit-remaining')).toBe('4')
+      expect(response.headers.get('ratelimit-limit')).toBe('100')
+      expect(response.headers.get('ratelimit-remaining')).toBe('99')
       expect(response.headers.get('ratelimit-reset')).toBeTruthy()
     })
 
     it('should set Retry-After header on 429 responses', async () => {
       const app = createTestApp()
 
-      for (let i = 0; i < 5; i++) {
+      for (let i = 0; i < 100; i++) {
         await app.handle(new Request('http://localhost/v1/test'))
       }
 
@@ -90,7 +86,7 @@ describe('Rate Limiting', () => {
     it('should exempt health endpoint', async () => {
       const app = createTestApp()
 
-      for (let i = 0; i < 6; i++) {
+      for (let i = 0; i < 101; i++) {
         await app.handle(new Request('http://localhost/v1/test'))
       }
 
@@ -101,7 +97,7 @@ describe('Rate Limiting', () => {
     it('should exempt posthog endpoints', async () => {
       const app = createTestApp()
 
-      for (let i = 0; i < 6; i++) {
+      for (let i = 0; i < 101; i++) {
         await app.handle(new Request('http://localhost/v1/test'))
       }
 
@@ -112,7 +108,7 @@ describe('Rate Limiting', () => {
     it('should exempt session check endpoint', async () => {
       const app = createTestApp()
 
-      for (let i = 0; i < 6; i++) {
+      for (let i = 0; i < 101; i++) {
         await app.handle(new Request('http://localhost/v1/test'))
       }
 
@@ -121,7 +117,7 @@ describe('Rate Limiting', () => {
     })
 
     it('should not rate limit when disabled', async () => {
-      const disabledSettings: RateLimitSettings = { ...rateLimitSettings, enabled: false }
+      const disabledSettings: RateLimitSettings = { enabled: false, trustedProxy: '' }
       const app = new Elysia()
         .use(createStandardRateLimit(database, disabledSettings))
         .get('/v1/test', () => ({ ok: true }))

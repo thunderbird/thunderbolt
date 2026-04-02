@@ -67,10 +67,6 @@ export const createApp = async (deps?: AppDeps) => {
 
   const rateLimitSettings = {
     enabled: settings.rateLimitEnabled,
-    inference: { max: settings.rateLimitInferenceMax, durationSecs: 60 },
-    pro: { max: settings.rateLimitProMax, durationSecs: 60 },
-    auth: { max: settings.rateLimitAuthMax, durationSecs: 900 },
-    standard: { max: settings.rateLimitStandardMax, durationSecs: 60 },
     trustedProxy: settings.trustedProxy,
   }
 

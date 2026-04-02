@@ -63,10 +63,6 @@ describe('Link Preview Routes', () => {
       oidcIssuer: '',
       betterAuthUrl: 'http://localhost:8000',
       rateLimitEnabled: true,
-      rateLimitInferenceMax: 20,
-      rateLimitAuthMax: 10,
-      rateLimitProMax: 50,
-      rateLimitStandardMax: 100,
       trustedProxy: '',
     })
 

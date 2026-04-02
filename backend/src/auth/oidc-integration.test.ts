@@ -62,10 +62,6 @@ const baseSettings: Settings = {
   oidcIssuer: '', // set per-suite once mock server is up
   betterAuthUrl: 'http://localhost:8000',
   rateLimitEnabled: true,
-  rateLimitInferenceMax: 20,
-  rateLimitAuthMax: 10,
-  rateLimitProMax: 50,
-  rateLimitStandardMax: 100,
   trustedProxy: '',
 }
 

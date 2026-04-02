@@ -13,11 +13,15 @@ type RateLimitTierConfig = {
 
 export type RateLimitSettings = {
   enabled: boolean
-  inference: RateLimitTierConfig
-  pro: RateLimitTierConfig
-  auth: RateLimitTierConfig
-  standard: RateLimitTierConfig
   trustedProxy: '' | 'cloudflare' | 'akamai'
+}
+
+/** Hardcoded per-tier limits. */
+const tierConfigs: Record<RateLimitTier, RateLimitTierConfig> = {
+  inference: { max: 20, durationSecs: 60 },
+  pro: { max: 50, durationSecs: 60 },
+  auth: { max: 10, durationSecs: 900 },
+  standard: { max: 100, durationSecs: 60 },
 }
 
 const exemptPaths = new Set(['/v1/health', '/v1/posthog/config', '/v1/posthog/events'])
@@ -36,8 +40,9 @@ const rateLimitedAuthPrefixes = [
 ]
 
 /** Create a rate-limiter-flexible instance for a specific tier. */
-const createLimiter = (database: typeof DbType, tier: RateLimitTier, config: RateLimitTierConfig) =>
-  new RateLimiterDrizzle({
+const createLimiter = (database: typeof DbType, tier: RateLimitTier) => {
+  const config = tierConfigs[tier]
+  return new RateLimiterDrizzle({
     storeClient: database,
     schema: rateLimits,
     keyPrefix: tier,
@@ -45,6 +50,7 @@ const createLimiter = (database: typeof DbType, tier: RateLimitTier, config: Rat
     duration: config.durationSecs,
     clearExpiredByTimeout: true,
   })
+}
 
 /** Set rate limit response headers. */
 const setRateLimitHeaders = (
@@ -119,21 +125,21 @@ const createUserRateLimitMiddleware = (limiter: RateLimiterDrizzle, trustedProxy
 /** Create rate limit middleware for inference routes (keyed by user). */
 export const createInferenceRateLimit = (database: typeof DbType, settings: RateLimitSettings) => {
   if (!settings.enabled) return new Elysia()
-  const limiter = createLimiter(database, 'inference', settings.inference)
+  const limiter = createLimiter(database, 'inference')
   return createUserRateLimitMiddleware(limiter, settings.trustedProxy)
 }
 
 /** Create rate limit middleware for pro tool routes (keyed by user). */
 export const createProRateLimit = (database: typeof DbType, settings: RateLimitSettings) => {
   if (!settings.enabled) return new Elysia()
-  const limiter = createLimiter(database, 'pro', settings.pro)
+  const limiter = createLimiter(database, 'pro')
   return createUserRateLimitMiddleware(limiter, settings.trustedProxy)
 }
 
 /** Create rate limit middleware for auth routes (IP-based, only credential paths). */
 export const createAuthRateLimit = (database: typeof DbType, settings: RateLimitSettings) => {
   if (!settings.enabled) return new Elysia()
-  const limiter = createLimiter(database, 'auth', settings.auth)
+  const limiter = createLimiter(database, 'auth')
   return createIpRateLimitMiddleware(limiter, settings.trustedProxy, (req) => {
     const path = new URL(req.url).pathname
     return !rateLimitedAuthPrefixes.some((p) => path.startsWith(p))
@@ -143,7 +149,7 @@ export const createAuthRateLimit = (database: typeof DbType, settings: RateLimit
 /** Create rate limit middleware for standard routes (IP-based, health/posthog exempt). */
 export const createStandardRateLimit = (database: typeof DbType, settings: RateLimitSettings) => {
   if (!settings.enabled) return new Elysia()
-  const limiter = createLimiter(database, 'standard', settings.standard)
+  const limiter = createLimiter(database, 'standard')
   return createIpRateLimitMiddleware(limiter, settings.trustedProxy, (req) => {
     const path = new URL(req.url).pathname
     return exemptPaths.has(path) || exemptPrefixes.some((p) => path.startsWith(p))

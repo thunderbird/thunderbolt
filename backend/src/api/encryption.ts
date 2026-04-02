@@ -10,6 +10,7 @@ import {
   insertEncryptionMetadataIfNotExists,
 } from '@/dal'
 import type { db as DbType } from '@/db/client'
+import { timingSafeEqual } from 'crypto'
 import { Elysia, t } from 'elysia'
 
 class ForbiddenError extends Error {
@@ -49,7 +50,7 @@ const checkSelfRecovery = async (
   const metadata = await getEncryptionMetadata(txDb, userId)
   if (!metadata?.canarySecretHash) return false
   const hash = await hashCanarySecret(canarySecret)
-  return hash === metadata.canarySecretHash
+  return timingSafeEqual(Buffer.from(hash), Buffer.from(metadata.canarySecretHash))
 }
 
 /**

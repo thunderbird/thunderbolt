@@ -77,6 +77,10 @@ export const createModel = async (modelConfig: Model) => {
         apiKey: modelConfig.apiKey || '',
         fetch,
         headers: {
+          // When a user adds their own Anthropic API key, calls go directly from the
+          // browser to Anthropic's API (not through our backend). Anthropic blocks
+          // browser-origin requests by default to prevent accidental key exposure.
+          // This header opts in, acknowledging the risk.
           'anthropic-dangerous-direct-browser-access': 'true',
         },
       })

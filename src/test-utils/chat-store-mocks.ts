@@ -119,6 +119,13 @@ export const defaultTestAgent: Agent = {
   deletedAt: null,
   defaultHash: null,
   userId: null,
+  description: null,
+  registryId: null,
+  installedVersion: null,
+  registryVersion: null,
+  distributionType: null,
+  installPath: null,
+  packageName: null,
 }
 
 /**
@@ -152,6 +159,13 @@ export const createMockLocalAgent = (overrides?: Partial<Agent>): Agent => ({
   deletedAt: null,
   defaultHash: null,
   userId: null,
+  description: null,
+  registryId: null,
+  installedVersion: null,
+  registryVersion: null,
+  distributionType: null,
+  installPath: null,
+  packageName: null,
   ...overrides,
 })
 
@@ -173,6 +187,13 @@ export const createMockRemoteAgent = (overrides?: Partial<Agent>): Agent => ({
   deletedAt: null,
   defaultHash: null,
   userId: null,
+  description: null,
+  registryId: null,
+  installedVersion: null,
+  registryVersion: null,
+  distributionType: null,
+  installPath: null,
+  packageName: null,
   ...overrides,
 })
 

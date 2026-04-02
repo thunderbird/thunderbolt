@@ -15,6 +15,9 @@ export type AgentConfig = {
   icon?: string
   isSystem: boolean
   enabled: boolean
+  distributionType?: string
+  installPath?: string
+  packageName?: string
 }
 
 export type AgentSessionState = {

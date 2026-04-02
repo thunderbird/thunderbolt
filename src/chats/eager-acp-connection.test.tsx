@@ -4,6 +4,15 @@ import { createQueryTestWrapper } from '@/test-utils/react-query'
 import { act, cleanup, renderHook } from '@testing-library/react'
 import { getClock } from '@/testing-library'
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, mock } from 'bun:test'
+
+// Ensure web platform defaults (guards against mock.module leaking from other test files)
+mock.module('@/lib/platform', () => ({
+  isTauri: () => false,
+  isDesktop: () => false,
+  getPlatform: () => 'web',
+  isAgentAvailableOnPlatform: (type: string) => type !== 'local',
+}))
+
 import { getDb } from '@/db/database'
 import { agentsTable, modelsTable, modesTable } from '@/db/tables'
 import { v7 as uuidv7 } from 'uuid'

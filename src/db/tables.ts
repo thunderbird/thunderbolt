@@ -247,6 +247,14 @@ export const agentsTable = sqliteTable(
     deletedAt: text('deleted_at'),
     defaultHash: text('default_hash'),
     userId: text('user_id'),
+    // Registry-managed agent metadata (all nullable — only set for registry agents)
+    registryId: text('registry_id'),
+    installedVersion: text('installed_version'),
+    registryVersion: text('registry_version'),
+    distributionType: text('distribution_type'),
+    installPath: text('install_path'),
+    packageName: text('package_name'),
+    description: text('description'),
   },
   (table) => [
     index('idx_agents_active')

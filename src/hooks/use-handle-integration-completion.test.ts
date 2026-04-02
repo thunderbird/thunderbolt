@@ -124,9 +124,12 @@ describe('useHandleIntegrationCompletion', () => {
       integrations_microsoft_credentials: '',
     })
 
-    renderHook(() => useHandleIntegrationCompletion({ saveMessages: mockSaveMessages, sendPrompt: mockSendAcpPrompt }), {
-      wrapper: createQueryTestWrapper(),
-    })
+    renderHook(
+      () => useHandleIntegrationCompletion({ saveMessages: mockSaveMessages, sendPrompt: mockSendAcpPrompt }),
+      {
+        wrapper: createQueryTestWrapper(),
+      },
+    )
 
     expect(mockAddEventListener).toHaveBeenCalledWith(oauthRetryEvent, expect.any(Function))
   })
@@ -148,9 +151,12 @@ describe('useHandleIntegrationCompletion', () => {
       integrations_microsoft_credentials: '',
     })
 
-    const { unmount } = renderHook(() => useHandleIntegrationCompletion({ saveMessages: mockSaveMessages, sendPrompt: mockSendAcpPrompt }), {
-      wrapper: createQueryTestWrapper(),
-    })
+    const { unmount } = renderHook(
+      () => useHandleIntegrationCompletion({ saveMessages: mockSaveMessages, sendPrompt: mockSendAcpPrompt }),
+      {
+        wrapper: createQueryTestWrapper(),
+      },
+    )
 
     unmount()
 
@@ -174,9 +180,12 @@ describe('useHandleIntegrationCompletion', () => {
       integrations_microsoft_credentials: '',
     })
 
-    renderHook(() => useHandleIntegrationCompletion({ saveMessages: mockSaveMessages, sendPrompt: mockSendAcpPrompt }), {
-      wrapper: createQueryTestWrapper(),
-    })
+    renderHook(
+      () => useHandleIntegrationCompletion({ saveMessages: mockSaveMessages, sendPrompt: mockSendAcpPrompt }),
+      {
+        wrapper: createQueryTestWrapper(),
+      },
+    )
 
     const eventHandler = mockAddEventListener.mock.calls[0]?.[1] as ((event: Event) => void) | undefined
     if (!eventHandler) {
@@ -204,9 +213,12 @@ describe('useHandleIntegrationCompletion', () => {
       integrations_microsoft_credentials: '',
     })
 
-    renderHook(() => useHandleIntegrationCompletion({ saveMessages: mockSaveMessages, sendPrompt: mockSendAcpPrompt }), {
-      wrapper: createQueryTestWrapper(),
-    })
+    renderHook(
+      () => useHandleIntegrationCompletion({ saveMessages: mockSaveMessages, sendPrompt: mockSendAcpPrompt }),
+      {
+        wrapper: createQueryTestWrapper(),
+      },
+    )
 
     const eventHandler = mockAddEventListener.mock.calls[0]?.[1] as ((event: Event) => void) | undefined
     if (!eventHandler) {
@@ -261,17 +273,20 @@ describe('useHandleIntegrationCompletion', () => {
       integrations_microsoft_credentials: '',
     })
 
-    renderHook(() => useHandleIntegrationCompletion({ saveMessages: mockSaveMessages, sendPrompt: mockSendAcpPrompt }), {
-      wrapper: createQueryTestWrapper({
-        defaultOptions: {
-          queries: {
-            retry: false,
-            gcTime: 0,
-            staleTime: 0,
+    renderHook(
+      () => useHandleIntegrationCompletion({ saveMessages: mockSaveMessages, sendPrompt: mockSendAcpPrompt }),
+      {
+        wrapper: createQueryTestWrapper({
+          defaultOptions: {
+            queries: {
+              retry: false,
+              gcTime: 0,
+              staleTime: 0,
+            },
           },
-        },
-      }),
-    })
+        }),
+      },
+    )
 
     const eventHandler = mockAddEventListener.mock.calls[0]?.[1] as ((event: Event) => void) | undefined
     if (!eventHandler) {
@@ -348,17 +363,20 @@ describe('useHandleIntegrationCompletion', () => {
       integrations_microsoft_credentials: '',
     })
 
-    renderHook(() => useHandleIntegrationCompletion({ saveMessages: mockSaveMessages, sendPrompt: mockSendAcpPrompt }), {
-      wrapper: createQueryTestWrapper({
-        defaultOptions: {
-          queries: {
-            retry: false,
-            gcTime: 0,
-            staleTime: 0,
+    renderHook(
+      () => useHandleIntegrationCompletion({ saveMessages: mockSaveMessages, sendPrompt: mockSendAcpPrompt }),
+      {
+        wrapper: createQueryTestWrapper({
+          defaultOptions: {
+            queries: {
+              retry: false,
+              gcTime: 0,
+              staleTime: 0,
+            },
           },
-        },
-      }),
-    })
+        }),
+      },
+    )
 
     const eventHandler = mockAddEventListener.mock.calls[0]?.[1] as ((event: Event) => void) | undefined
     if (!eventHandler) {
@@ -424,17 +442,20 @@ describe('useHandleIntegrationCompletion', () => {
       integrations_microsoft_credentials: '',
     })
 
-    renderHook(() => useHandleIntegrationCompletion({ saveMessages: mockSaveMessages, sendPrompt: mockSendAcpPrompt }), {
-      wrapper: createQueryTestWrapper({
-        defaultOptions: {
-          queries: {
-            retry: false,
-            gcTime: 0,
-            staleTime: 0,
+    renderHook(
+      () => useHandleIntegrationCompletion({ saveMessages: mockSaveMessages, sendPrompt: mockSendAcpPrompt }),
+      {
+        wrapper: createQueryTestWrapper({
+          defaultOptions: {
+            queries: {
+              retry: false,
+              gcTime: 0,
+              staleTime: 0,
+            },
           },
-        },
-      }),
-    })
+        }),
+      },
+    )
 
     const eventHandler = mockAddEventListener.mock.calls[0]?.[1] as ((event: Event) => void) | undefined
     if (!eventHandler) {
@@ -487,17 +508,20 @@ describe('useHandleIntegrationCompletion', () => {
     const consoleWarnSpy = mock(() => {})
     console.warn = consoleWarnSpy
 
-    renderHook(() => useHandleIntegrationCompletion({ saveMessages: mockSaveMessages, sendPrompt: mockSendAcpPrompt }), {
-      wrapper: createQueryTestWrapper({
-        defaultOptions: {
-          queries: {
-            retry: false,
-            gcTime: 0,
-            staleTime: 0,
+    renderHook(
+      () => useHandleIntegrationCompletion({ saveMessages: mockSaveMessages, sendPrompt: mockSendAcpPrompt }),
+      {
+        wrapper: createQueryTestWrapper({
+          defaultOptions: {
+            queries: {
+              retry: false,
+              gcTime: 0,
+              staleTime: 0,
+            },
           },
-        },
-      }),
-    })
+        }),
+      },
+    )
 
     const eventHandler = mockAddEventListener.mock.calls[0]?.[1] as ((event: Event) => void) | undefined
     if (!eventHandler) {
@@ -552,17 +576,20 @@ describe('useHandleIntegrationCompletion', () => {
     const consoleWarnSpy = mock(() => {})
     console.warn = consoleWarnSpy
 
-    renderHook(() => useHandleIntegrationCompletion({ saveMessages: mockSaveMessages, sendPrompt: mockSendAcpPrompt }), {
-      wrapper: createQueryTestWrapper({
-        defaultOptions: {
-          queries: {
-            retry: false,
-            gcTime: 0,
-            staleTime: 0,
+    renderHook(
+      () => useHandleIntegrationCompletion({ saveMessages: mockSaveMessages, sendPrompt: mockSendAcpPrompt }),
+      {
+        wrapper: createQueryTestWrapper({
+          defaultOptions: {
+            queries: {
+              retry: false,
+              gcTime: 0,
+              staleTime: 0,
+            },
           },
-        },
-      }),
-    })
+        }),
+      },
+    )
 
     const eventHandler = mockAddEventListener.mock.calls[0]?.[1] as ((event: Event) => void) | undefined
     if (!eventHandler) {
@@ -623,17 +650,20 @@ describe('useHandleIntegrationCompletion', () => {
         integrations_microsoft_credentials: '',
       })
 
-      renderHook(() => useHandleIntegrationCompletion({ saveMessages: mockSaveMessages, sendPrompt: mockSendAcpPrompt }), {
-        wrapper: createQueryTestWrapper({
-          defaultOptions: {
-            queries: {
-              retry: false,
-              gcTime: 0,
-              staleTime: 0,
+      renderHook(
+        () => useHandleIntegrationCompletion({ saveMessages: mockSaveMessages, sendPrompt: mockSendAcpPrompt }),
+        {
+          wrapper: createQueryTestWrapper({
+            defaultOptions: {
+              queries: {
+                retry: false,
+                gcTime: 0,
+                staleTime: 0,
+              },
             },
-          },
-        }),
-      })
+          }),
+        },
+      )
 
       const eventHandler = mockAddEventListener.mock.calls[0]?.[1] as ((event: Event) => void) | undefined
       if (!eventHandler) {

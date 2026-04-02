@@ -7,9 +7,19 @@ import type { SubprocessHandle, SubprocessSpawner } from './stdio-stream'
  */
 export const createTauriSpawner = (): SubprocessSpawner => ({
   spawn: async (command: string, args: string[]): Promise<SubprocessHandle> => {
-    const cmd = Command.create(command, args)
+    let cmd: ReturnType<typeof Command.create>
+    try {
+      cmd = Command.create(command, args)
+    } catch (err) {
+      throw new Error(`Cannot create command "${command}": ${err instanceof Error ? err.message : JSON.stringify(err)}`)
+    }
 
-    const child = await cmd.spawn()
+    let child: Awaited<ReturnType<ReturnType<typeof Command.create>['spawn']>>
+    try {
+      child = await cmd.spawn()
+    } catch (err) {
+      throw new Error(`Failed to spawn "${command}": ${err instanceof Error ? err.message : JSON.stringify(err)}`)
+    }
 
     const stdout = new ReadableStream<Uint8Array>({
       start(controller) {
@@ -33,7 +43,7 @@ export const createTauriSpawner = (): SubprocessSpawner => ({
 
         cmd.on('error', (error) => {
           try {
-            controller.error(new Error(String(error)))
+            controller.error(new Error(typeof error === 'string' ? error : JSON.stringify(error)))
           } catch {
             // Already closed
           }
@@ -49,9 +59,15 @@ export const createTauriSpawner = (): SubprocessSpawner => ({
     })
 
     let exitCallback: ((code: number | null) => void) | null = null
+    let stderrCallback: ((data: string) => void) | null = null
 
     cmd.on('close', (data) => {
       exitCallback?.(data.code)
+    })
+
+    cmd.stderr.on('data', (data) => {
+      const text = typeof data === 'string' ? data : new TextDecoder().decode(data)
+      stderrCallback?.(text)
     })
 
     return {
@@ -60,6 +76,9 @@ export const createTauriSpawner = (): SubprocessSpawner => ({
       kill: () => child.kill(),
       onExit: (callback) => {
         exitCallback = callback
+      },
+      onStderr: (callback) => {
+        stderrCallback = callback
       },
     }
   },

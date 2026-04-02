@@ -42,4 +42,3 @@ describe('isAgentAvailable', () => {
     expect(available).toBe(false)
   })
 })
-

@@ -1,13 +1,12 @@
 import ky from 'ky'
-import { isAgentAvailableOnPlatform } from '@/lib/platform'
 import { isAgentTypeEnabled } from '@/lib/enabled-agent-types'
-import { isAgentAvailable } from '@/acp/stdio-stream'
-import { localAgentCandidates, hashAgent } from '@/defaults/agents'
+import { hashAgent } from '@/defaults/agents'
 import { agentsTable } from '@/db/tables'
-import { eq, inArray } from 'drizzle-orm'
+import { eq, inArray, isNotNull, isNull, and } from 'drizzle-orm'
 import type { AnyDrizzleDatabase } from '@/db/database-interface'
 import type { Agent } from '@/types'
 import type { RemoteAgentDescriptor } from '@shared/agent-types'
+import type { RegistryEntry } from './registry'
 
 /**
  * Upsert agents into the DB, inserting new ones and updating changed ones.
@@ -47,31 +46,33 @@ const upsertAgents = async (db: AnyDrizzleDatabase, agents: Agent[]): Promise<vo
   )
 }
 
-/**
- * Discover local CLI agents available on this machine and upsert them into the DB.
- * Only runs on Tauri desktop — returns immediately on web/mobile.
- */
-export const discoverAndSeedLocalAgents = async (db: AnyDrizzleDatabase): Promise<Agent[]> => {
-  if (!isAgentTypeEnabled('local') || !isAgentAvailableOnPlatform('local')) {
-    return []
-  }
-
-  const { createTauriSpawner } = await import('@/acp/tauri-spawner')
-  const spawner = createTauriSpawner()
-
-  const candidatesWithCommand = localAgentCandidates.filter((c) => c.command)
-  const existenceResults = await Promise.all(candidatesWithCommand.map((c) => isAgentAvailable(spawner, c.command!)))
-
-  const discovered = candidatesWithCommand.filter((_, i) => existenceResults[i])
-  await upsertAgents(db, discovered)
-  return discovered
+type RegistryResponse = {
+  version: string
+  agents: Array<{
+    id: string
+    name: string
+    distribution: { remote?: { url: string; transport: string; icon?: string } }
+  }>
 }
 
 const fetchRemoteAgentDescriptors = async (cloudUrl: string): Promise<RemoteAgentDescriptor[]> => {
   try {
-    const data = await ky.get(`${cloudUrl}/agents`).json<{ data?: RemoteAgentDescriptor[] }>()
-    return data.data ?? []
-  } catch {
+    const data = await ky.get(`${cloudUrl}/agents`).json<RegistryResponse>()
+    // Backend returns registry format — extract only remote agents
+    const remoteEntries = (data.agents ?? []).filter((a) => a.distribution.remote)
+    console.info(`[discovery] Fetched ${remoteEntries.length} remote agents from ${cloudUrl}/agents`)
+    return remoteEntries.map((a) => ({
+      id: a.id,
+      name: a.name,
+      type: 'remote' as const,
+      transport: 'websocket' as const,
+      url: a.distribution.remote!.url,
+      icon: a.distribution.remote!.icon ?? 'globe',
+      isSystem: 1,
+      enabled: 1,
+    }))
+  } catch (err) {
+    console.warn('[discovery] Failed to fetch remote agents:', err)
     return []
   }
 }
@@ -94,8 +95,44 @@ export const discoverAndSeedRemoteAgents = async (db: AnyDrizzleDatabase, cloudU
     deletedAt: null,
     defaultHash: null,
     userId: null,
+    description: null,
+    registryId: null,
+    installedVersion: null,
+    registryVersion: null,
+    distributionType: null,
+    installPath: null,
+    packageName: null,
   }))
 
   await upsertAgents(db, agents)
   return agents
+}
+
+/**
+ * Updates the `registryVersion` column for installed registry agents
+ * so the UI can show "update available" badges.
+ */
+export const syncRegistryVersions = async (db: AnyDrizzleDatabase, registryEntries: RegistryEntry[]): Promise<void> => {
+  const installedAgents = await db
+    .select()
+    .from(agentsTable)
+    .where(and(isNotNull(agentsTable.registryId), isNull(agentsTable.deletedAt)))
+
+  if (installedAgents.length === 0) {
+    return
+  }
+
+  const registryByIds = new Map(registryEntries.map((e) => [e.id, e]))
+
+  await Promise.all(
+    installedAgents.map((agent) => {
+      const entry = registryByIds.get(agent.registryId!)
+      if (!entry) {
+        return
+      }
+      if (agent.registryVersion !== entry.version) {
+        return db.update(agentsTable).set({ registryVersion: entry.version }).where(eq(agentsTable.id, agent.id))
+      }
+    }),
+  )
 }

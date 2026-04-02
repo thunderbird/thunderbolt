@@ -10,6 +10,20 @@ import {
 } from '@agentclientprotocol/sdk'
 import type { AgentSessionState } from './types'
 
+/** Resolve cwd for ACP sessions — agents require an absolute path. */
+const getSessionCwd = async (): Promise<string> => {
+  try {
+    const { homeDir } = await import('@tauri-apps/api/path')
+    const dir = await homeDir()
+    if (typeof dir === 'string') {
+      return dir
+    }
+    return '/'
+  } catch {
+    return '/'
+  }
+}
+
 type SessionUpdateHandler = (update: SessionNotification['update']) => void
 
 type AcpClientOptions = {
@@ -84,8 +98,9 @@ export const createAcpClient = ({ stream, onSessionUpdate, onPermissionRequest }
     },
 
     createSession: async (cwd?: string): Promise<AgentSessionState> => {
+      const resolvedCwd = cwd ?? (await getSessionCwd())
       const result = await connection.newSession({
-        cwd: cwd ?? '.',
+        cwd: resolvedCwd,
         mcpServers: [],
       })
       sessionState = {
@@ -99,9 +114,10 @@ export const createAcpClient = ({ stream, onSessionUpdate, onPermissionRequest }
 
     /** Resume a previously established session by ID. */
     loadSession: async (sessionId: string): Promise<AgentSessionState> => {
+      const resolvedCwd = await getSessionCwd()
       const result = await connection.loadSession({
         sessionId,
-        cwd: '.',
+        cwd: resolvedCwd,
         mcpServers: [],
       })
       sessionState = {

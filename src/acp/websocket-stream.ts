@@ -16,7 +16,10 @@ type WebSocketEventMap = {
 export type WebSocketLike = {
   send: (data: string | ArrayBuffer) => void
   close: () => void
-  addEventListener: <K extends keyof WebSocketEventMap>(event: K, handler: (event: WebSocketEventMap[K]) => void) => void
+  addEventListener: <K extends keyof WebSocketEventMap>(
+    event: K,
+    handler: (event: WebSocketEventMap[K]) => void,
+  ) => void
   removeEventListener: <K extends keyof WebSocketEventMap>(
     event: K,
     handler: (event: WebSocketEventMap[K]) => void,
@@ -35,7 +38,7 @@ type ReconnectOptions = {
   onConnect: (ws: WebSocketLike) => void
   /** Called after all retries are exhausted. */
   onGiveUp: () => void
-  createWebSocket: () => WebSocketLike
+  createWebSocket: () => WebSocketLike | Promise<WebSocketLike>
 }
 
 /**
@@ -46,13 +49,15 @@ type ReconnectOptions = {
  * Does not reconnect on normal close (code 1000).
  * Returns a cancel function to abort any pending retry timeout.
  */
-export const connectWithReconnect = ({ onConnect, onGiveUp, createWebSocket }: ReconnectOptions): { cancel: () => void } => {
+export const connectWithReconnect = ({
+  onConnect,
+  onGiveUp,
+  createWebSocket,
+}: ReconnectOptions): { cancel: () => void } => {
   let retries = 0
   let retryTimeout: ReturnType<typeof setTimeout> | undefined
 
-  const attempt = () => {
-    const ws = createWebSocket()
-
+  const wireSocket = (ws: WebSocketLike) => {
     ws.addEventListener('open', (_event) => {
       retries = 0
       onConnect(ws)
@@ -70,6 +75,25 @@ export const connectWithReconnect = ({ onConnect, onGiveUp, createWebSocket }: R
       retries++
       retryTimeout = setTimeout(attempt, delay)
     })
+  }
+
+  const attempt = () => {
+    const result = createWebSocket()
+
+    // Support both sync and async createWebSocket
+    if (result instanceof Promise) {
+      result.then(wireSocket).catch(() => {
+        if (retries >= maxRetries) {
+          onGiveUp()
+          return
+        }
+        const delay = baseDelayMs * Math.pow(2, retries)
+        retries++
+        retryTimeout = setTimeout(attempt, delay)
+      })
+    } else {
+      wireSocket(result)
+    }
   }
 
   attempt()

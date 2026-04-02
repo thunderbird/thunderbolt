@@ -271,7 +271,11 @@ describe('createHaystackAcpAgent', () => {
 
     // First connection: create session
     const streams1 = createInProcessStreams()
-    const { handler: handler1 } = createHaystackAcpAgent({ client, pipelineConfig: testPipelineConfig, persistentSessions })
+    const { handler: handler1 } = createHaystackAcpAgent({
+      client,
+      pipelineConfig: testPipelineConfig,
+      persistentSessions,
+    })
     new AgentSideConnection(handler1, streams1.agentStream)
 
     const clientHandler: (agent: Agent) => Client = () => ({
@@ -292,7 +296,11 @@ describe('createHaystackAcpAgent', () => {
 
     // Second connection: load session (simulating reconnect)
     const streams2 = createInProcessStreams()
-    const { handler: handler2 } = createHaystackAcpAgent({ client, pipelineConfig: testPipelineConfig, persistentSessions })
+    const { handler: handler2 } = createHaystackAcpAgent({
+      client,
+      pipelineConfig: testPipelineConfig,
+      persistentSessions,
+    })
     new AgentSideConnection(handler2, streams2.agentStream)
 
     const conn2 = new ClientSideConnection(clientHandler, streams2.clientStream)
@@ -315,7 +323,11 @@ describe('createHaystackAcpAgent', () => {
     const client = new HaystackClient(testHaystackConfig, mockFetch as unknown as typeof fetch)
     const { clientStream, agentStream } = createInProcessStreams()
 
-    const { handler: agentHandler } = createHaystackAcpAgent({ client, pipelineConfig: testPipelineConfig, persistentSessions })
+    const { handler: agentHandler } = createHaystackAcpAgent({
+      client,
+      pipelineConfig: testPipelineConfig,
+      persistentSessions,
+    })
     new AgentSideConnection(agentHandler, agentStream)
 
     const clientHandler: (agent: Agent) => Client = () => ({

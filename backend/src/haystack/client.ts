@@ -1,11 +1,6 @@
 import { z } from 'zod'
 import { deepsetResultPayloadSchema } from './types'
-import type {
-  DeepsetResultPayload,
-  HaystackChatStreamRequest,
-  HaystackConfig,
-  HaystackSessionResponse,
-} from './types'
+import type { DeepsetResultPayload, HaystackChatStreamRequest, HaystackConfig, HaystackSessionResponse } from './types'
 
 const rawSessionSchema = z.object({
   search_session_id: z.string(),

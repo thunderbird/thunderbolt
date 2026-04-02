@@ -13,6 +13,19 @@ import type { ThunderboltUIMessage } from '@/types'
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'bun:test'
 import { useChatStore } from './chat-store'
 
+const agentNullDefaults = {
+  deletedAt: null,
+  defaultHash: null,
+  userId: null,
+  description: null,
+  registryId: null,
+  installedVersion: null,
+  registryVersion: null,
+  distributionType: null,
+  installPath: null,
+  packageName: null,
+} as const
+
 describe('chat-store', () => {
   beforeAll(async () => {
     await setupTestDatabase()
@@ -230,9 +243,7 @@ describe('chat-store', () => {
           authMethod: null,
           icon: 'zap',
           isSystem: 1,
-          deletedAt: null,
-          defaultHash: null,
-          userId: null,
+          ...agentNullDefaults,
         },
         {
           id: 'agent-2',
@@ -246,9 +257,7 @@ describe('chat-store', () => {
           authMethod: null,
           icon: 'terminal',
           isSystem: 1,
-          deletedAt: null,
-          defaultHash: null,
-          userId: null,
+          ...agentNullDefaults,
         },
       ]
       const unavailableIds = new Set(['agent-2'])
@@ -276,9 +285,7 @@ describe('chat-store', () => {
           authMethod: null,
           icon: 'zap',
           isSystem: 1,
-          deletedAt: null,
-          defaultHash: null,
-          userId: null,
+          ...agentNullDefaults,
         },
       ]
 
@@ -303,9 +310,7 @@ describe('chat-store', () => {
           authMethod: null,
           icon: 'zap',
           isSystem: 1,
-          deletedAt: null,
-          defaultHash: null,
-          userId: null,
+          ...agentNullDefaults,
         },
       ]
       useChatStore.getState().setAgents(agents, new Set(['agent-1']))

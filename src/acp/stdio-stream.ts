@@ -10,6 +10,7 @@ export type SubprocessHandle = {
   stdout: ReadableStream<Uint8Array>
   kill: () => Promise<void>
   onExit: (callback: (code: number | null) => void) => void
+  onStderr?: (callback: (data: string) => void) => void
 }
 
 /**
@@ -36,4 +37,3 @@ export const isAgentAvailable = async (spawner: SubprocessSpawner, command: stri
   const path = await spawner.which(command)
   return path !== null
 }
-

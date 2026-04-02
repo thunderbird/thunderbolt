@@ -14,7 +14,7 @@ import {
   saveMessagesWithContextUpdate,
 } from '@/dal'
 import { getAgent } from '@/dal/agents'
-import { discoverAndSeedLocalAgents, discoverAndSeedRemoteAgents } from '@/acp/discovery'
+import { discoverAndSeedRemoteAgents } from '@/acp/discovery'
 import { modeFromAcpSession, modelFromAcpSession } from '@/acp/session-adapters'
 import { isTauri, isDesktop, isAgentAvailableOnPlatform } from '@/lib/platform'
 import { getOrCreateChatThread, updateChatThread } from '@/dal/chat-threads'
@@ -149,10 +149,8 @@ export const useHydrateChatStore = ({
       getChatMessages(db, id),
       getAllModes(db),
       getAvailableModels(db),
-      // Discover agents in parallel with other queries
-      Promise.all([discoverAndSeedLocalAgents(db), discoverAndSeedRemoteAgents(db, settings.cloudUrl)]).then(() =>
-        getAvailableAgents(db),
-      ),
+      // Discover remote agents and get available agents
+      discoverAndSeedRemoteAgents(db, settings.cloudUrl).then(() => getAvailableAgents(db)),
       getTriggerPromptForThread(db, id),
       getEnabledClients(),
     ])
@@ -276,7 +274,8 @@ export const useHydrateChatStore = ({
           update(id, updates)
         } catch (err) {
           console.error(`Eager ACP connection failed for session ${id}:`, err)
-          useChatStore.getState().setSessionStatus(id, 'error', err instanceof Error ? err : new Error(String(err)))
+          const error = err instanceof Error ? err : new Error(typeof err === 'string' ? err : JSON.stringify(err))
+          useChatStore.getState().setSessionStatus(id, 'error', error)
         }
       })()
     }

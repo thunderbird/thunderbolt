@@ -1,9 +1,10 @@
-import { and, desc, eq, isNull } from 'drizzle-orm'
+import { and, desc, eq, isNotNull, isNull } from 'drizzle-orm'
 import type { AnyDrizzleDatabase } from '../db/database-interface'
 import { agentsTable, settingsTable } from '../db/tables'
 import { defaultAgentBuiltIn } from '../defaults/agents'
 import { isAgentTypeEnabled } from '@/lib/enabled-agent-types'
 import type { Agent, DrizzleQueryWithPromise } from '@/types'
+import { v7 as uuidv7 } from 'uuid'
 
 /**
  * Gets all agents (excluding soft-deleted).
@@ -83,4 +84,181 @@ export const getSelectedAgent = async (db: AnyDrizzleDatabase): Promise<Agent | 
 
   // Hardcoded fallback — keeps the app functional even if agents table is missing
   return isAgentTypeEnabled('built-in') ? defaultAgentBuiltIn : null
+}
+
+// ── Registry agent management ─────────────────────────────────────────────────
+
+type InstallRegistryAgentParams = {
+  registryId: string
+  name: string
+  version: string
+  distributionType: string
+  installPath: string
+  command: string
+  args?: string[]
+  description?: string
+  packageName?: string
+  icon?: string
+}
+
+/**
+ * Installs a registry-managed agent into the database.
+ * Uses a deterministic ID based on the registryId.
+ * If the agent already exists (e.g. previously uninstalled via soft-delete),
+ * it updates the record and clears deletedAt to re-enable it.
+ *
+ * Uses select-then-insert/update because PowerSync exposes views,
+ * and SQLite cannot UPSERT into a view.
+ */
+export const installRegistryAgent = async (
+  db: AnyDrizzleDatabase,
+  params: InstallRegistryAgentParams,
+): Promise<Agent> => {
+  const id = `agent-registry-${params.registryId}`
+
+  const existing = await db.select().from(agentsTable).where(eq(agentsTable.id, id)).get()
+
+  if (existing) {
+    await db
+      .update(agentsTable)
+      .set({
+        name: params.name,
+        type: 'local',
+        transport: 'stdio',
+        command: params.command,
+        args: params.args ? JSON.stringify(params.args) : null,
+        icon: params.icon ?? null,
+        enabled: 1,
+        registryId: params.registryId,
+        installedVersion: params.version,
+        registryVersion: params.version,
+        distributionType: params.distributionType,
+        installPath: params.installPath,
+        packageName: params.packageName ?? null,
+        description: params.description ?? null,
+        deletedAt: null,
+      })
+      .where(eq(agentsTable.id, id))
+  } else {
+    await db.insert(agentsTable).values({
+      id,
+      name: params.name,
+      type: 'local',
+      transport: 'stdio',
+      command: params.command,
+      args: params.args ? JSON.stringify(params.args) : null,
+      icon: params.icon ?? null,
+      isSystem: 0,
+      enabled: 1,
+      registryId: params.registryId,
+      installedVersion: params.version,
+      registryVersion: params.version,
+      distributionType: params.distributionType,
+      installPath: params.installPath,
+      packageName: params.packageName ?? null,
+      description: params.description ?? null,
+    })
+  }
+
+  const result = await db.select().from(agentsTable).where(eq(agentsTable.id, id)).get()
+  return result as Agent
+}
+
+/**
+ * Hard-deletes a registry agent from the database.
+ * Returns true if the agent was deleted, false if it didn't exist.
+ */
+export const uninstallRegistryAgent = async (db: AnyDrizzleDatabase, id: string): Promise<boolean> => {
+  const existing = await db.select().from(agentsTable).where(eq(agentsTable.id, id)).get()
+  if (!existing) {
+    return false
+  }
+  await db.delete(agentsTable).where(eq(agentsTable.id, id))
+  return true
+}
+
+/**
+ * Toggles an agent's enabled state.
+ * Returns the updated agent, or undefined if not found.
+ */
+export const toggleAgent = async (db: AnyDrizzleDatabase, id: string, enabled: boolean): Promise<Agent | undefined> => {
+  await db
+    .update(agentsTable)
+    .set({ enabled: enabled ? 1 : 0 })
+    .where(eq(agentsTable.id, id))
+
+  const result = await db.select().from(agentsTable).where(eq(agentsTable.id, id)).get()
+  return result as Agent | undefined
+}
+
+/**
+ * Gets all installed registry agents (where registryId is not null).
+ * Excludes soft-deleted agents.
+ */
+export const getInstalledRegistryAgents = async (db: AnyDrizzleDatabase): Promise<Agent[]> => {
+  const results = await db
+    .select()
+    .from(agentsTable)
+    .where(and(isNotNull(agentsTable.registryId), isNull(agentsTable.deletedAt)))
+    .orderBy(agentsTable.name)
+
+  return results as Agent[]
+}
+
+type AddCustomAgentParams = {
+  name: string
+  command: string
+  args?: string[]
+  description?: string
+}
+
+/**
+ * Adds a custom (non-registry) local agent.
+ */
+export const addCustomAgent = async (db: AnyDrizzleDatabase, params: AddCustomAgentParams): Promise<Agent> => {
+  const id = uuidv7()
+
+  await db.insert(agentsTable).values({
+    id,
+    name: params.name,
+    type: 'local',
+    transport: 'stdio',
+    command: params.command,
+    args: params.args ? JSON.stringify(params.args) : null,
+    isSystem: 0,
+    enabled: 1,
+    distributionType: 'custom',
+    description: params.description ?? null,
+  })
+
+  const result = await db.select().from(agentsTable).where(eq(agentsTable.id, id)).get()
+  return result as Agent
+}
+
+type AddRemoteAgentParams = {
+  name: string
+  url: string
+  description?: string
+}
+
+/**
+ * Adds a custom remote agent (WebSocket).
+ */
+export const addRemoteAgent = async (db: AnyDrizzleDatabase, params: AddRemoteAgentParams): Promise<Agent> => {
+  const id = uuidv7()
+
+  await db.insert(agentsTable).values({
+    id,
+    name: params.name,
+    type: 'remote',
+    transport: 'websocket',
+    url: params.url,
+    isSystem: 0,
+    enabled: 1,
+    distributionType: 'remote',
+    description: params.description ?? null,
+  })
+
+  const result = await db.select().from(agentsTable).where(eq(agentsTable.id, id)).get()
+  return result as Agent
 }

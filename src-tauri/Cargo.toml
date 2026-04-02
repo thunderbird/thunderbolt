@@ -20,26 +20,8 @@ default = []
 native_fetch = []
 
 [workspace]
-members = [
-    "thunderbolt_imap_client",
-    "thunderbolt_imap_sync",
-    "thunderbolt_embeddings",
-    "thunderbolt_bridge",
-    "thunderbolt_libsql",
-    "thunderbolt_email",
-]
+members = []
 default-members = ["."]
-
-[workspace.dependencies]
-# Use Thunderbird's fork with Windows build fix
-# See: https://github.com/thunderbird/libsql/commit/91d0ff37dc37f2397b39662b0727b500a93fdb32
-libsql = { version = "0.9.20", default-features = false, features = [
-    "core",
-    "encryption",
-] }
-anyhow = "1.0.99"
-serde = { version = "1.0.219", features = ["derive"] }
-thunderbolt-lib = { path = "." }
 
 [[bin]]
 name = "thunderbolt"

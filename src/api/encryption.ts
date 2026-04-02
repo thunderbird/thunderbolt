@@ -90,7 +90,13 @@ export const checkCanaryExists = async (httpClient: KyInstance): Promise<boolean
       })
       .json()
     return true
-  } catch {
-    return false
+  } catch (err) {
+    if (err instanceof Error && 'response' in err) {
+      const status = (err as Error & { response: { status: number } }).response.status
+      if (status === 404) {
+        return false
+      }
+    }
+    throw err
   }
 }

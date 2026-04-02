@@ -299,6 +299,7 @@ export const runBuiltInPrompt = async ({
               sessionUpdate: 'tool_call_update',
               toolCallId: part.toolCallId,
               status: 'completed',
+              _meta: sourceCollector.length > 0 ? { sources: [...sourceCollector] } : undefined,
               content: [
                 {
                   type: 'content',
@@ -325,6 +326,7 @@ export const runBuiltInPrompt = async ({
               sessionUpdate: 'tool_call_update',
               toolCallId: part.toolCallId,
               status: 'failed',
+              _meta: sourceCollector.length > 0 ? { sources: [...sourceCollector] } : undefined,
               content: [
                 {
                   type: 'content',

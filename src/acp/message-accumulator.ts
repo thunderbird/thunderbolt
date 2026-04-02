@@ -235,6 +235,14 @@ export const createMessageAccumulator = (messageId?: string) => {
             reasoningTime[existing.toolCallId] = Date.now() - existing.startTime
           }
         }
+
+        // Progressive source updates from tool results
+        if (update._meta) {
+          const rawSources = (update._meta as Record<string, unknown>)?.sources
+          if (Array.isArray(rawSources)) {
+            sources = rawSources as SourceMetadata[]
+          }
+        }
         break
       }
     }

@@ -25,6 +25,8 @@ export const useApprovalPolling = ({
   const checkApprovalRef = useRef(checkApproval)
   checkApprovalRef.current = checkApproval
 
+  // Legitimate useEffect: manages a polling interval (external side effect) with cleanup.
+  // Refs avoid stale closures without adding callbacks to the dependency array.
   useEffect(() => {
     if (!enabled) {
       setIsPolling(false)

@@ -70,7 +70,7 @@ const settingsSchema = z.object({
 
   // Trusted proxy (controls which proxy headers are trusted for IP extraction)
   // Set to 'cloudflare' to trust CF-Connecting-IP, 'akamai' for True-Client-IP,
-  // or leave empty to only trust X-Forwarded-For and socket IP
+  // or leave empty to use only the direct socket IP (proxy headers are NOT trusted)
   trustedProxy: z.enum(['', 'cloudflare', 'akamai']).default(''),
 })
 

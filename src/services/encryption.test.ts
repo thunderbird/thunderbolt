@@ -159,7 +159,7 @@ describe('encryption service', () => {
       const result = await registerThisDevice(httpClient)
 
       expect(storedKeyPair).not.toBeNull()
-      expect(storedKeyPair!.publicKey.algorithm.name).toBe('RSA-OAEP')
+      expect(storedKeyPair!.publicKey.algorithm.name).toBe('ECDH')
       expect(requests).toHaveLength(1)
       expect(requests[0].body?.deviceId).toBe('test-device-id')
       expect((requests[0].body?.publicKey as string).length).toBeGreaterThan(0)
@@ -227,7 +227,7 @@ describe('encryption service', () => {
       // Recovery key should decode to a CK that can verify the canary
       const envelopeReq = requests.find((r) => r.url.includes('/envelope'))!
       const recoveredCK = await decodeRecoveryKey(recoveryKey)
-      const valid = await verifyCanary(
+      const { valid } = await verifyCanary(
         recoveredCK,
         envelopeReq.body!.canaryIv as string,
         envelopeReq.body!.canaryCtext as string,

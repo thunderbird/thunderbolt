@@ -8,7 +8,12 @@ import { runMigrations } from '@/db/client'
 import { createInferenceRoutes } from '@/inference/routes'
 import { createErrorHandlingMiddleware } from '@/middleware/error-handling'
 import { createHttpLoggingMiddleware } from '@/middleware/http-logging'
-import { createAuthRateLimit, createInferenceRateLimit, createStandardRateLimit } from '@/middleware/rate-limit'
+import {
+  createAuthRateLimit,
+  createInferenceRateLimit,
+  createProRateLimit,
+  createStandardRateLimit,
+} from '@/middleware/rate-limit'
 import { createWaitlistAuthMiddleware } from '@/middleware/waitlist-auth'
 import { createPostHogRoutes } from '@/posthog/routes'
 import { createProToolsRoutes } from '@/pro/routes'
@@ -62,6 +67,7 @@ export const createApp = async (deps?: AppDeps) => {
   const rateLimitSettings = {
     enabled: settings.rateLimitEnabled,
     inference: { max: settings.rateLimitInferenceMax, durationSecs: 60 },
+    pro: { max: settings.rateLimitProMax, durationSecs: 60 },
     auth: { max: settings.rateLimitAuthMax, durationSecs: 900 },
     standard: { max: settings.rateLimitStandardMax, durationSecs: 60 },
     trustedProxy: settings.trustedProxy,
@@ -71,6 +77,11 @@ export const createApp = async (deps?: AppDeps) => {
   const authRoutesWithRateLimit = new Elysia()
     .use(createAuthRateLimit(database, rateLimitSettings))
     .use(betterAuthPlugin)
+
+  // Pro tool routes with per-user rate limit
+  const proRoutesWithRateLimit = new Elysia()
+    .use(createProToolsRoutes(auth, fetchFn))
+    .use(createProRateLimit(database, rateLimitSettings))
 
   // Inference routes with dedicated per-user rate limit (e.g. 20 req / min)
   const inferenceRoutesWithRateLimit = new Elysia()
@@ -101,8 +112,9 @@ export const createApp = async (deps?: AppDeps) => {
       .use(createMainRoutes(fetchFn))
       .use(createGoogleAuthRoutes(fetchFn))
       .use(createMicrosoftAuthRoutes(fetchFn))
-      .use(createProToolsRoutes(auth, fetchFn))
-      // Inference routes with inference-specific rate limit
+      // Pro tool routes with per-user rate limit
+      .use(proRoutesWithRateLimit)
+      // Inference routes with per-user rate limit
       .use(inferenceRoutesWithRateLimit)
       .use(createPostHogRoutes(fetchFn))
       .use(createWaitlistRoutes({ database, auth, emailService: deps?.waitlistEmailService }))

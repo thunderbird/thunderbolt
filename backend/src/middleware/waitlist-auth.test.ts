@@ -41,6 +41,7 @@ const createMockSettings = (overrides: Partial<Settings> = {}): Settings => ({
   rateLimitEnabled: true,
   rateLimitInferenceMax: 20,
   rateLimitAuthMax: 10,
+  rateLimitProMax: 50,
   rateLimitStandardMax: 100,
   trustedProxy: '' as const,
   ...overrides,

@@ -70,6 +70,7 @@ describe('Main Routes', () => {
       rateLimitEnabled: true,
       rateLimitInferenceMax: 20,
       rateLimitAuthMax: 10,
+      rateLimitProMax: 50,
       rateLimitStandardMax: 100,
       trustedProxy: '',
     } satisfies Settings)

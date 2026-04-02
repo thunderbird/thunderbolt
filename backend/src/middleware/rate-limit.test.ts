@@ -28,6 +28,7 @@ describe('Rate Limiting', () => {
     const rateLimitSettings: RateLimitSettings = {
       enabled: true,
       inference: { max: 20, durationSecs: 60 },
+      pro: { max: 50, durationSecs: 60 },
       auth: { max: 10, durationSecs: 900 },
       standard: { max: 5, durationSecs: 60 },
       trustedProxy: '',

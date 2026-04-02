@@ -4,7 +4,7 @@ import { extractClientIp } from '@/utils/request'
 import { Elysia } from 'elysia'
 import { RateLimiterDrizzle, RateLimiterRes } from 'rate-limiter-flexible'
 
-type RateLimitTier = 'inference' | 'auth' | 'standard'
+type RateLimitTier = 'inference' | 'pro' | 'auth' | 'standard'
 
 type RateLimitTierConfig = {
   max: number
@@ -14,6 +14,7 @@ type RateLimitTierConfig = {
 export type RateLimitSettings = {
   enabled: boolean
   inference: RateLimitTierConfig
+  pro: RateLimitTierConfig
   auth: RateLimitTierConfig
   standard: RateLimitTierConfig
   trustedProxy: '' | 'cloudflare' | 'akamai'
@@ -124,6 +125,13 @@ const createUserRateLimitMiddleware = (limiter: RateLimiterDrizzle, trustedProxy
 export const createInferenceRateLimit = (database: typeof DbType, settings: RateLimitSettings) => {
   if (!settings.enabled) return new Elysia()
   const limiter = createLimiter(database, 'inference', settings.inference)
+  return createUserRateLimitMiddleware(limiter, settings.trustedProxy)
+}
+
+/** Create rate limit middleware for pro tool routes (keyed by user). */
+export const createProRateLimit = (database: typeof DbType, settings: RateLimitSettings) => {
+  if (!settings.enabled) return new Elysia()
+  const limiter = createLimiter(database, 'pro', settings.pro)
   return createUserRateLimitMiddleware(limiter, settings.trustedProxy)
 }
 

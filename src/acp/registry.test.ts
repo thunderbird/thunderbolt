@@ -1,32 +1,11 @@
-import { describe, expect, it, mock, beforeEach } from 'bun:test'
+import { describe, expect, it } from 'bun:test'
 import type { RegistryEntry, RegistryDistribution } from './registry'
-
-// Mock Tauri APIs before importing the module under test
-mock.module('@tauri-apps/plugin-os', () => ({
-  platform: () => 'macos',
-  arch: () => 'aarch64',
-}))
-
-mock.module('@tauri-apps/api/path', () => ({
-  appDataDir: async () => '/mock/app-data',
-}))
-
-mock.module('@tauri-apps/plugin-fs', () => ({
-  readTextFile: async () => '',
-  writeTextFile: async () => {},
-  exists: async () => false,
-  mkdir: async () => {},
-}))
-
-mock.module('@tauri-apps/api/core', () => ({
-  invoke: async () => ({}),
-  isTauri: () => false,
-}))
-
-mock.module('@/lib/platform', () => ({
-  isTauri: () => false,
-  getPlatform: () => 'macos',
-}))
+import {
+  parseRegistryJson,
+  getRegistryPlatformKey,
+  isAgentAvailableForPlatform,
+  getPreferredDistribution,
+} from './registry'
 
 // ── Fixtures ──────────────────────────────────────────────────────────────────
 
@@ -124,13 +103,6 @@ describe('registry types', () => {
 })
 
 describe('parseRegistryJson', () => {
-  let parseRegistryJson: typeof import('./registry').parseRegistryJson
-
-  beforeEach(async () => {
-    const mod = await import('./registry')
-    parseRegistryJson = mod.parseRegistryJson
-  })
-
   it('parses valid registry JSON with npx agents', () => {
     const json = makeRegistryJson([makeNpxEntry()])
     const result = parseRegistryJson(json)
@@ -220,13 +192,6 @@ describe('parseRegistryJson', () => {
 })
 
 describe('getRegistryPlatformKey', () => {
-  let getRegistryPlatformKey: typeof import('./registry').getRegistryPlatformKey
-
-  beforeEach(async () => {
-    const mod = await import('./registry')
-    getRegistryPlatformKey = mod.getRegistryPlatformKey
-  })
-
   it('maps macos + aarch64 to darwin-aarch64', () => {
     expect(getRegistryPlatformKey('macos', 'aarch64')).toBe('darwin-aarch64')
   })
@@ -261,13 +226,6 @@ describe('getRegistryPlatformKey', () => {
 })
 
 describe('isAgentAvailableForPlatform', () => {
-  let isAgentAvailableForPlatform: typeof import('./registry').isAgentAvailableForPlatform
-
-  beforeEach(async () => {
-    const mod = await import('./registry')
-    isAgentAvailableForPlatform = mod.isAgentAvailableForPlatform
-  })
-
   it('returns true for npx agent (always available on any platform)', () => {
     const entry = makeNpxEntry()
     expect(isAgentAvailableForPlatform(entry, 'darwin-aarch64')).toBe(true)
@@ -321,13 +279,6 @@ describe('isAgentAvailableForPlatform', () => {
 })
 
 describe('getPreferredDistribution', () => {
-  let getPreferredDistribution: typeof import('./registry').getPreferredDistribution
-
-  beforeEach(async () => {
-    const mod = await import('./registry')
-    getPreferredDistribution = mod.getPreferredDistribution
-  })
-
   it('returns binary when available for platform', () => {
     const dist: RegistryDistribution = {
       binary: { 'darwin-aarch64': { archive: 'https://example.com/a.tar.gz', cmd: './a' } },
@@ -424,13 +375,6 @@ describe('getPreferredDistribution', () => {
 })
 
 describe('isAgentAvailableForPlatform — remote', () => {
-  let isAgentAvailableForPlatform: typeof import('./registry').isAgentAvailableForPlatform
-
-  beforeEach(async () => {
-    const mod = await import('./registry')
-    isAgentAvailableForPlatform = mod.isAgentAvailableForPlatform
-  })
-
   it('returns true for remote agent on any platform', () => {
     const entry = makeNpxEntry({
       distribution: { remote: { url: 'wss://example.com/ws', transport: 'websocket' } },

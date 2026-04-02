@@ -38,24 +38,6 @@ const mockRegistryEntries: RegistryEntry[] = [
   },
 ]
 
-mock.module('@/acp/registry', () => ({
-  parseRegistryJson: () => mockRegistryEntries,
-  getRegistryPlatformKey: () => 'darwin-aarch64',
-  isAgentAvailableForPlatform: () => true,
-  getPreferredDistribution: (dist: any) => {
-    if (dist.binary?.['darwin-aarch64']) {
-      return { type: 'binary', target: dist.binary['darwin-aarch64'] }
-    }
-    if (dist.npx) {
-      return { type: 'npx', target: dist.npx }
-    }
-    if (dist.uvx) {
-      return { type: 'uvx', target: dist.uvx }
-    }
-    return null
-  },
-}))
-
 mock.module('@tauri-apps/plugin-os', () => ({
   platform: () => 'macos',
   arch: () => 'aarch64',

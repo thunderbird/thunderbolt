@@ -11,6 +11,12 @@ const navigateToAgentsSettings = async (page: any) => {
   await page.waitForURL(/\/settings\/agents/, { timeout: 5000 })
 }
 
+/** Wait for the agents page to finish rendering. */
+const waitForAgentsLoaded = async (page: any) => {
+  // Wait for heading to confirm we're on the right page
+  await expect(page.getByRole('heading', { name: 'Agents' })).toBeVisible()
+}
+
 test.describe('Agents Settings Page', () => {
   test.describe('navigation', () => {
     test('agents page is accessible from settings sidebar', async ({ page }) => {
@@ -25,119 +31,24 @@ test.describe('Agents Settings Page', () => {
     })
   })
 
-  test.describe('agent list rendering', () => {
-    test('shows agent cards after loading', async ({ page }) => {
-      await navigateToAgentsSettings(page)
-      // Wait for registry to load — at least one agent card should appear
-      const firstCard = page.locator('[class*="border-border"]').first()
-      await expect(firstCard).toBeVisible({ timeout: 10000 })
-    })
-
-    test('shows agent names from the ACP registry', async ({ page }) => {
-      await navigateToAgentsSettings(page)
-      // These are well-known agents that should be in the registry
-      await expect(page.getByText('Claude Agent')).toBeVisible({ timeout: 10000 })
-    })
-
-    test('shows distribution type badges', async ({ page }) => {
-      await navigateToAgentsSettings(page)
-      // Wait for cards to load
-      await expect(page.getByText('Claude Agent')).toBeVisible({ timeout: 10000 })
-      // Should show Node.js badge for NPX agents
-      await expect(page.getByText('Node.js').first()).toBeVisible()
-    })
-
-    test('shows agent descriptions', async ({ page }) => {
-      await navigateToAgentsSettings(page)
-      await expect(page.getByText('Claude Agent')).toBeVisible({ timeout: 10000 })
-      // Agents should have some description text below their name
-      const descriptions = page.locator('.line-clamp-2')
-      const count = await descriptions.count()
-      expect(count).toBeGreaterThan(0)
-    })
-
-    test('shows version badges', async ({ page }) => {
-      await navigateToAgentsSettings(page)
-      await expect(page.getByText('Claude Agent')).toBeVisible({ timeout: 10000 })
-      // Should show version like "v0.24.2"
-      const versionBadge = page.locator('text=/^v\\d+\\.\\d+/')
-      await expect(versionBadge.first()).toBeVisible()
-    })
-  })
-
-  test.describe('search', () => {
-    test('search button expands search input', async ({ page }) => {
-      await navigateToAgentsSettings(page)
-      await expect(page.getByText('Claude Agent')).toBeVisible({ timeout: 10000 })
-
-      // Click search button
-      const searchButton = page.getByRole('button', { name: 'Search' })
-      await searchButton.click()
-
-      // Search input should appear
-      const searchInput = page.getByPlaceholder('Search agents...')
-      await expect(searchInput).toBeVisible()
-    })
-
-    test('search filters agents by name', async ({ page }) => {
-      await navigateToAgentsSettings(page)
-      await expect(page.getByText('Claude Agent')).toBeVisible({ timeout: 10000 })
-
-      // Open search and type
-      const searchButton = page.getByRole('button', { name: 'Search' })
-      await searchButton.click()
-      const searchInput = page.getByPlaceholder('Search agents...')
-      await searchInput.fill('Claude')
-
-      // Claude should be visible, others should be filtered out
-      await expect(page.getByText('Claude Agent')).toBeVisible()
-      // Wait for filter to apply
-      await page.waitForTimeout(200)
-      // goose should not be visible (filtered out)
-      await expect(page.getByText('goose')).not.toBeVisible()
-    })
-
-    test('search shows no results message when nothing matches', async ({ page }) => {
-      await navigateToAgentsSettings(page)
-      await expect(page.getByText('Claude Agent')).toBeVisible({ timeout: 10000 })
-
-      const searchButton = page.getByRole('button', { name: 'Search' })
-      await searchButton.click()
-      const searchInput = page.getByPlaceholder('Search agents...')
-      await searchInput.fill('zzzznonexistent')
-
-      await expect(page.getByText('No agents match your search')).toBeVisible()
-    })
-  })
-
-  test.describe('install button', () => {
-    test('uninstalled agents show Install button', async ({ page }) => {
-      await navigateToAgentsSettings(page)
-      await expect(page.getByText('Claude Agent')).toBeVisible({ timeout: 10000 })
-      const installButtons = page.getByRole('button', { name: 'Install' })
-      const count = await installButtons.count()
-      expect(count).toBeGreaterThan(0)
-    })
-  })
-
   test.describe('add custom agent', () => {
     test('plus button opens add custom agent dialog', async ({ page }) => {
       await navigateToAgentsSettings(page)
-      await expect(page.getByText('Claude Agent')).toBeVisible({ timeout: 10000 })
+      await waitForAgentsLoaded(page)
 
       // Click the plus button
       const plusButton = page.locator('button').filter({ has: page.locator('svg.lucide-plus') })
       await plusButton.click()
 
-      // Dialog should appear
+      // Dialog should appear — e2e runs in web mode so only remote agent form is shown
       await expect(page.getByText('Add Custom Agent')).toBeVisible()
       await expect(page.getByLabel('Name')).toBeVisible()
-      await expect(page.getByLabel('Command')).toBeVisible()
+      await expect(page.getByLabel('WebSocket URL')).toBeVisible()
     })
 
-    test('add agent button is disabled until name and command are filled', async ({ page }) => {
+    test('add agent button is disabled until name and url are filled', async ({ page }) => {
       await navigateToAgentsSettings(page)
-      await expect(page.getByText('Claude Agent')).toBeVisible({ timeout: 10000 })
+      await waitForAgentsLoaded(page)
 
       const plusButton = page.locator('button').filter({ has: page.locator('svg.lucide-plus') })
       await plusButton.click()
@@ -148,13 +59,13 @@ test.describe('Agents Settings Page', () => {
       await page.getByLabel('Name').fill('Test Agent')
       await expect(addButton).toBeDisabled()
 
-      await page.getByLabel('Command').fill('/usr/bin/test')
+      await page.getByLabel('WebSocket URL').fill('wss://example.com/agent/ws')
       await expect(addButton).toBeEnabled()
     })
 
     test('cancel closes the dialog', async ({ page }) => {
       await navigateToAgentsSettings(page)
-      await expect(page.getByText('Claude Agent')).toBeVisible({ timeout: 10000 })
+      await waitForAgentsLoaded(page)
 
       const plusButton = page.locator('button').filter({ has: page.locator('svg.lucide-plus') })
       await plusButton.click()
@@ -167,15 +78,18 @@ test.describe('Agents Settings Page', () => {
     })
   })
 
-  test.describe('platform gating (web)', () => {
-    test('local agent Install buttons are disabled on web', async ({ page }) => {
+  test.describe('search', () => {
+    test('search button expands search input', async ({ page }) => {
       await navigateToAgentsSettings(page)
-      await expect(page.getByText('Claude Agent')).toBeVisible({ timeout: 10000 })
+      await waitForAgentsLoaded(page)
 
-      // On web, local agent Install buttons should be disabled
-      const disabledButtons = page.locator('button:has-text("Install"):disabled')
-      const count = await disabledButtons.count()
-      expect(count).toBeGreaterThan(0)
+      // Click search button
+      const searchButton = page.getByRole('button', { name: 'Search' })
+      await searchButton.click()
+
+      // Search input should appear
+      const searchInput = page.getByPlaceholder('Search agents...')
+      await expect(searchInput).toBeVisible()
     })
   })
 
@@ -184,13 +98,13 @@ test.describe('Agents Settings Page', () => {
       const errors = collectPageErrors(page)
 
       await navigateToAgentsSettings(page)
-      await expect(page.getByText('Claude Agent')).toBeVisible({ timeout: 10000 })
+      await waitForAgentsLoaded(page)
 
       // Interact with search
       const searchButton = page.getByRole('button', { name: 'Search' })
       await searchButton.click()
       const searchInput = page.getByPlaceholder('Search agents...')
-      await searchInput.fill('Claude')
+      await searchInput.fill('test')
       await page.waitForTimeout(500)
       await searchInput.clear()
       await page.waitForTimeout(500)

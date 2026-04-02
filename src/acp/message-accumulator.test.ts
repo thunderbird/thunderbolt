@@ -139,4 +139,82 @@ describe('createMessageAccumulator', () => {
     })
     expect(msg.parts[0]).toEqual({ type: 'text', text: 'Hi' })
   })
+
+  test('interleaves text and tool calls across multiple steps', () => {
+    const acc = createMessageAccumulator()
+
+    // Step 1: text then tool
+    acc.handleUpdate({ sessionUpdate: 'agent_message_chunk', content: { type: 'text', text: 'Let me search:' } })
+    acc.handleUpdate({
+      sessionUpdate: 'tool_call',
+      toolCallId: 'tc1',
+      title: 'Search',
+      kind: 'other',
+      status: 'in_progress',
+    })
+    acc.handleUpdate({
+      sessionUpdate: 'tool_call_update',
+      toolCallId: 'tc1',
+      status: 'completed',
+      content: [{ type: 'content', content: { type: 'text', text: 'results' } }],
+    })
+
+    // Step 2: text then tool
+    acc.handleUpdate({ sessionUpdate: 'agent_message_chunk', content: { type: 'text', text: 'Now fetching:' } })
+    acc.handleUpdate({
+      sessionUpdate: 'tool_call',
+      toolCallId: 'tc2',
+      title: 'Fetch',
+      kind: 'other',
+      status: 'in_progress',
+    })
+    acc.handleUpdate({
+      sessionUpdate: 'tool_call_update',
+      toolCallId: 'tc2',
+      status: 'completed',
+      content: [{ type: 'content', content: { type: 'text', text: 'page content' } }],
+    })
+
+    // Final text
+    acc.handleUpdate({
+      sessionUpdate: 'agent_message_chunk',
+      content: { type: 'text', text: 'Here are the results.' },
+    })
+
+    const msg = acc.buildMessage()
+
+    // Should have 5 parts in order: text, tool, text, tool, text
+    expect(msg.parts.length).toBe(5)
+    expect(msg.parts[0].type).toBe('text')
+    expect((msg.parts[0] as { text: string }).text).toBe('Let me search:')
+    expect(msg.parts[1].type).toBe('tool-Search')
+    expect(msg.parts[2].type).toBe('text')
+    expect((msg.parts[2] as { text: string }).text).toBe('Now fetching:')
+    expect(msg.parts[3].type).toBe('tool-Fetch')
+    expect(msg.parts[4].type).toBe('text')
+    expect((msg.parts[4] as { text: string }).text).toBe('Here are the results.')
+  })
+
+  test('tracks tool call timing in metadata', () => {
+    const acc = createMessageAccumulator()
+
+    acc.handleUpdate({
+      sessionUpdate: 'tool_call',
+      toolCallId: 'tc1',
+      title: 'Search',
+      kind: 'other',
+      status: 'in_progress',
+    })
+    // Simulate some time passing
+    acc.handleUpdate({
+      sessionUpdate: 'tool_call_update',
+      toolCallId: 'tc1',
+      status: 'completed',
+      content: [{ type: 'content', content: { type: 'text', text: 'result' } }],
+    })
+
+    const msg = acc.buildMessage()
+    expect(msg.metadata?.reasoningStartTimes?.tc1).toBeDefined()
+    expect(msg.metadata?.reasoningTime?.tc1).toBeGreaterThanOrEqual(0)
+  })
 })

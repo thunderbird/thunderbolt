@@ -1,7 +1,6 @@
 import type { SessionNotification } from '@agentclientprotocol/sdk'
 import type { HaystackDocumentMeta, HaystackReferenceMeta, ThunderboltUIMessage, UIMessageMetadata } from '@/types'
 import type { SourceMetadata } from '@/types/source'
-import type { ToolUIPart } from 'ai'
 import { v7 as uuidv7 } from 'uuid'
 import { z } from 'zod'
 
@@ -14,7 +13,13 @@ type ToolCallState = {
   status: 'pending' | 'in_progress' | 'completed' | 'failed'
   args: Record<string, unknown>
   result: unknown
+  startTime: number
 }
+
+type OrderedPart =
+  | { kind: 'text'; text: string }
+  | { kind: 'reasoning'; text: string; id: string; startTime: number }
+  | { kind: 'tool'; state: ToolCallState }
 
 const haystackReferenceSchema = z.object({
   position: z.number(),
@@ -51,12 +56,20 @@ export const parseMeta = (
 /**
  * Accumulates ACP streaming updates into a ThunderboltUIMessage.
  * Each prompt creates a new accumulator for the assistant response.
+ *
+ * Maintains an ordered list of parts (text, reasoning, tool) to preserve
+ * interleaving across multiple agent steps, along with timing data for
+ * tool calls and reasoning blocks.
  */
 export const createMessageAccumulator = (messageId?: string) => {
   const id = messageId ?? uuidv7()
-  let textContent = ''
-  let reasoningContent = ''
-  const toolCalls = new Map<string, ToolCallState>()
+
+  const orderedParts: OrderedPart[] = []
+  const toolCallMap = new Map<string, ToolCallState>()
+
+  const reasoningStartTimes: Record<string, number> = {}
+  const reasoningTime: Record<string, number> = {}
+  let reasoningCounter = 0
 
   let haystackReferences: HaystackReferenceMeta[] | undefined
   let haystackDocuments: HaystackDocumentMeta[] | undefined
@@ -65,45 +78,47 @@ export const createMessageAccumulator = (messageId?: string) => {
   const buildMessage = (): ThunderboltUIMessage => {
     const parts: ThunderboltUIMessage['parts'] = []
 
-    // Add reasoning part if present
-    if (reasoningContent.length > 0) {
-      parts.push({
-        type: 'reasoning',
-        text: reasoningContent,
-        providerMetadata: {},
-      })
-    }
+    for (const op of orderedParts) {
+      switch (op.kind) {
+        case 'reasoning':
+          parts.push({
+            type: 'reasoning',
+            text: op.text,
+            providerMetadata: {},
+          })
+          break
 
-    // Add tool call parts
-    for (const tc of toolCalls.values()) {
-      const base = {
-        type: `tool-${tc.toolName}` as const,
-        toolCallId: tc.toolCallId,
-        title: tc.title,
+        case 'tool': {
+          const tc = op.state
+          const base = {
+            type: `tool-${tc.toolName}` as const,
+            toolCallId: tc.toolCallId,
+            title: tc.title,
+          }
+          if (tc.status === 'completed') {
+            parts.push({ ...base, state: 'output-available' as const, input: tc.args, output: tc.result })
+          } else if (tc.status === 'failed') {
+            parts.push({
+              ...base,
+              state: 'output-error' as const,
+              input: tc.args,
+              errorText: String(tc.result ?? 'Unknown error'),
+            })
+          } else {
+            parts.push({ ...base, state: 'input-available' as const, input: tc.args })
+          }
+          break
+        }
+
+        case 'text':
+          if (op.text) {
+            parts.push({ type: 'text', text: op.text })
+          }
+          break
       }
-      const part: ToolUIPart =
-        tc.status === 'completed'
-          ? { ...base, state: 'output-available' as const, input: tc.args, output: tc.result }
-          : tc.status === 'failed'
-            ? {
-                ...base,
-                state: 'output-error' as const,
-                input: tc.args,
-                errorText: String(tc.result ?? 'Unknown error'),
-              }
-            : { ...base, state: 'input-available' as const, input: tc.args }
-      parts.push(part)
     }
 
-    // Add text part
-    if (textContent.length > 0) {
-      parts.push({
-        type: 'text',
-        text: textContent,
-      })
-    }
-
-    // If no parts at all, add empty text
+    // Fallback for empty message
     if (parts.length === 0) {
       parts.push({ type: 'text', text: '' })
     }
@@ -118,6 +133,12 @@ export const createMessageAccumulator = (messageId?: string) => {
     }
     if (sources && sources.length > 0) {
       metadata.sources = sources
+    }
+    if (Object.keys(reasoningTime).length > 0) {
+      metadata.reasoningTime = reasoningTime
+    }
+    if (Object.keys(reasoningStartTimes).length > 0) {
+      metadata.reasoningStartTimes = reasoningStartTimes
     }
 
     const message: ThunderboltUIMessage = {
@@ -135,9 +156,20 @@ export const createMessageAccumulator = (messageId?: string) => {
 
   const handleUpdate = (update: SessionUpdate): ThunderboltUIMessage => {
     switch (update.sessionUpdate) {
-      case 'agent_message_chunk':
+      case 'agent_message_chunk': {
         if (update.content.type === 'text') {
-          textContent += update.content.text
+          const last = orderedParts[orderedParts.length - 1]
+
+          // Close previous reasoning part's timing if applicable
+          if (last?.kind === 'reasoning') {
+            reasoningTime[last.id] = Date.now() - last.startTime
+          }
+
+          if (last?.kind === 'text') {
+            last.text += update.content.text
+          } else {
+            orderedParts.push({ kind: 'text', text: update.content.text })
+          }
         }
         if (update._meta) {
           const meta = parseMeta(update._meta)
@@ -149,26 +181,42 @@ export const createMessageAccumulator = (messageId?: string) => {
           }
         }
         break
+      }
 
-      case 'agent_thought_chunk':
+      case 'agent_thought_chunk': {
         if (update.content.type === 'text') {
-          reasoningContent += update.content.text
+          const last = orderedParts[orderedParts.length - 1]
+          if (last?.kind === 'reasoning') {
+            last.text += update.content.text
+          } else {
+            const partId = `reasoning-${reasoningCounter++}`
+            const startTime = Date.now()
+            orderedParts.push({ kind: 'reasoning', text: update.content.text, id: partId, startTime })
+            reasoningStartTimes[partId] = startTime
+          }
         }
         break
+      }
 
-      case 'tool_call':
-        toolCalls.set(update.toolCallId, {
+      case 'tool_call': {
+        const startTime = Date.now()
+        const toolCallState: ToolCallState = {
           toolCallId: update.toolCallId,
           toolName: update.title,
           title: update.title,
           status: (update.status as ToolCallState['status']) ?? 'pending',
           args: {},
           result: undefined,
-        })
+          startTime,
+        }
+        orderedParts.push({ kind: 'tool', state: toolCallState })
+        toolCallMap.set(update.toolCallId, toolCallState)
+        reasoningStartTimes[update.toolCallId] = startTime
         break
+      }
 
       case 'tool_call_update': {
-        const existing = toolCalls.get(update.toolCallId)
+        const existing = toolCallMap.get(update.toolCallId)
         if (existing) {
           existing.status = (update.status as ToolCallState['status']) ?? existing.status
 
@@ -181,6 +229,10 @@ export const createMessageAccumulator = (messageId?: string) => {
               .map((c) => c.content.text)
               .join('\n')
             existing.result = resultText
+          }
+
+          if (existing.status === 'completed' || existing.status === 'failed') {
+            reasoningTime[existing.toolCallId] = Date.now() - existing.startTime
           }
         }
         break
@@ -206,7 +258,7 @@ export const createMessageAccumulator = (messageId?: string) => {
       return id
     },
     get hasContent() {
-      return textContent.length > 0 || reasoningContent.length > 0 || toolCalls.size > 0
+      return orderedParts.length > 0
     },
   }
 }

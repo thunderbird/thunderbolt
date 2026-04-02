@@ -29,6 +29,22 @@ import {
 import { invalidateCKCache } from '@/db/encryption'
 
 // =============================================================================
+// Shared helpers
+// =============================================================================
+
+/** Get existing key pair from IndexedDB or generate and store a new one. */
+const getOrCreateKeyPair = async (): Promise<CryptoKeyPair> => {
+  const existing = await getKeyPair()
+  if (existing) {
+    return existing
+  }
+
+  const keyPair = await generateKeyPair()
+  await storeKeyPair(keyPair.privateKey, keyPair.publicKey)
+  return keyPair
+}
+
+// =============================================================================
 // Detecting step — register device and store key pair
 // =============================================================================
 
@@ -38,11 +54,7 @@ import { invalidateCKCache } from '@/db/encryption'
  * Returns the registration response so the caller can determine first vs additional device.
  */
 export const registerThisDevice = async (httpClient: KyInstance): Promise<RegisterDeviceResponse> => {
-  let keyPair = await getKeyPair()
-  if (!keyPair) {
-    keyPair = await generateKeyPair()
-    await storeKeyPair(keyPair.privateKey, keyPair.publicKey)
-  }
+  const keyPair = await getOrCreateKeyPair()
 
   const publicKeyBase64 = await exportPublicKey(keyPair.publicKey)
   const deviceId = getDeviceId()
@@ -173,12 +185,7 @@ export const recoverWithKey = async (httpClient: KyInstance, recoveryPhrase: str
     throw new Error('Invalid recovery key')
   }
 
-  // Ensure we have a key pair
-  let keyPair = await getKeyPair()
-  if (!keyPair) {
-    keyPair = await generateKeyPair()
-    await storeKeyPair(keyPair.privateKey, keyPair.publicKey)
-  }
+  const keyPair = await getOrCreateKeyPair()
 
   // Register device and store envelope
   const publicKeyBase64 = await exportPublicKey(keyPair.publicKey)

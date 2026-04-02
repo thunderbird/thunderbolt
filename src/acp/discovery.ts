@@ -95,6 +95,13 @@ export const discoverAndSeedRemoteAgents = async (db: AnyDrizzleDatabase, cloudU
     deletedAt: null,
     defaultHash: null,
     userId: null,
+    description: null,
+    registryId: null,
+    installedVersion: null,
+    registryVersion: null,
+    distributionType: null,
+    installPath: null,
+    packageName: null,
   }))
 
   await upsertAgents(db, agents)

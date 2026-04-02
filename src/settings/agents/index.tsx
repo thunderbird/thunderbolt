@@ -229,7 +229,6 @@ export default function AgentsSettingsPage() {
 
       // Remote agents may not have a DB entry yet — create one to track enabled state
       if (agent.isRemote && agent.registryEntry) {
-        const remote = agent.registryEntry.distribution.remote
         await installRegistryAgent(db, {
           registryId: agent.registryEntry.id,
           name: agent.registryEntry.name,

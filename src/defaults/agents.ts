@@ -26,6 +26,13 @@ const agentDefaults = {
   deletedAt: null,
   defaultHash: null,
   userId: null,
+  description: null,
+  registryId: null,
+  installedVersion: null,
+  registryVersion: null,
+  distributionType: null,
+  installPath: null,
+  packageName: null,
 } as const
 
 export const defaultAgentBuiltIn: Agent = {

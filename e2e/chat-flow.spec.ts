@@ -198,8 +198,9 @@ test.describe('Chat Navigation', () => {
     await page.locator('form button[type="submit"]').click()
     await page.waitForURL(/\/chats\/(?!new)/, { timeout: 10000 })
 
-    // Click New Chat button by role to avoid matching tooltip text duplicate
-    await page.locator('[data-sidebar="menu-button"]').filter({ hasText: 'New Chat' }).click()
+    // Click New Chat button — use getByRole with first() since sidebar may contain
+    // multiple elements with "New Chat" text (e.g. active chat + dedicated button)
+    await page.getByRole('button', { name: 'New Chat' }).first().click()
 
     // New chat should fully render — catches blank screen regression
     await expect(page.locator('textarea')).toBeVisible({ timeout: 15000 })

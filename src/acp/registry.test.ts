@@ -1,5 +1,5 @@
 import { describe, expect, it, mock, beforeEach } from 'bun:test'
-import type { RegistryEntry, RegistryDistribution, RegistryPlatformKey } from './registry'
+import type { RegistryEntry, RegistryDistribution } from './registry'
 
 // Mock Tauri APIs before importing the module under test
 mock.module('@tauri-apps/plugin-os', () => ({
@@ -343,7 +343,7 @@ describe('getPreferredDistribution', () => {
       npx: { package: '@test/a@1.0.0' },
     }
     const result = getPreferredDistribution(dist, 'darwin-aarch64')
-    expect(result).toEqual({ type: 'npx', target: dist.npx })
+    expect(result).toEqual({ type: 'npx', target: dist.npx! })
   })
 
   it('returns npx when no binary exists', () => {
@@ -351,7 +351,7 @@ describe('getPreferredDistribution', () => {
       npx: { package: '@test/a@1.0.0' },
     }
     const result = getPreferredDistribution(dist, 'darwin-aarch64')
-    expect(result).toEqual({ type: 'npx', target: dist.npx })
+    expect(result).toEqual({ type: 'npx', target: dist.npx! })
   })
 
   it('returns uvx when only uvx exists', () => {
@@ -359,7 +359,7 @@ describe('getPreferredDistribution', () => {
       uvx: { package: 'fast-agent@0.6.10' },
     }
     const result = getPreferredDistribution(dist, 'darwin-aarch64')
-    expect(result).toEqual({ type: 'uvx', target: dist.uvx })
+    expect(result).toEqual({ type: 'uvx', target: dist.uvx! })
   })
 
   it('prefers binary over npx over uvx', () => {
@@ -409,7 +409,7 @@ describe('getPreferredDistribution', () => {
       remote: { url: 'wss://example.com/ws', transport: 'websocket' },
     }
     const result = getPreferredDistribution(dist, 'darwin-aarch64')
-    expect(result).toEqual({ type: 'remote', target: dist.remote })
+    expect(result).toEqual({ type: 'remote', target: dist.remote! })
   })
 
   it('prefers remote over all other types', () => {

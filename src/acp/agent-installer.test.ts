@@ -1,8 +1,7 @@
-import { describe, expect, it, mock, beforeEach, spyOn } from 'bun:test'
+import { describe, expect, it, mock, beforeEach } from 'bun:test'
 
 // ── Mocks ─────────────────────────────────────────────────────────────────────
 
-let mockWhichResult: string | null = null
 let mockExecuteResult = { code: 0, stdout: '', stderr: '' }
 let mockFsExists = false
 let mockAppDataDir = '/mock/app-data'
@@ -50,7 +49,6 @@ describe('agent-installer', () => {
   let installer: typeof import('./agent-installer')
 
   beforeEach(async () => {
-    mockWhichResult = null
     mockExecuteResult = { code: 0, stdout: '', stderr: '' }
     mockFsExists = false
     mockAppDataDir = '/mock/app-data'

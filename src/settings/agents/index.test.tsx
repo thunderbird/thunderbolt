@@ -1,5 +1,4 @@
-import { describe, expect, it, mock, beforeAll, afterAll, beforeEach } from 'bun:test'
-import { render, screen, cleanup } from '@testing-library/react'
+import { describe, expect, it, beforeAll, afterAll, beforeEach } from 'bun:test'
 import { setupTestDatabase, resetTestDatabase, teardownTestDatabase } from '@/dal/test-utils'
 import { getDb } from '@/db/database'
 import { agentsTable } from '@/db/tables'
@@ -52,7 +51,6 @@ afterAll(async () => {
 describe('Agents Settings Page — data integration', () => {
   beforeEach(async () => {
     await resetTestDatabase()
-    cleanup()
   })
 
   describe('merge + filter + sort pipeline', () => {

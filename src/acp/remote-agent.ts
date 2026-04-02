@@ -12,8 +12,6 @@ type RemoteAgentConnectionOptions = {
   onDisconnected: () => void
 }
 
-const defaultWebSocketFactory: WebSocketFactory = (url: string) => new WebSocket(url) as unknown as WebSocketLike
-
 /**
  * Default WebSocket factory that fetches a one-time auth ticket
  * before each connection and appends it to the URL.

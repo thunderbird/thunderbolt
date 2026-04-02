@@ -2,6 +2,19 @@ import { describe, expect, test } from 'bun:test'
 import type { Agent } from '@/types'
 import { categorizeAgents } from './agent-selector'
 
+const agentNullDefaults = {
+  deletedAt: null,
+  defaultHash: null,
+  userId: null,
+  description: null,
+  registryId: null,
+  installedVersion: null,
+  registryVersion: null,
+  distributionType: null,
+  installPath: null,
+  packageName: null,
+} as const
+
 const testAgents: Agent[] = [
   {
     id: 'agent-built-in',
@@ -15,9 +28,7 @@ const testAgents: Agent[] = [
     args: null,
     url: null,
     authMethod: null,
-    deletedAt: null,
-    defaultHash: null,
-    userId: null,
+    ...agentNullDefaults,
   },
   {
     id: 'agent-claude-code',
@@ -31,9 +42,7 @@ const testAgents: Agent[] = [
     args: '["--acp"]',
     url: null,
     authMethod: null,
-    deletedAt: null,
-    defaultHash: null,
-    userId: null,
+    ...agentNullDefaults,
   },
   {
     id: 'agent-haystack',
@@ -47,9 +56,7 @@ const testAgents: Agent[] = [
     args: null,
     url: 'wss://haystack.example.com/acp',
     authMethod: null,
-    deletedAt: null,
-    defaultHash: null,
-    userId: null,
+    ...agentNullDefaults,
   },
 ]
 

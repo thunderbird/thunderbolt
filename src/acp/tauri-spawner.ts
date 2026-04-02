@@ -43,10 +43,7 @@ export const createTauriSpawner = (): SubprocessSpawner => ({
 
         cmd.on('error', (error) => {
           try {
-            // Tauri emits error objects — extract a readable message
-            const message =
-              typeof error === 'string' ? error : error instanceof Error ? error.message : JSON.stringify(error)
-            controller.error(new Error(message))
+            controller.error(new Error(typeof error === 'string' ? error : JSON.stringify(error)))
           } catch {
             // Already closed
           }

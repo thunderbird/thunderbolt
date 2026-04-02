@@ -1,5 +1,5 @@
-import { describe, expect, it, mock, beforeEach } from 'bun:test'
-import { render, screen, cleanup, fireEvent } from '@testing-library/react'
+import { describe, expect, it, beforeEach } from 'bun:test'
+import { render, screen, cleanup } from '@testing-library/react'
 import { BrowserRouter } from 'react-router'
 import { NoAgentsMessage } from './no-agents-message'
 

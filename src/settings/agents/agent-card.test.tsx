@@ -17,6 +17,8 @@ const makeAgent = (overrides?: Partial<MergedAgent>): MergedAgent => ({
   updateAvailable: false,
   isInstalled: false,
   isCustom: false,
+  isRemote: false,
+  isBuiltIn: false,
   enabled: false,
   distributionType: 'npx',
   icon: null,

@@ -1,42 +1,32 @@
-import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
+import { beforeAll, describe, expect, it } from 'bun:test'
 import { getClock } from '@/testing-library'
 import { waitForOAuthCallback } from './oauth-callback'
-
-const ORIGIN = 'http://localhost:1420'
 
 const postFromOrigin = (origin: string, data: unknown) => {
   window.dispatchEvent(new MessageEvent('message', { origin, data }))
 }
 
 describe('waitForOAuthCallback', () => {
-  const originalLocation = window.location
-
-  beforeEach(() => {
-    Object.defineProperty(window, 'location', {
-      value: { ...originalLocation, origin: ORIGIN },
-      configurable: true,
-      writable: true,
-    })
-  })
-
-  afterEach(() => {
-    Object.defineProperty(window, 'location', {
-      value: originalLocation,
-      configurable: true,
-      writable: true,
-    })
+  // Restore real event APIs — other test files replace them with mocks and never restore
+  beforeAll(() => {
+    const iframe = document.createElement('iframe')
+    document.body.appendChild(iframe)
+    const win = iframe.contentWindow!
+    window.addEventListener = win.addEventListener.bind(window)
+    window.removeEventListener = win.removeEventListener.bind(window)
+    window.dispatchEvent = win.dispatchEvent.bind(window)
+    document.body.removeChild(iframe)
   })
 
   it('resolves with code and state from same-origin postMessage', async () => {
     const promise = waitForOAuthCallback(null)
 
-    postFromOrigin(ORIGIN, {
+    postFromOrigin(window.location.origin, {
       type: 'oauth-callback',
       code: 'auth-code-123',
       state: 'state-abc',
     })
 
-    await getClock().tickAsync(0)
     const result = await promise
     expect(result).toEqual({ code: 'auth-code-123', state: 'state-abc' })
   })
@@ -52,13 +42,12 @@ describe('waitForOAuthCallback', () => {
     })
 
     // Legitimate message to unblock
-    postFromOrigin(ORIGIN, {
+    postFromOrigin(window.location.origin, {
       type: 'oauth-callback',
       code: 'real-code',
       state: 'real-state',
     })
 
-    await getClock().tickAsync(0)
     const result = await promise
     expect(result).toEqual({ code: 'real-code', state: 'real-state' })
   })
@@ -67,19 +56,18 @@ describe('waitForOAuthCallback', () => {
     const promise = waitForOAuthCallback(null)
 
     // Wrong type — handler should skip
-    postFromOrigin(ORIGIN, {
+    postFromOrigin(window.location.origin, {
       type: 'unrelated-event',
       code: 'wrong-type-code',
     })
 
     // Correct message to unblock
-    postFromOrigin(ORIGIN, {
+    postFromOrigin(window.location.origin, {
       type: 'oauth-callback',
       code: 'correct-code',
       state: 'correct-state',
     })
 
-    await getClock().tickAsync(0)
     const result = await promise
     expect(result).toEqual({ code: 'correct-code', state: 'correct-state' })
   })
@@ -88,12 +76,11 @@ describe('waitForOAuthCallback', () => {
     const promise = waitForOAuthCallback(null)
     promise.catch(() => {}) // prevent unhandled rejection before handler attaches
 
-    postFromOrigin(ORIGIN, {
+    postFromOrigin(window.location.origin, {
       type: 'oauth-callback',
       error: 'access_denied',
     })
 
-    await getClock().tickAsync(0)
     await expect(promise).rejects.toThrow('access_denied')
   })
 
@@ -101,11 +88,10 @@ describe('waitForOAuthCallback', () => {
     const promise = waitForOAuthCallback(null)
     promise.catch(() => {}) // prevent unhandled rejection before handler attaches
 
-    postFromOrigin(ORIGIN, {
+    postFromOrigin(window.location.origin, {
       type: 'oauth-callback',
     })
 
-    await getClock().tickAsync(0)
     await expect(promise).rejects.toThrow('Invalid OAuth callback: missing code or state')
   })
 
@@ -115,13 +101,12 @@ describe('waitForOAuthCallback', () => {
 
     const promise = waitForOAuthCallback(popup)
 
-    postFromOrigin(ORIGIN, {
+    postFromOrigin(window.location.origin, {
       type: 'oauth-callback',
       code: 'code',
       state: 'state',
     })
 
-    await getClock().tickAsync(0)
     await promise
     expect(closed).toBe(true)
   })
@@ -132,13 +117,12 @@ describe('waitForOAuthCallback', () => {
 
     const promise = waitForOAuthCallback(popup)
 
-    postFromOrigin(ORIGIN, {
+    postFromOrigin(window.location.origin, {
       type: 'oauth-callback',
       code: 'code',
       state: 'state',
     })
 
-    await getClock().tickAsync(0)
     await promise
     expect(closeCalled).toBe(false)
   })

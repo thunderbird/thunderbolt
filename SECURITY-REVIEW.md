@@ -7,7 +7,7 @@
 - **Unauthenticated inference/pro/proxy endpoints — anyone can burn API keys** — `backend/src/inference/routes.ts`, `backend/src/pro/routes.ts`, `backend/src/pro/proxy.ts` — Open
 - **CORS regex allows `null` origin with credentials** — `backend/src/config/settings.ts:52,101` — **Fixed**
 - **CSP effectively disabled in Tauri (`connect-src: *`, `unsafe-eval`, `unsafe-inline`)** — `src-tauri/tauri.conf.json:26,30` — **Fixed**
-- **`postMessage` listener lacks origin validation** — `src/lib/auth.ts:142-165` — Open
+- **`postMessage` listener lacks origin validation** — `src/lib/auth.ts:142-165` — **Fixed**
 - **Hardcoded `isProUser = true` bypass** — `src/integrations/thunderbolt-pro/utils.ts:4` — Open
 - **Elysia 1.4.7 — CRITICAL prototype pollution + code injection** — `backend/package.json` — **Fixed** (→1.4.28)
 - **`better-auth@1.4.2` — path normalization bypass** — `backend/package.json` — **Fixed** (→1.5.6)

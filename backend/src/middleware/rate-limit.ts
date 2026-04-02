@@ -1,70 +1,22 @@
+import type { Auth } from '@/auth/elysia-plugin'
 import type { db as DbType } from '@/db/client'
-import { incrementRateLimit, decrementRateLimit, deleteRateLimitByIp, deleteAllRateLimits } from '@/dal'
+import { rateLimits } from '@/db/rate-limit-schema'
 import { extractClientIp } from '@/utils/request'
-import { rateLimit, type Context as RateLimitContext, type Options } from 'elysia-rate-limit'
+import { Elysia } from 'elysia'
+import { RateLimiterDrizzle, RateLimiterRes } from 'rate-limiter-flexible'
 
-/**
- * Postgres-backed rate limit context for elysia-rate-limit.
- * Uses an atomic UPSERT query with a sliding window per IP.
- * Keys are prefixed with a tier name to prevent counter interference across tiers.
- */
-export class PostgresRateLimitContext implements RateLimitContext {
-  private duration = 60_000
-  private database: typeof DbType
-  private tier: string
+type RateLimitTier = 'inference' | 'auth' | 'standard'
 
-  constructor(database: typeof DbType, tier = 'standard') {
-    this.database = database
-    this.tier = tier
-  }
-
-  init(options: Omit<Options, 'context'>) {
-    this.duration = options.duration
-  }
-
-  /** Prefix the raw IP key with the tier to isolate counters across rate limit tiers. */
-  private prefixedKey(key: string) {
-    return `${this.tier}:${key}`
-  }
-
-  async increment(key: string) {
-    const prefixed = this.prefixedKey(key)
-    const durationSecs = this.duration / 1000
-    const row = await incrementRateLimit(this.database, prefixed, durationSecs)
-    const nextReset = new Date(row.windowStart.getTime() + this.duration)
-
-    return { count: row.count, nextReset }
-  }
-
-  async decrement(key: string) {
-    const prefixed = this.prefixedKey(key)
-    await decrementRateLimit(this.database, prefixed)
-  }
-
-  async reset(key?: string) {
-    if (key) {
-      const prefixed = this.prefixedKey(key)
-      await deleteRateLimitByIp(this.database, prefixed)
-    } else {
-      await deleteAllRateLimits(this.database)
-    }
-  }
-
-  kill() {
-    // No-op — uses the shared database connection
-  }
-}
-
-type RateLimitTier = {
+type RateLimitTierConfig = {
   max: number
-  duration: number
+  durationSecs: number
 }
 
-type RateLimitSettings = {
+export type RateLimitSettings = {
   enabled: boolean
-  inference: RateLimitTier
-  auth: RateLimitTier
-  standard: RateLimitTier
+  inference: RateLimitTierConfig
+  auth: RateLimitTierConfig
+  standard: RateLimitTierConfig
 }
 
 const exemptPaths = new Set(['/v1/health', '/v1/posthog/config', '/v1/posthog/events'])
@@ -82,45 +34,109 @@ const rateLimitedAuthPrefixes = [
   '/v1/api/auth/reset-password',
 ]
 
-/** Create a rate limiter scoped to a specific tier. */
-const createTieredRateLimit = (
-  database: typeof DbType,
-  tierName: string,
-  tier: RateLimitTier,
-  skip?: (req: Request) => boolean,
-) =>
-  rateLimit({
-    max: tier.max,
-    duration: tier.duration,
-    scoping: 'scoped',
-    context: new PostgresRateLimitContext(database, tierName),
-    generator: (req, server) => extractClientIp(req.headers, server?.requestIP(req)?.address ?? 'unknown'),
-    errorResponse: new Response(JSON.stringify({ error: 'Too many requests. Please try again later.' }), {
-      status: 429,
-      headers: { 'Content-Type': 'application/json' },
-    }),
-    skip: skip ? (req) => skip(req) : undefined,
+/** Create a rate-limiter-flexible instance for a specific tier. */
+const createLimiter = (database: typeof DbType, tier: RateLimitTier, config: RateLimitTierConfig) =>
+  new RateLimiterDrizzle({
+    storeClient: database,
+    schema: rateLimits,
+    keyPrefix: tier,
+    points: config.max,
+    duration: config.durationSecs,
+    clearExpiredByTimeout: true,
   })
 
-/** Create rate limit middleware for inference routes. */
-export const createInferenceRateLimit = (database: typeof DbType, settings: RateLimitSettings) => {
-  if (!settings.enabled) return rateLimit({ max: Number.MAX_SAFE_INTEGER, duration: 1 })
-  return createTieredRateLimit(database, 'inference', settings.inference)
+/** Set rate limit response headers. */
+const setRateLimitHeaders = (
+  headers: Record<string, string | string[] | number>,
+  limit: number,
+  remaining: number,
+  resetSecs: number,
+) => {
+  headers['RateLimit-Limit'] = String(limit)
+  headers['RateLimit-Remaining'] = String(remaining)
+  headers['RateLimit-Reset'] = String(resetSecs)
 }
 
-/** Create rate limit middleware for auth routes (only credential-based sign-in/sign-up). */
+/** Extract client IP from request. */
+const getClientIp = (req: Request, server: Elysia['server']): string =>
+  extractClientIp(req.headers, server?.requestIP(req)?.address ?? 'unknown')
+
+/**
+ * Build an IP-based rate limit middleware (no auth context needed).
+ * Used for unauthenticated routes like auth endpoints and the global standard limit.
+ */
+const createIpRateLimitMiddleware = (limiter: RateLimiterDrizzle, skip?: (req: Request) => boolean) =>
+  new Elysia()
+    .onBeforeHandle(async ({ request, set, server }) => {
+      if (skip?.(request)) return
+
+      const key = getClientIp(request, server)
+
+      try {
+        const res = await limiter.consume(key)
+        setRateLimitHeaders(set.headers, limiter.points, res.remainingPoints, Math.ceil(res.msBeforeNext / 1000))
+      } catch (err) {
+        if (err instanceof RateLimiterRes) {
+          set.status = 429
+          set.headers['Retry-After'] = String(Math.ceil(err.msBeforeNext / 1000))
+          setRateLimitHeaders(set.headers, limiter.points, 0, Math.ceil(err.msBeforeNext / 1000))
+          return { error: 'Too many requests. Please try again later.' }
+        }
+        throw err
+      }
+    })
+    .as('scoped')
+
+/**
+ * Build a user-based rate limit middleware for authenticated routes.
+ * Keys on user:<userId> when the session guard has derived a user,
+ * falls back to ip:<address> defensively.
+ * Must be .use()'d AFTER createSessionGuard so the user is derived.
+ */
+const createUserRateLimitMiddleware = (limiter: RateLimiterDrizzle, auth: Auth) =>
+  new Elysia()
+    .onBeforeHandle(async ({ request, set, server }) => {
+      // Try to get user from session for per-user keying
+      const session = await auth.api.getSession({ headers: request.headers })
+      const key = session?.user?.id ? `user:${session.user.id}` : `ip:${getClientIp(request, server)}`
+
+      try {
+        const res = await limiter.consume(key)
+        setRateLimitHeaders(set.headers, limiter.points, res.remainingPoints, Math.ceil(res.msBeforeNext / 1000))
+      } catch (err) {
+        if (err instanceof RateLimiterRes) {
+          set.status = 429
+          set.headers['Retry-After'] = String(Math.ceil(err.msBeforeNext / 1000))
+          setRateLimitHeaders(set.headers, limiter.points, 0, Math.ceil(err.msBeforeNext / 1000))
+          return { error: 'Too many requests. Please try again later.' }
+        }
+        throw err
+      }
+    })
+    .as('scoped')
+
+/** Create rate limit middleware for inference routes (keyed by user). */
+export const createInferenceRateLimit = (database: typeof DbType, settings: RateLimitSettings, auth: Auth) => {
+  if (!settings.enabled) return new Elysia()
+  const limiter = createLimiter(database, 'inference', settings.inference)
+  return createUserRateLimitMiddleware(limiter, auth)
+}
+
+/** Create rate limit middleware for auth routes (IP-based, only credential paths). */
 export const createAuthRateLimit = (database: typeof DbType, settings: RateLimitSettings) => {
-  if (!settings.enabled) return rateLimit({ max: Number.MAX_SAFE_INTEGER, duration: 1 })
-  return createTieredRateLimit(database, 'auth', settings.auth, (req) => {
+  if (!settings.enabled) return new Elysia()
+  const limiter = createLimiter(database, 'auth', settings.auth)
+  return createIpRateLimitMiddleware(limiter, (req) => {
     const path = new URL(req.url).pathname
     return !rateLimitedAuthPrefixes.some((p) => path.startsWith(p))
   })
 }
 
-/** Create rate limit middleware for standard routes. */
+/** Create rate limit middleware for standard routes (IP-based, health/posthog exempt). */
 export const createStandardRateLimit = (database: typeof DbType, settings: RateLimitSettings) => {
-  if (!settings.enabled) return rateLimit({ max: Number.MAX_SAFE_INTEGER, duration: 1 })
-  return createTieredRateLimit(database, 'standard', settings.standard, (req) => {
+  if (!settings.enabled) return new Elysia()
+  const limiter = createLimiter(database, 'standard', settings.standard)
+  return createIpRateLimitMiddleware(limiter, (req) => {
     const path = new URL(req.url).pathname
     return exemptPaths.has(path) || exemptPrefixes.some((p) => path.startsWith(p))
   })

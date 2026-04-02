@@ -61,9 +61,9 @@ export const createApp = async (deps?: AppDeps) => {
 
   const rateLimitSettings = {
     enabled: settings.rateLimitEnabled,
-    inference: { max: settings.rateLimitInferenceMax, duration: 60_000 },
-    auth: { max: settings.rateLimitAuthMax, duration: 900_000 },
-    standard: { max: settings.rateLimitStandardMax, duration: 60_000 },
+    inference: { max: settings.rateLimitInferenceMax, durationSecs: 60 },
+    auth: { max: settings.rateLimitAuthMax, durationSecs: 900 },
+    standard: { max: settings.rateLimitStandardMax, durationSecs: 60 },
   }
 
   // Auth routes with stricter rate limit (e.g. 10 req / 15 min)
@@ -71,10 +71,10 @@ export const createApp = async (deps?: AppDeps) => {
     .use(createAuthRateLimit(database, rateLimitSettings))
     .use(betterAuthPlugin)
 
-  // Inference routes with dedicated rate limit (e.g. 20 req / min)
+  // Inference routes with dedicated per-user rate limit (e.g. 20 req / min)
   const inferenceRoutesWithRateLimit = new Elysia()
-    .use(createInferenceRateLimit(database, rateLimitSettings))
     .use(createInferenceRoutes(auth))
+    .use(createInferenceRateLimit(database, rateLimitSettings, auth))
 
   return (
     configuredApp

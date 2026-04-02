@@ -1,5 +1,5 @@
 {
-  "id": "ca2400e9-d518-4160-88ae-753a561df881",
+  "id": "cdf9b0ad-807b-4608-87f0-9cb22f856ea5",
   "prevId": "ecf5ee13-2450-47c3-8f58-384d5f801407",
   "version": "7",
   "dialect": "postgresql",
@@ -1716,25 +1716,24 @@
       "name": "rate_limits",
       "schema": "",
       "columns": {
-        "ip": {
-          "name": "ip",
+        "key": {
+          "name": "key",
           "type": "text",
           "primaryKey": true,
           "notNull": true
         },
-        "count": {
-          "name": "count",
+        "points": {
+          "name": "points",
           "type": "integer",
           "primaryKey": false,
           "notNull": true,
-          "default": 1
+          "default": 0
         },
-        "window_start": {
-          "name": "window_start",
+        "expire": {
+          "name": "expire",
           "type": "timestamp with time zone",
           "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
+          "notNull": false
         }
       },
       "indexes": {},

@@ -12,6 +12,8 @@
   "dependencies": {
     "@base-ui/react": "1.3.0",
     "@fontsource-variable/inter": "5.2.8",
+    "@fontsource-variable/mona-sans": "^5.2.8",
+    "@fontsource/space-mono": "^5.2.9",
     "@tailwindcss/vite": "4.2.2",
     "class-variance-authority": "0.7.1",
     "clsx": "2.1.1",

@@ -169,13 +169,13 @@ describe('Utils - Request', () => {
         expect(extractClientIp(headers, 'unknown', 'cloudflare')).toBe('198.51.100.1')
       })
 
-      it('should fall back to XFF rightmost when CF header is absent', () => {
-        const headers = new Headers({ 'x-forwarded-for': 'spoofed, 10.0.0.1, 203.0.113.42' })
+      it('should fall back to XFF leftmost (client IP) when CF header is absent', () => {
+        const headers = new Headers({ 'x-forwarded-for': '203.0.113.42, 10.0.0.1, 172.16.0.1' })
         expect(extractClientIp(headers, 'unknown', 'cloudflare')).toBe('203.0.113.42')
       })
 
       it('should trim whitespace from X-Forwarded-For', () => {
-        const headers = new Headers({ 'x-forwarded-for': '10.0.0.1,  203.0.113.42 ' })
+        const headers = new Headers({ 'x-forwarded-for': '  203.0.113.42 , 10.0.0.1' })
         expect(extractClientIp(headers, 'unknown', 'cloudflare')).toBe('203.0.113.42')
       })
 

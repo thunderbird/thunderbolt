@@ -66,7 +66,7 @@ export const extractClientIp = (
   }
 
   const xff = headers.get('x-forwarded-for')
-  if (xff) return xff.split(',').at(-1)!.trim()
+  if (xff) return xff.split(',').at(0)!.trim()
 
   return headers.get('x-real-ip') || fallback
 }

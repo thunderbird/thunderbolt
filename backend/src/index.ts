@@ -20,6 +20,7 @@ import { createProToolsRoutes } from '@/pro/routes'
 import { createWaitlistRoutes } from '@/waitlist/routes'
 import { createAccountRoutes } from '@/api/account'
 import { createPowerSyncRoutes } from '@/api/powersync'
+import { createSessionGuard } from '@/middleware/session-guard'
 import type { AppDeps } from '@/types'
 import { cors } from '@elysiajs/cors'
 import { Elysia } from 'elysia'
@@ -79,14 +80,18 @@ export const createApp = async (deps?: AppDeps) => {
     .use(betterAuthPlugin)
 
   // Pro tool routes with per-user rate limit
+  // Session guard must be at the same level as the rate limiter so `user` is
+  // visible to the rate-limit onBeforeHandle (scoped plugins don't leak upward).
   const proRoutesWithRateLimit = new Elysia()
-    .use(createProToolsRoutes(auth, fetchFn))
+    .use(createSessionGuard(auth))
     .use(createProRateLimit(database, rateLimitSettings))
+    .use(createProToolsRoutes(fetchFn))
 
   // Inference routes with dedicated per-user rate limit (e.g. 20 req / min)
   const inferenceRoutesWithRateLimit = new Elysia()
-    .use(createInferenceRoutes(auth))
+    .use(createSessionGuard(auth))
     .use(createInferenceRateLimit(database, rateLimitSettings))
+    .use(createInferenceRoutes())
 
   return (
     configuredApp

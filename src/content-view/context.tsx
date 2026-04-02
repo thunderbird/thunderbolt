@@ -15,13 +15,11 @@ type ContentViewState =
   | { type: null; data: null }
   | { type: 'object-view'; data: ObjectViewData }
   | { type: 'preview'; data: SidebarWebviewConfig }
-  | { type: 'sideview'; data: { sideviewType: string; sideviewId: string } }
 
 type ContentViewContextType = {
   state: ContentViewState
   showObjectView: (content: ToolUIPart | ReasoningUIPart) => void
   showPreview: (url: string) => void
-  showSideview: (sideviewType: string | null, sideviewId: string | null) => void
   close: () => void
   isOpen: boolean
   previewHidden: boolean
@@ -30,28 +28,15 @@ type ContentViewContextType = {
 
 const ContentViewContext = createContext<ContentViewContextType | undefined>(undefined)
 
-type ContentViewProviderProps = {
-  children: ReactNode
-  initialSideviewType?: string | null
-  initialSideviewId?: string | null
-}
-
 /**
  * Unified provider for managing the content view
  *
  * The content view can display:
  * - Object views (tool call results)
  * - Webview previews (link previews)
- * - Sideviews (email detail, task detail, etc)
- *
- * Optionally accepts initial sideview state to open on mount
  */
-export const ContentViewProvider = ({ children, initialSideviewType, initialSideviewId }: ContentViewProviderProps) => {
-  const [state, setState] = useState<ContentViewState>(() =>
-    initialSideviewType && initialSideviewId
-      ? { type: 'sideview' as const, data: { sideviewType: initialSideviewType, sideviewId: initialSideviewId } }
-      : { type: null, data: null },
-  )
+export const ContentViewProvider = ({ children }: { children: ReactNode }) => {
+  const [state, setState] = useState<ContentViewState>({ type: null, data: null })
   const [previewHidden, setPreviewHidden] = useState(false)
   const { isMobile } = useIsMobile()
   const prevIsMobile = useRef(isMobile)
@@ -93,18 +78,6 @@ export const ContentViewProvider = ({ children, initialSideviewType, initialSide
     })
   }, [])
 
-  const showSideview = useCallback((sideviewType: string | null, sideviewId: string | null) => {
-    if (sideviewType === null || sideviewId === null) {
-      setState({ type: null, data: null })
-    } else {
-      trackEvent('content_view_open', { view_type: 'sideview', sideview_type: sideviewType })
-      setState({
-        type: 'sideview',
-        data: { sideviewType, sideviewId },
-      })
-    }
-  }, [])
-
   const close = useCallback(() => {
     if (state.type !== null) {
       trackEvent('content_view_close', { view_type: state.type })
@@ -127,7 +100,6 @@ export const ContentViewProvider = ({ children, initialSideviewType, initialSide
         state,
         showObjectView,
         showPreview,
-        showSideview,
         close,
         isOpen: state.type !== null,
         previewHidden,
@@ -178,13 +150,4 @@ export const useShowPreview = (): ((url: string) => void) | undefined => {
 /** Returns setPreviewHidden when inside ContentViewProvider, undefined otherwise. */
 export const useSetPreviewHidden = (): ((hidden: boolean) => void) | undefined => {
   return useContext(ContentViewContext)?.setPreviewHidden
-}
-
-export const useSideview = () => {
-  const { showSideview, state } = useContentView()
-  return {
-    sideviewType: state.type === 'sideview' ? state.data.sideviewType : null,
-    sideviewId: state.type === 'sideview' ? state.data.sideviewId : null,
-    setSideview: showSideview,
-  }
 }

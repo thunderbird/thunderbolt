@@ -222,10 +222,7 @@ export const App = () => {
                       <MCPProvider>
                         <HapticsProvider>
                           <SidebarProvider>
-                            <ContentViewProvider
-                              initialSideviewType={initData.sideviewType}
-                              initialSideviewId={initData.sideviewId}
-                            >
+                            <ContentViewProvider>
                               <ExternalLinkDialogProvider>
                                 <AppContent initData={initData} />
                               </ExternalLinkDialogProvider>

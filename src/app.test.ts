@@ -13,7 +13,7 @@ describe('dev-only routes are excluded from production builds', () => {
 
   for (const route of devRoutes) {
     it(`${route} route is guarded by import.meta.env.DEV`, () => {
-      const routePattern = new RegExp(`import\\.meta\\.env\\.DEV\\s*&&\\s*<Route[^>]*path=["']${route}["']`)
+      const routePattern = new RegExp(`import\\.meta\\.env\\.DEV\\s*&&\\s*\\(?\\s*<Route[^>]*path=["']${route}["']`)
       expect(appSource).toMatch(routePattern)
     })
 

@@ -6,7 +6,9 @@
 export const waitForOAuthCallback = (popup: Window | null): Promise<{ code: string; state: string }> =>
   new Promise<{ code: string; state: string }>((resolve, reject) => {
     const handler = (event: MessageEvent) => {
-      if (event.origin !== window.location.origin) return
+      if (event.origin !== window.location.origin) {
+        return
+      }
       if (event.data?.type === 'oauth-callback') {
         window.removeEventListener('message', handler)
         if (popup && !popup.closed) {

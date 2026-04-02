@@ -6,7 +6,7 @@ import { createProxyRoutes } from './proxy'
 import * as settingsModule from '@/config/settings'
 
 describe('Proxy Routes', () => {
-  let app: Elysia
+  let app: { handle: Elysia['handle'] }
   let getSettingsSpy: ReturnType<typeof spyOn>
   let consoleSpies: ConsoleSpies
   let mockFetch: ReturnType<typeof mock>

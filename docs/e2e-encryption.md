@@ -2,7 +2,7 @@
 
 Thunderbolt uses zero-knowledge end-to-end encryption: all user data is encrypted client-side before upload and decrypted client-side after sync download. The server stores only ciphertext and wrapped keys — it cannot read user data even if compelled or breached.
 
-Cryptographic primitives: **RSA-OAEP 2048-bit** device key pairs, **AES-256-GCM** content key (CK) with 12-byte random IV per field value. Authentication is email + 2FA. No additional passphrase or PIN. The **recovery key** (a 24-word BIP-39 mnemonic) is the only user-managed secret.
+Cryptographic primitives: **ECDH P-256 (ECIES)** device key pairs with ephemeral key agreement, **AES-256-GCM** content key (CK) with 12-byte random IV per field value, **AES-KW** for key wrapping, **HKDF-SHA-256** for key derivation. Authentication is email + 2FA. No additional passphrase or PIN. The **recovery key** (a 24-word BIP-39 mnemonic) is the only user-managed secret.
 
 For the sync pipeline integration (how encrypted data flows through PowerSync), see [powersync-sync-middleware.md](powersync-sync-middleware.md).
 
@@ -12,9 +12,9 @@ For the sync pipeline integration (how encrypted data flows through PowerSync), 
 
 | Concept | Description |
 | --- | --- |
-| **Device key pair** | Each device generates its own RSA-OAEP public/private key pair when the user first enables sync. The private key never leaves the device. Stored in IndexedDB as non-extractable CryptoKey. |
+| **Device key pair** | Each device generates its own ECDH P-256 key pair when the user first enables sync. The private key never leaves the device. Stored in IndexedDB as non-extractable CryptoKey. |
 | **Content key (CK)** | A single AES-256-GCM key that encrypts all user data. Identical across all devices. Stored in IndexedDB as non-extractable CryptoKey after first setup. |
-| **Device envelope** | CK wrapped with a specific device's public key. Stored server-side in a non-syncable table. Only that device's private key can unwrap it. |
+| **Device envelope** | CK wrapped using ECIES: an ephemeral ECDH key pair derives a shared secret with the device's public key via HKDF, then AES-KW wraps CK. The envelope (ephemeral public key + wrapped CK) is stored server-side in a non-syncable table. Only that device's private key can unwrap it. |
 | **Recovery key** | CK encoded as a 24-word BIP-39 mnemonic. Shown once at first setup. The only way to access data if all devices are lost. |
 | **Canary** | A fixed plaintext (`thunderbolt-canary-v1`) encrypted with CK and stored server-side. Used to verify a recovery key is correct before creating a new envelope. Also used by the FE to detect whether encryption has been set up for an account (`GET /encryption/canary` returns 404 if not). |
 
@@ -22,7 +22,7 @@ For the sync pipeline integration (how encrypted data flows through PowerSync), 
 
 ## Key Hierarchy
 
-Each device has its own private key. CK — which encrypts all data — is wrapped separately for each device using that device's public key. Each device unwraps its own envelope with its own private key and arrives at the same CK. Different paths, identical result. No device ever sees another device's private key. The server never sees any private key.
+Each device has its own ECDH P-256 private key. CK — which encrypts all data — is wrapped separately for each device using the ECIES pattern: an ephemeral key pair is generated, a shared secret is derived with the target device's public key, and AES-KW wraps CK with the HKDF-derived wrapping key. Each device unwraps its own envelope with its own private key and arrives at the same CK. Different paths, identical result. No device ever sees another device's private key. The server never sees any private key.
 
 ```
                          ┌─────────────────────────┐
@@ -118,7 +118,7 @@ Synced to all trusted devices via PowerSync. Contains device identity — no key
 | `user_id` | text (FK → users) | |
 | `name` | text | e.g. "Chrome on MacBook" (encrypted) |
 | `trusted` | boolean | `false` = pending approval, `true` = has envelope and can sync. Revocation tracked by `revoked_at`. |
-| `public_key` | text | Base64 RSA public key — set when user enables sync. `null` for pre-encryption devices. |
+| `public_key` | text | Base64 ECDH P-256 public key (raw format, 65 bytes) — set when user enables sync. `null` for pre-encryption devices. |
 | `last_seen` | timestamp | |
 | `created_at` | timestamp | |
 | `revoked_at` | timestamp | When set, device is revoked regardless of `trusted` value. |
@@ -131,7 +131,7 @@ One row per trusted device. Each device fetches only its own row via API — nev
 | --- | --- | --- |
 | `device_id` | text (PK, FK → devices) | |
 | `user_id` | text (FK → users) | Indexed for fast lookup |
-| `wrapped_ck` | text | Base64 — CK wrapped with this device's public key |
+| `wrapped_ck` | text | Base64 ECIES envelope — ephemeral public key (65 bytes) + AES-KW wrapped CK (40 bytes) |
 | `created_at` | timestamp | |
 | `updated_at` | timestamp | |
 
@@ -160,8 +160,8 @@ powersync_sync_enabled      string    "true" | "false"
 
 IndexedDB — database: thunderbolt-keys, store: keys
 ─────────────────────────────────────────────────────────────
-thunderbolt_private_key     CryptoKey    extractable: false, usage: unwrapKey
-thunderbolt_public_key      CryptoKey    extractable: false, usage: wrapKey
+thunderbolt_private_key     CryptoKey    extractable: false, usage: deriveBits (ECDH P-256)
+thunderbolt_public_key      CryptoKey    extractable: true,  usage: [] (ECDH P-256)
 thunderbolt_ck              CryptoKey    extractable: false, usage: encrypt/decrypt/wrapKey
 ```
 
@@ -475,7 +475,7 @@ The codec (`src/db/encryption/codec.ts`) lazy-loads CK from IndexedDB on first a
 
 | File | Role |
 | --- | --- |
-| `src/crypto/primitives.ts` | RSA-OAEP and AES-256-GCM operations |
+| `src/crypto/primitives.ts` | ECDH P-256 ECIES key wrapping and AES-256-GCM operations |
 | `src/crypto/key-storage.ts` | IndexedDB key storage (key pair, CK) |
 | `src/crypto/canary.ts` | Canary creation and verification |
 | `src/crypto/recovery-key.ts` | BIP-39 mnemonic encoding/decoding |

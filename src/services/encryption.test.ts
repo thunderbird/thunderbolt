@@ -19,7 +19,9 @@ const cryptoMocks = {
   rewrapCK: mock(async () => 'mock-rewrapped-ck'),
   unwrapCK: mock(async () => mockCK),
   createCanary: mock(async () => ({ canaryIv: 'mock-iv', canaryCtext: 'mock-ctext', canarySecret: 'mock-secret' })),
-  verifyCanary: mock(async () => ({ valid: true, canarySecret: 'mock-secret' })),
+  verifyCanary: mock(
+    async () => ({ valid: true, canarySecret: 'mock-secret' }) as { valid: boolean; canarySecret?: string },
+  ),
   encodeRecoveryKey: mock(async () => 'a'.repeat(64)),
   decodeRecoveryKey: mock(async () => mockCK),
   encrypt: mock(async () => ({ iv: '', ciphertext: '' })),

@@ -112,7 +112,7 @@ const deleteKeys = async (ids: string[]): Promise<void> => {
 }
 
 // =============================================================================
-// Key pair (RSA-OAEP)
+// Key pair (ECDH P-256)
 // =============================================================================
 
 /** Store the device key pair in IndexedDB (single atomic transaction). */

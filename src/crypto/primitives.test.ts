@@ -13,11 +13,11 @@ import {
 } from './primitives'
 
 describe('generateKeyPair', () => {
-  it('generates an RSA-OAEP key pair', async () => {
+  it('generates an ECDH P-256 key pair', async () => {
     const keyPair = await generateKeyPair()
     expect(keyPair.publicKey).toBeDefined()
     expect(keyPair.privateKey).toBeDefined()
-    expect(keyPair.publicKey.algorithm.name).toBe('RSA-OAEP')
+    expect(keyPair.publicKey.algorithm.name).toBe('ECDH')
     expect(keyPair.privateKey.extractable).toBe(false)
   })
 })
@@ -52,7 +52,7 @@ describe('exportPublicKey / importPublicKey', () => {
     expect(exported.length).toBeGreaterThan(0)
 
     const imported = await importPublicKey(exported)
-    expect(imported.algorithm.name).toBe('RSA-OAEP')
+    expect(imported.algorithm.name).toBe('ECDH')
   })
 })
 
@@ -93,6 +93,24 @@ describe('wrapCK / unwrapCK', () => {
     const wrapped1 = await wrapCK(ck, keyPair1.publicKey)
     const wrapped2 = await wrapCK(ck, keyPair2.publicKey)
     expect(wrapped1).not.toBe(wrapped2)
+  })
+
+  it('produces different wrapped values for the same key pair (ephemeral key)', async () => {
+    const keyPair = await generateKeyPair()
+    const ck = await generateCK(true)
+
+    const wrapped1 = await wrapCK(ck, keyPair.publicKey)
+    const wrapped2 = await wrapCK(ck, keyPair.publicKey)
+    expect(wrapped1).not.toBe(wrapped2)
+  })
+
+  it('produces compact ECIES envelopes', async () => {
+    const keyPair = await generateKeyPair()
+    const ck = await generateCK(true)
+    const wrapped = await wrapCK(ck, keyPair.publicKey)
+
+    // 105 bytes raw = 140 chars base64
+    expect(wrapped.length).toBe(140)
   })
 })
 

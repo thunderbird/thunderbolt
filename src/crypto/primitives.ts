@@ -1,33 +1,31 @@
 import { DecryptionError, EncryptionError } from './errors'
 
-const rsaAlgorithm = 'RSA-OAEP'
-const rsaModulusLength = 2048
-const rsaHash = 'SHA-256'
+const ecdhAlgorithm = 'ECDH'
+const ecdhCurve = 'P-256'
+const ephemeralPubKeyLength = 65 // P-256 uncompressed: 0x04 || x (32) || y (32)
 const aesAlgorithm = 'AES-GCM'
 const aesKeyLength = 256
 const ivLength = 12
+const hkdfHash = 'SHA-256'
+const hkdfInfo = new TextEncoder().encode('thunderbolt-ck-wrap-v1')
 
 // =============================================================================
-// RSA key pair (for wrapping/unwrapping CK)
+// ECDH key pair (for wrapping/unwrapping CK via ECIES)
 // =============================================================================
 
-/** Generate an RSA-OAEP 2048-bit key pair for wrapping/unwrapping CK. */
+/** Generate an ECDH P-256 key pair for wrapping/unwrapping CK. */
 export const generateKeyPair = async (): Promise<CryptoKeyPair> =>
-  crypto.subtle.generateKey(
-    { name: rsaAlgorithm, modulusLength: rsaModulusLength, publicExponent: new Uint8Array([1, 0, 1]), hash: rsaHash },
-    false, // non-extractable
-    ['wrapKey', 'unwrapKey'],
-  )
+  crypto.subtle.generateKey({ name: ecdhAlgorithm, namedCurve: ecdhCurve }, false, ['deriveBits'])
 
 /** Export a public key to base64 (for sending to the server). */
 export const exportPublicKey = async (publicKey: CryptoKey): Promise<string> => {
-  const exported = await crypto.subtle.exportKey('spki', publicKey)
+  const exported = await crypto.subtle.exportKey('raw', publicKey)
   return uint8ArrayToBase64(new Uint8Array(exported))
 }
 
 /** Import a public key from base64 (for wrapping CK with another device's key). */
 export const importPublicKey = async (base64: string): Promise<CryptoKey> =>
-  crypto.subtle.importKey('spki', base64ToUint8Array(base64), { name: rsaAlgorithm, hash: rsaHash }, false, ['wrapKey'])
+  crypto.subtle.importKey('raw', base64ToUint8Array(base64), { name: ecdhAlgorithm, namedCurve: ecdhCurve }, true, [])
 
 // =============================================================================
 // AES-256-GCM Content Key (CK)
@@ -58,14 +56,47 @@ export const reimportAsNonExtractable = async (ck: CryptoKey): Promise<CryptoKey
 }
 
 // =============================================================================
-// Wrap / Unwrap CK with RSA
+// ECIES: Wrap / Unwrap CK with ECDH P-256 + HKDF + AES-KW
 // =============================================================================
 
-/** Wrap CK with a device's public key. Returns base64. */
+/**
+ * Derive an AES-KW wrapping key from an ECDH shared secret via HKDF.
+ * Used internally by wrap and unwrap operations.
+ */
+const deriveWrappingKey = async (
+  privateKey: CryptoKey,
+  publicKey: CryptoKey,
+  ephPubRaw: Uint8Array,
+  usage: 'wrapKey' | 'unwrapKey',
+): Promise<CryptoKey> => {
+  const sharedBits = await crypto.subtle.deriveBits({ name: ecdhAlgorithm, public: publicKey }, privateKey, 256)
+  const hkdfKey = await crypto.subtle.importKey('raw', sharedBits, 'HKDF', false, ['deriveKey'])
+  return crypto.subtle.deriveKey(
+    { name: 'HKDF', hash: hkdfHash, salt: ephPubRaw as BufferSource, info: hkdfInfo },
+    hkdfKey,
+    { name: 'AES-KW', length: 256 },
+    false,
+    [usage],
+  )
+}
+
+/**
+ * Wrap CK with a device's public key using ECIES (ephemeral ECDH + HKDF + AES-KW).
+ * Returns base64-encoded envelope: ephemeralPubKey (65 bytes) || wrappedCK (40 bytes).
+ */
 export const wrapCK = async (ck: CryptoKey, publicKey: CryptoKey): Promise<string> => {
   try {
-    const wrapped = await crypto.subtle.wrapKey('raw', ck, publicKey, { name: rsaAlgorithm })
-    return uint8ArrayToBase64(new Uint8Array(wrapped))
+    const ephemeral = await crypto.subtle.generateKey({ name: ecdhAlgorithm, namedCurve: ecdhCurve }, false, [
+      'deriveBits',
+    ])
+    const ephPubRaw = new Uint8Array(await crypto.subtle.exportKey('raw', ephemeral.publicKey))
+    const wrappingKey = await deriveWrappingKey(ephemeral.privateKey, publicKey, ephPubRaw, 'wrapKey')
+    const wrappedCKBytes = new Uint8Array(await crypto.subtle.wrapKey('raw', ck, wrappingKey, 'AES-KW'))
+
+    const envelope = new Uint8Array(ephPubRaw.length + wrappedCKBytes.length)
+    envelope.set(ephPubRaw, 0)
+    envelope.set(wrappedCKBytes, ephPubRaw.length)
+    return uint8ArrayToBase64(envelope)
   } catch (err) {
     throw new EncryptionError('Failed to wrap content key', { cause: err })
   }
@@ -82,33 +113,50 @@ export const rewrapCK = async (
   targetPublicKey: CryptoKey,
 ): Promise<string> => {
   try {
-    const tempCK = await crypto.subtle.unwrapKey(
-      'raw',
-      base64ToUint8Array(wrappedCKBase64),
-      privateKey,
-      { name: rsaAlgorithm },
-      { name: aesAlgorithm, length: aesKeyLength },
-      true,
-      ['encrypt', 'decrypt'],
-    )
-    const wrapped = await crypto.subtle.wrapKey('raw', tempCK, targetPublicKey, { name: rsaAlgorithm })
-    return uint8ArrayToBase64(new Uint8Array(wrapped))
+    const tempCK = await unwrapCKInternal(wrappedCKBase64, privateKey, true)
+    return wrapCK(tempCK, targetPublicKey)
   } catch (err) {
+    if (err instanceof EncryptionError) {
+      throw err
+    }
     throw new EncryptionError('Failed to rewrap content key', { cause: err })
   }
 }
 
 /** Unwrap CK from base64 using a device's private key. Returns non-extractable CryptoKey. */
-export const unwrapCK = async (wrappedBase64: string, privateKey: CryptoKey): Promise<CryptoKey> => {
+export const unwrapCK = async (wrappedBase64: string, privateKey: CryptoKey): Promise<CryptoKey> =>
+  unwrapCKInternal(wrappedBase64, privateKey, false)
+
+/**
+ * Internal unwrap with configurable extractability.
+ * extractable=true is used only in rewrapCK (temporary, in-memory only).
+ */
+const unwrapCKInternal = async (
+  wrappedBase64: string,
+  privateKey: CryptoKey,
+  extractable: boolean,
+): Promise<CryptoKey> => {
   try {
+    const envelope = base64ToUint8Array(wrappedBase64)
+    const ephPubRaw = envelope.slice(0, ephemeralPubKeyLength)
+    const wrappedCKBytes = envelope.slice(ephemeralPubKeyLength)
+
+    const ephemeralPublicKey = await crypto.subtle.importKey(
+      'raw',
+      ephPubRaw,
+      { name: ecdhAlgorithm, namedCurve: ecdhCurve },
+      false,
+      [],
+    )
+    const unwrappingKey = await deriveWrappingKey(privateKey, ephemeralPublicKey, ephPubRaw, 'unwrapKey')
     return await crypto.subtle.unwrapKey(
       'raw',
-      base64ToUint8Array(wrappedBase64),
-      privateKey,
-      { name: rsaAlgorithm },
+      wrappedCKBytes,
+      unwrappingKey,
+      'AES-KW',
       { name: aesAlgorithm, length: aesKeyLength },
-      false, // non-extractable
-      ['encrypt', 'decrypt', 'wrapKey', 'unwrapKey'],
+      extractable,
+      extractable ? ['encrypt', 'decrypt'] : ['encrypt', 'decrypt', 'wrapKey', 'unwrapKey'],
     )
   } catch (err) {
     throw new DecryptionError('Failed to unwrap content key', { cause: err })

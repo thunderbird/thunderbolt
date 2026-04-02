@@ -8,34 +8,7 @@
 
 @theme {
   --font-sans: 'Mona Sans Variable', 'Inter Variable', system-ui, -apple-system, sans-serif;
-  --font-brand: 'Inter Variable', system-ui, sans-serif;
   --font-mono: 'Space Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-
-  --color-thunderbolt-50: #eff6ff;
-  --color-thunderbolt-100: #dbeafe;
-  --color-thunderbolt-200: #bfdbfe;
-  --color-thunderbolt-300: #93c5fd;
-  --color-thunderbolt-400: #60a5fa;
-  --color-thunderbolt-500: #3b82f6;
-  --color-thunderbolt-600: #2563eb;
-  --color-thunderbolt-700: #1d4ed8;
-  --color-thunderbolt-800: #1e40af;
-  --color-thunderbolt-900: #1e3a8a;
-  --color-thunderbolt-950: #0f1d4a;
-
-  --color-surface: #ffffff;
-  --color-surface-secondary: #f8fafc;
-  --color-surface-dark: #0b1120;
-  --color-surface-dark-secondary: #111827;
-
-  --color-text-primary: #0f172a;
-  --color-text-secondary: #475569;
-  --color-text-tertiary: #94a3b8;
-  --color-text-on-dark: #f1f5f9;
-  --color-text-on-dark-secondary: #94a3b8;
-
-  --color-border: #e2e8f0;
-  --color-border-dark: #1e293b;
 }
 
 @layer base {
@@ -55,8 +28,6 @@
   body {
     margin: 0;
     font-family: var(--font-sans);
-    color: var(--color-text-primary);
-    background: var(--color-surface);
     @apply bg-background text-foreground;
   }
   * {

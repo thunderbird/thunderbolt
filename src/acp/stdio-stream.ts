@@ -36,4 +36,3 @@ export const isAgentAvailable = async (spawner: SubprocessSpawner, command: stri
   const path = await spawner.which(command)
   return path !== null
 }
-

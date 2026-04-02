@@ -102,7 +102,7 @@ const FeatureCards = () => (
       </div>
 
       {/* Choose Any Agent (or Model) */}
-      <div className="relative flex flex-col overflow-visible border-[0.5px] border-[#eaecf0]/50 bg-white/5 px-8 pt-8 pb-8 backdrop-blur-sm">
+      <div className="relative flex flex-col overflow-hidden border-[0.5px] border-[#eaecf0]/50 bg-white/5 px-8 pt-8 pb-8 backdrop-blur-sm md:overflow-visible">
         <h3 className="text-2xl font-medium leading-8 tracking-[-0.48px] text-[#101828]">
           Choose Any Agent<br />(or Model)
         </h3>

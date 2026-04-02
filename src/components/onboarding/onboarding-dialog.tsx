@@ -21,6 +21,9 @@ export const OnboardingDialog = () => {
   const { state, actions } = useOnboardingState()
 
   useEffect(() => {
+    if (import.meta.env.VITE_SKIP_ONBOARDING === 'true') {
+      return
+    }
     if (!userHasCompletedOnboarding.isLoading && !userHasCompletedOnboarding.value) {
       setIsOpen(true)
     }

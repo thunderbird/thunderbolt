@@ -21,6 +21,13 @@ const settingsSchema = z.object({
   microsoftClientId: z.string().default(''),
   microsoftClientSecret: z.string().default(''),
 
+  // OIDC Settings (enterprise self-hosted)
+  authMode: z.enum(['consumer', 'oidc']).default('consumer'),
+  oidcClientId: z.string().default(''),
+  oidcClientSecret: z.string().default(''),
+  oidcIssuer: z.string().default(''),
+  betterAuthUrl: z.string().default('http://localhost:8000'),
+
   // General settings
   logLevel: z.enum(['DEBUG', 'INFO', 'WARN', 'ERROR']).default('INFO'),
   port: z.coerce.number().default(8000),
@@ -73,6 +80,11 @@ const parseSettings = (): Settings => {
     googleClientSecret: process.env.GOOGLE_CLIENT_SECRET || '',
     microsoftClientId: process.env.MICROSOFT_CLIENT_ID || '',
     microsoftClientSecret: process.env.MICROSOFT_CLIENT_SECRET || '',
+    authMode: (process.env.AUTH_MODE || 'consumer').toLowerCase(),
+    oidcClientId: process.env.OIDC_CLIENT_ID || '',
+    oidcClientSecret: process.env.OIDC_CLIENT_SECRET || '',
+    oidcIssuer: process.env.OIDC_ISSUER || '',
+    betterAuthUrl: process.env.BETTER_AUTH_URL || 'http://localhost:8000',
     logLevel: (process.env.LOG_LEVEL || 'INFO').toUpperCase(),
     port: process.env.PORT || '8000',
     appUrl: process.env.APP_URL || 'http://localhost:1420',

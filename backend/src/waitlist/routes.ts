@@ -3,9 +3,9 @@ import { approveWaitlistEntry, createWaitlistEntry, getUserByEmail, getWaitlistB
 import type { db } from '@/db/client'
 import { normalizeEmail } from '@/lib/email'
 import { safeErrorHandler } from '@/middleware/error-handling'
-import { getWaitlistAutoApproveDomains, getSettings } from '@/config/settings'
 import { Elysia, t } from 'elysia'
 import {
+  isAutoApprovedDomain,
   sendWaitlistJoinedEmail as defaultSendJoinedEmail,
   sendWaitlistReminderEmail as defaultSendReminderEmail,
 } from './utils'
@@ -22,16 +22,6 @@ export type WaitlistEmailService = {
 const defaultEmailService: WaitlistEmailService = {
   sendJoinedEmail: defaultSendJoinedEmail,
   sendReminderEmail: defaultSendReminderEmail,
-}
-
-/**
- * Check if an email domain is in the auto-approved list.
- * Uses the last @ character to handle edge-case RFC 5321 addresses with quoted local parts.
- */
-const isAutoApprovedDomain = (email: string): boolean => {
-  const parts = email.split('@')
-  const domain = parts.length > 1 ? parts[parts.length - 1].toLowerCase() : null
-  return domain ? getWaitlistAutoApproveDomains(getSettings()).includes(domain) : false
 }
 
 /** Trigger Better Auth's OTP flow for approved users. */

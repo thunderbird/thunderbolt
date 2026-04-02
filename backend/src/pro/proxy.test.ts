@@ -58,6 +58,11 @@ describe('Proxy Routes', () => {
       powersyncJwtKid: '',
       powersyncJwtSecret: '',
       powersyncTokenExpirySeconds: 3600,
+      authMode: 'consumer' as const,
+      oidcClientId: '',
+      oidcClientSecret: '',
+      oidcIssuer: '',
+      betterAuthUrl: 'http://localhost:8000',
     })
 
     // Create mock fetch

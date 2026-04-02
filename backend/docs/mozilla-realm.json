@@ -1,0 +1,66 @@
+{
+  "realm": "mozilla",
+  "enabled": true,
+  "sslRequired": "none",
+  "registrationAllowed": false,
+  "loginWithEmailAllowed": true,
+  "duplicateEmailsAllowed": false,
+  "resetPasswordAllowed": false,
+  "editUsernameAllowed": false,
+  "bruteForceProtected": true,
+  "clients": [
+    {
+      "clientId": "thunderbolt-app",
+      "enabled": true,
+      "clientAuthenticatorType": "client-secret",
+      "secret": "thunderbolt-dev-secret",
+      "redirectUris": [
+        "http://localhost:8000/v1/api/auth/oauth2/callback/oidc"
+      ],
+      "webOrigins": [
+        "http://localhost:1420"
+      ],
+      "standardFlowEnabled": true,
+      "directAccessGrantsEnabled": false,
+      "publicClient": false,
+      "protocol": "openid-connect",
+      "defaultClientScopes": [
+        "openid",
+        "profile",
+        "email"
+      ]
+    }
+  ],
+  "users": [
+    {
+      "username": "mitchell",
+      "email": "mitchell@mozilla.org",
+      "firstName": "Mitchell",
+      "lastName": "Baker",
+      "enabled": true,
+      "emailVerified": true,
+      "credentials": [
+        {
+          "type": "password",
+          "value": "password",
+          "temporary": false
+        }
+      ]
+    },
+    {
+      "username": "laura",
+      "email": "laura@mozilla.org",
+      "firstName": "Laura",
+      "lastName": "Chambers",
+      "enabled": true,
+      "emailVerified": true,
+      "credentials": [
+        {
+          "type": "password",
+          "value": "password",
+          "temporary": false
+        }
+      ]
+    }
+  ]
+}

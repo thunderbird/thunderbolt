@@ -48,9 +48,14 @@ import Loading from './loading'
 import SettingsLayout from './settings/layout'
 import type { InitData } from './types'
 import { useSettings } from './hooks/use-settings'
+import { isOidcMode } from './lib/auth-mode'
 import { isPrPreview, isTauri } from './lib/platform'
 import { getPowerSyncInstance } from './db/powersync'
-import { type ComponentProps, useEffect } from 'react'
+import { type ComponentProps, Suspense, lazy, useEffect } from 'react'
+
+// Lazily import OIDC components so non-enterprise deployments don't pay
+// for the extra bundle size and attack surface.
+const OidcRedirect = lazy(() => import('@/components/oidc-redirect'))
 
 const queryClient = new QueryClient()
 
@@ -76,6 +81,7 @@ const AppRoutes = ({ initData }: { initData: InitData }) => {
     experimental_feature_tasks: initData.experimentalFeatureTasks,
   })
 
+  const oidcMode = isOidcMode()
   const shouldBypassWaitlist = import.meta.env.VITE_BYPASS_WAITLIST === 'true' || isPrPreview()
 
   return (
@@ -84,8 +90,20 @@ const AppRoutes = ({ initData }: { initData: InitData }) => {
       <Route path="/oauth/callback" element={<OAuthCallback />} />
       <Route path="/auth/verify" element={<MagicLinkVerify />} />
 
-      {/* Waitlist routes - unauthenticated only (skip when bypass is enabled) */}
-      {!shouldBypassWaitlist && (
+      {/* OIDC redirect route — no guard, only in OIDC mode */}
+      {oidcMode && (
+        <Route
+          path="/oidc-redirect"
+          element={
+            <Suspense fallback={<Loading />}>
+              <OidcRedirect />
+            </Suspense>
+          }
+        />
+      )}
+
+      {/* Waitlist routes - unauthenticated only (skip when bypass or OIDC mode) */}
+      {!oidcMode && !shouldBypassWaitlist && (
         <Route element={<AuthGate require="unauthenticated" redirectTo="/" />}>
           <Route path="waitlist" element={<WaitlistLayout />}>
             <Route index element={<WaitlistPage />} />
@@ -94,7 +112,15 @@ const AppRoutes = ({ initData }: { initData: InitData }) => {
       )}
 
       {/* Main app routes - authenticated only (pass-through when bypass enabled) */}
-      <Route element={shouldBypassWaitlist ? <Outlet /> : <AuthGate require="authenticated" redirectTo="/waitlist" />}>
+      <Route
+        element={
+          shouldBypassWaitlist ? (
+            <Outlet />
+          ) : (
+            <AuthGate require="authenticated" redirectTo={oidcMode ? '/oidc-redirect' : '/waitlist'} />
+          )
+        }
+      >
         <Route
           path="/"
           element={
@@ -198,7 +224,7 @@ export const App = () => {
   }
 
   return (
-    <ThemeProvider defaultTheme="system" storageKey="ui_theme">
+    <ThemeProvider defaultTheme="system">
       {renderAppContent()}
       <RevokedDeviceModal open={revokedDeviceOpen} />
     </ThemeProvider>

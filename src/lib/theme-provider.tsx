@@ -1,6 +1,15 @@
+import { invoke } from '@tauri-apps/api/core'
 import { createContext, useContext, useEffect, useState, type ReactNode } from 'react'
 import { M3 } from 'tauri-plugin-m3'
 import { isTauri } from './platform'
+
+/** Sync native UI (keyboard, system controls) with the resolved theme on iOS. */
+const syncNativeInterfaceStyle = (resolvedTheme: 'dark' | 'light') => {
+  if (!isTauri()) {
+    return
+  }
+  invoke('set_interface_style', { style: resolvedTheme }).catch(console.error)
+}
 
 /**
  * Mirror theme to Tauri's plugin-store so native code can read it at startup.
@@ -44,7 +53,7 @@ const isValidTheme = (value: string | null): value is Theme =>
 export const ThemeProvider = ({
   children,
   defaultTheme = 'system',
-  storageKey = 'ui-theme',
+  storageKey = 'ui_theme',
   ...props
 }: ThemeProviderProps) => {
   const savedTheme = window.localStorage.getItem(storageKey)
@@ -74,6 +83,7 @@ export const ThemeProvider = ({
       if (isTauri()) {
         M3.setBarColor(systemTheme === 'dark' ? 'light' : 'dark')
       }
+      syncNativeInterfaceStyle(systemTheme)
 
       return
     }
@@ -87,6 +97,7 @@ export const ThemeProvider = ({
     if (isTauri()) {
       M3.setBarColor(theme === 'dark' ? 'light' : 'dark')
     }
+    syncNativeInterfaceStyle(theme)
   }, [theme])
 
   useEffect(() => {
@@ -108,6 +119,7 @@ export const ThemeProvider = ({
         if (isTauri()) {
           M3.setBarColor(systemTheme === 'dark' ? 'light' : 'dark')
         }
+        syncNativeInterfaceStyle(systemTheme)
       }
     }
 

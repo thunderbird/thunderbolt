@@ -2,6 +2,15 @@ import { sendEmail, shouldSkipEmail } from '@/lib/resend'
 import { WaitlistJoinedEmail } from '@/emails/waitlist-joined'
 import { WaitlistReminderEmail } from '@/emails/waitlist-reminder'
 import { WaitlistNotReadyEmail } from '@/emails/waitlist-not-ready'
+import { getWaitlistAutoApproveDomains, getSettings } from '@/config/settings'
+
+/**
+ * Check if an email domain is in the auto-approved list.
+ */
+export const isAutoApprovedDomain = (email: string): boolean => {
+  const domain = email.split('@').pop()!.toLowerCase()
+  return getWaitlistAutoApproveDomains(getSettings()).includes(domain)
+}
 
 type SendWaitlistEmailParams = {
   email: string

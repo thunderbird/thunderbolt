@@ -4,7 +4,7 @@
     "details": [
       {
         "appID": "BUMSKVQ3D9.net.thunderbird.thunderbolt",
-        "paths": ["/oauth/callback", "/auth/verify"]
+        "paths": ["/oauth/callback", "/mcp/oauth/callback", "/auth/verify"]
       }
     ]
   }

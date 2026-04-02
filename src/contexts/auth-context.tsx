@@ -1,6 +1,7 @@
 import { usePowerSyncCredentialsInvalidListener } from '@/hooks/use-powersync-credentials-invalid-listener'
 import { useSettings } from '@/hooks/use-settings'
-import { getAuthToken, setAuthToken } from '@/lib/auth-token'
+import { isOidcMode } from '@/lib/auth-mode'
+import { clearAuthToken, getAuthToken, setAuthToken } from '@/lib/auth-token'
 import { getPlatform } from '@/lib/platform'
 import { emailOTPClient } from 'better-auth/client/plugins'
 import { createAuthClient } from 'better-auth/react'
@@ -25,7 +26,7 @@ const createAuthClientInstance = (cloudUrl: string) => {
 }
 
 const buildFetchOptions = (platform: string) => ({
-  credentials: 'omit' as RequestCredentials,
+  credentials: (isOidcMode() ? 'include' : 'omit') as RequestCredentials,
   headers: { 'X-Client-Platform': platform },
   auth: {
     type: 'Bearer' as const,
@@ -35,6 +36,11 @@ const buildFetchOptions = (platform: string) => ({
     const token = ctx.response.headers.get('set-auth-token')
     if (token) {
       setAuthToken(token)
+    }
+  },
+  onError: (ctx: { response: Response }) => {
+    if (ctx.response?.status === 401) {
+      clearAuthToken()
     }
   },
 })

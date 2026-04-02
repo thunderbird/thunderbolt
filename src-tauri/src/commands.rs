@@ -109,6 +109,46 @@ pub async fn get_bridge_connection_status() -> Result<serde_json::Value, String>
     }))
 }
 
+// === Interface Style (iOS keyboard/system UI theme) ==========================================
+
+/// Set the native user interface style on iOS to control keyboard and system UI appearance.
+/// Android keyboards follow the system dark mode setting and cannot be overridden per-app.
+/// Desktop: no-op.
+/// style: "system" | "light" | "dark"
+#[command]
+pub fn set_interface_style(style: String) -> Result<(), String> {
+    #[cfg(target_os = "ios")]
+    {
+        use objc2_foundation::MainThreadMarker;
+        use objc2_ui_kit::{UIApplication, UIUserInterfaceStyle, UIWindowScene};
+
+        let ui_style = match style.as_str() {
+            "light" => UIUserInterfaceStyle::Light,
+            "dark" => UIUserInterfaceStyle::Dark,
+            _ => UIUserInterfaceStyle::Unspecified,
+        };
+
+        let mtm = MainThreadMarker::new()
+            .ok_or_else(|| "set_interface_style must run on the main thread".to_string())?;
+
+        let app = UIApplication::sharedApplication(mtm);
+        for scene in app.connectedScenes() {
+            if let Some(window_scene) = scene.downcast_ref::<UIWindowScene>() {
+                for window in window_scene.windows() {
+                    window.setOverrideUserInterfaceStyle(ui_style);
+                }
+            }
+        }
+    }
+
+    #[cfg(not(target_os = "ios"))]
+    {
+        let _ = style;
+    }
+
+    Ok(())
+}
+
 // === Capabilities ============================================================================
 
 /// List of runtime capabilities that the renderer can query once and cache.

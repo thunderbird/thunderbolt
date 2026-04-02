@@ -17,7 +17,6 @@ crate-type = ["staticlib", "cdylib", "rlib"]
 
 [features]
 default = []
-libsql = ["dep:thunderbolt-libsql"]
 native_fetch = []
 
 [workspace]
@@ -29,6 +28,7 @@ members = [
     "thunderbolt_libsql",
     "thunderbolt_email",
 ]
+default-members = ["."]
 
 [workspace.dependencies]
 # Use Thunderbird's fork with Windows build fix
@@ -65,7 +65,7 @@ tauri-plugin-http = "2.5.4"
 tauri-plugin-process = "2.3.1"
 tauri-plugin-fs = "2.4.4"
 tauri-plugin-m3 = "0.2.2"
-thunderbolt-libsql = { package = "thunderbolt-libsql", path = "./thunderbolt_libsql", optional = true }
+
 tauri-plugin-deep-link = "2.3"
 tauri-plugin-haptics = "2.3"
 tauri-plugin-updater = "2.3"

@@ -38,27 +38,11 @@ pub fn create_app() -> tauri::Builder<tauri::Wry> {
         .plugin(tauri_plugin_haptics::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_store::Builder::default().build())
-        .setup(|_app| {
-            #[cfg(feature = "libsql")]
-            _app.manage(tokio::sync::Mutex::new(
-                thunderbolt_libsql::LibsqlState::new(),
-            ));
-
-            Ok(())
-        })
         .invoke_handler(tauri::generate_handler![
             commands::toggle_dock_icon,
             commands::capabilities,
             commands::set_interface_style,
             commands::start_oauth_server,
-            #[cfg(feature = "libsql")]
-            thunderbolt_libsql::init_libsql,
-            #[cfg(feature = "libsql")]
-            thunderbolt_libsql::execute,
-            #[cfg(feature = "libsql")]
-            thunderbolt_libsql::select,
-            #[cfg(feature = "libsql")]
-            thunderbolt_libsql::close,
         ]);
 
     #[cfg(debug_assertions)]

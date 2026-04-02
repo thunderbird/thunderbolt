@@ -1,6 +1,6 @@
 import type { AnyDrizzleDatabase, DatabaseInterface } from './database-interface'
 
-export type DatabaseType = 'wa-sqlite' | 'libsql-tauri' | 'bun-sqlite' | 'powersync'
+export type DatabaseType = 'wa-sqlite' | 'bun-sqlite' | 'powersync'
 
 export class Database {
   #database: DatabaseInterface | null = null
@@ -9,7 +9,7 @@ export class Database {
   /**
    * Initialize the database connection.
    * This method is idempotent - it will only initialize once.
-   * @param type - The database type to use ('wa-sqlite', 'libsql-tauri', 'bun-sqlite', or 'powersync')
+   * @param type - The database type to use ('wa-sqlite', 'bun-sqlite', or 'powersync')
    * @param path - The path/filename for the database
    */
   public async initialize({
@@ -23,10 +23,7 @@ export class Database {
       return this.#database.db
     }
 
-    if (type === 'libsql-tauri') {
-      const { LibSQLTauriDatabase } = await import('./libsql-tauri-database')
-      this.#database = new LibSQLTauriDatabase()
-    } else if (type === 'bun-sqlite') {
+    if (type === 'bun-sqlite') {
       const { BunSQLiteDatabase } = await import('./bun-sqlite-database')
       this.#database = new BunSQLiteDatabase()
     } else if (type === 'powersync') {
@@ -43,8 +40,6 @@ export class Database {
 
     const getDbTypeName = (): string => {
       switch (type) {
-        case 'libsql-tauri':
-          return 'LibSQL for Tauri'
         case 'bun-sqlite':
           return 'Bun SQLite'
         case 'powersync':

@@ -6641,7 +6641,6 @@ dependencies = [
  "tauri-plugin-single-instance",
  "tauri-plugin-store",
  "tauri-plugin-updater",
- "thunderbolt-libsql",
  "tokio",
 ]
 

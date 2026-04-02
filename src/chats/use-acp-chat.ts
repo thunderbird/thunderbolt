@@ -97,7 +97,8 @@ export const sendAcpPrompt = async ({ sessionId, text, metadata, saveMessages }:
     }
   } catch (error) {
     console.error('ACP prompt error:', error)
-    store.setSessionStatus(sessionId, 'error', error instanceof Error ? error : new Error(String(error)))
+    const err = error instanceof Error ? error : new Error(typeof error === 'string' ? error : JSON.stringify(error))
+    store.setSessionStatus(sessionId, 'error', err)
   } finally {
     activeAccumulators.delete(sessionId)
   }

@@ -274,7 +274,8 @@ export const useHydrateChatStore = ({
           update(id, updates)
         } catch (err) {
           console.error(`Eager ACP connection failed for session ${id}:`, err)
-          useChatStore.getState().setSessionStatus(id, 'error', err instanceof Error ? err : new Error(String(err)))
+          const error = err instanceof Error ? err : new Error(typeof err === 'string' ? err : JSON.stringify(err))
+          useChatStore.getState().setSessionStatus(id, 'error', error)
         }
       })()
     }

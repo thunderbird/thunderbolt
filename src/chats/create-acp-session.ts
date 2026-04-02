@@ -53,6 +53,9 @@ const toAgentConfig = (agent: Agent): AgentConfig => ({
   url: agent.url ?? undefined,
   isSystem: agent.isSystem === 1,
   enabled: agent.enabled === 1,
+  distributionType: agent.distributionType ?? undefined,
+  installPath: agent.installPath ?? undefined,
+  packageName: agent.packageName ?? undefined,
 })
 
 /** Create an AcpClient from a stream, wire up session updates, and perform the ACP handshake. */

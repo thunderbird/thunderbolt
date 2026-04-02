@@ -23,5 +23,5 @@ export const spawnInstalledAgent = async (
  * Used to decide between spawnInstalledAgent and regular shell spawn.
  */
 export const isInstalledAgent = (agent: Agent): boolean => {
-  return !!(agent as any).installPath
+  return !!agent.installPath
 }

@@ -34,5 +34,6 @@ export const encryptionMetadataTable = pgTable('encryption_metadata', {
     .references(() => user.id, { onDelete: 'cascade' }),
   canaryIv: text('canary_iv').notNull(),
   canaryCtext: text('canary_ctext').notNull(),
+  canarySecretHash: text('canary_secret_hash'),
   createdAt: timestamp('created_at').defaultNow().notNull(),
 })

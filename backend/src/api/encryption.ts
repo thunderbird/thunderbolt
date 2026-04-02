@@ -19,18 +19,30 @@ class ForbiddenError extends Error {
   }
 }
 
-/** Check if the caller is performing a self-recovery by verifying canary match. */
+/** Hash a canary secret using SHA-256. Returns hex-encoded hash. */
+const hashCanarySecret = async (secret: string): Promise<string> => {
+  const encoded = new TextEncoder().encode(secret)
+  const hashBuffer = await crypto.subtle.digest('SHA-256', encoded)
+  return Array.from(new Uint8Array(hashBuffer), (b) => b.toString(16).padStart(2, '0')).join('')
+}
+
+/**
+ * Check if the caller is performing a self-recovery by verifying proof-of-CK-possession.
+ * The client must provide the canary secret (extracted by decrypting the canary with the CK).
+ * We verify by comparing SHA-256(canarySecret) against the stored hash.
+ */
 const checkSelfRecovery = async (
   txDb: typeof DbType,
   userId: string,
   callerDeviceId: string,
   deviceId: string,
-  canaryIv?: string,
-  canaryCtext?: string,
+  canarySecret?: string,
 ): Promise<boolean> => {
-  if (callerDeviceId !== deviceId || !canaryIv || !canaryCtext) return false
+  if (callerDeviceId !== deviceId || !canarySecret) return false
   const metadata = await getEncryptionMetadata(txDb, userId)
-  return !!metadata && metadata.canaryIv === canaryIv && metadata.canaryCtext === canaryCtext
+  if (!metadata?.canarySecretHash) return false
+  const hash = await hashCanarySecret(canarySecret)
+  return hash === metadata.canarySecretHash
 }
 
 /**
@@ -114,7 +126,7 @@ export const createEncryptionRoutes = (auth: Auth, database: typeof DbType) =>
       async ({ params, body, request, set, user: sessionUser }) => {
         const userId = sessionUser!.id
         const { deviceId } = params
-        const { wrappedCK, canaryIv, canaryCtext } = body
+        const { wrappedCK, canaryIv, canaryCtext, canarySecret } = body
 
         // Pre-transaction check: fast-path rejection for missing/wrong-user/revoked devices
         // without starting a transaction. Re-checked inside tx to close race window.
@@ -155,7 +167,7 @@ export const createEncryptionRoutes = (auth: Auth, database: typeof DbType) =>
             // and is now re-bootstrapping with the recovered CK.
             const isSelfRecovery = isFirstDeviceBootstrap
               ? false
-              : await checkSelfRecovery(txDb, userId, callerDeviceId, deviceId, canaryIv, canaryCtext)
+              : await checkSelfRecovery(txDb, userId, callerDeviceId, deviceId, canarySecret)
 
             // Re-check target device inside transaction to close race window
             const targetDevice = await getDeviceById(txDb, deviceId)
@@ -182,10 +194,12 @@ export const createEncryptionRoutes = (auth: Auth, database: typeof DbType) =>
 
             // Store canary if provided (first device setup — idempotent)
             if (canaryIv && canaryCtext) {
+              const canarySecretHash = canarySecret ? await hashCanarySecret(canarySecret) : undefined
               await insertEncryptionMetadataIfNotExists(txDb, {
                 userId,
                 canaryIv,
                 canaryCtext,
+                canarySecretHash,
               })
             }
 
@@ -207,6 +221,7 @@ export const createEncryptionRoutes = (auth: Auth, database: typeof DbType) =>
           wrappedCK: t.String(),
           canaryIv: t.Optional(t.String()),
           canaryCtext: t.Optional(t.String()),
+          canarySecret: t.Optional(t.String()),
         }),
       },
     )

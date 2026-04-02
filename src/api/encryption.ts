@@ -47,10 +47,10 @@ export const registerDevice = async (
     })
     .json<RegisterDeviceResponse>()
 
-/** Store a wrapped content key (envelope) for a device. Optionally includes canary on first setup. */
+/** Store a wrapped content key (envelope) for a device. Optionally includes canary on first setup or secret for recovery. */
 export const storeEnvelope = async (
   httpClient: KyInstance,
-  params: { deviceId: string; wrappedCK: string; canaryIv?: string; canaryCtext?: string },
+  params: { deviceId: string; wrappedCK: string; canaryIv?: string; canaryCtext?: string; canarySecret?: string },
 ): Promise<StoreEnvelopeResponse> => {
   const { deviceId, ...body } = params
   return httpClient

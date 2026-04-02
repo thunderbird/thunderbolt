@@ -1,2 +1,0 @@
-ALTER TABLE "powersync"."devices" ALTER COLUMN "status" SET DEFAULT 'APPROVAL_PENDING';--> statement-breakpoint
-UPDATE "powersync"."devices" SET "status" = 'TRUSTED' WHERE "status" = 'TRUSTED' OR "status" IS NULL;

@@ -87,11 +87,24 @@ describe('Encryption API', () => {
     })
   }
 
-  const insertCanary = async (userId: string, canaryIv = 'iv-test', canaryCtext = 'ctext-test') => {
+  /** SHA-256 hash helper matching the backend's hashCanarySecret. */
+  const hashSecret = async (secret: string): Promise<string> => {
+    const encoded = new TextEncoder().encode(secret)
+    const hashBuffer = await crypto.subtle.digest('SHA-256', encoded)
+    return Array.from(new Uint8Array(hashBuffer), (b) => b.toString(16).padStart(2, '0')).join('')
+  }
+
+  const insertCanary = async (
+    userId: string,
+    canaryIv = 'iv-test',
+    canaryCtext = 'ctext-test',
+    canarySecretHash?: string,
+  ) => {
     await db.insert(encryptionMetadataTable).values({
       userId,
       canaryIv,
       canaryCtext,
+      canarySecretHash: canarySecretHash ?? null,
       createdAt: now,
     })
   }
@@ -396,12 +409,14 @@ describe('Encryption API', () => {
       expect(body.error).toBe('Only trusted devices can store envelopes')
     })
 
-    it('allows self-recovery: pending device stores own envelope when canary matches stored metadata', async () => {
+    it('allows self-recovery: pending device stores own envelope when canarySecret proves CK possession', async () => {
+      const secret = 'my-recovery-secret'
+      const secretHash = await hashSecret(secret)
       await createUserAndSession(p('u-recov'), p('tok-recov'))
       // Existing trusted device with envelope (simulates pre-recovery state)
       await insertDevice(p('d-recov-old'), p('u-recov'), { trusted: true })
       await insertEnvelope(p('d-recov-old'), p('u-recov'))
-      await insertCanary(p('u-recov'), 'recovery-iv', 'recovery-ctext')
+      await insertCanary(p('u-recov'), 'recovery-iv', 'recovery-ctext', secretHash)
       // New device registered during recovery flow
       await insertDevice(p('d-recov-new'), p('u-recov'))
 
@@ -415,8 +430,7 @@ describe('Encryption API', () => {
           },
           body: JSON.stringify({
             wrappedCK: 'recovered-wck',
-            canaryIv: 'recovery-iv',
-            canaryCtext: 'recovery-ctext',
+            canarySecret: secret,
           }),
         }),
       )
@@ -432,11 +446,12 @@ describe('Encryption API', () => {
       expect(device.trusted).toBe(true)
     })
 
-    it('rejects self-recovery when canary does not match stored metadata', async () => {
+    it('rejects self-recovery when canarySecret does not match stored hash', async () => {
+      const secretHash = await hashSecret('real-secret')
       await createUserAndSession(p('u-badrecov'), p('tok-badrecov'))
       await insertDevice(p('d-badrecov-old'), p('u-badrecov'), { trusted: true })
       await insertEnvelope(p('d-badrecov-old'), p('u-badrecov'))
-      await insertCanary(p('u-badrecov'), 'real-iv', 'real-ctext')
+      await insertCanary(p('u-badrecov'), 'real-iv', 'real-ctext', secretHash)
       await insertDevice(p('d-badrecov-new'), p('u-badrecov'))
 
       const response = await app.handle(
@@ -449,8 +464,36 @@ describe('Encryption API', () => {
           },
           body: JSON.stringify({
             wrappedCK: 'wck',
-            canaryIv: 'wrong-iv',
-            canaryCtext: 'wrong-ctext',
+            canarySecret: 'wrong-secret',
+          }),
+        }),
+      )
+
+      expect(response.status).toBe(403)
+      const body = await response.json()
+      expect(body.error).toBe('Only trusted devices can store envelopes')
+    })
+
+    it('rejects self-recovery when replaying canaryIv/canaryCtext without secret (old replay attack)', async () => {
+      await createUserAndSession(p('u-replay'), p('tok-replay'))
+      await insertDevice(p('d-replay-old'), p('u-replay'), { trusted: true })
+      await insertEnvelope(p('d-replay-old'), p('u-replay'))
+      await insertCanary(p('u-replay'), 'the-iv', 'the-ctext', await hashSecret('the-secret'))
+      await insertDevice(p('d-replay-new'), p('u-replay'))
+
+      // Attacker replays canaryIv/canaryCtext from GET /encryption/canary without the secret
+      const response = await app.handle(
+        new Request(`${BASE}/devices/${p('d-replay-new')}/envelope`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${p('tok-replay')}`,
+            'X-Device-ID': p('d-replay-new'),
+          },
+          body: JSON.stringify({
+            wrappedCK: 'attacker-wck',
+            canaryIv: 'the-iv',
+            canaryCtext: 'the-ctext',
           }),
         }),
       )
@@ -717,7 +760,7 @@ describe('Encryption API', () => {
       expect(envelope.wrappedCk).toBe('target-wck')
     })
 
-    it('stores canary on first-device bootstrap', async () => {
+    it('stores canary with secret hash on first-device bootstrap', async () => {
       await createUserAndSession(p('u-canary'), p('tok-canary'))
       await insertDevice(p('d-canary'), p('u-canary'))
 
@@ -733,6 +776,7 @@ describe('Encryption API', () => {
             wrappedCK: 'wck',
             canaryIv: 'my-iv',
             canaryCtext: 'my-ctext',
+            canarySecret: 'my-secret',
           }),
         }),
       )
@@ -746,6 +790,7 @@ describe('Encryption API', () => {
       expect(metadata).toBeDefined()
       expect(metadata.canaryIv).toBe('my-iv')
       expect(metadata.canaryCtext).toBe('my-ctext')
+      expect(metadata.canarySecretHash).toBe(await hashSecret('my-secret'))
     })
 
     it('does not overwrite existing canary on subsequent envelope submissions', async () => {

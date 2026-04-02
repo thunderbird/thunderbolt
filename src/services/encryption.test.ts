@@ -18,8 +18,8 @@ const cryptoMocks = {
   wrapCK: mock(async () => 'mock-wrapped-ck'),
   rewrapCK: mock(async () => 'mock-rewrapped-ck'),
   unwrapCK: mock(async () => mockCK),
-  createCanary: mock(async () => ({ canaryIv: 'mock-iv', canaryCtext: 'mock-ctext' })),
-  verifyCanary: mock(async () => true),
+  createCanary: mock(async () => ({ canaryIv: 'mock-iv', canaryCtext: 'mock-ctext', canarySecret: 'mock-secret' })),
+  verifyCanary: mock(async () => ({ valid: true, canarySecret: 'mock-secret' })),
   encodeRecoveryKey: mock(async () => 'a'.repeat(64)),
   decodeRecoveryKey: mock(async () => mockCK),
   encrypt: mock(async () => ({ iv: '', ciphertext: '' })),
@@ -71,8 +71,12 @@ const resetAllMocks = () => {
   cryptoMocks.wrapCK.mockImplementation(async () => 'mock-wrapped-ck')
   cryptoMocks.rewrapCK.mockImplementation(async () => 'mock-rewrapped-ck')
   cryptoMocks.unwrapCK.mockImplementation(async () => mockCK)
-  cryptoMocks.createCanary.mockImplementation(async () => ({ canaryIv: 'mock-iv', canaryCtext: 'mock-ctext' }))
-  cryptoMocks.verifyCanary.mockImplementation(async () => true)
+  cryptoMocks.createCanary.mockImplementation(async () => ({
+    canaryIv: 'mock-iv',
+    canaryCtext: 'mock-ctext',
+    canarySecret: 'mock-secret',
+  }))
+  cryptoMocks.verifyCanary.mockImplementation(async () => ({ valid: true, canarySecret: 'mock-secret' }))
   cryptoMocks.encodeRecoveryKey.mockImplementation(async () => 'a'.repeat(64))
   cryptoMocks.decodeRecoveryKey.mockImplementation(async () => mockCK)
   cryptoMocks.encrypt.mockImplementation(async () => ({ iv: '', ciphertext: '' }))
@@ -152,12 +156,13 @@ describe('encryption service', () => {
       expect(cryptoMocks.wrapCK).toHaveBeenCalledWith(mockExtractableCK, mockKeyPair.publicKey)
       // Should reimport as non-extractable
       expect(cryptoMocks.reimportAsNonExtractable).toHaveBeenCalledWith(mockExtractableCK)
-      // Should store envelope with canary
+      // Should store envelope with canary and secret
       expect(apiMocks.storeEnvelope).toHaveBeenCalledWith(mockHttpClient, {
         deviceId: 'test-device-id',
         wrappedCK: 'mock-wrapped-ck',
         canaryIv: 'mock-iv',
         canaryCtext: 'mock-ctext',
+        canarySecret: 'mock-secret',
       })
       // Should store CK locally
       expect(cryptoMocks.storeCK).toHaveBeenCalledWith(mockCK)
@@ -252,8 +257,12 @@ describe('encryption service', () => {
       expect(cryptoMocks.storeKeyPair).toHaveBeenCalled()
       // Should register device
       expect(apiMocks.registerDevice).toHaveBeenCalledTimes(1)
-      // Should store envelope
-      expect(apiMocks.storeEnvelope).toHaveBeenCalledTimes(1)
+      // Should store envelope with canarySecret (proof-of-possession, no canaryIv/canaryCtext)
+      expect(apiMocks.storeEnvelope).toHaveBeenCalledWith(mockHttpClient, {
+        deviceId: 'test-device-id',
+        wrappedCK: 'mock-wrapped-ck',
+        canarySecret: 'mock-secret',
+      })
       // Should reimport CK as non-extractable before storing
       expect(cryptoMocks.reimportAsNonExtractable).toHaveBeenCalledWith(mockCK)
       // Should store non-extractable CK
@@ -269,7 +278,7 @@ describe('encryption service', () => {
     })
 
     it('throws on invalid recovery key (canary verification fails)', async () => {
-      cryptoMocks.verifyCanary.mockImplementation(async () => false)
+      cryptoMocks.verifyCanary.mockImplementation(async () => ({ valid: false }))
 
       await expect(recoverWithKey(mockHttpClient, 'b'.repeat(64))).rejects.toThrow('Invalid recovery key')
     })

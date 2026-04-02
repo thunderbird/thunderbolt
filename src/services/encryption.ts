@@ -71,7 +71,7 @@ export const completeFirstDeviceSetup = async (httpClient: KyInstance): Promise<
   // Generate extractable CK for recovery key encoding
   const extractableCK = await generateCK(true)
   const recoveryKey = await encodeRecoveryKey(extractableCK)
-  const { canaryIv, canaryCtext } = await createCanary(extractableCK)
+  const { canaryIv, canaryCtext, canarySecret } = await createCanary(extractableCK)
 
   // Wrap CK with own public key and store on server
   const wrappedCK = await wrapCK(extractableCK, keyPair.publicKey)
@@ -86,6 +86,7 @@ export const completeFirstDeviceSetup = async (httpClient: KyInstance): Promise<
     wrappedCK,
     canaryIv,
     canaryCtext,
+    canarySecret,
   })
 
   // Store CK locally
@@ -167,8 +168,8 @@ export const recoverWithKey = async (httpClient: KyInstance, recoveryPhrase: str
   // Fetch canary and verify recovery phrase
   const { canaryIv, canaryCtext } = await fetchCanary(httpClient)
   const ck = await decodeRecoveryKey(recoveryPhrase)
-  const valid = await verifyCanary(ck, canaryIv, canaryCtext)
-  if (!valid) {
+  const { valid, canarySecret } = await verifyCanary(ck, canaryIv, canaryCtext)
+  if (!valid || !canarySecret) {
     throw new Error('Invalid recovery key')
   }
 
@@ -193,8 +194,7 @@ export const recoverWithKey = async (httpClient: KyInstance, recoveryPhrase: str
   await storeEnvelope(httpClient, {
     deviceId,
     wrappedCK,
-    canaryIv,
-    canaryCtext,
+    canarySecret,
   })
 
   // Re-import as non-extractable for local storage

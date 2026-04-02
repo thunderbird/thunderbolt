@@ -45,7 +45,11 @@ export const deleteEnvelope = async (database: typeof DbType, deviceId: string, 
 /** Get encryption metadata (canary) for a user. */
 export const getEncryptionMetadata = async (database: typeof DbType, userId: string) =>
   database
-    .select({ canaryIv: encryptionMetadataTable.canaryIv, canaryCtext: encryptionMetadataTable.canaryCtext })
+    .select({
+      canaryIv: encryptionMetadataTable.canaryIv,
+      canaryCtext: encryptionMetadataTable.canaryCtext,
+      canarySecretHash: encryptionMetadataTable.canarySecretHash,
+    })
     .from(encryptionMetadataTable)
     .where(eq(encryptionMetadataTable.userId, userId))
     .limit(1)
@@ -54,7 +58,7 @@ export const getEncryptionMetadata = async (database: typeof DbType, userId: str
 /** Insert encryption metadata (canary) for a user. Idempotent — does nothing if row already exists. */
 export const insertEncryptionMetadataIfNotExists = async (
   database: typeof DbType,
-  metadata: { userId: string; canaryIv: string; canaryCtext: string },
+  metadata: { userId: string; canaryIv: string; canaryCtext: string; canarySecretHash?: string },
 ) =>
   database
     .insert(encryptionMetadataTable)

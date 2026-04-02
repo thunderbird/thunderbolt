@@ -1,5 +1,5 @@
 /** Whether E2E encryption is enabled. Defaults to true. */
-export const isEncryptionEnabled = (): boolean => import.meta.env.VITE_ENCRYPTION_ENABLED !== 'false'
+export const isEncryptionEnabled = (): boolean => import.meta.env.VITE_E2EE_ENABLED !== 'false'
 
 /**
  * Single source of truth for encrypted tables and their columns.

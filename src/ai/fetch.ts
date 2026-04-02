@@ -342,7 +342,7 @@ export const aiFetchStreamingResponse = async ({
           }
 
           // For other errors, skip the tool call
-          console.warn(`Tool call error for "${toolCall.toolName}":`, error)
+          console.warn('Tool call error for "%s":', toolCall.toolName, error)
           return null
         },
       })

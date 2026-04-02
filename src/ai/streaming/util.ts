@@ -170,7 +170,7 @@ export const createMockToolSet = (): ToolSet => {
     {
       get: (_target, prop) => {
         return (...args: any[]) => {
-          console.log(`[Simulated Tool] ${String(prop)}`, ...args)
+          console.log('[Simulated Tool] %s', String(prop), ...args)
           return null
         }
       },

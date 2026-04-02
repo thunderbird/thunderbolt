@@ -1736,7 +1736,23 @@
           "notNull": false
         }
       },
-      "indexes": {},
+      "indexes": {
+        "rate_limits_expire_idx": {
+          "name": "rate_limits_expire_idx",
+          "columns": [
+            {
+              "expression": "expire",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
       "foreignKeys": {},
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},

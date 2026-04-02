@@ -41,12 +41,14 @@ export const defaultResponseDenylist = [
  * a proxy in front, any client can forge these headers to bypass rate limiting.
  *
  * When `trustedProxy` is set:
- * - `cloudflare`: trusts `CF-Connecting-IP` first, then falls back to XFF/X-Real-IP
- * - `akamai`: trusts `True-Client-IP` first, then falls back to XFF/X-Real-IP
+ * - `cloudflare`: trusts `CF-Connecting-IP`, falls back to socket IP
+ * - `akamai`: trusts `True-Client-IP`, falls back to socket IP
  *
- * When `trustedProxy` is empty (no proxy), only the socket IP (passed as
- * `fallback`) is used. The RFC 7239 `Forwarded` header is always excluded
- * because its `for=` value is attacker-controlled.
+ * If the authoritative CDN header is absent, the request likely bypassed
+ * the CDN, so proxy headers (XFF, X-Real-IP) are untrusted — only the
+ * socket IP (passed as `fallback`) is used.
+ *
+ * When `trustedProxy` is empty (no proxy), only the socket IP is used.
  */
 export const extractClientIp = (
   headers: Headers,
@@ -56,19 +58,14 @@ export const extractClientIp = (
   if (!trustedProxy) return fallback
 
   if (trustedProxy === 'cloudflare') {
-    const cfIp = headers.get('cf-connecting-ip')
-    if (cfIp) return cfIp
+    return headers.get('cf-connecting-ip') ?? fallback
   }
 
   if (trustedProxy === 'akamai') {
-    const trueClientIp = headers.get('true-client-ip')
-    if (trueClientIp) return trueClientIp
+    return headers.get('true-client-ip') ?? fallback
   }
 
-  const xff = headers.get('x-forwarded-for')
-  if (xff) return xff.split(',').at(0)!.trim()
-
-  return headers.get('x-real-ip') || fallback
+  return fallback
 }
 
 /**

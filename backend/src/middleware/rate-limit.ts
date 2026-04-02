@@ -58,6 +58,26 @@ const setRateLimitHeaders = (
   headers['RateLimit-Reset'] = String(resetSecs)
 }
 
+/** Consume a rate limit point or return a 429 response. */
+const consumeOrReject = async (
+  limiter: RateLimiterDrizzle,
+  key: string,
+  set: { status?: number | string; headers: Record<string, string | string[] | number> },
+) => {
+  try {
+    const res = await limiter.consume(key)
+    setRateLimitHeaders(set.headers, limiter.points, res.remainingPoints, Math.ceil(res.msBeforeNext / 1000))
+  } catch (err) {
+    if (err instanceof RateLimiterRes) {
+      set.status = 429
+      set.headers['Retry-After'] = String(Math.ceil(err.msBeforeNext / 1000))
+      setRateLimitHeaders(set.headers, limiter.points, 0, Math.ceil(err.msBeforeNext / 1000))
+      return { error: 'Too many requests. Please try again later.' }
+    }
+    throw err
+  }
+}
+
 /** Extract client IP from request, respecting the trusted proxy setting. */
 const getClientIp = (req: Request, server: Elysia['server'], trustedProxy: RateLimitSettings['trustedProxy']): string =>
   extractClientIp(req.headers, server?.requestIP(req)?.address ?? 'unknown', trustedProxy)
@@ -74,21 +94,8 @@ const createIpRateLimitMiddleware = (
   new Elysia()
     .onBeforeHandle(async ({ request, set, server }) => {
       if (skip?.(request)) return
-
       const key = getClientIp(request, server, trustedProxy)
-
-      try {
-        const res = await limiter.consume(key)
-        setRateLimitHeaders(set.headers, limiter.points, res.remainingPoints, Math.ceil(res.msBeforeNext / 1000))
-      } catch (err) {
-        if (err instanceof RateLimiterRes) {
-          set.status = 429
-          set.headers['Retry-After'] = String(Math.ceil(err.msBeforeNext / 1000))
-          setRateLimitHeaders(set.headers, limiter.points, 0, Math.ceil(err.msBeforeNext / 1000))
-          return { error: 'Too many requests. Please try again later.' }
-        }
-        throw err
-      }
+      return consumeOrReject(limiter, key, set)
     })
     .as('scoped')
 
@@ -105,19 +112,7 @@ const createUserRateLimitMiddleware = (limiter: RateLimiterDrizzle, trustedProxy
       const { request, set, server } = ctx
       const user = (ctx as Record<string, unknown>).user as { id: string } | null | undefined
       const key = user?.id ? `user:${user.id}` : `ip:${getClientIp(request, server, trustedProxy)}`
-
-      try {
-        const res = await limiter.consume(key)
-        setRateLimitHeaders(set.headers, limiter.points, res.remainingPoints, Math.ceil(res.msBeforeNext / 1000))
-      } catch (err) {
-        if (err instanceof RateLimiterRes) {
-          set.status = 429
-          set.headers['Retry-After'] = String(Math.ceil(err.msBeforeNext / 1000))
-          setRateLimitHeaders(set.headers, limiter.points, 0, Math.ceil(err.msBeforeNext / 1000))
-          return { error: 'Too many requests. Please try again later.' }
-        }
-        throw err
-      }
+      return consumeOrReject(limiter, key, set)
     })
     .as('scoped')
 

@@ -35,7 +35,7 @@ export const upsertDevice = async (
 export const revokeDevice = async (database: typeof DbType, deviceId: string, userId: string) =>
   database
     .update(devicesTable)
-    .set({ revokedAt: new Date() })
+    .set({ revokedAt: new Date(), trusted: false })
     .where(and(eq(devicesTable.id, deviceId), eq(devicesTable.userId, userId)))
     .returning()
 

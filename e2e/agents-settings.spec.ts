@@ -13,15 +13,15 @@ const navigateToAgentsSettings = async (page: any) => {
 
 /** Wait for the agents page to finish rendering. */
 const waitForAgentsLoaded = async (page: any) => {
-  // Wait for heading to confirm we're on the right page
-  await expect(page.getByRole('heading', { name: 'Agents' })).toBeVisible()
+  // Wait for heading to confirm we're on the right page (exact match to avoid "Loading agents..." heading)
+  await expect(page.getByRole('heading', { name: 'Agents', exact: true })).toBeVisible()
 }
 
 test.describe('Agents Settings Page', () => {
   test.describe('navigation', () => {
     test('agents page is accessible from settings sidebar', async ({ page }) => {
       await navigateToAgentsSettings(page)
-      await expect(page.getByRole('heading', { name: 'Agents' })).toBeVisible()
+      await expect(page.getByRole('heading', { name: 'Agents', exact: true })).toBeVisible()
     })
 
     test('sidebar shows Agents as active when on agents page', async ({ page }) => {

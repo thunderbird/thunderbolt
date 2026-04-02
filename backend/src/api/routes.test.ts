@@ -67,7 +67,7 @@ describe('Main Routes', () => {
       oidcClientSecret: '',
       oidcIssuer: '',
       betterAuthUrl: 'http://localhost:8000',
-      rateLimitEnabled: true,
+      rateLimitEnabled: false,
       trustedProxy: '',
     } satisfies Settings)
   })

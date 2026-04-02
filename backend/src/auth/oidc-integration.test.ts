@@ -61,7 +61,7 @@ const baseSettings: Settings = {
   oidcClientSecret: 'thunderbolt-dev-secret',
   oidcIssuer: '', // set per-suite once mock server is up
   betterAuthUrl: 'http://localhost:8000',
-  rateLimitEnabled: true,
+  rateLimitEnabled: false,
   trustedProxy: '',
 }
 

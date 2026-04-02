@@ -49,6 +49,7 @@ export const createChatInstance = (
 
   let retryCount = 0
   let retryTimeout: ReturnType<typeof setTimeout> | null = null
+  let lastError: Error | null = null
 
   const instance = new Chat<ThunderboltUIMessage>({
     id,
@@ -93,6 +94,13 @@ export const createChatInstance = (
         return
       }
 
+      // Don't auto-retry rate limit errors — retrying immediately makes it worse
+      if (lastError?.message?.toLowerCase().includes('too many requests')) {
+        lastError = null
+        useChatStore.getState().updateSession(id, { retriesExhausted: true })
+        return
+      }
+
       if (retryCount < maxRetries) {
         retryCount++
         useChatStore.getState().updateSession(id, { retryCount })
@@ -131,6 +139,7 @@ export const createChatInstance = (
     // stays at 0, so the UI shows the Retry button immediately.
     onError: (error) => {
       console.error('Chat error:', error)
+      lastError = error instanceof Error ? error : new Error(String(error))
     },
   })
 

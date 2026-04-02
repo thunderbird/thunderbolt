@@ -14,7 +14,11 @@ import type { AgentSessionState } from './types'
 const getSessionCwd = async (): Promise<string> => {
   try {
     const { homeDir } = await import('@tauri-apps/api/path')
-    return await homeDir()
+    const dir = await homeDir()
+    if (typeof dir === 'string') {
+      return dir
+    }
+    return '/'
   } catch {
     return '/'
   }

@@ -205,8 +205,8 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
         ) : isConnectionError ? (
           <div className="flex items-center gap-2 px-3 h-[var(--touch-height-sm)] text-destructive text-[length:var(--font-size-body)]">
             <AlertCircle className="size-[var(--icon-size-default)] shrink-0" />
-            <span className="truncate" title={error?.message}>
-              {extractErrorDisplay(error)}
+            <span className="truncate" title={extractErrorDisplay(error)}>
+              Failed to connect to {agentConfig.name}
             </span>
           </div>
         ) : (

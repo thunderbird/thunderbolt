@@ -114,9 +114,12 @@ export const ContactPage = () => {
   }
 
   return (
-    <div className="min-h-screen bg-[#f9fafb]">
+    <div className="flex min-h-screen flex-col bg-[#f9fafb]">
       <Header />
-      <main className="mx-auto max-w-[560px] px-6 pt-[144px] pb-24">
+      <main className="mx-auto w-full max-w-[560px] flex-1 px-6 pt-[144px] pb-24">
+        <a href="/" className="mb-6 inline-flex items-center gap-1 text-sm text-[#667085] hover:text-[#344054]">
+          &larr; Back
+        </a>
         <h1 className="text-[32px] font-medium leading-[1.2] tracking-[-0.96px] text-[#101828] md:text-[40px]">
           Get Started
         </h1>

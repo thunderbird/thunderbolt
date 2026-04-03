@@ -51,11 +51,11 @@ const submitToMailchimp = (params: URLSearchParams): Promise<{ result: string; m
     const script = document.createElement('script')
 
     const cleanup = () => {
-      delete (window as Record<string, unknown>)[callbackName]
+      delete (window as unknown as Record<string, unknown>)[callbackName]
       script.remove()
     }
 
-    ;(window as Record<string, unknown>)[callbackName] = (data: { result: string; msg: string }) => {
+    ;(window as unknown as Record<string, unknown>)[callbackName] = (data: { result: string; msg: string }) => {
       cleanup()
       resolve(data)
     }

@@ -37,7 +37,7 @@ const BackgroundGrid = () => (
 /* ─── Hero ────────────────────────────────────────────── */
 
 const Hero = () => (
-  <section className="relative pt-[80px]">
+  <section className="relative pb-16 pt-[80px]">
     <div className="mx-auto flex max-w-[730px] flex-col items-center gap-6 px-6 text-center">
       <div className="flex flex-col items-center gap-2">
         <h1 className="text-[40px] font-medium leading-[1.1] tracking-[-0.96px] text-[#101828] md:text-[48px]">
@@ -49,9 +49,84 @@ const Hero = () => (
       </div>
       <GetStartedButton />
     </div>
-    {/* Device mockups — SVG exported from Figma */}
+    {/* Device mockups — composed from separate SVG frames + PNG screenshots */}
     <div className="mx-auto mt-10 max-w-[1120px] px-6 lg:px-0">
-      <img src="/enterprise/hero-mockup.png" alt="Thunderbolt on desktop and mobile" className="w-full" />
+      {/* Prompt input card — static on mobile, absolutely positioned on lg */}
+      <div className="relative mb-6 lg:hidden">
+        <div className="absolute -left-[12px] -top-[12px] size-[23px] bg-[#eaecf0]" />
+        <div className="absolute -right-[12px] -top-[12px] size-[23px] bg-[#eaecf0]" />
+        <div className="absolute -bottom-[12px] -left-[12px] size-[23px] bg-[#eaecf0]" />
+        <div className="absolute -bottom-[12px] -right-[12px] size-[23px] bg-[#eaecf0]" />
+        <div className="border-[0.5px] border-[#eaecf0] bg-gradient-to-b from-[rgba(241,241,241,0.3)] to-[rgba(228,228,228,0.3)] p-5 backdrop-blur-[5px]">
+          <div className="flex items-center gap-1.5 sm:gap-2">
+            {['Check the weather', 'Write a message', 'Check the schedule'].map((label) => (
+              <span key={label} className="shrink-0 rounded-full bg-white px-2 py-1 text-[9px] sm:px-3.5 sm:py-1.5 sm:text-[11px] whitespace-nowrap text-[#344054] shadow-[0px_2px_8px_0px_rgba(0,0,0,0.08)]">
+                {label}
+              </span>
+            ))}
+            <span className="flex size-7 items-center justify-center rounded-full bg-white text-sm text-[#344054] shadow-[0px_2px_8px_0px_rgba(0,0,0,0.08)]">+</span>
+          </div>
+          <div className="mt-2.5 rounded-2xl bg-white px-4 pb-3 pt-3 shadow-[0px_2px_8px_0px_rgba(0,0,0,0.08)]">
+            <p className="text-sm text-[#667085]">Ask me anything</p>
+            <div className="mt-2 flex items-center justify-between">
+              <span className="inline-flex size-7 items-center justify-center rounded-lg bg-[#f2f4f7] text-sm font-bold text-[#344054]">+</span>
+              <span className="flex size-7 items-center justify-center rounded-lg bg-[#f2f4f7] text-sm font-bold text-[#344054]">&uarr;</span>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div className="relative mx-auto max-w-[600px] lg:max-w-none" style={{ paddingBottom: '45.6%' }}>
+        {/* MacBook frame + screenshot */}
+        <div
+          className="absolute"
+          style={{ left: '24.2%', top: '10.9%', width: '73.4%', filter: 'drop-shadow(0px 50px 100px rgba(50, 50, 93, 0.25))' }}
+        >
+          <img src="/enterprise/desktop_device.svg" alt="" className="relative w-full" />
+          <img
+            src="/enterprise/desktop_screenshot.png"
+            alt="Thunderbolt desktop app"
+            className="absolute z-10"
+            style={{ top: '5.5%', left: '12.5%', width: '75%', height: '82%', objectFit: 'cover' }}
+          />
+        </div>
+        {/* iPhone frame + screenshot */}
+        <div
+          className="absolute z-20"
+          style={{ left: '77%', top: '0%', width: '23%', filter: 'drop-shadow(0px 50px 100px rgba(50, 50, 93, 0.25))' }}
+        >
+          <img src="/enterprise/mobile_device.svg" alt="" className="relative w-full" />
+          <img
+            src="/enterprise/mobile_screenshot.png"
+            alt="Thunderbolt mobile app"
+            className="absolute z-10"
+            style={{ top: '4.1%', left: '8%', width: '83.5%', height: '91%', objectFit: 'cover', borderRadius: '6%' }}
+          />
+        </div>
+        {/* Prompt input card overlay — desktop only */}
+        <div className="absolute z-30 hidden lg:block" style={{ left: '0%', top: '26.8%', width: '66.8%' }}>
+          <div className="absolute -left-[12px] -top-[12px] size-[23px] bg-[#eaecf0]" />
+          <div className="absolute -right-[12px] -top-[12px] size-[23px] bg-[#eaecf0]" />
+          <div className="absolute -bottom-[12px] -left-[12px] size-[23px] bg-[#eaecf0]" />
+          <div className="absolute -bottom-[12px] -right-[12px] size-[23px] bg-[#eaecf0]" />
+          <div className="border-[0.5px] border-[#eaecf0] bg-gradient-to-b from-[rgba(241,241,241,0.3)] to-[rgba(228,228,228,0.3)] p-5 backdrop-blur-[5px]">
+            <div className="flex flex-wrap items-center gap-2">
+              {['Check the weather', 'Write a message', 'Check the schedule'].map((label) => (
+                <span key={label} className="shrink-0 rounded-full bg-white px-2 py-1 text-[9px] sm:px-3.5 sm:py-1.5 sm:text-[11px] whitespace-nowrap text-[#344054] shadow-[0px_2px_8px_0px_rgba(0,0,0,0.08)]">
+                  {label}
+                </span>
+              ))}
+              <span className="flex size-7 items-center justify-center rounded-full bg-white text-sm text-[#344054] shadow-[0px_2px_8px_0px_rgba(0,0,0,0.08)]">+</span>
+            </div>
+            <div className="mt-2.5 rounded-2xl bg-white px-4 pb-3 pt-3 shadow-[0px_2px_8px_0px_rgba(0,0,0,0.08)]">
+              <p className="text-sm text-[#667085]">Ask me anything</p>
+              <div className="mt-2 flex items-center justify-between">
+                <span className="inline-flex size-7 items-center justify-center rounded-lg bg-[#f2f4f7] text-sm font-bold text-[#344054]">+</span>
+                <span className="flex size-7 items-center justify-center rounded-lg bg-[#f2f4f7] text-sm font-bold text-[#344054]">&uarr;</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
     </div>
   </section>
 )
@@ -60,24 +135,13 @@ const Hero = () => (
 
 const FeatureCards = () => (
   <section className="relative">
-    {/* Corner dots at grid intersections — hidden on mobile */}
-    <div className="pointer-events-none absolute inset-x-0 top-0 hidden lg:block" aria-hidden="true">
-      <div className="mx-auto relative max-w-[1440px]">
-        {/* Top row */}
-        {[
-          { l: 155, t: -4 }, { l: 525, t: -4 }, { l: 525, t: -75 }, { l: 905, t: -75 },
-          { l: 905, t: -4 }, { l: 1274, t: -4 },
-          /* Bottom row */
-          { l: 155, t: 355 }, { l: 525, t: 355 }, { l: 525, t: 289 },
-          { l: 905, t: 354 }, { l: 1274, t: 354 },
-        ].map((d, i) => (
-          <div key={i} className="absolute size-3 bg-[#eaecf0]" style={{ left: d.l, top: d.t }} />
-        ))}
-      </div>
-    </div>
-    <div className="mx-auto grid max-w-[1120px] gap-0 px-6 md:grid-cols-3 lg:px-0">
+    <div className="mx-auto mt-12 grid max-w-[1120px] gap-0 px-6 md:grid-cols-3 lg:mt-16 lg:items-start lg:px-0">
       {/* Control Your Data */}
-      <div className="flex flex-col justify-end border-[0.5px] border-[#eaecf0]/50 bg-white/5 px-8 pb-8 backdrop-blur-[7px] md:h-[360px]">
+      <div className="relative flex flex-col justify-end overflow-visible border-[0.5px] border-[#eaecf0]/50 bg-white/5 px-8 pb-8 backdrop-blur-[7px] md:h-[360px]">
+        <div className="pointer-events-none absolute -left-[6px] -top-[6px] z-10 hidden size-3 bg-[#eaecf0] lg:block" />
+        <div className="pointer-events-none absolute -right-[6px] -top-[6px] z-10 hidden size-3 bg-[#eaecf0] lg:block" />
+        <div className="pointer-events-none absolute -bottom-[6px] -left-[6px] z-10 hidden size-3 bg-[#eaecf0] lg:block" />
+        <div className="pointer-events-none absolute -bottom-[6px] -right-[6px] z-10 hidden size-3 bg-[#eaecf0] lg:block" />
         <div className="relative mb-4 h-[180px] w-[181px]">
           <div className="absolute left-[40px] top-[20px] h-[185px] w-[134px] rounded-[67px] bg-[#98a2b3] opacity-70 blur-[25px]" />
           <img src="/enterprise/control-data.png" alt="" className="relative size-full object-contain object-bottom" />
@@ -88,16 +152,20 @@ const FeatureCards = () => (
         </p>
       </div>
 
-      {/* Choose Any Agent (or Model) */}
-      <div className="relative flex flex-col overflow-hidden border-[0.5px] border-[#eaecf0]/50 bg-white/5 px-8 pt-8 pb-8 backdrop-blur-sm md:overflow-visible">
+      {/* Choose Any Agent (or Model) — sits higher than adjacent cards per Figma */}
+      <div className="relative flex flex-col overflow-hidden border-[0.5px] border-[#eaecf0]/50 bg-white/5 px-8 pt-8 pb-8 backdrop-blur-sm md:overflow-visible lg:-mt-[71px] lg:mb-0">
+        <div className="pointer-events-none absolute -left-[6px] -top-[6px] z-10 hidden size-3 bg-[#eaecf0] lg:block" />
+        <div className="pointer-events-none absolute -right-[6px] -top-[6px] z-10 hidden size-3 bg-[#eaecf0] lg:block" />
+        <div className="pointer-events-none absolute -bottom-[6px] -left-[6px] z-10 hidden size-3 bg-[#eaecf0] lg:block" />
+        <div className="pointer-events-none absolute -bottom-[6px] -right-[6px] z-10 hidden size-3 bg-[#eaecf0] lg:block" />
         <h3 className="text-2xl font-medium leading-8 tracking-[-0.48px] text-[#101828]">
           Choose Any Agent<br />(or Model)
         </h3>
         <p className="mt-2 text-base leading-6 text-[#667085]">
           Connect any ACP-compatible agent or OpenAI-compatible model - Claude, Codex, OpenClaw, Deepset, OpenCode, OpenAI, etc.
         </p>
-        {/* Model logos — sine wave layout from Figma Group 42 */}
-        <div className="relative mx-auto mt-4 h-[173px] w-[402px] md:-ml-[55px] md:mx-0">
+        {/* Model logos — wave layout, scaled down on md to fit the 2-col grid */}
+        <div className="relative z-10 mx-auto mt-4 h-[173px] w-[402px] origin-top-left md:-ml-[68px] md:mx-0 md:scale-75 lg:-ml-[55px] lg:scale-100">
           {[
             { src: '/enterprise/chatgpt.png', alt: 'ChatGPT', size: 38, x: 0, y: 23, z: 3 },
             { src: '/enterprise/anthropic.png', alt: 'Anthropic', size: 48, x: 80, y: 88, z: 6 },
@@ -117,7 +185,11 @@ const FeatureCards = () => (
       </div>
 
       {/* Built for Enterprise */}
-      <div className="flex flex-col border-[0.5px] border-[#eaecf0]/50 bg-[#f9fafb] px-8 py-8 md:h-[360px] md:pb-0">
+      <div className="relative z-0 flex flex-col border-[0.5px] border-[#eaecf0]/50 bg-[#f9fafb] px-8 py-8 md:h-[360px] md:pb-0">
+        <div className="pointer-events-none absolute -left-[6px] -top-[6px] z-10 hidden size-3 bg-[#eaecf0] lg:block" />
+        <div className="pointer-events-none absolute -right-[6px] -top-[6px] z-10 hidden size-3 bg-[#eaecf0] lg:block" />
+        <div className="pointer-events-none absolute -bottom-[6px] -left-[6px] z-10 hidden size-3 bg-[#eaecf0] lg:block" />
+        <div className="pointer-events-none absolute -bottom-[6px] -right-[6px] z-10 hidden size-3 bg-[#eaecf0] lg:block" />
         <h3 className="text-2xl font-medium leading-8 tracking-[-0.48px] text-[#101828]">Built for Enterprise</h3>
         <p className="mt-2 text-base leading-6 text-[#667085]">
           Native apps across web, desktop, and mobile. MCP integration with your systems. Forward-Deployed Engineering from trusted partners. Open source you can audit and customize as your business needs evolve.
@@ -171,25 +243,25 @@ const CompromiseSection = () => (
 /* ─── Quote Section ───────────────────────────────────── */
 
 const QuoteSection = () => (
-  <section className="relative py-24">
+  <section className="relative overflow-hidden py-24">
     {/* Gray background block — left 63.6% of the page (916/1440) */}
     <div
       className="pointer-events-none absolute inset-y-[10%] left-0 hidden bg-[#eff1f4] lg:block"
       style={{ width: '63.6%' }}
       aria-hidden="true"
     />
-    <div className="relative mx-auto flex max-w-[1120px] flex-col gap-8 px-6 md:flex-row md:items-start md:gap-[66px] lg:px-0">
-      {/* Label — icon stacked above text */}
-      <div className="flex shrink-0 flex-col items-start gap-3 md:w-[248px]">
+    <div className="relative flex flex-col gap-8 pl-6 md:flex-row md:items-start md:gap-[66px]">
+      {/* Label — icon stacked above text, aligned to the 1120px content grid */}
+      <div className="flex shrink-0 flex-col items-start gap-3 pr-6 md:pr-0 md:w-[248px] lg:ml-[calc((100vw-1120px)/2)]">
         <img src="/enterprise/icon-factory-24.svg" alt="" className="size-6" />
         <p className="text-lg uppercase tracking-[-0.36px] text-[#667085]">
           Trusted by Organizations That Can&rsquo;t Compromise
         </p>
       </div>
-      {/* Quote card group */}
+      {/* Quote card group — stretches to right edge of screen */}
       <div className="relative flex-1">
         <div className="absolute left-0 top-0 hidden size-3 bg-[#d0d5dd] lg:block" />
-        <div className="border border-[#d0d5dd] bg-white p-10 shadow-[0px_48px_100px_0px_rgba(17,12,46,0.15)] md:ml-[6px] md:mt-[6px]">
+        <div className="border border-[#d0d5dd] border-r-0 bg-white p-10 shadow-[0px_48px_100px_0px_rgba(17,12,46,0.15)] md:ml-[6px] md:mt-[6px]">
           <p className="max-w-[768px] text-[32px] font-medium leading-[1.2] tracking-[-1.12px] text-[#101828] md:text-[56px]">
             &ldquo;Organizations across sectors are recognizing that AI is too important to outsource.&rdquo;
           </p>
@@ -224,7 +296,7 @@ const CTASection = () => (
 /* ─── Page ────────────────────────────────────────────── */
 
 export const EnterprisePage = () => (
-  <div className="relative min-h-screen bg-[#f9fafb]">
+  <div className="relative min-h-screen overflow-x-hidden bg-[#f9fafb]">
     <BackgroundGrid />
     <Header action={<GetStartedButton />} />
     <main className="relative pt-[104px]">

@@ -10,8 +10,14 @@ export const FooterSection = ({ className = '' }: FooterSectionProps) => (
         <span className="text-xl font-medium tracking-tight text-[#101828]">Thunderbolt</span>
       </div>
       <div className="mx-auto mt-6 h-px max-w-[1118px] bg-[#eaecf0]" />
-      <div className="mt-6 flex flex-col items-center justify-center gap-4 text-center md:flex-row md:gap-[60px]">
-        <img src="/enterprise/mozilla-logo.svg" alt="Mozilla" className="h-6 w-auto" />
+      <div className="mt-6 flex flex-col items-center justify-center gap-4 text-center lg:flex-row lg:gap-6">
+        <div className="flex items-center gap-4">
+          <img src="/enterprise/mozilla-logo.svg" alt="Mozilla" className="h-6 w-auto" />
+          <img src="/enterprise/thunderbird.svg" alt="Thunderbird" className="h-6 w-auto" />
+          <a href="https://github.com/thunderbird/thunderbolt" target="_blank" rel="noopener noreferrer">
+            <img src="/enterprise/github.svg" alt="GitHub" className="h-6 w-auto" />
+          </a>
+        </div>
         <p className="max-w-[638px] text-xs leading-4 text-[#667085]">
           Thunderbolt is part of{' '}
           <a href="https://blog.thunderbird.net/2020/01/thunderbirds-new-home/" className="border-b border-[#667085]/40" target="_blank" rel="noopener noreferrer">

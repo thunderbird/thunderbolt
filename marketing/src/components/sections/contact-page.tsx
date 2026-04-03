@@ -61,24 +61,24 @@ const useContactFormState = () => {
       return
     }
 
-    // Listen for the iframe to load (Mailchimp's response page)
-    const onLoad = () => {
-      iframe.removeEventListener('load', onLoad)
+    let settled = false
+
+    const succeed = () => {
+      if (settled) return
+      settled = true
+      iframe.removeEventListener('load', succeed)
       dispatch({ type: 'SUCCESS' })
     }
-    iframe.addEventListener('load', onLoad)
+
+    // Listen for the iframe to load (Mailchimp's response page)
+    iframe.addEventListener('load', succeed)
 
     // Submit the form natively into the hidden iframe
     formRef.current.submit()
 
     // Timeout fallback — assume success if iframe doesn't fire load in 8s
     // (cross-origin iframes may not fire load reliably)
-    setTimeout(() => {
-      iframe.removeEventListener('load', onLoad)
-      if (state.status === 'submitting') {
-        dispatch({ type: 'SUCCESS' })
-      }
-    }, 8000)
+    setTimeout(succeed, 8000)
   }
 
   return { state, set, handleSubmit, iframeRef, formRef }

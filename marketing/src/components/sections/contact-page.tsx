@@ -44,7 +44,7 @@ const reducer = (state: FormState, action: FormAction): FormState => {
   return state
 }
 
-/** Submit to Mailchimp via JSONP (no CORS issues, no redirect). */
+/** Submit to Mailchimp via JSONP to avoid CORS restrictions and the default Mailchimp confirmation page redirect. */
 const submitToMailchimp = (params: URLSearchParams): Promise<{ result: string; msg: string }> =>
   new Promise((resolve, reject) => {
     const callbackName = `mc_callback_${Date.now()}`

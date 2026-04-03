@@ -55,7 +55,11 @@ const submitToMailchimp = (params: URLSearchParams): Promise<{ result: string; m
       script.remove()
     }
 
+    let settled = false
+
     ;(window as unknown as Record<string, unknown>)[callbackName] = (data: { result: string; msg: string }) => {
+      settled = true
+      clearTimeout(timeout)
       cleanup()
       resolve(data)
     }
@@ -73,7 +77,15 @@ const submitToMailchimp = (params: URLSearchParams): Promise<{ result: string; m
     }
 
     document.body.appendChild(script)
-    script.onload = () => clearTimeout(timeout)
+    script.onload = () => {
+      if (settled) return
+      setTimeout(() => {
+        if (settled) return
+        clearTimeout(timeout)
+        cleanup()
+        reject(new Error('Failed to submit'))
+      }, 2000)
+    }
   })
 
 const useContactFormState = () => {

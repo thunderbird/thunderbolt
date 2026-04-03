@@ -1,14 +1,42 @@
 import { ContentViewHeader } from '@/content-view/header'
 import { useContentView } from '@/content-view/context'
 import { useSettings } from '@/hooks/use-settings'
+import { getAuthToken } from '@/lib/auth-token'
 import { Button } from '@/components/ui/button'
 import { Download, Loader2 } from 'lucide-react'
+import ky, { type KyInstance } from 'ky'
 import { useCallback, useEffect, useReducer, useRef } from 'react'
 import { Document, Page, pdfjs } from 'react-pdf'
 import 'react-pdf/dist/Page/AnnotationLayer.css'
 import 'react-pdf/dist/Page/TextLayer.css'
 
 pdfjs.GlobalWorkerOptions.workerSrc = new URL('pdfjs-dist/build/pdf.worker.min.mjs', import.meta.url).toString()
+
+type FetchHaystackFileOptions = {
+  cloudUrl: string
+  fileId: string
+  getAuthToken: () => string | null
+  httpClient?: KyInstance
+}
+
+/** Fetches a haystack file with auth and returns a blob URL. */
+export const fetchHaystackFile = async ({
+  cloudUrl,
+  fileId,
+  getAuthToken: getToken,
+  httpClient = ky,
+}: FetchHaystackFileOptions): Promise<string> => {
+  const token = getToken()
+
+  const blob = await httpClient
+    .get(`${cloudUrl}/haystack/files/${fileId}`, {
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+      credentials: 'include',
+    })
+    .blob()
+
+  return URL.createObjectURL(blob)
+}
 
 type FileType = 'pdf' | 'unsupported'
 
@@ -65,35 +93,20 @@ export const PdfSidebarViewer = ({ fileId, fileName, initialPage }: DocumentSide
     let cancelled = false
     dispatch({ type: 'reset' })
 
-    const fetchFile = async () => {
-      const response = await fetch(`${cloudUrl.value}/haystack/files/${fileId}`)
-
-      if (!response.ok) {
-        throw new Error(`Failed to download file: ${response.status}`)
-      }
-
-      const blob = await response.blob()
-
-      if (cancelled) {
-        return
-      }
-
-      const url = URL.createObjectURL(blob)
-      blobUrlRef.current = url
-
-      if (!cancelled) {
+    fetchHaystackFile({ cloudUrl: cloudUrl.value, fileId, getAuthToken })
+      .then((url) => {
+        if (cancelled) {
+          URL.revokeObjectURL(url)
+          return
+        }
+        blobUrlRef.current = url
         dispatch({ type: 'loaded', blobUrl: url, numPages: null })
-      } else {
-        URL.revokeObjectURL(url)
-        blobUrlRef.current = null
-      }
-    }
-
-    fetchFile().catch((err) => {
-      if (!cancelled) {
-        dispatch({ type: 'error', message: err instanceof Error ? err.message : 'Failed to load document' })
-      }
-    })
+      })
+      .catch((err) => {
+        if (!cancelled) {
+          dispatch({ type: 'error', message: err instanceof Error ? err.message : 'Failed to load document' })
+        }
+      })
 
     return () => {
       cancelled = true

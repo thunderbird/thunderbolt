@@ -1,11 +1,8 @@
-import { describe, expect, it } from 'bun:test'
+import { afterEach, beforeEach, describe, expect, it, spyOn } from 'bun:test'
+import ky from 'ky'
+import { fetchHaystackFile } from './pdf-sidebar-viewer'
 
-// Test the getFileType logic that should exist in the viewer
-// After removing docx support, only PDF should be recognized
 describe('PdfSidebarViewer file type detection', () => {
-  // We'll import getFileType once it's exported for testing
-  // For now, test the expected behavior via the component's rendering
-
   const getFileType = (fileName: string): 'pdf' | 'unsupported' => {
     const ext = fileName.split('.').pop()?.toLowerCase()
     if (ext === 'pdf') {
@@ -32,5 +29,118 @@ describe('PdfSidebarViewer file type detection', () => {
     expect(getFileType('image.png')).toBe('unsupported')
     expect(getFileType('data.csv')).toBe('unsupported')
     expect(getFileType('readme.txt')).toBe('unsupported')
+  })
+})
+
+describe('fetchHaystackFile', () => {
+  const cloudUrl = 'https://example.com/v1'
+  const fileId = 'abc-123'
+
+  type FetchFn = (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>
+
+  const createClient = (mockFetch: FetchFn) => ky.create({ fetch: mockFetch as typeof fetch })
+
+  const successFetch =
+    (onRequest?: (req: Request) => void): FetchFn =>
+    async (input) => {
+      const req = input instanceof Request ? input : new Request(input)
+      onRequest?.(req)
+      return new Response(new Blob(['fake-pdf'], { type: 'application/pdf' }), { status: 200 })
+    }
+
+  let revokeObjectURL: ReturnType<typeof spyOn>
+  let createObjectURL: ReturnType<typeof spyOn>
+
+  beforeEach(() => {
+    createObjectURL = spyOn(URL, 'createObjectURL').mockReturnValue('blob:fake-url')
+    revokeObjectURL = spyOn(URL, 'revokeObjectURL').mockImplementation(() => {})
+  })
+
+  afterEach(() => {
+    createObjectURL.mockRestore()
+    revokeObjectURL.mockRestore()
+  })
+
+  it('sends Authorization header with Bearer token when token exists', async () => {
+    let capturedReq: Request | undefined
+    const httpClient = createClient(successFetch((req) => (capturedReq = req)))
+
+    await fetchHaystackFile({
+      cloudUrl,
+      fileId,
+      getAuthToken: () => 'my-token',
+      httpClient,
+    })
+
+    expect(capturedReq?.headers.get('Authorization')).toBe('Bearer my-token')
+  })
+
+  it('sends no Authorization header when token is null', async () => {
+    let capturedReq: Request | undefined
+    const httpClient = createClient(successFetch((req) => (capturedReq = req)))
+
+    await fetchHaystackFile({
+      cloudUrl,
+      fileId,
+      getAuthToken: () => null,
+      httpClient,
+    })
+
+    expect(capturedReq?.headers.get('Authorization')).toBeNull()
+  })
+
+  it('fetches from the correct URL', async () => {
+    let capturedReq: Request | undefined
+    const httpClient = createClient(successFetch((req) => (capturedReq = req)))
+
+    await fetchHaystackFile({
+      cloudUrl,
+      fileId,
+      getAuthToken: () => null,
+      httpClient,
+    })
+
+    expect(capturedReq?.url).toBe('https://example.com/v1/haystack/files/abc-123')
+  })
+
+  it('returns a blob URL on success', async () => {
+    const httpClient = createClient(successFetch())
+
+    const result = await fetchHaystackFile({
+      cloudUrl,
+      fileId,
+      getAuthToken: () => 'tok',
+      httpClient,
+    })
+
+    expect(result).toBe('blob:fake-url')
+  })
+
+  it('throws on non-ok response', async () => {
+    const mockFetch: FetchFn = async () => new Response('Unauthorized', { status: 401 })
+    const httpClient = createClient(mockFetch)
+
+    expect(
+      fetchHaystackFile({
+        cloudUrl,
+        fileId,
+        getAuthToken: () => 'tok',
+        httpClient,
+      }),
+    ).rejects.toThrow()
+  })
+
+  it('includes credentials in the request', async () => {
+    let capturedReq: Request | undefined
+    const httpClient = createClient(successFetch((req) => (capturedReq = req)))
+
+    await fetchHaystackFile({
+      cloudUrl,
+      fileId,
+      getAuthToken: () => 'tok',
+      httpClient,
+    })
+
+    expect(capturedReq?.credentials).toBe('include')
   })
 })

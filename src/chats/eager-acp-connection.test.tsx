@@ -5,13 +5,9 @@ import { act, cleanup, renderHook } from '@testing-library/react'
 import { getClock } from '@/testing-library'
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, mock } from 'bun:test'
 
-// Ensure web platform defaults (guards against mock.module leaking from other test files)
-mock.module('@/lib/platform', () => ({
-  isTauri: () => false,
-  isDesktop: () => false,
-  getPlatform: () => 'web',
-  isAgentAvailableOnPlatform: (type: string) => type !== 'local',
-}))
+import { webPlatformMock } from '@/test-utils/platform-mock'
+
+mock.module('@/lib/platform', () => webPlatformMock)
 
 import { getDb } from '@/db/database'
 import { agentsTable, modelsTable, modesTable } from '@/db/tables'

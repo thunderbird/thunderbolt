@@ -3,12 +3,9 @@ import { fireEvent, render, screen } from '@testing-library/react'
 import { describe, expect, it, mock } from 'bun:test'
 import type { CitationSource } from '@/types/citation'
 
-// Ensure web platform defaults (guards against mock.module leaking from other test files)
-mock.module('@/lib/platform', () => ({
-  isTauri: () => false,
-  isDesktop: () => false,
-  getPlatform: () => 'web',
-}))
+import { webPlatformMock } from '@/test-utils/platform-mock'
+
+mock.module('@/lib/platform', () => webPlatformMock)
 
 import { ExternalLinkDialogProvider } from './markdown-utils'
 import { ContentViewProvider } from '@/content-view/context'

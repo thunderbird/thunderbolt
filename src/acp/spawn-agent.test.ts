@@ -2,7 +2,10 @@ import { describe, expect, it, mock, beforeEach } from 'bun:test'
 
 let mockInvokeResult: any = { pid: 12345 }
 
+import { tauriCoreMock } from '@/test-utils/tauri-mock'
+
 mock.module('@tauri-apps/api/core', () => ({
+  ...tauriCoreMock,
   invoke: async (cmd: string, args: any) => {
     if (cmd === 'spawn_agent') {
       if (args.binaryPath.includes('nonexistent')) {
@@ -28,10 +31,9 @@ mock.module('@tauri-apps/plugin-shell', () => ({
   },
 }))
 
-mock.module('@/lib/platform', () => ({
-  isTauri: () => true,
-  getPlatform: () => 'macos',
-}))
+import { desktopPlatformMock } from '@/test-utils/platform-mock'
+
+mock.module('@/lib/platform', () => desktopPlatformMock)
 
 describe('spawn-agent', () => {
   let mod: typeof import('./spawn-agent')

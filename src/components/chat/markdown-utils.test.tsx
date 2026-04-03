@@ -4,12 +4,9 @@ import { afterAll, beforeAll, describe, expect, mock, test } from 'bun:test'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 
-// Ensure web platform defaults (guards against mock.module leaking from other test files)
-mock.module('@/lib/platform', () => ({
-  isTauri: () => false,
-  isDesktop: () => false,
-  getPlatform: () => 'web',
-}))
+import { webPlatformMock } from '@/test-utils/platform-mock'
+
+mock.module('@/lib/platform', () => webPlatformMock)
 
 import { ContentViewProvider } from '@/content-view/context'
 import { createTestProvider } from '@/test-utils/test-provider'

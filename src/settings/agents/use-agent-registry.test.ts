@@ -43,15 +43,13 @@ mock.module('@tauri-apps/plugin-os', () => ({
   arch: () => 'aarch64',
 }))
 
-mock.module('@tauri-apps/api/core', () => ({
-  invoke: async () => ({}),
-  isTauri: () => false,
-}))
+import { tauriCoreMock } from '@/test-utils/tauri-mock'
 
-mock.module('@/lib/platform', () => ({
-  isTauri: () => false,
-  getPlatform: () => 'macos',
-}))
+mock.module('@tauri-apps/api/core', () => tauriCoreMock)
+
+import { webPlatformMock } from '@/test-utils/platform-mock'
+
+mock.module('@/lib/platform', () => ({ ...webPlatformMock, getPlatform: () => 'macos' }))
 
 // ── Tests ─────────────────────────────────────────────────────────────────────
 

@@ -33,15 +33,17 @@ mock.module('@tauri-apps/plugin-http', () => ({
   fetch: async () => mockDownloadResponse,
 }))
 
+import { tauriCoreMock } from '@/test-utils/tauri-mock'
+
 mock.module('@tauri-apps/api/core', () => ({
+  ...tauriCoreMock,
   invoke: async () => ({}),
   isTauri: () => true,
 }))
 
-mock.module('@/lib/platform', () => ({
-  isTauri: () => true,
-  getPlatform: () => 'macos',
-}))
+import { desktopPlatformMock } from '@/test-utils/platform-mock'
+
+mock.module('@/lib/platform', () => desktopPlatformMock)
 
 // ── Tests ─────────────────────────────────────────────────────────────────────
 

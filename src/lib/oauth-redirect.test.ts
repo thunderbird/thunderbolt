@@ -1,4 +1,8 @@
-import { describe, expect, it } from 'bun:test'
+import { describe, expect, it, mock } from 'bun:test'
+import { webPlatformMock } from '@/test-utils/platform-mock'
+
+mock.module('@/lib/platform', () => webPlatformMock)
+
 import { getOAuthRedirectUri } from './oauth-redirect'
 
 describe('getOAuthRedirectUri', () => {

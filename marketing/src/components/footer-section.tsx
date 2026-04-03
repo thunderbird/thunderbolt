@@ -19,7 +19,7 @@ export const FooterSection = ({ className = '' }: FooterSectionProps) => (
           </a>
         </div>
         <p className="max-w-[638px] text-xs leading-4 text-[#667085]">
-          Thunderbolt is part of{' '}
+          Thunderbolt is a product of{' '}
           <a href="https://blog.thunderbird.net/2020/01/thunderbirds-new-home/" className="border-b border-[#667085]/40" target="_blank" rel="noopener noreferrer">
             MZLA Technologies Corporation
           </a>

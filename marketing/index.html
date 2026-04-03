@@ -7,8 +7,15 @@
     <title>Thunderbolt — Privacy-First AI Assistant</title>
     <meta name="description" content="Enterprise AI assistant that never phones home. Zero logs, zero training, bring your own models. Built by Mozilla." />
   </head>
-  <body>
-    <div id="root"></div>
+  <body style="background: #f9fafb">
+    <div id="root" style="opacity: 0; transition: opacity 0.15s ease-in"></div>
     <script type="module" src="/src/main.tsx"></script>
+    <script>
+      document.fonts.ready.then(() => {
+        document.getElementById('root').style.opacity = '1';
+      });
+      // Fallback — show after 1s even if fonts haven't loaded
+      setTimeout(() => { document.getElementById('root').style.opacity = '1'; }, 1000);
+    </script>
   </body>
 </html>

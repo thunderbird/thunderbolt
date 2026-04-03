@@ -11,6 +11,13 @@ const mockAuth = {
   },
 } as unknown as Auth
 
+/** Mock auth that returns no session (unauthenticated) */
+const mockAuthUnauthenticated = {
+  api: {
+    getSession: () => Promise.resolve(null),
+  },
+} as unknown as Auth
+
 describe('Pro Tools Routes', () => {
   let app: ReturnType<typeof createProToolsRoutes>
   let mockFetch: ReturnType<typeof mock>
@@ -177,6 +184,22 @@ describe('Pro Tools Routes', () => {
     const data = await response.json()
     expect(data).toHaveProperty('success')
     expect(data).toHaveProperty('data')
+  })
+
+  describe('authentication', () => {
+    it('should return 401 when session is null', async () => {
+      const unauthenticatedApp = createProToolsRoutes(mockAuthUnauthenticated, mockFetch as unknown as typeof fetch)
+
+      const response = await unauthenticatedApp.handle(
+        new Request('http://localhost/pro/search', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ query: 'test', max_results: 5 }),
+        }),
+      )
+
+      expect(response.status).toBe(401)
+    })
   })
 
   it('should require valid body for requests', async () => {

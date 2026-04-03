@@ -1,0 +1,11 @@
+services:
+  - type: web
+    runtime: static
+    name: thunderbolt-marketing
+    rootDir: marketing
+    buildCommand: bun install && bun run build
+    staticPublishPath: ./dist
+    routes:
+      - type: rewrite
+        source: /*
+        destination: /index.html

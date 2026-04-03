@@ -1,0 +1,96 @@
+name: Security
+
+on:
+  pull_request:
+    types: [opened, reopened, synchronize, ready_for_review]
+    branches: ['**']
+  push:
+    branches: [main]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  semgrep:
+    name: Semgrep SAST
+    runs-on: ubuntu-latest
+    container:
+      image: semgrep/semgrep
+    permissions:
+      contents: read
+      security-events: write
+    if: github.actor != 'dependabot[bot]'
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          fetch-depth: 0
+
+      - name: Run Semgrep (full scan)
+        if: github.event_name != 'pull_request'
+        run: |
+          semgrep scan \
+            --config p/typescript \
+            --config p/react \
+            --config p/nodejs \
+            --config p/owasp-top-ten \
+            --config p/security-audit \
+            --config p/secrets \
+            --sarif-output semgrep.sarif
+
+      - name: Run Semgrep (diff-aware)
+        if: github.event_name == 'pull_request'
+        run: |
+          semgrep scan \
+            --config p/typescript \
+            --config p/react \
+            --config p/nodejs \
+            --config p/owasp-top-ten \
+            --config p/security-audit \
+            --config p/secrets \
+            --baseline-commit ${{ github.event.pull_request.base.sha }} \
+            --sarif-output semgrep.sarif
+
+      - name: Upload SARIF
+        uses: github/codeql-action/upload-sarif@5c8a8a642e79153f5d047b10ec1cba1d1cc65699 # v3.35.1
+        if: always()
+        continue-on-error: true
+        with:
+          sarif_file: semgrep.sarif
+
+  codeql:
+    name: CodeQL Analysis
+    runs-on: ubuntu-latest
+    if: vars.ENABLE_CODEQL == 'true'
+    permissions:
+      contents: read
+      security-events: write
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@5c8a8a642e79153f5d047b10ec1cba1d1cc65699 # v3.35.1
+        with:
+          languages: javascript-typescript
+          queries: security-extended
+
+      - name: Run CodeQL Analysis
+        uses: github/codeql-action/analyze@5c8a8a642e79153f5d047b10ec1cba1d1cc65699 # v3.35.1
+
+  gitleaks:
+    name: Secret Detection
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          fetch-depth: 0
+
+      - name: Detect secrets
+        uses: gitleaks/gitleaks-action@ff98106e4c7b2bc287b24eaf42907196329070c7 # v2.3.9
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

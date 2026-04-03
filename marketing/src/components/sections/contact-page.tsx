@@ -1,10 +1,9 @@
-import { type ChangeEvent, type FormEvent, useReducer } from 'react'
+import { type ChangeEvent, type FormEvent, useReducer, useRef } from 'react'
 import { FooterSection } from '../footer-section'
 import { Header } from '../header'
 
-/** Mailchimp JSONP endpoint — swap /subscribe/post for /subscribe/post-json to get a JSONP response instead of a redirect. */
-const MAILCHIMP_JSONP_URL =
-  'https://thunderbird.us12.list-manage.com/subscribe/post-json?u=f8051cc8637cf3ff79661f382&id=61b3bbfdaa&f_id=00bfaae0f0'
+const MAILCHIMP_URL =
+  'https://thunderbird.us12.list-manage.com/subscribe/post?u=f8051cc8637cf3ff79661f382&id=61b3bbfdaa&f_id=00bfaae0f0'
 
 type FormState = {
   firstName: string
@@ -44,85 +43,45 @@ const reducer = (state: FormState, action: FormAction): FormState => {
   return state
 }
 
-/** Submit to Mailchimp via JSONP to avoid CORS restrictions and the default Mailchimp confirmation page redirect. */
-const submitToMailchimp = (params: URLSearchParams): Promise<{ result: string; msg: string }> =>
-  new Promise((resolve, reject) => {
-    const callbackName = `mc_callback_${Date.now()}`
-    const script = document.createElement('script')
-
-    const cleanup = () => {
-      delete (window as unknown as Record<string, unknown>)[callbackName]
-      script.remove()
-    }
-
-    let settled = false
-
-    ;(window as unknown as Record<string, unknown>)[callbackName] = (data: { result: string; msg: string }) => {
-      settled = true
-      clearTimeout(timeout)
-      cleanup()
-      resolve(data)
-    }
-
-    const timeout = setTimeout(() => {
-      cleanup()
-      reject(new Error('Request timed out'))
-    }, 10000)
-
-    script.src = `${MAILCHIMP_JSONP_URL}&c=${callbackName}&${params.toString()}`
-    script.onerror = () => {
-      clearTimeout(timeout)
-      cleanup()
-      reject(new Error('Failed to submit'))
-    }
-
-    document.body.appendChild(script)
-    script.onload = () => {
-      if (settled) return
-      setTimeout(() => {
-        if (settled) return
-        clearTimeout(timeout)
-        cleanup()
-        reject(new Error('Failed to submit'))
-      }, 2000)
-    }
-  })
-
 const useContactFormState = () => {
   const [state, dispatch] = useReducer(reducer, initialState)
+  const iframeRef = useRef<HTMLIFrameElement>(null)
+  const formRef = useRef<HTMLFormElement>(null)
 
   const set = (field: FormField) => (e: ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) =>
     dispatch({ type: 'SET_FIELD', field, value: e.target.value })
 
-  const handleSubmit = async (e: FormEvent) => {
+  const handleSubmit = (e: FormEvent) => {
     e.preventDefault()
     dispatch({ type: 'SUBMITTING' })
 
-    const params = new URLSearchParams({
-      FNAME: state.firstName,
-      LNAME: state.lastName,
-      EMAIL: state.email,
-      TITLE: state.title,
-      ORG: state.org,
-      HELP: state.help,
-      // Mailchimp honeypot — must be empty; bots that fill it are rejected server-side
-      b_f8051cc8637cf3ff79661f382_61b3bbfdaa: '',
-    })
-
-    try {
-      const data = await submitToMailchimp(params)
-      if (data.result === 'success') {
-        dispatch({ type: 'SUCCESS' })
-      } else {
-        const cleanMsg = data.msg.replace(/<[^>]*>/g, '')
-        dispatch({ type: 'ERROR', message: cleanMsg })
-      }
-    } catch {
+    const iframe = iframeRef.current
+    if (!iframe || !formRef.current) {
       dispatch({ type: 'ERROR', message: 'Something went wrong. Please try again.' })
+      return
     }
+
+    // Listen for the iframe to load (Mailchimp's response page)
+    const onLoad = () => {
+      iframe.removeEventListener('load', onLoad)
+      dispatch({ type: 'SUCCESS' })
+    }
+    iframe.addEventListener('load', onLoad)
+
+    // Submit the form natively into the hidden iframe
+    formRef.current.submit()
+
+    // Timeout fallback — assume success if iframe doesn't fire load in 8s
+    // (cross-origin iframes may not fire load reliably)
+    setTimeout(() => {
+      iframe.removeEventListener('load', onLoad)
+      if (state.status === 'submitting') {
+        dispatch({ type: 'SUCCESS' })
+      }
+    }, 8000)
   }
 
-  return { state, set, handleSubmit }
+  return { state, set, handleSubmit, iframeRef, formRef }
 }
 
 const inputClass =
@@ -131,7 +90,7 @@ const inputClass =
 const labelClass = 'block text-sm font-medium text-[#344054] mb-1.5'
 
 export const ContactPage = () => {
-  const { state, set, handleSubmit } = useContactFormState()
+  const { state, set, handleSubmit, iframeRef, formRef } = useContactFormState()
 
   if (state.status === 'success') {
     return (
@@ -165,36 +124,51 @@ export const ContactPage = () => {
           Tell us about your organization and how we can help.
         </p>
 
-        <form onSubmit={handleSubmit} className="mt-8 flex flex-col gap-5">
+        {/* Hidden iframe target for form submission — no visible redirect */}
+        <iframe ref={iframeRef} name="mc-hidden-iframe" className="hidden" aria-hidden="true" />
+
+        <form
+          ref={formRef}
+          action={MAILCHIMP_URL}
+          method="post"
+          target="mc-hidden-iframe"
+          onSubmit={handleSubmit}
+          className="mt-8 flex flex-col gap-5"
+        >
           <div className="grid grid-cols-2 gap-4">
             <div>
               <label htmlFor="mce-FNAME" className={labelClass}>First Name</label>
-              <input type="text" id="mce-FNAME" value={state.firstName} onChange={set('firstName')} className={inputClass} />
+              <input type="text" name="FNAME" id="mce-FNAME" value={state.firstName} onChange={set('firstName')} className={inputClass} />
             </div>
             <div>
               <label htmlFor="mce-LNAME" className={labelClass}>Last Name</label>
-              <input type="text" id="mce-LNAME" value={state.lastName} onChange={set('lastName')} className={inputClass} />
+              <input type="text" name="LNAME" id="mce-LNAME" value={state.lastName} onChange={set('lastName')} className={inputClass} />
             </div>
           </div>
 
           <div>
             <label htmlFor="mce-EMAIL" className={labelClass}>Email Address <span className="text-red-500">*</span></label>
-            <input type="email" id="mce-EMAIL" value={state.email} onChange={set('email')} required className={inputClass} />
+            <input type="email" name="EMAIL" id="mce-EMAIL" value={state.email} onChange={set('email')} required className={inputClass} />
           </div>
 
           <div>
             <label htmlFor="mce-TITLE" className={labelClass}>Title</label>
-            <input type="text" id="mce-TITLE" value={state.title} onChange={set('title')} className={inputClass} />
+            <input type="text" name="TITLE" id="mce-TITLE" value={state.title} onChange={set('title')} className={inputClass} />
           </div>
 
           <div>
             <label htmlFor="mce-ORG" className={labelClass}>Company / Organization</label>
-            <input type="text" id="mce-ORG" value={state.org} onChange={set('org')} className={inputClass} />
+            <input type="text" name="ORG" id="mce-ORG" value={state.org} onChange={set('org')} className={inputClass} />
           </div>
 
           <div>
             <label htmlFor="mce-HELP" className={labelClass}>How can we help?</label>
-            <textarea id="mce-HELP" value={state.help} onChange={set('help')} rows={4} className={inputClass} />
+            <textarea name="HELP" id="mce-HELP" value={state.help} onChange={set('help')} rows={4} className={inputClass} />
+          </div>
+
+          {/* Mailchimp honeypot — must be present and empty */}
+          <div className="absolute -left-[5000px]" aria-hidden="true">
+            <input type="text" name="b_f8051cc8637cf3ff79661f382_61b3bbfdaa" tabIndex={-1} defaultValue="" />
           </div>
 
           {state.status === 'error' && (

@@ -1,4 +1,4 @@
-import { type FormEvent, useReducer } from 'react'
+import { type ChangeEvent, type FormEvent, useReducer } from 'react'
 import { FooterSection } from '../footer-section'
 
 /** Mailchimp JSONP endpoint — swap /subscribe/post for /subscribe/post-json to get a JSONP response instead of a redirect. */
@@ -16,8 +16,10 @@ type FormState = {
   errorMessage: string
 }
 
+type FormField = 'firstName' | 'lastName' | 'title' | 'email' | 'help' | 'org'
+
 type FormAction =
-  | { type: 'SET_FIELD'; field: keyof FormState; value: string }
+  | { type: 'SET_FIELD'; field: FormField; value: string }
   | { type: 'SUBMITTING' }
   | { type: 'SUCCESS' }
   | { type: 'ERROR'; message: string }
@@ -47,7 +49,6 @@ const submitToMailchimp = (params: URLSearchParams): Promise<{ result: string; m
     const callbackName = `mc_callback_${Date.now()}`
     const script = document.createElement('script')
 
-    // Cleanup after response or timeout
     const cleanup = () => {
       delete (window as Record<string, unknown>)[callbackName]
       script.remove()
@@ -71,31 +72,13 @@ const submitToMailchimp = (params: URLSearchParams): Promise<{ result: string; m
     }
 
     document.body.appendChild(script)
-
-    // Clear timeout on success (callback will resolve before timeout)
     script.onload = () => clearTimeout(timeout)
   })
 
-const inputClass =
-  'w-full border border-[#d0d5dd] bg-white px-4 py-3 text-sm text-[#101828] placeholder:text-[#667085] outline-none focus:border-[#344054] focus:ring-1 focus:ring-[#344054]'
-
-const labelClass = 'block text-sm font-medium text-[#344054] mb-1.5'
-
-const Header = () => (
-  <header className="fixed inset-x-0 top-0 z-50 h-[104px] bg-white/20 backdrop-blur-[32px]">
-    <div className="mx-auto flex h-full max-w-[1440px] items-center justify-between px-6 lg:px-[160px]">
-      <a href="/" className="flex items-center gap-[7px]">
-        <img src="/enterprise/thunderbolt-logo.svg" alt="Thunderbolt" className="size-[23px]" />
-        <span className="text-xl font-medium leading-7 tracking-[-0.4px] text-[#101828]">Thunderbolt</span>
-      </a>
-    </div>
-  </header>
-)
-
-export const ContactPage = () => {
+const useContactFormState = () => {
   const [state, dispatch] = useReducer(reducer, initialState)
 
-  const set = (field: keyof FormState) => (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) =>
+  const set = (field: FormField) => (e: ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) =>
     dispatch({ type: 'SET_FIELD', field, value: e.target.value })
 
   const handleSubmit = async (e: FormEvent) => {
@@ -116,7 +99,6 @@ export const ContactPage = () => {
       if (data.result === 'success') {
         dispatch({ type: 'SUCCESS' })
       } else {
-        // Mailchimp returns HTML in error messages — strip tags
         const cleanMsg = data.msg.replace(/<[^>]*>/g, '')
         dispatch({ type: 'ERROR', message: cleanMsg })
       }
@@ -124,6 +106,28 @@ export const ContactPage = () => {
       dispatch({ type: 'ERROR', message: 'Something went wrong. Please try again.' })
     }
   }
+
+  return { state, set, handleSubmit }
+}
+
+const inputClass =
+  'w-full border border-[#d0d5dd] bg-white px-4 py-3 text-sm text-[#101828] placeholder:text-[#667085] outline-none focus:border-[#344054] focus:ring-1 focus:ring-[#344054]'
+
+const labelClass = 'block text-sm font-medium text-[#344054] mb-1.5'
+
+const Header = () => (
+  <header className="fixed inset-x-0 top-0 z-50 h-[104px] bg-white/20 backdrop-blur-[32px]">
+    <div className="mx-auto flex h-full max-w-[1440px] items-center justify-between px-6 lg:px-[160px]">
+      <a href="/" className="flex items-center gap-[7px]">
+        <img src="/enterprise/thunderbolt-logo.svg" alt="Thunderbolt" className="size-[23px]" />
+        <span className="text-xl font-medium leading-7 tracking-[-0.4px] text-[#101828]">Thunderbolt</span>
+      </a>
+    </div>
+  </header>
+)
+
+export const ContactPage = () => {
+  const { state, set, handleSubmit } = useContactFormState()
 
   if (state.status === 'success') {
     return (

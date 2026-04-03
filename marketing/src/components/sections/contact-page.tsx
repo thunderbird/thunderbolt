@@ -1,5 +1,6 @@
 import { type ChangeEvent, type FormEvent, useReducer } from 'react'
 import { FooterSection } from '../footer-section'
+import { Header } from '../header'
 
 /** Mailchimp JSONP endpoint — swap /subscribe/post for /subscribe/post-json to get a JSONP response instead of a redirect. */
 const MAILCHIMP_JSONP_URL =
@@ -114,17 +115,6 @@ const inputClass =
   'w-full border border-[#d0d5dd] bg-white px-4 py-3 text-sm text-[#101828] placeholder:text-[#667085] outline-none focus:border-[#344054] focus:ring-1 focus:ring-[#344054]'
 
 const labelClass = 'block text-sm font-medium text-[#344054] mb-1.5'
-
-const Header = () => (
-  <header className="fixed inset-x-0 top-0 z-50 h-[104px] bg-white/20 backdrop-blur-[32px]">
-    <div className="mx-auto flex h-full max-w-[1440px] items-center justify-between px-6 lg:px-[160px]">
-      <a href="/" className="flex items-center gap-[7px]">
-        <img src="/enterprise/thunderbolt-logo.svg" alt="Thunderbolt" className="size-[23px]" />
-        <span className="text-xl font-medium leading-7 tracking-[-0.4px] text-[#101828]">Thunderbolt</span>
-      </a>
-    </div>
-  </header>
-)
 
 export const ContactPage = () => {
   const { state, set, handleSubmit } = useContactFormState()

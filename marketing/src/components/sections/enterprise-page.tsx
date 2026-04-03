@@ -1,4 +1,5 @@
 import { FooterSection } from '../footer-section'
+import { Header } from '../header'
 
 /* ─── Shared ──────────────────────────────────────────── */
 
@@ -31,22 +32,6 @@ const BackgroundGrid = () => (
       <div className="absolute left-[1121px] top-[519px] size-[160px] bg-[#eff1f4]" />
     </div>
   </div>
-)
-
-/* ─── Header ──────────────────────────────────────────── */
-
-const Header = () => (
-  <header className="fixed inset-x-0 top-0 z-50 h-[104px] bg-white/20 backdrop-blur-[32px]">
-    <div className="mx-auto flex h-full max-w-[1440px] items-center justify-between px-6 lg:px-[160px]">
-      <div className="flex items-center gap-2">
-        <a href="/" className="flex items-center gap-[7px]">
-          <img src="/enterprise/thunderbolt-logo.svg" alt="Thunderbolt" className="size-[23px]" />
-          <span className="text-xl font-medium leading-7 tracking-[-0.4px] text-[#101828]">Thunderbolt</span>
-        </a>
-      </div>
-      <GetStartedButton />
-    </div>
-  </header>
 )
 
 /* ─── Hero ────────────────────────────────────────────── */
@@ -241,7 +226,7 @@ const CTASection = () => (
 export const EnterprisePage = () => (
   <div className="relative min-h-screen bg-[#f9fafb]">
     <BackgroundGrid />
-    <Header />
+    <Header action={<GetStartedButton />} />
     <main className="relative pt-[104px]">
       <Hero />
       <FeatureCards />

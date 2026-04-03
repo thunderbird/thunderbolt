@@ -105,6 +105,8 @@ const useContactFormState = () => {
       TITLE: state.title,
       ORG: state.org,
       HELP: state.help,
+      // Mailchimp honeypot — must be empty; bots that fill it are rejected server-side
+      b_f8051cc8637cf3ff79661f382_61b3bbfdaa: '',
     })
 
     try {

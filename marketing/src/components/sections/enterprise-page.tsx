@@ -34,6 +34,34 @@ const BackgroundGrid = () => (
   </div>
 )
 
+/* ─── Prompt Card ─────────────────────────────────────── */
+
+const PromptCard = ({ pillGapClass = 'gap-1.5 sm:gap-2' }: { pillGapClass?: string }) => (
+  <>
+    <div className="absolute -left-[12px] -top-[12px] size-[23px] bg-[#eaecf0]" />
+    <div className="absolute -right-[12px] -top-[12px] size-[23px] bg-[#eaecf0]" />
+    <div className="absolute -bottom-[12px] -left-[12px] size-[23px] bg-[#eaecf0]" />
+    <div className="absolute -bottom-[12px] -right-[12px] size-[23px] bg-[#eaecf0]" />
+    <div className="border-[0.5px] border-[#eaecf0] bg-gradient-to-b from-[rgba(241,241,241,0.3)] to-[rgba(228,228,228,0.3)] p-5 backdrop-blur-[5px]">
+      <div className={`flex items-center ${pillGapClass}`}>
+        {['Check the weather', 'Write a message', 'Check the schedule'].map((label) => (
+          <span key={label} className="shrink-0 rounded-full bg-white px-2 py-1 text-[9px] sm:px-3.5 sm:py-1.5 sm:text-[11px] whitespace-nowrap text-[#344054] shadow-[0px_2px_8px_0px_rgba(0,0,0,0.08)]">
+            {label}
+          </span>
+        ))}
+        <span className="flex size-7 items-center justify-center rounded-full bg-white text-sm text-[#344054] shadow-[0px_2px_8px_0px_rgba(0,0,0,0.08)]">+</span>
+      </div>
+      <div className="mt-2.5 rounded-2xl bg-white px-4 pb-3 pt-3 shadow-[0px_2px_8px_0px_rgba(0,0,0,0.08)]">
+        <p className="text-sm text-[#667085]">Ask me anything</p>
+        <div className="mt-2 flex items-center justify-between">
+          <span className="inline-flex size-7 items-center justify-center rounded-lg bg-[#f2f4f7] text-sm font-bold text-[#344054]">+</span>
+          <span className="flex size-7 items-center justify-center rounded-lg bg-[#f2f4f7] text-sm font-bold text-[#344054]">&uarr;</span>
+        </div>
+      </div>
+    </div>
+  </>
+)
+
 /* ─── Hero ────────────────────────────────────────────── */
 
 const Hero = () => (
@@ -44,7 +72,7 @@ const Hero = () => (
           AI You Control
         </h1>
         <p className="max-w-[718px] text-lg leading-[1.2] text-[#667085] md:text-2xl">
-          The Open-Source, Cross-Platform, Extensible AI Workspace
+          The Open Source, Cross-Platform, Extensible AI Workspace
         </p>
       </div>
       <GetStartedButton />
@@ -53,27 +81,7 @@ const Hero = () => (
     <div className="mx-auto mt-10 max-w-[1120px] px-6 lg:px-0">
       {/* Prompt input card — static on mobile, absolutely positioned on lg */}
       <div className="relative mb-6 lg:hidden">
-        <div className="absolute -left-[12px] -top-[12px] size-[23px] bg-[#eaecf0]" />
-        <div className="absolute -right-[12px] -top-[12px] size-[23px] bg-[#eaecf0]" />
-        <div className="absolute -bottom-[12px] -left-[12px] size-[23px] bg-[#eaecf0]" />
-        <div className="absolute -bottom-[12px] -right-[12px] size-[23px] bg-[#eaecf0]" />
-        <div className="border-[0.5px] border-[#eaecf0] bg-gradient-to-b from-[rgba(241,241,241,0.3)] to-[rgba(228,228,228,0.3)] p-5 backdrop-blur-[5px]">
-          <div className="flex items-center gap-1.5 sm:gap-2">
-            {['Check the weather', 'Write a message', 'Check the schedule'].map((label) => (
-              <span key={label} className="shrink-0 rounded-full bg-white px-2 py-1 text-[9px] sm:px-3.5 sm:py-1.5 sm:text-[11px] whitespace-nowrap text-[#344054] shadow-[0px_2px_8px_0px_rgba(0,0,0,0.08)]">
-                {label}
-              </span>
-            ))}
-            <span className="flex size-7 items-center justify-center rounded-full bg-white text-sm text-[#344054] shadow-[0px_2px_8px_0px_rgba(0,0,0,0.08)]">+</span>
-          </div>
-          <div className="mt-2.5 rounded-2xl bg-white px-4 pb-3 pt-3 shadow-[0px_2px_8px_0px_rgba(0,0,0,0.08)]">
-            <p className="text-sm text-[#667085]">Ask me anything</p>
-            <div className="mt-2 flex items-center justify-between">
-              <span className="inline-flex size-7 items-center justify-center rounded-lg bg-[#f2f4f7] text-sm font-bold text-[#344054]">+</span>
-              <span className="flex size-7 items-center justify-center rounded-lg bg-[#f2f4f7] text-sm font-bold text-[#344054]">&uarr;</span>
-            </div>
-          </div>
-        </div>
+        <PromptCard />
       </div>
       <div className="relative mx-auto max-w-[800px] lg:max-w-none" style={{ paddingBottom: '45.6%' }}>
         {/* MacBook frame + screenshot */}
@@ -104,27 +112,7 @@ const Hero = () => (
         </div>
         {/* Prompt input card overlay — desktop only */}
         <div className="absolute z-30 hidden lg:block" style={{ left: '0%', top: '26.8%', width: '66.8%' }}>
-          <div className="absolute -left-[12px] -top-[12px] size-[23px] bg-[#eaecf0]" />
-          <div className="absolute -right-[12px] -top-[12px] size-[23px] bg-[#eaecf0]" />
-          <div className="absolute -bottom-[12px] -left-[12px] size-[23px] bg-[#eaecf0]" />
-          <div className="absolute -bottom-[12px] -right-[12px] size-[23px] bg-[#eaecf0]" />
-          <div className="border-[0.5px] border-[#eaecf0] bg-gradient-to-b from-[rgba(241,241,241,0.3)] to-[rgba(228,228,228,0.3)] p-5 backdrop-blur-[5px]">
-            <div className="flex flex-wrap items-center gap-2">
-              {['Check the weather', 'Write a message', 'Check the schedule'].map((label) => (
-                <span key={label} className="shrink-0 rounded-full bg-white px-2 py-1 text-[9px] sm:px-3.5 sm:py-1.5 sm:text-[11px] whitespace-nowrap text-[#344054] shadow-[0px_2px_8px_0px_rgba(0,0,0,0.08)]">
-                  {label}
-                </span>
-              ))}
-              <span className="flex size-7 items-center justify-center rounded-full bg-white text-sm text-[#344054] shadow-[0px_2px_8px_0px_rgba(0,0,0,0.08)]">+</span>
-            </div>
-            <div className="mt-2.5 rounded-2xl bg-white px-4 pb-3 pt-3 shadow-[0px_2px_8px_0px_rgba(0,0,0,0.08)]">
-              <p className="text-sm text-[#667085]">Ask me anything</p>
-              <div className="mt-2 flex items-center justify-between">
-                <span className="inline-flex size-7 items-center justify-center rounded-lg bg-[#f2f4f7] text-sm font-bold text-[#344054]">+</span>
-                <span className="flex size-7 items-center justify-center rounded-lg bg-[#f2f4f7] text-sm font-bold text-[#344054]">&uarr;</span>
-              </div>
-            </div>
-          </div>
+          <PromptCard pillGapClass="flex-wrap gap-2" />
         </div>
       </div>
     </div>
@@ -162,7 +150,7 @@ const FeatureCards = () => (
           Choose Any Agent<br />(or Model)
         </h3>
         <p className="mt-2 text-base leading-6 text-[#667085]">
-          Connect any ACP-compatible agent or OpenAI-compatible model - Claude, Codex, OpenClaw, Deepset, OpenCode, OpenAI, etc.
+          Connect any ACP-compatible agent or any model with an OpenAI-compatible API (Claude, Codex, OpenClaw, DeepSeek, OpenCode).
         </p>
         {/* Model logos — wave layout, scaled down on md to fit the 2-col grid */}
         <div className="relative z-10 mx-auto mt-4 h-[173px] w-[402px] origin-top-left md:-ml-[68px] md:mx-0 md:scale-75 lg:-ml-[55px] lg:scale-100">
@@ -216,7 +204,7 @@ const CompromiseSection = () => (
       <div className="flex flex-col items-start justify-between gap-6 md:flex-row md:items-end">
         <div>
           <p className="text-sm uppercase tracking-[-0.28px] text-[#667085]">
-            Open Source &bull; Self Hosted &bull; Enterprise-Ready
+            Open Source &bull; Self-Hosted &bull; Enterprise-Ready
           </p>
           <h2 className="mt-2 text-[32px] font-medium leading-[1.2] tracking-[-0.8px] text-[#101828] md:text-[40px]">
             AI Without Compromise
@@ -255,7 +243,7 @@ const QuoteSection = () => (
       <div className="flex shrink-0 flex-col items-start gap-3 pr-6 md:pr-0 md:w-[248px] lg:ml-[calc((100vw-1120px)/2)]">
         <img src="/enterprise/icon-factory-24.svg" alt="" className="size-6" />
         <p className="text-lg uppercase tracking-[-0.36px] text-[#667085]">
-          Trusted by Organizations That Can&rsquo;t Compromise
+          Trusted by Organizations That Won&rsquo;t Compromise
         </p>
       </div>
       {/* Quote card group — stretches to right edge of screen */}
@@ -263,7 +251,7 @@ const QuoteSection = () => (
         <div className="absolute left-0 top-0 hidden size-3 bg-[#d0d5dd] lg:block" />
         <div className="border border-[#d0d5dd] border-r-0 bg-white p-10 shadow-[0px_48px_100px_0px_rgba(17,12,46,0.15)] md:ml-[6px] md:mt-[6px]">
           <p className="max-w-[768px] text-[32px] font-medium leading-[1.2] tracking-[-1.12px] text-[#101828] md:text-[56px]">
-            &ldquo;Organizations across sectors are recognizing that AI is too important to outsource.&rdquo;
+            &ldquo;Organizations across sectors are recognizing that AI is too strategic to outsource.&rdquo;
           </p>
           <p className="mt-6 text-xl font-bold leading-7 tracking-[-0.4px] text-[#667085]">
             Ryan Sipes,<br />CEO, Mozilla Thunderbird

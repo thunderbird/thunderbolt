@@ -75,11 +75,11 @@ const Hero = () => (
           </div>
         </div>
       </div>
-      <div className="relative mx-auto max-w-[600px] lg:max-w-none" style={{ paddingBottom: '45.6%' }}>
+      <div className="relative mx-auto max-w-[800px] lg:max-w-none" style={{ paddingBottom: '45.6%' }}>
         {/* MacBook frame + screenshot */}
         <div
-          className="absolute"
-          style={{ left: '24.2%', top: '10.9%', width: '73.4%', filter: 'drop-shadow(0px 50px 100px rgba(50, 50, 93, 0.25))' }}
+          className="absolute left-[8%] lg:left-[24.2%] w-[85%] lg:w-[73.4%]"
+          style={{ top: '10.9%', filter: 'drop-shadow(0px 50px 100px rgba(50, 50, 93, 0.25))' }}
         >
           <img src="/enterprise/desktop_device.svg" alt="" className="relative w-full" />
           <img
@@ -91,8 +91,8 @@ const Hero = () => (
         </div>
         {/* iPhone frame + screenshot */}
         <div
-          className="absolute z-20"
-          style={{ left: '77%', top: '0%', width: '23%', filter: 'drop-shadow(0px 50px 100px rgba(50, 50, 93, 0.25))' }}
+          className="absolute z-20 left-[62%] lg:left-[77%] w-[28%] lg:w-[23%]"
+          style={{ top: '0%', filter: 'drop-shadow(0px 50px 100px rgba(50, 50, 93, 0.25))' }}
         >
           <img src="/enterprise/mobile_device.svg" alt="" className="relative w-full" />
           <img

@@ -33,6 +33,8 @@ const REPO_ROOT = join(import.meta.dir, '..')
 /**
  * Execute a shell command and return the output
  */
+// nosemgrep: javascript.lang.security.detect-child-process.detect-child-process
+// Safe: commands are constructed from hardcoded strings and locally-parsed CLI args, not from untrusted input
 const exec = (command: string, silent = false): string => {
   try {
     const result = execSync(command, {

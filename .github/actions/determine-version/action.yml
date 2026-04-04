@@ -18,10 +18,10 @@ runs:
     - name: Determine build version
       id: compute
       shell: bash
+      env:
+        INPUT_VERSION: ${{ inputs.version }}
+        VERSION_TYPE_INPUT: ${{ inputs.version_type }}
       run: |
-        INPUT_VERSION="${{ inputs.version }}"
-        VERSION_TYPE_INPUT="${{ inputs.version_type }}"
-
         CURRENT_VERSION=$(node -p "require('./package.json').version")
 
         if [ -n "$INPUT_VERSION" ]; then

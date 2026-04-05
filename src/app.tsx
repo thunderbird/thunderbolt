@@ -37,6 +37,7 @@ import { WelcomeDialog } from './components/welcome-dialog'
 import { UpdateNotification } from './components/update-notification'
 import { ExternalLinkDialogProvider } from './components/chat/markdown-utils'
 import { ContentViewProvider } from './content-view/context'
+import DbExplorerPage from './devtools/db-explorer'
 import MessageSimulatorPage from './devtools/message-simulator'
 import { useAppInitialization } from './hooks/use-app-initialization'
 import { useCredentialEvents } from './hooks/use-credential-events'
@@ -137,6 +138,7 @@ const AppRoutes = ({ initData }: { initData: InitData }) => {
             <Route path="chats/:chatThreadId" element={<ChatDetailPage />} />
             {experimentalFeatureTasks.value && <Route path="tasks" element={<TasksPage />} />}
             <Route path="automations" element={<AutomationsPage />} />
+            <Route path="db-explorer" element={<DbExplorerPage />} />
             <Route path="message-simulator" element={<MessageSimulatorPage />} />
           </Route>
 

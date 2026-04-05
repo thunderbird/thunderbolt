@@ -89,12 +89,13 @@ const Hero = () => (
           className="absolute left-[8%] lg:left-[24.2%] w-[85%] lg:w-[73.4%]"
           style={{ top: '10.9%', filter: 'drop-shadow(0px 50px 100px rgba(50, 50, 93, 0.25))' }}
         >
-          <img src="/enterprise/desktop_device.svg" alt="" className="relative w-full" />
+          <img src="/enterprise/desktop_device.svg" alt="" className="relative w-full" fetchPriority="high" />
           <img
             src="/enterprise/desktop_screenshot.png"
             alt="Thunderbolt desktop app"
             className="absolute z-10"
             style={{ top: '5.5%', left: '12.5%', width: '75%', height: '82%', objectFit: 'cover' }}
+            fetchPriority="high"
           />
         </div>
         {/* iPhone frame + screenshot */}
@@ -102,12 +103,13 @@ const Hero = () => (
           className="absolute z-20 left-[62%] lg:left-[77%] w-[28%] lg:w-[23%]"
           style={{ top: '0%', filter: 'drop-shadow(0px 50px 100px rgba(50, 50, 93, 0.25))' }}
         >
-          <img src="/enterprise/mobile_device.svg" alt="" className="relative w-full" />
+          <img src="/enterprise/mobile_device.svg" alt="" className="relative w-full" fetchPriority="high" />
           <img
             src="/enterprise/mobile_screenshot.png"
             alt="Thunderbolt mobile app"
             className="absolute z-10"
             style={{ top: '4.1%', left: '8%', width: '83.5%', height: '91%', objectFit: 'cover', borderRadius: '6%' }}
+            fetchPriority="high"
           />
         </div>
         {/* Prompt input card overlay — desktop only */}

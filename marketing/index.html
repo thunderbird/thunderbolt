@@ -6,16 +6,15 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Thunderbolt — Privacy-First AI Assistant</title>
     <meta name="description" content="Enterprise AI assistant that never phones home. Zero logs, zero training, bring your own models. Built by Mozilla." />
+
+    <!-- Preload hero images to prevent pop-in -->
+    <link rel="preload" href="/enterprise/desktop_device.svg" as="image" type="image/svg+xml">
+    <link rel="preload" href="/enterprise/mobile_device.svg" as="image" type="image/svg+xml">
+    <link rel="preload" href="/enterprise/desktop_screenshot.png" as="image">
+    <link rel="preload" href="/enterprise/mobile_screenshot.png" as="image">
   </head>
   <body style="background: #f9fafb">
-    <div id="root" style="opacity: 0; transition: opacity 0.15s ease-in"></div>
+    <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
-    <script>
-      document.fonts.ready.then(() => {
-        document.getElementById('root').style.opacity = '1';
-      });
-      // Fallback — show after 1s even if fonts haven't loaded
-      setTimeout(() => { document.getElementById('root').style.opacity = '1'; }, 1000);
-    </script>
   </body>
 </html>

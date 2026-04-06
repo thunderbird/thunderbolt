@@ -22,6 +22,7 @@ jobs:
       image: semgrep/semgrep@sha256:a3d49dc967b8534a6a76628e50c51cbfe33eb7195dc2feab1fdc0f100852c8ef
     permissions:
       contents: read
+      pull-requests: write
       security-events: write
     if: github.actor != 'dependabot[bot]'
     steps:
@@ -34,25 +35,33 @@ jobs:
         run: |
           semgrep scan \
             --config p/typescript \
+            --config p/javascript \
             --config p/react \
             --config p/nodejs \
             --config p/owasp-top-ten \
+            --config p/cwe-top-25 \
             --config p/security-audit \
             --config p/secrets \
-            --sarif-output semgrep.sarif
+            --config p/jwt \
+            --sarif-output semgrep.sarif \
+            --json-output semgrep.json
 
       - name: Run Semgrep (diff-aware)
         if: github.event_name == 'pull_request'
         run: |
           semgrep scan \
             --config p/typescript \
+            --config p/javascript \
             --config p/react \
             --config p/nodejs \
             --config p/owasp-top-ten \
+            --config p/cwe-top-25 \
             --config p/security-audit \
             --config p/secrets \
+            --config p/jwt \
             --baseline-commit ${{ github.event.pull_request.base.sha }} \
-            --sarif-output semgrep.sarif
+            --sarif-output semgrep.sarif \
+            --json-output semgrep.json
 
       - name: Upload SARIF
         uses: github/codeql-action/upload-sarif@5c8a8a642e79153f5d047b10ec1cba1d1cc65699 # v3.35.1
@@ -60,3 +69,94 @@ jobs:
         continue-on-error: true
         with:
           sarif_file: semgrep.sarif
+
+      # Post findings as a PR comment using curl + jq (no Node.js needed in Alpine).
+      # Security: semgrep output is read from files and escaped by jq — never
+      # interpolated through ${{ }} or shell expansion — preventing injection.
+      - name: Post Semgrep results as PR comment
+        if: always() && github.event_name == 'pull_request' && hashFiles('semgrep.json') != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          REPO: ${{ github.repository }}
+        shell: sh
+        run: |
+          apk add --no-cache curl jq > /dev/null 2>&1 || true
+
+          MARKER="<!-- semgrep-scan-results -->"
+          FINDING_COUNT=$(jq '.results | length' semgrep.json)
+
+          # Build the comment body in a file (never in a shell variable)
+          {
+            echo "$MARKER"
+            echo "## Semgrep Security Scan"
+            echo ""
+
+            if [ "$FINDING_COUNT" -eq 0 ]; then
+              echo "No security issues found."
+            else
+              echo "**Found $FINDING_COUNT issue(s).**"
+              echo ""
+              echo "| # | Severity | Rule | File | Line |"
+              echo "|---|----------|------|------|------|"
+
+              # Use jq to produce pre-escaped table rows from the JSON file.
+              # jq --raw-output safely handles any characters in the fields.
+              jq -r '
+                .results | to_entries[] |
+                "\(.key + 1) | " +
+                "`\(.value.extra.severity // "UNKNOWN")` | " +
+                "`\(.value.check_id | split(".")[-1])` | " +
+                "`\(.value.path)` | " +
+                "L\(.value.start.line)"
+              ' semgrep.json | while IFS= read -r row; do
+                echo "| $row |"
+              done
+
+              echo ""
+              echo "<details>"
+              echo "<summary>Finding details</summary>"
+              echo ""
+
+              jq -r '
+                .results[] |
+                "### `\(.check_id | split(".")[-1])` — \(.path):\(.start.line)\n" +
+                "**Severity:** \(.extra.severity // "UNKNOWN")  \n" +
+                "**Message:** \(.extra.message)\n" +
+                "```\n\(.extra.lines)\n```\n"
+              ' semgrep.json
+
+              echo "</details>"
+            fi
+          } > comment_body.md
+
+          # Use jq to build the JSON payload from the file — jq handles all escaping.
+          PAYLOAD=$(jq -n --rawfile body comment_body.md '{ body: $body }')
+
+          # Find existing comment by marker
+          COMMENT_ID=$(
+            curl -sf \
+              -H "Authorization: Bearer $GH_TOKEN" \
+              -H "Accept: application/vnd.github+json" \
+              "https://api.github.com/repos/$REPO/issues/$PR_NUMBER/comments?per_page=100" \
+            | jq ".[] | select(.body | startswith(\"$MARKER\")) | .id" \
+            | head -1
+          )
+
+          if [ -n "$COMMENT_ID" ]; then
+            # Update existing comment
+            curl -sf -X PATCH \
+              -H "Authorization: Bearer $GH_TOKEN" \
+              -H "Accept: application/vnd.github+json" \
+              "https://api.github.com/repos/$REPO/issues/comments/$COMMENT_ID" \
+              -d "$PAYLOAD" > /dev/null
+            echo "Updated existing comment $COMMENT_ID"
+          else
+            # Create new comment
+            curl -sf -X POST \
+              -H "Authorization: Bearer $GH_TOKEN" \
+              -H "Accept: application/vnd.github+json" \
+              "https://api.github.com/repos/$REPO/issues/$PR_NUMBER/comments" \
+              -d "$PAYLOAD" > /dev/null
+            echo "Created new comment"
+          fi

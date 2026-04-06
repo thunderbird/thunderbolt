@@ -1,7 +1,9 @@
+import { promises as dnsPromises } from 'node:dns'
+import { isIP } from 'node:net'
 import ipaddr from 'ipaddr.js'
 
 /** IP ranges blocked for SSRF protection. Excludes multicast (could block legitimate CDN traffic). */
-const BLOCKED_RANGES = new Set([
+const blockedRanges = new Set([
   'private', // 10/8, 172.16/12, 192.168/16
   'loopback', // 127/8, ::1
   'linkLocal', // 169.254/16, fe80::/10
@@ -23,7 +25,7 @@ export const isPrivateAddress = (rawHostname: string): boolean => {
 
   // process() normalizes IPv4-mapped IPv6 (::ffff:127.0.0.1 / ::ffff:7f00:1) to IPv4
   const addr = ipaddr.process(hostname)
-  return BLOCKED_RANGES.has(addr.range())
+  return blockedRanges.has(addr.range())
 }
 
 /** Returns true if the hostname is localhost or 127.0.0.1 (loopback only, not all private). */
@@ -36,11 +38,7 @@ export const isLoopback = (hostname: string): boolean => {
  * Validates that a URL is safe to fetch (prevents SSRF attacks).
  * Only allows http/https protocols and blocks internal/private IP addresses.
  */
-export const validateSafeUrl = (
-  url: string,
-  options?: { allowLoopback?: boolean },
-): { valid: boolean; error?: string } => {
-  const { allowLoopback = false } = options ?? {}
+export const validateSafeUrl = (url: string): { valid: boolean; error?: string } => {
   try {
     const parsed = new URL(url)
     if (!['http:', 'https:'].includes(parsed.protocol)) {
@@ -48,7 +46,7 @@ export const validateSafeUrl = (
     }
     const hostname = parsed.hostname.toLowerCase()
     if (isLoopback(hostname)) {
-      return allowLoopback ? { valid: true } : { valid: false, error: 'Internal URLs are not allowed' }
+      return { valid: false, error: 'Internal URLs are not allowed' }
     }
     if (isPrivateAddress(hostname)) {
       return { valid: false, error: 'Internal URLs are not allowed' }
@@ -67,34 +65,22 @@ export const validateSafeUrl = (
  * Uses IP pinning: resolves the hostname, validates IPs, then connects directly
  * to the resolved IP with the original Host header for TLS SNI / virtual hosting.
  */
-export const createSafeFetch = (fetchFn: typeof fetch, options?: { allowLoopback?: boolean }) => {
-  const { allowLoopback = false } = options ?? {}
-
+export const createSafeFetch = (fetchFn: typeof fetch) => {
   return async (input: string | URL | Request, init?: RequestInit): Promise<Response> => {
     const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url
     const parsed = new URL(url)
     const hostname = parsed.hostname
 
     // Direct IP in URL — validate immediately, no DNS needed
-    const { isIP } = await import('node:net')
     if (isIP(hostname)) {
-      if (allowLoopback && isLoopback(hostname)) {
-        return fetchFn(input, init)
-      }
       if (isPrivateAddress(hostname)) {
         throw new Error(`Blocked: ${hostname} is a private/internal address`)
       }
       return fetchFn(input, init)
     }
 
-    // Allow loopback hostnames directly (no IP pinning needed for localhost)
-    if (allowLoopback && isLoopback(hostname)) {
-      return fetchFn(input, init)
-    }
-
     // Resolve DNS and validate ALL resolved IPs
-    const dns = await import('node:dns')
-    const addresses = await dns.promises.lookup(hostname, { all: true })
+    const addresses = await dnsPromises.lookup(hostname, { all: true })
 
     for (const { address } of addresses) {
       if (isPrivateAddress(address)) {

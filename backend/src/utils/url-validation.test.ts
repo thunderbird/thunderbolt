@@ -110,14 +110,9 @@ describe('validateSafeUrl', () => {
     expect(validateSafeUrl('http://127.0.0.1/path').valid).toBe(false)
   })
 
-  it('allows localhost when allowLoopback is true', () => {
-    expect(validateSafeUrl('http://localhost/path', { allowLoopback: true })).toEqual({ valid: true })
-    expect(validateSafeUrl('http://127.0.0.1/path', { allowLoopback: true })).toEqual({ valid: true })
-  })
-
-  it('blocks private IPs regardless of allowLoopback', () => {
-    expect(validateSafeUrl('http://10.0.0.1/path', { allowLoopback: true }).valid).toBe(false)
-    expect(validateSafeUrl('http://192.168.1.1/path', { allowLoopback: true }).valid).toBe(false)
+  it('blocks private IPs', () => {
+    expect(validateSafeUrl('http://10.0.0.1/path').valid).toBe(false)
+    expect(validateSafeUrl('http://192.168.1.1/path').valid).toBe(false)
     expect(validateSafeUrl('http://169.254.169.254/latest/meta-data/').valid).toBe(false)
     expect(validateSafeUrl('http://100.64.0.1/internal').valid).toBe(false)
     expect(validateSafeUrl('http://198.18.0.1/internal').valid).toBe(false)

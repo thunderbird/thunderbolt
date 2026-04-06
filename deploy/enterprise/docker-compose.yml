@@ -24,7 +24,9 @@ services:
       WAITLIST_ENABLED: "false"
       DATABASE_DRIVER: postgres
       DATABASE_URL: postgresql://postgres:postgres@postgres:5432/postgres
-      OIDC_ISSUER: http://frontend:80/realms/thunderbolt
+      # Discovery URL uses the internal Docker hostname — backchannel-dynamic lets this work
+      # while Keycloak's metadata returns localhost:8180 URLs for the browser
+      OIDC_ISSUER: http://keycloak:8080/realms/thunderbolt
       OIDC_CLIENT_ID: thunderbolt-app
       OIDC_CLIENT_SECRET: thunderbolt-enterprise-secret
       BETTER_AUTH_URL: http://localhost:${FRONTEND_PORT:-3000}
@@ -100,7 +102,8 @@ services:
       KC_BOOTSTRAP_ADMIN_USERNAME: admin
       KC_BOOTSTRAP_ADMIN_PASSWORD: admin
       KC_HTTP_PORT: "8080"
-      KC_HOSTNAME_URL: http://localhost:${FRONTEND_PORT:-3000}
+      KC_HOSTNAME: http://localhost:${KEYCLOAK_PORT:-8180}
+      KC_HOSTNAME_BACKCHANNEL_DYNAMIC: "true"
     volumes:
       - ./config/keycloak-realm.json:/opt/keycloak/data/import/thunderbolt-realm.json
     ports:

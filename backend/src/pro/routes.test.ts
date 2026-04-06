@@ -1,22 +1,8 @@
-import type { Auth } from '@/auth/elysia-plugin'
 import type { ConsoleSpies } from '@/test-utils/console-spies'
 import { setupConsoleSpy } from '@/test-utils/console-spies'
+import { mockAuth, mockAuthUnauthenticated } from '@/test-utils/mock-auth'
 import { afterAll, beforeAll, describe, expect, it, mock } from 'bun:test'
 import { createProToolsRoutes } from './routes'
-
-/** Mock auth that always returns a valid session */
-const mockAuth = {
-  api: {
-    getSession: () => Promise.resolve({ user: { id: 'test-user' }, session: {} }),
-  },
-} as unknown as Auth
-
-/** Mock auth that returns no session (unauthenticated) */
-const mockAuthUnauthenticated = {
-  api: {
-    getSession: () => Promise.resolve(null),
-  },
-} as unknown as Auth
 
 describe('Pro Tools Routes', () => {
   let app: ReturnType<typeof createProToolsRoutes>

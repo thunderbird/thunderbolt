@@ -1,27 +1,13 @@
-import type { Auth } from '@/auth/elysia-plugin'
 import * as posthogClient from '@/posthog/client'
 import type { ConsoleSpies } from '@/test-utils/console-spies'
 import { setupConsoleSpy } from '@/test-utils/console-spies'
+import { mockAuth, mockAuthUnauthenticated } from '@/test-utils/mock-auth'
 import * as streamingUtils from '@/utils/streaming'
 import { afterAll, beforeAll, beforeEach, describe, expect, it, mock, spyOn } from 'bun:test'
 import { Elysia } from 'elysia'
 import type OpenAI from 'openai'
 import * as inferenceClient from './client'
 import { createInferenceRoutes, supportedModels } from './routes'
-
-/** Mock auth that always returns a valid session */
-const mockAuth = {
-  api: {
-    getSession: () => Promise.resolve({ user: { id: 'test-user' }, session: {} }),
-  },
-} as unknown as Auth
-
-/** Mock auth that always returns null (unauthenticated) */
-const mockAuthUnauthenticated = {
-  api: {
-    getSession: () => Promise.resolve(null),
-  },
-} as unknown as Auth
 
 describe('Inference Routes', () => {
   let app: Elysia

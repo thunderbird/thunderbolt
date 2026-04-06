@@ -64,7 +64,7 @@ jobs:
   codeql:
     name: CodeQL Analysis
     runs-on: ubuntu-latest
-    if: vars.ENABLE_CODEQL == 'true'
+    if: vars.DISABLE_CODEQL != 'true'
     permissions:
       contents: read
       security-events: write

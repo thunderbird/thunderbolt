@@ -36,13 +36,14 @@ runs:
         TRACK: ${{ inputs.track }}
         WORKSPACE: ${{ github.workspace }}
       run: |
-        # Write service account JSON to file using printenv to avoid shell injection
-        printenv SERVICE_ACCOUNT_JSON > /tmp/service-account.json
+        # Write service account JSON to a job-specific temp file
+        SERVICE_ACCOUNT_FILE=$(mktemp)
+        printenv SERVICE_ACCOUNT_JSON > "$SERVICE_ACCOUNT_FILE"
 
-        export SERVICE_ACCOUNT_FILE="/tmp/service-account.json"
+        export SERVICE_ACCOUNT_FILE
 
         # Run the script
         node "$WORKSPACE/scripts/upload-to-play.cjs"
 
         # Clean up
-        rm -f /tmp/service-account.json
+        rm -f "$SERVICE_ACCOUNT_FILE"

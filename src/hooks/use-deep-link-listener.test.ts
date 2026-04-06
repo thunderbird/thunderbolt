@@ -272,6 +272,15 @@ describe('determineNavigationTarget', () => {
     })
   })
 
+  it('rejects protocol-relative URLs starting with //', () => {
+    const result = determineNavigationTarget('//evil.com' as ReturnContext, mockOAuthData)
+
+    expect(result).toEqual({
+      path: '/settings/integrations',
+      oauth: mockOAuthData,
+    })
+  })
+
   it('handles relative-looking paths that do not start with /', () => {
     const result = determineNavigationTarget('chats/123' as unknown as ReturnContext, mockOAuthData)
 

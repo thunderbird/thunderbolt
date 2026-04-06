@@ -33,7 +33,7 @@ export const determineNavigationTarget = (
   oauthReturnContext: ReturnContext | null,
   oauth: OAuthCallbackData,
 ): NavigateTarget => {
-  if (oauthReturnContext?.startsWith('/')) {
+  if (oauthReturnContext?.startsWith('/') && !oauthReturnContext.startsWith('//')) {
     return { path: oauthReturnContext, oauth }
   }
 

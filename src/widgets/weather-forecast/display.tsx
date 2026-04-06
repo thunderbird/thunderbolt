@@ -11,7 +11,9 @@ export const WeatherForecast = ({ days = [], temperature_unit }: WeatherForecast
   const today = days[0]
   const forecastDays = days.slice(1)
 
-  if (!today) return <WeatherForecastSkeleton />
+  if (!today) {
+    return <WeatherForecastSkeleton />
+  }
 
   const todayMeta = getWeatherMetadata(today.weather_code, today.date)
   const unit = temperatureUnit === 'c' ? 'C' : 'F'

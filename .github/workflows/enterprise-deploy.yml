@@ -10,6 +10,14 @@ on:
         options:
           - deploy
           - destroy
+      platform:
+        description: 'Deployment platform'
+        required: true
+        type: choice
+        default: 'fargate'
+        options:
+          - fargate
+          - k8s
       region:
         description: 'AWS region'
         required: true
@@ -45,21 +53,27 @@ jobs:
           aws-region: ${{ inputs.region }}
 
       - name: Install Pulumi dependencies
-        working-directory: deploy/enterprise/pulumi
+        working-directory: deploy/pulumi
         run: bun install --frozen-lockfile
+
+      - name: Set platform config
+        working-directory: deploy/pulumi
+        run: pulumi config set platform ${{ inputs.platform }} -s ${{ inputs.stack_name }} --non-interactive
+        env:
+          PULUMI_CONFIG_PASSPHRASE: ${{ secrets.PULUMI_CONFIG_PASSPHRASE }}
 
       - name: Deploy
         uses: pulumi/actions@v6
         with:
           command: up
           stack-name: ${{ inputs.stack_name }}
-          work-dir: deploy/enterprise/pulumi
+          work-dir: deploy/pulumi
           upsert: true
         env:
           PULUMI_CONFIG_PASSPHRASE: ${{ secrets.PULUMI_CONFIG_PASSPHRASE }}
 
       - name: Print outputs
-        working-directory: deploy/enterprise/pulumi
+        working-directory: deploy/pulumi
         run: pulumi stack output --json -s ${{ inputs.stack_name }}
 
   destroy:
@@ -79,7 +93,7 @@ jobs:
           aws-region: ${{ inputs.region }}
 
       - name: Install Pulumi dependencies
-        working-directory: deploy/enterprise/pulumi
+        working-directory: deploy/pulumi
         run: bun install --frozen-lockfile
 
       - name: Destroy
@@ -87,7 +101,7 @@ jobs:
         with:
           command: destroy
           stack-name: ${{ inputs.stack_name }}
-          work-dir: deploy/enterprise/pulumi
+          work-dir: deploy/pulumi
           remove: true
         env:
           PULUMI_CONFIG_PASSPHRASE: ${{ secrets.PULUMI_CONFIG_PASSPHRASE }}

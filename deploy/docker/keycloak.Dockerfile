@@ -1,6 +1,6 @@
 FROM quay.io/keycloak/keycloak:26.0
 
-COPY deploy/enterprise/config/keycloak-realm.json /opt/keycloak/data/import/thunderbolt-realm.json
+COPY deploy/config/keycloak-realm.json /opt/keycloak/data/import/thunderbolt-realm.json
 
 EXPOSE 8080
 

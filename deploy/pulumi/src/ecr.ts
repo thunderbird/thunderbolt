@@ -18,8 +18,8 @@ export const createEcrAndImages = (name: string) => {
 
   const backendImage = new dockerBuild.Image(`${name}-backend-image`, {
     tags: [backendRepo.repositoryUrl.apply((url) => `${url}:latest`)],
-    context: { location: '../../../../' },
-    dockerfile: { location: '../../../../deploy/enterprise/docker/backend.Dockerfile' },
+    context: { location: '../../../' },
+    dockerfile: { location: '../../../deploy/docker/backend.Dockerfile' },
     platforms: ['linux/amd64'],
     push: true,
     registries: [
@@ -33,8 +33,8 @@ export const createEcrAndImages = (name: string) => {
 
   const frontendImage = new dockerBuild.Image(`${name}-frontend-image`, {
     tags: [frontendRepo.repositoryUrl.apply((url) => `${url}:latest`)],
-    context: { location: '../../../../' },
-    dockerfile: { location: '../../../../deploy/enterprise/docker/frontend.Dockerfile' },
+    context: { location: '../../../' },
+    dockerfile: { location: '../../../deploy/docker/frontend.Dockerfile' },
     buildArgs: {
       VITE_THUNDERBOLT_CLOUD_URL: '/v1',
       VITE_AUTH_MODE: 'oidc',
@@ -57,8 +57,8 @@ export const createEcrAndImages = (name: string) => {
 
   const postgresImage = new dockerBuild.Image(`${name}-postgres-image`, {
     tags: [postgresRepo.repositoryUrl.apply((url) => `${url}:latest`)],
-    context: { location: '../../../../' },
-    dockerfile: { location: '../../../../deploy/enterprise/docker/postgres.Dockerfile' },
+    context: { location: '../../../' },
+    dockerfile: { location: '../../../deploy/docker/postgres.Dockerfile' },
     platforms: ['linux/amd64'],
     push: true,
     registries: [
@@ -77,8 +77,8 @@ export const createEcrAndImages = (name: string) => {
 
   const keycloakImage = new dockerBuild.Image(`${name}-keycloak-image`, {
     tags: [keycloakRepo.repositoryUrl.apply((url) => `${url}:latest`)],
-    context: { location: '../../../../' },
-    dockerfile: { location: '../../../../deploy/enterprise/docker/keycloak.Dockerfile' },
+    context: { location: '../../../' },
+    dockerfile: { location: '../../../deploy/docker/keycloak.Dockerfile' },
     platforms: ['linux/amd64'],
     push: true,
     registries: [
@@ -97,8 +97,8 @@ export const createEcrAndImages = (name: string) => {
 
   const powersyncImage = new dockerBuild.Image(`${name}-powersync-image`, {
     tags: [powersyncRepo.repositoryUrl.apply((url) => `${url}:latest`)],
-    context: { location: '../../../../' },
-    dockerfile: { location: '../../../../deploy/enterprise/docker/powersync.Dockerfile' },
+    context: { location: '../../../' },
+    dockerfile: { location: '../../../deploy/docker/powersync.Dockerfile' },
     platforms: ['linux/amd64'],
     push: true,
     registries: [

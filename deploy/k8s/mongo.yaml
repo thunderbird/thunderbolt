@@ -1,0 +1,77 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: mongo
+  namespace: thunderbolt
+spec:
+  selector:
+    app: mongo
+  ports:
+    - port: 27017
+  clusterIP: None
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: mongo
+  namespace: thunderbolt
+spec:
+  serviceName: mongo
+  replicas: 1
+  selector:
+    matchLabels:
+      app: mongo
+  template:
+    metadata:
+      labels:
+        app: mongo
+    spec:
+      containers:
+        - name: mongo
+          image: mongo:7.0
+          args: ["--replSet", "rs0", "--bind_ip_all", "--quiet"]
+          ports:
+            - containerPort: 27017
+          volumeMounts:
+            - name: mongo-data
+              mountPath: /data/db
+          readinessProbe:
+            exec:
+              command: ["mongosh", "--eval", "db.adminCommand('ping')"]
+            initialDelaySeconds: 10
+            periodSeconds: 5
+  volumeClaimTemplates:
+    - metadata:
+        name: mongo-data
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        resources:
+          requests:
+            storage: 5Gi
+---
+# One-shot Job to initialize MongoDB replica set
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: mongo-rs-init
+  namespace: thunderbolt
+spec:
+  backoffLimit: 10
+  template:
+    spec:
+      restartPolicy: OnFailure
+      containers:
+        - name: mongo-init
+          image: mongo:7.0
+          command:
+            - bash
+            - -c
+            - |
+              until mongosh --host mongo:27017 --eval "db.adminCommand('ping')" > /dev/null 2>&1; do
+                echo "Waiting for mongo..."
+                sleep 2
+              done
+              mongosh --host mongo:27017 --eval '
+                try { rs.status().ok && quit(0) } catch {}
+                rs.initiate({_id: "rs0", version: 1, members: [{_id: 0, host: "mongo-0.mongo:27017"}]})
+              '

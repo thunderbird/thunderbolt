@@ -1,0 +1,90 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: backend
+  namespace: thunderbolt
+spec:
+  selector:
+    app: backend
+  ports:
+    - port: 8000
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: backend
+  namespace: thunderbolt
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: backend
+  template:
+    metadata:
+      labels:
+        app: backend
+    spec:
+      containers:
+        - name: backend
+          # Build locally: docker build -f deploy/docker/backend.Dockerfile -t thunderbolt-backend .
+          image: thunderbolt-backend:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 8000
+          env:
+            - name: NODE_ENV
+              value: production
+            - name: PORT
+              value: "8000"
+            - name: AUTH_MODE
+              value: oidc
+            - name: WAITLIST_ENABLED
+              value: "false"
+            - name: DATABASE_DRIVER
+              value: postgres
+            - name: DATABASE_URL
+              value: postgresql://postgres:postgres@postgres:5432/postgres
+            # Uses internal service — KC_HOSTNAME_STRICT=false means Keycloak
+            # returns URLs based on the request hostname
+            - name: OIDC_ISSUER
+              value: http://keycloak:8080/realms/thunderbolt
+            - name: OIDC_CLIENT_ID
+              value: thunderbolt-app
+            - name: OIDC_CLIENT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: thunderbolt-secrets
+                  key: oidc-client-secret
+            - name: BETTER_AUTH_URL
+              value: http://localhost
+            - name: APP_URL
+              value: http://localhost
+            - name: TRUSTED_ORIGINS
+              value: http://localhost
+            - name: CORS_ORIGINS
+              value: http://localhost
+            - name: CORS_ORIGIN_REGEX
+              value: ""
+            - name: POWERSYNC_URL
+              value: http://powersync:8080
+            - name: POWERSYNC_JWT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: thunderbolt-secrets
+                  key: powersync-jwt-secret
+            - name: POWERSYNC_JWT_KID
+              value: enterprise-powersync
+            - name: RATE_LIMIT_ENABLED
+              value: "false"
+          readinessProbe:
+            httpGet:
+              path: /v1/health
+              port: 8000
+            initialDelaySeconds: 15
+            periodSeconds: 5
+          livenessProbe:
+            httpGet:
+              path: /v1/health
+              port: 8000
+            initialDelaySeconds: 30
+            periodSeconds: 10

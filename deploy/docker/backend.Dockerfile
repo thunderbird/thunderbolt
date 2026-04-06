@@ -15,7 +15,7 @@ COPY backend/drizzle.config.ts ./
 COPY shared /app/shared
 
 # Entrypoint: run migrations then start server
-COPY deploy/enterprise/docker/backend-entrypoint.sh ./entrypoint.sh
+COPY deploy/docker/backend-entrypoint.sh ./entrypoint.sh
 RUN chmod +x ./entrypoint.sh
 
 ENV NODE_ENV=production

@@ -1,0 +1,47 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: powersync
+  namespace: thunderbolt
+spec:
+  selector:
+    app: powersync
+  ports:
+    - port: 8080
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: powersync
+  namespace: thunderbolt
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: powersync
+  template:
+    metadata:
+      labels:
+        app: powersync
+    spec:
+      containers:
+        - name: powersync
+          image: journeyapps/powersync-service:latest
+          args: ["start", "-r", "unified"]
+          ports:
+            - containerPort: 8080
+          env:
+            - name: POWERSYNC_CONFIG_PATH
+              value: /config/config.yaml
+          volumeMounts:
+            - name: config
+              mountPath: /config
+          readinessProbe:
+            tcpSocket:
+              port: 8080
+            initialDelaySeconds: 15
+            periodSeconds: 10
+      volumes:
+        - name: config
+          configMap:
+            name: powersync-config

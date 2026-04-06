@@ -27,7 +27,7 @@ RUN bunx vite build
 # Stage 2: Serve with nginx
 FROM nginx:alpine
 
-COPY deploy/enterprise/config/nginx.conf /etc/nginx/conf.d/default.conf
+COPY deploy/config/nginx.conf /etc/nginx/conf.d/default.conf
 COPY --from=build /app/dist /usr/share/nginx/html
 
 EXPOSE 80

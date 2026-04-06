@@ -30,7 +30,7 @@
   "users": [
     {
       "username": "demo",
-      "email": "demo@thunderbolt.so",
+      "email": "demo@thunderbolt.io",
       "firstName": "Demo",
       "lastName": "User",
       "enabled": true,

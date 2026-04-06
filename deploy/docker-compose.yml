@@ -1,8 +1,8 @@
 services:
   frontend:
     build:
-      context: ../../
-      dockerfile: deploy/enterprise/docker/frontend.Dockerfile
+      context: ../
+      dockerfile: deploy/docker/frontend.Dockerfile
       args:
         VITE_THUNDERBOLT_CLOUD_URL: "/v1"
         VITE_AUTH_MODE: "oidc"
@@ -13,8 +13,8 @@ services:
 
   backend:
     build:
-      context: ../../
-      dockerfile: deploy/enterprise/docker/backend.Dockerfile
+      context: ../
+      dockerfile: deploy/docker/backend.Dockerfile
     ports:
       - "${BACKEND_PORT:-8000}:8000"
     env_file: .env

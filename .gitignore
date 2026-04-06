@@ -27,6 +27,9 @@ dist-isolation
 # Environment variables
 .env
 
+# Kubernetes secrets (use secrets.yaml.example as template)
+secrets.yaml
+
 target
 
 # Tauri signing keys

@@ -84,7 +84,7 @@ export const createApp = async (deps?: AppDeps) => {
       .use(createProToolsRoutes(auth, fetchFn))
       .use(createInferenceRoutes(auth))
       .use(createPostHogRoutes(fetchFn))
-      .use(createMcpProxyRoutes(fetchFn, auth))
+      .use(createMcpProxyRoutes(auth, fetchFn))
       .use(createWaitlistRoutes({ database, auth, emailService: deps?.waitlistEmailService }))
       .use(createPowerSyncRoutes(auth, settings, database))
       .use(createAccountRoutes(auth, database))

@@ -1,10 +1,11 @@
+import type { Auth } from '@/auth/elysia-plugin'
 import { getCorsOrigins, getSettings } from '@/config/settings'
 import { safeErrorHandler } from '@/middleware/error-handling'
+import { createSessionGuard } from '@/middleware/session-guard'
 import { createSafeFetch, isLoopback, isPrivateAddress } from '@/utils/url-validation'
 import { buildQueryString, extractResponseHeaders, filterHeaders } from '@/utils/request'
 import cors from '@elysiajs/cors'
 import { Elysia } from 'elysia'
-import type { Auth } from 'better-auth'
 
 /** Max proxied response size (10MB — MCP tool results can include data payloads). */
 const maxResponseBytes = 10 * 1024 * 1024
@@ -52,7 +53,12 @@ type FetchFn = (input: string | URL | Request, init?: RequestInit) => Promise<Re
 const handleProxy = async (
   targetBaseUrl: string,
   subPath: string,
-  ctx: { headers: Record<string, string | undefined>; query: Record<string, string>; request: Request; set: { status?: number | string } },
+  ctx: {
+    headers: Record<string, string | undefined>
+    query: Record<string, string>
+    request: Request
+    set: { status?: number | string }
+  },
   safeFetchFn: FetchFn,
 ) => {
   const validation = validateMcpTargetUrl(targetBaseUrl)
@@ -97,12 +103,12 @@ const handleProxy = async (
   }
 }
 
-export const createMcpProxyRoutes = (fetchFn: typeof fetch = globalThis.fetch, auth?: Auth) => {
+export const createMcpProxyRoutes = (auth: Auth, fetchFn: typeof fetch = globalThis.fetch) => {
   const settings = getSettings()
   // Wrap fetch with DNS-level SSRF protection (resolves hostname, validates IPs before connecting)
   const safeFetchFn: FetchFn = createSafeFetch(fetchFn, { allowLoopback: true })
 
-  const app = new Elysia({ prefix: '/mcp-proxy' })
+  return new Elysia({ prefix: '/mcp-proxy' })
     .onError(safeErrorHandler)
     .use(
       cors({
@@ -111,25 +117,7 @@ export const createMcpProxyRoutes = (fetchFn: typeof fetch = globalThis.fetch, a
         exposeHeaders: settings.corsExposeHeaders,
       }),
     )
-
-  // Require authentication when auth is available (skip OPTIONS for CORS preflight)
-  if (auth) {
-    app
-      .derive(async ({ request }) => {
-        if (request.method === 'OPTIONS') { return { user: null } }
-        const session = await auth.api.getSession({ headers: request.headers })
-        return { user: session?.user ?? null }
-      })
-      .onBeforeHandle(({ user, set, request }) => {
-        if (request.method === 'OPTIONS') { return }
-        if (!user) {
-          set.status = 401
-          return new Response('Authentication required', { status: 401, headers: { 'Content-Type': 'text/plain' } })
-        }
-      })
-  }
-
-  return app
+    .use(createSessionGuard(auth))
     .all(
       '/',
       async (ctx) => {

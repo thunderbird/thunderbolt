@@ -1,5 +1,6 @@
 import type { ConsoleSpies } from '@/test-utils/console-spies'
 import { setupConsoleSpy } from '@/test-utils/console-spies'
+import { mockAuth } from '@/test-utils/mock-auth'
 import { afterAll, beforeAll, beforeEach, describe, expect, it, mock, spyOn } from 'bun:test'
 import { Elysia } from 'elysia'
 import { createMcpProxyRoutes } from './routes'
@@ -48,14 +49,20 @@ describe('MCP Proxy Routes', () => {
     powersyncJwtKid: '',
     powersyncJwtSecret: '',
     powersyncTokenExpirySeconds: 3600,
+    authMode: 'consumer' as const,
+    oidcClientId: '',
+    oidcClientSecret: '',
+    oidcIssuer: '',
+    betterAuthUrl: 'http://localhost:8000',
   }
 
   beforeAll(() => {
     consoleSpies = setupConsoleSpy()
-    getSettingsSpy = spyOn(settingsModule, 'getSettings').mockReturnValue(mockSettings as ReturnType<typeof settingsModule.getSettings>)
+    getSettingsSpy = spyOn(settingsModule, 'getSettings').mockReturnValue(
+      mockSettings as ReturnType<typeof settingsModule.getSettings>,
+    )
     mockFetch = mock(() => Promise.resolve(createMockResponse('{"ok":true}')))
-    // No auth passed — tests run without authentication guard
-    app = new Elysia().use(createMcpProxyRoutes(mockFetch as unknown as typeof fetch))
+    app = new Elysia().use(createMcpProxyRoutes(mockAuth, mockFetch as unknown as typeof fetch))
   })
 
   afterAll(() => {
@@ -231,9 +238,10 @@ describe('MCP Proxy Routes', () => {
 
     const [, callOpts] = mockFetch.mock.calls[0]
     // Headers may be a Headers instance or plain object depending on the safeFetch path
-    const hdrs = typeof callOpts.headers?.get === 'function'
-      ? Object.fromEntries((callOpts.headers as Headers).entries())
-      : callOpts.headers
+    const hdrs =
+      typeof callOpts.headers?.get === 'function'
+        ? Object.fromEntries((callOpts.headers as Headers).entries())
+        : callOpts.headers
 
     expect(hdrs.authorization).toBe('Bearer test-token')
     expect(hdrs['mcp-session-id']).toBe('session-123')

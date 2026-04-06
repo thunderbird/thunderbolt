@@ -101,12 +101,16 @@ describe('MCP Proxy Routes', () => {
 
   // --- SSRF Protection ---
 
-  it('blocks private IP addresses (cloud metadata, RFC 1918)', async () => {
+  it('blocks private IP addresses (cloud metadata, RFC 1918, CGNAT, benchmarking)', async () => {
     const blockedUrls = [
       'http://169.254.169.254/latest/meta-data/',
       'http://10.0.0.1/internal',
       'http://192.168.1.1/admin',
       'http://172.16.0.1/secret',
+      'http://100.64.0.1/internal', // RFC 6598 CGNAT
+      'http://100.127.255.254/internal', // RFC 6598 upper bound
+      'http://198.18.0.1/internal', // RFC 2544 benchmarking
+      'http://198.19.255.254/internal', // RFC 2544 upper bound
     ]
 
     for (const targetUrl of blockedUrls) {

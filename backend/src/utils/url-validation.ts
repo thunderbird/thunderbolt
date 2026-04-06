@@ -1,49 +1,62 @@
-/** Regex matching RFC 1918, loopback, link-local, and carrier-grade NAT IPv4 ranges. */
-const privateIpv4Regex =
-  /^(?:(?:10|127)\.(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)|172\.(?:1[6-9]|2[0-9]|3[01])\.(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)|192\.168\.(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)|169\.254\.(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?))$/
-const ipv6LinkLocalRegex = /^fe[89ab][0-9a-f]/
-const ipv6UniqueLocalRegex = /^f[cd][0-9a-f]/
+import ipaddr from 'ipaddr.js'
+
+/** IP ranges blocked for SSRF protection. Excludes multicast (could block legitimate CDN traffic). */
+const BLOCKED_RANGES = new Set([
+  'private', // 10/8, 172.16/12, 192.168/16
+  'loopback', // 127/8, ::1
+  'linkLocal', // 169.254/16, fe80::/10
+  'uniqueLocal', // fc00::/7
+  'unspecified', // 0.0.0.0/8, ::
+  'carrierGradeNat', // 100.64/10 (RFC 6598)
+  'reserved', // 198.18/15 (RFC 2544), documentation blocks, etc.
+  'broadcast', // 255.255.255.255
+])
 
 /**
- * Returns true if the hostname resolves to a private/internal address.
- * Covers: loopback, RFC 1918, link-local (169.254.x.x), IPv6 ULA/link-local, IPv4-mapped IPv6.
+ * Returns true if the IP address falls within a private/internal/reserved range.
+ * Handles IPv4, IPv6, IPv4-mapped IPv6 (::ffff:x.x.x.x), and bracketed notation ([::1]).
  */
 export const isPrivateAddress = (rawHostname: string): boolean => {
-  const hostname = rawHostname.startsWith('[') && rawHostname.endsWith(']')
-    ? rawHostname.slice(1, -1).toLowerCase()
-    : rawHostname.toLowerCase()
+  const hostname = rawHostname.startsWith('[') && rawHostname.endsWith(']') ? rawHostname.slice(1, -1) : rawHostname
 
-  if (hostname === '0.0.0.0' || hostname === '::' || hostname === '::1') {
-    return true
-  }
+  if (!ipaddr.isValid(hostname)) return false
 
-  if (privateIpv4Regex.test(hostname) || ipv6LinkLocalRegex.test(hostname) || ipv6UniqueLocalRegex.test(hostname)) {
-    return true
-  }
-
-  // Block IPv4-mapped IPv6 (::ffff:XXYY:ZZWW) — Bun normalizes ::ffff:127.0.0.1 to ::ffff:7f00:1
-  if (hostname.startsWith('::ffff:')) {
-    const mapped = hostname.slice(7)
-    const hexParts = mapped.split(':')
-    if (hexParts.length === 2) {
-      const high = parseInt(hexParts[0], 16)
-      const low = parseInt(hexParts[1], 16)
-      if (!Number.isNaN(high) && !Number.isNaN(low)) {
-        const ipv4 = `${(high >> 8) & 0xff}.${high & 0xff}.${(low >> 8) & 0xff}.${low & 0xff}`
-        if (privateIpv4Regex.test(ipv4)) {
-          return true
-        }
-      }
-    }
-  }
-
-  return false
+  // process() normalizes IPv4-mapped IPv6 (::ffff:127.0.0.1 / ::ffff:7f00:1) to IPv4
+  const addr = ipaddr.process(hostname)
+  return BLOCKED_RANGES.has(addr.range())
 }
 
 /** Returns true if the hostname is localhost or 127.0.0.1 (loopback only, not all private). */
 export const isLoopback = (hostname: string): boolean => {
   const h = hostname.toLowerCase()
   return h === 'localhost' || h === '127.0.0.1' || h === '::1'
+}
+
+/**
+ * Validates that a URL is safe to fetch (prevents SSRF attacks).
+ * Only allows http/https protocols and blocks internal/private IP addresses.
+ */
+export const validateSafeUrl = (
+  url: string,
+  options?: { allowLoopback?: boolean },
+): { valid: boolean; error?: string } => {
+  const { allowLoopback = false } = options ?? {}
+  try {
+    const parsed = new URL(url)
+    if (!['http:', 'https:'].includes(parsed.protocol)) {
+      return { valid: false, error: 'Only HTTP and HTTPS URLs are supported' }
+    }
+    const hostname = parsed.hostname.toLowerCase()
+    if (isLoopback(hostname)) {
+      return allowLoopback ? { valid: true } : { valid: false, error: 'Internal URLs are not allowed' }
+    }
+    if (isPrivateAddress(hostname)) {
+      return { valid: false, error: 'Internal URLs are not allowed' }
+    }
+    return { valid: true }
+  } catch {
+    return { valid: false, error: 'Invalid URL' }
+  }
 }
 
 /**
@@ -54,10 +67,7 @@ export const isLoopback = (hostname: string): boolean => {
  * Uses IP pinning: resolves the hostname, validates IPs, then connects directly
  * to the resolved IP with the original Host header for TLS SNI / virtual hosting.
  */
-export const createSafeFetch = (
-  fetchFn: typeof fetch,
-  options?: { allowLoopback?: boolean },
-) => {
+export const createSafeFetch = (fetchFn: typeof fetch, options?: { allowLoopback?: boolean }) => {
   const { allowLoopback = false } = options ?? {}
 
   return async (input: string | URL | Request, init?: RequestInit): Promise<Response> => {

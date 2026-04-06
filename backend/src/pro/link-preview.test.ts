@@ -6,6 +6,11 @@ import { createLinkPreviewRoutes } from './link-preview'
 import type { LinkPreviewResponse } from './types'
 import * as settingsModule from '@/config/settings'
 
+// Mock DNS — external Node API, acceptable per docs/testing.md "When You Must Mock"
+const mockDnsLookup = mock(() => Promise.resolve([{ address: '93.184.216.34', family: 4 }]))
+mock.module('node:dns', () => ({ promises: { lookup: mockDnsLookup } }))
+mock.module('node:net', () => ({ isIP: (s: string) => (/^\d+\.\d+\.\d+\.\d+$/.test(s) ? 4 : 0) }))
+
 describe('Link Preview Routes', () => {
   let app: { handle: Elysia['handle'] }
   let getSettingsSpy: ReturnType<typeof spyOn>
@@ -79,6 +84,8 @@ describe('Link Preview Routes', () => {
   beforeEach(() => {
     // Reset all mocks before each test
     mockFetch.mockClear()
+    mockDnsLookup.mockClear()
+    mockDnsLookup.mockImplementation(() => Promise.resolve([{ address: '93.184.216.34', family: 4 }]))
     consoleSpies.error.mockClear()
   })
 
@@ -361,12 +368,7 @@ describe('Link Preview Routes', () => {
       )
 
       expect(response.status).toBe(200)
-      expect(mockFetch).toHaveBeenCalledWith(
-        targetUrl,
-        expect.objectContaining({
-          method: 'GET',
-        }),
-      )
+      expect(mockFetch).toHaveBeenCalledTimes(1)
 
       const body = (await response.json()) as LinkPreviewResponse
       expect(body.success).toBe(true)
@@ -388,7 +390,7 @@ describe('Link Preview Routes', () => {
       const response = await app.handle(new Request(`http://localhost/link-preview/${targetUrl}`, { method: 'GET' }))
 
       expect(response.status).toBe(200)
-      expect(mockFetch).toHaveBeenCalledWith(targetUrl, expect.any(Object))
+      expect(mockFetch).toHaveBeenCalledTimes(1)
 
       const body = (await response.json()) as LinkPreviewResponse
       expect(body.success).toBe(false)
@@ -531,18 +533,15 @@ describe('Link Preview Routes', () => {
 
       await app.handle(new Request(`http://localhost/link-preview/${targetUrl}`, { method: 'GET' }))
 
-      expect(mockFetch).toHaveBeenCalledWith(
-        targetUrl,
-        expect.objectContaining({
-          method: 'GET',
-          headers: expect.objectContaining({
-            'User-Agent':
-              'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
-            Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
-            'Accept-Language': 'en-US,en;q=0.9',
-          }),
-        }),
+      expect(mockFetch).toHaveBeenCalledTimes(1)
+      const [, calledInit] = mockFetch.mock.calls[0]
+      const headers = calledInit.headers as Headers
+      expect(headers.get('User-Agent')).toBe(
+        'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
       )
+      expect(headers.get('Accept')).toBe('text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8')
+      expect(headers.get('Accept-Language')).toBe('en-US,en;q=0.9')
+      expect(headers.get('Host')).toBe('example.com')
     })
   })
 

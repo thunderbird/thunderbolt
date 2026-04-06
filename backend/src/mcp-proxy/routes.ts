@@ -2,7 +2,7 @@ import type { Auth } from '@/auth/elysia-plugin'
 import { getCorsOrigins, getSettings } from '@/config/settings'
 import { safeErrorHandler } from '@/middleware/error-handling'
 import { createSessionGuard } from '@/middleware/session-guard'
-import { createSafeFetch, isLoopback, isPrivateAddress } from '@/utils/url-validation'
+import { createSafeFetch, validateSafeUrl } from '@/utils/url-validation'
 import { buildQueryString, extractResponseHeaders, filterHeaders } from '@/utils/request'
 import cors from '@elysiajs/cors'
 import { Elysia } from 'elysia'
@@ -12,26 +12,6 @@ const maxResponseBytes = 10 * 1024 * 1024
 
 /** Proxy request timeout (30s — MCP operations can be slower than typical API calls). */
 const proxyTimeoutMs = 30_000
-
-/**
- * Validates MCP target URLs with SSRF protection.
- * Allows localhost (MCP servers run locally) but blocks all other private/internal addresses.
- */
-const validateMcpTargetUrl = (url: string): { valid: boolean; error?: string } => {
-  try {
-    const parsed = new URL(url)
-    if (!['http:', 'https:'].includes(parsed.protocol)) {
-      return { valid: false, error: 'Only HTTP and HTTPS URLs are supported' }
-    }
-    const hostname = parsed.hostname
-    if (!isLoopback(hostname) && isPrivateAddress(hostname)) {
-      return { valid: false, error: 'Internal network addresses are not allowed' }
-    }
-    return { valid: true }
-  } catch {
-    return { valid: false, error: 'Invalid URL' }
-  }
-}
 
 /** Headers to strip from proxied MCP requests. Keeps Authorization and MCP headers. */
 const mcpRequestDenylist = [
@@ -61,7 +41,7 @@ const handleProxy = async (
   },
   safeFetchFn: FetchFn,
 ) => {
-  const validation = validateMcpTargetUrl(targetBaseUrl)
+  const validation = validateSafeUrl(targetBaseUrl, { allowLoopback: true })
   if (!validation.valid) {
     ctx.set.status = 400
     return new Response(validation.error || 'Invalid target URL', { headers: { 'Content-Type': 'text/plain' } })

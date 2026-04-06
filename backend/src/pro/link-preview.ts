@@ -1,6 +1,6 @@
 import { getCorsOrigins, getSettings } from '@/config/settings'
 import { safeErrorHandler } from '@/middleware/error-handling'
-import { isPrivateAddress } from '@/utils/url-validation'
+import { createSafeFetch, validateSafeUrl } from '@/utils/url-validation'
 import cors from '@elysiajs/cors'
 import { Elysia } from 'elysia'
 import type { LinkPreviewResponse } from './types'
@@ -136,33 +136,6 @@ const inferImageContentType = (headerContentType: string | null, imageUrl: strin
 }
 
 /**
- * Validates that a URL is safe to fetch (prevents SSRF attacks).
- * Only allows http/https protocols and blocks internal/private IP addresses.
- */
-export const validateSafeUrl = (url: string): { valid: boolean; error?: string } => {
-  try {
-    const parsed = new URL(url)
-
-    if (!['http:', 'https:'].includes(parsed.protocol)) {
-      return { valid: false, error: 'Only HTTP and HTTPS URLs are supported' }
-    }
-
-    const hostname = parsed.hostname.toLowerCase()
-    if (hostname === 'localhost' || hostname === '127.0.0.1') {
-      return { valid: false, error: 'Internal URLs are not allowed' }
-    }
-
-    if (isPrivateAddress(hostname)) {
-      return { valid: false, error: 'Internal URLs are not allowed' }
-    }
-
-    return { valid: true }
-  } catch {
-    return { valid: false, error: 'Invalid URL' }
-  }
-}
-
-/**
  * Extracts Open Graph metadata from HTML content.
  * Only falls back to <title> and <meta description> when at least one social
  * meta tag (og:*) is present — pages without any social tags
@@ -214,6 +187,7 @@ const extractMetadata = (html: string, url: string) => {
  */
 export const createLinkPreviewRoutes = (fetchFn: typeof fetch = globalThis.fetch) => {
   const settings = getSettings()
+  const safeFetchFn = createSafeFetch(fetchFn)
 
   return new Elysia({
     prefix: '/link-preview',
@@ -270,7 +244,7 @@ export const createLinkPreviewRoutes = (fetchFn: typeof fetch = globalThis.fetch
         const timeoutId = setTimeout(() => controller.abort(), 10_000)
 
         try {
-          const response = await fetchFn(targetUrl, {
+          const response = await safeFetchFn(targetUrl, {
             method: 'GET',
             headers: {
               'User-Agent':
@@ -371,7 +345,7 @@ export const createLinkPreviewRoutes = (fetchFn: typeof fetch = globalThis.fetch
         const timeoutId = setTimeout(() => controller.abort(), 10_000)
 
         try {
-          const response = await fetchFn(fullPageUrl, {
+          const response = await safeFetchFn(fullPageUrl, {
             method: 'GET',
             headers: {
               'User-Agent':
@@ -425,7 +399,7 @@ export const createLinkPreviewRoutes = (fetchFn: typeof fetch = globalThis.fetch
             })
           }
 
-          return fetchAndProxyImage(metadata.image, fetchFn, ctx)
+          return fetchAndProxyImage(metadata.image, safeFetchFn, ctx)
         } finally {
           clearTimeout(timeoutId)
         }
@@ -473,6 +447,6 @@ export const createLinkPreviewRoutes = (fetchFn: typeof fetch = globalThis.fetch
         })
       }
 
-      return fetchAndProxyImage(fullImageUrl, fetchFn, ctx)
+      return fetchAndProxyImage(fullImageUrl, safeFetchFn, ctx)
     })
 }

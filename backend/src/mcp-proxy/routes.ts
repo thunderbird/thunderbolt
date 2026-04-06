@@ -48,7 +48,8 @@ const handleProxy = async (
   }
 
   const queryString = buildQueryString(ctx.query)
-  const url = subPath ? `${targetBaseUrl}/${subPath}${queryString}` : `${targetBaseUrl}${queryString}`
+  const base = targetBaseUrl.replace(/\/+$/, '')
+  const url = subPath ? `${base}/${subPath}${queryString}` : `${base}${queryString}`
   const headers = filterHeaders(ctx.headers, mcpRequestDenylist)
 
   // Timeout to prevent slow/malicious servers from holding connections indefinitely

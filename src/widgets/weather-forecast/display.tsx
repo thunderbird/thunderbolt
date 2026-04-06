@@ -20,12 +20,8 @@ export const WeatherForecast = ({ days = [], temperature_unit }: WeatherForecast
 
   return (
     <div className="my-4 w-full">
-      {/* Mobile: stacked, Desktop: single row */}
       <div className="flex flex-col gap-1.5 md:flex-row">
-        {/* Today card */}
         <div className="flex items-center justify-between rounded-2xl border border-border px-4 md:w-auto md:min-w-[280px] md:gap-4">
-          {/* Mobile: date left, icon center, temp right */}
-          {/* Desktop: date+temp left, icon right */}
           <div className="flex flex-col py-3 md:gap-1">
             <p className="text-[length:var(--font-size-sm)] text-muted-foreground">
               {dayjs(today.date).format('dddd, MMM D')}
@@ -39,7 +35,6 @@ export const WeatherForecast = ({ days = [], temperature_unit }: WeatherForecast
             <p className="hidden text-[length:var(--font-size-xs)] text-foreground md:block">{todayMeta.description}</p>
           </div>
           <img className="size-[72px] md:size-[92px]" src={todayMeta.icon} alt={todayMeta.description} />
-          {/* Mobile only: temp + description on right */}
           <div className="flex flex-col items-end gap-1 md:hidden">
             <div className="flex items-start">
               <span className="text-[32px] font-medium leading-none tracking-tight">
@@ -51,7 +46,6 @@ export const WeatherForecast = ({ days = [], temperature_unit }: WeatherForecast
           </div>
         </div>
 
-        {/* Forecast days — horizontal row */}
         <div className="flex flex-1 gap-1.5">
           {forecastDays.map((day) => {
             const meta = getWeatherMetadata(day.weather_code, day.date)
@@ -64,7 +58,7 @@ export const WeatherForecast = ({ days = [], temperature_unit }: WeatherForecast
                   {dayjs(day.date).format('ddd')}
                 </p>
                 <img className="size-10" src={meta.icon} alt={meta.description} />
-                <p className="text-[18px] font-medium leading-none tracking-tight">
+                <p className="text-[length:var(--font-size-body)] font-medium leading-none tracking-tight">
                   {convertTemperature(day.temperature_max, temperature_unit, temperatureUnit)}°
                 </p>
               </div>
@@ -73,7 +67,6 @@ export const WeatherForecast = ({ days = [], temperature_unit }: WeatherForecast
         </div>
       </div>
 
-      {/* Footer — unit toggle */}
       <div className="mt-2 flex items-center justify-end">
         <ToggleGroup
           type="single"

@@ -1,5 +1,6 @@
 import { useDatabase } from '@/contexts'
 import { getSettings } from '@/dal'
+import type { ReturnContext } from '@/lib/oauth-state'
 import { isTauri } from '@/lib/platform'
 import { getCurrent, onOpenUrl } from '@tauri-apps/plugin-deep-link'
 import { useEffect } from 'react'
@@ -29,7 +30,7 @@ type NavigateTarget = {
  * Exported for testing
  */
 export const determineNavigationTarget = (
-  oauthReturnContext: string | null,
+  oauthReturnContext: ReturnContext | null,
   oauth: OAuthCallbackData,
 ): NavigateTarget => {
   if (oauthReturnContext?.startsWith('/')) {
@@ -147,7 +148,7 @@ export const useDeepLinkListener = (handler?: DeepLinkHandler, dependencies?: De
           if (oauthData) {
             // Get the return context from SQLite settings (where mobile flow stores it)
             const settings = await getSettingsData(db, { oauth_return_context: String })
-            const target = determineNavigationTarget(settings.oauthReturnContext, oauthData)
+            const target = determineNavigationTarget(settings.oauthReturnContext as ReturnContext | null, oauthData)
 
             navigate(target.path, {
               state: { oauth: target.oauth },

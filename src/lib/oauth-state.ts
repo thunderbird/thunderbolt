@@ -2,6 +2,8 @@ import { getSettings, updateSettings, deleteSetting } from '@/dal'
 import { getDb } from '@/db/database'
 import type { OAuthProvider } from './auth'
 
+export type ReturnContext = 'onboarding' | 'integrations' | `/${string}`
+
 /**
  * OAuth state stored in sqlite settings
  */
@@ -9,7 +11,7 @@ type OAuthState = {
   state: string | null
   provider: OAuthProvider | null
   verifier: string | null
-  returnContext: string | null
+  returnContext: ReturnContext | null
 }
 
 /**
@@ -28,7 +30,7 @@ export const getOAuthState = async (): Promise<OAuthState> => {
     state: settings.oauthState,
     provider: settings.oauthProvider as OAuthProvider | null,
     verifier: settings.oauthVerifier,
-    returnContext: settings.oauthReturnContext,
+    returnContext: settings.oauthReturnContext as ReturnContext | null,
   }
 }
 

@@ -12,6 +12,7 @@ import { useOAuthConnect } from '@/hooks/use-oauth-connect'
 import { useSettings } from '@/hooks/use-settings'
 import { useIntegrationStatus } from '@/hooks/use-integration-status'
 import { type OAuthProvider } from '@/lib/auth'
+import type { ReturnContext } from '@/lib/oauth-state'
 import { oauthRetryEvent, getOAuthWidgetKey, connectedStateDisplayDuration } from './constants'
 import { useQueryClient } from '@tanstack/react-query'
 import {
@@ -114,7 +115,7 @@ export const ConnectIntegrationWidget = memo(
           )
         }, connectedStateDisplayDuration)
       },
-      returnContext: location.pathname,
+      returnContext: location.pathname as ReturnContext,
     })
 
     const handleOAuthCallback = async (oauth: { code?: string; state?: string; error?: string }) => {

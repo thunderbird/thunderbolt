@@ -32,7 +32,7 @@ const WeatherForecastWithToggle = ({
           {dayTime ? '☀️ Day' : '🌙 Night'}
         </button>
       </div>
-      <WeatherForecast location={location} days={modifiedDays} temperature_unit="c" />
+      <WeatherForecast location={location} days={modifiedDays.slice(0, 6)} temperature_unit="c" />
     </div>
   )
 }

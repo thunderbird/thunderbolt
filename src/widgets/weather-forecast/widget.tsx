@@ -20,7 +20,7 @@ export const WeatherForecastWidget = ({ location, region, country, messageId }: 
     messageId,
     cacheKey: ['weatherForecast', location, region, country],
     fetchFn: async () => {
-      return getWeatherForecast({ location, region, country, days: 7 })
+      return getWeatherForecast({ location, region, country, days: 6 })
     },
   })
 

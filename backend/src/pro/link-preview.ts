@@ -45,7 +45,7 @@ const decodeUrlParam = (encoded: string): string | null => {
  */
 const fetchAndProxyImage = async (
   imageUrl: string,
-  fetchFn: typeof fetch,
+  fetchFn: (input: string | URL | Request, init?: RequestInit) => Promise<Response>,
   ctx: { set: { status?: number | string } },
 ): Promise<Response> => {
   try {

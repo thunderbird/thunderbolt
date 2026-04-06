@@ -12,7 +12,7 @@ mock.module('node:dns', () => ({ promises: { lookup: mockDnsLookup } }))
 mock.module('node:net', () => ({ isIP: (s: string) => (/^\d+\.\d+\.\d+\.\d+$/.test(s) ? 4 : 0) }))
 
 describe('MCP Proxy Routes', () => {
-  let app: Elysia
+  let app: { handle: Elysia['handle'] }
   let getSettingsSpy: ReturnType<typeof spyOn>
   let consoleSpies: ConsoleSpies
   let mockFetch: ReturnType<typeof mock>
@@ -38,7 +38,7 @@ describe('MCP Proxy Routes', () => {
     posthogHost: 'https://us.i.posthog.com',
     posthogApiKey: '',
     corsOrigins: 'http://localhost:1420',
-    corsOriginRegex: '',
+    corsOriginRegex: null,
     corsAllowCredentials: true,
     corsAllowMethods: 'GET,POST,PUT,DELETE,PATCH,OPTIONS',
     corsAllowHeaders: 'Content-Type,Authorization,X-Mcp-Target-Url,Mcp-Session-Id,Mcp-Protocol-Version',

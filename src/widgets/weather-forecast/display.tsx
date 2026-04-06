@@ -76,10 +76,18 @@ export const WeatherForecast = ({ days = [], temperature_unit }: WeatherForecast
           variant="outline"
           className="cursor-pointer"
         >
-          <ToggleGroupItem value="c" aria-label="Celsius" className="cursor-pointer">
+          <ToggleGroupItem
+            value="c"
+            aria-label="Celsius"
+            className="cursor-pointer data-[state=off]:bg-accent data-[state=off]:text-accent-foreground data-[state=on]:bg-transparent data-[state=on]:text-foreground"
+          >
             °C
           </ToggleGroupItem>
-          <ToggleGroupItem value="f" aria-label="Fahrenheit" className="cursor-pointer">
+          <ToggleGroupItem
+            value="f"
+            aria-label="Fahrenheit"
+            className="cursor-pointer data-[state=off]:bg-accent data-[state=off]:text-accent-foreground data-[state=on]:bg-transparent data-[state=on]:text-foreground"
+          >
             °F
           </ToggleGroupItem>
         </ToggleGroup>

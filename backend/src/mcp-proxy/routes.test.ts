@@ -142,17 +142,21 @@ describe('MCP Proxy Routes', () => {
     expect(mockFetch).not.toHaveBeenCalled()
   })
 
-  it('allows localhost MCP server URLs', async () => {
-    mockFetch.mockResolvedValueOnce(new Response('ok', { status: 200 }))
-    const response = await app.handle(
-      new Request('http://localhost/mcp-proxy/', {
-        method: 'POST',
-        headers: { 'x-mcp-target-url': 'http://localhost:8080' },
-      }),
-    )
+  it('blocks loopback MCP server URLs', async () => {
+    const loopbackUrls = ['http://localhost:8080', 'http://127.0.0.1:8080', 'http://[::1]:8080']
 
-    expect(response.status).toBe(200)
-    expect(mockFetch).toHaveBeenCalled()
+    for (const targetUrl of loopbackUrls) {
+      mockFetch.mockClear()
+      const response = await app.handle(
+        new Request('http://localhost/mcp-proxy/', {
+          method: 'POST',
+          headers: { 'x-mcp-target-url': targetUrl },
+        }),
+      )
+
+      expect(response.status).toBe(400)
+      expect(mockFetch).not.toHaveBeenCalled()
+    }
   })
 
   // --- Response Security ---

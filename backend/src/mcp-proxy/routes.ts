@@ -41,7 +41,7 @@ const handleProxy = async (
   },
   safeFetchFn: FetchFn,
 ) => {
-  const validation = validateSafeUrl(targetBaseUrl, { allowLoopback: true })
+  const validation = validateSafeUrl(targetBaseUrl)
   if (!validation.valid) {
     ctx.set.status = 400
     return new Response(validation.error || 'Invalid target URL', { headers: { 'Content-Type': 'text/plain' } })
@@ -86,7 +86,7 @@ const handleProxy = async (
 export const createMcpProxyRoutes = (auth: Auth, fetchFn: typeof fetch = globalThis.fetch) => {
   const settings = getSettings()
   // Wrap fetch with DNS-level SSRF protection (resolves hostname, validates IPs before connecting)
-  const safeFetchFn: FetchFn = createSafeFetch(fetchFn, { allowLoopback: true })
+  const safeFetchFn: FetchFn = createSafeFetch(fetchFn)
 
   return new Elysia({ prefix: '/mcp-proxy' })
     .onError(safeErrorHandler)

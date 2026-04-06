@@ -99,7 +99,9 @@ jobs:
           version_type: ${{ inputs.version_type }}
 
       - name: Export build version env
-        run: echo "BUILD_VERSION=${{ steps.determine_version.outputs.build_version }}" >> $GITHUB_ENV
+        env:
+          BUILD_VERSION: ${{ steps.determine_version.outputs.build_version }}
+        run: echo "BUILD_VERSION=$BUILD_VERSION" >> $GITHUB_ENV
 
       - name: Set build version locally for TestFlight
         run: |

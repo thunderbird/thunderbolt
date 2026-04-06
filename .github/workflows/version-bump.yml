@@ -85,21 +85,21 @@ jobs:
           INPUT_VERSION_TYPE: ${{ inputs.version_type }}
           INPUT_PLATFORM: ${{ inputs.platform }}
         run: |
-          # Build arguments for the script
-          ARGS="--push"
+          # Build arguments for the script using an array to prevent argument injection
+          ARGS=(--push)
 
           if [ -n "$INPUT_VERSION" ]; then
-            ARGS="$ARGS --version $INPUT_VERSION"
+            ARGS+=(--version "$INPUT_VERSION")
           else
-            ARGS="$ARGS --type $INPUT_VERSION_TYPE"
+            ARGS+=(--type "$INPUT_VERSION_TYPE")
           fi
 
           if [ -n "$INPUT_PLATFORM" ]; then
-            ARGS="$ARGS --platform $INPUT_PLATFORM"
+            ARGS+=(--platform "$INPUT_PLATFORM")
           fi
 
-          echo "Running: bun run scripts/create-release.ts $ARGS"
-          bun run scripts/create-release.ts $ARGS
+          echo "Running: bun run scripts/create-release.ts ${ARGS[*]}"
+          bun run scripts/create-release.ts "${ARGS[@]}"
 
       # Nightly: generate version and tag without committing to main
       - name: Prepare nightly version
@@ -186,6 +186,7 @@ jobs:
         if: ${{ !inputs.nightly }}
         env:
           CHANGELOG_B64: ${{ steps.changelog.outputs.changelog_b64 }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           PLATFORM: ${{ inputs.platform }}
           TAG_NAME: ${{ steps.tag.outputs.tag_name }}
           VERSION: ${{ steps.version.outputs.new_version }}
@@ -233,5 +234,3 @@ jobs:
               --draft \
               --prerelease
           fi
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

@@ -8,13 +8,18 @@ export const waitForOAuthCallback = (
   eventTarget: EventTarget = window,
 ): Promise<{ code: string; state: string }> =>
   new Promise<{ code: string; state: string }>((resolve, reject) => {
+    const cleanup = () => {
+      eventTarget.removeEventListener('message', handler)
+      clearTimeout(timeoutId)
+    }
+
     const handler = (event: Event) => {
       const msg = event as MessageEvent
       if (msg.origin !== window.location.origin) {
         return
       }
       if (msg.data?.type === 'oauth-callback') {
-        eventTarget.removeEventListener('message', handler)
+        cleanup()
         if (popup && !popup.closed) {
           popup.close()
         }
@@ -31,9 +36,9 @@ export const waitForOAuthCallback = (
 
     eventTarget.addEventListener('message', handler)
 
-    setTimeout(
+    const timeoutId = setTimeout(
       () => {
-        eventTarget.removeEventListener('message', handler)
+        cleanup()
         reject(new Error('OAuth timeout - please try again'))
       },
       10 * 60 * 1000,

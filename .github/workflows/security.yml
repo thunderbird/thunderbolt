@@ -66,6 +66,7 @@ jobs:
     runs-on: ubuntu-latest
     if: vars.DISABLE_CODEQL != 'true'
     permissions:
+      actions: read
       contents: read
       security-events: write
     steps:

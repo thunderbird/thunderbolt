@@ -7,8 +7,8 @@ import { buildQueryString, extractResponseHeaders, filterHeaders } from '@/utils
 import cors from '@elysiajs/cors'
 import { Elysia } from 'elysia'
 
-/** Max proxied response size (10MB — MCP tool results can include data payloads). */
-const maxResponseBytes = 10 * 1024 * 1024
+/** Max proxied request/response size (10MB — MCP tool results can include data payloads). */
+const maxBodyBytes = 10 * 1024 * 1024
 
 /** Proxy request timeout (30s — MCP operations can be slower than typical API calls). */
 const proxyTimeoutMs = 30_000
@@ -52,6 +52,23 @@ const handleProxy = async (
   const url = subPath ? `${base}/${subPath}${queryString}` : `${base}${queryString}`
   const headers = filterHeaders(ctx.headers, mcpRequestDenylist)
 
+  // Enforce request body size limit
+  const requestContentLength = ctx.headers['content-length']
+  if (requestContentLength && parseInt(requestContentLength, 10) > maxBodyBytes) {
+    ctx.set.status = 413
+    return new Response('Request body too large', { headers: { 'Content-Type': 'text/plain' } })
+  }
+
+  // Buffer request body and enforce size limit even without Content-Length
+  let requestBody: ArrayBuffer | null = null
+  if (ctx.request.body) {
+    requestBody = await new Response(ctx.request.body as BodyInit).arrayBuffer()
+    if (requestBody.byteLength > maxBodyBytes) {
+      ctx.set.status = 413
+      return new Response('Request body too large', { headers: { 'Content-Type': 'text/plain' } })
+    }
+  }
+
   // Timeout to prevent slow/malicious servers from holding connections indefinitely
   const controller = new AbortController()
   const timeoutId = setTimeout(() => controller.abort(), proxyTimeoutMs)
@@ -60,14 +77,20 @@ const handleProxy = async (
     const response = await safeFetchFn(url, {
       method: ctx.request.method,
       headers,
-      body: ctx.request.body as BodyInit,
+      body: requestBody,
       redirect: 'manual',
       signal: controller.signal,
     })
 
-    // Reject responses exceeding size limit (Content-Length check)
+    // Reject responses exceeding size limit — check Content-Length first, then actual bytes
     const contentLength = response.headers.get('content-length')
-    if (contentLength && parseInt(contentLength, 10) > maxResponseBytes) {
+    if (contentLength && parseInt(contentLength, 10) > maxBodyBytes) {
+      return new Response('Response too large', { status: 502, headers: { 'Content-Type': 'text/plain' } })
+    }
+
+    // Buffer response body to enforce size limit even for chunked/streamed responses
+    const body = response.body ? await response.arrayBuffer() : null
+    if (body && body.byteLength > maxBodyBytes) {
       return new Response('Response too large', { status: 502, headers: { 'Content-Type': 'text/plain' } })
     }
 
@@ -75,7 +98,7 @@ const handleProxy = async (
     responseHeaders.delete('set-cookie')
     responseHeaders.set('cross-origin-resource-policy', 'cross-origin')
 
-    return new Response(response.body, {
+    return new Response(body, {
       status: response.status,
       headers: responseHeaders,
     })

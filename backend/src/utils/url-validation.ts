@@ -10,7 +10,7 @@ const blockedRanges = new Set([
   'uniqueLocal', // fc00::/7
   'unspecified', // 0.0.0.0/8, ::
   'carrierGradeNat', // 100.64/10 (RFC 6598)
-  'reserved', // 198.18/15 (RFC 2544), documentation blocks, etc.
+  'reserved', // 198.18/15, 192.0.0/24, 192.0.2/24, 198.51.100/24, 203.0.113/24, 240.0.0/4, etc.
   'broadcast', // 255.255.255.255
 ])
 
@@ -28,10 +28,12 @@ export const isPrivateAddress = (rawHostname: string): boolean => {
   return blockedRanges.has(addr.range())
 }
 
-/** Returns true if the hostname is localhost or 127.0.0.1 (loopback only, not all private). */
-export const isLoopback = (hostname: string): boolean => {
+/** Returns true if the hostname is a loopback address (127.0.0.0/8, ::1, or localhost). */
+const isLoopback = (hostname: string): boolean => {
   const h = hostname.toLowerCase()
-  return h === 'localhost' || h === '127.0.0.1' || h === '::1'
+  if (h === 'localhost') return true
+  if (!ipaddr.isValid(h)) return false
+  return ipaddr.process(h).range() === 'loopback'
 }
 
 /**
@@ -79,6 +81,7 @@ const resolveAndValidate = async (
   }
 
   const addresses = await dnsPromises.lookup(hostname, { all: true })
+  if (!addresses.length) throw new Error(`DNS resolution returned no addresses for ${hostname}`)
 
   for (const { address } of addresses) {
     if (isPrivateAddress(address)) {
@@ -87,7 +90,9 @@ const resolveAndValidate = async (
   }
 
   const pinnedUrl = new URL(url)
-  pinnedUrl.hostname = addresses[0].address
+  const resolvedIp = addresses[0].address
+  // IPv6 addresses must be bracket-wrapped for URL hostname assignment
+  pinnedUrl.hostname = addresses[0].family === 6 ? `[${resolvedIp}]` : resolvedIp
   const headers = new Headers(extraHeaders)
   headers.set('Host', hostname)
 
@@ -117,11 +122,13 @@ export const createSafeFetch = (fetchFn: typeof fetch) => {
 
     // Follow redirects, validating SSRF on each hop
     let currentResponse = response
+    let currentUrl = url
     for (let i = 0; i < maxRedirects; i++) {
       const location = currentResponse.headers.get('location')
       if (!location) return currentResponse
 
-      const redirectUrl = new URL(location, url).toString()
+      const redirectUrl = new URL(location, currentUrl).toString()
+      currentUrl = redirectUrl
       const [pinnedRedirect, redirectHeaders] = await resolveAndValidate(redirectUrl, init?.headers)
 
       // 303 always becomes GET; 301/302 become GET for non-GET/HEAD (per spec)

@@ -1,6 +1,7 @@
 import * as aws from '@pulumi/aws'
+import * as pulumi from '@pulumi/pulumi'
 
-export const createStorage = (name: string, vpcId: string, subnetIds: string[], servicesSgId: string) => {
+export const createStorage = (name: string, vpcId: pulumi.Input<string>, subnetIds: pulumi.Input<string>[], servicesSgId: pulumi.Input<string>) => {
   const efs = new aws.efs.FileSystem(`${name}-efs`, {
     encrypted: true,
     tags: { Name: `${name}-efs` },

@@ -1,6 +1,7 @@
 import * as aws from '@pulumi/aws'
+import * as pulumi from '@pulumi/pulumi'
 
-export const createServiceDiscovery = (name: string, vpcId: string) => {
+export const createServiceDiscovery = (name: string, vpcId: pulumi.Input<string>) => {
   const namespace = new aws.servicediscovery.PrivateDnsNamespace(`${name}-ns`, {
     name: 'thunderbolt.local',
     vpc: vpcId,

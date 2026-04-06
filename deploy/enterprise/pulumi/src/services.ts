@@ -93,7 +93,7 @@ export const createServices = (args: ServiceArgs) => {
         mountPoints: [{ sourceVolume: 'pg-data', containerPath: '/var/lib/postgresql/data' }],
         logConfiguration: logConfig('postgres'),
       },
-    ]),
+    ])),
   })
 
   const pgService = new aws.ecs.Service(`${name}-pg-svc`, {
@@ -171,7 +171,7 @@ export const createServices = (args: ServiceArgs) => {
         portMappings: [{ containerPort: 8080 }],
         logConfiguration: logConfig('powersync'),
       },
-    ]),
+    ])),
   })
 
   const psService = new aws.ecs.Service(`${name}-ps-svc`, {

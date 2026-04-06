@@ -1,7 +1,13 @@
 import * as aws from '@pulumi/aws'
 import * as pulumi from '@pulumi/pulumi'
 
-export const createVpc = (name: string) => {
+export const createVpc = (name: string): {
+  vpc: aws.ec2.Vpc
+  publicSubnets: aws.ec2.Subnet[]
+  privateSubnets: aws.ec2.Subnet[]
+  albSg: aws.ec2.SecurityGroup
+  servicesSg: aws.ec2.SecurityGroup
+} => {
   const vpc = new aws.ec2.Vpc(`${name}-vpc`, {
     cidrBlock: '10.0.0.0/16',
     enableDnsHostnames: true,

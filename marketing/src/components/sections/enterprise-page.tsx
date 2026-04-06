@@ -143,7 +143,7 @@ const FeatureCards = () => (
       </div>
 
       {/* Choose Any Agent (or Model) — sits higher than adjacent cards per Figma */}
-      <div className="relative flex flex-col overflow-hidden border-[0.5px] border-[#eaecf0]/50 bg-white/5 px-8 pt-8 pb-8 backdrop-blur-sm md:overflow-visible lg:-mt-[71px] lg:mb-0">
+      <div className="relative flex flex-col overflow-hidden border-[0.5px] border-[#eaecf0]/50 bg-white/5 px-8 pt-8 pb-2 backdrop-blur-sm md:overflow-visible lg:-mt-[71px]">
         <div className="pointer-events-none absolute -left-[6px] -top-[6px] z-10 hidden size-3 bg-[#eaecf0] lg:block" />
         <div className="pointer-events-none absolute -right-[6px] -top-[6px] z-10 hidden size-3 bg-[#eaecf0] lg:block" />
         <div className="pointer-events-none absolute -bottom-[6px] -left-[6px] z-10 hidden size-3 bg-[#eaecf0] lg:block" />
@@ -251,6 +251,7 @@ const QuoteSection = () => (
       {/* Quote card group — stretches to right edge of screen */}
       <div className="relative flex-1">
         <div className="absolute left-0 top-0 hidden size-3 bg-[#d0d5dd] lg:block" />
+        <div className="absolute -bottom-[6px] left-0 hidden size-3 bg-[#d0d5dd] lg:block" />
         <div className="border border-[#d0d5dd] border-r-0 bg-white p-10 shadow-[0px_48px_100px_0px_rgba(17,12,46,0.15)] md:ml-[6px] md:mt-[6px]">
           <p className="max-w-[768px] text-[32px] font-medium leading-[1.2] tracking-[-1.12px] text-[#101828] md:text-[56px]">
             &ldquo;Organizations across sectors are recognizing that AI is too strategic to outsource.&rdquo;

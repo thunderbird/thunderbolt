@@ -104,3 +104,17 @@ jobs:
       - name: Detect secrets (full scan)
         run: gitleaks detect --source . --verbose
         if: github.event_name != 'pull_request'
+
+  dependency-review:
+    name: Dependency Review
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+      - uses: actions/dependency-review-action@2031cfc080254a8a887f58cffee85186f0e49e48 # v4.9.0
+        with:
+          comment-summary-in-pr: always
+          fail-on-severity: critical

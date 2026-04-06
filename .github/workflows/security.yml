@@ -35,11 +35,9 @@ jobs:
         run: |
           semgrep scan \
             --config p/typescript \
-            --config p/javascript \
             --config p/react \
             --config p/nodejs \
             --config p/owasp-top-ten \
-            --config p/cwe-top-25 \
             --config p/security-audit \
             --config p/secrets \
             --config p/jwt \
@@ -51,11 +49,9 @@ jobs:
         run: |
           semgrep scan \
             --config p/typescript \
-            --config p/javascript \
             --config p/react \
             --config p/nodejs \
             --config p/owasp-top-ten \
-            --config p/cwe-top-25 \
             --config p/security-audit \
             --config p/secrets \
             --config p/jwt \

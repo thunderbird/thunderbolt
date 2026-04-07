@@ -26,8 +26,6 @@ export type InitData = {
   db: AnyDrizzleDatabase
   tray: TrayIcon | undefined
   window: Window | undefined
-  sideviewType: SideviewType | null
-  sideviewId: string | null
   posthogClient: PostHog | null
   httpClient: HttpClient
   experimentalFeatureTasks: boolean
@@ -97,8 +95,6 @@ export type UIMessageMetadata = {
   reasoningStartTimes?: Record<string, number>
   sources?: SourceMetadata[]
 }
-
-export type SideviewType = 'message' | 'thread' | 'imap'
 
 export type ToolConfig = {
   name: string

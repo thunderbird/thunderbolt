@@ -23,7 +23,7 @@ describe('PostHog Privacy Mode', () => {
       capturedFetches.push({
         url,
         options,
-        body: options.body ? JSON.parse(options.body as string) : null,
+        body: options.body ? (typeof options.body === 'string' ? JSON.parse(options.body) : options.body) : null,
       })
 
       // Return successful response

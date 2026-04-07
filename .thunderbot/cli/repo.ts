@@ -7,6 +7,8 @@ type CommandResult = {
 }
 
 /** Run a command and capture its output */
+// nosemgrep: javascript.lang.security.detect-child-process.detect-child-process
+// Safe: callers pass hardcoded commands (e.g. 'gh', 'git'), not user-controlled input
 export const runCommand = (cmd: string, args: string[]): Promise<CommandResult> =>
   new Promise((resolve) => {
     const proc = spawn(cmd, args, { stdio: ['pipe', 'pipe', 'pipe'] })

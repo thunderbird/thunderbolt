@@ -7,7 +7,6 @@ import { createAppDir, resetAppDir } from '@/lib/fs'
 import { getDatabasePath, getDatabaseType } from '@/lib/platform'
 import { initPosthog, trackError } from '@/lib/posthog'
 import { reconcileDefaults } from '@/lib/reconcile-defaults'
-import { parseSideviewParam } from '@/lib/sideview-url'
 import { TrayManager } from '@/lib/tray'
 import type { InitData } from '@/types'
 import type { HandleError, HandleResult } from '@/types/handle-errors'
@@ -143,9 +142,6 @@ const executeInitializationSteps = async (httpClient?: HttpClient): Promise<Hand
     console.warn('Unexpected error during PostHog initialization:', error)
   }
 
-  const url = new URL(window.location.href)
-  const { type: sideviewType, id: sideviewId } = parseSideviewParam(url)
-
   // Step 8: Get experimental feature tasks
   const { experimentalFeatureTasks } = await getSettings(db, {
     experimental_feature_tasks: false,
@@ -156,8 +152,6 @@ const executeInitializationSteps = async (httpClient?: HttpClient): Promise<Hand
     data: {
       db,
       experimentalFeatureTasks,
-      sideviewType,
-      sideviewId,
       posthogClient,
       httpClient: client,
       ...tray,

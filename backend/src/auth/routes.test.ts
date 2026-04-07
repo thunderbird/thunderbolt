@@ -7,7 +7,7 @@ import { createGoogleAuthRoutes } from './google'
 import { createMicrosoftAuthRoutes } from './microsoft'
 
 describe('Authentication Routes', () => {
-  let app: Elysia
+  let app: { handle: Elysia['handle'] }
   let mockFetch: ReturnType<typeof mock>
   let getSettingsSpy: ReturnType<typeof spyOn>
   let consoleSpies: ConsoleSpies
@@ -40,7 +40,7 @@ describe('Authentication Routes', () => {
       posthogHost: 'https://us.i.posthog.com',
       posthogApiKey: '',
       corsOrigins: 'http://localhost:1420',
-      corsOriginRegex: '',
+      corsOriginRegex: null,
       corsAllowCredentials: true,
       corsAllowMethods: 'GET,POST,PUT,DELETE,PATCH,OPTIONS',
       corsAllowHeaders: 'Content-Type,Authorization',

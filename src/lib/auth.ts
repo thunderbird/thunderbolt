@@ -4,6 +4,7 @@ import * as google from '@/integrations/google/auth'
 import type { GoogleUserInfo } from '@/integrations/google/types'
 import * as microsoft from '@/integrations/microsoft/auth'
 import { isTauri } from '@/lib/platform'
+import { waitForOAuthCallback } from '@/lib/oauth-callback'
 import { setOAuthState, getOAuthState, clearOAuthState } from '@/lib/oauth-state'
 
 // ---------------------------------------------------------------------------
@@ -138,34 +139,7 @@ export const startOAuthFlow = async (
     popup.focus()
   }
 
-  const callback = new Promise<{ code: string; state: string }>((resolve, reject) => {
-    const handler = (event: MessageEvent) => {
-      if (event.data?.type === 'oauth-callback') {
-        window.removeEventListener('message', handler)
-        if (popup && !popup.closed) {
-          popup.close()
-        }
-
-        if (event.data.error) {
-          reject(new Error(event.data.error))
-        } else {
-          resolve({ code: event.data.code, state: event.data.state })
-        }
-      }
-    }
-
-    window.addEventListener('message', handler)
-
-    setTimeout(
-      () => {
-        window.removeEventListener('message', handler)
-        reject(new Error('OAuth timeout - please try again'))
-      },
-      10 * 60 * 1000,
-    )
-  })
-
-  const { code, state: returnedState } = await callback
+  const { code, state: returnedState } = await waitForOAuthCallback(popup)
   if (returnedState !== state) {
     throw new Error('OAuth state mismatch')
   }

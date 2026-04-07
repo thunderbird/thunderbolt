@@ -79,7 +79,7 @@ async function uploadToPlayStore() {
             ],
           },
         })
-        console.log(`✅ Track set to ${track}:`, trackResponse.data)
+        console.log('✅ Track set to %s:', track, trackResponse.data)
       }
 
       // Commit the edit

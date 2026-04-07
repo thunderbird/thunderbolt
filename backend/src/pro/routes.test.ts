@@ -1,5 +1,6 @@
 import type { ConsoleSpies } from '@/test-utils/console-spies'
 import { setupConsoleSpy } from '@/test-utils/console-spies'
+import { mockAuth, mockAuthUnauthenticated } from '@/test-utils/mock-auth'
 import { afterAll, beforeAll, describe, expect, it, mock } from 'bun:test'
 import { createProToolsRoutes } from './routes'
 
@@ -81,7 +82,7 @@ describe('Pro Tools Routes', () => {
       return Promise.resolve(new Response('{}', { status: 200 }))
     })
 
-    app = createProToolsRoutes(mockFetch as unknown as typeof fetch)
+    app = createProToolsRoutes(mockAuth, mockFetch as unknown as typeof fetch)
   })
 
   afterAll(async () => {
@@ -169,6 +170,22 @@ describe('Pro Tools Routes', () => {
     const data = await response.json()
     expect(data).toHaveProperty('success')
     expect(data).toHaveProperty('data')
+  })
+
+  describe('authentication', () => {
+    it('should return 401 when session is null', async () => {
+      const unauthenticatedApp = createProToolsRoutes(mockAuthUnauthenticated, mockFetch as unknown as typeof fetch)
+
+      const response = await unauthenticatedApp.handle(
+        new Request('http://localhost/pro/search', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ query: 'test', max_results: 5 }),
+        }),
+      )
+
+      expect(response.status).toBe(401)
+    })
   })
 
   it('should require valid body for requests', async () => {

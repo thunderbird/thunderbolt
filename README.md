@@ -25,21 +25,11 @@ Thunderbolt is a **cross-platform, local-first** app built with [Tauri](https://
 
 ### Local Database Storage
 
-All data is stored on-device. Thunderbolt supports two local SQLite storage options:
+All data is stored on-device using [OPFS](https://developer.mozilla.org/en-US/docs/Web/API/File_System_API/Origin_private_file_system) via [wa-sqlite](https://github.com/powersync-ja/wa-sqlite) with web workers and [PowerSync](https://www.powersync.com/) for offline-first sync.
 
-- **In-browser** (default): Uses [OPFS](https://developer.mozilla.org/en-US/docs/Web/API/File_System_API/Origin_private_file_system) via [wa-sqlite](https://github.com/powersync-ja/wa-sqlite) with web workers
-  - No Rust compilation required
-  - Runs database operations in a separate thread for better performance
-  - Works in both browser (`bun dev`) and Tauri builds
-  - PowerSync-ready for future offline-first sync
-  - Run with `bun dev` or `bun tauri dev`
-
-- **Native filesystem**: Uses [libsql](https://github.com/tursodatabase/libsql) (Rust)
-  - **Tauri-only** — requires Rust compilation and desktop app
-  - SQL queries proxied between the Tauri frontend and Rust backend
-  - Database saved as a native file on disk
-  - Run with `bun tauri:libsql`
-  - **Tip**: The console shows the database file path on startup — you can open it in [TablePlus](https://tableplus.com/) to inspect or modify data directly
+- No Rust compilation required
+- Runs database operations in a separate thread for better performance
+- Works in both browser (`bun dev`) and Tauri builds
 
 ### Development Modes
 
@@ -57,14 +47,11 @@ All data is stored on-device. Thunderbolt supports two local SQLite storage opti
 - Tailwind - for styling
 - Shadcn - for UI components
 - React Router - for navigation / route handling
-- libsql - for local data storage, vector store, and encryption at rest
-- Drizzle - for ORM / migrations (eventually hoping to migrate this to SQLx / SeaORM in Rust)
+- Drizzle - for ORM / migrations
 - Vercel AI SDK - for handling the chat thread state, streaming LLM responses, and handling LLM tool calls
-- Mistral + Candle - for running embedding, and possibly LLMs, on-device via Hugging Face
 - Zod - for JSON schema validation
 - Vite - frontend package bundler
 - UUID - for all IDs - using v7 so that we can derive "created at" times from IDs and save disk space
-- Rust: imap, mail-parser, html2text - for syncing and parsing emails
 - Storybook: build, test & document components
 
 ## Rust Setup
@@ -154,74 +141,14 @@ make format-check
 ## Run
 
 ```sh
-# Recommended: Run with libsql for development
-bun tauri:libsql
-
-# Alternative: Run with no Cargo features (minimal build)
 bun tauri:dev:desktop
 ```
-
-### Enabling optional Rust features
-
-The Rust backend is built with **Cargo features**. By default **no optional
-features are enabled**, which keeps the binary size small and avoids pulling in
-dependencies you might not need during early development.
-
-| Feature      | What it enables                                     |
-| ------------ | --------------------------------------------------- |
-| `libsql`     | Local encrypted SQLite replacement via libsql       |
-| `email`      | IMAP client, mail-parser and related commands       |
-| `embeddings` | On-device embeddings generation (Candle)            |
-| `bridge`     | Native messaging bridge for the Thunderbird add-on  |
-| `all`        | A convenience feature that enables all of the above |
-
-You can pass features to any `tauri` CLI command by adding a `--` separator —
-everything after it is forwarded to `cargo`:
-
-```sh
-# Run with libsql (recommended for development)
-bun run tauri:libsql
-
-# Run with all optional features
-bun tauri dev -- --features all
-
-# Run with specific features
-bun tauri dev -- --features libsql,email
-
-# Build a production bundle with all optional features
-bun tauri build -- --features all
-```
-
-Note: when a feature is not compiled in, its corresponding commands are
-omitted from the binary. The renderer detects that automatically through the
-`capabilities` command we added, so no runtime errors occur — the feature is
-simply unavailable in the UI.
 
 ## Run Android
 
 ```sh
 # Android builds work with default (empty) features
 bun tauri android dev
-```
-
-## Run Rust Examples
-
-Important! Embed and mistral need to be built for release - they will hang you just run them with `cargo run --bin embed` in debug mode.
-
-```sh
-cd src-tauri
-
-# imap
-# Note: Can be run with cargo in debug mode.
-cargo run --bin imap
-
-# mistral - must be built for release to work!
-cargo build --bin mistral --release
-./target/release/mistral
-
-# embed - must be built for release to work!
-cargo build --bin embed --release
-./target/release/embed
 ```
 
 ## Run Storybook [[DEMO]](https://thunderbolt-storybook.onrender.com/?path=/docs/components-ui-button--docs)

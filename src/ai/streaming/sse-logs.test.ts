@@ -49,7 +49,7 @@ const discoverTestCases = (): Array<{
           })
         } catch (error) {
           // Skip if file is not readable or parseable
-          console.warn(`Warning: Cannot parse SSE file ${entry}:`, error)
+          console.warn('Warning: Cannot parse SSE file %s:', entry, error)
         }
       }
     }

@@ -1,4 +1,6 @@
+import type { Auth } from '@/auth/elysia-plugin'
 import { safeErrorHandler } from '@/middleware/error-handling'
+import { createSessionGuard } from '@/middleware/session-guard'
 import { isPostHogConfigured } from '@/posthog/client'
 import { createSSEStreamFromCompletion } from '@/utils/streaming'
 import type { OpenAI as PostHogOpenAI } from '@posthog/ai'
@@ -42,11 +44,12 @@ export const supportedModels: Record<string, ModelConfig> = {
 /**
  * Inference API routes
  */
-export const createInferenceRoutes = () => {
+export const createInferenceRoutes = (auth: Auth) => {
   return new Elysia({
     prefix: '/chat',
   })
     .onError(safeErrorHandler)
+    .use(createSessionGuard(auth))
     .post('/completions', async (ctx) => {
       const body = await ctx.request.json()
 

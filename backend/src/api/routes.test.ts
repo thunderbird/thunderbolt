@@ -50,7 +50,7 @@ describe('Main Routes', () => {
       posthogHost: 'https://us.i.posthog.com',
       posthogApiKey: 'ph_test',
       corsOrigins: 'http://localhost:1420',
-      corsOriginRegex: '',
+      corsOriginRegex: null,
       corsAllowCredentials: true,
       corsAllowMethods: 'GET,POST,PUT,DELETE,PATCH,OPTIONS',
       corsAllowHeaders:

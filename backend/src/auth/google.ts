@@ -7,6 +7,12 @@ const GOOGLE_TOKEN_URL = 'https://oauth2.googleapis.com/token'
 
 /**
  * Create Google OAuth router
+ *
+ * Unauthenticated by design: these endpoints act as a confidential client proxy so the
+ * Tauri frontend doesn't need to embed the client secret. Users can connect their Google
+ * account before signing up, with tokens stored locally on-device.
+ * Security is provided by OAuth itself — /exchange requires a single-use auth code + PKCE
+ * code_verifier, and /refresh requires a valid refresh token.
  */
 export const createGoogleAuthRoutes = (fetchFn: typeof fetch = globalThis.fetch) => {
   return new Elysia({ prefix: '/auth/google' })

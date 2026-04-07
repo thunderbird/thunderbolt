@@ -3,6 +3,7 @@ import { deleteSetting, getSettings, updateSettings } from '@/dal'
 import { buildAuthUrl, exchangeCodeForTokens, getUserInfo, redirectOAuthFlow, type OAuthProvider } from '@/lib/auth'
 import { startOAuthFlowLoopback } from '@/lib/oauth-loopback'
 import { generateCodeChallenge, generateCodeVerifier } from '@/lib/pkce'
+import type { ReturnContext } from '@/lib/oauth-state'
 import { isMobile, isTauri } from '@/lib/platform'
 import { openUrl } from '@tauri-apps/plugin-opener'
 import { useEffect, useRef, useState } from 'react'
@@ -36,7 +37,7 @@ type UseOAuthConnectOptions = {
   onSuccess?: () => void
   onError?: (error: Error) => void
   setPreferredName?: boolean
-  returnContext?: string
+  returnContext?: ReturnContext
   dependencies?: OAuthDependencies
 }
 

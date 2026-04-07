@@ -1,6 +1,7 @@
 import * as posthogClient from '@/posthog/client'
 import type { ConsoleSpies } from '@/test-utils/console-spies'
 import { setupConsoleSpy } from '@/test-utils/console-spies'
+import { mockAuth, mockAuthUnauthenticated } from '@/test-utils/mock-auth'
 import * as streamingUtils from '@/utils/streaming'
 import { afterAll, beforeAll, beforeEach, describe, expect, it, mock, spyOn } from 'bun:test'
 import { Elysia } from 'elysia'
@@ -9,7 +10,7 @@ import * as inferenceClient from './client'
 import { createInferenceRoutes, supportedModels } from './routes'
 
 describe('Inference Routes', () => {
-  let app: Elysia
+  let app: { handle: Elysia['handle'] }
   let getInferenceClientSpy: ReturnType<typeof spyOn>
   let isPostHogConfiguredSpy: ReturnType<typeof spyOn>
   let createSSEStreamSpy: ReturnType<typeof spyOn>
@@ -54,7 +55,7 @@ describe('Inference Routes', () => {
     isPostHogConfiguredSpy = spyOn(posthogClient, 'isPostHogConfigured').mockReturnValue(false)
     createSSEStreamSpy = spyOn(streamingUtils, 'createSSEStreamFromCompletion').mockReturnValue(createMockSSEStream())
 
-    app = new Elysia().use(createInferenceRoutes())
+    app = new Elysia().use(createInferenceRoutes(mockAuth))
   })
 
   afterAll(() => {
@@ -357,6 +358,28 @@ describe('Inference Routes', () => {
 
       // Reset for other tests
       isPostHogConfiguredSpy.mockReturnValue(false)
+    })
+  })
+
+  describe('authentication', () => {
+    it('should return 401 when session is null', async () => {
+      mockCreateCompletion.mockClear()
+      const unauthenticatedApp = new Elysia().use(createInferenceRoutes(mockAuthUnauthenticated))
+
+      const response = await unauthenticatedApp.handle(
+        new Request('http://localhost/chat/completions', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            model: 'mistral-large-3',
+            messages: [{ role: 'user', content: 'Hello' }],
+            stream: true,
+          }),
+        }),
+      )
+
+      expect(response.status).toBe(401)
+      expect(mockCreateCompletion).not.toHaveBeenCalled()
     })
   })
 

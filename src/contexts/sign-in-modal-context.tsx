@@ -1,6 +1,9 @@
 import { createContext, useContext, useState, type ReactNode } from 'react'
 
 import { SignInModal } from '@/components/sign-in-modal'
+import { SyncSetupModal } from '@/components/sync-setup/sync-setup-modal'
+import { setSyncEnabled } from '@/db/powersync'
+import { trackEvent } from '@/lib/posthog'
 
 type SignInModalContextValue = {
   openSignInModal: () => void
@@ -21,14 +24,27 @@ type SignInModalProviderProps = {
 }
 
 export const SignInModalProvider = ({ children }: SignInModalProviderProps) => {
-  const [open, setOpen] = useState(false)
+  const [signInOpen, setSignInOpen] = useState(false)
+  const [syncSetupOpen, setSyncSetupOpen] = useState(false)
 
-  const openSignInModal = () => setOpen(true)
+  const openSignInModal = () => setSignInOpen(true)
+
+  const handleSignInSuccess = () => {
+    setSignInOpen(false)
+    setSyncSetupOpen(true)
+  }
+
+  const handleSyncSetupComplete = async () => {
+    await setSyncEnabled(true)
+    trackEvent('settings_sync_enabled')
+    setSyncSetupOpen(false)
+  }
 
   return (
     <SignInModalContext.Provider value={{ openSignInModal }}>
       {children}
-      <SignInModal open={open} onOpenChange={setOpen} />
+      <SignInModal open={signInOpen} onOpenChange={setSignInOpen} onSuccess={handleSignInSuccess} />
+      <SyncSetupModal open={syncSetupOpen} onOpenChange={setSyncSetupOpen} onComplete={handleSyncSetupComplete} />
     </SignInModalContext.Provider>
   )
 }

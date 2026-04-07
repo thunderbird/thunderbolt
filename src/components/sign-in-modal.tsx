@@ -12,19 +12,29 @@ import { SignInForm } from './sign-in'
 type SignInModalProps = {
   open: boolean
   onOpenChange: (open: boolean) => void
+  onSuccess?: () => void
 }
 
 /**
  * Sign-in modal that wraps the reusable SignInForm component.
  * Provides the modal chrome and delegates to SignInForm for all form logic.
  */
-export const SignInModal = ({ open, onOpenChange }: SignInModalProps) => {
+export const SignInModal = ({ open, onOpenChange, onSuccess }: SignInModalProps) => {
   const [step, setStep] = useState<'email' | 'otp'>('email')
   const goBackRef = useRef<(() => void) | null>(null)
 
   const handleClose = () => {
     onOpenChange(false)
     setStep('email')
+  }
+
+  const handleSuccess = () => {
+    setStep('email')
+    if (onSuccess) {
+      onSuccess()
+    } else {
+      onOpenChange(false)
+    }
   }
 
   const handleGoBack = () => {
@@ -55,7 +65,7 @@ export const SignInModal = ({ open, onOpenChange }: SignInModalProps) => {
       <ResponsiveModalContent centered={step === 'otp'} className="flex flex-col gap-4">
         <SignInForm
           variant="modal"
-          onSuccess={handleClose}
+          onSuccess={handleSuccess}
           onCancel={handleClose}
           onGoBack={() => setStep('email')}
           onEmailSent={handleGoToOtp}

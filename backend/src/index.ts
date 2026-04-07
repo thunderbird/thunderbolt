@@ -8,7 +8,7 @@ import { runMigrations } from '@/db/client'
 import { createInferenceRoutes } from '@/inference/routes'
 import { createErrorHandlingMiddleware } from '@/middleware/error-handling'
 import { createHttpLoggingMiddleware } from '@/middleware/http-logging'
-import { createInferenceRateLimit, createProRateLimit } from '@/middleware/rate-limit'
+import { createAuthRateLimit, createInferenceRateLimit, createProRateLimit } from '@/middleware/rate-limit'
 import { createWaitlistAuthMiddleware } from '@/middleware/waitlist-auth'
 import { createMcpProxyRoutes } from '@/mcp-proxy/routes'
 import { createPostHogRoutes } from '@/posthog/routes'
@@ -60,7 +60,7 @@ export const createApp = async (deps?: AppDeps) => {
   // Create auth plugin with the database instance
   const { plugin: betterAuthPlugin, auth } = createBetterAuthPlugin(database)
 
-  const rateLimitSettings = { enabled: settings.rateLimitEnabled }
+  const rateLimitSettings = { enabled: settings.rateLimitEnabled, trustedProxy: settings.trustedProxy }
 
   return (
     configuredApp
@@ -76,7 +76,8 @@ export const createApp = async (deps?: AppDeps) => {
       .use(createLoggerMiddleware(settings))
       .use(createHttpLoggingMiddleware(settings.trustedProxy))
       .use(createErrorHandlingMiddleware())
-      // Better Auth handler (mounted at /api/auth/*)
+      // Auth routes (mounted at /api/auth/*)
+      .use(createAuthRateLimit(rateLimitSettings))
       .use(betterAuthPlugin)
       // Waitlist auth middleware - enforces auth on protected routes when WAITLIST_ENABLED=true
       .use(createWaitlistAuthMiddleware(settings, auth))

@@ -1,9 +1,10 @@
 import type { db as DbType } from '@/db/client'
 import { rateLimits } from '@/db/rate-limit-schema'
+import { extractClientIp } from '@/utils/request'
 import { Elysia } from 'elysia'
-import { RateLimiterDrizzle, RateLimiterRes } from 'rate-limiter-flexible'
+import { RateLimiterAbstract, RateLimiterDrizzle, RateLimiterMemory, RateLimiterRes } from 'rate-limiter-flexible'
 
-type RateLimitTier = 'inference' | 'pro'
+type RateLimitTier = 'inference' | 'pro' | 'auth'
 
 type RateLimitTierConfig = {
   max: number
@@ -12,13 +13,26 @@ type RateLimitTierConfig = {
 
 export type RateLimitSettings = {
   enabled: boolean
+  trustedProxy: '' | 'cloudflare' | 'akamai'
 }
 
 /** Hardcoded per-tier limits. */
 const tierConfigs: Record<RateLimitTier, RateLimitTierConfig> = {
   inference: { max: 20, durationSecs: 60 },
   pro: { max: 50, durationSecs: 60 },
+  auth: { max: 10, durationSecs: 900 },
 }
+
+/**
+ * Auth paths that are abuse-prone and should be rate-limited.
+ * All other auth paths (session checks, OIDC callbacks, etc.) are exempt.
+ */
+/**
+ * Auth paths that are abuse-prone and should be rate-limited.
+ * Only sign-in is active (emailOTP); sign-up/password routes are
+ * included defensively in case Better Auth exposes them.
+ */
+const rateLimitedAuthPrefixes = ['/v1/api/auth/sign-in']
 
 /** Create a rate-limiter-flexible instance for a specific tier. */
 const createLimiter = (database: typeof DbType, tier: RateLimitTier) => {
@@ -47,7 +61,7 @@ const setRateLimitHeaders = (
 
 /** Consume a rate limit point or return a 429 response. */
 const consumeOrReject = async (
-  limiter: RateLimiterDrizzle,
+  limiter: RateLimiterAbstract,
   key: string,
   set: { status?: number | string; headers: Record<string, string | string[] | number> },
 ) => {
@@ -94,4 +108,26 @@ export const createProRateLimit = (database: typeof DbType, settings: RateLimitS
   if (!settings.enabled) return new Elysia()
   const limiter = createLimiter(database, 'pro')
   return createUserRateLimitMiddleware(limiter)
+}
+
+/** Create in-memory IP-based rate limit middleware for auth routes. */
+export const createAuthRateLimit = (settings: RateLimitSettings) => {
+  if (!settings.enabled) return new Elysia()
+  const config = tierConfigs.auth
+  const limiter = new RateLimiterMemory({
+    keyPrefix: 'auth',
+    points: config.max,
+    duration: config.durationSecs,
+  })
+  return new Elysia()
+    .onBeforeHandle(async ({ request, set, server }) => {
+      const path = new URL(request.url).pathname
+      if (!rateLimitedAuthPrefixes.some((p) => path.startsWith(p))) return
+      const socketIp = server?.requestIP(request)?.address ?? '127.0.0.1'
+      const ip = extractClientIp(request.headers, socketIp, settings.trustedProxy)
+      const hasher = new Bun.CryptoHasher('sha256')
+      const key = hasher.update(ip).digest('hex')
+      return consumeOrReject(limiter, key, set)
+    })
+    .as('scoped')
 }

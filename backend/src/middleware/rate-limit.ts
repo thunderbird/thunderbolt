@@ -25,10 +25,6 @@ const tierConfigs: Record<RateLimitTier, RateLimitTierConfig> = {
 
 /**
  * Auth paths that are abuse-prone and should be rate-limited.
- * All other auth paths (session checks, OIDC callbacks, etc.) are exempt.
- */
-/**
- * Auth paths that are abuse-prone and should be rate-limited.
  * Only sign-in is active (emailOTP); sign-up/password routes are
  * included defensively in case Better Auth exposes them.
  */

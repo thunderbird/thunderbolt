@@ -5,7 +5,9 @@ import cors from '@elysiajs/cors'
 import { Elysia } from 'elysia'
 
 /**
- * PostHog analytics proxy routes
+ * PostHog analytics proxy routes — intentionally public (no auth).
+ * Events are anonymous client-side analytics; the proxy target is fixed to posthogHost.
+ * PostHog's API rejects events without a valid project API key.
  */
 export const createPostHogRoutes = (fetchFn: typeof fetch = globalThis.fetch) => {
   const settings = getSettings()

@@ -1,8 +1,8 @@
 import type { HttpClient } from '@/contexts'
+import { http } from '@/lib/http'
 import { deriveSiteName } from '@/lib/source-utils'
 import type { ToolConfig } from '@/types'
 import type { SourceMetadata } from '@/types/source'
-import ky from 'ky'
 import { fetchContent, fetchLinkPreview, getCurrentWeather, getWeatherForecast, search, searchLocations } from './api'
 import {
   fetchContentSchema,
@@ -154,7 +154,7 @@ export const createConfigs = (httpClient: HttpClient, sourceCollector?: SourceMe
 }
 
 /**
- * Default configs using the global ky instance
+ * Default configs using the default http client
  * @deprecated Use createConfigs() with an injected httpClient instead
  */
-export const configs: ToolConfig[] = createConfigs(ky)
+export const configs: ToolConfig[] = createConfigs(http)

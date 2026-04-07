@@ -1,4 +1,4 @@
-import { mockAuth } from '@/test-utils/mock-auth'
+import { mockAuth, mockAuthUnauthenticated } from '@/test-utils/mock-auth'
 import type { ConsoleSpies } from '@/test-utils/console-spies'
 import { setupConsoleSpy } from '@/test-utils/console-spies'
 import { afterAll, beforeAll, describe, expect, it, mock } from 'bun:test'
@@ -33,6 +33,34 @@ describe('Main Routes', () => {
 
   afterAll(() => {
     consoleSpies.restore()
+  })
+
+  describe('auth guard', () => {
+    let unauthApp: ReturnType<typeof createMainRoutes>
+
+    beforeAll(() => {
+      unauthApp = createMainRoutes(mockAuthUnauthenticated, mockFetch as unknown as typeof fetch)
+    })
+
+    it('should allow unauthenticated requests to /health', async () => {
+      const response = await unauthApp.handle(new Request('http://localhost/health'))
+      expect(response.status).toBe(200)
+    })
+
+    it('should reject unauthenticated requests to /units', async () => {
+      const response = await unauthApp.handle(new Request('http://localhost/units?country=US'))
+      expect(response.status).toBe(401)
+    })
+
+    it('should reject unauthenticated requests to /units-options', async () => {
+      const response = await unauthApp.handle(new Request('http://localhost/units-options'))
+      expect(response.status).toBe(401)
+    })
+
+    it('should reject unauthenticated requests to /locations', async () => {
+      const response = await unauthApp.handle(new Request('http://localhost/locations?query=London'))
+      expect(response.status).toBe(401)
+    })
   })
 
   it('should return health status', async () => {

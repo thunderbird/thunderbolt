@@ -1,7 +1,7 @@
 import { setupTestDatabase, teardownTestDatabase } from '@/dal/test-utils'
+import { createClient, type HttpClient } from '@/lib/http'
 import type { HandleError } from '@/types/handle-errors'
 import { afterAll, beforeAll, beforeEach, describe, expect, it, mock } from 'bun:test'
-import ky, { type KyInstance } from 'ky'
 import { initPosthog, resetPosthogClient, sanitizeUrl, trackError } from './posthog'
 
 type PosthogOptions = {
@@ -34,10 +34,7 @@ mock.module('posthog-js', () => ({
   },
 }))
 
-/**
- * Creates a real ky HTTP client with a custom fetch function that returns mock PostHog config
- */
-const createMockHttpClient = (apiKey = 'test-key'): KyInstance => {
+const createMockHttpClient = (apiKey = 'test-key'): HttpClient => {
   const mockFetch = async (): Promise<Response> => {
     return new Response(
       JSON.stringify({
@@ -50,7 +47,7 @@ const createMockHttpClient = (apiKey = 'test-key'): KyInstance => {
     )
   }
 
-  return ky.create({ fetch: mockFetch, prefixUrl: 'http://test-api.local' })
+  return createClient({ fetch: mockFetch, prefixUrl: 'http://test-api.local' })
 }
 
 beforeAll(async () => {

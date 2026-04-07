@@ -1,7 +1,7 @@
 import * as settingsModule from '@/config/settings'
 import type { ConsoleSpies } from '@/test-utils/console-spies'
 import { setupConsoleSpy } from '@/test-utils/console-spies'
-import { mockAuth } from '@/test-utils/mock-auth'
+import { mockAuth, mockAuthUnauthenticated } from '@/test-utils/mock-auth'
 import { afterAll, beforeAll, describe, expect, it, mock, spyOn } from 'bun:test'
 import { Elysia } from 'elysia'
 import { createGoogleAuthRoutes } from './google'
@@ -71,6 +71,48 @@ describe('Authentication Routes', () => {
   afterAll(async () => {
     getSettingsSpy?.mockRestore()
     consoleSpies.restore()
+  })
+
+  describe('auth guard', () => {
+    let unauthApp: { handle: Elysia['handle'] }
+
+    beforeAll(() => {
+      unauthApp = new Elysia()
+        .use(createGoogleAuthRoutes(mockAuthUnauthenticated, mockFetch as unknown as typeof fetch))
+        .use(createMicrosoftAuthRoutes(mockAuthUnauthenticated, mockFetch as unknown as typeof fetch))
+    })
+
+    it('should reject unauthenticated requests to Google config', async () => {
+      const response = await unauthApp.handle(new Request('http://localhost/auth/google/config'))
+      expect(response.status).toBe(401)
+    })
+
+    it('should reject unauthenticated requests to Google exchange', async () => {
+      const response = await unauthApp.handle(
+        new Request('http://localhost/auth/google/exchange', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ code: 'test', code_verifier: 'test', redirect_uri: 'http://localhost' }),
+        }),
+      )
+      expect(response.status).toBe(401)
+    })
+
+    it('should reject unauthenticated requests to Microsoft config', async () => {
+      const response = await unauthApp.handle(new Request('http://localhost/auth/microsoft/config'))
+      expect(response.status).toBe(401)
+    })
+
+    it('should reject unauthenticated requests to Microsoft exchange', async () => {
+      const response = await unauthApp.handle(
+        new Request('http://localhost/auth/microsoft/exchange', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ code: 'test', code_verifier: 'test', redirect_uri: 'http://localhost' }),
+        }),
+      )
+      expect(response.status).toBe(401)
+    })
   })
 
   describe('Google OAuth', () => {

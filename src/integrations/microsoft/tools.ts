@@ -4,7 +4,7 @@ import { getSettings, updateSettings } from '@/dal'
 import { getDb } from '@/db/database'
 import { llmContentCharLimit } from '@/lib/utils'
 import type { ToolConfig } from '@/types'
-import ky, { type KyInstance } from 'ky'
+import { http, type HttpClient } from '@/lib/http'
 import { z } from 'zod'
 
 /**
@@ -186,7 +186,7 @@ const ensureValidToken = async (credentials: { access_token: string; refresh_tok
 // Public API
 // ---------------------------------------------------------------------------
 
-export const listMessages = async (params: ListMessagesParams, httpClient: KyInstance = ky) => {
+export const listMessages = async (params: ListMessagesParams, httpClient: HttpClient = http) => {
   const credentials = await getMicrosoftCredentials()
   const accessToken = await ensureValidToken(credentials)
 
@@ -218,7 +218,7 @@ export const listMessages = async (params: ListMessagesParams, httpClient: KyIns
   return response
 }
 
-export const getMessage = async (params: GetMessageParams, httpClient: KyInstance = ky) => {
+export const getMessage = async (params: GetMessageParams, httpClient: HttpClient = http) => {
   const credentials = await getMicrosoftCredentials()
   const accessToken = await ensureValidToken(credentials)
 
@@ -242,7 +242,7 @@ export const getMessage = async (params: GetMessageParams, httpClient: KyInstanc
 /**
  * Search OneDrive files
  */
-export const searchOneDrive = async (params: SearchOneDriveParams, httpClient: KyInstance = ky) => {
+export const searchOneDrive = async (params: SearchOneDriveParams, httpClient: HttpClient = http) => {
   const credentials = await getMicrosoftCredentials()
   const accessToken = await ensureValidToken(credentials)
 
@@ -282,7 +282,7 @@ export const searchOneDrive = async (params: SearchOneDriveParams, httpClient: K
  */
 export const getOneDriveFileContent = async (
   params: GetOneDriveFileContentParams,
-  httpClient: KyInstance = ky,
+  httpClient: HttpClient = http,
 ): Promise<OneDriveFileContent> => {
   const credentials = await getMicrosoftCredentials()
   const accessToken = await ensureValidToken(credentials)
@@ -364,7 +364,7 @@ export const getOneDriveFileContent = async (
  * Microsoft Tools Configuration Factory
  * @param httpClient - HTTP client for making requests (injected for dependency injection)
  */
-export const createConfigs = (httpClient: KyInstance): ToolConfig[] => [
+export const createConfigs = (httpClient: HttpClient): ToolConfig[] => [
   {
     name: 'microsoft_list_messages',
     description: 'List Microsoft Outlook messages with optional filtering',
@@ -397,7 +397,7 @@ export const createConfigs = (httpClient: KyInstance): ToolConfig[] => [
 ]
 
 /**
- * Default configs using the global ky instance
+ * Default configs using the default http client
  * @deprecated Use createConfigs() with an injected httpClient instead
  */
-export const configs = createConfigs(ky)
+export const configs = createConfigs(http)

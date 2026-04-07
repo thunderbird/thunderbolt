@@ -50,7 +50,10 @@ const checkSelfRecovery = async (
   const metadata = await getEncryptionMetadata(txDb, userId)
   if (!metadata?.canarySecretHash) return false
   const hash = await hashCanarySecret(canarySecret)
-  return timingSafeEqual(Buffer.from(hash), Buffer.from(metadata.canarySecretHash))
+  const hashBuf = Buffer.from(hash)
+  const storedBuf = Buffer.from(metadata.canarySecretHash)
+  if (hashBuf.length !== storedBuf.length) return false
+  return timingSafeEqual(hashBuf, storedBuf)
 }
 
 /**

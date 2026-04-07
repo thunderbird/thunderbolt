@@ -2,20 +2,22 @@ apiVersion: v1
 kind: Service
 metadata:
   name: powersync
-  namespace: thunderbolt
+  labels:
+    {{- include "thunderbolt.labels" . | nindent 4 }}
 spec:
   selector:
     app: powersync
   ports:
-    - port: 8080
+    - port: {{ .Values.powersync.service.port }}
 ---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: powersync
-  namespace: thunderbolt
+  labels:
+    {{- include "thunderbolt.labels" . | nindent 4 }}
 spec:
-  replicas: 1
+  replicas: {{ .Values.powersync.replicas }}
   selector:
     matchLabels:
       app: powersync
@@ -24,9 +26,10 @@ spec:
       labels:
         app: powersync
     spec:
+      {{- include "thunderbolt.imagePullSecrets" . | nindent 6 }}
       containers:
         - name: powersync
-          image: journeyapps/powersync-service:latest
+          image: "{{ .Values.powersync.image.repository }}:{{ .Values.powersync.image.tag }}"
           args: ["start", "-r", "unified"]
           ports:
             - containerPort: 8080

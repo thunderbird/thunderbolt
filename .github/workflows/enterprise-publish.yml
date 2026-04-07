@@ -1,0 +1,108 @@
+name: Enterprise Publish
+
+on:
+  workflow_dispatch: # TODO TESTING — remove before merging to main
+  push:
+    branches: [main]
+    paths:
+      - 'deploy/**'
+      - 'backend/**'
+      - 'src/**'
+      - 'package.json'
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_PREFIX: ghcr.io/${{ github.repository }}
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Generate CalVer tag
+        id: version
+        run: |
+          # CalVer: YYYY.MM.DD.run_number
+          VERSION="$(date -u +%Y.%m.%d).${{ github.run_number }}"
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "Version: $VERSION"
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # -- Build and push Docker images --
+
+      - name: Build and push frontend
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: deploy/docker/frontend.Dockerfile
+          push: true
+          build-args: |
+            VITE_THUNDERBOLT_CLOUD_URL=/v1
+            VITE_AUTH_MODE=oidc
+          tags: |
+            ${{ env.IMAGE_PREFIX }}/frontend:${{ steps.version.outputs.version }}
+            ${{ env.IMAGE_PREFIX }}/frontend:latest
+
+      - name: Build and push backend
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: deploy/docker/backend.Dockerfile
+          push: true
+          tags: |
+            ${{ env.IMAGE_PREFIX }}/backend:${{ steps.version.outputs.version }}
+            ${{ env.IMAGE_PREFIX }}/backend:latest
+
+      - name: Build and push postgres
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: deploy/docker/postgres.Dockerfile
+          push: true
+          tags: |
+            ${{ env.IMAGE_PREFIX }}/postgres:${{ steps.version.outputs.version }}
+            ${{ env.IMAGE_PREFIX }}/postgres:latest
+
+      - name: Build and push keycloak
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: deploy/docker/keycloak.Dockerfile
+          push: true
+          tags: |
+            ${{ env.IMAGE_PREFIX }}/keycloak:${{ steps.version.outputs.version }}
+            ${{ env.IMAGE_PREFIX }}/keycloak:latest
+
+      - name: Build and push powersync
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: deploy/docker/powersync.Dockerfile
+          push: true
+          tags: |
+            ${{ env.IMAGE_PREFIX }}/powersync:${{ steps.version.outputs.version }}
+            ${{ env.IMAGE_PREFIX }}/powersync:latest
+
+      # -- Package and push Helm chart --
+
+      - name: Update chart version
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          sed -i "s/^version:.*/version: $VERSION/" deploy/k8s/Chart.yaml
+          sed -i "s/^appVersion:.*/appVersion: \"$VERSION\"/" deploy/k8s/Chart.yaml
+
+      - name: Package and push Helm chart
+        run: |
+          helm package deploy/k8s/ --destination .
+          helm push thunderbolt-${{ steps.version.outputs.version }}.tgz oci://${{ env.REGISTRY }}/${{ github.repository_owner }}/charts

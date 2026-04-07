@@ -2,20 +2,22 @@ apiVersion: v1
 kind: Service
 metadata:
   name: frontend
-  namespace: thunderbolt
+  labels:
+    {{- include "thunderbolt.labels" . | nindent 4 }}
 spec:
   selector:
     app: frontend
   ports:
-    - port: 80
+    - port: {{ .Values.frontend.service.port }}
 ---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: frontend
-  namespace: thunderbolt
+  labels:
+    {{- include "thunderbolt.labels" . | nindent 4 }}
 spec:
-  replicas: 1
+  replicas: {{ .Values.frontend.replicas }}
   selector:
     matchLabels:
       app: frontend
@@ -24,11 +26,11 @@ spec:
       labels:
         app: frontend
     spec:
+      {{- include "thunderbolt.imagePullSecrets" . | nindent 6 }}
       containers:
         - name: frontend
-          # Build locally: docker build -f deploy/docker/frontend.Dockerfile -t thunderbolt-frontend .
-          image: thunderbolt-frontend:latest
-          imagePullPolicy: IfNotPresent
+          image: "{{ .Values.frontend.image.repository }}:{{ .Values.frontend.image.tag }}"
+          imagePullPolicy: {{ .Values.frontend.image.pullPolicy }}
           ports:
             - containerPort: 80
           readinessProbe:

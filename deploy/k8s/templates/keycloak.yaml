@@ -2,20 +2,22 @@ apiVersion: v1
 kind: Service
 metadata:
   name: keycloak
-  namespace: thunderbolt
+  labels:
+    {{- include "thunderbolt.labels" . | nindent 4 }}
 spec:
   selector:
     app: keycloak
   ports:
-    - port: 8080
+    - port: {{ .Values.keycloak.service.port }}
 ---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: keycloak
-  namespace: thunderbolt
+  labels:
+    {{- include "thunderbolt.labels" . | nindent 4 }}
 spec:
-  replicas: 1
+  replicas: {{ .Values.keycloak.replicas }}
   selector:
     matchLabels:
       app: keycloak
@@ -24,21 +26,22 @@ spec:
       labels:
         app: keycloak
     spec:
+      {{- include "thunderbolt.imagePullSecrets" . | nindent 6 }}
       containers:
         - name: keycloak
-          image: quay.io/keycloak/keycloak:26.0
+          image: "{{ .Values.keycloak.image.repository }}:{{ .Values.keycloak.image.tag }}"
           args: ["start-dev", "--import-realm"]
           ports:
             - containerPort: 8080
           env:
             - name: KC_BOOTSTRAP_ADMIN_USERNAME
-              value: admin
+              value: {{ .Values.keycloak.admin.username }}
             - name: KC_BOOTSTRAP_ADMIN_PASSWORD
-              value: admin
+              value: {{ .Values.keycloak.admin.password }}
             - name: KC_HTTP_PORT
               value: "8080"
             - name: KC_HOSTNAME
-              value: http://localhost
+              value: {{ .Values.appUrl }}
             - name: KC_HOSTNAME_BACKCHANNEL_DYNAMIC
               value: "true"
           volumeMounts:

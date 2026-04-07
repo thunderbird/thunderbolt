@@ -2,7 +2,8 @@ apiVersion: v1
 kind: Service
 metadata:
   name: postgres
-  namespace: thunderbolt
+  labels:
+    {{- include "thunderbolt.labels" . | nindent 4 }}
 spec:
   selector:
     app: postgres
@@ -14,7 +15,8 @@ apiVersion: apps/v1
 kind: StatefulSet
 metadata:
   name: postgres
-  namespace: thunderbolt
+  labels:
+    {{- include "thunderbolt.labels" . | nindent 4 }}
 spec:
   serviceName: postgres
   replicas: 1
@@ -26,17 +28,18 @@ spec:
       labels:
         app: postgres
     spec:
+      {{- include "thunderbolt.imagePullSecrets" . | nindent 6 }}
       containers:
         - name: postgres
-          image: postgres:18-alpine
+          image: "{{ .Values.postgres.image.repository }}:{{ .Values.postgres.image.tag }}"
           args: ["-c", "wal_level=logical"]
           ports:
             - containerPort: 5432
           env:
             - name: POSTGRES_USER
-              value: postgres
+              value: {{ .Values.postgres.credentials.user }}
             - name: POSTGRES_DB
-              value: postgres
+              value: {{ .Values.postgres.credentials.database }}
             - name: POSTGRES_PASSWORD
               valueFrom:
                 secretKeyRef:
@@ -49,12 +52,12 @@ spec:
               mountPath: /docker-entrypoint-initdb.d
           readinessProbe:
             exec:
-              command: ["pg_isready", "-U", "postgres"]
+              command: ["pg_isready", "-U", {{ .Values.postgres.credentials.user | quote }}]
             initialDelaySeconds: 5
             periodSeconds: 5
           livenessProbe:
             exec:
-              command: ["pg_isready", "-U", "postgres"]
+              command: ["pg_isready", "-U", {{ .Values.postgres.credentials.user | quote }}]
             initialDelaySeconds: 15
             periodSeconds: 10
       volumes:
@@ -68,4 +71,4 @@ spec:
         accessModes: ["ReadWriteOnce"]
         resources:
           requests:
-            storage: 5Gi
+            storage: {{ .Values.postgres.storage }}

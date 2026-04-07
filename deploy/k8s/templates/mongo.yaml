@@ -2,7 +2,8 @@ apiVersion: v1
 kind: Service
 metadata:
   name: mongo
-  namespace: thunderbolt
+  labels:
+    {{- include "thunderbolt.labels" . | nindent 4 }}
 spec:
   selector:
     app: mongo
@@ -14,7 +15,8 @@ apiVersion: apps/v1
 kind: StatefulSet
 metadata:
   name: mongo
-  namespace: thunderbolt
+  labels:
+    {{- include "thunderbolt.labels" . | nindent 4 }}
 spec:
   serviceName: mongo
   replicas: 1
@@ -26,9 +28,10 @@ spec:
       labels:
         app: mongo
     spec:
+      {{- include "thunderbolt.imagePullSecrets" . | nindent 6 }}
       containers:
         - name: mongo
-          image: mongo:7.0
+          image: "{{ .Values.mongo.image.repository }}:{{ .Values.mongo.image.tag }}"
           args: ["--replSet", "rs0", "--bind_ip_all", "--quiet"]
           ports:
             - containerPort: 27017
@@ -47,14 +50,18 @@ spec:
         accessModes: ["ReadWriteOnce"]
         resources:
           requests:
-            storage: 5Gi
+            storage: {{ .Values.mongo.storage }}
 ---
-# One-shot Job to initialize MongoDB replica set
 apiVersion: batch/v1
 kind: Job
 metadata:
   name: mongo-rs-init
-  namespace: thunderbolt
+  labels:
+    {{- include "thunderbolt.labels" . | nindent 4 }}
+  annotations:
+    helm.sh/hook: post-install
+    helm.sh/hook-weight: "0"
+    helm.sh/hook-delete-policy: hook-succeeded
 spec:
   backoffLimit: 10
   template:
@@ -62,7 +69,7 @@ spec:
       restartPolicy: OnFailure
       containers:
         - name: mongo-init
-          image: mongo:7.0
+          image: "{{ .Values.mongo.image.repository }}:{{ .Values.mongo.image.tag }}"
           command:
             - bash
             - -c

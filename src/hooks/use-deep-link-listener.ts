@@ -1,6 +1,7 @@
 import { useDatabase } from '@/contexts'
 import { getSettings } from '@/dal'
 import { deliverMcpOAuthCode, failMcpOAuthCode, hasPendingMcpOAuth } from '@/lib/mcp-auth/mcp-oauth-callback'
+import { getMcpOAuthState } from '@/lib/mcp-auth/mcp-oauth-state'
 import type { ReturnContext } from '@/lib/oauth-state'
 import { isTauri } from '@/lib/platform'
 import { getCurrent, onOpenUrl } from '@tauri-apps/plugin-deep-link'
@@ -168,7 +169,10 @@ export const useDeepLinkListener = (handler?: DeepLinkHandler, dependencies?: De
           // Handle MCP OAuth callback deep links (checked first — separate path)
           const mcpOauthData = parseMcpOAuthCallback(url)
           if (mcpOauthData && hasPendingMcpOAuth()) {
-            if (mcpOauthData.code) {
+            const oauthState = await getMcpOAuthState()
+            if (!oauthState.stateNonce || mcpOauthData.state !== oauthState.stateNonce) {
+              failMcpOAuthCode('OAuth state mismatch — possible CSRF attack')
+            } else if (mcpOauthData.code) {
               deliverMcpOAuthCode(mcpOauthData.code)
             } else {
               failMcpOAuthCode(mcpOauthData.error ?? 'MCP OAuth authorization failed')

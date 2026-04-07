@@ -41,6 +41,7 @@ class McpOAuthClientProvider implements OAuthClientProvider {
   private readonly config: McpOAuthRedirectConfig
   private codeVerifierValue: string | null = null
   private clientInfo: OAuthClientInformationFull | null = null
+  private stateNonce: string | null = null
 
   /** Set by redirectToAuthorization on web — the URL the user needs to visit */
   pendingAuthUrl: string | null = null
@@ -116,9 +117,9 @@ class McpOAuthClientProvider implements OAuthClientProvider {
     }
 
     // Generate CSRF nonce and append to auth URL
-    const stateNonce = crypto.randomUUID()
+    this.stateNonce = crypto.randomUUID()
     const authUrl = new URL(this.pendingAuthUrl)
-    authUrl.searchParams.set('state', stateNonce)
+    authUrl.searchParams.set('state', this.stateNonce)
 
     await setMcpOAuthState({
       serverId: this.serverId,
@@ -126,7 +127,7 @@ class McpOAuthClientProvider implements OAuthClientProvider {
       codeVerifier: this.codeVerifierValue,
       redirectUrl: this.config.redirectUrl,
       clientInfo: this.clientInfo ? JSON.stringify(this.clientInfo) : null,
-      stateNonce,
+      stateNonce: this.stateNonce,
     })
 
     if (this.config.platform === 'web') {
@@ -189,9 +190,12 @@ class McpOAuthClientProvider implements OAuthClientProvider {
       unlisten()
       const callbackUrl = new URL(event.payload.url)
       const code = callbackUrl.searchParams.get('code')
+      const state = callbackUrl.searchParams.get('state')
       const error = callbackUrl.searchParams.get('error')
 
-      if (error) {
+      if (this.stateNonce && state !== this.stateNonce) {
+        rejectPromise(new Error('OAuth state mismatch — possible CSRF attack'))
+      } else if (error) {
         rejectPromise(new Error(callbackUrl.searchParams.get('error_description') || error))
       } else if (code) {
         resolvePromise(code)

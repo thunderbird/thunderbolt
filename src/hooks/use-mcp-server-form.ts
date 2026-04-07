@@ -89,7 +89,9 @@ const formReducer = (state: McpServerFormState, action: McpServerFormAction): Mc
         connectionError: null,
         serverCapabilities: [],
       }
-      if (state.nameManuallyEdited) {return base}
+      if (state.nameManuallyEdited) {
+        return base
+      }
       return { ...base, name: generateServerName(state.transportType, action.payload, state.command, state.args) }
     }
     case 'SET_COMMAND': {
@@ -100,7 +102,9 @@ const formReducer = (state: McpServerFormState, action: McpServerFormAction): Mc
         connectionError: null,
         serverCapabilities: [],
       }
-      if (state.nameManuallyEdited) {return base}
+      if (state.nameManuallyEdited) {
+        return base
+      }
       return { ...base, name: generateServerName(state.transportType, state.url, action.payload, state.args) }
     }
     case 'SET_ARGS': {
@@ -111,7 +115,9 @@ const formReducer = (state: McpServerFormState, action: McpServerFormAction): Mc
         connectionError: null,
         serverCapabilities: [],
       }
-      if (state.nameManuallyEdited) {return base}
+      if (state.nameManuallyEdited) {
+        return base
+      }
       return { ...base, name: generateServerName(state.transportType, state.url, state.command, action.payload) }
     }
     case 'SET_AUTH_TYPE':
@@ -142,7 +148,9 @@ export const useMcpServerFormState = () => {
   const [state, dispatch] = useReducer(formReducer, initialFormState)
 
   const urlValidation = useCallback(() => {
-    if (state.transportType === 'stdio') { return { valid: true } }
+    if (state.transportType === 'stdio') {
+      return { valid: true }
+    }
     return validateMcpServerUrl(state.url)
   }, [state.transportType, state.url])
 

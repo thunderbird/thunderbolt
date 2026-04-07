@@ -63,12 +63,16 @@ export class TauriStdioTransport implements Transport {
   }
 
   async send(message: JSONRPCMessage): Promise<void> {
-    if (!this.child) {throw new Error('Transport not started')}
+    if (!this.child) {
+      throw new Error('Transport not started')
+    }
     await this.child.write(JSON.stringify(message) + '\n')
   }
 
   async close(): Promise<void> {
-    if (!this.child) {return}
+    if (!this.child) {
+      return
+    }
     const child = this.child
     this.child = null
     await child.kill()
@@ -83,7 +87,9 @@ export class TauriStdioTransport implements Transport {
     // All complete lines are all but the last element (which may be incomplete)
     for (let i = 0; i < lines.length - 1; i++) {
       const line = lines[i].trim()
-      if (!line) {continue}
+      if (!line) {
+        continue
+      }
       this.parseAndEmitMessage(line)
     }
 

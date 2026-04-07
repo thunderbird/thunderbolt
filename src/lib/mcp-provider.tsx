@@ -159,7 +159,9 @@ export const MCPProvider = ({ children }: { children: ReactNode }) => {
   const addServer = useCallback(async (server: McpServerConfig) => {
     // Idempotent — skip if server already exists in the provider
     setServers((prev) => {
-      if (prev.some((s) => s.id === server.id)) {return prev}
+      if (prev.some((s) => s.id === server.id)) {
+        return prev
+      }
       return [
         ...prev,
         {
@@ -221,7 +223,9 @@ export const MCPProvider = ({ children }: { children: ReactNode }) => {
    */
   const authorizeServer = useCallback(async (serverId: string) => {
     const server = serversRef.current.find((s) => s.id === serverId)
-    if (!server) {return}
+    if (!server) {
+      return
+    }
 
     setServers((prev) =>
       prev.map((s) => (s.id === serverId ? { ...s, errorMessage: 'Discovering OAuth endpoints...' } : s)),
@@ -233,7 +237,9 @@ export const MCPProvider = ({ children }: { children: ReactNode }) => {
         cloudUrl: cloudUrlRef.current,
       })
       const provider = result.authProvider as McpOAuthClientProvider | undefined
-      if (!provider) {return { error: 'Server does not require OAuth' } as const}
+      if (!provider) {
+        return { error: 'Server does not require OAuth' } as const
+      }
 
       authProviderRefs.current.set(serverId, provider)
       transportRefs.current.set(serverId, result.transport)

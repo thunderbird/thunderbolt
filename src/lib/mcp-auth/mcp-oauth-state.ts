@@ -38,12 +38,24 @@ export const getMcpOAuthState = async (): Promise<McpOAuthState> => {
 export const setMcpOAuthState = async (state: Partial<McpOAuthState>): Promise<void> => {
   const settings: Record<string, string | null> = {}
 
-  if (state.serverId !== undefined) { settings.mcp_oauth_server_id = state.serverId }
-  if (state.serverUrl !== undefined) { settings.mcp_oauth_server_url = state.serverUrl }
-  if (state.codeVerifier !== undefined) { settings.mcp_oauth_code_verifier = state.codeVerifier }
-  if (state.redirectUrl !== undefined) { settings.mcp_oauth_redirect_url = state.redirectUrl }
-  if (state.clientInfo !== undefined) { settings.mcp_oauth_client_info = state.clientInfo }
-  if (state.stateNonce !== undefined) { settings.mcp_oauth_state_nonce = state.stateNonce }
+  if (state.serverId !== undefined) {
+    settings.mcp_oauth_server_id = state.serverId
+  }
+  if (state.serverUrl !== undefined) {
+    settings.mcp_oauth_server_url = state.serverUrl
+  }
+  if (state.codeVerifier !== undefined) {
+    settings.mcp_oauth_code_verifier = state.codeVerifier
+  }
+  if (state.redirectUrl !== undefined) {
+    settings.mcp_oauth_redirect_url = state.redirectUrl
+  }
+  if (state.clientInfo !== undefined) {
+    settings.mcp_oauth_client_info = state.clientInfo
+  }
+  if (state.stateNonce !== undefined) {
+    settings.mcp_oauth_state_nonce = state.stateNonce
+  }
 
   if (Object.keys(settings).length > 0) {
     const db = getDb()

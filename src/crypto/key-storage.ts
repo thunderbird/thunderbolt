@@ -142,7 +142,7 @@ export const storeCK = async (ck: CryptoKey): Promise<void> => putKey(ckId, ck)
 /** Get the content key from IndexedDB. */
 export const getCK = async (): Promise<CryptoKey | null> => getKey(ckId)
 
-/** Clear only the content key (for sign-out — key pair is preserved). */
+/** Clear only the content key (key pair is preserved). */
 export const clearCK = async (): Promise<void> => deleteKey(ckId)
 
 // =============================================================================

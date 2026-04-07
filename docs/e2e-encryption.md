@@ -388,10 +388,10 @@ Key pair still present, CK missing (e.g. partial storage clear).
 ### Flow G — Sign Out
 
 1. User signs out.
-2. FE clears CK from IndexedDB. Keeps key pair and device ID.
-3. On next sign-in: `POST /devices` returns `{ trusted: true, envelope }` → CK restored.
+2. FE clears all encryption keys (key pair + CK) from IndexedDB and device ID from localStorage.
+3. On next sign-in: new device ID generated → new key pair → treated as a new device (same as Flow H).
 
-> Sign-out is not a security boundary for the local device. To fully remove access, use Revoke.
+> Sign-out is a full local reset. The old device record becomes orphaned and can be revoked from Settings → Devices.
 
 ### Flow H — Data Wipe / Browser Storage Cleared
 
@@ -500,7 +500,7 @@ The codec (`src/db/encryption/codec.ts`) lazy-loads CK from IndexedDB on first a
 | Add new device (trusted device available) | D | Email + 2FA + approval from trusted device |
 | Add new device (no trusted device) | E | Email + 2FA + recovery key |
 | Returning device, CK lost | F | Email + 2FA (key pair still present) |
-| Sign out and back in | G | Email + 2FA |
+| Sign out and back in | G → H → D/E | Email + 2FA + approval or recovery key |
 | Data wipe | H | Email + 2FA + approval or recovery key |
 | Revoke a device | I | Email + 2FA |
 | Change email or 2FA | J | Current credential verification |

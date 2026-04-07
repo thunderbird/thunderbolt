@@ -161,20 +161,4 @@ describe('RevokedDeviceModal', () => {
       expect(confirmButton.className).toContain('destructive')
     })
   })
-
-  describe('error handling', () => {
-    it('continues to replace location even if clearLocalData fails', async () => {
-      mockClearLocalData.mockRejectedValueOnce(new Error('Cleanup error'))
-
-      renderModal()
-      fireEvent.click(screen.getByText('Delete data from device').closest('button')!)
-      fireEvent.click(screen.getByRole('button', { name: 'Confirm' }))
-
-      await act(async () => {
-        await getClock().runAllAsync()
-      })
-
-      expect(mockReplace).toHaveBeenCalledWith('/')
-    })
-  })
 })

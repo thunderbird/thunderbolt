@@ -365,7 +365,12 @@ describe('Encryption API', () => {
             Authorization: `Bearer ${p('tok-boot')}`,
             'X-Device-ID': p('d-boot'),
           },
-          body: JSON.stringify({ wrappedCK: 'wrapped-ck-boot' }),
+          body: JSON.stringify({
+            wrappedCK: 'wrapped-ck-boot',
+            canaryIv: 'test-canary-iv',
+            canaryCtext: 'test-canary-ctext',
+            canarySecret: 'test-canary-secret',
+          }),
         }),
       )
 

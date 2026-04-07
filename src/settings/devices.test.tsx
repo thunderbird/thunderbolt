@@ -53,8 +53,8 @@ describe('DevicesSettingsPage reactivity', () => {
     const db = getDb()
 
     await db.insert(devicesTable).values([
-      { id: deviceId1, userId: 'user-1', name: 'This Device', lastSeen: new Date().toISOString() },
-      { id: deviceId2, userId: 'user-1', name: 'Other Device', lastSeen: new Date().toISOString() },
+      { id: deviceId1, userId: 'user-1', name: 'This Device', lastSeen: new Date().toISOString(), trusted: 1 },
+      { id: deviceId2, userId: 'user-1', name: 'Other Device', lastSeen: new Date().toISOString(), trusted: 1 },
     ])
 
     const { triggerChange } = renderWithReactivity(<DevicesSettingsPage />, {

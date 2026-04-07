@@ -8,6 +8,7 @@ import { RecoveryKeyDisplayStep } from './recovery-key-display-step'
 import { ApprovalWaitingStep } from './approval-waiting-step'
 import { RecoveryKeyEntryStep } from './recovery-key-entry-step'
 import { IconCircle } from '@/components/onboarding/icon-circle'
+import { showRevokedDeviceModalEvent } from '@/hooks/use-credential-events'
 import { ArrowLeft, CheckCircle, Loader2, Lock, ShieldCheck } from 'lucide-react'
 import { useRef } from 'react'
 
@@ -77,10 +78,16 @@ export const SyncSetupModal = ({ open, onOpenChange, onComplete }: SyncSetupModa
     }
   }
 
+  const handleRevoked = () => {
+    onOpenChange(false)
+    window.dispatchEvent(new CustomEvent(showRevokedDeviceModalEvent))
+  }
+
   const { isPolling } = useApprovalPolling({
     enabled: setup.step === 'approval-waiting',
     checkApproval: () => checkApprovalAndUnwrap(httpClient),
     onApproved: showSuccess,
+    onRevoked: handleRevoked,
   })
 
   const handleRecoveryKeySubmit = async () => {

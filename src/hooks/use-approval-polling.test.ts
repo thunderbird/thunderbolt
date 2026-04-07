@@ -108,6 +108,83 @@ describe('useApprovalPolling', () => {
     expect(checkApproval.mock.calls.length).toBe(callsBefore)
   })
 
+  it('calls onRevoked and stops polling on 403 error', async () => {
+    const error403 = Object.assign(new Error('Forbidden'), { response: { status: 403 } })
+    const checkApproval = mock(() => Promise.reject(error403))
+    const onApproved = mock(() => {})
+    const onRevoked = mock(() => {})
+
+    const { result } = renderHook(() =>
+      useApprovalPolling({ enabled: true, checkApproval, onApproved, onRevoked, intervalMs: 50 }),
+    )
+
+    await act(async () => {
+      await getClock().tickAsync(60)
+    })
+
+    expect(onRevoked).toHaveBeenCalledTimes(1)
+    expect(onApproved).not.toHaveBeenCalled()
+    expect(result.current.isPolling).toBe(false)
+
+    // Verify polling stopped
+    const callsBefore = checkApproval.mock.calls.length
+    await act(async () => {
+      await getClock().tickAsync(200)
+    })
+    expect(checkApproval.mock.calls.length).toBe(callsBefore)
+  })
+
+  it('continues polling on non-403 errors but stops on 403', async () => {
+    let callCount = 0
+    const checkApproval = mock(() => {
+      callCount++
+      if (callCount <= 2) {
+        return Promise.reject(new Error('Network error'))
+      }
+      return Promise.reject(Object.assign(new Error('Forbidden'), { response: { status: 403 } }))
+    })
+    const onApproved = mock(() => {})
+    const onRevoked = mock(() => {})
+
+    renderHook(() => useApprovalPolling({ enabled: true, checkApproval, onApproved, onRevoked, intervalMs: 50 }))
+
+    await act(async () => {
+      await getClock().tickAsync(200)
+    })
+
+    expect(onRevoked).toHaveBeenCalledTimes(1)
+    expect(onApproved).not.toHaveBeenCalled()
+    expect(callCount).toBeGreaterThanOrEqual(3)
+  })
+
+  it('does not call onRevoked after cleanup even if 403 arrives', async () => {
+    let rejectCheck: (reason: Error) => void
+    const checkApproval = mock(
+      () =>
+        new Promise<boolean>((_resolve, reject) => {
+          rejectCheck = reject
+        }),
+    )
+    const onApproved = mock(() => {})
+    const onRevoked = mock(() => {})
+
+    const { unmount } = renderHook(() =>
+      useApprovalPolling({ enabled: true, checkApproval, onApproved, onRevoked, intervalMs: 50 }),
+    )
+
+    await act(async () => {
+      await getClock().tickAsync(60)
+    })
+
+    unmount()
+
+    await act(async () => {
+      rejectCheck!(Object.assign(new Error('Forbidden'), { response: { status: 403 } }))
+    })
+
+    expect(onRevoked).not.toHaveBeenCalled()
+  })
+
   it('does not call onApproved after cleanup even if check resolves', async () => {
     let resolveCheck: (value: boolean) => void
     const checkApproval = mock(

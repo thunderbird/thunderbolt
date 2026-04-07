@@ -4,24 +4,29 @@ type UseApprovalPollingOptions = {
   enabled: boolean
   checkApproval: () => Promise<boolean>
   onApproved: () => void
+  onRevoked?: () => void
   intervalMs?: number
 }
 
 /**
  * Polls to detect when this device has been approved by a trusted device.
  * Calls `checkApproval` at a regular interval; on success, fires `onApproved`.
- * Errors are silently ignored — the manual Continue button serves as fallback.
+ * If a 403 is received (device revoked), fires `onRevoked` and stops polling.
+ * Other errors are silently ignored — the manual Continue button serves as fallback.
  */
 export const useApprovalPolling = ({
   enabled,
   checkApproval,
   onApproved,
+  onRevoked,
   intervalMs = 3000,
 }: UseApprovalPollingOptions) => {
   const [isPolling, setIsPolling] = useState(false)
   const isCheckingRef = useRef(false)
   const onApprovedRef = useRef(onApproved)
   onApprovedRef.current = onApproved
+  const onRevokedRef = useRef(onRevoked)
+  onRevokedRef.current = onRevoked
   const checkApprovalRef = useRef(checkApproval)
   checkApprovalRef.current = checkApproval
 
@@ -49,8 +54,19 @@ export const useApprovalPolling = ({
           setIsPolling(false)
           onApprovedRef.current()
         }
-      } catch {
-        // Silently continue — manual button is fallback
+      } catch (err) {
+        if (
+          err instanceof Error &&
+          'response' in err &&
+          (err as Error & { response: { status: number } }).response.status === 403 &&
+          !cancelled
+        ) {
+          clearInterval(intervalId)
+          setIsPolling(false)
+          onRevokedRef.current?.()
+          return
+        }
+        // Silently continue for other errors — manual button is fallback
       } finally {
         isCheckingRef.current = false
       }

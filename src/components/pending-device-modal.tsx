@@ -2,17 +2,21 @@ import { useState } from 'react'
 import { Smartphone } from 'lucide-react'
 
 import { ApproveDeviceDialog } from '@/components/approve-device-dialog'
+import { RevokeDeviceDialog } from '@/components/revoke-device-dialog'
 import { Button } from '@/components/ui/button'
 import { ResponsiveModal, ResponsiveModalContent } from '@/components/ui/responsive-modal'
 import { IconCircle } from '@/components/onboarding/icon-circle'
 import { useApproveDevice } from '@/hooks/use-approve-device'
+import { useRevokeDevice } from '@/hooks/use-revoke-device'
 import { usePendingDeviceNotification } from '@/hooks/use-pending-device-notification'
 
 export const PendingDeviceModal = () => {
   const { pendingDeviceToNotify, dismissDevice, pendingDevices } = usePendingDeviceNotification()
-  const [confirmOpen, setConfirmOpen] = useState(false)
+  const [confirmApproveOpen, setConfirmApproveOpen] = useState(false)
+  const [confirmDenyOpen, setConfirmDenyOpen] = useState(false)
 
   const approveMutation = useApproveDevice(pendingDevices)
+  const revokeMutation = useRevokeDevice()
 
   const isOpen = pendingDeviceToNotify !== null
 
@@ -28,7 +32,19 @@ export const PendingDeviceModal = () => {
     }
     approveMutation.mutate(pendingDeviceToNotify.id, {
       onSuccess: () => {
-        setConfirmOpen(false)
+        setConfirmApproveOpen(false)
+        dismissDevice(pendingDeviceToNotify.id)
+      },
+    })
+  }
+
+  const confirmDeny = () => {
+    if (!pendingDeviceToNotify) {
+      return
+    }
+    revokeMutation.mutate(pendingDeviceToNotify.id, {
+      onSuccess: () => {
+        setConfirmDenyOpen(false)
         dismissDevice(pendingDeviceToNotify.id)
       },
     })
@@ -58,11 +74,14 @@ export const PendingDeviceModal = () => {
             </div>
 
             <div className="pt-5 flex flex-col gap-2">
-              <Button className="w-full" onClick={() => setConfirmOpen(true)}>
+              <Button className="w-full" onClick={() => setConfirmApproveOpen(true)}>
                 Approve
               </Button>
               <Button className="w-full" variant="ghost" onClick={handleDismiss}>
                 Later
+              </Button>
+              <Button className="w-full" variant="ghost" onClick={() => setConfirmDenyOpen(true)}>
+                <span className="text-destructive">Deny</span>
               </Button>
             </div>
           </div>
@@ -70,10 +89,18 @@ export const PendingDeviceModal = () => {
       </ResponsiveModal>
 
       <ApproveDeviceDialog
-        open={confirmOpen}
-        onOpenChange={(open) => !open && setConfirmOpen(false)}
+        open={confirmApproveOpen}
+        onOpenChange={(open) => !open && setConfirmApproveOpen(false)}
         onConfirm={confirmApprove}
         isPending={approveMutation.isPending}
+      />
+
+      <RevokeDeviceDialog
+        open={confirmDenyOpen}
+        onOpenChange={(open) => !open && setConfirmDenyOpen(false)}
+        onConfirm={confirmDeny}
+        isPending={revokeMutation.isPending}
+        variant="pending"
       />
     </>
   )

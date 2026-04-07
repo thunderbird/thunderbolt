@@ -32,6 +32,10 @@ mock.module('@/hooks/use-approve-device', () => ({
   useApproveDevice: () => ({ mutate: mock(), isPending: false }),
 }))
 
+mock.module('@/hooks/use-revoke-device', () => ({
+  useRevokeDevice: () => ({ mutate: mock(), isPending: false }),
+}))
+
 const { PendingDeviceModal } = await import('./pending-device-modal')
 
 const HttpClientWrapper = ({ children }: { children: ReactNode }) => (
@@ -149,6 +153,35 @@ describe('PendingDeviceModal', () => {
     expect(
       screen.getByText(
         'This will share your encryption key with the device, allowing it to decrypt and sync your data.',
+      ),
+    ).toBeInTheDocument()
+  })
+
+  it('opens deny confirmation dialog on Deny click', async () => {
+    const db = getDb()
+
+    await db.insert(devicesTable).values([
+      { id: currentDeviceId, userId: 'user-1', name: 'Current', trusted: 1 },
+      { id: pendingDeviceId1, userId: 'user-1', name: 'My Phone', trusted: 0, publicKey: 'pk-1' },
+    ])
+
+    renderWithReactivity(<PendingDeviceModal />, {
+      tables: ['devices'],
+      wrapper: HttpClientWrapper,
+    })
+
+    await waitForElement(() => screen.queryByText('New device waiting'))
+
+    fireEvent.click(screen.getByRole('button', { name: 'Deny' }))
+
+    await act(async () => {
+      await getClock().runAllAsync()
+    })
+
+    expect(screen.getByText('Deny this device?')).toBeInTheDocument()
+    expect(
+      screen.getByText(
+        'This will deny the device access to your encrypted data. The device will need to set up sync again.',
       ),
     ).toBeInTheDocument()
   })

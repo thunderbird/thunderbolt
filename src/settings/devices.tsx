@@ -1,29 +1,19 @@
-import { useDatabase, useHttpClient } from '@/contexts'
+import { useDatabase } from '@/contexts'
 import { getAllDevices, getPendingDevices } from '@/dal'
 import { getDeviceId } from '@/lib/auth-token'
 import { PageHeader } from '@/components/ui/page-header'
 import { ApproveDeviceDialog } from '@/components/approve-device-dialog'
+import { RevokeDeviceDialog } from '@/components/revoke-device-dialog'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
-import { useMutation } from '@tanstack/react-query'
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from '@/components/ui/alert-dialog'
 import dayjs from 'dayjs'
 import { SectionCard } from '@/components/ui/section-card'
 import { CheckCircle2, Loader2, Smartphone, Trash2 } from 'lucide-react'
 import { useState } from 'react'
 import { useQuery } from '@powersync/tanstack-react-query'
 import { toCompilableQuery } from '@powersync/drizzle-driver'
-import { authHeaders } from '@/api/encryption'
 import { useApproveDevice } from '@/hooks/use-approve-device'
+import { useRevokeDevice } from '@/hooks/use-revoke-device'
 
 const formatLastSeen = (ts: string | null): string => {
   if (ts == null) {
@@ -37,7 +27,6 @@ const formatLastSeen = (ts: string | null): string => {
 
 export default function DevicesSettingsPage() {
   const db = useDatabase()
-  const httpClient = useHttpClient()
   const currentDeviceId = getDeviceId()
   const { data: devices = [], isLoading } = useQuery({
     queryKey: ['devices'],
@@ -47,7 +36,7 @@ export default function DevicesSettingsPage() {
     queryKey: ['pending-devices'],
     query: toCompilableQuery(getPendingDevices(db)),
   })
-  const [revokeTarget, setRevokeTarget] = useState<string | null>(null)
+  const [revokeTarget, setRevokeTarget] = useState<{ id: string; variant: 'trusted' | 'pending' } | null>(null)
   const [approveTarget, setApproveTarget] = useState<string | null>(null)
 
   const visibleDevices = devices.filter((d) => {
@@ -57,28 +46,14 @@ export default function DevicesSettingsPage() {
     return !!d.trusted
   })
 
-  const revokeMutation = useMutation({
-    mutationFn: (deviceId: string) =>
-      httpClient
-        .post(`account/devices/${encodeURIComponent(deviceId)}/revoke`, {
-          headers: authHeaders(),
-          credentials: 'omit',
-        })
-        .then(() => {}),
-    onSuccess: () => {
-      setRevokeTarget(null)
-    },
-  })
-
+  const revokeMutation = useRevokeDevice()
   const approveMutation = useApproveDevice(pendingDevices)
-
-  const handleRevoke = (deviceId: string) => {
-    setRevokeTarget(deviceId)
-  }
 
   const confirmRevoke = () => {
     if (revokeTarget) {
-      revokeMutation.mutate(revokeTarget)
+      revokeMutation.mutate(revokeTarget.id, {
+        onSuccess: () => setRevokeTarget(null),
+      })
     }
   }
 
@@ -111,19 +86,30 @@ export default function DevicesSettingsPage() {
                           <p className="text-sm text-muted-foreground">Waiting for approval</p>
                         </div>
                       </div>
-                      <Button
-                        variant="default"
-                        size="sm"
-                        onClick={() => setApproveTarget(device.id)}
-                        disabled={approveMutation.isPending}
-                      >
-                        {approveMutation.isPending && approveMutation.variables === device.id ? (
-                          <Loader2 className="size-4 mr-1 animate-spin" />
-                        ) : (
-                          <CheckCircle2 className="size-4 mr-1" />
-                        )}
-                        Approve
-                      </Button>
+                      <div className="flex items-center gap-2">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => setRevokeTarget({ id: device.id, variant: 'pending' })}
+                          disabled={revokeMutation.isPending}
+                        >
+                          <Trash2 className="size-4 mr-1" />
+                          Deny
+                        </Button>
+                        <Button
+                          variant="default"
+                          size="sm"
+                          onClick={() => setApproveTarget(device.id)}
+                          disabled={approveMutation.isPending}
+                        >
+                          {approveMutation.isPending && approveMutation.variables === device.id ? (
+                            <Loader2 className="size-4 mr-1 animate-spin" />
+                          ) : (
+                            <CheckCircle2 className="size-4 mr-1" />
+                          )}
+                          Approve
+                        </Button>
+                      </div>
                     </div>
                   </CardContent>
                 </Card>
@@ -173,7 +159,7 @@ export default function DevicesSettingsPage() {
                       <Button
                         variant="ghost"
                         size="sm"
-                        onClick={() => handleRevoke(device.id)}
+                        onClick={() => setRevokeTarget({ id: device.id, variant: 'trusted' })}
                         disabled={revokeMutation.isPending}
                       >
                         <Trash2 className="size-4 mr-1" />
@@ -195,23 +181,13 @@ export default function DevicesSettingsPage() {
         isPending={approveMutation.isPending}
       />
 
-      <AlertDialog open={revokeTarget !== null} onOpenChange={(open) => !open && setRevokeTarget(null)}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Revoke this device?</AlertDialogTitle>
-            <AlertDialogDescription>
-              The device will be signed out and its local data will be cleared on next sync. This device will need to
-              sign in again to use sync.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction onClick={confirmRevoke} disabled={revokeMutation.isPending}>
-              {revokeMutation.isPending ? 'Revoking…' : 'Revoke'}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+      <RevokeDeviceDialog
+        open={revokeTarget !== null}
+        onOpenChange={(open) => !open && setRevokeTarget(null)}
+        onConfirm={confirmRevoke}
+        isPending={revokeMutation.isPending}
+        variant={revokeTarget?.variant ?? 'trusted'}
+      />
     </div>
   )
 }

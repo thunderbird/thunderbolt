@@ -18,16 +18,6 @@ crate-type = ["staticlib", "cdylib", "rlib"]
 [features]
 default = []
 native_fetch = []
-libsql = ["dep:thunderbolt-libsql"]
-email = [
-    "dep:thunderbolt-email",
-    "dep:thunderbolt-imap-client",
-    "dep:thunderbolt-imap-sync",
-    "libsql",
-]
-embeddings = ["dep:thunderbolt-embeddings"]
-bridge = ["dep:thunderbolt-bridge"]
-all = ["libsql", "email", "embeddings", "bridge"]
 
 [workspace]
 members = []

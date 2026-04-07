@@ -72,18 +72,10 @@ pub fn set_interface_style(style: String) -> Result<(), String> {
 /// Extend this struct whenever we add more feature flags.
 #[derive(Serialize)]
 pub struct Capabilities {
-    /// Whether the application was compiled with the `libsql` feature and the corresponding
-    /// commands (`init_libsql`, `execute`, `select`) are available.
-    pub libsql: bool,
     /// Whether the application was compiled with the `native_fetch` feature and therefore the
     /// `tauri-plugin-http` plugin is available for native HTTP requests.
     pub native_fetch: bool,
 }
-
-#[cfg(feature = "libsql")]
-const LIBSQL_ENABLED: bool = true;
-#[cfg(not(feature = "libsql"))]
-const LIBSQL_ENABLED: bool = false;
 
 #[cfg(feature = "native_fetch")]
 const NATIVE_FETCH_ENABLED: bool = true;
@@ -94,7 +86,6 @@ const NATIVE_FETCH_ENABLED: bool = false;
 #[command]
 pub fn capabilities() -> Capabilities {
     Capabilities {
-        libsql: LIBSQL_ENABLED,
         native_fetch: NATIVE_FETCH_ENABLED,
     }
 }

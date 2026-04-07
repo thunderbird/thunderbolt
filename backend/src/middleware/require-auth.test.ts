@@ -60,28 +60,24 @@ describe('Require Auth Middleware', () => {
     expect(body).toEqual({ success: true })
   })
 
-  it('should always allow /v1/auth/google endpoints without auth', async () => {
+  it('should block unauthenticated requests to /v1/auth/google endpoints', async () => {
     const app = new Elysia()
       .use(createRequireAuthMiddleware(mockAuthUnauthenticated))
       .get('/v1/auth/google/config', () => ({ client_id: 'test' }))
 
     const response = await app.handle(new Request('http://localhost/v1/auth/google/config'))
 
-    expect(response.status).toBe(200)
-    const body = await response.json()
-    expect(body).toEqual({ client_id: 'test' })
+    expect(response.status).toBe(401)
   })
 
-  it('should always allow /v1/auth/microsoft endpoints without auth', async () => {
+  it('should block unauthenticated requests to /v1/auth/microsoft endpoints', async () => {
     const app = new Elysia()
       .use(createRequireAuthMiddleware(mockAuthUnauthenticated))
       .post('/v1/auth/microsoft/exchange', () => ({ success: true }))
 
     const response = await app.handle(new Request('http://localhost/v1/auth/microsoft/exchange', { method: 'POST' }))
 
-    expect(response.status).toBe(200)
-    const body = await response.json()
-    expect(body).toEqual({ success: true })
+    expect(response.status).toBe(401)
   })
 
   it('should always allow /v1/waitlist endpoints without auth', async () => {

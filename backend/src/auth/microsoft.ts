@@ -8,13 +8,8 @@ const MICROSOFT_TOKEN_URL = 'https://login.microsoftonline.com/common/oauth2/v2.
 const SCOPES = 'https://graph.microsoft.com/mail.read User.Read offline_access'
 
 /**
- * Create Microsoft OAuth router
- *
- * Unauthenticated by design: these endpoints act as a confidential client proxy so the
- * Tauri frontend doesn't need to embed the client secret. Users can connect their Microsoft
- * account before signing up, with tokens stored locally on-device.
- * Security is provided by OAuth itself — /exchange requires a single-use auth code + PKCE
- * code_verifier, and /refresh requires a valid refresh token.
+ * Microsoft OAuth confidential client proxy — keeps the client secret server-side
+ * so the Tauri frontend doesn't need to embed it.
  */
 export const createMicrosoftAuthRoutes = (fetchFn: typeof fetch = globalThis.fetch) => {
   return new Elysia({ prefix: '/auth/microsoft' })

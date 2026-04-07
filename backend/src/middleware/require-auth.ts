@@ -1,13 +1,7 @@
 import type { Auth } from '@/auth/auth'
 import { Elysia } from 'elysia'
 
-const publicPathPrefixes = [
-  '/v1/health', // Health checks (exact match)
-  '/v1/api/auth/', // Auth endpoints (handled by Better Auth)
-  '/v1/auth/google/', // Google OAuth proxy (login flow)
-  '/v1/auth/microsoft/', // Microsoft OAuth proxy (login flow)
-  '/v1/waitlist/', // Waitlist endpoints (pre-auth flow)
-]
+const publicPathPrefixes = ['/v1/health', '/v1/api/auth/', '/v1/waitlist/']
 
 const isPublicPath = (path: string) =>
   publicPathPrefixes.some((prefix) => {
@@ -17,7 +11,7 @@ const isPublicPath = (path: string) =>
 
 /**
  * Global middleware that enforces authentication on all non-public endpoints.
- * Public paths (health, auth, OAuth, waitlist) are always accessible.
+ * Public paths (health, Better Auth, waitlist) are always accessible.
  */
 export const createRequireAuthMiddleware = (auth: Auth) =>
   new Elysia({ name: 'require-auth' })

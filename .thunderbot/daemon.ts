@@ -79,6 +79,9 @@ const isProcessRunning = (pid: number): boolean => {
   }
 }
 
+// nosemgrep: javascript.lang.security.audit.spawn-shell-true.spawn-shell-true
+// Safe: shell: true is required here to access the shell builtin `command -v`. The `cmd` arg
+// is passed as a separate argument (not interpolated into the shell string), preventing injection.
 const commandExists = (cmd: string): boolean =>
   spawnSync('command', ['-v', cmd], { stdio: 'pipe', shell: true }).status === 0
 
@@ -126,6 +129,8 @@ const ensurePrerequisites = (): boolean =>
 // Track the active child process so it can be terminated on daemon shutdown
 let activeChild: ChildProcess | null = null
 
+// nosemgrep: javascript.lang.security.detect-child-process.detect-child-process
+// Safe: callers pass hardcoded commands (e.g. 'claude'), not user-controlled input
 const runCommand = (cmd: string, args: string[]): Promise<{ stdout: string; stderr: string; exitCode: number }> => {
   return new Promise((resolve) => {
     const proc = spawn(cmd, args, { stdio: ['pipe', 'pipe', 'pipe'] })

@@ -432,8 +432,9 @@ export const aiFetchStreamingResponse = async ({
     return createUIMessageStreamResponse({ stream })
   } catch (error) {
     console.error('aiFetchStreamingResponse error', error)
-    return new Response(JSON.stringify({ error: (error as Error).message }), {
-      status: 500,
+    const statusCode = (error as { statusCode?: number }).statusCode
+    return new Response(JSON.stringify({ error: (error as Error).message, statusCode }), {
+      status: statusCode ?? 500,
       headers: { 'Content-Type': 'application/json' },
     })
   }

@@ -1,7 +1,20 @@
 import type { HandleError, HandleErrorCode } from '@/types/handle-errors'
 
 /** Check whether an error represents a rate-limit (HTTP 429) response. */
-export const isRateLimitError = (error?: Error | null) => error?.message?.toLowerCase().includes('too many requests')
+export const isRateLimitError = (error?: Error | null): boolean => {
+  if (!error?.message) return false
+
+  // DefaultChatTransport passes response.text() as the error message,
+  // which is JSON like: {"error":"...","statusCode":429}
+  try {
+    const parsed = JSON.parse(error.message)
+    if (parsed.statusCode === 429) return true
+  } catch {
+    // Not JSON — fall through to string matching
+  }
+
+  return error.message.toLowerCase().includes('too many requests')
+}
 
 /**
  * Creates a HandleError with optional stack trace if available

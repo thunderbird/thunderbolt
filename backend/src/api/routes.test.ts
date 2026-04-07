@@ -1,113 +1,54 @@
-import type { Settings } from '@/config/settings'
-import * as settingsModule from '@/config/settings'
 import type { ConsoleSpies } from '@/test-utils/console-spies'
 import { setupConsoleSpy } from '@/test-utils/console-spies'
-import { createTestDb } from '@/test-utils/db'
-import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, spyOn } from 'bun:test'
-import { createApp } from '../index'
+import { afterAll, beforeAll, describe, expect, it, mock } from 'bun:test'
+import { createMainRoutes } from './routes'
 
 describe('Main Routes', () => {
-  let app: Awaited<ReturnType<typeof createApp>>
-  let getSettingsSpy: ReturnType<typeof spyOn>
+  let app: ReturnType<typeof createMainRoutes>
   let consoleSpies: ConsoleSpies
-  let cleanup: () => Promise<void>
 
-  const mockFetch = async (input: RequestInfo | URL, _init?: RequestInit): Promise<Response> => {
+  const mockFetch = mock((input: RequestInfo | URL, _init?: RequestInit) => {
     const url = input instanceof Request ? input.url : input.toString()
     if (url.startsWith('https://geocoding-api.open-meteo.com')) {
-      return new Response(
-        JSON.stringify({
-          results: [{ name: 'London', admin1: 'England', country: 'UK', latitude: 51.5, longitude: -0.12 }],
-        }),
-        {
-          status: 200,
-          headers: { 'Content-Type': 'application/json' },
-        },
+      return Promise.resolve(
+        new Response(
+          JSON.stringify({
+            results: [{ name: 'London', admin1: 'England', country: 'UK', latitude: 51.5, longitude: -0.12 }],
+          }),
+          {
+            status: 200,
+            headers: { 'Content-Type': 'application/json' },
+          },
+        ),
       )
     }
-    return new Response('{}', { status: 200, headers: { 'Content-Type': 'application/json' } })
-  }
+    return Promise.resolve(new Response('{}', { status: 200, headers: { 'Content-Type': 'application/json' } }))
+  })
 
   beforeAll(() => {
     consoleSpies = setupConsoleSpy()
-
-    // Mock settings for analytics route
-    getSettingsSpy = spyOn(settingsModule, 'getSettings').mockReturnValue({
-      fireworksApiKey: 'test-api-key',
-      mistralApiKey: '',
-      anthropicApiKey: '',
-      exaApiKey: '',
-      thunderboltInferenceUrl: '',
-      thunderboltInferenceApiKey: '',
-      monitoringToken: '',
-      googleClientId: '',
-      googleClientSecret: '',
-      microsoftClientId: '',
-      microsoftClientSecret: '',
-      logLevel: 'INFO',
-      port: 8000,
-      appUrl: 'http://localhost:1420',
-      posthogHost: 'https://us.i.posthog.com',
-      posthogApiKey: 'ph_test',
-      corsOrigins: 'http://localhost:1420',
-      corsOriginRegex: null,
-      corsAllowCredentials: true,
-      corsAllowMethods: 'GET,POST,PUT,DELETE,PATCH,OPTIONS',
-      corsAllowHeaders:
-        'Content-Type,Authorization,Accept,Accept-Encoding,Accept-Language,Cache-Control,User-Agent,X-Requested-With',
-      corsExposeHeaders: 'mcp-session-id',
-      waitlistEnabled: false,
-      waitlistAutoApproveDomains: '',
-      powersyncUrl: '',
-      powersyncJwtKid: '',
-      powersyncJwtSecret: '',
-      powersyncTokenExpirySeconds: 3600,
-      authMode: 'consumer' as const,
-      oidcClientId: '',
-      oidcClientSecret: '',
-      oidcIssuer: '',
-      betterAuthUrl: 'http://localhost:8000',
-    } satisfies Settings)
-  })
-
-  beforeEach(async () => {
-    const testEnv = await createTestDb()
-    cleanup = testEnv.cleanup
-    app = await createApp({ fetchFn: mockFetch as typeof fetch, database: testEnv.db })
-  })
-
-  afterEach(async () => {
-    await cleanup()
+    app = createMainRoutes(mockFetch as unknown as typeof fetch)
   })
 
   afterAll(() => {
-    getSettingsSpy?.mockRestore()
     consoleSpies.restore()
   })
 
   it('should return health status', async () => {
-    const response = await app.handle(new Request('http://localhost/v1/health'))
+    const response = await app.handle(new Request('http://localhost/health'))
     expect(response.status).toBe(200)
 
     const data = await response.json()
     expect(data).toEqual({ status: 'ok' })
   })
 
-  it('should return posthog config', async () => {
-    const response = await app.handle(new Request('http://localhost/v1/posthog/config'))
-    expect(response.status).toBe(200)
-
-    const data = await response.json()
-    expect(data).toHaveProperty('posthog_api_key')
-  })
-
   it('should require query parameter for locations endpoint', async () => {
-    const response = await app.handle(new Request('http://localhost/v1/locations'))
+    const response = await app.handle(new Request('http://localhost/locations'))
     expect(response.status).toBe(422) // Elysia validation error
   })
 
   it('should search locations with valid query', async () => {
-    const response = await app.handle(new Request('http://localhost/v1/locations?query=London'))
+    const response = await app.handle(new Request('http://localhost/locations?query=London'))
     expect(response.status).toBe(200)
 
     const data = await response.json()
@@ -115,31 +56,28 @@ describe('Main Routes', () => {
   })
 
   it('should filter out country-level results without admin1', async () => {
-    // Mock fetch that returns a mix of city and country results
-    const mockFetchWithCountry = async (input: RequestInfo | URL): Promise<Response> => {
+    const mockFetchWithCountry = mock((input: RequestInfo | URL) => {
       const url = input instanceof Request ? input.url : input.toString()
       if (url.startsWith('https://geocoding-api.open-meteo.com')) {
-        return new Response(
-          JSON.stringify({
-            results: [
-              // Country-level result (no admin1) - should be filtered out
-              { name: 'Canada', country: 'Canada', latitude: 60.1, longitude: -113.6 },
-              // City-level result (has admin1) - should be included
-              { name: 'Canada', admin1: 'Kentucky', country: 'United States', latitude: 37.6, longitude: -82.3 },
-              // Another city with admin1 - should be included
-              { name: 'Cañada', admin1: 'Valencia', country: 'Spain', latitude: 38.7, longitude: -0.8 },
-            ],
-          }),
-          { status: 200, headers: { 'Content-Type': 'application/json' } },
+        return Promise.resolve(
+          new Response(
+            JSON.stringify({
+              results: [
+                { name: 'Canada', country: 'Canada', latitude: 60.1, longitude: -113.6 },
+                { name: 'Canada', admin1: 'Kentucky', country: 'United States', latitude: 37.6, longitude: -82.3 },
+                { name: 'Cañada', admin1: 'Valencia', country: 'Spain', latitude: 38.7, longitude: -0.8 },
+              ],
+            }),
+            { status: 200, headers: { 'Content-Type': 'application/json' } },
+          ),
         )
       }
-      return new Response('{}', { status: 200, headers: { 'Content-Type': 'application/json' } })
-    }
+      return Promise.resolve(new Response('{}', { status: 200, headers: { 'Content-Type': 'application/json' } }))
+    })
 
-    const testEnv = await createTestDb()
-    const testApp = await createApp({ fetchFn: mockFetchWithCountry as typeof fetch, database: testEnv.db })
+    const testApp = createMainRoutes(mockFetchWithCountry as unknown as typeof fetch)
 
-    const response = await testApp.handle(new Request('http://localhost/v1/locations?query=Canada'))
+    const response = await testApp.handle(new Request('http://localhost/locations?query=Canada'))
     expect(response.status).toBe(200)
 
     const data = await response.json()
@@ -150,18 +88,16 @@ describe('Main Routes', () => {
       { name: 'Canada', region: 'Kentucky', country: 'United States', lat: 37.6, lon: -82.3 },
       { name: 'Cañada', region: 'Valencia', country: 'Spain', lat: 38.7, lon: -0.8 },
     ])
-
-    await testEnv.cleanup()
   })
 
   describe('Units routes', () => {
     it('should require country parameter for units endpoint', async () => {
-      const response = await app.handle(new Request('http://localhost/v1/units'))
+      const response = await app.handle(new Request('http://localhost/units'))
       expect(response.status).toBe(422) // Elysia validation error
     })
 
     it('should return units data for valid country code (Brazil)', async () => {
-      const response = await app.handle(new Request('http://localhost/v1/units?country=BR'))
+      const response = await app.handle(new Request('http://localhost/units?country=BR'))
       expect(response.status).toBe(200)
 
       const data = await response.json()
@@ -179,7 +115,7 @@ describe('Main Routes', () => {
     })
 
     it('should return units data for valid country name (Brazil)', async () => {
-      const response = await app.handle(new Request('http://localhost/v1/units?country=Brazil'))
+      const response = await app.handle(new Request('http://localhost/units?country=Brazil'))
       expect(response.status).toBe(200)
 
       const data = await response.json()
@@ -197,7 +133,7 @@ describe('Main Routes', () => {
     })
 
     it('should return units data for valid country code (United States)', async () => {
-      const response = await app.handle(new Request('http://localhost/v1/units?country=US'))
+      const response = await app.handle(new Request('http://localhost/units?country=US'))
       expect(response.status).toBe(200)
 
       const data = await response.json()
@@ -215,7 +151,7 @@ describe('Main Routes', () => {
     })
 
     it('should return units data for valid country name (United States)', async () => {
-      const response = await app.handle(new Request('http://localhost/v1/units?country=United States'))
+      const response = await app.handle(new Request('http://localhost/units?country=United States'))
       expect(response.status).toBe(200)
 
       const data = await response.json()
@@ -233,7 +169,7 @@ describe('Main Routes', () => {
     })
 
     it('should return US data as fallback for invalid country', async () => {
-      const response = await app.handle(new Request('http://localhost/v1/units?country=INVALID'))
+      const response = await app.handle(new Request('http://localhost/units?country=INVALID'))
       expect(response.status).toBe(200)
 
       const data = await response.json()
@@ -251,10 +187,9 @@ describe('Main Routes', () => {
     })
 
     it('should return 400 for empty country parameter', async () => {
-      const response = await app.handle(new Request('http://localhost/v1/units?country='))
+      const response = await app.handle(new Request('http://localhost/units?country='))
       expect(response.status).toBe(400)
 
-      // Error handler sanitizes internal error messages for security
       const data = await response.json()
       expect(data).toEqual({
         success: false,
@@ -264,7 +199,7 @@ describe('Main Routes', () => {
     })
 
     it('should return units-options data', async () => {
-      const response = await app.handle(new Request('http://localhost/v1/units-options'))
+      const response = await app.handle(new Request('http://localhost/units-options'))
       expect(response.status).toBe(200)
 
       const data = await response.json()
@@ -274,7 +209,6 @@ describe('Main Routes', () => {
       expect(data).toHaveProperty('dateFormats')
       expect(data).toHaveProperty('currencies')
 
-      // Verify structure of units options
       expect(Array.isArray(data.units)).toBe(true)
       expect(data.units).toContain('metric')
       expect(data.units).toContain('imperial')

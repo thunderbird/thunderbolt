@@ -1,39 +1,34 @@
 import type { Auth } from '@/auth/auth'
-import type { Settings } from '@/config/settings'
 import { Elysia } from 'elysia'
 
-/** Paths that are always public (no auth required) */
 const publicPathPrefixes = [
-  '/v1/waitlist/', // Waitlist endpoints
   '/v1/health', // Health checks (exact match)
   '/v1/api/auth/', // Auth endpoints (handled by Better Auth)
+  '/v1/auth/google/', // Google OAuth proxy (login flow)
+  '/v1/auth/microsoft/', // Microsoft OAuth proxy (login flow)
+  '/v1/waitlist/', // Waitlist endpoints (pre-auth flow)
 ]
 
-/** Check if path matches a public prefix (with proper boundary checking) */
 const isPublicPath = (path: string) =>
   publicPathPrefixes.some((prefix) => {
-    // Exact match for paths without trailing slash (e.g., /v1/health)
     if (!prefix.endsWith('/')) return path === prefix
-    // Prefix match for paths with trailing slash
     return path.startsWith(prefix) || path === prefix.slice(0, -1)
   })
 
 /**
- * Middleware that enforces authentication when WAITLIST_ENABLED=true.
- * Public paths are always accessible regardless of this setting.
+ * Global middleware that enforces authentication on all non-public endpoints.
+ * Public paths (health, auth, OAuth, waitlist) are always accessible.
  */
-export const createWaitlistAuthMiddleware = (settings: Settings, auth: Auth) =>
-  new Elysia({ name: 'waitlist-auth' })
+export const createRequireAuthMiddleware = (auth: Auth) =>
+  new Elysia({ name: 'require-auth' })
     .onBeforeHandle(async ({ request }) => {
       const url = new URL(request.url)
       const path = url.pathname
 
-      // Always allow public paths
-      if (isPublicPath(path) || !settings.waitlistEnabled) {
+      if (isPublicPath(path)) {
         return
       }
 
-      // Waitlist enabled - require authentication
       const session = await auth.api.getSession({ headers: request.headers })
       if (!session) {
         return new Response(JSON.stringify({ error: 'Authentication required' }), {

@@ -1,3 +1,4 @@
+import type { Auth } from '@/auth/auth'
 import type { db } from '@/db/client'
 import type { WaitlistEmailService } from '@/waitlist/routes'
 
@@ -8,5 +9,6 @@ import type { WaitlistEmailService } from '@/waitlist/routes'
 export type AppDeps = {
   fetchFn?: typeof fetch
   database?: typeof db
+  auth?: Auth
   waitlistEmailService?: WaitlistEmailService
 }

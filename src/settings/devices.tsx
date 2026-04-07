@@ -2,6 +2,7 @@ import { useDatabase, useHttpClient } from '@/contexts'
 import { getAllDevices, getPendingDevices } from '@/dal'
 import { getDeviceId } from '@/lib/auth-token'
 import { PageHeader } from '@/components/ui/page-header'
+import { ApproveDeviceDialog } from '@/components/approve-device-dialog'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { useMutation } from '@tanstack/react-query'
@@ -22,7 +23,7 @@ import { useState } from 'react'
 import { useQuery } from '@powersync/tanstack-react-query'
 import { toCompilableQuery } from '@powersync/drizzle-driver'
 import { authHeaders } from '@/api/encryption'
-import { approveDevice } from '@/services/encryption'
+import { useApproveDevice } from '@/hooks/use-approve-device'
 
 const formatLastSeen = (ts: string | null): string => {
   if (ts == null) {
@@ -69,18 +70,7 @@ export default function DevicesSettingsPage() {
     },
   })
 
-  const approveMutation = useMutation({
-    mutationFn: async (deviceId: string) => {
-      const device = pendingDevices.find((d) => d.id === deviceId)
-      if (!device?.publicKey) {
-        throw new Error('Device has no public key')
-      }
-      await approveDevice(httpClient, deviceId, device.publicKey)
-    },
-    onSuccess: () => {
-      setApproveTarget(null)
-    },
-  })
+  const approveMutation = useApproveDevice(pendingDevices)
 
   const handleRevoke = (deviceId: string) => {
     setRevokeTarget(deviceId)
@@ -94,7 +84,9 @@ export default function DevicesSettingsPage() {
 
   const confirmApprove = () => {
     if (approveTarget) {
-      approveMutation.mutate(approveTarget)
+      approveMutation.mutate(approveTarget, {
+        onSuccess: () => setApproveTarget(null),
+      })
     }
   }
 
@@ -196,22 +188,12 @@ export default function DevicesSettingsPage() {
         </div>
       )}
 
-      <AlertDialog open={approveTarget !== null} onOpenChange={(open) => !open && setApproveTarget(null)}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Approve this device?</AlertDialogTitle>
-            <AlertDialogDescription>
-              This will share your encryption key with the device, allowing it to decrypt and sync your data.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel disabled={approveMutation.isPending}>Cancel</AlertDialogCancel>
-            <AlertDialogAction onClick={confirmApprove} disabled={approveMutation.isPending}>
-              {approveMutation.isPending ? 'Approving…' : 'Approve'}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+      <ApproveDeviceDialog
+        open={approveTarget !== null}
+        onOpenChange={(open) => !open && setApproveTarget(null)}
+        onConfirm={confirmApprove}
+        isPending={approveMutation.isPending}
+      />
 
       <AlertDialog open={revokeTarget !== null} onOpenChange={(open) => !open && setRevokeTarget(null)}>
         <AlertDialogContent>

@@ -58,7 +58,14 @@ export const RecoveryKeyDisplayStep = ({ recoveryKey, onDone, onConfirmedChange 
           <span className="text-sm">I have saved my recovery phrase</span>
         </label>
 
-        <Button className="w-full" onClick={onDone} disabled={!confirmed}>
+        <Button
+          className="w-full"
+          onClick={() => {
+            navigator.clipboard.writeText('')
+            onDone()
+          }}
+          disabled={!confirmed}
+        >
           Done
         </Button>
       </div>

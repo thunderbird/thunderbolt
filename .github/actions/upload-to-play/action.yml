@@ -29,18 +29,21 @@ runs:
 
     - name: Upload to Google Play Store
       shell: bash
+      env:
+        SERVICE_ACCOUNT_JSON: ${{ inputs.serviceAccountJson }}
+        PACKAGE_NAME: ${{ inputs.packageName }}
+        AAB_PATH: ${{ inputs.aabPath }}
+        TRACK: ${{ inputs.track }}
+        WORKSPACE: ${{ github.workspace }}
       run: |
-        # Write service account JSON to file to avoid shell escaping issues
-        echo '${{ inputs.serviceAccountJson }}' > /tmp/service-account.json
+        # Write service account JSON to a job-specific temp file
+        SERVICE_ACCOUNT_FILE=$(mktemp)
+        printenv SERVICE_ACCOUNT_JSON > "$SERVICE_ACCOUNT_FILE"
 
-        # Set environment variables
-        export PACKAGE_NAME="${{ inputs.packageName }}"
-        export AAB_PATH="${{ inputs.aabPath }}"
-        export TRACK="${{ inputs.track }}"
-        export SERVICE_ACCOUNT_FILE="/tmp/service-account.json"
+        export SERVICE_ACCOUNT_FILE
 
         # Run the script
-        node ${{ github.workspace }}/scripts/upload-to-play.cjs
+        node "$WORKSPACE/scripts/upload-to-play.cjs"
 
         # Clean up
-        rm -f /tmp/service-account.json
+        rm -f "$SERVICE_ACCOUNT_FILE"

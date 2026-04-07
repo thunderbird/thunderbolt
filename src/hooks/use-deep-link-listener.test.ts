@@ -3,6 +3,7 @@ import { createElement, type ReactNode } from 'react'
 import { BrowserRouter } from 'react-router'
 import { afterAll, beforeAll, describe, expect, it } from 'bun:test'
 import { setupTestDatabase, teardownTestDatabase } from '@/dal/test-utils'
+import type { ReturnContext } from '@/lib/oauth-state'
 import { getClock } from '@/testing-library'
 import { createQueryTestWrapper } from '@/test-utils/react-query'
 import {
@@ -230,7 +231,7 @@ describe('determineNavigationTarget', () => {
   })
 
   it('defaults to integrations page when returnContext is empty string', () => {
-    const result = determineNavigationTarget('', mockOAuthData)
+    const result = determineNavigationTarget('' as unknown as ReturnContext, mockOAuthData)
 
     expect(result).toEqual({
       path: '/settings/integrations',
@@ -239,7 +240,7 @@ describe('determineNavigationTarget', () => {
   })
 
   it('defaults to integrations page when returnContext is undefined', () => {
-    const result = determineNavigationTarget(undefined as unknown as string, mockOAuthData)
+    const result = determineNavigationTarget(undefined as unknown as ReturnContext, mockOAuthData)
 
     expect(result).toEqual({
       path: '/settings/integrations',
@@ -271,8 +272,17 @@ describe('determineNavigationTarget', () => {
     })
   })
 
+  it('rejects protocol-relative URLs starting with //', () => {
+    const result = determineNavigationTarget('//evil.com' as ReturnContext, mockOAuthData)
+
+    expect(result).toEqual({
+      path: '/settings/integrations',
+      oauth: mockOAuthData,
+    })
+  })
+
   it('handles relative-looking paths that do not start with /', () => {
-    const result = determineNavigationTarget('chats/123', mockOAuthData)
+    const result = determineNavigationTarget('chats/123' as unknown as ReturnContext, mockOAuthData)
 
     expect(result).toEqual({
       path: '/settings/integrations',

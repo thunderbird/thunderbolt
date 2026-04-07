@@ -9,10 +9,7 @@ export const createSessionGuard = (auth: Auth) =>
   new Elysia()
     .derive(async ({ request }) => {
       const session = await auth.api.getSession({ headers: request.headers })
-      if (!session) {
-        return { user: null }
-      }
-      return { user: session.user }
+      return { user: session?.user ?? null }
     })
     .onBeforeHandle(({ user, set }) => {
       if (!user) {

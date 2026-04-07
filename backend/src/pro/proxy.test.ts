@@ -5,8 +5,20 @@ import { Elysia } from 'elysia'
 import { createProxyRoutes } from './proxy'
 import * as settingsModule from '@/config/settings'
 
+// Mock DNS — external Node API, acceptable per docs/testing.md "When You Must Mock"
+const mockDnsLookup = mock(() => Promise.resolve([{ address: '93.184.216.34', family: 4 }]))
+mock.module('node:dns', () => ({ promises: { lookup: mockDnsLookup } }))
+mock.module('node:net', () => ({ isIP: (s: string) => (/^\d+\.\d+\.\d+\.\d+$/.test(s) ? 4 : 0) }))
+
+/** Converts a URL to its IP-pinned equivalent (as createSafeFetch would produce). */
+const pinnedUrl = (url: string) => {
+  const parsed = new URL(url)
+  parsed.hostname = '93.184.216.34'
+  return parsed.toString()
+}
+
 describe('Proxy Routes', () => {
-  let app: Elysia
+  let app: { handle: Elysia['handle'] }
   let getSettingsSpy: ReturnType<typeof spyOn>
   let consoleSpies: ConsoleSpies
   let mockFetch: ReturnType<typeof mock>
@@ -47,7 +59,7 @@ describe('Proxy Routes', () => {
       posthogHost: 'https://us.i.posthog.com',
       posthogApiKey: '',
       corsOrigins: 'http://localhost:1420',
-      corsOriginRegex: '',
+      corsOriginRegex: null,
       corsAllowCredentials: true,
       corsAllowMethods: 'GET,POST,PUT,DELETE,PATCH,OPTIONS',
       corsAllowHeaders: 'Content-Type,Authorization',
@@ -82,6 +94,8 @@ describe('Proxy Routes', () => {
   beforeEach(() => {
     // Reset all mocks before each test
     mockFetch.mockClear()
+    mockDnsLookup.mockClear()
+    mockDnsLookup.mockImplementation(() => Promise.resolve([{ address: '93.184.216.34', family: 4 }]))
     consoleSpies.error.mockClear()
   })
 
@@ -99,15 +113,11 @@ describe('Proxy Routes', () => {
       )
 
       expect(response.status).toBe(200)
-      expect(mockFetch).toHaveBeenCalledWith(
-        targetUrl,
-        expect.objectContaining({
-          method: 'GET',
-          headers: expect.objectContaining({
-            'User-Agent': 'Mozilla/5.0 (compatible; ThunderboltBot/1.0)',
-          }),
-        }),
-      )
+      expect(mockFetch).toHaveBeenCalledTimes(1)
+      const [calledUrl, calledInit] = mockFetch.mock.calls[0]
+      expect(calledUrl).toBe(pinnedUrl(targetUrl))
+      const headers = calledInit.headers as Headers
+      expect(headers.get('Host')).toBe('example.com')
 
       const body = await response.text()
       expect(body).toBe(mockBody)
@@ -207,12 +217,9 @@ describe('Proxy Routes', () => {
       )
 
       expect(response.status).toBe(200)
-      expect(mockFetch).toHaveBeenCalledWith(
-        targetUrl,
-        expect.objectContaining({
-          method: 'GET',
-        }),
-      )
+      expect(mockFetch).toHaveBeenCalledTimes(1)
+      const [calledUrl] = mockFetch.mock.calls[0]
+      expect(calledUrl).toBe(pinnedUrl(targetUrl))
 
       const body = await response.text()
       expect(body).toBe(mockBody)
@@ -233,7 +240,7 @@ describe('Proxy Routes', () => {
       const response = await app.handle(new Request(`http://localhost/proxy/${targetUrl}`, { method: 'GET' }))
 
       expect(response.status).toBe(404)
-      expect(mockFetch).toHaveBeenCalledWith(targetUrl, expect.any(Object))
+      expect(mockFetch).toHaveBeenCalledWith(pinnedUrl(targetUrl), expect.any(Object))
 
       const body = await response.text()
       expect(body).toBe('Failed to fetch resource: Not Found')
@@ -254,7 +261,7 @@ describe('Proxy Routes', () => {
       const response = await app.handle(new Request(`http://localhost/proxy/${targetUrl}`, { method: 'GET' }))
 
       expect(response.status).toBe(500)
-      expect(mockFetch).toHaveBeenCalledWith(targetUrl, expect.any(Object))
+      expect(mockFetch).toHaveBeenCalledWith(pinnedUrl(targetUrl), expect.any(Object))
 
       const body = await response.text()
       expect(body).toBe('Failed to fetch resource: Internal Server Error')
@@ -282,7 +289,7 @@ describe('Proxy Routes', () => {
       const response = await app.handle(new Request(`http://localhost/proxy/${targetUrl}`, { method: 'GET' }))
 
       expect(response.status).toBe(200)
-      expect(mockFetch).toHaveBeenCalledWith(targetUrl, expect.any(Object))
+      expect(mockFetch).toHaveBeenCalledWith(pinnedUrl(targetUrl), expect.any(Object))
     })
 
     it('should handle URLs with different protocols', async () => {
@@ -293,13 +300,13 @@ describe('Proxy Routes', () => {
 
       const httpResponse = await app.handle(new Request(`http://localhost/proxy/${httpUrl}`, { method: 'GET' }))
       expect(httpResponse.status).toBe(200)
-      expect(mockFetch).toHaveBeenCalledWith(httpUrl, expect.any(Object))
+      expect(mockFetch).toHaveBeenCalledWith(pinnedUrl(httpUrl), expect.any(Object))
 
       mockFetch.mockClear()
 
       const httpsResponse = await app.handle(new Request(`http://localhost/proxy/${httpsUrl}`, { method: 'GET' }))
       expect(httpsResponse.status).toBe(200)
-      expect(mockFetch).toHaveBeenCalledWith(httpsUrl, expect.any(Object))
+      expect(mockFetch).toHaveBeenCalledWith(pinnedUrl(httpsUrl), expect.any(Object))
     })
 
     it('should handle URLs with special characters when properly encoded', async () => {
@@ -311,7 +318,7 @@ describe('Proxy Routes', () => {
       const response = await app.handle(new Request(`http://localhost/proxy/${encodedTargetUrl}`, { method: 'GET' }))
 
       expect(response.status).toBe(200)
-      expect(mockFetch).toHaveBeenCalledWith(targetUrl, expect.any(Object))
+      expect(mockFetch).toHaveBeenCalledWith(pinnedUrl(targetUrl), expect.any(Object))
     })
 
     it('should stream response body', async () => {

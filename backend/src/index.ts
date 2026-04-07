@@ -3,19 +3,19 @@ import { createBetterAuthPlugin } from '@/auth/elysia-plugin'
 import { createGoogleAuthRoutes } from '@/auth/google'
 import { createMicrosoftAuthRoutes } from '@/auth/microsoft'
 import { createLoggerMiddleware, createStandaloneLogger } from '@/config/logger'
-import { getCorsOriginsList, getSettings } from '@/config/settings'
+import { getCorsOrigins, getCorsOriginsList, getSettings } from '@/config/settings'
 import { runMigrations } from '@/db/client'
 import { createInferenceRoutes } from '@/inference/routes'
 import { createErrorHandlingMiddleware } from '@/middleware/error-handling'
 import { createHttpLoggingMiddleware } from '@/middleware/http-logging'
 import { createInferenceRateLimit, createProRateLimit } from '@/middleware/rate-limit'
 import { createWaitlistAuthMiddleware } from '@/middleware/waitlist-auth'
+import { createMcpProxyRoutes } from '@/mcp-proxy/routes'
 import { createPostHogRoutes } from '@/posthog/routes'
 import { createProToolsRoutes } from '@/pro/routes'
 import { createWaitlistRoutes } from '@/waitlist/routes'
 import { createAccountRoutes } from '@/api/account'
 import { createPowerSyncRoutes } from '@/api/powersync'
-import { createSessionGuard } from '@/middleware/session-guard'
 import type { AppDeps } from '@/types'
 import { cors } from '@elysiajs/cors'
 import { Elysia } from 'elysia'
@@ -62,25 +62,11 @@ export const createApp = async (deps?: AppDeps) => {
 
   const rateLimitSettings = { enabled: settings.rateLimitEnabled }
 
-  // Pro tool routes with per-user rate limit
-  // Session guard must be at the same level as the rate limiter so `user` is
-  // visible to the rate-limit onBeforeHandle (scoped plugins don't leak upward).
-  const proRoutesWithRateLimit = new Elysia()
-    .use(createSessionGuard(auth))
-    .use(createProRateLimit(database, rateLimitSettings))
-    .use(createProToolsRoutes(fetchFn))
-
-  // Inference routes with dedicated per-user rate limit (e.g. 20 req / min)
-  const inferenceRoutesWithRateLimit = new Elysia()
-    .use(createSessionGuard(auth))
-    .use(createInferenceRateLimit(database, rateLimitSettings))
-    .use(createInferenceRoutes())
-
   return (
     configuredApp
       .use(
         cors({
-          origin: settings.corsOriginRegex ? new RegExp(settings.corsOriginRegex) : getCorsOriginsList(settings),
+          origin: getCorsOrigins(settings),
           credentials: settings.corsAllowCredentials,
           methods: settings.corsAllowMethods,
           allowedHeaders: settings.corsAllowHeaders,
@@ -98,11 +84,10 @@ export const createApp = async (deps?: AppDeps) => {
       .use(createMainRoutes(fetchFn))
       .use(createGoogleAuthRoutes(fetchFn))
       .use(createMicrosoftAuthRoutes(fetchFn))
-      // Pro tool routes with per-user rate limit
-      .use(proRoutesWithRateLimit)
-      // Inference routes with per-user rate limit
-      .use(inferenceRoutesWithRateLimit)
+      .use(createProToolsRoutes(auth, fetchFn, createProRateLimit(database, rateLimitSettings)))
+      .use(createInferenceRoutes(auth, createInferenceRateLimit(database, rateLimitSettings)))
       .use(createPostHogRoutes(fetchFn))
+      .use(createMcpProxyRoutes(auth, fetchFn))
       .use(createWaitlistRoutes({ database, auth, emailService: deps?.waitlistEmailService }))
       .use(createPowerSyncRoutes(auth, settings, database))
       .use(createAccountRoutes(auth, database))

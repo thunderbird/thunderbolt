@@ -167,11 +167,10 @@ export const isOpfsAvailable = async (): Promise<boolean> => {
 // -----------------------------------------------------------------------------
 
 export type Capabilities = {
-  libsql: boolean
   native_fetch: boolean
 }
 
-const defaultCapabilities: Capabilities = { libsql: false, native_fetch: false }
+const defaultCapabilities: Capabilities = { native_fetch: false }
 
 // Fetch once, then memoize for the rest of the session.
 const fetchCapabilities = memoize(async (): Promise<Capabilities> => {
@@ -206,8 +205,8 @@ export const getDatabaseType = async (): Promise<DatabaseType> => {
  * @returns The database path to use
  */
 export const getDatabasePath = async (databaseType: DatabaseType, appDataDirPath: string): Promise<string> => {
-  // For native databases (libsql-tauri, bun-sqlite), use file path directly
-  if (databaseType === 'libsql-tauri' || databaseType === 'bun-sqlite') {
+  // For native databases (bun-sqlite), use file path directly
+  if (databaseType === 'bun-sqlite') {
     return `${appDataDirPath}/thunderbolt.db`
   }
 

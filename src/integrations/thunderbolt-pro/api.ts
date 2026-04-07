@@ -15,7 +15,10 @@ import type {
 } from './schemas'
 
 const requestTimeout = 10000
-const authHeaders = () => ({ Authorization: `Bearer ${getAuthToken() ?? ''}` })
+const authHeaders = () => {
+  const token = getAuthToken()
+  return token ? { Authorization: `Bearer ${token}` } : {}
+}
 
 type HttpClient = Pick<KyInstance, 'get' | 'post'>
 

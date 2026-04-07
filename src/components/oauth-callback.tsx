@@ -47,7 +47,7 @@ export default function OAuthCallback() {
         const oauthState = await getOAuthState()
         const returnContext = oauthState.returnContext
 
-        if (returnContext?.startsWith('/')) {
+        if (returnContext?.startsWith('/') && !returnContext.startsWith('//')) {
           navigate(returnContext, {
             state: {
               oauth: { code, state, error: errorDescription || error },

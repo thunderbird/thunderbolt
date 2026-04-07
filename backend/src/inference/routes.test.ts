@@ -1,8 +1,7 @@
-import type { Auth } from '@/auth/elysia-plugin'
-import { createSessionGuard } from '@/middleware/session-guard'
 import * as posthogClient from '@/posthog/client'
 import type { ConsoleSpies } from '@/test-utils/console-spies'
 import { setupConsoleSpy } from '@/test-utils/console-spies'
+import { mockAuth, mockAuthUnauthenticated } from '@/test-utils/mock-auth'
 import * as streamingUtils from '@/utils/streaming'
 import { afterAll, beforeAll, beforeEach, describe, expect, it, mock, spyOn } from 'bun:test'
 import { Elysia } from 'elysia'
@@ -10,22 +9,8 @@ import type OpenAI from 'openai'
 import * as inferenceClient from './client'
 import { createInferenceRoutes, supportedModels } from './routes'
 
-/** Mock auth that always returns a valid session */
-const mockAuth = {
-  api: {
-    getSession: () => Promise.resolve({ user: { id: 'test-user' }, session: {} }),
-  },
-} as unknown as Auth
-
-/** Mock auth that always returns null (unauthenticated) */
-const mockAuthUnauthenticated = {
-  api: {
-    getSession: () => Promise.resolve(null),
-  },
-} as unknown as Auth
-
 describe('Inference Routes', () => {
-  let app: { handle: (req: Request) => Promise<Response> }
+  let app: { handle: Elysia['handle'] }
   let getInferenceClientSpy: ReturnType<typeof spyOn>
   let isPostHogConfiguredSpy: ReturnType<typeof spyOn>
   let createSSEStreamSpy: ReturnType<typeof spyOn>
@@ -70,7 +55,7 @@ describe('Inference Routes', () => {
     isPostHogConfiguredSpy = spyOn(posthogClient, 'isPostHogConfigured').mockReturnValue(false)
     createSSEStreamSpy = spyOn(streamingUtils, 'createSSEStreamFromCompletion').mockReturnValue(createMockSSEStream())
 
-    app = new Elysia().use(createSessionGuard(mockAuth)).use(createInferenceRoutes())
+    app = new Elysia().use(createInferenceRoutes(mockAuth))
   })
 
   afterAll(() => {
@@ -379,9 +364,7 @@ describe('Inference Routes', () => {
   describe('authentication', () => {
     it('should return 401 when session is null', async () => {
       mockCreateCompletion.mockClear()
-      const unauthenticatedApp = new Elysia()
-        .use(createSessionGuard(mockAuthUnauthenticated))
-        .use(createInferenceRoutes())
+      const unauthenticatedApp = new Elysia().use(createInferenceRoutes(mockAuthUnauthenticated))
 
       const response = await unauthenticatedApp.handle(
         new Request('http://localhost/chat/completions', {

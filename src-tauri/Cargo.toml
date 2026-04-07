@@ -1,6 +1,6 @@
 [package]
 name = "thunderbolt"
-version = "0.1.80"
+version = "0.2.0"
 description = "Privacy-respecting AI assistant."
 authors = ["Chris Roth <chris@cjroth.com>"]
 license = "MPL-2.0"
@@ -17,38 +17,11 @@ crate-type = ["staticlib", "cdylib", "rlib"]
 
 [features]
 default = []
-libsql = ["dep:thunderbolt-libsql"]
-email = [
-    "dep:thunderbolt-email",
-    "dep:thunderbolt-imap-client",
-    "dep:thunderbolt-imap-sync",
-    "libsql",
-]
-embeddings = ["dep:thunderbolt-embeddings"]
-bridge = ["dep:thunderbolt-bridge"]
 native_fetch = []
-all = ["libsql", "email", "embeddings", "bridge", "native_fetch"]
 
 [workspace]
-members = [
-    "thunderbolt_imap_client",
-    "thunderbolt_imap_sync",
-    "thunderbolt_embeddings",
-    "thunderbolt_bridge",
-    "thunderbolt_libsql",
-    "thunderbolt_email",
-]
-
-[workspace.dependencies]
-# Use Thunderbird's fork with Windows build fix
-# See: https://github.com/thunderbird/libsql/commit/91d0ff37dc37f2397b39662b0727b500a93fdb32
-libsql = { version = "0.9.20", default-features = false, features = [
-    "core",
-    "encryption",
-] }
-anyhow = "1.0.99"
-serde = { version = "1.0.219", features = ["derive"] }
-thunderbolt-lib = { path = "." }
+members = []
+default-members = ["."]
 
 [[bin]]
 name = "thunderbolt"
@@ -74,12 +47,7 @@ tauri-plugin-http = "2.5.4"
 tauri-plugin-process = "2.3.1"
 tauri-plugin-fs = "2.4.4"
 tauri-plugin-m3 = "0.2.2"
-thunderbolt-imap-client = { package = "thunderbolt-imap-client", path = "./thunderbolt_imap_client", optional = true }
-thunderbolt-imap-sync = { package = "thunderbolt-imap-sync", path = "./thunderbolt_imap_sync", optional = true }
-thunderbolt-embeddings = { package = "thunderbolt-embeddings", path = "./thunderbolt_embeddings", optional = true }
-thunderbolt-bridge = { package = "thunderbolt-bridge", path = "./thunderbolt_bridge", optional = true }
-thunderbolt-libsql = { package = "thunderbolt-libsql", path = "./thunderbolt_libsql", optional = true }
-thunderbolt-email = { package = "thunderbolt-email", path = "./thunderbolt_email", optional = true }
+
 tauri-plugin-deep-link = "2.3"
 tauri-plugin-haptics = "2.3"
 tauri-plugin-updater = "2.3"
@@ -94,11 +62,6 @@ objc2-foundation = "0.3.2"
 
 [profile.dev]
 incremental = true # Compile your binary in smaller steps.
-
-[profile.dev.package]
-"candle-nn" = { opt-level = 3, debug = false }
-"candle-core" = { opt-level = 3, debug = false }
-"candle-transformers" = { opt-level = 3, debug = false }
 
 [profile.release]
 codegen-units = 1 # Allows LLVM to perform better optimization.

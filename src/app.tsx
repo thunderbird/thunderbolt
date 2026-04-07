@@ -18,7 +18,6 @@ import { useMcpSync } from '@/hooks/use-mcp-sync'
 import ChatLayout from '@/layout/main-layout'
 import { PostHogProvider } from '@/lib/posthog'
 import { ThemeProvider } from '@/lib/theme-provider'
-import DevSettingsPage from '@/settings/dev-settings'
 import DevicesSettingsPage from '@/settings/devices'
 import { default as Settings } from '@/settings/index'
 import IntegrationsPage from '@/settings/integrations'
@@ -37,7 +36,6 @@ import { WelcomeDialog } from './components/welcome-dialog'
 import { UpdateNotification } from './components/update-notification'
 import { ExternalLinkDialogProvider } from './components/chat/markdown-utils'
 import { ContentViewProvider } from './content-view/context'
-import MessageSimulatorPage from './devtools/message-simulator'
 import { useAppInitialization } from './hooks/use-app-initialization'
 import { useCredentialEvents } from './hooks/use-credential-events'
 import { useSafeAreaInset } from './hooks/use-safe-area-inset'
@@ -56,6 +54,11 @@ import { type ComponentProps, Suspense, lazy, useEffect } from 'react'
 // Lazily import OIDC components so non-enterprise deployments don't pay
 // for the extra bundle size and attack surface.
 const OidcRedirect = lazy(() => import('@/components/oidc-redirect'))
+
+// Dev-only routes: guarded by import.meta.env.DEV so Vite eliminates
+// both the lazy() call and the dynamic import() from production builds.
+const DevSettingsPage = import.meta.env.DEV ? lazy(() => import('@/settings/dev-settings')) : () => null
+const MessageSimulatorPage = import.meta.env.DEV ? lazy(() => import('./devtools/message-simulator')) : () => null
 
 const queryClient = new QueryClient()
 
@@ -137,7 +140,16 @@ const AppRoutes = ({ initData }: { initData: InitData }) => {
             <Route path="chats/:chatThreadId" element={<ChatDetailPage />} />
             {experimentalFeatureTasks.value && <Route path="tasks" element={<TasksPage />} />}
             <Route path="automations" element={<AutomationsPage />} />
-            <Route path="message-simulator" element={<MessageSimulatorPage />} />
+            {import.meta.env.DEV && (
+              <Route
+                path="message-simulator"
+                element={
+                  <Suspense>
+                    <MessageSimulatorPage />
+                  </Suspense>
+                }
+              />
+            )}
           </Route>
 
           {/* Settings routes with SettingsLayout */}
@@ -148,7 +160,16 @@ const AppRoutes = ({ initData }: { initData: InitData }) => {
             <Route path="devices" element={<DevicesSettingsPage />} />
             <Route path="mcp-servers" element={<McpServersPage />} />
             <Route path="integrations" element={<IntegrationsPage />} />
-            <Route path="dev-settings" element={<DevSettingsPage />} />
+            {import.meta.env.DEV && (
+              <Route
+                path="dev-settings"
+                element={
+                  <Suspense>
+                    <DevSettingsPage />
+                  </Suspense>
+                }
+              />
+            )}
           </Route>
         </Route>
       </Route>
@@ -201,10 +222,7 @@ export const App = () => {
                       <MCPProvider>
                         <HapticsProvider>
                           <SidebarProvider>
-                            <ContentViewProvider
-                              initialSideviewType={initData.sideviewType}
-                              initialSideviewId={initData.sideviewId}
-                            >
+                            <ContentViewProvider>
                               <ExternalLinkDialogProvider>
                                 <AppContent initData={initData} />
                               </ExternalLinkDialogProvider>

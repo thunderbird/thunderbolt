@@ -64,7 +64,7 @@ export const createModel = async (modelConfig: Model) => {
     case 'thunderbolt': {
       const db = getDb()
       const { cloudUrl } = await getSettings(db, { cloud_url: 'http://localhost:8000/v1' })
-      const token = getAuthToken() ?? ''
+      const token = getAuthToken() || 'thunderbolt'
       // GPT OSS (vendor: 'openai') uses createOpenAI with .chat() to force Chat Completions API
       // (AI SDK 5 defaults createOpenAI to Responses API which our backend doesn't support)
       if (modelConfig.vendor === 'openai') {
@@ -79,6 +79,10 @@ export const createModel = async (modelConfig: Model) => {
         apiKey: modelConfig.apiKey || '',
         fetch,
         headers: {
+          // When a user adds their own Anthropic API key, calls go directly from the
+          // browser to Anthropic's API (not through our backend). Anthropic blocks
+          // browser-origin requests by default to prevent accidental key exposure.
+          // This header opts in, acknowledging the risk.
           'anthropic-dangerous-direct-browser-access': 'true',
         },
       })
@@ -340,7 +344,7 @@ export const aiFetchStreamingResponse = async ({
           }
 
           // For other errors, skip the tool call
-          console.warn(`Tool call error for "${toolCall.toolName}":`, error)
+          console.warn('Tool call error for "%s":', toolCall.toolName, error)
           return null
         },
       })

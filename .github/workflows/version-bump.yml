@@ -80,22 +80,26 @@ jobs:
       # Regular releases: use existing create-release script
       - name: Run create-release script
         if: ${{ !inputs.nightly }}
+        env:
+          INPUT_VERSION: ${{ inputs.version }}
+          INPUT_VERSION_TYPE: ${{ inputs.version_type }}
+          INPUT_PLATFORM: ${{ inputs.platform }}
         run: |
-          # Build arguments for the script
-          ARGS="--push"
+          # Build arguments for the script using an array to prevent argument injection
+          ARGS=(--push)
 
-          if [ -n "${{ inputs.version }}" ]; then
-            ARGS="$ARGS --version ${{ inputs.version }}"
+          if [ -n "$INPUT_VERSION" ]; then
+            ARGS+=(--version "$INPUT_VERSION")
           else
-            ARGS="$ARGS --type ${{ inputs.version_type }}"
+            ARGS+=(--type "$INPUT_VERSION_TYPE")
           fi
 
-          if [ -n "${{ inputs.platform }}" ]; then
-            ARGS="$ARGS --platform ${{ inputs.platform }}"
+          if [ -n "$INPUT_PLATFORM" ]; then
+            ARGS+=(--platform "$INPUT_PLATFORM")
           fi
 
-          echo "Running: bun run scripts/create-release.ts $ARGS"
-          bun run scripts/create-release.ts $ARGS
+          echo "Running: bun run scripts/create-release.ts ${ARGS[*]}"
+          bun run scripts/create-release.ts "${ARGS[@]}"
 
       # Nightly: generate version and tag without committing to main
       - name: Prepare nightly version
@@ -129,6 +133,8 @@ jobs:
 
       - name: Extract outputs
         id: version
+        env:
+          INPUT_VERSION_TYPE: ${{ inputs.version_type }}
         run: |
           # Get the version from package.json (which was just updated)
           NEW_VERSION=$(node -p "require('./package.json').version")
@@ -136,16 +142,15 @@ jobs:
           echo "📦 Version: $NEW_VERSION"
 
           # Output the version type
-          VERSION_TYPE="${{ inputs.version_type }}"
-          echo "version_type=$VERSION_TYPE" >> $GITHUB_OUTPUT
-          echo "📝 Version type: $VERSION_TYPE"
+          echo "version_type=$INPUT_VERSION_TYPE" >> $GITHUB_OUTPUT
+          echo "📝 Version type: $INPUT_VERSION_TYPE"
 
       - name: Extract tag name
         id: tag
+        env:
+          NEW_VERSION: ${{ steps.version.outputs.new_version }}
+          PLATFORM: ${{ inputs.platform }}
         run: |
-          NEW_VERSION="${{ steps.version.outputs.new_version }}"
-          PLATFORM="${{ inputs.platform }}"
-
           # Determine tag name based on platform
           if [ "$PLATFORM" == "all" ] || [ -z "$PLATFORM" ]; then
             TAG_NAME="v$NEW_VERSION"
@@ -159,8 +164,9 @@ jobs:
       - name: Generate changelog
         if: ${{ !inputs.nightly }}
         id: changelog
+        env:
+          TAG_NAME: ${{ steps.tag.outputs.tag_name }}
         run: |
-          TAG_NAME="${{ steps.tag.outputs.tag_name }}"
           # Find the previous version tag (excluding the one just created)
           PREV_TAG=$(git tag --sort=-creatordate | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+' | grep -v "${TAG_NAME}" | head -1 || true)
 
@@ -178,14 +184,16 @@ jobs:
 
       - name: Create GitHub Release
         if: ${{ !inputs.nightly }}
+        env:
+          CHANGELOG_B64: ${{ steps.changelog.outputs.changelog_b64 }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PLATFORM: ${{ inputs.platform }}
+          TAG_NAME: ${{ steps.tag.outputs.tag_name }}
+          VERSION: ${{ steps.version.outputs.new_version }}
+          VERSION_TYPE: ${{ steps.version.outputs.version_type }}
         run: |
           # Decode the changelog
-          CHANGELOG=$(echo "${{ steps.changelog.outputs.changelog_b64 }}" | base64 -d)
-
-          PLATFORM="${{ inputs.platform }}"
-          TAG_NAME="${{ steps.tag.outputs.tag_name }}"
-          VERSION="${{ steps.version.outputs.new_version }}"
-          VERSION_TYPE="${{ steps.version.outputs.version_type }}"
+          CHANGELOG=$(echo "$CHANGELOG_B64" | base64 -d)
 
           # Create release using GitHub CLI
           if [ "$PLATFORM" == "all" ]; then
@@ -226,5 +234,3 @@ jobs:
               --draft \
               --prerelease
           fi
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

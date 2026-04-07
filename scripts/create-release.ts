@@ -33,6 +33,8 @@ const REPO_ROOT = join(import.meta.dir, '..')
 /**
  * Execute a shell command and return the output
  */
+// nosemgrep: javascript.lang.security.detect-child-process.detect-child-process
+// Safe: commands are constructed from hardcoded strings and locally-parsed CLI args, not from untrusted input
 const exec = (command: string, silent = false): string => {
   try {
     const result = execSync(command, {
@@ -259,6 +261,23 @@ const updateProjectYml = (version: string, platform: string) => {
 }
 
 /**
+ * Update Android tauri.properties versionName
+ */
+const updateTauriProperties = (version: string) => {
+  const path = join(REPO_ROOT, 'src-tauri/gen/android/app/tauri.properties')
+
+  if (!existsSync(path)) {
+    console.log(`  ⊘ src-tauri/gen/android/app/tauri.properties: not found (skipped)`)
+    return
+  }
+
+  const content = readFileSync(path, 'utf8')
+  const updated = content.replace(/tauri\.android\.versionName=.*/, `tauri.android.versionName=${version}`)
+  writeFileSync(path, updated)
+  console.log(`  ✓ src-tauri/gen/android/app/tauri.properties: ${version}`)
+}
+
+/**
  * Update all version files
  */
 const updateVersionFiles = (version: string, platform: string) => {
@@ -268,6 +287,7 @@ const updateVersionFiles = (version: string, platform: string) => {
   updateCargoLock()
   updateTauriConf(version)
   updateProjectYml(version, platform)
+  updateTauriProperties(version)
 
   if (platform === 'all') {
     console.log('\n  ℹ️  Note: Platform-specific versions handled by respective workflows:')
@@ -323,7 +343,9 @@ const commitAndTag = (version: string, platform: string, shouldPush: boolean) =>
 
   console.log('\n📦 Committing changes...')
 
-  exec('git add package.json src-tauri/Cargo.toml src-tauri/Cargo.lock src-tauri/tauri.conf.json')
+  exec(
+    'git add package.json src-tauri/Cargo.toml src-tauri/Cargo.lock src-tauri/tauri.conf.json src-tauri/gen/android/app/tauri.properties',
+  )
 
   exec(
     `git commit -m "chore: bump version to ${version}${platform === 'all' ? ' for release' : ` for ${platform} release`}"`,
@@ -412,6 +434,7 @@ const main = () => {
     console.log('  - package.json')
     console.log('  - src-tauri/Cargo.toml')
     console.log('  - src-tauri/tauri.conf.json')
+    console.log('  - src-tauri/gen/android/app/tauri.properties (versionName)')
     if (platform === 'ios') {
       console.log('  - src-tauri/gen/apple/project.yml (if exists)')
     }

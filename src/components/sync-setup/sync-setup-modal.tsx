@@ -246,10 +246,6 @@ type FirstDeviceSetupStepProps = {
   error: string | null
 }
 
-// =============================================================================
-// First device setup step — explanation before key generation
-// =============================================================================
-
 const FirstDeviceSetupStep = ({ onContinue, isLoading, error }: FirstDeviceSetupStepProps) => (
   <div className="w-full flex flex-col">
     <div className="text-center space-y-4">

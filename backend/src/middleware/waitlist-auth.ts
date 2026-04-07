@@ -24,7 +24,7 @@ const isPublicPath = (path: string) =>
  */
 export const createWaitlistAuthMiddleware = (settings: Settings, auth: Auth) =>
   new Elysia({ name: 'waitlist-auth' })
-    .onBeforeHandle(async ({ request }) => {
+    .onBeforeHandle(async ({ request, set }) => {
       const url = new URL(request.url)
       const path = url.pathname
 
@@ -36,10 +36,8 @@ export const createWaitlistAuthMiddleware = (settings: Settings, auth: Auth) =>
       // Waitlist enabled - require authentication
       const session = await auth.api.getSession({ headers: request.headers })
       if (!session) {
-        return new Response(JSON.stringify({ error: 'Authentication required' }), {
-          status: 401,
-          headers: { 'Content-Type': 'application/json' },
-        })
+        set.status = 401
+        return { error: 'Authentication required' }
       }
 
       return

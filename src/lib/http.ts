@@ -41,7 +41,9 @@ type HttpClientConfig = {
 }
 
 const appendSearchParams = (url: string, searchParams: RequestOptions['searchParams']): string => {
-  if (!searchParams) return url
+  if (!searchParams) {
+    return url
+  }
 
   let params: URLSearchParams
   if (searchParams instanceof URLSearchParams) {
@@ -49,17 +51,23 @@ const appendSearchParams = (url: string, searchParams: RequestOptions['searchPar
   } else {
     params = new URLSearchParams()
     for (const [key, value] of Object.entries(searchParams)) {
-      if (value !== undefined) params.set(key, String(value))
+      if (value !== undefined) {
+        params.set(key, String(value))
+      }
     }
   }
 
   const qs = params.toString()
-  if (!qs) return url
+  if (!qs) {
+    return url
+  }
   return `${url}${url.includes('?') ? '&' : '?'}${qs}`
 }
 
 const resolveUrl = (url: string, prefixUrl?: string): string => {
-  if (!prefixUrl || url.startsWith('http://') || url.startsWith('https://')) return url
+  if (!prefixUrl || url.startsWith('http://') || url.startsWith('https://')) {
+    return url
+  }
   const base = prefixUrl.endsWith('/') ? prefixUrl : `${prefixUrl}/`
   return `${base}${url}`
 }
@@ -105,11 +113,15 @@ export const createClient = (config: HttpClientConfig = {}): HttpClient => {
 
     const responsePromise = fetchFn(req)
       .then((response) => {
-        if (!response.ok) throw new HttpError(response)
+        if (!response.ok) {
+          throw new HttpError(response)
+        }
         return response
       })
       .finally(() => {
-        if (timeoutId) clearTimeout(timeoutId)
+        if (timeoutId) {
+          clearTimeout(timeoutId)
+        }
       })
 
     return makeResponsePromise(responsePromise)

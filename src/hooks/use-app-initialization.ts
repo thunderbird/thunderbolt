@@ -3,6 +3,7 @@ import { getSettings } from '@/dal'
 import { getAuthToken } from '@/lib/auth-token'
 import { Database, getCurrentDatabase, setDatabase } from '@/db/database'
 import type { AnyDrizzleDatabase } from '@/db/database-interface'
+import { defaultSettingCloudUrl } from '@/defaults/settings'
 import { createHandleError } from '@/lib/error-utils'
 import { createAppDir, resetAppDir } from '@/lib/fs'
 import { createAuthenticatedClient } from '@/lib/http'
@@ -103,16 +104,19 @@ const executeInitializationSteps = async (httpClient?: HttpClient): Promise<Hand
     }
   }
 
-  // Step 5: HTTP client initialization (use provided client or create one)
+  // Step 5: Get cloud url and experimental feature tasks
+  const { cloudUrl, experimentalFeatureTasks } = await getSettings(db, {
+    cloud_url: defaultSettingCloudUrl.value,
+    experimental_feature_tasks: false,
+  })
+
+  // Step 6: HTTP client initialization (use provided client or create one)
   let client: HttpClient
 
   if (httpClient) {
     client = httpClient
   } else {
     try {
-      const { cloudUrl } = await getSettings(db, {
-        cloud_url: 'http://localhost:8000/v1',
-      })
       client = createAuthenticatedClient(cloudUrl, getAuthToken)
     } catch (error) {
       console.error('Failed to initialize HTTP client:', error)
@@ -125,7 +129,7 @@ const executeInitializationSteps = async (httpClient?: HttpClient): Promise<Hand
     }
   }
 
-  // Step 6: Tray initialization (non-critical)
+  // Step 7: Tray initialization (non-critical)
   let tray: { tray: TrayIcon | undefined; window: Window | undefined } = { tray: undefined, window: undefined }
   try {
     tray = await initializeTray()
@@ -135,7 +139,7 @@ const executeInitializationSteps = async (httpClient?: HttpClient): Promise<Hand
     trackError(trayError, { initialization_step: 'tray' })
   }
 
-  // Step 7: PostHog initialization (non-critical)
+  // Step 8: PostHog initialization (non-critical)
   let posthogClient: PostHog | null = null
   try {
     posthogClient = await initializePostHog(client)
@@ -143,15 +147,11 @@ const executeInitializationSteps = async (httpClient?: HttpClient): Promise<Hand
     console.warn('Unexpected error during PostHog initialization:', error)
   }
 
-  // Step 8: Get experimental feature tasks
-  const { experimentalFeatureTasks } = await getSettings(db, {
-    experimental_feature_tasks: false,
-  })
-
   return {
     success: true,
     data: {
       db,
+      cloudUrl,
       experimentalFeatureTasks,
       posthogClient,
       httpClient: client,

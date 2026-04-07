@@ -1,5 +1,4 @@
 import { usePowerSyncCredentialsInvalidListener } from '@/hooks/use-powersync-credentials-invalid-listener'
-import { useSettings } from '@/hooks/use-settings'
 import { isOidcMode } from '@/lib/auth-mode'
 import { clearAuthToken, getAuthToken, setAuthToken } from '@/lib/auth-token'
 import { getPlatform } from '@/lib/platform'
@@ -59,35 +58,27 @@ type AuthProviderProps = {
   children: ReactNode
   /** Override auth client for testing */
   authClient?: AuthClient
+  cloudUrl?: string
 }
 
-export const AuthProvider = ({ children, authClient: overrideClient }: AuthProviderProps) => {
-  // Run the credentials-invalid listener here, before the early return below. When the user
-  // deletes their account elsewhere, PowerSync syncs and wipes local data (including
-  // settings). Then cloudUrl is gone, value becomes null, and we return null so children
-  // (and any hook that lived inside them) never mount. If the listener were only in
-  // AppContent, it would never run and we’d be stuck on a blank screen. By calling it at the
-  // top of AuthProvider, it runs as soon as this provider mounts (we have initData and DB)
-  // and keeps running so that when the device row disappears or is revoked, we trigger a
-  // full reset and reload.
+export const AuthProvider = ({ children, cloudUrl, authClient: overrideClient }: AuthProviderProps) => {
+  // Run the credentials-invalid listener at the top of AuthProvider so it mounts early —
+  // before any children that depend on auth. When the user deletes their account elsewhere
+  // or a device is revoked, this listener triggers a full reset and reload.
   usePowerSyncCredentialsInvalidListener()
-
-  const { cloudUrl } = useSettings({ cloud_url: String })
 
   const value = useMemo(() => {
     if (overrideClient) {
       return { authClient: overrideClient }
     }
 
-    // Don't create auth client until cloudUrl is loaded from settings
-    // This prevents Better Auth from making requests to the fallback localhost URL
-    if (cloudUrl.isLoading || !cloudUrl.value) {
+    if (!cloudUrl) {
       return null
     }
 
-    const client = createAuthClientInstance(cloudUrl.value)
+    const client = createAuthClientInstance(cloudUrl)
     return { authClient: client }
-  }, [cloudUrl.value, cloudUrl.isLoading, overrideClient])
+  }, [cloudUrl, overrideClient])
 
   if (!value) {
     return null

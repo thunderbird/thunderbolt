@@ -215,7 +215,7 @@ export const App = () => {
         <QueryClientProvider client={queryClient}>
           <DatabaseProvider db={initData.db}>
             <HttpClientProvider httpClient={initData.httpClient}>
-              <AuthProvider>
+              <AuthProvider cloudUrl={initData.cloudUrl}>
                 <SignInModalProvider>
                   <PostHogProvider client={initData.posthogClient}>
                     <TrayProvider tray={initData.tray} window={initData.window}>

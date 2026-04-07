@@ -1,10 +1,12 @@
+import type { Auth } from '@/auth/elysia-plugin'
+import { createAuthMacro } from '@/auth/elysia-plugin'
 import { safeErrorHandler } from '@/middleware/error-handling'
 import { Elysia, t } from 'elysia'
 import unitsByCountryData from '../data/localization/units-by-country.json'
 import unitsOptionsData from '../data/localization/units-options.json'
 import { resolveCountryCode } from '../utils/country'
 
-export interface LocationResult {
+export type LocationResult = {
   name: string
   region: string
   country: string
@@ -15,9 +17,10 @@ export interface LocationResult {
 /**
  * Create main API routes
  */
-export const createMainRoutes = (fetchFn: typeof fetch = globalThis.fetch) => {
+export const createMainRoutes = (auth: Auth, fetchFn: typeof fetch = globalThis.fetch) => {
   return new Elysia()
     .onError(safeErrorHandler)
+    .use(createAuthMacro(auth))
     .get('/health', () => ({
       status: 'ok',
     }))
@@ -48,15 +51,20 @@ export const createMainRoutes = (fetchFn: typeof fetch = globalThis.fetch) => {
         return countryData
       },
       {
+        auth: true,
         query: t.Object({
           country: t.String(),
         }),
       },
     )
 
-    .get('/units-options', () => {
-      return unitsOptionsData
-    })
+    .get(
+      '/units-options',
+      () => {
+        return unitsOptionsData
+      },
+      { auth: true },
+    )
 
     .get(
       '/locations',
@@ -117,6 +125,7 @@ export const createMainRoutes = (fetchFn: typeof fetch = globalThis.fetch) => {
         }
       },
       {
+        auth: true,
         query: t.Object({
           query: t.String(),
         }),

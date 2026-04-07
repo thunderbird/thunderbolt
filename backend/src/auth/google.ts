@@ -1,3 +1,5 @@
+import type { Auth } from '@/auth/elysia-plugin'
+import { createAuthMacro } from '@/auth/elysia-plugin'
 import { getSettings } from '@/config/settings'
 import { safeErrorHandler } from '@/middleware/error-handling'
 import { Elysia, t } from 'elysia'
@@ -9,16 +11,21 @@ const GOOGLE_TOKEN_URL = 'https://oauth2.googleapis.com/token'
  * Google OAuth confidential client proxy — keeps the client secret server-side
  * so the Tauri frontend doesn't need to embed it.
  */
-export const createGoogleAuthRoutes = (fetchFn: typeof fetch = globalThis.fetch) => {
+export const createGoogleAuthRoutes = (auth: Auth, fetchFn: typeof fetch = globalThis.fetch) => {
   return new Elysia({ prefix: '/auth/google' })
     .onError(safeErrorHandler)
-    .get('/config', async () => {
-      const settings = getSettings()
+    .use(createAuthMacro(auth))
+    .get(
+      '/config',
+      async () => {
+        const settings = getSettings()
 
-      return {
-        client_id: settings.googleClientId,
-      }
-    })
+        return {
+          client_id: settings.googleClientId,
+        }
+      },
+      { auth: true },
+    )
 
     .post(
       '/exchange',
@@ -84,6 +91,7 @@ export const createGoogleAuthRoutes = (fetchFn: typeof fetch = globalThis.fetch)
         }
       },
       {
+        auth: true,
         body: t.Object({
           code: t.String(),
           code_verifier: t.String(),
@@ -154,6 +162,7 @@ export const createGoogleAuthRoutes = (fetchFn: typeof fetch = globalThis.fetch)
         }
       },
       {
+        auth: true,
         body: t.Object({
           refresh_token: t.String(),
         }),

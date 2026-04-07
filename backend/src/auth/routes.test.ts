@@ -1,6 +1,7 @@
 import * as settingsModule from '@/config/settings'
 import type { ConsoleSpies } from '@/test-utils/console-spies'
 import { setupConsoleSpy } from '@/test-utils/console-spies'
+import { mockAuth } from '@/test-utils/mock-auth'
 import { afterAll, beforeAll, describe, expect, it, mock, spyOn } from 'bun:test'
 import { Elysia } from 'elysia'
 import { createGoogleAuthRoutes } from './google'
@@ -63,8 +64,8 @@ describe('Authentication Routes', () => {
 
     // Inject mock fetch into routes
     app = new Elysia()
-      .use(createGoogleAuthRoutes(mockFetch as unknown as typeof fetch))
-      .use(createMicrosoftAuthRoutes(mockFetch as unknown as typeof fetch))
+      .use(createGoogleAuthRoutes(mockAuth, mockFetch as unknown as typeof fetch))
+      .use(createMicrosoftAuthRoutes(mockAuth, mockFetch as unknown as typeof fetch))
   })
 
   afterAll(async () => {

@@ -1,3 +1,4 @@
+import { mockAuth } from '@/test-utils/mock-auth'
 import type { ConsoleSpies } from '@/test-utils/console-spies'
 import { setupConsoleSpy } from '@/test-utils/console-spies'
 import { afterAll, beforeAll, describe, expect, it, mock } from 'bun:test'
@@ -27,7 +28,7 @@ describe('Main Routes', () => {
 
   beforeAll(() => {
     consoleSpies = setupConsoleSpy()
-    app = createMainRoutes(mockFetch as unknown as typeof fetch)
+    app = createMainRoutes(mockAuth, mockFetch as unknown as typeof fetch)
   })
 
   afterAll(() => {
@@ -75,7 +76,7 @@ describe('Main Routes', () => {
       return Promise.resolve(new Response('{}', { status: 200, headers: { 'Content-Type': 'application/json' } }))
     })
 
-    const testApp = createMainRoutes(mockFetchWithCountry as unknown as typeof fetch)
+    const testApp = createMainRoutes(mockAuth, mockFetchWithCountry as unknown as typeof fetch)
 
     const response = await testApp.handle(new Request('http://localhost/locations?query=Canada'))
     expect(response.status).toBe(200)

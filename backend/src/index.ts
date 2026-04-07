@@ -8,7 +8,6 @@ import { runMigrations } from '@/db/client'
 import { createInferenceRoutes } from '@/inference/routes'
 import { createErrorHandlingMiddleware } from '@/middleware/error-handling'
 import { createHttpLoggingMiddleware } from '@/middleware/http-logging'
-import { createRequireAuthMiddleware } from '@/middleware/require-auth'
 import { createMcpProxyRoutes } from '@/mcp-proxy/routes'
 import { createPostHogRoutes } from '@/posthog/routes'
 import { createProToolsRoutes } from '@/pro/routes'
@@ -76,12 +75,10 @@ export const createApp = async (deps?: AppDeps) => {
       .use(createErrorHandlingMiddleware())
       // Better Auth handler (mounted at /api/auth/*)
       .use(betterAuthPlugin)
-      // Global auth middleware - enforces authentication on all non-public endpoints
-      .use(createRequireAuthMiddleware(auth))
       // Mount route groups
-      .use(createMainRoutes(fetchFn))
-      .use(createGoogleAuthRoutes(fetchFn))
-      .use(createMicrosoftAuthRoutes(fetchFn))
+      .use(createMainRoutes(auth, fetchFn))
+      .use(createGoogleAuthRoutes(auth, fetchFn))
+      .use(createMicrosoftAuthRoutes(auth, fetchFn))
       .use(createProToolsRoutes(auth, fetchFn))
       .use(createInferenceRoutes(auth))
       .use(createPostHogRoutes(fetchFn))

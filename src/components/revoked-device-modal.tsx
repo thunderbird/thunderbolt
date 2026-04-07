@@ -23,13 +23,7 @@ export const RevokedDeviceModal = ({ open }: RevokedDeviceModalProps) => {
 
   const handleConfirm = async () => {
     setIsProcessing(true)
-
-    try {
-      await clearLocalData({ clearDatabase: selectedOption === 'delete' })
-    } catch (error) {
-      console.error('Failed to clear local data:', error)
-    }
-
+    await clearLocalData({ clearDatabase: selectedOption === 'delete' })
     window.location.replace('/')
   }
 

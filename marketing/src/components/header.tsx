@@ -11,7 +11,7 @@ export const Header = ({ action }: HeaderProps) => (
         <img src="/enterprise/thunderbolt-logo.svg" alt="Thunderbolt" className="size-[23px]" />
         <span className="text-xl font-medium leading-7 tracking-[-0.4px] text-[#101828]">Thunderbolt</span>
       </a>
-      {action}
+      {action && <div className="hidden md:block">{action}</div>}
     </div>
   </header>
 )

@@ -284,6 +284,19 @@ const CTASection = () => (
   </section>
 )
 
+/* ─── Mobile Sticky Footer CTA ───────────────────────── */
+
+const MobileFooterCTA = () => (
+  <div className="fixed inset-x-0 bottom-0 z-50 bg-white/20 backdrop-blur-[32px] px-6 py-4 md:hidden">
+    <a
+      href="/contact"
+      className="flex h-[46px] w-full items-center justify-center bg-[#344054] font-mono text-sm font-bold uppercase tracking-wider text-white transition-colors hover:bg-[#344054]/90"
+    >
+      Get Started
+    </a>
+  </div>
+)
+
 /* ─── Page ────────────────────────────────────────────── */
 
 export const EnterprisePage = () => (
@@ -297,6 +310,7 @@ export const EnterprisePage = () => (
       <QuoteSection />
       <CTASection />
     </main>
-    <FooterSection className="relative z-10 bg-[#f9fafb] pb-16" />
+    <FooterSection className="relative z-10 bg-[#f9fafb] pb-24 md:pb-16" />
+    <MobileFooterCTA />
   </div>
 )

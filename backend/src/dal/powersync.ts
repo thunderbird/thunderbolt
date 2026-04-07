@@ -75,11 +75,7 @@ export const applyOperation = async (
   const tableWithUserId = table as AnyPgTable & { userId: typeof table.userId }
 
   switch (op.op) {
-    case 'PUT':
-    case 'PATCH': {
-      if (!op.data || Object.keys(op.data).length === 0) {
-        return true
-      }
+    case 'PUT': {
       const payload = { ...(op.data ?? {}) } as Record<string, unknown>
       delete payload.id
       delete payload.user_id
@@ -104,6 +100,25 @@ export const applyOperation = async (
         await insertQuery.onConflictDoNothing({ target: conflictTarget })
       }
       return true
+    }
+    case 'PATCH': {
+      if (!op.data || Object.keys(op.data).length === 0) {
+        return true
+      }
+      const patchPayload = { ...op.data } as Record<string, unknown>
+      delete patchPayload.id
+      delete patchPayload.user_id
+      for (const col of uploadDenyColumns[tableName] ?? []) delete patchPayload[col]
+      const schemaPatch = toSchemaRecord(patchPayload, validDbNames, dbNameToKey)
+      if (Object.keys(schemaPatch).length === 0) return false
+
+      const patched = await database
+        .update(table)
+        .set(schemaPatch as never)
+        .where(and(eq(pkColumn, op.id), eq(tableWithUserId.userId, userId)))
+        .returning()
+
+      return patched.length > 0
     }
     case 'DELETE': {
       const deleted = await database

@@ -41,7 +41,7 @@ const createMockHttpClient = (apiKey = 'test-key'): KyInstance => {
   const mockFetch = async (): Promise<Response> => {
     return new Response(
       JSON.stringify({
-        posthog_api_key: apiKey,
+        public_posthog_api_key: apiKey,
       }),
       {
         status: 200,

@@ -98,14 +98,16 @@ describe('Require Auth Middleware', () => {
     expect(body).toEqual({ success: true })
   })
 
-  it('should block unauthenticated requests to /v1/posthog endpoints', async () => {
+  it('should always allow /v1/posthog endpoints without auth', async () => {
     const app = new Elysia()
       .use(createRequireAuthMiddleware(mockAuthUnauthenticated))
       .get('/v1/posthog/config', () => ({ key: 'test' }))
 
     const response = await app.handle(new Request('http://localhost/v1/posthog/config'))
 
-    expect(response.status).toBe(401)
+    expect(response.status).toBe(200)
+    const body = await response.json()
+    expect(body).toEqual({ key: 'test' })
   })
 
   it('should block unauthenticated requests to /v1/locations', async () => {

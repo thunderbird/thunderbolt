@@ -57,7 +57,9 @@ export const initPosthog = async (httpClient?: HttpClient): Promise<HandleResult
     })
 
     const client = httpClient ?? ky.create({ prefixUrl: cloudUrl })
-    const { posthog_api_key: apiKey } = await client.get('posthog/config').json<{ posthog_api_key?: string }>()
+    const { public_posthog_api_key: apiKey } = await client
+      .get('posthog/config')
+      .json<{ public_posthog_api_key?: string }>()
 
     if (!apiKey) {
       console.warn('Posthog analytics disabled - no API key provided')

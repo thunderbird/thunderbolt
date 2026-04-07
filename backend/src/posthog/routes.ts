@@ -23,7 +23,7 @@ export const createPostHogRoutes = (fetchFn: typeof fetch = globalThis.fetch) =>
     )
     .get('/config', async () => {
       return {
-        posthog_api_key: settings.posthogApiKey,
+        public_posthog_api_key: settings.posthogApiKey,
       }
     })
     .all(

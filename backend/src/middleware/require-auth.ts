@@ -1,7 +1,7 @@
 import type { Auth } from '@/auth/auth'
 import { Elysia } from 'elysia'
 
-const publicPathPrefixes = ['/v1/health', '/v1/api/auth/', '/v1/waitlist/']
+const publicPathPrefixes = ['/v1/health', '/v1/api/auth/', '/v1/waitlist/', '/v1/posthog/']
 
 const isPublicPath = (path: string) =>
   publicPathPrefixes.some((prefix) => {

@@ -92,13 +92,21 @@ export const createInferenceRoutes = (auth: Auth, rateLimit?: AnyElysia) => {
 
       const stream = createSSEStreamFromCompletion(completion, body.model)
 
-      return new Response(stream, {
-        headers: {
-          'Content-Type': 'text/event-stream',
-          'Cache-Control': 'no-cache',
-          Connection: 'keep-alive',
-        },
-      })
+      // Merge rate-limit headers (set by middleware on ctx.set.headers) into the
+      // streaming Response so clients can read them. Elysia skips ctx.set.headers
+      // when the handler returns a raw Response.
+      const responseHeaders: Record<string, string> = {
+        'Content-Type': 'text/event-stream',
+        'Cache-Control': 'no-cache',
+        Connection: 'keep-alive',
+      }
+      for (const [key, value] of Object.entries(ctx.set.headers)) {
+        if (value != null) {
+          responseHeaders[key] = String(value)
+        }
+      }
+
+      return new Response(stream, { headers: responseHeaders })
     } catch (error) {
       if (error instanceof APIConnectionError) {
         console.error('Failed to connect to inference provider', error.cause)

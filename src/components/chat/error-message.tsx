@@ -1,4 +1,5 @@
 import { maxRetries } from '@/chats/chat-instance'
+import { isRateLimitError } from '@/lib/error-utils'
 import { Loader2 } from 'lucide-react'
 import { memo } from 'react'
 
@@ -8,8 +9,6 @@ type ErrorMessageProps = {
   error?: Error | null
   onRetry?: () => void
 }
-
-const isRateLimitError = (error?: Error | null) => error?.message?.toLowerCase().includes('too many requests')
 
 export const ErrorMessage = memo(({ retryCount, retriesExhausted, error, onRetry }: ErrorMessageProps) => {
   const rateLimited = isRateLimitError(error)

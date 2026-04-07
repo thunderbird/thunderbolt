@@ -1,4 +1,5 @@
 import { aiFetchStreamingResponse } from '@/ai/fetch'
+import { isRateLimitError } from '@/lib/error-utils'
 import { trackEvent } from '@/lib/posthog'
 import type { SaveMessagesFunction, ThunderboltUIMessage } from '@/types'
 import { Chat } from '@ai-sdk/react'
@@ -95,7 +96,7 @@ export const createChatInstance = (
       }
 
       // Don't auto-retry rate limit errors — retrying immediately makes it worse
-      if (lastError?.message?.toLowerCase().includes('too many requests')) {
+      if (isRateLimitError(lastError)) {
         lastError = null
         useChatStore.getState().updateSession(id, { retriesExhausted: true })
         return

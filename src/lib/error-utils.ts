@@ -1,5 +1,8 @@
 import type { HandleError, HandleErrorCode } from '@/types/handle-errors'
 
+/** Check whether an error represents a rate-limit (HTTP 429) response. */
+export const isRateLimitError = (error?: Error | null) => error?.message?.toLowerCase().includes('too many requests')
+
 /**
  * Creates a HandleError with optional stack trace if available
  */

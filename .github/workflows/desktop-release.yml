@@ -43,8 +43,10 @@ jobs:
 
       - name: Set version
         id: set-version
+        env:
+          INPUT_VERSION: ${{ inputs.version }}
         run: |
-          echo "version=v${{ inputs.version }}" >> $GITHUB_OUTPUT
+          echo "version=v$INPUT_VERSION" >> $GITHUB_OUTPUT
 
       - name: Create GitHub Release (Stable)
         if: ${{ !inputs.nightly }}

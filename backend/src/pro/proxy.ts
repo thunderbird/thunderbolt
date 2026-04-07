@@ -1,8 +1,8 @@
 import { getCorsOrigins, getSettings } from '@/config/settings'
 import { safeErrorHandler } from '@/middleware/error-handling'
+import { createSafeFetch, validateSafeUrl } from '@/utils/url-validation'
 import cors from '@elysiajs/cors'
 import { Elysia } from 'elysia'
-import { validateSafeUrl } from './link-preview'
 
 /**
  * General-purpose proxy routes
@@ -10,6 +10,7 @@ import { validateSafeUrl } from './link-preview'
  */
 export const createProxyRoutes = (fetchFn: typeof fetch = globalThis.fetch) => {
   const settings = getSettings()
+  const safeFetchFn = createSafeFetch(fetchFn)
 
   return new Elysia({
     prefix: '/proxy',
@@ -62,7 +63,7 @@ export const createProxyRoutes = (fetchFn: typeof fetch = globalThis.fetch) => {
 
       try {
         // Make the proxied request
-        const response = await fetchFn(targetUrl, {
+        const response = await safeFetchFn(targetUrl, {
           method: 'GET',
           headers: {
             'User-Agent': 'Mozilla/5.0 (compatible; ThunderboltBot/1.0)',

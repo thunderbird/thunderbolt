@@ -1,6 +1,7 @@
 import type { Auth } from '@/auth/elysia-plugin'
 import { deleteUser, revokeDevice } from '@/dal'
 import type { db as DbType } from '@/db/client'
+import { createSessionGuard } from '@/middleware/session-guard'
 import { Elysia } from 'elysia'
 
 /**
@@ -9,22 +10,7 @@ import { Elysia } from 'elysia'
  */
 export const createAccountRoutes = (auth: Auth, database: typeof DbType) => {
   return new Elysia({ prefix: '/account' })
-    .derive(async ({ request, set }) => {
-      const session = await auth.api.getSession({ headers: request.headers })
-
-      if (!session) {
-        set.status = 401
-        return { user: null }
-      }
-
-      return { user: session.user }
-    })
-    .onBeforeHandle(({ user: sessionUser, set }) => {
-      if (!sessionUser) {
-        set.status = 401
-        return { error: 'Unauthorized' }
-      }
-    })
+    .use(createSessionGuard(auth))
     .post('/devices/:id/revoke', async ({ params, set, user: sessionUser }) => {
       const userId = sessionUser!.id
       await revokeDevice(database, params.id, userId)

@@ -48,15 +48,17 @@ jobs:
 
       - name: Determine new version
         id: new_version
+        env:
+          INPUT_VERSION: ${{ inputs.version }}
+          INPUT_VERSION_TYPE: ${{ inputs.version_type }}
+          CURRENT_VERSION: ${{ steps.current_version.outputs.current_version }}
         run: |
-          if [ -n "${{ inputs.version }}" ]; then
+          if [ -n "$INPUT_VERSION" ]; then
             # User specified exact version
-            NEW_VERSION="${{ inputs.version }}"
+            NEW_VERSION="$INPUT_VERSION"
             echo "✨ Using specified version: $NEW_VERSION"
           else
             # Auto-detect from commits
-            CURRENT_VERSION="${{ steps.current_version.outputs.current_version }}"
-            
             # Get commits since last tag
             LAST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "")
             if [ -z "$LAST_TAG" ]; then
@@ -64,9 +66,9 @@ jobs:
             else
               COMMITS=$(git log $LAST_TAG..HEAD --pretty=format:"%s" --reverse)
             fi
-            
+
             # Auto-detect version type if needed
-            if [ "${{ inputs.version_type }}" == "auto" ]; then
+            if [ "$INPUT_VERSION_TYPE" == "auto" ]; then
               if echo "$COMMITS" | grep -qiE "(breaking|!|BREAKING)"; then
                 VERSION_TYPE="major"
                 echo "🔴 Breaking changes detected - major version bump"
@@ -78,12 +80,12 @@ jobs:
                 echo "🟢 Bug fixes and maintenance - patch version bump"
               fi
             else
-              VERSION_TYPE="${{ inputs.version_type }}"
+              VERSION_TYPE="$INPUT_VERSION_TYPE"
             fi
-            
+
             # Calculate new version
             IFS='.' read -r major minor patch <<< "$CURRENT_VERSION"
-            
+
             case "$VERSION_TYPE" in
               "major")
                 NEW_VERSION="$((major + 1)).0.0"
@@ -95,23 +97,23 @@ jobs:
                 NEW_VERSION="$major.$minor.$((patch + 1))"
                 ;;
             esac
-            
+
             echo "📈 Auto-detected version: $NEW_VERSION (type: $VERSION_TYPE)"
           fi
 
           echo "new_version=$NEW_VERSION" >> $GITHUB_OUTPUT
 
       - name: Update version files
+        env:
+          NEW_VERSION: ${{ steps.new_version.outputs.new_version }}
         run: |
-          NEW_VERSION="${{ steps.new_version.outputs.new_version }}"
-
           echo "📝 Updating version files to $NEW_VERSION"
 
           # Update package.json
           node -e "
             const fs = require('fs');
             const pkg = JSON.parse(fs.readFileSync('package.json', 'utf8'));
-            pkg.version = '$NEW_VERSION';
+            pkg.version = process.env.NEW_VERSION;
             fs.writeFileSync('package.json', JSON.stringify(pkg, null, 2) + '\n');
           "
 
@@ -122,7 +124,7 @@ jobs:
           node -e "
             const fs = require('fs');
             const config = JSON.parse(fs.readFileSync('src-tauri/tauri.conf.json', 'utf8'));
-            config.version = '$NEW_VERSION';
+            config.version = process.env.NEW_VERSION;
             fs.writeFileSync('src-tauri/tauri.conf.json', JSON.stringify(config, null, 2) + '\n');
           "
 
@@ -148,8 +150,9 @@ jobs:
           git push origin "$CURRENT_BRANCH"
 
       - name: Create and push tag
+        env:
+          NEW_VERSION: ${{ steps.new_version.outputs.new_version }}
         run: |
-          NEW_VERSION="${{ steps.new_version.outputs.new_version }}"
           TAG_NAME="v$NEW_VERSION"
 
           # Check if tag already exists

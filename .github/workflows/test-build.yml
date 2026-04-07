@@ -45,7 +45,7 @@ jobs:
         run: |
           bun install
 
-          case "${{ inputs.platform }}" in
+          case "$INPUT_PLATFORM" in
             "linux")
               bun tauri build
               ;;
@@ -67,6 +67,7 @@ jobs:
           esac
         shell: bash
         env:
+          INPUT_PLATFORM: ${{ inputs.platform }}
           RUSTFLAGS: ${{ inputs.platform == 'macos-intel' && '-C target-cpu=x86-64' || '' }}
           CARGO_INCREMENTAL: 0
           RUSTC_WRAPPER: ''

@@ -56,15 +56,6 @@ export const createAppDir = async (): Promise<string> => {
 }
 
 /**
- * Resets app data directory in Tauri environment by deleting and recreating
- */
-const resetAppDirTauri = async (): Promise<void> => {
-  const appDataDirPath = await createAppDirTauri()
-  const { remove } = await import('@tauri-apps/plugin-fs')
-  await remove(appDataDirPath, { recursive: true })
-}
-
-/**
  * Resets app data directory in web environment using OPFS
  */
 const resetAppDirOpfs = async (): Promise<void> => {
@@ -104,9 +95,7 @@ export const resetAppDir = async (): Promise<void> => {
     return
   }
 
-  if (databaseType === 'libsql-tauri') {
-    await resetAppDirTauri()
-  } else if (databaseType === 'wa-sqlite' || databaseType === 'powersync') {
+  if (databaseType === 'wa-sqlite' || databaseType === 'powersync') {
     // Both wa-sqlite and PowerSync use OPFS
     await withTimeout(resetAppDirOpfs(), 10_000, 'resetAppDirOpfs')
   } else {

@@ -80,12 +80,15 @@ jobs:
         uses: oven-sh/setup-bun@735343b667d3e6f658f44d0eca948eb6282f2b76 # using commit hash for security reasons
 
       - name: Display version information
+        env:
+          INPUT_NIGHTLY: ${{ inputs.nightly }}
+          INPUT_VERSION: ${{ inputs.version }}
         run: |
-          if [ "${{ inputs.nightly }}" == "true" ]; then
+          if [ "$INPUT_NIGHTLY" == "true" ]; then
             echo "🌙 Nightly build"
           fi
-          if [ -n "${{ inputs.version }}" ]; then
-            echo "🏷️ Using specified version: ${{ inputs.version }}"
+          if [ -n "$INPUT_VERSION" ]; then
+            echo "🏷️ Using specified version: $INPUT_VERSION"
           else
             CURRENT_VERSION=$(node -p "require('./package.json').version")
             echo "📦 Current version: $CURRENT_VERSION"
@@ -99,7 +102,9 @@ jobs:
           version_type: ${{ inputs.version_type }}
 
       - name: Export build version env
-        run: echo "BUILD_VERSION=${{ steps.determine_version.outputs.build_version }}" >> $GITHUB_ENV
+        env:
+          BUILD_VERSION: ${{ steps.determine_version.outputs.build_version }}
+        run: echo "BUILD_VERSION=$BUILD_VERSION" >> $GITHUB_ENV
 
       - name: Calculate versionCode from git history
         id: version_code
@@ -282,12 +287,14 @@ jobs:
       - name: Find AAB file
         id: find_aab
         run: |
-          AAB_PATH=$(find src-tauri/gen/android -name "*.aab" -type f | head -1)
+          AAB_PATH=$(find src-tauri/gen/android/app/build/outputs -name "*.aab" -type f | head -1)
           if [ -f "$AAB_PATH" ]; then
             echo "📱 Found AAB file: $AAB_PATH"
             echo "aab_path=$AAB_PATH" >> $GITHUB_OUTPUT
           else
-            echo "❌ No AAB file found in Android build directory"
+            echo "❌ No AAB file found in Android build outputs directory"
+            echo "Available AAB files:"
+            find src-tauri/gen/android -name "*.aab" -type f
             exit 1
           fi
 

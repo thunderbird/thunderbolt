@@ -3,12 +3,13 @@ import { createBetterAuthPlugin } from '@/auth/elysia-plugin'
 import { createGoogleAuthRoutes } from '@/auth/google'
 import { createMicrosoftAuthRoutes } from '@/auth/microsoft'
 import { createLoggerMiddleware, createStandaloneLogger } from '@/config/logger'
-import { getCorsOriginsList, getSettings } from '@/config/settings'
+import { getCorsOrigins, getCorsOriginsList, getSettings } from '@/config/settings'
 import { runMigrations } from '@/db/client'
 import { createInferenceRoutes } from '@/inference/routes'
 import { createErrorHandlingMiddleware } from '@/middleware/error-handling'
 import { createHttpLoggingMiddleware } from '@/middleware/http-logging'
 import { createWaitlistAuthMiddleware } from '@/middleware/waitlist-auth'
+import { createMcpProxyRoutes } from '@/mcp-proxy/routes'
 import { createPostHogRoutes } from '@/posthog/routes'
 import { createProToolsRoutes } from '@/pro/routes'
 import { createWaitlistRoutes } from '@/waitlist/routes'
@@ -62,7 +63,7 @@ export const createApp = async (deps?: AppDeps) => {
     configuredApp
       .use(
         cors({
-          origin: settings.corsOriginRegex ? new RegExp(settings.corsOriginRegex) : getCorsOriginsList(settings),
+          origin: getCorsOrigins(settings),
           credentials: settings.corsAllowCredentials,
           methods: settings.corsAllowMethods,
           allowedHeaders: settings.corsAllowHeaders,
@@ -80,9 +81,10 @@ export const createApp = async (deps?: AppDeps) => {
       .use(createMainRoutes(fetchFn))
       .use(createGoogleAuthRoutes(fetchFn))
       .use(createMicrosoftAuthRoutes(fetchFn))
-      .use(createProToolsRoutes(fetchFn))
-      .use(createInferenceRoutes())
+      .use(createProToolsRoutes(auth, fetchFn))
+      .use(createInferenceRoutes(auth))
       .use(createPostHogRoutes(fetchFn))
+      .use(createMcpProxyRoutes(auth, fetchFn))
       .use(createWaitlistRoutes({ database, auth, emailService: deps?.waitlistEmailService }))
       .use(createPowerSyncRoutes(auth, settings, database))
       .use(createAccountRoutes(auth, database))

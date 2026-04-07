@@ -192,7 +192,7 @@ export const MCPProvider = ({ children }: { children: ReactNode }) => {
     }
 
     if (enabled) {
-      connectServer({ ...server, enabled })
+      await connectServer({ ...server, enabled })
     } else {
       await disconnectServer(serverId)
       setServers((prev) =>
@@ -205,7 +205,7 @@ export const MCPProvider = ({ children }: { children: ReactNode }) => {
     }
   }, [])
 
-  const reconnectServer = async (serverId: string) => {
+  const reconnectServer = useCallback(async (serverId: string) => {
     const server = serversRef.current.find((s) => s.id === serverId)
     if (!server) {
       return
@@ -213,7 +213,7 @@ export const MCPProvider = ({ children }: { children: ReactNode }) => {
 
     await disconnectServer(serverId)
     await connectServer(server, 0)
-  }
+  }, [])
 
   /**
    * User-initiated OAuth — called from the "Authorize" button on the server card.

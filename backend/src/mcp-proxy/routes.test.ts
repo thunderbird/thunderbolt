@@ -228,7 +228,7 @@ describe('MCP Proxy Routes', () => {
 
   // --- Header Forwarding ---
 
-  it('forwards Authorization and MCP headers, strips host/cookie/proxy headers', async () => {
+  it('remaps X-Mcp-Authorization to Authorization, forwards MCP headers, strips proxy headers', async () => {
     mockFetch.mockImplementation(() => Promise.resolve(createMockResponse('{"ok":true}')))
 
     await app.handle(
@@ -236,7 +236,8 @@ describe('MCP Proxy Routes', () => {
         method: 'POST',
         headers: {
           'x-mcp-target-url': 'https://mcp.example.com',
-          authorization: 'Bearer test-token',
+          'x-mcp-authorization': 'Bearer mcp-server-token',
+          authorization: 'Bearer thunderbolt-session-token',
           'mcp-session-id': 'session-123',
           'content-type': 'application/json',
         },
@@ -251,10 +252,11 @@ describe('MCP Proxy Routes', () => {
         ? Object.fromEntries((callOpts.headers as Headers).entries())
         : callOpts.headers
 
-    expect(hdrs.authorization).toBe('Bearer test-token')
+    // X-Mcp-Authorization is remapped to Authorization for the target MCP server
+    expect(hdrs.authorization).toBe('Bearer mcp-server-token')
     expect(hdrs['mcp-session-id']).toBe('session-123')
-    // host is set by safeFetch for IP pinning (original hostname for TLS SNI)
-    // cookie and x-mcp-target-url are stripped by filterHeaders
+    // Proxy-only headers are stripped before forwarding
+    expect(hdrs['x-mcp-authorization']).toBeUndefined()
     expect(hdrs['cookie']).toBeUndefined()
     expect(hdrs['x-mcp-target-url']).toBeUndefined()
   })

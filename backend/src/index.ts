@@ -8,12 +8,7 @@ import { runMigrations } from '@/db/client'
 import { createInferenceRoutes } from '@/inference/routes'
 import { createErrorHandlingMiddleware } from '@/middleware/error-handling'
 import { createHttpLoggingMiddleware } from '@/middleware/http-logging'
-import {
-  createAuthRateLimit,
-  createInferenceRateLimit,
-  createProRateLimit,
-  createStandardRateLimit,
-} from '@/middleware/rate-limit'
+import { createInferenceRateLimit, createProRateLimit } from '@/middleware/rate-limit'
 import { createWaitlistAuthMiddleware } from '@/middleware/waitlist-auth'
 import { createPostHogRoutes } from '@/posthog/routes'
 import { createProToolsRoutes } from '@/pro/routes'
@@ -65,15 +60,7 @@ export const createApp = async (deps?: AppDeps) => {
   // Create auth plugin with the database instance
   const { plugin: betterAuthPlugin, auth } = createBetterAuthPlugin(database)
 
-  const rateLimitSettings = {
-    enabled: settings.rateLimitEnabled,
-    trustedProxy: settings.trustedProxy,
-  }
-
-  // Auth routes with stricter rate limit (e.g. 10 req / 15 min)
-  const authRoutesWithRateLimit = new Elysia()
-    .use(createAuthRateLimit(database, rateLimitSettings))
-    .use(betterAuthPlugin)
+  const rateLimitSettings = { enabled: settings.rateLimitEnabled }
 
   // Pro tool routes with per-user rate limit
   // Session guard must be at the same level as the rate limiter so `user` is
@@ -103,10 +90,8 @@ export const createApp = async (deps?: AppDeps) => {
       .use(createLoggerMiddleware(settings))
       .use(createHttpLoggingMiddleware(settings.trustedProxy))
       .use(createErrorHandlingMiddleware())
-      // Global rate limit — applies to all routes (health exempt)
-      .use(createStandardRateLimit(database, rateLimitSettings))
-      // Better Auth handler with auth-specific rate limit (mounted at /api/auth/*)
-      .use(authRoutesWithRateLimit)
+      // Better Auth handler (mounted at /api/auth/*)
+      .use(betterAuthPlugin)
       // Waitlist auth middleware - enforces auth on protected routes when WAITLIST_ENABLED=true
       .use(createWaitlistAuthMiddleware(settings, auth))
       // Mount route groups

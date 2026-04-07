@@ -3,7 +3,18 @@ import type { db as DbType } from '@/db/client'
 import { rateLimits } from '@/db/rate-limit-schema'
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'bun:test'
 import { Elysia } from 'elysia'
-import { createStandardRateLimit, type RateLimitSettings } from './rate-limit'
+import { createInferenceRateLimit, type RateLimitSettings } from './rate-limit'
+
+/**
+ * Helper that creates a tiny Elysia app mimicking a session guard +
+ * user-based rate limit.  When `userId` is provided the derive sets
+ * a fake user context, otherwise the user is null (unauthenticated).
+ */
+const createTestApp = (database: typeof DbType, settings: RateLimitSettings, userId?: string) =>
+  new Elysia()
+    .derive(() => ({ user: userId ? { id: userId } : null }))
+    .use(createInferenceRateLimit(database, settings))
+    .get('/v1/test', () => ({ ok: true }))
 
 describe('Rate Limiting', () => {
   let database: typeof DbType
@@ -24,32 +35,21 @@ describe('Rate Limiting', () => {
     await database.delete(rateLimits)
   })
 
-  describe('createStandardRateLimit integration', () => {
-    const rateLimitSettings: RateLimitSettings = {
-      enabled: true,
-      trustedProxy: '',
-    }
+  const enabledSettings: RateLimitSettings = { enabled: true }
 
-    const createTestApp = () =>
-      new Elysia()
-        .use(createStandardRateLimit(database, rateLimitSettings))
-        .get('/v1/test', () => ({ ok: true }))
-        .get('/v1/health', () => ({ status: 'ok' }))
-        .get('/v1/posthog/config', () => ({ config: true }))
-        .get('/v1/api/auth/get-session', () => ({ session: null }))
-
-    it('should allow requests under the limit', async () => {
-      const app = createTestApp()
+  describe('user-based rate limiting', () => {
+    it('should allow requests under the limit for an authenticated user', async () => {
+      const app = createTestApp(database, enabledSettings, 'user-1')
 
       const response = await app.handle(new Request('http://localhost/v1/test'))
 
       expect(response.status).toBe(200)
     })
 
-    it('should return 429 after exceeding the limit', async () => {
-      const app = createTestApp()
+    it('should return 429 after an authenticated user exceeds the limit', async () => {
+      const app = createTestApp(database, enabledSettings, 'user-2')
 
-      for (let i = 0; i < 100; i++) {
+      for (let i = 0; i < 20; i++) {
         await app.handle(new Request('http://localhost/v1/test'))
       }
 
@@ -61,19 +61,19 @@ describe('Rate Limiting', () => {
     })
 
     it('should set RateLimit headers on successful requests', async () => {
-      const app = createTestApp()
+      const app = createTestApp(database, enabledSettings, 'user-3')
 
       const response = await app.handle(new Request('http://localhost/v1/test'))
 
-      expect(response.headers.get('ratelimit-limit')).toBe('100')
-      expect(response.headers.get('ratelimit-remaining')).toBe('99')
+      expect(response.headers.get('ratelimit-limit')).toBe('20')
+      expect(response.headers.get('ratelimit-remaining')).toBe('19')
       expect(response.headers.get('ratelimit-reset')).toBeTruthy()
     })
 
     it('should set Retry-After header on 429 responses', async () => {
-      const app = createTestApp()
+      const app = createTestApp(database, enabledSettings, 'user-4')
 
-      for (let i = 0; i < 100; i++) {
+      for (let i = 0; i < 20; i++) {
         await app.handle(new Request('http://localhost/v1/test'))
       }
 
@@ -83,46 +83,39 @@ describe('Rate Limiting', () => {
       expect(response.headers.get('retry-after')).toBeTruthy()
     })
 
-    it('should exempt health endpoint', async () => {
-      const app = createTestApp()
+    it('should skip rate limiting when no user context is available', async () => {
+      const app = createTestApp(database, enabledSettings)
 
-      for (let i = 0; i < 101; i++) {
-        await app.handle(new Request('http://localhost/v1/test'))
+      for (let i = 0; i < 25; i++) {
+        const response = await app.handle(new Request('http://localhost/v1/test'))
+        expect(response.status).toBe(200)
       }
-
-      const response = await app.handle(new Request('http://localhost/v1/health'))
-      expect(response.status).toBe(200)
     })
 
-    it('should exempt posthog endpoints', async () => {
-      const app = createTestApp()
+    it('should track limits independently per user', async () => {
+      const appA = createTestApp(database, enabledSettings, 'user-5a')
+      const appB = createTestApp(database, enabledSettings, 'user-5b')
 
-      for (let i = 0; i < 101; i++) {
-        await app.handle(new Request('http://localhost/v1/test'))
+      // Exhaust user A's limit
+      for (let i = 0; i < 20; i++) {
+        await appA.handle(new Request('http://localhost/v1/test'))
       }
 
-      const response = await app.handle(new Request('http://localhost/v1/posthog/config'))
-      expect(response.status).toBe(200)
+      const blockedResponse = await appA.handle(new Request('http://localhost/v1/test'))
+      expect(blockedResponse.status).toBe(429)
+
+      // User B should still be allowed
+      const allowedResponse = await appB.handle(new Request('http://localhost/v1/test'))
+      expect(allowedResponse.status).toBe(200)
     })
+  })
 
-    it('should exempt session check endpoint', async () => {
-      const app = createTestApp()
-
-      for (let i = 0; i < 101; i++) {
-        await app.handle(new Request('http://localhost/v1/test'))
-      }
-
-      const response = await app.handle(new Request('http://localhost/v1/api/auth/get-session'))
-      expect(response.status).toBe(200)
-    })
-
+  describe('disabled rate limiting', () => {
     it('should not rate limit when disabled', async () => {
-      const disabledSettings: RateLimitSettings = { enabled: false, trustedProxy: '' }
-      const app = new Elysia()
-        .use(createStandardRateLimit(database, disabledSettings))
-        .get('/v1/test', () => ({ ok: true }))
+      const disabledSettings: RateLimitSettings = { enabled: false }
+      const app = createTestApp(database, disabledSettings, 'user-6')
 
-      for (let i = 0; i < 10; i++) {
+      for (let i = 0; i < 25; i++) {
         const response = await app.handle(new Request('http://localhost/v1/test'))
         expect(response.status).toBe(200)
       }

@@ -68,7 +68,7 @@ export const createEncryptionRoutes = (auth: Auth, database: typeof DbType) =>
       '/devices',
       async ({ body, set, user: sessionUser }) => {
         const userId = sessionUser!.id
-        const { deviceId, publicKey, name } = body
+        const { deviceId, publicKey, mlkemPublicKey, name } = body
 
         // Check if device already exists
         const existingDevice = await getDeviceById(database, deviceId)
@@ -109,6 +109,7 @@ export const createEncryptionRoutes = (auth: Auth, database: typeof DbType) =>
           userId,
           name: deviceName,
           publicKey,
+          mlkemPublicKey,
         })
 
         return { trusted: false as const }
@@ -116,7 +117,8 @@ export const createEncryptionRoutes = (auth: Auth, database: typeof DbType) =>
       {
         body: t.Object({
           deviceId: t.String({ maxLength: 36 }),
-          publicKey: t.String({ maxLength: 500 }),
+          publicKey: t.String({ maxLength: 200 }),
+          mlkemPublicKey: t.String({ maxLength: 1700 }),
           name: t.Optional(t.String({ maxLength: 100 })),
         }),
       },
@@ -227,7 +229,7 @@ export const createEncryptionRoutes = (auth: Auth, database: typeof DbType) =>
       },
       {
         body: t.Object({
-          wrappedCK: t.String({ maxLength: 500 }),
+          wrappedCK: t.String({ maxLength: 2200 }),
           canaryIv: t.Optional(t.String({ maxLength: 500 })),
           canaryCtext: t.Optional(t.String({ maxLength: 500 })),
           canarySecret: t.Optional(t.String({ maxLength: 500 })),

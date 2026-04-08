@@ -13,10 +13,10 @@ export const useApproveDevice = (pendingDevices: Device[]) => {
   return useMutation({
     mutationFn: async (deviceId: string) => {
       const device = pendingDevices.find((d) => d.id === deviceId)
-      if (!device?.publicKey) {
-        throw new Error('Device has no public key')
+      if (!device?.publicKey || !device?.mlkemPublicKey) {
+        throw new Error('Device is missing public key(s)')
       }
-      await approveDevice(httpClient, deviceId, device.publicKey)
+      await approveDevice(httpClient, deviceId, device.publicKey, device.mlkemPublicKey)
     },
   })
 }

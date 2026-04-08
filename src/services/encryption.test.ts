@@ -2,8 +2,10 @@ import { describe, expect, it, beforeEach, afterEach, mock } from 'bun:test'
 import ky from 'ky'
 import {
   generateKeyPair,
+  generateMlKemKeyPair,
   generateCK,
   exportPublicKey,
+  exportMlKemPublicKey,
   wrapCK,
   unwrapCK,
   encrypt,
@@ -12,18 +14,24 @@ import {
   decodeRecoveryKey,
   createCanary,
   verifyCanary,
+  type StoredKeyPair,
 } from '@/crypto'
 
 // ---------------------------------------------------------------------------
 // In-memory key storage (replaces IndexedDB)
 // ---------------------------------------------------------------------------
 
-let storedKeyPair: { privateKey: CryptoKey; publicKey: CryptoKey } | null = null
+let storedKeyPair: StoredKeyPair | null = null
 let storedCK: CryptoKey | null = null
 
 mock.module('@/crypto/key-storage', () => ({
-  storeKeyPair: async (priv: CryptoKey, pub: CryptoKey) => {
-    storedKeyPair = { privateKey: priv, publicKey: pub }
+  storeKeyPair: async (ecdhPriv: CryptoKey, ecdhPub: CryptoKey, mlkemPub: Uint8Array, mlkemSK: Uint8Array) => {
+    storedKeyPair = {
+      ecdhPrivateKey: ecdhPriv,
+      ecdhPublicKey: ecdhPub,
+      mlkemPublicKey: mlkemPub,
+      mlkemSecretKey: mlkemSK,
+    }
   },
   getKeyPair: async () => storedKeyPair,
   storeCK: async (ck: CryptoKey) => {
@@ -133,6 +141,21 @@ const respondToFetchCanary =
   }
 
 // ---------------------------------------------------------------------------
+// Helper: generate a full StoredKeyPair (ECDH + ML-KEM)
+// ---------------------------------------------------------------------------
+
+const generateFullKeyPair = async (): Promise<StoredKeyPair> => {
+  const ecdhKeyPair = await generateKeyPair()
+  const mlkemKeyPair = generateMlKemKeyPair()
+  return {
+    ecdhPrivateKey: ecdhKeyPair.privateKey,
+    ecdhPublicKey: ecdhKeyPair.publicKey,
+    mlkemPublicKey: mlkemKeyPair.publicKey,
+    mlkemSecretKey: mlkemKeyPair.secretKey,
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
 
@@ -159,17 +182,20 @@ describe('encryption service', () => {
       const result = await registerThisDevice(httpClient)
 
       expect(storedKeyPair).not.toBeNull()
-      expect(storedKeyPair!.publicKey.algorithm.name).toBe('ECDH')
+      expect(storedKeyPair!.ecdhPublicKey.algorithm.name).toBe('ECDH')
+      expect(storedKeyPair!.mlkemPublicKey).toBeInstanceOf(Uint8Array)
+      expect(storedKeyPair!.mlkemSecretKey).toBeInstanceOf(Uint8Array)
       expect(requests).toHaveLength(1)
       expect(requests[0].body?.deviceId).toBe('test-device-id')
       expect((requests[0].body?.publicKey as string).length).toBeGreaterThan(0)
+      expect((requests[0].body?.mlkemPublicKey as string).length).toBeGreaterThan(0)
       expect(result).toEqual({ trusted: false })
     })
 
     it('reuses existing key pair', async () => {
-      const existing = await generateKeyPair()
+      const existing = await generateFullKeyPair()
       storedKeyPair = existing
-      const exportedBefore = await exportPublicKey(existing.publicKey)
+      const exportedBefore = await exportPublicKey(existing.ecdhPublicKey)
 
       const { httpClient, requests } = createTestHttpClient(respondToRegister({ trusted: false }))
       await registerThisDevice(httpClient)
@@ -178,7 +204,7 @@ describe('encryption service', () => {
       expect(requests[0].body?.publicKey).toBe(exportedBefore)
     })
 
-    it('passes device ID, public key, and name to API', async () => {
+    it('passes device ID, public key, mlkem public key, and name to API', async () => {
       const { httpClient, requests } = createTestHttpClient(respondToRegister({ trusted: false }))
       await registerThisDevice(httpClient)
 
@@ -186,13 +212,14 @@ describe('encryption service', () => {
       expect(requests[0].method).toBe('POST')
       expect(requests[0].body?.deviceId).toBe('test-device-id')
       expect(typeof requests[0].body?.publicKey).toBe('string')
+      expect(typeof requests[0].body?.mlkemPublicKey).toBe('string')
       expect(typeof requests[0].body?.name).toBe('string')
     })
   })
 
   describe('completeFirstDeviceSetup', () => {
     it('generates CK, canary, envelope, stores keys, returns recovery key', async () => {
-      storedKeyPair = await generateKeyPair()
+      storedKeyPair = await generateFullKeyPair()
 
       const { httpClient: capturingClient, requests } = createTestHttpClient(respondToStoreEnvelope({ trusted: true }))
 
@@ -213,7 +240,7 @@ describe('encryption service', () => {
     })
 
     it('stored CK can decrypt data encrypted during setup', async () => {
-      storedKeyPair = await generateKeyPair()
+      storedKeyPair = await generateFullKeyPair()
 
       const { httpClient: capturingClient, requests } = createTestHttpClient(respondToStoreEnvelope({ trusted: true }))
 
@@ -243,23 +270,24 @@ describe('encryption service', () => {
 
   describe('approveDevice', () => {
     it('fetches own envelope, rewraps CK for pending device, stores envelope', async () => {
-      const thisKeyPair = await generateKeyPair()
+      const thisKeyPair = await generateFullKeyPair()
       storedKeyPair = thisKeyPair
 
       // Create a real CK and wrap it for this device (simulates existing envelope)
       const ck = await generateCK(true)
-      const wrappedForThis = await wrapCK(ck, thisKeyPair.publicKey)
+      const wrappedForThis = await wrapCK(ck, thisKeyPair.ecdhPublicKey, thisKeyPair.mlkemPublicKey)
 
-      // Pending device's key pair
-      const pendingKeyPair = await generateKeyPair()
-      const pendingPubBase64 = await exportPublicKey(pendingKeyPair.publicKey)
+      // Pending device's key pairs
+      const pendingKeyPair = await generateFullKeyPair()
+      const pendingEcdhPubBase64 = await exportPublicKey(pendingKeyPair.ecdhPublicKey)
+      const pendingMlkemPubBase64 = exportMlKemPublicKey(pendingKeyPair.mlkemPublicKey)
 
       const { httpClient, requests } = createTestHttpClient(
         respondToFetchEnvelope({ trusted: true, wrappedCK: wrappedForThis }),
         respondToStoreEnvelope({ trusted: true }),
       )
 
-      await approveDevice(httpClient, 'pending-dev', pendingPubBase64)
+      await approveDevice(httpClient, 'pending-dev', pendingEcdhPubBase64, pendingMlkemPubBase64)
 
       // Envelope was stored for the pending device
       const storeReq = requests.find((r) => r.url.includes('/envelope') && r.method === 'POST')
@@ -267,22 +295,26 @@ describe('encryption service', () => {
       expect(storeReq!.url).toContain('pending-dev')
 
       // The wrapped CK should be unwrappable by the pending device
-      const unwrappedCK = await unwrapCK(storeReq!.body!.wrappedCK as string, pendingKeyPair.privateKey)
+      const unwrappedCK = await unwrapCK(
+        storeReq!.body!.wrappedCK as string,
+        pendingKeyPair.ecdhPrivateKey,
+        pendingKeyPair.mlkemSecretKey,
+      )
       expect(unwrappedCK.algorithm.name).toBe('AES-GCM')
     })
 
     it('throws if key pair is missing', async () => {
       const { httpClient } = createTestHttpClient()
-      await expect(approveDevice(httpClient, 'dev', 'key')).rejects.toThrow('Key pair not found')
+      await expect(approveDevice(httpClient, 'dev', 'key', 'mlkem-key')).rejects.toThrow('Key pair not found')
     })
   })
 
   describe('checkApprovalAndUnwrap', () => {
     it('fetches envelope, unwraps CK, stores it, returns true', async () => {
-      const keyPair = await generateKeyPair()
+      const keyPair = await generateFullKeyPair()
       storedKeyPair = keyPair
       const ck = await generateCK(true)
-      const wrappedCK = await wrapCK(ck, keyPair.publicKey)
+      const wrappedCK = await wrapCK(ck, keyPair.ecdhPublicKey, keyPair.mlkemPublicKey)
 
       const { httpClient } = createTestHttpClient(respondToFetchEnvelope({ trusted: true, wrappedCK }))
 
@@ -294,7 +326,7 @@ describe('encryption service', () => {
     })
 
     it('returns false when envelope fetch returns 404 (not yet approved)', async () => {
-      storedKeyPair = await generateKeyPair()
+      storedKeyPair = await generateFullKeyPair()
 
       const mockFetch = async (): Promise<Response> =>
         new Response('Not found', { status: 404, headers: { 'Content-Type': 'application/json' } })
@@ -310,7 +342,7 @@ describe('encryption service', () => {
     })
 
     it('throws when envelope fetch fails with non-404 error', async () => {
-      storedKeyPair = await generateKeyPair()
+      storedKeyPair = await generateFullKeyPair()
 
       const mockFetch = async (): Promise<Response> =>
         new Response('Server error', { status: 500, headers: { 'Content-Type': 'application/json' } })
@@ -325,9 +357,9 @@ describe('encryption service', () => {
     })
 
     it('throws when key pair is missing', async () => {
+      const tempKeyPair = await generateFullKeyPair()
       const ck = await generateCK(true)
-      const tempKeyPair = await generateKeyPair()
-      const wrappedCK = await wrapCK(ck, tempKeyPair.publicKey)
+      const wrappedCK = await wrapCK(ck, tempKeyPair.ecdhPublicKey, tempKeyPair.mlkemPublicKey)
 
       const { httpClient } = createTestHttpClient(respondToFetchEnvelope({ trusted: true, wrappedCK }))
 
@@ -351,6 +383,7 @@ describe('encryption service', () => {
 
       // Key pair was generated and stored
       expect(storedKeyPair).not.toBeNull()
+      expect(storedKeyPair!.mlkemPublicKey).toBeInstanceOf(Uint8Array)
       // Device was registered
       expect(requests.some((r) => r.url.includes('/devices') && r.method === 'POST')).toBe(true)
       // Envelope was stored
@@ -361,7 +394,7 @@ describe('encryption service', () => {
     })
 
     it('reuses existing key pair during recovery', async () => {
-      const existing = await generateKeyPair()
+      const existing = await generateFullKeyPair()
       storedKeyPair = existing
 
       const originalCK = await generateCK(true)
@@ -393,7 +426,7 @@ describe('encryption service', () => {
 
   describe('handleFullWipe', () => {
     it('clears all keys', async () => {
-      storedKeyPair = await generateKeyPair()
+      storedKeyPair = await generateFullKeyPair()
       storedCK = await generateCK()
 
       await handleFullWipe()

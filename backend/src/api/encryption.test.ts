@@ -62,15 +62,29 @@ describe('Encryption API', () => {
   const insertDevice = async (
     id: string,
     userId: string,
-    options: { trusted?: boolean; publicKey?: string; revokedAt?: Date } = {},
+    options: {
+      trusted?: boolean
+      approvalPending?: boolean
+      publicKey?: string
+      mlkemPublicKey?: string
+      revokedAt?: Date
+    } = {},
   ) => {
-    const { trusted = false, publicKey = 'pk-test', revokedAt } = options
+    const {
+      trusted = false,
+      approvalPending = true,
+      publicKey = 'pk-test',
+      mlkemPublicKey = 'mlkem-pk-test',
+      revokedAt,
+    } = options
     await db.insert(devicesTable).values({
       id,
       userId,
       name: 'Test Device',
       trusted,
+      approvalPending,
       publicKey,
+      mlkemPublicKey,
       lastSeen: now,
       createdAt: now,
       ...(revokedAt ? { revokedAt } : {}),
@@ -131,7 +145,7 @@ describe('Encryption API', () => {
         new Request(`${BASE}/devices`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ deviceId: p('d1'), publicKey: 'pk' }),
+          body: JSON.stringify({ deviceId: p('d1'), publicKey: 'pk', mlkemPublicKey: 'mlkem-pk' }),
         }),
       )
       expect(response.status).toBe(401)
@@ -145,7 +159,7 @@ describe('Encryption API', () => {
             'Content-Type': 'application/json',
             Authorization: 'Bearer invalid-token',
           },
-          body: JSON.stringify({ deviceId: p('d1'), publicKey: 'pk' }),
+          body: JSON.stringify({ deviceId: p('d1'), publicKey: 'pk', mlkemPublicKey: 'mlkem-pk' }),
         }),
       )
       expect(response.status).toBe(401)
@@ -161,7 +175,7 @@ describe('Encryption API', () => {
             'Content-Type': 'application/json',
             Authorization: `Bearer ${p('tok-u1')}`,
           },
-          body: JSON.stringify({ deviceId: p('d1'), publicKey: 'pk1', name: 'My Device' }),
+          body: JSON.stringify({ deviceId: p('d1'), publicKey: 'pk1', mlkemPublicKey: 'mlkem-pk1', name: 'My Device' }),
         }),
       )
 
@@ -191,7 +205,7 @@ describe('Encryption API', () => {
             'Content-Type': 'application/json',
             Authorization: `Bearer ${p('tok-u2')}`,
           },
-          body: JSON.stringify({ deviceId: p('d-new'), publicKey: 'pk2' }),
+          body: JSON.stringify({ deviceId: p('d-new'), publicKey: 'pk2', mlkemPublicKey: 'mlkem-pk2' }),
         }),
       )
 
@@ -212,7 +226,7 @@ describe('Encryption API', () => {
             'Content-Type': 'application/json',
             Authorization: `Bearer ${p('tok-u3')}`,
           },
-          body: JSON.stringify({ deviceId: p('d-trusted'), publicKey: 'pk3' }),
+          body: JSON.stringify({ deviceId: p('d-trusted'), publicKey: 'pk3', mlkemPublicKey: 'mlkem-pk3' }),
         }),
       )
 
@@ -233,7 +247,7 @@ describe('Encryption API', () => {
             'Content-Type': 'application/json',
             Authorization: `Bearer ${p('tok-u4')}`,
           },
-          body: JSON.stringify({ deviceId: p('d-pending'), publicKey: 'pk4' }),
+          body: JSON.stringify({ deviceId: p('d-pending'), publicKey: 'pk4', mlkemPublicKey: 'mlkem-pk4' }),
         }),
       )
 
@@ -254,7 +268,7 @@ describe('Encryption API', () => {
             'Content-Type': 'application/json',
             Authorization: `Bearer ${p('tok-u5b')}`,
           },
-          body: JSON.stringify({ deviceId: p('d-conflict'), publicKey: 'pk5' }),
+          body: JSON.stringify({ deviceId: p('d-conflict'), publicKey: 'pk5', mlkemPublicKey: 'mlkem-pk5' }),
         }),
       )
 
@@ -274,7 +288,7 @@ describe('Encryption API', () => {
             'Content-Type': 'application/json',
             Authorization: `Bearer ${p('tok-u6')}`,
           },
-          body: JSON.stringify({ deviceId: p('d-revoked'), publicKey: 'pk6' }),
+          body: JSON.stringify({ deviceId: p('d-revoked'), publicKey: 'pk6', mlkemPublicKey: 'mlkem-pk6' }),
         }),
       )
 
@@ -294,7 +308,12 @@ describe('Encryption API', () => {
             'Content-Type': 'application/json',
             Authorization: `Bearer ${p('tok-u7')}`,
           },
-          body: JSON.stringify({ deviceId: p('d-empty-name'), publicKey: 'pk7a', name: '' }),
+          body: JSON.stringify({
+            deviceId: p('d-empty-name'),
+            publicKey: 'pk7a',
+            mlkemPublicKey: 'mlkem-pk7a',
+            name: '',
+          }),
         }),
       )
 
@@ -312,7 +331,12 @@ describe('Encryption API', () => {
             'Content-Type': 'application/json',
             Authorization: `Bearer ${p('tok-u7')}`,
           },
-          body: JSON.stringify({ deviceId: p('d-long-name'), publicKey: 'pk7b', name: 'x'.repeat(101) }),
+          body: JSON.stringify({
+            deviceId: p('d-long-name'),
+            publicKey: 'pk7b',
+            mlkemPublicKey: 'mlkem-pk7b',
+            name: 'x'.repeat(101),
+          }),
         }),
       )
       expect(longNameResponse.status).toBe(422)

@@ -1,6 +1,5 @@
 {
   "lockfileVersion": 1,
-  "configVersion": 0,
   "workspaces": {
     "": {
       "name": "thunderbolt",
@@ -16,6 +15,7 @@
         "@hookform/resolvers": "^5.2.1",
         "@journeyapps/wa-sqlite": "^1.5.0",
         "@modelcontextprotocol/sdk": "^1.25.2",
+        "@noble/post-quantum": "^0.6.0",
         "@openrouter/ai-sdk-provider": "^1.1.2",
         "@powersync/drizzle-driver": "^0.7.2",
         "@powersync/react": "^1.9.0",
@@ -407,7 +407,11 @@
 
     "@noble/ciphers": ["@noble/ciphers@2.1.1", "", {}, "sha512-bysYuiVfhxNJuldNXlFEitTVdNnYUc+XNJZd7Qm2a5j1vZHgY+fazadNFWFaMK/2vye0JVlxV3gHmC0WDfAOQw=="],
 
+    "@noble/curves": ["@noble/curves@2.0.1", "", { "dependencies": { "@noble/hashes": "2.0.1" } }, "sha512-vs1Az2OOTBiP4q0pwjW5aF0xp9n4MxVrmkFBxc6EKZc6ddYx5gaZiAsZoq0uRRXWbi3AT/sBqn05eRPtn1JCPw=="],
+
     "@noble/hashes": ["@noble/hashes@2.0.1", "", {}, "sha512-XlOlEbQcE9fmuXxrVTXCTlG2nlRXa9Rj3rr5Ue/+tX+nmkgbX720YHh0VR3hBF9xDvwnb8D2shVGOwNx+ulArw=="],
+
+    "@noble/post-quantum": ["@noble/post-quantum@0.6.0", "", { "dependencies": { "@noble/ciphers": "~2.0.0", "@noble/curves": "~2.0.0", "@noble/hashes": "~2.0.0" } }, "sha512-rv4UfzjtlwrGFBso6IiofY3j4XhLrvjX6Q/w2bVWUoiPvKDIadeW7+xti0c0zND7K+yk62A2XYSLFlQZVHb5Mg=="],
 
     "@nodelib/fs.scandir": ["@nodelib/fs.scandir@2.1.5", "", { "dependencies": { "@nodelib/fs.stat": "2.0.5", "run-parallel": "^1.1.9" } }, "sha512-vq24Bq3ym5HEQm2NKCr3yXDwjc7vTsEThRDnkp2DK9p1uqLR+DHurm/NOTo0KG7HYHU7eppKZj3MyqYuMBf62g=="],
 

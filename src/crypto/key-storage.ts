@@ -6,6 +6,8 @@ const dbVersion = 1
 
 const privateKeyId = 'thunderbolt_private_key'
 const publicKeyId = 'thunderbolt_public_key'
+const mlkemPublicKeyId = 'thunderbolt_mlkem_public_key'
+const mlkemSecretKeyId = 'thunderbolt_mlkem_secret_key'
 const ckId = 'thunderbolt_ck'
 
 // =============================================================================
@@ -25,11 +27,13 @@ const openDB = (): Promise<IDBDatabase> =>
     request.onerror = () => reject(new StorageError('Failed to open IndexedDB', { cause: request.error }))
   })
 
-const putKey = async (id: string, key: CryptoKey): Promise<void> => {
+type StorableValue = CryptoKey | Uint8Array
+
+const putValue = async (id: string, value: StorableValue): Promise<void> => {
   const db = await openDB()
   return new Promise((resolve, reject) => {
     const tx = db.transaction(storeName, 'readwrite')
-    tx.objectStore(storeName).put(key, id)
+    tx.objectStore(storeName).put(value, id)
     tx.oncomplete = () => {
       db.close()
       resolve()
@@ -41,18 +45,35 @@ const putKey = async (id: string, key: CryptoKey): Promise<void> => {
   })
 }
 
-const getKey = async (id: string): Promise<CryptoKey | null> => {
+const getValue = async <T extends StorableValue>(id: string): Promise<T | null> => {
   const db = await openDB()
   return new Promise((resolve, reject) => {
     const tx = db.transaction(storeName, 'readonly')
     const request = tx.objectStore(storeName).get(id)
     request.onsuccess = () => {
       db.close()
-      resolve((request.result as CryptoKey) ?? null)
+      resolve((request.result as T) ?? null)
     }
     request.onerror = () => {
       db.close()
       reject(new StorageError(`Failed to get key: ${id}`, { cause: request.error }))
+    }
+  })
+}
+
+const getEntries = async <T extends StorableValue>(ids: string[]): Promise<Array<T | null>> => {
+  const db = await openDB()
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(storeName, 'readonly')
+    const store = tx.objectStore(storeName)
+    const requests = ids.map((id) => store.get(id))
+    tx.oncomplete = () => {
+      db.close()
+      resolve(requests.map((r) => (r.result as T) ?? null))
+    }
+    tx.onerror = () => {
+      db.close()
+      reject(new StorageError('Failed to get keys', { cause: tx.error }))
     }
   })
 }
@@ -73,13 +94,13 @@ const deleteKey = async (id: string): Promise<void> => {
   })
 }
 
-const putKeys = async (entries: Array<{ id: string; key: CryptoKey }>): Promise<void> => {
+const putEntries = async (entries: Array<{ id: string; value: StorableValue }>): Promise<void> => {
   const db = await openDB()
   return new Promise((resolve, reject) => {
     const tx = db.transaction(storeName, 'readwrite')
     const store = tx.objectStore(storeName)
-    for (const { id, key } of entries) {
-      store.put(key, id)
+    for (const { id, value } of entries) {
+      store.put(value, id)
     }
     tx.oncomplete = () => {
       db.close()
@@ -112,24 +133,47 @@ const deleteKeys = async (ids: string[]): Promise<void> => {
 }
 
 // =============================================================================
-// Key pair (ECDH P-256)
+// Key pair (ECDH P-256 + ML-KEM-768)
 // =============================================================================
 
-/** Store the device key pair in IndexedDB (single atomic transaction). */
-export const storeKeyPair = async (privateKey: CryptoKey, publicKey: CryptoKey): Promise<void> =>
-  putKeys([
-    { id: privateKeyId, key: privateKey },
-    { id: publicKeyId, key: publicKey },
+export type StoredKeyPair = {
+  ecdhPrivateKey: CryptoKey
+  ecdhPublicKey: CryptoKey
+  mlkemPublicKey: Uint8Array
+  mlkemSecretKey: Uint8Array
+}
+
+/** Store both ECDH and ML-KEM key pairs in IndexedDB (single atomic transaction). */
+export const storeKeyPair = async (
+  ecdhPrivateKey: CryptoKey,
+  ecdhPublicKey: CryptoKey,
+  mlkemPublicKey: Uint8Array,
+  mlkemSecretKey: Uint8Array,
+): Promise<void> =>
+  putEntries([
+    { id: privateKeyId, value: ecdhPrivateKey },
+    { id: publicKeyId, value: ecdhPublicKey },
+    { id: mlkemPublicKeyId, value: mlkemPublicKey },
+    { id: mlkemSecretKeyId, value: mlkemSecretKey },
   ])
 
-/** Get the device key pair from IndexedDB. Returns null if either key is missing. */
-export const getKeyPair = async (): Promise<{ privateKey: CryptoKey; publicKey: CryptoKey } | null> => {
-  const privateKey = await getKey(privateKeyId)
-  const publicKey = await getKey(publicKeyId)
-  if (!privateKey || !publicKey) {
+/** Get both key pairs from IndexedDB (single transaction). Returns null if any key is missing. */
+export const getKeyPair = async (): Promise<StoredKeyPair | null> => {
+  const [ecdhPrivateKey, ecdhPublicKey, mlkemPublicKey, mlkemSecretKey] = await getEntries<StorableValue>([
+    privateKeyId,
+    publicKeyId,
+    mlkemPublicKeyId,
+    mlkemSecretKeyId,
+  ])
+  if (!ecdhPrivateKey || !ecdhPublicKey || !mlkemPublicKey || !mlkemSecretKey) {
     return null
   }
-  return { privateKey, publicKey }
+  return {
+    ecdhPrivateKey: ecdhPrivateKey as CryptoKey,
+    ecdhPublicKey: ecdhPublicKey as CryptoKey,
+    mlkemPublicKey: mlkemPublicKey as Uint8Array,
+    mlkemSecretKey: mlkemSecretKey as Uint8Array,
+  }
 }
 
 // =============================================================================
@@ -137,10 +181,10 @@ export const getKeyPair = async (): Promise<{ privateKey: CryptoKey; publicKey: 
 // =============================================================================
 
 /** Store the content key in IndexedDB. */
-export const storeCK = async (ck: CryptoKey): Promise<void> => putKey(ckId, ck)
+export const storeCK = async (ck: CryptoKey): Promise<void> => putValue(ckId, ck)
 
 /** Get the content key from IndexedDB. */
-export const getCK = async (): Promise<CryptoKey | null> => getKey(ckId)
+export const getCK = async (): Promise<CryptoKey | null> => getValue<CryptoKey>(ckId)
 
 /** Clear only the content key (key pair is preserved). */
 export const clearCK = async (): Promise<void> => deleteKey(ckId)
@@ -150,4 +194,5 @@ export const clearCK = async (): Promise<void> => deleteKey(ckId)
 // =============================================================================
 
 /** Clear all keys from IndexedDB (single atomic transaction for full data wipe / revocation). */
-export const clearAllKeys = async (): Promise<void> => deleteKeys([privateKeyId, publicKeyId, ckId])
+export const clearAllKeys = async (): Promise<void> =>
+  deleteKeys([privateKeyId, publicKeyId, mlkemPublicKeyId, mlkemSecretKeyId, ckId])

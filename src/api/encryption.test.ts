@@ -60,13 +60,19 @@ describe('encryption API client', () => {
       const result = await registerDevice(httpClient, {
         deviceId: 'dev-1',
         publicKey: 'pk-base64',
+        mlkemPublicKey: 'mlkem-pk-base64',
         name: 'Test Device',
       })
 
       const req = getLastRequest()
       expect(req.url).toContain('/devices')
       expect(req.method).toBe('POST')
-      expect(req.body).toEqual({ deviceId: 'dev-1', publicKey: 'pk-base64', name: 'Test Device' })
+      expect(req.body).toEqual({
+        deviceId: 'dev-1',
+        publicKey: 'pk-base64',
+        mlkemPublicKey: 'mlkem-pk-base64',
+        name: 'Test Device',
+      })
       expect(req.headers.get('authorization')).toBe('Bearer test-token')
       expect(req.headers.get('x-device-id')).toBe('test-device-id')
       expect(result).toEqual(mockResponse)
@@ -79,6 +85,7 @@ describe('encryption API client', () => {
       const result = await registerDevice(httpClient, {
         deviceId: 'dev-1',
         publicKey: 'pk-base64',
+        mlkemPublicKey: 'mlkem-pk-base64',
       })
 
       expect(result).toEqual(mockResponse)

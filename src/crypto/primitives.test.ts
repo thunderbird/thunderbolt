@@ -1,10 +1,13 @@
 import { describe, expect, it } from 'bun:test'
 import {
   generateKeyPair,
+  generateMlKemKeyPair,
   generateCK,
   reimportAsNonExtractable,
   exportPublicKey,
   importPublicKey,
+  exportMlKemPublicKey,
+  importMlKemPublicKey,
   wrapCK,
   rewrapCK,
   unwrapCK,
@@ -19,6 +22,36 @@ describe('generateKeyPair', () => {
     expect(keyPair.privateKey).toBeDefined()
     expect(keyPair.publicKey.algorithm.name).toBe('ECDH')
     expect(keyPair.privateKey.extractable).toBe(false)
+  })
+})
+
+describe('generateMlKemKeyPair', () => {
+  it('generates an ML-KEM-768 key pair with correct sizes', () => {
+    const keyPair = generateMlKemKeyPair()
+    expect(keyPair.publicKey).toBeInstanceOf(Uint8Array)
+    expect(keyPair.secretKey).toBeInstanceOf(Uint8Array)
+    expect(keyPair.publicKey.length).toBe(1184)
+    expect(keyPair.secretKey.length).toBe(2400)
+  })
+
+  it('generates different key pairs each time', () => {
+    const kp1 = generateMlKemKeyPair()
+    const kp2 = generateMlKemKeyPair()
+    expect(kp1.publicKey).not.toEqual(kp2.publicKey)
+    expect(kp1.secretKey).not.toEqual(kp2.secretKey)
+  })
+})
+
+describe('exportMlKemPublicKey / importMlKemPublicKey', () => {
+  it('round-trips an ML-KEM public key through base64', () => {
+    const keyPair = generateMlKemKeyPair()
+    const exported = exportMlKemPublicKey(keyPair.publicKey)
+    expect(typeof exported).toBe('string')
+    expect(exported.length).toBeGreaterThan(0)
+
+    const imported = importMlKemPublicKey(exported)
+    expect(imported).toBeInstanceOf(Uint8Array)
+    expect(imported).toEqual(keyPair.publicKey)
   })
 })
 
@@ -62,85 +95,108 @@ describe('wrapCK / unwrapCK', () => {
   // The first-device flow always wraps an extractable CK before re-importing.
 
   it('round-trips CK through wrap and unwrap', async () => {
-    const keyPair = await generateKeyPair()
+    const ecdhKeyPair = await generateKeyPair()
+    const mlkemKeyPair = generateMlKemKeyPair()
     const ck = await generateCK(true) // extractable for wrapping
 
-    const wrapped = await wrapCK(ck, keyPair.publicKey)
+    const wrapped = await wrapCK(ck, ecdhKeyPair.publicKey, mlkemKeyPair.publicKey)
     expect(typeof wrapped).toBe('string')
 
-    const unwrapped = await unwrapCK(wrapped, keyPair.privateKey)
+    const unwrapped = await unwrapCK(wrapped, ecdhKeyPair.privateKey, mlkemKeyPair.secretKey)
     expect(unwrapped.algorithm.name).toBe('AES-GCM')
     expect(unwrapped.extractable).toBe(false)
   })
 
   it('unwrapped CK can encrypt/decrypt the same data as original', async () => {
-    const keyPair = await generateKeyPair()
+    const ecdhKeyPair = await generateKeyPair()
+    const mlkemKeyPair = generateMlKemKeyPair()
     const ck = await generateCK(true)
 
     const encrypted = await encrypt('wrap test', ck)
-    const wrapped = await wrapCK(ck, keyPair.publicKey)
-    const unwrapped = await unwrapCK(wrapped, keyPair.privateKey)
+    const wrapped = await wrapCK(ck, ecdhKeyPair.publicKey, mlkemKeyPair.publicKey)
+    const unwrapped = await unwrapCK(wrapped, ecdhKeyPair.privateKey, mlkemKeyPair.secretKey)
 
     const decrypted = await decrypt(encrypted, unwrapped)
     expect(decrypted).toBe('wrap test')
   })
 
   it('produces different wrapped values for different key pairs', async () => {
-    const keyPair1 = await generateKeyPair()
-    const keyPair2 = await generateKeyPair()
+    const ecdhKeyPair1 = await generateKeyPair()
+    const mlkemKeyPair1 = generateMlKemKeyPair()
+    const ecdhKeyPair2 = await generateKeyPair()
+    const mlkemKeyPair2 = generateMlKemKeyPair()
     const ck = await generateCK(true)
 
-    const wrapped1 = await wrapCK(ck, keyPair1.publicKey)
-    const wrapped2 = await wrapCK(ck, keyPair2.publicKey)
+    const wrapped1 = await wrapCK(ck, ecdhKeyPair1.publicKey, mlkemKeyPair1.publicKey)
+    const wrapped2 = await wrapCK(ck, ecdhKeyPair2.publicKey, mlkemKeyPair2.publicKey)
     expect(wrapped1).not.toBe(wrapped2)
   })
 
   it('produces different wrapped values for the same key pair (ephemeral key)', async () => {
-    const keyPair = await generateKeyPair()
+    const ecdhKeyPair = await generateKeyPair()
+    const mlkemKeyPair = generateMlKemKeyPair()
     const ck = await generateCK(true)
 
-    const wrapped1 = await wrapCK(ck, keyPair.publicKey)
-    const wrapped2 = await wrapCK(ck, keyPair.publicKey)
+    const wrapped1 = await wrapCK(ck, ecdhKeyPair.publicKey, mlkemKeyPair.publicKey)
+    const wrapped2 = await wrapCK(ck, ecdhKeyPair.publicKey, mlkemKeyPair.publicKey)
     expect(wrapped1).not.toBe(wrapped2)
   })
 
-  it('produces compact ECIES envelopes', async () => {
-    const keyPair = await generateKeyPair()
+  it('produces hybrid envelopes with version byte', async () => {
+    const ecdhKeyPair = await generateKeyPair()
+    const mlkemKeyPair = generateMlKemKeyPair()
     const ck = await generateCK(true)
-    const wrapped = await wrapCK(ck, keyPair.publicKey)
+    const wrapped = await wrapCK(ck, ecdhKeyPair.publicKey, mlkemKeyPair.publicKey)
 
-    // 105 bytes raw = 140 chars base64
-    expect(wrapped.length).toBe(140)
+    // Hybrid envelope: 1 (version) + 65 (ephPub) + 1088 (mlkemCt) + 40 (wrappedCK) = 1194 bytes
+    // base64 of 1194 bytes = ceil(1194/3)*4 = 1592 chars
+    expect(wrapped.length).toBe(1592)
   })
 })
 
 describe('rewrapCK', () => {
   it('rewraps CK from one key pair to another', async () => {
-    const keyPair1 = await generateKeyPair()
-    const keyPair2 = await generateKeyPair()
+    const ecdhKeyPair1 = await generateKeyPair()
+    const mlkemKeyPair1 = generateMlKemKeyPair()
+    const ecdhKeyPair2 = await generateKeyPair()
+    const mlkemKeyPair2 = generateMlKemKeyPair()
     const ck = await generateCK(true)
 
-    // Wrap CK with keyPair1's public key (simulates the envelope on the server)
-    const wrapped = await wrapCK(ck, keyPair1.publicKey)
+    // Wrap CK with keyPair1's public keys (simulates the envelope on the server)
+    const wrapped = await wrapCK(ck, ecdhKeyPair1.publicKey, mlkemKeyPair1.publicKey)
 
     // Rewrap for keyPair2 (simulates approving a new device)
-    const rewrapped = await rewrapCK(wrapped, keyPair1.privateKey, keyPair2.publicKey)
+    const rewrapped = await rewrapCK(
+      wrapped,
+      ecdhKeyPair1.privateKey,
+      mlkemKeyPair1.secretKey,
+      ecdhKeyPair2.publicKey,
+      mlkemKeyPair2.publicKey,
+    )
     expect(typeof rewrapped).toBe('string')
 
     // keyPair2 should be able to unwrap it
-    const unwrapped = await unwrapCK(rewrapped, keyPair2.privateKey)
+    const unwrapped = await unwrapCK(rewrapped, ecdhKeyPair2.privateKey, mlkemKeyPair2.secretKey)
     expect(unwrapped.algorithm.name).toBe('AES-GCM')
   })
 
   it('rewrapped CK decrypts data encrypted with the original', async () => {
-    const keyPair1 = await generateKeyPair()
-    const keyPair2 = await generateKeyPair()
+    const ecdhKeyPair1 = await generateKeyPair()
+    const mlkemKeyPair1 = generateMlKemKeyPair()
+    const ecdhKeyPair2 = await generateKeyPair()
+    const mlkemKeyPair2 = generateMlKemKeyPair()
     const ck = await generateCK(true)
 
     const encrypted = await encrypt('rewrap test', ck)
-    const wrapped = await wrapCK(ck, keyPair1.publicKey)
-    const rewrapped = await rewrapCK(wrapped, keyPair1.privateKey, keyPair2.publicKey)
-    const unwrapped = await unwrapCK(rewrapped, keyPair2.privateKey)
+    const wrapped = await wrapCK(ck, ecdhKeyPair1.publicKey, mlkemKeyPair1.publicKey)
+    const rewrapped = await rewrapCK(
+      wrapped,
+      ecdhKeyPair1.privateKey,
+      mlkemKeyPair1.secretKey,
+      ecdhKeyPair2.publicKey,
+      mlkemKeyPair2.publicKey,
+    )
+    const unwrapped = await unwrapCK(rewrapped, ecdhKeyPair2.privateKey, mlkemKeyPair2.secretKey)
 
     const decrypted = await decrypt(encrypted, unwrapped)
     expect(decrypted).toBe('rewrap test')

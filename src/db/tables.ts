@@ -227,6 +227,7 @@ export const devicesTable = sqliteTable('devices', {
   trusted: integer('trusted'),
   approvalPending: integer('approval_pending'),
   publicKey: text('public_key'),
+  mlkemPublicKey: text('mlkem_public_key'),
   lastSeen: text('last_seen'),
   createdAt: text('created_at'),
   revokedAt: text('revoked_at'),

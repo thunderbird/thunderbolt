@@ -234,6 +234,7 @@ export const devicesTable = powersyncSchema.table(
     trusted: boolean('trusted').notNull().default(false),
     approvalPending: boolean('approval_pending').notNull().default(false),
     publicKey: text('public_key'),
+    mlkemPublicKey: text('mlkem_public_key'),
     lastSeen: timestamp('last_seen').defaultNow(),
     createdAt: timestamp('created_at').defaultNow(),
     revokedAt: timestamp('revoked_at'),

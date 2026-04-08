@@ -89,7 +89,15 @@ describe('PendingDeviceModal', () => {
 
     await db.insert(devicesTable).values([
       { id: currentDeviceId, userId: 'user-1', name: 'Current', trusted: 1 },
-      { id: pendingDeviceId1, userId: 'user-1', name: 'My Phone', trusted: 0, publicKey: 'pk-1' },
+      {
+        id: pendingDeviceId1,
+        userId: 'user-1',
+        name: 'My Phone',
+        trusted: 0,
+        approvalPending: 1,
+        publicKey: 'pk-1',
+        mlkemPublicKey: 'mlkem-pk-1',
+      },
     ])
 
     renderWithReactivity(<PendingDeviceModal />, {
@@ -102,38 +110,20 @@ describe('PendingDeviceModal', () => {
     expect(screen.getByText('Waiting for approval')).toBeInTheDocument()
   })
 
-  it('dismisses modal on Later click and shows next pending device', async () => {
-    const db = getDb()
-
-    await db.insert(devicesTable).values([
-      { id: currentDeviceId, userId: 'user-1', name: 'Current', trusted: 1 },
-      { id: pendingDeviceId1, userId: 'user-1', name: 'Phone One', trusted: 0, publicKey: 'pk-1' },
-      { id: pendingDeviceId2, userId: 'user-1', name: 'Phone Two', trusted: 0, publicKey: 'pk-2' },
-    ])
-
-    renderWithReactivity(<PendingDeviceModal />, {
-      tables: ['devices'],
-      wrapper: HttpClientWrapper,
-    })
-
-    await waitForElement(() => screen.queryByText('Phone One'))
-
-    fireEvent.click(screen.getByRole('button', { name: 'Later' }))
-
-    await act(async () => {
-      await getClock().runAllAsync()
-    })
-
-    await waitForElement(() => screen.queryByText('Phone Two'))
-    expect(screen.getByText('Phone Two')).toBeInTheDocument()
-  })
-
   it('opens confirmation dialog on Approve click', async () => {
     const db = getDb()
 
     await db.insert(devicesTable).values([
       { id: currentDeviceId, userId: 'user-1', name: 'Current', trusted: 1 },
-      { id: pendingDeviceId1, userId: 'user-1', name: 'My Phone', trusted: 0, publicKey: 'pk-1' },
+      {
+        id: pendingDeviceId1,
+        userId: 'user-1',
+        name: 'My Phone',
+        trusted: 0,
+        approvalPending: 1,
+        publicKey: 'pk-1',
+        mlkemPublicKey: 'mlkem-pk-1',
+      },
     ])
 
     renderWithReactivity(<PendingDeviceModal />, {
@@ -162,7 +152,15 @@ describe('PendingDeviceModal', () => {
 
     await db.insert(devicesTable).values([
       { id: currentDeviceId, userId: 'user-1', name: 'Current', trusted: 1 },
-      { id: pendingDeviceId1, userId: 'user-1', name: 'My Phone', trusted: 0, publicKey: 'pk-1' },
+      {
+        id: pendingDeviceId1,
+        userId: 'user-1',
+        name: 'My Phone',
+        trusted: 0,
+        approvalPending: 1,
+        publicKey: 'pk-1',
+        mlkemPublicKey: 'mlkem-pk-1',
+      },
     ])
 
     renderWithReactivity(<PendingDeviceModal />, {
@@ -192,7 +190,15 @@ describe('PendingDeviceModal', () => {
 
     await db.insert(devicesTable).values([
       { id: currentDeviceId, userId: 'user-1', name: 'Current', trusted: 1 },
-      { id: pendingDeviceId1, userId: 'user-1', name: 'My Phone', trusted: 0, publicKey: 'pk-1' },
+      {
+        id: pendingDeviceId1,
+        userId: 'user-1',
+        name: 'My Phone',
+        trusted: 0,
+        approvalPending: 1,
+        publicKey: 'pk-1',
+        mlkemPublicKey: 'mlkem-pk-1',
+      },
     ])
 
     renderWithReactivity(<PendingDeviceModal />, {

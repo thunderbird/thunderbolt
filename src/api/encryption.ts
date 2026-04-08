@@ -37,7 +37,7 @@ export const authHeaders = (): Record<string, string> => {
 /** Register (or re-identify) this device with the server. */
 export const registerDevice = async (
   httpClient: KyInstance,
-  params: { deviceId: string; publicKey: string; name?: string },
+  params: { deviceId: string; publicKey: string; mlkemPublicKey: string; name?: string },
 ): Promise<RegisterDeviceResponse> =>
   httpClient
     .post('devices', {

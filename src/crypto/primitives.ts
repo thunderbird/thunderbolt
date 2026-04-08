@@ -1,3 +1,4 @@
+import { ml_kem768 } from '@noble/post-quantum/ml-kem.js'
 import { DecryptionError, EncryptionError } from './errors'
 
 const ecdhAlgorithm = 'ECDH'
@@ -7,7 +8,13 @@ const aesAlgorithm = 'AES-GCM'
 const aesKeyLength = 256
 const ivLength = 12
 const hkdfHash = 'SHA-256'
-const hkdfInfo = new TextEncoder().encode('thunderbolt-ck-wrap-v1')
+
+// Hybrid envelope constants
+const envelopeVersion = 0x01
+const mlkemCiphertextLength = 1088
+const aesKwWrappedKeyLength = 40 // AES-KW(256-bit key) = 32 + 8
+const minEnvelopeLength = 1 + ephemeralPubKeyLength + mlkemCiphertextLength + aesKwWrappedKeyLength
+const hybridHkdfInfo = new TextEncoder().encode('thunderbolt-hybrid-ck-wrap-v1')
 
 // =============================================================================
 // ECDH key pair (for wrapping/unwrapping CK via ECIES)
@@ -39,6 +46,24 @@ export const importPublicKey = async (base64: string): Promise<CryptoKey> => {
 }
 
 // =============================================================================
+// ML-KEM-768 key pair (post-quantum, for hybrid wrapping)
+// =============================================================================
+
+export type MlKemKeyPair = { publicKey: Uint8Array; secretKey: Uint8Array }
+
+/** Generate an ML-KEM-768 key pair for hybrid CK wrapping. */
+export const generateMlKemKeyPair = (): MlKemKeyPair => {
+  const { publicKey, secretKey } = ml_kem768.keygen()
+  return { publicKey, secretKey }
+}
+
+/** Export an ML-KEM public key to base64. */
+export const exportMlKemPublicKey = (publicKey: Uint8Array): string => uint8ArrayToBase64(publicKey)
+
+/** Import an ML-KEM public key from base64. */
+export const importMlKemPublicKey = (base64: string): Uint8Array => base64ToUint8Array(base64)
+
+// =============================================================================
 // AES-256-GCM Content Key (CK)
 // =============================================================================
 
@@ -67,23 +92,38 @@ export const reimportAsNonExtractable = async (ck: CryptoKey): Promise<CryptoKey
 }
 
 // =============================================================================
-// ECIES: Wrap / Unwrap CK with ECDH P-256 + HKDF + AES-KW
+// Hybrid ECIES: Wrap / Unwrap CK with ECDH P-256 + ML-KEM-768 + HKDF + AES-KW
+//
+// Combines a classical ECDH shared secret with an ML-KEM-768 shared secret via
+// HKDF, following the combiner pattern from Signal PQXDH and IETF hybrid guidelines.
+// Security holds as long as at least one of the two KEMs is unbroken.
 // =============================================================================
 
 /**
- * Derive an AES-KW wrapping key from an ECDH shared secret via HKDF.
- * Used internally by wrap and unwrap operations.
+ * Derive an AES-KW-256 wrapping key from the hybrid shared secrets via HKDF.
+ * ikm = ss_ecdh || ss_mlkem (64 bytes combined)
+ * salt = ephPubRaw || mlkemCiphertext (binds derivation to both KEM transcripts)
  */
-const deriveWrappingKey = async (
-  privateKey: CryptoKey,
-  publicKey: CryptoKey,
+const deriveHybridWrappingKey = async (
+  ssEcdh: ArrayBuffer,
+  ssMlkem: Uint8Array,
   ephPubRaw: Uint8Array,
+  mlkemCiphertext: Uint8Array,
   usage: 'wrapKey' | 'unwrapKey',
 ): Promise<CryptoKey> => {
-  const sharedBits = await crypto.subtle.deriveBits({ name: ecdhAlgorithm, public: publicKey }, privateKey, 256)
-  const hkdfKey = await crypto.subtle.importKey('raw', sharedBits, 'HKDF', false, ['deriveKey'])
+  // Concatenate both shared secrets as IKM
+  const combinedSS = new Uint8Array(32 + 32)
+  combinedSS.set(new Uint8Array(ssEcdh), 0)
+  combinedSS.set(ssMlkem, 32)
+
+  // Bind to both KEM transcripts via salt
+  const salt = new Uint8Array(ephPubRaw.length + mlkemCiphertext.length)
+  salt.set(ephPubRaw, 0)
+  salt.set(mlkemCiphertext, ephPubRaw.length)
+
+  const hkdfKey = await crypto.subtle.importKey('raw', combinedSS, 'HKDF', false, ['deriveKey'])
   return crypto.subtle.deriveKey(
-    { name: 'HKDF', hash: hkdfHash, salt: ephPubRaw as BufferSource, info: hkdfInfo },
+    { name: 'HKDF', hash: hkdfHash, salt: salt as BufferSource, info: hybridHkdfInfo },
     hkdfKey,
     { name: 'AES-KW', length: 256 },
     false,
@@ -92,21 +132,35 @@ const deriveWrappingKey = async (
 }
 
 /**
- * Wrap CK with a device's public key using ECIES (ephemeral ECDH + HKDF + AES-KW).
- * Returns base64-encoded envelope: ephemeralPubKey (65 bytes) || wrappedCK (40 bytes).
+ * Wrap CK using hybrid ECDH P-256 + ML-KEM-768.
+ * Envelope: [version 1B][ephPubRaw 65B][mlkemCiphertext 1088B][wrappedCK 40B]
  */
-export const wrapCK = async (ck: CryptoKey, publicKey: CryptoKey): Promise<string> => {
+export const wrapCK = async (ck: CryptoKey, ecdhPublicKey: CryptoKey, mlkemPublicKey: Uint8Array): Promise<string> => {
   try {
+    // Ephemeral ECDH P-256
     const ephemeral = await crypto.subtle.generateKey({ name: ecdhAlgorithm, namedCurve: ecdhCurve }, false, [
       'deriveBits',
     ])
     const ephPubRaw = new Uint8Array(await crypto.subtle.exportKey('raw', ephemeral.publicKey))
-    const wrappingKey = await deriveWrappingKey(ephemeral.privateKey, publicKey, ephPubRaw, 'wrapKey')
+    const ssEcdh = await crypto.subtle.deriveBits(
+      { name: ecdhAlgorithm, public: ecdhPublicKey },
+      ephemeral.privateKey,
+      256,
+    )
+
+    // ML-KEM-768 encapsulate
+    const { cipherText: mlkemCiphertext, sharedSecret: ssMlkem } = ml_kem768.encapsulate(mlkemPublicKey)
+
+    // Hybrid HKDF -> AES-KW key
+    const wrappingKey = await deriveHybridWrappingKey(ssEcdh, ssMlkem, ephPubRaw, mlkemCiphertext, 'wrapKey')
     const wrappedCKBytes = new Uint8Array(await crypto.subtle.wrapKey('raw', ck, wrappingKey, 'AES-KW'))
 
-    const envelope = new Uint8Array(ephPubRaw.length + wrappedCKBytes.length)
-    envelope.set(ephPubRaw, 0)
-    envelope.set(wrappedCKBytes, ephPubRaw.length)
+    // Assemble versioned envelope
+    const envelope = new Uint8Array(1 + ephPubRaw.length + mlkemCiphertext.length + wrappedCKBytes.length)
+    envelope[0] = envelopeVersion
+    envelope.set(ephPubRaw, 1)
+    envelope.set(mlkemCiphertext, 1 + ephPubRaw.length)
+    envelope.set(wrappedCKBytes, 1 + ephPubRaw.length + mlkemCiphertext.length)
     return uint8ArrayToBase64(envelope)
   } catch (err) {
     throw new EncryptionError('Failed to wrap content key', { cause: err })
@@ -114,18 +168,19 @@ export const wrapCK = async (ck: CryptoKey, publicKey: CryptoKey): Promise<strin
 }
 
 /**
- * Rewrap a wrapped CK for a different device's public key.
- * Internally unwraps as temporarily extractable (in-memory only, never stored),
- * then wraps with the target public key. Returns base64.
+ * Rewrap a wrapped CK for a different device's public keys.
+ * Unwraps as temporarily extractable (in-memory only), then wraps with target's keys.
  */
 export const rewrapCK = async (
   wrappedCKBase64: string,
-  privateKey: CryptoKey,
-  targetPublicKey: CryptoKey,
+  ecdhPrivateKey: CryptoKey,
+  mlkemSecretKey: Uint8Array,
+  targetEcdhPublicKey: CryptoKey,
+  targetMlkemPublicKey: Uint8Array,
 ): Promise<string> => {
   try {
-    const tempCK = await unwrapCKInternal(wrappedCKBase64, privateKey, true)
-    return wrapCK(tempCK, targetPublicKey)
+    const tempCK = await unwrapCKInternal(wrappedCKBase64, ecdhPrivateKey, mlkemSecretKey, true)
+    return wrapCK(tempCK, targetEcdhPublicKey, targetMlkemPublicKey)
   } catch (err) {
     if (err instanceof EncryptionError) {
       throw err
@@ -134,24 +189,44 @@ export const rewrapCK = async (
   }
 }
 
-/** Unwrap CK from base64 using a device's private key. Returns non-extractable CryptoKey. */
-export const unwrapCK = async (wrappedBase64: string, privateKey: CryptoKey): Promise<CryptoKey> =>
-  unwrapCKInternal(wrappedBase64, privateKey, false)
+/** Unwrap CK using hybrid ECDH + ML-KEM. Returns non-extractable CryptoKey. */
+export const unwrapCK = async (
+  wrappedBase64: string,
+  ecdhPrivateKey: CryptoKey,
+  mlkemSecretKey: Uint8Array,
+): Promise<CryptoKey> => unwrapCKInternal(wrappedBase64, ecdhPrivateKey, mlkemSecretKey, false)
 
 /**
- * Internal unwrap with configurable extractability.
+ * Internal hybrid unwrap with configurable extractability.
  * extractable=true is used only in rewrapCK (temporary, in-memory only).
  */
 const unwrapCKInternal = async (
   wrappedBase64: string,
-  privateKey: CryptoKey,
+  ecdhPrivateKey: CryptoKey,
+  mlkemSecretKey: Uint8Array,
   extractable: boolean,
 ): Promise<CryptoKey> => {
   try {
     const envelope = base64ToUint8Array(wrappedBase64)
-    const ephPubRaw = envelope.slice(0, ephemeralPubKeyLength)
-    const wrappedCKBytes = envelope.slice(ephemeralPubKeyLength)
 
+    // Parse versioned envelope
+    const version = envelope[0]
+    if (version !== envelopeVersion) {
+      throw new DecryptionError(`Unsupported envelope version: ${version}`)
+    }
+
+    if (envelope.length < minEnvelopeLength) {
+      throw new DecryptionError(`Invalid envelope: ${envelope.length} bytes, need >= ${minEnvelopeLength}`)
+    }
+
+    let offset = 1
+    const ephPubRaw = envelope.slice(offset, offset + ephemeralPubKeyLength)
+    offset += ephemeralPubKeyLength
+    const mlkemCiphertext = envelope.slice(offset, offset + mlkemCiphertextLength)
+    offset += mlkemCiphertextLength
+    const wrappedCKBytes = envelope.slice(offset)
+
+    // ECDH P-256 shared secret
     const ephemeralPublicKey = await crypto.subtle.importKey(
       'raw',
       ephPubRaw,
@@ -159,7 +234,17 @@ const unwrapCKInternal = async (
       false,
       [],
     )
-    const unwrappingKey = await deriveWrappingKey(privateKey, ephemeralPublicKey, ephPubRaw, 'unwrapKey')
+    const ssEcdh = await crypto.subtle.deriveBits(
+      { name: ecdhAlgorithm, public: ephemeralPublicKey },
+      ecdhPrivateKey,
+      256,
+    )
+
+    // ML-KEM-768 decapsulate
+    const ssMlkem = ml_kem768.decapsulate(mlkemCiphertext, mlkemSecretKey)
+
+    // Hybrid HKDF -> AES-KW key
+    const unwrappingKey = await deriveHybridWrappingKey(ssEcdh, ssMlkem, ephPubRaw, mlkemCiphertext, 'unwrapKey')
     return await crypto.subtle.unwrapKey(
       'raw',
       wrappedCKBytes,
@@ -170,6 +255,9 @@ const unwrapCKInternal = async (
       extractable ? ['encrypt', 'decrypt'] : ['encrypt', 'decrypt', 'wrapKey', 'unwrapKey'],
     )
   } catch (err) {
+    if (err instanceof DecryptionError) {
+      throw err
+    }
     throw new DecryptionError('Failed to unwrap content key', { cause: err })
   }
 }

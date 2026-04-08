@@ -62,7 +62,7 @@ export const denyDevice = async (database: typeof DbType, deviceId: string, user
  */
 export const registerDevice = async (
   database: typeof DbType,
-  device: { id: string; userId: string; name: string; publicKey: string },
+  device: { id: string; userId: string; name: string; publicKey: string; mlkemPublicKey: string },
 ) =>
   database
     .insert(devicesTable)
@@ -71,17 +71,24 @@ export const registerDevice = async (
       userId: device.userId,
       name: device.name,
       publicKey: device.publicKey,
+      mlkemPublicKey: device.mlkemPublicKey,
       approvalPending: true,
       createdAt: new Date(),
       lastSeen: new Date(),
     })
-    // On conflict: update publicKey, reset trusted to false and mark as pending approval
+    // On conflict: update public keys, reset trusted to false and mark as pending approval
     // (device must go through approval flow again), and update lastSeen. This handles both
     // concurrent re-registration races and pre-encryption devices that were backfilled as
     // trusted without an envelope.
     .onConflictDoUpdate({
       target: devicesTable.id,
-      set: { publicKey: device.publicKey, trusted: false, approvalPending: true, lastSeen: new Date() },
+      set: {
+        publicKey: device.publicKey,
+        mlkemPublicKey: device.mlkemPublicKey,
+        trusted: false,
+        approvalPending: true,
+        lastSeen: new Date(),
+      },
       setWhere: eq(devicesTable.userId, device.userId),
     })
     .returning()

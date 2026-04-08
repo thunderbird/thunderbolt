@@ -1,10 +1,13 @@
 import { HTTPError, type KyInstance } from 'ky'
 import {
   generateKeyPair,
+  generateMlKemKeyPair,
   generateCK,
   reimportAsNonExtractable,
   exportPublicKey,
   importPublicKey,
+  exportMlKemPublicKey,
+  importMlKemPublicKey,
   wrapCK,
   rewrapCK,
   unwrapCK,
@@ -17,6 +20,7 @@ import {
   storeCK,
   clearAllKeys,
   ValidationError,
+  type StoredKeyPair,
 } from '@/crypto'
 import { getDeviceId } from '@/lib/auth-token'
 import { getDeviceDisplayName } from '@/lib/platform'
@@ -33,16 +37,22 @@ import { invalidateCKCache, resetCodecState } from '@/db/encryption'
 // Shared helpers
 // =============================================================================
 
-/** Get existing key pair from IndexedDB or generate and store a new one. */
-const getOrCreateKeyPair = async (): Promise<CryptoKeyPair> => {
+/** Get existing key pairs from IndexedDB or generate and store new ones. */
+const getOrCreateKeyPair = async (): Promise<StoredKeyPair> => {
   const existing = await getKeyPair()
   if (existing) {
     return existing
   }
 
-  const keyPair = await generateKeyPair()
-  await storeKeyPair(keyPair.privateKey, keyPair.publicKey)
-  return keyPair
+  const ecdhKeyPair = await generateKeyPair()
+  const mlkemKeyPair = generateMlKemKeyPair()
+  await storeKeyPair(ecdhKeyPair.privateKey, ecdhKeyPair.publicKey, mlkemKeyPair.publicKey, mlkemKeyPair.secretKey)
+  return {
+    ecdhPrivateKey: ecdhKeyPair.privateKey,
+    ecdhPublicKey: ecdhKeyPair.publicKey,
+    mlkemPublicKey: mlkemKeyPair.publicKey,
+    mlkemSecretKey: mlkemKeyPair.secretKey,
+  }
 }
 
 // =============================================================================
@@ -57,12 +67,14 @@ const getOrCreateKeyPair = async (): Promise<CryptoKeyPair> => {
 export const registerThisDevice = async (httpClient: KyInstance): Promise<RegisterDeviceResponse> => {
   const keyPair = await getOrCreateKeyPair()
 
-  const publicKeyBase64 = await exportPublicKey(keyPair.publicKey)
+  const publicKeyBase64 = await exportPublicKey(keyPair.ecdhPublicKey)
+  const mlkemPublicKeyBase64 = exportMlKemPublicKey(keyPair.mlkemPublicKey)
   const deviceId = getDeviceId()
 
   return registerDevice(httpClient, {
     deviceId,
     publicKey: publicKeyBase64,
+    mlkemPublicKey: mlkemPublicKeyBase64,
     name: getDeviceDisplayName(),
   })
 }
@@ -86,8 +98,8 @@ export const completeFirstDeviceSetup = async (httpClient: KyInstance): Promise<
   const recoveryKey = await encodeRecoveryKey(extractableCK)
   const { canaryIv, canaryCtext, canarySecret } = await createCanary(extractableCK)
 
-  // Wrap CK with own public key and store on server
-  const wrappedCK = await wrapCK(extractableCK, keyPair.publicKey)
+  // Wrap CK with own public keys (hybrid ECDH + ML-KEM)
+  const wrappedCK = await wrapCK(extractableCK, keyPair.ecdhPublicKey, keyPair.mlkemPublicKey)
 
   // Re-import as non-extractable for storage
   const ck = await reimportAsNonExtractable(extractableCK)
@@ -104,6 +116,7 @@ export const completeFirstDeviceSetup = async (httpClient: KyInstance): Promise<
 
   // Store CK locally
   await storeCK(ck)
+  invalidateCKCache()
 
   return recoveryKey
 }
@@ -113,14 +126,15 @@ export const completeFirstDeviceSetup = async (httpClient: KyInstance): Promise<
 // =============================================================================
 
 /**
- * Approve a pending device by rewrapping the CK with its public key and storing the envelope.
+ * Approve a pending device by rewrapping the CK with its public keys and storing the envelope.
  * Fetches this device's own envelope from the server and rewraps — the locally stored
  * non-extractable CK is never touched, preserving its security properties.
  */
 export const approveDevice = async (
   httpClient: KyInstance,
   pendingDeviceId: string,
-  pendingPublicKeyBase64: string,
+  pendingEcdhPublicKeyBase64: string,
+  pendingMlkemPublicKeyBase64: string,
 ): Promise<void> => {
   const keyPair = await getKeyPair()
   if (!keyPair) {
@@ -128,8 +142,15 @@ export const approveDevice = async (
   }
 
   const { wrappedCK: myWrappedCK } = await fetchMyEnvelope(httpClient)
-  const pendingPublicKey = await importPublicKey(pendingPublicKeyBase64)
-  const wrappedCK = await rewrapCK(myWrappedCK, keyPair.privateKey, pendingPublicKey)
+  const pendingEcdhPub = await importPublicKey(pendingEcdhPublicKeyBase64)
+  const pendingMlkemPub = importMlKemPublicKey(pendingMlkemPublicKeyBase64)
+  const wrappedCK = await rewrapCK(
+    myWrappedCK,
+    keyPair.ecdhPrivateKey,
+    keyPair.mlkemSecretKey,
+    pendingEcdhPub,
+    pendingMlkemPub,
+  )
 
   await storeEnvelope(httpClient, {
     deviceId: pendingDeviceId,
@@ -153,8 +174,9 @@ export const checkApprovalAndUnwrap = async (httpClient: KyInstance): Promise<bo
       throw new Error('Key pair not found in IndexedDB')
     }
 
-    const ck = await unwrapCK(wrappedCK, keyPair.privateKey)
+    const ck = await unwrapCK(wrappedCK, keyPair.ecdhPrivateKey, keyPair.mlkemSecretKey)
     await storeCK(ck)
+    invalidateCKCache()
     return true
   } catch (err) {
     // 404 = not yet approved, return false so caller can retry
@@ -186,16 +208,18 @@ export const recoverWithKey = async (httpClient: KyInstance, recoveryPhrase: str
   const keyPair = await getOrCreateKeyPair()
 
   // Register device and store envelope
-  const publicKeyBase64 = await exportPublicKey(keyPair.publicKey)
+  const publicKeyBase64 = await exportPublicKey(keyPair.ecdhPublicKey)
+  const mlkemPublicKeyBase64 = exportMlKemPublicKey(keyPair.mlkemPublicKey)
   const deviceId = getDeviceId()
 
   await registerDevice(httpClient, {
     deviceId,
     publicKey: publicKeyBase64,
+    mlkemPublicKey: mlkemPublicKeyBase64,
     name: getDeviceDisplayName(),
   })
 
-  const wrappedCK = await wrapCK(ck, keyPair.publicKey)
+  const wrappedCK = await wrapCK(ck, keyPair.ecdhPublicKey, keyPair.mlkemPublicKey)
   await storeEnvelope(httpClient, {
     deviceId,
     wrappedCK,

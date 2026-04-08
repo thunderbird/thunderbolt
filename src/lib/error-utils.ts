@@ -7,9 +7,10 @@ export const isRateLimitError = (error?: Error | null): boolean => {
   }
 
   // aiFetchStreamingResponse serializes errors as {"error":"...","status":429}
+  // DefaultChatTransport may use {"error":"...","statusCode":429}
   try {
     const parsed = JSON.parse(error.message)
-    if (parsed.status === 429) {
+    if (parsed.status === 429 || parsed.statusCode === 429) {
       return true
     }
   } catch {

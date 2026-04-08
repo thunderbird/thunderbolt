@@ -655,13 +655,13 @@ export default function PreferencesSettingsPage() {
           {isAuthenticated ? (
             <div className="flex-row flex items-center gap-4 justify-between">
               <div>
-                <label className="text-sm font-medium">Sync Data Between Devices</label>
+                <label className="text-sm font-medium">Sync This Device With Cloud</label>
               </div>
               <Switch checked={syncEnabled} onCheckedChange={handleSyncToggle} disabled={isConnecting} />
             </div>
           ) : (
             <div className="flex flex-col gap-2">
-              <label className="text-sm font-medium">Sync Data Between Devices</label>
+              <label className="text-sm font-medium">Sync This Device With Cloud</label>
               <Button onClick={openSignInModal}>Sign In</Button>
             </div>
           )}

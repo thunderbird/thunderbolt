@@ -256,6 +256,7 @@ export const useMcpServersPageState = () => {
 
     const testTimeoutMs = 15000
     let mcpClient: Awaited<ReturnType<typeof createMCPClient>> | null = null
+    let transport: Awaited<ReturnType<typeof createTestTransport>> | null = null
 
     try {
       const url = new URL(formState.url)
@@ -263,10 +264,10 @@ export const useMcpServersPageState = () => {
         formState.authType === 'bearer' && formState.bearerToken
           ? { requestInit: { headers: { Authorization: `Bearer ${formState.bearerToken}` } } }
           : undefined
-      const transport = await createTestTransport(formState.transportType as 'http' | 'sse', url, opts, cloudUrl)
+      transport = await createTestTransport(formState.transportType as 'http' | 'sse', url, opts, cloudUrl)
 
       const connectWithTimeout = async () => {
-        const client = await createMCPClient({ transport })
+        const client = await createMCPClient({ transport: transport! })
         const tools = await client.tools()
         return { client, tools }
       }
@@ -302,6 +303,7 @@ export const useMcpServersPageState = () => {
         payload: getConnectionErrorMessage(error),
       })
     } finally {
+      await transport?.close()
       if (mcpClient?.close) {
         mcpClient.close()
       }

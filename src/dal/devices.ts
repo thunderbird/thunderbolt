@@ -9,6 +9,7 @@ export type Device = {
   name: string
   trusted: number | null
   publicKey: string | null
+  mlkemPublicKey: string | null
   lastSeen: string | null
   createdAt: string | null
   revokedAt: string | null

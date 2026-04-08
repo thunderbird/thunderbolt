@@ -1,11 +1,14 @@
 import { afterEach, beforeEach, describe, expect, it, mock, spyOn } from 'bun:test'
 import { getClock } from '@/testing-library'
+import { createMockHttpClient } from '@/test-utils/http-client'
 import * as tauriCore from '@tauri-apps/api/core'
 import * as tauriEvent from '@tauri-apps/api/event'
 import * as opener from '@tauri-apps/plugin-opener'
 import * as auth from './auth'
 import * as uuid from 'uuid'
 import { startOAuthFlowLoopback } from './oauth-loopback'
+
+const mockHttpClient = createMockHttpClient()
 
 describe('startOAuthFlowLoopback', () => {
   let unlistenFn: ReturnType<typeof mock>
@@ -45,7 +48,7 @@ describe('startOAuthFlowLoopback', () => {
       return unlistenFn
     })
 
-    const result = await startOAuthFlowLoopback('google')
+    const result = await startOAuthFlowLoopback(mockHttpClient, 'google')
 
     expect(result).not.toBeNull()
     expect(result?.tokens.access_token).toBe('access_token')
@@ -61,7 +64,7 @@ describe('startOAuthFlowLoopback', () => {
       return unlistenFn
     })
 
-    await expect(startOAuthFlowLoopback('google')).rejects.toThrow('User denied access')
+    await expect(startOAuthFlowLoopback(mockHttpClient, 'google')).rejects.toThrow('User denied access')
     expect(unlistenFn).toHaveBeenCalledTimes(1)
   })
 
@@ -71,7 +74,7 @@ describe('startOAuthFlowLoopback', () => {
       return unlistenFn
     })
 
-    await expect(startOAuthFlowLoopback('google')).rejects.toThrow('OAuth state mismatch')
+    await expect(startOAuthFlowLoopback(mockHttpClient, 'google')).rejects.toThrow('OAuth state mismatch')
     expect(unlistenFn).toHaveBeenCalledTimes(1)
   })
 
@@ -81,7 +84,9 @@ describe('startOAuthFlowLoopback', () => {
       return unlistenFn
     })
 
-    await expect(startOAuthFlowLoopback('google')).rejects.toThrow('Missing code or state in OAuth callback')
+    await expect(startOAuthFlowLoopback(mockHttpClient, 'google')).rejects.toThrow(
+      'Missing code or state in OAuth callback',
+    )
     expect(unlistenFn).toHaveBeenCalledTimes(1)
   })
 
@@ -94,7 +99,7 @@ describe('startOAuthFlowLoopback', () => {
       throw new Error('Token exchange failed')
     })
 
-    await expect(startOAuthFlowLoopback('google')).rejects.toThrow('Token exchange failed')
+    await expect(startOAuthFlowLoopback(mockHttpClient, 'google')).rejects.toThrow('Token exchange failed')
     expect(unlistenFn).toHaveBeenCalledTimes(1)
   })
 
@@ -102,7 +107,7 @@ describe('startOAuthFlowLoopback', () => {
     listenSpy.mockImplementation(async () => unlistenFn)
 
     const clock = getClock()
-    const promise = startOAuthFlowLoopback('google', 1)
+    const promise = startOAuthFlowLoopback(mockHttpClient, 'google', 1)
 
     await clock.tickAsync(10)
 
@@ -117,7 +122,7 @@ describe('startOAuthFlowLoopback', () => {
       return unlistenFn
     })
 
-    await startOAuthFlowLoopback('google')
+    await startOAuthFlowLoopback(mockHttpClient, 'google')
 
     expect(unlistenFn).toHaveBeenCalledTimes(1)
   })

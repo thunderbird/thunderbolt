@@ -1,17 +1,16 @@
 import { updateSettings } from '@/dal/settings'
 import { setupTestDatabase, teardownTestDatabase } from '@/dal/test-utils'
 import { getDb } from '@/db/database'
+import { createClient, type HttpClient } from '@/lib/http'
 import type { SourceMetadata } from '@/types/source'
 import type { WeatherForecastData } from '@/widgets/weather-forecast'
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, spyOn } from 'bun:test'
-import ky, { type KyInstance } from 'ky'
 import * as api from './api'
 import type { SearchResultData } from './schemas'
 import type { FetchContentParams, SearchLocationParams, SearchParams, WeatherParams } from './tools'
 import { createConfigs, fetchContent, getCurrentWeather, getWeatherForecast, search, searchLocations } from './tools'
 
-// Test utilities
-const createMockHttpClient = (response: unknown): KyInstance => {
+const createMockHttpClient = (response: unknown): HttpClient => {
   const mockFetch = async (): Promise<Response> => {
     return new Response(JSON.stringify(response), {
       status: 200,
@@ -19,15 +18,15 @@ const createMockHttpClient = (response: unknown): KyInstance => {
     })
   }
 
-  return ky.create({ fetch: mockFetch, prefixUrl: 'http://test-api.local' })
+  return createClient({ fetch: mockFetch, prefixUrl: 'http://test-api.local' })
 }
 
-const createErrorHttpClient = (error: Error): KyInstance => {
+const createErrorHttpClient = (error: Error): HttpClient => {
   const mockFetch = async (): Promise<Response> => {
     throw error
   }
 
-  return ky.create({ fetch: mockFetch, prefixUrl: 'http://test-api.local' })
+  return createClient({ fetch: mockFetch, prefixUrl: 'http://test-api.local' })
 }
 
 beforeAll(async () => {
@@ -328,7 +327,7 @@ describe('Thunderbolt Pro Tools', () => {
 })
 
 describe('createConfigs source collector', () => {
-  const dummyHttpClient = {} as unknown as KyInstance
+  const dummyHttpClient = {} as unknown as HttpClient
   let searchSpy: ReturnType<typeof spyOn>
   let fetchContentSpy: ReturnType<typeof spyOn>
 

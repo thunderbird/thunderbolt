@@ -1,4 +1,4 @@
-import { useDatabase } from '@/contexts'
+import { useDatabase, useHttpClient } from '@/contexts'
 import {
   getAllModes,
   getAvailableModels,
@@ -28,6 +28,7 @@ type UseHydrateChatStoreParams = {
 
 export const useHydrateChatStore = ({ id, isNew }: UseHydrateChatStoreParams) => {
   const db = useDatabase()
+  const httpClient = useHttpClient()
   const navigate = useNavigate()
 
   const [isReady, setIsReady] = useState(false)
@@ -133,6 +134,7 @@ export const useHydrateChatStore = ({ id, isNew }: UseHydrateChatStoreParams) =>
       id,
       initialMessages.map(convertDbChatMessageToUIMessage) as ThunderboltUIMessage[],
       saveMessages,
+      httpClient,
     )
 
     createSession({

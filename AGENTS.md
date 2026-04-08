@@ -28,7 +28,7 @@
 - Use `bun` instead of `npm`
 - Use `bun test` instead of `vitest`
 - Install latest versions: `bun add <package>@latest`
-- Prefer `ky` over `fetch`
+- Use the app's `HttpClient` (`src/lib/http.ts`) instead of bare `fetch` — use `getHttpClient()` for authenticated backend calls, `http` for external APIs
 - Generate Drizzle migrations with `bun db generate` - never manually create SQL files
 - Never manually run `git add`, `git commit`, or `git push` — always use `/thunderpush`
 - Use `resolve-library-id` and `get-library-docs` tools for library documentation (if unavailable, request access)

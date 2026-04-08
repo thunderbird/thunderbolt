@@ -1,7 +1,7 @@
 {
   "name": "thunderbolt",
   "private": true,
-  "version": "0.1.81",
+  "version": "0.1.82",
   "description": "Thunderbolt",
   "type": "module",
   "license": "MPL-2.0",
@@ -98,7 +98,6 @@
     "drizzle-orm": "^0.44.6",
     "framer-motion": "^12.23.12",
     "input-otp": "^1.4.2",
-    "ky": "^1.9.0",
     "lucide-react": "^0.540.0",
     "marked": "^16.4.1",
     "posthog-js": "^1.288.1",

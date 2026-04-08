@@ -18,7 +18,7 @@ import type { SourceMetadata } from '@/types/source'
 import { createAnthropic } from '@ai-sdk/anthropic'
 import { createOpenAI } from '@ai-sdk/openai'
 import { createOpenAICompatible } from '@ai-sdk/openai-compatible'
-import ky, { type KyInstance } from 'ky'
+import type { HttpClient } from '@/lib/http'
 import { v7 as uuidv7 } from 'uuid'
 
 // Currently @openrouter/ai-sdk-provider is NOT compatible with Vercel AI SDK v5. If you enable this, you will get the following error:
@@ -56,7 +56,7 @@ type AiFetchStreamingResponseOptions = {
   modeSystemPrompt?: string
   modeName?: string
   mcpClients?: MCPClient[]
-  httpClient?: KyInstance
+  httpClient: HttpClient
 }
 
 export const createModel = async (modelConfig: Model) => {
@@ -179,9 +179,7 @@ export const aiFetchStreamingResponse = async ({
 
   let toolset: Record<string, Tool> = {}
   if (supportsTools) {
-    // Use provided httpClient for tests, otherwise use plain ky for external APIs
-    const toolsHttpClient = httpClient || ky
-    const availableTools = await getAvailableTools(toolsHttpClient, sourceCollector)
+    const availableTools = await getAvailableTools(httpClient, sourceCollector)
     toolset = { ...createToolset(availableTools) }
 
     for (const mcpClient of mcpClients || []) {

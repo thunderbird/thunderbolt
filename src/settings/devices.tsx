@@ -1,7 +1,6 @@
-import { useDatabase } from '@/contexts'
+import { useDatabase, useHttpClient } from '@/contexts'
 import { getAllDevices } from '@/dal'
-import { getDeviceId, getAuthToken } from '@/lib/auth-token'
-import { useSettings } from '@/hooks/use-settings'
+import { getDeviceId } from '@/lib/auth-token'
 import { PageHeader } from '@/components/ui/page-header'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
@@ -17,7 +16,6 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
 import dayjs from 'dayjs'
-import ky from 'ky'
 import { Smartphone, Trash2 } from 'lucide-react'
 import { useState } from 'react'
 import { useQuery } from '@powersync/tanstack-react-query'
@@ -33,34 +31,20 @@ const formatLastSeen = (ts: string | null): string => {
   return dayjs.duration(diffMs, 'millisecond').humanize(true)
 }
 
-const revokeDevice = async (deviceId: string, baseUrl: string, token: string): Promise<void> => {
-  await ky.post(`account/devices/${encodeURIComponent(deviceId)}/revoke`, {
-    prefixUrl: baseUrl,
-    headers: { Authorization: `Bearer ${token}` },
-    credentials: 'omit',
-  })
-}
-
 export default function DevicesSettingsPage() {
   const db = useDatabase()
+  const httpClient = useHttpClient()
   const currentDeviceId = getDeviceId()
   const { data: devices = [], isLoading } = useQuery({
     queryKey: ['devices'],
     query: toCompilableQuery(getAllDevices(db)),
   })
-  const { cloudUrl } = useSettings({ cloud_url: 'http://localhost:8000/v1' })
   const [revokeTarget, setRevokeTarget] = useState<string | null>(null)
 
   const visibleDevices = devices.filter((d) => d.revokedAt == null || dayjs().diff(dayjs(d.revokedAt), 'hour') < 24)
 
   const revokeMutation = useMutation({
-    mutationFn: (deviceId: string) => {
-      const token = getAuthToken()
-      if (!token) {
-        throw new Error('Not signed in')
-      }
-      return revokeDevice(deviceId, cloudUrl.value, token)
-    },
+    mutationFn: (deviceId: string) => httpClient.post(`account/devices/${encodeURIComponent(deviceId)}/revoke`),
     onSuccess: () => {
       setRevokeTarget(null)
     },

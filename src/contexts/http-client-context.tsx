@@ -1,7 +1,7 @@
-import { type KyInstance } from 'ky'
+import type { HttpClient } from '@/lib/http'
 import { createContext, useContext, type ReactNode } from 'react'
 
-export type HttpClient = KyInstance
+export type { HttpClient }
 
 type HttpClientContextType = {
   httpClient: HttpClient

@@ -11,9 +11,6 @@ const BASE_CONFIDENCE = 70
 type Signal = { delta: number; reason: string }
 
 /** Match a keyword as a whole word to avoid false positives (e.g. "add" matching "padding") */
-// nosemgrep: javascript.lang.security.audit.detect-non-literal-regexp.detect-non-literal-regexp
-// Safe: `word` comes from hardcoded keyword lists (AUTOMATABLE_KEYWORDS, NON_AUTOMATABLE_KEYWORDS), not user input.
-// The input is also escaped with replace() before being passed to RegExp.
 const containsWord = (text: string, word: string): boolean =>
   new RegExp(`\\b${word.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`).test(text)
 

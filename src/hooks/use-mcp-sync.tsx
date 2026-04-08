@@ -1,8 +1,9 @@
 import { useDatabase } from '@/contexts'
 import { getAllMcpServers } from '@/dal'
+import type { McpServer } from '@/types'
 import { useMCP } from '@/lib/mcp-provider'
 import { isSupportedTransport } from '@/lib/mcp-utils'
-import type { McpAuthType, McpTransportType } from '@/types/mcp'
+import type { McpAuthType, McpServerConfig, McpTransportType } from '@/types/mcp'
 import { toCompilableQuery } from '@powersync/drizzle-driver'
 import { useQuery } from '@powersync/tanstack-react-query'
 import { useEffect, useRef } from 'react'
@@ -16,6 +17,24 @@ const parseJsonArray = (value: string): string[] => {
     return []
   }
 }
+
+const buildServerConfig = (dbServer: McpServer): McpServerConfig => ({
+  id: dbServer.id,
+  name: dbServer.name ?? 'Unnamed Server',
+  enabled: dbServer.enabled === 1,
+  transport:
+    dbServer.type === 'stdio'
+      ? {
+          type: 'stdio' as const,
+          command: dbServer.command ?? '',
+          args: dbServer.args ? parseJsonArray(dbServer.args) : undefined,
+        }
+      : { type: (dbServer.type as 'http' | 'sse') ?? 'http', url: dbServer.url ?? '' },
+  auth: {
+    authType: (dbServer.authType as McpAuthType) ?? 'none',
+    credentialKey: dbServer.authType && dbServer.authType !== 'none' ? dbServer.id : undefined,
+  },
+})
 
 export const useMcpSync = () => {
   const db = useDatabase()
@@ -38,23 +57,7 @@ export const useMcpSync = () => {
       for (const dbServer of dbServers) {
         const transportType = (dbServer.type as McpTransportType) ?? 'http'
         if (!providerServerIds.has(dbServer.id) && isSupportedTransport(transportType)) {
-          await addServer({
-            id: dbServer.id,
-            name: dbServer.name ?? 'Unnamed Server',
-            enabled: dbServer.enabled === 1,
-            transport:
-              dbServer.type === 'stdio'
-                ? {
-                    type: 'stdio' as const,
-                    command: dbServer.command ?? '',
-                    args: dbServer.args ? parseJsonArray(dbServer.args) : undefined,
-                  }
-                : { type: (dbServer.type as 'http' | 'sse') ?? 'http', url: dbServer.url ?? '' },
-            auth: {
-              authType: (dbServer.authType as McpAuthType) ?? 'none',
-              credentialKey: dbServer.authType && dbServer.authType !== 'none' ? dbServer.id : undefined,
-            },
-          })
+          await addServer(buildServerConfig(dbServer))
         }
       }
 
@@ -66,11 +69,23 @@ export const useMcpSync = () => {
         }
       }
 
-      // Update server status for existing servers
+      // Update existing servers — re-add if config changed, otherwise sync enabled status
       for (const dbServer of dbServers) {
         const providerServer = currentServers.find((s) => s.id === dbServer.id)
-        if (providerServer && providerServer.enabled !== (dbServer.enabled === 1)) {
-          updateServerStatus(dbServer.id, dbServer.enabled === 1)
+        if (!providerServer) {
+          continue
+        }
+
+        const newConfig = buildServerConfig(dbServer)
+        const configChanged =
+          JSON.stringify(providerServer.transport) !== JSON.stringify(newConfig.transport) ||
+          providerServer.auth.authType !== newConfig.auth.authType
+
+        if (configChanged) {
+          await removeServer(dbServer.id)
+          await addServer(newConfig)
+        } else if (providerServer.enabled !== newConfig.enabled) {
+          await updateServerStatus(dbServer.id, newConfig.enabled)
         }
       }
     }

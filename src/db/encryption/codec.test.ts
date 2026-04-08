@@ -12,16 +12,16 @@ mock.module('@/crypto/key-storage', () => ({
   clearAllKeys: async () => {},
 }))
 
-const { codec, invalidateCKCache } = await import('./codec')
+const { codec, invalidateCKCache, resetCodecState } = await import('./codec')
 
 describe('AES-GCM codec', () => {
   beforeEach(async () => {
-    invalidateCKCache()
+    resetCodecState()
     mockGetCKReturn = await generateCK()
   })
 
   afterEach(() => {
-    invalidateCKCache()
+    resetCodecState()
   })
 
   describe('encode', () => {
@@ -108,8 +108,34 @@ describe('AES-GCM codec', () => {
 
       invalidateCKCache()
       mockGetCKReturn = null
-      const result = await codec.encode('b')
-      expect(result).toBe('b')
+      // After invalidation in recovery flow (CK re-stored), getCK returns null
+      // but e2eeSetupComplete is still true — this simulates the gap
+      expect(codec.encode('b')).rejects.toThrow('Content key unavailable after E2EE setup')
+    })
+
+    it('throws when CK disappears after E2EE setup', async () => {
+      // First encode loads CK and sets e2eeSetupComplete = true
+      const encoded = await codec.encode('secret')
+      expect(encoded.startsWith('__enc:')).toBe(true)
+
+      // Simulate CK becoming unavailable (e.g. IndexedDB cleared mid-session)
+      invalidateCKCache()
+      mockGetCKReturn = null
+
+      expect(codec.encode('should-not-be-plaintext')).rejects.toThrow('Content key unavailable after E2EE setup')
+    })
+
+    it('resetCodecState clears setup flag so encode passes through', async () => {
+      // Load CK (sets e2eeSetupComplete = true)
+      await codec.encode('setup')
+
+      // Full reset (sign-out) clears both cache and setup flag
+      resetCodecState()
+      mockGetCKReturn = null
+
+      // Now encode should pass through (pre-setup behavior)
+      const result = await codec.encode('hello')
+      expect(result).toBe('hello')
     })
   })
 })

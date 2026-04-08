@@ -241,6 +241,6 @@ If you need a non-encryption transformation (e.g. data normalization, decompress
 
 The SharedWorker has direct `indexedDB` access, so the codec loads the content key (CK) lazily from IndexedDB without needing `postMessage`. The CK is cached in a module-scoped variable inside the worker for the process lifetime.
 
-**Known limitation:** `invalidateCKCache()` called on the main thread (during sign-out/wipe) does not reach the worker's cache. The worker will reload from IndexedDB (which is cleared) on the next `getCK()` call, but there is a brief window where a stale CK could be used.
+`invalidateCKCache()` uses a `BroadcastChannel` to propagate cache invalidation across all contexts (main thread, SharedWorker, other tabs), so the worker clears its stale CK immediately on sign-out.
 
 See [e2e-encryption.md](e2e-encryption.md) for the full encryption architecture.

@@ -465,9 +465,11 @@ Encryption is config-driven. A single source of truth in [src/db/encryption/conf
 
 ## CK Cache
 
-The codec (`src/db/encryption/codec.ts`) lazy-loads CK from IndexedDB on first access and caches it in a module-scoped variable for the process lifetime. Call `invalidateCKCache()` on sign-out or full wipe so the codec reloads.
+The codec (`src/db/encryption/codec.ts`) lazy-loads CK from IndexedDB on first access and caches it in a module-scoped variable for the process lifetime. Call `invalidateCKCache()` to force a cache refresh (e.g. after recovery/re-key), or `resetCodecState()` for a full wipe (sign-out) which also clears the E2EE setup flag.
 
-**SharedWorker consideration:** In Chrome/Edge/Firefox, the SharedWorker has its own module instance with its own `cachedCK`. `invalidateCKCache()` on the main thread does not reach the worker. The worker reloads from IndexedDB (which is cleared) on the next `getCK()` call, but there is a brief window where a stale CK could be used.
+**Cross-context invalidation:** `invalidateCKCache()` uses a `BroadcastChannel` to propagate cache invalidation across execution contexts (main thread, SharedWorker, other tabs). This ensures the SharedWorker's separate module instance clears its stale CK immediately.
+
+**Plaintext safety:** Once a CK has been successfully loaded (E2EE setup complete), the codec refuses to encode plaintext if the CK becomes unavailable — it throws instead of silently falling back. This prevents accidental unencrypted uploads.
 
 ---
 

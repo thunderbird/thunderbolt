@@ -26,7 +26,7 @@ import {
   fetchCanary,
   type RegisterDeviceResponse,
 } from '@/api/encryption'
-import { invalidateCKCache } from '@/db/encryption'
+import { invalidateCKCache, resetCodecState } from '@/db/encryption'
 
 // =============================================================================
 // Shared helpers
@@ -216,5 +216,5 @@ export const recoverWithKey = async (httpClient: KyInstance, recoveryPhrase: str
 
 export const handleFullWipe = async (): Promise<void> => {
   await clearAllKeys()
-  invalidateCKCache()
+  resetCodecState()
 }

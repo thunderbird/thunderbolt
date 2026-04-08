@@ -15,6 +15,7 @@ export type EncryptionCodec = {
 // =============================================================================
 
 let cachedCK: CryptoKey | null = null
+let e2eeSetupComplete = false
 
 const ckChannel = typeof BroadcastChannel !== 'undefined' ? new BroadcastChannel('thunderbolt-ck-invalidation') : null
 
@@ -27,12 +28,22 @@ const getCachedCK = async (): Promise<CryptoKey | null> => {
     return cachedCK
   }
   cachedCK = await getCK()
+  if (cachedCK) {
+    e2eeSetupComplete = true
+  }
   return cachedCK
 }
 
 /** Clear the CK cache and broadcast to all contexts (SharedWorker, other tabs). */
 export const invalidateCKCache = () => {
   cachedCK = null
+  ckChannel?.postMessage('invalidate-ck')
+}
+
+/** Full reset for sign-out/wipe: clears cache, broadcast, and setup flag. */
+export const resetCodecState = () => {
+  cachedCK = null
+  e2eeSetupComplete = false
   ckChannel?.postMessage('invalidate-ck')
 }
 
@@ -48,6 +59,9 @@ export const codec: EncryptionCodec = {
     }
     const ck = await getCachedCK()
     if (!ck) {
+      if (e2eeSetupComplete) {
+        throw new Error('Content key unavailable after E2EE setup — refusing to encode plaintext')
+      }
       return plaintext
     }
     const { iv, ciphertext } = await encrypt(plaintext, ck)

@@ -31,11 +31,13 @@ export const createProToolsRoutes = (auth: Auth, fetchFn: typeof fetch = globalT
   // Initialize the tool clients with injected fetch
   const weatherClient = new OpenMeteoWeather(fetchFn)
 
-  const app = new Elysia({ prefix: '/pro' }).onError(safeErrorHandler).use(createAuthMacro(auth))
+  const app = new Elysia({ prefix: '/pro' }).onError(safeErrorHandler)
 
-  if (rateLimit) app.use(rateLimit)
+  if (rateLimit) {
+    app.use(rateLimit)
+  }
 
-  return app.guard({ auth: true }, (guardedApp) =>
+  return app.use(createAuthMacro(auth)).guard({ auth: true }, (guardedApp) =>
     guardedApp
       .use(exaPlugin)
       .use(createProxyRoutes(fetchFn))

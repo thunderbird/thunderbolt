@@ -47,13 +47,13 @@ export const supportedModels: Record<string, ModelConfig> = {
 export const createInferenceRoutes = (auth: Auth, rateLimit?: AnyElysia) => {
   const app = new Elysia({
     prefix: '/chat',
-  })
-    .onError(safeErrorHandler)
-    .use(createAuthMacro(auth))
+  }).onError(safeErrorHandler)
 
-  if (rateLimit) app.use(rateLimit)
+  if (rateLimit) {
+    app.use(rateLimit)
+  }
 
-  return app.post(
+  return app.use(createAuthMacro(auth)).post(
     '/completions',
     async (ctx) => {
       const body = await ctx.request.json()

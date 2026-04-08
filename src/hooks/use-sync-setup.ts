@@ -17,6 +17,7 @@ type SyncSetupStep =
   | 'recovery-key-display'
   | 'approval-waiting'
   | 'recovery-key-entry'
+  | 'denied'
   | 'setup-complete'
 
 type SyncSetupState = {
@@ -43,6 +44,7 @@ type SyncSetupAction =
   | { type: 'SET_ERROR'; payload: string }
   | { type: 'CLEAR_ERROR' }
   | { type: 'SETUP_COMPLETE' }
+  | { type: 'DEVICE_DENIED' }
   | { type: 'GO_BACK' }
   | { type: 'RESET' }
 
@@ -84,6 +86,8 @@ export const reducer = (state: SyncSetupState, action: SyncSetupAction): SyncSet
       return { ...state, error: null }
     case 'SETUP_COMPLETE':
       return { ...state, step: 'setup-complete', isLoading: false }
+    case 'DEVICE_DENIED':
+      return { ...state, step: 'denied', isLoading: false }
     case 'GO_BACK':
       return { ...initialState, step: 'intro' }
     case 'RESET':
@@ -206,6 +210,10 @@ export const useSyncSetup = () => {
       dispatch({ type: 'STOP_LOADING' })
       return true
     } catch (err) {
+      if (err instanceof HTTPError && err.response.status === 422) {
+        dispatch({ type: 'DEVICE_DENIED' })
+        return false
+      }
       const message = err instanceof Error ? err.message : 'Failed to check approval'
       dispatch({ type: 'SET_APPROVAL_ERROR', payload: message })
       return false
@@ -213,6 +221,7 @@ export const useSyncSetup = () => {
   }
 
   const completeSetup = () => dispatch({ type: 'SETUP_COMPLETE' })
+  const deviceDenied = () => dispatch({ type: 'DEVICE_DENIED' })
   const reset = () => dispatch({ type: 'RESET' })
 
   return {
@@ -226,6 +235,7 @@ export const useSyncSetup = () => {
     submitRecoveryKey,
     confirmApproval,
     completeSetup,
+    deviceDenied,
     reset,
   }
 }

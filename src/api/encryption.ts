@@ -80,6 +80,22 @@ export const fetchCanary = async (httpClient: KyInstance): Promise<FetchCanaryRe
     })
     .json<FetchCanaryResponse>()
 
+/** Deny a pending device (called by a trusted device). */
+export const denyDevice = async (httpClient: KyInstance, deviceId: string): Promise<void> => {
+  await httpClient.post(`devices/${encodeURIComponent(deviceId)}/deny`, {
+    headers: authHeaders(),
+    credentials: 'omit',
+  })
+}
+
+/** Cancel this device's pending approval state (called by the pending device itself). */
+export const cancelPending = async (httpClient: KyInstance): Promise<void> => {
+  await httpClient.post('devices/me/cancel-pending', {
+    headers: authHeaders(),
+    credentials: 'omit',
+  })
+}
+
 /** Check if the user has encryption set up (canary exists on server). */
 export const checkCanaryExists = async (httpClient: KyInstance): Promise<boolean> => {
   try {

@@ -3,13 +3,14 @@ import { Button } from '@/components/ui/button'
 import { useSyncSetup } from '@/hooks/use-sync-setup'
 import { useApprovalPolling } from '@/hooks/use-approval-polling'
 import { checkApprovalAndUnwrap } from '@/services/encryption'
+import { cancelPending } from '@/api/encryption'
 import { useHttpClient } from '@/contexts'
 import { RecoveryKeyDisplayStep } from './recovery-key-display-step'
 import { ApprovalWaitingStep } from './approval-waiting-step'
 import { RecoveryKeyEntryStep } from './recovery-key-entry-step'
 import { IconCircle } from '@/components/onboarding/icon-circle'
 import { showRevokedDeviceModalEvent } from '@/hooks/use-credential-events'
-import { ArrowLeft, CheckCircle, Loader2, Lock, ShieldCheck } from 'lucide-react'
+import { ArrowLeft, CheckCircle, Loader2, Lock, ShieldAlert, ShieldCheck } from 'lucide-react'
 import { useRef } from 'react'
 
 type SyncSetupModalProps = {
@@ -38,10 +39,6 @@ export const SyncSetupModal = ({ open, onOpenChange, onComplete }: SyncSetupModa
 
   const isRecoveryKeyStep = setup.step === 'recovery-key-display'
   const canDismiss = !isRecoveryKeyStep && !setup.isLoading
-
-  const handleClose = () => {
-    onOpenChange(false)
-  }
 
   const completeAndClose = () => {
     if (hasCompletedRef.current) {
@@ -83,11 +80,26 @@ export const SyncSetupModal = ({ open, onOpenChange, onComplete }: SyncSetupModa
     window.dispatchEvent(new CustomEvent(showRevokedDeviceModalEvent))
   }
 
+  const handleDenied = () => {
+    setup.deviceDenied()
+  }
+
+  const stepsAfterRegistration: readonly string[] = ['detecting', 'approval-waiting', 'recovery-key-entry', 'denied']
+
+  const handleClose = () => {
+    // Cancel pending state on server when closing after device was registered
+    if (stepsAfterRegistration.includes(setup.step)) {
+      cancelPending(httpClient).catch(() => {})
+    }
+    onOpenChange(false)
+  }
+
   const { isPolling } = useApprovalPolling({
     enabled: setup.step === 'approval-waiting',
     checkApproval: () => checkApprovalAndUnwrap(httpClient),
     onApproved: showSuccess,
     onRevoked: handleRevoked,
+    onDenied: handleDenied,
   })
 
   const handleRecoveryKeySubmit = async () => {
@@ -171,6 +183,8 @@ export const SyncSetupModal = ({ open, onOpenChange, onComplete }: SyncSetupModa
             isLoading={setup.isLoading}
           />
         )}
+
+        {setup.step === 'denied' && <DeniedStep onRetry={setup.reset} />}
 
         {setup.step === 'setup-complete' && <SetupCompleteStep onDone={completeAndClose} />}
       </ResponsiveModalContent>
@@ -281,6 +295,30 @@ const FirstDeviceSetupStep = ({ onContinue, isLoading, error }: FirstDeviceSetup
         ) : (
           'Continue'
         )}
+      </Button>
+    </div>
+  </div>
+)
+
+// =============================================================================
+// Setup complete step — success confirmation for additional device flows
+// =============================================================================
+
+const DeniedStep = ({ onRetry }: { onRetry: () => void }) => (
+  <div className="w-full flex flex-col">
+    <div className="text-center space-y-4">
+      <IconCircle>
+        <ShieldAlert className="w-8 h-8 text-destructive" />
+      </IconCircle>
+      <h2 className="text-2xl font-bold">Request denied</h2>
+      <p className="text-muted-foreground">
+        Your request to sync this device was denied by another device. You can try again or close this dialog.
+      </p>
+    </div>
+
+    <div className="pt-5">
+      <Button className="w-full" onClick={onRetry}>
+        Try again
       </Button>
     </div>
   </div>

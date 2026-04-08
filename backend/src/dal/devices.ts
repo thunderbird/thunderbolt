@@ -2,12 +2,13 @@ import type { db as DbType } from '@/db/client'
 import { devicesTable } from '@/db/schema'
 import { and, eq } from 'drizzle-orm'
 
-/** Get a device by ID. Returns userId, trusted, publicKey, and revokedAt, or null if not found. */
+/** Get a device by ID. Returns userId, trusted, approvalPending, publicKey, and revokedAt, or null if not found. */
 export const getDeviceById = async (database: typeof DbType, deviceId: string) =>
   database
     .select({
       userId: devicesTable.userId,
       trusted: devicesTable.trusted,
+      approvalPending: devicesTable.approvalPending,
       publicKey: devicesTable.publicKey,
       revokedAt: devicesTable.revokedAt,
     })
@@ -31,20 +32,28 @@ export const upsertDevice = async (
     })
     .returning()
 
-/** Revoke a device for a specific user. Sets revokedAt timestamp. */
+/** Revoke a device for a specific user. Sets revokedAt timestamp and clears approval state. */
 export const revokeDevice = async (database: typeof DbType, deviceId: string, userId: string) =>
   database
     .update(devicesTable)
-    .set({ revokedAt: new Date(), trusted: false })
+    .set({ revokedAt: new Date(), trusted: false, approvalPending: false })
     .where(and(eq(devicesTable.id, deviceId), eq(devicesTable.userId, userId)))
     .returning()
 
-/** Mark a device as trusted. Called when an envelope is stored for the device. */
+/** Mark a device as trusted and clear pending state. Called when an envelope is stored for the device. */
 export const markDeviceTrusted = async (database: typeof DbType, deviceId: string, userId: string) =>
   database
     .update(devicesTable)
-    .set({ trusted: true })
+    .set({ trusted: true, approvalPending: false })
     .where(and(eq(devicesTable.id, deviceId), eq(devicesTable.userId, userId)))
+
+/** Deny a pending device by clearing its approval_pending flag. Does not revoke. */
+export const denyDevice = async (database: typeof DbType, deviceId: string, userId: string) =>
+  database
+    .update(devicesTable)
+    .set({ approvalPending: false })
+    .where(and(eq(devicesTable.id, deviceId), eq(devicesTable.userId, userId)))
+    .returning()
 
 /**
  * Register a device with a public key for encryption.
@@ -62,15 +71,17 @@ export const registerDevice = async (
       userId: device.userId,
       name: device.name,
       publicKey: device.publicKey,
+      approvalPending: true,
       createdAt: new Date(),
       lastSeen: new Date(),
     })
-    // On conflict: update publicKey, reset trusted to false (device must go through
-    // approval flow again), and update lastSeen. This handles both concurrent re-registration
-    // races and pre-encryption devices that were backfilled as trusted without an envelope.
+    // On conflict: update publicKey, reset trusted to false and mark as pending approval
+    // (device must go through approval flow again), and update lastSeen. This handles both
+    // concurrent re-registration races and pre-encryption devices that were backfilled as
+    // trusted without an envelope.
     .onConflictDoUpdate({
       target: devicesTable.id,
-      set: { publicKey: device.publicKey, trusted: false, lastSeen: new Date() },
+      set: { publicKey: device.publicKey, trusted: false, approvalPending: true, lastSeen: new Date() },
       setWhere: eq(devicesTable.userId, device.userId),
     })
     .returning()

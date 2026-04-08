@@ -7,34 +7,25 @@ import { Button } from '@/components/ui/button'
 import { ResponsiveModal, ResponsiveModalContent } from '@/components/ui/responsive-modal'
 import { IconCircle } from '@/components/onboarding/icon-circle'
 import { useApproveDevice } from '@/hooks/use-approve-device'
-import { useRevokeDevice } from '@/hooks/use-revoke-device'
+import { useDenyDevice } from '@/hooks/use-deny-device'
 import { usePendingDeviceNotification } from '@/hooks/use-pending-device-notification'
 
 export const PendingDeviceModal = () => {
-  const { pendingDeviceToNotify, dismissDevice, pendingDevices } = usePendingDeviceNotification()
+  const { pendingDeviceToNotify, pendingDevices } = usePendingDeviceNotification()
   const [confirmApproveOpen, setConfirmApproveOpen] = useState(false)
   const [confirmDenyOpen, setConfirmDenyOpen] = useState(false)
 
   const approveMutation = useApproveDevice(pendingDevices)
-  const revokeMutation = useRevokeDevice()
+  const denyMutation = useDenyDevice()
 
   const isOpen = pendingDeviceToNotify !== null
-
-  const handleDismiss = () => {
-    if (pendingDeviceToNotify) {
-      dismissDevice(pendingDeviceToNotify.id)
-    }
-  }
 
   const confirmApprove = () => {
     if (!pendingDeviceToNotify) {
       return
     }
     approveMutation.mutate(pendingDeviceToNotify.id, {
-      onSuccess: () => {
-        setConfirmApproveOpen(false)
-        dismissDevice(pendingDeviceToNotify.id)
-      },
+      onSuccess: () => setConfirmApproveOpen(false),
     })
   }
 
@@ -42,17 +33,21 @@ export const PendingDeviceModal = () => {
     if (!pendingDeviceToNotify) {
       return
     }
-    revokeMutation.mutate(pendingDeviceToNotify.id, {
-      onSuccess: () => {
-        setConfirmDenyOpen(false)
-        dismissDevice(pendingDeviceToNotify.id)
-      },
+    denyMutation.mutate(pendingDeviceToNotify.id, {
+      onSuccess: () => setConfirmDenyOpen(false),
     })
   }
 
   return (
     <>
-      <ResponsiveModal open={isOpen} onOpenChange={(open) => !open && handleDismiss()} className="sm:min-h-0 sm:h-auto">
+      <ResponsiveModal
+        open={isOpen}
+        onOpenChange={() => {}}
+        className="sm:min-h-0 sm:h-auto"
+        showCloseButton={false}
+        onInteractOutside={(e) => e.preventDefault()}
+        onEscapeKeyDown={(e) => e.preventDefault()}
+      >
         <ResponsiveModalContent>
           <div className="w-full flex flex-col">
             <div className="text-center space-y-4">
@@ -77,9 +72,6 @@ export const PendingDeviceModal = () => {
               <Button className="w-full" onClick={() => setConfirmApproveOpen(true)}>
                 Approve
               </Button>
-              <Button className="w-full" variant="ghost" onClick={handleDismiss}>
-                Later
-              </Button>
               <Button className="w-full" variant="ghost" onClick={() => setConfirmDenyOpen(true)}>
                 <span className="text-destructive">Deny</span>
               </Button>
@@ -99,7 +91,7 @@ export const PendingDeviceModal = () => {
         open={confirmDenyOpen}
         onOpenChange={(open) => !open && setConfirmDenyOpen(false)}
         onConfirm={confirmDeny}
-        isPending={revokeMutation.isPending}
+        isPending={denyMutation.isPending}
         variant="pending"
       />
     </>

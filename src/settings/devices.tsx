@@ -13,6 +13,7 @@ import { useState } from 'react'
 import { useQuery } from '@powersync/tanstack-react-query'
 import { toCompilableQuery } from '@powersync/drizzle-driver'
 import { useApproveDevice } from '@/hooks/use-approve-device'
+import { useDenyDevice } from '@/hooks/use-deny-device'
 import { useRevokeDevice } from '@/hooks/use-revoke-device'
 
 const formatLastSeen = (ts: string | null): string => {
@@ -36,7 +37,8 @@ export default function DevicesSettingsPage() {
     queryKey: ['pending-devices'],
     query: toCompilableQuery(getPendingDevices(db)),
   })
-  const [revokeTarget, setRevokeTarget] = useState<{ id: string; variant: 'trusted' | 'pending' } | null>(null)
+  const [revokeTarget, setRevokeTarget] = useState<string | null>(null)
+  const [denyTarget, setDenyTarget] = useState<string | null>(null)
   const [approveTarget, setApproveTarget] = useState<string | null>(null)
 
   const visibleDevices = devices.filter((d) => {
@@ -47,12 +49,21 @@ export default function DevicesSettingsPage() {
   })
 
   const revokeMutation = useRevokeDevice()
+  const denyMutation = useDenyDevice()
   const approveMutation = useApproveDevice(pendingDevices)
 
   const confirmRevoke = () => {
     if (revokeTarget) {
-      revokeMutation.mutate(revokeTarget.id, {
+      revokeMutation.mutate(revokeTarget, {
         onSuccess: () => setRevokeTarget(null),
+      })
+    }
+  }
+
+  const confirmDeny = () => {
+    if (denyTarget) {
+      denyMutation.mutate(denyTarget, {
+        onSuccess: () => setDenyTarget(null),
       })
     }
   }
@@ -90,8 +101,8 @@ export default function DevicesSettingsPage() {
                         <Button
                           variant="ghost"
                           size="sm"
-                          onClick={() => setRevokeTarget({ id: device.id, variant: 'pending' })}
-                          disabled={revokeMutation.isPending}
+                          onClick={() => setDenyTarget(device.id)}
+                          disabled={denyMutation.isPending}
                         >
                           <Trash2 className="size-4 mr-1" />
                           Deny
@@ -159,7 +170,7 @@ export default function DevicesSettingsPage() {
                       <Button
                         variant="ghost"
                         size="sm"
-                        onClick={() => setRevokeTarget({ id: device.id, variant: 'trusted' })}
+                        onClick={() => setRevokeTarget(device.id)}
                         disabled={revokeMutation.isPending}
                       >
                         <Trash2 className="size-4 mr-1" />
@@ -186,7 +197,15 @@ export default function DevicesSettingsPage() {
         onOpenChange={(open) => !open && setRevokeTarget(null)}
         onConfirm={confirmRevoke}
         isPending={revokeMutation.isPending}
-        variant={revokeTarget?.variant ?? 'trusted'}
+        variant="trusted"
+      />
+
+      <RevokeDeviceDialog
+        open={denyTarget !== null}
+        onOpenChange={(open) => !open && setDenyTarget(null)}
+        onConfirm={confirmDeny}
+        isPending={denyMutation.isPending}
+        variant="pending"
       />
     </div>
   )

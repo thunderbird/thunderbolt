@@ -6,6 +6,7 @@ type UseApprovalPollingOptions = {
   checkApproval: () => Promise<boolean>
   onApproved: () => void
   onRevoked?: () => void
+  onDenied?: () => void
   intervalMs?: number
 }
 
@@ -20,6 +21,7 @@ export const useApprovalPolling = ({
   checkApproval,
   onApproved,
   onRevoked,
+  onDenied,
   intervalMs = 3000,
 }: UseApprovalPollingOptions) => {
   const [isPolling, setIsPolling] = useState(false)
@@ -28,6 +30,8 @@ export const useApprovalPolling = ({
   onApprovedRef.current = onApproved
   const onRevokedRef = useRef(onRevoked)
   onRevokedRef.current = onRevoked
+  const onDeniedRef = useRef(onDenied)
+  onDeniedRef.current = onDenied
   const checkApprovalRef = useRef(checkApproval)
   checkApprovalRef.current = checkApproval
 
@@ -56,11 +60,19 @@ export const useApprovalPolling = ({
           onApprovedRef.current()
         }
       } catch (err) {
-        if (err instanceof HTTPError && err.response.status === 403 && !cancelled) {
-          clearInterval(intervalId)
-          setIsPolling(false)
-          onRevokedRef.current?.()
-          return
+        if (err instanceof HTTPError && !cancelled) {
+          if (err.response.status === 403) {
+            clearInterval(intervalId)
+            setIsPolling(false)
+            onRevokedRef.current?.()
+            return
+          }
+          if (err.response.status === 422) {
+            clearInterval(intervalId)
+            setIsPolling(false)
+            onDeniedRef.current?.()
+            return
+          }
         }
         // Silently continue for other errors — manual button is fallback
       } finally {

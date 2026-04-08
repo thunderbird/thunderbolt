@@ -8,6 +8,7 @@ export type Device = {
   userId: string
   name: string
   trusted: number | null
+  approvalPending: number | null
   publicKey: string | null
   lastSeen: string | null
   createdAt: string | null
@@ -37,7 +38,7 @@ export const getPendingDevices = (db: AnyDrizzleDatabase) => {
   const query = db
     .select()
     .from(devicesTable)
-    .where(and(eq(devicesTable.trusted, 0), isNull(devicesTable.revokedAt)))
+    .where(and(eq(devicesTable.trusted, 0), eq(devicesTable.approvalPending, 1), isNull(devicesTable.revokedAt)))
     .orderBy(desc(devicesTable.createdAt))
   return query as typeof query & DrizzleQueryWithPromise<Device>
 }

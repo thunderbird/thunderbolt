@@ -2,6 +2,7 @@ import type { Auth } from '@/auth/elysia-plugin'
 import {
   getDeviceById,
   registerDevice,
+  denyDevice,
   markDeviceTrusted,
   getEnvelopeByDeviceId,
   hasEnvelopesForUser,
@@ -94,7 +95,8 @@ export const createEncryptionRoutes = (auth: Auth, database: typeof DbType) =>
                 envelope: envelope?.wrappedCk ?? null,
               }
             }
-            return { trusted: false as const }
+            // Non-trusted device re-registering (reopen modal after deny/cancel):
+            // fall through to registerDevice which upserts with approvalPending=true
           }
 
           // Pre-encryption device (no publicKey): fall through to register with publicKey
@@ -253,6 +255,12 @@ export const createEncryptionRoutes = (auth: Auth, database: typeof DbType) =>
         return { error: 'Device has been revoked' }
       }
 
+      // Device was denied or cancelled — not pending, not trusted, not revoked
+      if (!device.approvalPending && !device.trusted) {
+        set.status = 422
+        return { error: 'Approval not pending' }
+      }
+
       const envelope = await getEnvelopeByDeviceId(database, deviceId, userId)
       if (!envelope) {
         set.status = 404
@@ -277,4 +285,63 @@ export const createEncryptionRoutes = (auth: Auth, database: typeof DbType) =>
         canaryIv: metadata.canaryIv,
         canaryCtext: metadata.canaryCtext,
       }
+    })
+    .post('/devices/:deviceId/deny', async ({ params, request, set, user: sessionUser }) => {
+      const userId = sessionUser!.id
+      const callerDeviceId = request.headers.get('x-device-id')?.trim()
+
+      if (!callerDeviceId) {
+        set.status = 400
+        return { error: 'X-Device-ID header is required' }
+      }
+
+      // Caller must be a trusted device
+      const callerDevice = await getDeviceById(database, callerDeviceId)
+      if (!callerDevice || callerDevice.userId !== userId || !callerDevice.trusted) {
+        set.status = 403
+        return { error: 'Only trusted devices can deny pending devices' }
+      }
+
+      // Target must be a pending device belonging to the same user
+      const targetDevice = await getDeviceById(database, params.deviceId)
+      if (!targetDevice || targetDevice.userId !== userId) {
+        set.status = 404
+        return { error: 'Device not found' }
+      }
+
+      if (targetDevice.trusted || targetDevice.revokedAt != null) {
+        set.status = 409
+        return { error: 'Device is not pending approval' }
+      }
+
+      const rows = await denyDevice(database, params.deviceId, userId)
+      if (rows.length === 0) {
+        set.status = 404
+        return { error: 'Device not found' }
+      }
+
+      set.status = 204
+    })
+    .post('/devices/me/cancel-pending', async ({ request, set, user: sessionUser }) => {
+      const userId = sessionUser!.id
+      const deviceId = request.headers.get('x-device-id')?.trim()
+
+      if (!deviceId) {
+        set.status = 400
+        return { error: 'X-Device-ID header is required' }
+      }
+
+      const device = await getDeviceById(database, deviceId)
+      if (!device || device.userId !== userId) {
+        set.status = 404
+        return { error: 'Device not found' }
+      }
+
+      if (device.trusted || device.revokedAt != null) {
+        set.status = 409
+        return { error: 'Device is not pending approval' }
+      }
+
+      await denyDevice(database, deviceId, userId)
+      set.status = 204
     })

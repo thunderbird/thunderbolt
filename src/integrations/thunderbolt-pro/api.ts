@@ -1,8 +1,7 @@
 import { getSettings } from '@/dal'
 import { getDb } from '@/db/database'
-import { getAuthToken } from '@/lib/auth-token'
+import type { HttpClient } from '@/lib/http'
 import { WeatherForecastDataSchema, type WeatherForecastData } from '@/widgets/weather-forecast'
-import ky, { type KyInstance } from 'ky'
 import type {
   FetchContentData,
   FetchContentParams,
@@ -15,23 +14,14 @@ import type {
 } from './schemas'
 
 const requestTimeout = 10000
-const authHeaders = () => {
-  const token = getAuthToken()
-  return token ? { Authorization: `Bearer ${token}` } : {}
-}
-
-type HttpClient = Pick<KyInstance, 'get' | 'post'>
 
 /**
  * Search the web and return structured results with summaries and highlights
  */
-export const search = async (params: SearchParams, httpClient: HttpClient = ky): Promise<SearchResultData[]> => {
+export const search = async (params: SearchParams, httpClient: HttpClient): Promise<SearchResultData[]> => {
   try {
-    const db = getDb()
-    const { cloudUrl } = await getSettings(db, { cloud_url: 'http://localhost:8000/v1' })
     const response = await httpClient
-      .post(`${cloudUrl}/pro/search`, {
-        headers: authHeaders(),
+      .post('pro/search', {
         timeout: requestTimeout,
         json: {
           query: params.query,
@@ -53,16 +43,10 @@ export const search = async (params: SearchParams, httpClient: HttpClient = ky):
 /**
  * Fetch and parse content from a webpage URL
  */
-export const fetchContent = async (
-  params: FetchContentParams,
-  httpClient: HttpClient = ky,
-): Promise<FetchContentData> => {
+export const fetchContent = async (params: FetchContentParams, httpClient: HttpClient): Promise<FetchContentData> => {
   try {
-    const db = getDb()
-    const { cloudUrl } = await getSettings(db, { cloud_url: 'http://localhost:8000/v1' })
     const response = await httpClient
-      .post(`${cloudUrl}/pro/fetch-content`, {
-        headers: authHeaders(),
+      .post('pro/fetch-content', {
         timeout: requestTimeout,
         json: {
           url: params.url,
@@ -85,16 +69,10 @@ export const fetchContent = async (
 /**
  * Fetch link preview metadata (title, description, image) from a URL
  */
-export const fetchLinkPreview = async (
-  params: LinkPreviewParams,
-  httpClient: HttpClient = ky,
-): Promise<LinkPreviewData> => {
+export const fetchLinkPreview = async (params: LinkPreviewParams, httpClient: HttpClient): Promise<LinkPreviewData> => {
   try {
-    const db = getDb()
-    const { cloudUrl } = await getSettings(db, { cloud_url: 'http://localhost:8000/v1' })
     const response = await httpClient
-      .get(`${cloudUrl}/pro/link-preview/${encodeURIComponent(params.url)}`, {
-        headers: authHeaders(),
+      .get(`pro/link-preview/${encodeURIComponent(params.url)}`, {
         timeout: requestTimeout,
       })
       .json<{ data: LinkPreviewData | null; success: boolean; error?: string }>()
@@ -112,18 +90,16 @@ export const fetchLinkPreview = async (
 /**
  * Get current weather for specified coordinates
  */
-export const getCurrentWeather = async (params: WeatherParams, httpClient: HttpClient = ky): Promise<string> => {
+export const getCurrentWeather = async (params: WeatherParams, httpClient: HttpClient): Promise<string> => {
   try {
     const db = getDb()
-    const { cloudUrl, temperatureUnit, distanceUnit } = await getSettings(db, {
-      cloud_url: 'http://localhost:8000/v1',
+    const { temperatureUnit, distanceUnit } = await getSettings(db, {
       temperature_unit: 'f',
       distance_unit: 'imperial',
     })
 
     const response = await httpClient
-      .post(`${cloudUrl}/pro/weather/current`, {
-        headers: authHeaders(),
+      .post('pro/weather/current', {
         timeout: requestTimeout,
         json: {
           location: params.location,
@@ -151,19 +127,17 @@ export const getCurrentWeather = async (params: WeatherParams, httpClient: HttpC
  */
 export const getWeatherForecast = async (
   params: WeatherParams,
-  httpClient: HttpClient = ky,
+  httpClient: HttpClient,
 ): Promise<WeatherForecastData> => {
   try {
     const db = getDb()
-    const { cloudUrl, temperatureUnit, distanceUnit } = await getSettings(db, {
-      cloud_url: 'http://localhost:8000/v1',
+    const { temperatureUnit, distanceUnit } = await getSettings(db, {
       temperature_unit: 'f',
       distance_unit: 'imperial',
     })
 
     const response = await httpClient
-      .post(`${cloudUrl}/pro/weather/forecast`, {
-        headers: authHeaders(),
+      .post('pro/weather/forecast', {
         timeout: requestTimeout,
         json: {
           location: params.location,
@@ -191,18 +165,16 @@ export const getWeatherForecast = async (
 /**
  * Search for locations by name
  */
-export const searchLocations = async (params: SearchLocationParams, httpClient: HttpClient = ky): Promise<string> => {
+export const searchLocations = async (params: SearchLocationParams, httpClient: HttpClient): Promise<string> => {
   try {
     const db = getDb()
-    const { cloudUrl, temperatureUnit, distanceUnit } = await getSettings(db, {
-      cloud_url: 'http://localhost:8000/v1',
+    const { temperatureUnit, distanceUnit } = await getSettings(db, {
       temperature_unit: 'f',
       distance_unit: 'imperial',
     })
 
     const response = await httpClient
-      .post(`${cloudUrl}/pro/locations/search`, {
-        headers: authHeaders(),
+      .post('pro/locations/search', {
         timeout: requestTimeout,
         json: {
           query: params.query,

@@ -9,7 +9,6 @@ import { createInferenceRoutes } from '@/inference/routes'
 import { createErrorHandlingMiddleware } from '@/middleware/error-handling'
 import { createHttpLoggingMiddleware } from '@/middleware/http-logging'
 import { createAuthRateLimit, createInferenceRateLimit, createProRateLimit } from '@/middleware/rate-limit'
-import { createWaitlistAuthMiddleware } from '@/middleware/waitlist-auth'
 import { createMcpProxyRoutes } from '@/mcp-proxy/routes'
 import { createPostHogRoutes } from '@/posthog/routes'
 import { createProToolsRoutes } from '@/pro/routes'
@@ -57,8 +56,9 @@ export const createApp = async (deps?: AppDeps) => {
   const { instrumentation } = await import('@/config/instrumentation')
   const configuredApp = instrumentation ? app.use(instrumentation) : app
 
-  // Create auth plugin with the database instance
-  const { plugin: betterAuthPlugin, auth } = createBetterAuthPlugin(database)
+  // Create auth plugin with the database instance (tests may inject their own auth)
+  const { plugin: betterAuthPlugin, auth: createdAuth } = createBetterAuthPlugin(database)
+  const auth = deps?.auth ?? createdAuth
 
   const rateLimitSettings = { enabled: settings.rateLimitEnabled, trustedProxy: settings.trustedProxy }
 
@@ -74,17 +74,15 @@ export const createApp = async (deps?: AppDeps) => {
         }),
       )
       .use(createLoggerMiddleware(settings))
-      .use(createHttpLoggingMiddleware(settings.trustedProxy))
+      .use(createHttpLoggingMiddleware())
       .use(createErrorHandlingMiddleware())
       // Auth routes (mounted at /api/auth/*)
       .use(createAuthRateLimit(rateLimitSettings))
       .use(betterAuthPlugin)
-      // Waitlist auth middleware - enforces auth on protected routes when WAITLIST_ENABLED=true
-      .use(createWaitlistAuthMiddleware(settings, auth))
       // Mount route groups
-      .use(createMainRoutes(fetchFn))
-      .use(createGoogleAuthRoutes(fetchFn))
-      .use(createMicrosoftAuthRoutes(fetchFn))
+      .use(createMainRoutes(auth, fetchFn))
+      .use(createGoogleAuthRoutes(auth, fetchFn))
+      .use(createMicrosoftAuthRoutes(auth, fetchFn))
       .use(createProToolsRoutes(auth, fetchFn, createProRateLimit(database, rateLimitSettings)))
       .use(createInferenceRoutes(auth, createInferenceRateLimit(database, rateLimitSettings)))
       .use(createPostHogRoutes(fetchFn))

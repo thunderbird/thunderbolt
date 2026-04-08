@@ -1,4 +1,4 @@
-import { useAuth } from '@/contexts'
+import { useAuth, useHttpClient } from '@/contexts'
 import { useSignInModal } from '@/contexts/sign-in-modal-context'
 import { useCountryUnits } from '@/hooks/use-country-units'
 import type { LocationData } from '@/hooks/use-location-search'
@@ -6,10 +6,9 @@ import { useSettings } from '@/hooks/use-settings'
 import { useUnitsOptions } from '@/hooks/use-units-options'
 import { privacyPolicyUrl } from '@/lib/constants'
 import { extractCountryFromLocation } from '@/lib/country-utils'
-import { getAuthToken, clearAuthToken } from '@/lib/auth-token'
+import { clearAuthToken } from '@/lib/auth-token'
 import { trackEvent } from '@/lib/posthog'
 import type { CountryUnitsData } from '@/types'
-import ky from 'ky'
 import { useEffect, useMemo, useReducer, useRef, useState } from 'react'
 
 import { LocationSearchCombobox } from '@/components/location-search-combobox'
@@ -84,6 +83,7 @@ export default function PreferencesSettingsPage() {
   const [state, dispatch] = useReducer(preferencesReducer, initialState)
   const { isResetting, isDeletingAccount, localizationDialogOpen, pendingCountryUnits } = state
   const authClient = useAuth()
+  const httpClient = useHttpClient()
   const { data: session } = authClient.useSession()
   const isAuthenticated = !!session?.user
   const { openSignInModal } = useSignInModal()
@@ -114,7 +114,6 @@ export default function PreferencesSettingsPage() {
     dateFormat,
     timeFormat,
     currency,
-    cloudUrl,
   } = useSettings({
     preferred_name: '',
     location_name: '',
@@ -128,7 +127,6 @@ export default function PreferencesSettingsPage() {
     date_format: 'MM/DD/YYYY',
     time_format: '12h',
     currency: 'USD',
-    cloud_url: 'http://localhost:8000/v1',
   })
 
   // Local state for name input (only save on blur to avoid DB writes on every keystroke)
@@ -274,17 +272,7 @@ export default function PreferencesSettingsPage() {
 
     try {
       await setSyncEnabled(false)
-      const token = getAuthToken()
-      if (!token) {
-        setDeleteAccountError('Not signed in.')
-        return
-      }
-      const baseUrl = cloudUrl.value ?? 'http://localhost:8000/v1'
-      await ky.delete('account', {
-        prefixUrl: baseUrl,
-        headers: { Authorization: `Bearer ${token}` },
-        credentials: 'omit',
-      })
+      await httpClient.delete('account')
       await clearAuthToken()
       await resetAppDir()
       window.location.reload()

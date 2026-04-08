@@ -1,6 +1,6 @@
 import type { Auth } from '@/auth/elysia-plugin'
+import { createAuthMacro } from '@/auth/elysia-plugin'
 import { safeErrorHandler } from '@/middleware/error-handling'
-import { createSessionGuard } from '@/middleware/session-guard'
 import { isPostHogConfigured } from '@/posthog/client'
 import { createSSEStreamFromCompletion } from '@/utils/streaming'
 import type { OpenAI as PostHogOpenAI } from '@posthog/ai'
@@ -49,76 +49,80 @@ export const createInferenceRoutes = (auth: Auth, rateLimit?: AnyElysia) => {
     prefix: '/chat',
   })
     .onError(safeErrorHandler)
-    .use(createSessionGuard(auth))
+    .use(createAuthMacro(auth))
 
   if (rateLimit) app.use(rateLimit)
 
-  return app.post('/completions', async (ctx) => {
-    const body = await ctx.request.json()
+  return app.post(
+    '/completions',
+    async (ctx) => {
+      const body = await ctx.request.json()
 
-    if (!body.stream) {
-      throw new Error('Non-streaming requests are not supported')
-    }
-
-    const modelConfig = supportedModels[body.model]
-    if (!modelConfig) {
-      throw new Error('Model not found')
-    }
-
-    const { provider, internalName } = modelConfig
-
-    const { client } = getInferenceClient(provider)
-
-    console.info(`Routing model "${body.model}" to ${provider} provider`)
-
-    try {
-      const completion = await (client as PostHogOpenAI).chat.completions.create({
-        model: internalName,
-        messages: sanitizeMessageRoles(body.messages) as ChatCompletionMessageParam[],
-        temperature: body.temperature,
-        tools: body.tools,
-        tool_choice: body.tool_choice,
-        stream: true,
-        ...(isPostHogConfigured() && {
-          posthogProperties: {
-            model_provider: provider,
-            endpoint: '/chat/completions',
-            has_tools: !!body.tools,
-            temperature: body.temperature,
-            // @todo add distinct id and trace id
-          },
-        }),
-      })
-
-      const stream = createSSEStreamFromCompletion(completion, body.model)
-
-      // Merge rate-limit headers (set by middleware on ctx.set.headers) into the
-      // streaming Response so clients can read them. Elysia skips ctx.set.headers
-      // when the handler returns a raw Response.
-      const responseHeaders: Record<string, string> = {
-        'Content-Type': 'text/event-stream',
-        'Cache-Control': 'no-cache',
-        Connection: 'keep-alive',
+      if (!body.stream) {
+        throw new Error('Non-streaming requests are not supported')
       }
-      for (const [key, value] of Object.entries(ctx.set.headers)) {
-        if (value != null) {
-          responseHeaders[key] = String(value)
+
+      const modelConfig = supportedModels[body.model]
+      if (!modelConfig) {
+        throw new Error('Model not found')
+      }
+
+      const { provider, internalName } = modelConfig
+
+      const { client } = getInferenceClient(provider)
+
+      console.info(`Routing model "${body.model}" to ${provider} provider`)
+
+      try {
+        const completion = await (client as PostHogOpenAI).chat.completions.create({
+          model: internalName,
+          messages: sanitizeMessageRoles(body.messages) as ChatCompletionMessageParam[],
+          temperature: body.temperature,
+          tools: body.tools,
+          tool_choice: body.tool_choice,
+          stream: true,
+          ...(isPostHogConfigured() && {
+            posthogProperties: {
+              model_provider: provider,
+              endpoint: '/chat/completions',
+              has_tools: !!body.tools,
+              temperature: body.temperature,
+              // @todo add distinct id and trace id
+            },
+          }),
+        })
+
+        const stream = createSSEStreamFromCompletion(completion, body.model)
+
+        // Merge rate-limit headers (set by middleware on ctx.set.headers) into the
+        // streaming Response so clients can read them. Elysia skips ctx.set.headers
+        // when the handler returns a raw Response.
+        const responseHeaders: Record<string, string> = {
+          'Content-Type': 'text/event-stream',
+          'Cache-Control': 'no-cache',
+          Connection: 'keep-alive',
         }
-      }
+        for (const [key, value] of Object.entries(ctx.set.headers)) {
+          if (value != null) {
+            responseHeaders[key] = String(value)
+          }
+        }
 
-      return new Response(stream, { headers: responseHeaders })
-    } catch (error) {
-      if (error instanceof APIConnectionError) {
-        console.error('Failed to connect to inference provider', error.cause)
-        throw new Error('Failed to connect to inference provider')
+        return new Response(stream, { headers: responseHeaders })
+      } catch (error) {
+        if (error instanceof APIConnectionError) {
+          console.error('Failed to connect to inference provider', error.cause)
+          throw new Error('Failed to connect to inference provider')
+        }
+        if (error instanceof APIConnectionTimeoutError) {
+          console.error('Connection timeout to inference provider', error.cause)
+          throw new Error('Connection timeout to inference provider')
+        }
+        throw error
       }
-      if (error instanceof APIConnectionTimeoutError) {
-        console.error('Connection timeout to inference provider', error.cause)
-        throw new Error('Connection timeout to inference provider')
-      }
-      throw error
-    }
-  })
+    },
+    { auth: true },
+  )
 }
 
 /**

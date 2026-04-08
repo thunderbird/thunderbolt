@@ -1,5 +1,6 @@
 import { aiFetchStreamingResponse } from '@/ai/fetch'
 import { isRateLimitError } from '@/lib/error-utils'
+import type { HttpClient } from '@/lib/http'
 import { trackEvent } from '@/lib/posthog'
 import type { SaveMessagesFunction, ThunderboltUIMessage } from '@/types'
 import { Chat } from '@ai-sdk/react'
@@ -19,6 +20,7 @@ export const createChatInstance = (
   id: string,
   messages: ThunderboltUIMessage[],
   saveMessages: SaveMessagesFunction,
+  httpClient: HttpClient,
 ) => {
   const customFetch = Object.assign(
     async (_requestInfo: RequestInfo | URL, init?: RequestInit) => {
@@ -41,6 +43,7 @@ export const createChatInstance = (
         modeSystemPrompt: session.selectedMode.systemPrompt ?? undefined,
         modeName: session.selectedMode.name ?? undefined,
         mcpClients,
+        httpClient,
       })
     },
     {

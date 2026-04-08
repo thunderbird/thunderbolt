@@ -1,7 +1,7 @@
 import type { Auth } from '@/auth/elysia-plugin'
+import { createAuthMacro } from '@/auth/elysia-plugin'
 import { deleteUser, revokeDevice } from '@/dal'
 import type { db as DbType } from '@/db/client'
-import { createSessionGuard } from '@/middleware/session-guard'
 import { Elysia } from 'elysia'
 
 /**
@@ -10,18 +10,23 @@ import { Elysia } from 'elysia'
  */
 export const createAccountRoutes = (auth: Auth, database: typeof DbType) => {
   return new Elysia({ prefix: '/account' })
-    .use(createSessionGuard(auth))
-    .post('/devices/:id/revoke', async ({ params, set, user: sessionUser }) => {
-      const userId = sessionUser!.id
-      await revokeDevice(database, params.id, userId)
-      set.status = 204
-    })
-    .delete('/', async ({ set, user: sessionUser }) => {
-      const userId = sessionUser!.id
+    .use(createAuthMacro(auth))
+    .post(
+      '/devices/:id/revoke',
+      async ({ params, set, user }) => {
+        await revokeDevice(database, params.id, user.id)
+        set.status = 204
+      },
+      { auth: true },
+    )
+    .delete(
+      '/',
+      async ({ set, user }) => {
+        // tables have cascade delete on user_id and they will be deleted automatically
+        await deleteUser(database, user.id)
 
-      // tables have cascade delete on user_id and they will be deleted automatically
-      await deleteUser(database, userId)
-
-      set.status = 204
-    })
+        set.status = 204
+      },
+      { auth: true },
+    )
 }

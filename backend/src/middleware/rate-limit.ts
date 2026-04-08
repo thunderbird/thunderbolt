@@ -77,10 +77,10 @@ const consumeOrReject = async (
 
 /**
  * Build a user-based rate limit middleware for authenticated routes.
- * Reads the `user` already derived by createSessionGuard to avoid a
+ * Reads the `user` already derived by the auth macro to avoid a
  * redundant getSession() call; skips rate limiting when the user
  * context is unavailable.
- * Must be .use()'d AFTER createSessionGuard so the user is derived.
+ * Must be .use()'d AFTER createAuthMacro so the user is resolved.
  */
 const createUserRateLimitMiddleware = (limiter: RateLimiterDrizzle) =>
   new Elysia()

@@ -1,4 +1,5 @@
 import { refreshAccessToken } from '@/lib/auth'
+import type { HttpClient } from '@/lib/http'
 import { getSettings, updateSettings } from '@/dal'
 import { getDb } from '@/db/database'
 import type { DraftEmailParams } from './tools'
@@ -146,11 +147,14 @@ export const getGoogleCredentials = async (): Promise<{
  * Ensure that we have a valid Google OAuth access token, refreshing it if necessary.
  * If the token is refreshed, the stored credentials are updated automatically.
  */
-export const ensureValidGoogleToken = async (credentials: {
-  access_token: string
-  refresh_token?: string
-  expires_at?: number
-}): Promise<string> => {
+export const ensureValidGoogleToken = async (
+  httpClient: HttpClient,
+  credentials: {
+    access_token: string
+    refresh_token?: string
+    expires_at?: number
+  },
+): Promise<string> => {
   const now = Date.now()
   // If the token is still valid for at least 1 minute, reuse it
   if (credentials.expires_at && credentials.expires_at - 60_000 > now) {
@@ -161,7 +165,7 @@ export const ensureValidGoogleToken = async (credentials: {
     throw new Error('Access token expired and no refresh token available')
   }
 
-  const newTokens = await refreshAccessToken('google', credentials.refresh_token)
+  const newTokens = await refreshAccessToken(httpClient, 'google', credentials.refresh_token)
 
   const updated = {
     ...credentials,

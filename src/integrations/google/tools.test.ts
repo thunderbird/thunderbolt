@@ -1,5 +1,5 @@
+import { createClient, type HttpClient } from '@/lib/http'
 import { beforeEach, describe, expect, it, mock } from 'bun:test'
-import ky, { type KyInstance } from 'ky'
 import type {
   CheckCalendarParams,
   CheckInboxParams,
@@ -39,8 +39,7 @@ const mockTruncateText = mock()
 const mockBuildRawMessage = mock()
 const mockTransformDriveQuery = mock()
 
-// Create a mock HTTP client using real ky with mocked fetch
-const createMockHttpClient = (responses: any[] = []): KyInstance => {
+const createMockHttpClient = (responses: unknown[] = []): HttpClient => {
   let callCount = 0
   const mockFetch = async (): Promise<Response> => {
     const response = responses[callCount++] || responses[responses.length - 1]
@@ -59,8 +58,7 @@ const createMockHttpClient = (responses: any[] = []): KyInstance => {
       headers: { 'Content-Type': 'application/json' },
     })
   }
-  // Disable retries to speed up tests with fake timers
-  return ky.create({ fetch: mockFetch, prefixUrl: '', retry: 0 })
+  return createClient({ fetch: mockFetch })
 }
 
 // Mock utils

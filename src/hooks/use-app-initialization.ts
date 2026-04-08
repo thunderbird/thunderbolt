@@ -1,9 +1,11 @@
 import type { HttpClient } from '@/contexts'
 import { getSettings } from '@/dal'
+import { getAuthToken } from '@/lib/auth-token'
 import { Database, getCurrentDatabase, setDatabase } from '@/db/database'
 import type { AnyDrizzleDatabase } from '@/db/database-interface'
 import { createHandleError } from '@/lib/error-utils'
 import { createAppDir, resetAppDir } from '@/lib/fs'
+import { createAuthenticatedClient } from '@/lib/http'
 import { getDatabasePath, getDatabaseType } from '@/lib/platform'
 import { initPosthog, trackError } from '@/lib/posthog'
 import { reconcileDefaults } from '@/lib/reconcile-defaults'
@@ -12,7 +14,6 @@ import type { InitData } from '@/types'
 import type { HandleError, HandleResult } from '@/types/handle-errors'
 import type { TrayIcon } from '@tauri-apps/api/tray'
 import type { Window } from '@tauri-apps/api/window'
-import ky from 'ky'
 import type { PostHog } from 'posthog-js'
 import { useCallback, useEffect, useState } from 'react'
 
@@ -112,7 +113,7 @@ const executeInitializationSteps = async (httpClient?: HttpClient): Promise<Hand
       const { cloudUrl } = await getSettings(db, {
         cloud_url: 'http://localhost:8000/v1',
       })
-      client = ky.create({ prefixUrl: cloudUrl })
+      client = createAuthenticatedClient(cloudUrl, getAuthToken)
     } catch (error) {
       console.error('Failed to initialize HTTP client:', error)
       const httpClientError = createHandleError('HTTP_CLIENT_INIT_FAILED', 'Failed to initialize HTTP client', error)

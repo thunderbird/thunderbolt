@@ -16,7 +16,7 @@ mock.module('@tauri-apps/plugin-os', () => ({
 }))
 
 const mockPostHogConfig = {
-  posthog_api_key: null, // Disable PostHog in tests
+  public_posthog_api_key: null, // Disable PostHog in tests
 }
 
 describe('useAppInitialization', () => {

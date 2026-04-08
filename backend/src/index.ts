@@ -74,10 +74,10 @@ export const createApp = async (deps?: AppDeps) => {
         }),
       )
       .use(createLoggerMiddleware(settings))
-      .use(createHttpLoggingMiddleware())
+      .use(createHttpLoggingMiddleware(settings.trustedProxy))
       .use(createErrorHandlingMiddleware())
       // Auth routes (mounted at /api/auth/*)
-      .use(createAuthRateLimit(rateLimitSettings))
+      .use(createAuthRateLimit({ ...rateLimitSettings, database }))
       .use(betterAuthPlugin)
       // Mount route groups
       .use(createMainRoutes(auth, fetchFn))

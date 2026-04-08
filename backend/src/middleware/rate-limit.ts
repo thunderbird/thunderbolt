@@ -4,6 +4,11 @@ import { extractClientIp } from '@/utils/request'
 import { Elysia } from 'elysia'
 import { RateLimiterAbstract, RateLimiterDrizzle, RateLimiterMemory, RateLimiterRes } from 'rate-limiter-flexible'
 
+/** Context shape when the auth macro has resolved a session. */
+type AuthResolvedContext = {
+  user?: { id: string } | null
+}
+
 type RateLimitTier = 'inference' | 'pro' | 'auth'
 
 type RateLimitTierConfig = {
@@ -86,7 +91,7 @@ const createUserRateLimitMiddleware = (limiter: RateLimiterDrizzle) =>
   new Elysia()
     .onBeforeHandle(async (ctx) => {
       const { set } = ctx
-      const user = (ctx as Record<string, unknown>).user as { id: string } | null | undefined
+      const user = (ctx as AuthResolvedContext).user
       if (!user?.id) return
       return consumeOrReject(limiter, `user:${user.id}`, set)
     })
@@ -106,15 +111,24 @@ export const createProRateLimit = (database: typeof DbType, settings: RateLimitS
   return createUserRateLimitMiddleware(limiter)
 }
 
-/** Create in-memory IP-based rate limit middleware for auth routes. */
-export const createAuthRateLimit = (settings: RateLimitSettings) => {
+/** Create DB-backed IP-based rate limit middleware for auth routes. */
+export const createAuthRateLimit = (settings: RateLimitSettings & { database?: typeof DbType }) => {
   if (!settings.enabled) return new Elysia()
   const config = tierConfigs.auth
-  const limiter = new RateLimiterMemory({
-    keyPrefix: 'auth',
-    points: config.max,
-    duration: config.durationSecs,
-  })
+  const limiter = settings.database
+    ? new RateLimiterDrizzle({
+        storeClient: settings.database,
+        schema: rateLimits,
+        keyPrefix: 'auth',
+        points: config.max,
+        duration: config.durationSecs,
+        clearExpiredByTimeout: true,
+      })
+    : new RateLimiterMemory({
+        keyPrefix: 'auth',
+        points: config.max,
+        duration: config.durationSecs,
+      })
   return new Elysia()
     .onBeforeHandle(async ({ request, set, server }) => {
       const path = new URL(request.url).pathname

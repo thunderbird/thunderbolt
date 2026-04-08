@@ -10,13 +10,17 @@ export type EncryptionCodec = {
 // CK cache — lazy-loaded from IndexedDB, invalidated on sign-out/wipe.
 // Works in both main thread and SharedWorker (both have indexedDB access).
 //
-// TODO: In SharedWorker mode, this is a separate module instance from the main thread.
-// invalidateCKCache() on sign-out doesn't reach the worker's cache. The worker will
-// reload from IndexedDB (which is cleared) on next getCK(), but there's a brief window
-// where stale CK could be used. Consider postMessage-based invalidation.
+// BroadcastChannel propagates invalidation across execution contexts (main thread,
+// SharedWorker, other tabs) so a stale CK is never used after sign-out.
 // =============================================================================
 
 let cachedCK: CryptoKey | null = null
+
+const ckChannel = typeof BroadcastChannel !== 'undefined' ? new BroadcastChannel('thunderbolt-ck-invalidation') : null
+
+ckChannel?.addEventListener('message', () => {
+  cachedCK = null
+})
 
 const getCachedCK = async (): Promise<CryptoKey | null> => {
   if (cachedCK) {
@@ -26,9 +30,10 @@ const getCachedCK = async (): Promise<CryptoKey | null> => {
   return cachedCK
 }
 
-/** Clear the CK cache. Call on sign-out or full wipe so the codec reloads. */
+/** Clear the CK cache and broadcast to all contexts (SharedWorker, other tabs). */
 export const invalidateCKCache = () => {
   cachedCK = null
+  ckChannel?.postMessage('invalidate-ck')
 }
 
 // =============================================================================

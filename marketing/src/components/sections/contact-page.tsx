@@ -55,26 +55,38 @@ const useContactFormState = () => {
     e.preventDefault()
     dispatch({ type: 'SUBMITTING' })
 
-    if (!iframeRef.current || !formRef.current) {
+    const iframe = iframeRef.current
+    if (!iframe || !formRef.current) {
       dispatch({ type: 'ERROR', message: 'Something went wrong. Please try again.' })
       return
     }
 
-    const controller = new AbortController()
+    if (!navigator.onLine) {
+      dispatch({ type: 'ERROR', message: 'You appear to be offline. Please check your connection and try again.' })
+      return
+    }
 
-    // Verify Mailchimp is reachable before submitting into the iframe
-    fetch(MAILCHIMP_URL, { method: 'HEAD', mode: 'no-cors', signal: controller.signal })
-      .then(() => {
-        formRef.current?.submit()
-        // Cross-origin iframes may not fire load reliably, so use a timeout
-        setTimeout(() => dispatch({ type: 'SUCCESS' }), 2000)
-      })
-      .catch(() => {
-        dispatch({ type: 'ERROR', message: 'Unable to reach the server. Please check your connection and try again.' })
-      })
+    let settled = false
 
-    // Abort the reachability check after 8s
-    setTimeout(() => controller.abort(), 8000)
+    const settle = (action: { type: 'SUCCESS' } | { type: 'ERROR'; message: string }) => {
+      if (settled) return
+      settled = true
+      iframe.removeEventListener('load', onLoad)
+      iframe.removeEventListener('error', onError)
+      dispatch(action)
+    }
+
+    const onLoad = () => settle({ type: 'SUCCESS' })
+    const onError = () => settle({ type: 'ERROR', message: 'Submission failed. Please try again.' })
+
+    iframe.addEventListener('load', onLoad)
+    iframe.addEventListener('error', onError)
+
+    formRef.current.submit()
+
+    // Fallback timeout — if neither load nor error fires in 10s, assume success
+    // (cross-origin iframes may not fire events reliably)
+    setTimeout(() => settle({ type: 'SUCCESS' }), 10000)
   }
 
   return { state, set, handleSubmit, iframeRef, formRef }

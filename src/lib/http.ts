@@ -134,13 +134,22 @@ export const createClient = (config: HttpClientConfig = {}): HttpClient => {
   }
 }
 
-/** Create an authenticated client that attaches a Bearer token from localStorage on each request. */
-export const createAuthenticatedClient = (prefixUrl: string, getToken: () => string | null): HttpClient =>
+/** Create an authenticated client that attaches a Bearer token from localStorage on each request.
+ * Skips setting the token if the caller already provided an Authorization header. */
+export const createAuthenticatedClient = (
+  prefixUrl: string,
+  getToken: () => string | null,
+  config: Pick<HttpClientConfig, 'fetch'> = {},
+): HttpClient =>
   createClient({
     prefixUrl,
+    fetch: config.fetch,
     hooks: {
       beforeRequest: [
         (request) => {
+          if (request.headers.has('Authorization')) {
+            return
+          }
           const token = getToken()
           if (token) {
             request.headers.set('Authorization', `Bearer ${token}`)

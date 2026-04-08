@@ -77,6 +77,7 @@ export const createChatInstance = (
       // Handle successful responses: message exists, no error, and has parts
       if (!isError && message && message.parts?.length) {
         retryCount = 0
+        lastError = null
         useChatStore.getState().updateSession(id, { retryCount: 0, retriesExhausted: false })
 
         const { sessions } = useChatStore.getState()

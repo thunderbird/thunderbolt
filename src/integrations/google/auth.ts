@@ -1,16 +1,23 @@
 import type { OAuthConfig, OAuthTokens } from '@/lib/auth'
-import { getHttpClient } from '@/lib/http-client'
-import { memoize } from '@/lib/memoize'
+import type { HttpClient } from '@/lib/http'
 import { getOAuthRedirectUri } from '@/lib/oauth-redirect'
 import type { AuthProviderBackendConfig } from '@/types'
 import type { GoogleUserInfo } from './types'
 
-const fetchBackendConfig = memoize(async (): Promise<AuthProviderBackendConfig> => {
-  return await getHttpClient().get('auth/google/config').json<AuthProviderBackendConfig>()
-})
+let cachedBackendConfig: Promise<AuthProviderBackendConfig> | null = null
 
-export const getOAuthConfig = async (): Promise<OAuthConfig> => {
-  const { client_id: clientId } = await fetchBackendConfig()
+const fetchBackendConfig = (httpClient: HttpClient): Promise<AuthProviderBackendConfig> => {
+  if (!cachedBackendConfig) {
+    cachedBackendConfig = httpClient.get('auth/google/config').json<AuthProviderBackendConfig>()
+    cachedBackendConfig.catch(() => {
+      cachedBackendConfig = null
+    })
+  }
+  return cachedBackendConfig
+}
+
+export const getOAuthConfig = async (httpClient: HttpClient): Promise<OAuthConfig> => {
+  const { client_id: clientId } = await fetchBackendConfig(httpClient)
   const redirectUri = getOAuthRedirectUri()
 
   return {
@@ -28,8 +35,13 @@ export const getOAuthConfig = async (): Promise<OAuthConfig> => {
   }
 }
 
-export const buildAuthUrl = async (state: string, codeChallenge: string, redirectUri?: string): Promise<string> => {
-  const config = await getOAuthConfig()
+export const buildAuthUrl = async (
+  httpClient: HttpClient,
+  state: string,
+  codeChallenge: string,
+  redirectUri?: string,
+): Promise<string> => {
+  const config = await getOAuthConfig(httpClient)
   const authUrl = new URL('https://accounts.google.com/o/oauth2/v2/auth')
   authUrl.searchParams.set('client_id', config.clientId)
   authUrl.searchParams.set('redirect_uri', redirectUri ?? config.redirectUri)
@@ -44,12 +56,13 @@ export const buildAuthUrl = async (state: string, codeChallenge: string, redirec
 }
 
 export const exchangeCodeForTokens = async (
+  httpClient: HttpClient,
   code: string,
   codeVerifier: string,
   redirectUri?: string,
 ): Promise<OAuthTokens> => {
-  const config = await getOAuthConfig()
-  return await getHttpClient()
+  const config = await getOAuthConfig(httpClient)
+  return await httpClient
     .post('auth/google/exchange', {
       json: { code, code_verifier: codeVerifier, redirect_uri: redirectUri ?? config.redirectUri },
     })
@@ -66,8 +79,6 @@ export const getUserInfo = async (accessToken: string): Promise<GoogleUserInfo> 
   return response.json()
 }
 
-export const refreshAccessToken = async (refreshToken: string): Promise<OAuthTokens> => {
-  return await getHttpClient()
-    .post('auth/google/refresh', { json: { refresh_token: refreshToken } })
-    .json<OAuthTokens>()
+export const refreshAccessToken = async (httpClient: HttpClient, refreshToken: string): Promise<OAuthTokens> => {
+  return await httpClient.post('auth/google/refresh', { json: { refresh_token: refreshToken } }).json<OAuthTokens>()
 }

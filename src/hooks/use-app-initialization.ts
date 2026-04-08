@@ -1,10 +1,11 @@
 import type { HttpClient } from '@/contexts'
 import { getSettings } from '@/dal'
+import { getAuthToken } from '@/lib/auth-token'
 import { Database, getCurrentDatabase, setDatabase } from '@/db/database'
 import type { AnyDrizzleDatabase } from '@/db/database-interface'
 import { createHandleError } from '@/lib/error-utils'
 import { createAppDir, resetAppDir } from '@/lib/fs'
-import { initHttpClient } from '@/lib/http-client'
+import { createAuthenticatedClient } from '@/lib/http'
 import { getDatabasePath, getDatabaseType } from '@/lib/platform'
 import { initPosthog, trackError } from '@/lib/posthog'
 import { reconcileDefaults } from '@/lib/reconcile-defaults'
@@ -112,7 +113,7 @@ const executeInitializationSteps = async (httpClient?: HttpClient): Promise<Hand
       const { cloudUrl } = await getSettings(db, {
         cloud_url: 'http://localhost:8000/v1',
       })
-      client = initHttpClient(cloudUrl)
+      client = createAuthenticatedClient(cloudUrl, getAuthToken)
     } catch (error) {
       console.error('Failed to initialize HTTP client:', error)
       const httpClientError = createHandleError('HTTP_CLIENT_INIT_FAILED', 'Failed to initialize HTTP client', error)

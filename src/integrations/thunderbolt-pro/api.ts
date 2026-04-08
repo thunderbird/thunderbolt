@@ -1,7 +1,6 @@
 import { getSettings } from '@/dal'
 import { getDb } from '@/db/database'
 import type { HttpClient } from '@/lib/http'
-import { getHttpClient } from '@/lib/http-client'
 import { WeatherForecastDataSchema, type WeatherForecastData } from '@/widgets/weather-forecast'
 import type {
   FetchContentData,
@@ -19,10 +18,7 @@ const requestTimeout = 10000
 /**
  * Search the web and return structured results with summaries and highlights
  */
-export const search = async (
-  params: SearchParams,
-  httpClient: HttpClient = getHttpClient(),
-): Promise<SearchResultData[]> => {
+export const search = async (params: SearchParams, httpClient: HttpClient): Promise<SearchResultData[]> => {
   try {
     const response = await httpClient
       .post('pro/search', {
@@ -47,10 +43,7 @@ export const search = async (
 /**
  * Fetch and parse content from a webpage URL
  */
-export const fetchContent = async (
-  params: FetchContentParams,
-  httpClient: HttpClient = getHttpClient(),
-): Promise<FetchContentData> => {
+export const fetchContent = async (params: FetchContentParams, httpClient: HttpClient): Promise<FetchContentData> => {
   try {
     const response = await httpClient
       .post('pro/fetch-content', {
@@ -76,10 +69,7 @@ export const fetchContent = async (
 /**
  * Fetch link preview metadata (title, description, image) from a URL
  */
-export const fetchLinkPreview = async (
-  params: LinkPreviewParams,
-  httpClient: HttpClient = getHttpClient(),
-): Promise<LinkPreviewData> => {
+export const fetchLinkPreview = async (params: LinkPreviewParams, httpClient: HttpClient): Promise<LinkPreviewData> => {
   try {
     const response = await httpClient
       .get(`pro/link-preview/${encodeURIComponent(params.url)}`, {
@@ -100,10 +90,7 @@ export const fetchLinkPreview = async (
 /**
  * Get current weather for specified coordinates
  */
-export const getCurrentWeather = async (
-  params: WeatherParams,
-  httpClient: HttpClient = getHttpClient(),
-): Promise<string> => {
+export const getCurrentWeather = async (params: WeatherParams, httpClient: HttpClient): Promise<string> => {
   try {
     const db = getDb()
     const { temperatureUnit, distanceUnit } = await getSettings(db, {
@@ -140,7 +127,7 @@ export const getCurrentWeather = async (
  */
 export const getWeatherForecast = async (
   params: WeatherParams,
-  httpClient: HttpClient = getHttpClient(),
+  httpClient: HttpClient,
 ): Promise<WeatherForecastData> => {
   try {
     const db = getDb()
@@ -178,10 +165,7 @@ export const getWeatherForecast = async (
 /**
  * Search for locations by name
  */
-export const searchLocations = async (
-  params: SearchLocationParams,
-  httpClient: HttpClient = getHttpClient(),
-): Promise<string> => {
+export const searchLocations = async (params: SearchLocationParams, httpClient: HttpClient): Promise<string> => {
   try {
     const db = getDb()
     const { temperatureUnit, distanceUnit } = await getSettings(db, {

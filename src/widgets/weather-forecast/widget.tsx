@@ -1,4 +1,5 @@
 import { Skeleton } from '@/components/ui/skeleton'
+import { useHttpClient } from '@/contexts'
 import { useMessageCache } from '@/hooks/use-message-cache'
 import { getWeatherForecast } from '@/integrations/thunderbolt-pro/api'
 import { WeatherForecast } from './display'
@@ -16,11 +17,12 @@ type WeatherForecastWidgetProps = {
  * Always fetches 7 days of weather data
  */
 export const WeatherForecastWidget = ({ location, region, country, messageId }: WeatherForecastWidgetProps) => {
+  const httpClient = useHttpClient()
   const { data, isLoading, error } = useMessageCache<WeatherForecastData>({
     messageId,
     cacheKey: ['weatherForecast', location, region, country],
     fetchFn: async () => {
-      return getWeatherForecast({ location, region, country, days: 7 })
+      return getWeatherForecast({ location, region, country, days: 7 }, httpClient)
     },
   })
 

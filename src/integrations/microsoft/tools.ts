@@ -158,7 +158,10 @@ const getMicrosoftCredentials = async () => {
 }
 
 /** Refresh access token if needed */
-const ensureValidToken = async (credentials: { access_token: string; refresh_token: string; expires_at?: number }) => {
+const ensureValidToken = async (
+  httpClient: HttpClient,
+  credentials: { access_token: string; refresh_token: string; expires_at?: number },
+) => {
   const now = Date.now()
   if (credentials.expires_at && credentials.expires_at < now) {
     if (!credentials.refresh_token) {
@@ -166,7 +169,7 @@ const ensureValidToken = async (credentials: { access_token: string; refresh_tok
     }
 
     const { refreshAccessToken } = await import('@/lib/auth')
-    const newTokens = await refreshAccessToken('microsoft', credentials.refresh_token)
+    const newTokens = await refreshAccessToken(httpClient, 'microsoft', credentials.refresh_token)
     const updated = {
       ...credentials,
       access_token: newTokens.access_token,
@@ -188,7 +191,7 @@ const ensureValidToken = async (credentials: { access_token: string; refresh_tok
 
 export const listMessages = async (params: ListMessagesParams, httpClient: HttpClient = http) => {
   const credentials = await getMicrosoftCredentials()
-  const accessToken = await ensureValidToken(credentials)
+  const accessToken = await ensureValidToken(httpClient, credentials)
 
   const searchParams = new URLSearchParams()
   if (params.top) {
@@ -220,7 +223,7 @@ export const listMessages = async (params: ListMessagesParams, httpClient: HttpC
 
 export const getMessage = async (params: GetMessageParams, httpClient: HttpClient = http) => {
   const credentials = await getMicrosoftCredentials()
-  const accessToken = await ensureValidToken(credentials)
+  const accessToken = await ensureValidToken(httpClient, credentials)
 
   const selectParams = params.includeBodyHtml
     ? '$select=subject,body,bodyPreview,from,toRecipients,receivedDateTime'
@@ -244,7 +247,7 @@ export const getMessage = async (params: GetMessageParams, httpClient: HttpClien
  */
 export const searchOneDrive = async (params: SearchOneDriveParams, httpClient: HttpClient = http) => {
   const credentials = await getMicrosoftCredentials()
-  const accessToken = await ensureValidToken(credentials)
+  const accessToken = await ensureValidToken(httpClient, credentials)
 
   const searchParams = new URLSearchParams()
   searchParams.set('$top', Math.min(params.max_results ?? 20, 50).toString())
@@ -285,7 +288,7 @@ export const getOneDriveFileContent = async (
   httpClient: HttpClient = http,
 ): Promise<OneDriveFileContent> => {
   const credentials = await getMicrosoftCredentials()
-  const accessToken = await ensureValidToken(credentials)
+  const accessToken = await ensureValidToken(httpClient, credentials)
 
   try {
     // Get file metadata

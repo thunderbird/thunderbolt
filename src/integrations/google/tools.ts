@@ -264,7 +264,7 @@ const getDriveFileCategory = (mime: string): DriveFileContent['file_category'] =
  */
 export const checkInbox = async (params: CheckInboxParams, httpClient: HttpClient = http) => {
   const credentials = await getGoogleCredentials()
-  const accessToken = await ensureValidGoogleToken(credentials)
+  const accessToken = await ensureValidGoogleToken(httpClient, credentials)
 
   const searchParams = new URLSearchParams()
   searchParams.set('maxResults', Math.min(params.max_results, 50).toString())
@@ -346,7 +346,7 @@ export const checkInbox = async (params: CheckInboxParams, httpClient: HttpClien
  */
 export const searchEmails = async (params: SearchEmailsParams, httpClient: HttpClient = http) => {
   const credentials = await getGoogleCredentials()
-  const accessToken = await ensureValidGoogleToken(credentials)
+  const accessToken = await ensureValidGoogleToken(httpClient, credentials)
 
   const searchParams = new URLSearchParams()
   searchParams.set('maxResults', Math.min(params.max_results, 50).toString())
@@ -405,7 +405,7 @@ export const searchEmails = async (params: SearchEmailsParams, httpClient: HttpC
  */
 export const getEmail = async (params: GetEmailParams, httpClient: HttpClient = http) => {
   const credentials = await getGoogleCredentials()
-  const accessToken = await ensureValidGoogleToken(credentials)
+  const accessToken = await ensureValidGoogleToken(httpClient, credentials)
 
   const response = await httpClient
     .get(`https://www.googleapis.com/gmail/v1/users/me/messages/${params.id}`, {
@@ -483,7 +483,7 @@ export const getEmail = async (params: GetEmailParams, httpClient: HttpClient = 
  */
 export const draftEmail = async (params: DraftEmailParams, httpClient: HttpClient = http) => {
   const credentials = await getGoogleCredentials()
-  const accessToken = await ensureValidGoogleToken(credentials)
+  const accessToken = await ensureValidGoogleToken(httpClient, credentials)
 
   const raw = buildRawMessage(params)
 
@@ -529,7 +529,7 @@ export const draftEmail = async (params: DraftEmailParams, httpClient: HttpClien
  */
 export const checkCalendar = async (params: CheckCalendarParams, httpClient: HttpClient = http) => {
   const credentials = await getGoogleCredentials()
-  const accessToken = await ensureValidGoogleToken(credentials)
+  const accessToken = await ensureValidGoogleToken(httpClient, credentials)
 
   const now = new Date()
   const futureDate = new Date()
@@ -600,7 +600,7 @@ export const checkCalendar = async (params: CheckCalendarParams, httpClient: Htt
  */
 export const searchDrive = async (params: SearchDriveParams, httpClient: HttpClient = http) => {
   const credentials = await getGoogleCredentials()
-  const accessToken = await ensureValidGoogleToken(credentials)
+  const accessToken = await ensureValidGoogleToken(httpClient, credentials)
 
   const searchParams = new URLSearchParams()
   searchParams.set('pageSize', Math.min(params.max_results, 50).toString())
@@ -694,7 +694,7 @@ export const getDriveFileContent = async (
   httpClient: HttpClient = http,
 ): Promise<DriveFileContent> => {
   const credentials = await getGoogleCredentials()
-  const accessToken = await ensureValidGoogleToken(credentials)
+  const accessToken = await ensureValidGoogleToken(httpClient, credentials)
 
   // Extract file ID from URL if a full URL was provided
   const fileId = extractDriveFileId(params.file_id)

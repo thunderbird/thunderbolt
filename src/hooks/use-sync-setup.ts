@@ -1,5 +1,7 @@
 import { useReducer } from 'react'
+import { HTTPError } from 'ky'
 import { useHttpClient } from '@/contexts'
+import { ValidationError } from '@/crypto'
 import {
   registerThisDevice,
   completeFirstDeviceSetup,
@@ -142,14 +144,11 @@ export const useSyncSetup = () => {
       return true
     } catch (err) {
       // Another device may have completed first-device setup — check canary and switch flow
-      if (err instanceof Error && 'response' in err) {
-        const status = (err as Error & { response: { status: number } }).response.status
-        if (status === 403) {
-          const hasCanary = await checkCanaryExists(httpClient)
-          if (hasCanary) {
-            dispatch({ type: 'DETECTED_ADDITIONAL_DEVICE' })
-            return true
-          }
+      if (err instanceof HTTPError && err.response.status === 403) {
+        const hasCanary = await checkCanaryExists(httpClient)
+        if (hasCanary) {
+          dispatch({ type: 'DETECTED_ADDITIONAL_DEVICE' })
+          return true
         }
       }
       const message = err instanceof Error ? err.message : 'Failed to set up encryption'
@@ -181,13 +180,13 @@ export const useSyncSetup = () => {
       await recoverWithKey(httpClient, normalized)
       return true
     } catch (err) {
-      const message = err instanceof Error ? err.message : 'Recovery failed'
-      if (message === 'Invalid recovery key') {
+      if (err instanceof ValidationError) {
         dispatch({
           type: 'SET_RECOVERY_KEY_ERROR',
           payload: 'Invalid recovery phrase. Please check that all words are correct and in the right order.',
         })
       } else {
+        const message = err instanceof Error ? err.message : 'Recovery failed'
         dispatch({ type: 'SET_RECOVERY_KEY_ERROR', payload: message })
       }
       return false

@@ -2,7 +2,11 @@ import '@/testing-library'
 import { getClock } from '@/testing-library'
 import { act, cleanup, renderHook } from '@testing-library/react'
 import { afterEach, describe, expect, it, mock } from 'bun:test'
+import { HTTPError, type NormalizedOptions } from 'ky'
 import { useApprovalPolling } from './use-approval-polling'
+
+const createHTTPError = (status: number) =>
+  new HTTPError(new Response(null, { status }), new Request('http://test'), {} as NormalizedOptions)
 
 describe('useApprovalPolling', () => {
   afterEach(() => {
@@ -109,7 +113,7 @@ describe('useApprovalPolling', () => {
   })
 
   it('calls onRevoked and stops polling on 403 error', async () => {
-    const error403 = Object.assign(new Error('Forbidden'), { response: { status: 403 } })
+    const error403 = createHTTPError(403)
     const checkApproval = mock(() => Promise.reject(error403))
     const onApproved = mock(() => {})
     const onRevoked = mock(() => {})
@@ -141,7 +145,7 @@ describe('useApprovalPolling', () => {
       if (callCount <= 2) {
         return Promise.reject(new Error('Network error'))
       }
-      return Promise.reject(Object.assign(new Error('Forbidden'), { response: { status: 403 } }))
+      return Promise.reject(createHTTPError(403))
     })
     const onApproved = mock(() => {})
     const onRevoked = mock(() => {})
@@ -179,7 +183,7 @@ describe('useApprovalPolling', () => {
     unmount()
 
     await act(async () => {
-      rejectCheck!(Object.assign(new Error('Forbidden'), { response: { status: 403 } }))
+      rejectCheck!(createHTTPError(403))
     })
 
     expect(onRevoked).not.toHaveBeenCalled()

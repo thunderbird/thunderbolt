@@ -10,22 +10,9 @@ import {
   insertEncryptionMetadataIfNotExists,
 } from '@/dal'
 import type { db as DbType } from '@/db/client'
+import { BadRequestError, ForbiddenError } from '@/errors/http-errors'
 import { timingSafeEqual } from 'crypto'
 import { Elysia, t } from 'elysia'
-
-class ForbiddenError extends Error {
-  constructor(message: string) {
-    super(message)
-    this.name = 'ForbiddenError'
-  }
-}
-
-class ValidationError extends Error {
-  constructor(message: string) {
-    super(message)
-    this.name = 'ValidationError'
-  }
-}
 
 /** Hash a canary secret using SHA-256. Returns hex-encoded hash. */
 const hashCanarySecret = async (secret: string): Promise<string> => {
@@ -175,7 +162,7 @@ export const createEncryptionRoutes = (auth: Auth, database: typeof DbType) =>
 
             // First device bootstrap requires canary data for recovery to work
             if (isFirstDeviceBootstrap && (!canaryIv || !canaryCtext || !canarySecret)) {
-              throw new ValidationError('First device bootstrap requires canaryIv, canaryCtext, and canarySecret')
+              throw new BadRequestError('First device bootstrap requires canaryIv, canaryCtext, and canarySecret')
             }
 
             // Recovery: device is self-storing and provided canary that matches stored metadata.
@@ -223,7 +210,7 @@ export const createEncryptionRoutes = (auth: Auth, database: typeof DbType) =>
             await markDeviceTrusted(txDb, deviceId, userId)
           })
         } catch (err) {
-          if (err instanceof ValidationError) {
+          if (err instanceof BadRequestError) {
             set.status = 400
             return { error: err.message }
           }

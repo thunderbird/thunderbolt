@@ -1,4 +1,4 @@
-import type { KyInstance } from 'ky'
+import { HTTPError, type KyInstance } from 'ky'
 import {
   generateKeyPair,
   generateCK,
@@ -16,6 +16,7 @@ import {
   getKeyPair,
   storeCK,
   clearAllKeys,
+  ValidationError,
 } from '@/crypto'
 import { getDeviceId } from '@/lib/auth-token'
 import { getDeviceDisplayName } from '@/lib/platform'
@@ -157,11 +158,8 @@ export const checkApprovalAndUnwrap = async (httpClient: KyInstance): Promise<bo
     return true
   } catch (err) {
     // 404 = not yet approved, return false so caller can retry
-    if (err instanceof Error && 'response' in err) {
-      const status = (err as Error & { response: { status: number } }).response.status
-      if (status === 404) {
-        return false
-      }
+    if (err instanceof HTTPError && err.response.status === 404) {
+      return false
     }
     // Re-throw transient/unexpected errors so they surface properly
     throw err
@@ -182,7 +180,7 @@ export const recoverWithKey = async (httpClient: KyInstance, recoveryPhrase: str
   const ck = await decodeRecoveryKey(recoveryPhrase)
   const { valid, canarySecret } = await verifyCanary(ck, canaryIv, canaryCtext)
   if (!valid || !canarySecret) {
-    throw new Error('Invalid recovery key')
+    throw new ValidationError('Invalid recovery key')
   }
 
   const keyPair = await getOrCreateKeyPair()

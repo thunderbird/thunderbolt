@@ -133,8 +133,7 @@ export const createAuthRateLimit = (settings: RateLimitSettings & { database?: t
     .onBeforeHandle(async ({ request, set, server }) => {
       const path = new URL(request.url).pathname
       if (!rateLimitedAuthPrefixes.some((p) => path.startsWith(p))) return
-      const socketIp = server?.requestIP(request)?.address
-      if (!socketIp) return // skip rate-limiting when socket IP is unavailable
+      const socketIp = server?.requestIP(request)?.address ?? '0.0.0.0'
       const ip = extractClientIp(request.headers, socketIp, settings.trustedProxy)
       const hasher = new Bun.CryptoHasher('sha256')
       const key = hasher.update(ip).digest('hex')

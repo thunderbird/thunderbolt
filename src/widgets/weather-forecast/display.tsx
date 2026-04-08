@@ -67,7 +67,15 @@ export const WeatherForecast = ({ days = [], temperature_unit }: WeatherForecast
         </div>
       </div>
 
-      <div className="mt-2 flex items-center justify-end">
+      <div className="mt-2 flex items-center justify-between">
+        <a
+          href="https://open-meteo.com"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="text-[10px] leading-none text-muted-foreground/60 hover:text-muted-foreground"
+        >
+          Weather data provided by Open-Meteo.com
+        </a>
         <ToggleGroup
           type="single"
           value={temperatureUnit}

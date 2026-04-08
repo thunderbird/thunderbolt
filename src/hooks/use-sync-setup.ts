@@ -141,19 +141,17 @@ export const useSyncSetup = () => {
     try {
       const recoveryKey = await completeFirstDeviceSetup(httpClient)
       dispatch({ type: 'SET_RECOVERY_KEY', payload: recoveryKey })
-      return true
     } catch (err) {
       // Another device may have completed first-device setup — check canary and switch flow
       if (err instanceof HTTPError && err.response.status === 403) {
         const hasCanary = await checkCanaryExists(httpClient)
         if (hasCanary) {
           dispatch({ type: 'DETECTED_ADDITIONAL_DEVICE' })
-          return true
+          return
         }
       }
       const message = err instanceof Error ? err.message : 'Failed to set up encryption'
       dispatch({ type: 'SET_ERROR', payload: message })
-      return false
     }
   }
 

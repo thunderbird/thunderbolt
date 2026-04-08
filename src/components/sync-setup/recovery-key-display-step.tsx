@@ -39,7 +39,7 @@ export const RecoveryKeyDisplayStep = ({ recoveryKey, onDone, onConfirmedChange 
       </div>
 
       <div className="pt-5 space-y-4">
-        <div className="rounded-xl bg-muted p-4">
+        <div role="region" aria-label="Recovery phrase" className="rounded-xl bg-muted p-4">
           <p className="text-sm font-medium leading-relaxed">{recoveryKey}</p>
         </div>
 

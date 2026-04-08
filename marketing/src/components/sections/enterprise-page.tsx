@@ -66,15 +66,13 @@ const PromptCard = ({ pillGapClass = 'gap-1.5 sm:gap-2' }: { pillGapClass?: stri
 
 const Hero = () => (
   <section className="relative pb-16 pt-[80px]">
-    <div className="mx-auto flex max-w-[730px] flex-col items-center gap-6 px-6 text-center">
-      <div className="flex flex-col items-center gap-2">
-        <h1 className="text-[40px] font-medium leading-[1.1] tracking-[-0.96px] text-[#101828] md:text-[48px]">
-          AI You Control
-        </h1>
-        <p className="max-w-[718px] text-lg leading-[1.2] text-[#667085] md:text-2xl">
-          The Open Source, Cross-Platform, Extensible AI Workspace
-        </p>
-      </div>
+    <div className="mx-auto flex max-w-[730px] flex-col items-center gap-8 px-6 text-center">
+      <h1 className="text-[40px] font-medium leading-[1.1] tracking-[-0.96px] text-[#101828] md:text-[48px]">
+        AI You Control
+      </h1>
+      <p className="max-w-[718px] text-lg leading-[1.2] text-[#667085] md:text-2xl">
+        The Open Source, Cross-Platform, Extensible AI Workspace
+      </p>
       <GetStartedButton />
     </div>
     {/* Device mockups — composed from separate SVG frames + PNG screenshots */}
@@ -303,7 +301,16 @@ const MobileFooterCTA = () => (
 export const EnterprisePage = () => (
   <div className="relative min-h-screen overflow-x-hidden bg-[#f9fafb]">
     <BackgroundGrid />
-    <Header action={<GetStartedButton />} />
+    <Header
+      action={
+        <div className="flex items-center gap-6">
+          <a href="https://github.com/thunderbird/thunderbolt" target="_blank" rel="noopener noreferrer" className="flex items-center opacity-50">
+            <img src="/enterprise/github.svg" alt="GitHub" className="h-5 w-auto" />
+          </a>
+          <GetStartedButton />
+        </div>
+      }
+    />
     <main className="relative pt-[104px]">
       <Hero />
       <FeatureCards />

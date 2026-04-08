@@ -1,10 +1,12 @@
 import { describe, expect, it, mock } from 'bun:test'
 import { createAuthenticatedClient, createClient, HttpError } from './http'
 
+type FetchFn = (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>
+
 const mockFetch = (response: Partial<Response> = {}) => {
   const ok = response.ok ?? true
   const status = response.status ?? 200
-  return mock<typeof fetch>(() =>
+  return mock<FetchFn>(() =>
     Promise.resolve(
       new Response(JSON.stringify({ success: true }), {
         status,
@@ -61,7 +63,7 @@ describe('createClient', () => {
   })
 
   it('throws HttpError on non-2xx response', async () => {
-    const fetch = mock<typeof globalThis.fetch>(() => Promise.resolve(new Response('Not Found', { status: 404 })))
+    const fetch = mock<FetchFn>(() => Promise.resolve(new Response('Not Found', { status: 404 })))
     const client = createClient({ fetch })
     await expect(client.get('https://example.com/missing')).rejects.toBeInstanceOf(HttpError)
   })

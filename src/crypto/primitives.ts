@@ -180,7 +180,9 @@ export const rewrapCK = async (
     const tempCK = await unwrapCKInternal(wrappedCKBase64, ecdhPrivateKey, mlkemSecretKey, true)
     return wrapCK(tempCK, targetEcdhPublicKey, targetMlkemPublicKey)
   } catch (err) {
-    if (err instanceof EncryptionError) throw err
+    if (err instanceof EncryptionError) {
+      throw err
+    }
     throw new EncryptionError('Failed to rewrap content key', { cause: err })
   }
 }
@@ -247,7 +249,9 @@ const unwrapCKInternal = async (
       extractable ? ['encrypt', 'decrypt'] : ['encrypt', 'decrypt', 'wrapKey', 'unwrapKey'],
     )
   } catch (err) {
-    if (err instanceof DecryptionError) throw err
+    if (err instanceof DecryptionError) {
+      throw err
+    }
     throw new DecryptionError('Failed to unwrap content key', { cause: err })
   }
 }

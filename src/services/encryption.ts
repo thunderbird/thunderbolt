@@ -40,7 +40,9 @@ import { getResponseStatus } from '@/lib/error-utils'
 /** Get existing key pairs from IndexedDB or generate and store new ones. */
 const getOrCreateKeyPair = async (): Promise<StoredKeyPair> => {
   const existing = await getKeyPair()
-  if (existing) return existing
+  if (existing) {
+    return existing
+  }
 
   const ecdhKeyPair = await generateKeyPair()
   const mlkemKeyPair = generateMlKemKeyPair()

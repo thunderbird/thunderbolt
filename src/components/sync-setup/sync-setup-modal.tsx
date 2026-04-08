@@ -15,7 +15,7 @@ import { useRef } from 'react'
 type SyncSetupModalProps = {
   open: boolean
   onOpenChange: (open: boolean) => void
-  onComplete: () => void
+  onComplete: () => void | Promise<void>
 }
 
 /**
@@ -43,12 +43,12 @@ export const SyncSetupModal = ({ open, onOpenChange, onComplete }: SyncSetupModa
     onOpenChange(false)
   }
 
-  const completeAndClose = () => {
+  const completeAndClose = async () => {
     if (hasCompletedRef.current) {
       return
     }
     hasCompletedRef.current = true
-    onComplete()
+    await onComplete()
     onOpenChange(false)
   }
 

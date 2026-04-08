@@ -146,7 +146,9 @@ export const getKeyPair = async (): Promise<StoredKeyPair | null> => {
   const ecdhPublicKey = await getValue<CryptoKey>(publicKeyId)
   const mlkemPublicKey = await getValue<Uint8Array>(mlkemPublicKeyId)
   const mlkemSecretKey = await getValue<Uint8Array>(mlkemSecretKeyId)
-  if (!ecdhPrivateKey || !ecdhPublicKey || !mlkemPublicKey || !mlkemSecretKey) return null
+  if (!ecdhPrivateKey || !ecdhPublicKey || !mlkemPublicKey || !mlkemSecretKey) {
+    return null
+  }
   return { ecdhPrivateKey, ecdhPublicKey, mlkemPublicKey, mlkemSecretKey }
 }
 

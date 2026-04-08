@@ -21,7 +21,7 @@
         "bun-types": "^1.2.22",
         "dotenv": "^17.2.3",
         "drizzle-orm": "^0.44.7",
-        "elysia": "^1.4.18",
+        "elysia": "^1.4.28",
         "exa-js": "^1.0.11",
         "ipaddr.js": "^2.3.0",
         "jose": "6.1.2",

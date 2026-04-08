@@ -181,6 +181,80 @@ describe('Config Settings', () => {
     })
   })
 
+  describe('Rate limiting settings', () => {
+    const RATE_LIMIT_ENV_KEYS = ['RATE_LIMIT_ENABLED', 'TRUSTED_PROXY'] as const
+
+    let savedEnv: Partial<Record<string, string>>
+
+    beforeEach(() => {
+      clearSettingsCache()
+      savedEnv = {}
+      for (const key of RATE_LIMIT_ENV_KEYS) {
+        if (process.env[key] !== undefined) {
+          savedEnv[key] = process.env[key]
+        }
+      }
+    })
+
+    afterEach(() => {
+      for (const key of RATE_LIMIT_ENV_KEYS) {
+        if (savedEnv[key] !== undefined) {
+          process.env[key] = savedEnv[key]
+        } else {
+          delete process.env[key]
+        }
+      }
+      clearSettingsCache()
+    })
+
+    it('should default rateLimitEnabled to true when env var is unset', () => {
+      delete process.env.RATE_LIMIT_ENABLED
+      const settings = getSettings()
+      expect(settings.rateLimitEnabled).toBe(true)
+    })
+
+    it('should disable rate limiting when RATE_LIMIT_ENABLED is "false"', () => {
+      process.env.RATE_LIMIT_ENABLED = 'false'
+      const settings = getSettings()
+      expect(settings.rateLimitEnabled).toBe(false)
+    })
+
+    it('should keep rate limiting enabled for any value other than "false"', () => {
+      process.env.RATE_LIMIT_ENABLED = 'true'
+      const settings = getSettings()
+      expect(settings.rateLimitEnabled).toBe(true)
+    })
+
+    it('should default trustedProxy to empty string when env var is unset', () => {
+      delete process.env.TRUSTED_PROXY
+      const settings = getSettings()
+      expect(settings.trustedProxy).toBe('')
+    })
+
+    it('should accept "cloudflare" as trustedProxy', () => {
+      process.env.TRUSTED_PROXY = 'cloudflare'
+      const settings = getSettings()
+      expect(settings.trustedProxy).toBe('cloudflare')
+    })
+
+    it('should accept "akamai" as trustedProxy', () => {
+      process.env.TRUSTED_PROXY = 'akamai'
+      const settings = getSettings()
+      expect(settings.trustedProxy).toBe('akamai')
+    })
+
+    it('should lowercase TRUSTED_PROXY value', () => {
+      process.env.TRUSTED_PROXY = 'CLOUDFLARE'
+      const settings = getSettings()
+      expect(settings.trustedProxy).toBe('cloudflare')
+    })
+
+    it('should reject invalid trustedProxy values', () => {
+      process.env.TRUSTED_PROXY = 'nginx'
+      expect(() => getSettings()).toThrow()
+    })
+  })
+
   describe('PowerSync settings', () => {
     const POWERSYNC_ENV_KEYS = [
       'POWERSYNC_URL',

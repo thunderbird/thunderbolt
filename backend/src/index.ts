@@ -8,7 +8,7 @@ import { runMigrations } from '@/db/client'
 import { createInferenceRoutes } from '@/inference/routes'
 import { createErrorHandlingMiddleware } from '@/middleware/error-handling'
 import { createHttpLoggingMiddleware } from '@/middleware/http-logging'
-import { createAuthRateLimit, createInferenceRateLimit, createProRateLimit } from '@/middleware/rate-limit'
+import { createInferenceRateLimit, createProRateLimit } from '@/middleware/rate-limit'
 import { createMcpProxyRoutes } from '@/mcp-proxy/routes'
 import { createPostHogRoutes } from '@/posthog/routes'
 import { createProToolsRoutes } from '@/pro/routes'
@@ -60,7 +60,7 @@ export const createApp = async (deps?: AppDeps) => {
   const { plugin: betterAuthPlugin, auth: createdAuth } = createBetterAuthPlugin(database)
   const auth = deps?.auth ?? createdAuth
 
-  const rateLimitSettings = { enabled: settings.rateLimitEnabled, trustedProxy: settings.trustedProxy }
+  const rateLimitSettings = { enabled: settings.rateLimitEnabled }
 
   return (
     configuredApp
@@ -77,7 +77,6 @@ export const createApp = async (deps?: AppDeps) => {
       .use(createHttpLoggingMiddleware(settings.trustedProxy))
       .use(createErrorHandlingMiddleware())
       // Auth routes (mounted at /api/auth/*)
-      .use(createAuthRateLimit({ ...rateLimitSettings, database }))
       .use(betterAuthPlugin)
       // Mount route groups
       .use(createMainRoutes(auth, fetchFn))

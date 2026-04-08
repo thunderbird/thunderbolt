@@ -43,6 +43,26 @@ describe('isRateLimitError', () => {
   it('returns false for error with empty message', () => {
     expect(isRateLimitError(new Error(''))).toBe(false)
   })
+
+  it('detects 429 via status field (aiFetchStreamingResponse path)', () => {
+    const error = new Error(JSON.stringify({ error: 'Rate limited', status: 429 }))
+    expect(isRateLimitError(error)).toBe(true)
+  })
+
+  it('does not match status 429 in non-JSON string', () => {
+    const error = new Error('status 429 encountered')
+    expect(isRateLimitError(error)).toBe(false)
+  })
+
+  it('returns false for malformed JSON that does not contain "too many requests"', () => {
+    const error = new Error('{invalid json')
+    expect(isRateLimitError(error)).toBe(false)
+  })
+
+  it('falls through to string match when JSON has no status fields', () => {
+    const error = new Error(JSON.stringify({ error: 'too many requests', code: 'RATE_LIMITED' }))
+    expect(isRateLimitError(error)).toBe(true)
+  })
 })
 
 describe('createHandleError', () => {

@@ -70,6 +70,7 @@ export const createChatInstance = (
           retryTimeout = null
         }
         retryCount = 0
+        lastError = null
         useChatStore.getState().updateSession(id, { retryCount: 0, retriesExhausted: false })
         return
       }
@@ -157,6 +158,7 @@ export const createChatInstance = (
       retryTimeout = null
     }
     retryCount = 0
+    lastError = null
     useChatStore.getState().updateSession(id, { retryCount: 0, retriesExhausted: false })
     return originalRegenerate()
   }
@@ -171,6 +173,7 @@ export const createChatInstance = (
       retryTimeout = null
     }
     retryCount = 0
+    lastError = null
     useChatStore.getState().updateSession(id, { retryCount: 0, retriesExhausted: false })
 
     const { sessions } = useChatStore.getState()

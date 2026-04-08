@@ -67,7 +67,7 @@ export const WeatherForecast = ({ days = [], temperature_unit }: WeatherForecast
         </div>
       </div>
 
-      <div className="mt-2 flex items-center justify-between">
+      <div className="mt-2 flex items-end justify-between">
         <a
           href="https://open-meteo.com"
           target="_blank"

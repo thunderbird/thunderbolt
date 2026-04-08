@@ -10,13 +10,17 @@ type RecoveryKeyDisplayStepProps = {
 }
 
 export const RecoveryKeyDisplayStep = ({ recoveryKey, onDone, onConfirmedChange }: RecoveryKeyDisplayStepProps) => {
-  const [copied, setCopied] = useState(false)
+  const [copyState, setCopyState] = useState<'idle' | 'copied' | 'failed'>('idle')
   const [confirmed, setConfirmed] = useState(false)
 
   const handleCopy = async () => {
-    await navigator.clipboard.writeText(recoveryKey)
-    setCopied(true)
-    setTimeout(() => setCopied(false), 2000)
+    try {
+      await navigator.clipboard.writeText(recoveryKey)
+      setCopyState('copied')
+      setTimeout(() => setCopyState('idle'), 2000)
+    } catch {
+      setCopyState('failed')
+    }
   }
 
   const handleConfirmedChange = (checked: boolean) => {
@@ -40,7 +44,7 @@ export const RecoveryKeyDisplayStep = ({ recoveryKey, onDone, onConfirmedChange 
         </div>
 
         <Button variant="outline" className="w-full" onClick={handleCopy}>
-          {copied ? (
+          {copyState === 'copied' ? (
             <>
               <Check className="size-4 mr-2" />
               Copied
@@ -53,6 +57,12 @@ export const RecoveryKeyDisplayStep = ({ recoveryKey, onDone, onConfirmedChange 
           )}
         </Button>
 
+        {copyState === 'failed' && (
+          <p className="text-sm text-destructive text-center">
+            Clipboard unavailable. Please select the phrase above and copy it manually.
+          </p>
+        )}
+
         <label className="flex items-start gap-3 cursor-pointer">
           <Checkbox checked={confirmed} onCheckedChange={(v) => handleConfirmedChange(v === true)} className="mt-0.5" />
           <span className="text-sm">I have saved my recovery phrase</span>
@@ -61,7 +71,11 @@ export const RecoveryKeyDisplayStep = ({ recoveryKey, onDone, onConfirmedChange 
         <Button
           className="w-full"
           onClick={() => {
-            navigator.clipboard.writeText('')
+            try {
+              navigator.clipboard.writeText('')
+            } catch {
+              // Best-effort clipboard clear
+            }
             onDone()
           }}
           disabled={!confirmed}

@@ -49,13 +49,12 @@ export const createInferenceRoutes = (auth: Auth, rateLimit?: AnyElysia) => {
     prefix: '/chat',
   }).onError(safeErrorHandler)
 
-  if (rateLimit) {
-    app.use(rateLimit)
-  }
+  return app.use(createAuthMacro(auth)).guard({ auth: true }, (guardedApp) => {
+    if (rateLimit) {
+      guardedApp.use(rateLimit)
+    }
 
-  return app.use(createAuthMacro(auth)).post(
-    '/completions',
-    async (ctx) => {
+    return guardedApp.post('/completions', async (ctx) => {
       const body = await ctx.request.json()
 
       if (!body.stream) {
@@ -120,9 +119,8 @@ export const createInferenceRoutes = (auth: Auth, rateLimit?: AnyElysia) => {
         }
         throw error
       }
-    },
-    { auth: true },
-  )
+    })
+  })
 }
 
 /**

@@ -33,12 +33,12 @@ export const createProToolsRoutes = (auth: Auth, fetchFn: typeof fetch = globalT
 
   const app = new Elysia({ prefix: '/pro' }).onError(safeErrorHandler)
 
-  if (rateLimit) {
-    app.use(rateLimit)
-  }
+  return app.use(createAuthMacro(auth)).guard({ auth: true }, (guardedApp) => {
+    if (rateLimit) {
+      guardedApp.use(rateLimit)
+    }
 
-  return app.use(createAuthMacro(auth)).guard({ auth: true }, (guardedApp) =>
-    guardedApp
+    return guardedApp
       .use(exaPlugin)
       .use(createProxyRoutes(fetchFn))
       .use(createLinkPreviewRoutes(fetchFn))
@@ -186,6 +186,6 @@ export const createProToolsRoutes = (auth: Auth, fetchFn: typeof fetch = globalT
             temperatureUnit: t.Optional(t.Union([t.Literal('c'), t.Literal('f')])),
           }),
         },
-      ),
-  )
+      )
+  })
 }

@@ -108,7 +108,7 @@ The local `config/config.yaml` uses HS256 with the same secret (base64) and kid 
 
 ### Devices table
 
-- **Backend:** `devices` table: `id`, `user_id`, `name`, `status` (`APPROVAL_PENDING` | `TRUSTED` | `REVOKED`), `public_key`, `last_seen`, `created_at`, `revoked_at`. Synced via PowerSync.
+- **Backend:** `devices` table: `id`, `user_id`, `name`, `status` (`APPROVAL_PENDING` | `TRUSTED` | `REVOKED`), `public_key`, `mlkem_public_key`, `last_seen`, `created_at`, `revoked_at`. Synced via PowerSync.
 - **Frontend:** Same schema in the local DB; used for Settings > Devices and for “current device revoked?” checks.
 - See [e2e-encryption.md](e2e-encryption.md) for how `status` and `public_key` are used in the encryption setup and device approval flows.
 

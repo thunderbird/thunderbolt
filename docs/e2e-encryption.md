@@ -2,7 +2,7 @@
 
 Thunderbolt uses zero-knowledge end-to-end encryption: all user data is encrypted client-side before upload and decrypted client-side after sync download. The server stores only ciphertext and wrapped keys — it cannot read user data even if compelled or breached.
 
-Cryptographic primitives: **ECDH P-256 (ECIES)** device key pairs with ephemeral key agreement, **AES-256-GCM** content key (CK) with 12-byte random IV per field value, **AES-KW** for key wrapping, **HKDF-SHA-256** for key derivation. Authentication is email + 2FA. No additional passphrase or PIN. The **recovery key** (a 24-word BIP-39 mnemonic) is the only user-managed secret.
+Cryptographic primitives: **ECDH P-256 + ML-KEM-768 hybrid** device key pairs with ephemeral key agreement, **AES-256-GCM** content key (CK) with 12-byte random IV per field value, **AES-KW** for key wrapping, **HKDF-SHA-256** for key derivation. The hybrid scheme follows the Signal PQXDH combiner pattern — security holds as long as at least one KEM is unbroken. Authentication is email + 2FA. No additional passphrase or PIN. The **recovery key** (a 24-word BIP-39 mnemonic) is the only user-managed secret.
 
 For the sync pipeline integration (how encrypted data flows through PowerSync), see [powersync-sync-middleware.md](powersync-sync-middleware.md).
 
@@ -12,9 +12,9 @@ For the sync pipeline integration (how encrypted data flows through PowerSync), 
 
 | Concept | Description |
 | --- | --- |
-| **Device key pair** | Each device generates its own ECDH P-256 key pair when the user first enables sync. The private key never leaves the device. Stored in IndexedDB as non-extractable CryptoKey. |
+| **Device key pair** | Each device generates both an ECDH P-256 key pair and an ML-KEM-768 key pair when the user first enables sync. Private keys never leave the device. ECDH keys stored in IndexedDB as non-extractable CryptoKey; ML-KEM keys stored as Uint8Array (Web Crypto does not yet support ML-KEM). |
 | **Content key (CK)** | A single AES-256-GCM key that encrypts all user data. Identical across all devices. Stored in IndexedDB as non-extractable CryptoKey after first setup. |
-| **Device envelope** | CK wrapped using ECIES: an ephemeral ECDH key pair derives a shared secret with the device's public key via HKDF, then AES-KW wraps CK. The envelope (ephemeral public key + wrapped CK) is stored server-side in a non-syncable table. Only that device's private key can unwrap it. |
+| **Device envelope** | CK wrapped using hybrid ECDH P-256 + ML-KEM-768: ephemeral ECDH derives a shared secret, ML-KEM encapsulates with the target's public key, both shared secrets are combined via HKDF, then AES-KW wraps CK. Versioned envelope format: `[version 1B][ephPub 65B][mlkemCt 1088B][wrappedCK 40B]` (1194 bytes). Stored server-side in a non-syncable table. Only that device's key pairs can unwrap it. |
 | **Recovery key** | CK encoded as a 24-word BIP-39 mnemonic. Shown once at first setup. The only way to access data if all devices are lost. |
 | **Canary** | A fixed plaintext (`thunderbolt-canary-v1`) encrypted with CK and stored server-side. Used to verify a recovery key is correct before creating a new envelope. Also used by the FE to detect whether encryption has been set up for an account (`GET /encryption/canary` returns 404 if not). |
 
@@ -22,7 +22,7 @@ For the sync pipeline integration (how encrypted data flows through PowerSync), 
 
 ## Key Hierarchy
 
-Each device has its own ECDH P-256 private key. CK — which encrypts all data — is wrapped separately for each device using the ECIES pattern: an ephemeral key pair is generated, a shared secret is derived with the target device's public key, and AES-KW wraps CK with the HKDF-derived wrapping key. Each device unwraps its own envelope with its own private key and arrives at the same CK. Different paths, identical result. No device ever sees another device's private key. The server never sees any private key.
+Each device has its own ECDH P-256 private key and ML-KEM-768 secret key. CK — which encrypts all data — is wrapped separately for each device using hybrid ECIES: an ephemeral ECDH key derives a shared secret, ML-KEM encapsulates with the target's public key, both shared secrets are concatenated and fed through HKDF (info: `thunderbolt-hybrid-ck-wrap-v1`), and AES-KW wraps CK with the derived wrapping key. Each device unwraps its own envelope with its own key pairs and arrives at the same CK. Different paths, identical result. No device ever sees another device's private keys. The server never sees any private key.
 
 ```
                          ┌─────────────────────────┐
@@ -110,7 +110,7 @@ Three server-side tables handle the encryption layer. Only `devices` is syncable
 
 ### `devices` table — syncable
 
-Synced to all trusted devices via PowerSync. Contains device identity — no key material except the public key (which is intentionally visible to all trusted devices for the approval flow).
+Synced to all trusted devices via PowerSync. Contains device identity — no key material except the public keys (ECDH + ML-KEM, which are intentionally visible to all trusted devices for the approval flow).
 
 | Column | Type | Notes |
 | --- | --- | --- |
@@ -119,6 +119,7 @@ Synced to all trusted devices via PowerSync. Contains device identity — no key
 | `name` | text | e.g. "Chrome on MacBook" (encrypted) |
 | `trusted` | boolean | `false` = pending approval, `true` = has envelope and can sync. Revocation tracked by `revoked_at`. |
 | `public_key` | text | Base64 ECDH P-256 public key (raw format, 65 bytes) — set when user enables sync. `null` for pre-encryption devices. |
+| `mlkem_public_key` | text | Base64 ML-KEM-768 public key (1184 bytes raw) — set when user enables sync. `null` for pre-encryption devices. |
 | `last_seen` | timestamp | |
 | `created_at` | timestamp | |
 | `revoked_at` | timestamp | When set, device is revoked regardless of `trusted` value. |
@@ -131,7 +132,7 @@ One row per trusted device. Each device fetches only its own row via API — nev
 | --- | --- | --- |
 | `device_id` | text (PK, FK → devices) | |
 | `user_id` | text (FK → users) | Indexed for fast lookup |
-| `wrapped_ck` | text | Base64 ECIES envelope — ephemeral public key (65 bytes) + AES-KW wrapped CK (40 bytes) |
+| `wrapped_ck` | text | Base64 hybrid envelope — version (1B) + ephemeral ECDH public key (65B) + ML-KEM-768 ciphertext (1088B) + AES-KW wrapped CK (40B) = 1194 bytes |
 | `created_at` | timestamp | |
 | `updated_at` | timestamp | |
 
@@ -160,9 +161,11 @@ powersync_sync_enabled      string    "true" | "false"
 
 IndexedDB — database: thunderbolt-keys, store: keys
 ─────────────────────────────────────────────────────────────
-thunderbolt_private_key     CryptoKey    extractable: false, usage: deriveBits (ECDH P-256)
-thunderbolt_public_key      CryptoKey    extractable: true,  usage: [] (ECDH P-256)
-thunderbolt_ck              CryptoKey    extractable: false, usage: encrypt/decrypt/wrapKey
+thunderbolt_private_key          CryptoKey    extractable: false, usage: deriveBits (ECDH P-256)
+thunderbolt_public_key           CryptoKey    extractable: true,  usage: [] (ECDH P-256)
+thunderbolt_mlkem_secret_key     Uint8Array   ML-KEM-768 secret key (2400 bytes)
+thunderbolt_mlkem_public_key     Uint8Array   ML-KEM-768 public key (1184 bytes)
+thunderbolt_ck                   CryptoKey    extractable: false, usage: encrypt/decrypt/wrapKey
 ```
 
 > **CK extractability exception:** During first device setup, CK is generated as an extractable key solely to encode the recovery key (BIP-39 mnemonic) and create the canary. It is immediately re-imported as non-extractable. The extractable version is never persisted and exists in memory only briefly.
@@ -189,7 +192,7 @@ Devices use a `trusted` boolean and a `revoked_at` timestamp. The `trusted` colu
 
 Register a device with its public key. Returns the device's current state.
 
-**Body:** `{ deviceId, publicKey, name? }`
+**Body:** `{ deviceId, publicKey, mlkemPublicKey, name? }`
 
 **Responses:**
 - Device already trusted (has publicKey): `{ trusted: true, envelope: string | null }`
@@ -242,7 +245,7 @@ Two round trips drive the first-device flow. All other flows are a single round 
 ```
 ─── Round trip 1 ───────────────────────────────────────────────
 
-POST /devices { deviceId, publicKey }
+POST /devices { deviceId, publicKey, mlkemPublicKey }
 
 → device already known, trusted, has publicKey
       returns { trusted: true, envelope }
@@ -295,14 +298,14 @@ POST /devices/:deviceId/envelope { wrappedCK, canaryIv, canaryCtext }
 Runs when the user enables sync and no canary exists for this account (meaning encryption has never been bootstrapped). CK is generated entirely on the FE — the server never sees it in plaintext.
 
 1. User toggles "Enable Sync".
-2. FE generates key pair → stores in IndexedDB (non-extractable).
-3. FE sends `POST /devices { deviceId, publicKey }`.
+2. FE generates ECDH P-256 key pair + ML-KEM-768 key pair → stores in IndexedDB.
+3. FE sends `POST /devices { deviceId, publicKey, mlkemPublicKey }`.
 4. Server returns `{ trusted: false }`.
 5. FE calls `GET /encryption/canary` → 404 (no canary) → first device flow.
 6. FE generates CK locally (extractable at this moment only).
 7. FE encodes CK as BIP-39 24-word mnemonic → recovery key held in memory briefly.
 8. FE encrypts `"thunderbolt-canary-v1"` with CK → `{ canaryIv, canaryCtext }`.
-9. FE wraps CK with own public key via `SubtleCrypto.wrapKey` → `wrappedCK`.
+9. FE wraps CK with own ECDH + ML-KEM public keys (hybrid envelope) → `wrappedCK`.
 10. FE sends `POST /devices/:deviceId/envelope { wrappedCK, canaryIv, canaryCtext }`.
 11. Server stores envelope and canary → marks device trusted.
 12. FE re-imports CK as non-extractable → stores in IndexedDB. Extractable version discarded.
@@ -333,8 +336,8 @@ Runs when the user enables sync on a new device and a canary already exists (enc
 **On the new device (Device 2):**
 
 1. User toggles "Enable Sync".
-2. FE generates key pair → stores in IndexedDB (non-extractable).
-3. FE sends `POST /devices { deviceId, publicKey }`.
+2. FE generates ECDH P-256 key pair + ML-KEM-768 key pair → stores in IndexedDB.
+3. FE sends `POST /devices { deviceId, publicKey, mlkemPublicKey }`.
 4. Server returns `{ trusted: false }`.
 5. FE calls `GET /encryption/canary` → 200 → additional device flow.
 6. FE shows approval waiting screen with polling.
@@ -343,19 +346,19 @@ Runs when the user enables sync on a new device and a canary already exists (enc
 
 1. PowerSync delivers new untrusted device row to Device 1.
 2. User opens Settings → Devices → sees pending device → taps "Approve".
-3. FE reads Device 2's public key from the synced device row.
-4. FE wraps CK with Device 2's public key via `SubtleCrypto.wrapKey`.
+3. FE reads Device 2's ECDH + ML-KEM public keys from the synced device row.
+4. FE rewraps CK with Device 2's public keys (hybrid envelope).
 5. FE sends `POST /devices/:device2Id/envelope { wrappedCK }`.
 6. Server stores Device 2's envelope → marks device trusted.
 
 **Back on Device 2:**
 
 1. Polling detects envelope via `GET /devices/me/envelope`.
-2. FE unwraps envelope with private key → CK in memory.
+2. FE unwraps envelope with ECDH private key + ML-KEM secret key → CK in memory.
 3. FE re-imports CK as non-extractable → stores in IndexedDB.
 4. Sync enabled.
 
-> **Page refresh during approval:** The key pair persists in IndexedDB. On reload, `POST /devices` returns `{ trusted: false }` and the approval screen is shown again. Device 1 can still approve — the public key has not changed.
+> **Page refresh during approval:** Both key pairs persist in IndexedDB. On reload, `POST /devices` returns `{ trusted: false }` and the approval screen is shown again. Device 1 can still approve — the public keys have not changed.
 
 ### Flow E — Recovery Key (no trusted device available)
 
@@ -367,8 +370,8 @@ Accessed via "Use recovery key instead" on the approval waiting screen.
 4. FE decrypts canary locally:
    - Matches `"thunderbolt-canary-v1"` → proceed.
    - Fails → error: "Invalid recovery phrase."
-5. FE registers device: `POST /devices { deviceId, publicKey }`.
-6. FE wraps CK with own public key.
+5. FE registers device: `POST /devices { deviceId, publicKey, mlkemPublicKey }`.
+6. FE wraps CK with own ECDH + ML-KEM public keys (hybrid envelope).
 7. FE sends `POST /devices/:deviceId/envelope { wrappedCK, canaryIv, canaryCtext }`.
 8. Server stores envelope (self-recovery path: canary match bypasses trusted-device check) → marks device trusted.
 9. FE re-imports CK as non-extractable → stores in IndexedDB.
@@ -424,8 +427,8 @@ Handles existing production users who enabled sync before E2E encryption was imp
 
 1. App loads with sync ON + encryption enabled + no CK in IndexedDB.
 2. FE detects migration state → auto-disables sync → opens encryption wizard.
-3. FE calls `POST /devices { deviceId, publicKey }`.
-4. Server detects pre-encryption device (no publicKey) → re-registers with publicKey → returns `{ trusted: false }`.
+3. FE calls `POST /devices { deviceId, publicKey, mlkemPublicKey }`.
+4. Server detects pre-encryption device (no publicKey) → re-registers with public keys → returns `{ trusted: false }`.
 5. FE calls `GET /encryption/canary` → 404 → first device flow (Flow C).
 6. User completes wizard → sync re-enabled with encryption.
 
@@ -477,8 +480,8 @@ The codec (`src/db/encryption/codec.ts`) lazy-loads CK from IndexedDB on first a
 
 | File | Role |
 | --- | --- |
-| `src/crypto/primitives.ts` | ECDH P-256 ECIES key wrapping and AES-256-GCM operations |
-| `src/crypto/key-storage.ts` | IndexedDB key storage (key pair, CK) |
+| `src/crypto/primitives.ts` | Hybrid ECDH P-256 + ML-KEM-768 key wrapping and AES-256-GCM operations |
+| `src/crypto/key-storage.ts` | IndexedDB key storage (ECDH key pair, ML-KEM key pair, CK) |
 | `src/crypto/canary.ts` | Canary creation and verification |
 | `src/crypto/recovery-key.ts` | BIP-39 mnemonic encoding/decoding |
 | `src/db/encryption/config.ts` | Encrypted columns map (single source of truth) |
@@ -517,3 +520,4 @@ The codec (`src/db/encryption/codec.ts`) lazy-loads CK from IndexedDB on first a
 | Key rotation | Generate new CK, re-wrap for all trusted devices, issue new recovery key, update canary. Not needed until a compromised CK is a realistic concern. |
 | Content sharing | Per-record content keys wrapped for specific recipient devices. Requires architectural change — single CK model does not support selective sharing. |
 | Platform keychain | Move key pair and CK from IndexedDB to OS keychain in native (Tauri) builds for hardware-backed protection. |
+| Web Crypto ML-KEM | When browsers add ML-KEM to Web Crypto API, migrate ML-KEM keys from raw Uint8Array to non-extractable CryptoKey handles for hardware-backed protection matching the ECDH keys. |

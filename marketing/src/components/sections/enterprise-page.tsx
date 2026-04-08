@@ -94,7 +94,7 @@ const Hero = () => (
             src="/enterprise/desktop_screenshot.png"
             alt="Thunderbolt desktop app"
             className="absolute z-10"
-            style={{ top: '5.5%', left: '12.5%', width: '75%', height: '82%', objectFit: 'cover' }}
+            style={{ top: '5.7%', left: '12.7%', width: '74.5%', height: '83%', objectFit: 'cover' }}
             fetchPriority="high"
           />
         </div>
@@ -256,8 +256,9 @@ const QuoteSection = () => (
           <p className="max-w-[768px] text-[32px] font-medium leading-[1.2] tracking-[-1.12px] text-[#101828] md:text-[56px]">
             &ldquo;Organizations across sectors are recognizing that AI is too strategic to outsource.&rdquo;
           </p>
-          <p className="mt-6 text-xl font-bold leading-7 tracking-[-0.4px] text-[#667085]">
-            Ryan Sipes,<br />CEO, Mozilla Thunderbird
+          <p className="mt-6 font-['Mozilla_Text',sans-serif] text-[19px] font-normal uppercase leading-[26px] tracking-[-0.38px] text-[#344054]">
+            <span className="hidden md:inline">Ryan Sipes, CEO, Mozilla Thunderbird</span>
+            <span className="md:hidden">Ryan Sipes,<br />CEO, Mozilla Thunderbird</span>
           </p>
         </div>
       </div>

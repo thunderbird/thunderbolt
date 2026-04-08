@@ -55,30 +55,26 @@ const useContactFormState = () => {
     e.preventDefault()
     dispatch({ type: 'SUBMITTING' })
 
-    const iframe = iframeRef.current
-    if (!iframe || !formRef.current) {
+    if (!iframeRef.current || !formRef.current) {
       dispatch({ type: 'ERROR', message: 'Something went wrong. Please try again.' })
       return
     }
 
-    let settled = false
+    const controller = new AbortController()
 
-    const succeed = () => {
-      if (settled) return
-      settled = true
-      iframe.removeEventListener('load', succeed)
-      dispatch({ type: 'SUCCESS' })
-    }
+    // Verify Mailchimp is reachable before submitting into the iframe
+    fetch(MAILCHIMP_URL, { method: 'HEAD', mode: 'no-cors', signal: controller.signal })
+      .then(() => {
+        formRef.current?.submit()
+        // Cross-origin iframes may not fire load reliably, so use a timeout
+        setTimeout(() => dispatch({ type: 'SUCCESS' }), 2000)
+      })
+      .catch(() => {
+        dispatch({ type: 'ERROR', message: 'Unable to reach the server. Please check your connection and try again.' })
+      })
 
-    // Listen for the iframe to load (Mailchimp's response page)
-    iframe.addEventListener('load', succeed)
-
-    // Submit the form natively into the hidden iframe
-    formRef.current.submit()
-
-    // Timeout fallback — assume success if iframe doesn't fire load in 8s
-    // (cross-origin iframes may not fire load reliably)
-    setTimeout(succeed, 8000)
+    // Abort the reachability check after 8s
+    setTimeout(() => controller.abort(), 8000)
   }
 
   return { state, set, handleSubmit, iframeRef, formRef }

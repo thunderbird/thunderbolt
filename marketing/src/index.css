@@ -4,11 +4,6 @@
 @import "@fontsource-variable/mona-sans";
 @import "@fontsource/space-mono/700.css";
 
-/* Override font-display to prevent flash of unstyled text on slow connections */
-@font-face { font-family: 'Mona Sans Variable'; font-display: block; }
-@font-face { font-family: 'Inter Variable'; font-display: block; }
-@font-face { font-family: 'Space Mono'; font-display: block; }
-
 @custom-variant dark (&:is(.dark *));
 
 @theme {

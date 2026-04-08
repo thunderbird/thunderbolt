@@ -1,27 +1,48 @@
 import * as pulumi from '@pulumi/pulumi'
 import { createVpc } from './src/vpc'
-import { createEcrAndImages } from './src/ecr'
+import { createEksCluster } from './src/eks'
+import { createStorage } from './src/storage'
+import { createCluster } from './src/cluster'
+import { createServiceDiscovery } from './src/discovery'
+import { createAlb } from './src/alb'
+import { createServices } from './src/services'
 
 const config = new pulumi.Config()
 const stackName = pulumi.getStack()
 const name = `tb-${stackName}`
 const platform = config.get('platform') || 'fargate'
+const version = config.require('version')
 
-// Shared: VPC + ECR images (both platforms need these)
+// All images are pre-built and published to GHCR by the enterprise-publish workflow
+const imagePrefix = 'ghcr.io/thunderbird/thunderbolt'
+const images = {
+  frontend: `${imagePrefix}/thunderbolt-frontend:${version}`,
+  backend: `${imagePrefix}/thunderbolt-backend:${version}`,
+  postgres: `${imagePrefix}/thunderbolt-postgres:${version}`,
+  keycloak: `${imagePrefix}/thunderbolt-keycloak:${version}`,
+  powersync: `${imagePrefix}/thunderbolt-powersync:${version}`,
+}
+
+// Secrets with sensible defaults for sandbox (override via `pulumi config set --secret`)
+const secrets = {
+  postgresPassword: config.getSecret('postgresPassword') ?? pulumi.output('postgres'),
+  keycloakAdminPassword: config.getSecret('keycloakAdminPassword') ?? pulumi.output('admin'),
+  oidcClientSecret: config.getSecret('oidcClientSecret') ?? pulumi.output('thunderbolt-enterprise-secret'),
+  powersyncJwtSecret: config.getSecret('powersyncJwtSecret') ?? pulumi.output('enterprise-powersync-secret'),
+}
+
+// Shared: VPC (both platforms need this)
 const { vpc, publicSubnets, privateSubnets, albSg, servicesSg } = createVpc(name)
-const { backendRepo, frontendRepo, postgresRepo, keycloakRepo, powersyncRepo } = createEcrAndImages(name)
 
 if (platform === 'k8s') {
   // ---------- Kubernetes (EKS) ----------
-  const { createEksCluster } = require('./src/eks')
-
   const { cluster, lbHostname } = createEksCluster({
     name,
+    version,
     vpcId: vpc.id,
     publicSubnetIds: publicSubnets.map((s) => s.id),
     privateSubnetIds: privateSubnets.map((s) => s.id),
-    backendImageUri: backendRepo.repositoryUrl.apply((url: string) => `${url}:latest`),
-    frontendImageUri: frontendRepo.repositoryUrl.apply((url: string) => `${url}:latest`),
+    ghcrToken: config.getSecret('ghcrToken'),
   })
 
   module.exports = {
@@ -35,12 +56,6 @@ if (platform === 'k8s') {
   }
 } else {
   // ---------- Fargate (ECS) ----------
-  const { createStorage } = require('./src/storage')
-  const { createCluster } = require('./src/cluster')
-  const { createServiceDiscovery } = require('./src/discovery')
-  const { createAlb } = require('./src/alb')
-  const { createServices } = require('./src/services')
-
   const storage = createStorage(
     name,
     vpc.id,
@@ -67,11 +82,9 @@ if (platform === 'k8s') {
     efsId: storage.efs.id,
     pgAccessPointId: storage.pgAccessPoint.id,
     mongoAccessPointId: storage.mongoAccessPoint.id,
-    backendImageUri: backendRepo.repositoryUrl.apply((url: string) => `${url}:latest`),
-    frontendImageUri: frontendRepo.repositoryUrl.apply((url: string) => `${url}:latest`),
-    postgresImageUri: postgresRepo.repositoryUrl.apply((url: string) => `${url}:latest`),
-    keycloakImageUri: keycloakRepo.repositoryUrl.apply((url: string) => `${url}:latest`),
-    powersyncImageUri: powersyncRepo.repositoryUrl.apply((url: string) => `${url}:latest`),
+    images,
+    secrets,
+    ghcrToken: config.getSecret('ghcrToken'),
     albDnsName: alb.dnsName,
     targetGroups: {
       frontend: frontendTg,

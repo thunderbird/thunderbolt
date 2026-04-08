@@ -1,5 +1,21 @@
 import * as aws from '@pulumi/aws'
+import * as command from '@pulumi/command'
 import * as pulumi from '@pulumi/pulumi'
+
+type Images = {
+  frontend: string
+  backend: string
+  postgres: string
+  keycloak: string
+  powersync: string
+}
+
+type Secrets = {
+  postgresPassword: pulumi.Output<string>
+  keycloakAdminPassword: pulumi.Output<string>
+  oidcClientSecret: pulumi.Output<string>
+  powersyncJwtSecret: pulumi.Output<string>
+}
 
 type ServiceArgs = {
   name: string
@@ -10,11 +26,9 @@ type ServiceArgs = {
   efsId: pulumi.Input<string>
   pgAccessPointId: pulumi.Input<string>
   mongoAccessPointId: pulumi.Input<string>
-  backendImageUri: pulumi.Input<string>
-  frontendImageUri: pulumi.Input<string>
-  postgresImageUri: pulumi.Input<string>
-  keycloakImageUri: pulumi.Input<string>
-  powersyncImageUri: pulumi.Input<string>
+  images: Images
+  secrets: Secrets
+  ghcrToken?: pulumi.Output<string>
   albDnsName: pulumi.Input<string>
   targetGroups: {
     frontend: aws.lb.TargetGroup
@@ -25,8 +39,12 @@ type ServiceArgs = {
   discoveryServices: Record<string, aws.servicediscovery.Service>
 }
 
-const execRole = (name: string) =>
-  new aws.iam.Role(`${name}-exec-role`, {
+export const createServices = (args: ServiceArgs) => {
+  const { name, cluster, logGroup, privateSubnetIds, servicesSgId, efsId, pgAccessPointId, mongoAccessPointId } = args
+  const region = aws.getRegionOutput().name
+
+  // --- IAM roles ---
+  const execRoleInstance = new aws.iam.Role(`${name}-exec-role`, {
     assumeRolePolicy: JSON.stringify({
       Version: '2012-10-17',
       Statement: [{ Effect: 'Allow', Principal: { Service: 'ecs-tasks.amazonaws.com' }, Action: 'sts:AssumeRole' }],
@@ -35,8 +53,7 @@ const execRole = (name: string) =>
     tags: { Name: `${name}-exec-role` },
   })
 
-const taskRole = (name: string) =>
-  new aws.iam.Role(`${name}-task-role`, {
+  const taskRoleInstance = new aws.iam.Role(`${name}-task-role`, {
     assumeRolePolicy: JSON.stringify({
       Version: '2012-10-17',
       Statement: [{ Effect: 'Allow', Principal: { Service: 'ecs-tasks.amazonaws.com' }, Action: 'sts:AssumeRole' }],
@@ -44,11 +61,36 @@ const taskRole = (name: string) =>
     tags: { Name: `${name}-task-role` },
   })
 
-export const createServices = (args: ServiceArgs) => {
-  const { name, cluster, logGroup, privateSubnetIds, servicesSgId, efsId, pgAccessPointId, mongoAccessPointId } = args
-  const region = aws.getRegionOutput().name
-  const execRoleArn = execRole(name).arn
-  const taskRoleArn = taskRole(name).arn
+  // --- GHCR registry auth (for pulling private images) ---
+  let repositoryCredentials: { credentialsParameter: pulumi.Output<string> } | undefined
+
+  if (args.ghcrToken) {
+    const ghcrSecret = new aws.secretsmanager.Secret(`${name}-ghcr-creds`, {
+      tags: { Name: `${name}-ghcr-creds` },
+    })
+
+    new aws.secretsmanager.SecretVersion(`${name}-ghcr-creds-version`, {
+      secretId: ghcrSecret.id,
+      secretString: pulumi.interpolate`{"username":"oauth2","password":"${args.ghcrToken}"}`,
+    })
+
+    new aws.iam.RolePolicy(`${name}-exec-secrets-policy`, {
+      role: execRoleInstance.name,
+      policy: pulumi.jsonStringify({
+        Version: '2012-10-17',
+        Statement: [{
+          Effect: 'Allow',
+          Action: ['secretsmanager:GetSecretValue'],
+          Resource: [ghcrSecret.arn],
+        }],
+      }),
+    })
+
+    repositoryCredentials = { credentialsParameter: ghcrSecret.arn }
+  }
+
+  const execRoleArn = execRoleInstance.arn
+  const taskRoleArn = taskRoleInstance.arn
 
   const logConfig = (container: string) => ({
     logDriver: 'awslogs' as const,
@@ -78,22 +120,23 @@ export const createServices = (args: ServiceArgs) => {
         },
       },
     ],
-    containerDefinitions: pulumi.all([args.postgresImageUri]).apply(([imageUri]) => JSON.stringify([
+    containerDefinitions: pulumi.jsonStringify([
       {
         name: 'postgres',
-        image: imageUri,
+        image: args.images.postgres,
         essential: true,
         command: ['postgres', '-c', 'wal_level=logical'],
         environment: [
           { name: 'POSTGRES_USER', value: 'postgres' },
           { name: 'POSTGRES_DB', value: 'postgres' },
-          { name: 'POSTGRES_PASSWORD', value: 'postgres' },
+          { name: 'POSTGRES_PASSWORD', value: args.secrets.postgresPassword },
         ],
         portMappings: [{ containerPort: 5432 }],
         mountPoints: [{ sourceVolume: 'pg-data', containerPath: '/var/lib/postgresql/data' }],
         logConfiguration: logConfig('postgres'),
+        ...(repositoryCredentials && { repositoryCredentials }),
       },
-    ])),
+    ]),
   })
 
   const pgService = new aws.ecs.Service(`${name}-pg-svc`, {
@@ -130,7 +173,7 @@ export const createServices = (args: ServiceArgs) => {
     containerDefinitions: pulumi.jsonStringify([
       {
         name: 'mongo',
-        image: 'mongo:7.0', // no custom config needed, use official image
+        image: 'mongo:7.0',
         essential: true,
         command: ['--replSet', 'rs0', '--bind_ip_all', '--quiet'],
         portMappings: [{ containerPort: 27017 }],
@@ -152,6 +195,45 @@ export const createServices = (args: ServiceArgs) => {
     serviceRegistries: { registryArn: args.discoveryServices['mongo'].arn },
   })
 
+  // --- MongoDB replica set init (one-shot task) ---
+  const mongoInitTaskDef = new aws.ecs.TaskDefinition(`${name}-mongo-init-task`, {
+    family: `${name}-mongo-init`,
+    requiresCompatibilities: ['FARGATE'],
+    networkMode: 'awsvpc',
+    cpu: '256',
+    memory: '512',
+    executionRoleArn: execRoleArn,
+    taskRoleArn,
+    containerDefinitions: pulumi.jsonStringify([
+      {
+        name: 'mongo-init',
+        image: 'mongo:7.0',
+        essential: true,
+        command: [
+          'mongosh',
+          '--host', 'mongo.thunderbolt.local',
+          '--eval',
+          'try { rs.status() } catch(e) { rs.initiate({ _id: "rs0", members: [{ _id: 0, host: "mongo.thunderbolt.local:27017" }] }) }',
+        ],
+        logConfiguration: logConfig('mongo-init'),
+      },
+    ]),
+  })
+
+  // Run the mongo init task after the mongo service is healthy
+  const mongoInit = new command.local.Command(
+    `${name}-mongo-init-run`,
+    {
+      create: pulumi.interpolate`aws ecs run-task \
+        --cluster ${cluster.arn} \
+        --task-definition ${mongoInitTaskDef.arn} \
+        --launch-type FARGATE \
+        --network-configuration '{"awsvpcConfiguration":{"subnets":${pulumi.jsonStringify(privateSubnetIds)},"securityGroups":["${servicesSgId}"]}}' \
+        --query 'tasks[0].taskArn' --output text`,
+    },
+    { dependsOn: [mongoService] },
+  )
+
   // --- PowerSync ---
   const psTaskDef = new aws.ecs.TaskDefinition(`${name}-ps-task`, {
     family: `${name}-powersync`,
@@ -161,17 +243,16 @@ export const createServices = (args: ServiceArgs) => {
     memory: '1024',
     executionRoleArn: execRoleArn,
     taskRoleArn,
-    containerDefinitions: pulumi.all([args.powersyncImageUri]).apply(([imageUri]) => JSON.stringify([
+    containerDefinitions: pulumi.jsonStringify([
       {
         name: 'powersync',
-        image: imageUri,
+        image: args.images.powersync,
         essential: true,
-        command: ['start', '-r', 'unified'],
-        environment: [{ name: 'POWERSYNC_CONFIG_PATH', value: '/config/config.yaml' }],
         portMappings: [{ containerPort: 8080 }],
         logConfiguration: logConfig('powersync'),
+        ...(repositoryCredentials && { repositoryCredentials }),
       },
-    ])),
+    ]),
   })
 
   const psService = new aws.ecs.Service(`${name}-ps-svc`, {
@@ -198,29 +279,23 @@ export const createServices = (args: ServiceArgs) => {
     memory: '2048',
     executionRoleArn: execRoleArn,
     taskRoleArn,
-    containerDefinitions: pulumi.all([args.keycloakImageUri, args.albDnsName]).apply(([imageUri, dns]) =>
+    containerDefinitions: pulumi.all([args.albDnsName, args.secrets.keycloakAdminPassword]).apply(([dns, kcPassword]) =>
       JSON.stringify([
         {
           name: 'keycloak',
-          image: imageUri,
+          image: args.images.keycloak,
           essential: true,
           command: ['start-dev', '--import-realm'],
           environment: [
             { name: 'KC_BOOTSTRAP_ADMIN_USERNAME', value: 'admin' },
-            { name: 'KC_BOOTSTRAP_ADMIN_PASSWORD', value: 'admin' },
+            { name: 'KC_BOOTSTRAP_ADMIN_PASSWORD', value: kcPassword },
             { name: 'KC_HTTP_PORT', value: '8080' },
             { name: 'KC_HOSTNAME_URL', value: `http://${dns}` },
             { name: 'KC_HTTP_RELATIVE_PATH', value: '/auth' },
           ],
           portMappings: [{ containerPort: 8080 }],
-          logConfiguration: {
-            logDriver: 'awslogs',
-            options: {
-              'awslogs-group': name + '-logs',
-              'awslogs-region': 'us-east-1', // will be overridden
-              'awslogs-stream-prefix': 'keycloak',
-            },
-          },
+          logConfiguration: logConfig('keycloak'),
+          ...(repositoryCredentials && { repositoryCredentials }),
         },
       ]),
     ),
@@ -250,44 +325,40 @@ export const createServices = (args: ServiceArgs) => {
     memory: '2048',
     executionRoleArn: execRoleArn,
     taskRoleArn,
-    containerDefinitions: pulumi.all([args.backendImageUri, args.albDnsName]).apply(([imageUri, dns]) =>
-      JSON.stringify([
-        {
-          name: 'backend',
-          image: imageUri,
-          essential: true,
-          environment: [
-            { name: 'NODE_ENV', value: 'production' },
-            { name: 'PORT', value: '8000' },
-            { name: 'AUTH_MODE', value: 'oidc' },
-            { name: 'WAITLIST_ENABLED', value: 'false' },
-            { name: 'DATABASE_DRIVER', value: 'postgres' },
-            { name: 'DATABASE_URL', value: 'postgresql://postgres:postgres@postgres.thunderbolt.local:5432/postgres' },
-            { name: 'OIDC_ISSUER', value: `http://${dns}/auth/realms/thunderbolt` },
-            { name: 'OIDC_CLIENT_ID', value: 'thunderbolt-app' },
-            { name: 'OIDC_CLIENT_SECRET', value: 'thunderbolt-enterprise-secret' },
-            { name: 'BETTER_AUTH_URL', value: `http://${dns}` },
-            { name: 'APP_URL', value: `http://${dns}` },
-            { name: 'TRUSTED_ORIGINS', value: `http://${dns}` },
-            { name: 'CORS_ORIGINS', value: `http://${dns}` },
-            { name: 'CORS_ORIGIN_REGEX', value: '' },
-            { name: 'POWERSYNC_URL', value: `http://${dns}/powersync` },
-            { name: 'POWERSYNC_JWT_SECRET', value: 'enterprise-powersync-secret' },
-            { name: 'POWERSYNC_JWT_KID', value: 'enterprise-powersync' },
-            { name: 'RATE_LIMIT_ENABLED', value: 'true' },
-          ],
-          portMappings: [{ containerPort: 8000 }],
-          logConfiguration: {
-            logDriver: 'awslogs',
-            options: {
-              'awslogs-group': name + '-logs',
-              'awslogs-region': 'us-east-1',
-              'awslogs-stream-prefix': 'backend',
-            },
+    containerDefinitions: pulumi
+      .all([args.albDnsName, args.secrets.postgresPassword, args.secrets.oidcClientSecret, args.secrets.powersyncJwtSecret])
+      .apply(([dns, pgPassword, oidcSecret, psSecret]) =>
+        JSON.stringify([
+          {
+            name: 'backend',
+            image: args.images.backend,
+            essential: true,
+            environment: [
+              { name: 'NODE_ENV', value: 'production' },
+              { name: 'PORT', value: '8000' },
+              { name: 'AUTH_MODE', value: 'oidc' },
+              { name: 'WAITLIST_ENABLED', value: 'false' },
+              { name: 'DATABASE_DRIVER', value: 'postgres' },
+              { name: 'DATABASE_URL', value: `postgresql://postgres:${pgPassword}@postgres.thunderbolt.local:5432/postgres` },
+              { name: 'OIDC_ISSUER', value: `http://${dns}/auth/realms/thunderbolt` },
+              { name: 'OIDC_CLIENT_ID', value: 'thunderbolt-app' },
+              { name: 'OIDC_CLIENT_SECRET', value: oidcSecret },
+              { name: 'BETTER_AUTH_URL', value: `http://${dns}` },
+              { name: 'APP_URL', value: `http://${dns}` },
+              { name: 'TRUSTED_ORIGINS', value: `http://${dns}` },
+              { name: 'CORS_ORIGINS', value: `http://${dns}` },
+              { name: 'CORS_ORIGIN_REGEX', value: '' },
+              { name: 'POWERSYNC_URL', value: `http://${dns}/powersync` },
+              { name: 'POWERSYNC_JWT_SECRET', value: psSecret },
+              { name: 'POWERSYNC_JWT_KID', value: 'enterprise-powersync' },
+              { name: 'RATE_LIMIT_ENABLED', value: 'true' },
+            ],
+            portMappings: [{ containerPort: 8000 }],
+            logConfiguration: logConfig('backend'),
+            ...(repositoryCredentials && { repositoryCredentials }),
           },
-        },
-      ]),
-    ),
+        ]),
+      ),
   })
 
   const beService = new aws.ecs.Service(`${name}-be-svc`, {
@@ -314,24 +385,16 @@ export const createServices = (args: ServiceArgs) => {
     memory: '512',
     executionRoleArn: execRoleArn,
     taskRoleArn,
-    containerDefinitions: pulumi.all([args.frontendImageUri]).apply(([imageUri]) =>
-      JSON.stringify([
-        {
-          name: 'frontend',
-          image: imageUri,
-          essential: true,
-          portMappings: [{ containerPort: 80 }],
-          logConfiguration: {
-            logDriver: 'awslogs',
-            options: {
-              'awslogs-group': name + '-logs',
-              'awslogs-region': 'us-east-1',
-              'awslogs-stream-prefix': 'frontend',
-            },
-          },
-        },
-      ]),
-    ),
+    containerDefinitions: pulumi.jsonStringify([
+      {
+        name: 'frontend',
+        image: args.images.frontend,
+        essential: true,
+        portMappings: [{ containerPort: 80 }],
+        logConfiguration: logConfig('frontend'),
+        ...(repositoryCredentials && { repositoryCredentials }),
+      },
+    ]),
   })
 
   const feService = new aws.ecs.Service(`${name}-fe-svc`, {
@@ -349,5 +412,5 @@ export const createServices = (args: ServiceArgs) => {
     ],
   })
 
-  return { pgService, mongoService, psService, kcService, beService, feService }
+  return { pgService, mongoService, mongoInit, psService, kcService, beService, feService }
 }

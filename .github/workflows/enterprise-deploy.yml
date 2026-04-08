@@ -31,6 +31,10 @@ on:
         description: 'Pulumi stack name (e.g., demo-acme)'
         required: true
         type: string
+      version:
+        description: 'Image version to deploy (default: from package.json)'
+        required: false
+        type: string
 
 env:
   PULUMI_ACCESS_TOKEN: ${{ secrets.PULUMI_ACCESS_TOKEN }}
@@ -52,15 +56,33 @@ jobs:
           role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
           aws-region: ${{ inputs.region }}
 
+      - name: Resolve version
+        id: version
+        env:
+          INPUT_VERSION: ${{ inputs.version }}
+        run: |
+          if [ -n "$INPUT_VERSION" ]; then
+            echo "version=$INPUT_VERSION" >> $GITHUB_OUTPUT
+          else
+            echo "version=$(jq -r .version package.json)" >> $GITHUB_OUTPUT
+          fi
+
       - name: Install Pulumi dependencies
         working-directory: deploy/pulumi
         run: bun install --frozen-lockfile
 
-      - name: Set platform config
+      - name: Configure Pulumi stack
         working-directory: deploy/pulumi
-        run: pulumi config set platform ${{ inputs.platform }} -s ${{ inputs.stack_name }} --non-interactive
         env:
           PULUMI_CONFIG_PASSPHRASE: ${{ secrets.PULUMI_CONFIG_PASSPHRASE }}
+          INPUT_PLATFORM: ${{ inputs.platform }}
+          INPUT_STACK_NAME: ${{ inputs.stack_name }}
+          INPUT_VERSION: ${{ steps.version.outputs.version }}
+          INPUT_GHCR_PAT: ${{ secrets.GHCR_PAT }}
+        run: |
+          pulumi config set platform "$INPUT_PLATFORM" -s "$INPUT_STACK_NAME" --non-interactive
+          pulumi config set version "$INPUT_VERSION" -s "$INPUT_STACK_NAME" --non-interactive
+          pulumi config set --secret ghcrToken "$INPUT_GHCR_PAT" -s "$INPUT_STACK_NAME" --non-interactive
 
       - name: Deploy
         uses: pulumi/actions@v6
@@ -74,7 +96,9 @@ jobs:
 
       - name: Print outputs
         working-directory: deploy/pulumi
-        run: pulumi stack output --json -s ${{ inputs.stack_name }}
+        env:
+          INPUT_STACK_NAME: ${{ inputs.stack_name }}
+        run: pulumi stack output --json -s "$INPUT_STACK_NAME"
 
   destroy:
     if: inputs.action == 'destroy'

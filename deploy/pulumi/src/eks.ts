@@ -1,21 +1,18 @@
-import * as aws from '@pulumi/aws'
 import * as eks from '@pulumi/eks'
 import * as k8s from '@pulumi/kubernetes'
 import * as pulumi from '@pulumi/pulumi'
-import * as path from 'path'
-import * as fs from 'fs'
 
 type EksArgs = {
   name: string
+  version: string
   vpcId: pulumi.Input<string>
   publicSubnetIds: pulumi.Input<string>[]
   privateSubnetIds: pulumi.Input<string>[]
-  backendImageUri: pulumi.Input<string>
-  frontendImageUri: pulumi.Input<string>
+  ghcrToken?: pulumi.Output<string>
 }
 
 export const createEksCluster = (args: EksArgs) => {
-  const { name, vpcId, publicSubnetIds, privateSubnetIds } = args
+  const { name, version, vpcId, publicSubnetIds, privateSubnetIds } = args
 
   const cluster = new eks.Cluster(`${name}-eks`, {
     vpcId,
@@ -38,76 +35,58 @@ export const createEksCluster = (args: EksArgs) => {
     { provider: k8sProvider },
   )
 
-  // Read manifest files from k8s directory
-  const k8sDir = path.resolve(__dirname, '../../k8s')
-  const manifestFiles = [
-    'secrets.yaml.example', // use example as default
-    'postgres.yaml',
-    'mongo.yaml',
-    'powersync.yaml',
-    'keycloak.yaml',
-    'backend.yaml',
-    'frontend.yaml',
-    'ingress.yaml',
-  ]
+  // GHCR pull secret for private images
+  const chartDeps: pulumi.Resource[] = [ns]
 
-  // Create ConfigMaps from config files
-  const configDir = path.resolve(__dirname, '../../config')
-  const dockerDir = path.resolve(__dirname, '../../docker')
+  if (args.ghcrToken) {
+    const dockerConfigJson = args.ghcrToken.apply((token) => {
+      const auth = Buffer.from(`oauth2:${token}`).toString('base64')
+      return JSON.stringify({ auths: { 'ghcr.io': { auth } } })
+    })
 
-  const nginxConfig = new k8s.core.v1.ConfigMap(
-    `${name}-nginx-config`,
-    {
-      metadata: { name: 'nginx-config', namespace: 'thunderbolt' },
-      data: { 'default.conf': fs.readFileSync(path.join(configDir, 'nginx.conf'), 'utf-8') },
-    },
-    { provider: k8sProvider, dependsOn: [ns] },
-  )
-
-  const postgresInit = new k8s.core.v1.ConfigMap(
-    `${name}-postgres-init`,
-    {
-      metadata: { name: 'postgres-init', namespace: 'thunderbolt' },
-      data: {
-        '01-powersync.sql': fs.readFileSync(path.join(dockerDir, 'postgres-init', '01-powersync.sql'), 'utf-8'),
+    const pullSecret = new k8s.core.v1.Secret(
+      `${name}-ghcr-pull`,
+      {
+        metadata: { name: 'ghcr-pull', namespace: 'thunderbolt' },
+        type: 'kubernetes.io/dockerconfigjson',
+        stringData: { '.dockerconfigjson': dockerConfigJson },
       },
-    },
-    { provider: k8sProvider, dependsOn: [ns] },
-  )
-
-  const powersyncConfig = new k8s.core.v1.ConfigMap(
-    `${name}-powersync-config`,
-    {
-      metadata: { name: 'powersync-config', namespace: 'thunderbolt' },
-      data: { 'config.yaml': fs.readFileSync(path.join(configDir, 'powersync-config.yaml'), 'utf-8') },
-    },
-    { provider: k8sProvider, dependsOn: [ns] },
-  )
-
-  const keycloakRealm = new k8s.core.v1.ConfigMap(
-    `${name}-keycloak-realm`,
-    {
-      metadata: { name: 'keycloak-realm', namespace: 'thunderbolt' },
-      data: {
-        'thunderbolt-realm.json': fs.readFileSync(path.join(configDir, 'keycloak-realm.json'), 'utf-8'),
-      },
-    },
-    { provider: k8sProvider, dependsOn: [ns] },
-  )
-
-  // Apply each manifest
-  const configMaps = [nginxConfig, postgresInit, powersyncConfig, keycloakRealm]
-
-  const resources = manifestFiles.map((file) => {
-    const filePath = path.join(k8sDir, file)
-    if (!fs.existsSync(filePath)) return null
-
-    return new k8s.yaml.ConfigFile(
-      `${name}-${file.replace('.yaml', '').replace('.example', '')}`,
-      { file: filePath },
-      { provider: k8sProvider, dependsOn: [ns, ...configMaps] },
+      { provider: k8sProvider, dependsOn: [ns] },
     )
-  })
+
+    chartDeps.push(pullSecret)
+  }
+
+  // Install the Thunderbolt Helm chart from GHCR
+  const imagePrefix = 'ghcr.io/thunderbird/thunderbolt'
+  new k8s.helm.v3.Release(
+    `${name}-thunderbolt`,
+    {
+      chart: 'oci://ghcr.io/thunderbird/charts/thunderbolt',
+      version,
+      namespace: 'thunderbolt',
+      values: {
+        appUrl: 'http://localhost',
+        imagePullSecrets: args.ghcrToken ? [{ name: 'ghcr-pull' }] : [],
+        frontend: {
+          image: { repository: `${imagePrefix}/thunderbolt-frontend`, tag: version },
+        },
+        backend: {
+          image: { repository: `${imagePrefix}/thunderbolt-backend`, tag: version },
+        },
+        postgres: {
+          image: { repository: `${imagePrefix}/thunderbolt-postgres`, tag: version },
+        },
+        keycloak: {
+          image: { repository: `${imagePrefix}/thunderbolt-keycloak`, tag: version },
+        },
+        powersync: {
+          image: { repository: `${imagePrefix}/thunderbolt-powersync`, tag: version },
+        },
+      },
+    },
+    { provider: k8sProvider, dependsOn: chartDeps },
+  )
 
   // Install nginx-ingress controller
   const ingressController = new k8s.helm.v3.Release(

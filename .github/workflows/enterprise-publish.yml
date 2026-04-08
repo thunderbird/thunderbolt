@@ -1,7 +1,7 @@
 name: Enterprise Publish
 
 on:
-  workflow_dispatch: # TODO TESTING — remove before merging to main
+  workflow_dispatch:
   push:
     branches: [main]
     paths:
@@ -13,6 +13,7 @@ on:
 env:
   REGISTRY: ghcr.io
   IMAGE_PREFIX: ghcr.io/${{ github.repository }}
+  IMAGE_SOURCE: https://github.com/${{ github.repository }}
 
 jobs:
   publish:
@@ -52,6 +53,8 @@ jobs:
           tags: |
             ${{ env.IMAGE_PREFIX }}/thunderbolt-frontend:${{ steps.version.outputs.version }}
             ${{ env.IMAGE_PREFIX }}/thunderbolt-frontend:latest
+          labels: |
+            org.opencontainers.image.source=${{ env.IMAGE_SOURCE }}
 
       - name: Build and push backend
         uses: docker/build-push-action@v6
@@ -62,6 +65,8 @@ jobs:
           tags: |
             ${{ env.IMAGE_PREFIX }}/thunderbolt-backend:${{ steps.version.outputs.version }}
             ${{ env.IMAGE_PREFIX }}/thunderbolt-backend:latest
+          labels: |
+            org.opencontainers.image.source=${{ env.IMAGE_SOURCE }}
 
       - name: Build and push postgres
         uses: docker/build-push-action@v6
@@ -72,6 +77,8 @@ jobs:
           tags: |
             ${{ env.IMAGE_PREFIX }}/thunderbolt-postgres:${{ steps.version.outputs.version }}
             ${{ env.IMAGE_PREFIX }}/thunderbolt-postgres:latest
+          labels: |
+            org.opencontainers.image.source=${{ env.IMAGE_SOURCE }}
 
       - name: Build and push keycloak
         uses: docker/build-push-action@v6
@@ -82,6 +89,8 @@ jobs:
           tags: |
             ${{ env.IMAGE_PREFIX }}/thunderbolt-keycloak:${{ steps.version.outputs.version }}
             ${{ env.IMAGE_PREFIX }}/thunderbolt-keycloak:latest
+          labels: |
+            org.opencontainers.image.source=${{ env.IMAGE_SOURCE }}
 
       - name: Build and push powersync
         uses: docker/build-push-action@v6
@@ -92,6 +101,8 @@ jobs:
           tags: |
             ${{ env.IMAGE_PREFIX }}/thunderbolt-powersync:${{ steps.version.outputs.version }}
             ${{ env.IMAGE_PREFIX }}/thunderbolt-powersync:latest
+          labels: |
+            org.opencontainers.image.source=${{ env.IMAGE_SOURCE }}
 
       # -- Package and push Helm chart --
 

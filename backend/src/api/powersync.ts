@@ -3,6 +3,7 @@ import type { Settings } from '@/config/settings'
 import { isOriginAllowed } from '@/config/settings'
 import { applyOperation, getActiveSessionByToken, getDeviceById, getUserById, upsertDevice } from '@/dal'
 import type { db as DbType } from '@/db/client'
+import { verifySignedBearerToken } from '@/auth/bearer-token'
 import { jwt } from '@elysiajs/jwt'
 import { Elysia, t } from 'elysia'
 
@@ -152,6 +153,9 @@ export const createPowerSyncRoutes = (auth: Auth, settings: Settings, database: 
       }
 
       // Path 2: No session; Bearer token only. Resolve session -> user; 410 if user deleted (e.g. account deleted elsewhere).
+      // The bearer plugin requires signed tokens (requireSignature: true), so we must verify
+      // the signature here too — otherwise an attacker with a raw session token can bypass
+      // signature verification by hitting Path 2 directly.
       const authHeader = request.headers.get('authorization')
       const bearerToken = authHeader?.startsWith('Bearer ') ? authHeader.slice(7).trim() : null
       if (!bearerToken) {
@@ -159,7 +163,13 @@ export const createPowerSyncRoutes = (auth: Auth, settings: Settings, database: 
         return { error: 'Unauthorized' }
       }
 
-      const sessionRow = await getActiveSessionByToken(database, bearerToken)
+      const rawToken = verifySignedBearerToken(bearerToken, settings.betterAuthSecret)
+      if (!rawToken) {
+        set.status = 401
+        return { error: 'Unauthorized' }
+      }
+
+      const sessionRow = await getActiveSessionByToken(database, rawToken)
       if (!sessionRow) {
         set.status = 401
         return { error: 'Unauthorized' }

@@ -27,6 +27,7 @@ const settingsSchema = z.object({
   oidcClientSecret: z.string().default(''),
   oidcIssuer: z.string().default(''),
   betterAuthUrl: z.string().default('http://localhost:8000'),
+  betterAuthSecret: z.string().default('better-auth-secret-12345678901234567890'),
 
   // General settings
   logLevel: z.enum(['DEBUG', 'INFO', 'WARN', 'ERROR']).default('INFO'),
@@ -94,6 +95,7 @@ const parseSettings = (): Settings => {
     oidcClientSecret: process.env.OIDC_CLIENT_SECRET || '',
     oidcIssuer: process.env.OIDC_ISSUER || '',
     betterAuthUrl: process.env.BETTER_AUTH_URL || 'http://localhost:8000',
+    betterAuthSecret: process.env.BETTER_AUTH_SECRET || process.env.AUTH_SECRET || '',
     logLevel: (process.env.LOG_LEVEL || 'INFO').toUpperCase(),
     port: process.env.PORT || '8000',
     appUrl: process.env.APP_URL || 'http://localhost:1420',

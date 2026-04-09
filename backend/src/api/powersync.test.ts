@@ -51,6 +51,7 @@ const powersyncSettings: Settings = {
   oidcClientSecret: '',
   oidcIssuer: '',
   betterAuthUrl: 'http://localhost:8000',
+  betterAuthSecret,
   rateLimitEnabled: false,
   swaggerEnabled: false,
   trustedProxy: '',
@@ -96,6 +97,41 @@ describe('PowerSync API', () => {
       expect(response.status).toBe(401)
       const data = await response.json()
       expect(data).toEqual({ error: 'Unauthorized' })
+    })
+
+    it('returns 401 when Bearer token is unsigned (requireSignature enforcement)', async () => {
+      const userId = 'user-unsigned-bearer'
+      const now = new Date()
+      const expiresAt = new Date(now.getTime() + 3600 * 1000)
+
+      await db.insert(userTable).values({
+        id: userId,
+        name: 'Unsigned Bearer User',
+        email: 'unsigned-bearer@example.com',
+        emailVerified: true,
+        createdAt: now,
+        updatedAt: now,
+      })
+
+      await db.insert(sessionTable).values({
+        id: 'session-unsigned-bearer',
+        expiresAt,
+        token: 'bearer-unsigned-valid',
+        createdAt: now,
+        updatedAt: now,
+        userId,
+      })
+
+      // Token exists in DB but is sent unsigned — must be rejected
+      const response = await app.handle(
+        new Request('http://localhost/powersync/token', {
+          headers: {
+            Authorization: 'Bearer bearer-unsigned-valid',
+            'x-device-id': 'some-device',
+          },
+        }),
+      )
+      expect(response.status).toBe(401)
     })
 
     it('returns 403 when device is revoked', async () => {

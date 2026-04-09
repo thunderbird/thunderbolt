@@ -53,6 +53,314 @@ describe('Account API', () => {
     await cleanup()
   })
 
+  describe('POST /v1/account/devices', () => {
+    it('registers a new device', async () => {
+      const userId = 'test-user-register-device'
+      const now = new Date()
+      const expiresAt = new Date(now.getTime() + 3600 * 1000)
+
+      await db.insert(user).values({
+        id: userId,
+        name: 'Register Device User',
+        email: 'register-device@example.com',
+        emailVerified: true,
+        createdAt: now,
+        updatedAt: now,
+      })
+
+      await db.insert(sessionTable).values({
+        id: 'session-register-device',
+        expiresAt,
+        token: 'bearer-register-device',
+        createdAt: now,
+        updatedAt: now,
+        userId,
+      })
+
+      const response = await app.handle(
+        new Request('http://localhost/v1/account/devices', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: 'Bearer bearer-register-device',
+          },
+          body: JSON.stringify({ id: 'new-device-123', name: 'My Phone' }),
+        }),
+      )
+      expect(response.status).toBe(201)
+
+      const devices = await db.select().from(devicesTable).where(eq(devicesTable.id, 'new-device-123'))
+      expect(devices).toHaveLength(1)
+      expect(devices[0]?.userId).toBe(userId)
+      expect(devices[0]?.name).toBe('My Phone')
+    })
+
+    it('returns 200 when device is already registered for same user', async () => {
+      const userId = 'test-user-device-exists'
+      const now = new Date()
+      const expiresAt = new Date(now.getTime() + 3600 * 1000)
+
+      await db.insert(user).values({
+        id: userId,
+        name: 'Existing Device User',
+        email: 'existing-device@example.com',
+        emailVerified: true,
+        createdAt: now,
+        updatedAt: now,
+      })
+
+      await db.insert(sessionTable).values({
+        id: 'session-existing-device',
+        expiresAt,
+        token: 'bearer-existing-device',
+        createdAt: now,
+        updatedAt: now,
+        userId,
+      })
+
+      await db.insert(devicesTable).values({
+        id: 'existing-device-id',
+        userId,
+        name: 'Existing Device',
+        lastSeen: now,
+        createdAt: now,
+      })
+
+      const response = await app.handle(
+        new Request('http://localhost/v1/account/devices', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: 'Bearer bearer-existing-device',
+          },
+          body: JSON.stringify({ id: 'existing-device-id' }),
+        }),
+      )
+      expect(response.status).toBe(200)
+    })
+
+    it('returns 409 when device ID belongs to another user', async () => {
+      const userA = 'test-user-device-owner'
+      const userB = 'test-user-device-thief'
+      const now = new Date()
+      const expiresAt = new Date(now.getTime() + 3600 * 1000)
+
+      await db.insert(user).values([
+        {
+          id: userA,
+          name: 'User A',
+          email: 'device-owner@example.com',
+          emailVerified: true,
+          createdAt: now,
+          updatedAt: now,
+        },
+        {
+          id: userB,
+          name: 'User B',
+          email: 'device-thief@example.com',
+          emailVerified: true,
+          createdAt: now,
+          updatedAt: now,
+        },
+      ])
+
+      await db.insert(sessionTable).values({
+        id: 'session-device-thief',
+        expiresAt,
+        token: 'bearer-device-thief',
+        createdAt: now,
+        updatedAt: now,
+        userId: userB,
+      })
+
+      await db.insert(devicesTable).values({
+        id: 'owned-device',
+        userId: userA,
+        name: 'User A Device',
+        lastSeen: now,
+        createdAt: now,
+      })
+
+      const response = await app.handle(
+        new Request('http://localhost/v1/account/devices', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: 'Bearer bearer-device-thief',
+          },
+          body: JSON.stringify({ id: 'owned-device' }),
+        }),
+      )
+      expect(response.status).toBe(409)
+      const data = await response.json()
+      expect(data).toEqual({ code: 'DEVICE_ID_TAKEN' })
+    })
+
+    it('returns 403 when device ID was revoked', async () => {
+      const userId = 'test-user-revoked-register'
+      const now = new Date()
+      const expiresAt = new Date(now.getTime() + 3600 * 1000)
+
+      await db.insert(user).values({
+        id: userId,
+        name: 'Revoked Register User',
+        email: 'revoked-register@example.com',
+        emailVerified: true,
+        createdAt: now,
+        updatedAt: now,
+      })
+
+      await db.insert(sessionTable).values({
+        id: 'session-revoked-register',
+        expiresAt,
+        token: 'bearer-revoked-register',
+        createdAt: now,
+        updatedAt: now,
+        userId,
+      })
+
+      await db.insert(devicesTable).values({
+        id: 'revoked-device-reg',
+        userId,
+        name: 'Revoked Device',
+        lastSeen: now,
+        createdAt: now,
+        revokedAt: now,
+      })
+
+      const response = await app.handle(
+        new Request('http://localhost/v1/account/devices', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: 'Bearer bearer-revoked-register',
+          },
+          body: JSON.stringify({ id: 'revoked-device-reg' }),
+        }),
+      )
+      expect(response.status).toBe(403)
+      const data = await response.json()
+      expect(data).toEqual({ code: 'DEVICE_DISCONNECTED' })
+    })
+
+    it('returns 401 when not authenticated', async () => {
+      const response = await app.handle(
+        new Request('http://localhost/v1/account/devices', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ id: 'some-device' }),
+        }),
+      )
+      expect(response.status).toBe(401)
+    })
+  })
+
+  describe('POST /v1/account/devices/:id/revoke', () => {
+    it('invalidates all other sessions when device is revoked', async () => {
+      const userId = 'test-user-session-revoke'
+      const now = new Date()
+      const expiresAt = new Date(now.getTime() + 3600 * 1000)
+
+      await db.insert(user).values({
+        id: userId,
+        name: 'Session Revoke User',
+        email: 'session-revoke@example.com',
+        emailVerified: true,
+        createdAt: now,
+        updatedAt: now,
+      })
+
+      // Create two sessions: one for the user revoking, one for the attacker
+      await db.insert(sessionTable).values([
+        {
+          id: 'session-user-revoking',
+          expiresAt,
+          token: 'bearer-user-revoking',
+          createdAt: now,
+          updatedAt: now,
+          userId,
+        },
+        {
+          id: 'session-attacker',
+          expiresAt,
+          token: 'bearer-attacker',
+          createdAt: now,
+          updatedAt: now,
+          userId,
+        },
+      ])
+
+      await db.insert(devicesTable).values({
+        id: 'device-to-revoke',
+        userId,
+        name: 'Compromised Device',
+        lastSeen: now,
+        createdAt: now,
+      })
+
+      // Revoke the device from the user's session
+      const response = await app.handle(
+        new Request('http://localhost/v1/account/devices/device-to-revoke/revoke', {
+          method: 'POST',
+          headers: { Authorization: 'Bearer bearer-user-revoking' },
+        }),
+      )
+      expect(response.status).toBe(204)
+
+      // The revoking user's session should still exist
+      const revokingSession = await db.select().from(sessionTable).where(eq(sessionTable.id, 'session-user-revoking'))
+      expect(revokingSession).toHaveLength(1)
+
+      // The attacker's session should be deleted
+      const attackerSession = await db.select().from(sessionTable).where(eq(sessionTable.id, 'session-attacker'))
+      expect(attackerSession).toHaveLength(0)
+    })
+
+    it('preserves revoking session even when it is the only session', async () => {
+      const userId = 'test-user-single-session'
+      const now = new Date()
+      const expiresAt = new Date(now.getTime() + 3600 * 1000)
+
+      await db.insert(user).values({
+        id: userId,
+        name: 'Single Session User',
+        email: 'single-session@example.com',
+        emailVerified: true,
+        createdAt: now,
+        updatedAt: now,
+      })
+
+      await db.insert(sessionTable).values({
+        id: 'session-only-one',
+        expiresAt,
+        token: 'bearer-only-one',
+        createdAt: now,
+        updatedAt: now,
+        userId,
+      })
+
+      await db.insert(devicesTable).values({
+        id: 'device-single-session',
+        userId,
+        name: 'Device',
+        lastSeen: now,
+        createdAt: now,
+      })
+
+      const response = await app.handle(
+        new Request('http://localhost/v1/account/devices/device-single-session/revoke', {
+          method: 'POST',
+          headers: { Authorization: 'Bearer bearer-only-one' },
+        }),
+      )
+      expect(response.status).toBe(204)
+
+      // Session should still exist
+      const sessions = await db.select().from(sessionTable).where(eq(sessionTable.id, 'session-only-one'))
+      expect(sessions).toHaveLength(1)
+    })
+  })
+
   describe('DELETE /v1/account', () => {
     it('should return 401 when not authenticated', async () => {
       const response = await app.handle(

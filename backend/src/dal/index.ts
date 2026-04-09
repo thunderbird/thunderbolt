@@ -5,7 +5,7 @@ export { getDeviceById, upsertDevice, revokeDevice, denyDevice, markDeviceTruste
 export { getUserById, getUserByEmail, deleteUser, markUserNotNew } from './users'
 
 // Sessions
-export { getActiveSessionByToken } from './sessions'
+export { getActiveSessionByToken, revokeOtherSessions } from './sessions'
 
 // Waitlist
 export { getWaitlistByEmail, createWaitlistEntry, approveWaitlistEntry } from './waitlist'

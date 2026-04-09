@@ -6,11 +6,10 @@ import { useSettings } from '@/hooks/use-settings'
 import { useUnitsOptions } from '@/hooks/use-units-options'
 import { privacyPolicyUrl } from '@/lib/constants'
 import { extractCountryFromLocation } from '@/lib/country-utils'
-import { getAuthToken } from '@/lib/auth-token'
 import { clearLocalData } from '@/lib/cleanup'
 import { trackEvent } from '@/lib/posthog'
 import type { CountryUnitsData } from '@/types'
-import ky from 'ky'
+import { useHttpClient } from '@/contexts'
 import { useEffect, useMemo, useReducer, useRef, useState } from 'react'
 
 import { LocationSearchCombobox } from '@/components/location-search-combobox'
@@ -94,6 +93,7 @@ export default function PreferencesSettingsPage() {
 
   const postHog = usePostHog()
 
+  const httpClient = useHttpClient()
   const { syncEnabled, syncSetupOpen, setSyncSetupOpen, handleSyncToggle, handleSyncSetupComplete } =
     useSyncEnabledToggle()
   const { connectionStatus } = usePowerSyncStatus()
@@ -101,7 +101,6 @@ export default function PreferencesSettingsPage() {
 
   // Use our useSettings hook for all settings
   const {
-    cloudUrl,
     preferredName,
     locationName,
     locationLat,
@@ -271,17 +270,7 @@ export default function PreferencesSettingsPage() {
     dispatch({ type: 'SET_IS_DELETING_ACCOUNT', payload: true })
 
     try {
-      const token = getAuthToken()
-      if (!token) {
-        setDeleteAccountError('Not signed in.')
-        return
-      }
-      const baseUrl = cloudUrl.value ?? 'http://localhost:8000/v1'
-      await ky.delete('account', {
-        prefixUrl: baseUrl,
-        headers: { Authorization: `Bearer ${token}` },
-        credentials: 'omit',
-      })
+      await httpClient.delete('account', { credentials: 'omit' })
       await clearLocalData()
       window.location.reload()
     } catch (error) {

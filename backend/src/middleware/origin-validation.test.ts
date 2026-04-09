@@ -126,6 +126,33 @@ describe('Origin validation middleware', () => {
       expect(res.status).toBe(403)
     })
 
+    describe('with corsOriginRegex: null (string-only matching)', () => {
+      const noRegexSettings = {
+        corsOrigins: 'http://localhost:1420',
+        corsOriginRegex: null,
+      }
+
+      it('allows explicit origin when no regex is configured', async () => {
+        const wrapped = withOriginValidation(mockHandler, noRegexSettings)
+        const res = await wrapped(
+          new Request('http://localhost/test', {
+            headers: { Origin: 'http://localhost:1420' },
+          }),
+        )
+        expect(res.status).toBe(200)
+      })
+
+      it('rejects unlisted origin when no regex is configured', async () => {
+        const wrapped = withOriginValidation(mockHandler, noRegexSettings)
+        const res = await wrapped(
+          new Request('http://localhost/test', {
+            headers: { Origin: 'tauri://localhost' },
+          }),
+        )
+        expect(res.status).toBe(403)
+      })
+    })
+
     it('passes request through to handler when origin is valid', async () => {
       const handler = (req: Request) =>
         new Response(JSON.stringify({ received: req.headers.get('x-custom') }), { status: 200 })

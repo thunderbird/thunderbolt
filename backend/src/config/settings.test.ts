@@ -53,7 +53,7 @@ describe('Config Settings', () => {
         corsOrigins: 'https://app.example.com,https://other.example.com',
         corsOriginRegex: null,
       }
-      const origins = getCorsOrigins(settings as any)
+      const origins = getCorsOrigins(settings)
 
       expect(origins).toEqual(['https://app.example.com', 'https://other.example.com'])
     })
@@ -64,7 +64,7 @@ describe('Config Settings', () => {
         corsOrigins: 'https://app.example.com',
         corsOriginRegex: regex,
       }
-      const origins = getCorsOrigins(settings as any)
+      const origins = getCorsOrigins(settings)
 
       expect(origins).toHaveLength(2)
       expect(origins).toContain('https://app.example.com')
@@ -76,7 +76,7 @@ describe('Config Settings', () => {
         corsOrigins: 'https://app.example.com',
         corsOriginRegex: null,
       }
-      const origins = getCorsOrigins(settings as any)
+      const origins = getCorsOrigins(settings)
 
       expect(origins).toEqual(['https://app.example.com'])
       expect(origins.every((o) => typeof o === 'string')).toBe(true)

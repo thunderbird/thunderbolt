@@ -148,9 +148,14 @@ export const useSyncSetup = () => {
     } catch (err) {
       // Another device may have completed first-device setup — check canary and switch flow
       if (err instanceof HttpError && err.response.status === 403) {
-        const hasCanary = await checkCanaryExists(httpClient)
-        if (hasCanary) {
-          dispatch({ type: 'DETECTED_ADDITIONAL_DEVICE' })
+        try {
+          const hasCanary = await checkCanaryExists(httpClient)
+          if (hasCanary) {
+            dispatch({ type: 'DETECTED_ADDITIONAL_DEVICE' })
+            return
+          }
+        } catch {
+          dispatch({ type: 'RESET' })
           return
         }
       }

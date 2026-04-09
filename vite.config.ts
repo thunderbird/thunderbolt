@@ -94,6 +94,18 @@ export default defineConfig({
       // 3. tell vite to ignore watching `src-tauri`
       ignored: ['**/src-tauri/**'],
     },
+    fs: {
+      strict: true,
+      allow: [
+        path.resolve(__dirname, 'src'),
+        path.resolve(__dirname, 'shared'),
+        path.resolve(__dirname, 'public'),
+        path.resolve(__dirname, 'node_modules'),
+        path.resolve(__dirname, 'dist-isolation'),
+        path.resolve(__dirname, '.storybook'),
+        path.resolve(__dirname, 'index.html'),
+      ],
+    },
   },
   optimizeDeps: {
     exclude: ['@journeyapps/wa-sqlite', '@powersync/web'],

@@ -2,7 +2,6 @@ import { isNewAuthUser, onSignInSuccess } from '@/components/sign-in/use-sign-in
 import { useWelcomeStore } from '@/components/welcome-dialog'
 import type { AuthClient } from '@/contexts'
 import { useHttpClient } from '@/contexts'
-import { setAuthToken } from '@/lib/auth-token'
 import { getOtpErrorMessage } from '@/lib/otp-error-messages'
 import { isValidEmailFormat } from '@/lib/utils'
 import { useReducer, type FormEvent } from 'react'
@@ -111,15 +110,6 @@ export const useWaitlistState = ({ authClient, onVerified }: UseWaitlistStateOpt
         dispatch({ type: 'VERIFY_ERROR', payload: getOtpErrorMessage(result.error, 'code') })
         return
       }
-
-      // Backend auth hook returns { session, user }; session.token is the bearer token
-      const token = (result.data as { session?: { token?: string } } | undefined)?.session?.token
-      if (!token) {
-        dispatch({ type: 'VERIFY_ERROR', payload: 'Verification failed. Please try again.' })
-        return
-      }
-
-      setAuthToken(token)
 
       const isNewUser = isNewAuthUser(result.data.user)
       await onSignInSuccess(isNewUser)

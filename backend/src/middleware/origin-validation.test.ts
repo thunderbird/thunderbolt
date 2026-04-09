@@ -125,42 +125,6 @@ describe('Origin validation middleware', () => {
       expect(res.status).toBe(403)
     })
 
-    describe('with wildcard origins', () => {
-      const wildcardSettings = {
-        corsOrigins: 'http://localhost:1420,https://*.onrender.com',
-      }
-
-      it('allows wildcard-matched origins', async () => {
-        const wrapped = withOriginValidation(mockHandler, wildcardSettings)
-        const res = await wrapped(
-          new Request('http://localhost/test', {
-            headers: { Origin: 'https://pr-42.onrender.com' },
-          }),
-        )
-        expect(res.status).toBe(200)
-      })
-
-      it('rejects multi-segment subdomain against wildcard', async () => {
-        const wrapped = withOriginValidation(mockHandler, wildcardSettings)
-        const res = await wrapped(
-          new Request('http://localhost/test', {
-            headers: { Origin: 'https://evil.com.onrender.com' },
-          }),
-        )
-        expect(res.status).toBe(403)
-      })
-
-      it('rejects unlisted origins when only wildcard is configured', async () => {
-        const wrapped = withOriginValidation(mockHandler, { corsOrigins: 'https://*.onrender.com' })
-        const res = await wrapped(
-          new Request('http://localhost/test', {
-            headers: { Origin: 'https://evil.com' },
-          }),
-        )
-        expect(res.status).toBe(403)
-      })
-    })
-
     it('passes request through to handler when origin is valid', async () => {
       const handler = (req: Request) =>
         new Response(JSON.stringify({ received: req.headers.get('x-custom') }), { status: 200 })

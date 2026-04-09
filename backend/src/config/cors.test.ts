@@ -101,36 +101,7 @@ describe('CORS integration', () => {
     })
   })
 
-  describe('with wildcard origins', () => {
-    const origins = getCorsOrigins({
-      corsOrigins: 'https://app.example.com,https://*.onrender.com',
-    })
-
-    it('should allow wildcard-matched origin', async () => {
-      const app = createTestApp(origins)
-      const res = await app.handle(
-        new Request('http://localhost/test', {
-          headers: { Origin: 'https://my-app-pr-42.onrender.com' },
-        }),
-      )
-
-      expect(res.headers.get('access-control-allow-origin')).toBe('https://my-app-pr-42.onrender.com')
-      expect(res.headers.get('access-control-allow-credentials')).toBe('true')
-    })
-
-    it('should reject multi-segment subdomain against wildcard', async () => {
-      const app = createTestApp(origins)
-      const res = await app.handle(
-        new Request('http://localhost/test', {
-          headers: { Origin: 'https://evil.com.onrender.com' },
-        }),
-      )
-
-      expect(res.headers.get('access-control-allow-origin')).toBeNull()
-    })
-  })
-
-  describe('with only explicit origins (no wildcards)', () => {
+  describe('with only explicit origins', () => {
     const origins = getCorsOrigins({
       corsOrigins: 'https://app.example.com',
     })

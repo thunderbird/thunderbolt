@@ -47,7 +47,7 @@ const settingsSchema = z.object({
   powersyncJwtSecret: z.string().default(''),
   powersyncTokenExpirySeconds: z.coerce.number().default(3600),
 
-  // CORS settings — supports exact origins and wildcard subdomains (e.g. https://*.onrender.com)
+  // CORS settings — comma-separated list of exact origins
   corsOrigins: z.string().default('http://localhost:1420,tauri://localhost,http://tauri.localhost'),
   corsAllowCredentials: z.boolean().default(true),
   corsAllowMethods: z.string().default('GET,POST,PUT,DELETE,PATCH,OPTIONS'),
@@ -149,24 +149,14 @@ export const getCorsOriginsList = (settings: Pick<Settings, 'corsOrigins'>): str
     .filter((origin) => origin.length > 0)
 }
 
-/**
- * Convert a wildcard origin pattern to a RegExp.
- * `*` matches a single subdomain segment (no dots), preventing multi-level subdomain attacks.
- */
-const wildcardToRegex = (pattern: string): RegExp => {
-  const parts = pattern.split('*')
-  const escaped = parts.map((p) => p.replace(/[.+?^${}()|[\]\\]/g, '\\$&'))
-  return new RegExp(`^${escaped.join('[^.]+')}$`)
+/** Get CORS origins as a parsed array. */
+export const getCorsOrigins = (settings: Pick<Settings, 'corsOrigins'>): string[] => {
+  return getCorsOriginsList(settings)
 }
 
-/** Get CORS origins as an array of exact strings and wildcard-derived RegExps. */
-export const getCorsOrigins = (settings: Pick<Settings, 'corsOrigins'>): (RegExp | string)[] => {
-  return getCorsOriginsList(settings).map((origin) => (origin.includes('*') ? wildcardToRegex(origin) : origin))
-}
-
-/** Check whether a given origin is allowed by the configured CORS origins. */
+/** Check whether a given origin is allowed by the configured CORS origins (exact match). */
 export const isOriginAllowed = (origin: string, settings: Pick<Settings, 'corsOrigins'>): boolean => {
-  return getCorsOrigins(settings).some((entry) => (entry instanceof RegExp ? entry.test(origin) : entry === origin))
+  return getCorsOriginsList(settings).includes(origin)
 }
 
 export const getCorsMethodsList = (settings: Settings): string[] => {

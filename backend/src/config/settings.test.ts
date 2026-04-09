@@ -48,51 +48,18 @@ describe('Config Settings', () => {
   })
 
   describe('getCorsOrigins', () => {
-    it('should return explicit origins as strings', () => {
+    it('should return parsed origins array', () => {
       const settings = { corsOrigins: 'https://app.example.com,https://other.example.com' }
       const origins = getCorsOrigins(settings)
 
       expect(origins).toEqual(['https://app.example.com', 'https://other.example.com'])
     })
 
-    it('should convert wildcard origins to RegExp', () => {
-      const settings = { corsOrigins: 'https://*.onrender.com' }
+    it('should return all strings (no regex)', () => {
+      const settings = { corsOrigins: 'https://app.example.com,tauri://localhost' }
       const origins = getCorsOrigins(settings)
 
-      expect(origins).toHaveLength(1)
-      expect(origins[0]).toBeInstanceOf(RegExp)
-    })
-
-    it('should mix explicit and wildcard origins', () => {
-      const settings = { corsOrigins: 'https://app.example.com,https://*.onrender.com' }
-      const origins = getCorsOrigins(settings)
-
-      expect(origins).toHaveLength(2)
-      expect(origins[0]).toBe('https://app.example.com')
-      expect(origins[1]).toBeInstanceOf(RegExp)
-    })
-
-    it('wildcard should match a single subdomain segment', () => {
-      const settings = { corsOrigins: 'https://*.onrender.com' }
-      const [regex] = getCorsOrigins(settings) as RegExp[]
-
-      expect(regex.test('https://my-app.onrender.com')).toBe(true)
-      expect(regex.test('https://pr-123.onrender.com')).toBe(true)
-    })
-
-    it('wildcard should not match multiple subdomain segments', () => {
-      const settings = { corsOrigins: 'https://*.onrender.com' }
-      const [regex] = getCorsOrigins(settings) as RegExp[]
-
-      expect(regex.test('https://evil.com.onrender.com')).toBe(false)
-    })
-
-    it('wildcard should not match bare domain', () => {
-      const settings = { corsOrigins: 'https://*.onrender.com' }
-      const [regex] = getCorsOrigins(settings) as RegExp[]
-
-      expect(regex.test('https://onrender.com')).toBe(false)
-      expect(regex.test('https://.onrender.com')).toBe(false)
+      expect(origins.every((o) => typeof o === 'string')).toBe(true)
     })
   })
 
@@ -371,16 +338,6 @@ describe('Config Settings', () => {
     it('returns false when origin is not in the list', () => {
       const settings = { corsOrigins: 'http://localhost:1420' }
       expect(isOriginAllowed('http://localhost:9999', settings)).toBe(false)
-    })
-
-    it('returns true when origin matches a wildcard entry', () => {
-      const settings = { corsOrigins: 'https://app.example.com,https://*.onrender.com' }
-      expect(isOriginAllowed('https://my-app.onrender.com', settings)).toBe(true)
-    })
-
-    it('returns false when origin does not match wildcard', () => {
-      const settings = { corsOrigins: 'https://*.onrender.com' }
-      expect(isOriginAllowed('https://evil.com', settings)).toBe(false)
     })
 
     it('returns true for explicit Tauri origins in the default config', () => {

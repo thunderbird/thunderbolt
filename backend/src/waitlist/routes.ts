@@ -36,8 +36,9 @@ type WaitlistRoutesOptions = {
 }
 
 // TODO(THU-113): Add proof-of-work challenge (ALTCHA) to rate-limit this unauthenticated endpoint
-// without storing client IPs. Until then, resendStrategy: "reuse" in the emailOTP config prevents
-// the OTP attempt counter from being reset on each request.
+// without storing client IPs. Currently unthrottled: the server-side auth.api.sendVerificationOTP
+// call bypasses Better Auth's HTTP rate limiter. resendStrategy: "reuse" preserves the attempt
+// counter on resend, but once all attempts are exhausted a fresh OTP with counter=0 is generated.
 export const createWaitlistRoutes = ({ database, auth, emailService = defaultEmailService }: WaitlistRoutesOptions) =>
   new Elysia({ prefix: '/waitlist' }).onError(safeErrorHandler).post(
     '/join',

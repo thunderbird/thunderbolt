@@ -262,7 +262,7 @@ describe('Account API', () => {
       const response = await app.handle(
         new Request(`http://localhost/v1/account/devices/${deviceId}/revoke`, {
           method: 'POST',
-          headers: { Authorization: `Bearer ${token}` },
+          headers: { Authorization: `Bearer ${signToken(token)}` },
         }),
       )
 
@@ -296,7 +296,7 @@ describe('Account API', () => {
       const response = await app.handle(
         new Request(`http://localhost/v1/account/devices/${deviceId}/revoke`, {
           method: 'POST',
-          headers: { Authorization: `Bearer ${tokenA}` },
+          headers: { Authorization: `Bearer ${signToken(tokenA)}` },
         }),
       )
 
@@ -315,7 +315,7 @@ describe('Account API', () => {
       const response = await app.handle(
         new Request(`http://localhost/v1/account/devices/${p('does-not-exist')}/revoke`, {
           method: 'POST',
-          headers: { Authorization: `Bearer ${token}` },
+          headers: { Authorization: `Bearer ${signToken(token)}` },
         }),
       )
 
@@ -341,7 +341,7 @@ describe('Account API', () => {
       await app.handle(
         new Request(`http://localhost/v1/account/devices/${deviceId}/revoke`, {
           method: 'POST',
-          headers: { Authorization: `Bearer ${token}` },
+          headers: { Authorization: `Bearer ${signToken(token)}` },
         }),
       )
 
@@ -349,7 +349,7 @@ describe('Account API', () => {
       const response = await app.handle(
         new Request(`http://localhost/v1/account/devices/${deviceId}/revoke`, {
           method: 'POST',
-          headers: { Authorization: `Bearer ${token}` },
+          headers: { Authorization: `Bearer ${signToken(token)}` },
         }),
       )
 
@@ -377,7 +377,7 @@ describe('Account API', () => {
       const response = await app.handle(
         new Request(`http://localhost/v1/account/devices/${deviceId}/revoke`, {
           method: 'POST',
-          headers: { Authorization: `Bearer ${token}` },
+          headers: { Authorization: `Bearer ${signToken(token)}` },
         }),
       )
 

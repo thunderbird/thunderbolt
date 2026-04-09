@@ -3,12 +3,19 @@ import { session as sessionTable, user as userTable } from '@/db/auth-schema'
 import { encryptionMetadataTable, envelopesTable } from '@/db/encryption-schema'
 import { devicesTable } from '@/db/schema'
 import { createTestDb } from '@/test-utils/db'
+import { createHmac } from 'crypto'
 import { eq } from 'drizzle-orm'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import { Elysia } from 'elysia'
 import { createEncryptionRoutes } from './encryption'
 
 const BASE = 'http://localhost'
+
+const betterAuthSecret = 'better-auth-secret-12345678901234567890'
+const signToken = (token: string): string => {
+  const sig = createHmac('sha256', betterAuthSecret).update(token).digest('base64')
+  return `${token}.${sig}`
+}
 
 /**
  * Unique-ID strategy for PGlite + nested transactions:
@@ -173,7 +180,7 @@ describe('Encryption API', () => {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
-            Authorization: `Bearer ${p('tok-u1')}`,
+            Authorization: `Bearer ${signToken(p('tok-u1'))}`,
           },
           body: JSON.stringify({ deviceId: p('d1'), publicKey: 'pk1', mlkemPublicKey: 'mlkem-pk1', name: 'My Device' }),
         }),
@@ -203,7 +210,7 @@ describe('Encryption API', () => {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
-            Authorization: `Bearer ${p('tok-u2')}`,
+            Authorization: `Bearer ${signToken(p('tok-u2'))}`,
           },
           body: JSON.stringify({ deviceId: p('d-new'), publicKey: 'pk2', mlkemPublicKey: 'mlkem-pk2' }),
         }),
@@ -224,7 +231,7 @@ describe('Encryption API', () => {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
-            Authorization: `Bearer ${p('tok-u3')}`,
+            Authorization: `Bearer ${signToken(p('tok-u3'))}`,
           },
           body: JSON.stringify({ deviceId: p('d-trusted'), publicKey: 'pk3', mlkemPublicKey: 'mlkem-pk3' }),
         }),
@@ -245,7 +252,7 @@ describe('Encryption API', () => {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
-            Authorization: `Bearer ${p('tok-u4')}`,
+            Authorization: `Bearer ${signToken(p('tok-u4'))}`,
           },
           body: JSON.stringify({ deviceId: p('d-pending'), publicKey: 'pk4', mlkemPublicKey: 'mlkem-pk4' }),
         }),
@@ -266,7 +273,7 @@ describe('Encryption API', () => {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
-            Authorization: `Bearer ${p('tok-u5b')}`,
+            Authorization: `Bearer ${signToken(p('tok-u5b'))}`,
           },
           body: JSON.stringify({ deviceId: p('d-conflict'), publicKey: 'pk5', mlkemPublicKey: 'mlkem-pk5' }),
         }),
@@ -286,7 +293,7 @@ describe('Encryption API', () => {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
-            Authorization: `Bearer ${p('tok-u6')}`,
+            Authorization: `Bearer ${signToken(p('tok-u6'))}`,
           },
           body: JSON.stringify({ deviceId: p('d-revoked'), publicKey: 'pk6', mlkemPublicKey: 'mlkem-pk6' }),
         }),
@@ -306,7 +313,7 @@ describe('Encryption API', () => {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
-            Authorization: `Bearer ${p('tok-u7')}`,
+            Authorization: `Bearer ${signToken(p('tok-u7'))}`,
           },
           body: JSON.stringify({
             deviceId: p('d-empty-name'),
@@ -329,7 +336,7 @@ describe('Encryption API', () => {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
-            Authorization: `Bearer ${p('tok-u7')}`,
+            Authorization: `Bearer ${signToken(p('tok-u7'))}`,
           },
           body: JSON.stringify({
             deviceId: p('d-long-name'),
@@ -366,7 +373,7 @@ describe('Encryption API', () => {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
-            Authorization: `Bearer ${p('tok-env1')}`,
+            Authorization: `Bearer ${signToken(p('tok-env1'))}`,
           },
           body: JSON.stringify({ wrappedCK: 'wck' }),
         }),
@@ -386,7 +393,7 @@ describe('Encryption API', () => {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
-            Authorization: `Bearer ${p('tok-boot')}`,
+            Authorization: `Bearer ${signToken(p('tok-boot'))}`,
             'X-Device-ID': p('d-boot'),
           },
           body: JSON.stringify({
@@ -426,7 +433,7 @@ describe('Encryption API', () => {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
-            Authorization: `Bearer ${p('tok-self')}`,
+            Authorization: `Bearer ${signToken(p('tok-self'))}`,
             'X-Device-ID': p('d-self'),
           },
           body: JSON.stringify({ wrappedCK: 'wck' }),
@@ -454,7 +461,7 @@ describe('Encryption API', () => {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
-            Authorization: `Bearer ${p('tok-recov')}`,
+            Authorization: `Bearer ${signToken(p('tok-recov'))}`,
             'X-Device-ID': p('d-recov-new'),
           },
           body: JSON.stringify({
@@ -488,7 +495,7 @@ describe('Encryption API', () => {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
-            Authorization: `Bearer ${p('tok-badrecov')}`,
+            Authorization: `Bearer ${signToken(p('tok-badrecov'))}`,
             'X-Device-ID': p('d-badrecov-new'),
           },
           body: JSON.stringify({
@@ -516,7 +523,7 @@ describe('Encryption API', () => {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
-            Authorization: `Bearer ${p('tok-replay')}`,
+            Authorization: `Bearer ${signToken(p('tok-replay'))}`,
             'X-Device-ID': p('d-replay-new'),
           },
           body: JSON.stringify({
@@ -545,7 +552,7 @@ describe('Encryption API', () => {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
-            Authorization: `Bearer ${p('tok-pp')}`,
+            Authorization: `Bearer ${signToken(p('tok-pp'))}`,
             'X-Device-ID': p('d-pp-caller'),
           },
           body: JSON.stringify({ wrappedCK: 'wck' }),
@@ -569,7 +576,7 @@ describe('Encryption API', () => {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
-            Authorization: `Bearer ${p('tok-diff1')}`,
+            Authorization: `Bearer ${signToken(p('tok-diff1'))}`,
             'X-Device-ID': p('d-diff-caller'),
           },
           body: JSON.stringify({ wrappedCK: 'wck' }),
@@ -596,7 +603,7 @@ describe('Encryption API', () => {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
-            Authorization: `Bearer ${p('tok-cdiff1')}`,
+            Authorization: `Bearer ${signToken(p('tok-cdiff1'))}`,
             'X-Device-ID': p('d-cdiff-caller'),
           },
           body: JSON.stringify({ wrappedCK: 'wck' }),
@@ -619,7 +626,7 @@ describe('Encryption API', () => {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
-            Authorization: `Bearer ${p('tok-trev')}`,
+            Authorization: `Bearer ${signToken(p('tok-trev'))}`,
             'X-Device-ID': p('d-trev-caller'),
           },
           body: JSON.stringify({ wrappedCK: 'wck' }),
@@ -644,7 +651,7 @@ describe('Encryption API', () => {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
-            Authorization: `Bearer ${p('tok-crev')}`,
+            Authorization: `Bearer ${signToken(p('tok-crev'))}`,
             'X-Device-ID': p('d-crev-caller'),
           },
           body: JSON.stringify({ wrappedCK: 'wck' }),
@@ -668,7 +675,7 @@ describe('Encryption API', () => {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
-            Authorization: `Bearer ${p('tok-ow')}`,
+            Authorization: `Bearer ${signToken(p('tok-ow'))}`,
             'X-Device-ID': p('d-ow-caller'),
           },
           body: JSON.stringify({ wrappedCK: 'new-wck' }),
@@ -690,7 +697,7 @@ describe('Encryption API', () => {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
-            Authorization: `Bearer ${p('tok-rekey')}`,
+            Authorization: `Bearer ${signToken(p('tok-rekey'))}`,
             'X-Device-ID': p('d-rekey'),
           },
           body: JSON.stringify({ wrappedCK: 'new-wck' }),
@@ -718,7 +725,7 @@ describe('Encryption API', () => {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
-            Authorization: `Bearer ${p('tok-nodev')}`,
+            Authorization: `Bearer ${signToken(p('tok-nodev'))}`,
             'X-Device-ID': p('d-nodev-caller'),
           },
           body: JSON.stringify({ wrappedCK: 'wck' }),
@@ -742,7 +749,7 @@ describe('Encryption API', () => {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
-            Authorization: `Bearer ${p('tok-nocaller')}`,
+            Authorization: `Bearer ${signToken(p('tok-nocaller'))}`,
             'X-Device-ID': p('d-ghost'),
           },
           body: JSON.stringify({ wrappedCK: 'wck' }),
@@ -765,7 +772,7 @@ describe('Encryption API', () => {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
-            Authorization: `Bearer ${p('tok-approve')}`,
+            Authorization: `Bearer ${signToken(p('tok-approve'))}`,
             'X-Device-ID': p('d-approve-caller'),
           },
           body: JSON.stringify({ wrappedCK: 'target-wck' }),
@@ -798,7 +805,7 @@ describe('Encryption API', () => {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
-            Authorization: `Bearer ${p('tok-canary')}`,
+            Authorization: `Bearer ${signToken(p('tok-canary'))}`,
             'X-Device-ID': p('d-canary'),
           },
           body: JSON.stringify({
@@ -834,7 +841,7 @@ describe('Encryption API', () => {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
-            Authorization: `Bearer ${p('tok-noow')}`,
+            Authorization: `Bearer ${signToken(p('tok-noow'))}`,
             'X-Device-ID': p('d-noow-caller'),
           },
           body: JSON.stringify({
@@ -869,7 +876,7 @@ describe('Encryption API', () => {
 
       const response = await app.handle(
         new Request(`${BASE}/devices/me/envelope`, {
-          headers: { Authorization: `Bearer ${p('tok-me1')}` },
+          headers: { Authorization: `Bearer ${signToken(p('tok-me1'))}` },
         }),
       )
 
@@ -886,7 +893,7 @@ describe('Encryption API', () => {
       const response = await app.handle(
         new Request(`${BASE}/devices/me/envelope`, {
           headers: {
-            Authorization: `Bearer ${p('tok-me2')}`,
+            Authorization: `Bearer ${signToken(p('tok-me2'))}`,
             'X-Device-ID': p('d-me2'),
           },
         }),
@@ -907,7 +914,7 @@ describe('Encryption API', () => {
       const response = await app.handle(
         new Request(`${BASE}/devices/me/envelope`, {
           headers: {
-            Authorization: `Bearer ${p('tok-me3a')}`,
+            Authorization: `Bearer ${signToken(p('tok-me3a'))}`,
             'X-Device-ID': p('d-me3'),
           },
         }),
@@ -925,7 +932,7 @@ describe('Encryption API', () => {
       const response = await app.handle(
         new Request(`${BASE}/devices/me/envelope`, {
           headers: {
-            Authorization: `Bearer ${p('tok-me4')}`,
+            Authorization: `Bearer ${signToken(p('tok-me4'))}`,
             'X-Device-ID': p('d-me4'),
           },
         }),
@@ -943,7 +950,7 @@ describe('Encryption API', () => {
       const response = await app.handle(
         new Request(`${BASE}/devices/me/envelope`, {
           headers: {
-            Authorization: `Bearer ${p('tok-me5')}`,
+            Authorization: `Bearer ${signToken(p('tok-me5'))}`,
             'X-Device-ID': p('d-me5'),
           },
         }),
@@ -960,7 +967,7 @@ describe('Encryption API', () => {
       const response = await app.handle(
         new Request(`${BASE}/devices/me/envelope`, {
           headers: {
-            Authorization: `Bearer ${p('tok-me6')}`,
+            Authorization: `Bearer ${signToken(p('tok-me6'))}`,
             'X-Device-ID': p('d-ghost'),
           },
         }),
@@ -986,7 +993,7 @@ describe('Encryption API', () => {
 
       const response = await app.handle(
         new Request(`${BASE}/encryption/canary`, {
-          headers: { Authorization: `Bearer ${p('tok-can1')}` },
+          headers: { Authorization: `Bearer ${signToken(p('tok-can1'))}` },
         }),
       )
 
@@ -1001,7 +1008,7 @@ describe('Encryption API', () => {
 
       const response = await app.handle(
         new Request(`${BASE}/encryption/canary`, {
-          headers: { Authorization: `Bearer ${p('tok-can2')}` },
+          headers: { Authorization: `Bearer ${signToken(p('tok-can2'))}` },
         }),
       )
 

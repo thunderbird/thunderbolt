@@ -76,6 +76,7 @@ describe('Proxy Routes', () => {
       oidcIssuer: '',
       betterAuthUrl: 'http://localhost:8000',
       rateLimitEnabled: false,
+      swaggerEnabled: false,
       trustedProxy: '',
     })
 

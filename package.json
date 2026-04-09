@@ -98,7 +98,7 @@
     "clsx": "^2.1.1",
     "cmdk": "^1.1.1",
     "dayjs": "^1.11.13",
-    "drizzle-orm": "^0.44.6",
+    "drizzle-orm": "^0.45.2",
     "framer-motion": "^12.23.12",
     "input-otp": "^1.4.2",
     "lucide-react": "^0.540.0",
@@ -169,7 +169,7 @@
     "tsx": "^4.20.4",
     "type-fest": "^4.41.0",
     "typescript": "~5.9.2",
-    "vite": "7.1.12",
+    "vite": "7.3.2",
     "vite-bundle-analyzer": "^1.2.1",
     "vitest": "^3.2.4"
   }

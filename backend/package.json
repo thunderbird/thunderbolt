@@ -32,7 +32,7 @@
     "better-auth": "^1.4.5",
     "bun-types": "^1.2.22",
     "dotenv": "^17.2.3",
-    "drizzle-orm": "^0.44.7",
+    "drizzle-orm": "^0.45.2",
     "elysia": "^1.4.28",
     "exa-js": "^1.0.11",
     "ipaddr.js": "^2.3.0",

@@ -35,7 +35,12 @@ export const createAccountRoutes = (auth: Auth, database: typeof DbType) => {
         const now = new Date()
         const rawName = body.name?.trim()
         const name = rawName && rawName.length > 0 && rawName.length <= 100 ? rawName : 'Unknown device'
-        await upsertDevice(database, { id: deviceId, userId: user.id, name, lastSeen: now, createdAt: now })
+        const upserted = await upsertDevice(database, { id: deviceId, userId: user.id, name, lastSeen: now, createdAt: now })
+
+        if (upserted.length === 0 || upserted[0].userId !== user.id) {
+          set.status = 409
+          return { code: 'DEVICE_ID_TAKEN' }
+        }
 
         set.status = 201
         return { registered: true }

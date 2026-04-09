@@ -2,7 +2,7 @@ import { approveWaitlistEntry, createWaitlistEntry, getUserByEmail, getWaitlistB
 import type { db as DbType } from '@/db/client'
 import * as schema from '@/db/schema'
 import { normalizeEmail } from '@/lib/email'
-import { getSettings } from '@/config/settings'
+import { getSettings, type Settings } from '@/config/settings'
 import { createAuthMiddleware } from 'better-auth/api'
 import { betterAuth } from 'better-auth'
 import { drizzleAdapter } from 'better-auth/adapters/drizzle'
@@ -16,6 +16,17 @@ import { buildVerifyUrl, getValidatedOrigin, parseTrustedOrigins, sendSignInEmai
  * First origin is the default fallback for verify URLs
  */
 const trustedOrigins = parseTrustedOrigins(process.env.TRUSTED_ORIGINS)
+
+/**
+ * Map our trustedProxy setting to the IP headers Better Auth should read.
+ * Better Auth defaults to x-forwarded-for, which is spoofable without a proxy.
+ */
+const getIpAddressHeaders = (trustedProxy: Settings['trustedProxy']): string[] => {
+  if (trustedProxy === 'cloudflare') return ['cf-connecting-ip']
+  if (trustedProxy === 'akamai') return ['true-client-ip']
+  // No trusted proxy — Better Auth falls back to 127.0.0.1 in dev/test
+  return []
+}
 
 /**
  * Create a Better Auth instance with the provided database
@@ -58,13 +69,25 @@ const buildOidcPlugins = () => {
   ]
 }
 
-export const createAuth = (database: typeof DbType) =>
-  betterAuth({
+export const createAuth = (database: typeof DbType) => {
+  const settings = getSettings()
+
+  return betterAuth({
     database: drizzleAdapter(database, {
       provider: 'pg',
       schema,
     }),
     trustedOrigins,
+    rateLimit: {
+      enabled: true,
+      window: 60,
+      max: 10,
+    },
+    advanced: {
+      ipAddress: {
+        ipAddressHeaders: getIpAddressHeaders(settings.trustedProxy),
+      },
+    },
     user: {
       additionalFields: {
         isNew: {
@@ -113,6 +136,7 @@ export const createAuth = (database: typeof DbType) =>
         otpLength: 6,
         expiresIn: 300, // 5 minutes
         allowedAttempts: 3, // Built-in rate limiting - returns TOO_MANY_ATTEMPTS after exceeded
+        resendStrategy: 'reuse', // Reuse existing OTP on resend to prevent attempt counter reset
 
         async sendVerificationOTP({ email, otp, type }, ctx) {
           // We only support sign-in (no password-based auth, so no email-verification or forget-password)
@@ -160,5 +184,6 @@ export const createAuth = (database: typeof DbType) =>
       ...buildOidcPlugins(),
     ],
   })
+}
 
 export type Auth = ReturnType<typeof createAuth>

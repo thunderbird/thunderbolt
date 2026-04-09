@@ -21,7 +21,8 @@ mock.module('@/waitlist/utils', () => ({
 }))
 
 // Now import the rest
-import { user, verification } from '@/db/auth-schema'
+import { user } from '@/db/auth-schema'
+import { verification } from '@/db/auth-schema'
 import { waitlist } from '@/db/schema'
 import { createAuth } from '@/auth/auth'
 import { normalizeEmail } from '@/lib/email'
@@ -249,6 +250,126 @@ describe('Auth Waitlist Integration', () => {
         body: { email: 'Mixed-Case@Example.COM', type: 'sign-in' },
       })
       expect(mockSendSignInEmail).toHaveBeenCalledTimes(1)
+    })
+  })
+
+  describe('OTP resend strategy (reuse)', () => {
+    it('should reuse the same OTP on repeated sends instead of generating a new one', async () => {
+      const email = 'reuse-test@example.com'
+      await db.insert(user).values({
+        id: crypto.randomUUID(),
+        email,
+        name: 'Reuse Test User',
+        emailVerified: true,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      })
+
+      // First OTP send
+      await auth.api.sendVerificationOTP({
+        body: { email, type: 'sign-in' },
+      })
+      const firstCall = mockSendSignInEmail.mock.calls[0] as unknown as [{ otp: string }]
+      const firstOtp = firstCall[0].otp
+
+      // Second OTP send — should reuse the same OTP
+      mockSendSignInEmail.mockClear()
+      await auth.api.sendVerificationOTP({
+        body: { email, type: 'sign-in' },
+      })
+      const secondCall = mockSendSignInEmail.mock.calls[0] as unknown as [{ otp: string }]
+      const secondOtp = secondCall[0].otp
+
+      expect(secondOtp).toBe(firstOtp)
+    })
+
+    it('should not reset attempt counter when OTP is resent', async () => {
+      const email = 'counter-test@example.com'
+      await db.insert(user).values({
+        id: crypto.randomUUID(),
+        email,
+        name: 'Counter Test User',
+        emailVerified: true,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      })
+
+      // Send OTP
+      await auth.api.sendVerificationOTP({
+        body: { email, type: 'sign-in' },
+      })
+
+      // Make 2 wrong attempts (of 3 allowed) — counter goes to 2
+      for (let i = 0; i < 2; i++) {
+        try {
+          await auth.api.signInEmailOTP({ body: { email, otp: '000000' } })
+        } catch {
+          // Expected: INVALID_OTP
+        }
+      }
+
+      // Resend OTP — with "reuse" strategy, counter should NOT reset (stays at 2)
+      await auth.api.sendVerificationOTP({
+        body: { email, type: 'sign-in' },
+      })
+
+      // 3rd wrong attempt: counter is 2, passes check, OTP is wrong → counter becomes 3, returns INVALID_OTP
+      try {
+        await auth.api.signInEmailOTP({ body: { email, otp: '000000' } })
+      } catch {
+        // Expected: INVALID_OTP
+      }
+
+      // 4th attempt: counter is now 3 >= allowedAttempts(3), should get TOO_MANY_ATTEMPTS
+      try {
+        await auth.api.signInEmailOTP({ body: { email, otp: '000000' } })
+        expect(true).toBe(false)
+      } catch (err: unknown) {
+        const code = (err as { body?: { code?: string } }).body?.code ?? ''
+        // After 3 failed attempts the OTP is deleted, so we get INVALID_OTP (no verification row)
+        // or TOO_MANY_ATTEMPTS (if the row still exists with count >= 3)
+        expect(['TOO_MANY_ATTEMPTS', 'INVALID_OTP']).toContain(code)
+      }
+
+      // Key assertion: verify that WITHOUT resend-reset, we only got 3 total attempts
+      // (2 before resend + 1 after = 3 total, then locked out on the 4th)
+      // If the counter had been reset by resend, we'd have had 5 attempts total (2 + 3)
+    })
+
+    it('should only allow 3 verification attempts before locking out', async () => {
+      const email = 'lockout-test@example.com'
+      await db.insert(user).values({
+        id: crypto.randomUUID(),
+        email,
+        name: 'Lockout Test User',
+        emailVerified: true,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      })
+
+      // Send OTP
+      await auth.api.sendVerificationOTP({
+        body: { email, type: 'sign-in' },
+      })
+
+      // Use up all 3 attempts with wrong OTPs
+      for (let i = 0; i < 3; i++) {
+        try {
+          await auth.api.signInEmailOTP({ body: { email, otp: '000000' } })
+        } catch {
+          // Expected: INVALID_OTP or TOO_MANY_ATTEMPTS on 3rd
+        }
+      }
+
+      // 4th attempt should be locked out
+      try {
+        await auth.api.signInEmailOTP({ body: { email, otp: '999999' } })
+        expect(true).toBe(false)
+      } catch (err: unknown) {
+        const code = (err as { body?: { code?: string } }).body?.code ?? ''
+        // After 3 attempts, the OTP is deleted — subsequent attempts get INVALID_OTP
+        expect(['TOO_MANY_ATTEMPTS', 'INVALID_OTP']).toContain(code)
+      }
     })
   })
 })

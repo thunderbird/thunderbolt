@@ -3,7 +3,7 @@ import { approveWaitlistEntry, createWaitlistEntry, getUserByEmail, getWaitlistB
 import type { db } from '@/db/client'
 import { normalizeEmail } from '@/lib/email'
 import { safeErrorHandler } from '@/middleware/error-handling'
-import { Elysia, t } from 'elysia'
+import { type AnyElysia, Elysia, t } from 'elysia'
 import {
   isAutoApprovedDomain,
   sendWaitlistJoinedEmail as defaultSendJoinedEmail,
@@ -33,10 +33,20 @@ type WaitlistRoutesOptions = {
   database: typeof db
   auth: Auth
   emailService?: WaitlistEmailService
+  rateLimit?: AnyElysia
 }
 
-export const createWaitlistRoutes = ({ database, auth, emailService = defaultEmailService }: WaitlistRoutesOptions) =>
-  new Elysia({ prefix: '/waitlist' }).onError(safeErrorHandler).post(
+export const createWaitlistRoutes = ({
+  database,
+  auth,
+  emailService = defaultEmailService,
+  rateLimit,
+}: WaitlistRoutesOptions) => {
+  const app = new Elysia({ prefix: '/waitlist' }).onError(safeErrorHandler)
+  if (rateLimit) {
+    app.use(rateLimit)
+  }
+  return app.post(
     '/join',
     async ({ body }) => {
       const email = normalizeEmail(body.email)
@@ -93,3 +103,4 @@ export const createWaitlistRoutes = ({ database, auth, emailService = defaultEma
       }),
     },
   )
+}

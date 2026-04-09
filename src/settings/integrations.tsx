@@ -165,13 +165,6 @@ export default function IntegrationsPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [location.state])
 
-  const handleGetPro = async () => {
-    // For now, just show an alert since this is a placeholder
-    alert(
-      'Thunderbolt Pro upgrade would be handled here. For testing, toggle the IS_PRO_USER constant in src/integrations/thunderbolt-pro/utils.ts',
-    )
-  }
-
   const handleDisconnect = async (integration: Integration) => {
     try {
       await updateSettings(db, {
@@ -237,23 +230,17 @@ export default function IntegrationsPage() {
 
             {!integration.isConnected && (
               <CardContent>
-                {integration.provider === 'thunderbolt-pro' ? (
-                  <Button onClick={handleGetPro} className="w-full">
-                    {integration.connectLabel}
-                  </Button>
-                ) : (
-                  <ConnectProviderButton
-                    provider={integration.provider as OAuthProvider}
-                    isConnected={false}
-                    isProcessing={isProcessingCallback}
-                    onError={(error) => {
-                      setError(error.message)
-                    }}
-                    returnContext="integrations"
-                    className="w-full"
-                    connectLabel={integration.connectLabel}
-                  />
-                )}
+                <ConnectProviderButton
+                  provider={integration.provider as OAuthProvider}
+                  isConnected={false}
+                  isProcessing={isProcessingCallback}
+                  onError={(error) => {
+                    setError(error.message)
+                  }}
+                  returnContext="integrations"
+                  className="w-full"
+                  connectLabel={integration.connectLabel}
+                />
               </CardContent>
             )}
 

@@ -1,22 +1,13 @@
 import type { ThunderboltProStatus } from './types'
 
-// Hardcoded constant for testing - can be switched back and forth
-const isProUser = true // Set to false to test "Get Pro" button
+const proFeatures = ['search', 'web_fetch', 'weather', 'weather_forecast']
 
 /**
- * Get the current user's pro status
+ * All users currently have Pro access — this is an intentional business decision.
+ * When a paid tier is introduced, replace with a real entitlement check.
  */
 export const getProStatus = async (): Promise<ThunderboltProStatus> => {
-  return {
-    isProUser,
-    features: isProUser ? ['search', 'web_fetch', 'weather', 'weather_forecast'] : [],
-  }
+  return { isProUser: true, features: proFeatures }
 }
 
-/**
- * Check if user has access to pro features
- */
-export const hasProAccess = async (): Promise<boolean> => {
-  const status = await getProStatus()
-  return status.isProUser
-}
+export const hasProAccess = async (): Promise<boolean> => true

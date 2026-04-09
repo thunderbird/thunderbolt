@@ -22,10 +22,9 @@ describe('CORS integration', () => {
       .get('/test', () => ({ ok: true }))
       .delete('/test', () => ({ ok: true }))
 
-  describe('with Tauri regex and explicit origin', () => {
+  describe('with Tauri and explicit origins', () => {
     const origins = getCorsOrigins({
-      corsOrigins: 'https://app.example.com',
-      corsOriginRegex: /^(tauri:\/\/localhost|http:\/\/tauri\.localhost)$/,
+      corsOrigins: 'https://app.example.com,tauri://localhost,http://tauri.localhost',
     })
 
     it('should allow the explicit origin', async () => {
@@ -102,10 +101,38 @@ describe('CORS integration', () => {
     })
   })
 
-  describe('with only explicit origins (no regex)', () => {
+  describe('with wildcard origins', () => {
+    const origins = getCorsOrigins({
+      corsOrigins: 'https://app.example.com,https://*.onrender.com',
+    })
+
+    it('should allow wildcard-matched origin', async () => {
+      const app = createTestApp(origins)
+      const res = await app.handle(
+        new Request('http://localhost/test', {
+          headers: { Origin: 'https://my-app-pr-42.onrender.com' },
+        }),
+      )
+
+      expect(res.headers.get('access-control-allow-origin')).toBe('https://my-app-pr-42.onrender.com')
+      expect(res.headers.get('access-control-allow-credentials')).toBe('true')
+    })
+
+    it('should reject multi-segment subdomain against wildcard', async () => {
+      const app = createTestApp(origins)
+      const res = await app.handle(
+        new Request('http://localhost/test', {
+          headers: { Origin: 'https://evil.com.onrender.com' },
+        }),
+      )
+
+      expect(res.headers.get('access-control-allow-origin')).toBeNull()
+    })
+  })
+
+  describe('with only explicit origins (no wildcards)', () => {
     const origins = getCorsOrigins({
       corsOrigins: 'https://app.example.com',
-      corsOriginRegex: null,
     })
 
     it('should allow the explicit origin', async () => {
@@ -132,18 +159,13 @@ describe('CORS integration', () => {
   })
 })
 
-/**
- * Defense-in-depth tests: verify that withOriginValidation blocks unauthorized
- * origins at the handler level (not just via CORS response headers).
- * This protects against CORS misconfiguration leading to session token theft.
- */
+/** Defense-in-depth: verify withOriginValidation blocks unauthorized origins at the handler level. */
 describe('Defense-in-depth Origin validation on mounted handlers', () => {
   const settings = {
-    corsOrigins: 'http://localhost:1420',
-    corsOriginRegex: /^(tauri:\/\/localhost|http:\/\/tauri\.localhost)$/,
+    corsOrigins: 'http://localhost:1420,tauri://localhost,http://tauri.localhost',
   }
 
-  const mockSessionHandler = (req: Request) =>
+  const mockSessionHandler = () =>
     new Response(
       JSON.stringify({ session: { token: 'secret-session-token', userId: 'user-1' } }),
       { status: 200, headers: { 'Content-Type': 'application/json' } },

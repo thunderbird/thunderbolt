@@ -47,14 +47,8 @@ const settingsSchema = z.object({
   powersyncJwtSecret: z.string().default(''),
   powersyncTokenExpirySeconds: z.coerce.number().default(3600),
 
-  // CORS settings
-  corsOrigins: z.string().default('http://localhost:1420'),
-  corsOriginRegex: z
-    .string()
-    .default('^(tauri://localhost|http://tauri\\.localhost)$')
-    // Value is from CORS_ORIGIN_REGEX env var set by the server deployer, not user input.
-    // nosemgrep: javascript.lang.security.audit.detect-non-literal-regexp.detect-non-literal-regexp
-    .transform((val) => (val ? new RegExp(val) : null)),
+  // CORS settings — supports exact origins and wildcard subdomains (e.g. https://*.onrender.com)
+  corsOrigins: z.string().default('http://localhost:1420,tauri://localhost,http://tauri.localhost'),
   corsAllowCredentials: z.boolean().default(true),
   corsAllowMethods: z.string().default('GET,POST,PUT,DELETE,PATCH,OPTIONS'),
   corsAllowHeaders: z
@@ -109,8 +103,7 @@ const parseSettings = (): Settings => {
     powersyncJwtKid: process.env.POWERSYNC_JWT_KID || '',
     powersyncJwtSecret: process.env.POWERSYNC_JWT_SECRET || '',
     powersyncTokenExpirySeconds: process.env.POWERSYNC_TOKEN_EXPIRY_SECONDS || '3600',
-    corsOrigins: process.env.CORS_ORIGINS || 'http://localhost:1420',
-    corsOriginRegex: process.env.CORS_ORIGIN_REGEX ?? '^(tauri://localhost|http://tauri\\.localhost)$',
+    corsOrigins: process.env.CORS_ORIGINS || 'http://localhost:1420,tauri://localhost,http://tauri.localhost',
     corsAllowCredentials: process.env.CORS_ALLOW_CREDENTIALS !== 'false',
     corsAllowMethods: process.env.CORS_ALLOW_METHODS || 'GET,POST,PUT,DELETE,PATCH,OPTIONS',
     corsAllowHeaders:
@@ -156,22 +149,23 @@ export const getCorsOriginsList = (settings: Pick<Settings, 'corsOrigins'>): str
     .filter((origin) => origin.length > 0)
 }
 
-/** Get CORS origins as an array combining explicit origins and optional regex. */
-export const getCorsOrigins = (settings: Pick<Settings, 'corsOrigins' | 'corsOriginRegex'>): (RegExp | string)[] => {
-  const origins: (RegExp | string)[] = getCorsOriginsList(settings)
-  if (settings.corsOriginRegex) {
-    origins.push(settings.corsOriginRegex)
-  }
-  return origins
+/**
+ * Convert a wildcard origin pattern to a RegExp.
+ * `*` matches a single subdomain segment (no dots), preventing multi-level subdomain attacks.
+ */
+const wildcardToRegex = (pattern: string): RegExp => {
+  const parts = pattern.split('*')
+  const escaped = parts.map((p) => p.replace(/[.+?^${}()|[\]\\]/g, '\\$&'))
+  return new RegExp(`^${escaped.join('[^.]+')}$`)
 }
 
-/**
- * Check whether a given origin is allowed by the configured CORS origins.
- */
-export const isOriginAllowed = (
-  origin: string,
-  settings: Pick<Settings, 'corsOrigins' | 'corsOriginRegex'>,
-): boolean => {
+/** Get CORS origins as an array of exact strings and wildcard-derived RegExps. */
+export const getCorsOrigins = (settings: Pick<Settings, 'corsOrigins'>): (RegExp | string)[] => {
+  return getCorsOriginsList(settings).map((origin) => (origin.includes('*') ? wildcardToRegex(origin) : origin))
+}
+
+/** Check whether a given origin is allowed by the configured CORS origins. */
+export const isOriginAllowed = (origin: string, settings: Pick<Settings, 'corsOrigins'>): boolean => {
   return getCorsOrigins(settings).some((entry) => (entry instanceof RegExp ? entry.test(origin) : entry === origin))
 }
 

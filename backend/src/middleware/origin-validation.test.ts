@@ -4,8 +4,7 @@ import { createOriginValidation, withOriginValidation } from './origin-validatio
 
 describe('Origin validation middleware', () => {
   const allowedSettings = {
-    corsOrigins: 'http://localhost:1420,https://app.example.com',
-    corsOriginRegex: /^(tauri:\/\/localhost|http:\/\/tauri\.localhost)$/,
+    corsOrigins: 'http://localhost:1420,https://app.example.com,tauri://localhost,http://tauri.localhost',
   }
 
   describe('createOriginValidation (Elysia plugin)', () => {
@@ -31,7 +30,7 @@ describe('Origin validation middleware', () => {
       expect(res.status).toBe(200)
     })
 
-    it('allows requests from regex-matched origins (tauri)', async () => {
+    it('allows requests from Tauri origins', async () => {
       const app = createTestApp()
       const res = await app.handle(
         new Request('http://localhost/test', {
@@ -126,27 +125,36 @@ describe('Origin validation middleware', () => {
       expect(res.status).toBe(403)
     })
 
-    describe('with corsOriginRegex: null (string-only matching)', () => {
-      const noRegexSettings = {
-        corsOrigins: 'http://localhost:1420',
-        corsOriginRegex: null,
+    describe('with wildcard origins', () => {
+      const wildcardSettings = {
+        corsOrigins: 'http://localhost:1420,https://*.onrender.com',
       }
 
-      it('allows explicit origin when no regex is configured', async () => {
-        const wrapped = withOriginValidation(mockHandler, noRegexSettings)
+      it('allows wildcard-matched origins', async () => {
+        const wrapped = withOriginValidation(mockHandler, wildcardSettings)
         const res = await wrapped(
           new Request('http://localhost/test', {
-            headers: { Origin: 'http://localhost:1420' },
+            headers: { Origin: 'https://pr-42.onrender.com' },
           }),
         )
         expect(res.status).toBe(200)
       })
 
-      it('rejects unlisted origin when no regex is configured', async () => {
-        const wrapped = withOriginValidation(mockHandler, noRegexSettings)
+      it('rejects multi-segment subdomain against wildcard', async () => {
+        const wrapped = withOriginValidation(mockHandler, wildcardSettings)
         const res = await wrapped(
           new Request('http://localhost/test', {
-            headers: { Origin: 'tauri://localhost' },
+            headers: { Origin: 'https://evil.com.onrender.com' },
+          }),
+        )
+        expect(res.status).toBe(403)
+      })
+
+      it('rejects unlisted origins when only wildcard is configured', async () => {
+        const wrapped = withOriginValidation(mockHandler, { corsOrigins: 'https://*.onrender.com' })
+        const res = await wrapped(
+          new Request('http://localhost/test', {
+            headers: { Origin: 'https://evil.com' },
           }),
         )
         expect(res.status).toBe(403)

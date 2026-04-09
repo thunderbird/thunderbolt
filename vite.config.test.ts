@@ -31,6 +31,10 @@ describe('vite server.fs allowlist', () => {
     } finally {
       await server?.close()
     }
+    } finally {
+      await server?.close()
+    }
+  })
 
   it('enables strict filesystem access', () => {
     expect(serverFsConfig.strict).toBe(true)
@@ -46,8 +50,6 @@ describe('vite server.fs allowlist', () => {
       const targetDir = path.resolve(ROOT, dirName)
 
       for (const allowed of resolvedAllow) {
-        // Check both directions: the sensitive dir is an allowed path (or child),
-        // AND no allowed path is a subdirectory of the sensitive dir.
         const isAllowed =
           allowed === targetDir ||
           targetDir.startsWith(allowed + path.sep) ||

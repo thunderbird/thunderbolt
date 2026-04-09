@@ -97,7 +97,6 @@ const fetchAndProxyImage = async (
           'Content-Type': contentType,
           'Cache-Control': 'public, max-age=86400',
           'Content-Security-Policy': 'sandbox',
-          'Content-Disposition': 'attachment',
           'X-Content-Type-Options': 'nosniff',
           'Cross-Origin-Resource-Policy': 'cross-origin',
         },

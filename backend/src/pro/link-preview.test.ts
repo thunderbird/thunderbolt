@@ -1055,7 +1055,7 @@ describe('Link Preview Routes', () => {
 
       expect(response.status).toBe(200)
       expect(response.headers.get('content-security-policy')).toBe('sandbox')
-      expect(response.headers.get('content-disposition')).toBe('attachment')
+      expect(response.headers.get('content-disposition')).toBeNull()
       expect(response.headers.get('x-content-type-options')).toBe('nosniff')
     })
   })
@@ -1315,7 +1315,7 @@ describe('Link Preview Routes', () => {
 
       expect(response.status).toBe(200)
       expect(response.headers.get('content-security-policy')).toBe('sandbox')
-      expect(response.headers.get('content-disposition')).toBe('attachment')
+      expect(response.headers.get('content-disposition')).toBeNull()
       expect(response.headers.get('x-content-type-options')).toBe('nosniff')
     })
   })

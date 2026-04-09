@@ -1,4 +1,13 @@
-import { approveWaitlistEntry, createWaitlistEntry, getUserByEmail, getWaitlistByEmail, markUserNotNew } from '@/dal'
+import {
+  approveWaitlistEntry,
+  createWaitlistEntry,
+  deleteOtpChallengesForEmail,
+  getOtpChallengeByEmail,
+  getUserByEmail,
+  getWaitlistByEmail,
+  markUserNotNew,
+  validateOtpChallenge,
+} from '@/dal'
 import type { db as DbType } from '@/db/client'
 import * as schema from '@/db/schema'
 import { normalizeEmail } from '@/lib/email'
@@ -10,7 +19,10 @@ import { drizzleAdapter } from 'better-auth/adapters/drizzle'
 import { bearer, emailOTP } from 'better-auth/plugins'
 import { genericOAuth } from 'better-auth/plugins/generic-oauth'
 import { isAutoApprovedDomain, sendWaitlistJoinedEmail, sendWaitlistNotReadyEmail } from '@/waitlist/utils'
+import { otpExpirySeconds } from './otp-constants'
 import { buildVerifyUrl, getValidatedOrigin, parseTrustedOrigins, sendSignInEmail } from './utils'
+
+const OTP_SIGN_IN_PATH = '/sign-in/email-otp'
 
 /**
  * Trusted origins for CORS and email link validation
@@ -108,14 +120,43 @@ export const createAuth = (database: typeof DbType) => {
       },
     },
     hooks: {
+      before: createAuthMiddleware(async (ctx) => {
+        if (ctx.path !== OTP_SIGN_IN_PATH) {
+          return
+        }
+
+        const challengeToken = ctx.headers?.get('x-challenge-token')
+        const rawEmail = (ctx.body as { email?: string })?.email
+
+        if (!challengeToken || !rawEmail) {
+          throw ctx.error('UNAUTHORIZED', { message: 'Challenge token required' })
+        }
+
+        const valid = await validateOtpChallenge(database, normalizeEmail(rawEmail), challengeToken)
+        if (!valid) {
+          throw ctx.error('UNAUTHORIZED', { message: 'Invalid challenge token' })
+        }
+
+        // Token stays valid for remaining attempts. Cleaned up on successful sign-in
+        // (after hook) or by expiry. This allows the 3-attempt limit to work correctly.
+      }),
       after: createAuthMiddleware(async (ctx) => {
-        if (ctx.path !== '/sign-in/email-otp') {
+        if (ctx.path !== OTP_SIGN_IN_PATH) {
           return
         }
 
         const newSession = ctx.context.newSession
         if (!newSession?.user) {
           return
+        }
+
+        const email = (ctx.body as { email?: string })?.email
+        if (email) {
+          try {
+            await deleteOtpChallengesForEmail(database, normalizeEmail(email))
+          } catch (e) {
+            console.info('OTP challenge cleanup failed (expires naturally):', e)
+          }
         }
 
         const sessionUser = newSession.user
@@ -134,14 +175,13 @@ export const createAuth = (database: typeof DbType) => {
     plugins: [
       bearer({ requireSignature: true }), // Enables Authorization: Bearer <token> for mobile apps where cookies don't work
       emailOTP({
-        otpLength: 6,
-        expiresIn: 300, // 5 minutes
+        otpLength: 8,
+        expiresIn: otpExpirySeconds,
         allowedAttempts: 3, // Built-in rate limiting - returns TOO_MANY_ATTEMPTS after exceeded
         resendStrategy: 'reuse', // Preserves attempt counter on resend (prevents reset-by-resend attack).
-        // Known limitation: once all attempts are exhausted, Better Auth falls through to
-        // a fresh OTP with counter=0. Better Auth's HTTP rate limiter does NOT apply to
-        // server-side auth.api calls (e.g. from /waitlist/join), so OTP regeneration via
-        // that path is currently unthrottled. TODO(THU-113): proof-of-work will close this gap.
+        // Defense-in-depth: 8-digit OTP (100M keyspace) + 3 attempts + 15s cooldown between
+        // code requests + session binding (challenge token) make brute-force infeasible.
+        // TODO(THU-113): proof-of-work (ALTCHA) will add further distributed protection.
 
         async sendVerificationOTP({ email, otp, type }, ctx) {
           // We only support sign-in (no password-based auth, so no email-verification or forget-password)
@@ -181,7 +221,8 @@ export const createAuth = (database: typeof DbType) => {
           }
 
           const origin = getValidatedOrigin(trustedOrigins, ctx?.request)
-          const verifyUrl = buildVerifyUrl(origin, normalizedEmail, otp, ctx?.request)
+          const challenge = await getOtpChallengeByEmail(database, normalizedEmail)
+          const verifyUrl = buildVerifyUrl(origin, normalizedEmail, otp, ctx?.request, challenge?.challengeToken)
 
           await sendSignInEmail({ email: normalizedEmail, otp, verifyUrl })
         },

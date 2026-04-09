@@ -12,3 +12,6 @@ export * from './rate-limit-schema'
 
 // Re-export encryption schema tables (server-only, not synced via PowerSync)
 export * from './encryption-schema'
+
+// Re-export OTP challenge schema (session binding for OTP verification)
+export * from './otp-challenge-schema'

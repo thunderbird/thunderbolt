@@ -88,7 +88,14 @@ export const createApp = async (deps?: AppDeps) => {
       .use(createInferenceRoutes(auth, createInferenceRateLimit(database, rateLimitSettings)))
       .use(createPostHogRoutes(fetchFn))
       .use(createMcpProxyRoutes(auth, fetchFn))
-      .use(createWaitlistRoutes({ database, auth, emailService: deps?.waitlistEmailService }))
+      .use(
+        createWaitlistRoutes({
+          database,
+          auth,
+          emailService: deps?.waitlistEmailService,
+          cooldownMs: deps?.otpCooldownMs,
+        }),
+      )
       .use(createPowerSyncRoutes(auth, settings, database))
       .use(createEncryptionRoutes(auth, database))
       .use(createAccountRoutes(auth, database))

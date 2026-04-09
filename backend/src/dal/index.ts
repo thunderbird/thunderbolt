@@ -13,6 +13,14 @@ export { getWaitlistByEmail, createWaitlistEntry, approveWaitlistEntry } from '.
 // PowerSync
 export { applyOperation } from './powersync'
 
+// OTP Challenge (session binding)
+export {
+  createOtpChallenge,
+  validateOtpChallenge,
+  getOtpChallengeByEmail,
+  deleteOtpChallengesForEmail,
+} from './otp-challenge'
+
 // Encryption
 export {
   getEnvelopeByDeviceId,

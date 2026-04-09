@@ -91,6 +91,11 @@ export const createProxyRoutes = (fetchFn: typeof fetch = globalThis.fetch) => {
           }
         })
 
+        // Prevent XSS: proxied content must never execute scripts in our origin
+        responseHeaders.set('content-security-policy', 'sandbox')
+        responseHeaders.set('content-disposition', 'attachment')
+        responseHeaders.set('x-content-type-options', 'nosniff')
+
         // Add cross-origin resource policy header (CORS plugin handles Access-Control-* headers)
         responseHeaders.set('cross-origin-resource-policy', 'cross-origin')
 

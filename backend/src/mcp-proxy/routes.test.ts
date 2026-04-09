@@ -306,6 +306,43 @@ describe('MCP Proxy Routes', () => {
     expect(calledUrl).toContain('/tools/call')
   })
 
+  it('adds security headers to prevent XSS via proxied content', async () => {
+    mockFetch.mockImplementation(() =>
+      Promise.resolve(
+        new Response('<html><script>alert("xss")</script></html>', {
+          status: 200,
+          headers: { 'content-type': 'text/html; charset=utf-8' },
+        }),
+      ),
+    )
+
+    const response = await app.handle(
+      new Request('http://localhost/mcp-proxy/', {
+        method: 'POST',
+        headers: { 'x-mcp-target-url': 'https://mcp.example.com' },
+      }),
+    )
+
+    expect(response.headers.get('content-security-policy')).toBe('sandbox')
+    expect(response.headers.get('content-disposition')).toBe('attachment')
+    expect(response.headers.get('x-content-type-options')).toBe('nosniff')
+  })
+
+  it('adds security headers for non-HTML content types too', async () => {
+    mockFetch.mockImplementation(() => Promise.resolve(createMockResponse('{"ok":true}')))
+
+    const response = await app.handle(
+      new Request('http://localhost/mcp-proxy/', {
+        method: 'POST',
+        headers: { 'x-mcp-target-url': 'https://mcp.example.com' },
+      }),
+    )
+
+    expect(response.headers.get('content-security-policy')).toBe('sandbox')
+    expect(response.headers.get('content-disposition')).toBe('attachment')
+    expect(response.headers.get('x-content-type-options')).toBe('nosniff')
+  })
+
   it('sets cross-origin-resource-policy on response', async () => {
     mockFetch.mockImplementation(() => Promise.resolve(createMockResponse('{"ok":true}')))
 

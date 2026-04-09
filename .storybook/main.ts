@@ -1,4 +1,7 @@
+import path from 'path'
 import type { StorybookConfig } from '@storybook/react-vite'
+
+const rootDir = path.resolve(import.meta.dirname, '..')
 
 const config: StorybookConfig = {
   stories: ['../src/**/*.mdx', '../src/**/*.stories.@(js|jsx|mjs|ts|tsx)', '../src/**/stories.@(js|jsx|mjs|ts|tsx)'],
@@ -27,6 +30,21 @@ const config: StorybookConfig = {
         : []
 
     config.build.rollupOptions.external = [...externalArray, 'bun:sqlite']
+
+    // Restrict @fs endpoint to frontend directories only (matches vite.config.ts)
+    config.server = config.server || {}
+    config.server.fs = {
+      strict: true,
+      allow: [
+        path.resolve(rootDir, 'src'),
+        path.resolve(rootDir, 'shared'),
+        path.resolve(rootDir, 'public'),
+        path.resolve(rootDir, 'node_modules'),
+        path.resolve(rootDir, 'dist-isolation'),
+        path.resolve(rootDir, '.storybook'),
+      ],
+    }
+
     return config
   },
 }

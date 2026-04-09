@@ -67,6 +67,17 @@ export const extractClientIp = (
 }
 
 /**
+ * Return the trusted IP header names for a given proxy configuration.
+ * Used by Better Auth's `advanced.ipAddress.ipAddressHeaders` so its
+ * built-in rate limiter reads the same header as `extractClientIp`.
+ */
+export const getTrustedIpHeaders = (trustedProxy: '' | 'cloudflare' | 'akamai'): string[] => {
+  if (trustedProxy === 'cloudflare') return ['cf-connecting-ip']
+  if (trustedProxy === 'akamai') return ['true-client-ip']
+  return []
+}
+
+/**
  * Generic function to filter headers based on a denylist.
  * Works with both request headers (plain object) and response headers (Headers object).
  *

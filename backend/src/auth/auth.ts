@@ -2,7 +2,8 @@ import { approveWaitlistEntry, createWaitlistEntry, getUserByEmail, getWaitlistB
 import type { db as DbType } from '@/db/client'
 import * as schema from '@/db/schema'
 import { normalizeEmail } from '@/lib/email'
-import { getSettings, type Settings } from '@/config/settings'
+import { getSettings } from '@/config/settings'
+import { getTrustedIpHeaders } from '@/utils/request'
 import { createAuthMiddleware } from 'better-auth/api'
 import { betterAuth } from 'better-auth'
 import { drizzleAdapter } from 'better-auth/adapters/drizzle'
@@ -16,17 +17,6 @@ import { buildVerifyUrl, getValidatedOrigin, parseTrustedOrigins, sendSignInEmai
  * First origin is the default fallback for verify URLs
  */
 const trustedOrigins = parseTrustedOrigins(process.env.TRUSTED_ORIGINS)
-
-/**
- * Map our trustedProxy setting to the IP headers Better Auth should read.
- * Better Auth defaults to x-forwarded-for, which is spoofable without a proxy.
- */
-const getIpAddressHeaders = (trustedProxy: Settings['trustedProxy']): string[] => {
-  if (trustedProxy === 'cloudflare') return ['cf-connecting-ip']
-  if (trustedProxy === 'akamai') return ['true-client-ip']
-  // No trusted proxy — Better Auth falls back to 127.0.0.1 in dev/test
-  return []
-}
 
 /**
  * Create a Better Auth instance with the provided database
@@ -88,7 +78,7 @@ export const createAuth = (database: typeof DbType) => {
     },
     advanced: {
       ipAddress: {
-        ipAddressHeaders: getIpAddressHeaders(settings.trustedProxy),
+        ipAddressHeaders: getTrustedIpHeaders(settings.trustedProxy),
       },
     },
     user: {

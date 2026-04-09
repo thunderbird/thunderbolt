@@ -23,16 +23,14 @@ describe('vite server.fs allowlist', () => {
     if (!loaded) throw new Error('Failed to load vite config')
 
     // Create a minimal server to resolve the full fs config (merges Vite defaults)
-    const server = await createServer({
-      root: ROOT,
-      configFile: false,
-      server: loaded.config.server,
-      plugins: [],
-    })
-    serverFsConfig = server.config.server.fs
-    resolvedAllow = serverFsConfig.allow.map((p) => path.resolve(p))
-    await server.close()
-  })
+    let server
+    try {
+      server = await createServer({ root: ROOT, configFile: false, server: loaded.config.server, plugins: [] })
+      serverFsConfig = server.config.server.fs
+      resolvedAllow = serverFsConfig.allow.map((p) => path.resolve(p))
+    } finally {
+      await server?.close()
+    }
 
   it('enables strict filesystem access', () => {
     expect(serverFsConfig.strict).toBe(true)

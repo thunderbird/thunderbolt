@@ -47,6 +47,7 @@ const config: StorybookConfig = {
         path.resolve(rootDir, 'node_modules'),
         path.resolve(rootDir, 'dist-isolation'),
         path.resolve(rootDir, '.storybook'),
+        path.resolve(rootDir, 'index.html'),
       ],
     }
 

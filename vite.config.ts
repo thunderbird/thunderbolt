@@ -103,6 +103,8 @@ export default defineConfig({
         path.resolve(__dirname, 'node_modules'),
         path.resolve(__dirname, 'dist-isolation'),
         path.resolve(__dirname, '.storybook'),
+        // Vite's HTML middleware checks checkLoadingAccess() for index.html
+        path.resolve(__dirname, 'index.html'),
       ],
     },
   },

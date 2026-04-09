@@ -1,4 +1,4 @@
-import type { Auth } from '@/auth/elysia-plugin'
+import { type Auth, createAuthMacro } from '@/auth/elysia-plugin'
 import {
   getDeviceById,
   registerDevice,
@@ -50,20 +50,7 @@ const checkSelfRecovery = async (
  */
 export const createEncryptionRoutes = (auth: Auth, database: typeof DbType) =>
   new Elysia()
-    .derive(async ({ request, set }) => {
-      const session = await auth.api.getSession({ headers: request.headers })
-      if (!session) {
-        set.status = 401
-        return { user: null }
-      }
-      return { user: session.user }
-    })
-    .onBeforeHandle(({ user: sessionUser, set }) => {
-      if (!sessionUser) {
-        set.status = 401
-        return { error: 'Unauthorized' }
-      }
-    })
+    .use(createAuthMacro(auth))
     .post(
       '/devices',
       async ({ body, set, user: sessionUser }) => {
@@ -115,6 +102,7 @@ export const createEncryptionRoutes = (auth: Auth, database: typeof DbType) =>
         return { trusted: false as const }
       },
       {
+        auth: true,
         body: t.Object({
           deviceId: t.String({ maxLength: 36 }),
           publicKey: t.String({ maxLength: 200 }),
@@ -228,6 +216,7 @@ export const createEncryptionRoutes = (auth: Auth, database: typeof DbType) =>
         return { trusted: true as const }
       },
       {
+        auth: true,
         body: t.Object({
           wrappedCK: t.String({ maxLength: 2200 }),
           canaryIv: t.Optional(t.String({ maxLength: 500 })),
@@ -236,114 +225,130 @@ export const createEncryptionRoutes = (auth: Auth, database: typeof DbType) =>
         }),
       },
     )
-    .get('/devices/me/envelope', async ({ request, set, user: sessionUser }) => {
-      const userId = sessionUser!.id
-      const deviceId = request.headers.get('x-device-id')?.trim()
+    .get(
+      '/devices/me/envelope',
+      async ({ request, set, user: sessionUser }) => {
+        const userId = sessionUser!.id
+        const deviceId = request.headers.get('x-device-id')?.trim()
 
-      if (!deviceId) {
-        set.status = 400
-        return { error: 'X-Device-ID header is required' }
-      }
+        if (!deviceId) {
+          set.status = 400
+          return { error: 'X-Device-ID header is required' }
+        }
 
-      // Verify device belongs to this user
-      const device = await getDeviceById(database, deviceId)
-      if (!device || device.userId !== userId) {
-        set.status = 404
-        return { error: 'Device not found' }
-      }
+        // Verify device belongs to this user
+        const device = await getDeviceById(database, deviceId)
+        if (!device || device.userId !== userId) {
+          set.status = 404
+          return { error: 'Device not found' }
+        }
 
-      if (device.revokedAt != null) {
-        set.status = 403
-        return { error: 'Device has been revoked' }
-      }
+        if (device.revokedAt != null) {
+          set.status = 403
+          return { error: 'Device has been revoked' }
+        }
 
-      // Device was denied or cancelled — not pending, not trusted, not revoked
-      if (!device.approvalPending && !device.trusted) {
-        set.status = 422
-        return { error: 'Approval not pending' }
-      }
+        // Device was denied or cancelled — not pending, not trusted, not revoked
+        if (!device.approvalPending && !device.trusted) {
+          set.status = 422
+          return { error: 'Approval not pending' }
+        }
 
-      const envelope = await getEnvelopeByDeviceId(database, deviceId, userId)
-      if (!envelope) {
-        set.status = 404
-        return { error: 'Envelope not found' }
-      }
+        const envelope = await getEnvelopeByDeviceId(database, deviceId, userId)
+        if (!envelope) {
+          set.status = 404
+          return { error: 'Envelope not found' }
+        }
 
-      return {
-        trusted: device.trusted,
-        wrappedCK: envelope.wrappedCk,
-      }
-    })
-    .get('/encryption/canary', async ({ set, user: sessionUser }) => {
-      const userId = sessionUser!.id
+        return {
+          trusted: device.trusted,
+          wrappedCK: envelope.wrappedCk,
+        }
+      },
+      { auth: true },
+    )
+    .get(
+      '/encryption/canary',
+      async ({ set, user: sessionUser }) => {
+        const userId = sessionUser!.id
 
-      const metadata = await getEncryptionMetadata(database, userId)
-      if (!metadata) {
-        set.status = 404
-        return { error: 'Encryption not set up' }
-      }
+        const metadata = await getEncryptionMetadata(database, userId)
+        if (!metadata) {
+          set.status = 404
+          return { error: 'Encryption not set up' }
+        }
 
-      return {
-        canaryIv: metadata.canaryIv,
-        canaryCtext: metadata.canaryCtext,
-      }
-    })
-    .post('/devices/:deviceId/deny', async ({ params, request, set, user: sessionUser }) => {
-      const userId = sessionUser!.id
-      const callerDeviceId = request.headers.get('x-device-id')?.trim()
+        return {
+          canaryIv: metadata.canaryIv,
+          canaryCtext: metadata.canaryCtext,
+        }
+      },
+      { auth: true },
+    )
+    .post(
+      '/devices/:deviceId/deny',
+      async ({ params, request, set, user: sessionUser }) => {
+        const userId = sessionUser!.id
+        const callerDeviceId = request.headers.get('x-device-id')?.trim()
 
-      if (!callerDeviceId) {
-        set.status = 400
-        return { error: 'X-Device-ID header is required' }
-      }
+        if (!callerDeviceId) {
+          set.status = 400
+          return { error: 'X-Device-ID header is required' }
+        }
 
-      // Caller must be a trusted device
-      const callerDevice = await getDeviceById(database, callerDeviceId)
-      if (!callerDevice || callerDevice.userId !== userId || !callerDevice.trusted) {
-        set.status = 403
-        return { error: 'Only trusted devices can deny pending devices' }
-      }
+        // Caller must be a trusted device
+        const callerDevice = await getDeviceById(database, callerDeviceId)
+        if (!callerDevice || callerDevice.userId !== userId || !callerDevice.trusted) {
+          set.status = 403
+          return { error: 'Only trusted devices can deny pending devices' }
+        }
 
-      // Target must be a pending device belonging to the same user
-      const targetDevice = await getDeviceById(database, params.deviceId)
-      if (!targetDevice || targetDevice.userId !== userId) {
-        set.status = 404
-        return { error: 'Device not found' }
-      }
+        // Target must be a pending device belonging to the same user
+        const targetDevice = await getDeviceById(database, params.deviceId)
+        if (!targetDevice || targetDevice.userId !== userId) {
+          set.status = 404
+          return { error: 'Device not found' }
+        }
 
-      if (targetDevice.trusted || targetDevice.revokedAt != null) {
-        set.status = 409
-        return { error: 'Device is not pending approval' }
-      }
+        if (targetDevice.trusted || targetDevice.revokedAt != null) {
+          set.status = 409
+          return { error: 'Device is not pending approval' }
+        }
 
-      const rows = await denyDevice(database, params.deviceId, userId)
-      if (rows.length === 0) {
-        set.status = 404
-        return { error: 'Device not found' }
-      }
+        const rows = await denyDevice(database, params.deviceId, userId)
+        if (rows.length === 0) {
+          set.status = 404
+          return { error: 'Device not found' }
+        }
 
-      set.status = 204
-    })
-    .post('/devices/me/cancel-pending', async ({ request, set, user: sessionUser }) => {
-      const userId = sessionUser!.id
-      const deviceId = request.headers.get('x-device-id')?.trim()
+        set.status = 204
+      },
+      { auth: true },
+    )
+    .post(
+      '/devices/me/cancel-pending',
+      async ({ request, set, user: sessionUser }) => {
+        const userId = sessionUser!.id
+        const deviceId = request.headers.get('x-device-id')?.trim()
 
-      if (!deviceId) {
-        set.status = 400
-        return { error: 'X-Device-ID header is required' }
-      }
+        if (!deviceId) {
+          set.status = 400
+          return { error: 'X-Device-ID header is required' }
+        }
 
-      const device = await getDeviceById(database, deviceId)
-      if (!device || device.userId !== userId) {
-        set.status = 404
-        return { error: 'Device not found' }
-      }
+        const device = await getDeviceById(database, deviceId)
+        if (!device || device.userId !== userId) {
+          set.status = 404
+          return { error: 'Device not found' }
+        }
 
-      if (device.trusted || device.revokedAt != null) {
-        set.status = 409
-        return { error: 'Device is not pending approval' }
-      }
+        if (device.trusted || device.revokedAt != null) {
+          set.status = 409
+          return { error: 'Device is not pending approval' }
+        }
 
-      await denyDevice(database, deviceId, userId)
-      set.status = 204
-    })
+        await denyDevice(database, deviceId, userId)
+        set.status = 204
+      },
+      { auth: true },
+    )

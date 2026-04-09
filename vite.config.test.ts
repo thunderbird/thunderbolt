@@ -10,7 +10,16 @@ import { describe, expect, it } from 'bun:test'
  *
  * See: https://vitejs.dev/config/server-options#server-fs-deny
  */
-const deniedDirectories = ['backend', 'deploy', '.thunderbot', 'powersync-service'] as const
+const deniedDirectories = [
+  'backend',
+  'deploy',
+  '.thunderbot',
+  'powersync-service',
+  'scripts',
+  '.claude',
+  '.github',
+  'src-tauri',
+] as const
 
 describe('vite server.fs.deny', async () => {
   const configModule = await import('./vite.config.ts')

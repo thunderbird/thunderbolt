@@ -1034,6 +1034,30 @@ describe('Link Preview Routes', () => {
         expect(response.headers.get('content-type')).toBe('image/jpeg')
       })
     })
+
+    it('should add security headers to prevent XSS via proxied content', async () => {
+      const pageUrl = 'https://example.com/page'
+      const imageUrl = 'https://example.com/image.png'
+      const html = `<html><head><meta property="og:image" content="${imageUrl}" /></head></html>`
+
+      let callCount = 0
+      mockFetch.mockImplementation(() => {
+        callCount++
+        if (callCount === 1) {
+          return Promise.resolve(createMockHtmlResponse(html))
+        }
+        return Promise.resolve(createMockImageResponse('image/png'))
+      })
+
+      const response = await app.handle(
+        new Request(`http://localhost/link-preview/image/${pageUrl}`, { method: 'GET' }),
+      )
+
+      expect(response.status).toBe(200)
+      expect(response.headers.get('content-security-policy')).toBe('sandbox')
+      expect(response.headers.get('content-disposition')).toBe('attachment')
+      expect(response.headers.get('x-content-type-options')).toBe('nosniff')
+    })
   })
 
   describe('GET /link-preview/proxy-image/*', () => {

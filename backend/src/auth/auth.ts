@@ -85,8 +85,8 @@ export const createAuth = (database: typeof DbType) =>
     },
     hooks: {
       after: createAuthMiddleware(async (ctx) => {
-        // Strip session tokens from response bodies (defense-in-depth against CORS misconfiguration).
-        // The frontend acquires tokens via the set-auth-token header, not from these response bodies.
+        // Strip session tokens from all auth response bodies (defense-in-depth against CORS misconfiguration).
+        // The frontend acquires tokens via the set-auth-token header, not from response bodies.
         if (ctx.path === '/get-session') {
           const body = ctx.context.returned as { session?: { token?: string } } | null
           if (body?.session?.token !== undefined) {
@@ -116,8 +116,9 @@ export const createAuth = (database: typeof DbType) =>
           await markUserNotNew(database, sessionUser.id)
         }
 
+        const { token: _, ...sessionWithoutToken } = newSession.session as { token?: string }
         return ctx.json({
-          session: newSession.session,
+          session: sessionWithoutToken,
           user: sessionUser,
         })
       }),

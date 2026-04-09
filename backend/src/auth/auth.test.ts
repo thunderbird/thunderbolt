@@ -18,7 +18,7 @@ mock.module('@/waitlist/utils', () => ({
   sendWaitlistReminderEmail: mock(() => Promise.resolve()),
 }))
 
-import { user } from '@/db/auth-schema'
+import { session as sessionTable, user } from '@/db/auth-schema'
 import { waitlist } from '@/db/schema'
 import { createAuth } from '@/auth/auth'
 import { normalizeEmail } from '@/lib/email'
@@ -130,14 +130,30 @@ describe('Auth - session token redaction', () => {
     await db.insert(waitlist).values({ id: crypto.randomUUID(), email: 'redact@example.com', status: 'approved' })
     await auth.api.sendVerificationOTP({ body: { email: 'redact@example.com', type: 'sign-in' } })
     const otp = (mockSendSignInEmail.mock.calls as unknown as Array<[{ otp: string }]>).at(0)![0].otp
-    const signIn = (await auth.api.signInEmailOTP({ body: { email: 'redact@example.com', otp } })) as unknown as {
-      session: { token: string }
-    }
-    sessionToken = signIn.session.token
+    await auth.api.signInEmailOTP({ body: { email: 'redact@example.com', otp } })
+
+    // Token is stripped from the sign-in response, so read it from the DB
+    const sessions = await db.select().from(sessionTable)
+    sessionToken = sessions[0].token
   })
 
   afterEach(async () => {
     await cleanup()
+  })
+
+  it('should strip token from sign-in response', async () => {
+    mockSendSignInEmail.mockClear()
+    await db.insert(waitlist).values({ id: crypto.randomUUID(), email: 'signin-redact@example.com', status: 'approved' })
+    await auth.api.sendVerificationOTP({ body: { email: 'signin-redact@example.com', type: 'sign-in' } })
+    const otp = (mockSendSignInEmail.mock.calls as unknown as Array<[{ otp: string }]>).at(0)![0].otp
+    const result = (await auth.api.signInEmailOTP({ body: { email: 'signin-redact@example.com', otp } })) as unknown as {
+      session: Record<string, unknown>
+      user: Record<string, unknown>
+    }
+
+    expect(result.session.id).toBeDefined()
+    expect(result.session.token).toBeUndefined()
+    expect(result.user).toBeDefined()
   })
 
   it('should strip token from get-session response', async () => {
@@ -161,6 +177,15 @@ describe('Auth - session token redaction', () => {
       expect(session.token).toBeUndefined()
       expect(session.id).toBeDefined()
     }
+  })
+
+  it('should not affect other auth endpoints', async () => {
+    // send-verification-otp should work normally (returns success, not session data)
+    const result = await auth.api.sendVerificationOTP({
+      body: { email: 'redact@example.com', type: 'sign-in' },
+    })
+
+    expect(result).toBeDefined()
   })
 })
 

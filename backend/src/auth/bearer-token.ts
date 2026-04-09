@@ -1,4 +1,4 @@
-import { createHmac } from 'crypto'
+import { createHmac, timingSafeEqual } from 'crypto'
 
 /**
  * Verify a signed bearer token (format: `rawToken.base64Signature`) and return the raw session token.
@@ -12,7 +12,9 @@ export const verifySignedBearerToken = (bearerValue: string, secret: string): st
   const signature = bearerValue.substring(dotIndex + 1)
 
   const expected = createHmac('sha256', secret).update(rawToken).digest('base64')
-  if (signature !== expected) return null
+  const sigBuf = Buffer.from(signature)
+  const expBuf = Buffer.from(expected)
+  if (sigBuf.length !== expBuf.length || !timingSafeEqual(sigBuf, expBuf)) return null
 
   return rawToken
 }

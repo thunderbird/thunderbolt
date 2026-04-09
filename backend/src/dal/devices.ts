@@ -1,6 +1,6 @@
 import type { db as DbType } from '@/db/client'
 import { devicesTable } from '@/db/schema'
-import { and, eq } from 'drizzle-orm'
+import { and, eq, isNull } from 'drizzle-orm'
 
 /** Get a device by ID. Returns userId, trusted, approvalPending, publicKey, and revokedAt, or null if not found. */
 export const getDeviceById = async (database: typeof DbType, deviceId: string) =>
@@ -32,12 +32,13 @@ export const upsertDevice = async (
     })
     .returning()
 
-/** Revoke a device for a specific user. Sets revokedAt timestamp and clears approval state. */
+/** Revoke a device for a specific user. Sets revokedAt timestamp and clears approval state.
+ * Only matches non-revoked devices so re-revoking is a no-op. */
 export const revokeDevice = async (database: typeof DbType, deviceId: string, userId: string) =>
   database
     .update(devicesTable)
     .set({ revokedAt: new Date(), trusted: false, approvalPending: false })
-    .where(and(eq(devicesTable.id, deviceId), eq(devicesTable.userId, userId)))
+    .where(and(eq(devicesTable.id, deviceId), eq(devicesTable.userId, userId), isNull(devicesTable.revokedAt)))
     .returning()
 
 /** Mark a device as trusted and clear pending state. Called when an envelope is stored for the device. */

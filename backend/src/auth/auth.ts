@@ -62,6 +62,14 @@ const buildOidcPlugins = () => {
 export const createAuth = (database: typeof DbType) => {
   const settings = getSettings()
 
+  if (!settings.trustedProxy && process.env.NODE_ENV === 'production') {
+    console.warn(
+      'TRUSTED_PROXY is not set. Better Auth rate limiting will use x-forwarded-for ' +
+        'which is spoofable without a trusted proxy. Set TRUSTED_PROXY=cloudflare (or akamai) ' +
+        'to ensure rate limiting uses the correct client IP header.',
+    )
+  }
+
   return betterAuth({
     database: drizzleAdapter(database, {
       provider: 'pg',

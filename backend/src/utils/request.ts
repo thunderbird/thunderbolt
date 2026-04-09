@@ -70,11 +70,16 @@ export const extractClientIp = (
  * Return the trusted IP header names for a given proxy configuration.
  * Used by Better Auth's `advanced.ipAddress.ipAddressHeaders` so its
  * built-in rate limiter reads the same header as `extractClientIp`.
+ *
+ * Returns `undefined` when no proxy is configured so Better Auth falls
+ * back to its default (`x-forwarded-for`). Returning `[]` would cause
+ * Better Auth to skip all headers and return `null` for the IP, which
+ * silently disables rate limiting in production.
  */
-export const getTrustedIpHeaders = (trustedProxy: '' | 'cloudflare' | 'akamai'): string[] => {
+export const getTrustedIpHeaders = (trustedProxy: '' | 'cloudflare' | 'akamai'): string[] | undefined => {
   if (trustedProxy === 'cloudflare') return ['cf-connecting-ip']
   if (trustedProxy === 'akamai') return ['true-client-ip']
-  return []
+  return undefined
 }
 
 /**

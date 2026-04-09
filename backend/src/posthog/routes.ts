@@ -47,6 +47,11 @@ export const createPostHogRoutes = (fetchFn: typeof fetch = globalThis.fetch) =>
 
         const responseHeaders = extractResponseHeaders(response.headers)
 
+        // Prevent XSS: proxied content must never execute scripts in our origin
+        responseHeaders.set('content-security-policy', 'sandbox')
+        responseHeaders.set('content-disposition', 'attachment')
+        responseHeaders.set('x-content-type-options', 'nosniff')
+
         responseHeaders.set('cross-origin-resource-policy', 'cross-origin')
 
         return new Response(response.body, {

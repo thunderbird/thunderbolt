@@ -266,6 +266,21 @@ describe('OTP Security Hardening', () => {
       expect(second.status).toBe(200)
     })
 
+    it('should block concurrent requests for same email (race condition defense)', async () => {
+      const cooldownApp = await createApp({ database: db, otpCooldownMs: 15_000 })
+      await insertApprovedWaitlist('race@example.com')
+
+      // Fire two requests concurrently for the same email
+      const [first, second] = await Promise.all([
+        postWaitlistJoin('race@example.com', cooldownApp),
+        postWaitlistJoin('race@example.com', cooldownApp),
+      ])
+
+      const statuses = [first.status, second.status].sort()
+      // One should succeed (200) and one should be rate-limited (429)
+      expect(statuses).toEqual([200, 429])
+    })
+
     it('should not block different emails during cooldown', async () => {
       const cooldownApp = await createApp({ database: db, otpCooldownMs: 15_000 })
       await insertApprovedWaitlist('email-a@example.com')
@@ -387,6 +402,59 @@ describe('OTP Security Hardening', () => {
       const records = await db.select().from(otpChallenge).where(eq(otpChallenge.email, 'db-token@example.com'))
       expect(records).toHaveLength(1)
       expect(records[0].challengeToken).toBe(challengeToken)
+    })
+
+    it('should auto-create challenge when sendVerificationOTP is called without prior /waitlist/join', async () => {
+      const email = 'native-send@example.com'
+      await insertExistingUser(email)
+      await insertApprovedWaitlist(email)
+
+      // Call Better Auth's native send endpoint (no /waitlist/join first)
+      await auth.api.sendVerificationOTP({ body: { email, type: 'sign-in' } })
+
+      // A challenge should have been created on-demand
+      const records = await db.select().from(otpChallenge).where(eq(otpChallenge.email, email))
+      expect(records).toHaveLength(1)
+      expect(records[0].challengeToken).toBeDefined()
+    })
+
+    it('should include challenge token in verify URL when created via native send endpoint', async () => {
+      const email = 'native-url@example.com'
+      await insertExistingUser(email)
+      await insertApprovedWaitlist(email)
+
+      await auth.api.sendVerificationOTP({ body: { email, type: 'sign-in' } })
+      const call = mockSendSignInEmail.mock.calls.at(-1) as unknown as [{ verifyUrl: string }]
+      expect(call[0].verifyUrl).toContain('challengeToken=')
+    })
+
+    it('should allow sign-in with challenge created via native send endpoint', async () => {
+      const email = 'native-signin@example.com'
+      await insertExistingUser(email)
+      await insertApprovedWaitlist(email)
+
+      await auth.api.sendVerificationOTP({ body: { email, type: 'sign-in' } })
+      const otpCall = mockSendSignInEmail.mock.calls.at(-1) as unknown as [{ otp: string }]
+      const otp = otpCall[0].otp
+
+      // Get the auto-created challenge token from DB
+      const records = await db.select().from(otpChallenge).where(eq(otpChallenge.email, email))
+      const challengeToken = records[0].challengeToken
+
+      const result = await signInWithChallenge(email, otp, challengeToken)
+      expect(result.user).toBeDefined()
+    })
+
+    it('should delete challenge token after successful sign-in', async () => {
+      const email = 'cleanup@example.com'
+      await insertExistingUser(email)
+      await insertApprovedWaitlist(email)
+
+      const { otp, challengeToken } = await sendOtpWithChallenge(email)
+      await signInWithChallenge(email, otp, challengeToken)
+
+      const records = await db.select().from(otpChallenge).where(eq(otpChallenge.email, email))
+      expect(records).toHaveLength(0)
     })
   })
 

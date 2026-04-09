@@ -11,6 +11,7 @@ type WaitlistStatus = 'idle' | 'joining' | 'checkEmail' | 'verifying' | 'error'
 type State = {
   email: string
   otp: string
+  challengeToken: string
   status: WaitlistStatus
   errorMessage: string
 }
@@ -19,7 +20,7 @@ type Action =
   | { type: 'SET_EMAIL'; payload: string }
   | { type: 'SET_OTP'; payload: string }
   | { type: 'START_JOINING' }
-  | { type: 'JOIN_SUCCESS' }
+  | { type: 'JOIN_SUCCESS'; payload: string }
   | { type: 'JOIN_ERROR'; payload: string }
   | { type: 'START_VERIFYING' }
   | { type: 'VERIFY_ERROR'; payload: string }
@@ -28,6 +29,7 @@ type Action =
 const initialState: State = {
   email: '',
   otp: '',
+  challengeToken: '',
   status: 'idle',
   errorMessage: '',
 }
@@ -41,7 +43,7 @@ const reducer = (state: State, action: Action): State => {
     case 'START_JOINING':
       return { ...state, status: 'joining', errorMessage: '' }
     case 'JOIN_SUCCESS':
-      return { ...state, status: 'checkEmail' }
+      return { ...state, status: 'checkEmail', challengeToken: action.payload }
     case 'JOIN_ERROR':
       return { ...state, status: 'error', errorMessage: action.payload }
     case 'START_VERIFYING':
@@ -84,9 +86,11 @@ export const useWaitlistState = ({ authClient, onVerified }: UseWaitlistStateOpt
     dispatch({ type: 'START_JOINING' })
 
     try {
-      await httpClient.post('waitlist/join', { json: { email: trimmedEmail } }).json<{ success: boolean }>()
+      const { challengeToken } = await httpClient
+        .post('waitlist/join', { json: { email: trimmedEmail } })
+        .json<{ success: boolean; challengeToken: string }>()
 
-      dispatch({ type: 'JOIN_SUCCESS' })
+      dispatch({ type: 'JOIN_SUCCESS', payload: challengeToken })
     } catch (error) {
       console.error('Waitlist join error:', error)
       dispatch({ type: 'JOIN_ERROR', payload: 'Something went wrong. Please try again.' })
@@ -94,7 +98,7 @@ export const useWaitlistState = ({ authClient, onVerified }: UseWaitlistStateOpt
   }
 
   const handleOtpComplete = async (value: string) => {
-    if (value.length !== 6) {
+    if (value.length !== 8) {
       return
     }
 
@@ -104,6 +108,9 @@ export const useWaitlistState = ({ authClient, onVerified }: UseWaitlistStateOpt
       const result = await authClient.signIn.emailOtp({
         email: state.email.trim(),
         otp: value,
+        fetchOptions: {
+          headers: { 'x-challenge-token': state.challengeToken },
+        },
       })
 
       if (result.error) {

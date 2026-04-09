@@ -1,4 +1,4 @@
-import { useAuth } from '@/contexts'
+import { useAuth, useHttpClient } from '@/contexts'
 import { useSettings } from '@/hooks/use-settings'
 import { isLocalhostUrl } from '@/lib/utils'
 import { type ReactNode, type RefObject, useCallback, useEffect } from 'react'
@@ -68,12 +68,14 @@ export const SignInForm = ({
   goBackRef,
 }: SignInFormProps) => {
   const authClient = useAuth()
+  const httpClient = useHttpClient()
   const { cloudUrl, preferredName } = useSettings({ cloud_url: 'http://localhost:8000/v1', preferred_name: '' })
   const isLocalhost = isLocalhostUrl(cloudUrl.value)
   const displayName = preferredName.value as string
 
   const { state, isValidEmail, actions } = useSignInFormState({
     authClient,
+    httpClient,
     onCancel,
     onEmailSent,
     initialEmail,

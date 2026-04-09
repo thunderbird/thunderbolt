@@ -29,6 +29,7 @@ export const MagicLinkVerify = () => {
 
   const email = searchParams.get('email')
   const otp = searchParams.get('otp')
+  const challengeToken = searchParams.get('challengeToken')
 
   // Track which email+otp pair was last attempted so we suppress re-submission of
   // the same (already-consumed) OTP when refetchSession changes identity and
@@ -54,6 +55,7 @@ export const MagicLinkVerify = () => {
         const result = await authClient.signIn.emailOtp({
           email,
           otp,
+          fetchOptions: challengeToken ? { headers: { 'x-challenge-token': challengeToken } } : undefined,
         })
 
         if (result.error) {
@@ -72,7 +74,7 @@ export const MagicLinkVerify = () => {
     }
 
     verify()
-  }, [email, otp, authClient, refetchSession])
+  }, [email, otp, challengeToken, authClient, refetchSession])
 
   const handleContinue = () => {
     navigate('/', { replace: true })

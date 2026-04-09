@@ -66,7 +66,7 @@ export const SignInOtpStep = ({
         {/* OTP input + feedback at bottom */}
         <div className="flex w-full flex-col items-center gap-4">
           <InputOTP
-            maxLength={6}
+            maxLength={8}
             pattern={REGEXP_ONLY_DIGITS}
             value={otp}
             onChange={onOtpChange}
@@ -79,7 +79,7 @@ export const SignInOtpStep = ({
             data-form-type="other"
           >
             <InputOTPGroup className="gap-2">
-              {[0, 1, 2, 3, 4, 5].map((i) => (
+              {[0, 1, 2, 3, 4, 5, 6, 7].map((i) => (
                 <InputOTPSlot key={i} index={i} className="h-12 w-12 shrink-0 rounded-lg" />
               ))}
             </InputOTPGroup>
@@ -90,7 +90,7 @@ export const SignInOtpStep = ({
           <Button
             type="button"
             onClick={() => onOtpComplete(otp)}
-            disabled={isVerifying || otp.length !== 6}
+            disabled={isVerifying || otp.length !== 8}
             className="h-[46px] w-full rounded-[12px] bg-foreground text-background text-base font-medium hover:bg-foreground/90 disabled:bg-muted disabled:text-muted-foreground"
           >
             {isVerifying ? (
@@ -140,9 +140,9 @@ export const SignInOtpStep = ({
 
       {/* OTP Input */}
       <div className="mt-6 flex flex-col items-center gap-3">
-        <p className="text-sm text-muted-foreground">Or enter the 6-digit code</p>
+        <p className="text-sm text-muted-foreground">Or enter the 8-digit code</p>
         <InputOTP
-          maxLength={6}
+          maxLength={8}
           pattern={REGEXP_ONLY_DIGITS}
           value={otp}
           onChange={onOtpChange}
@@ -161,6 +161,8 @@ export const SignInOtpStep = ({
             <InputOTPSlot index={3} />
             <InputOTPSlot index={4} />
             <InputOTPSlot index={5} />
+            <InputOTPSlot index={6} />
+            <InputOTPSlot index={7} />
           </InputOTPGroup>
         </InputOTP>
 

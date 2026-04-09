@@ -47,7 +47,7 @@ export const WaitlistPage = () => {
           <div className="flex w-full flex-col items-center gap-4">
             <p className="text-sm text-muted-foreground">If you received a code to log in, enter it here:</p>
             <InputOTP
-              maxLength={6}
+              maxLength={8}
               pattern={REGEXP_ONLY_DIGITS}
               value={state.otp}
               onChange={actions.setOtp}
@@ -60,7 +60,7 @@ export const WaitlistPage = () => {
               data-form-type="other"
             >
               <InputOTPGroup className="gap-2">
-                {[0, 1, 2, 3, 4, 5].map((i) => (
+                {[0, 1, 2, 3, 4, 5, 6, 7].map((i) => (
                   <InputOTPSlot key={i} index={i} className="h-12 w-12 shrink-0 rounded-lg" />
                 ))}
               </InputOTPGroup>
@@ -71,7 +71,7 @@ export const WaitlistPage = () => {
             <Button
               type="button"
               onClick={() => actions.handleOtpComplete(state.otp)}
-              disabled={isVerifying || state.otp.length !== 6}
+              disabled={isVerifying || state.otp.length !== 8}
               className="h-[46px] w-full rounded-[12px] text-base"
             >
               {isVerifying ? (

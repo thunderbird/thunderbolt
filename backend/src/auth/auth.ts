@@ -1,5 +1,6 @@
 import {
   approveWaitlistEntry,
+  createOtpChallenge,
   createWaitlistEntry,
   deleteOtpChallengesForEmail,
   getOtpChallengeByEmail,
@@ -19,7 +20,7 @@ import { drizzleAdapter } from 'better-auth/adapters/drizzle'
 import { bearer, emailOTP } from 'better-auth/plugins'
 import { genericOAuth } from 'better-auth/plugins/generic-oauth'
 import { isAutoApprovedDomain, sendWaitlistJoinedEmail, sendWaitlistNotReadyEmail } from '@/waitlist/utils'
-import { otpExpirySeconds } from './otp-constants'
+import { otpExpiryMs, otpExpirySeconds } from './otp-constants'
 import { buildVerifyUrl, getValidatedOrigin, parseTrustedOrigins, sendSignInEmail } from './utils'
 
 const OTP_SIGN_IN_PATH = '/sign-in/email-otp'
@@ -152,11 +153,7 @@ export const createAuth = (database: typeof DbType) => {
 
         const email = (ctx.body as { email?: string })?.email
         if (email) {
-          try {
-            await deleteOtpChallengesForEmail(database, normalizeEmail(email))
-          } catch (e) {
-            console.info('OTP challenge cleanup failed (expires naturally):', e)
-          }
+          await deleteOtpChallengesForEmail(database, normalizeEmail(email))
         }
 
         const sessionUser = newSession.user
@@ -221,8 +218,19 @@ export const createAuth = (database: typeof DbType) => {
           }
 
           const origin = getValidatedOrigin(trustedOrigins, ctx?.request)
-          const challenge = await getOtpChallengeByEmail(database, normalizedEmail)
-          const verifyUrl = buildVerifyUrl(origin, normalizedEmail, otp, ctx?.request, challenge?.challengeToken)
+          // Ensure a challenge exists — /waitlist/join creates one, but Better Auth's
+          // native send-OTP endpoint doesn't, so create on-demand for that path.
+          let challengeToken = (await getOtpChallengeByEmail(database, normalizedEmail))?.challengeToken
+          if (!challengeToken) {
+            challengeToken = crypto.randomUUID()
+            await createOtpChallenge(database, {
+              id: crypto.randomUUID(),
+              email: normalizedEmail,
+              challengeToken,
+              expiresAt: new Date(Date.now() + otpExpiryMs),
+            })
+          }
+          const verifyUrl = buildVerifyUrl(origin, normalizedEmail, otp, ctx?.request, challengeToken)
 
           await sendSignInEmail({ email: normalizedEmail, otp, verifyUrl })
         },

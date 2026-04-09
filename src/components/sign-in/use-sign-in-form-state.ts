@@ -1,4 +1,5 @@
 import type { AuthClient } from '@/contexts'
+import type { HttpClient } from '@/lib/http'
 import { getOtpErrorMessage } from '@/lib/otp-error-messages'
 import { updateSettings } from '@/dal'
 import { getDb, getDatabaseInstance } from '@/db/database'
@@ -10,6 +11,7 @@ type FormStatus = 'idle' | 'sending' | 'sent' | 'verifying' | 'success' | 'error
 type State = {
   email: string
   otp: string
+  challengeToken: string
   status: FormStatus
   errorMessage: string
 }
@@ -18,7 +20,7 @@ type Action =
   | { type: 'SET_EMAIL'; payload: string }
   | { type: 'SET_OTP'; payload: string }
   | { type: 'START_SENDING' }
-  | { type: 'SEND_SUCCESS' }
+  | { type: 'SEND_SUCCESS'; payload: string }
   | { type: 'SEND_ERROR'; payload: string }
   | { type: 'START_VERIFYING' }
   | { type: 'VERIFY_SUCCESS' }
@@ -30,6 +32,7 @@ type Action =
 const initialState: State = {
   email: '',
   otp: '',
+  challengeToken: '',
   status: 'idle',
   errorMessage: '',
 }
@@ -43,7 +46,7 @@ const reducer = (state: State, action: Action): State => {
     case 'START_SENDING':
       return { ...state, status: 'sending', errorMessage: '' }
     case 'SEND_SUCCESS':
-      return { ...state, status: 'sent' }
+      return { ...state, status: 'sent', challengeToken: action.payload }
     case 'SEND_ERROR':
       return { ...state, status: 'error', errorMessage: action.payload }
     case 'START_VERIFYING':
@@ -65,6 +68,7 @@ const reducer = (state: State, action: Action): State => {
 
 type UseSignInFormStateOptions = {
   authClient: AuthClient
+  httpClient: HttpClient
   onCancel?: () => void
   onEmailSent?: () => void
   /** Pre-fill the email input (user still needs to click submit) */
@@ -108,6 +112,7 @@ export const onSignInSuccess = async (isNewUser: boolean): Promise<void> => {
  */
 export const useSignInFormState = ({
   authClient,
+  httpClient,
   onCancel,
   onEmailSent,
   initialEmail,
@@ -135,17 +140,11 @@ export const useSignInFormState = ({
     dispatch({ type: 'START_SENDING' })
 
     try {
-      const { error } = await authClient.emailOtp.sendVerificationOtp({
-        email: trimmedEmail,
-        type: 'sign-in',
-      })
+      const { challengeToken } = await httpClient
+        .post('waitlist/join', { json: { email: trimmedEmail } })
+        .json<{ success: boolean; challengeToken: string }>()
 
-      if (error) {
-        dispatch({ type: 'SEND_ERROR', payload: error.message || 'Failed to send verification code' })
-        return
-      }
-
-      dispatch({ type: 'SEND_SUCCESS' })
+      dispatch({ type: 'SEND_SUCCESS', payload: challengeToken })
     } catch (error) {
       console.error('Failed to send verification OTP:', error)
       dispatch({ type: 'SEND_ERROR', payload: 'Failed to send verification code. Please check your connection.' })
@@ -156,17 +155,19 @@ export const useSignInFormState = ({
   }
 
   const handleOtpComplete = async (value: string) => {
-    if (value.length !== 6) {
+    if (value.length !== 8) {
       return
     }
 
     dispatch({ type: 'START_VERIFYING' })
 
     try {
-      // Use emailOtp signIn to verify OTP and create session
       const result = await authClient.signIn.emailOtp({
         email: state.email.trim(),
         otp: value,
+        fetchOptions: {
+          headers: { 'x-challenge-token': state.challengeToken },
+        },
       })
 
       if (result.error) {
@@ -205,17 +206,11 @@ export const useSignInFormState = ({
     dispatch({ type: 'SET_ERROR', payload: '' })
 
     try {
-      const { error } = await authClient.emailOtp.sendVerificationOtp({
-        email: trimmedEmail,
-        type: 'sign-in',
-      })
+      const { challengeToken } = await httpClient
+        .post('waitlist/join', { json: { email: trimmedEmail } })
+        .json<{ success: boolean; challengeToken: string }>()
 
-      if (error) {
-        dispatch({ type: 'SET_ERROR', payload: error.message || 'Failed to resend verification code' })
-        return false
-      }
-
-      // Clear OTP input for fresh entry
+      dispatch({ type: 'SEND_SUCCESS', payload: challengeToken })
       dispatch({ type: 'SET_OTP', payload: '' })
       return true
     } catch (error) {

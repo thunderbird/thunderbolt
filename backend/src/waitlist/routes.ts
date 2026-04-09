@@ -82,7 +82,9 @@ export const createWaitlistRoutes = ({
 
       // Record cooldown immediately (before any async work) to close the race window
       // where concurrent requests could pass the check before the timestamp is written.
-      emailCooldowns.set(email, Date.now())
+      if (cooldownMs > 0) {
+        emailCooldowns.set(email, Date.now())
+      }
 
       // Always generate a challenge token (privacy-preserving: same response shape regardless of status)
       const challengeToken = crypto.randomUUID()

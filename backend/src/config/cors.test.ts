@@ -1,6 +1,5 @@
 import { describe, expect, it } from 'bun:test'
 import { getCorsOriginsList } from '@/config/settings'
-import { withOriginValidation } from '@/middleware/origin-validation'
 import cors from '@elysiajs/cors'
 import { Elysia } from 'elysia'
 
@@ -9,7 +8,7 @@ import { Elysia } from 'elysia'
  * Verifies that the actual HTTP headers are set correctly for various origins.
  */
 describe('CORS integration', () => {
-  const createTestApp = (corsOrigins: (RegExp | string)[]) =>
+  const createTestApp = (corsOrigins: string[]) =>
     new Elysia()
       .use(
         cors({
@@ -127,76 +126,5 @@ describe('CORS integration', () => {
 
       expect(res.headers.get('access-control-allow-origin')).toBeNull()
     })
-  })
-})
-
-/** Defense-in-depth: verify withOriginValidation blocks unauthorized origins at the handler level. */
-describe('Defense-in-depth Origin validation on mounted handlers', () => {
-  const settings = {
-    corsOrigins: 'http://localhost:1420,tauri://localhost,http://tauri.localhost',
-  }
-
-  const mockSessionHandler = () =>
-    new Response(
-      JSON.stringify({ session: { token: 'secret-session-token', userId: 'user-1' } }),
-      { status: 200, headers: { 'Content-Type': 'application/json' } },
-    )
-
-  const createAppWithMountedHandler = () =>
-    new Elysia().mount(withOriginValidation(mockSessionHandler, settings))
-
-  it('blocks session token theft from arbitrary localhost ports', async () => {
-    const app = createAppWithMountedHandler()
-    const res = await app.handle(
-      new Request('http://localhost/api/auth/get-session', {
-        headers: { Origin: 'http://localhost:9999' },
-      }),
-    )
-
-    expect(res.status).toBe(403)
-    const body = await res.json()
-    expect(body.code).toBe('ORIGIN_NOT_ALLOWED')
-  })
-
-  it('blocks requests from external malicious origins', async () => {
-    const app = createAppWithMountedHandler()
-    const res = await app.handle(
-      new Request('http://localhost/api/auth/get-session', {
-        headers: { Origin: 'https://evil.com' },
-      }),
-    )
-
-    expect(res.status).toBe(403)
-  })
-
-  it('allows requests from the legitimate app origin', async () => {
-    const app = createAppWithMountedHandler()
-    const res = await app.handle(
-      new Request('http://localhost/api/auth/get-session', {
-        headers: { Origin: 'http://localhost:1420' },
-      }),
-    )
-
-    expect(res.status).toBe(200)
-    const body = await res.json()
-    expect(body.session.token).toBe('secret-session-token')
-  })
-
-  it('allows requests from Tauri app origins', async () => {
-    const app = createAppWithMountedHandler()
-    const res = await app.handle(
-      new Request('http://localhost/api/auth/get-session', {
-        headers: { Origin: 'tauri://localhost' },
-      }),
-    )
-
-    expect(res.status).toBe(200)
-  })
-
-  it('allows requests without Origin header (non-browser clients)', async () => {
-    const app = createAppWithMountedHandler()
-    const res = await app.handle(new Request('http://localhost/api/auth/get-session'))
-
-    expect(res.status).toBe(200)
   })
 })

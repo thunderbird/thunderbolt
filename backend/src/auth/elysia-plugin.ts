@@ -1,6 +1,4 @@
-import { getSettings } from '@/config/settings'
 import type { db as DbType } from '@/db/client'
-import { withOriginValidation } from '@/middleware/origin-validation'
 import { Elysia } from 'elysia'
 import { type Auth, createAuth } from './auth'
 
@@ -26,16 +24,12 @@ export const createAuthMacro = (auth: Auth) =>
     },
   })
 
-/**
- * Create a Better Auth plugin for Elysia with the provided database.
- * Defense-in-depth: Origin validation rejects unauthorized origins even if CORS is misconfigured.
- */
+/** Create a Better Auth plugin for Elysia with the provided database. */
 export const createBetterAuthPlugin = (database: typeof DbType) => {
   const auth = createAuth(database)
-  const settings = getSettings()
 
   return {
-    plugin: new Elysia({ name: 'better-auth' }).mount(withOriginValidation(auth.handler, settings)),
+    plugin: new Elysia({ name: 'better-auth' }).mount(auth.handler),
     auth,
   }
 }

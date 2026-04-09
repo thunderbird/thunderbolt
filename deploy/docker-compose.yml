@@ -30,6 +30,7 @@ services:
       OIDC_CLIENT_ID: thunderbolt-app
       OIDC_CLIENT_SECRET: thunderbolt-enterprise-secret
       BETTER_AUTH_URL: http://localhost:${FRONTEND_PORT:-3000}
+      BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET:?Set BETTER_AUTH_SECRET in .env}
       APP_URL: http://localhost:${FRONTEND_PORT:-3000}
       TRUSTED_ORIGINS: http://localhost:${FRONTEND_PORT:-3000}
       CORS_ORIGINS: http://localhost:${FRONTEND_PORT:-3000}

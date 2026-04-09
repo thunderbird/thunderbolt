@@ -267,6 +267,7 @@ export const createServices = (args: ServiceArgs) => {
             { name: 'OIDC_CLIENT_ID', value: 'thunderbolt-app' },
             { name: 'OIDC_CLIENT_SECRET', value: 'thunderbolt-enterprise-secret' },
             { name: 'BETTER_AUTH_URL', value: `http://${dns}` },
+            { name: 'BETTER_AUTH_SECRET', value: process.env.BETTER_AUTH_SECRET ?? '' },
             { name: 'APP_URL', value: `http://${dns}` },
             { name: 'TRUSTED_ORIGINS', value: `http://${dns}` },
             { name: 'CORS_ORIGINS', value: `http://${dns}` },

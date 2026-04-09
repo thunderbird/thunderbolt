@@ -80,9 +80,10 @@ export const fetchCanary = async (httpClient: HttpClient): Promise<FetchCanaryRe
     })
     .json<FetchCanaryResponse>()
 
-/** Deny a pending device (called by a trusted device). */
-export const denyDevice = async (httpClient: HttpClient, deviceId: string): Promise<void> => {
+/** Deny a pending device (called by a trusted device). Requires canary proof-of-CK-possession. */
+export const denyDevice = async (httpClient: HttpClient, deviceId: string, canarySecret: string): Promise<void> => {
   await httpClient.post(`devices/${encodeURIComponent(deviceId)}/deny`, {
+    json: { canarySecret },
     headers: authHeaders(),
     credentials: 'omit',
   })

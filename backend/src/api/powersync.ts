@@ -36,16 +36,18 @@ const validateDeviceForSync = async (
 
   const deviceRow = await getDeviceById(database, deviceId)
 
-  if (deviceRow) {
-    if (deviceRow.userId !== userId) {
-      return { ok: false, status: 409, body: { code: 'DEVICE_ID_TAKEN' } }
-    }
-    if (deviceRow.revokedAt != null) {
-      return { ok: false, status: 403, body: { code: 'DEVICE_DISCONNECTED' } }
-    }
-    if (!deviceRow.trusted) {
-      return { ok: false, status: 403, body: { code: 'DEVICE_NOT_TRUSTED' } }
-    }
+  if (!deviceRow) {
+    return { ok: false, status: 403, body: { code: 'DEVICE_NOT_TRUSTED' } }
+  }
+
+  if (deviceRow.userId !== userId) {
+    return { ok: false, status: 409, body: { code: 'DEVICE_ID_TAKEN' } }
+  }
+  if (deviceRow.revokedAt != null) {
+    return { ok: false, status: 403, body: { code: 'DEVICE_DISCONNECTED' } }
+  }
+  if (!deviceRow.trusted) {
+    return { ok: false, status: 403, body: { code: 'DEVICE_NOT_TRUSTED' } }
   }
 
   return { ok: true }

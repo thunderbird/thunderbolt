@@ -23,9 +23,23 @@ const hashCanarySecret = async (secret: string): Promise<string> => {
 }
 
 /**
- * Check if the caller is performing a self-recovery by verifying proof-of-CK-possession.
- * The client must provide the canary secret (extracted by decrypting the canary with the CK).
- * We verify by comparing SHA-256(canarySecret) against the stored hash.
+ * Verify proof-of-CK-possession by comparing SHA-256(canarySecret) against stored hash.
+ * Used to gate trust-sensitive operations (device approval, deny) — prevents X-Device-ID spoofing
+ * because only a device that possesses the Content Key can decrypt the canary and extract the secret.
+ */
+const verifyCanaryProof = async (db: typeof DbType, userId: string, canarySecret: string): Promise<boolean> => {
+  const metadata = await getEncryptionMetadata(db, userId)
+  if (!metadata?.canarySecretHash) return false
+  const hash = await hashCanarySecret(canarySecret)
+  const hashBuf = Buffer.from(hash)
+  const storedBuf = Buffer.from(metadata.canarySecretHash)
+  if (hashBuf.length !== storedBuf.length) return false
+  return timingSafeEqual(hashBuf, storedBuf)
+}
+
+/**
+ * Check if the caller is performing a self-recovery.
+ * Requires callerDeviceId === deviceId (self-operation) AND valid canary secret.
  */
 const checkSelfRecovery = async (
   txDb: typeof DbType,
@@ -35,13 +49,7 @@ const checkSelfRecovery = async (
   canarySecret?: string,
 ): Promise<boolean> => {
   if (callerDeviceId !== deviceId || !canarySecret) return false
-  const metadata = await getEncryptionMetadata(txDb, userId)
-  if (!metadata?.canarySecretHash) return false
-  const hash = await hashCanarySecret(canarySecret)
-  const hashBuf = Buffer.from(hash)
-  const storedBuf = Buffer.from(metadata.canarySecretHash)
-  if (hashBuf.length !== storedBuf.length) return false
-  return timingSafeEqual(hashBuf, storedBuf)
+  return verifyCanaryProof(txDb, userId, canarySecret)
 }
 
 /**
@@ -171,6 +179,16 @@ export const createEncryptionRoutes = (auth: Auth, database: typeof DbType) =>
             }
 
             if (!isFirstDeviceBootstrap && !isSelfRecovery) {
+              // Proof-of-CK-possession prevents X-Device-ID spoofing: a pending device
+              // cannot provide the canary secret because it doesn't have the Content Key.
+              if (!canarySecret) {
+                throw new ForbiddenError('Canary secret required for device approval')
+              }
+              if (!(await verifyCanaryProof(txDb, userId, canarySecret))) {
+                throw new ForbiddenError('Invalid canary secret')
+              }
+
+              // Caller-trust check (defense-in-depth)
               const callerDevice = await getDeviceById(txDb, callerDeviceId)
               if (!callerDevice || callerDevice.userId !== userId) {
                 throw new ForbiddenError('Caller device not found')
@@ -287,7 +305,7 @@ export const createEncryptionRoutes = (auth: Auth, database: typeof DbType) =>
     )
     .post(
       '/devices/:deviceId/deny',
-      async ({ params, request, set, user: sessionUser }) => {
+      async ({ params, body, request, set, user: sessionUser }) => {
         const userId = sessionUser!.id
         const callerDeviceId = request.headers.get('x-device-id')?.trim()
 
@@ -296,7 +314,14 @@ export const createEncryptionRoutes = (auth: Auth, database: typeof DbType) =>
           return { error: 'X-Device-ID header is required' }
         }
 
-        // Caller must be a trusted device
+        // Proof-of-CK-possession prevents X-Device-ID spoofing
+        const validProof = await verifyCanaryProof(database, userId, body.canarySecret)
+        if (!validProof) {
+          set.status = 403
+          return { error: 'Invalid canary secret' }
+        }
+
+        // Caller must be a trusted device (defense-in-depth)
         const callerDevice = await getDeviceById(database, callerDeviceId)
         if (!callerDevice || callerDevice.userId !== userId || !callerDevice.trusted) {
           set.status = 403
@@ -323,7 +348,12 @@ export const createEncryptionRoutes = (auth: Auth, database: typeof DbType) =>
 
         set.status = 204
       },
-      { auth: true },
+      {
+        auth: true,
+        body: t.Object({
+          canarySecret: t.String({ maxLength: 500 }),
+        }),
+      },
     )
     .post(
       '/devices/me/cancel-pending',

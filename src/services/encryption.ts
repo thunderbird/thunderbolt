@@ -20,6 +20,7 @@ import {
   getKeyPair,
   storeCK,
   clearAllKeys,
+  getCK,
   ValidationError,
   type StoredKeyPair,
 } from '@/crypto'
@@ -30,6 +31,7 @@ import {
   storeEnvelope,
   fetchMyEnvelope,
   fetchCanary,
+  denyDevice as denyDeviceApi,
   type RegisterDeviceResponse,
 } from '@/api/encryption'
 import { invalidateCKCache, resetCodecState } from '@/db/encryption'
@@ -127,9 +129,27 @@ export const completeFirstDeviceSetup = async (httpClient: HttpClient): Promise<
 // =============================================================================
 
 /**
+ * Extract the canary secret by decrypting the server-stored canary with the local CK.
+ * Used as proof-of-CK-possession for trust-sensitive operations (approve, deny).
+ */
+export const extractCanarySecret = async (httpClient: HttpClient): Promise<string> => {
+  const { canaryIv, canaryCtext } = await fetchCanary(httpClient)
+  const ck = await getCK()
+  if (!ck) {
+    throw new Error('Content key not found in IndexedDB')
+  }
+  const { valid, canarySecret } = await verifyCanary(ck, canaryIv, canaryCtext)
+  if (!valid || !canarySecret) {
+    throw new Error('Failed to verify canary — content key may be corrupted')
+  }
+  return canarySecret
+}
+
+/**
  * Approve a pending device by rewrapping the CK with its public keys and storing the envelope.
  * Fetches this device's own envelope from the server and rewraps — the locally stored
  * non-extractable CK is never touched, preserving its security properties.
+ * Includes canary proof-of-CK-possession to prevent X-Device-ID spoofing.
  */
 export const approveDevice = async (
   httpClient: HttpClient,
@@ -142,7 +162,10 @@ export const approveDevice = async (
     throw new Error('Key pair not found in IndexedDB')
   }
 
-  const { wrappedCK: myWrappedCK } = await fetchMyEnvelope(httpClient)
+  const [{ wrappedCK: myWrappedCK }, canarySecret] = await Promise.all([
+    fetchMyEnvelope(httpClient),
+    extractCanarySecret(httpClient),
+  ])
   const pendingEcdhPub = await importPublicKey(pendingEcdhPublicKeyBase64)
   const pendingMlkemPub = importMlKemPublicKey(pendingMlkemPublicKeyBase64)
   const wrappedCK = await rewrapCK(
@@ -156,7 +179,17 @@ export const approveDevice = async (
   await storeEnvelope(httpClient, {
     deviceId: pendingDeviceId,
     wrappedCK,
+    canarySecret,
   })
+}
+
+/**
+ * Deny a pending device with proof-of-CK-possession.
+ * Extracts canary secret and sends it to prove the caller has the Content Key.
+ */
+export const denyDeviceWithProof = async (httpClient: HttpClient, deviceId: string): Promise<void> => {
+  const canarySecret = await extractCanarySecret(httpClient)
+  await denyDeviceApi(httpClient, deviceId, canarySecret)
 }
 
 // =============================================================================

@@ -17,6 +17,7 @@ import { createAccountRoutes } from '@/api/account'
 import { createPowerSyncRoutes } from '@/api/powersync'
 import type { AppDeps } from '@/types'
 import { cors } from '@elysiajs/cors'
+import { swagger } from '@elysiajs/swagger'
 import { Elysia } from 'elysia'
 
 /**
@@ -39,7 +40,6 @@ export const createApp = async (deps?: AppDeps) => {
   })
 
   if (settings.swaggerEnabled) {
-    const { swagger } = await import('@elysiajs/swagger')
     app.use(
       swagger({
         documentation: {

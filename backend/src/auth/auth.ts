@@ -85,10 +85,10 @@ export const createAuth = (database: typeof DbType) =>
     },
     hooks: {
       after: createAuthMiddleware(async (ctx) => {
-        // Strip session tokens from all auth response bodies (defense-in-depth against CORS misconfiguration).
-        // The frontend acquires tokens via the set-auth-token header, not from response bodies.
+        // Defense-in-depth: strip session tokens so a CORS misconfiguration can't leak portable bearer credentials.
+        // The frontend acquires tokens via the set-auth-token response header, not from JSON bodies.
         if (ctx.path === '/get-session') {
-          const body = ctx.context.returned as { session?: { token?: string } } | null
+          const body = ctx.context.returned as { session?: Record<string, unknown> } | null
           if (body?.session?.token !== undefined) {
             const { token: _, ...session } = body.session
             return ctx.json({ ...body, session })
@@ -96,7 +96,7 @@ export const createAuth = (database: typeof DbType) =>
         }
         if (ctx.path === '/list-sessions' && Array.isArray(ctx.context.returned)) {
           return ctx.json(
-            (ctx.context.returned as { token?: string }[]).map(({ token: _, ...session }) => session),
+            (ctx.context.returned as Record<string, unknown>[]).map(({ token: _, ...session }) => session),
           )
         }
 
@@ -116,7 +116,7 @@ export const createAuth = (database: typeof DbType) =>
           await markUserNotNew(database, sessionUser.id)
         }
 
-        const { token: _, ...sessionWithoutToken } = newSession.session as { token?: string }
+        const { token: _, ...sessionWithoutToken } = newSession.session as Record<string, unknown>
         return ctx.json({
           session: sessionWithoutToken,
           user: sessionUser,

@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import {
   clearSettingsCache,
+  getCorsOrigins,
   getWaitlistAutoApproveDomains,
   getCorsMethodsList,
   getCorsOriginsList,
@@ -42,6 +43,110 @@ describe('Config Settings', () => {
       const origins = getCorsOriginsList(settings as any)
 
       expect(origins).toEqual([])
+    })
+  })
+
+  describe('getCorsOrigins', () => {
+    it('should include explicit origins list', () => {
+      const settings = {
+        corsOrigins: 'https://app.example.com,https://other.example.com',
+        corsOriginRegex: null,
+      }
+      const origins = getCorsOrigins(settings as any)
+
+      expect(origins).toEqual(['https://app.example.com', 'https://other.example.com'])
+    })
+
+    it('should include regex when corsOriginRegex is set', () => {
+      const regex = /^(tauri:\/\/localhost|http:\/\/tauri\.localhost)$/
+      const settings = {
+        corsOrigins: 'https://app.example.com',
+        corsOriginRegex: regex,
+      }
+      const origins = getCorsOrigins(settings as any)
+
+      expect(origins).toHaveLength(2)
+      expect(origins).toContain('https://app.example.com')
+      expect(origins).toContain(regex)
+    })
+
+    it('should return only explicit origins when regex is null', () => {
+      const settings = {
+        corsOrigins: 'https://app.example.com',
+        corsOriginRegex: null,
+      }
+      const origins = getCorsOrigins(settings as any)
+
+      expect(origins).toEqual(['https://app.example.com'])
+      expect(origins.every((o) => typeof o === 'string')).toBe(true)
+    })
+  })
+
+  describe('CORS default regex security', () => {
+    const CORS_ENV_KEYS = ['CORS_ORIGIN_REGEX', 'CORS_ORIGINS'] as const
+
+    let savedEnv: Partial<Record<string, string | undefined>>
+
+    beforeEach(() => {
+      clearSettingsCache()
+      savedEnv = {}
+      for (const key of CORS_ENV_KEYS) {
+        savedEnv[key] = process.env[key]
+      }
+    })
+
+    afterEach(() => {
+      for (const key of CORS_ENV_KEYS) {
+        if (savedEnv[key] !== undefined) {
+          process.env[key] = savedEnv[key]
+        } else {
+          delete process.env[key]
+        }
+      }
+      clearSettingsCache()
+    })
+
+    it('should NOT match arbitrary localhost ports in the default regex', () => {
+      delete process.env.CORS_ORIGIN_REGEX
+      const settings = getSettings()
+      const regex = settings.corsOriginRegex
+
+      // The default regex should exist (for Tauri)
+      expect(regex).toBeInstanceOf(RegExp)
+
+      // Must NOT match arbitrary localhost ports — this was the vulnerability
+      expect(regex!.test('http://localhost:9999')).toBe(false)
+      expect(regex!.test('http://localhost:4000')).toBe(false)
+      expect(regex!.test('http://localhost:8080')).toBe(false)
+    })
+
+    it('should match Tauri origins in the default regex', () => {
+      delete process.env.CORS_ORIGIN_REGEX
+      const settings = getSettings()
+      const regex = settings.corsOriginRegex!
+
+      expect(regex.test('tauri://localhost')).toBe(true)
+      expect(regex.test('http://tauri.localhost')).toBe(true)
+    })
+
+    it('should not match non-Tauri origins in the default regex', () => {
+      delete process.env.CORS_ORIGIN_REGEX
+      const settings = getSettings()
+      const regex = settings.corsOriginRegex!
+
+      expect(regex.test('https://evil.com')).toBe(false)
+      expect(regex.test('http://malicious.localhost')).toBe(false)
+      expect(regex.test('http://localhost')).toBe(false)
+    })
+
+    it('should not let default regex silently override explicit CORS_ORIGINS', () => {
+      delete process.env.CORS_ORIGIN_REGEX
+      process.env.CORS_ORIGINS = 'https://myapp.example.com'
+      const settings = getSettings()
+      const origins = getCorsOrigins(settings)
+
+      // The explicit origin must be present in the result
+      expect(origins).toContain('https://myapp.example.com')
     })
   })
 

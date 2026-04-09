@@ -66,6 +66,8 @@ const settingsSchema = z.object({
     .string()
     .default('mcp-session-id,set-auth-token,ratelimit-limit,ratelimit-remaining,ratelimit-reset,retry-after'),
 
+  swaggerEnabled: z.boolean().default(false),
+
   // Rate limiting
   rateLimitEnabled: z.boolean().default(true),
 
@@ -119,6 +121,7 @@ const parseSettings = (): Settings => {
     corsExposeHeaders:
       process.env.CORS_EXPOSE_HEADERS ||
       'mcp-session-id,set-auth-token,ratelimit-limit,ratelimit-remaining,ratelimit-reset,retry-after',
+    swaggerEnabled: process.env.SWAGGER_ENABLED === 'true',
     rateLimitEnabled: process.env.RATE_LIMIT_ENABLED !== 'false',
     trustedProxy: (process.env.TRUSTED_PROXY || '').toLowerCase(),
   }

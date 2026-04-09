@@ -51,6 +51,7 @@ export default defineConfig({
         OIDC_CLIENT_SECRET: 'thunderbolt-dev-secret',
         OIDC_ISSUER: `http://localhost:${mockOidcPort}`,
         BETTER_AUTH_URL: 'http://localhost:8000',
+        BETTER_AUTH_SECRET: 'e2e-test-secret-at-least-32-characters-long',
         APP_URL: `http://localhost:${e2eVitePort}`,
         CORS_ORIGINS: `http://localhost:${e2eVitePort}`,
         TRUSTED_ORIGINS: `http://localhost:${e2eVitePort}`,

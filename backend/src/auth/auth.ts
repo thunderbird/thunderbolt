@@ -132,7 +132,7 @@ export const createAuth = (database: typeof DbType) => {
       }),
     },
     plugins: [
-      bearer(), // Enables Authorization: Bearer <token> for mobile apps where cookies don't work
+      bearer({ requireSignature: true }), // Enables Authorization: Bearer <token> for mobile apps where cookies don't work
       emailOTP({
         otpLength: 6,
         expiresIn: 300, // 5 minutes

@@ -56,6 +56,7 @@ describe('Authentication Routes', () => {
       oidcClientSecret: '',
       oidcIssuer: '',
       betterAuthUrl: 'http://localhost:8000',
+      betterAuthSecret: 'test-secret-at-least-32-chars-long!!',
       rateLimitEnabled: false,
       swaggerEnabled: false,
       trustedProxy: '',

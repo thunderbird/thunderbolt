@@ -10,6 +10,9 @@ import { testDbManager } from './db'
 // queries that bypass PGlite transaction isolation, which breaks test cleanup
 process.env.RATE_LIMIT_ENABLED = 'false'
 
+// Provide Better Auth secret for tests (matches Better Auth's built-in test default)
+process.env.BETTER_AUTH_SECRET ??= 'better-auth-secret-12345678901234567890'
+
 // Initialize the database before any tests run
 console.log('🔧 Initializing test database...')
 await testDbManager.initialize()

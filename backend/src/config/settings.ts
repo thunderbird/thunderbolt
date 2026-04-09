@@ -95,7 +95,7 @@ const parseSettings = (): Settings => {
     oidcClientSecret: process.env.OIDC_CLIENT_SECRET || '',
     oidcIssuer: process.env.OIDC_ISSUER || '',
     betterAuthUrl: process.env.BETTER_AUTH_URL || 'http://localhost:8000',
-    betterAuthSecret: process.env.BETTER_AUTH_SECRET || process.env.AUTH_SECRET,
+    betterAuthSecret: process.env.BETTER_AUTH_SECRET,
     logLevel: (process.env.LOG_LEVEL || 'INFO').toUpperCase(),
     port: process.env.PORT || '8000',
     appUrl: process.env.APP_URL || 'http://localhost:1420',

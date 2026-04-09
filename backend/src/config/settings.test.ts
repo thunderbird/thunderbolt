@@ -13,35 +13,35 @@ describe('Config Settings', () => {
   describe('getCorsOriginsList', () => {
     it('should split comma-separated origins', () => {
       const settings = { corsOrigins: 'http://localhost:3000,https://example.com,https://app.example.com' }
-      const origins = getCorsOriginsList(settings as any)
+      const origins = getCorsOriginsList(settings)
 
       expect(origins).toEqual(['http://localhost:3000', 'https://example.com', 'https://app.example.com'])
     })
 
     it('should handle single origin', () => {
       const settings = { corsOrigins: 'http://localhost:3000' }
-      const origins = getCorsOriginsList(settings as any)
+      const origins = getCorsOriginsList(settings)
 
       expect(origins).toEqual(['http://localhost:3000'])
     })
 
     it('should trim whitespace from origins', () => {
       const settings = { corsOrigins: ' http://localhost:3000 , https://example.com , https://app.example.com ' }
-      const origins = getCorsOriginsList(settings as any)
+      const origins = getCorsOriginsList(settings)
 
       expect(origins).toEqual(['http://localhost:3000', 'https://example.com', 'https://app.example.com'])
     })
 
     it('should filter out empty origins', () => {
       const settings = { corsOrigins: 'http://localhost:3000,,https://example.com,' }
-      const origins = getCorsOriginsList(settings as any)
+      const origins = getCorsOriginsList(settings)
 
       expect(origins).toEqual(['http://localhost:3000', 'https://example.com'])
     })
 
     it('should handle empty string', () => {
       const settings = { corsOrigins: '' }
-      const origins = getCorsOriginsList(settings as any)
+      const origins = getCorsOriginsList(settings)
 
       expect(origins).toEqual([])
     })

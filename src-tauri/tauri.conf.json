@@ -27,7 +27,7 @@
         "img-src": "'self' asset: data: https://api.thunderbolt.io",
         "font-src": "'self' data:",
         "style-src": "'self' 'unsafe-inline'",
-        "script-src": "'self'"
+        "script-src": "'self' https://api.thunderbolt.io"
       }
     },
     "withGlobalTauri": true

@@ -44,7 +44,7 @@ export const SignInOtpStep = ({
         <div className="my-auto flex flex-col items-center text-center">
           <p className="font-sans text-[28px] font-medium leading-normal text-foreground">Check your email</p>
           <p className="mt-2 text-base text-foreground">
-            If you have access, we&apos;ve sent a 6-digit code to <span className="font-bold">{email}</span>
+            If you have access, we&apos;ve sent an 8-digit code to <span className="font-bold">{email}</span>
           </p>
           <ActionFeedbackButton
             variant="ghost"

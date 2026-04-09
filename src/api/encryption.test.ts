@@ -1,5 +1,6 @@
 import { describe, expect, it, beforeEach, afterEach } from 'bun:test'
-import ky, { type KyInstance } from 'ky'
+import { type HttpClient } from '@/contexts'
+import ky from 'ky'
 import { registerDevice, storeEnvelope, fetchMyEnvelope, fetchCanary } from './encryption'
 
 const deviceIdKey = 'thunderbolt_device_id'
@@ -9,7 +10,7 @@ type CapturedRequest = { url: string; method: string; body: Record<string, unkno
 
 const createCapturingHttpClient = (
   mockResponse: unknown = {},
-): { httpClient: KyInstance; getLastRequest: () => CapturedRequest } => {
+): { httpClient: HttpClient; getLastRequest: () => CapturedRequest } => {
   let lastRequest: CapturedRequest = {
     url: '',
     method: 'GET',

@@ -1,4 +1,4 @@
-import type { KyInstance } from 'ky'
+import { type HttpClient } from '@/contexts'
 import { getAuthToken, getDeviceId } from '@/lib/auth-token'
 
 // =============================================================================
@@ -36,7 +36,7 @@ export const authHeaders = (): Record<string, string> => {
 
 /** Register (or re-identify) this device with the server. */
 export const registerDevice = async (
-  httpClient: KyInstance,
+  httpClient: HttpClient,
   params: { deviceId: string; publicKey: string; mlkemPublicKey: string; name?: string },
 ): Promise<RegisterDeviceResponse> =>
   httpClient
@@ -49,7 +49,7 @@ export const registerDevice = async (
 
 /** Store a wrapped content key (envelope) for a device. Optionally includes canary on first setup or secret for recovery. */
 export const storeEnvelope = async (
-  httpClient: KyInstance,
+  httpClient: HttpClient,
   params: { deviceId: string; wrappedCK: string; canaryIv?: string; canaryCtext?: string; canarySecret?: string },
 ): Promise<StoreEnvelopeResponse> => {
   const { deviceId, ...body } = params
@@ -63,7 +63,7 @@ export const storeEnvelope = async (
 }
 
 /** Fetch the wrapped content key for the current device. */
-export const fetchMyEnvelope = async (httpClient: KyInstance): Promise<FetchEnvelopeResponse> =>
+export const fetchMyEnvelope = async (httpClient: HttpClient): Promise<FetchEnvelopeResponse> =>
   httpClient
     .get('devices/me/envelope', {
       headers: authHeaders(),
@@ -72,7 +72,7 @@ export const fetchMyEnvelope = async (httpClient: KyInstance): Promise<FetchEnve
     .json<FetchEnvelopeResponse>()
 
 /** Fetch the canary for recovery key verification. */
-export const fetchCanary = async (httpClient: KyInstance): Promise<FetchCanaryResponse> =>
+export const fetchCanary = async (httpClient: HttpClient): Promise<FetchCanaryResponse> =>
   httpClient
     .get('encryption/canary', {
       headers: authHeaders(),
@@ -81,7 +81,7 @@ export const fetchCanary = async (httpClient: KyInstance): Promise<FetchCanaryRe
     .json<FetchCanaryResponse>()
 
 /** Deny a pending device (called by a trusted device). */
-export const denyDevice = async (httpClient: KyInstance, deviceId: string): Promise<void> => {
+export const denyDevice = async (httpClient: HttpClient, deviceId: string): Promise<void> => {
   await httpClient.post(`devices/${encodeURIComponent(deviceId)}/deny`, {
     headers: authHeaders(),
     credentials: 'omit',
@@ -89,7 +89,7 @@ export const denyDevice = async (httpClient: KyInstance, deviceId: string): Prom
 }
 
 /** Cancel this device's pending approval state (called by the pending device itself). */
-export const cancelPending = async (httpClient: KyInstance): Promise<void> => {
+export const cancelPending = async (httpClient: HttpClient): Promise<void> => {
   await httpClient.post('devices/me/cancel-pending', {
     headers: authHeaders(),
     credentials: 'omit',
@@ -97,7 +97,7 @@ export const cancelPending = async (httpClient: KyInstance): Promise<void> => {
 }
 
 /** Check if the user has encryption set up (canary exists on server). */
-export const checkCanaryExists = async (httpClient: KyInstance): Promise<boolean> => {
+export const checkCanaryExists = async (httpClient: HttpClient): Promise<boolean> => {
   try {
     await httpClient
       .get('encryption/canary', {

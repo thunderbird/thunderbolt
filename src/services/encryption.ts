@@ -1,4 +1,5 @@
-import { HTTPError, type KyInstance } from 'ky'
+import { type HttpClient } from '@/contexts'
+import { HTTPError } from 'ky'
 import {
   generateKeyPair,
   generateMlKemKeyPair,
@@ -64,7 +65,7 @@ const getOrCreateKeyPair = async (): Promise<StoredKeyPair> => {
  * Idempotent: reuses existing key pair from IndexedDB if present.
  * Returns the registration response so the caller can determine first vs additional device.
  */
-export const registerThisDevice = async (httpClient: KyInstance): Promise<RegisterDeviceResponse> => {
+export const registerThisDevice = async (httpClient: HttpClient): Promise<RegisterDeviceResponse> => {
   const keyPair = await getOrCreateKeyPair()
 
   const publicKeyBase64 = await exportPublicKey(keyPair.ecdhPublicKey)
@@ -87,7 +88,7 @@ export const registerThisDevice = async (httpClient: KyInstance): Promise<Regist
  * Complete first device setup: generate CK, canary, envelope, return recovery key.
  * Must be called after `registerThisDevice` (key pair already in IndexedDB).
  */
-export const completeFirstDeviceSetup = async (httpClient: KyInstance): Promise<string> => {
+export const completeFirstDeviceSetup = async (httpClient: HttpClient): Promise<string> => {
   const keyPair = await getKeyPair()
   if (!keyPair) {
     throw new Error('Key pair not found — call registerThisDevice first')
@@ -131,7 +132,7 @@ export const completeFirstDeviceSetup = async (httpClient: KyInstance): Promise<
  * non-extractable CK is never touched, preserving its security properties.
  */
 export const approveDevice = async (
-  httpClient: KyInstance,
+  httpClient: HttpClient,
   pendingDeviceId: string,
   pendingEcdhPublicKeyBase64: string,
   pendingMlkemPublicKeyBase64: string,
@@ -166,7 +167,7 @@ export const approveDevice = async (
  * Check if this device has been approved (envelope exists) and unwrap the CK.
  * Returns true if CK was successfully unwrapped and stored, false if not yet approved.
  */
-export const checkApprovalAndUnwrap = async (httpClient: KyInstance): Promise<boolean> => {
+export const checkApprovalAndUnwrap = async (httpClient: HttpClient): Promise<boolean> => {
   try {
     const { wrappedCK } = await fetchMyEnvelope(httpClient)
     const keyPair = await getKeyPair()
@@ -196,7 +197,7 @@ export const checkApprovalAndUnwrap = async (httpClient: KyInstance): Promise<bo
  * Recover encryption access using a recovery key.
  * Verifies the key against the canary, then creates a new envelope for this device.
  */
-export const recoverWithKey = async (httpClient: KyInstance, recoveryPhrase: string): Promise<void> => {
+export const recoverWithKey = async (httpClient: HttpClient, recoveryPhrase: string): Promise<void> => {
   // Fetch canary and verify recovery phrase
   const { canaryIv, canaryCtext } = await fetchCanary(httpClient)
   const ck = await decodeRecoveryKey(recoveryPhrase)

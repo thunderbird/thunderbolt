@@ -13,7 +13,6 @@ import type { ReactNode } from 'react'
 
 const currentDeviceId = uuidv7()
 const pendingDeviceId1 = uuidv7()
-const pendingDeviceId2 = uuidv7()
 
 const deviceIdKey = 'thunderbolt_device_id'
 const authTokenKey = 'thunderbolt_auth_token'

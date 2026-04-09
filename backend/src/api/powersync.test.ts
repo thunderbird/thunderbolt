@@ -1576,7 +1576,7 @@ describe('PowerSync API', () => {
 describe('PowerSync cross-origin injection protection', () => {
   const corsSettings: Settings = {
     ...powersyncSettings,
-    corsOriginRegex: /^(tauri:\/\/localhost|http:\/\/tauri\.localhost|http:\/\/localhost:1420)$/,
+    corsOriginRegex: /^(tauri:\/\/localhost|http:\/\/tauri\.localhost)$/,
     corsOrigins: 'http://localhost:1420',
   }
 

@@ -1279,5 +1279,53 @@ describe('Link Preview Routes', () => {
       expect(response.status).toBe(200)
       expect(response.headers.get('content-type')).toBe('image/png; charset=utf-8')
     })
+
+    it('should include Content-Security-Policy header on proxied images', async () => {
+      const imageUrl = 'https://example.com/image.png'
+
+      mockFetch.mockImplementation(() => Promise.resolve(createMockImageResponse('image/png')))
+
+      const response = await app.handle(
+        new Request(`http://localhost/link-preview/proxy-image/${imageUrl}`, { method: 'GET' }),
+      )
+
+      expect(response.status).toBe(200)
+      expect(response.headers.get('content-security-policy')).toBe("script-src 'none'; object-src 'none'")
+    })
+
+    it('should include X-Content-Type-Options: nosniff header on proxied images', async () => {
+      const imageUrl = 'https://example.com/image.jpg'
+
+      mockFetch.mockImplementation(() => Promise.resolve(createMockImageResponse('image/jpeg')))
+
+      const response = await app.handle(
+        new Request(`http://localhost/link-preview/proxy-image/${imageUrl}`, { method: 'GET' }),
+      )
+
+      expect(response.status).toBe(200)
+      expect(response.headers.get('x-content-type-options')).toBe('nosniff')
+    })
+
+    it('should serve SVG images with security headers instead of rejecting them', async () => {
+      const imageUrl = 'https://example.com/logo.svg'
+
+      mockFetch.mockImplementation(() =>
+        Promise.resolve(
+          new Response('<svg xmlns="http://www.w3.org/2000/svg"><script>alert(1)</script></svg>', {
+            status: 200,
+            headers: { 'content-type': 'image/svg+xml' },
+          }),
+        ),
+      )
+
+      const response = await app.handle(
+        new Request(`http://localhost/link-preview/proxy-image/${imageUrl}`, { method: 'GET' }),
+      )
+
+      expect(response.status).toBe(200)
+      expect(response.headers.get('content-type')).toBe('image/svg+xml')
+      expect(response.headers.get('content-security-policy')).toBe("script-src 'none'; object-src 'none'")
+      expect(response.headers.get('x-content-type-options')).toBe('nosniff')
+    })
   })
 })

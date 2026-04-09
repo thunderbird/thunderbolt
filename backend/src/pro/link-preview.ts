@@ -97,6 +97,8 @@ const fetchAndProxyImage = async (
           'Content-Type': contentType,
           'Cache-Control': 'public, max-age=86400',
           'Cross-Origin-Resource-Policy': 'cross-origin',
+          'Content-Security-Policy': "script-src 'none'; object-src 'none'",
+          'X-Content-Type-Options': 'nosniff',
         },
       })
     } finally {

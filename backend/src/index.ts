@@ -85,7 +85,7 @@ export const createApp = async (deps?: AppDeps) => {
       .use(createMicrosoftAuthRoutes(auth, fetchFn))
       .use(createProToolsRoutes(auth, fetchFn, createProRateLimit(database, rateLimitSettings)))
       .use(createInferenceRoutes(auth, createInferenceRateLimit(database, rateLimitSettings)))
-      .use(createPostHogRoutes(fetchFn))
+      .use(createPostHogRoutes(fetchFn, settings))
       .use(createMcpProxyRoutes(auth, fetchFn))
       .use(createWaitlistRoutes({ database, auth, emailService: deps?.waitlistEmailService }))
       .use(createPowerSyncRoutes(auth, settings, database))

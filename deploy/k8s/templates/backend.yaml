@@ -63,8 +63,6 @@ spec:
               value: {{ .Values.appUrl }}
             - name: CORS_ORIGINS
               value: {{ .Values.appUrl }}
-            - name: CORS_ORIGIN_REGEX
-              value: ""
             - name: POWERSYNC_URL
               value: "http://powersync:{{ .Values.powersync.service.port }}"
             - name: POWERSYNC_JWT_SECRET

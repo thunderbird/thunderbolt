@@ -53,7 +53,6 @@ export default defineConfig({
         BETTER_AUTH_URL: 'http://localhost:8000',
         APP_URL: `http://localhost:${e2eVitePort}`,
         CORS_ORIGINS: `http://localhost:${e2eVitePort}`,
-        CORS_ORIGIN_REGEX: '',
         TRUSTED_ORIGINS: `http://localhost:${e2eVitePort}`,
       },
     },

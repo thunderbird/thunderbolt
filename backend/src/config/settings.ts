@@ -139,9 +139,7 @@ export const clearSettingsCache = (): void => {
   settings = null
 }
 
-/**
- * Derived properties similar to the Python version
- */
+/** Parse comma-separated CORS origins into a list. */
 export const getCorsOriginsList = (settings: Pick<Settings, 'corsOrigins'>): string[] => {
   return settings.corsOrigins
     .split(',')

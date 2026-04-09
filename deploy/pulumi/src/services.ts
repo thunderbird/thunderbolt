@@ -270,7 +270,6 @@ export const createServices = (args: ServiceArgs) => {
             { name: 'APP_URL', value: `http://${dns}` },
             { name: 'TRUSTED_ORIGINS', value: `http://${dns}` },
             { name: 'CORS_ORIGINS', value: `http://${dns}` },
-            { name: 'CORS_ORIGIN_REGEX', value: '' },
             { name: 'POWERSYNC_URL', value: `http://${dns}/powersync` },
             { name: 'POWERSYNC_JWT_SECRET', value: 'enterprise-powersync-secret' },
             { name: 'POWERSYNC_JWT_KID', value: 'enterprise-powersync' },

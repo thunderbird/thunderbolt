@@ -85,6 +85,8 @@ services:
     command: ["start", "-r", "unified"]
     environment:
       POWERSYNC_CONFIG_PATH: /config/config.yaml
+      PS_PG_URI: postgresql://powersync_role:myhighlyrandompassword@postgres:5432/postgres
+      PS_MONGO_URI: mongodb://mongo:27017/powersync
     volumes:
       - ./config/powersync-config.yaml:/config/config.yaml
     ports:

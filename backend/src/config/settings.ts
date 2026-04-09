@@ -51,7 +51,7 @@ const settingsSchema = z.object({
   corsOrigins: z.string().default('http://localhost:1420'),
   corsOriginRegex: z
     .string()
-    .default('^(tauri://localhost|http://tauri\\.localhost|http://localhost:\\d+)$')
+    .default('^(tauri://localhost|http://tauri\\.localhost|http://localhost:1420)$')
     // Value is from CORS_ORIGIN_REGEX env var set by the server deployer, not user input.
     // nosemgrep: javascript.lang.security.audit.detect-non-literal-regexp.detect-non-literal-regexp
     .transform((val) => (val ? new RegExp(val) : null)),
@@ -111,7 +111,7 @@ const parseSettings = (): Settings => {
     powersyncTokenExpirySeconds: process.env.POWERSYNC_TOKEN_EXPIRY_SECONDS || '3600',
     corsOrigins: process.env.CORS_ORIGINS || 'http://localhost:1420',
     corsOriginRegex:
-      process.env.CORS_ORIGIN_REGEX ?? '^(tauri://localhost|http://tauri\\.localhost|http://localhost:\\d+)$',
+      process.env.CORS_ORIGIN_REGEX ?? '^(tauri://localhost|http://tauri\\.localhost|http://localhost:1420)$',
     corsAllowCredentials: process.env.CORS_ALLOW_CREDENTIALS !== 'false',
     corsAllowMethods: process.env.CORS_ALLOW_METHODS || 'GET,POST,PUT,DELETE,PATCH,OPTIONS',
     corsAllowHeaders:
@@ -162,6 +162,15 @@ export const getCorsOriginsList = (settings: Settings): string[] => {
  */
 export const getCorsOrigins = (settings: Settings): RegExp | string[] => {
   return settings.corsOriginRegex ?? getCorsOriginsList(settings)
+}
+
+/**
+ * Check whether a given origin is allowed by the configured CORS origins.
+ */
+export const isOriginAllowed = (origin: string, settings: Settings): boolean => {
+  const allowed = getCorsOrigins(settings)
+  if (allowed instanceof RegExp) return allowed.test(origin)
+  return allowed.includes(origin)
 }
 
 export const getCorsMethodsList = (settings: Settings): string[] => {

@@ -1,5 +1,6 @@
 import type { Auth } from '@/auth/elysia-plugin'
 import type { Settings } from '@/config/settings'
+import { isOriginAllowed } from '@/config/settings'
 import { applyOperation, getActiveSessionByToken, getDeviceById, getUserById, upsertDevice } from '@/dal'
 import type { db as DbType } from '@/db/client'
 import { jwt } from '@elysiajs/jwt'
@@ -43,6 +44,16 @@ const validateDeviceNotRevoked = async (
   }
 
   return { ok: true }
+}
+
+/**
+ * Defense-in-depth: rejects cross-origin requests whose Origin doesn't match allowed CORS origins.
+ * Absent Origin (non-browser / server-to-server clients) is allowed.
+ */
+const validateOrigin = (request: Request, appSettings: Settings): boolean => {
+  const origin = request.headers.get('origin')
+  if (!origin) return true
+  return isOriginAllowed(origin, appSettings)
 }
 
 /**
@@ -120,6 +131,11 @@ export const createPowerSyncRoutes = (auth: Auth, settings: Settings, database: 
       return { user: session?.user ?? null }
     })
     .get('/token', async ({ powersyncJwt, request, set, user }) => {
+      if (!validateOrigin(request, settings)) {
+        set.status = 403
+        return { error: 'Forbidden', code: 'ORIGIN_NOT_ALLOWED' }
+      }
+
       if (!settings.powersyncUrl || !settings.powersyncJwtSecret) {
         set.status = 503
         return { error: 'PowerSync is not configured' }
@@ -167,6 +183,11 @@ export const createPowerSyncRoutes = (auth: Auth, settings: Settings, database: 
     .put(
       '/upload',
       async ({ body, request, set, user }) => {
+        if (!validateOrigin(request, settings)) {
+          set.status = 403
+          return { error: 'Forbidden', code: 'ORIGIN_NOT_ALLOWED' }
+        }
+
         // Requires authenticated user; applies batched CRUD from PowerSync.
         if (!user) {
           set.status = 401

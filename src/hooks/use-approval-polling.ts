@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { HTTPError } from 'ky'
+import { HttpError } from '@/lib/http'
 
 type UseApprovalPollingOptions = {
   enabled: boolean
@@ -60,7 +60,7 @@ export const useApprovalPolling = ({
           onApprovedRef.current()
         }
       } catch (err) {
-        if (err instanceof HTTPError && !cancelled) {
+        if (err instanceof HttpError && !cancelled) {
           if (err.response.status === 403) {
             clearInterval(intervalId)
             setIsPolling(false)

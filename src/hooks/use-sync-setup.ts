@@ -1,5 +1,5 @@
 import { useReducer } from 'react'
-import { HTTPError } from 'ky'
+import { HttpError } from '@/lib/http'
 import { useHttpClient } from '@/contexts'
 import { ValidationError } from '@/crypto'
 import {
@@ -147,7 +147,7 @@ export const useSyncSetup = () => {
       dispatch({ type: 'SET_RECOVERY_KEY', payload: recoveryKey })
     } catch (err) {
       // Another device may have completed first-device setup — check canary and switch flow
-      if (err instanceof HTTPError && err.response.status === 403) {
+      if (err instanceof HttpError && err.response.status === 403) {
         const hasCanary = await checkCanaryExists(httpClient)
         if (hasCanary) {
           dispatch({ type: 'DETECTED_ADDITIONAL_DEVICE' })
@@ -210,7 +210,7 @@ export const useSyncSetup = () => {
       dispatch({ type: 'STOP_LOADING' })
       return true
     } catch (err) {
-      if (err instanceof HTTPError && err.response.status === 422) {
+      if (err instanceof HttpError && err.response.status === 422) {
         dispatch({ type: 'DEVICE_DENIED' })
         return false
       }

@@ -1,5 +1,5 @@
 import { describe, expect, it, beforeEach, afterEach, mock } from 'bun:test'
-import ky from 'ky'
+import { createClient } from '@/lib/http'
 import {
   generateKeyPair,
   generateMlKemKeyPair,
@@ -98,10 +98,9 @@ const createTestHttpClient = (...handlers: RouteHandler[]) => {
   }
 
   return {
-    httpClient: ky.create({
+    httpClient: createClient({
       fetch: mockFetch as unknown as typeof fetch,
       prefixUrl: 'http://test-api.local',
-      retry: 0,
     }),
     requests,
   }
@@ -269,13 +268,17 @@ describe('encryption service', () => {
   })
 
   describe('approveDevice', () => {
-    it('fetches own envelope, rewraps CK for pending device, stores envelope', async () => {
+    it('fetches own envelope, rewraps CK for pending device, stores envelope with canary proof', async () => {
       const thisKeyPair = await generateFullKeyPair()
       storedKeyPair = thisKeyPair
 
       // Create a real CK and wrap it for this device (simulates existing envelope)
       const ck = await generateCK(true)
+      storedCK = ck
       const wrappedForThis = await wrapCK(ck, thisKeyPair.ecdhPublicKey, thisKeyPair.mlkemPublicKey)
+
+      // Create canary from the CK (so extractCanarySecret can decrypt it)
+      const { canaryIv, canaryCtext } = await createCanary(ck)
 
       // Pending device's key pairs
       const pendingKeyPair = await generateFullKeyPair()
@@ -284,15 +287,18 @@ describe('encryption service', () => {
 
       const { httpClient, requests } = createTestHttpClient(
         respondToFetchEnvelope({ trusted: true, wrappedCK: wrappedForThis }),
+        respondToFetchCanary({ canaryIv, canaryCtext }),
         respondToStoreEnvelope({ trusted: true }),
       )
 
       await approveDevice(httpClient, 'pending-dev', pendingEcdhPubBase64, pendingMlkemPubBase64)
 
-      // Envelope was stored for the pending device
+      // Envelope was stored for the pending device with canary proof
       const storeReq = requests.find((r) => r.url.includes('/envelope') && r.method === 'POST')
       expect(storeReq).toBeDefined()
       expect(storeReq!.url).toContain('pending-dev')
+      expect(storeReq!.body!.canarySecret).toBeDefined()
+      expect(typeof storeReq!.body!.canarySecret).toBe('string')
 
       // The wrapped CK should be unwrappable by the pending device
       const unwrappedCK = await unwrapCK(
@@ -331,10 +337,9 @@ describe('encryption service', () => {
       const mockFetch = async (): Promise<Response> =>
         new Response('Not found', { status: 404, headers: { 'Content-Type': 'application/json' } })
 
-      const httpClient = ky.create({
+      const httpClient = createClient({
         fetch: mockFetch as unknown as typeof fetch,
         prefixUrl: 'http://test-api.local',
-        retry: 0,
       })
 
       const result = await checkApprovalAndUnwrap(httpClient)
@@ -347,10 +352,9 @@ describe('encryption service', () => {
       const mockFetch = async (): Promise<Response> =>
         new Response('Server error', { status: 500, headers: { 'Content-Type': 'application/json' } })
 
-      const httpClient = ky.create({
+      const httpClient = createClient({
         fetch: mockFetch as unknown as typeof fetch,
         prefixUrl: 'http://test-api.local',
-        retry: 0,
       })
 
       await expect(checkApprovalAndUnwrap(httpClient)).rejects.toThrow()

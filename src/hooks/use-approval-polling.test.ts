@@ -2,11 +2,10 @@ import '@/testing-library'
 import { getClock } from '@/testing-library'
 import { act, cleanup, renderHook } from '@testing-library/react'
 import { afterEach, describe, expect, it, mock } from 'bun:test'
-import { HTTPError, type NormalizedOptions } from 'ky'
+import { HttpError } from '@/lib/http'
 import { useApprovalPolling } from './use-approval-polling'
 
-const createHTTPError = (status: number) =>
-  new HTTPError(new Response(null, { status }), new Request('http://test'), {} as NormalizedOptions)
+const createHTTPError = (status: number) => new HttpError(new Response(null, { status }))
 
 describe('useApprovalPolling', () => {
   afterEach(() => {

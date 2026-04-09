@@ -1,5 +1,5 @@
 import { type HttpClient } from '@/contexts'
-import { HTTPError } from 'ky'
+import { HttpError } from '@/lib/http'
 import {
   generateKeyPair,
   generateMlKemKeyPair,
@@ -214,7 +214,7 @@ export const checkApprovalAndUnwrap = async (httpClient: HttpClient): Promise<bo
     return true
   } catch (err) {
     // 404 = not yet approved, return false so caller can retry
-    if (err instanceof HTTPError && err.response.status === 404) {
+    if (err instanceof HttpError && err.response.status === 404) {
       return false
     }
     // Re-throw transient/unexpected errors so they surface properly

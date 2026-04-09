@@ -13,7 +13,7 @@ const maxBodyBytes = 10 * 1024 * 1024
 /** Proxy request timeout (30s — MCP operations can be slower than typical API calls). */
 const proxyTimeoutMs = 30_000
 
-/** Headers to strip from proxied MCP requests. Keeps Authorization and MCP headers. */
+/** Headers to strip from proxied MCP requests (mcp-authorization is rewritten to authorization below). */
 const mcpRequestDenylist = [
   'host',
   'connection',
@@ -21,6 +21,8 @@ const mcpRequestDenylist = [
   'upgrade',
   'content-length',
   'cookie',
+  'authorization',
+  'mcp-authorization',
   'x-mcp-target-url',
   /^proxy-/i,
   /^x-forwarded-/i,
@@ -51,6 +53,11 @@ const handleProxy = async (
   const base = targetBaseUrl.replace(/\/+$/, '')
   const url = subPath ? `${base}/${subPath}${queryString}` : `${base}${queryString}`
   const headers = filterHeaders(ctx.headers, mcpRequestDenylist)
+
+  const mcpAuth = ctx.headers['mcp-authorization']
+  if (mcpAuth) {
+    headers['authorization'] = mcpAuth
+  }
 
   // Enforce request body size limit
   const requestContentLength = ctx.headers['content-length']

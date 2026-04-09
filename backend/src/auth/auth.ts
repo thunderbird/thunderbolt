@@ -78,6 +78,9 @@ export const createAuth = (database: typeof DbType) => {
       schema,
     }),
     trustedOrigins,
+    // NOTE: Uses in-memory storage by default — not shared across instances in
+    // horizontally-scaled deployments. Provides single-instance defence only.
+    // TODO(THU-113): Replace with proof-of-work challenge (ALTCHA) for distributed protection.
     rateLimit: {
       enabled: true,
       window: 60,

@@ -8,7 +8,7 @@ import { runMigrations } from '@/db/client'
 import { createInferenceRoutes } from '@/inference/routes'
 import { createErrorHandlingMiddleware } from '@/middleware/error-handling'
 import { createHttpLoggingMiddleware } from '@/middleware/http-logging'
-import { createInferenceRateLimit, createProRateLimit, createWaitlistRateLimit } from '@/middleware/rate-limit'
+import { createInferenceRateLimit, createProRateLimit } from '@/middleware/rate-limit'
 import { createMcpProxyRoutes } from '@/mcp-proxy/routes'
 import { createPostHogRoutes } from '@/posthog/routes'
 import { createProToolsRoutes } from '@/pro/routes'
@@ -86,14 +86,7 @@ export const createApp = async (deps?: AppDeps) => {
       .use(createInferenceRoutes(auth, createInferenceRateLimit(database, rateLimitSettings)))
       .use(createPostHogRoutes(fetchFn))
       .use(createMcpProxyRoutes(auth, fetchFn))
-      .use(
-        createWaitlistRoutes({
-          database,
-          auth,
-          emailService: deps?.waitlistEmailService,
-          rateLimit: createWaitlistRateLimit(database, rateLimitSettings, settings.trustedProxy),
-        }),
-      )
+      .use(createWaitlistRoutes({ database, auth, emailService: deps?.waitlistEmailService }))
       .use(createPowerSyncRoutes(auth, settings, database))
       .use(createAccountRoutes(auth, database))
   )

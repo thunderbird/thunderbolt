@@ -1,7 +1,5 @@
 import type { db as DbType } from '@/db/client'
 import { rateLimits } from '@/db/rate-limit-schema'
-import type { Settings } from '@/config/settings'
-import { extractClientIp } from '@/utils/request'
 import { Elysia } from 'elysia'
 import { RateLimiterAbstract, RateLimiterDrizzle, RateLimiterRes } from 'rate-limiter-flexible'
 
@@ -10,11 +8,12 @@ type AuthResolvedContext = {
   user?: { id: string } | null
 }
 
-// TODO(THU-113): Add proof-of-work challenge (ALTCHA) for auth route abuse prevention
+// TODO(THU-113): Add proof-of-work challenge (ALTCHA) for auth route abuse prevention.
+// This is the planned solution for rate-limiting unauthenticated endpoints (waitlist, OTP send)
+// without storing client IPs in the database. Until then, Better Auth's in-memory rate limiter
+// and resendStrategy: "reuse" provide single-instance defence.
 
 type RateLimitTier = 'inference' | 'pro'
-
-type IpRateLimitTier = 'waitlist'
 
 type RateLimitTierConfig = {
   max: number
@@ -29,11 +28,6 @@ export type RateLimitSettings = {
 const tierConfigs: Record<RateLimitTier, RateLimitTierConfig> = {
   inference: { max: 20, durationSecs: 60 },
   pro: { max: 50, durationSecs: 60 },
-}
-
-/** Hardcoded per-tier limits for IP-based rate limiting. */
-const ipTierConfigs: Record<IpRateLimitTier, RateLimitTierConfig> = {
-  waitlist: { max: 5, durationSecs: 60 },
 }
 
 /** Create a rate-limiter-flexible instance for a specific tier. */
@@ -115,46 +109,4 @@ export const createProRateLimit = (database: typeof DbType, settings: RateLimitS
   if (!settings.enabled) return new Elysia()
   const limiter = createLimiter(database, 'pro')
   return createUserRateLimitMiddleware(limiter)
-}
-
-/** Create a rate-limiter-flexible instance for an IP-based tier. */
-const createIpLimiter = (database: typeof DbType, tier: IpRateLimitTier) => {
-  const config = ipTierConfigs[tier]
-  return new RateLimiterDrizzle({
-    storeClient: database,
-    schema: rateLimits,
-    keyPrefix: tier,
-    points: config.max,
-    duration: config.durationSecs,
-    clearExpiredByTimeout: true,
-  })
-}
-
-/**
- * Build an IP-based rate limit middleware for unauthenticated routes.
- * Extracts the client IP using the trusted proxy configuration and
- * rate-limits by IP address.
- */
-const createIpRateLimitMiddleware = (
-  limiter: RateLimiterDrizzle,
-  trustedProxy: Settings['trustedProxy'],
-) =>
-  new Elysia()
-    .onBeforeHandle(async (ctx) => {
-      const { set, request } = ctx
-      const ip = extractClientIp(request.headers, ctx.server?.requestIP(request)?.address, trustedProxy)
-      if (!ip || ip === 'unknown') return
-      return consumeOrReject(limiter, `ip:${ip}`, set)
-    })
-    .as('scoped')
-
-/** Create IP-based rate limit middleware for waitlist routes. */
-export const createWaitlistRateLimit = (
-  database: typeof DbType,
-  settings: RateLimitSettings,
-  trustedProxy: Settings['trustedProxy'] = '',
-) => {
-  if (!settings.enabled) return new Elysia()
-  const limiter = createIpLimiter(database, 'waitlist')
-  return createIpRateLimitMiddleware(limiter, trustedProxy)
 }

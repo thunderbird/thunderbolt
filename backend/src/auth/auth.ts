@@ -137,7 +137,10 @@ export const createAuth = (database: typeof DbType) => {
         otpLength: 6,
         expiresIn: 300, // 5 minutes
         allowedAttempts: 3, // Built-in rate limiting - returns TOO_MANY_ATTEMPTS after exceeded
-        resendStrategy: 'reuse', // Reuse existing OTP on resend to prevent attempt counter reset
+        resendStrategy: 'reuse', // Preserves attempt counter on resend (prevents reset-by-resend attack).
+        // Known limitation: once all attempts are exhausted, Better Auth falls through to
+        // a fresh OTP with counter=0. The in-memory rate limiter on the send endpoint
+        // (3 req/60s default) slows this cycle. TODO(THU-113): proof-of-work will close this gap.
 
         async sendVerificationOTP({ email, otp, type }, ctx) {
           // We only support sign-in (no password-based auth, so no email-verification or forget-password)

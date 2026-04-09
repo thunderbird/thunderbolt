@@ -370,5 +370,60 @@ describe('Auth Waitlist Integration', () => {
         expect(['TOO_MANY_ATTEMPTS', 'INVALID_OTP']).toContain(code)
       }
     })
+
+    it('should generate a fresh OTP with reset counter after attempts are exhausted (known limitation)', async () => {
+      // Documents a known limitation: resendStrategy "reuse" only preserves the counter
+      // when attempts haven't been fully exhausted. Once all 3 attempts are burned,
+      // Better Auth falls through to generate a fresh OTP with counter=0.
+      // This is mitigated by Better Auth's in-memory rate limiter on the send endpoint
+      // (3 req/60s) and will be further addressed by proof-of-work (THU-113).
+      const email = 'exhausted-resend@example.com'
+      await db.insert(user).values({
+        id: crypto.randomUUID(),
+        email,
+        name: 'Exhausted Resend User',
+        emailVerified: true,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      })
+
+      // Send OTP and capture it
+      await auth.api.sendVerificationOTP({
+        body: { email, type: 'sign-in' },
+      })
+      const firstCall = mockSendSignInEmail.mock.calls[0] as unknown as [{ otp: string }]
+      const firstOtp = firstCall[0].otp
+
+      // Exhaust all 3 attempts
+      for (let i = 0; i < 3; i++) {
+        try {
+          await auth.api.signInEmailOTP({ body: { email, otp: '000000' } })
+        } catch {
+          // Expected
+        }
+      }
+
+      // Resend after exhaustion — generates a fresh OTP with counter=0
+      mockSendSignInEmail.mockClear()
+      await auth.api.sendVerificationOTP({
+        body: { email, type: 'sign-in' },
+      })
+      const secondCall = mockSendSignInEmail.mock.calls[0] as unknown as [{ otp: string }]
+      const freshOtp = secondCall[0].otp
+
+      // Fresh OTP is different (counter was exhausted, so "reuse" fell through)
+      expect(freshOtp).not.toBe(firstOtp)
+
+      // The fresh OTP works — counter was reset to 0.
+      // If this throws, the fresh OTP wasn't accepted (unexpected).
+      let signInSucceeded = false
+      try {
+        await auth.api.signInEmailOTP({ body: { email, otp: freshOtp } })
+        signInSucceeded = true
+      } catch {
+        // Unexpected failure
+      }
+      expect(signInSucceeded).toBe(true)
+    })
   })
 })

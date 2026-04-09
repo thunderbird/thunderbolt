@@ -3,10 +3,20 @@ import { createBetterAuthPlugin } from '@/auth/elysia-plugin'
 import { session as sessionTable, user as userTable } from '@/db/auth-schema'
 import { devicesTable, mcpServersTable, modelsTable, promptsTable, settingsTable } from '@/db/schema'
 import { createTestDb } from '@/test-utils/db'
+import { createHmac } from 'crypto'
 import { eq } from 'drizzle-orm'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import { Elysia } from 'elysia'
 import { createPowerSyncRoutes } from './powersync'
+
+/** Better Auth uses this default secret in test environments */
+const BETTER_AUTH_SECRET = 'better-auth-secret-12345678901234567890'
+
+/** Sign a raw session token for use in `Authorization: Bearer <signed>` headers (standard base64 to match getSignedCookie expectations) */
+const signToken = (token: string): string => {
+  const sig = createHmac('sha256', BETTER_AUTH_SECRET).update(token).digest('base64')
+  return `${token}.${sig}`
+}
 
 const powersyncSettings: Settings = {
   fireworksApiKey: '',
@@ -65,7 +75,7 @@ describe('PowerSync API', () => {
 
   const uploadHeaders = (bearer: string, deviceId = 'test-device-id') => ({
     'Content-Type': 'application/json',
-    Authorization: `Bearer ${bearer}`,
+    Authorization: `Bearer ${signToken(bearer)}`,
     'X-Device-ID': deviceId,
   })
 
@@ -80,7 +90,7 @@ describe('PowerSync API', () => {
     it('returns 401 when Bearer token does not match any session', async () => {
       const response = await app.handle(
         new Request('http://localhost/powersync/token', {
-          headers: { Authorization: 'Bearer invalid-token' },
+          headers: { Authorization: `Bearer ${signToken('invalid-token')}` },
         }),
       )
       expect(response.status).toBe(401)
@@ -124,7 +134,7 @@ describe('PowerSync API', () => {
       const response = await app.handle(
         new Request('http://localhost/powersync/token', {
           headers: {
-            Authorization: 'Bearer bearer-revoked-device',
+            Authorization: `Bearer ${signToken('bearer-revoked-device')}`,
             'x-device-id': 'revoked-device-id',
           },
         }),
@@ -166,7 +176,7 @@ describe('PowerSync API', () => {
       const response = await app.handle(
         new Request('http://localhost/powersync/token', {
           headers: {
-            Authorization: 'Bearer bearer-user-b',
+            Authorization: `Bearer ${signToken('bearer-user-b')}`,
             'x-device-id': sharedDeviceId,
           },
         }),
@@ -201,7 +211,7 @@ describe('PowerSync API', () => {
 
       const response = await app.handle(
         new Request('http://localhost/powersync/token', {
-          headers: { Authorization: 'Bearer bearer-no-device-id' },
+          headers: { Authorization: `Bearer ${signToken('bearer-no-device-id')}` },
         }),
       )
       expect(response.status).toBe(400)
@@ -235,7 +245,7 @@ describe('PowerSync API', () => {
       const response = await app.handle(
         new Request('http://localhost/powersync/token', {
           headers: {
-            Authorization: 'Bearer bearer-empty-device-id',
+            Authorization: `Bearer ${signToken('bearer-empty-device-id')}`,
             'x-device-id': '   ',
           },
         }),
@@ -280,7 +290,7 @@ describe('PowerSync API', () => {
 
       const response = await app.handle(
         new Request('http://localhost/powersync/token', {
-          headers: { Authorization: 'Bearer bearer-revoked-bypass' },
+          headers: { Authorization: `Bearer ${signToken('bearer-revoked-bypass')}` },
         }),
       )
       expect(response.status).toBe(400)
@@ -314,7 +324,7 @@ describe('PowerSync API', () => {
       const response = await app.handle(
         new Request('http://localhost/powersync/token', {
           headers: {
-            Authorization: 'Bearer bearer-powersync-valid',
+            Authorization: `Bearer ${signToken('bearer-powersync-valid')}`,
             'x-device-id': 'device-session-token',
           },
         }),
@@ -353,7 +363,7 @@ describe('PowerSync API', () => {
       const response = await app.handle(
         new Request('http://localhost/powersync/token', {
           headers: {
-            Authorization: 'Bearer bearer-device-upsert',
+            Authorization: `Bearer ${signToken('bearer-device-upsert')}`,
             'x-device-id': 'device-123',
             'x-device-name': 'My Phone',
           },
@@ -393,7 +403,7 @@ describe('PowerSync API', () => {
       const response = await app.handle(
         new Request('http://localhost/powersync/token', {
           headers: {
-            Authorization: 'Bearer bearer-device-no-name',
+            Authorization: `Bearer ${signToken('bearer-device-no-name')}`,
             'x-device-id': 'device-empty-name',
             'x-device-name': '',
           },
@@ -433,7 +443,7 @@ describe('PowerSync API', () => {
       const response = await app.handle(
         new Request('http://localhost/powersync/token', {
           headers: {
-            Authorization: 'Bearer bearer-device-long-name',
+            Authorization: `Bearer ${signToken('bearer-device-long-name')}`,
             'x-device-id': 'device-long-name',
             'x-device-name': longName,
           },
@@ -473,7 +483,7 @@ describe('PowerSync API', () => {
       const response = await app.handle(
         new Request('http://localhost/powersync/token', {
           headers: {
-            Authorization: 'Bearer bearer-device-100-char',
+            Authorization: `Bearer ${signToken('bearer-device-100-char')}`,
             'x-device-id': 'device-100-char',
             'x-device-name': name100,
           },
@@ -512,7 +522,7 @@ describe('PowerSync API', () => {
       const response = await app.handle(
         new Request('http://localhost/powersync/token', {
           headers: {
-            Authorization: 'Bearer bearer-device-1-char',
+            Authorization: `Bearer ${signToken('bearer-device-1-char')}`,
             'x-device-id': 'device-1-char',
             'x-device-name': 'X',
           },
@@ -568,7 +578,7 @@ describe('PowerSync API', () => {
           method: 'PUT',
           headers: {
             'Content-Type': 'application/json',
-            Authorization: 'Bearer bearer-upload-no-device',
+            Authorization: `Bearer ${signToken('bearer-upload-no-device')}`,
           },
           body: JSON.stringify({ operations: [] }),
         }),
@@ -1624,7 +1634,7 @@ describe('PowerSync cross-origin injection protection', () => {
           method: 'PUT',
           headers: {
             'Content-Type': 'application/json',
-            Authorization: 'Bearer bearer-cors-upload',
+            Authorization: `Bearer ${signToken('bearer-cors-upload')}`,
             'X-Device-ID': 'cors-test-device',
             Origin: 'http://localhost:9999',
           },
@@ -1651,7 +1661,7 @@ describe('PowerSync cross-origin injection protection', () => {
           method: 'PUT',
           headers: {
             'Content-Type': 'application/json',
-            Authorization: 'Bearer bearer-model-inject',
+            Authorization: `Bearer ${signToken('bearer-model-inject')}`,
             'X-Device-ID': 'attacker-device',
             Origin: 'http://localhost:9999',
           },
@@ -1687,7 +1697,7 @@ describe('PowerSync cross-origin injection protection', () => {
           method: 'PUT',
           headers: {
             'Content-Type': 'application/json',
-            Authorization: 'Bearer bearer-mcp-inject',
+            Authorization: `Bearer ${signToken('bearer-mcp-inject')}`,
             'X-Device-ID': 'attacker-device',
             Origin: 'http://localhost:9999',
           },
@@ -1721,7 +1731,7 @@ describe('PowerSync cross-origin injection protection', () => {
           method: 'PUT',
           headers: {
             'Content-Type': 'application/json',
-            Authorization: 'Bearer bearer-legit-origin',
+            Authorization: `Bearer ${signToken('bearer-legit-origin')}`,
             'X-Device-ID': 'legit-device',
             Origin: 'http://localhost:1420',
           },
@@ -1744,7 +1754,7 @@ describe('PowerSync cross-origin injection protection', () => {
           method: 'PUT',
           headers: {
             'Content-Type': 'application/json',
-            Authorization: 'Bearer bearer-tauri-origin',
+            Authorization: `Bearer ${signToken('bearer-tauri-origin')}`,
             'X-Device-ID': 'tauri-device',
             Origin: 'tauri://localhost',
           },
@@ -1763,7 +1773,7 @@ describe('PowerSync cross-origin injection protection', () => {
           method: 'PUT',
           headers: {
             'Content-Type': 'application/json',
-            Authorization: 'Bearer bearer-no-origin',
+            Authorization: `Bearer ${signToken('bearer-no-origin')}`,
             'X-Device-ID': 'server-device',
           },
           body: JSON.stringify({
@@ -1781,7 +1791,7 @@ describe('PowerSync cross-origin injection protection', () => {
           method: 'PUT',
           headers: {
             'Content-Type': 'application/json',
-            Authorization: 'Bearer bearer-ext-attacker',
+            Authorization: `Bearer ${signToken('bearer-ext-attacker')}`,
             'X-Device-ID': 'attacker-device',
             Origin: 'https://attacker.com',
           },
@@ -1802,7 +1812,7 @@ describe('PowerSync cross-origin injection protection', () => {
       const response = await app.handle(
         new Request('http://localhost/powersync/token', {
           headers: {
-            Authorization: 'Bearer bearer-cors-token',
+            Authorization: `Bearer ${signToken('bearer-cors-token')}`,
             'X-Device-ID': 'cors-token-device',
             Origin: 'http://localhost:9999',
           },
@@ -1818,7 +1828,7 @@ describe('PowerSync cross-origin injection protection', () => {
       const response = await app.handle(
         new Request('http://localhost/powersync/token', {
           headers: {
-            Authorization: 'Bearer bearer-legit-token',
+            Authorization: `Bearer ${signToken('bearer-legit-token')}`,
             'X-Device-ID': 'legit-token-device',
             Origin: 'http://localhost:1420',
           },
@@ -1832,7 +1842,7 @@ describe('PowerSync cross-origin injection protection', () => {
       const response = await app.handle(
         new Request('http://localhost/powersync/token', {
           headers: {
-            Authorization: 'Bearer bearer-no-origin-token',
+            Authorization: `Bearer ${signToken('bearer-no-origin-token')}`,
             'X-Device-ID': 'no-origin-device',
           },
         }),

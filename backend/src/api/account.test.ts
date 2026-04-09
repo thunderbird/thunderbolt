@@ -2,10 +2,17 @@ import { createAuth } from '@/auth/auth'
 import { user } from '@/db/auth-schema'
 import { chatThreadsTable, devicesTable, settingsTable, tasksTable } from '@/db/schema'
 import { createTestDb } from '@/test-utils/db'
+import { createHmac } from 'crypto'
 import { eq } from 'drizzle-orm'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import { Elysia } from 'elysia'
 import { createAccountRoutes } from './account'
+
+const BETTER_AUTH_SECRET = 'better-auth-secret-12345678901234567890'
+const signToken = (token: string): string => {
+  const sig = createHmac('sha256', BETTER_AUTH_SECRET).update(token).digest('base64')
+  return `${token}.${sig}`
+}
 
 describe('Account API', () => {
   let app: ReturnType<typeof createAccountRoutes>
@@ -79,7 +86,7 @@ describe('Account API', () => {
       const response = await app.handle(
         new Request('http://localhost/v1/account', {
           method: 'DELETE',
-          headers: { Authorization: 'Bearer bearer-token-full-delete' },
+          headers: { Authorization: `Bearer ${signToken('bearer-token-full-delete')}` },
         }),
       )
 
@@ -142,7 +149,7 @@ describe('Account API', () => {
       const response = await app.handle(
         new Request('http://localhost/v1/account', {
           method: 'DELETE',
-          headers: { Authorization: 'Bearer bearer-token-cascade-delete' },
+          headers: { Authorization: `Bearer ${signToken('bearer-token-cascade-delete')}` },
         }),
       )
 

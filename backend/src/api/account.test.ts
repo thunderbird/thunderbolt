@@ -8,9 +8,9 @@ import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import { Elysia } from 'elysia'
 import { createAccountRoutes } from './account'
 
-const BETTER_AUTH_SECRET = 'better-auth-secret-12345678901234567890'
+const betterAuthSecret = 'better-auth-secret-12345678901234567890'
 const signToken = (token: string): string => {
-  const sig = createHmac('sha256', BETTER_AUTH_SECRET).update(token).digest('base64')
+  const sig = createHmac('sha256', betterAuthSecret).update(token).digest('base64')
   return `${token}.${sig}`
 }
 

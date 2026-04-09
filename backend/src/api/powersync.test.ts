@@ -10,11 +10,11 @@ import { Elysia } from 'elysia'
 import { createPowerSyncRoutes } from './powersync'
 
 /** Better Auth uses this default secret in test environments */
-const BETTER_AUTH_SECRET = 'better-auth-secret-12345678901234567890'
+const betterAuthSecret = 'better-auth-secret-12345678901234567890'
 
 /** Sign a raw session token for use in `Authorization: Bearer <signed>` headers (standard base64 to match getSignedCookie expectations) */
 const signToken = (token: string): string => {
-  const sig = createHmac('sha256', BETTER_AUTH_SECRET).update(token).digest('base64')
+  const sig = createHmac('sha256', betterAuthSecret).update(token).digest('base64')
   return `${token}.${sig}`
 }
 

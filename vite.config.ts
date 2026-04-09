@@ -94,6 +94,21 @@ export default defineConfig({
       // 3. tell vite to ignore watching `src-tauri`
       ignored: ['**/src-tauri/**'],
     },
+    fs: {
+      // Block the @fs endpoint from serving backend source code and other
+      // sensitive directories. Without this, any file in the workspace root
+      // is accessible via the dev server (e.g. /@fs/app/backend/src/...).
+      // Setting deny explicitly overrides Vite's defaults, so we re-include them.
+      deny: [
+        '.env',
+        '.env.*',
+        '*.{crt,pem}',
+        '**/backend/**',
+        '**/deploy/**',
+        '**/.thunderbot/**',
+        '**/powersync-service/**',
+      ],
+    },
   },
   optimizeDeps: {
     exclude: ['@journeyapps/wa-sqlite', '@powersync/web'],

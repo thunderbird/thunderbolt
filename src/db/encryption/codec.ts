@@ -19,8 +19,11 @@ let e2eeSetupComplete = false
 
 const ckChannel = typeof BroadcastChannel !== 'undefined' ? new BroadcastChannel('thunderbolt-ck-invalidation') : null
 
-ckChannel?.addEventListener('message', () => {
+ckChannel?.addEventListener('message', (event: MessageEvent<'invalidate' | 'reset'>) => {
   cachedCK = null
+  if (event.data === 'reset') {
+    e2eeSetupComplete = false
+  }
 })
 
 const getCachedCK = async (): Promise<CryptoKey | null> => {
@@ -37,14 +40,14 @@ const getCachedCK = async (): Promise<CryptoKey | null> => {
 /** Clear the CK cache and broadcast to all contexts (SharedWorker, other tabs). */
 export const invalidateCKCache = () => {
   cachedCK = null
-  ckChannel?.postMessage('invalidate-ck')
+  ckChannel?.postMessage('invalidate')
 }
 
 /** Full reset for sign-out/wipe: clears cache, broadcast, and setup flag. */
 export const resetCodecState = () => {
   cachedCK = null
   e2eeSetupComplete = false
-  ckChannel?.postMessage('invalidate-ck')
+  ckChannel?.postMessage('reset')
 }
 
 // =============================================================================

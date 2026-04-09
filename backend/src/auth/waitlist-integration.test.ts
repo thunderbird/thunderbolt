@@ -293,10 +293,12 @@ describe('Auth Waitlist Integration', () => {
         updatedAt: new Date(),
       })
 
-      // Send OTP
+      // Send OTP and capture the real code
       await auth.api.sendVerificationOTP({
         body: { email, type: 'sign-in' },
       })
+      const otpCall = mockSendSignInEmail.mock.calls[0] as unknown as [{ otp: string }]
+      const correctOtp = otpCall[0].otp
 
       // Make 2 wrong attempts (of 3 allowed) — counter goes to 2
       for (let i = 0; i < 2; i++) {
@@ -308,31 +310,29 @@ describe('Auth Waitlist Integration', () => {
       }
 
       // Resend OTP — with "reuse" strategy, counter should NOT reset (stays at 2)
+      mockSendSignInEmail.mockClear()
       await auth.api.sendVerificationOTP({
         body: { email, type: 'sign-in' },
       })
 
-      // 3rd wrong attempt: counter is 2, passes check, OTP is wrong → counter becomes 3, returns INVALID_OTP
+      // Make 1 more wrong attempt — this is the 3rd total, counter goes to 3
       try {
         await auth.api.signInEmailOTP({ body: { email, otp: '000000' } })
       } catch {
         // Expected: INVALID_OTP
       }
 
-      // 4th attempt: counter is now 3 >= allowedAttempts(3), should get TOO_MANY_ATTEMPTS
+      // Now try with the CORRECT OTP. If the counter was preserved (3 >= 3),
+      // this must fail. If it had been reset by the resend, this would succeed
+      // because the counter would only be at 1.
+      let signInSucceeded = false
       try {
-        await auth.api.signInEmailOTP({ body: { email, otp: '000000' } })
-        expect(true).toBe(false)
-      } catch (err: unknown) {
-        const code = (err as { body?: { code?: string } }).body?.code ?? ''
-        // After 3 failed attempts the OTP is deleted, so we get INVALID_OTP (no verification row)
-        // or TOO_MANY_ATTEMPTS (if the row still exists with count >= 3)
-        expect(['TOO_MANY_ATTEMPTS', 'INVALID_OTP']).toContain(code)
+        await auth.api.signInEmailOTP({ body: { email, otp: correctOtp } })
+        signInSucceeded = true
+      } catch {
+        // Expected: locked out because counter was preserved
       }
-
-      // Key assertion: verify that WITHOUT resend-reset, we only got 3 total attempts
-      // (2 before resend + 1 after = 3 total, then locked out on the 4th)
-      // If the counter had been reset by resend, we'd have had 5 attempts total (2 + 3)
+      expect(signInSucceeded).toBe(false)
     })
 
     it('should only allow 3 verification attempts before locking out', async () => {

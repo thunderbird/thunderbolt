@@ -48,7 +48,12 @@ describe('vite server.fs allowlist', () => {
       const targetDir = path.resolve(ROOT, dirName)
 
       for (const allowed of resolvedAllow) {
-        const isAllowed = allowed === targetDir || targetDir.startsWith(allowed + path.sep)
+        // Check both directions: the sensitive dir is an allowed path (or child),
+        // AND no allowed path is a subdirectory of the sensitive dir.
+        const isAllowed =
+          allowed === targetDir ||
+          targetDir.startsWith(allowed + path.sep) ||
+          allowed.startsWith(targetDir + path.sep)
         expect(isAllowed).toBe(false)
       }
     })

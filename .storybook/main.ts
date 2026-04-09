@@ -1,7 +1,12 @@
 import path from 'path'
+import { fileURLToPath } from 'url'
 import type { StorybookConfig } from '@storybook/react-vite'
 
-const rootDir = path.resolve(import.meta.dirname, '..')
+// Storybook evaluates this file via CJS (esbuild-register), where
+// import.meta.dirname is undefined. Fall back to __dirname for compat.
+const currentDir =
+  typeof __dirname !== 'undefined' ? __dirname : path.dirname(fileURLToPath(import.meta.url))
+const rootDir = path.resolve(currentDir, '..')
 
 const config: StorybookConfig = {
   stories: ['../src/**/*.mdx', '../src/**/*.stories.@(js|jsx|mjs|ts|tsx)', '../src/**/stories.@(js|jsx|mjs|ts|tsx)'],

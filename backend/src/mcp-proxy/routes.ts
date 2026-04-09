@@ -1,6 +1,6 @@
 import type { Auth } from '@/auth/elysia-plugin'
 import { createAuthMacro } from '@/auth/elysia-plugin'
-import { getCorsOrigins, getSettings } from '@/config/settings'
+import { getCorsOriginsList, getSettings } from '@/config/settings'
 import { safeErrorHandler } from '@/middleware/error-handling'
 import { createSafeFetch, validateSafeUrl } from '@/utils/url-validation'
 import { buildQueryString, extractResponseHeaders, filterHeaders } from '@/utils/request'
@@ -123,7 +123,7 @@ export const createMcpProxyRoutes = (auth: Auth, fetchFn: typeof fetch = globalT
     .onError(safeErrorHandler)
     .use(
       cors({
-        origin: getCorsOrigins(settings),
+        origin: getCorsOriginsList(settings),
         allowedHeaders: settings.corsAllowHeaders,
         exposeHeaders: settings.corsExposeHeaders,
       }),

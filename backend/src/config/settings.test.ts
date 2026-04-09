@@ -1,7 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import {
   clearSettingsCache,
-  getCorsOrigins,
   getWaitlistAutoApproveDomains,
   getCorsMethodsList,
   getCorsOriginsList,
@@ -44,22 +43,6 @@ describe('Config Settings', () => {
       const origins = getCorsOriginsList(settings)
 
       expect(origins).toEqual([])
-    })
-  })
-
-  describe('getCorsOrigins', () => {
-    it('should return parsed origins array', () => {
-      const settings = { corsOrigins: 'https://app.example.com,https://other.example.com' }
-      const origins = getCorsOrigins(settings)
-
-      expect(origins).toEqual(['https://app.example.com', 'https://other.example.com'])
-    })
-
-    it('should return all strings (no regex)', () => {
-      const settings = { corsOrigins: 'https://app.example.com,tauri://localhost' }
-      const origins = getCorsOrigins(settings)
-
-      expect(origins.every((o) => typeof o === 'string')).toBe(true)
     })
   })
 

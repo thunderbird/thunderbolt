@@ -1,4 +1,4 @@
-import { getCorsOrigins, getSettings } from '@/config/settings'
+import { getCorsOriginsList, getSettings } from '@/config/settings'
 import { safeErrorHandler } from '@/middleware/error-handling'
 import { buildQueryString, defaultRequestDenylist, extractResponseHeaders, filterHeaders } from '@/utils/request'
 import cors from '@elysiajs/cors'
@@ -18,7 +18,7 @@ export const createPostHogRoutes = (fetchFn: typeof fetch = globalThis.fetch) =>
     .onError(safeErrorHandler)
     .use(
       cors({
-        origin: getCorsOrigins(settings),
+        origin: getCorsOriginsList(settings),
         allowedHeaders: settings.corsAllowHeaders,
         exposeHeaders: settings.corsExposeHeaders,
       }),

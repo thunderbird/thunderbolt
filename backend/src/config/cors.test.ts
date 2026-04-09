@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'bun:test'
-import { getCorsOrigins } from '@/config/settings'
+import { getCorsOriginsList } from '@/config/settings'
 import { withOriginValidation } from '@/middleware/origin-validation'
 import cors from '@elysiajs/cors'
 import { Elysia } from 'elysia'
@@ -23,7 +23,7 @@ describe('CORS integration', () => {
       .delete('/test', () => ({ ok: true }))
 
   describe('with Tauri and explicit origins', () => {
-    const origins = getCorsOrigins({
+    const origins = getCorsOriginsList({
       corsOrigins: 'https://app.example.com,tauri://localhost,http://tauri.localhost',
     })
 
@@ -102,7 +102,7 @@ describe('CORS integration', () => {
   })
 
   describe('with only explicit origins', () => {
-    const origins = getCorsOrigins({
+    const origins = getCorsOriginsList({
       corsOrigins: 'https://app.example.com',
     })
 

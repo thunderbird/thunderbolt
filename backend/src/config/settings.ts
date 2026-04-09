@@ -149,11 +149,6 @@ export const getCorsOriginsList = (settings: Pick<Settings, 'corsOrigins'>): str
     .filter((origin) => origin.length > 0)
 }
 
-/** Get CORS origins as a parsed array. */
-export const getCorsOrigins = (settings: Pick<Settings, 'corsOrigins'>): string[] => {
-  return getCorsOriginsList(settings)
-}
-
 /** Check whether a given origin is allowed by the configured CORS origins (exact match). */
 export const isOriginAllowed = (origin: string, settings: Pick<Settings, 'corsOrigins'>): boolean => {
   return getCorsOriginsList(settings).includes(origin)

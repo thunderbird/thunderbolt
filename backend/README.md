@@ -22,7 +22,7 @@ cp .env.example .env
 
 ### Documentation via Swagger
 
-- API documentation is available at `/v1/swagger` when running the server
+- API documentation is available at `/v1/swagger` when `SWAGGER_ENABLED=true` is set
 - All routes are automatically documented with OpenAPI/Swagger
 - TypeScript provides inline documentation and type checking
 

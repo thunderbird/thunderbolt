@@ -38,7 +38,8 @@ export const createApp = async (deps?: AppDeps) => {
     prefix: '/v1',
   })
 
-  if (process.env.NODE_ENV !== 'production') {
+  if (settings.swaggerEnabled) {
+    // Lazy import to avoid loading swagger and its transitive deps in production
     const { swagger } = await import('@elysiajs/swagger')
     app.use(
       swagger({
@@ -139,7 +140,7 @@ const startServer = async () => {
           '🦊 Elysia server started',
         )
 
-        if (process.env.NODE_ENV !== 'production') {
+        if (settings.swaggerEnabled) {
           log.info(
             {
               swaggerUrl: `http://localhost:${settings.port}/v1/swagger`,

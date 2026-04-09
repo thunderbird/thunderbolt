@@ -393,6 +393,48 @@ describe('Config Settings', () => {
     })
   })
 
+  describe('Swagger settings', () => {
+    let savedEnv: string | undefined
+
+    beforeEach(() => {
+      clearSettingsCache()
+      savedEnv = process.env.SWAGGER_ENABLED
+    })
+
+    afterEach(() => {
+      if (savedEnv !== undefined) {
+        process.env.SWAGGER_ENABLED = savedEnv
+      } else {
+        delete process.env.SWAGGER_ENABLED
+      }
+      clearSettingsCache()
+    })
+
+    it('should default swaggerEnabled to false when env var is unset', () => {
+      delete process.env.SWAGGER_ENABLED
+      const settings = getSettings()
+      expect(settings.swaggerEnabled).toBe(false)
+    })
+
+    it('should enable swagger when SWAGGER_ENABLED is "true"', () => {
+      process.env.SWAGGER_ENABLED = 'true'
+      const settings = getSettings()
+      expect(settings.swaggerEnabled).toBe(true)
+    })
+
+    it('should keep swagger disabled for any value other than "true"', () => {
+      process.env.SWAGGER_ENABLED = 'false'
+      const settings = getSettings()
+      expect(settings.swaggerEnabled).toBe(false)
+    })
+
+    it('should keep swagger disabled when set to empty string', () => {
+      process.env.SWAGGER_ENABLED = ''
+      const settings = getSettings()
+      expect(settings.swaggerEnabled).toBe(false)
+    })
+  })
+
   describe('PowerSync settings', () => {
     const POWERSYNC_ENV_KEYS = [
       'POWERSYNC_URL',

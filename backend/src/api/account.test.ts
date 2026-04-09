@@ -359,6 +359,55 @@ describe('Account API', () => {
       const sessions = await db.select().from(sessionTable).where(eq(sessionTable.id, 'session-only-one'))
       expect(sessions).toHaveLength(1)
     })
+
+    it('does not invalidate sessions when revoking a nonexistent device', async () => {
+      const userId = 'test-user-nonexistent-revoke'
+      const now = new Date()
+      const expiresAt = new Date(now.getTime() + 3600 * 1000)
+
+      await db.insert(user).values({
+        id: userId,
+        name: 'Nonexistent Revoke User',
+        email: 'nonexistent-revoke@example.com',
+        emailVerified: true,
+        createdAt: now,
+        updatedAt: now,
+      })
+
+      await db.insert(sessionTable).values([
+        {
+          id: 'session-revoker',
+          expiresAt,
+          token: 'bearer-revoker',
+          createdAt: now,
+          updatedAt: now,
+          userId,
+        },
+        {
+          id: 'session-other',
+          expiresAt,
+          token: 'bearer-other',
+          createdAt: now,
+          updatedAt: now,
+          userId,
+        },
+      ])
+
+      // Revoke a device that doesn't exist
+      const response = await app.handle(
+        new Request('http://localhost/v1/account/devices/nonexistent-device/revoke', {
+          method: 'POST',
+          headers: { Authorization: 'Bearer bearer-revoker' },
+        }),
+      )
+      expect(response.status).toBe(204)
+
+      // Both sessions should still exist — no device was actually revoked
+      const revokerSession = await db.select().from(sessionTable).where(eq(sessionTable.id, 'session-revoker'))
+      expect(revokerSession).toHaveLength(1)
+      const otherSession = await db.select().from(sessionTable).where(eq(sessionTable.id, 'session-other'))
+      expect(otherSession).toHaveLength(1)
+    })
   })
 
   describe('DELETE /v1/account', () => {

@@ -112,6 +112,58 @@ describe('Auth - Email Normalization', () => {
   })
 })
 
+describe('Auth - session token redaction', () => {
+  let auth: ReturnType<typeof createAuth>
+  let db: Awaited<ReturnType<typeof createTestDb>>['db']
+  let cleanup: () => Promise<void>
+  let sessionToken: string
+
+  beforeEach(async () => {
+    mockSendSignInEmail.mockClear()
+
+    const testEnv = await createTestDb()
+    db = testEnv.db
+    cleanup = testEnv.cleanup
+    auth = createAuth(db)
+
+    // Create approved waitlist entry + sign in to get a session
+    await db.insert(waitlist).values({ id: crypto.randomUUID(), email: 'redact@example.com', status: 'approved' })
+    await auth.api.sendVerificationOTP({ body: { email: 'redact@example.com', type: 'sign-in' } })
+    const otp = (mockSendSignInEmail.mock.calls as unknown as Array<[{ otp: string }]>).at(0)![0].otp
+    const signIn = (await auth.api.signInEmailOTP({ body: { email: 'redact@example.com', otp } })) as unknown as {
+      session: { token: string }
+    }
+    sessionToken = signIn.session.token
+  })
+
+  afterEach(async () => {
+    await cleanup()
+  })
+
+  it('should strip token from get-session response', async () => {
+    const result = (await auth.api.getSession({
+      headers: new Headers({ Authorization: `Bearer ${sessionToken}` }),
+    })) as unknown as { session: Record<string, unknown>; user: Record<string, unknown> } | null
+
+    expect(result).not.toBeNull()
+    expect(result!.session.id).toBeDefined()
+    expect(result!.session.token).toBeUndefined()
+    expect(result!.user.email).toBe('redact@example.com')
+  })
+
+  it('should strip token from list-sessions response', async () => {
+    const result = (await auth.api.listSessions({
+      headers: new Headers({ Authorization: `Bearer ${sessionToken}` }),
+    })) as unknown as Record<string, unknown>[]
+
+    expect(result.length).toBeGreaterThan(0)
+    for (const session of result) {
+      expect(session.token).toBeUndefined()
+      expect(session.id).toBeDefined()
+    }
+  })
+})
+
 describe('Auth - user.isNew in sign-in response', () => {
   let auth: ReturnType<typeof createAuth>
   let db: Awaited<ReturnType<typeof createTestDb>>['db']

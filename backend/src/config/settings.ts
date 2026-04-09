@@ -149,7 +149,7 @@ export const clearSettingsCache = (): void => {
 /**
  * Derived properties similar to the Python version
  */
-export const getCorsOriginsList = (settings: Settings): string[] => {
+export const getCorsOriginsList = (settings: Pick<Settings, 'corsOrigins'>): string[] => {
   return settings.corsOrigins
     .split(',')
     .map((origin) => origin.trim())
@@ -157,7 +157,7 @@ export const getCorsOriginsList = (settings: Settings): string[] => {
 }
 
 /** Get CORS origins as an array combining explicit origins and optional regex. */
-export const getCorsOrigins = (settings: Settings): (RegExp | string)[] => {
+export const getCorsOrigins = (settings: Pick<Settings, 'corsOrigins' | 'corsOriginRegex'>): (RegExp | string)[] => {
   const origins: (RegExp | string)[] = getCorsOriginsList(settings)
   if (settings.corsOriginRegex) {
     origins.push(settings.corsOriginRegex)

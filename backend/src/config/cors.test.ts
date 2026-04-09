@@ -25,7 +25,7 @@ describe('CORS integration', () => {
     const origins = getCorsOrigins({
       corsOrigins: 'https://app.example.com',
       corsOriginRegex: /^(tauri:\/\/localhost|http:\/\/tauri\.localhost)$/,
-    } as any)
+    })
 
     it('should allow the explicit origin', async () => {
       const app = createTestApp(origins)
@@ -105,7 +105,7 @@ describe('CORS integration', () => {
     const origins = getCorsOrigins({
       corsOrigins: 'https://app.example.com',
       corsOriginRegex: null,
-    } as any)
+    })
 
     it('should allow the explicit origin', async () => {
       const app = createTestApp(origins)

@@ -77,10 +77,11 @@ export const SignInOtpStep = ({
             data-1p-ignore
             data-lpignore="true"
             data-form-type="other"
+            containerClassName="w-full"
           >
-            <InputOTPGroup className="gap-2">
+            <InputOTPGroup className="w-full gap-2">
               {[0, 1, 2, 3, 4, 5, 6, 7].map((i) => (
-                <InputOTPSlot key={i} index={i} className="h-12 w-12 shrink-0 rounded-lg" />
+                <InputOTPSlot key={i} index={i} className="h-10 flex-1 rounded-lg" />
               ))}
             </InputOTPGroup>
           </InputOTP>

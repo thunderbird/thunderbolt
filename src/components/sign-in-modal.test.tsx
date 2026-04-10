@@ -55,8 +55,8 @@ mock.module('@/components/ui/input-otp', () => ({
 import { SignInModal } from './sign-in-modal'
 import { type ReactNode } from 'react'
 
-const CHALLENGE_TOKEN = 'test-challenge-token'
-const WAITLIST_RESPONSE = { success: true, challengeToken: CHALLENGE_TOKEN }
+const challengeToken = 'test-challenge-token'
+const waitlistResponse = { success: true, challengeToken }
 
 const jsonResponse = (body: unknown, status = 200) =>
   new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } })
@@ -65,7 +65,7 @@ const jsonResponse = (body: unknown, status = 200) =>
 const createSpyHttpClient = (
   fetchImpl?: (req: Request) => Promise<Response>,
 ): { httpClient: HttpClient; fetchSpy: ReturnType<typeof mock> } => {
-  const defaultImpl = async () => jsonResponse(WAITLIST_RESPONSE)
+  const defaultImpl = async () => jsonResponse(waitlistResponse)
   const fetchSpy = mock(fetchImpl ?? defaultImpl)
   const httpClient = createClient({
     fetch: fetchSpy as unknown as typeof globalThis.fetch,
@@ -237,7 +237,7 @@ describe('SignInModal', () => {
       const { httpClient: pendingHttpClient } = createSpyHttpClient(
         () =>
           new Promise<Response>((resolve) => {
-            resolveRequest = () => resolve(jsonResponse(WAITLIST_RESPONSE))
+            resolveRequest = () => resolve(jsonResponse(waitlistResponse))
           }),
       )
 
@@ -456,7 +456,7 @@ describe('SignInModal', () => {
         email: 'test@example.com',
         otp: '12345678',
         fetchOptions: {
-          headers: { 'x-challenge-token': CHALLENGE_TOKEN },
+          headers: { 'x-challenge-token': challengeToken },
         },
       })
     })

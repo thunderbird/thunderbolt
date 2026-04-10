@@ -17,6 +17,7 @@ type OAuthCallbackData = {
 type VerifyLinkData = {
   email: string
   otp: string
+  challengeToken?: string
 }
 
 type NavigateTarget = {
@@ -87,7 +88,7 @@ export const parseVerifyLinkCallback = (url: URL): VerifyLinkData | null => {
     return null
   }
 
-  return { email, otp }
+  return { email, otp, challengeToken: url.searchParams.get('challengeToken') ?? undefined }
 }
 
 type DeepLinkDependencies = {
@@ -160,9 +161,12 @@ export const useDeepLinkListener = (handler?: DeepLinkHandler, dependencies?: De
           // Handle verify link callback deep links (email + OTP from magic link)
           const verifyData = parseVerifyLinkCallback(url)
           if (verifyData) {
-            // Navigate to the verify page with email and otp params
+            // Navigate to the verify page with email, otp, and challengeToken params
             // The MagicLinkVerify component will use these to call emailOtp sign-in
             const params = new URLSearchParams({ email: verifyData.email, otp: verifyData.otp })
+            if (verifyData.challengeToken) {
+              params.set('challengeToken', verifyData.challengeToken)
+            }
             navigate(`/auth/verify?${params.toString()}`, {
               replace: true,
             })

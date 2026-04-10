@@ -51,7 +51,9 @@ describe('decodeRecoveryKey', () => {
     // Each swap has a 1/256 chance of still having a valid checksum.
     // Try multiple swaps so the test is effectively deterministic.
     for (let i = 0; i < words.length - 1; i++) {
-      if (words[i] === words[i + 1]) continue
+      if (words[i] === words[i + 1]) {
+        continue
+      }
       const corrupted = [...words]
       ;[corrupted[i], corrupted[i + 1]] = [corrupted[i + 1], corrupted[i]]
       try {

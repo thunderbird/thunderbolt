@@ -16,6 +16,15 @@ export const createOtpChallenge = async (
     })
 }
 
+/** Get the current (non-expired) challenge token for an email, if any. */
+export const getOtpChallengeByEmail = async (database: typeof DbType, email: string) =>
+  database
+    .select()
+    .from(otpChallenge)
+    .where(and(eq(otpChallenge.email, email), gt(otpChallenge.expiresAt, new Date())))
+    .limit(1)
+    .then((rows) => rows[0] ?? null)
+
 /** Validate a challenge token for an email. Returns true if valid, false otherwise. */
 export const validateOtpChallenge = async (database: typeof DbType, email: string, challengeToken: string) =>
   database

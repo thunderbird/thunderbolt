@@ -1,7 +1,8 @@
 import { PGlite } from '@electric-sql/pglite'
 import { drizzle as drizzlePglite } from 'drizzle-orm/pglite'
-import { migrate } from 'drizzle-orm/pglite/migrator'
+import { migrate as migratePglite } from 'drizzle-orm/pglite/migrator'
 import { drizzle as drizzlePostgres } from 'drizzle-orm/postgres-js'
+import { migrate as migratePostgres } from 'drizzle-orm/postgres-js/migrator'
 import { resolve } from 'path'
 import postgres from 'postgres'
 import * as schema from './schema'
@@ -17,15 +18,20 @@ const pgliteDb = isPglite
   ? drizzlePglite({ client: new PGlite(process.env.DATABASE_URL), schema }) // undefined = in-memory
   : null
 
-export const db = pgliteDb ?? drizzlePostgres({ client: postgres(process.env.DATABASE_URL!), schema })
+const postgresDb = isPglite ? null : drizzlePostgres({ client: postgres(process.env.DATABASE_URL!), schema })
+
+export const db = pgliteDb ?? postgresDb!
 
 /**
- * Run Drizzle migrations on PGLite databases.
- * PGLite (especially in-memory) starts with an empty schema, so migrations
- * must be applied before the server can handle requests.
+ * Run Drizzle migrations on startup.
+ * Disable with SKIP_MIGRATIONS=true (e.g. when migrations are handled externally).
  */
 export const runMigrations = async () => {
-  if (!pgliteDb) return
+  if (process.env.SKIP_MIGRATIONS === 'true') return
   const migrationsFolder = resolve(import.meta.dir, '../../drizzle')
-  await migrate(pgliteDb, { migrationsFolder })
+  if (pgliteDb) {
+    await migratePglite(pgliteDb, { migrationsFolder })
+  } else if (postgresDb) {
+    await migratePostgres(postgresDb, { migrationsFolder })
+  }
 }

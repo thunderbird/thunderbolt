@@ -19,7 +19,7 @@ import { drizzleAdapter } from 'better-auth/adapters/drizzle'
 import { bearer, emailOTP } from 'better-auth/plugins'
 import { genericOAuth } from 'better-auth/plugins/generic-oauth'
 import { isAutoApprovedDomain, sendWaitlistJoinedEmail, sendWaitlistNotReadyEmail } from '@/waitlist/utils'
-import { otpExpiryMs, otpExpirySeconds } from './otp-constants'
+import { CHALLENGE_TOKEN_HEADER, otpExpiryMs, otpExpirySeconds } from './otp-constants'
 import { buildVerifyUrl, getValidatedOrigin, parseTrustedOrigins, sendSignInEmail } from './utils'
 
 const OTP_SIGN_IN_PATH = '/sign-in/email-otp'
@@ -125,7 +125,7 @@ export const createAuth = (database: typeof DbType) => {
           return
         }
 
-        const challengeToken = ctx.headers?.get('x-challenge-token')
+        const challengeToken = ctx.headers?.get(CHALLENGE_TOKEN_HEADER)
         const rawEmail = (ctx.body as { email?: string })?.email
 
         if (!challengeToken || !rawEmail) {

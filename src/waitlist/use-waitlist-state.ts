@@ -2,6 +2,7 @@ import { isNewAuthUser, onSignInSuccess } from '@/components/sign-in/use-sign-in
 import { useWelcomeStore } from '@/components/welcome-dialog'
 import type { AuthClient } from '@/contexts'
 import { useHttpClient } from '@/contexts'
+import { CHALLENGE_TOKEN_HEADER, OTP_LENGTH } from '@/lib/constants'
 import { getOtpErrorMessage } from '@/lib/otp-error-messages'
 import { isValidEmailFormat } from '@/lib/utils'
 import { useReducer, type FormEvent } from 'react'
@@ -98,7 +99,7 @@ export const useWaitlistState = ({ authClient, onVerified }: UseWaitlistStateOpt
   }
 
   const handleOtpComplete = async (value: string) => {
-    if (value.length !== 8) {
+    if (value.length !== OTP_LENGTH) {
       return
     }
 
@@ -109,7 +110,7 @@ export const useWaitlistState = ({ authClient, onVerified }: UseWaitlistStateOpt
         email: state.email.trim(),
         otp: value,
         fetchOptions: {
-          headers: { 'x-challenge-token': state.challengeToken },
+          headers: { [CHALLENGE_TOKEN_HEADER]: state.challengeToken },
         },
       })
 

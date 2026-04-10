@@ -20,6 +20,7 @@ mock.module('@/waitlist/utils', () => ({
 
 import { user } from '@/db/auth-schema'
 import { waitlist } from '@/db/schema'
+import { CHALLENGE_TOKEN_HEADER } from '@/auth/otp-constants'
 import { createAuth } from '@/auth/auth'
 import { normalizeEmail } from '@/lib/email'
 import { createTestDb } from '@/test-utils/db'
@@ -150,7 +151,7 @@ describe('Auth - user.isNew in sign-in response', () => {
     const challengeToken = await createTestChallenge(db, 'newuser@example.com')
     const result = (await auth.api.signInEmailOTP({
       body: { email: 'newuser@example.com', otp },
-      headers: new Headers({ 'x-challenge-token': challengeToken }),
+      headers: new Headers({ [CHALLENGE_TOKEN_HEADER]: challengeToken }),
     })) as unknown as { session: unknown; user: { isNew?: boolean } }
 
     expect(result.user?.isNew).toBe(true)
@@ -181,7 +182,7 @@ describe('Auth - user.isNew in sign-in response', () => {
     const challengeToken = await createTestChallenge(db, 'existing-isnewuser@example.com')
     const result = (await auth.api.signInEmailOTP({
       body: { email: 'existing-isnewuser@example.com', otp },
-      headers: new Headers({ 'x-challenge-token': challengeToken }),
+      headers: new Headers({ [CHALLENGE_TOKEN_HEADER]: challengeToken }),
     })) as unknown as { session: unknown; user: { isNew?: boolean } }
 
     expect(result.user?.isNew).toBe(false)

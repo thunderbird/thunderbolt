@@ -4,6 +4,7 @@ import { useNavigate, useSearchParams } from 'react-router'
 
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import { CHALLENGE_TOKEN_HEADER } from '@/lib/constants'
 import { useAuth } from '@/contexts'
 import { getOtpErrorMessage } from '@/lib/otp-error-messages'
 import { useSettings } from '@/hooks/use-settings'
@@ -55,7 +56,7 @@ export const MagicLinkVerify = () => {
         const result = await authClient.signIn.emailOtp({
           email,
           otp,
-          fetchOptions: challengeToken ? { headers: { 'x-challenge-token': challengeToken } } : undefined,
+          fetchOptions: challengeToken ? { headers: { [CHALLENGE_TOKEN_HEADER]: challengeToken } } : undefined,
         })
 
         if (result.error) {

@@ -1,6 +1,7 @@
 import { ActionFeedbackButton } from '@/components/ui/action-feedback-button'
 import { Button } from '@/components/ui/button'
 import { InputOTP, InputOTPGroup, InputOTPSlot } from '@/components/ui/input-otp'
+import { OTP_LENGTH } from '@/lib/constants'
 import { REGEXP_ONLY_DIGITS } from 'input-otp'
 import { AlertTriangle, Check, Loader2, Mail } from 'lucide-react'
 
@@ -66,7 +67,7 @@ export const SignInOtpStep = ({
         {/* OTP input + feedback at bottom */}
         <div className="flex w-full flex-col items-center gap-4">
           <InputOTP
-            maxLength={8}
+            maxLength={OTP_LENGTH}
             pattern={REGEXP_ONLY_DIGITS}
             value={otp}
             onChange={onOtpChange}
@@ -90,7 +91,7 @@ export const SignInOtpStep = ({
           <Button
             type="button"
             onClick={() => onOtpComplete(otp)}
-            disabled={isVerifying || otp.length !== 8}
+            disabled={isVerifying || otp.length !== OTP_LENGTH}
             className="h-[46px] w-full rounded-[12px] bg-foreground text-background text-base font-medium hover:bg-foreground/90 disabled:bg-muted disabled:text-muted-foreground"
           >
             {isVerifying ? (
@@ -142,7 +143,7 @@ export const SignInOtpStep = ({
       <div className="mt-6 flex flex-col items-center gap-3">
         <p className="text-sm text-muted-foreground">Or enter the 8-digit code</p>
         <InputOTP
-          maxLength={8}
+          maxLength={OTP_LENGTH}
           pattern={REGEXP_ONLY_DIGITS}
           value={otp}
           onChange={onOtpChange}

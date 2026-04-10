@@ -25,10 +25,13 @@ export const db = pgliteDb ?? postgresDb!
 /**
  * Run Drizzle migrations on startup.
  * Disable with SKIP_MIGRATIONS=true (e.g. when migrations are handled externally).
+ *
+ * Uses process.cwd() instead of import.meta.dir because compiled Bun binaries
+ * resolve import.meta.dir to the executable's directory, not the source file's.
  */
 export const runMigrations = async () => {
   if (process.env.SKIP_MIGRATIONS === 'true') return
-  const migrationsFolder = resolve(import.meta.dir, '../../drizzle')
+  const migrationsFolder = resolve(process.cwd(), 'drizzle')
   if (pgliteDb) {
     await migratePglite(pgliteDb, { migrationsFolder })
   } else if (postgresDb) {

@@ -1,4 +1,5 @@
 import type { AuthClient } from '@/contexts'
+import { CHALLENGE_TOKEN_HEADER, OTP_LENGTH } from '@/lib/constants'
 import { HttpError, type HttpClient } from '@/lib/http'
 import { getOtpErrorMessage } from '@/lib/otp-error-messages'
 import { updateSettings } from '@/dal'
@@ -179,7 +180,7 @@ export const useSignInFormState = ({
   }
 
   const handleOtpComplete = async (value: string) => {
-    if (value.length !== 8) {
+    if (value.length !== OTP_LENGTH) {
       return
     }
 
@@ -190,7 +191,7 @@ export const useSignInFormState = ({
         email: state.email.trim(),
         otp: value,
         fetchOptions: {
-          headers: { 'x-challenge-token': state.challengeToken },
+          headers: { [CHALLENGE_TOKEN_HEADER]: state.challengeToken },
         },
       })
 

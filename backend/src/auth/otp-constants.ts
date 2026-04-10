@@ -3,3 +3,6 @@ export const otpExpirySeconds = 600 // 10 minutes
 
 /** OTP expiry duration in milliseconds — used for challenge token expiry and cooldown. */
 export const otpExpiryMs = otpExpirySeconds * 1000
+
+/** HTTP header name for challenge token session binding. */
+export const CHALLENGE_TOKEN_HEADER = 'x-challenge-token'

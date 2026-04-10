@@ -61,15 +61,14 @@ export const getPowerSyncInstance = (): PowerSyncDatabase | null => {
 }
 
 /**
- * Force a disconnect + reconnect cycle.
- * Used for manual retry when the connection is stale or failed.
+ * Force a disconnect + reconnect cycle via the singleton database.
+ * Guarded against concurrent attempts — no-ops if a reconnect is already in-flight.
  */
 export const reconnectSync = async (): Promise<void> => {
   try {
     const database = getDatabaseInstance()
-    if ('disconnectFromSync' in database && 'connectToSync' in database) {
-      await (database as { disconnectFromSync: () => Promise<void> }).disconnectFromSync()
-      await (database as { connectToSync: () => Promise<void> }).connectToSync()
+    if ('reconnect' in database) {
+      await (database as { reconnect: () => Promise<void> }).reconnect()
     }
   } catch (error) {
     console.warn('Failed to reconnect PowerSync:', error)
@@ -246,6 +245,30 @@ export class PowerSyncDatabaseImpl implements DatabaseInterface {
   }
 
   /**
+   * Force a disconnect + reconnect cycle, guarded against concurrent attempts.
+   * Used by both the visibility reconnect handler and manual retry button.
+   * No-ops if a reconnect is already in-flight or sync is disabled.
+   */
+  async reconnect(): Promise<void> {
+    if (this._isReconnecting || !this.powerSync) {
+      return
+    }
+    this._isReconnecting = true
+    try {
+      await this.powerSync.disconnect()
+      this._isConnected = false
+      if (!isSyncEnabled()) {
+        return
+      }
+      await this.connectToSync()
+    } catch (err) {
+      console.warn('[PowerSync] Reconnect failed:', err)
+    } finally {
+      this._isReconnecting = false
+    }
+  }
+
+  /**
    * Reconnect PowerSync when the app returns to foreground after being hidden.
    *
    * Browsers/OS silently kill background HTTP streams. The pending read hangs forever,
@@ -277,25 +300,8 @@ export class PowerSyncDatabaseImpl implements DatabaseInterface {
       if (hiddenDuration < hiddenThresholdMs) {
         return
       }
-      if (this._isReconnecting) {
-        return
-      }
       console.info(`[PowerSync] App was hidden for ${Math.round(hiddenDuration / 1000)}s — forcing reconnect`)
-      this._isReconnecting = true
-      void (async () => {
-        try {
-          await this.powerSync!.disconnect()
-          this._isConnected = false
-          if (!isSyncEnabled()) {
-            return
-          }
-          await this.connectToSync()
-        } catch (err) {
-          console.warn('[PowerSync] Visibility reconnect failed:', err)
-        } finally {
-          this._isReconnecting = false
-        }
-      })()
+      void this.reconnect()
     }
     document.addEventListener('visibilitychange', this.visibilityHandler)
   }

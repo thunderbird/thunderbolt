@@ -180,7 +180,7 @@ export const PowerSyncStatus = () => {
                   <Button
                     variant="outline"
                     size="sm"
-                    className="shrink-0 text-xs h-7 px-2.5"
+                    className="shrink-0 text-xs h-[var(--touch-height-sm)] px-2.5"
                     disabled={isReconnecting}
                     onClick={handleRetry}
                   >

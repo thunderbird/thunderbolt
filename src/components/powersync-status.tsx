@@ -175,8 +175,11 @@ export const PowerSyncStatus = () => {
                     disabled={isReconnecting}
                     onClick={async () => {
                       setIsReconnecting(true)
-                      await reconnectSync()
-                      setIsReconnecting(false)
+                      try {
+                        await reconnectSync()
+                      } finally {
+                        setIsReconnecting(false)
+                      }
                     }}
                   >
                     {isReconnecting ? (

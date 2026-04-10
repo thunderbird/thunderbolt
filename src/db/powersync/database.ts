@@ -173,6 +173,7 @@ export class PowerSyncDatabaseImpl implements DatabaseInterface {
   private _isConnected = false
   private visibilityHandler: (() => void) | null = null
   private hiddenAt: number | null = null
+  private _isReconnecting = false
 
   get db(): AnyDrizzleDatabase {
     if (!this._db) {
@@ -276,7 +277,11 @@ export class PowerSyncDatabaseImpl implements DatabaseInterface {
       if (hiddenDuration < hiddenThresholdMs) {
         return
       }
+      if (this._isReconnecting) {
+        return
+      }
       console.info(`[PowerSync] App was hidden for ${Math.round(hiddenDuration / 1000)}s — forcing reconnect`)
+      this._isReconnecting = true
       this.powerSync
         .disconnect()
         .then(() => {
@@ -284,6 +289,9 @@ export class PowerSyncDatabaseImpl implements DatabaseInterface {
           return this.connectToSync()
         })
         .catch((err) => console.warn('[PowerSync] Visibility reconnect failed:', err))
+        .finally(() => {
+          this._isReconnecting = false
+        })
     }
     document.addEventListener('visibilitychange', this.visibilityHandler)
   }

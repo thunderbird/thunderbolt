@@ -17,17 +17,18 @@ export const createOtpChallenge = async (
 }
 
 /** Get the current (non-expired) challenge token for an email, if any. */
-export const getOtpChallengeByEmail = async (database: typeof DbType, email: string) =>
-  database
+export const getOtpChallengeByEmail = async (database: typeof DbType, email: string) => {
+  const rows = await database
     .select()
     .from(otpChallenge)
     .where(and(eq(otpChallenge.email, email), gt(otpChallenge.expiresAt, new Date())))
     .limit(1)
-    .then((rows) => rows[0] ?? null)
+  return rows[0] ?? null
+}
 
 /** Validate a challenge token for an email. Returns true if valid, false otherwise. */
-export const validateOtpChallenge = async (database: typeof DbType, email: string, challengeToken: string) =>
-  database
+export const validateOtpChallenge = async (database: typeof DbType, email: string, challengeToken: string) => {
+  const rows = await database
     .select({ id: otpChallenge.id })
     .from(otpChallenge)
     .where(
@@ -38,7 +39,8 @@ export const validateOtpChallenge = async (database: typeof DbType, email: strin
       ),
     )
     .limit(1)
-    .then((rows) => rows.length > 0)
+  return rows.length > 0
+}
 
 /** Delete all challenge tokens for an email (cleanup after successful verification). */
 export const deleteOtpChallengesForEmail = async (database: typeof DbType, email: string) =>

@@ -221,11 +221,8 @@ export const createAuth = (database: typeof DbType) => {
           // Reuse existing challenge if /waitlist/join already created one.
           // Only create on-demand for Better Auth's native send-OTP endpoint.
           const existing = await getOtpChallengeByEmail(database, normalizedEmail)
-          let challengeToken: string
-          if (existing) {
-            challengeToken = existing.challengeToken
-          } else {
-            challengeToken = crypto.randomUUID()
+          const challengeToken = existing?.challengeToken ?? crypto.randomUUID()
+          if (!existing) {
             await createOtpChallenge(database, {
               id: crypto.randomUUID(),
               email: normalizedEmail,

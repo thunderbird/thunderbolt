@@ -5,4 +5,4 @@ export const otpExpirySeconds = 600 // 10 minutes
 export const otpExpiryMs = otpExpirySeconds * 1000
 
 /** HTTP header name for challenge token session binding. */
-export const CHALLENGE_TOKEN_HEADER = 'x-challenge-token'
+export const challengeTokenHeader = 'x-challenge-token'

@@ -23,15 +23,22 @@ const postgresDb = isPglite ? null : drizzlePostgres({ client: postgres(process.
 export const db = pgliteDb ?? postgresDb!
 
 /**
- * Run Drizzle migrations on startup.
- * Disable with SKIP_MIGRATIONS=true (e.g. when migrations are handled externally).
+ * Resolve the Drizzle migrations folder.
+ * Override with MIGRATIONS_DIR env var; defaults to `<cwd>/drizzle`.
  *
  * Uses process.cwd() instead of import.meta.dir because compiled Bun binaries
  * resolve import.meta.dir to the executable's directory, not the source file's.
+ * The Docker WORKDIR is set to /app/backend, so the default resolves correctly.
+ */
+export const getMigrationsFolder = () => process.env.MIGRATIONS_DIR ?? resolve(process.cwd(), 'drizzle')
+
+/**
+ * Run Drizzle migrations on startup.
+ * Disable with SKIP_MIGRATIONS=true (e.g. when migrations are handled externally).
  */
 export const runMigrations = async () => {
   if (process.env.SKIP_MIGRATIONS === 'true') return
-  const migrationsFolder = resolve(process.cwd(), 'drizzle')
+  const migrationsFolder = getMigrationsFolder()
   if (pgliteDb) {
     await migratePglite(pgliteDb, { migrationsFolder })
   } else if (postgresDb) {

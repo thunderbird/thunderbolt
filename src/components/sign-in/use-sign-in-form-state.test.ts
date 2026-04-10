@@ -188,7 +188,8 @@ describe('useSignInFormState', () => {
 
     it('sends challengeToken in OTP verification when skipToOtp is used', async () => {
       const { httpClient } = createSpyHttpClient()
-      authClient.signIn.emailOtp = mock(async () => ({ data: { user: { id: '1' } }, error: null }))
+      const emailOtpSpy = mock(async () => ({ data: { user: { id: '1' } }, error: null }))
+      authClient = createMockAuthClient({ signInEmailOtp: emailOtpSpy })
 
       const { result } = renderHook(() =>
         useSignInFormState({
@@ -204,7 +205,7 @@ describe('useSignInFormState', () => {
         await result.current.actions.handleOtpComplete('12345678')
       })
 
-      expect(authClient.signIn.emailOtp).toHaveBeenCalledWith({
+      expect(emailOtpSpy).toHaveBeenCalledWith({
         email: 'test@example.com',
         otp: '12345678',
         fetchOptions: {

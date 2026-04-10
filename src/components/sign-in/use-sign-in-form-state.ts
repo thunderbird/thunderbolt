@@ -8,10 +8,14 @@ import { useReducer, type FormEvent } from 'react'
 
 /** Extract a user-facing error message from an HttpError response body, or return the fallback. */
 const getServerErrorMessage = async (error: unknown, fallback: string): Promise<string> => {
-  if (!(error instanceof HttpError)) return fallback
+  if (!(error instanceof HttpError)) {
+    return fallback
+  }
   try {
     const body = await error.response.json()
-    if (typeof body?.message === 'string' && body.message) return body.message
+    if (typeof body?.message === 'string' && body.message) {
+      return body.message
+    }
   } catch {
     // Response body not JSON-parseable
   }

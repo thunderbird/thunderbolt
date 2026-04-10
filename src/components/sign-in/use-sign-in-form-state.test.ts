@@ -1,5 +1,6 @@
 import { act, renderHook } from '@testing-library/react'
 import { beforeEach, describe, expect, it, mock } from 'bun:test'
+import type { FormEvent } from 'react'
 import { createClient, type HttpClient } from '@/lib/http'
 import { createMockAuthClient } from '@/test-utils/auth-client'
 import { useSignInFormState } from './use-sign-in-form-state'
@@ -43,7 +44,7 @@ describe('useSignInFormState', () => {
       result.current.actions.setEmail('test@example.com')
     })
     await act(async () => {
-      await result.current.actions.handleSubmit({ preventDefault: () => {} } as React.FormEvent)
+      await result.current.actions.handleSubmit({ preventDefault: () => {} } as FormEvent)
     })
     expect(result.current.state.status).toBe('sent')
   }
@@ -54,7 +55,9 @@ describe('useSignInFormState', () => {
       let callCount = 0
       const { httpClient } = createSpyHttpClient(async () => {
         callCount++
-        if (callCount === 1) return jsonResponse(waitlistResponse)
+        if (callCount === 1) {
+          return jsonResponse(waitlistResponse)
+        }
         return jsonResponse({ error: 'code_already_sent', message: cooldownMessage }, 429)
       })
 
@@ -68,7 +71,7 @@ describe('useSignInFormState', () => {
         result.current.actions.goBack()
       })
       await act(async () => {
-        await result.current.actions.handleSubmit({ preventDefault: () => {} } as React.FormEvent)
+        await result.current.actions.handleSubmit({ preventDefault: () => {} } as FormEvent)
       })
 
       expect(result.current.state.status).toBe('error')
@@ -86,7 +89,7 @@ describe('useSignInFormState', () => {
         result.current.actions.setEmail('test@example.com')
       })
       await act(async () => {
-        await result.current.actions.handleSubmit({ preventDefault: () => {} } as React.FormEvent)
+        await result.current.actions.handleSubmit({ preventDefault: () => {} } as FormEvent)
       })
 
       expect(result.current.state.status).toBe('error')
@@ -100,7 +103,9 @@ describe('useSignInFormState', () => {
       let callCount = 0
       const { httpClient } = createSpyHttpClient(async () => {
         callCount++
-        if (callCount === 1) return jsonResponse(waitlistResponse)
+        if (callCount === 1) {
+          return jsonResponse(waitlistResponse)
+        }
         return jsonResponse({ error: 'code_already_sent', message: cooldownMessage }, 429)
       })
 
@@ -123,7 +128,9 @@ describe('useSignInFormState', () => {
       let callCount = 0
       const { httpClient } = createSpyHttpClient(async () => {
         callCount++
-        if (callCount === 1) return jsonResponse(waitlistResponse)
+        if (callCount === 1) {
+          return jsonResponse(waitlistResponse)
+        }
         throw new TypeError('Failed to fetch')
       })
 
@@ -144,7 +151,9 @@ describe('useSignInFormState', () => {
       let callCount = 0
       const { httpClient } = createSpyHttpClient(async () => {
         callCount++
-        if (callCount === 1) return jsonResponse(waitlistResponse)
+        if (callCount === 1) {
+          return jsonResponse(waitlistResponse)
+        }
         return jsonResponse({ error: 'internal_error', message: 'Something broke' }, 500)
       })
 

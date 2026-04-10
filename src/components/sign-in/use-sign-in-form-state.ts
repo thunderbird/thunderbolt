@@ -62,7 +62,7 @@ const reducer = (state: State, action: Action): State => {
     case 'START_SENDING':
       return { ...state, status: 'sending', errorMessage: '' }
     case 'SEND_SUCCESS':
-      return { ...state, status: 'sent', challengeToken: action.payload }
+      return { ...state, status: 'sent', challengeToken: action.payload, otp: '', errorMessage: '' }
     case 'SEND_ERROR':
       return { ...state, status: 'error', errorMessage: action.payload }
     case 'START_VERIFYING':
@@ -91,6 +91,8 @@ type UseSignInFormStateOptions = {
   initialEmail?: string
   /** Initialize directly in OTP step (OTP must already be sent before mounting) */
   skipToOtp?: boolean
+  /** Challenge token to use when skipToOtp is true (required for OTP verification) */
+  initialChallengeToken?: string
 }
 
 /** Better Auth includes `isNew` on the user object at runtime but not in its types. */
@@ -133,6 +135,7 @@ export const useSignInFormState = ({
   onEmailSent,
   initialEmail,
   skipToOtp,
+  initialChallengeToken,
 }: UseSignInFormStateOptions) => {
   // If skipToOtp is requested without an email, fall back to idle state instead of crashing
   const canSkipToOtp = skipToOtp && !!initialEmail?.trim()
@@ -141,6 +144,7 @@ export const useSignInFormState = ({
     ...initialState,
     email: initialEmail ?? '',
     status: canSkipToOtp ? 'sent' : 'idle',
+    challengeToken: canSkipToOtp ? (initialChallengeToken ?? '') : '',
   })
 
   const isValidEmail = isValidEmailFormat(state.email.trim())
@@ -222,16 +226,12 @@ export const useSignInFormState = ({
       return false
     }
 
-    // Clear any previous error
-    dispatch({ type: 'SET_ERROR', payload: '' })
-
     try {
       const { challengeToken } = await httpClient
         .post('waitlist/join', { json: { email: trimmedEmail } })
         .json<{ success: boolean; challengeToken: string }>()
 
       dispatch({ type: 'SEND_SUCCESS', payload: challengeToken })
-      dispatch({ type: 'SET_OTP', payload: '' })
       return true
     } catch (error) {
       console.error('Failed to resend verification OTP:', error)

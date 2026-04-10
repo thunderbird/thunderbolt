@@ -37,6 +37,10 @@ type SignInFormProps = {
    */
   skipToOtp?: boolean
   /**
+   * Challenge token to use when skipToOtp is true (required for OTP verification)
+   */
+  initialChallengeToken?: string
+  /**
    * Render function for the header back button (modal variant only)
    */
   renderBackButton?: (onClick: () => void) => ReactNode
@@ -64,6 +68,7 @@ export const SignInForm = ({
   onEmailSent,
   initialEmail,
   skipToOtp,
+  initialChallengeToken,
   renderBackButton,
   goBackRef,
 }: SignInFormProps) => {
@@ -80,6 +85,7 @@ export const SignInForm = ({
     onEmailSent,
     initialEmail,
     skipToOtp,
+    initialChallengeToken,
   })
 
   // When skipping to OTP, notify parent so it can update its step tracking (e.g. back button behavior).

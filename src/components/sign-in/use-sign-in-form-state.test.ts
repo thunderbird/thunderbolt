@@ -168,4 +168,64 @@ describe('useSignInFormState', () => {
       expect(result.current.state.errorMessage).toBe('Something broke')
     })
   })
+
+  describe('skipToOtp with initialChallengeToken', () => {
+    it('initializes with challengeToken when skipToOtp is true', () => {
+      const { httpClient } = createSpyHttpClient()
+      const { result } = renderHook(() =>
+        useSignInFormState({
+          authClient,
+          httpClient,
+          initialEmail: 'test@example.com',
+          skipToOtp: true,
+          initialChallengeToken: 'pre-existing-token',
+        }),
+      )
+
+      expect(result.current.state.status).toBe('sent')
+      expect(result.current.state.challengeToken).toBe('pre-existing-token')
+    })
+
+    it('sends challengeToken in OTP verification when skipToOtp is used', async () => {
+      const { httpClient } = createSpyHttpClient()
+      authClient.signIn.emailOtp = mock(async () => ({ data: { user: { id: '1' } }, error: null }))
+
+      const { result } = renderHook(() =>
+        useSignInFormState({
+          authClient,
+          httpClient,
+          initialEmail: 'test@example.com',
+          skipToOtp: true,
+          initialChallengeToken: 'pre-existing-token',
+        }),
+      )
+
+      await act(async () => {
+        await result.current.actions.handleOtpComplete('12345678')
+      })
+
+      expect(authClient.signIn.emailOtp).toHaveBeenCalledWith({
+        email: 'test@example.com',
+        otp: '12345678',
+        fetchOptions: {
+          headers: { 'x-challenge-token': 'pre-existing-token' },
+        },
+      })
+    })
+
+    it('defaults challengeToken to empty string without initialChallengeToken', () => {
+      const { httpClient } = createSpyHttpClient()
+      const { result } = renderHook(() =>
+        useSignInFormState({
+          authClient,
+          httpClient,
+          initialEmail: 'test@example.com',
+          skipToOtp: true,
+        }),
+      )
+
+      expect(result.current.state.status).toBe('sent')
+      expect(result.current.state.challengeToken).toBe('')
+    })
+  })
 })

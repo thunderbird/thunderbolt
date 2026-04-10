@@ -262,7 +262,7 @@ export class PowerSyncDatabaseImpl implements DatabaseInterface {
     if (this.visibilityHandler || typeof document === 'undefined') {
       return
     }
-    const hiddenThresholdMs = 2_000
+    const hiddenThresholdMs = 15_000
     this.visibilityHandler = () => {
       if (document.visibilityState === 'hidden') {
         this.hiddenAt = Date.now()

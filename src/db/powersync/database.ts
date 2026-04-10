@@ -282,16 +282,20 @@ export class PowerSyncDatabaseImpl implements DatabaseInterface {
       }
       console.info(`[PowerSync] App was hidden for ${Math.round(hiddenDuration / 1000)}s — forcing reconnect`)
       this._isReconnecting = true
-      this.powerSync
-        .disconnect()
-        .then(() => {
+      void (async () => {
+        try {
+          await this.powerSync!.disconnect()
           this._isConnected = false
-          return this.connectToSync()
-        })
-        .catch((err) => console.warn('[PowerSync] Visibility reconnect failed:', err))
-        .finally(() => {
+          if (!isSyncEnabled()) {
+            return
+          }
+          await this.connectToSync()
+        } catch (err) {
+          console.warn('[PowerSync] Visibility reconnect failed:', err)
+        } finally {
           this._isReconnecting = false
-        })
+        }
+      })()
     }
     document.addEventListener('visibilitychange', this.visibilityHandler)
   }

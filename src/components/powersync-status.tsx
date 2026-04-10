@@ -78,6 +78,15 @@ export const PowerSyncStatus = () => {
   const statusNote =
     syncEnabled && !isConnected && connectionStatus !== 'connecting' ? 'Changes will sync when back online' : null
 
+  const handleRetry = async () => {
+    setIsReconnecting(true)
+    try {
+      await reconnectSync()
+    } finally {
+      setIsReconnecting(false)
+    }
+  }
+
   return (
     <>
       <Popover open={popoverOpen} onOpenChange={setPopoverOpen} modal={isMobile}>
@@ -173,14 +182,7 @@ export const PowerSyncStatus = () => {
                     size="sm"
                     className="shrink-0 text-xs h-7 px-2.5"
                     disabled={isReconnecting}
-                    onClick={async () => {
-                      setIsReconnecting(true)
-                      try {
-                        await reconnectSync()
-                      } finally {
-                        setIsReconnecting(false)
-                      }
-                    }}
+                    onClick={handleRetry}
                   >
                     {isReconnecting ? (
                       <Loader2 className="size-3 animate-spin mr-1" />

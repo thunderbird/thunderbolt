@@ -1,10 +1,22 @@
 import type { AuthClient } from '@/contexts'
-import type { HttpClient } from '@/lib/http'
+import { HttpError, type HttpClient } from '@/lib/http'
 import { getOtpErrorMessage } from '@/lib/otp-error-messages'
 import { updateSettings } from '@/dal'
 import { getDb, getDatabaseInstance } from '@/db/database'
 import { isValidEmailFormat } from '@/lib/utils'
 import { useReducer, type FormEvent } from 'react'
+
+/** Extract a user-facing error message from an HttpError response body, or return the fallback. */
+const getServerErrorMessage = async (error: unknown, fallback: string): Promise<string> => {
+  if (!(error instanceof HttpError)) return fallback
+  try {
+    const body = await error.response.json()
+    if (typeof body?.message === 'string' && body.message) return body.message
+  } catch {
+    // Response body not JSON-parseable
+  }
+  return fallback
+}
 
 type FormStatus = 'idle' | 'sending' | 'sent' | 'verifying' | 'success' | 'error'
 
@@ -147,7 +159,11 @@ export const useSignInFormState = ({
       dispatch({ type: 'SEND_SUCCESS', payload: challengeToken })
     } catch (error) {
       console.error('Failed to send verification OTP:', error)
-      dispatch({ type: 'SEND_ERROR', payload: 'Failed to send verification code. Please check your connection.' })
+      const message = await getServerErrorMessage(
+        error,
+        'Failed to send verification code. Please check your connection.',
+      )
+      dispatch({ type: 'SEND_ERROR', payload: message })
       return
     }
 
@@ -215,7 +231,11 @@ export const useSignInFormState = ({
       return true
     } catch (error) {
       console.error('Failed to resend verification OTP:', error)
-      dispatch({ type: 'SET_ERROR', payload: 'Failed to resend verification code. Please check your connection.' })
+      const message = await getServerErrorMessage(
+        error,
+        'Failed to resend verification code. Please check your connection.',
+      )
+      dispatch({ type: 'SET_ERROR', payload: message })
       return false
     }
   }

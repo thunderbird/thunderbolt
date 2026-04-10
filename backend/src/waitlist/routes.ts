@@ -86,16 +86,17 @@ export const createWaitlistRoutes = ({
         emailCooldowns.set(email, Date.now())
       }
 
-      // Get or create a challenge token (first-writer-wins for multi-instance safety).
+      // Challenge token creation and user lookup are independent — run in parallel.
       // Privacy-preserving: same response shape regardless of user status.
-      const challengeToken = await getOrCreateOtpChallenge(database, {
-        id: crypto.randomUUID(),
-        email,
-        challengeToken: crypto.randomUUID(),
-        expiresAt: new Date(Date.now() + otpExpiryMs),
-      })
-
-      const existingUser = await getUserByEmail(database, email)
+      const [challengeToken, existingUser] = await Promise.all([
+        getOrCreateOtpChallenge(database, {
+          id: crypto.randomUUID(),
+          email,
+          challengeToken: crypto.randomUUID(),
+          expiresAt: new Date(Date.now() + otpExpiryMs),
+        }),
+        getUserByEmail(database, email),
+      ])
 
       if (existingUser) {
         await sendApprovedMagicLinkEmail(auth, email)

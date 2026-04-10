@@ -3,7 +3,8 @@ import type { ConsoleSpies } from '@/test-utils/console-spies'
 import { setupConsoleSpy } from '@/test-utils/console-spies'
 import { createTestProvider } from '@/test-utils/test-provider'
 import { createMockAuthClient } from '@/test-utils/auth-client'
-import { createClient, type HttpClient } from '@/lib/http'
+import { createSpyHttpClient, jsonResponse } from '@/test-utils/http-client'
+import type { HttpClient } from '@/lib/http'
 import { getClock } from '@/testing-library'
 import '@testing-library/jest-dom'
 import { act, fireEvent, render, screen } from '@testing-library/react'
@@ -58,22 +59,6 @@ import { type ReactNode } from 'react'
 const challengeToken = 'test-challenge-token'
 const waitlistResponse = { success: true, challengeToken }
 
-const jsonResponse = (body: unknown, status = 200) =>
-  new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } })
-
-/** Creates a mock HTTP client with a spy-able fetch for assertions. */
-const createSpyHttpClient = (
-  fetchImpl?: (req: Request) => Promise<Response>,
-): { httpClient: HttpClient; fetchSpy: ReturnType<typeof mock> } => {
-  const defaultImpl = async () => jsonResponse(waitlistResponse)
-  const fetchSpy = mock(fetchImpl ?? defaultImpl)
-  const httpClient = createClient({
-    fetch: fetchSpy as unknown as typeof globalThis.fetch,
-    prefixUrl: 'http://test-api.local',
-  })
-  return { httpClient, fetchSpy }
-}
-
 describe('SignInModal', () => {
   let consoleSpies: ConsoleSpies
   let mockOnOpenChange: ReturnType<typeof mock>
@@ -94,7 +79,7 @@ describe('SignInModal', () => {
   beforeEach(() => {
     mockOnOpenChange = mock()
     mockSignInEmailOtp = mock(() => Promise.resolve({ error: null }))
-    const { httpClient, fetchSpy } = createSpyHttpClient()
+    const { httpClient, fetchSpy } = createSpyHttpClient(undefined, waitlistResponse)
     mockHttpClient = httpClient
     mockFetchSpy = fetchSpy
   })

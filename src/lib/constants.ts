@@ -21,7 +21,7 @@ export const edgeSpacing = {
 export const mobileSidebarWidthRatio = 0.8
 
 /** OTP code length — must match backend emailOTP config (otpLength). */
-export const OTP_LENGTH = 8
+export const otpLength = 8
 
 /** HTTP header name for challenge token session binding. */
-export const CHALLENGE_TOKEN_HEADER = 'x-challenge-token'
+export const challengeTokenHeader = 'x-challenge-token'

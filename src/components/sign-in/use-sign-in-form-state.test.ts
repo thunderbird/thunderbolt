@@ -1,27 +1,13 @@
 import { act, renderHook } from '@testing-library/react'
 import { beforeEach, describe, expect, it, mock } from 'bun:test'
 import type { FormEvent } from 'react'
-import { createClient, type HttpClient } from '@/lib/http'
+import type { HttpClient } from '@/lib/http'
 import { createMockAuthClient } from '@/test-utils/auth-client'
+import { createSpyHttpClient, jsonResponse } from '@/test-utils/http-client'
 import { useSignInFormState } from './use-sign-in-form-state'
 
 const challengeToken = 'test-challenge-token'
 const waitlistResponse = { success: true, challengeToken }
-
-const jsonResponse = (body: unknown, status = 200) =>
-  new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } })
-
-const createSpyHttpClient = (
-  fetchImpl?: (req: Request) => Promise<Response>,
-): { httpClient: HttpClient; fetchSpy: ReturnType<typeof mock> } => {
-  const defaultImpl = async () => jsonResponse(waitlistResponse)
-  const fetchSpy = mock(fetchImpl ?? defaultImpl)
-  const httpClient = createClient({
-    fetch: fetchSpy as unknown as typeof globalThis.fetch,
-    prefixUrl: 'http://test-api.local',
-  })
-  return { httpClient, fetchSpy }
-}
 
 describe('useSignInFormState', () => {
   let authClient: ReturnType<typeof createMockAuthClient>
@@ -171,7 +157,7 @@ describe('useSignInFormState', () => {
 
   describe('skipToOtp with initialChallengeToken', () => {
     it('initializes with challengeToken when skipToOtp is true', () => {
-      const { httpClient } = createSpyHttpClient()
+      const { httpClient } = createSpyHttpClient(undefined, waitlistResponse)
       const { result } = renderHook(() =>
         useSignInFormState({
           authClient,
@@ -187,7 +173,7 @@ describe('useSignInFormState', () => {
     })
 
     it('sends challengeToken in OTP verification when skipToOtp is used', async () => {
-      const { httpClient } = createSpyHttpClient()
+      const { httpClient } = createSpyHttpClient(undefined, waitlistResponse)
       const emailOtpSpy = mock(async () => ({ data: { user: { id: '1' } }, error: null }))
       authClient = createMockAuthClient({ signInEmailOtp: emailOtpSpy })
 
@@ -215,7 +201,7 @@ describe('useSignInFormState', () => {
     })
 
     it('defaults challengeToken to empty string without initialChallengeToken', () => {
-      const { httpClient } = createSpyHttpClient()
+      const { httpClient } = createSpyHttpClient(undefined, waitlistResponse)
       const { result } = renderHook(() =>
         useSignInFormState({
           authClient,

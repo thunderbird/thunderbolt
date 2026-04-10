@@ -7,16 +7,10 @@ import { pgTable, text, timestamp } from 'drizzle-orm/pg-core'
  * an attacker from brute-forcing OTPs without intercepting
  * the victim's client response.
  */
-export const otpChallenge = pgTable(
-  'otp_challenge',
-  {
-    id: text('id').primaryKey(),
-    email: text('email').notNull().unique(),
-    challengeToken: text('challenge_token').notNull(),
-    expiresAt: timestamp('expires_at').notNull(),
-    createdAt: timestamp('created_at').defaultNow().notNull(),
-  },
-  (table) => [
-    // email index is implicit via unique() constraint
-  ],
-)
+export const otpChallenge = pgTable('otp_challenge', {
+  id: text('id').primaryKey(),
+  email: text('email').notNull().unique(),
+  challengeToken: text('challenge_token').notNull(),
+  expiresAt: timestamp('expires_at').notNull(),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+})

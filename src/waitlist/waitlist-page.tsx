@@ -3,7 +3,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { InputOTP, InputOTPGroup, InputOTPSlot } from '@/components/ui/input-otp'
 import { useAuth } from '@/contexts'
-import { privacyPolicyUrl, termsOfServiceUrl } from '@/lib/constants'
+import { otpLength, privacyPolicyUrl, termsOfServiceUrl } from '@/lib/constants'
 import { REGEXP_ONLY_DIGITS } from 'input-otp'
 import { Loader2 } from 'lucide-react'
 import { useNavigate } from 'react-router'
@@ -47,7 +47,7 @@ export const WaitlistPage = () => {
           <div className="flex w-full flex-col items-center gap-4">
             <p className="text-sm text-muted-foreground">If you received a code to log in, enter it here:</p>
             <InputOTP
-              maxLength={8}
+              maxLength={otpLength}
               pattern={REGEXP_ONLY_DIGITS}
               value={state.otp}
               onChange={actions.setOtp}
@@ -71,7 +71,7 @@ export const WaitlistPage = () => {
             <Button
               type="button"
               onClick={() => actions.handleOtpComplete(state.otp)}
-              disabled={isVerifying || state.otp.length !== 8}
+              disabled={isVerifying || state.otp.length !== otpLength}
               className="h-[46px] w-full rounded-[12px] text-base"
             >
               {isVerifying ? (

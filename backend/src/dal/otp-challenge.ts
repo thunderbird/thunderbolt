@@ -1,29 +1,37 @@
 import type { db as DbType } from '@/db/client'
 import { otpChallenge } from '@/db/schema'
-import { and, eq, gt } from 'drizzle-orm'
+import { and, eq, gt, lt } from 'drizzle-orm'
 
-/** Create a new challenge token for an email, replacing any existing one. */
-export const createOtpChallenge = async (
+/**
+ * Get or create a challenge token for an email (first-writer-wins).
+ * If a valid (non-expired) challenge already exists, returns the existing token.
+ * Only replaces the token when the existing one has expired.
+ *
+ * Uses Postgres row-level locking via ON CONFLICT ... WHERE to serialize
+ * concurrent requests, preventing a race where two instances overwrite
+ * each other's tokens.
+ */
+export const getOrCreateOtpChallenge = async (
   database: typeof DbType,
   data: { id: string; email: string; challengeToken: string; expiresAt: Date },
-) => {
+): Promise<string> => {
   await database
     .insert(otpChallenge)
     .values(data)
     .onConflictDoUpdate({
       target: otpChallenge.email,
-      set: { challengeToken: data.challengeToken, expiresAt: data.expiresAt },
+      set: { id: data.id, challengeToken: data.challengeToken, expiresAt: data.expiresAt },
+      where: lt(otpChallenge.expiresAt, new Date()),
     })
-}
 
-/** Get the current (non-expired) challenge token for an email, if any. */
-export const getOtpChallengeByEmail = async (database: typeof DbType, email: string) => {
+  // Read back the canonical token (ours if we won, existing if still valid)
   const rows = await database
-    .select()
+    .select({ challengeToken: otpChallenge.challengeToken })
     .from(otpChallenge)
-    .where(and(eq(otpChallenge.email, email), gt(otpChallenge.expiresAt, new Date())))
+    .where(eq(otpChallenge.email, data.email))
     .limit(1)
-  return rows[0] ?? null
+
+  return rows[0]?.challengeToken ?? data.challengeToken
 }
 
 /** Validate a challenge token for an email. Returns true if valid, false otherwise. */

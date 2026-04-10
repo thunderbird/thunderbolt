@@ -2,7 +2,7 @@ import { otpExpiryMs } from '@/auth/otp-constants'
 import type { Auth } from '@/auth/auth'
 import {
   approveWaitlistEntry,
-  createOtpChallenge,
+  getOrCreateOtpChallenge,
   createWaitlistEntry,
   getUserByEmail,
   getWaitlistByEmail,
@@ -86,12 +86,12 @@ export const createWaitlistRoutes = ({
         emailCooldowns.set(email, Date.now())
       }
 
-      // Always generate a challenge token (privacy-preserving: same response shape regardless of status)
-      const challengeToken = crypto.randomUUID()
-      await createOtpChallenge(database, {
+      // Get or create a challenge token (first-writer-wins for multi-instance safety).
+      // Privacy-preserving: same response shape regardless of user status.
+      const challengeToken = await getOrCreateOtpChallenge(database, {
         id: crypto.randomUUID(),
         email,
-        challengeToken,
+        challengeToken: crypto.randomUUID(),
         expiresAt: new Date(Date.now() + otpExpiryMs),
       })
 

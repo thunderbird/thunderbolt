@@ -1,15 +1,12 @@
 import { otpExpiryMs } from '@/auth/otp-constants'
-import { createOtpChallenge } from '@/dal'
+import { getOrCreateOtpChallenge } from '@/dal'
 import type { db as DbType } from '@/db/client'
 
 /** Create a challenge token in the DB for auth.api signInEmailOTP calls in tests. */
-export const createTestChallenge = async (db: typeof DbType, email: string) => {
-  const token = crypto.randomUUID()
-  await createOtpChallenge(db, {
+export const createTestChallenge = async (db: typeof DbType, email: string) =>
+  getOrCreateOtpChallenge(db, {
     id: crypto.randomUUID(),
     email,
-    challengeToken: token,
+    challengeToken: crypto.randomUUID(),
     expiresAt: new Date(Date.now() + otpExpiryMs),
   })
-  return token
-}

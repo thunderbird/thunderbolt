@@ -1,9 +1,8 @@
 import {
   approveWaitlistEntry,
-  createOtpChallenge,
+  getOrCreateOtpChallenge,
   createWaitlistEntry,
   deleteOtpChallengesForEmail,
-  getOtpChallengeByEmail,
   getUserByEmail,
   getWaitlistByEmail,
   markUserNotNew,
@@ -218,18 +217,14 @@ export const createAuth = (database: typeof DbType) => {
           }
 
           const origin = getValidatedOrigin(trustedOrigins, ctx?.request)
-          // Reuse existing challenge if /waitlist/join already created one.
-          // Only create on-demand for Better Auth's native send-OTP endpoint.
-          const existing = await getOtpChallengeByEmail(database, normalizedEmail)
-          const challengeToken = existing?.challengeToken ?? crypto.randomUUID()
-          if (!existing) {
-            await createOtpChallenge(database, {
-              id: crypto.randomUUID(),
-              email: normalizedEmail,
-              challengeToken,
-              expiresAt: new Date(Date.now() + otpExpiryMs),
-            })
-          }
+          // First-writer-wins: reuses existing challenge if /waitlist/join already
+          // created one, or creates on-demand for Better Auth's native send-OTP endpoint.
+          const challengeToken = await getOrCreateOtpChallenge(database, {
+            id: crypto.randomUUID(),
+            email: normalizedEmail,
+            challengeToken: crypto.randomUUID(),
+            expiresAt: new Date(Date.now() + otpExpiryMs),
+          })
           const verifyUrl = buildVerifyUrl(origin, normalizedEmail, otp, ctx?.request, challengeToken)
 
           await sendSignInEmail({ email: normalizedEmail, otp, verifyUrl })

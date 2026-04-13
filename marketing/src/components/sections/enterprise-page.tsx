@@ -252,7 +252,7 @@ const QuoteSection = () => (
         <div className="absolute -bottom-[6px] left-0 hidden size-3 bg-[#d0d5dd] lg:block" />
         <div className="border border-[#d0d5dd] border-r-0 bg-white p-10 shadow-[0px_48px_100px_0px_rgba(17,12,46,0.15)] md:ml-[6px] md:mt-[6px]">
           <p className="max-w-[768px] text-[32px] font-medium leading-[1.2] tracking-[-1.12px] text-[#101828] md:text-[56px]">
-            &ldquo;Organizations are recognizing that AI is important to outsource.&rdquo;
+            &ldquo;Organizations are recognizing that AI is too important to outsource.&rdquo;
           </p>
           <p className="mt-6 font-['Mozilla_Text',sans-serif] text-[19px] font-normal uppercase leading-[26px] tracking-[-0.38px] text-[#344054]">
             <span className="hidden md:inline">Ryan Sipes, CEO, Mozilla Thunderbird</span>

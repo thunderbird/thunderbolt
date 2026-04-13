@@ -412,7 +412,7 @@ describe('Account API', () => {
           headers: { Authorization: `Bearer ${signToken(token)}` },
         }),
       )
-      expect(response.status).toBe(404)
+      expect(response.status).toBe(204)
 
       // Both sessions should still exist — no device was actually revoked
       const revokerSession = await db.select().from(sessionTable).where(eq(sessionTable.id, sessionId))
@@ -669,14 +669,15 @@ describe('Account API', () => {
         }),
       )
 
-      expect(response.status).toBe(404)
+      // Returns 204 (idempotent) but device is NOT actually revoked
+      expect(response.status).toBe(204)
 
       const [device] = await db.select().from(devicesTable).where(eq(devicesTable.id, deviceId))
       expect(device.trusted).toBe(true)
       expect(device.revokedAt).toBeNull()
     })
 
-    it('returns 404 for non-existent device', async () => {
+    it('returns 204 for non-existent device (idempotent)', async () => {
       const userId = p('revoke-nonexistent-user')
       const token = p('revoke-nonexistent-token')
       await createUserAndSession(userId, token)
@@ -688,10 +689,10 @@ describe('Account API', () => {
         }),
       )
 
-      expect(response.status).toBe(404)
+      expect(response.status).toBe(204)
     })
 
-    it('returns 404 when revoking already-revoked device (preserves original revokedAt)', async () => {
+    it('returns 204 when revoking already-revoked device (preserves original revokedAt)', async () => {
       const userId = p('revoke-idempotent-user')
       const token = p('revoke-idempotent-token')
       const deviceId = p('device-already-revoked')
@@ -726,7 +727,7 @@ describe('Account API', () => {
         }),
       )
 
-      expect(response.status).toBe(404)
+      expect(response.status).toBe(204)
 
       // Original revokedAt timestamp is preserved
       const [device] = await db.select().from(devicesTable).where(eq(devicesTable.id, deviceId))

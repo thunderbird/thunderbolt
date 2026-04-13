@@ -74,10 +74,6 @@ export const createAccountRoutes = (auth: Auth, database: typeof DbType) => {
 
           return rows.length > 0
         })
-        if (!revoked) {
-          set.status = 404
-          return { error: 'Device not found' }
-        }
         set.status = 204
       },
       { auth: true },

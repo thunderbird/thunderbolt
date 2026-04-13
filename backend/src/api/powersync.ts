@@ -4,6 +4,7 @@ import { isOriginAllowed } from '@/config/settings'
 import { applyOperation, getActiveSessionByToken, getDeviceById, getUserById, upsertDevice } from '@/dal'
 import type { db as DbType } from '@/db/client'
 import { verifySignedBearerToken } from '@/auth/bearer-token'
+import { safeErrorHandler } from '@/middleware/error-handling'
 import { jwt } from '@elysiajs/jwt'
 import { Elysia, t } from 'elysia'
 
@@ -124,6 +125,7 @@ export const createPowerSyncRoutes = (auth: Auth, settings: Settings, database: 
   }
 
   return new Elysia({ prefix: '/powersync' })
+    .onError(safeErrorHandler)
     .use(
       jwt({
         name: 'powersyncJwt',

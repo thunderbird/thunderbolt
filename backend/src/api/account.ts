@@ -2,11 +2,13 @@ import type { Auth } from '@/auth/elysia-plugin'
 import { createAuthMacro } from '@/auth/elysia-plugin'
 import { deleteUser, revokeDevice, deleteEnvelope } from '@/dal'
 import type { db as DbType } from '@/db/client'
+import { safeErrorHandler } from '@/middleware/error-handling'
 import { Elysia } from 'elysia'
 
 /** Account API routes. All routes require authentication. */
 export const createAccountRoutes = (auth: Auth, database: typeof DbType) => {
   return new Elysia({ prefix: '/account' })
+    .onError(safeErrorHandler)
     .use(createAuthMacro(auth))
     .post(
       '/devices/:id/revoke',

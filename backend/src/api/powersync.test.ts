@@ -455,14 +455,14 @@ describe('PowerSync API', () => {
       const response = await app.handle(
         new Request('http://localhost/powersync/token', {
           headers: {
-            Authorization: 'Bearer bearer-unregistered-device',
+            Authorization: `Bearer ${signToken('bearer-unregistered-device')}`,
             'x-device-id': 'nonexistent-device',
           },
         }),
       )
       expect(response.status).toBe(403)
       const data = await response.json()
-      expect(data).toEqual({ code: 'DEVICE_NOT_REGISTERED' })
+      expect(data).toEqual({ code: 'DEVICE_NOT_TRUSTED' })
     })
 
     it('revoked device cannot bypass by using a new unregistered device ID', async () => {
@@ -503,7 +503,7 @@ describe('PowerSync API', () => {
       const revokedResponse = await app.handle(
         new Request('http://localhost/powersync/token', {
           headers: {
-            Authorization: 'Bearer bearer-revocation-bypass',
+            Authorization: `Bearer ${signToken('bearer-revocation-bypass')}`,
             'x-device-id': 'original-device',
           },
         }),
@@ -515,14 +515,14 @@ describe('PowerSync API', () => {
       const bypassResponse = await app.handle(
         new Request('http://localhost/powersync/token', {
           headers: {
-            Authorization: 'Bearer bearer-revocation-bypass',
+            Authorization: `Bearer ${signToken('bearer-revocation-bypass')}`,
             'x-device-id': 'bypass-attempt-new-device',
           },
         }),
       )
       // Must NOT succeed — unknown device IDs should be rejected
       expect(bypassResponse.status).toBe(403)
-      expect(await bypassResponse.json()).toEqual({ code: 'DEVICE_NOT_REGISTERED' })
+      expect(await bypassResponse.json()).toEqual({ code: 'DEVICE_NOT_TRUSTED' })
     })
 
     it('returns token and powerSyncUrl when authenticated via session with x-device-id', async () => {
@@ -548,14 +548,6 @@ describe('PowerSync API', () => {
         userId,
       })
       await insertTrustedDevice('device-session-token', userId)
-
-      await db.insert(devicesTable).values({
-        id: 'device-session-token',
-        userId,
-        name: 'Test Device',
-        lastSeen: now,
-        createdAt: now,
-      })
 
       const response = await app.handle(
         new Request('http://localhost/powersync/token', {
@@ -596,14 +588,6 @@ describe('PowerSync API', () => {
         userId,
       })
       await insertTrustedDevice('device-123', userId)
-
-      await db.insert(devicesTable).values({
-        id: 'device-123',
-        userId,
-        name: 'Old Name',
-        lastSeen: now,
-        createdAt: now,
-      })
 
       const response = await app.handle(
         new Request('http://localhost/powersync/token', {
@@ -646,14 +630,6 @@ describe('PowerSync API', () => {
       })
       await insertTrustedDevice('device-empty-name', userId)
 
-      await db.insert(devicesTable).values({
-        id: 'device-empty-name',
-        userId,
-        name: 'Old Name',
-        lastSeen: now,
-        createdAt: now,
-      })
-
       const response = await app.handle(
         new Request('http://localhost/powersync/token', {
           headers: {
@@ -693,14 +669,6 @@ describe('PowerSync API', () => {
         userId,
       })
       await insertTrustedDevice('device-long-name', userId)
-
-      await db.insert(devicesTable).values({
-        id: 'device-long-name',
-        userId,
-        name: 'Old Name',
-        lastSeen: now,
-        createdAt: now,
-      })
 
       const longName = 'a'.repeat(101)
       const response = await app.handle(
@@ -743,14 +711,6 @@ describe('PowerSync API', () => {
       })
       await insertTrustedDevice('device-100-char', userId)
 
-      await db.insert(devicesTable).values({
-        id: 'device-100-char',
-        userId,
-        name: 'Old Name',
-        lastSeen: now,
-        createdAt: now,
-      })
-
       const name100 = 'a'.repeat(100)
       const response = await app.handle(
         new Request('http://localhost/powersync/token', {
@@ -791,14 +751,6 @@ describe('PowerSync API', () => {
         userId,
       })
       await insertTrustedDevice('device-1-char', userId)
-
-      await db.insert(devicesTable).values({
-        id: 'device-1-char',
-        userId,
-        name: 'Old Name',
-        lastSeen: now,
-        createdAt: now,
-      })
 
       const response = await app.handle(
         new Request('http://localhost/powersync/token', {
@@ -950,7 +902,7 @@ describe('PowerSync API', () => {
       )
       expect(response.status).toBe(403)
       const data = (await response.json()) as { code: string }
-      expect(data.code).toBe('DEVICE_NOT_REGISTERED')
+      expect(data.code).toBe('DEVICE_NOT_TRUSTED')
     })
 
     it('returns 422 when body schema is invalid (operations not an array)', async () => {
@@ -976,10 +928,6 @@ describe('PowerSync API', () => {
         userId,
       })
       await insertTrustedDevice('test-device-id', userId)
-
-      await db
-        .insert(devicesTable)
-        .values({ id: 'test-device-id', userId, name: 'Test Device', lastSeen: now, createdAt: now })
 
       const response = await app.handle(
         new Request('http://localhost/powersync/upload', {
@@ -1014,10 +962,6 @@ describe('PowerSync API', () => {
         userId,
       })
       await insertTrustedDevice('test-device-id', userId)
-
-      await db
-        .insert(devicesTable)
-        .values({ id: 'test-device-id', userId, name: 'Test Device', lastSeen: now, createdAt: now })
 
       const response = await app.handle(
         new Request('http://localhost/powersync/upload', {
@@ -1067,10 +1011,6 @@ describe('PowerSync API', () => {
         userId,
       })
       await insertTrustedDevice('test-device-id', userId)
-
-      await db
-        .insert(devicesTable)
-        .values({ id: 'test-device-id', userId, name: 'Test Device', lastSeen: now, createdAt: now })
 
       const response = await app.handle(
         new Request('http://localhost/powersync/upload', {
@@ -1170,10 +1110,6 @@ describe('PowerSync API', () => {
         userId,
       })
       await insertTrustedDevice('test-device-id', userId)
-
-      await db
-        .insert(devicesTable)
-        .values({ id: 'test-device-id', userId, name: 'Test Device', lastSeen: now, createdAt: now })
 
       await db.insert(settingsTable).values({
         key: 'patch_setting',
@@ -1508,10 +1444,6 @@ describe('PowerSync API', () => {
       })
       await insertTrustedDevice('test-device-id', userId)
 
-      await db
-        .insert(devicesTable)
-        .values({ id: 'test-device-id', userId, name: 'Test Device', lastSeen: now, createdAt: now })
-
       await db.insert(settingsTable).values({
         key: 'to_delete',
         value: 'x',
@@ -1661,10 +1593,6 @@ describe('PowerSync API', () => {
         userId,
       })
       await insertTrustedDevice('test-device-id', userId)
-
-      await db
-        .insert(devicesTable)
-        .values({ id: 'test-device-id', userId, name: 'Test Device', lastSeen: now, createdAt: now })
 
       const response = await app.handle(
         new Request('http://localhost/powersync/upload', {
@@ -1883,10 +1811,6 @@ describe('PowerSync API', () => {
       })
       await insertTrustedDevice('test-device-id', userId)
 
-      await db
-        .insert(devicesTable)
-        .values({ id: 'test-device-id', userId, name: 'Test Device', lastSeen: now, createdAt: now })
-
       const response = await app.handle(
         new Request('http://localhost/powersync/upload', {
           method: 'PUT',
@@ -1935,10 +1859,6 @@ describe('PowerSync API', () => {
         userId,
       })
       await insertTrustedDevice('test-device-id', userId)
-
-      await db
-        .insert(devicesTable)
-        .values({ id: 'test-device-id', userId, name: 'Test Device', lastSeen: now, createdAt: now })
 
       const response = await app.handle(
         new Request('http://localhost/powersync/upload', {

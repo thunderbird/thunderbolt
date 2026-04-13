@@ -82,7 +82,7 @@ describe('Account API', () => {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
-            Authorization: 'Bearer bearer-register-device',
+            Authorization: `Bearer ${signToken('bearer-register-device')}`,
           },
           body: JSON.stringify({ id: 'new-device-123', name: 'My Phone' }),
         }),
@@ -131,7 +131,7 @@ describe('Account API', () => {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
-            Authorization: 'Bearer bearer-existing-device',
+            Authorization: `Bearer ${signToken('bearer-existing-device')}`,
           },
           body: JSON.stringify({ id: 'existing-device-id' }),
         }),
@@ -186,7 +186,7 @@ describe('Account API', () => {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
-            Authorization: 'Bearer bearer-device-thief',
+            Authorization: `Bearer ${signToken('bearer-device-thief')}`,
           },
           body: JSON.stringify({ id: 'owned-device' }),
         }),
@@ -233,7 +233,7 @@ describe('Account API', () => {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
-            Authorization: 'Bearer bearer-revoked-register',
+            Authorization: `Bearer ${signToken('bearer-revoked-register')}`,
           },
           body: JSON.stringify({ id: 'revoked-device-reg' }),
         }),
@@ -302,7 +302,7 @@ describe('Account API', () => {
       const response = await app.handle(
         new Request('http://localhost/v1/account/devices/device-to-revoke/revoke', {
           method: 'POST',
-          headers: { Authorization: 'Bearer bearer-user-revoking' },
+          headers: { Authorization: `Bearer ${signToken('bearer-user-revoking')}` },
         }),
       )
       expect(response.status).toBe(204)
@@ -350,7 +350,7 @@ describe('Account API', () => {
       const response = await app.handle(
         new Request('http://localhost/v1/account/devices/device-single-session/revoke', {
           method: 'POST',
-          headers: { Authorization: 'Bearer bearer-only-one' },
+          headers: { Authorization: `Bearer ${signToken('bearer-only-one')}` },
         }),
       )
       expect(response.status).toBe(204)
@@ -397,10 +397,10 @@ describe('Account API', () => {
       const response = await app.handle(
         new Request('http://localhost/v1/account/devices/nonexistent-device/revoke', {
           method: 'POST',
-          headers: { Authorization: 'Bearer bearer-revoker' },
+          headers: { Authorization: `Bearer ${signToken('bearer-revoker')}` },
         }),
       )
-      expect(response.status).toBe(204)
+      expect(response.status).toBe(404)
 
       // Both sessions should still exist — no device was actually revoked
       const revokerSession = await db.select().from(sessionTable).where(eq(sessionTable.id, 'session-revoker'))
@@ -679,7 +679,7 @@ describe('Account API', () => {
       expect(response.status).toBe(404)
     })
 
-    it('returns 204 when revoking already-revoked device (idempotent)', async () => {
+    it('returns 404 when revoking already-revoked device (preserves original revokedAt)', async () => {
       const userId = p('revoke-idempotent-user')
       const token = p('revoke-idempotent-token')
       const deviceId = p('device-already-revoked')
@@ -695,14 +695,18 @@ describe('Account API', () => {
       })
 
       // First revoke
-      await app.handle(
+      const firstResponse = await app.handle(
         new Request(`http://localhost/v1/account/devices/${deviceId}/revoke`, {
           method: 'POST',
           headers: { Authorization: `Bearer ${signToken(token)}` },
         }),
       )
+      expect(firstResponse.status).toBe(204)
 
-      // Second revoke
+      const [afterFirst] = await db.select().from(devicesTable).where(eq(devicesTable.id, deviceId))
+      const originalRevokedAt = afterFirst.revokedAt
+
+      // Second revoke — no-op because isNull(revokedAt) guard skips already-revoked devices
       const response = await app.handle(
         new Request(`http://localhost/v1/account/devices/${deviceId}/revoke`, {
           method: 'POST',
@@ -710,10 +714,11 @@ describe('Account API', () => {
         }),
       )
 
-      expect(response.status).toBe(204)
+      expect(response.status).toBe(404)
 
+      // Original revokedAt timestamp is preserved
       const [device] = await db.select().from(devicesTable).where(eq(devicesTable.id, deviceId))
-      expect(device.revokedAt).not.toBeNull()
+      expect(device.revokedAt).toEqual(originalRevokedAt)
     })
 
     it('handles device with no envelope gracefully', async () => {

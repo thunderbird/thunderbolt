@@ -35,7 +35,13 @@ export const createAccountRoutes = (auth: Auth, database: typeof DbType) => {
         const now = new Date()
         const rawName = body.name?.trim()
         const name = rawName && rawName.length > 0 && rawName.length <= 100 ? rawName : 'Unknown device'
-        const upserted = await upsertDevice(database, { id: deviceId, userId: user.id, name, lastSeen: now, createdAt: now })
+        const upserted = await upsertDevice(database, {
+          id: deviceId,
+          userId: user.id,
+          name,
+          lastSeen: now,
+          createdAt: now,
+        })
 
         if (upserted.length === 0 || upserted[0].userId !== user.id) {
           set.status = 409
@@ -63,7 +69,7 @@ export const createAccountRoutes = (auth: Auth, database: typeof DbType) => {
           const rows = await revokeDevice(txDb, params.id, userId)
 
           if (rows.length > 0) {
-            await revokeOtherSessions(database, userId, session.id)
+            await revokeOtherSessions(txDb, userId, session.id)
           }
 
           return rows.length > 0

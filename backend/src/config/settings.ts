@@ -46,7 +46,7 @@ const settingsSchema = z.object({
   powersyncUrl: z.string().default(''),
   powersyncJwtKid: z.string().default(''),
   powersyncJwtSecret: z.string().default(''),
-  powersyncTokenExpirySeconds: z.coerce.number().default(3600),
+  powersyncTokenExpirySeconds: z.coerce.number().int().positive().default(3600),
 
   // CORS settings — comma-separated list of exact origins
   corsOrigins: z.string().default('http://localhost:1420,tauri://localhost,http://tauri.localhost'),
@@ -70,6 +70,17 @@ const settingsSchema = z.object({
   // Set to 'cloudflare' to trust CF-Connecting-IP, 'akamai' for True-Client-IP,
   // or leave empty to use only the direct socket IP (proxy headers are NOT trusted)
   trustedProxy: z.enum(['', 'cloudflare', 'akamai']).default(''),
+}).superRefine((data, ctx) => {
+  if (data.powersyncUrl && data.powersyncJwtSecret.length < 32) {
+    ctx.addIssue({
+      code: 'too_small',
+      origin: 'string',
+      minimum: 32,
+      inclusive: true,
+      message: 'powersyncJwtSecret must be at least 32 characters when powersyncUrl is set',
+      path: ['powersyncJwtSecret'],
+    })
+  }
 })
 
 export type Settings = z.infer<typeof settingsSchema>

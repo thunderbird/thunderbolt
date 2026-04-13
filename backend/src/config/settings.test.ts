@@ -418,14 +418,14 @@ describe('Config Settings', () => {
     it('should read PowerSync values from env when set', () => {
       process.env.POWERSYNC_URL = 'https://sync.example.com'
       process.env.POWERSYNC_JWT_KID = 'my-kid'
-      process.env.POWERSYNC_JWT_SECRET = 'my-secret'
+      process.env.POWERSYNC_JWT_SECRET = 'a]3kF#9xL!mP7qR2vT5wY8zA0cE4gI6j'
       process.env.POWERSYNC_TOKEN_EXPIRY_SECONDS = '7200'
 
       const settings = getSettings()
 
       expect(settings.powersyncUrl).toBe('https://sync.example.com')
       expect(settings.powersyncJwtKid).toBe('my-kid')
-      expect(settings.powersyncJwtSecret).toBe('my-secret')
+      expect(settings.powersyncJwtSecret).toBe('a]3kF#9xL!mP7qR2vT5wY8zA0cE4gI6j')
       expect(settings.powersyncTokenExpirySeconds).toBe(7200)
     })
 
@@ -436,6 +436,34 @@ describe('Config Settings', () => {
 
       expect(settings.powersyncTokenExpirySeconds).toBe(1800)
       expect(typeof settings.powersyncTokenExpirySeconds).toBe('number')
+    })
+
+    it('should reject zero token expiry', () => {
+      process.env.POWERSYNC_TOKEN_EXPIRY_SECONDS = '0'
+      expect(() => getSettings()).toThrow()
+    })
+
+    it('should reject negative token expiry', () => {
+      process.env.POWERSYNC_TOKEN_EXPIRY_SECONDS = '-1'
+      expect(() => getSettings()).toThrow()
+    })
+
+    it('should reject non-integer token expiry', () => {
+      process.env.POWERSYNC_TOKEN_EXPIRY_SECONDS = '3600.5'
+      expect(() => getSettings()).toThrow()
+    })
+
+    it('should reject short JWT secret when powersyncUrl is set', () => {
+      process.env.POWERSYNC_URL = 'https://sync.example.com'
+      process.env.POWERSYNC_JWT_SECRET = 'too-short'
+      expect(() => getSettings()).toThrow()
+    })
+
+    it('should allow empty JWT secret when powersyncUrl is empty', () => {
+      process.env.POWERSYNC_URL = ''
+      process.env.POWERSYNC_JWT_SECRET = ''
+      const settings = getSettings()
+      expect(settings.powersyncJwtSecret).toBe('')
     })
   })
 })

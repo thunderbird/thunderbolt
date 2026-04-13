@@ -157,6 +157,26 @@ export const isOriginAllowed = (origin: string, settings: Pick<Settings, 'corsOr
   return getCorsOriginsList(settings).includes(origin)
 }
 
+/** Validate that an OAuth redirect_uri points to a trusted origin. */
+export const isOAuthRedirectUriAllowed = (uri: string, settings: Pick<Settings, 'corsOrigins'>): boolean => {
+  try {
+    const url = new URL(uri)
+    // Construct origin manually — url.origin returns 'null' for non-standard protocols like tauri://
+    const origin = `${url.protocol}//${url.host}`
+    const allowedOrigins = [...getCorsOriginsList(settings), 'https://thunderbolt.io']
+    if (allowedOrigins.includes(origin)) {
+      return true
+    }
+    // Loopback flow uses dynamic ports — allow any HTTP localhost
+    if ((url.hostname === 'localhost' || url.hostname === '127.0.0.1') && url.protocol === 'http:') {
+      return true
+    }
+    return false
+  } catch {
+    return false
+  }
+}
+
 export const getCorsMethodsList = (settings: Settings): string[] => {
   return settings.corsAllowMethods
     .split(',')

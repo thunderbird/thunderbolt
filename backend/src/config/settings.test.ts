@@ -5,6 +5,7 @@ import {
   getCorsMethodsList,
   getCorsOriginsList,
   getSettings,
+  isOAuthRedirectUriAllowed,
   isOriginAllowed,
 } from './settings'
 
@@ -436,6 +437,47 @@ describe('Config Settings', () => {
 
       expect(settings.powersyncTokenExpirySeconds).toBe(1800)
       expect(typeof settings.powersyncTokenExpirySeconds).toBe('number')
+    })
+  })
+
+  describe('isOAuthRedirectUriAllowed', () => {
+    const settings = { corsOrigins: 'http://localhost:1420,tauri://localhost,http://tauri.localhost' }
+
+    it('allows web dev callback', () => {
+      expect(isOAuthRedirectUriAllowed('http://localhost:1420/oauth/callback', settings)).toBe(true)
+    })
+
+    it('allows loopback with dynamic port', () => {
+      expect(isOAuthRedirectUriAllowed('http://localhost:17421', settings)).toBe(true)
+    })
+
+    it('allows Tauri desktop callback', () => {
+      expect(isOAuthRedirectUriAllowed('tauri://localhost/oauth-callback.html', settings)).toBe(true)
+    })
+
+    it('allows mobile App Link callback', () => {
+      expect(isOAuthRedirectUriAllowed('https://thunderbolt.io/oauth/callback', settings)).toBe(true)
+    })
+
+    it('allows production origin from corsOrigins', () => {
+      const prod = { corsOrigins: 'https://app.thunderbolt.io' }
+      expect(isOAuthRedirectUriAllowed('https://app.thunderbolt.io/oauth/callback', prod)).toBe(true)
+    })
+
+    it('rejects attacker domain', () => {
+      expect(isOAuthRedirectUriAllowed('https://evil.com/callback', settings)).toBe(false)
+    })
+
+    it('rejects HTTPS on localhost', () => {
+      expect(isOAuthRedirectUriAllowed('https://localhost:1420/oauth/callback', settings)).toBe(false)
+    })
+
+    it('rejects invalid URL', () => {
+      expect(isOAuthRedirectUriAllowed('not-a-url', settings)).toBe(false)
+    })
+
+    it('rejects empty string', () => {
+      expect(isOAuthRedirectUriAllowed('', settings)).toBe(false)
     })
   })
 })

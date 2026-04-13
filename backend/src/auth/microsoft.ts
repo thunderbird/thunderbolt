@@ -1,6 +1,6 @@
 import type { Auth } from '@/auth/elysia-plugin'
 import { createAuthMacro } from '@/auth/elysia-plugin'
-import { getSettings } from '@/config/settings'
+import { getSettings, isOAuthRedirectUriAllowed } from '@/config/settings'
 import { safeErrorHandler } from '@/middleware/error-handling'
 import { Elysia, t } from 'elysia'
 import { codeRequestSchema, refreshRequestSchema, type OAuthTokenResponse } from './types'
@@ -43,6 +43,11 @@ export const createMicrosoftAuthRoutes = (auth: Auth, fetchFn: typeof fetch = gl
         }
 
         const validatedBody = codeRequestSchema.parse(body)
+
+        if (!isOAuthRedirectUriAllowed(validatedBody.redirect_uri, settings)) {
+          set.status = 400
+          return { error: 'Invalid redirect_uri' }
+        }
 
         const data = new URLSearchParams({
           client_id: settings.microsoftClientId,

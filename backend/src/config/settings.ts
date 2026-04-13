@@ -73,8 +73,8 @@ const settingsSchema = z.object({
 }).superRefine((data, ctx) => {
   if (data.powersyncUrl && data.powersyncJwtSecret.length < 32) {
     ctx.addIssue({
-      code: 'too_small',
-      origin: 'string',
+      code: z.ZodIssueCode.too_small,
+      type: 'string',
       minimum: 32,
       inclusive: true,
       message: 'powersyncJwtSecret must be at least 32 characters when powersyncUrl is set',

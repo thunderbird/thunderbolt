@@ -1,6 +1,23 @@
 name: Enterprise Deploy
 
 on:
+  workflow_call:
+    inputs:
+      action:
+        type: string
+        required: true
+      platform:
+        type: string
+        default: 'fargate'
+      region:
+        type: string
+        default: 'us-east-1'
+      stack_name:
+        type: string
+        required: true
+      version:
+        type: string
+        required: false
   workflow_dispatch:
     inputs:
       action:

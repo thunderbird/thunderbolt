@@ -1,0 +1,20 @@
+name: Enterprise Nightly
+
+on:
+  schedule:
+    - cron: '0 5 * * *' # 5am UTC / midnight EST
+  workflow_dispatch: {}
+
+jobs:
+  publish:
+    uses: ./.github/workflows/enterprise-publish.yml
+    secrets: inherit
+
+  deploy:
+    needs: publish
+    uses: ./.github/workflows/enterprise-deploy.yml
+    with:
+      action: deploy
+      platform: fargate
+      stack_name: demo
+    secrets: inherit

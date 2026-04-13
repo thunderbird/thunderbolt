@@ -257,33 +257,38 @@ describe('Account API', () => {
 
   describe('POST /v1/account/devices/:id/revoke', () => {
     it('invalidates all other sessions when device is revoked', async () => {
-      const userId = 'test-user-session-revoke'
+      const userId = p('session-revoke-user')
+      const token = p('session-revoke-token')
+      const attackerToken = p('session-revoke-attacker-token')
+      const deviceId = p('device-to-revoke')
       const now = new Date()
       const expiresAt = new Date(now.getTime() + 3600 * 1000)
 
       await db.insert(user).values({
         id: userId,
         name: 'Session Revoke User',
-        email: 'session-revoke@example.com',
+        email: `${userId}@example.com`,
         emailVerified: true,
         createdAt: now,
         updatedAt: now,
       })
 
       // Create two sessions: one for the user revoking, one for the attacker
+      const sessionId = p('session-user-revoking')
+      const attackerSessionId = p('session-attacker')
       await db.insert(sessionTable).values([
         {
-          id: 'session-user-revoking',
+          id: sessionId,
           expiresAt,
-          token: 'bearer-user-revoking',
+          token,
           createdAt: now,
           updatedAt: now,
           userId,
         },
         {
-          id: 'session-attacker',
+          id: attackerSessionId,
           expiresAt,
-          token: 'bearer-attacker',
+          token: attackerToken,
           createdAt: now,
           updatedAt: now,
           userId,
@@ -291,7 +296,7 @@ describe('Account API', () => {
       ])
 
       await db.insert(devicesTable).values({
-        id: 'device-to-revoke',
+        id: deviceId,
         userId,
         name: 'Compromised Device',
         lastSeen: now,
@@ -300,47 +305,50 @@ describe('Account API', () => {
 
       // Revoke the device from the user's session
       const response = await app.handle(
-        new Request('http://localhost/v1/account/devices/device-to-revoke/revoke', {
+        new Request(`http://localhost/v1/account/devices/${deviceId}/revoke`, {
           method: 'POST',
-          headers: { Authorization: `Bearer ${signToken('bearer-user-revoking')}` },
+          headers: { Authorization: `Bearer ${signToken(token)}` },
         }),
       )
       expect(response.status).toBe(204)
 
       // The revoking user's session should still exist
-      const revokingSession = await db.select().from(sessionTable).where(eq(sessionTable.id, 'session-user-revoking'))
+      const revokingSession = await db.select().from(sessionTable).where(eq(sessionTable.id, sessionId))
       expect(revokingSession).toHaveLength(1)
 
       // The attacker's session should be deleted
-      const attackerSession = await db.select().from(sessionTable).where(eq(sessionTable.id, 'session-attacker'))
+      const attackerSession = await db.select().from(sessionTable).where(eq(sessionTable.id, attackerSessionId))
       expect(attackerSession).toHaveLength(0)
     })
 
     it('preserves revoking session even when it is the only session', async () => {
-      const userId = 'test-user-single-session'
+      const userId = p('single-session-user')
+      const token = p('single-session-token')
+      const sessionId = p('session-only-one')
+      const deviceId = p('device-single-session')
       const now = new Date()
       const expiresAt = new Date(now.getTime() + 3600 * 1000)
 
       await db.insert(user).values({
         id: userId,
         name: 'Single Session User',
-        email: 'single-session@example.com',
+        email: `${userId}@example.com`,
         emailVerified: true,
         createdAt: now,
         updatedAt: now,
       })
 
       await db.insert(sessionTable).values({
-        id: 'session-only-one',
+        id: sessionId,
         expiresAt,
-        token: 'bearer-only-one',
+        token,
         createdAt: now,
         updatedAt: now,
         userId,
       })
 
       await db.insert(devicesTable).values({
-        id: 'device-single-session',
+        id: deviceId,
         userId,
         name: 'Device',
         lastSeen: now,
@@ -348,27 +356,31 @@ describe('Account API', () => {
       })
 
       const response = await app.handle(
-        new Request('http://localhost/v1/account/devices/device-single-session/revoke', {
+        new Request(`http://localhost/v1/account/devices/${deviceId}/revoke`, {
           method: 'POST',
-          headers: { Authorization: `Bearer ${signToken('bearer-only-one')}` },
+          headers: { Authorization: `Bearer ${signToken(token)}` },
         }),
       )
       expect(response.status).toBe(204)
 
       // Session should still exist
-      const sessions = await db.select().from(sessionTable).where(eq(sessionTable.id, 'session-only-one'))
+      const sessions = await db.select().from(sessionTable).where(eq(sessionTable.id, sessionId))
       expect(sessions).toHaveLength(1)
     })
 
     it('does not invalidate sessions when revoking a nonexistent device', async () => {
-      const userId = 'test-user-nonexistent-revoke'
+      const userId = p('nonexistent-revoke-user')
+      const token = p('nonexistent-revoke-token')
+      const otherToken = p('nonexistent-revoke-other-token')
+      const sessionId = p('session-revoker')
+      const otherSessionId = p('session-other')
       const now = new Date()
       const expiresAt = new Date(now.getTime() + 3600 * 1000)
 
       await db.insert(user).values({
         id: userId,
         name: 'Nonexistent Revoke User',
-        email: 'nonexistent-revoke@example.com',
+        email: `${userId}@example.com`,
         emailVerified: true,
         createdAt: now,
         updatedAt: now,
@@ -376,17 +388,17 @@ describe('Account API', () => {
 
       await db.insert(sessionTable).values([
         {
-          id: 'session-revoker',
+          id: sessionId,
           expiresAt,
-          token: 'bearer-revoker',
+          token,
           createdAt: now,
           updatedAt: now,
           userId,
         },
         {
-          id: 'session-other',
+          id: otherSessionId,
           expiresAt,
-          token: 'bearer-other',
+          token: otherToken,
           createdAt: now,
           updatedAt: now,
           userId,
@@ -397,15 +409,15 @@ describe('Account API', () => {
       const response = await app.handle(
         new Request('http://localhost/v1/account/devices/nonexistent-device/revoke', {
           method: 'POST',
-          headers: { Authorization: `Bearer ${signToken('bearer-revoker')}` },
+          headers: { Authorization: `Bearer ${signToken(token)}` },
         }),
       )
       expect(response.status).toBe(404)
 
       // Both sessions should still exist — no device was actually revoked
-      const revokerSession = await db.select().from(sessionTable).where(eq(sessionTable.id, 'session-revoker'))
+      const revokerSession = await db.select().from(sessionTable).where(eq(sessionTable.id, sessionId))
       expect(revokerSession).toHaveLength(1)
-      const otherSession = await db.select().from(sessionTable).where(eq(sessionTable.id, 'session-other'))
+      const otherSession = await db.select().from(sessionTable).where(eq(sessionTable.id, otherSessionId))
       expect(otherSession).toHaveLength(1)
     })
   })

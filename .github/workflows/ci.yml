@@ -89,6 +89,7 @@ jobs:
         env:
           NODE_ENV: production
           NODE_OPTIONS: --max-old-space-size=4096
+          ENABLE_SOURCEMAP: 'true'
 
       - name: Inject & upload source maps to PostHog
         if: github.ref == 'refs/heads/main'
@@ -97,6 +98,10 @@ jobs:
           directory: dist
           env-id: ${{ secrets.POSTHOG_CLI_ENV_ID }}
           cli-token: ${{ secrets.POSTHOG_CLI_TOKEN }}
+
+      - name: Delete source maps after upload
+        if: github.ref == 'refs/heads/main'
+        run: find dist -name '*.map' -delete
 
       - name: Compute and save metrics baseline
         if: github.ref == 'refs/heads/main'

@@ -22,7 +22,8 @@ ARG VITE_AUTH_MODE="oidc"
 ENV VITE_THUNDERBOLT_CLOUD_URL=$VITE_THUNDERBOLT_CLOUD_URL
 ENV VITE_AUTH_MODE=$VITE_AUTH_MODE
 
-RUN bunx vite build
+RUN bunx vite build && \
+    find dist -name '*.map' -delete
 
 # Stage 2: Serve with nginx
 FROM nginx:alpine

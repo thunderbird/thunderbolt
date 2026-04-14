@@ -32,12 +32,12 @@ jobs:
       id-token: write
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
         with:
           fetch-depth: 1
 
       - name: Execute Claude
-        uses: anthropics/claude-code-action@v1
+        uses: anthropics/claude-code-action@1c8b699d43e9bfed42b48ef15da85d89bab70960 # v1
         with:
           anthropic_api_key: ${{ secrets.CI_ANTHROPIC_API_KEY }}
 
@@ -51,7 +51,7 @@ jobs:
       id-token: write
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
         with:
           fetch-depth: 1
 
@@ -109,7 +109,7 @@ jobs:
           done
 
       - name: PR Review with Claude
-        uses: anthropics/claude-code-action@v1
+        uses: anthropics/claude-code-action@1c8b699d43e9bfed42b48ef15da85d89bab70960 # v1
         with:
           anthropic_api_key: ${{ secrets.CI_ANTHROPIC_API_KEY }}
           allowed_bots: 'dependabot[bot],renovate[bot],cursor[bot]'

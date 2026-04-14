@@ -133,6 +133,8 @@ export const AssistantMessage = memo(
         style={isLastMessage ? { minHeight: lastMessageMinHeight } : undefined}
       >
         {partElements.map((partElement, index) => (
+          // Index key is safe here: streaming parts are append-only (never reordered or removed),
+          // so positional identity is stable. Index also drives the animation logic below.
           // Skip the animation on the *second* (index === 1) partElement so that it replaces the loading part *in-place* without an animation
           // This causes it to appear as if the loading part magically *becomes* the new part without any visual disruption
           <div key={index} className={index === 1 ? '' : animationClasses}>

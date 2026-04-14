@@ -29,6 +29,9 @@ concurrency:
   group: desktop-release-${{ inputs.version }}
   cancel-in-progress: true
 
+permissions:
+  contents: write
+
 jobs:
   draft:
     name: Create Draft Release
@@ -37,7 +40,7 @@ jobs:
       version: ${{ steps.set-version.outputs.version }}
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         with:
           ref: v${{ inputs.version }}
 
@@ -50,7 +53,7 @@ jobs:
 
       - name: Create GitHub Release (Stable)
         if: ${{ !inputs.nightly }}
-        uses: softprops/action-gh-release@v1
+        uses: softprops/action-gh-release@de2c0eb89ae2a093876385947365aca7b0e5f844 # v1
         with:
           tag_name: v${{ inputs.version }}
           name: Release v${{ inputs.version }}
@@ -67,7 +70,7 @@ jobs:
 
       - name: Create GitHub Release (Nightly)
         if: ${{ inputs.nightly }}
-        uses: softprops/action-gh-release@v1
+        uses: softprops/action-gh-release@de2c0eb89ae2a093876385947365aca7b0e5f844 # v1
         with:
           tag_name: v${{ inputs.version }}
           name: Nightly Build v${{ inputs.version }}
@@ -85,7 +88,7 @@ jobs:
       # Skip CrabNebula for nightly builds to prevent auto-updater from pushing unstable builds
       - name: Create CrabNebula Draft Release
         if: ${{ !inputs.nightly }}
-        uses: crabnebula-dev/cloud-release@v0.2.0
+        uses: crabnebula-dev/cloud-release@6889c5cd31fdc8c1d0b2f631bb6d53223db622bd # v0.2.0
         with:
           command: release draft thunderbird/thunderbolt ${{ inputs.version }}
           api-key: ${{ secrets.CRABNEBULA_CLOUD_API_KEY }}
@@ -118,25 +121,25 @@ jobs:
     runs-on: ${{ matrix.os }}
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         with:
           ref: v${{ inputs.version }}
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: 'lts/*'
 
-      - uses: oven-sh/setup-bun@v2
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
 
       - name: Install Rust toolchain
-        uses: actions-rust-lang/setup-rust-toolchain@v1
+        uses: actions-rust-lang/setup-rust-toolchain@2b1f5e9b395427c92ee4e3331786ca3c37afe2d7 # v1
         with:
           toolchain: stable
           cache: false
           rustflags: ''
 
       - name: Cache cargo dependencies
-        uses: actions/cache@v3
+        uses: actions/cache@6f8efc29b200d32929f49075959781ed54ec270c # v3
         with:
           path: |
             ~/.cargo/registry
@@ -316,7 +319,7 @@ jobs:
 
       - name: Upload Linux artifacts to GitHub Release
         if: matrix.os == 'ubuntu-24.04'
-        uses: softprops/action-gh-release@v1
+        uses: softprops/action-gh-release@de2c0eb89ae2a093876385947365aca7b0e5f844 # v1
         with:
           tag_name: v${{ inputs.version }}
           draft: true
@@ -329,7 +332,7 @@ jobs:
 
       - name: Upload Windows artifacts to GitHub Release
         if: matrix.os == 'windows-latest'
-        uses: softprops/action-gh-release@v1
+        uses: softprops/action-gh-release@de2c0eb89ae2a093876385947365aca7b0e5f844 # v1
         with:
           tag_name: v${{ inputs.version }}
           draft: true
@@ -349,7 +352,7 @@ jobs:
 
       - name: Upload macOS artifacts to GitHub Release
         if: matrix.os == 'macos-latest'
-        uses: softprops/action-gh-release@v1
+        uses: softprops/action-gh-release@de2c0eb89ae2a093876385947365aca7b0e5f844 # v1
         with:
           tag_name: v${{ inputs.version }}
           draft: true
@@ -364,7 +367,7 @@ jobs:
       # Skip CrabNebula for nightly builds
       - name: Upload to CrabNebula Cloud
         if: ${{ !inputs.nightly }}
-        uses: crabnebula-dev/cloud-release@v0.2.0
+        uses: crabnebula-dev/cloud-release@6889c5cd31fdc8c1d0b2f631bb6d53223db622bd # v0.2.0
         with:
           command: release upload thunderbird/thunderbolt ${{ inputs.version }} --framework tauri
           api-key: ${{ secrets.CRABNEBULA_CLOUD_API_KEY }}
@@ -374,14 +377,14 @@ jobs:
     needs: [draft, build]
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         with:
           ref: v${{ inputs.version }}
           fetch-depth: 0
 
       - name: Publish GitHub Release (Stable)
         if: ${{ !inputs.nightly }}
-        uses: softprops/action-gh-release@v1
+        uses: softprops/action-gh-release@de2c0eb89ae2a093876385947365aca7b0e5f844 # v1
         with:
           tag_name: v${{ inputs.version }}
           draft: false
@@ -408,7 +411,7 @@ jobs:
 
       - name: Publish GitHub Release (Nightly)
         if: ${{ inputs.nightly }}
-        uses: softprops/action-gh-release@v1
+        uses: softprops/action-gh-release@de2c0eb89ae2a093876385947365aca7b0e5f844 # v1
         with:
           tag_name: v${{ inputs.version }}
           draft: false
@@ -434,7 +437,7 @@ jobs:
       # Publish release on CrabNebula Cloud for auto-updates (skip for nightly to prevent unstable auto-updates)
       - name: Publish to CrabNebula Cloud
         if: ${{ !inputs.nightly }}
-        uses: crabnebula-dev/cloud-release@v0.2.0
+        uses: crabnebula-dev/cloud-release@6889c5cd31fdc8c1d0b2f631bb6d53223db622bd # v0.2.0
         with:
           command: release publish thunderbird/thunderbolt ${{ inputs.version }} --framework tauri
           api-key: ${{ secrets.CRABNEBULA_CLOUD_API_KEY }}

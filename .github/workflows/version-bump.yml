@@ -55,6 +55,9 @@ on:
         description: 'The tag name that was created'
         value: ${{ jobs.version_bump.outputs.tag_name }}
 
+permissions:
+  contents: write
+
 jobs:
   version_bump:
     runs-on: ubuntu-latest
@@ -64,7 +67,7 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         with:
           fetch-depth: 0
           token: ${{ secrets.GITHUB_TOKEN }}
@@ -75,7 +78,7 @@ jobs:
           git config --local user.name "GitHub Action"
 
       - name: Setup Bun
-        uses: oven-sh/setup-bun@v2
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
 
       # Regular releases: use existing create-release script
       - name: Run create-release script

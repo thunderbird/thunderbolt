@@ -70,7 +70,7 @@ jobs:
             bun-
 
       - name: Install dependencies
-        run: bun install
+        run: bun install --frozen-lockfile
 
       - name: Type check
         run: bun run tsc --noEmit
@@ -200,7 +200,7 @@ jobs:
       - name: Install backend dependencies
         run: |
           cd backend
-          bun install
+          bun install --frozen-lockfile
 
       - name: Type check backend
         run: |

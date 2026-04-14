@@ -1,148 +1,99 @@
-# Thunderbolt [[Demo]](https://www.thunderbolt.io)
+# Thunderbolt [![CI](https://github.com/thunderbird/thunderbolt/actions/workflows/ci.yml/badge.svg)](https://github.com/thunderbird/thunderbolt/actions/workflows/ci.yml)
 
-[![CI](https://github.com/thunderbird/thunderbolt/actions/workflows/ci.yml/badge.svg)](https://github.com/thunderbird/thunderbolt/actions/workflows/ci.yml)
+**AI You Control: Choose your models. Own your data. Eliminate vendor lock-in.**
+
+Thunderbolt is an open-source, cross-platform AI client that can be deployed on-prem anywhere.
+
+Thunderbolt is built with Tauri, React, Vercel AI SDK and is available on all major desktop and mobile platforms: web, iOS, Android, Mac, Linux, and Windows.
+
+Data is stored on-device using SQLite (IndexedDB). Optional end-to-end encrypted cloud syncing is available using Powersync.
+
+**Thunderbolt is under active development, currently undergoing a security audit, and preparing for enterprise production readiness.**
 
 ![Thunderbolt Main Dashboard](./docs/screenshots/main.png)
 
+## Roadmap
+
+| Platform | Status |
+| --- | --- |
+| Web | ✅ |
+| Mac | ✅ |
+| Linux | ✅ |
+| Windows | ✅ |
+| Android | ✅ Available - App Store Release Planned |
+| iOS | ✅ Available - App Store Release Planned |
+
+| Feature | Status |
+| --- | --- |
+| ACP | In Development - Release Planned: April 2026 |️
+| MCP Support | ✅ |
+| Improved MCP Support | In Development - Release Planned: April 2026 |
+| Chat Widgets | ✅ |
+| Chat Mode | ✅ |
+| Search Mode | ✅ |
+| Research Mode | ✅ |
+| Custom Models / Providers | ✅ |
+| Optional End-to-End Encryption | ✅ |
+| Cross-Device Cloud Sync | ✅ |
+| Google Integration | ✅ |
+| Microsoft Integration | ✅ |
+| Ollama Compatibility | ✅ |
+| Agent Memory | Planned |
+| Agent Skills | Planned |
+| Offline Support | Planned |
+| Research Mode v2 | Planned |
+
 ## Quick Start
 
-The quickest way to get started is with [Claude Code](https://docs.anthropic.com/en/docs/claude-code). From the repo root, run `claude` and then type `/thunderup` — it installs dependencies, starts Docker, and verifies your environment in one shot. See [docs/claude-code.md](./docs/claude-code.md) for the full list of slash commands.
-
-Alternatively, for a manual setup:
-
-1. Create a `.env` file with:
-   ```
-   VITE_THUNDERBOLT_CLOUD_URL=https://api.thunderbolt.io
-   ```
-2. Run `bun dev`
-3. Open http://localhost:1420 in your browser
-
-This runs a standard Vite dev server without requiring the Tauri desktop shell or backend setup.
-
-## Architecture Overview
-
-Thunderbolt is a **cross-platform, local-first** app built with [Tauri](https://tauri.app/) and TypeScript. Tauri provides a Rust backend layer that enables native capabilities like file system access and performance-critical operations.
-
-### Local Database Storage
-
-All data is stored on-device using [OPFS](https://developer.mozilla.org/en-US/docs/Web/API/File_System_API/Origin_private_file_system) via [wa-sqlite](https://github.com/powersync-ja/wa-sqlite) with web workers and [PowerSync](https://www.powersync.com/) for offline-first sync.
-
-- No Rust compilation required
-- Runs database operations in a separate thread for better performance
-- Works in both browser (`bun dev`) and Tauri builds
-
-### Development Modes
-
-- **Browser-only** (`bun dev`): Standard Vite dev server — no Rust features, fast iteration
-- **Tauri desktop** (`bun tauri dev`): Full app with Rust capabilities
-  - Access dev tools with `Cmd+Shift+I` (same as browsers)
-  - All database logic and migrations run in the frontend (local-first architecture)
-
-## Stack:
-
-- TypeScript
-- Rust
-- Tauri - for creating the desktop / mobile application
-- React - for the UI
-- Tailwind - for styling
-- Shadcn - for UI components
-- React Router - for navigation / route handling
-- Drizzle - for ORM / migrations
-- Vercel AI SDK - for handling the chat thread state, streaming LLM responses, and handling LLM tool calls
-- Zod - for JSON schema validation
-- Vite - frontend package bundler
-- UUID - for all IDs - using v7 so that we can derive "created at" times from IDs and save disk space
-- Storybook: build, test & document components
-
-## Rust Setup
+You must have Bun, Rust, and Docker installed first. Then:
 
 ```sh
-# Install Rust
-curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
-
-# Install sccache globally
-cargo install sccache
-
-# Install cmake
-brew install cmake # Mac only
-```
-
-## Setup
-
-### Prerequisites
-
-- [Rust](https://rustup.rs/) - See Rust Setup section below
-- [Bun](https://bun.sh/) - JavaScript runtime and package manager
-
-### Quick Setup
-
-```sh
-# Clone the repository
-git clone https://github.com/thunderbird/thunderbolt
-cd thunderbolt
-
-# Run the setup command to initialize everything
+# Install dependencies
 make setup
-```
 
-The `make setup` command will install all frontend and backend dependencies.
+# Set up .env files
+cp .env.example .env
+cd backend && cp .env.example .env
 
-### Manual Setup (if needed)
+# Run postgres + powersync
+make docker-up
 
-```sh
-# Install frontend dependencies
-bun install
+# Run backend
+# cd backend && bun dev
 
-# Install backend dependencies
-cd backend && bun install
+# Browser:
+bun dev
+# -> open http://localhost:1420 in your browser.
+
+# Desktop
+bun tauri:dev:desktop
+
+# iOS Simulator
+bun tauri:dev:ios
+
+# Android Emulator
+bun tauri:dev:android
 ```
 
 ## Testing
 
 ```sh
 # Run frontend tests (src/ and scripts/)
-bun test
+bun run test
 
 # Run frontend tests in watch mode
-bun test:watch
+bun run test:watch
 
 # Run backend tests
-bun test:backend
+bun run test:backend
 
 # Run backend tests in watch mode
-bun test:backend:watch
+bun run test:backend:watch
 ```
 
 **Note**: Don't use `bun test` without the npm script from the project root, as it will pick up both frontend and backend tests. The `test` script is configured to only run tests in `./src` and `./scripts` directories.
 
 See [docs/testing.md](./docs/testing.md) for detailed testing guidelines.
-
-## Code Formatting
-
-Thunderbolt uses automated code formatting to maintain consistent code style across the entire project.
-
-### Automatic Pre-commit Formatting
-
-Staged git files are automatically formatted before commits via lint-staged:
-
-- **Frontend files** (`.ts`, `.tsx`, `.js`, `.jsx`, `.json`, `.css`, `.md`) are formatted with Prettier
-- **Rust files** (`.rs`) are formatted with cargo fmt
-
-### Manual Formatting Commands
-
-```sh
-# Format all code (frontend, Rust)
-make format
-
-# Check formatting without modifying files
-make format-check
-```
-
-## Run
-
-```sh
-bun tauri:dev:desktop
-```
 
 ## Run Android
 

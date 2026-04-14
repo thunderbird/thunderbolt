@@ -110,6 +110,14 @@ export const createAuth = (database: typeof DbType) => {
         },
       },
     },
+    session: {
+      additionalFields: {
+        deviceId: {
+          type: 'string',
+          required: false,
+        },
+      },
+    },
     databaseHooks: {
       user: {
         create: {

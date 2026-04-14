@@ -1,6 +1,8 @@
 import { type Auth, createAuthMacro } from '@/auth/elysia-plugin'
 import {
+  countActiveDevices,
   getDeviceById,
+  linkSessionToDevice,
   registerDevice,
   denyDevice,
   markDeviceTrusted,
@@ -11,7 +13,7 @@ import {
   insertEncryptionMetadataIfNotExists,
 } from '@/dal'
 import type { db as DbType } from '@/db/client'
-import { BadRequestError, ForbiddenError } from '@/errors/http-errors'
+import { BadRequestError, ForbiddenError, UnprocessableError } from '@/errors/http-errors'
 import { timingSafeEqual } from 'crypto'
 import { Elysia, t } from 'elysia'
 
@@ -61,7 +63,7 @@ export const createEncryptionRoutes = (auth: Auth, database: typeof DbType) =>
     .use(createAuthMacro(auth))
     .post(
       '/devices',
-      async ({ body, set, user: sessionUser }) => {
+      async ({ body, set, user: sessionUser, session }) => {
         const userId = sessionUser!.id
         const { deviceId, publicKey, mlkemPublicKey, name } = body
 
@@ -84,6 +86,7 @@ export const createEncryptionRoutes = (auth: Auth, database: typeof DbType) =>
           // Encryption-registered device (has publicKey): return current state
           if (existingDevice.publicKey) {
             if (existingDevice.trusted) {
+              await linkSessionToDevice(database, session.id, deviceId, userId)
               const envelope = await getEnvelopeByDeviceId(database, deviceId, userId)
               return {
                 trusted: true as const,
@@ -97,16 +100,36 @@ export const createEncryptionRoutes = (auth: Auth, database: typeof DbType) =>
           // Pre-encryption device (no publicKey): fall through to register with publicKey
         }
 
-        // New device OR pre-encryption device — register with publicKey
+        // Wrap limit check + registration in a transaction to prevent TOCTOU race
         const deviceName = name || 'Unknown device'
-        await registerDevice(database, {
-          id: deviceId,
-          userId,
-          name: deviceName,
-          publicKey,
-          mlkemPublicKey,
-        })
+        try {
+          await database.transaction(async (tx) => {
+            const txDb = tx as unknown as typeof database
 
+            if (!existingDevice) {
+              const activeCount = await countActiveDevices(txDb, userId)
+              if (activeCount >= 10) {
+                throw new UnprocessableError('Device limit reached')
+              }
+            }
+
+            await registerDevice(txDb, {
+              id: deviceId,
+              userId,
+              name: deviceName,
+              publicKey,
+              mlkemPublicKey,
+            })
+          })
+        } catch (err) {
+          if (err instanceof UnprocessableError) {
+            set.status = 422
+            return { error: err.message }
+          }
+          throw err
+        }
+
+        await linkSessionToDevice(database, session.id, deviceId, userId)
         return { trusted: false as const }
       },
       {

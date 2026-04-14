@@ -85,6 +85,13 @@
       "when": 1776107649503,
       "tag": "0011_young_thor",
       "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1776165528264,
+      "tag": "0012_furry_thor_girl",
+      "breakpoints": true
     }
   ]
 }

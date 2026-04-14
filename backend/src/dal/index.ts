@@ -1,11 +1,19 @@
 // Devices
-export { getDeviceById, upsertDevice, revokeDevice, denyDevice, markDeviceTrusted, registerDevice } from './devices'
+export {
+  getDeviceById,
+  upsertDevice,
+  revokeDevice,
+  denyDevice,
+  markDeviceTrusted,
+  registerDevice,
+  countActiveDevices,
+} from './devices'
 
 // Users
 export { getUserById, getUserByEmail, deleteUser, markUserNotNew } from './users'
 
 // Sessions
-export { getActiveSessionByToken, revokeOtherSessions } from './sessions'
+export { getActiveSessionByToken, linkSessionToDevice, revokeDeviceSessions } from './sessions'
 
 // Waitlist
 export { getWaitlistByEmail, createWaitlistEntry, approveWaitlistEntry } from './waitlist'

@@ -131,6 +131,13 @@ export const useSyncSetup = () => {
       dispatch({ type: 'DETECTED_ADDITIONAL_DEVICE' })
       return 'additional-device' as const
     } catch (err) {
+      if (err instanceof HttpError && err.response.status === 422) {
+        dispatch({
+          type: 'SET_ERROR',
+          payload: 'You have reached the maximum number of devices. Revoke an existing device to add a new one.',
+        })
+        return 'error' as const
+      }
       const message = err instanceof Error ? err.message : 'Failed to register device'
       dispatch({ type: 'SET_ERROR', payload: message })
       return 'error' as const

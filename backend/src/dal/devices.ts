@@ -1,6 +1,6 @@
 import type { db as DbType } from '@/db/client'
 import { devicesTable } from '@/db/schema'
-import { and, eq, isNull } from 'drizzle-orm'
+import { and, count, eq, isNull } from 'drizzle-orm'
 
 /** Get a device by ID. Returns userId, trusted, approvalPending, publicKey, and revokedAt, or null if not found. */
 export const getDeviceById = async (database: typeof DbType, deviceId: string) =>
@@ -47,6 +47,14 @@ export const markDeviceTrusted = async (database: typeof DbType, deviceId: strin
     .update(devicesTable)
     .set({ trusted: true, approvalPending: false })
     .where(and(eq(devicesTable.id, deviceId), eq(devicesTable.userId, userId)))
+
+/** Count active (non-revoked) devices for a user. */
+export const countActiveDevices = async (database: typeof DbType, userId: string) =>
+  database
+    .select({ count: count() })
+    .from(devicesTable)
+    .where(and(eq(devicesTable.userId, userId), isNull(devicesTable.revokedAt)))
+    .then((rows) => rows[0]?.count ?? 0)
 
 /** Deny a pending device by clearing its approval_pending flag. Does not revoke. */
 export const denyDevice = async (database: typeof DbType, deviceId: string, userId: string) =>

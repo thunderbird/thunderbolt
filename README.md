@@ -4,9 +4,9 @@
 
 Thunderbolt is an open-source, cross-platform AI client that can be deployed on-prem anywhere.
 
-✅ Available on all major desktop and mobile platforms: web, iOS, Android, Mac, Linux, and Windows.
-✅ Data is stored locally with optional end-to-end-encrypted cloud syncing.
-✅ Enterprise features are currently under active development.
+- 🌐 Available on all major desktop and mobile platforms: web, iOS, Android, Mac, Linux, and Windows.
+- 🔒 Data is stored locally with optional end-to-end-encrypted cloud syncing.
+- ⚡ Enterprise features are currently under active development.
 
 **Thunderbolt is under active development, currently undergoing a security audit, and preparing for enterprise production readiness.**
 

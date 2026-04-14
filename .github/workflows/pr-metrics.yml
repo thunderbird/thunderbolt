@@ -33,7 +33,7 @@ jobs:
           restore-keys: bun-
 
       - name: Install dependencies
-        run: bun install
+        run: bun install --frozen-lockfile
 
       # --- Line count (excludes tests, migrations, lockfiles) ---
       - name: Compute line count

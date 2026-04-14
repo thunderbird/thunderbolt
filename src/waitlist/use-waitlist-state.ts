@@ -89,9 +89,9 @@ export const useWaitlistState = ({ authClient, onVerified }: UseWaitlistStateOpt
     try {
       const { challengeToken } = await httpClient
         .post('waitlist/join', { json: { email: trimmedEmail } })
-        .json<{ success: boolean; challengeToken: string }>()
+        .json<{ success: boolean; challengeToken?: string }>()
 
-      dispatch({ type: 'JOIN_SUCCESS', payload: challengeToken })
+      dispatch({ type: 'JOIN_SUCCESS', payload: challengeToken ?? '' })
     } catch (error) {
       console.error('Waitlist join error:', error)
       dispatch({ type: 'JOIN_ERROR', payload: 'Something went wrong. Please try again.' })

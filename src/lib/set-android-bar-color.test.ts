@@ -2,7 +2,7 @@ import { describe, expect, it } from 'bun:test'
 import { setAndroidBarColor } from './set-android-bar-color'
 
 describe('setAndroidBarColor', () => {
-  it('calls invoke with "set_bar_color" and style "dark" when Tauri', async () => {
+  it('calls invoke with plugin command and style "dark" when Tauri', async () => {
     let invokedWith: { command: string; args: Record<string, string> } | null = null
 
     await setAndroidBarColor('dark', {
@@ -13,10 +13,10 @@ describe('setAndroidBarColor', () => {
       },
     })
 
-    expect(invokedWith!).toEqual({ command: 'set_bar_color', args: { style: 'dark' } })
+    expect(invokedWith!).toEqual({ command: 'plugin:platform-utils|set_bar_color', args: { style: 'dark' } })
   })
 
-  it('calls invoke with "set_bar_color" and style "light" when Tauri', async () => {
+  it('calls invoke with plugin command and style "light" when Tauri', async () => {
     let invokedWith: { command: string; args: Record<string, string> } | null = null
 
     await setAndroidBarColor('light', {
@@ -27,7 +27,7 @@ describe('setAndroidBarColor', () => {
       },
     })
 
-    expect(invokedWith!).toEqual({ command: 'set_bar_color', args: { style: 'light' } })
+    expect(invokedWith!).toEqual({ command: 'plugin:platform-utils|set_bar_color', args: { style: 'light' } })
   })
 
   it('does not call invoke when not running in Tauri', async () => {
@@ -44,13 +44,14 @@ describe('setAndroidBarColor', () => {
     expect(invokeCalled).toBe(false)
   })
 
-  it('does not throw when invoke rejects', async () => {
-    await setAndroidBarColor('dark', {
+  it('propagates invoke errors (no silent catch)', async () => {
+    const error = new Error('command failed')
+
+    const promise = setAndroidBarColor('dark', {
       isTauri: () => true,
-      invoke: () => Promise.reject(new Error('not android')),
+      invoke: () => Promise.reject(error),
     })
 
-    // Should not throw - errors are caught silently
-    expect(true).toBe(true)
+    expect(promise).rejects.toThrow('command failed')
   })
 })

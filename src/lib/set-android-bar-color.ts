@@ -19,9 +19,5 @@ export const setAndroidBarColor = async (
   if (!deps.isTauri()) {
     return
   }
-  try {
-    await deps.invoke('set_bar_color', { style })
-  } catch {
-    // No-op on platforms that don't support this (desktop, iOS)
-  }
+  await deps.invoke('plugin:platform-utils|set_bar_color', { style })
 }

@@ -14,7 +14,7 @@ type SafeAreaInsetDeps = {
 
 const defaultDeps: SafeAreaInsetDeps = {
   isTauri,
-  getInsets: () => invoke<AndroidInsets | null>('get_android_insets'),
+  getInsets: () => invoke<AndroidInsets | null>('plugin:platform-utils|get_android_insets'),
 }
 
 export const createCSSVars = (insets: { bottom: number; top: number }) => {

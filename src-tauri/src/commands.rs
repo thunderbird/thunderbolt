@@ -66,55 +66,6 @@ pub fn set_interface_style(style: String) -> Result<(), String> {
     Ok(())
 }
 
-// === Android bar color & insets ===============================================================
-
-/// Set the Android status bar and navigation bar icon appearance.
-/// style: "dark" (dark icons on light bg) | "light" (light icons on dark bg)
-/// No-op on non-Android platforms.
-#[command]
-pub fn set_bar_color(style: String) -> Result<(), String> {
-    #[cfg(target_os = "android")]
-    {
-        // Android implementation is handled via the Kotlin plugin bridge.
-        // For now this is a placeholder — the Kotlin side will be wired up
-        // when android-specific native code is added.
-        let _ = style;
-    }
-
-    #[cfg(not(target_os = "android"))]
-    {
-        let _ = style;
-    }
-
-    Ok(())
-}
-
-/// Returns the Android edge-to-edge display insets (safe area padding).
-/// Returns null on non-Android platforms.
-#[derive(Serialize)]
-pub struct AndroidInsets {
-    #[serde(rename = "adjustedInsetTop")]
-    pub adjusted_inset_top: f64,
-    #[serde(rename = "adjustedInsetBottom")]
-    pub adjusted_inset_bottom: f64,
-}
-
-#[command]
-pub fn get_android_insets() -> Option<AndroidInsets> {
-    #[cfg(target_os = "android")]
-    {
-        // Android implementation is handled via the Kotlin plugin bridge.
-        // For now this is a placeholder — the Kotlin side will be wired up
-        // when android-specific native code is added.
-        None
-    }
-
-    #[cfg(not(target_os = "android"))]
-    {
-        None
-    }
-}
-
 // === Capabilities ============================================================================
 
 /// List of runtime capabilities that the renderer can query once and cache.

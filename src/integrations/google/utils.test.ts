@@ -8,12 +8,10 @@ const decodeRawMessage = (raw: string): string => {
   return new TextDecoder().decode(bytes)
 }
 
-/** Encode a string the way Gmail API returns base64url body data */
+/** Encode a string to base64 the way Gmail API body.data arrives (consumed by atob) */
 const toGmailBase64 = (str: string): string => {
   const bytes = new TextEncoder().encode(str)
   return btoa(bytes.reduce((s, b) => s + String.fromCharCode(b), ''))
-    .replace(/\+/g, '-')
-    .replace(/\//g, '_')
 }
 
 describe('extractBody', () => {

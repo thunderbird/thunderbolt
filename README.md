@@ -4,9 +4,9 @@
 
 Thunderbolt is an open-source, cross-platform AI client that can be deployed on-prem anywhere.
 
-Thunderbolt is built with Tauri, React, Vercel AI SDK and is available on all major desktop and mobile platforms: web, iOS, Android, Mac, Linux, and Windows.
-
-Data is stored on-device using SQLite (IndexedDB). Optional end-to-end encrypted cloud syncing is available using Powersync.
+✅ Available on all major desktop and mobile platforms: web, iOS, Android, Mac, Linux, and Windows.
+✅ Data is stored locally with optional end-to-end-encrypted cloud syncing.
+✅ Enterprise features are currently under active development.
 
 **Thunderbolt is under active development, currently undergoing a security audit, and preparing for enterprise production readiness.**
 
@@ -26,8 +26,9 @@ Data is stored on-device using SQLite (IndexedDB). Optional end-to-end encrypted
 | Feature | Status |
 | --- | --- |
 | ACP | In Development - Release Planned: April 2026 |️
-| MCP Support | ✅ |
+| Basic MCP Support | ✅ |
 | Improved MCP Support | In Development - Release Planned: April 2026 |
+| OIDC | ✅ |
 | Chat Widgets | ✅ |
 | Chat Mode | ✅ |
 | Search Mode | ✅ |
@@ -42,6 +43,7 @@ Data is stored on-device using SQLite (IndexedDB). Optional end-to-end encrypted
 | Agent Skills | Planned |
 | Offline Support | Planned |
 | Research Mode v2 | Planned |
+| Tasks | Preview |
 
 ## Quick Start
 

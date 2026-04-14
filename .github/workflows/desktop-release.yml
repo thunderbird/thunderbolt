@@ -29,6 +29,9 @@ concurrency:
   group: desktop-release-${{ inputs.version }}
   cancel-in-progress: true
 
+permissions:
+  contents: write
+
 jobs:
   draft:
     name: Create Draft Release

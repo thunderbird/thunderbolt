@@ -18,6 +18,9 @@ on:
           - minor
           - major
 
+permissions:
+  contents: write
+
 jobs:
   create_tag:
     runs-on: ubuntu-latest

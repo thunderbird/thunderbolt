@@ -55,6 +55,9 @@ on:
         description: 'The tag name that was created'
         value: ${{ jobs.version_bump.outputs.tag_name }}
 
+permissions:
+  contents: write
+
 jobs:
   version_bump:
     runs-on: ubuntu-latest

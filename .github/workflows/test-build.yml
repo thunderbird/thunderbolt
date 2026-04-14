@@ -15,6 +15,9 @@ on:
           - macos-intel
           - linux
 
+permissions:
+  contents: read
+
 jobs:
   build:
     runs-on: ${{ fromJSON('{"windows-arm":"windows-latest","windows-x64":"windows-latest","macos-silicon":"macos-latest","macos-intel":"macos-latest","linux":"ubuntu-24.04"}')[inputs.platform] }}

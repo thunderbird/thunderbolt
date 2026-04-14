@@ -217,7 +217,9 @@ export const createAuth = (database: typeof DbType) => {
               if (!autoApproved) {
                 await sendWaitlistJoinedEmail({ email: normalizedEmail })
                 // Clean up the OTP that Better Auth already persisted (it generates before calling this callback)
-                await database.delete(schema.verification).where(eq(schema.verification.identifier, normalizedEmail))
+                await database
+                  .delete(schema.verification)
+                  .where(eq(schema.verification.identifier, `sign-in-otp-${normalizedEmail}`))
                 return
               }
             } else if (waitlistEntry.status !== 'approved') {
@@ -227,7 +229,9 @@ export const createAuth = (database: typeof DbType) => {
                 console.info('Handling sign-in for non-approved email (sending waitlist email)')
                 await sendWaitlistNotReadyEmail({ email: normalizedEmail })
                 // Clean up the OTP that Better Auth already persisted (it generates before calling this callback)
-                await database.delete(schema.verification).where(eq(schema.verification.identifier, normalizedEmail))
+                await database
+                  .delete(schema.verification)
+                  .where(eq(schema.verification.identifier, `sign-in-otp-${normalizedEmail}`))
                 return
               }
             }

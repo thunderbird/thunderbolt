@@ -67,7 +67,7 @@ export const createEncryptionRoutes = (auth: Auth, database: typeof DbType) =>
         const userId = sessionUser!.id
         const { deviceId, publicKey, mlkemPublicKey, name } = body
 
-        // Check if device already exists
+        // Check if device already exists (fast-path before transaction)
         const existingDevice = await getDeviceById(database, deviceId)
 
         if (existingDevice) {
@@ -106,7 +106,9 @@ export const createEncryptionRoutes = (auth: Auth, database: typeof DbType) =>
           await database.transaction(async (tx) => {
             const txDb = tx as unknown as typeof database
 
-            if (!existingDevice) {
+            // Re-check device inside transaction to close race window
+            const freshDevice = await getDeviceById(txDb, deviceId)
+            if (!freshDevice) {
               const activeCount = await countActiveDevices(txDb, userId)
               if (activeCount >= 10) {
                 throw new UnprocessableError('Device limit reached')

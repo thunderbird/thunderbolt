@@ -459,6 +459,12 @@ describe('Config Settings', () => {
       expect(() => getSettings()).toThrow()
     })
 
+    it('should accept exactly 32-character JWT secret when powersyncUrl is set', () => {
+      process.env.POWERSYNC_URL = 'https://sync.example.com'
+      process.env.POWERSYNC_JWT_SECRET = 'a'.repeat(32)
+      expect(() => getSettings()).not.toThrow()
+    })
+
     it('should allow empty JWT secret when powersyncUrl is empty', () => {
       process.env.POWERSYNC_URL = ''
       process.env.POWERSYNC_JWT_SECRET = ''

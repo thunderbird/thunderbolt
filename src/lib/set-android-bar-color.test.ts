@@ -52,6 +52,6 @@ describe('setAndroidBarColor', () => {
       invoke: () => Promise.reject(error),
     })
 
-    expect(promise).rejects.toThrow('command failed')
+    await expect(promise).rejects.toThrow('command failed')
   })
 })

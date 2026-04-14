@@ -15,21 +15,24 @@ on:
           - macos-intel
           - linux
 
+permissions:
+  contents: read
+
 jobs:
   build:
     runs-on: ${{ fromJSON('{"windows-arm":"windows-latest","windows-x64":"windows-latest","macos-silicon":"macos-latest","macos-intel":"macos-latest","linux":"ubuntu-24.04"}')[inputs.platform] }}
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: 'lts/*'
 
-      - uses: oven-sh/setup-bun@v2
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
 
       - name: Install stable toolchain
-        uses: actions-rust-lang/setup-rust-toolchain@v1
+        uses: actions-rust-lang/setup-rust-toolchain@2b1f5e9b395427c92ee4e3331786ca3c37afe2d7 # v1
         with:
           toolchain: stable
           cache: false
@@ -80,7 +83,7 @@ jobs:
           CARGO_TARGET_X86_64_APPLE_DARWIN_LINKER: ${{ inputs.platform == 'macos-intel' && 'clang' || '' }}
 
       - name: Upload artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: ${{ inputs.platform }}-build
           path: |

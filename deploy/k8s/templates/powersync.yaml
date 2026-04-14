@@ -55,8 +55,13 @@ spec:
           env:
             - name: POWERSYNC_CONFIG_PATH
               value: /config/config.yaml
+            - name: POWERSYNC_DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: thunderbolt-secrets
+                  key: powersync-db-password
             - name: PS_PG_URI
-              value: "postgresql://powersync_role:{{ .Values.powersync.db.passwordBase64 | b64dec }}@postgres:5432/{{ .Values.postgres.credentials.database }}"
+              value: "postgresql://powersync_role:$(POWERSYNC_DB_PASSWORD)@postgres:5432/{{ .Values.postgres.credentials.database }}"
             - name: PS_MONGO_URI
               value: "mongodb://mongo:27017/powersync"
           volumeMounts:

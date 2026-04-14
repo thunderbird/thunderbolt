@@ -109,7 +109,7 @@ metadata:
 data:
   01-powersync.sql: |
     -- Create replication role for PowerSync
-    CREATE ROLE powersync_role WITH LOGIN PASSWORD '{{ .Values.powersync.db.passwordBase64 | b64dec }}' REPLICATION;
+    CREATE ROLE powersync_role WITH LOGIN PASSWORD $${{ .Values.powersync.db.passwordBase64 | b64dec }}$$ REPLICATION;
     GRANT ALL PRIVILEGES ON DATABASE postgres TO powersync_role;
     ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON TABLES TO powersync_role;
     CREATE PUBLICATION powersync_pub FOR ALL TABLES;

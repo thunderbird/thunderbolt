@@ -446,6 +446,26 @@ describe('OTP Security Hardening', () => {
       expect(result.user).toBeDefined()
     })
 
+    it('should block sign-in for pending user even with a valid challenge token (before-hook defense)', async () => {
+      const email = 'pending-with-token@example.com'
+      // Insert a pending waitlist entry (no existing user, not approved)
+      await db.insert(waitlist).values({ id: crypto.randomUUID(), email, status: 'pending' })
+
+      // Manufacture a valid challenge token directly, bypassing /waitlist/join
+      const challengeToken = await createTestChallenge(db, email)
+
+      // Manually insert an OTP verification record (simulating Better Auth persisting it)
+      await auth.api.sendVerificationOTP({ body: { email, type: 'sign-in' } })
+
+      let threw = false
+      try {
+        await signInWithChallenge(email, '00000000', challengeToken)
+      } catch {
+        threw = true
+      }
+      expect(threw).toBe(true)
+    })
+
     it('should delete challenge token after successful sign-in', async () => {
       const email = 'cleanup@example.com'
       await insertExistingUser(email)

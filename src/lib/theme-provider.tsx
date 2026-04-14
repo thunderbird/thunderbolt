@@ -1,7 +1,7 @@
 import { invoke } from '@tauri-apps/api/core'
 import { createContext, useContext, useEffect, useState, type ReactNode } from 'react'
-import { M3 } from 'tauri-plugin-m3'
 import { isTauri } from './platform'
+import { setAndroidBarColor } from './set-android-bar-color'
 
 /** Sync native UI (keyboard, system controls) with the resolved theme on iOS. */
 const syncNativeInterfaceStyle = (resolvedTheme: 'dark' | 'light') => {
@@ -80,9 +80,7 @@ export const ThemeProvider = ({
       root.style.backgroundColor = bgColor
       metaThemeColor?.setAttribute('content', bgColor)
 
-      if (isTauri()) {
-        M3.setBarColor(systemTheme === 'dark' ? 'light' : 'dark')
-      }
+      setAndroidBarColor(systemTheme === 'dark' ? 'light' : 'dark')
       syncNativeInterfaceStyle(systemTheme)
 
       return
@@ -94,9 +92,7 @@ export const ThemeProvider = ({
     root.style.backgroundColor = bgColor
     metaThemeColor?.setAttribute('content', bgColor)
 
-    if (isTauri()) {
-      M3.setBarColor(theme === 'dark' ? 'light' : 'dark')
-    }
+    setAndroidBarColor(theme === 'dark' ? 'light' : 'dark')
     syncNativeInterfaceStyle(theme)
   }, [theme])
 
@@ -116,9 +112,7 @@ export const ThemeProvider = ({
         root.style.backgroundColor = bgColor
         metaThemeColor?.setAttribute('content', bgColor)
 
-        if (isTauri()) {
-          M3.setBarColor(systemTheme === 'dark' ? 'light' : 'dark')
-        }
+        setAndroidBarColor(systemTheme === 'dark' ? 'light' : 'dark')
         syncNativeInterfaceStyle(systemTheme)
       }
     }

@@ -33,7 +33,6 @@ pub fn create_app() -> tauri::Builder<tauri::Wry> {
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_os::init())
-        .plugin(tauri_plugin_m3::init())
         .plugin(tauri_plugin_deep_link::init())
         .plugin(tauri_plugin_haptics::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
@@ -42,6 +41,8 @@ pub fn create_app() -> tauri::Builder<tauri::Wry> {
             commands::toggle_dock_icon,
             commands::capabilities,
             commands::set_interface_style,
+            commands::set_bar_color,
+            commands::get_android_insets,
             commands::start_oauth_server,
         ]);
 

@@ -1,8 +1,23 @@
-import { isTauri } from '@/lib/platform'
+import { invoke } from '@tauri-apps/api/core'
 import { useEffect } from 'react'
-import { M3 } from 'tauri-plugin-m3'
+import { isTauri } from '@/lib/platform'
 
-const createCSSVars = (insets: { bottom: number; top: number }) => {
+type AndroidInsets = {
+  adjustedInsetTop: number
+  adjustedInsetBottom: number
+}
+
+type SafeAreaInsetDeps = {
+  isTauri: () => boolean
+  getInsets: () => Promise<AndroidInsets | null>
+}
+
+const defaultDeps: SafeAreaInsetDeps = {
+  isTauri,
+  getInsets: () => invoke<AndroidInsets | null>('get_android_insets'),
+}
+
+export const createCSSVars = (insets: { bottom: number; top: number }) => {
   document.documentElement.style.setProperty(
     '--safe-area-top-padding',
     insets?.top > 0 ? `${insets.top}px` : 'env(safe-area-inset-top, 24px)',
@@ -14,7 +29,7 @@ const createCSSVars = (insets: { bottom: number; top: number }) => {
   )
 }
 
-export const useSafeAreaInset = () => {
+export const useSafeAreaInset = (deps: SafeAreaInsetDeps = defaultDeps) => {
   /**
    * This hook sets the `--safe-area-top-padding` and `--safe-area-bottom-padding` CSS custom properties on the root `<html>` element.
    * On iOS env(safe-area-inset-*) works fine, but on Android it can fail due the edge-to-edge display.
@@ -22,15 +37,18 @@ export const useSafeAreaInset = () => {
    * So in your CSS instead of using env(safe-area-inset-*) use can/should use var(--safe-area-top-padding) and var(--safe-area-bottom-padding).
    */
   useEffect(() => {
-    if (isTauri()) {
-      M3.getInsets().then((insetsScheme) => {
-        const insets = insetsScheme || null
-
-        createCSSVars({
-          bottom: insets?.adjustedInsetBottom ?? 0,
-          top: insets?.adjustedInsetTop ?? 0,
+    if (deps.isTauri()) {
+      deps
+        .getInsets()
+        .then((insets) => {
+          createCSSVars({
+            bottom: insets?.adjustedInsetBottom ?? 0,
+            top: insets?.adjustedInsetTop ?? 0,
+          })
         })
-      })
+        .catch(() => {
+          createCSSVars({ bottom: 0, top: 0 })
+        })
 
       return
     }

@@ -27,8 +27,7 @@ Thunderbolt is an open-source, cross-platform AI client that can be deployed on-
 | Feature | Status |
 | --- | --- |
 | ACP | In Development - Release Planned: April 2026 |️
-| Basic MCP Support | ✅ |
-| Improved MCP Support | In Development - Release Planned: April 2026 |
+| MCP Support | ✅ |
 | OIDC | ✅ |
 | Chat Widgets | ✅ |
 | Chat Mode | ✅ |

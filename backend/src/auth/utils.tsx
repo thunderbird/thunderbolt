@@ -57,9 +57,18 @@ export const getValidatedOrigin = (trustedOrigins: string[], request?: Request):
  * When clicked, the frontend auto-submits the OTP via the standard emailOtp sign-in endpoint
  * Uses deep link URL for mobile platforms so the link opens the app
  */
-export const buildVerifyUrl = (origin: string, email: string, otp: string, request?: Request): string => {
+export const buildVerifyUrl = (
+  origin: string,
+  email: string,
+  otp: string,
+  request?: Request,
+  challengeToken?: string,
+): string => {
   const baseUrl = isDeepLinkPlatform(request) ? deepLinkHost : origin
   const params = new URLSearchParams({ email, otp })
+  if (challengeToken) {
+    params.set('challengeToken', challengeToken)
+  }
   return `${baseUrl}/auth/verify?${params.toString()}`
 }
 

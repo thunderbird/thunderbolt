@@ -19,7 +19,7 @@ describe('Waitlist API', () => {
     const testEnv = await createTestDb()
     db = testEnv.db
     cleanup = testEnv.cleanup
-    app = await createApp({ database: db })
+    app = await createApp({ database: db, otpCooldownMs: 0 })
   })
 
   afterEach(async () => {
@@ -45,7 +45,8 @@ describe('Waitlist API', () => {
       expect(response.status).toBe(200)
       const result = await response.json()
       // Privacy: response doesn't reveal approval status
-      expect(result).toEqual({ success: true })
+      expect(result.success).toBe(true)
+      expect(result.challengeToken).toBeDefined()
 
       // Verify in database
       const entries = await db.select().from(waitlist).where(eq(waitlist.email, 'test@example.com'))
@@ -91,7 +92,8 @@ describe('Waitlist API', () => {
       expect(response.status).toBe(200)
       const result = await response.json()
       // Privacy: response doesn't reveal approval status
-      expect(result).toEqual({ success: true })
+      expect(result.success).toBe(true)
+      expect(result.challengeToken).toBeDefined()
 
       // Verify only one entry exists
       const entries = await db.select().from(waitlist).where(eq(waitlist.email, 'duplicate@example.com'))
@@ -120,7 +122,8 @@ describe('Waitlist API', () => {
       expect(response.status).toBe(200)
       const result = await response.json()
       // Privacy: response doesn't reveal approval status
-      expect(result).toEqual({ success: true })
+      expect(result.success).toBe(true)
+      expect(result.challengeToken).toBeDefined()
 
       // Verify only one entry exists
       const entries = await db.select().from(waitlist).where(eq(waitlist.email, 'case@example.com'))
@@ -170,7 +173,8 @@ describe('Waitlist API', () => {
       expect(response.status).toBe(200)
       const result = await response.json()
       // Privacy: same response as non-approved users - no way to enumerate approved emails
-      expect(result).toEqual({ success: true })
+      expect(result.success).toBe(true)
+      expect(result.challengeToken).toBeDefined()
     })
 
     it('should return same success response for existing BetterAuth user (privacy)', async () => {
@@ -193,7 +197,8 @@ describe('Waitlist API', () => {
       expect(response.status).toBe(200)
       const result = await response.json()
       // Privacy: same response as new users - no way to enumerate existing accounts
-      expect(result).toEqual({ success: true })
+      expect(result.success).toBe(true)
+      expect(result.challengeToken).toBeDefined()
 
       // Verify no waitlist entry was created (user is in user table, not waitlist)
       const entries = await db.select().from(waitlist).where(eq(waitlist.email, 'existing@example.com'))
@@ -212,7 +217,8 @@ describe('Waitlist API', () => {
       expect(response.status).toBe(200)
       const result = await response.json()
       // Privacy: same response regardless of auto-approval
-      expect(result).toEqual({ success: true })
+      expect(result.success).toBe(true)
+      expect(result.challengeToken).toBeDefined()
 
       // Verify in database with approved status
       const entries = await db.select().from(waitlist).where(eq(waitlist.email, 'test@mozilla.org'))
@@ -231,7 +237,8 @@ describe('Waitlist API', () => {
 
       expect(response.status).toBe(200)
       const result = await response.json()
-      expect(result).toEqual({ success: true })
+      expect(result.success).toBe(true)
+      expect(result.challengeToken).toBeDefined()
 
       // Verify in database with approved status
       const entries = await db.select().from(waitlist).where(eq(waitlist.email, 'test@thunderbird.net'))
@@ -250,7 +257,8 @@ describe('Waitlist API', () => {
 
       expect(response.status).toBe(200)
       const result = await response.json()
-      expect(result).toEqual({ success: true })
+      expect(result.success).toBe(true)
+      expect(result.challengeToken).toBeDefined()
 
       // Verify in database with approved status (email normalized to lowercase)
       const entries = await db.select().from(waitlist).where(eq(waitlist.email, 'test@mozilla.org'))
@@ -269,7 +277,8 @@ describe('Waitlist API', () => {
 
       expect(response.status).toBe(200)
       const result = await response.json()
-      expect(result).toEqual({ success: true })
+      expect(result.success).toBe(true)
+      expect(result.challengeToken).toBeDefined()
 
       // Verify in database with pending status
       const entries = await db.select().from(waitlist).where(eq(waitlist.email, 'test@other-domain.com'))
@@ -288,7 +297,8 @@ describe('Waitlist API', () => {
 
       expect(response.status).toBe(200)
       const result = await response.json()
-      expect(result).toEqual({ success: true })
+      expect(result.success).toBe(true)
+      expect(result.challengeToken).toBeDefined()
 
       // Verify in database with pending status (not auto-approved)
       const entries = await db.select().from(waitlist).where(eq(waitlist.email, 'test@fake-mozilla.org.evil.com'))
@@ -314,7 +324,8 @@ describe('Waitlist API', () => {
 
       expect(response.status).toBe(200)
       const result = await response.json()
-      expect(result).toEqual({ success: true })
+      expect(result.success).toBe(true)
+      expect(result.challengeToken).toBeDefined()
 
       // Verify status was upgraded to approved
       const entries = await db.select().from(waitlist).where(eq(waitlist.email, 'legacy@mozilla.org'))

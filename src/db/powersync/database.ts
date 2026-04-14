@@ -61,6 +61,21 @@ export const getPowerSyncInstance = (): PowerSyncDatabase | null => {
 }
 
 /**
+ * Force a disconnect + reconnect cycle via the singleton database.
+ * Guarded against concurrent attempts — no-ops if a reconnect is already in-flight.
+ */
+export const reconnectSync = async (): Promise<void> => {
+  try {
+    const database = getDatabaseInstance()
+    if ('reconnect' in database) {
+      await (database as { reconnect: () => Promise<void> }).reconnect()
+    }
+  } catch (error) {
+    console.warn('Failed to reconnect PowerSync:', error)
+  }
+}
+
+/**
  * Check if sync is enabled by user preference
  */
 export const isSyncEnabled = (): boolean => {
@@ -155,6 +170,9 @@ export class PowerSyncDatabaseImpl implements DatabaseInterface {
   private powerSync: PowerSyncDatabase | null = null
   private _db: AnyDrizzleDatabase | null = null
   private _isConnected = false
+  private visibilityHandler: (() => void) | null = null
+  private hiddenAt: number | null = null
+  private _isReconnecting = false
 
   get db(): AnyDrizzleDatabase {
     if (!this._db) {
@@ -219,8 +237,79 @@ export class PowerSyncDatabaseImpl implements DatabaseInterface {
         crudUploadThrottleMs: 5000,
       })
       this._isConnected = true
+      console.info('PowerSync connected')
+      this.startVisibilityReconnect()
     } catch (error) {
       console.warn('Failed to connect to PowerSync Cloud:', error)
+    }
+  }
+
+  /**
+   * Force a disconnect + reconnect cycle, guarded against concurrent attempts.
+   * Used by both the visibility reconnect handler and manual retry button.
+   * No-ops if a reconnect is already in-flight or sync is disabled.
+   */
+  async reconnect(): Promise<void> {
+    if (this._isReconnecting || !this.powerSync) {
+      return
+    }
+    this._isReconnecting = true
+    try {
+      await this.powerSync.disconnect()
+      this._isConnected = false
+      if (!isSyncEnabled()) {
+        return
+      }
+      await this.connectToSync()
+    } catch (err) {
+      console.warn('[PowerSync] Reconnect failed:', err)
+    } finally {
+      this._isReconnecting = false
+    }
+  }
+
+  /**
+   * Reconnect PowerSync when the app returns to foreground after being hidden.
+   *
+   * Browsers/OS silently kill background HTTP streams. The pending read hangs forever,
+   * so PowerSync's `connected` status stays true even though the stream is dead.
+   * We track how long the page was hidden — if >15s, the stream is almost certainly
+   * dead, so we force disconnect + reconnect to restore it immediately.
+   *
+   * Only activated for safari-tauri config — on web (default), the SharedWorker
+   * keeps the HTTP stream alive independently of page visibility.
+   */
+  private startVisibilityReconnect(): void {
+    if (getPowerSyncDatabaseConfig() !== 'safari-tauri') {
+      return
+    }
+    if (this.visibilityHandler || typeof document === 'undefined') {
+      return
+    }
+    const hiddenThresholdMs = 15_000
+    this.visibilityHandler = () => {
+      if (document.visibilityState === 'hidden') {
+        this.hiddenAt = Date.now()
+        return
+      }
+      if (!this._isConnected || !this.powerSync || !this.hiddenAt) {
+        return
+      }
+      const hiddenDuration = Date.now() - this.hiddenAt
+      this.hiddenAt = null
+      if (hiddenDuration < hiddenThresholdMs) {
+        return
+      }
+      console.info(`[PowerSync] App was hidden for ${Math.round(hiddenDuration / 1000)}s — forcing reconnect`)
+      void this.reconnect()
+    }
+    document.addEventListener('visibilitychange', this.visibilityHandler)
+  }
+
+  private stopVisibilityReconnect(): void {
+    if (this.visibilityHandler) {
+      document.removeEventListener('visibilitychange', this.visibilityHandler)
+      this.visibilityHandler = null
     }
   }
 
@@ -234,6 +323,7 @@ export class PowerSyncDatabaseImpl implements DatabaseInterface {
     }
 
     try {
+      this.stopVisibilityReconnect()
       await this.powerSync.disconnect()
       this._isConnected = false
     } catch (error) {
@@ -298,6 +388,7 @@ export class PowerSyncDatabaseImpl implements DatabaseInterface {
   }
 
   async close(): Promise<void> {
+    this.stopVisibilityReconnect()
     if (this.powerSync) {
       await this.powerSync.disconnectAndClear()
       this.powerSync = null

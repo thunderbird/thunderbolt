@@ -5,6 +5,7 @@ import {
   getCorsMethodsList,
   getCorsOriginsList,
   getSettings,
+  isOAuthRedirectUriAllowed,
   isOriginAllowed,
 } from './settings'
 
@@ -418,14 +419,14 @@ describe('Config Settings', () => {
     it('should read PowerSync values from env when set', () => {
       process.env.POWERSYNC_URL = 'https://sync.example.com'
       process.env.POWERSYNC_JWT_KID = 'my-kid'
-      process.env.POWERSYNC_JWT_SECRET = 'my-secret'
+      process.env.POWERSYNC_JWT_SECRET = 'a]3kF#9xL!mP7qR2vT5wY8zA0cE4gI6j'
       process.env.POWERSYNC_TOKEN_EXPIRY_SECONDS = '7200'
 
       const settings = getSettings()
 
       expect(settings.powersyncUrl).toBe('https://sync.example.com')
       expect(settings.powersyncJwtKid).toBe('my-kid')
-      expect(settings.powersyncJwtSecret).toBe('my-secret')
+      expect(settings.powersyncJwtSecret).toBe('a]3kF#9xL!mP7qR2vT5wY8zA0cE4gI6j')
       expect(settings.powersyncTokenExpirySeconds).toBe(7200)
     })
 
@@ -436,6 +437,81 @@ describe('Config Settings', () => {
 
       expect(settings.powersyncTokenExpirySeconds).toBe(1800)
       expect(typeof settings.powersyncTokenExpirySeconds).toBe('number')
+    })
+
+    it('should reject zero token expiry', () => {
+      process.env.POWERSYNC_TOKEN_EXPIRY_SECONDS = '0'
+      expect(() => getSettings()).toThrow()
+    })
+
+    it('should reject negative token expiry', () => {
+      process.env.POWERSYNC_TOKEN_EXPIRY_SECONDS = '-1'
+      expect(() => getSettings()).toThrow()
+    })
+
+    it('should reject non-integer token expiry', () => {
+      process.env.POWERSYNC_TOKEN_EXPIRY_SECONDS = '3600.5'
+      expect(() => getSettings()).toThrow()
+    })
+
+    it('should reject short JWT secret when powersyncUrl is set', () => {
+      process.env.POWERSYNC_URL = 'https://sync.example.com'
+      process.env.POWERSYNC_JWT_SECRET = 'too-short'
+      expect(() => getSettings()).toThrow()
+    })
+
+    it('should accept exactly 32-character JWT secret when powersyncUrl is set', () => {
+      process.env.POWERSYNC_URL = 'https://sync.example.com'
+      process.env.POWERSYNC_JWT_SECRET = 'a'.repeat(32)
+      expect(() => getSettings()).not.toThrow()
+    })
+
+    it('should allow empty JWT secret when powersyncUrl is empty', () => {
+      process.env.POWERSYNC_URL = ''
+      process.env.POWERSYNC_JWT_SECRET = ''
+      const settings = getSettings()
+      expect(settings.powersyncJwtSecret).toBe('')
+    })
+  })
+
+  describe('isOAuthRedirectUriAllowed', () => {
+    const settings = { corsOrigins: 'http://localhost:1420,tauri://localhost,http://tauri.localhost' }
+
+    it('allows web dev callback', () => {
+      expect(isOAuthRedirectUriAllowed('http://localhost:1420/oauth/callback', settings)).toBe(true)
+    })
+
+    it('allows loopback with dynamic port', () => {
+      expect(isOAuthRedirectUriAllowed('http://localhost:17421', settings)).toBe(true)
+    })
+
+    it('allows Tauri desktop callback', () => {
+      expect(isOAuthRedirectUriAllowed('tauri://localhost/oauth-callback.html', settings)).toBe(true)
+    })
+
+    it('allows mobile App Link callback', () => {
+      expect(isOAuthRedirectUriAllowed('https://thunderbolt.io/oauth/callback', settings)).toBe(true)
+    })
+
+    it('allows production origin from corsOrigins', () => {
+      const prod = { corsOrigins: 'https://app.thunderbolt.io' }
+      expect(isOAuthRedirectUriAllowed('https://app.thunderbolt.io/oauth/callback', prod)).toBe(true)
+    })
+
+    it('rejects attacker domain', () => {
+      expect(isOAuthRedirectUriAllowed('https://evil.com/callback', settings)).toBe(false)
+    })
+
+    it('rejects HTTPS on localhost', () => {
+      expect(isOAuthRedirectUriAllowed('https://localhost:1420/oauth/callback', settings)).toBe(false)
+    })
+
+    it('rejects invalid URL', () => {
+      expect(isOAuthRedirectUriAllowed('not-a-url', settings)).toBe(false)
+    })
+
+    it('rejects empty string', () => {
+      expect(isOAuthRedirectUriAllowed('', settings)).toBe(false)
     })
   })
 })

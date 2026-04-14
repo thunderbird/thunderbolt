@@ -3,6 +3,8 @@ import type { ConsoleSpies } from '@/test-utils/console-spies'
 import { setupConsoleSpy } from '@/test-utils/console-spies'
 import { createTestProvider } from '@/test-utils/test-provider'
 import { createMockAuthClient } from '@/test-utils/auth-client'
+import { createSpyHttpClient, jsonResponse } from '@/test-utils/http-client'
+import type { HttpClient } from '@/lib/http'
 import { getClock } from '@/testing-library'
 import '@testing-library/jest-dom'
 import { act, fireEvent, render, screen } from '@testing-library/react'
@@ -32,9 +34,9 @@ mock.module('@/components/ui/input-otp', () => ({
           type="text"
           value={value || ''}
           onChange={(e) => {
-            const newValue = e.target.value.slice(0, maxLength || 6)
+            const newValue = e.target.value.slice(0, maxLength || 8)
             onChange?.(newValue)
-            if (newValue.length === (maxLength || 6)) {
+            if (newValue.length === (maxLength || 8)) {
               onComplete?.(newValue)
             }
           }}
@@ -54,11 +56,15 @@ mock.module('@/components/ui/input-otp', () => ({
 import { SignInModal } from './sign-in-modal'
 import { type ReactNode } from 'react'
 
+const challengeToken = 'test-challenge-token'
+const waitlistResponse = { success: true, challengeToken }
+
 describe('SignInModal', () => {
   let consoleSpies: ConsoleSpies
   let mockOnOpenChange: ReturnType<typeof mock>
-  let mockSendVerificationOtp: ReturnType<typeof mock>
   let mockSignInEmailOtp: ReturnType<typeof mock>
+  let mockHttpClient: HttpClient
+  let mockFetchSpy: ReturnType<typeof mock>
 
   beforeAll(async () => {
     await setupTestDatabase()
@@ -72,8 +78,10 @@ describe('SignInModal', () => {
 
   beforeEach(() => {
     mockOnOpenChange = mock()
-    mockSendVerificationOtp = mock(() => Promise.resolve({ error: null }))
     mockSignInEmailOtp = mock(() => Promise.resolve({ error: null }))
+    const { httpClient, fetchSpy } = createSpyHttpClient(undefined, waitlistResponse)
+    mockHttpClient = httpClient
+    mockFetchSpy = fetchSpy
   })
 
   afterEach(async () => {
@@ -81,13 +89,15 @@ describe('SignInModal', () => {
     mockOnOpenChange.mockClear()
   })
 
-  const renderModal = (props: Partial<{ open: boolean; onOpenChange: (open: boolean) => void }> = {}) => {
+  const renderModal = (
+    props: Partial<{ open: boolean; onOpenChange: (open: boolean) => void }> = {},
+    httpClient?: HttpClient,
+  ) => {
     const authClient = createMockAuthClient({
-      sendVerificationOtp: mockSendVerificationOtp,
       signInEmailOtp: mockSignInEmailOtp,
     })
     return render(<SignInModal open={true} onOpenChange={mockOnOpenChange} {...props} />, {
-      wrapper: createTestProvider({ authClient }),
+      wrapper: createTestProvider({ authClient, httpClient: httpClient ?? mockHttpClient }),
     })
   }
 
@@ -187,7 +197,7 @@ describe('SignInModal', () => {
   })
 
   describe('form submission', () => {
-    it('calls emailOtp.sendVerificationOtp with trimmed email', async () => {
+    it('calls waitlist/join endpoint with trimmed email', async () => {
       renderModal()
 
       const input = await waitForModal()
@@ -200,21 +210,23 @@ describe('SignInModal', () => {
         await getClock().tickAsync(100)
       })
 
-      expect(mockSendVerificationOtp).toHaveBeenCalledWith({
-        email: 'test@example.com',
-        type: 'sign-in',
-      })
+      expect(mockFetchSpy).toHaveBeenCalledTimes(1)
+      const request = mockFetchSpy.mock.calls[0][0] as Request
+      expect(request.url).toContain('waitlist/join')
+      const body = await request.clone().json()
+      expect(body).toEqual({ email: 'test@example.com' })
     })
 
     it('shows loading state while sending', async () => {
-      let resolvePromise: (value: { error: null }) => void
-      mockSendVerificationOtp.mockReturnValue(
-        new Promise((resolve) => {
-          resolvePromise = resolve
-        }),
+      let resolveRequest!: () => void
+      const { httpClient: pendingHttpClient } = createSpyHttpClient(
+        () =>
+          new Promise<Response>((resolve) => {
+            resolveRequest = () => resolve(jsonResponse(waitlistResponse))
+          }),
       )
 
-      renderModal()
+      renderModal({}, pendingHttpClient)
       const input = await waitForModal()
       const button = screen.getByRole('button', { name: 'Send Magic Link' })
 
@@ -229,7 +241,7 @@ describe('SignInModal', () => {
       expect(input).toBeDisabled()
 
       // Resolve to clean up
-      resolvePromise!({ error: null })
+      resolveRequest()
       await act(async () => {
         await getClock().runAllAsync()
       })
@@ -262,16 +274,17 @@ describe('SignInModal', () => {
         await getClock().tickAsync(100)
       })
 
-      expect(mockSendVerificationOtp).not.toHaveBeenCalled()
+      expect(mockFetchSpy).not.toHaveBeenCalled()
     })
   })
 
   describe('error handling', () => {
-    it('shows error message on API error', async () => {
-      mockSendVerificationOtp.mockResolvedValue({
-        error: { message: 'Invalid email address' },
-      })
-      renderModal()
+    it('shows error message when API call fails', async () => {
+      const { httpClient: errorHttpClient } = createSpyHttpClient(async () =>
+        jsonResponse({ error: 'Bad request' }, 400),
+      )
+
+      renderModal({}, errorHttpClient)
 
       const input = await waitForModal()
       fireEvent.change(input, { target: { value: 'test@example.com' } })
@@ -281,14 +294,15 @@ describe('SignInModal', () => {
         await getClock().tickAsync(100)
       })
 
-      expect(screen.getByText('Invalid email address')).toBeInTheDocument()
+      expect(screen.getByText('Failed to send verification code. Please check your connection.')).toBeInTheDocument()
     })
 
-    it('shows default error message when error has no message', async () => {
-      mockSendVerificationOtp.mockResolvedValue({
-        error: {},
+    it('shows error message when network request throws', async () => {
+      const { httpClient: errorHttpClient } = createSpyHttpClient(async () => {
+        throw new Error('Network error')
       })
-      renderModal()
+
+      renderModal({}, errorHttpClient)
 
       const input = await waitForModal()
       fireEvent.change(input, { target: { value: 'test@example.com' } })
@@ -298,7 +312,7 @@ describe('SignInModal', () => {
         await getClock().tickAsync(100)
       })
 
-      expect(screen.getByText('Failed to send verification code')).toBeInTheDocument()
+      expect(screen.getByText('Failed to send verification code. Please check your connection.')).toBeInTheDocument()
     })
   })
 
@@ -346,7 +360,7 @@ describe('SignInModal', () => {
       })
 
       // Should show OTP input prompt
-      expect(screen.getByText('Or enter the 6-digit code')).toBeInTheDocument()
+      expect(screen.getByText('Or enter the 8-digit code')).toBeInTheDocument()
       expect(screen.getByTestId('mock-otp-input')).toBeInTheDocument()
     })
 
@@ -364,7 +378,7 @@ describe('SignInModal', () => {
 
       // Get the mocked OTP input and enter code
       const otpInput = screen.getByTestId('otp-input')
-      fireEvent.change(otpInput, { target: { value: '123456' } })
+      fireEvent.change(otpInput, { target: { value: '12345678' } })
 
       await act(async () => {
         await getClock().tickAsync(100)
@@ -393,7 +407,7 @@ describe('SignInModal', () => {
 
       // Get the mocked OTP input and enter code
       const otpInput = screen.getByTestId('otp-input')
-      fireEvent.change(otpInput, { target: { value: '123456' } })
+      fireEvent.change(otpInput, { target: { value: '12345678' } })
 
       await act(async () => {
         await getClock().tickAsync(100)
@@ -403,7 +417,7 @@ describe('SignInModal', () => {
       expect(screen.getByText('Invalid code')).toBeInTheDocument()
     })
 
-    it('calls signIn.emailOtp with correct email and OTP', async () => {
+    it('calls signIn.emailOtp with correct email, OTP, and challenge token', async () => {
       renderModal()
 
       // Send verification code first
@@ -417,7 +431,7 @@ describe('SignInModal', () => {
 
       // Get the mocked OTP input and enter code
       const otpInput = screen.getByTestId('otp-input')
-      fireEvent.change(otpInput, { target: { value: '123456' } })
+      fireEvent.change(otpInput, { target: { value: '12345678' } })
 
       await act(async () => {
         await getClock().tickAsync(100)
@@ -425,7 +439,10 @@ describe('SignInModal', () => {
 
       expect(mockSignInEmailOtp).toHaveBeenCalledWith({
         email: 'test@example.com',
-        otp: '123456',
+        otp: '12345678',
+        fetchOptions: {
+          headers: { 'x-challenge-token': challengeToken },
+        },
       })
     })
   })
@@ -442,7 +459,7 @@ describe('SignInModal', () => {
         await getClock().tickAsync(100)
       })
 
-      expect(screen.getByText('Or enter the 6-digit code')).toBeInTheDocument()
+      expect(screen.getByText('Or enter the 8-digit code')).toBeInTheDocument()
       expect(screen.getByTestId('mock-otp-input')).toBeInTheDocument()
 
       const backButton = screen.getByRole('button', { name: 'Go back' })
@@ -453,7 +470,7 @@ describe('SignInModal', () => {
       expect(screen.getByPlaceholderText('Email address')).toBeInTheDocument()
       expect(screen.getByRole('button', { name: 'Send Magic Link' })).toBeInTheDocument()
       expect(screen.getByText('Sign In')).toBeInTheDocument()
-      expect(screen.queryByText('Or enter the 6-digit code')).not.toBeInTheDocument()
+      expect(screen.queryByText('Or enter the 8-digit code')).not.toBeInTheDocument()
     })
   })
 })

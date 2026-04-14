@@ -19,10 +19,14 @@ const host = process.env.TAURI_DEV_HOST
 // 2. The `analyze` npm/bun script being executed (process arguments include the word "analyze")
 const shouldAnalyze = process.env.ANALYZE?.toLowerCase() === 'true' || process.argv.includes('analyze')
 
+// Source maps are disabled by default so forks don't accidentally expose proprietary code.
+// Enable with ENABLE_SOURCEMAP=true (e.g. in CI) to upload maps to PostHog for error tracking.
+const sourcemap = process.env.ENABLE_SOURCEMAP?.toLowerCase() === 'true' ? 'hidden' : false
+
 // https://vitejs.dev/config/
 export default defineConfig({
   build: {
-    sourcemap: 'hidden',
+    sourcemap,
     rollupOptions: {
       external: ['bun:sqlite'],
     },

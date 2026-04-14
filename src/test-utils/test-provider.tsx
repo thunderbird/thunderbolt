@@ -1,4 +1,4 @@
-import { AuthProvider, DatabaseProvider, HttpClientProvider, type AuthClient } from '@/contexts'
+import { AuthProvider, DatabaseProvider, HttpClientProvider, type AuthClient, type HttpClient } from '@/contexts'
 import { getDb } from '@/db/database'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { type ReactNode } from 'react'
@@ -9,6 +9,7 @@ import { PowerSyncMockProvider } from './powersync-mock'
 type TestProviderOptions = {
   mockResponse?: unknown
   authClient?: AuthClient
+  httpClient?: HttpClient
   queryOptions?: {
     defaultOptions?: {
       queries?: {
@@ -55,7 +56,7 @@ export const createTestProvider = (options?: TestProviderOptions) => {
     },
   })
 
-  const mockHttpClient = createMockHttpClient(options?.mockResponse ?? [])
+  const mockHttpClient = options?.httpClient ?? createMockHttpClient(options?.mockResponse ?? [])
 
   const mockAuthClient = options?.authClient ?? createMockAuthClient()
 

@@ -88,7 +88,14 @@ export const createApp = async (deps?: AppDeps) => {
       .use(createInferenceRoutes(auth, createInferenceRateLimit(database, rateLimitSettings)))
       .use(createPostHogRoutes(fetchFn))
       .use(createMcpProxyRoutes(auth, fetchFn))
-      .use(createWaitlistRoutes({ database, auth, emailService: deps?.waitlistEmailService }))
+      .use(
+        createWaitlistRoutes({
+          database,
+          auth,
+          emailService: deps?.waitlistEmailService,
+          cooldownMs: deps?.otpCooldownMs,
+        }),
+      )
       .use(createPowerSyncRoutes(auth, settings, database))
       .use(createEncryptionRoutes(auth, database))
       .use(createAccountRoutes(auth, database))
@@ -164,7 +171,7 @@ const startServer = async () => {
       process.exit(0)
     })
   } catch (error) {
-    log.error({ error }, 'Failed to start server')
+    log.error({ err: error }, 'Failed to start server')
     process.exit(1)
   }
 }

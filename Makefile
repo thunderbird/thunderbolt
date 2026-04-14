@@ -1,4 +1,4 @@
-.PHONY: help setup setup-symlinks install build build-desktop build-android build-ios clean run dev doctor doctor-q docker-up docker-down docker-status thunderbot-pull thunderbot-push thunderbot-customize
+.PHONY: help setup setup-symlinks install build build-desktop build-android build-ios clean run dev doctor doctor-q docker-up docker-down docker-nuke docker-status thunderbot-pull thunderbot-push thunderbot-customize
 
 # Color definitions
 BLUE := \033[0;34m
@@ -23,6 +23,7 @@ help:
 	@echo "  make doctor         - Verify all dev tools and env files are configured"
 	@echo "  make docker-up      - Start docker containers (PowerSync, Mongo, etc.)"
 	@echo "  make docker-down    - Stop docker containers"
+	@echo "  make docker-nuke    - Destroy all docker data and recreate from scratch"
 	@echo "  make docker-status  - Show docker container status"
 	@echo "  make thunderbot-pull - Pull latest skills from thunderbot"
 	@echo "  make thunderbot-push      - Push skill changes back to thunderbot"
@@ -161,6 +162,9 @@ docker-down:
 	@echo "$(BLUE)→ Stopping docker containers...$(NC)"
 	docker compose -f powersync-service/docker-compose.yml down
 	@echo "$(GREEN)✓ Docker containers stopped!$(NC)"
+
+docker-nuke:
+	@bash scripts/docker-nuke.sh
 
 docker-status:
 	@bash scripts/docker-status.sh

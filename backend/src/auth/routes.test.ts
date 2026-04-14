@@ -175,4 +175,88 @@ describe('Authentication Routes', () => {
       expect(response.status).toBe(422)
     })
   })
+
+  describe('redirect_uri validation', () => {
+    it('rejects Google exchange with disallowed redirect_uri', async () => {
+      mockFetch.mockClear()
+      const response = await app.handle(
+        new Request('http://localhost/auth/google/exchange', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            code: 'test-code',
+            code_verifier: 'test-verifier',
+            redirect_uri: 'https://evil.com/steal',
+          }),
+        }),
+      )
+      expect(response.status).toBe(400)
+      expect(mockFetch).not.toHaveBeenCalled()
+    })
+
+    it('rejects Microsoft exchange with disallowed redirect_uri', async () => {
+      mockFetch.mockClear()
+      const response = await app.handle(
+        new Request('http://localhost/auth/microsoft/exchange', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            code: 'test-code',
+            code_verifier: 'test-verifier',
+            redirect_uri: 'https://evil.com/steal',
+          }),
+        }),
+      )
+      expect(response.status).toBe(400)
+      expect(mockFetch).not.toHaveBeenCalled()
+    })
+
+    it('allows Google exchange with valid localhost redirect_uri', async () => {
+      mockFetch.mockClear()
+      mockFetch.mockResolvedValueOnce(
+        createMockOAuthResponse(200, {
+          access_token: 'token',
+          expires_in: 3600,
+          token_type: 'Bearer',
+        }),
+      )
+      const response = await app.handle(
+        new Request('http://localhost/auth/google/exchange', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            code: 'test-code',
+            code_verifier: 'test-verifier',
+            redirect_uri: 'http://localhost:1420/oauth/callback',
+          }),
+        }),
+      )
+      expect(response.status).toBe(200)
+      expect(mockFetch).toHaveBeenCalledTimes(1)
+    })
+
+    it('allows Microsoft exchange with valid localhost redirect_uri', async () => {
+      mockFetch.mockClear()
+      mockFetch.mockResolvedValueOnce(
+        createMockOAuthResponse(200, {
+          access_token: 'token',
+          expires_in: 3600,
+          token_type: 'Bearer',
+        }),
+      )
+      const response = await app.handle(
+        new Request('http://localhost/auth/microsoft/exchange', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            code: 'test-code',
+            code_verifier: 'test-verifier',
+            redirect_uri: 'http://localhost:1420/oauth/callback',
+          }),
+        }),
+      )
+      expect(response.status).toBe(200)
+      expect(mockFetch).toHaveBeenCalledTimes(1)
+    })
+  })
 })

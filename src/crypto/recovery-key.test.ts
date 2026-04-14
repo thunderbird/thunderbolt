@@ -48,8 +48,21 @@ describe('decodeRecoveryKey', () => {
     const ck = await generateCK(true)
     const mnemonic = await encodeRecoveryKey(ck)
     const words = mnemonic.split(' ')
-    ;[words[0], words[1]] = [words[1], words[0]]
-    await expect(decodeRecoveryKey(words.join(' '))).rejects.toThrow('Invalid recovery phrase')
+    // Each swap has a 1/256 chance of still having a valid checksum.
+    // Try multiple swaps so the test is effectively deterministic.
+    for (let i = 0; i < words.length - 1; i++) {
+      if (words[i] === words[i + 1]) {
+        continue
+      }
+      const corrupted = [...words]
+      ;[corrupted[i], corrupted[i + 1]] = [corrupted[i + 1], corrupted[i]]
+      try {
+        await decodeRecoveryKey(corrupted.join(' '))
+      } catch {
+        return // checksum correctly rejected
+      }
+    }
+    throw new Error('All swaps produced valid checksums (astronomically unlikely)')
   })
 
   it('rejects a word not in the wordlist', async () => {

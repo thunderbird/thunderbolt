@@ -1,7 +1,7 @@
 {
   "name": "thunderbolt",
   "private": true,
-  "version": "0.1.85",
+  "version": "0.1.87",
   "description": "Thunderbolt",
   "type": "module",
   "license": "MPL-2.0",
@@ -36,7 +36,8 @@
     "prepare": "husky",
     "size": "size-limit",
     "e2e": "bunx playwright test",
-    "e2e:headed": "bunx playwright test --headed"
+    "e2e:headed": "bunx playwright test --headed",
+    "docker:nuke": "bash scripts/docker-nuke.sh"
   },
   "size-limit": [
     {

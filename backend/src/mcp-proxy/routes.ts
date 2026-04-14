@@ -103,6 +103,12 @@ const handleProxy = async (
 
     const responseHeaders = extractResponseHeaders(response.headers)
     responseHeaders.delete('set-cookie')
+
+    // Prevent XSS: proxied content must never execute scripts in our origin
+    responseHeaders.set('content-security-policy', 'sandbox')
+    responseHeaders.set('content-disposition', 'attachment')
+    responseHeaders.set('x-content-type-options', 'nosniff')
+
     responseHeaders.set('cross-origin-resource-policy', 'cross-origin')
 
     return new Response(body, {

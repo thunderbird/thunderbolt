@@ -5,7 +5,8 @@ import { useSidebar } from '@/components/ui/sidebar'
 import { useSyncEnabledToggle } from '@/hooks/use-sync-enabled-toggle'
 import { edgeSpacing, mobileSidebarWidthRatio } from '@/lib/constants'
 import { cn } from '@/lib/utils'
-import { Cloud, CloudOff, Loader2 } from 'lucide-react'
+import { reconnectSync } from '@/db/powersync'
+import { Cloud, CloudOff, Loader2, RefreshCw } from 'lucide-react'
 import { SyncSetupModal } from '@/components/sync-setup/sync-setup-modal'
 import { Button } from '@/components/ui/button'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
@@ -25,6 +26,7 @@ export const PowerSyncStatus = () => {
   const isAuthenticated = !!session?.user
   const { openSignInModal } = useSignInModal()
   const [popoverOpen, setPopoverOpen] = useState(false)
+  const [isReconnecting, setIsReconnecting] = useState(false)
   const { isMobile } = useIsMobile()
   const { setOpenMobile } = useSidebar()
 
@@ -75,6 +77,15 @@ export const PowerSyncStatus = () => {
 
   const statusNote =
     syncEnabled && !isConnected && connectionStatus !== 'connecting' ? 'Changes will sync when back online' : null
+
+  const handleRetry = async () => {
+    setIsReconnecting(true)
+    try {
+      await reconnectSync()
+    } finally {
+      setIsReconnecting(false)
+    }
+  }
 
   return (
     <>
@@ -163,7 +174,25 @@ export const PowerSyncStatus = () => {
                   Sign In
                 </Button>
               )}
-              {statusNote && isAuthenticated && <p className="text-xs text-muted-foreground mt-1">{statusNote}</p>}
+              {statusNote && isAuthenticated && (
+                <div className="flex items-center justify-between gap-2 mt-2">
+                  <p className="text-xs text-amber-600 dark:text-amber-400">{statusNote}</p>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="shrink-0 text-xs h-[var(--touch-height-sm)] px-2.5"
+                    disabled={isReconnecting}
+                    onClick={handleRetry}
+                  >
+                    {isReconnecting ? (
+                      <Loader2 className="size-3 animate-spin mr-1" />
+                    ) : (
+                      <RefreshCw className="size-3 mr-1" />
+                    )}
+                    Retry
+                  </Button>
+                </div>
+              )}
             </div>
           </div>
         </PopoverContent>

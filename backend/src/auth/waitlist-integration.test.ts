@@ -23,9 +23,11 @@ mock.module('@/waitlist/utils', () => ({
 // Now import the rest
 import { user, verification } from '@/db/auth-schema'
 import { waitlist } from '@/db/schema'
+import { challengeTokenHeader } from '@/auth/otp-constants'
 import { createAuth } from '@/auth/auth'
 import { normalizeEmail } from '@/lib/email'
 import { createTestDb } from '@/test-utils/db'
+import { createTestChallenge } from '@/test-utils/otp-challenge'
 import { eq } from 'drizzle-orm'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 
@@ -300,10 +302,15 @@ describe('Auth Waitlist Integration', () => {
       const otpCall = mockSendSignInEmail.mock.calls[0] as unknown as [{ otp: string }]
       const correctOtp = otpCall[0].otp
 
+      const challengeToken = await createTestChallenge(db, email)
+
       // Make 2 wrong attempts (of 3 allowed) — counter goes to 2
       for (let i = 0; i < 2; i++) {
         try {
-          await auth.api.signInEmailOTP({ body: { email, otp: '000000' } })
+          await auth.api.signInEmailOTP({
+            body: { email, otp: '00000000' },
+            headers: new Headers({ [challengeTokenHeader]: challengeToken }),
+          })
         } catch {
           // Expected: INVALID_OTP
         }
@@ -317,7 +324,10 @@ describe('Auth Waitlist Integration', () => {
 
       // Make 1 more wrong attempt — this is the 3rd total, counter goes to 3
       try {
-        await auth.api.signInEmailOTP({ body: { email, otp: '000000' } })
+        await auth.api.signInEmailOTP({
+          body: { email, otp: '00000000' },
+          headers: new Headers({ [challengeTokenHeader]: challengeToken }),
+        })
       } catch {
         // Expected: INVALID_OTP
       }
@@ -327,7 +337,10 @@ describe('Auth Waitlist Integration', () => {
       // because the counter would only be at 1.
       let signInSucceeded = false
       try {
-        await auth.api.signInEmailOTP({ body: { email, otp: correctOtp } })
+        await auth.api.signInEmailOTP({
+          body: { email, otp: correctOtp },
+          headers: new Headers({ [challengeTokenHeader]: challengeToken }),
+        })
         signInSucceeded = true
       } catch {
         // Expected: locked out because counter was preserved
@@ -351,10 +364,15 @@ describe('Auth Waitlist Integration', () => {
         body: { email, type: 'sign-in' },
       })
 
+      const challengeToken = await createTestChallenge(db, email)
+
       // Use up all 3 attempts with wrong OTPs
       for (let i = 0; i < 3; i++) {
         try {
-          await auth.api.signInEmailOTP({ body: { email, otp: '000000' } })
+          await auth.api.signInEmailOTP({
+            body: { email, otp: '00000000' },
+            headers: new Headers({ [challengeTokenHeader]: challengeToken }),
+          })
         } catch {
           // Expected: INVALID_OTP or TOO_MANY_ATTEMPTS on 3rd
         }
@@ -362,7 +380,10 @@ describe('Auth Waitlist Integration', () => {
 
       // 4th attempt should be locked out
       try {
-        await auth.api.signInEmailOTP({ body: { email, otp: '999999' } })
+        await auth.api.signInEmailOTP({
+          body: { email, otp: '99999999' },
+          headers: new Headers({ [challengeTokenHeader]: challengeToken }),
+        })
         expect(true).toBe(false)
       } catch (err: unknown) {
         const code = (err as { body?: { code?: string } }).body?.code ?? ''
@@ -375,8 +396,8 @@ describe('Auth Waitlist Integration', () => {
       // Documents a known limitation: resendStrategy "reuse" only preserves the counter
       // when attempts haven't been fully exhausted. Once all 3 attempts are burned,
       // Better Auth falls through to generate a fresh OTP with counter=0.
-      // This is mitigated by Better Auth's in-memory rate limiter on the send endpoint
-      // (3 req/60s) and will be further addressed by proof-of-work (THU-113).
+      // This is mitigated by the 15s cooldown on /waitlist/join and will be
+      // further addressed by proof-of-work (THU-113).
       const email = 'exhausted-resend@example.com'
       await db.insert(user).values({
         id: crypto.randomUUID(),
@@ -394,10 +415,15 @@ describe('Auth Waitlist Integration', () => {
       const firstCall = mockSendSignInEmail.mock.calls[0] as unknown as [{ otp: string }]
       const firstOtp = firstCall[0].otp
 
+      const challengeToken = await createTestChallenge(db, email)
+
       // Exhaust all 3 attempts
       for (let i = 0; i < 3; i++) {
         try {
-          await auth.api.signInEmailOTP({ body: { email, otp: '000000' } })
+          await auth.api.signInEmailOTP({
+            body: { email, otp: '00000000' },
+            headers: new Headers({ [challengeTokenHeader]: challengeToken }),
+          })
         } catch {
           // Expected
         }
@@ -415,10 +441,13 @@ describe('Auth Waitlist Integration', () => {
       expect(freshOtp).not.toBe(firstOtp)
 
       // The fresh OTP works — counter was reset to 0.
-      // If this throws, the fresh OTP wasn't accepted (unexpected).
+      const freshChallengeToken = await createTestChallenge(db, email)
       let signInSucceeded = false
       try {
-        await auth.api.signInEmailOTP({ body: { email, otp: freshOtp } })
+        await auth.api.signInEmailOTP({
+          body: { email, otp: freshOtp },
+          headers: new Headers({ [challengeTokenHeader]: freshChallengeToken }),
+        })
         signInSucceeded = true
       } catch {
         // Unexpected failure

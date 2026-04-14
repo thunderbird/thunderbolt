@@ -312,13 +312,13 @@ describe('OTP Security Hardening', () => {
       expect(body.challengeToken.length).toBeGreaterThan(0)
     })
 
-    it('should also return challengeToken for pending users (privacy-preserving)', async () => {
+    it('should NOT return challengeToken for pending users (waitlist bypass prevention)', async () => {
       const response = await postWaitlistJoin('pending-challenge@example.com')
       expect(response.status).toBe(200)
 
       const body = await response.json()
       expect(body.success).toBe(true)
-      expect(body.challengeToken).toBeDefined()
+      expect(body.challengeToken).toBeUndefined()
     })
 
     // These tests use auth.api (not HTTP) to avoid Better Auth's HTTP rate limiter

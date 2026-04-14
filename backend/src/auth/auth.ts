@@ -10,6 +10,7 @@ import {
 } from '@/dal'
 import type { db as DbType } from '@/db/client'
 import * as schema from '@/db/schema'
+import { eq } from 'drizzle-orm'
 import { normalizeEmail } from '@/lib/email'
 import { getSettings } from '@/config/settings'
 import { getTrustedIpHeaders } from '@/utils/request'
@@ -132,9 +133,21 @@ export const createAuth = (database: typeof DbType) => {
           throw ctx.error('UNAUTHORIZED', { message: 'Challenge token required' })
         }
 
-        const valid = await validateOtpChallenge(database, normalizeEmail(rawEmail), challengeToken)
+        const normalizedEmail = normalizeEmail(rawEmail)
+
+        const valid = await validateOtpChallenge(database, normalizedEmail, challengeToken)
         if (!valid) {
           throw ctx.error('UNAUTHORIZED', { message: 'Invalid challenge token' })
+        }
+
+        // Block sign-in for non-approved waitlist users (defense-in-depth).
+        // Even if a challenge token was somehow obtained, pending users cannot sign in.
+        const existingUser = await getUserByEmail(database, normalizedEmail)
+        if (!existingUser) {
+          const waitlistEntry = await getWaitlistByEmail(database, normalizedEmail)
+          if (!waitlistEntry || waitlistEntry.status !== 'approved') {
+            throw ctx.error('UNAUTHORIZED', { message: 'Not approved' })
+          }
         }
 
         // Token stays valid for remaining attempts. Cleaned up on successful sign-in
@@ -203,6 +216,8 @@ export const createAuth = (database: typeof DbType) => {
               })
               if (!autoApproved) {
                 await sendWaitlistJoinedEmail({ email: normalizedEmail })
+                // Clean up the OTP that Better Auth already persisted (it generates before calling this callback)
+                await database.delete(schema.verification).where(eq(schema.verification.identifier, normalizedEmail))
                 return
               }
             } else if (waitlistEntry.status !== 'approved') {
@@ -211,6 +226,8 @@ export const createAuth = (database: typeof DbType) => {
               } else {
                 console.info('Handling sign-in for non-approved email (sending waitlist email)')
                 await sendWaitlistNotReadyEmail({ email: normalizedEmail })
+                // Clean up the OTP that Better Auth already persisted (it generates before calling this callback)
+                await database.delete(schema.verification).where(eq(schema.verification.identifier, normalizedEmail))
                 return
               }
             }

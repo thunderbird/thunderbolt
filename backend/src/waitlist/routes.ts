@@ -86,54 +86,49 @@ export const createWaitlistRoutes = ({
         emailCooldowns.set(email, Date.now())
       }
 
-      // Challenge token creation and user lookup are independent — run in parallel.
-      // Privacy-preserving: same response shape regardless of user status.
-      const [challengeToken, existingUser] = await Promise.all([
-        getOrCreateOtpChallenge(database, {
-          id: crypto.randomUUID(),
-          email,
-          challengeToken: crypto.randomUUID(),
-          expiresAt: new Date(Date.now() + otpExpiryMs),
-        }),
-        getUserByEmail(database, email),
-      ])
+      // Determine whether this user is approved (existing user, approved waitlist, or auto-approved domain).
+      // Only approved users receive a challenge token and OTP email.
+      const existingUser = await getUserByEmail(database, email)
+      let isApproved = !!existingUser
 
-      if (existingUser) {
-        await sendApprovedMagicLinkEmail(auth, email)
-        return { success: true, challengeToken }
-      }
+      if (!existingUser) {
+        const existing = await getWaitlistByEmail(database, email)
 
-      const existing = await getWaitlistByEmail(database, email)
-
-      if (existing) {
-        if (existing.status === 'approved') {
-          await sendApprovedMagicLinkEmail(auth, email)
-          return { success: true, challengeToken }
-        }
-
-        // Pending user - check if they now qualify for auto-approval (e.g., feature deployed after they joined)
-        if (isAutoApprovedDomain(email)) {
-          await approveWaitlistEntry(database, existing.id)
-          await sendApprovedMagicLinkEmail(auth, email)
+        if (existing) {
+          if (existing.status === 'approved') {
+            isApproved = true
+          } else if (isAutoApprovedDomain(email)) {
+            await approveWaitlistEntry(database, existing.id)
+            isApproved = true
+          } else {
+            await emailService.sendReminderEmail({ email })
+          }
         } else {
-          await emailService.sendReminderEmail({ email })
+          const autoApproved = isAutoApprovedDomain(email)
+          await createWaitlistEntry(database, {
+            id: crypto.randomUUID(),
+            email,
+            status: autoApproved ? 'approved' : 'pending',
+          })
+          if (autoApproved) {
+            isApproved = true
+          } else {
+            await emailService.sendJoinedEmail({ email })
+          }
         }
-        return { success: true, challengeToken }
       }
 
-      const isAutoApproved = isAutoApprovedDomain(email)
+      if (!isApproved) {
+        return { success: true }
+      }
 
-      await createWaitlistEntry(database, {
+      const challengeToken = await getOrCreateOtpChallenge(database, {
         id: crypto.randomUUID(),
         email,
-        status: isAutoApproved ? 'approved' : 'pending',
+        challengeToken: crypto.randomUUID(),
+        expiresAt: new Date(Date.now() + otpExpiryMs),
       })
-
-      if (isAutoApproved) {
-        await sendApprovedMagicLinkEmail(auth, email)
-      } else {
-        await emailService.sendJoinedEmail({ email })
-      }
+      await sendApprovedMagicLinkEmail(auth, email)
       return { success: true, challengeToken }
     },
     {

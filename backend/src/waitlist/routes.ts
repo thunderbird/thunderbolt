@@ -36,6 +36,46 @@ const sendApprovedMagicLinkEmail = async (auth: Auth, email: string): Promise<vo
   await auth.api.sendVerificationOTP({ body: { email, type: 'sign-in' } })
 }
 
+/**
+ * Resolve whether an email is approved to receive an OTP.
+ * Handles side effects (creating waitlist entries, sending emails) along the way.
+ * Returns true for existing users, approved waitlist entries, and auto-approved domains.
+ */
+const resolveApproval = async (
+  database: typeof db,
+  email: string,
+  emailService: WaitlistEmailService,
+): Promise<boolean> => {
+  const existingUser = await getUserByEmail(database, email)
+  if (existingUser) return true
+
+  const existing = await getWaitlistByEmail(database, email)
+
+  if (existing) {
+    if (existing.status === 'approved') return true
+
+    if (isAutoApprovedDomain(email)) {
+      await approveWaitlistEntry(database, existing.id)
+      return true
+    }
+
+    await emailService.sendReminderEmail({ email })
+    return false
+  }
+
+  const autoApproved = isAutoApprovedDomain(email)
+  await createWaitlistEntry(database, {
+    id: crypto.randomUUID(),
+    email,
+    status: autoApproved ? 'approved' : 'pending',
+  })
+
+  if (autoApproved) return true
+
+  await emailService.sendJoinedEmail({ email })
+  return false
+}
+
 /** Default cooldown between OTP requests per email (15 seconds). */
 const DEFAULT_COOLDOWN_MS = 15_000
 
@@ -86,39 +126,9 @@ export const createWaitlistRoutes = ({
         emailCooldowns.set(email, Date.now())
       }
 
-      // Determine whether this user is approved (existing user, approved waitlist, or auto-approved domain).
-      // Only approved users receive a challenge token and OTP email.
-      const existingUser = await getUserByEmail(database, email)
-      let isApproved = !!existingUser
+      const approved = await resolveApproval(database, email, emailService)
 
-      if (!existingUser) {
-        const existing = await getWaitlistByEmail(database, email)
-
-        if (existing) {
-          if (existing.status === 'approved') {
-            isApproved = true
-          } else if (isAutoApprovedDomain(email)) {
-            await approveWaitlistEntry(database, existing.id)
-            isApproved = true
-          } else {
-            await emailService.sendReminderEmail({ email })
-          }
-        } else {
-          const autoApproved = isAutoApprovedDomain(email)
-          await createWaitlistEntry(database, {
-            id: crypto.randomUUID(),
-            email,
-            status: autoApproved ? 'approved' : 'pending',
-          })
-          if (autoApproved) {
-            isApproved = true
-          } else {
-            await emailService.sendJoinedEmail({ email })
-          }
-        }
-      }
-
-      if (!isApproved) {
+      if (!approved) {
         return { success: true }
       }
 

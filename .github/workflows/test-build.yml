@@ -23,7 +23,7 @@ jobs:
     runs-on: ${{ fromJSON('{"windows-arm":"windows-latest","windows-x64":"windows-latest","macos-silicon":"macos-latest","macos-intel":"macos-latest","linux":"ubuntu-24.04"}')[inputs.platform] }}
 
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
 
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:

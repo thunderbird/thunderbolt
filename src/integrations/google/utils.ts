@@ -91,7 +91,7 @@ export const buildRawMessage = (params: DraftEmailParams): string => {
   parts.push('MIME-Version: 1.0')
 
   // Detect if body contains actual HTML tags (not just angle brackets from math/code)
-  const isHtml = /<[a-z][\s\S]*?>/i.test(params.body)
+  const isHtml = /<[a-z][a-z0-9]*(?:\s[^>]*)?\/?>/i.test(params.body)
   if (isHtml) {
     parts.push('Content-Type: text/html; charset="UTF-8"')
   } else {

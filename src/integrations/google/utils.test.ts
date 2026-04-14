@@ -81,6 +81,16 @@ describe('buildRawMessage HTML detection', () => {
     expect(buildWithBody('Hello, world!')).toContain('Content-Type: text/plain')
     expect(buildWithBody('No special characters here')).toContain('Content-Type: text/plain')
   })
+
+  it('should treat email addresses in angle brackets as plain text', () => {
+    expect(buildWithBody('Contact Support <support@example.com> for help')).toContain('Content-Type: text/plain')
+  })
+
+  it('should treat multiple email addresses in angle brackets as plain text', () => {
+    expect(buildWithBody('From: John <john@example.com> To: Jane <jane@example.com>')).toContain(
+      'Content-Type: text/plain',
+    )
+  })
 })
 
 describe('transformDriveQuery', () => {

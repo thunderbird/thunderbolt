@@ -71,7 +71,7 @@ const Hero = () => (
         AI You Control
       </h1>
       <p className="max-w-[718px] text-lg leading-[1.2] text-[#667085] md:text-2xl">
-        The Open Source, Cross-Platform, Extensible AI Workspace
+        The Open-Source, Cross-Platform, Extensible AI Workspace
       </p>
       <GetStartedButton />
     </div>
@@ -304,7 +304,7 @@ export const EnterprisePage = () => (
     <Header
       action={
         <div className="flex items-center gap-6">
-          <a href="https://github.com/thunderbird/thunderbolt" target="_blank" rel="noopener noreferrer" className="flex items-center opacity-50">
+          <a href="https://github.com/thunderbird/thunderbolt" target="_blank" rel="noopener noreferrer" className="flex items-center opacity-80">
             <img src="/enterprise/github.svg" alt="GitHub" className="h-5 w-auto" />
           </a>
           <GetStartedButton />

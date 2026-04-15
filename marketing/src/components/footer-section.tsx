@@ -14,7 +14,7 @@ export const FooterSection = ({ className = '' }: FooterSectionProps) => (
         <div className="flex items-center gap-4">
           <img src="/enterprise/mozilla-logo.svg" alt="Mozilla" className="h-6 w-auto" />
           <img src="/enterprise/thunderbird.svg" alt="Thunderbird" className="h-6 w-auto" />
-          <a href="https://github.com/thunderbird/thunderbolt" target="_blank" rel="noopener noreferrer">
+          <a href="https://github.com/thunderbird/thunderbolt" target="_blank" rel="noopener noreferrer" className="opacity-80">
             <img src="/enterprise/github.svg" alt="GitHub" className="h-6 w-auto" />
           </a>
         </div>

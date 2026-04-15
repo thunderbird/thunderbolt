@@ -304,8 +304,8 @@ export const EnterprisePage = () => (
     <Header
       action={
         <div className="flex items-center gap-6">
-          <a href="https://github.com/thunderbird/thunderbolt" target="_blank" rel="noopener noreferrer" className="flex items-center opacity-80">
-            <img src="/enterprise/github.svg" alt="GitHub" className="h-5 w-auto" />
+          <a href="https://github.com/thunderbird/thunderbolt" target="_blank" rel="noopener noreferrer" className="flex items-center">
+            <img src="/enterprise/github.svg" alt="GitHub" className="h-7 w-auto" />
           </a>
           <GetStartedButton />
         </div>

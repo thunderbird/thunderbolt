@@ -3,7 +3,7 @@
 ```mermaid
 graph TB
   subgraph LOCAL["User Device"]
-    direction TB
+    direction LR
     TAURI["Tauri Shell<br/><sub>Desktop · iOS · Android</sub>"]
     UI["React Frontend<br/><sub>React 19 · Vite · Radix UI</sub>"]
     STATE["State & Data<br/><sub>Zustand · TanStack Query · Drizzle</sub>"]
@@ -21,7 +21,7 @@ graph TB
   end
 
   subgraph SERVER["Server Infrastructure <i>(self-hostable)</i>"]
-    direction TB
+    direction LR
     API["Backend API<br/><sub>Elysia on Bun</sub>"]
     AUTH["Auth<br/><sub>Better Auth · OTP · OIDC</sub>"]
     INFERENCE["Inference Proxy<br/><sub>Rate Limiting · Routing</sub>"]
@@ -38,7 +38,7 @@ graph TB
   end
 
   subgraph EXTERNAL["External Services"]
-    direction TB
+    direction LR
     LLM["LLM Providers<br/><sub>Anthropic · OpenAI · Mistral · OpenRouter</sub>"]
     OAUTH["OAuth<br/><sub>Google · Microsoft</sub>"]
     POSTHOG["PostHog<br/><sub>Analytics</sub>"]
@@ -83,7 +83,7 @@ graph TB
 
 ## Data Sync Flow
 
-> **Note:** Multi-device sync is under active development and is subject to further refinements.
+> ⚠️ **Note:** Multi-device sync is under active development and is subject to further refinements.
 
 ```mermaid
 sequenceDiagram
@@ -112,7 +112,7 @@ sequenceDiagram
 
 ## Encryption Key Hierarchy
 
-> **Note:** End-to-end encryption is under active development, has not yet undergone a cryptography audit, and is subject to further refinements.
+> ⚠️ **Note:** End-to-end encryption is under active development, has not yet undergone a cryptography audit, and is subject to further refinements.
 
 ```mermaid
 graph TD

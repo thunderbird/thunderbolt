@@ -172,7 +172,7 @@ Creates a labeled issue on the Thunderbolt GitHub repo.
 
 ## Syncing Skills
 
-The slash commands in `.claude/commands/` are managed via [git subtree](https://www.atlassian.com/git/tutorials/git-subtree) from the [thunderbot](https://github.com/user/thunderbot) repo. You can edit them here as normal files and sync changes in both directions.
+The slash commands in `.claude/commands/` are managed via [git subtree](https://www.atlassian.com/git/tutorials/git-subtree) from the [thunderbot](https://github.com/thunderbird/thunderbot) repo. You can edit them here as normal files and sync changes in both directions.
 
 ```bash
 # Pull latest skills from thunderbot

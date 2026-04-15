@@ -1,8 +1,7 @@
 import { useIsMobile } from '@/hooks/use-mobile'
 import { cn } from '@/lib/utils'
 import { AnimatePresence, motion } from 'framer-motion'
-import { useCallback, useEffect, useRef } from 'react'
-import { SuggestionButtons } from './suggestion-buttons'
+import { useEffect, useRef } from 'react'
 import { useChatScrollHandler } from '@/chats/use-chat-scroll-handler'
 import { ChatMessages } from './chat-messages'
 import { ChatPromptInput, type ChatPromptInputRef } from './chat-prompt-input'
@@ -26,11 +25,6 @@ export default function ChatUI() {
 
   const chatPromptInputRef = useRef<ChatPromptInputRef>(null)
   const { isMobile } = useIsMobile()
-
-  const handleSelectPrompt = useCallback((prompt: string) => {
-    chatPromptInputRef.current?.setInput(prompt)
-    chatPromptInputRef.current?.focus()
-  }, [])
 
   // Scroll to bottom instantly when entering an existing chat
   // Effect re-runs when scrollToBottom changes (when container becomes available)
@@ -110,20 +104,6 @@ export default function ChatUI() {
               duration: 0.25,
             }}
           >
-            {!hasMessages && (
-              <AnimatePresence>
-                <motion.div
-                  initial={{ opacity: 0, y: 10 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0, y: 10 }}
-                  transition={{ delay: 0.1 }}
-                  className="w-full max-w-[696px] overflow-x-auto pb-3"
-                >
-                  <SuggestionButtons onSelectPrompt={handleSelectPrompt} />
-                </motion.div>
-              </AnimatePresence>
-            )}
-
             <motion.div
               className="w-full max-w-[696px] min-w-[268px] bg-card dark:bg-[oklch(0.182_0_0)] border dark:border-input rounded-2xl"
               layout

@@ -37,7 +37,12 @@ export const useSafeAreaInset = (deps: SafeAreaInsetDeps = defaultDeps) => {
    * So in your CSS instead of using env(safe-area-inset-*) use can/should use var(--safe-area-top-padding) and var(--safe-area-bottom-padding).
    */
   useEffect(() => {
+    // Set defaults synchronously so CSS vars are never unset — components
+    // reference them without a CSS fallback (e.g. bare var(--safe-area-top-padding)).
+    createCSSVars({ bottom: 0, top: 0 })
+
     if (deps.isTauri()) {
+      // On Android, overwrite with real insets once the native call resolves.
       deps
         .getInsets()
         .then((insets) => {
@@ -47,15 +52,8 @@ export const useSafeAreaInset = (deps: SafeAreaInsetDeps = defaultDeps) => {
           })
         })
         .catch(() => {
-          createCSSVars({ bottom: 0, top: 0 })
+          // Already set to defaults above; nothing to do.
         })
-
-      return
     }
-
-    createCSSVars({
-      bottom: 0,
-      top: 0,
-    })
   }, [])
 }

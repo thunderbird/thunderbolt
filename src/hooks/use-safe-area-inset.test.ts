@@ -63,6 +63,31 @@ describe('useSafeAreaInset', () => {
     document.documentElement.style.removeProperty('--safe-area-bottom-padding')
   })
 
+  it('sets CSS var defaults synchronously before async insets resolve', () => {
+    let resolve: (v: { adjustedInsetTop: number; adjustedInsetBottom: number }) => void
+    const pending = new Promise<{ adjustedInsetTop: number; adjustedInsetBottom: number }>((r) => {
+      resolve = r
+    })
+
+    renderHook(() =>
+      useSafeAreaInset({
+        isTauri: () => true,
+        getInsets: () => pending,
+      }),
+    )
+
+    // Before the promise resolves, CSS vars should already have defaults (not be empty)
+    expect(document.documentElement.style.getPropertyValue('--safe-area-top-padding')).toBe(
+      'env(safe-area-inset-top, 24px)',
+    )
+    expect(document.documentElement.style.getPropertyValue('--safe-area-bottom-padding')).toBe(
+      'env(safe-area-inset-bottom, 24px)',
+    )
+
+    // Clean up the pending promise
+    resolve!({ adjustedInsetTop: 0, adjustedInsetBottom: 0 })
+  })
+
   it('sets CSS vars from insets when running in Tauri', async () => {
     renderHook(() =>
       useSafeAreaInset({

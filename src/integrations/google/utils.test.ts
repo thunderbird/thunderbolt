@@ -38,6 +38,11 @@ describe('extractBody', () => {
     expect(extractBody(null, 'text/plain')).toBe('')
   })
 
+  it('should return empty string for malformed base64 data', () => {
+    const payload = { mimeType: 'text/plain', body: { data: '!!!invalid!!!' } }
+    expect(extractBody(payload, 'text/plain')).toBe('')
+  })
+
   it('should decode base64url body containing special characters', () => {
     // This string produces + and / in standard base64, which become - and _ in base64url
     const text = 'Réponse: où est le café? Ça coûte 3€'

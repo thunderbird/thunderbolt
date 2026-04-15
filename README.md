@@ -13,38 +13,6 @@ Thunderbolt is an open-source, cross-platform AI client that can be deployed on-
 
 ![Thunderbolt Main Dashboard](./docs/screenshots/main.png)
 
-## Roadmap
-
-| Platform | Status |
-| --- | --- |
-| Web | ✅ |
-| Mac | ✅ |
-| Linux | ✅ |
-| Windows | ✅ |
-| Android | ✅ Available - App Store Release Planned |
-| iOS | ✅ Available - App Store Release Planned |
-
-| Feature | Status |
-| --- | --- |
-| ACP | In Development - Release Planned: April 2026 |️
-| MCP Support | ✅ |
-| OIDC | ✅ |
-| Chat Widgets | ✅ |
-| Chat Mode | ✅ |
-| Search Mode | ✅ |
-| Research Mode | ✅ |
-| Custom Models / Providers | ✅ |
-| Optional End-to-End Encryption | ✅ |
-| Cross-Device Cloud Sync | ✅ |
-| Google Integration | ✅ |
-| Microsoft Integration | ✅ |
-| Ollama Compatibility | ✅ |
-| Agent Memory | Planned |
-| Agent Skills | Planned |
-| Offline Support | Planned |
-| Research Mode v2 | Planned |
-| Tasks | Preview |
-
 ## Quick Start
 
 You must have Bun, Rust, and Docker installed first. Then:
@@ -98,11 +66,37 @@ bun run test:backend:watch
 See [docs/testing.md](./docs/testing.md) for detailed testing guidelines.
 
 
+## Need Help?
+
+Found a bug? Have an idea?
+
+- We're actively working on our docs, community, and roadmap. For now, the best way to get in touch is to [File an issue](https://github.com/thunderbird/thunderbolt/issues).
+
+## Contributing
+
+We welcome contributions from everyone.
+
+- **Development**: The [CONTRIBUTING](./CONTRIBUTING.md) guide will help you get started.
+- Make sure to check out the [Mozilla Community Participation Guidelines](https://www.mozilla.org/about/governance/policies/participation/).
+
 ## Documentation
 
+- [Roadmap](./docs/roadmap.md) - Platform and feature status
 - [Claude Code Skills](./docs/claude-code.md) - Slash commands, automation, and subtree syncing
 - [Storybook](./docs/storybook.md) - Build, test, and document components
 - [Vite Bundle Analyzer](./docs/vite-bundle-analyzer.md) - Analyze frontend bundle size
 - [Tauri Signing Keys](./docs/tauri-signing-keys.md) - Generate and manage signing keys for releases
 - [Release Process](./RELEASE.md) - Instructions for creating and publishing new releases
 - [Telemetry](./TELEMETRY.md) - Information about data collection and privacy policy
+
+## Code of Conduct
+
+Please read our [Code of Conduct](./CODE_OF_CONDUCT.md). All participants in the Thunderbolt community agree to follow these guidelines and [Mozilla's Community Participation Guidelines](https://www.mozilla.org/about/governance/policies/participation/).
+
+## Security
+
+If you discover a security vulnerability, please report it responsibly via our [vulnerability reporting form](https://github.com/thunderbird/thunderbolt/security/advisories/new). Please do **not** file public GitHub issues for security vulnerabilities.
+
+## License
+
+Thunderbolt is licensed under the [Mozilla Public License 2.0](./LICENSE).

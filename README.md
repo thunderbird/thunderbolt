@@ -23,7 +23,7 @@ Found a bug? Have an idea?
 
 We welcome contributions from everyone.
 
-- **Development**: The [CONTRIBUTING](./CONTRIBUTING.md) guide will help you get started.
+- **Development**: The [development guide](./docs/development.md) will help you get started.
 - Make sure to check out the [Mozilla Community Participation Guidelines](https://www.mozilla.org/about/governance/policies/participation/).
 
 ## Documentation

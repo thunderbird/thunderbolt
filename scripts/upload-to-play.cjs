@@ -74,7 +74,7 @@ async function uploadToPlayStore() {
             releases: [
               {
                 versionCodes: [uploadResponse.data.versionCode],
-                status: 'draft',
+                status: track === 'internal' ? 'completed' : 'draft',
               },
             ],
           },

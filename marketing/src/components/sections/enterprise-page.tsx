@@ -71,7 +71,7 @@ const Hero = () => (
         AI You Control
       </h1>
       <p className="max-w-[718px] text-lg leading-[1.2] text-[#667085] md:text-2xl">
-        The Open-Source, Cross-Platform, Extensible AI Workspace
+        The Open-Source, Cross-Platform, Extensible AI Client
       </p>
       <GetStartedButton />
     </div>

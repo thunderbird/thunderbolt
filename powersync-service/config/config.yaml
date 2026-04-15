@@ -5,8 +5,9 @@ replication:
       sslmode: disable
 
 storage:
-  type: mongodb
-  uri: mongodb://mongo:27017/powersync_demo
+  type: postgresql
+  uri: postgresql://postgres:postgres@postgres:5432/powersync_storage
+  sslmode: disable
 
 port: 8080
 

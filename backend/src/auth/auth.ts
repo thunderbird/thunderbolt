@@ -3,6 +3,7 @@ import {
   getOrCreateOtpChallenge,
   createWaitlistEntry,
   deleteOtpChallengesForEmail,
+  deletePersistedSignInOtp,
   getUserByEmail,
   getWaitlistByEmail,
   markUserNotNew,
@@ -10,7 +11,6 @@ import {
 } from '@/dal'
 import type { db as DbType } from '@/db/client'
 import * as schema from '@/db/schema'
-import { eq } from 'drizzle-orm'
 import { normalizeEmail } from '@/lib/email'
 import { getSettings } from '@/config/settings'
 import { getTrustedIpHeaders } from '@/utils/request'
@@ -216,11 +216,7 @@ export const createAuth = (database: typeof DbType) => {
               })
               if (!autoApproved) {
                 await sendWaitlistJoinedEmail({ email: normalizedEmail })
-                // Clean up the OTP that Better Auth already persisted (it generates before calling this callback).
-                // Better Auth's toOTPIdentifier returns `${type}-otp-${email}` (confirmed in email-otp/utils.mjs).
-                await database
-                  .delete(schema.verification)
-                  .where(eq(schema.verification.identifier, `sign-in-otp-${normalizedEmail}`))
+                await deletePersistedSignInOtp(database, normalizedEmail)
                 return
               }
             } else if (waitlistEntry.status !== 'approved') {
@@ -229,11 +225,7 @@ export const createAuth = (database: typeof DbType) => {
               } else {
                 console.info('Handling sign-in for non-approved email (sending waitlist email)')
                 await sendWaitlistNotReadyEmail({ email: normalizedEmail })
-                // Clean up the OTP that Better Auth already persisted (it generates before calling this callback).
-                // Better Auth's toOTPIdentifier returns `${type}-otp-${email}` (confirmed in email-otp/utils.mjs).
-                await database
-                  .delete(schema.verification)
-                  .where(eq(schema.verification.identifier, `sign-in-otp-${normalizedEmail}`))
+                await deletePersistedSignInOtp(database, normalizedEmail)
                 return
               }
             }

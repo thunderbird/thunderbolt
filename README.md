@@ -27,6 +27,7 @@ We welcome contributions from everyone.
 
 ## Documentation
 
+- [Architecture](./docs/architecture.md) - System architecture and diagrams
 - [Development](./docs/development.md) - Quick start, setup, and testing
 - [Features and Roadmap](./docs/roadmap.md) - Platform and feature status
 - [Claude Code Skills](./docs/claude-code.md) - Slash commands, automation, and subtree syncing

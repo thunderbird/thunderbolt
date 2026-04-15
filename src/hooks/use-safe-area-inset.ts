@@ -50,8 +50,8 @@ export const useSafeAreaInset = (deps: SafeAreaInsetDeps = defaultDeps) => {
             bottom: insets?.adjustedInsetBottom ?? 0,
             top: insets?.adjustedInsetTop ?? 0,
           })
-        } catch {
-          // Already set to defaults above; nothing to do.
+        } catch (e) {
+          console.info('Failed to get Android insets, using CSS env() defaults:', e)
         }
       })()
     }

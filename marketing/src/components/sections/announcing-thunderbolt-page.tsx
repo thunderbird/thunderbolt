@@ -5,7 +5,7 @@ import { Header } from '../header'
 /* ─── Constants ──────────────────────────────────────── */
 
 const PUBLISH_DATE = 'Apr 16, 2026'
-const READ_TIME = '5 min read'
+const READ_TIME = '9 min read'
 const AUTHOR = {
   name: 'Thunderbolt Team',
   role: 'MZLA Technologies',

@@ -302,6 +302,17 @@ export const EnterprisePage = () => (
   <div className="relative min-h-screen overflow-x-hidden bg-[#f9fafb]">
     <BackgroundGrid />
     <Header
+      banner={
+        <a
+          href="/announcing-thunderbolt"
+          className="group flex w-full items-center justify-center gap-2 bg-gradient-to-r from-[#8b5cf6] from-20% via-[#ea580c] via-60% to-[#fbbf24] px-4 py-2.5 text-sm font-semibold text-white"
+        >
+          <span>
+            Thunderbolt is here! <span className="text-white/80">&mdash; Read the announcement</span>
+          </span>
+          <span className="text-white/80 transition-transform group-hover:translate-x-0.5">&rarr;</span>
+        </a>
+      }
       action={
         <div className="flex items-center gap-6">
           <a href="https://github.com/thunderbird/thunderbolt" target="_blank" rel="noopener noreferrer" className="flex items-center">
@@ -311,16 +322,7 @@ export const EnterprisePage = () => (
         </div>
       }
     />
-    <main className="relative pt-[104px]">
-      <a
-        href="/announcing-thunderbolt"
-        className="group flex w-full items-center justify-center gap-2 bg-gradient-to-r from-[#7c3aed] via-[#f97316] to-[#facc15] px-4 py-2.5 text-sm font-semibold text-white"
-      >
-        <span>
-          Thunderbolt is here! <span className="text-white/80">&mdash; Read the announcement</span>
-        </span>
-        <span className="text-white/80 transition-transform group-hover:translate-x-0.5">&rarr;</span>
-      </a>
+    <main className="relative pt-[144px]">
       <Hero />
       <FeatureCards />
       <CompromiseSection />

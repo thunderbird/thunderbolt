@@ -28,15 +28,4 @@ export default defineConfig({
       '@': path.resolve(__dirname, './src'),
     },
   },
-  server: {
-    fs: {
-      strict: true,
-      allow: [
-        path.resolve(__dirname, 'src'),
-        path.resolve(__dirname, 'public'),
-        path.resolve(__dirname, 'node_modules'),
-        path.resolve(__dirname, 'index.html'),
-      ],
-    },
-  },
 })

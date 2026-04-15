@@ -97,12 +97,6 @@ bun run test:backend:watch
 
 See [docs/testing.md](./docs/testing.md) for detailed testing guidelines.
 
-## Run Android
-
-```sh
-# Android builds work with default (empty) features
-bun tauri android dev
-```
 
 ## Documentation
 

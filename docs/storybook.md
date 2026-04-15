@@ -1,4 +1,4 @@
-# Storybook [[DEMO]](https://thunderbolt-storybook.onrender.com/?path=/docs/components-ui-button--docs)
+# Storybook
 
 Check the [official](https://storybook.js.org/) documentation for usage instructions and examples.
 

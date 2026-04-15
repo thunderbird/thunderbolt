@@ -47,7 +47,7 @@ graph LR
     RESEND["Resend<br/><sub>Email</sub>"]
   end
 
-  STATE -- "encrypted sync<br/>(WSS)" --> PS
+  STATE -- "encrypted sync<br/>(HTTPS)" --> PS
   STATE -- "REST / HTTPS" --> API
   AI -- "SSE streaming" --> INFERENCE
   CRYPTO -- "device keys &<br/>envelopes" --> ENCRYPT_API

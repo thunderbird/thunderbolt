@@ -1,4 +1,6 @@
 import { type Auth, createAuthMacro } from '@/auth/elysia-plugin'
+
+const MAX_DEVICES_PER_USER = 10
 import {
   countActiveDevices,
   getDeviceById,
@@ -109,7 +111,7 @@ export const createEncryptionRoutes = (auth: Auth, database: typeof DbType) =>
           const freshDevice = await getDeviceById(txDb, deviceId)
           if (!freshDevice) {
             const activeCount = await countActiveDevices(txDb, userId)
-            if (activeCount >= 10) return { limitReached: true as const }
+            if (activeCount >= MAX_DEVICES_PER_USER) return { limitReached: true as const }
           }
 
           const registered = await registerDevice(txDb, {

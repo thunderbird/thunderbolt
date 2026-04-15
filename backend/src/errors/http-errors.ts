@@ -24,11 +24,3 @@ export class ForbiddenError extends HttpError {
     this.name = 'ForbiddenError'
   }
 }
-
-/** 422 Unprocessable Entity — request understood but cannot be processed (e.g. limit reached). */
-export class UnprocessableError extends HttpError {
-  constructor(message: string, options?: ErrorOptions) {
-    super(message, 422, options)
-    this.name = 'UnprocessableError'
-  }
-}

@@ -4,8 +4,6 @@
 
 Event tracking respects user privacy settings and can be disabled through the application settings. No personally identifiable information is collected without explicit user consent.
 
-Data collection is enabled by default in dev builds and will be disabled by default in release/prod builds.
-
 ## Event Tracking
 
 Thunderbolt uses PostHog for analytics to track user interactions and application usage. All events follow a structured naming convention for better organization and analysis.

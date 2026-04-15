@@ -13,59 +13,6 @@ Thunderbolt is an open-source, cross-platform AI client that can be deployed on-
 
 ![Thunderbolt Main Dashboard](./docs/screenshots/main.png)
 
-## Quick Start
-
-You must have Bun, Rust, and Docker installed first. Then:
-
-```sh
-# Install dependencies
-make setup
-
-# Set up .env files
-cp .env.example .env
-cd backend && cp .env.example .env
-
-# Run postgres + powersync
-make docker-up
-
-# Run backend
-# cd backend && bun dev
-
-# Browser:
-bun dev
-# -> open http://localhost:1420 in your browser.
-
-# Desktop
-bun tauri:dev:desktop
-
-# iOS Simulator
-bun tauri:dev:ios
-
-# Android Emulator
-bun tauri:dev:android
-```
-
-## Testing
-
-```sh
-# Run frontend tests (src/ and scripts/)
-bun run test
-
-# Run frontend tests in watch mode
-bun run test:watch
-
-# Run backend tests
-bun run test:backend
-
-# Run backend tests in watch mode
-bun run test:backend:watch
-```
-
-**Note**: Don't use `bun test` without the npm script from the project root, as it will pick up both frontend and backend tests. The `test` script is configured to only run tests in `./src` and `./scripts` directories.
-
-See [docs/testing.md](./docs/testing.md) for detailed testing guidelines.
-
-
 ## Need Help?
 
 Found a bug? Have an idea?
@@ -81,6 +28,7 @@ We welcome contributions from everyone.
 
 ## Documentation
 
+- [Development](./docs/development.md) - Quick start, setup, and testing
 - [Roadmap](./docs/roadmap.md) - Platform and feature status
 - [Claude Code Skills](./docs/claude-code.md) - Slash commands, automation, and subtree syncing
 - [Storybook](./docs/storybook.md) - Build, test, and document components

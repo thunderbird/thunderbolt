@@ -2,7 +2,6 @@ package net.thunderbird.thunderbolt
 
 import android.app.Activity
 import androidx.core.view.ViewCompat
-import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import app.tauri.annotation.Command

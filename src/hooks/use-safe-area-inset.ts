@@ -43,17 +43,17 @@ export const useSafeAreaInset = (deps: SafeAreaInsetDeps = defaultDeps) => {
 
     if (deps.isTauri()) {
       // On Android, overwrite with real insets once the native call resolves.
-      deps
-        .getInsets()
-        .then((insets) => {
+      ;(async () => {
+        try {
+          const insets = await deps.getInsets()
           createCSSVars({
             bottom: insets?.adjustedInsetBottom ?? 0,
             top: insets?.adjustedInsetTop ?? 0,
           })
-        })
-        .catch(() => {
+        } catch {
           // Already set to defaults above; nothing to do.
-        })
+        }
+      })()
     }
   }, [])
 }

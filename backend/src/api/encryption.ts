@@ -13,7 +13,7 @@ import {
   insertEncryptionMetadataIfNotExists,
 } from '@/dal'
 import type { db as DbType } from '@/db/client'
-import { BadRequestError, ForbiddenError, UnprocessableError } from '@/errors/http-errors'
+import { BadRequestError, ForbiddenError } from '@/errors/http-errors'
 import { timingSafeEqual } from 'crypto'
 import { Elysia, t } from 'elysia'
 
@@ -102,33 +102,40 @@ export const createEncryptionRoutes = (auth: Auth, database: typeof DbType) =>
 
         // Wrap limit check + registration in a transaction to prevent TOCTOU race
         const deviceName = name || 'Unknown device'
-        try {
-          await database.transaction(async (tx) => {
-            const txDb = tx as unknown as typeof database
+        const result = await database.transaction(async (tx) => {
+          const txDb = tx as unknown as typeof database
 
-            // Re-check device inside transaction to close race window
-            const freshDevice = await getDeviceById(txDb, deviceId)
-            if (!freshDevice) {
-              const activeCount = await countActiveDevices(txDb, userId)
-              if (activeCount >= 10) {
-                throw new UnprocessableError('Device limit reached')
-              }
-            }
-
-            await registerDevice(txDb, {
-              id: deviceId,
-              userId,
-              name: deviceName,
-              publicKey,
-              mlkemPublicKey,
-            })
-          })
-        } catch (err) {
-          if (err instanceof UnprocessableError) {
-            set.status = 422
-            return { error: err.message }
+          // Re-check device inside transaction to close race window
+          const freshDevice = await getDeviceById(txDb, deviceId)
+          if (!freshDevice) {
+            const activeCount = await countActiveDevices(txDb, userId)
+            if (activeCount >= 10) return { limitReached: true as const }
           }
-          throw err
+
+          const registered = await registerDevice(txDb, {
+            id: deviceId,
+            userId,
+            name: deviceName,
+            publicKey,
+            mlkemPublicKey,
+          })
+
+          // If upsert returned no rows, another user claimed this device ID
+          if (registered.length === 0 || registered[0].userId !== userId) {
+            return { taken: true as const }
+          }
+
+          return { ok: true as const }
+        })
+
+        if ('limitReached' in result) {
+          set.status = 422
+          return { error: 'Device limit reached' }
+        }
+
+        if ('taken' in result) {
+          set.status = 409
+          return { error: 'Device ID already taken' }
         }
 
         await linkSessionToDevice(database, session.id, deviceId, userId)

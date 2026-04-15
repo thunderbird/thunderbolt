@@ -49,12 +49,13 @@ export const markDeviceTrusted = async (database: typeof DbType, deviceId: strin
     .where(and(eq(devicesTable.id, deviceId), eq(devicesTable.userId, userId)))
 
 /** Count active (non-revoked) devices for a user. */
-export const countActiveDevices = async (database: typeof DbType, userId: string) =>
-  database
+export const countActiveDevices = async (database: typeof DbType, userId: string) => {
+  const rows = await database
     .select({ count: count() })
     .from(devicesTable)
     .where(and(eq(devicesTable.userId, userId), isNull(devicesTable.revokedAt)))
-    .then((rows) => rows[0]?.count ?? 0)
+  return rows[0]?.count ?? 0
+}
 
 /** Deny a pending device by clearing its approval_pending flag. Does not revoke. */
 export const denyDevice = async (database: typeof DbType, deviceId: string, userId: string) =>

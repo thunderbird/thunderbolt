@@ -3,6 +3,7 @@
 #[allow(dead_code)]
 pub mod commands;
 pub mod oauth_server;
+pub mod platform_utils;
 
 use tauri::Manager;
 
@@ -33,11 +34,11 @@ pub fn create_app() -> tauri::Builder<tauri::Wry> {
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_os::init())
-        .plugin(tauri_plugin_m3::init())
         .plugin(tauri_plugin_deep_link::init())
         .plugin(tauri_plugin_haptics::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_store::Builder::default().build())
+        .plugin(platform_utils::init())
         .invoke_handler(tauri::generate_handler![
             commands::toggle_dock_icon,
             commands::capabilities,

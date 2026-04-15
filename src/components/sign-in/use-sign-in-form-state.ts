@@ -163,9 +163,9 @@ export const useSignInFormState = ({
     try {
       const { challengeToken } = await httpClient
         .post('waitlist/join', { json: { email: trimmedEmail } })
-        .json<{ success: boolean; challengeToken: string }>()
+        .json<{ success: boolean; challengeToken?: string }>()
 
-      dispatch({ type: 'SEND_SUCCESS', payload: challengeToken })
+      dispatch({ type: 'SEND_SUCCESS', payload: challengeToken ?? '' })
     } catch (error) {
       console.error('Failed to send verification OTP:', error)
       const message = await getServerErrorMessage(
@@ -230,9 +230,9 @@ export const useSignInFormState = ({
     try {
       const { challengeToken } = await httpClient
         .post('waitlist/join', { json: { email: trimmedEmail } })
-        .json<{ success: boolean; challengeToken: string }>()
+        .json<{ success: boolean; challengeToken?: string }>()
 
-      dispatch({ type: 'SEND_SUCCESS', payload: challengeToken })
+      dispatch({ type: 'SEND_SUCCESS', payload: challengeToken ?? '' })
       return true
     } catch (error) {
       console.error('Failed to resend verification OTP:', error)

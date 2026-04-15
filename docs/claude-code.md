@@ -169,3 +169,21 @@ Submit feedback about Thunderbolt as a GitHub issue.
 ```
 
 Creates a labeled issue on the Thunderbolt GitHub repo.
+
+## Syncing Skills
+
+The slash commands in `.claude/commands/` are managed via [git subtree](https://www.atlassian.com/git/tutorials/git-subtree) from the [thunderbot](https://github.com/user/thunderbot) repo. You can edit them here as normal files and sync changes in both directions.
+
+```bash
+# Pull latest skills from thunderbot
+git subtree pull --prefix=.claude/commands thunderbot main --squash
+
+# Push local skill edits back to thunderbot
+git subtree push --prefix=.claude/commands thunderbot main
+```
+
+If you haven't added the remote yet:
+
+```bash
+git remote add thunderbot git@github.com:thunderbird/thunderbot.git
+```

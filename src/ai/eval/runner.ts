@@ -4,6 +4,8 @@ import { getSettings } from '@/dal'
 import { getModel } from '@/dal/models'
 import { getModelProfile } from '@/dal/model-profiles'
 import { getDb } from '@/db/database'
+import { getAuthToken } from '@/lib/auth-token'
+import { createAuthenticatedClient } from '@/lib/http'
 import type { SaveMessagesFunction } from '@/types'
 import { v7 as uuidv7 } from 'uuid'
 import { getModelId } from './scenarios'
@@ -12,6 +14,18 @@ import { parseStream } from './stream-parser'
 import type { EvalResult, EvalScenario } from './types'
 
 const timeout = parseInt(process.env.EVAL_timeout ?? '120000')
+
+let _evalHttpClientPromise: Promise<import('@/lib/http').HttpClient> | null = null
+const getEvalHttpClient = () => {
+  if (!_evalHttpClientPromise) {
+    _evalHttpClientPromise = (async () => {
+      const db = getDb()
+      const { cloudUrl } = await getSettings(db, { cloud_url: 'http://localhost:8000/v1' })
+      return createAuthenticatedClient(cloudUrl, getAuthToken)
+    })()
+  }
+  return _evalHttpClientPromise
+}
 
 const dim = '\x1b[2m'
 const cyan = '\x1b[36m'
@@ -114,6 +128,8 @@ export const runScenario = async (scenario: EvalScenario): Promise<EvalResult> =
 
     await logVerbosePrompt(scenario, mode.systemPrompt ?? undefined)
 
+    const httpClient = await getEvalHttpClient()
+
     // Call the actual AI pipeline with a timeout
     const response = await Promise.race([
       aiFetchStreamingResponse({
@@ -122,6 +138,7 @@ export const runScenario = async (scenario: EvalScenario): Promise<EvalResult> =
         modelId,
         modeSystemPrompt: mode.systemPrompt ?? undefined,
         modeName: mode.name,
+        httpClient,
       }),
       new Promise<never>((_, reject) => setTimeout(() => reject(new Error('Scenario timed out')), timeout)),
     ])

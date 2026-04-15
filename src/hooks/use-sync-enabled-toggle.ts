@@ -1,15 +1,21 @@
+import { getCK } from '@/crypto/key-storage'
+import { isEncryptionEnabled } from '@/db/encryption'
 import { isSyncEnabled, setSyncEnabled, syncEnabledChangeEvent } from '@/db/powersync'
 import { trackEvent } from '@/lib/posthog'
 import { useEffect, useState } from 'react'
 
 /**
  * Shared hook for sync toggle state and handlers used by PowerSyncStatus and
- * PreferencesSettingsPage. Manages syncEnabled state, the enable-warning dialog,
+ * PreferencesSettingsPage. Manages syncEnabled state, the sync setup modal,
  * and event listener for external changes (e.g. sign-in flow).
+ *
+ * On mount, detects pre-encryption users (sync ON + encryption enabled + no CK)
+ * and auto-disables sync. The user re-enables sync via the toggle, which opens
+ * the wizard through the normal flow.
  */
 export const useSyncEnabledToggle = () => {
   const [syncEnabled, setSyncEnabledState] = useState(isSyncEnabled())
-  const [syncEnableWarningOpen, setSyncEnableWarningOpen] = useState(false)
+  const [syncSetupOpen, setSyncSetupOpen] = useState(false)
 
   useEffect(() => {
     const handleSyncEnabledChange = (event: Event) => {
@@ -21,6 +27,24 @@ export const useSyncEnabledToggle = () => {
     return () => window.removeEventListener(syncEnabledChangeEvent, handleSyncEnabledChange)
   }, [])
 
+  // Detect pre-encryption users: sync ON + encryption enabled + no CK in IndexedDB
+  useEffect(() => {
+    const checkEncryptionMigration = async () => {
+      if (!isEncryptionEnabled() || !isSyncEnabled()) {
+        return
+      }
+      const ck = await getCK()
+      if (ck) {
+        return
+      }
+      // Pre-encryption user: disable sync silently.
+      // User will notice sync is off, toggle it on, and the normal wizard flow handles the rest.
+      await setSyncEnabled(false)
+      setSyncEnabledState(false)
+    }
+    checkEncryptionMigration()
+  }, [])
+
   const handleSyncToggle = async (enabled: boolean) => {
     if (!enabled) {
       await setSyncEnabled(false)
@@ -28,21 +52,35 @@ export const useSyncEnabledToggle = () => {
       trackEvent('settings_sync_disabled')
       return
     }
-    setSyncEnableWarningOpen(true)
+    if (!isEncryptionEnabled()) {
+      await setSyncEnabled(true)
+      setSyncEnabledState(true)
+      trackEvent('settings_sync_enabled')
+      return
+    }
+    // Encryption already set up (CK exists) — just enable sync, no wizard needed
+    const ck = await getCK()
+    if (ck) {
+      await setSyncEnabled(true)
+      setSyncEnabledState(true)
+      trackEvent('settings_sync_enabled')
+      return
+    }
+    setSyncSetupOpen(true)
   }
 
-  const handleConfirmEnableSync = async () => {
+  const handleSyncSetupComplete = async () => {
     await setSyncEnabled(true)
     setSyncEnabledState(true)
     trackEvent('settings_sync_enabled')
-    setSyncEnableWarningOpen(false)
+    setSyncSetupOpen(false)
   }
 
   return {
     syncEnabled,
-    syncEnableWarningOpen,
-    setSyncEnableWarningOpen,
+    syncSetupOpen,
+    setSyncSetupOpen,
     handleSyncToggle,
-    handleConfirmEnableSync,
+    handleSyncSetupComplete,
   }
 }

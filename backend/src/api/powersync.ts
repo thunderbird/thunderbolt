@@ -1,27 +1,31 @@
 import type { Auth } from '@/auth/elysia-plugin'
 import type { Settings } from '@/config/settings'
+import { isOriginAllowed } from '@/config/settings'
 import { applyOperation, getActiveSessionByToken, getDeviceById, getUserById, upsertDevice } from '@/dal'
 import type { db as DbType } from '@/db/client'
+import { verifySignedBearerToken } from '@/auth/bearer-token'
+import { safeErrorHandler } from '@/middleware/error-handling'
 import { jwt } from '@elysiajs/jwt'
 import { Elysia, t } from 'elysia'
 
 type DeviceValidationResult =
   | { ok: true }
   | { ok: false; status: 400; body: { code: 'DEVICE_ID_REQUIRED' } }
-  | { ok: false; status: 403; body: { code: 'DEVICE_DISCONNECTED' } }
+  | { ok: false; status: 403; body: { code: 'DEVICE_DISCONNECTED' | 'DEVICE_NOT_TRUSTED' } }
   | { ok: false; status: 409; body: { code: 'DEVICE_ID_TAKEN' } }
 
 type IssuePowerSyncTokenResult =
   | { ok: true; token: string; expiresAt: string; powerSyncUrl: string }
   | { ok: false; status: 400; body: { code: 'DEVICE_ID_REQUIRED' } }
-  | { ok: false; status: 403; body: { code: 'DEVICE_DISCONNECTED' } }
+  | { ok: false; status: 403; body: { code: 'DEVICE_DISCONNECTED' | 'DEVICE_NOT_TRUSTED' } }
   | { ok: false; status: 409; body: { code: 'DEVICE_ID_TAKEN' } }
 
 /**
- * Validates that the device is not revoked and belongs to the user.
- * Requires x-device-id so revoked devices cannot bypass by omitting it.
+ * Validates that the device belongs to the user, is trusted, and is not revoked.
+ * Untrusted devices (pending approval) cannot sync — they use HTTP APIs for the
+ * key setup flow and only need sync after receiving the CK.
  */
-const validateDeviceNotRevoked = async (
+const validateDeviceForSync = async (
   userId: string,
   request: Request,
   database: typeof DbType,
@@ -33,16 +37,31 @@ const validateDeviceNotRevoked = async (
 
   const deviceRow = await getDeviceById(database, deviceId)
 
-  if (deviceRow) {
-    if (deviceRow.userId !== userId) {
-      return { ok: false, status: 409, body: { code: 'DEVICE_ID_TAKEN' } }
-    }
-    if (deviceRow.revokedAt != null) {
-      return { ok: false, status: 403, body: { code: 'DEVICE_DISCONNECTED' } }
-    }
+  if (!deviceRow) {
+    return { ok: false, status: 403, body: { code: 'DEVICE_NOT_TRUSTED' } }
+  }
+
+  if (deviceRow.userId !== userId) {
+    return { ok: false, status: 409, body: { code: 'DEVICE_ID_TAKEN' } }
+  }
+  if (deviceRow.revokedAt != null) {
+    return { ok: false, status: 403, body: { code: 'DEVICE_DISCONNECTED' } }
+  }
+  if (!deviceRow.trusted) {
+    return { ok: false, status: 403, body: { code: 'DEVICE_NOT_TRUSTED' } }
   }
 
   return { ok: true }
+}
+
+/**
+ * Defense-in-depth: rejects cross-origin requests whose Origin doesn't match allowed CORS origins.
+ * Absent Origin (non-browser / server-to-server clients) is allowed.
+ */
+const validateOrigin = (request: Request, appSettings: Settings): boolean => {
+  const origin = request.headers.get('origin')
+  if (!origin) return true
+  return isOriginAllowed(origin, appSettings)
 }
 
 /**
@@ -57,7 +76,7 @@ const issuePowerSyncToken = async (
   settings: Settings,
   database: typeof DbType,
 ): Promise<IssuePowerSyncTokenResult> => {
-  const validation = await validateDeviceNotRevoked(userId, request, database)
+  const validation = await validateDeviceForSync(userId, request, database)
   if (!validation.ok) {
     return validation
   }
@@ -106,6 +125,7 @@ export const createPowerSyncRoutes = (auth: Auth, settings: Settings, database: 
   }
 
   return new Elysia({ prefix: '/powersync' })
+    .onError(safeErrorHandler)
     .use(
       jwt({
         name: 'powersyncJwt',
@@ -120,6 +140,11 @@ export const createPowerSyncRoutes = (auth: Auth, settings: Settings, database: 
       return { user: session?.user ?? null }
     })
     .get('/token', async ({ powersyncJwt, request, set, user }) => {
+      if (!validateOrigin(request, settings)) {
+        set.status = 403
+        return { error: 'Forbidden', code: 'ORIGIN_NOT_ALLOWED' }
+      }
+
       if (!settings.powersyncUrl || !settings.powersyncJwtSecret) {
         set.status = 503
         return { error: 'PowerSync is not configured' }
@@ -136,6 +161,9 @@ export const createPowerSyncRoutes = (auth: Auth, settings: Settings, database: 
       }
 
       // Path 2: No session; Bearer token only. Resolve session -> user; 410 if user deleted (e.g. account deleted elsewhere).
+      // The bearer plugin requires signed tokens (requireSignature: true), so we must verify
+      // the signature here too — otherwise an attacker with a raw session token can bypass
+      // signature verification by hitting Path 2 directly.
       const authHeader = request.headers.get('authorization')
       const bearerToken = authHeader?.startsWith('Bearer ') ? authHeader.slice(7).trim() : null
       if (!bearerToken) {
@@ -143,7 +171,13 @@ export const createPowerSyncRoutes = (auth: Auth, settings: Settings, database: 
         return { error: 'Unauthorized' }
       }
 
-      const sessionRow = await getActiveSessionByToken(database, bearerToken)
+      const rawToken = verifySignedBearerToken(bearerToken, settings.betterAuthSecret)
+      if (!rawToken) {
+        set.status = 401
+        return { error: 'Unauthorized' }
+      }
+
+      const sessionRow = await getActiveSessionByToken(database, rawToken)
       if (!sessionRow) {
         set.status = 401
         return { error: 'Unauthorized' }
@@ -167,13 +201,18 @@ export const createPowerSyncRoutes = (auth: Auth, settings: Settings, database: 
     .put(
       '/upload',
       async ({ body, request, set, user }) => {
+        if (!validateOrigin(request, settings)) {
+          set.status = 403
+          return { error: 'Forbidden', code: 'ORIGIN_NOT_ALLOWED' }
+        }
+
         // Requires authenticated user; applies batched CRUD from PowerSync.
         if (!user) {
           set.status = 401
           return { error: 'Unauthorized' }
         }
 
-        const validation = await validateDeviceNotRevoked(user.id, request, database)
+        const validation = await validateDeviceForSync(user.id, request, database)
         if (!validation.ok) {
           set.status = validation.status
           return validation.body

@@ -21,7 +21,7 @@
         "bun-types": "^1.2.22",
         "dotenv": "^17.2.3",
         "drizzle-orm": "^0.44.7",
-        "elysia": "^1.4.18",
+        "elysia": "^1.4.28",
         "exa-js": "^1.0.11",
         "ipaddr.js": "^2.3.0",
         "jose": "6.1.2",
@@ -29,6 +29,7 @@
         "pino": "^9.11.0",
         "postgres": "^3.4.7",
         "posthog-node": "^5.8.8",
+        "rate-limiter-flexible": "^10.0.1",
         "resend": "^6.5.2",
         "zod": "^3.22.4",
       },
@@ -1062,6 +1063,8 @@
     "quick-format-unescaped": ["quick-format-unescaped@4.0.4", "", {}, "sha512-tYC1Q1hgyRuHgloV/YXs2w15unPVh8qfu/qCTfhTYamaw7fyhumKa2yGpdSo87vY32rIclj+4fWYQXUMs9EHvg=="],
 
     "range-parser": ["range-parser@1.2.1", "", {}, "sha512-Hrgsx+orqoygnmhFbKaHE6c296J+HTAQXoxEF6gNupROmmGJRoyzfG3ccAveqCBrwr/2yxQ5BVd/GTl5agOwSg=="],
+
+    "rate-limiter-flexible": ["rate-limiter-flexible@10.0.1", "", {}, "sha512-3G6GMFz5Oz5nVnDv9gQ1LLMdExR4B1lOjogPIjehtgyxPMIkY09BGyk2eCYt36/OkV/0t12GEt6J6HpTl6RzZg=="],
 
     "raw-body": ["raw-body@3.0.2", "", { "dependencies": { "bytes": "~3.1.2", "http-errors": "~2.0.1", "iconv-lite": "~0.7.0", "unpipe": "~1.0.0" } }, "sha512-K5zQjDllxWkf7Z5xJdV0/B0WTNqx6vxG70zJE4N0kBs4LovmEYWJzQGxC9bS9RAKu3bgM40lrd5zoLJ12MQ5BA=="],
 

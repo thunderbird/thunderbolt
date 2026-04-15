@@ -3,67 +3,87 @@ import { z } from 'zod'
 /**
  * Settings schema for environment variables validation
  */
-const settingsSchema = z.object({
-  // API Keys
-  fireworksApiKey: z.string().default(''),
-  mistralApiKey: z.string().default(''),
-  anthropicApiKey: z.string().default(''),
-  exaApiKey: z.string().default(''),
-  thunderboltInferenceUrl: z.string().default(''),
-  thunderboltInferenceApiKey: z.string().default(''),
+const settingsSchema = z
+  .object({
+    // API Keys
+    fireworksApiKey: z.string().default(''),
+    mistralApiKey: z.string().default(''),
+    anthropicApiKey: z.string().default(''),
+    exaApiKey: z.string().default(''),
+    thunderboltInferenceUrl: z.string().default(''),
+    thunderboltInferenceApiKey: z.string().default(''),
 
-  // Health Check Configuration
-  monitoringToken: z.string().default(''),
+    // Health Check Configuration
+    monitoringToken: z.string().default(''),
 
-  // OAuth Settings
-  googleClientId: z.string().default(''),
-  googleClientSecret: z.string().default(''),
-  microsoftClientId: z.string().default(''),
-  microsoftClientSecret: z.string().default(''),
+    // OAuth Settings
+    googleClientId: z.string().default(''),
+    googleClientSecret: z.string().default(''),
+    microsoftClientId: z.string().default(''),
+    microsoftClientSecret: z.string().default(''),
 
-  // OIDC Settings (enterprise self-hosted)
-  authMode: z.enum(['consumer', 'oidc']).default('consumer'),
-  oidcClientId: z.string().default(''),
-  oidcClientSecret: z.string().default(''),
-  oidcIssuer: z.string().default(''),
-  betterAuthUrl: z.string().default('http://localhost:8000'),
+    // OIDC Settings (enterprise self-hosted)
+    authMode: z.enum(['consumer', 'oidc']).default('consumer'),
+    oidcClientId: z.string().default(''),
+    oidcClientSecret: z.string().default(''),
+    oidcIssuer: z.string().default(''),
+    betterAuthUrl: z.string().default('http://localhost:8000'),
+    betterAuthSecret: z.string().min(1),
 
-  // General settings
-  logLevel: z.enum(['DEBUG', 'INFO', 'WARN', 'ERROR']).default('INFO'),
-  port: z.coerce.number().default(8000),
-  appUrl: z.string().default('http://localhost:1420'),
+    // General settings
+    logLevel: z.enum(['DEBUG', 'INFO', 'WARN', 'ERROR']).default('INFO'),
+    port: z.coerce.number().default(8000),
+    appUrl: z.string().default('http://localhost:1420'),
 
-  // Analytics settings
-  posthogHost: z.string().default('https://us.i.posthog.com'),
-  posthogApiKey: z.string().default(''),
+    // Analytics settings
+    posthogHost: z.string().default('https://us.i.posthog.com'),
+    posthogApiKey: z.string().default(''),
 
-  // Waitlist settings
-  waitlistEnabled: z.boolean().default(false),
-  waitlistAutoApproveDomains: z.string().default(''),
+    // Waitlist settings
+    waitlistEnabled: z.boolean().default(false),
+    waitlistAutoApproveDomains: z.string().default(''),
 
-  // PowerSync settings
-  powersyncUrl: z.string().default(''),
-  powersyncJwtKid: z.string().default(''),
-  powersyncJwtSecret: z.string().default(''),
-  powersyncTokenExpirySeconds: z.coerce.number().default(3600),
+    // PowerSync settings
+    powersyncUrl: z.string().default(''),
+    powersyncJwtKid: z.string().default(''),
+    powersyncJwtSecret: z.string().default(''),
+    powersyncTokenExpirySeconds: z.coerce.number().int().positive().default(3600),
 
-  // CORS settings
-  corsOrigins: z.string().default('http://localhost:1420'),
-  corsOriginRegex: z
-    .string()
-    .default('^(tauri://localhost|http://tauri\\.localhost|http://localhost:\\d+)$')
-    // Value is from CORS_ORIGIN_REGEX env var set by the server deployer, not user input.
-    // nosemgrep: javascript.lang.security.audit.detect-non-literal-regexp.detect-non-literal-regexp
-    .transform((val) => (val ? new RegExp(val) : null)),
-  corsAllowCredentials: z.boolean().default(true),
-  corsAllowMethods: z.string().default('GET,POST,PUT,DELETE,PATCH,OPTIONS'),
-  corsAllowHeaders: z
-    .string()
-    .default(
-      'Content-Type,Authorization,Accept,Accept-Encoding,Accept-Language,Cache-Control,User-Agent,X-Requested-With,X-Client-Platform,X-Device-ID,X-Device-Name,X-Mcp-Target-Url,Mcp-Session-Id,Mcp-Protocol-Version',
-    ),
-  corsExposeHeaders: z.string().default('mcp-session-id,set-auth-token'),
-})
+    // CORS settings — comma-separated list of exact origins
+    corsOrigins: z.string().default('http://localhost:1420,tauri://localhost,http://tauri.localhost'),
+    corsAllowCredentials: z.boolean().default(true),
+    corsAllowMethods: z.string().default('GET,POST,PUT,DELETE,PATCH,OPTIONS'),
+    corsAllowHeaders: z
+      .string()
+      .default(
+        'Content-Type,Authorization,Accept,Accept-Encoding,Accept-Language,Cache-Control,User-Agent,X-Requested-With,X-Client-Platform,X-Device-ID,X-Device-Name,X-Challenge-Token,X-Mcp-Target-Url,Mcp-Authorization,Mcp-Session-Id,Mcp-Protocol-Version',
+      ),
+    corsExposeHeaders: z
+      .string()
+      .default('mcp-session-id,set-auth-token,ratelimit-limit,ratelimit-remaining,ratelimit-reset,retry-after'),
+
+    swaggerEnabled: z.boolean().default(false),
+
+    // Rate limiting
+    rateLimitEnabled: z.boolean().default(true),
+
+    // Trusted proxy (controls which proxy headers are trusted for IP extraction)
+    // Set to 'cloudflare' to trust CF-Connecting-IP, 'akamai' for True-Client-IP,
+    // or leave empty to use only the direct socket IP (proxy headers are NOT trusted)
+    trustedProxy: z.enum(['', 'cloudflare', 'akamai']).default(''),
+  })
+  .superRefine((data, ctx) => {
+    if (data.powersyncUrl && data.powersyncJwtSecret.length < 32) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.too_small,
+        type: 'string',
+        minimum: 32,
+        inclusive: true,
+        message: 'powersyncJwtSecret must be at least 32 characters when powersyncUrl is set',
+        path: ['powersyncJwtSecret'],
+      })
+    }
+  })
 
 export type Settings = z.infer<typeof settingsSchema>
 
@@ -88,6 +108,7 @@ const parseSettings = (): Settings => {
     oidcClientSecret: process.env.OIDC_CLIENT_SECRET || '',
     oidcIssuer: process.env.OIDC_ISSUER || '',
     betterAuthUrl: process.env.BETTER_AUTH_URL || 'http://localhost:8000',
+    betterAuthSecret: process.env.BETTER_AUTH_SECRET,
     logLevel: (process.env.LOG_LEVEL || 'INFO').toUpperCase(),
     port: process.env.PORT || '8000',
     appUrl: process.env.APP_URL || 'http://localhost:1420',
@@ -99,15 +120,18 @@ const parseSettings = (): Settings => {
     powersyncJwtKid: process.env.POWERSYNC_JWT_KID || '',
     powersyncJwtSecret: process.env.POWERSYNC_JWT_SECRET || '',
     powersyncTokenExpirySeconds: process.env.POWERSYNC_TOKEN_EXPIRY_SECONDS || '3600',
-    corsOrigins: process.env.CORS_ORIGINS || 'http://localhost:1420',
-    corsOriginRegex:
-      process.env.CORS_ORIGIN_REGEX ?? '^(tauri://localhost|http://tauri\\.localhost|http://localhost:\\d+)$',
+    corsOrigins: process.env.CORS_ORIGINS || 'http://localhost:1420,tauri://localhost,http://tauri.localhost',
     corsAllowCredentials: process.env.CORS_ALLOW_CREDENTIALS !== 'false',
     corsAllowMethods: process.env.CORS_ALLOW_METHODS || 'GET,POST,PUT,DELETE,PATCH,OPTIONS',
     corsAllowHeaders:
       process.env.CORS_ALLOW_HEADERS ||
-      'Content-Type,Authorization,Accept,Accept-Encoding,Accept-Language,Cache-Control,User-Agent,X-Requested-With,X-Client-Platform,X-Device-ID,X-Device-Name,X-Mcp-Target-Url,Mcp-Session-Id,Mcp-Protocol-Version',
-    corsExposeHeaders: process.env.CORS_EXPOSE_HEADERS || 'mcp-session-id,set-auth-token',
+      'Content-Type,Authorization,Accept,Accept-Encoding,Accept-Language,Cache-Control,User-Agent,X-Requested-With,X-Client-Platform,X-Device-ID,X-Device-Name,X-Challenge-Token,X-Mcp-Target-Url,Mcp-Authorization,Mcp-Session-Id,Mcp-Protocol-Version',
+    corsExposeHeaders:
+      process.env.CORS_EXPOSE_HEADERS ||
+      'mcp-session-id,set-auth-token,ratelimit-limit,ratelimit-remaining,ratelimit-reset,retry-after',
+    swaggerEnabled: process.env.SWAGGER_ENABLED === 'true',
+    rateLimitEnabled: process.env.RATE_LIMIT_ENABLED !== 'false',
+    trustedProxy: (process.env.TRUSTED_PROXY || '').toLowerCase(),
   }
 
   return settingsSchema.parse(env)
@@ -133,21 +157,37 @@ export const clearSettingsCache = (): void => {
   settings = null
 }
 
-/**
- * Derived properties similar to the Python version
- */
-export const getCorsOriginsList = (settings: Settings): string[] => {
+/** Parse comma-separated CORS origins into a list. */
+export const getCorsOriginsList = (settings: Pick<Settings, 'corsOrigins'>): string[] => {
   return settings.corsOrigins
     .split(',')
     .map((origin) => origin.trim())
     .filter((origin) => origin.length > 0)
 }
 
-/**
- * Get CORS origins as either a RegExp pattern or array of strings
- */
-export const getCorsOrigins = (settings: Settings): RegExp | string[] => {
-  return settings.corsOriginRegex ?? getCorsOriginsList(settings)
+/** Check whether a given origin is allowed by the configured CORS origins (exact match). */
+export const isOriginAllowed = (origin: string, settings: Pick<Settings, 'corsOrigins'>): boolean => {
+  return getCorsOriginsList(settings).includes(origin)
+}
+
+/** Validate that an OAuth redirect_uri points to a trusted origin. */
+export const isOAuthRedirectUriAllowed = (uri: string, settings: Pick<Settings, 'corsOrigins'>): boolean => {
+  try {
+    const url = new URL(uri)
+    // Construct origin manually — url.origin returns 'null' for non-standard protocols like tauri://
+    const origin = `${url.protocol}//${url.host}`
+    const allowedOrigins = [...getCorsOriginsList(settings), 'https://thunderbolt.io']
+    if (allowedOrigins.includes(origin)) {
+      return true
+    }
+    // Loopback flow uses dynamic ports — allow any HTTP localhost
+    if ((url.hostname === 'localhost' || url.hostname === '127.0.0.1') && url.protocol === 'http:') {
+      return true
+    }
+    return false
+  } catch {
+    return false
+  }
 }
 
 export const getCorsMethodsList = (settings: Settings): string[] => {

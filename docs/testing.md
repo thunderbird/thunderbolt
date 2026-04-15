@@ -23,18 +23,20 @@ bun test:backend:watch
 Please follow these guidelines for unit tests:
 
 - **Prefer dependency injection over mocking to prevent test pollution.** For example, inject a custom httpClient or fetch for network requests instead of mocking them.
-  - ✅ Good: `export const checkInbox = async (params, httpClient: KyInstance = ky) => { ... httpClient.get(...) }`
+  - ✅ Good: `export const checkInbox = async (params, httpClient: HttpClient = ky) => { ... httpClient.get(...) }`
   - ❌ Bad: `mock.module('ky', () => ({ ... }))`
 - **Fake timers are installed globally for all tests.** This ensures tests run quickly and deterministically.
   - Timers are automatically installed before each test and uninstalled after
   - If you need to manually advance time, use `getClock()` from `@/testing-library`:
+
     ```ts
     import { getClock } from '@/testing-library'
-    
+
     await act(async () => {
       await getClock().runAllAsync()
     })
     ```
+
   - This also speeds up tests that use HTTP libraries with retry logic (like `ky`)
 - **Suppress expected console errors in tests** - use `spyOn(console, 'error').mockImplementation(() => {})` in `beforeAll` for tests that intentionally trigger errors
 - Always write unit tests for logic, code branching, and algorithms - these should be thoroughly covered. Unit tests for component user interactions (such as clicking or typing) are optional and might be better covered by higher-level tests (e.g., with Cypress).
@@ -67,11 +69,12 @@ When you use `mock.module()` to mock a shared module like `@/hooks/use-settings`
 ```ts
 // ❌ BAD: This mock will leak to other test files!
 mock.module('@/hooks/use-settings', () => ({
-  useSettings: () => ({ cloudUrl: { value: 'http://test' } })
+  useSettings: () => ({ cloudUrl: { value: 'http://test' } }),
 }))
 ```
 
 If another test file imports `useSettings` and expects different properties (like `preferredName` or `locationName`), it will crash with errors like:
+
 - `TypeError: undefined is not an object (evaluating 'locationName.value')`
 - `SyntaxError: Export named 'DialogFooter' not found in module`
 
@@ -149,6 +152,7 @@ mock.module('@/components/ui/dialog', () => ({
 ### Debugging Mock Leakage
 
 If you see errors like these in CI but tests pass locally:
+
 - `Export named 'X' not found in module`
 - `TypeError: X is not a function`
 - `undefined is not an object`

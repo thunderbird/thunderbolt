@@ -1,0 +1,115 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: powersync-config
+  labels:
+    {{- include "thunderbolt.labels" . | nindent 4 }}
+data:
+  config.yaml: |
+    replication:
+      connections:
+        - type: postgresql
+          uri: postgresql://powersync_role:myhighlyrandompassword@postgres:5432/{{ .Values.postgres.credentials.database }}
+          sslmode: disable
+
+    storage:
+      type: mongodb
+      uri: mongodb://mongo:27017/powersync
+
+    port: {{ .Values.powersync.service.port }}
+
+    sync_rules:
+      content: |
+        bucket_definitions:
+          user_data:
+            parameters: SELECT request.user_id() as user_id
+            data:
+              - SELECT * FROM powersync.settings WHERE user_id = bucket.user_id
+              - SELECT * FROM powersync.chat_threads WHERE user_id = bucket.user_id
+              - SELECT * FROM powersync.chat_messages WHERE user_id = bucket.user_id
+              - SELECT * FROM powersync.tasks WHERE user_id = bucket.user_id
+              - SELECT * FROM powersync.models WHERE user_id = bucket.user_id
+              - SELECT * FROM powersync.mcp_servers WHERE user_id = bucket.user_id
+              - SELECT * FROM powersync.prompts WHERE user_id = bucket.user_id
+              - SELECT * FROM powersync.triggers WHERE user_id = bucket.user_id
+              - SELECT * FROM powersync.modes WHERE user_id = bucket.user_id
+              - SELECT * FROM powersync.model_profiles WHERE user_id = bucket.user_id
+              - SELECT * FROM powersync.devices WHERE user_id = bucket.user_id
+
+    client_auth:
+      supabase: false
+      audience: ['powersync-enterprise', 'powersync']
+      jwks:
+        keys:
+          - kty: oct
+            k: {{ .Values.powersync.jwt.secretBase64 }}
+            alg: HS256
+            kid: {{ .Values.powersync.jwt.kid }}
+      telemetry:
+        disable_telemetry_sharing: true
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: keycloak-realm
+  labels:
+    {{- include "thunderbolt.labels" . | nindent 4 }}
+data:
+  thunderbolt-realm.json: |
+    {
+      "realm": "thunderbolt",
+      "enabled": true,
+      "sslRequired": "external",
+      "registrationAllowed": true,
+      "loginWithEmailAllowed": true,
+      "duplicateEmailsAllowed": false,
+      "resetPasswordAllowed": true,
+      "editUsernameAllowed": false,
+      "bruteForceProtected": true,
+      "clients": [
+        {
+          "clientId": "{{ .Values.keycloak.oidc.clientId }}",
+          "enabled": true,
+          "clientAuthenticatorType": "client-secret",
+          "secret": "{{ .Values.keycloak.oidc.clientSecretBase64 | b64dec }}",
+          "redirectUris": ["*"],
+          "webOrigins": ["+"],
+          "standardFlowEnabled": true,
+          "directAccessGrantsEnabled": false,
+          "publicClient": false,
+          "protocol": "openid-connect",
+          "defaultClientScopes": ["openid", "profile", "email"]
+        }
+      ],
+      "users": [
+        {
+          "username": "demo",
+          "email": "demo@thunderbolt.io",
+          "firstName": "Demo",
+          "lastName": "User",
+          "enabled": true,
+          "emailVerified": true,
+          "credentials": [
+            {
+              "type": "password",
+              "value": "demo",
+              "temporary": false
+            }
+          ]
+        }
+      ]
+    }
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: postgres-init
+  labels:
+    {{- include "thunderbolt.labels" . | nindent 4 }}
+data:
+  01-powersync.sql: |
+    -- Create replication role for PowerSync
+    CREATE ROLE powersync_role WITH LOGIN PASSWORD 'myhighlyrandompassword' REPLICATION;
+    GRANT ALL PRIVILEGES ON DATABASE postgres TO powersync_role;
+    ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON TABLES TO powersync_role;
+    CREATE PUBLICATION powersync_pub FOR ALL TABLES;

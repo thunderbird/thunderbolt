@@ -1,16 +1,34 @@
 import type { AuthClient } from '@/contexts'
+import { challengeTokenHeader, otpLength } from '@/lib/constants'
+import { HttpError, type HttpClient } from '@/lib/http'
 import { getOtpErrorMessage } from '@/lib/otp-error-messages'
 import { updateSettings } from '@/dal'
 import { getDb, getDatabaseInstance } from '@/db/database'
-import { setAuthToken } from '@/lib/auth-token'
 import { isValidEmailFormat } from '@/lib/utils'
 import { useReducer, type FormEvent } from 'react'
+
+/** Extract a user-facing error message from an HttpError response body, or return the fallback. */
+const getServerErrorMessage = async (error: unknown, fallback: string): Promise<string> => {
+  if (!(error instanceof HttpError)) {
+    return fallback
+  }
+  try {
+    const body = await error.response.json()
+    if (typeof body?.message === 'string' && body.message) {
+      return body.message
+    }
+  } catch (e) {
+    console.info('Could not parse error response body as JSON:', e)
+  }
+  return fallback
+}
 
 type FormStatus = 'idle' | 'sending' | 'sent' | 'verifying' | 'success' | 'error'
 
 type State = {
   email: string
   otp: string
+  challengeToken: string
   status: FormStatus
   errorMessage: string
 }
@@ -19,7 +37,7 @@ type Action =
   | { type: 'SET_EMAIL'; payload: string }
   | { type: 'SET_OTP'; payload: string }
   | { type: 'START_SENDING' }
-  | { type: 'SEND_SUCCESS' }
+  | { type: 'SEND_SUCCESS'; payload: string }
   | { type: 'SEND_ERROR'; payload: string }
   | { type: 'START_VERIFYING' }
   | { type: 'VERIFY_SUCCESS' }
@@ -31,6 +49,7 @@ type Action =
 const initialState: State = {
   email: '',
   otp: '',
+  challengeToken: '',
   status: 'idle',
   errorMessage: '',
 }
@@ -44,7 +63,7 @@ const reducer = (state: State, action: Action): State => {
     case 'START_SENDING':
       return { ...state, status: 'sending', errorMessage: '' }
     case 'SEND_SUCCESS':
-      return { ...state, status: 'sent' }
+      return { ...state, status: 'sent', challengeToken: action.payload, otp: '', errorMessage: '' }
     case 'SEND_ERROR':
       return { ...state, status: 'error', errorMessage: action.payload }
     case 'START_VERIFYING':
@@ -66,12 +85,15 @@ const reducer = (state: State, action: Action): State => {
 
 type UseSignInFormStateOptions = {
   authClient: AuthClient
+  httpClient: HttpClient
   onCancel?: () => void
   onEmailSent?: () => void
   /** Pre-fill the email input (user still needs to click submit) */
   initialEmail?: string
   /** Initialize directly in OTP step (OTP must already be sent before mounting) */
   skipToOtp?: boolean
+  /** Challenge token to use when skipToOtp is true (required for OTP verification) */
+  initialChallengeToken?: string
 }
 
 /** Better Auth includes `isNew` on the user object at runtime but not in its types. */
@@ -109,10 +131,12 @@ export const onSignInSuccess = async (isNewUser: boolean): Promise<void> => {
  */
 export const useSignInFormState = ({
   authClient,
+  httpClient,
   onCancel,
   onEmailSent,
   initialEmail,
   skipToOtp,
+  initialChallengeToken,
 }: UseSignInFormStateOptions) => {
   // If skipToOtp is requested without an email, fall back to idle state instead of crashing
   const canSkipToOtp = skipToOtp && !!initialEmail?.trim()
@@ -121,6 +145,7 @@ export const useSignInFormState = ({
     ...initialState,
     email: initialEmail ?? '',
     status: canSkipToOtp ? 'sent' : 'idle',
+    challengeToken: canSkipToOtp ? (initialChallengeToken ?? '') : '',
   })
 
   const isValidEmail = isValidEmailFormat(state.email.trim())
@@ -136,20 +161,18 @@ export const useSignInFormState = ({
     dispatch({ type: 'START_SENDING' })
 
     try {
-      const { error } = await authClient.emailOtp.sendVerificationOtp({
-        email: trimmedEmail,
-        type: 'sign-in',
-      })
+      const { challengeToken } = await httpClient
+        .post('waitlist/join', { json: { email: trimmedEmail } })
+        .json<{ success: boolean; challengeToken?: string }>()
 
-      if (error) {
-        dispatch({ type: 'SEND_ERROR', payload: error.message || 'Failed to send verification code' })
-        return
-      }
-
-      dispatch({ type: 'SEND_SUCCESS' })
+      dispatch({ type: 'SEND_SUCCESS', payload: challengeToken ?? '' })
     } catch (error) {
       console.error('Failed to send verification OTP:', error)
-      dispatch({ type: 'SEND_ERROR', payload: 'Failed to send verification code. Please check your connection.' })
+      const message = await getServerErrorMessage(
+        error,
+        'Failed to send verification code. Please check your connection.',
+      )
+      dispatch({ type: 'SEND_ERROR', payload: message })
       return
     }
 
@@ -157,28 +180,24 @@ export const useSignInFormState = ({
   }
 
   const handleOtpComplete = async (value: string) => {
-    if (value.length !== 6) {
+    if (value.length !== otpLength) {
       return
     }
 
     dispatch({ type: 'START_VERIFYING' })
 
     try {
-      // Use emailOtp signIn to verify OTP and create session
       const result = await authClient.signIn.emailOtp({
         email: state.email.trim(),
         otp: value,
+        fetchOptions: {
+          headers: { [challengeTokenHeader]: state.challengeToken },
+        },
       })
 
       if (result.error) {
         dispatch({ type: 'VERIFY_ERROR', payload: getOtpErrorMessage(result.error, 'code') })
         return
-      }
-
-      // Store the token for bearer auth (backend returns { session, user }; session.token is the bearer token)
-      const token = (result.data as { session?: { token?: string } } | undefined)?.session?.token
-      if (token) {
-        setAuthToken(token)
       }
 
       const isNewUser = isNewAuthUser(result.data?.user)
@@ -208,26 +227,20 @@ export const useSignInFormState = ({
       return false
     }
 
-    // Clear any previous error
-    dispatch({ type: 'SET_ERROR', payload: '' })
-
     try {
-      const { error } = await authClient.emailOtp.sendVerificationOtp({
-        email: trimmedEmail,
-        type: 'sign-in',
-      })
+      const { challengeToken } = await httpClient
+        .post('waitlist/join', { json: { email: trimmedEmail } })
+        .json<{ success: boolean; challengeToken?: string }>()
 
-      if (error) {
-        dispatch({ type: 'SET_ERROR', payload: error.message || 'Failed to resend verification code' })
-        return false
-      }
-
-      // Clear OTP input for fresh entry
-      dispatch({ type: 'SET_OTP', payload: '' })
+      dispatch({ type: 'SEND_SUCCESS', payload: challengeToken ?? '' })
       return true
     } catch (error) {
       console.error('Failed to resend verification OTP:', error)
-      dispatch({ type: 'SET_ERROR', payload: 'Failed to resend verification code. Please check your connection.' })
+      const message = await getServerErrorMessage(
+        error,
+        'Failed to resend verification code. Please check your connection.',
+      )
+      dispatch({ type: 'SET_ERROR', payload: message })
       return false
     }
   }

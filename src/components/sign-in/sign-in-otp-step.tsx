@@ -1,6 +1,7 @@
 import { ActionFeedbackButton } from '@/components/ui/action-feedback-button'
 import { Button } from '@/components/ui/button'
 import { InputOTP, InputOTPGroup, InputOTPSlot } from '@/components/ui/input-otp'
+import { otpLength } from '@/lib/constants'
 import { REGEXP_ONLY_DIGITS } from 'input-otp'
 import { AlertTriangle, Check, Loader2, Mail } from 'lucide-react'
 
@@ -44,7 +45,7 @@ export const SignInOtpStep = ({
         <div className="my-auto flex flex-col items-center text-center">
           <p className="font-sans text-[28px] font-medium leading-normal text-foreground">Check your email</p>
           <p className="mt-2 text-base text-foreground">
-            If you have access, we&apos;ve sent a 6-digit code to <span className="font-bold">{email}</span>
+            If you have access, we&apos;ve sent an 8-digit code to <span className="font-bold">{email}</span>
           </p>
           <ActionFeedbackButton
             variant="ghost"
@@ -66,7 +67,7 @@ export const SignInOtpStep = ({
         {/* OTP input + feedback at bottom */}
         <div className="flex w-full flex-col items-center gap-4">
           <InputOTP
-            maxLength={6}
+            maxLength={otpLength}
             pattern={REGEXP_ONLY_DIGITS}
             value={otp}
             onChange={onOtpChange}
@@ -77,10 +78,11 @@ export const SignInOtpStep = ({
             data-1p-ignore
             data-lpignore="true"
             data-form-type="other"
+            containerClassName="w-full"
           >
-            <InputOTPGroup className="gap-2">
-              {[0, 1, 2, 3, 4, 5].map((i) => (
-                <InputOTPSlot key={i} index={i} className="h-12 w-12 shrink-0 rounded-lg" />
+            <InputOTPGroup className="w-full gap-2">
+              {[0, 1, 2, 3, 4, 5, 6, 7].map((i) => (
+                <InputOTPSlot key={i} index={i} className="flex-1 rounded-lg" />
               ))}
             </InputOTPGroup>
           </InputOTP>
@@ -90,7 +92,7 @@ export const SignInOtpStep = ({
           <Button
             type="button"
             onClick={() => onOtpComplete(otp)}
-            disabled={isVerifying || otp.length !== 6}
+            disabled={isVerifying || otp.length !== otpLength}
             className="h-[46px] w-full rounded-[12px] bg-foreground text-background text-base font-medium hover:bg-foreground/90 disabled:bg-muted disabled:text-muted-foreground"
           >
             {isVerifying ? (
@@ -140,9 +142,9 @@ export const SignInOtpStep = ({
 
       {/* OTP Input */}
       <div className="mt-6 flex flex-col items-center gap-3">
-        <p className="text-sm text-muted-foreground">Or enter the 6-digit code</p>
+        <p className="text-sm text-muted-foreground">Or enter the 8-digit code</p>
         <InputOTP
-          maxLength={6}
+          maxLength={otpLength}
           pattern={REGEXP_ONLY_DIGITS}
           value={otp}
           onChange={onOtpChange}
@@ -153,14 +155,12 @@ export const SignInOtpStep = ({
           data-1p-ignore
           data-lpignore="true"
           data-form-type="other"
+          containerClassName="w-full"
         >
-          <InputOTPGroup>
-            <InputOTPSlot index={0} />
-            <InputOTPSlot index={1} />
-            <InputOTPSlot index={2} />
-            <InputOTPSlot index={3} />
-            <InputOTPSlot index={4} />
-            <InputOTPSlot index={5} />
+          <InputOTPGroup className="w-full gap-2">
+            {[0, 1, 2, 3, 4, 5, 6, 7].map((i) => (
+              <InputOTPSlot key={i} index={i} className="flex-1 rounded-lg" />
+            ))}
           </InputOTPGroup>
         </InputOTP>
 

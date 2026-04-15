@@ -1,6 +1,6 @@
 import { llmContentCharLimit, truncateText } from '@/lib/utils'
 import type { ToolConfig } from '@/types'
-import ky, { type KyInstance } from 'ky'
+import { http, type HttpClient } from '@/lib/http'
 import { z } from 'zod'
 import {
   buildRawMessage,
@@ -11,6 +11,21 @@ import {
   parseEmailAddress,
   transformDriveQuery,
 } from './utils'
+
+// =============================================================================
+// DEPENDENCY INJECTION
+// =============================================================================
+
+/** Inject-able auth dependencies for testing (DB + HTTP side effects) */
+export type GoogleAuthDeps = {
+  getCredentials: typeof getGoogleCredentials
+  ensureToken: typeof ensureValidGoogleToken
+}
+
+const defaultAuthDeps: GoogleAuthDeps = {
+  getCredentials: getGoogleCredentials,
+  ensureToken: ensureValidGoogleToken,
+}
 
 // =============================================================================
 // SCHEMAS
@@ -262,9 +277,13 @@ const getDriveFileCategory = (mime: string): DriveFileContent['file_category'] =
 /**
  * Check inbox for recent email threads (conversations) with lightweight summaries
  */
-export const checkInbox = async (params: CheckInboxParams, httpClient: KyInstance = ky) => {
-  const credentials = await getGoogleCredentials()
-  const accessToken = await ensureValidGoogleToken(credentials)
+export const checkInbox = async (
+  params: CheckInboxParams,
+  httpClient: HttpClient = http,
+  auth: GoogleAuthDeps = defaultAuthDeps,
+) => {
+  const credentials = await auth.getCredentials()
+  const accessToken = await auth.ensureToken(httpClient, credentials)
 
   const searchParams = new URLSearchParams()
   searchParams.set('maxResults', Math.min(params.max_results, 50).toString())
@@ -344,9 +363,13 @@ export const checkInbox = async (params: CheckInboxParams, httpClient: KyInstanc
 /**
  * Search emails using Gmail query syntax
  */
-export const searchEmails = async (params: SearchEmailsParams, httpClient: KyInstance = ky) => {
-  const credentials = await getGoogleCredentials()
-  const accessToken = await ensureValidGoogleToken(credentials)
+export const searchEmails = async (
+  params: SearchEmailsParams,
+  httpClient: HttpClient = http,
+  auth: GoogleAuthDeps = defaultAuthDeps,
+) => {
+  const credentials = await auth.getCredentials()
+  const accessToken = await auth.ensureToken(httpClient, credentials)
 
   const searchParams = new URLSearchParams()
   searchParams.set('maxResults', Math.min(params.max_results, 50).toString())
@@ -403,9 +426,13 @@ export const searchEmails = async (params: SearchEmailsParams, httpClient: KyIns
 /**
  * Get full details of a specific email
  */
-export const getEmail = async (params: GetEmailParams, httpClient: KyInstance = ky) => {
-  const credentials = await getGoogleCredentials()
-  const accessToken = await ensureValidGoogleToken(credentials)
+export const getEmail = async (
+  params: GetEmailParams,
+  httpClient: HttpClient = http,
+  auth: GoogleAuthDeps = defaultAuthDeps,
+) => {
+  const credentials = await auth.getCredentials()
+  const accessToken = await auth.ensureToken(httpClient, credentials)
 
   const response = await httpClient
     .get(`https://www.googleapis.com/gmail/v1/users/me/messages/${params.id}`, {
@@ -481,9 +508,13 @@ export const getEmail = async (params: GetEmailParams, httpClient: KyInstance = 
 /**
  * Draft an email (ready to send later)
  */
-export const draftEmail = async (params: DraftEmailParams, httpClient: KyInstance = ky) => {
-  const credentials = await getGoogleCredentials()
-  const accessToken = await ensureValidGoogleToken(credentials)
+export const draftEmail = async (
+  params: DraftEmailParams,
+  httpClient: HttpClient = http,
+  auth: GoogleAuthDeps = defaultAuthDeps,
+) => {
+  const credentials = await auth.getCredentials()
+  const accessToken = await auth.ensureToken(httpClient, credentials)
 
   const raw = buildRawMessage(params)
 
@@ -527,9 +558,13 @@ export const draftEmail = async (params: DraftEmailParams, httpClient: KyInstanc
 /**
  * Check calendar events for upcoming days
  */
-export const checkCalendar = async (params: CheckCalendarParams, httpClient: KyInstance = ky) => {
-  const credentials = await getGoogleCredentials()
-  const accessToken = await ensureValidGoogleToken(credentials)
+export const checkCalendar = async (
+  params: CheckCalendarParams,
+  httpClient: HttpClient = http,
+  auth: GoogleAuthDeps = defaultAuthDeps,
+) => {
+  const credentials = await auth.getCredentials()
+  const accessToken = await auth.ensureToken(httpClient, credentials)
 
   const now = new Date()
   const futureDate = new Date()
@@ -598,9 +633,13 @@ export const checkCalendar = async (params: CheckCalendarParams, httpClient: KyI
 /**
  * Search Google Drive files using Drive API
  */
-export const searchDrive = async (params: SearchDriveParams, httpClient: KyInstance = ky) => {
-  const credentials = await getGoogleCredentials()
-  const accessToken = await ensureValidGoogleToken(credentials)
+export const searchDrive = async (
+  params: SearchDriveParams,
+  httpClient: HttpClient = http,
+  auth: GoogleAuthDeps = defaultAuthDeps,
+) => {
+  const credentials = await auth.getCredentials()
+  const accessToken = await auth.ensureToken(httpClient, credentials)
 
   const searchParams = new URLSearchParams()
   searchParams.set('pageSize', Math.min(params.max_results, 50).toString())
@@ -691,10 +730,11 @@ export const extractDriveFileId = (input: string): string => {
  */
 export const getDriveFileContent = async (
   params: GetDriveFileContentParams,
-  httpClient: KyInstance = ky,
+  httpClient: HttpClient = http,
+  auth: GoogleAuthDeps = defaultAuthDeps,
 ): Promise<DriveFileContent> => {
-  const credentials = await getGoogleCredentials()
-  const accessToken = await ensureValidGoogleToken(credentials)
+  const credentials = await auth.getCredentials()
+  const accessToken = await auth.ensureToken(httpClient, credentials)
 
   // Extract file ID from URL if a full URL was provided
   const fileId = extractDriveFileId(params.file_id)
@@ -817,7 +857,7 @@ export const getDriveFileContent = async (
  *
  * @param httpClient - HTTP client for making requests (injected for dependency injection)
  */
-export const createConfigs = (httpClient: KyInstance): ToolConfig[] => [
+export const createConfigs = (httpClient: HttpClient): ToolConfig[] => [
   {
     name: 'google_check_inbox',
     description:
@@ -873,7 +913,7 @@ export const createConfigs = (httpClient: KyInstance): ToolConfig[] => [
 ]
 
 /**
- * Default configs using the global ky instance
+ * Default configs using the default http client
  * @deprecated Use createConfigs() with an injected httpClient instead
  */
-export const configs = createConfigs(ky)
+export const configs = createConfigs(http)

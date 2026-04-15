@@ -112,6 +112,7 @@ describe('parseVerifyLinkCallback', () => {
     expect(result).toEqual({
       email: 'user@example.com',
       otp: '123456',
+      challengeToken: undefined,
     })
   })
 
@@ -122,6 +123,7 @@ describe('parseVerifyLinkCallback', () => {
     expect(result).toEqual({
       email: 'user@example.com',
       otp: '123456',
+      challengeToken: undefined,
     })
   })
 
@@ -174,6 +176,31 @@ describe('parseVerifyLinkCallback', () => {
     expect(result).toEqual({
       email: 'user+tag@example.com',
       otp: '123456',
+      challengeToken: undefined,
+    })
+  })
+
+  it('parses challengeToken when present', () => {
+    const url = new URL(
+      'https://thunderbolt.io/auth/verify?email=user%40example.com&otp=12345678&challengeToken=abc-123-def',
+    )
+    const result = parseVerifyLinkCallback(url)
+
+    expect(result).toEqual({
+      email: 'user@example.com',
+      otp: '12345678',
+      challengeToken: 'abc-123-def',
+    })
+  })
+
+  it('returns undefined challengeToken when not present', () => {
+    const url = new URL('https://thunderbolt.io/auth/verify?email=user%40example.com&otp=12345678')
+    const result = parseVerifyLinkCallback(url)
+
+    expect(result).toEqual({
+      email: 'user@example.com',
+      otp: '12345678',
+      challengeToken: undefined,
     })
   })
 })

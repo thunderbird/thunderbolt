@@ -1,10 +1,12 @@
+import type { Settings } from '@/config/settings'
+import { extractClientIp } from '@/utils/request'
 import { Elysia } from 'elysia'
 
 /**
  * HTTP request/response logging middleware
  * Logs requests in Apache Common Log format with response time
  */
-export const createHttpLoggingMiddleware = () => {
+export const createHttpLoggingMiddleware = (trustedProxy: Settings['trustedProxy'] = '') => {
   return new Elysia({ name: 'http-logging' })
     .onRequest((ctx) => {
       const url = new URL(ctx.request.url)
@@ -47,7 +49,7 @@ export const createHttpLoggingMiddleware = () => {
       }
 
       // Determine client address (best-effort behind proxies)
-      const client = extractClientAddress(ctx.request.headers) || '-'
+      const client = extractClientIp(ctx.request.headers, '-', trustedProxy)
       const httpVersion = 'HTTP/1.1'
       const statusText = statusTextMap[String(status)] || ''
       const rt = responseTime !== undefined ? ` ${responseTime}ms` : ''
@@ -58,28 +60,4 @@ export const createHttpLoggingMiddleware = () => {
       // Log using the decorated logger
       ;(ctx as any).log?.info(logLine)
     })
-}
-
-/**
- * Extract client IP address from request headers
- * Checks standard proxy headers in order of preference
- */
-const extractClientAddress = (headers: Headers): string | undefined => {
-  // Check RFC 7239 Forwarded header first
-  const forwarded = headers.get('forwarded')
-  if (forwarded) {
-    const match = forwarded.match(/for=\"?([^;\"]+)/i)
-    if (match && match[1]) {
-      return match[1]
-    }
-  }
-
-  // Check X-Forwarded-For
-  const xff = headers.get('x-forwarded-for')
-  if (xff) {
-    return xff.split(',')[0].trim()
-  }
-
-  // Check other common headers
-  return headers.get('cf-connecting-ip') || headers.get('true-client-ip') || headers.get('x-real-ip') || undefined
 }

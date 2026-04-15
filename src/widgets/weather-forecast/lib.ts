@@ -30,7 +30,7 @@ export type WeatherMetadata = {
 const isDayTime = (dateString: string): boolean => {
   try {
     const date = dayjs(dateString)
-    const hour = date.hour()
+    const hour = dateString.includes('T') ? date.hour() : 12
     return hour >= 6 && hour < 18
   } catch {
     return true

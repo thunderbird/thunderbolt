@@ -1,5 +1,6 @@
 import { Card, CardHeader } from '@/components/ui/card'
 import { Skeleton } from '@/components/ui/skeleton'
+import { useHttpClient } from '@/contexts'
 import { useMessageCache } from '@/hooks/use-message-cache'
 import { useSettings } from '@/hooks/use-settings'
 import { fetchLinkPreview } from '@/integrations/thunderbolt-pro/api'
@@ -102,12 +103,12 @@ const FetchLinkPreview = ({
     siteName?: string | null
   }>
 }) => {
-  const fetchFn = fetchPreviewFn ?? fetchLinkPreview
+  const httpClient = useHttpClient()
   const { data, isLoading, error } = useMessageCache<LinkPreviewMetadata>({
     messageId,
     cacheKey: ['linkPreview', url],
     fetchFn: async () => {
-      const preview = await fetchFn({ url })
+      const preview = fetchPreviewFn ? await fetchPreviewFn({ url }) : await fetchLinkPreview({ url }, httpClient)
       return {
         title: preview.title,
         description: preview.description,

@@ -1,5 +1,5 @@
 import { useEffect } from 'react'
-import ky from 'ky'
+import { http } from '@/lib/http'
 import { useSettings } from '@/hooks/use-settings'
 import Loading from '@/loading'
 
@@ -24,7 +24,7 @@ const OidcRedirect = () => {
     // Without it, the state cookie is lost and the callback fails with state_mismatch.
     const redirectToOidc = async () => {
       try {
-        const data = await ky
+        const data = await http
           .post(`${baseUrl}/v1/api/auth/sign-in/oauth2`, {
             json: { providerId: 'oidc', callbackURL: window.location.origin + '/' },
             credentials: 'include',

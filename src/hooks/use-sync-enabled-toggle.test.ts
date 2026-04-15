@@ -20,17 +20,29 @@ mock.module('@/lib/posthog', () => ({
   trackEvent: mockTrackEvent,
 }))
 
+mock.module('@/db/encryption', () => ({
+  isEncryptionEnabled: () => true,
+}))
+
+const mockGetCK = mock(() => Promise.resolve(null))
+mock.module('@/crypto/key-storage', () => ({
+  getCK: mockGetCK,
+}))
+
 import { useSyncEnabledToggle } from './use-sync-enabled-toggle'
 
 describe('useSyncEnabledToggle', () => {
   beforeEach(() => {
     mockSetSyncEnabled.mockClear()
     mockTrackEvent.mockClear()
+    mockGetCK.mockClear()
+    mockGetCK.mockImplementation(() => Promise.resolve(null))
   })
 
   afterEach(() => {
     mockSetSyncEnabled.mockRestore?.()
     mockTrackEvent.mockRestore?.()
+    mockGetCK.mockRestore?.()
   })
 
   it('returns sync toggle state and handlers', () => {
@@ -38,21 +50,21 @@ describe('useSyncEnabledToggle', () => {
 
     expect(result.current).toMatchObject({
       syncEnabled: expect.any(Boolean),
-      syncEnableWarningOpen: false,
-      setSyncEnableWarningOpen: expect.any(Function),
+      syncSetupOpen: false,
+      setSyncSetupOpen: expect.any(Function),
       handleSyncToggle: expect.any(Function),
-      handleConfirmEnableSync: expect.any(Function),
+      handleSyncSetupComplete: expect.any(Function),
     })
   })
 
-  it('handleSyncToggle(true) opens warning dialog', async () => {
+  it('handleSyncToggle(true) opens sync setup modal', async () => {
     const { result } = renderHook(() => useSyncEnabledToggle())
 
     await act(async () => {
       await result.current.handleSyncToggle(true)
     })
 
-    expect(result.current.syncEnableWarningOpen).toBe(true)
+    expect(result.current.syncSetupOpen).toBe(true)
   })
 
   it('handleSyncToggle(false) disables sync and tracks event', async () => {

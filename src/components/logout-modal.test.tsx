@@ -9,12 +9,10 @@ import { act, fireEvent, render, screen } from '@testing-library/react'
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, mock } from 'bun:test'
 import { LogoutModal } from './logout-modal'
 
-// Mock resetAppDir - include createAppDir to prevent mock leakage breaking other tests
-const mockResetAppDir = mock()
+const mockClearLocalData = mock(() => Promise.resolve())
 
-mock.module('@/lib/fs', () => ({
-  resetAppDir: mockResetAppDir,
-  createAppDir: () => Promise.resolve('/mock/app/dir'),
+mock.module('@/lib/cleanup', () => ({
+  clearLocalData: mockClearLocalData,
 }))
 
 // Mock window.location.reload
@@ -43,7 +41,7 @@ describe('LogoutModal', () => {
     await resetTestDatabase()
     mockOnOpenChange = mock()
     mockSignOut = mock(() => Promise.resolve())
-    mockResetAppDir.mockClear()
+    mockClearLocalData.mockClear()
     mockReload.mockClear()
   })
 
@@ -135,7 +133,7 @@ describe('LogoutModal', () => {
       })
 
       expect(mockSignOut).toHaveBeenCalled()
-      expect(mockResetAppDir).not.toHaveBeenCalled()
+      expect(mockClearLocalData).toHaveBeenCalledWith({ clearDatabase: false })
       expect(mockReload).toHaveBeenCalled()
     })
 
@@ -167,7 +165,7 @@ describe('LogoutModal', () => {
   })
 
   describe('logout flow with delete data', () => {
-    it('calls signOut, resetAppDir, and reloads when deleting data', async () => {
+    it('calls signOut, clearLocalData with clearDatabase, and reloads when deleting data', async () => {
       renderModal()
       const deleteOption = screen.getByText('Delete data from device').closest('button')!
       const logoutButton = screen.getByRole('button', { name: 'Log out' })
@@ -180,7 +178,7 @@ describe('LogoutModal', () => {
       })
 
       expect(mockSignOut).toHaveBeenCalled()
-      expect(mockResetAppDir).toHaveBeenCalled()
+      expect(mockClearLocalData).toHaveBeenCalledWith({ clearDatabase: true })
       expect(mockReload).toHaveBeenCalled()
     })
 
@@ -240,8 +238,8 @@ describe('LogoutModal', () => {
       expect(mockReload).toHaveBeenCalled()
     })
 
-    it('continues to reload even if resetAppDir fails', async () => {
-      mockResetAppDir.mockRejectedValue(new Error('File system error'))
+    it('continues to reload even if clearLocalData fails', async () => {
+      mockClearLocalData.mockRejectedValueOnce(new Error('Cleanup error'))
 
       renderModal()
       const deleteOption = screen.getByText('Delete data from device').closest('button')!

@@ -1,8 +1,9 @@
 import { getDeviceId, getAuthToken } from '@/lib/auth-token'
 import { getDeviceDisplayName } from '@/lib/platform'
 import type { AbstractPowerSyncDatabase, PowerSyncBackendConnector, PowerSyncCredentials } from '@powersync/web'
+import { encodeForUpload } from '@/db/encryption'
 
-/** Dispatched when backend returns 410 (account deleted), 403 + DEVICE_DISCONNECTED, or 409 + DEVICE_ID_TAKEN. App should reset and reload. */
+/** Dispatched when backend returns 410 (account deleted), 403 + DEVICE_DISCONNECTED, 403 + DEVICE_NOT_TRUSTED, or 409 + DEVICE_ID_TAKEN. App should reset and reload. */
 export const powersyncCredentialsInvalid = 'powersync_credentials_invalid'
 
 export type CredentialsInvalidReason = 'account_deleted' | 'device_revoked' | 'device_id_taken' | 'device_id_required'
@@ -93,7 +94,8 @@ export class ThunderboltConnector implements PowerSyncBackendConnector {
           // ignore
         }
         handleCredentialsInvalidIfNeeded(status, body)
-        if (status !== 401) {
+        // 401 = not authenticated (expected before login), DEVICE_NOT_TRUSTED = expected during setup
+        if (status !== 401 && body.code !== 'DEVICE_NOT_TRUSTED') {
           console.error('Failed to fetch PowerSync credentials:', status, body)
         }
         return null
@@ -124,13 +126,17 @@ export class ThunderboltConnector implements PowerSyncBackendConnector {
     }
 
     try {
-      // Convert CRUD operations to our API format
-      const operations = transaction.crud.map((op) => ({
-        op: op.op.toUpperCase() as 'PUT' | 'PATCH' | 'DELETE',
-        type: op.table,
-        id: op.id,
-        data: op.opData,
-      }))
+      // Convert CRUD operations to our API format (encrypt encrypted columns)
+      const operations = await Promise.all(
+        transaction.crud.map((op) =>
+          encodeForUpload({
+            op: op.op.toUpperCase() as 'PUT' | 'PATCH' | 'DELETE',
+            type: op.table,
+            id: op.id,
+            data: op.opData,
+          }),
+        ),
+      )
 
       console.info(`Uploading ${operations.length} operations to backend`)
 

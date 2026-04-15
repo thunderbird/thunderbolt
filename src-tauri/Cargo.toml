@@ -1,6 +1,6 @@
 [package]
 name = "thunderbolt"
-version = "0.1.81"
+version = "0.1.87"
 description = "Privacy-respecting AI assistant."
 authors = ["Chris Roth <chris@cjroth.com>"]
 license = "MPL-2.0"
@@ -46,8 +46,6 @@ tauri-plugin-devtools = "2.0.1"
 tauri-plugin-http = "2.5.4"
 tauri-plugin-process = "2.3.1"
 tauri-plugin-fs = "2.4.4"
-tauri-plugin-m3 = "0.2.2"
-
 tauri-plugin-deep-link = "2.3"
 tauri-plugin-haptics = "2.3"
 tauri-plugin-updater = "2.3"

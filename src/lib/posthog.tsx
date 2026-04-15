@@ -2,8 +2,8 @@ import { type HttpClient } from '@/contexts'
 import { getSettings } from '@/dal'
 import { getDb } from '@/db/database'
 import { createHandleError } from '@/lib/error-utils'
+import { createClient } from '@/lib/http'
 import type { HandleError, HandleResult } from '@/types/handle-errors'
-import ky from 'ky'
 import posthog, { type PostHog } from 'posthog-js'
 import { PostHogProvider as PostHogReactProvider } from 'posthog-js/react'
 import type { ReactNode } from 'react'
@@ -45,7 +45,7 @@ export const sanitizeUrl = (url: string): string => {
 
 /**
  * Initialize Posthog analytics and return the client
- * @param httpClient - Optional HTTP client for dependency injection. If not provided, creates a ky instance with cloudUrl from settings as prefixUrl
+ * @param httpClient - Optional HTTP client for dependency injection. If not provided, creates a client with cloudUrl from settings as prefixUrl
  */
 export const initPosthog = async (httpClient?: HttpClient): Promise<HandleResult<PostHog | null>> => {
   try {
@@ -56,8 +56,10 @@ export const initPosthog = async (httpClient?: HttpClient): Promise<HandleResult
       debug_posthog: false,
     })
 
-    const client = httpClient ?? ky.create({ prefixUrl: cloudUrl })
-    const { posthog_api_key: apiKey } = await client.get('posthog/config').json<{ posthog_api_key?: string }>()
+    const client = httpClient ?? createClient({ prefixUrl: cloudUrl })
+    const { public_posthog_api_key: apiKey } = await client
+      .get('posthog/config')
+      .json<{ public_posthog_api_key?: string }>()
 
     if (!apiKey) {
       console.warn('Posthog analytics disabled - no API key provided')
@@ -73,12 +75,13 @@ export const initPosthog = async (httpClient?: HttpClient): Promise<HandleResult
         api_host: apiHost,
         debug: debugPosthog,
         autocapture: false,
-        capture_exceptions: true,
+        capture_exceptions: false,
         capture_pageview: false,
         capture_pageleave: false,
         disable_surveys: true,
         disable_session_recording: true,
         disable_scroll_properties: true,
+        disable_external_dependency_loading: true,
         capture_performance: false,
         persistence: 'localStorage',
         before_send: (event) => {

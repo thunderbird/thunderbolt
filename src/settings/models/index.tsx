@@ -30,7 +30,7 @@ import { useMutation } from '@tanstack/react-query'
 import { useQuery } from '@powersync/tanstack-react-query'
 import { toCompilableQuery } from '@powersync/drizzle-driver'
 import { generateText } from 'ai'
-import ky from 'ky'
+import { http } from '@/lib/http'
 import { Check, Cpu, Loader2, Lock, Plus, Trash2, X } from 'lucide-react'
 import { useEffect, useMemo, useReducer, useRef, type KeyboardEvent } from 'react'
 import { useForm } from 'react-hook-form'
@@ -469,7 +469,7 @@ export default function ModelsPage() {
       if (endpoint) {
         // For Custom (OpenAI Compatible), try even without API key, otherwise require API key
         if (provider === 'custom' || apiKey) {
-          const response = await ky.get(endpoint, { headers, fetch }).json<{ data: AvailableModel[] }>()
+          const response = await http.get(endpoint, { headers, fetch }).json<{ data: AvailableModel[] }>()
 
           let models = (response.data || []).map((m) => {
             const supportsToolsByParams =
@@ -499,9 +499,9 @@ export default function ModelsPage() {
           error: 'Network request failed (the browser blocked the request or the server is unreachable).',
         })
       }
-      // ky HTTPError with a Response object
+      // HttpError with a Response object
       else if (typeof error === 'object' && error && 'response' in error) {
-        // @ts-expect-error – ky HTTPError shape
+        // @ts-expect-error – HttpError shape
         const response: Response | undefined = error.response
         if (response) {
           dispatch({

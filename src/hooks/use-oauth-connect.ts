@@ -1,4 +1,4 @@
-import { useDatabase } from '@/contexts'
+import { useDatabase, useHttpClient } from '@/contexts'
 import { deleteSetting, getSettings, updateSettings } from '@/dal'
 import { buildAuthUrl, exchangeCodeForTokens, getUserInfo, redirectOAuthFlow, type OAuthProvider } from '@/lib/auth'
 import { startOAuthFlowLoopback } from '@/lib/oauth-loopback'
@@ -87,6 +87,7 @@ const getInitialConnectingState = (key: string | undefined): boolean => {
  */
 export const useOAuthConnect = (options: UseOAuthConnectOptions = {}): UseOAuthConnectResult => {
   const db = useDatabase()
+  const httpClient = useHttpClient()
   const {
     connectingKey,
     onSuccess,
@@ -206,7 +207,7 @@ export const useOAuthConnect = (options: UseOAuthConnectOptions = {}): UseOAuthC
             oauth_return_context: returnContext,
           })
 
-          const authUrl = await buildAuthUrl(provider, state, codeChallenge)
+          const authUrl = await buildAuthUrl(httpClient, provider, state, codeChallenge)
 
           // Open in system browser (not webview)
           await openUrl(authUrl)
@@ -216,7 +217,7 @@ export const useOAuthConnect = (options: UseOAuthConnectOptions = {}): UseOAuthC
           // For desktop: Use system browser + loopback server flow.
           try {
             loopbackActiveRef.current = true
-            const result = await startLoopback(provider)
+            const result = await startLoopback(httpClient, provider)
 
             if (!result) {
               clearConnecting(key)
@@ -236,7 +237,7 @@ export const useOAuthConnect = (options: UseOAuthConnectOptions = {}): UseOAuthC
       } else {
         // For web: Use redirect flow
         await updateSettings(db, { oauth_return_context: returnContext })
-        await redirect(provider)
+        await redirect(httpClient, provider)
       }
     } catch (e: unknown) {
       // "Redirecting for OAuth" is thrown intentionally by redirectOAuthFlow to satisfy TypeScript's never return type
@@ -301,7 +302,7 @@ export const useOAuthConnect = (options: UseOAuthConnectOptions = {}): UseOAuthC
     }
 
     try {
-      const tokens = await exchangeTokens(provider, code, codeVerifier)
+      const tokens = await exchangeTokens(httpClient, provider, code, codeVerifier)
       const userInfo = await getUser(provider, tokens.access_token)
 
       await saveCredentials(provider, tokens, userInfo)

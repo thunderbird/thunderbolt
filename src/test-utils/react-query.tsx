@@ -1,7 +1,9 @@
 import { DatabaseProvider } from '@/contexts/database-context'
+import { HttpClientProvider } from '@/contexts/http-client-context'
 import { getDb, isDbRegistered } from '@/db/database'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import type { ReactNode } from 'react'
+import { createMockHttpClient } from './http-client'
 import { PowerSyncMockProvider } from './powersync-mock'
 
 /**
@@ -28,11 +30,15 @@ export const createQueryTestWrapper = (options?: {
     },
   })
 
+  const mockHttpClient = createMockHttpClient()
+
   return ({ children }: { children: ReactNode }) => {
     const inner = (
-      <PowerSyncMockProvider>
-        <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
-      </PowerSyncMockProvider>
+      <HttpClientProvider httpClient={mockHttpClient}>
+        <PowerSyncMockProvider>
+          <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+        </PowerSyncMockProvider>
+      </HttpClientProvider>
     )
     if (isDbRegistered()) {
       return <DatabaseProvider db={getDb()}>{inner}</DatabaseProvider>

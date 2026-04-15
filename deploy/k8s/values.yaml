@@ -1,0 +1,103 @@
+# -- Global image pull secrets for private registries (e.g. GHCR)
+imagePullSecrets: []
+# - name: ghcr-pull
+
+# -- Base URL the app is served from (used for CORS, redirects, auth callbacks)
+appUrl: http://localhost
+
+# =============================================================================
+# Frontend
+# =============================================================================
+frontend:
+  image:
+    repository: ghcr.io/your-org/thunderbolt/frontend
+    tag: latest
+    pullPolicy: IfNotPresent
+  replicas: 1
+  service:
+    port: 80
+
+# =============================================================================
+# Backend
+# =============================================================================
+backend:
+  image:
+    repository: ghcr.io/your-org/thunderbolt/backend
+    tag: latest
+    pullPolicy: IfNotPresent
+  replicas: 1
+  service:
+    port: 8000
+  env:
+    authMode: oidc
+    waitlistEnabled: "false"
+    databaseDriver: postgres
+    rateLimitEnabled: "false"
+
+# =============================================================================
+# PostgreSQL
+# =============================================================================
+postgres:
+  image:
+    repository: postgres
+    tag: 18-alpine
+  storage: 5Gi
+  credentials:
+    user: postgres
+    database: postgres
+    # -- Base64-encoded password (default: "postgres")
+    passwordBase64: cG9zdGdyZXM=
+
+# =============================================================================
+# MongoDB
+# =============================================================================
+mongo:
+  image:
+    repository: mongo
+    tag: "7.0"
+  storage: 5Gi
+
+# =============================================================================
+# PowerSync
+# =============================================================================
+powersync:
+  image:
+    repository: journeyapps/powersync-service
+    tag: latest
+  replicas: 1
+  service:
+    port: 8080
+  jwt:
+    kid: enterprise-powersync
+    # -- Base64-encoded JWT secret (default: "enterprise-powersync-secret")
+    secretBase64: ZW50ZXJwcmlzZS1wb3dlcnN5bmMtc2VjcmV0
+
+# =============================================================================
+# Keycloak (OIDC Identity Provider)
+# =============================================================================
+keycloak:
+  image:
+    repository: quay.io/keycloak/keycloak
+    tag: "26.0"
+  replicas: 1
+  service:
+    port: 8080
+  admin:
+    username: admin
+    password: admin
+  oidc:
+    clientId: thunderbolt-app
+    # -- Base64-encoded client secret (default: "thunderbolt-enterprise-secret")
+    clientSecretBase64: dGh1bmRlcmJvbHQtZW50ZXJwcmlzZS1zZWNyZXQ=
+
+# =============================================================================
+# Ingress
+# =============================================================================
+ingress:
+  enabled: true
+  className: nginx
+  annotations:
+    nginx.ingress.kubernetes.io/proxy-buffer-size: "128k"
+    nginx.ingress.kubernetes.io/proxy-buffers-number: "4"
+  # -- Set to your domain for production; leave empty for default rule
+  host: ""

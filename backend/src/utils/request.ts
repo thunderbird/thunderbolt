@@ -1,5 +1,3 @@
-import type { Context } from 'elysia'
-
 /**
  * Default denylist for request headers that should not be forwarded in proxy scenarios.
  * These headers are either hop-by-hop or would cause issues when forwarding.
@@ -35,16 +33,53 @@ export const defaultResponseDenylist = [
 ]
 
 /**
- * Build a stable user identifier from request metadata.
+ * Extract client IP address from request headers.
  *
- * Uses the User-Agent and client IP to produce a simple, stable identifier
- * that can be used for per-user billing or rate limiting contexts.
+ * Proxy headers are only trusted when `trustedProxy` is set, because without
+ * a proxy in front, any client can forge these headers to bypass rate limiting.
+ *
+ * When `trustedProxy` is set:
+ * - `cloudflare`: trusts `CF-Connecting-IP`, falls back to socket IP
+ * - `akamai`: trusts `True-Client-IP`, falls back to socket IP
+ *
+ * If the authoritative CDN header is absent, the request likely bypassed
+ * the CDN, so proxy headers (XFF, X-Real-IP) are untrusted — only the
+ * socket IP (passed as `fallback`) is used.
+ *
+ * When `trustedProxy` is empty (no proxy), only the socket IP is used.
  */
-export const buildUserIdHash = (ctx: Context, fallback = 'unknown'): string => {
-  const userAgent = ctx.headers['user-agent'] || fallback
-  const clientIp = ctx.headers['x-forwarded-for'] || ctx.headers['x-real-ip'] || fallback
+export const extractClientIp = (
+  headers: Headers,
+  fallback = 'unknown',
+  trustedProxy: '' | 'cloudflare' | 'akamai' = '',
+): string => {
+  if (!trustedProxy) return fallback
 
-  return `${userAgent}:${clientIp}`
+  if (trustedProxy === 'cloudflare') {
+    return headers.get('cf-connecting-ip') ?? fallback
+  }
+
+  if (trustedProxy === 'akamai') {
+    return headers.get('true-client-ip') ?? fallback
+  }
+
+  return fallback
+}
+
+/**
+ * Return the trusted IP header names for a given proxy configuration.
+ * Used by Better Auth's `advanced.ipAddress.ipAddressHeaders` so its
+ * built-in rate limiter reads the same header as `extractClientIp`.
+ *
+ * Returns `undefined` when no proxy is configured so Better Auth falls
+ * back to its default (`x-forwarded-for`). Returning `[]` would cause
+ * Better Auth to skip all headers and return `null` for the IP, which
+ * silently disables rate limiting in production.
+ */
+export const getTrustedIpHeaders = (trustedProxy: '' | 'cloudflare' | 'akamai'): string[] | undefined => {
+  if (trustedProxy === 'cloudflare') return ['cf-connecting-ip']
+  if (trustedProxy === 'akamai') return ['true-client-ip']
+  return undefined
 }
 
 /**

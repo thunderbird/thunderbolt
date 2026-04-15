@@ -1,5 +1,29 @@
 import type { HandleError, HandleErrorCode } from '@/types/handle-errors'
 
+const parseJson = (str: string): Record<string, unknown> | undefined => {
+  try {
+    return JSON.parse(str)
+  } catch {
+    return undefined
+  }
+}
+
+/** Check whether an error represents a rate-limit (HTTP 429) response. */
+export const isRateLimitError = (error?: Error | null): boolean => {
+  if (!error?.message) {
+    return false
+  }
+
+  // aiFetchStreamingResponse serializes errors as {"error":"...","status":429}
+  // DefaultChatTransport may use {"error":"...","statusCode":429}
+  const parsed = parseJson(error.message)
+  if (parsed?.status === 429 || parsed?.statusCode === 429) {
+    return true
+  }
+
+  return error.message.toLowerCase().includes('too many requests')
+}
+
 /**
  * Creates a HandleError with optional stack trace if available
  */

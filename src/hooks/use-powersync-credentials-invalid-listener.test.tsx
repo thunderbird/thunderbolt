@@ -23,8 +23,7 @@ const deviceId = 'test-device-id'
 const authToken = 'test-auth-token'
 
 const mockReplace = mock()
-const mockResetAppDir = mock()
-const mockSetSyncEnabled = mock(() => Promise.resolve())
+const mockClearLocalData = mock(() => Promise.resolve())
 
 /** Get real event APIs from an untouched iframe — other tests replace window's and never restore */
 const getRealEventApis = () => {
@@ -40,9 +39,8 @@ const getRealEventApis = () => {
   return apis
 }
 
-mock.module('@/lib/fs', () => ({
-  resetAppDir: mockResetAppDir,
-  createAppDir: () => Promise.resolve('/mock/app/dir'),
+mock.module('@/lib/cleanup', () => ({
+  clearLocalData: mockClearLocalData,
 }))
 
 mock.module('@/db/powersync', () => ({
@@ -52,7 +50,7 @@ mock.module('@/db/powersync', () => ({
   PowerSyncDatabaseImpl: class {},
   getPowerSyncInstance: () => null,
   isSyncEnabled: () => false,
-  setSyncEnabled: mockSetSyncEnabled,
+  setSyncEnabled: mock(() => Promise.resolve()),
   syncEnabledChangeEvent: 'powersync_sync_enabled_change',
 }))
 
@@ -72,8 +70,7 @@ describe('usePowerSyncCredentialsInvalidListener', () => {
   beforeEach(async () => {
     await resetTestDatabase()
     mockReplace.mockClear()
-    mockResetAppDir.mockClear()
-    mockSetSyncEnabled.mockClear()
+    mockClearLocalData.mockClear()
     Object.defineProperty(window, 'location', {
       value: { replace: mockReplace },
       writable: true,
@@ -117,8 +114,7 @@ describe('usePowerSyncCredentialsInvalidListener', () => {
         await getClock().runAllAsync()
       })
 
-      expect(mockSetSyncEnabled).toHaveBeenCalledWith(false)
-      expect(mockResetAppDir).toHaveBeenCalled()
+      expect(mockClearLocalData).toHaveBeenCalled()
       expect(mockReplace).toHaveBeenCalledWith('/account-deleted')
     })
 

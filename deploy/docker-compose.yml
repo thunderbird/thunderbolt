@@ -1,0 +1,119 @@
+services:
+  frontend:
+    build:
+      context: ../
+      dockerfile: deploy/docker/frontend.Dockerfile
+      args:
+        VITE_THUNDERBOLT_CLOUD_URL: "/v1"
+        VITE_AUTH_MODE: "oidc"
+    ports:
+      - "${FRONTEND_PORT:-3000}:80"
+    depends_on:
+      - backend
+
+  backend:
+    build:
+      context: ../
+      dockerfile: deploy/docker/backend.Dockerfile
+    ports:
+      - "${BACKEND_PORT:-8000}:8000"
+    env_file: .env
+    environment:
+      NODE_ENV: production
+      AUTH_MODE: oidc
+      WAITLIST_ENABLED: "false"
+      DATABASE_DRIVER: postgres
+      DATABASE_URL: postgresql://postgres:postgres@postgres:5432/postgres
+      # Discovery URL uses the internal Docker hostname — backchannel-dynamic lets this work
+      # while Keycloak's metadata returns localhost:8180 URLs for the browser
+      OIDC_ISSUER: http://keycloak:8080/realms/thunderbolt
+      OIDC_CLIENT_ID: thunderbolt-app
+      OIDC_CLIENT_SECRET: thunderbolt-enterprise-secret
+      BETTER_AUTH_URL: http://localhost:${FRONTEND_PORT:-3000}
+      BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET:?Set BETTER_AUTH_SECRET in .env}
+      APP_URL: http://localhost:${FRONTEND_PORT:-3000}
+      TRUSTED_ORIGINS: http://localhost:${FRONTEND_PORT:-3000}
+      CORS_ORIGINS: http://localhost:${FRONTEND_PORT:-3000}
+      POWERSYNC_URL: http://powersync:8080
+      POWERSYNC_JWT_SECRET: enterprise-powersync-secret
+      POWERSYNC_JWT_KID: enterprise-powersync
+      RATE_LIMIT_ENABLED: "false"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      keycloak:
+        condition: service_healthy
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+  postgres:
+    image: postgres:18-alpine
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_DB: postgres
+      POSTGRES_PASSWORD: postgres
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+      - ./docker/postgres-init:/docker-entrypoint-initdb.d
+    command: ["postgres", "-c", "wal_level=logical"]
+    ports:
+      - "${POSTGRES_PORT:-5433}:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  mongo:
+    image: mongo:7.0
+    command: --replSet rs0 --bind_ip_all --quiet
+    volumes:
+      - mongo_data:/data/db
+
+  mongo-rs-init:
+    image: mongo:7.0
+    depends_on:
+      - mongo
+    restart: on-failure
+    entrypoint:
+      - bash
+      - -c
+      - 'mongosh --host mongo:27017 --eval ''try{rs.status().ok&&quit(0)}catch{}rs.initiate({_id:"rs0",version:1,members:[{_id:0,host:"mongo:27017"}]})'''
+
+  powersync:
+    image: journeyapps/powersync-service:latest
+    command: ["start", "-r", "unified"]
+    environment:
+      POWERSYNC_CONFIG_PATH: /config/config.yaml
+    volumes:
+      - ./config/powersync-config.yaml:/config/config.yaml
+    ports:
+      - "${POWERSYNC_PORT:-8080}:8080"
+    depends_on:
+      mongo-rs-init:
+        condition: service_completed_successfully
+      postgres:
+        condition: service_healthy
+
+  keycloak:
+    image: quay.io/keycloak/keycloak:26.0
+    command: start-dev --import-realm
+    environment:
+      KC_BOOTSTRAP_ADMIN_USERNAME: admin
+      KC_BOOTSTRAP_ADMIN_PASSWORD: admin
+      KC_HTTP_PORT: "8080"
+      KC_HOSTNAME: http://localhost:${KEYCLOAK_PORT:-8180}
+      KC_HOSTNAME_BACKCHANNEL_DYNAMIC: "true"
+    volumes:
+      - ./config/keycloak-realm.json:/opt/keycloak/data/import/thunderbolt-realm.json
+    ports:
+      - "${KEYCLOAK_PORT:-8180}:8080"
+    healthcheck:
+      test: ["CMD-SHELL", "exec 3<>/dev/tcp/localhost/8080"]
+      interval: 10s
+      timeout: 5s
+      retries: 15
+
+volumes:
+  pg_data:
+  mongo_data:

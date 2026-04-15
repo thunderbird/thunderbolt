@@ -1,6 +1,7 @@
 import { invoke } from '@tauri-apps/api/core'
 import { listen } from '@tauri-apps/api/event'
 import { openUrl } from '@tauri-apps/plugin-opener'
+import type { HttpClient } from '@/lib/http'
 import { v4 as uuidv4 } from 'uuid'
 import {
   type OAuthUserInfo,
@@ -32,6 +33,7 @@ const oauthTimeout = Symbol('oauth-timeout')
  * @throws On state mismatch, provider error, token exchange failure, or server start failure
  */
 export const startOAuthFlowLoopback = async (
+  httpClient: HttpClient,
   provider: OAuthProvider,
   timeoutMs = oauthTimeoutMs,
 ): Promise<{ tokens: OAuthTokens; userInfo: OAuthUserInfo } | null> => {
@@ -55,7 +57,7 @@ export const startOAuthFlowLoopback = async (
       resolveUrl(event.payload.url)
     })
 
-    const authUrl = await buildAuthUrl(provider, state, codeChallenge, redirectUri)
+    const authUrl = await buildAuthUrl(httpClient, provider, state, codeChallenge, redirectUri)
     await openUrl(authUrl)
 
     const callbackUrl = await Promise.race([
@@ -81,7 +83,7 @@ export const startOAuthFlowLoopback = async (
       throw new Error('OAuth state mismatch')
     }
 
-    const tokens = await exchangeCodeForTokens(provider, code, codeVerifier, redirectUri)
+    const tokens = await exchangeCodeForTokens(httpClient, provider, code, codeVerifier, redirectUri)
     const userInfo = await getUserInfo(provider, tokens.access_token)
 
     return { tokens, userInfo }

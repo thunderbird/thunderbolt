@@ -1,15 +1,29 @@
-import { approveWaitlistEntry, createWaitlistEntry, getUserByEmail, getWaitlistByEmail, markUserNotNew } from '@/dal'
+import {
+  approveWaitlistEntry,
+  getOrCreateOtpChallenge,
+  createWaitlistEntry,
+  deleteOtpChallengesForEmail,
+  deletePersistedSignInOtp,
+  getUserByEmail,
+  getWaitlistByEmail,
+  markUserNotNew,
+  validateOtpChallenge,
+} from '@/dal'
 import type { db as DbType } from '@/db/client'
 import * as schema from '@/db/schema'
 import { normalizeEmail } from '@/lib/email'
 import { getSettings } from '@/config/settings'
+import { getTrustedIpHeaders } from '@/utils/request'
 import { createAuthMiddleware } from 'better-auth/api'
 import { betterAuth } from 'better-auth'
 import { drizzleAdapter } from 'better-auth/adapters/drizzle'
 import { bearer, emailOTP } from 'better-auth/plugins'
 import { genericOAuth } from 'better-auth/plugins/generic-oauth'
 import { isAutoApprovedDomain, sendWaitlistJoinedEmail, sendWaitlistNotReadyEmail } from '@/waitlist/utils'
+import { challengeTokenHeader, otpExpiryMs, otpExpirySeconds } from './otp-constants'
 import { buildVerifyUrl, getValidatedOrigin, parseTrustedOrigins, sendSignInEmail } from './utils'
+
+const OTP_SIGN_IN_PATH = '/sign-in/email-otp'
 
 /**
  * Trusted origins for CORS and email link validation
@@ -58,19 +72,50 @@ const buildOidcPlugins = () => {
   ]
 }
 
-export const createAuth = (database: typeof DbType) =>
-  betterAuth({
+export const createAuth = (database: typeof DbType) => {
+  const settings = getSettings()
+
+  if (!settings.trustedProxy && process.env.NODE_ENV === 'production') {
+    console.warn(
+      'TRUSTED_PROXY is not set. Better Auth rate limiting will use x-forwarded-for ' +
+        'which is spoofable without a trusted proxy. Set TRUSTED_PROXY=cloudflare (or akamai) ' +
+        'to ensure rate limiting uses the correct client IP header.',
+    )
+  }
+
+  return betterAuth({
     database: drizzleAdapter(database, {
       provider: 'pg',
       schema,
     }),
     trustedOrigins,
+    // NOTE: Uses in-memory storage by default — not shared across instances in
+    // horizontally-scaled deployments. Provides single-instance defence only.
+    // TODO(THU-113): Replace with proof-of-work challenge (ALTCHA) for distributed protection.
+    rateLimit: {
+      enabled: true,
+      window: 60,
+      max: 10,
+    },
+    advanced: {
+      ipAddress: {
+        ipAddressHeaders: getTrustedIpHeaders(settings.trustedProxy),
+      },
+    },
     user: {
       additionalFields: {
         isNew: {
           type: 'boolean',
           required: false,
           defaultValue: true,
+        },
+      },
+    },
+    session: {
+      additionalFields: {
+        deviceId: {
+          type: 'string',
+          required: false,
         },
       },
     },
@@ -84,14 +129,51 @@ export const createAuth = (database: typeof DbType) =>
       },
     },
     hooks: {
+      before: createAuthMiddleware(async (ctx) => {
+        if (ctx.path !== OTP_SIGN_IN_PATH) {
+          return
+        }
+
+        const challengeToken = ctx.headers?.get(challengeTokenHeader)
+        const rawEmail = (ctx.body as { email?: string })?.email
+
+        if (!challengeToken || !rawEmail) {
+          throw ctx.error('UNAUTHORIZED', { message: 'Challenge token required' })
+        }
+
+        const normalizedEmail = normalizeEmail(rawEmail)
+
+        const valid = await validateOtpChallenge(database, normalizedEmail, challengeToken)
+        if (!valid) {
+          throw ctx.error('UNAUTHORIZED', { message: 'Invalid challenge token' })
+        }
+
+        // Block sign-in for non-approved waitlist users (defense-in-depth).
+        // Even if a challenge token was somehow obtained, pending users cannot sign in.
+        const existingUser = await getUserByEmail(database, normalizedEmail)
+        if (!existingUser) {
+          const waitlistEntry = await getWaitlistByEmail(database, normalizedEmail)
+          if (!waitlistEntry || waitlistEntry.status !== 'approved') {
+            throw ctx.error('UNAUTHORIZED', { message: 'Sign-in not available' })
+          }
+        }
+
+        // Token stays valid for remaining attempts. Cleaned up on successful sign-in
+        // (after hook) or by expiry. This allows the 3-attempt limit to work correctly.
+      }),
       after: createAuthMiddleware(async (ctx) => {
-        if (ctx.path !== '/sign-in/email-otp') {
+        if (ctx.path !== OTP_SIGN_IN_PATH) {
           return
         }
 
         const newSession = ctx.context.newSession
         if (!newSession?.user) {
           return
+        }
+
+        const email = (ctx.body as { email?: string })?.email
+        if (email) {
+          await deleteOtpChallengesForEmail(database, normalizeEmail(email))
         }
 
         const sessionUser = newSession.user
@@ -108,11 +190,15 @@ export const createAuth = (database: typeof DbType) =>
       }),
     },
     plugins: [
-      bearer(), // Enables Authorization: Bearer <token> for mobile apps where cookies don't work
+      bearer({ requireSignature: true }), // Enables Authorization: Bearer <token> for mobile apps where cookies don't work
       emailOTP({
-        otpLength: 6,
-        expiresIn: 300, // 5 minutes
+        otpLength: 8,
+        expiresIn: otpExpirySeconds,
         allowedAttempts: 3, // Built-in rate limiting - returns TOO_MANY_ATTEMPTS after exceeded
+        resendStrategy: 'reuse', // Preserves attempt counter on resend (prevents reset-by-resend attack).
+        // Defense-in-depth: 8-digit OTP (100M keyspace) + 3 attempts + 15s cooldown between
+        // code requests + session binding (challenge token) make brute-force infeasible.
+        // TODO(THU-113): proof-of-work (ALTCHA) will add further distributed protection.
 
         async sendVerificationOTP({ email, otp, type }, ctx) {
           // We only support sign-in (no password-based auth, so no email-verification or forget-password)
@@ -138,6 +224,7 @@ export const createAuth = (database: typeof DbType) =>
               })
               if (!autoApproved) {
                 await sendWaitlistJoinedEmail({ email: normalizedEmail })
+                await deletePersistedSignInOtp(database, normalizedEmail)
                 return
               }
             } else if (waitlistEntry.status !== 'approved') {
@@ -146,13 +233,22 @@ export const createAuth = (database: typeof DbType) =>
               } else {
                 console.info('Handling sign-in for non-approved email (sending waitlist email)')
                 await sendWaitlistNotReadyEmail({ email: normalizedEmail })
+                await deletePersistedSignInOtp(database, normalizedEmail)
                 return
               }
             }
           }
 
           const origin = getValidatedOrigin(trustedOrigins, ctx?.request)
-          const verifyUrl = buildVerifyUrl(origin, normalizedEmail, otp, ctx?.request)
+          // First-writer-wins: reuses existing challenge if /waitlist/join already
+          // created one, or creates on-demand for Better Auth's native send-OTP endpoint.
+          const challengeToken = await getOrCreateOtpChallenge(database, {
+            id: crypto.randomUUID(),
+            email: normalizedEmail,
+            challengeToken: crypto.randomUUID(),
+            expiresAt: new Date(Date.now() + otpExpiryMs),
+          })
+          const verifyUrl = buildVerifyUrl(origin, normalizedEmail, otp, ctx?.request, challengeToken)
 
           await sendSignInEmail({ email: normalizedEmail, otp, verifyUrl })
         },
@@ -160,5 +256,6 @@ export const createAuth = (database: typeof DbType) =>
       ...buildOidcPlugins(),
     ],
   })
+}
 
 export type Auth = ReturnType<typeof createAuth>

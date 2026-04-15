@@ -4,7 +4,7 @@ import { getSettings, updateSettings } from '@/dal'
 import { getDb } from '@/db/database'
 import { llmContentCharLimit } from '@/lib/utils'
 import type { ToolConfig } from '@/types'
-import ky, { type KyInstance } from 'ky'
+import { http, type HttpClient } from '@/lib/http'
 import { z } from 'zod'
 
 /**
@@ -157,38 +157,48 @@ const getMicrosoftCredentials = async () => {
   }
 }
 
+/**
+ * Check whether a token is still valid with a 60-second safety buffer.
+ * Returns true when the token can be reused without refreshing.
+ */
+export const isTokenFresh = (expiresAt: number | undefined, now: number): boolean =>
+  expiresAt !== undefined && expiresAt - 60_000 > now
+
 /** Refresh access token if needed */
-const ensureValidToken = async (credentials: { access_token: string; refresh_token: string; expires_at?: number }) => {
+const ensureValidToken = async (
+  httpClient: HttpClient,
+  credentials: { access_token: string; refresh_token: string; expires_at?: number },
+) => {
   const now = Date.now()
-  if (credentials.expires_at && credentials.expires_at < now) {
-    if (!credentials.refresh_token) {
-      throw new Error('Access token expired and no refresh token available')
-    }
-
-    const { refreshAccessToken } = await import('@/lib/auth')
-    const newTokens = await refreshAccessToken('microsoft', credentials.refresh_token)
-    const updated = {
-      ...credentials,
-      access_token: newTokens.access_token,
-      expires_at: Date.now() + newTokens.expires_in * 1000,
-    }
-
-    const db = getDb()
-    await updateSettings(db, { integrations_microsoft_credentials: JSON.stringify(updated) })
-
-    return newTokens.access_token
+  if (isTokenFresh(credentials.expires_at, now)) {
+    return credentials.access_token
   }
 
-  return credentials.access_token
+  if (!credentials.refresh_token) {
+    throw new Error('Access token expired and no refresh token available')
+  }
+
+  const { refreshAccessToken } = await import('@/lib/auth')
+  const newTokens = await refreshAccessToken(httpClient, 'microsoft', credentials.refresh_token)
+  const updated = {
+    ...credentials,
+    access_token: newTokens.access_token,
+    expires_at: Date.now() + newTokens.expires_in * 1000,
+  }
+
+  const db = getDb()
+  await updateSettings(db, { integrations_microsoft_credentials: JSON.stringify(updated) })
+
+  return newTokens.access_token
 }
 
 // ---------------------------------------------------------------------------
 // Public API
 // ---------------------------------------------------------------------------
 
-export const listMessages = async (params: ListMessagesParams, httpClient: KyInstance = ky) => {
+export const listMessages = async (params: ListMessagesParams, httpClient: HttpClient = http) => {
   const credentials = await getMicrosoftCredentials()
-  const accessToken = await ensureValidToken(credentials)
+  const accessToken = await ensureValidToken(httpClient, credentials)
 
   const searchParams = new URLSearchParams()
   if (params.top) {
@@ -218,9 +228,9 @@ export const listMessages = async (params: ListMessagesParams, httpClient: KyIns
   return response
 }
 
-export const getMessage = async (params: GetMessageParams, httpClient: KyInstance = ky) => {
+export const getMessage = async (params: GetMessageParams, httpClient: HttpClient = http) => {
   const credentials = await getMicrosoftCredentials()
-  const accessToken = await ensureValidToken(credentials)
+  const accessToken = await ensureValidToken(httpClient, credentials)
 
   const selectParams = params.includeBodyHtml
     ? '$select=subject,body,bodyPreview,from,toRecipients,receivedDateTime'
@@ -242,9 +252,9 @@ export const getMessage = async (params: GetMessageParams, httpClient: KyInstanc
 /**
  * Search OneDrive files
  */
-export const searchOneDrive = async (params: SearchOneDriveParams, httpClient: KyInstance = ky) => {
+export const searchOneDrive = async (params: SearchOneDriveParams, httpClient: HttpClient = http) => {
   const credentials = await getMicrosoftCredentials()
-  const accessToken = await ensureValidToken(credentials)
+  const accessToken = await ensureValidToken(httpClient, credentials)
 
   const searchParams = new URLSearchParams()
   searchParams.set('$top', Math.min(params.max_results ?? 20, 50).toString())
@@ -282,10 +292,10 @@ export const searchOneDrive = async (params: SearchOneDriveParams, httpClient: K
  */
 export const getOneDriveFileContent = async (
   params: GetOneDriveFileContentParams,
-  httpClient: KyInstance = ky,
+  httpClient: HttpClient = http,
 ): Promise<OneDriveFileContent> => {
   const credentials = await getMicrosoftCredentials()
-  const accessToken = await ensureValidToken(credentials)
+  const accessToken = await ensureValidToken(httpClient, credentials)
 
   try {
     // Get file metadata
@@ -364,7 +374,7 @@ export const getOneDriveFileContent = async (
  * Microsoft Tools Configuration Factory
  * @param httpClient - HTTP client for making requests (injected for dependency injection)
  */
-export const createConfigs = (httpClient: KyInstance): ToolConfig[] => [
+export const createConfigs = (httpClient: HttpClient): ToolConfig[] => [
   {
     name: 'microsoft_list_messages',
     description: 'List Microsoft Outlook messages with optional filtering',
@@ -397,7 +407,7 @@ export const createConfigs = (httpClient: KyInstance): ToolConfig[] => [
 ]
 
 /**
- * Default configs using the global ky instance
+ * Default configs using the default http client
  * @deprecated Use createConfigs() with an injected httpClient instead
  */
-export const configs = createConfigs(ky)
+export const configs = createConfigs(http)

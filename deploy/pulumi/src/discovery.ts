@@ -1,0 +1,31 @@
+import * as aws from '@pulumi/aws'
+import * as pulumi from '@pulumi/pulumi'
+
+export const createServiceDiscovery = (name: string, vpcId: pulumi.Input<string>) => {
+  const namespace = new aws.servicediscovery.PrivateDnsNamespace(`${name}-ns`, {
+    name: 'thunderbolt.local',
+    vpc: vpcId,
+    tags: { Name: `${name}-ns` },
+  })
+
+  const serviceNames = ['postgres', 'mongo', 'powersync', 'keycloak', 'backend', 'frontend'] as const
+
+  const services = Object.fromEntries(
+    serviceNames.map((svc) => [
+      svc,
+      new aws.servicediscovery.Service(`${name}-${svc}-discovery`, {
+        name: svc,
+        namespaceId: namespace.id,
+        dnsConfig: {
+          namespaceId: namespace.id,
+          dnsRecords: [{ ttl: 10, type: 'A' }],
+          routingPolicy: 'MULTIVALUE',
+        },
+        healthCheckCustomConfig: { failureThreshold: 1 },
+        tags: { Name: `${name}-${svc}` },
+      }),
+    ]),
+  ) as Record<(typeof serviceNames)[number], aws.servicediscovery.Service>
+
+  return { namespace, services }
+}

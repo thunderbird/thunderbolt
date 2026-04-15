@@ -1,7 +1,7 @@
 {
   "name": "thunderbolt",
   "private": true,
-  "version": "0.1.81",
+  "version": "0.1.87",
   "description": "Thunderbolt",
   "type": "module",
   "license": "MPL-2.0",
@@ -36,7 +36,8 @@
     "prepare": "husky",
     "size": "size-limit",
     "e2e": "bunx playwright test",
-    "e2e:headed": "bunx playwright test --headed"
+    "e2e:headed": "bunx playwright test --headed",
+    "docker:nuke": "bash scripts/docker-nuke.sh"
   },
   "size-limit": [
     {
@@ -57,11 +58,13 @@
     "@hookform/resolvers": "^5.2.1",
     "@journeyapps/wa-sqlite": "^1.5.0",
     "@modelcontextprotocol/sdk": "^1.25.2",
+    "@noble/post-quantum": "^0.6.0",
     "@openrouter/ai-sdk-provider": "^1.1.2",
-    "@powersync/drizzle-driver": "^0.7.2",
-    "@powersync/react": "^1.9.0",
-    "@powersync/tanstack-react-query": "^0.2.1",
-    "@powersync/web": "^1.35.0",
+    "@powersync/common": "1.48.0",
+    "@powersync/drizzle-driver": "0.7.2",
+    "@powersync/react": "1.9.0",
+    "@powersync/tanstack-react-query": "0.2.1",
+    "@powersync/web": "1.35.0",
     "@radix-ui/react-accordion": "^1.2.12",
     "@radix-ui/react-alert-dialog": "^1.1.15",
     "@radix-ui/react-avatar": "^1.1.10",
@@ -77,6 +80,7 @@
     "@radix-ui/react-toggle": "^1.1.10",
     "@radix-ui/react-toggle-group": "^1.1.11",
     "@radix-ui/react-tooltip": "^1.2.8",
+    "@scure/bip39": "^2.0.1",
     "@tailwindcss/typography": "^0.5.16",
     "@tanstack/react-query": "^5.85.5",
     "@tauri-apps/api": "^2.9.0",
@@ -98,7 +102,6 @@
     "drizzle-orm": "^0.44.6",
     "framer-motion": "^12.23.12",
     "input-otp": "^1.4.2",
-    "ky": "^1.9.0",
     "lucide-react": "^0.540.0",
     "marked": "^16.4.1",
     "posthog-js": "^1.288.1",
@@ -111,7 +114,7 @@
     "remark-gfm": "^4.0.1",
     "tailwind-merge": "^3.3.1",
     "tailwindcss-animate": "^1.0.7",
-    "tauri-plugin-m3": "^0.2.2",
+
     "uuid": "^11.1.0",
     "web-haptics": "^0.0.6",
     "zod": "^4.0.17",

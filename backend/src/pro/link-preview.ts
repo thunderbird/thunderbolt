@@ -1,4 +1,4 @@
-import { getCorsOrigins, getSettings } from '@/config/settings'
+import { getCorsOriginsList, getSettings } from '@/config/settings'
 import { safeErrorHandler } from '@/middleware/error-handling'
 import { createSafeFetch, validateSafeUrl } from '@/utils/url-validation'
 import cors from '@elysiajs/cors'
@@ -96,6 +96,8 @@ const fetchAndProxyImage = async (
         headers: {
           'Content-Type': contentType,
           'Cache-Control': 'public, max-age=86400',
+          'Content-Security-Policy': 'sandbox',
+          'X-Content-Type-Options': 'nosniff',
           'Cross-Origin-Resource-Policy': 'cross-origin',
         },
       })
@@ -195,7 +197,7 @@ export const createLinkPreviewRoutes = (fetchFn: typeof fetch = globalThis.fetch
     .onError(safeErrorHandler)
     .use(
       cors({
-        origin: getCorsOrigins(settings),
+        origin: getCorsOriginsList(settings),
         allowedHeaders: settings.corsAllowHeaders,
         exposeHeaders: settings.corsExposeHeaders,
       }),

@@ -12,6 +12,8 @@ This document consolidates documentation for:
 
 PowerSync provides offline-first sync between the backend (PostgreSQL) and clients (SQLite). Data is scoped by `user_id` from the JWT. The backend issues PowerSync JWTs and can apply client uploads (PUT/PATCH/DELETE) to Postgres. Production uses PowerSync Cloud; local development uses the Docker stack in `powersync-service/`.
 
+For the sync data transformation middleware and custom SharedWorker (E2E encryption pipeline), see [docs/powersync-sync-middleware.md](powersync-sync-middleware.md).
+
 ---
 
 ## 2. Synced tables
@@ -106,8 +108,9 @@ The local `config/config.yaml` uses HS256 with the same secret (base64) and kid 
 
 ### Devices table
 
-- **Backend:** `devices` table: `id`, `user_id`, `name`, `last_seen`, `created_at`, `revoked_at`. Synced via PowerSync.
+- **Backend:** `devices` table: `id`, `user_id`, `name`, `status` (`APPROVAL_PENDING` | `TRUSTED` | `REVOKED`), `public_key`, `mlkem_public_key`, `last_seen`, `created_at`, `revoked_at`. Synced via PowerSync.
 - **Frontend:** Same schema in the local DB; used for Settings > Devices and for “current device revoked?” checks.
+- See [e2e-encryption.md](e2e-encryption.md) for how `status` and `public_key` are used in the encryption setup and device approval flows.
 
 ### Listing devices
 
@@ -118,10 +121,10 @@ The local `config/config.yaml` uses HS256 with the same secret (base64) and kid 
 ### Revoking a device
 
 1. User chooses “Revoke” on another device (with confirmation). Frontend calls `POST /v1/account/devices/:id/revoke`.
-2. Backend sets `revoked_at` on that device row (soft revoke). PowerSync syncs the updated `devices` table.
+2. Backend runs a transaction: deletes the device’s envelope from the `envelopes` table, then sets `status` to `REVOKED` and `revoked_at` on the device row. The wrapped CK is permanently removed, preventing future CK recovery even if the device’s private key is compromised. PowerSync syncs the updated `devices` table.
 3. On the **revoked device**:
-   - **Immediate:** The app watches the current device’s row via React Query (`getDevice(deviceId)`). When the synced row has `revoked_at` set, the app runs the reset flow.
-   - **On token refresh:** Backend returns **403 Forbidden** with `code: 'DEVICE_DISCONNECTED'`; the connector dispatches credentials invalid and the app resets.
+   - **Immediate:** The app watches the current device’s row via React Query (`getDevice(deviceId)`). When the synced row has `status === ‘REVOKED’` or `revoked_at` set, the app runs the reset flow.
+   - **On token refresh:** Backend returns **403 Forbidden** with `code: ‘DEVICE_DISCONNECTED’`; the connector dispatches credentials invalid and the app resets.
 
 ### Auth token and device id
 
@@ -135,7 +138,7 @@ The local `config/config.yaml` uses HS256 with the same secret (base64) and kid 
 ### PowerSync token (`GET /powersync/token`)
 
 - **With `X-Device-ID`:**
-  - Backend checks the `devices` row for that id. If `revoked_at` is set → **403** with `{ code: 'DEVICE_DISCONNECTED' }`, no token.
+  - Backend checks the `devices` row for that id. If `status === 'REVOKED'` or `revoked_at` is set → **403** with `{ code: 'DEVICE_DISCONNECTED' }`, no token.
   - Otherwise: issues a PowerSync JWT and upserts the device (id, user_id, name, last_seen, created_at).
 - **Bearer token only (e.g. credential refresh):**
   - If the user no longer exists (account deleted) → **410 Gone** with `{ code: 'ACCOUNT_DELETED' }`.
@@ -157,8 +160,17 @@ Summary for client:
 ### Revoke device (`POST /v1/account/devices/:id/revoke`)
 
 - Requires authenticated user (session).
-- Sets `revoked_at` to current timestamp for the device `id` that belongs to the current user.
+- Runs in a transaction: deletes the device's envelope, then sets `status` to `REVOKED` and `revoked_at` for the device that belongs to the current user.
 - **204** on success (idempotent for already-revoked devices).
+
+### Encryption API endpoints
+
+The following endpoints handle encryption setup, device approval, and key recovery. See [e2e-encryption.md](e2e-encryption.md#api-endpoints) for full documentation.
+
+- `POST /devices` — register device with public key (encryption setup)
+- `POST /devices/:deviceId/envelope` — store wrapped content key
+- `GET /devices/me/envelope` — fetch own wrapped content key
+- `GET /encryption/canary` — fetch canary for recovery key verification
 
 ---
 

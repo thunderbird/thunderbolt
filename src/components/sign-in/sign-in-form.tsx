@@ -1,4 +1,4 @@
-import { useAuth } from '@/contexts'
+import { useAuth, useHttpClient } from '@/contexts'
 import { useSettings } from '@/hooks/use-settings'
 import { isLocalhostUrl } from '@/lib/utils'
 import { type ReactNode, type RefObject, useCallback, useEffect } from 'react'
@@ -37,6 +37,10 @@ type SignInFormProps = {
    */
   skipToOtp?: boolean
   /**
+   * Challenge token to use when skipToOtp is true (required for OTP verification)
+   */
+  initialChallengeToken?: string
+  /**
    * Render function for the header back button (modal variant only)
    */
   renderBackButton?: (onClick: () => void) => ReactNode
@@ -64,20 +68,24 @@ export const SignInForm = ({
   onEmailSent,
   initialEmail,
   skipToOtp,
+  initialChallengeToken,
   renderBackButton,
   goBackRef,
 }: SignInFormProps) => {
   const authClient = useAuth()
+  const httpClient = useHttpClient()
   const { cloudUrl, preferredName } = useSettings({ cloud_url: 'http://localhost:8000/v1', preferred_name: '' })
   const isLocalhost = isLocalhostUrl(cloudUrl.value)
   const displayName = preferredName.value as string
 
   const { state, isValidEmail, actions } = useSignInFormState({
     authClient,
+    httpClient,
     onCancel,
     onEmailSent,
     initialEmail,
     skipToOtp,
+    initialChallengeToken,
   })
 
   // When skipping to OTP, notify parent so it can update its step tracking (e.g. back button behavior).

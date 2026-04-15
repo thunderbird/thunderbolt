@@ -57,6 +57,41 @@
       "when": 1772150455000,
       "tag": "0007_magenta_landau",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1775092014614,
+      "tag": "0008_known_shockwave",
+      "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1775739729604,
+      "tag": "0009_bored_piledriver",
+      "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1775769859343,
+      "tag": "0010_low_nico_minoru",
+      "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1776107649503,
+      "tag": "0011_young_thor",
+      "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1776165528264,
+      "tag": "0012_furry_thor_girl",
+      "breakpoints": true
     }
   ]
 }

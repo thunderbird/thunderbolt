@@ -12,9 +12,7 @@ import {
 } from '@/components/ui/responsive-modal'
 import { SelectableCard, type DataOption } from '@/components/ui/selectable-card'
 import { useAuth } from '@/contexts'
-import { setSyncEnabled } from '@/db/powersync'
-import { clearAuthToken } from '@/lib/auth-token'
-import { resetAppDir } from '@/lib/fs'
+import { clearLocalData } from '@/lib/cleanup'
 
 type LogoutModalProps = {
   open: boolean
@@ -29,28 +27,16 @@ export const LogoutModal = ({ open, onOpenChange }: LogoutModalProps) => {
   const handleLogout = async () => {
     setIsLoggingOut(true)
 
-    // Disable sync before signing out
-    try {
-      await setSyncEnabled(false)
-    } catch (error) {
-      console.error('Failed to disable sync:', error)
-    }
-
     try {
       await authClient.signOut()
     } catch (error) {
       console.error('Failed to sign out:', error)
     }
 
-    // Clear local bearer token (mobile auth)
-    await clearAuthToken()
-
     try {
-      if (selectedOption === 'delete') {
-        await resetAppDir()
-      }
+      await clearLocalData({ clearDatabase: selectedOption === 'delete' })
     } catch (error) {
-      console.error('Failed to delete local data:', error)
+      console.error('Failed to clear local data:', error)
     }
 
     window.location.reload()

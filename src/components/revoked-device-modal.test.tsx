@@ -6,10 +6,9 @@ import { act, fireEvent, render, screen } from '@testing-library/react'
 import { afterAll, beforeAll, beforeEach, describe, expect, it, mock } from 'bun:test'
 import { RevokedDeviceModal } from './revoked-device-modal'
 
-const mockResetAppDir = mock()
-mock.module('@/lib/fs', () => ({
-  resetAppDir: mockResetAppDir,
-  createAppDir: () => Promise.resolve('/mock/app/dir'),
+const mockClearLocalData = mock(() => Promise.resolve())
+mock.module('@/lib/cleanup', () => ({
+  clearLocalData: mockClearLocalData,
 }))
 
 const mockReplace = mock()
@@ -29,7 +28,7 @@ describe('RevokedDeviceModal', () => {
 
   beforeEach(async () => {
     await resetTestDatabase()
-    mockResetAppDir.mockClear()
+    mockClearLocalData.mockClear()
     mockReplace.mockClear()
   })
 
@@ -105,7 +104,7 @@ describe('RevokedDeviceModal', () => {
         await getClock().runAllAsync()
       })
 
-      expect(mockResetAppDir).not.toHaveBeenCalled()
+      expect(mockClearLocalData).toHaveBeenCalledWith({ clearDatabase: false })
       expect(mockReplace).toHaveBeenCalledWith('/')
     })
 
@@ -126,7 +125,7 @@ describe('RevokedDeviceModal', () => {
   })
 
   describe('confirm flow with delete data', () => {
-    it('calls resetAppDir and window.location.replace when confirming with delete option', async () => {
+    it('calls clearLocalData with clearDatabase and window.location.replace when confirming with delete option', async () => {
       renderModal()
       fireEvent.click(screen.getByText('Delete data from device').closest('button')!)
       fireEvent.click(screen.getByRole('button', { name: 'Confirm' }))
@@ -135,7 +134,7 @@ describe('RevokedDeviceModal', () => {
         await getClock().runAllAsync()
       })
 
-      expect(mockResetAppDir).toHaveBeenCalled()
+      expect(mockClearLocalData).toHaveBeenCalledWith({ clearDatabase: true })
       expect(mockReplace).toHaveBeenCalledWith('/')
     })
 
@@ -160,22 +159,6 @@ describe('RevokedDeviceModal', () => {
       fireEvent.click(screen.getByText('Delete data from device').closest('button')!)
       const confirmButton = screen.getByRole('button', { name: 'Confirm' })
       expect(confirmButton.className).toContain('destructive')
-    })
-  })
-
-  describe('error handling', () => {
-    it('continues to replace location even if resetAppDir fails', async () => {
-      mockResetAppDir.mockRejectedValueOnce(new Error('File system error'))
-
-      renderModal()
-      fireEvent.click(screen.getByText('Delete data from device').closest('button')!)
-      fireEvent.click(screen.getByRole('button', { name: 'Confirm' }))
-
-      await act(async () => {
-        await getClock().runAllAsync()
-      })
-
-      expect(mockReplace).toHaveBeenCalledWith('/')
     })
   })
 })

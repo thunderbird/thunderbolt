@@ -45,7 +45,6 @@ const baseSettings: Settings = {
   posthogHost: '',
   posthogApiKey: '',
   corsOrigins: 'http://localhost:1420',
-  corsOriginRegex: null,
   corsAllowCredentials: true,
   corsAllowMethods: 'GET,POST,PUT,DELETE,PATCH,OPTIONS',
   corsAllowHeaders: 'Content-Type,Authorization',
@@ -61,6 +60,10 @@ const baseSettings: Settings = {
   oidcClientSecret: 'thunderbolt-dev-secret',
   oidcIssuer: '', // set per-suite once mock server is up
   betterAuthUrl: 'http://localhost:8000',
+  betterAuthSecret: 'test-secret-at-least-32-chars-long!!',
+  rateLimitEnabled: false,
+  swaggerEnabled: false,
+  trustedProxy: '',
 }
 
 describe('OIDC Integration', () => {

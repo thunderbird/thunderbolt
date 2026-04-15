@@ -1,6 +1,69 @@
 import { describe, expect, it } from 'bun:test'
-import { createHandleError } from './error-utils'
+import { createHandleError, isRateLimitError } from './error-utils'
 import type { HandleErrorCode } from '@/types/handle-errors'
+
+describe('isRateLimitError', () => {
+  it('detects 429 from JSON response body (DefaultChatTransport path)', () => {
+    const error = new Error(JSON.stringify({ error: 'API call failed', statusCode: 429 }))
+    expect(isRateLimitError(error)).toBe(true)
+  })
+
+  it('detects 429 even when error message text is generic', () => {
+    const error = new Error(JSON.stringify({ error: 'Request failed', statusCode: 429 }))
+    expect(isRateLimitError(error)).toBe(true)
+  })
+
+  it('does not match non-429 status codes', () => {
+    const error = new Error(JSON.stringify({ error: 'Server error', statusCode: 500 }))
+    expect(isRateLimitError(error)).toBe(false)
+  })
+
+  it('falls back to string matching for "too many requests"', () => {
+    const error = new Error('Too many requests. Please try again later.')
+    expect(isRateLimitError(error)).toBe(true)
+  })
+
+  it('string matching is case-insensitive', () => {
+    const error = new Error('TOO MANY REQUESTS')
+    expect(isRateLimitError(error)).toBe(true)
+  })
+
+  it('returns false for unrelated errors', () => {
+    expect(isRateLimitError(new Error('Network timeout'))).toBe(false)
+  })
+
+  it('returns false for null', () => {
+    expect(isRateLimitError(null)).toBe(false)
+  })
+
+  it('returns false for undefined', () => {
+    expect(isRateLimitError(undefined)).toBe(false)
+  })
+
+  it('returns false for error with empty message', () => {
+    expect(isRateLimitError(new Error(''))).toBe(false)
+  })
+
+  it('detects 429 via status field (aiFetchStreamingResponse path)', () => {
+    const error = new Error(JSON.stringify({ error: 'Rate limited', status: 429 }))
+    expect(isRateLimitError(error)).toBe(true)
+  })
+
+  it('does not match status 429 in non-JSON string', () => {
+    const error = new Error('status 429 encountered')
+    expect(isRateLimitError(error)).toBe(false)
+  })
+
+  it('returns false for malformed JSON that does not contain "too many requests"', () => {
+    const error = new Error('{invalid json')
+    expect(isRateLimitError(error)).toBe(false)
+  })
+
+  it('falls through to string match when JSON has no status fields', () => {
+    const error = new Error(JSON.stringify({ error: 'too many requests', code: 'RATE_LIMITED' }))
+    expect(isRateLimitError(error)).toBe(true)
+  })
+})
 
 describe('createHandleError', () => {
   it('creates HandleError with required fields only', () => {

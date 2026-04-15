@@ -28,7 +28,7 @@
 - Use `bun` instead of `npm`
 - Use `bun test` instead of `vitest`
 - Install latest versions: `bun add <package>@latest`
-- Prefer `ky` over `fetch`
+- Use the app's `HttpClient` (`src/lib/http.ts`) instead of bare `fetch` — use `getHttpClient()` for authenticated backend calls, `http` for external APIs
 - Generate Drizzle migrations with `bun db generate` - never manually create SQL files
 - Never manually run `git add`, `git commit`, or `git push` — always use `/thunderpush`
 - Use `resolve-library-id` and `get-library-docs` tools for library documentation (if unavailable, request access)
@@ -75,6 +75,10 @@
 
 See [docs/powersync-account-devices.md](docs/powersync-account-devices.md) for: synced table requirements, adding a new table (frontend + backend + schema + config.yaml + production), account deletion, device management, and backend token/revoke API.
 
+See [docs/powersync-sync-middleware.md](docs/powersync-sync-middleware.md) for: sync data transformation middleware, custom SharedWorker (multi-tab + encryption), and adding new transformers.
+
+See [docs/e2e-encryption.md](docs/e2e-encryption.md) for: E2E encryption architecture, key hierarchy, device approval flows, encrypted columns configuration, API endpoints, and user flows.
+
 **Deploying new synced tables (two-PR process):**
 
 1. **PR 1 (backend-only):** Backend schema, Drizzle migration, `shared/powersync-tables.ts`, and `config.yaml` sync rule. Merge → run migration → update PowerSync Cloud dashboard rules.
@@ -84,6 +88,8 @@ Deploying frontend before the sync rules are updated causes silent sync failure 
 See [docs/powersync-account-devices.md](docs/powersync-account-devices.md#pr-flow-for-adding-tables).
 
 **Backend migrations checklist:** When adding a new migration, always verify that `backend/drizzle/meta/_journal.json` includes the new entry. Drizzle discovers pending migrations via the journal — if the SQL file and snapshot exist but the journal entry is missing, the migration will never run. This is easy to miss when cherry-picking migration files across branches.
+
+**Custom SharedWorker and `@powersync/web` internal path:** `vite.config.ts` defines a `powersync-web-internal` alias pointing to `@powersync/web/lib/src` (an internal, non-public-API path). This is required for the custom `ThunderboltSharedSyncImplementation` to extend `SharedSyncImplementation`. When upgrading `@powersync/web`, verify this internal path still exists — it may break without a TypeScript error.
 
 ## CORS and API headers
 

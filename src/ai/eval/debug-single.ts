@@ -3,9 +3,13 @@
  * Usage: bun run src/ai/eval/debug-single.ts
  */
 import { aiFetchStreamingResponse } from '@/ai/fetch'
+import { getSettings } from '@/dal'
 import { setupTestDatabase, teardownTestDatabase } from '@/dal/test-utils'
+import { getDb } from '@/db/database'
 import { defaultModelGptOss120b } from '@/defaults/models'
 import { defaultModeChat } from '@/defaults/modes'
+import { getAuthToken } from '@/lib/auth-token'
+import { createAuthenticatedClient } from '@/lib/http'
 import type { SaveMessagesFunction } from '@/types'
 import { v7 as uuidv7 } from 'uuid'
 import { parseStream } from './stream-parser'
@@ -31,6 +35,10 @@ const run = async () => {
   console.log(`[2/5] Mode: ${defaultModeChat.name}`)
   console.log(`[2/5] Prompt: "${prompt}"\n`)
 
+  const db = getDb()
+  const { cloudUrl } = await getSettings(db, { cloud_url: 'http://localhost:8000/v1' })
+  const httpClient = createAuthenticatedClient(cloudUrl, getAuthToken)
+
   console.log('[3/5] Calling aiFetchStreamingResponse...')
   const start = performance.now()
 
@@ -40,6 +48,7 @@ const run = async () => {
     modelId,
     modeSystemPrompt: defaultModeChat.systemPrompt ?? undefined,
     modeName: defaultModeChat.name,
+    httpClient,
   })
 
   const callDuration = ((performance.now() - start) / 1000).toFixed(1)

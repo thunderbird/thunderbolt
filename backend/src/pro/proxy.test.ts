@@ -59,7 +59,6 @@ describe('Proxy Routes', () => {
       posthogHost: 'https://us.i.posthog.com',
       posthogApiKey: '',
       corsOrigins: 'http://localhost:1420',
-      corsOriginRegex: null,
       corsAllowCredentials: true,
       corsAllowMethods: 'GET,POST,PUT,DELETE,PATCH,OPTIONS',
       corsAllowHeaders: 'Content-Type,Authorization',
@@ -75,6 +74,10 @@ describe('Proxy Routes', () => {
       oidcClientSecret: '',
       oidcIssuer: '',
       betterAuthUrl: 'http://localhost:8000',
+      betterAuthSecret: 'test-secret-at-least-32-chars-long!!',
+      rateLimitEnabled: false,
+      swaggerEnabled: false,
+      trustedProxy: '',
     })
 
     // Create mock fetch
@@ -375,6 +378,48 @@ describe('Proxy Routes', () => {
 
       expect(response.status).toBe(400)
       expect(mockFetch).not.toHaveBeenCalled()
+    })
+
+    it('should add security headers to prevent XSS via proxied content', async () => {
+      const targetUrl = 'https://example.com/page.html'
+
+      mockFetch.mockImplementation(() =>
+        Promise.resolve(
+          createMockResponse('<html><script>alert("xss")</script></html>', {
+            headers: {
+              'content-type': 'text/html; charset=utf-8',
+            },
+          }),
+        ),
+      )
+
+      const response = await app.handle(new Request(`http://localhost/proxy/${targetUrl}`, { method: 'GET' }))
+
+      expect(response.status).toBe(200)
+      expect(response.headers.get('content-security-policy')).toBe('sandbox')
+      expect(response.headers.get('content-disposition')).toBe('attachment')
+      expect(response.headers.get('x-content-type-options')).toBe('nosniff')
+    })
+
+    it('should add security headers for non-HTML content types too', async () => {
+      const targetUrl = 'https://example.com/data.json'
+
+      mockFetch.mockImplementation(() =>
+        Promise.resolve(
+          createMockResponse('{"key":"value"}', {
+            headers: {
+              'content-type': 'application/json',
+            },
+          }),
+        ),
+      )
+
+      const response = await app.handle(new Request(`http://localhost/proxy/${targetUrl}`, { method: 'GET' }))
+
+      expect(response.status).toBe(200)
+      expect(response.headers.get('content-security-policy')).toBe('sandbox')
+      expect(response.headers.get('content-disposition')).toBe('attachment')
+      expect(response.headers.get('x-content-type-options')).toBe('nosniff')
     })
 
     it('should not forward headers that are not in the allowed list', async () => {

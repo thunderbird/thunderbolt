@@ -1,4 +1,4 @@
-import { getCorsOrigins, getSettings } from '@/config/settings'
+import { getCorsOriginsList, getSettings } from '@/config/settings'
 import { safeErrorHandler } from '@/middleware/error-handling'
 import { createSafeFetch, validateSafeUrl } from '@/utils/url-validation'
 import cors from '@elysiajs/cors'
@@ -18,7 +18,7 @@ export const createProxyRoutes = (fetchFn: typeof fetch = globalThis.fetch) => {
     .onError(safeErrorHandler)
     .use(
       cors({
-        origin: getCorsOrigins(settings),
+        origin: getCorsOriginsList(settings),
         allowedHeaders: settings.corsAllowHeaders,
         exposeHeaders: settings.corsExposeHeaders,
       }),
@@ -90,6 +90,11 @@ export const createProxyRoutes = (fetchFn: typeof fetch = globalThis.fetch) => {
             responseHeaders.set(header, value)
           }
         })
+
+        // Prevent XSS: proxied content must never execute scripts in our origin
+        responseHeaders.set('content-security-policy', 'sandbox')
+        responseHeaders.set('content-disposition', 'attachment')
+        responseHeaders.set('x-content-type-options', 'nosniff')
 
         // Add cross-origin resource policy header (CORS plugin handles Access-Control-* headers)
         responseHeaders.set('cross-origin-resource-policy', 'cross-origin')

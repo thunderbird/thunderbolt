@@ -38,10 +38,10 @@ describe('MCP Proxy Routes', () => {
     posthogHost: 'https://us.i.posthog.com',
     posthogApiKey: '',
     corsOrigins: 'http://localhost:1420',
-    corsOriginRegex: null,
     corsAllowCredentials: true,
     corsAllowMethods: 'GET,POST,PUT,DELETE,PATCH,OPTIONS',
-    corsAllowHeaders: 'Content-Type,Authorization,X-Mcp-Target-Url,Mcp-Session-Id,Mcp-Protocol-Version',
+    corsAllowHeaders:
+      'Content-Type,Authorization,X-Mcp-Target-Url,Mcp-Authorization,Mcp-Session-Id,Mcp-Protocol-Version',
     corsExposeHeaders: 'mcp-session-id,set-auth-token',
     waitlistEnabled: false,
     waitlistAutoApproveDomains: '',
@@ -228,7 +228,7 @@ describe('MCP Proxy Routes', () => {
 
   // --- Header Forwarding ---
 
-  it('forwards Authorization and MCP headers, strips host/cookie/proxy headers', async () => {
+  it('strips Thunderbolt auth and rewrites Mcp-Authorization for remote server', async () => {
     mockFetch.mockImplementation(() => Promise.resolve(createMockResponse('{"ok":true}')))
 
     await app.handle(
@@ -236,7 +236,8 @@ describe('MCP Proxy Routes', () => {
         method: 'POST',
         headers: {
           'x-mcp-target-url': 'https://mcp.example.com',
-          authorization: 'Bearer test-token',
+          authorization: 'Bearer thunderbolt-session-token',
+          'mcp-authorization': 'Bearer mcp-server-api-key',
           'mcp-session-id': 'session-123',
           'content-type': 'application/json',
         },
@@ -245,18 +246,47 @@ describe('MCP Proxy Routes', () => {
     )
 
     const [, callOpts] = mockFetch.mock.calls[0]
-    // Headers may be a Headers instance or plain object depending on the safeFetch path
     const hdrs =
       typeof callOpts.headers?.get === 'function'
         ? Object.fromEntries((callOpts.headers as Headers).entries())
         : callOpts.headers
 
-    expect(hdrs.authorization).toBe('Bearer test-token')
+    // Mcp-Authorization is rewritten to Authorization for the remote server
+    expect(hdrs.authorization).toBe('Bearer mcp-server-api-key')
+    // MCP headers are preserved
     expect(hdrs['mcp-session-id']).toBe('session-123')
-    // host is set by safeFetch for IP pinning (original hostname for TLS SNI)
-    // cookie and x-mcp-target-url are stripped by filterHeaders
+    // Thunderbolt session token must NOT reach the remote server
     expect(hdrs['cookie']).toBeUndefined()
     expect(hdrs['x-mcp-target-url']).toBeUndefined()
+    // Mcp-Authorization is consumed by the proxy, not forwarded as-is
+    expect(hdrs['mcp-authorization']).toBeUndefined()
+  })
+
+  it('strips Thunderbolt auth even when no Mcp-Authorization is provided', async () => {
+    mockFetch.mockImplementation(() => Promise.resolve(createMockResponse('{"ok":true}')))
+
+    await app.handle(
+      new Request('http://localhost/mcp-proxy/', {
+        method: 'POST',
+        headers: {
+          'x-mcp-target-url': 'https://mcp.example.com',
+          authorization: 'Bearer thunderbolt-session-token',
+          'mcp-session-id': 'session-123',
+          'content-type': 'application/json',
+        },
+        body: '{}',
+      }),
+    )
+
+    const [, callOpts] = mockFetch.mock.calls[0]
+    const hdrs =
+      typeof callOpts.headers?.get === 'function'
+        ? Object.fromEntries((callOpts.headers as Headers).entries())
+        : callOpts.headers
+
+    // Thunderbolt session token must NOT reach the remote server
+    expect(hdrs.authorization).toBeUndefined()
+    expect(hdrs['mcp-session-id']).toBe('session-123')
   })
 
   // --- Routing ---
@@ -274,6 +304,43 @@ describe('MCP Proxy Routes', () => {
 
     const [calledUrl] = mockFetch.mock.calls[0]
     expect(calledUrl).toContain('/tools/call')
+  })
+
+  it('adds security headers to prevent XSS via proxied content', async () => {
+    mockFetch.mockImplementation(() =>
+      Promise.resolve(
+        new Response('<html><script>alert("xss")</script></html>', {
+          status: 200,
+          headers: { 'content-type': 'text/html; charset=utf-8' },
+        }),
+      ),
+    )
+
+    const response = await app.handle(
+      new Request('http://localhost/mcp-proxy/', {
+        method: 'POST',
+        headers: { 'x-mcp-target-url': 'https://mcp.example.com' },
+      }),
+    )
+
+    expect(response.headers.get('content-security-policy')).toBe('sandbox')
+    expect(response.headers.get('content-disposition')).toBe('attachment')
+    expect(response.headers.get('x-content-type-options')).toBe('nosniff')
+  })
+
+  it('adds security headers for non-HTML content types too', async () => {
+    mockFetch.mockImplementation(() => Promise.resolve(createMockResponse('{"ok":true}')))
+
+    const response = await app.handle(
+      new Request('http://localhost/mcp-proxy/', {
+        method: 'POST',
+        headers: { 'x-mcp-target-url': 'https://mcp.example.com' },
+      }),
+    )
+
+    expect(response.headers.get('content-security-policy')).toBe('sandbox')
+    expect(response.headers.get('content-disposition')).toBe('attachment')
+    expect(response.headers.get('x-content-type-options')).toBe('nosniff')
   })
 
   it('sets cross-origin-resource-policy on response', async () => {

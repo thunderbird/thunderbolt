@@ -1,0 +1,50 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: powersync
+  labels:
+    {{- include "thunderbolt.labels" . | nindent 4 }}
+spec:
+  selector:
+    app: powersync
+  ports:
+    - port: {{ .Values.powersync.service.port }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: powersync
+  labels:
+    {{- include "thunderbolt.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.powersync.replicas }}
+  selector:
+    matchLabels:
+      app: powersync
+  template:
+    metadata:
+      labels:
+        app: powersync
+    spec:
+      {{- include "thunderbolt.imagePullSecrets" . | nindent 6 }}
+      containers:
+        - name: powersync
+          image: "{{ .Values.powersync.image.repository }}:{{ .Values.powersync.image.tag }}"
+          args: ["start", "-r", "unified"]
+          ports:
+            - containerPort: 8080
+          env:
+            - name: POWERSYNC_CONFIG_PATH
+              value: /config/config.yaml
+          volumeMounts:
+            - name: config
+              mountPath: /config
+          readinessProbe:
+            tcpSocket:
+              port: 8080
+            initialDelaySeconds: 15
+            periodSeconds: 10
+      volumes:
+        - name: config
+          configMap:
+            name: powersync-config

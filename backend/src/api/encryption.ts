@@ -1,6 +1,5 @@
 import { type Auth, createAuthMacro } from '@/auth/elysia-plugin'
 
-const MAX_DEVICES_PER_USER = 10
 import {
   countActiveDevices,
   getDeviceById,
@@ -18,6 +17,8 @@ import type { db as DbType } from '@/db/client'
 import { BadRequestError, ForbiddenError } from '@/errors/http-errors'
 import { timingSafeEqual } from 'crypto'
 import { Elysia, t } from 'elysia'
+
+const MAX_DEVICES_PER_USER = 10
 
 /** Hash a canary secret using SHA-256. Returns hex-encoded hash. */
 const hashCanarySecret = async (secret: string): Promise<string> => {

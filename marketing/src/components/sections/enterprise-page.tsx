@@ -255,8 +255,8 @@ const QuoteSection = () => (
             &ldquo;Organizations are recognizing that AI is too important to outsource.&rdquo;
           </p>
           <p className="mt-6 font-['Mozilla_Text',sans-serif] text-[19px] font-normal uppercase leading-[26px] tracking-[-0.38px] text-[#344054]">
-            <span className="hidden md:inline">Ryan Sipes, CEO, Mozilla Thunderbird</span>
-            <span className="md:hidden">Ryan Sipes,<br />CEO, Mozilla Thunderbird</span>
+            <span className="hidden md:inline">Ryan Sipes, CEO, MZLA Technologies</span>
+            <span className="md:hidden">Ryan Sipes,<br />CEO, MZLA Technologies</span>
           </p>
         </div>
       </div>

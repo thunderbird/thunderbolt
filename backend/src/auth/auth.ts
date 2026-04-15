@@ -10,7 +10,7 @@ import {
 } from '@/dal'
 import type { db as DbType } from '@/db/client'
 import * as schema from '@/db/schema'
-import { eq, like } from 'drizzle-orm'
+import { eq } from 'drizzle-orm'
 import { normalizeEmail } from '@/lib/email'
 import { getSettings } from '@/config/settings'
 import { getTrustedIpHeaders } from '@/utils/request'
@@ -146,7 +146,7 @@ export const createAuth = (database: typeof DbType) => {
         if (!existingUser) {
           const waitlistEntry = await getWaitlistByEmail(database, normalizedEmail)
           if (!waitlistEntry || waitlistEntry.status !== 'approved') {
-            throw ctx.error('UNAUTHORIZED', { message: 'Not approved' })
+            throw ctx.error('UNAUTHORIZED', { message: 'Sign-in not available' })
           }
         }
 
@@ -216,10 +216,11 @@ export const createAuth = (database: typeof DbType) => {
               })
               if (!autoApproved) {
                 await sendWaitlistJoinedEmail({ email: normalizedEmail })
-                // Clean up the OTP that Better Auth already persisted (it generates before calling this callback)
+                // Clean up the OTP that Better Auth already persisted (it generates before calling this callback).
+                // Better Auth's toOTPIdentifier returns `${type}-otp-${email}` (confirmed in email-otp/utils.mjs).
                 await database
                   .delete(schema.verification)
-                  .where(like(schema.verification.identifier, `%${normalizedEmail}%`))
+                  .where(eq(schema.verification.identifier, `sign-in-otp-${normalizedEmail}`))
                 return
               }
             } else if (waitlistEntry.status !== 'approved') {
@@ -228,10 +229,11 @@ export const createAuth = (database: typeof DbType) => {
               } else {
                 console.info('Handling sign-in for non-approved email (sending waitlist email)')
                 await sendWaitlistNotReadyEmail({ email: normalizedEmail })
-                // Clean up the OTP that Better Auth already persisted (it generates before calling this callback)
+                // Clean up the OTP that Better Auth already persisted (it generates before calling this callback).
+                // Better Auth's toOTPIdentifier returns `${type}-otp-${email}` (confirmed in email-otp/utils.mjs).
                 await database
                   .delete(schema.verification)
-                  .where(like(schema.verification.identifier, `%${normalizedEmail}%`))
+                  .where(eq(schema.verification.identifier, `sign-in-otp-${normalizedEmail}`))
                 return
               }
             }

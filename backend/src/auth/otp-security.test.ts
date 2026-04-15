@@ -454,16 +454,28 @@ describe('OTP Security Hardening', () => {
       // Manufacture a valid challenge token directly, bypassing /waitlist/join
       const challengeToken = await createTestChallenge(db, email)
 
-      // Manually insert an OTP verification record (simulating Better Auth persisting it)
-      await auth.api.sendVerificationOTP({ body: { email, type: 'sign-in' } })
+      // sendVerificationOTP cleans up the OTP for pending users (Layer 3 defense).
+      // Re-insert a valid verification record so the OTP *would* succeed if the
+      // before-hook (Layer 2) weren't blocking it — this isolates the before-hook check.
+      const otp = '12345678'
+      const identifier = `sign-in-otp-${email}`
+      await db.insert(verification).values({
+        id: crypto.randomUUID(),
+        identifier,
+        value: otp,
+        expiresAt: new Date(Date.now() + 10 * 60 * 1000),
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      })
 
-      let threw = false
+      let errorMessage = ''
       try {
-        await signInWithChallenge(email, '00000000', challengeToken)
-      } catch {
-        threw = true
+        await signInWithChallenge(email, otp, challengeToken)
+      } catch (err: unknown) {
+        errorMessage = err instanceof Error ? err.message : String(err)
       }
-      expect(threw).toBe(true)
+      // The before-hook blocks with "Sign-in not available", not "INVALID_OTP"
+      expect(errorMessage).toContain('Sign-in not available')
     })
 
     it('should delete challenge token after successful sign-in', async () => {

@@ -8,10 +8,12 @@ const decodeRawMessage = (raw: string): string => {
   return new TextDecoder().decode(bytes)
 }
 
-/** Encode a string to base64 the way Gmail API body.data arrives (consumed by atob) */
+/** Encode a string as base64url, matching Gmail API body.data format */
 const toGmailBase64 = (str: string): string => {
   const bytes = new TextEncoder().encode(str)
   return btoa(bytes.reduce((s, b) => s + String.fromCharCode(b), ''))
+    .replace(/\+/g, '-')
+    .replace(/\//g, '_')
 }
 
 describe('extractBody', () => {
@@ -34,6 +36,15 @@ describe('extractBody', () => {
 
   it('should return empty string for null payload', () => {
     expect(extractBody(null, 'text/plain')).toBe('')
+  })
+
+  it('should decode base64url body containing special characters', () => {
+    // This string produces + and / in standard base64, which become - and _ in base64url
+    const text = 'Réponse: où est le café? Ça coûte 3€'
+    const payload = { mimeType: 'text/plain', body: { data: toGmailBase64(text) } }
+    // Verify the test data actually contains base64url characters
+    expect(payload.body.data).toMatch(/[-_]/)
+    expect(extractBody(payload, 'text/plain')).toBe(text)
   })
 })
 

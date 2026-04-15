@@ -45,7 +45,10 @@ export const extractBody = (payload: any, mimeType: string): string => {
 
   if (payload.mimeType === mimeType && payload.body?.data) {
     try {
-      const bytes = Uint8Array.from(atob(payload.body.data), (c) => c.charCodeAt(0))
+      // Gmail API returns body.data as base64url, not standard base64
+      // See: https://developers.google.com/gmail/api/reference/rest/v1/users.messages
+      const base64 = payload.body.data.replace(/-/g, '+').replace(/_/g, '/')
+      const bytes = Uint8Array.from(atob(base64), (c) => c.charCodeAt(0))
       return new TextDecoder().decode(bytes)
     } catch (error) {
       console.warn('Failed to decode email body:', error)

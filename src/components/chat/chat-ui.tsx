@@ -4,7 +4,7 @@ import { AnimatePresence, motion } from 'framer-motion'
 import { useEffect, useRef } from 'react'
 import { useChatScrollHandler } from '@/chats/use-chat-scroll-handler'
 import { ChatMessages } from './chat-messages'
-import { ChatPromptInput, type ChatPromptInputRef } from './chat-prompt-input'
+import { ChatPromptInput } from './chat-prompt-input'
 import { useCurrentChatSession } from '@/chats/chat-store'
 import { useChat } from '@ai-sdk/react'
 import { useChatAutomation } from '@/chats/use-chat-automation'
@@ -23,7 +23,6 @@ export default function ChatUI() {
   const { isAtBottom, scrollContainerRef, scrollHandlers, scrollTargetRef, scrollToBottom, scrollToBottomAndActivate } =
     useChatScrollHandler()
 
-  const chatPromptInputRef = useRef<ChatPromptInputRef>(null)
   const { isMobile } = useIsMobile()
 
   // Scroll to bottom instantly when entering an existing chat
@@ -113,7 +112,7 @@ export default function ChatUI() {
                 duration: 0.25,
               }}
             >
-              <ChatPromptInput ref={chatPromptInputRef} />
+              <ChatPromptInput />
             </motion.div>
           </motion.div>
         </motion.div>

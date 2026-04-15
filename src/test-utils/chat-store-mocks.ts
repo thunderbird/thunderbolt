@@ -204,7 +204,7 @@ export const hydrateStore = (state: {
 
   // Set MCP clients
   if (state.mcpClients) {
-    store.setMcpClients(state.mcpClients as never[])
+    store.setMcpClientsProvider(() => [])
   }
 
   // Create or update session - use defaults if selectedMode/Model is null
@@ -236,7 +236,7 @@ export const hydrateStore = (state: {
 export const resetStore = () => {
   useChatStore.setState({
     currentSessionId: null,
-    mcpClients: [],
+    getMcpClients: () => [],
     modes: [],
     models: [],
     sessions: new Map(),

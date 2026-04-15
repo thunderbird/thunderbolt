@@ -28,7 +28,8 @@ export const createChatInstance = (
         throw new Error('Missing init')
       }
 
-      const { mcpClients, sessions } = useChatStore.getState()
+      const { getMcpClients, sessions } = useChatStore.getState()
+      const mcpClients = getMcpClients()
 
       const session = sessions.get(id)
 

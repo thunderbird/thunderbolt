@@ -1,5 +1,7 @@
 import { useDatabase } from '@/contexts'
 import { getSettings } from '@/dal'
+import { deliverMcpOAuthCode, failMcpOAuthCode, hasPendingMcpOAuth } from '@/lib/mcp-auth/mcp-oauth-callback'
+import { getMcpOAuthState } from '@/lib/mcp-auth/mcp-oauth-state'
 import type { ReturnContext } from '@/lib/oauth-state'
 import { isTauri } from '@/lib/platform'
 import { getCurrent, onOpenUrl } from '@tauri-apps/plugin-deep-link'
@@ -48,6 +50,27 @@ export const determineNavigationTarget = (
 
   // Default to integrations page
   return { path: '/settings/integrations', oauth }
+}
+
+/**
+ * Parses MCP OAuth callback from a deep link URL.
+ * Uses a separate path (/mcp/oauth/callback) to avoid collision with integration OAuth.
+ * Exported for testing.
+ */
+export const parseMcpOAuthCallback = (url: URL): OAuthCallbackData | null => {
+  if (url.hostname !== 'thunderbolt.io' || !url.pathname.startsWith('/mcp/oauth/callback')) {
+    return null
+  }
+
+  const code = url.searchParams.get('code')
+  const error = url.searchParams.get('error')
+  const errorDescription = url.searchParams.get('error_description')
+
+  return {
+    code,
+    state: url.searchParams.get('state'),
+    error: errorDescription || error,
+  }
 }
 
 /**
@@ -144,7 +167,21 @@ export const useDeepLinkListener = (handler?: DeepLinkHandler, dependencies?: De
         try {
           const url = new URL(urlString)
 
-          // Handle OAuth callback deep links
+          // Handle MCP OAuth callback deep links (checked first — separate path)
+          const mcpOauthData = parseMcpOAuthCallback(url)
+          if (mcpOauthData && hasPendingMcpOAuth()) {
+            const oauthState = await getMcpOAuthState()
+            if (!oauthState.stateNonce || mcpOauthData.state !== oauthState.stateNonce) {
+              failMcpOAuthCode('OAuth state mismatch — possible CSRF attack')
+            } else if (mcpOauthData.code) {
+              deliverMcpOAuthCode(mcpOauthData.code)
+            } else {
+              failMcpOAuthCode(mcpOauthData.error ?? 'MCP OAuth authorization failed')
+            }
+            continue
+          }
+
+          // Handle integration OAuth callback deep links
           const oauthData = parseOAuthCallback(url)
           if (oauthData) {
             // Get the return context from SQLite settings (where mobile flow stores it)

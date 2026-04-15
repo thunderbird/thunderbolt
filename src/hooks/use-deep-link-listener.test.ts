@@ -8,6 +8,7 @@ import { getClock } from '@/testing-library'
 import { createQueryTestWrapper } from '@/test-utils/react-query'
 import {
   determineNavigationTarget,
+  parseMcpOAuthCallback,
   parseOAuthCallback,
   parseVerifyLinkCallback,
   useDeepLinkListener,
@@ -101,6 +102,57 @@ describe('parseOAuthCallback', () => {
     const result = parseOAuthCallback(url)
 
     expect(result).toBeNull()
+  })
+})
+
+describe('parseMcpOAuthCallback', () => {
+  it('parses valid MCP OAuth callback URL with code', () => {
+    const url = new URL('https://thunderbolt.io/mcp/oauth/callback?code=mcp_code_123&state=mcp_state')
+    const result = parseMcpOAuthCallback(url)
+
+    expect(result).toEqual({
+      code: 'mcp_code_123',
+      state: 'mcp_state',
+      error: null,
+    })
+  })
+
+  it('parses MCP OAuth callback with error', () => {
+    const url = new URL('https://thunderbolt.io/mcp/oauth/callback?error=access_denied&error_description=User%20denied')
+    const result = parseMcpOAuthCallback(url)
+
+    expect(result).toEqual({
+      code: null,
+      state: null,
+      error: 'User denied',
+    })
+  })
+
+  it('returns null for integration OAuth path', () => {
+    const url = new URL('https://thunderbolt.io/oauth/callback?code=abc123&state=xyz')
+    const result = parseMcpOAuthCallback(url)
+
+    expect(result).toBeNull()
+  })
+
+  it('returns null for wrong hostname', () => {
+    const url = new URL('https://evil.com/mcp/oauth/callback?code=abc123')
+    const result = parseMcpOAuthCallback(url)
+
+    expect(result).toBeNull()
+  })
+
+  it('does not collide with parseOAuthCallback', () => {
+    const mcpUrl = new URL('https://thunderbolt.io/mcp/oauth/callback?code=mcp_code')
+    const integrationUrl = new URL('https://thunderbolt.io/oauth/callback?code=integration_code')
+
+    // MCP parser should only match MCP path
+    expect(parseMcpOAuthCallback(mcpUrl)).not.toBeNull()
+    expect(parseMcpOAuthCallback(integrationUrl)).toBeNull()
+
+    // Integration parser should only match integration path
+    expect(parseOAuthCallback(integrationUrl)).not.toBeNull()
+    expect(parseOAuthCallback(mcpUrl)).toBeNull()
   })
 })
 

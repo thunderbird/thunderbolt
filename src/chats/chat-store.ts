@@ -1,6 +1,6 @@
 import { updateSettings } from '@/dal'
 import { getDb } from '@/db/database'
-import { type MCPClient } from '@/lib/mcp-provider'
+import { type McpClient as MCPClient } from '@/types/mcp'
 import { trackEvent } from '@/lib/posthog'
 import type { AutomationRun, ChatThread, Mode, Model, ThunderboltUIMessage } from '@/types'
 import { create } from 'zustand'
@@ -20,7 +20,7 @@ type ChatSession = {
 
 type ChatStoreState = {
   currentSessionId: string | null
-  mcpClients: MCPClient[]
+  getMcpClients: () => { name: string; client: MCPClient }[]
   modes: Mode[]
   models: Model[]
   sessions: Map<string, ChatSession>
@@ -29,7 +29,7 @@ type ChatStoreState = {
 type ChatStoreActions = {
   createSession(session: ChatSession): void
   setCurrentSessionId(id: string): void
-  setMcpClients(mcpClients: MCPClient[]): void
+  setMcpClientsProvider(getter: () => { name: string; client: MCPClient }[]): void
   setModes(modes: Mode[]): void
   setModels(models: Model[]): void
   setSelectedMode(id: string, modeId: string | null): Promise<void>
@@ -41,7 +41,7 @@ type ChatStore = ChatStoreState & ChatStoreActions
 
 const initialState: ChatStoreState = {
   currentSessionId: null,
-  mcpClients: [],
+  getMcpClients: () => [],
   modes: [],
   models: [],
   sessions: new Map(),
@@ -67,8 +67,8 @@ export const useChatStore = create<ChatStore>()((set, get) => ({
     set({ currentSessionId: id })
   },
 
-  setMcpClients: (mcpClients) => {
-    set({ mcpClients })
+  setMcpClientsProvider: (getter) => {
+    set({ getMcpClients: getter })
   },
 
   setModes: (modes) => {

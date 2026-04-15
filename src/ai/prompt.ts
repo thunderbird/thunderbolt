@@ -20,6 +20,8 @@ export type PromptParams = {
   integrationStatus: string
   /** Optional mode-specific system prompt instructions */
   modeSystemPrompt?: string
+  /** Summary of connected MCP servers (name + tool count) */
+  mcpServersSummary?: string
 }
 
 /**
@@ -34,6 +36,7 @@ export const createPrompt = ({
   localization,
   integrationStatus,
   modeSystemPrompt,
+  mcpServersSummary,
 }: PromptParams) => {
   const toolsOverride = profile?.toolsOverride ?? undefined
   const linkPreviewsOverride = profile?.linkPreviewsOverride ?? undefined
@@ -99,6 +102,7 @@ Wait for tool results before responding—never state facts without verifying th
 Think about what widget components to show the user, then work backwards to the tools you need.
 Don't mention tool names unless asked.
 ${toolsOverride ? `\n${toolsOverride}` : ''}
+${mcpServersSummary ? `\n## Connected MCP Servers\nYou have tools from these external services (tool names prefixed by server name):\n${mcpServersSummary}\nUse these when the user asks about these services.` : ''}
 
 ## Link Previews
 • Aggregate pages (listicles, "Top 10") are for DISCOVERY ONLY

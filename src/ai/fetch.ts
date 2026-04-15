@@ -42,6 +42,17 @@ import {
 import { type MCPClient } from '@ai-sdk/mcp'
 import { createMessageMetadata } from './message-metadata'
 
+/**
+ * Sanitizes a server name into a valid tool prefix.
+ * Server names are already meaningful (set by user or auto-generated),
+ * so this just lowercases and replaces non-alphanumeric chars with underscores.
+ */
+const sanitizeToolPrefix = (serverName: string): string =>
+  serverName
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '_')
+    .replace(/^_|_$/g, '') || 'mcp'
+
 export const ollama = createOpenAI({
   baseURL: 'http://localhost:11434/v1',
   // compatibility: 'compatible',
@@ -55,7 +66,7 @@ type AiFetchStreamingResponseOptions = {
   modelId: string
   modeSystemPrompt?: string
   modeName?: string
-  mcpClients?: MCPClient[]
+  mcpClients?: { name: string; client: MCPClient }[]
   httpClient: HttpClient
 }
 
@@ -178,18 +189,33 @@ export const aiFetchStreamingResponse = async ({
   const sourceCollector: SourceMetadata[] = []
 
   let toolset: Record<string, Tool> = {}
+  const mcpServerEntries: string[] = []
   if (supportsTools) {
     const availableTools = await getAvailableTools(httpClient, sourceCollector)
     toolset = { ...createToolset(availableTools) }
 
-    for (const mcpClient of mcpClients || []) {
-      const mcpTools = await mcpClient.tools()
+    const usedPrefixes = new Map<string, number>()
+    for (const { name: serverName, client } of mcpClients || []) {
+      const mcpTools = await client.tools()
+      const basePrefix = sanitizeToolPrefix(serverName)
+      const count = usedPrefixes.get(basePrefix) ?? 0
+      const prefix = count > 0 ? `${basePrefix}_${count + 1}` : basePrefix
+      usedPrefixes.set(basePrefix, count + 1)
+
+      const beforeCount = Object.keys(toolset).length
       for (const [name, tool] of Object.entries(mcpTools)) {
-        if (toolset[name]) {
-          console.warn(`MCP tool "${name}" conflicts with an existing tool and was skipped`)
+        const prefixedName = `${prefix}_${name}`
+        if (toolset[prefixedName]) {
+          console.warn(
+            `MCP tool "${prefixedName}" from "${serverName}" conflicts with an existing tool and was skipped`,
+          )
           continue
         }
-        toolset[name] = tool as Tool
+        toolset[prefixedName] = tool as Tool
+      }
+      const addedCount = Object.keys(toolset).length - beforeCount
+      if (addedCount > 0) {
+        mcpServerEntries.push(`- ${prefix} (${addedCount} tools)`)
       }
     }
   } else {
@@ -234,6 +260,7 @@ export const aiFetchStreamingResponse = async ({
     },
     integrationStatus: getIntegrationStatus(),
     modeSystemPrompt,
+    mcpServersSummary: mcpServerEntries.length > 0 ? mcpServerEntries.join('\n') : undefined,
   })
 
   const activeNudges = getNudgeMessagesFromProfile(profile, modeName)

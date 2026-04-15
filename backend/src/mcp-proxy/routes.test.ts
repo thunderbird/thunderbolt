@@ -205,7 +205,7 @@ describe('MCP Proxy Routes', () => {
     expect(await response.text()).toBe('Response too large')
   })
 
-  it('returns redirect responses as-is (redirect: manual)', async () => {
+  it('blocks SSRF via redirect to private IP', async () => {
     mockFetch.mockImplementation(() =>
       Promise.resolve(
         new Response(null, {
@@ -222,8 +222,8 @@ describe('MCP Proxy Routes', () => {
       }),
     )
 
-    // 302 is returned to the client, not followed by the proxy
-    expect(response.status).toBe(302)
+    // Redirect to private IP must be blocked — safeFetch validates each redirect hop
+    expect(response.status).toBe(500)
   })
 
   // --- Header Forwarding ---

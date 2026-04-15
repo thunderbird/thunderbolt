@@ -33,10 +33,10 @@
       "identifier": "http:default",
       "allow": [
         {
-          "url": "http://localhost:11434"
+          "url": "http://localhost:*"
         },
         {
-          "url": "http://localhost:3001"
+          "url": "http://127.0.0.1:*"
         },
         {
           "url": "https://api.openai.com"
@@ -55,12 +55,41 @@
         },
         {
           "url": "https://graph.microsoft.com"
-        },
-        {
-          "url": "http://localhost:8000"
         }
       ]
     },
+    {
+      "identifier": "shell:allow-spawn",
+      "allow": [
+        {
+          "name": "npx",
+          "cmd": "npx",
+          "args": true
+        },
+        {
+          "name": "uvx",
+          "cmd": "uvx",
+          "args": true
+        },
+        {
+          "name": "node",
+          "cmd": "node",
+          "args": true
+        },
+        {
+          "name": "python3",
+          "cmd": "python3",
+          "args": true
+        },
+        {
+          "name": "bun",
+          "cmd": "bun",
+          "args": true
+        }
+      ]
+    },
+    "shell:allow-stdin-write",
+    "shell:allow-kill",
     "haptics:allow-selection-feedback",
     "haptics:allow-impact-feedback",
     "haptics:allow-notification-feedback",

@@ -1,0 +1,453 @@
+import { createMcpServer, deleteMcpServer, getAllMcpServers } from '@/dal'
+import { createCredentialStore } from '@/lib/mcp-auth'
+import { isSupportedTransport, isLocalMcpServer } from '@/lib/mcp-utils'
+import { isTauri } from '@/lib/platform'
+import { useMCP } from '@/lib/mcp-provider'
+import { useDatabase } from '@/contexts'
+import { mcpServersTable } from '@/db/tables'
+import { useMcpSync } from '@/hooks/use-mcp-sync'
+import { useMcpServerFormState } from '@/hooks/use-mcp-server-form'
+import type { McpAuthType, McpTransportType } from '@/types/mcp'
+import { type McpServer } from '@/types'
+import { useMutation } from '@tanstack/react-query'
+import { useQuery } from '@powersync/tanstack-react-query'
+import { eq } from 'drizzle-orm'
+import { useEffect, useReducer, useRef, type KeyboardEvent } from 'react'
+import { v7 as uuidv7 } from 'uuid'
+import { createMCPClient } from '@ai-sdk/mcp'
+import { toCompilableQuery } from '@powersync/drizzle-driver'
+
+type ServerTools = {
+  [serverId: string]: string[]
+}
+
+type PageState = {
+  isAddDialogOpen: boolean
+  serverTools: ServerTools
+  selectedTools: { [serverId: string]: { [tool: string]: boolean } }
+  deleteConfirmOpen: string | null
+  copiedUrl: string | null
+}
+
+type PageAction =
+  | { type: 'SET_ADD_DIALOG_OPEN'; payload: boolean }
+  | { type: 'SET_SERVER_TOOLS'; payload: ServerTools }
+  | { type: 'MERGE_SELECTED_TOOLS'; payload: { [serverId: string]: { [tool: string]: boolean } } }
+  | { type: 'SET_DELETE_CONFIRM_OPEN'; payload: string | null }
+  | { type: 'SET_COPIED_URL'; payload: string | null }
+
+const initialPageState: PageState = {
+  isAddDialogOpen: false,
+  serverTools: {},
+  selectedTools: {},
+  deleteConfirmOpen: null,
+  copiedUrl: null,
+}
+
+const pageReducer = (state: PageState, action: PageAction): PageState => {
+  switch (action.type) {
+    case 'SET_ADD_DIALOG_OPEN':
+      return { ...state, isAddDialogOpen: action.payload }
+    case 'SET_SERVER_TOOLS':
+      return { ...state, serverTools: action.payload }
+    case 'MERGE_SELECTED_TOOLS':
+      return { ...state, selectedTools: { ...state.selectedTools, ...action.payload } }
+    case 'SET_DELETE_CONFIRM_OPEN':
+      return { ...state, deleteConfirmOpen: action.payload }
+    case 'SET_COPIED_URL':
+      return { ...state, copiedUrl: action.payload }
+    default:
+      return state
+  }
+}
+
+/**
+ * Creates the appropriate MCP transport for connection testing, using dynamic
+ * imports for Tauri transports to prevent crashes on web.
+ */
+const createTestTransport = async (
+  transportType: 'http' | 'sse',
+  url: URL,
+  opts?: { requestInit: { headers: { Authorization: string } } },
+  cloudUrl?: string,
+) => {
+  // Localhost on Tauri → use native HTTP plugin (direct, no proxy)
+  if (isTauri() && isLocalMcpServer(url.toString())) {
+    if (transportType === 'sse') {
+      const { createTauriSseTransport } = await import('@/lib/mcp-transports/tauri-sse-transport')
+      return createTauriSseTransport(url, opts)
+    }
+    const { createTauriHttpTransport } = await import('@/lib/mcp-transports/tauri-http-transport')
+    return createTauriHttpTransport(url, opts)
+  }
+
+  // Remote on all platforms → proxy through backend
+  if (cloudUrl && !isLocalMcpServer(url.toString())) {
+    const { createProxiedFetch } = await import('@/lib/mcp-transports/proxied-fetch')
+    if (transportType === 'sse') {
+      const { SSEClientTransport } = await import('@modelcontextprotocol/sdk/client/sse.js')
+      return new SSEClientTransport(url, { ...opts, fetch: createProxiedFetch(cloudUrl) })
+    }
+    const { StreamableHTTPClientTransport } = await import('@modelcontextprotocol/sdk/client/streamableHttp.js')
+    return new StreamableHTTPClientTransport(url, { ...opts, fetch: createProxiedFetch(cloudUrl) })
+  }
+
+  // Web + localhost → direct browser fetch
+  if (transportType === 'sse') {
+    const { SSEClientTransport } = await import('@modelcontextprotocol/sdk/client/sse.js')
+    return new SSEClientTransport(url, opts)
+  }
+  const { StreamableHTTPClientTransport } = await import('@modelcontextprotocol/sdk/client/streamableHttp.js')
+  return new StreamableHTTPClientTransport(url, opts)
+}
+
+/** Extracts a human-readable error message from MCP connection failures. */
+const getConnectionErrorMessage = (error: unknown): string => {
+  const message = error instanceof Error ? error.message : String(error)
+  const lowerMessage = message.toLowerCase()
+
+  if (lowerMessage.includes('unauthorized') || lowerMessage.includes('401')) {
+    return 'Authentication failed. Please check your access token or credentials.'
+  }
+  if (lowerMessage.includes('forbidden') || lowerMessage.includes('403')) {
+    return 'Access denied. The server rejected the request.'
+  }
+  if (lowerMessage.includes('not found') || lowerMessage.includes('404')) {
+    return 'Server not found. Please check the URL.'
+  }
+  if (lowerMessage.includes('timed out') || lowerMessage.includes('timeout')) {
+    return 'Connection timed out. The server may be unreachable.'
+  }
+  if (lowerMessage.includes('failed to fetch') || lowerMessage.includes('networkerror')) {
+    return 'Network error. The server may be down or unreachable.'
+  }
+
+  return `Could not connect to the MCP server: ${message}`
+}
+
+export const useMcpServersPageState = () => {
+  const db = useDatabase()
+  const { servers: mcpServers } = useMcpSync()
+  const { reconnectServer, authorizeServer } = useMCP()
+  const credentialStoreRef = useRef(createCredentialStore(db))
+  const cloudUrl = import.meta.env.VITE_THUNDERBOLT_CLOUD_URL ?? 'http://localhost:8000/v1'
+  const [pageState, dispatch] = useReducer(pageReducer, initialPageState)
+  const { isAddDialogOpen, serverTools, selectedTools, deleteConfirmOpen, copiedUrl } = pageState
+  const testAbortRef = useRef<AbortController | null>(null)
+
+  const { state: formState, dispatch: formDispatch, isValid, urlValidation } = useMcpServerFormState()
+
+  const { data: servers = [] } = useQuery({
+    queryKey: ['mcp-servers'],
+    query: toCompilableQuery(getAllMcpServers(db)),
+  })
+
+  const supportedServers = servers.filter((s) => isSupportedTransport((s.type ?? 'http') as McpTransportType))
+  const hasUnsupportedServers = servers.length > supportedServers.length
+
+  useEffect(() => {
+    const fetchServerTools = async () => {
+      const newServerTools: ServerTools = {}
+      const newSelectedTools: { [serverId: string]: { [tool: string]: boolean } } = {}
+
+      for (const server of servers) {
+        if (server.enabled) {
+          const mcpServer = mcpServers.find((s) => s.id === server.id)
+          if (mcpServer?.isConnected && mcpServer.client) {
+            try {
+              const tools = await mcpServer.client.tools()
+              if (tools && typeof tools === 'object') {
+                const toolNames = Object.keys(tools)
+                newServerTools[server.id] = toolNames
+
+                if (!selectedTools[server.id]) {
+                  newSelectedTools[server.id] = {}
+                  toolNames.forEach((tool) => {
+                    newSelectedTools[server.id][tool] = true
+                  })
+                }
+              }
+            } catch (error) {
+              console.error('Failed to fetch tools for server:', server.name, error)
+            }
+          }
+        }
+      }
+
+      dispatch({ type: 'SET_SERVER_TOOLS', payload: newServerTools })
+      if (Object.keys(newSelectedTools).length > 0) {
+        dispatch({ type: 'MERGE_SELECTED_TOOLS', payload: newSelectedTools })
+      }
+    }
+
+    if (servers.length > 0 && mcpServers.length > 0) {
+      fetchServerTools()
+    }
+    // selectedTools intentionally excluded — including it causes infinite loop
+  }, [servers, mcpServers])
+
+  useEffect(() => {
+    if (copiedUrl) {
+      const timer = setTimeout(() => dispatch({ type: 'SET_COPIED_URL', payload: null }), 2000)
+      return () => clearTimeout(timer)
+    }
+  }, [copiedUrl])
+
+  const toggleServerMutation = useMutation({
+    mutationFn: async ({ id, enabled }: { id: string; enabled: boolean }) => {
+      await db
+        .update(mcpServersTable)
+        .set({ enabled: enabled ? 1 : 0, updatedAt: new Date().toISOString() })
+        .where(eq(mcpServersTable.id, id))
+    },
+  })
+
+  const addServerMutation = useMutation({
+    mutationFn: async (server: {
+      name: string
+      type: McpTransportType
+      url?: string
+      command?: string
+      args?: string
+      authType?: McpAuthType
+      bearerToken?: string
+    }) => {
+      const id = uuidv7()
+
+      // Save credential FIRST so it's available when useMcpSync fires after the server row is inserted
+      if (server.bearerToken && server.authType === 'bearer') {
+        await credentialStoreRef.current.save(id, { type: 'bearer', token: server.bearerToken })
+      }
+
+      const { bearerToken, ...serverData } = server
+      await createMcpServer(db, { id, ...serverData, enabled: 1 })
+    },
+    onSuccess: () => {
+      dispatch({ type: 'SET_ADD_DIALOG_OPEN', payload: false })
+      formDispatch({ type: 'RESET' })
+    },
+  })
+
+  const deleteServerMutation = useMutation({
+    mutationFn: (id: string) => deleteMcpServer(db, id),
+    onSuccess: () => {
+      dispatch({ type: 'SET_DELETE_CONFIRM_OPEN', payload: null })
+    },
+  })
+
+  const testConnection = async () => {
+    if (!isValid()) {
+      return
+    }
+
+    testAbortRef.current?.abort()
+    const abortController = new AbortController()
+    testAbortRef.current = abortController
+
+    formDispatch({ type: 'SET_CONNECTION_STATUS', payload: 'testing' })
+    formDispatch({ type: 'SET_CONNECTION_ERROR', payload: null })
+    formDispatch({ type: 'SET_CAPABILITIES', payload: [] })
+
+    if (formState.transportType === 'stdio') {
+      formDispatch({ type: 'SET_CONNECTION_STATUS', payload: 'success' })
+      formDispatch({ type: 'SET_CAPABILITIES', payload: ['stdio transport — connection test not available yet'] })
+      return
+    }
+
+    const testTimeoutMs = 15000
+    let mcpClient: Awaited<ReturnType<typeof createMCPClient>> | null = null
+    let transport: Awaited<ReturnType<typeof createTestTransport>> | null = null
+
+    try {
+      const url = new URL(formState.url)
+      const opts =
+        formState.authType === 'bearer' && formState.bearerToken
+          ? { requestInit: { headers: { Authorization: `Bearer ${formState.bearerToken}` } } }
+          : undefined
+      transport = await createTestTransport(formState.transportType as 'http' | 'sse', url, opts, cloudUrl)
+
+      const connectWithTimeout = async () => {
+        const client = await createMCPClient({ transport: transport! })
+        const tools = await client.tools()
+        return { client, tools }
+      }
+
+      const timeoutPromise = new Promise<never>((_, reject) =>
+        setTimeout(() => reject(new Error('Connection timed out')), testTimeoutMs),
+      )
+
+      const { client, tools } = await Promise.race([connectWithTimeout(), timeoutPromise])
+      mcpClient = client
+
+      if (abortController.signal.aborted) {
+        return
+      }
+      formDispatch({ type: 'SET_CONNECTION_STATUS', payload: 'success' })
+
+      if (tools && typeof tools === 'object') {
+        const toolNames = Object.keys(tools)
+        formDispatch({
+          type: 'SET_CAPABILITIES',
+          payload: toolNames.length > 0 ? toolNames : ['Connection successful — no tools available'],
+        })
+      } else {
+        formDispatch({ type: 'SET_CAPABILITIES', payload: ['Connection successful — no tools listed'] })
+      }
+    } catch (error) {
+      if (abortController.signal.aborted) {
+        return
+      }
+      formDispatch({ type: 'SET_CONNECTION_STATUS', payload: 'error' })
+      formDispatch({
+        type: 'SET_CONNECTION_ERROR',
+        payload: getConnectionErrorMessage(error),
+      })
+    } finally {
+      await transport?.close()
+      if (mcpClient?.close) {
+        mcpClient.close()
+      }
+    }
+  }
+
+  const handleAddServer = () => {
+    if (!isValid()) {
+      return
+    }
+
+    const authType = formState.authType !== 'none' ? formState.authType : undefined
+    const bearerToken = formState.authType === 'bearer' ? formState.bearerToken : undefined
+
+    const name = formState.name || 'Unnamed Server'
+
+    if (formState.transportType === 'stdio') {
+      const cleanArgs = formState.args.filter(Boolean)
+      addServerMutation.mutate({
+        name,
+        type: 'stdio',
+        command: formState.command,
+        args: JSON.stringify(cleanArgs),
+        authType,
+        bearerToken,
+      })
+      return
+    }
+
+    addServerMutation.mutate({ name, type: formState.transportType, url: formState.url, authType, bearerToken })
+  }
+
+  const handleUrlKeyDown = (e: KeyboardEvent) => {
+    if (e.key !== 'Enter') {
+      return
+    }
+    e.preventDefault()
+    if (formState.connectionStatus === 'idle' && isValid()) {
+      testConnection()
+    } else if (formState.connectionStatus === 'success') {
+      handleAddServer()
+    }
+  }
+
+  const handleCopyUrl = async (url: string) => {
+    await navigator.clipboard.writeText(url)
+    dispatch({ type: 'SET_COPIED_URL', payload: url })
+  }
+
+  const handleArgsInput = (value: string) => {
+    // Split on spaces but preserve trailing space so the user can type the next arg
+    formDispatch({ type: 'SET_ARGS', payload: value.split(' ') })
+  }
+
+  const getConnectionStatus = (server: McpServer) => {
+    const mcpServer = mcpServers.find((s) => s.id === server.id)
+    if (mcpServer) {
+      if (mcpServer.error) {
+        return 'error'
+      }
+      if (mcpServer.isConnected) {
+        return 'connected'
+      }
+      return mcpServer.enabled ? 'connecting' : 'disconnected'
+    }
+    return server.enabled ? 'connecting' : 'disconnected'
+  }
+
+  const getStatusTooltipText = (status: string) => {
+    switch (status) {
+      case 'connected':
+        return 'Connected'
+      case 'connecting':
+        return 'Connecting...'
+      case 'disconnected':
+        return 'Disconnected'
+      case 'error':
+        return 'Connection error'
+      default:
+        return 'Unknown'
+    }
+  }
+
+  const getServerErrorMessage = (server: McpServer) => {
+    const mcpServer = mcpServers.find((s) => s.id === server.id)
+    if (!mcpServer) {
+      return null
+    }
+    return mcpServer.errorMessage ?? mcpServer.error?.message ?? null
+  }
+
+  const formatServerTitle = (url: string) => {
+    try {
+      const urlObj = new URL(url)
+      return `${urlObj.host}${urlObj.pathname.replace(/\/$/, '')}`
+    } catch {
+      return url.replace(/^https?:\/\//, '')
+    }
+  }
+
+  const openAddDialog = () => dispatch({ type: 'SET_ADD_DIALOG_OPEN', payload: true })
+  const closeAddDialog = () => {
+    testAbortRef.current?.abort()
+    testAbortRef.current = null
+    dispatch({ type: 'SET_ADD_DIALOG_OPEN', payload: false })
+    formDispatch({ type: 'RESET' })
+  }
+
+  const canTestConnection = isValid() && formState.connectionStatus !== 'testing'
+  // OAuth servers can be added without testing — the auth flow happens on connect
+  const canAddServer =
+    isValid() &&
+    (formState.transportType === 'stdio' || formState.authType === 'oauth' || formState.connectionStatus === 'success')
+
+  return {
+    supportedServers,
+    hasUnsupportedServers,
+    serverTools,
+    selectedTools,
+    deleteConfirmOpen,
+    setDeleteConfirmOpen: (id: string | null) => dispatch({ type: 'SET_DELETE_CONFIRM_OPEN', payload: id }),
+    copiedUrl,
+    formState,
+    formDispatch,
+    isAddDialogOpen,
+    openAddDialog,
+    closeAddDialog,
+    toggleServerMutation,
+    addServerMutation,
+    deleteServerMutation,
+    testConnection,
+    handleAddServer,
+    handleUrlKeyDown,
+    handleCopyUrl,
+    handleArgsInput,
+    getConnectionStatus,
+    getStatusTooltipText,
+    getServerErrorMessage,
+    formatServerTitle,
+    canTestConnection,
+    canAddServer,
+    isValid,
+    urlValidation,
+    reconnectServer,
+    authorizeServer,
+  }
+}

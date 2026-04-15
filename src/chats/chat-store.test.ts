@@ -58,7 +58,7 @@ describe('chat-store', () => {
       expect(session?.chatInstance).toBe(chatInstance)
       expect(session?.chatThread).toBe(chatThread)
       expect(session?.id).toBe('test-id')
-      expect(storeState.mcpClients).toEqual([])
+      expect(storeState.getMcpClients()).toEqual([])
       expect(storeState.models).toEqual([model])
       expect(session?.selectedModel).toBe(model)
       expect(session?.triggerData).toBe(automationRun)
@@ -89,7 +89,7 @@ describe('chat-store', () => {
 
       expect(session).toBeNull()
       expect(storeState.currentSessionId).toBeNull()
-      expect(storeState.mcpClients).toEqual([])
+      expect(storeState.getMcpClients()).toEqual([])
       expect(storeState.models).toEqual([])
       expect(storeState.sessions.size).toBe(0)
     })

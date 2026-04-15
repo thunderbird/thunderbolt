@@ -85,7 +85,6 @@ const handleProxy = async (
       method: ctx.request.method,
       headers,
       body: requestBody,
-      redirect: 'manual',
       signal: controller.signal,
     })
 

@@ -4,6 +4,7 @@ import { mcpServersTable } from '../db/tables'
 import { clearNullableColumns, nowIso } from '../lib/utils'
 import { type McpServer } from '@/types'
 import type { DrizzleQueryWithPromise } from '@/types'
+import type { McpTransportType, McpAuthType } from '@/types/mcp'
 
 /**
  * Gets all MCP servers from the database (excluding soft-deleted)
@@ -37,11 +38,20 @@ export const deleteMcpServer = async (db: AnyDrizzleDatabase, id: string): Promi
 }
 
 /**
- * Creates a new MCP server
+ * Creates a new MCP server with full transport and auth configuration
  */
 export const createMcpServer = async (
   db: AnyDrizzleDatabase,
-  data: Partial<McpServer> & Pick<McpServer, 'id' | 'name'>,
+  server: {
+    id: string
+    name: string
+    type?: McpTransportType
+    url?: string
+    command?: string
+    args?: string
+    authType?: McpAuthType
+    enabled?: number
+  },
 ): Promise<void> => {
-  await db.insert(mcpServersTable).values(data)
+  await db.insert(mcpServersTable).values(server)
 }

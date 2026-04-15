@@ -1,183 +1,341 @@
-import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js'
 import { createMCPClient } from '@ai-sdk/mcp'
-import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from 'react'
-import { TauriStreamableHTTPClientTransport } from './tauri-http-transport'
-
-type MCPClient = Awaited<ReturnType<typeof createMCPClient>>
-
-type MCPServerConnection = {
-  id: string
-  name: string
-  url: string
-  client: MCPClient | null
-  isConnected: boolean
-  error: Error | null
-  enabled: boolean
-}
+import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from 'react'
+import { createCredentialStore } from './mcp-auth'
+import { createTransport } from './mcp-transports'
+import { useDatabase } from '@/contexts'
+import type { CredentialStore, McpClient, McpServerConfig, McpServerConnection, McpTransportResult } from '@/types/mcp'
 
 type MCPContextType = {
-  servers: MCPServerConnection[]
-  getEnabledClients: () => MCPClient[]
+  servers: McpServerConnection[]
+  getEnabledClients: () => { name: string; client: McpClient }[]
   reconnectServer: (serverId: string) => Promise<void>
-  addServer: (server: { id: string; name: string; url: string; enabled: boolean }) => Promise<void>
+  authorizeServer: (serverId: string) => Promise<void>
+  addServer: (server: McpServerConfig) => Promise<void>
   removeServer: (serverId: string) => void
   updateServerStatus: (serverId: string, enabled: boolean) => void
 }
 
 const MCPContext = createContext<MCPContextType | undefined>(undefined)
 
+const reconnectDelays = [2000, 4000, 8000, 16000, 32000, 60000]
+const maxAttempts = reconnectDelays.length
+
+/**
+ * Owns the transport lifecycle during OAuth discovery.
+ * Returns a valid transport + authProvider, or closes the transport and returns an error.
+ */
+const discoverOAuth = async (
+  server: McpServerConfig,
+  credentialStore: CredentialStore,
+  cloudUrl: string,
+): Promise<
+  | { transport: { close(): Promise<void> }; authProvider: NonNullable<McpTransportResult['authProvider']> }
+  | { error: string }
+> => {
+  const result = await createTransport(server, credentialStore, { cloudUrl })
+  try {
+    const provider = result.authProvider
+    if (!provider) {
+      await result.transport.close()
+      return { error: 'Server does not require OAuth' }
+    }
+
+    try {
+      await createMCPClient({ transport: result.transport })
+      await result.transport.close()
+      return { error: 'Server connected without requiring OAuth' }
+    } catch {
+      // Expected — SDK discovered OAuth and stored pendingAuthUrl
+    }
+
+    if (!provider.pendingAuthUrl) {
+      await result.transport.close()
+      return { error: 'Could not discover OAuth authorization URL' }
+    }
+
+    return { transport: result.transport, authProvider: provider }
+  } catch (err) {
+    await result.transport.close()
+    throw err
+  }
+}
+
 export const MCPProvider = ({ children }: { children: ReactNode }) => {
-  const [servers, setServers] = useState<MCPServerConnection[]>([])
-  const clientRefs = useRef<Map<string, MCPClient>>(new Map())
-  const serversRef = useRef<MCPServerConnection[]>([])
+  const db = useDatabase()
+  const [servers, setServers] = useState<McpServerConnection[]>([])
+  const clientRefs = useRef<Map<string, McpClient>>(new Map())
+  const transportRefs = useRef<Map<string, { close(): Promise<void> }>>(new Map())
+  const retryTimeouts = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map())
+  const serversRef = useRef<McpServerConnection[]>([])
+  const credentialStoreRef = useRef(createCredentialStore(db))
+  const cloudUrlRef = useRef(import.meta.env.VITE_THUNDERBOLT_CLOUD_URL ?? 'http://localhost:8000/v1')
 
   serversRef.current = servers
 
-  const createClient = async (url: string): Promise<MCPClient> => {
-    // Check if we need to use Tauri fetch for external URLs
-    const urlObj = new URL(url)
-    const isExternal = !['localhost', '127.0.0.1'].includes(urlObj.hostname)
-
-    // Create transport with appropriate implementation
-    const transportOptions = {
-      requestInit: {
-        headers: {
-          Accept: 'application/json, text/event-stream',
-        },
-      },
-    }
-
-    // Use Tauri transport for external URLs to bypass CORS
-    const transport = isExternal
-      ? new TauriStreamableHTTPClientTransport(urlObj, transportOptions)
-      : new StreamableHTTPClientTransport(urlObj, transportOptions)
-
-    const mcpClient = await createMCPClient({
-      transport,
+  const createClient = async (config: McpServerConfig): Promise<McpClient> => {
+    const result = await createTransport(config, credentialStoreRef.current, {
+      cloudUrl: cloudUrlRef.current,
     })
-    return mcpClient
+    const { transport, authProvider } = result
+
+    try {
+      const client = await createMCPClient({ transport })
+      transportRefs.current.set(config.id, transport)
+      return client
+    } catch (err) {
+      // If the server requires OAuth, the SDK calls redirectToAuthorization then throws.
+      // On web: redirectToAuthorization does window.location.assign (page navigates away).
+      //   The error is expected — on return, useMcpOAuthCallback exchanges the code.
+      // On desktop/mobile: waitForAuthCode captures the code, finishAuth exchanges it.
+      if (authProvider && err instanceof Error && err.message.includes('Unauthorized')) {
+        await transport.close()
+        setServers((prev) =>
+          prev.map((s) =>
+            s.id === config.id
+              ? { ...s, client: null, isConnected: false, error: null, errorMessage: 'needsAuth', enabled: true }
+              : s,
+          ),
+        )
+        return new Promise<McpClient>(() => {}) // park — user must click Authorize
+      }
+      throw err
+    }
   }
 
-  const connectServer = async (server: { id: string; name: string; url: string; enabled: boolean }) => {
-    if (!server.enabled) {
+  const connectServer = async (config: McpServerConfig, attempt = 0) => {
+    if (!config.enabled) {
       setServers((prev) =>
         prev.map((s) =>
-          s.id === server.id ? { ...s, client: null, isConnected: false, error: null, enabled: false } : s,
+          s.id === config.id
+            ? { ...s, client: null, isConnected: false, error: null, errorMessage: null, enabled: false }
+            : s,
         ),
       )
       return
     }
 
+    // OAuth servers without stored tokens: show "needsAuth" immediately, don't attempt connection
+    if (config.auth.authType === 'oauth') {
+      const credential = await credentialStoreRef.current.load(config.id)
+      if (!credential) {
+        setServers((prev) =>
+          prev.map((s) =>
+            s.id === config.id
+              ? { ...s, client: null, isConnected: false, error: null, errorMessage: 'needsAuth', enabled: true }
+              : s,
+          ),
+        )
+        return
+      }
+    }
+
     try {
-      // Connecting to MCP server
-      const client = await createClient(server.url)
-
-      clientRefs.current.set(server.id, client)
-
-      setServers((prev) =>
-        prev.map((s) => (s.id === server.id ? { ...s, client, isConnected: true, error: null, enabled: true } : s)),
-      )
-
-      // MCP server connected successfully
-    } catch (err) {
-      console.error('Failed to connect to MCP server:', server.name, err)
+      const client = await createClient(config)
+      clientRefs.current.set(config.id, client)
       setServers((prev) =>
         prev.map((s) =>
-          s.id === server.id
-            ? { ...s, client: null, isConnected: false, error: err as Error, enabled: server.enabled }
-            : s,
+          s.id === config.id ? { ...s, client, isConnected: true, error: null, errorMessage: null, enabled: true } : s,
         ),
       )
+    } catch (err) {
+      const error = err instanceof Error ? err : new Error(String(err))
+      if (attempt < maxAttempts) {
+        const delay = reconnectDelays[Math.min(attempt, reconnectDelays.length - 1)]
+        const timeoutId = setTimeout(() => {
+          retryTimeouts.current.delete(config.id)
+          connectServer(config, attempt + 1)
+        }, delay)
+        retryTimeouts.current.set(config.id, timeoutId)
+        setServers((prev) =>
+          prev.map((s) =>
+            s.id === config.id
+              ? {
+                  ...s,
+                  client: null,
+                  isConnected: false,
+                  error,
+                  errorMessage: `Retrying in ${delay / 1000}s... (attempt ${attempt + 1}/${maxAttempts})`,
+                  enabled: config.enabled,
+                }
+              : s,
+          ),
+        )
+      } else {
+        setServers((prev) =>
+          prev.map((s) =>
+            s.id === config.id
+              ? { ...s, client: null, isConnected: false, error, errorMessage: error.message, enabled: config.enabled }
+              : s,
+          ),
+        )
+      }
     }
   }
 
-  const disconnectServer = (serverId: string) => {
+  const disconnectServer = async (serverId: string) => {
+    const pendingRetry = retryTimeouts.current.get(serverId)
+    if (pendingRetry) {
+      clearTimeout(pendingRetry)
+      retryTimeouts.current.delete(serverId)
+    }
+
+    const transport = transportRefs.current.get(serverId)
+    if (transport) {
+      await transport.close()
+      transportRefs.current.delete(serverId)
+    }
+
     const client = clientRefs.current.get(serverId)
     if (client?.close) {
-      try {
-        client.close()
-      } catch (error) {
-        console.error('Error closing MCP client:', error)
-      }
+      await client.close()
     }
     clientRefs.current.delete(serverId)
   }
 
-  const addServer = async (server: { id: string; name: string; url: string; enabled: boolean }) => {
-    // Add server to state first
-    setServers((prev) => [
-      ...prev,
-      {
-        ...server,
-        client: null,
-        isConnected: false,
-        error: null,
-      },
-    ])
+  const addServer = useCallback(async (server: McpServerConfig) => {
+    // Idempotent — skip if server already exists in the provider
+    setServers((prev) => {
+      if (prev.some((s) => s.id === server.id)) {
+        return prev
+      }
+      return [
+        ...prev,
+        {
+          ...server,
+          client: null,
+          isConnected: false,
+          error: null,
+          errorMessage: null,
+        },
+      ]
+    })
 
-    // Then try to connect if enabled
     if (server.enabled) {
       await connectServer(server)
     }
-  }
+  }, [])
 
-  const removeServer = (serverId: string) => {
-    disconnectServer(serverId)
+  const removeServer = useCallback(async (serverId: string) => {
+    await disconnectServer(serverId)
+    await credentialStoreRef.current.delete(serverId)
     setServers((prev) => prev.filter((s) => s.id !== serverId))
-  }
+  }, [])
 
-  const updateServerStatus = (serverId: string, enabled: boolean) => {
-    const server = servers.find((s) => s.id === serverId)
+  const updateServerStatus = useCallback(async (serverId: string, enabled: boolean) => {
+    const server = serversRef.current.find((s) => s.id === serverId)
     if (!server) {
       return
     }
 
     if (enabled) {
-      connectServer({ ...server, enabled })
+      await connectServer({ ...server, enabled })
     } else {
-      disconnectServer(serverId)
+      await disconnectServer(serverId)
       setServers((prev) =>
         prev.map((s) =>
-          s.id === serverId ? { ...s, client: null, isConnected: false, error: null, enabled: false } : s,
+          s.id === serverId
+            ? { ...s, client: null, isConnected: false, error: null, errorMessage: null, enabled: false }
+            : s,
         ),
       )
     }
-  }
+  }, [])
 
-  const reconnectServer = async (serverId: string) => {
-    const server = servers.find((s) => s.id === serverId)
+  const reconnectServer = useCallback(async (serverId: string) => {
+    const server = serversRef.current.find((s) => s.id === serverId)
     if (!server) {
       return
     }
 
-    // Reconnecting MCP server
-    disconnectServer(serverId)
-    await connectServer(server)
-  }
+    await disconnectServer(serverId)
+    await connectServer(server, 0)
+  }, [])
 
-  const getEnabledClients = (): MCPClient[] => {
-    // Use ref to always get current servers, avoiding stale closures
-    return serversRef.current
-      .filter((server) => server.enabled && server.isConnected && server.client)
-      .map((server) => server.client!)
-  }
+  /**
+   * User-initiated OAuth — called from the "Authorize" button on the server card.
+   * Triggers a connection attempt to run OAuth discovery, then redirects the user.
+   * - Web: redirects the page (callback hook handles the return).
+   * - Desktop/Mobile: opens system browser, waits for code, exchanges, reconnects.
+   */
+  const authorizeServer = useCallback(async (serverId: string) => {
+    const server = serversRef.current.find((s) => s.id === serverId)
+    if (!server) {
+      return
+    }
+
+    setServers((prev) =>
+      prev.map((s) => (s.id === serverId ? { ...s, errorMessage: 'Discovering OAuth endpoints...' } : s)),
+    )
+
+    const discoveryResult = await discoverOAuth(server, credentialStoreRef.current, cloudUrlRef.current).catch(
+      (err) => ({ error: err instanceof Error ? err.message : 'OAuth discovery failed' }),
+    )
+
+    if ('error' in discoveryResult) {
+      setServers((prev) => prev.map((s) => (s.id === serverId ? { ...s, errorMessage: discoveryResult.error } : s)))
+      return
+    }
+
+    const { transport, authProvider } = discoveryResult
+
+    // Commit transport — authorizeServer now owns its lifecycle via transportRefs
+    transportRefs.current.set(serverId, transport)
+
+    try {
+      setServers((prev) =>
+        prev.map((s) => (s.id === serverId ? { ...s, errorMessage: 'Waiting for authorization...' } : s)),
+      )
+
+      await authProvider.startOAuthRedirect()
+
+      // On web, the page navigates away — nothing more to do here.
+      // On desktop/mobile, the browser opened and we need to wait for the code.
+      const code = await authProvider.waitForAuthCode()
+      const httpTransport = transport as unknown as { finishAuth(code: string): Promise<void> }
+      await httpTransport.finishAuth(code)
+
+      // Reconnect with the new tokens
+      await disconnectServer(serverId)
+      await connectServer(server, 0)
+    } catch (err) {
+      await disconnectServer(serverId)
+      const message = err instanceof Error ? err.message : 'Authorization failed'
+      setServers((prev) =>
+        prev.map((s) =>
+          s.id === serverId
+            ? { ...s, error: err instanceof Error ? err : new Error(message), errorMessage: message }
+            : s,
+        ),
+      )
+    }
+  }, [])
+
+  const getEnabledClients = useCallback(
+    (): { name: string; client: McpClient }[] =>
+      serversRef.current
+        .filter((server) => server.enabled && server.isConnected && server.client)
+        .map((server) => ({ name: server.name, client: server.client! })),
+    [],
+  )
 
   // Cleanup on unmount
   useEffect(() => {
-    const clientsRef = clientRefs
+    const clients = clientRefs
+    const transports = transportRefs
+    const timeouts = retryTimeouts
     return () => {
-      // Cleaning up MCP connections
-      const clients = clientsRef.current
-      clients.forEach((client, serverId) => {
+      timeouts.current.forEach((timeout) => clearTimeout(timeout))
+      timeouts.current.clear()
+
+      transports.current.forEach((transport) => transport.close())
+      transports.current.clear()
+
+      clients.current.forEach((client) => {
         if (client?.close) {
-          try {
-            client.close()
-          } catch (error) {
-            console.error('Error closing MCP client:', serverId, error)
-          }
+          client.close()
         }
       })
-      clients.clear()
+      clients.current.clear()
     }
   }, [])
 
@@ -187,6 +345,7 @@ export const MCPProvider = ({ children }: { children: ReactNode }) => {
         servers,
         getEnabledClients,
         reconnectServer,
+        authorizeServer,
         addServer,
         removeServer,
         updateServerStatus,
@@ -204,6 +363,3 @@ export const useMCP = () => {
   }
   return context
 }
-
-// Export the MCPClient type for use in other files
-export type { MCPClient }

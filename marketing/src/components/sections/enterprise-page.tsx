@@ -312,6 +312,15 @@ export const EnterprisePage = () => (
       }
     />
     <main className="relative pt-[104px]">
+      <a
+        href="/announcing-thunderbolt"
+        className="group flex w-full items-center justify-center gap-2 bg-gradient-to-r from-[#7c3aed] via-[#f97316] to-[#facc15] px-4 py-2.5 text-sm font-semibold text-white"
+      >
+        <span>
+          Thunderbolt is here! <span className="text-white/80">&mdash; Read the announcement</span>
+        </span>
+        <span className="text-white/80 transition-transform group-hover:translate-x-0.5">&rarr;</span>
+      </a>
       <Hero />
       <FeatureCards />
       <CompromiseSection />

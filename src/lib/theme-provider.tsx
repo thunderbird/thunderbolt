@@ -80,7 +80,7 @@ export const ThemeProvider = ({
       root.style.backgroundColor = bgColor
       metaThemeColor?.setAttribute('content', bgColor)
 
-      setAndroidBarColor(systemTheme === 'dark' ? 'light' : 'dark').catch(console.error)
+      void setAndroidBarColor(systemTheme === 'dark' ? 'light' : 'dark')
       syncNativeInterfaceStyle(systemTheme)
 
       return
@@ -92,7 +92,7 @@ export const ThemeProvider = ({
     root.style.backgroundColor = bgColor
     metaThemeColor?.setAttribute('content', bgColor)
 
-    setAndroidBarColor(theme === 'dark' ? 'light' : 'dark').catch(console.error)
+    void setAndroidBarColor(theme === 'dark' ? 'light' : 'dark')
     syncNativeInterfaceStyle(theme)
   }, [theme])
 
@@ -112,7 +112,7 @@ export const ThemeProvider = ({
         root.style.backgroundColor = bgColor
         metaThemeColor?.setAttribute('content', bgColor)
 
-        setAndroidBarColor(systemTheme === 'dark' ? 'light' : 'dark').catch(console.error)
+        void setAndroidBarColor(systemTheme === 'dark' ? 'light' : 'dark')
         syncNativeInterfaceStyle(systemTheme)
       }
     }

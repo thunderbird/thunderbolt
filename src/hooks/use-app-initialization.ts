@@ -1,3 +1,4 @@
+import { fetchConfig } from '@/api/config'
 import type { HttpClient } from '@/contexts'
 import { getSettings } from '@/dal'
 import { getAuthToken } from '@/lib/auth-token'
@@ -51,6 +52,9 @@ const initializePostHog = async (httpClient?: HttpClient): Promise<PostHog | nul
 }
 
 const executeInitializationSteps = async (httpClient?: HttpClient): Promise<HandleResult<InitData>> => {
+  // Step 0: Fetch backend config (blocks — later steps may depend on flags)
+  const appConfig = await fetchConfig(defaultSettingCloudUrl.value!, httpClient)
+
   // Step 1: App directory creation
   let appDirPath: string
   try {
@@ -155,6 +159,7 @@ const executeInitializationSteps = async (httpClient?: HttpClient): Promise<Hand
       experimentalFeatureTasks,
       posthogClient,
       httpClient: client,
+      appConfig,
       ...tray,
     },
   }

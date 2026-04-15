@@ -3,6 +3,7 @@
 @import "@fontsource-variable/inter";
 @import "@fontsource-variable/mona-sans";
 @import "@fontsource/space-mono/700.css";
+@import "@fontsource/mozilla-text";
 
 @custom-variant dark (&:is(.dark *));
 

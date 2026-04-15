@@ -12,6 +12,7 @@
   "dependencies": {
     "@fontsource-variable/inter": "5.2.8",
     "@fontsource-variable/mona-sans": "5.2.8",
+    "@fontsource/mozilla-text": "^5.2.2",
     "@fontsource/space-mono": "5.2.9",
     "@tailwindcss/vite": "4.2.2",
     "react": "19.2.4",

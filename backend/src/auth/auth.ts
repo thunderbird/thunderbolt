@@ -10,7 +10,7 @@ import {
 } from '@/dal'
 import type { db as DbType } from '@/db/client'
 import * as schema from '@/db/schema'
-import { eq } from 'drizzle-orm'
+import { eq, like } from 'drizzle-orm'
 import { normalizeEmail } from '@/lib/email'
 import { getSettings } from '@/config/settings'
 import { getTrustedIpHeaders } from '@/utils/request'
@@ -219,7 +219,7 @@ export const createAuth = (database: typeof DbType) => {
                 // Clean up the OTP that Better Auth already persisted (it generates before calling this callback)
                 await database
                   .delete(schema.verification)
-                  .where(eq(schema.verification.identifier, `sign-in-otp-${normalizedEmail}`))
+                  .where(like(schema.verification.identifier, `%${normalizedEmail}%`))
                 return
               }
             } else if (waitlistEntry.status !== 'approved') {
@@ -231,7 +231,7 @@ export const createAuth = (database: typeof DbType) => {
                 // Clean up the OTP that Better Auth already persisted (it generates before calling this callback)
                 await database
                   .delete(schema.verification)
-                  .where(eq(schema.verification.identifier, `sign-in-otp-${normalizedEmail}`))
+                  .where(like(schema.verification.identifier, `%${normalizedEmail}%`))
                 return
               }
             }

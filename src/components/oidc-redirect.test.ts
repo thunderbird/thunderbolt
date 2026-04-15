@@ -45,4 +45,18 @@ describe('validateOidcRedirectUrl', () => {
   it('rejects javascript://localhost/ despite localhost hostname', () => {
     expect(() => validateOidcRedirectUrl('javascript://localhost/alert(1)')).toThrow()
   })
+
+  it('accepts URL matching expected origin', () => {
+    const url = validateOidcRedirectUrl('https://auth.okta.com/authorize?client_id=abc', 'https://auth.okta.com')
+    expect(url.hostname).toBe('auth.okta.com')
+  })
+
+  it('rejects URL with mismatched origin', () => {
+    expect(() => validateOidcRedirectUrl('https://evil.com/phish', 'https://auth.okta.com')).toThrow('origin mismatch')
+  })
+
+  it('accepts any HTTPS URL when no expected origin provided', () => {
+    const url = validateOidcRedirectUrl('https://anything.com/path')
+    expect(url.hostname).toBe('anything.com')
+  })
 })

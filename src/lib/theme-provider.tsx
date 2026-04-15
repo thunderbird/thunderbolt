@@ -112,7 +112,7 @@ export const ThemeProvider = ({
         root.style.backgroundColor = bgColor
         metaThemeColor?.setAttribute('content', bgColor)
 
-        setAndroidBarColor(systemTheme === 'dark' ? 'light' : 'dark')
+        setAndroidBarColor(systemTheme === 'dark' ? 'light' : 'dark').catch(console.error)
         syncNativeInterfaceStyle(systemTheme)
       }
     }

@@ -30,14 +30,17 @@ export const SignInModalProvider = ({ children }: SignInModalProviderProps) => {
 
   const openSignInModal = () => setSignInOpen(true)
 
-  const handleSignInSuccess = async () => {
+  const handleSignInSuccess = () => {
     setSignInOpen(false)
-    if (await needsSyncSetupWizard()) {
-      setSyncSetupOpen(true)
-      return
+    const enableSync = async () => {
+      if (await needsSyncSetupWizard()) {
+        setSyncSetupOpen(true)
+        return
+      }
+      await setSyncEnabled(true)
+      trackEvent('settings_sync_enabled')
     }
-    await setSyncEnabled(true)
-    trackEvent('settings_sync_enabled')
+    enableSync().catch(console.error)
   }
 
   const handleSyncSetupComplete = async () => {

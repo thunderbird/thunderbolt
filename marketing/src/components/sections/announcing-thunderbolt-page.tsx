@@ -9,7 +9,7 @@ const READ_TIME = '9 min read'
 const AUTHOR = {
   name: 'Thunderbolt Team',
   role: 'MZLA Technologies',
-  avatar: '/enterprise/thunderbolt-logo.svg',
+  avatar: '/enterprise/thunderbolt-logo.png',
 }
 
 /* ─── Background Grid (reused from enterprise page) ─── */

@@ -105,7 +105,7 @@ export const ContactPage = () => {
       <div className="min-h-screen bg-[#f9fafb]">
         <Header />
         <main className="flex min-h-screen flex-col items-center justify-center px-6 pt-[104px]">
-          <img src="/enterprise/thunderbolt-logo.svg" alt="Thunderbolt" className="size-12" />
+          <img src="/enterprise/thunderbolt-logo.png" alt="Thunderbolt" className="size-12" />
           <h1 className="mt-4 text-[32px] font-medium leading-[1.2] tracking-[-0.96px] text-[#101828]">Thank you!</h1>
           <p className="mt-2 max-w-[400px] text-center text-base leading-6 text-[#667085]">
             We&rsquo;ve received your inquiry and will be in touch shortly.

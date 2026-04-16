@@ -22,13 +22,13 @@ For the sync data transformation middleware and custom SharedWorker (E2E encrypt
 
 - Every synced table must have a **`user_id`** column (sync rules and backend scope by `user_id`).
 - Define the table in **both**:
-  - Frontend: [src/db/tables.ts](src/db/tables.ts) (SQLite)
-  - Backend: [backend/src/db/powersync-schema.ts](backend/src/db/powersync-schema.ts) (PostgreSQL)
+  - Frontend: [src/db/tables.ts](../src/db/tables.ts) (SQLite)
+  - Backend: [backend/src/db/powersync-schema.ts](../backend/src/db/powersync-schema.ts) (PostgreSQL)
 - **Backend schema uses minimal indexes**: Only primary keys and `user_id` indexes (see [Indexes and Foreign Keys](#indexes-and-foreign-keys) below).
 
 ### Current tables
 
-Defined in [shared/powersync-tables.ts](shared/powersync-tables.ts):
+Defined in [shared/powersync-tables.ts](../shared/powersync-tables.ts):
 
 `settings`, `chat_threads`, `chat_messages`, `tasks`, `models`, `mcp_servers`, `prompts`, `triggers`, `modes`, `model_profiles`, `devices`.
 
@@ -52,9 +52,9 @@ See [docs/composite-primary-keys-and-default-data.md](composite-primary-keys-and
 
 1. Create the table in both `src/db/tables.ts` and `backend/src/db/powersync-schema.ts` (include `user_id`).
 2. **Backend schema**: Add only a `user_id` index: `index('idx_[table]_user_id').on(table.userId)`. Do not add composite foreign keys or other indexes (see above).
-3. Register in [src/db/powersync/schema.ts](src/db/powersync/schema.ts) (`drizzleSchema`).
-4. Add the table name and query keys in [shared/powersync-tables.ts](shared/powersync-tables.ts) (`POWERSYNC_TABLE_NAMES` and `powersyncTableToQueryKeys`).
-5. Update [powersync-service/config/config.yaml](powersync-service/config/config.yaml): add a line under `sync_rules.content` → `bucket_definitions.user_data.data` (e.g. `- SELECT * FROM my_table WHERE my_table.user_id = bucket.user_id`).
+3. Register in [src/db/powersync/schema.ts](../src/db/powersync/schema.ts) (`drizzleSchema`).
+4. Add the table name and query keys in [shared/powersync-tables.ts](../shared/powersync-tables.ts) (`POWERSYNC_TABLE_NAMES` and `powersyncTableToQueryKeys`).
+5. Update [powersync-service/config/config.yaml](../powersync-service/config/config.yaml): add a line under `sync_rules.content` → `bucket_definitions.user_data.data` (e.g. `- SELECT * FROM my_table WHERE my_table.user_id = bucket.user_id`).
 6. Run migrations for frontend and backend as needed.
 
 ### PR flow for adding tables

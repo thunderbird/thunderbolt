@@ -1,5 +1,7 @@
 # Thunderbolt Deployment
 
+> ⚠️ **Under active development — not production ready.** Thunderbolt is currently undergoing a security audit and preparing for enterprise production readiness. These deployment paths are provided for evaluation and early testing. Do not use in production environments.
+
 Self-hosted Thunderbolt with OIDC authentication via Keycloak. Two deployment paths: Docker Compose for simplicity, Kubernetes for enterprise environments.
 
 ## Structure

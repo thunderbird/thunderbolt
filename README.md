@@ -2,6 +2,8 @@
 
 **AI You Control: Choose your models. Own your data. Eliminate vendor lock-in.**
 
+![Thunderbolt Main Dashboard](./docs/screenshots/main.png)
+
 Thunderbolt is an open-source, cross-platform AI client that can be deployed on-prem anywhere.
 
 - 🌐 Available on all major desktop and mobile platforms: web, iOS, Android, Mac, Linux, and Windows.
@@ -9,8 +11,6 @@ Thunderbolt is an open-source, cross-platform AI client that can be deployed on-
 - 🙋 Enterprise features, support, and FDEs available.
 
 **Thunderbolt is under active development, currently undergoing a security audit, and preparing for enterprise production readiness.**
-
-![Thunderbolt Main Dashboard](./docs/screenshots/main.png)
 
 ## Need Help?
 

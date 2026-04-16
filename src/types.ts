@@ -7,7 +7,6 @@ import type { DrizzleQuery } from '@powersync/drizzle-driver'
 import type { InferSelectModel } from 'drizzle-orm'
 import { type PostHog } from 'posthog-js'
 import type { z } from 'zod'
-import type { AppConfig } from './api/config'
 import type { HttpClient } from './contexts'
 import type { AnyDrizzleDatabase } from './db/database-interface'
 import type {
@@ -31,10 +30,7 @@ export type InitData = {
   posthogClient: PostHog | null
   httpClient: HttpClient
   experimentalFeatureTasks: boolean
-  appConfig: AppConfig
 }
-
-export type { AppConfig } from '@/api/config'
 
 export type ThunderboltUIMessage = UIMessage<UIMessageMetadata, UIDataTypes, UITools>
 

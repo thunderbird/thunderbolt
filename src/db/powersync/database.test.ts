@@ -1,8 +1,18 @@
-import { afterEach, describe, expect, it } from 'bun:test'
-import { getPowerSyncDatabaseConfig, getPowerSyncOptions } from './database'
+import { describe, expect, it, mock } from 'bun:test'
 import { WASQLiteOpenFactory } from '@powersync/web'
 
-const setE2EE = (enabled: boolean) => localStorage.setItem('e2ee_enabled', String(enabled))
+// Control E2EE flag directly — avoids contamination from other test files
+// that mock the @/db/encryption barrel with isEncryptionEnabled: () => true
+let mockE2EEEnabled = false
+
+mock.module('@/db/encryption/config', () => ({
+  isEncryptionEnabled: () => mockE2EEEnabled,
+  setEncryptionEnabled: () => {},
+  needsSyncSetupWizard: async () => false,
+  encryptedColumnsMap: {},
+}))
+
+import { getPowerSyncDatabaseConfig, getPowerSyncOptions } from './database'
 
 describe('getPowerSyncDatabaseConfig', () => {
   it('returns default for web + Chrome', () => {
@@ -39,8 +49,6 @@ describe('getPowerSyncDatabaseConfig', () => {
 })
 
 describe('getPowerSyncOptions', () => {
-  afterEach(() => localStorage.removeItem('e2ee_enabled'))
-
   describe('default config (web + non-Safari)', () => {
     it('returns database with dbFilename and schema', () => {
       const options = getPowerSyncOptions('opfs/thunderbolt-sync.db', 'default')
@@ -64,15 +72,16 @@ describe('getPowerSyncOptions', () => {
     })
 
     it('includes custom SharedWorker and transformers when E2EE is enabled', () => {
-      setE2EE(true)
+      mockE2EEEnabled = true
       const options = getPowerSyncOptions('thunderbolt.db', 'default')
       expect(options).toHaveProperty('sync')
       expect(options.sync).toHaveProperty('worker')
       expect(options).toHaveProperty('transformers')
+      mockE2EEEnabled = false
     })
 
     it('omits custom SharedWorker and transformers when E2EE is disabled', () => {
-      setE2EE(false)
+      mockE2EEEnabled = false
       const options = getPowerSyncOptions('thunderbolt.db', 'default')
       expect(options).not.toHaveProperty('sync')
       expect(options).not.toHaveProperty('transformers')
@@ -97,13 +106,14 @@ describe('getPowerSyncOptions', () => {
     })
 
     it('includes transformers when E2EE is enabled', () => {
-      setE2EE(true)
+      mockE2EEEnabled = true
       const options = getPowerSyncOptions('thunderbolt.db', 'safari-tauri')
       expect(options).toHaveProperty('transformers')
+      mockE2EEEnabled = false
     })
 
     it('omits transformers when E2EE is disabled', () => {
-      setE2EE(false)
+      mockE2EEEnabled = false
       const options = getPowerSyncOptions('thunderbolt.db', 'safari-tauri')
       expect(options).not.toHaveProperty('transformers')
     })

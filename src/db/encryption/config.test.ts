@@ -1,4 +1,24 @@
-import { afterEach, describe, expect, it } from 'bun:test'
+import { afterEach, describe, expect, it, mock } from 'bun:test'
+
+// Other test files mock the @/db/encryption barrel with isEncryptionEnabled: () => true.
+// Bun's mock.module leaks across files and replaces the underlying config module too.
+// Re-provide the real implementation here so these tests exercise actual localStorage logic.
+const e2eeStorageKey = 'e2ee_enabled'
+
+mock.module('@/db/encryption/config', () => ({
+  isEncryptionEnabled: () => localStorage.getItem(e2eeStorageKey) === 'true',
+  setEncryptionEnabled: (enabled: boolean) => localStorage.setItem(e2eeStorageKey, String(enabled)),
+  needsSyncSetupWizard: async () => false,
+  encryptedColumnsMap: {},
+}))
+
+mock.module('@/db/encryption', () => ({
+  isEncryptionEnabled: () => localStorage.getItem(e2eeStorageKey) === 'true',
+  setEncryptionEnabled: (enabled: boolean) => localStorage.setItem(e2eeStorageKey, String(enabled)),
+  needsSyncSetupWizard: async () => false,
+  encryptedColumnsMap: {},
+}))
+
 import { isEncryptionEnabled, setEncryptionEnabled } from './config'
 
 describe('encryption config', () => {

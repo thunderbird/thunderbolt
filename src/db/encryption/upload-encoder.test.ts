@@ -1,4 +1,4 @@
-import { describe, expect, it, beforeEach, mock } from 'bun:test'
+import { afterEach, describe, expect, it, beforeEach, mock } from 'bun:test'
 import { generateCK } from '@/crypto'
 
 let mockCK: CryptoKey | null = null
@@ -19,6 +19,11 @@ describe('encodeForUpload', () => {
   beforeEach(async () => {
     invalidateCKCache()
     mockCK = await generateCK()
+    localStorage.setItem('e2ee_enabled', 'true')
+  })
+
+  afterEach(() => {
+    localStorage.removeItem('e2ee_enabled')
   })
 
   it('encrypts encrypted columns for known tables', async () => {

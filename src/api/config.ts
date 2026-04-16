@@ -1,13 +1,12 @@
 import { createClient, type HttpClient } from '@/lib/http'
+import type { AppConfig } from './config-store'
 
-export type AppConfig = Record<string, never>
-
-export const fetchConfig = async (cloudUrl: string, httpClient?: HttpClient): Promise<AppConfig> => {
+export const fetchConfig = async (cloudUrl: string, httpClient?: HttpClient): Promise<AppConfig | null> => {
   try {
     const client = httpClient ?? createClient({ prefixUrl: cloudUrl })
     return await client.get('config').json<AppConfig>()
   } catch {
-    console.warn('Failed to fetch app config, using defaults')
-    return {}
+    console.warn('Failed to fetch app config, using cached value')
+    return null
   }
 }

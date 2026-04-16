@@ -5,10 +5,36 @@ import { Header } from '../header'
 
 const GetStartedButton = () => (
   <a
-    href="/contact"
-    className="inline-flex h-[46px] w-[131px] items-center justify-center bg-[#344054] font-mono text-sm font-bold uppercase tracking-wider text-white transition-colors hover:bg-[#344054]/90"
+    href="https://github.com/thunderbird/thunderbolt"
+    target="_blank"
+    rel="noopener noreferrer"
+    className="inline-flex h-[46px] items-center justify-center gap-2 bg-[#344054] px-5 font-mono text-sm font-bold uppercase tracking-wider text-white transition-colors hover:bg-[#344054]/90"
   >
+    <img src="/enterprise/github.svg" alt="" className="size-[18px] invert" />
     Get Started
+  </a>
+)
+
+const EnterpriseInquiriesButton = () => (
+  <a
+    href="/contact"
+    className="group inline-flex h-[46px] items-center justify-center gap-2 border border-[#344054] px-5 font-mono text-sm font-bold uppercase tracking-wider text-[#344054] transition-colors hover:bg-[#344054] hover:text-white"
+  >
+    <svg
+      width="18"
+      height="18"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <path d="M22 2L11 13" />
+      <path d="M22 2l-7 20-4-9-9-4 20-7z" />
+    </svg>
+    Get in Touch
   </a>
 )
 
@@ -192,7 +218,10 @@ const Hero = () => (
       <p className="max-w-[718px] text-lg leading-[1.2] text-[#667085] md:text-2xl">
         The Open-Source, Cross-Platform, Extensible AI Client
       </p>
-      <GetStartedButton />
+      <div className="flex flex-wrap items-center justify-center gap-3">
+        <GetStartedButton />
+        <EnterpriseInquiriesButton />
+      </div>
     </div>
     {/* Device mockups — composed from separate SVG frames + PNG screenshots */}
     <div className="mx-auto mt-10 max-w-[1120px] px-6 lg:px-0">
@@ -404,8 +433,9 @@ const CTASection = () => (
       <p className="mx-auto mt-2 max-w-[567px] text-base leading-6 text-[#667085]">
         Start with a pilot deployment or talk to our enterprise team about Forward-Deployed Engineering and sovereign infrastructure.
       </p>
-      <div className="mt-6">
+      <div className="mt-6 flex flex-wrap items-center justify-center gap-3">
         <GetStartedButton />
+        <EnterpriseInquiriesButton />
       </div>
     </div>
   </section>
@@ -416,9 +446,12 @@ const CTASection = () => (
 const MobileFooterCTA = () => (
   <div className="fixed inset-x-0 bottom-0 z-50 bg-white/20 backdrop-blur-[32px] px-6 py-4 md:hidden">
     <a
-      href="/contact"
-      className="flex h-[46px] w-full items-center justify-center bg-[#344054] font-mono text-sm font-bold uppercase tracking-wider text-white transition-colors hover:bg-[#344054]/90"
+      href="https://github.com/thunderbird/thunderbolt"
+      target="_blank"
+      rel="noopener noreferrer"
+      className="flex h-[46px] w-full items-center justify-center gap-2 bg-[#344054] font-mono text-sm font-bold uppercase tracking-wider text-white transition-colors hover:bg-[#344054]/90"
     >
+      <img src="/enterprise/github.svg" alt="" className="size-[18px] invert" />
       Get Started
     </a>
   </div>
@@ -441,14 +474,7 @@ export const EnterprisePage = () => (
           <span className="text-white/80 transition-transform group-hover:translate-x-0.5">&rarr;</span>
         </a>
       }
-      action={
-        <div className="flex items-center gap-6">
-          <a href="https://github.com/thunderbird/thunderbolt" target="_blank" rel="noopener noreferrer" className="flex items-center">
-            <img src="/enterprise/github.svg" alt="GitHub" className="h-7 w-auto" />
-          </a>
-          <GetStartedButton />
-        </div>
-      }
+      action={<GetStartedButton />}
     />
     <main className="relative pt-[144px]">
       <Hero />

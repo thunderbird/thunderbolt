@@ -44,7 +44,7 @@ const PromptCard = ({ pillGapClass = 'gap-1.5 sm:gap-2' }: { pillGapClass?: stri
     <div className="absolute -bottom-[12px] -right-[12px] size-[23px] bg-[#eaecf0]" />
     <div className="border-[0.5px] border-[#eaecf0] bg-gradient-to-b from-[rgba(241,241,241,0.3)] to-[rgba(228,228,228,0.3)] p-5 backdrop-blur-[5px]">
       <div className={`flex items-center ${pillGapClass}`}>
-        {['Check the weather', 'Write a message', 'Check the schedule'].map((label) => (
+        {['Conduct research', 'Organize my files', 'Search my email'].map((label) => (
           <span key={label} className="shrink-0 rounded-full bg-white px-2 py-1 text-[9px] sm:px-3.5 sm:py-1.5 sm:text-[11px] whitespace-nowrap text-[#344054] shadow-[0px_2px_8px_0px_rgba(0,0,0,0.08)]">
             {label}
           </span>
@@ -60,6 +60,125 @@ const PromptCard = ({ pillGapClass = 'gap-1.5 sm:gap-2' }: { pillGapClass?: stri
       </div>
     </div>
   </>
+)
+
+/* ─── Desktop Mockup (inline SVG with clipped screenshot) */
+
+const DesktopMockup = () => (
+  <svg viewBox="0 0 726 350" fill="none" xmlns="http://www.w3.org/2000/svg" className="relative w-full">
+    <defs>
+      <clipPath id="desktop-screen-clip">
+        <rect x="89.207" y="19.834" width="547.279" height="290.599" />
+      </clipPath>
+      <filter id="filter0_i" x="0.675171" y="331.449" width="724.651" height="3.94098" filterUnits="userSpaceOnUse" colorInterpolationFilters="sRGB">
+        <feFlood floodOpacity="0" result="BackgroundImageFix" />
+        <feBlend mode="normal" in="SourceGraphic" in2="BackgroundImageFix" result="shape" />
+        <feColorMatrix in="SourceAlpha" type="matrix" values="0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 127 0" result="hardAlpha" />
+        <feOffset dy="1.53255" />
+        <feComposite in2="hardAlpha" operator="arithmetic" k2="-1" k3="1" />
+        <feColorMatrix type="matrix" values="0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0.02 0" />
+        <feBlend mode="normal" in2="shape" result="effect1_innerShadow" />
+      </filter>
+      <filter id="filter1_i" x="293.499" y="331.446" width="138.655" height="5.25488" filterUnits="userSpaceOnUse" colorInterpolationFilters="sRGB">
+        <feFlood floodOpacity="0" result="BackgroundImageFix" />
+        <feBlend mode="normal" in="SourceGraphic" in2="BackgroundImageFix" result="shape" />
+        <feColorMatrix in="SourceAlpha" type="matrix" values="0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 127 0" result="hardAlpha" />
+        <feOffset dy="1.53255" />
+        <feComposite in2="hardAlpha" operator="arithmetic" k2="-1" k3="1" />
+        <feColorMatrix type="matrix" values="0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0.03 0" />
+        <feBlend mode="normal" in2="shape" result="effect1_innerShadow" />
+      </filter>
+      <linearGradient id="paint0" x1="0.337891" y1="335.718" x2="725.663" y2="335.718" gradientUnits="userSpaceOnUse">
+        <stop stopOpacity="0.04" />
+        <stop offset="1" stopColor="white" stopOpacity="0.04" />
+      </linearGradient>
+      <linearGradient id="paint1" x1="732.498" y1="330.551" x2="697.996" y2="330.551" gradientUnits="userSpaceOnUse">
+        <stop />
+        <stop offset="1" stopColor="white" />
+        <stop offset="1" stopColor="white" />
+      </linearGradient>
+      <linearGradient id="paint2" x1="0.337891" y1="335.718" x2="28.0015" y2="335.718" gradientUnits="userSpaceOnUse">
+        <stop />
+        <stop offset="1" stopColor="white" />
+        <stop offset="1" stopColor="white" />
+      </linearGradient>
+      <linearGradient id="paint3" x1="0" y1="349.181" x2="726" y2="349.181" gradientUnits="userSpaceOnUse">
+        <stop stopOpacity="0.07" />
+        <stop offset="1" stopColor="#EAEAEA" stopOpacity="0.07" />
+        <stop offset="1" stopColor="white" stopOpacity="0.07" />
+      </linearGradient>
+      <linearGradient id="paint4" x1="0" y1="349.181" x2="726" y2="349.181" gradientUnits="userSpaceOnUse">
+        <stop stopOpacity="0.07" />
+        <stop offset="1" stopColor="#EAEAEA" stopOpacity="0.07" />
+        <stop offset="1" stopColor="white" stopOpacity="0.07" />
+      </linearGradient>
+      <linearGradient id="paint5" x1="0" y1="334.731" x2="0" y2="349.181" gradientUnits="userSpaceOnUse">
+        <stop stopOpacity="0.07" />
+        <stop offset="1" stopColor="white" stopOpacity="0.07" />
+      </linearGradient>
+      <linearGradient id="paint6" x1="0" y1="334.731" x2="0" y2="349.181" gradientUnits="userSpaceOnUse">
+        <stop stopColor="white" stopOpacity="0.05" />
+        <stop offset="1" stopOpacity="0.05" />
+      </linearGradient>
+      <linearGradient id="paint7" x1="363" y1="334.731" x2="363.255" y2="358.473" gradientUnits="userSpaceOnUse">
+        <stop stopColor="#EBEBEB" />
+        <stop offset="1" stopColor="#585858" stopOpacity="0" />
+      </linearGradient>
+      <linearGradient id="paint8" x1="292.824" y1="337.029" x2="307.331" y2="337.029" gradientUnits="userSpaceOnUse">
+        <stop />
+        <stop offset="1" stopColor="white" />
+        <stop offset="1" stopColor="white" />
+      </linearGradient>
+      <linearGradient id="paint9" x1="432.493" y1="330.789" x2="418.324" y2="330.789" gradientUnits="userSpaceOnUse">
+        <stop />
+        <stop offset="1" stopColor="white" />
+        <stop offset="1" stopColor="white" />
+      </linearGradient>
+    </defs>
+    {/* Outer body */}
+    <path d="M637.696 0.25C644.31 0.250036 649.459 1.4171 652.955 4.39355C656.46 7.37802 658.25 12.1353 658.25 19.1865V320.49C658.25 328.619 656.012 332.973 652.484 335.269C648.985 337.546 644.279 337.75 639.476 337.75H105.32C96.0761 337.75 86.932 337.755 80.1064 334.552C76.6823 332.945 73.8366 330.53 71.8506 326.907C69.8668 323.289 68.75 318.482 68.75 312.106V14.1572C68.75 8.94251 70.5545 5.45501 73.0625 3.27539C75.5633 1.10229 78.7392 0.250006 81.4551 0.25H637.696Z" fill="#F9FAFB" stroke="#EFF1F4" strokeWidth="0.5" />
+    {/* Camera dot */}
+    <path fillRule="evenodd" clipRule="evenodd" d="M361.819 37.9134C363.03 37.9134 364.012 38.8691 364.012 40.0481C364.012 41.227 363.03 42.1828 361.819 42.1828C360.608 42.1828 359.627 41.227 359.627 40.0481C359.627 38.8691 360.608 37.9134 361.819 37.9134Z" fill="#F2F2F2" />
+    {/* White screen background */}
+    <rect x="89.207" y="19.834" width="547.279" height="290.599" fill="#FFFFFF" />
+    {/* Screenshot clipped to screen */}
+    <image
+      href="/enterprise/desktop_screenshot.png"
+      x="89.207" y="19.834" width="547.279" height="290.599"
+      preserveAspectRatio="xMidYMin slice"
+      clipPath="url(#desktop-screen-clip)"
+    />
+    {/* Screen border */}
+    <path d="M636.986 19.3337V310.933H88.707V19.3337H636.986Z" stroke="#E1E1E1" fill="none" />
+    {/* Hinge bar */}
+    <g filter="url(#filter0_i)">
+      <path fillRule="evenodd" clipRule="evenodd" d="M0.675167 331.449H725.326V335.39H0.675167V331.449Z" fill="white" />
+      <path fillRule="evenodd" clipRule="evenodd" d="M0.675167 331.449H725.326V335.39H0.675167V331.449Z" fill="url(#paint0)" style={{ mixBlendMode: 'multiply' }} />
+    </g>
+    <g opacity="0.1" style={{ mixBlendMode: 'multiply' }}>
+      <path fillRule="evenodd" clipRule="evenodd" d="M698.333 331.448H725.322V335.389H698.333V331.448Z" fill="url(#paint1)" />
+    </g>
+    <g opacity="0.1" style={{ mixBlendMode: 'multiply' }}>
+      <path fillRule="evenodd" clipRule="evenodd" d="M0.675248 331.449H27.6641V335.39H0.675248V331.449Z" fill="url(#paint2)" />
+    </g>
+    {/* Base */}
+    <path fillRule="evenodd" clipRule="evenodd" d="M0.674454 335.388H725.326C721.043 337.991 683.056 348.672 556.645 345.897C545.481 345.897 230.866 345.569 161.933 345.569C81.9298 345.569 48.8112 345.882 18.5834 340.211C8.00125 338.226 2.70217 336.587 0.674454 335.388Z" fill="white" />
+    <path fillRule="evenodd" clipRule="evenodd" d="M0.674454 335.388H725.326C721.043 337.991 683.056 348.672 556.645 345.897C545.481 345.897 230.866 345.569 161.933 345.569C81.9298 345.569 48.8112 345.882 18.5834 340.211C8.00125 338.226 2.70217 336.587 0.674454 335.388Z" fill="url(#paint3)" style={{ mixBlendMode: 'multiply' }} />
+    <path fillRule="evenodd" clipRule="evenodd" d="M0.674454 335.388H725.326C721.043 337.991 683.056 348.672 556.645 345.897C545.481 345.897 230.866 345.569 161.933 345.569C81.9298 345.569 48.8112 345.882 18.5834 340.211C8.00125 338.226 2.70217 336.587 0.674454 335.388Z" fill="url(#paint4)" style={{ mixBlendMode: 'multiply' }} />
+    <path fillRule="evenodd" clipRule="evenodd" d="M0.674454 335.388H725.326C721.043 337.991 683.056 348.672 556.645 345.897C545.481 345.897 230.866 345.569 161.933 345.569C81.9298 345.569 48.8112 345.882 18.5834 340.211C8.00125 338.226 2.70217 336.587 0.674454 335.388Z" fill="url(#paint5)" style={{ mixBlendMode: 'multiply' }} />
+    <path fillRule="evenodd" clipRule="evenodd" d="M0.674454 335.388H725.326C721.043 337.991 683.056 348.672 556.645 345.897C545.481 345.897 230.866 345.569 161.933 345.569C81.9298 345.569 48.8112 345.882 18.5834 340.211C8.00125 338.226 2.70217 336.587 0.674454 335.388Z" fill="url(#paint6)" style={{ mixBlendMode: 'multiply' }} />
+    <path fillRule="evenodd" clipRule="evenodd" d="M0.674454 335.388H725.326C721.043 337.991 683.056 348.672 556.645 345.897C545.481 345.897 230.866 345.569 161.933 345.569C81.9298 345.569 48.8112 345.882 18.5834 340.211C8.00125 338.226 2.70217 336.587 0.674454 335.388Z" fill="url(#paint7)" />
+    {/* Trackpad notch */}
+    <g filter="url(#filter1_i)">
+      <path d="M432.154 331.446C432.154 331.446 432.154 333.674 432.154 335.059C432.154 336.439 418.734 336.7 418.66 336.701H306.993C306.94 336.7 293.499 336.44 293.499 335.059V331.446H432.154Z" fill="white" />
+    </g>
+    <g opacity="0.07" style={{ mixBlendMode: 'multiply' }}>
+      <path fillRule="evenodd" clipRule="evenodd" d="M293.499 331.446H306.993V336.701C306.993 336.701 293.499 336.443 293.499 335.059C293.499 333.674 293.499 331.446 293.499 331.446Z" fill="url(#paint8)" />
+    </g>
+    <g opacity="0.07" style={{ mixBlendMode: 'multiply' }}>
+      <path fillRule="evenodd" clipRule="evenodd" d="M432.156 331.446H418.662V336.701C418.662 336.701 432.156 336.443 432.156 335.059C432.156 333.674 432.156 331.446 432.156 331.446Z" fill="url(#paint9)" />
+    </g>
+  </svg>
 )
 
 /* ─── Hero ────────────────────────────────────────────── */
@@ -87,28 +206,37 @@ const Hero = () => (
           className="absolute left-[8%] lg:left-[24.2%] w-[85%] lg:w-[73.4%]"
           style={{ top: '10.9%', filter: 'drop-shadow(0px 50px 100px rgba(50, 50, 93, 0.25))' }}
         >
-          <img src="/enterprise/desktop_device.svg" alt="" className="relative w-full" fetchPriority="high" />
-          <img
-            src="/enterprise/desktop_screenshot.png"
-            alt="Thunderbolt desktop app"
-            className="absolute z-10"
-            style={{ top: '5.7%', left: '12.7%', width: '74.5%', height: '83%', objectFit: 'cover' }}
-            fetchPriority="high"
-          />
+          <DesktopMockup />
         </div>
         {/* iPhone frame + screenshot */}
         <div
           className="absolute z-20 left-[62%] lg:left-[77%] w-[28%] lg:w-[23%]"
           style={{ top: '0%', filter: 'drop-shadow(0px 50px 100px rgba(50, 50, 93, 0.25))' }}
         >
-          <img src="/enterprise/mobile_device.svg" alt="" className="relative w-full" fetchPriority="high" />
-          <img
-            src="/enterprise/mobile_screenshot.png"
-            alt="Thunderbolt mobile app"
-            className="absolute z-10"
-            style={{ top: '4.1%', left: '8%', width: '83.5%', height: '91%', objectFit: 'cover', borderRadius: '6%' }}
-            fetchPriority="high"
-          />
+          <svg viewBox="0 0 228 452" fill="none" xmlns="http://www.w3.org/2000/svg" className="relative w-full">
+            <defs>
+              <clipPath id="mobile-screen-clip">
+                <path d="M169.388 18.4507C176.045 18.4363 182.728 18.3336 189.4 18.4878C198.419 18.6976 205.801 24.5205 208.337 33.1489V33.1499C208.813 34.7742 209.052 36.4585 209.047 38.1509C209.039 51.5419 209.04 64.9321 209.049 78.3208C209.049 188.645 209.053 298.972 209.061 409.302C209.061 412.09 208.921 414.915 207.832 417.631C204.94 424.84 199.641 429.156 191.989 430.542L191.99 430.542C190.627 430.793 189.254 430.792 187.938 430.792H42.998C41.2406 430.792 39.4564 430.816 37.6797 430.755V430.754C28.1294 430.451 20.2682 423.728 18.4424 414.405L18.3594 413.958C18.1164 412.553 18.0947 411.156 18.0947 409.795C18.0911 368.299 18.0898 326.806 18.0918 285.317V224.723C18.0915 224.717 18.0898 224.71 18.0898 224.704C18.0898 167.937 18.0902 111.171 18.0918 54.4048C18.0918 48.8426 18.0148 43.2535 18.1523 37.6763C18.3741 28.7266 25.1034 20.8076 33.8535 18.9478L34.4424 18.8296C35.8189 18.5719 37.2168 18.4414 38.6182 18.4399C44.8435 18.4411 51.0683 18.4395 57.292 18.4351V18.436C58.2061 18.4337 59.1562 18.5775 59.917 19.3237L60.0664 19.481C60.6439 20.1332 60.8386 20.9001 60.8535 21.686C60.8802 23.0185 60.9055 24.2972 61.1797 25.5356C62.2175 30.22 66.2449 33.5613 71.0557 33.5991C78.7224 33.6604 86.3894 33.6204 94.0635 33.6216C114.304 33.6228 134.545 33.6228 154.786 33.6216C155.84 33.6216 156.827 33.6263 157.802 33.4224H157.804C162.44 32.4787 165.843 28.5158 166.068 23.8003V23.7983C166.088 23.4267 166.096 23.0541 166.105 22.6694C166.115 22.2881 166.127 21.8967 166.155 21.5044C166.221 20.6031 166.534 19.8294 167.108 19.2798C167.684 18.7284 168.471 18.4527 169.388 18.4507Z" />
+              </clipPath>
+            </defs>
+            {/* Outer body */}
+            <path d="M192.548 0.25C211.738 0.25 227.301 15.5684 227.301 34.4727V417.387C227.301 436.291 211.738 451.609 192.548 451.609H35.0029C15.8131 451.609 0.25 436.291 0.25 417.387V34.4727C0.25 15.5685 15.8131 0.250059 35.0029 0.25H192.548Z" fill="#F9FAFB" stroke="#EFF1F4" strokeWidth="0.5" />
+            {/* White screen background */}
+            <path d="M169.388 18.4507C176.045 18.4363 182.728 18.3336 189.4 18.4878C198.419 18.6976 205.801 24.5205 208.337 33.1489V33.1499C208.813 34.7742 209.052 36.4585 209.047 38.1509C209.039 51.5419 209.04 64.9321 209.049 78.3208C209.049 188.645 209.053 298.972 209.061 409.302C209.061 412.09 208.921 414.915 207.832 417.631C204.94 424.84 199.641 429.156 191.989 430.542L191.99 430.542C190.627 430.793 189.254 430.792 187.938 430.792H42.998C41.2406 430.792 39.4564 430.816 37.6797 430.755V430.754C28.1294 430.451 20.2682 423.728 18.4424 414.405L18.3594 413.958C18.1164 412.553 18.0947 411.156 18.0947 409.795C18.0911 368.299 18.0898 326.806 18.0918 285.317V224.723C18.0915 224.717 18.0898 224.71 18.0898 224.704C18.0898 167.937 18.0902 111.171 18.0918 54.4048C18.0918 48.8426 18.0148 43.2535 18.1523 37.6763C18.3741 28.7266 25.1034 20.8076 33.8535 18.9478L34.4424 18.8296C35.8189 18.5719 37.2168 18.4414 38.6182 18.4399C44.8435 18.4411 51.0683 18.4395 57.292 18.4351V18.436C58.2061 18.4337 59.1562 18.5775 59.917 19.3237L60.0664 19.481C60.6439 20.1332 60.8386 20.9001 60.8535 21.686C60.8802 23.0185 60.9055 24.2972 61.1797 25.5356C62.2175 30.22 66.2449 33.5613 71.0557 33.5991C78.7224 33.6604 86.3894 33.6204 94.0635 33.6216C114.304 33.6228 134.545 33.6228 154.786 33.6216C155.84 33.6216 156.827 33.6263 157.802 33.4224H157.804C162.44 32.4787 165.843 28.5158 166.068 23.8003V23.7983C166.088 23.4267 166.096 23.0541 166.105 22.6694C166.115 22.2881 166.127 21.8967 166.155 21.5044C166.221 20.6031 166.534 19.8294 167.108 19.2798C167.684 18.7284 168.471 18.4527 169.388 18.4507Z" fill="#FFFFFF" />
+            {/* Screenshot clipped to screen area */}
+            <image
+              href="/enterprise/mobile_screenshot.png"
+              x="18" y="18" width="191" height="413"
+              preserveAspectRatio="xMidYMin slice"
+              clipPath="url(#mobile-screen-clip)"
+            />
+            {/* Screen border */}
+            <path d="M169.388 18.4507C176.045 18.4363 182.728 18.3336 189.4 18.4878C198.419 18.6976 205.801 24.5205 208.337 33.1489V33.1499C208.813 34.7742 209.052 36.4585 209.047 38.1509C209.039 51.5419 209.04 64.9321 209.049 78.3208C209.049 188.645 209.053 298.972 209.061 409.302C209.061 412.09 208.921 414.915 207.832 417.631C204.94 424.84 199.641 429.156 191.989 430.542L191.99 430.542C190.627 430.793 189.254 430.792 187.938 430.792H42.998C41.2406 430.792 39.4564 430.816 37.6797 430.755V430.754C28.1294 430.451 20.2682 423.728 18.4424 414.405L18.3594 413.958C18.1164 412.553 18.0947 411.156 18.0947 409.795C18.0911 368.299 18.0898 326.806 18.0918 285.317V224.723C18.0915 224.717 18.0898 224.71 18.0898 224.704C18.0898 167.937 18.0902 111.171 18.0918 54.4048C18.0918 48.8426 18.0148 43.2535 18.1523 37.6763C18.3741 28.7266 25.1034 20.8076 33.8535 18.9478L34.4424 18.8296C35.8189 18.5719 37.2168 18.4414 38.6182 18.4399C44.8435 18.4411 51.0683 18.4395 57.292 18.4351V18.436C58.2061 18.4337 59.1562 18.5775 59.917 19.3237L60.0664 19.481C60.6439 20.1332 60.8386 20.9001 60.8535 21.686C60.8802 23.0185 60.9055 24.2972 61.1797 25.5356C62.2175 30.22 66.2449 33.5613 71.0557 33.5991C78.7224 33.6604 86.3894 33.6204 94.0635 33.6216C114.304 33.6228 134.545 33.6228 154.786 33.6216C155.84 33.6216 156.827 33.6263 157.802 33.4224H157.804C162.44 32.4787 165.843 28.5158 166.068 23.8003V23.7983C166.088 23.4267 166.096 23.0541 166.105 22.6694C166.115 22.2881 166.127 21.8967 166.155 21.5044C166.221 20.6031 166.534 19.8294 167.108 19.2798C167.684 18.7284 168.471 18.4527 169.388 18.4507Z" stroke="#E1E1E1" strokeLinejoin="round" fill="none" />
+            {/* Notch speaker */}
+            <path opacity="0.4" fillRule="evenodd" clipRule="evenodd" d="M98.547 24.4338C98.5467 23.4675 99.3426 22.6839 100.325 22.6837L118.567 22.6792C119.549 22.6789 120.345 23.4621 120.345 24.4284C120.345 25.3947 119.549 26.1783 118.567 26.1785L100.326 26.183C99.3435 26.1833 98.5472 25.4001 98.547 24.4338Z" fill="#C8C8C8" />
+            {/* Notch camera */}
+            <path opacity="0.546196" fillRule="evenodd" clipRule="evenodd" d="M125.41 24.4259C125.41 23.4623 126.204 22.6773 127.183 22.677C128.162 22.6768 128.956 23.4615 128.956 24.425C128.957 25.3886 128.163 26.1737 127.184 26.1739C126.205 26.1741 125.411 25.3895 125.41 24.4259Z" fill="#C8C8C8" />
+          </svg>
         </div>
         {/* Prompt input card overlay — desktop only */}
         <div className="absolute z-30 hidden lg:block" style={{ left: '0%', top: '26.8%', width: '66.8%' }}>

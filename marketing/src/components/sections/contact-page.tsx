@@ -129,7 +129,7 @@ export const ContactPage = () => {
           &larr; Back
         </a>
         <h1 className="text-[32px] font-medium leading-[1.2] tracking-[-0.96px] text-[#101828] md:text-[40px]">
-          Get Started
+          Get in Touch
         </h1>
         <p className="mt-2 text-base leading-6 text-[#667085]">
           Tell us about your organization and how we can help.

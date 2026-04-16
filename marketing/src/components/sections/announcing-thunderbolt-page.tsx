@@ -260,17 +260,15 @@ export const AnnouncingThunderboltPage = () => (
     <BackgroundGrid />
     <Header
       action={
-        <div className="flex items-center gap-6">
-          <a href="https://github.com/thunderbird/thunderbolt" target="_blank" rel="noopener noreferrer" className="flex items-center">
-            <img src="/enterprise/github.svg" alt="GitHub" className="h-7 w-auto" />
-          </a>
-          <a
-            href="/contact"
-            className="inline-flex h-[46px] w-[131px] items-center justify-center bg-[#344054] font-mono text-sm font-bold uppercase tracking-wider text-white transition-colors hover:bg-[#344054]/90"
-          >
-            Get Started
-          </a>
-        </div>
+        <a
+          href="https://github.com/thunderbird/thunderbolt"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="inline-flex h-[46px] items-center justify-center gap-2 bg-[#344054] px-5 font-mono text-sm font-bold uppercase tracking-wider text-white transition-colors hover:bg-[#344054]/90"
+        >
+          <img src="/enterprise/github.svg" alt="" className="size-[18px] invert" />
+          Get Started
+        </a>
       }
     />
 

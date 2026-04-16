@@ -6,7 +6,7 @@ Thunderbolt is funded through a grant from Mozilla.
 
 ### What is Thunderbolt's relationship to Thunderbird?
 
-Thunderbolt is a separate product developed under the same entity, MLZA Technologies. It is not part of Thunderbird's existing products.
+Thunderbolt is a separate product developed under the same entity, MZLA Technologies. It is not part of Thunderbird's existing products.
 
 ### Is there going to be a hosted version if I don't want to deploy it myself?
 

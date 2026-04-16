@@ -1,5 +1,6 @@
 import { Popover, PopoverAnchor, PopoverContent } from '@/components/ui/popover'
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet'
+import { defaultCloudUrlValue } from '@/defaults/settings'
 import { useIsMobile } from '@/hooks/use-mobile'
 import { useSettings } from '@/hooks/use-settings'
 import type { CitationSource } from '@/types/citation'
@@ -60,7 +61,7 @@ export const CitationPopoverProvider = ({ children }: { children: ReactNode }) =
 
 const CitationOverlay = memo(({ popover, close }: { popover: PopoverData | null; close: () => void }) => {
   const { isMobile } = useIsMobile()
-  const { cloudUrl } = useSettings({ cloud_url: 'http://localhost:8000/v1' })
+  const { cloudUrl } = useSettings({ cloud_url: defaultCloudUrlValue })
   const anchorRef = useRef<HTMLSpanElement>(null)
 
   useEffect(() => {

@@ -1,3 +1,4 @@
+import { defaultCloudUrlValue } from '@/defaults/settings'
 import { useSettings } from '@/hooks/use-settings'
 import { getProxiedFaviconUrl } from '@/lib/url-utils'
 import { cn } from '@/lib/utils'
@@ -40,7 +41,7 @@ export const extractFaviconUrl = (toolName: string, output: unknown): string | n
  */
 const useToolFavicon = (toolName: string, toolOutput: unknown, isLoading: boolean, isError: boolean) => {
   const [failedFavicons, setFailedFavicons] = useState<Set<string>>(new Set())
-  const { cloudUrl } = useSettings({ cloud_url: 'http://localhost:8000/v1' })
+  const { cloudUrl } = useSettings({ cloud_url: defaultCloudUrlValue })
 
   const handleFaviconError = (url: string) => {
     setFailedFavicons((prev) => new Set(prev).add(url))

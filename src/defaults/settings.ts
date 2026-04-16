@@ -11,6 +11,68 @@ export const hashSetting = (setting: Setting): string => {
   return hashValues([setting.key, setting.value])
 }
 
+const defaultBackendPort = import.meta.env.VITE_THUNDERBOLT_BACKEND_PORT?.trim() || '8000'
+const fallbackCloudUrl = `http://localhost:${defaultBackendPort}/v1`
+
+const normalizeHostname = (hostname: string): string => hostname.replace(/^\[|\]$/g, '').toLowerCase()
+
+const isLoopbackHostname = (hostname: string): boolean => {
+  const normalizedHostname = normalizeHostname(hostname)
+  return (
+    normalizedHostname === 'localhost' ||
+    normalizedHostname === '127.0.0.1' ||
+    normalizedHostname === '0.0.0.0' ||
+    normalizedHostname === '::1'
+  )
+}
+
+const isLoopbackUrl = (url: string): boolean => {
+  try {
+    return isLoopbackHostname(new URL(url).hostname)
+  } catch {
+    return false
+  }
+}
+
+const deriveCloudUrlFromWindowLocation = (): string | null => {
+  if (typeof window === 'undefined') {
+    return null
+  }
+
+  if (!['http:', 'https:'].includes(window.location.protocol)) {
+    return null
+  }
+
+  const url = new URL(window.location.origin)
+  url.port = defaultBackendPort
+  url.pathname = '/v1'
+  url.search = ''
+  url.hash = ''
+  return url.toString().replace(/\/$/, '')
+}
+
+/**
+ * Resolve the default backend URL for the current runtime.
+ * When the frontend is opened from a LAN or Tailscale hostname, a loopback-configured
+ * cloud URL is treated as a local placeholder and rewritten to the current hostname.
+ */
+export const getDefaultCloudUrl = (): string => {
+  const configuredCloudUrl = import.meta.env.VITE_THUNDERBOLT_CLOUD_URL?.trim()
+  const derivedCloudUrl = deriveCloudUrlFromWindowLocation()
+
+  if (!configuredCloudUrl) {
+    return derivedCloudUrl ?? fallbackCloudUrl
+  }
+
+  if (derivedCloudUrl && isLoopbackUrl(configuredCloudUrl) && !isLoopbackHostname(window.location.hostname)) {
+    return derivedCloudUrl
+  }
+
+  return configuredCloudUrl
+}
+
+export const defaultCloudUrlValue = getDefaultCloudUrl()
+
 /**
  * Default settings shipped with the application
  * These are upserted on app start and serve as the baseline for diff comparisons
@@ -96,7 +158,7 @@ export const defaultSettingLocationLng: Setting = {
 
 export const defaultSettingCloudUrl: Setting = {
   key: 'cloud_url',
-  value: import.meta.env.VITE_THUNDERBOLT_CLOUD_URL || 'http://localhost:8000/v1',
+  value: defaultCloudUrlValue,
   updatedAt: null,
   defaultHash: null,
   userId: null,

@@ -36,6 +36,7 @@ const powersyncSettings: Settings = {
   posthogHost: '',
   posthogApiKey: '',
   corsOrigins: '',
+  allowPrivateNetworkOrigins: true,
   corsAllowCredentials: true,
   corsAllowMethods: '',
   corsAllowHeaders: '',
@@ -1878,6 +1879,7 @@ describe('PowerSync cross-origin injection protection', () => {
   const corsSettings: Settings = {
     ...powersyncSettings,
     corsOrigins: 'http://localhost:1420,tauri://localhost,http://tauri.localhost',
+    allowPrivateNetworkOrigins: true,
   }
 
   let app: Elysia

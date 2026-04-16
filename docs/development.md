@@ -20,7 +20,8 @@ make docker-up
 
 # Browser:
 bun dev
-# -> open http://localhost:1420 in your browser.
+# -> open http://localhost:1420 in your browser,
+#    or http://<your-machine-ip>:1420 / your Tailscale hostname from another device.
 
 # Desktop
 bun tauri:dev:desktop

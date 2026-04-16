@@ -51,6 +51,7 @@ const settingsSchema = z
 
     // CORS settings — comma-separated list of exact origins
     corsOrigins: z.string().default('http://localhost:1420,tauri://localhost,http://tauri.localhost'),
+    allowPrivateNetworkOrigins: z.boolean().default(true),
     corsAllowCredentials: z.boolean().default(true),
     corsAllowMethods: z.string().default('GET,POST,PUT,DELETE,PATCH,OPTIONS'),
     corsAllowHeaders: z
@@ -122,6 +123,7 @@ const parseSettings = (): Settings => {
     powersyncJwtSecret: process.env.POWERSYNC_JWT_SECRET || '',
     powersyncTokenExpirySeconds: process.env.POWERSYNC_TOKEN_EXPIRY_SECONDS || '3600',
     corsOrigins: process.env.CORS_ORIGINS || 'http://localhost:1420,tauri://localhost,http://tauri.localhost',
+    allowPrivateNetworkOrigins: process.env.ALLOW_PRIVATE_NETWORK_ORIGINS !== 'false',
     corsAllowCredentials: process.env.CORS_ALLOW_CREDENTIALS !== 'false',
     corsAllowMethods: process.env.CORS_ALLOW_METHODS || 'GET,POST,PUT,DELETE,PATCH,OPTIONS',
     corsAllowHeaders:
@@ -166,13 +168,116 @@ export const getCorsOriginsList = (settings: Pick<Settings, 'corsOrigins'>): str
     .filter((origin) => origin.length > 0)
 }
 
-/** Check whether a given origin is allowed by the configured CORS origins (exact match). */
-export const isOriginAllowed = (origin: string, settings: Pick<Settings, 'corsOrigins'>): boolean => {
-  return getCorsOriginsList(settings).includes(origin)
+const normalizeHostname = (hostname: string): string => hostname.replace(/^\[|\]$/g, '').toLowerCase()
+
+const getUrlPort = (url: URL): string => {
+  if (url.port) {
+    return url.port
+  }
+
+  return url.protocol === 'https:' ? '443' : '80'
+}
+
+const isPrivateIpv4Hostname = (hostname: string): boolean => {
+  const octets = hostname.split('.').map((value) => Number(value))
+  if (octets.length !== 4 || octets.some((value) => Number.isNaN(value) || value < 0 || value > 255)) {
+    return false
+  }
+
+  const [first, second] = octets
+  return (
+    first === 10 ||
+    first === 127 ||
+    (first === 169 && second === 254) ||
+    (first === 172 && second >= 16 && second <= 31) ||
+    (first === 192 && second === 168) ||
+    (first === 100 && second >= 64 && second <= 127)
+  )
+}
+
+const isLoopbackHostname = (hostname: string): boolean => {
+  const normalizedHostname = normalizeHostname(hostname)
+  return (
+    normalizedHostname === 'localhost' ||
+    normalizedHostname === '0.0.0.0' ||
+    normalizedHostname === '::1' ||
+    normalizedHostname === 'tauri.localhost' ||
+    normalizedHostname.startsWith('127.')
+  )
+}
+
+const isPrivateIpv6Hostname = (hostname: string): boolean => {
+  const normalizedHostname = normalizeHostname(hostname)
+  return (
+    normalizedHostname === '::1' ||
+    normalizedHostname.startsWith('fc') ||
+    normalizedHostname.startsWith('fd') ||
+    normalizedHostname.startsWith('fe80:')
+  )
+}
+
+const localNetworkHostnameSuffixes = ['.local', '.internal', '.lan', '.home.arpa', '.ts.net'] as const
+
+const isLocalNetworkHostname = (hostname: string): boolean => {
+  const normalizedHostname = normalizeHostname(hostname)
+
+  if (isLoopbackHostname(normalizedHostname)) {
+    return true
+  }
+
+  if (isPrivateIpv4Hostname(normalizedHostname) || isPrivateIpv6Hostname(normalizedHostname)) {
+    return true
+  }
+
+  if (localNetworkHostnameSuffixes.some((suffix) => normalizedHostname.endsWith(suffix))) {
+    return true
+  }
+
+  return !normalizedHostname.includes('.') && /^[a-z0-9-]+$/.test(normalizedHostname)
+}
+
+/**
+ * Check whether a URL targets the local app port on a LAN, Tailscale, or other private-network hostname.
+ */
+export const isLocalNetworkAppUrl = (
+  urlString: string,
+  settings: Partial<Pick<Settings, 'appUrl' | 'allowPrivateNetworkOrigins'>>,
+): boolean => {
+  if (settings.allowPrivateNetworkOrigins === false) {
+    return false
+  }
+
+  try {
+    const targetUrl = new URL(urlString)
+    const appUrl = new URL(settings.appUrl || 'http://localhost:1420')
+
+    if (!['http:', 'https:'].includes(targetUrl.protocol)) {
+      return false
+    }
+
+    if (targetUrl.protocol === 'https:' && isLoopbackHostname(targetUrl.hostname)) {
+      return false
+    }
+
+    return getUrlPort(targetUrl) === getUrlPort(appUrl) && isLocalNetworkHostname(targetUrl.hostname)
+  } catch {
+    return false
+  }
+}
+
+/** Check whether a given origin is allowed by the configured CORS origins or the local-network app matcher. */
+export const isOriginAllowed = (
+  origin: string,
+  settings: Pick<Settings, 'corsOrigins'> & Partial<Pick<Settings, 'appUrl' | 'allowPrivateNetworkOrigins'>>,
+): boolean => {
+  return getCorsOriginsList(settings).includes(origin) || isLocalNetworkAppUrl(origin, settings)
 }
 
 /** Validate that an OAuth redirect_uri points to a trusted origin. */
-export const isOAuthRedirectUriAllowed = (uri: string, settings: Pick<Settings, 'corsOrigins'>): boolean => {
+export const isOAuthRedirectUriAllowed = (
+  uri: string,
+  settings: Pick<Settings, 'corsOrigins'> & Partial<Pick<Settings, 'appUrl' | 'allowPrivateNetworkOrigins'>>,
+): boolean => {
   try {
     const url = new URL(uri)
     // Construct origin manually — url.origin returns 'null' for non-standard protocols like tauri://
@@ -183,6 +288,9 @@ export const isOAuthRedirectUriAllowed = (uri: string, settings: Pick<Settings, 
     }
     // Loopback flow uses dynamic ports — allow any HTTP localhost
     if ((url.hostname === 'localhost' || url.hostname === '127.0.0.1') && url.protocol === 'http:') {
+      return true
+    }
+    if (isLocalNetworkAppUrl(uri, settings)) {
       return true
     }
     return false

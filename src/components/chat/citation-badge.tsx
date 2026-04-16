@@ -1,5 +1,6 @@
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet'
+import { defaultCloudUrlValue } from '@/defaults/settings'
 import { useIsMobile } from '@/hooks/use-mobile'
 import { useSettings } from '@/hooks/use-settings'
 import type { CitationSource } from '@/types/citation'
@@ -87,7 +88,7 @@ ManagedBadge.displayName = 'ManagedBadge'
 const StandaloneBadge = memo(({ sources }: { sources: CitationSource[] }) => {
   const [isOpen, setIsOpen] = useState(false)
   const { isMobile } = useIsMobile()
-  const { cloudUrl } = useSettings({ cloud_url: 'http://localhost:8000/v1' })
+  const { cloudUrl } = useSettings({ cloud_url: defaultCloudUrlValue })
   const { displayName, additionalCount, ariaLabel } = getBadgeLabel(sources)
 
   const badge = (

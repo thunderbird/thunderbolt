@@ -1,3 +1,4 @@
+import { getSettings, isLocalNetworkAppUrl } from '@/config/settings'
 import { sendEmail, shouldSkipEmail } from '@/lib/resend'
 import { MagicLinkEmail } from '@/emails/magic-link'
 
@@ -46,7 +47,7 @@ export const isDeepLinkPlatform = (request?: Request): boolean => {
  */
 export const getValidatedOrigin = (trustedOrigins: string[], request?: Request): string => {
   const origin = request?.headers.get('origin')
-  if (origin && trustedOrigins.includes(origin)) {
+  if (origin && (trustedOrigins.includes(origin) || isLocalNetworkAppUrl(origin, getSettings()))) {
     return origin
   }
   return trustedOrigins[0]

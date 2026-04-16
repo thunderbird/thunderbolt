@@ -9,6 +9,7 @@ import {
   shouldRetry,
 } from '@/ai/step-logic'
 import { getModel, getModelProfile, getSettings } from '@/dal'
+import { defaultCloudUrlValue } from '@/defaults/settings'
 import { getDb } from '@/db/database'
 import { getAuthToken } from '@/lib/auth-token'
 import { fetch } from '@/lib/fetch'
@@ -63,7 +64,7 @@ export const createModel = async (modelConfig: Model) => {
   switch (modelConfig.provider) {
     case 'thunderbolt': {
       const db = getDb()
-      const { cloudUrl } = await getSettings(db, { cloud_url: 'http://localhost:8000/v1' })
+      const { cloudUrl } = await getSettings(db, { cloud_url: defaultCloudUrlValue })
       const token = getAuthToken() || 'thunderbolt'
       // GPT OSS (vendor: 'openai') uses createOpenAI with .chat() to force Chat Completions API
       // (AI SDK 5 defaults createOpenAI to Responses API which our backend doesn't support)

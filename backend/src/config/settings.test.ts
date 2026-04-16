@@ -95,6 +95,24 @@ describe('Config Settings', () => {
       expect(isOriginAllowed('http://localhost:1420', settings)).toBe(true)
     })
 
+    it('should allow LAN and Tailscale app origins on the app port by default', () => {
+      delete process.env.CORS_ORIGINS
+      const settings = getSettings()
+
+      expect(isOriginAllowed('http://192.168.1.25:1420', settings)).toBe(true)
+      expect(isOriginAllowed('http://100.88.12.34:1420', settings)).toBe(true)
+      expect(isOriginAllowed('http://thunderbolt.ts.net:1420', settings)).toBe(true)
+      expect(isOriginAllowed('http://thunderbolt.local:1420', settings)).toBe(true)
+    })
+
+    it('should reject local-network origins on the wrong port by default', () => {
+      delete process.env.CORS_ORIGINS
+      const settings = getSettings()
+
+      expect(isOriginAllowed('http://192.168.1.25:3000', settings)).toBe(false)
+      expect(isOriginAllowed('http://thunderbolt.ts.net:3000', settings)).toBe(false)
+    })
+
     it('should not match non-Tauri origins by default', () => {
       delete process.env.CORS_ORIGINS
       const settings = getSettings()
@@ -329,6 +347,21 @@ describe('Config Settings', () => {
       expect(isOriginAllowed('tauri://localhost', settings)).toBe(true)
       expect(isOriginAllowed('http://tauri.localhost', settings)).toBe(true)
     })
+
+    it('returns true for local-network app origins when enabled', () => {
+      const settings = { corsOrigins: 'http://localhost:1420', appUrl: 'http://localhost:1420' }
+      expect(isOriginAllowed('http://192.168.1.50:1420', settings)).toBe(true)
+      expect(isOriginAllowed('http://thunderbolt.ts.net:1420', settings)).toBe(true)
+    })
+
+    it('returns false for local-network app origins when disabled', () => {
+      const settings = {
+        corsOrigins: 'http://localhost:1420',
+        appUrl: 'http://localhost:1420',
+        allowPrivateNetworkOrigins: false,
+      }
+      expect(isOriginAllowed('http://192.168.1.50:1420', settings)).toBe(false)
+    })
   })
 
   describe('Swagger settings', () => {
@@ -491,6 +524,11 @@ describe('Config Settings', () => {
 
     it('allows mobile App Link callback', () => {
       expect(isOAuthRedirectUriAllowed('https://thunderbolt.io/oauth/callback', settings)).toBe(true)
+    })
+
+    it('allows LAN and Tailscale callbacks on the app port', () => {
+      expect(isOAuthRedirectUriAllowed('http://192.168.1.50:1420/oauth/callback', settings)).toBe(true)
+      expect(isOAuthRedirectUriAllowed('http://thunderbolt.ts.net:1420/oauth/callback', settings)).toBe(true)
     })
 
     it('allows production origin from corsOrigins', () => {

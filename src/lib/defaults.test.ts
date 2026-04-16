@@ -2,7 +2,7 @@ import type { Model } from '@/types'
 import { describe, expect, test } from 'bun:test'
 import { defaultAutomations, hashPrompt } from '../defaults/automations'
 import { defaultModels, hashModel } from '../defaults/models'
-import { defaultSettings, hashSetting } from '../defaults/settings'
+import { defaultSettings, getDefaultCloudUrl, hashSetting } from '../defaults/settings'
 
 describe('defaults', () => {
   test('defaultModels has expected structure', () => {
@@ -38,6 +38,31 @@ describe('defaults', () => {
       expect(setting.value).toBeDefined()
       expect(setting.defaultHash).toBeNull()
     }
+  })
+})
+
+describe('getDefaultCloudUrl', () => {
+  const originalLocation = window.location
+
+  test('derives the backend URL from the current browser hostname', () => {
+    Object.defineProperty(window, 'location', {
+      value: {
+        ...originalLocation,
+        origin: 'http://192.168.1.25:1420',
+        hostname: '192.168.1.25',
+        protocol: 'http:',
+      },
+      writable: true,
+      configurable: true,
+    })
+
+    expect(getDefaultCloudUrl()).toBe('http://192.168.1.25:8000/v1')
+
+    Object.defineProperty(window, 'location', {
+      value: originalLocation,
+      writable: true,
+      configurable: true,
+    })
   })
 })
 

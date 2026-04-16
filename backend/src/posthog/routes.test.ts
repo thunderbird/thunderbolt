@@ -32,6 +32,7 @@ describe('PostHog Proxy Routes', () => {
       posthogHost: 'https://us.i.posthog.com',
       posthogApiKey: 'test-key',
       corsOrigins: 'http://localhost:1420',
+      allowPrivateNetworkOrigins: true,
       corsAllowCredentials: true,
       corsAllowMethods: 'GET,POST,PUT,DELETE,PATCH,OPTIONS',
       corsAllowHeaders: 'Content-Type,Authorization',

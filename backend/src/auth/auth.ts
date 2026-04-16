@@ -12,7 +12,7 @@ import {
 import type { db as DbType } from '@/db/client'
 import * as schema from '@/db/schema'
 import { normalizeEmail } from '@/lib/email'
-import { getSettings } from '@/config/settings'
+import { getSettings, isOriginAllowed, type Settings } from '@/config/settings'
 import { getTrustedIpHeaders } from '@/utils/request'
 import { createAuthMiddleware } from 'better-auth/api'
 import { betterAuth } from 'better-auth'
@@ -26,10 +26,19 @@ import { buildVerifyUrl, getValidatedOrigin, parseTrustedOrigins, sendSignInEmai
 const OTP_SIGN_IN_PATH = '/sign-in/email-otp'
 
 /**
- * Trusted origins for CORS and email link validation
- * First origin is the default fallback for verify URLs
+ * Trusted origins for auth and email link validation.
+ * First origin is the default fallback for verify URLs.
  */
-const trustedOrigins = parseTrustedOrigins(process.env.TRUSTED_ORIGINS)
+const getTrustedOrigins = (settings: Settings, request?: Request): string[] => {
+  const configuredOrigins = parseTrustedOrigins(process.env.TRUSTED_ORIGINS)
+  const requestOrigin = request?.headers.get('origin')
+
+  if (!requestOrigin || !isOriginAllowed(requestOrigin, settings)) {
+    return configuredOrigins
+  }
+
+  return [...new Set([...configuredOrigins, requestOrigin])]
+}
 
 /**
  * Create a Better Auth instance with the provided database
@@ -88,7 +97,7 @@ export const createAuth = (database: typeof DbType) => {
       provider: 'pg',
       schema,
     }),
-    trustedOrigins,
+    trustedOrigins: async (request) => getTrustedOrigins(settings, request),
     // NOTE: Uses in-memory storage by default — not shared across instances in
     // horizontally-scaled deployments. Provides single-instance defence only.
     // TODO(THU-113): Replace with proof-of-work challenge (ALTCHA) for distributed protection.
@@ -148,13 +157,15 @@ export const createAuth = (database: typeof DbType) => {
           throw ctx.error('UNAUTHORIZED', { message: 'Invalid challenge token' })
         }
 
-        // Block sign-in for non-approved waitlist users (defense-in-depth).
-        // Even if a challenge token was somehow obtained, pending users cannot sign in.
-        const existingUser = await getUserByEmail(database, normalizedEmail)
-        if (!existingUser) {
-          const waitlistEntry = await getWaitlistByEmail(database, normalizedEmail)
-          if (!waitlistEntry || waitlistEntry.status !== 'approved') {
-            throw ctx.error('UNAUTHORIZED', { message: 'Sign-in not available' })
+        if (settings.waitlistEnabled) {
+          // Block sign-in for non-approved waitlist users (defense-in-depth).
+          // Even if a challenge token was somehow obtained, pending users cannot sign in.
+          const existingUser = await getUserByEmail(database, normalizedEmail)
+          if (!existingUser) {
+            const waitlistEntry = await getWaitlistByEmail(database, normalizedEmail)
+            if (!waitlistEntry || waitlistEntry.status !== 'approved') {
+              throw ctx.error('UNAUTHORIZED', { message: 'Sign-in not available' })
+            }
           }
         }
 
@@ -212,7 +223,7 @@ export const createAuth = (database: typeof DbType) => {
           // Existing users bypass waitlist entirely
           const existingUser = await getUserByEmail(database, normalizedEmail)
 
-          if (!existingUser) {
+          if (settings.waitlistEnabled && !existingUser) {
             const waitlistEntry = await getWaitlistByEmail(database, normalizedEmail)
             const autoApproved = isAutoApprovedDomain(normalizedEmail)
 
@@ -239,7 +250,7 @@ export const createAuth = (database: typeof DbType) => {
             }
           }
 
-          const origin = getValidatedOrigin(trustedOrigins, ctx?.request)
+          const origin = getValidatedOrigin(getTrustedOrigins(settings, ctx?.request), ctx?.request)
           // First-writer-wins: reuses existing challenge if /waitlist/join already
           // created one, or creates on-demand for Better Auth's native send-OTP endpoint.
           const challengeToken = await getOrCreateOtpChallenge(database, {

@@ -1,4 +1,5 @@
 import { type HttpClient } from '@/contexts'
+import { defaultCloudUrlValue } from '@/defaults/settings'
 import { getSettings } from '@/dal'
 import { getDb } from '@/db/database'
 import { createHandleError } from '@/lib/error-utils'
@@ -51,7 +52,7 @@ export const initPosthog = async (httpClient?: HttpClient): Promise<HandleResult
   try {
     const db = getDb()
     const { cloudUrl, dataCollection, debugPosthog } = await getSettings(db, {
-      cloud_url: 'http://localhost:8000/v1',
+      cloud_url: defaultCloudUrlValue,
       data_collection: true,
       debug_posthog: false,
     })

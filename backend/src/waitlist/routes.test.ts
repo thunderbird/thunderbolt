@@ -1,28 +1,39 @@
+import { createAuth } from '@/auth/auth'
 import { user } from '@/db/auth-schema'
 import { waitlist } from '@/db/schema'
 import { clearSettingsCache } from '@/config/settings'
-import { createApp } from '@/index'
 import { createTestDb } from '@/test-utils/db'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import { eq } from 'drizzle-orm'
+import { Elysia } from 'elysia'
+import { createWaitlistRoutes } from './routes'
 
 describe('Waitlist API', () => {
-  let app: Awaited<ReturnType<typeof createApp>>
+  let app: Elysia
   let db: Awaited<ReturnType<typeof createTestDb>>['db']
   let cleanup: () => Promise<void>
+  let savedWaitlistEnabled: string | undefined
   let savedWaitlistDomains: string | undefined
 
   beforeEach(async () => {
+    savedWaitlistEnabled = process.env.WAITLIST_ENABLED
+    process.env.WAITLIST_ENABLED = 'true'
     savedWaitlistDomains = process.env.WAITLIST_AUTO_APPROVE_DOMAINS
     process.env.WAITLIST_AUTO_APPROVE_DOMAINS = 'mozilla.org,thunderbird.net,mozilla.ai,mozilla.com'
     clearSettingsCache()
     const testEnv = await createTestDb()
     db = testEnv.db
     cleanup = testEnv.cleanup
-    app = await createApp({ database: db, otpCooldownMs: 0 })
+    const auth = createAuth(db)
+    app = new Elysia({ prefix: '/v1' }).use(createWaitlistRoutes({ database: db, auth, cooldownMs: 0 })) as Elysia
   })
 
   afterEach(async () => {
+    if (savedWaitlistEnabled !== undefined) {
+      process.env.WAITLIST_ENABLED = savedWaitlistEnabled
+    } else {
+      delete process.env.WAITLIST_ENABLED
+    }
     if (savedWaitlistDomains !== undefined) {
       process.env.WAITLIST_AUTO_APPROVE_DOMAINS = savedWaitlistDomains
     } else {
@@ -33,6 +44,29 @@ describe('Waitlist API', () => {
   })
 
   describe('POST /v1/waitlist/join', () => {
+    it('should send OTP immediately when waitlist is disabled', async () => {
+      process.env.WAITLIST_ENABLED = 'false'
+      clearSettingsCache()
+      const auth = createAuth(db)
+      const openApp = new Elysia({ prefix: '/v1' }).use(createWaitlistRoutes({ database: db, auth, cooldownMs: 0 }))
+
+      const response = await openApp.handle(
+        new Request('http://localhost/v1/waitlist/join', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email: 'open@example.com' }),
+        }),
+      )
+
+      expect(response.status).toBe(200)
+      const result = await response.json()
+      expect(result.success).toBe(true)
+      expect(result.challengeToken).toBeDefined()
+
+      const entries = await db.select().from(waitlist).where(eq(waitlist.email, 'open@example.com'))
+      expect(entries).toHaveLength(0)
+    })
+
     it('should add email to waitlist with pending status and no challenge token', async () => {
       const response = await app.handle(
         new Request('http://localhost/v1/waitlist/join', {
@@ -343,7 +377,10 @@ describe('Waitlist API', () => {
         sendJoinedEmail: () => Promise.reject(new Error('Email service error')),
         sendReminderEmail: () => Promise.resolve(),
       }
-      const appWithFailingEmail = await createApp({ database: db, waitlistEmailService: failingEmailService })
+      const auth = createAuth(db)
+      const appWithFailingEmail = new Elysia({ prefix: '/v1' }).use(
+        createWaitlistRoutes({ database: db, auth, emailService: failingEmailService, cooldownMs: 0 }),
+      )
 
       const response = await appWithFailingEmail.handle(
         new Request('http://localhost/v1/waitlist/join', {
@@ -373,7 +410,10 @@ describe('Waitlist API', () => {
         sendJoinedEmail: () => Promise.resolve(),
         sendReminderEmail: () => Promise.reject(new Error('Email service error')),
       }
-      const appWithFailingEmail = await createApp({ database: db, waitlistEmailService: failingEmailService })
+      const auth = createAuth(db)
+      const appWithFailingEmail = new Elysia({ prefix: '/v1' }).use(
+        createWaitlistRoutes({ database: db, auth, emailService: failingEmailService, cooldownMs: 0 }),
+      )
 
       const response = await appWithFailingEmail.handle(
         new Request('http://localhost/v1/waitlist/join', {

@@ -39,6 +39,7 @@ import { Switch } from '@/components/ui/switch'
 import { usePostHog } from 'posthog-js/react'
 import { usePowerSyncStatus } from '@/hooks/use-powersync-status'
 import { useSyncEnabledToggle } from '@/hooks/use-sync-enabled-toggle'
+import { defaultCloudUrlValue } from '@/defaults/settings'
 
 type PreferencesState = {
   isResetting: boolean
@@ -126,7 +127,7 @@ export default function PreferencesSettingsPage() {
     date_format: 'MM/DD/YYYY',
     time_format: '12h',
     currency: 'USD',
-    cloud_url: 'http://localhost:8000/v1',
+    cloud_url: defaultCloudUrlValue,
   })
 
   // Local state for name input (only save on blur to avoid DB writes on every keystroke)

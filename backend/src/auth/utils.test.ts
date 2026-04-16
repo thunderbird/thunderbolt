@@ -70,6 +70,22 @@ describe('getValidatedOrigin', () => {
     const result = getValidatedOrigin(trustedOrigins, request)
     expect(result).toBe('http://localhost:1420')
   })
+
+  it('accepts LAN origins on the app port', () => {
+    const request = new Request('https://api.example.com', {
+      headers: { origin: 'http://192.168.1.25:1420' },
+    })
+    const result = getValidatedOrigin(trustedOrigins, request)
+    expect(result).toBe('http://192.168.1.25:1420')
+  })
+
+  it('accepts Tailscale hostnames on the app port', () => {
+    const request = new Request('https://api.example.com', {
+      headers: { origin: 'http://thunderbolt.ts.net:1420' },
+    })
+    const result = getValidatedOrigin(trustedOrigins, request)
+    expect(result).toBe('http://thunderbolt.ts.net:1420')
+  })
 })
 
 describe('isDeepLinkPlatform', () => {

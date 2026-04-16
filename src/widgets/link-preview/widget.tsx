@@ -1,6 +1,7 @@
 import { Card, CardHeader } from '@/components/ui/card'
 import { Skeleton } from '@/components/ui/skeleton'
 import { useHttpClient } from '@/contexts'
+import { defaultCloudUrlValue } from '@/defaults/settings'
 import { useMessageCache } from '@/hooks/use-message-cache'
 import { useSettings } from '@/hooks/use-settings'
 import { fetchLinkPreview } from '@/integrations/thunderbolt-pro/api'
@@ -71,7 +72,7 @@ const InstantLinkPreview = ({ sourceData, cloudUrl }: { sourceData: SourceMetada
 }
 
 export const LinkPreviewWidget = ({ url, source, sources, messageId, fetchPreviewFn }: LinkPreviewWidgetProps) => {
-  const { cloudUrl } = useSettings({ cloud_url: 'http://localhost:8000/v1' })
+  const { cloudUrl } = useSettings({ cloud_url: defaultCloudUrlValue })
 
   // Instant render path: resolve from source registry (O(1) index lookup)
   if (source && sources) {

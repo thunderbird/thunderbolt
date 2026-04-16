@@ -5,6 +5,7 @@ BLUE := \033[0;34m
 GREEN := \033[0;32m
 YELLOW := \033[0;33m
 NC := \033[0m # No Color
+BUN := $(shell if command -v bun >/dev/null 2>&1; then command -v bun; elif [ -x "$$HOME/.bun/bin/bun" ]; then printf '%s' "$$HOME/.bun/bin/bun"; else printf '%s' bun; fi)
 
 # Default target
 help:
@@ -41,43 +42,43 @@ setup-symlinks:
 # Setup project - install frontend and backend dependencies
 setup: setup-symlinks
 	@echo "$(BLUE)→ Installing frontend dependencies...$(NC)"
-	bun install
+	$(BUN) install
 	@echo "$(BLUE)→ Installing backend dependencies...$(NC)"
-	cd backend && bun install
+	cd backend && $(BUN) install
 	@echo "$(GREEN)✓ Setup complete!$(NC)"
 
 # Install dependencies
 install:
-	bun install
+	$(BUN) install
 
 # Build frontend
 build:
-	bun run build
+	$(BUN) run build
 
 # Build desktop app
 build-desktop:
-	bun install
-	bun tauri build
+	$(BUN) install
+	$(BUN) tauri build
 
 # Build desktop app with specific target
 build-desktop-target:
-	bun install
-	bun tauri build --target $(TARGET)
+	$(BUN) install
+	$(BUN) tauri build --target $(TARGET)
 
 # Build desktop app with bundles and target
 build-desktop-full:
-	bun install
-	bun tauri build --bundles $(BUNDLES) --target $(TARGET)
+	$(BUN) install
+	$(BUN) tauri build --bundles $(BUNDLES) --target $(TARGET)
 
 # Build Android app
 build-android:
-	bun install
-	bun tauri android build
+	$(BUN) install
+	$(BUN) tauri android build
 
 # Build iOS app
 build-ios:
-	bun install
-	bun tauri ios build --export-method app-store-connect
+	$(BUN) install
+	$(BUN) tauri ios build --export-method app-store-connect
 
 # Clean build artifacts
 clean:
@@ -86,44 +87,44 @@ clean:
 
 # Linting
 lint:
-	bun run lint
+	$(BUN) run lint
 
 lint-fix:
-	bun run lint:fix
+	$(BUN) run lint:fix
 
 # Formatting
 format:
 	@echo "$(BLUE)→ Formatting frontend code...$(NC)"
-	bun run format
+	$(BUN) run format
 	@echo "$(BLUE)→ Formatting backend code...$(NC)"
-	cd backend && bun run format
+	cd backend && $(BUN) run format
 	@echo "$(BLUE)→ Formatting Rust code...$(NC)"
-	bun run format:rust
+	$(BUN) run format:rust
 	@echo "$(GREEN)✓ Formatting complete!$(NC)"
 
 format-check:
 	@echo "$(BLUE)→ Checking frontend formatting...$(NC)"
-	bun run format-check
+	$(BUN) run format-check
 	@echo "$(BLUE)→ Checking backend formatting...$(NC)"
-	cd backend && bun run format-check
+	cd backend && $(BUN) run format-check
 	@echo "$(BLUE)→ Checking Rust formatting...$(NC)"
-	bun run format:rust-check
+	$(BUN) run format:rust-check
 	@echo "$(GREEN)✓ Format check complete!$(NC)"
 
 # Type checking
 type-check:
-	bun run type-check
+	$(BUN) run type-check
 
 # Run tests
 test:
 	@echo "$(BLUE)→ Running frontend tests...$(NC)"
-	@bun test || echo "$(YELLOW)  No frontend tests found$(NC)"
+	@$(BUN) test || echo "$(YELLOW)  No frontend tests found$(NC)"
 	@echo "$(BLUE)→ Running backend tests...$(NC)"
-	@cd backend && bun test
+	@cd backend && $(BUN) test
 
 # Run all checks
 check:
-	bun run check
+	$(BUN) run check
 
 # Start development servers (backend and frontend)
 run:
@@ -136,11 +137,11 @@ run:
 	@-lsof -ti:8000 | xargs kill -9 2>/dev/null || true
 	@-lsof -ti:5173 | xargs kill -9 2>/dev/null || true
 	@# Start backend in background and frontend in foreground
-	cd backend && bun run dev & \
+	cd backend && $(BUN) run dev & \
 	BACKEND_PID=$$!; \
 	echo "$(GREEN)✓ Backend started (PID: $$BACKEND_PID)$(NC)"; \
 	sleep 2; \
-	bun run dev || (kill $$BACKEND_PID 2>/dev/null && exit 1)
+	$(BUN) run dev || (kill $$BACKEND_PID 2>/dev/null && exit 1)
 
 # Alias for run
 dev: run

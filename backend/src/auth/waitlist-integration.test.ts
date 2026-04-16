@@ -35,11 +35,16 @@ describe('Auth Waitlist Integration', () => {
   let auth: ReturnType<typeof createAuth>
   let db: Awaited<ReturnType<typeof createTestDb>>['db']
   let cleanup: () => Promise<void>
+  let savedWaitlistEnabled: string | undefined
 
   beforeEach(async () => {
     mockSendSignInEmail.mockClear()
     mockSendWaitlistNotReadyEmail.mockClear()
     mockSendWaitlistJoinedEmail.mockClear()
+
+    savedWaitlistEnabled = process.env.WAITLIST_ENABLED
+    process.env.WAITLIST_ENABLED = 'true'
+    clearSettingsCache()
 
     const testEnv = await createTestDb()
     db = testEnv.db
@@ -48,6 +53,11 @@ describe('Auth Waitlist Integration', () => {
   })
 
   afterEach(async () => {
+    if (savedWaitlistEnabled !== undefined) {
+      process.env.WAITLIST_ENABLED = savedWaitlistEnabled
+    } else {
+      delete process.env.WAITLIST_ENABLED
+    }
     delete process.env.WAITLIST_AUTO_APPROVE_DOMAINS
     clearSettingsCache()
     await cleanup()
@@ -226,6 +236,37 @@ describe('Auth Waitlist Integration', () => {
       })
 
       expect(mockSendSignInEmail).toHaveBeenCalledTimes(1)
+    })
+  })
+
+  describe('Waitlist disabled', () => {
+    it('should send OTP and allow sign-in without creating a waitlist entry', async () => {
+      process.env.WAITLIST_ENABLED = 'false'
+      clearSettingsCache()
+      auth = createAuth(db)
+
+      await auth.api.sendVerificationOTP({
+        body: { email: 'open@example.com', type: 'sign-in' },
+      })
+
+      expect(mockSendSignInEmail).toHaveBeenCalledTimes(1)
+      expect(mockSendWaitlistNotReadyEmail).toHaveBeenCalledTimes(0)
+      expect(mockSendWaitlistJoinedEmail).toHaveBeenCalledTimes(0)
+
+      const otpCall = mockSendSignInEmail.mock.calls[0] as unknown as [{ otp: string }]
+      const otp = otpCall[0].otp
+      const challengeToken = await createTestChallenge(db, 'open@example.com')
+
+      const result = (await auth.api.signInEmailOTP({
+        body: { email: 'open@example.com', otp },
+        headers: new Headers({ [challengeTokenHeader]: challengeToken }),
+      })) as unknown as { session: unknown; user: { email: string } }
+
+      expect(result.session).toBeDefined()
+      expect(result.user.email).toBe('open@example.com')
+
+      const entries = await db.select().from(waitlist).where(eq(waitlist.email, 'open@example.com'))
+      expect(entries).toHaveLength(0)
     })
   })
 

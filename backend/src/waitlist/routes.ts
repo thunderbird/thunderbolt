@@ -7,6 +7,7 @@ import {
   getUserByEmail,
   getWaitlistByEmail,
 } from '@/dal'
+import { getSettings } from '@/config/settings'
 import type { db } from '@/db/client'
 import { normalizeEmail } from '@/lib/email'
 import { safeErrorHandler } from '@/middleware/error-handling'
@@ -98,6 +99,7 @@ export const createWaitlistRoutes = ({
   // Per-instance cooldown tracker. Tracks when the last OTP request was made for each email
   // to prevent rapid code cycling. In-memory is appropriate: 15s window, single-instance defense.
   const emailCooldowns = new Map<string, number>()
+  const { waitlistEnabled } = getSettings()
 
   const app = new Elysia({ prefix: '/waitlist' }).onError(safeErrorHandler)
   if (ipRateLimit) {
@@ -133,7 +135,7 @@ export const createWaitlistRoutes = ({
         emailCooldowns.set(email, Date.now())
       }
 
-      const approved = await resolveApproval(database, email, emailService)
+      const approved = waitlistEnabled ? await resolveApproval(database, email, emailService) : true
 
       if (!approved) {
         return { success: true }

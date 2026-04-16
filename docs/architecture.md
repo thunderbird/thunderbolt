@@ -3,19 +3,18 @@
 ```mermaid
 graph TB
   subgraph LOCAL["User Device"]
-    direction LR
-    TAURI["Tauri Shell<br/>Desktop · iOS · Android"]
-    UI["React Frontend<br/>React 19 · Vite · Radix UI"]
-    STATE["State & Data<br/>Zustand · TanStack Query · Drizzle"]
-    AI["AI Chat<br/>Vercel AI SDK · MCP Client"]
-    CRYPTO["E2E Encryption (optional)"]
-    SQLITE[("SQLite<br/>Offline-first")]
+    subgraph TAURI["Tauri Shell · Desktop · iOS · Android"]
+      UI["React Frontend<br/>React 19 · Vite · Radix UI"]
+      STATE["State & Data<br/>Zustand · TanStack Query · Drizzle"]
+      AI["AI Chat<br/>Vercel AI SDK · MCP Client"]
+      CRYPTO["E2E Encryption (optional)"]
+      SQLITE[("SQLite<br/>Offline-first")]
 
-    TAURI --- UI
-    UI --- STATE
-    UI --- AI
-    STATE --- CRYPTO
-    CRYPTO --- SQLITE
+      UI --- STATE
+      UI --- AI
+      STATE --- SQLITE
+      STATE --- CRYPTO
+    end
   end
 
   subgraph SERVER["Server Infrastructure (self-hostable)"]
@@ -40,7 +39,7 @@ graph TB
     RESEND["Resend<br/>Email"]
   end
 
-  STATE -- "sync (HTTPS)" --> PS
+  CRYPTO -- "sync (HTTPS)" --> PS
   STATE -- "REST / HTTPS" --> API
   AI -- "SSE streaming" --> INFERENCE
   UI -- "OAuth redirect" --> AUTH
@@ -51,6 +50,7 @@ graph TB
   API --> RESEND
 
   style LOCAL fill:#0f172a,stroke:#3b82f6,stroke-width:2px,color:#e2e8f0
+  style TAURI fill:#1e293b,stroke:#3b82f6,stroke-width:1px,color:#e2e8f0
   style SERVER fill:#0f172a,stroke:#8b5cf6,stroke-width:2px,color:#e2e8f0
   style EXTERNAL fill:#0f172a,stroke:#ec4899,stroke-width:2px,color:#e2e8f0
 ```

@@ -385,6 +385,84 @@ const CompromiseSection = () => (
   </section>
 )
 
+/* ─── Partnership Section ─────────────────────────────── */
+
+const PartnershipSection = () => (
+  <section className="relative pt-16 pb-12 md:pt-28 md:pb-20">
+    <div className="mx-auto max-w-[1120px] px-6 lg:px-0">
+      {/* Logo lockup — section anchor */}
+      <div className="flex flex-col items-start justify-between gap-6 md:flex-row md:items-end md:gap-8">
+        <div className="flex flex-wrap items-center gap-5 md:gap-8">
+          <div className="flex items-center gap-3">
+            <img
+              src="/enterprise/thunderbolt-logo.png"
+              alt="Thunderbolt"
+              className="size-[44px] md:size-[56px]"
+            />
+            <span className="text-[28px] font-medium tracking-tight text-[#101828] md:text-[40px]">
+              Thunderbolt
+            </span>
+          </div>
+          <span
+            className="text-[32px] font-light leading-none text-[#98a2b3] md:text-[44px]"
+            aria-hidden="true"
+          >
+            +
+          </span>
+          <img
+            src="/enterprise/deepset-logo.svg"
+            alt="deepset"
+            className="h-[36px] w-auto md:h-[48px]"
+          />
+        </div>
+        <a
+          href="https://www.deepset.ai/news/sovereign-ai-stack-mozilla-thunderbolt-haystack"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="group inline-flex shrink-0 items-center gap-2 font-mono text-sm font-bold uppercase tracking-wider text-[#344054] transition-colors hover:text-[#101828]"
+        >
+          Read the announcement from deepset
+          <span className="transition-transform group-hover:translate-x-0.5" aria-hidden="true">
+            &rarr;
+          </span>
+        </a>
+      </div>
+      {/* Two subparts */}
+      <div className="mt-12 grid gap-10 md:mt-16 md:grid-cols-2 md:gap-x-16 md:gap-y-12 lg:gap-x-24">
+        {/* Built for Enterprise */}
+        <div className="md:border-l md:border-[#d0d5dd]/70 md:pl-10 lg:pl-14">
+          <div className="flex items-center gap-3">
+            <img src="/enterprise/icon-factory-24.svg" alt="" className="size-6" />
+            <h3 className="text-xl font-semibold leading-7 tracking-[-0.2px] text-[#101828] md:text-2xl">
+              Built for Enterprise
+            </h3>
+          </div>
+          <p className="mt-4 text-base leading-7 text-[#667085] md:text-[17px] md:leading-7">
+            Native apps across web, desktop, and mobile. Forward-Deployed Engineering support through a
+            partnership with deepset&rsquo;s Haystack. MCP integration with your systems. Open source you
+            can audit and customize as your business needs evolve.
+          </p>
+        </div>
+        {/* European Delivery */}
+        <div className="md:border-l md:border-[#d0d5dd]/70 md:pl-10 lg:pl-14">
+          <div className="flex items-center gap-3">
+            <img src="/enterprise/icon-map-pin.svg" alt="" className="size-6" />
+            <h3 className="text-xl font-semibold leading-7 tracking-[-0.2px] text-[#101828] md:text-2xl">
+              European Delivery
+            </h3>
+          </div>
+          <p className="mt-4 text-base leading-7 text-[#667085] md:text-[17px] md:leading-7">
+            Partnership with deepset for sovereign deployments across the EU. Thunderbolt&rsquo;s
+            open-source client pairs with Haystack&rsquo;s orchestration framework into a unified,
+            sovereign stack &mdash; giving organizations long-term control over how AI is built, run, and
+            experienced, without trade-offs between capability and control.
+          </p>
+        </div>
+      </div>
+    </div>
+  </section>
+)
+
 /* ─── Quote Section ───────────────────────────────────── */
 
 const QuoteSection = () => (
@@ -480,6 +558,7 @@ export const EnterprisePage = () => (
       <Hero />
       <FeatureCards />
       <CompromiseSection />
+      <PartnershipSection />
       <QuoteSection />
       <CTASection />
     </main>

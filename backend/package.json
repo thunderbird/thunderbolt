@@ -52,7 +52,7 @@
     "@typescript-eslint/parser": "^6.19.0",
     "drizzle-kit": "^0.31.7",
     "eslint": "^9.39.2",
-    "globals": "^16.4.0",
+    "globals": "^17.4.0",
     "oauth2-mock-server": "^8.2.2",
     "pino-pretty": "^13.1.1",
     "prettier": "^3.2.4",

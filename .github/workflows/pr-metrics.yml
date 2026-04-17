@@ -120,7 +120,7 @@ jobs:
         run: |
           # Run assertions separately so we can capture warnings as text.
           # The action already ran collect+upload; we just need assert.
-          npx @lhci/cli@0.15.x assert --config=./lighthouserc.js 2>&1 | tee /tmp/lhci-assert.txt || true
+          bunx @lhci/cli@0.15.x assert --config=./lighthouserc.js 2>&1 | tee /tmp/lhci-assert.txt || true
           # Extract only warning lines for the PR comment.
           WARNINGS=$(grep -E '^\s*warning' /tmp/lhci-assert.txt | sed 's/^\s*//' || true)
           # Store as multiline output

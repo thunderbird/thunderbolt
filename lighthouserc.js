@@ -4,8 +4,6 @@ module.exports = {
     collect: {
       numberOfRuns: 3,
       settings: {
-        // Simulate a mid-tier mobile device on a slow 4G connection
-        preset: 'desktop',
         // Skip audits that aren't relevant for an SPA behind auth
         skipAudits: ['redirects-http', 'is-crawlable'],
       },

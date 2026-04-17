@@ -279,6 +279,11 @@ export class PowerSyncDatabaseImpl implements DatabaseInterface {
           trigger,
           hidden_duration_ms: hiddenDurationMs,
         })
+      } else {
+        trackSyncEvent('sync_reconnect_error', {
+          trigger,
+          error: 'connectToSync failed internally',
+        })
       }
     } catch (err) {
       console.warn('[PowerSync] Reconnect failed:', err)

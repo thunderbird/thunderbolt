@@ -116,6 +116,7 @@ export const stopSyncStatusListener = () => {
   cachedPowerSync = null
   cachedConfig = null
   connectedSince = null
+  lastDownloadAt = null
   prevConnected = null
   lastStatusChangeAt = null
 }

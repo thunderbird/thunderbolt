@@ -176,6 +176,19 @@ export type EventType =
   | 'ui_shortcut_use'
   | 'ui_sidebar_open'
   | 'ui_sidebar_close'
+  // Sync Diagnostics
+  | 'sync_connect'
+  | 'sync_connect_error'
+  | 'sync_disconnect'
+  | 'sync_reconnect_start'
+  | 'sync_reconnect_success'
+  | 'sync_reconnect_error'
+  | 'sync_visibility_change'
+  | 'sync_credentials_fetch'
+  | 'sync_credentials_error'
+  | 'sync_upload'
+  | 'sync_upload_error'
+  | 'sync_status_change'
 
 export const trackEvent = (eventName: EventType, properties?: Record<string, unknown>) => {
   try {

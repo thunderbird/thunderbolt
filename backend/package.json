@@ -58,7 +58,7 @@
     "prettier": "^3.2.4",
     "react-email": "^5.2.10",
     "tsx": "^4.20.6",
-    "typescript": "^5.3.3"
+    "typescript": "^6.0.2"
   },
   "peerDependencies": {
     "typescript": "^5.0.0"

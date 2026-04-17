@@ -122,7 +122,7 @@
   "devDependencies": {
     "@chromatic-com/storybook": "^4.1.1",
     "@emotion/is-prop-valid": "^1.4.0",
-    "@eslint/js": "^9.33.0",
+    "@eslint/js": "^10.0.1",
     "@happy-dom/global-registrator": "^20.0.8",
     "@playwright/test": "^1.58.2",
     "@sinonjs/fake-timers": "^15.0.0",

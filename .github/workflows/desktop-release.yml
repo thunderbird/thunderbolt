@@ -53,7 +53,7 @@ jobs:
 
       - name: Create GitHub Release (Stable)
         if: ${{ !inputs.nightly }}
-        uses: softprops/action-gh-release@de2c0eb89ae2a093876385947365aca7b0e5f844 # v1
+        uses: softprops/action-gh-release@b4309332981a82ec1c5618f44dd2e27cc8bfbfda # v3.0.0
         with:
           tag_name: v${{ inputs.version }}
           name: Release v${{ inputs.version }}
@@ -70,7 +70,7 @@ jobs:
 
       - name: Create GitHub Release (Nightly)
         if: ${{ inputs.nightly }}
-        uses: softprops/action-gh-release@de2c0eb89ae2a093876385947365aca7b0e5f844 # v1
+        uses: softprops/action-gh-release@b4309332981a82ec1c5618f44dd2e27cc8bfbfda # v3.0.0
         with:
           tag_name: v${{ inputs.version }}
           name: Nightly Build v${{ inputs.version }}
@@ -319,7 +319,7 @@ jobs:
 
       - name: Upload Linux artifacts to GitHub Release
         if: matrix.os == 'ubuntu-24.04'
-        uses: softprops/action-gh-release@de2c0eb89ae2a093876385947365aca7b0e5f844 # v1
+        uses: softprops/action-gh-release@b4309332981a82ec1c5618f44dd2e27cc8bfbfda # v3.0.0
         with:
           tag_name: v${{ inputs.version }}
           draft: true
@@ -332,7 +332,7 @@ jobs:
 
       - name: Upload Windows artifacts to GitHub Release
         if: matrix.os == 'windows-latest'
-        uses: softprops/action-gh-release@de2c0eb89ae2a093876385947365aca7b0e5f844 # v1
+        uses: softprops/action-gh-release@b4309332981a82ec1c5618f44dd2e27cc8bfbfda # v3.0.0
         with:
           tag_name: v${{ inputs.version }}
           draft: true
@@ -352,7 +352,7 @@ jobs:
 
       - name: Upload macOS artifacts to GitHub Release
         if: matrix.os == 'macos-latest'
-        uses: softprops/action-gh-release@de2c0eb89ae2a093876385947365aca7b0e5f844 # v1
+        uses: softprops/action-gh-release@b4309332981a82ec1c5618f44dd2e27cc8bfbfda # v3.0.0
         with:
           tag_name: v${{ inputs.version }}
           draft: true
@@ -384,7 +384,7 @@ jobs:
 
       - name: Publish GitHub Release (Stable)
         if: ${{ !inputs.nightly }}
-        uses: softprops/action-gh-release@de2c0eb89ae2a093876385947365aca7b0e5f844 # v1
+        uses: softprops/action-gh-release@b4309332981a82ec1c5618f44dd2e27cc8bfbfda # v3.0.0
         with:
           tag_name: v${{ inputs.version }}
           draft: false
@@ -411,7 +411,7 @@ jobs:
 
       - name: Publish GitHub Release (Nightly)
         if: ${{ inputs.nightly }}
-        uses: softprops/action-gh-release@de2c0eb89ae2a093876385947365aca7b0e5f844 # v1
+        uses: softprops/action-gh-release@b4309332981a82ec1c5618f44dd2e27cc8bfbfda # v3.0.0
         with:
           tag_name: v${{ inputs.version }}
           draft: false

@@ -1,0 +1,317 @@
+---
+import '../styles/tokens.css';
+
+type Props = {
+	title: string;
+	description?: string;
+	ogImage?: string;
+	showBackground?: boolean;
+};
+
+const {
+	title,
+	description = 'News, updates, and insights from the Thunderbolt team.',
+	ogImage = 'https://thunderbolt.io/social.png',
+} = Astro.props;
+
+const fullTitle = title === 'Blog' ? 'Thunderbolt — Blog' : `${title} · Thunderbolt`;
+const pathname = Astro.url.pathname;
+const isBlogActive = pathname.startsWith('/blog');
+const isDocsActive = pathname.startsWith('/docs');
+---
+
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="utf-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1" />
+		<meta name="generator" content={Astro.generator} />
+		<meta name="description" content={description} />
+		<title>{fullTitle}</title>
+		<link rel="icon" type="image/png" href="/favicon.png" />
+		<link rel="apple-touch-icon" href="/favicon.png" />
+
+		<meta property="og:title" content={fullTitle} />
+		<meta property="og:description" content={description} />
+		<meta property="og:image" content={ogImage} />
+		<meta property="og:type" content="article" />
+		<meta name="twitter:card" content="summary_large_image" />
+		<meta name="twitter:image" content={ogImage} />
+	</head>
+	<body>
+		<div class="grid-backdrop" aria-hidden="true"></div>
+		<header>
+			<nav>
+				<a href="/" class="brand">
+					<img
+						src="/enterprise/thunderbolt-logo.png"
+						alt=""
+						width="23"
+						height="23"
+					/>
+					<span>Thunderbolt</span>
+				</a>
+				<div class="nav-links">
+					<a
+						href="/blog"
+						class:list={['nav-link', { active: isBlogActive }]}
+					>
+						Blog
+					</a>
+					<a href="/docs" class:list={['nav-link', { active: isDocsActive }]}>Docs</a>
+					<a
+						href="https://github.com/thunderbird/thunderbolt"
+						class="nav-link"
+						target="_blank"
+						rel="noopener noreferrer"
+					>
+						GitHub
+					</a>
+				</div>
+			</nav>
+		</header>
+		<main>
+			<slot />
+		</main>
+		<footer>
+			<div class="footer-inner">
+				<div class="footer-brand">
+					<img
+						src="/enterprise/thunderbolt-logo.png"
+						alt=""
+						width="34"
+						height="34"
+					/>
+					<span>Thunderbolt</span>
+				</div>
+				<div class="footer-rule"></div>
+				<div class="footer-meta">
+					<img src="/enterprise/mozilla-logo.svg" alt="Mozilla" height="18" />
+					<p>
+						Thunderbolt is a product of{' '}
+						<a
+							href="https://blog.thunderbird.net/2020/01/thunderbirds-new-home/"
+							target="_blank"
+							rel="noopener noreferrer"
+						>
+							MZLA Technologies Corporation
+						</a>
+						, a wholly owned subsidiary of Mozilla Foundation. &copy; {new Date().getFullYear()}.
+						Content available under a{' '}
+						<a
+							href="https://www.mozilla.org/foundation/licensing/website-content/"
+							target="_blank"
+							rel="noopener noreferrer"
+						>
+							Creative Commons license
+						</a>
+						.
+					</p>
+				</div>
+			</div>
+		</footer>
+	</body>
+</html>
+
+<style is:global>
+	*,
+	*::before,
+	*::after {
+		box-sizing: border-box;
+	}
+
+	html {
+		font-family: var(--tb-font-sans);
+		background: var(--tb-bg);
+		color: var(--tb-text);
+		-webkit-font-smoothing: antialiased;
+		-moz-osx-font-smoothing: grayscale;
+		scroll-behavior: smooth;
+		/* Reserve scrollbar gutter so pages don't jitter horizontally
+		 * when content length crosses the viewport height. */
+		scrollbar-gutter: stable;
+	}
+
+	body {
+		margin: 0;
+		min-height: 100vh;
+		display: flex;
+		flex-direction: column;
+		position: relative;
+	}
+
+	a {
+		color: inherit;
+	}
+</style>
+
+<style>
+	/* Subtle grid motif inherited from the marketing site — faint vertical
+	 * dividers on a 1120px canvas at 160px intervals. */
+	.grid-backdrop {
+		position: fixed;
+		inset: 0;
+		pointer-events: none;
+		z-index: 0;
+		overflow: hidden;
+	}
+	.grid-backdrop::before {
+		content: '';
+		position: absolute;
+		inset-block: 0;
+		left: 50%;
+		width: 1120px;
+		transform: translateX(-50%);
+		background-image: repeating-linear-gradient(
+			to right,
+			transparent 0,
+			transparent 159px,
+			color-mix(in srgb, var(--tb-border) 60%, transparent) 159px,
+			color-mix(in srgb, var(--tb-border) 60%, transparent) 160px
+		);
+	}
+
+	@media (max-width: 1120px) {
+		.grid-backdrop {
+			display: none;
+		}
+	}
+
+	header {
+		position: sticky;
+		top: 0;
+		z-index: 10;
+		border-bottom: 1px solid var(--tb-border);
+		background: color-mix(in srgb, var(--tb-bg) 80%, transparent);
+		backdrop-filter: saturate(140%) blur(12px);
+	}
+
+	nav {
+		max-width: var(--tb-measure-wide);
+		margin: 0 auto;
+		padding: 0.875rem 1.5rem;
+		display: flex;
+		justify-content: space-between;
+		align-items: center;
+	}
+
+	.brand {
+		display: flex;
+		align-items: center;
+		gap: 0.5rem;
+		font-weight: 500;
+		font-size: 1.125rem;
+		letter-spacing: -0.015em;
+		color: var(--tb-text);
+		text-decoration: none;
+	}
+
+	.nav-links {
+		display: flex;
+		gap: 0.125rem;
+		align-items: center;
+	}
+
+	.nav-link {
+		color: var(--tb-text-muted);
+		text-decoration: none;
+		font-size: 0.875rem;
+		padding: 0.5rem 0.75rem;
+		transition:
+			color 0.15s,
+			background 0.15s;
+	}
+
+	.nav-link:hover {
+		color: var(--tb-text);
+	}
+
+	.nav-link.active {
+		color: var(--tb-text);
+	}
+
+	main {
+		flex: 1;
+		width: 100%;
+		max-width: var(--tb-measure-narrow);
+		margin: 0 auto;
+		padding: 3rem 1.5rem 4rem;
+		position: relative;
+		z-index: 1;
+	}
+
+	footer {
+		border-top: 1px solid var(--tb-border);
+		background: var(--tb-surface);
+		padding: 3rem 1.5rem;
+		margin-top: 4rem;
+		position: relative;
+		z-index: 1;
+	}
+
+	.footer-inner {
+		max-width: var(--tb-measure-wide);
+		margin: 0 auto;
+	}
+
+	.footer-brand {
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		gap: 0.5rem;
+		color: var(--tb-text);
+		font-weight: 500;
+		font-size: 1.125rem;
+		letter-spacing: -0.015em;
+	}
+
+	.footer-rule {
+		height: 1px;
+		background: var(--tb-border);
+		margin: 1.5rem auto 1.5rem;
+		max-width: 60rem;
+	}
+
+	.footer-meta {
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		justify-content: center;
+		gap: 1rem;
+		text-align: center;
+	}
+
+	.footer-meta p {
+		max-width: 42rem;
+		font-size: 0.8125rem;
+		line-height: 1.5;
+		color: var(--tb-text-muted);
+		margin: 0;
+	}
+
+	.footer-meta a {
+		color: var(--tb-text-muted);
+		border-bottom: 1px solid color-mix(in srgb, var(--tb-text-muted) 40%, transparent);
+		text-decoration: none;
+	}
+	.footer-meta a:hover {
+		color: var(--tb-text);
+		border-color: var(--tb-text);
+	}
+
+	@media (min-width: 768px) {
+		.footer-meta {
+			flex-direction: row;
+			gap: 1.5rem;
+		}
+	}
+
+	@media (max-width: 640px) {
+		nav {
+			padding: 0.75rem 1rem;
+		}
+		main {
+			padding: 2rem 1rem 3rem;
+		}
+	}
+</style>

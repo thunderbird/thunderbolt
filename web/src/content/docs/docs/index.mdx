@@ -1,0 +1,41 @@
+---
+title: Thunderbolt Docs
+description: Documentation for Thunderbolt — AI you control.
+template: splash
+hero:
+  tagline: Choose your models. Own your data. Eliminate vendor lock-in.
+  actions:
+    - text: Get Started
+      link: /docs/getting-started/introduction
+      icon: right-arrow
+      variant: primary
+    - text: Self-Host
+      link: /docs/guides/self-hosting
+      icon: external
+      variant: secondary
+    - text: GitHub
+      link: https://github.com/thunderbird/thunderbolt
+      icon: external
+      variant: minimal
+---
+
+import { Card, CardGrid } from '@astrojs/starlight/components';
+
+<CardGrid>
+	<Card title="Quick Start" icon="rocket">
+		Bootstrap the full local stack with Bun, Rust, and Docker.
+		[Run it locally →](/docs/getting-started/quick-start)
+	</Card>
+	<Card title="Self-Hosting" icon="setting">
+		Deploy on Docker Compose, Kubernetes, or AWS with Pulumi.
+		[Pick a deployment target →](/docs/guides/self-hosting)
+	</Card>
+	<Card title="Multi-Device Sync" icon="laptop">
+		PowerSync-backed offline-first sync, with optional end-to-end encryption.
+		[How sync works →](/docs/guides/multi-device-sync)
+	</Card>
+	<Card title="Configuration" icon="list-format">
+		Every backend environment variable, grouped by feature.
+		[Configuration reference →](/docs/reference/configuration)
+	</Card>
+</CardGrid>

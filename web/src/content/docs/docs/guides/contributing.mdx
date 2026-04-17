@@ -1,0 +1,140 @@
+---
+title: Development & Testing
+description: How to contribute — tests, data model rules, and the things that bite.
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+Thunderbolt is a TypeScript monorepo: a Vite frontend, an Elysia backend on Bun, Rust via Tauri, and a custom PowerSync sync pipeline. This page is the short version of the internal developer docs — the authoritative sources are [`docs/testing.md`](https://github.com/thunderbird/thunderbolt/blob/main/docs/testing.md), [`docs/composite-primary-keys-and-default-data.md`](https://github.com/thunderbird/thunderbolt/blob/main/docs/composite-primary-keys-and-default-data.md), and [`AGENTS.md`](https://github.com/thunderbird/thunderbolt/blob/main/AGENTS.md).
+
+## Running tests
+
+Use `bun test` through the npm scripts — **never** run `bun test` without arguments from the project root, since that picks up both frontend and backend tests at once.
+
+```bash
+# Frontend (src/ + scripts/)
+bun run test
+bun run test:watch
+
+# Backend (backend/)
+bun run test:backend
+bun run test:backend:watch
+
+# End-to-end (Playwright)
+bun run e2e
+bun run e2e:headed
+```
+
+Backend tests run against [PGLite](https://pglite.dev) embedded Postgres — no Docker required. `bun run db:dev` in `backend/` serves files from `.pglite/data`.
+
+## Testing guidelines
+
+Pulled from [`docs/testing.md`](https://github.com/thunderbird/thunderbolt/blob/main/docs/testing.md):
+
+- **Prefer dependency injection over mocking** to prevent test pollution. Inject a custom `httpClient` rather than using `mock.module()` for network calls.
+- **Fake timers are globally installed** for every test. Use `getClock()` from `@/testing-library` to advance them manually:
+
+  ```ts
+  import { getClock } from '@/testing-library'
+
+  await act(async () => {
+    await getClock().runAllAsync()
+  })
+  ```
+
+- **Suppress expected console errors** with `spyOn(console, 'error').mockImplementation(() => {})` in `beforeAll`.
+- Extract logic out of components into `use[Component]State()` hooks so it's directly testable.
+
+### ⚠️ Avoid `mock.module()` for shared modules
+
+Bun's `mock.module()` creates global, persistent mocks that leak across test files. If one test file mocks `@/hooks/use-settings`, it persists for every other test in the same worker — causing mysterious failures in CI where tests pass individually but fail when run together.
+
+**Rules of thumb:**
+
+- Don't mock shared hooks, UI primitives, or DAL layers. Use the real implementation with a test database + test provider (see `@/dal/test-utils` and `@/test-utils/test-provider`).
+- It's fine to mock **external APIs** (auth client, third-party SDKs), **browser APIs** that don't exist in the test env (`window.location.reload`), and **React Router** hooks.
+- If you absolutely must mock a shared UI primitive like `Dialog`, include **every export** — `DialogFooter`, `DialogTrigger`, etc. Missing one will crash other suites.
+
+## Composite primary keys
+
+Some synced tables seed per-user default rows that share the same `id` across all users (e.g. `openai-gpt-4o`). These tables use composite primary keys so every user can hold their own copy:
+
+| Table           | Composite key      | Why                                                                      |
+| --------------- | ------------------ | ------------------------------------------------------------------------ |
+| `settings`      | `(key, user_id)`   | Settings keys like `theme` are shared; each user has their own value.   |
+| `models`        | `(id, user_id)`    | Default models are seeded with the same ID for every user.               |
+| `modes`         | `(id, user_id)`    | Default modes (e.g. `default-mode`).                                     |
+| `tasks`         | `(id, user_id)`    | Default tasks (e.g. `inbox`).                                            |
+| `prompts`       | `(id, user_id)`    | Default automations.                                                     |
+| `model_profiles`| `(id, user_id)`    | Per-model tuning seeded per user.                                        |
+
+Tables with user-created data (chat threads, messages, MCP servers, triggers, devices) use a single `id` primary key. Frontend SQLite uses a single-column primary key; the backend uses composite.
+
+When you add a new table:
+
+1. ✅ Add a `user_id` column and a `user_id` index (`index('idx_[table]_user_id').on(table.userId)`).
+2. ✅ Use a composite primary key for default-data tables.
+3. ❌ Don't add composite foreign keys.
+4. ❌ Don't add active/soft-delete indexes or secondary indexes.
+
+Full rationale: [`docs/composite-primary-keys-and-default-data.md`](https://github.com/thunderbird/thunderbolt/blob/main/docs/composite-primary-keys-and-default-data.md).
+
+## Soft deletes
+
+Per project policy:
+
+- **Frontend:** never hard-delete. Always set `deletedAt` — the sync pipeline and backend filters handle the rest. The only exceptions are flows that explicitly remove an account or device, which call backend endpoints that hard-delete by design.
+- **Backend:** prefer soft deletes. Use hard delete only where permanent removal is the point (account deletion, device revocation, PowerSync delete operations).
+
+## Adding a synced table
+
+Two-PR process — see [Multi-Device Sync](/docs/guides/multi-device-sync#adding-a-new-synced-table). Short version:
+
+1. **PR 1** — backend schema + migration + `shared/powersync-tables.ts` + `powersync-service/config/config.yaml`. Merge first, update PowerSync Cloud dashboard rules before PR 2.
+2. **PR 2** — frontend schema, DAL, defaults, UI.
+
+Shipping the frontend before the sync rules are live causes silent sync failure.
+
+## Migrations checklist
+
+Whenever you add a backend migration, verify that `backend/drizzle/meta/_journal.json` includes the new entry. Drizzle discovers pending migrations via the journal — if the SQL file and snapshot exist but the journal entry is missing, the migration will never run. Common footgun when cherry-picking migration files across branches.
+
+## CORS + custom headers
+
+Any new custom header sent from the client (`X-Device-ID`, `X-Device-Name`, etc.) must be added to `CORS_ALLOW_HEADERS` in `backend/src/config/settings.ts`. Otherwise browser preflight fails and the request never reaches your handler.
+
+## Project conventions
+
+Pulled from [`AGENTS.md`](https://github.com/thunderbird/thunderbolt/blob/main/AGENTS.md):
+
+- **TypeScript** — never `any`. Prefer `type` over `interface`. Arrow functions over `function`.
+- **React** — treat every `useEffect` as a code smell until proven necessary. Reach for `useSyncExternalStore`, `useEffectEvent`, `useOptimistic`, and `useTransition` before `useEffect`. When a component needs 3+ `useState` hooks, switch to `useReducer` or an external state hook.
+- **Styling** — Tailwind with the project's CSS variables (see `src/index.css`). Don't write `var(--...)` for anything that has a standard Tailwind class.
+- **Package manager** — `bun`, not `npm`. Install with `bun add <pkg>@latest`.
+- **Git** — never `git add`, `git commit`, or `git push` manually; use [`/thunderpush`](https://github.com/thunderbird/thunderbolt/blob/main/.claude/commands/thunderpush.md).
+
+## Claude Code skills
+
+The `.claude/commands/` directory ships a set of slash commands that automate common dev tasks. A few to know:
+
+- **`/thunderup`** — bootstrap the full env (doctor → setup → docker up). `/thunderup all` also starts dev servers.
+- **`/thundercheck`** — run type-check, lint, format-check.
+- **`/thunderpush`** — stage, commit (conventional message), push.
+- **`/thunderdoctor`** — explain what's wrong with your local env.
+
+See [`docs/claude-code.md`](https://github.com/thunderbird/thunderbolt/blob/main/docs/claude-code.md) for the full catalog.
+
+## Storybook
+
+```bash
+bun run storybook          # :6006
+bun run build-storybook    # static build to storybook-static/
+```
+
+Stories live next to components as `<name>.stories.tsx`. Accessibility add-on is enabled — treat red warnings in the sidebar as bugs.
+
+<Aside title="Also read">
+- [`docs/widgets.md`](https://github.com/thunderbird/thunderbolt/blob/main/docs/widgets.md) — the assistant-embeddable widget system.
+- [`RELEASE.md`](https://github.com/thunderbird/thunderbolt/blob/main/RELEASE.md) — how to cut a versioned release.
+- [`docs/webview.md`](https://github.com/thunderbird/thunderbolt/blob/main/docs/webview.md) — the Tauri WebView sidebar.
+</Aside>

@@ -1,0 +1,285 @@
+/* ─── Starlight override: Thunderbolt brand ─────────────────
+ * Maps Thunderbolt marketing tokens onto Starlight's CSS vars
+ * so the docs look like the rest of the site.
+ * Loaded via starlight({ customCss: ['./src/styles/starlight.css'] }).
+ */
+
+@import './tokens.css';
+
+:root {
+	/* Force light-mode palette everywhere */
+	--sl-color-white: var(--tb-text);
+	--sl-color-gray-1: var(--tb-text);
+	--sl-color-gray-2: var(--tb-text-secondary);
+	--sl-color-gray-3: var(--tb-text-muted);
+	--sl-color-gray-4: var(--tb-text-dim);
+	--sl-color-gray-5: var(--tb-border-strong);
+	--sl-color-gray-6: var(--tb-border);
+	--sl-color-gray-7: var(--tb-surface-subtle);
+	--sl-color-black: var(--tb-bg);
+
+	--sl-color-accent-low: var(--tb-surface-subtle);
+	--sl-color-accent: var(--tb-text-secondary);
+	--sl-color-accent-high: var(--tb-text);
+
+	--sl-color-text: var(--tb-text);
+	--sl-color-text-accent: var(--tb-text);
+	--sl-color-text-invert: var(--tb-surface);
+
+	--sl-color-bg: var(--tb-bg);
+	--sl-color-bg-nav: color-mix(in srgb, var(--tb-bg) 80%, transparent);
+	--sl-color-bg-sidebar: var(--tb-bg);
+	--sl-color-bg-inline-code: var(--tb-surface-input);
+	--sl-color-bg-accent: var(--tb-text-secondary);
+
+	--sl-color-hairline-light: var(--tb-border);
+	--sl-color-hairline: var(--tb-border);
+	--sl-color-hairline-shade: var(--tb-border-strong);
+
+	--sl-color-backdrop-overlay: color-mix(in srgb, var(--tb-text) 20%, transparent);
+
+	/* Typography */
+	--sl-font: var(--tb-font-sans);
+	--sl-font-mono: var(--tb-font-mono);
+
+	/* Slightly looser than Starlight default to match marketing */
+	--sl-text-h1: 2.25rem;
+	--sl-text-h2: 1.625rem;
+	--sl-text-h3: 1.25rem;
+	--sl-text-body: 1rem;
+	--sl-line-height: 1.65;
+	--sl-line-height-headings: 1.2;
+
+	/* Tighter, editorial feel */
+	--sl-content-width: 52rem;
+	--sl-sidebar-width: 17rem;
+	--sl-nav-height: 3.75rem;
+}
+
+/* Reserve scrollbar gutter so pages don't jitter horizontally between routes. */
+html {
+	scrollbar-gutter: stable;
+}
+
+/* Starlight ships a dark-mode class. Keep the palette uniform — we're a light brand. */
+:root[data-theme='dark'] {
+	color-scheme: light;
+}
+
+:root[data-theme='dark'] {
+	--sl-color-white: var(--tb-text);
+	--sl-color-gray-1: var(--tb-text);
+	--sl-color-gray-2: var(--tb-text-secondary);
+	--sl-color-gray-3: var(--tb-text-muted);
+	--sl-color-gray-4: var(--tb-text-dim);
+	--sl-color-gray-5: var(--tb-border-strong);
+	--sl-color-gray-6: var(--tb-border);
+	--sl-color-gray-7: var(--tb-surface-subtle);
+	--sl-color-black: var(--tb-bg);
+
+	--sl-color-accent-low: var(--tb-surface-subtle);
+	--sl-color-accent: var(--tb-text-secondary);
+	--sl-color-accent-high: var(--tb-text);
+
+	--sl-color-text: var(--tb-text);
+	--sl-color-text-accent: var(--tb-text);
+	--sl-color-text-invert: var(--tb-surface);
+
+	--sl-color-bg: var(--tb-bg);
+	--sl-color-bg-nav: color-mix(in srgb, var(--tb-bg) 80%, transparent);
+	--sl-color-bg-sidebar: var(--tb-bg);
+	--sl-color-bg-inline-code: var(--tb-surface-input);
+	--sl-color-bg-accent: var(--tb-text-secondary);
+
+	--sl-color-hairline-light: var(--tb-border);
+	--sl-color-hairline: var(--tb-border);
+	--sl-color-hairline-shade: var(--tb-border-strong);
+}
+
+/* Editorial headings — marketing uses tight tracking and medium weight */
+.sl-markdown-content h1,
+.sl-markdown-content h2,
+.sl-markdown-content h3,
+.sl-markdown-content h4 {
+	color: var(--tb-text);
+	letter-spacing: -0.015em;
+	font-weight: 600;
+}
+
+.sl-markdown-content h2 {
+	margin-top: 2.25em;
+	padding-top: 1.25em;
+	border-top: 1px solid var(--tb-border);
+	font-weight: 500;
+}
+
+.sl-markdown-content h3 {
+	margin-top: 1.75em;
+	font-weight: 500;
+}
+
+.sl-markdown-content p,
+.sl-markdown-content li {
+	color: var(--tb-text-secondary);
+}
+
+.sl-markdown-content strong {
+	color: var(--tb-text);
+	font-weight: 600;
+}
+
+.sl-markdown-content a:not(.sl-link-card) {
+	color: var(--tb-text);
+	text-decoration: none;
+	border-bottom: 1px solid color-mix(in srgb, var(--tb-text-muted) 40%, transparent);
+	transition:
+		color 0.15s,
+		border-color 0.15s;
+}
+
+.sl-markdown-content a:not(.sl-link-card):hover {
+	color: var(--tb-text);
+	border-color: var(--tb-text);
+}
+
+/* Inline code blends with the surface */
+.sl-markdown-content :not(pre) > code {
+	background: var(--tb-surface-input);
+	color: var(--tb-text);
+	border: 1px solid var(--tb-border);
+	padding: 0.05em 0.4em;
+	font-family: var(--tb-font-mono);
+	font-size: 0.85em;
+}
+
+/* Code blocks — light cards with the border motif */
+.sl-markdown-content .expressive-code,
+.sl-markdown-content pre:not(.not-content) {
+	border: 1px solid var(--tb-border);
+	background: var(--tb-surface);
+	box-shadow: 0 1px 2px rgba(16, 24, 40, 0.03);
+}
+
+/* Tables — editorial, no heavy zebra */
+.sl-markdown-content table {
+	border-collapse: collapse;
+	font-size: 0.95em;
+}
+.sl-markdown-content th,
+.sl-markdown-content td {
+	border: 1px solid var(--tb-border);
+	padding: 0.55em 0.8em;
+}
+.sl-markdown-content th {
+	background: var(--tb-surface-subtle);
+	color: var(--tb-text);
+	font-weight: 600;
+	text-align: left;
+}
+
+/* Nav chrome */
+header.header {
+	background: color-mix(in srgb, var(--tb-bg) 85%, transparent);
+	backdrop-filter: saturate(140%) blur(12px);
+	border-bottom: 1px solid var(--tb-border);
+}
+
+.site-title,
+a.site-title {
+	font-weight: 600;
+	letter-spacing: -0.015em;
+	color: var(--tb-text);
+}
+
+/* Sidebar */
+nav.sidebar ul > li > a,
+starlight-menu-button {
+	color: var(--tb-text-secondary);
+}
+nav.sidebar ul > li > a[aria-current='page'] {
+	background: var(--tb-surface-subtle);
+	color: var(--tb-text);
+	font-weight: 500;
+}
+
+/* Sidebar group headers — marketing mono treatment */
+nav.sidebar summary,
+nav.sidebar > ul > li > span.large {
+	font-family: var(--tb-font-mono);
+	text-transform: uppercase;
+	letter-spacing: 0.05em;
+	font-size: 0.72rem;
+	font-weight: 700;
+	color: var(--tb-text-muted);
+}
+
+/* Hero on the docs splash */
+.hero {
+	padding-top: 2rem;
+}
+.hero h1 {
+	font-size: clamp(2.25rem, 5vw, 3rem);
+	letter-spacing: -0.025em;
+	font-weight: 600;
+	color: var(--tb-text);
+}
+.hero .tagline {
+	color: var(--tb-text-muted);
+	font-size: 1.125rem;
+}
+
+/* Primary action — marketing's dark-slate CTA */
+.sl-link-button.primary,
+.sl-link-button.variant-primary {
+	background: var(--tb-text-secondary);
+	color: var(--tb-surface);
+	border: 1px solid var(--tb-text-secondary);
+	border-radius: 0;
+	font-family: var(--tb-font-mono);
+	text-transform: uppercase;
+	letter-spacing: 0.08em;
+	font-weight: 700;
+	font-size: 0.8125rem;
+	padding: 0.75rem 1.1rem;
+	height: 46px;
+	transition: background-color 0.15s, color 0.15s;
+}
+.sl-link-button.primary:hover {
+	background: var(--tb-text);
+}
+
+.sl-link-button.secondary,
+.sl-link-button.variant-secondary,
+.sl-link-button.minimal {
+	background: transparent;
+	color: var(--tb-text-secondary);
+	border: 1px solid var(--tb-text-secondary);
+	border-radius: 0;
+	font-family: var(--tb-font-mono);
+	text-transform: uppercase;
+	letter-spacing: 0.08em;
+	font-weight: 700;
+	font-size: 0.8125rem;
+	padding: 0.75rem 1.1rem;
+	height: 46px;
+}
+.sl-link-button.secondary:hover,
+.sl-link-button.minimal:hover {
+	background: var(--tb-text-secondary);
+	color: var(--tb-surface);
+}
+
+/* Card grid */
+.sl-link-card {
+	background: var(--tb-surface);
+	border: 1px solid var(--tb-border);
+	transition:
+		border-color 0.15s,
+		box-shadow 0.15s,
+		transform 0.15s;
+}
+.sl-link-card:hover {
+	border-color: var(--tb-text-secondary);
+	box-shadow: 0 2px 12px rgba(16, 24, 40, 0.06);
+	transform: translateY(-1px);
+}

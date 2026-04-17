@@ -60,7 +60,7 @@ jobs:
             --json-output semgrep.json
 
       - name: Upload SARIF
-        uses: github/codeql-action/upload-sarif@5c8a8a642e79153f5d047b10ec1cba1d1cc65699 # v3.35.1
+        uses: github/codeql-action/upload-sarif@95e58e9a2cdfd71adc6e0353d5c52f41a045d225 # v4.35.2
         if: always() && hashFiles('semgrep.sarif') != ''
         continue-on-error: true
         with:

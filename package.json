@@ -59,7 +59,7 @@
     "@journeyapps/wa-sqlite": "^1.5.0",
     "@modelcontextprotocol/sdk": "^1.25.2",
     "@noble/post-quantum": "^0.6.0",
-    "@openrouter/ai-sdk-provider": "^1.1.2",
+    "@openrouter/ai-sdk-provider": "^2.5.1",
     "@powersync/common": "1.48.0",
     "@powersync/drizzle-driver": "0.7.2",
     "@powersync/react": "1.9.0",

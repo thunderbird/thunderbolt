@@ -410,16 +410,16 @@ const PartnershipSection = () => (
             +
           </span>
           <img
-            src="/enterprise/deepset-logo.svg"
+            src="/enterprise/deepset.png"
             alt="deepset"
-            className="h-[36px] w-auto md:h-[48px]"
+            className="h-[32px] w-auto md:h-[40px]"
           />
         </div>
         <a
           href="https://www.deepset.ai/news/sovereign-ai-stack-mozilla-thunderbolt-haystack"
           target="_blank"
           rel="noopener noreferrer"
-          className="group inline-flex shrink-0 items-center gap-2 font-mono text-sm font-bold uppercase tracking-wider text-[#344054] transition-colors hover:text-[#101828]"
+          className="group inline-flex shrink-0 items-center gap-2 self-center font-mono text-sm font-bold uppercase tracking-wider text-[#344054] transition-colors hover:text-[#101828] md:self-auto"
         >
           Read the announcement from deepset
           <span className="transition-transform group-hover:translate-x-0.5" aria-hidden="true">
@@ -453,7 +453,7 @@ const PartnershipSection = () => (
           </div>
           <p className="mt-4 text-base leading-7 text-[#667085] md:text-[17px] md:leading-7">
             Partnership with deepset for sovereign deployments across the EU. Thunderbolt&rsquo;s
-            open-source client pairs with Haystack&rsquo;s orchestration framework into a unified,
+            open-source client pairs with Haystack&rsquo;s orchestration platform into a unified,
             sovereign stack &mdash; giving organizations long-term control over how AI is built, run, and
             experienced, without trade-offs between capability and control.
           </p>

@@ -169,7 +169,7 @@
     "tsx": "^4.20.4",
     "type-fest": "^4.41.0",
     "typescript": "~5.9.2",
-    "vite": "^7.3.2",
+    "vite": "^8.0.8",
     "vite-bundle-analyzer": "^1.2.1",
     "vitest": "^3.2.4"
   }

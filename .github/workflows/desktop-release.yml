@@ -238,7 +238,7 @@ jobs:
       - name: build Tauri app for Linux
         if: matrix.os == 'ubuntu-24.04'
         run: |
-          bun install
+          bun install --frozen-lockfile
           bun tauri build
         env:
           RUSTFLAGS: ''
@@ -252,7 +252,7 @@ jobs:
       - name: build Tauri app for Windows (x86_64)
         if: matrix.os == 'windows-latest' && matrix.target == 'x86_64-pc-windows-msvc'
         run: |
-          bun install
+          bun install --frozen-lockfile
           bun tauri build --target x86_64-pc-windows-msvc
         env:
           RUSTFLAGS: ''
@@ -268,7 +268,7 @@ jobs:
           # Install ARM64 target
           rustup target add aarch64-pc-windows-msvc
           # Build for ARM64
-          bun install
+          bun install --frozen-lockfile
           bun tauri build --target aarch64-pc-windows-msvc
         env:
           RUSTFLAGS: ''
@@ -281,7 +281,7 @@ jobs:
       - name: Build Tauri app for macOS (Silicon)
         if: matrix.os == 'macos-latest' && matrix.target == 'aarch64-apple-darwin'
         run: |
-          bun install
+          bun install --frozen-lockfile
           bun tauri build --target aarch64-apple-darwin
         env:
           RUSTFLAGS: ''
@@ -301,7 +301,7 @@ jobs:
           # Clean only the x86_64 target to avoid architecture conflicts
           rm -rf src-tauri/target/x86_64-apple-darwin
           # Build for Intel with proper environment
-          bun install
+          bun install --frozen-lockfile
           bun tauri build --target x86_64-apple-darwin
         env:
           # Override the target-cpu=native flag

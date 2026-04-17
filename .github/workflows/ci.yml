@@ -93,7 +93,7 @@ jobs:
 
       - name: Inject & upload source maps to PostHog
         if: github.ref == 'refs/heads/main'
-        uses: PostHog/upload-source-maps@e798a054427efc710af080354f8450d3c154c584 # v0.4.6
+        uses: PostHog/upload-source-maps@991172e085213c222c61d2ba6a0b9e57c81e5066 # v2.0.0
         with:
           directory: dist
           env-id: ${{ secrets.POSTHOG_CLI_ENV_ID }}

@@ -145,7 +145,7 @@
     "@typescript-eslint/parser": "^8.40.0",
     "@vitejs/plugin-react": "^5.0.1",
     "@vitest/browser": "^3.2.4",
-    "@vitest/coverage-v8": "^3.2.4",
+    "@vitest/coverage-v8": "^4.1.4",
     "bun-types": "^1.2.20",
     "dotenv": "^17.2.1",
     "drizzle-kit": "^0.31.4",

@@ -46,7 +46,7 @@ jobs:
 
       - name: Build
         run: |
-          bun install
+          bun install --frozen-lockfile
 
           case "$INPUT_PLATFORM" in
             "linux")

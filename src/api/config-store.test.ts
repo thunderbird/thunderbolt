@@ -18,16 +18,14 @@ describe('config store', () => {
   })
 
   it('updates config via updateConfig', () => {
-    const newConfig = { someFlag: true }
-    useConfigStore.getState().updateConfig(newConfig)
+    useConfigStore.getState().updateConfig({ e2eeEnabled: true })
 
-    expect(useConfigStore.getState().config).toEqual({ someFlag: true })
+    expect(useConfigStore.getState().config).toEqual({ e2eeEnabled: true })
   })
 
   it('preserves cached config when fetch fails (null scenario)', () => {
     // Simulate a successful fetch that populates the store
-    const cachedConfig = { featureEnabled: true }
-    useConfigStore.getState().updateConfig(cachedConfig)
+    useConfigStore.getState().updateConfig({ e2eeEnabled: true })
 
     // Simulate a failed fetch — caller would NOT call updateConfig
     const fetchResult = null
@@ -36,13 +34,13 @@ describe('config store', () => {
     }
 
     // Store retains the cached value
-    expect(useConfigStore.getState().config).toEqual({ featureEnabled: true })
+    expect(useConfigStore.getState().config).toEqual({ e2eeEnabled: true })
   })
 
   it('replaces entire config on update', () => {
-    useConfigStore.getState().updateConfig({ a: 1 })
-    useConfigStore.getState().updateConfig({ b: 2 })
+    useConfigStore.getState().updateConfig({ e2eeEnabled: true })
+    useConfigStore.getState().updateConfig({ e2eeEnabled: false })
 
-    expect(useConfigStore.getState().config).toEqual({ b: 2 })
+    expect(useConfigStore.getState().config).toEqual({ e2eeEnabled: false })
   })
 })

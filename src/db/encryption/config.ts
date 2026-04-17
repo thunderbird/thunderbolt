@@ -1,14 +1,8 @@
+import { useConfigStore } from '@/api/config-store'
 import { getCK } from '@/crypto/key-storage'
 
-const e2eeStorageKey = 'e2ee_enabled'
-
-/** Whether E2E encryption is enabled. Reads from localStorage (persisted from /config endpoint). */
-export const isEncryptionEnabled = (): boolean => localStorage.getItem(e2eeStorageKey) === 'true'
-
-/** Persist the E2EE flag from backend config. Called during app initialization. */
-export const setEncryptionEnabled = (enabled: boolean): void => {
-  localStorage.setItem(e2eeStorageKey, String(enabled))
-}
+/** Whether E2E encryption is enabled. Reads from the persisted config store (hydrated from /config endpoint). */
+export const isEncryptionEnabled = (): boolean => useConfigStore.getState().config.e2eeEnabled === true
 
 /**
  * Returns true when the sync setup wizard is needed before enabling sync.

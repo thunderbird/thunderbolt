@@ -7,7 +7,6 @@ let mockE2EEEnabled = false
 
 mock.module('@/db/encryption/config', () => ({
   isEncryptionEnabled: () => mockE2EEEnabled,
-  setEncryptionEnabled: () => {},
   needsSyncSetupWizard: async () => false,
   encryptedColumnsMap: {},
 }))

@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, beforeEach, mock } from 'bun:test'
 import { generateCK } from '@/crypto'
+import { resetConfigStore, useConfigStore } from '@/api/config-store'
 
 let mockCK: CryptoKey | null = null
 
@@ -19,11 +20,11 @@ describe('encodeForUpload', () => {
   beforeEach(async () => {
     invalidateCKCache()
     mockCK = await generateCK()
-    localStorage.setItem('e2ee_enabled', 'true')
+    useConfigStore.getState().updateConfig({ e2eeEnabled: true })
   })
 
   afterEach(() => {
-    localStorage.removeItem('e2ee_enabled')
+    resetConfigStore()
   })
 
   it('encrypts encrypted columns for known tables', async () => {

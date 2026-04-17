@@ -40,7 +40,7 @@ docker compose up --build
 |---------|-----|-------------|
 | App | http://localhost:3000 | (via Keycloak SSO) |
 | Keycloak admin | http://localhost:8180 | admin / admin |
-| Demo user | (Keycloak login) | demo@thunderbolt.so / demo |
+| Demo user | (Keycloak login) | demo@thunderbolt.io / demo |
 
 ```bash
 docker compose down        # stop, keep data
@@ -78,7 +78,7 @@ See [.env.example](.env.example). Variables hardcoded in `docker-compose.yml` (a
 
 Realm `thunderbolt` auto-imports from `config/keycloak-realm.json` on first boot.
 - Client: `thunderbolt-app`
-- Default user: demo@thunderbolt.so / demo
+- Default user: demo@thunderbolt.io / demo
 - Admin console: `/admin` (admin / admin)
 
 ### PowerSync

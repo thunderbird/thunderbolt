@@ -157,7 +157,7 @@
     "globals": "^16.3.0",
     "happy-dom": "^20.0.8",
     "husky": "^9.1.7",
-    "jsdom": "^26.1.0",
+    "jsdom": "^29.0.2",
     "lint-staged": "^16.1.5",
     "msw": "^2.10.5",
     "oauth2-mock-server": "^8.2.2",

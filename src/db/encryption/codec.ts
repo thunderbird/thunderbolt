@@ -1,4 +1,5 @@
-import { encrypt, decrypt, getCK } from '@/crypto'
+import { encrypt, decrypt } from '@/crypto'
+import { getCK } from '@/crypto/key-storage'
 
 const encPrefix = '__enc:'
 export type EncryptionCodec = {

@@ -2219,6 +2219,56 @@ describe('PowerSync API (E2EE disabled)', () => {
     expect(data.powerSyncUrl).toBe('https://powersync.example.com')
   })
 
+  it('creates and trusts a brand-new device on token request when E2EE is disabled', async () => {
+    const userId = 'user-new-device-e2ee-off'
+    const now = new Date()
+    const expiresAt = new Date(now.getTime() + 3600 * 1000)
+
+    await db.insert(userTable).values({
+      id: userId,
+      name: 'New Device User',
+      email: 'new-device-e2ee-off@example.com',
+      emailVerified: true,
+      createdAt: now,
+      updatedAt: now,
+    })
+
+    await db.insert(sessionTable).values({
+      id: 'session-new-device-e2ee-off',
+      expiresAt,
+      token: 'bearer-new-device-e2ee-off',
+      createdAt: now,
+      updatedAt: now,
+      userId,
+    })
+
+    // No device inserted — device does not exist in DB at all
+    const response = await app.handle(
+      new Request('http://localhost/powersync/token', {
+        headers: {
+          Authorization: `Bearer ${signToken('bearer-new-device-e2ee-off')}`,
+          'x-device-id': 'brand-new-device',
+          'x-device-name': 'My New Phone',
+        },
+      }),
+    )
+    expect(response.status).toBe(200)
+    const data = await response.json()
+    expect(data.token).toBeDefined()
+    expect(data.powerSyncUrl).toBe('https://powersync.example.com')
+
+    // Verify device was auto-created and trusted
+    const device = await db
+      .select({ userId: devicesTable.userId, trusted: devicesTable.trusted, name: devicesTable.name })
+      .from(devicesTable)
+      .where(eq(devicesTable.id, 'brand-new-device'))
+      .then((rows) => rows[0])
+    expect(device).toBeDefined()
+    expect(device.userId).toBe(userId)
+    expect(device.trusted).toBe(true)
+    expect(device.name).toBe('My New Phone')
+  })
+
   it('auto-trusts new device on upsert when E2EE is disabled', async () => {
     const userId = 'user-auto-trust'
     const now = new Date()

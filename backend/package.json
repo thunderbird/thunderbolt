@@ -49,7 +49,7 @@
     "@electric-sql/pglite-socket": "^0.0.19",
     "@react-email/preview-server": "5.2.10",
     "@typescript-eslint/eslint-plugin": "^6.19.0",
-    "@typescript-eslint/parser": "^6.19.0",
+    "@typescript-eslint/parser": "^8.58.1",
     "drizzle-kit": "^0.31.7",
     "eslint": "^9.39.2",
     "globals": "^16.4.0",

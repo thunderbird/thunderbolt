@@ -38,7 +38,7 @@
     "ipaddr.js": "^2.3.0",
     "jose": "^6.2.2",
     "openai": "^5.22.1",
-    "pino": "^9.11.0",
+    "pino": "^10.3.1",
     "postgres": "^3.4.7",
     "posthog-node": "^5.8.8",
     "rate-limiter-flexible": "^10.0.1",

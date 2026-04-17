@@ -35,8 +35,8 @@ client_auth:
     keys:
       - kty: oct
         # Base64 of POWERSYNC_JWT_SECRET — must match backend env var
-        # Default: base64("enterprise-powersync-secret") = ZW50ZXJwcmlzZS1wb3dlcnN5bmMtc2VjcmV0
-        k: ZW50ZXJwcmlzZS1wb3dlcnN5bmMtc2VjcmV0
+        # Default: base64("enterprise-powersync-secret-2026-key") = ZW50ZXJwcmlzZS1wb3dlcnN5bmMtc2VjcmV0LTIwMjYta2V5
+        k: ZW50ZXJwcmlzZS1wb3dlcnN5bmMtc2VjcmV0LTIwMjYta2V5
         alg: HS256
         kid: enterprise-powersync
   telemetry:

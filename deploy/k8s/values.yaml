@@ -69,8 +69,8 @@ powersync:
     port: 8080
   jwt:
     kid: enterprise-powersync
-    # -- Base64-encoded JWT secret (default: "enterprise-powersync-secret")
-    secretBase64: ZW50ZXJwcmlzZS1wb3dlcnN5bmMtc2VjcmV0
+    # -- Base64-encoded JWT secret (default: "enterprise-powersync-secret-2026-key")
+    secretBase64: ZW50ZXJwcmlzZS1wb3dlcnN5bmMtc2VjcmV0LTIwMjYta2V5
 
 # =============================================================================
 # Keycloak (OIDC Identity Provider)

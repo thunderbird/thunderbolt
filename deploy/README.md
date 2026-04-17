@@ -83,4 +83,4 @@ Realm `thunderbolt` auto-imports from `config/keycloak-realm.json` on first boot
 
 ### PowerSync
 
-Sync rules in `config/powersync-config.yaml`. JWT secret must match between backend and PowerSync config.
+Sync rules in `config/powersync-config.yaml`. JWT secret must match between backend and PowerSync config and must be at least 32 characters.

@@ -195,10 +195,16 @@ export const denyDeviceWithProof = async (httpClient: HttpClient, deviceId: stri
 
 /**
  * Revoke a device with proof-of-CK-possession.
- * Extracts canary secret and sends it to prove the caller has the Content Key.
+ * Extracts canary secret when E2EE is active. Falls back to no proof for pre-E2EE users
+ * (the backend skips canary verification when no encryption metadata exists).
  */
 export const revokeDeviceWithProof = async (httpClient: HttpClient, deviceId: string): Promise<void> => {
-  const canarySecret = await extractCanarySecret(httpClient)
+  let canarySecret: string | undefined
+  try {
+    canarySecret = await extractCanarySecret(httpClient)
+  } catch {
+    // E2EE not set up (fetchCanary 404) or CK unavailable — proceed without proof
+  }
   await revokeDeviceApi(httpClient, deviceId, canarySecret)
 }
 

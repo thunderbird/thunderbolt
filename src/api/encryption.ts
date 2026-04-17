@@ -89,10 +89,10 @@ export const denyDevice = async (httpClient: HttpClient, deviceId: string, canar
   })
 }
 
-/** Revoke a device (called by a trusted device). Requires canary proof-of-CK-possession. */
-export const revokeDevice = async (httpClient: HttpClient, deviceId: string, canarySecret: string): Promise<void> => {
+/** Revoke a device. Includes canary proof-of-CK-possession when E2EE is active. */
+export const revokeDevice = async (httpClient: HttpClient, deviceId: string, canarySecret?: string): Promise<void> => {
   await httpClient.post(`account/devices/${encodeURIComponent(deviceId)}/revoke`, {
-    json: { canarySecret },
+    json: canarySecret ? { canarySecret } : {},
     headers: authHeaders(),
     credentials: 'omit',
   })

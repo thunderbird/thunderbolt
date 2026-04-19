@@ -17,11 +17,12 @@ const fetchBackendConfig = (httpClient: HttpClient): Promise<AuthProviderBackend
 }
 
 export const getOAuthConfig = async (httpClient: HttpClient): Promise<OAuthConfig> => {
-  const { client_id: clientId } = await fetchBackendConfig(httpClient)
+  const { client_id: clientId, configured } = await fetchBackendConfig(httpClient)
   const redirectUri = getOAuthRedirectUri()
 
   return {
     clientId,
+    configured,
     redirectUri,
     scope: 'https://graph.microsoft.com/mail.read User.Read offline_access',
   }
@@ -34,6 +35,11 @@ export const buildAuthUrl = async (
   redirectUri?: string,
 ): Promise<string> => {
   const config = await getOAuthConfig(httpClient)
+  if (!config.configured) {
+    throw new Error(
+      'Microsoft OAuth is not configured. Set MICROSOFT_CLIENT_ID and MICROSOFT_CLIENT_SECRET on the backend before enabling Microsoft integration.',
+    )
+  }
   const authUrl = new URL('https://login.microsoftonline.com/common/oauth2/v2.0/authorize')
   authUrl.searchParams.set('client_id', config.clientId)
   authUrl.searchParams.set('redirect_uri', redirectUri ?? config.redirectUri)

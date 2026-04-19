@@ -15,6 +15,7 @@ export type OAuthProvider = 'google' | 'microsoft'
 
 export type OAuthConfig = {
   clientId: string
+  configured: boolean
   redirectUri: string
   scope: string
 }

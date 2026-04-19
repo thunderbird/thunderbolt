@@ -107,6 +107,7 @@ export type ToolConfig = {
 
 export type AuthProviderBackendConfig = {
   client_id: string
+  configured: boolean
 }
 
 // Re-export types from schemas to maintain backward compatibility

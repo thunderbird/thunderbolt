@@ -114,6 +114,85 @@
   --sidebar-ring: oklch(0.708 0 0);
 }
 
+/* ─── Blog prose typography ─── */
+.prose-thunderbolt {
+  font-family: var(--font-sans);
+  color: #344054;
+  font-size: 1.0625rem;
+  line-height: 1.75;
+}
+
+.prose-thunderbolt p {
+  margin-top: 1.5em;
+  margin-bottom: 0;
+}
+
+.prose-thunderbolt p:first-child {
+  margin-top: 0;
+}
+
+.prose-thunderbolt h2 {
+  margin-top: 2.5em;
+  margin-bottom: 0.75em;
+  font-size: 1.5rem;
+  font-weight: 500;
+  line-height: 1.3;
+  letter-spacing: -0.48px;
+  color: #101828;
+}
+
+.prose-thunderbolt ul {
+  margin-top: 1.25em;
+  margin-bottom: 0;
+  padding-left: 1.5em;
+  list-style: disc;
+}
+
+.prose-thunderbolt li {
+  margin-top: 0.5em;
+}
+
+.prose-thunderbolt li + li {
+  margin-top: 0.75em;
+}
+
+.prose-thunderbolt strong {
+  font-weight: 600;
+  color: #101828;
+}
+
+.prose-thunderbolt a {
+  color: #344054;
+  text-decoration: none;
+  border-bottom: 1px solid rgba(102, 112, 133, 0.4);
+  transition: color 0.15s, border-color 0.15s;
+}
+
+.prose-thunderbolt a:hover {
+  color: #101828;
+  border-color: #101828;
+}
+
+.prose-thunderbolt blockquote {
+  margin-top: 2em;
+  margin-bottom: 0;
+  border-left: 3px solid #eaecf0;
+  padding-left: 1.25em;
+  font-size: 1.125rem;
+  line-height: 1.6;
+  color: #101828;
+  font-style: italic;
+}
+
+.prose-thunderbolt blockquote cite {
+  display: block;
+  margin-top: 0.75em;
+  font-style: normal;
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: #667085;
+}
+
 .dark {
   --background: oklch(0.145 0 0);
   --foreground: oklch(0.985 0 0);

@@ -6,7 +6,7 @@ export const FooterSection = ({ className = '' }: FooterSectionProps) => (
   <footer className={className}>
     <div className="mx-auto max-w-[1120px] px-6 lg:px-0">
       <div className="flex items-center justify-center gap-2">
-        <img src="/enterprise/thunderbolt-logo.svg" alt="Thunderbolt" className="size-[34px]" />
+        <img src="/enterprise/thunderbolt-logo.png" alt="Thunderbolt" className="size-[34px]" />
         <span className="text-xl font-medium tracking-tight text-[#101828]">Thunderbolt</span>
       </div>
       <div className="mx-auto mt-6 h-px max-w-[1118px] bg-[#eaecf0]" />

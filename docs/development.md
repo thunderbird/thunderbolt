@@ -11,6 +11,7 @@ make setup
 # Set up .env files
 cp .env.example .env
 cd backend && cp .env.example .env
+cd ..
 
 # Run postgres + powersync
 make docker-up

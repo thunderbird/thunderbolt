@@ -4,6 +4,12 @@
 
 ![Thunderbolt Main Dashboard](./docs/screenshots/main.png)
 
+> [!IMPORTANT]
+> ⚠️ **We are excited about the amount of interest Thunderbolt has been getting and want to clarify that it is still early and under active development**. Currently, we are targeting enterprise customers that want to deploy it on-prem. We encourage you to self-host it and try it out, but there are a few caveats we are still working on:
+>
+> - While we eventually plan to make Thunderbolt fully offline-first, it currently depends on authentication and search functionality (though you can disable search on the integrations screen in the app). You can [deploy your own backend with Docker](./deploy/README.md) and sign up in order to test it locally.
+> - You’ll need to add your own model providers - we don’t yet have a public inference endpoint. We recommend using Thunderbolt with [Ollama](https://ollama.com) or [llama.cpp](https://github.com/ggml-org/llama.cpp) if you want free local inference, or you can add API keys for any OpenAI-compatible model provider in the settings.
+
 Thunderbolt is an open-source, cross-platform AI client that can be deployed on-prem anywhere.
 
 - 🌐 Available on all major desktop and mobile platforms: web, iOS, Android, Mac, Linux, and Windows.
@@ -28,6 +34,7 @@ We welcome contributions from everyone.
 ## Documentation
 
 - [FAQ](./docs/faq.md) - Frequently asked questions
+- [Deployment](./deploy/README.md) - Self-host with Docker Compose or Kubernetes
 - [Development](./docs/development.md) - Quick start, setup, and testing
 - [Architecture](./docs/architecture.md) - System architecture and diagrams
 - [Features and Roadmap](./docs/roadmap.md) - Platform and feature status

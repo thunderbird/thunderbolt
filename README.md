@@ -1,4 +1,4 @@
-# Thunderbolt [![CI](https://github.com/thunderbird/thunderbolt/actions/workflows/ci.yml/badge.svg)](https://github.com/thunderbird/thunderbolt/actions/workflows/ci.yml)
+# Thunderbolt [![CI](https://github.com/thunderbird/thunderbolt/actions/workflows/ci.yml/badge.svg)](https://github.com/thunderbird/thunderbolt/actions/workflows/ci.yml) [![License: MPL-2.0](https://img.shields.io/badge/License-MPL--2.0-brightgreen.svg)](https://opensource.org/licenses/MPL-2.0) [![GitHub last commit](https://img.shields.io/github/last-commit/thunderbird/thunderbolt)](https://github.com/thunderbird/thunderbolt/commits/main) [![GitHub stars](https://img.shields.io/github/stars/thunderbird/thunderbolt?style=social)](https://github.com/thunderbird/thunderbolt/stargazers)
 
 **AI You Control: Choose your models. Own your data. Eliminate vendor lock-in.**
 
@@ -17,6 +17,57 @@ Thunderbolt is an open-source, cross-platform AI client that can be deployed on-
 - 🙋 Enterprise features, support, and FDEs available.
 
 **Thunderbolt is under active development, currently undergoing a security audit, and preparing for enterprise production readiness.**
+
+## Table of Contents
+
+- [Quick Start](#quick-start)
+- [Features](#features)
+- [Need Help?](#need-help)
+- [Contributing](#contributing)
+- [Documentation](#documentation)
+- [Code of Conduct](#code-of-conduct)
+- [Security](#security)
+- [License](#license)
+
+## Quick Start
+
+**Prerequisites:** [Bun](https://bun.sh), [Rust](https://www.rust-lang.org/tools/install), [Docker](https://docs.docker.com/get-docker/)
+
+```bash
+# Clone the repo
+git clone https://github.com/thunderbird/thunderbolt.git
+cd thunderbolt
+
+# Install dependencies
+make setup
+
+# Set up environment files
+cp .env.example .env
+cd backend && cp .env.example .env && cd ..
+
+# Start Postgres + PowerSync
+make docker-up
+
+# Run in browser
+bun dev
+# -> open http://localhost:1420
+
+# Or run as a desktop app
+bun tauri:dev:desktop
+```
+
+For detailed setup instructions (iOS, Android, testing), see the [Development Guide](./docs/development.md).
+
+## Features
+
+| Feature | Description |
+|---------|-------------|
+| 🌐 **Cross-Platform** | Web, iOS, Android, macOS, Linux, and Windows |
+| 🧠 **Any Model** | Frontier (OpenAI, Anthropic), local (Ollama, llama.cpp), or on-prem |
+| 🔒 **Privacy-First** | Self-host on-prem — your data never leaves your infrastructure |
+| 🏢 **Enterprise Ready** | Designed for on-prem deployment with enterprise features and support |
+| 🔍 **Search** | Integrated search functionality (can be disabled) |
+| 🎨 **Modern UI** | Built with TypeScript, Tauri (Rust), and a responsive design |
 
 ## Need Help?
 

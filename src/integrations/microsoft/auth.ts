@@ -8,10 +8,20 @@ let cachedBackendConfig: Promise<AuthProviderBackendConfig> | null = null
 
 const fetchBackendConfig = (httpClient: HttpClient): Promise<AuthProviderBackendConfig> => {
   if (!cachedBackendConfig) {
-    cachedBackendConfig = httpClient.get('auth/microsoft/config').json<AuthProviderBackendConfig>()
-    cachedBackendConfig.catch(() => {
-      cachedBackendConfig = null
-    })
+    const pending = httpClient.get('auth/microsoft/config').json<AuthProviderBackendConfig>()
+    cachedBackendConfig = pending
+    pending.then(
+      (config) => {
+        // Don't cache "not configured" — let the next call retry so the UI recovers
+        // after the backend is fixed without needing an app reload.
+        if (!config.configured) {
+          cachedBackendConfig = null
+        }
+      },
+      () => {
+        cachedBackendConfig = null
+      },
+    )
   }
   return cachedBackendConfig
 }
@@ -22,7 +32,9 @@ export const getOAuthConfig = async (httpClient: HttpClient): Promise<OAuthConfi
 
   return {
     clientId,
-    configured,
+    // Pre-patch backends only return `client_id`. Treat a missing `configured`
+    // field as truthy when a client_id is present to preserve existing behavior.
+    configured: configured ?? Boolean(clientId),
     redirectUri,
     scope: 'https://graph.microsoft.com/mail.read User.Read offline_access',
   }

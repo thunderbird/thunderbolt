@@ -217,7 +217,7 @@ describe('parseSSEStream', () => {
     expect(events).toEqual([{ multi: 'line' }])
   })
 
-  it('throws on buffer overflow (>10MB)', async () => {
+  it('throws on buffer overflow (>10M chars)', async () => {
     const huge = 'data: ' + 'x'.repeat(11 * 1024 * 1024) + '\n\n'
     const body = encode(huge)
     await expect(collect(parseSSEStream(body))).rejects.toThrow('SSE buffer exceeded size limit')
@@ -389,6 +389,7 @@ const createHttpState = (): HttpConnectionState => ({
   sessionId: null,
   activeAborts: new Set(),
   closed: false,
+  bootstrapPromise: null,
 })
 
 describe('handleHttpMessage', () => {
@@ -499,6 +500,132 @@ describe('handleHttpMessage', () => {
 
     expect(capturedSignal?.aborted).toBe(true)
     expect(state.activeAborts.size).toBe(0)
+  })
+
+  it('pipelines subsequent messages with Acp-Session-Id from bootstrap response', async () => {
+    const ws = createFakeDownstream()
+    const state = createHttpState()
+
+    // Control when the first (bootstrap) fetch resolves so we can enqueue a second message
+    // while bootstrap is still in flight.
+    let resolveFirst: ((response: Response) => void) | null = null
+    const capturedHeaders: Array<Record<string, string>> = []
+    let call = 0
+
+    const fakeFetch: (input: string | URL | Request, init?: RequestInit) => Promise<Response> = async (_url, init) => {
+      const headers = init?.headers as Record<string, string>
+      capturedHeaders.push({ ...headers })
+      call += 1
+      if (call === 1) {
+        return new Promise<Response>((resolve) => {
+          resolveFirst = resolve
+        })
+      }
+      return new Response(JSON.stringify({ result: 'second', id: 2 }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      })
+    }
+
+    // Fire both messages in quick succession. Single-threaded JS means both synchronous
+    // entries run before any `await` can yield, so both enter handleHttpMessage before
+    // the second can observe the first's state changes across an await.
+    const p1 = handleHttpMessage(
+      asElysiaWs(ws),
+      JSON.stringify({ jsonrpc: '2.0', method: 'session/new', id: 1 }),
+      state,
+      fakeFetch,
+    )
+    const p2 = handleHttpMessage(
+      asElysiaWs(ws),
+      JSON.stringify({ jsonrpc: '2.0', method: 'session/prompt', id: 2 }),
+      state,
+      fakeFetch,
+    )
+
+    // Wait for the first fetch to be called.
+    while (call < 1) await new Promise((r) => queueMicrotask(() => r(undefined)))
+
+    // Resolve the bootstrap with session headers populated.
+    resolveFirst!(
+      new Response(JSON.stringify({ result: 'first', id: 1 }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json', 'Acp-Session-Id': 'sess-123' },
+      }),
+    )
+
+    await Promise.all([p1, p2])
+
+    // First call had no session header (bootstrap); second call must carry the Acp-Session-Id
+    // returned by the bootstrap response.
+    expect(capturedHeaders).toHaveLength(2)
+    expect(capturedHeaders[0]!['Acp-Session-Id']).toBeUndefined()
+    expect(capturedHeaders[1]!['Acp-Session-Id']).toBe('sess-123')
+    expect(state.sessionId).toBe('sess-123')
+  })
+
+  it('allows bootstrap retry after the first bootstrap attempt fails', async () => {
+    const ws = createFakeDownstream()
+    const state = createHttpState()
+
+    let call = 0
+    const fakeFetch: (input: string | URL | Request, init?: RequestInit) => Promise<Response> = async () => {
+      call += 1
+      if (call === 1) throw new Error('network down')
+      return new Response(JSON.stringify({ result: 'ok', id: 2 }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json', 'Acp-Session-Id': 'sess-retry' },
+      })
+    }
+
+    // First call: bootstrap fails. Must not leave bootstrapPromise set so the next caller retries.
+    await handleHttpMessage(
+      asElysiaWs(ws),
+      JSON.stringify({ jsonrpc: '2.0', method: 'session/new', id: 1 }),
+      state,
+      fakeFetch,
+    ).catch(() => {
+      // handleHttpMessage surfaces the error on the request path — swallow here.
+    })
+
+    expect(state.bootstrapPromise).toBeNull()
+    expect(state.sessionId).toBeNull()
+
+    // Second call: must be able to bootstrap (not deadlock) and populate the session.
+    await handleHttpMessage(
+      asElysiaWs(ws),
+      JSON.stringify({ jsonrpc: '2.0', method: 'session/new', id: 2 }),
+      state,
+      fakeFetch,
+    )
+
+    expect(state.sessionId).toBe('sess-retry')
+    expect(call).toBe(2)
+  })
+
+  it('resets bootstrapPromise when upstream returns success but no Acp-Session-Id header', async () => {
+    const ws = createFakeDownstream()
+    const state = createHttpState()
+
+    const fakeFetch: (input: string | URL | Request, init?: RequestInit) => Promise<Response> = async () => {
+      // Success response with no session header — upstream protocol violation / degraded mode.
+      return new Response(JSON.stringify({ result: 'ok', id: 1 }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      })
+    }
+
+    await handleHttpMessage(
+      asElysiaWs(ws),
+      JSON.stringify({ jsonrpc: '2.0', method: 'session/new', id: 1 }),
+      state,
+      fakeFetch,
+    )
+
+    // sessionId was never populated → releaseBootstrap must have reset bootstrapPromise
+    // to null so the next arriving message can claim the bootstrap role and retry.
+    expect(state.sessionId).toBeNull()
+    expect(state.bootstrapPromise).toBeNull()
   })
 })
 
@@ -664,6 +791,8 @@ describe('handleWsMessage (queue and flush)', () => {
     expect(state.closed).toBe(true)
     expect(state.pendingMessages).toEqual([])
     expect(state.pendingBytes).toBe(0)
+    // Upstream handshake must be cancelled to avoid leaking a connecting socket.
+    expect(upstream.closeCalls).toBe(1)
   })
 
   it('closes the downstream with 4005 when pending bytes exceed bound', () => {
@@ -679,6 +808,19 @@ describe('handleWsMessage (queue and flush)', () => {
     expect(state.closed).toBe(true)
     expect(state.pendingMessages).toEqual([])
     expect(state.pendingBytes).toBe(0)
+  })
+
+  it('closes the upstream WS when backlog overflow tears down the relay', () => {
+    const upstream = createFakeUpstream()
+    // Upstream is CONNECTING — without closing it, the handshake would continue after teardown.
+    const ws = createFakeDownstream()
+    const state = createWsState(upstream)
+
+    const big = 'x'.repeat(maxPendingBytes + 1)
+    handleWsMessage(asElysiaWs(ws), big, state)
+
+    expect(upstream.closeCalls).toBe(1)
+    expect(ws.closeCalls).toEqual([{ code: 4005, reason: 'Upstream connection backlog exceeded' }])
   })
 })
 

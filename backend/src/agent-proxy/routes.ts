@@ -3,7 +3,7 @@ import { createSafeFetch, validateSafeUrl } from '@/utils/url-validation'
 import { Elysia, t } from 'elysia'
 
 const proxyTimeoutMs = 30_000
-const maxSseBufferBytes = 10 * 1024 * 1024
+const maxSseBufferChars = 10 * 1024 * 1024
 
 /** Max messages queued while upstream WS is CONNECTING. Exceeding closes the client conn with 4005. */
 export const maxPendingMessages = 64
@@ -168,6 +168,11 @@ export const handleWsMessage = (ws: ElysiaWS, message: unknown, state: WsConnect
     connections.delete(ws.id)
     state.pendingMessages.length = 0
     state.pendingBytes = 0
+    // Close upstream BEFORE downstream to avoid leaking the in-flight handshake.
+    // readyState is CONNECTING at this point (checked above); without closing, the
+    // upstream WS continues connecting (and eventually opens) even though the relay
+    // is torn down, burning a socket until the upstream peer's idle timeout.
+    state.upstream.close()
     ws.close(4005, 'Upstream connection backlog exceeded')
     return
   }
@@ -185,12 +190,20 @@ export type HttpConnectionState = {
   sessionId: string | null
   activeAborts: Set<AbortController>
   closed: boolean
+  /**
+   * Gate that serializes ACP session bootstrap. The first message with no sessionId
+   * takes ownership (sets this to a pending promise); concurrent messages await it
+   * so they see the `Acp-Session-Id` / `Acp-Connection-Id` headers returned by the
+   * bootstrap response. Reset to null after a failed bootstrap so the next message
+   * can retry. Stays null throughout the connection if no bootstrap is needed.
+   */
+  bootstrapPromise: Promise<void> | null
 }
 
 /**
  * Parses an SSE (Server-Sent Events) response body into a stream of JSON-decoded events.
  * Yields each successfully parsed event; drops non-JSON `data:` lines with a warning.
- * Throws if the buffer exceeds {@link maxSseBufferBytes} to prevent unbounded memory growth.
+ * Throws if the buffer exceeds {@link maxSseBufferChars} characters to prevent unbounded memory growth.
  */
 export async function* parseSSEStream(body: ReadableStream<Uint8Array>): AsyncGenerator<unknown> {
   const reader = body.getReader()
@@ -204,7 +217,7 @@ export async function* parseSSEStream(body: ReadableStream<Uint8Array>): AsyncGe
 
       buffer += decoder.decode(value, { stream: true })
 
-      if (buffer.length > maxSseBufferBytes) {
+      if (buffer.length > maxSseBufferChars) {
         throw new Error('SSE buffer exceeded size limit')
       }
 
@@ -252,6 +265,7 @@ const openHttpRelay = (url: string, apiKey: string | null): HttpConnectionState 
   sessionId: null,
   activeAborts: new Set(),
   closed: false,
+  bootstrapPromise: null,
 })
 
 type FetchImpl = (input: string | URL | Request, init?: RequestInit) => Promise<Response>
@@ -276,6 +290,19 @@ export const handleHttpMessage = async (
   }
   const msgType = classifyMessage(msg)
 
+  // ACP session bootstrap gate: serialize the first in-flight request so subsequent
+  // messages see the `Acp-Session-Id` / `Acp-Connection-Id` headers returned by the
+  // bootstrap response. Single-threaded JS makes the null-check + assignment atomic
+  // (no `await` between them), so at most one message claims the bootstrap role.
+  // Callers that arrive while bootstrap is in flight wait on the existing promise.
+  const needsBootstrap = state.bootstrapPromise === null && state.sessionId === null
+  const bootstrapResolvers = needsBootstrap ? Promise.withResolvers<void>() : null
+  if (bootstrapResolvers) {
+    state.bootstrapPromise = bootstrapResolvers.promise
+  } else if (state.bootstrapPromise) {
+    await state.bootstrapPromise
+  }
+
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
     Accept: 'application/json, text/event-stream',
@@ -283,6 +310,16 @@ export const handleHttpMessage = async (
   if (state.connectionId) headers['Acp-Connection-Id'] = state.connectionId
   if (state.sessionId) headers['Acp-Session-Id'] = state.sessionId
   if (state.apiKey) headers['Authorization'] = `Bearer ${state.apiKey}`
+
+  // Releases the bootstrap gate. If the bootstrap attempt failed to establish a session
+  // (no sessionId populated), reset `bootstrapPromise` to null so the next caller can
+  // retry the bootstrap itself. Safe to call multiple times: `Promise.resolve()` on an
+  // already-resolved promise is a no-op, and the `sessionId === null` reset is idempotent.
+  const releaseBootstrap = () => {
+    if (!bootstrapResolvers) return
+    if (state.sessionId === null) state.bootstrapPromise = null
+    bootstrapResolvers.resolve()
+  }
 
   if (msgType === 'notification' || msgType === 'response') {
     const ac = new AbortController()
@@ -300,6 +337,7 @@ export const handleHttpMessage = async (
     } finally {
       clearTimeout(timeout)
       state.activeAborts.delete(ac)
+      releaseBootstrap()
     }
     return
   }
@@ -326,6 +364,10 @@ export const handleHttpMessage = async (
     if (connId) state.connectionId = connId
     const sessId = response.headers.get('Acp-Session-Id')
     if (sessId) state.sessionId = sessId
+
+    // Release the bootstrap gate as soon as session headers are captured — waiters
+    // should not block on the SSE stream body of the bootstrap request.
+    releaseBootstrap()
 
     const contentType = response.headers.get('Content-Type') || ''
 
@@ -355,6 +397,9 @@ export const handleHttpMessage = async (
   } finally {
     clearTimeout(timeout)
     state.activeAborts.delete(ac)
+    // No-op if already released after headers arrived; this covers the error path where
+    // fetch threw before we could capture session headers (so waiters can retry bootstrap).
+    releaseBootstrap()
   }
 }
 

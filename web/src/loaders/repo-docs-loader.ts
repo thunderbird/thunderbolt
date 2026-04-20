@@ -127,7 +127,11 @@ function extractDescription(body: string): string | undefined {
 		if (!trimmed) continue;
 		if (/^[#>|\-*+`]/.test(trimmed)) continue;
 		if (trimmed.startsWith('<') || trimmed.startsWith('```')) continue;
-		const cleaned = trimmed.replace(/\s+/g, ' ').replace(/[*_`]/g, '');
+		const cleaned = trimmed
+			.replace(/\s+/g, ' ')
+			// Collapse [text](url) → text so raw link syntax never reaches meta tags
+			.replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')
+			.replace(/[*_`]/g, '');
 		if (cleaned.length < 20) continue;
 		return cleaned.length > 200 ? `${cleaned.slice(0, 197)}…` : cleaned;
 	}

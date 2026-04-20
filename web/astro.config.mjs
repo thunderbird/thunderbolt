@@ -15,6 +15,35 @@ export default defineConfig({
 		starlight({
 			title: 'Thunderbolt Docs',
 			customCss: ['./src/styles/starlight.css'],
+			head: [
+				{
+					tag: 'script',
+					attrs: { type: 'module' },
+					content: `
+import mermaid from 'https://esm.run/mermaid@11';
+const render = async () => {
+  const blocks = document.querySelectorAll('pre[data-language="mermaid"]');
+  if (blocks.length === 0) return;
+  mermaid.initialize({ startOnLoad: false, theme: 'default', securityLevel: 'loose' });
+  blocks.forEach((pre, i) => {
+    const src = pre.textContent.trim();
+    const host = document.createElement('div');
+    host.className = 'mermaid';
+    host.id = 'mermaid-' + i;
+    host.textContent = src;
+    const wrapper = pre.closest('.expressive-code') || pre;
+    wrapper.replaceWith(host);
+  });
+  await mermaid.run({ querySelector: '.mermaid' });
+};
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', render);
+} else {
+  render();
+}
+`,
+				},
+			],
 			logo: {
 				src: './src/assets/thunderbolt-logo.png',
 				replacesTitle: false,

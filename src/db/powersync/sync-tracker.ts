@@ -8,10 +8,13 @@ type SyncEventType = Extract<EventType, `sync_${string}`>
 const maxErrorLength = 200
 
 /**
- * Sanitize error strings for analytics — truncate to avoid leaking verbose backend responses.
+ * Sanitize error strings for analytics — redact PII and truncate to avoid leaking sensitive data.
  */
 export const sanitizeErrorForTracking = (error: unknown): string => {
   const str = String(error)
+    .replace(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/g, '[EMAIL]')
+    .replace(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi, '[UUID]')
+    .replace(/eyJ[a-zA-Z0-9_-]+\.eyJ[a-zA-Z0-9_-]+\.[a-zA-Z0-9_-]+/g, '[JWT]')
   return str.length > maxErrorLength ? `${str.slice(0, maxErrorLength)}…` : str
 }
 

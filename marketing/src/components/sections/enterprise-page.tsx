@@ -499,6 +499,57 @@ const QuoteSection = () => (
   </section>
 )
 
+/* ─── As Featured In ──────────────────────────────────── */
+
+const featuredArticles = [
+  {
+    name: 'Ars Technica',
+    logo: '/ars_technica.svg',
+    url: 'https://arstechnica.com/ai/2026/04/mozilla-launches-thunderbolt-ai-client-with-focus-on-self-hosted-infrastructure/',
+    logoClass: 'h-12 w-auto md:h-14',
+  },
+  {
+    name: 'The Register',
+    logo: '/the_register.svg',
+    url: 'https://www.theregister.com/2026/04/16/mozilla_thunderbolt_enterprise_ai_client/',
+    logoClass: 'h-20 w-auto md:h-24',
+  },
+]
+
+/** Appends UTM params so our outbound press clicks show up in each publisher's analytics. */
+const withUtm = (url: string) => {
+  if (!url.startsWith('http')) return url
+  const u = new URL(url)
+  u.searchParams.set('utm_source', 'thunderbolt.io')
+  u.searchParams.set('utm_medium', 'referral')
+  u.searchParams.set('utm_campaign', 'mzla_thunderbolt')
+  return u.toString()
+}
+
+const FeaturedInSection = () => (
+  <section className="relative pt-8 pb-0 md:pt-12 md:pb-0">
+    <div className="mx-auto max-w-[1120px] px-6 lg:px-0">
+      <p className="text-center font-['Mozilla_Text',sans-serif] text-[19px] font-normal uppercase leading-[26px] tracking-[-0.38px] text-[#344054]">
+        As Featured In
+      </p>
+      <div className="mt-10 flex flex-col items-center justify-center gap-10 md:flex-row md:gap-20">
+        {featuredArticles.map((article) => (
+          <a
+            key={article.name}
+            href={withUtm(article.url)}
+            target="_blank"
+            rel="noopener noreferrer"
+            aria-label={`Read the ${article.name} article`}
+            className="inline-flex items-center opacity-70 transition-opacity hover:opacity-100"
+          >
+            <img src={article.logo} alt={article.name} className={article.logoClass} />
+          </a>
+        ))}
+      </div>
+    </div>
+  </section>
+)
+
 /* ─── CTA Section ─────────────────────────────────────── */
 
 const CTASection = () => (
@@ -560,6 +611,7 @@ export const EnterprisePage = () => (
       <CompromiseSection />
       <PartnershipSection />
       <QuoteSection />
+      <FeaturedInSection />
       <CTASection />
     </main>
     <FooterSection className="relative z-10 bg-[#f9fafb] pb-24 md:pb-16" />

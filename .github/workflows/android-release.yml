@@ -186,7 +186,7 @@ jobs:
           echo "Using NDK at $NDK_PATH"
 
       - name: Install Rust stable toolchain
-        uses: actions-rust-lang/setup-rust-toolchain@1fbea72663f6d4c03efaab13560c8a24cfd2a7cc # v1.9.0
+        uses: actions-rust-lang/setup-rust-toolchain@2b1f5e9b395427c92ee4e3331786ca3c37afe2d7 # v1
         with:
           toolchain: stable
           cache: false
@@ -244,7 +244,7 @@ jobs:
           echo "ANDROID_KEY_PASSWORD=$ANDROID_UPLOAD_KEY_PASSWORD" >> $GITHUB_ENV
 
       - name: Install frontend dependencies
-        run: bun install
+        run: bun install --frozen-lockfile
 
       - name: Build frontend
         run: |
@@ -281,7 +281,7 @@ jobs:
           VITE_THUNDERBOLT_CLOUD_URL: ${{ vars.VITE_THUNDERBOLT_CLOUD_URL }}
           NODE_OPTIONS: '--max-old-space-size=8192'
         run: |
-          bun install
+          bun install --frozen-lockfile
           bun tauri android build
 
       - name: Find AAB file

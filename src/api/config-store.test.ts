@@ -1,18 +1,16 @@
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
-import { resetConfigStore, useConfigStore } from './config-store'
+import { useConfigStore } from './config-store'
 
 const storageKey = 'thunderbolt-config'
 
-describe('config store', () => {
-  beforeEach(() => {
-    resetConfigStore()
-    localStorage.removeItem(storageKey)
-  })
+const resetStore = () => {
+  useConfigStore.setState({ config: {} })
+  localStorage.removeItem(storageKey)
+}
 
-  afterEach(() => {
-    resetConfigStore()
-    localStorage.removeItem(storageKey)
-  })
+describe('config store', () => {
+  beforeEach(resetStore)
+  afterEach(resetStore)
 
   it('has empty config as initial state', () => {
     const { config } = useConfigStore.getState()

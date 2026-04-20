@@ -21,5 +21,3 @@ export const useConfigStore = create<ConfigStore>()(
     { name: 'thunderbolt-config' },
   ),
 )
-
-export const resetConfigStore = () => useConfigStore.setState(initialState)

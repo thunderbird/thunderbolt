@@ -4,7 +4,8 @@ import { SignInModal } from '@/components/sign-in-modal'
 import { SyncSetupModal } from '@/components/sync-setup/sync-setup-modal'
 import { setSyncEnabled } from '@/db/powersync'
 import { needsSyncSetupWizard } from '@/db/encryption'
-import { trackEvent } from '@/lib/posthog'
+import { createHandleError } from '@/lib/error-utils'
+import { trackError, trackEvent } from '@/lib/posthog'
 
 type SignInModalContextValue = {
   openSignInModal: () => void
@@ -40,7 +41,10 @@ export const SignInModalProvider = ({ children }: SignInModalProviderProps) => {
       await setSyncEnabled(true)
       trackEvent('settings_sync_enabled')
     }
-    enableSync().catch(console.error)
+    enableSync().catch((error) => {
+      console.error('Failed to enable sync after sign-in:', error)
+      trackError(createHandleError('SYNC_ENABLE_FAILED', 'Failed to enable sync after sign-in', error))
+    })
   }
 
   const handleSyncSetupComplete = async () => {

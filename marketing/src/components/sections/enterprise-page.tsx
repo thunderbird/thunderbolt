@@ -391,8 +391,8 @@ const PartnershipSection = () => (
   <section className="relative pt-16 pb-12 md:pt-28 md:pb-20">
     <div className="mx-auto max-w-[1120px] px-6 lg:px-0">
       {/* Logo lockup — section anchor */}
-      <div className="flex flex-col items-start justify-between gap-6 md:flex-row md:items-end md:gap-8">
-        <div className="flex flex-wrap items-center gap-5 md:gap-8">
+      <div className="flex flex-col items-center justify-between gap-6 md:flex-row md:items-end md:gap-8">
+        <div className="flex flex-col items-center gap-3 md:flex-row md:gap-8">
           <div className="flex items-center gap-3">
             <img
               src="/enterprise/thunderbolt-logo.png"
@@ -412,7 +412,7 @@ const PartnershipSection = () => (
           <img
             src="/enterprise/deepset.png"
             alt="deepset"
-            className="h-[32px] w-auto md:h-[40px]"
+            className="mt-2 h-[32px] w-auto md:mt-0 md:h-[40px]"
           />
         </div>
         <a

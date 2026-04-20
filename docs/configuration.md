@@ -1,9 +1,6 @@
----
-title: Configuration
-description: Every Thunderbolt backend environment variable, grouped by feature.
----
+# Configuration
 
-Thunderbolt's backend is configured through environment variables. The schema lives at [`backend/src/config/settings.ts`](https://github.com/thunderbird/thunderbolt/blob/main/backend/src/config/settings.ts) and is validated with Zod on startup — misconfiguration fails loud, not silent.
+Thunderbolt's backend is configured through environment variables. The schema lives at [backend/src/config/settings.ts](../backend/src/config/settings.ts) and is validated with Zod on startup — misconfiguration fails loud, not silent.
 
 Copy the example to a `.env` file and customize:
 
@@ -63,26 +60,26 @@ The JWT secret must match the `secret` in `powersync-service/config/config.yaml`
 | `CORS_ORIGINS`            | `http://localhost:1420,tauri://localhost,http://tauri.localhost`     | Exact-match allowed origins (comma-separated)                                  |
 | `CORS_ALLOW_CREDENTIALS`  | `true`                                                               | Whether browsers may send cookies                                              |
 | `CORS_ALLOW_METHODS`      | `GET,POST,PUT,DELETE,PATCH,OPTIONS`                                  | Allowed HTTP methods                                                           |
-| `CORS_ALLOW_HEADERS`      | _(see [`settings.ts`](https://github.com/thunderbird/thunderbolt/blob/main/backend/src/config/settings.ts))_ | Allowed request headers. **Add any new `X-*` header you introduce in the client.** |
+| `CORS_ALLOW_HEADERS`      | _(see [settings.ts](../backend/src/config/settings.ts))_             | Allowed request headers. **Add any new `X-*` header you introduce in the client.** |
 | `CORS_EXPOSE_HEADERS`     | _(see `settings.ts`)_                                                | Response headers exposed to the client                                         |
 
 When you add a new custom header to a client request (e.g. `X-Device-ID`), you **must** add it to `CORS_ALLOW_HEADERS` — otherwise browser preflight fails and the request never reaches your handler.
 
 ## Analytics
 
-| Variable          | Default                    | Description                                 |
-| ----------------- | -------------------------- | ------------------------------------------- |
-| `POSTHOG_HOST`    | `https://us.i.posthog.com` | PostHog instance hostname                   |
+| Variable          | Default                    | Description                                  |
+| ----------------- | -------------------------- | -------------------------------------------- |
+| `POSTHOG_HOST`    | `https://us.i.posthog.com` | PostHog instance hostname                    |
 | `POSTHOG_API_KEY` | —                          | Leave unset to disable server-side analytics |
 
-See [`TELEMETRY.md`](https://github.com/thunderbird/thunderbolt/blob/main/TELEMETRY.md) in the repo for the full list of events the client emits.
+See [TELEMETRY.md](../TELEMETRY.md) in the repo for the full list of events the client emits.
 
 ## Rate limiting and proxy trust
 
 | Variable             | Default | Description                                                                                               |
 | -------------------- | ------- | --------------------------------------------------------------------------------------------------------- |
 | `RATE_LIMIT_ENABLED` | `true`  | Set to `false` to disable rate limiting (local dev only)                                                  |
-| `TRUSTED_PROXY`      | `""`     | `cloudflare` trusts `CF-Connecting-IP`, `akamai` trusts `True-Client-IP`, empty trusts only the socket IP |
+| `TRUSTED_PROXY`      | `""`    | `cloudflare` trusts `CF-Connecting-IP`, `akamai` trusts `True-Client-IP`, empty trusts only the socket IP |
 
 Trusting the wrong proxy header lets a client spoof its IP for rate-limit bypass. Leave this empty unless you know your edge.
 
@@ -97,31 +94,31 @@ Trusting the wrong proxy header lets a client spoof its IP for rate-limit bypass
 
 OpenTelemetry traces are enabled automatically when these are set. Not part of the Zod schema — the backend reads them from `process.env` directly.
 
-| Variable                      | Description                                               |
-| ----------------------------- | --------------------------------------------------------- |
+| Variable                      | Description                                                 |
+| ----------------------------- | ----------------------------------------------------------- |
 | `OTEL_EXPORTER_OTLP_ENDPOINT` | OTLP HTTP endpoint (e.g. `http://localhost:4318/v1/traces`) |
-| `OTEL_EXPORTER_OTLP_TOKEN`    | Bearer token for authenticated collectors                 |
+| `OTEL_EXPORTER_OTLP_TOKEN`    | Bearer token for authenticated collectors                   |
 
 Tested with BetterStack, Jaeger, Zipkin, New Relic, Grafana Cloud, and any OTLP-compatible collector.
 
 ## General
 
-| Variable          | Default                 | Description                                                          |
-| ----------------- | ----------------------- | -------------------------------------------------------------------- |
-| `PORT`            | `8000`                  | HTTP port the backend listens on                                     |
-| `APP_URL`         | `http://localhost:1420` | Public URL where the frontend is served                              |
-| `LOG_LEVEL`       | `INFO`                  | One of `DEBUG`, `INFO`, `WARN`, `ERROR`                              |
-| `SWAGGER_ENABLED` | `false`                 | Expose `/v1/swagger` with the full OpenAPI spec (don't in production) |
-| `MONITORING_TOKEN`| —                       | Shared secret for authenticated `/health` checks                     |
+| Variable           | Default                 | Description                                                          |
+| ------------------ | ----------------------- | -------------------------------------------------------------------- |
+| `PORT`             | `8000`                  | HTTP port the backend listens on                                     |
+| `APP_URL`          | `http://localhost:1420` | Public URL where the frontend is served                              |
+| `LOG_LEVEL`        | `INFO`                  | One of `DEBUG`, `INFO`, `WARN`, `ERROR`                              |
+| `SWAGGER_ENABLED`  | `false`                 | Expose `/v1/swagger` with the full OpenAPI spec (don't in production) |
+| `MONITORING_TOKEN` | —                       | Shared secret for authenticated `/health` checks                     |
 
 ## Frontend build args
 
 The web/desktop bundle accepts two Vite env vars, passed as Dockerfile build args in `deploy/docker/frontend.Dockerfile`:
 
-| Arg                         | Default | Purpose                                                                       |
-| --------------------------- | ------- | ----------------------------------------------------------------------------- |
-| `VITE_THUNDERBOLT_CLOUD_URL`| `/v1`   | Backend API URL (relative path, proxied by nginx or ALB)                      |
-| `VITE_AUTH_MODE`            | `oidc`  | Auth mode — `oidc` for enterprise defaults, omit for consumer                 |
+| Arg                          | Default | Purpose                                                                       |
+| ---------------------------- | ------- | ----------------------------------------------------------------------------- |
+| `VITE_THUNDERBOLT_CLOUD_URL` | `/v1`   | Backend API URL (relative path, proxied by nginx or ALB)                      |
+| `VITE_AUTH_MODE`             | `oidc`  | Auth mode — `oidc` for enterprise defaults, omit for consumer                 |
 
 ## Validating your config
 

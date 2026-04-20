@@ -1,13 +1,6 @@
----
-title: Self-Hosting
-description: Pick a deployment target and run Thunderbolt on your own infrastructure.
----
+# Self-Hosting
 
-import { Aside } from '@astrojs/starlight/components';
-
-<Aside type="caution">
-Thunderbolt is currently undergoing a security audit and preparing for enterprise production readiness. The paths below are provided for evaluation and early testing — **not for production use yet**.
-</Aside>
+> **Caution.** Thunderbolt is currently undergoing a security audit and preparing for enterprise production readiness. The paths below are provided for evaluation and early testing — **not for production use yet**.
 
 Every self-hosted target uses the same stack: Elysia backend, Vite frontend, PostgreSQL, PowerSync, Keycloak (OIDC), and MongoDB (PowerSync's operational store). What changes is the orchestration layer.
 
@@ -29,7 +22,7 @@ All three paths deploy the same opinionated enterprise configuration:
 | ----------------------------- | --------------------------------------------------------- |
 | Auth mode                     | OIDC via Keycloak                                         |
 | Keycloak realm                | `thunderbolt` (auto-imported from `deploy/config/keycloak-realm.json`) |
-| Default demo user             | `demo@thunderbolt.so` / `demo`                             |
+| Default demo user             | `demo@thunderbolt.so` / `demo`                            |
 | Keycloak admin                | `admin` / `admin` (change immediately)                    |
 | Frontend build args           | `VITE_AUTH_MODE=oidc`, `VITE_THUNDERBOLT_CLOUD_URL=/v1`   |
 | Waitlist                      | Disabled                                                  |
@@ -44,10 +37,10 @@ You're expected to replace the demo user, reconfigure the Keycloak client, and r
 - A `BETTER_AUTH_SECRET` — any 32+ character random string
 - A `POWERSYNC_JWT_SECRET` — 32+ characters; must match the one in the PowerSync config
 
-See [Configuration Reference](/docs/reference/configuration) for every environment variable.
+See the [Configuration Reference](./configuration.md) for every environment variable.
 
 ## Next
 
-- [Docker Compose](/docs/guides/docker-compose)
-- [Kubernetes](/docs/guides/kubernetes)
-- [Pulumi (AWS)](/docs/guides/pulumi)
+- [Docker Compose](./docker-compose.md)
+- [Kubernetes](./kubernetes.md)
+- [Pulumi (AWS)](./pulumi.md)

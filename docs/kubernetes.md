@@ -1,7 +1,4 @@
----
-title: Kubernetes
-description: Run Thunderbolt on Kubernetes — locally or in production.
----
+# Kubernetes
 
 The Kubernetes manifests at `deploy/k8s/` deploy the full Thunderbolt stack — frontend, backend, PostgreSQL, MongoDB, Keycloak, and PowerSync — onto any conformant cluster.
 
@@ -80,18 +77,18 @@ The `ingress.yaml` routes are path-based:
 
 ## Manifest reference
 
-| File                    | Resources                     | Purpose                                                     |
-| ----------------------- | ----------------------------- | ----------------------------------------------------------- |
-| `namespace.yaml`        | Namespace                     | Isolated `thunderbolt` namespace                            |
-| `secrets.yaml.example`  | Secret                        | Template — copy to `secrets.yaml` before applying           |
-| `configmaps.yaml`       | ConfigMaps                    | nginx.conf, Postgres init SQL, PowerSync config, Keycloak realm — synthesized from `deploy/config/` and `deploy/docker/` |
-| `postgres.yaml`         | StatefulSet + Service         | PostgreSQL with WAL + PVC                                   |
-| `mongo.yaml`            | StatefulSet + Service + Job   | MongoDB replica set + init job                              |
-| `powersync.yaml`        | Deployment + Service          | PowerSync sync service                                      |
-| `keycloak.yaml`         | Deployment + Service + ConfigMap | Keycloak with realm import                               |
-| `backend.yaml`          | Deployment + Service          | Elysia API server                                           |
-| `frontend.yaml`         | Deployment + Service          | nginx SPA                                                   |
-| `ingress.yaml`          | Ingress                       | Path-based routing                                          |
+| File                    | Resources                        | Purpose                                                     |
+| ----------------------- | -------------------------------- | ----------------------------------------------------------- |
+| `namespace.yaml`        | Namespace                        | Isolated `thunderbolt` namespace                            |
+| `secrets.yaml.example`  | Secret                           | Template — copy to `secrets.yaml` before applying           |
+| `configmaps.yaml`       | ConfigMaps                       | nginx.conf, Postgres init SQL, PowerSync config, Keycloak realm — synthesized from `deploy/config/` and `deploy/docker/` |
+| `postgres.yaml`         | StatefulSet + Service            | PostgreSQL with WAL + PVC                                   |
+| `mongo.yaml`            | StatefulSet + Service + Job      | MongoDB replica set + init job                              |
+| `powersync.yaml`        | Deployment + Service             | PowerSync sync service                                      |
+| `keycloak.yaml`         | Deployment + Service + ConfigMap | Keycloak with realm import                                  |
+| `backend.yaml`          | Deployment + Service             | Elysia API server                                           |
+| `frontend.yaml`         | Deployment + Service             | nginx SPA                                                   |
+| `ingress.yaml`          | Ingress                          | Path-based routing                                          |
 
 ## Differences from Docker Compose
 
@@ -114,4 +111,4 @@ pulumi config set platform k8s
 pulumi up
 ```
 
-This creates the VPC and EKS cluster, pushes ECR images, installs `nginx-ingress`, and applies the manifests above automatically. See [Pulumi (AWS)](/docs/guides/pulumi).
+This creates the VPC and EKS cluster, pushes ECR images, installs `nginx-ingress`, and applies the manifests above automatically. See [Pulumi (AWS)](./pulumi.md).

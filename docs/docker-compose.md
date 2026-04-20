@@ -1,7 +1,4 @@
----
-title: Docker Compose
-description: Run Thunderbolt on a single host with Docker Compose.
----
+# Docker Compose
 
 The Docker Compose stack is the fastest path to a working Thunderbolt install. It's well suited to demos, evaluations, and single-host internal tools.
 
@@ -26,22 +23,22 @@ The backend entrypoint runs Drizzle migrations before serving traffic, the Keycl
 
 ## What you get
 
-| Service       | URL                          | Credentials                          |
-| ------------- | ---------------------------- | ------------------------------------ |
-| App           | `http://localhost:3000`      | Keycloak SSO (demo user below)       |
-| Keycloak admin| `http://localhost:8180`      | `admin` / `admin` — **rotate immediately** |
-| Demo user     | (sign in via app)            | `demo@thunderbolt.so` / `demo`       |
+| Service        | URL                          | Credentials                                |
+| -------------- | ---------------------------- | ------------------------------------------ |
+| App            | `http://localhost:3000`      | Keycloak SSO (demo user below)             |
+| Keycloak admin | `http://localhost:8180`      | `admin` / `admin` — **rotate immediately** |
+| Demo user      | (sign in via app)            | `demo@thunderbolt.so` / `demo`             |
 
 Behind the scenes, the compose file boots:
 
-| Dockerfile                         | Base                               | Purpose                                                               |
-| ---------------------------------- | ---------------------------------- | --------------------------------------------------------------------- |
-| `docker/frontend.Dockerfile`       | `oven/bun` → `nginx:alpine`        | Vite SPA with COEP/COOP headers                                       |
-| `docker/backend.Dockerfile`        | `oven/bun:latest`                  | Elysia API; entrypoint runs `bun drizzle-kit migrate` before starting |
-| `docker/postgres.Dockerfile`       | `postgres:18-alpine`               | PostgreSQL with PowerSync replication role (`deploy/docker/postgres-init/01-powersync.sql`) |
-| `docker/keycloak.Dockerfile`       | `keycloak:26.0`                    | OIDC with the `thunderbolt` realm pre-imported                        |
-| `docker/powersync.Dockerfile`      | `journeyapps/powersync-service`    | PowerSync service with the synced-table rules                         |
-| (official) `mongo:7.0`             | —                                  | PowerSync operational store                                           |
+| Dockerfile                    | Base                               | Purpose                                                               |
+| ----------------------------- | ---------------------------------- | --------------------------------------------------------------------- |
+| `docker/frontend.Dockerfile`  | `oven/bun` → `nginx:alpine`        | Vite SPA with COEP/COOP headers                                       |
+| `docker/backend.Dockerfile`   | `oven/bun:latest`                  | Elysia API; entrypoint runs `bun drizzle-kit migrate` before starting |
+| `docker/postgres.Dockerfile`  | `postgres:18-alpine`               | PostgreSQL with PowerSync replication role (`deploy/docker/postgres-init/01-powersync.sql`) |
+| `docker/keycloak.Dockerfile`  | `keycloak:26.0`                    | OIDC with the `thunderbolt` realm pre-imported                        |
+| `docker/powersync.Dockerfile` | `journeyapps/powersync-service`    | PowerSync service with the synced-table rules                         |
+| (official) `mongo:7.0`        | —                                  | PowerSync operational store                                           |
 
 ## Customization
 

@@ -1,11 +1,16 @@
 import { defineCollection, z } from 'astro:content';
-import { docsLoader } from '@astrojs/starlight/loaders';
 import { docsSchema } from '@astrojs/starlight/schema';
 import { glob } from 'astro/loaders';
+import { repoDocsLoader } from './loaders/repo-docs-loader';
 
 export const collections = {
-	// Starlight docs collection (thunderbolt.io/docs)
-	docs: defineCollection({ loader: docsLoader(), schema: docsSchema() }),
+	// Starlight docs collection (thunderbolt.io/docs).
+	// Pulls canonical contributor docs straight from the repo-root `/docs/`
+	// directory so GitHub and the docs site share one source of truth.
+	docs: defineCollection({
+		loader: repoDocsLoader({ base: '../docs' }),
+		schema: docsSchema(),
+	}),
 
 	// Blog collection (thunderbolt.io/blog)
 	blog: defineCollection({

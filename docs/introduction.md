@@ -1,21 +1,14 @@
----
-title: Introduction
-description: What Thunderbolt is, who it's for, and where it is today.
----
-
-import { Aside } from '@astrojs/starlight/components';
+# Introduction
 
 Thunderbolt is an open-source, cross-platform AI client that can be deployed on-prem anywhere. It runs on web, macOS, Windows, Linux, iOS, and Android — all from a single React codebase wrapped in Tauri.
 
-<Aside type="caution" title="Under active development">
-Thunderbolt is currently undergoing a security audit and preparing for enterprise production readiness. We encourage you to self-host and evaluate it, but it is not yet intended for production use.
-</Aside>
+> **Under active development.** Thunderbolt is currently undergoing a security audit and preparing for enterprise production readiness. We encourage you to self-host and evaluate it, but it is not yet intended for production use.
 
 ## AI you control
 
 - **Choose your models.** Bring Anthropic, OpenAI, Mistral, Fireworks, OpenRouter, or any OpenAI-compatible endpoint. Recommended local options are [Ollama](https://ollama.com/) and [llama.cpp](https://github.com/ggml-org/llama.cpp). There is no Thunderbolt-hosted inference endpoint — you bring your own API keys.
 - **Own your data.** Every device keeps a local, encrypted SQLite database. Sync is opt-in and can run end-to-end encrypted so the server only ever sees ciphertext.
-- **Eliminate vendor lock-in.** [Self-host the backend](/docs/guides/self-hosting) on Docker Compose, Kubernetes, or AWS via Pulumi. Nothing depends on a SaaS control plane.
+- **Eliminate vendor lock-in.** [Self-host the backend](./self-hosting.md) on Docker Compose, Kubernetes, or AWS via Pulumi. Nothing depends on a SaaS control plane.
 
 ## Who it's for today
 
@@ -34,27 +27,27 @@ A hosted version for consumers is planned but does not yet have a release date.
 | Database     | PostgreSQL (production) · PGLite for backend tests                                          |
 | Infra        | Docker Compose · Kubernetes manifests · Pulumi (ECS Fargate or EKS)                         |
 
-A full diagram lives at [Architecture](/docs/reference/architecture).
+A full diagram lives at [Architecture](./architecture.md).
 
 ## Feature status
 
-| Feature                            | Status                                         |
-| ---------------------------------- | ---------------------------------------------- |
+| Feature                             | Status                                         |
+| ----------------------------------- | ---------------------------------------------- |
 | Platforms (web · mac · win · linux) | ✅ shipping                                    |
-| Android · iOS                      | ✅ available, app-store release planned         |
-| Custom models / providers          | ✅                                              |
-| OIDC                               | ✅                                              |
-| Google · Microsoft integrations    | ✅                                              |
-| MCP support                        | Preview                                        |
-| Cross-device cloud sync            | Preview                                        |
-| Optional end-to-end encryption     | Preview (no cryptography audit yet)            |
-| ACP                                | In development — targeting April 2026          |
-| Agent memory · skills              | Planned                                        |
+| Android · iOS                       | ✅ available, app-store release planned        |
+| Custom models / providers           | ✅                                             |
+| OIDC                                | ✅                                             |
+| Google · Microsoft integrations     | ✅                                             |
+| MCP support                         | Preview                                        |
+| Cross-device cloud sync             | Preview                                        |
+| Optional end-to-end encryption      | Preview (no cryptography audit yet)            |
+| ACP                                 | In development — targeting April 2026          |
+| Agent memory · skills               | Planned                                        |
 
-The canonical roadmap is tracked in [docs/roadmap.md](https://github.com/thunderbird/thunderbolt/blob/main/docs/roadmap.md).
+The canonical roadmap is tracked in [roadmap.md](./roadmap.md).
 
 ## Next steps
 
-- [Quick Start](/docs/getting-started/quick-start) — bootstrap the full stack locally.
-- [Self-Hosting](/docs/guides/self-hosting) — pick a deployment target.
-- [Architecture](/docs/reference/architecture) — see how the pieces connect.
+- [Quick Start](./quick-start.md) — bootstrap the full stack locally.
+- [Self-Hosting](./self-hosting.md) — pick a deployment target.
+- [Architecture](./architecture.md) — see how the pieces connect.

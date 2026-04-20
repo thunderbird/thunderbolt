@@ -1,7 +1,4 @@
----
-title: Pulumi (AWS)
-description: Provision Thunderbolt on AWS with Pulumi — ECS Fargate or EKS from the same project.
----
+# Pulumi (AWS)
 
 The Pulumi project at `deploy/pulumi/` provisions the full Thunderbolt stack on AWS. One config key (`platform`) chooses between ECS Fargate and EKS; both paths share the same VPC, ECR repositories, and secrets.
 

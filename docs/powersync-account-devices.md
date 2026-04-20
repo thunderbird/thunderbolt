@@ -84,7 +84,7 @@ See [powersync-service/README.md](../powersync-service/README.md) for full steps
 
 ### Backend PowerSync env vars (local)
 
-```env
+```bash
 POWERSYNC_URL=http://localhost:8080
 POWERSYNC_JWT_SECRET=powersync-dev-secret-change-in-production
 POWERSYNC_JWT_KID=powersync-dev

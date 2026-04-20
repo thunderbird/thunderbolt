@@ -14,6 +14,10 @@ bun test:backend
 
 # Run backend tests in watch mode
 bun test:backend:watch
+
+# Run end-to-end tests (Playwright)
+bun run e2e
+bun run e2e:headed   # with a visible browser
 ```
 
 **Note**: Don't use `bun test` without arguments from the project root, as it will pick up both frontend and backend tests. The `test` script is configured to only run tests in `./src` and `./scripts` directories.
@@ -148,6 +152,42 @@ mock.module('@/components/ui/dialog', () => ({
   DialogTrigger: ({ children }) => <button>{children}</button>,
 }))
 ```
+
+## End-to-End Tests
+
+The Playwright suite in [`e2e/`](../e2e) covers the OIDC sign-in and session flows — the parts of the app that are hardest to exercise from a unit test (browser storage, redirects, Better Auth callbacks).
+
+### What the config spins up
+
+[`playwright.config.ts`](../playwright.config.ts) boots three things before any spec runs:
+
+| Component        | Port   | How                                                              |
+| ---------------- | ------ | ---------------------------------------------------------------- |
+| Mock OIDC server | `9876` | [`oauth2-mock-server`](https://www.npmjs.com/package/oauth2-mock-server), started by `e2e/global-setup.ts`; every issued token is signed for `sub=e2e-test-user` / `email=e2e@thunderbolt.test` |
+| Vite frontend    | `1421` | `bun run dev -- --port 1421` with `VITE_AUTH_MODE=oidc` and `VITE_SKIP_ONBOARDING=true` |
+| Backend API      | `8000` | `cd backend && bun run dev` with `OIDC_ISSUER` pointed at the mock server, rate limiting disabled |
+
+Each test starts with a fresh `storageState` so stale IndexedDB / OPFS data from a previous run can't leak between specs. A clean shutdown of the mock OIDC server happens in `e2e/global-teardown.ts`.
+
+### Helpers
+
+`e2e/helpers.ts` keeps specs short:
+
+- **`loginViaOidc(page)`** — navigates to `/`, follows `AuthGate → /oidc-redirect → mock IdP → backend callback → session`, and waits for the chat textarea to render. The mock IdP auto-approves, so there's no username/password to type.
+- **`collectPageErrors(page)`** — subscribes to `pageerror` and returns an errors array, filtering Tauri-only noise (`__TAURI__`, `convertFileSrc`, etc.) that the web build surfaces harmlessly.
+
+### Current specs
+
+| Spec                           | What it verifies                                                                   |
+| ------------------------------ | ---------------------------------------------------------------------------------- |
+| [`oidc-login.spec.ts`](../e2e/oidc-login.spec.ts)     | Anonymous user completes the full OIDC redirect loop and lands in the chat UI      |
+| [`oidc-session.spec.ts`](../e2e/oidc-session.spec.ts) | Session survives a hard reload and the authenticated user stays signed in          |
+
+### Writing new specs
+
+- Use `loginViaOidc(page)` as the first line of any test that needs an authenticated user.
+- Call `collectPageErrors(page)` and assert the array is empty at the end of the test to catch regressions that only surface as uncaught exceptions.
+- Keep each spec scoped to a single user-visible flow. The suite is a smoke test, not a full regression matrix — favour unit tests for branching logic and rely on e2e for "does the whole thing boot".
 
 ### Debugging Mock Leakage
 

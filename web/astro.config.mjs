@@ -28,36 +28,79 @@ export default defineConfig({
 				{
 					label: 'Getting Started',
 					items: [
-						{ label: 'Introduction', slug: 'docs/getting-started/introduction' },
-						{ label: 'Quick Start', slug: 'docs/getting-started/quick-start' },
+						{ label: 'Overview', slug: 'docs' },
+						{ label: 'Introduction', slug: 'docs/introduction' },
+						{ label: 'Quick Start', slug: 'docs/quick-start' },
+						{ label: 'Development', slug: 'docs/development' },
+						{ label: 'Testing', slug: 'docs/testing' },
+						{ label: 'Features and Roadmap', slug: 'docs/roadmap' },
+						{ label: 'FAQ', slug: 'docs/faq' },
 					],
 				},
 				{
 					label: 'Self-Hosting',
 					items: [
-						{ label: 'Overview', slug: 'docs/guides/self-hosting' },
-						{ label: 'Docker Compose', slug: 'docs/guides/docker-compose' },
-						{ label: 'Kubernetes', slug: 'docs/guides/kubernetes' },
-						{ label: 'Pulumi (AWS)', slug: 'docs/guides/pulumi' },
+						{ label: 'Overview', slug: 'docs/self-hosting' },
+						{ label: 'Docker Compose', slug: 'docs/docker-compose' },
+						{ label: 'Kubernetes', slug: 'docs/kubernetes' },
+						{ label: 'Pulumi (AWS)', slug: 'docs/pulumi' },
 					],
 				},
 				{
-					label: 'Features',
+					label: 'Architecture & Sync',
 					items: [
-						{ label: 'Multi-Device Sync', slug: 'docs/guides/multi-device-sync' },
-						{ label: 'Account & Devices', slug: 'docs/guides/account-and-devices' },
-						{ label: 'End-to-End Encryption', slug: 'docs/guides/end-to-end-encryption' },
+						{ label: 'Architecture', slug: 'docs/architecture' },
+						{ label: 'Multi-Device Sync', slug: 'docs/multi-device-sync' },
+						{ label: 'End-to-End Encryption', slug: 'docs/e2e-encryption' },
+						{
+							label: 'PowerSync · Account & Devices',
+							slug: 'docs/powersync-account-devices',
+						},
+						{
+							label: 'PowerSync · Sync Middleware',
+							slug: 'docs/powersync-sync-middleware',
+						},
+						{
+							label: 'Composite Primary Keys & Default Data',
+							slug: 'docs/composite-primary-keys-and-default-data',
+						},
+						{
+							label: 'Delete Account & Revoke Device',
+							slug: 'docs/delete-account-and-revoke-device',
+						},
 					],
 				},
 				{
-					label: 'Contributing',
-					items: [{ label: 'Development & Testing', slug: 'docs/guides/contributing' }],
+					label: 'Platform',
+					items: [
+						{ label: 'WebView', slug: 'docs/webview' },
+						{ label: 'Widget System Guide', slug: 'docs/widgets' },
+						{ label: 'Tauri Signing Keys', slug: 'docs/tauri-signing-keys' },
+					],
 				},
 				{
 					label: 'Reference',
+					items: [{ label: 'Configuration', slug: 'docs/configuration' }],
+				},
+				{
+					label: 'Dev Tooling',
 					items: [
-						{ label: 'Configuration', slug: 'docs/reference/configuration' },
-						{ label: 'Architecture', slug: 'docs/reference/architecture' },
+						{ label: 'Storybook', slug: 'docs/storybook' },
+						{ label: 'Vite Bundle Analyzer', slug: 'docs/vite-bundle-analyzer' },
+						{
+							label: 'Local CDN for App Updates',
+							slug: 'docs/local-cdn-for-app-update-testing',
+						},
+					],
+				},
+				{
+					label: 'AI & Prompting',
+					items: [
+						{ label: 'Claude Code Skills', slug: 'docs/claude-code' },
+						{
+							label: 'GPT-OSS Prompt Engineering',
+							slug: 'docs/prompt-engineering-guide/gpt-oss',
+						},
 					],
 				},
 			],

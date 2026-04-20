@@ -116,7 +116,7 @@ jobs:
 
       - name: Run Lighthouse assertions
         id: lh_assert
-        if: steps.lighthouse.outcome == 'success'
+        if: steps.lighthouse.conclusion == 'success'
         run: |
           # Run assertions separately so we can capture warnings as text.
           # The action already ran collect+upload; we just need assert.
@@ -133,7 +133,7 @@ jobs:
 
       - name: Parse Lighthouse results
         id: lh
-        if: steps.lighthouse.outcome == 'success'
+        if: steps.lighthouse.conclusion == 'success'
         run: |
           # With multiple runs, pick the median report (middle file by name).
           REPORTS=($(ls .lighthouseci/*.report.json 2>/dev/null | sort))

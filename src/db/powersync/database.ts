@@ -260,7 +260,7 @@ export class PowerSyncDatabaseImpl implements DatabaseInterface {
    * No-ops if a reconnect is already in-flight or sync is disabled.
    */
   async reconnect(trigger: 'visibility' | 'manual' = 'manual', hiddenDurationMs?: number): Promise<void> {
-    if (this._isReconnecting || !this.powerSync) {
+    if (this._isReconnecting || !this.powerSync || !isSyncEnabled()) {
       return
     }
     this._isReconnecting = true
@@ -270,9 +270,6 @@ export class PowerSyncDatabaseImpl implements DatabaseInterface {
       stopSyncStatusListener()
       await this.powerSync.disconnect()
       this._isConnected = false
-      if (!isSyncEnabled()) {
-        return
-      }
       await this.connectToSync()
       if (this._isConnected) {
         trackSyncEvent('sync_reconnect_success', {

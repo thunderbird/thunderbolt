@@ -1,6 +1,7 @@
 import { type HttpClient } from '@/contexts'
 import { getSettings } from '@/dal'
 import { getDb } from '@/db/database'
+import { getDefaultDataCollectionValue } from '@/defaults/settings'
 import { createHandleError } from '@/lib/error-utils'
 import { createClient } from '@/lib/http'
 import type { HandleError, HandleResult } from '@/types/handle-errors'
@@ -52,7 +53,7 @@ export const initPosthog = async (httpClient?: HttpClient): Promise<HandleResult
     const db = getDb()
     const { cloudUrl, dataCollection, debugPosthog } = await getSettings(db, {
       cloud_url: 'http://localhost:8000/v1',
-      data_collection: true,
+      data_collection: getDefaultDataCollectionValue(import.meta.env.VITE_AUTH_MODE),
       debug_posthog: false,
     })
 

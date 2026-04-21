@@ -22,6 +22,12 @@ export const createMicrosoftAuthRoutes = (auth: Auth, fetchFn: typeof fetch = gl
       async () => {
         const settings = getSettings()
 
+        if (!settings.microsoftClientId || !settings.microsoftClientSecret) {
+          return {
+            error: 'Microsoft OAuth not configured. Set MICROSOFT_CLIENT_ID and MICROSOFT_CLIENT_SECRET.',
+          }
+        }
+
         return {
           client_id: settings.microsoftClientId,
           configured: Boolean(settings.microsoftClientId && settings.microsoftClientSecret),

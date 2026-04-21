@@ -20,12 +20,6 @@ export const createGoogleAuthRoutes = (auth: Auth, fetchFn: typeof fetch = globa
       async () => {
         const settings = getSettings()
 
-        if (!settings.googleClientId || !settings.googleClientSecret) {
-          return {
-            error: 'Google OAuth not configured. Set GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET.',
-          }
-        }
-
         return {
           client_id: settings.googleClientId,
         }

@@ -5,14 +5,16 @@ import { safeErrorHandler } from '@/middleware/error-handling'
 import { Elysia, t } from 'elysia'
 import { codeRequestSchema, refreshRequestSchema, type OAuthTokenResponse } from './types'
 
-const GOOGLE_TOKEN_URL = 'https://oauth2.googleapis.com/token'
+const MICROSOFT_TOKEN_URL = 'https://login.microsoftonline.com/common/oauth2/v2.0/token'
+// Must match scopes requested by the frontend (see integrations/microsoft/auth.ts)
+const SCOPES = 'https://graph.microsoft.com/mail.read User.Read offline_access'
 
 /**
- * Google OAuth confidential client proxy — keeps the client secret server-side
+ * Microsoft OAuth confidential client proxy — keeps the client secret server-side
  * so the Tauri frontend doesn't need to embed it.
  */
-export const createGoogleAuthRoutes = (auth: Auth, fetchFn: typeof fetch = globalThis.fetch) => {
-  return new Elysia({ prefix: '/auth/google' })
+export const createMicrosoftAuthRoutes = (auth: Auth, fetchFn: typeof fetch = globalThis.fetch) => {
+  return new Elysia({ prefix: '/auth/microsoft' })
     .onError(safeErrorHandler)
     .use(createAuthMacro(auth))
     .get(
@@ -20,14 +22,9 @@ export const createGoogleAuthRoutes = (auth: Auth, fetchFn: typeof fetch = globa
       async () => {
         const settings = getSettings()
 
-        if (!settings.googleClientId || !settings.googleClientSecret) {
-          return {
-            error: 'Google OAuth not configured. Set GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET.',
-          }
-        }
-
         return {
-          client_id: settings.googleClientId,
+          client_id: settings.microsoftClientId,
+          configured: Boolean(settings.microsoftClientId && settings.microsoftClientSecret),
         }
       },
       { auth: true },
@@ -38,10 +35,10 @@ export const createGoogleAuthRoutes = (auth: Auth, fetchFn: typeof fetch = globa
       async ({ body, set }) => {
         const settings = getSettings()
 
-        if (!settings.googleClientId || !settings.googleClientSecret) {
+        if (!settings.microsoftClientId || !settings.microsoftClientSecret) {
           set.status = 503
           return {
-            error: 'Google OAuth not configured. Set GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET.',
+            error: 'Microsoft OAuth not configured. Set MICROSOFT_CLIENT_ID and MICROSOFT_CLIENT_SECRET.',
           }
         }
 
@@ -53,16 +50,17 @@ export const createGoogleAuthRoutes = (auth: Auth, fetchFn: typeof fetch = globa
         }
 
         const data = new URLSearchParams({
+          client_id: settings.microsoftClientId,
+          client_secret: settings.microsoftClientSecret,
           code: validatedBody.code,
-          client_id: settings.googleClientId,
-          client_secret: settings.googleClientSecret,
           redirect_uri: validatedBody.redirect_uri,
           grant_type: 'authorization_code',
           code_verifier: validatedBody.code_verifier,
+          scope: SCOPES,
         })
 
         try {
-          const response = await fetchFn(GOOGLE_TOKEN_URL, {
+          const response = await fetchFn(MICROSOFT_TOKEN_URL, {
             method: 'POST',
             headers: {
               'Content-Type': 'application/x-www-form-urlencoded',
@@ -73,7 +71,7 @@ export const createGoogleAuthRoutes = (auth: Auth, fetchFn: typeof fetch = globa
           if (!response.ok) {
             const errorData = await response.json().catch(() => ({}))
             const errorMsg = errorData.error_description || `HTTP ${response.status}`
-            console.error('Google token exchange failed:', errorMsg)
+            console.error('Microsoft token exchange failed:', errorMsg)
 
             set.status = 400
             return {
@@ -82,7 +80,7 @@ export const createGoogleAuthRoutes = (auth: Auth, fetchFn: typeof fetch = globa
           }
 
           const tokenData = await response.json()
-          console.info('Successfully exchanged Google OAuth code for tokens')
+          console.info('Successfully exchanged Microsoft OAuth code for tokens')
 
           const result: OAuthTokenResponse = {
             access_token: tokenData.access_token,
@@ -94,7 +92,7 @@ export const createGoogleAuthRoutes = (auth: Auth, fetchFn: typeof fetch = globa
 
           return result
         } catch (error) {
-          console.error('Unexpected error during Google token exchange:', error)
+          console.error('Unexpected error during Microsoft token exchange:', error)
           set.status = 500
           return {
             error: 'Internal server error during token exchange',
@@ -116,24 +114,25 @@ export const createGoogleAuthRoutes = (auth: Auth, fetchFn: typeof fetch = globa
       async ({ body, set }) => {
         const settings = getSettings()
 
-        if (!settings.googleClientId || !settings.googleClientSecret) {
+        if (!settings.microsoftClientId || !settings.microsoftClientSecret) {
           set.status = 503
           return {
-            error: 'Google OAuth not configured. Set GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET.',
+            error: 'Microsoft OAuth not configured. Set MICROSOFT_CLIENT_ID and MICROSOFT_CLIENT_SECRET.',
           }
         }
 
         const validatedBody = refreshRequestSchema.parse(body)
 
         const data = new URLSearchParams({
+          client_id: settings.microsoftClientId,
+          client_secret: settings.microsoftClientSecret,
           refresh_token: validatedBody.refresh_token,
-          client_id: settings.googleClientId,
-          client_secret: settings.googleClientSecret,
           grant_type: 'refresh_token',
+          scope: SCOPES,
         })
 
         try {
-          const response = await fetchFn(GOOGLE_TOKEN_URL, {
+          const response = await fetchFn(MICROSOFT_TOKEN_URL, {
             method: 'POST',
             headers: {
               'Content-Type': 'application/x-www-form-urlencoded',
@@ -144,7 +143,7 @@ export const createGoogleAuthRoutes = (auth: Auth, fetchFn: typeof fetch = globa
           if (!response.ok) {
             const errorData = await response.json().catch(() => ({}))
             const errorMsg = errorData.error_description || `HTTP ${response.status}`
-            console.error('Google token refresh failed:', errorMsg)
+            console.error('Microsoft token refresh failed:', errorMsg)
 
             set.status = 400
             return {
@@ -153,7 +152,7 @@ export const createGoogleAuthRoutes = (auth: Auth, fetchFn: typeof fetch = globa
           }
 
           const tokenData = await response.json()
-          console.info('Successfully refreshed Google OAuth token')
+          console.info('Successfully refreshed Microsoft OAuth token')
 
           const result: OAuthTokenResponse = {
             access_token: tokenData.access_token,
@@ -165,7 +164,7 @@ export const createGoogleAuthRoutes = (auth: Auth, fetchFn: typeof fetch = globa
 
           return result
         } catch (error) {
-          console.error('Unexpected error during Google token refresh:', error)
+          console.error('Unexpected error during Microsoft token refresh:', error)
           set.status = 500
           return {
             error: 'Internal server error during token refresh',

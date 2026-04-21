@@ -5,6 +5,13 @@ import type { InferSelectModel } from 'drizzle-orm'
 export type Setting = InferSelectModel<typeof settingsTable>
 
 /**
+ * Data collection default:
+ * - consumer mode: enabled by default
+ * - oidc mode (self-hosted/enterprise): disabled by default
+ */
+export const getDefaultDataCollectionValue = (authMode?: string): boolean => authMode !== 'oidc'
+
+/**
  * Compute hash of user-editable fields for a setting
  */
 export const hashSetting = (setting: Setting): string => {
@@ -24,7 +31,7 @@ export const hashSetting = (setting: Setting): string => {
 
 export const defaultSettingDataCollection: Setting = {
   key: 'data_collection',
-  value: 'true',
+  value: String(getDefaultDataCollectionValue(import.meta.env.VITE_AUTH_MODE)),
   updatedAt: null,
   defaultHash: null,
   userId: null,

@@ -11,8 +11,9 @@ export const FooterSection = ({ className = '' }: FooterSectionProps) => (
       </div>
       <div className="mx-auto mt-6 h-px max-w-[1118px] bg-[#eaecf0]" />
       <div className="mt-6 flex flex-col items-center justify-center gap-4 text-center lg:flex-row lg:gap-6">
-        <div className="flex items-center gap-4">
+        <div className="flex flex-wrap items-center justify-center gap-x-4 gap-y-3">
           <img src="/enterprise/mozilla-logo.svg" alt="Mozilla" className="h-6 w-auto" />
+          <img src="/enterprise/thunderbird.svg" alt="Thunderbird" className="h-6 w-auto" />
         </div>
         <p className="max-w-[638px] text-center text-xs leading-4 text-[#667085] lg:text-left">
           Thunderbolt is a product of{' '}

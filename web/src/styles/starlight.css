@@ -38,17 +38,21 @@
 
 	--sl-color-backdrop-overlay: color-mix(in srgb, var(--tb-text) 20%, transparent);
 
-	/* Typography */
-	--sl-font: var(--tb-font-sans);
-	--sl-font-mono: var(--tb-font-mono);
+	/* Typography — docs use Inter for body + system mono for code.
+	 * Mona Sans stays for headings (see .sl-markdown-content h1..h4 rule)
+	 * and brand chrome. Marketing/blog surfaces are unaffected. */
+	--sl-font:
+		'Inter Variable', -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+	--sl-font-mono:
+		ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, 'Liberation Mono', monospace;
 
 	/* Slightly looser than Starlight default to match marketing */
 	--sl-text-h1: 2.25rem;
 	--sl-text-h2: 1.625rem;
 	--sl-text-h3: 1.25rem;
 	--sl-text-body: 1rem;
-	--sl-line-height: 1.65;
-	--sl-line-height-headings: 1.2;
+	--sl-line-height: 1.7;
+	--sl-line-height-headings: 1.25;
 
 	/* Tighter, editorial feel */
 	--sl-content-width: 52rem;
@@ -96,26 +100,25 @@ html {
 	--sl-color-hairline-shade: var(--tb-border-strong);
 }
 
-/* Editorial headings — marketing uses tight tracking and medium weight */
+/* Headings stay on Mona Sans for brand continuity; body text is Inter.
+ * Unified 600 weight across the ramp — cleaner than a mixed 500/600 stack. */
 .sl-markdown-content h1,
 .sl-markdown-content h2,
 .sl-markdown-content h3,
 .sl-markdown-content h4 {
+	font-family: var(--tb-font-sans);
 	color: var(--tb-text);
 	letter-spacing: -0.015em;
 	font-weight: 600;
 }
 
+/* Whitespace-only separation between sections — no divider rule */
 .sl-markdown-content h2 {
-	margin-top: 2.25em;
-	padding-top: 1.25em;
-	border-top: 1px solid var(--tb-border);
-	font-weight: 500;
+	margin-top: 2.5em;
 }
 
 .sl-markdown-content h3 {
 	margin-top: 1.75em;
-	font-weight: 500;
 }
 
 .sl-markdown-content p,
@@ -142,29 +145,82 @@ html {
 	border-color: var(--tb-text);
 }
 
-/* Inline code blends with the surface */
+/* Inline code — a subtle tinted chip, no border (Stripe/Tailwind-style) */
 .sl-markdown-content :not(pre) > code {
 	background: var(--tb-surface-input);
 	color: var(--tb-text);
-	border: 1px solid var(--tb-border);
-	padding: 0.05em 0.4em;
-	font-family: var(--tb-font-mono);
-	font-size: 0.85em;
+	padding: 0.1em 0.4em;
+	font-family: var(--sl-font-mono);
+	font-size: 0.875em;
 }
 
-/* Code blocks — dark night-owl theme on a slate bg so they visually read
- * as "code" against the light editorial page. We wrap each frame in our
- * own thin border + shadow. */
+/* Code blocks — dark night-owl theme on a slate bg. Single clean edge,
+ * airy margins, no double outline. */
 .sl-markdown-content .expressive-code {
-	border: 1px solid #0f172a;
-	box-shadow: 0 1px 2px rgba(16, 24, 40, 0.08);
+	margin-block: 1.75em;
+	box-shadow: 0 1px 2px rgba(16, 24, 40, 0.04);
 }
 
-/* Normalize weight of syntax-highlighted tokens — the brand is editorial
- * and prefers a uniform weight over EC's default bold keywords/types. */
+/* Stripe-style terminal titlebar: slim navy strip with a "Command Line"
+ * label instead of macOS traffic lights. */
+.sl-markdown-content .expressive-code .frame.is-terminal::before,
+.sl-markdown-content .expressive-code .frame.is-terminal .header::before,
+.sl-markdown-content .expressive-code .frame.is-terminal .header::after {
+	content: none !important;
+	background: none !important;
+	display: none !important;
+}
+.sl-markdown-content .expressive-code .frame.is-terminal .header {
+	background: rgba(255, 255, 255, 0.03) !important;
+	border: none !important;
+	border-bottom: 1px solid rgba(255, 255, 255, 0.06) !important;
+	min-height: 0 !important;
+	padding: 0.5rem 0.9rem !important;
+	font-family: var(--sl-font);
+	font-size: 0.8125rem;
+	font-weight: 500;
+	color: rgba(255, 255, 255, 0.65);
+	display: flex !important;
+	align-items: center;
+	justify-content: flex-start;
+}
+.sl-markdown-content .expressive-code .frame.is-terminal .header .title {
+	font-family: var(--sl-font);
+	font-size: 0.8125rem;
+	font-weight: 500;
+	color: rgba(255, 255, 255, 0.65);
+	display: inline-flex;
+	align-items: center;
+	gap: 0.4rem;
+}
+/* Terminal-prompt glyph before the label */
+.sl-markdown-content .expressive-code .frame.is-terminal .header .title::before {
+	content: '';
+	display: inline-block;
+	width: 0.85rem;
+	height: 0.85rem;
+	background-color: rgba(255, 255, 255, 0.55);
+	mask-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><polyline points='4 17 10 11 4 5'/><line x1='12' y1='19' x2='20' y2='19'/></svg>");
+	mask-repeat: no-repeat;
+	mask-position: center;
+	mask-size: contain;
+	-webkit-mask-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><polyline points='4 17 10 11 4 5'/><line x1='12' y1='19' x2='20' y2='19'/></svg>");
+	-webkit-mask-repeat: no-repeat;
+	-webkit-mask-position: center;
+	-webkit-mask-size: contain;
+	flex-shrink: 0;
+}
+/* Default label when no filename/title is set */
+.sl-markdown-content .expressive-code .frame.is-terminal .header .title:empty::after {
+	content: 'Command Line';
+}
+
+/* Normalize weight + style of syntax-highlighted tokens — night-owl
+ * italicizes keywords/comments; we want uniform upright text. */
 .sl-markdown-content .expressive-code pre code,
 .sl-markdown-content .expressive-code pre code * {
 	font-weight: 400 !important;
+	font-style: normal !important;
 }
 
 /* Copy button — keep it visible against the dark bg. */
@@ -176,6 +232,19 @@ html {
 .sl-markdown-content .expressive-code:hover .copy button,
 .sl-markdown-content .expressive-code .copy button:focus-visible {
 	opacity: 1;
+}
+/* On terminal frames, tuck the copy button into the slim titlebar */
+.sl-markdown-content .expressive-code figure.frame.is-terminal .copy {
+	top: 0.3rem;
+	right: 0.3rem;
+}
+.sl-markdown-content .expressive-code figure.frame.is-terminal .copy button {
+	background: transparent;
+	border-color: transparent;
+}
+.sl-markdown-content .expressive-code figure.frame.is-terminal .copy button:hover {
+	background: rgba(255, 255, 255, 0.08);
+	border-color: rgba(255, 255, 255, 0.15);
 }
 
 /* Language pill — injected by the head script for non-terminal frames. */
@@ -210,21 +279,23 @@ html {
 	padding: 1rem;
 }
 
-/* Tables — editorial, no heavy zebra */
+/* Tables — row-divider rhythm, no grid */
 .sl-markdown-content table {
 	border-collapse: collapse;
 	font-size: 0.95em;
+	width: 100%;
 }
 .sl-markdown-content th,
 .sl-markdown-content td {
-	border: 1px solid var(--tb-border);
-	padding: 0.55em 0.8em;
+	border: none;
+	border-bottom: 1px solid var(--tb-border);
+	padding: 0.6em 0.8em;
+	text-align: left;
 }
 .sl-markdown-content th {
-	background: var(--tb-surface-subtle);
 	color: var(--tb-text);
 	font-weight: 600;
-	text-align: left;
+	border-bottom: 2px solid var(--tb-border-strong);
 }
 
 /* Nav chrome */
@@ -241,26 +312,43 @@ a.site-title {
 	color: var(--tb-text);
 }
 
-/* Sidebar */
+/* Sidebar — quiet, flat, Stripe-style */
 nav.sidebar ul > li > a,
 starlight-menu-button {
 	color: var(--tb-text-secondary);
 }
 nav.sidebar ul > li > a[aria-current='page'] {
-	background: var(--tb-surface-subtle);
+	background: transparent;
 	color: var(--tb-text);
 	font-weight: 500;
+	box-shadow: inset 2px 0 0 var(--tb-text);
 }
 
-/* Sidebar group headers — marketing mono treatment */
+/* Sidebar group headers — sentence case at a normal sans weight */
 nav.sidebar summary,
 nav.sidebar > ul > li > span.large {
-	font-family: var(--tb-font-mono);
-	text-transform: uppercase;
-	letter-spacing: 0.05em;
-	font-size: 0.72rem;
-	font-weight: 700;
+	font-family: var(--sl-font);
+	text-transform: none;
+	letter-spacing: 0;
+	font-size: 0.8125rem;
+	font-weight: 600;
 	color: var(--tb-text-muted);
+}
+
+/* Right TOC — subtle left-rail + darker weight on active */
+.right-sidebar a[aria-current='true'],
+.right-sidebar-panel a[aria-current='true'] {
+	color: var(--tb-text);
+	font-weight: 500;
+	box-shadow: inset 2px 0 0 var(--tb-text);
+}
+.right-sidebar a:not([aria-current='true']),
+.right-sidebar-panel a:not([aria-current='true']) {
+	color: var(--tb-text-muted);
+}
+.right-sidebar a:hover,
+.right-sidebar-panel a:hover {
+	color: var(--tb-text);
 }
 
 /* Hero on the docs splash */

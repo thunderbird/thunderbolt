@@ -7,7 +7,7 @@ YELLOW := \033[0;33m
 NC := \033[0m # No Color
 
 # Container compose tool (auto-detect podman-compose, fallback to docker compose)
-COMPOSE ?= $(shell command -v podman-compose > /dev/null 2>&1 && echo podman-compose || echo docker compose)
+COMPOSE ?= $(shell command -v podman-compose > /dev/null 2>&1 && podman info > /dev/null 2>&1 && echo podman-compose || echo docker compose)
 
 # Default target
 help:

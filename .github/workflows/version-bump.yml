@@ -61,6 +61,7 @@ permissions:
 jobs:
   version_bump:
     runs-on: ubuntu-latest
+    environment: thunderbolt_release
     outputs:
       new_version: ${{ steps.version.outputs.new_version }}
       tag_name: ${{ steps.tag.outputs.tag_name }}

@@ -1,9 +1,6 @@
-type ChatCompletionChunk = {
-  usage?: any
-  [key: string]: any
-}
+import type { ChatCompletionChunk } from 'openai/resources/chat/completions'
 
-type CompletionStream = AsyncIterable<ChatCompletionChunk> & { controller?: AbortController }
+type CompletionStream = AsyncIterable<ChatCompletionChunk> & { controller: AbortController }
 
 /**
  * Creates a ReadableStream from an OpenAI completion stream with SSE formatting
@@ -76,7 +73,7 @@ export const createSSEStreamFromCompletion = (
       // Mark as cancelled to stop processing chunks
       isCancelled = true
       // Abort the OpenAI stream
-      completion.controller?.abort()
+      completion.controller.abort()
     },
   })
 }

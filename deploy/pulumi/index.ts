@@ -6,12 +6,28 @@ import { createCluster } from './src/cluster'
 import { createServiceDiscovery } from './src/discovery'
 import { createAlb } from './src/alb'
 import { createServices } from './src/services'
+import { createDns } from './src/dns'
 
 const config = new pulumi.Config()
 const stackName = pulumi.getStack()
 const name = `tb-${stackName}`
 const platform = config.get('platform') || 'fargate'
 const version = config.require('version')
+
+// Optional Cloudflare subdomain wiring (used by preview-pr-* stacks).
+// When `subdomain` is set, a proxied CNAME is created in Cloudflare pointing the
+// given hostname at the ALB, and all app-facing URLs use https://<subdomain>
+// instead of the raw ALB DNS. Enterprise stacks leave this unset.
+const subdomain = config.get('subdomain')
+const cloudflareZoneId = config.get('cloudflareZoneId')
+const cloudflareApiToken = config.getSecret('cloudflareApiToken')
+
+if (subdomain && (!cloudflareZoneId || !cloudflareApiToken)) {
+  throw new Error(
+    'subdomain is set but cloudflareZoneId and/or cloudflareApiToken are missing — ' +
+      'run `pulumi config set cloudflareZoneId <id>` and `pulumi config set --secret cloudflareApiToken <token>`',
+  )
+}
 
 // All images are pre-built and published to GHCR by the enterprise-publish workflow
 const imagePrefix = 'ghcr.io/thunderbird/thunderbolt'
@@ -28,8 +44,8 @@ const secrets = {
   postgresPassword: config.getSecret('postgresPassword') ?? pulumi.output('postgres'),
   keycloakAdminPassword: config.getSecret('keycloakAdminPassword') ?? pulumi.output('admin'),
   oidcClientSecret: config.getSecret('oidcClientSecret') ?? pulumi.output('thunderbolt-enterprise-secret'),
-  powersyncJwtSecret: config.getSecret('powersyncJwtSecret') ?? pulumi.output('enterprise-powersync-secret'),
-  betterAuthSecret: config.getSecret('betterAuthSecret') ?? pulumi.output('enterprise-better-auth-secret'),
+  powersyncJwtSecret: config.getSecret('powersyncJwtSecret') ?? pulumi.output('enterprise-thunderbolt-powersync-jwt-default-secret'),
+  betterAuthSecret: config.getSecret('betterAuthSecret') ?? pulumi.output('enterprise-thunderbolt-better-auth-default-secret'),
   powersyncDbPassword: config.getSecret('powersyncDbPassword') ?? pulumi.output('myhighlyrandompassword'),
 }
 
@@ -79,6 +95,20 @@ if (platform === 'k8s') {
     albSgId: albSg.id,
   })
 
+  // If a subdomain is configured, create the Cloudflare CNAME and derive the public URL
+  // from it. Otherwise fall back to the raw ALB hostname.
+  const dns = subdomain
+    ? createDns({
+        name,
+        zoneId: cloudflareZoneId!,
+        hostname: subdomain,
+        target: alb.dnsName,
+        apiToken: cloudflareApiToken!,
+      })
+    : undefined
+
+  const publicUrl = dns ? dns.url : pulumi.interpolate`http://${alb.dnsName}`
+
   createServices({
     name,
     cluster,
@@ -90,7 +120,7 @@ if (platform === 'k8s') {
     images,
     secrets,
     ghcrToken: config.getSecret('ghcrToken'),
-    albDnsName: alb.dnsName,
+    publicUrl,
     albListener: listener,
     targetGroups: {
       frontend: frontendTg,
@@ -103,8 +133,9 @@ if (platform === 'k8s') {
 
   module.exports = {
     platform: 'fargate',
-    url: pulumi.interpolate`http://${alb.dnsName}`,
-    keycloakAdmin: pulumi.interpolate`http://${alb.dnsName}/auth/admin`,
+    url: publicUrl,
+    albDnsName: alb.dnsName,
+    keycloakAdmin: pulumi.interpolate`${publicUrl}/auth/admin`,
     stackInfo: {
       name: stackName,
       destroy: `pulumi destroy -s ${stackName} -y`,

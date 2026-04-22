@@ -36,8 +36,9 @@ client_auth:
     keys:
       - kty: oct
         # Base64 of POWERSYNC_JWT_SECRET — must match backend env var
-        # Default: base64("enterprise-powersync-secret") = ZW50ZXJwcmlzZS1wb3dlcnN5bmMtc2VjcmV0
-        k: ZW50ZXJwcmlzZS1wb3dlcnN5bmMtc2VjcmV0
+        # Default: base64("enterprise-thunderbolt-powersync-jwt-default-secret") — 51 chars
+        # Backend validates this is >=32 chars when decoded; override in production.
+        k: ZW50ZXJwcmlzZS10aHVuZGVyYm9sdC1wb3dlcnN5bmMtand0LWRlZmF1bHQtc2VjcmV0
         alg: HS256
         kid: enterprise-powersync
   telemetry:

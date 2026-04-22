@@ -63,8 +63,10 @@ powersync:
     port: 8080
   jwt:
     kid: enterprise-powersync
-    # -- Base64-encoded JWT secret (default: "enterprise-powersync-secret")
-    secretBase64: ZW50ZXJwcmlzZS1wb3dlcnN5bmMtc2VjcmV0
+    # -- Base64-encoded JWT secret. Minimum 32 chars when decoded (backend validation).
+    # Default: "enterprise-thunderbolt-powersync-jwt-default-secret" (51 chars).
+    # Override for production: echo -n "<your-secret>" | base64
+    secretBase64: ZW50ZXJwcmlzZS10aHVuZGVyYm9sdC1wb3dlcnN5bmMtand0LWRlZmF1bHQtc2VjcmV0
   db:
     # -- Base64-encoded powersync_role database password (default: "myhighlyrandompassword")
     passwordBase64: bXloaWdobHlyYW5kb21wYXNzd29yZA==

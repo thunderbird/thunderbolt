@@ -29,7 +29,12 @@ type ServiceArgs = {
   images: Images
   secrets: Secrets
   ghcrToken?: pulumi.Output<string>
-  albDnsName: pulumi.Input<string>
+  /**
+   * Full URL the app is served at, including scheme. e.g. `http://<alb>.elb.amazonaws.com`
+   * for enterprise stacks, or `https://thunderbolt-pr-123.preview.thunderbolt.io` when a
+   * Cloudflare subdomain is wired up. Used for OIDC, CORS, and app-facing env vars.
+   */
+  publicUrl: pulumi.Input<string>
   albListener: aws.lb.Listener
   targetGroups: {
     frontend: aws.lb.TargetGroup
@@ -225,7 +230,7 @@ export const createServices = (args: ServiceArgs) => {
           { name: 'KC_BOOTSTRAP_ADMIN_USERNAME', value: 'admin' },
           { name: 'KC_BOOTSTRAP_ADMIN_PASSWORD', value: args.secrets.keycloakAdminPassword },
           { name: 'KC_HTTP_PORT', value: '8080' },
-          { name: 'KC_HOSTNAME_URL', value: pulumi.interpolate`http://${args.albDnsName}` },
+          { name: 'KC_HOSTNAME_URL', value: args.publicUrl },
           { name: 'KC_HTTP_RELATIVE_PATH', value: '/auth' },
         ],
         portMappings: [{ containerPort: 8080 }],
@@ -320,14 +325,14 @@ export const createServices = (args: ServiceArgs) => {
           { name: 'AUTH_MODE', value: 'oidc' },
           { name: 'WAITLIST_ENABLED', value: 'false' },
           { name: 'DATABASE_DRIVER', value: 'postgres' },
-          { name: 'OIDC_ISSUER', value: pulumi.interpolate`http://${args.albDnsName}/auth/realms/thunderbolt` },
+          { name: 'OIDC_ISSUER', value: pulumi.interpolate`${args.publicUrl}/auth/realms/thunderbolt` },
           { name: 'OIDC_CLIENT_ID', value: 'thunderbolt-app' },
-          { name: 'BETTER_AUTH_URL', value: pulumi.interpolate`http://${args.albDnsName}` },
-          { name: 'APP_URL', value: pulumi.interpolate`http://${args.albDnsName}` },
-          { name: 'TRUSTED_ORIGINS', value: pulumi.interpolate`http://${args.albDnsName}` },
-          { name: 'CORS_ORIGINS', value: pulumi.interpolate`http://${args.albDnsName}` },
+          { name: 'BETTER_AUTH_URL', value: args.publicUrl },
+          { name: 'APP_URL', value: args.publicUrl },
+          { name: 'TRUSTED_ORIGINS', value: args.publicUrl },
+          { name: 'CORS_ORIGINS', value: args.publicUrl },
           { name: 'CORS_ORIGIN_REGEX', value: '' },
-          { name: 'POWERSYNC_URL', value: pulumi.interpolate`http://${args.albDnsName}/powersync` },
+          { name: 'POWERSYNC_URL', value: pulumi.interpolate`${args.publicUrl}/powersync` },
           { name: 'POWERSYNC_JWT_KID', value: 'enterprise-powersync' },
           { name: 'RATE_LIMIT_ENABLED', value: 'true' },
         ],

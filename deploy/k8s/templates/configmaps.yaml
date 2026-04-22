@@ -115,9 +115,11 @@ data:
       -v powersync_pass="$POWERSYNC_DB_PASSWORD" \
       -v dbname="$POSTGRES_DB" \
       --username "$POSTGRES_USER" --dbname "$POSTGRES_DB" <<-'EOSQL'
-      CREATE ROLE powersync_role WITH LOGIN PASSWORD :'powersync_pass' REPLICATION;
-      GRANT ALL PRIVILEGES ON DATABASE :"dbname" TO powersync_role;
-      ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON TABLES TO powersync_role;
-      CREATE PUBLICATION powersync_pub FOR ALL TABLES;
+      CREATE SCHEMA IF NOT EXISTS powersync;
+      CREATE ROLE powersync_role WITH REPLICATION BYPASSRLS LOGIN PASSWORD :'powersync_pass';
+      GRANT USAGE ON SCHEMA powersync TO powersync_role;
+      GRANT SELECT ON ALL TABLES IN SCHEMA powersync TO powersync_role;
+      ALTER DEFAULT PRIVILEGES IN SCHEMA powersync GRANT SELECT ON TABLES TO powersync_role;
+      CREATE PUBLICATION powersync FOR ALL TABLES;
       CREATE DATABASE powersync_storage OWNER postgres;
     EOSQL

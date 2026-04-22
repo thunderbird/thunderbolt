@@ -45,12 +45,12 @@ flowchart TD
 
     subgraph SharedWorker["SharedWorker — ThunderboltSharedSyncImplementation.worker.ts"]
         TSSI["ThunderboltSharedSyncImplementation<br/>extends SharedSyncImplementation<br/><br/>generateStreamingImplementation()<br/>→ creates TransformableBucketStorage<br/>  + registers encryptionMiddleware"]
-        TBS["TransformableBucketStorage<br/>extends SqliteBucketStorage<br/><br/>control(PROCESS_TEXT_LINE)<br/>→ parse → transform → super.control()"]
+        TBS["TransformableBucketStorage<br/>extends SqliteBucketStorage<br/><br/>control(PROCESS_TEXT_LINE | PROCESS_BSON_LINE)<br/>→ parse → transform → super.control()"]
         MW["encryptionMiddleware<br/>(AES-GCM decryption via codec)"]
         SBS["SqliteBucketStorage<br/>super.control()"]
     end
 
-    Server -->|"sync stream<br/>(PROCESS_TEXT_LINE)"| TSSI
+    Server -->|"sync stream<br/>(TEXT_LINE or BSON_LINE)"| TSSI
     TSSI --> TBS
     TBS -->|"SyncDataBatch"| MW
     MW -->|"transformed batch"| TBS
@@ -67,7 +67,7 @@ flowchart TD
 
     subgraph MainThread["Main Thread"]
         TPS["ThunderboltPowerSyncDatabase<br/>extends PowerSyncDatabase<br/><br/>generateBucketStorageAdapter()<br/>→ creates TransformableBucketStorage<br/>  + registers encryptionMiddleware"]
-        TBS["TransformableBucketStorage<br/>extends SqliteBucketStorage<br/><br/>control(PROCESS_TEXT_LINE)<br/>→ parse → transform → super.control()"]
+        TBS["TransformableBucketStorage<br/>extends SqliteBucketStorage<br/><br/>control(PROCESS_TEXT_LINE | PROCESS_BSON_LINE)<br/>→ parse → transform → super.control()"]
         MW["encryptionMiddleware<br/>(AES-GCM decryption via codec)"]
         SBS["SqliteBucketStorage<br/>super.control()"]
         Drizzle["Drizzle / DAL<br/>(reads decrypted data)"]
@@ -95,17 +95,20 @@ flowchart TD
 PowerSync's Rust sync client sends incoming data to the storage adapter via:
 
 ```
-adapter.control(PROCESS_TEXT_LINE, jsonPayload)
+adapter.control(PROCESS_TEXT_LINE, jsonPayload)   // NDJSON responses
+adapter.control(PROCESS_BSON_LINE, bsonPayload)   // BSON responses (preferred since @powersync/web 1.37+)
 ```
 
-`TransformableBucketStorage` overrides `control()` to intercept this call. When a `PROCESS_TEXT_LINE` command arrives with sync data, it:
+`TransformableBucketStorage` overrides `control()` to intercept both formats. When a sync data command arrives, it:
 
-1. Parses the JSON payload into a `SyncDataBatch`
+1. Parses the payload (JSON string or BSON binary) to extract `SyncDataBucketJSON`
 2. Runs it through the registered transformer pipeline (each transformer receives the output of the previous)
-3. Serializes the transformed batch back to JSON
+3. Re-encodes the transformed data in the **same format** as the original (JSON → JSON, BSON → BSON)
 4. Passes the result to `super.control()` → `SqliteBucketStorage` → SQLite
 
-All other control commands (START, STOP, PROCESS_BSON_LINE, etc.) pass through unchanged.
+All other control commands (START, STOP, etc.) pass through unchanged.
+
+> **Why both formats?** Starting with `@powersync/web` 1.37, the HTTP sync stream sends an `Accept` header preferring BSON over NDJSON. If the server supports BSON, sync data arrives as binary `Uint8Array` payloads via `PROCESS_BSON_LINE` instead of JSON strings via `PROCESS_TEXT_LINE`. The middleware must handle both to ensure transformations run regardless of server response type.
 
 ### Middleware interface
 

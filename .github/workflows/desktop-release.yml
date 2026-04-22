@@ -395,11 +395,13 @@ jobs:
 
             ### Downloads
 
-            Download the appropriate installer for your platform below.
+            If desktop artifacts were uploaded successfully, download the appropriate installer from the assets attached to this release.
 
             - **Windows**: `.msi` or `.exe` installer
             - **macOS**: `.dmg` installer (Intel and Apple Silicon)
             - **Linux**: `.AppImage`, `.deb`, or `.rpm` package
+
+            If no desktop assets are attached yet, use the self-deploy templates in [`deploy/`](https://github.com/thunderbird/thunderbolt/tree/main/deploy) while the release pipeline is being fixed.
 
             ### Release Notes
 
@@ -424,11 +426,13 @@ jobs:
 
             ### Downloads
 
-            Download the appropriate installer for your platform below.
+            If desktop artifacts were uploaded successfully, download the appropriate installer from the assets attached to this release.
 
             - **Windows**: `.msi` or `.exe` installer
             - **macOS**: `.dmg` installer (Intel and Apple Silicon)
             - **Linux**: `.AppImage`, `.deb`, or `.rpm` package
+
+            If no desktop assets are attached yet, use the self-deploy templates in [`deploy/`](https://github.com/thunderbird/thunderbolt/tree/main/deploy) instead.
 
             ---
 

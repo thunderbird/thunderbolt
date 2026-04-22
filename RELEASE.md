@@ -241,9 +241,11 @@ Once the tag exists, all platform builds run in parallel:
 
 ### Final Steps
 
-- **GitHub Release**: All artifacts uploaded to the release
+- **GitHub Release**: Desktop artifacts are attached when the desktop release workflow finishes successfully
 - **iOS TestFlight**: Testers with access are notified
 - **Android Play Store**: Available on internal track for testing
+
+If desktop assets are not attached yet, point users to the deployment templates in [`deploy/`](./deploy) instead of assuming installers are available on the GitHub release page.
 
 ## Platform-Specific Releases
 

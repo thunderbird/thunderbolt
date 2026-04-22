@@ -101,7 +101,7 @@ format:
 	@echo "$(BLUE)→ Formatting backend code...$(NC)"
 	cd backend && bun run format
 	@echo "$(BLUE)→ Formatting Rust code...$(NC)"
-	@command -v cargo > /dev/null 2>&1 && bun run format:rust || echo "$(YELLOW)⚠ cargo not found, skipping Rust formatting$(NC)"
+	@if command -v cargo > /dev/null 2>&1; then bun run format:rust; else echo "$(YELLOW)⚠ cargo not found, skipping Rust formatting$(NC)"; fi
 	@echo "$(GREEN)✓ Formatting complete!$(NC)"
 
 format-check:
@@ -110,7 +110,7 @@ format-check:
 	@echo "$(BLUE)→ Checking backend formatting...$(NC)"
 	cd backend && bun run format-check
 	@echo "$(BLUE)→ Checking Rust formatting...$(NC)"
-	@command -v cargo > /dev/null 2>&1 && bun run format:rust-check || echo "$(YELLOW)⚠ cargo not found, skipping Rust format check$(NC)"
+	@if command -v cargo > /dev/null 2>&1; then bun run format:rust-check; else echo "$(YELLOW)⚠ cargo not found, skipping Rust format check$(NC)"; fi
 	@echo "$(GREEN)✓ Format check complete!$(NC)"
 
 # Type checking

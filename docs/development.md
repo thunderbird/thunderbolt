@@ -2,7 +2,31 @@
 
 ## Quick Start
 
-You must have Bun, Rust, and Docker installed first. Then:
+You must have these tools installed first:
+
+- [Bun](https://bun.com/)
+- [Rust](https://www.rust-lang.org/tools/install)
+- Docker or a Docker-compatible runtime
+- `sccache`, required by `src-tauri/.cargo/config.toml`:
+
+  ```sh
+  cargo install sccache
+  ```
+
+For Linux desktop builds, also install Tauri's Linux system prerequisites before
+running `cargo check` in `src-tauri` or `bun tauri:dev:desktop`. On
+Debian/Ubuntu:
+
+```sh
+sudo apt install libwebkit2gtk-4.1-dev libjavascriptcoregtk-4.1-dev \
+  build-essential curl wget file libxdo-dev libssl-dev \
+  libayatana-appindicator3-dev librsvg2-dev libsoup-3.0-dev
+```
+
+For other distributions, use the upstream
+[Tauri Linux prerequisites](https://v2.tauri.app/start/prerequisites/#linux).
+
+Then:
 
 ```sh
 # Install dependencies

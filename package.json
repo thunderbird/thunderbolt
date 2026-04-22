@@ -102,7 +102,7 @@
     "drizzle-orm": "^0.45.2",
     "framer-motion": "^12.23.12",
     "input-otp": "^1.4.2",
-    "lucide-react": "^0.540.0",
+    "lucide-react": "^1.8.0",
     "marked": "^16.4.1",
     "posthog-js": "^1.288.1",
     "react": "^19.2.1",

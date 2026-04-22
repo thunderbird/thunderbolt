@@ -3,8 +3,8 @@
  *
  * Run with: bun test custom-model-proxy.test.ts
  */
-import { describe, expect, it, beforeEach, mock, spyOn } from 'bun:test'
-import { validateProxyRequest, validateModelsRequest, perUserLimiter, wrapStreamInSSE } from './custom-model-proxy'
+import { describe, expect, it } from 'bun:test'
+import { validateProxyRequest, validateModelsRequest, wrapStreamInSSE } from './custom-model-proxy'
 import { RateLimiterMemory } from 'rate-limiter-flexible'
 
 // ---------------------------------------------------------------------------

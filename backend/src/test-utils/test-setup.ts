@@ -33,3 +33,14 @@ globalThis.fetch = Object.assign(
 
 // Store original for tests that need to opt-in
 ;(globalThis as any).__originalFetch = originalFetch
+
+// Close PGlite when the event loop drains after all tests complete.
+// PGlite 0.4.x leaves WASM worker resources open without an explicit close(),
+// causing Bun to crash with exit code 99 when running --rerun-each.
+// We use 'beforeExit' (fires once when the event loop is empty) rather than
+// afterAll (which runs once per rerun iteration with --rerun-each).
+process.once('beforeExit', () => {
+  testDbManager.close().catch(() => {})
+  // Also close the db/client singleton if it was lazily loaded (e.g. swagger.test.ts)
+  import('@/db/client').then(({ closeDb }) => closeDb()).catch(() => {})
+})

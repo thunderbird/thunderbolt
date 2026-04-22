@@ -25,6 +25,16 @@ class TestDbManager {
     this.initialized = true
   }
 
+  /** Close the PGlite instance to release WASM resources and allow clean process exit */
+  async close() {
+    if (this.client) {
+      await this.client.close()
+      this.client = null
+      this.db = null
+      this.initialized = false
+    }
+  }
+
   /**
    * Create a test database instance with transaction isolation
    */

@@ -12,6 +12,13 @@ import { ThunderboltConnector } from './connector'
 import { getPlatform, getWebBrowser } from '@/lib/platform'
 import { ThunderboltPowerSyncDatabase } from './ThunderboltPowerSyncDatabase'
 import { encryptionMiddleware } from './middleware/EncryptionMiddleware'
+import {
+  getMsSinceLastDownload,
+  sanitizeErrorForTracking,
+  startSyncStatusListener,
+  stopSyncStatusListener,
+  trackSyncEvent,
+} from './sync-tracker'
 
 /** PowerSync config: default (Chrome/Edge/Firefox web) vs safari-tauri (Safari web, Tauri) */
 export type PowerSyncDatabaseConfig = 'default' | 'safari-tauri'
@@ -238,9 +245,12 @@ export class PowerSyncDatabaseImpl implements DatabaseInterface {
       })
       this._isConnected = true
       console.info('PowerSync connected')
+      startSyncStatusListener(this.powerSync, getPowerSyncDatabaseConfig())
+      trackSyncEvent('sync_connect')
       this.startVisibilityReconnect()
     } catch (error) {
       console.warn('Failed to connect to PowerSync Cloud:', error)
+      trackSyncEvent('sync_connect_error', { error: sanitizeErrorForTracking(error) })
     }
   }
 
@@ -249,20 +259,32 @@ export class PowerSyncDatabaseImpl implements DatabaseInterface {
    * Used by both the visibility reconnect handler and manual retry button.
    * No-ops if a reconnect is already in-flight or sync is disabled.
    */
-  async reconnect(): Promise<void> {
-    if (this._isReconnecting || !this.powerSync) {
+  async reconnect(trigger: 'visibility' | 'manual' = 'manual', hiddenDurationMs?: number): Promise<void> {
+    if (this._isReconnecting || !this.powerSync || !isSyncEnabled()) {
       return
     }
     this._isReconnecting = true
+    trackSyncEvent('sync_reconnect_start', { trigger })
     try {
+      trackSyncEvent('sync_disconnect', { trigger: 'reconnect' })
+      stopSyncStatusListener()
       await this.powerSync.disconnect()
       this._isConnected = false
-      if (!isSyncEnabled()) {
-        return
-      }
       await this.connectToSync()
+      if (this._isConnected) {
+        trackSyncEvent('sync_reconnect_success', {
+          trigger,
+          hidden_duration_ms: hiddenDurationMs,
+        })
+      } else {
+        trackSyncEvent('sync_reconnect_error', {
+          trigger,
+          error: 'connectToSync failed internally',
+        })
+      }
     } catch (err) {
       console.warn('[PowerSync] Reconnect failed:', err)
+      trackSyncEvent('sync_reconnect_error', { trigger, error: sanitizeErrorForTracking(err) })
     } finally {
       this._isReconnecting = false
     }
@@ -290,18 +312,28 @@ export class PowerSyncDatabaseImpl implements DatabaseInterface {
     this.visibilityHandler = () => {
       if (document.visibilityState === 'hidden') {
         this.hiddenAt = Date.now()
+        trackSyncEvent('sync_visibility_change', { state: 'hidden' })
         return
       }
+      const hiddenDuration = this.hiddenAt ? Date.now() - this.hiddenAt : undefined
+      const willReconnect = Boolean(
+        this._isConnected && this.powerSync && this.hiddenAt && hiddenDuration && hiddenDuration >= hiddenThresholdMs,
+      )
+      trackSyncEvent('sync_visibility_change', {
+        state: 'visible',
+        hidden_duration_ms: hiddenDuration,
+        will_reconnect: willReconnect,
+        ms_since_last_download: getMsSinceLastDownload(),
+      })
       if (!this._isConnected || !this.powerSync || !this.hiddenAt) {
         return
       }
-      const hiddenDuration = Date.now() - this.hiddenAt
       this.hiddenAt = null
-      if (hiddenDuration < hiddenThresholdMs) {
+      if (!hiddenDuration || hiddenDuration < hiddenThresholdMs) {
         return
       }
       console.info(`[PowerSync] App was hidden for ${Math.round(hiddenDuration / 1000)}s — forcing reconnect`)
-      void this.reconnect()
+      void this.reconnect('visibility', hiddenDuration)
     }
     document.addEventListener('visibilitychange', this.visibilityHandler)
   }
@@ -323,7 +355,9 @@ export class PowerSyncDatabaseImpl implements DatabaseInterface {
     }
 
     try {
+      trackSyncEvent('sync_disconnect', { trigger: 'user' })
       this.stopVisibilityReconnect()
+      stopSyncStatusListener()
       await this.powerSync.disconnect()
       this._isConnected = false
     } catch (error) {
@@ -389,6 +423,7 @@ export class PowerSyncDatabaseImpl implements DatabaseInterface {
 
   async close(): Promise<void> {
     this.stopVisibilityReconnect()
+    stopSyncStatusListener()
     if (this.powerSync) {
       await this.powerSync.disconnectAndClear()
       this.powerSync = null

@@ -32,7 +32,6 @@ export default defineConfig({
 					tag: 'script',
 					attrs: { type: 'module' },
 					content: `
-import mermaid from 'https://esm.run/mermaid@11';
 const extractSource = (pre) => {
   // Expressive-code wraps each source line in a .ec-line div and drops the
   // trailing newline, so textContent collapses everything onto one line.
@@ -46,6 +45,7 @@ const extractSource = (pre) => {
 const renderMermaid = async () => {
   const blocks = document.querySelectorAll('pre[data-language="mermaid"]');
   if (blocks.length === 0) return;
+  const { default: mermaid } = await import('https://esm.run/mermaid@11');
   mermaid.initialize({ startOnLoad: false, theme: 'default' });
   blocks.forEach((pre, i) => {
     const src = extractSource(pre);

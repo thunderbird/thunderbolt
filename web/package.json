@@ -20,6 +20,7 @@
     "@types/react": "^19.2.14",
     "@types/react-dom": "^19.2.3",
     "astro": "^6.0.1",
+    "mermaid": "^11.14.0",
     "react": "^19.2.4",
     "react-dom": "^19.2.4",
     "sharp": "^0.34.2",

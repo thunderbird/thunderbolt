@@ -67,23 +67,6 @@ const settingsSchema = z
     // Rate limiting
     rateLimitEnabled: z.boolean().default(true),
 
-    // Custom model proxy settings
-    /** Enable/disable the custom model proxy feature entirely. */
-    customProxyEnabled: z.boolean().default(true),
-    /** Maximum bytes to read from upstream response (default 50 MB). */
-    customProxyMaxBytes: z.coerce.number().int().positive().default(52428800),
-    /** Total request timeout in ms for streaming completions (default 5 min). */
-    customProxyRequestTimeoutMs: z.coerce.number().int().positive().default(300000),
-    /** Per-user rate limit: requests per minute (default 60). */
-    customProxyRateLimitPerUserPerMin: z.coerce.number().int().positive().default(60),
-    /** Comma-separated allowlist of upstream path suffixes. */
-    customProxyAllowedPaths: z.string().default('/v1/models,/v1/chat/completions,/v1/completions'),
-    /** Allow HTTP (non-TLS) upstream URLs (true in dev, false in production). */
-    customProxyAllowHttp: z.boolean().default(false),
-    /** Outbound X-Abuse-Contact header value. The mailbox must exist + be monitored. */
-    customProxyAbuseContact: z.string().default('abuse@thunderbolt.io'),
-    /** Outbound User-Agent header value. */
-    customProxyUserAgent: z.string().default('Thunderbolt-Proxy/1.0'),
     // Trusted proxy (controls which proxy headers are trusted for IP extraction)
     // Set to 'cloudflare' to trust CF-Connecting-IP, 'akamai' for True-Client-IP,
     // or leave empty to use only the direct socket IP (proxy headers are NOT trusted)
@@ -150,14 +133,6 @@ const parseSettings = (): Settings => {
     swaggerEnabled: process.env.SWAGGER_ENABLED === 'true',
     rateLimitEnabled: process.env.RATE_LIMIT_ENABLED !== 'false',
     trustedProxy: (process.env.TRUSTED_PROXY || '').toLowerCase(),
-    customProxyEnabled: process.env.CUSTOM_PROXY_ENABLED !== 'false',
-    customProxyMaxBytes: process.env.CUSTOM_PROXY_MAX_BYTES || '52428800',
-    customProxyRequestTimeoutMs: process.env.CUSTOM_PROXY_REQUEST_TIMEOUT_MS || '300000',
-    customProxyRateLimitPerUserPerMin: process.env.CUSTOM_PROXY_RATE_LIMIT_PER_USER_PER_MIN || '60',
-    customProxyAllowedPaths: process.env.CUSTOM_PROXY_ALLOWED_PATHS || '/v1/models,/v1/chat/completions,/v1/completions',
-    customProxyAllowHttp: process.env.CUSTOM_PROXY_ALLOW_HTTP === 'true',
-    customProxyAbuseContact: process.env.CUSTOM_PROXY_ABUSE_CONTACT || 'abuse@thunderbolt.io',
-    customProxyUserAgent: process.env.CUSTOM_PROXY_USER_AGENT || 'Thunderbolt-Proxy/1.0',
   }
 
   return settingsSchema.parse(env)

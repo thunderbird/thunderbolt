@@ -222,8 +222,8 @@ export const getCustomModelClient = (
   apiKey: string,
   fetchFn?: typeof fetch,
 ): OpenAI | PostHogOpenAI => {
-  const userAgent = process.env.CUSTOM_PROXY_USER_AGENT ?? 'Thunderbolt-Proxy/1.0'
-  const abuseContact = process.env.CUSTOM_PROXY_ABUSE_CONTACT ?? 'abuse@thunderbolt.io'
+  const userAgent = 'Thunderbolt-Proxy/1.0'
+  const abuseContact = 'abuse@thunderbolt.io'
 
   const params = {
     apiKey,

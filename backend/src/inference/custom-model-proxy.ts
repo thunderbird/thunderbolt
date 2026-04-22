@@ -28,17 +28,11 @@ import { getCustomModelClient } from './client'
 // Config
 // ---------------------------------------------------------------------------
 
-const ALLOWED_PATHS = (process.env.CUSTOM_PROXY_ALLOWED_PATHS ?? '/v1/models,/v1/chat/completions,/v1/completions')
-  .split(',')
-  .map((p) => p.trim())
-
-const MAX_BYTES = parseInt(process.env.CUSTOM_PROXY_MAX_BYTES ?? '52428800', 10)
-const REQUEST_TIMEOUT_MS = parseInt(process.env.CUSTOM_PROXY_REQUEST_TIMEOUT_MS ?? '300000', 10)
-const RATE_LIMIT_USER = parseInt(process.env.CUSTOM_PROXY_RATE_LIMIT_PER_USER_PER_MIN ?? '60', 10)
-const USER_AGENT = process.env.CUSTOM_PROXY_USER_AGENT ?? 'Thunderbolt-Proxy/1.0'
-const ABUSE_CONTACT = process.env.CUSTOM_PROXY_ABUSE_CONTACT ?? 'abuse@thunderbolt.io'
-const PROXY_ENABLED = process.env.CUSTOM_PROXY_ENABLED !== 'false'
-const ALLOW_HTTP = process.env.CUSTOM_PROXY_ALLOW_HTTP === 'true'
+const MAX_BYTES = 52_428_800 // 50 MB
+const REQUEST_TIMEOUT_MS = 300_000 // 5 min
+const RATE_LIMIT_USER = 60 // per minute
+const USER_AGENT = 'Thunderbolt-Proxy/1.0'
+const ABUSE_CONTACT = 'abuse@thunderbolt.io'
 
 // ---------------------------------------------------------------------------
 // Rate limiter
@@ -110,7 +104,7 @@ export const validateProxyRequest = (
     return { valid: false, code: 'INVALID_URL', message: 'URL could not be parsed.' }
   }
 
-  if (!['https:', ...(ALLOW_HTTP ? ['http:'] : [])].includes(parsed.protocol)) {
+  if (parsed.protocol !== 'https:') {
     return { valid: false, code: 'INVALID_URL', message: 'Only HTTPS URLs are allowed.' }
   }
 
@@ -126,12 +120,6 @@ export const validateProxyRequest = (
   const validation = validateSafeUrl(targetUrl)
   if (!validation.valid) {
     return { valid: false, code: 'SSRF_BLOCKED', message: 'This address is not allowed for security reasons.' }
-  }
-
-  const path = parsed.pathname
-  const pathAllowed = ALLOWED_PATHS.some((allowed) => path === allowed || path.endsWith(allowed))
-  if (!pathAllowed) {
-    return { valid: false, code: 'INVALID_URL', message: `Path not allowed. Allowed paths: ${ALLOWED_PATHS.join(', ')}` }
   }
 
   if (upstreamAuth !== undefined && !isPrintableAscii(upstreamAuth)) {
@@ -248,10 +236,6 @@ export const createCustomModelProxyRoutes = (auth: Auth) =>
     .post(
       '/proxy',
       async ({ request, user: sessionUser }) => {
-        if (!PROXY_ENABLED) {
-          return proxyError('PROXY_DISABLED', 'The custom model proxy is disabled.', 503)
-        }
-
         const body = (await request.json()) as CustomModelProxyRequest
         const { targetUrl, upstreamAuth, stream } = body
 
@@ -315,10 +299,6 @@ export const createCustomModelProxyRoutes = (auth: Auth) =>
     .post(
       '/models',
       async ({ request, user: sessionUser }) => {
-        if (!PROXY_ENABLED) {
-          return proxyError('PROXY_DISABLED', 'The custom model proxy is disabled.', 503)
-        }
-
         const body = (await request.json()) as CustomModelModelsRequest
         const { baseUrl, upstreamAuth } = body
 

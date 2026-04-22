@@ -14,7 +14,7 @@ const INTEGRATION = process.env.INTEGRATION === 'true'
 // ---------------------------------------------------------------------------
 
 describe('auth', () => {
-  it('validateProxyRequest rejects non-HTTPS when ALLOW_HTTP is off', () => {
+  it('validateProxyRequest rejects non-HTTPS', () => {
     const result = validateProxyRequest('ftp://example.com/v1/chat/completions')
     expect(result.valid).toBe(false)
     if (!result.valid) expect(result.code).toBe('INVALID_URL')
@@ -128,12 +128,9 @@ describe('log redaction — proxy module does not log upstreamAuth', () => {
 // ---------------------------------------------------------------------------
 
 describe('outbound headers', () => {
-  it('User-Agent and X-Abuse-Contact defaults are set', () => {
-    // Confirm env defaults resolve to non-empty strings
-    const userAgent = process.env.CUSTOM_PROXY_USER_AGENT ?? 'Thunderbolt-Proxy/1.0'
-    const abuseContact = process.env.CUSTOM_PROXY_ABUSE_CONTACT ?? 'abuse@thunderbolt.io'
-    expect(userAgent).toBeTruthy()
-    expect(abuseContact).toBeTruthy()
+  it('User-Agent and X-Abuse-Contact constants are non-empty', () => {
+    expect('Thunderbolt-Proxy/1.0').toBeTruthy()
+    expect('abuse@thunderbolt.io').toBeTruthy()
   })
 })
 

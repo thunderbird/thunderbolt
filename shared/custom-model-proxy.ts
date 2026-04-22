@@ -35,7 +35,6 @@ export type ProxyErrorCode =
   | 'SSE_LINE_TOO_LARGE'
   | 'RATE_LIMITED_USER'
   | 'RATE_LIMITED_HOST'
-  | 'PROXY_DISABLED'
   | 'UNAUTHORIZED'
 
 export type ProxyErrorEnvelope = {

@@ -2,7 +2,9 @@
 
 ## Quick Start
 
-You must have Bun, Rust, and Docker installed first. Then:
+You must have Bun, Rust, sccache, and Docker installed first. Then:
+
+> **Note**: The Rust build uses `sccache` (configured in `src-tauri/.cargo/config.toml`) to speed up rebuilds. Install it with: `cargo install sccache`
 
 ```sh
 # Install dependencies

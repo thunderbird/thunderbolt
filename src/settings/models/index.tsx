@@ -19,10 +19,11 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { StatusCard } from '@/components/ui/status-card'
 import { Switch } from '@/components/ui/switch'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
-import { useDatabase } from '@/contexts'
+import { useDatabase, useHttpClient } from '@/contexts'
 import { createModel as createModelDAL, deleteModel, getAllModels, resetModelToDefault, updateModel } from '@/dal'
 import { defaultModels } from '@/defaults/models'
 import { isModelModified } from '@/defaults/utils'
+import { isLocalhostUrl } from '@/ai/is-localhost-url'
 import { fetch } from '@/lib/fetch'
 import type { Model } from '@/types'
 import { zodResolver } from '@hookform/resolvers/zod'
@@ -31,6 +32,7 @@ import { useQuery } from '@powersync/tanstack-react-query'
 import { toCompilableQuery } from '@powersync/drizzle-driver'
 import { generateText } from 'ai'
 import { http } from '@/lib/http'
+import type { CustomModelModelsRequest, CustomModelModelsResponse, ProxyErrorEnvelope } from '@shared/custom-model-proxy'
 import { Check, Cpu, Loader2, Lock, Plus, Trash2, X } from 'lucide-react'
 import { useEffect, useMemo, useReducer, useRef, type KeyboardEvent } from 'react'
 import { useForm } from 'react-hook-form'
@@ -183,8 +185,42 @@ const formSchema = z
     },
   )
 
+const PROXY_ERROR_MESSAGES: Partial<Record<ProxyErrorEnvelope['error']['code'], string>> = {
+  SSRF_BLOCKED: 'This address is not reachable (internal network blocked).',
+  INVALID_URL: 'Invalid URL. Please provide a full https:// URL.',
+  RATE_LIMITED_USER: 'Too many requests. Please wait a moment.',
+  UPSTREAM_CONTENT_TYPE: 'The endpoint did not return a valid model list.',
+  UPSTREAM_PROTOCOL: 'The endpoint returned an unexpected protocol.',
+}
+
+const resolveModelFetchError = async (error: unknown): Promise<string> => {
+  if (error instanceof TypeError) {
+    return 'Network request failed (the browser blocked the request or the server is unreachable).'
+  }
+
+  if (typeof error === 'object' && error !== null && 'response' in error) {
+    const response = (error as { response?: Response }).response
+    if (!response) return 'Server responded with an unknown error.'
+
+    try {
+      const envelope = await response.clone().json() as ProxyErrorEnvelope
+      const mapped = PROXY_ERROR_MESSAGES[envelope.error.code]
+      if (mapped) return mapped
+      return envelope.error.message
+    } catch {
+      // not a proxy envelope — fall through to status text
+    }
+
+    return `Server responded with status ${response.status} ${response.statusText}`
+  }
+
+  if (error instanceof Error && error.message) return error.message
+  return 'Failed to load models'
+}
+
 export default function ModelsPage() {
   const db = useDatabase()
+  const httpClient = useHttpClient()
   const [state, dispatch] = useReducer(modelReducer, initialState)
   const {
     isAddDialogOpen,
@@ -391,11 +427,43 @@ export default function ModelsPage() {
           break
         case 'custom':
           if (url) {
-            // Ensure URL ends with /v1 if not already
-            const baseUrl = url.endsWith('/v1') ? url : url.endsWith('/') ? `${url}v1` : `${url}/v1`
-            endpoint = `${baseUrl}/models`
-            if (apiKey) {
-              headers = { Authorization: `Bearer ${apiKey}` }
+            if (isLocalhostUrl(url)) {
+              // Localhost: direct fetch — backend can't reach the user's loopback
+              const baseUrl = url.endsWith('/v1') ? url : url.endsWith('/') ? `${url}v1` : `${url}/v1`
+              endpoint = `${baseUrl}/models`
+              if (apiKey) {
+                headers = { Authorization: `Bearer ${apiKey}` }
+              }
+            } else {
+              // Non-localhost: route through backend proxy to avoid CORS
+              const body: CustomModelModelsRequest = {
+                baseUrl: url,
+                ...(apiKey ? { upstreamAuth: apiKey } : {}),
+              }
+              const proxyResponse = await httpClient
+                .post('v1/custom-model/models', { json: body })
+                .json<CustomModelModelsResponse>()
+
+              let models = (proxyResponse.data || []).map((m) => {
+                const supportsToolsByParams =
+                  Array.isArray(m['supported_parameters']) &&
+                  (
+                    (m['supported_parameters'] as string[]).includes('tools') ||
+                    (m['supported_parameters'] as string[]).includes('tool_choice')
+                  )
+                const supportsTools = m['supports_tools'] === true || supportsToolsByParams
+                return {
+                  id: String(m['id']),
+                  name: m['name'] != null ? String(m['name']) : undefined,
+                  created: m['created'] != null ? Number(m['created']) : undefined,
+                  owned_by: m['owned_by'] != null ? String(m['owned_by']) : undefined,
+                  supports_tools: supportsTools,
+                }
+              })
+
+              models = models.sort((a, b) => a.id.localeCompare(b.id))
+              dispatch({ type: 'FETCH_MODELS_SUCCESS', models })
+              return
             }
           }
           break
@@ -491,35 +559,7 @@ export default function ModelsPage() {
       }
     } catch (error) {
       console.error('Failed to fetch models:', error)
-
-      // Browser/network failure (could be offline, CORS, cert error, etc.)
-      if (error instanceof TypeError) {
-        dispatch({
-          type: 'FETCH_MODELS_FAILURE',
-          error: 'Network request failed (the browser blocked the request or the server is unreachable).',
-        })
-      }
-      // HttpError with a Response object
-      else if (typeof error === 'object' && error && 'response' in error) {
-        // @ts-expect-error – HttpError shape
-        const response: Response | undefined = error.response
-        if (response) {
-          dispatch({
-            type: 'FETCH_MODELS_FAILURE',
-            error: `Server responded with status ${response.status} ${response.statusText}`,
-          })
-        } else {
-          dispatch({ type: 'FETCH_MODELS_FAILURE', error: 'Server responded with an unknown error.' })
-        }
-      }
-      // Generic JavaScript error
-      else if (error instanceof Error && error.message) {
-        dispatch({ type: 'FETCH_MODELS_FAILURE', error: error.message })
-      } else {
-        dispatch({ type: 'FETCH_MODELS_FAILURE', error: 'Failed to load models' })
-      }
-
-      // No models could be fetched; state already handled in failure action
+      dispatch({ type: 'FETCH_MODELS_FAILURE', error: await resolveModelFetchError(error) })
     } finally {
       // Nothing to do in finally; state set in success/failure actions
     }

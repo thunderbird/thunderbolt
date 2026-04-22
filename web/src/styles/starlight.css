@@ -70,11 +70,18 @@ html {
 	scrollbar-gutter: stable;
 }
 
-/* Starlight ships a dark-mode class. Keep the palette uniform — we're a light brand. */
+/* Starlight ships dark/light theme classes. We force the light brand palette for both.
+ * We apply overrides to all three selectors so nothing slips through:
+ *   :root                  — default (before any theme class is set)
+ *   :root[data-theme='light'] — explicit light mode (higher specificity, blue hsl(224/234) grays)
+ *   :root[data-theme='dark']  — force-mapped back to light tokens
+ */
+:root[data-theme='light'],
 :root[data-theme='dark'] {
 	color-scheme: light;
 }
 
+:root[data-theme='light'],
 :root[data-theme='dark'] {
 	--sl-color-white: var(--tb-text);
 	--sl-color-gray-1: var(--tb-text);
@@ -309,6 +316,19 @@ header.header {
 	border-bottom: 1px solid var(--tb-border);
 }
 
+/* Hamburger button — explicit brand colors to override Starlight's [data-theme='light'] rules */
+starlight-menu-button button {
+	background-color: var(--tb-bg);
+	color: var(--tb-text);
+	border-radius: 0;
+	box-shadow: none;
+	border: 1px solid var(--tb-border);
+}
+starlight-menu-button[aria-expanded='true'] button {
+	background-color: var(--tb-surface-subtle);
+	border-color: var(--tb-border-strong);
+}
+
 .site-title,
 a.site-title {
 	font-weight: 600;
@@ -341,6 +361,10 @@ nav.sidebar > ul > li > span.large {
 }
 
 /* Right TOC — subtle left-rail + darker weight on active */
+.right-sidebar a,
+.right-sidebar-panel a {
+	border-radius: 0;
+}
 .right-sidebar a[aria-current='true'],
 .right-sidebar-panel a[aria-current='true'] {
 	color: var(--tb-text);
@@ -424,6 +448,15 @@ nav.sidebar > ul > li > span.large {
 .sl-link-card:hover {
 	border-color: var(--tb-text-secondary);
 	transform: translateY(-1px);
+}
+
+/* Mobile "On this page" TOC bar — frosted glass */
+mobile-starlight-toc nav {
+	backdrop-filter: saturate(140%) blur(12px);
+	-webkit-backdrop-filter: saturate(140%) blur(12px);
+}
+#starlight__mobile-toc .toggle {
+	border-radius: 0;
 }
 
 /* Pagination prev/next cards — flat to match overall aesthetic */

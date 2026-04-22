@@ -14,7 +14,7 @@ cd backend && cp .env.example .env
 cd ..
 
 # Run postgres + powersync
-make docker-up
+make up
 
 # Run backend
 # cd backend && bun dev

@@ -76,7 +76,7 @@ Split the work into two PRs to avoid sync rule mismatches:
 
 See [powersync-service/README.md](../powersync-service/README.md) for full steps. Summary:
 
-- From `powersync-service/`: `docker compose up -d`
+- From the repo root: `make up` (or from `powersync-service/`: `docker compose up -d`)
 - PowerSync API: http://localhost:8080
 - Postgres: localhost:5433 (use this for the backend so PowerSync and app share one database)
 - Backend `.env`: set `DATABASE_DRIVER=postgres`, `DATABASE_URL=postgresql://postgres:postgres@localhost:5433/postgres`, and PowerSync vars (see below)

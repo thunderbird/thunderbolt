@@ -56,6 +56,7 @@
     "@dnd-kit/sortable": "^10.0.0",
     "@dnd-kit/utilities": "^3.2.2",
     "@hookform/resolvers": "^5.2.1",
+    "@icons-pack/react-simple-icons": "^13.13.0",
     "@journeyapps/wa-sqlite": "^1.5.0",
     "@modelcontextprotocol/sdk": "^1.25.2",
     "@noble/post-quantum": "^0.6.0",

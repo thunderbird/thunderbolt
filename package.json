@@ -105,6 +105,7 @@
     "lucide-react": "^0.540.0",
     "marked": "^16.4.1",
     "posthog-js": "^1.288.1",
+    "protobufjs": "8.0.1",
     "react": "^19.2.1",
     "react-dom": "^19.2.1",
     "react-hook-form": "^7.62.0",

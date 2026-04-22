@@ -11,14 +11,9 @@ PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
 COMPOSE_FILE="$PROJECT_ROOT/powersync-service/docker-compose.yml"
 
 # Auto-detect compose tool (podman-compose takes precedence over docker compose)
-COMPOSE=$(command -v podman-compose > /dev/null 2>&1 && echo podman-compose || echo "docker compose")
+COMPOSE=$(command -v podman-compose > /dev/null 2>&1 && podman info > /dev/null 2>&1 && echo podman-compose || echo "docker compose")
 
-if command -v podman-compose > /dev/null 2>&1; then
-  if ! podman info &>/dev/null; then
-    echo -e "${RED}✗ Podman daemon is not running.${NC}"
-    echo "  Start Podman and try again."
-    exit 1
-  fi
+if command -v podman-compose > /dev/null 2>&1 && podman info &>/dev/null; then
   echo -e "${GREEN}✓ Podman is running${NC}"
 else
   if ! command -v docker &>/dev/null; then

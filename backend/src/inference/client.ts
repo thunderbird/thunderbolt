@@ -202,6 +202,50 @@ export const clearInferenceClientCache = () => {
 }
 
 /**
+ * Get an OpenAI-compatible client for a user-supplied custom endpoint.
+ *
+ * Unlike the other client factories, this is NOT cached — each user request
+ * supplies its own baseUrl + apiKey combination. Do not add caching here.
+ *
+ * @param baseUrl   - Base URL of the custom endpoint (e.g. "https://my-llm.example.com/v1")
+ * @param apiKey    - User's API key for the custom endpoint (may be a placeholder if not required)
+ * @param fetchFn   - Optional fetch function override (primarily for testing + SSRF-safe fetch injection)
+ *
+ * The `fetchFn` parameter is how SSRF protection is injected:
+ *   getCustomModelClient(baseUrl, apiKey, createSafeFetch(globalThis.fetch))
+ *
+ * defaultHeaders ensure every upstream request carries the mandatory
+ * Thunderbolt-Proxy User-Agent and X-Abuse-Contact.
+ */
+export const getCustomModelClient = (
+  baseUrl: string,
+  apiKey: string,
+  fetchFn?: typeof fetch,
+): OpenAI | PostHogOpenAI => {
+  const userAgent = process.env.CUSTOM_PROXY_USER_AGENT ?? 'Thunderbolt-Proxy/1.0'
+  const abuseContact = process.env.CUSTOM_PROXY_ABUSE_CONTACT ?? 'abuse@thunderbolt.io'
+
+  const params = {
+    apiKey,
+    baseURL: baseUrl,
+    defaultHeaders: {
+      'User-Agent': userAgent,
+      'X-Abuse-Contact': abuseContact,
+    },
+    ...(fetchFn && { fetch: fetchFn }),
+  }
+
+  if (isPostHogConfigured()) {
+    return new PostHogOpenAI({
+      ...params,
+      posthog: getPostHogClient(fetchFn),
+    })
+  }
+
+  return new OpenAI(params)
+}
+
+/**
  * Legacy export for backward compatibility
  * @deprecated Use getInferenceClient instead
  */

@@ -64,6 +64,14 @@ const baseSettings: Settings = {
   rateLimitEnabled: false,
   swaggerEnabled: false,
   trustedProxy: '',
+  customProxyEnabled: true,
+  customProxyMaxBytes: 52428800,
+  customProxyRequestTimeoutMs: 300000,
+  customProxyRateLimitPerUserPerMin: 60,
+  customProxyAllowedPaths: '/v1/models,/v1/chat/completions,/v1/completions',
+  customProxyAllowHttp: false,
+  customProxyAbuseContact: 'abuse@thunderbolt.io',
+  customProxyUserAgent: 'Thunderbolt-Proxy/1.0',
 }
 
 describe('OIDC Integration', () => {

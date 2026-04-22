@@ -185,7 +185,7 @@ const formSchema = z
     },
   )
 
-const PROXY_ERROR_MESSAGES: Partial<Record<ProxyErrorEnvelope['error']['code'], string>> = {
+const proxyErrorMessages: Partial<Record<ProxyErrorEnvelope['error']['code'], string>> = {
   SSRF_BLOCKED: 'This address is not reachable (internal network blocked).',
   INVALID_URL: 'Invalid URL. Please provide a full https:// URL.',
   RATE_LIMITED_USER: 'Too many requests. Please wait a moment.',
@@ -204,7 +204,7 @@ const resolveModelFetchError = async (error: unknown): Promise<string> => {
 
     try {
       const envelope = await response.clone().json() as ProxyErrorEnvelope
-      const mapped = PROXY_ERROR_MESSAGES[envelope.error.code]
+      const mapped = proxyErrorMessages[envelope.error.code]
       if (mapped) return mapped
       return envelope.error.message
     } catch {

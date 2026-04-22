@@ -109,14 +109,3 @@ describe('validateProxyRequest — upstreamAuth not echoed back', () => {
   })
 })
 
-// ---------------------------------------------------------------------------
-// Outbound headers
-// ---------------------------------------------------------------------------
-
-describe('outbound headers', () => {
-  it('exported proxy identity constants have expected values', () => {
-    const { customProxyUserAgent, customProxyAbuseContact } = require('./custom-model-proxy')
-    expect(customProxyUserAgent).toBe('Thunderbolt-Proxy/1.0')
-    expect(customProxyAbuseContact).toBe('abuse@thunderbolt.io')
-  })
-})

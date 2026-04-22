@@ -8,10 +8,10 @@ import { createMockHttpClient, createSpyHttpClient, jsonResponse } from '@/test-
 const tauriFetchSpy = mock(async () => new Response('tauri-response', { status: 200 }))
 mock.module('@/lib/fetch', () => ({ fetch: tauriFetchSpy, preconnect: () => Promise.resolve(false) }))
 
-const CLOUD_URL = 'https://animal.inference.thunderbolt.io/v1'
-const LOCAL_URL = 'http://localhost:11434/v1'
-const TARGET_URL = `${CLOUD_URL}/chat/completions`
-const LOCAL_TARGET_URL = `${LOCAL_URL}/chat/completions`
+const cloudUrl = 'https://animal.inference.thunderbolt.io/v1'
+const localUrl = 'http://localhost:11434/v1'
+const targetUrl = `${cloudUrl}/chat/completions`
+const localTargetUrl = `${localUrl}/chat/completions`
 
 const makeInit = (overrides: Partial<RequestInit> = {}): RequestInit => ({
   method: 'POST',
@@ -41,12 +41,12 @@ describe('createCustomProxyFetch', () => {
       isTauriSpy.mockReturnValue(true)
       tauriFetchSpy.mockClear()
       const { httpClient, fetchSpy } = createSpyHttpClient()
-      const proxyFetch = createCustomProxyFetch({ baseURL: CLOUD_URL, httpClient })
+      const proxyFetch = createCustomProxyFetch({ baseURL: cloudUrl, httpClient })
 
-      await proxyFetch(TARGET_URL, makeInit())
+      await proxyFetch(targetUrl, makeInit())
 
       // Tauri fetch must be invoked, backend proxy must NOT be called.
-      expect(tauriFetchSpy).toHaveBeenCalledWith(TARGET_URL, expect.anything())
+      expect(tauriFetchSpy).toHaveBeenCalledWith(targetUrl, expect.anything())
       expect(fetchSpy).not.toHaveBeenCalled()
       expect(isTauriSpy).toHaveBeenCalled()
     })
@@ -55,18 +55,18 @@ describe('createCustomProxyFetch', () => {
   describe('Web + localhost baseURL — CORS carve-out', () => {
     it('calls globalThis.fetch with the original URL when baseURL is localhost', async () => {
       const httpClient = createMockHttpClient()
-      const proxyFetch = createCustomProxyFetch({ baseURL: LOCAL_URL, httpClient })
+      const proxyFetch = createCustomProxyFetch({ baseURL: localUrl, httpClient })
 
-      await proxyFetch(LOCAL_TARGET_URL, makeInit())
+      await proxyFetch(localTargetUrl, makeInit())
 
-      expect(globalFetchSpy).toHaveBeenCalledWith(LOCAL_TARGET_URL, expect.anything())
+      expect(globalFetchSpy).toHaveBeenCalledWith(localTargetUrl, expect.anything())
     })
 
     it('does not call httpClient.post for localhost baseURL', async () => {
       const { httpClient, fetchSpy } = createSpyHttpClient()
-      const proxyFetch = createCustomProxyFetch({ baseURL: LOCAL_URL, httpClient })
+      const proxyFetch = createCustomProxyFetch({ baseURL: localUrl, httpClient })
 
-      await proxyFetch(LOCAL_TARGET_URL, makeInit())
+      await proxyFetch(localTargetUrl, makeInit())
 
       expect(fetchSpy).not.toHaveBeenCalled()
     })
@@ -87,17 +87,17 @@ describe('createCustomProxyFetch', () => {
         return jsonResponse({ data: {} })
       })
       const proxyFetch = createCustomProxyFetch({
-        baseURL: CLOUD_URL,
+        baseURL: cloudUrl,
         upstreamAuth: 'sk-test-key',
         httpClient,
       })
 
-      await proxyFetch(TARGET_URL, makeInit())
+      await proxyFetch(targetUrl, makeInit())
 
       expect(fetchSpy).toHaveBeenCalledTimes(1)
       const calledReq = fetchSpy.mock.calls[0][0] as Request
       const body = JSON.parse(await calledReq.clone().text())
-      expect(body.targetUrl).toBe(TARGET_URL)
+      expect(body.targetUrl).toBe(targetUrl)
       expect(body.upstreamAuth).toBe('sk-test-key')
       expect(body.method).toBe('POST')
       expect(body.stream).toBe(false)
@@ -105,9 +105,9 @@ describe('createCustomProxyFetch', () => {
 
     it('sets stream: true when body.stream is true', async () => {
       const { httpClient, fetchSpy } = createSpyHttpClient()
-      const proxyFetch = createCustomProxyFetch({ baseURL: CLOUD_URL, httpClient })
+      const proxyFetch = createCustomProxyFetch({ baseURL: cloudUrl, httpClient })
 
-      await proxyFetch(TARGET_URL, makeStreamInit())
+      await proxyFetch(targetUrl, makeStreamInit())
 
       const calledReq = fetchSpy.mock.calls[0][0] as Request
       const body = JSON.parse(await calledReq.clone().text())
@@ -116,9 +116,9 @@ describe('createCustomProxyFetch', () => {
 
     it('sets stream: true when Accept header is text/event-stream', async () => {
       const { httpClient, fetchSpy } = createSpyHttpClient()
-      const proxyFetch = createCustomProxyFetch({ baseURL: CLOUD_URL, httpClient })
+      const proxyFetch = createCustomProxyFetch({ baseURL: cloudUrl, httpClient })
 
-      await proxyFetch(TARGET_URL, {
+      await proxyFetch(targetUrl, {
         method: 'POST',
         body: JSON.stringify({ model: 'gpt-4', messages: [], stream: false }),
         headers: { accept: 'text/event-stream' },
@@ -131,9 +131,9 @@ describe('createCustomProxyFetch', () => {
 
     it('sets upstreamAuth to undefined when no apiKey supplied', async () => {
       const { httpClient, fetchSpy } = createSpyHttpClient()
-      const proxyFetch = createCustomProxyFetch({ baseURL: CLOUD_URL, httpClient })
+      const proxyFetch = createCustomProxyFetch({ baseURL: cloudUrl, httpClient })
 
-      await proxyFetch(TARGET_URL, makeInit())
+      await proxyFetch(targetUrl, makeInit())
 
       const calledReq = fetchSpy.mock.calls[0][0] as Request
       const body = JSON.parse(await calledReq.clone().text())
@@ -142,9 +142,9 @@ describe('createCustomProxyFetch', () => {
 
     it('does NOT call globalThis.fetch for cloud URL', async () => {
       const { httpClient } = createSpyHttpClient()
-      const proxyFetch = createCustomProxyFetch({ baseURL: CLOUD_URL, httpClient })
+      const proxyFetch = createCustomProxyFetch({ baseURL: cloudUrl, httpClient })
 
-      await proxyFetch(TARGET_URL, makeInit())
+      await proxyFetch(targetUrl, makeInit())
 
       expect(globalFetchSpy).not.toHaveBeenCalled()
     })
@@ -152,9 +152,9 @@ describe('createCustomProxyFetch', () => {
     it('forwards AbortSignal to the backend client', async () => {
       const controller = new AbortController()
       const { httpClient, fetchSpy } = createSpyHttpClient()
-      const proxyFetch = createCustomProxyFetch({ baseURL: CLOUD_URL, httpClient })
+      const proxyFetch = createCustomProxyFetch({ baseURL: cloudUrl, httpClient })
 
-      await proxyFetch(TARGET_URL, { ...makeInit(), signal: controller.signal })
+      await proxyFetch(targetUrl, { ...makeInit(), signal: controller.signal })
 
       const calledReq = fetchSpy.mock.calls[0][0] as Request
       expect(calledReq.signal).toBe(controller.signal)
@@ -162,9 +162,9 @@ describe('createCustomProxyFetch', () => {
 
     it('routes to v1/custom-model/proxy endpoint', async () => {
       const { httpClient, fetchSpy } = createSpyHttpClient()
-      const proxyFetch = createCustomProxyFetch({ baseURL: CLOUD_URL, httpClient })
+      const proxyFetch = createCustomProxyFetch({ baseURL: cloudUrl, httpClient })
 
-      await proxyFetch(TARGET_URL, makeInit())
+      await proxyFetch(targetUrl, makeInit())
 
       const calledReq = fetchSpy.mock.calls[0][0] as Request
       expect(calledReq.url).toContain('v1/custom-model/proxy')
@@ -175,12 +175,12 @@ describe('createCustomProxyFetch', () => {
     it('upstreamAuth is in the request body, not an Authorization header to the backend', async () => {
       const { httpClient, fetchSpy } = createSpyHttpClient()
       const proxyFetch = createCustomProxyFetch({
-        baseURL: CLOUD_URL,
+        baseURL: cloudUrl,
         upstreamAuth: 'sk-secret',
         httpClient,
       })
 
-      await proxyFetch(TARGET_URL, makeInit())
+      await proxyFetch(targetUrl, makeInit())
 
       const calledReq = fetchSpy.mock.calls[0][0] as Request
       // Authorization header in the browser→backend leg must NOT contain the upstream key.
@@ -190,13 +190,10 @@ describe('createCustomProxyFetch', () => {
       expect(authHeader ?? '').not.toContain('sk-secret')
     })
 
-    it('no globalThis.fetch call for cloud URL (bare-fetch guard)', () => {
-      // This verifies the module-level guarantee: cloud path never bypasses HttpClient.
+    it('no globalThis.fetch call for cloud URL (bare-fetch guard)', async () => {
       const { httpClient } = createSpyHttpClient()
-      const proxyFetch = createCustomProxyFetch({ baseURL: CLOUD_URL, httpClient })
-      proxyFetch(TARGET_URL, makeInit())
-      // globalFetchSpy was set at beforeEach; if it's called here the test fails.
-      // (The async result is not awaited intentionally — we're checking the sync routing decision.)
+      const proxyFetch = createCustomProxyFetch({ baseURL: cloudUrl, httpClient })
+      await proxyFetch(targetUrl, makeInit())
       expect(globalFetchSpy).not.toHaveBeenCalled()
     })
   })

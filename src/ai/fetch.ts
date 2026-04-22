@@ -190,24 +190,27 @@ export const aiFetchStreamingResponse = async ({
 
   const sourceCollector: SourceMetadata[] = []
 
-  let toolset: Record<string, Tool> = {}
-  if (supportsTools) {
+  const buildToolset = async (): Promise<Record<string, Tool>> => {
+    if (!supportsTools) {
+      console.log('Model does not support tools, skipping tool setup')
+      return {}
+    }
     const availableTools = await getAvailableTools(httpClient, sourceCollector)
-    toolset = { ...createToolset(availableTools) }
-
+    const built: Record<string, Tool> = { ...createToolset(availableTools) }
     for (const mcpClient of mcpClients || []) {
       const mcpTools = await mcpClient.tools()
       for (const [name, tool] of Object.entries(mcpTools)) {
-        if (toolset[name]) {
+        if (built[name]) {
           console.warn(`MCP tool "${name}" conflicts with an existing tool and was skipped`)
           continue
         }
-        toolset[name] = tool as Tool
+        built[name] = tool as Tool
       }
     }
-  } else {
-    console.log('Model does not support tools, skipping tool setup')
+    return built
   }
+
+  const toolset = await buildToolset()
 
   // Compute integration status for the model (can return multiple statuses)
   const getIntegrationStatus = (): string => {

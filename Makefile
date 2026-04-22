@@ -1,10 +1,13 @@
-.PHONY: help setup setup-symlinks install build build-desktop build-android build-ios clean run dev doctor doctor-q docker-up docker-down docker-nuke docker-status thunderbot-pull thunderbot-push thunderbot-customize
+.PHONY: help setup setup-symlinks install build build-desktop build-android build-ios clean run dev doctor doctor-q up down nuke status thunderbot-pull thunderbot-push thunderbot-customize
 
 # Color definitions
 BLUE := \033[0;34m
 GREEN := \033[0;32m
 YELLOW := \033[0;33m
 NC := \033[0m # No Color
+
+# Container compose tool (auto-detect podman-compose, fallback to docker compose)
+COMPOSE ?= $(shell command -v podman-compose > /dev/null 2>&1 && echo podman-compose || echo docker compose)
 
 # Default target
 help:
@@ -21,10 +24,10 @@ help:
 	@echo "  make format         - Format frontend, backend (JS/TS), and Rust code"
 	@echo "  make format-check   - Check formatting for frontend, backend, and Rust code"
 	@echo "  make doctor         - Verify all dev tools and env files are configured"
-	@echo "  make docker-up      - Start docker containers (PowerSync, Mongo, etc.)"
-	@echo "  make docker-down    - Stop docker containers"
-	@echo "  make docker-nuke    - Destroy all docker data and recreate from scratch"
-	@echo "  make docker-status  - Show docker container status"
+	@echo "  make up             - Start containers (PowerSync, Mongo, etc.)"
+	@echo "  make down           - Stop containers"
+	@echo "  make nuke           - Destroy all container data and recreate from scratch"
+	@echo "  make status         - Show container status"
 	@echo "  make thunderbot-pull - Pull latest skills from thunderbot"
 	@echo "  make thunderbot-push      - Push skill changes back to thunderbot"
 	@echo "  make thunderbot-customize - Fork a thunderbot command for local edits (FILE=name.md)"
@@ -98,7 +101,7 @@ format:
 	@echo "$(BLUE)→ Formatting backend code...$(NC)"
 	cd backend && bun run format
 	@echo "$(BLUE)→ Formatting Rust code...$(NC)"
-	bun run format:rust
+	@command -v cargo > /dev/null 2>&1 && bun run format:rust || echo "$(YELLOW)⚠ cargo not found, skipping Rust formatting$(NC)"
 	@echo "$(GREEN)✓ Formatting complete!$(NC)"
 
 format-check:
@@ -152,21 +155,21 @@ doctor:
 doctor-q:
 	@bash scripts/thunderdoctor.sh --quiet
 
-# Docker management
-docker-up:
-	@echo "$(BLUE)→ Starting docker containers...$(NC)"
-	docker compose -f powersync-service/docker-compose.yml up -d
-	@echo "$(GREEN)✓ Docker containers started!$(NC)"
+# Container management
+up:
+	@echo "$(BLUE)→ Starting containers...$(NC)"
+	$(COMPOSE) -f powersync-service/docker-compose.yml up -d
+	@echo "$(GREEN)✓ Containers started!$(NC)"
 
-docker-down:
-	@echo "$(BLUE)→ Stopping docker containers...$(NC)"
-	docker compose -f powersync-service/docker-compose.yml down
-	@echo "$(GREEN)✓ Docker containers stopped!$(NC)"
+down:
+	@echo "$(BLUE)→ Stopping containers...$(NC)"
+	$(COMPOSE) -f powersync-service/docker-compose.yml down
+	@echo "$(GREEN)✓ Containers stopped!$(NC)"
 
-docker-nuke:
+nuke:
 	@bash scripts/docker-nuke.sh
 
-docker-status:
+status:
 	@bash scripts/docker-status.sh
 
 # Thunderbot skill sync

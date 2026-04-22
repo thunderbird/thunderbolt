@@ -20,7 +20,7 @@ Self-hosted Thunderbolt with OIDC authentication via Keycloak. Three deployment 
 
 ## Architecture
 
-All deployment paths run the same six services with path-based routing:
+All deployment paths run the same five services with path-based routing:
 
 ```
                         Ingress / ALB / nginx proxy
@@ -40,14 +40,10 @@ All deployment paths run the same six services with path-based routing:
               ┌────────┼────────┐
               v                 v
         ┌──────────┐     ┌───────────┐
-        │ postgres │     │ powersync │
-        │ (WAL)    │◄────┤ (sync)    │
-        └──────────┘     └─────┬─────┘
-                               │
-                          ┌────v─────┐
-                          │ mongodb  │
-                          │ (rs0)    │
-                          └──────────┘
+        │ postgres │◄────┤ powersync │
+        │ (WAL +   │     │ (sync)    │
+        │  buckets)│     └───────────┘
+        └──────────┘
 ```
 
 ## Services
@@ -58,17 +54,15 @@ All deployment paths use the same Docker images:
 |---------|-------|---------|------|
 | **Frontend** | `docker/frontend.Dockerfile` | Vite SPA served by nginx with COEP/COOP headers for PowerSync WASM | 80 |
 | **Backend** | `docker/backend.Dockerfile` | Bun + Elysia API server with auto-migrations on startup | 8000 |
-| **PostgreSQL** | `docker/postgres.Dockerfile` | Database with WAL logical replication for PowerSync | 5432 |
+| **PostgreSQL** | `docker/postgres.Dockerfile` | Database with WAL logical replication for PowerSync; hosts both app data and the `powersync_storage` bucket DB | 5432 |
 | **Keycloak** | `docker/keycloak.Dockerfile` | OIDC identity provider with pre-configured realm | 8080 |
 | **PowerSync** | `docker/powersync.Dockerfile` | Real-time sync between Postgres and client devices | 8080 |
-| **MongoDB** | `mongo:7.0` (official) | PowerSync storage backend (replica set) | 27017 |
 
 ### Data Flow
 
 1. **Frontend** serves the SPA and proxies API calls to the backend
 2. **Backend** authenticates users via OIDC (Keycloak), reads/writes to Postgres, and issues PowerSync JWTs
-3. **PowerSync** replicates Postgres changes to clients via logical replication, stores sync state in MongoDB
-4. **MongoDB** runs as a single-node replica set (required by PowerSync)
+3. **PowerSync** replicates Postgres changes to clients via logical replication; stores bucket state in the `powersync_storage` database on the same Postgres instance
 
 ## Directory Structure
 
@@ -154,7 +148,7 @@ docker compose down -v       # Stop containers + delete volumes (full reset)
 
 ### How It Works
 
-- **Startup order**: Postgres and Keycloak start first (with health checks). Backend waits for both. MongoDB starts with a one-shot `mongo-rs-init` container that initializes the replica set. PowerSync waits for both Postgres and the replica set init.
+- **Startup order**: Postgres and Keycloak start first (with health checks). Backend waits for both. PowerSync waits for Postgres (it uses the `powersync_storage` database on the same instance for bucket storage).
 - **Backend entrypoint**: `docker/backend-entrypoint.sh` polls Postgres until it's ready, runs Drizzle migrations, then starts the server.
 - **Keycloak**: Auto-imports `config/keycloak-realm.json` on first boot, creating the `thunderbolt` realm, `thunderbolt-app` OIDC client, and a demo user.
 - **PowerSync**: Uses `config/powersync-config.yaml` for sync rules. Connects to Postgres via a dedicated `powersync_role` with replication privileges.
@@ -242,7 +236,7 @@ helm install thunderbolt . -n thunderbolt --create-namespace \
 kubectl get pods -n thunderbolt -w
 ```
 
-Wait for all pods to reach `Running 1/1`. Postgres and MongoDB start first (StatefulSets with PVCs), then the rest follow. The `mongo-rs-init` Job runs as a post-install hook to initialize the MongoDB replica set.
+Wait for all pods to reach `Running 1/1`. Postgres starts first (StatefulSet with a PVC), then the rest follow.
 
 ### Access
 
@@ -309,7 +303,6 @@ See `deploy/k8s/values.yaml` for all configurable values. Key ones:
 | `frontend.replicas` | `1` | Frontend replica count |
 | `backend.replicas` | `1` | Backend replica count |
 | `postgres.storage` | `5Gi` | Postgres PVC size |
-| `mongo.storage` | `5Gi` | MongoDB PVC size |
 | `ingress.enabled` | `true` | Create Ingress resource |
 | `ingress.className` | `nginx` | Ingress class |
 | `ingress.host` | `""` | Set for production (empty = default rule) |
@@ -428,9 +421,9 @@ pulumi/
     vpc.ts              # VPC (10.0.0.0/16), 2 AZs, public + private subnets, NAT
     # -- Fargate --
     cluster.ts          # ECS cluster + CloudWatch log group
-    services.ts         # 6 Fargate task definitions + ECS services
+    services.ts         # 5 Fargate task definitions + ECS services
     alb.ts              # ALB + target groups + path-based listener rules
-    storage.ts          # EFS + access points (postgres uid:70, mongo uid:999)
+    storage.ts          # EFS + postgres access point (uid:70)
     discovery.ts        # Cloud Map private DNS (thunderbolt.local)
     # -- EKS --
     eks.ts              # EKS cluster, EBS CSI driver, Helm chart, nginx-ingress
@@ -566,7 +559,7 @@ The init script (`docker/postgres-init/01-powersync.sql`) creates:
 
 **Backend won't start**: Check that Postgres is healthy (`docker compose logs postgres`). The backend entrypoint polls Postgres and won't start migrations until it's ready.
 
-**PowerSync crashes**: MongoDB replica set must be initialized. The `mongo-rs-init` service handles this automatically, but if it fails: `docker compose exec mongo mongosh --eval 'rs.initiate()'`
+**PowerSync crashes with storage errors**: PowerSync uses the `powersync_storage` database on the same Postgres instance for bucket storage. If the DB wasn't created, check `docker compose exec postgres psql -U postgres -c '\l'` — you should see `powersync_storage` listed. If missing, the init script (`docker/postgres-init/01-powersync.sql`) didn't run; wiping the volume with `docker compose down -v` and restarting will re-run it.
 
 ### Kubernetes / Helm
 
@@ -574,10 +567,10 @@ The init script (`docker/postgres-init/01-powersync.sql`) creates:
 
 **Postgres CrashLoopBackOff**: Check logs with `kubectl logs postgres-0 -n thunderbolt`. If you see "directory exists but is not empty" with `lost+found`, the `PGDATA` env var needs to point to a subdirectory (this is set in the chart).
 
-**PowerSync CrashLoopBackOff with "RSGhost"**: The MongoDB replica set isn't initialized. The Helm post-install hook should handle this, but if it failed:
+**PowerSync CrashLoopBackOff**: Usually means the `powersync_storage` database doesn't exist on Postgres. The `postgres-init` ConfigMap creates it on first boot; if you inherited a pre-existing PVC, exec into the postgres pod and create it manually:
 ```bash
-kubectl exec -it mongo-0 -n thunderbolt -- mongosh --eval \
-  'rs.initiate({_id: "rs0", members: [{_id: 0, host: "mongo-0.mongo:27017"}]})'
+kubectl exec -it postgres-0 -n thunderbolt -- psql -U postgres -c \
+  'CREATE DATABASE powersync_storage OWNER postgres;'
 ```
 
 **Backend CreateContainerConfigError**: Usually a missing Secret. Verify `thunderbolt-secrets` exists: `kubectl get secret thunderbolt-secrets -n thunderbolt`

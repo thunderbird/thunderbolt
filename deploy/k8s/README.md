@@ -32,7 +32,6 @@ See [values.yaml](values.yaml) for all configurable options. Key values:
 | `ingress.enabled` | `true` | Create Ingress resource |
 | `ingress.host` | `""` | Set for production |
 | `postgres.storage` | `5Gi` | Postgres PVC size |
-| `mongo.storage` | `5Gi` | MongoDB PVC size |
 
 ## Templates
 
@@ -40,8 +39,7 @@ See [values.yaml](values.yaml) for all configurable options. Key values:
 |----------|-----------|---------|
 | `secrets.yaml` | Secret | OIDC, PowerSync JWT, Postgres, Better Auth credentials |
 | `configmaps.yaml` | ConfigMaps | PowerSync config, Keycloak realm, Postgres init SQL |
-| `postgres.yaml` | StatefulSet + Service | PostgreSQL with WAL replication + PVC |
-| `mongo.yaml` | StatefulSet + Service + Job | MongoDB replica set + init hook |
+| `postgres.yaml` | StatefulSet + Service | PostgreSQL with WAL replication + PVC; hosts app DB and PowerSync bucket storage |
 | `backend.yaml` | Deployment + Service | Bun API with health probes |
 | `frontend.yaml` | Deployment + Service | nginx SPA |
 | `keycloak.yaml` | Deployment + Service | OIDC provider with realm import |

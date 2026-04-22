@@ -87,7 +87,6 @@ if (platform === 'k8s') {
     servicesSgId: servicesSg.id,
     efsId: storage.efs.id,
     pgAccessPointId: storage.pgAccessPoint.id,
-    mongoAccessPointId: storage.mongoAccessPoint.id,
     images,
     secrets,
     ghcrToken: config.getSecret('ghcrToken'),

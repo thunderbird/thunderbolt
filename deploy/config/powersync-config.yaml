@@ -5,8 +5,9 @@ replication:
       sslmode: disable
 
 storage:
-  type: mongodb
-  uri: !env PS_MONGO_URI
+  type: postgresql
+  uri: !env PS_STORAGE_URI
+  sslmode: disable
 
 port: 8080
 

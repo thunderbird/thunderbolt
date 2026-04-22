@@ -27,7 +27,7 @@ done
 
 if [ "$CONFIRMED" = false ]; then
   echo -e "${YELLOW}This will destroy all docker containers, volumes, and data for this project.${NC}"
-  echo -e "${YELLOW}You will lose all local Postgres and Mongo data.${NC}"
+  echo -e "${YELLOW}You will lose all local Postgres data.${NC}"
   echo ""
   read -rp "Are you sure? (y/N) " answer
   if [ "$answer" != "y" ] && [ "$answer" != "Y" ]; then

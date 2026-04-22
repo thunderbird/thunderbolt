@@ -36,15 +36,5 @@ export const createStorage = (name: string, vpcId: pulumi.Input<string>, subnetI
     tags: { Name: `${name}-pg` },
   })
 
-  const mongoAccessPoint = new aws.efs.AccessPoint(`${name}-mongo-ap`, {
-    fileSystemId: efs.id,
-    posixUser: { uid: 999, gid: 999 },
-    rootDirectory: {
-      path: '/mongo-data',
-      creationInfo: { ownerUid: 999, ownerGid: 999, permissions: '700' },
-    },
-    tags: { Name: `${name}-mongo` },
-  })
-
-  return { efs, mountTargets, pgAccessPoint, mongoAccessPoint }
+  return { efs, mountTargets, pgAccessPoint }
 }

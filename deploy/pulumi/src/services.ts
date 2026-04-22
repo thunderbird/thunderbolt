@@ -1,5 +1,4 @@
 import * as aws from '@pulumi/aws'
-import * as command from '@pulumi/command'
 import * as pulumi from '@pulumi/pulumi'
 
 type Images = {
@@ -27,7 +26,6 @@ type ServiceArgs = {
   servicesSgId: pulumi.Input<string>
   efsId: pulumi.Input<string>
   pgAccessPointId: pulumi.Input<string>
-  mongoAccessPointId: pulumi.Input<string>
   images: Images
   secrets: Secrets
   ghcrToken?: pulumi.Output<string>
@@ -43,7 +41,7 @@ type ServiceArgs = {
 }
 
 export const createServices = (args: ServiceArgs) => {
-  const { name, cluster, logGroup, privateSubnetIds, servicesSgId, efsId, pgAccessPointId, mongoAccessPointId } = args
+  const { name, cluster, logGroup, privateSubnetIds, servicesSgId, efsId, pgAccessPointId } = args
   const region = aws.getRegionOutput().name
 
   // --- IAM roles ---
@@ -168,90 +166,6 @@ export const createServices = (args: ServiceArgs) => {
     serviceRegistries: { registryArn: args.discoveryServices['postgres'].arn },
   })
 
-  // --- MongoDB ---
-  const mongoTaskDef = new aws.ecs.TaskDefinition(`${name}-mongo-task`, {
-    family: `${name}-mongo`,
-    requiresCompatibilities: ['FARGATE'],
-    networkMode: 'awsvpc',
-    cpu: '512',
-    memory: '1024',
-    executionRoleArn: execRoleArn,
-    taskRoleArn,
-    volumes: [
-      {
-        name: 'mongo-data',
-        efsVolumeConfiguration: {
-          fileSystemId: efsId,
-          transitEncryption: 'ENABLED',
-          authorizationConfig: { accessPointId: mongoAccessPointId, iam: 'ENABLED' },
-        },
-      },
-    ],
-    containerDefinitions: pulumi.jsonStringify([
-      {
-        name: 'mongo',
-        image: 'mongo:7.0',
-        essential: true,
-        command: ['--replSet', 'rs0', '--bind_ip_all', '--quiet'],
-        portMappings: [{ containerPort: 27017 }],
-        mountPoints: [{ sourceVolume: 'mongo-data', containerPath: '/data/db' }],
-        logConfiguration: logConfig('mongo'),
-      },
-    ]),
-  })
-
-  const mongoService = new aws.ecs.Service(`${name}-mongo-svc`, {
-    cluster: cluster.arn,
-    taskDefinition: mongoTaskDef.arn,
-    desiredCount: 1,
-    launchType: 'FARGATE',
-    networkConfiguration: {
-      subnets: privateSubnetIds,
-      securityGroups: [servicesSgId],
-    },
-    serviceRegistries: { registryArn: args.discoveryServices['mongo'].arn },
-  })
-
-  // --- MongoDB replica set init (one-shot task) ---
-  const mongoInitTaskDef = new aws.ecs.TaskDefinition(`${name}-mongo-init-task`, {
-    family: `${name}-mongo-init`,
-    requiresCompatibilities: ['FARGATE'],
-    networkMode: 'awsvpc',
-    cpu: '256',
-    memory: '512',
-    executionRoleArn: execRoleArn,
-    taskRoleArn,
-    containerDefinitions: pulumi.jsonStringify([
-      {
-        name: 'mongo-init',
-        image: 'mongo:7.0',
-        essential: true,
-        command: [
-          'bash', '-c',
-          'for i in $(seq 1 30); do mongosh --host mongo.thunderbolt.local --eval "try { rs.status() } catch(e) { rs.initiate({ _id: \\"rs0\\", members: [{ _id: 0, host: \\"mongo.thunderbolt.local:27017\\" }] }) }" && exit 0; echo "Waiting for mongo... ($i/30)"; sleep 5; done; exit 1',
-        ],
-        logConfiguration: logConfig('mongo-init'),
-      },
-    ]),
-  })
-
-  // Run the mongo init task and wait for it to complete successfully
-  const mongoInit = new command.local.Command(
-    `${name}-mongo-init-run`,
-    {
-      create: pulumi.interpolate`TASK_ARN=$(aws ecs run-task \
-        --cluster ${cluster.arn} \
-        --task-definition ${mongoInitTaskDef.arn} \
-        --launch-type FARGATE \
-        --network-configuration '{"awsvpcConfiguration":{"subnets":${pulumi.jsonStringify(privateSubnetIds)},"securityGroups":["${servicesSgId}"]}}' \
-        --query 'tasks[0].taskArn' --output text) && \
-        aws ecs wait tasks-stopped --cluster ${cluster.arn} --tasks "$TASK_ARN" && \
-        EXIT_CODE=$(aws ecs describe-tasks --cluster ${cluster.arn} --tasks "$TASK_ARN" --query 'tasks[0].containers[0].exitCode' --output text) && \
-        [ "$EXIT_CODE" = "0" ] || { echo "Mongo init task failed with exit code $EXIT_CODE"; exit 1; }`,
-    },
-    { dependsOn: [mongoService] },
-  )
-
   // --- PowerSync ---
   const psTaskDef = new aws.ecs.TaskDefinition(`${name}-ps-task`, {
     family: `${name}-powersync`,
@@ -268,7 +182,7 @@ export const createServices = (args: ServiceArgs) => {
         essential: true,
         environment: [
           { name: 'PS_PG_URI', value: pulumi.interpolate`postgresql://powersync_role:${args.secrets.powersyncDbPassword}@postgres.thunderbolt.local:5432/postgres` },
-          { name: 'PS_MONGO_URI', value: 'mongodb://mongo.thunderbolt.local:27017/powersync' },
+          { name: 'PS_STORAGE_URI', value: pulumi.interpolate`postgresql://postgres:${args.secrets.postgresPassword}@postgres.thunderbolt.local:5432/powersync_storage` },
         ],
         portMappings: [{ containerPort: 8080 }],
         logConfiguration: logConfig('powersync'),
@@ -290,7 +204,7 @@ export const createServices = (args: ServiceArgs) => {
     loadBalancers: [
       { targetGroupArn: args.targetGroups.powersync.arn, containerName: 'powersync', containerPort: 8080 },
     ],
-  }, { dependsOn: [args.albListener, mongoInit] })
+  }, { dependsOn: [args.albListener, pgService] })
 
   // --- Keycloak ---
   const kcTaskDef = new aws.ecs.TaskDefinition(`${name}-kc-task`, {
@@ -481,5 +395,5 @@ export const createServices = (args: ServiceArgs) => {
     ],
   }, { dependsOn: [args.albListener] })
 
-  return { pgService, mongoService, mongoInit, psService, kcService, beService, feService }
+  return { pgService, psService, kcService, beService, feService }
 }

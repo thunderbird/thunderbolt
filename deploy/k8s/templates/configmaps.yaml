@@ -13,8 +13,9 @@ data:
           sslmode: disable
 
     storage:
-      type: mongodb
-      uri: !env PS_MONGO_URI
+      type: postgresql
+      uri: !env PS_STORAGE_URI
+      sslmode: disable
 
     port: {{ .Values.powersync.service.port }}
 
@@ -118,4 +119,5 @@ data:
       GRANT ALL PRIVILEGES ON DATABASE :"dbname" TO powersync_role;
       ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON TABLES TO powersync_role;
       CREATE PUBLICATION powersync_pub FOR ALL TABLES;
+      CREATE DATABASE powersync_storage OWNER postgres;
     EOSQL

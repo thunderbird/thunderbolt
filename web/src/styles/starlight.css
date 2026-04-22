@@ -58,6 +58,11 @@
 	--sl-content-width: 52rem;
 	--sl-sidebar-width: 17rem;
 	--sl-nav-height: 3.75rem;
+
+	/* Flat, shadowless aesthetic — override Starlight shadow vars globally */
+	--sl-shadow-sm: none;
+	--sl-shadow-md: none;
+	--sl-shadow-lg: none;
 }
 
 /* Reserve scrollbar gutter so pages don't jitter horizontally between routes. */
@@ -158,7 +163,6 @@ html {
  * airy margins, no double outline. */
 .sl-markdown-content .expressive-code {
 	margin-block: 1.75em;
-	box-shadow: 0 1px 2px rgba(16, 24, 40, 0.04);
 }
 
 /* Stripe-style terminal titlebar: slim navy strip with a "Command Line"
@@ -316,6 +320,7 @@ a.site-title {
 nav.sidebar ul > li > a,
 starlight-menu-button {
 	color: var(--tb-text-secondary);
+	border-radius: 0;
 }
 nav.sidebar ul > li > a[aria-current='page'] {
 	background: transparent;
@@ -411,15 +416,19 @@ nav.sidebar > ul > li > span.large {
 .sl-link-card {
 	background: var(--tb-surface);
 	border: 1px solid var(--tb-border);
+	border-radius: 0;
 	transition:
 		border-color 0.15s,
-		box-shadow 0.15s,
 		transform 0.15s;
 }
 .sl-link-card:hover {
 	border-color: var(--tb-text-secondary);
-	box-shadow: 0 2px 12px rgba(16, 24, 40, 0.06);
 	transform: translateY(-1px);
+}
+
+/* Pagination prev/next cards — flat to match overall aesthetic */
+.pagination-links a {
+	border-radius: 0;
 }
 
 /* ─── Search UI: square borders to match marketing surface ─── */

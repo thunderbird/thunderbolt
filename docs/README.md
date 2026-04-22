@@ -2,8 +2,6 @@
 
 Documentation for [Thunderbolt](https://github.com/thunderbird/thunderbolt) — the open-source, cross-platform AI client.
 
-These pages are the canonical source of truth. GitHub renders them directly; [thunderbolt.io/docs](https://thunderbolt.io/docs) publishes the same files through a custom Astro content loader.
-
 ## Getting started
 
 - [Introduction](./introduction.md) — what Thunderbolt is, who it's for today

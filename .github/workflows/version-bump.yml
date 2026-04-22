@@ -61,16 +61,24 @@ permissions:
 jobs:
   version_bump:
     runs-on: ubuntu-latest
+    environment: thunderbolt_release
     outputs:
       new_version: ${{ steps.version.outputs.new_version }}
       tag_name: ${{ steps.tag.outputs.tag_name }}
 
     steps:
+      - name: Generate release token
+        id: app-token
+        uses: actions/create-github-app-token@fee1f7d63c2ff003460e3d139729b119787bc349 # v2
+        with:
+          app-id: ${{ secrets.RELEASE_APP_ID }}
+          private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
+
       - name: Checkout repository
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
         with:
           fetch-depth: 0
-          token: ${{ secrets.GITHUB_TOKEN }}
+          token: ${{ steps.app-token.outputs.token }}
 
       - name: Configure Git
         run: |

@@ -65,5 +65,9 @@
   },
   "engines": {
     "bun": ">=1.0.0"
+  },
+  "overrides": {
+    "//": "Force protobufjs >= 8.0.1 to patch CVE-2026-41242. Safe to remove once all dependencies no longer reference protobufjs@^7.",
+    "protobufjs": "^8.0.1"
   }
 }

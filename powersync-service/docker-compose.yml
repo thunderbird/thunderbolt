@@ -4,7 +4,7 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
-    image: journeyapps/powersync-service:latest
+    image: docker.io/journeyapps/powersync-service:latest
     command: ["start", "-r", "unified"]
     volumes:
       - ./config/config.yaml:/config/config.yaml
@@ -14,7 +14,7 @@ services:
       - 8080:8080
 
   postgres:
-    image: postgres:18-alpine
+    image: docker.io/library/postgres:18-alpine
     restart: always
     environment:
       - POSTGRES_USER=postgres

@@ -29,8 +29,8 @@ What it does:
 
 1. `make doctor-q` — verify required tools (only prints issues)
 2. `make setup` — install frontend and backend dependencies
-3. `make docker-up` — start Docker containers
-4. `make docker-status` — confirm containers are healthy
+3. `make up` — start Docker/Podman containers
+4. `make status` — confirm containers are healthy
 5. _(with `all`)_ `make run` — start backend (:8000) and frontend (:5173) dev servers
 
 When given a Linear ticket ID or branch name, it creates a git worktree first, then bootstraps inside it.

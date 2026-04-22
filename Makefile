@@ -110,7 +110,7 @@ format-check:
 	@echo "$(BLUE)→ Checking backend formatting...$(NC)"
 	cd backend && bun run format-check
 	@echo "$(BLUE)→ Checking Rust formatting...$(NC)"
-	bun run format:rust-check
+	@command -v cargo > /dev/null 2>&1 && bun run format:rust-check || echo "$(YELLOW)⚠ cargo not found, skipping Rust format check$(NC)"
 	@echo "$(GREEN)✓ Format check complete!$(NC)"
 
 # Type checking

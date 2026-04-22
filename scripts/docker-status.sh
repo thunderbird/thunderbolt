@@ -10,19 +10,31 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
 COMPOSE_FILE="$PROJECT_ROOT/powersync-service/docker-compose.yml"
 
-if ! command -v docker &>/dev/null; then
-  echo -e "${RED}✗ Docker is not installed.${NC}"
-  echo "  Install Docker Desktop: https://docker.com/products/docker-desktop"
-  exit 1
-fi
+# Auto-detect compose tool (podman-compose takes precedence over docker compose)
+COMPOSE=$(command -v podman-compose > /dev/null 2>&1 && echo podman-compose || echo "docker compose")
 
-if ! docker info &>/dev/null; then
-  echo -e "${RED}✗ Docker daemon is not running.${NC}"
-  echo "  Start Docker Desktop and try again."
-  exit 1
-fi
+if command -v podman-compose > /dev/null 2>&1; then
+  if ! podman info &>/dev/null; then
+    echo -e "${RED}✗ Podman daemon is not running.${NC}"
+    echo "  Start Podman and try again."
+    exit 1
+  fi
+  echo -e "${GREEN}✓ Podman is running${NC}"
+else
+  if ! command -v docker &>/dev/null; then
+    echo -e "${RED}✗ Docker is not installed.${NC}"
+    echo "  Install Docker Desktop: https://docker.com/products/docker-desktop"
+    exit 1
+  fi
 
-echo -e "${GREEN}✓ Docker is running${NC}"
+  if ! docker info &>/dev/null; then
+    echo -e "${RED}✗ Docker daemon is not running.${NC}"
+    echo "  Start Docker Desktop and try again."
+    exit 1
+  fi
+
+  echo -e "${GREEN}✓ Docker is running${NC}"
+fi
 echo ""
 
 if [ ! -f "$COMPOSE_FILE" ]; then
@@ -31,4 +43,4 @@ if [ ! -f "$COMPOSE_FILE" ]; then
 fi
 
 echo "Container status:"
-docker compose -f "$COMPOSE_FILE" ps
+$COMPOSE -f "$COMPOSE_FILE" ps

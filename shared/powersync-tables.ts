@@ -5,6 +5,15 @@
  * src/db/powersync/schema.ts, and powersync-service/config/config.yaml.
  */
 
+// NOTE: Adding a new table here requires the corresponding entry in the
+// frontend drizzleSchema (src/db/powersync/schema.ts) and tables definition
+// (src/db/tables.ts) at compile time because the `satisfies` constraint
+// below references the frontend schema type. This means the two-PR deploy
+// pattern (backend migration first, then frontend) must still be followed
+// at the DEPLOYMENT level (run migration → update PowerSync Cloud rules →
+// deploy frontend), but the frontend schema files themselves must be
+// co-located in the backend PR to keep the type system honest.
+
 export const powersyncTableNames = [
   'settings',
   'chat_threads',
@@ -17,6 +26,7 @@ export const powersyncTableNames = [
   'modes',
   'model_profiles',
   'devices',
+  'agents',
 ] as const
 
 export type PowerSyncTableName = (typeof powersyncTableNames)[number]
@@ -40,4 +50,5 @@ export const powersyncTableToQueryKeys: {
   modes: [['modes']],
   model_profiles: [['modelProfiles']],
   devices: [['devices']],
+  agents: [['agents']],
 }

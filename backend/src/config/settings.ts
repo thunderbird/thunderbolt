@@ -71,6 +71,10 @@ const settingsSchema = z
     // Set to 'cloudflare' to trust CF-Connecting-IP, 'akamai' for True-Client-IP,
     // or leave empty to use only the direct socket IP (proxy headers are NOT trusted)
     trustedProxy: z.enum(['', 'cloudflare', 'akamai']).default(''),
+
+    // Agent settings
+    enabledAgents: z.string().default(''),
+    allowCustomAgents: z.boolean().default(false),
   })
   .superRefine((data, ctx) => {
     if (data.powersyncUrl && data.powersyncJwtSecret.length < 32) {
@@ -133,6 +137,8 @@ const parseSettings = (): Settings => {
     swaggerEnabled: process.env.SWAGGER_ENABLED === 'true',
     rateLimitEnabled: process.env.RATE_LIMIT_ENABLED !== 'false',
     trustedProxy: (process.env.TRUSTED_PROXY || '').toLowerCase(),
+    enabledAgents: process.env.ENABLED_AGENTS || '',
+    allowCustomAgents: process.env.ALLOW_CUSTOM_AGENTS === 'true',
   }
 
   return settingsSchema.parse(env)
@@ -204,4 +210,19 @@ export const getWaitlistAutoApproveDomains = (settings: Settings): string[] => {
     .split(',')
     .map((domain) => domain.trim().toLowerCase())
     .filter((domain) => domain.length > 0)
+}
+
+/**
+ * Parse the comma-separated ENABLED_AGENTS setting into a list of agent IDs.
+ * Returns null when unset (meaning "all agents enabled").
+ */
+export const getEnabledAgentIds = (settings: Pick<Settings, 'enabledAgents'>): string[] | null => {
+  if (!settings.enabledAgents.trim()) {
+    return null
+  }
+  const ids = settings.enabledAgents
+    .split(',')
+    .map((id) => id.trim())
+    .filter((id) => id.length > 0)
+  return ids.length > 0 ? ids : null
 }

@@ -67,6 +67,8 @@ describe('Link Preview Routes', () => {
       oidcIssuer: '',
       betterAuthUrl: 'http://localhost:8000',
       betterAuthSecret: 'test-secret-at-least-32-chars-long!!',
+      enabledAgents: '',
+      allowCustomAgents: false,
       rateLimitEnabled: false,
       swaggerEnabled: false,
       trustedProxy: '',

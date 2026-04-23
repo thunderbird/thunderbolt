@@ -16,6 +16,7 @@ export const encryptedColumnsMap: Readonly<Record<string, readonly string[]>> = 
   tasks: ['item'],
   models: ['name', 'model', 'url', 'api_key', 'vendor', 'description'],
   mcp_servers: ['name', 'url', 'command', 'args'],
+  agents: ['name', 'url', 'command', 'args', 'auth_method', 'install_path', 'package_name', 'description'],
   prompts: ['title', 'prompt'],
   triggers: ['trigger_time'],
   model_profiles: [

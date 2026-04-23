@@ -46,6 +46,7 @@ export const chatThreadsTable = powersyncSchema.table(
     wasTriggeredByAutomation: integer('was_triggered_by_automation').default(0),
     contextSize: integer('context_size'),
     modeId: text('mode_id'),
+    agentId: text('agent_id'),
     deletedAt: timestamp('deleted_at'),
     userId: text('user_id')
       .notNull()
@@ -242,6 +243,36 @@ export const devicesTable = powersyncSchema.table(
   (table) => [index('idx_devices_user_id').on(table.userId)],
 )
 
+export const agentsTable = powersyncSchema.table(
+  'agents',
+  {
+    id: text('id').notNull(),
+    name: text('name'),
+    type: text('type', { enum: ['built-in', 'local', 'remote'] }),
+    transport: text('transport', { enum: ['in-process', 'stdio', 'websocket'] }),
+    command: text('command'),
+    args: text('args'),
+    url: text('url'),
+    authMethod: text('auth_method'),
+    icon: text('icon'),
+    isSystem: integer('is_system').default(0),
+    enabled: integer('enabled').default(1),
+    registryId: text('registry_id'),
+    installedVersion: text('installed_version'),
+    registryVersion: text('registry_version'),
+    distributionType: text('distribution_type'),
+    installPath: text('install_path'),
+    packageName: text('package_name'),
+    description: text('description'),
+    defaultHash: text('default_hash'),
+    deletedAt: timestamp('deleted_at'),
+    userId: text('user_id')
+      .notNull()
+      .references(() => user.id, { onDelete: 'cascade' }),
+  },
+  (table) => [primaryKey({ columns: [table.id, table.userId] }), index('idx_agents_user_id').on(table.userId)],
+)
+
 /**
  * Map of PowerSync table names to Drizzle tables for account delete.
  * Must have an entry for every PowerSyncTableName (type-checked).
@@ -258,6 +289,7 @@ export const powersyncTablesByName = {
   modes: modesTable,
   model_profiles: modelProfilesTable,
   devices: devicesTable,
+  agents: agentsTable,
 } satisfies Record<PowerSyncTableName, AnyPgTable>
 
 /**
@@ -286,6 +318,7 @@ export const powersyncPkColumn: Record<PowerSyncTableName, AnyPgColumn> = {
   modes: modesTable.id,
   model_profiles: modelProfilesTable.id,
   devices: devicesTable.id,
+  agents: agentsTable.id,
 }
 
 /**
@@ -305,4 +338,5 @@ export const powersyncConflictTarget: Record<PowerSyncTableName, AnyPgColumn[]> 
   modes: [modesTable.id, modesTable.userId],
   model_profiles: [modelProfilesTable.id, modelProfilesTable.userId],
   devices: [devicesTable.id],
+  agents: [agentsTable.id, agentsTable.userId],
 }

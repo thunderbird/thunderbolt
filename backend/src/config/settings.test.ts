@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import {
   clearSettingsCache,
+  getEnabledAgentIds,
   getWaitlistAutoApproveDomains,
   getCorsMethodsList,
   getCorsOriginsList,
@@ -471,6 +472,87 @@ describe('Config Settings', () => {
       process.env.POWERSYNC_JWT_SECRET = ''
       const settings = getSettings()
       expect(settings.powersyncJwtSecret).toBe('')
+    })
+  })
+
+  describe('getEnabledAgentIds', () => {
+    it('returns null for empty string (all enabled)', () => {
+      expect(getEnabledAgentIds({ enabledAgents: '' })).toBeNull()
+    })
+
+    it('splits comma-separated agent IDs', () => {
+      expect(getEnabledAgentIds({ enabledAgents: 'agent-1,agent-2,agent-3' })).toEqual([
+        'agent-1',
+        'agent-2',
+        'agent-3',
+      ])
+    })
+
+    it('trims whitespace from IDs', () => {
+      expect(getEnabledAgentIds({ enabledAgents: ' agent-1 , agent-2 ' })).toEqual(['agent-1', 'agent-2'])
+    })
+
+    it('filters out empty segments', () => {
+      expect(getEnabledAgentIds({ enabledAgents: 'agent-1,,agent-2,' })).toEqual(['agent-1', 'agent-2'])
+    })
+
+    it('returns null for whitespace-only string', () => {
+      expect(getEnabledAgentIds({ enabledAgents: '  ,  , ' })).toBeNull()
+    })
+  })
+
+  describe('Agent settings', () => {
+    const AGENT_ENV_KEYS = ['ENABLED_AGENTS', 'ALLOW_CUSTOM_AGENTS'] as const
+
+    let savedEnv: Partial<Record<string, string | undefined>>
+
+    beforeEach(() => {
+      clearSettingsCache()
+      savedEnv = {}
+      for (const key of AGENT_ENV_KEYS) {
+        savedEnv[key] = process.env[key]
+      }
+    })
+
+    afterEach(() => {
+      for (const key of AGENT_ENV_KEYS) {
+        if (savedEnv[key] !== undefined) {
+          process.env[key] = savedEnv[key]
+        } else {
+          delete process.env[key]
+        }
+      }
+      clearSettingsCache()
+    })
+
+    it('should default enabledAgents to empty string', () => {
+      delete process.env.ENABLED_AGENTS
+      const settings = getSettings()
+      expect(settings.enabledAgents).toBe('')
+    })
+
+    it('should read ENABLED_AGENTS from env', () => {
+      process.env.ENABLED_AGENTS = 'haystack-default,custom-agent'
+      const settings = getSettings()
+      expect(settings.enabledAgents).toBe('haystack-default,custom-agent')
+    })
+
+    it('should default allowCustomAgents to false', () => {
+      delete process.env.ALLOW_CUSTOM_AGENTS
+      const settings = getSettings()
+      expect(settings.allowCustomAgents).toBe(false)
+    })
+
+    it('should enable allowCustomAgents when ALLOW_CUSTOM_AGENTS is "true"', () => {
+      process.env.ALLOW_CUSTOM_AGENTS = 'true'
+      const settings = getSettings()
+      expect(settings.allowCustomAgents).toBe(true)
+    })
+
+    it('should keep allowCustomAgents disabled for any value other than "true"', () => {
+      process.env.ALLOW_CUSTOM_AGENTS = 'false'
+      const settings = getSettings()
+      expect(settings.allowCustomAgents).toBe(false)
     })
   })
 

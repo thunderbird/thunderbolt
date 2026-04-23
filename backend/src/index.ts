@@ -9,6 +9,9 @@ import { createInferenceRoutes } from '@/inference/routes'
 import { createErrorHandlingMiddleware } from '@/middleware/error-handling'
 import { createHttpLoggingMiddleware } from '@/middleware/http-logging'
 import { createAuthIpRateLimit, createInferenceRateLimit, createProRateLimit } from '@/middleware/rate-limit'
+import { createAgentProxyRoutes } from '@/agent-proxy/routes'
+import { createAgentsRoutes } from '@/agents/routes'
+import { createWsTicketRoutes } from '@/auth/ws-ticket-routes'
 import { createMcpProxyRoutes } from '@/mcp-proxy/routes'
 import { createPostHogRoutes } from '@/posthog/routes'
 import { createProToolsRoutes } from '@/pro/routes'
@@ -104,6 +107,9 @@ export const createApp = async (deps?: AppDeps) => {
       .use(createPowerSyncRoutes(auth, settings, database))
       .use(createEncryptionRoutes(auth, database))
       .use(createAccountRoutes(auth, database))
+      .use(createAgentsRoutes())
+      .use(createWsTicketRoutes(auth, createAuthIpRateLimit(database, ipRateLimitSettings)))
+      .use(createAgentProxyRoutes())
   )
 }
 

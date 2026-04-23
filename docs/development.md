@@ -4,6 +4,18 @@
 
 You must have Bun, Rust, and Docker installed first. Then:
 
+## Desktop (Linux)
+
+> ⚠️ Linux desktop builds require system dependencies for Tauri/WebKit. On Ubuntu/Debian, install:
+> ```bash
+> sudo apt install libwebkit2gtk-4.1-dev libjavascriptcoregtk-4.1-dev \
+>   build-essential curl wget file libxdo-dev libssl-dev \
+>   libayatana-appindicator3-dev librsvg2-dev libsoup-3.0-dev
+> ```
+> See [Tauri's Linux prerequisites](https://v2.tauri.app/start/prerequisites/#linux) for other distributions.
+>
+> **Note**: Linux desktop is supported for production builds but WebView is untested on Linux (see [webview.md](./webview.md)).
+
 ```sh
 # Install dependencies
 make setup
@@ -12,6 +24,9 @@ make setup
 cp .env.example .env
 cd backend && cp .env.example .env
 cd ..
+
+# Install sccache (required for desktop builds)
+# cargo install sccache  # or: npm install -g sccache
 
 # Run postgres + powersync
 make up

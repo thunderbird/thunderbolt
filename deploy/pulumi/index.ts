@@ -15,16 +15,22 @@ const platform = config.get('platform') || 'fargate'
 const version = config.require('version')
 
 // Optional Cloudflare subdomain wiring (used by preview-pr-* stacks).
-// When `subdomain` is set, a proxied CNAME is created in Cloudflare pointing the
-// given hostname at the ALB, and all app-facing URLs use https://<subdomain>
+// Accepts either `subdomain` (single hostname, back-compat) or `hostnames`
+// (comma-separated list — the first is primary and becomes publicUrl, the
+// rest are additional CNAMEs pointing at the same ALB for multi-subdomain
+// setups like `app-pr-N` + `api-pr-N` + `pr-N`).
+// When set, Pulumi creates proxied CNAMEs in Cloudflare and uses https://<primary>
 // instead of the raw ALB DNS. Enterprise stacks leave this unset.
-const subdomain = config.get('subdomain')
+const hostnames = (config.get('hostnames') ?? config.get('subdomain') ?? '')
+  .split(',')
+  .map((s) => s.trim())
+  .filter((s) => s.length > 0)
 const cloudflareZoneId = config.get('cloudflareZoneId')
 const cloudflareApiToken = config.getSecret('cloudflareApiToken')
 
-if (subdomain && (!cloudflareZoneId || !cloudflareApiToken)) {
+if (hostnames.length > 0 && (!cloudflareZoneId || !cloudflareApiToken)) {
   throw new Error(
-    'subdomain is set but cloudflareZoneId and/or cloudflareApiToken are missing — ' +
+    'hostnames/subdomain is set but cloudflareZoneId and/or cloudflareApiToken are missing — ' +
       'run `pulumi config set cloudflareZoneId <id>` and `pulumi config set --secret cloudflareApiToken <token>`',
   )
 }
@@ -95,13 +101,13 @@ if (platform === 'k8s') {
     albSgId: albSg.id,
   })
 
-  // If a subdomain is configured, create the Cloudflare CNAME and derive the public URL
-  // from it. Otherwise fall back to the raw ALB hostname.
-  const dns = subdomain
+  // If hostnames are configured, create a Cloudflare CNAME per hostname and derive
+  // the public URL from the first (primary). Otherwise fall back to the raw ALB hostname.
+  const dns = hostnames.length > 0
     ? createDns({
         name,
         zoneId: cloudflareZoneId!,
-        hostname: subdomain,
+        hostnames,
         target: alb.dnsName,
         apiToken: cloudflareApiToken!,
       })

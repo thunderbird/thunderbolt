@@ -31,7 +31,12 @@ export const createAlb = ({ name, vpcId, publicSubnetIds, albSgId, hostnames }: 
   })
 
   // Target groups
+  //
+  // AWS caps Target Group names at 32 chars. Our stack-prefixed names (`tb-preview-pr-N-<svc>-tg`)
+  // plus Pulumi's random suffix blow past that limit. Using `namePrefix` (max 6 chars) lets AWS
+  // generate a unique short name, while `tags.Name` preserves human-readable stack identification.
   const frontendTg = new aws.lb.TargetGroup(`${name}-frontend-tg`, {
+    namePrefix: 'tb-fe',
     port: 80,
     protocol: 'HTTP',
     targetType: 'ip',
@@ -41,6 +46,7 @@ export const createAlb = ({ name, vpcId, publicSubnetIds, albSgId, hostnames }: 
   })
 
   const backendTg = new aws.lb.TargetGroup(`${name}-backend-tg`, {
+    namePrefix: 'tb-be',
     port: 8000,
     protocol: 'HTTP',
     targetType: 'ip',
@@ -50,6 +56,7 @@ export const createAlb = ({ name, vpcId, publicSubnetIds, albSgId, hostnames }: 
   })
 
   const keycloakTg = new aws.lb.TargetGroup(`${name}-keycloak-tg`, {
+    namePrefix: 'tb-kc',
     port: 8080,
     protocol: 'HTTP',
     targetType: 'ip',
@@ -59,6 +66,7 @@ export const createAlb = ({ name, vpcId, publicSubnetIds, albSgId, hostnames }: 
   })
 
   const powersyncTg = new aws.lb.TargetGroup(`${name}-powersync-tg`, {
+    namePrefix: 'tb-ps',
     port: 8080,
     protocol: 'HTTP',
     targetType: 'ip',
@@ -68,6 +76,7 @@ export const createAlb = ({ name, vpcId, publicSubnetIds, albSgId, hostnames }: 
   })
 
   const marketingTg = new aws.lb.TargetGroup(`${name}-marketing-tg`, {
+    namePrefix: 'tb-mk',
     port: 80,
     protocol: 'HTTP',
     targetType: 'ip',

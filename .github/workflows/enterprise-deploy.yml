@@ -118,6 +118,14 @@ jobs:
         working-directory: deploy/pulumi
         run: bun install --frozen-lockfile
 
+      - name: Ensure Pulumi stack exists
+        working-directory: deploy/pulumi
+        env:
+          INPUT_STACK_NAME: ${{ inputs.stack_name }}
+        run: |
+          # --create makes stack init idempotent (no-op if already exists).
+          pulumi stack select --create "$INPUT_STACK_NAME" --non-interactive
+
       - name: Configure Pulumi stack
         working-directory: deploy/pulumi
         env:

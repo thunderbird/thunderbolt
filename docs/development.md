@@ -2,7 +2,19 @@
 
 ## Quick Start
 
-You must have Bun, Rust, and Docker installed first. Then:
+You must have Bun, Rust, and Docker installed first.
+
+### Linux System Prerequisites
+
+If you're on Linux (e.g. Ubuntu 24.04), install the following system dependencies before running `make setup`, or `cargo check` will fail with missing library errors:
+
+```bash
+sudo apt install libwebkit2gtk-4.1-dev libjavascriptcoregtk-4.1-dev   build-essential curl wget file libxdo-dev libssl-dev   libayatana-appindicator3-dev librsvg2-dev libsoup-3.0-dev
+```
+
+Alternatively, see [Tauri's Linux prerequisites guide](https://v2.tauri.app/start/prerequisites/#linux).
+
+Then:
 
 ```sh
 # Install dependencies

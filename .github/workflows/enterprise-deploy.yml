@@ -18,12 +18,28 @@ on:
       version:
         type: string
         required: false
-      subdomain:
-        description: 'Full hostname for preview stacks (e.g. thunderbolt-pr-123.preview.thunderbolt.io). If set, Pulumi creates a Cloudflare CNAME and uses https://<subdomain> as publicUrl. Leave empty for enterprise stacks.'
+      marketing_hostname:
+        description: 'Preview hostname for marketing site (e.g. thunderbolt-pr-123.preview.thunderbolt.io)'
+        type: string
+        required: false
+      app_hostname:
+        description: 'Preview hostname for the app frontend (e.g. app-pr-123.preview.thunderbolt.io)'
+        type: string
+        required: false
+      api_hostname:
+        description: 'Preview hostname for the backend API (e.g. api-pr-123.preview.thunderbolt.io)'
+        type: string
+        required: false
+      auth_hostname:
+        description: 'Preview hostname for keycloak (e.g. auth-pr-123.preview.thunderbolt.io)'
+        type: string
+        required: false
+      powersync_hostname:
+        description: 'Preview hostname for powersync (e.g. powersync-pr-123.preview.thunderbolt.io)'
         type: string
         required: false
       cloudflare_zone_id:
-        description: 'Cloudflare zone ID for the subdomain. Required when subdomain is set.'
+        description: 'Cloudflare zone ID. Required when any hostname is set.'
         type: string
         required: false
     outputs:
@@ -109,7 +125,11 @@ jobs:
           INPUT_STACK_NAME: ${{ inputs.stack_name }}
           INPUT_VERSION: ${{ steps.version.outputs.version }}
           INPUT_GHCR_PAT: ${{ secrets.GHCR_PAT }}
-          INPUT_SUBDOMAIN: ${{ inputs.subdomain }}
+          INPUT_MARKETING_HOSTNAME: ${{ inputs.marketing_hostname }}
+          INPUT_APP_HOSTNAME: ${{ inputs.app_hostname }}
+          INPUT_API_HOSTNAME: ${{ inputs.api_hostname }}
+          INPUT_AUTH_HOSTNAME: ${{ inputs.auth_hostname }}
+          INPUT_POWERSYNC_HOSTNAME: ${{ inputs.powersync_hostname }}
           INPUT_CLOUDFLARE_ZONE_ID: ${{ inputs.cloudflare_zone_id }}
           INPUT_CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
         run: |
@@ -118,12 +138,19 @@ jobs:
           if [ -n "$INPUT_GHCR_PAT" ]; then
             pulumi config set --secret ghcrToken "$INPUT_GHCR_PAT" -s "$INPUT_STACK_NAME" --non-interactive
           fi
-          if [ -n "$INPUT_SUBDOMAIN" ]; then
-            [ -n "$INPUT_CLOUDFLARE_ZONE_ID" ] || { echo "subdomain is set but cloudflare_zone_id is missing"; exit 1; }
-            [ -n "$INPUT_CLOUDFLARE_API_TOKEN" ] || { echo "subdomain is set but CLOUDFLARE_API_TOKEN secret is missing"; exit 1; }
-            pulumi config set subdomain "$INPUT_SUBDOMAIN" -s "$INPUT_STACK_NAME" --non-interactive
+
+          # Any hostname set implies subdomain routing mode — require zone ID + API token, and set all provided hostnames.
+          ANY_HOSTNAME="$INPUT_MARKETING_HOSTNAME$INPUT_APP_HOSTNAME$INPUT_API_HOSTNAME$INPUT_AUTH_HOSTNAME$INPUT_POWERSYNC_HOSTNAME"
+          if [ -n "$ANY_HOSTNAME" ]; then
+            [ -n "$INPUT_CLOUDFLARE_ZONE_ID" ] || { echo "hostname(s) set but cloudflare_zone_id is missing"; exit 1; }
+            [ -n "$INPUT_CLOUDFLARE_API_TOKEN" ] || { echo "hostname(s) set but CLOUDFLARE_API_TOKEN secret is missing"; exit 1; }
             pulumi config set cloudflareZoneId "$INPUT_CLOUDFLARE_ZONE_ID" -s "$INPUT_STACK_NAME" --non-interactive
             pulumi config set --secret cloudflareApiToken "$INPUT_CLOUDFLARE_API_TOKEN" -s "$INPUT_STACK_NAME" --non-interactive
+            [ -n "$INPUT_MARKETING_HOSTNAME" ] && pulumi config set marketingHostname "$INPUT_MARKETING_HOSTNAME" -s "$INPUT_STACK_NAME" --non-interactive
+            [ -n "$INPUT_APP_HOSTNAME" ]       && pulumi config set appHostname       "$INPUT_APP_HOSTNAME"       -s "$INPUT_STACK_NAME" --non-interactive
+            [ -n "$INPUT_API_HOSTNAME" ]       && pulumi config set apiHostname       "$INPUT_API_HOSTNAME"       -s "$INPUT_STACK_NAME" --non-interactive
+            [ -n "$INPUT_AUTH_HOSTNAME" ]      && pulumi config set authHostname      "$INPUT_AUTH_HOSTNAME"      -s "$INPUT_STACK_NAME" --non-interactive
+            [ -n "$INPUT_POWERSYNC_HOSTNAME" ] && pulumi config set powersyncHostname "$INPUT_POWERSYNC_HOSTNAME" -s "$INPUT_STACK_NAME" --non-interactive
           fi
 
       - name: Deploy

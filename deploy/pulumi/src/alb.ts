@@ -6,9 +6,22 @@ type AlbArgs = {
   vpcId: pulumi.Input<string>
   publicSubnetIds: pulumi.Input<string>[]
   albSgId: pulumi.Input<string>
+  /**
+   * Optional host-header routing config. When provided, the ALB adds listener
+   * rules that route based on Host header to each service's target group. The
+   * existing path-based rules remain as fallback, so enterprise stacks (which
+   * don't set hostnames) keep their existing behavior unchanged.
+   */
+  hostnames?: {
+    marketing?: pulumi.Input<string>
+    app?: pulumi.Input<string>
+    api?: pulumi.Input<string>
+    auth?: pulumi.Input<string>
+    powersync?: pulumi.Input<string>
+  }
 }
 
-export const createAlb = ({ name, vpcId, publicSubnetIds, albSgId }: AlbArgs) => {
+export const createAlb = ({ name, vpcId, publicSubnetIds, albSgId, hostnames }: AlbArgs) => {
   const alb = new aws.lb.LoadBalancer(`${name}-alb`, {
     internal: false,
     loadBalancerType: 'application',
@@ -54,7 +67,16 @@ export const createAlb = ({ name, vpcId, publicSubnetIds, albSgId }: AlbArgs) =>
     tags: { Name: `${name}-powersync` },
   })
 
-  // Listener with path-based routing
+  const marketingTg = new aws.lb.TargetGroup(`${name}-marketing-tg`, {
+    port: 80,
+    protocol: 'HTTP',
+    targetType: 'ip',
+    vpcId,
+    healthCheck: { path: '/', healthyThreshold: 2, interval: 30 },
+    tags: { Name: `${name}-marketing` },
+  })
+
+  // Listener default → frontend (path-based fallback for enterprise stacks)
   const listener = new aws.lb.Listener(`${name}-listener`, {
     loadBalancerArn: alb.arn,
     port: 80,
@@ -62,6 +84,55 @@ export const createAlb = ({ name, vpcId, publicSubnetIds, albSgId }: AlbArgs) =>
     defaultActions: [{ type: 'forward', targetGroupArn: frontendTg.arn }],
   })
 
+  // -- Host-header rules (priority 1-5) — active only when hostnames provided.
+  // These win over path-based rules because lower priority = higher precedence.
+  if (hostnames?.marketing) {
+    new aws.lb.ListenerRule(`${name}-host-marketing-rule`, {
+      listenerArn: listener.arn,
+      priority: 1,
+      conditions: [{ hostHeader: { values: [hostnames.marketing] } }],
+      actions: [{ type: 'forward', targetGroupArn: marketingTg.arn }],
+    })
+  }
+
+  if (hostnames?.app) {
+    new aws.lb.ListenerRule(`${name}-host-app-rule`, {
+      listenerArn: listener.arn,
+      priority: 2,
+      conditions: [{ hostHeader: { values: [hostnames.app] } }],
+      actions: [{ type: 'forward', targetGroupArn: frontendTg.arn }],
+    })
+  }
+
+  if (hostnames?.api) {
+    new aws.lb.ListenerRule(`${name}-host-api-rule`, {
+      listenerArn: listener.arn,
+      priority: 3,
+      conditions: [{ hostHeader: { values: [hostnames.api] } }],
+      actions: [{ type: 'forward', targetGroupArn: backendTg.arn }],
+    })
+  }
+
+  if (hostnames?.auth) {
+    new aws.lb.ListenerRule(`${name}-host-auth-rule`, {
+      listenerArn: listener.arn,
+      priority: 4,
+      conditions: [{ hostHeader: { values: [hostnames.auth] } }],
+      actions: [{ type: 'forward', targetGroupArn: keycloakTg.arn }],
+    })
+  }
+
+  if (hostnames?.powersync) {
+    new aws.lb.ListenerRule(`${name}-host-powersync-rule`, {
+      listenerArn: listener.arn,
+      priority: 5,
+      conditions: [{ hostHeader: { values: [hostnames.powersync] } }],
+      actions: [{ type: 'forward', targetGroupArn: powersyncTg.arn }],
+    })
+  }
+
+  // -- Path-based rules (priority 10-30) — enterprise stack fallback.
+  // Kept for backwards compat; served when no host-header rule matches.
   new aws.lb.ListenerRule(`${name}-backend-rule`, {
     listenerArn: listener.arn,
     priority: 10,
@@ -83,5 +154,5 @@ export const createAlb = ({ name, vpcId, publicSubnetIds, albSgId }: AlbArgs) =>
     actions: [{ type: 'forward', targetGroupArn: powersyncTg.arn }],
   })
 
-  return { alb, listener, frontendTg, backendTg, keycloakTg, powersyncTg }
+  return { alb, listener, frontendTg, backendTg, keycloakTg, powersyncTg, marketingTg }
 }

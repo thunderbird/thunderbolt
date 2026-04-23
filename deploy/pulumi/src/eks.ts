@@ -137,6 +137,9 @@ export const createEksCluster = (args: EksArgs) => {
         powersync: {
           image: { repository: `${imagePrefix}/thunderbolt-powersync`, tag: version },
         },
+        marketing: {
+          image: { repository: `${imagePrefix}/thunderbolt-marketing`, tag: version },
+        },
       },
     },
     { provider: k8sProvider, dependsOn: chartDeps },

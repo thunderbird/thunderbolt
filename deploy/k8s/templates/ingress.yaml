@@ -12,6 +12,79 @@ metadata:
 spec:
   ingressClassName: {{ .Values.ingress.className }}
   rules:
+    {{- /*
+      Two routing modes:
+        1. Host-header based (preview-style): set .Values.ingress.hostnames.{marketing,app,api,auth,powersync}
+           Each hostname gets a dedicated rule routing to its service.
+        2. Path-based (enterprise-style): set .Values.ingress.host (optional) and all paths go under one host
+           Everything under one hostname with /v1, /realms, /powersync, / routing.
+      If both are set, host-header rules take precedence (they're separate rules). Path-based stays as the fallback.
+    */}}
+
+    {{- with .Values.ingress.hostnames }}
+    {{- if .marketing }}
+    - host: {{ .marketing }}
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: marketing
+                port:
+                  number: {{ $.Values.marketing.service.port }}
+    {{- end }}
+    {{- if .app }}
+    - host: {{ .app }}
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: frontend
+                port:
+                  number: {{ $.Values.frontend.service.port }}
+    {{- end }}
+    {{- if .api }}
+    - host: {{ .api }}
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: backend
+                port:
+                  number: {{ $.Values.backend.service.port }}
+    {{- end }}
+    {{- if .auth }}
+    - host: {{ .auth }}
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: keycloak
+                port:
+                  number: {{ $.Values.keycloak.service.port }}
+    {{- end }}
+    {{- if .powersync }}
+    - host: {{ .powersync }}
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: powersync
+                port:
+                  number: {{ $.Values.powersync.service.port }}
+    {{- end }}
+    {{- end }}
+
+    {{- /* Path-based fallback — always present so enterprise stacks keep working. */}}
     - {{- if .Values.ingress.host }}
       host: {{ .Values.ingress.host }}
       {{- end }}

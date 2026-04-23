@@ -18,6 +18,18 @@ frontend:
     port: 80
 
 # =============================================================================
+# Marketing (Astro static site: landing page, blog, docs)
+# =============================================================================
+marketing:
+  image:
+    repository: ghcr.io/your-org/thunderbolt/marketing
+    tag: latest
+    pullPolicy: IfNotPresent
+  replicas: 1
+  service:
+    port: 80
+
+# =============================================================================
 # Backend
 # =============================================================================
 backend:

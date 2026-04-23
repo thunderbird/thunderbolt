@@ -1,14 +1,22 @@
 name: Preview Environment (Internal PRs)
 
-# Creates an ephemeral preview stack on AWS Fargate + a Cloudflare subdomain for each
-# pull request opened from a branch in this repo. Fork PRs are explicitly not supported
-# and are silently skipped via the head-repo discriminator below.
+# Creates an ephemeral preview stack on AWS Fargate for each pull request opened
+# from a branch in this repo. Five Cloudflare subdomains are created per PR,
+# mirroring prod's subdomain structure:
+#   thunderbolt-pr-{N}.preview.thunderbolt.io  → marketing
+#   app-pr-{N}.preview.thunderbolt.io           → app frontend
+#   api-pr-{N}.preview.thunderbolt.io           → backend API
+#   auth-pr-{N}.preview.thunderbolt.io          → keycloak OIDC
+#   powersync-pr-{N}.preview.thunderbolt.io     → powersync
+#
+# Fork PRs are explicitly not supported and are silently skipped via the
+# head-repo discriminator below.
 #
 # Trigger chain:
 #   pull_request (opened/synchronize/reopened, targeting main)
-#     -> enterprise-publish.yml (builds images tagged pr-{N}-{sha})
-#     -> enterprise-deploy.yml (pulumi up, stack=preview-pr-{N}, subdomain=thunderbolt-pr-{N}.preview.thunderbolt.io)
-#     -> sticky PR comment with the URL
+#     -> enterprise-publish.yml (builds all 6 images tagged pr-{N}-{sha})
+#     -> enterprise-deploy.yml (pulumi up, stack=preview-pr-{N}, 5 hostnames)
+#     -> sticky PR comment with the URLs
 
 on:
   pull_request:
@@ -33,6 +41,8 @@ jobs:
     with:
       tag_override: pr-${{ github.event.pull_request.number }}-${{ github.event.pull_request.head.sha }}
       ref: ${{ github.event.pull_request.head.sha }}
+      # Frontend calls the backend API cross-origin in preview (different subdomain)
+      vite_backend_url: https://api-pr-${{ github.event.pull_request.number }}.preview.thunderbolt.io/v1
 
   deploy:
     needs: publish
@@ -43,7 +53,11 @@ jobs:
       region: us-east-1
       stack_name: preview-pr-${{ github.event.pull_request.number }}
       version: ${{ needs.publish.outputs.version }}
-      subdomain: thunderbolt-pr-${{ github.event.pull_request.number }}.preview.thunderbolt.io
+      marketing_hostname: thunderbolt-pr-${{ github.event.pull_request.number }}.preview.thunderbolt.io
+      app_hostname: app-pr-${{ github.event.pull_request.number }}.preview.thunderbolt.io
+      api_hostname: api-pr-${{ github.event.pull_request.number }}.preview.thunderbolt.io
+      auth_hostname: auth-pr-${{ github.event.pull_request.number }}.preview.thunderbolt.io
+      powersync_hostname: powersync-pr-${{ github.event.pull_request.number }}.preview.thunderbolt.io
       cloudflare_zone_id: ${{ vars.CLOUDFLARE_ZONE_ID }}
     secrets: inherit
 
@@ -51,17 +65,21 @@ jobs:
     needs: deploy
     runs-on: ubuntu-latest
     steps:
-      - name: Sticky PR comment with preview URL
+      - name: Sticky PR comment with preview URLs
         uses: marocchino/sticky-pull-request-comment@0ea0beb66eb9baf113663a64ec522f60e49231c0 # v3.0.4
         with:
           header: preview-env
           message: |
             **Preview environment deployed** 🚀
 
-            | | |
+            | Service | URL |
             |---|---|
-            | URL | ${{ needs.deploy.outputs.url }} |
-            | Stack | `preview-pr-${{ github.event.pull_request.number }}` |
-            | Commit | `${{ github.event.pull_request.head.sha }}` |
+            | Marketing / blog / docs | https://thunderbolt-pr-${{ github.event.pull_request.number }}.preview.thunderbolt.io |
+            | App | https://app-pr-${{ github.event.pull_request.number }}.preview.thunderbolt.io |
+            | API | https://api-pr-${{ github.event.pull_request.number }}.preview.thunderbolt.io |
+            | Keycloak | https://auth-pr-${{ github.event.pull_request.number }}.preview.thunderbolt.io |
+            | PowerSync | https://powersync-pr-${{ github.event.pull_request.number }}.preview.thunderbolt.io |
 
-            The preview stack auto-destroys on PR close/merge. Login is via the bundled Keycloak realm — seeded with the `demo@thunderbolt.io` user (password `demo`) by default.
+            Stack: `preview-pr-${{ github.event.pull_request.number }}` · Commit: `${{ github.event.pull_request.head.sha }}`
+
+            Auto-destroys on PR close/merge. Login via the bundled Keycloak realm — `demo@thunderbolt.io` / `demo` by default.

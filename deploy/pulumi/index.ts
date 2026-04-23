@@ -14,26 +14,54 @@ const name = `tb-${stackName}`
 const platform = config.get('platform') || 'fargate'
 const version = config.require('version')
 
-// Optional Cloudflare subdomain wiring (used by preview-pr-* stacks).
-// Accepts either `subdomain` (single hostname, back-compat) or `hostnames`
-// (comma-separated list — the first is primary and becomes publicUrl, the
-// rest are additional CNAMEs pointing at the same ALB for multi-subdomain
-// setups like `app-pr-N` + `api-pr-N` + `pr-N`).
-// When set, Pulumi creates proxied CNAMEs in Cloudflare and uses https://<primary>
-// instead of the raw ALB DNS. Enterprise stacks leave this unset.
-const hostnames = (config.get('hostnames') ?? config.get('subdomain') ?? '')
+// --- Optional Cloudflare subdomain wiring (used by preview-pr-* stacks) ---
+//
+// Preview stacks set five per-service hostnames (marketing/app/api/auth/powersync).
+// Pulumi creates a proxied CNAME in Cloudflare for each and wires per-service URLs
+// into the container env vars. Enterprise stacks leave these unset and fall back
+// to the raw ALB hostname + path-based ALB routing.
+//
+// Back-compat: also accepts legacy `subdomain` (single hostname used for everything)
+// and `hostnames` (comma-separated, first is the marketing/primary).
+const marketingHostname = config.get('marketingHostname')
+const appHostname = config.get('appHostname')
+const apiHostname = config.get('apiHostname')
+const authHostname = config.get('authHostname')
+const powersyncHostname = config.get('powersyncHostname')
+
+const legacyHostnames = (config.get('hostnames') ?? config.get('subdomain') ?? '')
   .split(',')
   .map((s) => s.trim())
   .filter((s) => s.length > 0)
+
+const hasSubdomainRouting =
+  Boolean(marketingHostname || appHostname || apiHostname || authHostname || powersyncHostname) ||
+  legacyHostnames.length > 0
+
 const cloudflareZoneId = config.get('cloudflareZoneId')
 const cloudflareApiToken = config.getSecret('cloudflareApiToken')
 
-if (hostnames.length > 0 && (!cloudflareZoneId || !cloudflareApiToken)) {
+if (hasSubdomainRouting && (!cloudflareZoneId || !cloudflareApiToken)) {
   throw new Error(
-    'hostnames/subdomain is set but cloudflareZoneId and/or cloudflareApiToken are missing — ' +
+    'subdomain routing is configured but cloudflareZoneId and/or cloudflareApiToken are missing — ' +
       'run `pulumi config set cloudflareZoneId <id>` and `pulumi config set --secret cloudflareApiToken <token>`',
   )
 }
+
+// Resolve each service's hostname. When a per-service hostname is set, use it.
+// Otherwise fall back to the first legacy hostname (single-hostname mode).
+const resolvedHostnames = {
+  marketing: marketingHostname || legacyHostnames[0],
+  app: appHostname || legacyHostnames[0],
+  api: apiHostname || legacyHostnames[0],
+  auth: authHostname || legacyHostnames[0],
+  powersync: powersyncHostname || legacyHostnames[0],
+} as const
+
+// Dedupe for DNS creation (legacy mode may reuse the same hostname for multiple services)
+const uniqueHostnamesForDns = hasSubdomainRouting
+  ? Array.from(new Set(Object.values(resolvedHostnames).filter((h): h is string => Boolean(h))))
+  : []
 
 // All images are pre-built and published to GHCR by the enterprise-publish workflow
 const imagePrefix = 'ghcr.io/thunderbird/thunderbolt'
@@ -43,6 +71,7 @@ const images = {
   postgres: `${imagePrefix}/thunderbolt-postgres:${version}`,
   keycloak: `${imagePrefix}/thunderbolt-keycloak:${version}`,
   powersync: `${imagePrefix}/thunderbolt-powersync:${version}`,
+  marketing: `${imagePrefix}/thunderbolt-marketing:${version}`,
 }
 
 // Secrets — override per-stack via `pulumi config set --secret <key> <value>`
@@ -94,26 +123,36 @@ if (platform === 'k8s') {
   const { cluster, logGroup } = createCluster(name)
   const { services: discoveryServices } = createServiceDiscovery(name, vpc.id)
 
-  const { alb, listener, frontendTg, backendTg, keycloakTg, powersyncTg } = createAlb({
+  const { alb, listener, frontendTg, backendTg, keycloakTg, powersyncTg, marketingTg } = createAlb({
     name,
     vpcId: vpc.id,
     publicSubnetIds: publicSubnets.map((s) => s.id),
     albSgId: albSg.id,
+    hostnames: hasSubdomainRouting ? resolvedHostnames : undefined,
   })
 
-  // If hostnames are configured, create a Cloudflare CNAME per hostname and derive
-  // the public URL from the first (primary). Otherwise fall back to the raw ALB hostname.
-  const dns = hostnames.length > 0
-    ? createDns({
-        name,
-        zoneId: cloudflareZoneId!,
-        hostnames,
-        target: alb.dnsName,
-        apiToken: cloudflareApiToken!,
-      })
-    : undefined
+  // Create Cloudflare CNAMEs for each unique hostname, all pointing at the ALB.
+  if (hasSubdomainRouting) {
+    createDns({
+      name,
+      zoneId: cloudflareZoneId!,
+      hostnames: uniqueHostnamesForDns,
+      target: alb.dnsName,
+      apiToken: cloudflareApiToken!,
+    })
+  }
 
-  const publicUrl = dns ? dns.url : pulumi.interpolate`http://${alb.dnsName}`
+  // Per-service public URLs for env var wiring. If subdomain routing is active,
+  // each service uses its own subdomain URL. Otherwise all services share the
+  // raw ALB URL and routing falls back to path-based (enterprise stacks).
+  const albFallback = pulumi.interpolate`http://${alb.dnsName}`
+  const publicUrls = {
+    marketing: resolvedHostnames.marketing ? (pulumi.interpolate`https://${resolvedHostnames.marketing}` as pulumi.Input<string>) : albFallback,
+    app: resolvedHostnames.app ? (pulumi.interpolate`https://${resolvedHostnames.app}` as pulumi.Input<string>) : albFallback,
+    api: resolvedHostnames.api ? (pulumi.interpolate`https://${resolvedHostnames.api}` as pulumi.Input<string>) : albFallback,
+    auth: resolvedHostnames.auth ? (pulumi.interpolate`https://${resolvedHostnames.auth}` as pulumi.Input<string>) : albFallback,
+    powersync: resolvedHostnames.powersync ? (pulumi.interpolate`https://${resolvedHostnames.powersync}` as pulumi.Input<string>) : albFallback,
+  }
 
   createServices({
     name,
@@ -126,22 +165,24 @@ if (platform === 'k8s') {
     images,
     secrets,
     ghcrToken: config.getSecret('ghcrToken'),
-    publicUrl,
+    publicUrls,
     albListener: listener,
     targetGroups: {
       frontend: frontendTg,
       backend: backendTg,
       keycloak: keycloakTg,
       powersync: powersyncTg,
+      marketing: marketingTg,
     },
     discoveryServices,
   })
 
   module.exports = {
     platform: 'fargate',
-    url: publicUrl,
+    // Primary user-facing URL is the marketing/app entry (preview: marketing; enterprise: ALB path-based)
+    url: publicUrls.marketing,
+    urls: publicUrls,
     albDnsName: alb.dnsName,
-    keycloakAdmin: pulumi.interpolate`${publicUrl}/auth/admin`,
     stackInfo: {
       name: stackName,
       destroy: `pulumi destroy -s ${stackName} -y`,

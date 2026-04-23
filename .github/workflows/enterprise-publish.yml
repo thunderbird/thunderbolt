@@ -11,6 +11,10 @@ on:
         description: 'Git ref to build from (default: the triggering ref)'
         type: string
         required: false
+      vite_backend_url:
+        description: 'Override for VITE_THUNDERBOLT_CLOUD_URL build arg (frontend image). Default is /v1 (same-origin path). For preview stacks with cross-origin subdomains set this to e.g. https://api-pr-123.preview.thunderbolt.io/v1.'
+        type: string
+        required: false
     outputs:
       version:
         description: 'The tag the images were published with'
@@ -19,6 +23,10 @@ on:
     inputs:
       tag_override:
         description: 'Image tag to use instead of package.json version'
+        type: string
+        required: false
+      vite_backend_url:
+        description: 'Override for VITE_THUNDERBOLT_CLOUD_URL'
         type: string
         required: false
   push:
@@ -82,7 +90,7 @@ jobs:
           push: true
           no-cache: true
           build-args: |
-            VITE_THUNDERBOLT_CLOUD_URL=/v1
+            VITE_THUNDERBOLT_CLOUD_URL=${{ inputs.vite_backend_url || '/v1' }}
             VITE_AUTH_MODE=oidc
           tags: |
             ${{ env.IMAGE_PREFIX }}/thunderbolt-frontend:${{ steps.version.outputs.version }}

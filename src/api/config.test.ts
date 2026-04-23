@@ -1,19 +1,26 @@
-import { describe, expect, it } from 'bun:test'
+import { describe, expect, it, beforeEach } from 'bun:test'
 import { createMockHttpClient } from '@/test-utils/http-client'
+import { useConfigStore } from './config-store'
 import { fetchConfig } from './config'
 
 describe('fetchConfig', () => {
-  it('returns config from the backend', async () => {
+  beforeEach(() => {
+    useConfigStore.getState().updateConfig({})
+  })
+
+  it('returns config from the backend and updates the store', async () => {
     const httpClient = createMockHttpClient({ e2eeEnabled: true })
 
     const result = await fetchConfig('http://test-api.local', httpClient)
 
     expect(result).toEqual({ e2eeEnabled: true })
+    expect(useConfigStore.getState().config).toEqual({ e2eeEnabled: true })
   })
 
-  it('returns null when backend is unreachable', async () => {
+  it('returns null and preserves cached store value when backend is unreachable', async () => {
+    useConfigStore.getState().updateConfig({ e2eeEnabled: true })
+
     const httpClient = createMockHttpClient(null, 'http://unreachable.local')
-    // Override with a failing fetch
     const failingClient = {
       ...httpClient,
       get: () => {
@@ -27,5 +34,6 @@ describe('fetchConfig', () => {
     const result = await fetchConfig('http://test-api.local', failingClient)
 
     expect(result).toBeNull()
+    expect(useConfigStore.getState().config).toEqual({ e2eeEnabled: true })
   })
 })

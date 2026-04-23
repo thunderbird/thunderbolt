@@ -59,6 +59,7 @@ describe('Authentication Routes', () => {
       betterAuthSecret: 'test-secret-at-least-32-chars-long!!',
       rateLimitEnabled: false,
       swaggerEnabled: false,
+      e2eeEnabled: false,
       trustedProxy: '',
     })
 

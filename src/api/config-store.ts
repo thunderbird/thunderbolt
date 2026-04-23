@@ -2,7 +2,7 @@ import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 
 export type AppConfig = {
-  // Will grow with e2eeEnabled, feature flags, etc.
+  e2eeEnabled?: boolean
 }
 
 type ConfigStore = {

@@ -1,6 +1,19 @@
-import { describe, expect, it } from 'bun:test'
-import { getPowerSyncDatabaseConfig, getPowerSyncOptions } from './database'
+import { describe, expect, it, mock } from 'bun:test'
 import { WASQLiteOpenFactory } from '@powersync/web'
+
+// Control E2EE flag directly — avoids contamination from other test files
+// that mock the @/db/encryption barrel with isEncryptionEnabled: () => true.
+// Use ...spread to preserve exports like encryptedColumnsMap that other tests depend on.
+let mockE2EEEnabled = false
+
+const realConfig = await import('@/db/encryption/config')
+mock.module('@/db/encryption/config', () => ({
+  ...realConfig,
+  isEncryptionEnabled: () => mockE2EEEnabled,
+  needsSyncSetupWizard: async () => false,
+}))
+
+const { getPowerSyncDatabaseConfig, getPowerSyncOptions } = await import('./database')
 
 describe('getPowerSyncDatabaseConfig', () => {
   it('returns default for web + Chrome', () => {
@@ -59,10 +72,20 @@ describe('getPowerSyncOptions', () => {
       expect(options).not.toHaveProperty('flags')
     })
 
-    it('includes custom SharedWorker for sync', () => {
-      const options = getPowerSyncOptions('thunderbolt.db')
+    it('includes custom SharedWorker and transformers when E2EE is enabled', () => {
+      mockE2EEEnabled = true
+      const options = getPowerSyncOptions('thunderbolt.db', 'default')
       expect(options).toHaveProperty('sync')
       expect(options.sync).toHaveProperty('worker')
+      expect(options).toHaveProperty('transformers')
+      mockE2EEEnabled = false
+    })
+
+    it('omits custom SharedWorker and transformers when E2EE is disabled', () => {
+      mockE2EEEnabled = false
+      const options = getPowerSyncOptions('thunderbolt.db', 'default')
+      expect(options).not.toHaveProperty('sync')
+      expect(options).not.toHaveProperty('transformers')
     })
   })
 
@@ -79,8 +102,21 @@ describe('getPowerSyncOptions', () => {
 
     it('includes flags and sync with explicit worker paths', () => {
       const options = getPowerSyncOptions('thunderbolt.db', 'safari-tauri')
-      expect(options.flags).toEqual({ enableMultiTabs: false })
+      expect('flags' in options && options.flags).toEqual({ enableMultiTabs: false })
       expect(options.sync).toEqual({ worker: '/@powersync/worker/SharedSyncImplementation.umd.js' })
+    })
+
+    it('includes transformers when E2EE is enabled', () => {
+      mockE2EEEnabled = true
+      const options = getPowerSyncOptions('thunderbolt.db', 'safari-tauri')
+      expect(options).toHaveProperty('transformers')
+      mockE2EEEnabled = false
+    })
+
+    it('omits transformers when E2EE is disabled', () => {
+      mockE2EEEnabled = false
+      const options = getPowerSyncOptions('thunderbolt.db', 'safari-tauri')
+      expect(options).not.toHaveProperty('transformers')
     })
 
     it('extracts dbFilename from path correctly', () => {

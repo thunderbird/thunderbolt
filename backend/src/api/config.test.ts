@@ -1,15 +1,34 @@
 import { describe, expect, it } from 'bun:test'
+import { Elysia } from 'elysia'
+import type { Settings } from '@/config/settings'
 import { createConfigRoutes } from './config'
 
-const BASE = 'http://localhost'
+describe('Config Routes', () => {
+  describe('GET /config', () => {
+    it('returns e2eeEnabled: false when disabled', async () => {
+      const app = new Elysia().use(createConfigRoutes({ e2eeEnabled: false } as Settings))
 
-describe('Config API', () => {
-  const app = createConfigRoutes()
+      const response = await app.handle(new Request('http://localhost/config'))
 
-  it('GET /config returns 200 with empty config', async () => {
-    const res = await app.handle(new Request(`${BASE}/config`))
+      expect(response.status).toBe(200)
+      expect(await response.json()).toEqual({ e2eeEnabled: false })
+    })
 
-    expect(res.status).toBe(200)
-    expect(await res.json()).toEqual({})
+    it('returns e2eeEnabled: true when enabled', async () => {
+      const app = new Elysia().use(createConfigRoutes({ e2eeEnabled: true } as Settings))
+
+      const response = await app.handle(new Request('http://localhost/config'))
+
+      expect(response.status).toBe(200)
+      expect(await response.json()).toEqual({ e2eeEnabled: true })
+    })
+
+    it('does not require authentication', async () => {
+      const app = new Elysia().use(createConfigRoutes({ e2eeEnabled: false } as Settings))
+
+      const response = await app.handle(new Request('http://localhost/config'))
+
+      expect(response.status).toBe(200)
+    })
   })
 })

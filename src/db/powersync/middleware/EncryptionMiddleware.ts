@@ -1,6 +1,6 @@
 import type { SyncDataBatch } from '@powersync/common'
 import type { DataTransformMiddleware } from '../TransformableBucketStorage'
-import { encryptedColumnsMap, isEncryptionEnabled } from '@/db/encryption/config'
+import { encryptedColumnsMap } from '@/db/encryption/config'
 import { codec } from '@/db/encryption/codec'
 
 type SyncEntry = SyncDataBatch['buckets'][number]['data'][number]
@@ -40,14 +40,14 @@ const decryptEntry = async (entry: SyncEntry) => {
 /**
  * Decrypts encrypted columns in sync data before it reaches SQLite.
  * Config-driven: uses encryptedColumnsMap to determine which columns to decrypt.
- * Handles __enc: (AES-GCM) format.
+ * Handles __enc: (AES-GCM) format — codec.decode passes through plaintext unchanged.
  * Passes through when no CK is available (pre-setup or CK cleared).
+ *
+ * No isEncryptionEnabled() gate: this middleware runs in the SharedWorker where
+ * localStorage is unavailable. The codec safely handles both encrypted and plaintext data.
  */
 export const encryptionMiddleware: DataTransformMiddleware = {
   async transform(batch) {
-    if (!isEncryptionEnabled()) {
-      return batch
-    }
     for (const bucket of batch.buckets) {
       for (const entry of bucket.data) {
         await decryptEntry(entry)

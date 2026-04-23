@@ -8,6 +8,7 @@ export type HandleErrorCode =
   | 'DATABASE_PATH_FAILED'
   | 'HTTP_CLIENT_INIT_FAILED'
   | 'CANARY_EXTRACTION_FAILED'
+  | 'SYNC_ENABLE_FAILED'
   | 'UNKNOWN_ERROR'
 
 export type HandleError = {

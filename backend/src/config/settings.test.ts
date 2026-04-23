@@ -373,6 +373,42 @@ describe('Config Settings', () => {
     })
   })
 
+  describe('E2EE settings', () => {
+    let savedEnv: string | undefined
+
+    beforeEach(() => {
+      clearSettingsCache()
+      savedEnv = process.env.E2EE_ENABLED
+    })
+
+    afterEach(() => {
+      if (savedEnv !== undefined) {
+        process.env.E2EE_ENABLED = savedEnv
+      } else {
+        delete process.env.E2EE_ENABLED
+      }
+      clearSettingsCache()
+    })
+
+    it('should default e2eeEnabled to false when env var is unset', () => {
+      delete process.env.E2EE_ENABLED
+      const settings = getSettings()
+      expect(settings.e2eeEnabled).toBe(false)
+    })
+
+    it('should enable E2EE when E2EE_ENABLED is "true"', () => {
+      process.env.E2EE_ENABLED = 'true'
+      const settings = getSettings()
+      expect(settings.e2eeEnabled).toBe(true)
+    })
+
+    it('should keep E2EE disabled for any value other than "true"', () => {
+      process.env.E2EE_ENABLED = 'false'
+      const settings = getSettings()
+      expect(settings.e2eeEnabled).toBe(false)
+    })
+  })
+
   describe('PowerSync settings', () => {
     const POWERSYNC_ENV_KEYS = [
       'POWERSYNC_URL',

@@ -1,6 +1,6 @@
 [package]
 name = "thunderbolt"
-version = "0.1.91"
+version = "0.1.91-nightly.20260424"
 description = "Privacy-respecting AI assistant."
 authors = ["Chris Roth <chris@cjroth.com>"]
 license = "MPL-2.0"

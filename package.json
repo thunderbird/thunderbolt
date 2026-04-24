@@ -164,7 +164,6 @@
     "oauth2-mock-server": "^8.2.2",
     "playwright": "^1.58.2",
     "prettier": "^3.6.2",
-    "semver": "^7.7.3",
     "size-limit": "^12.0.1",
     "storybook": "^10.3.5",
     "tailwindcss": "4.2.2",
@@ -174,5 +173,9 @@
     "vite": "^7.3.2",
     "vite-bundle-analyzer": "^1.2.1",
     "vitest": "^4.1.4"
+  },
+  "overrides": {
+    "//": "Force semver >= 7 at top-level so storybook can resolve semver/functions/sort.js. Without this, bun hoists semver@6 (pulled by babel/eslint-plugin-react) and storybook breaks at vite config load.",
+    "semver": "^7.7.3"
   }
 }

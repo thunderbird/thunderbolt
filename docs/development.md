@@ -2,7 +2,27 @@
 
 ## Quick Start
 
-You must have Bun, Rust, and Docker installed first. Then:
+You must have Bun, Rust, and Docker installed first.
+
+### Linux system dependencies
+
+Building the desktop app on Linux requires Tauri's GTK/WebKit stack. On Ubuntu/Debian:
+
+```bash
+sudo apt install libwebkit2gtk-4.1-dev libjavascriptcoregtk-4.1-dev \
+  build-essential curl wget file libxdo-dev libssl-dev \
+  libayatana-appindicator3-dev librsvg2-dev libsoup-3.0-dev
+```
+
+Also install `sccache` (required by the Rust build):
+
+```bash
+cargo install sccache
+```
+
+See [Tauri's Linux prerequisites](https://v2.tauri.app/start/prerequisites/#linux) for other distributions.
+
+Then:
 
 ```sh
 # Install dependencies

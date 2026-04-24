@@ -1,17 +1,17 @@
 # Frequently Asked Questions
 
-### How Is Thunderbolt Funded?
+### How is Thunderbolt funded?
 
 Thunderbolt is funded through a grant from Mozilla.
 
-### What Is Thunderbolt's Relationship to Thunderbird?
+### What is Thunderbolt's relationship to Thunderbird?
 
 Thunderbolt is a separate product developed under the same entity, MZLA Technologies. It is not part of Thunderbird's existing products.
 
-### Is There Going to Be a Hosted Version if I Don't Want to Deploy It Myself?
+### Is there going to be a hosted version if I don't want to deploy it myself?
 
 Yes, we are planning to launch Thunderbolt for regular users but we do not have a release date yet.
 
-### I Have a Bug / Suggestion / Feature Request - How Can I Contribute?
+### I have a bug / suggestion / feature request - how can I contribute?
 
 Please [submit an issue](https://github.com/thunderbird/thunderbolt/issues) or open a pull request.

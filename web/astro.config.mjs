@@ -47,13 +47,6 @@ export default defineConfig({
 					],
 				},
 				{
-					label: 'Development',
-					items: [
-						{ label: 'Quick Start', slug: 'docs/development/quick-start' },
-						{ label: 'Testing', slug: 'docs/development/testing' },
-					],
-				},
-				{
 					label: 'Self-Hosting',
 					items: [
 						{ label: 'Overview', slug: 'docs/self-hosting' },
@@ -64,34 +57,42 @@ export default defineConfig({
 					],
 				},
 				{
-					label: 'Data Syncing',
+					label: 'Features',
 					items: [
-						{ label: 'Architecture', slug: 'docs/architecture' },
-						{ label: 'Multi-Device Sync', slug: 'docs/architecture/multi-device-sync' },
-						{ label: 'End-to-End Encryption', slug: 'docs/architecture/e2e-encryption' },
+						{ label: 'Widgets', slug: 'docs/features/widgets' },
 						{
-							label: 'PowerSync · Account & Devices',
-							slug: 'docs/architecture/powersync-account-devices',
+							label: 'Data Syncing',
+							collapsed: true,
+							items: [
+								{ label: 'Architecture', slug: 'docs/architecture' },
+								{ label: 'Multi-Device Sync', slug: 'docs/architecture/multi-device-sync' },
+								{ label: 'End-to-End Encryption', slug: 'docs/architecture/e2e-encryption' },
+								{
+									label: 'PowerSync · Account & Devices',
+									slug: 'docs/architecture/powersync-account-devices',
+								},
+								{
+									label: 'PowerSync · Sync Middleware',
+									slug: 'docs/architecture/powersync-sync-middleware',
+								},
+								{
+									label: 'Composite Primary Keys & Default Data',
+									slug: 'docs/architecture/composite-primary-keys-and-default-data',
+								},
+								{
+									label: 'Delete Account & Revoke Device',
+									slug: 'docs/architecture/delete-account-and-revoke-device',
+								},
+							],
 						},
-						{
-							label: 'PowerSync · Sync Middleware',
-							slug: 'docs/architecture/powersync-sync-middleware',
-						},
-						{
-							label: 'Composite Primary Keys & Default Data',
-							slug: 'docs/architecture/composite-primary-keys-and-default-data',
-						},
-						{
-							label: 'Delete Account & Revoke Device',
-							slug: 'docs/architecture/delete-account-and-revoke-device',
-						},
+						{ label: 'WebView', slug: 'docs/features/webview' },
 					],
 				},
 				{
-					label: 'Features',
+					label: 'Development',
 					items: [
-						{ label: 'WebView', slug: 'docs/features/webview' },
-						{ label: 'Widgets', slug: 'docs/features/widgets' },
+						{ label: 'Quick Start', slug: 'docs/development/quick-start' },
+						{ label: 'Testing', slug: 'docs/development/testing' },
 					],
 				},
 				{

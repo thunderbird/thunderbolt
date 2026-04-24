@@ -1,6 +1,6 @@
 # Self-Hosting
 
-> **Caution.** Thunderbolt is currently undergoing a security audit and preparing for enterprise production readiness. The paths below are provided for evaluation and early testing — **not for production use yet**.
+> ⚠️ Thunderbolt is currently undergoing a security audit and preparing for enterprise production readiness. The paths below are provided for evaluation and early testing — **not for production use yet**.
 
 Every self-hosted target uses the same stack: Elysia backend, Vite frontend, PostgreSQL, PowerSync, Keycloak (OIDC), and MongoDB (PowerSync's operational store). What changes is the orchestration layer.
 

@@ -360,6 +360,13 @@ nav.sidebar > ul > li > span.large {
 	color: var(--tb-text-muted);
 }
 
+/* Nested group labels — render as normal link-weight text, not a heading */
+nav.sidebar ul:not(.top-level) details summary .large {
+	font-size: var(--sl-text-sm);
+	font-weight: 400;
+	color: var(--tb-text-secondary);
+}
+
 /* Right TOC — subtle left-rail + darker weight on active */
 .right-sidebar a,
 .right-sidebar-panel a {

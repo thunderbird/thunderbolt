@@ -1,6 +1,6 @@
 # End-to-End Encryption
 
-> **Caution.** End-to-end encryption is in **Preview**. It has not yet undergone a cryptography audit and is subject to further refinements.
+> ⚠️ End-to-end encryption is in **Preview**. It has not yet undergone a cryptography audit and is subject to further refinements.
 
 When E2E encryption is enabled, all user data is encrypted client-side before sync and decrypted client-side after download. The server stores only ciphertext and wrapped keys — it cannot read user data even if compelled or breached.
 

@@ -153,9 +153,13 @@ function rewriteLinks(
 		(match, text: string, url: string, hash = '') => {
 			if (/^([a-z]+:|\/\/|#|mailto:|tel:)/i.test(url)) return match;
 			const repoPath = resolveRepoPath(`docs/${sourceRelPath}`, url);
-			if (/\.md$/i.test(repoPath) && repoPath.startsWith('docs/')) {
-				const inner = repoPath.slice('docs/'.length).replace(/\.md$/i, '').toLowerCase();
-				return `[${text}](/${urlPrefix}/${inner}/${hash})`;
+			if (repoPath.startsWith('docs/')) {
+				const inner = repoPath
+					.slice('docs/'.length)
+					.replace(/\.md$/i, '')
+					.replace(/\/(readme|index)$/i, '')
+					.toLowerCase();
+				return `[${text}](/${urlPrefix}/${inner}${hash})`;
 			}
 			return `[${text}](${githubBaseUrl}/${repoPath}${hash})`;
 		},

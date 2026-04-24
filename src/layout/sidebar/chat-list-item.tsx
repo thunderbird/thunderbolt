@@ -6,7 +6,6 @@ import { memo, useState } from 'react'
 import type { ChatListItemProps } from './types'
 import { useChatStore } from '@/chats/chat-store'
 import { useShallow } from 'zustand/react/shallow'
-import { useChat } from '@ai-sdk/react'
 import { AnimatePresence, motion } from 'framer-motion'
 import { RenameChatDialog } from './rename-chat-dialog'
 
@@ -22,17 +21,16 @@ export const ChatListItem = memo(
     onChatClick,
     onRename,
   }: ChatListItemProps) => {
-    const { chatInstance } = useChatStore(
+    const { status } = useChatStore(
       useShallow((state) => {
         const session = state.sessions.get(thread.id)
 
         return {
-          chatInstance: session?.chatInstance,
+          status: session?.status ?? 'ready',
         }
       }),
     )
 
-    const { status } = useChat(chatInstance ? { chat: chatInstance } : undefined)
     const [renameDialogOpen, setRenameDialogOpen] = useState(false)
     const [optimisticTitle, setOptimisticTitle] = useState<string | null>(null)
     const [prevTitle, setPrevTitle] = useState(thread.title)

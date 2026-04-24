@@ -1,14 +1,17 @@
+import { useChatStore } from '@/chats/chat-store'
 import { resetTestDatabase, setupTestDatabase, teardownTestDatabase } from '@/dal/test-utils'
 import {
-  createMockChatInstance,
   createMockChatThread,
+  createMockLocalAgent,
   createMockModel,
-  createMockUseChat,
+  createMockRemoteAgent,
+  defaultTestAgent,
   hydrateStore,
   resetStore,
 } from '@/test-utils/chat-store-mocks'
 import { createQueryTestWrapper } from '@/test-utils/react-query'
 import type { Model } from '@/types'
+import type { SessionConfigOption, SessionMode } from '@agentclientprotocol/sdk'
 import { act, cleanup, render, screen } from '@testing-library/react'
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, mock } from 'bun:test'
 import { createElement, type ReactNode, type RefObject } from 'react'
@@ -45,20 +48,16 @@ const TestWrapper = ({ children }: { children: ReactNode }) => {
 /** Hydrate the chat store with sensible defaults for testing */
 const setupStore = () => {
   const mockModel = createMockModel()
-  const mockChatInstance = createMockChatInstance([], 'ready')
-  const mockUseChat = createMockUseChat(mockChatInstance)
 
   hydrateStore({
-    chatInstance: mockChatInstance,
     chatThread: createMockChatThread(),
     id: 'thread-1',
     mcpClients: [],
-    models: [mockModel],
     selectedModel: mockModel,
     triggerData: null,
   })
 
-  return { mockModel, mockChatInstance, mockUseChat }
+  return { mockModel }
 }
 
 describe('ChatPromptInput', () => {
@@ -82,9 +81,9 @@ describe('ChatPromptInput', () => {
 
   describe('rendering', () => {
     it('should render textarea with placeholder', () => {
-      const { mockUseChat } = setupStore()
+      setupStore()
 
-      render(<ChatPromptInput useChat={mockUseChat} useIsMobile={createMockUseIsMobile()} />, {
+      render(<ChatPromptInput useIsMobile={createMockUseIsMobile()} />, {
         wrapper: TestWrapper,
       })
 
@@ -94,12 +93,11 @@ describe('ChatPromptInput', () => {
 
   describe('mobile layout', () => {
     it('should apply mobile class names', () => {
-      const { mockUseChat } = setupStore()
+      setupStore()
 
-      const { container } = render(
-        <ChatPromptInput useChat={mockUseChat} useIsMobile={createMockUseIsMobile(true)} />,
-        { wrapper: TestWrapper },
-      )
+      const { container } = render(<ChatPromptInput useIsMobile={createMockUseIsMobile(true)} />, {
+        wrapper: TestWrapper,
+      })
 
       const form = container.querySelector('form')
       expect(form?.className).toContain('gap-0')
@@ -107,12 +105,11 @@ describe('ChatPromptInput', () => {
     })
 
     it('should apply unified class names when not mobile', () => {
-      const { mockUseChat } = setupStore()
+      setupStore()
 
-      const { container } = render(
-        <ChatPromptInput useChat={mockUseChat} useIsMobile={createMockUseIsMobile(false)} />,
-        { wrapper: TestWrapper },
-      )
+      const { container } = render(<ChatPromptInput useIsMobile={createMockUseIsMobile(false)} />, {
+        wrapper: TestWrapper,
+      })
 
       const form = container.querySelector('form')
       expect(form?.className).toContain('gap-0')
@@ -120,11 +117,10 @@ describe('ChatPromptInput', () => {
     })
 
     it('should hide context usage indicator on mobile', () => {
-      const { mockUseChat } = setupStore()
+      setupStore()
 
       render(
         <ChatPromptInput
-          useChat={mockUseChat}
           useIsMobile={createMockUseIsMobile(true)}
           useContextTracking={createMockUseContextTracking(false, true, 1000, 2000)}
         />,
@@ -135,11 +131,10 @@ describe('ChatPromptInput', () => {
     })
 
     it('should show context usage indicator on desktop', () => {
-      const { mockUseChat } = setupStore()
+      setupStore()
 
       render(
         <ChatPromptInput
-          useChat={mockUseChat}
           useIsMobile={createMockUseIsMobile(false)}
           useContextTracking={createMockUseContextTracking(false, true, 1000, 2000)}
         />,
@@ -152,10 +147,10 @@ describe('ChatPromptInput', () => {
 
   describe('ref methods', () => {
     it('should expose focus method that focuses textarea', () => {
-      const { mockUseChat } = setupStore()
+      setupStore()
       const ref = { current: null } as unknown as RefObject<ChatPromptInputRef>
 
-      render(<ChatPromptInput ref={ref} useChat={mockUseChat} useIsMobile={createMockUseIsMobile()} />, {
+      render(<ChatPromptInput ref={ref} useIsMobile={createMockUseIsMobile()} />, {
         wrapper: TestWrapper,
       })
 
@@ -174,10 +169,10 @@ describe('ChatPromptInput', () => {
     })
 
     it('should expose setInput method that updates textarea value', () => {
-      const { mockUseChat } = setupStore()
+      setupStore()
       const ref = { current: null } as unknown as RefObject<ChatPromptInputRef>
 
-      render(<ChatPromptInput ref={ref} useChat={mockUseChat} useIsMobile={createMockUseIsMobile()} />, {
+      render(<ChatPromptInput ref={ref} useIsMobile={createMockUseIsMobile()} />, {
         wrapper: TestWrapper,
       })
 
@@ -192,12 +187,11 @@ describe('ChatPromptInput', () => {
 
   describe('submitOnEnter', () => {
     it('should disable submit on enter when mobile viewport', () => {
-      const { mockUseChat } = setupStore()
+      setupStore()
 
-      const { container } = render(
-        <ChatPromptInput useChat={mockUseChat} useIsMobile={createMockUseIsMobile(true)} />,
-        { wrapper: TestWrapper },
-      )
+      const { container } = render(<ChatPromptInput useIsMobile={createMockUseIsMobile(true)} />, {
+        wrapper: TestWrapper,
+      })
 
       const textarea = container.querySelector('textarea')!
       const enterEvent = new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })
@@ -212,10 +206,10 @@ describe('ChatPromptInput', () => {
   })
 
   describe('dependency injection', () => {
-    it('should accept injected useChat', () => {
-      const { mockUseChat } = setupStore()
+    it('should render with store-based state', () => {
+      setupStore()
 
-      const { container } = render(<ChatPromptInput useChat={mockUseChat} useIsMobile={createMockUseIsMobile()} />, {
+      const { container } = render(<ChatPromptInput useIsMobile={createMockUseIsMobile()} />, {
         wrapper: TestWrapper,
       })
 
@@ -223,18 +217,409 @@ describe('ChatPromptInput', () => {
     })
 
     it('should accept injected useContextTracking', () => {
-      const { mockUseChat } = setupStore()
+      setupStore()
 
       const { container } = render(
-        <ChatPromptInput
-          useChat={mockUseChat}
-          useContextTracking={createMockUseContextTracking()}
-          useIsMobile={createMockUseIsMobile()}
-        />,
+        <ChatPromptInput useContextTracking={createMockUseContextTracking()} useIsMobile={createMockUseIsMobile()} />,
         { wrapper: TestWrapper },
       )
 
       expect(container.querySelector('form')).not.toBeNull()
+    })
+  })
+
+  describe('agent connection states', () => {
+    it('shows connecting spinner in footer and textarea when non-built-in agent is connecting', () => {
+      const localAgent = createMockLocalAgent()
+      hydrateStore({
+        chatThread: createMockChatThread(),
+        id: 'thread-1',
+        mcpClients: [],
+        selectedModel: createMockModel(),
+        triggerData: null,
+        agentConfig: localAgent,
+        isAgentAvailable: true,
+        status: 'connecting',
+        availableModes: [],
+      })
+
+      const { container } = render(
+        <ChatPromptInput useIsMobile={createMockUseIsMobile()} useContextTracking={createMockUseContextTracking()} />,
+        { wrapper: TestWrapper },
+      )
+
+      // Connecting indicator should be visible inside the form
+      expect(screen.getByText('Connecting to Claude Code...')).toBeInTheDocument()
+      const form = container.querySelector('form')
+      expect(form).not.toBeNull()
+      expect(form!.textContent).toContain('Connecting to Claude Code...')
+
+      // Textarea should still be visible and typeable
+      expect(screen.getByPlaceholderText('Ask me anything...')).toBeInTheDocument()
+    })
+
+    it('disables submit button when connecting', () => {
+      hydrateStore({
+        chatThread: createMockChatThread(),
+        id: 'thread-1',
+        mcpClients: [],
+        selectedModel: createMockModel(),
+        triggerData: null,
+        agentConfig: createMockLocalAgent(),
+        isAgentAvailable: true,
+        status: 'connecting',
+        availableModes: [],
+      })
+
+      render(
+        <ChatPromptInput useIsMobile={createMockUseIsMobile()} useContextTracking={createMockUseContextTracking()} />,
+        { wrapper: TestWrapper },
+      )
+
+      const submitButton = screen.getByRole('button', { name: '' })
+      expect(submitButton).toBeDisabled()
+    })
+
+    it('shows neither spinner nor mode selector when ready with no modes', () => {
+      hydrateStore({
+        chatThread: createMockChatThread(),
+        id: 'thread-1',
+        mcpClients: [],
+        selectedModel: createMockModel(),
+        triggerData: null,
+        agentConfig: createMockLocalAgent(),
+        isAgentAvailable: true,
+        status: 'ready',
+        availableModes: [],
+      })
+
+      render(
+        <ChatPromptInput useIsMobile={createMockUseIsMobile()} useContextTracking={createMockUseContextTracking()} />,
+        { wrapper: TestWrapper },
+      )
+
+      expect(screen.queryByText(/Connecting to/)).toBeNull()
+      expect(screen.getByPlaceholderText('Ask me anything...')).toBeInTheDocument()
+    })
+
+    it('shows mode selector when fully connected with modes', () => {
+      const modes: SessionMode[] = [
+        { id: 'code', name: 'Code' },
+        { id: 'ask', name: 'Ask' },
+      ]
+      hydrateStore({
+        chatThread: createMockChatThread(),
+        id: 'thread-1',
+        mcpClients: [],
+        selectedModel: createMockModel(),
+        triggerData: null,
+        agentConfig: createMockLocalAgent(),
+        isAgentAvailable: true,
+        status: 'ready',
+        availableModes: modes,
+        currentModeId: 'code',
+        selectedMode: {
+          id: 'code',
+          name: 'code',
+          label: 'Code',
+          icon: 'terminal',
+          systemPrompt: null,
+          isDefault: 0,
+          order: 0,
+        } as never,
+      })
+
+      render(
+        <ChatPromptInput useIsMobile={createMockUseIsMobile()} useContextTracking={createMockUseContextTracking()} />,
+        { wrapper: TestWrapper },
+      )
+
+      // Mode selector should be visible
+      expect(screen.getByText('Code')).toBeInTheDocument()
+      // No connecting indicator
+      expect(screen.queryByText(/Connecting to/)).toBeNull()
+      // Textarea visible
+      expect(screen.getByPlaceholderText('Ask me anything...')).toBeInTheDocument()
+    })
+
+    it('shows model selector when connected with 2+ models', () => {
+      const modes: SessionMode[] = [{ id: 'code', name: 'Code' }]
+      const configOptions: SessionConfigOption[] = [
+        {
+          id: 'model',
+          name: 'Model',
+          type: 'select',
+          category: 'model',
+          currentValue: 'model-a',
+          options: [
+            { value: 'model-a', name: 'Model A' },
+            { value: 'model-b', name: 'Model B' },
+          ],
+        } as SessionConfigOption,
+      ]
+      hydrateStore({
+        chatThread: createMockChatThread(),
+        id: 'thread-1',
+        mcpClients: [],
+        selectedModel: createMockModel(),
+        triggerData: null,
+        agentConfig: createMockLocalAgent(),
+        isAgentAvailable: true,
+        status: 'ready',
+        availableModes: modes,
+        currentModeId: 'code',
+        configOptions,
+        selectedMode: {
+          id: 'code',
+          name: 'code',
+          label: 'Code',
+          icon: 'terminal',
+          systemPrompt: null,
+          isDefault: 0,
+          order: 0,
+        } as never,
+      })
+
+      render(
+        <ChatPromptInput useIsMobile={createMockUseIsMobile()} useContextTracking={createMockUseContextTracking()} />,
+        { wrapper: TestWrapper },
+      )
+
+      // Model selector should be visible (shows current model name)
+      expect(screen.getByText('Model A')).toBeInTheDocument()
+    })
+
+    it('shows read-only unavailable message for unavailable agent', () => {
+      hydrateStore({
+        chatThread: createMockChatThread(),
+        id: 'thread-1',
+        mcpClients: [],
+        selectedModel: createMockModel(),
+        triggerData: null,
+        agentConfig: createMockLocalAgent(),
+        isAgentAvailable: false,
+        status: 'ready',
+      })
+
+      const { container } = render(
+        <ChatPromptInput useIsMobile={createMockUseIsMobile()} useContextTracking={createMockUseContextTracking()} />,
+        { wrapper: TestWrapper },
+      )
+
+      expect(screen.getByText(/This chat uses Claude Code/)).toBeInTheDocument()
+      expect(screen.getByText(/desktop only/)).toBeInTheDocument()
+      // No textarea should be present
+      expect(container.querySelector('textarea')).toBeNull()
+    })
+
+    it('shows unavailable message with "unavailable" for non-local agent types', () => {
+      hydrateStore({
+        chatThread: createMockChatThread(),
+        id: 'thread-1',
+        mcpClients: [],
+        selectedModel: createMockModel(),
+        triggerData: null,
+        agentConfig: createMockRemoteAgent(),
+        isAgentAvailable: false,
+        status: 'ready',
+      })
+
+      render(
+        <ChatPromptInput useIsMobile={createMockUseIsMobile()} useContextTracking={createMockUseContextTracking()} />,
+        { wrapper: TestWrapper },
+      )
+
+      expect(screen.getByText(/This chat uses Remote Agent/)).toBeInTheDocument()
+      expect(screen.getByText(/unavailable/)).toBeInTheDocument()
+    })
+
+    it('shows modes immediately for built-in agent', () => {
+      const modes: SessionMode[] = [
+        { id: 'chat', name: 'Chat' },
+        { id: 'search', name: 'Search' },
+      ]
+      hydrateStore({
+        chatThread: createMockChatThread(),
+        id: 'thread-1',
+        mcpClients: [],
+        selectedModel: createMockModel(),
+        triggerData: null,
+        agentConfig: defaultTestAgent,
+        isAgentAvailable: true,
+        status: 'ready',
+        availableModes: modes,
+        currentModeId: 'chat',
+      })
+
+      render(
+        <ChatPromptInput useIsMobile={createMockUseIsMobile()} useContextTracking={createMockUseContextTracking()} />,
+        { wrapper: TestWrapper },
+      )
+
+      expect(screen.getByText('Chat')).toBeInTheDocument()
+      expect(screen.queryByText(/Connecting to/)).toBeNull()
+    })
+
+    it('transitions from connecting spinner to mode selector when connection completes', () => {
+      const localAgent = createMockLocalAgent()
+      hydrateStore({
+        chatThread: createMockChatThread(),
+        id: 'thread-1',
+        mcpClients: [],
+        selectedModel: createMockModel(),
+        triggerData: null,
+        agentConfig: localAgent,
+        isAgentAvailable: true,
+        status: 'connecting',
+        availableModes: [],
+      })
+
+      render(
+        <ChatPromptInput useIsMobile={createMockUseIsMobile()} useContextTracking={createMockUseContextTracking()} />,
+        { wrapper: TestWrapper },
+      )
+
+      // Initially shows connecting
+      expect(screen.getByText('Connecting to Claude Code...')).toBeInTheDocument()
+
+      // Simulate connection completing: update session with modes and ready status
+      act(() => {
+        useChatStore.getState().updateSession('thread-1', {
+          status: 'ready',
+          availableModes: [{ id: 'code', name: 'Code' }],
+          currentModeId: 'code',
+          selectedMode: {
+            id: 'code',
+            name: 'code',
+            label: 'Code',
+            icon: 'terminal',
+            systemPrompt: null,
+            isDefault: 0,
+            order: 0,
+          } as never,
+        })
+      })
+
+      // Connecting indicator should be gone, mode selector should appear
+      expect(screen.queryByText(/Connecting to/)).toBeNull()
+      expect(screen.getByText('Code')).toBeInTheDocument()
+    })
+
+    it('shows connecting spinner for remote agent', () => {
+      hydrateStore({
+        chatThread: createMockChatThread(),
+        id: 'thread-1',
+        mcpClients: [],
+        selectedModel: createMockModel(),
+        triggerData: null,
+        agentConfig: createMockRemoteAgent(),
+        isAgentAvailable: true,
+        status: 'connecting',
+        availableModes: [],
+      })
+
+      render(
+        <ChatPromptInput useIsMobile={createMockUseIsMobile()} useContextTracking={createMockUseContextTracking()} />,
+        { wrapper: TestWrapper },
+      )
+
+      expect(screen.getByText('Connecting to Remote Agent...')).toBeInTheDocument()
+      expect(screen.getByPlaceholderText('Ask me anything...')).toBeInTheDocument()
+    })
+
+    it('shows error message when connection fails', () => {
+      hydrateStore({
+        chatThread: createMockChatThread(),
+        id: 'thread-1',
+        mcpClients: [],
+        selectedModel: createMockModel(),
+        triggerData: null,
+        agentConfig: createMockLocalAgent(),
+        isAgentAvailable: true,
+        status: 'error',
+        error: new Error('Agent did not respond within 15s'),
+        availableModes: [],
+      })
+
+      render(
+        <ChatPromptInput useIsMobile={createMockUseIsMobile()} useContextTracking={createMockUseContextTracking()} />,
+        { wrapper: TestWrapper },
+      )
+
+      expect(screen.getByText('Failed to connect to Claude Code')).toBeInTheDocument()
+      // Textarea should still be visible so user can retry
+      expect(screen.getByPlaceholderText('Ask me anything...')).toBeInTheDocument()
+      // No connecting spinner
+      expect(screen.queryByText(/Connecting to/)).toBeNull()
+    })
+
+    it('transitions from connecting to error on failure', () => {
+      hydrateStore({
+        chatThread: createMockChatThread(),
+        id: 'thread-1',
+        mcpClients: [],
+        selectedModel: createMockModel(),
+        triggerData: null,
+        agentConfig: createMockLocalAgent(),
+        isAgentAvailable: true,
+        status: 'connecting',
+        availableModes: [],
+      })
+
+      render(
+        <ChatPromptInput useIsMobile={createMockUseIsMobile()} useContextTracking={createMockUseContextTracking()} />,
+        { wrapper: TestWrapper },
+      )
+
+      // Initially shows connecting
+      expect(screen.getByText('Connecting to Claude Code...')).toBeInTheDocument()
+
+      // Simulate connection failure
+      act(() => {
+        useChatStore.getState().setSessionStatus('thread-1', 'error', new Error('Connection timeout'))
+      })
+
+      // Error message should replace connecting spinner
+      expect(screen.getByText('Failed to connect to Claude Code')).toBeInTheDocument()
+      expect(screen.queryByText(/Connecting to/)).toBeNull()
+      expect(screen.getByPlaceholderText('Ask me anything...')).toBeInTheDocument()
+    })
+
+    it('does not show error when modes are already loaded', () => {
+      // If the agent was previously connected (has modes) but then errors on a reconnect,
+      // keep showing the mode selector instead of the error message
+      const modes: SessionMode[] = [{ id: 'code', name: 'Code' }]
+      hydrateStore({
+        chatThread: createMockChatThread(),
+        id: 'thread-1',
+        mcpClients: [],
+        selectedModel: createMockModel(),
+        triggerData: null,
+        agentConfig: createMockLocalAgent(),
+        isAgentAvailable: true,
+        status: 'error',
+        error: new Error('Reconnect failed'),
+        availableModes: modes,
+        currentModeId: 'code',
+        selectedMode: {
+          id: 'code',
+          name: 'code',
+          label: 'Code',
+          icon: 'terminal',
+          systemPrompt: null,
+          isDefault: 0,
+          order: 0,
+        } as never,
+      })
+
+      render(
+        <ChatPromptInput useIsMobile={createMockUseIsMobile()} useContextTracking={createMockUseContextTracking()} />,
+        { wrapper: TestWrapper },
+      )
+
+      // Mode selector should be shown, not the error
+      expect(screen.getByText('Code')).toBeInTheDocument()
+      expect(screen.queryByText(/Failed to connect/)).toBeNull()
     })
   })
 })

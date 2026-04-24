@@ -1,4 +1,6 @@
 import { z } from 'zod'
+import type { HaystackPipelineConfig } from '@/haystack/types'
+export type { HaystackPipelineConfig }
 
 /**
  * Settings schema for environment variables validation
@@ -13,8 +15,20 @@ const settingsSchema = z
     thunderboltInferenceUrl: z.string().default(''),
     thunderboltInferenceApiKey: z.string().default(''),
 
-    // Health Check Configuration
-    monitoringToken: z.string().default(''),
+  // Haystack/Deepset settings
+  haystackApiKey: z.string().default(''),
+  haystackBaseUrl: z.string().default('https://api.cloud.deepset.ai'),
+  haystackWorkspace: z.string().default(''),
+  haystackPipelineName: z.string().default(''),
+  haystackPipelineId: z.string().default(''),
+  haystackPipelines: z.string().default(''),
+
+  // Agent filtering
+  enabledAgents: z.string().default(''),
+  allowCustomAgents: z.boolean().default(true),
+
+  // Health Check Configuration
+  monitoringToken: z.string().default(''),
 
     // OAuth Settings
     googleClientId: z.string().default(''),
@@ -99,6 +113,14 @@ const parseSettings = (): Settings => {
     exaApiKey: process.env.EXA_API_KEY || '',
     thunderboltInferenceUrl: process.env.THUNDERBOLT_INFERENCE_URL || '',
     thunderboltInferenceApiKey: process.env.THUNDERBOLT_INFERENCE_API_KEY || '',
+    enabledAgents: process.env.ENABLED_AGENTS || '',
+    allowCustomAgents: process.env.ALLOW_CUSTOM_AGENTS !== 'false',
+    haystackApiKey: process.env.HAYSTACK_API_KEY || '',
+    haystackBaseUrl: process.env.HAYSTACK_BASE_URL || 'https://api.cloud.deepset.ai',
+    haystackWorkspace: process.env.HAYSTACK_WORKSPACE_NAME || '',
+    haystackPipelineName: process.env.HAYSTACK_PIPELINE_NAME || '',
+    haystackPipelineId: process.env.HAYSTACK_PIPELINE_ID || '',
+    haystackPipelines: process.env.HAYSTACK_PIPELINES || '',
     monitoringToken: process.env.MONITORING_TOKEN || '',
     googleClientId: process.env.GOOGLE_CLIENT_ID || '',
     googleClientSecret: process.env.GOOGLE_CLIENT_SECRET || '',
@@ -191,15 +213,74 @@ export const isOAuthRedirectUriAllowed = (uri: string, settings: Pick<Settings, 
   }
 }
 
-export const getCorsMethodsList = (settings: Settings): string[] => {
+export const getCorsMethodsList = (settings: Pick<Settings, 'corsAllowMethods'>): string[] => {
   return settings.corsAllowMethods
     .split(',')
     .map((method) => method.trim())
     .filter((method) => method.length > 0)
 }
 
+const haystackPipelineConfigSchema = z.object({
+  slug: z.string(),
+  name: z.string(),
+  pipelineName: z.string(),
+  pipelineId: z.string(),
+  icon: z.string().optional(),
+})
+
+/**
+ * Get configured Haystack pipelines. Supports either:
+ * - HAYSTACK_PIPELINES: JSON array of pipeline configs
+ * - Individual HAYSTACK_PIPELINE_NAME/ID env vars (creates single pipeline)
+ */
+export const getHaystackPipelines = (settings: Settings): HaystackPipelineConfig[] => {
+  if (!settings.haystackApiKey || !settings.haystackWorkspace) {
+    return []
+  }
+
+  if (settings.haystackPipelines) {
+    try {
+      const parsed = z.array(haystackPipelineConfigSchema).safeParse(JSON.parse(settings.haystackPipelines))
+      if (!parsed.success) {
+        console.warn('HAYSTACK_PIPELINES config is invalid, ignoring:', parsed.error.message)
+        return []
+      }
+      return parsed.data
+    } catch {
+      console.warn('HAYSTACK_PIPELINES is not valid JSON, ignoring')
+      return []
+    }
+  }
+
+  if (settings.haystackPipelineName && settings.haystackPipelineId) {
+    return [
+      {
+        slug: settings.haystackPipelineName,
+        name: 'Document Search',
+        pipelineName: settings.haystackPipelineName,
+        pipelineId: settings.haystackPipelineId,
+        icon: 'file-search',
+      },
+    ]
+  }
+
+  return []
+}
+
+/**
+ * Get the list of enabled agent IDs from ENABLED_AGENTS.
+ * Returns null if unset (all agents enabled).
+ */
+export const getEnabledAgentIds = (settings: Pick<Settings, 'enabledAgents'>): string[] | null => {
+  if (!settings.enabledAgents) return null
+  return settings.enabledAgents
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean)
+}
+
 /** Parse comma-separated auto-approved domains into a list */
-export const getWaitlistAutoApproveDomains = (settings: Settings): string[] => {
+export const getWaitlistAutoApproveDomains = (settings: Pick<Settings, 'waitlistAutoApproveDomains'>): string[] => {
   return settings.waitlistAutoApproveDomains
     .split(',')
     .map((domain) => domain.trim().toLowerCase())

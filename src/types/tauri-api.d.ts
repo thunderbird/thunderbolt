@@ -28,5 +28,19 @@ declare module '@tauri-apps/plugin-os' {
     | 'openbsd'
     | 'solaris'
 
+  export type Arch =
+    | 'x86'
+    | 'x86_64'
+    | 'arm'
+    | 'aarch64'
+    | 'mips'
+    | 'mips64'
+    | 'powerpc'
+    | 'powerpc64'
+    | 'riscv64'
+    | 's390x'
+    | 'sparc64'
+
   export function platform(): Platform
+  export function arch(): Arch
 }

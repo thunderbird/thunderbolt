@@ -1,17 +1,18 @@
 import { useEffect, useRef } from 'react'
 import { useCurrentChatSession } from './chat-store'
-import { useChat as useChat_default } from '@ai-sdk/react'
+import { useAcpChatActions } from './use-acp-chat'
+import type { SaveMessagesFunction } from '@/types'
 
 type UseChatAutomationProps = {
-  useChat?: typeof useChat_default
+  saveMessages?: SaveMessagesFunction
 }
 
-export const useChatAutomation = ({ useChat = useChat_default }: UseChatAutomationProps = {}) => {
-  const { chatInstance } = useCurrentChatSession()
-
-  const { messages } = useChat({ chat: chatInstance })
+export const useChatAutomation = ({ saveMessages }: UseChatAutomationProps = {}) => {
+  const { messages, status } = useCurrentChatSession()
 
   const hasMessages = messages.length
+
+  const { regenerate } = useAcpChatActions(saveMessages)
 
   const hasTriggeredRef = useRef(false)
 
@@ -19,15 +20,15 @@ export const useChatAutomation = ({ useChat = useChat_default }: UseChatAutomati
   useEffect(() => {
     if (
       !hasTriggeredRef.current &&
-      chatInstance?.status === 'ready' &&
+      status === 'ready' &&
       hasMessages &&
-      chatInstance?.messages[chatInstance?.messages.length - 1].role === 'user'
+      messages[messages.length - 1].role === 'user'
     ) {
       hasTriggeredRef.current = true
       // Regenerate assistant response for the last user message
-      chatInstance?.regenerate().catch((err) => {
+      regenerate().catch((err) => {
         console.error('Auto regenerate error', err)
       })
     }
-  }, [chatInstance, hasMessages])
+  }, [status, hasMessages, messages, regenerate])
 }

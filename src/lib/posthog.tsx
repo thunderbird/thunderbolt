@@ -133,7 +133,8 @@ export type EventType =
   | 'chat_new_clicked'
   | 'chat_delete'
   | 'chat_clear_all'
-  // Model & Settings
+  // Agent, Model & Settings
+  | 'agent_select'
   | 'model_select'
   | 'mode_select'
   | 'settings_theme_set'
@@ -149,6 +150,8 @@ export type EventType =
   | 'settings_data_collection_disabled'
   | `settings_experimental_feature_tasks_enabled`
   | `settings_experimental_feature_tasks_disabled`
+  | `settings_experimental_feature_agents_cli_enabled`
+  | `settings_experimental_feature_agents_cli_disabled`
   | 'settings_sync_enabled'
   | 'settings_sync_disabled'
   // Tasks

@@ -10,6 +10,7 @@ import type { z } from 'zod'
 import type { HttpClient } from './contexts'
 import type { AnyDrizzleDatabase } from './db/database-interface'
 import type {
+  agentsTable,
   chatMessagesTable,
   chatThreadsTable,
   mcpServersTable,
@@ -21,6 +22,7 @@ import type {
   tasksTable,
   triggersTable,
 } from './db/tables'
+import type { DocumentMeta, DocumentReference } from '../shared/document-types'
 
 export type InitData = {
   db: AnyDrizzleDatabase
@@ -44,6 +46,7 @@ export type SaveMessagesFunction = ({ id, messages }: { id: string; messages: Th
 type WithRequired<T, K extends keyof T> = T & { [P in K]-?: NonNullable<T[P]> }
 
 // Row types - Raw database row types matching the nullable schema
+export type AgentRow = InferSelectModel<typeof agentsTable>
 export type ChatMessageRow = InferSelectModel<typeof chatMessagesTable>
 export type ChatThreadRow = InferSelectModel<typeof chatThreadsTable>
 export type Setting = InferSelectModel<typeof settingsTable>
@@ -75,6 +78,7 @@ export type McpServer = WithRequired<McpServerRow, 'name' | 'type' | 'enabled'>
 export type Prompt = WithRequired<PromptRow, 'prompt' | 'modelId'>
 export type Trigger = WithRequired<TriggerRow, 'triggerType' | 'isEnabled' | 'promptId'>
 export type ModelProfile = WithRequired<ModelProfileRow, 'modelId'>
+export type Agent = WithRequired<AgentRow, 'name' | 'type' | 'transport' | 'enabled'>
 
 /**
  * Query usable with PowerSync's toCompilableQuery and direct await.
@@ -88,6 +92,8 @@ export type AutomationRun = {
   isAutomationDeleted: boolean
 }
 
+export type { DocumentFile, DocumentMeta, DocumentReference } from '../shared/document-types'
+
 export type UIMessageMetadata = {
   modelId?: string
   usage?: LanguageModelV2Usage
@@ -95,7 +101,11 @@ export type UIMessageMetadata = {
   reasoningTime?: Record<string, number>
   reasoningStartTimes?: Record<string, number>
   sources?: SourceMetadata[]
+  documents?: DocumentMeta[]
+  documentReferences?: DocumentReference[]
 }
+
+export type SideviewType = 'message' | 'thread' | 'imap' | 'document'
 
 export type ToolConfig = {
   name: string

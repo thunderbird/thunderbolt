@@ -47,6 +47,7 @@
     }
   ],
   "dependencies": {
+    "@agentclientprotocol/sdk": "^0.16.1",
     "@ai-sdk/anthropic": "^3.0.14",
     "@ai-sdk/mcp": "^1.0.9",
     "@ai-sdk/openai": "^3.0.11",
@@ -92,6 +93,7 @@
     "@tauri-apps/plugin-opener": "^2.5.2",
     "@tauri-apps/plugin-os": "^2.3.2",
     "@tauri-apps/plugin-process": "^2.3.1",
+    "@tauri-apps/plugin-shell": "^2.3.5",
     "@tauri-apps/plugin-store": "^2.4.2",
     "@tauri-apps/plugin-updater": "^2.10.1",
     "ai": "^6.0.37",
@@ -110,6 +112,7 @@
     "react-dom": "^19.2.1",
     "react-hook-form": "^7.62.0",
     "react-markdown": "^10.1.0",
+    "react-pdf": "^10.4.1",
     "react-resizable-panels": "^3.0.4",
     "react-router": "^7.12.0",
     "remark-gfm": "^4.0.1",

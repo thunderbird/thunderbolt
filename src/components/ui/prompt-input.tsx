@@ -117,7 +117,7 @@ export const PromptInput = forwardRef<HTMLFormElement, PromptInputProps>(
                 models={models}
                 selectedModel={selectedModel ?? null}
                 onModelChange={onModelChange}
-                side="top"
+                side="bottom"
                 align="end"
               />
             )}

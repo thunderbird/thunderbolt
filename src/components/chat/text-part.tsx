@@ -1,6 +1,8 @@
 import { type ContentPart, parseContentParts } from '@/ai/widget-parser'
 import { sourceToCitation } from '@/lib/source-utils'
-import type { CitationMap, CitationSource } from '@/types/citation'
+import type { CitationMap, CitationSource, DocumentCitationSource } from '@/types/citation'
+import { buildDocumentSideviewId } from '@/types/citation'
+import type { DocumentReference } from '@/types'
 import type { SourceMetadata } from '@/types/source'
 import { type TextUIPart } from 'ai'
 import { memo, useMemo } from 'react'
@@ -13,6 +15,7 @@ type TextPartProps = {
   part: TextUIPart
   messageId: string
   sources?: SourceMetadata[]
+  documentReferences?: DocumentReference[]
 }
 
 /**
@@ -52,10 +55,6 @@ export const deduplicateLinkPreviews = (parts: ContentPart[]): ContentPart[] => 
 
 /**
  * Detects `[N]` citation patterns in text and builds a CitationMap from SourceMetadata[].
- * Each `[N]` where `N-1` is a valid index into `sources` becomes a `{{CITE:mapKey}}` placeholder.
- * Out-of-range references are left as-is in the text.
- * @param startKey - Initial key value for the citation map (default 0). Use to avoid key collisions when processing multiple segments.
- * @returns fullText with placeholders, and the corresponding CitationMap
  */
 export const buildSourceCitationPlaceholders = (
   text: string,
@@ -87,8 +86,58 @@ export const buildSourceCitationPlaceholders = (
   return { fullText, citations }
 }
 
-export const TextPart = memo(({ part, messageId, sources }: TextPartProps) => {
+/**
+ * Detects `[N]` citation patterns and builds a CitationMap from document references.
+ */
+export const buildDocumentCitationPlaceholders = (
+  text: string,
+  references: DocumentReference[],
+  startKey = 0,
+): { fullText: string; citations: CitationMap } => {
+  const citations: CitationMap = new Map()
+  let nextKey = startKey
+
+  // Index references by position (1-based)
+  const refsByPosition = new Map(references.map((r) => [r.position, r]))
+
+  const fullText = text.replace(groupedCitationRegex, (match) => {
+    const validSources: CitationSource[] = []
+    for (const m of match.matchAll(individualCitationRegex)) {
+      const n = parseInt(m[1], 10)
+      const ref = refsByPosition.get(n)
+      if (ref) {
+        const ext = ref.fileName.split('.').pop()?.toLowerCase() ?? ''
+        const source: DocumentCitationSource = {
+          id: buildDocumentSideviewId(ref),
+          title: ref.fileName,
+          url: '', // Documents don't have URLs
+          siteName: ext.toUpperCase(),
+          isPrimary: validSources.length === 0,
+          documentMeta: {
+            fileId: ref.fileId,
+            fileName: ref.fileName,
+            pageNumber: ref.pageNumber,
+          },
+        }
+        validSources.push(source)
+      }
+    }
+
+    if (validSources.length === 0) {
+      return match
+    }
+
+    const key = nextKey++
+    citations.set(key, validSources)
+    return `{{CITE:${key}}}`
+  })
+
+  return { fullText, citations }
+}
+
+export const TextPart = memo(({ part, messageId, sources, documentReferences }: TextPartProps) => {
   const hasNewSources = !!sources && sources.length > 0
+  const hasDocumentRefs = !!documentReferences && documentReferences.length > 0
 
   // Build citation data upfront so the hook is always called in the same order
   const { processedParts, citations, hasCitations, hasText } = useMemo(() => {
@@ -103,14 +152,21 @@ export const TextPart = memo(({ part, messageId, sources }: TextPartProps) => {
 
     const parts = parseContentParts(part.text)
 
-    if (hasNewSources) {
+    // Pick the citation builder based on which source type is active
+    const buildPlaceholders = hasDocumentRefs
+      ? (text: string, offset: number) => buildDocumentCitationPlaceholders(text, documentReferences, offset)
+      : hasNewSources
+        ? (text: string, offset: number) => buildSourceCitationPlaceholders(text, sources, offset)
+        : null
+
+    if (buildPlaceholders) {
       let keyOffset = 0
       const mergedCitations: CitationMap = new Map()
-      const processedParts: ContentPart[] = parts.map((p) => {
+      const mapped: ContentPart[] = parts.map((p) => {
         if (p.type !== 'text') {
           return p
         }
-        const { fullText, citations } = buildSourceCitationPlaceholders(p.content, sources, keyOffset)
+        const { fullText, citations } = buildPlaceholders(p.content, keyOffset)
         for (const [key, value] of citations) {
           mergedCitations.set(key, value)
         }
@@ -118,11 +174,10 @@ export const TextPart = memo(({ part, messageId, sources }: TextPartProps) => {
         return { type: 'text' as const, content: fullText }
       })
 
-      const hasCit = mergedCitations.size > 0
       return {
-        processedParts,
+        processedParts: mapped,
         citations: mergedCitations,
-        hasCitations: hasCit,
+        hasCitations: mergedCitations.size > 0,
         hasText: parts.some((p) => p.type === 'text' && p.content.length > 0),
       }
     }
@@ -133,7 +188,7 @@ export const TextPart = memo(({ part, messageId, sources }: TextPartProps) => {
       hasCitations: false,
       hasText: parts.some((p) => p.type === 'text'),
     }
-  }, [part.text, hasNewSources, sources])
+  }, [part.text, hasNewSources, hasDocumentRefs, sources, documentReferences])
 
   const dedupedParts = useMemo(() => deduplicateLinkPreviews(processedParts), [processedParts])
 

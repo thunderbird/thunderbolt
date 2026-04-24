@@ -1,10 +1,11 @@
 import { Button } from '@/components/ui/button'
 import { SearchableMenu, type SearchableMenuGroup, type SearchableMenuItem } from '@/components/ui/searchable-menu'
+import { SelectorTrigger } from '@/components/ui/selector-trigger'
 import { useHaptics } from '@/hooks/use-haptics'
 import { cn } from '@/lib/utils'
 import type { ChatThread } from '@/layout/sidebar/types'
 import type { Model } from '@/types'
-import { ChevronDown, Lock, Plus } from 'lucide-react'
+import { Check, Cpu, Lock, Plus } from 'lucide-react'
 import { useCallback, useMemo } from 'react'
 
 export type ModelSelectorProps = {
@@ -97,16 +98,11 @@ export const ModelSelector = ({
   const groupedItems = useMemo(() => categorizeModels(models, chatThread), [models, chatThread])
 
   const renderTrigger = (selected: SearchableMenuItem<ModelItemData> | undefined, isOpen: boolean) => (
-    <div
-      className={cn(
-        'flex items-center gap-2 px-3 h-[var(--touch-height-sm)] rounded-full cursor-pointer transition-colors text-[length:var(--font-size-body)]',
-        isOpen ? 'bg-secondary' : 'hover:bg-secondary/50',
-      )}
-    >
-      {selected?.data?.model.isConfidential === 1 && <Lock className="size-3.5 text-muted-foreground" />}
-      <span className="font-medium">{selected?.label ?? 'Select Model'}</span>
-      <ChevronDown className={cn('size-3.5 text-muted-foreground transition-transform', isOpen && 'rotate-180')} />
-    </div>
+    <SelectorTrigger
+      icon={<Cpu className="size-[var(--icon-size-default)] shrink-0" />}
+      label={selected?.label ?? 'Select Model'}
+      isOpen={isOpen}
+    />
   )
 
   const renderItem = (item: SearchableMenuItem<ModelItemData>, isSelected: boolean) => (
@@ -125,6 +121,7 @@ export const ModelSelector = ({
         </div>
         <span className="text-sm text-muted-foreground truncate">{item.description}</span>
       </div>
+      {isSelected && <Check className="size-4 text-foreground flex-shrink-0" />}
     </div>
   )
 

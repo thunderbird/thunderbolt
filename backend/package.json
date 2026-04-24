@@ -17,6 +17,7 @@
     "email": "email dev --dir src/emails --port 3000"
   },
   "dependencies": {
+    "@agentclientprotocol/sdk": "^0.16.1",
     "@electric-sql/pglite": "^0.4.4",
     "@elysiajs/cors": "^1.4.0",
     "@elysiajs/jwt": "^1.4.0",

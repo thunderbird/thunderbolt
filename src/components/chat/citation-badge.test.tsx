@@ -3,6 +3,7 @@ import { setupTestDatabase, teardownTestDatabase } from '@/dal/test-utils'
 import { render } from '@testing-library/react'
 import { afterAll, beforeAll, describe, expect, it } from 'bun:test'
 import { createTestProvider } from '@/test-utils/test-provider'
+import { ContentViewProvider } from '@/content-view/context'
 import { CitationBadge } from './citation-badge'
 import { CitationPopoverProvider } from './citation-popover'
 import { ExternalLinkDialogProvider } from './markdown-utils'
@@ -35,9 +36,11 @@ const renderManaged = (ui: ReactElement) => {
   return render(ui, {
     wrapper: ({ children }) => (
       <TestProvider>
-        <ExternalLinkDialogProvider>
-          <CitationPopoverProvider>{children}</CitationPopoverProvider>
-        </ExternalLinkDialogProvider>
+        <ContentViewProvider>
+          <ExternalLinkDialogProvider>
+            <CitationPopoverProvider>{children}</CitationPopoverProvider>
+          </ExternalLinkDialogProvider>
+        </ContentViewProvider>
       </TestProvider>
     ),
   })

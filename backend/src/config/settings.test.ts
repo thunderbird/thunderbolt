@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import {
   clearSettingsCache,
+  getEnabledAgentIds,
   getWaitlistAutoApproveDomains,
   getCorsMethodsList,
   getCorsOriginsList,
@@ -8,6 +9,7 @@ import {
   isOAuthRedirectUriAllowed,
   isOriginAllowed,
 } from './settings'
+import type { Settings } from './settings'
 
 describe('Config Settings', () => {
   describe('getCorsOriginsList', () => {
@@ -107,35 +109,35 @@ describe('Config Settings', () => {
   describe('getWaitlistAutoApproveDomains', () => {
     it('should split comma-separated domains', () => {
       const settings = { waitlistAutoApproveDomains: 'mozilla.org,thunderbird.net,mozilla.ai' }
-      const domains = getWaitlistAutoApproveDomains(settings as any)
+      const domains = getWaitlistAutoApproveDomains(settings as Pick<Settings, 'waitlistAutoApproveDomains'>)
 
       expect(domains).toEqual(['mozilla.org', 'thunderbird.net', 'mozilla.ai'])
     })
 
     it('should handle single domain', () => {
       const settings = { waitlistAutoApproveDomains: 'mozilla.org' }
-      const domains = getWaitlistAutoApproveDomains(settings as any)
+      const domains = getWaitlistAutoApproveDomains(settings as Pick<Settings, 'waitlistAutoApproveDomains'>)
 
       expect(domains).toEqual(['mozilla.org'])
     })
 
     it('should trim whitespace and lowercase domains', () => {
       const settings = { waitlistAutoApproveDomains: ' Mozilla.ORG , Thunderbird.NET ' }
-      const domains = getWaitlistAutoApproveDomains(settings as any)
+      const domains = getWaitlistAutoApproveDomains(settings as Pick<Settings, 'waitlistAutoApproveDomains'>)
 
       expect(domains).toEqual(['mozilla.org', 'thunderbird.net'])
     })
 
     it('should filter out empty domains', () => {
       const settings = { waitlistAutoApproveDomains: 'mozilla.org,,thunderbird.net,' }
-      const domains = getWaitlistAutoApproveDomains(settings as any)
+      const domains = getWaitlistAutoApproveDomains(settings as Pick<Settings, 'waitlistAutoApproveDomains'>)
 
       expect(domains).toEqual(['mozilla.org', 'thunderbird.net'])
     })
 
     it('should handle empty string', () => {
       const settings = { waitlistAutoApproveDomains: '' }
-      const domains = getWaitlistAutoApproveDomains(settings as any)
+      const domains = getWaitlistAutoApproveDomains(settings as Pick<Settings, 'waitlistAutoApproveDomains'>)
 
       expect(domains).toEqual([])
     })
@@ -144,37 +146,70 @@ describe('Config Settings', () => {
   describe('getCorsMethodsList', () => {
     it('should split comma-separated methods', () => {
       const settings = { corsAllowMethods: 'GET,POST,PUT,DELETE,PATCH,OPTIONS' }
-      const methods = getCorsMethodsList(settings as any)
+      const methods = getCorsMethodsList(settings as Pick<Settings, 'corsAllowMethods'>)
 
       expect(methods).toEqual(['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'])
     })
 
     it('should handle single method', () => {
       const settings = { corsAllowMethods: 'GET' }
-      const methods = getCorsMethodsList(settings as any)
+      const methods = getCorsMethodsList(settings as Pick<Settings, 'corsAllowMethods'>)
 
       expect(methods).toEqual(['GET'])
     })
 
     it('should trim whitespace from methods', () => {
       const settings = { corsAllowMethods: ' GET , POST , PUT ' }
-      const methods = getCorsMethodsList(settings as any)
+      const methods = getCorsMethodsList(settings as Pick<Settings, 'corsAllowMethods'>)
 
       expect(methods).toEqual(['GET', 'POST', 'PUT'])
     })
 
     it('should filter out empty methods', () => {
       const settings = { corsAllowMethods: 'GET,,POST,' }
-      const methods = getCorsMethodsList(settings as any)
+      const methods = getCorsMethodsList(settings as Pick<Settings, 'corsAllowMethods'>)
 
       expect(methods).toEqual(['GET', 'POST'])
     })
 
     it('should handle empty string', () => {
       const settings = { corsAllowMethods: '' }
-      const methods = getCorsMethodsList(settings as any)
+      const methods = getCorsMethodsList(settings as Pick<Settings, 'corsAllowMethods'>)
 
       expect(methods).toEqual([])
+    })
+  })
+
+  describe('getEnabledAgentIds', () => {
+    it('should return null when enabledAgents is empty', () => {
+      const result = getEnabledAgentIds({ enabledAgents: '' } as Pick<Settings, 'enabledAgents'>)
+      expect(result).toBeNull()
+    })
+
+    it('should parse comma-separated agent IDs', () => {
+      const result = getEnabledAgentIds({
+        enabledAgents: 'agent-haystack-docs,agent-haystack-legal',
+      } as Pick<Settings, 'enabledAgents'>)
+      expect(result).toEqual(['agent-haystack-docs', 'agent-haystack-legal'])
+    })
+
+    it('should parse a single agent ID', () => {
+      const result = getEnabledAgentIds({ enabledAgents: 'agent-haystack-docs' } as Pick<Settings, 'enabledAgents'>)
+      expect(result).toEqual(['agent-haystack-docs'])
+    })
+
+    it('should trim whitespace from agent IDs', () => {
+      const result = getEnabledAgentIds({
+        enabledAgents: ' agent-haystack-docs , agent-haystack-legal ',
+      } as Pick<Settings, 'enabledAgents'>)
+      expect(result).toEqual(['agent-haystack-docs', 'agent-haystack-legal'])
+    })
+
+    it('should filter out empty entries', () => {
+      const result = getEnabledAgentIds({
+        enabledAgents: 'agent-haystack-docs,,agent-haystack-legal,',
+      } as Pick<Settings, 'enabledAgents'>)
+      expect(result).toEqual(['agent-haystack-docs', 'agent-haystack-legal'])
     })
   })
 
@@ -236,6 +271,42 @@ describe('Config Settings', () => {
         expect(Number.isInteger(numPort)).toBe(true)
         expect(numPort).toBeGreaterThan(0)
       }
+    })
+  })
+
+  describe('allowCustomAgents setting', () => {
+    let savedEnv: string | undefined
+
+    beforeEach(() => {
+      clearSettingsCache()
+      savedEnv = process.env.ALLOW_CUSTOM_AGENTS
+    })
+
+    afterEach(() => {
+      if (savedEnv !== undefined) {
+        process.env.ALLOW_CUSTOM_AGENTS = savedEnv
+      } else {
+        delete process.env.ALLOW_CUSTOM_AGENTS
+      }
+      clearSettingsCache()
+    })
+
+    it('should default to true when ALLOW_CUSTOM_AGENTS is absent', () => {
+      delete process.env.ALLOW_CUSTOM_AGENTS
+      const settings = getSettings()
+      expect(settings.allowCustomAgents).toBe(true)
+    })
+
+    it('should be false when ALLOW_CUSTOM_AGENTS=false', () => {
+      process.env.ALLOW_CUSTOM_AGENTS = 'false'
+      const settings = getSettings()
+      expect(settings.allowCustomAgents).toBe(false)
+    })
+
+    it('should be true when ALLOW_CUSTOM_AGENTS=true', () => {
+      process.env.ALLOW_CUSTOM_AGENTS = 'true'
+      const settings = getSettings()
+      expect(settings.allowCustomAgents).toBe(true)
     })
   })
 

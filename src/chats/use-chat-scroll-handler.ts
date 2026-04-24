@@ -1,7 +1,6 @@
 import { useAutoScroll as useAutoScroll_default } from '@/hooks/use-auto-scroll'
 import { useCallback, useEffect, useEffectEvent, useRef } from 'react'
 import { useCurrentChatSession as useCurrentChatSession_default } from './chat-store'
-import { useChat as useChat_default } from '@ai-sdk/react'
 
 // Viewport positioning constants
 export const viewportPositioningMinMessages = 3 // Start viewport positioning after first exchange
@@ -14,17 +13,14 @@ const userMessageViewportOffsetPx = 20 // Breathing room from top
 
 type UseChatScrollHandlerProps = {
   useAutoScroll?: typeof useAutoScroll_default
-  useChat?: typeof useChat_default
   useCurrentChatSession?: typeof useCurrentChatSession_default
 }
 
 export const useChatScrollHandler = ({
   useAutoScroll = useAutoScroll_default,
-  useChat = useChat_default,
   useCurrentChatSession = useCurrentChatSession_default,
 }: UseChatScrollHandlerProps = {}) => {
-  const { chatInstance } = useCurrentChatSession()
-  const { status, messages } = useChat({ chat: chatInstance })
+  const { messages, status } = useCurrentChatSession()
   const isStreaming = status === 'streaming'
 
   const prevStatusRef = useRef(status)

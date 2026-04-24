@@ -107,6 +107,7 @@ export default function PreferencesSettingsPage() {
     locationLng,
     dataCollection,
     experimentalFeatureTasks,
+    experimentalFeatureAgentsCli,
     hapticsEnabled,
     distanceUnit,
     temperatureUnit,
@@ -120,6 +121,7 @@ export default function PreferencesSettingsPage() {
     location_lng: '',
     data_collection: true,
     experimental_feature_tasks: false,
+    experimental_feature_agents_cli: false,
     haptics_enabled: true,
     distance_unit: 'imperial',
     temperature_unit: 'f',
@@ -142,11 +144,15 @@ export default function PreferencesSettingsPage() {
     if (featureName === 'experimentalFeatureTasks') {
       await experimentalFeatureTasks.setValue(true)
     }
+    if (featureName === 'experimentalFeatureAgentsCli') {
+      await experimentalFeatureAgentsCli.setValue(true)
+    }
   }
 
   const handleDisableTelemetry = async () => {
     await dataCollection.setValue(false)
     await experimentalFeatureTasks.setValue(false)
+    await experimentalFeatureAgentsCli.setValue(false)
   }
 
   // Sync local name input when settings value changes (e.g., async load)
@@ -174,7 +180,7 @@ export default function PreferencesSettingsPage() {
 
   const handleDataCollectionToggle = async (value: boolean) => {
     // If turning off telemetry and preview features are enabled, show warning first
-    if (!value && experimentalFeatureTasks.value) {
+    if (!value && (experimentalFeatureTasks.value || experimentalFeatureAgentsCli.value)) {
       telemetryWarningModalRef.current?.open()
       return
     }
@@ -190,6 +196,8 @@ export default function PreferencesSettingsPage() {
       // Also disable experimental features
       await experimentalFeatureTasks.setValue(false)
       trackEvent('settings_experimental_feature_tasks_disabled')
+      await experimentalFeatureAgentsCli.setValue(false)
+      trackEvent('settings_experimental_feature_agents_cli_disabled')
     }
   }
 
@@ -201,6 +209,18 @@ export default function PreferencesSettingsPage() {
 
     await experimentalFeatureTasks.setValue(value)
     trackEvent(value ? 'settings_experimental_feature_tasks_enabled' : 'settings_experimental_feature_tasks_disabled')
+  }
+
+  const handleExperimentalFeatureAgentsCliToggle = async (value: boolean) => {
+    if (value && !dataCollection.value) {
+      telemetryRequiredModalRef.current?.open('experimentalFeatureAgentsCli')
+      return
+    }
+
+    await experimentalFeatureAgentsCli.setValue(value)
+    trackEvent(
+      value ? 'settings_experimental_feature_agents_cli_enabled' : 'settings_experimental_feature_agents_cli_disabled',
+    )
   }
 
   const handleSelectLocation = async (location: LocationData) => {
@@ -606,6 +626,23 @@ export default function PreferencesSettingsPage() {
                 </ModificationIndicator>
               </div>
               <Switch checked={experimentalFeatureTasks.value} onCheckedChange={handleExperimentalFeaturesToggle} />
+            </div>
+
+            <div className="flex-row flex items-center gap-4">
+              <div className="flex-1">
+                <ModificationIndicator
+                  as="label"
+                  className="text-sm font-medium"
+                  hasModifications={experimentalFeatureAgentsCli.isModified}
+                  onReset={experimentalFeatureAgentsCli.reset}
+                >
+                  Agent Installs
+                </ModificationIndicator>
+              </div>
+              <Switch
+                checked={experimentalFeatureAgentsCli.value}
+                onCheckedChange={handleExperimentalFeatureAgentsCliToggle}
+              />
             </div>
           </div>
 

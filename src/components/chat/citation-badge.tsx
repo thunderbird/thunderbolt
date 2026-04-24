@@ -1,8 +1,10 @@
+import { useContentView } from '@/content-view/context'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet'
 import { useIsMobile } from '@/hooks/use-mobile'
 import { useSettings } from '@/hooks/use-settings'
 import type { CitationSource } from '@/types/citation'
+import { buildDocumentSideviewId, isDocumentCitation } from '@/types/citation'
 import { memo, useState } from 'react'
 import { useCitationPopover } from './citation-popover'
 import { SourceList } from './source-list'
@@ -49,10 +51,20 @@ const getBadgeLabel = (sources: CitationSource[]) => {
 
 const ManagedBadge = memo(({ sources, citationId }: { sources: CitationSource[]; citationId: number }) => {
   const ctx = useCitationPopover()!
+  const { showSideview } = useContentView()
   const isOpen = ctx.popover?.citationId === citationId
   const { displayName, additionalCount, ariaLabel } = getBadgeLabel(sources)
 
-  const toggle = (element: HTMLElement) => {
+  const handleClick = (element: HTMLElement) => {
+    // For single document citations, open the sidebar directly
+    const primary = sources[0]
+    if (sources.length === 1 && isDocumentCitation(primary)) {
+      const sideviewId = buildDocumentSideviewId(primary.documentMeta)
+      showSideview('document', sideviewId)
+      return
+    }
+
+    // Otherwise toggle the popover/source list
     if (isOpen) {
       ctx.close()
     } else {
@@ -62,11 +74,11 @@ const ManagedBadge = memo(({ sources, citationId }: { sources: CitationSource[];
 
   return (
     <button
-      onClick={(e) => toggle(e.currentTarget)}
+      onClick={(e) => handleClick(e.currentTarget)}
       onKeyDown={(e) => {
         if (e.key === 'Enter' || e.key === ' ') {
           e.preventDefault()
-          toggle(e.currentTarget)
+          handleClick(e.currentTarget)
         }
       }}
       className={badgeClass}
@@ -114,7 +126,7 @@ const StandaloneBadge = memo(({ sources }: { sources: CitationSource[] }) => {
       <Popover open={isOpen} onOpenChange={setIsOpen}>
         <PopoverTrigger asChild>{badge}</PopoverTrigger>
         <PopoverContent align="start" side="bottom" className="w-[420px] overflow-hidden rounded-2xl p-0">
-          <SourceList sources={sources} proxyBase={cloudUrl.value} />
+          <SourceList sources={sources} proxyBase={cloudUrl.value} onSelect={() => setIsOpen(false)} />
         </PopoverContent>
       </Popover>
     )
@@ -133,7 +145,7 @@ const StandaloneBadge = memo(({ sources }: { sources: CitationSource[] }) => {
           <SheetHeader className="sr-only">
             <SheetTitle>{sources.length === 1 ? 'Source' : 'Sources'}</SheetTitle>
           </SheetHeader>
-          <SourceList sources={sources} proxyBase={cloudUrl.value} />
+          <SourceList sources={sources} proxyBase={cloudUrl.value} onSelect={() => setIsOpen(false)} />
         </SheetContent>
       </Sheet>
     </>

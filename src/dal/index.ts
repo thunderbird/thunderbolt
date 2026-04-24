@@ -97,3 +97,6 @@ export {
 
 // Devices
 export { getAllDevices, getDevice, getPendingDevices, type Device } from './devices'
+
+// Agents
+export { getAgent, getAllAgents, getAvailableAgents, getSelectedAgent } from './agents'

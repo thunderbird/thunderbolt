@@ -4,17 +4,24 @@ import { AnimatePresence, motion } from 'framer-motion'
 import { useEffect, useRef } from 'react'
 import { useChatScrollHandler } from '@/chats/use-chat-scroll-handler'
 import { ChatMessages } from './chat-messages'
-import { ChatPromptInput } from './chat-prompt-input'
+import { ChatPromptInput, type ChatPromptInputRef } from './chat-prompt-input'
+import { NoAgentsMessage } from './no-agents-message'
 import { useCurrentChatSession } from '@/chats/chat-store'
-import { useChat } from '@ai-sdk/react'
+import { useChatStore } from '@/chats/chat-store'
 import { useChatAutomation } from '@/chats/use-chat-automation'
 import { ScrollToBottomButton } from './scroll-to-bottom-button'
 import { AppLogo } from '../app-logo'
+import type { SaveMessagesFunction } from '@/types'
 
-export default function ChatUI() {
-  const { chatInstance } = useCurrentChatSession()
+type ChatUIProps = {
+  saveMessages?: SaveMessagesFunction
+}
 
-  const { messages } = useChat({ chat: chatInstance })
+const ChatUI = ({ saveMessages }: ChatUIProps) => {
+  const { messages, agentConfig } = useCurrentChatSession()
+  const agents = useChatStore((s) => s.agents)
+  const isBuiltInAgent = agentConfig.type === 'built-in'
+  const hasNoAgents = agents.length === 0
 
   useChatAutomation()
 
@@ -38,6 +45,14 @@ export default function ChatUI() {
       }
     }
   }, [hasMessages, scrollToBottom])
+
+  if (hasNoAgents) {
+    return (
+      <div className="h-full w-full flex items-center justify-center">
+        <NoAgentsMessage />
+      </div>
+    )
+  }
 
   return (
     <div className="h-full w-full">
@@ -103,6 +118,21 @@ export default function ChatUI() {
               duration: 0.25,
             }}
           >
+            {!hasMessages && isBuiltInAgent && (
+              <AnimatePresence>
+                <motion.div
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: 10 }}
+                  transition={{ delay: 0.1 }}
+                  className="w-full max-w-[696px] overflow-x-auto pb-3"
+                >
+                  <SuggestionButtons onSelectPrompt={handleSelectPrompt} />
+                </motion.div>
+              </AnimatePresence>
+            )}
+
+
             <motion.div
               className="w-full max-w-[696px] min-w-[268px] bg-card dark:bg-[oklch(0.182_0_0)] border dark:border-input rounded-2xl"
               layout
@@ -112,7 +142,7 @@ export default function ChatUI() {
                 duration: 0.25,
               }}
             >
-              <ChatPromptInput />
+              <ChatPromptInput ref={chatPromptInputRef} saveMessages={saveMessages} />
             </motion.div>
           </motion.div>
         </motion.div>
@@ -120,3 +150,5 @@ export default function ChatUI() {
     </div>
   )
 }
+
+export default ChatUI

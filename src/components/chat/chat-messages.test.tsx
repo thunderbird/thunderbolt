@@ -1,12 +1,5 @@
 import { setupTestDatabase, teardownTestDatabase, resetTestDatabase } from '@/dal/test-utils'
-import {
-  createMockAutomationRun,
-  createMockChatInstance,
-  createMockChatThread,
-  createMockUseChat,
-  hydrateStore,
-  resetStore,
-} from '@/test-utils/chat-store-mocks'
+import { createMockAutomationRun, createMockChatThread, hydrateStore, resetStore } from '@/test-utils/chat-store-mocks'
 import { ContentViewProvider } from '@/content-view/context'
 import { createQueryTestWrapper } from '@/test-utils/react-query'
 import { cleanup, render, screen } from '@testing-library/react'
@@ -63,20 +56,17 @@ describe('ChatMessages', () => {
         createTestMessage({ role: 'user', parts: [{ type: 'text', text: 'Hello' }] }),
         createTestMessage({ role: 'assistant', parts: [{ type: 'text', text: 'Hi there' }] }),
       ]
-      const mockChatInstance = createMockChatInstance(messages)
-      const mockUseChat = createMockUseChat(mockChatInstance)
 
       hydrateStore({
-        chatInstance: mockChatInstance,
         chatThread: createMockChatThread(),
         id: 'thread-1',
-        mcpClients: [],
-        models: [],
+        messages,
+        status: 'ready',
         selectedModel: null,
         triggerData: null,
       })
 
-      const { container } = render(<ChatMessages useChat={mockUseChat} />, {
+      const { container } = render(<ChatMessages />, {
         wrapper: createTestWrapper(),
       })
 
@@ -88,20 +78,16 @@ describe('ChatMessages', () => {
 
   describe('encryption message', () => {
     it('should show encryption message when thread is encrypted', () => {
-      const mockChatInstance = createMockChatInstance([])
-      const mockUseChat = createMockUseChat(mockChatInstance)
-
       hydrateStore({
-        chatInstance: mockChatInstance,
         chatThread: createMockChatThread({ isEncrypted: 1 }),
         id: 'thread-1',
-        mcpClients: [],
-        models: [],
+        messages: [],
+        status: 'ready',
         selectedModel: null,
         triggerData: null,
       })
 
-      const { container } = render(<ChatMessages useChat={mockUseChat} />, {
+      const { container } = render(<ChatMessages />, {
         wrapper: createTestWrapper(),
       })
 
@@ -118,15 +104,12 @@ describe('ChatMessages', () => {
           parts: [{ type: 'text', text: 'Automation prompt' }],
         }),
       ]
-      const mockChatInstance = createMockChatInstance(messages)
-      const mockUseChat = createMockUseChat(mockChatInstance)
 
       hydrateStore({
-        chatInstance: mockChatInstance,
         chatThread: createMockChatThread(),
         id: 'thread-1',
-        mcpClients: [],
-        models: [],
+        messages,
+        status: 'ready',
         selectedModel: null,
         triggerData: createMockAutomationRun({
           wasTriggeredByAutomation: true,
@@ -142,7 +125,7 @@ describe('ChatMessages', () => {
         }),
       })
 
-      const { container } = render(<ChatMessages useChat={mockUseChat} />, {
+      const { container } = render(<ChatMessages />, {
         wrapper: createTestWrapper(),
       })
 
@@ -161,22 +144,19 @@ describe('ChatMessages', () => {
           parts: [{ type: 'text', text: 'Response' }],
         }),
       ]
-      const mockChatInstance = createMockChatInstance(messages)
-      const mockUseChat = createMockUseChat(mockChatInstance)
 
       hydrateStore({
-        chatInstance: mockChatInstance,
         chatThread: createMockChatThread(),
         id: 'thread-1',
-        mcpClients: [],
-        models: [],
+        messages,
+        status: 'ready',
         selectedModel: null,
         triggerData: createMockAutomationRun({
           wasTriggeredByAutomation: true,
         }),
       })
 
-      render(<ChatMessages useChat={mockUseChat} />, { wrapper: createTestWrapper() })
+      render(<ChatMessages />, { wrapper: createTestWrapper() })
 
       // First user message should be skipped, only assistant message should be visible
       expect(screen.queryByText('Automation prompt')).not.toBeInTheDocument()
@@ -201,20 +181,17 @@ describe('ChatMessages', () => {
           parts: [{ type: 'text', text: 'Response' }],
         }),
       ]
-      const mockChatInstance = createMockChatInstance(messages)
-      const mockUseChat = createMockUseChat(mockChatInstance)
 
       hydrateStore({
-        chatInstance: mockChatInstance,
         chatThread: createMockChatThread(),
         id: 'thread-1',
-        mcpClients: [],
-        models: [],
+        messages,
+        status: 'ready',
         selectedModel: null,
         triggerData: null,
       })
 
-      const { container } = render(<ChatMessages useChat={mockUseChat} />, {
+      const { container } = render(<ChatMessages />, {
         wrapper: createTestWrapper(),
       })
 
@@ -228,16 +205,12 @@ describe('ChatMessages', () => {
 
   describe('error handling', () => {
     it('should show retrying banner while retries are in progress', () => {
-      const mockChatInstance = createMockChatInstance([])
-      const chatError = new Error('Network error')
-      const mockUseChat = createMockUseChat(mockChatInstance, chatError)
-
       hydrateStore({
-        chatInstance: mockChatInstance,
         chatThread: createMockChatThread(),
         id: 'thread-1',
-        mcpClients: [],
-        models: [],
+        messages: [],
+        status: 'error',
+        error: new Error('Something went wrong'),
         selectedModel: null,
         triggerData: null,
       })
@@ -245,52 +218,44 @@ describe('ChatMessages', () => {
       // Simulate an active retry in progress
       useChatStore.getState().updateSession('thread-1', { retryCount: 1 })
 
-      render(<ChatMessages useChat={mockUseChat} />, { wrapper: createTestWrapper() })
+      render(<ChatMessages />, { wrapper: createTestWrapper() })
 
       expect(screen.getByText('Something went wrong. Retrying (1/3)...')).toBeInTheDocument()
       expect(screen.queryByText('Retry')).not.toBeInTheDocument()
     })
 
     it('should show retry button when error occurs before any retry is scheduled', () => {
-      const mockChatInstance = createMockChatInstance([])
-      const chatError = new Error('Network error')
-      const mockUseChat = createMockUseChat(mockChatInstance, chatError)
-
       hydrateStore({
-        chatInstance: mockChatInstance,
         chatThread: createMockChatThread(),
         id: 'thread-1',
-        mcpClients: [],
-        models: [],
+        messages: [],
+        status: 'error',
+        error: new Error('Something went wrong'),
         selectedModel: null,
         triggerData: null,
       })
 
       // retryCount defaults to 0 — no active retry (e.g. stale error after page refresh)
-      render(<ChatMessages useChat={mockUseChat} />, { wrapper: createTestWrapper() })
+      render(<ChatMessages />, { wrapper: createTestWrapper() })
 
       expect(screen.getByText('Something went wrong. Please try again.')).toBeInTheDocument()
       expect(screen.getByText('Retry')).toBeInTheDocument()
     })
 
     it('should show error message with retry button when retries are exhausted', () => {
-      const mockChatInstance = createMockChatInstance([])
-      const chatError = new Error('Network error')
-      const mockUseChat = createMockUseChat(mockChatInstance, chatError)
-
       hydrateStore({
-        chatInstance: mockChatInstance,
         chatThread: createMockChatThread(),
         id: 'thread-1',
-        mcpClients: [],
-        models: [],
+        messages: [],
+        status: 'error',
+        error: new Error('Something went wrong'),
         selectedModel: null,
         triggerData: null,
       })
 
       useChatStore.getState().updateSession('thread-1', { retriesExhausted: true })
 
-      render(<ChatMessages useChat={mockUseChat} />, { wrapper: createTestWrapper() })
+      render(<ChatMessages />, { wrapper: createTestWrapper() })
 
       expect(screen.getByText('Something went wrong. Please try again.')).toBeInTheDocument()
       expect(screen.getByText('Retry')).toBeInTheDocument()
@@ -303,22 +268,19 @@ describe('ChatMessages', () => {
           parts: [], // Empty parts
         }),
       ]
-      const mockChatInstance = createMockChatInstance(messages, 'ready')
-      const mockUseChat = createMockUseChat(mockChatInstance)
 
       hydrateStore({
-        chatInstance: mockChatInstance,
         chatThread: createMockChatThread(),
         id: 'thread-1',
-        mcpClients: [],
-        models: [],
+        messages,
+        status: 'ready',
         selectedModel: null,
         triggerData: null,
       })
 
       useChatStore.getState().updateSession('thread-1', { retriesExhausted: true })
 
-      render(<ChatMessages useChat={mockUseChat} />, { wrapper: createTestWrapper() })
+      render(<ChatMessages />, { wrapper: createTestWrapper() })
 
       expect(screen.getByText('Something went wrong. Please try again.')).toBeInTheDocument()
     })
@@ -330,20 +292,17 @@ describe('ChatMessages', () => {
           parts: [], // Empty parts but streaming
         }),
       ]
-      const mockChatInstance = createMockChatInstance(messages, 'streaming')
-      const mockUseChat = createMockUseChat(mockChatInstance)
 
       hydrateStore({
-        chatInstance: mockChatInstance,
         chatThread: createMockChatThread(),
         id: 'thread-1',
-        mcpClients: [],
-        models: [],
+        messages,
+        status: 'streaming',
         selectedModel: null,
         triggerData: null,
       })
 
-      render(<ChatMessages useChat={mockUseChat} />, { wrapper: createTestWrapper() })
+      render(<ChatMessages />, { wrapper: createTestWrapper() })
 
       // ErrorMessage should not be rendered when streaming
       expect(screen.queryByText('Something went wrong. Please try again.')).not.toBeInTheDocument()
@@ -356,20 +315,17 @@ describe('ChatMessages', () => {
           parts: [{ type: 'text', text: 'Valid response' }],
         }),
       ]
-      const mockChatInstance = createMockChatInstance(messages, 'ready')
-      const mockUseChat = createMockUseChat(mockChatInstance)
 
       hydrateStore({
-        chatInstance: mockChatInstance,
         chatThread: createMockChatThread(),
         id: 'thread-1',
-        mcpClients: [],
-        models: [],
+        messages,
+        status: 'ready',
         selectedModel: null,
         triggerData: null,
       })
 
-      render(<ChatMessages useChat={mockUseChat} />, { wrapper: createTestWrapper() })
+      render(<ChatMessages />, { wrapper: createTestWrapper() })
 
       // ErrorMessage should not be rendered when message has parts
       expect(screen.queryByText('Something went wrong. Please try again.')).not.toBeInTheDocument()
@@ -384,20 +340,17 @@ describe('ChatMessages', () => {
           parts: [{ type: 'text', text: 'Streaming response' }],
         }),
       ]
-      const mockChatInstance = createMockChatInstance(messages, 'streaming')
-      const mockUseChat = createMockUseChat(mockChatInstance)
 
       hydrateStore({
-        chatInstance: mockChatInstance,
         chatThread: createMockChatThread(),
         id: 'thread-1',
-        mcpClients: [],
-        models: [],
+        messages,
+        status: 'streaming',
         selectedModel: null,
         triggerData: null,
       })
 
-      render(<ChatMessages useChat={mockUseChat} />, { wrapper: createTestWrapper() })
+      render(<ChatMessages />, { wrapper: createTestWrapper() })
 
       // Message should be rendered (isStreaming prop is passed to AssistantMessage)
       expect(screen.getByText('Streaming response')).toBeInTheDocument()
@@ -416,52 +369,21 @@ describe('ChatMessages', () => {
           parts: [{ type: 'text', text: 'Second response' }],
         }),
       ]
-      const mockChatInstance = createMockChatInstance(messages, 'streaming')
-      const mockUseChat = createMockUseChat(mockChatInstance)
 
       hydrateStore({
-        chatInstance: mockChatInstance,
         chatThread: createMockChatThread(),
         id: 'thread-1',
-        mcpClients: [],
-        models: [],
+        messages,
+        status: 'streaming',
         selectedModel: null,
         triggerData: null,
       })
 
-      render(<ChatMessages useChat={mockUseChat} />, { wrapper: createTestWrapper() })
+      render(<ChatMessages />, { wrapper: createTestWrapper() })
 
       // Both messages should be rendered
       expect(screen.getByText('First response')).toBeInTheDocument()
       expect(screen.getByText('Second response')).toBeInTheDocument()
-    })
-  })
-
-  describe('dependency injection', () => {
-    it('should work with dependency injection for useChat', () => {
-      const messages: ThunderboltUIMessage[] = [
-        createTestMessage({ role: 'user', parts: [{ type: 'text', text: 'Hello' }] }),
-      ]
-      const mockChatInstance = createMockChatInstance(messages)
-      const mockUseChat = createMockUseChat(mockChatInstance)
-
-      hydrateStore({
-        chatInstance: mockChatInstance,
-        chatThread: createMockChatThread(),
-        id: 'thread-1',
-        mcpClients: [],
-        models: [],
-        selectedModel: null,
-        triggerData: null,
-      })
-
-      const { container } = render(<ChatMessages useChat={mockUseChat} />, {
-        wrapper: createTestWrapper(),
-      })
-
-      // Component should render without errors
-      expect(container).toBeInTheDocument()
-      expect(screen.getByText('Hello')).toBeInTheDocument()
     })
   })
 })

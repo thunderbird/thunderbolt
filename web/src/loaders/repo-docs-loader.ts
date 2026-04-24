@@ -162,12 +162,7 @@ export function rewriteLinks(
 				// incorrectly resolve to docs/src/file.ts and generate broken docs URLs.
 				const withExt = /\.\w+$/.test(docRelPath) ? docRelPath : `${docRelPath}.md`;
 				if (knownDocPaths.has(withExt) || knownDocPaths.has(docRelPath)) {
-					const withoutExt = docRelPath.replace(/\.md$/i, '').toLowerCase();
-					const parts = withoutExt.split('/');
-					const last = parts.at(-1);
-					if (last === 'readme' || last === 'index') parts.pop();
-					const inner = parts.join('/');
-					return `[${text}](/${urlPrefix}${inner ? `/${inner}` : ''}${hash})`;
+					return `[${text}](/${computeSlug(docRelPath, urlPrefix)}${hash})`;
 				}
 			}
 			return `[${text}](${githubBaseUrl}/${repoPath}${hash})`;

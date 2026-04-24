@@ -1064,7 +1064,7 @@ describe('Stock Data API', () => {
 
 ## Summary
 
-Building widgets in Ghostcat requires attention to:
+Building widgets in Thunderbolt requires attention to:
 
 1. **Message Cache** - Always use `useMessageCache` for data fetching to enable offline support
 2. **Proxy Architecture** - Route all external requests through backend endpoints

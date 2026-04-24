@@ -81,11 +81,11 @@ Local state is Zustand plus TanStack Query. Local persistence is SQLite — WA-S
 
 ### The WebView Sidebar
 
-On desktop and mobile (not web), link previews and third-party content open in an embedded Tauri `WebView` rather than the system browser. See [webview.md](../platform/webview.md) for the privacy trade-offs, incognito-mode behavior, and per-platform engine details.
+On desktop and mobile (not web), link previews and third-party content open in an embedded Tauri `WebView` rather than the system browser. See [webview.md](../features/webview.md) for the privacy trade-offs, incognito-mode behavior, and per-platform engine details.
 
 ### The Widget System
 
-Assistant responses can embed rich interactive components (weather, link previews, stock charts, etc.) via XML-like tags that the parser extracts into `<WidgetRenderer />` calls. Widgets live in `src/widgets/` and register into a central registry — see [widgets.md](../platform/widgets.md).
+Assistant responses can embed rich interactive components (weather, link previews, stock charts, etc.) via XML-like tags that the parser extracts into `<WidgetRenderer />` calls. Widgets live in `src/widgets/` and register into a central registry — see [widgets.md](../features/widgets.md).
 
 ## Backend
 

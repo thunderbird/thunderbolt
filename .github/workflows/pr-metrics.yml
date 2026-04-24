@@ -104,26 +104,55 @@ jobs:
           echo "ready=false" >> $GITHUB_OUTPUT
         continue-on-error: true
 
-      - name: Run Lighthouse
+      - name: Run Lighthouse (collect + upload)
         id: lighthouse
         if: steps.preview.outputs.ready == 'true'
         uses: treosh/lighthouse-ci-action@3e7e23fb74242897f95c0ba9cabad3d0227b9b18 # v12
         with:
           urls: ${{ steps.preview.outputs.url }}
-          runs: 1
+          configPath: ./lighthouserc.js
           uploadArtifacts: false
+        continue-on-error: true
+
+      - name: Run Lighthouse assertions
+        id: lh_assert
+        if: hashFiles('.lighthouseci/*.report.json') != ''
+        run: |
+          # Run assertions separately so we can capture warnings as text.
+          # The action already ran collect+upload; we just need assert.
+          bunx @lhci/cli@0.15.x assert --config=./lighthouserc.js 2>&1 | tee /tmp/lhci-assert.txt || true
+          # Extract only warning lines for the PR comment.
+          WARNINGS=$(grep -E '^\s*warning' /tmp/lhci-assert.txt | sed 's/^\s*//' || true)
+          # Store as multiline output
+          {
+            echo 'warnings<<LHCI_EOF'
+            echo "$WARNINGS"
+            echo 'LHCI_EOF'
+          } >> $GITHUB_OUTPUT
         continue-on-error: true
 
       - name: Parse Lighthouse results
         id: lh
-        if: steps.lighthouse.outcome == 'success'
+        if: hashFiles('.lighthouseci/*.report.json') != ''
         run: |
-          REPORT=$(ls .lighthouseci/*.report.json 2>/dev/null | head -1)
-          if [ -z "$REPORT" ]; then exit 0; fi
+          # With multiple runs, pick the median report (middle file by name).
+          REPORTS=($(ls .lighthouseci/*.report.json 2>/dev/null | sort))
+          COUNT=${#REPORTS[@]}
+          if [ "$COUNT" -eq 0 ]; then exit 0; fi
+          MEDIAN_IDX=$(( COUNT / 2 ))
+          REPORT="${REPORTS[$MEDIAN_IDX]}"
           echo "perf=$(jq -r '.categories.performance.score * 100 | floor' "$REPORT")" >> $GITHUB_OUTPUT
+          echo "a11y=$(jq -r '.categories.accessibility.score * 100 | floor' "$REPORT")" >> $GITHUB_OUTPUT
+          echo "bp=$(jq -r '.categories["best-practices"].score * 100 | floor' "$REPORT")" >> $GITHUB_OUTPUT
+          echo "seo=$(jq -r '.categories.seo.score * 100 | floor' "$REPORT")" >> $GITHUB_OUTPUT
           echo "fcp=$(jq -r '.audits["first-contentful-paint"].displayValue' "$REPORT")" >> $GITHUB_OUTPUT
           echo "lcp=$(jq -r '.audits["largest-contentful-paint"].displayValue' "$REPORT")" >> $GITHUB_OUTPUT
           echo "tbt=$(jq -r '.audits["total-blocking-time"].displayValue' "$REPORT")" >> $GITHUB_OUTPUT
+          echo "cls=$(jq -r '.audits["cumulative-layout-shift"].displayValue' "$REPORT")" >> $GITHUB_OUTPUT
+          # Extract temporary public storage URL from LHCI output
+          LINKS=$(cat .lighthouseci/links.json 2>/dev/null || echo '{}')
+          REPORT_URL=$(echo "$LINKS" | jq -r 'to_entries[0].value // empty' 2>/dev/null)
+          echo "report_url=${REPORT_URL}" >> $GITHUB_OUTPUT
         continue-on-error: true
 
       # --- Post or update the metrics comment ---
@@ -138,9 +167,15 @@ jobs:
           PREVIEW_URL: ${{ steps.preview.outputs.url }}
           PREVIEW_READY: ${{ steps.preview.outputs.ready }}
           LH_PERF: ${{ steps.lh.outputs.perf }}
+          LH_A11Y: ${{ steps.lh.outputs.a11y }}
+          LH_BP: ${{ steps.lh.outputs.bp }}
+          LH_SEO: ${{ steps.lh.outputs.seo }}
           LH_FCP: ${{ steps.lh.outputs.fcp }}
           LH_LCP: ${{ steps.lh.outputs.lcp }}
           LH_TBT: ${{ steps.lh.outputs.tbt }}
+          LH_CLS: ${{ steps.lh.outputs.cls }}
+          LH_REPORT_URL: ${{ steps.lh.outputs.report_url }}
+          LH_WARNINGS: ${{ steps.lh_assert.outputs.warnings }}
         with:
           script: |
             const script = require('./.github/scripts/post-pr-metrics.cjs')

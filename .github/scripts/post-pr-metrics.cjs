@@ -13,7 +13,8 @@ module.exports = async ({ github, context }) => {
   // All metric values are passed in as environment variables by the workflow.
   // The workflow captures them from individual step outputs.
   const { LINES_ADDED, LINES_REMOVED, BUNDLE_GZIP, COVERAGE, BUILD_OUTCOME,
-          PREVIEW_URL, PREVIEW_READY, LH_PERF, LH_FCP, LH_LCP, LH_TBT } = process.env
+          PREVIEW_URL, PREVIEW_READY, LH_PERF, LH_A11Y, LH_BP, LH_SEO,
+          LH_FCP, LH_LCP, LH_TBT, LH_CLS, LH_REPORT_URL, LH_WARNINGS } = process.env
 
   // BUNDLE_GZIP is the gzipped JS bundle size in bytes — what users actually download.
   // Measured by size-limit, which is more accurate than summing raw file sizes.
@@ -79,26 +80,30 @@ module.exports = async ({ github, context }) => {
     return `${COVERAGE}% _(no baseline yet — merge to main first)_`
   })()
 
-  // Builds the load time cell using Lighthouse metrics from the Render PR preview.
-  // Shows performance score + the three key timing metrics:
-  // - FCP: when something first appears on screen
-  // - LCP: when the main content appears (best proxy for "spinner gone")
-  // - TBT: total blocking time (proxy for interactivity)
+  // Builds the Lighthouse section using metrics from the Render PR preview.
+  // Shows category scores + key web vitals, with an optional link to the full report.
   // Falls back gracefully when the preview wasn't ready or Lighthouse failed.
+  const scoreIcon = (score) => score >= 90 ? ':green_circle:' : score >= 50 ? ':yellow_circle:' : ':red_circle:'
+
   const lighthouseLine = (() => {
     if (PREVIEW_READY !== 'true') return '_Preview not ready — Render deploy may have timed out_'
-    // Validate all four values before rendering — a partial failure from
-    // continue-on-error would leave some outputs empty, producing NaN or blank text.
     const perfScore = parseInt(LH_PERF)
     if (isNaN(perfScore) || !LH_FCP || !LH_LCP || !LH_TBT) return '_Lighthouse results unavailable_'
-    const icon = perfScore >= 90 ? ':green_circle:' : perfScore >= 50 ? ':yellow_circle:' : ':red_circle:'
-    return `${icon} **${perfScore}/100** · First Contentful Paint ${LH_FCP} · Largest Contentful Paint ${LH_LCP} · Total Blocking Time ${LH_TBT}`
+    const reportLink = LH_REPORT_URL ? ` · [Full report](${LH_REPORT_URL})` : ''
+    return `${scoreIcon(perfScore)} **${perfScore}/100** · FCP ${LH_FCP} · LCP ${LH_LCP} · TBT ${LH_TBT} · CLS ${LH_CLS || 'N/A'}${reportLink}`
   })()
+
+  const a11yScore = parseInt(LH_A11Y)
+  const a11yLine = isNaN(a11yScore) ? '—' : `${scoreIcon(a11yScore)} **${a11yScore}/100**`
+  const bpScore = parseInt(LH_BP)
+  const bpLine = isNaN(bpScore) ? '—' : `${scoreIcon(bpScore)} **${bpScore}/100**`
+  const seoScore = parseInt(LH_SEO)
+  const seoLine = isNaN(seoScore) ? '—' : `${scoreIcon(seoScore)} **${seoScore}/100**`
 
   const runUrl = `https://github.com/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`
   const now = new Date().toUTCString()
 
-  const body = [
+  const lines = [
     '## PR Metrics',
     '',
     '| Metric | Value |',
@@ -106,10 +111,35 @@ module.exports = async ({ github, context }) => {
     `| Lines changed (prod code) | \`+${LINES_ADDED || 0} / -${LINES_REMOVED || 0}\` |`,
     `| JS bundle size (gzipped) | ${bundleLine} |`,
     `| Test coverage | ${coverageLine} |`,
-    `| Load time ([preview](${PREVIEW_URL})) | ${lighthouseLine} |`,
+    `| Performance ([preview](${PREVIEW_URL})) | ${lighthouseLine} |`,
+    `| Accessibility | ${a11yLine} |`,
+    `| Best Practices | ${bpLine} |`,
+    `| SEO | ${seoLine} |`,
+  ]
+
+  // Show LHCI assertion warnings in a collapsible section so reviewers
+  // can see what's below threshold without digging into CI logs.
+  const warnings = (LH_WARNINGS || '').trim()
+  if (warnings) {
+    lines.push(
+      '',
+      '<details>',
+      '<summary>:warning: Lighthouse warnings</summary>',
+      '',
+      '```',
+      warnings,
+      '```',
+      '',
+      '</details>',
+    )
+  }
+
+  lines.push(
     '',
     `_Updated ${now} · [run #${context.runNumber}](${runUrl})_`,
-  ].join('\n')
+  )
+
+  const body = lines.join('\n')
 
   // Look for a previous metrics comment from the Actions bot so we can
   // update it in place rather than posting a new comment on every push.

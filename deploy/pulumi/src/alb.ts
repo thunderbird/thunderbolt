@@ -61,7 +61,11 @@ export const createAlb = ({ name, vpcId, publicSubnetIds, albSgId, hostnames }: 
     protocol: 'HTTP',
     targetType: 'ip',
     vpcId,
-    healthCheck: { path: '/health/ready', healthyThreshold: 2, interval: 30 },
+    // Keycloak 26's /health/* endpoints only exist when KC_HEALTH_ENABLED=true,
+    // and then only on the management port (9000). We don't enable them, so we
+    // use the welcome page as the liveness indicator. Also accept 2xx + 3xx
+    // because Keycloak may redirect from `/` to `/admin`.
+    healthCheck: { path: '/', healthyThreshold: 2, interval: 30, matcher: '200-399' },
     tags: { Name: `${name}-keycloak` },
   })
 
@@ -71,7 +75,8 @@ export const createAlb = ({ name, vpcId, publicSubnetIds, albSgId, hostnames }: 
     protocol: 'HTTP',
     targetType: 'ip',
     vpcId,
-    healthCheck: { path: '/', healthyThreshold: 2, interval: 30 },
+    // PowerSync returns 404 on `/`; use its probes endpoint.
+    healthCheck: { path: '/probes/liveness', healthyThreshold: 2, interval: 30 },
     tags: { Name: `${name}-powersync` },
   })
 

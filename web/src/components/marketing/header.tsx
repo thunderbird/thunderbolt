@@ -24,9 +24,9 @@ export const Header = ({ action, banner }: HeaderProps) => (
         <img src="/enterprise/thunderbolt-logo.png" alt="Thunderbolt" className="size-[23px]" />
         <span className="text-xl font-medium leading-7 tracking-[-0.4px] text-[#101828]">Thunderbolt</span>
       </a>
-      <div className="hidden items-center gap-8 md:flex">
+      <div className="flex items-center gap-4 md:gap-8">
         <NavLinks />
-        {action}
+        <div className="hidden md:block">{action}</div>
       </div>
     </div>
   </header>

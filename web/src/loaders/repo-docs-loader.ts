@@ -22,8 +22,9 @@ type Options = {
 	githubBaseUrl?: string;
 };
 
-const FRONTMATTER_RE = /^---\n([\s\S]*?)\n---\n?/;
-const H1_RE = /^#\s+(.+)$/m;
+const frontmatterRe = /^---\n([\s\S]*?)\n---\n?/;
+const h1Re = /^#\s+(.+)$/m;
+const stripH1Re = /^#\s+.+\r?\n+/;
 
 export const repoDocsLoader = ({
 	base,
@@ -32,23 +33,24 @@ export const repoDocsLoader = ({
 }: Options): Loader => ({
 	name: 'thunderbolt-repo-docs',
 	load: async (context: LoaderContext) => {
-		const { store, parseData, generateDigest, renderMarkdown, config, watcher, logger } = context;
-		const normalizedBase = base.endsWith('/') ? base : `${base}/`;
-		const rootPath = fileURLToPath(new URL(normalizedBase, config.root));
+		const { store, parseData, generateDigest, renderMarkdown, config } = context;
+		const rootPath = fileURLToPath(new URL(base.endsWith('/') ? base : `${base}/`, config.root));
 		const astroRootPath = fileURLToPath(config.root);
 
-		const rebuild = async () => {
-			store.clear();
-			const files = await walkMarkdown(rootPath);
-			for (const abs of files) {
+		store.clear();
+		const files = await walkMarkdown(rootPath);
+		const knownDocPaths = new Set(files.map((abs) => relative(rootPath, abs).split(sep).join('/')));
+		await Promise.all(
+			files.map(async (abs) => {
 				const raw = await readFile(abs, 'utf8');
 				const { data: fm, content } = parseFrontmatter(raw);
 				const relPath = relative(rootPath, abs).split(sep).join('/');
 				const filePath = relative(astroRootPath, abs).split(sep).join('/');
 				const title = fm.title || extractH1(content) || fallbackTitle(relPath);
-				const description = fm.description || extractDescription(content) || '';
+				const strippedContent = stripH1(content);
+				const description = fm.description || extractDescription(strippedContent) || '';
 				const slug = computeSlug(relPath, urlPrefix);
-				const body = rewriteLinks(stripH1(content), relPath, urlPrefix, githubBaseUrl);
+				const body = rewriteLinks(strippedContent, relPath, urlPrefix, githubBaseUrl, knownDocPaths);
 				const data = await parseData({
 					id: slug,
 					data: { ...fm, title, description },
@@ -64,42 +66,28 @@ export const repoDocsLoader = ({
 					digest: generateDigest(raw),
 					rendered,
 				});
-			}
-		};
-
-		await rebuild();
-
-		if (watcher) {
-			watcher.add(rootPath);
-			const onChange = (file: string) => {
-				if (!/\.md$/i.test(file)) return;
-				logger.info(`Docs changed (${relative(rootPath, file)}); reloading`);
-				rebuild().catch((err) => logger.error(`Docs reload failed: ${err.message}`));
-			};
-			watcher.on('add', onChange);
-			watcher.on('change', onChange);
-			watcher.on('unlink', onChange);
-		}
+			}),
+		);
 	},
 });
 
 async function walkMarkdown(dir: string): Promise<string[]> {
-	const out: string[] = [];
 	const entries = await readdir(dir, { withFileTypes: true });
-	for (const entry of entries) {
-		if (entry.name.startsWith('.') || entry.name.startsWith('_')) continue;
-		const full = join(dir, entry.name);
-		if (entry.isDirectory()) {
-			out.push(...(await walkMarkdown(full)));
-		} else if (entry.isFile() && /\.md$/i.test(entry.name)) {
-			out.push(full);
-		}
-	}
-	return out.sort();
+	const results = await Promise.all(
+		entries
+			.filter((e) => !e.name.startsWith('.') && !e.name.startsWith('_'))
+			.map((entry) => {
+				const full = join(dir, entry.name);
+				if (entry.isDirectory()) return walkMarkdown(full);
+				if (entry.isFile() && /\.md$/i.test(entry.name)) return Promise.resolve([full]);
+				return Promise.resolve([]);
+			}),
+	);
+	return results.flat().sort();
 }
 
-function parseFrontmatter(raw: string) {
-	const match = raw.match(FRONTMATTER_RE);
+export function parseFrontmatter(raw: string) {
+	const match = raw.match(frontmatterRe);
 	if (!match) return { data: {} as Record<string, string>, content: raw };
 	const data: Record<string, string> = {};
 	for (const line of match[1].split('\n')) {
@@ -110,16 +98,16 @@ function parseFrontmatter(raw: string) {
 }
 
 function extractH1(body: string): string | undefined {
-	return body.match(H1_RE)?.[1]?.trim();
+	return body.match(h1Re)?.[1]?.trim();
 }
 
 function stripH1(body: string): string {
-	return body.replace(/^#\s+.+\r?\n+/, '');
+	return body.replace(stripH1Re, '');
 }
 
 /** Pick the first real prose paragraph (skipping code blocks, tables, admonitions, lists). */
-function extractDescription(body: string): string | undefined {
-	const blocks = stripH1(body)
+export function extractDescription(body: string): string | undefined {
+	const blocks = body
 		.replace(/^```[\s\S]*?```$/gm, '')
 		.split(/\n\s*\n/);
 	for (const block of blocks) {
@@ -138,32 +126,44 @@ function extractDescription(body: string): string | undefined {
 	return undefined;
 }
 
-function fallbackTitle(relPath: string): string {
+export function fallbackTitle(relPath: string): string {
 	const base = relPath.replace(/\.md$/i, '').split('/').pop() || relPath;
 	return base.replace(/[-_]/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
 }
 
-function computeSlug(relPath: string, prefix: string): string {
+export function computeSlug(relPath: string, prefix: string): string {
 	const withoutExt = relPath.replace(/\.md$/i, '').toLowerCase();
-	if (withoutExt === 'readme' || withoutExt === 'index') return prefix;
+	const parts = withoutExt.split('/');
+	const last = parts.at(-1);
+	if (last === 'readme' || last === 'index') {
+		parts.pop();
+		return parts.length === 0 ? prefix : `${prefix}/${parts.join('/')}`;
+	}
 	return `${prefix}/${withoutExt}`;
 }
 
 /** Rewrite relative links so they resolve on the Starlight site. */
-function rewriteLinks(
+export function rewriteLinks(
 	body: string,
 	sourceRelPath: string,
 	urlPrefix: string,
 	githubBaseUrl: string,
+	knownDocPaths: Set<string>,
 ): string {
 	return body.replace(
 		/\[([^\]]+)\]\(([^)\s#]+)(#[^)\s]*)?\)/g,
 		(match, text: string, url: string, hash = '') => {
-			if (/^([a-z]+:|\/\/|#|mailto:|tel:)/i.test(url)) return match;
+			if (/^([a-z]+:|\/\/|#|mailto:|tel:)/i.test(url) || url.startsWith('/')) return match;
 			const repoPath = resolveRepoPath(`docs/${sourceRelPath}`, url);
-			if (/\.md$/i.test(repoPath) && repoPath.startsWith('docs/')) {
-				const inner = repoPath.slice('docs/'.length).replace(/\.md$/i, '').toLowerCase();
-				return `[${text}](/${urlPrefix}/${inner}/${hash})`;
+			if (repoPath.startsWith('docs/')) {
+				const docRelPath = repoPath.slice('docs/'.length);
+				// Only treat as a docs link if the target file actually exists in docs.
+				// Without this check, links like ../src/file.ts from docs/architecture/
+				// incorrectly resolve to docs/src/file.ts and generate broken docs URLs.
+				const withExt = /\.\w+$/.test(docRelPath) ? docRelPath : `${docRelPath}.md`;
+				if (knownDocPaths.has(withExt) || knownDocPaths.has(docRelPath)) {
+					return `[${text}](/${computeSlug(docRelPath, urlPrefix)}${hash})`;
+				}
 			}
 			return `[${text}](${githubBaseUrl}/${repoPath}${hash})`;
 		},
@@ -171,7 +171,7 @@ function rewriteLinks(
 }
 
 /** Resolve a markdown-style relative link to a repo-root-relative path. */
-function resolveRepoPath(fromFile: string, url: string): string {
+export function resolveRepoPath(fromFile: string, url: string): string {
 	const fromDir = fromFile.split('/').slice(0, -1);
 	const urlParts = url.split('/').filter((p) => p !== '');
 	while (urlParts.length > 0 && (urlParts[0] === '.' || urlParts[0] === '..')) {

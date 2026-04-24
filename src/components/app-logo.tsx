@@ -1,5 +1,5 @@
 import { cn } from '@/lib/utils'
-import logoSrc from '@/assets/logo.webp'
+import logoSrc from '@/assets/logo.svg'
 
 type AppLogoProps = {
   size?: number

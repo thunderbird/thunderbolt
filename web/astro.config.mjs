@@ -41,12 +41,8 @@ export default defineConfig({
 				{
 					label: 'Getting Started',
 					items: [
-						{ label: 'Overview', slug: 'docs' },
-						{ label: 'Introduction', slug: 'docs/introduction' },
-						{ label: 'Quick Start', slug: 'docs/quick-start' },
-						{ label: 'Development', slug: 'docs/development' },
-						{ label: 'Testing', slug: 'docs/testing' },
-						{ label: 'Features and Roadmap', slug: 'docs/roadmap' },
+						{ label: 'Introduction', slug: 'docs' },
+						{ label: 'Customize', slug: 'docs/customize' },
 						{ label: 'FAQ', slug: 'docs/faq' },
 					],
 				},
@@ -54,65 +50,60 @@ export default defineConfig({
 					label: 'Self-Hosting',
 					items: [
 						{ label: 'Overview', slug: 'docs/self-hosting' },
-						{ label: 'Docker Compose', slug: 'docs/docker-compose' },
-						{ label: 'Kubernetes', slug: 'docs/kubernetes' },
-						{ label: 'Pulumi (AWS)', slug: 'docs/pulumi' },
+						{ label: 'Configuration', slug: 'docs/self-hosting/configuration' },
+						{ label: 'Docker Compose', slug: 'docs/self-hosting/docker-compose' },
+						{ label: 'Kubernetes', slug: 'docs/self-hosting/kubernetes' },
+						{ label: 'Pulumi (AWS)', slug: 'docs/self-hosting/pulumi' },
 					],
 				},
 				{
-					label: 'Architecture & Sync',
+					label: 'Features',
 					items: [
-						{ label: 'Architecture', slug: 'docs/architecture' },
-						{ label: 'Multi-Device Sync', slug: 'docs/multi-device-sync' },
-						{ label: 'End-to-End Encryption', slug: 'docs/e2e-encryption' },
+						{ label: 'Widgets', slug: 'docs/features/widgets' },
 						{
-							label: 'PowerSync · Account & Devices',
-							slug: 'docs/powersync-account-devices',
+							label: 'Data Syncing',
+							collapsed: true,
+							items: [
+								{ label: 'Architecture', slug: 'docs/architecture' },
+								{ label: 'Multi-Device Sync', slug: 'docs/architecture/multi-device-sync' },
+								{ label: 'End-to-End Encryption', slug: 'docs/architecture/e2e-encryption' },
+								{
+									label: 'PowerSync · Account & Devices',
+									slug: 'docs/architecture/powersync-account-devices',
+								},
+								{
+									label: 'PowerSync · Sync Middleware',
+									slug: 'docs/architecture/powersync-sync-middleware',
+								},
+								{
+									label: 'Composite Primary Keys & Default Data',
+									slug: 'docs/architecture/composite-primary-keys-and-default-data',
+								},
+								{
+									label: 'Delete Account & Revoke Device',
+									slug: 'docs/architecture/delete-account-and-revoke-device',
+								},
+							],
 						},
-						{
-							label: 'PowerSync · Sync Middleware',
-							slug: 'docs/powersync-sync-middleware',
-						},
-						{
-							label: 'Composite Primary Keys & Default Data',
-							slug: 'docs/composite-primary-keys-and-default-data',
-						},
-						{
-							label: 'Delete Account & Revoke Device',
-							slug: 'docs/delete-account-and-revoke-device',
-						},
+						{ label: 'WebView', slug: 'docs/features/webview' },
 					],
 				},
 				{
-					label: 'Platform',
+					label: 'Development',
 					items: [
-						{ label: 'WebView', slug: 'docs/webview' },
-						{ label: 'Widget System Guide', slug: 'docs/widgets' },
-						{ label: 'Tauri Signing Keys', slug: 'docs/tauri-signing-keys' },
+						{ label: 'Quick Start', slug: 'docs/development/quick-start' },
+						{ label: 'Testing', slug: 'docs/development/testing' },
 					],
-				},
-				{
-					label: 'Reference',
-					items: [{ label: 'Configuration', slug: 'docs/configuration' }],
 				},
 				{
 					label: 'Dev Tooling',
 					items: [
-						{ label: 'Storybook', slug: 'docs/storybook' },
-						{ label: 'Vite Bundle Analyzer', slug: 'docs/vite-bundle-analyzer' },
+						{ label: 'Tauri Signing Keys', slug: 'docs/features/tauri-signing-keys' },
+						{ label: 'Storybook', slug: 'docs/dev-tooling/storybook' },
+						{ label: 'Vite Bundle Analyzer', slug: 'docs/dev-tooling/vite-bundle-analyzer' },
 						{
 							label: 'Local CDN for App Updates',
-							slug: 'docs/local-cdn-for-app-update-testing',
-						},
-					],
-				},
-				{
-					label: 'AI & Prompting',
-					items: [
-						{ label: 'Claude Code Skills', slug: 'docs/claude-code' },
-						{
-							label: 'GPT-OSS Prompt Engineering',
-							slug: 'docs/prompt-engineering-guide/gpt-oss',
+							slug: 'docs/dev-tooling/local-cdn-for-app-update-testing',
 						},
 					],
 				},

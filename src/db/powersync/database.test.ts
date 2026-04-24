@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'bun:test'
-import { getPowerSyncDatabaseConfig, getPowerSyncOptions } from './database'
 import { WASQLiteOpenFactory } from '@powersync/web'
+
+const { getPowerSyncDatabaseConfig, getPowerSyncOptions } = await import('./database')
 
 describe('getPowerSyncDatabaseConfig', () => {
   it('returns default for web + Chrome', () => {
@@ -59,10 +60,12 @@ describe('getPowerSyncOptions', () => {
       expect(options).not.toHaveProperty('flags')
     })
 
-    it('includes custom SharedWorker for sync', () => {
-      const options = getPowerSyncOptions('thunderbolt.db')
+    it('always includes custom SharedWorker and transformers', () => {
+      const options = getPowerSyncOptions('thunderbolt.db', 'default')
       expect(options).toHaveProperty('sync')
       expect(options.sync).toHaveProperty('worker')
+      expect(options).toHaveProperty('transformers')
+      expect(options.transformers).toHaveLength(1)
     })
   })
 
@@ -79,8 +82,14 @@ describe('getPowerSyncOptions', () => {
 
     it('includes flags and sync with explicit worker paths', () => {
       const options = getPowerSyncOptions('thunderbolt.db', 'safari-tauri')
-      expect(options.flags).toEqual({ enableMultiTabs: false })
+      expect('flags' in options && options.flags).toEqual({ enableMultiTabs: false })
       expect(options.sync).toEqual({ worker: '/@powersync/worker/SharedSyncImplementation.umd.js' })
+    })
+
+    it('always includes transformers', () => {
+      const options = getPowerSyncOptions('thunderbolt.db', 'safari-tauri')
+      expect(options).toHaveProperty('transformers')
+      expect(options.transformers).toHaveLength(1)
     })
 
     it('extracts dbFilename from path correctly', () => {

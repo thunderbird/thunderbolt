@@ -28,7 +28,7 @@ const wrapper = ({ children }: { children: ReactNode }) => {
 
 describe('parseOAuthCallback', () => {
   it('parses valid OAuth callback URL with code and state', () => {
-    const url = new URL('https://thunderbolt.io/oauth/callback?code=abc123&state=xyz789')
+    const url = new URL('https://app.thunderbolt.io/oauth/callback?code=abc123&state=xyz789')
     const result = parseOAuthCallback(url)
 
     expect(result).toEqual({
@@ -39,7 +39,7 @@ describe('parseOAuthCallback', () => {
   })
 
   it('parses OAuth callback URL with error parameter', () => {
-    const url = new URL('https://thunderbolt.io/oauth/callback?error=access_denied')
+    const url = new URL('https://app.thunderbolt.io/oauth/callback?error=access_denied')
     const result = parseOAuthCallback(url)
 
     expect(result).toEqual({
@@ -50,7 +50,9 @@ describe('parseOAuthCallback', () => {
   })
 
   it('prioritizes error_description over error parameter', () => {
-    const url = new URL('https://thunderbolt.io/oauth/callback?error=access_denied&error_description=User%20cancelled')
+    const url = new URL(
+      'https://app.thunderbolt.io/oauth/callback?error=access_denied&error_description=User%20cancelled',
+    )
     const result = parseOAuthCallback(url)
 
     expect(result).toEqual({
@@ -61,7 +63,7 @@ describe('parseOAuthCallback', () => {
   })
 
   it('handles OAuth callback URL with missing parameters', () => {
-    const url = new URL('https://thunderbolt.io/oauth/callback')
+    const url = new URL('https://app.thunderbolt.io/oauth/callback')
     const result = parseOAuthCallback(url)
 
     expect(result).toEqual({
@@ -72,7 +74,7 @@ describe('parseOAuthCallback', () => {
   })
 
   it('handles OAuth callback URL with nested path', () => {
-    const url = new URL('https://thunderbolt.io/oauth/callback/extra?code=abc123&state=xyz789')
+    const url = new URL('https://app.thunderbolt.io/oauth/callback/extra?code=abc123&state=xyz789')
     const result = parseOAuthCallback(url)
 
     expect(result).toEqual({
@@ -90,14 +92,14 @@ describe('parseOAuthCallback', () => {
   })
 
   it('returns null for wrong path', () => {
-    const url = new URL('https://thunderbolt.io/different/path?code=abc123&state=xyz789')
+    const url = new URL('https://app.thunderbolt.io/different/path?code=abc123&state=xyz789')
     const result = parseOAuthCallback(url)
 
     expect(result).toBeNull()
   })
 
   it('returns null for non-OAuth URL', () => {
-    const url = new URL('https://thunderbolt.io/')
+    const url = new URL('https://app.thunderbolt.io/')
     const result = parseOAuthCallback(url)
 
     expect(result).toBeNull()
@@ -106,7 +108,7 @@ describe('parseOAuthCallback', () => {
 
 describe('parseVerifyLinkCallback', () => {
   it('parses valid verify link callback URL with email and otp', () => {
-    const url = new URL('https://thunderbolt.io/auth/verify?email=user%40example.com&otp=123456')
+    const url = new URL('https://app.thunderbolt.io/auth/verify?email=user%40example.com&otp=123456')
     const result = parseVerifyLinkCallback(url)
 
     expect(result).toEqual({
@@ -117,7 +119,7 @@ describe('parseVerifyLinkCallback', () => {
   })
 
   it('handles verify link URL with nested path', () => {
-    const url = new URL('https://thunderbolt.io/auth/verify/extra?email=user%40example.com&otp=123456')
+    const url = new URL('https://app.thunderbolt.io/auth/verify/extra?email=user%40example.com&otp=123456')
     const result = parseVerifyLinkCallback(url)
 
     expect(result).toEqual({
@@ -128,21 +130,21 @@ describe('parseVerifyLinkCallback', () => {
   })
 
   it('returns null when email is missing', () => {
-    const url = new URL('https://thunderbolt.io/auth/verify?otp=123456')
+    const url = new URL('https://app.thunderbolt.io/auth/verify?otp=123456')
     const result = parseVerifyLinkCallback(url)
 
     expect(result).toBeNull()
   })
 
   it('returns null when otp is missing', () => {
-    const url = new URL('https://thunderbolt.io/auth/verify?email=user%40example.com')
+    const url = new URL('https://app.thunderbolt.io/auth/verify?email=user%40example.com')
     const result = parseVerifyLinkCallback(url)
 
     expect(result).toBeNull()
   })
 
   it('returns null when both params are missing', () => {
-    const url = new URL('https://thunderbolt.io/auth/verify')
+    const url = new URL('https://app.thunderbolt.io/auth/verify')
     const result = parseVerifyLinkCallback(url)
 
     expect(result).toBeNull()
@@ -156,21 +158,21 @@ describe('parseVerifyLinkCallback', () => {
   })
 
   it('returns null for wrong path', () => {
-    const url = new URL('https://thunderbolt.io/different/path?email=user%40example.com&otp=123456')
+    const url = new URL('https://app.thunderbolt.io/different/path?email=user%40example.com&otp=123456')
     const result = parseVerifyLinkCallback(url)
 
     expect(result).toBeNull()
   })
 
   it('returns null for OAuth callback URL', () => {
-    const url = new URL('https://thunderbolt.io/oauth/callback?code=abc&state=xyz')
+    const url = new URL('https://app.thunderbolt.io/oauth/callback?code=abc&state=xyz')
     const result = parseVerifyLinkCallback(url)
 
     expect(result).toBeNull()
   })
 
   it('handles email with special characters', () => {
-    const url = new URL('https://thunderbolt.io/auth/verify?email=user%2Btag%40example.com&otp=123456')
+    const url = new URL('https://app.thunderbolt.io/auth/verify?email=user%2Btag%40example.com&otp=123456')
     const result = parseVerifyLinkCallback(url)
 
     expect(result).toEqual({
@@ -182,7 +184,7 @@ describe('parseVerifyLinkCallback', () => {
 
   it('parses challengeToken when present', () => {
     const url = new URL(
-      'https://thunderbolt.io/auth/verify?email=user%40example.com&otp=12345678&challengeToken=abc-123-def',
+      'https://app.thunderbolt.io/auth/verify?email=user%40example.com&otp=12345678&challengeToken=abc-123-def',
     )
     const result = parseVerifyLinkCallback(url)
 
@@ -194,7 +196,7 @@ describe('parseVerifyLinkCallback', () => {
   })
 
   it('returns undefined challengeToken when not present', () => {
-    const url = new URL('https://thunderbolt.io/auth/verify?email=user%40example.com&otp=12345678')
+    const url = new URL('https://app.thunderbolt.io/auth/verify?email=user%40example.com&otp=12345678')
     const result = parseVerifyLinkCallback(url)
 
     expect(result).toEqual({
@@ -320,7 +322,7 @@ describe('determineNavigationTarget', () => {
 
 describe('parseOAuthCallback + determineNavigationTarget integration', () => {
   it('handles complete OAuth success flow', () => {
-    const url = new URL('https://thunderbolt.io/oauth/callback?code=abc123&state=xyz789')
+    const url = new URL('https://app.thunderbolt.io/oauth/callback?code=abc123&state=xyz789')
     const oauthData = parseOAuthCallback(url)
 
     expect(oauthData).not.toBeNull()
@@ -339,7 +341,7 @@ describe('parseOAuthCallback + determineNavigationTarget integration', () => {
 
   it('handles complete OAuth error flow', () => {
     const url = new URL(
-      'https://thunderbolt.io/oauth/callback?error=access_denied&error_description=User%20cancelled%20authorization',
+      'https://app.thunderbolt.io/oauth/callback?error=access_denied&error_description=User%20cancelled%20authorization',
     )
     const oauthData = parseOAuthCallback(url)
 
@@ -380,7 +382,7 @@ describe('useDeepLinkListener hook', () => {
   })
 
   it('handles custom handler for non-OAuth deep links', async () => {
-    const mockUrls = ['https://thunderbolt.io/some/other/path']
+    const mockUrls = ['https://app.thunderbolt.io/some/other/path']
     let customHandlerCalled = false
     let customHandlerUrls: string[] = []
     let callback: ((urls: string[]) => void) | null = null
@@ -424,7 +426,7 @@ describe('useDeepLinkListener hook', () => {
   })
 
   it('does NOT call custom handler for OAuth callback URLs', async () => {
-    const mockUrls = ['https://thunderbolt.io/oauth/callback?code=abc123&state=xyz789']
+    const mockUrls = ['https://app.thunderbolt.io/oauth/callback?code=abc123&state=xyz789']
     let customHandlerCalled = false
     let callback: ((urls: string[]) => void) | null = null
 
@@ -466,7 +468,7 @@ describe('useDeepLinkListener hook', () => {
   })
 
   it('does NOT call custom handler for verify link callback URLs', async () => {
-    const mockUrls = ['https://thunderbolt.io/auth/verify?email=user%40example.com&otp=123456']
+    const mockUrls = ['https://app.thunderbolt.io/auth/verify?email=user%40example.com&otp=123456']
     let customHandlerCalled = false
     let callback: ((urls: string[]) => void) | null = null
 
@@ -508,7 +510,11 @@ describe('useDeepLinkListener hook', () => {
   })
 
   it('calls custom handler only once with multiple non-OAuth URLs', async () => {
-    const mockUrls = ['https://thunderbolt.io/path1', 'https://thunderbolt.io/path2', 'https://thunderbolt.io/path3']
+    const mockUrls = [
+      'https://app.thunderbolt.io/path1',
+      'https://app.thunderbolt.io/path2',
+      'https://app.thunderbolt.io/path3',
+    ]
     let customHandlerCallCount = 0
     let receivedUrls: string[] = []
     let callback: ((urls: string[]) => void) | null = null
@@ -554,10 +560,10 @@ describe('useDeepLinkListener hook', () => {
 
   it('filters out OAuth and verify link URLs and only passes unhandled URLs to handler', async () => {
     const mockUrls = [
-      'https://thunderbolt.io/path1',
-      'https://thunderbolt.io/oauth/callback?code=abc123&state=xyz',
-      'https://thunderbolt.io/auth/verify?email=user%40example.com&otp=123456',
-      'https://thunderbolt.io/path2',
+      'https://app.thunderbolt.io/path1',
+      'https://app.thunderbolt.io/oauth/callback?code=abc123&state=xyz',
+      'https://app.thunderbolt.io/auth/verify?email=user%40example.com&otp=123456',
+      'https://app.thunderbolt.io/path2',
     ]
     let receivedUrls: string[] = []
     let callback: ((urls: string[]) => void) | null = null
@@ -596,7 +602,7 @@ describe('useDeepLinkListener hook', () => {
     })
 
     // Handler should only receive unhandled URLs (not OAuth or verify link)
-    expect(receivedUrls).toEqual(['https://thunderbolt.io/path1', 'https://thunderbolt.io/path2'])
+    expect(receivedUrls).toEqual(['https://app.thunderbolt.io/path1', 'https://app.thunderbolt.io/path2'])
   })
 
   it('handles invalid URLs gracefully', async () => {
@@ -658,7 +664,7 @@ describe('useDeepLinkListener hook', () => {
     // Simulate a deep link event
     expect(storedCallback).not.toBeNull()
     await act(async () => {
-      storedCallback!(['https://thunderbolt.io/oauth/callback?code=test&state=test'])
+      storedCallback!(['https://app.thunderbolt.io/oauth/callback?code=test&state=test'])
     })
     // If no error thrown, the listener worked
     expect(true).toBe(true)

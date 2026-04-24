@@ -9,6 +9,7 @@ const posts = (await getCollection('blog'))
 
 <BaseLayout
 	title="Blog"
+	fullTitle="Thunderbolt — Blog"
 	description="News, updates, and insights from the Thunderbolt team."
 >
 	<header class="intro">
@@ -80,11 +81,6 @@ const posts = (await getCollection('blog'))
 		padding: 2rem 0;
 		text-decoration: none;
 		color: var(--tb-text);
-		transition: opacity 0.15s;
-	}
-
-	.post-card:hover {
-		opacity: 1;
 	}
 
 	.post-card:hover .read-more {

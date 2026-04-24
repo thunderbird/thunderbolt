@@ -8,7 +8,7 @@ This document consolidates documentation for:
 
 ---
 
-## 1. PowerSync overview
+## 1. PowerSync Overview
 
 PowerSync provides offline-first sync between the backend (PostgreSQL) and clients (SQLite). Data is scoped by `user_id` from the JWT. The backend issues PowerSync JWTs and can apply client uploads (PUT/PATCH/DELETE) to Postgres. Production uses PowerSync Cloud; local development uses the Docker stack in `powersync-service/`.
 
@@ -16,7 +16,7 @@ For the sync data transformation middleware and custom SharedWorker (E2E encrypt
 
 ---
 
-## 2. Synced tables
+## 2. Synced Tables
 
 ### Requirements
 
@@ -26,13 +26,13 @@ For the sync data transformation middleware and custom SharedWorker (E2E encrypt
   - Backend: [backend/src/db/powersync-schema.ts](../backend/src/db/powersync-schema.ts) (PostgreSQL)
 - **Backend schema uses minimal indexes**: Only primary keys and `user_id` indexes (see [Indexes and Foreign Keys](#indexes-and-foreign-keys) below).
 
-### Current tables
+### Current Tables
 
 Defined in [shared/powersync-tables.ts](../shared/powersync-tables.ts):
 
 `settings`, `chat_threads`, `chat_messages`, `tasks`, `models`, `mcp_servers`, `prompts`, `triggers`, `modes`, `model_profiles`, `devices`.
 
-### Indexes and foreign keys
+### Indexes and Foreign Keys
 
 **Backend (PostgreSQL) uses a minimal index strategy:**
 
@@ -48,7 +48,7 @@ Defined in [shared/powersync-tables.ts](../shared/powersync-tables.ts):
 
 See [docs/composite-primary-keys-and-default-data.md](composite-primary-keys-and-default-data.md) for detailed explanation.
 
-### Adding a new synced table
+### Adding a New Synced Table
 
 1. Create the table in both `src/db/tables.ts` and `backend/src/db/powersync-schema.ts` (include `user_id`).
 2. **Backend schema**: Add only a `user_id` index: `index('idx_[table]_user_id').on(table.userId)`. Do not add composite foreign keys or other indexes (see above).
@@ -57,7 +57,7 @@ See [docs/composite-primary-keys-and-default-data.md](composite-primary-keys-and
 5. Update [powersync-service/config/config.yaml](../powersync-service/config/config.yaml): add a line under `sync_rules.content` → `bucket_definitions.user_data.data` (e.g. `- SELECT * FROM my_table WHERE my_table.user_id = bucket.user_id`).
 6. Run migrations for frontend and backend as needed.
 
-### PR flow for adding tables
+### PR Flow for Adding Tables
 
 Split the work into two PRs to avoid sync rule mismatches:
 
@@ -72,7 +72,7 @@ Split the work into two PRs to avoid sync rule mismatches:
 
 ---
 
-## 3. Local development (PowerSync Docker)
+## 3. Local Development (PowerSync Docker)
 
 See [powersync-service/README.md](../powersync-service/README.md) for full steps. Summary:
 
@@ -82,7 +82,7 @@ See [powersync-service/README.md](../powersync-service/README.md) for full steps
 - Backend `.env`: set `DATABASE_DRIVER=postgres`, `DATABASE_URL=postgresql://postgres:postgres@localhost:5433/postgres`, and PowerSync vars (see below)
 - Sync rules in `powersync-service/config/config.yaml` must match backend tables; when you add/change tables, update that file and `VALID_TABLES` in `backend/src/api/powersync.ts` (which uses `POWERSYNC_TABLE_NAMES` from shared).
 
-### Backend PowerSync env vars (local)
+### Backend PowerSync Env Vars (Local)
 
 ```bash
 POWERSYNC_URL=http://localhost:8080
@@ -95,7 +95,7 @@ The local `config/config.yaml` uses HS256 with the same secret (base64) and kid 
 
 ---
 
-## 4. Account deletion
+## 4. Account Deletion
 
 - **Where:** Settings > Preferences → “Delete my account” (with confirmation).
 - **Request:** Frontend calls `DELETE /v1/account` with the current auth token.
@@ -104,21 +104,21 @@ The local `config/config.yaml` uses HS256 with the same secret (base64) and kid 
 
 ---
 
-## 5. Device management
+## 5. Device Management
 
-### Devices table
+### Devices Table
 
 - **Backend:** `devices` table: `id`, `user_id`, `name`, `status` (`APPROVAL_PENDING` | `TRUSTED` | `REVOKED`), `public_key`, `mlkem_public_key`, `last_seen`, `created_at`, `revoked_at`. Synced via PowerSync.
 - **Frontend:** Same schema in the local DB; used for Settings > Devices and for “current device revoked?” checks.
 - See [e2e-encryption.md](e2e-encryption.md) for how `status` and `public_key` are used in the encryption setup and device approval flows.
 
-### Listing devices
+### Listing Devices
 
 - **Where:** Settings > Devices.
 - **Data:** Devices from the local DB (synced `devices` table) via `getAllDevices()` and React Query key `['devices']`.
 - **UI:** Name, last seen, “This device” for current device, “Revoked” when `revoked_at` is set. “Revoke” only for other, non-revoked devices.
 
-### Revoking a device
+### Revoking a Device
 
 1. User chooses “Revoke” on another device (with confirmation). Frontend calls `POST /v1/account/devices/:id/revoke`.
 2. Backend runs a transaction: deletes the device’s envelope from the `envelopes` table, then sets `status` to `REVOKED` and `revoked_at` on the device row. The wrapped CK is permanently removed, preventing future CK recovery even if the device’s private key is compromised. PowerSync syncs the updated `devices` table.
@@ -126,7 +126,7 @@ The local `config/config.yaml` uses HS256 with the same secret (base64) and kid 
    - **Immediate:** The app watches the current device’s row via React Query (`getDevice(deviceId)`). When the synced row has `status === ‘REVOKED’` or `revoked_at` set, the app runs the reset flow.
    - **On token refresh:** Backend returns **403 Forbidden** with `code: ‘DEVICE_DISCONNECTED’`; the connector dispatches credentials invalid and the app resets.
 
-### Auth token and device id
+### Auth Token and Device ID
 
 - **Auth token:** In `localStorage` (fixed key). Cleared on reset via `localStorage.clear()`.
 - **Device id:** In `localStorage`. Sent as `X-Device-ID` (and optional `X-Device-Name`) on PowerSync token requests so the backend can register/update the device and enforce revoke.
@@ -135,7 +135,7 @@ The local `config/config.yaml` uses HS256 with the same secret (base64) and kid 
 
 ## 6. Backend API
 
-### PowerSync token (`GET /powersync/token`)
+### PowerSync Token (`GET /powersync/token`)
 
 - **With `X-Device-ID`:**
   - Backend checks the `devices` row for that id. If `status === 'REVOKED'` or `revoked_at` is set → **403** with `{ code: 'DEVICE_DISCONNECTED' }`, no token.
@@ -144,7 +144,7 @@ The local `config/config.yaml` uses HS256 with the same secret (base64) and kid 
   - If the user no longer exists (account deleted) → **410 Gone** with `{ code: 'ACCOUNT_DELETED' }`.
   - Otherwise may return **401** (invalid/expired token).
 
-### PowerSync upload (`PUT /powersync/upload`)
+### PowerSync Upload (`PUT /powersync/upload`)
 
 - Requires authenticated user and `X-Device-ID` header.
 - Same device validation as token: if device is revoked → **403** with `{ code: 'DEVICE_DISCONNECTED' }`. If `X-Device-ID` is missing → **400** with `{ code: 'DEVICE_ID_REQUIRED' }`.
@@ -157,13 +157,13 @@ Summary for client:
 - **409** with `DEVICE_ID_TAKEN` → device id already registered to another user; reset to get a fresh device id.
 - **401** → generic auth failure.
 
-### Revoke device (`POST /v1/account/devices/:id/revoke`)
+### Revoke Device (`POST /v1/account/devices/:id/revoke`)
 
 - Requires authenticated user (session).
 - Runs in a transaction: deletes the device's envelope, then sets `status` to `REVOKED` and `revoked_at` for the device that belongs to the current user.
 - **204** on success (idempotent for already-revoked devices).
 
-### Encryption API endpoints
+### Encryption API Endpoints
 
 The following endpoints handle encryption setup, device approval, and key recovery. See [e2e-encryption.md](e2e-encryption.md#api-endpoints) for full documentation.
 
@@ -174,7 +174,7 @@ The following endpoints handle encryption setup, device approval, and key recove
 
 ---
 
-## 7. Frontend: credentials-invalid and reset
+## 7. Frontend: Credentials-Invalid and Reset
 
 When the app should reset (account deleted or device revoked), it runs a single flow:
 

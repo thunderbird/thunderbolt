@@ -1,10 +1,37 @@
 # End-to-End Encryption
 
-> **Caution.** End-to-end encryption is in **Preview**. It has not yet undergone a cryptography audit and is subject to further refinements.
+> ⚠️ End-to-end encryption is in **Preview**. It has not yet undergone a cryptography audit and is subject to further refinements.
 
-When E2E encryption is enabled, all user data is encrypted client-side before sync and decrypted client-side after download. The server stores only ciphertext and wrapped keys — it cannot read user data even if compelled or breached.
+Thunderbolt supports optional zero-knowledge end-to-end encryption: all user data is encrypted client-side before sync and decrypted client-side after download. The server stores only ciphertext and wrapped keys — it cannot read user data even if compelled or breached.
 
-## Key concepts
+For the sync pipeline integration, see [powersync-sync-middleware.md](powersync-sync-middleware.md).
+
+---
+
+## Configuration
+
+E2EE is **disabled by default**. The backend is the single source of truth:
+
+| Variable       | Where          | Default | Effect when enabled                                                                                                  |
+| -------------- | -------------- | ------- | -------------------------------------------------------------------------------------------------------------------- |
+| `E2EE_ENABLED` | Backend `.env` | `false` | Requires device trust flow before allowing sync; frontend encrypts/decrypts data, shows setup wizard, generates keys |
+
+```env
+# Backend (backend/.env)
+E2EE_ENABLED=true
+```
+
+The frontend reads this flag from the backend's `GET /v1/config` endpoint at app initialization and caches it in `localStorage` for offline use. No frontend environment variable is needed.
+
+When disabled (default), sync works without encryption — no setup wizard, no key generation, no recovery key. The backend auto-trusts devices and skips the envelope flow. The encryption API endpoints remain available but are not called.
+
+**Frontend control point:** `isEncryptionEnabled()` in `src/db/encryption/config.ts` reads the cached flag from `localStorage`. The companion `needsSyncSetupWizard()` helper combines the encryption-enabled check with the CK-exists check — it returns `true` only when E2EE is on and no Content Key has been set up yet. Both the sign-in flow and the sync toggle use this helper to decide whether to show the setup wizard or enable sync directly.
+
+**Backend control point:** `e2eeEnabled` in `backend/src/config/settings.ts`. When `false`, `validateDeviceForSync()` skips the trust check and `issuePowerSyncToken()` auto-trusts devices on upsert.
+
+---
+
+## Key Concepts
 
 | Concept              | Description                                                                                                                                         |
 | -------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -14,7 +41,7 @@ When E2E encryption is enabled, all user data is encrypted client-side before sy
 | **Recovery key**     | CK encoded as a **24-word BIP-39 mnemonic**. Shown once at first setup. The only way to recover data if all devices are lost.                       |
 | **Canary**           | A fixed plaintext encrypted with CK, stored server-side. Used to verify a recovery key is correct and to detect whether encryption is set up.       |
 
-## Key hierarchy
+## Key Hierarchy
 
 There's one content key per account. Each device has its own keypair. The CK is wrapped separately for every device using a hybrid envelope. Each device unwraps its own envelope to arrive at the same CK.
 
@@ -38,7 +65,7 @@ There's one content key per account. Each device has its own keypair. The CK is 
       (identical)       (identical)        (identical)
 ```
 
-## Wire format
+## Wire Format
 
 Encrypted column values on the wire are written as:
 
@@ -48,7 +75,7 @@ __enc:<iv-base64>:<ciphertext-base64>
 
 The download and upload middleware both read from `encryptedColumnsMap` in [src/db/encryption/config.ts](../src/db/encryption/config.ts) — a single source of truth for which columns are encrypted.
 
-## User flows
+## User Flows
 
 | Scenario              | What happens                                                                                                                       |
 | --------------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
@@ -59,11 +86,11 @@ The download and upload middleware both read from `encryptedColumnsMap` in [src/
 | **Sign out**          | All local keys cleared → next sign-in is treated as a new device.                                                                  |
 | **Revoke device**     | Envelope deleted server-side, `revoked_at` set → device can no longer decrypt or sync.                                             |
 
-## Adding a new encrypted column
+## Adding a New Encrypted Column
 
 To encrypt a new column, add the table and column name to `encryptedColumnsMap` in [src/db/encryption/config.ts](../src/db/encryption/config.ts). The existing `encryptionMiddleware` handles every column in the map automatically — both download decryption and upload encryption.
 
-## Key files
+## Key Files
 
 | File                            | Role                                           |
 | ------------------------------- | ---------------------------------------------- |
@@ -77,6 +104,6 @@ To encrypt a new column, add the table and column name to `encryptedColumnsMap` 
 | `backend/src/api/encryption.ts` | Backend encryption API routes                  |
 | `backend/src/dal/encryption.ts` | Backend data access layer                      |
 
-## Sync pipeline integration
+## Sync Pipeline Integration
 
 Encryption is implemented as a PowerSync transform-middleware. On **Chrome/Edge/Firefox** it runs inside a custom SharedWorker so the CK stays in one place across tabs; on **Safari and Tauri** it runs on the main thread because those environments don't support SharedWorker. See [Multi-Device Sync](./multi-device-sync.md#two-sync-paths) and [powersync-sync-middleware.md](./powersync-sync-middleware.md) for the full architecture.

@@ -3,6 +3,8 @@ import '../styles/tokens.css';
 
 type Props = {
 	title: string;
+	/** Override the formatted <title> tag. Defaults to `{title} · Thunderbolt`. */
+	fullTitle?: string;
 	description?: string;
 	ogImage?: string;
 	ogType?: 'website' | 'article';
@@ -11,12 +13,11 @@ type Props = {
 
 const {
 	title,
+	fullTitle = `${title} · Thunderbolt`,
 	description = 'News, updates, and insights from the Thunderbolt team.',
 	ogImage = 'https://thunderbolt.io/social.png',
 	ogType = 'website',
 } = Astro.props;
-
-const fullTitle = title === 'Blog' ? 'Thunderbolt — Blog' : `${title} · Thunderbolt`;
 const pathname = Astro.url.pathname;
 const isBlogActive = pathname.startsWith('/blog');
 const isDocsActive = pathname.startsWith('/docs');
@@ -278,7 +279,7 @@ const isDocsActive = pathname.startsWith('/docs');
 	.footer-rule {
 		height: 1px;
 		background: var(--tb-border);
-		margin: 1.5rem auto 1.5rem;
+		margin: 1.5rem auto;
 		max-width: 60rem;
 	}
 

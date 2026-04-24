@@ -2,7 +2,7 @@ import { sendEmail, shouldSkipEmail } from '@/lib/resend'
 import { MagicLinkEmail } from '@/emails/magic-link'
 
 /** Deep link base URL for mobile apps (iOS/Android) */
-const deepLinkHost = 'https://thunderbolt.io'
+const deepLinkHost = 'https://app.thunderbolt.io'
 
 /** Platforms that support deep linking */
 const deepLinkPlatforms = ['ios', 'android']

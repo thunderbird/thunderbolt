@@ -4,6 +4,7 @@
  * This file is preloaded before any tests run to initialize expensive resources.
  * Add it to bunfig.toml preload array to ensure it runs first.
  */
+import { afterAll } from 'bun:test'
 import { testDbManager } from './db'
 
 // Disable rate limiting in tests: RateLimiterDrizzle uses its own internal
@@ -33,3 +34,16 @@ globalThis.fetch = Object.assign(
 
 // Store original for tests that need to opt-in
 ;(globalThis as any).__originalFetch = originalFetch
+
+// Close PGlite after all tests complete.
+// PGlite 0.4.x leaves WASM worker threads open without an explicit close(),
+// causing Bun to crash with exit code 99 when running --rerun-each.
+// Using afterAll() from bun:test runs cleanup inside the test runner's
+// own lifecycle, before Bun terminates worker threads on process exit.
+afterAll(async () => {
+  await Promise.all([
+    testDbManager.close(),
+    // Also close the db/client singleton if it was lazily loaded (e.g. swagger.test.ts)
+    import('@/db/client').then(({ closeDb }) => closeDb()),
+  ]).catch(() => {})
+})

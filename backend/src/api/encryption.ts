@@ -15,32 +15,10 @@ import {
 } from '@/dal'
 import type { db as DbType } from '@/db/client'
 import { BadRequestError, ForbiddenError } from '@/errors/http-errors'
-import { timingSafeEqual } from 'crypto'
+import { hashCanarySecret, verifyCanaryProof, verifyCanaryProofWithMetadata } from '@/lib/canary'
 import { Elysia, t } from 'elysia'
 
 const MAX_DEVICES_PER_USER = 10
-
-/** Hash a canary secret using SHA-256. Returns hex-encoded hash. */
-const hashCanarySecret = async (secret: string): Promise<string> => {
-  const encoded = new TextEncoder().encode(secret)
-  const hashBuffer = await crypto.subtle.digest('SHA-256', encoded)
-  return Array.from(new Uint8Array(hashBuffer), (b) => b.toString(16).padStart(2, '0')).join('')
-}
-
-/**
- * Verify proof-of-CK-possession by comparing SHA-256(canarySecret) against stored hash.
- * Used to gate trust-sensitive operations (device approval, deny) — prevents X-Device-ID spoofing
- * because only a device that possesses the Content Key can decrypt the canary and extract the secret.
- */
-const verifyCanaryProof = async (db: typeof DbType, userId: string, canarySecret: string): Promise<boolean> => {
-  const metadata = await getEncryptionMetadata(db, userId)
-  if (!metadata?.canarySecretHash) return false
-  const hash = await hashCanarySecret(canarySecret)
-  const hashBuf = Buffer.from(hash)
-  const storedBuf = Buffer.from(metadata.canarySecretHash)
-  if (hashBuf.length !== storedBuf.length) return false
-  return timingSafeEqual(hashBuf, storedBuf)
-}
 
 /**
  * Check if the caller is performing a self-recovery.
@@ -198,6 +176,21 @@ export const createEncryptionRoutes = (auth: Auth, database: typeof DbType) =>
             // First device bootstrap requires canary data for recovery to work
             if (isFirstDeviceBootstrap && (!canaryIv || !canaryCtext || !canarySecret)) {
               throw new BadRequestError('First device bootstrap requires canaryIv, canaryCtext, and canarySecret')
+            }
+
+            // Defense-in-depth: if encryption metadata already exists, verify canary proof
+            // to prevent E2EE state reset even if device revocation protections are bypassed.
+            // Checks `existingMetadata` (not `existingMetadata?.canarySecretHash`) for fail-closed
+            // behavior: if metadata exists with a null hash, we block rather than silently skip.
+            if (isFirstDeviceBootstrap) {
+              const existingMetadata = await getEncryptionMetadata(txDb, userId)
+              if (existingMetadata) {
+                if (!(await verifyCanaryProofWithMetadata(canarySecret!, existingMetadata.canarySecretHash))) {
+                  throw new ForbiddenError(
+                    'Invalid canary secret — cannot re-bootstrap with existing encryption metadata',
+                  )
+                }
+              }
             }
 
             // Recovery: device is self-storing and provided canary that matches stored metadata.

@@ -14,7 +14,7 @@ The implementation uses AES-256-GCM decryption to decrypt all encrypted columns 
 
 ## Architecture
 
-### Key files
+### Key Files
 
 | File | Role |
 |------|------|
@@ -27,11 +27,11 @@ The implementation uses AES-256-GCM decryption to decrypt all encrypted columns 
 
 ---
 
-## Data flow
+## Data Flow
 
 Two distinct paths exist depending on the platform. Both end at the same point — decrypted data in SQLite — but the interception happens in different execution contexts.
 
-### Chrome / Edge / Firefox (SharedWorker path)
+### Chrome / Edge / Firefox (SharedWorker Path)
 
 ```mermaid
 flowchart TD
@@ -45,12 +45,12 @@ flowchart TD
 
     subgraph SharedWorker["SharedWorker — ThunderboltSharedSyncImplementation.worker.ts"]
         TSSI["ThunderboltSharedSyncImplementation<br/>extends SharedSyncImplementation<br/><br/>generateStreamingImplementation()<br/>→ creates TransformableBucketStorage<br/>  + registers encryptionMiddleware"]
-        TBS["TransformableBucketStorage<br/>extends SqliteBucketStorage<br/><br/>control(PROCESS_TEXT_LINE)<br/>→ parse → transform → super.control()"]
+        TBS["TransformableBucketStorage<br/>extends SqliteBucketStorage<br/><br/>control(PROCESS_TEXT_LINE | PROCESS_BSON_LINE)<br/>→ parse → transform → super.control()"]
         MW["encryptionMiddleware<br/>(AES-GCM decryption via codec)"]
         SBS["SqliteBucketStorage<br/>super.control()"]
     end
 
-    Server -->|"sync stream<br/>(PROCESS_TEXT_LINE)"| TSSI
+    Server -->|"sync stream<br/>(TEXT_LINE or BSON_LINE)"| TSSI
     TSSI --> TBS
     TBS -->|"SyncDataBatch"| MW
     MW -->|"transformed batch"| TBS
@@ -59,7 +59,7 @@ flowchart TD
     SQLite --> Drizzle
 ```
 
-### Safari / Tauri (dedicated worker path)
+### Safari / Tauri (Dedicated Worker Path)
 
 ```mermaid
 flowchart TD
@@ -67,7 +67,7 @@ flowchart TD
 
     subgraph MainThread["Main Thread"]
         TPS["ThunderboltPowerSyncDatabase<br/>extends PowerSyncDatabase<br/><br/>generateBucketStorageAdapter()<br/>→ creates TransformableBucketStorage<br/>  + registers encryptionMiddleware"]
-        TBS["TransformableBucketStorage<br/>extends SqliteBucketStorage<br/><br/>control(PROCESS_TEXT_LINE)<br/>→ parse → transform → super.control()"]
+        TBS["TransformableBucketStorage<br/>extends SqliteBucketStorage<br/><br/>control(PROCESS_TEXT_LINE | PROCESS_BSON_LINE)<br/>→ parse → transform → super.control()"]
         MW["encryptionMiddleware<br/>(AES-GCM decryption via codec)"]
         SBS["SqliteBucketStorage<br/>super.control()"]
         Drizzle["Drizzle / DAL<br/>(reads decrypted data)"]
@@ -90,24 +90,27 @@ flowchart TD
 
 ---
 
-## How `TransformableBucketStorage` works
+## How `TransformableBucketStorage` Works
 
 PowerSync's Rust sync client sends incoming data to the storage adapter via:
 
 ```
-adapter.control(PROCESS_TEXT_LINE, jsonPayload)
+adapter.control(PROCESS_TEXT_LINE, jsonPayload)   // NDJSON responses
+adapter.control(PROCESS_BSON_LINE, bsonPayload)   // BSON responses (preferred since @powersync/web 1.37+)
 ```
 
-`TransformableBucketStorage` overrides `control()` to intercept this call. When a `PROCESS_TEXT_LINE` command arrives with sync data, it:
+`TransformableBucketStorage` overrides `control()` to intercept both formats. When a sync data command arrives, it:
 
-1. Parses the JSON payload into a `SyncDataBatch`
+1. Parses the payload (JSON string or BSON binary) to extract `SyncDataBucketJSON`
 2. Runs it through the registered transformer pipeline (each transformer receives the output of the previous)
-3. Serializes the transformed batch back to JSON
+3. Re-encodes the transformed data in the **same format** as the original (JSON → JSON, BSON → BSON)
 4. Passes the result to `super.control()` → `SqliteBucketStorage` → SQLite
 
-All other control commands (START, STOP, PROCESS_BSON_LINE, etc.) pass through unchanged.
+All other control commands (START, STOP, etc.) pass through unchanged.
 
-### Middleware interface
+> **Why both formats?** Starting with `@powersync/web` 1.37, the HTTP sync stream sends an `Accept` header preferring BSON over NDJSON. If the server supports BSON, sync data arrives as binary `Uint8Array` payloads via `PROCESS_BSON_LINE` instead of JSON strings via `PROCESS_TEXT_LINE`. The middleware must handle both to ensure transformations run regardless of server response type.
+
+### Middleware Interface
 
 ```typescript
 type DataTransformMiddleware = {
@@ -121,7 +124,7 @@ Transformers operate on `SyncDataBatch` → `SyncDataBucket[]` → `OplogEntry[]
 - `data` — JSON string of the row (modify this to transform field values)
 - `op` — `INSERT` / `UPDATE` / `DELETE`
 
-### Registering transformers
+### Registering Transformers
 
 Pass them via `ThunderboltPowerSyncDatabaseOptions.transformers` in `getPowerSyncOptions()`:
 
@@ -133,7 +136,7 @@ transformers: [encryptionMiddleware]
 
 ---
 
-## The multi-tab problem
+## The Multi-Tab Problem
 
 PowerSync defaults to `enableMultiTabs: true` on Chrome/Edge/Firefox. This launches a **SharedWorker** that:
 
@@ -149,11 +152,11 @@ The root cause is architectural:
 
 ---
 
-## Solution: custom SharedWorker
+## Solution: Custom SharedWorker
 
 Instead of disabling multi-tab, we provide a custom SharedWorker that **embeds** the transformer logic at bundle time.
 
-### How it works
+### How It Works
 
 `ThunderboltSharedSyncImplementation` extends `SharedSyncImplementation` and overrides `generateStreamingImplementation()` — the one `protected` method that controls which storage adapter is used. The override is a direct copy of the parent method with `SqliteBucketStorage` replaced by `TransformableBucketStorage + encryptionMiddleware`.
 
@@ -173,13 +176,13 @@ sync: {
 
 Vite detects the `new SharedWorker(new URL(...))` pattern and bundles the worker file as a separate ES module chunk.
 
-### Why this works
+### Why This Works
 
 - Transformer **logic** lives in the worker bundle (compiled at build time) — no serialization needed
 - The content key (CK) is accessed directly via IndexedDB inside the SharedWorker — no `postMessage` needed
 - Multi-tab sync efficiency is preserved: SharedWorker still manages a single connection
 
-### Accessing `SharedSyncImplementation` internals
+### Accessing `SharedSyncImplementation` Internals
 
 `SharedSyncImplementation` is marked `@internal` and not in `@powersync/web`'s public exports map. We access it via a Vite alias and a matching TypeScript `paths` entry that both point to the compiled lib output:
 
@@ -208,7 +211,7 @@ import { SharedSyncImplementation } from 'powersync-web-internal/worker/sync/Sha
 
 ---
 
-## Safari / Tauri: why it stays different
+## Safari / Tauri: Why It Stays Different
 
 The Safari and Tauri config keeps `enableMultiTabs: false` and the main-thread transformer path. This is not a limitation of our middleware — it's an inherent constraint of the environment:
 
@@ -220,13 +223,13 @@ For Safari/Tauri, `ThunderboltPowerSyncDatabase.generateBucketStorageAdapter()` 
 
 ---
 
-## Adding encrypted columns
+## Adding Encrypted Columns
 
 To encrypt a new column, add the table and column name to `encryptedColumnsMap` in [src/db/encryption/config.ts](../src/db/encryption/config.ts). The existing `encryptionMiddleware` handles all columns in the map automatically — both download decryption and upload encryption.
 
 See [e2e-encryption.md](e2e-encryption.md#adding-a-new-encrypted-column) for details.
 
-## Adding a non-encryption transformer
+## Adding a Non-Encryption Transformer
 
 If you need a non-encryption transformation (e.g. data normalization, decompression):
 
@@ -237,7 +240,7 @@ If you need a non-encryption transformation (e.g. data normalization, decompress
 
 ---
 
-## CK access in the SharedWorker
+## CK Access in the SharedWorker
 
 The SharedWorker has direct `indexedDB` access, so the codec loads the content key (CK) lazily from IndexedDB without needing `postMessage`. The CK is cached in a module-scoped variable inside the worker for the process lifetime.
 

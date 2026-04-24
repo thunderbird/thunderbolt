@@ -1,9 +1,10 @@
+import { fetchConfig } from '@/api/config'
 import { getSettings } from '@/dal'
 import { defaultSettingCloudUrl } from '@/defaults/settings'
 import { withTimeout } from '@/lib/timeout'
 import type { AbstractPowerSyncDatabase } from '@powersync/common'
-import { type PowerSyncDatabase, SyncStreamConnectionMethod, WASQLiteOpenFactory, WASQLiteVFS } from '@powersync/web'
-import type { WebPowerSyncDatabaseOptions } from '@powersync/web'
+import { SyncStreamConnectionMethod, WASQLiteOpenFactory, WASQLiteVFS } from '@powersync/web'
+import type { PowerSyncDatabase, WebPowerSyncDatabaseOptions } from '@powersync/web'
 import { wrapPowerSyncWithDrizzle } from '@powersync/drizzle-driver'
 import type { DatabaseInterface, AnyDrizzleDatabase } from '../database-interface'
 import { getDatabaseInstance } from '../database'
@@ -132,9 +133,10 @@ export const getPowerSyncOptions = (path: string, config: PowerSyncDatabaseConfi
       database: { dbFilename },
       schema: AppSchema as unknown as WebPowerSyncDatabaseOptions['schema'],
       transformers: [encryptionMiddleware],
-      // Use a custom SharedWorker that embeds TransformableBucketStorage with encryption middleware.
-      // This enables multi-tab support while still running transformations before local DB writes.
-      // The standard SharedWorker hardcodes SqliteBucketStorage and ignores any main-thread adapter.
+      // Always use the custom SharedWorker that embeds TransformableBucketStorage with encryption middleware.
+      // The middleware is data-driven (checks __enc: prefix per-value), so it safely passes through plaintext
+      // when E2EE is disabled. This avoids a hard dependency on the /config endpoint at init time — if the
+      // fetch fails, encrypted sync data is still decrypted correctly instead of being stored as ciphertext.
       sync: {
         worker: () =>
           new SharedWorker(new URL('./worker/ThunderboltSharedSyncImplementation.worker.ts', import.meta.url), {
@@ -208,6 +210,9 @@ export class PowerSyncDatabaseImpl implements DatabaseInterface {
 
     const options = getPowerSyncOptions(path)
 
+    // Always use ThunderboltPowerSyncDatabase with TransformableBucketStorage + encryption middleware.
+    // The middleware is data-driven (checks __enc: prefix), so it's a no-op when E2EE is disabled.
+    // This removes the hard dependency on /config at init — if the fetch fails, sync still works correctly.
     this.powerSync = new ThunderboltPowerSyncDatabase(options)
 
     // Wrap with Drizzle for type-safe queries.
@@ -237,7 +242,12 @@ export class PowerSyncDatabaseImpl implements DatabaseInterface {
 
     try {
       const { cloudUrl } = await getSettings(this._db, { cloud_url: defaultSettingCloudUrl.value })
-      const connector = new ThunderboltConnector(cloudUrl ?? defaultSettingCloudUrl.value)
+
+      // Re-fetch config before connecting so the upload encoder has the correct E2EE flag.
+      // If /config failed at app init (e.g. offline), this retries before sync starts.
+      await fetchConfig(cloudUrl)
+
+      const connector = new ThunderboltConnector(cloudUrl)
       // Use HTTP streaming to avoid WebSocket "invalid opcode 7" with self-hosted service (ws library).
       await this.powerSync.connect(connector, {
         connectionMethod: SyncStreamConnectionMethod.HTTP,

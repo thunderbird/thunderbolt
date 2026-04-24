@@ -42,9 +42,9 @@ const addLanguagePills = () => {
 		});
 };
 
-const run = () => {
+const run = async () => {
 	addLanguagePills();
-	renderMermaid();
+	await renderMermaid();
 };
 
 if (document.readyState === 'loading') {

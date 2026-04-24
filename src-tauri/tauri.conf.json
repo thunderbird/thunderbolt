@@ -62,7 +62,7 @@
           "scheme": [
             "https"
           ],
-          "host": "thunderbolt.io",
+          "host": "app.thunderbolt.io",
           "pathPrefix": [
             "/oauth/callback",
             "/auth/verify"

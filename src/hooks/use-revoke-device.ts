@@ -1,21 +1,16 @@
 import { useHttpClient } from '@/contexts'
-import { authHeaders } from '@/api/encryption'
+import { revokeDeviceWithProof } from '@/services/encryption'
 import { useMutation } from '@tanstack/react-query'
 
 /**
- * Shared mutation for revoking a device (trusted or pending).
+ * Mutation for revoking a device (trusted or pending).
  * Used by both the pending device modal and the devices settings page.
+ * Requires proof-of-CK-possession (canary secret) to prevent session-theft attacks.
  */
 export const useRevokeDevice = () => {
   const httpClient = useHttpClient()
 
   return useMutation({
-    mutationFn: (deviceId: string) =>
-      httpClient
-        .post(`account/devices/${encodeURIComponent(deviceId)}/revoke`, {
-          headers: authHeaders(),
-          credentials: 'omit',
-        })
-        .then(() => {}),
+    mutationFn: (deviceId: string) => revokeDeviceWithProof(httpClient, deviceId),
   })
 }

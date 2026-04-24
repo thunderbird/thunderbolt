@@ -27,6 +27,13 @@ mock.module('@/db/powersync', () => ({
   isSyncEnabled: () => localStorage.getItem('powersync_sync_enabled') === 'true',
 }))
 
+// These tests verify E2EE pending device behavior — encryption must be enabled.
+const realEncryption = await import('@/db/encryption')
+mock.module('@/db/encryption', () => ({
+  ...realEncryption,
+  isEncryptionEnabled: () => true,
+}))
+
 mock.module('@/hooks/use-approve-device', () => ({
   useApproveDevice: () => ({ mutate: mock(), isPending: false }),
 }))

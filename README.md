@@ -28,19 +28,18 @@ Found a bug? Have an idea?
 
 We welcome contributions from everyone.
 
-- **Development**: The [development guide](./docs/development.md) will help you get started.
+- **Development**: The [development guide](./docs/development/quick-start.md) will help you get started.
 - Make sure to check out the [Mozilla Community Participation Guidelines](https://www.mozilla.org/about/governance/policies/participation/).
 
 ## Documentation
 
 - [FAQ](./docs/faq.md) - Frequently asked questions
 - [Deployment](./deploy/README.md) - Self-host with Docker Compose or Kubernetes
-- [Development](./docs/development.md) - Quick start, setup, and testing
-- [Architecture](./docs/architecture.md) - System architecture and diagrams
-- [Claude Code Skills](./docs/claude-code.md) - Slash commands, automation, and subtree syncing
-- [Storybook](./docs/storybook.md) - Build, test, and document components
-- [Vite Bundle Analyzer](./docs/vite-bundle-analyzer.md) - Analyze frontend bundle size
-- [Tauri Signing Keys](./docs/tauri-signing-keys.md) - Generate and manage signing keys for releases
+- [Development](./docs/development/quick-start.md) - Quick start, setup, and testing
+- [Architecture](./docs/architecture/README.md) - System architecture and diagrams
+- [Storybook](./docs/dev-tooling/storybook.md) - Build, test, and document components
+- [Vite Bundle Analyzer](./docs/dev-tooling/vite-bundle-analyzer.md) - Analyze frontend bundle size
+- [Tauri Signing Keys](./docs/features/tauri-signing-keys.md) - Generate and manage signing keys for releases
 - [Release Process](./RELEASE.md) - Instructions for creating and publishing new releases
 - [Telemetry](./TELEMETRY.md) - Information about data collection and privacy policy
 

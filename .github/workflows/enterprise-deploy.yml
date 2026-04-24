@@ -58,9 +58,11 @@ jobs:
 
       - name: Set platform config
         working-directory: deploy/pulumi
-        run: pulumi config set platform ${{ inputs.platform }} -s ${{ inputs.stack_name }} --non-interactive
+        run: pulumi config set platform "$PLATFORM" -s "$STACK_NAME" --non-interactive
         env:
           PULUMI_CONFIG_PASSPHRASE: ${{ secrets.PULUMI_CONFIG_PASSPHRASE }}
+          PLATFORM: ${{ inputs.platform }}
+          STACK_NAME: ${{ inputs.stack_name }}
 
       - name: Deploy
         uses: pulumi/actions@8582a9e8cc630786854029b4e09281acd6794b58 # v6
@@ -74,7 +76,9 @@ jobs:
 
       - name: Print outputs
         working-directory: deploy/pulumi
-        run: pulumi stack output --json -s ${{ inputs.stack_name }}
+        run: pulumi stack output --json -s "$STACK_NAME"
+        env:
+          STACK_NAME: ${{ inputs.stack_name }}
 
   destroy:
     if: inputs.action == 'destroy'

@@ -18,10 +18,10 @@
 import type { Auth } from '@/auth/elysia-plugin'
 import { createAuthMacro } from '@/auth/elysia-plugin'
 import { createSafeFetch, validateSafeUrl } from '@/utils/url-validation'
-import { Elysia } from 'elysia'
+import { Elysia, t } from 'elysia'
 import { RateLimiterMemory, RateLimiterRes } from 'rate-limiter-flexible'
 import type { ChatCompletionCreateParamsBase } from 'openai/resources/chat/completions'
-import type { CustomModelModelsRequest, CustomModelProxyRequest, ProxyErrorEnvelope } from '@shared/custom-model-proxy'
+import type { ProxyErrorEnvelope } from '@shared/custom-model-proxy'
 import { getCustomModelClient } from './client'
 
 // ---------------------------------------------------------------------------
@@ -226,8 +226,7 @@ export const createCustomModelProxyRoutes = (auth: Auth) =>
     .use(createAuthMacro(auth))
     .post(
       '/proxy',
-      async ({ request, user: sessionUser }) => {
-        const body = (await request.json()) as CustomModelProxyRequest
+      async ({ body, request, user: sessionUser }) => {
         const { targetUrl, upstreamAuth, stream } = body
 
         const validation = validateProxyRequest(targetUrl, upstreamAuth)
@@ -289,12 +288,20 @@ export const createCustomModelProxyRoutes = (auth: Auth) =>
           return proxyError('UPSTREAM_UNREACHABLE', `Upstream error: ${msg.slice(0, 200)}`, 502)
         }
       },
-      { auth: true },
+      {
+        auth: true,
+        body: t.Object({
+          targetUrl: t.String(),
+          upstreamAuth: t.Optional(t.String()),
+          method: t.Literal('POST'),
+          body: t.Unknown(),
+          stream: t.Boolean(),
+        }),
+      },
     )
     .post(
       '/models',
-      async ({ request, user: sessionUser }) => {
-        const body = (await request.json()) as CustomModelModelsRequest
+      async ({ body, user: sessionUser }) => {
         const { baseUrl, upstreamAuth } = body
 
         const validation = validateModelsRequest(baseUrl, upstreamAuth)
@@ -401,5 +408,11 @@ export const createCustomModelProxyRoutes = (auth: Auth) =>
           return proxyError('UPSTREAM_UNREACHABLE', `Upstream error: ${msg.slice(0, 200)}`, 502)
         }
       },
-      { auth: true },
+      {
+        auth: true,
+        body: t.Object({
+          baseUrl: t.String(),
+          upstreamAuth: t.Optional(t.String()),
+        }),
+      },
     )

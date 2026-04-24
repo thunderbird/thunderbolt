@@ -9,9 +9,11 @@ const GitHubIcon = () => (
   </svg>
 )
 
+const REPO_URL = 'https://github.com/thunderbird/thunderbolt'
+
 const GetStartedButton = () => (
   <a
-    href="https://github.com/thunderbird/thunderbolt"
+    href={REPO_URL}
     target="_blank"
     rel="noopener noreferrer"
     className="inline-flex h-[46px] items-center justify-center gap-2 bg-[#344054] px-5 font-mono text-sm font-bold uppercase tracking-wider text-white transition-colors hover:bg-[#344054]/90"
@@ -37,8 +39,6 @@ const StarIcon = () => (
     <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
   </svg>
 )
-
-const REPO_URL = 'https://github.com/thunderbird/thunderbolt'
 
 const StarOnGitHubButton = () => (
   <span className="inline-flex h-[46px] items-stretch border border-[#d0d5dd] bg-white text-sm font-medium text-[#344054]">
@@ -629,7 +629,7 @@ const CTASection = () => (
 const MobileFooterCTA = () => (
   <div className="fixed inset-x-0 bottom-0 z-50 bg-white/20 backdrop-blur-[32px] px-6 py-4 md:hidden">
     <a
-      href="https://github.com/thunderbird/thunderbolt"
+      href={REPO_URL}
       target="_blank"
       rel="noopener noreferrer"
       className="flex h-[46px] w-full items-center justify-center gap-2 bg-[#344054] font-mono text-sm font-bold uppercase tracking-wider text-white transition-colors hover:bg-[#344054]/90"

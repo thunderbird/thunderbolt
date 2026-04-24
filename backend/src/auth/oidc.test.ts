@@ -41,6 +41,7 @@ const baseSettings: Settings = {
   rateLimitEnabled: false,
   swaggerEnabled: false,
   trustedProxy: '',
+  e2eeEnabled: false,
 }
 
 describe('OIDC config route', () => {

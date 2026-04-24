@@ -65,26 +65,28 @@ export const createModel = async (modelConfig: Model) => {
     case 'thunderbolt': {
       const db = getDb()
       const { cloudUrl } = await getSettings(db, { cloud_url: 'http://localhost:8000/v1' })
-      const token = getAuthToken() || 'thunderbolt'
       // OIDC mode authenticates via session cookies (Better Auth's bearer plugin
       // doesn't issue a token to the frontend because the OIDC callback is a
       // browser redirect, not an XHR — `set-auth-token` never reaches the client).
-      // Forward credentials so the cookie is sent cross-origin; backend accepts
-      // either cookie or bearer auth.
+      // Send credentials so the cookie is included cross-origin and DON'T set
+      // apiKey, which would otherwise add an `Authorization: Bearer <garbage>`
+      // header that Better Auth's bearer plugin would attempt first and reject.
+      const oidc = isOidcMode()
       const withCredentials = (input: RequestInfo | URL, init?: RequestInit) =>
         fetch(input, { ...init, credentials: 'include' })
       withCredentials.preconnect = fetch.preconnect
-      const providerFetch: typeof fetch = isOidcMode() ? withCredentials : fetch
+      const providerFetch: typeof fetch = oidc ? withCredentials : fetch
+      const apiKey = oidc ? undefined : getAuthToken() || 'thunderbolt'
       // GPT OSS (vendor: 'openai') uses createOpenAI with .chat() to force Chat Completions API
       // (AI SDK 5 defaults createOpenAI to Responses API which our backend doesn't support)
       if (modelConfig.vendor === 'openai') {
-        const provider = createOpenAI({ baseURL: cloudUrl, apiKey: token, fetch: providerFetch })
+        const provider = createOpenAI({ baseURL: cloudUrl, apiKey, fetch: providerFetch })
         return provider.chat(modelConfig.model)
       }
       const provider = createOpenAICompatible({
         name: 'thunderbolt',
         baseURL: cloudUrl,
-        apiKey: token,
+        apiKey,
         fetch: providerFetch,
       })
       return provider(modelConfig.model)

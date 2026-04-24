@@ -65,28 +65,32 @@ export const createModel = async (modelConfig: Model) => {
     case 'thunderbolt': {
       const db = getDb()
       const { cloudUrl } = await getSettings(db, { cloud_url: 'http://localhost:8000/v1' })
+      const token = getAuthToken() || 'thunderbolt'
       // OIDC mode authenticates via session cookies (Better Auth's bearer plugin
       // doesn't issue a token to the frontend because the OIDC callback is a
       // browser redirect, not an XHR — `set-auth-token` never reaches the client).
-      // Send credentials so the cookie is included cross-origin and DON'T set
-      // apiKey, which would otherwise add an `Authorization: Bearer <garbage>`
-      // header that Better Auth's bearer plugin would attempt first and reject.
+      // The AI SDKs require an apiKey to initialize, so we keep the placeholder
+      // but strip the resulting `Authorization` header in the fetch wrapper —
+      // otherwise Better Auth's bearer plugin would try the invalid bearer first
+      // and 401 before falling back to the cookie.
       const oidc = isOidcMode()
-      const withCredentials = (input: RequestInfo | URL, init?: RequestInit) =>
-        fetch(input, { ...init, credentials: 'include' })
-      withCredentials.preconnect = fetch.preconnect
-      const providerFetch: typeof fetch = oidc ? withCredentials : fetch
-      const apiKey = oidc ? undefined : getAuthToken() || 'thunderbolt'
+      const oidcFetch = (input: RequestInfo | URL, init?: RequestInit) => {
+        const headers = new Headers(init?.headers)
+        headers.delete('authorization')
+        return fetch(input, { ...init, headers, credentials: 'include' })
+      }
+      oidcFetch.preconnect = fetch.preconnect
+      const providerFetch: typeof fetch = oidc ? oidcFetch : fetch
       // GPT OSS (vendor: 'openai') uses createOpenAI with .chat() to force Chat Completions API
       // (AI SDK 5 defaults createOpenAI to Responses API which our backend doesn't support)
       if (modelConfig.vendor === 'openai') {
-        const provider = createOpenAI({ baseURL: cloudUrl, apiKey, fetch: providerFetch })
+        const provider = createOpenAI({ baseURL: cloudUrl, apiKey: token, fetch: providerFetch })
         return provider.chat(modelConfig.model)
       }
       const provider = createOpenAICompatible({
         name: 'thunderbolt',
         baseURL: cloudUrl,
-        apiKey,
+        apiKey: token,
         fetch: providerFetch,
       })
       return provider(modelConfig.model)

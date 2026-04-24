@@ -88,16 +88,16 @@ export default defineConfig({
 					],
 				},
 				{
-					label: 'Platform',
+					label: 'Features',
 					items: [
-						{ label: 'WebView', slug: 'docs/platform/webview' },
-						{ label: 'Widgets', slug: 'docs/platform/widgets' },
+						{ label: 'WebView', slug: 'docs/features/webview' },
+						{ label: 'Widgets', slug: 'docs/features/widgets' },
 					],
 				},
 				{
 					label: 'Dev Tooling',
 					items: [
-						{ label: 'Tauri Signing Keys', slug: 'docs/platform/tauri-signing-keys' },
+						{ label: 'Tauri Signing Keys', slug: 'docs/features/tauri-signing-keys' },
 						{ label: 'Storybook', slug: 'docs/dev-tooling/storybook' },
 						{ label: 'Vite Bundle Analyzer', slug: 'docs/dev-tooling/vite-bundle-analyzer' },
 						{

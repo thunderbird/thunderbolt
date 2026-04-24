@@ -142,7 +142,6 @@ The custom SharedWorker extends `SharedSyncImplementation`, an `@internal` class
 | ------------ | ------------------------------------------------------ | ------------------------------------- |
 | PowerSync    | Client-server sync                                     | Self-hostable via Docker              |
 | PostgreSQL   | Source of truth for everything                         | No                                    |
-| MongoDB      | PowerSync operational store                            | No                                    |
 | Keycloak     | Default OIDC provider in the self-hosted stack         | Yes — any OIDC-compliant IdP          |
 | Resend       | Transactional email delivery                           | Swap for any SMTP/provider            |
 | PostHog      | In-app analytics (opt-in)                              | Optional                              |

@@ -38,11 +38,11 @@ Most features in Thunderbolt are modular "primitives" that you can customize:
 - [Composite Primary Keys and Default Data](./architecture/composite-primary-keys-and-default-data.md)
 - [Delete Account and Revoke Device Access](./architecture/delete-account-and-revoke-device.md)
 
-## Platform
+## Features
 
-- [WebView](./platform/webview.md)
-- [Widget System Guide](./platform/widgets.md)
-- [Tauri Signing Keys](./platform/tauri-signing-keys.md)
+- [WebView](./features/webview.md)
+- [Widget System Guide](./features/widgets.md)
+- [Tauri Signing Keys](./features/tauri-signing-keys.md)
 
 ## Reference
 

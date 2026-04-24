@@ -2,7 +2,34 @@
 
 > ⚠️ End-to-end encryption is in **Preview**. It has not yet undergone a cryptography audit and is subject to further refinements.
 
-When E2E encryption is enabled, all user data is encrypted client-side before sync and decrypted client-side after download. The server stores only ciphertext and wrapped keys — it cannot read user data even if compelled or breached.
+Thunderbolt supports optional zero-knowledge end-to-end encryption: all user data is encrypted client-side before sync and decrypted client-side after download. The server stores only ciphertext and wrapped keys — it cannot read user data even if compelled or breached.
+
+For the sync pipeline integration, see [powersync-sync-middleware.md](powersync-sync-middleware.md).
+
+---
+
+## Configuration
+
+E2EE is **disabled by default**. The backend is the single source of truth:
+
+| Variable       | Where          | Default | Effect when enabled                                                                                                  |
+| -------------- | -------------- | ------- | -------------------------------------------------------------------------------------------------------------------- |
+| `E2EE_ENABLED` | Backend `.env` | `false` | Requires device trust flow before allowing sync; frontend encrypts/decrypts data, shows setup wizard, generates keys |
+
+```env
+# Backend (backend/.env)
+E2EE_ENABLED=true
+```
+
+The frontend reads this flag from the backend's `GET /v1/config` endpoint at app initialization and caches it in `localStorage` for offline use. No frontend environment variable is needed.
+
+When disabled (default), sync works without encryption — no setup wizard, no key generation, no recovery key. The backend auto-trusts devices and skips the envelope flow. The encryption API endpoints remain available but are not called.
+
+**Frontend control point:** `isEncryptionEnabled()` in `src/db/encryption/config.ts` reads the cached flag from `localStorage`. The companion `needsSyncSetupWizard()` helper combines the encryption-enabled check with the CK-exists check — it returns `true` only when E2EE is on and no Content Key has been set up yet. Both the sign-in flow and the sync toggle use this helper to decide whether to show the setup wizard or enable sync directly.
+
+**Backend control point:** `e2eeEnabled` in `backend/src/config/settings.ts`. When `false`, `validateDeviceForSync()` skips the trust check and `issuePowerSyncToken()` auto-trusts devices on upsert.
+
+---
 
 ## Key Concepts
 

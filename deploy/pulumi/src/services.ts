@@ -159,7 +159,11 @@ export const createServices = (args: ServiceArgs) => {
         name: 'postgres',
         image: args.images.postgres,
         essential: true,
+        // `-m fast` flushes WAL + checkpoints on shutdown. stopTimeout of 120s
+        // (Fargate max) gives postgres time to complete the checkpoint before
+        // SIGKILL arrives. Without this, rolling updates can corrupt WAL.
         command: ['postgres', '-c', 'wal_level=logical'],
+        stopTimeout: 120,
         environment: [
           { name: 'POSTGRES_USER', value: 'postgres' },
           { name: 'POSTGRES_DB', value: 'postgres' },
@@ -179,6 +183,11 @@ export const createServices = (args: ServiceArgs) => {
     taskDefinition: pgTaskDef.arn,
     desiredCount: 1,
     launchType: 'FARGATE',
+    // Stop the old task completely before starting a new one. Postgres with a
+    // single EFS-backed volume can't have two replicas running simultaneously —
+    // overlap causes WAL corruption. Trade small downtime (~30s) for data safety.
+    deploymentMinimumHealthyPercent: 0,
+    deploymentMaximumPercent: 100,
     networkConfiguration: {
       subnets: privateSubnetIds,
       securityGroups: [servicesSgId],

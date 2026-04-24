@@ -4,7 +4,7 @@ import { AnimatePresence, motion } from 'framer-motion'
 import { useEffect, useRef } from 'react'
 import { useChatScrollHandler } from '@/chats/use-chat-scroll-handler'
 import { ChatMessages } from './chat-messages'
-import { ChatPromptInput, type ChatPromptInputRef } from './chat-prompt-input'
+import { ChatPromptInput } from './chat-prompt-input'
 import { NoAgentsMessage } from './no-agents-message'
 import { useCurrentChatSession } from '@/chats/chat-store'
 import { useChatStore } from '@/chats/chat-store'
@@ -18,9 +18,8 @@ type ChatUIProps = {
 }
 
 const ChatUI = ({ saveMessages }: ChatUIProps) => {
-  const { messages, agentConfig } = useCurrentChatSession()
+  const { messages } = useCurrentChatSession()
   const agents = useChatStore((s) => s.agents)
-  const isBuiltInAgent = agentConfig.type === 'built-in'
   const hasNoAgents = agents.length === 0
 
   useChatAutomation()
@@ -118,21 +117,6 @@ const ChatUI = ({ saveMessages }: ChatUIProps) => {
               duration: 0.25,
             }}
           >
-            {!hasMessages && isBuiltInAgent && (
-              <AnimatePresence>
-                <motion.div
-                  initial={{ opacity: 0, y: 10 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0, y: 10 }}
-                  transition={{ delay: 0.1 }}
-                  className="w-full max-w-[696px] overflow-x-auto pb-3"
-                >
-                  <SuggestionButtons onSelectPrompt={handleSelectPrompt} />
-                </motion.div>
-              </AnimatePresence>
-            )}
-
-
             <motion.div
               className="w-full max-w-[696px] min-w-[268px] bg-card dark:bg-[oklch(0.182_0_0)] border dark:border-input rounded-2xl"
               layout
@@ -142,7 +126,7 @@ const ChatUI = ({ saveMessages }: ChatUIProps) => {
                 duration: 0.25,
               }}
             >
-              <ChatPromptInput ref={chatPromptInputRef} saveMessages={saveMessages} />
+              <ChatPromptInput saveMessages={saveMessages} />
             </motion.div>
           </motion.div>
         </motion.div>

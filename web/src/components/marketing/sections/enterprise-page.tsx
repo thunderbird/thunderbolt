@@ -55,7 +55,7 @@ const StarOnGitHubButton = () => (
         count and populates it. If the fetch fails, it stays hidden. */}
     <a
       id="github-star-count-link"
-      href={`${REPO_URL}/stargazers`}
+      href={REPO_URL}
       target="_blank"
       rel="noopener noreferrer"
       className="hidden items-center gap-1.5 border-l border-[#d0d5dd] px-4 transition-colors hover:bg-[#f2f4f7]"

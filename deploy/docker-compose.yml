@@ -35,7 +35,9 @@ services:
       TRUSTED_ORIGINS: http://localhost:${FRONTEND_PORT:-3000}
       CORS_ORIGINS: http://localhost:${FRONTEND_PORT:-3000}
       POWERSYNC_URL: http://powersync:8080
-      POWERSYNC_JWT_SECRET: enterprise-powersync-secret
+      # Must match the base64-decoded `k` in deploy/config/powersync-config.yaml
+      # AND be >=32 chars (backend/src/config/settings.ts:76).
+      POWERSYNC_JWT_SECRET: enterprise-thunderbolt-powersync-jwt-default-secret
       POWERSYNC_JWT_KID: enterprise-powersync
       RATE_LIMIT_ENABLED: "false"
     depends_on:

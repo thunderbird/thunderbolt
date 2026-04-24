@@ -59,8 +59,9 @@ jobs:
           set -euo pipefail
 
           # List all stacks in the project; filter to preview-pr-*
-          ALL_STACKS=$(pulumi stack ls --all --json | jq -r '.[].name')
-          PREVIEW_STACKS=$(echo "$ALL_STACKS" | grep -E '^preview-pr-[0-9]+$' || true)
+          # Fetch once and filter locally — avoids N Pulumi API calls in the loop.
+          ALL_STACKS_JSON=$(pulumi stack ls --all --json)
+          PREVIEW_STACKS=$(echo "$ALL_STACKS_JSON" | jq -r '.[] | select(.name|test("^preview-pr-[0-9]+$")) | .name')
 
           if [ -z "$PREVIEW_STACKS" ]; then
             echo "No preview stacks found. Nothing to reconcile."
@@ -77,8 +78,7 @@ jobs:
 
           for STACK in $PREVIEW_STACKS; do
             PR_NUM=$(echo "$STACK" | sed 's/^preview-pr-//')
-            STACK_JSON=$(pulumi stack ls --all --json | jq -r ".[] | select(.name==\"$STACK\")")
-            LAST_UPDATE=$(echo "$STACK_JSON" | jq -r '.lastUpdate // empty')
+            LAST_UPDATE=$(echo "$ALL_STACKS_JSON" | jq -r ".[] | select(.name==\"$STACK\") | .lastUpdate // empty")
 
             REASON=""
 

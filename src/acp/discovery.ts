@@ -1,4 +1,4 @@
-import ky, { type KyInstance } from 'ky'
+import { http, type HttpClient } from '@/lib/http'
 import { isAgentTypeEnabled } from '@/lib/enabled-agent-types'
 import { getAuthToken } from '@/lib/auth-token'
 import { hashAgent } from '@/defaults/agents'
@@ -58,14 +58,14 @@ type RegistryResponse = {
 
 type DiscoveryDeps = {
   getAuthToken?: () => string | null
-  httpClient?: KyInstance
+  httpClient?: HttpClient
 }
 
 export const fetchRemoteAgentDescriptors = async (
   cloudUrl: string,
   deps: DiscoveryDeps = {},
 ): Promise<RemoteAgentDescriptor[]> => {
-  const { getAuthToken: getToken = getAuthToken, httpClient = ky } = deps
+  const { getAuthToken: getToken = getAuthToken, httpClient = http } = deps
   try {
     const token = getToken()
     const data = await httpClient

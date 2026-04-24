@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, spyOn } from 'bun:test'
-import ky from 'ky'
+import { createClient } from '@/lib/http'
 import { fetchRemoteAgentDescriptors } from './discovery'
 
 type FetchFn = (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>
@@ -20,7 +20,7 @@ const validRegistryResponse = {
   ],
 }
 
-const createClient = (mockFetch: FetchFn) => ky.create({ fetch: mockFetch as typeof fetch })
+const makeClient = (mockFetch: FetchFn) => createClient({ fetch: mockFetch as typeof fetch })
 
 const successFetch =
   (onRequest?: (req: Request) => void): FetchFn =>
@@ -52,7 +52,7 @@ describe('fetchRemoteAgentDescriptors', () => {
 
   it('sends Authorization header with Bearer token when token exists', async () => {
     let capturedReq: Request | undefined
-    const httpClient = createClient(successFetch((req) => (capturedReq = req)))
+    const httpClient = makeClient(successFetch((req) => (capturedReq = req)))
 
     await fetchRemoteAgentDescriptors(cloudUrl, {
       getAuthToken: () => 'my-token',
@@ -64,7 +64,7 @@ describe('fetchRemoteAgentDescriptors', () => {
 
   it('sends no Authorization header when token is null', async () => {
     let capturedReq: Request | undefined
-    const httpClient = createClient(successFetch((req) => (capturedReq = req)))
+    const httpClient = makeClient(successFetch((req) => (capturedReq = req)))
 
     await fetchRemoteAgentDescriptors(cloudUrl, {
       getAuthToken: () => null,
@@ -76,7 +76,7 @@ describe('fetchRemoteAgentDescriptors', () => {
 
   it('includes credentials: include in the request', async () => {
     let capturedReq: Request | undefined
-    const httpClient = createClient(successFetch((req) => (capturedReq = req)))
+    const httpClient = makeClient(successFetch((req) => (capturedReq = req)))
 
     await fetchRemoteAgentDescriptors(cloudUrl, {
       getAuthToken: () => 'tok',
@@ -88,7 +88,7 @@ describe('fetchRemoteAgentDescriptors', () => {
 
   it('fetches from the correct URL', async () => {
     let capturedReq: Request | undefined
-    const httpClient = createClient(successFetch((req) => (capturedReq = req)))
+    const httpClient = makeClient(successFetch((req) => (capturedReq = req)))
 
     await fetchRemoteAgentDescriptors(cloudUrl, {
       getAuthToken: () => null,
@@ -99,7 +99,7 @@ describe('fetchRemoteAgentDescriptors', () => {
   })
 
   it('returns only remote agents from the registry response', async () => {
-    const httpClient = createClient(successFetch())
+    const httpClient = makeClient(successFetch())
 
     const result = await fetchRemoteAgentDescriptors(cloudUrl, {
       getAuthToken: () => null,
@@ -129,7 +129,7 @@ describe('fetchRemoteAgentDescriptors', () => {
         status: 200,
         headers: { 'Content-Type': 'application/json' },
       })
-    const httpClient = createClient(mockFetch)
+    const httpClient = makeClient(mockFetch)
 
     const result = await fetchRemoteAgentDescriptors(cloudUrl, {
       getAuthToken: () => null,
@@ -141,7 +141,7 @@ describe('fetchRemoteAgentDescriptors', () => {
 
   it('returns empty array on fetch failure', async () => {
     const mockFetch: FetchFn = async () => new Response('Server Error', { status: 500 })
-    const httpClient = ky.create({ fetch: mockFetch as typeof fetch, retry: 0 })
+    const httpClient = makeClient(mockFetch)
 
     const result = await fetchRemoteAgentDescriptors(cloudUrl, {
       getAuthToken: () => 'tok',

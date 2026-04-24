@@ -18,9 +18,8 @@ import { MCPProvider } from '@/lib/mcp-provider'
 import { getClock } from '@/testing-library'
 
 /**
- * hydrateChatStore internally calls ky.get() (via discoverAndSeedRemoteAgents)
- * which uses setTimeout for retry logic. With fake timers globally installed,
- * we must advance the clock so ky retries don't hang forever.
+ * hydrateChatStore internally calls http.get() (via discoverAndSeedRemoteAgents).
+ * With fake timers globally installed, we must advance the clock so fetch timeouts don't hang.
  */
 const callHydrate = async (hydrateFn: () => Promise<void>) => {
   const promise = hydrateFn()

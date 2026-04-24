@@ -1,4 +1,4 @@
-import ky from 'ky'
+import { http } from '@/lib/http'
 import { getDb } from '@/db/database'
 import { getSettings } from '@/dal'
 import { getAuthToken } from '@/lib/auth-token'
@@ -11,7 +11,7 @@ export const fetchWsTicket = async (payload?: Record<string, unknown>): Promise<
   const db = getDb()
   const { cloudUrl } = await getSettings(db, { cloud_url: 'http://localhost:8000/v1' })
   const token = getAuthToken()
-  const data = await ky
+  const data = await http
     .post(`${cloudUrl}/ws-ticket`, {
       headers: token ? { Authorization: `Bearer ${token}` } : {},
       credentials: 'include',

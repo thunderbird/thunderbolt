@@ -16,7 +16,7 @@ import type { ThunderboltUIMessage } from '@/types'
 import type { SourceMetadata } from '@/types/source'
 import type { AgentSideConnection, PromptResponse } from '@agentclientprotocol/sdk'
 import type { MCPClient } from '@/lib/mcp-provider'
-import ky from 'ky'
+import { http } from '@/lib/http'
 import {
   convertToModelMessages,
   extractReasoningMiddleware,
@@ -53,7 +53,7 @@ const buildToolset = async ({
     return {}
   }
 
-  const availableTools = await getAvailableTools(ky, sourceCollector)
+  const availableTools = await getAvailableTools(http, sourceCollector)
   const toolset: Record<string, Tool> = { ...createToolset(availableTools) }
 
   for (const mcpClient of mcpClients ?? []) {

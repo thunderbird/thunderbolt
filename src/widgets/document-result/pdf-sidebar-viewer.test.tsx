@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, spyOn } from 'bun:test'
-import ky from 'ky'
+import { createClient } from '@/lib/http'
 import { fetchDocumentFile } from './pdf-sidebar-viewer'
 
 describe('PdfSidebarViewer file type detection', () => {
@@ -38,7 +38,7 @@ describe('fetchDocumentFile', () => {
 
   type FetchFn = (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>
 
-  const createClient = (mockFetch: FetchFn) => ky.create({ fetch: mockFetch as typeof fetch })
+  const makeClient = (mockFetch: FetchFn) => createClient({ fetch: mockFetch as typeof fetch })
 
   const successFetch =
     (onRequest?: (req: Request) => void): FetchFn =>
@@ -63,7 +63,7 @@ describe('fetchDocumentFile', () => {
 
   it('sends Authorization header with Bearer token when token exists', async () => {
     let capturedReq: Request | undefined
-    const httpClient = createClient(successFetch((req) => (capturedReq = req)))
+    const httpClient = makeClient(successFetch((req) => (capturedReq = req)))
 
     await fetchDocumentFile({
       cloudUrl,
@@ -77,7 +77,7 @@ describe('fetchDocumentFile', () => {
 
   it('sends no Authorization header when token is null', async () => {
     let capturedReq: Request | undefined
-    const httpClient = createClient(successFetch((req) => (capturedReq = req)))
+    const httpClient = makeClient(successFetch((req) => (capturedReq = req)))
 
     await fetchDocumentFile({
       cloudUrl,
@@ -91,7 +91,7 @@ describe('fetchDocumentFile', () => {
 
   it('fetches from the correct URL', async () => {
     let capturedReq: Request | undefined
-    const httpClient = createClient(successFetch((req) => (capturedReq = req)))
+    const httpClient = makeClient(successFetch((req) => (capturedReq = req)))
 
     await fetchDocumentFile({
       cloudUrl,
@@ -104,7 +104,7 @@ describe('fetchDocumentFile', () => {
   })
 
   it('returns a blob URL on success', async () => {
-    const httpClient = createClient(successFetch())
+    const httpClient = makeClient(successFetch())
 
     const result = await fetchDocumentFile({
       cloudUrl,
@@ -118,7 +118,7 @@ describe('fetchDocumentFile', () => {
 
   it('throws on non-ok response', async () => {
     const mockFetch: FetchFn = async () => new Response('Unauthorized', { status: 401 })
-    const httpClient = createClient(mockFetch)
+    const httpClient = makeClient(mockFetch)
 
     expect(
       fetchDocumentFile({
@@ -132,7 +132,7 @@ describe('fetchDocumentFile', () => {
 
   it('includes credentials in the request', async () => {
     let capturedReq: Request | undefined
-    const httpClient = createClient(successFetch((req) => (capturedReq = req)))
+    const httpClient = makeClient(successFetch((req) => (capturedReq = req)))
 
     await fetchDocumentFile({
       cloudUrl,

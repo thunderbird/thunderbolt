@@ -4,7 +4,7 @@ import { useSettings } from '@/hooks/use-settings'
 import { getAuthToken } from '@/lib/auth-token'
 import { Button } from '@/components/ui/button'
 import { Download, Loader2 } from 'lucide-react'
-import ky, { type KyInstance } from 'ky'
+import { http, type HttpClient } from '@/lib/http'
 import { useCallback, useEffect, useReducer, useRef } from 'react'
 import { Document, Page, pdfjs } from 'react-pdf'
 import 'react-pdf/dist/Page/AnnotationLayer.css'
@@ -16,7 +16,7 @@ type FetchDocumentFileOptions = {
   cloudUrl: string
   fileId: string
   getAuthToken: () => string | null
-  httpClient?: KyInstance
+  httpClient?: HttpClient
 }
 
 /** Fetches a document file with auth and returns a blob URL. */
@@ -24,7 +24,7 @@ export const fetchDocumentFile = async ({
   cloudUrl,
   fileId,
   getAuthToken: getToken,
-  httpClient = ky,
+  httpClient = http,
 }: FetchDocumentFileOptions): Promise<string> => {
   const token = getToken()
 

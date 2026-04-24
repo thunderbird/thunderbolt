@@ -26,6 +26,7 @@ export type RequestOptions = {
 export type ResponsePromise = Promise<Response> & {
   json: <T>() => Promise<T>
   text: () => Promise<string>
+  blob: () => Promise<Blob>
 }
 
 export type HttpClient = {
@@ -76,6 +77,7 @@ const makeResponsePromise = (promise: Promise<Response>): ResponsePromise => {
   const rp = promise as ResponsePromise
   rp.json = <T>(): Promise<T> => promise.then((res) => res.json())
   rp.text = () => promise.then((res) => res.text())
+  rp.blob = () => promise.then((res) => res.blob())
   return rp
 }
 

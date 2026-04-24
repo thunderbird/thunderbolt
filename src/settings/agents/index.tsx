@@ -4,10 +4,9 @@ import { Dialog, DialogTrigger } from '@/components/ui/dialog'
 import { PageHeader } from '@/components/ui/page-header'
 import { PageSearch } from '@/components/ui/page-search'
 import { addCustomAgent, addRemoteAgent, installRegistryAgent, toggleAgent, uninstallRegistryAgent } from '@/dal/agents'
-import { useDatabase } from '@/contexts'
+import { useDatabase, useHttpClient } from '@/contexts'
 import { agentsTable } from '@/db/tables'
 import type { Agent } from '@/types'
-import ky from 'ky'
 import { getAuthToken } from '@/lib/auth-token'
 import { useQuery } from '@powersync/tanstack-react-query'
 import { toCompilableQuery } from '@powersync/drizzle-driver'
@@ -44,6 +43,7 @@ const AgentSection = ({ title, children }: { title: string; children: ReactNode 
 
 export default function AgentsSettingsPage() {
   const db = useDatabase()
+  const httpClient = useHttpClient()
   const queryClient = useQueryClient()
   const { cloudUrl, experimentalFeatureAgentsCli } = useSettings({
     cloud_url: 'http://localhost:8000/v1',
@@ -62,7 +62,7 @@ export default function AgentsSettingsPage() {
     queryKey: ['agent-registry', cloudUrl.value],
     queryFn: async () => {
       const token = getAuthToken()
-      const json = await ky
+      const json = await httpClient
         .get(`${cloudUrl.value}/agents`, {
           headers: token ? { Authorization: `Bearer ${token}` } : {},
           credentials: 'include',

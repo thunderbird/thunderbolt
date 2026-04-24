@@ -21,6 +21,51 @@ const GetStartedButton = () => (
   </a>
 )
 
+const StarIcon = () => (
+  <svg
+    viewBox="0 0 24 24"
+    width="16"
+    height="16"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="1.8"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    aria-hidden="true"
+    style={{ flexShrink: 0 }}
+  >
+    <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
+  </svg>
+)
+
+const REPO_URL = 'https://github.com/thunderbird/thunderbolt'
+
+const StarOnGitHubButton = () => (
+  <span className="inline-flex h-[46px] items-stretch border border-[#d0d5dd] bg-white text-sm font-medium text-[#344054]">
+    <a
+      href={REPO_URL}
+      target="_blank"
+      rel="noopener noreferrer"
+      className="inline-flex items-center gap-2 px-4 transition-colors hover:bg-[#f2f4f7]"
+    >
+      <GitHubIcon />
+      Star on GitHub
+    </a>
+    {/* Count half — hidden until the inline <script> in index.astro fetches the
+        count and populates it. If the fetch fails, it stays hidden. */}
+    <a
+      id="github-star-count-link"
+      href={`${REPO_URL}/stargazers`}
+      target="_blank"
+      rel="noopener noreferrer"
+      className="hidden items-center gap-1.5 border-l border-[#d0d5dd] px-4 transition-colors hover:bg-[#f2f4f7]"
+    >
+      <StarIcon />
+      <span id="github-star-count-value" />
+    </a>
+  </span>
+)
+
 const EnterpriseInquiriesButton = () => (
   <a
     href="/contact"
@@ -217,7 +262,10 @@ const DesktopMockup = () => (
 
 const Hero = () => (
   <section className="relative pb-16 pt-[80px]">
-    <div className="mx-auto flex max-w-[730px] flex-col items-center gap-8 px-6 text-center">
+    <div className="mx-auto flex max-w-[730px] flex-col items-center gap-6 px-6 text-center">
+      <div className="mb-4 md:mb-8">
+        <StarOnGitHubButton />
+      </div>
       <h1 className="text-[40px] font-medium leading-[1.1] tracking-[-0.96px] text-[#101828] md:text-[48px]">
         AI You Control
       </h1>
@@ -594,7 +642,8 @@ const MobileFooterCTA = () => (
 
 /* ─── Page ────────────────────────────────────────────── */
 
-export const EnterprisePage = () => (
+export const EnterprisePage = () => {
+  return (
   <div className="relative min-h-screen overflow-x-hidden bg-[#f9fafb]">
     <BackgroundGrid />
     <Header
@@ -623,4 +672,5 @@ export const EnterprisePage = () => (
     <FooterSection className="relative z-10 bg-[#f9fafb] pb-24 md:pb-16" />
     <MobileFooterCTA />
   </div>
-)
+  )
+}

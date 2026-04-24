@@ -15,20 +15,20 @@ const settingsSchema = z
     thunderboltInferenceUrl: z.string().default(''),
     thunderboltInferenceApiKey: z.string().default(''),
 
-  // Haystack/Deepset settings
-  haystackApiKey: z.string().default(''),
-  haystackBaseUrl: z.string().default('https://api.cloud.deepset.ai'),
-  haystackWorkspace: z.string().default(''),
-  haystackPipelineName: z.string().default(''),
-  haystackPipelineId: z.string().default(''),
-  haystackPipelines: z.string().default(''),
+    // Haystack/Deepset settings
+    haystackApiKey: z.string().default(''),
+    haystackBaseUrl: z.string().default('https://api.cloud.deepset.ai'),
+    haystackWorkspace: z.string().default(''),
+    haystackPipelineName: z.string().default(''),
+    haystackPipelineId: z.string().default(''),
+    haystackPipelines: z.string().default(''),
 
-  // Agent filtering
-  enabledAgents: z.string().default(''),
-  allowCustomAgents: z.boolean().default(true),
+    // Agent filtering
+    enabledAgents: z.string().default(''),
+    allowCustomAgents: z.boolean().default(true),
 
-  // Health Check Configuration
-  monitoringToken: z.string().default(''),
+    // Health Check Configuration
+    monitoringToken: z.string().default(''),
 
     // OAuth Settings
     googleClientId: z.string().default(''),

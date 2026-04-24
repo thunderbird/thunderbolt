@@ -48,6 +48,7 @@
   "devDependencies": {
     "@electric-sql/pglite-socket": "^0.1.4",
     "@react-email/preview-server": "5.2.10",
+    "@types/react": "^19.1.10",
     "@typescript-eslint/eslint-plugin": "^8.58.2",
     "@typescript-eslint/parser": "^8.58.2",
     "drizzle-kit": "^0.31.7",

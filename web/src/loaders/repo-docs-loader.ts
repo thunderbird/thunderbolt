@@ -39,6 +39,7 @@ export const repoDocsLoader = ({
 
 		store.clear();
 		const files = await walkMarkdown(rootPath);
+		const knownDocPaths = new Set(files.map((abs) => relative(rootPath, abs).split(sep).join('/')));
 		await Promise.all(
 			files.map(async (abs) => {
 				const raw = await readFile(abs, 'utf8');
@@ -49,7 +50,7 @@ export const repoDocsLoader = ({
 				const strippedContent = stripH1(content);
 				const description = fm.description || extractDescription(strippedContent) || '';
 				const slug = computeSlug(relPath, urlPrefix);
-				const body = rewriteLinks(strippedContent, relPath, urlPrefix, githubBaseUrl);
+				const body = rewriteLinks(strippedContent, relPath, urlPrefix, githubBaseUrl, knownDocPaths);
 				const data = await parseData({
 					id: slug,
 					data: { ...fm, title, description },
@@ -85,7 +86,7 @@ async function walkMarkdown(dir: string): Promise<string[]> {
 	return results.flat().sort();
 }
 
-function parseFrontmatter(raw: string) {
+export function parseFrontmatter(raw: string) {
 	const match = raw.match(frontmatterRe);
 	if (!match) return { data: {} as Record<string, string>, content: raw };
 	const data: Record<string, string> = {};
@@ -105,7 +106,7 @@ function stripH1(body: string): string {
 }
 
 /** Pick the first real prose paragraph (skipping code blocks, tables, admonitions, lists). */
-function extractDescription(body: string): string | undefined {
+export function extractDescription(body: string): string | undefined {
 	const blocks = body
 		.replace(/^```[\s\S]*?```$/gm, '')
 		.split(/\n\s*\n/);
@@ -125,12 +126,12 @@ function extractDescription(body: string): string | undefined {
 	return undefined;
 }
 
-function fallbackTitle(relPath: string): string {
+export function fallbackTitle(relPath: string): string {
 	const base = relPath.replace(/\.md$/i, '').split('/').pop() || relPath;
 	return base.replace(/[-_]/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
 }
 
-function computeSlug(relPath: string, prefix: string): string {
+export function computeSlug(relPath: string, prefix: string): string {
 	const withoutExt = relPath.replace(/\.md$/i, '').toLowerCase();
 	const parts = withoutExt.split('/');
 	const last = parts.at(-1);
@@ -142,11 +143,12 @@ function computeSlug(relPath: string, prefix: string): string {
 }
 
 /** Rewrite relative links so they resolve on the Starlight site. */
-function rewriteLinks(
+export function rewriteLinks(
 	body: string,
 	sourceRelPath: string,
 	urlPrefix: string,
 	githubBaseUrl: string,
+	knownDocPaths: Set<string>,
 ): string {
 	return body.replace(
 		/\[([^\]]+)\]\(([^)\s#]+)(#[^)\s]*)?\)/g,
@@ -154,12 +156,19 @@ function rewriteLinks(
 			if (/^([a-z]+:|\/\/|#|mailto:|tel:)/i.test(url) || url.startsWith('/')) return match;
 			const repoPath = resolveRepoPath(`docs/${sourceRelPath}`, url);
 			if (repoPath.startsWith('docs/')) {
-				const inner = repoPath
-					.slice('docs/'.length)
-					.replace(/\.md$/i, '')
-					.replace(/\/(readme|index)$/i, '')
-					.toLowerCase();
-				return `[${text}](/${urlPrefix}/${inner}${hash})`;
+				const docRelPath = repoPath.slice('docs/'.length);
+				// Only treat as a docs link if the target file actually exists in docs.
+				// Without this check, links like ../src/file.ts from docs/architecture/
+				// incorrectly resolve to docs/src/file.ts and generate broken docs URLs.
+				const withExt = /\.\w+$/.test(docRelPath) ? docRelPath : `${docRelPath}.md`;
+				if (knownDocPaths.has(withExt) || knownDocPaths.has(docRelPath)) {
+					const withoutExt = docRelPath.replace(/\.md$/i, '').toLowerCase();
+					const parts = withoutExt.split('/');
+					const last = parts.at(-1);
+					if (last === 'readme' || last === 'index') parts.pop();
+					const inner = parts.join('/');
+					return `[${text}](/${urlPrefix}${inner ? `/${inner}` : ''}${hash})`;
+				}
 			}
 			return `[${text}](${githubBaseUrl}/${repoPath}${hash})`;
 		},
@@ -167,7 +176,7 @@ function rewriteLinks(
 }
 
 /** Resolve a markdown-style relative link to a repo-root-relative path. */
-function resolveRepoPath(fromFile: string, url: string): string {
+export function resolveRepoPath(fromFile: string, url: string): string {
 	const fromDir = fromFile.split('/').slice(0, -1);
 	const urlParts = url.split('/').filter((p) => p !== '');
 	while (urlParts.length > 0 && (urlParts[0] === '.' || urlParts[0] === '..')) {

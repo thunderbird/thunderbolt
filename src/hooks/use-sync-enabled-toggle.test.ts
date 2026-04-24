@@ -20,11 +20,13 @@ mock.module('@/lib/posthog', () => ({
   trackEvent: mockTrackEvent,
 }))
 
+const mockGetCK = mock(() => Promise.resolve(null))
+
 mock.module('@/db/encryption', () => ({
   isEncryptionEnabled: () => true,
+  needsSyncSetupWizard: async () => !(await mockGetCK()),
 }))
 
-const mockGetCK = mock(() => Promise.resolve(null))
 mock.module('@/crypto/key-storage', () => ({
   getCK: mockGetCK,
 }))

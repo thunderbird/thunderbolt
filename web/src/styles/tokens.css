@@ -1,0 +1,35 @@
+/* ─── Thunderbolt brand tokens ──────────────────────────────
+ * Matches the marketing site so landing / blog / docs all feel
+ * like one surface. Do not redefine these in individual layouts.
+ */
+
+@import '@fontsource-variable/inter';
+@import '@fontsource-variable/mona-sans';
+@import '@fontsource/space-mono/400.css';
+@import '@fontsource/space-mono/700.css';
+@import '@fontsource/mozilla-text';
+
+:root {
+	/* Palette — pulled from marketing/enterprise-page.tsx */
+	--tb-bg: #f9fafb;
+	--tb-surface: #ffffff;
+	--tb-surface-subtle: #eff1f4;
+	--tb-surface-input: #f2f4f7;
+	--tb-border: #eaecf0;
+	--tb-border-strong: #d0d5dd;
+	--tb-text: #101828;
+	--tb-text-secondary: #344054;
+	--tb-text-muted: #667085;
+	--tb-text-dim: #98a2b3;
+
+	/* Typography */
+	--tb-font-sans:
+		'Mona Sans Variable', 'Inter Variable', -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+	--tb-font-mono:
+		'Space Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace;
+	--tb-font-text: 'Mozilla Text', 'Mona Sans Variable', 'Inter Variable', Georgia, serif;
+
+	/* Measure */
+	--tb-measure-narrow: 44rem;
+	--tb-measure-wide: 64rem;
+}

@@ -89,6 +89,15 @@ export const denyDevice = async (httpClient: HttpClient, deviceId: string, canar
   })
 }
 
+/** Revoke a device. Includes canary proof-of-CK-possession when E2EE is active. */
+export const revokeDevice = async (httpClient: HttpClient, deviceId: string, canarySecret?: string): Promise<void> => {
+  await httpClient.post(`account/devices/${encodeURIComponent(deviceId)}/revoke`, {
+    json: canarySecret ? { canarySecret } : {},
+    headers: authHeaders(),
+    credentials: 'omit',
+  })
+}
+
 /** Cancel this device's pending approval state (called by the pending device itself). */
 export const cancelPending = async (httpClient: HttpClient): Promise<void> => {
   await httpClient.post('devices/me/cancel-pending', {

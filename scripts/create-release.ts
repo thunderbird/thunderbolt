@@ -67,7 +67,7 @@ const parseArgs = (): Args => {
     if (arg === '--help' || arg === '-h') {
       args.help = true
     } else if (arg === '--version' || arg === '-v') {
-      args.version = process.argv[++i]
+      args.version = process.argv[++i]?.replace(/^v/, '')
     } else if (arg === '--type' || arg === '-t') {
       args.type = process.argv[++i] as VersionType
     } else if (arg === '--platform') {

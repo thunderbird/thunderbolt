@@ -14,13 +14,20 @@ if (process.env.DATABASE_DRIVER === 'postgres' && !process.env.DATABASE_URL) {
 
 const isPglite = process.env.DATABASE_DRIVER !== 'postgres'
 
-const pgliteDb = isPglite
-  ? drizzlePglite({ client: new PGlite(process.env.DATABASE_URL), schema }) // undefined = in-memory
-  : null
+const pgliteClient = isPglite ? new PGlite(process.env.DATABASE_URL) : null // undefined = in-memory
+
+const pgliteDb = pgliteClient ? drizzlePglite({ client: pgliteClient, schema }) : null
 
 const postgresDb = isPglite ? null : drizzlePostgres({ client: postgres(process.env.DATABASE_URL!), schema })
 
 export const db = pgliteDb ?? postgresDb!
+
+/** Close the database connection — call this during test teardown to release WASM resources */
+export const closeDb = async () => {
+  if (pgliteClient && !pgliteClient.closed) {
+    await pgliteClient.close()
+  }
+}
 
 /**
  * Resolve the Drizzle migrations folder.

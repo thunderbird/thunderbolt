@@ -1,0 +1,504 @@
+/* ─── Starlight override: Thunderbolt brand ─────────────────
+ * Maps Thunderbolt marketing tokens onto Starlight's CSS vars
+ * so the docs look like the rest of the site.
+ * Loaded via starlight({ customCss: ['./src/styles/starlight.css'] }).
+ */
+
+@import './tokens.css';
+
+:root {
+	/* Force light-mode palette everywhere */
+	--sl-color-white: var(--tb-text);
+	--sl-color-gray-1: var(--tb-text);
+	--sl-color-gray-2: var(--tb-text-secondary);
+	--sl-color-gray-3: var(--tb-text-muted);
+	--sl-color-gray-4: var(--tb-text-dim);
+	--sl-color-gray-5: var(--tb-border-strong);
+	--sl-color-gray-6: var(--tb-border);
+	--sl-color-gray-7: var(--tb-surface-subtle);
+	--sl-color-black: var(--tb-bg);
+
+	--sl-color-accent-low: var(--tb-surface-subtle);
+	--sl-color-accent: var(--tb-text-secondary);
+	--sl-color-accent-high: var(--tb-text);
+
+	--sl-color-text: var(--tb-text);
+	--sl-color-text-accent: var(--tb-text);
+	--sl-color-text-invert: var(--tb-surface);
+
+	--sl-color-bg: var(--tb-bg);
+	--sl-color-bg-nav: color-mix(in srgb, var(--tb-bg) 80%, transparent);
+	--sl-color-bg-sidebar: var(--tb-bg);
+	--sl-color-bg-inline-code: var(--tb-surface-input);
+	--sl-color-bg-accent: var(--tb-text-secondary);
+
+	--sl-color-hairline-light: var(--tb-border);
+	--sl-color-hairline: var(--tb-border);
+	--sl-color-hairline-shade: var(--tb-border-strong);
+
+	--sl-color-backdrop-overlay: color-mix(in srgb, var(--tb-text) 20%, transparent);
+
+	/* Typography — docs use Inter for body + system mono for code.
+	 * Mona Sans stays for headings (see .sl-markdown-content h1..h4 rule)
+	 * and brand chrome. Marketing/blog surfaces are unaffected. */
+	--sl-font:
+		'Inter Variable', -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+	--sl-font-mono:
+		ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, 'Liberation Mono', monospace;
+
+	/* Slightly looser than Starlight default to match marketing */
+	--sl-text-h1: 2.25rem;
+	--sl-text-h2: 1.625rem;
+	--sl-text-h3: 1.25rem;
+	--sl-text-body: 1rem;
+	--sl-line-height: 1.7;
+	--sl-line-height-headings: 1.25;
+
+	/* Tighter, editorial feel */
+	--sl-content-width: 52rem;
+	--sl-sidebar-width: 17rem;
+	--sl-nav-height: 3.75rem;
+
+	/* Flat, shadowless aesthetic — override Starlight shadow vars globally */
+	--sl-shadow-sm: none;
+	--sl-shadow-md: none;
+	--sl-shadow-lg: none;
+}
+
+/* Reserve scrollbar gutter so pages don't jitter horizontally between routes. */
+html {
+	scrollbar-gutter: stable;
+}
+
+/* Starlight ships dark/light theme classes. We force the light brand palette for both.
+ * We apply overrides to all three selectors so nothing slips through:
+ *   :root                  — default (before any theme class is set)
+ *   :root[data-theme='light'] — explicit light mode (higher specificity, blue hsl(224/234) grays)
+ *   :root[data-theme='dark']  — force-mapped back to light tokens
+ */
+:root[data-theme='light'],
+:root[data-theme='dark'] {
+	color-scheme: light;
+}
+
+:root[data-theme='light'],
+:root[data-theme='dark'] {
+	--sl-color-white: var(--tb-text);
+	--sl-color-gray-1: var(--tb-text);
+	--sl-color-gray-2: var(--tb-text-secondary);
+	--sl-color-gray-3: var(--tb-text-muted);
+	--sl-color-gray-4: var(--tb-text-dim);
+	--sl-color-gray-5: var(--tb-border-strong);
+	--sl-color-gray-6: var(--tb-border);
+	--sl-color-gray-7: var(--tb-surface-subtle);
+	--sl-color-black: var(--tb-bg);
+
+	--sl-color-accent-low: var(--tb-surface-subtle);
+	--sl-color-accent: var(--tb-text-secondary);
+	--sl-color-accent-high: var(--tb-text);
+
+	--sl-color-text: var(--tb-text);
+	--sl-color-text-accent: var(--tb-text);
+	--sl-color-text-invert: var(--tb-surface);
+
+	--sl-color-bg: var(--tb-bg);
+	--sl-color-bg-nav: color-mix(in srgb, var(--tb-bg) 80%, transparent);
+	--sl-color-bg-sidebar: var(--tb-bg);
+	--sl-color-bg-inline-code: var(--tb-surface-input);
+	--sl-color-bg-accent: var(--tb-text-secondary);
+
+	--sl-color-hairline-light: var(--tb-border);
+	--sl-color-hairline: var(--tb-border);
+	--sl-color-hairline-shade: var(--tb-border-strong);
+}
+
+/* Headings stay on Mona Sans for brand continuity; body text is Inter.
+ * Unified 600 weight across the ramp — cleaner than a mixed 500/600 stack. */
+.sl-markdown-content h1,
+.sl-markdown-content h2,
+.sl-markdown-content h3,
+.sl-markdown-content h4 {
+	font-family: var(--tb-font-sans);
+	color: var(--tb-text);
+	letter-spacing: -0.015em;
+	font-weight: 600;
+}
+
+/* Whitespace-only separation between sections — no divider rule */
+.sl-markdown-content h2 {
+	margin-top: 2.5em;
+}
+
+.sl-markdown-content h3 {
+	margin-top: 1.75em;
+}
+
+.sl-markdown-content p,
+.sl-markdown-content li {
+	color: var(--tb-text-secondary);
+}
+
+.sl-markdown-content strong {
+	color: var(--tb-text);
+	font-weight: 600;
+}
+
+.sl-markdown-content a:not(.sl-link-card) {
+	color: var(--tb-text);
+	text-decoration: none;
+	border-bottom: 1px solid color-mix(in srgb, var(--tb-text-muted) 40%, transparent);
+	transition:
+		color 0.15s,
+		border-color 0.15s;
+}
+
+.sl-markdown-content a:not(.sl-link-card):hover {
+	color: var(--tb-text);
+	border-color: var(--tb-text);
+}
+
+/* Inline code — a subtle tinted chip, no border (Stripe/Tailwind-style) */
+.sl-markdown-content :not(pre) > code {
+	background: var(--tb-surface-input);
+	color: var(--tb-text);
+	padding: 0.1em 0.4em;
+	font-family: var(--sl-font-mono);
+	font-size: 0.875em;
+}
+
+/* Code blocks — dark night-owl theme on a slate bg. Single clean edge,
+ * airy margins, no double outline. */
+.sl-markdown-content .expressive-code {
+	margin-block: 1.75em;
+}
+
+/* Stripe-style terminal titlebar: slim navy strip with a "Command Line"
+ * label instead of macOS traffic lights. */
+.sl-markdown-content .expressive-code .frame.is-terminal::before,
+.sl-markdown-content .expressive-code .frame.is-terminal .header::before,
+.sl-markdown-content .expressive-code .frame.is-terminal .header::after {
+	content: none !important;
+	background: none !important;
+	display: none !important;
+}
+.sl-markdown-content .expressive-code .frame.is-terminal .header {
+	background: rgba(255, 255, 255, 0.03) !important;
+	border: none !important;
+	border-bottom: 1px solid rgba(255, 255, 255, 0.06) !important;
+	min-height: 0 !important;
+	padding: 0.5rem 0.9rem !important;
+	font-family: var(--sl-font);
+	font-size: 0.8125rem;
+	font-weight: 500;
+	color: rgba(255, 255, 255, 0.65);
+	display: flex !important;
+	align-items: center;
+	justify-content: flex-start;
+}
+.sl-markdown-content .expressive-code .frame.is-terminal .header .title {
+	font-family: var(--sl-font);
+	font-size: 0.8125rem;
+	font-weight: 500;
+	color: rgba(255, 255, 255, 0.65);
+	display: inline-flex;
+	align-items: center;
+	gap: 0.4rem;
+}
+/* Terminal-prompt glyph before the label */
+.sl-markdown-content .expressive-code .frame.is-terminal .header .title::before {
+	content: '';
+	display: inline-block;
+	width: 0.85rem;
+	height: 0.85rem;
+	background-color: rgba(255, 255, 255, 0.55);
+	mask-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><polyline points='4 17 10 11 4 5'/><line x1='12' y1='19' x2='20' y2='19'/></svg>");
+	mask-repeat: no-repeat;
+	mask-position: center;
+	mask-size: contain;
+	-webkit-mask-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><polyline points='4 17 10 11 4 5'/><line x1='12' y1='19' x2='20' y2='19'/></svg>");
+	-webkit-mask-repeat: no-repeat;
+	-webkit-mask-position: center;
+	-webkit-mask-size: contain;
+	flex-shrink: 0;
+}
+/* Default label when no filename/title is set */
+.sl-markdown-content .expressive-code .frame.is-terminal .header .title:empty::after {
+	content: 'Command Line';
+}
+
+/* Normalize weight + style of syntax-highlighted tokens — night-owl
+ * italicizes keywords/comments; we want uniform upright text. */
+.sl-markdown-content .expressive-code pre code,
+.sl-markdown-content .expressive-code pre code * {
+	font-weight: 400 !important;
+	font-style: normal !important;
+}
+
+/* Copy button — keep it visible against the dark bg. */
+.sl-markdown-content .expressive-code .copy button {
+	opacity: 0.7;
+	background: rgba(255, 255, 255, 0.06);
+	border: 1px solid rgba(255, 255, 255, 0.12);
+}
+.sl-markdown-content .expressive-code:hover .copy button,
+.sl-markdown-content .expressive-code .copy button:focus-visible {
+	opacity: 1;
+}
+/* On terminal frames, tuck the copy button into the slim titlebar */
+.sl-markdown-content .expressive-code figure.frame.is-terminal .copy {
+	top: 0.3rem;
+	right: 0.3rem;
+}
+.sl-markdown-content .expressive-code figure.frame.is-terminal .copy button {
+	background: transparent;
+	border-color: transparent;
+}
+.sl-markdown-content .expressive-code figure.frame.is-terminal .copy button:hover {
+	background: rgba(255, 255, 255, 0.08);
+	border-color: rgba(255, 255, 255, 0.15);
+}
+
+/* Language pill — injected by the head script for non-terminal frames. */
+.sl-markdown-content .expressive-code figure.frame:not(.is-terminal) {
+	position: relative;
+}
+.sl-markdown-content .expressive-code .lang-pill {
+	position: absolute;
+	top: 0.5rem;
+	right: 0.5rem;
+	z-index: 1;
+	font-family: var(--tb-font-mono);
+	font-size: 0.65rem;
+	font-weight: 700;
+	letter-spacing: 0.05em;
+	text-transform: uppercase;
+	color: rgba(255, 255, 255, 0.5);
+	background: rgba(255, 255, 255, 0.06);
+	border: 1px solid rgba(255, 255, 255, 0.12);
+	padding: 0.1rem 0.45rem;
+	pointer-events: none;
+}
+/* Nudge the copy button so it doesn't collide with the pill. */
+.sl-markdown-content .expressive-code figure.frame:not(.is-terminal) .copy {
+	top: 2rem;
+}
+
+/* Non-framed <pre> (rare, MDX escape hatch) — match dark treatment. */
+.sl-markdown-content pre:not(.not-content) {
+	background: #0f172a;
+	color: #d6deeb;
+	padding: 1rem;
+}
+
+/* Tables — row-divider rhythm, no grid */
+.sl-markdown-content table {
+	border-collapse: collapse;
+	font-size: 0.95em;
+	width: 100%;
+}
+.sl-markdown-content th,
+.sl-markdown-content td {
+	border: none;
+	border-bottom: 1px solid var(--tb-border);
+	padding: 0.6em 0.8em;
+	text-align: left;
+}
+.sl-markdown-content th {
+	color: var(--tb-text);
+	font-weight: 600;
+	border-bottom: 2px solid var(--tb-border-strong);
+}
+
+/* Nav chrome */
+header.header {
+	background: color-mix(in srgb, var(--tb-bg) 85%, transparent);
+	backdrop-filter: saturate(140%) blur(12px);
+	border-bottom: 1px solid var(--tb-border);
+}
+
+/* Hamburger button — explicit brand colors to override Starlight's [data-theme='light'] rules */
+starlight-menu-button button {
+	background-color: var(--tb-bg);
+	color: var(--tb-text);
+	border-radius: 0;
+	box-shadow: none;
+	border: 1px solid var(--tb-border);
+}
+starlight-menu-button[aria-expanded='true'] button {
+	background-color: var(--tb-surface-subtle);
+	border-color: var(--tb-border-strong);
+}
+
+.site-title,
+a.site-title {
+	font-weight: 600;
+	letter-spacing: -0.015em;
+	color: var(--tb-text);
+}
+
+/* Sidebar — quiet, flat, Stripe-style */
+nav.sidebar ul > li > a,
+starlight-menu-button {
+	color: var(--tb-text-secondary);
+	border-radius: 0;
+}
+nav.sidebar ul > li > a[aria-current='page'] {
+	background: transparent;
+	color: var(--tb-text);
+	font-weight: 500;
+	box-shadow: inset 2px 0 0 var(--tb-text);
+}
+
+/* Sidebar group headers — sentence case at a normal sans weight */
+nav.sidebar summary,
+nav.sidebar > ul > li > span.large {
+	font-family: var(--sl-font);
+	text-transform: none;
+	letter-spacing: 0;
+	font-size: 0.8125rem;
+	font-weight: 600;
+	color: var(--tb-text-muted);
+}
+
+/* Nested group labels — render as normal link-weight text, not a heading */
+nav.sidebar ul:not(.top-level) details summary .large {
+	font-size: var(--sl-text-sm);
+	font-weight: 400;
+	color: var(--tb-text-secondary);
+}
+
+/* Right TOC — subtle left-rail + darker weight on active */
+.right-sidebar a,
+.right-sidebar-panel a {
+	border-radius: 0;
+}
+.right-sidebar a[aria-current='true'],
+.right-sidebar-panel a[aria-current='true'] {
+	color: var(--tb-text);
+	font-weight: 500;
+	box-shadow: inset 2px 0 0 var(--tb-text);
+}
+.right-sidebar a:not([aria-current='true']),
+.right-sidebar-panel a:not([aria-current='true']) {
+	color: var(--tb-text-muted);
+}
+.right-sidebar a:hover,
+.right-sidebar-panel a:hover {
+	color: var(--tb-text);
+}
+
+/* Hero on the docs splash */
+.hero {
+	padding-top: 2rem;
+}
+.hero h1 {
+	font-size: clamp(2.25rem, 5vw, 3rem);
+	letter-spacing: -0.025em;
+	font-weight: 600;
+	color: var(--tb-text);
+}
+.hero .tagline {
+	color: var(--tb-text-muted);
+	font-size: 1.125rem;
+}
+
+/* Primary action — marketing's dark-slate CTA */
+.sl-link-button.primary,
+.sl-link-button.variant-primary {
+	background: var(--tb-text-secondary);
+	color: var(--tb-surface);
+	border: 1px solid var(--tb-text-secondary);
+	border-radius: 0;
+	font-family: var(--tb-font-mono);
+	text-transform: uppercase;
+	letter-spacing: 0.08em;
+	font-weight: 700;
+	font-size: 0.8125rem;
+	padding: 0.75rem 1.1rem;
+	height: 46px;
+	transition: background-color 0.15s, color 0.15s;
+}
+.sl-link-button.primary:hover {
+	background: var(--tb-text);
+}
+
+.sl-link-button.secondary,
+.sl-link-button.variant-secondary,
+.sl-link-button.minimal {
+	background: transparent;
+	color: var(--tb-text-secondary);
+	border: 1px solid var(--tb-text-secondary);
+	border-radius: 0;
+	font-family: var(--tb-font-mono);
+	text-transform: uppercase;
+	letter-spacing: 0.08em;
+	font-weight: 700;
+	font-size: 0.8125rem;
+	padding: 0.75rem 1.1rem;
+	height: 46px;
+}
+.sl-link-button.secondary:hover,
+.sl-link-button.minimal:hover {
+	background: var(--tb-text-secondary);
+	color: var(--tb-surface);
+}
+
+/* Card grid */
+.sl-link-card {
+	background: var(--tb-surface);
+	border: 1px solid var(--tb-border);
+	border-radius: 0;
+	transition:
+		border-color 0.15s,
+		transform 0.15s;
+}
+.sl-link-card:hover {
+	border-color: var(--tb-text-secondary);
+	transform: translateY(-1px);
+}
+
+/* Mobile "On this page" TOC bar — frosted glass */
+mobile-starlight-toc nav {
+	backdrop-filter: saturate(140%) blur(12px);
+	-webkit-backdrop-filter: saturate(140%) blur(12px);
+}
+#starlight__mobile-toc .toggle {
+	border-radius: 0;
+}
+
+/* Pagination prev/next cards — flat to match overall aesthetic */
+.pagination-links a {
+	border-radius: 0;
+}
+
+/* ─── Search UI: square borders to match marketing surface ─── */
+site-search button[data-open-modal] {
+	border-radius: 0 !important;
+}
+site-search dialog {
+	border-radius: 0 !important;
+}
+#starlight__search {
+	--sl-search-corners: 0;
+	--pagefind-ui-border-radius: 0;
+}
+#starlight__search .pagefind-ui__search-input,
+#starlight__search .pagefind-ui__form,
+#starlight__search .pagefind-ui__result-title,
+#starlight__search .pagefind-ui__result-nested,
+#starlight__search .pagefind-ui__result-inner > :first-child,
+#starlight__search .pagefind-ui__result-inner > :last-child,
+#starlight__search .pagefind-ui__result-tags,
+#starlight__search .pagefind-ui__filter-panel button,
+#starlight__search .pagefind-ui__button {
+	border-radius: 0 !important;
+}
+/* Hairline input border in brand color */
+#starlight__search .pagefind-ui__search-input {
+	border: 1px solid var(--tb-border);
+}
+#starlight__search .pagefind-ui__search-input:focus-visible {
+	outline: 1px solid var(--tb-text-secondary);
+	outline-offset: -1px;
+	border-color: var(--tb-text-secondary);
+}

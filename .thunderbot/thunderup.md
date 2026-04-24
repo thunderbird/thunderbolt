@@ -9,8 +9,8 @@ Bootstrap the Thunderbolt dev environment. Accepts an optional argument via $ARG
 - **Empty (default):** Run the standard bootstrap:
   1. `make doctor-q` — verify tools (only prints issues)
   2. `make setup` — install frontend + backend deps
-  3. `make docker-up` — start docker containers
-  4. `make docker-status` — confirm containers are healthy
+  3. `make up` — start containers
+  4. `make status` — confirm containers are healthy
 
 - **`all`:** Run the standard bootstrap above, then also:
   5. `make run` — start backend (:8000) and frontend (:5173) dev servers

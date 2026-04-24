@@ -17,17 +17,22 @@ export const getDeviceById = async (database: typeof DbType, deviceId: string) =
     .limit(1)
     .then((rows) => rows[0] ?? null)
 
-/** Upsert a device: insert new (untrusted) or update lastSeen/name for existing. Only updates if userId matches. */
+/** Upsert a device: insert new or update lastSeen/name for existing. Only updates if userId matches.
+ * When `trusted` is passed (E2EE disabled), new devices are inserted as trusted and existing devices are upgraded. */
 export const upsertDevice = async (
   database: typeof DbType,
-  device: { id: string; userId: string; name: string; lastSeen: Date; createdAt: Date },
+  device: { id: string; userId: string; name: string; lastSeen: Date; createdAt: Date; trusted?: boolean },
 ) =>
   database
     .insert(devicesTable)
-    .values(device)
+    .values({ ...device, trusted: device.trusted ?? false })
     .onConflictDoUpdate({
       target: devicesTable.id,
-      set: { lastSeen: device.lastSeen, name: device.name },
+      set: {
+        lastSeen: device.lastSeen,
+        name: device.name,
+        ...(device.trusted ? { trusted: true, approvalPending: false } : {}),
+      },
       setWhere: eq(devicesTable.userId, device.userId),
     })
     .returning()

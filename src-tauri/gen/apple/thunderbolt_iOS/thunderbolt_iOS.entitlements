@@ -4,7 +4,7 @@
 <dict>
 	<key>com.apple.developer.associated-domains</key>
 	<array>
-		<string>applinks:thunderbolt.io</string>
+		<string>applinks:app.thunderbolt.io</string>
 	</array>
 </dict>
 </plist>

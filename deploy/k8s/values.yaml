@@ -48,6 +48,17 @@ backend:
     waitlistEnabled: "false"
     databaseDriver: postgres
     rateLimitEnabled: "false"
+    # -- Thunderbolt inference gateway URL (plaintext; empty disables the provider)
+    thunderboltInferenceUrl: ""
+  # -- Base64-encoded AI provider keys. Empty defaults disable each provider
+  # (backend zod schema treats empty string as "not configured").
+  # Generate each with: echo -n "<your-key>" | base64
+  aiSecrets:
+    anthropicApiKeyBase64: ""
+    fireworksApiKeyBase64: ""
+    mistralApiKeyBase64: ""
+    thunderboltInferenceApiKeyBase64: ""
+    exaApiKeyBase64: ""
 
 # =============================================================================
 # PostgreSQL

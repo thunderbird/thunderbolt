@@ -42,6 +42,10 @@ on:
         description: 'Cloudflare zone ID. Required when any hostname is set.'
         type: string
         required: false
+      thunderbolt_inference_url:
+        description: 'Thunderbolt inference gateway URL (non-secret; passed as plain config).'
+        type: string
+        required: false
     outputs:
       url:
         description: 'Public URL of the deployed stack (subdomain if configured, raw ALB otherwise)'
@@ -88,6 +92,10 @@ jobs:
   deploy:
     if: inputs.action == 'deploy'
     runs-on: ubuntu-latest
+    # Tag deploys with the `preview` environment so env-scoped secrets (EXA_API_KEY)
+    # flow through alongside repo-level secrets. No required reviewers configured,
+    # so enterprise workflow_dispatch deploys are unaffected.
+    environment: preview
     permissions:
       id-token: write
       contents: read
@@ -140,6 +148,12 @@ jobs:
           INPUT_POWERSYNC_HOSTNAME: ${{ inputs.powersync_hostname }}
           INPUT_CLOUDFLARE_ZONE_ID: ${{ inputs.cloudflare_zone_id }}
           INPUT_CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          INPUT_THUNDERBOLT_INFERENCE_URL: ${{ inputs.thunderbolt_inference_url }}
+          INPUT_ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          INPUT_FIREWORKS_API_KEY: ${{ secrets.FIREWORKS_API_KEY }}
+          INPUT_MISTRAL_API_KEY: ${{ secrets.MISTRAL_API_KEY }}
+          INPUT_THUNDERBOLT_INFERENCE_API_KEY: ${{ secrets.THUNDERBOLT_INFERENCE_API_KEY }}
+          INPUT_EXA_API_KEY: ${{ secrets.EXA_API_KEY }}
         run: |
           pulumi config set platform "$INPUT_PLATFORM" -s "$INPUT_STACK_NAME" --non-interactive
           pulumi config set version "$INPUT_VERSION" -s "$INPUT_STACK_NAME" --non-interactive
@@ -160,6 +174,19 @@ jobs:
             [ -n "$INPUT_AUTH_HOSTNAME" ]      && pulumi config set authHostname      "$INPUT_AUTH_HOSTNAME"      -s "$INPUT_STACK_NAME" --non-interactive
             [ -n "$INPUT_POWERSYNC_HOSTNAME" ] && pulumi config set powersyncHostname "$INPUT_POWERSYNC_HOSTNAME" -s "$INPUT_STACK_NAME" --non-interactive
           fi
+
+          # AI provider keys + inference gateway URL. Written into Pulumi stack config
+          # so they propagate into AWS Secrets Manager via services.ts. Only set when
+          # non-empty — lets enterprise stacks skip these entirely.
+          [ -n "$INPUT_THUNDERBOLT_INFERENCE_URL" ] && pulumi config set thunderboltInferenceUrl "$INPUT_THUNDERBOLT_INFERENCE_URL" -s "$INPUT_STACK_NAME" --non-interactive
+          [ -n "$INPUT_ANTHROPIC_API_KEY" ]             && pulumi config set --secret anthropicApiKey             "$INPUT_ANTHROPIC_API_KEY"             -s "$INPUT_STACK_NAME" --non-interactive
+          [ -n "$INPUT_FIREWORKS_API_KEY" ]             && pulumi config set --secret fireworksApiKey             "$INPUT_FIREWORKS_API_KEY"             -s "$INPUT_STACK_NAME" --non-interactive
+          [ -n "$INPUT_MISTRAL_API_KEY" ]               && pulumi config set --secret mistralApiKey               "$INPUT_MISTRAL_API_KEY"               -s "$INPUT_STACK_NAME" --non-interactive
+          [ -n "$INPUT_THUNDERBOLT_INFERENCE_API_KEY" ] && pulumi config set --secret thunderboltInferenceApiKey "$INPUT_THUNDERBOLT_INFERENCE_API_KEY" -s "$INPUT_STACK_NAME" --non-interactive
+          [ -n "$INPUT_EXA_API_KEY" ]                   && pulumi config set --secret exaApiKey                   "$INPUT_EXA_API_KEY"                   -s "$INPUT_STACK_NAME" --non-interactive
+          # Unconditional `|| true` prevents the last `[ -n ... ] && ...` from
+          # masking non-zero exit when a secret is empty (which is expected).
+          true
 
       - name: Deploy
         uses: pulumi/actions@8582a9e8cc630786854029b4e09281acd6794b58 # v6

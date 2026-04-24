@@ -17,6 +17,11 @@ type Secrets = {
   powersyncJwtSecret: pulumi.Output<string>
   betterAuthSecret: pulumi.Output<string>
   powersyncDbPassword: pulumi.Output<string>
+  anthropicApiKey: pulumi.Output<string>
+  fireworksApiKey: pulumi.Output<string>
+  mistralApiKey: pulumi.Output<string>
+  thunderboltInferenceApiKey: pulumi.Output<string>
+  exaApiKey: pulumi.Output<string>
 }
 
 type ServiceArgs = {
@@ -49,6 +54,13 @@ type ServiceArgs = {
     auth: pulumi.Input<string>
     powersync: pulumi.Input<string>
   }
+  /** URL for the Thunderbolt inference gateway (env: THUNDERBOLT_INFERENCE_URL). Optional. */
+  thunderboltInferenceUrl?: pulumi.Input<string>
+  /**
+   * When true, backend runs behind a proxy whose X-Forwarded-* headers we trust
+   * for client IP extraction (Cloudflare edge for preview stacks).
+   */
+  behindCloudflareProxy?: boolean
   albListener: aws.lb.Listener
   targetGroups: {
     frontend: aws.lb.TargetGroup
@@ -301,6 +313,24 @@ export const createServices = (args: ServiceArgs) => {
     databaseUrl: new aws.secretsmanager.Secret(`${name}-database-url`, {
       tags: { Name: `${name}-database-url` },
     }),
+    // AI provider keys. Created unconditionally; empty values are accepted by
+    // backend zod schema (`.default('')`). Enterprise deploys pass empty strings;
+    // preview deploys get real values via `pulumi config set --secret` in CI.
+    anthropicApiKey: new aws.secretsmanager.Secret(`${name}-anthropic-api-key`, {
+      tags: { Name: `${name}-anthropic-api-key` },
+    }),
+    fireworksApiKey: new aws.secretsmanager.Secret(`${name}-fireworks-api-key`, {
+      tags: { Name: `${name}-fireworks-api-key` },
+    }),
+    mistralApiKey: new aws.secretsmanager.Secret(`${name}-mistral-api-key`, {
+      tags: { Name: `${name}-mistral-api-key` },
+    }),
+    thunderboltInferenceApiKey: new aws.secretsmanager.Secret(`${name}-tb-inference-api-key`, {
+      tags: { Name: `${name}-tb-inference-api-key` },
+    }),
+    exaApiKey: new aws.secretsmanager.Secret(`${name}-exa-api-key`, {
+      tags: { Name: `${name}-exa-api-key` },
+    }),
   }
 
   new aws.secretsmanager.SecretVersion(`${name}-oidc-secret-version`, {
@@ -319,6 +349,26 @@ export const createServices = (args: ServiceArgs) => {
     secretId: backendSecrets.databaseUrl.id,
     secretString: pulumi.interpolate`postgresql://postgres:${args.secrets.postgresPassword}@postgres.thunderbolt.local:5432/postgres`,
   })
+  new aws.secretsmanager.SecretVersion(`${name}-anthropic-api-key-version`, {
+    secretId: backendSecrets.anthropicApiKey.id,
+    secretString: args.secrets.anthropicApiKey,
+  })
+  new aws.secretsmanager.SecretVersion(`${name}-fireworks-api-key-version`, {
+    secretId: backendSecrets.fireworksApiKey.id,
+    secretString: args.secrets.fireworksApiKey,
+  })
+  new aws.secretsmanager.SecretVersion(`${name}-mistral-api-key-version`, {
+    secretId: backendSecrets.mistralApiKey.id,
+    secretString: args.secrets.mistralApiKey,
+  })
+  new aws.secretsmanager.SecretVersion(`${name}-tb-inference-api-key-version`, {
+    secretId: backendSecrets.thunderboltInferenceApiKey.id,
+    secretString: args.secrets.thunderboltInferenceApiKey,
+  })
+  new aws.secretsmanager.SecretVersion(`${name}-exa-api-key-version`, {
+    secretId: backendSecrets.exaApiKey.id,
+    secretString: args.secrets.exaApiKey,
+  })
 
   new aws.iam.RolePolicy(`${name}-exec-backend-secrets-policy`, {
     role: execRoleInstance.name,
@@ -332,6 +382,11 @@ export const createServices = (args: ServiceArgs) => {
           backendSecrets.betterAuthSecret.arn,
           backendSecrets.powersyncJwtSecret.arn,
           backendSecrets.databaseUrl.arn,
+          backendSecrets.anthropicApiKey.arn,
+          backendSecrets.fireworksApiKey.arn,
+          backendSecrets.mistralApiKey.arn,
+          backendSecrets.thunderboltInferenceApiKey.arn,
+          backendSecrets.exaApiKey.arn,
         ],
       }],
     }),
@@ -370,12 +425,21 @@ export const createServices = (args: ServiceArgs) => {
           { name: 'POWERSYNC_URL', value: args.publicUrls.powersync },
           { name: 'POWERSYNC_JWT_KID', value: 'enterprise-powersync' },
           { name: 'RATE_LIMIT_ENABLED', value: 'true' },
+          { name: 'THUNDERBOLT_INFERENCE_URL', value: args.thunderboltInferenceUrl ?? '' },
+          // Cloudflare terminates TLS for preview stacks — trust its CF-Connecting-IP
+          // header for rate limiting. Enterprise stacks leave this unset (direct socket IP).
+          { name: 'TRUSTED_PROXY', value: args.behindCloudflareProxy ? 'cloudflare' : '' },
         ],
         secrets: [
           { name: 'DATABASE_URL', valueFrom: backendSecrets.databaseUrl.arn },
           { name: 'OIDC_CLIENT_SECRET', valueFrom: backendSecrets.oidcClientSecret.arn },
           { name: 'BETTER_AUTH_SECRET', valueFrom: backendSecrets.betterAuthSecret.arn },
           { name: 'POWERSYNC_JWT_SECRET', valueFrom: backendSecrets.powersyncJwtSecret.arn },
+          { name: 'ANTHROPIC_API_KEY', valueFrom: backendSecrets.anthropicApiKey.arn },
+          { name: 'FIREWORKS_API_KEY', valueFrom: backendSecrets.fireworksApiKey.arn },
+          { name: 'MISTRAL_API_KEY', valueFrom: backendSecrets.mistralApiKey.arn },
+          { name: 'THUNDERBOLT_INFERENCE_API_KEY', valueFrom: backendSecrets.thunderboltInferenceApiKey.arn },
+          { name: 'EXA_API_KEY', valueFrom: backendSecrets.exaApiKey.arn },
         ],
         portMappings: [{ containerPort: 8000 }],
         logConfiguration: logConfig('backend'),

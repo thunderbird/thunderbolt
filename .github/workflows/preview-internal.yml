@@ -103,6 +103,7 @@ jobs:
       auth_hostname: auth-pr-${{ needs.resolve.outputs.pr_number }}.preview.thunderbolt.io
       powersync_hostname: powersync-pr-${{ needs.resolve.outputs.pr_number }}.preview.thunderbolt.io
       cloudflare_zone_id: ${{ vars.CLOUDFLARE_ZONE_ID }}
+      thunderbolt_inference_url: ${{ vars.THUNDERBOLT_INFERENCE_URL }}
     secrets: inherit
 
   comment:

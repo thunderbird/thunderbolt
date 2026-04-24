@@ -79,6 +79,33 @@ spec:
               value: {{ .Values.powersync.jwt.kid }}
             - name: RATE_LIMIT_ENABLED
               value: {{ .Values.backend.env.rateLimitEnabled | quote }}
+            - name: THUNDERBOLT_INFERENCE_URL
+              value: {{ .Values.backend.env.thunderboltInferenceUrl | default "" | quote }}
+            - name: ANTHROPIC_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: thunderbolt-secrets
+                  key: anthropic-api-key
+            - name: FIREWORKS_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: thunderbolt-secrets
+                  key: fireworks-api-key
+            - name: MISTRAL_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: thunderbolt-secrets
+                  key: mistral-api-key
+            - name: THUNDERBOLT_INFERENCE_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: thunderbolt-secrets
+                  key: thunderbolt-inference-api-key
+            - name: EXA_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: thunderbolt-secrets
+                  key: exa-api-key
           readinessProbe:
             httpGet:
               path: /v1/health

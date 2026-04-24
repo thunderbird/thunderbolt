@@ -2,9 +2,9 @@
 
 Thunderbolt's multi-device sync is built on [PowerSync](https://powersync.com). Every device holds a local SQLite database; the sync service streams deltas between SQLite and the backend's PostgreSQL. Writes happen locally first, so the app stays snappy offline.
 
-> **Note.** Cross-device sync and optional end-to-end encryption are both in **Preview**. See [roadmap.md](./roadmap.md) for current status.
+> **Note.** Cross-device sync and optional end-to-end encryption are both in **Preview**. See [roadmap.md](../roadmap.md) for current status.
 
-## How it works
+## How It Works
 
 ```
 ┌──────────┐   reads/writes   ┌──────────┐   transform        ┌────────────┐
@@ -25,7 +25,7 @@ Thunderbolt's multi-device sync is built on [PowerSync](https://powersync.com). 
 - Client writes go to local SQLite first, then upload to the backend through `PUT /v1/powersync/upload`. The backend applies them in a PostgreSQL transaction.
 - A transform-middleware pipeline sits between PowerSync and SQLite. The built-in `encryptionMiddleware` decrypts encrypted columns on download and encrypts them on upload. See [End-to-End Encryption](./e2e-encryption.md).
 
-## Two sync paths
+## Two Sync Paths
 
 There are two distinct pipelines depending on the runtime. Both end with decrypted rows in local SQLite — the transform runs in a different execution context.
 
@@ -36,7 +36,7 @@ There are two distinct pipelines depending on the runtime. Both end with decrypt
 
 The full write-up is in [powersync-sync-middleware.md](./powersync-sync-middleware.md), including the Vite alias (`powersync-web-internal`) that lets the custom SharedWorker reach into `@powersync/web`'s `@internal` classes.
 
-## Synced tables
+## Synced Tables
 
 From [`shared/powersync-tables.ts`](../shared/powersync-tables.ts):
 
@@ -56,13 +56,13 @@ From [`shared/powersync-tables.ts`](../shared/powersync-tables.ts):
 
 Default-data tables use composite primary keys so multiple users can hold the same default id — see [composite-primary-keys-and-default-data.md](./composite-primary-keys-and-default-data.md).
 
-## Offline behavior
+## Offline Behavior
 
 - Everything you do offline — new chats, sent messages, edits — writes to local SQLite immediately.
 - On reconnect, the sync worker replays queued operations through the backend. Conflicts resolve last-writer-wins at the row level.
 - *Settings → Devices* shows each device's last-seen time; a stale value means the device hasn't reconnected yet.
 
-## Adding a new synced table
+## Adding a New Synced Table
 
 Adding a table touches both clients and the backend plus the PowerSync sync rules. To avoid races where clients expect rows the sync service won't stream, ship the change in **two PRs**:
 
@@ -79,7 +79,7 @@ Adding a table touches both clients and the backend plus the PowerSync sync rule
 
 Deploying the frontend before sync rules are live causes silent sync failure — the table works locally but rows never replicate.
 
-## Indexing strategy
+## Indexing Strategy
 
 The backend PostgreSQL schema uses a **minimal index strategy**:
 
@@ -91,8 +91,8 @@ The backend PostgreSQL schema uses a **minimal index strategy**:
 
 Why: the backend is a sync server, not a query engine. Heavy queries run on the client's SQLite. Indexes on encrypted columns would be useless anyway, and fewer indexes means faster writes during sync. Full rationale in [composite-primary-keys-and-default-data.md](./composite-primary-keys-and-default-data.md).
 
-## Related reading
+## Related Reading
 
 - [PowerSync, Account & Device Management](./powersync-account-devices.md) — how devices are registered and revoked.
 - [End-to-End Encryption](./e2e-encryption.md) — how the sync pipeline encrypts data before it reaches the server.
-- [Development](./development.md) and [Testing](./testing.md) — schema rules, composite keys, and the migration checklist.
+- [Quick Start](../development/quick-start.md) and [Testing](../development/testing.md) — schema rules, composite keys, and the migration checklist.

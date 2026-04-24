@@ -11,9 +11,9 @@ This document describes how account deletion and device revoke work, and how oth
 
 Both flows rely on the same **graceful reset**: disable sync, clear localStorage, reset the app directory (DB and related files), and reload. The user lands on a clean, signed-out state.
 
-## User flows
+## User Flows
 
-### Delete account
+### Delete Account
 
 1. User goes to **Settings > Preferences** and chooses “Delete my account” (with confirmation).
 2. Frontend calls `DELETE /v1/account` with the current auth token. Backend deletes the user and all related data (settings, chats, models, devices, etc.).
@@ -22,7 +22,7 @@ Both flows rely on the same **graceful reset**: disable sync, clear localStorage
    - The frontend treats this as “credentials invalid” and runs the reset flow (see below).
    - Alternatively, PowerSync may sync DELETE operations and empty the local DB; without the 410 path, that could cause crashes. The 410 path triggers a full reset before or when that happens.
 
-### Revoke device
+### Revoke Device
 
 1. User goes to **Settings > Devices**, sees a list of devices (name, last seen, “This device”, “Revoked”).
 2. User chooses “Revoke” on another device (with confirmation). Frontend calls `POST /v1/account/devices/:id/revoke`.
@@ -35,7 +35,7 @@ So revoke is visible either as soon as the `devices` row syncs or when the next 
 
 ## Backend
 
-### PowerSync token endpoint (`GET /powersync/token`)
+### PowerSync Token Endpoint (`GET /powersync/token`)
 
 - **Authenticated (session)**  
   If the request includes `X-Device-ID`:
@@ -52,20 +52,20 @@ So:
 - **403** with `DEVICE_DISCONNECTED` = this device was revoked (client should reset).
 - **401** = generic auth failure (e.g. token refresh in the future, not necessarily a full reset).
 
-### Revoke device endpoint (`POST /v1/account/devices/:id/revoke`)
+### Revoke Device Endpoint (`POST /v1/account/devices/:id/revoke`)
 
 - Requires an authenticated user (session).
 - Sets `revoked_at` to the current timestamp for the device `id` that belongs to the current user.
 - Returns **204** on success (idempotent for already-revoked devices).
 
-### Devices table
+### Devices Table
 
 - **Backend**: `devices` table with `id`, `user_id`, `name`, `last_seen`, `created_at`, `revoked_at`. Synced via PowerSync.
 - **Frontend**: Same schema in the local DB; `devices` is in the PowerSync schema so it syncs. Used for the Settings > Devices list and for “current device revoked?” checks.
 
 ## Frontend
 
-### Credentials-invalid handling
+### Credentials-Invalid Handling
 
 When the app should reset (account deleted or device revoked), it runs a single flow:
 
@@ -85,12 +85,12 @@ This is triggered in two ways:
 2. **Devices table (current device revoked)**  
    `usePowerSyncCredentialsInvalidListener` uses React Query with `getDevice(deviceId)` and query key `['devices', deviceId]`. When the `devices` table is invalidated (e.g. by PowerSync sync), the query refetches. If the current device’s row has `revoked_at` set, the hook runs the same reset flow. That gives an immediate reset as soon as the revoked state syncs, without waiting for the next token refresh.
 
-### Auth token and device id
+### Auth Token and Device ID
 
 - **Auth token**: Stored in `localStorage` under a fixed key. Not synced. Cleared on reset via `localStorage.clear()`.
 - **Device id**: Stored in `localStorage` to identify this device. Sent as `X-Device-ID` (and optional `X-Device-Name`) on PowerSync token requests so the backend can register/update the device and enforce revoke.
 
-### Settings > Devices page
+### Settings > Devices Page
 
 - Lists devices from the local DB (synced `devices` table) via `getAllDevices()` and React Query key `['devices']`.
 - Shows name, last seen, “This device” for the current device, and “Revoked” when `revoked_at` is set.

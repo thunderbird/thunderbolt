@@ -27,7 +27,7 @@ Variables marked **required** must be set before the backend will start.
 
 Consumer mode uses [Better Auth](https://better-auth.com)'s magic-link flow by default (email-delivered OTP). Hook up a provider by also setting the OAuth credentials above. Enterprise mode delegates entirely to an OIDC provider (Keycloak by default).
 
-## AI provider keys
+## AI Provider Keys
 
 Set any subset; the app exposes each provider whose key is present.
 
@@ -74,7 +74,7 @@ When you add a new custom header to a client request (e.g. `X-Device-ID`), you *
 
 See [TELEMETRY.md](../TELEMETRY.md) in the repo for the full list of events the client emits.
 
-## Rate limiting and proxy trust
+## Rate Limiting and Proxy Trust
 
 | Variable             | Default | Description                                                                                               |
 | -------------------- | ------- | --------------------------------------------------------------------------------------------------------- |
@@ -90,7 +90,7 @@ Trusting the wrong proxy header lets a client spoof its IP for rate-limit bypass
 | `WAITLIST_ENABLED`              | `false` | Flip to `true` to require approval before new sign-ups can log in |
 | `WAITLIST_AUTO_APPROVE_DOMAINS` | —       | Comma-separated email domains that skip the waitlist queue        |
 
-## OpenTelemetry (optional)
+## OpenTelemetry (Optional)
 
 OpenTelemetry traces are enabled automatically when these are set. Not part of the Zod schema — the backend reads them from `process.env` directly.
 
@@ -111,7 +111,7 @@ Tested with BetterStack, Jaeger, Zipkin, New Relic, Grafana Cloud, and any OTLP-
 | `SWAGGER_ENABLED`  | `false`                 | Expose `/v1/swagger` with the full OpenAPI spec (don't in production) |
 | `MONITORING_TOKEN` | —                       | Shared secret for authenticated `/health` checks                     |
 
-## Frontend build args
+## Frontend Build Args
 
 The web/desktop bundle accepts two Vite env vars, passed as Dockerfile build args in `deploy/docker/frontend.Dockerfile`:
 
@@ -120,7 +120,7 @@ The web/desktop bundle accepts two Vite env vars, passed as Dockerfile build arg
 | `VITE_THUNDERBOLT_CLOUD_URL` | `/v1`   | Backend API URL (relative path, proxied by nginx or ALB)                      |
 | `VITE_AUTH_MODE`             | `oidc`  | Auth mode — `oidc` for enterprise defaults, omit for consumer                 |
 
-## Validating your config
+## Validating Your Config
 
 The backend validates every variable on startup. Common hits:
 

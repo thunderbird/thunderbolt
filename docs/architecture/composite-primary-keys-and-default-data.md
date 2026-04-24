@@ -6,7 +6,7 @@ This document describes why certain tables use composite primary keys `(id, user
 
 Several tables hold data that is **seeded as defaults** when a user first initializes the app (or when a new device connects via PowerSync). These defaults share the same IDs across users (e.g. `openai-gpt-4o`, `default-mode`, `theme`). To allow each user to have their own row with the same default ID, these tables use **composite primary keys** that include `user_id`.
 
-## Tables with composite primary keys
+## Tables with Composite Primary Keys
 
 | Table   | Composite key   | Reason |
 |---------|------------------|--------|
@@ -17,13 +17,13 @@ Several tables hold data that is **seeded as defaults** when a user first initia
 | prompts | `(id, user_id)`  | Default automations/prompts are seeded per user with same ID. |
 | model_profiles | `(id, user_id)` | Per-model inference tuning (temperature, nudges, prompt overrides) seeded per user. |
 
-## Tables with single primary key
+## Tables with Single Primary Key
 
 Tables that hold **user-created** data (chats, messages, devices, etc.) use a single `id` primary key because each row has a globally unique ID:
 
 - chat_threads, chat_messages, mcp_servers, triggers, devices
 
-## How it works
+## How It Works
 
 ### Frontend (SQLite)
 
@@ -35,14 +35,14 @@ When PowerSync syncs data to the backend, each user's local data is stored in Po
 
 The `powersyncConflictTarget` map in `backend/src/db/powersync-schema.ts` defines the conflict target for each table. For composite-PK tables, it includes both columns so that `INSERT ... ON CONFLICT` correctly upserts per-user rows.
 
-### PowerSync upload
+### PowerSync Upload
 
 When the client uploads PUT operations, the backend uses `user_id` from the JWT to scope operations:
 
 - **INSERT**: Row is inserted with `user_id` from the session. For composite-PK tables, `ON CONFLICT (id, user_id)` or `ON CONFLICT (key, user_id)` is used.
 - **PATCH/DELETE**: The `WHERE` clause includes both the row identifier (`id` or `key`) and `user_id` so each user can only affect their own rows.
 
-## Adding new default-data tables
+## Adding New Default-Data Tables
 
 If you add a new table that is seeded with default data at initialization:
 
@@ -53,9 +53,9 @@ If you add a new table that is seeded with default data at initialization:
 
 ---
 
-## Foreign keys and indexes
+## Foreign Keys and Indexes
 
-### Why we don't use composite foreign keys
+### Why We Don't Use Composite Foreign Keys
 
 While some tables have composite primary keys `(id, user_id)`, we **intentionally do not enforce composite foreign key constraints** for references to these tables. For example:
 
@@ -69,7 +69,7 @@ While some tables have composite primary keys `(id, user_id)`, we **intentionall
 3. **Performance**: Foreign key constraint checks add overhead to INSERT/UPDATE operations during sync. Since relationships are managed on the frontend, backend FK enforcement provides minimal value.
 4. **Flexibility**: Allows client-side data to sync even if relationships are temporarily inconsistent (e.g., during partial syncs).
 
-### Index strategy: user_id only
+### Index Strategy: user_id Only
 
 The backend schema uses a **minimal index strategy**:
 
@@ -87,7 +87,7 @@ The backend schema uses a **minimal index strategy**:
 
 **Exception:** The `user_id` index is essential because PowerSync sync rules always filter by `user_id` to determine which data to sync to each device.
 
-### When adding new tables
+### When Adding New Tables
 
 For any new PowerSync-synced table:
 

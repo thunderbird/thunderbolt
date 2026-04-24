@@ -4,23 +4,23 @@
 
 ```sh
 # Run frontend tests (src/ and scripts/)
-bun test
+bun run test
 
 # Run frontend tests in watch mode
-bun test:watch
+bun run test:watch
 
 # Run backend tests
-bun test:backend
+bun run test:backend
 
 # Run backend tests in watch mode
-bun test:backend:watch
+bun run test:backend:watch
 
 # Run end-to-end tests (Playwright)
 bun run e2e
 bun run e2e:headed   # with a visible browser
 ```
 
-**Note**: Don't use `bun test` without arguments from the project root, as it will pick up both frontend and backend tests. The `test` script is configured to only run tests in `./src` and `./scripts` directories.
+**Note**: Don't use `bun test` directly from the project root, as it will pick up both frontend and backend tests. The `test` script is configured to only run tests in `./src` and `./scripts` directories.
 
 ## Testing Guidelines
 
@@ -157,7 +157,7 @@ mock.module('@/components/ui/dialog', () => ({
 
 The Playwright suite in [`e2e/`](../e2e) covers the OIDC sign-in and session flows — the parts of the app that are hardest to exercise from a unit test (browser storage, redirects, Better Auth callbacks).
 
-### What the config spins up
+### What the Config Spins Up
 
 [`playwright.config.ts`](../playwright.config.ts) boots three things before any spec runs:
 
@@ -176,14 +176,14 @@ Each test starts with a fresh `storageState` so stale IndexedDB / OPFS data from
 - **`loginViaOidc(page)`** — navigates to `/`, follows `AuthGate → /oidc-redirect → mock IdP → backend callback → session`, and waits for the chat textarea to render. The mock IdP auto-approves, so there's no username/password to type.
 - **`collectPageErrors(page)`** — subscribes to `pageerror` and returns an errors array, filtering Tauri-only noise (`__TAURI__`, `convertFileSrc`, etc.) that the web build surfaces harmlessly.
 
-### Current specs
+### Current Specs
 
 | Spec                           | What it verifies                                                                   |
 | ------------------------------ | ---------------------------------------------------------------------------------- |
 | [`oidc-login.spec.ts`](../e2e/oidc-login.spec.ts)     | Anonymous user completes the full OIDC redirect loop and lands in the chat UI      |
 | [`oidc-session.spec.ts`](../e2e/oidc-session.spec.ts) | Session survives a hard reload and the authenticated user stays signed in          |
 
-### Writing new specs
+### Writing New Specs
 
 - Use `loginViaOidc(page)` as the first line of any test that needs an authenticated user.
 - Call `collectPageErrors(page)` and assert the array is empty at the end of the test to catch regressions that only surface as uncaught exceptions.

@@ -3,6 +3,48 @@ import { defineConfig } from 'astro/config';
 import react from '@astrojs/react';
 import starlight from '@astrojs/starlight';
 import tailwindcss from '@tailwindcss/vite';
+import { fileURLToPath } from 'node:url';
+import { resolve } from 'node:path';
+
+const docsPath = resolve(fileURLToPath(new URL('.', import.meta.url)), '../docs');
+
+/** @type {import('astro').AstroIntegration} */
+const docsHmr = {
+	name: 'docs-hmr',
+	hooks: {
+		'astro:server:setup': ({ server, refreshContent }) => {
+			if (!refreshContent) return;
+			server.watcher.setMaxListeners(server.watcher.getMaxListeners() + 3);
+			server.watcher.add(docsPath);
+			const refresh = async (/** @type {string} */ file) => {
+				if (!file.startsWith(docsPath) || !/\.md$/i.test(file)) return;
+				console.log('[docs-hmr] file changed:', file);
+				await refreshContent({ loaders: ['thunderbolt-repo-docs'] });
+				console.log('[docs-hmr] refreshContent done');
+
+				for (const [envName, env] of Object.entries(server.environments ?? {})) {
+					const runner = /** @type {any} */ (env)?.runner;
+					const evalMods = runner?.evaluatedModules;
+					if (!evalMods) continue;
+					let dsId = null;
+					for (const [id] of evalMods.idToModuleMap) {
+						if (id?.includes('data-store')) { dsId = id; break; }
+					}
+					if (dsId) {
+						console.log(`[docs-hmr] data-store found in runner for env: ${envName}`);
+						runner.clearCache();
+						console.log(`[docs-hmr] cleared runner cache for env: ${envName}`);
+					} else {
+						console.log(`[docs-hmr] data-store NOT in runner for env: ${envName} (size: ${evalMods.idToModuleMap.size})`);
+					}
+				}
+			};
+			server.watcher.on('change', refresh);
+			server.watcher.on('add', refresh);
+			server.watcher.on('unlink', refresh);
+		},
+	},
+};
 
 // https://astro.build/config
 export default defineConfig({
@@ -11,6 +53,7 @@ export default defineConfig({
 		'/announcing-thunderbolt': '/blog/mozilla-introduces-thunderbolt',
 	},
 	integrations: [
+		docsHmr,
 		react(),
 		starlight({
 			title: 'Thunderbolt Docs',
@@ -41,78 +84,68 @@ export default defineConfig({
 				{
 					label: 'Getting Started',
 					items: [
-						{ label: 'Overview', slug: 'docs' },
-						{ label: 'Introduction', slug: 'docs/introduction' },
-						{ label: 'Quick Start', slug: 'docs/quick-start' },
-						{ label: 'Development', slug: 'docs/development' },
-						{ label: 'Testing', slug: 'docs/testing' },
+						{ label: 'Introduction', slug: 'docs' },
 						{ label: 'Features and Roadmap', slug: 'docs/roadmap' },
 						{ label: 'FAQ', slug: 'docs/faq' },
+					],
+				},
+				{
+					label: 'Development',
+					items: [
+						{ label: 'Quick Start', slug: 'docs/development/quick-start' },
+						{ label: 'Testing', slug: 'docs/development/testing' },
 					],
 				},
 				{
 					label: 'Self-Hosting',
 					items: [
 						{ label: 'Overview', slug: 'docs/self-hosting' },
-						{ label: 'Docker Compose', slug: 'docs/docker-compose' },
-						{ label: 'Kubernetes', slug: 'docs/kubernetes' },
-						{ label: 'Pulumi (AWS)', slug: 'docs/pulumi' },
+						{ label: 'Configuration', slug: 'docs/self-hosting/configuration' },
+						{ label: 'Docker Compose', slug: 'docs/self-hosting/docker-compose' },
+						{ label: 'Kubernetes', slug: 'docs/self-hosting/kubernetes' },
+						{ label: 'Pulumi (AWS)', slug: 'docs/self-hosting/pulumi' },
 					],
 				},
 				{
-					label: 'Architecture & Sync',
+					label: 'Data Syncing',
 					items: [
 						{ label: 'Architecture', slug: 'docs/architecture' },
-						{ label: 'Multi-Device Sync', slug: 'docs/multi-device-sync' },
-						{ label: 'End-to-End Encryption', slug: 'docs/e2e-encryption' },
+						{ label: 'Multi-Device Sync', slug: 'docs/architecture/multi-device-sync' },
+						{ label: 'End-to-End Encryption', slug: 'docs/architecture/e2e-encryption' },
 						{
 							label: 'PowerSync · Account & Devices',
-							slug: 'docs/powersync-account-devices',
+							slug: 'docs/architecture/powersync-account-devices',
 						},
 						{
 							label: 'PowerSync · Sync Middleware',
-							slug: 'docs/powersync-sync-middleware',
+							slug: 'docs/architecture/powersync-sync-middleware',
 						},
 						{
 							label: 'Composite Primary Keys & Default Data',
-							slug: 'docs/composite-primary-keys-and-default-data',
+							slug: 'docs/architecture/composite-primary-keys-and-default-data',
 						},
 						{
 							label: 'Delete Account & Revoke Device',
-							slug: 'docs/delete-account-and-revoke-device',
+							slug: 'docs/architecture/delete-account-and-revoke-device',
 						},
 					],
 				},
 				{
 					label: 'Platform',
 					items: [
-						{ label: 'WebView', slug: 'docs/webview' },
-						{ label: 'Widget System Guide', slug: 'docs/widgets' },
-						{ label: 'Tauri Signing Keys', slug: 'docs/tauri-signing-keys' },
+						{ label: 'WebView', slug: 'docs/platform/webview' },
+						{ label: 'Widgets', slug: 'docs/platform/widgets' },
 					],
-				},
-				{
-					label: 'Reference',
-					items: [{ label: 'Configuration', slug: 'docs/configuration' }],
 				},
 				{
 					label: 'Dev Tooling',
 					items: [
-						{ label: 'Storybook', slug: 'docs/storybook' },
-						{ label: 'Vite Bundle Analyzer', slug: 'docs/vite-bundle-analyzer' },
+						{ label: 'Tauri Signing Keys', slug: 'docs/platform/tauri-signing-keys' },
+						{ label: 'Storybook', slug: 'docs/dev-tooling/storybook' },
+						{ label: 'Vite Bundle Analyzer', slug: 'docs/dev-tooling/vite-bundle-analyzer' },
 						{
 							label: 'Local CDN for App Updates',
-							slug: 'docs/local-cdn-for-app-update-testing',
-						},
-					],
-				},
-				{
-					label: 'AI & Prompting',
-					items: [
-						{ label: 'Claude Code Skills', slug: 'docs/claude-code' },
-						{
-							label: 'GPT-OSS Prompt Engineering',
-							slug: 'docs/prompt-engineering-guide/gpt-oss',
+							slug: 'docs/dev-tooling/local-cdn-for-app-update-testing',
 						},
 					],
 				},

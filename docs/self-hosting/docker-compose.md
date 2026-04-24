@@ -8,7 +8,7 @@ The Docker Compose stack is the fastest path to a working Thunderbolt install. I
 - 4 GB RAM minimum, 8 GB recommended
 - Ports `3000`, `5432`, `8180` available (or edit `deploy/docker-compose.yml` to remap)
 
-## Spin it up
+## Spin It Up
 
 ```bash
 git clone https://github.com/thunderbird/thunderbolt.git
@@ -21,7 +21,7 @@ docker compose up --build
 
 The backend entrypoint runs Drizzle migrations before serving traffic, the Keycloak realm imports on first boot, and PowerSync loads its sync rules from `deploy/config/powersync-config.yaml`.
 
-## What you get
+## What You Get
 
 | Service        | URL                          | Credentials                                |
 | -------------- | ---------------------------- | ------------------------------------------ |
@@ -58,7 +58,7 @@ docker compose up -d --build
 
 The backend entrypoint applies pending migrations on start. PowerSync reloads sync rules from `config.yaml`.
 
-## Tearing down
+## Tearing Down
 
 ```bash
 docker compose down        # stop, keep data

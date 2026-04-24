@@ -4,7 +4,7 @@
 
 When E2E encryption is enabled, all user data is encrypted client-side before sync and decrypted client-side after download. The server stores only ciphertext and wrapped keys — it cannot read user data even if compelled or breached.
 
-## Key concepts
+## Key Concepts
 
 | Concept              | Description                                                                                                                                         |
 | -------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -14,7 +14,7 @@ When E2E encryption is enabled, all user data is encrypted client-side before sy
 | **Recovery key**     | CK encoded as a **24-word BIP-39 mnemonic**. Shown once at first setup. The only way to recover data if all devices are lost.                       |
 | **Canary**           | A fixed plaintext encrypted with CK, stored server-side. Used to verify a recovery key is correct and to detect whether encryption is set up.       |
 
-## Key hierarchy
+## Key Hierarchy
 
 There's one content key per account. Each device has its own keypair. The CK is wrapped separately for every device using a hybrid envelope. Each device unwraps its own envelope to arrive at the same CK.
 
@@ -38,7 +38,7 @@ There's one content key per account. Each device has its own keypair. The CK is 
       (identical)       (identical)        (identical)
 ```
 
-## Wire format
+## Wire Format
 
 Encrypted column values on the wire are written as:
 
@@ -48,7 +48,7 @@ __enc:<iv-base64>:<ciphertext-base64>
 
 The download and upload middleware both read from `encryptedColumnsMap` in [src/db/encryption/config.ts](../src/db/encryption/config.ts) — a single source of truth for which columns are encrypted.
 
-## User flows
+## User Flows
 
 | Scenario              | What happens                                                                                                                       |
 | --------------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
@@ -59,11 +59,11 @@ The download and upload middleware both read from `encryptedColumnsMap` in [src/
 | **Sign out**          | All local keys cleared → next sign-in is treated as a new device.                                                                  |
 | **Revoke device**     | Envelope deleted server-side, `revoked_at` set → device can no longer decrypt or sync.                                             |
 
-## Adding a new encrypted column
+## Adding a New Encrypted Column
 
 To encrypt a new column, add the table and column name to `encryptedColumnsMap` in [src/db/encryption/config.ts](../src/db/encryption/config.ts). The existing `encryptionMiddleware` handles every column in the map automatically — both download decryption and upload encryption.
 
-## Key files
+## Key Files
 
 | File                            | Role                                           |
 | ------------------------------- | ---------------------------------------------- |
@@ -77,6 +77,6 @@ To encrypt a new column, add the table and column name to `encryptedColumnsMap` 
 | `backend/src/api/encryption.ts` | Backend encryption API routes                  |
 | `backend/src/dal/encryption.ts` | Backend data access layer                      |
 
-## Sync pipeline integration
+## Sync Pipeline Integration
 
 Encryption is implemented as a PowerSync transform-middleware. On **Chrome/Edge/Firefox** it runs inside a custom SharedWorker so the CK stays in one place across tabs; on **Safari and Tauri** it runs on the main thread because those environments don't support SharedWorker. See [Multi-Device Sync](./multi-device-sync.md#two-sync-paths) and [powersync-sync-middleware.md](./powersync-sync-middleware.md) for the full architecture.

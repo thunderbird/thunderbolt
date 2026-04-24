@@ -1,4 +1,4 @@
-# Widget System Guide
+# Widgets
 
 This guide covers how to develop and use the widget system in Thunderbolt. Widgets are rich, interactive UI components that the AI can embed in its responses using XML-like tags.
 
@@ -470,7 +470,7 @@ const { data, isLoading, error } = useMessageCache<MyDataType>({
 - ✅ Good: `['linkPreview', url]`, `['weatherForecast', location, region, country]`
 - ❌ Bad: `['link-preview', url]`, `['LinkPreview', url]`
 
-## Privacy & Security via Proxy
+## Privacy & Security Via Proxy
 
 **Critical:** All external network requests MUST go through the backend proxy. Never fetch directly from the frontend.
 

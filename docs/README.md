@@ -1,52 +1,57 @@
-# Thunderbolt Docs
+# Introduction
 
-Documentation for [Thunderbolt](https://github.com/thunderbird/thunderbolt) — the open-source, cross-platform AI client.
+Thunderbolt is an open-source, cross-platform AI client for web, mobile, and desktop. Our goal in building Thunderbolt is to create an open-source alternative to the major closed-source frontier AI stacks that anyone can run on their own machine and that any org can deploy inside their own infrastructure.
 
-## Getting started
+⚠️ Thunderbolt is in active development. We encourage you to self-host and evaluate it, but it is not yet intended for production use.
 
-- [Introduction](./introduction.md) — what Thunderbolt is, who it's for today
-- [Quick Start](./quick-start.md) — bootstrap the full stack locally
-- [Development](./development.md) — make targets, repo layout
-- [Testing](./testing.md) — test strategy and guidelines
+## Features
+
+Most features in Thunderbolt are modular "primitives" that you can customize:
+- **Models** - By using the built-in Thunderbolt agent, you can use any OpenAI-compatible AI model - on-device, on-prem, cloud, etc.
+- **Widgets** - Thunderbolt supports UI widgets - interative components that can be embedded inside of chats.
+- **MCP Servers** - Add your own MCP servers for context.
+- **Automations** - (Deprecated) reusable prompts for quick access.
+- **Agents** - (Coming Soon) By implementing Agent Client Protocol (ACP), you can connect to any local or remote agent.
+- **Skills** - (Coming Soon) Automations will be migrated to match the industry-standard *skills* specification soon.
+
+## Getting Started
+
+- [Quick Start](./development/quick-start.md) — bootstrap the full stack locally
+- [Testing](./development/testing.md) — test strategy and guidelines
 - [Features and Roadmap](./roadmap.md)
 - [FAQ](./faq.md)
 
-## Self-hosting
+## Self-Hosting
 
-- [Self-Hosting Overview](./self-hosting.md) — pick a deployment target
-- [Docker Compose](./docker-compose.md)
-- [Kubernetes](./kubernetes.md)
-- [Pulumi (AWS)](./pulumi.md)
+- [Self-Hosting Overview](./self-hosting/) — pick a deployment target
+- [Docker Compose](./self-hosting/docker-compose.md)
+- [Kubernetes](./self-hosting/kubernetes.md)
+- [Pulumi (AWS)](./self-hosting/pulumi.md)
 
-## Architecture & sync
+## Architecture & Sync
 
-- [Architecture](./architecture.md)
-- [Multi-Device Sync](./multi-device-sync.md)
-- [End-to-End Encryption](./e2e-encryption.md)
-- [PowerSync, Account & Device Management](./powersync-account-devices.md)
-- [PowerSync Sync Middleware](./powersync-sync-middleware.md)
-- [Composite Primary Keys and Default Data](./composite-primary-keys-and-default-data.md)
-- [Delete Account and Revoke Device Access](./delete-account-and-revoke-device.md)
+- [Architecture](./architecture/)
+- [Multi-Device Sync](./architecture/multi-device-sync.md)
+- [End-to-End Encryption](./architecture/e2e-encryption.md)
+- [PowerSync, Account & Device Management](./architecture/powersync-account-devices.md)
+- [PowerSync Sync Middleware](./architecture/powersync-sync-middleware.md)
+- [Composite Primary Keys and Default Data](./architecture/composite-primary-keys-and-default-data.md)
+- [Delete Account and Revoke Device Access](./architecture/delete-account-and-revoke-device.md)
 
 ## Platform
 
-- [WebView](./webview.md)
-- [Widget System Guide](./widgets.md)
-- [Tauri Signing Keys](./tauri-signing-keys.md)
+- [WebView](./platform/webview.md)
+- [Widget System Guide](./platform/widgets.md)
+- [Tauri Signing Keys](./platform/tauri-signing-keys.md)
 
 ## Reference
 
-- [Configuration](./configuration.md) — every backend env var
+- [Configuration](./self-hosting/configuration.md) — every backend env var
 
-## Dev tooling
+## Dev Tooling
 
-- [Storybook](./storybook.md)
-- [Vite Bundle Analyzer](./vite-bundle-analyzer.md)
-- [Local CDN for App Update Testing](./local-cdn-for-app-update-testing.md)
+- [Storybook](./dev-tooling/storybook.md)
+- [Vite Bundle Analyzer](./dev-tooling/vite-bundle-analyzer.md)
+- [Local CDN for App Update Testing](./dev-tooling/local-cdn-for-app-update-testing.md)
 
-## AI & prompting
-
-- [Claude Code Skills](./claude-code.md)
-- [GPT-OSS Prompt Engineering Guide](./prompt-engineering-guide/gpt-oss.md)
-
-Contributions welcome — see [development.md](./development.md).
+Contributions welcome — open a PR against the [GitHub repo](https://github.com/thunderbird/thunderbolt).

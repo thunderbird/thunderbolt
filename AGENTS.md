@@ -73,11 +73,11 @@
 
 ## PowerSync and synced tables
 
-See [docs/powersync-account-devices.md](docs/powersync-account-devices.md) for: synced table requirements, adding a new table (frontend + backend + schema + config.yaml + production), account deletion, device management, and backend token/revoke API.
+See [docs/architecture/powersync-account-devices.md](docs/architecture/powersync-account-devices.md) for: synced table requirements, adding a new table (frontend + backend + schema + config.yaml + production), account deletion, device management, and backend token/revoke API.
 
-See [docs/powersync-sync-middleware.md](docs/powersync-sync-middleware.md) for: sync data transformation middleware, custom SharedWorker (multi-tab + encryption), and adding new transformers.
+See [docs/architecture/powersync-sync-middleware.md](docs/architecture/powersync-sync-middleware.md) for: sync data transformation middleware, custom SharedWorker (multi-tab + encryption), and adding new transformers.
 
-See [docs/e2e-encryption.md](docs/e2e-encryption.md) for: E2E encryption architecture, key hierarchy, device approval flows, encrypted columns configuration, API endpoints, and user flows.
+See [docs/architecture/e2e-encryption.md](docs/architecture/e2e-encryption.md) for: E2E encryption architecture, key hierarchy, device approval flows, encrypted columns configuration, API endpoints, and user flows.
 
 **Deploying new synced tables (two-PR process):**
 
@@ -85,7 +85,7 @@ See [docs/e2e-encryption.md](docs/e2e-encryption.md) for: E2E encryption archite
 2. **PR 2 (frontend + everything else):** Frontend schema, DAL, defaults, reconciliation, and any UI/logic. Merge only after PR 1's dashboard rules are live.
 
 Deploying frontend before the sync rules are updated causes silent sync failure — the table works locally but won't replicate across devices.
-See [docs/powersync-account-devices.md](docs/powersync-account-devices.md#pr-flow-for-adding-tables).
+See [docs/architecture/powersync-account-devices.md](docs/architecture/powersync-account-devices.md#pr-flow-for-adding-tables).
 
 **Backend migrations checklist:** When adding a new migration, always verify that `backend/drizzle/meta/_journal.json` includes the new entry. Drizzle discovers pending migrations via the journal — if the SQL file and snapshot exist but the journal entry is missing, the migration will never run. This is easy to miss when cherry-picking migration files across branches.
 

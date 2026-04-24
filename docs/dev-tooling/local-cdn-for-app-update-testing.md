@@ -1,4 +1,4 @@
-# Testing in-app updates with a local CDN
+# Testing In-App Updates with a Local CDN
 
 The Tauri updater downloads from CrabNebula CDN in production. To test the full update flow locally (download, install, relaunch), you can run a local server that mimics the CDN.
 
@@ -7,7 +7,7 @@ The Tauri updater downloads from CrabNebula CDN in production. To test the full 
 - Two copies of the repo: the **old version** (simulates what the user has installed) and the **new version** (simulates what they're updating to)
 - A signing keypair for update bundles
 
-## 1. Generate a test signing keypair
+## 1. Generate a Test Signing Keypair
 
 ```bash
 bun tauri signer generate -w ~/.tauri/test-update.key
@@ -16,7 +16,7 @@ bun tauri signer generate -w ~/.tauri/test-update.key
 
 This creates `~/.tauri/test-update.key` (private) and `~/.tauri/test-update.key.pub` (public).
 
-## 2. Configure the old build to use localhost
+## 2. Configure the Old Build to Use Localhost
 
 In the old build's `src-tauri/tauri.conf.json`, point the updater at your local server:
 
@@ -29,7 +29,7 @@ In the old build's `src-tauri/tauri.conf.json`, point the updater at your local 
 }
 ```
 
-## 3. Build the new version with test signing
+## 3. Build the New Version with Test Signing
 
 From your current repo (the version you want to update *to*):
 
@@ -44,7 +44,7 @@ TAURI_PRIVATE_KEY_PASSWORD="" bun tauri signer sign -f ~/.tauri/test-update.key 
   src-tauri/target/release/bundle/macos/Thunderbolt.app.tar.gz
 ```
 
-## 4. Build the old version
+## 4. Build the Old Version
 
 From the old repo checkout:
 
@@ -52,7 +52,7 @@ From the old repo checkout:
 bun tauri build --debug
 ```
 
-## 5. Start the local update server
+## 5. Start the Local Update Server
 
 ```bash
 bun run scripts/local-update-server.ts
@@ -63,7 +63,7 @@ This serves on port 8888. When the old build's updater checks for updates, the s
 - Returns a 204 (no update) if versions match, or an update manifest pointing at the local bundle
 - Serves the `.tar.gz` bundle and its signature when the updater downloads it
 
-## 6. Run the old build and trigger the update
+## 6. Run the Old Build and Trigger the Update
 
 ```bash
 open path/to/old-build/src-tauri/target/debug/bundle/macos/Thunderbolt.app

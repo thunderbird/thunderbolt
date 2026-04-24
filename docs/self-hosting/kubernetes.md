@@ -2,7 +2,7 @@
 
 The Kubernetes manifests at `deploy/k8s/` deploy the full Thunderbolt stack — frontend, backend, PostgreSQL, MongoDB, Keycloak, and PowerSync — onto any conformant cluster.
 
-## Local clusters
+## Local Clusters
 
 Any local Kubernetes works. Pick one:
 
@@ -14,7 +14,7 @@ Any local Kubernetes works. Pick one:
 
 ## Deploy
 
-### 1. Build images
+### 1. Build Images
 
 From the repo root:
 
@@ -25,7 +25,7 @@ docker build -f deploy/docker/frontend.Dockerfile -t thunderbolt-frontend .
 
 (Also build `postgres`, `keycloak`, and `powersync` Dockerfiles for clusters that can't pull the upstream images directly.)
 
-### 2. Configure secrets
+### 2. Configure Secrets
 
 ```bash
 cd deploy/k8s
@@ -33,7 +33,7 @@ cp secrets.yaml.example secrets.yaml
 # Edit secrets.yaml — rotate every default
 ```
 
-### 3. Install an ingress controller
+### 3. Install an Ingress Controller
 
 If your cluster doesn't already have one:
 
@@ -41,7 +41,7 @@ If your cluster doesn't already have one:
 kubectl apply -f https://raw.githubusercontent.com/kubernetes/ingress-nginx/controller-v1.12.1/deploy/static/provider/cloud/deploy.yaml
 ```
 
-### 4. Apply manifests
+### 4. Apply Manifests
 
 ```bash
 kubectl apply -f namespace.yaml
@@ -60,7 +60,7 @@ kubectl apply -f frontend.yaml
 kubectl apply -f ingress.yaml
 ```
 
-### 5. Access the app
+### 5. Access the App
 
 On Docker Desktop or Minikube (with `minikube tunnel`), the app is at `http://localhost`. Keycloak realm is at `http://localhost/realms/thunderbolt`.
 
@@ -75,7 +75,7 @@ The `ingress.yaml` routes are path-based:
 /*            → frontend Service
 ```
 
-## Manifest reference
+## Manifest Reference
 
 | File                    | Resources                        | Purpose                                                     |
 | ----------------------- | -------------------------------- | ----------------------------------------------------------- |

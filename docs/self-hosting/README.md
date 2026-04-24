@@ -4,7 +4,7 @@
 
 Every self-hosted target uses the same stack: Elysia backend, Vite frontend, PostgreSQL, PowerSync, Keycloak (OIDC), and MongoDB (PowerSync's operational store). What changes is the orchestration layer.
 
-## Which option should I pick?
+## Which Option Should I Pick?
 
 | Target            | What it creates                                                                                   | Best for                                                   |
 | ----------------- | ------------------------------------------------------------------------------------------------- | ---------------------------------------------------------- |
@@ -14,7 +14,7 @@ Every self-hosted target uses the same stack: Elysia backend, Vite frontend, Pos
 
 All three paths share the `deploy/docker/` Dockerfiles and the realm / sync-rule configs in `deploy/config/`. There's no duplication — the k8s manifests pull the same Postgres init SQL from `powersync-service/init-db/`, the same PowerSync config from `deploy/config/powersync-config.yaml`, and the same Keycloak realm from `deploy/config/keycloak-realm.json`.
 
-## The enterprise defaults
+## The Enterprise Defaults
 
 All three paths deploy the same opinionated enterprise configuration:
 
@@ -29,7 +29,7 @@ All three paths deploy the same opinionated enterprise configuration:
 
 You're expected to replace the demo user, reconfigure the Keycloak client, and rotate all default credentials before anyone touches it.
 
-## What you'll need
+## What You'll Need
 
 - A domain and DNS control (for production)
 - TLS certificates — cert-manager on Kubernetes, ACM for AWS, or bring your own

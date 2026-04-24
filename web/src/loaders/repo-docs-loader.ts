@@ -32,7 +32,7 @@ export const repoDocsLoader = ({
 }: Options): Loader => ({
 	name: 'thunderbolt-repo-docs',
 	load: async (context: LoaderContext) => {
-		const { store, parseData, generateDigest, renderMarkdown, config, watcher, logger } = context;
+		const { store, parseData, generateDigest, renderMarkdown, config } = context;
 		const normalizedBase = base.endsWith('/') ? base : `${base}/`;
 		const rootPath = fileURLToPath(new URL(normalizedBase, config.root));
 		const astroRootPath = fileURLToPath(config.root);
@@ -68,18 +68,6 @@ export const repoDocsLoader = ({
 		};
 
 		await rebuild();
-
-		if (watcher) {
-			watcher.add(rootPath);
-			const onChange = (file: string) => {
-				if (!/\.md$/i.test(file)) return;
-				logger.info(`Docs changed (${relative(rootPath, file)}); reloading`);
-				rebuild().catch((err) => logger.error(`Docs reload failed: ${err.message}`));
-			};
-			watcher.on('add', onChange);
-			watcher.on('change', onChange);
-			watcher.on('unlink', onChange);
-		}
 	},
 });
 
@@ -145,7 +133,11 @@ function fallbackTitle(relPath: string): string {
 
 function computeSlug(relPath: string, prefix: string): string {
 	const withoutExt = relPath.replace(/\.md$/i, '').toLowerCase();
-	if (withoutExt === 'readme' || withoutExt === 'index') return prefix;
+	const parts = withoutExt.split('/');
+	if (parts[parts.length - 1] === 'readme' || parts[parts.length - 1] === 'index') {
+		parts.pop();
+		return parts.length === 0 ? prefix : `${prefix}/${parts.join('/')}`;
+	}
 	return `${prefix}/${withoutExt}`;
 }
 

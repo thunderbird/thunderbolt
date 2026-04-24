@@ -216,6 +216,7 @@ export const createServices = (args: ServiceArgs) => {
     taskDefinition: psTaskDef.arn,
     desiredCount: 1,
     launchType: 'FARGATE',
+    healthCheckGracePeriodSeconds: 120,
     networkConfiguration: {
       subnets: privateSubnetIds,
       securityGroups: [servicesSgId],
@@ -264,6 +265,9 @@ export const createServices = (args: ServiceArgs) => {
     taskDefinition: kcTaskDef.arn,
     desiredCount: 1,
     launchType: 'FARGATE',
+    // Keycloak dev-mode cold start is ~50s. Give ECS 5 min before it starts
+    // killing tasks that haven't passed ALB health checks yet.
+    healthCheckGracePeriodSeconds: 300,
     networkConfiguration: {
       subnets: privateSubnetIds,
       securityGroups: [servicesSgId],
@@ -373,6 +377,8 @@ export const createServices = (args: ServiceArgs) => {
     taskDefinition: beTaskDef.arn,
     desiredCount: 1,
     launchType: 'FARGATE',
+    // Backend runs Drizzle migrations on startup before the server listens.
+    healthCheckGracePeriodSeconds: 120,
     networkConfiguration: {
       subnets: privateSubnetIds,
       securityGroups: [servicesSgId],

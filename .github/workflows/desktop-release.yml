@@ -88,7 +88,7 @@ jobs:
       # Skip CrabNebula for nightly builds to prevent auto-updater from pushing unstable builds
       - name: Create CrabNebula Draft Release
         if: ${{ !inputs.nightly }}
-        uses: crabnebula-dev/cloud-release@6889c5cd31fdc8c1d0b2f631bb6d53223db622bd # v0.2.0
+        uses: crabnebula-dev/cloud-release@1a8803698ba41de6b23e42abc5dcc3721308233c # v0.2.6
         with:
           command: release draft thunderbird/thunderbolt ${{ inputs.version }}
           api-key: ${{ secrets.CRABNEBULA_CLOUD_API_KEY }}
@@ -238,7 +238,7 @@ jobs:
       - name: build Tauri app for Linux
         if: matrix.os == 'ubuntu-24.04'
         run: |
-          bun install
+          bun install --frozen-lockfile
           bun tauri build
         env:
           RUSTFLAGS: ''
@@ -252,7 +252,7 @@ jobs:
       - name: build Tauri app for Windows (x86_64)
         if: matrix.os == 'windows-latest' && matrix.target == 'x86_64-pc-windows-msvc'
         run: |
-          bun install
+          bun install --frozen-lockfile
           bun tauri build --target x86_64-pc-windows-msvc
         env:
           RUSTFLAGS: ''
@@ -268,7 +268,7 @@ jobs:
           # Install ARM64 target
           rustup target add aarch64-pc-windows-msvc
           # Build for ARM64
-          bun install
+          bun install --frozen-lockfile
           bun tauri build --target aarch64-pc-windows-msvc
         env:
           RUSTFLAGS: ''
@@ -281,7 +281,7 @@ jobs:
       - name: Build Tauri app for macOS (Silicon)
         if: matrix.os == 'macos-latest' && matrix.target == 'aarch64-apple-darwin'
         run: |
-          bun install
+          bun install --frozen-lockfile
           bun tauri build --target aarch64-apple-darwin
         env:
           RUSTFLAGS: ''
@@ -301,7 +301,7 @@ jobs:
           # Clean only the x86_64 target to avoid architecture conflicts
           rm -rf src-tauri/target/x86_64-apple-darwin
           # Build for Intel with proper environment
-          bun install
+          bun install --frozen-lockfile
           bun tauri build --target x86_64-apple-darwin
         env:
           # Override the target-cpu=native flag
@@ -367,7 +367,7 @@ jobs:
       # Skip CrabNebula for nightly builds
       - name: Upload to CrabNebula Cloud
         if: ${{ !inputs.nightly }}
-        uses: crabnebula-dev/cloud-release@6889c5cd31fdc8c1d0b2f631bb6d53223db622bd # v0.2.0
+        uses: crabnebula-dev/cloud-release@1a8803698ba41de6b23e42abc5dcc3721308233c # v0.2.6
         with:
           command: release upload thunderbird/thunderbolt ${{ inputs.version }} --framework tauri
           api-key: ${{ secrets.CRABNEBULA_CLOUD_API_KEY }}
@@ -437,7 +437,7 @@ jobs:
       # Publish release on CrabNebula Cloud for auto-updates (skip for nightly to prevent unstable auto-updates)
       - name: Publish to CrabNebula Cloud
         if: ${{ !inputs.nightly }}
-        uses: crabnebula-dev/cloud-release@6889c5cd31fdc8c1d0b2f631bb6d53223db622bd # v0.2.0
+        uses: crabnebula-dev/cloud-release@1a8803698ba41de6b23e42abc5dcc3721308233c # v0.2.6
         with:
           command: release publish thunderbird/thunderbolt ${{ inputs.version }} --framework tauri
           api-key: ${{ secrets.CRABNEBULA_CLOUD_API_KEY }}

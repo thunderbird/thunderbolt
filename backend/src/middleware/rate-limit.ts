@@ -1,20 +1,15 @@
 import type { db as DbType } from '@/db/client'
 import { rateLimits } from '@/db/rate-limit-schema'
+import { extractClientIp } from '@/utils/request'
 import { Elysia } from 'elysia'
-import { RateLimiterAbstract, RateLimiterDrizzle, RateLimiterRes } from 'rate-limiter-flexible'
+import { type RateLimiterAbstract, RateLimiterDrizzle, RateLimiterRes } from 'rate-limiter-flexible'
 
 /** Context shape when the auth macro has resolved a session. */
 type AuthResolvedContext = {
   user?: { id: string } | null
 }
 
-// TODO(THU-113): Add proof-of-work challenge (ALTCHA) for auth route abuse prevention.
-// This is the planned solution for rate-limiting unauthenticated endpoints (waitlist, OTP send)
-// without storing client IPs in the database. Note: server-side auth.api calls (e.g. from
-// /waitlist/join) bypass Better Auth's HTTP rate limiter entirely, so the waitlist OTP
-// generation path is currently unthrottled.
-
-type RateLimitTier = 'inference' | 'pro'
+type RateLimitTier = 'inference' | 'pro' | 'auth'
 
 type RateLimitTierConfig = {
   max: number
@@ -25,10 +20,15 @@ export type RateLimitSettings = {
   enabled: boolean
 }
 
+export type IpRateLimitSettings = RateLimitSettings & {
+  trustedProxy: '' | 'cloudflare' | 'akamai'
+}
+
 /** Hardcoded per-tier limits. */
 const tierConfigs: Record<RateLimitTier, RateLimitTierConfig> = {
   inference: { max: 20, durationSecs: 60 },
   pro: { max: 50, durationSecs: 60 },
+  auth: { max: 10, durationSecs: 60 },
 }
 
 /** Create a rate-limiter-flexible instance for a specific tier. */
@@ -98,6 +98,25 @@ const createUserRateLimitMiddleware = (limiter: RateLimiterDrizzle) =>
     })
     .as('scoped')
 
+/**
+ * Build an IP-based rate limit middleware for unauthenticated routes.
+ * Uses `extractClientIp` to resolve the real client IP behind a trusted proxy,
+ * falling back to the Bun socket IP when no proxy is configured.
+ *
+ * Skips rate limiting when the IP cannot be determined (returns 'unknown'),
+ * to avoid funnelling all unidentifiable traffic into a single bucket.
+ */
+const createIpRateLimitMiddleware = (limiter: RateLimiterDrizzle, trustedProxy: IpRateLimitSettings['trustedProxy']) =>
+  new Elysia()
+    .onBeforeHandle(async (ctx) => {
+      const { set } = ctx
+      const socketIp = ctx.server?.requestIP(ctx.request)?.address ?? 'unknown'
+      const clientIp = extractClientIp(ctx.request.headers, socketIp, trustedProxy)
+      if (clientIp === 'unknown') return
+      return consumeOrReject(limiter, `ip:${clientIp}`, set)
+    })
+    .as('scoped')
+
 /** Create rate limit middleware for inference routes (keyed by user). */
 export const createInferenceRateLimit = (database: typeof DbType, settings: RateLimitSettings) => {
   if (!settings.enabled) return new Elysia()
@@ -110,4 +129,11 @@ export const createProRateLimit = (database: typeof DbType, settings: RateLimitS
   if (!settings.enabled) return new Elysia()
   const limiter = createLimiter(database, 'pro')
   return createUserRateLimitMiddleware(limiter)
+}
+
+/** Create IP-based rate limit middleware for auth and unauthenticated routes. */
+export const createAuthIpRateLimit = (database: typeof DbType, settings: IpRateLimitSettings) => {
+  if (!settings.enabled) return new Elysia()
+  const limiter = createLimiter(database, 'auth')
+  return createIpRateLimitMiddleware(limiter, settings.trustedProxy)
 }

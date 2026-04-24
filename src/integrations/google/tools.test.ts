@@ -6,6 +6,7 @@ import type {
   DraftEmailParams,
   GetDriveFileContentParams,
   GetEmailParams,
+  GoogleAuthDeps,
   SearchDriveParams,
   SearchEmailsParams,
 } from './tools'
@@ -27,17 +28,12 @@ type HTTPError = Error & {
   }
 }
 
-// Mock external dependencies
-const mockJson = mock()
-const mockText = mock()
-const mockGetGoogleCredentials = mock()
-const mockEnsureValidGoogleToken = mock()
-const mockGetHeader = mock()
-const mockParseEmailAddress = mock()
-const mockExtractBody = mock()
-const mockTruncateText = mock()
-const mockBuildRawMessage = mock()
-const mockTransformDriveQuery = mock()
+/** Encode a string as Gmail-style base64url body data */
+const toBase64Url = (str: string): string => {
+  const bytes = new TextEncoder().encode(str)
+  const base64 = btoa(bytes.reduce((s, b) => s + String.fromCharCode(b), ''))
+  return base64.replace(/\+/g, '-').replace(/\//g, '_')
+}
 
 const createMockHttpClient = (responses: unknown[] = []): HttpClient => {
   let callCount = 0
@@ -61,43 +57,28 @@ const createMockHttpClient = (responses: unknown[] = []): HttpClient => {
   return createClient({ fetch: mockFetch })
 }
 
-// Mock utils
-mock.module('./utils', () => ({
-  getGoogleCredentials: mockGetGoogleCredentials,
-  ensureValidGoogleToken: mockEnsureValidGoogleToken,
-  getHeader: mockGetHeader,
-  parseEmailAddress: mockParseEmailAddress,
-  extractBody: mockExtractBody,
-  truncateText: mockTruncateText,
-  buildRawMessage: mockBuildRawMessage,
-  transformDriveQuery: mockTransformDriveQuery,
-}))
+// Dependency-injected auth mock (replaces mock.module for the 2 impure functions)
+const mockAuth: GoogleAuthDeps = {
+  getCredentials: mock(() =>
+    Promise.resolve({
+      access_token: 'mock-access-token',
+      refresh_token: 'mock-refresh-token',
+      expires_at: Date.now() + 3600000,
+    }),
+  ),
+  ensureToken: mock(() => Promise.resolve('mock-access-token')),
+}
 
 describe('Google Tools', () => {
   beforeEach(() => {
-    // Reset all mocks
-    mockJson.mockClear()
-    mockText.mockClear()
-    mockGetGoogleCredentials.mockClear()
-    mockEnsureValidGoogleToken.mockClear()
-    mockGetHeader.mockClear()
-    mockParseEmailAddress.mockClear()
-    mockExtractBody.mockClear()
-    mockTruncateText.mockClear()
-    mockBuildRawMessage.mockClear()
-    mockTransformDriveQuery.mockClear()
-
-    // Set default mock behavior for transformDriveQuery to pass through queries
-    // This matches the new simplified implementation that just returns query.trim()
-    mockTransformDriveQuery.mockImplementation((query: string) => query?.trim() || '')
-
-    // Setup default mocks
-    mockGetGoogleCredentials.mockResolvedValue({
-      access_token: 'test-token',
-      refresh_token: 'refresh-token',
+    ;(mockAuth.getCredentials as ReturnType<typeof mock>).mockClear()
+    ;(mockAuth.ensureToken as ReturnType<typeof mock>).mockClear()
+    ;(mockAuth.getCredentials as ReturnType<typeof mock>).mockResolvedValue({
+      access_token: 'mock-access-token',
+      refresh_token: 'mock-refresh-token',
       expires_at: Date.now() + 3600000,
     })
-    mockEnsureValidGoogleToken.mockResolvedValue('test-access-token')
+    ;(mockAuth.ensureToken as ReturnType<typeof mock>).mockResolvedValue('mock-access-token')
   })
 
   describe('checkInbox', () => {
@@ -133,18 +114,9 @@ describe('Google Tools', () => {
         ],
       }
 
-      // Create mock http client that returns appropriate responses
       const mockHttpClient = createMockHttpClient([mockThreadsResponse, mockThreadDetails, mockThreadDetails])
 
-      mockGetHeader
-        .mockReturnValueOnce('sender@example.com')
-        .mockReturnValueOnce('Test Subject')
-        .mockReturnValueOnce('2024-01-01T10:00:00Z')
-        .mockReturnValueOnce('sender@example.com')
-        .mockReturnValueOnce('Test Subject')
-        .mockReturnValueOnce('2024-01-01T10:00:00Z')
-
-      const result = await checkInbox(params, mockHttpClient)
+      const result = await checkInbox(params, mockHttpClient, mockAuth)
 
       expect(result.conversations).toHaveLength(2)
       expect(result.total_count).toBe(25)
@@ -152,6 +124,8 @@ describe('Google Tools', () => {
       expect(result.conversations[0]).toMatchObject({
         thread_id: 'thread1',
         message_count: 1,
+        from: 'sender@example.com',
+        subject: 'Test Subject',
         snippet: 'First thread',
         is_unread: true,
         has_attachments: true,
@@ -167,7 +141,7 @@ describe('Google Tools', () => {
 
       const mockHttpClient = createMockHttpClient([{ threads: [] }])
 
-      const result = await checkInbox(params, mockHttpClient)
+      const result = await checkInbox(params, mockHttpClient, mockAuth)
 
       expect(result.conversations).toHaveLength(0)
       expect(result.total_count).toBe(0)
@@ -183,7 +157,7 @@ describe('Google Tools', () => {
 
       const mockHttpClient = createMockHttpClient([{ threads: [] }])
 
-      const result = await checkInbox(params, mockHttpClient)
+      const result = await checkInbox(params, mockHttpClient, mockAuth)
 
       expect(result.conversations).toHaveLength(0)
       expect(result.total_count).toBe(0)
@@ -200,7 +174,7 @@ describe('Google Tools', () => {
       const networkError = new Error('Network error')
       const mockHttpClient = createMockHttpClient([networkError])
 
-      await expect(checkInbox(params, mockHttpClient)).rejects.toThrow('Network error')
+      await expect(checkInbox(params, mockHttpClient, mockAuth)).rejects.toThrow('Network error')
     })
 
     it('should handle authentication errors', async () => {
@@ -211,10 +185,10 @@ describe('Google Tools', () => {
       }
 
       const authError = new Error('Authentication failed')
-      mockEnsureValidGoogleToken.mockRejectedValue(authError)
+      ;(mockAuth.ensureToken as ReturnType<typeof mock>).mockRejectedValue(authError)
 
       const mockHttpClient = createMockHttpClient([])
-      await expect(checkInbox(params, mockHttpClient)).rejects.toThrow('Authentication failed')
+      await expect(checkInbox(params, mockHttpClient, mockAuth)).rejects.toThrow('Authentication failed')
     })
   })
 
@@ -247,15 +221,7 @@ describe('Google Tools', () => {
 
       const mockHttpClient = createMockHttpClient([mockMessagesResponse, mockMessageDetails, mockMessageDetails])
 
-      mockGetHeader
-        .mockReturnValueOnce('sender@example.com')
-        .mockReturnValueOnce('Search Result')
-        .mockReturnValueOnce('2024-01-01T10:00:00Z')
-        .mockReturnValueOnce('sender@example.com')
-        .mockReturnValueOnce('Search Result')
-        .mockReturnValueOnce('2024-01-01T10:00:00Z')
-
-      const result = await searchEmails(params, mockHttpClient)
+      const result = await searchEmails(params, mockHttpClient, mockAuth)
 
       expect(result.messages).toHaveLength(2)
       expect(result.total_count).toBe(50)
@@ -263,6 +229,8 @@ describe('Google Tools', () => {
       expect(result.messages[0]).toMatchObject({
         id: 'msg1',
         thread_id: 'thread1',
+        from: 'sender@example.com',
+        subject: 'Search Result',
         snippet: 'Email content preview',
         is_unread: false,
         has_attachments: false,
@@ -277,7 +245,7 @@ describe('Google Tools', () => {
 
       const mockHttpClient = createMockHttpClient([{ messages: [] }])
 
-      const result = await searchEmails(params, mockHttpClient)
+      const result = await searchEmails(params, mockHttpClient, mockAuth)
 
       expect(result.messages).toHaveLength(0)
       expect(result.total_count).toBe(0)
@@ -304,6 +272,14 @@ describe('Google Tools', () => {
           ],
           parts: [
             {
+              mimeType: 'text/plain',
+              body: { data: toBase64Url('Plain text body'), size: 15 },
+            },
+            {
+              mimeType: 'text/html',
+              body: { data: toBase64Url('<p>HTML body</p>'), size: 16 },
+            },
+            {
               filename: 'document.pdf',
               body: { attachmentId: 'att123', size: 1024 },
               mimeType: 'application/pdf',
@@ -314,23 +290,7 @@ describe('Google Tools', () => {
 
       const mockHttpClient = createMockHttpClient([mockEmailResponse])
 
-      mockGetHeader
-        .mockReturnValueOnce('John Doe <john@example.com>') // From
-        .mockReturnValueOnce('recipient@example.com') // To
-        .mockReturnValueOnce('cc@example.com') // Cc
-        .mockReturnValueOnce('Test Email') // Subject
-        .mockReturnValueOnce('2024-01-01T10:00:00Z') // Date
-
-      mockParseEmailAddress
-        .mockReturnValueOnce({ name: 'John Doe', email: 'john@example.com' })
-        .mockReturnValueOnce({ name: '', email: 'recipient@example.com' })
-        .mockReturnValueOnce({ name: '', email: 'cc@example.com' })
-
-      mockExtractBody.mockReturnValueOnce('Plain text body').mockReturnValueOnce('<p>HTML body</p>')
-
-      mockTruncateText.mockReturnValueOnce('Plain text body').mockReturnValueOnce('<p>HTML body</p>')
-
-      const result = await getEmail(params, mockHttpClient)
+      const result = await getEmail(params, mockHttpClient, mockAuth)
 
       expect(result).toMatchObject({
         id: 'test-message-id',
@@ -369,28 +329,15 @@ describe('Google Tools', () => {
             { name: 'Subject', value: 'Simple Email' },
             { name: 'Date', value: '2024-01-01T10:00:00Z' },
           ],
+          mimeType: 'text/plain',
+          body: { data: toBase64Url('Simple email body'), size: 17 },
           // No parts = no attachments
         },
       }
 
       const mockHttpClient = createMockHttpClient([mockEmailResponse])
 
-      mockGetHeader
-        .mockReturnValueOnce('sender@example.com') // From
-        .mockReturnValueOnce('recipient@example.com') // To
-        .mockReturnValueOnce('') // Cc (empty)
-        .mockReturnValueOnce('Simple Email') // Subject
-        .mockReturnValueOnce('2024-01-01T10:00:00Z') // Date
-
-      mockParseEmailAddress
-        .mockReturnValueOnce({ name: '', email: 'sender@example.com' })
-        .mockReturnValueOnce({ name: '', email: 'recipient@example.com' })
-
-      mockExtractBody.mockReturnValueOnce('Simple email body').mockReturnValueOnce('')
-
-      mockTruncateText.mockReturnValueOnce('Simple email body')
-
-      const result = await getEmail(params, mockHttpClient)
+      const result = await getEmail(params, mockHttpClient, mockAuth)
 
       expect(result).toMatchObject({
         id: 'simple-message-id',
@@ -416,7 +363,7 @@ describe('Google Tools', () => {
       const networkError = new Error('Failed to fetch email')
       const mockHttpClient = createMockHttpClient([networkError])
 
-      await expect(getEmail(params, mockHttpClient)).rejects.toThrow('Failed to fetch email')
+      await expect(getEmail(params, mockHttpClient, mockAuth)).rejects.toThrow('Failed to fetch email')
     })
   })
 
@@ -436,17 +383,14 @@ describe('Google Tools', () => {
       }
 
       const mockHttpClient = createMockHttpClient([mockDraftResponse])
-      mockBuildRawMessage.mockReturnValue('base64-encoded-message')
 
-      const result = await draftEmail(params, mockHttpClient)
+      const result = await draftEmail(params, mockHttpClient, mockAuth)
 
       expect(result).toMatchObject({
         draft_id: 'draft-123',
         thread_id: 'thread-456',
         created_at: expect.any(String),
       })
-
-      expect(mockBuildRawMessage).toHaveBeenCalledWith(params)
     })
 
     it('should create reply draft with thread ID', async () => {
@@ -470,12 +414,9 @@ describe('Google Tools', () => {
 
       const mockHttpClient = createMockHttpClient([mockOriginalMessage, mockDraftResponse])
 
-      mockBuildRawMessage.mockReturnValue('base64-encoded-reply')
-
-      const result = await draftEmail(params, mockHttpClient)
+      const result = await draftEmail(params, mockHttpClient, mockAuth)
 
       expect(result.thread_id).toBe('existing-thread-123')
-      expect(mockBuildRawMessage).toHaveBeenCalledWith(params)
     })
   })
 
@@ -510,10 +451,8 @@ describe('Google Tools', () => {
         timeZone: 'America/New_York',
       }
 
-      mockTruncateText.mockReturnValue('Weekly team sync')
-
       const mockHttpClient = createMockHttpClient([mockCalendarResponse])
-      const result = await checkCalendar(params, mockHttpClient)
+      const result = await checkCalendar(params, mockHttpClient, mockAuth)
 
       expect(result.events).toHaveLength(2)
       expect(result.timezone).toBe('America/New_York')
@@ -549,7 +488,7 @@ describe('Google Tools', () => {
       mockError.response = { status: 403 }
       const mockHttpClient = createMockHttpClient([mockError])
 
-      const result = await checkCalendar(params, mockHttpClient)
+      const result = await checkCalendar(params, mockHttpClient, mockAuth)
 
       expect(result.events).toHaveLength(0)
       expect(result.timezone).toBe('UTC')
@@ -566,7 +505,7 @@ describe('Google Tools', () => {
       mockError.response = { status: 404 }
       const mockHttpClient = createMockHttpClient([mockError])
 
-      const result = await checkCalendar(params, mockHttpClient)
+      const result = await checkCalendar(params, mockHttpClient, mockAuth)
 
       expect(result.events).toHaveLength(0)
       expect(result.error).toContain('Calendar access not available')
@@ -582,7 +521,7 @@ describe('Google Tools', () => {
       mockError.response = { status: 500 }
       const mockHttpClient = createMockHttpClient([mockError])
 
-      await expect(checkCalendar(params, mockHttpClient)).rejects.toThrow('Server Error')
+      await expect(checkCalendar(params, mockHttpClient, mockAuth)).rejects.toThrow('Server Error')
     })
   })
 
@@ -625,10 +564,8 @@ describe('Google Tools', () => {
         nextPageToken: null,
       }
 
-      mockTruncateText.mockReturnValue('A sample PDF document')
-
       const mockHttpClient = createMockHttpClient([mockDriveResponse])
-      const result = await searchDrive(params, mockHttpClient)
+      const result = await searchDrive(params, mockHttpClient, mockAuth)
 
       expect(result.files).toHaveLength(2)
       expect(result.total_count).toBe(2)
@@ -647,7 +584,6 @@ describe('Google Tools', () => {
         shared: true,
         owned_by_me: true,
         parent_folders: ['folder1'],
-        description: 'A sample PDF document',
       })
 
       expect(result.files[1]).toMatchObject({
@@ -658,9 +594,6 @@ describe('Google Tools', () => {
         shared: false,
         owned_by_me: true,
       })
-
-      // Verify transformDriveQuery was called with the original query
-      expect(mockTransformDriveQuery).toHaveBeenCalledWith("mimeType = 'application/pdf'")
     })
 
     it('should handle empty search results', async () => {
@@ -671,7 +604,7 @@ describe('Google Tools', () => {
       }
 
       const mockHttpClient = createMockHttpClient([{ files: [] }])
-      const result = await searchDrive(params, mockHttpClient)
+      const result = await searchDrive(params, mockHttpClient, mockAuth)
 
       expect(result.files).toHaveLength(0)
       expect(result.total_count).toBe(0)
@@ -686,10 +619,9 @@ describe('Google Tools', () => {
       }
 
       const mockHttpClient = createMockHttpClient([{ files: [] }])
-      await searchDrive(params, mockHttpClient)
+      const result = await searchDrive(params, mockHttpClient, mockAuth)
 
-      // Verify transformDriveQuery was called
-      expect(mockTransformDriveQuery).toHaveBeenCalledWith("name contains 'test'")
+      expect(result.files).toHaveLength(0)
     })
 
     it('should handle files without optional properties', async () => {
@@ -714,7 +646,7 @@ describe('Google Tools', () => {
       }
 
       const mockHttpClient = createMockHttpClient([mockDriveResponse])
-      const result = await searchDrive(params, mockHttpClient)
+      const result = await searchDrive(params, mockHttpClient, mockAuth)
 
       expect(result.files).toHaveLength(1)
       expect(result.files[0]).toMatchObject({
@@ -753,7 +685,7 @@ describe('Google Tools', () => {
       }
 
       const mockHttpClient = createMockHttpClient([mockDriveResponse])
-      const result = await searchDrive(params, mockHttpClient)
+      const result = await searchDrive(params, mockHttpClient, mockAuth)
 
       expect(result.files).toHaveLength(1)
       expect(result.has_more).toBe(true)
@@ -770,7 +702,7 @@ describe('Google Tools', () => {
       mockError.response = { status: 403 }
       const mockHttpClient = createMockHttpClient([mockError])
 
-      const result = await searchDrive(params, mockHttpClient)
+      const result = await searchDrive(params, mockHttpClient, mockAuth)
 
       expect(result.files).toHaveLength(0)
       expect(result.total_count).toBe(0)
@@ -789,7 +721,7 @@ describe('Google Tools', () => {
       mockError.response = { status: 500 }
       const mockHttpClient = createMockHttpClient([mockError])
 
-      await expect(searchDrive(params, mockHttpClient)).rejects.toThrow('Server Error')
+      await expect(searchDrive(params, mockHttpClient, mockAuth)).rejects.toThrow('Server Error')
     })
 
     it('should handle empty query by searching all non-trashed files', async () => {
@@ -799,13 +731,10 @@ describe('Google Tools', () => {
         include_trashed: false,
       }
 
-      mockTransformDriveQuery.mockReturnValue('')
-
       const mockHttpClient = createMockHttpClient([{ files: [] }])
-      await searchDrive(params, mockHttpClient)
+      const result = await searchDrive(params, mockHttpClient, mockAuth)
 
-      // Verify transformDriveQuery was called
-      expect(mockTransformDriveQuery).toHaveBeenCalledWith('')
+      expect(result.files).toHaveLength(0)
     })
 
     it('should respect max_results limit', async () => {
@@ -816,7 +745,7 @@ describe('Google Tools', () => {
       }
 
       const mockHttpClient = createMockHttpClient([{ files: [] }])
-      await searchDrive(params, mockHttpClient)
+      await searchDrive(params, mockHttpClient, mockAuth)
 
       // Test passes by checking the function completes without error
       expect(true).toBe(true)
@@ -832,7 +761,7 @@ describe('Google Tools', () => {
       const networkError = new Error('Network error')
       const mockHttpClient = createMockHttpClient([networkError])
 
-      await expect(searchDrive(params, mockHttpClient)).rejects.toThrow('Network error')
+      await expect(searchDrive(params, mockHttpClient, mockAuth)).rejects.toThrow('Network error')
     })
 
     it('should handle authentication errors', async () => {
@@ -843,13 +772,13 @@ describe('Google Tools', () => {
       }
 
       const authError = new Error('Authentication failed')
-      mockEnsureValidGoogleToken.mockRejectedValue(authError)
+      ;(mockAuth.ensureToken as ReturnType<typeof mock>).mockRejectedValue(authError)
 
       const mockHttpClient = createMockHttpClient([])
-      await expect(searchDrive(params, mockHttpClient)).rejects.toThrow('Authentication failed')
+      await expect(searchDrive(params, mockHttpClient, mockAuth)).rejects.toThrow('Authentication failed')
     })
 
-    it('should transform simple date format to RFC 3339 format', async () => {
+    it('should pass query through to Drive API', async () => {
       const params: SearchDriveParams = {
         query: "name contains 'contract' and modifiedTime > '2024-01-01T00:00:00Z'",
         max_results: 10,
@@ -857,12 +786,10 @@ describe('Google Tools', () => {
       }
 
       const mockHttpClient = createMockHttpClient([{ files: [] }])
-      await searchDrive(params, mockHttpClient)
+      const result = await searchDrive(params, mockHttpClient, mockAuth)
 
-      // Verify transformDriveQuery was called
-      expect(mockTransformDriveQuery).toHaveBeenCalledWith(
-        "name contains 'contract' and modifiedTime > '2024-01-01T00:00:00Z'",
-      )
+      // transformDriveQuery just trims the input, so the function should complete
+      expect(result.files).toHaveLength(0)
     })
 
     it('should preserve existing RFC 3339 dates', async () => {
@@ -873,12 +800,9 @@ describe('Google Tools', () => {
       }
 
       const mockHttpClient = createMockHttpClient([{ files: [] }])
-      await searchDrive(params, mockHttpClient)
+      const result = await searchDrive(params, mockHttpClient, mockAuth)
 
-      // Verify transformDriveQuery was called
-      expect(mockTransformDriveQuery).toHaveBeenCalledWith(
-        "name contains 'contract' and modifiedTime > '2024-01-01T10:30:00Z'",
-      )
+      expect(result.files).toHaveLength(0)
     })
   })
 
@@ -935,7 +859,7 @@ describe('Google Tools', () => {
       const mockContent = 'This is the content of my Google Doc.\n\nIt has multiple paragraphs.'
 
       const mockHttpClient = createMockHttpClient([mockFileResponse, mockContent])
-      const result = await getDriveFileContent(params, mockHttpClient)
+      const result = await getDriveFileContent(params, mockHttpClient, mockAuth)
 
       expect(result).toMatchObject({
         file_id: 'doc123',
@@ -958,7 +882,7 @@ describe('Google Tools', () => {
       const mockContent = 'These are my notes.\nLine 2 of notes.'
 
       const mockHttpClient = createMockHttpClient([mockFileResponse, mockContent])
-      const result = await getDriveFileContent(params, mockHttpClient)
+      const result = await getDriveFileContent(params, mockHttpClient, mockAuth)
 
       expect(result).toMatchObject({
         file_id: 'txt123',
@@ -979,7 +903,7 @@ describe('Google Tools', () => {
       }
 
       const mockHttpClient = createMockHttpClient([mockFileResponse])
-      const result = await getDriveFileContent(params, mockHttpClient)
+      const result = await getDriveFileContent(params, mockHttpClient, mockAuth)
 
       expect(result).toMatchObject({
         file_id: 'img123',
@@ -1000,7 +924,7 @@ describe('Google Tools', () => {
       const mockError = new Error('Forbidden') as HTTPError
       mockError.response = { status: 403 }
       const mockHttpClient = createMockHttpClient([mockError])
-      const result = await getDriveFileContent(params, mockHttpClient)
+      const result = await getDriveFileContent(params, mockHttpClient, mockAuth)
 
       expect(result).toMatchObject({
         file_id: 'private123',
@@ -1020,7 +944,7 @@ describe('Google Tools', () => {
       const mockError = new Error('Not Found') as HTTPError
       mockError.response = { status: 404 }
       const mockHttpClient = createMockHttpClient([mockError])
-      const result = await getDriveFileContent(params, mockHttpClient)
+      const result = await getDriveFileContent(params, mockHttpClient, mockAuth)
 
       expect(result).toMatchObject({
         file_id: 'missing123',

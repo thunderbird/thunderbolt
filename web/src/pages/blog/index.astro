@@ -1,0 +1,153 @@
+---
+import { getCollection } from 'astro:content';
+import BaseLayout from '../../layouts/BaseLayout.astro';
+
+const posts = (await getCollection('blog'))
+	.filter((post) => !post.data.draft)
+	.sort((a, b) => b.data.date.getTime() - a.data.date.getTime());
+---
+
+<BaseLayout
+	title="Blog"
+	fullTitle="Thunderbolt — Blog"
+	description="News, updates, and insights from the Thunderbolt team."
+>
+	<header class="intro">
+		<h1>Thunderbolt Blog</h1>
+	</header>
+
+	<ul class="post-list">
+		{
+			posts.map((post) => (
+				<li>
+					<a href={`/blog/${post.id}`} class="post-card">
+						<div class="post-date">
+							<time datetime={post.data.date.toISOString()}>
+								{post.data.date.toLocaleDateString('en-US', {
+									year: 'numeric',
+									month: 'short',
+									day: 'numeric',
+								})}
+							</time>
+							{post.data.tags.length > 0 && (
+								<div class="tags">
+									{post.data.tags.map((tag) => (
+										<span class="tag">{tag}</span>
+									))}
+								</div>
+							)}
+						</div>
+						<h2>{post.data.title}</h2>
+						<p>{post.data.description}</p>
+						<span class="read-more">Read post →</span>
+					</a>
+				</li>
+			))
+		}
+	</ul>
+</BaseLayout>
+
+<style>
+	.intro {
+		margin-bottom: 3rem;
+		padding-bottom: 2rem;
+		border-bottom: 1px solid var(--tb-border);
+	}
+
+	h1 {
+		font-size: clamp(2rem, 4vw, 2.5rem);
+		line-height: 1.15;
+		letter-spacing: -0.025em;
+		font-weight: 500;
+		color: var(--tb-text);
+		margin: 0;
+	}
+
+	.post-list {
+		list-style: none;
+		padding: 0;
+		margin: 0;
+		display: flex;
+		flex-direction: column;
+	}
+
+	.post-list li + li {
+		margin-top: 0;
+		border-top: 1px solid var(--tb-border);
+	}
+
+	.post-card {
+		display: block;
+		padding: 2rem 0;
+		text-decoration: none;
+		color: var(--tb-text);
+	}
+
+	.post-card:hover .read-more {
+		color: var(--tb-text);
+	}
+
+	.post-card:hover h2 {
+		color: var(--tb-text-secondary);
+	}
+
+	.post-date {
+		display: flex;
+		align-items: center;
+		gap: 0.75rem;
+		font-size: 0.8125rem;
+		color: var(--tb-text-muted);
+		margin-bottom: 0.5rem;
+	}
+
+	.post-date time {
+		font-family: var(--tb-font-mono);
+		text-transform: uppercase;
+		letter-spacing: 0.05em;
+		font-weight: 700;
+		font-size: 0.6875rem;
+	}
+
+	.tags {
+		display: flex;
+		gap: 0.375rem;
+	}
+
+	.tag {
+		font-family: var(--tb-font-mono);
+		font-size: 0.6875rem;
+		font-weight: 700;
+		letter-spacing: 0.05em;
+		text-transform: uppercase;
+		padding: 0.15rem 0.5rem;
+		background: var(--tb-surface);
+		border: 1px solid var(--tb-border);
+		color: var(--tb-text-muted);
+	}
+
+	.post-card h2 {
+		font-size: 1.5rem;
+		letter-spacing: -0.015em;
+		font-weight: 500;
+		margin: 0 0 0.5rem;
+		color: var(--tb-text);
+		transition: color 0.15s;
+	}
+
+	.post-card p {
+		color: var(--tb-text-muted);
+		font-size: 1rem;
+		line-height: 1.55;
+		margin: 0 0 1rem;
+	}
+
+	.read-more {
+		font-family: var(--tb-font-mono);
+		font-size: 0.75rem;
+		font-weight: 700;
+		letter-spacing: 0.05em;
+		text-transform: uppercase;
+		color: var(--tb-text-secondary);
+		transition: color 0.15s;
+	}
+</style>

@@ -33,7 +33,7 @@ describe('Waitlist API', () => {
   })
 
   describe('POST /v1/waitlist/join', () => {
-    it('should add email to waitlist with pending status', async () => {
+    it('should add email to waitlist with pending status and no challenge token', async () => {
       const response = await app.handle(
         new Request('http://localhost/v1/waitlist/join', {
           method: 'POST',
@@ -44,9 +44,9 @@ describe('Waitlist API', () => {
 
       expect(response.status).toBe(200)
       const result = await response.json()
-      // Privacy: response doesn't reveal approval status
       expect(result.success).toBe(true)
-      expect(result.challengeToken).toBeDefined()
+      // Pending users must NOT receive a challenge token (waitlist bypass prevention)
+      expect(result.challengeToken).toBeUndefined()
 
       // Verify in database
       const entries = await db.select().from(waitlist).where(eq(waitlist.email, 'test@example.com'))
@@ -91,9 +91,9 @@ describe('Waitlist API', () => {
 
       expect(response.status).toBe(200)
       const result = await response.json()
-      // Privacy: response doesn't reveal approval status
       expect(result.success).toBe(true)
-      expect(result.challengeToken).toBeDefined()
+      // Pending user resubmitting — still no challenge token
+      expect(result.challengeToken).toBeUndefined()
 
       // Verify only one entry exists
       const entries = await db.select().from(waitlist).where(eq(waitlist.email, 'duplicate@example.com'))
@@ -121,9 +121,9 @@ describe('Waitlist API', () => {
 
       expect(response.status).toBe(200)
       const result = await response.json()
-      // Privacy: response doesn't reveal approval status
       expect(result.success).toBe(true)
-      expect(result.challengeToken).toBeDefined()
+      // Pending user — no challenge token
+      expect(result.challengeToken).toBeUndefined()
 
       // Verify only one entry exists
       const entries = await db.select().from(waitlist).where(eq(waitlist.email, 'case@example.com'))
@@ -278,7 +278,8 @@ describe('Waitlist API', () => {
       expect(response.status).toBe(200)
       const result = await response.json()
       expect(result.success).toBe(true)
-      expect(result.challengeToken).toBeDefined()
+      // Pending user — no challenge token
+      expect(result.challengeToken).toBeUndefined()
 
       // Verify in database with pending status
       const entries = await db.select().from(waitlist).where(eq(waitlist.email, 'test@other-domain.com'))
@@ -298,7 +299,8 @@ describe('Waitlist API', () => {
       expect(response.status).toBe(200)
       const result = await response.json()
       expect(result.success).toBe(true)
-      expect(result.challengeToken).toBeDefined()
+      // Pending user — no challenge token
+      expect(result.challengeToken).toBeUndefined()
 
       // Verify in database with pending status (not auto-approved)
       const entries = await db.select().from(waitlist).where(eq(waitlist.email, 'test@fake-mozilla.org.evil.com'))

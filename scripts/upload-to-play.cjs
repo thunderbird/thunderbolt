@@ -74,6 +74,9 @@ async function uploadToPlayStore() {
             releases: [
               {
                 versionCodes: [uploadResponse.data.versionCode],
+                // To auto-rollout to testers, the app setup must be fully completed in Google Play Console
+                // (store listing, content rating, target audience, etc.). Until then, only 'draft' is accepted.
+                // Once the setup is done, switch back to: status: track === 'internal' ? 'completed' : 'draft',
                 status: 'draft',
               },
             ],

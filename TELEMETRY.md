@@ -4,8 +4,6 @@
 
 Event tracking respects user privacy settings and can be disabled through the application settings. No personally identifiable information is collected without explicit user consent.
 
-Data collection is enabled by default in dev builds and will be disabled by default in release/prod builds.
-
 ## Event Tracking
 
 Thunderbolt uses PostHog for analytics to track user interactions and application usage. All events follow a structured naming convention for better organization and analysis.
@@ -77,6 +75,23 @@ Events follow the pattern: `<feature>_<action>`
 - `ui_shortcut_use` - User uses a keyboard shortcut
 - `ui_sidebar_open` - Sidebar opens
 - `ui_sidebar_close` - Sidebar closes
+
+#### Sync Diagnostics (`sync_*`)
+
+Diagnostic events for debugging sync issues (especially iOS). All events include shared context: `platform`, `ps_config`, `ps_connected`, `ps_connecting`, `ps_has_synced`, `ps_last_synced_at`, `ps_uploading`, `ps_downloading`, `uptime_ms`.
+
+- `sync_connect` - PowerSync connected successfully
+- `sync_connect_error` - PowerSync connection failed (with `error`)
+- `sync_disconnect` - PowerSync disconnected (with `trigger`: `'user'` or `'reconnect'`)
+- `sync_reconnect_start` - Reconnect attempt started (with `trigger`: `'visibility'` or `'manual'`)
+- `sync_reconnect_success` - Reconnect succeeded (with optional `hidden_duration_ms`)
+- `sync_reconnect_error` - Reconnect failed (with `error`, `trigger`)
+- `sync_visibility_change` - App visibility changed (with `state`, `hidden_duration_ms`, `will_reconnect`, `ms_since_last_download`)
+- `sync_credentials_fetch` - Token refresh succeeded (with `expires_in_ms`)
+- `sync_credentials_error` - Token refresh failed (with `status`, `error_code`, `had_token`)
+- `sync_upload` - CRUD upload succeeded (with `operation_count`)
+- `sync_upload_error` - CRUD upload failed (with `error`, `operation_count`)
+- `sync_status_change` - PowerSync connected↔disconnected transition (with `prev_connected`, `ms_since_last_change`)
 
 ### Implementation
 

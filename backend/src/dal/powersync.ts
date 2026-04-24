@@ -16,6 +16,9 @@ const uploadDenyColumns: Partial<Record<PowerSyncTableName, string[]>> = {
   devices: ['revoked_at', 'trusted', 'public_key', 'mlkem_public_key', 'approval_pending'],
 }
 
+/** Tables that cannot be deleted via PowerSync upload — must use dedicated API endpoints. */
+const uploadDenyDelete = new Set<PowerSyncTableName>(['devices'])
+
 type PowerSyncOperation = {
   op: 'PUT' | 'PATCH' | 'DELETE'
   type: string
@@ -121,6 +124,8 @@ export const applyOperation = async (
       return patched.length > 0
     }
     case 'DELETE': {
+      if (uploadDenyDelete.has(tableName)) return false
+
       const deleted = await database
         .delete(table)
         .where(and(eq(pkColumn, op.id), eq(tableWithUserId.userId, userId)))

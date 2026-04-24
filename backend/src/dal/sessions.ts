@@ -10,3 +10,19 @@ export const getActiveSessionByToken = async (database: typeof DbType, token: st
     .where(and(eq(session.token, token), gt(session.expiresAt, new Date())))
     .limit(1)
     .then((rows) => rows[0] ?? null)
+
+/** Link a session to a device by setting the deviceId column. Only updates if session belongs to the user. */
+export const linkSessionToDevice = async (
+  database: typeof DbType,
+  sessionId: string,
+  deviceId: string,
+  userId: string,
+) =>
+  database
+    .update(session)
+    .set({ deviceId })
+    .where(and(eq(session.id, sessionId), eq(session.userId, userId)))
+
+/** Revoke (delete) all sessions linked to a specific device for a given user. */
+export const revokeDeviceSessions = async (database: typeof DbType, deviceId: string, userId: string) =>
+  database.delete(session).where(and(eq(session.deviceId, deviceId), eq(session.userId, userId)))

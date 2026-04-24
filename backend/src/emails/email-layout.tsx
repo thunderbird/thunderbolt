@@ -3,6 +3,7 @@ import {
   Container,
   Head,
   Html,
+  Img,
   Link,
   Preview,
   Section,
@@ -33,31 +34,6 @@ type EmailLayoutProps = {
   children: React.ReactNode
 }
 
-/**
- * Inline SVG Thunderbolt logo for email headers.
- * Matches the official Thunderbolt favicon SVG.
- * Uses inline SVG because many email clients block external images by default.
- */
-const ThunderboltLogo = () => (
-  <svg
-    xmlns="http://www.w3.org/2000/svg"
-    width="20"
-    height="20"
-    viewBox="0 0 32 32"
-    fill="none"
-    style={{ display: 'inline', verticalAlign: 'middle' }}
-  >
-    <path
-      d="M6.51042 18.4115C6.28521 18.4123 6.0644 18.3491 5.87366 18.2294C5.68291 18.1096 5.53005 17.9382 5.43284 17.7351C5.33562 17.5319 5.29805 17.3054 5.32448 17.0817C5.3509 16.8581 5.44025 16.6465 5.58214 16.4716L17.3642 4.33255C17.4525 4.23054 17.573 4.1616 17.7057 4.13706C17.8384 4.11251 17.9756 4.13382 18.0946 4.19748C18.2136 4.26114 18.3074 4.36337 18.3607 4.4874C18.4139 4.61142 18.4235 4.74986 18.3877 4.88L16.1027 12.0444C16.0353 12.2248 16.0126 12.4187 16.0367 12.6097C16.0608 12.8007 16.1308 12.983 16.2408 13.141C16.3508 13.299 16.4975 13.4279 16.6683 13.5168C16.8391 13.6056 17.0288 13.6517 17.2214 13.6511H25.5521C25.7773 13.6503 25.9981 13.7135 26.1888 13.8332C26.3796 13.9529 26.5325 14.1243 26.6297 14.3275C26.7269 14.5306 26.7645 14.7572 26.738 14.9808C26.7116 15.2045 26.6222 15.416 26.4804 15.5909L14.6983 27.73C14.61 27.832 14.4895 27.901 14.3568 27.9255C14.2241 27.95 14.0869 27.9287 13.9679 27.8651C13.8489 27.8014 13.7551 27.6992 13.7018 27.5752C13.6486 27.4511 13.639 27.3127 13.6748 27.1826L15.9598 20.0181C16.0272 19.8378 16.0498 19.6438 16.0258 19.4528C16.0017 19.2618 15.9317 19.0795 15.8217 18.9215C15.7117 18.7636 15.565 18.6346 15.3942 18.5458C15.2234 18.4569 15.0337 18.4109 14.8411 18.4115H6.51042Z"
-      fill="#F1B100"
-      stroke="black"
-      strokeWidth="1.5"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    />
-  </svg>
-)
-
 export const EmailLayout = ({ preview, children }: EmailLayoutProps) => {
   const { appUrl } = getSettings()
 
@@ -79,7 +55,13 @@ export const EmailLayout = ({ preview, children }: EmailLayoutProps) => {
           <Container className="mx-auto max-w-[540px]">
             <Section className="text-center mb-6">
               <Link href={appUrl} className="no-underline">
-                <ThunderboltLogo />
+                <Img
+                  src={`${appUrl}/email-logo.png`}
+                  width="20"
+                  height="20"
+                  alt="Thunderbolt"
+                  style={{ display: 'inline', verticalAlign: 'middle', width: '20px', height: '20px' }}
+                />
                 <Text className="inline align-middle text-xl font-medium text-tb-text tracking-tight m-0 ml-1">
                   Thunderbolt
                 </Text>

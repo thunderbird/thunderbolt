@@ -1,5 +1,7 @@
 import { type HttpClient } from '@/contexts'
+import { createHandleError } from '@/lib/error-utils'
 import { HttpError } from '@/lib/http'
+import { trackError } from '@/lib/posthog'
 import {
   generateKeyPair,
   generateMlKemKeyPair,
@@ -32,6 +34,7 @@ import {
   fetchMyEnvelope,
   fetchCanary,
   denyDevice as denyDeviceApi,
+  revokeDevice as revokeDeviceApi,
   type RegisterDeviceResponse,
 } from '@/api/encryption'
 import { invalidateCKCache, resetCodecState } from '@/db/encryption'
@@ -130,7 +133,7 @@ export const completeFirstDeviceSetup = async (httpClient: HttpClient): Promise<
 
 /**
  * Extract the canary secret by decrypting the server-stored canary with the local CK.
- * Used as proof-of-CK-possession for trust-sensitive operations (approve, deny).
+ * Used as proof-of-CK-possession for trust-sensitive operations (approve, deny, revoke).
  */
 export const extractCanarySecret = async (httpClient: HttpClient): Promise<string> => {
   const { canaryIv, canaryCtext } = await fetchCanary(httpClient)
@@ -190,6 +193,24 @@ export const approveDevice = async (
 export const denyDeviceWithProof = async (httpClient: HttpClient, deviceId: string): Promise<void> => {
   const canarySecret = await extractCanarySecret(httpClient)
   await denyDeviceApi(httpClient, deviceId, canarySecret)
+}
+
+/**
+ * Revoke a device with proof-of-CK-possession.
+ * Extracts canary secret when E2EE is active. Falls back to no proof for pre-E2EE users
+ * (the backend skips canary verification when no encryption metadata exists).
+ */
+export const revokeDeviceWithProof = async (httpClient: HttpClient, deviceId: string): Promise<void> => {
+  const canarySecret = await extractCanarySecret(httpClient).catch((err: unknown) => {
+    if (err instanceof HttpError && err.response.status === 404) {
+      return undefined
+    }
+    trackError(
+      createHandleError('CANARY_EXTRACTION_FAILED', 'Failed to extract canary secret during device revocation', err),
+    )
+    throw err
+  })
+  await revokeDeviceApi(httpClient, deviceId, canarySecret)
 }
 
 // =============================================================================

@@ -10,6 +10,9 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
 COMPOSE_FILE="$PROJECT_ROOT/powersync-service/docker-compose.yml"
 
+# Auto-detect compose tool (podman-compose takes precedence over docker compose)
+COMPOSE=$(command -v podman-compose > /dev/null 2>&1 && podman info > /dev/null 2>&1 && echo podman-compose || echo "docker compose")
+
 if [ ! -f "$COMPOSE_FILE" ]; then
   echo -e "${RED}✗ Compose file not found: $COMPOSE_FILE${NC}"
   exit 1
@@ -34,9 +37,9 @@ if [ "$CONFIRMED" = false ]; then
 fi
 
 echo -e "${RED}→ Stopping and removing containers + volumes...${NC}"
-docker compose -f "$COMPOSE_FILE" down -v
+$COMPOSE -f "$COMPOSE_FILE" down -v
 
 echo -e "${GREEN}→ Recreating containers from scratch...${NC}"
-docker compose -f "$COMPOSE_FILE" up -d
+$COMPOSE -f "$COMPOSE_FILE" up -d
 
 echo -e "${GREEN}✓ Docker environment nuked and recreated!${NC}"

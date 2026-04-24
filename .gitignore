@@ -69,3 +69,6 @@ blob-report/
 
 # Powersync
 public/@powersync/**
+
+# Astro
+.astro/

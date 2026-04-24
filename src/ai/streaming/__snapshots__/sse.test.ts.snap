@@ -29,6 +29,10 @@ Just ask! 😊"
       },
     ],
     "finishReason": "stop",
+    "model": {
+      "modelId": "test-model",
+      "provider": "local-test.chat",
+    },
     "providerMetadata": {
       "local-test": {},
     },
@@ -84,6 +88,7 @@ Just ask! 😊"
       "modelId": "qwen/qwen3-32b",
       "timestamp": "<DYNAMIC_TIMESTAMP>",
     },
+    "stepNumber": 0,
     "usage": {
       "cachedInputTokens": 0,
       "inputTokenDetails": {
@@ -138,6 +143,10 @@ Just ask! 😊"
       },
     ],
     "finishReason": "stop",
+    "model": {
+      "modelId": "test-model",
+      "provider": "local-test.chat",
+    },
     "providerMetadata": {
       "local-test": {},
     },
@@ -193,6 +202,7 @@ Just ask! 😊"
       "modelId": "qwen/qwen3-32b",
       "timestamp": "<DYNAMIC_TIMESTAMP>",
     },
+    "stepNumber": 0,
     "usage": {
       "cachedInputTokens": 0,
       "inputTokenDetails": {
@@ -247,6 +257,10 @@ Just ask! 😊"
       },
     ],
     "finishReason": "stop",
+    "model": {
+      "modelId": "test-model",
+      "provider": "local-test.chat",
+    },
     "providerMetadata": {
       "local-test": {},
     },
@@ -302,6 +316,7 @@ Just ask! 😊"
       "modelId": "qwen/qwen3-32b",
       "timestamp": "<DYNAMIC_TIMESTAMP>",
     },
+    "stepNumber": 0,
     "usage": {
       "cachedInputTokens": 0,
       "inputTokenDetails": {
@@ -356,6 +371,10 @@ Just ask! 😊"
       },
     ],
     "finishReason": "stop",
+    "model": {
+      "modelId": "test-model",
+      "provider": "local-test.chat",
+    },
     "providerMetadata": {
       "local-test": {},
     },
@@ -411,6 +430,7 @@ Just ask! 😊"
       "modelId": "qwen/qwen3-32b",
       "timestamp": "<DYNAMIC_TIMESTAMP>",
     },
+    "stepNumber": 0,
     "usage": {
       "cachedInputTokens": 0,
       "inputTokenDetails": {
@@ -465,6 +485,10 @@ Just ask! 😊"
       },
     ],
     "finishReason": "stop",
+    "model": {
+      "modelId": "test-model",
+      "provider": "local-test.chat",
+    },
     "providerMetadata": {
       "local-test": {},
     },
@@ -520,6 +544,7 @@ Just ask! 😊"
       "modelId": "qwen/qwen3-32b",
       "timestamp": "<DYNAMIC_TIMESTAMP>",
     },
+    "stepNumber": 0,
     "usage": {
       "cachedInputTokens": 0,
       "inputTokenDetails": {

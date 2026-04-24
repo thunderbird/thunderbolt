@@ -1,5 +1,5 @@
 import type { db as DbType } from '@/db/client'
-import { Elysia } from 'elysia'
+import { Elysia, type AnyElysia } from 'elysia'
 import { type Auth, createAuth } from './auth'
 
 /**
@@ -25,13 +25,18 @@ export const createAuthMacro = (auth: Auth) =>
   })
 
 /** Create a Better Auth plugin for Elysia with the provided database. */
-export const createBetterAuthPlugin = (database: typeof DbType) => {
+export const createBetterAuthPlugin = (database: typeof DbType, ipRateLimit?: AnyElysia) => {
   const auth = createAuth(database)
 
-  return {
-    plugin: new Elysia({ name: 'better-auth' }).mount(auth.handler),
-    auth,
+  const plugin = new Elysia({ name: 'better-auth' })
+  if (ipRateLimit) {
+    plugin.use(ipRateLimit)
   }
+  // Use .all() instead of .mount() — Elysia's mount() short-circuits the
+  // request pipeline before onBeforeHandle, silently bypassing rate limiting.
+  plugin.all('/*', ({ request }) => auth.handler(request), { parse: 'none' })
+
+  return { plugin, auth }
 }
 
 export type { Auth }

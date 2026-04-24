@@ -1,6 +1,9 @@
 import { type Auth, createAuthMacro } from '@/auth/elysia-plugin'
+
 import {
+  countActiveDevices,
   getDeviceById,
+  linkSessionToDevice,
   registerDevice,
   denyDevice,
   markDeviceTrusted,
@@ -12,30 +15,10 @@ import {
 } from '@/dal'
 import type { db as DbType } from '@/db/client'
 import { BadRequestError, ForbiddenError } from '@/errors/http-errors'
-import { timingSafeEqual } from 'crypto'
+import { hashCanarySecret, verifyCanaryProof, verifyCanaryProofWithMetadata } from '@/lib/canary'
 import { Elysia, t } from 'elysia'
 
-/** Hash a canary secret using SHA-256. Returns hex-encoded hash. */
-const hashCanarySecret = async (secret: string): Promise<string> => {
-  const encoded = new TextEncoder().encode(secret)
-  const hashBuffer = await crypto.subtle.digest('SHA-256', encoded)
-  return Array.from(new Uint8Array(hashBuffer), (b) => b.toString(16).padStart(2, '0')).join('')
-}
-
-/**
- * Verify proof-of-CK-possession by comparing SHA-256(canarySecret) against stored hash.
- * Used to gate trust-sensitive operations (device approval, deny) — prevents X-Device-ID spoofing
- * because only a device that possesses the Content Key can decrypt the canary and extract the secret.
- */
-const verifyCanaryProof = async (db: typeof DbType, userId: string, canarySecret: string): Promise<boolean> => {
-  const metadata = await getEncryptionMetadata(db, userId)
-  if (!metadata?.canarySecretHash) return false
-  const hash = await hashCanarySecret(canarySecret)
-  const hashBuf = Buffer.from(hash)
-  const storedBuf = Buffer.from(metadata.canarySecretHash)
-  if (hashBuf.length !== storedBuf.length) return false
-  return timingSafeEqual(hashBuf, storedBuf)
-}
+const MAX_DEVICES_PER_USER = 10
 
 /**
  * Check if the caller is performing a self-recovery.
@@ -61,11 +44,11 @@ export const createEncryptionRoutes = (auth: Auth, database: typeof DbType) =>
     .use(createAuthMacro(auth))
     .post(
       '/devices',
-      async ({ body, set, user: sessionUser }) => {
+      async ({ body, set, user: sessionUser, session }) => {
         const userId = sessionUser!.id
         const { deviceId, publicKey, mlkemPublicKey, name } = body
 
-        // Check if device already exists
+        // Check if device already exists (fast-path before transaction)
         const existingDevice = await getDeviceById(database, deviceId)
 
         if (existingDevice) {
@@ -84,6 +67,7 @@ export const createEncryptionRoutes = (auth: Auth, database: typeof DbType) =>
           // Encryption-registered device (has publicKey): return current state
           if (existingDevice.publicKey) {
             if (existingDevice.trusted) {
+              await linkSessionToDevice(database, session.id, deviceId, userId)
               const envelope = await getEnvelopeByDeviceId(database, deviceId, userId)
               return {
                 trusted: true as const,
@@ -97,16 +81,45 @@ export const createEncryptionRoutes = (auth: Auth, database: typeof DbType) =>
           // Pre-encryption device (no publicKey): fall through to register with publicKey
         }
 
-        // New device OR pre-encryption device — register with publicKey
+        // Wrap limit check + registration in a transaction to prevent TOCTOU race
         const deviceName = name || 'Unknown device'
-        await registerDevice(database, {
-          id: deviceId,
-          userId,
-          name: deviceName,
-          publicKey,
-          mlkemPublicKey,
+        const result = await database.transaction(async (tx) => {
+          const txDb = tx as unknown as typeof database
+
+          // Re-check device inside transaction to close race window
+          const freshDevice = await getDeviceById(txDb, deviceId)
+          if (!freshDevice) {
+            const activeCount = await countActiveDevices(txDb, userId)
+            if (activeCount >= MAX_DEVICES_PER_USER) return { limitReached: true as const }
+          }
+
+          const registered = await registerDevice(txDb, {
+            id: deviceId,
+            userId,
+            name: deviceName,
+            publicKey,
+            mlkemPublicKey,
+          })
+
+          // If upsert returned no rows, another user claimed this device ID
+          if (registered.length === 0 || registered[0].userId !== userId) {
+            return { taken: true as const }
+          }
+
+          return { ok: true as const }
         })
 
+        if ('limitReached' in result) {
+          set.status = 422
+          return { error: 'Device limit reached' }
+        }
+
+        if ('taken' in result) {
+          set.status = 409
+          return { error: 'Device ID already taken' }
+        }
+
+        await linkSessionToDevice(database, session.id, deviceId, userId)
         return { trusted: false as const }
       },
       {
@@ -163,6 +176,21 @@ export const createEncryptionRoutes = (auth: Auth, database: typeof DbType) =>
             // First device bootstrap requires canary data for recovery to work
             if (isFirstDeviceBootstrap && (!canaryIv || !canaryCtext || !canarySecret)) {
               throw new BadRequestError('First device bootstrap requires canaryIv, canaryCtext, and canarySecret')
+            }
+
+            // Defense-in-depth: if encryption metadata already exists, verify canary proof
+            // to prevent E2EE state reset even if device revocation protections are bypassed.
+            // Checks `existingMetadata` (not `existingMetadata?.canarySecretHash`) for fail-closed
+            // behavior: if metadata exists with a null hash, we block rather than silently skip.
+            if (isFirstDeviceBootstrap) {
+              const existingMetadata = await getEncryptionMetadata(txDb, userId)
+              if (existingMetadata) {
+                if (!(await verifyCanaryProofWithMetadata(canarySecret!, existingMetadata.canarySecretHash))) {
+                  throw new ForbiddenError(
+                    'Invalid canary secret — cannot re-bootstrap with existing encryption metadata',
+                  )
+                }
+              }
             }
 
             // Recovery: device is self-storing and provided canary that matches stored metadata.

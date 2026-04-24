@@ -1,0 +1,7 @@
+---
+import Default from '@astrojs/starlight/components/Head.astro';
+type Props = Parameters<typeof Default>[0];
+---
+
+<Default {...Astro.props} />
+<script src="../../scripts/docs-client.ts"></script>

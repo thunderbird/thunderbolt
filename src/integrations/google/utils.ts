@@ -44,9 +44,12 @@ export const extractBody = (payload: any, mimeType: string): string => {
   }
 
   if (payload.mimeType === mimeType && payload.body?.data) {
-    // Use browser-compatible base64 decoding instead of Node.js Buffer
     try {
-      return decodeURIComponent(escape(atob(payload.body.data)))
+      // Gmail API returns body.data as base64url, not standard base64
+      // See: https://developers.google.com/gmail/api/reference/rest/v1/users.messages
+      const base64 = payload.body.data.replace(/-/g, '+').replace(/_/g, '/')
+      const bytes = Uint8Array.from(atob(base64), (c) => c.charCodeAt(0))
+      return new TextDecoder().decode(bytes)
     } catch (error) {
       console.warn('Failed to decode email body:', error)
       return ''
@@ -90,8 +93,8 @@ export const buildRawMessage = (params: DraftEmailParams): string => {
   parts.push(`Subject: ${params.subject}`)
   parts.push('MIME-Version: 1.0')
 
-  // Detect if body contains HTML
-  const isHtml = params.body.includes('<') && params.body.includes('>')
+  // Detect if body contains actual HTML tags (not just angle brackets from math/code)
+  const isHtml = /<[a-z][a-z0-9]*(?:\s[^>]*)?\/?>/i.test(params.body)
   if (isHtml) {
     parts.push('Content-Type: text/html; charset="UTF-8"')
   } else {
@@ -109,9 +112,9 @@ export const buildRawMessage = (params: DraftEmailParams): string => {
 
   parts.push(processedBody)
 
-  // Use browser-compatible base64 encoding instead of Node.js Buffer
   const emailContent = parts.join('\r\n')
-  return btoa(unescape(encodeURIComponent(emailContent)))
+  const bytes = new TextEncoder().encode(emailContent)
+  return btoa(bytes.reduce((s, b) => s + String.fromCharCode(b), ''))
     .replace(/\+/g, '-')
     .replace(/\//g, '_')
 }

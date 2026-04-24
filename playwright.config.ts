@@ -55,6 +55,7 @@ export default defineConfig({
         APP_URL: `http://localhost:${e2eVitePort}`,
         CORS_ORIGINS: `http://localhost:${e2eVitePort}`,
         TRUSTED_ORIGINS: `http://localhost:${e2eVitePort}`,
+        RATE_LIMIT_ENABLED: 'false',
       },
     },
   ],

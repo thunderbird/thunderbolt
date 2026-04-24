@@ -19,7 +19,7 @@ export class ThunderboltSharedSyncImplementation extends SharedSyncImplementatio
   protected generateStreamingImplementation() {
     const syncParams = this.syncParams!
 
-    const storage = new TransformableBucketStorage(this.distributedDB!)
+    const storage = new TransformableBucketStorage(this.database)
     storage.addTransformer(encryptionMiddleware)
 
     // `subscriptions` is declared private in SharedSyncImplementation — access at runtime.

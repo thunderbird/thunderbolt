@@ -10,3 +10,7 @@ GRANT USAGE ON SCHEMA powersync TO powersync_role;
 GRANT SELECT ON ALL TABLES IN SCHEMA powersync TO powersync_role;
 ALTER DEFAULT PRIVILEGES IN SCHEMA powersync GRANT SELECT ON TABLES TO powersync_role;
 CREATE PUBLICATION powersync FOR ALL TABLES;
+
+-- Separate database for PowerSync bucket storage (avoids schema conflicts with app data).
+-- See https://docs.powersync.com/configuration/powersync-service/self-hosted-instances
+CREATE DATABASE powersync_storage OWNER postgres;

@@ -1,7 +1,7 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "Thunderbolt",
-  "version": "0.1.87",
+  "version": "0.1.91",
   "identifier": "net.thunderbird.thunderbolt",
   "build": {
     "beforeDevCommand": "bun run dev",
@@ -62,7 +62,7 @@
           "scheme": [
             "https"
           ],
-          "host": "thunderbolt.io",
+          "host": "app.thunderbolt.io",
           "pathPrefix": [
             "/oauth/callback",
             "/auth/verify"

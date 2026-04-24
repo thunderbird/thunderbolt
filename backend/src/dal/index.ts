@@ -1,11 +1,19 @@
 // Devices
-export { getDeviceById, upsertDevice, revokeDevice, denyDevice, markDeviceTrusted, registerDevice } from './devices'
+export {
+  getDeviceById,
+  upsertDevice,
+  revokeDevice,
+  denyDevice,
+  markDeviceTrusted,
+  registerDevice,
+  countActiveDevices,
+} from './devices'
 
 // Users
 export { getUserById, getUserByEmail, deleteUser, markUserNotNew } from './users'
 
 // Sessions
-export { getActiveSessionByToken } from './sessions'
+export { getActiveSessionByToken, linkSessionToDevice, revokeDeviceSessions } from './sessions'
 
 // Waitlist
 export { getWaitlistByEmail, createWaitlistEntry, approveWaitlistEntry } from './waitlist'
@@ -14,7 +22,12 @@ export { getWaitlistByEmail, createWaitlistEntry, approveWaitlistEntry } from '.
 export { applyOperation } from './powersync'
 
 // OTP Challenge (session binding)
-export { getOrCreateOtpChallenge, validateOtpChallenge, deleteOtpChallengesForEmail } from './otp-challenge'
+export {
+  getOrCreateOtpChallenge,
+  validateOtpChallenge,
+  deleteOtpChallengesForEmail,
+  deletePersistedSignInOtp,
+} from './otp-challenge'
 
 // Encryption
 export {

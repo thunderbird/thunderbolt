@@ -1,5 +1,5 @@
 import type { db as DbType } from '@/db/client'
-import { otpChallenge } from '@/db/schema'
+import { otpChallenge, verification } from '@/db/schema'
 import { and, eq, gt, lt } from 'drizzle-orm'
 
 /**
@@ -53,3 +53,10 @@ export const validateOtpChallenge = async (database: typeof DbType, email: strin
 /** Delete all challenge tokens for an email (cleanup after successful verification). */
 export const deleteOtpChallengesForEmail = async (database: typeof DbType, email: string) =>
   database.delete(otpChallenge).where(eq(otpChallenge.email, email))
+
+/**
+ * Delete the OTP that Better Auth persisted in the verification table.
+ * Better Auth's toOTPIdentifier returns `${type}-otp-${email}` (confirmed in email-otp/utils.mjs).
+ */
+export const deletePersistedSignInOtp = async (database: typeof DbType, email: string) =>
+  database.delete(verification).where(eq(verification.identifier, `sign-in-otp-${email}`))

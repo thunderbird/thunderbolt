@@ -1,0 +1,58 @@
+---
+import '../styles/marketing.css';
+
+type Props = {
+	title?: string;
+	description?: string;
+	ogImage?: string;
+	canonical?: string;
+};
+
+const {
+	title = 'Thunderbolt — AI You Control',
+	description = 'The Open-Source, Cross-Platform, Extensible AI Client',
+	ogImage = 'https://thunderbolt.io/social.png',
+	canonical,
+} = Astro.props;
+---
+
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<link rel="icon" type="image/png" href="/favicon.png" />
+		<link rel="apple-touch-icon" href="/favicon.png" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>{title}</title>
+		<meta name="description" content={description} />
+		{canonical && <link rel="canonical" href={canonical} />}
+
+		<meta property="og:title" content={title} />
+		<meta property="og:description" content={description} />
+		<meta property="og:image" content={ogImage} />
+		<meta property="og:type" content="website" />
+		<meta name="twitter:card" content="summary_large_image" />
+		<meta name="twitter:image" content={ogImage} />
+
+		<script is:inline>
+			var _paq = (window._paq = window._paq || []);
+			_paq.push(['setCookieDomain', '*.thunderbolt.io']);
+			_paq.push(['trackPageView']);
+			_paq.push(['enableLinkTracking']);
+			(function () {
+				var u = 'https://thunderbird.innocraft.cloud/';
+				_paq.push(['setTrackerUrl', u + 'matomo.php']);
+				_paq.push(['setSiteId', '6']);
+				var d = document,
+					g = d.createElement('script'),
+					s = d.getElementsByTagName('script')[0];
+				g.async = true;
+				g.src = 'https://cdn.matomo.cloud/thunderbird.innocraft.cloud/matomo.js';
+				s.parentNode.insertBefore(g, s);
+			})();
+		</script>
+	</head>
+	<body style="background: #f9fafb">
+		<slot />
+	</body>
+</html>

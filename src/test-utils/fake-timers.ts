@@ -1,4 +1,4 @@
-import { type InstalledClock, install } from '@sinonjs/fake-timers'
+import { type Clock, install } from '@sinonjs/fake-timers'
 
 /**
  * Creates and installs fake timers for testing.
@@ -12,7 +12,7 @@ import { type InstalledClock, install } from '@sinonjs/fake-timers'
  * await clock.tickAsync(1000) // advance time by 1 second
  * clock.uninstall()
  */
-export const installFakeTimers = (config?: { now?: number; shouldAdvanceTime?: boolean }): InstalledClock => {
+export const installFakeTimers = (config?: { now?: number; shouldAdvanceTime?: boolean }): Clock => {
   const clock = install({
     now: config?.now ?? Date.now(),
     shouldAdvanceTime: config?.shouldAdvanceTime ?? false,

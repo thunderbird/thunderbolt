@@ -312,13 +312,13 @@ describe('OTP Security Hardening', () => {
       expect(body.challengeToken.length).toBeGreaterThan(0)
     })
 
-    it('should also return challengeToken for pending users (privacy-preserving)', async () => {
+    it('should NOT return challengeToken for pending users (waitlist bypass prevention)', async () => {
       const response = await postWaitlistJoin('pending-challenge@example.com')
       expect(response.status).toBe(200)
 
       const body = await response.json()
       expect(body.success).toBe(true)
-      expect(body.challengeToken).toBeDefined()
+      expect(body.challengeToken).toBeUndefined()
     })
 
     // These tests use auth.api (not HTTP) to avoid Better Auth's HTTP rate limiter
@@ -444,6 +444,38 @@ describe('OTP Security Hardening', () => {
 
       const result = await signInWithChallenge(email, otp, challengeToken)
       expect(result.user).toBeDefined()
+    })
+
+    it('should block sign-in for pending user even with a valid challenge token (before-hook defense)', async () => {
+      const email = 'pending-with-token@example.com'
+      // Insert a pending waitlist entry (no existing user, not approved)
+      await db.insert(waitlist).values({ id: crypto.randomUUID(), email, status: 'pending' })
+
+      // Manufacture a valid challenge token directly, bypassing /waitlist/join
+      const challengeToken = await createTestChallenge(db, email)
+
+      // sendVerificationOTP cleans up the OTP for pending users (Layer 3 defense).
+      // Re-insert a valid verification record so the OTP *would* succeed if the
+      // before-hook (Layer 2) weren't blocking it — this isolates the before-hook check.
+      const otp = '12345678'
+      const identifier = `sign-in-otp-${email}`
+      await db.insert(verification).values({
+        id: crypto.randomUUID(),
+        identifier,
+        value: otp,
+        expiresAt: new Date(Date.now() + 10 * 60 * 1000),
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      })
+
+      let errorMessage = ''
+      try {
+        await signInWithChallenge(email, otp, challengeToken)
+      } catch (err: unknown) {
+        errorMessage = err instanceof Error ? err.message : String(err)
+      }
+      // The before-hook blocks with "Sign-in not available", not "INVALID_OTP"
+      expect(errorMessage).toContain('Sign-in not available')
     })
 
     it('should delete challenge token after successful sign-in', async () => {

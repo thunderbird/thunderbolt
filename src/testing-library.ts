@@ -1,6 +1,6 @@
 import { clearMemoizeCache } from '@/lib/memoize'
 import { installFakeTimers } from '@/test-utils/fake-timers'
-import type { InstalledClock } from '@sinonjs/fake-timers'
+import type { Clock } from '@sinonjs/fake-timers'
 import * as matchers from '@testing-library/jest-dom/matchers'
 import { cleanup, configure } from '@testing-library/react'
 import { afterEach, beforeEach, expect, mock } from 'bun:test'
@@ -88,7 +88,7 @@ export const suppressConsole = () => {
 }
 
 // Global fake timers setup - we manage our own
-let globalClock: InstalledClock | null = null
+let globalClock: Clock | null = null
 
 // Mock jest global for @testing-library/dom's waitFor which tries to use jest.advanceTimersByTime
 // This must be defined after globalClock so it can access it
@@ -129,7 +129,7 @@ afterEach(() => {
  *   await getClock().runAllAsync()
  * })
  */
-export const getClock = (): InstalledClock => {
+export const getClock = (): Clock => {
   if (!globalClock) {
     throw new Error('Clock is not installed. This should not happen in tests.')
   }

@@ -10,7 +10,7 @@ import {
 import type { db } from '@/db/client'
 import { normalizeEmail } from '@/lib/email'
 import { safeErrorHandler } from '@/middleware/error-handling'
-import { Elysia, t } from 'elysia'
+import { Elysia, type AnyElysia, t } from 'elysia'
 import {
   isAutoApprovedDomain,
   sendWaitlistJoinedEmail as defaultSendJoinedEmail,
@@ -36,6 +36,46 @@ const sendApprovedMagicLinkEmail = async (auth: Auth, email: string): Promise<vo
   await auth.api.sendVerificationOTP({ body: { email, type: 'sign-in' } })
 }
 
+/**
+ * Resolve whether an email is approved to receive an OTP.
+ * Handles side effects (creating waitlist entries, sending emails) along the way.
+ * Returns true for existing users, approved waitlist entries, and auto-approved domains.
+ */
+const resolveApproval = async (
+  database: typeof db,
+  email: string,
+  emailService: WaitlistEmailService,
+): Promise<boolean> => {
+  const existingUser = await getUserByEmail(database, email)
+  if (existingUser) return true
+
+  const existing = await getWaitlistByEmail(database, email)
+
+  if (existing) {
+    if (existing.status === 'approved') return true
+
+    if (isAutoApprovedDomain(email)) {
+      await approveWaitlistEntry(database, existing.id)
+      return true
+    }
+
+    await emailService.sendReminderEmail({ email })
+    return false
+  }
+
+  const autoApproved = isAutoApprovedDomain(email)
+  await createWaitlistEntry(database, {
+    id: crypto.randomUUID(),
+    email,
+    status: autoApproved ? 'approved' : 'pending',
+  })
+
+  if (autoApproved) return true
+
+  await emailService.sendJoinedEmail({ email })
+  return false
+}
+
 /** Default cooldown between OTP requests per email (15 seconds). */
 const DEFAULT_COOLDOWN_MS = 15_000
 
@@ -45,6 +85,7 @@ type WaitlistRoutesOptions = {
   emailService?: WaitlistEmailService
   /** Cooldown between OTP requests per email in ms. Default: 15000. Set to 0 to disable. */
   cooldownMs?: number
+  ipRateLimit?: AnyElysia
 }
 
 export const createWaitlistRoutes = ({
@@ -52,12 +93,18 @@ export const createWaitlistRoutes = ({
   auth,
   emailService = defaultEmailService,
   cooldownMs = DEFAULT_COOLDOWN_MS,
+  ipRateLimit,
 }: WaitlistRoutesOptions) => {
   // Per-instance cooldown tracker. Tracks when the last OTP request was made for each email
   // to prevent rapid code cycling. In-memory is appropriate: 15s window, single-instance defense.
   const emailCooldowns = new Map<string, number>()
 
-  return new Elysia({ prefix: '/waitlist' }).onError(safeErrorHandler).post(
+  const app = new Elysia({ prefix: '/waitlist' }).onError(safeErrorHandler)
+  if (ipRateLimit) {
+    app.use(ipRateLimit)
+  }
+
+  return app.post(
     '/join',
     async ({ body, set }) => {
       const email = normalizeEmail(body.email)
@@ -86,54 +133,19 @@ export const createWaitlistRoutes = ({
         emailCooldowns.set(email, Date.now())
       }
 
-      // Challenge token creation and user lookup are independent — run in parallel.
-      // Privacy-preserving: same response shape regardless of user status.
-      const [challengeToken, existingUser] = await Promise.all([
-        getOrCreateOtpChallenge(database, {
-          id: crypto.randomUUID(),
-          email,
-          challengeToken: crypto.randomUUID(),
-          expiresAt: new Date(Date.now() + otpExpiryMs),
-        }),
-        getUserByEmail(database, email),
-      ])
+      const approved = await resolveApproval(database, email, emailService)
 
-      if (existingUser) {
-        await sendApprovedMagicLinkEmail(auth, email)
-        return { success: true, challengeToken }
+      if (!approved) {
+        return { success: true }
       }
 
-      const existing = await getWaitlistByEmail(database, email)
-
-      if (existing) {
-        if (existing.status === 'approved') {
-          await sendApprovedMagicLinkEmail(auth, email)
-          return { success: true, challengeToken }
-        }
-
-        // Pending user - check if they now qualify for auto-approval (e.g., feature deployed after they joined)
-        if (isAutoApprovedDomain(email)) {
-          await approveWaitlistEntry(database, existing.id)
-          await sendApprovedMagicLinkEmail(auth, email)
-        } else {
-          await emailService.sendReminderEmail({ email })
-        }
-        return { success: true, challengeToken }
-      }
-
-      const isAutoApproved = isAutoApprovedDomain(email)
-
-      await createWaitlistEntry(database, {
+      const challengeToken = await getOrCreateOtpChallenge(database, {
         id: crypto.randomUUID(),
         email,
-        status: isAutoApproved ? 'approved' : 'pending',
+        challengeToken: crypto.randomUUID(),
+        expiresAt: new Date(Date.now() + otpExpiryMs),
       })
-
-      if (isAutoApproved) {
-        await sendApprovedMagicLinkEmail(auth, email)
-      } else {
-        await emailService.sendJoinedEmail({ email })
-      }
+      await sendApprovedMagicLinkEmail(auth, email)
       return { success: true, challengeToken }
     },
     {

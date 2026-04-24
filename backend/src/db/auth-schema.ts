@@ -30,8 +30,9 @@ export const session = pgTable(
     userId: text('user_id')
       .notNull()
       .references(() => user.id, { onDelete: 'cascade' }),
+    deviceId: text('device_id'),
   },
-  (table) => [index('session_userId_idx').on(table.userId)],
+  (table) => [index('session_userId_idx').on(table.userId), index('session_deviceId_idx').on(table.deviceId)],
 )
 
 export const account = pgTable(

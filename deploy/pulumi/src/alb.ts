@@ -61,11 +61,15 @@ export const createAlb = ({ name, vpcId, publicSubnetIds, albSgId, hostnames }: 
     protocol: 'HTTP',
     targetType: 'ip',
     vpcId,
-    // Keycloak 26's /health/* endpoints only exist when KC_HEALTH_ENABLED=true,
-    // and then only on the management port (9000). We don't enable them, so we
-    // use the welcome page as the liveness indicator. Also accept 2xx + 3xx
-    // because Keycloak may redirect from `/` to `/admin`.
-    healthCheck: { path: '/', healthyThreshold: 2, interval: 30, matcher: '200-399' },
+    // Keycloak 26 doesn't serve a welcome page at `/` (404), and /health/* needs
+    // KC_HEALTH_ENABLED=true on port 9000. The master realm's OIDC discovery doc
+    // is the most reliable always-on indicator once boot completes.
+    healthCheck: {
+      path: '/realms/master/.well-known/openid-configuration',
+      healthyThreshold: 2,
+      interval: 30,
+      matcher: '200',
+    },
     tags: { Name: `${name}-keycloak` },
   })
 

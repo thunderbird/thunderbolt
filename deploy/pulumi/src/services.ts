@@ -247,10 +247,10 @@ export const createServices = (args: ServiceArgs) => {
           { name: 'KC_BOOTSTRAP_ADMIN_PASSWORD', value: args.secrets.keycloakAdminPassword },
           { name: 'KC_HTTP_PORT', value: '8080' },
           // Keycloak 26 hostname v2: full URL in KC_HOSTNAME, scheme (https) inferred from it.
+          // Both frontchannel and backchannel URLs are built from this — issuer,
+          // token_endpoint, etc. all get the https scheme.
           { name: 'KC_HOSTNAME', value: args.publicUrls.auth },
-          { name: 'KC_HOSTNAME_BACKCHANNEL_DYNAMIC', value: 'true' },
-          // Trust X-Forwarded-Proto from Cloudflare/ALB so Keycloak emits https:// URLs
-          // even though the origin listener is HTTP (Cloudflare Flexible mode).
+          // Trust X-Forwarded-Proto from Cloudflare/ALB for client-facing protocol detection.
           { name: 'KC_PROXY_HEADERS', value: 'xforwarded' },
         ],
         portMappings: [{ containerPort: 8080 }],

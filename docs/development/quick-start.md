@@ -6,6 +6,7 @@ This walks through running Thunderbolt locally: backend API, PowerSync sync serv
 
 - **[Bun](https://bun.sh/)** 1.2+
 - **Rust toolchain** — needed for the Tauri desktop and mobile builds. Install via [rustup](https://rustup.rs/).
+- **sccache** — speeds up Rust rebuilds. Install with `cargo install sccache`. Configured in `src-tauri/.cargo/config.toml`.
 - **Docker** — PowerSync and PostgreSQL run in containers during local dev.
 
 Run `make doctor` after cloning to verify your environment is set up correctly. It prints exact install commands for anything missing.

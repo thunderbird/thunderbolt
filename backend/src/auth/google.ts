@@ -22,6 +22,7 @@ export const createGoogleAuthRoutes = (auth: Auth, fetchFn: typeof fetch = globa
 
         return {
           client_id: settings.googleClientId,
+          configured: Boolean(settings.googleClientId && settings.googleClientSecret),
         }
       },
       { auth: true },

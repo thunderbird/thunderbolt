@@ -120,9 +120,30 @@ describe('Authentication Routes', () => {
   })
 
   describe('Google OAuth', () => {
-    it('should return Google OAuth config', async () => {
+    it('should return configured=true for Google OAuth config when credentials are set', async () => {
       const response = await app.handle(new Request('http://localhost/auth/google/config'))
       expect(response.status).toBe(200)
+      const body = await response.json()
+      expect(body).toEqual({
+        client_id: 'test-google-client-id',
+        configured: true,
+      })
+    })
+
+    it('should return configured=false for Google OAuth config when credentials are empty', async () => {
+      const settings = settingsModule.getSettings()
+      getSettingsSpy.mockReturnValueOnce({
+        ...settings,
+        googleClientId: '',
+        googleClientSecret: '',
+      })
+      const response = await app.handle(new Request('http://localhost/auth/google/config'))
+      expect(response.status).toBe(200)
+      const body = await response.json()
+      expect(body).toEqual({
+        client_id: '',
+        configured: false,
+      })
     })
 
     it('should require valid body for token exchange', async () => {
@@ -149,9 +170,30 @@ describe('Authentication Routes', () => {
   })
 
   describe('Microsoft OAuth', () => {
-    it('should return Microsoft OAuth config', async () => {
+    it('should return configured=true for Microsoft OAuth config when credentials are set', async () => {
       const response = await app.handle(new Request('http://localhost/auth/microsoft/config'))
       expect(response.status).toBe(200)
+      const body = await response.json()
+      expect(body).toEqual({
+        client_id: 'test-microsoft-client-id',
+        configured: true,
+      })
+    })
+
+    it('should return configured=false for Microsoft OAuth config when credentials are empty', async () => {
+      const settings = settingsModule.getSettings()
+      getSettingsSpy.mockReturnValueOnce({
+        ...settings,
+        microsoftClientId: '',
+        microsoftClientSecret: '',
+      })
+      const response = await app.handle(new Request('http://localhost/auth/microsoft/config'))
+      expect(response.status).toBe(200)
+      const body = await response.json()
+      expect(body).toEqual({
+        client_id: '',
+        configured: false,
+      })
     })
 
     it('should require valid body for token exchange', async () => {

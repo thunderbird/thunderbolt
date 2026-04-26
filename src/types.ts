@@ -107,6 +107,9 @@ export type ToolConfig = {
 
 export type AuthProviderBackendConfig = {
   client_id: string
+  // Optional for backward-compat with pre-patch backends that only return client_id.
+  // Callers should treat `undefined` as configured when a client_id is present.
+  configured?: boolean
 }
 
 // Re-export types from schemas to maintain backward compatibility

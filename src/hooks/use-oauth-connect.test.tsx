@@ -1,10 +1,14 @@
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, mock } from 'bun:test'
+import { webPlatformMock } from '@/test-utils/platform-mock'
+
+mock.module('@/lib/platform', () => webPlatformMock)
+
 import { getSettings, updateSettings } from '@/dal'
 import { resetTestDatabase, setupTestDatabase, teardownTestDatabase } from '@/dal/test-utils'
 import { getDb } from '@/db/database'
 import { cleanupSessionStorage, mockOAuthCallbackData, mockOAuthErrorCallbackData } from '@/test-utils/oauth'
 import { createQueryTestWrapper } from '@/test-utils/react-query'
 import { act, renderHook } from '@testing-library/react'
-import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, mock } from 'bun:test'
 import { useOAuthConnect, type OAuthDependencies } from './use-oauth-connect'
 
 // Create mock functions for OAuth dependencies

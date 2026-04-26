@@ -53,9 +53,10 @@ export default function Sidebar() {
 
   useEffect(() => {
     if (showSearch && searchInputRef.current && !isCollapsed) {
-      requestAnimationFrame(() => {
+      const id = requestAnimationFrame(() => {
         searchInputRef.current?.focus()
       })
+      return () => cancelAnimationFrame(id)
     }
   }, [showSearch, isCollapsed])
 

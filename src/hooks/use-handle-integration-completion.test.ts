@@ -1,7 +1,7 @@
 import { act, renderHook } from '@testing-library/react'
 import { afterAll, beforeAll, beforeEach, afterEach, describe, expect, it, mock } from 'bun:test'
 import { setupTestDatabase, teardownTestDatabase, resetTestDatabase } from '@/dal/test-utils'
-import { createMockChatInstance, hydrateStore, resetStore } from '@/test-utils/chat-store-mocks'
+import { hydrateStore, resetStore, createMockModel } from '@/test-utils/chat-store-mocks'
 import { createQueryTestWrapper } from '@/test-utils/react-query'
 import { useHandleIntegrationCompletion } from './use-handle-integration-completion'
 import { oauthRetryEvent, getOAuthWidgetKey } from '@/widgets/connect-integration/constants'
@@ -10,8 +10,11 @@ import { chatThreadsTable } from '@/db/tables'
 import { v7 as uuidv7 } from 'uuid'
 import { saveMessagesWithContextUpdate, getMessage } from '@/dal/chat-messages'
 import { updateSettings } from '@/dal/settings'
+import { useChatStore } from '@/chats/chat-store'
 import type { ThunderboltUIMessage } from '@/types'
 import { getClock } from '@/testing-library'
+
+const mockSendAcpPrompt = mock(() => Promise.resolve())
 
 const mockAddEventListener = mock()
 const mockRemoveEventListener = mock()
@@ -62,6 +65,7 @@ describe('useHandleIntegrationCompletion', () => {
     }
     mockAddEventListener.mockClear()
     mockRemoveEventListener.mockClear()
+    mockSendAcpPrompt.mockClear()
   })
 
   afterEach(async () => {
@@ -105,16 +109,13 @@ describe('useHandleIntegrationCompletion', () => {
 
   it('should set up event listener on mount', async () => {
     const mockSaveMessages = createMockSaveMessages()
-    const mockChatInstance = createMockChatInstance()
 
     // Use the real store and hydrate it with test data
     hydrateStore({
-      chatInstance: mockChatInstance,
       chatThread: null,
       id: 'thread-1',
       mcpClients: [],
-      models: [],
-      selectedModel: null,
+      selectedModel: createMockModel(),
       triggerData: null,
     })
 
@@ -123,25 +124,25 @@ describe('useHandleIntegrationCompletion', () => {
       integrations_microsoft_credentials: '',
     })
 
-    renderHook(() => useHandleIntegrationCompletion({ saveMessages: mockSaveMessages }), {
-      wrapper: createQueryTestWrapper(),
-    })
+    renderHook(
+      () => useHandleIntegrationCompletion({ saveMessages: mockSaveMessages, sendPrompt: mockSendAcpPrompt }),
+      {
+        wrapper: createQueryTestWrapper(),
+      },
+    )
 
     expect(mockAddEventListener).toHaveBeenCalledWith(oauthRetryEvent, expect.any(Function))
   })
 
   it('should remove event listener on unmount', async () => {
     const mockSaveMessages = createMockSaveMessages()
-    const mockChatInstance = createMockChatInstance()
 
     // Use the real store and hydrate it with test data
     hydrateStore({
-      chatInstance: mockChatInstance,
       chatThread: null,
       id: 'thread-1',
       mcpClients: [],
-      models: [],
-      selectedModel: null,
+      selectedModel: createMockModel(),
       triggerData: null,
     })
 
@@ -150,9 +151,12 @@ describe('useHandleIntegrationCompletion', () => {
       integrations_microsoft_credentials: '',
     })
 
-    const { unmount } = renderHook(() => useHandleIntegrationCompletion({ saveMessages: mockSaveMessages }), {
-      wrapper: createQueryTestWrapper(),
-    })
+    const { unmount } = renderHook(
+      () => useHandleIntegrationCompletion({ saveMessages: mockSaveMessages, sendPrompt: mockSendAcpPrompt }),
+      {
+        wrapper: createQueryTestWrapper(),
+      },
+    )
 
     unmount()
 
@@ -161,16 +165,13 @@ describe('useHandleIntegrationCompletion', () => {
 
   it('should not process retry if widgetMessageId is missing', async () => {
     const mockSaveMessages = createMockSaveMessages()
-    const mockChatInstance = createMockChatInstance()
 
     // Use the real store and hydrate it with test data
     hydrateStore({
-      chatInstance: mockChatInstance,
       chatThread: null,
       id: 'thread-1',
       mcpClients: [],
-      models: [],
-      selectedModel: null,
+      selectedModel: createMockModel(),
       triggerData: null,
     })
 
@@ -179,9 +180,12 @@ describe('useHandleIntegrationCompletion', () => {
       integrations_microsoft_credentials: '',
     })
 
-    renderHook(() => useHandleIntegrationCompletion({ saveMessages: mockSaveMessages }), {
-      wrapper: createQueryTestWrapper(),
-    })
+    renderHook(
+      () => useHandleIntegrationCompletion({ saveMessages: mockSaveMessages, sendPrompt: mockSendAcpPrompt }),
+      {
+        wrapper: createQueryTestWrapper(),
+      },
+    )
 
     const eventHandler = mockAddEventListener.mock.calls[0]?.[1] as ((event: Event) => void) | undefined
     if (!eventHandler) {
@@ -209,9 +213,12 @@ describe('useHandleIntegrationCompletion', () => {
       integrations_microsoft_credentials: '',
     })
 
-    renderHook(() => useHandleIntegrationCompletion({ saveMessages: mockSaveMessages }), {
-      wrapper: createQueryTestWrapper(),
-    })
+    renderHook(
+      () => useHandleIntegrationCompletion({ saveMessages: mockSaveMessages, sendPrompt: mockSendAcpPrompt }),
+      {
+        wrapper: createQueryTestWrapper(),
+      },
+    )
 
     const eventHandler = mockAddEventListener.mock.calls[0]?.[1] as ((event: Event) => void) | undefined
     if (!eventHandler) {
@@ -248,21 +255,16 @@ describe('useHandleIntegrationCompletion', () => {
     await createTestMessages(threadId, [userMessage, widgetMessage])
 
     const mockSaveMessages = createMockSaveMessages()
-    const mockSendMessage = mock(() => Promise.resolve())
-    const mockChatInstance = createMockChatInstance([userMessage, widgetMessage])
-
-    mockChatInstance.sendMessage = mockSendMessage
 
     sessionStorage.setItem(getOAuthWidgetKey(widgetMessageId, 'provider'), 'google')
 
     // Use the real store and hydrate it with test data
     hydrateStore({
-      chatInstance: mockChatInstance,
       chatThread: null,
       id: threadId,
+      messages: [userMessage, widgetMessage],
       mcpClients: [],
-      models: [],
-      selectedModel: null,
+      selectedModel: createMockModel(),
       triggerData: null,
     })
 
@@ -271,17 +273,20 @@ describe('useHandleIntegrationCompletion', () => {
       integrations_microsoft_credentials: '',
     })
 
-    renderHook(() => useHandleIntegrationCompletion({ saveMessages: mockSaveMessages }), {
-      wrapper: createQueryTestWrapper({
-        defaultOptions: {
-          queries: {
-            retry: false,
-            gcTime: 0,
-            staleTime: 0,
+    renderHook(
+      () => useHandleIntegrationCompletion({ saveMessages: mockSaveMessages, sendPrompt: mockSendAcpPrompt }),
+      {
+        wrapper: createQueryTestWrapper({
+          defaultOptions: {
+            queries: {
+              retry: false,
+              gcTime: 0,
+              staleTime: 0,
+            },
           },
-        },
-      }),
-    })
+        }),
+      },
+    )
 
     const eventHandler = mockAddEventListener.mock.calls[0]?.[1] as ((event: Event) => void) | undefined
     if (!eventHandler) {
@@ -312,8 +317,8 @@ describe('useHandleIntegrationCompletion', () => {
     const cacheEntry = updatedWidgetMessage?.cache?.['connectIntegrationWidget']
     expect(cacheEntry).toEqual({ isHidden: true })
 
-    expect(mockSendMessage).toHaveBeenCalled()
-    const sendCall = (mockSendMessage.mock.calls[0] as unknown[] | undefined)?.[0] as
+    expect(mockSendAcpPrompt).toHaveBeenCalled()
+    const sendCall = (mockSendAcpPrompt.mock.calls[0] as unknown[] | undefined)?.[0] as
       | { metadata?: { oauthRetry?: boolean } }
       | undefined
     const sendMessageCall = sendCall || {}
@@ -340,18 +345,16 @@ describe('useHandleIntegrationCompletion', () => {
     await createTestMessages(threadId, [userMessage, widgetMessage])
 
     const mockSaveMessages = createMockSaveMessages()
-    const mockChatInstance = createMockChatInstance([userMessage, widgetMessage])
 
     sessionStorage.setItem(getOAuthWidgetKey(widgetMessageId, 'provider'), 'google')
 
     // Use the real store and hydrate it with test data
     hydrateStore({
-      chatInstance: mockChatInstance,
       chatThread: null,
       id: threadId,
+      messages: [userMessage, widgetMessage],
       mcpClients: [],
-      models: [],
-      selectedModel: null,
+      selectedModel: createMockModel(),
       triggerData: null,
     })
 
@@ -360,17 +363,20 @@ describe('useHandleIntegrationCompletion', () => {
       integrations_microsoft_credentials: '',
     })
 
-    renderHook(() => useHandleIntegrationCompletion({ saveMessages: mockSaveMessages }), {
-      wrapper: createQueryTestWrapper({
-        defaultOptions: {
-          queries: {
-            retry: false,
-            gcTime: 0,
-            staleTime: 0,
+    renderHook(
+      () => useHandleIntegrationCompletion({ saveMessages: mockSaveMessages, sendPrompt: mockSendAcpPrompt }),
+      {
+        wrapper: createQueryTestWrapper({
+          defaultOptions: {
+            queries: {
+              retry: false,
+              gcTime: 0,
+              staleTime: 0,
+            },
           },
-        },
-      }),
-    })
+        }),
+      },
+    )
 
     const eventHandler = mockAddEventListener.mock.calls[0]?.[1] as ((event: Event) => void) | undefined
     if (!eventHandler) {
@@ -417,18 +423,16 @@ describe('useHandleIntegrationCompletion', () => {
     await createTestMessages(threadId, [userMessage, widgetMessage])
 
     const mockSaveMessages = createMockSaveMessages()
-    const mockChatInstance = createMockChatInstance([userMessage, widgetMessage])
 
     sessionStorage.setItem(getOAuthWidgetKey(widgetMessageId, 'provider'), 'google')
 
     // Use the real store and hydrate it with test data
     hydrateStore({
-      chatInstance: mockChatInstance,
       chatThread: null,
       id: threadId,
+      messages: [userMessage, widgetMessage],
       mcpClients: [],
-      models: [],
-      selectedModel: null,
+      selectedModel: createMockModel(),
       triggerData: null,
     })
 
@@ -438,17 +442,20 @@ describe('useHandleIntegrationCompletion', () => {
       integrations_microsoft_credentials: '',
     })
 
-    renderHook(() => useHandleIntegrationCompletion({ saveMessages: mockSaveMessages }), {
-      wrapper: createQueryTestWrapper({
-        defaultOptions: {
-          queries: {
-            retry: false,
-            gcTime: 0,
-            staleTime: 0,
+    renderHook(
+      () => useHandleIntegrationCompletion({ saveMessages: mockSaveMessages, sendPrompt: mockSendAcpPrompt }),
+      {
+        wrapper: createQueryTestWrapper({
+          defaultOptions: {
+            queries: {
+              retry: false,
+              gcTime: 0,
+              staleTime: 0,
+            },
           },
-        },
-      }),
-    })
+        }),
+      },
+    )
 
     const eventHandler = mockAddEventListener.mock.calls[0]?.[1] as ((event: Event) => void) | undefined
     if (!eventHandler) {
@@ -479,18 +486,16 @@ describe('useHandleIntegrationCompletion', () => {
     const widgetMessageId = uuidv7()
 
     const mockSaveMessages = createMockSaveMessages()
-    const mockChatInstance = createMockChatInstance([])
 
     sessionStorage.setItem(getOAuthWidgetKey(widgetMessageId, 'provider'), 'google')
 
-    // Use the real store and hydrate it with test data
+    // Use the real store and hydrate it with test data (no messages)
     hydrateStore({
-      chatInstance: mockChatInstance,
       chatThread: null,
       id: threadId,
+      messages: [],
       mcpClients: [],
-      models: [],
-      selectedModel: null,
+      selectedModel: createMockModel(),
       triggerData: null,
     })
 
@@ -503,17 +508,20 @@ describe('useHandleIntegrationCompletion', () => {
     const consoleWarnSpy = mock(() => {})
     console.warn = consoleWarnSpy
 
-    renderHook(() => useHandleIntegrationCompletion({ saveMessages: mockSaveMessages }), {
-      wrapper: createQueryTestWrapper({
-        defaultOptions: {
-          queries: {
-            retry: false,
-            gcTime: 0,
-            staleTime: 0,
+    renderHook(
+      () => useHandleIntegrationCompletion({ saveMessages: mockSaveMessages, sendPrompt: mockSendAcpPrompt }),
+      {
+        wrapper: createQueryTestWrapper({
+          defaultOptions: {
+            queries: {
+              retry: false,
+              gcTime: 0,
+              staleTime: 0,
+            },
           },
-        },
-      }),
-    })
+        }),
+      },
+    )
 
     const eventHandler = mockAddEventListener.mock.calls[0]?.[1] as ((event: Event) => void) | undefined
     if (!eventHandler) {
@@ -546,18 +554,16 @@ describe('useHandleIntegrationCompletion', () => {
     await createTestMessages(threadId, [widgetMessage])
 
     const mockSaveMessages = createMockSaveMessages()
-    const mockChatInstance = createMockChatInstance([widgetMessage])
 
     sessionStorage.setItem(getOAuthWidgetKey(widgetMessageId, 'provider'), 'google')
 
-    // Use the real store and hydrate it with test data
+    // Use the real store and hydrate it with test data (only widget message, no user message before it)
     hydrateStore({
-      chatInstance: mockChatInstance,
       chatThread: null,
       id: threadId,
+      messages: [widgetMessage],
       mcpClients: [],
-      models: [],
-      selectedModel: null,
+      selectedModel: createMockModel(),
       triggerData: null,
     })
 
@@ -570,17 +576,20 @@ describe('useHandleIntegrationCompletion', () => {
     const consoleWarnSpy = mock(() => {})
     console.warn = consoleWarnSpy
 
-    renderHook(() => useHandleIntegrationCompletion({ saveMessages: mockSaveMessages }), {
-      wrapper: createQueryTestWrapper({
-        defaultOptions: {
-          queries: {
-            retry: false,
-            gcTime: 0,
-            staleTime: 0,
+    renderHook(
+      () => useHandleIntegrationCompletion({ saveMessages: mockSaveMessages, sendPrompt: mockSendAcpPrompt }),
+      {
+        wrapper: createQueryTestWrapper({
+          defaultOptions: {
+            queries: {
+              retry: false,
+              gcTime: 0,
+              staleTime: 0,
+            },
           },
-        },
-      }),
-    })
+        }),
+      },
+    )
 
     const eventHandler = mockAddEventListener.mock.calls[0]?.[1] as ((event: Event) => void) | undefined
     if (!eventHandler) {
@@ -622,22 +631,17 @@ describe('useHandleIntegrationCompletion', () => {
       await createTestMessages(threadId, [userMessage, widgetMessage])
 
       const mockSaveMessages = createMockSaveMessages()
-      const mockSendMessage = mock(() => Promise.resolve())
-      const mockChatInstance = createMockChatInstance([userMessage, widgetMessage])
-
-      Object.assign(mockChatInstance, { status: 'streaming' as const })
-      mockChatInstance.sendMessage = mockSendMessage
 
       sessionStorage.setItem(getOAuthWidgetKey(widgetMessageId, 'provider'), 'google')
 
-      // Use the real store and hydrate it with test data
+      // Use the real store and hydrate it with test data, starting with 'streaming' status
       hydrateStore({
-        chatInstance: mockChatInstance,
         chatThread: null,
         id: threadId,
+        messages: [userMessage, widgetMessage],
+        status: 'streaming',
         mcpClients: [],
-        models: [],
-        selectedModel: null,
+        selectedModel: createMockModel(),
         triggerData: null,
       })
 
@@ -646,17 +650,20 @@ describe('useHandleIntegrationCompletion', () => {
         integrations_microsoft_credentials: '',
       })
 
-      renderHook(() => useHandleIntegrationCompletion({ saveMessages: mockSaveMessages }), {
-        wrapper: createQueryTestWrapper({
-          defaultOptions: {
-            queries: {
-              retry: false,
-              gcTime: 0,
-              staleTime: 0,
+      renderHook(
+        () => useHandleIntegrationCompletion({ saveMessages: mockSaveMessages, sendPrompt: mockSendAcpPrompt }),
+        {
+          wrapper: createQueryTestWrapper({
+            defaultOptions: {
+              queries: {
+                retry: false,
+                gcTime: 0,
+                staleTime: 0,
+              },
             },
-          },
-        }),
-      })
+          }),
+        },
+      )
 
       const eventHandler = mockAddEventListener.mock.calls[0]?.[1] as ((event: Event) => void) | undefined
       if (!eventHandler) {
@@ -678,17 +685,17 @@ describe('useHandleIntegrationCompletion', () => {
       })
 
       expect(mockSaveMessages).toHaveBeenCalled()
-      expect(mockSendMessage).not.toHaveBeenCalled()
+      expect(mockSendAcpPrompt).not.toHaveBeenCalled()
 
-      // Change status to ready before waitForChatReady times out
-      Object.assign(mockChatInstance, { status: 'ready' as const })
+      // Change session status to ready before waitForSessionReady times out
+      useChatStore.getState().setSessionStatus(threadId, 'ready')
 
-      // Advance timers to allow waitForChatReady to poll and detect the status change
+      // Advance timers to allow waitForSessionReady to poll and detect the status change
       await act(async () => {
         await getClock().tickAsync(200)
       })
 
-      expect(mockSendMessage).toHaveBeenCalled()
+      expect(mockSendAcpPrompt).toHaveBeenCalled()
     },
     // CI VMs have slower async processing overhead
     { timeout: 5000 },

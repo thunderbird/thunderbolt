@@ -5,16 +5,22 @@ import { useEffect, useRef } from 'react'
 import { useChatScrollHandler } from '@/chats/use-chat-scroll-handler'
 import { ChatMessages } from './chat-messages'
 import { ChatPromptInput } from './chat-prompt-input'
+import { NoAgentsMessage } from './no-agents-message'
 import { useCurrentChatSession } from '@/chats/chat-store'
-import { useChat } from '@ai-sdk/react'
+import { useChatStore } from '@/chats/chat-store'
 import { useChatAutomation } from '@/chats/use-chat-automation'
 import { ScrollToBottomButton } from './scroll-to-bottom-button'
 import { AppLogo } from '../app-logo'
+import type { SaveMessagesFunction } from '@/types'
 
-export default function ChatUI() {
-  const { chatInstance } = useCurrentChatSession()
+type ChatUIProps = {
+  saveMessages?: SaveMessagesFunction
+}
 
-  const { messages } = useChat({ chat: chatInstance })
+const ChatUI = ({ saveMessages }: ChatUIProps) => {
+  const { messages } = useCurrentChatSession()
+  const agents = useChatStore((s) => s.agents)
+  const hasNoAgents = agents.length === 0
 
   useChatAutomation()
 
@@ -38,6 +44,14 @@ export default function ChatUI() {
       }
     }
   }, [hasMessages, scrollToBottom])
+
+  if (hasNoAgents) {
+    return (
+      <div className="h-full w-full flex items-center justify-center">
+        <NoAgentsMessage />
+      </div>
+    )
+  }
 
   return (
     <div className="h-full w-full">
@@ -112,7 +126,7 @@ export default function ChatUI() {
                 duration: 0.25,
               }}
             >
-              <ChatPromptInput />
+              <ChatPromptInput saveMessages={saveMessages} />
             </motion.div>
           </motion.div>
         </motion.div>
@@ -120,3 +134,5 @@ export default function ChatUI() {
     </div>
   )
 }
+
+export default ChatUI

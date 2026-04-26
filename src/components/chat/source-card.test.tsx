@@ -2,12 +2,24 @@ import '@/testing-library'
 import { fireEvent, render, screen } from '@testing-library/react'
 import { describe, expect, it, mock } from 'bun:test'
 import type { CitationSource } from '@/types/citation'
+
+import { webPlatformMock } from '@/test-utils/platform-mock'
+
+mock.module('@/lib/platform', () => webPlatformMock)
+
 import { ExternalLinkDialogProvider } from './markdown-utils'
+import { ContentViewProvider } from '@/content-view/context'
 import { SourceCard } from './source-card'
 import { type ReactElement } from 'react'
 
 const renderWithProvider = (ui: ReactElement) =>
-  render(ui, { wrapper: ({ children }) => <ExternalLinkDialogProvider>{children}</ExternalLinkDialogProvider> })
+  render(ui, {
+    wrapper: ({ children }) => (
+      <ContentViewProvider>
+        <ExternalLinkDialogProvider>{children}</ExternalLinkDialogProvider>
+      </ContentViewProvider>
+    ),
+  })
 
 describe('SourceCard', () => {
   const mockSource: CitationSource = {
@@ -87,12 +99,12 @@ describe('SourceCard', () => {
   })
 
   describe('link behavior', () => {
-    it('should use actual URL as href and show warning dialog on click', () => {
+    it('should render as a button with listitem role', () => {
       renderWithProvider(<SourceCard source={mockSource} />)
 
-      const link = screen.getByRole('listitem')
-      expect(link).toHaveAttribute('href', 'https://example.com/article')
-      expect(link.tagName).toBe('A')
+      const button = screen.getByRole('listitem')
+      expect(button.tagName).toBe('BUTTON')
+      expect(button).toHaveAttribute('type', 'button')
     })
 
     it('should show external link dialog when clicked', () => {

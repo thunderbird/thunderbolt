@@ -70,7 +70,7 @@ const PageSearchButton = ({ tooltip = 'Search' }: PageSearchButtonProps) => {
     <TooltipProvider>
       <Tooltip>
         <TooltipTrigger asChild>
-          <Button variant="ghost" size="icon" className="rounded-lg" onClick={toggle}>
+          <Button variant="ghost" size="icon" className="rounded-lg" onClick={toggle} aria-label={tooltip}>
             <Search className="h-4 w-4" />
           </Button>
         </TooltipTrigger>

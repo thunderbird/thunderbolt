@@ -58,6 +58,9 @@
         },
         {
           "url": "http://localhost:8000"
+        },
+        {
+          "url": "https://cdn.agentclientprotocol.com"
         }
       ]
     },
@@ -75,7 +78,67 @@
           "path": "$APPDATA/*"
         }
       ]
-    }
+    },
+    {
+      "identifier": "shell:allow-execute",
+      "allow": [
+        {
+          "name": "which",
+          "cmd": "which",
+          "args": [{ "validator": "\\S+" }],
+          "sidecar": false
+        },
+        {
+          "name": "npm",
+          "cmd": "npm",
+          "args": true,
+          "sidecar": false
+        },
+        {
+          "name": "node",
+          "cmd": "node",
+          "args": true,
+          "sidecar": false
+        },
+        {
+          "name": "uv",
+          "cmd": "uv",
+          "args": true,
+          "sidecar": false
+        },
+        {
+          "name": "tar",
+          "cmd": "tar",
+          "args": true,
+          "sidecar": false
+        },
+        {
+          "name": "unzip",
+          "cmd": "unzip",
+          "args": true,
+          "sidecar": false
+        }
+      ]
+    },
+    {
+      "identifier": "shell:allow-spawn",
+      "allow": [
+        {
+          "name": "node",
+          "cmd": "node",
+          "args": true,
+          "sidecar": false
+        },
+        {
+          "name": "uvx",
+          "cmd": "uvx",
+          "args": true,
+          "sidecar": false
+        }
+      ]
+    },
+    "shell:allow-stdin-write",
+    "shell:allow-kill"
   ],
   "remote": {
     "urls": ["http://localhost:1420/*"]

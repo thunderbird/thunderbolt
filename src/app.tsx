@@ -21,6 +21,7 @@ import { ThemeProvider } from '@/lib/theme-provider'
 import DevicesSettingsPage from '@/settings/devices'
 import { default as Settings } from '@/settings/index'
 import IntegrationsPage from '@/settings/integrations'
+import AgentsSettingsPage from '@/settings/agents'
 import McpServersPage from '@/settings/mcp-servers'
 import ModelsPage from '@/settings/models'
 import PreferencesSettingsPage from '@/settings/preferences'
@@ -160,6 +161,7 @@ const AppRoutes = ({ initData }: { initData: InitData }) => {
             <Route path="preferences" element={<PreferencesSettingsPage />} />
             <Route path="models" element={<ModelsPage />} />
             <Route path="devices" element={<DevicesSettingsPage />} />
+            <Route path="agents" element={<AgentsSettingsPage />} />
             <Route path="mcp-servers" element={<McpServersPage />} />
             <Route path="integrations" element={<IntegrationsPage />} />
             {import.meta.env.DEV && (

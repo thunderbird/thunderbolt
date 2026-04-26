@@ -2,14 +2,14 @@ import { Button } from '@/components/ui/button'
 import { useSidebar } from '@/components/ui/sidebar'
 import { useIsMobile } from '@/hooks/use-mobile'
 import { Menu, MessageCirclePlus } from 'lucide-react'
-import { ModelSelector } from './model-selector'
+import { AgentSelector } from './agent-selector/agent-selector'
 import { useChatStore } from '@/chats/chat-store'
 import { useShallow } from 'zustand/react/shallow'
 import { useNavigate, useLocation } from 'react-router'
 import { PowerSyncStatus } from '@/components/powersync-status'
 
 /**
- * Reusable page header component with sidebar trigger and model selector
+ * Reusable page header component with sidebar trigger and agent selector
  */
 export const Header = () => {
   const { toggleSidebar } = useSidebar()
@@ -17,42 +17,46 @@ export const Header = () => {
   const navigate = useNavigate()
   const location = useLocation()
 
-  const { models, selectedModel, setSelectedModel, chatThread, chatThreadId } = useChatStore(
+  const { agents, unavailableAgentIds, selectedAgent, setSelectedAgent, chatThreadId } = useChatStore(
     useShallow((state) => {
       const session = state.sessions.get(state.currentSessionId ?? '')
 
       return {
-        models: state.models,
-        selectedModel: session?.selectedModel,
-        setSelectedModel: state.setSelectedModel,
-        chatThread: session?.chatThread,
+        agents: state.agents,
+        unavailableAgentIds: state.unavailableAgentIds,
+        selectedAgent: session?.agentConfig,
+        setSelectedAgent: state.setSelectedAgent,
         chatThreadId: session?.id,
       }
     }),
   )
-
-  const handleAddModels = () => {
-    navigate('/settings/models')
-  }
 
   const handleNewChat = () => {
     navigate('/chats/new')
   }
 
   const isChatRoute = location.pathname.startsWith('/chats')
-  const showModelSelector = isChatRoute && models.length > 0
+  const showAgentSelector = isChatRoute && agents.length > 0
 
-  const modelSelector = showModelSelector && (
-    <ModelSelector
-      models={models}
-      selectedModel={selectedModel ?? null}
-      chatThread={chatThread ?? null}
-      onModelChange={(modelId) => {
-        if (chatThreadId && modelId) {
-          setSelectedModel(chatThreadId, modelId).catch(console.error)
-        }
-      }}
-      onAddModels={handleAddModels}
+  const handleAgentChange = async (agentId: string) => {
+    if (!agentId) {
+      return
+    }
+    // Per ACP spec: a chat belongs to one agent. Switching agents creates a new chat.
+    // Persist the agent selection, then navigate to a new chat which will use this agent.
+    // Pass a unique timestamp in state to force a fresh session even if already on /chats/new.
+    if (chatThreadId) {
+      await setSelectedAgent(chatThreadId, agentId).catch(console.error)
+    }
+    navigate('/chats/new', { state: { agentSwitch: Date.now() } })
+  }
+
+  const agentSelector = showAgentSelector && (
+    <AgentSelector
+      agents={agents}
+      disabledAgentIds={unavailableAgentIds}
+      selectedAgent={selectedAgent ?? null}
+      onAgentChange={handleAgentChange}
     />
   )
 
@@ -74,7 +78,7 @@ export const Header = () => {
           </Button>
         </div>
 
-        <div className="flex shrink-0 items-center justify-center">{modelSelector}</div>
+        <div className="flex shrink-0 items-center justify-center">{agentSelector}</div>
 
         <div className="flex flex-1 items-center gap-1 justify-end">
           {showNewChatButton && (
@@ -96,7 +100,7 @@ export const Header = () => {
   // Desktop: Left-aligned with PowerSync status on the right
   return (
     <header className="flex h-[var(--touch-height-xl)] w-full items-center justify-between px-2 flex-shrink-0">
-      <div className="flex items-center">{modelSelector}</div>
+      <div className="flex items-center">{agentSelector}</div>
       <PowerSyncStatus />
     </header>
   )

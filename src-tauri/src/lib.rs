@@ -1,6 +1,8 @@
 // These modules are used by Tauri's command system through macros
 // The compiler can't see the usage, so we allow dead_code warnings
 #[allow(dead_code)]
+pub mod agent_spawn;
+#[allow(dead_code)]
 pub mod commands;
 pub mod oauth_server;
 pub mod platform_utils;
@@ -36,10 +38,12 @@ pub fn create_app() -> tauri::Builder<tauri::Wry> {
         .plugin(tauri_plugin_os::init())
         .plugin(tauri_plugin_deep_link::init())
         .plugin(tauri_plugin_haptics::init())
+        .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_store::Builder::default().build())
         .plugin(platform_utils::init())
         .invoke_handler(tauri::generate_handler![
+            agent_spawn::spawn_agent,
             commands::toggle_dock_icon,
             commands::capabilities,
             commands::set_interface_style,

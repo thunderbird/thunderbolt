@@ -1,49 +1,71 @@
+import type { AcpClient } from '@/acp/client'
 import { updateSettings } from '@/dal'
 import { getDb } from '@/db/database'
 import { type MCPClient } from '@/lib/mcp-provider'
 import { trackEvent } from '@/lib/posthog'
-import type { AutomationRun, ChatThread, Mode, Model, ThunderboltUIMessage } from '@/types'
+import type { Agent, AutomationRun, ChatThread, Mode, Model, ThunderboltUIMessage } from '@/types'
+import type { SessionConfigOption, SessionMode } from '@agentclientprotocol/sdk'
 import { create } from 'zustand'
-import type { Chat } from '@ai-sdk/react'
 import { useShallow } from 'zustand/react/shallow'
 
-type ChatSession = {
-  chatInstance: Chat<ThunderboltUIMessage>
-  chatThread: ChatThread | null
+export type ChatStatus = 'ready' | 'submitted' | 'streaming' | 'error' | 'connecting'
+
+export type ChatSession = {
   id: string
+  chatThread: ChatThread | null
+  acpClient: AcpClient | null
+  agentConfig: Agent
+  isAgentAvailable: boolean
+
+  // ACP session state (from capability negotiation)
+  acpSessionId: string | null
+  availableModes: SessionMode[]
+  currentModeId: string | null
+  configOptions: SessionConfigOption[]
+
+  // Reactive message state (replaces Chat's internal state)
+  messages: ThunderboltUIMessage[]
+  status: ChatStatus
+  error: Error | null
+
+  // Backward-compat convenience for built-in agent features (context tracking, encryption)
+  selectedModel: Model
+  selectedMode: Mode
+
   retryCount: number
   retriesExhausted: boolean
-  selectedMode: Mode
-  selectedModel: Model
   triggerData: AutomationRun | null
 }
 
 type ChatStoreState = {
   currentSessionId: string | null
+  agents: Agent[]
+  unavailableAgentIds: Set<string>
   mcpClients: MCPClient[]
-  modes: Mode[]
-  models: Model[]
   sessions: Map<string, ChatSession>
 }
 
 type ChatStoreActions = {
   createSession(session: ChatSession): void
+  setAgents(agents: Agent[], unavailableAgentIds?: Set<string>): void
   setCurrentSessionId(id: string): void
   setMcpClients(mcpClients: MCPClient[]): void
-  setModes(modes: Mode[]): void
-  setModels(models: Model[]): void
+  setSelectedAgent(id: string, agentId: string | null): Promise<void>
   setSelectedMode(id: string, modeId: string | null): Promise<void>
   setSelectedModel(id: string, modelId: string | null): Promise<void>
   updateSession(id: string, session: Partial<Omit<ChatSession, 'id'>>): void
+  appendMessage(id: string, message: ThunderboltUIMessage): void
+  updateLastMessage(id: string, message: ThunderboltUIMessage): void
+  setSessionStatus(id: string, status: ChatStatus, error?: Error | null): void
 }
 
 type ChatStore = ChatStoreState & ChatStoreActions
 
 const initialState: ChatStoreState = {
   currentSessionId: null,
+  agents: [],
+  unavailableAgentIds: new Set<string>(),
   mcpClients: [],
-  modes: [],
-  models: [],
   sessions: new Map(),
 }
 
@@ -63,6 +85,10 @@ export const useChatStore = create<ChatStore>()((set, get) => ({
     set({ sessions: nextSessions })
   },
 
+  setAgents: (agents, unavailableAgentIds = new Set()) => {
+    set({ agents, unavailableAgentIds })
+  },
+
   setCurrentSessionId: (id) => {
     set({ currentSessionId: id })
   },
@@ -71,22 +97,25 @@ export const useChatStore = create<ChatStore>()((set, get) => ({
     set({ mcpClients })
   },
 
-  setModes: (modes) => {
-    set({ modes })
-  },
+  setSelectedAgent: async (_id, agentId) => {
+    const { agents } = get()
 
-  setModels: (models) => {
-    set({ models })
+    const agent = agents.find((a) => a.id === agentId)
+
+    if (!agent) {
+      throw new Error('Agent not found')
+    }
+
+    // Only persist the selection for new chats — don't mutate the current session's agent.
+    // The current chat belongs to its original agent; switching agents navigates to a new chat.
+    const db = getDb()
+    await updateSettings(db, { selected_agent: agent.id })
+
+    trackEvent('agent_select', { agent: agent.id })
   },
 
   setSelectedMode: async (id, modeId) => {
-    const { modes, sessions } = get()
-
-    const mode = modes.find((m) => m.id === modeId)
-
-    if (!mode) {
-      throw new Error('Mode not found')
-    }
+    const { sessions } = get()
 
     const session = sessions.get(id)
 
@@ -94,8 +123,32 @@ export const useChatStore = create<ChatStore>()((set, get) => ({
       throw new Error('No session found')
     }
 
-    const nextSessions = new Map(sessions)
-    nextSessions.set(id, { ...session, selectedMode: mode })
+    // Find mode in session's available modes
+    const mode = session.availableModes.find((m) => m.id === modeId)
+    if (!mode) {
+      throw new Error('Mode not found in session available modes')
+    }
+
+    // Update via ACP if connected
+    if (session.acpClient) {
+      await session.acpClient.setMode(mode.id)
+    }
+
+    // Update session state
+    const nextSessions = new Map(get().sessions)
+    const currentSession = nextSessions.get(id)
+    if (currentSession) {
+      nextSessions.set(id, {
+        ...currentSession,
+        currentModeId: mode.id,
+        selectedMode: {
+          ...currentSession.selectedMode,
+          id: mode.id,
+          name: mode.id,
+          label: mode.name,
+        },
+      })
+    }
 
     set({ sessions: nextSessions })
 
@@ -106,13 +159,7 @@ export const useChatStore = create<ChatStore>()((set, get) => ({
   },
 
   setSelectedModel: async (id, modelId) => {
-    const { models, sessions } = get()
-
-    const model = models.find((m) => m.id === modelId)
-
-    if (!model) {
-      throw new Error('Model not found')
-    }
+    const { sessions } = get()
 
     const session = sessions.get(id)
 
@@ -120,15 +167,27 @@ export const useChatStore = create<ChatStore>()((set, get) => ({
       throw new Error('No session found')
     }
 
-    const nextSessions = new Map(sessions)
-    nextSessions.set(id, { ...session, selectedModel: model })
+    // Update via ACP config option if connected
+    if (session.acpClient) {
+      const response = await session.acpClient.setConfigOption('model', modelId ?? '')
 
-    set({ sessions: nextSessions })
+      // Propagate updated configOptions back to session state so the UI reflects the change
+      if (response?.configOptions) {
+        const nextSessions = new Map(get().sessions)
+        const currentSession = nextSessions.get(id)
+        if (currentSession) {
+          nextSessions.set(id, { ...currentSession, configOptions: response.configOptions })
+        }
+        set({ sessions: nextSessions })
+      }
+    }
 
     const db = getDb()
-    await updateSettings(db, { selected_model: model.id })
+    await updateSettings(db, { selected_model: modelId ?? '' })
 
-    trackEvent('model_select', { model: model.id })
+    if (modelId) {
+      trackEvent('model_select', { model: modelId })
+    }
   },
 
   updateSession: (id, session) => {
@@ -144,18 +203,50 @@ export const useChatStore = create<ChatStore>()((set, get) => ({
     nextSessions.set(id, { ...existingSession, ...session })
     set({ sessions: nextSessions })
   },
+
+  appendMessage: (id, message) => {
+    const { sessions } = get()
+    const session = sessions.get(id)
+    if (!session) {
+      return
+    }
+    const nextSessions = new Map(sessions)
+    nextSessions.set(id, { ...session, messages: [...session.messages, message] })
+    set({ sessions: nextSessions })
+  },
+
+  updateLastMessage: (id, message) => {
+    const { sessions } = get()
+    const session = sessions.get(id)
+    if (!session || session.messages.length === 0) {
+      return
+    }
+    const nextMessages = [...session.messages]
+    nextMessages[nextMessages.length - 1] = message
+    const nextSessions = new Map(sessions)
+    nextSessions.set(id, { ...session, messages: nextMessages })
+    set({ sessions: nextSessions })
+  },
+
+  setSessionStatus: (id, status, error = null) => {
+    const { sessions } = get()
+    const session = sessions.get(id)
+    if (!session) {
+      return
+    }
+    const nextSessions = new Map(sessions)
+    nextSessions.set(id, { ...session, status, error })
+    set({ sessions: nextSessions })
+  },
 }))
+
+// Expose store on window in dev mode for e2e test access
+if (import.meta.env.DEV) {
+  ;(window as unknown as Record<string, unknown>).__thunderboltChatStore = useChatStore
+}
 
 /**
  * Returns the current chat session, throwing if none exists.
- *
- * Use this hook in components/hooks that fundamentally require an active session to function
- * (e.g., chat UI, message handlers). The throw ensures these components never render in an
- * invalid state.
- *
- * For components where a session is optional and they can still function without one
- * (e.g., Header, ChatListItem, useHandleIntegrationCompletion), access the store directly
- * with optional chaining: `state.sessions.get(state.currentSessionId ?? '')?.someProperty`
  */
 export const useCurrentChatSession = () => {
   const session = useChatStore(useShallow((state) => state.sessions.get(state.currentSessionId ?? '')))

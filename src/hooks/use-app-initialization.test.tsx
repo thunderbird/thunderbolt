@@ -1,19 +1,17 @@
+import { afterAll, beforeAll, describe, expect, it, mock } from 'bun:test'
+import { webPlatformMock } from '@/test-utils/platform-mock'
+import { tauriCoreMock } from '@/test-utils/tauri-mock'
+
+mock.module('@/lib/platform', () => webPlatformMock)
+mock.module('@tauri-apps/api/core', () => ({ ...tauriCoreMock, invoke: mock() }))
+mock.module('@tauri-apps/plugin-os', () => ({ platform: () => 'web' }))
+
 import { setupTestDatabase, teardownTestDatabase } from '@/dal/test-utils'
 import { createMockHttpClient } from '@/test-utils/http-client'
 import { createTestProvider } from '@/test-utils/test-provider'
 import { getClock } from '@/testing-library'
 import { act, renderHook } from '@testing-library/react'
-import { afterAll, beforeAll, describe, expect, it, mock } from 'bun:test'
 import { useAppInitialization } from './use-app-initialization'
-
-mock.module('@tauri-apps/api/core', () => ({
-  isTauri: () => false,
-  invoke: mock(),
-}))
-
-mock.module('@tauri-apps/plugin-os', () => ({
-  platform: () => 'web',
-}))
 
 const mockPostHogConfig = {
   public_posthog_api_key: null, // Disable PostHog in tests

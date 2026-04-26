@@ -6,7 +6,7 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from
 import { useHydrateChatStore } from './use-hydrate-chat-store'
 import { useChatStore } from './chat-store'
 import { getDb } from '@/db/database'
-import { modelsTable, modesTable } from '@/db/tables'
+import { agentsTable, modelsTable, modesTable } from '@/db/tables'
 import { v7 as uuidv7 } from 'uuid'
 import { createChatThread } from '@/dal/chat-threads'
 import { getModel } from '@/dal/models'
@@ -15,6 +15,21 @@ import type { ThunderboltUIMessage } from '@/types'
 import { createElement, type ReactNode } from 'react'
 import { BrowserRouter } from 'react-router'
 import { MCPProvider } from '@/lib/mcp-provider'
+import { getClock } from '@/testing-library'
+
+/**
+ * hydrateChatStore internally calls http.get() (via discoverAndSeedRemoteAgents).
+ * With fake timers globally installed, we must advance the clock so fetch timeouts don't hang.
+ */
+const callHydrate = async (hydrateFn: () => Promise<void>) => {
+  const promise = hydrateFn()
+  await act(async () => {
+    await getClock().runAllAsync()
+  })
+  await act(async () => {
+    await promise
+  })
+}
 
 /**
  * Helper function to create a default mode (required for getSelectedMode)
@@ -90,9 +105,25 @@ const createTestModel = async () => {
 }
 
 /**
+ * Helper function to create a built-in agent (required for getSelectedAgent)
+ */
+const createDefaultAgent = async () => {
+  const db = getDb()
+  await db.insert(agentsTable).values({
+    id: 'agent-built-in',
+    name: 'Thunderbolt',
+    type: 'built-in',
+    transport: 'in-process',
+    isSystem: 1,
+    enabled: 1,
+    deletedAt: null,
+  })
+}
+
+/**
  * Helper function to create a test thread
  */
-const createTestThread = async (modelId: string, title: string = 'Test Thread') => {
+const createTestThread = async (modelId: string, title: string = 'Test Thread', agentId?: string) => {
   const model = await getModel(getDb(), modelId)
   if (!model) {
     throw new Error('Test setup failed')
@@ -106,10 +137,29 @@ const createTestThread = async (modelId: string, title: string = 'Test Thread') 
       contextSize: null,
       triggeredBy: null,
       wasTriggeredByAutomation: 0,
+      agentId: agentId ?? null,
     },
     model,
   )
   return threadId
+}
+
+/**
+ * Helper function to create a second agent
+ */
+const createSecondAgent = async () => {
+  const db = getDb()
+  const agentId = 'agent-second'
+  await db.insert(agentsTable).values({
+    id: agentId,
+    name: 'Second Agent',
+    type: 'built-in',
+    transport: 'in-process',
+    isSystem: 0,
+    enabled: 1,
+    deletedAt: null,
+  })
+  return agentId
 }
 
 /**
@@ -147,9 +197,11 @@ describe('useHydrateChatStore', () => {
     // Reset store state before each test
     resetStore()
     await resetTestDatabase()
-    // Create default mode (required for getSelectedMode) and system model (required for getDefaultModelForThread)
+    // Create default mode (required for getSelectedMode), system model (required for getDefaultModelForThread),
+    // and default agent (required for getSelectedAgent)
     await createDefaultMode()
     await createSystemModel()
+    await createDefaultAgent()
   })
 
   afterEach(async () => {
@@ -182,9 +234,7 @@ describe('useHydrateChatStore', () => {
 
       expect(result.current.isReady).toBe(false)
 
-      await act(async () => {
-        await result.current.hydrateChatStore()
-      })
+      await callHydrate(() => result.current.hydrateChatStore())
 
       expect(result.current.isReady).toBe(true)
     })
@@ -199,9 +249,7 @@ describe('useHydrateChatStore', () => {
         wrapper: TestWrapper,
       })
 
-      await act(async () => {
-        await result.current.hydrateChatStore()
-      })
+      await callHydrate(() => result.current.hydrateChatStore())
 
       const session = getCurrentSession()
       const storeState = useChatStore.getState()
@@ -213,10 +261,8 @@ describe('useHydrateChatStore', () => {
       expect(session?.selectedModel).not.toBeNull()
       // getDefaultModelForThread returns the system model when no messages exist
       expect(session?.selectedModel?.isSystem).toBe(1)
-      expect(storeState.models).toBeDefined()
-      expect(storeState.models.length).toBeGreaterThan(0)
-      expect(session?.chatInstance).toBeDefined()
-      expect(session?.chatInstance?.id).toBe(threadId)
+      expect(session?.acpClient).toBeDefined()
+      expect(session?.messages).toBeDefined()
       expect(storeState.mcpClients).toBeDefined()
       expect(session?.triggerData).toBeDefined()
     })
@@ -231,9 +277,7 @@ describe('useHydrateChatStore', () => {
       })
 
       // First hydration
-      await act(async () => {
-        await result.current.hydrateChatStore()
-      })
+      await callHydrate(() => result.current.hydrateChatStore())
 
       const firstState = useChatStore.getState()
       expect(firstState.currentSessionId).toBe(threadId1)
@@ -243,9 +287,7 @@ describe('useHydrateChatStore', () => {
         wrapper: TestWrapper,
       })
 
-      await act(async () => {
-        await result2.current.hydrateChatStore()
-      })
+      await callHydrate(() => result2.current.hydrateChatStore())
 
       const secondState = useChatStore.getState()
       expect(secondState.currentSessionId).toBe(threadId2)
@@ -269,14 +311,30 @@ describe('useHydrateChatStore', () => {
         wrapper: TestWrapper,
       })
 
-      await act(async () => {
-        await result.current.hydrateChatStore()
-      })
+      await callHydrate(() => result.current.hydrateChatStore())
 
       const session = getCurrentSession()
-      expect(session?.chatInstance).toBeDefined()
-      expect(session?.chatInstance?.messages).toBeDefined()
-      expect(session?.chatInstance?.messages.length).toBe(2)
+      expect(session?.acpClient).toBeDefined()
+      expect(session?.messages).toBeDefined()
+      expect(session?.messages.length).toBe(2)
+    })
+
+    it('should use the chat thread agent instead of the global selected agent', async () => {
+      const systemModelId = await createSystemModel()
+      const secondAgentId = await createSecondAgent()
+      // Create a thread that was made with the second agent
+      const threadId = await createTestThread(systemModelId, 'Agent Thread', secondAgentId)
+
+      const { result } = renderHook(() => useHydrateChatStore({ id: threadId, isNew: false }), {
+        wrapper: TestWrapper,
+      })
+
+      await callHydrate(() => result.current.hydrateChatStore())
+
+      const session = getCurrentSession()
+      // The session should use the thread's agent, not the global selected agent
+      expect(session?.agentConfig.id).toBe(secondAgentId)
+      expect(session?.agentConfig.name).toBe('Second Agent')
     })
 
     it('should hydrate store with empty messages when thread has no messages', async () => {
@@ -287,14 +345,12 @@ describe('useHydrateChatStore', () => {
         wrapper: TestWrapper,
       })
 
-      await act(async () => {
-        await result.current.hydrateChatStore()
-      })
+      await callHydrate(() => result.current.hydrateChatStore())
 
       const session = getCurrentSession()
-      expect(session?.chatInstance).toBeDefined()
-      expect(session?.chatInstance?.messages).toBeDefined()
-      expect(session?.chatInstance?.messages.length).toBe(0)
+      expect(session?.acpClient).toBeDefined()
+      expect(session?.messages).toBeDefined()
+      expect(session?.messages.length).toBe(0)
     })
   })
 
@@ -308,9 +364,7 @@ describe('useHydrateChatStore', () => {
       })
 
       // First hydrate to set up the store
-      await act(async () => {
-        await result.current.hydrateChatStore()
-      })
+      await callHydrate(() => result.current.hydrateChatStore())
 
       const session = getCurrentSession()
       expect(session?.selectedModel).not.toBeNull()
@@ -363,9 +417,7 @@ describe('useHydrateChatStore', () => {
       })
 
       // Hydrate to set up the store with a model
-      await act(async () => {
-        await result.current.hydrateChatStore()
-      })
+      await callHydrate(() => result.current.hydrateChatStore())
 
       const newMessages: ThunderboltUIMessage[] = [
         createTestMessage({ role: 'user', parts: [{ type: 'text', text: 'Test message' }] }),

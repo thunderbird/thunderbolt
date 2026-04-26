@@ -4,6 +4,10 @@ import { afterAll, beforeAll, describe, expect, mock, test } from 'bun:test'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 
+import { webPlatformMock } from '@/test-utils/platform-mock'
+
+mock.module('@/lib/platform', () => webPlatformMock)
+
 import { ContentViewProvider } from '@/content-view/context'
 import { createTestProvider } from '@/test-utils/test-provider'
 import type { CitationMap, CitationSource } from '@/types/citation'

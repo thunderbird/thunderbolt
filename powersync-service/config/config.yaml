@@ -28,6 +28,7 @@ sync_rules:
           - SELECT * FROM powersync.modes WHERE user_id = bucket.user_id
           - SELECT * FROM powersync.model_profiles WHERE user_id = bucket.user_id
           - SELECT * FROM powersync.devices WHERE user_id = bucket.user_id
+          - SELECT * FROM powersync.agents WHERE user_id = bucket.user_id
 
 client_auth:
   supabase: false

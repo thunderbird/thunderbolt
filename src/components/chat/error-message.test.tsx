@@ -1,4 +1,4 @@
-import { maxRetries } from '@/chats/chat-instance'
+import { maxRetries } from '@/chats/constants'
 import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, describe, expect, it, mock } from 'bun:test'
 import { ErrorMessage } from './error-message'

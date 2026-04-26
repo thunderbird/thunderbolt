@@ -65,6 +65,29 @@
 - Create test files as `<file>.test.ts` next to source files
 - Test likely edge cases, aiming for useful 80% coverage
 
+### Testability through design, not mocks
+
+**Treat mocking/spying as a last resort.** The first question when something is hard to test should be "how can I restructure this code to be testable without mocks?" — not "how do I mock this dependency?"
+
+**Preferred approaches (in order):**
+1. **Pure functions** — extract logic into pure functions that take inputs and return outputs. Test those directly.
+2. **Dependency injection** — pass dependencies as parameters with sensible defaults (see `useOAuthConnect`'s `OAuthDependencies` pattern). Tests provide test implementations without any mocking framework.
+3. **`spyOn`** — when you must intercept an external module's behavior, use `spyOn(module, 'export')` in `beforeEach` and `mock.restore()` in `afterEach`. Unlike `mock.module`, spies are properly restorable.
+4. **`mock.module`** — absolute last resort, only for external modules (Tauri plugins, platform APIs) that cannot be injected. Never for project code.
+
+### `mock.module` rules (when unavoidable)
+
+Bun runs all test files in a single process with a shared module cache. `mock.module()` permanently mutates the global cache — `mock.restore()` does NOT undo it ([oven-sh/bun#7823](https://github.com/oven-sh/bun/issues/7823)). This means partial mocks poison every test file that runs afterward. [PR #26546](https://github.com/oven-sh/bun/pull/26546) may fix this — until it merges, these rules are mandatory.
+
+**Mandatory rules when using `mock.module`:**
+- **Always mock ALL exports** — never provide a partial mock. A mock missing `getDeviceDisplayName` will cause `SyntaxError: Export named 'getDeviceDisplayName' not found` in unrelated test files.
+- **Use the shared mock helpers** in `src/test-utils/`:
+  - `webPlatformMock` / `desktopPlatformMock` from `platform-mock.ts` for `@/lib/platform`
+  - `tauriCoreMock` from `tauri-mock.ts` for `@tauri-apps/api/core`
+- **Spread and override** — `mock.module('@/lib/platform', () => ({ ...webPlatformMock, isTauri: () => true }))`
+- **Guard defensively** — if your test imports a module that another test file mocks, add your own `mock.module` guard at the top of your file to ensure correct behavior regardless of execution order.
+- **Place `mock.module` before all imports** of the mocked module — bun hoists mocks but the mock must be registered before the module is first loaded.
+
 ## After Each Task
 
 - Consider refactoring into standalone functions for clarity

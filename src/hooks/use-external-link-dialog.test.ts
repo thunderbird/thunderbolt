@@ -1,5 +1,10 @@
 import { renderHook, act } from '@testing-library/react'
 import { describe, expect, it, mock } from 'bun:test'
+
+import { webPlatformMock } from '@/test-utils/platform-mock'
+
+mock.module('@/lib/platform', () => webPlatformMock)
+
 import { useExternalLinkDialog } from './use-external-link-dialog'
 
 describe('useExternalLinkDialog', () => {

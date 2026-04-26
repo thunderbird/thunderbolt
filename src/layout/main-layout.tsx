@@ -2,15 +2,17 @@ import { DownloadAppBannerDesktop } from '@/components/download-app-banner-deskt
 import { DownloadAppBannerMobile } from '@/components/download-app-banner-mobile'
 import { Header } from '@/components/ui/header'
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from '@/components/ui/resizable'
-import { SidebarInset } from '@/components/ui/sidebar'
+import { SidebarContent, SidebarInset } from '@/components/ui/sidebar'
 import { defaultOpenWidth, minimumWidthThreshold } from '@/content-view/constants'
 import { useContentView } from '@/content-view/context'
 import { ObjectSidebarContent } from '@/content-view/object-sidebar-content'
+import { Sideview } from '@/content-view/sideview'
 import { SidebarWebview } from '@/content-view/sidebar-webview'
 import { useIsMobile } from '@/hooks/use-mobile'
 import { isTauri } from '@/lib/platform'
 import { useSettings } from '@/hooks/use-settings'
 import { animate, AnimatePresence, motion } from 'framer-motion'
+
 import { useEffect, useRef } from 'react'
 import type { ImperativePanelHandle } from 'react-resizable-panels'
 import { Outlet } from 'react-router'
@@ -145,6 +147,11 @@ export default function Page() {
                   <SidebarWebview config={state.data} onClose={close} hidden={previewHidden} />
                 )}
                 {state.type === 'object-view' && <ObjectSidebarContent content={state.data} onClose={close} />}
+                {state.type === 'sideview' && (
+                  <SidebarContent className="w-full h-full overflow-scroll">
+                    <Sideview />
+                  </SidebarContent>
+                )}
               </motion.div>
             )}
           </AnimatePresence>

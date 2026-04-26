@@ -190,6 +190,14 @@ export const defaultSettingHapticsEnabled: Setting = {
   userId: null,
 }
 
+export const defaultSettingExperimentalFeatureAgentsCli: Setting = {
+  key: 'experimental_feature_agents_cli',
+  value: 'false',
+  updatedAt: null,
+  defaultHash: null,
+  userId: null,
+}
+
 /**
  * Array of all default settings for iteration
  */
@@ -215,4 +223,5 @@ export const defaultSettings: ReadonlyArray<Setting> = [
   defaultSettingContentViewWidth,
   defaultSettingIntegrationsDoNotAskAgain,
   defaultSettingHapticsEnabled,
+  defaultSettingExperimentalFeatureAgentsCli,
 ] as const

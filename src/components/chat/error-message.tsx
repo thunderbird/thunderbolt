@@ -1,4 +1,4 @@
-import { maxRetries } from '@/chats/chat-instance'
+import { maxRetries } from '@/chats/constants'
 import { isRateLimitError } from '@/lib/error-utils'
 import { Loader2 } from 'lucide-react'
 import { memo } from 'react'

@@ -17,6 +17,15 @@ on:
         required: false
         default: false
         type: boolean
+    secrets:
+      ANDROID_UPLOAD_KEY:
+        required: true
+      ANDROID_UPLOAD_KEY_ALIAS:
+        required: true
+      ANDROID_UPLOAD_KEY_PASSWORD:
+        required: true
+      GOOGLE_PLAY_SERVICE_ACCOUNT_JSON:
+        required: true
   workflow_dispatch:
     inputs:
       version:

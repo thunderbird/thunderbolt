@@ -43,7 +43,6 @@ jobs:
   version_bump:
     name: Version Bump
     uses: ./.github/workflows/version-bump.yml
-    secrets: inherit
     with:
       platform: ${{ inputs.platform || 'all' }}
       version: ${{ inputs.version }}
@@ -55,7 +54,17 @@ jobs:
     needs: version_bump
     if: needs.version_bump.result == 'success' && (inputs.platform == 'all' || inputs.platform == 'desktop' || github.event_name == 'schedule')
     uses: ./.github/workflows/desktop-release.yml
-    secrets: inherit
+    secrets:
+      APPLE_DEVELOPER_CERTIFICATE: ${{ secrets.APPLE_DEVELOPER_CERTIFICATE }}
+      APPLE_DEVELOPER_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_DEVELOPER_CERTIFICATE_PASSWORD }}
+      APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+      APP_STORE_CONNECT_API_KEY: ${{ secrets.APP_STORE_CONNECT_API_KEY }}
+      APP_STORE_CONNECT_API_KEY_ID: ${{ secrets.APP_STORE_CONNECT_API_KEY_ID }}
+      APP_STORE_CONNECT_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
+      APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+      TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+      TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+      CRABNEBULA_CLOUD_API_KEY: ${{ secrets.CRABNEBULA_CLOUD_API_KEY }}
     with:
       version: ${{ needs.version_bump.outputs.new_version }}
       nightly: ${{ github.event_name == 'schedule' }}
@@ -65,7 +74,14 @@ jobs:
     needs: version_bump
     if: needs.version_bump.result == 'success' && (inputs.platform == 'all' || inputs.platform == 'ios' || github.event_name == 'schedule')
     uses: ./.github/workflows/ios-release.yml
-    secrets: inherit
+    secrets:
+      APPLE_CERTIFICATE_P12: ${{ secrets.APPLE_CERTIFICATE_P12 }}
+      APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+      APP_STORE_PROVISIONING_PROFILE: ${{ secrets.APP_STORE_PROVISIONING_PROFILE }}
+      APP_STORE_CONNECT_API_KEY: ${{ secrets.APP_STORE_CONNECT_API_KEY }}
+      APP_STORE_CONNECT_API_KEY_ID: ${{ secrets.APP_STORE_CONNECT_API_KEY_ID }}
+      APP_STORE_CONNECT_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
+      APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
     with:
       version: ${{ needs.version_bump.outputs.new_version }}
       nightly: ${{ github.event_name == 'schedule' }}
@@ -75,7 +91,11 @@ jobs:
     needs: version_bump
     if: needs.version_bump.result == 'success' && (inputs.platform == 'all' || inputs.platform == 'android' || github.event_name == 'schedule')
     uses: ./.github/workflows/android-release.yml
-    secrets: inherit
+    secrets:
+      ANDROID_UPLOAD_KEY: ${{ secrets.ANDROID_UPLOAD_KEY }}
+      ANDROID_UPLOAD_KEY_ALIAS: ${{ secrets.ANDROID_UPLOAD_KEY_ALIAS }}
+      ANDROID_UPLOAD_KEY_PASSWORD: ${{ secrets.ANDROID_UPLOAD_KEY_PASSWORD }}
+      GOOGLE_PLAY_SERVICE_ACCOUNT_JSON: ${{ secrets.GOOGLE_PLAY_SERVICE_ACCOUNT_JSON }}
     with:
       version: ${{ needs.version_bump.outputs.new_version }}
       nightly: ${{ github.event_name == 'schedule' }}

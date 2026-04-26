@@ -124,6 +124,18 @@ export const createModel = async (modelConfig: Model) => {
       })
       return openrouter(modelConfig.model)
     }
+    case 'minimax': {
+      if (!modelConfig.apiKey) {
+        throw new Error('No API key provided')
+      }
+      const minimax = createOpenAICompatible({
+        name: 'minimax',
+        baseURL: 'https://api.minimax.io/v1',
+        apiKey: modelConfig.apiKey,
+        fetch,
+      })
+      return minimax(modelConfig.model)
+    }
     default:
       throw new Error(`Unsupported provider: ${modelConfig.provider}`)
   }

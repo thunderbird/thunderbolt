@@ -10,7 +10,7 @@ import { expect, type Page } from '@playwright/test'
  *
  * Onboarding is disabled via VITE_SKIP_ONBOARDING env var in playwright.config.ts.
  *
- * The flow: / -> AuthGate -> /oidc-redirect -> POST sign-in -> mock IdP /authorize
+ * The flow: / -> AuthGate -> /sso-redirect -> POST sign-in -> mock IdP /authorize
  * (auto-approves) -> backend callback -> token exchange -> session -> app
  */
 export const loginViaOidc = async (page: Page) => {

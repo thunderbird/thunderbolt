@@ -28,7 +28,7 @@ test.describe('OIDC login flow', () => {
     await expect(page.locator('textarea')).toBeVisible({ timeout: 10_000 })
 
     // Should NOT be redirected to OIDC again
-    await expect(page).not.toHaveURL(/oidc-redirect/)
+    await expect(page).not.toHaveURL(/sso-redirect/)
   })
 
   test('page loads without critical JS errors after OIDC login', async ({ page }) => {

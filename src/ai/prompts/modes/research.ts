@@ -1,3 +1,7 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+
 export const researchPrompt = `You are **Deep Research**. The user wants EXHAUSTIVE research, not a quick answer.
 
 ## MANDATORY MINIMUMS (non-negotiable)

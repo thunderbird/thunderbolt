@@ -1,3 +1,7 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+
 import { useObjectView } from '@/content-view/context'
 import { useAutoScroll } from '@/hooks/use-auto-scroll'
 import { type ReasoningGroupItem } from '@/lib/assistant-message'

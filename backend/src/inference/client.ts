@@ -2,6 +2,7 @@ import { getSettings } from '@/config/settings'
 import { getPostHogClient, isPostHogConfigured } from '@/posthog/client'
 import { OpenAI as PostHogOpenAI } from '@posthog/ai'
 import OpenAI from 'openai'
+import { customProxyUserAgent, customProxyAbuseContact } from './custom-model-proxy'
 
 export type InferenceProvider = 'fireworks' | 'thunderbolt' | 'mistral' | 'anthropic'
 
@@ -199,6 +200,38 @@ export const clearInferenceClientCache = () => {
   thunderboltClient = null
   mistralClient = null
   anthropicClient = null
+}
+
+/**
+ * Get an OpenAI-compatible client for a user-supplied custom endpoint.
+ *
+ * Unlike other factories, this is NOT cached — each call gets its own client.
+ * Inject `fetchFn` (e.g. `createSafeFetch(globalThis.fetch)`) for SSRF safety.
+ * Every request carries mandatory `User-Agent` and `X-Abuse-Contact` defaultHeaders.
+ */
+export const getCustomModelClient = (
+  baseUrl: string,
+  apiKey: string,
+  fetchFn?: typeof fetch,
+): OpenAI | PostHogOpenAI => {
+  const params = {
+    apiKey,
+    baseURL: baseUrl,
+    defaultHeaders: {
+      'User-Agent': customProxyUserAgent,
+      'X-Abuse-Contact': customProxyAbuseContact,
+    },
+    ...(fetchFn && { fetch: fetchFn }),
+  }
+
+  if (isPostHogConfigured()) {
+    return new PostHogOpenAI({
+      ...params,
+      posthog: getPostHogClient(fetchFn),
+    })
+  }
+
+  return new OpenAI(params)
 }
 
 /**

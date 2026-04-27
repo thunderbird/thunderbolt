@@ -2,12 +2,19 @@ import { createModel } from '@/dal'
 import { resetTestDatabase, setupTestDatabase, teardownTestDatabase } from '@/dal/test-utils'
 import { getDb } from '@/db/database'
 import { renderWithReactivity, waitForElement } from '@/test-utils/powersync-reactivity-test'
+import { createMockHttpClient } from '@/test-utils/http-client'
+import { HttpClientProvider } from '@/contexts/http-client-context'
 import { getClock } from '@/testing-library'
 import '@testing-library/jest-dom'
 import { act, cleanup, screen } from '@testing-library/react'
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'bun:test'
 import { v7 as uuidv7 } from 'uuid'
+import type { ReactNode } from 'react'
 import ModelsPage from './index'
+
+const HttpClientWrapper = ({ children }: { children: ReactNode }) => (
+  <HttpClientProvider httpClient={createMockHttpClient()}>{children}</HttpClientProvider>
+)
 
 describe('ModelsPage reactivity', () => {
   beforeAll(async () => {
@@ -40,6 +47,7 @@ describe('ModelsPage reactivity', () => {
 
     const { triggerChange } = renderWithReactivity(<ModelsPage />, {
       tables: ['models'],
+      wrapper: HttpClientWrapper,
     })
 
     await waitForElement(() => screen.queryByText('First Model'))

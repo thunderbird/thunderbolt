@@ -19,6 +19,8 @@ import { createAnthropic } from '@ai-sdk/anthropic'
 import { createOpenAI } from '@ai-sdk/openai'
 import { createOpenAICompatible } from '@ai-sdk/openai-compatible'
 import type { HttpClient } from '@/lib/http'
+import { createCustomProxyFetch } from '@/ai/custom-proxy-fetch'
+import { isLocalhostUrl } from '@/ai/is-localhost-url'
 import { v7 as uuidv7 } from 'uuid'
 
 // Currently @openrouter/ai-sdk-provider is NOT compatible with Vercel AI SDK v5. If you enable this, you will get the following error:
@@ -59,7 +61,7 @@ type AiFetchStreamingResponseOptions = {
   httpClient: HttpClient
 }
 
-export const createModel = async (modelConfig: Model) => {
+export const createModel = async (modelConfig: Model, httpClient?: HttpClient) => {
   switch (modelConfig.provider) {
     case 'thunderbolt': {
       const db = getDb()
@@ -102,11 +104,23 @@ export const createModel = async (modelConfig: Model) => {
       if (!modelConfig.url) {
         throw new Error('No URL provided for custom provider')
       }
+      // For localhost URLs on web, use globalThis.fetch directly (CORS carve-out — the
+      // backend cannot proxy to user-local endpoints). For cloud URLs on web, route through
+      // the backend proxy so the API key never travels browser → third-party directly.
+      // On Tauri, createCustomProxyFetch delegates to the existing Tauri native-fetch path.
+      const customFetch =
+        !httpClient || isLocalhostUrl(modelConfig.url)
+          ? fetch
+          : createCustomProxyFetch({
+              baseURL: modelConfig.url,
+              upstreamAuth: modelConfig.apiKey || undefined,
+              httpClient,
+            })
       const openaiCompatible = createOpenAICompatible({
         name: 'custom',
         baseURL: modelConfig.url,
         apiKey: modelConfig.apiKey || undefined,
-        fetch,
+        fetch: customFetch,
       })
       return openaiCompatible(modelConfig.model)
     }
@@ -177,24 +191,27 @@ export const aiFetchStreamingResponse = async ({
 
   const sourceCollector: SourceMetadata[] = []
 
-  let toolset: Record<string, Tool> = {}
-  if (supportsTools) {
+  const buildToolset = async (): Promise<Record<string, Tool>> => {
+    if (!supportsTools) {
+      console.log('Model does not support tools, skipping tool setup')
+      return {}
+    }
     const availableTools = await getAvailableTools(httpClient, sourceCollector)
-    toolset = { ...createToolset(availableTools) }
-
+    const built: Record<string, Tool> = { ...createToolset(availableTools) }
     for (const mcpClient of mcpClients || []) {
       const mcpTools = await mcpClient.tools()
       for (const [name, tool] of Object.entries(mcpTools)) {
-        if (toolset[name]) {
+        if (built[name]) {
           console.warn(`MCP tool "${name}" conflicts with an existing tool and was skipped`)
           continue
         }
-        toolset[name] = tool as Tool
+        built[name] = tool as Tool
       }
     }
-  } else {
-    console.log('Model does not support tools, skipping tool setup')
+    return built
   }
+
+  const toolset = await buildToolset()
 
   // Compute integration status for the model (can return multiple statuses)
   const getIntegrationStatus = (): string => {
@@ -239,7 +256,7 @@ export const aiFetchStreamingResponse = async ({
   const activeNudges = getNudgeMessagesFromProfile(profile, modeName)
 
   try {
-    const baseModel = await createModel(model)
+    const baseModel = await createModel(model, httpClient)
 
     const wrappedModel = wrapLanguageModel({
       providerId: model.provider,

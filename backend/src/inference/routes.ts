@@ -8,6 +8,7 @@ import { Elysia, type AnyElysia } from 'elysia'
 import { APIConnectionError, APIConnectionTimeoutError } from 'openai'
 import type { ChatCompletionMessageParam } from 'openai/resources/chat/completions'
 import { getInferenceClient, type InferenceProvider } from './client'
+import { createCustomModelProxyRoutes } from './custom-model-proxy'
 
 type Message = { role: string; content: unknown }
 
@@ -42,14 +43,27 @@ export const supportedModels: Record<string, ModelConfig> = {
 }
 
 /**
- * Inference API routes
+ * Inference API routes (chat completions + custom-model proxy).
+ *
+ * Returns an Elysia plugin that mounts:
+ *   - POST /chat/completions       — standard inference (allowlisted models)
+ *   - POST /custom-model/proxy     — custom OpenAI-compatible endpoint proxy
+ *   - POST /custom-model/models    — upstream model discovery
+ *
+ * The parent app (index.ts) mounts this at /v1, so the final paths are:
+ *   /v1/chat/completions
+ *   /v1/custom-model/proxy
+ *   /v1/custom-model/models
  */
 export const createInferenceRoutes = (auth: Auth, rateLimit?: AnyElysia) => {
-  const app = new Elysia({
-    prefix: '/chat',
-  }).onError(safeErrorHandler)
+  const root = new Elysia().onError(safeErrorHandler)
 
-  return app.use(createAuthMacro(auth)).guard({ auth: true }, (guardedApp) => {
+  // Register custom-model proxy routes (/custom-model/* prefix is set inside createCustomModelProxyRoutes)
+  root.use(createCustomModelProxyRoutes(auth))
+
+  const chatApp = new Elysia({ prefix: '/chat' }).onError(safeErrorHandler)
+
+  chatApp.use(createAuthMacro(auth)).guard({ auth: true }, (guardedApp) => {
     if (rateLimit) {
       guardedApp.use(rateLimit)
     }
@@ -121,6 +135,10 @@ export const createInferenceRoutes = (auth: Auth, rateLimit?: AnyElysia) => {
       }
     })
   })
+
+  root.use(chatApp)
+
+  return root
 }
 
 /**

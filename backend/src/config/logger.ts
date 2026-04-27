@@ -27,10 +27,24 @@ const createPinoLogger = (settings: Settings): Logger => {
   const isDevelopment = process.env.NODE_ENV !== 'production'
   const level = getLogLevel(settings.logLevel)
 
+  const redact = {
+    paths: [
+      'authorization',
+      'upstreamAuth',
+      'apiKey',
+      'req.headers.authorization',
+      '*.authorization',
+      '*.upstreamAuth',
+      '*.apiKey',
+    ],
+    censor: '[REDACTED]',
+  }
+
   if (isDevelopment) {
     // Development: Pretty printed logs with colors
     return pino({
       level,
+      redact,
       transport: {
         target: 'pino-pretty',
         options: {
@@ -43,9 +57,7 @@ const createPinoLogger = (settings: Settings): Logger => {
   }
 
   // Production: JSON structured logs
-  return pino({
-    level,
-  })
+  return pino({ level, redact })
 }
 
 /**

@@ -53,7 +53,7 @@ export const initPosthog = async (httpClient?: HttpClient): Promise<HandleResult
     const db = getDb()
     const { cloudUrl, dataCollection, debugPosthog } = await getSettings(db, {
       cloud_url: 'http://localhost:8000/v1',
-      data_collection: getDefaultDataCollectionValue(import.meta.env.VITE_AUTH_MODE),
+      data_collection: getDefaultDataCollectionValue(),
       debug_posthog: false,
     })
 

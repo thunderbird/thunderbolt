@@ -1,7 +1,3 @@
-/* This Source Code Form is subject to the terms of the Mozilla Public
- * License, v. 2.0. If a copy of the MPL was not distributed with this
- * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
-
 import { mock } from 'bun:test'
 import * as authUtils from '@/auth/utils'
 import * as waitlistUtils from '@/waitlist/utils'
@@ -23,14 +19,11 @@ mock.module('@/waitlist/utils', () => ({
   sendWaitlistReminderEmail: mock(() => Promise.resolve()),
 }))
 
-import { OAuth2Server } from 'oauth2-mock-server'
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, spyOn } from 'bun:test'
 import { Elysia } from 'elysia'
 import { createTestDb } from '@/test-utils/db'
 
-const realFetch = (globalThis as Record<string, unknown>).__originalFetch as typeof fetch
-
-/** Base settings for OIDC tests — issuer URL is overridden per-suite */
+/** Base settings for SAML tests */
 const baseSettings: Settings = {
   fireworksApiKey: '',
   mistralApiKey: '',
@@ -59,37 +52,24 @@ const baseSettings: Settings = {
   powersyncJwtKid: '',
   powersyncJwtSecret: '',
   powersyncTokenExpirySeconds: 3600,
-  authMode: 'oidc' as const,
-  oidcClientId: 'thunderbolt-app',
-  oidcClientSecret: 'thunderbolt-dev-secret',
-  oidcIssuer: '', // set per-suite once mock server is up
+  authMode: 'saml' as const,
+  oidcClientId: '',
+  oidcClientSecret: '',
+  oidcIssuer: '',
   betterAuthUrl: 'http://localhost:8000',
   betterAuthSecret: 'test-secret-at-least-32-chars-long!!',
   rateLimitEnabled: false,
   swaggerEnabled: false,
   e2eeEnabled: false,
   trustedProxy: '',
-  samlEntryPoint: '',
-  samlIssuer: '',
-  samlCert: '',
+  samlEntryPoint: 'http://fake-idp.example.com/saml/sso',
+  samlIssuer: 'http://fake-idp.example.com',
+  samlCert:
+    'MIICpDCCAYwCCQDU+pQ4pHgSpDANBgkqhkiG9w0BAQsFADAUMRIwEAYDVQQDDAkxMjcuMC4wLjEwHhcNMjQwMTAxMDAwMDAwWhcNMjUwMTAxMDAwMDAwWjAUMRIwEAYDVQQDDAkxMjcuMC4wLjEwggEiMA0GCSqGSIb3DQEBAQUAA4IBDwAwggEKAoIBAQC7o4QFMSok',
 }
 
-describe('OIDC Integration', () => {
-  let oidcServer: OAuth2Server
-  let oidcIssuerUrl: string
-
-  beforeAll(async () => {
-    oidcServer = new OAuth2Server()
-    await oidcServer.issuer.keys.generate('RS256')
-    await oidcServer.start(0, 'localhost')
-    oidcIssuerUrl = oidcServer.issuer.url!
-  })
-
-  afterAll(async () => {
-    await oidcServer.stop()
-  })
-
-  describe('OIDC sign-in endpoint', () => {
+describe('SAML Integration', () => {
+  describe('SAML sign-in endpoint', () => {
     let db: Awaited<ReturnType<typeof createTestDb>>['db']
     let cleanup: () => Promise<void>
     let getSettingsSpy: ReturnType<typeof spyOn>
@@ -105,48 +85,34 @@ describe('OIDC Integration', () => {
     })
 
     beforeEach(() => {
-      getSettingsSpy = spyOn(settingsModule, 'getSettings').mockReturnValue({
-        ...baseSettings,
-        oidcIssuer: oidcIssuerUrl,
-      } as Settings)
+      getSettingsSpy = spyOn(settingsModule, 'getSettings').mockReturnValue(baseSettings)
     })
 
     afterEach(() => {
       getSettingsSpy.mockRestore()
     })
 
-    it('should return a redirect URL pointing to the OIDC provider', async () => {
-      // Temporarily restore real fetch so Better Auth can reach the mock OIDC server
-      const mockedFetch = globalThis.fetch
-      globalThis.fetch = realFetch
+    it('should return a redirect URL pointing to the SAML IdP', async () => {
+      const { createAuth } = await import('./auth')
+      const auth = createAuth(db)
+      const app = new Elysia({ prefix: '/v1' }).mount(auth.handler)
 
-      try {
-        // Need a fresh import since settings are read at module level
-        // Use createAuth directly with the test DB
-        const { createAuth } = await import('./auth')
-        const auth = createAuth(db)
-        const app = new Elysia({ prefix: '/v1' }).mount(auth.handler)
-
-        const res = await app.handle(
-          new Request('http://localhost/v1/api/auth/sign-in/sso', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              providerId: 'oidc',
-              callbackURL: 'http://localhost:1420/',
-            }),
+      const res = await app.handle(
+        new Request('http://localhost/v1/api/auth/sign-in/sso', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            providerId: 'saml',
+            callbackURL: 'http://localhost:1420/',
           }),
-        )
+        }),
+      )
 
-        expect(res.ok).toBe(true)
+      expect(res.ok).toBe(true)
 
-        const body = await res.json()
-        expect(body.url).toContain(oidcIssuerUrl)
-        expect(body.url).toContain('response_type=code')
-        expect(body.url).toContain('client_id=thunderbolt-app')
-      } finally {
-        globalThis.fetch = mockedFetch
-      }
+      const body = await res.json()
+      expect(body.url).toContain('fake-idp.example.com')
+      expect(body.url).toContain('SAMLRequest')
     })
   })
 })

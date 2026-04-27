@@ -1,3 +1,7 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+
 import { AppErrorScreen } from './app-error-screen'
 import type { Meta, StoryObj } from '@storybook/react-vite'
 import type { HandleError } from '@/types/handle-errors'

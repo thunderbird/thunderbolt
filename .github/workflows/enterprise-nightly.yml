@@ -1,0 +1,26 @@
+name: Enterprise Nightly
+
+on:
+  schedule:
+    - cron: '0 5 * * *' # 5am UTC / midnight EST
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+  packages: write  # GHCR image push (publish)
+  id-token: write  # AWS OIDC federation (deploy via Pulumi)
+
+jobs:
+  publish:
+    uses: ./.github/workflows/enterprise-publish.yml
+    secrets: inherit
+
+  deploy:
+    needs: publish
+    uses: ./.github/workflows/enterprise-deploy.yml
+    with:
+      action: deploy
+      platform: fargate
+      stack_name: demo
+      version: ${{ needs.publish.outputs.version }}
+    secrets: inherit

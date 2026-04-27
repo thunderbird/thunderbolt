@@ -12,8 +12,6 @@ Shared Docker images used by all deployment targets (docker-compose, k8s, Fargat
 | `keycloak.Dockerfile` | `keycloak:26.0` | Keycloak with enterprise realm auto-import |
 | `powersync.Dockerfile` | `journeyapps/powersync-service` | PowerSync with sync rules config |
 
-MongoDB uses the official `mongo:7.0` image directly — no custom Dockerfile needed.
-
 ## Building
 
 All Dockerfiles use the **repo root** as build context:
@@ -56,5 +54,5 @@ docker/
   keycloak.Dockerfile
   powersync.Dockerfile
   postgres-init/
-    01-powersync.sql      # Creates replication role + publication for PowerSync
+    01-powersync.sql      # Creates replication role, publication, and powersync_storage DB for PowerSync
 ```

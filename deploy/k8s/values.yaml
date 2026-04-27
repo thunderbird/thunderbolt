@@ -18,6 +18,18 @@ frontend:
     port: 80
 
 # =============================================================================
+# Marketing (Astro static site: landing page, blog, docs)
+# =============================================================================
+marketing:
+  image:
+    repository: ghcr.io/your-org/thunderbolt/marketing
+    tag: latest
+    pullPolicy: IfNotPresent
+  replicas: 1
+  service:
+    port: 80
+
+# =============================================================================
 # Backend
 # =============================================================================
 backend:
@@ -28,11 +40,25 @@ backend:
   replicas: 1
   service:
     port: 8000
+  # -- Base64-encoded Better Auth secret (REQUIRED — no safe default)
+  # Generate with: echo -n "your-secret" | base64
+  betterAuthSecretBase64: ""
   env:
     authMode: oidc
     waitlistEnabled: "false"
     databaseDriver: postgres
     rateLimitEnabled: "false"
+    # -- Thunderbolt inference gateway URL (plaintext; empty disables the provider)
+    thunderboltInferenceUrl: ""
+  # -- Base64-encoded AI provider keys. Empty defaults disable each provider
+  # (backend zod schema treats empty string as "not configured").
+  # Generate each with: echo -n "<your-key>" | base64
+  aiSecrets:
+    anthropicApiKeyBase64: ""
+    fireworksApiKeyBase64: ""
+    mistralApiKeyBase64: ""
+    thunderboltInferenceApiKeyBase64: ""
+    exaApiKeyBase64: ""
 
 # =============================================================================
 # PostgreSQL
@@ -40,22 +66,13 @@ backend:
 postgres:
   image:
     repository: postgres
-    tag: 18-alpine
+    tag: 17-alpine
   storage: 5Gi
   credentials:
     user: postgres
     database: postgres
     # -- Base64-encoded password (default: "postgres")
     passwordBase64: cG9zdGdyZXM=
-
-# =============================================================================
-# MongoDB
-# =============================================================================
-mongo:
-  image:
-    repository: mongo
-    tag: "7.0"
-  storage: 5Gi
 
 # =============================================================================
 # PowerSync
@@ -69,8 +86,13 @@ powersync:
     port: 8080
   jwt:
     kid: enterprise-powersync
-    # -- Base64-encoded JWT secret (default: "enterprise-powersync-secret")
-    secretBase64: ZW50ZXJwcmlzZS1wb3dlcnN5bmMtc2VjcmV0
+    # -- Base64-encoded JWT secret. Minimum 32 chars when decoded (backend validation).
+    # Default: "enterprise-thunderbolt-powersync-jwt-default-secret" (51 chars).
+    # Override for production: echo -n "<your-secret>" | base64
+    secretBase64: ZW50ZXJwcmlzZS10aHVuZGVyYm9sdC1wb3dlcnN5bmMtand0LWRlZmF1bHQtc2VjcmV0
+  db:
+    # -- Base64-encoded powersync_role database password (default: "myhighlyrandompassword")
+    passwordBase64: bXloaWdobHlyYW5kb21wYXNzd29yZA==
 
 # =============================================================================
 # Keycloak (OIDC Identity Provider)

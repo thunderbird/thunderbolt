@@ -1,8 +1,16 @@
+import { isOidcMode } from '@/lib/auth-mode'
 import type { settingsTable } from '@/db/tables'
 import { hashValues } from '@/lib/utils'
 import type { InferSelectModel } from 'drizzle-orm'
 
 export type Setting = InferSelectModel<typeof settingsTable>
+
+/**
+ * Data collection default:
+ * - consumer mode: enabled by default
+ * - oidc mode (self-hosted/enterprise): disabled by default
+ */
+export const getDefaultDataCollectionValue = (): boolean => !isOidcMode()
 
 /**
  * Compute hash of user-editable fields for a setting
@@ -24,7 +32,7 @@ export const hashSetting = (setting: Setting): string => {
 
 export const defaultSettingDataCollection: Setting = {
   key: 'data_collection',
-  value: 'true',
+  value: String(getDefaultDataCollectionValue()),
   updatedAt: null,
   defaultHash: null,
   userId: null,

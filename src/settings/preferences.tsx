@@ -119,7 +119,7 @@ export default function PreferencesSettingsPage() {
     location_name: '',
     location_lat: '',
     location_lng: '',
-    data_collection: getDefaultDataCollectionValue(import.meta.env.VITE_AUTH_MODE),
+    data_collection: getDefaultDataCollectionValue(),
     experimental_feature_tasks: false,
     haptics_enabled: true,
     distance_unit: 'imperial',

@@ -121,6 +121,10 @@ describe('OIDC Integration', () => {
       globalThis.fetch = realFetch
 
       try {
+        // The SSO plugin validates OIDC discovery URLs against trustedOrigins.
+        // Include the mock server's origin so the discovery fetch is allowed.
+        process.env.TRUSTED_ORIGINS = `http://localhost:1420,${oidcIssuerUrl}`
+
         // Need a fresh import since settings are read at module level
         // Use createAuth directly with the test DB
         const { createAuth } = await import('./auth')

@@ -1,18 +1,10 @@
 import { clearSettingsCache } from '@/config/settings'
 import { clearPostHogClient, isPostHogConfigured, shutdownPostHog } from '@/posthog/client'
+import { isPosthogRequest } from '@/test-utils/posthog'
 // eslint-disable-next-line @typescript-eslint/consistent-type-imports
 import { OpenAI as PostHogOpenAI } from '@posthog/ai'
 import { afterEach, beforeEach, describe, expect, it, jest } from 'bun:test'
 import { clearInferenceClientCache, getInferenceClient } from './client'
-
-const isPosthogRequest = (url: string): boolean => {
-  try {
-    const { hostname } = new URL(url)
-    return hostname === 'posthog.com' || hostname.endsWith('.posthog.com')
-  } catch {
-    return false
-  }
-}
 
 type PostHogEvent = {
   event?: string

@@ -1,3 +1,4 @@
+import { isPosthogRequest } from '@/test-utils/posthog'
 import { OpenAI as PostHogOpenAI } from '@posthog/ai'
 import { afterEach, beforeEach, describe, expect, it, jest } from 'bun:test'
 import { PostHog } from 'posthog-node'
@@ -6,15 +7,6 @@ type FetchCall = {
   url: string
   options: RequestInit
   body: any
-}
-
-const isPosthogRequest = (url: string): boolean => {
-  try {
-    const { hostname } = new URL(url)
-    return hostname === 'posthog.com' || hostname.endsWith('.posthog.com')
-  } catch {
-    return false
-  }
 }
 
 /**

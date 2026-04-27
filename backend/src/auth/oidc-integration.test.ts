@@ -69,6 +69,9 @@ const baseSettings: Settings = {
   swaggerEnabled: false,
   e2eeEnabled: false,
   trustedProxy: '',
+  samlEntryPoint: '',
+  samlIssuer: '',
+  samlCert: '',
 }
 
 describe('OIDC Integration', () => {

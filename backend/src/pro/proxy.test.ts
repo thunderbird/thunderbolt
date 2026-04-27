@@ -83,6 +83,9 @@ describe('Proxy Routes', () => {
       swaggerEnabled: false,
       e2eeEnabled: false,
       trustedProxy: '',
+      samlEntryPoint: '',
+      samlIssuer: '',
+      samlCert: '',
     })
 
     // Create mock fetch

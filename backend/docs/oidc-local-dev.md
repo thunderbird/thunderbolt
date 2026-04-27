@@ -110,7 +110,7 @@ The only requirement is that the provider supports OIDC discovery at `{OIDC_ISSU
 You'll need to register a callback URL with the provider:
 
 ```
-https://<your-backend>/v1/api/auth/oauth2/callback/oidc
+https://<your-backend>/v1/api/auth/sso/callback/oidc
 ```
 
 ## OIDC logout
@@ -135,7 +135,7 @@ What you'll need from whoever manages the identity provider:
 You'll need to give them your **callback URL** to register:
 
 ```
-https://<your-backend>.onrender.com/v1/api/auth/oauth2/callback/oidc
+https://<your-backend>.onrender.com/v1/api/auth/sso/callback/oidc
 ```
 
 ## Testing
@@ -150,10 +150,10 @@ cd backend && bun test src/auth/oidc-integration.test.ts
 
 | File | Purpose |
 |------|---------|
-| `backend/src/auth/auth.ts` | Conditionally adds `genericOAuth` plugin when `AUTH_MODE=oidc` |
+| `backend/src/auth/auth.ts` | Conditionally adds `@better-auth/sso` plugin when `AUTH_MODE=oidc` or `saml` |
 | `backend/src/config/settings.ts` | `authMode`, `oidcClientId`, `oidcClientSecret`, `oidcIssuer` env vars |
 | `backend/src/auth/oidc-integration.test.ts` | OIDC integration tests using mock OIDC server |
-| `backend/docs/mozilla-realm.json` | Pre-configured Keycloak realm for local development |
-| `src/lib/auth-mode.ts` | `isOidcMode()` — reads `VITE_AUTH_MODE` |
-| `src/app.tsx` | `OidcRedirect` component, conditional routing for OIDC vs consumer mode |
-| `src/contexts/auth-context.tsx` | `credentials: 'include'` in OIDC mode for cookie-based session bootstrap |
+| `backend/docs/mozilla-realm.json` | Pre-configured Keycloak realm for local development (OIDC + SAML clients) |
+| `src/lib/auth-mode.ts` | `isOidcMode()`, `isSamlMode()`, `isSsoMode()` — reads `VITE_AUTH_MODE` |
+| `src/app.tsx` | `SsoRedirect` component, conditional routing for SSO vs consumer mode |
+| `src/contexts/auth-context.tsx` | `credentials: 'include'` in SSO mode for cookie-based session bootstrap |

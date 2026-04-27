@@ -2,7 +2,7 @@
 
 > ⚠️ Thunderbolt is currently undergoing a security audit and preparing for enterprise production readiness. The paths below are provided for evaluation and early testing — **not for production use yet**.
 
-Every self-hosted target uses the same stack: Elysia backend, Vite frontend, PostgreSQL, PowerSync, Keycloak (OIDC), and MongoDB (PowerSync's operational store). What changes is the orchestration layer.
+Every self-hosted target uses the same stack: Elysia backend, Vite frontend, PostgreSQL, PowerSync, Keycloak (OIDC/SAML), and MongoDB (PowerSync's operational store). What changes is the orchestration layer.
 
 ## Which Option Should I Pick?
 
@@ -20,7 +20,7 @@ All three paths deploy the same opinionated enterprise configuration:
 
 | Setting                       | Value                                                     |
 | ----------------------------- | --------------------------------------------------------- |
-| Auth mode                     | OIDC via Keycloak                                         |
+| Auth mode                     | OIDC via Keycloak (SAML also supported — set `AUTH_MODE=saml`) |
 | Keycloak realm                | `thunderbolt` (auto-imported from `deploy/config/keycloak-realm.json`) |
 | Default demo user             | `demo@thunderbolt.so` / `demo`                            |
 | Keycloak admin                | `admin` / `admin` (change immediately)                    |

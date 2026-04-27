@@ -173,7 +173,7 @@ Each test starts with a fresh `storageState` so stale IndexedDB / OPFS data from
 
 `e2e/helpers.ts` keeps specs short:
 
-- **`loginViaOidc(page)`** — navigates to `/`, follows `AuthGate → /oidc-redirect → mock IdP → backend callback → session`, and waits for the chat textarea to render. The mock IdP auto-approves, so there's no username/password to type.
+- **`loginViaOidc(page)`** — navigates to `/`, follows `AuthGate → /sso-redirect → mock IdP → backend callback → session`, and waits for the chat textarea to render. The mock IdP auto-approves, so there's no username/password to type. E2E tests use OIDC mode with the mock server; SAML E2E testing requires a real IdP (e.g. Keycloak).
 - **`collectPageErrors(page)`** — subscribes to `pageerror` and returns an errors array, filtering Tauri-only noise (`__TAURI__`, `convertFileSrc`, etc.) that the web build surfaces harmlessly.
 
 ### Current Specs

@@ -2,7 +2,7 @@
 
 > ⚠️ **Under active development — not production ready.** Thunderbolt is currently undergoing a security audit and preparing for enterprise production readiness. These deployment paths are provided for evaluation and early testing. Do not use in production environments.
 
-Self-hosted Thunderbolt with OIDC authentication via Keycloak. Three deployment paths: Docker Compose for local development, Helm chart for Kubernetes, and Pulumi for AWS (Fargate or EKS).
+Self-hosted Thunderbolt with OIDC or SAML authentication via Keycloak. Three deployment paths: Docker Compose for local development, Helm chart for Kubernetes, and Pulumi for AWS (Fargate or EKS).
 
 ## Table of Contents
 
@@ -50,13 +50,13 @@ All deployment paths run the same five services with path-based routing:
 
 All deployment paths use the same Docker images:
 
-| Service | Image | Purpose | Port |
-|---------|-------|---------|------|
-| **Frontend** | `docker/frontend.Dockerfile` | Vite SPA served by nginx with COEP/COOP headers for PowerSync WASM | 80 |
-| **Backend** | `docker/backend.Dockerfile` | Bun + Elysia API server with auto-migrations on startup | 8000 |
-| **PostgreSQL** | `docker/postgres.Dockerfile` | Database with WAL logical replication for PowerSync; hosts both app data and the `powersync_storage` bucket DB | 5432 |
-| **Keycloak** | `docker/keycloak.Dockerfile` | OIDC identity provider with pre-configured realm | 8080 |
-| **PowerSync** | `docker/powersync.Dockerfile` | Real-time sync between Postgres and client devices | 8080 |
+| Service        | Image                         | Purpose                                                                                                        | Port |
+| -------------- | ----------------------------- | -------------------------------------------------------------------------------------------------------------- | ---- |
+| **Frontend**   | `docker/frontend.Dockerfile`  | Vite SPA served by nginx with COEP/COOP headers for PowerSync WASM                                             | 80   |
+| **Backend**    | `docker/backend.Dockerfile`   | Bun + Elysia API server with auto-migrations on startup                                                        | 8000 |
+| **PostgreSQL** | `docker/postgres.Dockerfile`  | Database with WAL logical replication for PowerSync; hosts both app data and the `powersync_storage` bucket DB | 5432 |
+| **Keycloak**   | `docker/keycloak.Dockerfile`  | OIDC identity provider with pre-configured realm                                                               | 8080 |
+| **PowerSync**  | `docker/powersync.Dockerfile` | Real-time sync between Postgres and client devices                                                             | 8080 |
 
 ### Data Flow
 
@@ -123,13 +123,13 @@ First boot takes a few minutes as images build and Keycloak initializes.
 
 ### Access
 
-| Service | URL | Credentials |
-|---------|-----|-------------|
-| App | http://localhost:3000 | Sign in via Keycloak |
-| Keycloak Admin | http://localhost:8180/admin | admin / admin |
-| Demo User | (Keycloak login) | demo@thunderbolt.io / demo |
-| Postgres | localhost:5433 | postgres / postgres |
-| PowerSync | http://localhost:8080 | |
+| Service        | URL                         | Credentials                |
+| -------------- | --------------------------- | -------------------------- |
+| App            | http://localhost:3000       | Sign in via Keycloak       |
+| Keycloak Admin | http://localhost:8180/admin | admin / admin              |
+| Demo User      | (Keycloak login)            | demo@thunderbolt.io / demo |
+| Postgres       | localhost:5433              | postgres / postgres        |
+| PowerSync      | http://localhost:8080       |                            |
 
 ### Customizing Ports
 
@@ -174,12 +174,14 @@ Pick one:
 Settings -> Kubernetes -> Enable Kubernetes -> Apply & Restart
 
 **Minikube**:
+
 ```bash
 brew install minikube
 minikube start
 ```
 
 **kind**:
+
 ```bash
 brew install kind
 kind create cluster --name thunderbolt
@@ -248,12 +250,12 @@ minikube tunnel  # if using minikube
 kubectl get ingress -n thunderbolt
 ```
 
-| Path | Service |
-|------|---------|
-| `/` | Frontend (SPA) |
-| `/v1/*` | Backend API |
-| `/realms/*` | Keycloak OIDC |
-| `/powersync/*` | PowerSync |
+| Path           | Service        |
+| -------------- | -------------- |
+| `/`            | Frontend (SPA) |
+| `/v1/*`        | Backend API    |
+| `/realms/*`    | Keycloak OIDC  |
+| `/powersync/*` | PowerSync      |
 
 ### Upgrade
 
@@ -296,16 +298,16 @@ helm install thunderbolt . -n thunderbolt --create-namespace \
 
 See `deploy/k8s/values.yaml` for all configurable values. Key ones:
 
-| Value | Default | Description |
-|-------|---------|-------------|
-| `appUrl` | `http://localhost` | Base URL for CORS, auth callbacks, redirects |
-| `imagePullSecrets` | `[]` | Registry pull secrets |
-| `frontend.replicas` | `1` | Frontend replica count |
-| `backend.replicas` | `1` | Backend replica count |
-| `postgres.storage` | `5Gi` | Postgres PVC size |
-| `ingress.enabled` | `true` | Create Ingress resource |
-| `ingress.className` | `nginx` | Ingress class |
-| `ingress.host` | `""` | Set for production (empty = default rule) |
+| Value               | Default            | Description                                  |
+| ------------------- | ------------------ | -------------------------------------------- |
+| `appUrl`            | `http://localhost` | Base URL for CORS, auth callbacks, redirects |
+| `imagePullSecrets`  | `[]`               | Registry pull secrets                        |
+| `frontend.replicas` | `1`                | Frontend replica count                       |
+| `backend.replicas`  | `1`                | Backend replica count                        |
+| `postgres.storage`  | `5Gi`              | Postgres PVC size                            |
+| `ingress.enabled`   | `true`             | Create Ingress resource                      |
+| `ingress.className` | `nginx`            | Ingress class                                |
+| `ingress.host`      | `""`               | Set for production (empty = default rule)    |
 
 ---
 
@@ -313,10 +315,10 @@ See `deploy/k8s/values.yaml` for all configurable values. Key ones:
 
 Deploy to AWS using Pulumi. Supports two platforms from the same project:
 
-| Platform | Infrastructure | Persistence | Best For |
-|----------|---------------|-------------|----------|
-| **fargate** | ECS Fargate + ALB + Cloud Map | EFS | Serverless, no cluster management |
-| **k8s** | EKS + nginx-ingress | EBS (gp3 PVCs) | Teams with Kubernetes expertise |
+| Platform    | Infrastructure                | Persistence    | Best For                          |
+| ----------- | ----------------------------- | -------------- | --------------------------------- |
+| **fargate** | ECS Fargate + ALB + Cloud Map | EFS            | Serverless, no cluster management |
+| **k8s**     | EKS + nginx-ingress           | EBS (gp3 PVCs) | Teams with Kubernetes expertise   |
 
 ### Prerequisites
 
@@ -364,12 +366,14 @@ This creates all infrastructure from scratch: VPC, subnets, NAT gateway, securit
 ### Get the URL
 
 **Fargate**:
+
 ```bash
 pulumi stack output url
 # -> http://<alb-dns-name>.us-east-1.elb.amazonaws.com
 ```
 
 **EKS**:
+
 ```bash
 # Write kubeconfig
 pulumi stack output kubeconfig > /tmp/kubeconfig.json
@@ -394,14 +398,14 @@ pulumi config set --secret powersyncDbPassword <password> -s <stack-name>
 
 Secrets are stored encrypted in the Pulumi stack config (`Pulumi.<stack>.yaml` in Pulumi Cloud). Once set, every subsequent `pulumi up` — whether from the CLI or GitHub Actions — picks them up automatically. No need to configure them as GitHub secrets.
 
-| Secret | Default | Description |
-|--------|---------|-------------|
-| `postgresPassword` | `postgres` | PostgreSQL admin password |
-| `keycloakAdminPassword` | `admin` | Keycloak admin console password |
-| `oidcClientSecret` | `thunderbolt-enterprise-secret` | OIDC client secret shared between Backend and Keycloak |
-| `powersyncJwtSecret` | `enterprise-powersync-secret` | JWT secret shared between Backend and PowerSync |
-| `betterAuthSecret` | `enterprise-better-auth-secret` | Better Auth session secret |
-| `powersyncDbPassword` | `myhighlyrandompassword` | PowerSync replication role password |
+| Secret                  | Default                         | Description                                            |
+| ----------------------- | ------------------------------- | ------------------------------------------------------ |
+| `postgresPassword`      | `postgres`                      | PostgreSQL admin password                              |
+| `keycloakAdminPassword` | `admin`                         | Keycloak admin console password                        |
+| `oidcClientSecret`      | `thunderbolt-enterprise-secret` | OIDC client secret shared between Backend and Keycloak |
+| `powersyncJwtSecret`    | `enterprise-powersync-secret`   | JWT secret shared between Backend and PowerSync        |
+| `betterAuthSecret`      | `enterprise-better-auth-secret` | Better Auth session secret                             |
+| `powersyncDbPassword`   | `myhighlyrandompassword`        | PowerSync replication role password                    |
 
 ### Destroy
 
@@ -442,11 +446,13 @@ Three workflows handle the enterprise build and deploy pipeline:
 Builds and pushes all Docker images + the Helm chart to GHCR.
 
 **Triggers**:
+
 - Push to `main` (when `deploy/`, `backend/`, `src/`, or `package.json` change)
 - Manual dispatch
 - Called by other workflows
 
 **What it does**:
+
 1. Reads version from `package.json`
 2. Builds 5 Docker images (frontend, backend, postgres, keycloak, powersync)
 3. Tags each with `<version>` and `latest`
@@ -459,6 +465,7 @@ Builds and pushes all Docker images + the Helm chart to GHCR.
 Deploys (or destroys) a Pulumi stack on AWS.
 
 **Triggers**:
+
 - Manual dispatch with form inputs
 - Called by other workflows
 
@@ -481,22 +488,22 @@ After this one-time setup, trigger the workflow with `stack_name: prod-acme` and
 
 **Inputs**:
 
-| Input | Options | Default | Description |
-|-------|---------|---------|-------------|
-| `action` | deploy, destroy | (required) | What to do |
-| `platform` | fargate, k8s | fargate | Compute platform |
-| `region` | us-east-1, us-west-2, eu-west-1 | us-east-1 | AWS region |
-| `stack_name` | (string) | (required) | Pulumi stack name (e.g. `demo`) |
-| `version` | (string) | package.json | Image version to deploy |
+| Input        | Options                         | Default      | Description                     |
+| ------------ | ------------------------------- | ------------ | ------------------------------- |
+| `action`     | deploy, destroy                 | (required)   | What to do                      |
+| `platform`   | fargate, k8s                    | fargate      | Compute platform                |
+| `region`     | us-east-1, us-west-2, eu-west-1 | us-east-1    | AWS region                      |
+| `stack_name` | (string)                        | (required)   | Pulumi stack name (e.g. `demo`) |
+| `version`    | (string)                        | package.json | Image version to deploy         |
 
 **Required Secrets**:
 
-| Secret | Description |
-|--------|-------------|
-| `AWS_DEPLOY_ROLE_ARN` | IAM role ARN for OIDC-based AWS auth |
-| `PULUMI_ACCESS_TOKEN` | Pulumi Cloud API token |
+| Secret                     | Description                            |
+| -------------------------- | -------------------------------------- |
+| `AWS_DEPLOY_ROLE_ARN`      | IAM role ARN for OIDC-based AWS auth   |
+| `PULUMI_ACCESS_TOKEN`      | Pulumi Cloud API token                 |
 | `PULUMI_CONFIG_PASSPHRASE` | Encryption passphrase for stack config |
-| `GHCR_PAT` | GitHub PAT for pulling private images |
+| `GHCR_PAT`                 | GitHub PAT for pulling private images  |
 
 ### Demo Nightly
 
@@ -505,10 +512,12 @@ After this one-time setup, trigger the workflow with `stack_name: prod-acme` and
 Runs every night at 5:00 UTC (midnight EST). Publishes fresh images and redeploys the `demo` stack on Fargate.
 
 **Triggers**:
+
 - Cron schedule: `0 5 * * *`
 - Manual dispatch
 
 **Pipeline**:
+
 1. Calls `images-publish.yml` (build + push images)
 2. Calls `stack-deploy.yml` (deploy to `demo` stack on Fargate)
 
@@ -520,18 +529,19 @@ Runs every night at 5:00 UTC (midnight EST). Publishes fresh images and redeploy
 
 All deployment paths use the same defaults. Override for production.
 
-| Credential | Default | Used By |
-|------------|---------|---------|
-| Postgres password | `postgres` | Backend, Postgres |
-| Keycloak admin | `admin` / `admin` | Keycloak |
-| OIDC client secret | `thunderbolt-enterprise-secret` | Backend, Keycloak |
-| PowerSync JWT secret | `enterprise-powersync-secret` | Backend, PowerSync |
-| Better Auth secret | `enterprise-better-auth-secret` | Backend |
-| Demo user | `demo@thunderbolt.io` / `demo` | Keycloak |
+| Credential           | Default                         | Used By            |
+| -------------------- | ------------------------------- | ------------------ |
+| Postgres password    | `postgres`                      | Backend, Postgres  |
+| Keycloak admin       | `admin` / `admin`               | Keycloak           |
+| OIDC client secret   | `thunderbolt-enterprise-secret` | Backend, Keycloak  |
+| PowerSync JWT secret | `enterprise-powersync-secret`   | Backend, PowerSync |
+| Better Auth secret   | `enterprise-better-auth-secret` | Backend            |
+| Demo user            | `demo@thunderbolt.io` / `demo`  | Keycloak           |
 
 ### Keycloak
 
 The realm `thunderbolt` is auto-imported from `config/keycloak-realm.json` on first boot:
+
 - OIDC client: `thunderbolt-app` (confidential)
 - Demo user: `demo@thunderbolt.io` / `demo`
 - Admin console at `/auth/admin` (Docker Compose: port 8180, Kubernetes/AWS: via ingress at `/auth`)
@@ -547,6 +557,7 @@ The PowerSync JWT secret must match between the backend (`POWERSYNC_JWT_SECRET`)
 ### Postgres
 
 The init script (`docker/postgres-init/01-powersync.sql`) creates:
+
 - `powersync_role` with `REPLICATION` privileges
 - A publication on all tables for logical replication
 - PostgreSQL runs with `wal_level=logical` in all deployment paths
@@ -568,6 +579,7 @@ The init script (`docker/postgres-init/01-powersync.sql`) creates:
 **Postgres CrashLoopBackOff**: Check logs with `kubectl logs postgres-0 -n thunderbolt`. If you see "directory exists but is not empty" with `lost+found`, the `PGDATA` env var needs to point to a subdirectory (this is set in the chart).
 
 **PowerSync CrashLoopBackOff**: Usually means the `powersync_storage` database doesn't exist on Postgres. The `postgres-init` ConfigMap creates it on first boot; if you inherited a pre-existing PVC, exec into the postgres pod and create it manually:
+
 ```bash
 kubectl exec -it postgres-0 -n thunderbolt -- psql -U postgres -c \
   'CREATE DATABASE powersync_storage OWNER postgres;'
@@ -578,6 +590,7 @@ kubectl exec -it postgres-0 -n thunderbolt -- psql -U postgres -c \
 ### AWS / Pulumi
 
 **Helm release timeout**: The default timeout is 900 seconds. On a cold deploy (new cluster + image pulls), services may take longer. Check pod status:
+
 ```bash
 pulumi stack output kubeconfig > /tmp/kubeconfig.json
 export KUBECONFIG=/tmp/kubeconfig.json

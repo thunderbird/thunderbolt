@@ -21,7 +21,8 @@ describe('Pro Tools Routes', () => {
     // Create mock fetch for weather API calls
     mockFetch = mock((input: RequestInfo | URL, _init?: RequestInit) => {
       const url = input instanceof Request ? input.url : input.toString()
-      if (url.includes('geocoding-api.open-meteo.com')) {
+      const { hostname } = new URL(url)
+      if (hostname === 'geocoding-api.open-meteo.com') {
         return Promise.resolve(
           createMockWeatherResponse({
             results: [
@@ -37,7 +38,7 @@ describe('Pro Tools Routes', () => {
           }),
         )
       }
-      if (url.includes('api.open-meteo.com')) {
+      if (hostname === 'api.open-meteo.com') {
         return Promise.resolve(
           createMockWeatherResponse({
             current: {

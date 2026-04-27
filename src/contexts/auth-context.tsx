@@ -3,7 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { usePowerSyncCredentialsInvalidListener } from '@/hooks/use-powersync-credentials-invalid-listener'
-import { isOidcMode } from '@/lib/auth-mode'
+import { isSsoMode } from '@/lib/auth-mode'
 import { clearAuthToken, getAuthToken, setAuthToken } from '@/lib/auth-token'
 import { getPlatform } from '@/lib/platform'
 import { emailOTPClient } from 'better-auth/client/plugins'
@@ -29,7 +29,7 @@ const createAuthClientInstance = (cloudUrl: string) => {
 }
 
 const buildFetchOptions = (platform: string) => ({
-  credentials: (isOidcMode() ? 'include' : 'omit') as RequestCredentials,
+  credentials: (isSsoMode() ? 'include' : 'omit') as RequestCredentials,
   headers: { 'X-Client-Platform': platform },
   auth: {
     type: 'Bearer' as const,

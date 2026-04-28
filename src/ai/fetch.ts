@@ -19,6 +19,7 @@ import { createAnthropic } from '@ai-sdk/anthropic'
 import { createOpenAI } from '@ai-sdk/openai'
 import { createOpenAICompatible } from '@ai-sdk/openai-compatible'
 import type { HttpClient } from '@/lib/http'
+import { SecureClient } from 'tinfoil'
 import { v7 as uuidv7 } from 'uuid'
 
 // Currently @openrouter/ai-sdk-provider is NOT compatible with Vercel AI SDK v5. If you enable this, you will get the following error:
@@ -48,6 +49,17 @@ export const ollama = createOpenAI({
   apiKey: 'ollama',
   fetch,
 })
+
+// Reuse one SecureClient across requests so attestation runs once per page load.
+let tinfoilClient: SecureClient | null = null
+
+export const getTinfoilClient = async (): Promise<SecureClient> => {
+  if (!tinfoilClient) {
+    tinfoilClient = new SecureClient()
+  }
+  await tinfoilClient.ready()
+  return tinfoilClient
+}
 
 type AiFetchStreamingResponseOptions = {
   init: RequestInit
@@ -123,6 +135,19 @@ export const createModel = async (modelConfig: Model) => {
         fetch,
       })
       return openrouter(modelConfig.model)
+    }
+    case 'tinfoil': {
+      if (!modelConfig.apiKey) {
+        throw new Error('No API key provided')
+      }
+      const client = await getTinfoilClient()
+      const tinfoil = createOpenAICompatible({
+        name: 'tinfoil',
+        baseURL: client.getBaseURL()!,
+        apiKey: modelConfig.apiKey,
+        fetch: client.fetch,
+      })
+      return tinfoil(modelConfig.model)
     }
     default:
       throw new Error(`Unsupported provider: ${modelConfig.provider}`)

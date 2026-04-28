@@ -49,12 +49,15 @@ WAITLIST_ENABLED=false
 OIDC_CLIENT_ID=thunderbolt-app
 OIDC_CLIENT_SECRET=thunderbolt-dev-secret
 OIDC_ISSUER=http://localhost:8180/realms/mozilla
+# The SSO plugin validates discovery URLs against trusted origins — include the IdP origin
+TRUSTED_ORIGINS=http://localhost:1420,http://localhost:8180
 ```
 
 **Frontend** (`.env.local` in project root, or whatever your local `.env` file is called):
 
 ```sh
 VITE_AUTH_MODE=oidc
+# Make sure VITE_BYPASS_WAITLIST is NOT set (or set to false) — it skips the auth gate entirely
 ```
 
 ### 3. Start backend and frontend
@@ -137,6 +140,16 @@ You'll need to give them your **callback URL** to register:
 ```
 https://<your-backend>.onrender.com/v1/api/auth/sso/callback/oidc
 ```
+
+## Troubleshooting
+
+| Symptom | Cause | Fix |
+|---------|-------|-----|
+| App loads normally, no redirect to IdP | `VITE_BYPASS_WAITLIST` is set to `true` | Remove it or set to `false`, restart frontend |
+| App loads normally, no redirect to IdP | Stale auth session from a previous login | Clear site data (DevTools → Application → Storage → Clear site data) |
+| `discovery_untrusted_origin` error | IdP origin not in `TRUSTED_ORIGINS` | Add `http://localhost:8180` to `TRUSTED_ORIGINS` in `backend/.env` |
+| `discovery_unexpected_error` error | Keycloak is not running or not reachable | Run `docker ps \| grep keycloak` and start it if needed |
+| OIDC callback 404 | Wrong redirect URI in Keycloak client | Ensure `redirectUris` in realm JSON matches `/v1/api/auth/sso/callback/oidc` |
 
 ## Testing
 

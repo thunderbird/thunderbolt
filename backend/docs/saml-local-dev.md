@@ -71,12 +71,15 @@ WAITLIST_ENABLED=false
 SAML_ENTRY_POINT=http://localhost:8180/realms/mozilla/protocol/saml
 SAML_ISSUER=http://localhost:8180/realms/mozilla
 SAML_CERT=<paste-certificate-from-step-2>
+# Include the IdP origin in trusted origins
+TRUSTED_ORIGINS=http://localhost:1420,http://localhost:8180
 ```
 
 **Frontend** (`.env.local` in project root):
 
 ```sh
 VITE_AUTH_MODE=saml
+# Make sure VITE_BYPASS_WAITLIST is NOT set (or set to false) — it skips the auth gate entirely
 ```
 
 ### 4. Start backend and frontend
@@ -116,6 +119,17 @@ You'll need to register the ACS URL with the provider:
 ```
 https://<your-backend>/v1/api/auth/sso/saml2/sp/acs/saml
 ```
+
+## Troubleshooting
+
+| Symptom | Cause | Fix |
+|---------|-------|-----|
+| App loads normally, no redirect to IdP | `VITE_BYPASS_WAITLIST` is set to `true` | Remove it or set to `false`, restart frontend |
+| App loads normally, no redirect to IdP | Stale auth session from a previous login | Clear site data (DevTools → Application → Storage → Clear site data) |
+| `discovery_untrusted_origin` error | IdP origin not in `TRUSTED_ORIGINS` | Add `http://localhost:8180` to `TRUSTED_ORIGINS` in `backend/.env` |
+| Keycloak not reachable | Container not running | Run `docker ps \| grep keycloak` and start it if needed |
+| SAML ACS returns error | Wrong ACS URL in Keycloak SAML client | Ensure `saml_assertion_consumer_url_post` matches `/v1/api/auth/sso/saml2/sp/acs/saml` |
+| Invalid certificate error | Certificate has PEM headers or wrong format | Use the raw base64 string without `-----BEGIN CERTIFICATE-----` / `-----END CERTIFICATE-----` |
 
 ## SAML logout
 

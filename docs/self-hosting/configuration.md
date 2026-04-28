@@ -30,6 +30,8 @@ Variables marked **required** must be set before the backend will start.
 
 Consumer mode uses [Better Auth](https://better-auth.com)'s magic-link flow by default (email-delivered OTP). Hook up a provider by also setting the OAuth credentials above. Enterprise mode delegates entirely to an OIDC or SAML identity provider (Keycloak by default). See [OIDC local dev](../../backend/docs/oidc-local-dev.md) and [SAML local dev](../../backend/docs/saml-local-dev.md) for setup guides.
 
+**Important:** When using `AUTH_MODE=oidc` or `saml`, the IdP origin must be included in `TRUSTED_ORIGINS` (see CORS section below). The SSO plugin validates discovery/metadata URLs against this list.
+
 ## AI Provider Keys
 
 Set any subset; the app exposes each provider whose key is present.

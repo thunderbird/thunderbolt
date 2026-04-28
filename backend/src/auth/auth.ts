@@ -30,12 +30,6 @@ import { buildVerifyUrl, getValidatedOrigin, parseTrustedOrigins, sendSignInEmai
 const OTP_SIGN_IN_PATH = '/sign-in/email-otp'
 
 /**
- * Trusted origins for CORS and email link validation
- * First origin is the default fallback for verify URLs
- */
-const trustedOrigins = parseTrustedOrigins(process.env.TRUSTED_ORIGINS)
-
-/**
  * Create a Better Auth instance with the provided database
  * This factory pattern allows tests to inject their own database
  *
@@ -108,6 +102,7 @@ const buildSsoPlugins = () => {
 
 export const createAuth = (database: typeof DbType) => {
   const settings = getSettings()
+  const trustedOrigins = parseTrustedOrigins(process.env.TRUSTED_ORIGINS)
 
   if (!settings.trustedProxy && process.env.NODE_ENV === 'production') {
     console.warn(

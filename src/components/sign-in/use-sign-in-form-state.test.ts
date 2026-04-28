@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it, mock } from 'bun:test'
 import type { FormEvent } from 'react'
 import type { HttpClient } from '@/lib/http'
 import { createMockAuthClient } from '@/test-utils/auth-client'
-import { createSpyHttpClient, jsonResponse } from '@/test-utils/http-client'
+import { createSpyHttpClient, jsonResponse } from '@/test-utils/http-client-spy'
 import { useSignInFormState } from './use-sign-in-form-state'
 
 const challengeToken = 'test-challenge-token'

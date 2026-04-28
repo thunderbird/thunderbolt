@@ -2,8 +2,32 @@ import { getSettings } from '@/config/settings'
 import { memoize } from '@/lib/memoize'
 import { safeErrorHandler } from '@/middleware/error-handling'
 import { Elysia, t } from 'elysia'
-import { Exa } from 'exa-js'
+import { Exa, type ContentsOptions } from 'exa-js'
 import type { FetchContentResponse, SearchResponse } from './types'
+
+/**
+ * exa-js v1.10.2 does not yet type `maxAgeHours`, but the `/contents` API accepts it
+ * as the successor to the deprecated `livecrawl` enum. The SDK spreads unknown options
+ * into the request body, so this field reaches the API unchanged.
+ */
+type ContentsOptionsWithMaxAge = ContentsOptions & { maxAgeHours?: number }
+
+/**
+ * Default freshness window for fetched content. Pages cached within the last 24 hours
+ * are served as-is; older pages trigger a live crawl bounded by `livecrawlTimeout`.
+ */
+const DEFAULT_MAX_AGE_HOURS = 24
+
+/**
+ * Builds an Exa client with the `x-exa-integration` header set so the Exa team can
+ * attribute API usage to the thunderbolt repo. `headers` is private in the SDK but
+ * is a runtime `Headers` instance, so the cast is safe.
+ */
+export const createExaClient = (apiKey: string): Exa => {
+  const client = new Exa(apiKey)
+  ;(client as unknown as { headers: Headers }).headers.set('x-exa-integration', 'thunderbolt')
+  return client
+}
 
 const getExaClient = memoize(() => {
   const settings = getSettings()
@@ -13,7 +37,7 @@ const getExaClient = memoize(() => {
     return null
   }
 
-  return new Exa(apiKey)
+  return createExaClient(apiKey)
 })
 
 /**
@@ -31,7 +55,6 @@ export const exaPlugin = new Elysia({ name: 'exa' })
 
       const response = await store.exaClient.search(body.query, {
         numResults: body.max_results,
-        useAutoprompt: true,
         type: 'fast',
       })
 
@@ -61,11 +84,13 @@ export const exaPlugin = new Elysia({ name: 'exa' })
       const requestedMax = body.max_length ?? defaultMaxChars
       const maxCharacters = Math.min(Math.max(requestedMax, minChars), hardCap)
 
-      const response = await store.exaClient.getContents([body.url], {
+      const contentsOptions: ContentsOptionsWithMaxAge = {
         livecrawlTimeout: 5_000,
+        maxAgeHours: DEFAULT_MAX_AGE_HOURS,
         extras: { imageLinks: 1 },
         text: { maxCharacters },
-      })
+      }
+      const response = await store.exaClient.getContents([body.url], contentsOptions)
 
       const result = response.results[0]
       if (!result) {

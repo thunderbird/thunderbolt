@@ -66,7 +66,8 @@ describe('Authentication Routes', () => {
       e2eeEnabled: false,
       trustedProxy: '',
       samlEntryPoint: '',
-      samlIssuer: '',
+      samlEntityId: '',
+      samlIdpIssuer: '',
       samlCert: '',
     })
 

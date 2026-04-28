@@ -25,7 +25,8 @@ Variables marked **required** must be set before the backend will start.
 | `OIDC_CLIENT_ID`          | —                          |          | OIDC client ID                                                                              |
 | `OIDC_CLIENT_SECRET`      | —                          |          | OIDC client secret                                                                          |
 | `SAML_ENTRY_POINT`        | —                          |          | SAML IdP SSO URL (required when `AUTH_MODE=saml`)                                           |
-| `SAML_ISSUER`             | —                          |          | SAML IdP entity ID / issuer                                                                 |
+| `SAML_ENTITY_ID`             | —                          |          | SP entity ID — must match the SAML client ID in the IdP (e.g. `thunderbolt-saml-sp`)        |
+| `SAML_IDP_ISSUER`            | —                          |          | IdP entity ID / issuer (e.g. `https://keycloak.example.com/realms/thunderbolt`)             |
 | `SAML_CERT`               | —                          |          | SAML IdP signing certificate (base64, no PEM headers)                                       |
 
 Consumer mode uses [Better Auth](https://better-auth.com)'s magic-link flow by default (email-delivered OTP). Hook up a provider by also setting the OAuth credentials above. Enterprise mode delegates entirely to an OIDC or SAML identity provider (Keycloak by default). See [OIDC local dev](../../backend/docs/oidc-local-dev.md) and [SAML local dev](../../backend/docs/saml-local-dev.md) for setup guides.

@@ -42,7 +42,7 @@ Behind the scenes, the compose file boots:
 
 ## Customization
 
-- **Bring your own identity provider.** Remove the `keycloak` service from the compose file, then set the OIDC vars (`OIDC_ISSUER`, `OIDC_CLIENT_ID`, `OIDC_CLIENT_SECRET`) or the SAML vars (`SAML_ENTRY_POINT`, `SAML_ISSUER`, `SAML_CERT`) in `.env` depending on your `AUTH_MODE`.
+- **Bring your own identity provider.** Remove the `keycloak` service from the compose file, then set the OIDC vars (`OIDC_ISSUER`, `OIDC_CLIENT_ID`, `OIDC_CLIENT_SECRET`) or the SAML vars (`SAML_ENTRY_POINT`, `SAML_ENTITY_ID`, `SAML_IDP_ISSUER`, `SAML_CERT`) in `.env` depending on your `AUTH_MODE`.
 - **Use managed Postgres.** Point `DATABASE_URL` at your Postgres, remove the `postgres` service, and manually run `deploy/docker/postgres-init/01-powersync.sql` against it to create the `powersync_role` user and publication.
 - **TLS.** The bundled stack serves plain HTTP. Put it behind Caddy, Traefik, or the reverse proxy of your choice — the frontend nginx expects the upstream to terminate TLS.
 

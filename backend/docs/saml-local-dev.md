@@ -69,7 +69,8 @@ Copy the certificate value (base64 string, no BEGIN/END markers).
 AUTH_MODE=saml
 WAITLIST_ENABLED=false
 SAML_ENTRY_POINT=http://localhost:8180/realms/mozilla/protocol/saml
-SAML_ISSUER=http://localhost:8180/realms/mozilla
+SAML_ENTITY_ID=thunderbolt-saml-sp
+SAML_IDP_ISSUER=http://localhost:8180/realms/mozilla
 SAML_CERT=<paste-certificate-from-step-2>
 # Include the IdP origin in trusted origins
 TRUSTED_ORIGINS=http://localhost:1420,http://localhost:8180
@@ -110,7 +111,7 @@ The implementation is provider-agnostic. To use Okta, Entra ID, or any other SAM
 
 ```sh
 SAML_ENTRY_POINT=https://your-idp.example.com/sso/saml
-SAML_ISSUER=https://your-idp.example.com
+SAML_ENTITY_ID=https://your-idp.example.com
 SAML_CERT=<idp-signing-certificate-base64>
 ```
 

@@ -70,7 +70,8 @@ const baseSettings: Settings = {
   e2eeEnabled: false,
   trustedProxy: '',
   samlEntryPoint: '',
-  samlIssuer: '',
+  samlEntityId: '',
+  samlIdpIssuer: '',
   samlCert: '',
 }
 

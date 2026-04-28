@@ -63,7 +63,8 @@ const baseSettings: Settings = {
   e2eeEnabled: false,
   trustedProxy: '',
   samlEntryPoint: 'http://fake-idp.example.com/saml/sso',
-  samlIssuer: 'http://fake-idp.example.com',
+  samlEntityId: 'fake-saml-sp',
+  samlIdpIssuer: 'http://fake-idp.example.com',
   samlCert:
     'MIICpDCCAYwCCQDU+pQ4pHgSpDANBgkqhkiG9w0BAQsFADAUMRIwEAYDVQQDDAkxMjcuMC4wLjEwHhcNMjQwMTAxMDAwMDAwWhcNMjUwMTAxMDAwMDAwWjAUMRIwEAYDVQQDDAkxMjcuMC4wLjEwggEiMA0GCSqGSIb3DQEBAQUAA4IBDwAwggEKAoIBAQC7o4QFMSok',
 }

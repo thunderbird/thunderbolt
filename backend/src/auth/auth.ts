@@ -71,10 +71,10 @@ const buildSsoPlugins = () => {
   }
 
   if (settings.authMode === 'saml') {
-    if (!settings.samlEntryPoint || !settings.samlCert || !settings.samlIssuer) {
+    if (!settings.samlEntryPoint || !settings.samlCert || !settings.samlEntityId || !settings.samlIdpIssuer) {
       throw new Error(
         'SAML is enabled (AUTH_MODE=saml) but one or more required env vars are missing: ' +
-          'SAML_ENTRY_POINT, SAML_CERT, SAML_ISSUER. Set all three to configure SAML authentication.',
+          'SAML_ENTRY_POINT, SAML_CERT, SAML_ENTITY_ID, SAML_IDP_ISSUER. Set all four to configure SAML authentication.',
       )
     }
 
@@ -85,11 +85,13 @@ const buildSsoPlugins = () => {
             providerId: 'saml',
             domain: new URL(settings.betterAuthUrl).host,
             samlConfig: {
-              issuer: settings.samlIssuer,
+              issuer: settings.samlIdpIssuer,
               entryPoint: settings.samlEntryPoint,
               cert: settings.samlCert,
               callbackUrl: `${settings.betterAuthUrl}/v1/api/auth/sso/saml2/sp/acs/saml`,
-              spMetadata: {},
+              spMetadata: {
+                entityID: settings.samlEntityId,
+              },
             },
           },
         ],

@@ -57,7 +57,8 @@ describe('PostHog Proxy Routes', () => {
       e2eeEnabled: false,
       trustedProxy: '',
       samlEntryPoint: '',
-      samlIssuer: '',
+      samlEntityId: '',
+      samlIdpIssuer: '',
       samlCert: '',
     } as ReturnType<typeof settingsModule.getSettings>)
 

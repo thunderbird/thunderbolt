@@ -24,9 +24,9 @@ import { execSync } from 'node:child_process'
 import { readFileSync, writeFileSync } from 'node:fs'
 import { extname, resolve } from 'node:path'
 
-const REPO_ROOT = resolve(import.meta.dir, '..')
+const repoRoot = resolve(import.meta.dir, '..')
 
-const HEADER_LINES = [
+const headerLines = [
   'This Source Code Form is subject to the terms of the Mozilla Public',
   'License, v. 2.0. If a copy of the MPL was not distributed with this',
   'file, You can obtain one at http://mozilla.org/MPL/2.0/.',
@@ -34,7 +34,7 @@ const HEADER_LINES = [
 
 type CommentStyle = 'block' | 'hash' | 'dash' | 'html' | 'astro'
 
-const STYLE_BY_EXT: Record<string, CommentStyle> = {
+const styleByExt: Record<string, CommentStyle> = {
   '.ts': 'block',
   '.tsx': 'block',
   '.js': 'block',
@@ -52,7 +52,7 @@ const STYLE_BY_EXT: Record<string, CommentStyle> = {
   '.astro': 'astro',
 }
 
-const SKIP_PATH_PATTERNS: RegExp[] = [
+const skipPathPatterns: RegExp[] = [
   /(^|\/)src-tauri\/gen\//,
   /(^|\/)drizzle\/meta\//,
   /(^|\/)dist(-[^/]+)?\//,
@@ -60,21 +60,21 @@ const SKIP_PATH_PATTERNS: RegExp[] = [
   /\.gen\.[a-z]+$/i,
 ]
 
-const DIRECTIVE_RE = /^\s*(['"])use (client|server|strict)\1\s*;?\s*$/
+const directiveRe = /^\s*(['"])use (client|server|strict)\1\s*;?\s*$/
 
 const renderHeader = (style: CommentStyle): string => {
   switch (style) {
     case 'block':
-      return `/* ${HEADER_LINES[0]}\n * ${HEADER_LINES[1]}\n * ${HEADER_LINES[2]} */\n`
+      return `/* ${headerLines[0]}\n * ${headerLines[1]}\n * ${headerLines[2]} */\n`
     case 'hash':
-      return HEADER_LINES.map((l) => `# ${l}`).join('\n') + '\n'
+      return headerLines.map((l) => `# ${l}`).join('\n') + '\n'
     case 'dash':
-      return HEADER_LINES.map((l) => `-- ${l}`).join('\n') + '\n'
+      return headerLines.map((l) => `-- ${l}`).join('\n') + '\n'
     case 'html':
-      return `<!-- ${HEADER_LINES[0]}\n   - ${HEADER_LINES[1]}\n   - ${HEADER_LINES[2]} -->\n`
+      return `<!-- ${headerLines[0]}\n   - ${headerLines[1]}\n   - ${headerLines[2]} -->\n`
     case 'astro':
       // Inserted inside frontmatter as // comments — caller handles framing
-      return HEADER_LINES.map((l) => `// ${l}`).join('\n')
+      return headerLines.map((l) => `// ${l}`).join('\n')
   }
 }
 
@@ -82,13 +82,13 @@ const hasHeader = (content: string): boolean =>
   content.includes('Mozilla Public License') || content.includes('mozilla.org/MPL')
 
 const isInScope = (path: string): boolean => {
-  if (SKIP_PATH_PATTERNS.some((re) => re.test(path))) return false
-  return STYLE_BY_EXT[extname(path).toLowerCase()] !== undefined
+  if (skipPathPatterns.some((re) => re.test(path))) return false
+  return styleByExt[extname(path).toLowerCase()] !== undefined
 }
 
 const applyHeader = (content: string, path: string): string => {
   const ext = extname(path).toLowerCase()
-  const style = STYLE_BY_EXT[ext]
+  const style = styleByExt[ext]
 
   if (style === 'astro') return applyAstroHeader(content)
 
@@ -102,7 +102,7 @@ const applyHeader = (content: string, path: string): string => {
   // Preserve a leading directive ("use client"/"use server"/"use strict")
   if (
     (ext === '.ts' || ext === '.tsx' || ext === '.js' || ext === '.jsx' || ext === '.cjs' || ext === '.mjs') &&
-    DIRECTIVE_RE.test(lines[insertAt] ?? '')
+    directiveRe.test(lines[insertAt] ?? '')
   ) {
     insertAt++
   }
@@ -128,7 +128,7 @@ const applyAstroHeader = (content: string): string => {
 }
 
 const listTrackedFiles = (): string[] =>
-  execSync('git ls-files', { cwd: REPO_ROOT, encoding: 'utf8' }).split('\n').filter(Boolean)
+  execSync('git ls-files', { cwd: repoRoot, encoding: 'utf8' }).split('\n').filter(Boolean)
 
 const main = () => {
   const args = process.argv.slice(2)
@@ -141,7 +141,7 @@ const main = () => {
   let touched = 0
 
   for (const relPath of candidates) {
-    const absPath = resolve(REPO_ROOT, relPath)
+    const absPath = resolve(repoRoot, relPath)
     let content: string
     try {
       content = readFileSync(absPath, 'utf8')

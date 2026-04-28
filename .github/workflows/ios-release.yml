@@ -53,6 +53,9 @@ concurrency:
   group: ios-release-${{ inputs.version }}
   cancel-in-progress: true
 
+permissions:
+  contents: read
+
 jobs:
   build_and_deploy_ios:
     if: ${{ !inputs.skip_build }}

@@ -80,9 +80,10 @@ export default function NewModelPage() {
   })
 
   const onSubmit = (values: z.infer<typeof formSchema>) => {
+    const trimmedApiKey = values.apiKey?.trim() || null
     createModelMutation.mutate({
       ...values,
-      apiKey: values.apiKey || null,
+      apiKey: trimmedApiKey,
       url: values.url || null,
       isSystem: 0,
       enabled: 1,

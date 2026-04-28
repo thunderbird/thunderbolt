@@ -9,13 +9,7 @@ use tauri::Manager;
 
 // Shared app builder function
 pub fn create_app() -> tauri::Builder<tauri::Wry> {
-    let mut builder = tauri::Builder::default();
-
-    // Conditionally include the HTTP plugin when the `native_fetch` feature is enabled
-    #[cfg(feature = "native_fetch")]
-    {
-        builder = builder.plugin(tauri_plugin_http::init());
-    }
+    let mut builder = tauri::Builder::default().plugin(tauri_plugin_http::init());
 
     // Single-instance: focus existing window when a second instance is launched (desktop only)
     #[cfg(desktop)]

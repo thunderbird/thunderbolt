@@ -72,22 +72,15 @@ pub fn set_interface_style(style: String) -> Result<(), String> {
 /// Extend this struct whenever we add more feature flags.
 #[derive(Serialize)]
 pub struct Capabilities {
-    /// Whether the application was compiled with the `native_fetch` feature and therefore the
-    /// `tauri-plugin-http` plugin is available for native HTTP requests.
+    /// Always true — `tauri-plugin-http` is unconditionally registered. Kept on the struct
+    /// so the renderer-side capability check has a stable shape if we add real capabilities later.
     pub native_fetch: bool,
 }
-
-#[cfg(feature = "native_fetch")]
-const NATIVE_FETCH_ENABLED: bool = true;
-#[cfg(not(feature = "native_fetch"))]
-const NATIVE_FETCH_ENABLED: bool = false;
 
 /// Returns the set of capabilities supported by the current build.
 #[command]
 pub fn capabilities() -> Capabilities {
-    Capabilities {
-        native_fetch: NATIVE_FETCH_ENABLED,
-    }
+    Capabilities { native_fetch: true }
 }
 
 // === OAuth loopback server ===================================================================

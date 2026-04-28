@@ -3,6 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { getDeviceId, getAuthToken } from '@/lib/auth-token'
+import { isSsoMode } from '@/lib/auth-mode'
 import { getDeviceDisplayName } from '@/lib/platform'
 import type { AbstractPowerSyncDatabase, PowerSyncBackendConnector, PowerSyncCredentials } from '@powersync/web'
 import { encodeForUpload } from '@/db/encryption'
@@ -81,13 +82,15 @@ export class ThunderboltConnector implements PowerSyncBackendConnector {
    */
   async fetchCredentials(): Promise<PowerSyncCredentials | null> {
     const hadToken = Boolean(getAuthToken())
+    const ssoMode = isSsoMode()
     try {
-      if (!hadToken) {
+      if (!hadToken && !ssoMode) {
         return null
       }
 
       const response = await fetch(`${this.backendUrl}/powersync/token`, {
         headers: buildHeaders(),
+        credentials: ssoMode ? 'include' : undefined,
       })
 
       if (!response.ok) {
@@ -159,6 +162,7 @@ export class ThunderboltConnector implements PowerSyncBackendConnector {
         method: 'PUT',
         headers: { ...buildHeaders(), 'Content-Type': 'application/json' },
         body: JSON.stringify({ operations }),
+        credentials: isSsoMode() ? 'include' : undefined,
       })
 
       if (!response.ok) {

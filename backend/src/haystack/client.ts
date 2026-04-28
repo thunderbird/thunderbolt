@@ -54,7 +54,8 @@ export class HaystackClient {
         continue
       }
 
-      throw new Error(`Haystack API error: ${response.status} ${response.statusText}`)
+      const body = await response.text().catch(() => '')
+      throw new Error(`Haystack API error: ${response.status} ${response.statusText}${body ? `: ${body}` : ''}`)
     }
 
     throw new Error('Haystack API: retries exhausted')
@@ -156,7 +157,8 @@ export class HaystackClient {
     })
 
     if (!response.ok) {
-      throw new Error(`Haystack API error: ${response.status} ${response.statusText}`)
+      const body = await response.text().catch(() => '')
+      throw new Error(`Haystack API error: ${response.status} ${response.statusText}${body ? `: ${body}` : ''}`)
     }
 
     return response

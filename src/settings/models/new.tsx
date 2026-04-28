@@ -16,7 +16,7 @@ import type { Model } from '@/types'
 
 const formSchema = z
   .object({
-    provider: z.enum(['thunderbolt', 'openai', 'custom', 'openrouter']),
+    provider: z.enum(['thunderbolt', 'openai', 'custom', 'openrouter', 'tinfoil']),
     name: z.string().min(1, { message: 'Name is required.' }),
     model: z.string().min(1, { message: 'Model name is required.' }),
     url: z.string().optional(),
@@ -117,6 +117,7 @@ export default function NewModelPage() {
                       </SelectTrigger>
                       <SelectContent>
                         <SelectItem value="thunderbolt">Thunderbolt</SelectItem>
+                        <SelectItem value="tinfoil">Tinfoil</SelectItem>
                         <SelectItem value="openai">OpenAI</SelectItem>
                         <SelectItem value="openrouter">OpenRouter</SelectItem>
                         <SelectItem value="custom">Custom</SelectItem>

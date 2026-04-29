@@ -123,7 +123,7 @@
     "zustand": "^5.0.8"
   },
   "devDependencies": {
-    "@chromatic-com/storybook": "^4.1.1",
+    "@chromatic-com/storybook": "^5.1.2",
     "@emotion/is-prop-valid": "^1.4.0",
     "@eslint/js": "^9.33.0",
     "@happy-dom/global-registrator": "^20.0.8",

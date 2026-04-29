@@ -77,7 +77,7 @@ jobs:
           node-version: 'lts/*'
 
       - name: Setup Bun
-        uses: oven-sh/setup-bun@735343b667d3e6f658f44d0eca948eb6282f2b76 # using commit hash for security reasons
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # using commit hash for security reasons
 
       - name: Display version information
         env:
@@ -196,7 +196,7 @@ jobs:
           echo "✅ Metal Toolchain removed"
 
       - name: Setup Ruby
-        uses: ruby/setup-ruby@cf7216d52fba1017929b4d7162fabe2b30af5b49 # v1.262.0
+        uses: ruby/setup-ruby@c4e5b1316158f92e3d49443a9d58b31d25ac0f8f # v1.306.0
         with:
           ruby-version: '3.0'
           bundler-cache: true

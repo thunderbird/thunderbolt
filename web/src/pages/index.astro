@@ -1,4 +1,7 @@
 ---
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at http://mozilla.org/MPL/2.0/.
 import MarketingLayout from '../layouts/MarketingLayout.astro';
 import { EnterprisePage } from '../components/marketing/sections/enterprise-page';
 ---
@@ -6,3 +9,30 @@ import { EnterprisePage } from '../components/marketing/sections/enterprise-page
 <MarketingLayout canonical="https://thunderbolt.io/">
 	<EnterprisePage client:load />
 </MarketingLayout>
+
+<script>
+	// Populates the GitHub star count in the hero. Runs in the browser after DOM
+	// parse. If the fetch fails (offline, rate-limited, GitHub down), the count
+	// half stays hidden and the button just reads "Star on GitHub".
+	const formatStars = (n: number): string =>
+		n >= 1000 ? `${(n / 1000).toFixed(1).replace(/\.0$/, '')}k` : String(n);
+
+	try {
+		const res = await fetch('https://api.github.com/repos/thunderbird/thunderbolt');
+		if (res.ok) {
+			const data = await res.json();
+			if (typeof data.stargazers_count === 'number') {
+				const link = document.getElementById('github-star-count-link');
+				const value = document.getElementById('github-star-count-value');
+				if (link && value) {
+					value.textContent = formatStars(data.stargazers_count);
+					link.setAttribute('aria-label', `${data.stargazers_count} stars on GitHub`);
+					link.classList.remove('hidden');
+					link.classList.add('inline-flex');
+				}
+			}
+		}
+	} catch {
+		// Leave the count half hidden.
+	}
+</script>

@@ -1,3 +1,7 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+
 import { type ChangeEvent, type FormEvent, useReducer, useRef } from 'react'
 import { FooterSection } from '../footer-section'
 import { Header } from '../header'
@@ -12,11 +16,12 @@ type FormState = {
   email: string
   help: string
   org: string
+  companySize: string
   status: 'idle' | 'submitting' | 'success' | 'error'
   errorMessage: string
 }
 
-type FormField = 'firstName' | 'lastName' | 'title' | 'email' | 'help' | 'org'
+type FormField = 'firstName' | 'lastName' | 'title' | 'email' | 'help' | 'org' | 'companySize'
 
 type FormAction =
   | { type: 'SET_FIELD'; field: FormField; value: string }
@@ -31,6 +36,7 @@ const initialState: FormState = {
   email: '',
   help: '',
   org: '',
+  companySize: '',
   status: 'idle',
   errorMessage: '',
 }
@@ -48,8 +54,9 @@ const useContactFormState = () => {
   const iframeRef = useRef<HTMLIFrameElement>(null)
   const formRef = useRef<HTMLFormElement>(null)
 
-  const set = (field: FormField) => (e: ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) =>
-    dispatch({ type: 'SET_FIELD', field, value: e.target.value })
+  const set =
+    (field: FormField) => (e: ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) =>
+      dispatch({ type: 'SET_FIELD', field, value: e.target.value })
 
   const handleSubmit = (e: FormEvent) => {
     e.preventDefault()
@@ -170,6 +177,23 @@ export const ContactPage = () => {
           <div>
             <label htmlFor="mce-ORG" className={labelClass}>Company / Organization</label>
             <input type="text" name="ORG" id="mce-ORG" value={state.org} onChange={set('org')} className={inputClass} />
+          </div>
+
+          <div>
+            <label htmlFor="mce-MMERGE8" className={labelClass}>Company Size</label>
+            <select
+              name="MMERGE8"
+              id="mce-MMERGE8"
+              value={state.companySize}
+              onChange={set('companySize')}
+              className={inputClass}
+            >
+              <option value=""></option>
+              <option value="1 to 50">1 to 50</option>
+              <option value="51 to 200">51 to 200</option>
+              <option value="201 to 1,000">201 to 1,000</option>
+              <option value="1,001+">1,001+</option>
+            </select>
           </div>
 
           <div>

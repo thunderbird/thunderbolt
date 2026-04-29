@@ -1,3 +1,7 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+
 /* 
     This function merges multiple refs into a single ref callback.
     It ensures that the value is assigned to each ref, whether it's a function or a mutable ref object.

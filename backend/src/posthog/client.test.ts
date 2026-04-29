@@ -1,3 +1,8 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+
+import { isPosthogRequest } from '@/test-utils/posthog'
 import { OpenAI as PostHogOpenAI } from '@posthog/ai'
 import { afterEach, beforeEach, describe, expect, it, jest } from 'bun:test'
 import { PostHog } from 'posthog-node'
@@ -132,13 +137,7 @@ describe('PostHog Privacy Mode', () => {
       await phClient.flush()
 
       // Find PostHog capture requests (check various URL patterns)
-      const posthogRequests = capturedFetches.filter(
-        (call) =>
-          call.url.includes('posthog.com') ||
-          call.url.includes('/batch') ||
-          call.url.includes('/capture') ||
-          call.url.includes('/e'),
-      )
+      const posthogRequests = capturedFetches.filter((call) => isPosthogRequest(call.url))
 
       // If no requests were captured, this might mean the AI library didn't send any
       // In that case, we pass the test since no conversation data was sent
@@ -220,9 +219,7 @@ describe('PostHog Privacy Mode', () => {
       await phClient.flush()
 
       // Check PostHog requests
-      const posthogRequests = capturedFetches.filter(
-        (call) => call.url.includes('posthog.com') || call.url.includes('/batch'),
-      )
+      const posthogRequests = capturedFetches.filter((call) => isPosthogRequest(call.url))
 
       for (const request of posthogRequests) {
         const batch = request.body?.batch || [request.body]
@@ -287,9 +284,7 @@ describe('PostHog Privacy Mode', () => {
 
       await phClient.flush()
 
-      const posthogRequests = capturedFetches.filter(
-        (call) => call.url.includes('posthog.com') || call.url.includes('/batch'),
-      )
+      const posthogRequests = capturedFetches.filter((call) => isPosthogRequest(call.url))
 
       for (const request of posthogRequests) {
         const batch = request.body?.batch || [request.body]

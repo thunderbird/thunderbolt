@@ -109,7 +109,7 @@ describe('ThunderboltConnector', () => {
     savedFetch = globalThis.fetch
     savedAuthMode = import.meta.env.VITE_AUTH_MODE
     // Default to consumer mode so tests don't depend on local .env
-    import.meta.env.VITE_AUTH_MODE = undefined as unknown as string
+    ;(import.meta.env as Record<string, unknown>).VITE_AUTH_MODE = undefined
     fetchMock = mock()
     dispatchSpy = mock(() => {})
     globalThis.fetch = fetchMock as unknown as typeof fetch
@@ -119,7 +119,7 @@ describe('ThunderboltConnector', () => {
 
   afterEach(() => {
     globalThis.fetch = savedFetch
-    import.meta.env.VITE_AUTH_MODE = savedAuthMode as string
+    ;(import.meta.env as Record<string, unknown>).VITE_AUTH_MODE = savedAuthMode
   })
 
   it('fetchCredentials returns null when no auth token', async () => {

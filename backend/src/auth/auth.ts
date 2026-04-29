@@ -125,7 +125,7 @@ export const createAuth = (database: typeof DbType) => {
     // horizontally-scaled deployments. Provides single-instance defence only.
     // TODO(THU-113): Replace with proof-of-work challenge (ALTCHA) for distributed protection.
     rateLimit: {
-      enabled: true,
+      enabled: settings.rateLimitEnabled,
       window: 60,
       max: 10,
     },

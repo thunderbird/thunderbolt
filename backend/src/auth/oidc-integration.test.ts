@@ -75,36 +75,49 @@ const baseSettings: Settings = {
   samlCert: '',
 }
 
+/** Save and restore globalThis.fetch + process.env.TRUSTED_ORIGINS around a test body. */
+const withRealFetch = async (oidcIssuerUrl: string, fn: () => Promise<void>) => {
+  const savedFetch = globalThis.fetch
+  const savedOrigins = process.env.TRUSTED_ORIGINS
+  globalThis.fetch = realFetch
+  process.env.TRUSTED_ORIGINS = `http://localhost:1420,${oidcIssuerUrl}`
+
+  try {
+    await fn()
+  } finally {
+    globalThis.fetch = savedFetch
+    process.env.TRUSTED_ORIGINS = savedOrigins
+  }
+}
+
 describe('OIDC Integration', () => {
   let oidcServer: OAuth2Server
   let oidcIssuerUrl: string
+  let db: Awaited<ReturnType<typeof createTestDb>>['db']
+  let cleanup: () => Promise<void>
+  let getSettingsSpy: ReturnType<typeof spyOn>
 
   beforeAll(async () => {
     oidcServer = new OAuth2Server()
     await oidcServer.issuer.keys.generate('RS256')
     await oidcServer.start(0, 'localhost')
     oidcIssuerUrl = oidcServer.issuer.url!
+
+    const testEnv = await createTestDb()
+    db = testEnv.db
+    cleanup = testEnv.cleanup
   })
 
   afterAll(async () => {
     await oidcServer.stop()
+    await cleanup()
+  })
+
+  afterEach(() => {
+    getSettingsSpy?.mockRestore()
   })
 
   describe('OIDC sign-in endpoint', () => {
-    let db: Awaited<ReturnType<typeof createTestDb>>['db']
-    let cleanup: () => Promise<void>
-    let getSettingsSpy: ReturnType<typeof spyOn>
-
-    beforeAll(async () => {
-      const testEnv = await createTestDb()
-      db = testEnv.db
-      cleanup = testEnv.cleanup
-    })
-
-    afterAll(async () => {
-      await cleanup()
-    })
-
     beforeEach(() => {
       getSettingsSpy = spyOn(settingsModule, 'getSettings').mockReturnValue({
         ...baseSettings,
@@ -112,22 +125,8 @@ describe('OIDC Integration', () => {
       } as Settings)
     })
 
-    afterEach(() => {
-      getSettingsSpy.mockRestore()
-    })
-
     it('should return a redirect URL pointing to the OIDC provider', async () => {
-      // Temporarily restore real fetch so Better Auth can reach the mock OIDC server
-      const mockedFetch = globalThis.fetch
-      globalThis.fetch = realFetch
-
-      try {
-        // The SSO plugin validates OIDC discovery URLs against trustedOrigins.
-        // Include the mock server's origin so the discovery fetch is allowed.
-        process.env.TRUSTED_ORIGINS = `http://localhost:1420,${oidcIssuerUrl}`
-
-        // Need a fresh import since settings are read at module level
-        // Use createAuth directly with the test DB
+      await withRealFetch(oidcIssuerUrl, async () => {
         const { createAuth } = await import('./auth')
         const auth = createAuth(db)
         const app = new Elysia({ prefix: '/v1' }).mount(auth.handler)
@@ -149,9 +148,127 @@ describe('OIDC Integration', () => {
         expect(body.url).toContain(oidcIssuerUrl)
         expect(body.url).toContain('response_type=code')
         expect(body.url).toContain('client_id=thunderbolt-app')
-      } finally {
-        globalThis.fetch = mockedFetch
-      }
+      })
+    })
+
+    it('should include PKCE code_challenge in the redirect URL', async () => {
+      await withRealFetch(oidcIssuerUrl, async () => {
+        const { createAuth } = await import('./auth')
+        const auth = createAuth(db)
+        const app = new Elysia({ prefix: '/v1' }).mount(auth.handler)
+
+        const res = await app.handle(
+          new Request('http://localhost/v1/api/auth/sign-in/sso', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              providerId: 'oidc',
+              callbackURL: 'http://localhost:1420/',
+            }),
+          }),
+        )
+
+        expect(res.ok).toBe(true)
+
+        const body = await res.json()
+        expect(body.url).toContain('code_challenge=')
+        expect(body.url).toContain('code_challenge_method=S256')
+      })
+    })
+
+    it('should include openid, profile, and email scopes', async () => {
+      await withRealFetch(oidcIssuerUrl, async () => {
+        const { createAuth } = await import('./auth')
+        const auth = createAuth(db)
+        const app = new Elysia({ prefix: '/v1' }).mount(auth.handler)
+
+        const res = await app.handle(
+          new Request('http://localhost/v1/api/auth/sign-in/sso', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              providerId: 'oidc',
+              callbackURL: 'http://localhost:1420/',
+            }),
+          }),
+        )
+
+        expect(res.ok).toBe(true)
+
+        const body = await res.json()
+        const url = new URL(body.url)
+        const scope = url.searchParams.get('scope') ?? ''
+        expect(scope).toContain('openid')
+        expect(scope).toContain('profile')
+        expect(scope).toContain('email')
+      })
+    })
+  })
+
+  describe('OIDC configuration validation', () => {
+    it('should throw when OIDC_ISSUER is missing', async () => {
+      getSettingsSpy = spyOn(settingsModule, 'getSettings').mockReturnValue({
+        ...baseSettings,
+        oidcIssuer: '',
+        oidcClientId: 'some-client',
+        oidcClientSecret: 'some-secret',
+      } as Settings)
+
+      const { createAuth } = await import('./auth')
+      expect(() => createAuth(db)).toThrow('OIDC_ISSUER')
+    })
+
+    it('should throw when OIDC_CLIENT_ID is missing', async () => {
+      getSettingsSpy = spyOn(settingsModule, 'getSettings').mockReturnValue({
+        ...baseSettings,
+        oidcIssuer: 'https://idp.example.com',
+        oidcClientId: '',
+        oidcClientSecret: 'some-secret',
+      } as Settings)
+
+      const { createAuth } = await import('./auth')
+      expect(() => createAuth(db)).toThrow('OIDC_CLIENT_ID')
+    })
+
+    it('should throw when OIDC_CLIENT_SECRET is missing', async () => {
+      getSettingsSpy = spyOn(settingsModule, 'getSettings').mockReturnValue({
+        ...baseSettings,
+        oidcIssuer: 'https://idp.example.com',
+        oidcClientId: 'some-client',
+        oidcClientSecret: '',
+      } as Settings)
+
+      const { createAuth } = await import('./auth')
+      expect(() => createAuth(db)).toThrow('OIDC_CLIENT_SECRET')
+    })
+  })
+
+  describe('SSO endpoint unavailable in consumer mode', () => {
+    it('should reject SSO sign-in when AUTH_MODE=consumer', async () => {
+      getSettingsSpy = spyOn(settingsModule, 'getSettings').mockReturnValue({
+        ...baseSettings,
+        authMode: 'consumer' as const,
+        oidcIssuer: '',
+        oidcClientId: '',
+        oidcClientSecret: '',
+      } as Settings)
+
+      const { createAuth } = await import('./auth')
+      const auth = createAuth(db)
+      const app = new Elysia({ prefix: '/v1' }).mount(auth.handler)
+
+      const res = await app.handle(
+        new Request('http://localhost/v1/api/auth/sign-in/sso', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            providerId: 'oidc',
+            callbackURL: 'http://localhost:1420/',
+          }),
+        }),
+      )
+
+      expect(res.ok).toBe(false)
     })
   })
 })

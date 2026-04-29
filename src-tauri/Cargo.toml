@@ -15,6 +15,10 @@ default-run = "thunderbolt"
 name = "thunderbolt_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
+[features]
+default = []
+native_fetch = []
+
 [workspace]
 members = []
 default-members = ["."]
@@ -39,7 +43,7 @@ serde_json = "1.0.143"
 anyhow = "1.0.99"
 tokio = "1.47.1"
 tauri-plugin-devtools = "2.0.1"
-tauri-plugin-http = { version = "2.5.4", features = ["unsafe-headers"] }
+tauri-plugin-http = "2.5.4"
 tauri-plugin-process = "2.3.1"
 tauri-plugin-fs = "2.4.4"
 tauri-plugin-deep-link = "2.3"

@@ -42,12 +42,6 @@
           "url": "https://api.openai.com"
         },
         {
-          "url": "https://api.anthropic.com"
-        },
-        {
-          "url": "https://openrouter.ai"
-        },
-        {
           "url": "https://router.huggingface.co"
         },
         {

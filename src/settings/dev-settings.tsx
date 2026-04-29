@@ -7,14 +7,22 @@ import { Input } from '@/components/ui/input'
 import { PageHeader } from '@/components/ui/page-header'
 import { SectionCard } from '@/components/ui/section-card'
 import { Switch } from '@/components/ui/switch'
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { useSettings } from '@/hooks/use-settings'
-import { isTauri } from '@/lib/platform'
+import { getCapabilities, isTauri } from '@/lib/platform'
+import { useQuery } from '@tanstack/react-query'
 
 export default function DevSettingsPage() {
   const { cloudUrl, isNativeFetchEnabled, debugPosthog } = useSettings({
     cloud_url: '',
     is_native_fetch_enabled: false,
     debug_posthog: false,
+  })
+
+  const { data: capabilities } = useQuery({
+    queryKey: ['capabilities'],
+    queryFn: getCapabilities,
+    enabled: isTauri(),
   })
 
   return (
@@ -57,11 +65,23 @@ export default function DevSettingsPage() {
               </ModificationIndicator>
               <p className="text-sm text-muted-foreground">Proxy HTTP requests through Tauri to bypass CORS</p>
             </div>
-            <Switch
-              checked={isNativeFetchEnabled.value}
-              onCheckedChange={isNativeFetchEnabled.setValue}
-              disabled={!isTauri()}
-            />
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <span>
+                  <Switch
+                    checked={isNativeFetchEnabled.value}
+                    onCheckedChange={isNativeFetchEnabled.setValue}
+                    disabled={!capabilities?.native_fetch}
+                  />
+                </span>
+              </TooltipTrigger>
+              {!capabilities?.native_fetch && (
+                <TooltipContent sideOffset={4}>
+                  This feature is only available on some desktop versions of the app that were built with the
+                  native_fetch feature flag.
+                </TooltipContent>
+              )}
+            </Tooltip>
           </div>
 
           {/* Divider between settings */}

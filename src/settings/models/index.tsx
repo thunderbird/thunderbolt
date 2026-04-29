@@ -218,7 +218,7 @@ export default function ModelsPage() {
       await createModelDAL(db, {
         id: uuidv7(),
         ...values,
-        apiKey: values.apiKey?.trim() || null,
+        apiKey: values.apiKey || null,
         url: values.url || null,
         isSystem: 0,
         enabled: 1,
@@ -304,7 +304,7 @@ export default function ModelsPage() {
         provider: values.provider,
         model: modelId,
         url: values.url || null,
-        apiKey: values.apiKey?.trim() || null,
+        apiKey: values.apiKey || null,
         isSystem: 0,
         enabled: 1,
       }
@@ -622,7 +622,7 @@ export default function ModelsPage() {
 
   useEffect(() => {
     const provider = form.getValues('provider')
-    const apiKey = watchedApiKey?.trim()
+    const apiKey = watchedApiKey
     const url = watchedUrl
 
     if (

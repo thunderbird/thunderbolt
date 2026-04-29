@@ -60,7 +60,7 @@ deploy/pulumi/
 
 ## CI
 
-The `Enterprise Deploy` workflow at `.github/workflows/enterprise-deploy.yml` wraps `pulumi up` for repeatable deploys. Inputs:
+The `Stack Deploy` workflow at `.github/workflows/stack-deploy.yml` wraps `pulumi up` for repeatable deploys. Inputs:
 
 - `action` — `deploy` or `destroy`
 - `platform` — `fargate` or `k8s`

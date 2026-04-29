@@ -1,4 +1,4 @@
-name: Preview Environment (Internal PRs)
+name: Preview Deploy
 
 # Creates an ephemeral preview stack on AWS Fargate for each pull request opened
 # from a branch in this repo. Five Cloudflare subdomains are created per PR,
@@ -82,7 +82,7 @@ jobs:
   publish:
     needs: resolve
     if: needs.resolve.outputs.is_internal == 'true'
-    uses: ./.github/workflows/enterprise-publish.yml
+    uses: ./.github/workflows/images-publish.yml
     with:
       tag_override: pr-${{ needs.resolve.outputs.pr_number }}-${{ needs.resolve.outputs.head_sha }}
       ref: ${{ needs.resolve.outputs.head_sha }}
@@ -90,7 +90,7 @@ jobs:
 
   deploy:
     needs: [resolve, publish]
-    uses: ./.github/workflows/enterprise-deploy.yml
+    uses: ./.github/workflows/stack-deploy.yml
     with:
       action: deploy
       platform: fargate

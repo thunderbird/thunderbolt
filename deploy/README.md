@@ -97,9 +97,9 @@ deploy/
       discovery.ts          # Cloud Map service discovery
 
 .github/workflows/
-  enterprise-publish.yml    # Build + push Docker images to GHCR
-  enterprise-deploy.yml     # Deploy to AWS via Pulumi
-  enterprise-nightly.yml    # Nightly publish + deploy to demo
+  images-publish.yml        # Build + push Docker images to GHCR
+  stack-deploy.yml          # Deploy to AWS via Pulumi
+  demo-nightly.yml          # Nightly publish + deploy to demo
 ```
 
 ---
@@ -435,9 +435,9 @@ pulumi/
 
 Three workflows handle the enterprise build and deploy pipeline:
 
-### Enterprise Publish
+### Images Publish
 
-**File**: `.github/workflows/enterprise-publish.yml`
+**File**: `.github/workflows/images-publish.yml`
 
 Builds and pushes all Docker images + the Helm chart to GHCR.
 
@@ -452,9 +452,9 @@ Builds and pushes all Docker images + the Helm chart to GHCR.
 3. Tags each with `<version>` and `latest`
 4. Packages the Helm chart and pushes to `oci://ghcr.io/<owner>/charts`
 
-### Enterprise Deploy
+### Stack Deploy
 
-**File**: `.github/workflows/enterprise-deploy.yml`
+**File**: `.github/workflows/stack-deploy.yml`
 
 Deploys (or destroys) a Pulumi stack on AWS.
 
@@ -498,9 +498,9 @@ After this one-time setup, trigger the workflow with `stack_name: prod-acme` and
 | `PULUMI_CONFIG_PASSPHRASE` | Encryption passphrase for stack config |
 | `GHCR_PAT` | GitHub PAT for pulling private images |
 
-### Enterprise Nightly
+### Demo Nightly
 
-**File**: `.github/workflows/enterprise-nightly.yml`
+**File**: `.github/workflows/demo-nightly.yml`
 
 Runs every night at 5:00 UTC (midnight EST). Publishes fresh images and redeploys the `demo` stack on Fargate.
 
@@ -509,8 +509,8 @@ Runs every night at 5:00 UTC (midnight EST). Publishes fresh images and redeploy
 - Manual dispatch
 
 **Pipeline**:
-1. Calls `enterprise-publish.yml` (build + push images)
-2. Calls `enterprise-deploy.yml` (deploy to `demo` stack on Fargate)
+1. Calls `images-publish.yml` (build + push images)
+2. Calls `stack-deploy.yml` (deploy to `demo` stack on Fargate)
 
 ---
 

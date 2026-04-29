@@ -1,4 +1,4 @@
-name: Enterprise Deploy
+name: Stack Deploy
 
 on:
   workflow_call:

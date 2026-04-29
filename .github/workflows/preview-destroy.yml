@@ -1,4 +1,4 @@
-name: Preview Environment Teardown
+name: Preview Destroy
 
 # Destroys the per-PR preview stack when the PR is closed/merged.
 # Also supports manual teardown via workflow_dispatch (e.g. to clean up an orphan
@@ -51,7 +51,7 @@ jobs:
   destroy:
     needs: resolve-pr
     if: needs.resolve-pr.outputs.is_internal == 'true'
-    uses: ./.github/workflows/enterprise-deploy.yml
+    uses: ./.github/workflows/stack-deploy.yml
     with:
       action: destroy
       platform: fargate

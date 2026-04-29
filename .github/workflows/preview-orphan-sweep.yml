@@ -1,8 +1,8 @@
-name: Preview Environment Cleanup
+name: Preview Orphan Sweep
 
 # Nightly safety net — destroys preview-pr-* stacks whose PRs are closed or
 # haven't been updated in the last 3 days. The primary teardown path is
-# preview-teardown.yml (fires on `pull_request: closed`); this cron catches:
+# preview-destroy.yml (fires on `pull_request: closed`); this cron catches:
 #   - Stacks where the teardown workflow failed or was cancelled
 #   - PRs force-closed outside the normal flow (e.g. repo transfer, API delete)
 #   - Long-forgotten open PRs whose authors went on vacation
@@ -126,7 +126,7 @@ jobs:
       max-parallel: 3
       matrix:
         orphan: ${{ fromJson(needs.find-orphans.outputs.orphans) }}
-    uses: ./.github/workflows/enterprise-deploy.yml
+    uses: ./.github/workflows/stack-deploy.yml
     with:
       action: destroy
       platform: fargate

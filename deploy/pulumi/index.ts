@@ -63,7 +63,7 @@ const uniqueHostnamesForDns = hasSubdomainRouting
   ? Array.from(new Set(Object.values(resolvedHostnames).filter((h): h is string => Boolean(h))))
   : []
 
-// All images are pre-built and published to GHCR by the enterprise-publish workflow
+// All images are pre-built and published to GHCR by the images-publish workflow
 const imagePrefix = 'ghcr.io/thunderbird/thunderbolt'
 const images = {
   frontend: `${imagePrefix}/thunderbolt-frontend:${version}`,

@@ -1,4 +1,4 @@
-name: Enterprise Nightly
+name: Demo Nightly
 
 on:
   schedule:
@@ -12,12 +12,12 @@ permissions:
 
 jobs:
   publish:
-    uses: ./.github/workflows/enterprise-publish.yml
+    uses: ./.github/workflows/images-publish.yml
     secrets: inherit
 
   deploy:
     needs: publish
-    uses: ./.github/workflows/enterprise-deploy.yml
+    uses: ./.github/workflows/stack-deploy.yml
     with:
       action: deploy
       platform: fargate

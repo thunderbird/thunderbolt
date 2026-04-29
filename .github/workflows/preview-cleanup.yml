@@ -1,4 +1,4 @@
-name: Preview Orphan Sweep
+name: Preview Cleanup
 
 # Nightly safety net — destroys preview-pr-* stacks whose PRs are closed or
 # haven't been updated in the last 3 days. The primary teardown path is

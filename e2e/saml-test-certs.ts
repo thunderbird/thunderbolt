@@ -1,58 +1,51 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+
+import { execSync } from 'node:child_process'
+import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
+import { join } from 'node:path'
+import { tmpdir } from 'node:os'
+
 /**
- * Self-signed test certificates for the mock SAML IdP.
- * Generated with: openssl req -new -x509 -days 3650 -nodes -sha256 -subj "/CN=E2E Mock SAML IdP"
+ * Generate a self-signed cert + key at runtime for the mock SAML IdP.
+ * Avoids committing private keys to the repo (even test-only ones).
  *
- * These are TEST-ONLY keys — never use in production.
+ * Uses temp files instead of /dev/stdout for portability (CI runners
+ * may not support writing to /dev/stdout from child processes).
+ * Files are deleted immediately after reading.
+ *
+ * Cached so repeated imports within the same process return the same keypair.
  */
+let cached: { privateKey: string; cert: string; certSingleLine: string } | null = null
 
-export const IDP_PRIVATE_KEY = `-----BEGIN PRIVATE KEY-----
-MIIEvgIBADANBgkqhkiG9w0BAQEFAASCBKgwggSkAgEAAoIBAQCvVPTg6MIU6TFE
-xSm2oim6lVyeAc6KhzdYBax8OCT7hkZScU3W7QA+VvXcTPLgPnIFQ68KD2qtyltR
-E5r17Gu73kYQ9dfHnRUO1EpKXJ4usQ1XCZU8DUABrvnTUeyTIdEYaHfqDoGGzuFE
-X9a5MXLfOued3rRq93xHCmbC2JoKi3u41ioZchjQn5xpKveDEFp+BL4Vwl8l7NTL
-RvDCy/ITnKaiTh0acxd86vx6U9OprP1IB1SyDqsbW7Ck9HoNK+OtmVNE1RPEQsrI
-KUrk/dIitZAIw/d8pVR6EX2w40dIGinA+LuDmLNAqObFKaK0w0DoM9a6PVYAhYAb
-4TIv0tntAgMBAAECggEACpY9bBg54ePbzPx/wo6jqOfMbiELTOuRwK+lBOIp/4MR
-23gKfHQWm+0JzvnZf4ddwKof12JrbV+G6IwfwwI51h/7iJojo6K9SwYwDzHs/kJE
-HTGPsI7XQtLDNIqhl5fG5aunM/uYwCBdU1DbKRcOieKnai2wpLXZa/u5jUHheUnt
-wSqDlsocA8axW7zoQbv1X3+EbCpaI9c+C+AuiAS1GHkqKt8g7rRTGMk2SfD/7FY2
-b4aCKRMsTJSp/3XHesfHwYVp1/wi0zDfo8JQvjbEf0Dhy4uVu2JxKUHnlxtEk+DH
-8xEQS9qK2yTm05pKIiBiIrXW5sCB/Lsy8C85p0EoaQKBgQDYD67O9jErqnE/J8O9
-eAm2s9xcxfaNPbFjhvPemzB+Cf0KKAM3llu/xQQXUKNaUYf38URZ5Y4iME7/YtCD
-3++8l7/kboCt9EG9lZJ5XZJVeOHNIjggSnvxfmtetb+7EnwQoljJm9oMT9exHDRM
-9dIGooX9Ag2UCujL1Wp3x6ekBQKBgQDPveb83NtGyVXl78tFtfFdlg5Qi3juNp0J
-ZbDEKAMlbQVpA2tNrg8sC2YGa6PFWeHrEzHyG87uympHk7LJtrQatbT89GFQ4T9o
-qaPvPJI9WGecQI5QNAKiMJQQ2GBcorqOrHnZv5Tx5+vx+fHHH3oY/6LYgCdMybDY
-OAbraXVqyQKBgQC21hak1ttnSzXILvtKg6Ectfm9nFx2y4UoZxRKBWO01PkHtjJ6
-wMdlcfBzVm7VyHbaT5X6yPJNZjoDjfhMEJ3MJ1JgmU5VZoSXTVKFV7S0lbXnJJUA
-ZmeaRdPQctcMFKleXjPqb/PGRW6OVwK/OaqAqNnf7/PTmqPDkhclw5POjQKBgQCI
-pG1h11d36QhSFPcMZE9dckz6F7M0ZMHII5Ywf+0J2frcBv62eo3KN7kk8fon3iYm
-fFq22Cm1kXh0mibYXQ98Hhbs50V3cKFHk4Wb36iFJzgHY8L36C3vRqqtpdVEOVki
-bTo8yrIKp7TfVbr9cava85LGewzeii+DGN8cSyKLWQKBgCv5GdhDcMQgBOOw66LW
-gCpotjWRH4C2upPkR4Z133v2fKWXbz69vB/uWFOr914J4E4Gvpp7M/SeLJkneojD
-MX7A6VgyGGC1OmvSOIXHjprfOgGJgXpi38yb0nbuxs+jETGPUPVGPpGJvisxFJUn
-HLpHswzzBc4CXzHfNXqATUTX
------END PRIVATE KEY-----`
+const generate = () => {
+  const dir = mkdtempSync(join(tmpdir(), 'saml-e2e-'))
+  const keyPath = join(dir, 'key.pem')
+  const certPath = join(dir, 'cert.pem')
 
-export const IDP_CERT = `-----BEGIN CERTIFICATE-----
-MIIDGTCCAgGgAwIBAgIUX+zqnx2fBaTNfy+/t8U3a7Og6Z0wDQYJKoZIhvcNAQEL
-BQAwHDEaMBgGA1UEAwwRRTJFIE1vY2sgU0FNTCBJZFAwHhcNMjYwNDI5MTM1NzEy
-WhcNMzYwNDI2MTM1NzEyWjAcMRowGAYDVQQDDBFFMkUgTW9jayBTQU1MIElkUDCC
-ASIwDQYJKoZIhvcNAQEBBQADggEPADCCAQoCggEBAK9U9ODowhTpMUTFKbaiKbqV
-XJ4BzoqHN1gFrHw4JPuGRlJxTdbtAD5W9dxM8uA+cgVDrwoPaq3KW1ETmvXsa7ve
-RhD118edFQ7USkpcni6xDVcJlTwNQAGu+dNR7JMh0Rhod+oOgYbO4URf1rkxct86
-553etGr3fEcKZsLYmgqLe7jWKhlyGNCfnGkq94MQWn4EvhXCXyXs1MtG8MLL8hOc
-pqJOHRpzF3zq/HpT06ms/UgHVLIOqxtbsKT0eg0r462ZU0TVE8RCysgpSuT90iK1
-kAjD93ylVHoRfbDjR0gaKcD4u4OYs0Co5sUporTDQOgz1ro9VgCFgBvhMi/S2e0C
-AwEAAaNTMFEwHQYDVR0OBBYEFMbDLxknY//kHxSsIouOEeBr1+mBMB8GA1UdIwQY
-MBaAFMbDLxknY//kHxSsIouOEeBr1+mBMA8GA1UdEwEB/wQFMAMBAf8wDQYJKoZI
-hvcNAQELBQADggEBAF0zoVhENGKWAk37wtaxb0EXS1OwuLYMX9A2oNNszmNVT5Pq
-qA9rs3Rr2EKwxHBECn0u2D2g7Y45UXO74bWXnpGaGGKH/kZKUm+PZ2186IMz9pdi
-KjOiLo1YMjKpUT5JGTMCebtFcjZD3t1Oa1WCNGEMB4IR/4Oyzqp4UHYU3WNuuy15
-t77ROwFSE+hoFcqmRlxrUpJd8KqN2Mv6j9RKafCxTC420pQDsztugA0ENFXyllgz
-2bg1iMRmY2jSDOpEx4OtwYyLHOfWWrTJI4vKcIBpzDSsufJ+QJ+q1v3bc1DDApxl
-8lBknhzPU+9/3oVQubrn0epqTf8yHRX4Qc2vB7E=
------END CERTIFICATE-----`
+  try {
+    execSync(
+      `openssl req -new -x509 -days 1 -nodes -sha256 -subj "/CN=E2E Mock SAML IdP" -keyout "${keyPath}" -out "${certPath}"`,
+      { stdio: 'pipe' },
+    )
+
+    const privateKey = readFileSync(keyPath, 'utf-8')
+    const cert = readFileSync(certPath, 'utf-8')
+    const certSingleLine = cert.replace(/-----BEGIN CERTIFICATE-----|-----END CERTIFICATE-----|\n/g, '').trim()
+
+    return { privateKey, cert, certSingleLine }
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
+  }
+}
+
+export const getTestCerts = () => {
+  if (!cached) {
+    cached = generate()
+  }
+  return cached
+}
 
 /** Single-line base64 cert (no PEM headers) for passing as env var */
-export const IDP_CERT_SINGLE_LINE = IDP_CERT.replace(/-----BEGIN CERTIFICATE-----|-----END CERTIFICATE-----|\n/g, '').trim()
+export const IDP_CERT_SINGLE_LINE = getTestCerts().certSingleLine

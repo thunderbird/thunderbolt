@@ -1,7 +1,11 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+
 import * as http from 'node:http'
 import * as zlib from 'node:zlib'
 import * as samlify from 'samlify'
-import { IDP_CERT, IDP_PRIVATE_KEY } from './saml-test-certs'
+import { getTestCerts } from './saml-test-certs'
 
 /** Test user claims returned by the mock IdP */
 const TEST_USER = {
@@ -21,14 +25,15 @@ const TEST_USER = {
  */
 export const createMockSamlIdp = async (port: number) => {
   const issuer = `http://localhost:${port}`
+  const { cert, privateKey } = getTestCerts()
 
   // Disable samlify's built-in schema validation — we're the IdP, not validating inbound
   samlify.setSchemaValidator({ validate: async () => 'skipped' })
 
   const idp = samlify.IdentityProvider({
     entityID: issuer,
-    signingCert: IDP_CERT,
-    privateKey: IDP_PRIVATE_KEY,
+    signingCert: cert,
+    privateKey,
     singleSignOnService: [{ Binding: 'urn:oasis:names:tc:SAML:2.0:bindings:HTTP-Redirect', Location: `${issuer}/saml/sso` }],
     nameIDFormat: ['urn:oasis:names:tc:SAML:1.1:nameid-format:emailAddress'],
     isAssertionEncrypted: false,

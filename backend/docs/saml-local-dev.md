@@ -24,6 +24,7 @@ Any SAML 2.0-compliant provider works. The implementation uses the `@better-auth
 The `docs/mozilla-realm.json` file contains a ready-to-go realm with both OIDC and SAML clients plus test users. Mount it on startup so there's zero manual setup:
 
 ```sh
+cd backend  # run from backend/ so the volume mount path resolves correctly
 docker run -d \
   --name keycloak \
   -p 8180:8080 \
@@ -54,7 +55,7 @@ curl -s http://localhost:8180/realms/mozilla/protocol/saml/descriptor \
 
 # Option B: with grep (works everywhere)
 curl -s http://localhost:8180/realms/mozilla/protocol/saml/descriptor \
-  | grep -oP '(?<=<ds:X509Certificate>).*(?=</ds:X509Certificate>)' | head -1
+  | sed -n 's/.*<ds:X509Certificate>\(.*\)<\/ds:X509Certificate>.*/\1/p' | head -1
 
 # Option C: Keycloak admin UI -> Realm Settings -> Keys -> RSA certificate -> copy
 ```

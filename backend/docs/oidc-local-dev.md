@@ -22,6 +22,7 @@ Any OIDC-compliant provider works — the implementation uses standard OIDC disc
 The `docs/mozilla-realm.json` file contains a ready-to-go realm with a client and test users. Mount it on startup so there's zero manual setup:
 
 ```sh
+cd backend  # run from backend/ so the volume mount path resolves correctly
 docker run -d \
   --name keycloak \
   -p 8180:8080 \

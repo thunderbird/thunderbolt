@@ -132,4 +132,4 @@ The backend validates every variable on startup. Common hits:
 
 - `BETTER_AUTH_SECRET: String must contain at least 1 character(s)` — set it.
 - `powersyncJwtSecret must be at least 32 characters when powersyncUrl is set` — regenerate with `openssl rand -hex 32`.
-- `AUTH_MODE: Invalid enum value` — must be `consumer` or `oidc` (case-insensitive).
+- `AUTH_MODE: Invalid enum value` — must be `consumer`, `oidc`, or `saml` (case-insensitive).

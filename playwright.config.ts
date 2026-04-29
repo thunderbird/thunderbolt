@@ -3,12 +3,19 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { defineConfig, devices } from '@playwright/test'
+import { IDP_CERT_SINGLE_LINE } from './e2e/saml-test-certs'
 
 const isCI = !!process.env.CI
 const mockOidcPort = process.env.MOCK_OIDC_PORT ?? '9876'
-// Use a dedicated Vite port to avoid conflicts with dev server.
-// Backend uses the standard 8000 to match the default cloud_url setting.
-const e2eVitePort = 1421
+const mockSamlPort = process.env.MOCK_SAML_PORT ?? '9877'
+
+// OIDC: frontend 1421, backend 8000
+const oidcVitePort = 1421
+const oidcBackendPort = 8000
+
+// SAML: frontend 1422, backend 8001
+const samlVitePort = 1422
+const samlBackendPort = 8001
 
 export default defineConfig({
   testDir: './e2e',
@@ -21,22 +28,33 @@ export default defineConfig({
   globalSetup: './e2e/global-setup.ts',
   globalTeardown: './e2e/global-teardown.ts',
   use: {
-    baseURL: `http://localhost:${e2eVitePort}`,
     trace: 'on-first-retry',
     screenshot: 'only-on-failure',
-    // Fresh storage state per test to avoid stale IndexedDB/OPFS data
     storageState: undefined,
   },
   projects: [
     {
-      name: 'chromium',
-      use: { ...devices['Desktop Chrome'] },
+      name: 'oidc',
+      testMatch: /oidc/,
+      use: {
+        ...devices['Desktop Chrome'],
+        baseURL: `http://localhost:${oidcVitePort}`,
+      },
+    },
+    {
+      name: 'saml',
+      testMatch: /saml/,
+      use: {
+        ...devices['Desktop Chrome'],
+        baseURL: `http://localhost:${samlVitePort}`,
+      },
     },
   ],
   webServer: [
+    // --- OIDC frontend ---
     {
-      command: `bun run dev -- --port ${e2eVitePort}`,
-      url: `http://localhost:${e2eVitePort}`,
+      command: `bun run dev -- --port ${oidcVitePort}`,
+      url: `http://localhost:${oidcVitePort}`,
       reuseExistingServer: !isCI,
       timeout: 30_000,
       env: {
@@ -44,21 +62,56 @@ export default defineConfig({
         VITE_SKIP_ONBOARDING: 'true',
       },
     },
+    // --- OIDC backend ---
     {
       command: 'cd backend && bun run dev',
-      url: 'http://localhost:8000/v1/health',
+      url: `http://localhost:${oidcBackendPort}/v1/health`,
       reuseExistingServer: !isCI,
       timeout: 30_000,
       env: {
+        PORT: String(oidcBackendPort),
         AUTH_MODE: 'oidc',
         OIDC_CLIENT_ID: 'thunderbolt-app',
         OIDC_CLIENT_SECRET: 'thunderbolt-dev-secret',
         OIDC_ISSUER: `http://localhost:${mockOidcPort}`,
-        BETTER_AUTH_URL: 'http://localhost:8000',
+        BETTER_AUTH_URL: `http://localhost:${oidcBackendPort}`,
         BETTER_AUTH_SECRET: 'e2e-test-secret-at-least-32-characters-long',
-        APP_URL: `http://localhost:${e2eVitePort}`,
-        CORS_ORIGINS: `http://localhost:${e2eVitePort}`,
-        TRUSTED_ORIGINS: `http://localhost:${e2eVitePort}`,
+        APP_URL: `http://localhost:${oidcVitePort}`,
+        CORS_ORIGINS: `http://localhost:${oidcVitePort}`,
+        TRUSTED_ORIGINS: `http://localhost:${oidcVitePort},http://localhost:${mockOidcPort}`,
+        RATE_LIMIT_ENABLED: 'false',
+      },
+    },
+    // --- SAML frontend ---
+    {
+      command: `bun run dev -- --port ${samlVitePort}`,
+      url: `http://localhost:${samlVitePort}`,
+      reuseExistingServer: !isCI,
+      timeout: 30_000,
+      env: {
+        VITE_AUTH_MODE: 'saml',
+        VITE_SKIP_ONBOARDING: 'true',
+        VITE_THUNDERBOLT_CLOUD_URL: `http://localhost:${samlBackendPort}/v1`,
+      },
+    },
+    // --- SAML backend ---
+    {
+      command: 'cd backend && bun run dev',
+      url: `http://localhost:${samlBackendPort}/v1/health`,
+      reuseExistingServer: !isCI,
+      timeout: 30_000,
+      env: {
+        PORT: String(samlBackendPort),
+        AUTH_MODE: 'saml',
+        SAML_ENTRY_POINT: `http://localhost:${mockSamlPort}/saml/sso`,
+        SAML_ENTITY_ID: 'e2e-saml-sp',
+        SAML_IDP_ISSUER: `http://localhost:${mockSamlPort}`,
+        SAML_CERT: IDP_CERT_SINGLE_LINE,
+        BETTER_AUTH_URL: `http://localhost:${samlBackendPort}`,
+        BETTER_AUTH_SECRET: 'e2e-test-secret-at-least-32-characters-long',
+        APP_URL: `http://localhost:${samlVitePort}`,
+        CORS_ORIGINS: `http://localhost:${samlVitePort}`,
+        TRUSTED_ORIGINS: `http://localhost:${samlVitePort},http://localhost:${mockSamlPort}`,
         RATE_LIMIT_ENABLED: 'false',
       },
     },

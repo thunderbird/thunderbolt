@@ -3,23 +3,24 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { OAuth2Server } from 'oauth2-mock-server'
+import { createMockSamlIdp } from './mock-saml-idp'
 
 const mockOidcPort = Number(process.env.MOCK_OIDC_PORT ?? 9876)
+const mockSamlPort = Number(process.env.MOCK_SAML_PORT ?? 9877)
 
 const globalSetup = async () => {
-  const server = new OAuth2Server()
-  await server.issuer.keys.generate('RS256')
+  // --- Mock OIDC server ---
+  const oidcServer = new OAuth2Server()
+  await oidcServer.issuer.keys.generate('RS256')
 
-  // Auto-populate token claims for every issued token (id_token + access_token)
-  server.service.on('beforeTokenSigning', (token: Record<string, unknown>) => {
+  oidcServer.service.on('beforeTokenSigning', (token: Record<string, unknown>) => {
     token.sub = 'e2e-test-user'
     token.email = 'e2e@thunderbolt.test'
     token.name = 'E2E Test User'
     token.email_verified = true
   })
 
-  // Customize /userinfo response — Better Auth calls this to get user claims
-  server.service.on(
+  oidcServer.service.on(
     'beforeUserinfo',
     (userInfoResponse: { body: Record<string, unknown>; statusCode: number }) => {
       userInfoResponse.body = {
@@ -31,11 +32,15 @@ const globalSetup = async () => {
     },
   )
 
-  await server.start(mockOidcPort, 'localhost')
+  await oidcServer.start(mockOidcPort, 'localhost')
   console.log(`Mock OIDC server started on port ${mockOidcPort}`)
 
-  // Store reference for teardown
-  ;(globalThis as Record<string, unknown>).__oidcServer = server
+  // --- Mock SAML IdP ---
+  const samlServer = await createMockSamlIdp(mockSamlPort)
+
+  // Store references for teardown
+  ;(globalThis as Record<string, unknown>).__oidcServer = oidcServer
+  ;(globalThis as Record<string, unknown>).__samlServer = samlServer
 }
 
 export default globalSetup

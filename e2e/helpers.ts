@@ -5,18 +5,28 @@
 import { expect, type Page } from '@playwright/test'
 
 /**
- * Navigate to the app root, let the OIDC flow complete naturally through
- * the mock OIDC server, and wait for the authenticated chat UI to render.
+ * Navigate to the app root, let the SSO flow complete naturally through
+ * the mock identity provider, and wait for the authenticated chat UI to render.
  *
  * Onboarding is disabled via VITE_SKIP_ONBOARDING env var in playwright.config.ts.
- *
- * The flow: / -> AuthGate -> /sso-redirect -> POST sign-in -> mock IdP /authorize
+ */
+
+/**
+ * OIDC flow: / -> AuthGate -> /sso-redirect -> POST sign-in/sso -> mock IdP /authorize
  * (auto-approves) -> backend callback -> token exchange -> session -> app
  */
 export const loginViaOidc = async (page: Page) => {
   await page.goto('/')
+  const textarea = page.locator('textarea')
+  await expect(textarea).toBeVisible({ timeout: 30_000 })
+}
 
-  // Wait for the OIDC flow to complete and land on the chat page
+/**
+ * SAML flow: / -> AuthGate -> /sso-redirect -> POST sign-in/sso -> mock IdP /saml/sso
+ * (auto-generates SAMLResponse) -> POST to ACS -> session -> app
+ */
+export const loginViaSaml = async (page: Page) => {
+  await page.goto('/')
   const textarea = page.locator('textarea')
   await expect(textarea).toBeVisible({ timeout: 30_000 })
 }

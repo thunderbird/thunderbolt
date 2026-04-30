@@ -1,3 +1,7 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+
 /**
  * Returns true when the given URL is hosted on posthog.com or a subdomain
  * (e.g. us.i.posthog.com). Used by mock fetch handlers in tests to filter

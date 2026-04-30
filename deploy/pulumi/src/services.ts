@@ -50,7 +50,7 @@ const taskRole = (name: string) =>
 
 export const createServices = (args: ServiceArgs) => {
   const { name, cluster, logGroup, privateSubnetIds, servicesSgId, efsId, pgAccessPointId, mongoAccessPointId } = args
-  const region = aws.getRegionOutput().name
+  const region = aws.getRegionOutput().region
   const execRoleArn = execRole(name).arn
   const taskRoleArn = taskRole(name).arn
 

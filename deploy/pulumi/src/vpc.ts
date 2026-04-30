@@ -31,7 +31,7 @@ export const createVpc = (name: string): {
       new aws.ec2.Subnet(`${name}-public-${az}`, {
         vpcId: vpc.id,
         cidrBlock: `10.0.${i}.0/24`,
-        availabilityZone: pulumi.interpolate`${aws.getRegionOutput().name}${az}`,
+        availabilityZone: pulumi.interpolate`${aws.getRegionOutput().region}${az}`,
         mapPublicIpOnLaunch: true,
         tags: { Name: `${name}-public-${az}` },
       }),
@@ -42,7 +42,7 @@ export const createVpc = (name: string): {
       new aws.ec2.Subnet(`${name}-private-${az}`, {
         vpcId: vpc.id,
         cidrBlock: `10.0.${i + 10}.0/24`,
-        availabilityZone: pulumi.interpolate`${aws.getRegionOutput().name}${az}`,
+        availabilityZone: pulumi.interpolate`${aws.getRegionOutput().region}${az}`,
         tags: { Name: `${name}-private-${az}` },
       }),
   )

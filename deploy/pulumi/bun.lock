@@ -7,7 +7,7 @@
         "@pulumi/aws": "^7.27.0",
         "@pulumi/awsx": "^3.5.0",
         "@pulumi/docker-build": "^0.0.15",
-        "@pulumi/eks": "^3.0.0",
+        "@pulumi/eks": "^4.0.0",
         "@pulumi/kubernetes": "^4.0.0",
         "@pulumi/pulumi": "^3.0.0",
       },
@@ -191,7 +191,7 @@
 
     "@pulumi/docker-build": ["@pulumi/docker-build@0.0.15", "", { "dependencies": { "@pulumi/pulumi": "^3.142.0" } }, "sha512-abtz4zCbePBkpj73M7mJWqXktM9muEAUOxRu8PKErbsqv5M3NfALCMULsDxA1a9vEImHa6ZC9rAe1liXbsinFg=="],
 
-    "@pulumi/eks": ["@pulumi/eks@3.9.1", "", { "dependencies": { "@pulumi/aws": "^6.79.1", "@pulumi/kubernetes": "^4.19.0", "@pulumi/pulumi": "^3.142.0", "https-proxy-agent": "^5.0.1", "js-yaml": "^4.1.0", "netmask": "^2.0.2", "semver": "^7.3.7", "which": "^1.3.1" } }, "sha512-SdadhiDhg8ZQRN6C+NGXthHSN96HSTHcqWmw97OR4fWLdzU+ICxW6zs5TbvIXZuT25GsTbaEcjFHST8Uh9TZnA=="],
+    "@pulumi/eks": ["@pulumi/eks@4.2.0", "", { "dependencies": { "@pulumi/aws": "^7.14.0", "@pulumi/kubernetes": "^4.19.0", "@pulumi/pulumi": "^3.142.0", "https-proxy-agent": "^5.0.1", "js-yaml": "^4.1.0", "netmask": "^2.0.2", "semver": "^7.3.7", "which": "^1.3.1" } }, "sha512-myGhOksnF/BUun7oWvuphp+2l6CNV9meE7Gu/8+JulcOhA2jYttGdSI+15BvUnDNgUBv3qNlu+NQ473C3q4Wvg=="],
 
     "@pulumi/kubernetes": ["@pulumi/kubernetes@4.30.0", "", { "dependencies": { "@pulumi/pulumi": "^3.142.0", "glob": "^12.0.0", "shell-quote": "^1.6.1" } }, "sha512-ZCS4HwBvcxfdPDw44L1/SCqoIttCVugx/FZzqRFRq+leKRIfigAYt4sILXlqulNtX6XjlWVzZO8zva3Ygk7hGA=="],
 
@@ -648,8 +648,6 @@
     "@pulumi/awsx/@pulumi/docker-build": ["@pulumi/docker-build@0.0.14", "", { "dependencies": { "@pulumi/pulumi": "^3.142.0" } }, "sha512-dLCta3BOrYRxHyp22QnVh06qlSiSORtmIypcQ6yb4+GZ2+ThbML06pINyERc5ClgJXGQFSVTtuWhMSiurTWU2w=="],
 
     "@pulumi/docker/semver": ["semver@5.7.2", "", { "bin": { "semver": "bin/semver" } }, "sha512-cBznnQ9KjJqU67B52RMC65CMarK2600WFnbkcaiwWq3xy/5haFJlshgnpjovMVJ+Hff49d8GEn0b87C5pDQ10g=="],
-
-    "@pulumi/eks/@pulumi/aws": ["@pulumi/aws@6.83.3", "", { "dependencies": { "@pulumi/pulumi": "^3.142.0", "mime": "^2.0.0" } }, "sha512-tq6xvgUoBDcg4hVR/DC7YvpZVgvq45NiYyfJrwRYrUeZloiyA9j3/2+fTWiODxE61KbwQkZzk5S/5bZ/3sC2hg=="],
 
     "@pulumi/pulumi/js-yaml": ["js-yaml@3.14.2", "", { "dependencies": { "argparse": "^1.0.7", "esprima": "^4.0.0" }, "bin": { "js-yaml": "bin/js-yaml.js" } }, "sha512-PMSmkqxr106Xa156c2M265Z+FTrPl+oxd/rgOQy2tijQeK5TxQ43psO1ZCwhVOSdnn+RzkzlRz/eY4BgJBYVpg=="],
 

@@ -15,18 +15,6 @@ const GitHubIcon = () => (
 
 const REPO_URL = 'https://github.com/thunderbird/thunderbolt'
 
-const GetStartedButton = () => (
-  <a
-    href={REPO_URL}
-    target="_blank"
-    rel="noopener noreferrer"
-    className="inline-flex h-[46px] items-center justify-center gap-2 bg-[#344054] px-5 font-mono text-sm font-bold uppercase tracking-wider text-white transition-colors hover:bg-[#344054]/90"
-  >
-    <GitHubIcon />
-    Get Started
-  </a>
-)
-
 const StarIcon = () => (
   <svg
     viewBox="0 0 24 24"
@@ -44,28 +32,30 @@ const StarIcon = () => (
   </svg>
 )
 
-const StarOnGitHubButton = () => (
-  <span className="inline-flex h-[46px] items-stretch border border-[#d0d5dd] bg-white text-sm font-medium text-[#344054]">
+// Primary CTA: dark-blue split button with "Star on GitHub" + live star count.
+// The count half stays hidden until the script in index.astro populates the
+// `js-github-star-count-value` spans from the GitHub API.
+const StarOnGitHubButton = ({ fullWidth = false }: { fullWidth?: boolean }) => (
+  <span
+    className={`${fullWidth ? 'flex w-full' : 'inline-flex'} h-[46px] items-stretch bg-[#344054] font-mono text-sm font-bold uppercase tracking-wider text-white`}
+  >
     <a
       href={REPO_URL}
       target="_blank"
       rel="noopener noreferrer"
-      className="inline-flex items-center gap-2 px-4 transition-colors hover:bg-[#f2f4f7]"
+      className={`flex ${fullWidth ? 'flex-1' : ''} items-center justify-center gap-2 px-5 transition-colors hover:bg-[#344054]/90`}
     >
       <GitHubIcon />
       Star on GitHub
     </a>
-    {/* Count half — hidden until the inline <script> in index.astro fetches the
-        count and populates it. If the fetch fails, it stays hidden. */}
     <a
-      id="github-star-count-link"
       href={REPO_URL}
       target="_blank"
       rel="noopener noreferrer"
-      className="hidden items-center gap-1.5 border-l border-[#d0d5dd] px-4 transition-colors hover:bg-[#f2f4f7]"
+      className="js-github-star-count hidden items-center gap-1.5 border-l border-white/20 px-4 transition-colors hover:bg-[#344054]/90"
     >
       <StarIcon />
-      <span id="github-star-count-value" />
+      <span className="js-github-star-count-value" />
     </a>
   </span>
 )
@@ -267,9 +257,6 @@ const DesktopMockup = () => (
 const Hero = () => (
   <section className="relative pb-16 pt-[80px]">
     <div className="mx-auto flex max-w-[730px] flex-col items-center gap-6 px-6 text-center">
-      <div className="mb-4 md:mb-8">
-        <StarOnGitHubButton />
-      </div>
       <h1 className="text-[40px] font-medium leading-[1.1] tracking-[-0.96px] text-[#101828] md:text-[48px]">
         AI You Control
       </h1>
@@ -277,7 +264,7 @@ const Hero = () => (
         The Open-Source, Cross-Platform, Extensible AI Client
       </p>
       <div className="flex flex-wrap items-center justify-center gap-3">
-        <GetStartedButton />
+        <StarOnGitHubButton />
         <EnterpriseInquiriesButton />
       </div>
     </div>
@@ -428,7 +415,7 @@ const CompromiseSection = () => (
             Thunderbolt gives enterprises complete control over AI infrastructure without sacrificing capability.
           </p>
         </div>
-        <GetStartedButton />
+        <StarOnGitHubButton />
       </div>
       <div className="mt-6 grid grid-cols-2 gap-2 md:grid-cols-3">
         {features.map((f) => (
@@ -621,7 +608,7 @@ const CTASection = () => (
         Start with a pilot deployment or talk to our enterprise team about Forward-Deployed Engineering and sovereign infrastructure.
       </p>
       <div className="mt-6 flex flex-wrap items-center justify-center gap-3">
-        <GetStartedButton />
+        <StarOnGitHubButton />
         <EnterpriseInquiriesButton />
       </div>
     </div>
@@ -632,15 +619,7 @@ const CTASection = () => (
 
 const MobileFooterCTA = () => (
   <div className="fixed inset-x-0 bottom-0 z-50 bg-white/20 backdrop-blur-[32px] px-6 py-4 md:hidden">
-    <a
-      href={REPO_URL}
-      target="_blank"
-      rel="noopener noreferrer"
-      className="flex h-[46px] w-full items-center justify-center gap-2 bg-[#344054] font-mono text-sm font-bold uppercase tracking-wider text-white transition-colors hover:bg-[#344054]/90"
-    >
-      <GitHubIcon />
-      Get Started
-    </a>
+    <StarOnGitHubButton fullWidth />
   </div>
 )
 
@@ -662,7 +641,7 @@ export const EnterprisePage = () => {
           <span className="text-white/80 transition-transform group-hover:translate-x-0.5">&rarr;</span>
         </a>
       }
-      action={<GetStartedButton />}
+      action={<StarOnGitHubButton />}
     />
     <main className="relative pt-[144px]">
       <Hero />

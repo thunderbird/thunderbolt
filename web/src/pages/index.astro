@@ -11,9 +11,10 @@ import { EnterprisePage } from '../components/marketing/sections/enterprise-page
 </MarketingLayout>
 
 <script>
-	// Populates the GitHub star count in the hero. Runs in the browser after DOM
-	// parse. If the fetch fails (offline, rate-limited, GitHub down), the count
-	// half stays hidden and the button just reads "Star on GitHub".
+	// Populates the GitHub star count in every Star on GitHub button on the page.
+	// Runs in the browser after DOM parse. If the fetch fails (offline, rate-
+	// limited, GitHub down), the count halves stay hidden and the buttons just
+	// read "Star on GitHub".
 	const formatStars = (n: number): string =>
 		n >= 1000 ? `${(n / 1000).toFixed(1).replace(/\.0$/, '')}k` : String(n);
 
@@ -22,17 +23,20 @@ import { EnterprisePage } from '../components/marketing/sections/enterprise-page
 		if (res.ok) {
 			const data = await res.json();
 			if (typeof data.stargazers_count === 'number') {
-				const link = document.getElementById('github-star-count-link');
-				const value = document.getElementById('github-star-count-value');
-				if (link && value) {
-					value.textContent = formatStars(data.stargazers_count);
-					link.setAttribute('aria-label', `${data.stargazers_count} stars on GitHub`);
-					link.classList.remove('hidden');
-					link.classList.add('inline-flex');
-				}
+				const formatted = formatStars(data.stargazers_count);
+				const ariaLabel = `${data.stargazers_count} stars on GitHub`;
+				document.querySelectorAll<HTMLElement>('.js-github-star-count-value').forEach((el) => {
+					el.textContent = formatted;
+				});
+				// Stays hidden on mobile (so the button matches the "Get in Touch"
+				// width); only the md+ breakpoint reveals the count half.
+				document.querySelectorAll<HTMLElement>('.js-github-star-count').forEach((el) => {
+					el.setAttribute('aria-label', ariaLabel);
+					el.classList.add('md:inline-flex');
+				});
 			}
 		}
 	} catch {
-		// Leave the count half hidden.
+		// Leave the count halves hidden.
 	}
 </script>

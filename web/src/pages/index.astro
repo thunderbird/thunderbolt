@@ -11,10 +11,9 @@ import { EnterprisePage } from '../components/marketing/sections/enterprise-page
 </MarketingLayout>
 
 <script>
-	// Populates the GitHub star count in every Star on GitHub button on the page.
-	// Runs in the browser after DOM parse. If the fetch fails (offline, rate-
-	// limited, GitHub down), the count halves stay hidden and the buttons just
-	// read "Star on GitHub".
+	// Populates the star-count badge in the header. Runs in the browser after
+	// DOM parse. If the fetch fails (offline, rate-limited, GitHub down), the
+	// badge stays hidden.
 	const formatStars = (n: number): string =>
 		n >= 1000 ? `${(n / 1000).toFixed(1).replace(/\.0$/, '')}k` : String(n);
 
@@ -28,15 +27,14 @@ import { EnterprisePage } from '../components/marketing/sections/enterprise-page
 				document.querySelectorAll<HTMLElement>('.js-github-star-count-value').forEach((el) => {
 					el.textContent = formatted;
 				});
-				// Stays hidden on mobile (so the button matches the "Get in Touch"
-				// width); only the md+ breakpoint reveals the count half.
 				document.querySelectorAll<HTMLElement>('.js-github-star-count').forEach((el) => {
 					el.setAttribute('aria-label', ariaLabel);
-					el.classList.add('md:inline-flex');
+					el.classList.remove('hidden');
+					el.classList.add('inline-flex');
 				});
 			}
 		}
 	} catch {
-		// Leave the count halves hidden.
+		// Leave the badge hidden.
 	}
 </script>

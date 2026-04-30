@@ -32,32 +32,33 @@ const StarIcon = () => (
   </svg>
 )
 
-// Primary CTA: dark-blue split button with "Star on GitHub" + live star count.
-// The count half stays hidden until the script in index.astro populates the
-// `js-github-star-count-value` spans from the GitHub API.
+// Primary CTA: dark-blue button — GitHub icon + "Star on GitHub" label.
 const StarOnGitHubButton = ({ fullWidth = false }: { fullWidth?: boolean }) => (
-  <span
-    className={`${fullWidth ? 'flex w-full' : 'inline-flex'} h-[46px] items-stretch bg-[#344054] font-mono text-sm font-bold uppercase tracking-wider text-white`}
+  <a
+    href={REPO_URL}
+    target="_blank"
+    rel="noopener noreferrer"
+    className={`${fullWidth ? 'flex w-full' : 'inline-flex'} h-[46px] items-center justify-center gap-2 bg-[#344054] px-5 font-mono text-sm font-bold uppercase tracking-wider text-white transition-colors hover:bg-[#344054]/90`}
   >
-    <a
-      href={REPO_URL}
-      target="_blank"
-      rel="noopener noreferrer"
-      className={`flex ${fullWidth ? 'flex-1' : ''} items-center justify-center gap-2 px-5 transition-colors hover:bg-[#344054]/90`}
-    >
-      <GitHubIcon />
-      Star on GitHub
-    </a>
-    <a
-      href={REPO_URL}
-      target="_blank"
-      rel="noopener noreferrer"
-      className="js-github-star-count hidden items-center gap-1.5 border-l border-white/20 px-4 transition-colors hover:bg-[#344054]/90"
-    >
-      <StarIcon />
-      <span className="js-github-star-count-value" />
-    </a>
-  </span>
+    <GitHubIcon />
+    Star on GitHub
+  </a>
+)
+
+// Compact header badge: white, GitHub icon + live star count, no label.
+// Stays hidden until the script in index.astro populates the count from the
+// GitHub API. If the fetch fails, the badge stays hidden.
+const StarCountBadge = () => (
+  <a
+    href={REPO_URL}
+    target="_blank"
+    rel="noopener noreferrer"
+    className="js-github-star-count hidden h-[46px] items-center gap-2 border border-[#d0d5dd] bg-white px-4 text-sm font-medium text-[#344054] transition-colors hover:bg-[#f2f4f7]"
+  >
+    <GitHubIcon />
+    <StarIcon />
+    <span className="js-github-star-count-value" />
+  </a>
 )
 
 const EnterpriseInquiriesButton = () => (
@@ -641,7 +642,7 @@ export const EnterprisePage = () => {
           <span className="text-white/80 transition-transform group-hover:translate-x-0.5">&rarr;</span>
         </a>
       }
-      action={<StarOnGitHubButton />}
+      action={<StarCountBadge />}
     />
     <main className="relative pt-[144px]">
       <Hero />

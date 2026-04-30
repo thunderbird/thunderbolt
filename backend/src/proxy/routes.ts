@@ -1,3 +1,7 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+
 import type { Auth } from '@/auth/elysia-plugin'
 import { createAuthMacro } from '@/auth/elysia-plugin'
 import { safeErrorHandler } from '@/middleware/error-handling'
@@ -5,6 +9,7 @@ import { defaultRequestDenylist, defaultResponseDenylist, extractResponseHeaders
 import { validateAndPin } from '@/utils/url-validation'
 import { Elysia, type AnyElysia } from 'elysia'
 import { capStream } from './streaming'
+import { noopProxyObserver, type ProxyErrorType, type ProxyObserver } from './observability'
 
 const maxBodyBytes = 10 * 1024 * 1024
 const maxHops = 5
@@ -34,10 +39,29 @@ const withDnsTimeout = <T>(p: Promise<T>): Promise<T> => {
 /** Printable ASCII guard — rejects CRLF and control characters. */
 const isPrintableAscii = (value: string) => /^[\x20-\x7E]+$/.test(value)
 
+/** Generate or accept the request id — header takes precedence so callers can
+ *  correlate proxy logs with their own request traces. Falls back to a UUID. */
+const resolveRequestId = (headers: Headers): string => {
+  const provided = headers.get('x-request-id')
+  if (provided && isPrintableAscii(provided) && provided.length <= 200) {
+    return provided
+  }
+  return crypto.randomUUID()
+}
+
+/** Map SSRF / DNS error messages from validateAndPin → withDnsTimeout to a
+ *  classified label. Caller-provided `msg` is only used for the switch — it
+ *  never reaches PostHog or spans. */
+const classifyPinError = (msg: string): ProxyErrorType => {
+  if (msg === 'DNS_TIMEOUT') return 'dns_timeout'
+  return 'ssrf_block'
+}
+
 export const createUniversalProxyRoutes = (
   auth: Auth,
   fetchFn: typeof fetch = globalThis.fetch,
   rateLimit?: AnyElysia,
+  observer: ProxyObserver = noopProxyObserver,
 ) =>
   new Elysia({ prefix: '/proxy' })
     .onError(safeErrorHandler)
@@ -48,10 +72,34 @@ export const createUniversalProxyRoutes = (
       return g.all(
         '/*',
         async (ctx) => {
+          const start = performance.now()
+          const requestId = resolveRequestId(ctx.request.headers)
+          const userId = ctx.user?.id ?? 'unknown'
           const method = ctx.request.method.toUpperCase()
+
+          /** Snapshot used by every exit point — closure-captured. */
+          let bytesIn = 0
+          let targetHost = 'unknown'
+
+          /** Emit one observation. Synchronous; safe to call from any path. */
+          const emit = (status: number, errorType?: ProxyErrorType, errorMessage?: string, bytesOut = 0) => {
+            observer({
+              method,
+              targetHost,
+              status,
+              durationMs: performance.now() - start,
+              userId,
+              requestId,
+              bytesIn,
+              bytesOut,
+              ...(errorType ? { errorType } : {}),
+              ...(errorMessage ? { errorMessage } : {}),
+            })
+          }
 
           if (!allowedMethods.has(method)) {
             ctx.set.status = 405
+            emit(405, 'method_not_allowed')
             return new Response('Method not allowed', { headers: { 'Content-Type': 'text/plain' } })
           }
 
@@ -65,6 +113,7 @@ export const createUniversalProxyRoutes = (
             targetUrl = decodeURIComponent(encodedTarget)
           } catch {
             ctx.set.status = 400
+            emit(400, 'invalid_url', 'Invalid URL encoding')
             return new Response('Invalid URL encoding', { headers: { 'Content-Type': 'text/plain' } })
           }
 
@@ -73,11 +122,15 @@ export const createUniversalProxyRoutes = (
             parsedTarget = new URL(targetUrl)
           } catch {
             ctx.set.status = 400
+            emit(400, 'invalid_url', 'Invalid URL')
             return new Response('Invalid URL', { headers: { 'Content-Type': 'text/plain' } })
           }
 
+          targetHost = parsedTarget.hostname
+
           if (parsedTarget.protocol !== 'https:') {
             ctx.set.status = 400
+            emit(400, 'unsupported_protocol', 'Only HTTPS targets are allowed')
             return new Response('Only HTTPS targets are allowed', { headers: { 'Content-Type': 'text/plain' } })
           }
 
@@ -85,7 +138,10 @@ export const createUniversalProxyRoutes = (
           const upstreamAuthRaw = ctx.request.headers.get('x-upstream-authorization')
           if (upstreamAuthRaw && !isPrintableAscii(upstreamAuthRaw)) {
             ctx.set.status = 400
-            return new Response('Invalid X-Upstream-Authorization header', { headers: { 'Content-Type': 'text/plain' } })
+            emit(400, 'invalid_header', 'Invalid X-Upstream-Authorization header')
+            return new Response('Invalid X-Upstream-Authorization header', {
+              headers: { 'Content-Type': 'text/plain' },
+            })
           }
 
           // Buffer request body once (so 307/308 can replay it)
@@ -94,14 +150,18 @@ export const createUniversalProxyRoutes = (
             const contentLength = ctx.request.headers.get('content-length')
             if (contentLength && parseInt(contentLength, 10) > maxBodyBytes) {
               ctx.set.status = 413
+              emit(413, 'body_too_large')
               return new Response('Request body too large', { headers: { 'Content-Type': 'text/plain' } })
             }
             if (ctx.request.body) {
               requestBody = await new Response(ctx.request.body as BodyInit).arrayBuffer()
               if (requestBody.byteLength > maxBodyBytes) {
                 ctx.set.status = 413
+                bytesIn = requestBody.byteLength
+                emit(413, 'body_too_large')
                 return new Response('Request body too large', { headers: { 'Content-Type': 'text/plain' } })
               }
+              bytesIn = requestBody.byteLength
             }
           }
 
@@ -126,7 +186,6 @@ export const createUniversalProxyRoutes = (
           let currentBody: ArrayBuffer | null = requestBody
 
           for (let hop = 0; hop <= maxHops; hop++) {
-
             // DNS-pin each hop
             let pinnedUrl: string
             let pinnedHeaders: Headers
@@ -136,9 +195,11 @@ export const createUniversalProxyRoutes = (
               const msg = err instanceof Error ? err.message : String(err)
               if (hop === 0) {
                 ctx.set.status = 400
+                emit(400, classifyPinError(msg))
                 return new Response(`Blocked: ${msg}`, { headers: { 'Content-Type': 'text/plain' } })
               }
               ctx.set.status = 502
+              emit(502, classifyPinError(msg))
               return new Response('Bad gateway (SSRF or DNS error on redirect)', {
                 headers: { 'Content-Type': 'text/plain' },
               })
@@ -152,19 +213,28 @@ export const createUniversalProxyRoutes = (
 
             const upstreamCtl = new AbortController()
 
-            const response = await fetchFn(pinnedUrl, {
-              method: currentMethod,
-              headers: pinnedHeaders,
-              body: currentBody,
-              redirect: 'manual',
-              signal: upstreamCtl.signal,
-              // @ts-expect-error -- Bun fetch supports duplex:'half' for streaming bodies
-              duplex: 'half',
-            })
+            let response: Response
+            try {
+              response = await fetchFn(pinnedUrl, {
+                method: currentMethod,
+                headers: pinnedHeaders,
+                body: currentBody,
+                redirect: 'manual',
+                signal: upstreamCtl.signal,
+                // @ts-expect-error -- Bun fetch supports duplex:'half' for streaming bodies
+                duplex: 'half',
+              })
+            } catch {
+              ctx.set.status = 502
+              emit(502, 'upstream_error', 'Upstream fetch failed')
+              return new Response('Bad gateway (upstream fetch failed)', {
+                headers: { 'Content-Type': 'text/plain' },
+              })
+            }
 
             const isRedirect = [301, 302, 303, 307, 308].includes(response.status)
             if (!isRedirect) {
-              return buildProxyResponse(response, upstreamCtl)
+              return buildProxyResponse(response, upstreamCtl, emit)
             }
 
             // Decide whether to follow
@@ -172,12 +242,12 @@ export const createUniversalProxyRoutes = (
             const shouldFollow = followOverride !== null ? followOverride : defaultFollow
 
             if (!shouldFollow) {
-              return buildProxyResponse(response, upstreamCtl)
+              return buildProxyResponse(response, upstreamCtl, emit)
             }
 
             // Resolve next hop URL
             const location = response.headers.get('location')
-            if (!location) return buildProxyResponse(response, upstreamCtl)
+            if (!location) return buildProxyResponse(response, upstreamCtl, emit)
 
             const nextUrl = new URL(location, currentUrl).toString()
 
@@ -185,6 +255,7 @@ export const createUniversalProxyRoutes = (
               response.body?.cancel().catch(() => {})
               upstreamCtl.abort()
               ctx.set.status = 502
+              emit(502, 'redirect_protocol', 'Redirect target is not HTTPS')
               return new Response('Redirect target is not HTTPS', { headers: { 'Content-Type': 'text/plain' } })
             }
 
@@ -208,15 +279,21 @@ export const createUniversalProxyRoutes = (
             currentBody = nextBody
           }
 
-          // Unreachable — satisfies TypeScript
+          // Unreachable in practice — hop loop returns before this, but the
+          // type checker needs a final return.
           ctx.set.status = 502
+          emit(502, 'too_many_redirects')
           return new Response('Too many redirects', { headers: { 'Content-Type': 'text/plain' } })
         },
         { parse: 'none' },
       )
     })
 
-const buildProxyResponse = (response: Response, upstreamCtl: AbortController): Response => {
+const buildProxyResponse = (
+  response: Response,
+  upstreamCtl: AbortController,
+  emit: (status: number, errorType?: ProxyErrorType, errorMessage?: string, bytesOut?: number) => void,
+): Response => {
   const headers = extractResponseHeaders(response.headers, customRespDenylist)
   headers.delete('set-cookie')
   headers.delete('set-cookie2')
@@ -228,14 +305,27 @@ const buildProxyResponse = (response: Response, upstreamCtl: AbortController): R
   headers.set('x-content-type-options', 'nosniff')
   headers.set('cross-origin-resource-policy', 'cross-origin')
 
-  const body =
-    response.body
-      ? capStream(response.body, {
-          maxBytes: streamCapBytes,
-          idleTimeoutMs: streamIdleMs,
-          onAbort: () => upstreamCtl.abort(),
-        })
-      : null
+  if (!response.body) {
+    emit(response.status)
+    return new Response(null, { status: response.status, headers })
+  }
+
+  const body = capStream(response.body, {
+    maxBytes: streamCapBytes,
+    idleTimeoutMs: streamIdleMs,
+    onAbort: () => upstreamCtl.abort(),
+    onComplete: (bytesOut, reason) => {
+      const errorType: ProxyErrorType | undefined =
+        reason === 'cap'
+          ? 'cap_exceeded'
+          : reason === 'idle'
+            ? 'idle_timeout'
+            : reason === 'aborted'
+              ? 'client_disconnect'
+              : undefined
+      emit(response.status, errorType, undefined, bytesOut)
+    },
+  })
 
   return new Response(body, {
     status: response.status,

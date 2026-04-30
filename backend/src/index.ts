@@ -7,7 +7,7 @@ import { createBetterAuthPlugin } from '@/auth/elysia-plugin'
 import { createGoogleAuthRoutes } from '@/auth/google'
 import { createMicrosoftAuthRoutes } from '@/auth/microsoft'
 import { createOidcConfigRoutes } from '@/auth/oidc'
-import { createLoggerMiddleware, createStandaloneLogger } from '@/config/logger'
+import { createLoggerMiddleware, createPinoLogger, createStandaloneLogger } from '@/config/logger'
 import { getCorsOriginsList, getSettings } from '@/config/settings'
 import { runMigrations } from '@/db/client'
 import { createInferenceRoutes } from '@/inference/routes'
@@ -15,7 +15,9 @@ import { createErrorHandlingMiddleware } from '@/middleware/error-handling'
 import { createHttpLoggingMiddleware } from '@/middleware/http-logging'
 import { createAuthIpRateLimit, createInferenceRateLimit, createProRateLimit } from '@/middleware/rate-limit'
 import { createMcpProxyRoutes } from '@/mcp-proxy/routes'
+import { createProxyObserver } from '@/proxy/observability'
 import { createUniversalProxyRoutes } from '@/proxy/routes'
+import { getPostHogClient, isPostHogConfigured } from '@/posthog/client'
 import { createPostHogRoutes } from '@/posthog/routes'
 import { createProToolsRoutes } from '@/pro/routes'
 import { createWaitlistRoutes } from '@/waitlist/routes'
@@ -75,6 +77,15 @@ export const createApp = async (deps?: AppDeps) => {
   )
   const auth = deps?.auth ?? createdAuth
 
+  // Build the proxy observer once — wired to the production logger and
+  // (when configured) PostHog. Tests inject their own observer via createApp deps.
+  const proxyObserver =
+    deps?.proxyObserver ??
+    createProxyObserver({
+      logger: createPinoLogger(settings),
+      posthog: isPostHogConfigured() ? getPostHogClient(fetchFn) : null,
+    })
+
   return (
     configuredApp
       .use(
@@ -97,7 +108,7 @@ export const createApp = async (deps?: AppDeps) => {
       .use(createMicrosoftAuthRoutes(auth, fetchFn))
       .use(createOidcConfigRoutes())
       .use(createProToolsRoutes(auth, fetchFn, createProRateLimit(database, rateLimitSettings)))
-      .use(createUniversalProxyRoutes(auth, fetchFn, createProRateLimit(database, rateLimitSettings)))
+      .use(createUniversalProxyRoutes(auth, fetchFn, createProRateLimit(database, rateLimitSettings), proxyObserver))
       .use(createInferenceRoutes(auth, createInferenceRateLimit(database, rateLimitSettings)))
       .use(createConfigRoutes(settings))
       .use(createPostHogRoutes(fetchFn))

@@ -10,7 +10,6 @@ import { clearLocalData } from '@/lib/cleanup'
 import { trackEvent } from '@/lib/posthog'
 import type { CountryUnitsData } from '@/types'
 import { useHttpClient } from '@/contexts'
-import { getDefaultDataCollectionValue } from '@/defaults/settings'
 import { useEffect, useMemo, useReducer, useRef, useState } from 'react'
 
 import { LocationSearchCombobox } from '@/components/location-search-combobox'
@@ -119,7 +118,7 @@ export default function PreferencesSettingsPage() {
     location_name: '',
     location_lat: '',
     location_lng: '',
-    data_collection: getDefaultDataCollectionValue(),
+    data_collection: false,
     experimental_feature_tasks: false,
     haptics_enabled: true,
     distance_unit: 'imperial',

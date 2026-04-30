@@ -11,9 +11,9 @@ import { EnterprisePage } from '../components/marketing/sections/enterprise-page
 </MarketingLayout>
 
 <script>
-	// Populates the GitHub star count in the hero. Runs in the browser after DOM
-	// parse. If the fetch fails (offline, rate-limited, GitHub down), the count
-	// half stays hidden and the button just reads "Star on GitHub".
+	// Populates the star-count badge in the header. Runs in the browser after
+	// DOM parse. If the fetch fails (offline, rate-limited, GitHub down), the
+	// badge stays hidden.
 	const formatStars = (n: number): string =>
 		n >= 1000 ? `${(n / 1000).toFixed(1).replace(/\.0$/, '')}k` : String(n);
 
@@ -22,17 +22,19 @@ import { EnterprisePage } from '../components/marketing/sections/enterprise-page
 		if (res.ok) {
 			const data = await res.json();
 			if (typeof data.stargazers_count === 'number') {
-				const link = document.getElementById('github-star-count-link');
-				const value = document.getElementById('github-star-count-value');
-				if (link && value) {
-					value.textContent = formatStars(data.stargazers_count);
-					link.setAttribute('aria-label', `${data.stargazers_count} stars on GitHub`);
-					link.classList.remove('hidden');
-					link.classList.add('inline-flex');
-				}
+				const formatted = formatStars(data.stargazers_count);
+				const ariaLabel = `${data.stargazers_count} stars on GitHub`;
+				document.querySelectorAll<HTMLElement>('.js-github-star-count-value').forEach((el) => {
+					el.textContent = formatted;
+				});
+				document.querySelectorAll<HTMLElement>('.js-github-star-count').forEach((el) => {
+					el.setAttribute('aria-label', ariaLabel);
+					el.classList.remove('hidden');
+					el.classList.add('inline-flex');
+				});
 			}
 		}
 	} catch {
-		// Leave the count half hidden.
+		// Leave the badge hidden.
 	}
 </script>

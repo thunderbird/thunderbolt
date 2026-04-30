@@ -129,6 +129,43 @@ describe('createUniversalProxyRoutes', () => {
     expect(init.method).toBe('PATCH')
   })
 
+  it('HEAD — proxies method and returns no body', async () => {
+    const target = 'https://example.com/resource'
+    mockFetch.mockImplementationOnce(() =>
+      Promise.resolve(new Response(null, { status: 200, headers: { 'content-type': 'text/plain' } })),
+    )
+    const res = await app.handle(
+      new Request(`http://localhost/proxy/${encodeURIComponent(target)}`, { method: 'HEAD' }),
+    )
+    expect(res.status).toBe(200)
+    const [, init] = mockFetch.mock.calls[0] as [string, RequestInit]
+    expect(init.method).toBe('HEAD')
+    expect(await res.text()).toBe('')
+  })
+
+  it('OPTIONS — proxies method (CORS preflight forwarded)', async () => {
+    const target = 'https://example.com/api'
+    mockFetch.mockImplementationOnce(() =>
+      Promise.resolve(
+        new Response(null, {
+          status: 204,
+          headers: {
+            allow: 'GET, POST, OPTIONS',
+            'access-control-allow-methods': 'GET, POST, OPTIONS',
+          },
+        }),
+      ),
+    )
+    const res = await app.handle(
+      new Request(`http://localhost/proxy/${encodeURIComponent(target)}`, { method: 'OPTIONS' }),
+    )
+    expect(res.status).toBe(204)
+    const [, init] = mockFetch.mock.calls[0] as [string, RequestInit]
+    expect(init.method).toBe('OPTIONS')
+    // body must NOT be buffered for OPTIONS (it's in bodylessMethods)
+    expect(init.body).toBeNull()
+  })
+
   // ---------------------------------------------------------------------------
   // Validation
   // ---------------------------------------------------------------------------

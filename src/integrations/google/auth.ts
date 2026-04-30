@@ -12,20 +12,33 @@ let cachedBackendConfig: Promise<AuthProviderBackendConfig> | null = null
 
 const fetchBackendConfig = (httpClient: HttpClient): Promise<AuthProviderBackendConfig> => {
   if (!cachedBackendConfig) {
-    cachedBackendConfig = httpClient.get('auth/google/config').json<AuthProviderBackendConfig>()
-    cachedBackendConfig.catch(() => {
-      cachedBackendConfig = null
-    })
+    const pending = httpClient.get('auth/google/config').json<AuthProviderBackendConfig>()
+    cachedBackendConfig = pending
+    pending.then(
+      (config) => {
+        // Don't cache "not configured" — let the next call retry so the UI recovers
+        // after the backend is fixed without needing an app reload.
+        if (!config.configured) {
+          cachedBackendConfig = null
+        }
+      },
+      () => {
+        cachedBackendConfig = null
+      },
+    )
   }
   return cachedBackendConfig
 }
 
 export const getOAuthConfig = async (httpClient: HttpClient): Promise<OAuthConfig> => {
-  const { client_id: clientId } = await fetchBackendConfig(httpClient)
+  const { client_id: clientId, configured } = await fetchBackendConfig(httpClient)
   const redirectUri = getOAuthRedirectUri()
 
   return {
     clientId,
+    // Pre-patch backends only return `client_id`. Treat a missing `configured`
+    // field as truthy when a client_id is present to preserve existing behavior.
+    configured: configured ?? Boolean(clientId),
     redirectUri,
     scope: [
       'email',
@@ -46,6 +59,11 @@ export const buildAuthUrl = async (
   redirectUri?: string,
 ): Promise<string> => {
   const config = await getOAuthConfig(httpClient)
+  if (!config.configured) {
+    throw new Error(
+      'Google OAuth is not configured. Set GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET on the backend before enabling Google integration.',
+    )
+  }
   const authUrl = new URL('https://accounts.google.com/o/oauth2/v2/auth')
   authUrl.searchParams.set('client_id', config.clientId)
   authUrl.searchParams.set('redirect_uri', redirectUri ?? config.redirectUri)

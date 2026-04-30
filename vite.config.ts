@@ -31,7 +31,7 @@ const sourcemap = process.env.ENABLE_SOURCEMAP?.toLowerCase() === 'true' ? 'hidd
 export default defineConfig({
   build: {
     sourcemap,
-    rollupOptions: {
+    rolldownOptions: {
       external: ['bun:sqlite'],
     },
   },

@@ -1,3 +1,7 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+
 import type { ConsoleSpies } from '@/test-utils/console-spies'
 import { setupConsoleSpy } from '@/test-utils/console-spies'
 import { afterAll, beforeAll, beforeEach, describe, expect, it, mock } from 'bun:test'
@@ -182,9 +186,7 @@ describe('createUniversalProxyRoutes', () => {
     const target = 'https://example.com/api?name=ana'
     const encoded = encodeURIComponent(target)
     // The proxy request itself adds ?debug=1 — handler should ignore that and forward only the decoded target
-    const res = await app.handle(
-      new Request(`http://localhost/proxy/${encoded}?debug=1`, { method: 'GET' }),
-    )
+    const res = await app.handle(new Request(`http://localhost/proxy/${encoded}?debug=1`, { method: 'GET' }))
     expect(res.status).toBe(200)
     const [calledUrl] = mockFetch.mock.calls[0] as [string, RequestInit]
     // The upstream URL must contain exactly one '?' and not be corrupted with debug=1
@@ -195,9 +197,7 @@ describe('createUniversalProxyRoutes', () => {
 
   it('returns 400 for http:// target (HTTPS only)', async () => {
     const target = 'http://example.com/resource'
-    const res = await app.handle(
-      new Request(`http://localhost/proxy/${encodeURIComponent(target)}`, { method: 'GET' }),
-    )
+    const res = await app.handle(new Request(`http://localhost/proxy/${encodeURIComponent(target)}`, { method: 'GET' }))
     expect(res.status).toBe(400)
     expect(mockFetch).not.toHaveBeenCalled()
   })
@@ -217,9 +217,7 @@ describe('createUniversalProxyRoutes', () => {
 
   it('returns 400 for direct SSRF to 127.0.0.1', async () => {
     const target = 'https://127.0.0.1/secret'
-    const res = await app.handle(
-      new Request(`http://localhost/proxy/${encodeURIComponent(target)}`, { method: 'GET' }),
-    )
+    const res = await app.handle(new Request(`http://localhost/proxy/${encodeURIComponent(target)}`, { method: 'GET' }))
     expect(res.status).toBe(400)
     expect(mockFetch).not.toHaveBeenCalled()
   })
@@ -238,9 +236,7 @@ describe('createUniversalProxyRoutes', () => {
       .mockImplementationOnce(() => Promise.resolve([{ address: '1.1.1.1', family: 4 }]))
       .mockImplementationOnce(() => Promise.resolve([{ address: '192.168.1.1', family: 4 }]))
     const target = 'https://example.com/resource'
-    const res = await app.handle(
-      new Request(`http://localhost/proxy/${encodeURIComponent(target)}`, { method: 'GET' }),
-    )
+    const res = await app.handle(new Request(`http://localhost/proxy/${encodeURIComponent(target)}`, { method: 'GET' }))
     expect(res.status).toBe(502)
   })
 
@@ -248,9 +244,7 @@ describe('createUniversalProxyRoutes', () => {
     // DNS never resolves
     mockDnsLookup.mockImplementation(() => new Promise(() => {}))
     const target = 'https://slow-dns.example.com/resource'
-    const res = await app.handle(
-      new Request(`http://localhost/proxy/${encodeURIComponent(target)}`, { method: 'GET' }),
-    )
+    const res = await app.handle(new Request(`http://localhost/proxy/${encodeURIComponent(target)}`, { method: 'GET' }))
     expect(res.status).toBe(400)
     expect(mockFetch).not.toHaveBeenCalled()
   }, 10_000)
@@ -267,18 +261,14 @@ describe('createUniversalProxyRoutes', () => {
       .mockImplementationOnce(() => Promise.resolve(makeOkResponse('final')))
 
     const target = 'https://example.com/start'
-    const res = await app.handle(
-      new Request(`http://localhost/proxy/${encodeURIComponent(target)}`, { method: 'GET' }),
-    )
+    const res = await app.handle(new Request(`http://localhost/proxy/${encodeURIComponent(target)}`, { method: 'GET' }))
     expect(res.status).toBe(200)
     expect(mockFetch).toHaveBeenCalledTimes(2)
   })
 
   it('POST does NOT follow redirects by default (returns 302 as-is)', async () => {
     mockFetch.mockImplementationOnce(() =>
-      Promise.resolve(
-        new Response(null, { status: 302, headers: { location: 'https://example.com/final' } }),
-      ),
+      Promise.resolve(new Response(null, { status: 302, headers: { location: 'https://example.com/final' } })),
     )
     const target = 'https://example.com/submit'
     const res = await app.handle(
@@ -306,9 +296,7 @@ describe('createUniversalProxyRoutes', () => {
   it('POST with X-Proxy-Follow-Redirects: true follows the redirect', async () => {
     mockFetch
       .mockImplementationOnce(() =>
-        Promise.resolve(
-          new Response(null, { status: 303, headers: { location: 'https://example.com/result' } }),
-        ),
+        Promise.resolve(new Response(null, { status: 303, headers: { location: 'https://example.com/result' } })),
       )
       .mockImplementationOnce(() => Promise.resolve(makeOkResponse('result')))
 
@@ -333,9 +321,7 @@ describe('createUniversalProxyRoutes', () => {
     const bodyPayload = new TextEncoder().encode('{"key":"value"}')
     mockFetch
       .mockImplementationOnce(() =>
-        Promise.resolve(
-          new Response(null, { status: 307, headers: { location: 'https://example.com/v2/submit' } }),
-        ),
+        Promise.resolve(new Response(null, { status: 307, headers: { location: 'https://example.com/v2/submit' } })),
       )
       .mockImplementationOnce(() => Promise.resolve(makeOkResponse('done')))
 
@@ -360,14 +346,10 @@ describe('createUniversalProxyRoutes', () => {
   it('returns 502 after 5 redirect hops', async () => {
     // Always respond with a redirect
     mockFetch.mockImplementation(() =>
-      Promise.resolve(
-        new Response(null, { status: 302, headers: { location: 'https://example.com/redirect' } }),
-      ),
+      Promise.resolve(new Response(null, { status: 302, headers: { location: 'https://example.com/redirect' } })),
     )
     const target = 'https://example.com/start'
-    const res = await app.handle(
-      new Request(`http://localhost/proxy/${encodeURIComponent(target)}`, { method: 'GET' }),
-    )
+    const res = await app.handle(new Request(`http://localhost/proxy/${encodeURIComponent(target)}`, { method: 'GET' }))
     expect(res.status).toBe(502)
     // 1 initial fetch + 5 redirect-follows = 6 total (off-by-one fix asserted)
     expect(mockFetch).toHaveBeenCalledTimes(6)
@@ -377,14 +359,10 @@ describe('createUniversalProxyRoutes', () => {
     let capturedSignal: AbortSignal | undefined
     mockFetch.mockImplementationOnce((_url, init?: RequestInit) => {
       capturedSignal = init?.signal ?? undefined
-      return Promise.resolve(
-        new Response(null, { status: 302, headers: { location: 'http://evil.com/steal' } }),
-      )
+      return Promise.resolve(new Response(null, { status: 302, headers: { location: 'http://evil.com/steal' } }))
     })
     const target = 'https://example.com/start'
-    const res = await app.handle(
-      new Request(`http://localhost/proxy/${encodeURIComponent(target)}`, { method: 'GET' }),
-    )
+    const res = await app.handle(new Request(`http://localhost/proxy/${encodeURIComponent(target)}`, { method: 'GET' }))
     expect(res.status).toBe(502)
     expect(mockFetch).toHaveBeenCalledTimes(1)
     expect(capturedSignal?.aborted).toBe(true)
@@ -392,9 +370,7 @@ describe('createUniversalProxyRoutes', () => {
 
   it('strips userinfo from target URL before forwarding', async () => {
     const target = 'https://user:pass@example.com/path'
-    const res = await app.handle(
-      new Request(`http://localhost/proxy/${encodeURIComponent(target)}`, { method: 'GET' }),
-    )
+    const res = await app.handle(new Request(`http://localhost/proxy/${encodeURIComponent(target)}`, { method: 'GET' }))
     expect(res.status).toBe(200)
     const [calledUrl] = mockFetch.mock.calls[0] as [string, RequestInit]
     expect(calledUrl).not.toContain('@')
@@ -409,9 +385,7 @@ describe('createUniversalProxyRoutes', () => {
   it('drops X-Upstream-Authorization on cross-origin redirect', async () => {
     mockFetch
       .mockImplementationOnce(() =>
-        Promise.resolve(
-          new Response(null, { status: 302, headers: { location: 'https://evil.com/steal' } }),
-        ),
+        Promise.resolve(new Response(null, { status: 302, headers: { location: 'https://evil.com/steal' } })),
       )
       .mockImplementationOnce(() => Promise.resolve(makeOkResponse()))
 
@@ -431,9 +405,7 @@ describe('createUniversalProxyRoutes', () => {
   it('preserves X-Upstream-Authorization on same-origin redirect', async () => {
     mockFetch
       .mockImplementationOnce(() =>
-        Promise.resolve(
-          new Response(null, { status: 302, headers: { location: 'https://api.foo.com/v2/resource' } }),
-        ),
+        Promise.resolve(new Response(null, { status: 302, headers: { location: 'https://api.foo.com/v2/resource' } })),
       )
       .mockImplementationOnce(() => Promise.resolve(makeOkResponse()))
 
@@ -485,9 +457,7 @@ describe('createUniversalProxyRoutes', () => {
 
   it('sets all 4 security headers on response', async () => {
     const target = 'https://example.com/page'
-    const res = await app.handle(
-      new Request(`http://localhost/proxy/${encodeURIComponent(target)}`, { method: 'GET' }),
-    )
+    const res = await app.handle(new Request(`http://localhost/proxy/${encodeURIComponent(target)}`, { method: 'GET' }))
     expect(res.headers.get('content-security-policy')).toBe('sandbox')
     expect(res.headers.get('content-disposition')).toBe('attachment')
     expect(res.headers.get('x-content-type-options')).toBe('nosniff')
@@ -509,9 +479,7 @@ describe('createUniversalProxyRoutes', () => {
       ),
     )
     const target = 'https://example.com/resource'
-    const res = await app.handle(
-      new Request(`http://localhost/proxy/${encodeURIComponent(target)}`, { method: 'GET' }),
-    )
+    const res = await app.handle(new Request(`http://localhost/proxy/${encodeURIComponent(target)}`, { method: 'GET' }))
     expect(res.headers.get('set-cookie')).toBeNull()
     expect(res.headers.get('set-cookie2')).toBeNull()
     expect(res.headers.get('trailer')).toBeNull()
@@ -527,9 +495,7 @@ describe('createUniversalProxyRoutes', () => {
       ),
     )
     const target = 'https://example.com/compressed'
-    const res = await app.handle(
-      new Request(`http://localhost/proxy/${encodeURIComponent(target)}`, { method: 'GET' }),
-    )
+    const res = await app.handle(new Request(`http://localhost/proxy/${encodeURIComponent(target)}`, { method: 'GET' }))
     expect(res.headers.get('content-encoding')).toBe('gzip')
   })
 
@@ -577,19 +543,95 @@ describe('createUniversalProxyRoutes', () => {
   })
 
   // ---------------------------------------------------------------------------
-  // Auth gate
+  // Auth gate (method-conditional)
+  //
+  // GET/HEAD are anonymous because browsers cannot attach `Authorization: Bearer`
+  // to subresource loads (`<img src>`, `<link rel="icon">`). All other methods
+  // still require a valid session. SSRF defense and rate limiting apply to every
+  // method regardless of authentication.
   // ---------------------------------------------------------------------------
 
-  it('returns 401 when session is null and never opens an upstream connection', async () => {
+  describe('method-conditional auth', () => {
     const noAuth = { api: { getSession: async () => null } } as never
-    const noAuthApp = new Elysia().use(
-      createUniversalProxyRoutes(noAuth, mockFetch as unknown as typeof fetch),
-    )
-    const target = 'https://example.com/resource'
-    const res = await noAuthApp.handle(
-      new Request(`http://localhost/proxy/${encodeURIComponent(target)}`, { method: 'GET' }),
-    )
-    expect(res.status).toBe(401)
-    expect(mockFetch).not.toHaveBeenCalled()
+    let noAuthApp: { handle: Elysia['handle'] }
+
+    beforeAll(() => {
+      noAuthApp = new Elysia().use(createUniversalProxyRoutes(noAuth, mockFetch as unknown as typeof fetch))
+    })
+
+    it('GET without Authorization → 200 (anonymous, proxy proceeds)', async () => {
+      const target = 'https://example.com/resource'
+      const res = await noAuthApp.handle(
+        new Request(`http://localhost/proxy/${encodeURIComponent(target)}`, { method: 'GET' }),
+      )
+      expect(res.status).toBe(200)
+      expect(mockFetch).toHaveBeenCalledTimes(1)
+    })
+
+    it('HEAD without Authorization → 200 (anonymous, proxy proceeds)', async () => {
+      const target = 'https://example.com/resource'
+      mockFetch.mockImplementationOnce(() =>
+        Promise.resolve(new Response(null, { status: 200, headers: { 'content-type': 'text/plain' } })),
+      )
+      const res = await noAuthApp.handle(
+        new Request(`http://localhost/proxy/${encodeURIComponent(target)}`, { method: 'HEAD' }),
+      )
+      expect(res.status).toBe(200)
+      expect(mockFetch).toHaveBeenCalledTimes(1)
+    })
+
+    it('GET without Authorization still runs SSRF defense (private IP → 400)', async () => {
+      const target = 'https://127.0.0.1/secret'
+      const res = await noAuthApp.handle(
+        new Request(`http://localhost/proxy/${encodeURIComponent(target)}`, { method: 'GET' }),
+      )
+      expect(res.status).toBe(400)
+      expect(mockFetch).not.toHaveBeenCalled()
+    })
+
+    it('POST without Authorization → 401', async () => {
+      const target = 'https://example.com/api'
+      const res = await noAuthApp.handle(
+        new Request(`http://localhost/proxy/${encodeURIComponent(target)}`, {
+          method: 'POST',
+          body: JSON.stringify({ x: 1 }),
+        }),
+      )
+      expect(res.status).toBe(401)
+      expect(mockFetch).not.toHaveBeenCalled()
+    })
+
+    it('PUT without Authorization → 401', async () => {
+      const target = 'https://example.com/update'
+      const res = await noAuthApp.handle(
+        new Request(`http://localhost/proxy/${encodeURIComponent(target)}`, {
+          method: 'PUT',
+          body: 'data',
+        }),
+      )
+      expect(res.status).toBe(401)
+      expect(mockFetch).not.toHaveBeenCalled()
+    })
+
+    it('PATCH without Authorization → 401', async () => {
+      const target = 'https://example.com/item/1'
+      const res = await noAuthApp.handle(
+        new Request(`http://localhost/proxy/${encodeURIComponent(target)}`, {
+          method: 'PATCH',
+          body: '{"name":"new"}',
+        }),
+      )
+      expect(res.status).toBe(401)
+      expect(mockFetch).not.toHaveBeenCalled()
+    })
+
+    it('DELETE without Authorization → 401', async () => {
+      const target = 'https://example.com/item/1'
+      const res = await noAuthApp.handle(
+        new Request(`http://localhost/proxy/${encodeURIComponent(target)}`, { method: 'DELETE' }),
+      )
+      expect(res.status).toBe(401)
+      expect(mockFetch).not.toHaveBeenCalled()
+    })
   })
 })

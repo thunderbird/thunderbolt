@@ -3,7 +3,6 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import type { Auth } from '@/auth/elysia-plugin'
-import { createAuthMacro } from '@/auth/elysia-plugin'
 import { safeErrorHandler } from '@/middleware/error-handling'
 import { defaultRequestDenylist, defaultResponseDenylist, extractResponseHeaders, filterHeaders } from '@/utils/request'
 import { validateAndPin } from '@/utils/url-validation'
@@ -19,6 +18,10 @@ const streamIdleMs = 30_000
 
 const allowedMethods = new Set(['GET', 'HEAD', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'])
 const bodylessMethods = new Set(['GET', 'HEAD', 'OPTIONS'])
+/** Methods that are anonymous-by-design — browsers cannot attach credentials to subresource
+ *  loads (`<img src>`, `<link rel="icon">`), so requiring auth would break the favicon /
+ *  link-preview round-trip. SSRF defense and rate limiting still apply to these methods. */
+const anonymousMethods = new Set(['GET', 'HEAD'])
 
 /** Response denylist that intentionally keeps content-encoding (fix for SF7). */
 const customRespDenylist = defaultResponseDenylist.filter((h) => h !== 'content-encoding')
@@ -62,232 +65,247 @@ export const createUniversalProxyRoutes = (
   fetchFn: typeof fetch = globalThis.fetch,
   rateLimit?: AnyElysia,
   observer: ProxyObserver = noopProxyObserver,
-) =>
-  new Elysia({ prefix: '/proxy' })
+) => {
+  const app = new Elysia({ prefix: '/proxy' })
     .onError(safeErrorHandler)
-    .use(createAuthMacro(auth))
-    .guard({ auth: true }, (g) => {
-      if (rateLimit) g.use(rateLimit)
-
-      return g.all(
-        '/*',
-        async (ctx) => {
-          const start = performance.now()
-          const requestId = resolveRequestId(ctx.request.headers)
-          const userId = ctx.user?.id ?? 'unknown'
-          const method = ctx.request.method.toUpperCase()
-
-          /** Snapshot used by every exit point — closure-captured. */
-          let bytesIn = 0
-          let targetHost = 'unknown'
-
-          /** Emit one observation. Synchronous; safe to call from any path. */
-          const emit = (status: number, errorType?: ProxyErrorType, errorMessage?: string, bytesOut = 0) => {
-            observer({
-              method,
-              targetHost,
-              status,
-              durationMs: performance.now() - start,
-              userId,
-              requestId,
-              bytesIn,
-              bytesOut,
-              ...(errorType ? { errorType } : {}),
-              ...(errorMessage ? { errorMessage } : {}),
-            })
-          }
-
-          if (!allowedMethods.has(method)) {
-            ctx.set.status = 405
-            emit(405, 'method_not_allowed')
-            return new Response('Method not allowed', { headers: { 'Content-Type': 'text/plain' } })
-          }
-
-          // Decode target URL from path segment after /proxy/
-          const url = new URL(ctx.request.url)
-          const proxyPrefixIndex = url.pathname.indexOf('/proxy/')
-          const encodedTarget = url.pathname.slice(proxyPrefixIndex + '/proxy/'.length)
-
-          let targetUrl: string
-          try {
-            targetUrl = decodeURIComponent(encodedTarget)
-          } catch {
-            ctx.set.status = 400
-            emit(400, 'invalid_url', 'Invalid URL encoding')
-            return new Response('Invalid URL encoding', { headers: { 'Content-Type': 'text/plain' } })
-          }
-
-          let parsedTarget: URL
-          try {
-            parsedTarget = new URL(targetUrl)
-          } catch {
-            ctx.set.status = 400
-            emit(400, 'invalid_url', 'Invalid URL')
-            return new Response('Invalid URL', { headers: { 'Content-Type': 'text/plain' } })
-          }
-
-          targetHost = parsedTarget.hostname
-
-          if (parsedTarget.protocol !== 'https:') {
-            ctx.set.status = 400
-            emit(400, 'unsupported_protocol', 'Only HTTPS targets are allowed')
-            return new Response('Only HTTPS targets are allowed', { headers: { 'Content-Type': 'text/plain' } })
-          }
-
-          // CRLF guard on X-Upstream-Authorization (empty/missing values are treated as absent)
-          const upstreamAuthRaw = ctx.request.headers.get('x-upstream-authorization')
-          if (upstreamAuthRaw && !isPrintableAscii(upstreamAuthRaw)) {
-            ctx.set.status = 400
-            emit(400, 'invalid_header', 'Invalid X-Upstream-Authorization header')
-            return new Response('Invalid X-Upstream-Authorization header', {
-              headers: { 'Content-Type': 'text/plain' },
-            })
-          }
-
-          // Buffer request body once (so 307/308 can replay it)
-          let requestBody: ArrayBuffer | null = null
-          if (!bodylessMethods.has(method)) {
-            const contentLength = ctx.request.headers.get('content-length')
-            if (contentLength && parseInt(contentLength, 10) > maxBodyBytes) {
-              ctx.set.status = 413
-              emit(413, 'body_too_large')
-              return new Response('Request body too large', { headers: { 'Content-Type': 'text/plain' } })
-            }
-            if (ctx.request.body) {
-              requestBody = await new Response(ctx.request.body as BodyInit).arrayBuffer()
-              if (requestBody.byteLength > maxBodyBytes) {
-                ctx.set.status = 413
-                bytesIn = requestBody.byteLength
-                emit(413, 'body_too_large')
-                return new Response('Request body too large', { headers: { 'Content-Type': 'text/plain' } })
-              }
-              bytesIn = requestBody.byteLength
-            }
-          }
-
-          // Parse X-Proxy-Follow-Redirects (strict literal match)
-          const followRedirectsHeader = ctx.request.headers.get('x-proxy-follow-redirects')?.toLowerCase()
-          const followOverride =
-            followRedirectsHeader === 'true' ? true : followRedirectsHeader === 'false' ? false : null
-
-          // Build filtered outbound headers (strip hop-by-hop + auth + cookies)
-          const filteredIncoming = filterHeaders(ctx.request.headers, [
-            ...defaultRequestDenylist,
-            'x-upstream-authorization',
-            'x-proxy-follow-redirects',
-          ])
-
-          const initialOrigin = parsedTarget.origin
-
-          // Per-hop redirect loop
-          // hop 0 = initial fetch; hops 1..maxHops = redirect-follows (5 redirects max)
-          let currentUrl = targetUrl
-          let currentMethod = method
-          let currentBody: ArrayBuffer | null = requestBody
-
-          for (let hop = 0; hop <= maxHops; hop++) {
-            // DNS-pin each hop
-            let pinnedUrl: string
-            let pinnedHeaders: Headers
-            try {
-              ;[pinnedUrl, pinnedHeaders] = await withDnsTimeout(validateAndPin(currentUrl, filteredIncoming))
-            } catch (err) {
-              const msg = err instanceof Error ? err.message : String(err)
-              if (hop === 0) {
-                ctx.set.status = 400
-                emit(400, classifyPinError(msg))
-                return new Response(`Blocked: ${msg}`, { headers: { 'Content-Type': 'text/plain' } })
-              }
-              ctx.set.status = 502
-              emit(502, classifyPinError(msg))
-              return new Response('Bad gateway (SSRF or DNS error on redirect)', {
-                headers: { 'Content-Type': 'text/plain' },
-              })
-            }
-
-            // Inject X-Upstream-Authorization → Authorization on same-origin hops
-            const currentOrigin = new URL(currentUrl).origin
-            if (upstreamAuthRaw && currentOrigin === initialOrigin) {
-              pinnedHeaders.set('authorization', upstreamAuthRaw)
-            }
-
-            const upstreamCtl = new AbortController()
-
-            let response: Response
-            try {
-              response = await fetchFn(pinnedUrl, {
-                method: currentMethod,
-                headers: pinnedHeaders,
-                body: currentBody,
-                redirect: 'manual',
-                signal: upstreamCtl.signal,
-                // @ts-expect-error -- Bun fetch supports duplex:'half' for streaming bodies
-                duplex: 'half',
-              })
-            } catch {
-              ctx.set.status = 502
-              emit(502, 'upstream_error', 'Upstream fetch failed')
-              return new Response('Bad gateway (upstream fetch failed)', {
-                headers: { 'Content-Type': 'text/plain' },
-              })
-            }
-
-            const isRedirect = [301, 302, 303, 307, 308].includes(response.status)
-            if (!isRedirect) {
-              return buildProxyResponse(response, upstreamCtl, emit)
-            }
-
-            // Decide whether to follow
-            const defaultFollow = currentMethod === 'GET' || currentMethod === 'HEAD'
-            const shouldFollow = followOverride !== null ? followOverride : defaultFollow
-
-            if (!shouldFollow) {
-              return buildProxyResponse(response, upstreamCtl, emit)
-            }
-
-            // Resolve next hop URL
-            const location = response.headers.get('location')
-            if (!location) return buildProxyResponse(response, upstreamCtl, emit)
-
-            const nextUrl = new URL(location, currentUrl).toString()
-
-            if (new URL(nextUrl).protocol !== 'https:') {
-              response.body?.cancel().catch(() => {})
-              upstreamCtl.abort()
-              ctx.set.status = 502
-              emit(502, 'redirect_protocol', 'Redirect target is not HTTPS')
-              return new Response('Redirect target is not HTTPS', { headers: { 'Content-Type': 'text/plain' } })
-            }
-
-            // Method conversion
-            let nextMethod = currentMethod
-            let nextBody: ArrayBuffer | null = currentBody
-            if (response.status === 303) {
-              nextMethod = 'GET'
-              nextBody = null
-            } else if ([301, 302].includes(response.status) && !['GET', 'HEAD'].includes(currentMethod)) {
-              nextMethod = 'GET'
-              nextBody = null
-            }
-
-            // Release the current hop's connection before following the redirect
-            response.body?.cancel().catch(() => {})
-            upstreamCtl.abort()
-
-            currentUrl = nextUrl
-            currentMethod = nextMethod
-            currentBody = nextBody
-          }
-
-          // Unreachable in practice — hop loop returns before this, but the
-          // type checker needs a final return.
-          ctx.set.status = 502
-          emit(502, 'too_many_redirects')
-          return new Response('Too many redirects', { headers: { 'Content-Type': 'text/plain' } })
-        },
-        { parse: 'none' },
-      )
+    /** Method-conditional auth: GET/HEAD MAY be anonymous because browsers cannot attach
+     *  `Authorization: Bearer` to subresource loads (`<img src>`, `<link rel="icon">`).
+     *  Every other method still requires a valid session. We always attempt session
+     *  resolution so an authenticated GET/HEAD still surfaces `ctx.user` for observability
+     *  and (eventually) per-user rate limiting. Inlined instead of the shared `auth: true`
+     *  macro because the macro is unconditional by design. */
+    .resolve(async ({ request, status }) => {
+      const method = request.method.toUpperCase()
+      const session = await auth.api.getSession({ headers: request.headers })
+      if (session) {
+        return { user: session.user, session: session.session }
+      }
+      if (anonymousMethods.has(method)) {
+        return { user: undefined, session: undefined }
+      }
+      return status(401)
     })
+
+  if (rateLimit) app.use(rateLimit)
+
+  return app.all(
+    '/*',
+    async (ctx) => {
+      const start = performance.now()
+      const requestId = resolveRequestId(ctx.request.headers)
+      const userId = ctx.user?.id ?? 'unknown'
+      const method = ctx.request.method.toUpperCase()
+
+      /** Snapshot used by every exit point — closure-captured. */
+      let bytesIn = 0
+      let targetHost = 'unknown'
+
+      /** Emit one observation. Synchronous; safe to call from any path. */
+      const emit = (status: number, errorType?: ProxyErrorType, errorMessage?: string, bytesOut = 0) => {
+        observer({
+          method,
+          targetHost,
+          status,
+          durationMs: performance.now() - start,
+          userId,
+          requestId,
+          bytesIn,
+          bytesOut,
+          ...(errorType ? { errorType } : {}),
+          ...(errorMessage ? { errorMessage } : {}),
+        })
+      }
+
+      if (!allowedMethods.has(method)) {
+        ctx.set.status = 405
+        emit(405, 'method_not_allowed')
+        return new Response('Method not allowed', { headers: { 'Content-Type': 'text/plain' } })
+      }
+
+      // Decode target URL from path segment after /proxy/
+      const url = new URL(ctx.request.url)
+      const proxyPrefixIndex = url.pathname.indexOf('/proxy/')
+      const encodedTarget = url.pathname.slice(proxyPrefixIndex + '/proxy/'.length)
+
+      let targetUrl: string
+      try {
+        targetUrl = decodeURIComponent(encodedTarget)
+      } catch {
+        ctx.set.status = 400
+        emit(400, 'invalid_url', 'Invalid URL encoding')
+        return new Response('Invalid URL encoding', { headers: { 'Content-Type': 'text/plain' } })
+      }
+
+      let parsedTarget: URL
+      try {
+        parsedTarget = new URL(targetUrl)
+      } catch {
+        ctx.set.status = 400
+        emit(400, 'invalid_url', 'Invalid URL')
+        return new Response('Invalid URL', { headers: { 'Content-Type': 'text/plain' } })
+      }
+
+      targetHost = parsedTarget.hostname
+
+      if (parsedTarget.protocol !== 'https:') {
+        ctx.set.status = 400
+        emit(400, 'unsupported_protocol', 'Only HTTPS targets are allowed')
+        return new Response('Only HTTPS targets are allowed', { headers: { 'Content-Type': 'text/plain' } })
+      }
+
+      // CRLF guard on X-Upstream-Authorization (empty/missing values are treated as absent)
+      const upstreamAuthRaw = ctx.request.headers.get('x-upstream-authorization')
+      if (upstreamAuthRaw && !isPrintableAscii(upstreamAuthRaw)) {
+        ctx.set.status = 400
+        emit(400, 'invalid_header', 'Invalid X-Upstream-Authorization header')
+        return new Response('Invalid X-Upstream-Authorization header', {
+          headers: { 'Content-Type': 'text/plain' },
+        })
+      }
+
+      // Buffer request body once (so 307/308 can replay it)
+      let requestBody: ArrayBuffer | null = null
+      if (!bodylessMethods.has(method)) {
+        const contentLength = ctx.request.headers.get('content-length')
+        if (contentLength && parseInt(contentLength, 10) > maxBodyBytes) {
+          ctx.set.status = 413
+          emit(413, 'body_too_large')
+          return new Response('Request body too large', { headers: { 'Content-Type': 'text/plain' } })
+        }
+        if (ctx.request.body) {
+          requestBody = await new Response(ctx.request.body as BodyInit).arrayBuffer()
+          if (requestBody.byteLength > maxBodyBytes) {
+            ctx.set.status = 413
+            bytesIn = requestBody.byteLength
+            emit(413, 'body_too_large')
+            return new Response('Request body too large', { headers: { 'Content-Type': 'text/plain' } })
+          }
+          bytesIn = requestBody.byteLength
+        }
+      }
+
+      // Parse X-Proxy-Follow-Redirects (strict literal match)
+      const followRedirectsHeader = ctx.request.headers.get('x-proxy-follow-redirects')?.toLowerCase()
+      const followOverride = followRedirectsHeader === 'true' ? true : followRedirectsHeader === 'false' ? false : null
+
+      // Build filtered outbound headers (strip hop-by-hop + auth + cookies)
+      const filteredIncoming = filterHeaders(ctx.request.headers, [
+        ...defaultRequestDenylist,
+        'x-upstream-authorization',
+        'x-proxy-follow-redirects',
+      ])
+
+      const initialOrigin = parsedTarget.origin
+
+      // Per-hop redirect loop
+      // hop 0 = initial fetch; hops 1..maxHops = redirect-follows (5 redirects max)
+      let currentUrl = targetUrl
+      let currentMethod = method
+      let currentBody: ArrayBuffer | null = requestBody
+
+      for (let hop = 0; hop <= maxHops; hop++) {
+        // DNS-pin each hop
+        let pinnedUrl: string
+        let pinnedHeaders: Headers
+        try {
+          ;[pinnedUrl, pinnedHeaders] = await withDnsTimeout(validateAndPin(currentUrl, filteredIncoming))
+        } catch (err) {
+          const msg = err instanceof Error ? err.message : String(err)
+          if (hop === 0) {
+            ctx.set.status = 400
+            emit(400, classifyPinError(msg))
+            return new Response(`Blocked: ${msg}`, { headers: { 'Content-Type': 'text/plain' } })
+          }
+          ctx.set.status = 502
+          emit(502, classifyPinError(msg))
+          return new Response('Bad gateway (SSRF or DNS error on redirect)', {
+            headers: { 'Content-Type': 'text/plain' },
+          })
+        }
+
+        // Inject X-Upstream-Authorization → Authorization on same-origin hops
+        const currentOrigin = new URL(currentUrl).origin
+        if (upstreamAuthRaw && currentOrigin === initialOrigin) {
+          pinnedHeaders.set('authorization', upstreamAuthRaw)
+        }
+
+        const upstreamCtl = new AbortController()
+
+        let response: Response
+        try {
+          response = await fetchFn(pinnedUrl, {
+            method: currentMethod,
+            headers: pinnedHeaders,
+            body: currentBody,
+            redirect: 'manual',
+            signal: upstreamCtl.signal,
+            // @ts-expect-error -- Bun fetch supports duplex:'half' for streaming bodies
+            duplex: 'half',
+          })
+        } catch {
+          ctx.set.status = 502
+          emit(502, 'upstream_error', 'Upstream fetch failed')
+          return new Response('Bad gateway (upstream fetch failed)', {
+            headers: { 'Content-Type': 'text/plain' },
+          })
+        }
+
+        const isRedirect = [301, 302, 303, 307, 308].includes(response.status)
+        if (!isRedirect) {
+          return buildProxyResponse(response, upstreamCtl, emit)
+        }
+
+        // Decide whether to follow
+        const defaultFollow = currentMethod === 'GET' || currentMethod === 'HEAD'
+        const shouldFollow = followOverride !== null ? followOverride : defaultFollow
+
+        if (!shouldFollow) {
+          return buildProxyResponse(response, upstreamCtl, emit)
+        }
+
+        // Resolve next hop URL
+        const location = response.headers.get('location')
+        if (!location) return buildProxyResponse(response, upstreamCtl, emit)
+
+        const nextUrl = new URL(location, currentUrl).toString()
+
+        if (new URL(nextUrl).protocol !== 'https:') {
+          response.body?.cancel().catch(() => {})
+          upstreamCtl.abort()
+          ctx.set.status = 502
+          emit(502, 'redirect_protocol', 'Redirect target is not HTTPS')
+          return new Response('Redirect target is not HTTPS', { headers: { 'Content-Type': 'text/plain' } })
+        }
+
+        // Method conversion
+        let nextMethod = currentMethod
+        let nextBody: ArrayBuffer | null = currentBody
+        if (response.status === 303) {
+          nextMethod = 'GET'
+          nextBody = null
+        } else if ([301, 302].includes(response.status) && !['GET', 'HEAD'].includes(currentMethod)) {
+          nextMethod = 'GET'
+          nextBody = null
+        }
+
+        // Release the current hop's connection before following the redirect
+        response.body?.cancel().catch(() => {})
+        upstreamCtl.abort()
+
+        currentUrl = nextUrl
+        currentMethod = nextMethod
+        currentBody = nextBody
+      }
+
+      // Unreachable in practice — hop loop returns before this, but the
+      // type checker needs a final return.
+      ctx.set.status = 502
+      emit(502, 'too_many_redirects')
+      return new Response('Too many redirects', { headers: { 'Content-Type': 'text/plain' } })
+    },
+    { parse: 'none' },
+  )
+}
 
 const buildProxyResponse = (
   response: Response,

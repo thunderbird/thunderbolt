@@ -1,9 +1,13 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+
 import { resetTestDatabase, setupTestDatabase, teardownTestDatabase } from '@/dal/test-utils'
 import type { ConsoleSpies } from '@/test-utils/console-spies'
 import { setupConsoleSpy } from '@/test-utils/console-spies'
 import { createTestProvider } from '@/test-utils/test-provider'
 import { createMockAuthClient } from '@/test-utils/auth-client'
-import { createSpyHttpClient, jsonResponse } from '@/test-utils/http-client'
+import { createSpyHttpClient, jsonResponse } from '@/test-utils/http-client-spy'
 import type { HttpClient } from '@/lib/http'
 import { getClock } from '@/testing-library'
 import '@testing-library/jest-dom'

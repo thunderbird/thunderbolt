@@ -1,3 +1,7 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+
 import * as aws from '@pulumi/aws'
 import * as eks from '@pulumi/eks'
 import * as k8s from '@pulumi/kubernetes'

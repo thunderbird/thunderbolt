@@ -1,3 +1,7 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+
 // Ambient module declarations to silence "Cannot find module" errors when
 // the type definitions are missing. Remove this file once @tauri-apps/api
 // and @tauri-apps/plugin-os ship their own typings compatible with our

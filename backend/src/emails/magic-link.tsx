@@ -1,4 +1,8 @@
-import { Button, Section, Text } from '@react-email/components'
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+
+import { Button, Section, Text } from 'react-email'
 import { EmailLayout } from './email-layout'
 
 type MagicLinkEmailProps = {
@@ -7,7 +11,7 @@ type MagicLinkEmailProps = {
 }
 
 export const MagicLinkEmail = ({ code, magicLinkUrl }: MagicLinkEmailProps) => (
-  <EmailLayout preview={`Thunderbolt Verification Code: ${code}`}>
+  <EmailLayout preview="Sign in to Thunderbolt">
     <Section className="bg-white border border-solid border-tb-border rounded-2xl text-center px-8 py-8">
       <Text className="text-sm text-tb-text m-0 mb-6">Use the code below to sign in, or click the button.</Text>
       <Text className="text-2xl font-semibold text-tb-text m-0 mb-6">{code}</Text>

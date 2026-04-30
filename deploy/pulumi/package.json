@@ -4,10 +4,10 @@
   "version": "0.0.1",
   "main": "index.ts",
   "dependencies": {
-    "@pulumi/aws": "^6.0.0",
-    "@pulumi/awsx": "^2.0.0",
+    "@pulumi/aws": "^7.27.0",
+    "@pulumi/awsx": "^3.5.0",
     "@pulumi/docker-build": "^0.0.15",
-    "@pulumi/eks": "^3.0.0",
+    "@pulumi/eks": "^4.0.0",
     "@pulumi/kubernetes": "^4.0.0",
     "@pulumi/pulumi": "^3.0.0"
   },

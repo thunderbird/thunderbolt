@@ -1,3 +1,4 @@
 {
+  "*.{ts,tsx,js,jsx,cjs,mjs,css,scss,rs,kt,kts,sql,sh,html,astro}": ["bun scripts/license-headers.ts"],
   "*": ["make format"]
 }

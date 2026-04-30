@@ -16,25 +16,16 @@ export const isSafeUrl = (url: string): boolean => {
 }
 
 /**
- * Returns a proxied favicon URL to bypass CORS/COEP restrictions.
- * Falls back to the original URL if no proxy base is provided.
+ * Derives a /favicon.ico URL from a page URL's origin. Pure helper — does not
+ * proxy. Callers that need a CORS-friendly URL should pass the result through
+ * `useProxyUrl()` from `@/lib/proxy-url`.
+ *
+ * @returns The raw favicon URL, or null if `pageUrl` is invalid.
  */
-export const getProxiedFaviconUrl = (faviconUrl: string, proxyBase: string): string => {
-  if (!proxyBase) {
-    return faviconUrl
-  }
-  return `${proxyBase}/pro/proxy/${encodeURIComponent(faviconUrl)}`
-}
-
-/**
- * Derives a /favicon.ico URL from a page URL's origin, optionally proxied.
- * Returns null if the URL is invalid.
- */
-export const deriveFaviconUrl = (pageUrl: string, proxyBase?: string): string | null => {
+export const deriveFaviconUrl = (pageUrl: string): string | null => {
   try {
     const { origin } = new URL(pageUrl)
-    const faviconUrl = `${origin}/favicon.ico`
-    return proxyBase ? getProxiedFaviconUrl(faviconUrl, proxyBase) : faviconUrl
+    return `${origin}/favicon.ico`
   } catch {
     return null
   }

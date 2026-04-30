@@ -4,16 +4,39 @@
 
 import '@/testing-library'
 import { render, screen } from '@testing-library/react'
-import { describe, expect, it } from 'bun:test'
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'bun:test'
 import type { CitationSource } from '@/types/citation'
 import { ExternalLinkDialogProvider } from './markdown-utils'
 import { SourceList } from './source-list'
 import { type ReactElement } from 'react'
+import { createTestProvider } from '@/test-utils/test-provider'
+import { resetTestDatabase, setupTestDatabase, teardownTestDatabase } from '@/dal/test-utils'
 
-const renderWithProvider = (ui: ReactElement) =>
-  render(ui, { wrapper: ({ children }) => <ExternalLinkDialogProvider>{children}</ExternalLinkDialogProvider> })
+const renderWithProvider = (ui: ReactElement) => {
+  const TestProvider = createTestProvider()
+  return render(ui, {
+    wrapper: ({ children }) => (
+      <TestProvider>
+        <ExternalLinkDialogProvider>{children}</ExternalLinkDialogProvider>
+      </TestProvider>
+    ),
+  })
+}
 
 describe('SourceList', () => {
+  beforeAll(async () => {
+    await setupTestDatabase()
+  })
+  afterAll(async () => {
+    await teardownTestDatabase()
+  })
+  afterEach(async () => {
+    await resetTestDatabase()
+  })
+  beforeEach(() => {
+    localStorage.clear()
+  })
+
   const mockSources: CitationSource[] = [
     {
       id: '1',

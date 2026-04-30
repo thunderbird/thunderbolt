@@ -2,19 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import {
-  Body,
-  Container,
-  Head,
-  Html,
-  Img,
-  Link,
-  Preview,
-  Section,
-  Tailwind,
-  Text,
-  pixelBasedPreset,
-} from '@react-email/components'
+import { Body, Container, Head, Html, Img, Link, Preview, Section, Tailwind, Text, pixelBasedPreset } from 'react-email'
 import { emailFrom } from '@/lib/resend'
 import { getSettings } from '@/config/settings'
 

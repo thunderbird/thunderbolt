@@ -152,7 +152,7 @@
     "bun-types": "^1.2.20",
     "dotenv": "^17.2.1",
     "drizzle-kit": "^0.31.4",
-    "eslint": "^9.33.0",
+    "eslint": "^10.2.1",
     "eslint-config-prettier": "^10.1.8",
     "eslint-plugin-react": "^7.37.5",
     "eslint-plugin-react-hooks": "^7.1.1",

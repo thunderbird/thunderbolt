@@ -18,12 +18,18 @@ const bodylessMethods = new Set(['GET', 'HEAD', 'OPTIONS'])
 /** Response denylist that intentionally keeps content-encoding (fix for SF7). */
 const customRespDenylist = defaultResponseDenylist.filter((h) => h !== 'content-encoding')
 
-/** Race a promise against a DNS timeout. Throws `Error('DNS_TIMEOUT')` on expiry. */
-const withDnsTimeout = <T>(p: Promise<T>): Promise<T> =>
-  Promise.race([
+/** Race a promise against a DNS timeout. Throws `Error('DNS_TIMEOUT')` on expiry.
+ *  Note: dns.promises.lookup does not honor an AbortSignal in Node 22, so this only
+ *  unblocks the handler — the underlying lookup runs to completion in background. */
+const withDnsTimeout = <T>(p: Promise<T>): Promise<T> => {
+  let timer: ReturnType<typeof setTimeout>
+  return Promise.race([
     p,
-    new Promise<never>((_, reject) => setTimeout(() => reject(new Error('DNS_TIMEOUT')), dnsTimeoutMs)),
-  ])
+    new Promise<never>((_, reject) => {
+      timer = setTimeout(() => reject(new Error('DNS_TIMEOUT')), dnsTimeoutMs)
+    }),
+  ]).finally(() => clearTimeout(timer))
+}
 
 /** Printable ASCII guard — rejects CRLF and control characters. */
 const isPrintableAscii = (value: string) => /^[\x20-\x7E]+$/.test(value)

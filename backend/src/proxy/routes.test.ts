@@ -89,7 +89,8 @@ describe('createUniversalProxyRoutes', () => {
     expect(res.status).toBe(200)
     const [, init] = mockFetch.mock.calls[0] as [string, RequestInit]
     expect(init.method).toBe('POST')
-    expect(init.body).toBeInstanceOf(ArrayBuffer)
+    const bodyText = await new Response(init.body as ArrayBuffer).text()
+    expect(bodyText).toBe('{"x":1}')
   })
 
   it('PUT — proxies correctly', async () => {
@@ -299,8 +300,9 @@ describe('createUniversalProxyRoutes', () => {
     const [, secondInit] = mockFetch.mock.calls[1] as [string, RequestInit]
     // 307 must NOT change the method
     expect(secondInit.method).toBe('POST')
-    // 307 must replay the buffered body
-    expect(secondInit.body).toBeInstanceOf(ArrayBuffer)
+    // 307 must replay the same body bytes (not just any ArrayBuffer)
+    const replayedBody = new Uint8Array(secondInit.body as ArrayBuffer)
+    expect(Array.from(replayedBody)).toEqual(Array.from(bodyPayload))
   })
 
   it('returns 502 after 5 redirect hops', async () => {
@@ -498,6 +500,8 @@ describe('createUniversalProxyRoutes', () => {
     )
     expect(res.status).toBe(429)
     expect(res.headers.get('Retry-After')).toBeTruthy()
+    // Rate limit must short-circuit before any upstream connection is opened
+    expect(mockFetch).not.toHaveBeenCalled()
   })
 
   // ---------------------------------------------------------------------------
@@ -515,6 +519,23 @@ describe('createUniversalProxyRoutes', () => {
       }),
     )
     expect(res.status).toBe(413)
+    expect(mockFetch).not.toHaveBeenCalled()
+  })
+
+  // ---------------------------------------------------------------------------
+  // Auth gate
+  // ---------------------------------------------------------------------------
+
+  it('returns 401 when session is null and never opens an upstream connection', async () => {
+    const noAuth = { api: { getSession: async () => null } } as never
+    const noAuthApp = new Elysia().use(
+      createUniversalProxyRoutes(noAuth, mockFetch as unknown as typeof fetch),
+    )
+    const target = 'https://example.com/resource'
+    const res = await noAuthApp.handle(
+      new Request(`http://localhost/proxy/${encodeURIComponent(target)}`, { method: 'GET' }),
+    )
+    expect(res.status).toBe(401)
     expect(mockFetch).not.toHaveBeenCalled()
   })
 })

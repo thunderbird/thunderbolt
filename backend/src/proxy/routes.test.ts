@@ -141,6 +141,21 @@ describe('createUniversalProxyRoutes', () => {
     expect(mockFetch).not.toHaveBeenCalled()
   })
 
+  it('ignores proxy-level query string and uses only the decoded target URL', async () => {
+    const target = 'https://example.com/api?name=ana'
+    const encoded = encodeURIComponent(target)
+    // The proxy request itself adds ?debug=1 — handler should ignore that and forward only the decoded target
+    const res = await app.handle(
+      new Request(`http://localhost/proxy/${encoded}?debug=1`, { method: 'GET' }),
+    )
+    expect(res.status).toBe(200)
+    const [calledUrl] = mockFetch.mock.calls[0] as [string, RequestInit]
+    // The upstream URL must contain exactly one '?' and not be corrupted with debug=1
+    expect(calledUrl).toBe(pinnedUrl(target))
+    expect(calledUrl).not.toContain('debug=1')
+    expect((calledUrl.match(/\?/g) || []).length).toBe(1)
+  })
+
   it('returns 400 for http:// target (HTTPS only)', async () => {
     const target = 'http://example.com/resource'
     const res = await app.handle(

@@ -56,7 +56,7 @@ export const createUniversalProxyRoutes = (
 
           let targetUrl: string
           try {
-            targetUrl = decodeURIComponent(encodedTarget) + url.search
+            targetUrl = decodeURIComponent(encodedTarget)
           } catch {
             ctx.set.status = 400
             return new Response('Invalid URL encoding', { headers: { 'Content-Type': 'text/plain' } })

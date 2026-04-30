@@ -336,19 +336,21 @@ describe('createUniversalProxyRoutes', () => {
     expect(mockFetch).toHaveBeenCalledTimes(6)
   })
 
-  it('returns 502 when redirect downgrades to HTTP', async () => {
-    mockFetch.mockImplementationOnce(() =>
-      Promise.resolve(
+  it('returns 502 when redirect downgrades to HTTP and aborts the upstream connection', async () => {
+    let capturedSignal: AbortSignal | undefined
+    mockFetch.mockImplementationOnce((_url, init?: RequestInit) => {
+      capturedSignal = init?.signal ?? undefined
+      return Promise.resolve(
         new Response(null, { status: 302, headers: { location: 'http://evil.com/steal' } }),
-      ),
-    )
+      )
+    })
     const target = 'https://example.com/start'
     const res = await app.handle(
       new Request(`http://localhost/proxy/${encodeURIComponent(target)}`, { method: 'GET' }),
     )
     expect(res.status).toBe(502)
-    // Only the initial fetch is made; redirect is rejected before following
     expect(mockFetch).toHaveBeenCalledTimes(1)
+    expect(capturedSignal?.aborted).toBe(true)
   })
 
   it('strips userinfo from target URL before forwarding', async () => {

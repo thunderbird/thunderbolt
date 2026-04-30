@@ -176,6 +176,8 @@ export const createUniversalProxyRoutes = (
             const nextUrl = new URL(location, currentUrl).toString()
 
             if (new URL(nextUrl).protocol !== 'https:') {
+              response.body?.cancel().catch(() => {})
+              upstreamCtl.abort()
               ctx.set.status = 502
               return new Response('Redirect target is not HTTPS', { headers: { 'Content-Type': 'text/plain' } })
             }

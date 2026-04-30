@@ -15,6 +15,7 @@ import { createErrorHandlingMiddleware } from '@/middleware/error-handling'
 import { createHttpLoggingMiddleware } from '@/middleware/http-logging'
 import { createAuthIpRateLimit, createInferenceRateLimit, createProRateLimit } from '@/middleware/rate-limit'
 import { createMcpProxyRoutes } from '@/mcp-proxy/routes'
+import { createUniversalProxyRoutes } from '@/proxy/routes'
 import { createPostHogRoutes } from '@/posthog/routes'
 import { createProToolsRoutes } from '@/pro/routes'
 import { createWaitlistRoutes } from '@/waitlist/routes'
@@ -96,6 +97,7 @@ export const createApp = async (deps?: AppDeps) => {
       .use(createMicrosoftAuthRoutes(auth, fetchFn))
       .use(createOidcConfigRoutes())
       .use(createProToolsRoutes(auth, fetchFn, createProRateLimit(database, rateLimitSettings)))
+      .use(createUniversalProxyRoutes(auth, fetchFn, createProRateLimit(database, rateLimitSettings)))
       .use(createInferenceRoutes(auth, createInferenceRateLimit(database, rateLimitSettings)))
       .use(createConfigRoutes(settings))
       .use(createPostHogRoutes(fetchFn))

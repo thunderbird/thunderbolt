@@ -60,7 +60,7 @@ const settingsSchema = z
     corsAllowHeaders: z
       .string()
       .default(
-        'Content-Type,Authorization,Accept,Accept-Encoding,Accept-Language,Cache-Control,User-Agent,X-Requested-With,X-Client-Platform,X-Device-ID,X-Device-Name,X-Challenge-Token,X-Mcp-Target-Url,Mcp-Authorization,Mcp-Session-Id,Mcp-Protocol-Version',
+        'Content-Type,Authorization,Accept,Accept-Encoding,Accept-Language,Cache-Control,User-Agent,X-Requested-With,X-Client-Platform,X-Device-ID,X-Device-Name,X-Challenge-Token,X-Mcp-Target-Url,Mcp-Authorization,Mcp-Session-Id,Mcp-Protocol-Version,X-Upstream-Authorization,X-Proxy-Follow-Redirects',
       ),
     corsExposeHeaders: z
       .string()
@@ -133,7 +133,7 @@ const parseSettings = (): Settings => {
     corsAllowMethods: process.env.CORS_ALLOW_METHODS || 'GET,POST,PUT,DELETE,PATCH,OPTIONS',
     corsAllowHeaders:
       process.env.CORS_ALLOW_HEADERS ||
-      'Content-Type,Authorization,Accept,Accept-Encoding,Accept-Language,Cache-Control,User-Agent,X-Requested-With,X-Client-Platform,X-Device-ID,X-Device-Name,X-Challenge-Token,X-Mcp-Target-Url,Mcp-Authorization,Mcp-Session-Id,Mcp-Protocol-Version',
+      'Content-Type,Authorization,Accept,Accept-Encoding,Accept-Language,Cache-Control,User-Agent,X-Requested-With,X-Client-Platform,X-Device-ID,X-Device-Name,X-Challenge-Token,X-Mcp-Target-Url,Mcp-Authorization,Mcp-Session-Id,Mcp-Protocol-Version,X-Upstream-Authorization,X-Proxy-Follow-Redirects',
     corsExposeHeaders:
       process.env.CORS_EXPOSE_HEADERS ||
       'mcp-session-id,set-auth-token,ratelimit-limit,ratelimit-remaining,ratelimit-reset,retry-after',

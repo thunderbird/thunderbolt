@@ -1,3 +1,7 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+
 import * as aws from '@pulumi/aws'
 import * as pulumi from '@pulumi/pulumi'
 
@@ -74,7 +78,7 @@ type ServiceArgs = {
 
 export const createServices = (args: ServiceArgs) => {
   const { name, cluster, logGroup, privateSubnetIds, servicesSgId, efsId, pgAccessPointId } = args
-  const region = aws.getRegionOutput().name
+  const region = aws.getRegionOutput().region
 
   // --- IAM roles ---
   const execRoleInstance = new aws.iam.Role(`${name}-exec-role`, {

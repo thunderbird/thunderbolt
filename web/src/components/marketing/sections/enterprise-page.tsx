@@ -1,3 +1,7 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+
 import { FooterSection } from '../footer-section'
 import { Header } from '../header'
 
@@ -9,15 +13,51 @@ const GitHubIcon = () => (
   </svg>
 )
 
-const GetStartedButton = () => (
+const REPO_URL = 'https://github.com/thunderbird/thunderbolt'
+
+const StarIcon = () => (
+  <svg
+    viewBox="0 0 24 24"
+    width="16"
+    height="16"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="1.8"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    aria-hidden="true"
+    style={{ flexShrink: 0 }}
+  >
+    <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
+  </svg>
+)
+
+// Primary CTA: dark-blue button — GitHub icon + "Star on GitHub" label.
+const StarOnGitHubButton = ({ fullWidth = false }: { fullWidth?: boolean }) => (
   <a
-    href="https://github.com/thunderbird/thunderbolt"
+    href={REPO_URL}
     target="_blank"
     rel="noopener noreferrer"
-    className="inline-flex h-[46px] items-center justify-center gap-2 bg-[#344054] px-5 font-mono text-sm font-bold uppercase tracking-wider text-white transition-colors hover:bg-[#344054]/90"
+    className={`${fullWidth ? 'flex w-full' : 'inline-flex'} h-[46px] items-center justify-center gap-2 bg-[#344054] px-5 font-mono text-sm font-bold uppercase tracking-wider text-white transition-colors hover:bg-[#344054]/90`}
   >
     <GitHubIcon />
-    Get Started
+    Star on GitHub
+  </a>
+)
+
+// Compact header badge: white, GitHub icon + live star count, no label.
+// Stays hidden until the script in index.astro populates the count from the
+// GitHub API. If the fetch fails, the badge stays hidden.
+const StarCountBadge = () => (
+  <a
+    href={REPO_URL}
+    target="_blank"
+    rel="noopener noreferrer"
+    className="js-github-star-count hidden h-[46px] items-center gap-2 border border-[#d0d5dd] bg-white px-4 text-sm font-medium text-[#344054] transition-colors hover:bg-[#f2f4f7]"
+  >
+    <GitHubIcon />
+    <StarIcon />
+    <span className="js-github-star-count-value" />
   </a>
 )
 
@@ -217,7 +257,7 @@ const DesktopMockup = () => (
 
 const Hero = () => (
   <section className="relative pb-16 pt-[80px]">
-    <div className="mx-auto flex max-w-[730px] flex-col items-center gap-8 px-6 text-center">
+    <div className="mx-auto flex max-w-[730px] flex-col items-center gap-6 px-6 text-center">
       <h1 className="text-[40px] font-medium leading-[1.1] tracking-[-0.96px] text-[#101828] md:text-[48px]">
         AI You Control
       </h1>
@@ -225,7 +265,7 @@ const Hero = () => (
         The Open-Source, Cross-Platform, Extensible AI Client
       </p>
       <div className="flex flex-wrap items-center justify-center gap-3">
-        <GetStartedButton />
+        <StarOnGitHubButton />
         <EnterpriseInquiriesButton />
       </div>
     </div>
@@ -376,7 +416,7 @@ const CompromiseSection = () => (
             Thunderbolt gives enterprises complete control over AI infrastructure without sacrificing capability.
           </p>
         </div>
-        <GetStartedButton />
+        <StarOnGitHubButton />
       </div>
       <div className="mt-6 grid grid-cols-2 gap-2 md:grid-cols-3">
         {features.map((f) => (
@@ -569,7 +609,7 @@ const CTASection = () => (
         Start with a pilot deployment or talk to our enterprise team about Forward-Deployed Engineering and sovereign infrastructure.
       </p>
       <div className="mt-6 flex flex-wrap items-center justify-center gap-3">
-        <GetStartedButton />
+        <StarOnGitHubButton />
         <EnterpriseInquiriesButton />
       </div>
     </div>
@@ -580,21 +620,14 @@ const CTASection = () => (
 
 const MobileFooterCTA = () => (
   <div className="fixed inset-x-0 bottom-0 z-50 bg-white/20 backdrop-blur-[32px] px-6 py-4 md:hidden">
-    <a
-      href="https://github.com/thunderbird/thunderbolt"
-      target="_blank"
-      rel="noopener noreferrer"
-      className="flex h-[46px] w-full items-center justify-center gap-2 bg-[#344054] font-mono text-sm font-bold uppercase tracking-wider text-white transition-colors hover:bg-[#344054]/90"
-    >
-      <GitHubIcon />
-      Get Started
-    </a>
+    <StarOnGitHubButton fullWidth />
   </div>
 )
 
 /* ─── Page ────────────────────────────────────────────── */
 
-export const EnterprisePage = () => (
+export const EnterprisePage = () => {
+  return (
   <div className="relative min-h-screen overflow-x-hidden bg-[#f9fafb]">
     <BackgroundGrid />
     <Header
@@ -609,7 +642,7 @@ export const EnterprisePage = () => (
           <span className="text-white/80 transition-transform group-hover:translate-x-0.5">&rarr;</span>
         </a>
       }
-      action={<GetStartedButton />}
+      action={<StarCountBadge />}
     />
     <main className="relative pt-[144px]">
       <Hero />
@@ -623,4 +656,5 @@ export const EnterprisePage = () => (
     <FooterSection className="relative z-10 bg-[#f9fafb] pb-24 md:pb-16" />
     <MobileFooterCTA />
   </div>
-)
+  )
+}

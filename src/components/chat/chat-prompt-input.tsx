@@ -1,3 +1,7 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+
 import { useCurrentChatSession, useChatStore } from '@/chats/chat-store'
 import { useHaptics } from '@/hooks/use-haptics'
 import { useContextTracking as useContextTracking_default } from '@/hooks/use-context-tracking'

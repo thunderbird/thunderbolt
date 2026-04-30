@@ -1,5 +1,10 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+
 import { clearSettingsCache } from '@/config/settings'
 import { clearPostHogClient, isPostHogConfigured, shutdownPostHog } from '@/posthog/client'
+import { isPosthogRequest } from '@/test-utils/posthog'
 // eslint-disable-next-line @typescript-eslint/consistent-type-imports
 import { OpenAI as PostHogOpenAI } from '@posthog/ai'
 import { afterEach, beforeEach, describe, expect, it, jest } from 'bun:test'
@@ -60,7 +65,7 @@ describe('Inference Routes - PostHog Privacy Integration', () => {
       })
 
       // Return appropriate mock responses based on URL
-      if (url.includes('posthog.com') || url.includes('/batch') || url.includes('/capture')) {
+      if (isPosthogRequest(url)) {
         return new Response(JSON.stringify({ status: 1 }), {
           status: 200,
           headers: { 'Content-Type': 'application/json' },
@@ -216,13 +221,7 @@ describe('Inference Routes - PostHog Privacy Integration', () => {
       expect(completion).toBeDefined()
 
       // Find PostHog requests
-      const posthogRequests = capturedFetches.filter(
-        (call) =>
-          call.url.includes('posthog.com') ||
-          call.url.includes('/batch') ||
-          call.url.includes('/capture') ||
-          call.url.includes('/e'),
-      )
+      const posthogRequests = capturedFetches.filter((call) => isPosthogRequest(call.url))
 
       // If PostHog sent events, verify they don't contain conversation content
       for (const request of posthogRequests) {
@@ -277,13 +276,7 @@ describe('Inference Routes - PostHog Privacy Integration', () => {
       }
 
       // Check ALL captured PostHog requests
-      const posthogRequests = capturedFetches.filter(
-        (call) =>
-          call.url.includes('posthog.com') ||
-          call.url.includes('/batch') ||
-          call.url.includes('/capture') ||
-          call.url.includes('/e'),
-      )
+      const posthogRequests = capturedFetches.filter((call) => isPosthogRequest(call.url))
 
       // Verify NONE of the secret messages appear in any request
       for (const request of posthogRequests) {

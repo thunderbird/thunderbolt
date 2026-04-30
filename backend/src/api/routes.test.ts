@@ -1,3 +1,7 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+
 import { mockAuth, mockAuthUnauthenticated } from '@/test-utils/mock-auth'
 import type { ConsoleSpies } from '@/test-utils/console-spies'
 import { setupConsoleSpy } from '@/test-utils/console-spies'
@@ -10,7 +14,8 @@ describe('Main Routes', () => {
 
   const mockFetch = mock((input: RequestInfo | URL, _init?: RequestInit) => {
     const url = input instanceof Request ? input.url : input.toString()
-    if (url.startsWith('https://geocoding-api.open-meteo.com')) {
+    const { hostname } = new URL(url)
+    if (hostname === 'geocoding-api.open-meteo.com') {
       return Promise.resolve(
         new Response(
           JSON.stringify({
@@ -87,7 +92,8 @@ describe('Main Routes', () => {
   it('should filter out country-level results without admin1', async () => {
     const mockFetchWithCountry = mock((input: RequestInfo | URL) => {
       const url = input instanceof Request ? input.url : input.toString()
-      if (url.startsWith('https://geocoding-api.open-meteo.com')) {
+      const { hostname } = new URL(url)
+      if (hostname === 'geocoding-api.open-meteo.com') {
         return Promise.resolve(
           new Response(
             JSON.stringify({

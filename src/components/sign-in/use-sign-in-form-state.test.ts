@@ -1,9 +1,13 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+
 import { act, renderHook } from '@testing-library/react'
 import { beforeEach, describe, expect, it, mock } from 'bun:test'
 import type { FormEvent } from 'react'
 import type { HttpClient } from '@/lib/http'
 import { createMockAuthClient } from '@/test-utils/auth-client'
-import { createSpyHttpClient, jsonResponse } from '@/test-utils/http-client'
+import { createSpyHttpClient, jsonResponse } from '@/test-utils/http-client-spy'
 import { useSignInFormState } from './use-sign-in-form-state'
 
 const challengeToken = 'test-challenge-token'

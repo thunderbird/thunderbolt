@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { useCallback, useEffect, useEffectEvent, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 
 /**
  * Hook that debounces a value
@@ -37,7 +37,8 @@ export const useDebouncedCallback = <T extends (...args: any[]) => any>(
   delay: number,
 ): ((...args: Parameters<T>) => void) => {
   const timeoutRef = useRef<NodeJS.Timeout | undefined>(undefined)
-  const onCallback = useEffectEvent(callback)
+  const callbackRef = useRef(callback)
+  callbackRef.current = callback
 
   // Cleanup on unmount
   useEffect(() => {
@@ -55,9 +56,9 @@ export const useDebouncedCallback = <T extends (...args: any[]) => any>(
       }
 
       timeoutRef.current = setTimeout(() => {
-        onCallback(...args)
+        callbackRef.current(...args)
       }, delay)
     },
-    [delay, onCallback],
+    [delay],
   )
 }

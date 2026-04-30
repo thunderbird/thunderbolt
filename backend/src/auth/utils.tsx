@@ -92,7 +92,7 @@ export const sendSignInEmail = async ({ email, otp, verifyUrl }: SendSignInEmail
 
   const data = await sendEmail({
     to: email,
-    subject: `Thunderbolt Verification Code: ${otp}`,
+    subject: 'Your Thunderbolt verification code',
     react: <MagicLinkEmail code={otp} magicLinkUrl={verifyUrl} />,
   })
 

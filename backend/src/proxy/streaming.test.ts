@@ -131,4 +131,21 @@ describe('capStream', () => {
     await new Promise((r) => setTimeout(r, 40))
     expect(aborts).toEqual([])
   })
+
+  it('clears idle timer on cancel so onAbort does not fire after downstream disconnects', async () => {
+    const aborts: string[] = []
+    const idleTimeout = 30
+    // Stream that never enqueues — would idle out if not cancelled
+    const slow = new ReadableStream<Uint8Array>({ start() {} })
+    const capped = capStream(slow, {
+      maxBytes: 1_000_000,
+      idleTimeoutMs: idleTimeout,
+      onAbort: (r) => aborts.push(r),
+    })
+    // Simulate client disconnect
+    await capped.cancel()
+    // Wait longer than the idle timeout to confirm the timer was cleared
+    await new Promise((r) => setTimeout(r, idleTimeout * 3))
+    expect(aborts).toEqual([])
+  })
 })

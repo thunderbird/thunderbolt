@@ -45,7 +45,10 @@ export const capStream = (
   })
 
   source.pipeTo(writable).catch(() => {
-    // Upstream abort or early termination — silently swallow; downstream already closed.
+    // pipeTo rejects when source errors OR when writable is aborted (e.g., downstream
+    // was cancelled). Clear the idle timer here so it doesn't fire after the stream
+    // has been torn down — running terminate() on an errored controller throws.
+    clearTimeout(idleTimer)
   })
 
   return readable

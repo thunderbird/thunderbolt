@@ -4,8 +4,8 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it, mock } from 'bun
 import { Elysia } from 'elysia'
 import { createUniversalProxyRoutes } from './routes'
 
-// Mock DNS + net — external Node APIs
-const mockDnsLookup = mock(() => Promise.resolve([{ address: '93.184.216.34', family: 4 }]))
+// Mock DNS + net — external Node APIs, acceptable per docs/testing.md "When You Must Mock"
+const mockDnsLookup = mock(() => Promise.resolve([{ address: '1.1.1.1', family: 4 }]))
 mock.module('node:dns', () => ({ promises: { lookup: mockDnsLookup } }))
 mock.module('node:net', () => ({ isIP: (s: string) => (/^\d+\.\d+\.\d+\.\d+$/.test(s) ? 4 : 0) }))
 
@@ -22,7 +22,7 @@ const fakeAuth = {
 /** Converts a URL to its IP-pinned equivalent (as validateAndPin would produce). */
 const pinnedUrl = (url: string) => {
   const parsed = new URL(url)
-  parsed.hostname = '93.184.216.34'
+  parsed.hostname = '1.1.1.1'
   return parsed.toString()
 }
 
@@ -51,7 +51,7 @@ describe('createUniversalProxyRoutes', () => {
     mockFetch.mockReset()
     mockFetch.mockImplementation(() => Promise.resolve(makeOkResponse()))
     mockDnsLookup.mockReset()
-    mockDnsLookup.mockImplementation(() => Promise.resolve([{ address: '93.184.216.34', family: 4 }]))
+    mockDnsLookup.mockImplementation(() => Promise.resolve([{ address: '1.1.1.1', family: 4 }]))
     consoleSpies.error.mockClear()
   })
 
@@ -235,7 +235,7 @@ describe('createUniversalProxyRoutes', () => {
     )
     // First DNS lookup (example.com) resolves fine, second (evil-internal.example.com) returns private IP
     mockDnsLookup
-      .mockImplementationOnce(() => Promise.resolve([{ address: '93.184.216.34', family: 4 }]))
+      .mockImplementationOnce(() => Promise.resolve([{ address: '1.1.1.1', family: 4 }]))
       .mockImplementationOnce(() => Promise.resolve([{ address: '192.168.1.1', family: 4 }]))
     const target = 'https://example.com/resource'
     const res = await app.handle(

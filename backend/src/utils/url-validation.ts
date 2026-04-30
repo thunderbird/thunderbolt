@@ -65,19 +65,26 @@ const maxRedirects = 5
  * Resolves a URL's hostname via DNS, validates all resolved IPs against the
  * private address blocklist, and returns a fetch-ready [pinnedUrl, headers] pair.
  * Prevents DNS rebinding by connecting to the resolved IP with the original Host header.
+ *
+ * Userinfo (username/password) is stripped from the resulting pinned URL.
+ *
+ * Also exported for handlers that run their own per-hop redirect loop and need
+ * to validate + pin each hop independently (e.g. the universal proxy endpoint).
  */
-const resolveAndValidate = async (
+export const validateAndPin = async (
   url: string,
   extraHeaders?: HeadersInit,
 ): Promise<[pinnedUrl: string, headers: Headers]> => {
   const parsed = new URL(url)
+  parsed.username = ''
+  parsed.password = ''
   const hostname = parsed.hostname
 
   if (isIP(hostname)) {
     if (isPrivateAddress(hostname)) {
       throw new Error(`Blocked: ${hostname} is a private/internal address`)
     }
-    return [url, new Headers(extraHeaders)]
+    return [parsed.toString(), new Headers(extraHeaders)]
   }
 
   const addresses = await dnsPromises.lookup(hostname, { all: true })
@@ -89,7 +96,7 @@ const resolveAndValidate = async (
     }
   }
 
-  const pinnedUrl = new URL(url)
+  const pinnedUrl = new URL(parsed.toString())
   const resolvedIp = addresses[0].address
   // IPv6 addresses must be bracket-wrapped for URL hostname assignment
   pinnedUrl.hostname = addresses[0].family === 6 ? `[${resolvedIp}]` : resolvedIp
@@ -109,7 +116,7 @@ const resolveAndValidate = async (
 export const createSafeFetch = (fetchFn: typeof fetch) => {
   return async (input: string | URL | Request, init?: RequestInit): Promise<Response> => {
     const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url
-    const [pinnedUrl, headers] = await resolveAndValidate(url, init?.headers)
+    const [pinnedUrl, headers] = await validateAndPin(url, init?.headers)
 
     // Always intercept redirects so we can validate each hop's destination
     const callerWantsManual = init?.redirect === 'manual'
@@ -129,7 +136,7 @@ export const createSafeFetch = (fetchFn: typeof fetch) => {
 
       const redirectUrl = new URL(location, currentUrl).toString()
       currentUrl = redirectUrl
-      const [pinnedRedirect, redirectHeaders] = await resolveAndValidate(redirectUrl, init?.headers)
+      const [pinnedRedirect, redirectHeaders] = await validateAndPin(redirectUrl, init?.headers)
 
       // 303 always becomes GET; 301/302 become GET for non-GET/HEAD (per spec)
       const methodOverride =

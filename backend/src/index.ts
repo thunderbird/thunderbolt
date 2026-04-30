@@ -14,7 +14,6 @@ import { createInferenceRoutes } from '@/inference/routes'
 import { createErrorHandlingMiddleware } from '@/middleware/error-handling'
 import { createHttpLoggingMiddleware } from '@/middleware/http-logging'
 import { createAuthIpRateLimit, createInferenceRateLimit, createProRateLimit } from '@/middleware/rate-limit'
-import { createMcpProxyRoutes } from '@/mcp-proxy/routes'
 import { createProxyObserver } from '@/proxy/observability'
 import { createUniversalProxyRoutes } from '@/proxy/routes'
 import { getPostHogClient, isPostHogConfigured } from '@/posthog/client'
@@ -112,7 +111,6 @@ export const createApp = async (deps?: AppDeps) => {
       .use(createInferenceRoutes(auth, createInferenceRateLimit(database, rateLimitSettings)))
       .use(createConfigRoutes(settings))
       .use(createPostHogRoutes(fetchFn))
-      .use(createMcpProxyRoutes(auth, fetchFn))
       .use(
         createWaitlistRoutes({
           database,

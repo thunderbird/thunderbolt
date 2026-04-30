@@ -83,7 +83,7 @@ describe('LinkPreviewWidget', () => {
       expect(getByText('Third')).toBeTruthy()
     })
 
-    it('proxies image URL through cloud proxy', () => {
+    it('proxies image URL through unified /v1/proxy', () => {
       const sources = [makeSource({ image: 'https://example.com/photo.jpg' })]
 
       const { container } = renderWithProviders(
@@ -91,7 +91,8 @@ describe('LinkPreviewWidget', () => {
       )
 
       const img = container.querySelector('img')
-      expect(img?.getAttribute('src')).toContain('/pro/link-preview/proxy-image/')
+      expect(img?.getAttribute('src')).toContain('/v1/proxy/')
+      expect(img?.getAttribute('src')).not.toContain('/pro/link-preview/proxy-image/')
       expect(img?.getAttribute('src')).toContain(encodeURIComponent('https://example.com/photo.jpg'))
     })
 

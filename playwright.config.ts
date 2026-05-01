@@ -3,7 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { defineConfig, devices } from '@playwright/test'
-import { IDP_CERT_SINGLE_LINE } from './e2e/saml-test-certs'
+import { idpCertSingleLine } from './e2e/saml-test-certs'
 
 const isCI = !!process.env.CI
 const mockOidcPort = process.env.MOCK_OIDC_PORT ?? '9876'
@@ -58,7 +58,7 @@ export default defineConfig({
       reuseExistingServer: !isCI,
       timeout: 30_000,
       env: {
-        VITE_AUTH_MODE: 'oidc',
+        VITE_AUTH_MODE: 'sso',
         VITE_SKIP_ONBOARDING: 'true',
       },
     },
@@ -89,7 +89,7 @@ export default defineConfig({
       reuseExistingServer: !isCI,
       timeout: 30_000,
       env: {
-        VITE_AUTH_MODE: 'saml',
+        VITE_AUTH_MODE: 'sso',
         VITE_SKIP_ONBOARDING: 'true',
         VITE_THUNDERBOLT_CLOUD_URL: `http://localhost:${samlBackendPort}/v1`,
       },
@@ -106,7 +106,7 @@ export default defineConfig({
         SAML_ENTRY_POINT: `http://localhost:${mockSamlPort}/saml/sso`,
         SAML_ENTITY_ID: 'e2e-saml-sp',
         SAML_IDP_ISSUER: `http://localhost:${mockSamlPort}`,
-        SAML_CERT: IDP_CERT_SINGLE_LINE,
+        SAML_CERT: idpCertSingleLine,
         BETTER_AUTH_URL: `http://localhost:${samlBackendPort}`,
         BETTER_AUTH_SECRET: 'e2e-test-secret-at-least-32-characters-long',
         APP_URL: `http://localhost:${samlVitePort}`,

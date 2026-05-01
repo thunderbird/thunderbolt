@@ -164,7 +164,7 @@ The Playwright suite in [`e2e/`](../e2e) covers the OIDC sign-in and session flo
 | Component        | Port   | How                                                              |
 | ---------------- | ------ | ---------------------------------------------------------------- |
 | Mock OIDC server | `9876` | [`oauth2-mock-server`](https://www.npmjs.com/package/oauth2-mock-server), started by `e2e/global-setup.ts`; every issued token is signed for `sub=e2e-test-user` / `email=e2e@thunderbolt.test` |
-| Vite frontend    | `1421` | `bun run dev -- --port 1421` with `VITE_AUTH_MODE=oidc` and `VITE_SKIP_ONBOARDING=true` |
+| Vite frontend    | `1421` | `bun run dev -- --port 1421` with `VITE_AUTH_MODE=sso` and `VITE_SKIP_ONBOARDING=true` |
 | Backend API      | `8000` | `cd backend && bun run dev` with `OIDC_ISSUER` pointed at the mock server, rate limiting disabled |
 
 Each test starts with a fresh `storageState` so stale IndexedDB / OPFS data from a previous run can't leak between specs. A clean shutdown of the mock OIDC server happens in `e2e/global-teardown.ts`.

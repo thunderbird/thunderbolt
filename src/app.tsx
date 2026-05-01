@@ -52,7 +52,7 @@ import Loading from './loading'
 import SettingsLayout from './settings/layout'
 import type { InitData } from './types'
 import { useSettings } from './hooks/use-settings'
-import { isSamlMode, isSsoMode } from './lib/auth-mode'
+import { isSsoMode } from './lib/auth-mode'
 import { isPrPreview, isTauri } from './lib/platform'
 import { getPowerSyncInstance } from './db/powersync'
 import { type ComponentProps, Suspense, lazy, useEffect } from 'react'
@@ -92,7 +92,6 @@ const AppRoutes = ({ initData }: { initData: InitData }) => {
   })
 
   const ssoMode = isSsoMode()
-  const ssoProviderId = isSamlMode() ? 'saml' : 'oidc'
   const shouldBypassWaitlist = import.meta.env.VITE_BYPASS_WAITLIST === 'true' || isPrPreview()
 
   return (
@@ -107,7 +106,7 @@ const AppRoutes = ({ initData }: { initData: InitData }) => {
           path="/sso-redirect"
           element={
             <Suspense fallback={<Loading />}>
-              <SsoRedirect providerId={ssoProviderId} />
+              <SsoRedirect />
             </Suspense>
           }
         />

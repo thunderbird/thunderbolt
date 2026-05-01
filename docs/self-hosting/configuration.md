@@ -124,7 +124,7 @@ The web/desktop bundle accepts two Vite env vars, passed as Dockerfile build arg
 | Arg                          | Default | Purpose                                                                       |
 | ---------------------------- | ------- | ----------------------------------------------------------------------------- |
 | `VITE_THUNDERBOLT_CLOUD_URL` | `/v1`   | Backend API URL (relative path, proxied by nginx or ALB)                      |
-| `VITE_AUTH_MODE`             | `oidc`  | Auth mode — `oidc` for enterprise defaults, omit for consumer                 |
+| `VITE_AUTH_MODE`             | `sso`   | Auth mode — `sso` for enterprise SSO (OIDC or SAML), omit for consumer        |
 
 ## Validating Your Config
 

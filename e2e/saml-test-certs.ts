@@ -48,4 +48,4 @@ export const getTestCerts = () => {
 }
 
 /** Single-line base64 cert (no PEM headers) for passing as env var */
-export const IDP_CERT_SINGLE_LINE = getTestCerts().certSingleLine
+export const idpCertSingleLine = getTestCerts().certSingleLine

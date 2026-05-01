@@ -12,7 +12,7 @@ import Loading from '@/loading'
  * In SSO mode (OIDC or SAML), redirects unauthenticated users to the backend's
  * SSO sign-in endpoint, which redirects to the identity provider.
  */
-const SsoRedirect = ({ providerId }: { providerId: string }) => {
+const SsoRedirect = () => {
   const { cloudUrl } = useSettings({ cloud_url: String })
   const [error, setError] = useState(false)
   const [retryKey, setRetryKey] = useState(0)
@@ -30,7 +30,7 @@ const SsoRedirect = ({ providerId }: { providerId: string }) => {
       try {
         const data = await http
           .post(`${baseUrl}/v1/api/auth/sign-in/sso`, {
-            json: { providerId, callbackURL: window.location.origin + '/' },
+            json: { providerId: 'sso', callbackURL: window.location.origin + '/' },
             credentials: 'include',
             signal: abortController.signal,
           })
@@ -55,7 +55,7 @@ const SsoRedirect = ({ providerId }: { providerId: string }) => {
     redirectToSso()
 
     return () => abortController.abort()
-  }, [cloudUrl.isLoading, cloudUrl.value, providerId, retryKey])
+  }, [cloudUrl.isLoading, cloudUrl.value, retryKey])
 
   if (error) {
     return (

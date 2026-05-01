@@ -15,7 +15,7 @@
       "clientAuthenticatorType": "client-secret",
       "secret": "thunderbolt-dev-secret",
       "redirectUris": [
-        "http://localhost:8000/v1/api/auth/sso/callback/oidc"
+        "http://localhost:8000/v1/api/auth/sso/callback/sso"
       ],
       "webOrigins": [
         "http://localhost:1420"
@@ -39,13 +39,13 @@
         "saml.assertion.signature": "true",
         "saml.force.post.binding": "true",
         "saml.server.signature": "true",
-        "saml_assertion_consumer_url_post": "http://localhost:8000/v1/api/auth/sso/saml2/sp/acs/saml",
+        "saml_assertion_consumer_url_post": "http://localhost:8000/v1/api/auth/sso/saml2/sp/acs/sso",
         "saml.signature.algorithm": "RSA_SHA256",
         "saml_name_id_format": "email"
       },
       "redirectUris": [
-        "http://localhost:8000/v1/api/auth/sso/saml2/sp/acs/saml",
-        "http://localhost:8000/v1/api/auth/sso/saml2/callback/saml"
+        "http://localhost:8000/v1/api/auth/sso/saml2/sp/acs/sso",
+        "http://localhost:8000/v1/api/auth/sso/saml2/callback/sso"
       ],
       "baseUrl": "http://localhost:1420",
       "defaultClientScopes": [],

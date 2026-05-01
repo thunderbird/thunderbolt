@@ -54,7 +54,7 @@ const buildSsoPlugins = () => {
       sso({
         defaultSSO: [
           {
-            providerId: 'oidc',
+            providerId: 'sso',
             domain: new URL(settings.betterAuthUrl).host,
             oidcConfig: {
               issuer: settings.oidcIssuer,
@@ -82,13 +82,13 @@ const buildSsoPlugins = () => {
       sso({
         defaultSSO: [
           {
-            providerId: 'saml',
+            providerId: 'sso',
             domain: new URL(settings.betterAuthUrl).host,
             samlConfig: {
               issuer: settings.samlIdpIssuer,
               entryPoint: settings.samlEntryPoint,
               cert: settings.samlCert,
-              callbackUrl: `${settings.betterAuthUrl}/v1/api/auth/sso/saml2/sp/acs/saml`,
+              callbackUrl: `${settings.betterAuthUrl}/v1/api/auth/sso/saml2/sp/acs/sso`,
               spMetadata: {
                 entityID: settings.samlEntityId,
               },

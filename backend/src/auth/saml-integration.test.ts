@@ -1,3 +1,7 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+
 import { mock } from 'bun:test'
 import * as authUtils from '@/auth/utils'
 import * as waitlistUtils from '@/waitlist/utils'
@@ -115,7 +119,7 @@ describe('SAML Integration', () => {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-              providerId: 'saml',
+              providerId: 'sso',
               callbackURL: 'http://localhost:1420/',
             }),
           }),
@@ -140,7 +144,7 @@ describe('SAML Integration', () => {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-              providerId: 'saml',
+              providerId: 'sso',
               callbackURL: 'http://localhost:1420/',
             }),
           }),
@@ -158,11 +162,11 @@ describe('SAML Integration', () => {
         const xml = inflateRawSync(Buffer.from(samlRequestEncoded!, 'base64')).toString()
 
         expect(xml).toContain('fake-saml-sp') // SP entity ID
-        expect(xml).toContain('/v1/api/auth/sso/saml2/sp/acs/saml') // ACS URL
+        expect(xml).toContain('/v1/api/auth/sso/saml2/sp/acs/sso') // ACS URL
       })
     })
 
-    it('should reject sign-in with wrong providerId when only SAML is configured', async () => {
+    it('should reject sign-in with unknown providerId', async () => {
       await withRealFetch(async () => {
         const { createAuth } = await import('./auth')
         const auth = createAuth(db)
@@ -173,7 +177,7 @@ describe('SAML Integration', () => {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-              providerId: 'oidc',
+              providerId: 'unknown-provider',
               callbackURL: 'http://localhost:1420/',
             }),
           }),
@@ -246,7 +250,7 @@ describe('SAML Integration', () => {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            providerId: 'saml',
+            providerId: 'sso',
             callbackURL: 'http://localhost:1420/',
           }),
         }),

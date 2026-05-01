@@ -136,7 +136,7 @@ describe('OIDC Integration', () => {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-              providerId: 'oidc',
+              providerId: 'sso',
               callbackURL: 'http://localhost:1420/',
             }),
           }),
@@ -162,7 +162,7 @@ describe('OIDC Integration', () => {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-              providerId: 'oidc',
+              providerId: 'sso',
               callbackURL: 'http://localhost:1420/',
             }),
           }),
@@ -187,7 +187,7 @@ describe('OIDC Integration', () => {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-              providerId: 'oidc',
+              providerId: 'sso',
               callbackURL: 'http://localhost:1420/',
             }),
           }),
@@ -262,7 +262,7 @@ describe('OIDC Integration', () => {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            providerId: 'oidc',
+            providerId: 'sso',
             callbackURL: 'http://localhost:1420/',
           }),
         }),

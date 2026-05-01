@@ -24,7 +24,7 @@ All three paths deploy the same opinionated enterprise configuration:
 | Keycloak realm                | `thunderbolt` (auto-imported from `deploy/config/keycloak-realm.json`) |
 | Default demo user             | `demo@thunderbolt.so` / `demo`                            |
 | Keycloak admin                | `admin` / `admin` (change immediately)                    |
-| Frontend build args           | `VITE_AUTH_MODE=oidc`, `VITE_THUNDERBOLT_CLOUD_URL=/v1`   |
+| Frontend build args           | `VITE_AUTH_MODE=sso`, `VITE_THUNDERBOLT_CLOUD_URL=/v1`    |
 | Waitlist                      | Disabled                                                  |
 
 You're expected to replace the demo user, reconfigure the Keycloak client, and rotate all default credentials before anyone touches it.

@@ -22,8 +22,6 @@ mock.module('@/lib/cleanup', () => ({
 
 mock.module('@/lib/auth-mode', () => ({
   isSsoMode: mockIsSsoMode,
-  isOidcMode: () => false,
-  isSamlMode: () => false,
 }))
 
 // Mock window.location

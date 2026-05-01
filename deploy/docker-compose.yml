@@ -5,7 +5,7 @@ services:
       dockerfile: deploy/docker/frontend.Dockerfile
       args:
         VITE_THUNDERBOLT_CLOUD_URL: "/v1"
-        VITE_AUTH_MODE: "oidc"
+        VITE_AUTH_MODE: "sso"
     ports:
       - "${FRONTEND_PORT:-3000}:80"
     depends_on:

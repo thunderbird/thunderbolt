@@ -32,7 +32,7 @@ The frontend Dockerfile accepts build args baked into the static bundle:
 | Arg | Default | Purpose |
 |-----|---------|---------|
 | `VITE_THUNDERBOLT_CLOUD_URL` | `/v1` | Backend API URL (relative, proxied by nginx or ALB) |
-| `VITE_AUTH_MODE` | `oidc` | Auth mode (`oidc` or `saml` for enterprise, omit for consumer) |
+| `VITE_AUTH_MODE` | `sso` | Auth mode (`sso` for enterprise SSO, omit for consumer) |
 
 ## Backend Entrypoint
 

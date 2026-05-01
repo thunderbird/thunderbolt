@@ -2,7 +2,7 @@
   "compilerOptions": {
     "target": "ES2023",
     "useDefineForClassFields": true,
-    "lib": ["ES2023", "DOM", "DOM.Iterable"],
+    "lib": ["ES2023", "DOM"],
     "module": "ESNext",
     "skipLibCheck": true,
     /* Bundler mode */
@@ -18,7 +18,6 @@
     "noUnusedParameters": true,
     "noFallthroughCasesInSwitch": true,
     /* Paths */
-    "baseUrl": ".",
     "paths": {
       "@/*": ["./src/*"],
       "@/src/*": ["./src/*"],
@@ -26,7 +25,8 @@
       "powersync-web-internal/*": ["./node_modules/@powersync/web/lib/src/*"]
     },
     /* Types */
-    "typeRoots": ["./node_modules/@types", "./src/types"]
+    "typeRoots": ["./node_modules/@types", "./src/types"],
+    "types": ["bun"]
   },
   "include": ["src", "shared"],
   "exclude": ["src/db/bundle-migrations.ts", "src/drizzle/_migrations.ts"],

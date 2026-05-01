@@ -171,7 +171,7 @@
     "tailwindcss": "^4.2.4",
     "tsx": "^4.20.4",
     "type-fest": "^5.6.0",
-    "typescript": "~5.9.2",
+    "typescript": "^6.0.3",
     "vite": "^7.3.2",
     "vite-bundle-analyzer": "^1.2.1",
     "vitest": "^4.1.4"

@@ -277,6 +277,11 @@ export const createServices = (args: ServiceArgs) => {
           { name: 'KC_HOSTNAME', value: args.publicUrls.auth },
           // Trust X-Forwarded-Proto from Cloudflare/ALB for client-facing protocol detection.
           { name: 'KC_PROXY_HEADERS', value: 'xforwarded' },
+          // Realm import substitutes ${OIDC_REDIRECT_URI} / ${OIDC_WEB_ORIGIN} so the
+          // baked-in realm JSON works for both local dev (defaults) and Fargate (real URLs).
+          // Redirect URI = backend OAuth callback (BETTER_AUTH_URL = publicUrls.api).
+          { name: 'OIDC_REDIRECT_URI', value: pulumi.interpolate`${args.publicUrls.api}/v1/api/auth/oauth2/callback/oidc` },
+          { name: 'OIDC_WEB_ORIGIN', value: args.publicUrls.app },
         ],
         portMappings: [{ containerPort: 8080 }],
         logConfiguration: logConfig('keycloak'),

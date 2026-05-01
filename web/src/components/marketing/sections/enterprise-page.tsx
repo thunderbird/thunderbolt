@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { useEffect, useState } from 'react'
 import { FooterSection } from '../footer-section'
 import { Header } from '../header'
 
@@ -45,21 +46,50 @@ const StarOnGitHubButton = ({ fullWidth = false }: { fullWidth?: boolean }) => (
   </a>
 )
 
+const formatStars = (n: number): string =>
+  n >= 1000 ? `${(n / 1000).toFixed(1).replace(/\.0$/, '')}k` : String(n)
+
 // Compact header badge: white, GitHub icon + live star count, no label.
-// Stays hidden until the script in index.astro populates the count from the
-// GitHub API. If the fetch fails, the badge stays hidden.
-const StarCountBadge = () => (
-  <a
-    href={REPO_URL}
-    target="_blank"
-    rel="noopener noreferrer"
-    className="js-github-star-count hidden h-[46px] items-center gap-2 border border-[#d0d5dd] bg-white px-4 text-sm font-medium text-[#344054] transition-colors hover:bg-[#f2f4f7]"
-  >
-    <GitHubIcon />
-    <StarIcon />
-    <span className="js-github-star-count-value" />
-  </a>
-)
+// Hidden until the GitHub API call resolves. If the fetch fails, the badge
+// stays hidden.
+const StarCountBadge = () => {
+  const [stars, setStars] = useState<number | null>(null)
+
+  useEffect(() => {
+    let cancelled = false
+    const load = async () => {
+      try {
+        const res = await fetch('https://api.github.com/repos/thunderbird/thunderbolt')
+        if (!res.ok) return
+        const data = await res.json()
+        if (cancelled || typeof data.stargazers_count !== 'number') return
+        setStars(data.stargazers_count)
+      } catch {
+        // Leave the badge hidden.
+      }
+    }
+    load()
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
+  if (stars === null) return null
+
+  return (
+    <a
+      href={REPO_URL}
+      target="_blank"
+      rel="noopener noreferrer"
+      aria-label={`${stars} stars on GitHub`}
+      className="inline-flex h-[46px] items-center gap-2 border border-[#d0d5dd] bg-white px-4 text-sm font-medium text-[#344054] transition-colors hover:bg-[#f2f4f7]"
+    >
+      <GitHubIcon />
+      <StarIcon />
+      <span>{formatStars(stars)}</span>
+    </a>
+  )
+}
 
 const EnterpriseInquiriesButton = () => (
   <a

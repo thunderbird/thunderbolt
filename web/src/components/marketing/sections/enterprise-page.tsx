@@ -82,7 +82,7 @@ const StarCountBadge = () => {
       target="_blank"
       rel="noopener noreferrer"
       aria-label={`${stars} stars on GitHub`}
-      className="inline-flex h-[46px] items-center gap-2 border border-[#d0d5dd] bg-white px-4 text-sm font-medium text-[#344054] transition-colors hover:bg-[#f2f4f7]"
+      className="hidden h-[46px] items-center gap-2 border border-[#344054] px-4 text-sm font-medium text-[#344054] transition-colors hover:bg-[#f2f4f7] md:inline-flex"
     >
       <GitHubIcon />
       <StarIcon />

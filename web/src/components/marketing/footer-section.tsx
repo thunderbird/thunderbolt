@@ -6,6 +6,23 @@ type FooterSectionProps = {
   className?: string
 }
 
+const DISCORD_URL = 'https://discord.gg/mQrMNetHG'
+
+const DiscordIcon = () => (
+  <svg
+    viewBox="0 0 24 24"
+    className="size-6"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="1.5"
+    strokeLinejoin="round"
+    aria-hidden="true"
+    style={{ flexShrink: 0 }}
+  >
+    <path d="M18.8943 4.34399C17.5183 3.71467 16.057 3.256 14.5317 3C14.3396 3.33067 14.1263 3.77866 13.977 4.13067C12.3546 3.89599 10.7439 3.89599 9.14391 4.13067C8.99457 3.77866 8.77056 3.33067 8.58922 3C7.05325 3.256 5.59191 3.71467 4.22552 4.34399C1.46286 8.41865 0.716188 12.3973 1.08952 16.3226C2.92418 17.6559 4.69486 18.4666 6.4346 19C6.86126 18.424 7.24527 17.8053 7.57594 17.1546C6.9466 16.92 6.34927 16.632 5.77327 16.2906C5.9226 16.184 6.07194 16.0667 6.21061 15.9493C9.68793 17.5387 13.4543 17.5387 16.889 15.9493C17.0383 16.0667 17.177 16.184 17.3263 16.2906C16.7503 16.632 16.153 16.92 15.5236 17.1546C15.8543 17.8053 16.2383 18.424 16.665 19C18.4036 18.4666 20.185 17.6559 22.01 16.3226C22.4687 11.7787 21.2836 7.83202 18.8943 4.34399ZM8.05593 13.9013C7.01058 13.9013 6.15725 12.952 6.15725 11.7893C6.15725 10.6267 6.98925 9.67731 8.05593 9.67731C9.11191 9.67731 9.97588 10.6267 9.95454 11.7893C9.95454 12.952 9.11191 13.9013 8.05593 13.9013ZM15.065 13.9013C14.0196 13.9013 13.1652 12.952 13.1652 11.7893C13.1652 10.6267 13.9983 9.67731 15.065 9.67731C16.121 9.67731 16.985 10.6267 16.9636 11.7893C16.9636 12.952 16.1317 13.9013 15.065 13.9013Z" />
+  </svg>
+)
+
 export const FooterSection = ({ className = '' }: FooterSectionProps) => (
   <footer className={className}>
     <div className="mx-auto max-w-[1120px] px-6 lg:px-0">
@@ -18,6 +35,16 @@ export const FooterSection = ({ className = '' }: FooterSectionProps) => (
         <div className="flex flex-wrap items-center justify-center gap-x-4 gap-y-3">
           <img src="/enterprise/mozilla-logo.svg" alt="Mozilla" className="h-6 w-auto" />
           <img src="/enterprise/thunderbird.svg" alt="Thunderbird" className="h-6 w-auto" />
+          {/* Mobile: icon-only square button */}
+          <a
+            href={DISCORD_URL}
+            target="_blank"
+            rel="noopener noreferrer"
+            aria-label="Join our Discord"
+            className="inline-flex h-[46px] w-[46px] items-center justify-center bg-[#344054] text-white transition-colors hover:bg-[#344054]/90 lg:hidden"
+          >
+            <DiscordIcon />
+          </a>
         </div>
         <p className="max-w-[638px] text-center text-xs leading-4 text-[#667085] lg:text-left">
           Thunderbolt is a product of{' '}
@@ -30,6 +57,16 @@ export const FooterSection = ({ className = '' }: FooterSectionProps) => (
           </a>
           .
         </p>
+        {/* Desktop: icon + "Discord" text, pushed to the right edge */}
+        <a
+          href={DISCORD_URL}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="hidden h-[46px] items-center gap-2 bg-[#344054] px-5 font-mono text-sm font-bold uppercase tracking-wider text-white transition-colors hover:bg-[#344054]/90 lg:ml-auto lg:inline-flex"
+        >
+          <DiscordIcon />
+          Discord
+        </a>
       </div>
     </div>
   </footer>

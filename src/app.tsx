@@ -11,6 +11,7 @@ import ChatDetailPage from '@/chats/detail'
 import MagicLinkVerify from '@/components/magic-link-verify'
 import OAuthCallback from '@/components/oauth-callback'
 import { AccountDeleted } from '@/components/account-deleted'
+import { SignedOut } from '@/components/signed-out'
 import { RevokedDeviceModal } from '@/components/revoked-device-modal'
 import { SidebarProvider } from '@/components/ui/sidebar'
 import { HapticsProvider } from '@/hooks/use-haptics'
@@ -182,6 +183,7 @@ const AppRoutes = ({ initData }: { initData: InitData }) => {
       </Route>
 
       {/* Fallback routes - no guards */}
+      <Route path="/signed-out" element={<SignedOut />} />
       <Route path="/account-deleted" element={<AccountDeleted />} />
       <Route path="/not-found" element={<NotFound />} />
       <Route path="*" element={<Navigate to="/not-found" replace />} />

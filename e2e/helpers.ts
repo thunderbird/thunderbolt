@@ -32,6 +32,32 @@ export const loginViaSaml = async (page: Page) => {
 }
 
 /**
+ * Open the account popover, click "Log out", confirm in the modal, and wait
+ * for the signed-out landing page to appear.
+ *
+ * Expects the caller to have already authenticated (e.g. via loginViaOidc / loginViaSaml).
+ */
+export const logoutViaSidebar = async (page: Page, option: 'keep' | 'delete' = 'keep') => {
+  // Open account popover in sidebar footer
+  const accountTrigger = page.locator('[data-sidebar="footer"]').getByRole('button').first()
+  await accountTrigger.click()
+
+  // Click "Log out" menu item
+  await page.getByText('Log out', { exact: true }).click()
+
+  // Pick the data option if "delete" is requested (default is "keep")
+  if (option === 'delete') {
+    await page.getByText('Delete data from device').click()
+  }
+
+  // Confirm logout
+  await page.getByRole('button', { name: 'Log out' }).click()
+
+  // Should land on the signed-out page
+  await expect(page.getByRole('heading', { name: 'Signed Out' })).toBeVisible({ timeout: 10_000 })
+}
+
+/**
  * Collect uncaught JS errors, filtering Tauri-specific noise.
  */
 export const collectPageErrors = (page: Page): string[] => {

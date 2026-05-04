@@ -45,6 +45,17 @@ test('MCP traffic routes through /v1/proxy with X-Upstream-Authorization', async
   let capturedHeaders: Record<string, string> = {}
   let capturedBody: string | null = null
 
+  // Mock the JWT mint endpoint — even though MCP uses Bearer auth (cookies)
+  // and doesn't strictly need ?token=, useProxyUrl appends it uniformly so
+  // the proxy treats every caller through the same auth path.
+  await page.route('**/api/auth/token', async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({ token: 'fake-test-jwt' }),
+    })
+  })
+
   // Intercept the proxy POST and answer with a JSON-RPC envelope so the probe
   // can verify the response round-trips intact.
   await page.route('**/v1/proxy/**', async (route) => {
@@ -75,9 +86,9 @@ test('MCP traffic routes through /v1/proxy with X-Upstream-Authorization', async
   await page.goto('/settings/preferences')
   await expect(page.getByRole('heading', { name: 'Network' })).toBeVisible({ timeout: 10_000 })
 
-  // Mirror `getProxyUrl`'s exact format: `${cloudUrl}/proxy/${encodeURIComponent(target)}`.
+  // Mirror `getProxyUrl`'s exact format: `${cloudUrl}/proxy/${encodeURIComponent(target)}?token=<jwt>`.
   // The default cloud_url in the test environment is http://localhost:8000/v1.
-  const proxyTargetUrl = `http://localhost:8000/v1/proxy/${encodeURIComponent(targetMcpServer)}`
+  const proxyTargetUrl = `http://localhost:8000/v1/proxy/${encodeURIComponent(targetMcpServer)}?token=fake-test-jwt`
 
   // Probe `fetch` that mimics what `StreamableHTTPClientTransport` POSTs:
   //   - POST + JSON-RPC body

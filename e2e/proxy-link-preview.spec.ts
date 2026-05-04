@@ -36,11 +36,21 @@ const targetImage = 'https://example.com/photo.jpg'
  * actually delivered the bytes the browser could decode. Same blueprint used
  * in `proxy-favicon.spec.ts`.
  */
-test('link-preview image renders via /v1/proxy round-trip', async ({ page }) => {
+test('link-preview image renders via /v1/proxy round-trip with ?token= JWT', async ({ page }) => {
   const errors = collectPageErrors(page)
 
   let proxyHits = 0
   let proxiedTarget: string | null = null
+  let proxyTokenQuery: string | null = null
+
+  // Mock the JWT mint endpoint so the frontend has a token before <img> renders.
+  await page.route('**/api/auth/token', async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({ token: 'fake-test-jwt' }),
+    })
+  })
 
   // Intercept any /v1/proxy/* request and answer with a real PNG so the browser
   // can decode it and report a non-zero naturalWidth.
@@ -50,9 +60,14 @@ test('link-preview image renders via /v1/proxy round-trip', async ({ page }) => 
     // Path is `/v1/proxy/<encoded-target>`; decode the last segment.
     const encoded = url.pathname.split('/v1/proxy/')[1] ?? ''
     proxiedTarget = decodeURIComponent(encoded)
+    proxyTokenQuery = url.searchParams.get('token')
     await route.fulfill({
       status: 200,
       contentType: 'image/png',
+      headers: {
+        'Cache-Control': 'private, max-age=600',
+        'CDN-Cache-Control': 'no-store',
+      },
       body: onePixelPng,
     })
   })
@@ -63,9 +78,8 @@ test('link-preview image renders via /v1/proxy round-trip', async ({ page }) => 
   await expect(page.getByRole('heading', { name: 'Network' })).toBeVisible({ timeout: 10_000 })
 
   // Construct the proxy URL the same way `getProxyUrl` does (encodeURIComponent
-  // of the target, appended to `${cloudUrl}/proxy/`). The default cloud_url in
-  // the test environment is http://localhost:8000/v1.
-  const proxyImgUrl = `http://localhost:8000/v1/proxy/${encodeURIComponent(targetImage)}`
+  // of the target, appended to `${cloudUrl}/proxy/`, with `?token=<jwt>` suffix).
+  const proxyImgUrl = `http://localhost:8000/v1/proxy/${encodeURIComponent(targetImage)}?token=fake-test-jwt`
 
   // Inject an <img> that points at the proxy URL. We wait for the load event
   // explicitly so the assertion below has a deterministic signal.
@@ -86,6 +100,7 @@ test('link-preview image renders via /v1/proxy round-trip', async ({ page }) => 
   // The route handler must have fired exactly once with the encoded target URL.
   expect(proxyHits).toBe(1)
   expect(proxiedTarget).toBe(targetImage)
+  expect(proxyTokenQuery).toBe('fake-test-jwt')
 
   // The browser actually decoded the PNG (naturalWidth > 0 proves the response
   // was a valid image, not a 4xx/5xx body).
@@ -101,6 +116,7 @@ test('link-preview image renders via /v1/proxy round-trip', async ({ page }) => 
     .evaluate((el) => (el as HTMLImageElement).src)
   expect(renderedSrc).toContain('/v1/proxy/')
   expect(renderedSrc).not.toContain('/pro/link-preview/proxy-image/')
+  expect(renderedSrc).toContain('?token=fake-test-jwt')
 
   expect(errors).toHaveLength(0)
 })

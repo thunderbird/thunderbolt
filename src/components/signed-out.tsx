@@ -15,7 +15,7 @@ export const SignedOut = () => (
 
       <div className="flex flex-col items-center gap-2">
         <h1 className="text-4xl font-semibold tracking-tight">Signed Out</h1>
-        <p className="text-muted-foreground">You have been signed out. Your local data has been securely cleared.</p>
+        <p className="text-muted-foreground">You have been signed out successfully.</p>
       </div>
 
       <Button onClick={() => window.location.replace('/')}>Sign back in</Button>

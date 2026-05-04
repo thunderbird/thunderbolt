@@ -50,22 +50,25 @@ const formatStars = (n: number): string =>
   n >= 1000 ? `${(n / 1000).toFixed(1).replace(/\.0$/, '')}k` : String(n)
 
 // Compact header badge: white, GitHub icon + live star count, no label.
-// Geometry is reserved from first paint to prevent layout shift; the badge
-// fades in once the count resolves. If the fetch fails, it stays hidden.
+// Geometry is reserved from first paint to prevent layout shift while the
+// fetch is in flight; the badge fades in once the count resolves. If the
+// fetch fails, the badge unmounts so it doesn't leave a permanent gap.
 const StarCountBadge = () => {
   const [stars, setStars] = useState<number | null>(null)
+  const [failed, setFailed] = useState(false)
 
   useEffect(() => {
     let cancelled = false
     const load = async () => {
       try {
         const res = await fetch('https://api.github.com/repos/thunderbird/thunderbolt')
-        if (!res.ok) return
+        if (!res.ok) throw new Error(`GitHub API responded ${res.status}`)
         const data = await res.json()
-        if (cancelled || typeof data.stargazers_count !== 'number') return
+        if (cancelled) return
+        if (typeof data.stargazers_count !== 'number') throw new Error('Missing stargazers_count')
         setStars(data.stargazers_count)
       } catch {
-        // Leave the badge hidden.
+        if (!cancelled) setFailed(true)
       }
     }
     load()
@@ -73,6 +76,8 @@ const StarCountBadge = () => {
       cancelled = true
     }
   }, [])
+
+  if (failed) return null
 
   const loaded = stars !== null
 

@@ -61,6 +61,9 @@ const useToolFavicon = (toolName: string, toolOutput: unknown, isLoading: boolea
       return { favicon: null, originalFaviconUrl, handleFaviconError }
     }
 
+    // proxyUrl returns null when the media JWT is still loading. Treat the
+    // same as "favicon unavailable" — the existing fallback (Icon or initials)
+    // takes over until the JWT resolves and the next render swaps in the URL.
     const favicon = proxyUrl(originalFaviconUrl)
     return { favicon, originalFaviconUrl, handleFaviconError }
   } catch {

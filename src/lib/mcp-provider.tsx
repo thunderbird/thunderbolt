@@ -76,14 +76,6 @@ export const MCPProvider = ({ children }: { children: ReactNode }) => {
 
   serversRef.current = servers
 
-  const createClient = async (url: string): Promise<MCPClient> => {
-    const transport = createMcpTransport(url, proxyUrl(url))
-    const mcpClient = await createMCPClient({
-      transport,
-    })
-    return mcpClient
-  }
-
   const connectServer = async (server: { id: string; name: string; url: string; enabled: boolean }) => {
     if (!server.enabled) {
       setServers((prev) =>
@@ -95,8 +87,16 @@ export const MCPProvider = ({ children }: { children: ReactNode }) => {
     }
 
     try {
-      // Connecting to MCP server
-      const client = await createClient(server.url)
+      // Connecting to MCP server. proxyUrl returns null only when the media
+      // JWT is still loading on first paint; MCP connections are kicked off
+      // after auth completes so this branch should be rare. When it does fire
+      // we surface a clear error rather than silently connecting to a broken
+      // URL — the user can retry once the JWT settles.
+      const effectiveUrl = proxyUrl(server.url)
+      if (effectiveUrl === null) {
+        throw new Error('Media authentication not ready — retry once signed in')
+      }
+      const client = await createMCPClient({ transport: createMcpTransport(server.url, effectiveUrl) })
 
       clientRefs.current.set(server.id, client)
 

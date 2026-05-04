@@ -81,7 +81,7 @@ describe('LinkPreviewWidget', () => {
       expect(getByText('Third')).toBeTruthy()
     })
 
-    it('proxies image URL through unified /v1/proxy', () => {
+    it('proxies image URL through unified /v1/proxy with ?token= for sub-resource auth', () => {
       const sources = [makeSource({ image: 'https://example.com/photo.jpg' })]
 
       const { container } = renderWithProviders(
@@ -92,6 +92,9 @@ describe('LinkPreviewWidget', () => {
       expect(img?.getAttribute('src')).toContain('/v1/proxy/')
       expect(img?.getAttribute('src')).not.toContain('/pro/link-preview/proxy-image/')
       expect(img?.getAttribute('src')).toContain(encodeURIComponent('https://example.com/photo.jpg'))
+      // Browser sub-resource loads cannot attach Authorization, so the unified
+      // proxy accepts a `?token=<jwt>` query param (Better Auth JWT plugin).
+      expect(img?.getAttribute('src')).toMatch(/[?&]token=/)
     })
 
     it('renders without image when source has no image', () => {

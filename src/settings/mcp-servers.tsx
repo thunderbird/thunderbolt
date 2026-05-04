@@ -151,8 +151,15 @@ export default function McpServersPage() {
 
       // Create a real MCP client using the same method as the provider
       console.log('Creating MCP client...')
+      const effectiveUrl = proxyUrl(newServerUrl)
+      if (effectiveUrl === null) {
+        // Media JWT not yet minted — surface a clear error so the user can retry.
+        setConnectionStatus('error')
+        setIsTestingConnection(false)
+        return
+      }
       const mcpClient = await createMCPClient({
-        transport: createMcpTransport(newServerUrl, proxyUrl(newServerUrl)),
+        transport: createMcpTransport(newServerUrl, effectiveUrl),
       })
 
       console.log('MCP client created successfully')

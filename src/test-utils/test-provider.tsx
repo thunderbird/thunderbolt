@@ -4,16 +4,26 @@
 
 import { AuthProvider, DatabaseProvider, HttpClientProvider, type AuthClient, type HttpClient } from '@/contexts'
 import { getDb } from '@/db/database'
+import { mediaJwtQueryKey } from '@/lib/use-media-jwt'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { type ReactNode } from 'react'
 import { createMockAuthClient } from './auth-client'
 import { createMockHttpClient } from './http-client'
 import { PowerSyncMockProvider } from './powersync-mock'
 
+/** Default JWT shipped with `createTestProvider()` so any component that calls
+ *  `useProxyUrl()` resolves a URL synchronously. Tests that want to assert the
+ *  loading branch can pass `mediaJwt: null` explicitly. */
+export const testMediaJwt = 'test-media-jwt'
+
 type TestProviderOptions = {
   mockResponse?: unknown
   authClient?: AuthClient
   httpClient?: HttpClient
+  /** Pre-populate the media JWT React Query cache. Defaults to `testMediaJwt`
+   *  so `useProxyUrl()` returns a URL synchronously in tests. Pass `null` to
+   *  exercise the loading/null branch. */
+  mediaJwt?: string | null
   queryOptions?: {
     defaultOptions?: {
       queries?: {
@@ -63,6 +73,14 @@ export const createTestProvider = (options?: TestProviderOptions) => {
   const mockHttpClient = options?.httpClient ?? createMockHttpClient(options?.mockResponse ?? [])
 
   const mockAuthClient = options?.authClient ?? createMockAuthClient()
+
+  // Pre-populate the media JWT cache so any component that calls useProxyUrl()
+  // resolves a URL synchronously. Pass `mediaJwt: null` to exercise the
+  // loading-branch path explicitly.
+  const mediaJwt = options?.mediaJwt === undefined ? testMediaJwt : options.mediaJwt
+  if (mediaJwt !== null) {
+    queryClient.setQueryData(mediaJwtQueryKey, mediaJwt)
+  }
 
   return ({ children }: { children: ReactNode }) => {
     return (

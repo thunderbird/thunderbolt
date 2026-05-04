@@ -58,6 +58,8 @@ const buildPageImageUrl = (pageUrl: string, cloudUrl: string | null): string | n
 /** Renders a link preview instantly from source registry metadata */
 const InstantLinkPreview = ({ sourceData }: { sourceData: SourceMetadata }) => {
   const proxyUrl = useProxyUrl()
+  // proxyUrl returns null while the media JWT is loading; LinkPreview
+  // gracefully shows the image placeholder until the next render passes a URL.
   return (
     <LinkPreview
       title={sourceData.title || getHostname(sourceData.url)}

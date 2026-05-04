@@ -42,6 +42,8 @@ export const SourceCard = ({ source, className }: SourceCardProps) => {
   // blocked by COEP (NotSameOriginAfterDefaultedToSameOriginByCoep), even when
   // the upstream URL is publicly reachable.
   const rawFavicon = explicitFavicon ?? derivedFavicon
+  // proxyUrl returns null when the media JWT is still loading — the initial
+  // letter badge below covers that case until the JWT resolves.
   const faviconUrl = rawFavicon ? proxyUrl(rawFavicon) : null
   const showFavicon = faviconUrl && !faviconError
   const initial = displaySiteName.charAt(0).toUpperCase()

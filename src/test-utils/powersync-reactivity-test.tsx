@@ -4,9 +4,14 @@
 
 import { MemoryRouter, Route, Routes } from 'react-router'
 import { act, render, type RenderOptions, type RenderResult } from '@testing-library/react'
-import type { ReactElement, ReactNode } from 'react'
+import { QueryClient } from '@tanstack/react-query'
+import { useMemo, type ReactElement, type ReactNode } from 'react'
+import { HttpClientProvider } from '@/contexts'
+import { mediaJwtQueryKey } from '@/lib/use-media-jwt'
 import { getClock } from '@/testing-library'
+import { createMockHttpClient } from './http-client'
 import { PowerSyncReactivityTestProvider } from './powersync-mock'
+import { testMediaJwt } from './test-provider'
 
 /**
  * Poll for element with fake timers. Avoids waitFor's jest.advanceTimersByTime issues in Bun.
@@ -65,6 +70,25 @@ export const renderWithReactivity = (
   const triggerChangeRef = { current: null as ((tables: string[]) => void) | null }
 
   const Wrapper = ({ children }: { children: ReactNode }) => {
+    // Build a single QueryClient owned by `renderWithReactivity` so we can
+    // seed the media-jwt cache before any subscriber renders. Without this
+    // seed, components that call `useProxyUrl()` (which calls `useMediaJwt`)
+    // would issue a real `httpClient.post('api/auth/token')` against the
+    // mock and resolve to `undefined` on the first render — fine for
+    // correctness but fires a queryFn every test for no reason. Mirrors
+    // `createTestProvider`'s contract so test authors can mix the two.
+    const queryClient = useMemo(() => {
+      const client = new QueryClient({
+        defaultOptions: {
+          queries: { retry: false, gcTime: 0, staleTime: 0 },
+        },
+      })
+      client.setQueryData(mediaJwtQueryKey, testMediaJwt)
+      return client
+    }, [])
+
+    const httpClient = useMemo(() => createMockHttpClient(), [])
+
     const content = route ? (
       <MemoryRouter initialEntries={[route]}>
         <Routes>
@@ -76,9 +100,11 @@ export const renderWithReactivity = (
     )
 
     return (
-      <PowerSyncReactivityTestProvider tables={tables} triggerChangeRef={triggerChangeRef}>
-        {InnerWrapper ? <InnerWrapper>{content}</InnerWrapper> : content}
-      </PowerSyncReactivityTestProvider>
+      <HttpClientProvider httpClient={httpClient}>
+        <PowerSyncReactivityTestProvider tables={tables} triggerChangeRef={triggerChangeRef} queryClient={queryClient}>
+          {InnerWrapper ? <InnerWrapper>{content}</InnerWrapper> : content}
+        </PowerSyncReactivityTestProvider>
+      </HttpClientProvider>
     )
   }
 

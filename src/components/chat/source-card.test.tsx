@@ -55,10 +55,13 @@ describe('SourceCard', () => {
       const link = screen.getByRole('listitem')
       const img = link.querySelector('img')
       // Explicit favicons are also routed through the proxy so COEP doesn't block them.
-      expect(img).toHaveAttribute(
-        'src',
+      // The unified proxy authenticates browser sub-resource loads via `?token=<jwt>`
+      // (browsers can't attach Authorization headers to <img src>); the test provider
+      // pre-populates `TEST_MEDIA_JWT` so the URL resolves synchronously.
+      expect(img?.getAttribute('src')).toContain(
         'http://localhost:8000/v1/proxy/' + encodeURIComponent('https://example.com/favicon.ico'),
       )
+      expect(img?.getAttribute('src')).toMatch(/[?&]token=/)
     })
 
     it('should show URL as title when title is missing', () => {
@@ -76,10 +79,28 @@ describe('SourceCard', () => {
       const img = container.querySelector('img')
       expect(img).toBeInTheDocument()
       // Test environment runs as web (no Tauri), so proxying is always on with the default cloud_url.
-      expect(img).toHaveAttribute(
-        'src',
+      expect(img?.getAttribute('src')).toContain(
         'http://localhost:8000/v1/proxy/' + encodeURIComponent('https://example.com/favicon.ico'),
       )
+      expect(img?.getAttribute('src')).toMatch(/[?&]token=/)
+    })
+
+    it('falls back to letter badge while the media JWT is loading (proxyUrl=null)', () => {
+      const TestProvider = createTestProvider({ mediaJwt: null })
+      render(
+        <TestProvider>
+          <ExternalLinkDialogProvider>
+            <SourceCard source={mockSource} />
+          </ExternalLinkDialogProvider>
+        </TestProvider>,
+      )
+
+      const container = screen.getByRole('listitem')
+      // No <img> while JWT pending — letter badge takes over.
+      expect(container.querySelector('img')).toBeNull()
+      const badge = container.querySelector('[aria-hidden="true"]')
+      expect(badge).toBeInTheDocument()
+      expect(badge).toHaveTextContent('E')
     })
 
     it('should show initial badge when favicon fails to load', () => {

@@ -91,7 +91,7 @@ const AppRoutes = ({ initData }: { initData: InitData }) => {
   })
 
   const oidcMode = isOidcMode()
-  const shouldBypassWaitlist = import.meta.env.VITE_BYPASS_WAITLIST === 'true' || isPrPreview()
+  const waitlistEnabled = import.meta.env.VITE_ENABLE_WAITLIST === 'true' && !isPrPreview()
 
   return (
     <Routes>
@@ -111,8 +111,8 @@ const AppRoutes = ({ initData }: { initData: InitData }) => {
         />
       )}
 
-      {/* Waitlist routes - unauthenticated only (skip when bypass or OIDC mode) */}
-      {!oidcMode && !shouldBypassWaitlist && (
+      {/* Waitlist routes - unauthenticated only (only when enabled and not OIDC mode) */}
+      {!oidcMode && waitlistEnabled && (
         <Route element={<AuthGate require="unauthenticated" redirectTo="/" />}>
           <Route path="waitlist" element={<WaitlistLayout />}>
             <Route index element={<WaitlistPage />} />
@@ -120,13 +120,13 @@ const AppRoutes = ({ initData }: { initData: InitData }) => {
         </Route>
       )}
 
-      {/* Main app routes - authenticated only (pass-through when bypass enabled) */}
+      {/* Main app routes - authenticated only (pass-through when waitlist and OIDC both disabled) */}
       <Route
         element={
-          shouldBypassWaitlist ? (
-            <Outlet />
-          ) : (
+          oidcMode || waitlistEnabled ? (
             <AuthGate require="authenticated" redirectTo={oidcMode ? '/oidc-redirect' : '/waitlist'} />
+          ) : (
+            <Outlet />
           )
         }
       >

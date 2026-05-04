@@ -1,3 +1,7 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+
 import { test, expect } from '@playwright/test'
 import { loginViaOidc, collectPageErrors } from './helpers'
 
@@ -23,6 +27,12 @@ test('web shows proxy toggle disabled with CORS tooltip', async ({ page }) => {
     'Proxying is required in the web app to bypass browser CORS restrictions.',
     { timeout: 5_000 },
   )
+
+  // Force-click to bypass the disabled-pointer guard and confirm the visual state
+  // doesn't flip (pointer-events-none on the locked switch must keep it inert).
+  await proxySwitch.click({ force: true })
+  await expect(proxySwitch).toHaveAttribute('aria-checked', 'true')
+  expect(await page.evaluate(() => localStorage.getItem('proxy_enabled'))).not.toBe('true')
 
   expect(errors).toHaveLength(0)
 })

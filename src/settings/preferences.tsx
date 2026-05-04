@@ -614,7 +614,12 @@ export default function PreferencesSettingsPage() {
             <Tooltip>
               <TooltipTrigger asChild>
                 <span tabIndex={0} aria-label="Cloud proxy is required in the web app">
-                  <Switch checked={proxyChecked} disabled aria-label="Use Cloud Proxy" />
+                  <Switch
+                    checked={proxyChecked}
+                    disabled
+                    aria-label="Use Cloud Proxy"
+                    className="pointer-events-none"
+                  />
                 </span>
               </TooltipTrigger>
               <TooltipContent side="top">

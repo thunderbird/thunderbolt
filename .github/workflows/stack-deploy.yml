@@ -1,0 +1,236 @@
+name: Stack Deploy
+
+on:
+  workflow_call:
+    inputs:
+      action:
+        type: string
+        required: true
+      platform:
+        type: string
+        default: 'fargate'
+      region:
+        type: string
+        default: 'us-east-1'
+      stack_name:
+        type: string
+        required: true
+      version:
+        type: string
+        required: false
+      marketing_hostname:
+        description: 'Preview hostname for marketing site (e.g. thunderbolt-pr-123.preview.thunderbolt.io)'
+        type: string
+        required: false
+      app_hostname:
+        description: 'Preview hostname for the app frontend (e.g. app-pr-123.preview.thunderbolt.io)'
+        type: string
+        required: false
+      api_hostname:
+        description: 'Preview hostname for the backend API (e.g. api-pr-123.preview.thunderbolt.io)'
+        type: string
+        required: false
+      auth_hostname:
+        description: 'Preview hostname for keycloak (e.g. auth-pr-123.preview.thunderbolt.io)'
+        type: string
+        required: false
+      powersync_hostname:
+        description: 'Preview hostname for powersync (e.g. powersync-pr-123.preview.thunderbolt.io)'
+        type: string
+        required: false
+      cloudflare_zone_id:
+        description: 'Cloudflare zone ID. Required when any hostname is set.'
+        type: string
+        required: false
+      thunderbolt_inference_url:
+        description: 'Thunderbolt inference gateway URL (non-secret; passed as plain config).'
+        type: string
+        required: false
+    outputs:
+      url:
+        description: 'Public URL of the deployed stack (subdomain if configured, raw ALB otherwise)'
+        value: ${{ jobs.deploy.outputs.url }}
+  workflow_dispatch:
+    inputs:
+      action:
+        description: 'Action to perform'
+        required: true
+        type: choice
+        options:
+          - deploy
+          - destroy
+      platform:
+        description: 'Deployment platform'
+        required: true
+        type: choice
+        default: 'fargate'
+        options:
+          - fargate
+          - k8s
+      region:
+        description: 'AWS region'
+        required: true
+        type: choice
+        default: 'us-east-1'
+        options:
+          - us-east-1
+          - us-west-2
+          - eu-west-1
+      stack_name:
+        description: 'Pulumi stack name (e.g., demo-acme)'
+        required: true
+        type: string
+      version:
+        description: 'Image version to deploy (default: from package.json)'
+        required: false
+        type: string
+
+env:
+  PULUMI_ACCESS_TOKEN: ${{ secrets.PULUMI_ACCESS_TOKEN }}
+
+jobs:
+  deploy:
+    if: inputs.action == 'deploy'
+    runs-on: ubuntu-latest
+    # Tag deploys with the `preview` environment so env-scoped secrets (EXA_API_KEY)
+    # flow through alongside repo-level secrets. No required reviewers configured,
+    # so enterprise workflow_dispatch deploys are unaffected.
+    environment: preview
+    permissions:
+      id-token: write
+      contents: read
+    outputs:
+      url: ${{ steps.outputs.outputs.url }}
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+
+      - uses: aws-actions/configure-aws-credentials@ec61189d14ec14c8efccab744f656cffd0e33f37 # v6.1.0
+        with:
+          role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ inputs.region }}
+
+      - name: Resolve version
+        id: version
+        env:
+          INPUT_VERSION: ${{ inputs.version }}
+        run: |
+          if [ -n "$INPUT_VERSION" ]; then
+            echo "version=$INPUT_VERSION" >> $GITHUB_OUTPUT
+          else
+            echo "version=$(jq -r .version package.json)" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Install Pulumi dependencies
+        working-directory: deploy/pulumi
+        run: bun install --frozen-lockfile
+
+      - name: Ensure Pulumi stack exists
+        working-directory: deploy/pulumi
+        env:
+          INPUT_STACK_NAME: ${{ inputs.stack_name }}
+        run: |
+          # --create makes stack init idempotent (no-op if already exists).
+          pulumi stack select --create "$INPUT_STACK_NAME" --non-interactive
+
+      - name: Configure Pulumi stack
+        working-directory: deploy/pulumi
+        env:
+          INPUT_PLATFORM: ${{ inputs.platform }}
+          INPUT_STACK_NAME: ${{ inputs.stack_name }}
+          INPUT_VERSION: ${{ steps.version.outputs.version }}
+          INPUT_GHCR_PAT: ${{ secrets.GHCR_PAT }}
+          INPUT_MARKETING_HOSTNAME: ${{ inputs.marketing_hostname }}
+          INPUT_APP_HOSTNAME: ${{ inputs.app_hostname }}
+          INPUT_API_HOSTNAME: ${{ inputs.api_hostname }}
+          INPUT_AUTH_HOSTNAME: ${{ inputs.auth_hostname }}
+          INPUT_POWERSYNC_HOSTNAME: ${{ inputs.powersync_hostname }}
+          INPUT_CLOUDFLARE_ZONE_ID: ${{ inputs.cloudflare_zone_id }}
+          INPUT_CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          INPUT_THUNDERBOLT_INFERENCE_URL: ${{ inputs.thunderbolt_inference_url }}
+          INPUT_ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          INPUT_FIREWORKS_API_KEY: ${{ secrets.FIREWORKS_API_KEY }}
+          INPUT_MISTRAL_API_KEY: ${{ secrets.MISTRAL_API_KEY }}
+          INPUT_THUNDERBOLT_INFERENCE_API_KEY: ${{ secrets.THUNDERBOLT_INFERENCE_API_KEY }}
+          INPUT_EXA_API_KEY: ${{ secrets.EXA_API_KEY }}
+        run: |
+          pulumi config set platform "$INPUT_PLATFORM" -s "$INPUT_STACK_NAME" --non-interactive
+          pulumi config set version "$INPUT_VERSION" -s "$INPUT_STACK_NAME" --non-interactive
+          if [ -n "$INPUT_GHCR_PAT" ]; then
+            pulumi config set --secret ghcrToken "$INPUT_GHCR_PAT" -s "$INPUT_STACK_NAME" --non-interactive
+          fi
+
+          # Any hostname set implies subdomain routing mode — require zone ID + API token, and set all provided hostnames.
+          ANY_HOSTNAME="$INPUT_MARKETING_HOSTNAME$INPUT_APP_HOSTNAME$INPUT_API_HOSTNAME$INPUT_AUTH_HOSTNAME$INPUT_POWERSYNC_HOSTNAME"
+          if [ -n "$ANY_HOSTNAME" ]; then
+            [ -n "$INPUT_CLOUDFLARE_ZONE_ID" ] || { echo "hostname(s) set but cloudflare_zone_id is missing"; exit 1; }
+            [ -n "$INPUT_CLOUDFLARE_API_TOKEN" ] || { echo "hostname(s) set but CLOUDFLARE_API_TOKEN secret is missing"; exit 1; }
+            pulumi config set cloudflareZoneId "$INPUT_CLOUDFLARE_ZONE_ID" -s "$INPUT_STACK_NAME" --non-interactive
+            pulumi config set --secret cloudflareApiToken "$INPUT_CLOUDFLARE_API_TOKEN" -s "$INPUT_STACK_NAME" --non-interactive
+            [ -n "$INPUT_MARKETING_HOSTNAME" ] && pulumi config set marketingHostname "$INPUT_MARKETING_HOSTNAME" -s "$INPUT_STACK_NAME" --non-interactive
+            [ -n "$INPUT_APP_HOSTNAME" ]       && pulumi config set appHostname       "$INPUT_APP_HOSTNAME"       -s "$INPUT_STACK_NAME" --non-interactive
+            [ -n "$INPUT_API_HOSTNAME" ]       && pulumi config set apiHostname       "$INPUT_API_HOSTNAME"       -s "$INPUT_STACK_NAME" --non-interactive
+            [ -n "$INPUT_AUTH_HOSTNAME" ]      && pulumi config set authHostname      "$INPUT_AUTH_HOSTNAME"      -s "$INPUT_STACK_NAME" --non-interactive
+            [ -n "$INPUT_POWERSYNC_HOSTNAME" ] && pulumi config set powersyncHostname "$INPUT_POWERSYNC_HOSTNAME" -s "$INPUT_STACK_NAME" --non-interactive
+          fi
+
+          # AI provider keys + inference gateway URL. Written into Pulumi stack config
+          # so they propagate into AWS Secrets Manager via services.ts. Only set when
+          # non-empty — lets enterprise stacks skip these entirely.
+          [ -n "$INPUT_THUNDERBOLT_INFERENCE_URL" ] && pulumi config set thunderboltInferenceUrl "$INPUT_THUNDERBOLT_INFERENCE_URL" -s "$INPUT_STACK_NAME" --non-interactive
+          [ -n "$INPUT_ANTHROPIC_API_KEY" ]             && pulumi config set --secret anthropicApiKey             "$INPUT_ANTHROPIC_API_KEY"             -s "$INPUT_STACK_NAME" --non-interactive
+          [ -n "$INPUT_FIREWORKS_API_KEY" ]             && pulumi config set --secret fireworksApiKey             "$INPUT_FIREWORKS_API_KEY"             -s "$INPUT_STACK_NAME" --non-interactive
+          [ -n "$INPUT_MISTRAL_API_KEY" ]               && pulumi config set --secret mistralApiKey               "$INPUT_MISTRAL_API_KEY"               -s "$INPUT_STACK_NAME" --non-interactive
+          [ -n "$INPUT_THUNDERBOLT_INFERENCE_API_KEY" ] && pulumi config set --secret thunderboltInferenceApiKey "$INPUT_THUNDERBOLT_INFERENCE_API_KEY" -s "$INPUT_STACK_NAME" --non-interactive
+          [ -n "$INPUT_EXA_API_KEY" ]                   && pulumi config set --secret exaApiKey                   "$INPUT_EXA_API_KEY"                   -s "$INPUT_STACK_NAME" --non-interactive
+          # Unconditional `|| true` prevents the last `[ -n ... ] && ...` from
+          # masking non-zero exit when a secret is empty (which is expected).
+          true
+
+      - name: Deploy
+        uses: pulumi/actions@8582a9e8cc630786854029b4e09281acd6794b58 # v6
+        with:
+          command: up
+          stack-name: ${{ inputs.stack_name }}
+          work-dir: deploy/pulumi
+          upsert: true
+
+      - name: Capture stack outputs
+        id: outputs
+        working-directory: deploy/pulumi
+        env:
+          INPUT_STACK_NAME: ${{ inputs.stack_name }}
+        run: |
+          pulumi stack output --json -s "$INPUT_STACK_NAME"
+          URL=$(pulumi stack output url -s "$INPUT_STACK_NAME" 2>/dev/null || echo "")
+          echo "url=$URL" >> $GITHUB_OUTPUT
+          echo "Stack URL: $URL"
+
+  destroy:
+    if: inputs.action == 'destroy'
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+
+      - uses: aws-actions/configure-aws-credentials@ec61189d14ec14c8efccab744f656cffd0e33f37 # v6.1.0
+        with:
+          role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ inputs.region }}
+
+      - name: Install Pulumi dependencies
+        working-directory: deploy/pulumi
+        run: bun install --frozen-lockfile
+
+      - name: Destroy
+        uses: pulumi/actions@8582a9e8cc630786854029b4e09281acd6794b58 # v6
+        with:
+          command: destroy
+          stack-name: ${{ inputs.stack_name }}
+          work-dir: deploy/pulumi
+          remove: true

@@ -18,10 +18,9 @@ docker compose up -d
 ```
 
 - **PowerSync API**: http://localhost:8080
-- **Postgres**: localhost:5433 (user `postgres`, password `postgres`, db `postgres`) — host port 5433 to avoid conflict with local Postgres
-- **MongoDB**: localhost:27017 (replica set `rs0`)
+- **Postgres**: localhost:5433 (user `postgres`, password `postgres`, db `postgres`) — host port 5433 to avoid conflict with local Postgres. Also hosts the `powersync_storage` database used by PowerSync for bucket state.
 
-**Postgres init:** Scripts in `init-db/` run automatically the **first time** the Postgres container starts (empty volume). They create the `powersync_role` user and `powersync` publication for logical replication. If you already have data in `pg_data`, run the SQL in `init-db/01-powersync.sql` manually against Postgres, or start fresh with `docker compose down -v` then `docker compose up -d`.
+**Postgres init:** Scripts in `init-db/` run automatically the **first time** the Postgres container starts (empty volume). They create the `powersync_role` user, the `powersync` publication for logical replication, and the `powersync_storage` database for PowerSync bucket storage. If you already have data in `pg_data`, run the SQL in `init-db/01-powersync.sql` manually against Postgres, or start fresh with `docker compose down -v` then `docker compose up -d`.
 
 ## Backend configuration
 
@@ -44,4 +43,4 @@ When you add or change synced tables, update `config/config.yaml` sync rules and
 docker compose down
 ```
 
-Use `docker compose down -v` to remove volumes (Postgres and MongoDB data).
+Use `docker compose down -v` to remove the Postgres volume.

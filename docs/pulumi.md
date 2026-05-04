@@ -40,7 +40,7 @@ pulumi destroy -y
 pulumi stack rm <stack-name> -y
 ```
 
-## Project Layout
+## Project layout
 
 ```
 deploy/pulumi/
@@ -75,6 +75,6 @@ Required secrets: `AWS_DEPLOY_ROLE_ARN`, `PULUMI_ACCESS_TOKEN`, `PULUMI_CONFIG_P
 - **PersistentVolumeClaims on EKS** — the EKS path uses the cluster's default storage class for PVCs.
 - **Keycloak backchannel** — both platforms set `KC_HOSTNAME_BACKCHANNEL_DYNAMIC=true` so OIDC works against the ALB/ingress hostname.
 
-## Switching Platforms Mid-Stack
+## Switching platforms mid-stack
 
 You can stand up Fargate, try it, then migrate to EKS without tearing down the VPC — just `pulumi config set platform k8s` and `pulumi up`. Pulumi destroys the ECS resources and spins up the EKS cluster, reusing the VPC and ECR.

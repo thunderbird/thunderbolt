@@ -12,7 +12,7 @@ export const createServiceDiscovery = (name: string, vpcId: pulumi.Input<string>
     tags: { Name: `${name}-ns` },
   })
 
-  const serviceNames = ['postgres', 'mongo', 'powersync', 'keycloak', 'backend', 'frontend'] as const
+  const serviceNames = ['postgres', 'powersync', 'keycloak', 'backend', 'frontend', 'marketing'] as const
 
   const services = Object.fromEntries(
     serviceNames.map((svc) => [

@@ -16,11 +16,11 @@ import { isTauri } from '@/lib/platform'
 import { useSettings } from '@/hooks/use-settings'
 import { animate, AnimatePresence, motion } from 'framer-motion'
 import { useEffect, useRef } from 'react'
-import type { ImperativePanelHandle } from 'react-resizable-panels'
+import { usePanelRef } from 'react-resizable-panels'
 import { Outlet } from 'react-router'
 
 export default function Page() {
-  const ref = useRef<ImperativePanelHandle>(null)
+  const panelRef = usePanelRef()
   const { state, close, previewHidden } = useContentView()
   const { isMobile } = useIsMobile()
   const { contentViewWidth } = useSettings({
@@ -32,7 +32,7 @@ export default function Page() {
 
   useEffect(() => {
     // Only animate on state changes, not on mount
-    if (prevIsOpen.current !== isOpen && ref.current) {
+    if (prevIsOpen.current !== isOpen && panelRef.current) {
       if (isOpen) {
         // On mobile: always use 100% width. On desktop: use saved width if above threshold, otherwise use default
         const savedWidth = contentViewWidth.value
@@ -41,19 +41,19 @@ export default function Page() {
 
         // Opening: animate from 0 to target width
         requestAnimationFrame(() => {
-          if (ref.current) {
+          if (panelRef.current) {
             animate(0, targetWidth, {
               duration: 0.3,
               ease: [0.32, 0.72, 0, 1],
               onUpdate: (latest) => {
-                ref.current?.resize(latest)
+                panelRef.current?.resize(`${latest}%`)
               },
             })
           }
         })
       } else {
         // Closing: save current size before animating to 0 (but not on mobile)
-        const currentSize = ref.current.getSize()
+        const currentSize = panelRef.current.getSize().asPercentage
         const shouldSaveWidthOnClose = currentSize > 0 && !isMobile
         if (shouldSaveWidthOnClose) {
           lastSavedWidth.current = currentSize
@@ -64,7 +64,7 @@ export default function Page() {
           duration: 0.3,
           ease: [0.32, 0.72, 0, 1],
           onUpdate: (latest) => {
-            ref.current?.resize(latest)
+            panelRef.current?.resize(`${latest}%`)
           },
         })
       }
@@ -73,20 +73,20 @@ export default function Page() {
   }, [isOpen, isMobile, contentViewWidth])
 
   // Persist width changes as user resizes (but not on mobile)
-  const handleResize = (size: number) => {
-    const shouldPersistWidthChange = isOpen && size > 0 && !isMobile
+  const handleResize = ({ asPercentage }: { asPercentage: number }) => {
+    const shouldPersistWidthChange = isOpen && asPercentage > 0 && !isMobile
     if (shouldPersistWidthChange) {
-      const hasSignificantWidthChange = !lastSavedWidth.current || Math.abs(size - lastSavedWidth.current) > 1
+      const hasSignificantWidthChange = !lastSavedWidth.current || Math.abs(asPercentage - lastSavedWidth.current) > 1
       if (hasSignificantWidthChange) {
-        lastSavedWidth.current = size
-        contentViewWidth.setValue(size)
+        lastSavedWidth.current = asPercentage
+        contentViewWidth.setValue(asPercentage)
       }
     }
   }
 
   return (
     <SidebarInset className="h-full flex flex-col">
-      <ResizablePanelGroup direction="horizontal">
+      <ResizablePanelGroup orientation="horizontal">
         <ResizablePanel>
           <div
             className="flex flex-col h-full"
@@ -126,13 +126,17 @@ export default function Page() {
           </div>
         )}
         <ResizablePanel
-          ref={ref}
+          panelRef={panelRef}
           collapsible
-          defaultSize={0}
-          minSize={0}
-          collapsedSize={0}
-          onCollapse={() => close()}
-          onResize={handleResize}
+          defaultSize="0%"
+          minSize="0%"
+          collapsedSize="0%"
+          onResize={(panelSize, _id, prevPanelSize) => {
+            if (prevPanelSize && prevPanelSize.asPercentage > 0 && panelSize.asPercentage === 0) {
+              close()
+            }
+            handleResize(panelSize)
+          }}
           className="overflow-hidden"
         >
           <AnimatePresence initial={false}>

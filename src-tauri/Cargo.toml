@@ -1,6 +1,6 @@
 [package]
 name = "thunderbolt"
-version = "0.1.92"
+version = "0.1.93"
 description = "Privacy-respecting AI assistant."
 authors = ["Chris Roth <chris@cjroth.com>"]
 license = "MPL-2.0"
@@ -28,28 +28,28 @@ name = "thunderbolt"
 path = "src/main.rs"
 
 [build-dependencies]
-tauri-build = { version = "2.5.1", features = [] }
+tauri-build = { version = "2.6.0", features = [] }
 
 [dependencies]
-tauri = { version = "2.9.1", features = [
+tauri = { version = "2.11.0", features = [
     "tray-icon",
     "devtools",
     "unstable",  # Required for webview
 ] }
-tauri-plugin-opener = "2.5.2"
+tauri-plugin-opener = "2.5.4"
 tauri-plugin-os = "2.3.2"
 serde = { version = "1.0.219", features = ["derive"] }
 serde_json = "1.0.143"
 anyhow = "1.0.99"
 tokio = "1.47.1"
 tauri-plugin-devtools = "2.0.1"
-tauri-plugin-http = "2.5.4"
+tauri-plugin-http = "2.5.9"
 tauri-plugin-process = "2.3.1"
 tauri-plugin-fs = "2.4.4"
-tauri-plugin-deep-link = "2.3"
+tauri-plugin-deep-link = "2.4"
 tauri-plugin-haptics = "2.3"
 tauri-plugin-updater = "2.3"
-tauri-plugin-store = "2.4.2"
+tauri-plugin-store = "2.4.3"
 
 [target.'cfg(not(any(target_os = "android", target_os = "ios")))'.dependencies]
 tauri-plugin-single-instance = "2"

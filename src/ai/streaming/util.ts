@@ -108,11 +108,10 @@ export const parseEnhancedSseFile = (fileContent: string): EnhancedSseFile => {
 
   // Extract and parse front matter
   const frontMatterContent = trimmedContent.slice(3, frontMatterEndIndex)
-  let metadata: Record<string, any> = {}
+  let metadata: Record<string, any>
   try {
     metadata = parseYamlFrontMatter(frontMatterContent)
   } catch {
-    // If YAML parsing fails, use empty metadata
     metadata = {}
   }
 

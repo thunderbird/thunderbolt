@@ -101,11 +101,15 @@ describe('handleCredentialsInvalidIfNeeded', () => {
 
 describe('ThunderboltConnector', () => {
   let savedFetch: typeof globalThis.fetch
+  let savedAuthMode: string | undefined
   let fetchMock: ReturnType<typeof mock>
   let dispatchSpy: ReturnType<typeof mock>
 
   beforeEach(() => {
     savedFetch = globalThis.fetch
+    savedAuthMode = import.meta.env.VITE_AUTH_MODE
+    // Default to consumer mode so tests don't depend on local .env
+    ;(import.meta.env as Record<string, unknown>).VITE_AUTH_MODE = undefined
     fetchMock = mock()
     dispatchSpy = mock(() => {})
     globalThis.fetch = fetchMock as unknown as typeof fetch
@@ -115,6 +119,7 @@ describe('ThunderboltConnector', () => {
 
   afterEach(() => {
     globalThis.fetch = savedFetch
+    ;(import.meta.env as Record<string, unknown>).VITE_AUTH_MODE = savedAuthMode
   })
 
   it('fetchCredentials returns null when no auth token', async () => {

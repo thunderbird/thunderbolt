@@ -40,6 +40,7 @@ export type HttpClient = {
 
 type HttpClientConfig = {
   prefixUrl?: string
+  credentials?: RequestCredentials
   hooks?: { beforeRequest?: Array<(request: Request) => void> }
   fetch?: (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>
 }
@@ -109,7 +110,7 @@ export const createClient = (config: HttpClientConfig = {}): HttpClient => {
       method,
       headers,
       body,
-      credentials: options.credentials,
+      credentials: options.credentials ?? config.credentials,
       signal,
     })
 
@@ -143,11 +144,12 @@ export const createClient = (config: HttpClientConfig = {}): HttpClient => {
 export const createAuthenticatedClient = (
   prefixUrl: string,
   getToken: () => string | null,
-  config: Pick<HttpClientConfig, 'fetch'> = {},
+  config: Pick<HttpClientConfig, 'fetch' | 'credentials'> = {},
 ): HttpClient =>
   createClient({
     prefixUrl,
     fetch: config.fetch,
+    credentials: config.credentials,
     hooks: {
       beforeRequest: [
         (request) => {

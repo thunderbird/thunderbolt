@@ -65,6 +65,10 @@ describe('Authentication Routes', () => {
       swaggerEnabled: false,
       e2eeEnabled: false,
       trustedProxy: '',
+      samlEntryPoint: '',
+      samlEntityId: '',
+      samlIdpIssuer: '',
+      samlCert: '',
     })
 
     // Create mock fetch

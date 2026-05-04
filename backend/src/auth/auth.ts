@@ -22,18 +22,12 @@ import { createAuthMiddleware } from 'better-auth/api'
 import { betterAuth } from 'better-auth'
 import { drizzleAdapter } from 'better-auth/adapters/drizzle'
 import { bearer, emailOTP } from 'better-auth/plugins'
-import { genericOAuth } from 'better-auth/plugins/generic-oauth'
+import { sso } from '@better-auth/sso'
 import { isAutoApprovedDomain, sendWaitlistJoinedEmail, sendWaitlistNotReadyEmail } from '@/waitlist/utils'
 import { challengeTokenHeader, otpExpiryMs, otpExpirySeconds } from './otp-constants'
 import { buildVerifyUrl, getValidatedOrigin, parseTrustedOrigins, sendSignInEmail } from './utils'
 
 const OTP_SIGN_IN_PATH = '/sign-in/email-otp'
-
-/**
- * Trusted origins for CORS and email link validation
- * First origin is the default fallback for verify URLs
- */
-const trustedOrigins = parseTrustedOrigins(process.env.TRUSTED_ORIGINS)
 
 /**
  * Create a Better Auth instance with the provided database
@@ -45,39 +39,77 @@ const trustedOrigins = parseTrustedOrigins(process.env.TRUSTED_ORIGINS)
  * - Both paths (manual OTP entry, clicking link) use the same verification endpoint
  * - No separate email verification needed - signing in proves email ownership
  */
-const buildOidcPlugins = () => {
+const buildSsoPlugins = () => {
   const settings = getSettings()
 
-  if (settings.authMode !== 'oidc') {
-    return []
+  if (settings.authMode === 'oidc') {
+    if (!settings.oidcIssuer || !settings.oidcClientId || !settings.oidcClientSecret) {
+      throw new Error(
+        'OIDC is enabled (AUTH_MODE=oidc) but one or more required env vars are missing: ' +
+          'OIDC_ISSUER, OIDC_CLIENT_ID, OIDC_CLIENT_SECRET. Set all three to configure OIDC authentication.',
+      )
+    }
+
+    return [
+      sso({
+        defaultSSO: [
+          {
+            providerId: 'sso',
+            domain: new URL(settings.betterAuthUrl).host,
+            oidcConfig: {
+              issuer: settings.oidcIssuer,
+              pkce: true,
+              clientId: settings.oidcClientId,
+              clientSecret: settings.oidcClientSecret,
+              discoveryEndpoint: `${settings.oidcIssuer}/.well-known/openid-configuration`,
+              scopes: ['openid', 'profile', 'email'],
+            },
+          },
+        ],
+      }),
+    ]
   }
 
-  if (!settings.oidcIssuer || !settings.oidcClientId || !settings.oidcClientSecret) {
-    throw new Error(
-      'OIDC is enabled (AUTH_MODE=oidc) but one or more required env vars are missing: ' +
-        'OIDC_ISSUER, OIDC_CLIENT_ID, OIDC_CLIENT_SECRET. Set all three to configure OIDC authentication.',
-    )
+  if (settings.authMode === 'saml') {
+    if (!settings.samlEntryPoint || !settings.samlCert || !settings.samlEntityId || !settings.samlIdpIssuer) {
+      throw new Error(
+        'SAML is enabled (AUTH_MODE=saml) but one or more required env vars are missing: ' +
+          'SAML_ENTRY_POINT, SAML_CERT, SAML_ENTITY_ID, SAML_IDP_ISSUER. Set all four to configure SAML authentication.',
+      )
+    }
+
+    return [
+      sso({
+        defaultSSO: [
+          {
+            providerId: 'sso',
+            domain: new URL(settings.betterAuthUrl).host,
+            samlConfig: {
+              issuer: settings.samlIdpIssuer,
+              entryPoint: settings.samlEntryPoint,
+              cert: settings.samlCert,
+              callbackUrl: `${settings.betterAuthUrl}/v1/api/auth/sso/saml2/sp/acs/sso`,
+              spMetadata: {
+                entityID: settings.samlEntityId,
+              },
+            },
+          },
+        ],
+      }),
+    ]
   }
 
-  return [
-    genericOAuth({
-      config: [
-        {
-          providerId: 'oidc',
-          discoveryUrl: `${settings.oidcIssuer}/.well-known/openid-configuration`,
-          clientId: settings.oidcClientId,
-          clientSecret: settings.oidcClientSecret,
-          scopes: ['openid', 'profile', 'email'],
-          redirectURI: `${settings.betterAuthUrl}/v1/api/auth/oauth2/callback/oidc`,
-          pkce: true,
-        },
-      ],
-    }),
-  ]
+  return []
 }
 
 export const createAuth = (database: typeof DbType) => {
   const settings = getSettings()
+  const parsedOrigins = parseTrustedOrigins(process.env.TRUSTED_ORIGINS)
+
+  // Include the backend's own origin so the SSO desktop-callback can be used as callbackURL.
+  // Spread to avoid mutating the shared default array returned by parseTrustedOrigins.
+  const backendOrigin = new URL(settings.betterAuthUrl).origin
+  const trustedOrigins = parsedOrigins.includes(backendOrigin) ? parsedOrigins : [...parsedOrigins, backendOrigin]
 
   if (!settings.trustedProxy && process.env.NODE_ENV === 'production') {
     console.warn(
@@ -88,6 +120,7 @@ export const createAuth = (database: typeof DbType) => {
   }
 
   return betterAuth({
+    basePath: '/v1/api/auth',
     database: drizzleAdapter(database, {
       provider: 'pg',
       schema,
@@ -97,7 +130,7 @@ export const createAuth = (database: typeof DbType) => {
     // horizontally-scaled deployments. Provides single-instance defence only.
     // TODO(THU-113): Replace with proof-of-work challenge (ALTCHA) for distributed protection.
     rateLimit: {
-      enabled: true,
+      enabled: settings.rateLimitEnabled,
       window: 60,
       max: 10,
     },
@@ -257,7 +290,7 @@ export const createAuth = (database: typeof DbType) => {
           await sendSignInEmail({ email: normalizedEmail, otp, verifyUrl })
         },
       }),
-      ...buildOidcPlugins(),
+      ...buildSsoPlugins(),
     ],
   })
 }

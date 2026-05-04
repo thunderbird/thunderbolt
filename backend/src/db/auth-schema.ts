@@ -79,6 +79,22 @@ export const verification = pgTable(
   (table) => [index('verification_identifier_idx').on(table.identifier)],
 )
 
+export const ssoProvider = pgTable('sso_provider', {
+  id: text('id').primaryKey(),
+  issuer: text('issuer').notNull(),
+  domain: text('domain').notNull(),
+  oidcConfig: text('oidc_config'),
+  samlConfig: text('saml_config'),
+  userId: text('user_id').references(() => user.id, { onDelete: 'cascade' }),
+  providerId: text('provider_id').notNull(),
+  organizationId: text('organization_id'),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at')
+    .defaultNow()
+    .$onUpdate(() => /* @__PURE__ */ new Date())
+    .notNull(),
+})
+
 export const userRelations = relations(user, ({ many }) => ({
   sessions: many(session),
   accounts: many(account),

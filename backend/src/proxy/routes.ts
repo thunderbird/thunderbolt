@@ -23,7 +23,10 @@ const bodylessMethods = new Set(['GET', 'HEAD', 'OPTIONS'])
  *  link-preview round-trip. SSRF defense and rate limiting still apply to these methods. */
 const anonymousMethods = new Set(['GET', 'HEAD'])
 
-/** Response denylist that intentionally keeps content-encoding (fix for SF7). */
+/** Response denylist that intentionally keeps content-encoding so the browser can
+ *  decode compressed bodies. We tell Bun NOT to decompress the upstream stream
+ *  (`decompress: false` on the fetch call), so the Content-Encoding header
+ *  matches the bytes we forward. */
 const customRespDenylist = defaultResponseDenylist.filter((h) => h !== 'content-encoding')
 
 /** Race a promise against a DNS timeout. Throws `Error('DNS_TIMEOUT')` on expiry.
@@ -241,6 +244,12 @@ export const createUniversalProxyRoutes = (
             signal: upstreamCtl.signal,
             // @ts-expect-error -- Bun fetch supports duplex:'half' for streaming bodies
             duplex: 'half',
+            // Bun fetch defaults to decompressing compressed responses; we forward
+            // raw bytes so the upstream Content-Encoding (kept via customRespDenylist)
+            // matches the body the browser receives. Without this, the browser sees
+            // decompressed bytes labelled as gzip and fails with
+            // ERR_CONTENT_DECODING_FAILED.
+            decompress: false,
           })
         } catch {
           ctx.set.status = 502

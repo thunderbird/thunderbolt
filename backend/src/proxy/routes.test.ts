@@ -485,7 +485,7 @@ describe('createUniversalProxyRoutes', () => {
     expect(res.headers.get('trailer')).toBeNull()
   })
 
-  it('preserves content-encoding from upstream response', async () => {
+  it('preserves content-encoding from upstream response and disables Bun auto-decompression', async () => {
     mockFetch.mockImplementation(() =>
       Promise.resolve(
         new Response(new Uint8Array([0x1f, 0x8b]), {
@@ -497,6 +497,9 @@ describe('createUniversalProxyRoutes', () => {
     const target = 'https://example.com/compressed'
     const res = await app.handle(new Request(`http://localhost/proxy/${encodeURIComponent(target)}`, { method: 'GET' }))
     expect(res.headers.get('content-encoding')).toBe('gzip')
+    // Ensures the upstream fetch keeps raw compressed bytes so the header matches the body.
+    const [, init] = mockFetch.mock.calls[0] as [string, RequestInit & { decompress?: boolean }]
+    expect(init.decompress).toBe(false)
   })
 
   // ---------------------------------------------------------------------------

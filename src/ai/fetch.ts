@@ -75,21 +75,26 @@ export const createModel = async (modelConfig: Model) => {
       const db = getDb()
       const { cloudUrl } = await getSettings(db, { cloud_url: 'http://localhost:8000/v1' })
       const token = getAuthToken() || 'thunderbolt'
-      // SSO mode authenticates via session cookies (Better Auth's bearer plugin
-      // doesn't issue a token to the frontend because the SSO callback is a
-      // browser redirect, not an XHR — `set-auth-token` never reaches the client).
-      // The AI SDKs require an apiKey to initialize, so we keep the placeholder
-      // but strip the resulting `Authorization` header in the fetch wrapper —
-      // otherwise Better Auth's bearer plugin would try the invalid bearer first
-      // and 401 before falling back to the cookie.
+      // SSO web flow authenticates via session cookies — the SSO callback is a
+      // browser redirect, not an XHR, so `set-auth-token` never reaches the
+      // client and getAuthToken() returns null.  The AI SDKs require an apiKey
+      // to initialize, so we keep the placeholder 'thunderbolt' but strip the
+      // resulting invalid Authorization header — otherwise Better Auth's bearer
+      // plugin would try the placeholder first and 401 before falling back to
+      // the cookie.
+      //
+      // Tauri desktop SSO uses a loopback server that returns a real bearer
+      // token (stored via setAuthToken).  In that case we must keep the
+      // Authorization header because WKWebView can't send cross-origin cookies.
       const sso = isSsoMode()
+      const hasRealToken = Boolean(getAuthToken())
       const ssoFetch = (input: RequestInfo | URL, init?: RequestInit) => {
         const headers = new Headers(init?.headers)
         headers.delete('authorization')
         return fetch(input, { ...init, headers, credentials: 'include' })
       }
       ssoFetch.preconnect = fetch.preconnect
-      const providerFetch: typeof fetch = sso ? ssoFetch : fetch
+      const providerFetch: typeof fetch = sso && !hasRealToken ? ssoFetch : fetch
       // GPT OSS (vendor: 'openai') uses createOpenAI with .chat() to force Chat Completions API
       // (AI SDK 5 defaults createOpenAI to Responses API which our backend doesn't support)
       if (modelConfig.vendor === 'openai') {

@@ -181,11 +181,15 @@ Each test starts with a fresh `storageState` so stale IndexedDB / OPFS data from
 | Spec                           | What it verifies                                                                   |
 | ------------------------------ | ---------------------------------------------------------------------------------- |
 | [`oidc-login.spec.ts`](../e2e/oidc-login.spec.ts)     | Anonymous user completes the full OIDC redirect loop and lands in the chat UI      |
+| [`oidc-logout.spec.ts`](../e2e/oidc-logout.spec.ts)   | OIDC user can sign out and is redirected to the signed-out page                    |
 | [`oidc-session.spec.ts`](../e2e/oidc-session.spec.ts) | Session survives a hard reload and the authenticated user stays signed in          |
+| [`saml-login.spec.ts`](../e2e/saml-login.spec.ts)     | Anonymous user completes the full SAML redirect loop and lands in the chat UI      |
+| [`saml-logout.spec.ts`](../e2e/saml-logout.spec.ts)   | SAML user can sign out and is redirected to the signed-out page                    |
+| [`saml-session.spec.ts`](../e2e/saml-session.spec.ts) | SAML session survives a hard reload and the authenticated user stays signed in     |
 
 ### Writing New Specs
 
-- Use `loginViaOidc(page)` as the first line of any test that needs an authenticated user.
+- Use `loginViaOidc(page)` or `loginViaSaml(page)` as the first line of any test that needs an authenticated user.
 - Call `collectPageErrors(page)` and assert the array is empty at the end of the test to catch regressions that only surface as uncaught exceptions.
 - Keep each spec scoped to a single user-visible flow. The suite is a smoke test, not a full regression matrix — favour unit tests for branching logic and rely on e2e for "does the whole thing boot".
 

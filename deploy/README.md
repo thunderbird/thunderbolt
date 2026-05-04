@@ -204,7 +204,7 @@ If deploying locally (not pulling from a registry):
 # From repo root
 docker build -f deploy/docker/frontend.Dockerfile \
   --build-arg VITE_THUNDERBOLT_CLOUD_URL=/v1 \
-  --build-arg VITE_AUTH_MODE=oidc \
+  --build-arg VITE_AUTH_MODE=sso \
   -t thunderbolt-frontend .
 
 docker build -f deploy/docker/backend.Dockerfile -t thunderbolt-backend .

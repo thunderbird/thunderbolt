@@ -23,14 +23,25 @@ mock.module('@/waitlist/utils', () => ({
   sendWaitlistReminderEmail: mock(() => Promise.resolve()),
 }))
 
-import { OAuth2Server } from 'oauth2-mock-server'
-import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, spyOn } from 'bun:test'
+import { afterEach, beforeEach, describe, expect, it, spyOn } from 'bun:test'
 import { Elysia } from 'elysia'
 import { createTestDb } from '@/test-utils/db'
 
 const realFetch = (globalThis as Record<string, unknown>).__originalFetch as typeof fetch
 
-/** Base settings for OIDC tests — issuer URL is overridden per-suite */
+/** Save and restore globalThis.fetch around a test body. */
+const withRealFetch = async (fn: () => Promise<void>) => {
+  const savedFetch = globalThis.fetch
+  globalThis.fetch = realFetch
+
+  try {
+    await fn()
+  } finally {
+    globalThis.fetch = savedFetch
+  }
+}
+
+/** Base settings for SAML tests */
 const baseSettings: Settings = {
   fireworksApiKey: '',
   mistralApiKey: '',
@@ -59,74 +70,46 @@ const baseSettings: Settings = {
   powersyncJwtKid: '',
   powersyncJwtSecret: '',
   powersyncTokenExpirySeconds: 3600,
-  authMode: 'oidc' as const,
-  oidcClientId: 'thunderbolt-app',
-  oidcClientSecret: 'thunderbolt-dev-secret',
-  oidcIssuer: '', // set per-suite once mock server is up
+  authMode: 'saml' as const,
+  oidcClientId: '',
+  oidcClientSecret: '',
+  oidcIssuer: '',
   betterAuthUrl: 'http://localhost:8000',
   betterAuthSecret: 'test-secret-at-least-32-chars-long!!',
   rateLimitEnabled: false,
   swaggerEnabled: false,
   e2eeEnabled: false,
   trustedProxy: '',
-  samlEntryPoint: '',
-  samlEntityId: '',
-  samlIdpIssuer: '',
-  samlCert: '',
+  samlEntryPoint: 'http://fake-idp.example.com/saml/sso',
+  samlEntityId: 'fake-saml-sp',
+  samlIdpIssuer: 'http://fake-idp.example.com',
+  samlCert:
+    'MIICpDCCAYwCCQDU+pQ4pHgSpDANBgkqhkiG9w0BAQsFADAUMRIwEAYDVQQDDAkxMjcuMC4wLjEwHhcNMjQwMTAxMDAwMDAwWhcNMjUwMTAxMDAwMDAwWjAUMRIwEAYDVQQDDAkxMjcuMC4wLjEwggEiMA0GCSqGSIb3DQEBAQUAA4IBDwAwggEKAoIBAQC7o4QFMSok',
 }
 
-/** Save and restore globalThis.fetch + process.env.TRUSTED_ORIGINS around a test body. */
-const withRealFetch = async (oidcIssuerUrl: string, fn: () => Promise<void>) => {
-  const savedFetch = globalThis.fetch
-  const savedOrigins = process.env.TRUSTED_ORIGINS
-  globalThis.fetch = realFetch
-  process.env.TRUSTED_ORIGINS = `http://localhost:1420,${oidcIssuerUrl}`
-
-  try {
-    await fn()
-  } finally {
-    globalThis.fetch = savedFetch
-    process.env.TRUSTED_ORIGINS = savedOrigins
-  }
-}
-
-describe('OIDC Integration', () => {
-  let oidcServer: OAuth2Server
-  let oidcIssuerUrl: string
+describe('SAML Integration', () => {
   let db: Awaited<ReturnType<typeof createTestDb>>['db']
   let cleanup: () => Promise<void>
   let getSettingsSpy: ReturnType<typeof spyOn>
 
-  beforeAll(async () => {
-    oidcServer = new OAuth2Server()
-    await oidcServer.issuer.keys.generate('RS256')
-    await oidcServer.start(0, 'localhost')
-    oidcIssuerUrl = oidcServer.issuer.url!
-
+  beforeEach(async () => {
     const testEnv = await createTestDb()
     db = testEnv.db
     cleanup = testEnv.cleanup
   })
 
-  afterAll(async () => {
-    await oidcServer.stop()
+  afterEach(async () => {
+    getSettingsSpy?.mockRestore()
     await cleanup()
   })
 
-  afterEach(() => {
-    getSettingsSpy?.mockRestore()
-  })
-
-  describe('OIDC sign-in endpoint', () => {
+  describe('SAML sign-in endpoint', () => {
     beforeEach(() => {
-      getSettingsSpy = spyOn(settingsModule, 'getSettings').mockReturnValue({
-        ...baseSettings,
-        oidcIssuer: oidcIssuerUrl,
-      } as Settings)
+      getSettingsSpy = spyOn(settingsModule, 'getSettings').mockReturnValue(baseSettings)
     })
 
-    it('should return a redirect URL pointing to the OIDC provider', async () => {
-      await withRealFetch(oidcIssuerUrl, async () => {
+    it('should return a redirect URL pointing to the SAML IdP', async () => {
+      await withRealFetch(async () => {
         const { createAuth } = await import('./auth')
         const auth = createAuth(db)
         const app = new Elysia({ prefix: '/v1' }).mount(auth.handler)
@@ -145,39 +128,13 @@ describe('OIDC Integration', () => {
         expect(res.ok).toBe(true)
 
         const body = await res.json()
-        expect(body.url).toContain(oidcIssuerUrl)
-        expect(body.url).toContain('response_type=code')
-        expect(body.url).toContain('client_id=thunderbolt-app')
+        expect(body.url).toContain('fake-idp.example.com')
+        expect(body.url).toContain('SAMLRequest')
       })
     })
 
-    it('should include PKCE code_challenge in the redirect URL', async () => {
-      await withRealFetch(oidcIssuerUrl, async () => {
-        const { createAuth } = await import('./auth')
-        const auth = createAuth(db)
-        const app = new Elysia({ prefix: '/v1' }).mount(auth.handler)
-
-        const res = await app.handle(
-          new Request('http://localhost/v1/api/auth/sign-in/sso', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              providerId: 'sso',
-              callbackURL: 'http://localhost:1420/',
-            }),
-          }),
-        )
-
-        expect(res.ok).toBe(true)
-
-        const body = await res.json()
-        expect(body.url).toContain('code_challenge=')
-        expect(body.url).toContain('code_challenge_method=S256')
-      })
-    })
-
-    it('should include openid, profile, and email scopes', async () => {
-      await withRealFetch(oidcIssuerUrl, async () => {
+    it('should include SP entity ID and ACS URL in the SAMLRequest', async () => {
+      await withRealFetch(async () => {
         const { createAuth } = await import('./auth')
         const auth = createAuth(db)
         const app = new Elysia({ prefix: '/v1' }).mount(auth.handler)
@@ -197,49 +154,79 @@ describe('OIDC Integration', () => {
 
         const body = await res.json()
         const url = new URL(body.url)
-        const scope = url.searchParams.get('scope') ?? ''
-        expect(scope).toContain('openid')
-        expect(scope).toContain('profile')
-        expect(scope).toContain('email')
+        const samlRequestEncoded = url.searchParams.get('SAMLRequest')
+        expect(samlRequestEncoded).toBeTruthy()
+
+        // SAMLRequest is deflate-compressed + base64-encoded; decode to inspect XML
+        const { inflateRawSync } = await import('node:zlib')
+        const xml = inflateRawSync(Buffer.from(samlRequestEncoded!, 'base64')).toString()
+
+        expect(xml).toContain('fake-saml-sp') // SP entity ID
+        expect(xml).toContain('/v1/api/auth/sso/saml2/sp/acs/sso') // ACS URL
+      })
+    })
+
+    it('should reject sign-in with unknown providerId', async () => {
+      await withRealFetch(async () => {
+        const { createAuth } = await import('./auth')
+        const auth = createAuth(db)
+        const app = new Elysia({ prefix: '/v1' }).mount(auth.handler)
+
+        const res = await app.handle(
+          new Request('http://localhost/v1/api/auth/sign-in/sso', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              providerId: 'unknown-provider',
+              callbackURL: 'http://localhost:1420/',
+            }),
+          }),
+        )
+
+        expect(res.ok).toBe(false)
       })
     })
   })
 
-  describe('OIDC configuration validation', () => {
-    it('should throw when OIDC_ISSUER is missing', async () => {
+  describe('SAML configuration validation', () => {
+    it('should throw when SAML_ENTRY_POINT is missing', async () => {
       getSettingsSpy = spyOn(settingsModule, 'getSettings').mockReturnValue({
         ...baseSettings,
-        oidcIssuer: '',
-        oidcClientId: 'some-client',
-        oidcClientSecret: 'some-secret',
+        samlEntryPoint: '',
       } as Settings)
 
       const { createAuth } = await import('./auth')
-      expect(() => createAuth(db)).toThrow('OIDC_ISSUER')
+      expect(() => createAuth(db)).toThrow('SAML_ENTRY_POINT')
     })
 
-    it('should throw when OIDC_CLIENT_ID is missing', async () => {
+    it('should throw when SAML_CERT is missing', async () => {
       getSettingsSpy = spyOn(settingsModule, 'getSettings').mockReturnValue({
         ...baseSettings,
-        oidcIssuer: 'https://idp.example.com',
-        oidcClientId: '',
-        oidcClientSecret: 'some-secret',
+        samlCert: '',
       } as Settings)
 
       const { createAuth } = await import('./auth')
-      expect(() => createAuth(db)).toThrow('OIDC_CLIENT_ID')
+      expect(() => createAuth(db)).toThrow('SAML_CERT')
     })
 
-    it('should throw when OIDC_CLIENT_SECRET is missing', async () => {
+    it('should throw when SAML_ENTITY_ID is missing', async () => {
       getSettingsSpy = spyOn(settingsModule, 'getSettings').mockReturnValue({
         ...baseSettings,
-        oidcIssuer: 'https://idp.example.com',
-        oidcClientId: 'some-client',
-        oidcClientSecret: '',
+        samlEntityId: '',
       } as Settings)
 
       const { createAuth } = await import('./auth')
-      expect(() => createAuth(db)).toThrow('OIDC_CLIENT_SECRET')
+      expect(() => createAuth(db)).toThrow('SAML_ENTITY_ID')
+    })
+
+    it('should throw when SAML_IDP_ISSUER is missing', async () => {
+      getSettingsSpy = spyOn(settingsModule, 'getSettings').mockReturnValue({
+        ...baseSettings,
+        samlIdpIssuer: '',
+      } as Settings)
+
+      const { createAuth } = await import('./auth')
+      expect(() => createAuth(db)).toThrow('SAML_IDP_ISSUER')
     })
   })
 
@@ -248,9 +235,10 @@ describe('OIDC Integration', () => {
       getSettingsSpy = spyOn(settingsModule, 'getSettings').mockReturnValue({
         ...baseSettings,
         authMode: 'consumer' as const,
-        oidcIssuer: '',
-        oidcClientId: '',
-        oidcClientSecret: '',
+        samlEntryPoint: '',
+        samlEntityId: '',
+        samlIdpIssuer: '',
+        samlCert: '',
       } as Settings)
 
       const { createAuth } = await import('./auth')

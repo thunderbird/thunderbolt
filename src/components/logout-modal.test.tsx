@@ -14,15 +14,21 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, mock 
 import { LogoutModal } from './logout-modal'
 
 const mockClearLocalData = mock(() => Promise.resolve())
+const mockIsSsoMode = mock(() => false)
 
 mock.module('@/lib/cleanup', () => ({
   clearLocalData: mockClearLocalData,
 }))
 
-// Mock window.location.reload
+mock.module('@/lib/auth-mode', () => ({
+  isSsoMode: mockIsSsoMode,
+}))
+
+// Mock window.location
 const mockReload = mock()
+const mockReplace = mock()
 Object.defineProperty(window, 'location', {
-  value: { reload: mockReload },
+  value: { reload: mockReload, replace: mockReplace },
   writable: true,
 })
 
@@ -47,6 +53,8 @@ describe('LogoutModal', () => {
     mockSignOut = mock(() => Promise.resolve())
     mockClearLocalData.mockClear()
     mockReload.mockClear()
+    mockReplace.mockClear()
+    mockIsSsoMode.mockReturnValue(false)
   })
 
   afterEach(() => {
@@ -257,6 +265,42 @@ describe('LogoutModal', () => {
       })
 
       expect(mockReload).toHaveBeenCalled()
+    })
+  })
+
+  describe('SSO mode logout', () => {
+    beforeEach(() => {
+      mockIsSsoMode.mockReturnValue(true)
+    })
+
+    it('navigates to /signed-out instead of reloading in SSO mode', async () => {
+      renderModal()
+      const logoutButton = screen.getByRole('button', { name: 'Log out' })
+
+      fireEvent.click(logoutButton)
+
+      await act(async () => {
+        await getClock().runAllAsync()
+      })
+
+      expect(mockReplace).toHaveBeenCalledWith('/signed-out')
+      expect(mockReload).not.toHaveBeenCalled()
+    })
+
+    it('navigates to /signed-out even if signOut fails', async () => {
+      mockSignOut.mockRejectedValue(new Error('Network error'))
+
+      renderModal()
+      const logoutButton = screen.getByRole('button', { name: 'Log out' })
+
+      fireEvent.click(logoutButton)
+
+      await act(async () => {
+        await getClock().runAllAsync()
+      })
+
+      expect(mockReplace).toHaveBeenCalledWith('/signed-out')
+      expect(mockReload).not.toHaveBeenCalled()
     })
   })
 

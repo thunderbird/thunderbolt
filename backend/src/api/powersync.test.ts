@@ -60,6 +60,10 @@ const powersyncSettings: Settings = {
   rateLimitEnabled: false,
   swaggerEnabled: false,
   trustedProxy: '',
+  samlEntryPoint: '',
+  samlEntityId: '',
+  samlIdpIssuer: '',
+  samlCert: '',
 }
 
 describe('PowerSync API', () => {

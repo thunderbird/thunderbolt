@@ -9,8 +9,8 @@ import { getAuthToken } from '@/lib/auth-token'
 import { Database, getCurrentDatabase, setDatabase } from '@/db/database'
 import type { AnyDrizzleDatabase } from '@/db/database-interface'
 import { defaultSettingCloudUrl } from '@/defaults/settings'
+import { isSsoMode } from '@/lib/auth-mode'
 import { createHandleError } from '@/lib/error-utils'
-import { isOidcMode } from '@/lib/auth-mode'
 import { createAppDir, resetAppDir } from '@/lib/fs'
 import { createAuthenticatedClient } from '@/lib/http'
 import { getDatabasePath, getDatabaseType } from '@/lib/platform'
@@ -128,7 +128,7 @@ const executeInitializationSteps = async (httpClient?: HttpClient): Promise<Hand
   } else {
     try {
       client = createAuthenticatedClient(cloudUrl, getAuthToken, {
-        credentials: isOidcMode() ? 'include' : undefined,
+        credentials: isSsoMode() ? 'include' : undefined,
       })
     } catch (error) {
       console.error('Failed to initialize HTTP client:', error)

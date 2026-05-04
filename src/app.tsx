@@ -11,6 +11,7 @@ import ChatDetailPage from '@/chats/detail'
 import MagicLinkVerify from '@/components/magic-link-verify'
 import OAuthCallback from '@/components/oauth-callback'
 import { AccountDeleted } from '@/components/account-deleted'
+import { SignedOut } from '@/components/signed-out'
 import { RevokedDeviceModal } from '@/components/revoked-device-modal'
 import { SidebarProvider } from '@/components/ui/sidebar'
 import { HapticsProvider } from '@/hooks/use-haptics'
@@ -51,14 +52,14 @@ import Loading from './loading'
 import SettingsLayout from './settings/layout'
 import type { InitData } from './types'
 import { useSettings } from './hooks/use-settings'
-import { isOidcMode } from './lib/auth-mode'
+import { isSsoMode } from './lib/auth-mode'
 import { isPrPreview, isTauri } from './lib/platform'
 import { getPowerSyncInstance } from './db/powersync'
 import { type ComponentProps, Suspense, lazy, useEffect } from 'react'
 
-// Lazily import OIDC components so non-enterprise deployments don't pay
+// Lazily import SSO components so non-enterprise deployments don't pay
 // for the extra bundle size and attack surface.
-const OidcRedirect = lazy(() => import('@/components/oidc-redirect'))
+const SsoRedirect = lazy(() => import('@/components/sso-redirect'))
 
 // Dev-only routes: guarded by import.meta.env.DEV so Vite eliminates
 // both the lazy() call and the dynamic import() from production builds.
@@ -90,7 +91,7 @@ const AppRoutes = ({ initData }: { initData: InitData }) => {
     experimental_feature_tasks: initData.experimentalFeatureTasks,
   })
 
-  const oidcMode = isOidcMode()
+  const ssoMode = isSsoMode()
   const shouldBypassWaitlist = import.meta.env.VITE_BYPASS_WAITLIST === 'true' || isPrPreview()
 
   return (
@@ -99,20 +100,20 @@ const AppRoutes = ({ initData }: { initData: InitData }) => {
       <Route path="/oauth/callback" element={<OAuthCallback />} />
       <Route path="/auth/verify" element={<MagicLinkVerify />} />
 
-      {/* OIDC redirect route — no guard, only in OIDC mode */}
-      {oidcMode && (
+      {/* SSO redirect route — no guard, only in OIDC/SAML mode */}
+      {ssoMode && (
         <Route
-          path="/oidc-redirect"
+          path="/sso-redirect"
           element={
             <Suspense fallback={<Loading />}>
-              <OidcRedirect />
+              <SsoRedirect />
             </Suspense>
           }
         />
       )}
 
-      {/* Waitlist routes - unauthenticated only (skip when bypass or OIDC mode) */}
-      {!oidcMode && !shouldBypassWaitlist && (
+      {/* Waitlist routes - unauthenticated only (skip when bypass or SSO mode) */}
+      {!ssoMode && !shouldBypassWaitlist && (
         <Route element={<AuthGate require="unauthenticated" redirectTo="/" />}>
           <Route path="waitlist" element={<WaitlistLayout />}>
             <Route index element={<WaitlistPage />} />
@@ -126,7 +127,7 @@ const AppRoutes = ({ initData }: { initData: InitData }) => {
           shouldBypassWaitlist ? (
             <Outlet />
           ) : (
-            <AuthGate require="authenticated" redirectTo={oidcMode ? '/oidc-redirect' : '/waitlist'} />
+            <AuthGate require="authenticated" redirectTo={ssoMode ? '/sso-redirect' : '/waitlist'} />
           )
         }
       >
@@ -181,6 +182,7 @@ const AppRoutes = ({ initData }: { initData: InitData }) => {
       </Route>
 
       {/* Fallback routes - no guards */}
+      <Route path="/signed-out" element={<SignedOut />} />
       <Route path="/account-deleted" element={<AccountDeleted />} />
       <Route path="/not-found" element={<NotFound />} />
       <Route path="*" element={<Navigate to="/not-found" replace />} />

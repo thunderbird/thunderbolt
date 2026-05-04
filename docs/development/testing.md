@@ -164,7 +164,7 @@ The Playwright suite in [`e2e/`](../e2e) covers the OIDC sign-in and session flo
 | Component        | Port   | How                                                              |
 | ---------------- | ------ | ---------------------------------------------------------------- |
 | Mock OIDC server | `9876` | [`oauth2-mock-server`](https://www.npmjs.com/package/oauth2-mock-server), started by `e2e/global-setup.ts`; every issued token is signed for `sub=e2e-test-user` / `email=e2e@thunderbolt.test` |
-| Vite frontend    | `1421` | `bun run dev -- --port 1421` with `VITE_AUTH_MODE=oidc` and `VITE_SKIP_ONBOARDING=true` |
+| Vite frontend    | `1421` | `bun run dev -- --port 1421` with `VITE_AUTH_MODE=sso` and `VITE_SKIP_ONBOARDING=true` |
 | Backend API      | `8000` | `cd backend && bun run dev` with `OIDC_ISSUER` pointed at the mock server, rate limiting disabled |
 
 Each test starts with a fresh `storageState` so stale IndexedDB / OPFS data from a previous run can't leak between specs. A clean shutdown of the mock OIDC server happens in `e2e/global-teardown.ts`.
@@ -173,7 +173,7 @@ Each test starts with a fresh `storageState` so stale IndexedDB / OPFS data from
 
 `e2e/helpers.ts` keeps specs short:
 
-- **`loginViaOidc(page)`** — navigates to `/`, follows `AuthGate → /oidc-redirect → mock IdP → backend callback → session`, and waits for the chat textarea to render. The mock IdP auto-approves, so there's no username/password to type.
+- **`loginViaOidc(page)`** — navigates to `/`, follows `AuthGate → /sso-redirect → mock IdP → backend callback → session`, and waits for the chat textarea to render. The mock IdP auto-approves, so there's no username/password to type. E2E tests use OIDC mode with the mock server; SAML E2E testing requires a real IdP (e.g. Keycloak).
 - **`collectPageErrors(page)`** — subscribes to `pageerror` and returns an errors array, filtering Tauri-only noise (`__TAURI__`, `convertFileSrc`, etc.) that the web build surfaces harmlessly.
 
 ### Current Specs
@@ -181,11 +181,15 @@ Each test starts with a fresh `storageState` so stale IndexedDB / OPFS data from
 | Spec                           | What it verifies                                                                   |
 | ------------------------------ | ---------------------------------------------------------------------------------- |
 | [`oidc-login.spec.ts`](../e2e/oidc-login.spec.ts)     | Anonymous user completes the full OIDC redirect loop and lands in the chat UI      |
+| [`oidc-logout.spec.ts`](../e2e/oidc-logout.spec.ts)   | OIDC user can sign out and is redirected to the signed-out page                    |
 | [`oidc-session.spec.ts`](../e2e/oidc-session.spec.ts) | Session survives a hard reload and the authenticated user stays signed in          |
+| [`saml-login.spec.ts`](../e2e/saml-login.spec.ts)     | Anonymous user completes the full SAML redirect loop and lands in the chat UI      |
+| [`saml-logout.spec.ts`](../e2e/saml-logout.spec.ts)   | SAML user can sign out and is redirected to the signed-out page                    |
+| [`saml-session.spec.ts`](../e2e/saml-session.spec.ts) | SAML session survives a hard reload and the authenticated user stays signed in     |
 
 ### Writing New Specs
 
-- Use `loginViaOidc(page)` as the first line of any test that needs an authenticated user.
+- Use `loginViaOidc(page)` or `loginViaSaml(page)` as the first line of any test that needs an authenticated user.
 - Call `collectPageErrors(page)` and assert the array is empty at the end of the test to catch regressions that only surface as uncaught exceptions.
 - Keep each spec scoped to a single user-visible flow. The suite is a smoke test, not a full regression matrix — favour unit tests for branching logic and rely on e2e for "does the whole thing boot".
 

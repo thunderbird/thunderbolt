@@ -97,7 +97,7 @@ export const createApp = async (deps?: AppDeps) => {
       .use(createGoogleAuthRoutes(auth, fetchFn))
       .use(createMicrosoftAuthRoutes(auth, fetchFn))
       .use(createOidcConfigRoutes())
-      .use(createSsoDesktopCallbackRoutes())
+      .use(createSsoDesktopCallbackRoutes(settings))
       .use(createProToolsRoutes(auth, fetchFn, createProRateLimit(database, rateLimitSettings)))
       .use(createUniversalProxyRoutes(auth, fetchFn, createProRateLimit(database, rateLimitSettings)))
       .use(createInferenceRoutes(auth, createInferenceRateLimit(database, rateLimitSettings)))

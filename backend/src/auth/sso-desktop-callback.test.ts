@@ -4,9 +4,17 @@
 
 import { describe, expect, it } from 'bun:test'
 import { Elysia } from 'elysia'
+import type { Settings } from '@/config/settings'
 import { createSsoDesktopCallbackRoutes } from './sso-desktop-callback'
 
-const createApp = () => new Elysia({ prefix: '/v1' }).use(createSsoDesktopCallbackRoutes())
+const ssoSettings = {
+  authMode: 'oidc',
+  betterAuthUrl: 'http://localhost:8000',
+  betterAuthSecret: 'test-secret',
+} as Settings
+
+const createApp = (settings = ssoSettings) =>
+  new Elysia({ prefix: '/v1' }).use(createSsoDesktopCallbackRoutes(settings))
 
 const callbackUrl = (port: number | string, cookies?: string) => {
   const app = createApp()
@@ -15,6 +23,14 @@ const callbackUrl = (port: number | string, cookies?: string) => {
   })
   return app.handle(req)
 }
+
+describe('SSO desktop routes in consumer mode', () => {
+  it('returns 404 when authMode is consumer', async () => {
+    const app = createApp({ authMode: 'consumer' } as Settings)
+    const res = await app.handle(new Request('http://localhost/v1/api/auth/sso/desktop-initiate?loopback_port=17421'))
+    expect(res.status).toBe(404)
+  })
+})
 
 describe('SSO desktop-callback', () => {
   describe('port validation', () => {

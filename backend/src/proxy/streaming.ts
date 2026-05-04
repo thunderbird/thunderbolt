@@ -52,14 +52,19 @@ export const capStream = (
       resetIdleTimer(controller)
     },
     transform(chunk, controller) {
-      bytesReceived += chunk.byteLength
-      if (bytesReceived > opts.maxBytes) {
+      // Evaluate the cap WITHOUT mutating the counter — when a chunk would push
+      // us over, we discard it (terminate, no enqueue), so its bytes never
+      // reach the client and must not be counted in bytesOut. Otherwise the
+      // metric would over-report by one chunk on every cap fire, breaking
+      // billing/quota/audit accuracy.
+      if (bytesReceived + chunk.byteLength > opts.maxBytes) {
         clearTimeout(idleTimer)
         opts.onAbort('cap')
         controller.terminate()
         complete('cap')
         return
       }
+      bytesReceived += chunk.byteLength
       controller.enqueue(chunk)
       resetIdleTimer(controller)
     },

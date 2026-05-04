@@ -22,6 +22,7 @@ import { createAuthMiddleware } from 'better-auth/api'
 import { betterAuth } from 'better-auth'
 import { drizzleAdapter } from 'better-auth/adapters/drizzle'
 import { bearer, emailOTP } from 'better-auth/plugins'
+import { jwt } from 'better-auth/plugins/jwt'
 import { genericOAuth } from 'better-auth/plugins/generic-oauth'
 import { isAutoApprovedDomain, sendWaitlistJoinedEmail, sendWaitlistNotReadyEmail } from '@/waitlist/utils'
 import { challengeTokenHeader, otpExpiryMs, otpExpirySeconds } from './otp-constants'
@@ -195,6 +196,28 @@ export const createAuth = (database: typeof DbType) => {
     },
     plugins: [
       bearer({ requireSignature: true }), // Enables Authorization: Bearer <token> for mobile apps where cookies don't work
+      // JWT plugin mints short-lived tokens used by the unified `/v1/proxy/*` endpoint
+      // for browser sub-resource loads (`<img src>`, `<link rel="icon">`) which cannot
+      // attach `Authorization` headers. The token is verified via the JWKS endpoint
+      // exposed at `/v1/api/auth/jwks` (asymmetric, EdDSA by default). Audience is
+      // narrowly scoped so a compromised media-proxy JWT cannot be replayed against
+      // other Better Auth endpoints that would (one day) accept JWTs.
+      jwt({
+        jwt: {
+          audience: 'media-proxy',
+          expirationTime: '10m',
+          // Lock the JWT payload to claims-only — `definePayload` returning `{}`
+          // suppresses Better Auth's default behaviour of spreading
+          // `session.user` (email, name, image, isNew, …) into the token. Since
+          // the JWT travels in the URL (`?token=`) and JWTs are base64url-
+          // encoded (NOT encrypted), every CDN access log, browser DevTools
+          // network panel, and downstream observability layer would otherwise
+          // capture the user's email on every favicon/og:image load. The `sub`
+          // claim is still set automatically by Better Auth's sign path
+          // (`getJwtToken` always assigns it from `session.user.id`).
+          definePayload: () => ({}),
+        },
+      }),
       emailOTP({
         otpLength: 8,
         expiresIn: otpExpirySeconds,

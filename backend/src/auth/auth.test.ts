@@ -194,3 +194,85 @@ describe('Auth - user.isNew in sign-in response', () => {
     expect(result.user).toBeDefined()
   })
 })
+
+// ---------------------------------------------------------------------------
+// JWT payload PII guard — `definePayload: () => ({})` strips the user record.
+//
+// Better Auth's `getJwtToken` default spreads `session.user` (email, name,
+// image, isNew, …) into the JWT body. Since the JWT travels in the URL
+// (`?token=`), JWTs are base64url-encoded and decode trivially in any access
+// log. We override `definePayload` so the only claims in the token body are
+// the standard JWT ones (`sub`, `aud`, `iss`, `iat`, `exp`).
+//
+// We can't run the full mint flow here (the Better Auth JWT plugin requires a
+// `jwks` schema table that isn't yet present in our drizzle migrations — that
+// table is auto-managed by Better Auth in production but would need a separate
+// migration to test end-to-end). Instead we validate the configuration
+// surface: the plugin's `definePayload` callback returns an empty object for
+// every session input. Combined with the upstream behaviour confirmed in
+// `node_modules/better-auth/dist/plugins/jwt/sign.mjs:53` (the plugin spreads
+// the result and overwrites only `sub`/`iat`), an empty extra payload is
+// sufficient to keep PII out of the token body.
+// ---------------------------------------------------------------------------
+
+describe('Auth - JWT plugin payload is locked to claims-only (no PII)', () => {
+  let auth: ReturnType<typeof createAuth>
+  let cleanup: () => Promise<void>
+
+  beforeEach(async () => {
+    const testEnv = await createTestDb()
+    cleanup = testEnv.cleanup
+    auth = createAuth(testEnv.db)
+  })
+
+  afterEach(async () => {
+    await cleanup()
+  })
+
+  type PluginWithJwt = {
+    id: string
+    options?: { jwt?: { audience?: string; definePayload?: (session: unknown) => Record<string, unknown> } }
+  }
+
+  const findJwtPlugin = (): PluginWithJwt => {
+    const plugins = (auth.options.plugins ?? []) as PluginWithJwt[]
+    const jwtPlugin = plugins.find((p) => p.id === 'jwt')
+    if (!jwtPlugin) throw new Error('JWT plugin not registered')
+    return jwtPlugin
+  }
+
+  it('configures the audience to media-proxy (narrow scope, no replay across endpoints)', () => {
+    expect(findJwtPlugin().options?.jwt?.audience).toBe('media-proxy')
+  })
+
+  it('definePayload returns an empty object regardless of session input', () => {
+    const definePayload = findJwtPlugin().options?.jwt?.definePayload
+    expect(typeof definePayload).toBe('function')
+
+    // Realistic session shapes: anything the production code might pass.
+    const shapes: unknown[] = [
+      {},
+      { user: { id: 'u-1', email: 'leaked@example.com', name: 'Should Not Leak', image: 'https://x', isNew: true } },
+      {
+        session: { id: 's-1' },
+        user: {
+          id: 'u-2',
+          email: 'leaked@example.com',
+          name: 'Y',
+          image: null,
+          emailVerified: true,
+          createdAt: new Date(),
+          updatedAt: new Date(),
+          isNew: false,
+        },
+      },
+    ]
+    for (const session of shapes) {
+      const result = definePayload!(session)
+      expect(result).toEqual({})
+      // Defense-in-depth: stringifying the result never contains any PII strings.
+      expect(JSON.stringify(result)).not.toContain('leaked@example.com')
+      expect(JSON.stringify(result)).not.toContain('Should Not Leak')
+    }
+  })
+})

@@ -9,12 +9,13 @@ data:
     replication:
       connections:
         - type: postgresql
-          uri: postgresql://powersync_role:myhighlyrandompassword@postgres:5432/{{ .Values.postgres.credentials.database }}
+          uri: !env PS_PG_URI
           sslmode: disable
 
     storage:
-      type: mongodb
-      uri: mongodb://mongo:27017/powersync
+      type: postgresql
+      uri: !env PS_STORAGE_URI
+      sslmode: disable
 
     port: {{ .Values.powersync.service.port }}
 
@@ -72,8 +73,8 @@ data:
           "enabled": true,
           "clientAuthenticatorType": "client-secret",
           "secret": "{{ .Values.keycloak.oidc.clientSecretBase64 | b64dec }}",
-          "redirectUris": ["*"],
-          "webOrigins": ["+"],
+          "redirectUris": ["{{ .Values.appUrl }}/v1/api/auth/oauth2/callback/oidc"],
+          "webOrigins": ["{{ .Values.appUrl }}"],
           "standardFlowEnabled": true,
           "directAccessGrantsEnabled": false,
           "publicClient": false,
@@ -107,9 +108,18 @@ metadata:
   labels:
     {{- include "thunderbolt.labels" . | nindent 4 }}
 data:
-  01-powersync.sql: |
-    -- Create replication role for PowerSync
-    CREATE ROLE powersync_role WITH LOGIN PASSWORD 'myhighlyrandompassword' REPLICATION;
-    GRANT ALL PRIVILEGES ON DATABASE postgres TO powersync_role;
-    ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON TABLES TO powersync_role;
-    CREATE PUBLICATION powersync_pub FOR ALL TABLES;
+  01-powersync.sh: |
+    #!/bin/bash
+    set -e
+    psql -v ON_ERROR_STOP=1 \
+      -v powersync_pass="$POWERSYNC_DB_PASSWORD" \
+      -v dbname="$POSTGRES_DB" \
+      --username "$POSTGRES_USER" --dbname "$POSTGRES_DB" <<-'EOSQL'
+      CREATE SCHEMA IF NOT EXISTS powersync;
+      CREATE ROLE powersync_role WITH REPLICATION BYPASSRLS LOGIN PASSWORD :'powersync_pass';
+      GRANT USAGE ON SCHEMA powersync TO powersync_role;
+      GRANT SELECT ON ALL TABLES IN SCHEMA powersync TO powersync_role;
+      ALTER DEFAULT PRIVILEGES IN SCHEMA powersync GRANT SELECT ON TABLES TO powersync_role;
+      CREATE PUBLICATION powersync FOR ALL TABLES;
+      CREATE DATABASE powersync_storage OWNER postgres;
+    EOSQL

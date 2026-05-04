@@ -36,6 +36,8 @@ spec:
           ports:
             - containerPort: 5432
           env:
+            - name: PGDATA
+              value: /var/lib/postgresql/data/pgdata
             - name: POSTGRES_USER
               value: {{ .Values.postgres.credentials.user }}
             - name: POSTGRES_DB
@@ -45,6 +47,11 @@ spec:
                 secretKeyRef:
                   name: thunderbolt-secrets
                   key: postgres-password
+            - name: POWERSYNC_DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: thunderbolt-secrets
+                  key: powersync-db-password
           volumeMounts:
             - name: pg-data
               mountPath: /var/lib/postgresql/data

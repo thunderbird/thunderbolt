@@ -11,7 +11,12 @@ import Loading from '@/loading'
 /** Validate that an OIDC redirect URL uses a safe protocol and optionally matches an expected origin. */
 export const validateOidcRedirectUrl = (rawUrl: string, expectedOrigin?: string): URL => {
   const url = new URL(rawUrl)
-  if (!(url.protocol === 'https:' || (url.protocol === 'http:' && (url.hostname === 'localhost' || url.hostname === '127.0.0.1')))) {
+  if (
+    !(
+      url.protocol === 'https:' ||
+      (url.protocol === 'http:' && (url.hostname === 'localhost' || url.hostname === '127.0.0.1'))
+    )
+  ) {
     throw new Error('OIDC redirect must use HTTPS')
   }
   if (expectedOrigin && url.origin !== expectedOrigin) {

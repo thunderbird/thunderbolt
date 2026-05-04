@@ -29,6 +29,8 @@ dist-isolation
 
 # Kubernetes secrets (use secrets.yaml.example as template)
 secrets.yaml
+# Helm chart secrets template is safe to track (contains only template references, not actual secrets)
+!deploy/k8s/templates/secrets.yaml
 
 target
 
@@ -69,6 +71,9 @@ blob-report/
 
 # Powersync
 public/@powersync/**
+
+# Pulumi stack configs (stack-specific, not shared)
+Pulumi.*.yaml
 
 # Astro
 .astro/

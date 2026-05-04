@@ -1,0 +1,131 @@
+name: Preview Deploy
+
+# Creates an ephemeral preview stack on AWS Fargate for each pull request opened
+# from a branch in this repo. Five Cloudflare subdomains are created per PR,
+# mirroring prod's subdomain structure:
+#   thunderbolt-pr-{N}.preview.thunderbolt.io  → marketing
+#   app-pr-{N}.preview.thunderbolt.io           → app frontend
+#   api-pr-{N}.preview.thunderbolt.io           → backend API
+#   auth-pr-{N}.preview.thunderbolt.io          → keycloak OIDC
+#   powersync-pr-{N}.preview.thunderbolt.io     → powersync
+#
+# Fork PRs are explicitly not supported and are silently skipped.
+#
+# Also supports workflow_dispatch for manual testing from any branch (useful
+# before the workflow file is on main, where pull_request-triggered runs pull
+# the workflow YAML from the base branch).
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      pr_number:
+        description: 'PR number to deploy a preview for'
+        type: string
+        required: true
+
+concurrency:
+  group: preview-pr-${{ github.event.pull_request.number || inputs.pr_number }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  packages: write       # GHCR image push
+  id-token: write       # AWS OIDC federation for Pulumi
+  pull-requests: write  # sticky PR comment with preview URL
+
+jobs:
+  resolve:
+    runs-on: ubuntu-latest
+    outputs:
+      pr_number: ${{ steps.r.outputs.pr_number }}
+      head_sha: ${{ steps.r.outputs.head_sha }}
+      is_internal: ${{ steps.r.outputs.is_internal }}
+    steps:
+      - name: Resolve PR number + head SHA
+        id: r
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          EVENT_PR_NUMBER: ${{ github.event.pull_request.number }}
+          EVENT_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          EVENT_HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}
+          EVENT_BASE_REPO: ${{ github.repository }}
+          INPUT_PR_NUMBER: ${{ inputs.pr_number }}
+        run: |
+          set -euo pipefail
+          if [ -n "$EVENT_PR_NUMBER" ]; then
+            PR_NUM="$EVENT_PR_NUMBER"
+            HEAD_SHA="$EVENT_HEAD_SHA"
+            # Fork PR guard (for pull_request events)
+            if [ "$EVENT_HEAD_REPO" != "$EVENT_BASE_REPO" ]; then
+              echo "is_internal=false" >> $GITHUB_OUTPUT
+              echo "Fork PR detected — skipping preview deploy."
+              exit 0
+            fi
+          else
+            PR_NUM="$INPUT_PR_NUMBER"
+            HEAD_SHA=$(gh pr view "$PR_NUM" --repo "$EVENT_BASE_REPO" --json headRefOid -q .headRefOid)
+            HEAD_REPO=$(gh pr view "$PR_NUM" --repo "$EVENT_BASE_REPO" --json headRepository -q '.headRepository.nameWithOwner')
+            if [ "$HEAD_REPO" != "$EVENT_BASE_REPO" ]; then
+              echo "is_internal=false" >> $GITHUB_OUTPUT
+              echo "PR #$PR_NUM is from a fork ($HEAD_REPO) — skipping."
+              exit 0
+            fi
+          fi
+          echo "pr_number=$PR_NUM" >> $GITHUB_OUTPUT
+          echo "head_sha=$HEAD_SHA" >> $GITHUB_OUTPUT
+          echo "is_internal=true" >> $GITHUB_OUTPUT
+          echo "PR #$PR_NUM @ $HEAD_SHA"
+
+  publish:
+    needs: resolve
+    if: needs.resolve.outputs.is_internal == 'true'
+    uses: ./.github/workflows/images-publish.yml
+    with:
+      tag_override: pr-${{ needs.resolve.outputs.pr_number }}-${{ needs.resolve.outputs.head_sha }}
+      ref: ${{ needs.resolve.outputs.head_sha }}
+      vite_backend_url: https://api-pr-${{ needs.resolve.outputs.pr_number }}.preview.thunderbolt.io/v1
+
+  deploy:
+    needs: [resolve, publish]
+    uses: ./.github/workflows/stack-deploy.yml
+    with:
+      action: deploy
+      platform: fargate
+      region: us-east-1
+      stack_name: preview-pr-${{ needs.resolve.outputs.pr_number }}
+      version: ${{ needs.publish.outputs.version }}
+      marketing_hostname: thunderbolt-pr-${{ needs.resolve.outputs.pr_number }}.preview.thunderbolt.io
+      app_hostname: app-pr-${{ needs.resolve.outputs.pr_number }}.preview.thunderbolt.io
+      api_hostname: api-pr-${{ needs.resolve.outputs.pr_number }}.preview.thunderbolt.io
+      auth_hostname: auth-pr-${{ needs.resolve.outputs.pr_number }}.preview.thunderbolt.io
+      powersync_hostname: powersync-pr-${{ needs.resolve.outputs.pr_number }}.preview.thunderbolt.io
+      cloudflare_zone_id: ${{ vars.CLOUDFLARE_ZONE_ID }}
+      thunderbolt_inference_url: ${{ vars.THUNDERBOLT_INFERENCE_URL }}
+    secrets: inherit
+
+  comment:
+    needs: [resolve, deploy]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Sticky PR comment with preview URLs
+        uses: marocchino/sticky-pull-request-comment@0ea0beb66eb9baf113663a64ec522f60e49231c0 # v3.0.4
+        with:
+          header: preview-env
+          number: ${{ needs.resolve.outputs.pr_number }}
+          message: |
+            **Preview environment deployed** 🚀
+
+            | Service | URL |
+            |---|---|
+            | Marketing / blog / docs | https://thunderbolt-pr-${{ needs.resolve.outputs.pr_number }}.preview.thunderbolt.io |
+            | App | https://app-pr-${{ needs.resolve.outputs.pr_number }}.preview.thunderbolt.io |
+            | API | https://api-pr-${{ needs.resolve.outputs.pr_number }}.preview.thunderbolt.io |
+            | Keycloak | https://auth-pr-${{ needs.resolve.outputs.pr_number }}.preview.thunderbolt.io |
+            | PowerSync | https://powersync-pr-${{ needs.resolve.outputs.pr_number }}.preview.thunderbolt.io |
+
+            Stack: `preview-pr-${{ needs.resolve.outputs.pr_number }}` · Commit: `${{ needs.resolve.outputs.head_sha }}`
+
+            Auto-destroys on PR close/merge. Login via the bundled Keycloak realm — `demo@thunderbolt.io` / `demo` by default.

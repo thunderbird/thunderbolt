@@ -35,7 +35,9 @@ services:
       TRUSTED_ORIGINS: http://localhost:${FRONTEND_PORT:-3000}
       CORS_ORIGINS: http://localhost:${FRONTEND_PORT:-3000}
       POWERSYNC_URL: http://powersync:8080
-      POWERSYNC_JWT_SECRET: enterprise-powersync-secret
+      # Must match the base64-decoded `k` in deploy/config/powersync-config.yaml
+      # AND be >=32 chars (backend/src/config/settings.ts:76).
+      POWERSYNC_JWT_SECRET: enterprise-thunderbolt-powersync-jwt-default-secret
       POWERSYNC_JWT_KID: enterprise-powersync
       RATE_LIMIT_ENABLED: "false"
     depends_on:
@@ -47,7 +49,7 @@ services:
       - "host.docker.internal:host-gateway"
 
   postgres:
-    image: postgres:18-alpine
+    image: postgres:17-alpine
     environment:
       POSTGRES_USER: postgres
       POSTGRES_DB: postgres
@@ -64,34 +66,18 @@ services:
       timeout: 5s
       retries: 5
 
-  mongo:
-    image: mongo:7.0
-    command: --replSet rs0 --bind_ip_all --quiet
-    volumes:
-      - mongo_data:/data/db
-
-  mongo-rs-init:
-    image: mongo:7.0
-    depends_on:
-      - mongo
-    restart: on-failure
-    entrypoint:
-      - bash
-      - -c
-      - 'mongosh --host mongo:27017 --eval ''try{rs.status().ok&&quit(0)}catch{}rs.initiate({_id:"rs0",version:1,members:[{_id:0,host:"mongo:27017"}]})'''
-
   powersync:
     image: journeyapps/powersync-service:latest
     command: ["start", "-r", "unified"]
     environment:
       POWERSYNC_CONFIG_PATH: /config/config.yaml
+      PS_PG_URI: postgresql://powersync_role:myhighlyrandompassword@postgres:5432/postgres
+      PS_STORAGE_URI: postgresql://postgres:postgres@postgres:5432/powersync_storage
     volumes:
       - ./config/powersync-config.yaml:/config/config.yaml
     ports:
       - "${POWERSYNC_PORT:-8080}:8080"
     depends_on:
-      mongo-rs-init:
-        condition: service_completed_successfully
       postgres:
         condition: service_healthy
 
@@ -116,4 +102,3 @@ services:
 
 volumes:
   pg_data:
-  mongo_data:

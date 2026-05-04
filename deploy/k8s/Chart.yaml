@@ -2,5 +2,5 @@ apiVersion: v2
 name: thunderbolt
 description: Thunderbolt enterprise on-prem deployment
 type: application
-version: 0.1.0
+version: 0.1.1
 appVersion: "1.0.0"

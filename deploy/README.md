@@ -78,7 +78,7 @@ deploy/
     backend-entrypoint.sh   # Waits for Postgres, runs migrations, starts server
     postgres-init/          # SQL to create PowerSync replication role
   config/                   # Shared config files
-    nginx.conf              # Frontend nginx with COEP/COOP headers
+    nginx.conf.template     # Frontend nginx with COEP/COOP headers; ${BACKEND_HOST}/${BACKEND_PORT} substituted at container start
     powersync-config.yaml   # Sync rules + replication config
     keycloak-realm.json     # Thunderbolt realm + demo user
   k8s/                      # Helm chart

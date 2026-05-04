@@ -11,10 +11,10 @@ import { Outlet } from 'react-router'
 export const WaitlistLayout = () => {
   return (
     <div
-      className="flex min-h-dvh w-full flex-col items-center justify-center bg-background"
+      className="flex h-dvh w-full flex-col items-center justify-center overflow-hidden bg-background"
       style={{
         paddingTop: 'var(--safe-area-top-padding)',
-        paddingBottom: 'var(--safe-area-bottom-padding)',
+        paddingBottom: 'calc(var(--safe-area-bottom-padding) + var(--kb, 0px))',
       }}
     >
       <Outlet />

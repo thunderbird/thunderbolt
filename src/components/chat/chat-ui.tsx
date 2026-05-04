@@ -44,7 +44,7 @@ export default function ChatUI() {
   }, [hasMessages, scrollToBottom])
 
   return (
-    <div className="h-full w-full">
+    <div className="h-full w-full" style={{ paddingBottom: 'var(--kb, 0px)' }}>
       <div
         className={cn(
           'flex flex-col h-full overflow-hidden w-full max-w-[728px] mx-auto min-w-[300px]',

@@ -14,7 +14,7 @@ Variables marked **required** must be set before the backend will start.
 
 | Variable                  | Default                    | Required | Description                                                                                 |
 | ------------------------- | -------------------------- | :------: | ------------------------------------------------------------------------------------------- |
-| `AUTH_MODE`               | `consumer`                 |          | `consumer` for magic-link + Google/Microsoft OAuth, `oidc` for self-hosted identity         |
+| `AUTH_MODE`               | `consumer`                 |          | `consumer` for magic-link + Google/Microsoft OAuth, `oidc` for OIDC SSO, `saml` for SAML SSO |
 | `BETTER_AUTH_SECRET`      | —                          | **yes**  | Non-empty string used to sign sessions. Generate with `openssl rand -hex 32`.               |
 | `BETTER_AUTH_URL`         | `http://localhost:8000`    |          | Public URL the backend is served at; used in OAuth redirects                                |
 | `GOOGLE_CLIENT_ID`        | —                          |          | Google OAuth client ID (consumer mode)                                                      |
@@ -24,8 +24,14 @@ Variables marked **required** must be set before the backend will start.
 | `OIDC_ISSUER`             | —                          |          | OIDC issuer URL (required when `AUTH_MODE=oidc`)                                            |
 | `OIDC_CLIENT_ID`          | —                          |          | OIDC client ID                                                                              |
 | `OIDC_CLIENT_SECRET`      | —                          |          | OIDC client secret                                                                          |
+| `SAML_ENTRY_POINT`        | —                          |          | SAML IdP SSO URL (required when `AUTH_MODE=saml`)                                           |
+| `SAML_ENTITY_ID`             | —                          |          | SP entity ID — must match the SAML client ID in the IdP (e.g. `thunderbolt-saml-sp`)        |
+| `SAML_IDP_ISSUER`            | —                          |          | IdP entity ID / issuer (e.g. `https://keycloak.example.com/realms/thunderbolt`)             |
+| `SAML_CERT`               | —                          |          | SAML IdP signing certificate (base64, no PEM headers)                                       |
 
-Consumer mode uses [Better Auth](https://better-auth.com)'s magic-link flow by default (email-delivered OTP). Hook up a provider by also setting the OAuth credentials above. Enterprise mode delegates entirely to an OIDC provider (Keycloak by default).
+Consumer mode uses [Better Auth](https://better-auth.com)'s magic-link flow by default (email-delivered OTP). Hook up a provider by also setting the OAuth credentials above. Enterprise mode delegates entirely to an OIDC or SAML identity provider (Keycloak by default). See [OIDC local dev](../../backend/docs/oidc-local-dev.md) and [SAML local dev](../../backend/docs/saml-local-dev.md) for setup guides.
+
+**Important:** When using `AUTH_MODE=oidc` or `saml`, the IdP origin must be included in `TRUSTED_ORIGINS` (see CORS section below). The SSO plugin validates discovery/metadata URLs against this list.
 
 ## AI Provider Keys
 
@@ -118,7 +124,7 @@ The web/desktop bundle accepts two Vite env vars, passed as Dockerfile build arg
 | Arg                          | Default | Purpose                                                                       |
 | ---------------------------- | ------- | ----------------------------------------------------------------------------- |
 | `VITE_THUNDERBOLT_CLOUD_URL` | `/v1`   | Backend API URL (relative path, proxied by nginx or ALB)                      |
-| `VITE_AUTH_MODE`             | `oidc`  | Auth mode — `oidc` for enterprise defaults, omit for consumer                 |
+| `VITE_AUTH_MODE`             | `sso`   | Auth mode — `sso` for enterprise SSO (OIDC or SAML), omit for consumer        |
 
 ## Validating Your Config
 
@@ -126,4 +132,4 @@ The backend validates every variable on startup. Common hits:
 
 - `BETTER_AUTH_SECRET: String must contain at least 1 character(s)` — set it.
 - `powersyncJwtSecret must be at least 32 characters when powersyncUrl is set` — regenerate with `openssl rand -hex 32`.
-- `AUTH_MODE: Invalid enum value` — must be `consumer` or `oidc` (case-insensitive).
+- `AUTH_MODE: Invalid enum value` — must be `consumer`, `oidc`, or `saml` (case-insensitive).

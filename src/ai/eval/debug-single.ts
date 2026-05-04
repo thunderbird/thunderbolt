@@ -12,6 +12,7 @@ import { setupTestDatabase, teardownTestDatabase } from '@/dal/test-utils'
 import { getDb } from '@/db/database'
 import { defaultModelGptOss120b } from '@/defaults/models'
 import { defaultModeChat } from '@/defaults/modes'
+import { isSsoMode } from '@/lib/auth-mode'
 import { getAuthToken } from '@/lib/auth-token'
 import { createAuthenticatedClient } from '@/lib/http'
 import type { SaveMessagesFunction } from '@/types'
@@ -41,7 +42,9 @@ const run = async () => {
 
   const db = getDb()
   const { cloudUrl } = await getSettings(db, { cloud_url: 'http://localhost:8000/v1' })
-  const httpClient = createAuthenticatedClient(cloudUrl, getAuthToken)
+  const httpClient = createAuthenticatedClient(cloudUrl, getAuthToken, {
+    credentials: isSsoMode() ? 'include' : undefined,
+  })
 
   console.log('[3/5] Calling aiFetchStreamingResponse...')
   const start = performance.now()

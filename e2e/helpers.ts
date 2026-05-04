@@ -5,20 +5,56 @@
 import { expect, type Page } from '@playwright/test'
 
 /**
- * Navigate to the app root, let the OIDC flow complete naturally through
- * the mock OIDC server, and wait for the authenticated chat UI to render.
+ * Navigate to the app root, let the SSO flow complete naturally through
+ * the mock identity provider, and wait for the authenticated chat UI to render.
  *
  * Onboarding is disabled via VITE_SKIP_ONBOARDING env var in playwright.config.ts.
- *
- * The flow: / -> AuthGate -> /oidc-redirect -> POST sign-in -> mock IdP /authorize
+ */
+
+/**
+ * OIDC flow: / -> AuthGate -> /sso-redirect -> POST sign-in/sso -> mock IdP /authorize
  * (auto-approves) -> backend callback -> token exchange -> session -> app
  */
 export const loginViaOidc = async (page: Page) => {
   await page.goto('/')
-
-  // Wait for the OIDC flow to complete and land on the chat page
   const textarea = page.locator('textarea')
   await expect(textarea).toBeVisible({ timeout: 30_000 })
+}
+
+/**
+ * SAML flow: / -> AuthGate -> /sso-redirect -> POST sign-in/sso -> mock IdP /saml/sso
+ * (auto-generates SAMLResponse) -> POST to ACS -> session -> app
+ */
+export const loginViaSaml = async (page: Page) => {
+  await page.goto('/')
+  const textarea = page.locator('textarea')
+  await expect(textarea).toBeVisible({ timeout: 30_000 })
+}
+
+/**
+ * Open the account popover, click "Log out", confirm in the modal, and wait
+ * for the signed-out landing page to appear.
+ *
+ * Expects the caller to have already authenticated (e.g. via loginViaOidc / loginViaSaml).
+ */
+export const logoutViaSidebar = async (page: Page, option: 'keep' | 'delete' = 'keep') => {
+  // Open account popover in sidebar footer
+  const accountTrigger = page.locator('[data-sidebar="footer"]').getByRole('button').first()
+  await accountTrigger.click()
+
+  // Click "Log out" menu item
+  await page.getByText('Log out', { exact: true }).click()
+
+  // Pick the data option if "delete" is requested (default is "keep")
+  if (option === 'delete') {
+    await page.getByText('Delete data from device').click()
+  }
+
+  // Confirm logout
+  await page.getByRole('button', { name: 'Log out' }).click()
+
+  // Should land on the signed-out page
+  await expect(page.getByRole('heading', { name: 'Signed Out' })).toBeVisible({ timeout: 10_000 })
 }
 
 /**

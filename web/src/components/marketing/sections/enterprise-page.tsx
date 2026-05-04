@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { useEffect, useState } from 'react'
 import { FooterSection } from '../footer-section'
 import { Header } from '../header'
 
@@ -45,21 +46,57 @@ const StarOnGitHubButton = ({ fullWidth = false }: { fullWidth?: boolean }) => (
   </a>
 )
 
+const formatStars = (n: number): string =>
+  n >= 1000 ? `${(n / 1000).toFixed(1).replace(/\.0$/, '')}k` : String(n)
+
 // Compact header badge: white, GitHub icon + live star count, no label.
-// Stays hidden until the script in index.astro populates the count from the
-// GitHub API. If the fetch fails, the badge stays hidden.
-const StarCountBadge = () => (
-  <a
-    href={REPO_URL}
-    target="_blank"
-    rel="noopener noreferrer"
-    className="js-github-star-count hidden h-[46px] items-center gap-2 border border-[#d0d5dd] bg-white px-4 text-sm font-medium text-[#344054] transition-colors hover:bg-[#f2f4f7]"
-  >
-    <GitHubIcon />
-    <StarIcon />
-    <span className="js-github-star-count-value" />
-  </a>
-)
+// Geometry is reserved from first paint to prevent layout shift while the
+// fetch is in flight; the badge fades in once the count resolves. If the
+// fetch fails, the badge unmounts so it doesn't leave a permanent gap.
+const StarCountBadge = () => {
+  const [stars, setStars] = useState<number | null>(null)
+  const [failed, setFailed] = useState(false)
+
+  useEffect(() => {
+    let cancelled = false
+    const load = async () => {
+      try {
+        const res = await fetch('https://api.github.com/repos/thunderbird/thunderbolt')
+        if (!res.ok) throw new Error(`GitHub API responded ${res.status}`)
+        const data = await res.json()
+        if (cancelled) return
+        if (typeof data.stargazers_count !== 'number') throw new Error('Missing stargazers_count')
+        setStars(data.stargazers_count)
+      } catch {
+        if (!cancelled) setFailed(true)
+      }
+    }
+    load()
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
+  if (failed) return null
+
+  const loaded = stars !== null
+
+  return (
+    <a
+      href={REPO_URL}
+      target="_blank"
+      rel="noopener noreferrer"
+      aria-label={stars !== null ? `${stars} stars on GitHub` : undefined}
+      aria-hidden={!loaded}
+      tabIndex={loaded ? undefined : -1}
+      className={`inline-flex h-[46px] min-w-[112px] items-center justify-center gap-2 border border-[#d0d5dd] bg-white px-4 text-sm font-medium text-[#344054] transition-opacity duration-200 hover:bg-[#f2f4f7] ${loaded ? 'opacity-100' : 'opacity-0'}`}
+    >
+      <GitHubIcon />
+      <StarIcon />
+      <span>{stars !== null ? formatStars(stars) : ''}</span>
+    </a>
+  )
+}
 
 const EnterpriseInquiriesButton = () => (
   <a

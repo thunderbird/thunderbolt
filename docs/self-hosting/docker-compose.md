@@ -36,13 +36,13 @@ Behind the scenes, the compose file boots:
 | `docker/frontend.Dockerfile`  | `oven/bun` → `nginx:alpine`        | Vite SPA with COEP/COOP headers                                       |
 | `docker/backend.Dockerfile`   | `oven/bun:latest`                  | Elysia API; entrypoint runs `bun drizzle-kit migrate` before starting |
 | `docker/postgres.Dockerfile`  | `postgres:18-alpine`               | PostgreSQL with PowerSync replication role (`deploy/docker/postgres-init/01-powersync.sql`) |
-| `docker/keycloak.Dockerfile`  | `keycloak:26.0`                    | OIDC with the `thunderbolt` realm pre-imported                        |
+| `docker/keycloak.Dockerfile`  | `keycloak:26.0`                    | OIDC/SAML with the `thunderbolt` realm pre-imported                   |
 | `docker/powersync.Dockerfile` | `journeyapps/powersync-service`    | PowerSync service with the synced-table rules                         |
 | (official) `mongo:7.0`        | —                                  | PowerSync operational store                                           |
 
 ## Customization
 
-- **Bring your own identity provider.** Remove the `keycloak` service from the compose file, then set `OIDC_ISSUER`, `OIDC_CLIENT_ID`, `OIDC_CLIENT_SECRET` in `.env`.
+- **Bring your own identity provider.** Remove the `keycloak` service from the compose file, then set the OIDC vars (`OIDC_ISSUER`, `OIDC_CLIENT_ID`, `OIDC_CLIENT_SECRET`) or the SAML vars (`SAML_ENTRY_POINT`, `SAML_ENTITY_ID`, `SAML_IDP_ISSUER`, `SAML_CERT`) in `.env` depending on your `AUTH_MODE`.
 - **Use managed Postgres.** Point `DATABASE_URL` at your Postgres, remove the `postgres` service, and manually run `deploy/docker/postgres-init/01-powersync.sql` against it to create the `powersync_role` user and publication.
 - **TLS.** The bundled stack serves plain HTTP. Put it behind Caddy, Traefik, or the reverse proxy of your choice — the frontend nginx expects the upstream to terminate TLS.
 

@@ -8,6 +8,7 @@ import { getSettings } from '@/dal'
 import { getModel } from '@/dal/models'
 import { getModelProfile } from '@/dal/model-profiles'
 import { getDb } from '@/db/database'
+import { isSsoMode } from '@/lib/auth-mode'
 import { getAuthToken } from '@/lib/auth-token'
 import { createAuthenticatedClient } from '@/lib/http'
 import type { SaveMessagesFunction } from '@/types'
@@ -25,7 +26,9 @@ const getEvalHttpClient = () => {
     _evalHttpClientPromise = (async () => {
       const db = getDb()
       const { cloudUrl } = await getSettings(db, { cloud_url: 'http://localhost:8000/v1' })
-      return createAuthenticatedClient(cloudUrl, getAuthToken)
+      return createAuthenticatedClient(cloudUrl, getAuthToken, {
+        credentials: isSsoMode() ? 'include' : undefined,
+      })
     })()
   }
   return _evalHttpClientPromise

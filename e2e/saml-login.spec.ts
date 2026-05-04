@@ -3,40 +3,35 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { test, expect } from '@playwright/test'
-import { loginViaOidc, collectPageErrors } from './helpers'
+import { loginViaSaml, collectPageErrors } from './helpers'
 
-test.describe('OIDC login flow', () => {
-  test('unauthenticated user is redirected through OIDC and lands on chat', async ({ page }) => {
+test.describe('SAML login flow', () => {
+  test('unauthenticated user is redirected through SAML and lands on chat', async ({ page }) => {
     const errors = collectPageErrors(page)
 
-    await loginViaOidc(page)
+    await loginViaSaml(page)
 
-    // Should be on an authenticated chat page
     await expect(page).toHaveURL(/\/chats\//)
     expect(errors).toHaveLength(0)
   })
 
   test('authenticated session persists across navigation', async ({ page }) => {
-    await loginViaOidc(page)
+    await loginViaSaml(page)
 
-    // Navigate to settings
     await page.goto('/settings')
     await expect(page.getByText('Settings').first()).toBeVisible({ timeout: 10_000 })
 
-    // Navigate back to chat
     await page.goto('/chats/new')
     await expect(page.locator('textarea')).toBeVisible({ timeout: 10_000 })
 
-    // Should NOT be redirected to OIDC again
     await expect(page).not.toHaveURL(/sso-redirect/)
   })
 
-  test('page loads without critical JS errors after OIDC login', async ({ page }) => {
+  test('page loads without critical JS errors after SAML login', async ({ page }) => {
     const errors = collectPageErrors(page)
 
-    await loginViaOidc(page)
+    await loginViaSaml(page)
 
-    // Navigate around to exercise the app
     await page.goto('/settings')
     await expect(page.getByText('Settings').first()).toBeVisible({ timeout: 10_000 })
     await page.goto('/chats/new')
@@ -46,18 +41,15 @@ test.describe('OIDC login flow', () => {
   })
 })
 
-test.describe('OIDC redirect behavior', () => {
-  test('unauthenticated visit triggers OIDC flow', async ({ page }) => {
-    // Visit the app without logging in — should eventually hit the mock IdP
-    const responsePromise = page.waitForResponse(/\/(authorize|openid-connect\/auth)/, {
-      timeout: 15_000,
-    })
+test.describe('SAML redirect behavior', () => {
+  test('unauthenticated visit triggers SAML flow', async ({ page }) => {
+    // Visit the app — should eventually hit the mock SAML IdP
+    const responsePromise = page.waitForResponse(/\/saml\/sso/, { timeout: 15_000 })
 
     await page.goto('/')
 
     const response = await responsePromise
     const url = new URL(response.url())
-    expect(url.searchParams.get('response_type')).toBe('code')
-    expect(url.searchParams.get('client_id')).toBe('thunderbolt-app')
+    expect(url.searchParams.get('SAMLRequest')).toBeTruthy()
   })
 })

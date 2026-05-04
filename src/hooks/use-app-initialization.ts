@@ -11,6 +11,7 @@ import type { AnyDrizzleDatabase } from '@/db/database-interface'
 import { defaultSettingCloudUrl } from '@/defaults/settings'
 import { createHandleError } from '@/lib/error-utils'
 import { createAppDir, resetAppDir } from '@/lib/fs'
+import { isSsoMode } from '@/lib/auth-mode'
 import { createAuthenticatedClient } from '@/lib/http'
 import { getDatabasePath, getDatabaseType } from '@/lib/platform'
 import { initPosthog, trackError } from '@/lib/posthog'
@@ -126,7 +127,9 @@ const executeInitializationSteps = async (httpClient?: HttpClient): Promise<Hand
     client = httpClient
   } else {
     try {
-      client = createAuthenticatedClient(cloudUrl, getAuthToken)
+      client = createAuthenticatedClient(cloudUrl, getAuthToken, {
+        credentials: isSsoMode() ? 'include' : undefined,
+      })
     } catch (error) {
       console.error('Failed to initialize HTTP client:', error)
       const httpClientError = createHandleError('HTTP_CLIENT_INIT_FAILED', 'Failed to initialize HTTP client', error)

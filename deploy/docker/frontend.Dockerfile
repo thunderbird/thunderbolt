@@ -18,7 +18,7 @@ COPY .storybook ./.storybook
 
 # Build args — baked into the static bundle at build time
 ARG VITE_THUNDERBOLT_CLOUD_URL="/v1"
-ARG VITE_AUTH_MODE="oidc"
+ARG VITE_AUTH_MODE="sso"
 ENV VITE_THUNDERBOLT_CLOUD_URL=$VITE_THUNDERBOLT_CLOUD_URL
 ENV VITE_AUTH_MODE=$VITE_AUTH_MODE
 

@@ -4,8 +4,10 @@
 
 import type { ConsoleSpies } from '@/test-utils/console-spies'
 import { setupConsoleSpy } from '@/test-utils/console-spies'
-import { afterAll, beforeAll, beforeEach, describe, expect, it, mock } from 'bun:test'
+import { __resetMediaJwtCacheForTests, MEDIA_JWT_AUDIENCE } from '@/auth/media-jwt'
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, mock } from 'bun:test'
 import { Elysia } from 'elysia'
+import { exportJWK, generateKeyPair, type JSONWebKeySet, type JWK, SignJWT } from 'jose'
 import { createUniversalProxyRoutes } from './routes'
 
 // Mock DNS + net — external Node APIs, acceptable per docs/testing.md "When You Must Mock"
@@ -583,53 +585,85 @@ describe('createUniversalProxyRoutes', () => {
   })
 
   // ---------------------------------------------------------------------------
-  // Auth gate (method-conditional)
+  // Cache headers
   //
-  // GET/HEAD are anonymous because browsers cannot attach `Authorization: Bearer`
-  // to subresource loads (`<img src>`, `<link rel="icon">`). All other methods
-  // still require a valid session. SSRF defense and rate limiting apply to every
-  // method regardless of authentication.
+  // Browser caches the response for 10 min (per-user, since `?token=` is
+  // session-scoped) but edge caches MUST NOT store: `?token=` makes every URL
+  // unique per session, which would explode the cache key space. The proxy
+  // emits `CDN-Cache-Control: no-store` so Cloudflare/Fastly/Vercel skip
+  // caching even though `Cache-Control` is otherwise cacheable.
   // ---------------------------------------------------------------------------
 
-  describe('method-conditional auth', () => {
-    const noAuth = { api: { getSession: async () => null } } as never
+  it('emits Cache-Control: private, max-age=600 and CDN-Cache-Control: no-store', async () => {
+    const target = 'https://example.com/page'
+    const res = await app.handle(new Request(`http://localhost/proxy/${encodeURIComponent(target)}`, { method: 'GET' }))
+    expect(res.headers.get('cache-control')).toBe('private, max-age=600')
+    expect(res.headers.get('cdn-cache-control')).toBe('no-store')
+  })
+
+  it('overrides upstream Cache-Control directives with the proxy policy', async () => {
+    mockFetch.mockImplementation(() =>
+      Promise.resolve(
+        new Response('body', {
+          status: 200,
+          headers: {
+            'content-type': 'text/plain',
+            'cache-control': 'public, max-age=31536000, immutable',
+          },
+        }),
+      ),
+    )
+    const target = 'https://example.com/cached'
+    const res = await app.handle(new Request(`http://localhost/proxy/${encodeURIComponent(target)}`, { method: 'GET' }))
+    expect(res.headers.get('cache-control')).toBe('private, max-age=600')
+    expect(res.headers.get('cdn-cache-control')).toBe('no-store')
+  })
+
+  // ---------------------------------------------------------------------------
+  // Auth gate (mandatory on every method, two acceptable mechanisms)
+  //
+  // Auth required on every request. Either:
+  //   1. Cookie / `Authorization: Bearer <session>` (programmatic callers)
+  //   2. `?token=<jwt>` query param (browser sub-resource loads)
+  // ---------------------------------------------------------------------------
+
+  describe('auth gate (cookie/Bearer OR ?token= JWT)', () => {
+    /** Auth instance with a stub `verifyJwks`-compatible `auth.api` that returns
+     *  no session by default. Tests opt in to a verified JWT via `auth.api.getJwks`. */
+    const noAuth = {
+      api: {
+        getSession: async () => null,
+        // Non-null returns short-circuit verifyMediaJwt before jose is touched
+        // — these tests cover the routes-level branching, not the verifier itself
+        // (which is exercised in media-jwt.test.ts).
+        getJwks: async () => ({ keys: [] }),
+      },
+    } as never
     let noAuthApp: { handle: Elysia['handle'] }
 
     beforeAll(() => {
       noAuthApp = new Elysia().use(createUniversalProxyRoutes(noAuth, mockFetch as unknown as typeof fetch))
     })
 
-    it('GET without Authorization → 200 (anonymous, proxy proceeds)', async () => {
+    it('GET without any auth → 401', async () => {
       const target = 'https://example.com/resource'
       const res = await noAuthApp.handle(
         new Request(`http://localhost/proxy/${encodeURIComponent(target)}`, { method: 'GET' }),
       )
-      expect(res.status).toBe(200)
-      expect(mockFetch).toHaveBeenCalledTimes(1)
-    })
-
-    it('HEAD without Authorization → 200 (anonymous, proxy proceeds)', async () => {
-      const target = 'https://example.com/resource'
-      mockFetch.mockImplementationOnce(() =>
-        Promise.resolve(new Response(null, { status: 200, headers: { 'content-type': 'text/plain' } })),
-      )
-      const res = await noAuthApp.handle(
-        new Request(`http://localhost/proxy/${encodeURIComponent(target)}`, { method: 'HEAD' }),
-      )
-      expect(res.status).toBe(200)
-      expect(mockFetch).toHaveBeenCalledTimes(1)
-    })
-
-    it('GET without Authorization still runs SSRF defense (private IP → 400)', async () => {
-      const target = 'https://127.0.0.1/secret'
-      const res = await noAuthApp.handle(
-        new Request(`http://localhost/proxy/${encodeURIComponent(target)}`, { method: 'GET' }),
-      )
-      expect(res.status).toBe(400)
+      expect(res.status).toBe(401)
       expect(mockFetch).not.toHaveBeenCalled()
     })
 
-    it('POST without Authorization → 401', async () => {
+    it('HEAD without any auth → 401', async () => {
+      const target = 'https://example.com/resource'
+      const res = await noAuthApp.handle(
+        new Request(`http://localhost/proxy/${encodeURIComponent(target)}`, { method: 'HEAD' }),
+      )
+      expect(res.status).toBe(401)
+      expect(mockFetch).not.toHaveBeenCalled()
+    })
+
+    it('POST without any auth → 401', async () => {
       const target = 'https://example.com/api'
       const res = await noAuthApp.handle(
         new Request(`http://localhost/proxy/${encodeURIComponent(target)}`, {
@@ -641,37 +675,150 @@ describe('createUniversalProxyRoutes', () => {
       expect(mockFetch).not.toHaveBeenCalled()
     })
 
-    it('PUT without Authorization → 401', async () => {
-      const target = 'https://example.com/update'
-      const res = await noAuthApp.handle(
+    it('PUT/PATCH/DELETE without any auth → 401', async () => {
+      const target = 'https://example.com/item/1'
+      for (const method of ['PUT', 'PATCH', 'DELETE'] as const) {
+        const res = await noAuthApp.handle(
+          new Request(`http://localhost/proxy/${encodeURIComponent(target)}`, { method, body: 'data' }),
+        )
+        expect(res.status).toBe(401)
+      }
+      expect(mockFetch).not.toHaveBeenCalled()
+    })
+
+    it('GET with valid Bearer session → 200 (existing path)', async () => {
+      // The default `app` from the outer describe uses `fakeAuth` whose
+      // `getSession` always resolves a session — assert it still works
+      // unchanged after the auth refactor.
+      const target = 'https://example.com/resource'
+      const res = await app.handle(
         new Request(`http://localhost/proxy/${encodeURIComponent(target)}`, {
-          method: 'PUT',
-          body: 'data',
+          method: 'GET',
+          headers: { Authorization: 'Bearer session-token' },
         }),
+      )
+      expect(res.status).toBe(200)
+    })
+
+    it('GET with invalid ?token= JWT → 401', async () => {
+      const target = 'https://example.com/resource'
+      // No keys in JWKS → verify always returns null
+      const res = await noAuthApp.handle(
+        new Request(`http://localhost/proxy/${encodeURIComponent(target)}?token=not.a.real.jwt`, { method: 'GET' }),
       )
       expect(res.status).toBe(401)
       expect(mockFetch).not.toHaveBeenCalled()
     })
 
-    it('PATCH without Authorization → 401', async () => {
-      const target = 'https://example.com/item/1'
-      const res = await noAuthApp.handle(
-        new Request(`http://localhost/proxy/${encodeURIComponent(target)}`, {
-          method: 'PATCH',
-          body: '{"name":"new"}',
-        }),
+    it('GET with unverifiable ?token= (unknown kid) falls through to 401', async () => {
+      // Negative-path guard: when ?token= is present but the verifier rejects
+      // it (here: kid not in the empty JWKS), the resolver returns 401 just
+      // like the no-auth case — proving the route inspects the token rather
+      // than blanket-allowing any string.
+      const tokenAuth = {
+        api: {
+          getSession: async () => null,
+          getJwks: async () => ({ keys: [] }) as JSONWebKeySet,
+        },
+      } as never
+      const tokenApp = new Elysia().use(createUniversalProxyRoutes(tokenAuth, mockFetch as unknown as typeof fetch))
+      const target = 'https://example.com/resource'
+      const res = await tokenApp.handle(
+        new Request(
+          `http://localhost/proxy/${encodeURIComponent(target)}?token=eyJhbGciOiJFZERTQSIsImtpZCI6Im5vIn0.e30.x`,
+          {
+            method: 'GET',
+          },
+        ),
       )
       expect(res.status).toBe(401)
-      expect(mockFetch).not.toHaveBeenCalled()
     })
 
-    it('DELETE without Authorization → 401', async () => {
-      const target = 'https://example.com/item/1'
-      const res = await noAuthApp.handle(
-        new Request(`http://localhost/proxy/${encodeURIComponent(target)}`, { method: 'DELETE' }),
+    // -------------------------------------------------------------------------
+    // Positive integration test for the ?token= JWT path.
+    //
+    // Mints a JWT signed by a fixture JWKS, ensures the route accepts it and
+    // proxies the request through to upstream — guards the headline UX claim
+    // that browser sub-resource loads (`<img src>`, `<link rel="icon">`) work
+    // when the page passes a freshly minted media-proxy JWT in the URL.
+    //
+    // Same crypto fixture as `observability.test.ts:382-411` and
+    // `media-jwt.test.ts`.
+    // -------------------------------------------------------------------------
+
+    describe('valid ?token= JWT positive path', () => {
+      afterEach(() => {
+        __resetMediaJwtCacheForTests()
+      })
+
+      const buildJwks = async (kid = 'routes-test-kid') => {
+        const { publicKey, privateKey } = await generateKeyPair('EdDSA', {
+          extractable: true,
+          crv: 'Ed25519',
+        })
+        const publicJwk: JWK = { ...(await exportJWK(publicKey)), alg: 'EdDSA', kid }
+        return { privateKey, jwks: { keys: [publicJwk] } as JSONWebKeySet }
+      }
+
+      const signTestToken = (privateKey: CryptoKey, sub: string) =>
+        new SignJWT({})
+          .setProtectedHeader({ alg: 'EdDSA', kid: 'routes-test-kid' })
+          .setSubject(sub)
+          .setAudience(MEDIA_JWT_AUDIENCE)
+          .setExpirationTime(Math.floor(Date.now() / 1000) + 600)
+          .sign(privateKey)
+
+      it('GET with valid ?token= JWT → 200 and proxies upstream', async () => {
+        const { privateKey, jwks } = await buildJwks()
+        const token = await signTestToken(privateKey, 'user-from-valid-jwt')
+
+        const tokenAuth = {
+          api: {
+            getSession: async () => null,
+            getJwks: async () => jwks,
+          },
+        } as never
+        const tokenApp = new Elysia().use(createUniversalProxyRoutes(tokenAuth, mockFetch as unknown as typeof fetch))
+
+        const target = 'https://example.com/resource'
+        const res = await tokenApp.handle(
+          new Request(`http://localhost/proxy/${encodeURIComponent(target)}?token=${token}`, {
+            method: 'GET',
+          }),
+        )
+        expect(res.status).toBe(200)
+        expect(mockFetch).toHaveBeenCalledTimes(1)
+      })
+    })
+
+    it('GET with cookie session (Bearer absent) → 200', async () => {
+      // Cookie auth flows through the same getSession path; just covers the
+      // assertion that the resolver doesn't require an Authorization header.
+      const target = 'https://example.com/resource'
+      const res = await app.handle(
+        new Request(`http://localhost/proxy/${encodeURIComponent(target)}`, {
+          method: 'GET',
+          headers: { Cookie: 'better-auth.session_token=abc' },
+        }),
       )
-      expect(res.status).toBe(401)
-      expect(mockFetch).not.toHaveBeenCalled()
+      expect(res.status).toBe(200)
+    })
+
+    it('still runs SSRF defense even when auth fails (private IP → 401 for unauth, 400 for authed)', async () => {
+      const target = 'https://127.0.0.1/secret'
+      // Unauth: 401 wins (auth runs before SSRF) — that's correct, leaks no info.
+      const unauthRes = await noAuthApp.handle(
+        new Request(`http://localhost/proxy/${encodeURIComponent(target)}`, { method: 'GET' }),
+      )
+      expect(unauthRes.status).toBe(401)
+      // Authed: SSRF defense triggers — 400.
+      const authedRes = await app.handle(
+        new Request(`http://localhost/proxy/${encodeURIComponent(target)}`, {
+          method: 'GET',
+          headers: { Authorization: 'Bearer session-token' },
+        }),
+      )
+      expect(authedRes.status).toBe(400)
     })
   })
 })

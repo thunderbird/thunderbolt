@@ -3,6 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import type { Auth } from '@/auth/elysia-plugin'
+import { verifyMediaJwt } from '@/auth/media-jwt'
 import { safeErrorHandler } from '@/middleware/error-handling'
 import { defaultRequestDenylist, defaultResponseDenylist, extractResponseHeaders, filterHeaders } from '@/utils/request'
 import { validateAndPin } from '@/utils/url-validation'
@@ -18,10 +19,6 @@ const streamIdleMs = 30_000
 
 const allowedMethods = new Set(['GET', 'HEAD', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'])
 const bodylessMethods = new Set(['GET', 'HEAD', 'OPTIONS'])
-/** Methods that are anonymous-by-design — browsers cannot attach credentials to subresource
- *  loads (`<img src>`, `<link rel="icon">`), so requiring auth would break the favicon /
- *  link-preview round-trip. SSRF defense and rate limiting still apply to these methods. */
-const anonymousMethods = new Set(['GET', 'HEAD'])
 
 /** Response denylist that intentionally keeps content-encoding so the browser can
  *  decode compressed bodies. We tell Bun NOT to decompress the upstream stream
@@ -71,20 +68,29 @@ export const createUniversalProxyRoutes = (
 ) => {
   const app = new Elysia({ prefix: '/proxy' })
     .onError(safeErrorHandler)
-    /** Method-conditional auth: GET/HEAD MAY be anonymous because browsers cannot attach
-     *  `Authorization: Bearer` to subresource loads (`<img src>`, `<link rel="icon">`).
-     *  Every other method still requires a valid session. We always attempt session
-     *  resolution so an authenticated GET/HEAD still surfaces `ctx.user` for observability
-     *  and (eventually) per-user rate limiting. Inlined instead of the shared `auth: true`
-     *  macro because the macro is unconditional by design. */
-    .resolve(async ({ request, status }) => {
-      const method = request.method.toUpperCase()
+    /** Auth required on every method. Two acceptable mechanisms:
+     *
+     *  1. Cookie / `Authorization: Bearer <session-token>` — used by programmatic callers
+     *     (`httpClient`, MCP transport).
+     *  2. `?token=<jwt>` query parameter — used by browser sub-resource loads
+     *     (`<img src>`, `<link rel="icon">`) that cannot attach Authorization headers.
+     *     The JWT is minted by the Better Auth JWT plugin (`/api/auth/token`),
+     *     audience `media-proxy`, 10 min TTL, signed by the JWKS at
+     *     `/api/auth/jwks`. Verification is stateless — no DB hit per request.
+     *
+     *  Inlined instead of the shared `auth: true` macro because the macro is
+     *  cookie/Bearer-only by design. */
+    .resolve(async ({ request, query, status }) => {
       const session = await auth.api.getSession({ headers: request.headers })
       if (session) {
         return { user: session.user, session: session.session }
       }
-      if (anonymousMethods.has(method)) {
-        return { user: undefined, session: undefined }
+      const queryToken = typeof query.token === 'string' ? query.token : undefined
+      if (queryToken) {
+        const verified = await verifyMediaJwt(queryToken, auth)
+        if (verified) {
+          return { user: verified.user, session: undefined }
+        }
       }
       return status(401)
     })
@@ -358,6 +364,17 @@ const buildProxyResponse = (
   headers.set('content-disposition', 'attachment')
   headers.set('x-content-type-options', 'nosniff')
   headers.set('cross-origin-resource-policy', 'cross-origin')
+
+  // Cache strategy (browser-only). The `?token=` query param makes every URL
+  // unique per session, so we cannot let edge caches (Cloudflare/CDN) store
+  // these responses by default cache key — that would mint a separate cache
+  // entry per JWT and explode the cache. `private` keeps each browser's HTTP
+  // cache populated for the token's lifetime; `CDN-Cache-Control: no-store`
+  // tells supporting CDNs (Cloudflare, Fastly, Vercel) to skip caching even
+  // though the client-facing `Cache-Control` is cacheable. We override any
+  // upstream cache directive — the proxy's policy is what the browser sees.
+  headers.set('cache-control', 'private, max-age=600')
+  headers.set('cdn-cache-control', 'no-store')
 
   if (!response.body) {
     emit(response.status)

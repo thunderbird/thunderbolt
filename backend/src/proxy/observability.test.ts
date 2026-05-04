@@ -3,10 +3,12 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { redactPaths } from '@/config/logger'
+import { __resetMediaJwtCacheForTests, MEDIA_JWT_AUDIENCE } from '@/auth/media-jwt'
 import type { ConsoleSpies } from '@/test-utils/console-spies'
 import { setupConsoleSpy } from '@/test-utils/console-spies'
-import { afterAll, beforeAll, beforeEach, describe, expect, it, mock } from 'bun:test'
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, mock } from 'bun:test'
 import { Elysia } from 'elysia'
+import { exportJWK, generateKeyPair, type JSONWebKeySet, type JWK, SignJWT } from 'jose'
 import { pino, type Logger } from 'pino'
 import { Writable } from 'node:stream'
 import { createUniversalProxyRoutes } from './routes'
@@ -361,6 +363,72 @@ describe('proxy observability', () => {
       const log = records.find((r) => r.event === 'proxy_request')
       expect(log).toBeTruthy()
       expect(log!.trace_id).toBeUndefined()
+    })
+  })
+
+  // ---------------------------------------------------------------------------
+  // userId extracted from JWT `sub` claim (query-param auth path)
+  //
+  // Browser sub-resource loads (`<img>`, `<link>`) authenticate via `?token=<jwt>`
+  // because they cannot attach Authorization headers. Observability MUST still
+  // resolve the user ID from the JWT's `sub` claim — otherwise per-user metrics
+  // and PostHog attribution silently degrade to `unknown` for image traffic.
+  // ---------------------------------------------------------------------------
+
+  describe('userId extraction from ?token= JWT', () => {
+    afterEach(() => {
+      __resetMediaJwtCacheForTests()
+    })
+
+    /** Build a JWKS pair the same way media-jwt.test.ts does. Same crypto. */
+    const buildJwks = async (kid = 'obs-test-kid') => {
+      const { publicKey, privateKey } = await generateKeyPair('EdDSA', { extractable: true, crv: 'Ed25519' })
+      const publicJwk: JWK = { ...(await exportJWK(publicKey)), alg: 'EdDSA', kid }
+      return { privateKey, jwks: { keys: [publicJwk] } as JSONWebKeySet }
+    }
+
+    const signTestToken = (privateKey: CryptoKey, sub: string) =>
+      new SignJWT({})
+        .setProtectedHeader({ alg: 'EdDSA', kid: 'obs-test-kid' })
+        .setSubject(sub)
+        .setAudience(MEDIA_JWT_AUDIENCE)
+        .setExpirationTime(Math.floor(Date.now() / 1000) + 600)
+        .sign(privateKey)
+
+    it('emits userId from JWT sub claim when caller authenticates via ?token=', async () => {
+      const mockFetch = mock(() => Promise.resolve(okResponse('payload')))
+      mockDnsLookup.mockReset()
+      mockDnsLookup.mockImplementation(() => Promise.resolve([{ address: '1.1.1.1', family: 4 }]))
+
+      const { privateKey, jwks } = await buildJwks()
+      const token = await signTestToken(privateKey, 'user-from-jwt-99')
+
+      // Auth instance: getSession returns null (no cookie/Bearer); getJwks
+      // returns the JWKS so verifyMediaJwt accepts the query-param token.
+      const tokenAuth = {
+        api: {
+          getSession: async () => null,
+          getJwks: async () => jwks,
+        },
+      } as never
+
+      const observations: ProxyObservationInput[] = []
+      const observer: ProxyObserver = (input) => observations.push(input)
+
+      const app = new Elysia().use(
+        createUniversalProxyRoutes(tokenAuth, mockFetch as unknown as typeof fetch, undefined, observer),
+      )
+      const target = 'https://example.com/resource'
+      const res = await app.handle(
+        new Request(`http://localhost/proxy/${encodeURIComponent(target)}?token=${encodeURIComponent(token)}`, {
+          method: 'GET',
+        }),
+      )
+      await res.text()
+
+      expect(res.status).toBe(200)
+      expect(observations).toHaveLength(1)
+      expect(observations[0].userId).toBe('user-from-jwt-99')
     })
   })
 

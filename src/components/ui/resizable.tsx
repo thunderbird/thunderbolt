@@ -8,15 +8,12 @@ import * as ResizablePrimitive from 'react-resizable-panels'
 
 import { cn } from '@/lib/utils'
 
-// Disable global cursor styles to prevent cursor overlap issues with webviews
-// and other content. We'll manage cursor styles manually on the resize handle.
-ResizablePrimitive.disableGlobalCursorStyles()
-
-const ResizablePanelGroup = ({ className, ...props }: ComponentProps<typeof ResizablePrimitive.PanelGroup>) => {
+const ResizablePanelGroup = ({ className, ...props }: ComponentProps<typeof ResizablePrimitive.Group>) => {
   return (
-    <ResizablePrimitive.PanelGroup
+    <ResizablePrimitive.Group
       data-slot="resizable-panel-group"
-      className={cn('flex h-full w-full data-[panel-group-direction=vertical]:flex-col', className)}
+      disableCursor
+      className={cn('flex h-full w-full', className)}
       {...props}
     />
   )
@@ -36,16 +33,15 @@ const ResizableHandle = ({
   withHandle,
   className,
   ...props
-}: ComponentProps<typeof ResizablePrimitive.PanelResizeHandle> & {
+}: ComponentProps<typeof ResizablePrimitive.Separator> & {
   withHandle?: boolean
 }) => {
   return (
-    <ResizablePrimitive.PanelResizeHandle
+    <ResizablePrimitive.Separator
       data-slot="resizable-handle"
       className={cn(
-        'bg-border focus-visible:ring-ring relative flex w-px items-center justify-center after:absolute after:inset-y-0 after:left-[calc(50%-2px)] after:w-1 after:-translate-x-1/2 focus-visible:ring-1 focus-visible:ring-offset-1 focus-visible:outline-hidden data-[panel-group-direction=vertical]:h-px data-[panel-group-direction=vertical]:w-full data-[panel-group-direction=vertical]:after:left-0 data-[panel-group-direction=vertical]:after:top-[calc(50%-2px)] data-[panel-group-direction=vertical]:after:h-1 data-[panel-group-direction=vertical]:after:w-full data-[panel-group-direction=vertical]:after:-translate-y-1/2 data-[panel-group-direction=vertical]:after:translate-x-0 [&[data-panel-group-direction=vertical]>div]:rotate-90',
-        // Manually apply cursor styles since we disabled global cursor styles
-        'cursor-ew-resize data-[panel-group-direction=vertical]:cursor-ns-resize',
+        'bg-border focus-visible:ring-ring relative flex w-px items-center justify-center after:absolute after:inset-y-0 after:left-[calc(50%-2px)] after:w-1 after:-translate-x-1/2 focus-visible:ring-1 focus-visible:ring-offset-1 focus-visible:outline-hidden',
+        'cursor-ew-resize',
         className,
       )}
       {...props}
@@ -55,7 +51,7 @@ const ResizableHandle = ({
           <GripVerticalIcon className="size-2.5" />
         </div>
       )}
-    </ResizablePrimitive.PanelResizeHandle>
+    </ResizablePrimitive.Separator>
   )
 }
 

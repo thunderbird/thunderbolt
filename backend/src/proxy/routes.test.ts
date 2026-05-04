@@ -195,11 +195,32 @@ describe('createUniversalProxyRoutes', () => {
     expect((calledUrl.match(/\?/g) || []).length).toBe(1)
   })
 
-  it('returns 400 for http:// target (HTTPS only)', async () => {
+  it('auto-upgrades http:// target to https:// before fetching', async () => {
     const target = 'http://example.com/resource'
+    const res = await app.handle(new Request(`http://localhost/proxy/${encodeURIComponent(target)}`, { method: 'GET' }))
+    expect(res.status).toBe(200)
+    expect(mockFetch).toHaveBeenCalledTimes(1)
+    const [calledUrl] = mockFetch.mock.calls[0] as [string, RequestInit]
+    // Hostname is IP-pinned, but the scheme must have been upgraded to https.
+    expect(calledUrl.startsWith('https://')).toBe(true)
+    expect(calledUrl).toBe(pinnedUrl('https://example.com/resource'))
+  })
+
+  it('returns 400 for non-http(s) target (e.g. ftp://)', async () => {
+    const target = 'ftp://example.com/resource'
     const res = await app.handle(new Request(`http://localhost/proxy/${encodeURIComponent(target)}`, { method: 'GET' }))
     expect(res.status).toBe(400)
     expect(mockFetch).not.toHaveBeenCalled()
+  })
+
+  it('returns 502 when upstream cannot serve HTTPS after auto-upgrade', async () => {
+    // Site genuinely doesn't support HTTPS — fetch throws (TLS error, ECONNREFUSED, …).
+    mockFetch.mockImplementationOnce(() => Promise.reject(new Error('TLS handshake failed')))
+    const target = 'http://no-tls.example.com/'
+    const res = await app.handle(new Request(`http://localhost/proxy/${encodeURIComponent(target)}`, { method: 'GET' }))
+    expect(res.status).toBe(502)
+    const [calledUrl] = mockFetch.mock.calls[0] as [string, RequestInit]
+    expect(calledUrl.startsWith('https://')).toBe(true)
   })
 
   it('returns 405 for TRACE method', async () => {
@@ -355,11 +376,27 @@ describe('createUniversalProxyRoutes', () => {
     expect(mockFetch).toHaveBeenCalledTimes(6)
   })
 
-  it('returns 502 when redirect downgrades to HTTP and aborts the upstream connection', async () => {
+  it('auto-upgrades http:// redirect Location to https:// on the next hop', async () => {
+    mockFetch
+      .mockImplementationOnce(() =>
+        Promise.resolve(new Response(null, { status: 302, headers: { location: 'http://other.com/path' } })),
+      )
+      .mockImplementationOnce(() => Promise.resolve(makeOkResponse('final')))
+
+    const target = 'https://example.com/start'
+    const res = await app.handle(new Request(`http://localhost/proxy/${encodeURIComponent(target)}`, { method: 'GET' }))
+    expect(res.status).toBe(200)
+    expect(mockFetch).toHaveBeenCalledTimes(2)
+    const [secondUrl] = mockFetch.mock.calls[1] as [string, RequestInit]
+    expect(secondUrl.startsWith('https://')).toBe(true)
+    expect(secondUrl).toBe(pinnedUrl('https://other.com/path'))
+  })
+
+  it('returns 502 when redirect points to non-http(s) scheme and aborts the upstream connection', async () => {
     let capturedSignal: AbortSignal | undefined
     mockFetch.mockImplementationOnce((_url, init?: RequestInit) => {
       capturedSignal = init?.signal ?? undefined
-      return Promise.resolve(new Response(null, { status: 302, headers: { location: 'http://evil.com/steal' } }))
+      return Promise.resolve(new Response(null, { status: 302, headers: { location: 'ftp://evil.com/steal' } }))
     })
     const target = 'https://example.com/start'
     const res = await app.handle(new Request(`http://localhost/proxy/${encodeURIComponent(target)}`, { method: 'GET' }))

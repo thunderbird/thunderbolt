@@ -391,12 +391,13 @@ describe('proxy observability', () => {
       expect(observations[0].errorType).toBe('invalid_url')
     })
 
-    it('classifies non-HTTPS target as unsupported_protocol', async () => {
+    it('classifies non-http(s) target as unsupported_protocol', async () => {
       const mockFetch = mock(() => Promise.resolve(okResponse()))
       const app = new Elysia().use(
         createUniversalProxyRoutes(fakeAuth, mockFetch as unknown as typeof fetch, undefined, observer),
       )
-      const target = 'http://example.com/resource'
+      // http:// is auto-upgraded; ftp:// (and other non-http(s) schemes) are still rejected.
+      const target = 'ftp://example.com/resource'
       const res = await app.handle(
         new Request(`http://localhost/proxy/${encodeURIComponent(target)}`, { method: 'GET' }),
       )
@@ -447,7 +448,7 @@ describe('proxy observability', () => {
       const app = new Elysia().use(
         createUniversalProxyRoutes(fakeAuth, mockFetch as unknown as typeof fetch, undefined, observer),
       )
-      const target = 'http://example.com/resource' // forces unsupported_protocol
+      const target = 'ftp://example.com/resource' // forces unsupported_protocol (http:// is auto-upgraded)
       await app.handle(new Request(`http://localhost/proxy/${encodeURIComponent(target)}`, { method: 'GET' }))
 
       const allowedLabels = new Set([

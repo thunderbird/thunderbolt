@@ -148,6 +148,19 @@ export const createUniversalProxyRoutes = (
         return new Response('Invalid URL', { headers: { 'Content-Type': 'text/plain' } })
       }
 
+      // Auto-upgrade http:// → https:// instead of rejecting. Many sites
+      // (especially older Shopify storefronts) hardcode `http://` URLs in their
+      // og:image / favicon meta tags even though the servers actually serve HTTPS.
+      // Browsers transparently upgrade mixed-content subresources, but we extract
+      // the literal URL from page metadata and would otherwise reject it. Upgrading
+      // here keeps the common case working; sites that genuinely don't support
+      // HTTPS surface as 502 upstream_error. Any other scheme (ftp:, data:, file:,
+      // …) is still rejected by the protocol check below.
+      if (parsedTarget.protocol === 'http:') {
+        parsedTarget.protocol = 'https:'
+        targetUrl = parsedTarget.toString()
+      }
+
       targetHost = parsedTarget.hostname
 
       if (parsedTarget.protocol !== 'https:') {
@@ -276,9 +289,18 @@ export const createUniversalProxyRoutes = (
         const location = response.headers.get('location')
         if (!location) return buildProxyResponse(response, upstreamCtl, emit)
 
-        const nextUrl = new URL(location, currentUrl).toString()
+        const nextParsed = new URL(location, currentUrl)
+        // Mirror the initial-hop auto-upgrade: http:// Location headers are
+        // upgraded to https:// rather than aborted. Same rationale as the
+        // initial-target upgrade above — sites with mixed-content redirects
+        // shouldn't break, and HTTPS-only is still enforced (any non-http(s)
+        // scheme falls through to the 502 below).
+        if (nextParsed.protocol === 'http:') {
+          nextParsed.protocol = 'https:'
+        }
+        const nextUrl = nextParsed.toString()
 
-        if (new URL(nextUrl).protocol !== 'https:') {
+        if (nextParsed.protocol !== 'https:') {
           response.body?.cancel().catch(() => {})
           upstreamCtl.abort()
           ctx.set.status = 502

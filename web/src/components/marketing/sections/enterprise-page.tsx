@@ -49,7 +49,7 @@ const StarOnGitHubButton = ({ fullWidth = false }: { fullWidth?: boolean }) => (
 const formatStars = (n: number): string =>
   n >= 1000 ? `${(n / 1000).toFixed(1).replace(/\.0$/, '')}k` : String(n)
 
-// Compact header badge: GitHub icon + live star count, desktop only.
+// Compact header badge: white, GitHub icon + live star count, no label.
 // Geometry is reserved from first paint to prevent layout shift while the
 // fetch is in flight; the badge fades in once the count resolves. If the
 // fetch fails, the badge unmounts so it doesn't leave a permanent gap.
@@ -89,7 +89,7 @@ const StarCountBadge = () => {
       aria-label={stars !== null ? `${stars} stars on GitHub` : undefined}
       aria-hidden={!loaded}
       tabIndex={loaded ? undefined : -1}
-      className={`hidden h-[46px] min-w-[112px] items-center justify-center gap-2 border border-[#344054] px-4 text-sm font-medium text-[#344054] transition-opacity duration-200 hover:bg-[#f2f4f7] md:inline-flex ${loaded ? 'opacity-100' : 'opacity-0'}`}
+      className={`inline-flex h-[46px] min-w-[112px] items-center justify-center gap-2 border border-[#d0d5dd] bg-white px-4 text-sm font-medium text-[#344054] transition-opacity duration-200 hover:bg-[#f2f4f7] ${loaded ? 'opacity-100' : 'opacity-0'}`}
     >
       <GitHubIcon />
       <StarIcon />

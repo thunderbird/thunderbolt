@@ -6,12 +6,13 @@
   "dependencies": {
     "@pulumi/aws": "^7.27.0",
     "@pulumi/awsx": "^3.5.0",
+    "@pulumi/cloudflare": "^6.14.0",
     "@pulumi/docker-build": "^0.0.15",
     "@pulumi/eks": "^4.0.0",
     "@pulumi/kubernetes": "^4.0.0",
     "@pulumi/pulumi": "^3.0.0"
   },
   "devDependencies": {
-    "typescript": "^5.0.0"
+    "typescript": "^6.0.3"
   }
 }

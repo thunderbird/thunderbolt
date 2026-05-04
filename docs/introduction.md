@@ -1,0 +1,53 @@
+# Introduction
+
+Thunderbolt is an open-source, cross-platform AI client that can be deployed on-prem anywhere. It runs on web, macOS, Windows, Linux, iOS, and Android — all from a single React codebase wrapped in Tauri.
+
+> **Under active development.** Thunderbolt is currently undergoing a security audit and preparing for enterprise production readiness. We encourage you to self-host and evaluate it, but it is not yet intended for production use.
+
+## AI you control
+
+- **Choose your models.** Bring Anthropic, OpenAI, Mistral, Fireworks, OpenRouter, or any OpenAI-compatible endpoint. Recommended local options are [Ollama](https://ollama.com/) and [llama.cpp](https://github.com/ggml-org/llama.cpp). There is no Thunderbolt-hosted inference endpoint — you bring your own API keys.
+- **Own your data.** Every device keeps a local, encrypted SQLite database. Sync is opt-in and can run end-to-end encrypted so the server only ever sees ciphertext.
+- **Eliminate vendor lock-in.** [Self-host the backend](./self-hosting.md) on Docker Compose, Kubernetes, or AWS via Pulumi. Nothing depends on a SaaS control plane.
+
+## Who it's for today
+
+Right now, Thunderbolt targets **enterprise customers deploying on-prem**. The backend currently requires authentication and search to function (web search can be disabled under *Settings → Integrations*). Individual users can self-host and sign up against their own backend.
+
+A hosted version for consumers is planned but does not yet have a release date.
+
+## How it's put together
+
+| Layer        | Stack                                                                                       |
+| ------------ | ------------------------------------------------------------------------------------------- |
+| Client       | React 19 · Vite · Tauri 2 · Radix UI · Zustand · TanStack Query · Drizzle over SQLite       |
+| AI           | Vercel AI SDK v6 · MCP client for tool use                                                  |
+| Sync         | PowerSync (custom SharedWorker + transform middleware for E2E encryption)                   |
+| Backend      | Elysia on Bun · Drizzle ORM · Better Auth (magic-link / OAuth / OIDC) · React Email / Resend |
+| Database     | PostgreSQL (production) · PGLite for backend tests                                          |
+| Infra        | Docker Compose · Kubernetes manifests · Pulumi (ECS Fargate or EKS)                         |
+
+A full diagram lives at [Architecture](./architecture.md).
+
+## Feature status
+
+| Feature                             | Status                                         |
+| ----------------------------------- | ---------------------------------------------- |
+| Platforms (web · mac · win · linux) | ✅ shipping                                    |
+| Android · iOS                       | ✅ available, app-store release planned        |
+| Custom models / providers           | ✅                                             |
+| OIDC                                | ✅                                             |
+| Google · Microsoft integrations     | ✅                                             |
+| MCP support                         | Preview                                        |
+| Cross-device cloud sync             | Preview                                        |
+| Optional end-to-end encryption      | Preview (no cryptography audit yet)            |
+| ACP                                 | In development — targeting April 2026          |
+| Agent memory · skills               | Planned                                        |
+
+The canonical roadmap is tracked in [roadmap.md](./roadmap.md).
+
+## Next steps
+
+- [Quick Start](./quick-start.md) — bootstrap the full stack locally.
+- [Self-Hosting](./self-hosting.md) — pick a deployment target.
+- [Architecture](./architecture.md) — see how the pieces connect.

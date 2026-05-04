@@ -24,7 +24,7 @@ help:
 	@echo "  make format         - Format frontend, backend (JS/TS), and Rust code"
 	@echo "  make format-check   - Check formatting for frontend, backend, and Rust code"
 	@echo "  make doctor         - Verify all dev tools and env files are configured"
-	@echo "  make up             - Start containers (PowerSync, Mongo, etc.)"
+	@echo "  make up             - Start containers (PowerSync, Postgres, etc.)"
 	@echo "  make down           - Stop containers"
 	@echo "  make nuke           - Destroy all container data and recreate from scratch"
 	@echo "  make status         - Show container status"

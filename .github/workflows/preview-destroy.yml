@@ -1,0 +1,75 @@
+name: Preview Destroy
+
+# Destroys the per-PR preview stack when the PR is closed/merged.
+# Also supports manual teardown via workflow_dispatch (e.g. to clean up an orphan
+# or force-destroy a stack outside normal PR lifecycle).
+
+on:
+  pull_request:
+    types: [closed]
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      pr_number:
+        description: 'PR number whose preview stack to destroy (e.g. 123 for preview-pr-123)'
+        type: string
+        required: true
+
+permissions:
+  contents: read
+  id-token: write
+  pull-requests: write
+
+jobs:
+  resolve-pr:
+    runs-on: ubuntu-latest
+    outputs:
+      pr_number: ${{ steps.resolve.outputs.pr_number }}
+      is_internal: ${{ steps.resolve.outputs.is_internal }}
+    steps:
+      - name: Resolve PR number
+        id: resolve
+        env:
+          PR_NUMBER_FROM_EVENT: ${{ github.event.pull_request.number }}
+          PR_NUMBER_FROM_DISPATCH: ${{ inputs.pr_number }}
+          HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}
+          BASE_REPO: ${{ github.repository }}
+        run: |
+          if [ -n "$PR_NUMBER_FROM_DISPATCH" ]; then
+            echo "pr_number=$PR_NUMBER_FROM_DISPATCH" >> $GITHUB_OUTPUT
+            echo "is_internal=true" >> $GITHUB_OUTPUT
+          else
+            echo "pr_number=$PR_NUMBER_FROM_EVENT" >> $GITHUB_OUTPUT
+            # Skip teardown for fork PRs — they never had a stack to destroy.
+            if [ "$HEAD_REPO" = "$BASE_REPO" ]; then
+              echo "is_internal=true" >> $GITHUB_OUTPUT
+            else
+              echo "is_internal=false" >> $GITHUB_OUTPUT
+            fi
+          fi
+
+  destroy:
+    needs: resolve-pr
+    if: needs.resolve-pr.outputs.is_internal == 'true'
+    uses: ./.github/workflows/stack-deploy.yml
+    with:
+      action: destroy
+      platform: fargate
+      region: us-east-1
+      stack_name: preview-pr-${{ needs.resolve-pr.outputs.pr_number }}
+    # inherit passes AWS_DEPLOY_ROLE_ARN, PULUMI_*, GHCR_PAT, CLOUDFLARE_API_TOKEN
+    secrets: inherit
+
+  comment:
+    needs: [resolve-pr, destroy]
+    if: ${{ needs.resolve-pr.outputs.is_internal == 'true' && github.event.pull_request.number }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Update sticky comment to note teardown
+        uses: marocchino/sticky-pull-request-comment@0ea0beb66eb9baf113663a64ec522f60e49231c0 # v3.0.4
+        with:
+          header: preview-env
+          message: |
+            **Preview environment destroyed** 🧹
+
+            Stack `preview-pr-${{ needs.resolve-pr.outputs.pr_number }}` and its Cloudflare subdomain have been cleaned up.

@@ -1,73 +1,49 @@
 # Thunderbolt Pulumi (AWS)
 
-Infrastructure as Code for deploying Thunderbolt to AWS. Supports two platforms from the same project.
+Infrastructure as Code for deploying Thunderbolt to AWS. Supports Fargate and EKS from the same project.
 
-## Platforms
+For full documentation including CI/CD workflows and troubleshooting, see the [main deployment guide](../README.md#3-aws-with-pulumi).
 
-| Platform | What it creates | Best for |
-|----------|----------------|----------|
-| `fargate` | VPC, ECS Fargate, ALB, ECR, EFS, Cloud Map | Serverless, no cluster management |
-| `k8s` | VPC, EKS cluster, nginx-ingress, ECR, k8s manifests | Clients who want Kubernetes |
-
-Both platforms share VPC and ECR image builds. The `platform` config controls which compute layer is provisioned.
-
-## Setup
+## Quick Start
 
 ```bash
-cd deploy/pulumi
 bun install
-pulumi stack init <stack-name>
+pulumi stack init dev
 pulumi config set aws:region us-east-1
-pulumi config set platform fargate   # or k8s
-```
-
-## Deploy
-
-```bash
+pulumi config set platform fargate         # or k8s
+pulumi config set version 0.1.85           # image version from GHCR
+pulumi config set --secret ghcrToken <pat> # GitHub PAT for private images
 pulumi up
 ```
 
-Outputs include the public URL, and for k8s, the kubeconfig.
+## Platforms
 
-## Destroy
-
-```bash
-pulumi destroy -y
-pulumi stack rm <stack-name> -y
-```
+| Platform | Creates | Persistence | Best For |
+|----------|---------|-------------|----------|
+| `fargate` | VPC, ECS, ALB, EFS, Cloud Map | EFS | Serverless |
+| `k8s` | VPC, EKS, EBS CSI, nginx-ingress | EBS gp3 PVCs | Kubernetes teams |
 
 ## Project Structure
 
 ```
-pulumi/
-  index.ts          # Entry point — branches on platform config
-  src/
-    vpc.ts          # VPC, subnets, NAT gateway, security groups
-    ecr.ts          # ECR repos + Docker image builds
-    # Fargate-specific:
-    cluster.ts      # ECS cluster + CloudWatch log group
-    services.ts     # 6 Fargate task definitions + services
-    alb.ts          # ALB + path-based routing rules
-    discovery.ts    # Cloud Map service discovery
-    storage.ts      # EFS for Postgres + MongoDB persistence
-    # Kubernetes-specific:
-    eks.ts          # EKS cluster, nginx-ingress, k8s manifest deployment
+index.ts              # Entry point — branches on platform config
+src/
+  vpc.ts              # VPC, subnets, NAT, security groups (shared)
+  # Fargate
+  cluster.ts          # ECS cluster + CloudWatch logs
+  services.ts         # 6 Fargate task definitions
+  alb.ts              # ALB + path-based routing
+  storage.ts          # EFS + access points
+  discovery.ts        # Cloud Map DNS (thunderbolt.local)
+  # EKS
+  eks.ts              # EKS cluster, EBS CSI, Helm chart, nginx-ingress
 ```
 
-## GitHub Actions
+## Required Secrets (GitHub Actions)
 
-The `Enterprise Deploy` workflow (`.github/workflows/enterprise-deploy.yml`) triggers deployment with inputs:
-
-- **action**: deploy or destroy
-- **platform**: fargate or k8s
-- **region**: us-east-1, us-west-2, eu-west-1
-- **stack_name**: e.g., `demo-acme`
-
-Required secrets: `AWS_DEPLOY_ROLE_ARN`, `PULUMI_ACCESS_TOKEN`, `PULUMI_CONFIG_PASSPHRASE`
-
-## Notes
-
-- ECR images are built and pushed as part of `pulumi up` — no separate build step
-- Fargate uses EFS for database persistence (not RDS)
-- EKS uses PersistentVolumeClaims via the default storage class
-- Keycloak uses `KC_HOSTNAME_BACKCHANNEL_DYNAMIC=true` for OIDC in both platforms
+| Secret | Description |
+|--------|-------------|
+| `AWS_DEPLOY_ROLE_ARN` | IAM role for OIDC-based AWS auth |
+| `PULUMI_ACCESS_TOKEN` | Pulumi Cloud API token |
+| `PULUMI_CONFIG_PASSPHRASE` | Stack config encryption passphrase |
+| `GHCR_PAT` | GitHub PAT for pulling private images |

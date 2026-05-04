@@ -184,6 +184,11 @@ export const createUniversalProxyRoutes = (
       if (!bodylessMethods.has(method)) {
         const contentLength = ctx.request.headers.get('content-length')
         if (contentLength && parseInt(contentLength, 10) > maxBodyBytes) {
+          // Capture the client-claimed size so observability reflects rejected uploads
+          // even when we never buffer the body. Malformed values (NaN, negative) fall
+          // back to 0 — the metric records "unknown" rather than poisoning logs.
+          const claimed = parseInt(contentLength, 10)
+          bytesIn = Number.isSafeInteger(claimed) && claimed > 0 ? claimed : 0
           ctx.set.status = 413
           emit(413, 'body_too_large')
           return new Response('Request body too large', { headers: { 'Content-Type': 'text/plain' } })

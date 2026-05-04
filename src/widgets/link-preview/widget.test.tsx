@@ -3,23 +3,15 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import '@/testing-library'
-import { setupTestDatabase, teardownTestDatabase } from '@/dal/test-utils'
+import { resetTestDatabase, setupTestDatabase, teardownTestDatabase } from '@/dal/test-utils'
 import { ExternalLinkDialogProvider } from '@/components/chat/markdown-utils'
 import { ContentViewProvider } from '@/content-view/context'
 import type { SourceMetadata } from '@/types/source'
 import { render } from '@testing-library/react'
-import { afterAll, beforeAll, describe, expect, it } from 'bun:test'
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'bun:test'
 import { createTestProvider } from '@/test-utils/test-provider'
 import { LinkPreviewWidget } from './widget'
 import type { ReactElement } from 'react'
-
-beforeAll(async () => {
-  await setupTestDatabase()
-})
-
-afterAll(async () => {
-  await teardownTestDatabase()
-})
 
 const renderWithProviders = (ui: ReactElement) => {
   const TestProvider = createTestProvider()
@@ -53,10 +45,16 @@ describe('LinkPreviewWidget', () => {
   beforeAll(async () => {
     await setupTestDatabase()
   })
-
   afterAll(async () => {
     await teardownTestDatabase()
   })
+  afterEach(async () => {
+    await resetTestDatabase()
+  })
+  beforeEach(() => {
+    localStorage.clear()
+  })
+
   describe('instant render path (source + sources available)', () => {
     it('renders instantly when source index matches a source entry', () => {
       const sources = [makeSource({ index: 1 }), makeSource({ index: 2, title: 'Second Source' })]

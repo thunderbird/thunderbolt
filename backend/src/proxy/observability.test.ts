@@ -425,7 +425,7 @@ describe('proxy observability', () => {
       expect(observations[0].errorType).toBe('invalid_header')
     })
 
-    it('classifies oversized body as body_too_large', async () => {
+    it('classifies oversized body as body_too_large (early path via Content-Length)', async () => {
       const mockFetch = mock(() => Promise.resolve(okResponse()))
       const app = new Elysia().use(
         createUniversalProxyRoutes(fakeAuth, mockFetch as unknown as typeof fetch, undefined, observer),
@@ -441,6 +441,64 @@ describe('proxy observability', () => {
       )
       expect(res.status).toBe(413)
       expect(observations[0].errorType).toBe('body_too_large')
+      // bytesIn must reflect the client-claimed Content-Length even though we
+      // reject before buffering the body — otherwise observability under-reports
+      // rejected upload sizes.
+      expect(observations[0].bytesIn).toBe(bigBody.byteLength)
+    })
+
+    it('emits bytesIn from Content-Length header for early 413', async () => {
+      const mockFetch = mock(() => Promise.resolve(okResponse()))
+      const app = new Elysia().use(
+        createUniversalProxyRoutes(fakeAuth, mockFetch as unknown as typeof fetch, undefined, observer),
+      )
+      const target = 'https://example.com/upload'
+      // Header lies about the body size to force the early Content-Length path:
+      // a tiny body with a large Content-Length value is enough to trip the cap
+      // before any buffering happens.
+      const claimedLength = 50 * 1024 * 1024
+      const res = await app.handle(
+        new Request(`http://localhost/proxy/${encodeURIComponent(target)}`, {
+          method: 'POST',
+          body: 'x',
+          headers: { 'content-length': String(claimedLength) },
+        }),
+      )
+      expect(res.status).toBe(413)
+      expect(observations).toHaveLength(1)
+      expect(observations[0].errorType).toBe('body_too_large')
+      expect(observations[0].bytesIn).toBe(claimedLength)
+    })
+
+    it('classifies oversized body as body_too_large (post-buffer path)', async () => {
+      const mockFetch = mock(() => Promise.resolve(okResponse()))
+      const app = new Elysia().use(
+        createUniversalProxyRoutes(fakeAuth, mockFetch as unknown as typeof fetch, undefined, observer),
+      )
+      const target = 'https://example.com/upload'
+      // Streamed body has no Content-Length, so routes.ts skips the early
+      // header check and buffers the body before measuring. This exercises the
+      // post-buffer 413 branch which sets bytesIn from the ArrayBuffer's
+      // byteLength.
+      const bigChunk = new Uint8Array(11 * 1024 * 1024)
+      const stream = new ReadableStream<Uint8Array>({
+        start(controller) {
+          controller.enqueue(bigChunk)
+          controller.close()
+        },
+      })
+      const res = await app.handle(
+        new Request(`http://localhost/proxy/${encodeURIComponent(target)}`, {
+          method: 'POST',
+          body: stream,
+          // @ts-expect-error -- Bun fetch supports duplex:'half' for streamed bodies
+          duplex: 'half',
+        }),
+      )
+      expect(res.status).toBe(413)
+      expect(observations).toHaveLength(1)
+      expect(observations[0].errorType).toBe('body_too_large')
+      expect(observations[0].bytesIn).toBe(bigChunk.byteLength)
     })
 
     it('error_type is a known label — never raw error text', async () => {

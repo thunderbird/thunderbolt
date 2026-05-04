@@ -54,7 +54,11 @@ describe('SourceCard', () => {
 
       const link = screen.getByRole('listitem')
       const img = link.querySelector('img')
-      expect(img).toHaveAttribute('src', 'https://example.com/favicon.ico')
+      // Explicit favicons are also routed through the proxy so COEP doesn't block them.
+      expect(img).toHaveAttribute(
+        'src',
+        'http://localhost:8000/v1/proxy/' + encodeURIComponent('https://example.com/favicon.ico'),
+      )
     })
 
     it('should show URL as title when title is missing', () => {

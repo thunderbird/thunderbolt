@@ -38,7 +38,11 @@ export const SourceCard = ({ source, className }: SourceCardProps) => {
   const safeUrl = isSafeUrl(source.url) ? source.url : '#'
   const explicitFavicon = source.favicon && isSafeUrl(source.favicon) ? source.favicon : null
   const derivedFavicon = deriveFaviconUrl(source.url)
-  const faviconUrl = explicitFavicon ?? (derivedFavicon ? proxyUrl(derivedFavicon) : null)
+  // Always route favicons through the proxy — direct cross-origin requests are
+  // blocked by COEP (NotSameOriginAfterDefaultedToSameOriginByCoep), even when
+  // the upstream URL is publicly reachable.
+  const rawFavicon = explicitFavicon ?? derivedFavicon
+  const faviconUrl = rawFavicon ? proxyUrl(rawFavicon) : null
   const showFavicon = faviconUrl && !faviconError
   const initial = displaySiteName.charAt(0).toUpperCase()
   const badgeColor = getBadgeColor(displaySiteName)

@@ -101,7 +101,7 @@ Open http://localhost:1420 — you should be redirected to Keycloak's login page
 The backend exposes Service Provider metadata at:
 
 ```
-http://localhost:8000/v1/api/auth/sso/saml2/sp/metadata?providerId=saml
+http://localhost:8000/v1/api/auth/sso/saml2/sp/metadata?providerId=sso
 ```
 
 Enterprise admins can use this to configure their IdP.

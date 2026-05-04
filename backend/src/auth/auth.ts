@@ -106,6 +106,12 @@ export const createAuth = (database: typeof DbType) => {
   const settings = getSettings()
   const trustedOrigins = parseTrustedOrigins(process.env.TRUSTED_ORIGINS)
 
+  // Include the backend's own origin so the SSO desktop-callback can be used as callbackURL
+  const backendOrigin = new URL(settings.betterAuthUrl).origin
+  if (!trustedOrigins.includes(backendOrigin)) {
+    trustedOrigins.push(backendOrigin)
+  }
+
   if (!settings.trustedProxy && process.env.NODE_ENV === 'production') {
     console.warn(
       'TRUSTED_PROXY is not set. Better Auth rate limiting will use x-forwarded-for ' +

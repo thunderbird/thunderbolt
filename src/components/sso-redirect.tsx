@@ -4,13 +4,19 @@
 
 import { useEffect, useState } from 'react'
 import { http } from '@/lib/http'
+import { setAuthToken } from '@/lib/auth-token'
 import { isSafeUrl } from '@/lib/url-utils'
+import { isTauri } from '@/lib/platform'
+import { startSsoFlowLoopback } from '@/lib/sso-loopback'
 import { useSettings } from '@/hooks/use-settings'
 import Loading from '@/loading'
 
 /**
  * In SSO mode (OIDC or SAML), redirects unauthenticated users to the backend's
  * SSO sign-in endpoint, which redirects to the identity provider.
+ *
+ * On Tauri desktop, uses the system browser + loopback server pattern instead
+ * of navigating the webview (WKWebView drops cookies during cross-origin redirects).
  */
 const SsoRedirect = () => {
   const { cloudUrl } = useSettings({ cloud_url: String })
@@ -28,6 +34,19 @@ const SsoRedirect = () => {
 
     const redirectToSso = async () => {
       try {
+        // Tauri desktop: use system browser + loopback server (RFC 8252)
+        if (isTauri()) {
+          const token = await startSsoFlowLoopback(baseUrl)
+          if (token) {
+            setAuthToken(token)
+            window.location.replace('/')
+          } else {
+            setError(true) // timeout
+          }
+          return
+        }
+
+        // Web: redirect the browser to the IdP
         const data = await http
           .post(`${baseUrl}/v1/api/auth/sign-in/sso`, {
             json: { providerId: 'sso', callbackURL: window.location.origin + '/' },

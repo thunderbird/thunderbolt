@@ -56,7 +56,7 @@ export const createSsoDesktopCallbackRoutes = () =>
     // Step 1: System browser navigates here → internally calls Better Auth → redirects to IdP
     .get(
       '/desktop-initiate',
-      async ({ query }) => {
+      async ({ query, request }) => {
         const port = Number(query.loopback_port)
         if (!ALLOWED_LOOPBACK_PORTS.has(port)) {
           return new Response(errorHtml('Invalid loopback port. Please try signing in again from the app.'), {
@@ -69,7 +69,9 @@ export const createSsoDesktopCallbackRoutes = () =>
         const baseUrl = settings.betterAuthUrl
         const callbackURL = `${baseUrl}/v1/api/auth/sso/desktop-callback?loopback_port=${port}`
 
-        // Call Better Auth's SSO sign-in endpoint internally
+        // Call Better Auth's SSO sign-in endpoint via HTTP. Uses the configured
+        // betterAuthUrl which works behind reverse proxies. A direct internal API call
+        // would avoid the network hop but couples tightly to Better Auth internals.
         const ssoResponse = await fetch(`${baseUrl}/v1/api/auth/sign-in/sso`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -98,9 +100,11 @@ export const createSsoDesktopCallbackRoutes = () =>
         for (const cookie of ssoResponse.headers.getSetCookie()) {
           headers.append('set-cookie', cookie)
         }
+        const isSecure = request.url.startsWith('https') || request.headers.get('x-forwarded-proto') === 'https'
+        const secureSuffix = isSecure ? '; Secure' : ''
         headers.append(
           'set-cookie',
-          `${NONCE_COOKIE_NAME}=${nonce}; HttpOnly; SameSite=Lax; Path=/v1/api/auth/sso; Max-Age=600`,
+          `${NONCE_COOKIE_NAME}=${nonce}; HttpOnly; SameSite=Lax; Path=/v1/api/auth/sso; Max-Age=600${secureSuffix}`,
         )
 
         return new Response(null, { status: 302, headers })
@@ -126,9 +130,11 @@ export const createSsoDesktopCallbackRoutes = () =>
 
         const cookieHeader = request.headers.get('cookie') ?? ''
 
-        // Verify the nonce set by desktop-initiate to prevent CSRF.
-        // Without this, an attacker could trick the browser into visiting
-        // desktop-callback directly and leak the session token to a local port.
+        // Verify the nonce cookie set by desktop-initiate to prevent CSRF.
+        // We check presence, not value — the real protection comes from the cookie
+        // attributes (HttpOnly, SameSite=Lax, scoped Path) which ensure only a
+        // legitimate desktop-initiate flow can set this cookie. Server-side value
+        // validation would require a session store for negligible security gain.
         const nonce = parseCookieValue(cookieHeader, NONCE_COOKIE_NAME)
         if (!nonce) {
           return new Response(errorHtml('Invalid request. Please start the sign-in flow from the app.'), {

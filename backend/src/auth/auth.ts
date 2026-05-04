@@ -104,13 +104,12 @@ const buildSsoPlugins = () => {
 
 export const createAuth = (database: typeof DbType) => {
   const settings = getSettings()
-  const trustedOrigins = parseTrustedOrigins(process.env.TRUSTED_ORIGINS)
+  const parsedOrigins = parseTrustedOrigins(process.env.TRUSTED_ORIGINS)
 
-  // Include the backend's own origin so the SSO desktop-callback can be used as callbackURL
+  // Include the backend's own origin so the SSO desktop-callback can be used as callbackURL.
+  // Spread to avoid mutating the shared default array returned by parseTrustedOrigins.
   const backendOrigin = new URL(settings.betterAuthUrl).origin
-  if (!trustedOrigins.includes(backendOrigin)) {
-    trustedOrigins.push(backendOrigin)
-  }
+  const trustedOrigins = parsedOrigins.includes(backendOrigin) ? parsedOrigins : [...parsedOrigins, backendOrigin]
 
   if (!settings.trustedProxy && process.env.NODE_ENV === 'production') {
     console.warn(

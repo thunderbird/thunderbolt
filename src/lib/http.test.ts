@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { describe, expect, it, mock } from 'bun:test'
+import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
 import { createAuthenticatedClient, createClient, HttpError } from './http'
 
 type FetchFn = (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>
@@ -144,5 +144,79 @@ describe('createAuthenticatedClient', () => {
     const req = fetch.mock.calls[0][0] as Request
     expect(req.headers.get('Authorization')).toBe('Bearer app-token')
     expect(req.headers.get('X-Device-ID')).toBe('device-123')
+  })
+
+  describe('session expiry detection', () => {
+    let dispatchSpy: ReturnType<typeof mock>
+    let savedDispatch: typeof window.dispatchEvent
+
+    beforeEach(() => {
+      savedDispatch = window.dispatchEvent
+      dispatchSpy = mock(() => true)
+      window.dispatchEvent = dispatchSpy as unknown as typeof window.dispatchEvent
+    })
+
+    afterEach(() => {
+      window.dispatchEvent = savedDispatch
+    })
+
+    it('dispatches powersync_credentials_invalid (session_expired) on 401 with attached app token', async () => {
+      const fetch = mock<FetchFn>(() => Promise.resolve(new Response('Unauthorized', { status: 401 })))
+      const client = createAuthenticatedClient('https://api.example.com', () => 'app-token', { fetch })
+
+      await expect(client.get('data')).rejects.toBeInstanceOf(HttpError)
+
+      expect(dispatchSpy).toHaveBeenCalledTimes(1)
+      const event = dispatchSpy.mock.calls[0][0] as CustomEvent
+      expect(event.type).toBe('powersync_credentials_invalid')
+      expect(event.detail).toEqual({ reason: 'session_expired' })
+    })
+
+    it('dispatches when caller provided their own Authorization header (e.g. OAuth)', async () => {
+      const fetch = mock<FetchFn>(() => Promise.resolve(new Response('Unauthorized', { status: 401 })))
+      const client = createAuthenticatedClient('https://api.example.com', () => null, { fetch })
+
+      await expect(
+        client.get('https://www.googleapis.com/data', { headers: { Authorization: 'Bearer oauth-token' } }),
+      ).rejects.toBeInstanceOf(HttpError)
+
+      expect(dispatchSpy).toHaveBeenCalledTimes(1)
+    })
+
+    it('does not dispatch on 401 when no Authorization header was attached', async () => {
+      const fetch = mock<FetchFn>(() => Promise.resolve(new Response('Unauthorized', { status: 401 })))
+      const client = createAuthenticatedClient('https://api.example.com', () => null, { fetch })
+
+      await expect(client.get('data')).rejects.toBeInstanceOf(HttpError)
+
+      expect(dispatchSpy).not.toHaveBeenCalled()
+    })
+
+    it('does not dispatch on non-401 errors', async () => {
+      const fetch = mock<FetchFn>(() => Promise.resolve(new Response('Server Error', { status: 500 })))
+      const client = createAuthenticatedClient('https://api.example.com', () => 'app-token', { fetch })
+
+      await expect(client.get('data')).rejects.toBeInstanceOf(HttpError)
+
+      expect(dispatchSpy).not.toHaveBeenCalled()
+    })
+
+    it('does not dispatch on successful responses', async () => {
+      const fetch = mockFetch()
+      const client = createAuthenticatedClient('https://api.example.com', () => 'app-token', { fetch })
+
+      await client.get('data')
+
+      expect(dispatchSpy).not.toHaveBeenCalled()
+    })
+
+    it('does not dispatch from anonymous createClient on 401', async () => {
+      const fetch = mock<FetchFn>(() => Promise.resolve(new Response('Unauthorized', { status: 401 })))
+      const client = createClient({ fetch })
+
+      await expect(client.get('https://example.com/data')).rejects.toBeInstanceOf(HttpError)
+
+      expect(dispatchSpy).not.toHaveBeenCalled()
+    })
   })
 })

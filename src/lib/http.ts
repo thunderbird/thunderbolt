@@ -41,7 +41,10 @@ export type HttpClient = {
 type HttpClientConfig = {
   prefixUrl?: string
   credentials?: RequestCredentials
-  hooks?: { beforeRequest?: Array<(request: Request) => void> }
+  hooks?: {
+    beforeRequest?: Array<(request: Request) => void>
+    afterResponse?: Array<(request: Request, response: Response) => void>
+  }
   fetch?: (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>
 }
 
@@ -118,6 +121,7 @@ export const createClient = (config: HttpClientConfig = {}): HttpClient => {
 
     const responsePromise = fetchFn(req)
       .then((response) => {
+        config.hooks?.afterResponse?.forEach((hook) => hook(req, response))
         if (!response.ok) {
           throw new HttpError(response)
         }
@@ -140,7 +144,9 @@ export const createClient = (config: HttpClientConfig = {}): HttpClient => {
 }
 
 /** Create an authenticated client that attaches a Bearer token from localStorage on each request.
- * Skips setting the token if the caller already provided an Authorization header. */
+ * Skips setting the token if the caller already provided an Authorization header.
+ * Dispatches `powersync_credentials_invalid` (reason: `session_expired`) when an authenticated
+ * request returns 401, so the app can prompt the user to re-authenticate. */
 export const createAuthenticatedClient = (
   prefixUrl: string,
   getToken: () => string | null,
@@ -160,6 +166,18 @@ export const createAuthenticatedClient = (
           if (token) {
             request.headers.set('Authorization', `Bearer ${token}`)
           }
+        },
+      ],
+      afterResponse: [
+        // Event name + reason kept in sync with src/db/powersync/connector.ts. Importing from there
+        // would create a cycle (connector → sync-tracker → posthog → http).
+        (request, response) => {
+          if (response.status !== 401 || !request.headers.has('Authorization')) {
+            return
+          }
+          window.dispatchEvent(
+            new CustomEvent('powersync_credentials_invalid', { detail: { reason: 'session_expired' } }),
+          )
         },
       ],
     },

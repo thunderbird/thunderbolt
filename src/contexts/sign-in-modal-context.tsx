@@ -2,12 +2,13 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { createContext, useContext, useState, type ReactNode } from 'react'
+import { createContext, useContext, useEffect, useState, type ReactNode } from 'react'
 
 import { SignInModal } from '@/components/sign-in-modal'
 import { SyncSetupModal } from '@/components/sync-setup/sync-setup-modal'
 import { setSyncEnabled } from '@/db/powersync'
 import { needsSyncSetupWizard } from '@/db/encryption'
+import { showSignInModalEvent, signInSuccessEvent } from '@/hooks/use-credential-events'
 import { createHandleError } from '@/lib/error-utils'
 import { trackError, trackEvent } from '@/lib/posthog'
 
@@ -35,8 +36,16 @@ export const SignInModalProvider = ({ children }: SignInModalProviderProps) => {
 
   const openSignInModal = () => setSignInOpen(true)
 
+  // Auto-open when a session-expiry handler asks us to re-authenticate the user in place.
+  useEffect(() => {
+    const handler = () => setSignInOpen(true)
+    window.addEventListener(showSignInModalEvent, handler)
+    return () => window.removeEventListener(showSignInModalEvent, handler)
+  }, [])
+
   const handleSignInSuccess = () => {
     setSignInOpen(false)
+    window.dispatchEvent(new CustomEvent(signInSuccessEvent))
     const enableSync = async () => {
       if (await needsSyncSetupWizard()) {
         setSyncSetupOpen(true)

@@ -49,9 +49,9 @@ const StarOnGitHubButton = ({ fullWidth = false }: { fullWidth?: boolean }) => (
 const formatStars = (n: number): string =>
   n >= 1000 ? `${(n / 1000).toFixed(1).replace(/\.0$/, '')}k` : String(n)
 
-// Compact header badge: white, GitHub icon + live star count, no label.
-// Hidden until the GitHub API call resolves. If the fetch fails, the badge
-// stays hidden.
+// Compact header badge: GitHub icon + live star count, desktop only.
+// Geometry is reserved from first paint to prevent layout shift; the badge
+// fades in once the count resolves. If the fetch fails, it stays hidden.
 const StarCountBadge = () => {
   const [stars, setStars] = useState<number | null>(null)
 
@@ -74,19 +74,21 @@ const StarCountBadge = () => {
     }
   }, [])
 
-  if (stars === null) return null
+  const loaded = stars !== null
 
   return (
     <a
       href={REPO_URL}
       target="_blank"
       rel="noopener noreferrer"
-      aria-label={`${stars} stars on GitHub`}
-      className="hidden h-[46px] items-center gap-2 border border-[#344054] px-4 text-sm font-medium text-[#344054] transition-colors hover:bg-[#f2f4f7] md:inline-flex"
+      aria-label={stars !== null ? `${stars} stars on GitHub` : undefined}
+      aria-hidden={!loaded}
+      tabIndex={loaded ? undefined : -1}
+      className={`hidden h-[46px] min-w-[112px] items-center justify-center gap-2 border border-[#344054] px-4 text-sm font-medium text-[#344054] transition-opacity duration-200 hover:bg-[#f2f4f7] md:inline-flex ${loaded ? 'opacity-100' : 'opacity-0'}`}
     >
       <GitHubIcon />
       <StarIcon />
-      <span>{formatStars(stars)}</span>
+      <span>{stars !== null ? formatStars(stars) : ''}</span>
     </a>
   )
 }

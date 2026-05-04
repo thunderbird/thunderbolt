@@ -1,0 +1,159 @@
+name: Preview Cleanup
+
+# Nightly safety net — destroys preview-pr-* stacks whose PRs are closed or
+# haven't been updated in the last 3 days. The primary teardown path is
+# preview-destroy.yml (fires on `pull_request: closed`); this cron catches:
+#   - Stacks where the teardown workflow failed or was cancelled
+#   - PRs force-closed outside the normal flow (e.g. repo transfer, API delete)
+#   - Long-forgotten open PRs whose authors went on vacation
+#
+# `workflow_dispatch` supports a `dry_run` input for operators to preview what
+# would be destroyed before arming the cron.
+
+on:
+  schedule:
+    # 07:00 UTC daily — off-hours for most US timezones, before EU standup.
+    - cron: '0 7 * * *'
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: 'List orphans without destroying them'
+        type: boolean
+        default: true
+      max_age_days:
+        description: 'Also destroy stacks whose PRs were last updated more than N days ago'
+        type: string
+        default: '3'
+
+permissions:
+  contents: read
+  id-token: write
+
+env:
+  PULUMI_ACCESS_TOKEN: ${{ secrets.PULUMI_ACCESS_TOKEN }}
+
+jobs:
+  find-orphans:
+    runs-on: ubuntu-latest
+    outputs:
+      orphans: ${{ steps.scan.outputs.orphans }}
+      dry_run: ${{ steps.scan.outputs.dry_run }}
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+
+      - name: Install Pulumi CLI
+        run: |
+          curl -fsSL https://get.pulumi.com | sh
+          echo "$HOME/.pulumi/bin" >> $GITHUB_PATH
+
+      - name: Identify orphan stacks
+        id: scan
+        working-directory: deploy/pulumi
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          DRY_RUN: ${{ inputs.dry_run != 'false' && github.event_name == 'workflow_dispatch' }}
+          MAX_AGE_DAYS: ${{ inputs.max_age_days || '3' }}
+        run: |
+          set -euo pipefail
+
+          # `pulumi stack ls --all` lists stacks in the current project; must run
+          # from deploy/pulumi where Pulumi.yaml lives. PULUMI_ACCESS_TOKEN env
+          # handles auth — no interactive login needed.
+          STACKS=$(pulumi stack ls --json --all 2>/dev/null | jq -r '.[].name' | grep -E '^preview-pr-[0-9]+$' || true)
+
+          if [ -z "$STACKS" ]; then
+            echo "No preview stacks found."
+            echo "orphans=[]" >> $GITHUB_OUTPUT
+            echo "dry_run=${DRY_RUN}" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+
+          echo "Found stacks:"
+          echo "$STACKS"
+          echo ""
+
+          # Build a cutoff date (N days ago) for staleness check.
+          CUTOFF=$(date -u -d "${MAX_AGE_DAYS} days ago" +%Y-%m-%dT%H:%M:%SZ)
+          echo "Cutoff for stale PRs: ${CUTOFF}"
+          echo ""
+
+          ORPHANS='[]'
+          for STACK in $STACKS; do
+            PR_NUM="${STACK#preview-pr-}"
+            echo "Checking PR #${PR_NUM}..."
+
+            # Fetch PR. Missing PR (404) → orphan.
+            PR_JSON=$(gh api "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUM}" 2>/dev/null || echo '')
+            if [ -z "$PR_JSON" ]; then
+              echo "  PR #${PR_NUM} not found → orphan"
+              ORPHANS=$(jq -c --arg s "$STACK" --arg r "pr-missing" '. + [{stack: $s, reason: $r}]' <<< "$ORPHANS")
+              continue
+            fi
+
+            STATE=$(jq -r '.state' <<< "$PR_JSON")
+            UPDATED=$(jq -r '.updated_at' <<< "$PR_JSON")
+
+            if [ "$STATE" = "closed" ]; then
+              echo "  PR #${PR_NUM} is closed → orphan"
+              ORPHANS=$(jq -c --arg s "$STACK" --arg r "pr-closed" '. + [{stack: $s, reason: $r}]' <<< "$ORPHANS")
+              continue
+            fi
+
+            # Open PR — check staleness.
+            if [[ "$UPDATED" < "$CUTOFF" ]]; then
+              echo "  PR #${PR_NUM} last updated ${UPDATED} (> ${MAX_AGE_DAYS}d) → orphan"
+              ORPHANS=$(jq -c --arg s "$STACK" --arg r "pr-stale" '. + [{stack: $s, reason: $r}]' <<< "$ORPHANS")
+              continue
+            fi
+
+            echo "  PR #${PR_NUM} open and active (updated ${UPDATED}) → keep"
+          done
+
+          echo ""
+          echo "Orphans:"
+          echo "$ORPHANS" | jq .
+
+          echo "orphans=$(echo "$ORPHANS" | jq -c .)" >> $GITHUB_OUTPUT
+          echo "dry_run=${DRY_RUN}" >> $GITHUB_OUTPUT
+
+  destroy-orphans:
+    needs: find-orphans
+    # Skip when dry-run or no orphans. The dry_run output is a string 'true'/'false'.
+    if: needs.find-orphans.outputs.dry_run != 'true' && needs.find-orphans.outputs.orphans != '[]'
+    strategy:
+      # Don't let one failed destroy abort the rest.
+      fail-fast: false
+      max-parallel: 3
+      matrix:
+        orphan: ${{ fromJson(needs.find-orphans.outputs.orphans) }}
+    uses: ./.github/workflows/stack-deploy.yml
+    with:
+      action: destroy
+      platform: fargate
+      region: us-east-1
+      stack_name: ${{ matrix.orphan.stack }}
+    secrets: inherit
+
+  summary:
+    needs: [find-orphans, destroy-orphans]
+    # Always run so dry-run reports are visible; ignore destroy status for reporting.
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Summarize
+        env:
+          ORPHANS: ${{ needs.find-orphans.outputs.orphans }}
+          DRY_RUN: ${{ needs.find-orphans.outputs.dry_run }}
+        run: |
+          COUNT=$(echo "$ORPHANS" | jq 'length')
+          if [ "$DRY_RUN" = "true" ]; then
+            echo "### Preview cleanup (dry-run)" >> $GITHUB_STEP_SUMMARY
+            echo "Would destroy **${COUNT}** orphan stack(s):" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "### Preview cleanup" >> $GITHUB_STEP_SUMMARY
+            echo "Destroyed **${COUNT}** orphan stack(s):" >> $GITHUB_STEP_SUMMARY
+          fi
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Stack | Reason |" >> $GITHUB_STEP_SUMMARY
+          echo "|---|---|" >> $GITHUB_STEP_SUMMARY
+          echo "$ORPHANS" | jq -r '.[] | "| `\(.stack)` | \(.reason) |"' >> $GITHUB_STEP_SUMMARY

@@ -5,6 +5,7 @@
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js'
 import { createMCPClient } from '@ai-sdk/mcp'
 import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from 'react'
+import { useProxyUrl } from './proxy-url'
 import { TauriStreamableHTTPClientTransport } from './tauri-http-transport'
 
 type MCPClient = Awaited<ReturnType<typeof createMCPClient>>
@@ -30,37 +31,50 @@ type MCPContextType = {
 
 const MCPContext = createContext<MCPContextType | undefined>(undefined)
 
+/**
+ * Build the MCP transport for a given upstream server URL.
+ *
+ * Routing:
+ *   - When `proxyUrl(target)` returns a different URL (i.e. the unified
+ *     `/v1/proxy/<encoded>` route), MCP traffic flows through the backend
+ *     proxy. The proxy is same-origin from the browser, so the standard
+ *     `StreamableHTTPClientTransport` (browser `fetch`) handles it without
+ *     CORS friction.
+ *   - When `proxyUrl(target) === target` (Tauri/mobile with `proxy_enabled`
+ *     OFF), the transport hits the upstream directly. The native browser
+ *     `fetch` on Tauri is still subject to webview CORS for cross-origin
+ *     responses, so we fall back to `TauriStreamableHTTPClientTransport`
+ *     which routes through `@tauri-apps/plugin-http` to bypass CORS.
+ *
+ * Upstream auth is forwarded as `X-Upstream-Authorization` (the proxy
+ * renames it to `Authorization` before forwarding to the upstream MCP
+ * server). The plain `Authorization` header is never sent from this client
+ * — it is reserved for proxy authentication (session cookie today).
+ */
+export const createMcpTransport = (target: string, effectiveUrl: string) => {
+  const transportOptions = {
+    requestInit: {
+      headers: {
+        Accept: 'application/json, text/event-stream',
+      },
+    },
+  }
+  const urlObj = new URL(effectiveUrl)
+  const isProxied = effectiveUrl !== target
+  // Same-origin proxy → standard fetch is fine. Direct upstream on Tauri →
+  // route through Tauri-native fetch to bypass webview CORS.
+  return isProxied
+    ? new StreamableHTTPClientTransport(urlObj, transportOptions)
+    : new TauriStreamableHTTPClientTransport(urlObj, transportOptions)
+}
+
 export const MCPProvider = ({ children }: { children: ReactNode }) => {
+  const proxyUrl = useProxyUrl()
   const [servers, setServers] = useState<MCPServerConnection[]>([])
   const clientRefs = useRef<Map<string, MCPClient>>(new Map())
   const serversRef = useRef<MCPServerConnection[]>([])
 
   serversRef.current = servers
-
-  const createClient = async (url: string): Promise<MCPClient> => {
-    // Check if we need to use Tauri fetch for external URLs
-    const urlObj = new URL(url)
-    const isExternal = !['localhost', '127.0.0.1'].includes(urlObj.hostname)
-
-    // Create transport with appropriate implementation
-    const transportOptions = {
-      requestInit: {
-        headers: {
-          Accept: 'application/json, text/event-stream',
-        },
-      },
-    }
-
-    // Use Tauri transport for external URLs to bypass CORS
-    const transport = isExternal
-      ? new TauriStreamableHTTPClientTransport(urlObj, transportOptions)
-      : new StreamableHTTPClientTransport(urlObj, transportOptions)
-
-    const mcpClient = await createMCPClient({
-      transport,
-    })
-    return mcpClient
-  }
 
   const connectServer = async (server: { id: string; name: string; url: string; enabled: boolean }) => {
     if (!server.enabled) {
@@ -73,8 +87,16 @@ export const MCPProvider = ({ children }: { children: ReactNode }) => {
     }
 
     try {
-      // Connecting to MCP server
-      const client = await createClient(server.url)
+      // Connecting to MCP server. proxyUrl returns null only when the media
+      // JWT is still loading on first paint; MCP connections are kicked off
+      // after auth completes so this branch should be rare. When it does fire
+      // we surface a clear error rather than silently connecting to a broken
+      // URL — the user can retry once the JWT settles.
+      const effectiveUrl = proxyUrl(server.url)
+      if (effectiveUrl === null) {
+        throw new Error('Media authentication not ready — retry once signed in')
+      }
+      const client = await createMCPClient({ transport: createMcpTransport(server.url, effectiveUrl) })
 
       clientRefs.current.set(server.id, client)
 

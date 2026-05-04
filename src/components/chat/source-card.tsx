@@ -5,14 +5,13 @@
 import { type MouseEvent, useState } from 'react'
 import type { CitationSource } from '@/types/citation'
 import { useOpenExternalLink } from '@/components/chat/markdown-utils'
+import { useProxyUrl } from '@/lib/proxy-url'
 import { deriveFaviconUrl, isSafeUrl } from '@/lib/url-utils'
 import { cn } from '@/lib/utils'
 
 type SourceCardProps = {
   source: CitationSource
   className?: string
-  /** Base URL for the proxy endpoint (e.g., "http://localhost:8000/v1") to bypass COEP */
-  proxyBase?: string
 }
 
 /**
@@ -29,15 +28,23 @@ const getBadgeColor = (siteName: string = '') => {
  * Displays a single citation source with title and site badge
  * Matches Figma design: simple layout with circular initial badge
  */
-export const SourceCard = ({ source, className, proxyBase }: SourceCardProps) => {
+export const SourceCard = ({ source, className }: SourceCardProps) => {
   const [faviconError, setFaviconError] = useState(false)
   const openExternalLink = useOpenExternalLink()
+  const proxyUrl = useProxyUrl()
 
   const displayTitle = source.title || source.url
   const displaySiteName = source.siteName || 'Unknown'
   const safeUrl = isSafeUrl(source.url) ? source.url : '#'
   const explicitFavicon = source.favicon && isSafeUrl(source.favicon) ? source.favicon : null
-  const faviconUrl = explicitFavicon || deriveFaviconUrl(source.url, proxyBase)
+  const derivedFavicon = deriveFaviconUrl(source.url)
+  // Always route favicons through the proxy — direct cross-origin requests are
+  // blocked by COEP (NotSameOriginAfterDefaultedToSameOriginByCoep), even when
+  // the upstream URL is publicly reachable.
+  const rawFavicon = explicitFavicon ?? derivedFavicon
+  // proxyUrl returns null when the media JWT is still loading — the initial
+  // letter badge below covers that case until the JWT resolves.
+  const faviconUrl = rawFavicon ? proxyUrl(rawFavicon) : null
   const showFavicon = faviconUrl && !faviconError
   const initial = displaySiteName.charAt(0).toUpperCase()
   const badgeColor = getBadgeColor(displaySiteName)

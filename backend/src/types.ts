@@ -4,6 +4,7 @@
 
 import type { Auth } from '@/auth/auth'
 import type { db } from '@/db/client'
+import type { ProxyObserver } from '@/proxy/observability'
 import type { WaitlistEmailService } from '@/waitlist/routes'
 
 /**
@@ -17,4 +18,6 @@ export type AppDeps = {
   waitlistEmailService?: WaitlistEmailService
   /** OTP request cooldown in milliseconds. Default: 15000 (15s). Set to 0 to disable in tests. */
   otpCooldownMs?: number
+  /** Override the proxy observer (logs / posthog / OTel sink). Tests inject a capturing observer. */
+  proxyObserver?: ProxyObserver
 }

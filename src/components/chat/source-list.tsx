@@ -10,15 +10,13 @@ import { cn } from '@/lib/utils'
 type SourceListProps = {
   sources: CitationSource[]
   className?: string
-  /** Base URL for the proxy endpoint to bypass COEP for favicon loading */
-  proxyBase?: string
 }
 
 /**
  * Container component that renders multiple SourceCard components with dividers
  * Matches Figma design: dark background with border and dividers between items
  */
-export const SourceList = ({ sources, className, proxyBase }: SourceListProps) => {
+export const SourceList = ({ sources, className }: SourceListProps) => {
   if (sources.length === 0) {
     return <div className="text-muted-foreground text-sm text-center py-4">No sources available</div>
   }
@@ -35,7 +33,7 @@ export const SourceList = ({ sources, className, proxyBase }: SourceListProps) =
     <div className={cn('overflow-hidden', className)} role="list">
       {sortedSources.map((source, index) => (
         <div key={source.id}>
-          <SourceCard source={source} proxyBase={proxyBase} />
+          <SourceCard source={source} />
           {index < sortedSources.length - 1 && <Separator />}
         </div>
       ))}

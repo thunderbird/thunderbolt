@@ -4,16 +4,39 @@
 
 import '@/testing-library'
 import { fireEvent, render, screen } from '@testing-library/react'
-import { describe, expect, it, mock } from 'bun:test'
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, mock } from 'bun:test'
 import type { CitationSource } from '@/types/citation'
 import { ExternalLinkDialogProvider } from './markdown-utils'
 import { SourceCard } from './source-card'
 import { type ReactElement } from 'react'
+import { createTestProvider } from '@/test-utils/test-provider'
+import { resetTestDatabase, setupTestDatabase, teardownTestDatabase } from '@/dal/test-utils'
 
-const renderWithProvider = (ui: ReactElement) =>
-  render(ui, { wrapper: ({ children }) => <ExternalLinkDialogProvider>{children}</ExternalLinkDialogProvider> })
+const renderWithProvider = (ui: ReactElement) => {
+  const TestProvider = createTestProvider()
+  return render(ui, {
+    wrapper: ({ children }) => (
+      <TestProvider>
+        <ExternalLinkDialogProvider>{children}</ExternalLinkDialogProvider>
+      </TestProvider>
+    ),
+  })
+}
 
 describe('SourceCard', () => {
+  beforeAll(async () => {
+    await setupTestDatabase()
+  })
+  afterAll(async () => {
+    await teardownTestDatabase()
+  })
+  afterEach(async () => {
+    await resetTestDatabase()
+  })
+  beforeEach(() => {
+    localStorage.clear()
+  })
+
   const mockSource: CitationSource = {
     id: '1',
     title: 'Example Article Title',
@@ -31,7 +54,14 @@ describe('SourceCard', () => {
 
       const link = screen.getByRole('listitem')
       const img = link.querySelector('img')
-      expect(img).toHaveAttribute('src', 'https://example.com/favicon.ico')
+      // Explicit favicons are also routed through the proxy so COEP doesn't block them.
+      // The unified proxy authenticates browser sub-resource loads via `?token=<jwt>`
+      // (browsers can't attach Authorization headers to <img src>); the test provider
+      // pre-populates `TEST_MEDIA_JWT` so the URL resolves synchronously.
+      expect(img?.getAttribute('src')).toContain(
+        'http://localhost:8000/v1/proxy/' + encodeURIComponent('https://example.com/favicon.ico'),
+      )
+      expect(img?.getAttribute('src')).toMatch(/[?&]token=/)
     })
 
     it('should show URL as title when title is missing', () => {
@@ -41,29 +71,36 @@ describe('SourceCard', () => {
       expect(screen.getByText('https://example.com/article')).toBeInTheDocument()
     })
 
-    it('should derive favicon from URL when favicon prop is missing', () => {
+    it('should proxy derived favicon URL through the unified /v1/proxy endpoint when no explicit favicon is provided', () => {
       const sourceWithoutFavicon = { ...mockSource, favicon: undefined }
       renderWithProvider(<SourceCard source={sourceWithoutFavicon} />)
 
       const container = screen.getByRole('listitem')
-
-      // Without proxyBase, derives favicon directly from the domain origin
       const img = container.querySelector('img')
       expect(img).toBeInTheDocument()
-      expect(img).toHaveAttribute('src', 'https://example.com/favicon.ico')
+      // Test environment runs as web (no Tauri), so proxying is always on with the default cloud_url.
+      expect(img?.getAttribute('src')).toContain(
+        'http://localhost:8000/v1/proxy/' + encodeURIComponent('https://example.com/favicon.ico'),
+      )
+      expect(img?.getAttribute('src')).toMatch(/[?&]token=/)
     })
 
-    it('should use proxied favicon URL when proxyBase is provided', () => {
-      const sourceWithoutFavicon = { ...mockSource, favicon: undefined }
-      renderWithProvider(<SourceCard source={sourceWithoutFavicon} proxyBase="http://localhost:8000/v1" />)
+    it('falls back to letter badge while the media JWT is loading (proxyUrl=null)', () => {
+      const TestProvider = createTestProvider({ mediaJwt: null })
+      render(
+        <TestProvider>
+          <ExternalLinkDialogProvider>
+            <SourceCard source={mockSource} />
+          </ExternalLinkDialogProvider>
+        </TestProvider>,
+      )
 
       const container = screen.getByRole('listitem')
-      const img = container.querySelector('img')
-      expect(img).toBeInTheDocument()
-      expect(img).toHaveAttribute(
-        'src',
-        'http://localhost:8000/v1/pro/proxy/' + encodeURIComponent('https://example.com/favicon.ico'),
-      )
+      // No <img> while JWT pending — letter badge takes over.
+      expect(container.querySelector('img')).toBeNull()
+      const badge = container.querySelector('[aria-hidden="true"]')
+      expect(badge).toBeInTheDocument()
+      expect(badge).toHaveTextContent('E')
     })
 
     it('should show initial badge when favicon fails to load', () => {

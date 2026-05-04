@@ -30,8 +30,9 @@ import { eq } from 'drizzle-orm'
 import { Check, Copy, Globe, Plus, Server, Trash2, X } from 'lucide-react'
 import { useEffect, useRef, useState, type KeyboardEvent } from 'react'
 import { v7 as uuidv7 } from 'uuid'
-import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js'
 import { createMCPClient } from '@ai-sdk/mcp'
+import { createMcpTransport } from '@/lib/mcp-provider'
+import { useProxyUrl } from '@/lib/proxy-url'
 import { toCompilableQuery } from '@powersync/drizzle-driver'
 
 type ServerTools = {
@@ -40,6 +41,7 @@ type ServerTools = {
 
 export default function McpServersPage() {
   const db = useDatabase()
+  const proxyUrl = useProxyUrl()
   const { servers: mcpServers } = useMcpSync()
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false)
   const [newServerUrl, setNewServerUrl] = useState('')
@@ -149,14 +151,15 @@ export default function McpServersPage() {
 
       // Create a real MCP client using the same method as the provider
       console.log('Creating MCP client...')
+      const effectiveUrl = proxyUrl(newServerUrl)
+      if (effectiveUrl === null) {
+        // Media JWT not yet minted — surface a clear error so the user can retry.
+        setConnectionStatus('error')
+        setIsTestingConnection(false)
+        return
+      }
       const mcpClient = await createMCPClient({
-        transport: new StreamableHTTPClientTransport(new URL(newServerUrl), {
-          requestInit: {
-            headers: {
-              Accept: 'application/json, text/event-stream',
-            },
-          },
-        }),
+        transport: createMcpTransport(newServerUrl, effectiveUrl),
       })
 
       console.log('MCP client created successfully')

@@ -2,8 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { useSettings } from '@/hooks/use-settings'
-import { getProxiedFaviconUrl } from '@/lib/url-utils'
+import { useProxyUrl } from '@/lib/proxy-url'
 import { cn } from '@/lib/utils'
 import { motion } from 'framer-motion'
 import type { LucideIcon } from 'lucide-react'
@@ -40,17 +39,19 @@ export const extractFaviconUrl = (toolName: string, output: unknown): string | n
 }
 
 /**
- * Hook to manage favicon fetching and error handling for tool outputs
+ * Hook to manage favicon fetching and error handling for tool outputs.
+ * Routes the favicon URL through the unified proxy helper so platform/proxy
+ * settings are honored in one place.
  */
 const useToolFavicon = (toolName: string, toolOutput: unknown, isLoading: boolean, isError: boolean) => {
   const [failedFavicons, setFailedFavicons] = useState<Set<string>>(new Set())
-  const { cloudUrl } = useSettings({ cloud_url: 'http://localhost:8000/v1' })
+  const proxyUrl = useProxyUrl()
 
   const handleFaviconError = (url: string) => {
     setFailedFavicons((prev) => new Set(prev).add(url))
   }
 
-  if (!toolOutput || isLoading || isError || !cloudUrl.value) {
+  if (!toolOutput || isLoading || isError) {
     return { favicon: null, originalFaviconUrl: null, handleFaviconError }
   }
 
@@ -60,7 +61,10 @@ const useToolFavicon = (toolName: string, toolOutput: unknown, isLoading: boolea
       return { favicon: null, originalFaviconUrl, handleFaviconError }
     }
 
-    const favicon = getProxiedFaviconUrl(originalFaviconUrl, cloudUrl.value)
+    // proxyUrl returns null when the media JWT is still loading. Treat the
+    // same as "favicon unavailable" — the existing fallback (Icon or initials)
+    // takes over until the JWT resolves and the next render swaps in the URL.
+    const favicon = proxyUrl(originalFaviconUrl)
     return { favicon, originalFaviconUrl, handleFaviconError }
   } catch {
     return { favicon: null, originalFaviconUrl: null, handleFaviconError }

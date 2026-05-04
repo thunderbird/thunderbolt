@@ -1,7 +1,13 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+
 import type { ConsoleSpies } from '@/test-utils/console-spies'
 import { setupConsoleSpy } from '@/test-utils/console-spies'
-import { afterAll, beforeAll, beforeEach, describe, expect, it, mock } from 'bun:test'
+import { __resetMediaJwtCacheForTests, MEDIA_JWT_AUDIENCE } from '@/auth/media-jwt'
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, mock } from 'bun:test'
 import { Elysia } from 'elysia'
+import { exportJWK, generateKeyPair, type JSONWebKeySet, type JWK, SignJWT } from 'jose'
 import { createUniversalProxyRoutes } from './routes'
 
 // Mock DNS + net — external Node APIs, acceptable per docs/testing.md "When You Must Mock"
@@ -182,9 +188,7 @@ describe('createUniversalProxyRoutes', () => {
     const target = 'https://example.com/api?name=ana'
     const encoded = encodeURIComponent(target)
     // The proxy request itself adds ?debug=1 — handler should ignore that and forward only the decoded target
-    const res = await app.handle(
-      new Request(`http://localhost/proxy/${encoded}?debug=1`, { method: 'GET' }),
-    )
+    const res = await app.handle(new Request(`http://localhost/proxy/${encoded}?debug=1`, { method: 'GET' }))
     expect(res.status).toBe(200)
     const [calledUrl] = mockFetch.mock.calls[0] as [string, RequestInit]
     // The upstream URL must contain exactly one '?' and not be corrupted with debug=1
@@ -193,13 +197,32 @@ describe('createUniversalProxyRoutes', () => {
     expect((calledUrl.match(/\?/g) || []).length).toBe(1)
   })
 
-  it('returns 400 for http:// target (HTTPS only)', async () => {
+  it('auto-upgrades http:// target to https:// before fetching', async () => {
     const target = 'http://example.com/resource'
-    const res = await app.handle(
-      new Request(`http://localhost/proxy/${encodeURIComponent(target)}`, { method: 'GET' }),
-    )
+    const res = await app.handle(new Request(`http://localhost/proxy/${encodeURIComponent(target)}`, { method: 'GET' }))
+    expect(res.status).toBe(200)
+    expect(mockFetch).toHaveBeenCalledTimes(1)
+    const [calledUrl] = mockFetch.mock.calls[0] as [string, RequestInit]
+    // Hostname is IP-pinned, but the scheme must have been upgraded to https.
+    expect(calledUrl.startsWith('https://')).toBe(true)
+    expect(calledUrl).toBe(pinnedUrl('https://example.com/resource'))
+  })
+
+  it('returns 400 for non-http(s) target (e.g. ftp://)', async () => {
+    const target = 'ftp://example.com/resource'
+    const res = await app.handle(new Request(`http://localhost/proxy/${encodeURIComponent(target)}`, { method: 'GET' }))
     expect(res.status).toBe(400)
     expect(mockFetch).not.toHaveBeenCalled()
+  })
+
+  it('returns 502 when upstream cannot serve HTTPS after auto-upgrade', async () => {
+    // Site genuinely doesn't support HTTPS — fetch throws (TLS error, ECONNREFUSED, …).
+    mockFetch.mockImplementationOnce(() => Promise.reject(new Error('TLS handshake failed')))
+    const target = 'http://no-tls.example.com/'
+    const res = await app.handle(new Request(`http://localhost/proxy/${encodeURIComponent(target)}`, { method: 'GET' }))
+    expect(res.status).toBe(502)
+    const [calledUrl] = mockFetch.mock.calls[0] as [string, RequestInit]
+    expect(calledUrl.startsWith('https://')).toBe(true)
   })
 
   it('returns 405 for TRACE method', async () => {
@@ -217,9 +240,7 @@ describe('createUniversalProxyRoutes', () => {
 
   it('returns 400 for direct SSRF to 127.0.0.1', async () => {
     const target = 'https://127.0.0.1/secret'
-    const res = await app.handle(
-      new Request(`http://localhost/proxy/${encodeURIComponent(target)}`, { method: 'GET' }),
-    )
+    const res = await app.handle(new Request(`http://localhost/proxy/${encodeURIComponent(target)}`, { method: 'GET' }))
     expect(res.status).toBe(400)
     expect(mockFetch).not.toHaveBeenCalled()
   })
@@ -238,9 +259,7 @@ describe('createUniversalProxyRoutes', () => {
       .mockImplementationOnce(() => Promise.resolve([{ address: '1.1.1.1', family: 4 }]))
       .mockImplementationOnce(() => Promise.resolve([{ address: '192.168.1.1', family: 4 }]))
     const target = 'https://example.com/resource'
-    const res = await app.handle(
-      new Request(`http://localhost/proxy/${encodeURIComponent(target)}`, { method: 'GET' }),
-    )
+    const res = await app.handle(new Request(`http://localhost/proxy/${encodeURIComponent(target)}`, { method: 'GET' }))
     expect(res.status).toBe(502)
   })
 
@@ -248,9 +267,7 @@ describe('createUniversalProxyRoutes', () => {
     // DNS never resolves
     mockDnsLookup.mockImplementation(() => new Promise(() => {}))
     const target = 'https://slow-dns.example.com/resource'
-    const res = await app.handle(
-      new Request(`http://localhost/proxy/${encodeURIComponent(target)}`, { method: 'GET' }),
-    )
+    const res = await app.handle(new Request(`http://localhost/proxy/${encodeURIComponent(target)}`, { method: 'GET' }))
     expect(res.status).toBe(400)
     expect(mockFetch).not.toHaveBeenCalled()
   }, 10_000)
@@ -267,18 +284,14 @@ describe('createUniversalProxyRoutes', () => {
       .mockImplementationOnce(() => Promise.resolve(makeOkResponse('final')))
 
     const target = 'https://example.com/start'
-    const res = await app.handle(
-      new Request(`http://localhost/proxy/${encodeURIComponent(target)}`, { method: 'GET' }),
-    )
+    const res = await app.handle(new Request(`http://localhost/proxy/${encodeURIComponent(target)}`, { method: 'GET' }))
     expect(res.status).toBe(200)
     expect(mockFetch).toHaveBeenCalledTimes(2)
   })
 
   it('POST does NOT follow redirects by default (returns 302 as-is)', async () => {
     mockFetch.mockImplementationOnce(() =>
-      Promise.resolve(
-        new Response(null, { status: 302, headers: { location: 'https://example.com/final' } }),
-      ),
+      Promise.resolve(new Response(null, { status: 302, headers: { location: 'https://example.com/final' } })),
     )
     const target = 'https://example.com/submit'
     const res = await app.handle(
@@ -306,9 +319,7 @@ describe('createUniversalProxyRoutes', () => {
   it('POST with X-Proxy-Follow-Redirects: true follows the redirect', async () => {
     mockFetch
       .mockImplementationOnce(() =>
-        Promise.resolve(
-          new Response(null, { status: 303, headers: { location: 'https://example.com/result' } }),
-        ),
+        Promise.resolve(new Response(null, { status: 303, headers: { location: 'https://example.com/result' } })),
       )
       .mockImplementationOnce(() => Promise.resolve(makeOkResponse('result')))
 
@@ -333,9 +344,7 @@ describe('createUniversalProxyRoutes', () => {
     const bodyPayload = new TextEncoder().encode('{"key":"value"}')
     mockFetch
       .mockImplementationOnce(() =>
-        Promise.resolve(
-          new Response(null, { status: 307, headers: { location: 'https://example.com/v2/submit' } }),
-        ),
+        Promise.resolve(new Response(null, { status: 307, headers: { location: 'https://example.com/v2/submit' } })),
       )
       .mockImplementationOnce(() => Promise.resolve(makeOkResponse('done')))
 
@@ -360,31 +369,39 @@ describe('createUniversalProxyRoutes', () => {
   it('returns 502 after 5 redirect hops', async () => {
     // Always respond with a redirect
     mockFetch.mockImplementation(() =>
-      Promise.resolve(
-        new Response(null, { status: 302, headers: { location: 'https://example.com/redirect' } }),
-      ),
+      Promise.resolve(new Response(null, { status: 302, headers: { location: 'https://example.com/redirect' } })),
     )
     const target = 'https://example.com/start'
-    const res = await app.handle(
-      new Request(`http://localhost/proxy/${encodeURIComponent(target)}`, { method: 'GET' }),
-    )
+    const res = await app.handle(new Request(`http://localhost/proxy/${encodeURIComponent(target)}`, { method: 'GET' }))
     expect(res.status).toBe(502)
     // 1 initial fetch + 5 redirect-follows = 6 total (off-by-one fix asserted)
     expect(mockFetch).toHaveBeenCalledTimes(6)
   })
 
-  it('returns 502 when redirect downgrades to HTTP and aborts the upstream connection', async () => {
+  it('auto-upgrades http:// redirect Location to https:// on the next hop', async () => {
+    mockFetch
+      .mockImplementationOnce(() =>
+        Promise.resolve(new Response(null, { status: 302, headers: { location: 'http://other.com/path' } })),
+      )
+      .mockImplementationOnce(() => Promise.resolve(makeOkResponse('final')))
+
+    const target = 'https://example.com/start'
+    const res = await app.handle(new Request(`http://localhost/proxy/${encodeURIComponent(target)}`, { method: 'GET' }))
+    expect(res.status).toBe(200)
+    expect(mockFetch).toHaveBeenCalledTimes(2)
+    const [secondUrl] = mockFetch.mock.calls[1] as [string, RequestInit]
+    expect(secondUrl.startsWith('https://')).toBe(true)
+    expect(secondUrl).toBe(pinnedUrl('https://other.com/path'))
+  })
+
+  it('returns 502 when redirect points to non-http(s) scheme and aborts the upstream connection', async () => {
     let capturedSignal: AbortSignal | undefined
     mockFetch.mockImplementationOnce((_url, init?: RequestInit) => {
       capturedSignal = init?.signal ?? undefined
-      return Promise.resolve(
-        new Response(null, { status: 302, headers: { location: 'http://evil.com/steal' } }),
-      )
+      return Promise.resolve(new Response(null, { status: 302, headers: { location: 'ftp://evil.com/steal' } }))
     })
     const target = 'https://example.com/start'
-    const res = await app.handle(
-      new Request(`http://localhost/proxy/${encodeURIComponent(target)}`, { method: 'GET' }),
-    )
+    const res = await app.handle(new Request(`http://localhost/proxy/${encodeURIComponent(target)}`, { method: 'GET' }))
     expect(res.status).toBe(502)
     expect(mockFetch).toHaveBeenCalledTimes(1)
     expect(capturedSignal?.aborted).toBe(true)
@@ -392,9 +409,7 @@ describe('createUniversalProxyRoutes', () => {
 
   it('strips userinfo from target URL before forwarding', async () => {
     const target = 'https://user:pass@example.com/path'
-    const res = await app.handle(
-      new Request(`http://localhost/proxy/${encodeURIComponent(target)}`, { method: 'GET' }),
-    )
+    const res = await app.handle(new Request(`http://localhost/proxy/${encodeURIComponent(target)}`, { method: 'GET' }))
     expect(res.status).toBe(200)
     const [calledUrl] = mockFetch.mock.calls[0] as [string, RequestInit]
     expect(calledUrl).not.toContain('@')
@@ -409,9 +424,7 @@ describe('createUniversalProxyRoutes', () => {
   it('drops X-Upstream-Authorization on cross-origin redirect', async () => {
     mockFetch
       .mockImplementationOnce(() =>
-        Promise.resolve(
-          new Response(null, { status: 302, headers: { location: 'https://evil.com/steal' } }),
-        ),
+        Promise.resolve(new Response(null, { status: 302, headers: { location: 'https://evil.com/steal' } })),
       )
       .mockImplementationOnce(() => Promise.resolve(makeOkResponse()))
 
@@ -431,9 +444,7 @@ describe('createUniversalProxyRoutes', () => {
   it('preserves X-Upstream-Authorization on same-origin redirect', async () => {
     mockFetch
       .mockImplementationOnce(() =>
-        Promise.resolve(
-          new Response(null, { status: 302, headers: { location: 'https://api.foo.com/v2/resource' } }),
-        ),
+        Promise.resolve(new Response(null, { status: 302, headers: { location: 'https://api.foo.com/v2/resource' } })),
       )
       .mockImplementationOnce(() => Promise.resolve(makeOkResponse()))
 
@@ -485,9 +496,7 @@ describe('createUniversalProxyRoutes', () => {
 
   it('sets all 4 security headers on response', async () => {
     const target = 'https://example.com/page'
-    const res = await app.handle(
-      new Request(`http://localhost/proxy/${encodeURIComponent(target)}`, { method: 'GET' }),
-    )
+    const res = await app.handle(new Request(`http://localhost/proxy/${encodeURIComponent(target)}`, { method: 'GET' }))
     expect(res.headers.get('content-security-policy')).toBe('sandbox')
     expect(res.headers.get('content-disposition')).toBe('attachment')
     expect(res.headers.get('x-content-type-options')).toBe('nosniff')
@@ -509,15 +518,13 @@ describe('createUniversalProxyRoutes', () => {
       ),
     )
     const target = 'https://example.com/resource'
-    const res = await app.handle(
-      new Request(`http://localhost/proxy/${encodeURIComponent(target)}`, { method: 'GET' }),
-    )
+    const res = await app.handle(new Request(`http://localhost/proxy/${encodeURIComponent(target)}`, { method: 'GET' }))
     expect(res.headers.get('set-cookie')).toBeNull()
     expect(res.headers.get('set-cookie2')).toBeNull()
     expect(res.headers.get('trailer')).toBeNull()
   })
 
-  it('preserves content-encoding from upstream response', async () => {
+  it('preserves content-encoding from upstream response and disables Bun auto-decompression', async () => {
     mockFetch.mockImplementation(() =>
       Promise.resolve(
         new Response(new Uint8Array([0x1f, 0x8b]), {
@@ -527,10 +534,11 @@ describe('createUniversalProxyRoutes', () => {
       ),
     )
     const target = 'https://example.com/compressed'
-    const res = await app.handle(
-      new Request(`http://localhost/proxy/${encodeURIComponent(target)}`, { method: 'GET' }),
-    )
+    const res = await app.handle(new Request(`http://localhost/proxy/${encodeURIComponent(target)}`, { method: 'GET' }))
     expect(res.headers.get('content-encoding')).toBe('gzip')
+    // Ensures the upstream fetch keeps raw compressed bytes so the header matches the body.
+    const [, init] = mockFetch.mock.calls[0] as [string, RequestInit & { decompress?: boolean }]
+    expect(init.decompress).toBe(false)
   })
 
   // ---------------------------------------------------------------------------
@@ -577,19 +585,240 @@ describe('createUniversalProxyRoutes', () => {
   })
 
   // ---------------------------------------------------------------------------
-  // Auth gate
+  // Cache headers
+  //
+  // Browser caches the response for 10 min (per-user, since `?token=` is
+  // session-scoped) but edge caches MUST NOT store: `?token=` makes every URL
+  // unique per session, which would explode the cache key space. The proxy
+  // emits `CDN-Cache-Control: no-store` so Cloudflare/Fastly/Vercel skip
+  // caching even though `Cache-Control` is otherwise cacheable.
   // ---------------------------------------------------------------------------
 
-  it('returns 401 when session is null and never opens an upstream connection', async () => {
-    const noAuth = { api: { getSession: async () => null } } as never
-    const noAuthApp = new Elysia().use(
-      createUniversalProxyRoutes(noAuth, mockFetch as unknown as typeof fetch),
+  it('emits Cache-Control: private, max-age=600 and CDN-Cache-Control: no-store', async () => {
+    const target = 'https://example.com/page'
+    const res = await app.handle(new Request(`http://localhost/proxy/${encodeURIComponent(target)}`, { method: 'GET' }))
+    expect(res.headers.get('cache-control')).toBe('private, max-age=600')
+    expect(res.headers.get('cdn-cache-control')).toBe('no-store')
+  })
+
+  it('overrides upstream Cache-Control directives with the proxy policy', async () => {
+    mockFetch.mockImplementation(() =>
+      Promise.resolve(
+        new Response('body', {
+          status: 200,
+          headers: {
+            'content-type': 'text/plain',
+            'cache-control': 'public, max-age=31536000, immutable',
+          },
+        }),
+      ),
     )
-    const target = 'https://example.com/resource'
-    const res = await noAuthApp.handle(
-      new Request(`http://localhost/proxy/${encodeURIComponent(target)}`, { method: 'GET' }),
-    )
-    expect(res.status).toBe(401)
-    expect(mockFetch).not.toHaveBeenCalled()
+    const target = 'https://example.com/cached'
+    const res = await app.handle(new Request(`http://localhost/proxy/${encodeURIComponent(target)}`, { method: 'GET' }))
+    expect(res.headers.get('cache-control')).toBe('private, max-age=600')
+    expect(res.headers.get('cdn-cache-control')).toBe('no-store')
+  })
+
+  // ---------------------------------------------------------------------------
+  // Auth gate (mandatory on every method, two acceptable mechanisms)
+  //
+  // Auth required on every request. Either:
+  //   1. Cookie / `Authorization: Bearer <session>` (programmatic callers)
+  //   2. `?token=<jwt>` query param (browser sub-resource loads)
+  // ---------------------------------------------------------------------------
+
+  describe('auth gate (cookie/Bearer OR ?token= JWT)', () => {
+    /** Auth instance with a stub `verifyJwks`-compatible `auth.api` that returns
+     *  no session by default. Tests opt in to a verified JWT via `auth.api.getJwks`. */
+    const noAuth = {
+      api: {
+        getSession: async () => null,
+        // Non-null returns short-circuit verifyMediaJwt before jose is touched
+        // — these tests cover the routes-level branching, not the verifier itself
+        // (which is exercised in media-jwt.test.ts).
+        getJwks: async () => ({ keys: [] }),
+      },
+    } as never
+    let noAuthApp: { handle: Elysia['handle'] }
+
+    beforeAll(() => {
+      noAuthApp = new Elysia().use(createUniversalProxyRoutes(noAuth, mockFetch as unknown as typeof fetch))
+    })
+
+    it('GET without any auth → 401', async () => {
+      const target = 'https://example.com/resource'
+      const res = await noAuthApp.handle(
+        new Request(`http://localhost/proxy/${encodeURIComponent(target)}`, { method: 'GET' }),
+      )
+      expect(res.status).toBe(401)
+      expect(mockFetch).not.toHaveBeenCalled()
+    })
+
+    it('HEAD without any auth → 401', async () => {
+      const target = 'https://example.com/resource'
+      const res = await noAuthApp.handle(
+        new Request(`http://localhost/proxy/${encodeURIComponent(target)}`, { method: 'HEAD' }),
+      )
+      expect(res.status).toBe(401)
+      expect(mockFetch).not.toHaveBeenCalled()
+    })
+
+    it('POST without any auth → 401', async () => {
+      const target = 'https://example.com/api'
+      const res = await noAuthApp.handle(
+        new Request(`http://localhost/proxy/${encodeURIComponent(target)}`, {
+          method: 'POST',
+          body: JSON.stringify({ x: 1 }),
+        }),
+      )
+      expect(res.status).toBe(401)
+      expect(mockFetch).not.toHaveBeenCalled()
+    })
+
+    it('PUT/PATCH/DELETE without any auth → 401', async () => {
+      const target = 'https://example.com/item/1'
+      for (const method of ['PUT', 'PATCH', 'DELETE'] as const) {
+        const res = await noAuthApp.handle(
+          new Request(`http://localhost/proxy/${encodeURIComponent(target)}`, { method, body: 'data' }),
+        )
+        expect(res.status).toBe(401)
+      }
+      expect(mockFetch).not.toHaveBeenCalled()
+    })
+
+    it('GET with valid Bearer session → 200 (existing path)', async () => {
+      // The default `app` from the outer describe uses `fakeAuth` whose
+      // `getSession` always resolves a session — assert it still works
+      // unchanged after the auth refactor.
+      const target = 'https://example.com/resource'
+      const res = await app.handle(
+        new Request(`http://localhost/proxy/${encodeURIComponent(target)}`, {
+          method: 'GET',
+          headers: { Authorization: 'Bearer session-token' },
+        }),
+      )
+      expect(res.status).toBe(200)
+    })
+
+    it('GET with invalid ?token= JWT → 401', async () => {
+      const target = 'https://example.com/resource'
+      // No keys in JWKS → verify always returns null
+      const res = await noAuthApp.handle(
+        new Request(`http://localhost/proxy/${encodeURIComponent(target)}?token=not.a.real.jwt`, { method: 'GET' }),
+      )
+      expect(res.status).toBe(401)
+      expect(mockFetch).not.toHaveBeenCalled()
+    })
+
+    it('GET with unverifiable ?token= (unknown kid) falls through to 401', async () => {
+      // Negative-path guard: when ?token= is present but the verifier rejects
+      // it (here: kid not in the empty JWKS), the resolver returns 401 just
+      // like the no-auth case — proving the route inspects the token rather
+      // than blanket-allowing any string.
+      const tokenAuth = {
+        api: {
+          getSession: async () => null,
+          getJwks: async () => ({ keys: [] }) as JSONWebKeySet,
+        },
+      } as never
+      const tokenApp = new Elysia().use(createUniversalProxyRoutes(tokenAuth, mockFetch as unknown as typeof fetch))
+      const target = 'https://example.com/resource'
+      const res = await tokenApp.handle(
+        new Request(
+          `http://localhost/proxy/${encodeURIComponent(target)}?token=eyJhbGciOiJFZERTQSIsImtpZCI6Im5vIn0.e30.x`,
+          {
+            method: 'GET',
+          },
+        ),
+      )
+      expect(res.status).toBe(401)
+    })
+
+    // -------------------------------------------------------------------------
+    // Positive integration test for the ?token= JWT path.
+    //
+    // Mints a JWT signed by a fixture JWKS, ensures the route accepts it and
+    // proxies the request through to upstream — guards the headline UX claim
+    // that browser sub-resource loads (`<img src>`, `<link rel="icon">`) work
+    // when the page passes a freshly minted media-proxy JWT in the URL.
+    //
+    // Same crypto fixture as `observability.test.ts:382-411` and
+    // `media-jwt.test.ts`.
+    // -------------------------------------------------------------------------
+
+    describe('valid ?token= JWT positive path', () => {
+      afterEach(() => {
+        __resetMediaJwtCacheForTests()
+      })
+
+      const buildJwks = async (kid = 'routes-test-kid') => {
+        const { publicKey, privateKey } = await generateKeyPair('EdDSA', {
+          extractable: true,
+          crv: 'Ed25519',
+        })
+        const publicJwk: JWK = { ...(await exportJWK(publicKey)), alg: 'EdDSA', kid }
+        return { privateKey, jwks: { keys: [publicJwk] } as JSONWebKeySet }
+      }
+
+      const signTestToken = (privateKey: CryptoKey, sub: string) =>
+        new SignJWT({})
+          .setProtectedHeader({ alg: 'EdDSA', kid: 'routes-test-kid' })
+          .setSubject(sub)
+          .setAudience(MEDIA_JWT_AUDIENCE)
+          .setExpirationTime(Math.floor(Date.now() / 1000) + 600)
+          .sign(privateKey)
+
+      it('GET with valid ?token= JWT → 200 and proxies upstream', async () => {
+        const { privateKey, jwks } = await buildJwks()
+        const token = await signTestToken(privateKey, 'user-from-valid-jwt')
+
+        const tokenAuth = {
+          api: {
+            getSession: async () => null,
+            getJwks: async () => jwks,
+          },
+        } as never
+        const tokenApp = new Elysia().use(createUniversalProxyRoutes(tokenAuth, mockFetch as unknown as typeof fetch))
+
+        const target = 'https://example.com/resource'
+        const res = await tokenApp.handle(
+          new Request(`http://localhost/proxy/${encodeURIComponent(target)}?token=${token}`, {
+            method: 'GET',
+          }),
+        )
+        expect(res.status).toBe(200)
+        expect(mockFetch).toHaveBeenCalledTimes(1)
+      })
+    })
+
+    it('GET with cookie session (Bearer absent) → 200', async () => {
+      // Cookie auth flows through the same getSession path; just covers the
+      // assertion that the resolver doesn't require an Authorization header.
+      const target = 'https://example.com/resource'
+      const res = await app.handle(
+        new Request(`http://localhost/proxy/${encodeURIComponent(target)}`, {
+          method: 'GET',
+          headers: { Cookie: 'better-auth.session_token=abc' },
+        }),
+      )
+      expect(res.status).toBe(200)
+    })
+
+    it('still runs SSRF defense even when auth fails (private IP → 401 for unauth, 400 for authed)', async () => {
+      const target = 'https://127.0.0.1/secret'
+      // Unauth: 401 wins (auth runs before SSRF) — that's correct, leaks no info.
+      const unauthRes = await noAuthApp.handle(
+        new Request(`http://localhost/proxy/${encodeURIComponent(target)}`, { method: 'GET' }),
+      )
+      expect(unauthRes.status).toBe(401)
+      // Authed: SSRF defense triggers — 400.
+      const authedRes = await app.handle(
+        new Request(`http://localhost/proxy/${encodeURIComponent(target)}`, {
+          method: 'GET',
+          headers: { Authorization: 'Bearer session-token' },
+        }),
+      )
+      expect(authedRes.status).toBe(400)
+    })
   })
 })

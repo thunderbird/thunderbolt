@@ -424,35 +424,4 @@ export const createLinkPreviewRoutes = (fetchFn: typeof fetch = globalThis.fetch
         })
       }
     })
-    .get('/proxy-image/*', async (ctx) => {
-      const url = new URL(ctx.request.url)
-
-      const pathParts = url.pathname.split('/link-preview/proxy-image/')
-      if (pathParts.length < 2 || !pathParts[pathParts.length - 1]) {
-        ctx.set.status = 400
-        return new Response('No image URL provided', {
-          headers: { 'Content-Type': 'text/plain' },
-        })
-      }
-
-      const imageUrl = decodeUrlParam(pathParts[pathParts.length - 1])
-      if (!imageUrl) {
-        ctx.set.status = 400
-        return new Response('Invalid URL encoding', {
-          headers: { 'Content-Type': 'text/plain' },
-        })
-      }
-
-      const fullImageUrl = imageUrl.includes('?') ? imageUrl : imageUrl + url.search
-
-      const validation = validateSafeUrl(fullImageUrl)
-      if (!validation.valid) {
-        ctx.set.status = 400
-        return new Response(validation.error || 'Invalid image URL', {
-          headers: { 'Content-Type': 'text/plain' },
-        })
-      }
-
-      return fetchAndProxyImage(fullImageUrl, safeFetchFn, ctx)
-    })
 }

@@ -7,6 +7,7 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { useHttpClient } from '@/contexts'
 import { useMessageCache } from '@/hooks/use-message-cache'
 import { useSettings } from '@/hooks/use-settings'
+import { useProxyUrl } from '@/lib/proxy-url'
 import { fetchLinkPreview } from '@/integrations/thunderbolt-pro/api'
 import type { SourceMetadata } from '@/types/source'
 import { LinkPreview } from './display'
@@ -46,14 +47,6 @@ export const LinkPreviewSkeleton = () => {
   )
 }
 
-/** Builds a proxied image URL via /proxy-image (when direct image URL is known) */
-const buildProxyImageUrl = (imageUrl: string | null | undefined, cloudUrl: string | null): string | null => {
-  if (!imageUrl || !cloudUrl?.trim()) {
-    return null
-  }
-  return `${cloudUrl}/pro/link-preview/proxy-image/${encodeURIComponent(imageUrl)}`
-}
-
 /** Builds an image URL via /image (extracts og:image from page and proxies it in one request) */
 const buildPageImageUrl = (pageUrl: string, cloudUrl: string | null): string | null => {
   if (!pageUrl || !cloudUrl?.trim()) {
@@ -63,43 +56,42 @@ const buildPageImageUrl = (pageUrl: string, cloudUrl: string | null): string | n
 }
 
 /** Renders a link preview instantly from source registry metadata */
-const InstantLinkPreview = ({ sourceData, cloudUrl }: { sourceData: SourceMetadata; cloudUrl: string | null }) => {
+const InstantLinkPreview = ({ sourceData }: { sourceData: SourceMetadata }) => {
+  const proxyUrl = useProxyUrl()
+  // proxyUrl returns null while the media JWT is loading; LinkPreview
+  // gracefully shows the image placeholder until the next render passes a URL.
   return (
     <LinkPreview
       title={sourceData.title || getHostname(sourceData.url)}
       description={sourceData.description ?? null}
       url={sourceData.url}
-      image={buildProxyImageUrl(sourceData.image, cloudUrl)}
+      image={sourceData.image ? proxyUrl(sourceData.image) : null}
     />
   )
 }
 
 export const LinkPreviewWidget = ({ url, source, sources, messageId, fetchPreviewFn }: LinkPreviewWidgetProps) => {
-  const { cloudUrl } = useSettings({ cloud_url: 'http://localhost:8000/v1' })
-
   // Instant render path: resolve from source registry (O(1) index lookup)
   if (source && sources) {
     const sourceIndex = parseInt(source, 10)
     const sourceData = sources[sourceIndex - 1]
     if (sourceData && sourceData.title) {
-      return <InstantLinkPreview sourceData={sourceData} cloudUrl={cloudUrl.value} />
+      return <InstantLinkPreview sourceData={sourceData} />
     }
   }
 
   // Fallback: existing fetch-based path
-  return <FetchLinkPreview url={url} messageId={messageId} cloudUrl={cloudUrl.value} fetchPreviewFn={fetchPreviewFn} />
+  return <FetchLinkPreview url={url} messageId={messageId} fetchPreviewFn={fetchPreviewFn} />
 }
 
 /** Fallback component that fetches link preview data via the message cache */
 const FetchLinkPreview = ({
   url,
   messageId,
-  cloudUrl,
   fetchPreviewFn,
 }: {
   url: string
   messageId: string
-  cloudUrl: string | null
   fetchPreviewFn?: (params: { url: string }) => Promise<{
     title: string | null
     description: string | null
@@ -108,6 +100,8 @@ const FetchLinkPreview = ({
   }>
 }) => {
   const httpClient = useHttpClient()
+  const proxyUrl = useProxyUrl()
+  const { cloudUrl } = useSettings({ cloud_url: 'http://localhost:8000/v1' })
   const { data, isLoading, error } = useMessageCache<LinkPreviewMetadata>({
     messageId,
     cacheKey: ['linkPreview', url],
@@ -122,8 +116,8 @@ const FetchLinkPreview = ({
     },
   })
 
-  // Prefer proxying the known image URL; fall back to /image/ which extracts og:image from the page
-  const imageUrl = data?.image ? buildProxyImageUrl(data.image, cloudUrl) : buildPageImageUrl(url, cloudUrl)
+  // Prefer proxying the known image URL via the unified proxy; fall back to /image/ which extracts og:image from the page
+  const imageUrl = data?.image ? proxyUrl(data.image) : buildPageImageUrl(url, cloudUrl.value)
 
   if (isLoading) {
     return <LinkPreviewSkeleton />

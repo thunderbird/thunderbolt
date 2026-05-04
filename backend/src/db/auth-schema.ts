@@ -95,6 +95,22 @@ export const ssoProvider = pgTable('sso_provider', {
     .notNull(),
 })
 
+/**
+ * JWKS table — required by Better Auth's `jwt()` plugin to persist the
+ * asymmetric signing keys used to mint media-proxy JWTs (EdDSA by default).
+ * Schema matches `better-auth/dist/plugins/jwt/schema.mjs` exactly:
+ *   { publicKey, privateKey, createdAt, expiresAt? }
+ * The plugin's `/api/auth/jwks` endpoint serves the public half; the private
+ * half is read here only by the sign path (`getJwtToken`).
+ */
+export const jwks = pgTable('jwks', {
+  id: text('id').primaryKey(),
+  publicKey: text('public_key').notNull(),
+  privateKey: text('private_key').notNull(),
+  createdAt: timestamp('created_at').notNull(),
+  expiresAt: timestamp('expires_at'),
+})
+
 export const userRelations = relations(user, ({ many }) => ({
   sessions: many(session),
   accounts: many(account),

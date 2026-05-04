@@ -99,6 +99,13 @@
       "when": 1777321983481,
       "tag": "0013_icy_lady_deathstrike",
       "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "7",
+      "when": 1777937201301,
+      "tag": "0014_minor_medusa",
+      "breakpoints": true
     }
   ]
 }

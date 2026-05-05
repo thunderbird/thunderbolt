@@ -23,53 +23,55 @@ describe('Authentication Routes', () => {
       headers: { 'Content-Type': 'application/json' },
     })
 
+  const baseSettings = {
+    fireworksApiKey: '',
+    mistralApiKey: '',
+    anthropicApiKey: '',
+    exaApiKey: '',
+    thunderboltInferenceUrl: '',
+    thunderboltInferenceApiKey: '',
+    monitoringToken: '',
+    googleClientId: 'test-google-client-id',
+    googleClientSecret: 'test-google-secret',
+    microsoftClientId: 'test-microsoft-client-id',
+    microsoftClientSecret: 'test-microsoft-secret',
+    logLevel: 'INFO' as const,
+    port: 8000,
+    appUrl: 'http://localhost:1420',
+    posthogHost: 'https://us.i.posthog.com',
+    posthogApiKey: '',
+    corsOrigins: 'http://localhost:1420',
+    corsAllowCredentials: true,
+    corsAllowMethods: 'GET,POST,PUT,DELETE,PATCH,OPTIONS',
+    corsAllowHeaders: 'Content-Type,Authorization',
+    corsExposeHeaders: '',
+    waitlistEnabled: false,
+    waitlistAutoApproveDomains: '',
+    powersyncUrl: '',
+    powersyncJwtKid: '',
+    powersyncJwtSecret: '',
+    powersyncTokenExpirySeconds: 3600,
+    authMode: 'consumer' as const,
+    oidcClientId: '',
+    oidcClientSecret: '',
+    oidcIssuer: '',
+    betterAuthUrl: 'http://localhost:8000',
+    betterAuthSecret: 'test-secret-at-least-32-chars-long!!',
+    rateLimitEnabled: false,
+    swaggerEnabled: false,
+    e2eeEnabled: false,
+    trustedProxy: '' as const,
+    samlEntryPoint: '',
+    samlEntityId: '',
+    samlIdpIssuer: '',
+    samlCert: '',
+  }
+
   beforeAll(async () => {
     consoleSpies = setupConsoleSpy()
 
     // Mock settings
-    getSettingsSpy = spyOn(settingsModule, 'getSettings').mockReturnValue({
-      fireworksApiKey: '',
-      mistralApiKey: '',
-      anthropicApiKey: '',
-      exaApiKey: '',
-      thunderboltInferenceUrl: '',
-      thunderboltInferenceApiKey: '',
-      monitoringToken: '',
-      googleClientId: 'test-google-client-id',
-      googleClientSecret: 'test-google-secret',
-      microsoftClientId: 'test-microsoft-client-id',
-      microsoftClientSecret: 'test-microsoft-secret',
-      logLevel: 'INFO',
-      port: 8000,
-      appUrl: 'http://localhost:1420',
-      posthogHost: 'https://us.i.posthog.com',
-      posthogApiKey: '',
-      corsOrigins: 'http://localhost:1420',
-      corsAllowCredentials: true,
-      corsAllowMethods: 'GET,POST,PUT,DELETE,PATCH,OPTIONS',
-      corsAllowHeaders: 'Content-Type,Authorization',
-      corsExposeHeaders: '',
-      waitlistEnabled: false,
-      waitlistAutoApproveDomains: '',
-      powersyncUrl: '',
-      powersyncJwtKid: '',
-      powersyncJwtSecret: '',
-      powersyncTokenExpirySeconds: 3600,
-      authMode: 'consumer' as const,
-      oidcClientId: '',
-      oidcClientSecret: '',
-      oidcIssuer: '',
-      betterAuthUrl: 'http://localhost:8000',
-      betterAuthSecret: 'test-secret-at-least-32-chars-long!!',
-      rateLimitEnabled: false,
-      swaggerEnabled: false,
-      e2eeEnabled: false,
-      trustedProxy: '',
-      samlEntryPoint: '',
-      samlEntityId: '',
-      samlIdpIssuer: '',
-      samlCert: '',
-    })
+    getSettingsSpy = spyOn(settingsModule, 'getSettings').mockReturnValue(baseSettings)
 
     // Create mock fetch
     mockFetch = mock(() => Promise.resolve(createMockOAuthResponse()))
@@ -128,9 +130,27 @@ describe('Authentication Routes', () => {
   })
 
   describe('Google OAuth', () => {
-    it('should return Google OAuth config', async () => {
+    it('returns configured: true for Google /config when credentials are set', async () => {
       const response = await app.handle(new Request('http://localhost/auth/google/config'))
       expect(response.status).toBe(200)
+      const body = await response.json()
+      expect(body).toEqual({ client_id: 'test-google-client-id', configured: true })
+    })
+
+    it('returns configured: false for Google /config when secret is empty', async () => {
+      getSettingsSpy.mockReturnValueOnce({ ...baseSettings, googleClientSecret: '' })
+      const response = await app.handle(new Request('http://localhost/auth/google/config'))
+      expect(response.status).toBe(200)
+      const body = await response.json()
+      expect(body).toEqual({ client_id: 'test-google-client-id', configured: false })
+    })
+
+    it('returns configured: false for Google /config when both empty', async () => {
+      getSettingsSpy.mockReturnValueOnce({ ...baseSettings, googleClientId: '', googleClientSecret: '' })
+      const response = await app.handle(new Request('http://localhost/auth/google/config'))
+      expect(response.status).toBe(200)
+      const body = await response.json()
+      expect(body).toEqual({ client_id: '', configured: false })
     })
 
     it('should require valid body for token exchange', async () => {
@@ -157,9 +177,27 @@ describe('Authentication Routes', () => {
   })
 
   describe('Microsoft OAuth', () => {
-    it('should return Microsoft OAuth config', async () => {
+    it('returns configured: true for Microsoft /config when credentials are set', async () => {
       const response = await app.handle(new Request('http://localhost/auth/microsoft/config'))
       expect(response.status).toBe(200)
+      const body = await response.json()
+      expect(body).toEqual({ client_id: 'test-microsoft-client-id', configured: true })
+    })
+
+    it('returns configured: false for Microsoft /config when secret is empty', async () => {
+      getSettingsSpy.mockReturnValueOnce({ ...baseSettings, microsoftClientSecret: '' })
+      const response = await app.handle(new Request('http://localhost/auth/microsoft/config'))
+      expect(response.status).toBe(200)
+      const body = await response.json()
+      expect(body).toEqual({ client_id: 'test-microsoft-client-id', configured: false })
+    })
+
+    it('returns configured: false for Microsoft /config when both empty', async () => {
+      getSettingsSpy.mockReturnValueOnce({ ...baseSettings, microsoftClientId: '', microsoftClientSecret: '' })
+      const response = await app.handle(new Request('http://localhost/auth/microsoft/config'))
+      expect(response.status).toBe(200)
+      const body = await response.json()
+      expect(body).toEqual({ client_id: '', configured: false })
     })
 
     it('should require valid body for token exchange', async () => {

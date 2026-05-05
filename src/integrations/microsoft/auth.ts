@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import type { OAuthConfig, OAuthTokens } from '@/lib/auth'
+import { MisconfiguredOAuthError, type OAuthConfig, type OAuthTokens } from '@/lib/auth'
 import type { HttpClient } from '@/lib/http'
 import { getOAuthRedirectUri } from '@/lib/oauth-redirect'
 import type { AuthProviderBackendConfig } from '@/types'
@@ -11,21 +11,32 @@ import type { MicrosoftUserInfo } from './types'
 let cachedBackendConfig: Promise<AuthProviderBackendConfig> | null = null
 
 const fetchBackendConfig = (httpClient: HttpClient): Promise<AuthProviderBackendConfig> => {
-  if (!cachedBackendConfig) {
-    cachedBackendConfig = httpClient.get('auth/microsoft/config').json<AuthProviderBackendConfig>()
-    cachedBackendConfig.catch(() => {
+  if (cachedBackendConfig) return cachedBackendConfig
+  cachedBackendConfig = (async () => {
+    try {
+      const result = await httpClient.get('auth/microsoft/config').json<AuthProviderBackendConfig>()
+      if (!result.configured) cachedBackendConfig = null
+      return result
+    } catch (err) {
       cachedBackendConfig = null
-    })
-  }
+      throw err
+    }
+  })()
   return cachedBackendConfig
 }
 
+/** Test-only: clears the in-memory backend config cache so each test starts fresh. */
+export const resetBackendConfigCacheForTests = (): void => {
+  cachedBackendConfig = null
+}
+
 export const getOAuthConfig = async (httpClient: HttpClient): Promise<OAuthConfig> => {
-  const { client_id: clientId } = await fetchBackendConfig(httpClient)
+  const { client_id: clientId, configured } = await fetchBackendConfig(httpClient)
   const redirectUri = getOAuthRedirectUri()
 
   return {
     clientId,
+    configured,
     redirectUri,
     scope: 'https://graph.microsoft.com/mail.read User.Read offline_access',
   }
@@ -38,6 +49,10 @@ export const buildAuthUrl = async (
   redirectUri?: string,
 ): Promise<string> => {
   const config = await getOAuthConfig(httpClient)
+  if (!config.configured) {
+    const missing = config.clientId === '' ? 'both' : 'secret'
+    throw new MisconfiguredOAuthError('microsoft', missing)
+  }
   const authUrl = new URL('https://login.microsoftonline.com/common/oauth2/v2.0/authorize')
   authUrl.searchParams.set('client_id', config.clientId)
   authUrl.searchParams.set('redirect_uri', redirectUri ?? config.redirectUri)

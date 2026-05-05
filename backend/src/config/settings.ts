@@ -21,10 +21,10 @@ const settingsSchema = z
     monitoringToken: z.string().default(''),
 
     // OAuth Settings
-    googleClientId: z.string().default(''),
-    googleClientSecret: z.string().default(''),
-    microsoftClientId: z.string().default(''),
-    microsoftClientSecret: z.string().default(''),
+    googleClientId: z.string().trim().default(''),
+    googleClientSecret: z.string().trim().default(''),
+    microsoftClientId: z.string().trim().default(''),
+    microsoftClientSecret: z.string().trim().default(''),
 
     // OIDC Settings (enterprise self-hosted)
     authMode: z.enum(['consumer', 'oidc', 'saml']).default('consumer'),

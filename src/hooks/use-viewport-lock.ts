@@ -3,7 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { useEffect } from 'react'
-import { isTauri } from '@/lib/platform'
+import { getPlatform, isTauri } from '@/lib/platform'
 
 /**
  * Locks the layout viewport at scroll position 0, preventing iOS Safari from
@@ -20,20 +20,30 @@ import { isTauri } from '@/lib/platform'
  * 3. rAF scroll-reset loop on focus/blur — catches programmatic focus and any
  *    residual scroll during the ~300ms keyboard animation
  *
- * Web only — skipped on Tauri iOS/Android where the native WKWebView handles
- * keyboard layout via its own scroll view insets. Running both would cause
- * double compensation (blank gap at the bottom).
+ * Skipped on Tauri iOS where the native lockWebViewScrollPosition() (main.mm)
+ * handles the WKWebView scroll lock instead — running both causes a blank gap.
+ * Runs normally on Tauri Android (no native scroll lock available).
  *
  * Pair with `paddingBottom: var(--kb)` on content containers so inputs remain
  * visible above the keyboard (see `useKeyboardInset` for the `--kb` variable).
  */
 export const useViewportLock = (): void => {
   useEffect(() => {
-    // Tauri iOS/Android: setting position:fixed + height:100% on <html>
-    // causes a blank gap in the WKWebView. The native lockWebViewScrollPosition()
-    // (main.mm) handles the scroll lock instead. We only need to scroll the
-    // focused input into view after the keyboard appears and --kb reflows layout.
+    // Tauri iOS: setting position:fixed + height:100% on <html> causes a blank
+    // gap in the WKWebView. The native lockWebViewScrollPosition() (main.mm)
+    // handles the scroll lock instead. We only need to scroll the focused input
+    // into view after the keyboard appears and --kb reflows layout.
+    // Tauri iOS/Android: the native WebView handles scroll locking
+    // (iOS: lockWebViewScrollPosition in main.mm, Android: MainActivity.kt).
+    // We only scroll the focused input into view after --kb reflows layout.
     if (isTauri()) {
+      // On Android with adjustNothing, --kb padding already repositions the input.
+      // scrollIntoView during the keyboard animation causes visible flickering.
+      // Only run on iOS where the native scroll lock needs this assist.
+      if (getPlatform() !== 'ios') {
+        return
+      }
+
       const vv = window.visualViewport
       if (!vv) {
         return

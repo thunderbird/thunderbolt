@@ -6,8 +6,8 @@ import { useDatabase } from '@/contexts'
 import { getDevice } from '@/dal'
 import { powersyncCredentialsInvalid } from '@/db/powersync/connector'
 import type { CredentialsInvalidReason } from '@/db/powersync/connector'
-import { showRevokedDeviceModalEvent } from '@/hooks/use-credential-events'
-import { getAuthToken, getDeviceId } from '@/lib/auth-token'
+import { showRevokedDeviceModalEvent, showSignInModalEvent, signInSuccessEvent } from '@/hooks/use-credential-events'
+import { clearAuthToken, getAuthToken, getDeviceId } from '@/lib/auth-token'
 import { clearLocalData } from '@/lib/cleanup'
 import { toCompilableQuery } from '@powersync/drizzle-driver'
 import { useQuery } from '@powersync/tanstack-react-query'
@@ -51,6 +51,7 @@ export const usePowerSyncCredentialsInvalidListener = (): void => {
   const db = useDatabase()
   const hasTriggeredResetRef = useRef(false)
   const hasDispatchedRevokedModalRef = useRef(false)
+  const hasDispatchedSignInModalRef = useRef(false)
   const hadDeviceOnceRef = useRef(false)
   const deviceId = getDeviceId()
 
@@ -61,7 +62,7 @@ export const usePowerSyncCredentialsInvalidListener = (): void => {
 
   const device = data[0] ?? null
 
-  // Handle 410/403 from verify endpoint or PowerSync token refresh (event-driven).
+  // Handle 401/410/403 from verify endpoint or PowerSync token refresh (event-driven).
   useEffect(() => {
     const handler = (event: Event) => {
       if (hasTriggeredResetRef.current) {
@@ -69,6 +70,19 @@ export const usePowerSyncCredentialsInvalidListener = (): void => {
       }
 
       const reason = (event as CustomEvent<{ reason: CredentialsInvalidReason }>).detail?.reason
+
+      if (reason === 'session_expired') {
+        // A real device revocation or account deletion supersedes a session expiry —
+        // don't pop the sign-in modal on top of a reset/revocation flow.
+        if (hasDispatchedRevokedModalRef.current || hasDispatchedSignInModalRef.current) {
+          return
+        }
+        hasDispatchedSignInModalRef.current = true
+        // Clear the dead token so PowerSync stops looping; preserve DB, encryption keys, and device id.
+        clearAuthToken()
+        window.dispatchEvent(new CustomEvent(showSignInModalEvent))
+        return
+      }
 
       if (reason === 'device_revoked') {
         if (!hasDispatchedRevokedModalRef.current) {
@@ -84,6 +98,15 @@ export const usePowerSyncCredentialsInvalidListener = (): void => {
 
     window.addEventListener(powersyncCredentialsInvalid, handler)
     return () => window.removeEventListener(powersyncCredentialsInvalid, handler)
+  }, [])
+
+  // After successful re-authentication, allow a future session expiry to re-trigger the modal.
+  useEffect(() => {
+    const handler = () => {
+      hasDispatchedSignInModalRef.current = false
+    }
+    window.addEventListener(signInSuccessEvent, handler)
+    return () => window.removeEventListener(signInSuccessEvent, handler)
   }, [])
 
   // Handle device revoked or device row missing (account deleted) from synced devices table.

@@ -7,7 +7,7 @@ import { resetTestDatabase, setupTestDatabase, teardownTestDatabase } from '@/da
 import { ThunderboltConnector } from '@/db/powersync/connector'
 import { powersyncCredentialsInvalid } from '@/db/powersync/connector'
 import { devicesTable } from '@/db/tables'
-import { setAuthToken } from '@/lib/auth-token'
+import { getAuthToken, setAuthToken } from '@/lib/auth-token'
 import { createTestProvider } from '@/test-utils/test-provider'
 import { getClock } from '@/testing-library'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
@@ -19,7 +19,7 @@ import { AuthProvider, DatabaseProvider, HttpClientProvider } from '@/contexts'
 import { createMockAuthClient } from '@/test-utils/auth-client'
 import { createMockHttpClient } from '@/test-utils/http-client'
 import { PowerSyncMockProvider } from '@/test-utils/powersync-mock'
-import { showRevokedDeviceModalEvent } from './use-credential-events'
+import { showRevokedDeviceModalEvent, showSignInModalEvent, signInSuccessEvent } from './use-credential-events'
 import { usePowerSyncCredentialsInvalidListener } from './use-powersync-credentials-invalid-listener'
 import { getDb } from '@/db/database'
 
@@ -99,7 +99,7 @@ describe('usePowerSyncCredentialsInvalidListener', () => {
   }
 
   const dispatchCredentialsInvalid = (
-    reason: 'account_deleted' | 'device_revoked' | 'device_id_taken' | 'device_id_required',
+    reason: 'account_deleted' | 'device_revoked' | 'device_id_taken' | 'device_id_required' | 'session_expired',
   ) => {
     window.dispatchEvent(new CustomEvent(powersyncCredentialsInvalid, { detail: { reason } }))
   }
@@ -170,6 +170,101 @@ describe('usePowerSyncCredentialsInvalidListener', () => {
       })
 
       expect(mockReplace).toHaveBeenCalledWith('/')
+    })
+
+    it('dispatches showSignInModalEvent and clears auth token when reason is session_expired', () => {
+      setAuthToken(authToken)
+      const signInModalListener = mock()
+      window.addEventListener(showSignInModalEvent, signInModalListener)
+
+      renderHook(() => usePowerSyncCredentialsInvalidListener(), {
+        wrapper: createTestProvider(),
+      })
+
+      act(() => {
+        dispatchCredentialsInvalid('session_expired')
+      })
+
+      expect(signInModalListener).toHaveBeenCalled()
+      expect(getAuthToken()).toBeNull()
+      expect(mockClearLocalData).not.toHaveBeenCalled()
+      expect(mockReplace).not.toHaveBeenCalled()
+
+      window.removeEventListener(showSignInModalEvent, signInModalListener)
+    })
+
+    it('does not re-dispatch showSignInModalEvent for repeated session_expired events', () => {
+      setAuthToken(authToken)
+      const signInModalListener = mock()
+      window.addEventListener(showSignInModalEvent, signInModalListener)
+
+      renderHook(() => usePowerSyncCredentialsInvalidListener(), {
+        wrapper: createTestProvider(),
+      })
+
+      act(() => {
+        dispatchCredentialsInvalid('session_expired')
+      })
+      const callCountAfterFirst = signInModalListener.mock.calls.length
+
+      act(() => {
+        dispatchCredentialsInvalid('session_expired')
+        dispatchCredentialsInvalid('session_expired')
+      })
+
+      expect(signInModalListener.mock.calls.length).toBe(callCountAfterFirst)
+
+      window.removeEventListener(showSignInModalEvent, signInModalListener)
+    })
+
+    it('re-dispatches showSignInModalEvent after signInSuccess resets the dedup ref', () => {
+      setAuthToken(authToken)
+      const signInModalListener = mock()
+      window.addEventListener(showSignInModalEvent, signInModalListener)
+
+      renderHook(() => usePowerSyncCredentialsInvalidListener(), {
+        wrapper: createTestProvider(),
+      })
+
+      act(() => {
+        dispatchCredentialsInvalid('session_expired')
+      })
+      const callCountAfterFirst = signInModalListener.mock.calls.length
+
+      act(() => {
+        window.dispatchEvent(new CustomEvent(signInSuccessEvent))
+      })
+      setAuthToken(authToken)
+      act(() => {
+        dispatchCredentialsInvalid('session_expired')
+      })
+
+      expect(signInModalListener.mock.calls.length).toBeGreaterThan(callCountAfterFirst)
+
+      window.removeEventListener(showSignInModalEvent, signInModalListener)
+    })
+
+    it('does not dispatch showSignInModalEvent when device_revoked has already fired', () => {
+      setAuthToken(authToken)
+      const signInModalListener = mock()
+      const revokedModalListener = mock()
+      window.addEventListener(showSignInModalEvent, signInModalListener)
+      window.addEventListener(showRevokedDeviceModalEvent, revokedModalListener)
+
+      renderHook(() => usePowerSyncCredentialsInvalidListener(), {
+        wrapper: createTestProvider(),
+      })
+
+      act(() => {
+        dispatchCredentialsInvalid('device_revoked')
+        dispatchCredentialsInvalid('session_expired')
+      })
+
+      expect(revokedModalListener).toHaveBeenCalled()
+      expect(signInModalListener).not.toHaveBeenCalled()
+
+      window.removeEventListener(showSignInModalEvent, signInModalListener)
+      window.removeEventListener(showRevokedDeviceModalEvent, revokedModalListener)
     })
   })
 

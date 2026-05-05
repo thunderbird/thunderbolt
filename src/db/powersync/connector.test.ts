@@ -63,11 +63,14 @@ describe('handleCredentialsInvalidIfNeeded', () => {
     )
   })
 
-  it('does not dispatch and returns false for 401', () => {
+  it('dispatches event with reason session_expired for 401', () => {
     const result = handleCredentialsInvalidIfNeeded(401, {})
 
-    expect(result).toBe(false)
-    expect(dispatchSpy).not.toHaveBeenCalled()
+    expect(result).toBe(true)
+    expect(dispatchSpy).toHaveBeenCalledTimes(1)
+    expect(dispatchSpy).toHaveBeenCalledWith(
+      expect.objectContaining({ type: powersyncCredentialsInvalid, detail: { reason: 'session_expired' } }),
+    )
   })
 
   it('does not dispatch and returns false for 403 without DEVICE_DISCONNECTED', () => {
@@ -182,7 +185,7 @@ describe('ThunderboltConnector', () => {
     )
   })
 
-  it('fetchCredentials returns null when backend returns 401 (no event)', async () => {
+  it('fetchCredentials returns null and dispatches session_expired when backend returns 401', async () => {
     setAuthToken(authToken)
     fetchMock.mockImplementation(() =>
       Promise.resolve(
@@ -197,7 +200,9 @@ describe('ThunderboltConnector', () => {
     const result = await connector.fetchCredentials()
 
     expect(result).toBeNull()
-    expect(dispatchSpy).not.toHaveBeenCalled()
+    expect(dispatchSpy).toHaveBeenCalledWith(
+      expect.objectContaining({ type: powersyncCredentialsInvalid, detail: { reason: 'session_expired' } }),
+    )
   })
 
   it('fetchCredentials returns null on network error', async () => {

@@ -26,7 +26,7 @@ services:
       DATABASE_URL: postgresql://postgres:postgres@postgres:5432/postgres
       # Discovery URL uses the internal Docker hostname — backchannel-dynamic lets this work
       # while Keycloak's metadata returns localhost:8180 URLs for the browser
-      OIDC_ISSUER: http://keycloak:8080/realms/thunderbolt
+      OIDC_ISSUER: http://localhost:8180/realms/thunderbolt
       OIDC_CLIENT_ID: thunderbolt-app
       OIDC_CLIENT_SECRET: thunderbolt-enterprise-secret
       BETTER_AUTH_URL: http://localhost:${FRONTEND_PORT:-3000}
@@ -46,7 +46,7 @@ services:
       keycloak:
         condition: service_healthy
     extra_hosts:
-      - "host.docker.internal:host-gateway"
+      - "localhost:host-gateway"
 
   postgres:
     image: postgres:17-alpine

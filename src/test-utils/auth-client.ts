@@ -19,6 +19,7 @@ type MockAuthClientOptions = {
   }) => Promise<{ error: { message: string; code?: string } | null }>
   sendVerificationOtp?: (options: { email: string; type: string }) => Promise<{ error: { message: string } | null }>
   signOut?: () => Promise<void>
+  getSession?: () => Promise<{ data: unknown; error: { message: string } | null }>
 }
 
 /**
@@ -32,6 +33,7 @@ export const createMockAuthClient = (options: MockAuthClientOptions = {}): AuthC
     signInEmailOtp = async () => ({ error: null }),
     sendVerificationOtp = async () => ({ error: null }),
     signOut = async () => {},
+    getSession = async () => ({ data: session, error: null }),
   } = options
 
   // Use unknown first to bypass strict type checking for test mocks
@@ -43,6 +45,7 @@ export const createMockAuthClient = (options: MockAuthClientOptions = {}): AuthC
       error: null,
       refetch: async () => ({ data: session, error: null }),
     }),
+    getSession,
     signIn: {
       emailOtp: signInEmailOtp,
     },

@@ -7,6 +7,12 @@ import { persist } from 'zustand/middleware'
 
 export type AppConfig = {
   e2eeEnabled?: boolean
+  /**
+   * Env-var names of well-known default credentials currently in use on
+   * the backend. Empty/absent when secure. Surfaced in DevTools as a loud
+   * `console.error` — values are never sent over the wire, only names.
+   */
+  securityWarnings?: string[]
 }
 
 type ConfigStore = {

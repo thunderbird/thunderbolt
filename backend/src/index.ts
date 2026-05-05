@@ -20,6 +20,7 @@ import { createUniversalProxyRoutes } from '@/proxy/routes'
 import { createPostHogRoutes } from '@/posthog/routes'
 import { createProToolsRoutes } from '@/pro/routes'
 import { createWaitlistRoutes } from '@/waitlist/routes'
+import { detectInsecureDefaultsForBackend, renderInsecureDefaultsBanner } from '@/config/insecure-defaults-warning'
 import { createAccountRoutes } from '@/api/account'
 import { createConfigRoutes } from '@/api/config'
 import { createEncryptionRoutes } from '@/api/encryption'
@@ -137,6 +138,19 @@ const startServer = async () => {
     },
     'Server configuration',
   )
+
+  // Loud, hard-to-miss banner if any well-known default credentials are
+  // active. Suppressed by DANGEROUSLY_ALLOW_DEFAULT_CREDS=true.
+  const insecureMatches = detectInsecureDefaultsForBackend()
+  if (insecureMatches.length > 0) {
+    process.stderr.write(renderInsecureDefaultsBanner(insecureMatches))
+    for (const m of insecureMatches) {
+      log.warn(
+        { event: 'INSECURE_DEFAULT_CREDENTIAL', key: m.envKey, description: m.description },
+        `Insecure default credential in use: ${m.envKey}`,
+      )
+    }
+  }
 
   try {
     // Run PGLite migrations before creating the app (no-op for Postgres)

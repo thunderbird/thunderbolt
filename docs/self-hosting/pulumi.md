@@ -2,6 +2,8 @@
 
 The Pulumi project at `deploy/pulumi/` provisions the full Thunderbolt stack on AWS. One config key (`platform`) chooses between ECS Fargate and EKS; both paths share the same VPC, ECR repositories, and secrets.
 
+> 🚨 If you `pulumi up` without overriding the secret config keys, the stack deploys with **public default values** baked into AWS Secrets Manager. The deploy still succeeds (with a yellow warning per default detected), but anyone who finds the deployment can read the same credentials in this repository. See [Default Credentials](../../deploy/README.md#default-credentials) for the full list of `pulumi config set --secret` commands you should run before your first `pulumi up`. After the deploy, `pulumi stack output securityWarnings` should be `[]` — anything else means a credential is still on its default.
+
 ## Platforms
 
 | `platform` value | What it creates                                                | Best for                                          |

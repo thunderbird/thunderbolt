@@ -2,6 +2,8 @@
 
 The Docker Compose stack is the fastest path to a working Thunderbolt install. It's well suited to demos, evaluations, and single-host internal tools.
 
+> 🚨 The compose file ships with **public default values** for `BETTER_AUTH_SECRET`, `OIDC_CLIENT_SECRET`, `POWERSYNC_JWT_SECRET`, the Postgres and PowerSync DB passwords, and the Keycloak admin password. `docker compose up` works without overriding them, but the backend, the browser DevTools console, and the frontend container will all warn until you do. See [Default Credentials](../../deploy/README.md#default-credentials) for the override recipe (a one-liner that puts random values into `deploy/.env`).
+
 ## Prerequisites
 
 - Docker 24+ with the Compose plugin (`docker compose version` must succeed)

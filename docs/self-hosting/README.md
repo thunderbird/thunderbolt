@@ -2,6 +2,8 @@
 
 > ⚠️ Thunderbolt is currently undergoing a security audit and preparing for enterprise production readiness. The paths below are provided for evaluation and early testing — **not for production use yet**.
 
+> 🚨 **Read [Default Credentials](../../deploy/README.md#default-credentials) before deploying.** Every path here ships with public, well-known default values for database passwords, OIDC client secrets, JWT signing keys, and the Keycloak admin password. The stack will deploy and run with them — and warn loudly across multiple surfaces (Pulumi log, backend stderr, browser DevTools, frontend container logs) — but the only fix is to rotate them. The override commands per platform are in that section.
+
 Every self-hosted target uses the same stack: Elysia backend, Vite frontend, PostgreSQL, PowerSync, Keycloak (OIDC/SAML), and MongoDB (PowerSync's operational store). What changes is the orchestration layer.
 
 ## Which Option Should I Pick?
@@ -27,7 +29,7 @@ All three paths deploy the same opinionated enterprise configuration:
 | Frontend build args           | `VITE_AUTH_MODE=sso`, `VITE_THUNDERBOLT_CLOUD_URL=/v1`    |
 | Waitlist                      | Disabled                                                  |
 
-You're expected to replace the demo user, reconfigure the Keycloak client, and rotate all default credentials before anyone touches it.
+You're expected to replace the demo user, reconfigure the Keycloak client, and rotate all default credentials before anyone touches it. The full table of public-default values + per-platform override commands is in [`deploy/README.md`](../../deploy/README.md#default-credentials), and is the canonical source — every warning surface (Pulumi, backend, DevTools, container entrypoint) reads from the same machine-readable list at [`shared/insecure-defaults.ts`](../../shared/insecure-defaults.ts).
 
 ## What You'll Need
 

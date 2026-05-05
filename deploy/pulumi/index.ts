@@ -97,6 +97,92 @@ const secrets = {
 // Thunderbolt inference gateway URL (not a secret; set per-stack)
 const thunderboltInferenceUrl = config.get('thunderboltInferenceUrl') ?? ''
 
+// --- Insecure-default credentials warning ---------------------------------
+//
+// Detect any credentials still set to their public, well-known sentinel
+// values and emit a *very* loud warning at deploy time. Resources are still
+// created — the goal is awareness, not blocking — but the warning prints in
+// yellow during `pulumi preview` and `pulumi up`, and surfaces as a stack
+// output (`securityWarnings`) for post-deploy auditing / CI assertions.
+//
+// Suppress (e.g. for short-lived eval stacks) with:
+//   pulumi config set dangerouslyAllowDefaultCreds true
+//
+// Inline list rather than imported from shared/insecure-defaults.ts because
+// pulling files from outside this directory pushes TypeScript's common
+// source root above the project (TS5011) when ts-node compiles index.ts
+// during `pulumi up`. Keep this in sync with shared/insecure-defaults.ts —
+// the shared module is the canonical source for backend + frontend, this
+// is the deploy-time mirror.
+const INSECURE_DEFAULTS_DOCS_URL =
+  'https://github.com/thunderbird/thunderbolt/blob/main/deploy/README.md#default-credentials'
+const INSECURE_DEFAULTS = [
+  { pulumiKey: 'postgresPassword', description: 'PostgreSQL admin password' },
+  { pulumiKey: 'keycloakAdminPassword', description: 'Keycloak admin console password' },
+  { pulumiKey: 'oidcClientSecret', description: 'OIDC client secret' },
+  { pulumiKey: 'powersyncJwtSecret', description: 'PowerSync JWT signing secret' },
+  { pulumiKey: 'betterAuthSecret', description: 'Better Auth session signing secret' },
+  { pulumiKey: 'powersyncDbPassword', description: 'PowerSync database role password' },
+] as const
+
+const dangerouslyAllowDefaultCreds = (config.get('dangerouslyAllowDefaultCreds') ?? '').toLowerCase() === 'true'
+const dangerouslyAllowDefaultCredsViaEnv = process.env.DANGEROUSLY_ALLOW_DEFAULT_CREDS?.toLowerCase() === 'true'
+const insecureDefaultsHushed = dangerouslyAllowDefaultCreds || dangerouslyAllowDefaultCredsViaEnv
+
+const insecureDefaultMatches = insecureDefaultsHushed
+  ? []
+  : INSECURE_DEFAULTS.filter((entry) => {
+      const configured = config.getSecret(entry.pulumiKey)
+      // No config value → fallback in `secrets` above is the sentinel → match.
+      // A config value exists but equals the sentinel → also a match.
+      // We can't synchronously read a Pulumi.Output here, so fall back to the
+      // simpler check: if `config.getSecret` returned undefined, the fallback
+      // (the sentinel) is in use.
+      return configured === undefined
+    })
+
+if (insecureDefaultMatches.length > 0) {
+  pulumi.log.warn(
+    `\n` +
+      `╔════════════════════════════════════════════════════════════════════════════╗\n` +
+      `║  🚨🚨🚨   INSECURE DEFAULT CREDENTIALS IN USE   🚨🚨🚨                      ║\n` +
+      `╠════════════════════════════════════════════════════════════════════════════╣\n` +
+      `║                                                                            ║\n` +
+      `║  This stack has not overridden the following secrets, so the public        ║\n` +
+      `║  default values from deploy/ will be deployed into your AWS account:       ║\n` +
+      `║                                                                            ║\n` +
+      insecureDefaultMatches
+        .map((m) => {
+          const line = `║    • ${m.pulumiKey}  —  ${m.description}`
+          return line + ' '.repeat(Math.max(0, 78 - line.length)) + '║'
+        })
+        .join('\n') +
+      `\n║                                                                            ║\n` +
+      `║  These values are PUBLIC. Anyone who finds this deploy can read them.      ║\n` +
+      `║                                                                            ║\n` +
+      `║  Override each with:                                                       ║\n` +
+      `║    pulumi config set --secret <key> <value> -s ${stackName}` +
+      ' '.repeat(Math.max(0, 78 - (`    pulumi config set --secret <key> <value> -s ${stackName}`.length + 4))) +
+      `    ║\n` +
+      `║                                                                            ║\n` +
+      `║  Docs:                                                                     ║\n` +
+      `║    ${INSECURE_DEFAULTS_DOCS_URL}` +
+      ' '.repeat(Math.max(0, 78 - (`    ${INSECURE_DEFAULTS_DOCS_URL}`.length + 4))) +
+      `    ║\n` +
+      `║                                                                            ║\n` +
+      `║  Suppress this warning (DO NOT do this in production):                     ║\n` +
+      `║    pulumi config set dangerouslyAllowDefaultCreds true                     ║\n` +
+      `║                                                                            ║\n` +
+      `╚════════════════════════════════════════════════════════════════════════════╝\n`,
+  )
+  for (const m of insecureDefaultMatches) {
+    pulumi.log.warn(`Insecure default in use: ${m.pulumiKey} (${m.description})`)
+  }
+}
+
+// Surface as stack output for post-deploy audit / CI assertion.
+export const securityWarnings = insecureDefaultMatches.map((m) => m.pulumiKey)
+
 // Shared: VPC (both platforms need this)
 const { vpc, publicSubnets, privateSubnets, albSg, servicesSg } = createVpc(name)
 

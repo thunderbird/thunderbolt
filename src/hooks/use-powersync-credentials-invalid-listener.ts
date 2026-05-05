@@ -4,6 +4,7 @@
 
 import { useDatabase } from '@/contexts'
 import { getDevice } from '@/dal'
+import { setSyncEnabled } from '@/db/powersync'
 import { powersyncCredentialsInvalid } from '@/db/powersync/connector'
 import type { CredentialsInvalidReason } from '@/db/powersync/connector'
 import { showRevokedDeviceModalEvent, showSignInModalEvent, signInSuccessEvent } from '@/hooks/use-credential-events'
@@ -78,8 +79,10 @@ export const usePowerSyncCredentialsInvalidListener = (): void => {
           return
         }
         hasDispatchedSignInModalRef.current = true
-        // Clear the dead token so PowerSync stops looping; preserve DB, encryption keys, and device id.
+        // Clear the dead token and stop sync so PowerSync stops looping on 401s; preserve DB,
+        // encryption keys, and device id. Sign-in success re-enables sync (sign-in-modal-context).
         clearAuthToken()
+        void setSyncEnabled(false)
         window.dispatchEvent(new CustomEvent(showSignInModalEvent))
         return
       }

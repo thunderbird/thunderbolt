@@ -178,7 +178,6 @@
     "vitest": "^4.1.4"
   },
   "overrides": {
-    "//": "Force semver >= 7 at top-level so storybook can resolve semver/functions/sort.js. Without this, bun hoists semver@6 (pulled by babel/eslint-plugin-react) and storybook breaks at vite config load.",
     "semver": "^7.7.3"
   }
 }

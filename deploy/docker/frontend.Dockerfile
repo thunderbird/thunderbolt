@@ -28,7 +28,19 @@ RUN bunx vite build && \
 # Stage 2: Serve with nginx
 FROM nginx:alpine
 
-COPY deploy/config/nginx.conf /etc/nginx/conf.d/default.conf
+# Backend upstream — resolved at container start via the official nginx
+# image's `envsubst` entrypoint over /etc/nginx/templates/*.template.
+# Override at runtime (e.g. k8s) by setting THUNDERBOLT_BACKEND_HOST /
+# THUNDERBOLT_BACKEND_PORT.
+#
+# Namespaced with `THUNDERBOLT_` to dodge Kubernetes' auto-injected
+# `<SERVICE>_PORT` env vars: a Service named `backend` injects
+# `BACKEND_PORT=tcp://10.x.y.z:8000` into every pod, which would override
+# any `BACKEND_PORT=8000` default we set here and break envsubst.
+ENV THUNDERBOLT_BACKEND_HOST=backend
+ENV THUNDERBOLT_BACKEND_PORT=8000
+
+COPY deploy/config/nginx.conf.template /etc/nginx/templates/default.conf.template
 COPY deploy/config/security-headers.conf /etc/nginx/snippets/security-headers.conf
 COPY --from=build /app/dist /usr/share/nginx/html
 

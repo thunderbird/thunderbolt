@@ -22,6 +22,15 @@ const fetchBackendConfig = (httpClient: HttpClient): Promise<AuthProviderBackend
 
 export const getOAuthConfig = async (httpClient: HttpClient): Promise<OAuthConfig> => {
   const { client_id: clientId } = await fetchBackendConfig(httpClient)
+
+  if (!clientId) {
+    // Reset cache so configuration can be picked up after backend env changes.
+    cachedBackendConfig = null
+    throw new Error(
+      'Microsoft sync is not configured on this server. Set MICROSOFT_CLIENT_ID and MICROSOFT_CLIENT_SECRET.',
+    )
+  }
+
   const redirectUri = getOAuthRedirectUri()
 
   return {

@@ -7,7 +7,7 @@ name: Preview Cleanup
 #   - PRs force-closed outside the normal flow (e.g. repo transfer, API delete)
 #   - Long-forgotten open PRs whose authors went on vacation
 #
-# Add the `persist` label to a PR to opt its preview stack out of cleanup.
+# Add the `preview:persist` label to a PR to opt its preview stack out of cleanup.
 # Useful for long-lived demo/QA stacks tied to a specific PR.
 #
 # `workflow_dispatch` supports a `dry_run` input for operators to preview what
@@ -104,13 +104,13 @@ jobs:
 
             STATE=$(jq -r '.state' <<< "$PR_JSON")
             UPDATED=$(jq -r '.updated_at' <<< "$PR_JSON")
-            HAS_PERSIST=$(jq -r '.labels // [] | map(.name) | index("persist") // empty' <<< "$PR_JSON")
+            HAS_PERSIST=$(jq -r '.labels // [] | map(.name) | index("preview:persist") // empty' <<< "$PR_JSON")
 
-            # Persist label — opt-out of cleanup regardless of state/staleness.
-            # Useful for demo/QA stacks tied to a specific PR that the team
-            # wants kept alive past the normal teardown window.
+            # `preview:persist` label — opt-out of cleanup regardless of
+            # state/staleness. Useful for demo/QA stacks tied to a specific PR
+            # that the team wants kept alive past the normal teardown window.
             if [ -n "$HAS_PERSIST" ]; then
-              echo "  PR #${PR_NUM} has 'persist' label → keep"
+              echo "  PR #${PR_NUM} has 'preview:persist' label → keep"
               continue
             fi
 

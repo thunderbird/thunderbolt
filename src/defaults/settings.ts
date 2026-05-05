@@ -28,7 +28,7 @@ export const hashSetting = (setting: Setting): string => {
 
 export const defaultSettingDataCollection: Setting = {
   key: 'data_collection',
-  value: 'true',
+  value: 'false',
   updatedAt: null,
   defaultHash: null,
   userId: null,

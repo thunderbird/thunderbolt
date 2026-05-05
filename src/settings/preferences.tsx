@@ -122,7 +122,7 @@ export default function PreferencesSettingsPage() {
     location_name: '',
     location_lat: '',
     location_lng: '',
-    data_collection: true,
+    data_collection: false,
     experimental_feature_tasks: false,
     haptics_enabled: true,
     distance_unit: 'imperial',

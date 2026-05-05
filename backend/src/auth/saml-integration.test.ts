@@ -74,6 +74,7 @@ const baseSettings: Settings = {
   oidcClientId: '',
   oidcClientSecret: '',
   oidcIssuer: '',
+  oidcDiscoveryUrl: '',
   betterAuthUrl: 'http://localhost:8000',
   betterAuthSecret: 'test-secret-at-least-32-chars-long!!',
   rateLimitEnabled: false,

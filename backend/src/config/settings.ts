@@ -64,11 +64,13 @@ const settingsSchema = z
     corsAllowHeaders: z
       .string()
       .default(
-        'Content-Type,Authorization,Accept,Accept-Encoding,Accept-Language,Cache-Control,User-Agent,X-Requested-With,X-Client-Platform,X-Device-ID,X-Device-Name,X-Challenge-Token,X-Mcp-Target-Url,Mcp-Authorization,Mcp-Session-Id,Mcp-Protocol-Version',
+        'Content-Type,Authorization,Accept,Accept-Encoding,Accept-Language,Cache-Control,User-Agent,X-Requested-With,X-Client-Platform,X-Device-ID,X-Device-Name,X-Challenge-Token,X-Proxy-Target-Url,X-Proxy-Follow-Redirects,X-Proxy-Passthrough-Content-Type,X-Proxy-Passthrough-Authorization,X-Proxy-Passthrough-Accept,X-Proxy-Passthrough-Cache-Control,X-Proxy-Passthrough-Mcp-Session-Id,X-Proxy-Passthrough-Mcp-Protocol-Version,X-Proxy-Passthrough-Anthropic-Version,X-Proxy-Passthrough-Anthropic-Beta,X-Proxy-Passthrough-Openai-Beta',
       ),
     corsExposeHeaders: z
       .string()
-      .default('mcp-session-id,set-auth-token,ratelimit-limit,ratelimit-remaining,ratelimit-reset,retry-after'),
+      .default(
+        'set-auth-token,ratelimit-limit,ratelimit-remaining,ratelimit-reset,retry-after,X-Proxy-Final-Url,X-Proxy-Passthrough-Content-Type,X-Proxy-Passthrough-Mcp-Session-Id,X-Proxy-Passthrough-Mcp-Protocol-Version,X-Proxy-Passthrough-Location,X-Proxy-Passthrough-Anthropic-Version',
+      ),
 
     // E2E encryption — when true, devices must complete the trust flow before syncing
     e2eeEnabled: z.boolean().default(false),
@@ -141,10 +143,10 @@ const parseSettings = (): Settings => {
     corsAllowMethods: process.env.CORS_ALLOW_METHODS || 'GET,POST,PUT,DELETE,PATCH,OPTIONS',
     corsAllowHeaders:
       process.env.CORS_ALLOW_HEADERS ||
-      'Content-Type,Authorization,Accept,Accept-Encoding,Accept-Language,Cache-Control,User-Agent,X-Requested-With,X-Client-Platform,X-Device-ID,X-Device-Name,X-Challenge-Token,X-Mcp-Target-Url,Mcp-Authorization,Mcp-Session-Id,Mcp-Protocol-Version',
+      'Content-Type,Authorization,Accept,Accept-Encoding,Accept-Language,Cache-Control,User-Agent,X-Requested-With,X-Client-Platform,X-Device-ID,X-Device-Name,X-Challenge-Token,X-Proxy-Target-Url,X-Proxy-Follow-Redirects,X-Proxy-Passthrough-Content-Type,X-Proxy-Passthrough-Authorization,X-Proxy-Passthrough-Accept,X-Proxy-Passthrough-Cache-Control,X-Proxy-Passthrough-Mcp-Session-Id,X-Proxy-Passthrough-Mcp-Protocol-Version,X-Proxy-Passthrough-Anthropic-Version,X-Proxy-Passthrough-Anthropic-Beta,X-Proxy-Passthrough-Openai-Beta',
     corsExposeHeaders:
       process.env.CORS_EXPOSE_HEADERS ||
-      'mcp-session-id,set-auth-token,ratelimit-limit,ratelimit-remaining,ratelimit-reset,retry-after',
+      'set-auth-token,ratelimit-limit,ratelimit-remaining,ratelimit-reset,retry-after,X-Proxy-Final-Url,X-Proxy-Passthrough-Content-Type,X-Proxy-Passthrough-Mcp-Session-Id,X-Proxy-Passthrough-Mcp-Protocol-Version,X-Proxy-Passthrough-Location,X-Proxy-Passthrough-Anthropic-Version',
     e2eeEnabled: process.env.E2EE_ENABLED === 'true',
     swaggerEnabled: process.env.SWAGGER_ENABLED === 'true',
     rateLimitEnabled: process.env.RATE_LIMIT_ENABLED !== 'false',

@@ -53,17 +53,14 @@ describe('SourceCard', () => {
       expect(img).toHaveAttribute('src', 'https://example.com/favicon.ico')
     })
 
-    it('should use proxied favicon URL when proxyBase is provided', () => {
+    it('loads favicons directly from upstream (proxy is not in the path)', () => {
       const sourceWithoutFavicon = { ...mockSource, favicon: undefined }
-      renderWithProvider(<SourceCard source={sourceWithoutFavicon} proxyBase="http://localhost:8000/v1" />)
+      renderWithProvider(<SourceCard source={sourceWithoutFavicon} />)
 
       const container = screen.getByRole('listitem')
       const img = container.querySelector('img')
       expect(img).toBeInTheDocument()
-      expect(img).toHaveAttribute(
-        'src',
-        'http://localhost:8000/v1/pro/proxy/' + encodeURIComponent('https://example.com/favicon.ico'),
-      )
+      expect(img).toHaveAttribute('src', 'https://example.com/favicon.ico')
     })
 
     it('should show initial badge when favicon fails to load', () => {

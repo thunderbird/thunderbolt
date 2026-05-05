@@ -15,8 +15,12 @@ import { createInferenceRoutes } from '@/inference/routes'
 import { createErrorHandlingMiddleware } from '@/middleware/error-handling'
 import { createHttpLoggingMiddleware } from '@/middleware/http-logging'
 import { createAuthIpRateLimit, createInferenceRateLimit, createProRateLimit } from '@/middleware/rate-limit'
-import { createMcpProxyRoutes } from '@/mcp-proxy/routes'
 import { createUniversalProxyRoutes } from '@/proxy/routes'
+import { createUniversalProxyWsRoutes } from '@/proxy/ws'
+import { createObservabilityRecorder } from '@/proxy/observability'
+import { getPostHogClient, isPostHogConfigured } from '@/posthog/client'
+import { createSearchRoutes } from '@/api/search'
+import { createPreviewRoutes } from '@/api/preview'
 import { createPostHogRoutes } from '@/posthog/routes'
 import { createProToolsRoutes } from '@/pro/routes'
 import { createWaitlistRoutes } from '@/waitlist/routes'
@@ -76,6 +80,14 @@ export const createApp = async (deps?: AppDeps) => {
   )
   const auth = deps?.auth ?? createdAuth
 
+  // Build the production observability recorder unless tests injected their own.
+  const proxyObservability =
+    deps?.proxyObservability ??
+    createObservabilityRecorder({
+      logger: createStandaloneLogger(settings),
+      posthog: isPostHogConfigured() ? getPostHogClient() : null,
+    })
+
   return (
     configuredApp
       .use(
@@ -99,11 +111,21 @@ export const createApp = async (deps?: AppDeps) => {
       .use(createOidcConfigRoutes())
       .use(createSsoDesktopCallbackRoutes(settings))
       .use(createProToolsRoutes(auth, fetchFn, createProRateLimit(database, rateLimitSettings)))
-      .use(createUniversalProxyRoutes(auth, fetchFn, createProRateLimit(database, rateLimitSettings)))
+      .use(
+        createUniversalProxyRoutes(auth, fetchFn, createProRateLimit(database, rateLimitSettings), proxyObservability),
+      )
+      .use(
+        createUniversalProxyWsRoutes(auth, {
+          rateLimit: createProRateLimit(database, rateLimitSettings),
+          wsFactory: deps?.upstreamWsFactory,
+          observability: proxyObservability,
+        }),
+      )
+      .use(createSearchRoutes(auth, createProRateLimit(database, rateLimitSettings)))
+      .use(createPreviewRoutes(auth, fetchFn, createProRateLimit(database, rateLimitSettings)))
       .use(createInferenceRoutes(auth, createInferenceRateLimit(database, rateLimitSettings)))
       .use(createConfigRoutes(settings))
       .use(createPostHogRoutes(fetchFn))
-      .use(createMcpProxyRoutes(auth, fetchFn))
       .use(
         createWaitlistRoutes({
           database,

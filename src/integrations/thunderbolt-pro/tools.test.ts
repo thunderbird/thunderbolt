@@ -89,40 +89,20 @@ describe('Thunderbolt Pro Tools', () => {
       }
 
       const mockResponse = {
-        data: [
+        results: [
           {
-            url: 'https://example.com/ai',
             title: 'AI Article',
-            favicon: 'https://example.com/favicon.ico',
-            image: 'https://example.com/image.jpg',
-            author: 'John Doe',
-            publishedDate: '2024-01-01',
-            id: '1',
+            pageUrl: 'https://example.com/ai',
+            faviconUrl: 'https://example.com/favicon.ico',
+            previewImageUrl: 'https://example.com/image.jpg',
           },
         ],
-        success: true,
       }
 
       const httpClient = createMockHttpClient(mockResponse)
       const result = await search(params, httpClient)
 
-      expect(result).toEqual(mockResponse.data)
-    })
-
-    it('should handle search failure', async () => {
-      const params: SearchParams = {
-        query: 'test query',
-        max_results: 10,
-      }
-
-      const mockResponse = {
-        data: null,
-        success: false,
-        error: 'Search service unavailable',
-      }
-
-      const httpClient = createMockHttpClient(mockResponse)
-      await expect(search(params, httpClient)).rejects.toThrow('Search service unavailable')
+      expect(result).toEqual(mockResponse.results)
     })
 
     it('should handle network errors', async () => {
@@ -337,24 +317,16 @@ describe('createConfigs source collector', () => {
 
   const mockSearchResults: SearchResultData[] = [
     {
-      id: 'r1',
-      url: 'https://a.com/article',
       title: 'Article A',
-      summary: 'Summary A',
-      favicon: 'https://a.com/favicon.ico',
-      image: 'https://a.com/image.jpg',
-      author: 'Author A',
-      publishedDate: '2024-01-01',
+      pageUrl: 'https://a.com/article',
+      faviconUrl: 'https://a.com/favicon.ico',
+      previewImageUrl: 'https://a.com/image.jpg',
     },
     {
-      id: 'r2',
-      url: 'https://b.com/article',
       title: 'Article B',
-      summary: 'Summary B',
-      favicon: null,
-      image: null,
-      author: null,
-      publishedDate: null,
+      pageUrl: 'https://b.com/article',
+      faviconUrl: null,
+      previewImageUrl: null,
     },
   ]
 
@@ -413,13 +385,10 @@ describe('createConfigs source collector', () => {
 
   it('caps source registry at 200 entries', async () => {
     const bulkResults: SearchResultData[] = Array.from({ length: 10 }, (_, i) => ({
-      id: `bulk-${i}`,
-      url: `https://site-${i}.com`,
       title: `Site ${i}`,
-      favicon: null,
-      image: null,
-      author: null,
-      publishedDate: null,
+      pageUrl: `https://site-${i}.com`,
+      faviconUrl: null,
+      previewImageUrl: null,
     }))
     searchSpy.mockResolvedValue(bulkResults)
 

@@ -83,7 +83,7 @@ describe('LinkPreviewWidget', () => {
       expect(getByText('Third')).toBeTruthy()
     })
 
-    it('proxies image URL through cloud proxy', () => {
+    it('loads preview image directly from upstream (no proxy in the path)', () => {
       const sources = [makeSource({ image: 'https://example.com/photo.jpg' })]
 
       const { container } = renderWithProviders(
@@ -91,8 +91,7 @@ describe('LinkPreviewWidget', () => {
       )
 
       const img = container.querySelector('img')
-      expect(img?.getAttribute('src')).toContain('/pro/link-preview/proxy-image/')
-      expect(img?.getAttribute('src')).toContain(encodeURIComponent('https://example.com/photo.jpg'))
+      expect(img?.getAttribute('src')).toBe('https://example.com/photo.jpg')
     })
 
     it('renders without image when source has no image', () => {

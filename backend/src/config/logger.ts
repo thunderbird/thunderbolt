@@ -25,16 +25,55 @@ const getLogLevel = (level: Settings['logLevel']): 'debug' | 'info' | 'warn' | '
 }
 
 /**
+ * Pino redact paths covering the universal proxy's PII surface area.
+ * Caller-controlled URLs, bodies, and credentials must never reach a log line.
+ */
+const proxyRedactPaths = [
+  'req.headers.authorization',
+  'req.headers.cookie',
+  'req.headers["x-proxy-target-url"]',
+  'res.headers["set-cookie"]',
+  'targetUrl',
+  'target_url',
+  'body',
+  'requestBody',
+  'responseBody',
+]
+
+/** Drop any X-Proxy-Passthrough-* header before logging — Pino redact can't
+ *  pattern-match keys, so we strip via a serialiser. */
+const dropPassthroughHeaders = (headers: Record<string, unknown> | undefined) => {
+  if (!headers) return headers
+  const out: Record<string, unknown> = {}
+  for (const [k, v] of Object.entries(headers)) {
+    if (/^x-proxy-passthrough-/i.test(k)) continue
+    out[k] = v
+  }
+  return out
+}
+
+/**
  * Create a Pino logger instance
  */
 const createPinoLogger = (settings: Settings): Logger => {
   const isDevelopment = process.env.NODE_ENV !== 'production'
   const level = getLogLevel(settings.logLevel)
 
+  const baseOptions = {
+    level,
+    redact: { paths: proxyRedactPaths, censor: '[REDACTED]' },
+    serializers: {
+      req: (req: { headers?: Record<string, unknown>; [k: string]: unknown }) => ({
+        ...req,
+        headers: dropPassthroughHeaders(req.headers),
+      }),
+    },
+  }
+
   if (isDevelopment) {
     // Development: Pretty printed logs with colors
     return pino({
-      level,
+      ...baseOptions,
       transport: {
         target: 'pino-pretty',
         options: {
@@ -47,9 +86,7 @@ const createPinoLogger = (settings: Settings): Logger => {
   }
 
   // Production: JSON structured logs
-  return pino({
-    level,
-  })
+  return pino(baseOptions)
 }
 
 /**
@@ -67,4 +104,16 @@ const createStandaloneLogger = (settings: Settings): Logger => {
   return createPinoLogger(settings)
 }
 
-export { createLoggerMiddleware, createPinoLogger, createStandaloneLogger }
+let standaloneLogger: Logger | null = null
+
+/** Lazy singleton accessor for code that runs outside request middleware. */
+const getStandaloneLogger = (): Logger => {
+  if (!standaloneLogger) {
+    // Lazy import settings to avoid circular init at module top.
+    const { getSettings } = require('./settings')
+    standaloneLogger = createPinoLogger(getSettings())
+  }
+  return standaloneLogger
+}
+
+export { createLoggerMiddleware, createPinoLogger, createStandaloneLogger, getStandaloneLogger }

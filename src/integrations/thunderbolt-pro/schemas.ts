@@ -70,20 +70,16 @@ export type WeatherParams = z.infer<typeof weatherSchema>
 export type SearchLocationParams = z.infer<typeof searchLocationSchema>
 
 /**
- * Data type for search results
+ * Data type for search results returned by the universal search API. Shape
+ * matches `GET /v1/search` — only the four fields that the app actually
+ * renders, all HTTPS-only.
  */
 export type SearchResultData = {
-  url: string
-  title: string | null
-  summary?: string
-  highlights?: string[]
-  highlightScores?: number[]
-  favicon: string | null
-  image: string | null
-  author: string | null
-  publishedDate: string | null
-  score?: number
-  id: string
+  title: string
+  pageUrl: string
+  faviconUrl: string | null
+  previewImageUrl: string | null
+  /** Optional source index assigned client-side when results are merged into a chat. */
   sourceIndex?: number
 }
 
@@ -107,11 +103,13 @@ export type FetchContentData = {
 } | null
 
 /**
- * Data type for link preview metadata
+ * Data type for link preview metadata returned by GET /v1/preview.
+ * Field names match the universal API exactly so the widget can consume them
+ * without a translation layer.
  */
 export type LinkPreviewData = {
+  previewImageUrl: string | null
+  summary: string | null
   title: string | null
-  description: string | null
-  image: string | null
   siteName: string | null
 }

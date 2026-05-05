@@ -7,7 +7,7 @@ import { memoize } from '@/lib/memoize'
 import { safeErrorHandler } from '@/middleware/error-handling'
 import { Elysia, t } from 'elysia'
 import { Exa } from 'exa-js'
-import type { FetchContentResponse, SearchResponse } from './types'
+import type { FetchContentResponse } from './types'
 
 const getExaClient = memoize(() => {
   const settings = getSettings()
@@ -26,32 +26,6 @@ const getExaClient = memoize(() => {
 export const exaPlugin = new Elysia({ name: 'exa' })
   .onError(safeErrorHandler)
   .state('exaClient', getExaClient())
-  .post(
-    '/search',
-    async ({ body, store }): Promise<SearchResponse> => {
-      if (!store.exaClient) {
-        throw new Error('Search service is not configured.')
-      }
-
-      const response = await store.exaClient.search(body.query, {
-        numResults: body.max_results,
-        useAutoprompt: true,
-        type: 'fast',
-      })
-
-      return {
-        data: response.results,
-        success: true,
-      }
-    },
-    {
-      body: t.Object({
-        query: t.String(),
-        max_results: t.Optional(t.Number({ default: 10 })),
-      }),
-    },
-  )
-
   .post(
     '/fetch-content',
     async ({ body, store }): Promise<FetchContentResponse> => {

@@ -20,24 +20,17 @@ import type {
 const requestTimeout = 10000
 
 /**
- * Search the web and return structured results with summaries and highlights
+ * Search the web via the universal /v1/search endpoint.
  */
 export const search = async (params: SearchParams, httpClient: HttpClient): Promise<SearchResultData[]> => {
   try {
     const response = await httpClient
-      .post('pro/search', {
+      .get('search', {
         timeout: requestTimeout,
-        json: {
-          query: params.query,
-          max_results: params.max_results || 10,
-        },
+        searchParams: { q: params.query, limit: params.max_results || 10 },
       })
-      .json<{ data: SearchResultData[]; success: boolean; error?: string }>()
-    if (!response.success) {
-      throw new Error(response.error || 'Search failed')
-    }
-
-    return response.data
+      .json<{ results: SearchResultData[] }>()
+    return response.results
   } catch (error) {
     console.error('Search error:', error)
     throw new Error(`Search failed: ${error instanceof Error ? error.message : 'Unknown error'}`, { cause: error })
@@ -73,20 +66,13 @@ export const fetchContent = async (params: FetchContentParams, httpClient: HttpC
 }
 
 /**
- * Fetch link preview metadata (title, description, image) from a URL
+ * Fetch link preview metadata via the universal /v1/preview endpoint.
  */
 export const fetchLinkPreview = async (params: LinkPreviewParams, httpClient: HttpClient): Promise<LinkPreviewData> => {
   try {
-    const response = await httpClient
-      .get(`pro/link-preview/${encodeURIComponent(params.url)}`, {
-        timeout: requestTimeout,
-      })
-      .json<{ data: LinkPreviewData | null; success: boolean; error?: string }>()
-
-    if (!response.success || !response.data) {
-      throw new Error(response.error || 'Link preview failed')
-    }
-    return response.data
+    return await httpClient
+      .get('preview', { timeout: requestTimeout, searchParams: { url: params.url } })
+      .json<LinkPreviewData>()
   } catch (error) {
     console.error('Link preview error:', error)
     throw new Error(error instanceof Error ? error.message : 'Unknown error', { cause: error })

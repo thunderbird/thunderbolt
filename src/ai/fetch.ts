@@ -17,6 +17,7 @@ import { getDb } from '@/db/database'
 import { isSsoMode } from '@/lib/auth-mode'
 import { getAuthToken } from '@/lib/auth-token'
 import { fetch as baseFetch } from '@/lib/fetch'
+import { createProxyFetch } from '@/lib/proxy-fetch'
 import { createToolset, getAvailableTools } from '@/lib/tools'
 import type { Model, SaveMessagesFunction, ThunderboltUIMessage } from '@/types'
 import type { SourceMetadata } from '@/types/source'
@@ -110,16 +111,17 @@ export const createModel = async (modelConfig: Model) => {
       return provider(modelConfig.model)
     }
     case 'anthropic': {
+      // Route Anthropic through the universal proxy. Hosted mode (web) sends
+      // the request to /v1/proxy with Authorization rewritten to
+      // X-Proxy-Passthrough-Authorization; Standalone mode (Tauri) hits
+      // Anthropic directly via the Rust HTTP plugin. Either way, the user's
+      // Anthropic key never goes through Thunderbolt's session auth path.
+      const db = getDb()
+      const { cloudUrl } = await getSettings(db, { cloud_url: 'http://localhost:8000/v1' })
+      const proxyFetch = createProxyFetch({ cloudUrl })
       const anthropic = createAnthropic({
         apiKey: modelConfig.apiKey || '',
-        fetch,
-        headers: {
-          // When a user adds their own Anthropic API key, calls go directly from the
-          // browser to Anthropic's API (not through our backend). Anthropic blocks
-          // browser-origin requests by default to prevent accidental key exposure.
-          // This header opts in, acknowledging the risk.
-          'anthropic-dangerous-direct-browser-access': 'true',
-        },
+        fetch: proxyFetch,
       })
       return anthropic(modelConfig.model)
     }
@@ -127,9 +129,12 @@ export const createModel = async (modelConfig: Model) => {
       if (!modelConfig.apiKey) {
         throw new Error('No API key provided')
       }
+      const db = getDb()
+      const { cloudUrl } = await getSettings(db, { cloud_url: 'http://localhost:8000/v1' })
+      const proxyFetch = createProxyFetch({ cloudUrl })
       const openai = createOpenAI({
         apiKey: modelConfig.apiKey,
-        fetch,
+        fetch: proxyFetch,
       })
       return openai(modelConfig.model)
     }
@@ -137,11 +142,14 @@ export const createModel = async (modelConfig: Model) => {
       if (!modelConfig.url) {
         throw new Error('No URL provided for custom provider')
       }
+      const db = getDb()
+      const { cloudUrl } = await getSettings(db, { cloud_url: 'http://localhost:8000/v1' })
+      const proxyFetch = createProxyFetch({ cloudUrl })
       const openaiCompatible = createOpenAICompatible({
         name: 'custom',
         baseURL: modelConfig.url,
         apiKey: modelConfig.apiKey || undefined,
-        fetch,
+        fetch: proxyFetch,
       })
       return openaiCompatible(modelConfig.model)
     }
@@ -149,13 +157,16 @@ export const createModel = async (modelConfig: Model) => {
       if (!modelConfig.apiKey) {
         throw new Error('No API key provided')
       }
+      const db = getDb()
+      const { cloudUrl } = await getSettings(db, { cloud_url: 'http://localhost:8000/v1' })
+      const proxyFetch = createProxyFetch({ cloudUrl })
       // Using OpenAI-compatible approach until @openrouter/ai-sdk-provider supports Vercel AI SDK v5
       // https://github.com/OpenRouterTeam/ai-sdk-provider/pull/77
       const openrouter = createOpenAICompatible({
         name: 'openrouter',
         baseURL: 'https://openrouter.ai/api/v1',
         apiKey: modelConfig.apiKey,
-        fetch,
+        fetch: proxyFetch,
       })
       return openrouter(modelConfig.model)
     }

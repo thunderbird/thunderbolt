@@ -2,8 +2,6 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { useSettings } from '@/hooks/use-settings'
-import { getProxiedFaviconUrl } from '@/lib/url-utils'
 import { cn } from '@/lib/utils'
 import { motion } from 'framer-motion'
 import type { LucideIcon } from 'lucide-react'
@@ -40,17 +38,18 @@ export const extractFaviconUrl = (toolName: string, output: unknown): string | n
 }
 
 /**
- * Hook to manage favicon fetching and error handling for tool outputs
+ * Hook to manage favicon fetching and error handling for tool outputs.
+ * Favicons load directly from upstream — the universal proxy is no longer
+ * in the path for browser sub-resource loads.
  */
 const useToolFavicon = (toolName: string, toolOutput: unknown, isLoading: boolean, isError: boolean) => {
   const [failedFavicons, setFailedFavicons] = useState<Set<string>>(new Set())
-  const { cloudUrl } = useSettings({ cloud_url: 'http://localhost:8000/v1' })
 
   const handleFaviconError = (url: string) => {
     setFailedFavicons((prev) => new Set(prev).add(url))
   }
 
-  if (!toolOutput || isLoading || isError || !cloudUrl.value) {
+  if (!toolOutput || isLoading || isError) {
     return { favicon: null, originalFaviconUrl: null, handleFaviconError }
   }
 
@@ -59,9 +58,7 @@ const useToolFavicon = (toolName: string, toolOutput: unknown, isLoading: boolea
     if (!originalFaviconUrl || failedFavicons.has(originalFaviconUrl)) {
       return { favicon: null, originalFaviconUrl, handleFaviconError }
     }
-
-    const favicon = getProxiedFaviconUrl(originalFaviconUrl, cloudUrl.value)
-    return { favicon, originalFaviconUrl, handleFaviconError }
+    return { favicon: originalFaviconUrl, originalFaviconUrl, handleFaviconError }
   } catch {
     return { favicon: null, originalFaviconUrl: null, handleFaviconError }
   }

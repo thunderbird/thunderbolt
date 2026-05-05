@@ -1,19 +1,24 @@
 name: Preview Cleanup
 
-# Nightly safety net — destroys preview-pr-* stacks whose PRs are closed or
+# Hourly safety net — destroys preview-pr-* stacks whose PRs are closed or
 # haven't been updated in the last 3 days. The primary teardown path is
 # preview-destroy.yml (fires on `pull_request: closed`); this cron catches:
 #   - Stacks where the teardown workflow failed or was cancelled
 #   - PRs force-closed outside the normal flow (e.g. repo transfer, API delete)
 #   - Long-forgotten open PRs whose authors went on vacation
 #
+# Add the `persist` label to a PR to opt its preview stack out of cleanup.
+# Useful for long-lived demo/QA stacks tied to a specific PR.
+#
 # `workflow_dispatch` supports a `dry_run` input for operators to preview what
 # would be destroyed before arming the cron.
 
 on:
   schedule:
-    # 07:00 UTC daily — off-hours for most US timezones, before EU standup.
-    - cron: '0 7 * * *'
+    # Hourly — catches orphans within ~1h of close/teardown failure. The
+    # `max_age_days` threshold (default 3) still gates which open PRs get
+    # destroyed, so this only changes how often we *check*, not what's eligible.
+    - cron: '0 * * * *'
   workflow_dispatch:
     inputs:
       dry_run:
@@ -24,6 +29,13 @@ on:
         description: 'Also destroy stacks whose PRs were last updated more than N days ago'
         type: string
         default: '3'
+
+# Skip overlapping runs — if a cleanup is still in progress when the next hour
+# ticks, drop the second run rather than racing against Pulumi's state lock.
+# `cancel-in-progress: false` lets the running cleanup finish normally.
+concurrency:
+  group: preview-cleanup
+  cancel-in-progress: false
 
 permissions:
   contents: read
@@ -92,6 +104,15 @@ jobs:
 
             STATE=$(jq -r '.state' <<< "$PR_JSON")
             UPDATED=$(jq -r '.updated_at' <<< "$PR_JSON")
+            HAS_PERSIST=$(jq -r '.labels // [] | map(.name) | index("persist") // empty' <<< "$PR_JSON")
+
+            # Persist label — opt-out of cleanup regardless of state/staleness.
+            # Useful for demo/QA stacks tied to a specific PR that the team
+            # wants kept alive past the normal teardown window.
+            if [ -n "$HAS_PERSIST" ]; then
+              echo "  PR #${PR_NUM} has 'persist' label → keep"
+              continue
+            fi
 
             if [ "$STATE" = "closed" ]; then
               echo "  PR #${PR_NUM} is closed → orphan"

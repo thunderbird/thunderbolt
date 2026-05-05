@@ -29,9 +29,13 @@ server {
 
         resolver 127.0.0.11 valid=10s;
         set $backend "${THUNDERBOLT_BACKEND_HOST}";
+        # No URI suffix on proxy_pass: when the host contains a variable, nginx does not
+        # do prefix substitution and instead sends only the directive URI to upstream
+        # (so `/v1/foo` would arrive as just `/v1/`). Omitting the URI lets nginx pass
+        # the original request URI through unchanged.
         # nosemgrep: generic.nginx.security.dynamic-proxy-host.dynamic-proxy-host
         # nosemgrep: generic.nginx.security.missing-internal.missing-internal
-        proxy_pass http://$backend:${THUNDERBOLT_BACKEND_PORT}/v1/;
+        proxy_pass http://$backend:${THUNDERBOLT_BACKEND_PORT};
         proxy_set_header Host $proxy_host;
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;

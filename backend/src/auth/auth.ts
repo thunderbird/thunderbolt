@@ -52,6 +52,12 @@ const buildSsoPlugins = () => {
 
     return [
       sso({
+        // The OIDC IdP is operator-controlled in self-hosted enterprise deployments, so we
+        // trust its `email_verified` claim. Without this, Better Auth requires an additional
+        // verification step before linking the OIDC account to an existing user record with
+        // the same email — which causes the SSO callback to fail with "account not linked"
+        // for any user record that wasn't originally created via the same SSO flow.
+        trustEmailVerified: true,
         defaultSSO: [
           {
             providerId: 'sso',
@@ -61,7 +67,7 @@ const buildSsoPlugins = () => {
               pkce: true,
               clientId: settings.oidcClientId,
               clientSecret: settings.oidcClientSecret,
-              discoveryEndpoint: `${settings.oidcIssuer}/.well-known/openid-configuration`,
+              discoveryEndpoint: settings.oidcDiscoveryUrl || `${settings.oidcIssuer}/.well-known/openid-configuration`,
               scopes: ['openid', 'profile', 'email'],
             },
           },
@@ -80,6 +86,9 @@ const buildSsoPlugins = () => {
 
     return [
       sso({
+        // SAML IdP is operator-controlled in self-hosted enterprise deployments — same
+        // reasoning as the OIDC branch above.
+        trustEmailVerified: true,
         defaultSSO: [
           {
             providerId: 'sso',

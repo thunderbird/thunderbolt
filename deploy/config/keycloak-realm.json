@@ -93,6 +93,7 @@
   ],
   "users": [
     {
+      "id": "1d0fc1e0-7a60-4f6f-93b6-5f1d9aef7d64",
       "username": "demo",
       "email": "demo@thunderbolt.io",
       "firstName": "Demo",

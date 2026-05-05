@@ -2,10 +2,13 @@
 
 > ⚠️ **Under active development — not production ready.** Thunderbolt is currently undergoing a security audit and preparing for enterprise production readiness. These deployment paths are provided for evaluation and early testing. Do not use in production environments.
 
+> 🚨 **STOP — read [Default Credentials](#default-credentials) first.** Every deployment path in this directory ships with public, well-known default values for database passwords, OIDC client secrets, JWT signing keys, and the Keycloak admin password. If you `docker compose up` / `helm install` / `pulumi up` without overriding them, your stack runs with credentials anyone can read in the source tree. Pulumi, the backend, the browser DevTools console, and the frontend container will all warn loudly when defaults are detected — but the only fix is to rotate them.
+
 Self-hosted Thunderbolt with OIDC or SAML authentication via Keycloak. Three deployment paths: Docker Compose for local development, Helm chart for Kubernetes, and Pulumi for AWS (Fargate or EKS).
 
 ## Table of Contents
 
+- [Default Credentials](#default-credentials)
 - [Architecture](#architecture)
 - [Services](#services)
 - [Directory Structure](#directory-structure)
@@ -15,6 +18,92 @@ Self-hosted Thunderbolt with OIDC or SAML authentication via Keycloak. Three dep
 - [4. GitHub Actions CI/CD](#4-github-actions-cicd)
 - [Configuration Reference](#configuration-reference)
 - [Troubleshooting](#troubleshooting)
+
+---
+
+## Default Credentials
+
+> 🚨 **All defaults below are public** — they live in this repository. Every fresh deployment uses them unless you override. Every layer of the stack (Pulumi at deploy time, backend at startup, browser DevTools, frontend container) will print a loud warning until you rotate them.
+
+| Credential | Default value | Defined in | Used by |
+|---|---|---|---|
+| `BETTER_AUTH_SECRET` | `enterprise-thunderbolt-better-auth-default-secret` | `deploy/pulumi/index.ts`, `deploy/k8s/values.yaml`, `deploy/docker-compose.yml` | Backend session signing |
+| `OIDC_CLIENT_SECRET` | `thunderbolt-enterprise-secret` | same + `deploy/config/keycloak-realm.json` | OIDC client auth |
+| `POWERSYNC_JWT_SECRET` | `enterprise-thunderbolt-powersync-jwt-default-secret` | same | PowerSync JWT signing |
+| `POSTGRES_PASSWORD` | `postgres` | same | Postgres admin |
+| `POWERSYNC_DB_PASSWORD` | `myhighlyrandompassword` | same | PowerSync DB role |
+| `KC_BOOTSTRAP_ADMIN_PASSWORD` | `admin` | same | Keycloak admin console |
+| Keycloak demo user | `demo@thunderbolt.io` / `demo` | `deploy/config/keycloak-realm.json` | Demo login |
+
+The canonical machine-readable list lives at [`shared/insecure-defaults.ts`](../shared/insecure-defaults.ts) — every warning surface reads from it.
+
+### How to override
+
+**Docker Compose** — generate values and put them in `deploy/.env`:
+
+```bash
+cd deploy
+cat >> .env <<EOF
+BETTER_AUTH_SECRET=$(openssl rand -base64 32)
+OIDC_CLIENT_SECRET=$(openssl rand -base64 32)
+POWERSYNC_JWT_SECRET=$(openssl rand -base64 32)
+POSTGRES_PASSWORD=$(openssl rand -base64 24)
+POWERSYNC_DB_PASSWORD=$(openssl rand -base64 24)
+KC_BOOTSTRAP_ADMIN_PASSWORD=$(openssl rand -base64 16)
+EOF
+docker compose up
+```
+
+Then update `deploy/config/keycloak-realm.json` line 16 to match the new `OIDC_CLIENT_SECRET`, and rebuild the Keycloak image — the realm value is baked in at image build time.
+
+**Helm** — base64-encode each value and override in your `values.yaml` (or `helm install --set ...`):
+
+```bash
+helm install thunderbolt deploy/k8s \
+  --set backend.betterAuthSecretBase64=$(echo -n "$(openssl rand -base64 32)" | base64) \
+  --set powersync.jwt.secretBase64=$(echo -n "$(openssl rand -base64 32)" | base64) \
+  --set powersync.db.passwordBase64=$(echo -n "$(openssl rand -base64 24)" | base64) \
+  --set postgres.credentials.passwordBase64=$(echo -n "$(openssl rand -base64 24)" | base64) \
+  --set keycloak.admin.password=$(openssl rand -base64 16) \
+  --set keycloak.oidc.clientSecretBase64=$(echo -n "$(openssl rand -base64 32)" | base64)
+```
+
+**Pulumi (AWS)** — use `pulumi config set --secret` so values are encrypted in stack state:
+
+```bash
+cd deploy/pulumi
+pulumi config set --secret betterAuthSecret "$(openssl rand -base64 32)"
+pulumi config set --secret oidcClientSecret "$(openssl rand -base64 32)"
+pulumi config set --secret powersyncJwtSecret "$(openssl rand -base64 32)"
+pulumi config set --secret postgresPassword "$(openssl rand -base64 24)"
+pulumi config set --secret powersyncDbPassword "$(openssl rand -base64 24)"
+pulumi config set --secret keycloakAdminPassword "$(openssl rand -base64 16)"
+pulumi up
+```
+
+After `pulumi up`, confirm no warnings in the stack output: `pulumi stack output securityWarnings` should be `[]`.
+
+### Suppressing the warnings
+
+For short-lived evaluation environments where you accept defaults on purpose, suppress every warning with:
+
+```bash
+DANGEROUSLY_ALLOW_DEFAULT_CREDS=true   # backend, frontend container, vite dev server
+pulumi config set dangerouslyAllowDefaultCreds true   # Pulumi
+```
+
+> 🚨 **Do not set this in production.** It silences the only signal you have that the stack is insecure. The flag exists so CI environments and short eval stacks aren't drowned in warnings — not as an answer to "how do I deploy with defaults safely" (you don't).
+
+### Where the warnings show up
+
+| Surface | What you'll see |
+|---|---|
+| `pulumi up` console | Yellow `warn` log lines listing each Pulumi-config key still using a default; box-drawing banner at the top |
+| Backend startup logs (`docker compose logs backend`, `kubectl logs backend`, CloudWatch) | Red ANSI banner on stderr + structured `WARN` log entries with `event: 'INSECURE_DEFAULT_CREDENTIAL'` so prod alerting can grep |
+| Browser DevTools console | Red banner-styled `console.error` listing the env-var names (never values) — counts toward the DevTools error badge |
+| Frontend container logs | Yellow ANSI reminder banner from the nginx entrypoint |
+| `bun run dev` terminal | Yellow ANSI reminder banner from a vite plugin |
+| `pulumi stack output securityWarnings` | Array of Pulumi-config keys still using defaults — useful for CI assertions |
 
 ---
 

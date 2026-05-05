@@ -32,6 +32,15 @@ COPY deploy/config/nginx.conf /etc/nginx/conf.d/default.conf
 COPY deploy/config/security-headers.conf /etc/nginx/snippets/security-headers.conf
 COPY --from=build /app/dist /usr/share/nginx/html
 
+# Insecure-defaults reminder banner. The official nginx image runs every
+# executable file in /docker-entrypoint.d/ (in alphanumeric order) before
+# starting nginx, so this prints once at container start and shows up in
+# `docker compose logs` / `kubectl logs frontend`. Suppressible via
+# DANGEROUSLY_ALLOW_DEFAULT_CREDS=true. Prefixed `00-` so it runs before
+# the built-in template-substitution and config-reload scripts.
+COPY deploy/docker/frontend-security-banner.sh /docker-entrypoint.d/00-security-banner.sh
+RUN chmod +x /docker-entrypoint.d/00-security-banner.sh
+
 EXPOSE 80
 
 CMD ["nginx", "-g", "daemon off;"]

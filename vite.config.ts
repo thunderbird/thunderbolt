@@ -9,9 +9,67 @@ import react from '@vitejs/plugin-react'
 import { execSync } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
 import path from 'path'
-import { defineConfig } from 'vite'
+import { defineConfig, type Plugin } from 'vite'
 import { analyzer } from 'vite-bundle-analyzer'
 const dirname = typeof __dirname !== 'undefined' ? __dirname : path.dirname(fileURLToPath(import.meta.url))
+
+/**
+ * Print a yellow security-reminder banner once when the dev server starts.
+ * Constant (not detection-driven) — the actual detection happens in the
+ * browser DevTools console once the SPA fetches /v1/api/config from the
+ * backend. This banner just makes sure the dev who ran `bun run dev` is
+ * aware before they get to that point. Suppressed with
+ * DANGEROUSLY_ALLOW_DEFAULT_CREDS=true.
+ *
+ * The canonical list of defaults + override commands lives at
+ * deploy/README.md#default-credentials and shared/insecure-defaults.ts.
+ * The banner here is intentionally self-contained (no cross-project
+ * import) so vite.config.ts stays in the Node tsconfig project without
+ * pulling shared/ across the project-reference boundary.
+ */
+const DOCS_URL = 'https://github.com/thunderbird/thunderbolt/blob/main/deploy/README.md#default-credentials'
+const insecureDefaultsReminderPlugin = (): Plugin => ({
+  name: 'thunderbolt-insecure-defaults-reminder',
+  apply: 'serve',
+  configureServer(server) {
+    if (process.env.DANGEROUSLY_ALLOW_DEFAULT_CREDS?.toLowerCase() === 'true') return
+    server.httpServer?.once('listening', () => {
+      const useColor = Boolean(process.stdout.isTTY)
+      const Y = useColor ? '\x1b[43;1;30m' : ''
+      const R = useColor ? '\x1b[0m' : ''
+      const W = 78
+      const pad = (s: string): string => s + ' '.repeat(Math.max(0, W - s.length))
+      const line = (s: string): string => `${Y}║ ${pad(s)} ║${R}`
+      const out =
+        '\n' +
+        `${Y}╔${'═'.repeat(W + 2)}╗${R}\n` +
+        line('') +
+        '\n' +
+        line('  ⚠   Thunderbolt frontend dev server — security reminder') +
+        '\n' +
+        line('') +
+        '\n' +
+        line('  If your backend is using default credentials, the browser') +
+        '\n' +
+        line('  DevTools console will print a red banner naming each one.') +
+        '\n' +
+        line('  Rotate them before pointing this at a real deployment.') +
+        '\n' +
+        line('') +
+        '\n' +
+        line(`  ${DOCS_URL}`) +
+        '\n' +
+        line('') +
+        '\n' +
+        line('  Suppress: DANGEROUSLY_ALLOW_DEFAULT_CREDS=true') +
+        '\n' +
+        line('') +
+        '\n' +
+        `${Y}╚${'═'.repeat(W + 2)}╝${R}\n\n`
+      process.stdout.write(out)
+    })
+  },
+})
 
 // More info at: https://storybook.js.org/docs/next/writing-tests/integrations/vitest-addon
 const host = process.env.TAURI_DEV_HOST
@@ -44,6 +102,7 @@ export default defineConfig({
     },
     tailwindcss(),
     react(),
+    insecureDefaultsReminderPlugin(),
     // Include the bundle analyzer plugin only when explicitly requested.
     ...(shouldAnalyze
       ? [

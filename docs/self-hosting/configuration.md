@@ -10,6 +10,8 @@ cp backend/.env.example backend/.env
 
 Variables marked **required** must be set before the backend will start.
 
+> 🚨 If any of `BETTER_AUTH_SECRET`, `OIDC_CLIENT_SECRET`, `POWERSYNC_JWT_SECRET`, `POSTGRES_PASSWORD`, `POWERSYNC_DB_PASSWORD`, or `KC_BOOTSTRAP_ADMIN_PASSWORD` matches its public default from `deploy/`, the backend logs a red banner on stderr at startup and the public `/v1/api/config` endpoint returns the affected env-var names — which the frontend surfaces in the browser DevTools console. The full table of defaults and rotation commands is in [`deploy/README.md`](../../deploy/README.md#default-credentials). Suppress all of these with `DANGEROUSLY_ALLOW_DEFAULT_CREDS=true` for short eval runs only.
+
 ## Authentication
 
 | Variable                  | Default                    | Required | Description                                                                                 |

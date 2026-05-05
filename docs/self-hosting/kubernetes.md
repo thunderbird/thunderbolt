@@ -2,6 +2,8 @@
 
 The Kubernetes manifests at `deploy/k8s/` deploy the full Thunderbolt stack — frontend, backend, PostgreSQL, MongoDB, Keycloak, and PowerSync — onto any conformant cluster.
 
+> 🚨 The Helm chart's `values.yaml` ships with **public default values** for every secret (Postgres password, PowerSync JWT, OIDC client secret, Keycloak admin password). The chart will install with them, but they're known and listed in this repository. See [Default Credentials](../../deploy/README.md#default-credentials) for the override commands (`helm install --set ...`) and the canonical list at [`shared/insecure-defaults.ts`](../../shared/insecure-defaults.ts).
+
 ## Local Clusters
 
 Any local Kubernetes works. Pick one:

@@ -3,6 +3,11 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import * as pulumi from '@pulumi/pulumi'
+import {
+  INSECURE_DEFAULTS,
+  INSECURE_DEFAULTS_DOCS_URL,
+  isInsecureDefaultsHushed,
+} from '../../shared/insecure-defaults'
 import { createVpc } from './src/vpc'
 import { createEksCluster } from './src/eks'
 import { createStorage } from './src/storage'
@@ -96,6 +101,74 @@ const secrets = {
 
 // Thunderbolt inference gateway URL (not a secret; set per-stack)
 const thunderboltInferenceUrl = config.get('thunderboltInferenceUrl') ?? ''
+
+// --- Insecure-default credentials warning ---------------------------------
+//
+// Detect any credentials still set to their public, well-known sentinel
+// values and emit a *very* loud warning at deploy time. Resources are still
+// created — the goal is awareness, not blocking — but the warning prints in
+// yellow during `pulumi preview` and `pulumi up`, and surfaces as a stack
+// output (`securityWarnings`) for post-deploy auditing / CI assertions.
+//
+// Suppress (e.g. for short-lived eval stacks) with:
+//   pulumi config set dangerouslyAllowDefaultCreds true
+const dangerouslyAllowDefaultCreds = (config.get('dangerouslyAllowDefaultCreds') ?? '').toLowerCase() === 'true'
+const insecureDefaultsHushedViaEnv = isInsecureDefaultsHushed(process.env as Record<string, string | undefined>)
+const insecureDefaultsHushed = dangerouslyAllowDefaultCreds || insecureDefaultsHushedViaEnv
+
+const insecureDefaultMatches = insecureDefaultsHushed
+  ? []
+  : INSECURE_DEFAULTS.filter((entry) => {
+      const configured = config.getSecret(entry.pulumiKey)
+      // No config value → fallback in `secrets` above is the sentinel → match.
+      // A config value exists but equals the sentinel → also a match.
+      // We can't synchronously read a Pulumi.Output here, so fall back to the
+      // simpler check: if `config.getSecret` returned undefined, the fallback
+      // (the sentinel) is in use.
+      return configured === undefined
+    })
+
+if (insecureDefaultMatches.length > 0) {
+  pulumi.log.warn(
+    `\n` +
+      `╔════════════════════════════════════════════════════════════════════════════╗\n` +
+      `║  🚨🚨🚨   INSECURE DEFAULT CREDENTIALS IN USE   🚨🚨🚨                      ║\n` +
+      `╠════════════════════════════════════════════════════════════════════════════╣\n` +
+      `║                                                                            ║\n` +
+      `║  This stack has not overridden the following secrets, so the public        ║\n` +
+      `║  default values from deploy/ will be deployed into your AWS account:       ║\n` +
+      `║                                                                            ║\n` +
+      insecureDefaultMatches
+        .map((m) => {
+          const line = `║    • ${m.pulumiKey}  —  ${m.description}`
+          return line + ' '.repeat(Math.max(0, 78 - line.length)) + '║'
+        })
+        .join('\n') +
+      `\n║                                                                            ║\n` +
+      `║  These values are PUBLIC. Anyone who finds this deploy can read them.      ║\n` +
+      `║                                                                            ║\n` +
+      `║  Override each with:                                                       ║\n` +
+      `║    pulumi config set --secret <key> <value> -s ${stackName}` +
+      ' '.repeat(Math.max(0, 78 - (`    pulumi config set --secret <key> <value> -s ${stackName}`.length + 4))) +
+      `    ║\n` +
+      `║                                                                            ║\n` +
+      `║  Docs:                                                                     ║\n` +
+      `║    ${INSECURE_DEFAULTS_DOCS_URL}` +
+      ' '.repeat(Math.max(0, 78 - (`    ${INSECURE_DEFAULTS_DOCS_URL}`.length + 4))) +
+      `    ║\n` +
+      `║                                                                            ║\n` +
+      `║  Suppress this warning (DO NOT do this in production):                     ║\n` +
+      `║    pulumi config set dangerouslyAllowDefaultCreds true                     ║\n` +
+      `║                                                                            ║\n` +
+      `╚════════════════════════════════════════════════════════════════════════════╝\n`,
+  )
+  for (const m of insecureDefaultMatches) {
+    pulumi.log.warn(`Insecure default in use: ${m.pulumiKey} (${m.description})`)
+  }
+}
+
+// Surface as stack output for post-deploy audit / CI assertion.
+export const securityWarnings = insecureDefaultMatches.map((m) => m.pulumiKey)
 
 // Shared: VPC (both platforms need this)
 const { vpc, publicSubnets, privateSubnets, albSg, servicesSg } = createVpc(name)

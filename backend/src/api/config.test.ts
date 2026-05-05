@@ -15,7 +15,7 @@ describe('Config Routes', () => {
       const response = await app.handle(new Request('http://localhost/config'))
 
       expect(response.status).toBe(200)
-      expect(await response.json()).toEqual({ e2eeEnabled: false })
+      expect(await response.json()).toMatchObject({ e2eeEnabled: false, securityWarnings: expect.any(Array) })
     })
 
     it('returns e2eeEnabled: true when enabled', async () => {
@@ -24,7 +24,7 @@ describe('Config Routes', () => {
       const response = await app.handle(new Request('http://localhost/config'))
 
       expect(response.status).toBe(200)
-      expect(await response.json()).toEqual({ e2eeEnabled: true })
+      expect(await response.json()).toMatchObject({ e2eeEnabled: true, securityWarnings: expect.any(Array) })
     })
 
     it('does not require authentication', async () => {

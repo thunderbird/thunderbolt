@@ -11,11 +11,15 @@ import type { MicrosoftUserInfo } from './types'
 let cachedBackendConfig: Promise<AuthProviderBackendConfig> | null = null
 
 const fetchBackendConfig = (httpClient: HttpClient): Promise<AuthProviderBackendConfig> => {
-  if (cachedBackendConfig) return cachedBackendConfig
+  if (cachedBackendConfig) {
+    return cachedBackendConfig
+  }
   cachedBackendConfig = (async () => {
     try {
       const result = await httpClient.get('auth/microsoft/config').json<AuthProviderBackendConfig>()
-      if (!result.configured) cachedBackendConfig = null
+      if (!result.configured) {
+        cachedBackendConfig = null
+      }
       return result
     } catch (err) {
       cachedBackendConfig = null

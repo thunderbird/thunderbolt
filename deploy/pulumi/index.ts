@@ -3,11 +3,6 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import * as pulumi from '@pulumi/pulumi'
-import {
-  INSECURE_DEFAULTS,
-  INSECURE_DEFAULTS_DOCS_URL,
-  isInsecureDefaultsHushed,
-} from '../../shared/insecure-defaults'
 import { createVpc } from './src/vpc'
 import { createEksCluster } from './src/eks'
 import { createStorage } from './src/storage'
@@ -112,9 +107,27 @@ const thunderboltInferenceUrl = config.get('thunderboltInferenceUrl') ?? ''
 //
 // Suppress (e.g. for short-lived eval stacks) with:
 //   pulumi config set dangerouslyAllowDefaultCreds true
+//
+// Inline list rather than imported from shared/insecure-defaults.ts because
+// pulling files from outside this directory pushes TypeScript's common
+// source root above the project (TS5011) when ts-node compiles index.ts
+// during `pulumi up`. Keep this in sync with shared/insecure-defaults.ts —
+// the shared module is the canonical source for backend + frontend, this
+// is the deploy-time mirror.
+const INSECURE_DEFAULTS_DOCS_URL =
+  'https://github.com/thunderbird/thunderbolt/blob/main/deploy/README.md#default-credentials'
+const INSECURE_DEFAULTS = [
+  { pulumiKey: 'postgresPassword', description: 'PostgreSQL admin password' },
+  { pulumiKey: 'keycloakAdminPassword', description: 'Keycloak admin console password' },
+  { pulumiKey: 'oidcClientSecret', description: 'OIDC client secret' },
+  { pulumiKey: 'powersyncJwtSecret', description: 'PowerSync JWT signing secret' },
+  { pulumiKey: 'betterAuthSecret', description: 'Better Auth session signing secret' },
+  { pulumiKey: 'powersyncDbPassword', description: 'PowerSync database role password' },
+] as const
+
 const dangerouslyAllowDefaultCreds = (config.get('dangerouslyAllowDefaultCreds') ?? '').toLowerCase() === 'true'
-const insecureDefaultsHushedViaEnv = isInsecureDefaultsHushed(process.env as Record<string, string | undefined>)
-const insecureDefaultsHushed = dangerouslyAllowDefaultCreds || insecureDefaultsHushedViaEnv
+const dangerouslyAllowDefaultCredsViaEnv = process.env.DANGEROUSLY_ALLOW_DEFAULT_CREDS?.toLowerCase() === 'true'
+const insecureDefaultsHushed = dangerouslyAllowDefaultCreds || dangerouslyAllowDefaultCredsViaEnv
 
 const insecureDefaultMatches = insecureDefaultsHushed
   ? []

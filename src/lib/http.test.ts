@@ -160,7 +160,7 @@ describe('createAuthenticatedClient', () => {
       window.dispatchEvent = savedDispatch
     })
 
-    it('dispatches powersync_credentials_invalid (session_expired) on 401 with attached app token', async () => {
+    it('dispatches powersync_credentials_invalid (session_expired) on 401 from app backend with app token', async () => {
       const fetch = mock<FetchFn>(() => Promise.resolve(new Response('Unauthorized', { status: 401 })))
       const client = createAuthenticatedClient('https://api.example.com', () => 'app-token', { fetch })
 
@@ -172,15 +172,30 @@ describe('createAuthenticatedClient', () => {
       expect(event.detail).toEqual({ reason: 'session_expired' })
     })
 
-    it('dispatches when caller provided their own Authorization header (e.g. OAuth)', async () => {
+    it('does not dispatch on 401 from external API even with caller-provided Authorization header (Google/MS OAuth)', async () => {
+      // Integration tools (Google, Microsoft) reuse the same authenticated client but pass their
+      // own OAuth tokens. A 401 from those external APIs must NOT clear the app session.
       const fetch = mock<FetchFn>(() => Promise.resolve(new Response('Unauthorized', { status: 401 })))
-      const client = createAuthenticatedClient('https://api.example.com', () => null, { fetch })
+      const client = createAuthenticatedClient('https://api.example.com', () => 'app-token', { fetch })
 
       await expect(
-        client.get('https://www.googleapis.com/data', { headers: { Authorization: 'Bearer oauth-token' } }),
+        client.get('https://www.googleapis.com/gmail/v1/users/me/messages', {
+          headers: { Authorization: 'Bearer google-oauth-token' },
+        }),
       ).rejects.toBeInstanceOf(HttpError)
 
-      expect(dispatchSpy).toHaveBeenCalledTimes(1)
+      expect(dispatchSpy).not.toHaveBeenCalled()
+    })
+
+    it('does not dispatch on 401 from external API even when the app accidentally attached its own token', async () => {
+      // Defense-in-depth: even if a caller forgot to override Authorization for an external URL,
+      // the prefix gate prevents a false positive.
+      const fetch = mock<FetchFn>(() => Promise.resolve(new Response('Unauthorized', { status: 401 })))
+      const client = createAuthenticatedClient('https://api.example.com', () => 'app-token', { fetch })
+
+      await expect(client.get('https://other.com/data')).rejects.toBeInstanceOf(HttpError)
+
+      expect(dispatchSpy).not.toHaveBeenCalled()
     })
 
     it('does not dispatch on 401 when no Authorization header was attached', async () => {
@@ -217,6 +232,15 @@ describe('createAuthenticatedClient', () => {
       await expect(client.get('https://example.com/data')).rejects.toBeInstanceOf(HttpError)
 
       expect(dispatchSpy).not.toHaveBeenCalled()
+    })
+
+    it('dispatches when caller passes an absolute URL on the app backend', async () => {
+      const fetch = mock<FetchFn>(() => Promise.resolve(new Response('Unauthorized', { status: 401 })))
+      const client = createAuthenticatedClient('https://api.example.com', () => 'app-token', { fetch })
+
+      await expect(client.get('https://api.example.com/v1/foo')).rejects.toBeInstanceOf(HttpError)
+
+      expect(dispatchSpy).toHaveBeenCalledTimes(1)
     })
   })
 })

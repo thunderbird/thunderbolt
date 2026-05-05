@@ -86,7 +86,7 @@
     "@scure/bip39": "^2.0.1",
     "@tailwindcss/typography": "^0.5.16",
     "@tanstack/react-query": "^5.85.5",
-    "@tauri-apps/api": "^2.10.1",
+    "@tauri-apps/api": "^2.11.0",
     "@tauri-apps/plugin-deep-link": "^2.4.5",
     "@tauri-apps/plugin-fs": "^2.5.0",
     "@tauri-apps/plugin-haptics": "^2.3.2",

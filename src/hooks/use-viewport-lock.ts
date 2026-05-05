@@ -91,9 +91,15 @@ export const useViewportLock = (): void => {
     // Intercept touch on focusable elements — prevent iOS's automatic
     // scroll-into-view by manually focusing with preventScroll.
     // Skip if the element is already focused to preserve cursor repositioning.
+    // Skip native picker inputs (date, time, file, etc.) — preventDefault suppresses
+    // the synthetic click that iOS uses to open the picker UI.
+    const pickerTypes = new Set(['date', 'time', 'datetime-local', 'month', 'week', 'file', 'color'])
     const onTouchEnd = (e: TouchEvent) => {
       const target = e.target
       if (isFocusable(target) && target !== document.activeElement) {
+        if (target instanceof HTMLInputElement && pickerTypes.has(target.type)) {
+          return
+        }
         e.preventDefault()
         target.focus({ preventScroll: true })
       }

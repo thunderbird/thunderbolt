@@ -120,8 +120,12 @@ export const renderTerminalBanner = (matches: InsecureDefault[], useColor = true
   const RESET = useColor ? '\x1b[0m' : ''
 
   const width = 78
+  // Pad the plain visible text first, then wrap with color codes — ANSI escapes
+  // are zero-width visually but would otherwise inflate `s.length`, throwing
+  // off the right-hand `║` border alignment.
   const pad = (s: string): string => s + ' '.repeat(Math.max(0, width - s.length))
-  const line = (s: string): string => `${RED_BG}${WHITE_BOLD}║ ${pad(s)} ║${RESET}`
+  const line = (s: string, inner = `${RED_BG}${WHITE_BOLD}`): string =>
+    `${RED_BG}${WHITE_BOLD}║ ${inner}${pad(s)}${RESET}${RED_BG}${WHITE_BOLD} ║${RESET}`
   const top = `${RED_BG}${WHITE_BOLD}╔${'═'.repeat(width + 2)}╗${RESET}`
   const bot = `${RED_BG}${WHITE_BOLD}╚${'═'.repeat(width + 2)}╝${RESET}`
   const blank = line('')
@@ -143,49 +147,11 @@ export const renderTerminalBanner = (matches: InsecureDefault[], useColor = true
     line('  Docs (override per platform):'),
     line(`  ${INSECURE_DEFAULTS_DOCS_URL}`),
     blank,
-    line(`  ${YELLOW}Suppress with: DANGEROUSLY_ALLOW_DEFAULT_CREDS=true${RESET}${RED_BG}${WHITE_BOLD}`),
+    line('  Suppress with: DANGEROUSLY_ALLOW_DEFAULT_CREDS=true', `${YELLOW}`),
     blank,
     bot,
     '',
   ]
 
   return rows.join('\n') + DIM + '' + RESET
-}
-
-/**
- * A constant reminder banner (not detection-driven) for the frontend nginx
- * container, where polling the backend at boot is fragile. Visible in
- * `docker compose up` and `kubectl logs` regardless of whether defaults are
- * actually in use. Suppressed by DANGEROUSLY_ALLOW_DEFAULT_CREDS.
- */
-export const renderFrontendReminderBanner = (useColor = true): string => {
-  const YELLOW_BG = useColor ? '\x1b[43m' : ''
-  const BLACK_BOLD = useColor ? '\x1b[1;30m' : ''
-  const RESET = useColor ? '\x1b[0m' : ''
-
-  const width = 78
-  const pad = (s: string): string => s + ' '.repeat(Math.max(0, width - s.length))
-  const line = (s: string): string => `${YELLOW_BG}${BLACK_BOLD}║ ${pad(s)} ║${RESET}`
-  const top = `${YELLOW_BG}${BLACK_BOLD}╔${'═'.repeat(width + 2)}╗${RESET}`
-  const bot = `${YELLOW_BG}${BLACK_BOLD}╚${'═'.repeat(width + 2)}╝${RESET}`
-  const blank = line('')
-
-  return [
-    '',
-    top,
-    blank,
-    line('  ⚠   Thunderbolt frontend started — security reminder'),
-    blank,
-    line('  If this is a fresh deployment, verify you have rotated all'),
-    line('  default credentials. The backend logs (and the browser DevTools'),
-    line('  console) will list any defaults still in use.'),
-    blank,
-    line('  Docs:'),
-    line(`  ${INSECURE_DEFAULTS_DOCS_URL}`),
-    blank,
-    line('  Suppress with: DANGEROUSLY_ALLOW_DEFAULT_CREDS=true'),
-    blank,
-    bot,
-    '',
-  ].join('\n')
 }

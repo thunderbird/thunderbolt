@@ -428,7 +428,11 @@ export const createServices = (args: ServiceArgs) => {
           // frontend's nginx proxy (which requires different DNS config).
           { name: 'BETTER_AUTH_URL', value: args.publicUrls.api },
           { name: 'APP_URL', value: args.publicUrls.app },
-          { name: 'TRUSTED_ORIGINS', value: pulumi.interpolate`${args.publicUrls.app},${args.publicUrls.marketing}` },
+          // The auth subdomain must be in TRUSTED_ORIGINS — Better Auth's SSO plugin
+          // (post-THU-461) validates that the OIDC discovery URL's origin is trusted
+          // before fetching the .well-known doc, so missing the auth host produces a
+          // 400 on /v1/auth/sso/config and the SPA can't render the sign-in page.
+          { name: 'TRUSTED_ORIGINS', value: pulumi.interpolate`${args.publicUrls.app},${args.publicUrls.marketing},${args.publicUrls.auth}` },
           { name: 'CORS_ORIGINS', value: pulumi.interpolate`${args.publicUrls.app},${args.publicUrls.marketing}` },
           { name: 'CORS_ORIGIN_REGEX', value: '' },
           { name: 'POWERSYNC_URL', value: args.publicUrls.powersync },

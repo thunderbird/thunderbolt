@@ -4,10 +4,20 @@ server {
     index index.html;
 
     # Reverse proxy backend API. The upstream host/port are resolved from
-    # ${BACKEND_HOST} and ${BACKEND_PORT} at container start (envsubst on the
-    # nginx template), with defaults set in frontend.Dockerfile so docker-compose
-    # works out of the box. Operators can override for k8s, where the backend
-    # Service name typically differs (e.g. thunderbolt-backend.default.svc).
+    # ${THUNDERBOLT_BACKEND_HOST} and ${THUNDERBOLT_BACKEND_PORT} at container
+    # start (envsubst on the nginx template), with defaults set in
+    # frontend.Dockerfile so docker-compose works out of the box. Operators
+    # can override for k8s, where the backend Service name typically differs
+    # (e.g. thunderbolt-backend.default.svc).
+    #
+    # The names are namespaced with `THUNDERBOLT_` because Kubernetes
+    # auto-injects `<SERVICE>_PORT` env vars (docker-link compatibility) for
+    # every Service in the namespace. A Service named `backend` injects
+    # `BACKEND_PORT=tcp://10.x.y.z:8000` into every pod, which would clobber
+    # this image's `BACKEND_PORT=8000` default and produce an invalid
+    # `proxy_pass` directive. The `THUNDERBOLT_` prefix sidesteps the
+    # collision.
+    #
     # Assigning the host to a variable forces runtime DNS resolution via the
     # `resolver` directive, so nginx doesn't crash on boot if the backend
     # isn't up yet. Values are operator-controlled (not request-controlled),
@@ -18,10 +28,10 @@ server {
         include /etc/nginx/snippets/security-headers.conf;
 
         resolver 127.0.0.11 valid=10s;
-        set $backend "${BACKEND_HOST}";
+        set $backend "${THUNDERBOLT_BACKEND_HOST}";
         # nosemgrep: generic.nginx.security.dynamic-proxy-host.dynamic-proxy-host
         # nosemgrep: generic.nginx.security.missing-internal.missing-internal
-        proxy_pass http://$backend:${BACKEND_PORT}/v1/;
+        proxy_pass http://$backend:${THUNDERBOLT_BACKEND_PORT}/v1/;
         proxy_set_header Host $proxy_host;
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;

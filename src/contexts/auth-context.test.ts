@@ -6,19 +6,19 @@ import { clearAuthToken, getAuthToken, setAuthToken } from '@/lib/auth-token'
 import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
 import { buildFetchOptions } from './auth-context'
 
+const originalDispatch = window.dispatchEvent
+
 describe('buildFetchOptions onError', () => {
   let dispatchSpy: ReturnType<typeof mock>
-  let savedDispatch: typeof window.dispatchEvent
 
   beforeEach(() => {
-    savedDispatch = window.dispatchEvent
     dispatchSpy = mock(() => true)
     window.dispatchEvent = dispatchSpy as unknown as typeof window.dispatchEvent
     clearAuthToken()
   })
 
   afterEach(() => {
-    window.dispatchEvent = savedDispatch
+    window.dispatchEvent = originalDispatch
     clearAuthToken()
   })
 

@@ -147,17 +147,16 @@ describe('createAuthenticatedClient', () => {
   })
 
   describe('session expiry detection', () => {
+    const originalDispatch = window.dispatchEvent
     let dispatchSpy: ReturnType<typeof mock>
-    let savedDispatch: typeof window.dispatchEvent
 
     beforeEach(() => {
-      savedDispatch = window.dispatchEvent
       dispatchSpy = mock(() => true)
       window.dispatchEvent = dispatchSpy as unknown as typeof window.dispatchEvent
     })
 
     afterEach(() => {
-      window.dispatchEvent = savedDispatch
+      window.dispatchEvent = originalDispatch
     })
 
     it('dispatches powersync_credentials_invalid (session_expired) on 401 from app backend with app token', async () => {

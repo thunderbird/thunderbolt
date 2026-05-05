@@ -6,7 +6,7 @@ import { createContext, useContext, useEffect, useRef, useState, type ReactNode 
 
 import { SignInModal } from '@/components/sign-in-modal'
 import { SyncSetupModal } from '@/components/sync-setup/sync-setup-modal'
-import { setSyncEnabled } from '@/db/powersync'
+import { isSyncEnabled, setSyncEnabled } from '@/db/powersync'
 import { needsSyncSetupWizard } from '@/db/encryption'
 import { showSignInModalEvent, signInSuccessEvent } from '@/hooks/use-credential-events'
 import { isSsoMode } from '@/lib/auth-mode'
@@ -70,6 +70,11 @@ export const SignInModalProvider = ({ children }: SignInModalProviderProps) => {
     const enableSync = async () => {
       if (await needsSyncSetupWizard()) {
         setSyncSetupOpen(true)
+        return
+      }
+      // Re-auth from a session-expiry flow lands here with sync already enabled — skip the
+      // redundant write and analytics so we only track the first-enable transition.
+      if (isSyncEnabled()) {
         return
       }
       await setSyncEnabled(true)

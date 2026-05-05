@@ -19,6 +19,7 @@ import { AuthProvider, DatabaseProvider, HttpClientProvider, SignInModalProvider
 import { usePageTracking } from '@/hooks/use-analytics'
 import { useDeepLinkListener } from '@/hooks/use-deep-link-listener'
 import { useKeyboardInset } from '@/hooks/use-keyboard-inset'
+import { useViewportLock } from '@/hooks/use-viewport-lock'
 import { useMcpSync } from '@/hooks/use-mcp-sync'
 import ChatLayout from '@/layout/main-layout'
 import { PostHogProvider } from '@/lib/posthog'
@@ -72,6 +73,7 @@ const AppContent = ({ initData }: { initData: InitData }) => {
   useMcpSync()
   useTriggerScheduler()
   useKeyboardInset()
+  useViewportLock()
   useSafeAreaInset()
 
   return (

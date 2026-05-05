@@ -280,7 +280,11 @@ export const createServices = (args: ServiceArgs) => {
           // Realm import substitutes ${OIDC_REDIRECT_URI} / ${OIDC_WEB_ORIGIN} so the
           // baked-in realm JSON works for both local dev (defaults) and Fargate (real URLs).
           // Redirect URI = backend OAuth callback (BETTER_AUTH_URL = publicUrls.api).
-          { name: 'OIDC_REDIRECT_URI', value: pulumi.interpolate`${args.publicUrls.api}/v1/api/auth/oauth2/callback/oidc` },
+          // Callback path is the @better-auth/sso plugin's standard
+          // `/sso/callback/<providerId>` (post-THU-461 SSO migration). The
+          // legacy genericOAuth path was `/oauth2/callback/oidc`; both are
+          // documented here in case anything still references it.
+          { name: 'OIDC_REDIRECT_URI', value: pulumi.interpolate`${args.publicUrls.api}/v1/api/auth/sso/callback/sso` },
           { name: 'OIDC_WEB_ORIGIN', value: args.publicUrls.app },
         ],
         portMappings: [{ containerPort: 8080 }],
@@ -428,7 +432,11 @@ export const createServices = (args: ServiceArgs) => {
           // frontend's nginx proxy (which requires different DNS config).
           { name: 'BETTER_AUTH_URL', value: args.publicUrls.api },
           { name: 'APP_URL', value: args.publicUrls.app },
-          { name: 'TRUSTED_ORIGINS', value: pulumi.interpolate`${args.publicUrls.app},${args.publicUrls.marketing}` },
+          // The auth subdomain must be in TRUSTED_ORIGINS — Better Auth's SSO plugin
+          // (post-THU-461) validates that the OIDC discovery URL's origin is trusted
+          // before fetching the .well-known doc, so missing the auth host produces a
+          // 400 on /v1/auth/sso/config and the SPA can't render the sign-in page.
+          { name: 'TRUSTED_ORIGINS', value: pulumi.interpolate`${args.publicUrls.app},${args.publicUrls.marketing},${args.publicUrls.auth}` },
           { name: 'CORS_ORIGINS', value: pulumi.interpolate`${args.publicUrls.app},${args.publicUrls.marketing}` },
           { name: 'CORS_ORIGIN_REGEX', value: '' },
           { name: 'POWERSYNC_URL', value: args.publicUrls.powersync },

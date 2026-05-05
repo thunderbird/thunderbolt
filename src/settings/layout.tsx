@@ -14,6 +14,7 @@ export default function SettingsLayout() {
           className="flex flex-col h-full"
           style={{
             paddingTop: 'var(--safe-area-top-padding)',
+            paddingBottom: 'var(--kb, 0px)',
           }}
         >
           <Header />

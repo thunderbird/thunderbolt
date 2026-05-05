@@ -32,7 +32,12 @@ const reverseShellDevTcp = /(?:\b(?:sh|bash)\s+-i\s+)?>\s*&\s*\/dev\/tcp\/[\w.-]
 // Note: spec section 3.8 regex `\bn(?:cat)?\b...` doesn't match `nc` (no word
 // boundary between `n` and `c`); matching the spec's intent (the table lists
 // both `nc` and `ncat`) requires `\bnc(?:at)?\b`.
-const reverseShellNc = /\bnc(?:at)?\b[^|;\n]{0,120}-e\s+\/(?:usr\/)?bin\/(?:sh|bash)\b/gi
+// JSON-envelope safety: the inner character class also excludes JSON
+// structural characters (`"`, `,`, `{`, `}`, `[`, `]`) so the match cannot
+// span two adjacent JSON values (e.g. `nc` in one message and `-e /bin/bash`
+// in the next) and silently fuse them on replacement. Real `nc` invocations
+// are space-separated flags + hostname + port and don't contain these chars.
+const reverseShellNc = /\bnc(?:at)?\b[^|;\n",{}[\]]{0,120}-e\s+\/(?:usr\/)?bin\/(?:sh|bash)\b/gi
 
 // 3.9 Language one-liner reverse shells (each requires both the language flag
 // and specific networking keywords, so prose mentioning the language won't match).

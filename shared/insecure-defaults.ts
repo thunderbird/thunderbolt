@@ -116,42 +116,42 @@ export const renderTerminalBanner = (matches: InsecureDefault[], useColor = true
   const RED_BG = useColor ? '\x1b[41m' : ''
   const WHITE_BOLD = useColor ? '\x1b[1;37m' : ''
   const YELLOW = useColor ? '\x1b[1;33m' : ''
-  const DIM = useColor ? '\x1b[2m' : ''
   const RESET = useColor ? '\x1b[0m' : ''
 
-  const width = 78
+  // Inner content lines (no padding, no borders, no color). Build the list
+  // first so we can size the box to the longest line — the docs URL is ~89
+  // chars and would otherwise overflow the right-hand `║` border.
+  const innerLines: string[] = [
+    '',
+    '  🚨🚨🚨   INSECURE DEFAULT CREDENTIALS DETECTED   🚨🚨🚨',
+    '',
+    '  This Thunderbolt deployment is using well-known default values for:',
+    '',
+    ...matches.map((m) => `    • ${m.envKey}  —  ${m.description}`),
+    '',
+    '  These values are public in the source tree. Anyone who knows the',
+    '  deployment exists can read them. Rotate before exposing this',
+    '  instance to the internet.',
+    '',
+    '  Docs (override per platform):',
+    `  ${INSECURE_DEFAULTS_DOCS_URL}`,
+    '',
+    '  Suppress with: DANGEROUSLY_ALLOW_DEFAULT_CREDS=true',
+    '',
+  ]
+  const width = Math.max(78, ...innerLines.map((s) => s.length))
+
   // Pad the plain visible text first, then wrap with color codes — ANSI escapes
   // are zero-width visually but would otherwise inflate `s.length`, throwing
   // off the right-hand `║` border alignment.
   const pad = (s: string): string => s + ' '.repeat(Math.max(0, width - s.length))
-  const line = (s: string, inner = `${RED_BG}${WHITE_BOLD}`): string =>
-    `${RED_BG}${WHITE_BOLD}║ ${inner}${pad(s)}${RESET}${RED_BG}${WHITE_BOLD} ║${RESET}`
+  const isHushHint = (s: string): boolean => s.startsWith('  Suppress with:')
+  const line = (s: string): string => {
+    const inner = isHushHint(s) ? YELLOW : `${RED_BG}${WHITE_BOLD}`
+    return `${RED_BG}${WHITE_BOLD}║ ${inner}${pad(s)}${RESET}${RED_BG}${WHITE_BOLD} ║${RESET}`
+  }
   const top = `${RED_BG}${WHITE_BOLD}╔${'═'.repeat(width + 2)}╗${RESET}`
   const bot = `${RED_BG}${WHITE_BOLD}╚${'═'.repeat(width + 2)}╝${RESET}`
-  const blank = line('')
 
-  const rows: string[] = [
-    '',
-    top,
-    blank,
-    line('  🚨🚨🚨   INSECURE DEFAULT CREDENTIALS DETECTED   🚨🚨🚨'),
-    blank,
-    line('  This Thunderbolt deployment is using well-known default values for:'),
-    blank,
-    ...matches.map((m) => line(`    • ${m.envKey}  —  ${m.description}`)),
-    blank,
-    line('  These values are public in the source tree. Anyone who knows the'),
-    line('  deployment exists can read them. Rotate before exposing this'),
-    line('  instance to the internet.'),
-    blank,
-    line('  Docs (override per platform):'),
-    line(`  ${INSECURE_DEFAULTS_DOCS_URL}`),
-    blank,
-    line('  Suppress with: DANGEROUSLY_ALLOW_DEFAULT_CREDS=true', `${YELLOW}`),
-    blank,
-    bot,
-    '',
-  ]
-
-  return rows.join('\n') + DIM + '' + RESET
+  return ['', top, ...innerLines.map(line), bot, ''].join('\n')
 }

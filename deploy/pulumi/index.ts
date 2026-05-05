@@ -142,39 +142,35 @@ const insecureDefaultMatches = insecureDefaultsHushed
     })
 
 if (insecureDefaultMatches.length > 0) {
-  pulumi.log.warn(
-    `\n` +
-      `╔════════════════════════════════════════════════════════════════════════════╗\n` +
-      `║  🚨🚨🚨   INSECURE DEFAULT CREDENTIALS IN USE   🚨🚨🚨                      ║\n` +
-      `╠════════════════════════════════════════════════════════════════════════════╣\n` +
-      `║                                                                            ║\n` +
-      `║  This stack has not overridden the following secrets, so the public        ║\n` +
-      `║  default values from deploy/ will be deployed into your AWS account:       ║\n` +
-      `║                                                                            ║\n` +
-      insecureDefaultMatches
-        .map((m) => {
-          const line = `║    • ${m.pulumiKey}  —  ${m.description}`
-          return line + ' '.repeat(Math.max(0, 78 - line.length)) + '║'
-        })
-        .join('\n') +
-      `\n║                                                                            ║\n` +
-      `║  These values are PUBLIC. Anyone who finds this deploy can read them.      ║\n` +
-      `║                                                                            ║\n` +
-      `║  Override each with:                                                       ║\n` +
-      `║    pulumi config set --secret <key> <value> -s ${stackName}` +
-      ' '.repeat(Math.max(0, 78 - (`    pulumi config set --secret <key> <value> -s ${stackName}`.length + 4))) +
-      `    ║\n` +
-      `║                                                                            ║\n` +
-      `║  Docs:                                                                     ║\n` +
-      `║    ${INSECURE_DEFAULTS_DOCS_URL}` +
-      ' '.repeat(Math.max(0, 78 - (`    ${INSECURE_DEFAULTS_DOCS_URL}`.length + 4))) +
-      `    ║\n` +
-      `║                                                                            ║\n` +
-      `║  Suppress this warning (DO NOT do this in production):                     ║\n` +
-      `║    pulumi config set dangerouslyAllowDefaultCreds true                     ║\n` +
-      `║                                                                            ║\n` +
-      `╚════════════════════════════════════════════════════════════════════════════╝\n`,
-  )
+  // Build the box once with a single pad-to-width formula so geometry stays
+  // consistent across every line, and grow the width to fit the longest line
+  // (the docs URL is ~89 chars and would otherwise overflow the right border).
+  const innerLines: string[] = [
+    '  🚨🚨🚨   INSECURE DEFAULT CREDENTIALS IN USE   🚨🚨🚨',
+    '',
+    '  This stack has not overridden the following secrets, so the public',
+    '  default values from deploy/ will be deployed into your AWS account:',
+    '',
+    ...insecureDefaultMatches.map((m) => `    • ${m.pulumiKey}  —  ${m.description}`),
+    '',
+    '  These values are PUBLIC. Anyone who finds this deploy can read them.',
+    '',
+    '  Override each with:',
+    `    pulumi config set --secret <key> <value> -s ${stackName}`,
+    '',
+    '  Docs:',
+    `    ${INSECURE_DEFAULTS_DOCS_URL}`,
+    '',
+    '  Suppress this warning (DO NOT do this in production):',
+    '    pulumi config set dangerouslyAllowDefaultCreds true',
+  ]
+  const W = Math.max(78, ...innerLines.map((s) => s.length))
+  const pad = (s: string): string => s + ' '.repeat(Math.max(0, W - s.length))
+  const fmt = (s: string): string => `║ ${pad(s)} ║`
+  const top = `╔${'═'.repeat(W + 2)}╗`
+  const bot = `╚${'═'.repeat(W + 2)}╝`
+
+  pulumi.log.warn(['', top, ...innerLines.map(fmt), bot, ''].join('\n'))
   for (const m of insecureDefaultMatches) {
     pulumi.log.warn(`Insecure default in use: ${m.pulumiKey} (${m.description})`)
   }

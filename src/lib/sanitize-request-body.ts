@@ -36,10 +36,18 @@ const reverseShellNc = /\bnc(?:at)?\b[^|;\n]{0,120}-e\s+\/(?:usr\/)?bin\/(?:sh|b
 
 // 3.9 Language one-liner reverse shells (each requires both the language flag
 // and specific networking keywords, so prose mentioning the language won't match).
-const reverseShellPython = /python[23]?(?:\.\d+)?\s+-c\s+['"][^'"]*\bsocket\b[^'"]*\bsubprocess\b[^'"]*['"]/gi
-const reverseShellPerl = /perl\s+-e\s+['"][^'"]*\buse\s+Socket\b[^'"]*['"]/gi
-const reverseShellPhp = /php\s+-r\s+['"][^'"]*\bfsockopen\b[^'"]*['"]/gi
-const reverseShellRuby = /ruby\s+-rsocket\s+-e\s+['"][^'"]*['"]/gi
+// Split into Single (`'...'`) and Double (`"..."`) quote variants so each regex
+// uses only one quote type internally — preserves JSON-envelope safety (can't
+// consume a structural JSON `"`) while allowing real-world mixed-quote payloads
+// (e.g. `php -r '$sock=fsockopen("10.0.0.1",4242);'`).
+const reverseShellPythonSingle = /python[23]?(?:\.\d+)?\s+-c\s+'[^']*\bsocket\b[^']*\bsubprocess\b[^']*'/gi
+const reverseShellPythonDouble = /python[23]?(?:\.\d+)?\s+-c\s+"[^"]*\bsocket\b[^"]*\bsubprocess\b[^"]*"/gi
+const reverseShellPerlSingle = /perl\s+-e\s+'[^']*\buse\s+Socket\b[^']*'/gi
+const reverseShellPerlDouble = /perl\s+-e\s+"[^"]*\buse\s+Socket\b[^"]*"/gi
+const reverseShellPhpSingle = /php\s+-r\s+'[^']*\bfsockopen\b[^']*'/gi
+const reverseShellPhpDouble = /php\s+-r\s+"[^"]*\bfsockopen\b[^"]*"/gi
+const reverseShellRubySingle = /ruby\s+-rsocket\s+-e\s+'[^']*'/gi
+const reverseShellRubyDouble = /ruby\s+-rsocket\s+-e\s+"[^"]*"/gi
 
 /**
  * Sanitize a request body string by redacting shell-injection patterns that
@@ -57,9 +65,13 @@ export const sanitizeRequestBody = (body: string): string =>
     .replace(processSubstitutionFetch, '<({{redacted-network-fetch}})')
     .replace(reverseShellDevTcp, '{{redacted-reverse-shell}}')
     .replace(reverseShellNc, '{{redacted-reverse-shell}}')
-    .replace(reverseShellPython, '{{redacted-python-reverse-shell}}')
-    .replace(reverseShellPerl, '{{redacted-perl-reverse-shell}}')
-    .replace(reverseShellPhp, '{{redacted-php-reverse-shell}}')
-    .replace(reverseShellRuby, '{{redacted-ruby-reverse-shell}}')
+    .replace(reverseShellPythonSingle, '{{redacted-python-reverse-shell}}')
+    .replace(reverseShellPythonDouble, '{{redacted-python-reverse-shell}}')
+    .replace(reverseShellPerlSingle, '{{redacted-perl-reverse-shell}}')
+    .replace(reverseShellPerlDouble, '{{redacted-perl-reverse-shell}}')
+    .replace(reverseShellPhpSingle, '{{redacted-php-reverse-shell}}')
+    .replace(reverseShellPhpDouble, '{{redacted-php-reverse-shell}}')
+    .replace(reverseShellRubySingle, '{{redacted-ruby-reverse-shell}}')
+    .replace(reverseShellRubyDouble, '{{redacted-ruby-reverse-shell}}')
     .replace(pipeToShell, '$1{{redacted-shell}}')
     .replace(pipeToInterpreter, '$1{{redacted-interpreter}}')

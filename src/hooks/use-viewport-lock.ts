@@ -3,7 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { useEffect } from 'react'
-import { getPlatform, isTauri } from '@/lib/platform'
+import { getPlatform, isTauri, isWebMobilePlatform } from '@/lib/platform'
 
 /**
  * Locks the layout viewport at scroll position 0, preventing iOS Safari from
@@ -70,6 +70,13 @@ export const useViewportLock = (): void => {
         clearTimeout(timer)
         vv.removeEventListener('resize', onResize)
       }
+    }
+
+    // Web path: these workarounds target mobile Safari/Chrome — skip on desktop
+    // browsers where they cause unexpected scrollIntoView on window resize and
+    // break first-tap cursor placement on touch-screen laptops.
+    if (!isWebMobilePlatform()) {
+      return
     }
 
     const html = document.documentElement

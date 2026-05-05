@@ -4,6 +4,7 @@
 
 import type { ConsoleSpies } from '@/test-utils/console-spies'
 import { setupConsoleSpy } from '@/test-utils/console-spies'
+import { createTestSettings } from '@/test-utils/settings'
 import { afterAll, beforeAll, beforeEach, describe, expect, it, mock, spyOn } from 'bun:test'
 import { Elysia } from 'elysia'
 import { createLinkPreviewRoutes } from './link-preview'
@@ -37,49 +38,7 @@ describe('Link Preview Routes', () => {
     consoleSpies = setupConsoleSpy()
 
     // Mock settings
-    getSettingsSpy = spyOn(settingsModule, 'getSettings').mockReturnValue({
-      fireworksApiKey: '',
-      mistralApiKey: '',
-      anthropicApiKey: '',
-      exaApiKey: '',
-      thunderboltInferenceUrl: '',
-      thunderboltInferenceApiKey: '',
-      monitoringToken: '',
-      googleClientId: '',
-      googleClientSecret: '',
-      microsoftClientId: '',
-      microsoftClientSecret: '',
-      logLevel: 'INFO',
-      port: 8000,
-      appUrl: 'http://localhost:1420',
-      posthogHost: 'https://us.i.posthog.com',
-      posthogApiKey: '',
-      corsOrigins: 'http://localhost:1420',
-      corsAllowCredentials: true,
-      corsAllowMethods: 'GET,POST,PUT,DELETE,PATCH,OPTIONS',
-      corsAllowHeaders: 'Content-Type,Authorization',
-      corsExposeHeaders: '',
-      waitlistEnabled: false,
-      waitlistAutoApproveDomains: '',
-      powersyncUrl: '',
-      powersyncJwtKid: '',
-      powersyncJwtSecret: '',
-      powersyncTokenExpirySeconds: 3600,
-      authMode: 'consumer' as const,
-      oidcClientId: '',
-      oidcClientSecret: '',
-      oidcIssuer: '',
-      betterAuthUrl: 'http://localhost:8000',
-      betterAuthSecret: 'test-secret-at-least-32-chars-long!!',
-      rateLimitEnabled: false,
-      swaggerEnabled: false,
-      e2eeEnabled: false,
-      trustedProxy: '',
-      samlEntryPoint: '',
-      samlEntityId: '',
-      samlIdpIssuer: '',
-      samlCert: '',
-    })
+    getSettingsSpy = spyOn(settingsModule, 'getSettings').mockReturnValue(createTestSettings())
 
     // Create mock fetch
     mockFetch = mock(() => Promise.resolve(createMockHtmlResponse('<html></html>')))

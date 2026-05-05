@@ -8,30 +8,22 @@ import { getOAuthRedirectUri } from '@/lib/oauth-redirect'
 import type { AuthProviderBackendConfig } from '@/types'
 import type { GoogleUserInfo } from './types'
 
-let cachedBackendConfig: Promise<AuthProviderBackendConfig> | null = null
+let cachedConfig: AuthProviderBackendConfig | null = null
 
-const fetchBackendConfig = (httpClient: HttpClient): Promise<AuthProviderBackendConfig> => {
-  if (cachedBackendConfig) {
-    return cachedBackendConfig
+const fetchBackendConfig = async (httpClient: HttpClient): Promise<AuthProviderBackendConfig> => {
+  if (cachedConfig) {
+    return cachedConfig
   }
-  cachedBackendConfig = (async () => {
-    try {
-      const result = await httpClient.get('auth/google/config').json<AuthProviderBackendConfig>()
-      if (!result.configured) {
-        cachedBackendConfig = null
-      }
-      return result
-    } catch (err) {
-      cachedBackendConfig = null
-      throw err
-    }
-  })()
-  return cachedBackendConfig
+  const result = await httpClient.get('auth/google/config').json<AuthProviderBackendConfig>()
+  if (result.configured) {
+    cachedConfig = result
+  }
+  return result
 }
 
 /** Test-only: clears the in-memory backend config cache so each test starts fresh. */
 export const resetBackendConfigCacheForTests = (): void => {
-  cachedBackendConfig = null
+  cachedConfig = null
 }
 
 export const getOAuthConfig = async (httpClient: HttpClient): Promise<OAuthConfig> => {

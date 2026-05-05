@@ -6,7 +6,7 @@ import { mock } from 'bun:test'
 import * as authUtils from '@/auth/utils'
 import * as waitlistUtils from '@/waitlist/utils'
 import * as settingsModule from '@/config/settings'
-import type { Settings } from '@/config/settings'
+import { createTestSettings } from '@/test-utils/settings'
 
 // createAuth transitively imports email-sending functions at the module level.
 // Until createAuth accepts these as injectable dependencies, we mock them here
@@ -42,50 +42,16 @@ const withRealFetch = async (fn: () => Promise<void>) => {
 }
 
 /** Base settings for SAML tests */
-const baseSettings: Settings = {
-  fireworksApiKey: '',
-  mistralApiKey: '',
-  anthropicApiKey: '',
-  exaApiKey: '',
-  thunderboltInferenceUrl: '',
-  thunderboltInferenceApiKey: '',
-  monitoringToken: '',
-  googleClientId: '',
-  googleClientSecret: '',
-  microsoftClientId: '',
-  microsoftClientSecret: '',
+const baseSettings = createTestSettings({
   logLevel: 'ERROR',
-  port: 8000,
-  appUrl: 'http://localhost:1420',
   posthogHost: '',
-  posthogApiKey: '',
-  corsOrigins: 'http://localhost:1420',
-  corsAllowCredentials: true,
-  corsAllowMethods: 'GET,POST,PUT,DELETE,PATCH,OPTIONS',
-  corsAllowHeaders: 'Content-Type,Authorization',
-  corsExposeHeaders: '',
-  waitlistEnabled: false,
-  waitlistAutoApproveDomains: '',
-  powersyncUrl: '',
-  powersyncJwtKid: '',
-  powersyncJwtSecret: '',
-  powersyncTokenExpirySeconds: 3600,
-  authMode: 'saml' as const,
-  oidcClientId: '',
-  oidcClientSecret: '',
-  oidcIssuer: '',
-  betterAuthUrl: 'http://localhost:8000',
-  betterAuthSecret: 'test-secret-at-least-32-chars-long!!',
-  rateLimitEnabled: false,
-  swaggerEnabled: false,
-  e2eeEnabled: false,
-  trustedProxy: '',
+  authMode: 'saml',
   samlEntryPoint: 'http://fake-idp.example.com/saml/sso',
   samlEntityId: 'fake-saml-sp',
   samlIdpIssuer: 'http://fake-idp.example.com',
   samlCert:
     'MIICpDCCAYwCCQDU+pQ4pHgSpDANBgkqhkiG9w0BAQsFADAUMRIwEAYDVQQDDAkxMjcuMC4wLjEwHhcNMjQwMTAxMDAwMDAwWhcNMjUwMTAxMDAwMDAwWjAUMRIwEAYDVQQDDAkxMjcuMC4wLjEwggEiMA0GCSqGSIb3DQEBAQUAA4IBDwAwggEKAoIBAQC7o4QFMSok',
-}
+})
 
 describe('SAML Integration', () => {
   let db: Awaited<ReturnType<typeof createTestDb>>['db']
@@ -193,7 +159,7 @@ describe('SAML Integration', () => {
       getSettingsSpy = spyOn(settingsModule, 'getSettings').mockReturnValue({
         ...baseSettings,
         samlEntryPoint: '',
-      } as Settings)
+      })
 
       const { createAuth } = await import('./auth')
       expect(() => createAuth(db)).toThrow('SAML_ENTRY_POINT')
@@ -203,7 +169,7 @@ describe('SAML Integration', () => {
       getSettingsSpy = spyOn(settingsModule, 'getSettings').mockReturnValue({
         ...baseSettings,
         samlCert: '',
-      } as Settings)
+      })
 
       const { createAuth } = await import('./auth')
       expect(() => createAuth(db)).toThrow('SAML_CERT')
@@ -213,7 +179,7 @@ describe('SAML Integration', () => {
       getSettingsSpy = spyOn(settingsModule, 'getSettings').mockReturnValue({
         ...baseSettings,
         samlEntityId: '',
-      } as Settings)
+      })
 
       const { createAuth } = await import('./auth')
       expect(() => createAuth(db)).toThrow('SAML_ENTITY_ID')
@@ -223,7 +189,7 @@ describe('SAML Integration', () => {
       getSettingsSpy = spyOn(settingsModule, 'getSettings').mockReturnValue({
         ...baseSettings,
         samlIdpIssuer: '',
-      } as Settings)
+      })
 
       const { createAuth } = await import('./auth')
       expect(() => createAuth(db)).toThrow('SAML_IDP_ISSUER')
@@ -239,7 +205,7 @@ describe('SAML Integration', () => {
         samlEntityId: '',
         samlIdpIssuer: '',
         samlCert: '',
-      } as Settings)
+      })
 
       const { createAuth } = await import('./auth')
       const auth = createAuth(db)

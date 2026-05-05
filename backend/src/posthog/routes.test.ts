@@ -4,6 +4,7 @@
 
 import type { ConsoleSpies } from '@/test-utils/console-spies'
 import { setupConsoleSpy } from '@/test-utils/console-spies'
+import { createTestSettings } from '@/test-utils/settings'
 import { afterAll, beforeAll, beforeEach, describe, expect, it, mock, spyOn } from 'bun:test'
 import { Elysia } from 'elysia'
 import { createPostHogRoutes } from './routes'
@@ -18,49 +19,9 @@ describe('PostHog Proxy Routes', () => {
   beforeAll(() => {
     consoleSpies = setupConsoleSpy()
 
-    getSettingsSpy = spyOn(settingsModule, 'getSettings').mockReturnValue({
-      fireworksApiKey: '',
-      mistralApiKey: '',
-      anthropicApiKey: '',
-      exaApiKey: '',
-      thunderboltInferenceUrl: '',
-      thunderboltInferenceApiKey: '',
-      monitoringToken: '',
-      googleClientId: '',
-      googleClientSecret: '',
-      microsoftClientId: '',
-      microsoftClientSecret: '',
-      logLevel: 'INFO',
-      port: 8000,
-      appUrl: 'http://localhost:1420',
-      posthogHost: 'https://us.i.posthog.com',
-      posthogApiKey: 'test-key',
-      corsOrigins: 'http://localhost:1420',
-      corsAllowCredentials: true,
-      corsAllowMethods: 'GET,POST,PUT,DELETE,PATCH,OPTIONS',
-      corsAllowHeaders: 'Content-Type,Authorization',
-      corsExposeHeaders: '',
-      waitlistEnabled: false,
-      waitlistAutoApproveDomains: '',
-      powersyncUrl: '',
-      powersyncJwtKid: '',
-      powersyncJwtSecret: '',
-      powersyncTokenExpirySeconds: 3600,
-      authMode: 'consumer' as const,
-      oidcClientId: '',
-      oidcClientSecret: '',
-      oidcIssuer: '',
-      betterAuthUrl: 'http://localhost:8000',
-      betterAuthSecret: 'test-secret-at-least-32-chars-long!!',
-      rateLimitEnabled: false,
-      swaggerEnabled: false,
-      e2eeEnabled: false,
-      trustedProxy: '',
-      samlEntryPoint: '',
-      samlEntityId: '',
-      samlIdpIssuer: '',
-      samlCert: '',
-    } as ReturnType<typeof settingsModule.getSettings>)
+    getSettingsSpy = spyOn(settingsModule, 'getSettings').mockReturnValue(
+      createTestSettings({ posthogApiKey: 'test-key' }),
+    )
 
     mockFetch = mock(() =>
       Promise.resolve(new Response('{"status":1}', { status: 200, headers: { 'content-type': 'application/json' } })),

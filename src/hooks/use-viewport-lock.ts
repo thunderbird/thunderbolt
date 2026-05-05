@@ -80,9 +80,10 @@ export const useViewportLock = (): void => {
 
     // Intercept touch on focusable elements — prevent iOS's automatic
     // scroll-into-view by manually focusing with preventScroll.
+    // Skip if the element is already focused to preserve cursor repositioning.
     const onTouchEnd = (e: TouchEvent) => {
       const target = e.target
-      if (isFocusable(target)) {
+      if (isFocusable(target) && target !== document.activeElement) {
         e.preventDefault()
         target.focus({ preventScroll: true })
       }

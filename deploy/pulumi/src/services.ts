@@ -280,7 +280,11 @@ export const createServices = (args: ServiceArgs) => {
           // Realm import substitutes ${OIDC_REDIRECT_URI} / ${OIDC_WEB_ORIGIN} so the
           // baked-in realm JSON works for both local dev (defaults) and Fargate (real URLs).
           // Redirect URI = backend OAuth callback (BETTER_AUTH_URL = publicUrls.api).
-          { name: 'OIDC_REDIRECT_URI', value: pulumi.interpolate`${args.publicUrls.api}/v1/api/auth/oauth2/callback/oidc` },
+          // Callback path is the @better-auth/sso plugin's standard
+          // `/sso/callback/<providerId>` (post-THU-461 SSO migration). The
+          // legacy genericOAuth path was `/oauth2/callback/oidc`; both are
+          // documented here in case anything still references it.
+          { name: 'OIDC_REDIRECT_URI', value: pulumi.interpolate`${args.publicUrls.api}/v1/api/auth/sso/callback/sso` },
           { name: 'OIDC_WEB_ORIGIN', value: args.publicUrls.app },
         ],
         portMappings: [{ containerPort: 8080 }],

@@ -14,7 +14,7 @@
       "enabled": true,
       "clientAuthenticatorType": "client-secret",
       "secret": "thunderbolt-enterprise-secret",
-      "redirectUris": ["${OIDC_REDIRECT_URI:http://localhost:3000/v1/api/auth/oauth2/callback/oidc}"],
+      "redirectUris": ["${OIDC_REDIRECT_URI:http://localhost:3000/v1/api/auth/sso/callback/sso}"],
       "webOrigins": ["${OIDC_WEB_ORIGIN:http://localhost:3000}"],
       "standardFlowEnabled": true,
       "directAccessGrantsEnabled": false,

@@ -91,10 +91,11 @@ export const createPreviewRoutes = (auth: Auth, fetchFn: typeof fetch = globalTh
     .use(createAuthMacro(auth))
     .guard({ auth: true }, (g) => {
       if (rateLimit) g.use(rateLimit)
-      return g.get(
+      // POST so target URLs do not appear in access logs.
+      return g.post(
         '/preview',
-        async ({ query, set }): Promise<PreviewDto | { error: string }> => {
-          const targetUrl = query.url
+        async ({ body, set }): Promise<PreviewDto | { error: string }> => {
+          const targetUrl = body.url
           const validation = validateSafeUrl(targetUrl)
           if (!validation.valid) {
             set.status = 400
@@ -128,7 +129,7 @@ export const createPreviewRoutes = (auth: Auth, fetchFn: typeof fetch = globalTh
             clearTimeout(timeoutId)
           }
         },
-        { query: t.Object({ url: t.String() }) },
+        { body: t.Object({ url: t.String() }) },
       )
     })
 }

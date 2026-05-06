@@ -71,7 +71,7 @@ export const fetchContent = async (params: FetchContentParams, httpClient: HttpC
 export const fetchLinkPreview = async (params: LinkPreviewParams, httpClient: HttpClient): Promise<LinkPreviewData> => {
   try {
     return await httpClient
-      .get('preview', { timeout: requestTimeout, searchParams: { url: params.url } })
+      .post('preview', { timeout: requestTimeout, json: { url: params.url } })
       .json<LinkPreviewData>()
   } catch (error) {
     console.error('Link preview error:', error)

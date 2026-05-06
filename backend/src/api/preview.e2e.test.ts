@@ -44,9 +44,10 @@ describe('GET /v1/preview — e2e', () => {
     handle = await createTestApp({ fetchFn: createUpstreamRouter({ 'preview.test': upstream }) })
 
     const res = await handle.app.handle(
-      new Request(`http://localhost/v1/preview?url=${encodeURIComponent('https://preview.test/article')}`, {
-        method: 'GET',
-        headers: authHeaders(handle.bearerToken),
+      new Request(`http://localhost/v1/preview`, {
+        method: 'POST',
+        headers: { ...authHeaders(handle.bearerToken), 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url: 'https://preview.test/article' }),
       }),
     )
     expect(res.status).toBe(200)
@@ -70,9 +71,10 @@ describe('GET /v1/preview — e2e', () => {
     handle = await createTestApp({ fetchFn: createUpstreamRouter({ 'preview.test': upstream }) })
 
     const res = await handle.app.handle(
-      new Request(`http://localhost/v1/preview?url=${encodeURIComponent('https://preview.test/empty')}`, {
-        method: 'GET',
-        headers: authHeaders(handle.bearerToken),
+      new Request(`http://localhost/v1/preview`, {
+        method: 'POST',
+        headers: { ...authHeaders(handle.bearerToken), 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url: 'https://preview.test/empty' }),
       }),
     )
     expect(res.status).toBe(200)
@@ -86,9 +88,10 @@ describe('GET /v1/preview — e2e', () => {
   it('rejects targets that resolve to a private address with 400', async () => {
     handle = await createTestApp({})
     const res = await handle.app.handle(
-      new Request(`http://localhost/v1/preview?url=${encodeURIComponent('https://127.0.0.1/secret')}`, {
-        method: 'GET',
-        headers: authHeaders(handle.bearerToken),
+      new Request(`http://localhost/v1/preview`, {
+        method: 'POST',
+        headers: { ...authHeaders(handle.bearerToken), 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url: 'https://127.0.0.1/secret' }),
       }),
     )
     expect(res.status).toBe(400)
@@ -97,7 +100,11 @@ describe('GET /v1/preview — e2e', () => {
   it('returns 401 for unauthenticated requests', async () => {
     handle = await createTestApp({})
     const res = await handle.app.handle(
-      new Request(`http://localhost/v1/preview?url=${encodeURIComponent('https://preview.test/x')}`, { method: 'GET' }),
+      new Request(`http://localhost/v1/preview`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url: 'https://preview.test/x' }),
+      }),
     )
     expect(res.status).toBe(401)
   })

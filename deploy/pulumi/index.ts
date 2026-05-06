@@ -3,6 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import * as pulumi from '@pulumi/pulumi'
+import * as random from '@pulumi/random'
 import { createVpc } from './src/vpc'
 import { createEksCluster } from './src/eks'
 import { createStorage } from './src/storage'
@@ -78,14 +79,34 @@ const images = {
   marketing: `${imagePrefix}/thunderbolt-marketing:${version}`,
 }
 
-// Secrets — override per-stack via `pulumi config set --secret <key> <value>`
+// Preview stacks (`preview-pr-*`) are publicly reachable, so the friendly defaults
+// would be a credential leak — they're visible in this repo. For preview stacks,
+// generate a per-stack random value when no explicit `pulumi config set` override is
+// present. Local (`pulumi up` against the dev stack) and enterprise customer stacks
+// keep the defaults so the workflow stays low-friction. Secrets that need to remain
+// stable across rebuilds are persisted by Pulumi state.
+const isPreviewStack = stackName.startsWith('preview-')
+
+const previewSecret = (resourceName: string, fallback: string, length = 48): pulumi.Output<string> =>
+  isPreviewStack
+    ? new random.RandomPassword(`${name}-${resourceName}`, { length, special: false }).result
+    : pulumi.output(fallback)
+
+// Secrets — override per-stack via `pulumi config set --secret <key> <value>`. When no
+// override is set on a preview stack, machine-only secrets are generated randomly
+// per stack and stored in Pulumi state + AWS Secrets Manager (see services.ts).
 const secrets = {
-  postgresPassword: config.getSecret('postgresPassword') ?? pulumi.output('postgres'),
+  postgresPassword: config.getSecret('postgresPassword') ?? previewSecret('postgres-password', 'postgres'),
   keycloakAdminPassword: config.getSecret('keycloakAdminPassword') ?? pulumi.output('admin'),
   oidcClientSecret: config.getSecret('oidcClientSecret') ?? pulumi.output('thunderbolt-enterprise-secret'),
-  powersyncJwtSecret: config.getSecret('powersyncJwtSecret') ?? pulumi.output('enterprise-thunderbolt-powersync-jwt-default-secret'),
-  betterAuthSecret: config.getSecret('betterAuthSecret') ?? pulumi.output('enterprise-thunderbolt-better-auth-default-secret'),
-  powersyncDbPassword: config.getSecret('powersyncDbPassword') ?? pulumi.output('myhighlyrandompassword'),
+  powersyncJwtSecret:
+    config.getSecret('powersyncJwtSecret') ??
+    previewSecret('powersync-jwt-secret', 'enterprise-thunderbolt-powersync-jwt-default-secret', 64),
+  betterAuthSecret:
+    config.getSecret('betterAuthSecret') ??
+    previewSecret('better-auth-secret', 'enterprise-thunderbolt-better-auth-default-secret', 64),
+  powersyncDbPassword:
+    config.getSecret('powersyncDbPassword') ?? previewSecret('powersync-db-password', 'myhighlyrandompassword'),
   // AI provider keys — empty default so enterprise stacks don't need them set.
   anthropicApiKey: config.getSecret('anthropicApiKey') ?? pulumi.output(''),
   fireworksApiKey: config.getSecret('fireworksApiKey') ?? pulumi.output(''),

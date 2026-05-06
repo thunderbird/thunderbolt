@@ -10,7 +10,7 @@ import { createClient } from '@/lib/http'
 import type { HandleError, HandleResult } from '@/types/handle-errors'
 import posthog, { type PostHog } from 'posthog-js'
 import { PostHogProvider as PostHogReactProvider } from 'posthog-js/react'
-import type { ReactNode } from 'react'
+import { createContext, useContext, type ReactNode } from 'react'
 
 let posthogClient: PostHog | null = null
 
@@ -120,11 +120,21 @@ export const initPosthog = async (httpClient?: HttpClient): Promise<HandleResult
   }
 }
 
+const TelemetryAvailableContext = createContext(false)
+
+/**
+ * Whether telemetry is actually wired up (i.e. a PostHog client was successfully initialized
+ * because the backend supplied a public API key). Self-hosted deployments without a configured
+ * key return false here regardless of the user's `data_collection` consent setting.
+ */
+export const useTelemetryAvailable = () => useContext(TelemetryAvailableContext)
+
 /**
  * PostHog Provider component for React
  */
 export const PostHogProvider = ({ children, client }: { children: ReactNode; client: PostHog | null }) => {
-  return client ? <PostHogReactProvider client={client}>{children}</PostHogReactProvider> : children
+  const inner = client ? <PostHogReactProvider client={client}>{children}</PostHogReactProvider> : children
+  return <TelemetryAvailableContext.Provider value={!!client}>{inner}</TelemetryAvailableContext.Provider>
 }
 
 export type EventType =

@@ -54,6 +54,9 @@ services:
       POSTGRES_USER: postgres
       POSTGRES_DB: postgres
       POSTGRES_PASSWORD: postgres
+      # Read by 01-powersync.sh on first init to set the powersync_role password.
+      # Must match the password embedded in the powersync container's PS_PG_URI below.
+      POWERSYNC_DB_PASSWORD: myhighlyrandompassword
     volumes:
       - pg_data:/var/lib/postgresql/data
       - ./docker/postgres-init:/docker-entrypoint-initdb.d
@@ -73,6 +76,10 @@ services:
       POWERSYNC_CONFIG_PATH: /config/config.yaml
       PS_PG_URI: postgresql://powersync_role:myhighlyrandompassword@postgres:5432/postgres
       PS_STORAGE_URI: postgresql://postgres:postgres@postgres:5432/powersync_storage
+      # Base64 of the JWT secret used by both backend (signs) and powersync (verifies).
+      # Default value below = base64("enterprise-thunderbolt-powersync-jwt-default-secret"),
+      # which matches the default backend POWERSYNC_JWT_SECRET.
+      POWERSYNC_JWT_KEY_BASE64: ZW50ZXJwcmlzZS10aHVuZGVyYm9sdC1wb3dlcnN5bmMtand0LWRlZmF1bHQtc2VjcmV0
     volumes:
       - ./config/powersync-config.yaml:/config/config.yaml
     ports:

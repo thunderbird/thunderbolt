@@ -56,6 +56,10 @@ describe('PostHog Proxy Routes', () => {
       swaggerEnabled: false,
       e2eeEnabled: false,
       trustedProxy: '',
+      samlEntryPoint: '',
+      samlEntityId: '',
+      samlIdpIssuer: '',
+      samlCert: '',
     } as ReturnType<typeof settingsModule.getSettings>)
 
     mockFetch = mock(() =>

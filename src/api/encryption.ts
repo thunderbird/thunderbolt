@@ -47,7 +47,6 @@ export const registerDevice = async (
     .post('devices', {
       json: params,
       headers: authHeaders(),
-      credentials: 'omit',
     })
     .json<RegisterDeviceResponse>()
 
@@ -61,7 +60,6 @@ export const storeEnvelope = async (
     .post(`devices/${encodeURIComponent(deviceId)}/envelope`, {
       json: body,
       headers: authHeaders(),
-      credentials: 'omit',
     })
     .json<StoreEnvelopeResponse>()
 }
@@ -71,7 +69,6 @@ export const fetchMyEnvelope = async (httpClient: HttpClient): Promise<FetchEnve
   httpClient
     .get('devices/me/envelope', {
       headers: authHeaders(),
-      credentials: 'omit',
     })
     .json<FetchEnvelopeResponse>()
 
@@ -80,7 +77,6 @@ export const fetchCanary = async (httpClient: HttpClient): Promise<FetchCanaryRe
   httpClient
     .get('encryption/canary', {
       headers: authHeaders(),
-      credentials: 'omit',
     })
     .json<FetchCanaryResponse>()
 
@@ -89,7 +85,6 @@ export const denyDevice = async (httpClient: HttpClient, deviceId: string, canar
   await httpClient.post(`devices/${encodeURIComponent(deviceId)}/deny`, {
     json: { canarySecret },
     headers: authHeaders(),
-    credentials: 'omit',
   })
 }
 
@@ -98,7 +93,6 @@ export const revokeDevice = async (httpClient: HttpClient, deviceId: string, can
   await httpClient.post(`account/devices/${encodeURIComponent(deviceId)}/revoke`, {
     json: canarySecret ? { canarySecret } : {},
     headers: authHeaders(),
-    credentials: 'omit',
   })
 }
 
@@ -106,7 +100,6 @@ export const revokeDevice = async (httpClient: HttpClient, deviceId: string, can
 export const cancelPending = async (httpClient: HttpClient): Promise<void> => {
   await httpClient.post('devices/me/cancel-pending', {
     headers: authHeaders(),
-    credentials: 'omit',
   })
 }
 
@@ -116,7 +109,6 @@ export const checkCanaryExists = async (httpClient: HttpClient): Promise<boolean
     await httpClient
       .get('encryption/canary', {
         headers: authHeaders(),
-        credentials: 'omit',
       })
       .json()
     return true

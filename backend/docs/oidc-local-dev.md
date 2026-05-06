@@ -22,6 +22,7 @@ Any OIDC-compliant provider works — the implementation uses standard OIDC disc
 The `docs/mozilla-realm.json` file contains a ready-to-go realm with a client and test users. Mount it on startup so there's zero manual setup:
 
 ```sh
+cd backend  # run from backend/ so the volume mount path resolves correctly
 docker run -d \
   --name keycloak \
   -p 8180:8080 \
@@ -49,12 +50,15 @@ WAITLIST_ENABLED=false
 OIDC_CLIENT_ID=thunderbolt-app
 OIDC_CLIENT_SECRET=thunderbolt-dev-secret
 OIDC_ISSUER=http://localhost:8180/realms/mozilla
+# The SSO plugin validates discovery URLs against trusted origins — include the IdP origin
+TRUSTED_ORIGINS=http://localhost:1420,http://localhost:8180
 ```
 
 **Frontend** (`.env.local` in project root, or whatever your local `.env` file is called):
 
 ```sh
-VITE_AUTH_MODE=oidc
+VITE_AUTH_MODE=sso
+# Make sure VITE_BYPASS_WAITLIST is NOT set (or set to false) — it skips the auth gate entirely
 ```
 
 ### 3. Start backend and frontend
@@ -110,7 +114,7 @@ The only requirement is that the provider supports OIDC discovery at `{OIDC_ISSU
 You'll need to register a callback URL with the provider:
 
 ```
-https://<your-backend>/v1/api/auth/oauth2/callback/oidc
+https://<your-backend>/v1/api/auth/sso/callback/sso
 ```
 
 ## OIDC logout
@@ -135,8 +139,18 @@ What you'll need from whoever manages the identity provider:
 You'll need to give them your **callback URL** to register:
 
 ```
-https://<your-backend>.onrender.com/v1/api/auth/oauth2/callback/oidc
+https://<your-backend>.onrender.com/v1/api/auth/sso/callback/sso
 ```
+
+## Troubleshooting
+
+| Symptom | Cause | Fix |
+|---------|-------|-----|
+| App loads normally, no redirect to IdP | `VITE_BYPASS_WAITLIST` is set to `true` | Remove it or set to `false`, restart frontend |
+| App loads normally, no redirect to IdP | Stale auth session from a previous login | Clear site data (DevTools → Application → Storage → Clear site data) |
+| `discovery_untrusted_origin` error | IdP origin not in `TRUSTED_ORIGINS` | Add `http://localhost:8180` to `TRUSTED_ORIGINS` in `backend/.env` |
+| `discovery_unexpected_error` error | Keycloak is not running or not reachable | Run `docker ps \| grep keycloak` and start it if needed |
+| OIDC callback 404 | Wrong redirect URI in Keycloak client | Ensure `redirectUris` in realm JSON matches `/v1/api/auth/sso/callback/sso` |
 
 ## Testing
 
@@ -150,10 +164,10 @@ cd backend && bun test src/auth/oidc-integration.test.ts
 
 | File | Purpose |
 |------|---------|
-| `backend/src/auth/auth.ts` | Conditionally adds `genericOAuth` plugin when `AUTH_MODE=oidc` |
+| `backend/src/auth/auth.ts` | Conditionally adds `@better-auth/sso` plugin when `AUTH_MODE=oidc` or `saml` |
 | `backend/src/config/settings.ts` | `authMode`, `oidcClientId`, `oidcClientSecret`, `oidcIssuer` env vars |
 | `backend/src/auth/oidc-integration.test.ts` | OIDC integration tests using mock OIDC server |
-| `backend/docs/mozilla-realm.json` | Pre-configured Keycloak realm for local development |
-| `src/lib/auth-mode.ts` | `isOidcMode()` — reads `VITE_AUTH_MODE` |
-| `src/app.tsx` | `OidcRedirect` component, conditional routing for OIDC vs consumer mode |
-| `src/contexts/auth-context.tsx` | `credentials: 'include'` in OIDC mode for cookie-based session bootstrap |
+| `backend/docs/mozilla-realm.json` | Pre-configured Keycloak realm for local development (OIDC + SAML clients) |
+| `src/lib/auth-mode.ts` | `isSsoMode()` — reads `VITE_AUTH_MODE` |
+| `src/app.tsx` | `SsoRedirect` component, conditional routing for SSO vs consumer mode |
+| `src/contexts/auth-context.tsx` | `credentials: 'include'` in SSO mode for cookie-based session bootstrap |

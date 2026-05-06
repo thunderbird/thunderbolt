@@ -15,7 +15,7 @@
       "clientAuthenticatorType": "client-secret",
       "secret": "thunderbolt-dev-secret",
       "redirectUris": [
-        "http://localhost:8000/v1/api/auth/oauth2/callback/oidc"
+        "http://localhost:8000/v1/api/auth/sso/callback/sso"
       ],
       "webOrigins": [
         "http://localhost:1420"
@@ -28,6 +28,74 @@
         "openid",
         "profile",
         "email"
+      ]
+    },
+    {
+      "clientId": "thunderbolt-saml-sp",
+      "enabled": true,
+      "protocol": "saml",
+      "frontchannelLogout": true,
+      "attributes": {
+        "saml.assertion.signature": "true",
+        "saml.force.post.binding": "true",
+        "saml.server.signature": "true",
+        "saml_assertion_consumer_url_post": "http://localhost:8000/v1/api/auth/sso/saml2/sp/acs/sso",
+        "saml.signature.algorithm": "RSA_SHA256",
+        "saml_name_id_format": "email"
+      },
+      "redirectUris": [
+        "http://localhost:8000/v1/api/auth/sso/saml2/sp/acs/sso",
+        "http://localhost:8000/v1/api/auth/sso/saml2/callback/sso"
+      ],
+      "baseUrl": "http://localhost:1420",
+      "defaultClientScopes": [],
+      "protocolMappers": [
+        {
+          "name": "email-nameid",
+          "protocol": "saml",
+          "protocolMapper": "saml-user-attribute-nameid-mapper",
+          "consentRequired": false,
+          "config": {
+            "mapper.nameid.format": "urn:oasis:names:tc:SAML:1.1:nameid-format:emailAddress",
+            "user.attribute": "email"
+          }
+        },
+        {
+          "name": "X500 email",
+          "protocol": "saml",
+          "protocolMapper": "saml-user-property-mapper",
+          "consentRequired": false,
+          "config": {
+            "attribute.nameformat": "urn:oasis:names:tc:SAML:2.0:attrname-format:uri",
+            "user.attribute": "email",
+            "friendly.name": "email",
+            "attribute.name": "urn:oid:1.2.840.113549.1.9.1"
+          }
+        },
+        {
+          "name": "X500 givenName",
+          "protocol": "saml",
+          "protocolMapper": "saml-user-property-mapper",
+          "consentRequired": false,
+          "config": {
+            "attribute.nameformat": "urn:oasis:names:tc:SAML:2.0:attrname-format:uri",
+            "user.attribute": "firstName",
+            "friendly.name": "givenName",
+            "attribute.name": "urn:oid:2.5.4.42"
+          }
+        },
+        {
+          "name": "X500 surname",
+          "protocol": "saml",
+          "protocolMapper": "saml-user-property-mapper",
+          "consentRequired": false,
+          "config": {
+            "attribute.nameformat": "urn:oasis:names:tc:SAML:2.0:attrname-format:uri",
+            "user.attribute": "lastName",
+            "friendly.name": "surname",
+            "attribute.name": "urn:oid:2.5.4.4"
+          }
+        }
       ]
     }
   ],

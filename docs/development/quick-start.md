@@ -9,6 +9,18 @@ This walks through running Thunderbolt locally: backend API, PowerSync sync serv
 - **sccache** — speeds up Rust rebuilds. Install with `cargo install sccache`. Configured in `src-tauri/.cargo/config.toml`.
 - **Docker** — PowerSync and PostgreSQL run in containers during local dev.
 
+For Linux desktop builds, also install Tauri's Linux system prerequisites before running `cargo check` in
+`src-tauri` or `bun tauri:dev:desktop`. On Debian/Ubuntu:
+
+```bash
+sudo apt install libwebkit2gtk-4.1-dev libjavascriptcoregtk-4.1-dev \
+  build-essential curl wget file libxdo-dev libssl-dev \
+  libayatana-appindicator3-dev librsvg2-dev libsoup-3.0-dev
+```
+
+For other distributions, use the upstream
+[Tauri Linux prerequisites](https://v2.tauri.app/start/prerequisites/#linux).
+
 Run `make doctor` after cloning to verify your environment is set up correctly. It prints exact install commands for anything missing.
 
 You'll also need at least one AI provider API key — Anthropic, OpenAI, Mistral, Fireworks, or any OpenAI-compatible endpoint (Ollama and llama.cpp are recommended for local inference).

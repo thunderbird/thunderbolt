@@ -16,6 +16,7 @@ import {
 } from '@/components/ui/responsive-modal'
 import { SelectableCard, type DataOption } from '@/components/ui/selectable-card'
 import { useAuth } from '@/contexts'
+import { isSsoMode } from '@/lib/auth-mode'
 import { clearLocalData } from '@/lib/cleanup'
 
 type LogoutModalProps = {
@@ -43,7 +44,11 @@ export const LogoutModal = ({ open, onOpenChange }: LogoutModalProps) => {
       console.error('Failed to clear local data:', error)
     }
 
-    window.location.reload()
+    if (isSsoMode()) {
+      window.location.replace('/signed-out')
+    } else {
+      window.location.reload()
+    }
   }
 
   const handleOpenChange = (newOpen: boolean) => {

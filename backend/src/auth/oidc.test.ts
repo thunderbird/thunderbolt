@@ -46,6 +46,10 @@ const baseSettings: Settings = {
   swaggerEnabled: false,
   trustedProxy: '',
   e2eeEnabled: false,
+  samlEntryPoint: '',
+  samlEntityId: '',
+  samlIdpIssuer: '',
+  samlCert: '',
 }
 
 describe('OIDC config route', () => {

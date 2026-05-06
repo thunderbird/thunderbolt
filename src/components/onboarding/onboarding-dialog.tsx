@@ -92,9 +92,6 @@ export const OnboardingDialog = () => {
     <Dialog open={isOpen}>
       <DialogContent
         className={cn('p-0 overflow-hidden', !isMobile && 'h-[650px]')}
-        style={{
-          bottom: 'var(--kb, 0px)',
-        }}
         showCloseButton={false}
         useTransparentOverlay={!isMobile}
         fullScreen={isMobile}

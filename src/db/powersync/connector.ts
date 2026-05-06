@@ -3,15 +3,26 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { getDeviceId, getAuthToken } from '@/lib/auth-token'
+import { isSsoMode } from '@/lib/auth-mode'
 import { getDeviceDisplayName } from '@/lib/platform'
 import type { AbstractPowerSyncDatabase, PowerSyncBackendConnector, PowerSyncCredentials } from '@powersync/web'
 import { encodeForUpload } from '@/db/encryption'
 import { sanitizeErrorForTracking, trackSyncEvent } from './sync-tracker'
 
-/** Dispatched when backend returns 410 (account deleted), 403 + DEVICE_DISCONNECTED, 403 + DEVICE_NOT_TRUSTED, or 409 + DEVICE_ID_TAKEN. App should reset and reload. */
+/**
+ * Dispatched when the backend rejects credentials. The detail.reason discriminates handling:
+ * - 410 (account deleted), 409 + DEVICE_ID_TAKEN, 400 + DEVICE_ID_REQUIRED → full reset
+ * - 403 + DEVICE_DISCONNECTED → open revoked-device modal, preserve local data
+ * - 401 (session expired) → open sign-in modal, preserve local data
+ */
 export const powersyncCredentialsInvalid = 'powersync_credentials_invalid'
 
-export type CredentialsInvalidReason = 'account_deleted' | 'device_revoked' | 'device_id_taken' | 'device_id_required'
+export type CredentialsInvalidReason =
+  | 'account_deleted'
+  | 'device_revoked'
+  | 'device_id_taken'
+  | 'device_id_required'
+  | 'session_expired'
 
 type TokenResponse = {
   token: string
@@ -37,6 +48,9 @@ const getCredentialsInvalidReason = (status: number, body: ErrorBody): Credentia
   }
   if (status === 400 && body.code === 'DEVICE_ID_REQUIRED') {
     return 'device_id_required'
+  }
+  if (status === 401) {
+    return 'session_expired'
   }
   return null
 }
@@ -81,13 +95,15 @@ export class ThunderboltConnector implements PowerSyncBackendConnector {
    */
   async fetchCredentials(): Promise<PowerSyncCredentials | null> {
     const hadToken = Boolean(getAuthToken())
+    const ssoMode = isSsoMode()
     try {
-      if (!hadToken) {
+      if (!hadToken && !ssoMode) {
         return null
       }
 
       const response = await fetch(`${this.backendUrl}/powersync/token`, {
         headers: buildHeaders(),
+        credentials: ssoMode ? 'include' : undefined,
       })
 
       if (!response.ok) {
@@ -99,7 +115,8 @@ export class ThunderboltConnector implements PowerSyncBackendConnector {
           // ignore
         }
         handleCredentialsInvalidIfNeeded(status, body)
-        // 401 = not authenticated (expected before login), DEVICE_NOT_TRUSTED = expected during setup
+        // 401 surfaces as session_expired (modal opens), DEVICE_NOT_TRUSTED is expected during setup —
+        // both are surfaced to the user via dedicated UI, so don't pollute the console.
         if (status !== 401 && body.code !== 'DEVICE_NOT_TRUSTED') {
           console.error('Failed to fetch PowerSync credentials:', status, body)
         }
@@ -159,6 +176,7 @@ export class ThunderboltConnector implements PowerSyncBackendConnector {
         method: 'PUT',
         headers: { ...buildHeaders(), 'Content-Type': 'application/json' },
         body: JSON.stringify({ operations }),
+        credentials: isSsoMode() ? 'include' : undefined,
       })
 
       if (!response.ok) {

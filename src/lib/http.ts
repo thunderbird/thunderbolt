@@ -40,7 +40,11 @@ export type HttpClient = {
 
 type HttpClientConfig = {
   prefixUrl?: string
-  hooks?: { beforeRequest?: Array<(request: Request) => void> }
+  credentials?: RequestCredentials
+  hooks?: {
+    beforeRequest?: Array<(request: Request) => void>
+    afterResponse?: Array<(request: Request, response: Response) => void>
+  }
   fetch?: (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>
 }
 
@@ -109,7 +113,7 @@ export const createClient = (config: HttpClientConfig = {}): HttpClient => {
       method,
       headers,
       body,
-      credentials: options.credentials,
+      credentials: options.credentials ?? config.credentials,
       signal,
     })
 
@@ -117,6 +121,7 @@ export const createClient = (config: HttpClientConfig = {}): HttpClient => {
 
     const responsePromise = fetchFn(req)
       .then((response) => {
+        config.hooks?.afterResponse?.forEach((hook) => hook(req, response))
         if (!response.ok) {
           throw new HttpError(response)
         }
@@ -139,15 +144,21 @@ export const createClient = (config: HttpClientConfig = {}): HttpClient => {
 }
 
 /** Create an authenticated client that attaches a Bearer token from localStorage on each request.
- * Skips setting the token if the caller already provided an Authorization header. */
+ * Skips setting the token if the caller already provided an Authorization header.
+ * Dispatches `powersync_credentials_invalid` (reason: `session_expired`) when an authenticated
+ * request to the app backend returns 401, so the app can prompt the user to re-authenticate.
+ * External-API 401s (e.g. Google/Microsoft OAuth) are ignored — those use the same client but
+ * with caller-provided OAuth tokens, and are not signals of an expired app session. */
 export const createAuthenticatedClient = (
   prefixUrl: string,
   getToken: () => string | null,
-  config: Pick<HttpClientConfig, 'fetch'> = {},
-): HttpClient =>
-  createClient({
+  config: Pick<HttpClientConfig, 'fetch' | 'credentials'> = {},
+): HttpClient => {
+  const normalizedPrefix = prefixUrl.endsWith('/') ? prefixUrl : `${prefixUrl}/`
+  return createClient({
     prefixUrl,
     fetch: config.fetch,
+    credentials: config.credentials,
     hooks: {
       beforeRequest: [
         (request) => {
@@ -160,8 +171,24 @@ export const createAuthenticatedClient = (
           }
         },
       ],
+      afterResponse: [
+        // Event name + reason kept in sync with src/db/powersync/connector.ts. Importing from there
+        // would create a cycle (connector → sync-tracker → posthog → http).
+        (request, response) => {
+          if (response.status !== 401 || !request.headers.has('Authorization')) {
+            return
+          }
+          if (request.url !== prefixUrl && !request.url.startsWith(normalizedPrefix)) {
+            return
+          }
+          window.dispatchEvent(
+            new CustomEvent('powersync_credentials_invalid', { detail: { reason: 'session_expired' } }),
+          )
+        },
+      ],
     },
   })
+}
 
 /** Default client with no config — use for external API calls that don't need auth or prefixUrl. */
 export const http = createClient()

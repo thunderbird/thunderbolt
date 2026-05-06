@@ -20,7 +20,7 @@ export const WaitlistCard = ({ children }: WaitlistCardProps) => {
       className={cn(
         'relative flex flex-col items-center backdrop-blur-[5px]',
         // Mobile styles (default)
-        'inset-0 w-full min-h-dvh border-0 rounded-none px-4 py-8 justify-start overflow-y-auto',
+        'inset-0 w-full h-full border-0 rounded-none px-4 py-8 justify-start overflow-y-auto',
         // Desktop styles (md breakpoint = 768px)
         'md:h-[600px] md:w-[430px] md:min-h-0 md:rounded-[16px] md:border md:border-border md:p-8 md:justify-center md:overflow-clip',
       )}

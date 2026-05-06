@@ -27,10 +27,14 @@ const settingsSchema = z
     microsoftClientSecret: z.string().default(''),
 
     // OIDC Settings (enterprise self-hosted)
-    authMode: z.enum(['consumer', 'oidc']).default('consumer'),
+    authMode: z.enum(['consumer', 'oidc', 'saml']).default('consumer'),
     oidcClientId: z.string().default(''),
     oidcClientSecret: z.string().default(''),
     oidcIssuer: z.string().default(''),
+    samlEntryPoint: z.string().default(''),
+    samlEntityId: z.string().default(''),
+    samlIdpIssuer: z.string().default(''),
+    samlCert: z.string().default(''),
     betterAuthUrl: z.string().default('http://localhost:8000'),
     betterAuthSecret: z.string().min(1),
 
@@ -115,6 +119,10 @@ const parseSettings = (): Settings => {
     oidcClientId: process.env.OIDC_CLIENT_ID || '',
     oidcClientSecret: process.env.OIDC_CLIENT_SECRET || '',
     oidcIssuer: process.env.OIDC_ISSUER || '',
+    samlEntryPoint: process.env.SAML_ENTRY_POINT || '',
+    samlEntityId: process.env.SAML_ENTITY_ID || '',
+    samlIdpIssuer: process.env.SAML_IDP_ISSUER || '',
+    samlCert: process.env.SAML_CERT || '',
     betterAuthUrl: process.env.BETTER_AUTH_URL || 'http://localhost:8000',
     betterAuthSecret: process.env.BETTER_AUTH_SECRET,
     logLevel: (process.env.LOG_LEVEL || 'INFO').toUpperCase(),

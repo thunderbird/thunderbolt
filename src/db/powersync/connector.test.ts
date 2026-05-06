@@ -63,11 +63,14 @@ describe('handleCredentialsInvalidIfNeeded', () => {
     )
   })
 
-  it('does not dispatch and returns false for 401', () => {
+  it('dispatches event with reason session_expired for 401', () => {
     const result = handleCredentialsInvalidIfNeeded(401, {})
 
-    expect(result).toBe(false)
-    expect(dispatchSpy).not.toHaveBeenCalled()
+    expect(result).toBe(true)
+    expect(dispatchSpy).toHaveBeenCalledTimes(1)
+    expect(dispatchSpy).toHaveBeenCalledWith(
+      expect.objectContaining({ type: powersyncCredentialsInvalid, detail: { reason: 'session_expired' } }),
+    )
   })
 
   it('does not dispatch and returns false for 403 without DEVICE_DISCONNECTED', () => {
@@ -101,11 +104,15 @@ describe('handleCredentialsInvalidIfNeeded', () => {
 
 describe('ThunderboltConnector', () => {
   let savedFetch: typeof globalThis.fetch
+  let savedAuthMode: string | undefined
   let fetchMock: ReturnType<typeof mock>
   let dispatchSpy: ReturnType<typeof mock>
 
   beforeEach(() => {
     savedFetch = globalThis.fetch
+    savedAuthMode = import.meta.env.VITE_AUTH_MODE
+    // Default to consumer mode so tests don't depend on local .env
+    ;(import.meta.env as Record<string, unknown>).VITE_AUTH_MODE = undefined
     fetchMock = mock()
     dispatchSpy = mock(() => {})
     globalThis.fetch = fetchMock as unknown as typeof fetch
@@ -115,6 +122,7 @@ describe('ThunderboltConnector', () => {
 
   afterEach(() => {
     globalThis.fetch = savedFetch
+    ;(import.meta.env as Record<string, unknown>).VITE_AUTH_MODE = savedAuthMode
   })
 
   it('fetchCredentials returns null when no auth token', async () => {
@@ -177,7 +185,7 @@ describe('ThunderboltConnector', () => {
     )
   })
 
-  it('fetchCredentials returns null when backend returns 401 (no event)', async () => {
+  it('fetchCredentials returns null and dispatches session_expired when backend returns 401', async () => {
     setAuthToken(authToken)
     fetchMock.mockImplementation(() =>
       Promise.resolve(
@@ -192,7 +200,9 @@ describe('ThunderboltConnector', () => {
     const result = await connector.fetchCredentials()
 
     expect(result).toBeNull()
-    expect(dispatchSpy).not.toHaveBeenCalled()
+    expect(dispatchSpy).toHaveBeenCalledWith(
+      expect.objectContaining({ type: powersyncCredentialsInvalid, detail: { reason: 'session_expired' } }),
+    )
   })
 
   it('fetchCredentials returns null on network error', async () => {

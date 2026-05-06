@@ -1,7 +1,7 @@
 {
   "name": "thunderbolt",
   "private": true,
-  "version": "0.1.93",
+  "version": "0.1.95",
   "description": "Thunderbolt",
   "type": "module",
   "license": "MPL-2.0",
@@ -86,7 +86,7 @@
     "@scure/bip39": "^2.0.1",
     "@tailwindcss/typography": "^0.5.16",
     "@tanstack/react-query": "^5.85.5",
-    "@tauri-apps/api": "^2.10.1",
+    "@tauri-apps/api": "^2.11.0",
     "@tauri-apps/plugin-deep-link": "^2.4.5",
     "@tauri-apps/plugin-fs": "^2.5.0",
     "@tauri-apps/plugin-haptics": "^2.3.2",
@@ -166,6 +166,7 @@
     "oauth2-mock-server": "^8.2.2",
     "playwright": "^1.58.2",
     "prettier": "^3.6.2",
+    "samlify": "^2.12.0",
     "size-limit": "^12.0.1",
     "storybook": "^10.3.5",
     "tailwindcss": "^4.2.4",
@@ -177,7 +178,6 @@
     "vitest": "^4.1.4"
   },
   "overrides": {
-    "//": "Force semver >= 7 at top-level so storybook can resolve semver/functions/sort.js. Without this, bun hoists semver@6 (pulled by babel/eslint-plugin-react) and storybook breaks at vite config load.",
     "semver": "^7.7.3"
   }
 }

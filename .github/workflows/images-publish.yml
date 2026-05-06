@@ -91,7 +91,7 @@ jobs:
           no-cache: true
           build-args: |
             VITE_THUNDERBOLT_CLOUD_URL=${{ inputs.vite_backend_url || '/v1' }}
-            VITE_AUTH_MODE=oidc
+            VITE_AUTH_MODE=sso
           tags: |
             ${{ env.IMAGE_PREFIX }}/thunderbolt-frontend:${{ steps.version.outputs.version }}
             ${{ steps.version.outputs.publish_latest == 'true' && format('{0}/thunderbolt-frontend:latest', env.IMAGE_PREFIX) || '' }}

@@ -274,7 +274,7 @@ export default function PreferencesSettingsPage() {
     dispatch({ type: 'SET_IS_DELETING_ACCOUNT', payload: true })
 
     try {
-      await httpClient.delete('account', { credentials: 'omit' })
+      await httpClient.delete('account')
       await clearLocalData()
       window.location.reload()
     } catch (error) {

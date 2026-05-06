@@ -5,7 +5,7 @@ services:
       dockerfile: deploy/docker/frontend.Dockerfile
       args:
         VITE_THUNDERBOLT_CLOUD_URL: "/v1"
-        VITE_AUTH_MODE: "oidc"
+        VITE_AUTH_MODE: "sso"
     ports:
       - "${FRONTEND_PORT:-3000}:80"
     depends_on:
@@ -32,7 +32,7 @@ services:
       BETTER_AUTH_URL: http://localhost:${FRONTEND_PORT:-3000}
       BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET:?Set BETTER_AUTH_SECRET in .env}
       APP_URL: http://localhost:${FRONTEND_PORT:-3000}
-      TRUSTED_ORIGINS: http://localhost:${FRONTEND_PORT:-3000}
+      TRUSTED_ORIGINS: http://localhost:${FRONTEND_PORT:-3000},http://localhost:${KEYCLOAK_PORT:-8180}
       CORS_ORIGINS: http://localhost:${FRONTEND_PORT:-3000}
       POWERSYNC_URL: http://powersync:8080
       # Must match the base64-decoded `k` in deploy/config/powersync-config.yaml

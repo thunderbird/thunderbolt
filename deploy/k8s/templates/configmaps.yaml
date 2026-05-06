@@ -73,7 +73,7 @@ data:
           "enabled": true,
           "clientAuthenticatorType": "client-secret",
           "secret": "{{ .Values.keycloak.oidc.clientSecretBase64 | b64dec }}",
-          "redirectUris": ["{{ .Values.appUrl }}/v1/api/auth/oauth2/callback/oidc"],
+          "redirectUris": ["{{ .Values.appUrl }}/v1/api/auth/sso/callback/sso"],
           "webOrigins": ["{{ .Values.appUrl }}"],
           "standardFlowEnabled": true,
           "directAccessGrantsEnabled": false,

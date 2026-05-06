@@ -152,6 +152,17 @@ export const createServices = (args: ServiceArgs) => {
   })
 
   // --- Postgres ---
+  // Created before the task definition so the container can pull POSTGRES_PASSWORD
+  // from Secrets Manager at task start (vs. embedding it cleartext in the task def,
+  // where anyone with `ecs:DescribeTaskDefinition` could read it).
+  const postgresPasswordSecret = new aws.secretsmanager.Secret(`${name}-postgres-password`, {
+    tags: { Name: `${name}-postgres-password` },
+  })
+  new aws.secretsmanager.SecretVersion(`${name}-postgres-password-secret-version`, {
+    secretId: postgresPasswordSecret.id,
+    secretString: args.secrets.postgresPassword,
+  })
+
   const pgTaskDef = new aws.ecs.TaskDefinition(`${name}-pg-task`, {
     family: `${name}-postgres`,
     requiresCompatibilities: ['FARGATE'],
@@ -183,9 +194,9 @@ export const createServices = (args: ServiceArgs) => {
         environment: [
           { name: 'POSTGRES_USER', value: 'postgres' },
           { name: 'POSTGRES_DB', value: 'postgres' },
-          { name: 'POSTGRES_PASSWORD', value: args.secrets.postgresPassword },
           { name: 'PGDATA', value: '/var/lib/postgresql/data/pgdata' },
         ],
+        secrets: [{ name: 'POSTGRES_PASSWORD', valueFrom: postgresPasswordSecret.arn }],
         portMappings: [{ containerPort: 5432 }],
         mountPoints: [{ sourceVolume: 'pg-data', containerPath: '/var/lib/postgresql/data' }],
         logConfiguration: logConfig('postgres'),
@@ -326,6 +337,10 @@ export const createServices = (args: ServiceArgs) => {
     databaseUrl: new aws.secretsmanager.Secret(`${name}-database-url`, {
       tags: { Name: `${name}-database-url` },
     }),
+    // postgresPassword secret is created earlier (above the postgres task) so the
+    // task definition can reference its ARN. We re-export the same instance here so
+    // the policy block below can grant read access to the shared exec role.
+    postgresPassword: postgresPasswordSecret,
     // AI provider keys. Created unconditionally; empty values are accepted by
     // backend zod schema (`.default('')`). Enterprise deploys pass empty strings;
     // preview deploys get real values via `pulumi config set --secret` in CI.
@@ -395,6 +410,7 @@ export const createServices = (args: ServiceArgs) => {
           backendSecrets.betterAuthSecret.arn,
           backendSecrets.powersyncJwtSecret.arn,
           backendSecrets.databaseUrl.arn,
+          backendSecrets.postgresPassword.arn,
           backendSecrets.anthropicApiKey.arn,
           backendSecrets.fireworksApiKey.arn,
           backendSecrets.mistralApiKey.arn,

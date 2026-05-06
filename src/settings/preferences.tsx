@@ -11,7 +11,7 @@ import { useUnitsOptions } from '@/hooks/use-units-options'
 import { privacyPolicyUrl } from '@/lib/constants'
 import { extractCountryFromLocation } from '@/lib/country-utils'
 import { clearLocalData } from '@/lib/cleanup'
-import { trackEvent } from '@/lib/posthog'
+import { trackEvent, useTelemetryAvailable } from '@/lib/posthog'
 import type { CountryUnitsData } from '@/types'
 import { useHttpClient } from '@/contexts'
 import { useEffect, useMemo, useReducer, useRef, useState } from 'react'
@@ -96,6 +96,7 @@ export default function PreferencesSettingsPage() {
   const telemetryWarningModalRef = useRef<TelemetryWarningModalRef>(null)
 
   const postHog = usePostHog()
+  const telemetryAvailable = useTelemetryAvailable()
 
   const httpClient = useHttpClient()
   const { syncEnabled, syncSetupOpen, setSyncSetupOpen, handleSyncToggle, handleSyncSetupComplete } =
@@ -198,7 +199,9 @@ export default function PreferencesSettingsPage() {
   }
 
   const handleExperimentalFeaturesToggle = async (value: boolean) => {
-    if (value && !dataCollection.value) {
+    // Only require telemetry consent when telemetry is actually wired up.
+    // On self-hosted deployments without a PostHog key, this gate would be impossible to satisfy.
+    if (value && telemetryAvailable && !dataCollection.value) {
       telemetryRequiredModalRef.current?.open('experimentalFeatureTasks')
       return
     }
@@ -616,7 +619,7 @@ export default function PreferencesSettingsPage() {
           <div className="h-px bg-border -mx-6" />
 
           <div className="flex-row flex items-center gap-4">
-            <div>
+            <div className="flex-1">
               <div className="mb-2">
                 <ModificationIndicator
                   as="label"
@@ -627,16 +630,30 @@ export default function PreferencesSettingsPage() {
                   Anonymous Usage Data
                 </ModificationIndicator>
               </div>
-              <p className="text-sm text-muted-foreground">
-                Help us improve the app by sending anonymous usage info such as crashes, performance, and usage. Read
-                more about our{' '}
-                <a className="text-primary underline-offset-4 hover:underline" href={privacyPolicyUrl} target="_blank">
-                  privacy policy
-                </a>
-                .
-              </p>
+              {telemetryAvailable ? (
+                <p className="text-sm text-muted-foreground">
+                  Help us improve the app by sending anonymous usage info such as crashes, performance, and usage. Read
+                  more about our{' '}
+                  <a
+                    className="text-primary underline-offset-4 hover:underline"
+                    href={privacyPolicyUrl}
+                    target="_blank"
+                  >
+                    privacy policy
+                  </a>
+                  .
+                </p>
+              ) : (
+                <p className="text-sm text-muted-foreground">
+                  Telemetry isn't configured for this organization, so no usage data is being collected.
+                </p>
+              )}
             </div>
-            <Switch checked={dataCollection.value} onCheckedChange={handleDataCollectionToggle} />
+            <Switch
+              checked={telemetryAvailable && dataCollection.value}
+              onCheckedChange={handleDataCollectionToggle}
+              disabled={!telemetryAvailable}
+            />
           </div>
         </div>
       </SectionCard>

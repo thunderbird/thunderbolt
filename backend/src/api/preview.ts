@@ -113,7 +113,7 @@ export const createPreviewRoutes = (auth: Auth, fetchFn: typeof fetch = globalTh
             })
 
             if (!response.ok) {
-              set.status = response.status
+              set.status = 502
               return { error: `Upstream returned ${response.status}` }
             }
 

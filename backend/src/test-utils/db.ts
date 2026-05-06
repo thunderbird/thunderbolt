@@ -10,52 +10,68 @@ import { resolve } from 'path'
 import type { db as DbType } from '../db/client'
 import * as schema from '../db/schema'
 
-class TestDbManager {
-  private client: PGlite | null = null
-  private db: typeof DbType | null = null
-  private initialized = false
+type SharedTestDb = {
+  client: PGlite
+  db: typeof DbType
+}
 
+/** Shared on globalThis so the PGlite instance survives `--rerun-each` module
+ *  reloads. Each module-load reset would otherwise spawn a new PGlite (and
+ *  run all migrations again), and PGlite 0.4.x doesn't release WASM RSS on
+ *  close — so the process steadily slows down across reruns until tests
+ *  exceed their timeout. One shared instance avoids that entirely. */
+const globalKey = Symbol.for('thunderbolt.test-db')
+type GlobalWithTestDb = typeof globalThis & { [k: symbol]: SharedTestDb | undefined }
+
+class TestDbManager {
   /**
-   * Initialize PGlite and run migrations once
-   * This MUST be called before any tests run
+   * Initialize PGlite and run migrations once per process
+   * (shared across `--rerun-each` reruns via globalThis).
+   * This MUST be called before any tests run.
    */
   async initialize() {
-    if (this.initialized) return
+    const g = globalThis as GlobalWithTestDb
+    if (g[globalKey]) return
 
-    this.client = new PGlite()
-    this.db = drizzle({ client: this.client, schema })
+    const client = new PGlite()
+    const db = drizzle({ client, schema })
     const migrationsFolder = resolve(import.meta.dir, '../../drizzle')
-    await migrate(this.db, { migrationsFolder })
-    this.initialized = true
+    await migrate(db, { migrationsFolder })
+    g[globalKey] = { client, db }
   }
 
   /** Close the PGlite instance to release WASM resources and allow clean process exit */
   async close() {
-    if (this.client) {
-      await this.client.close()
-      this.client = null
-      this.db = null
-      this.initialized = false
+    const g = globalThis as GlobalWithTestDb
+    const shared = g[globalKey]
+    if (shared) {
+      await shared.client.close()
+      g[globalKey] = undefined
     }
+  }
+
+  private get shared(): SharedTestDb {
+    const shared = (globalThis as GlobalWithTestDb)[globalKey]
+    if (!shared) throw new Error('testDbManager not initialized — call initialize() first')
+    return shared
   }
 
   /**
    * Create a test database instance with transaction isolation
    */
   async createTestDb() {
-    if (!this.initialized) {
-      await this.initialize()
-    }
+    await this.initialize()
+    const { client, db } = this.shared
 
     // Start a transaction using Drizzle's API
-    await this.db!.execute(sql`BEGIN`)
+    await db.execute(sql`BEGIN`)
 
     return {
-      client: this.client!,
-      db: this.db!,
+      client,
+      db,
       // Cleanup function to roll back the transaction
       cleanup: async () => {
-        await this.db!.execute(sql`ROLLBACK`)
+        await db.execute(sql`ROLLBACK`)
       },
     }
   }

@@ -120,6 +120,7 @@ export const createAuth = (database: typeof DbType) => {
   }
 
   return betterAuth({
+    baseURL: settings.betterAuthUrl,
     basePath: '/v1/api/auth',
     database: drizzleAdapter(database, {
       provider: 'pg',

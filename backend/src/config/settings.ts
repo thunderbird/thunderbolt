@@ -51,10 +51,10 @@ const settingsSchema = z
     waitlistEnabled: z.boolean().default(false),
     waitlistAutoApproveDomains: z.string().default(''),
 
-    // PowerSync settings
-    powersyncUrl: z.string().default(''),
-    powersyncJwtKid: z.string().default(''),
-    powersyncJwtSecret: z.string().default(''),
+    // PowerSync settings — defaults match the local dev stack in powersync-service/config/config.yaml
+    powersyncUrl: z.string().default('http://localhost:8080'),
+    powersyncJwtKid: z.string().default('powersync-dev'),
+    powersyncJwtSecret: z.string().default('powersync-dev-secret-change-in-production'),
     powersyncTokenExpirySeconds: z.coerce.number().int().positive().default(3600),
 
     // CORS settings — comma-separated list of exact origins
@@ -134,9 +134,9 @@ const parseSettings = (): Settings => {
     posthogApiKey: process.env.POSTHOG_API_KEY || '',
     waitlistEnabled: process.env.WAITLIST_ENABLED === 'true',
     waitlistAutoApproveDomains: process.env.WAITLIST_AUTO_APPROVE_DOMAINS || '',
-    powersyncUrl: process.env.POWERSYNC_URL || '',
-    powersyncJwtKid: process.env.POWERSYNC_JWT_KID || '',
-    powersyncJwtSecret: process.env.POWERSYNC_JWT_SECRET || '',
+    powersyncUrl: process.env.POWERSYNC_URL || 'http://localhost:8080',
+    powersyncJwtKid: process.env.POWERSYNC_JWT_KID || 'powersync-dev',
+    powersyncJwtSecret: process.env.POWERSYNC_JWT_SECRET || 'powersync-dev-secret-change-in-production',
     powersyncTokenExpirySeconds: process.env.POWERSYNC_TOKEN_EXPIRY_SECONDS || '3600',
     corsOrigins: process.env.CORS_ORIGINS || 'http://localhost:1420,tauri://localhost,http://tauri.localhost',
     corsAllowCredentials: process.env.CORS_ALLOW_CREDENTIALS !== 'false',

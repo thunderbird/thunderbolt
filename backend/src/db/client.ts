@@ -12,12 +12,13 @@ import { dirname, resolve } from 'path'
 import postgres from 'postgres'
 import * as schema from './schema'
 
-// For postgres driver, DATABASE_URL is required
-if (process.env.DATABASE_DRIVER === 'postgres' && !process.env.DATABASE_URL) {
-  throw new Error('DATABASE_URL is required when DATABASE_DRIVER=postgres')
-}
-
-const isPglite = process.env.DATABASE_DRIVER !== 'postgres'
+// Default driver is postgres pointing at the local Docker stack (powersync-service/).
+// PGlite is opt-in via DATABASE_DRIVER=pglite for backend-only work without Docker;
+// note that PowerSync cannot replicate from PGlite.
+const isPglite = process.env.DATABASE_DRIVER === 'pglite'
+const postgresUrl = isPglite
+  ? null
+  : process.env.DATABASE_URL || 'postgresql://postgres:postgres@localhost:5433/postgres'
 
 if (isPglite && process.env.DATABASE_URL) {
   mkdirSync(resolve(process.env.DATABASE_URL), { recursive: true })
@@ -27,9 +28,9 @@ const pgliteClient = isPglite ? new PGlite(process.env.DATABASE_URL) : null // u
 
 const pgliteDb = pgliteClient ? drizzlePglite({ client: pgliteClient, schema }) : null
 
-const postgresDb = isPglite
-  ? null
-  : drizzlePostgres({ client: postgres(process.env.DATABASE_URL!, { onnotice: () => {} }), schema })
+const postgresDb = postgresUrl
+  ? drizzlePostgres({ client: postgres(postgresUrl, { onnotice: () => {} }), schema })
+  : null
 
 export const db = pgliteDb ?? postgresDb!
 

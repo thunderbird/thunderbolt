@@ -3,7 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 declare module 'bun:test' {
-  interface Matchers<T> {
+  interface Matchers<_T> {
     toBeNullOrUndefined(): void
   }
 }

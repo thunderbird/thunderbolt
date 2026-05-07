@@ -53,7 +53,9 @@ const buildHostedRequest = (proxyUrl: string, input: RequestInfo | URL, init?: R
 
   sourceHeaders.forEach((value, key) => {
     const lower = key.toLowerCase()
-    if (skipHeaders.has(lower) || lower.startsWith('x-proxy-')) return
+    if (skipHeaders.has(lower) || lower.startsWith('x-proxy-')) {
+      return
+    }
     proxyHeaders.set(`X-Proxy-Passthrough-${key}`, value)
   })
 
@@ -89,7 +91,9 @@ const unwrapHostedResponse = (response: Response): Response => {
     }
   })
   fallback.forEach((value, key) => {
-    if (!passthrough.has(key)) passthrough.set(key, value)
+    if (!passthrough.has(key)) {
+      passthrough.set(key, value)
+    }
   })
   return new Response(response.body, {
     status: response.status,

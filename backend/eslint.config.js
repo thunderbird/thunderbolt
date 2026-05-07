@@ -23,8 +23,11 @@ export default [
         ...globals.es2022,
         // Web API types used in server context
         BodyInit: 'readonly',
-        RequestInfo: 'readonly', 
+        HeadersInit: 'readonly',
+        RequestInfo: 'readonly',
         RequestInit: 'readonly',
+        // Bun runtime globals
+        Bun: 'readonly',
       },
     },
     plugins: {

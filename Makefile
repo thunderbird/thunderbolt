@@ -9,6 +9,12 @@ NC := \033[0m # No Color
 # Container compose tool (auto-detect podman-compose, fallback to docker compose)
 COMPOSE ?= $(shell command -v podman-compose > /dev/null 2>&1 && podman info > /dev/null 2>&1 && echo podman-compose || echo docker compose)
 
+# Isolate Docker volumes/networks per clone so sibling working trees (e.g. ~/code/thunderbolt
+# and ~/code/some-test-dir/thunderbolt) don't share Postgres data. Defaults to "<parent>-<repo>";
+# override with `COMPOSE_PROJECT_NAME=foo make up` if you want a fixed name.
+COMPOSE_PROJECT_NAME ?= $(shell basename "$$(cd .. && pwd)")-$(shell basename "$$(pwd)")
+export COMPOSE_PROJECT_NAME
+
 # Default target
 help:
 	@echo "Available commands:"

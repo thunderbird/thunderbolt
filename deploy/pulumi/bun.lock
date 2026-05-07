@@ -12,6 +12,7 @@
         "@pulumi/eks": "^4.0.0",
         "@pulumi/kubernetes": "^4.0.0",
         "@pulumi/pulumi": "^3.0.0",
+        "@pulumi/random": "^4.19.2",
       },
       "devDependencies": {
         "typescript": "^6.0.3",
@@ -200,6 +201,8 @@
     "@pulumi/kubernetes": ["@pulumi/kubernetes@4.30.0", "", { "dependencies": { "@pulumi/pulumi": "^3.142.0", "glob": "^12.0.0", "shell-quote": "^1.6.1" } }, "sha512-ZCS4HwBvcxfdPDw44L1/SCqoIttCVugx/FZzqRFRq+leKRIfigAYt4sILXlqulNtX6XjlWVzZO8zva3Ygk7hGA=="],
 
     "@pulumi/pulumi": ["@pulumi/pulumi@3.233.0", "", { "dependencies": { "@grpc/grpc-js": "^1.10.1", "@logdna/tail-file": "^2.0.6", "@npmcli/arborist": "^9.0.0", "@opentelemetry/api": "^1.9", "@opentelemetry/exporter-trace-otlp-grpc": "^0.57", "@opentelemetry/exporter-zipkin": "^1.30", "@opentelemetry/instrumentation": "^0.57", "@opentelemetry/instrumentation-grpc": "^0.57", "@opentelemetry/resources": "^1.30", "@opentelemetry/sdk-trace-base": "^1.30", "@opentelemetry/sdk-trace-node": "^1.30", "@types/google-protobuf": "^3.15.5", "@types/semver": "^7.5.6", "@types/tmp": "^0.2.6", "execa": "^5.1.0", "fdir": "^6.5.0", "google-protobuf": "^3.21.4", "ini": "^2.0.0", "js-yaml": "^3.14.2", "minimist": "^1.2.6", "normalize-package-data": "^6.0.0", "picomatch": "^4.0.0", "require-from-string": "^2.0.1", "semver": "^7.5.2", "source-map-support": "^0.5.6", "tmp": "^0.2.4", "upath": "^1.1.0" }, "peerDependencies": { "ts-node": ">= 7.0.1 < 12", "typescript": ">= 3.8.3 < 7" }, "optionalPeers": ["ts-node", "typescript"] }, "sha512-u8nEkQr02TIbEu/gkjsr7Q15VgPmfykscVFYupRzLZQB8oGrZjfBnGJLocyt3bn073mb+hqdge56GJzjZ4Y9WQ=="],
+
+    "@pulumi/random": ["@pulumi/random@4.19.2", "", { "dependencies": { "@pulumi/pulumi": "^3.142.0" } }, "sha512-ee77eUIfPMekYi9x7/3iDVIhqUcZrvXQpC8YNTRN8XKfRDuuWio4xu2CvoHeEBDOov84FumMafFqn+xSf+XlDQ=="],
 
     "@sigstore/bundle": ["@sigstore/bundle@4.0.0", "", { "dependencies": { "@sigstore/protobuf-specs": "^0.5.0" } }, "sha512-NwCl5Y0V6Di0NexvkTqdoVfmjTaQwoLM236r89KEojGmq/jMls8S+zb7yOwAPdXvbwfKDlP+lmXgAL4vKSQT+A=="],
 

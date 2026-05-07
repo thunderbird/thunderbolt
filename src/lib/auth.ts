@@ -19,8 +19,45 @@ export type OAuthProvider = 'google' | 'microsoft'
 
 export type OAuthConfig = {
   clientId: string
+  configured: boolean
   redirectUri: string
   scope: string
+}
+
+type MissingPart = 'both' | 'secret'
+
+const providerLabels: Record<OAuthProvider, string> = {
+  google: 'Google',
+  microsoft: 'Microsoft',
+}
+
+const envVarPrefixes: Record<OAuthProvider, string> = {
+  google: 'GOOGLE',
+  microsoft: 'MICROSOFT',
+}
+
+/**
+ * Builds the user-facing error message shown when an OAuth provider is unconfigured.
+ * The message names the exact env vars the operator must set on the backend.
+ */
+const buildMisconfiguredMessage = (provider: OAuthProvider, missing: MissingPart): string => {
+  const label = providerLabels[provider]
+  const prefix = envVarPrefixes[provider]
+  if (missing === 'both') {
+    return `${label} OAuth is not configured. Set ${prefix}_CLIENT_ID and ${prefix}_CLIENT_SECRET on the backend.`
+  }
+  return `${label} OAuth is not configured. Set ${prefix}_CLIENT_SECRET on the backend.`
+}
+
+export class MisconfiguredOAuthError extends Error {
+  readonly provider: OAuthProvider
+  readonly missing: MissingPart
+  constructor(provider: OAuthProvider, missing: MissingPart) {
+    super(buildMisconfiguredMessage(provider, missing))
+    this.name = 'MisconfiguredOAuthError'
+    this.provider = provider
+    this.missing = missing
+  }
 }
 
 export type OAuthTokens = {

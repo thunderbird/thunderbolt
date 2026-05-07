@@ -35,10 +35,12 @@ client_auth:
   jwks:
     keys:
       - kty: oct
-        # Base64 of POWERSYNC_JWT_SECRET — must match backend env var
-        # Default: base64("enterprise-thunderbolt-powersync-jwt-default-secret") — 51 chars
-        # Backend validates this is >=32 chars when decoded; override in production.
-        k: ZW50ZXJwcmlzZS10aHVuZGVyYm9sdC1wb3dlcnN5bmMtand0LWRlZmF1bHQtc2VjcmV0
+        # Base64 of POWERSYNC_JWT_SECRET. Sourced from POWERSYNC_JWT_KEY_BASE64 at
+        # runtime so the value can rotate per environment without rebuilding the image.
+        # Local default: base64("enterprise-thunderbolt-powersync-jwt-default-secret").
+        # Preview stacks (Pulumi) inject base64 of the per-stack random JWT secret.
+        # Backend validates the underlying secret is >=32 chars when decoded.
+        k: !env POWERSYNC_JWT_KEY_BASE64
         alg: HS256
         kid: enterprise-powersync
   telemetry:

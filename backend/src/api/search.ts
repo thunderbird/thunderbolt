@@ -5,7 +5,9 @@
 import type { Auth } from '@/auth/elysia-plugin'
 import { createAuthMacro } from '@/auth/elysia-plugin'
 import { getSettings } from '@/config/settings'
+import { memoize } from '@/lib/memoize'
 import { safeErrorHandler } from '@/middleware/error-handling'
+import { ensureHttps } from '@/utils/url-validation'
 import { Elysia, t, type AnyElysia } from 'elysia'
 import { Exa } from 'exa-js'
 
@@ -20,27 +22,11 @@ export type SearchResponseDto = {
   results: SearchResultDto[]
 }
 
-const getExaClient = (): Exa | null => {
+const getExaClient = memoize((): Exa | null => {
   const settings = getSettings()
   if (!settings.exaApiKey) return null
   return new Exa(settings.exaApiKey)
-}
-
-/** Returns the URL upgraded to https://, or null if it isn't http(s) and can't be safely upgraded. */
-const ensureHttps = (raw: string | null | undefined): string | null => {
-  if (!raw) return null
-  try {
-    const u = new URL(raw)
-    if (u.protocol === 'https:') return u.toString()
-    if (u.protocol === 'http:') {
-      u.protocol = 'https:'
-      return u.toString()
-    }
-    return null
-  } catch {
-    return null
-  }
-}
+})
 
 /** Default favicon URL when the search provider doesn't supply one. */
 const deriveFaviconUrl = (pageUrl: string): string | null => {

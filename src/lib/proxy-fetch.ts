@@ -44,7 +44,7 @@ const skipHeaders = new Set([
 
 const passthroughPrefix = 'x-proxy-passthrough-'
 
-const buildHostedRequest = (cloudUrl: string, input: RequestInfo | URL, init?: RequestInit): Request => {
+const buildHostedRequest = (proxyUrl: string, input: RequestInfo | URL, init?: RequestInit): Request => {
   const sourceUrl = input instanceof Request ? input.url : input.toString()
   const sourceHeaders = new Headers(input instanceof Request ? input.headers : init?.headers)
 
@@ -53,19 +53,13 @@ const buildHostedRequest = (cloudUrl: string, input: RequestInfo | URL, init?: R
 
   sourceHeaders.forEach((value, key) => {
     const lower = key.toLowerCase()
-    if (skipHeaders.has(lower)) {
-      return
-    }
-    if (lower.startsWith('x-proxy-')) {
-      return
-    }
+    if (skipHeaders.has(lower) || lower.startsWith('x-proxy-')) return
     proxyHeaders.set(`X-Proxy-Passthrough-${key}`, value)
   })
 
   const method = init?.method ?? (input instanceof Request ? input.method : 'GET')
   const body = init?.body ?? (input instanceof Request ? (input as Request).body : null)
 
-  const proxyUrl = `${cloudUrl.replace(/\/$/, '')}/proxy`
   return new Request(proxyUrl, {
     method,
     headers: proxyHeaders,
@@ -77,37 +71,30 @@ const buildHostedRequest = (cloudUrl: string, input: RequestInfo | URL, init?: R
   })
 }
 
+/** Headers the proxy adds for browser framing — never propagated to caller code. */
+const proxyFramingHeaders = new Set(['content-security-policy', 'content-disposition'])
+
 /** Walk the proxy response, strip `X-Proxy-Passthrough-` from response header names,
  *  and rebuild a Response that looks natural to caller code. Passthrough headers
  *  (the upstream's real values) win over the proxy's own framing headers. */
 const unwrapHostedResponse = (response: Response): Response => {
-  const out = new Headers()
-  // First pass: collect passthrough headers (the upstream's real values).
+  const passthrough = new Headers()
+  const fallback = new Headers()
   response.headers.forEach((value, key) => {
     const lower = key.toLowerCase()
     if (lower.startsWith(passthroughPrefix)) {
-      out.set(lower.slice(passthroughPrefix.length), value)
+      passthrough.set(lower.slice(passthroughPrefix.length), value)
+    } else if (!proxyFramingHeaders.has(lower)) {
+      fallback.set(lower, value)
     }
   })
-  // Second pass: include any unprefixed header that the upstream didn't already
-  // send (passthrough wins). Skip proxy-only framing headers.
-  response.headers.forEach((value, key) => {
-    const lower = key.toLowerCase()
-    if (lower.startsWith(passthroughPrefix)) {
-      return
-    }
-    if (lower === 'content-security-policy' || lower === 'content-disposition') {
-      return
-    }
-    if (out.has(lower)) {
-      return
-    }
-    out.set(lower, value)
+  fallback.forEach((value, key) => {
+    if (!passthrough.has(key)) passthrough.set(key, value)
   })
   return new Response(response.body, {
     status: response.status,
     statusText: response.statusText,
-    headers: out,
+    headers: passthrough,
   })
 }
 
@@ -128,8 +115,9 @@ export type ProxyFetchOptions = {
 }
 
 /** Build a fetch implementation that hides Hosted/Standalone mode from callers. */
-export const createProxyFetch = (options: ProxyFetchOptions): typeof fetch =>
-  (async (input, init) => {
+export const createProxyFetch = (options: ProxyFetchOptions): typeof fetch => {
+  const proxyUrl = `${options.cloudUrl.replace(/\/$/, '')}/proxy`
+  return (async (input, init) => {
     const standalone = (options.isStandalone ?? isTauri)()
     if (standalone) {
       // Standalone: hit the upstream directly through Tauri's HTTP plugin.
@@ -137,7 +125,7 @@ export const createProxyFetch = (options: ProxyFetchOptions): typeof fetch =>
       return tFetch(input as RequestInfo, init ?? {}) as unknown as Response
     }
 
-    const proxyRequest = buildHostedRequest(options.cloudUrl, input as RequestInfo | URL, init)
+    const proxyRequest = buildHostedRequest(proxyUrl, input as RequestInfo | URL, init)
     if (options.getProxyAuthToken && !proxyRequest.headers.has('Authorization')) {
       const token = options.getProxyAuthToken()
       if (token) {
@@ -148,6 +136,7 @@ export const createProxyFetch = (options: ProxyFetchOptions): typeof fetch =>
     const proxyResponse = await f(proxyRequest)
     return unwrapHostedResponse(proxyResponse)
   }) as typeof fetch
+}
 
 /** Build a WebSocket constructor that hides Hosted/Standalone mode from callers.
  *

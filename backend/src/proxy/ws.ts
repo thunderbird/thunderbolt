@@ -93,6 +93,22 @@ const messageByteLength = (msg: string | ArrayBuffer | Uint8Array): number => {
   return msg.byteLength
 }
 
+const sharedEncoder = new TextEncoder()
+
+type WsConnectArgs = { targetUrl: string; callerProtocols: string[] }
+
+/** Re-derive connect args from the inbound headers when the beforeHandle cache is missing. */
+const deriveConnectArgs = (ws: { data: unknown }): WsConnectArgs | null => {
+  const headers = (ws.data as { headers?: Record<string, string | undefined> | Headers }).headers
+  const subprotocolHeader =
+    headers instanceof Headers ? headers.get('sec-websocket-protocol') : (headers?.['sec-websocket-protocol'] ?? null)
+  const parsed = parseTargetSubprotocol(subprotocolHeader)
+  if (!parsed.ok) return null
+  const validated = validateWsTarget(parsed.target)
+  if (!validated.ok) return null
+  return { targetUrl: validated.target.toString(), callerProtocols: parsed.callerProtocols }
+}
+
 /** Build the relay routes plugin. The websocket factory is injected so tests
  *  can stub the upstream connection. */
 export const createUniversalProxyWsRoutes = (
@@ -136,23 +152,26 @@ export const createUniversalProxyWsRoutes = (
       },
       open(ws) {
         const startedAt = performance.now()
-        let bytesIn = 0
-        let bytesOut = 0
-        let observedTargetUrl = ''
-        let observedClose: { code: number; reason?: string } | null = null
         const userId = (ws.data as { user?: { id?: string } }).user?.id ?? 'unknown'
         const requestId = crypto.randomUUID()
+        let observedClose: { code: number; reason?: string } | null = null
+
+        const connectArgs = deriveConnectArgs(ws)
+        if (!connectArgs) {
+          ws.close(wsCloseCodes.invalidSubprotocol, 'invalid')
+          return
+        }
+        const targetUrl = connectArgs.targetUrl
+
         const finalize = () => {
           if (!observedClose) return
           observability.proxyWsRelay({
             method: 'WS',
-            target_url: observedTargetUrl,
+            target_url: targetUrl,
             close_code: observedClose.code,
             duration_ms: Math.round(performance.now() - startedAt),
             user_id: userId,
             request_id: requestId,
-            bytes_in: bytesIn,
-            bytes_out: bytesOut,
             ...(observedClose.reason ? { error: observedClose.reason } : {}),
           })
           observedClose = null
@@ -160,32 +179,6 @@ export const createUniversalProxyWsRoutes = (
         ;(ws.data as { __observe?: () => void }).__observe = finalize
         ;(ws.data as { __recordClose?: (code: number, reason?: string) => void }).__recordClose = (code, reason) => {
           observedClose = { code, reason }
-        }
-        ;(ws.data as { __recordIn?: (n: number) => void }).__recordIn = (n) => {
-          bytesIn += n
-        }
-        ;(ws.data as { __recordOut?: (n: number) => void }).__recordOut = (n) => {
-          bytesOut += n
-        }
-        ;(ws.data as { __setTarget?: (url: string) => void }).__setTarget = (url) => {
-          observedTargetUrl = url
-        }
-
-        const headers = (ws.data as { headers?: Record<string, string | undefined> | Headers }).headers
-        const subprotocolHeader =
-          headers instanceof Headers
-            ? headers.get('sec-websocket-protocol')
-            : (headers?.['sec-websocket-protocol'] ?? null)
-        const parsed = parseTargetSubprotocol(subprotocolHeader)
-        if (!parsed.ok) {
-          ws.close(wsCloseCodes.invalidSubprotocol, parsed.reason)
-          return
-        }
-        const validated = validateWsTarget(parsed.target)
-        if (!validated.ok) {
-          const code = validated.reason === 'wss-only' ? wsCloseCodes.schemeRejected : wsCloseCodes.invalidSubprotocol
-          ws.close(code, validated.reason)
-          return
         }
 
         const state: RelayState = {
@@ -196,11 +189,10 @@ export const createUniversalProxyWsRoutes = (
           closing: false,
         }
         ;(ws.data as { relay?: RelayState }).relay = state
-        ;(ws.data as { __setTarget?: (url: string) => void }).__setTarget?.(validated.target.toString())
 
         let upstream: WebSocket
         try {
-          upstream = wsFactory(validated.target.toString(), parsed.callerProtocols)
+          upstream = wsFactory(targetUrl, connectArgs.callerProtocols)
         } catch (err) {
           ws.close(wsCloseCodes.internalError, err instanceof Error ? err.message : 'connect failed')
           return
@@ -258,7 +250,7 @@ export const createUniversalProxyWsRoutes = (
         const payload =
           typeof message === 'string' || message instanceof ArrayBuffer || message instanceof Uint8Array
             ? message
-            : new TextEncoder().encode(typeof message === 'object' ? JSON.stringify(message) : String(message))
+            : sharedEncoder.encode(typeof message === 'object' ? JSON.stringify(message) : String(message))
 
         if (state.upstreamReady && state.upstream) {
           state.upstream.send(payload as never)

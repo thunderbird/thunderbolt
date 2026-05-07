@@ -4,8 +4,10 @@
 
 import { mock } from 'bun:test'
 import type { SearchExaClient } from '@/api/search'
+import { createAuth } from '@/auth/auth'
 import { challengeTokenHeader } from '@/auth/otp-constants'
 import { session as sessionTable, user, waitlist } from '@/db/schema'
+import { createApp } from '@/index'
 import { eq } from 'drizzle-orm'
 import type { db as DbType } from '@/db/client'
 import type { DnsLookup } from '@/utils/url-validation'
@@ -55,9 +57,6 @@ export const createTestApp = async (
     searchExaClient?: SearchExaClient | null
   } = {},
 ): Promise<TestAppHandle> => {
-  const { createApp } = await import('@/index')
-  const { createAuth } = await import('@/auth/auth')
-
   const { db, cleanup: cleanupDb } = await createTestDb()
 
   const email = `e2e-${crypto.randomUUID()}@example.com`
@@ -108,7 +107,7 @@ export const createTestApp = async (
     throw new Error('e2e: bearer token missing from set-auth-token response header')
   }
 
-  const users = await db.select().from(user).where(eq(user.email, email))
+  const users = await db.select({ id: user.id }).from(user).where(eq(user.email, email)).limit(1)
   if (users.length === 0) {
     throw new Error(`e2e: user ${email} was not created during sign-in`)
   }
@@ -120,7 +119,11 @@ export const createTestApp = async (
   // proxy/auth bug but is a setup race). Better-auth signs the bearer as
   // `<sessionToken>.<hmac>`, so the row's `token` column is the prefix.
   const sessionToken = bearerToken.split('.')[0]
-  const sessions = await db.select().from(sessionTable).where(eq(sessionTable.token, sessionToken))
+  const sessions = await db
+    .select({ id: sessionTable.id })
+    .from(sessionTable)
+    .where(eq(sessionTable.token, sessionToken))
+    .limit(1)
   if (sessions.length === 0) {
     throw new Error(`e2e: session row for bearer not visible in DB after sign-in (token=${sessionToken})`)
   }

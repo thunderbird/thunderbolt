@@ -47,6 +47,22 @@ const isLoopback = (hostname: string): boolean => {
   return ipaddr.process(h).range() === 'loopback'
 }
 
+/** Returns the URL upgraded to https://, or null if it isn't http(s) and can't be safely upgraded. */
+export const ensureHttps = (raw: string | null | undefined): string | null => {
+  if (!raw) return null
+  try {
+    const u = new URL(raw)
+    if (u.protocol === 'https:') return u.toString()
+    if (u.protocol === 'http:') {
+      u.protocol = 'https:'
+      return u.toString()
+    }
+    return null
+  } catch {
+    return null
+  }
+}
+
 /**
  * Validates that a URL is safe to fetch (prevents SSRF attacks).
  * Only allows http/https protocols and blocks internal/private IP addresses.

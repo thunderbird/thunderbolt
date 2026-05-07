@@ -5,7 +5,7 @@
 import type { Auth } from '@/auth/elysia-plugin'
 import { createAuthMacro } from '@/auth/elysia-plugin'
 import { safeErrorHandler } from '@/middleware/error-handling'
-import { createSafeFetch, validateSafeUrl, type DnsLookup } from '@/utils/url-validation'
+import { createSafeFetch, ensureHttps, validateSafeUrl, type DnsLookup } from '@/utils/url-validation'
 import { Elysia, t, type AnyElysia } from 'elysia'
 
 export type PreviewDto = {
@@ -40,27 +40,23 @@ const resolveUrl = (baseUrl: string, relativeUrl: string): string => {
   }
 }
 
-const ensureHttps = (raw: string | null | undefined): string | null => {
-  if (!raw) return null
-  try {
-    const u = new URL(raw)
-    if (u.protocol === 'https:') return u.toString()
-    if (u.protocol === 'http:') {
-      u.protocol = 'https:'
-      return u.toString()
-    }
-    return null
-  } catch {
-    return null
-  }
+const metaRegexCache = new Map<string, [RegExp, RegExp]>()
+const getMetaRegex = (attr: 'property' | 'name', value: string): [RegExp, RegExp] => {
+  const key = `${attr}:${value}`
+  const cached = metaRegexCache.get(key)
+  if (cached) return cached
+  const pair: [RegExp, RegExp] = [
+    new RegExp(`<meta[^>]*${attr}=["']${value}["'][^>]*content=["']([^"']+)["'][^>]*>`, 'i'),
+    new RegExp(`<meta[^>]*content=["']([^"']+)["'][^>]*${attr}=["']${value}["'][^>]*>`, 'i'),
+  ]
+  metaRegexCache.set(key, pair)
+  return pair
 }
 
 /** Match a meta tag in either content-first or property-first form. */
 const matchMeta = (html: string, attr: 'property' | 'name', value: string): string | null => {
-  const a = html.match(new RegExp(`<meta[^>]*${attr}=["']${value}["'][^>]*content=["']([^"']+)["'][^>]*>`, 'i'))
-  if (a) return a[1]
-  const b = html.match(new RegExp(`<meta[^>]*content=["']([^"']+)["'][^>]*${attr}=["']${value}["'][^>]*>`, 'i'))
-  return b ? b[1] : null
+  const [propertyFirst, contentFirst] = getMetaRegex(attr, value)
+  return html.match(propertyFirst)?.[1] ?? html.match(contentFirst)?.[1] ?? null
 }
 
 const extractMetadata = (html: string, baseUrl: string): PreviewDto => {

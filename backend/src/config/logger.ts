@@ -97,23 +97,4 @@ const createLoggerMiddleware = (settings: Settings) => {
   return new Elysia({ name: 'logger' }).decorate('log', logger)
 }
 
-/**
- * Create a standalone logger instance for use outside request contexts
- */
-const createStandaloneLogger = (settings: Settings): Logger => {
-  return createPinoLogger(settings)
-}
-
-let standaloneLogger: Logger | null = null
-
-/** Lazy singleton accessor for code that runs outside request middleware. */
-const getStandaloneLogger = (): Logger => {
-  if (!standaloneLogger) {
-    // Lazy import settings to avoid circular init at module top.
-    const { getSettings } = require('./settings')
-    standaloneLogger = createPinoLogger(getSettings())
-  }
-  return standaloneLogger
-}
-
-export { createLoggerMiddleware, createPinoLogger, createStandaloneLogger, getStandaloneLogger }
+export { createLoggerMiddleware, createPinoLogger as createStandaloneLogger }

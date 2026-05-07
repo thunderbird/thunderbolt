@@ -22,8 +22,6 @@ export type ProxyEventBase = {
   duration_ms: number
   user_id: string
   request_id: string
-  bytes_in: number
-  bytes_out: number
   error?: string
 }
 
@@ -98,8 +96,6 @@ export const createObservabilityRecorder = (deps: {
         duration_ms: fields.duration_ms,
         user_id: fields.user_id,
         request_id: fields.request_id,
-        bytes_in: fields.bytes_in,
-        bytes_out: fields.bytes_out,
         ...(fields.error ? { error: fields.error } : {}),
       })
       emitPostHog(
@@ -124,8 +120,6 @@ export const createObservabilityRecorder = (deps: {
         duration_ms: fields.duration_ms,
         user_id: fields.user_id,
         request_id: fields.request_id,
-        bytes_in: fields.bytes_in,
-        bytes_out: fields.bytes_out,
         ...(fields.error ? { error: fields.error } : {}),
       })
       emitPostHog(

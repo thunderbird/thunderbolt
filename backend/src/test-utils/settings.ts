@@ -25,6 +25,7 @@ export const createTestSettings = (overrides: Partial<Settings> = {}): Settings 
   oidcClientId: '',
   oidcClientSecret: '',
   oidcIssuer: '',
+  oidcDiscoveryUrl: '',
   samlEntryPoint: '',
   samlEntityId: '',
   samlIdpIssuer: '',

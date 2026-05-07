@@ -24,15 +24,23 @@ services:
       WAITLIST_ENABLED: "false"
       DATABASE_DRIVER: postgres
       DATABASE_URL: postgresql://postgres:postgres@postgres:5432/postgres
-      # Discovery URL uses the internal Docker hostname — backchannel-dynamic lets this work
-      # while Keycloak's metadata returns localhost:8180 URLs for the browser
-      OIDC_ISSUER: http://keycloak:8080/realms/thunderbolt
+      # OIDC_ISSUER must equal KC_HOSTNAME on the keycloak service: it's the value
+      # Keycloak embeds in token `iss` claims and Better Auth validates against. Browser
+      # reaches Keycloak via the host port mapping at localhost:KEYCLOAK_PORT.
+      # OIDC_DISCOVERY_URL lets the backend fetch the discovery document via the internal
+      # Docker hostname (`keycloak:8080`) without depending on host port mapping.
+      # Keycloak's KC_HOSTNAME_BACKCHANNEL_DYNAMIC=true ensures the token_endpoint and
+      # jwks_uri returned in that document also use the internal hostname for backend use.
+      OIDC_ISSUER: http://localhost:${KEYCLOAK_PORT:-8180}/realms/thunderbolt
+      OIDC_DISCOVERY_URL: http://keycloak:8080/realms/thunderbolt/.well-known/openid-configuration
       OIDC_CLIENT_ID: thunderbolt-app
       OIDC_CLIENT_SECRET: thunderbolt-enterprise-secret
       BETTER_AUTH_URL: http://localhost:${FRONTEND_PORT:-3000}
       BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET:?Set BETTER_AUTH_SECRET in .env}
       APP_URL: http://localhost:${FRONTEND_PORT:-3000}
-      TRUSTED_ORIGINS: http://localhost:${FRONTEND_PORT:-3000},http://localhost:${KEYCLOAK_PORT:-8180}
+      # Includes both the browser-facing IdP origin (issuer host) and the internal
+      # discovery host — Better Auth's SSO plugin validates both against trustedOrigins.
+      TRUSTED_ORIGINS: http://localhost:${FRONTEND_PORT:-3000},http://localhost:${KEYCLOAK_PORT:-8180},http://keycloak:8080
       CORS_ORIGINS: http://localhost:${FRONTEND_PORT:-3000}
       POWERSYNC_URL: http://powersync:8080
       # Must match the base64-decoded `k` in deploy/config/powersync-config.yaml

@@ -1,105 +1,160 @@
 # Kubernetes
 
-The Kubernetes manifests at `deploy/k8s/` deploy the full Thunderbolt stack — frontend, backend, PostgreSQL, MongoDB, Keycloak, and PowerSync — onto any conformant cluster.
+The Helm chart at [`deploy/k8s/`](https://github.com/thunderbird/thunderbolt/tree/main/deploy/k8s)
+deploys the full Thunderbolt stack — frontend, backend, PostgreSQL, PowerSync,
+Keycloak, and ingress — onto any conformant Kubernetes cluster from a single
+`helm install`.
 
-## Local Clusters
+## Quick Start (Local)
 
-Any local Kubernetes works. Pick one:
+This walkthrough takes you from "no cluster" to a working Thunderbolt at
+`http://localhost` using [`kind`](https://kind.sigs.k8s.io/) (Kubernetes-in-Docker).
+Total time: ~5 minutes.
 
-| Option                  | How                                                                                       |
-| ----------------------- | ----------------------------------------------------------------------------------------- |
-| **Docker Desktop**      | Settings → Kubernetes → Enable. `kubectl cluster-info` to verify.                         |
-| **Minikube**            | `brew install minikube && minikube start`                                                 |
-| **kind**                | `brew install kind && kind create cluster --name thunderbolt`                             |
+### 1. Get a local cluster
 
-## Deploy
+`kubectl` is the CLI to talk to a cluster — it doesn't create one. Pick a tool
+to spin one up locally:
 
-### 1. Build Images
+| Option            | How                                                                  |
+| ----------------- | -------------------------------------------------------------------- |
+| **kind** (recommended) | `brew install kind` (see config below — bare `kind create cluster` won't work) |
+| **Docker Desktop**     | Settings → Kubernetes → Enable. `kubectl cluster-info` to verify.    |
+| **Minikube**           | `brew install minikube && minikube start`                            |
 
-From the repo root:
-
-```bash
-docker build -f deploy/docker/backend.Dockerfile -t thunderbolt-backend .
-docker build -f deploy/docker/frontend.Dockerfile -t thunderbolt-frontend .
-```
-
-(Also build `postgres`, `keycloak`, and `powersync` Dockerfiles for clusters that can't pull the upstream images directly.)
-
-### 2. Configure Secrets
+Create a `kind` cluster with the port mappings the chart's ingress needs:
 
 ```bash
-cd deploy/k8s
-cp secrets.yaml.example secrets.yaml
-# Edit secrets.yaml — rotate every default
+cat > /tmp/kind-thunderbolt.yaml <<'EOF'
+kind: Cluster
+apiVersion: kind.x-k8s.io/v1alpha4
+nodes:
+  - role: control-plane
+    kubeadmConfigPatches:
+      - |
+        kind: InitConfiguration
+        nodeRegistration:
+          kubeletExtraArgs:
+            node-labels: "ingress-ready=true"
+    extraPortMappings:
+      - containerPort: 80
+        hostPort: 80
+        protocol: TCP
+      - containerPort: 443
+        hostPort: 443
+        protocol: TCP
+EOF
+
+kind create cluster --name thunderbolt --config /tmp/kind-thunderbolt.yaml
 ```
 
-### 3. Install an Ingress Controller
+The `extraPortMappings` and `ingress-ready` label are required for the chart's
+ingress to be reachable at `http://localhost`. Without them the ingress install
+in step 2 succeeds but isn't reachable from the host.
 
-If your cluster doesn't already have one:
+### 2. Install nginx-ingress
+
+For **kind**, use the kind-flavored manifest (binds to the labeled node):
 
 ```bash
-kubectl apply -f https://raw.githubusercontent.com/kubernetes/ingress-nginx/controller-v1.12.1/deploy/static/provider/cloud/deploy.yaml
+kubectl apply -f https://kind.sigs.k8s.io/examples/ingress/deploy-ingress-nginx.yaml
+
+kubectl wait --namespace ingress-nginx \
+  --for=condition=ready pod \
+  --selector=app.kubernetes.io/component=controller \
+  --timeout=120s
 ```
 
-### 4. Apply Manifests
+For **Docker Desktop / Minikube**, use the standard chart:
 
 ```bash
-kubectl apply -f namespace.yaml
-kubectl apply -f secrets.yaml
-kubectl apply -f configmaps.yaml
-kubectl apply -f postgres.yaml
-kubectl apply -f mongo.yaml
-kubectl apply -f keycloak.yaml
-
-kubectl -n thunderbolt wait --for=condition=ready pod -l app=postgres --timeout=60s
-kubectl -n thunderbolt wait --for=condition=ready pod -l app=mongo --timeout=60s
-
-kubectl apply -f powersync.yaml
-kubectl apply -f backend.yaml
-kubectl apply -f frontend.yaml
-kubectl apply -f ingress.yaml
+helm repo add ingress-nginx https://kubernetes.github.io/ingress-nginx
+helm install ingress-nginx ingress-nginx/ingress-nginx \
+  --create-namespace -n ingress-nginx \
+  --set controller.service.type=LoadBalancer
 ```
 
-### 5. Access the App
+### 3. Generate the required secret
 
-On Docker Desktop or Minikube (with `minikube tunnel`), the app is at `http://localhost`. Keycloak realm is at `http://localhost/realms/thunderbolt`.
+`backend.betterAuthSecretBase64` is the only required value with no default —
+the chart fails to template without it. Generate one:
+
+```bash
+BETTER_AUTH_SECRET=$(openssl rand -base64 32 | tr -d '\n' | base64)
+```
+
+### 4. Install Thunderbolt
+
+```bash
+git clone https://github.com/thunderbird/thunderbolt.git
+cd thunderbolt/deploy/k8s
+
+helm install thunderbolt . \
+  -n thunderbolt --create-namespace \
+  --set backend.betterAuthSecretBase64="$BETTER_AUTH_SECRET"
+```
+
+The chart's default image repos point at the public images at
+`ghcr.io/thunderbird/thunderbolt/*` — no pull secret needed for a local install.
+
+### 5. Watch pods come up
+
+```bash
+kubectl get pods -n thunderbolt -w
+```
+
+First boot takes 1–2 minutes. Expected sequence:
+
+1. `postgres-0` ready first (StatefulSet + PVC).
+2. `keycloak`, `frontend`, `marketing` ready next.
+3. `backend` and `powersync` may **show one or two restarts** — they race
+   postgres on the first deploy. They self-heal once postgres accepts
+   connections. End state: every pod `1/1 Running`.
+
+### 6. Sign in
+
+Open `http://localhost` in a private window. Click sign-in to bounce to
+Keycloak. Demo credentials: `demo@thunderbolt.io` / `demo`.
+
+After onboarding, drop in an AI provider key in app settings to start chatting.
 
 ## Routing
 
-The `ingress.yaml` routes are path-based:
+The chart's Ingress is path-based:
 
+| Path           | Service        |
+| -------------- | -------------- |
+| `/v1/*`        | backend        |
+| `/realms/*`    | keycloak       |
+| `/resources/*` | keycloak       |
+| `/powersync/*` | powersync      |
+| `/*`           | frontend       |
+
+## Cleanup
+
+```bash
+helm uninstall thunderbolt -n thunderbolt
+kubectl delete namespace thunderbolt
+kind delete cluster --name thunderbolt
 ```
-/v1/*         → backend Service
-/realms/*     → keycloak Service
-/powersync/*  → powersync Service
-/*            → frontend Service
-```
 
-## Manifest Reference
+## Configuration
 
-| File                    | Resources                        | Purpose                                                     |
-| ----------------------- | -------------------------------- | ----------------------------------------------------------- |
-| `namespace.yaml`        | Namespace                        | Isolated `thunderbolt` namespace                            |
-| `secrets.yaml.example`  | Secret                           | Template — copy to `secrets.yaml` before applying           |
-| `configmaps.yaml`       | ConfigMaps                       | nginx.conf, Postgres init SQL, PowerSync config, Keycloak realm — synthesized from `deploy/config/` and `deploy/docker/` |
-| `postgres.yaml`         | StatefulSet + Service            | PostgreSQL with WAL + PVC                                   |
-| `mongo.yaml`            | StatefulSet + Service + Job      | MongoDB replica set + init job                              |
-| `powersync.yaml`        | Deployment + Service             | PowerSync sync service                                      |
-| `keycloak.yaml`         | Deployment + Service + ConfigMap | Keycloak with realm import                                  |
-| `backend.yaml`          | Deployment + Service             | Elysia API server                                           |
-| `frontend.yaml`         | Deployment + Service             | nginx SPA                                                   |
-| `ingress.yaml`          | Ingress                          | Path-based routing                                          |
+See [`deploy/k8s/values.yaml`](https://github.com/thunderbird/thunderbolt/blob/main/deploy/k8s/values.yaml)
+for all options. Key values:
 
-## Differences from Docker Compose
-
-| Concept              | Docker Compose              | Kubernetes                              |
-| -------------------- | --------------------------- | --------------------------------------- |
-| Service discovery    | Container names             | ClusterIP services (DNS)                |
-| Ingress / routing    | nginx proxy in the frontend | Ingress resource                        |
-| Persistent storage   | Docker volumes              | PersistentVolumeClaims                  |
-| Health checks        | `healthcheck:` in compose   | `livenessProbe` / `readinessProbe`      |
-| Config files         | Volume mounts               | ConfigMaps                              |
-| Secrets              | `.env` file                 | Kubernetes Secrets                      |
+| Value | Default | Description |
+| --- | --- | --- |
+| `backend.betterAuthSecretBase64` | `""` (REQUIRED) | Base64-encoded auth signing secret |
+| `appUrl` | `http://localhost` | Base URL for CORS, auth callbacks, redirects |
+| `frontend.image.repository` | `ghcr.io/thunderbird/thunderbolt/thunderbolt-frontend` | Frontend image |
+| `backend.image.repository` | `ghcr.io/thunderbird/thunderbolt/thunderbolt-backend` | Backend image |
+| `marketing.image.repository` | `ghcr.io/thunderbird/thunderbolt/thunderbolt-marketing` | Marketing site image |
+| `imagePullSecrets` | `[]` | Registry pull secrets (empty for the default public images) |
+| `ingress.enabled` | `true` | Create Ingress resource |
+| `ingress.host` | `""` | Set to your hostname for production |
+| `postgres.storage` | `5Gi` | Postgres PVC size |
+| `backend.aiSecrets.anthropicApiKeyBase64` | `""` | Server-side Anthropic key (avoids browser CORS) |
 
 ## Production on EKS
 
@@ -111,4 +166,16 @@ pulumi config set platform k8s
 pulumi up
 ```
 
-This creates the VPC and EKS cluster, pushes ECR images, installs `nginx-ingress`, and applies the manifests above automatically. See [Pulumi (AWS)](./pulumi.md).
+This creates the VPC and EKS cluster, pushes images, installs `nginx-ingress`,
+and applies the chart automatically. See [Pulumi (AWS)](./pulumi.md).
+
+## Differences from Docker Compose
+
+| Concept             | Docker Compose              | Kubernetes                              |
+| ------------------- | --------------------------- | --------------------------------------- |
+| Service discovery   | Container names             | ClusterIP services (DNS)                |
+| Ingress / routing   | nginx proxy in the frontend | Ingress resource                        |
+| Persistent storage  | Docker volumes              | PersistentVolumeClaims                  |
+| Health checks       | `healthcheck:` in compose   | `livenessProbe` / `readinessProbe`      |
+| Config files        | Volume mounts               | ConfigMaps                              |
+| Secrets             | `.env` file                 | Kubernetes Secret + Helm values         |

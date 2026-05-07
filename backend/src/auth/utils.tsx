@@ -5,12 +5,6 @@
 import { sendEmail, shouldSkipEmail } from '@/lib/resend'
 import { MagicLinkEmail } from '@/emails/magic-link'
 
-/** Deep link base URL for mobile apps (iOS/Android) */
-const deepLinkHost = 'https://app.thunderbolt.io'
-
-/** Platforms that support deep linking */
-const deepLinkPlatforms = ['ios', 'android']
-
 /** Tauri app origin - always included for mobile/desktop app support */
 const tauriOrigin = 'tauri://localhost'
 
@@ -37,43 +31,16 @@ export const parseTrustedOrigins = (envValue?: string): string[] => {
 }
 
 /**
- * Check if the client platform supports deep linking
+ * Build a verify URL pointing to the SPA's `/auth/verify` route. The host is always
+ * the app URL — web users open it in the browser, and iOS/Android Universal Links /
+ * App Links route the same URL into the native app when installed.
  */
-export const isDeepLinkPlatform = (request?: Request): boolean => {
-  const platform = request?.headers.get('x-client-platform')
-  return platform ? deepLinkPlatforms.includes(platform) : false
-}
-
-/**
- * Validate and extract origin from request
- * Returns the origin if trusted, otherwise falls back to first trusted origin
- */
-export const getValidatedOrigin = (trustedOrigins: string[], request?: Request): string => {
-  const origin = request?.headers.get('origin')
-  if (origin && trustedOrigins.includes(origin)) {
-    return origin
-  }
-  return trustedOrigins[0]
-}
-
-/**
- * Build a verify URL that embeds the email and OTP
- * When clicked, the frontend auto-submits the OTP via the standard emailOtp sign-in endpoint
- * Uses deep link URL for mobile platforms so the link opens the app
- */
-export const buildVerifyUrl = (
-  origin: string,
-  email: string,
-  otp: string,
-  request?: Request,
-  challengeToken?: string,
-): string => {
-  const baseUrl = isDeepLinkPlatform(request) ? deepLinkHost : origin
+export const buildVerifyUrl = (appUrl: string, email: string, otp: string, challengeToken?: string): string => {
   const params = new URLSearchParams({ email, otp })
   if (challengeToken) {
     params.set('challengeToken', challengeToken)
   }
-  return `${baseUrl}/auth/verify?${params.toString()}`
+  return `${appUrl}/auth/verify?${params.toString()}`
 }
 
 type SendSignInEmailParams = {

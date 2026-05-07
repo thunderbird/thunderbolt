@@ -25,7 +25,7 @@ import { bearer, emailOTP } from 'better-auth/plugins'
 import { sso } from '@better-auth/sso'
 import { isAutoApprovedDomain, sendWaitlistJoinedEmail, sendWaitlistNotReadyEmail } from '@/waitlist/utils'
 import { challengeTokenHeader, otpExpiryMs, otpExpirySeconds } from './otp-constants'
-import { buildVerifyUrl, getValidatedOrigin, parseTrustedOrigins, sendSignInEmail } from './utils'
+import { buildVerifyUrl, parseTrustedOrigins, sendSignInEmail } from './utils'
 
 const OTP_SIGN_IN_PATH = '/sign-in/email-otp'
 
@@ -292,7 +292,6 @@ export const createAuth = (database: typeof DbType) => {
             }
           }
 
-          const origin = getValidatedOrigin(trustedOrigins, ctx?.request)
           // First-writer-wins: reuses existing challenge if /waitlist/join already
           // created one, or creates on-demand for Better Auth's native send-OTP endpoint.
           const challengeToken = await getOrCreateOtpChallenge(database, {
@@ -301,7 +300,7 @@ export const createAuth = (database: typeof DbType) => {
             challengeToken: crypto.randomUUID(),
             expiresAt: new Date(Date.now() + otpExpiryMs),
           })
-          const verifyUrl = buildVerifyUrl(origin, normalizedEmail, otp, ctx?.request, challengeToken)
+          const verifyUrl = buildVerifyUrl(settings.appUrl, normalizedEmail, otp, challengeToken)
 
           await sendSignInEmail({ email: normalizedEmail, otp, verifyUrl })
         },

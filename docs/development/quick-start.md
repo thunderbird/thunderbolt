@@ -62,7 +62,7 @@ You'll also need at least one AI provider API key — Anthropic, OpenAI, Mistral
    make run
    ```
 
-   Backend starts on `http://localhost:8000`, frontend on `http://localhost:5173`.
+   Backend starts on `http://localhost:8000`, frontend on `http://localhost:1420`.
 
    _Desktop (Tauri):_ `bun tauri:dev:desktop`
 

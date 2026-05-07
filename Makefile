@@ -120,9 +120,9 @@ type-check:
 # Run tests
 test:
 	@echo "$(BLUE)→ Running frontend tests...$(NC)"
-	@bun test || echo "$(YELLOW)  No frontend tests found$(NC)"
+	@bun run test
 	@echo "$(BLUE)→ Running backend tests...$(NC)"
-	@cd backend && bun test
+	@bun run test:backend
 
 # Run all checks
 check:
@@ -132,12 +132,12 @@ check:
 run:
 	@echo "$(BLUE)→ Starting backend and frontend development servers...$(NC)"
 	@echo "$(YELLOW)  Backend will run on http://localhost:8000$(NC)"
-	@echo "$(YELLOW)  Frontend will run on http://localhost:5173$(NC)"
+	@echo "$(YELLOW)  Frontend will run on http://localhost:1420$(NC)"
 	@echo "$(YELLOW)  Press Ctrl+C to stop both servers$(NC)"
 	@echo ""
 	@# Kill any existing processes on the ports first
 	@-lsof -ti:8000 | xargs kill -9 2>/dev/null || true
-	@-lsof -ti:5173 | xargs kill -9 2>/dev/null || true
+	@-lsof -ti:1420 | xargs kill -9 2>/dev/null || true
 	@# Start backend in background and frontend in foreground
 	cd backend && bun run dev & \
 	BACKEND_PID=$$!; \

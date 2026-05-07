@@ -206,14 +206,18 @@ export const createServices = (args: ServiceArgs) => {
         environment: [
           { name: 'POSTGRES_USER', value: 'postgres' },
           { name: 'POSTGRES_DB', value: 'postgres' },
-          { name: 'PGDATA', value: '/var/lib/postgresql/data/pgdata' },
+          // PGDATA intentionally unset — postgres:18 picks a version-specific subdir
+          // (/var/lib/postgresql/18/docker) under the volume mount, which keeps future
+          // pg_upgrade invocations possible without mount-point boundary issues.
         ],
         secrets: [
           { name: 'POSTGRES_PASSWORD', valueFrom: postgresPasswordSecret.arn },
           { name: 'POWERSYNC_DB_PASSWORD', valueFrom: powersyncDbPasswordSecret.arn },
         ],
         portMappings: [{ containerPort: 5432 }],
-        mountPoints: [{ sourceVolume: 'pg-data', containerPath: '/var/lib/postgresql/data' }],
+        // Mount EFS at /var/lib/postgresql (not /data); postgres:18+ rejects the old
+        // path. See deploy/docker/postgres.Dockerfile and docker-library/postgres#1259.
+        mountPoints: [{ sourceVolume: 'pg-data', containerPath: '/var/lib/postgresql' }],
         logConfiguration: logConfig('postgres'),
         ...(repositoryCredentials && { repositoryCredentials }),
       },
@@ -255,10 +259,12 @@ export const createServices = (args: ServiceArgs) => {
           { name: 'PS_PG_URI', value: pulumi.interpolate`postgresql://powersync_role:${args.secrets.powersyncDbPassword}@postgres.thunderbolt.local:5432/postgres` },
           { name: 'PS_STORAGE_URI', value: pulumi.interpolate`postgresql://postgres:${args.secrets.postgresPassword}@postgres.thunderbolt.local:5432/powersync_storage` },
           // Base64 of POWERSYNC_JWT_SECRET. Read by powersync-config.yaml's
-          // `client_auth.jwks.keys[].k: !env POWERSYNC_JWT_KEY_BASE64` to verify
+          // `client_auth.jwks.keys[].k: !env PS_JWT_KEY_BASE64` to verify
           // the JWT signatures the backend issues. Must match the secret the backend
           // signs with — both come from the same `args.secrets.powersyncJwtSecret`.
-          { name: 'POWERSYNC_JWT_KEY_BASE64', value: args.secrets.powersyncJwtSecret.apply((s) => Buffer.from(s).toString('base64')) },
+          // The PS_ prefix is mandatory: PowerSync's YAML loader rejects !env vars
+          // that don't start with it.
+          { name: 'PS_JWT_KEY_BASE64', value: args.secrets.powersyncJwtSecret.apply((s) => Buffer.from(s).toString('base64')) },
         ],
         portMappings: [{ containerPort: 8080 }],
         logConfiguration: logConfig('powersync'),

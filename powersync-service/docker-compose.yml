@@ -22,7 +22,11 @@ services:
       - POSTGRES_PASSWORD=postgres
       - PGPORT=5432
     volumes:
-      - pg_data:/var/lib/postgresql/data
+      # postgres:18+ expects the volume mount at /var/lib/postgresql (without the /data
+      # suffix); the image manages a version-specific subdirectory like 18/docker inside.
+      # Mounting at /var/lib/postgresql/data — the postgres:17 default — makes 18+ refuse
+      # to start with "(unused mount/volume)". See docker-library/postgres#1259.
+      - pg_data:/var/lib/postgresql
       - ./init-db:/docker-entrypoint-initdb.d
     ports:
       - "5433:5432"

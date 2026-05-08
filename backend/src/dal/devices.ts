@@ -68,13 +68,13 @@ export const countActiveDevices = async (database: typeof DbType, userId: string
   return rows[0]?.count ?? 0
 }
 
-/** Deny a pending device by revoking it. Mirrors revokeDevice semantics so denied devices
- * exit the active set and don't accumulate as limbo rows (THU-502). */
+/** Deny a pending device by clearing approval_pending. The trusted=false guard prevents
+ * a TOCTOU race from revoking a concurrently-approved device. */
 export const denyDevice = async (database: typeof DbType, deviceId: string, userId: string) =>
   database
     .update(devicesTable)
-    .set({ trusted: false, approvalPending: false, revokedAt: new Date() })
-    .where(and(eq(devicesTable.id, deviceId), eq(devicesTable.userId, userId)))
+    .set({ approvalPending: false })
+    .where(and(eq(devicesTable.id, deviceId), eq(devicesTable.userId, userId), eq(devicesTable.trusted, false)))
     .returning()
 
 /**

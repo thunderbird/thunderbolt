@@ -7,7 +7,7 @@ import { devicesTable } from '@/db/schema'
 import { createTestDb } from '@/test-utils/db'
 import { eq } from 'drizzle-orm'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
-import { countActiveDevices, getDeviceById, revokeDevice, upsertDevice } from './devices'
+import { countActiveDevices, denyDevice, getDeviceById, markDeviceTrusted, revokeDevice, upsertDevice } from './devices'
 
 describe('devices DAL', () => {
   let db: Awaited<ReturnType<typeof createTestDb>>['db']
@@ -133,6 +133,78 @@ describe('devices DAL', () => {
       ])
       const count = await countActiveDevices(db, userId)
       expect(count).toBe(1)
+    })
+  })
+
+  describe('denyDevice', () => {
+    it('clears approvalPending without setting revokedAt so the device can re-register', async () => {
+      const now = new Date()
+      await db.insert(devicesTable).values({
+        id: 'd-deny-1',
+        userId,
+        name: 'Pending',
+        approvalPending: true,
+        lastSeen: now,
+        createdAt: now,
+      })
+      await denyDevice(db, 'd-deny-1', userId)
+      const row = await getDeviceById(db, 'd-deny-1')
+      expect(row!.approvalPending).toBe(false)
+      expect(row!.trusted).toBe(false)
+      expect(row!.revokedAt).toBeNull()
+    })
+
+    it('is a no-op on a trusted device (TOCTOU race guard)', async () => {
+      const now = new Date()
+      await db.insert(devicesTable).values({
+        id: 'd-deny-trusted',
+        userId,
+        name: 'Trusted',
+        trusted: true,
+        approvalPending: false,
+        lastSeen: now,
+        createdAt: now,
+      })
+      const rows = await denyDevice(db, 'd-deny-trusted', userId)
+      expect(rows).toHaveLength(0)
+      const row = await getDeviceById(db, 'd-deny-trusted')
+      expect(row!.trusted).toBe(true)
+      expect(row!.revokedAt).toBeNull()
+    })
+
+    it('does not deny a device for the wrong user', async () => {
+      const now = new Date()
+      await db.insert(devicesTable).values({
+        id: 'd-deny-wrong-user',
+        userId,
+        name: 'Pending',
+        approvalPending: true,
+        lastSeen: now,
+        createdAt: now,
+      })
+      const rows = await denyDevice(db, 'd-deny-wrong-user', 'other-user')
+      expect(rows).toHaveLength(0)
+      const row = await getDeviceById(db, 'd-deny-wrong-user')
+      expect(row!.approvalPending).toBe(true)
+    })
+
+    it('does not revoke a concurrently-approved device (Finding A regression)', async () => {
+      const now = new Date()
+      await db.insert(devicesTable).values({
+        id: 'd-race',
+        userId,
+        name: 'Pending',
+        trusted: false,
+        approvalPending: true,
+        lastSeen: now,
+        createdAt: now,
+      })
+      // Simulate the race: markDeviceTrusted lands first, then denyDevice's UPDATE arrives
+      await markDeviceTrusted(db, 'd-race', userId)
+      await denyDevice(db, 'd-race', userId)
+      const row = await getDeviceById(db, 'd-race')
+      expect(row!.trusted).toBe(true)
+      expect(row!.revokedAt).toBeNull()
     })
   })
 })

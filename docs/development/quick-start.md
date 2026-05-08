@@ -97,6 +97,7 @@ For other distributions, use the upstream
 ## Next Steps
 
 - [Configuration Reference](../self-hosting/configuration.md) — every backend env var.
+- [Mobile Setup](./mobile-setup.md) — iOS / Android / desktop Tauri dev prerequisites.
 - [Architecture](../architecture/) — how the pieces connect.
 - [Testing](./testing.md) — test patterns, composite keys, synced table rules.
 - [Self-Hosting](../self-hosting/) — deploy Thunderbolt somewhere real.

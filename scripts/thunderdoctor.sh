@@ -100,6 +100,25 @@ if [ "$(uname -s)" = "Linux" ]; then
     "install with: sudo apt install libwebkit2gtk-4.1-dev libjavascriptcoregtk-4.1-dev libxdo-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev libsoup-3.0-dev (or equivalent for your distro: https://v2.tauri.app/start/prerequisites/#linux)"
 fi
 
+# Mobile dev prerequisites — checked but flagged optional (only needed for `tauri:dev:ios` / `tauri:dev:android`).
+if [ "$(uname -s)" = "Darwin" ]; then
+  check "Xcode command-line tools (for iOS dev)" \
+    "xcode-select -p | grep -q . && xcrun --version | head -1" \
+    "install with: xcode-select --install (then accept the license: sudo xcodebuild -license)"
+
+  check "iOS Simulator (at least one device)" \
+    "xcrun simctl list devices available 2>/dev/null | grep -E 'iPhone|iPad' | head -1" \
+    "open Xcode → Settings → Components and download a simulator runtime"
+fi
+
+check "ANDROID_HOME (for Android dev)" \
+  "[ -n \"$ANDROID_HOME\" ] && [ -d \"$ANDROID_HOME\" ] && echo \"$ANDROID_HOME\"" \
+  "install Android Studio (https://developer.android.com/studio), then: export ANDROID_HOME=\$HOME/Library/Android/sdk (macOS) or wherever the SDK landed"
+
+check "adb (Android Debug Bridge)" \
+  "adb --version | head -1 | grep -oE '[0-9]+\.[0-9]+\.[0-9]+'" \
+  "ships with Android SDK; ensure \$ANDROID_HOME/platform-tools is on PATH"
+
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
 

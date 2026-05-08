@@ -102,6 +102,7 @@ export default defineConfig({
 					label: 'Development',
 					items: [
 						{ label: 'Quick Start', slug: 'docs/development/quick-start' },
+						{ label: 'Mobile Setup', slug: 'docs/development/mobile-setup' },
 						{ label: 'Testing', slug: 'docs/development/testing' },
 					],
 				},

@@ -1,4 +1,4 @@
-.PHONY: help setup setup-symlinks install build build-desktop build-android build-ios clean run dev doctor doctor-q up down nuke status thunderbot-pull thunderbot-push thunderbot-customize
+.PHONY: help setup setup-symlinks install build build-desktop build-desktop-local build-android build-ios clean run dev dev-desktop dev-ios dev-android dev-android-init doctor doctor-q up down nuke status thunderbot-pull thunderbot-push thunderbot-customize
 
 # Color definitions
 BLUE := \033[0;34m
@@ -18,26 +18,41 @@ export COMPOSE_PROJECT_NAME
 # Default target
 help:
 	@echo "Available commands:"
-	@echo "  make setup          - Install frontend and backend dependencies"
-	@echo "  make install        - Install frontend dependencies"
-	@echo "  make run            - Start both backend and frontend development servers"
-	@echo "  make dev            - Alias for 'make run'"
-	@echo "  make build          - Build frontend for production"
-	@echo "  make build-desktop  - Build Tauri desktop app"
-	@echo "  make build-android  - Build Tauri Android app"
-	@echo "  make build-ios      - Build Tauri iOS app"
-	@echo "  make clean          - Clean build artifacts"
-	@echo "  make format         - Format frontend, backend (JS/TS), and Rust code"
-	@echo "  make format-check   - Check formatting for frontend, backend, and Rust code"
-	@echo "  make doctor         - Verify all dev tools and env files are configured"
-	@echo "  make up             - Start containers (PowerSync, Postgres, etc.)"
-	@echo "  make down           - Stop containers"
-	@echo "  make nuke           - Destroy all container data and recreate from scratch"
-	@echo "  make status         - Show container status"
-	@echo "  make thunderbot-pull - Pull latest skills from thunderbot"
-	@echo "  make thunderbot-push      - Push skill changes back to thunderbot"
-	@echo "  make thunderbot-customize - Fork a thunderbot command for local edits (FILE=name.md)"
-	@echo "  make setup-symlinks       - Create agent symlinks for Claude Code"
+	@echo ""
+	@echo "  Setup:"
+	@echo "    make setup           - Install frontend + backend dependencies and agent symlinks"
+	@echo "    make doctor          - Verify dev tools, env files, and mobile SDKs"
+	@echo "    make doctor-q        - Quiet doctor (only prints issues)"
+	@echo ""
+	@echo "  Containers:"
+	@echo "    make up              - Start Postgres + PowerSync containers"
+	@echo "    make down            - Stop containers (keeps volumes)"
+	@echo "    make nuke            - Wipe all container data and re-init"
+	@echo "    make status          - Show container status"
+	@echo ""
+	@echo "  Dev:"
+	@echo "    make dev             - Backend (:8000) + web frontend (:1420)"
+	@echo "    make dev-desktop     - Backend + Tauri desktop shell"
+	@echo "    make dev-ios         - Backend + Tauri on first booted iOS simulator"
+	@echo "    make dev-android     - Backend + Tauri on Android emulator (re-inits gen/android)"
+	@echo ""
+	@echo "  Build:"
+	@echo "    make build           - Vite production build (web)"
+	@echo "    make build-desktop   - Tauri desktop release (signed, for CI)"
+	@echo "    make build-desktop-local - Tauri desktop release (no updater signing)"
+	@echo "    make build-ios       - Tauri iOS release (needs Apple signing certs)"
+	@echo "    make build-android   - Tauri Android release"
+	@echo "    make clean           - Remove dist, target, node_modules"
+	@echo ""
+	@echo "  Quality:"
+	@echo "    make format          - Format frontend, backend, Rust"
+	@echo "    make format-check    - Check formatting"
+	@echo ""
+	@echo "  Misc:"
+	@echo "    make thunderbot-pull       - Pull latest skills from thunderbot"
+	@echo "    make thunderbot-push       - Push skill changes back to thunderbot"
+	@echo "    make thunderbot-customize  - Fork a thunderbot command (FILE=name.md)"
+	@echo "    make setup-symlinks        - Create Claude Code agent symlinks"
 
 # Create agent symlinks for Claude Code
 setup-symlinks:
@@ -153,6 +168,56 @@ run:
 
 # Alias for run
 dev: run
+
+# Tauri desktop dev — starts backend (only — Tauri brings its own Vite) + opens the Tauri shell.
+# Avoids the :1420 collision you'd get from running `make run` + `bun tauri:dev:desktop` together.
+dev-desktop:
+	@echo "$(BLUE)→ Starting backend + Tauri desktop dev...$(NC)"
+	@-lsof -ti:8000 | xargs kill -9 2>/dev/null || true
+	@cd backend && bun run dev & \
+	BACKEND_PID=$$!; \
+	echo "$(GREEN)✓ Backend started (PID: $$BACKEND_PID)$(NC)"; \
+	sleep 2; \
+	bun tauri:dev:desktop || (kill $$BACKEND_PID 2>/dev/null && exit 1)
+
+# Tauri iOS dev on simulator. Picks the first booted simulator to avoid Wi-Fi-paired iPhones
+# being auto-selected by `tauri ios dev`.
+dev-ios:
+	@echo "$(BLUE)→ Starting backend + Tauri iOS simulator dev...$(NC)"
+	@-lsof -ti:8000 | xargs kill -9 2>/dev/null || true
+	@SIM_UDID=$$(xcrun simctl list devices booted 2>/dev/null | grep -oE '\([0-9A-F-]{36}\)' | head -1 | tr -d '()'); \
+	if [ -z "$$SIM_UDID" ]; then \
+		echo "$(YELLOW)⚠ No booted simulator. Boot one first: open -a Simulator$(NC)"; \
+		exit 1; \
+	fi; \
+	echo "$(GREEN)✓ Targeting simulator $$SIM_UDID$(NC)"; \
+	cd backend && bun run dev & \
+	BACKEND_PID=$$!; \
+	sleep 2; \
+	cd .. && bun tauri ios dev --config src-tauri/tauri.dev.conf.json "$$SIM_UDID" || (kill $$BACKEND_PID 2>/dev/null && exit 1)
+
+# Tauri Android dev. Re-runs init with the dev config first so the package paths match
+# the .dev identifier (the chart's gen/android is committed for the prod identifier).
+dev-android-init:
+	@echo "$(BLUE)→ Re-initializing Android project for dev identifier...$(NC)"
+	@rm -rf src-tauri/gen/android
+	@bun tauri android init --config src-tauri/tauri.dev.conf.json
+
+dev-android: dev-android-init
+	@echo "$(BLUE)→ Starting backend + Tauri Android dev...$(NC)"
+	@-lsof -ti:8000 | xargs kill -9 2>/dev/null || true
+	@cd backend && bun run dev & \
+	BACKEND_PID=$$!; \
+	sleep 2; \
+	bun tauri:dev:android || (kill $$BACKEND_PID 2>/dev/null && exit 1)
+
+# Desktop release build that skips updater signing (for local artifact testing).
+# Real releases use the CI flow which provides TAURI_SIGNING_PRIVATE_KEY.
+build-desktop-local:
+	@echo "$(BLUE)→ Building desktop app (no updater bundle)...$(NC)"
+	@bun install
+	@bun tauri build --bundles app dmg
+	@echo "$(GREEN)✓ Built. App: src-tauri/target/release/bundle/macos/Thunderbolt.app$(NC)"
 
 # Environment doctor (use `make doctor-q` for quiet mode — only shows issues)
 doctor:

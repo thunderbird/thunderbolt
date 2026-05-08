@@ -12,12 +12,135 @@ import { createServiceDiscovery } from './src/discovery'
 import { createAlb } from './src/alb'
 import { createServices } from './src/services'
 import { createDns } from './src/dns'
+import { createSharedStack, loadSharedStackOutputs } from './src/shared'
+import { createPerPrStack } from './src/per-pr-stack'
 
 const config = new pulumi.Config()
 const stackName = pulumi.getStack()
 const name = `tb-${stackName}`
 const platform = config.get('platform') || 'fargate'
 const version = config.require('version')
+
+// --- Shared-stack architecture (Phase 1 scaffolding) ---
+//
+// Three deployment shapes coexist in this file:
+//
+//   1. `previews-shared` stack — long-lived, owns VPC/ALB/cluster/postgres/keycloak/
+//      powersync. Created by a separate workflow; outputs consumed via StackReference.
+//   2. `preview-pr-<n>` with `sharedStackName` config set — slim per-PR stack that
+//      reads the shared stack's outputs and only creates backend/frontend/marketing
+//      + per-PR routing.
+//   3. Legacy monolithic — every other stack name (dev, jkab-org/demo, enterprise
+//      customers, AND `preview-pr-<n>` stacks where `sharedStackName` is unset). This
+//      preserves existing behavior so no live deploys break during migration.
+//
+// Phase 1 wires up shape (1) and (2) as throwing stubs so we can iterate without
+// touching the monolithic path. See deploy/pulumi/src/shared.ts and per-pr-stack.ts.
+const isSharedStack = stackName === 'previews-shared'
+const sharedStackName = config.get('sharedStackName')
+
+if (isSharedStack) {
+  // The shared stack owns: VPC, ALB, ECS cluster, EFS, namespace, Postgres,
+  // Keycloak, PowerSync, AI provider secrets. Per-PR stacks consume these via
+  // StackReference.
+  const imagePrefix = 'ghcr.io/thunderbird/thunderbolt'
+
+  // Random secrets for the shared stack — persisted in Pulumi state.
+  const postgresPassword =
+    config.getSecret('postgresPassword') ??
+    new random.RandomPassword(`${name}-postgres-password`, { length: 48, special: false }).result
+  const powersyncDbPassword =
+    config.getSecret('powersyncDbPassword') ??
+    new random.RandomPassword(`${name}-powersync-db-password`, { length: 48, special: false }).result
+  const keycloakAdminPassword =
+    config.getSecret('keycloakAdminPassword') ??
+    new random.RandomPassword(`${name}-keycloak-admin-password`, { length: 48, special: false }).result
+  const powersyncJwtSecret =
+    config.getSecret('powersyncJwtSecret') ??
+    new random.RandomPassword(`${name}-powersync-jwt-secret`, { length: 64, special: false }).result
+  const oidcClientSecret =
+    config.getSecret('oidcClientSecret') ??
+    new random.RandomPassword(`${name}-oidc-client-secret`, { length: 48, special: false }).result
+
+  const outputs = createSharedStack({
+    name,
+    version,
+    imagePrefix,
+    ghcrToken: config.getSecret('ghcrToken'),
+    authHostname: config.require('authHostname'),
+    powersyncHostname: config.require('powersyncHostname'),
+    prApiHostPattern: config.require('prApiHostPattern'),
+    prAppHostPattern: config.require('prAppHostPattern'),
+    cloudflareZoneId: config.get('cloudflareZoneId'),
+    cloudflareApiToken: config.getSecret('cloudflareApiToken'),
+    aiSecrets: {
+      anthropicApiKey: config.getSecret('anthropicApiKey') ?? pulumi.output(''),
+      fireworksApiKey: config.getSecret('fireworksApiKey') ?? pulumi.output(''),
+      mistralApiKey: config.getSecret('mistralApiKey') ?? pulumi.output(''),
+      thunderboltInferenceApiKey: config.getSecret('thunderboltInferenceApiKey') ?? pulumi.output(''),
+      exaApiKey: config.getSecret('exaApiKey') ?? pulumi.output(''),
+    },
+    postgresPassword,
+    powersyncDbPassword,
+    keycloakAdminPassword,
+    powersyncJwtSecret,
+    oidcClientSecret,
+  })
+
+  // The full shape goes into stack outputs so per-PR StackReference reads work.
+  module.exports = {
+    ...outputs,
+    stackInfo: {
+      name: stackName,
+      destroy: `pulumi destroy -s ${stackName} -y`,
+    },
+  }
+} else if (sharedStackName) {
+  // Per-PR stack consuming the shared stack via StackReference. Only owns the
+  // PR-specific bits (backend/frontend/marketing services + per-PR routing).
+  const sharedRef = new pulumi.StackReference(sharedStackName)
+  const sharedOutputs = loadSharedStackOutputs(sharedRef)
+
+  const imagePrefix = 'ghcr.io/thunderbird/thunderbolt'
+
+  const cloudflareZoneIdInput = config.require('cloudflareZoneId')
+  const cloudflareApiTokenInput = config.requireSecret('cloudflareApiToken')
+
+  const betterAuthSecretInput =
+    config.getSecret('betterAuthSecret') ??
+    new random.RandomPassword(`${name}-better-auth-secret`, { length: 64, special: false }).result
+
+  const perPrOutputs = createPerPrStack({
+    stackName,
+    name,
+    version,
+    imagePrefix,
+    ghcrToken: config.getSecret('ghcrToken'),
+    hostnames: {
+      marketing: config.require('marketingHostname'),
+      app: config.require('appHostname'),
+      api: config.require('apiHostname'),
+    },
+    cloudflareZoneId: cloudflareZoneIdInput,
+    cloudflareApiToken: cloudflareApiTokenInput,
+    shared: sharedOutputs,
+    betterAuthSecret: betterAuthSecretInput,
+    thunderboltInferenceUrl: config.get('thunderboltInferenceUrl'),
+  })
+
+  module.exports = {
+    platform: 'fargate-shared',
+    url: perPrOutputs.url,
+    urls: perPrOutputs.urls,
+    stackInfo: {
+      name: stackName,
+      sharedStackName,
+      destroy: `pulumi destroy -s ${stackName} -y`,
+    },
+  }
+}
+
+// Otherwise: legacy monolithic path (unchanged).
 
 // --- Optional Cloudflare subdomain wiring (used by preview-pr-* stacks) ---
 //

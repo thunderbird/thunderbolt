@@ -83,6 +83,11 @@ const settingsSchema = z
     // E2E encryption — when true, devices must complete the trust flow before syncing
     e2eeEnabled: z.boolean().default(false),
 
+    // Anonymous sync guard — when true (default), anonymous users cannot mint PowerSync JWTs
+    // or upload sync data. Set ANONYMOUS_SYNC_GUARD_ENABLED=false as a kill-switch during
+    // rolling deploys only; never leave disabled in production.
+    anonymousSyncGuardEnabled: z.boolean().default(true),
+
     swaggerEnabled: z.boolean().default(false),
 
     // Rate limiting
@@ -157,6 +162,7 @@ const parseSettings = (): Settings => {
       process.env.CORS_EXPOSE_HEADERS ||
       'mcp-session-id,set-auth-token,ratelimit-limit,ratelimit-remaining,ratelimit-reset,retry-after',
     e2eeEnabled: process.env.E2EE_ENABLED === 'true',
+    anonymousSyncGuardEnabled: process.env.ANONYMOUS_SYNC_GUARD_ENABLED !== 'false',
     swaggerEnabled: process.env.SWAGGER_ENABLED === 'true',
     rateLimitEnabled: process.env.RATE_LIMIT_ENABLED !== 'false',
     trustedProxy: (process.env.TRUSTED_PROXY || '').toLowerCase(),

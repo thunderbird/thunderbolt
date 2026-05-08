@@ -52,5 +52,6 @@ export const createTestSettings = (overrides: Partial<Settings> = {}): Settings 
   swaggerEnabled: false,
   rateLimitEnabled: false,
   trustedProxy: '' as const,
+  anonymousSyncGuardEnabled: true,
   ...overrides,
 })

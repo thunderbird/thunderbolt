@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { AnonymousSignInButton } from '@/components/sign-in/anonymous-sign-in-button'
 import { BackButton } from '@/components/ui/back-button'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -135,6 +136,10 @@ export const WaitlistPage = () => {
               )}
             </Button>
           </form>
+        </div>
+
+        <div className="mt-4 flex justify-center">
+          <AnonymousSignInButton />
         </div>
 
         <p className="text-center text-xs text-muted-foreground">

@@ -7,6 +7,7 @@ import { useWelcomeStore } from '@/components/welcome-dialog'
 import type { AuthClient } from '@/contexts'
 import { useHttpClient } from '@/contexts'
 import { challengeTokenHeader, otpLength } from '@/lib/constants'
+import { useAnonymousPromotionAnalytics } from '@/lib/analytics/use-anonymous-promotion-analytics'
 import { getOtpErrorMessage } from '@/lib/otp-error-messages'
 import { isValidEmailFormat } from '@/lib/utils'
 import { useReducer, type FormEvent } from 'react'
@@ -76,6 +77,7 @@ type UseWaitlistStateOptions = {
  */
 export const useWaitlistState = ({ authClient, onVerified }: UseWaitlistStateOptions) => {
   const httpClient = useHttpClient()
+  const analytics = useAnonymousPromotionAnalytics()
   const [state, dispatch] = useReducer(reducer, initialState)
 
   const isValidEmail = isValidEmailFormat(state.email.trim())
@@ -107,6 +109,8 @@ export const useWaitlistState = ({ authClient, onVerified }: UseWaitlistStateOpt
       return
     }
 
+    await analytics.captureAnonId(authClient)
+
     dispatch({ type: 'START_VERIFYING' })
 
     try {
@@ -125,6 +129,7 @@ export const useWaitlistState = ({ authClient, onVerified }: UseWaitlistStateOpt
 
       const isNewUser = isNewAuthUser(result.data.user)
       await onSignInSuccess(isNewUser)
+      analytics.onPromotionSuccess(result.data.user.id)
 
       if (!isNewUser) {
         useWelcomeStore.getState().trigger()

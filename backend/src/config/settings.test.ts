@@ -243,6 +243,34 @@ describe('Config Settings', () => {
     })
   })
 
+  describe('appUrl normalization', () => {
+    let savedAppUrl: string | undefined
+
+    beforeEach(() => {
+      clearSettingsCache()
+      savedAppUrl = process.env.APP_URL
+    })
+
+    afterEach(() => {
+      clearSettingsCache()
+      if (savedAppUrl === undefined) {
+        delete process.env.APP_URL
+      } else {
+        process.env.APP_URL = savedAppUrl
+      }
+    })
+
+    it('strips a trailing slash from APP_URL', () => {
+      process.env.APP_URL = 'https://app.thunderbolt.io/'
+      expect(getSettings().appUrl).toBe('https://app.thunderbolt.io')
+    })
+
+    it('leaves APP_URL untouched when there is no trailing slash', () => {
+      process.env.APP_URL = 'https://app.thunderbolt.io'
+      expect(getSettings().appUrl).toBe('https://app.thunderbolt.io')
+    })
+  })
+
   describe('Rate limiting settings', () => {
     const RATE_LIMIT_ENV_KEYS = ['RATE_LIMIT_ENABLED', 'TRUSTED_PROXY'] as const
 

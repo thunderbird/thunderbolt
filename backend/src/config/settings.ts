@@ -48,7 +48,10 @@ const settingsSchema = z
     // General settings
     logLevel: z.enum(['DEBUG', 'INFO', 'WARN', 'ERROR']).default('INFO'),
     port: z.coerce.number().default(8000),
-    appUrl: z.string().default('http://localhost:1420'),
+    appUrl: z
+      .string()
+      .default('http://localhost:1420')
+      .transform((s) => s.replace(/\/$/, '')),
 
     // Analytics settings
     posthogHost: z.string().default('https://us.i.posthog.com'),

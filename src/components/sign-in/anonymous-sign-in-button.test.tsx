@@ -11,10 +11,15 @@ mock.module('react-router', () => ({
   useNavigate: () => mockNavigate,
 }))
 
-const mockSignInAnonymous = mock(async () => ({
-  error: null,
-  data: { user: { id: 'anon-1' } },
-}))
+const mockSignInAnonymous = mock(
+  async (): Promise<{
+    error: { status: number; code: string } | null
+    data: { user: { id: string } } | null
+  }> => ({
+    error: null,
+    data: { user: { id: 'anon-1' } },
+  }),
+)
 
 mock.module('@/contexts', () => ({
   useAuth: () => ({

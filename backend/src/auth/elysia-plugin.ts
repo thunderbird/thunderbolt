@@ -29,8 +29,8 @@ export const createAuthMacro = (auth: Auth) =>
   })
 
 /** Create a Better Auth plugin for Elysia with the provided database. */
-export const createBetterAuthPlugin = (database: typeof DbType, ipRateLimit?: AnyElysia) => {
-  const auth = createAuth(database)
+export const createBetterAuthPlugin = async (database: typeof DbType, ipRateLimit?: AnyElysia) => {
+  const auth = await createAuth(database)
 
   const plugin = new Elysia({ name: 'better-auth' })
   if (ipRateLimit) {

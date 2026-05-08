@@ -13,21 +13,32 @@ import {
   markUserNotNew,
   validateOtpChallenge,
 } from '@/dal'
+import {
+  migrateAnonymousUserData,
+  assertAnonymousRowCountUnderCap,
+  isTransientDbError,
+} from '@/dal/anonymous'
 import type { db as DbType } from '@/db/client'
 import * as schema from '@/db/schema'
 import { normalizeEmail } from '@/lib/email'
 import { getSettings } from '@/config/settings'
 import { getTrustedIpHeaders } from '@/utils/request'
-import { createAuthMiddleware } from 'better-auth/api'
+import { createAuthMiddleware, getSessionFromCtx } from 'better-auth/api'
 import { betterAuth } from 'better-auth'
 import { drizzleAdapter } from 'better-auth/adapters/drizzle'
-import { bearer, emailOTP } from 'better-auth/plugins'
+import { anonymous, bearer, emailOTP } from 'better-auth/plugins'
 import { sso } from '@better-auth/sso'
 import { isAutoApprovedDomain, sendWaitlistJoinedEmail, sendWaitlistNotReadyEmail } from '@/waitlist/utils'
 import { challengeTokenHeader, otpExpiryMs, otpExpirySeconds } from './otp-constants'
 import { buildVerifyUrl, parseTrustedOrigins, sendSignInEmail } from './utils'
+import { eq, sql } from 'drizzle-orm'
 
 const OTP_SIGN_IN_PATH = '/sign-in/email-otp'
+
+// Retry tuning constants for anonymous promotion (M3).
+// Increase ANONYMOUS_PROMOTION_MAX_ATTEMPTS if transient error rates rise above 1%.
+const ANONYMOUS_PROMOTION_MAX_ATTEMPTS = 3
+const ANONYMOUS_PROMOTION_BACKOFF_MS = 100
 
 /**
  * Create a Better Auth instance with the provided database
@@ -102,9 +113,30 @@ const buildSsoPlugins = () => {
   return []
 }
 
-export const createAuth = (database: typeof DbType) => {
+export const createAuth = async (database: typeof DbType) => {
   const settings = getSettings()
   const parsedOrigins = parseTrustedOrigins(process.env.TRUSTED_ORIGINS)
+
+  // Startup health check (external-4): refuse to boot if the anonymous-user migration hasn't
+  // run yet. Prevents the "plugin enabled before migration" deployment hazard where the
+  // anonymous plugin is active but the `is_anonymous` column doesn't exist yet.
+  // Run migration `bun db migrate` (backend/drizzle/0015_anonymous_user.sql) if this throws.
+  const columnCheck = await database.execute<Record<string, unknown>>(sql`
+    SELECT 1 FROM information_schema.columns
+    WHERE table_name = 'user' AND column_name = 'is_anonymous'
+  `)
+  // Drizzle returns driver-specific shapes: postgres-js gives a RowList (Array subclass),
+  // PGlite gives { rows: Row[] }. Normalize to a row count for the nil check.
+  const columnCheckRowCount = Array.isArray(columnCheck)
+    ? columnCheck.length
+    : (columnCheck as { rows: unknown[] }).rows.length
+  if (columnCheckRowCount === 0) {
+    throw new Error(
+      '[AUTH-INIT] Database is missing the `user.is_anonymous` column. ' +
+        'Run pending migrations (`bun db migrate`) before starting the auth module. ' +
+        'See backend/drizzle/0015_anonymous_user.sql.',
+    )
+  }
 
   // Include the backend's own origin so the SSO desktop-callback can be used as callbackURL.
   // Spread to avoid mutating the shared default array returned by parseTrustedOrigins.
@@ -162,6 +194,13 @@ export const createAuth = (database: typeof DbType) => {
           required: false,
           defaultValue: true,
         },
+        // Exposes isAnonymous on the session user object so downstream consumers
+        // (e.g. M4's PowerSync guard) can read it without an extra DB lookup.
+        isAnonymous: {
+          type: 'boolean',
+          required: false,
+          defaultValue: false,
+        },
       },
     },
     session: {
@@ -175,6 +214,8 @@ export const createAuth = (database: typeof DbType) => {
     databaseHooks: {
       user: {
         create: {
+          // normalizeEmail is .toLowerCase().trim() — idempotent on Better Auth's
+          // synthetic anonymous emails (`temp@{generateId()}.com`). No guard needed.
           before: async (userData) => ({
             data: { ...userData, email: normalizeEmail(userData.email) },
           }),
@@ -183,7 +224,21 @@ export const createAuth = (database: typeof DbType) => {
     },
     hooks: {
       before: createAuthMiddleware(async (ctx) => {
+        // Guard: prevent session fixation. A real (non-anonymous) user MUST NOT be
+        // able to acquire a new anonymous session that could shadow their real session.
+        // This is external-14: reject /sign-in/anonymous if caller is already authenticated
+        // as a non-anonymous user. Anonymous sign-in is intentionally NOT waitlist-gated.
+        if (ctx.path === '/sign-in/anonymous') {
+          const existing = await getSessionFromCtx(ctx, { disableRefresh: true })
+          if (existing?.user && (existing.user as { isAnonymous?: boolean }).isAnonymous !== true) {
+            throw ctx.error('BAD_REQUEST', { message: 'Already authenticated' })
+          }
+          return
+        }
+
         if (ctx.path !== OTP_SIGN_IN_PATH) {
+          // Anonymous sign-in (above) is intentionally NOT waitlist-gated — that's the feature.
+          // All other non-OTP paths are also unchecked here.
           return
         }
 
@@ -305,9 +360,78 @@ export const createAuth = (database: typeof DbType) => {
           await sendSignInEmail({ email: normalizedEmail, otp, verifyUrl })
         },
       }),
+      // Anonymous sessions plugin (THU-383).
+      //
+      // `disableDeleteAnonymousUser: true` is INTENTIONAL and MUST NOT be removed.
+      // Reasons:
+      //   1. We own the anonymous-user delete ourselves inside `onLinkAccount`'s transaction
+      //      so that migration + delete are atomic. Letting the plugin delete outside our tx
+      //      would create a window where migration succeeds but anon-user delete fails,
+      //      leaving a ghost anon-user record.
+      //   2. This flag also disables the `/delete-anonymous-user` endpoint, which removes
+      //      an unauthenticated CSRF surface (external-3).
+      //
+      // Better Auth v1.6.9 library validation (N-1 confirmed):
+      // The after-hook for linkAccount reads:
+      //   `if (options?.disableDeleteAnonymousUser || isSameUser || newSessionIsAnonymous) return`
+      // The disable flag is the FIRST check — no eager `getUser(anonId)` occurs before it.
+      // Safe to keep this flag without paying the cost of an extra round-trip.
+      anonymous({
+        disableDeleteAnonymousUser: true, // We own the in-tx delete — see comment above
+        onLinkAccount: async ({ anonymousUser, newUser, ctx }) => {
+          let lastError: unknown
+          for (let attempt = 0; attempt < ANONYMOUS_PROMOTION_MAX_ATTEMPTS; attempt++) {
+            try {
+              await database.transaction(async (tx) => {
+                // N-3: cap check INSIDE the same tx for snapshot atomicity — must not be
+                // moved outside the transaction boundary.
+                // Cast tx: Drizzle transactions are structurally compatible with
+                // the DB type for DML operations. The M2 DAL types the param as
+                // `typeof DbType` (which includes `$client` from the driver instance).
+                // Transactions omit `$client`, but all actual query operations work.
+                const txDb = tx as unknown as typeof database
+                await assertAnonymousRowCountUnderCap(txDb, anonymousUser.user.id, 10000)
+                await migrateAnonymousUserData(txDb, anonymousUser.user.id, newUser.user.id)
+                // We own the anonymous-user delete (disableDeleteAnonymousUser: true).
+                // In-tx so migration + delete are atomic; on rollback both revert.
+                await tx.delete(schema.user).where(eq(schema.user.id, anonymousUser.user.id))
+              })
+              return
+            } catch (err) {
+              lastError = err
+              // DrizzleQueryError wraps the PG error code in err.cause.code, not err.code
+              // (M2 discovery). Pass err.cause ?? err so isTransientDbError sees the right shape.
+              const cause = (err as { cause?: unknown }).cause ?? err
+              if (!isTransientDbError(cause)) break
+              await new Promise((r) => setTimeout(r, ANONYMOUS_PROMOTION_BACKOFF_MS * (attempt + 1)))
+            }
+          }
+
+          // Permanent failure (option c): delete the brand-new real user, rethrow so
+          // the client receives an error and the user remains anonymous. They can retry
+          // OTP sign-in cleanly — their anonymous session is intact.
+          console.error('[ANON-PROMOTE-FAIL]', {
+            anonId: anonymousUser.user.id,
+            newId: newUser.user.id,
+            // Log message only — never log email or other PII here.
+            error: lastError instanceof Error ? lastError.message : String(lastError),
+          })
+          try {
+            await ctx.context.internalAdapter.deleteUser(newUser.user.id)
+          } catch (cleanupErr) {
+            // Both the migration AND the cleanup failed — ops must intervene manually.
+            // The new user record is now orphaned; see runbook in docs/architecture/e2e-encryption.md.
+            console.error('[ANON-PROMOTE-CATASTROPHIC]', {
+              newId: newUser.user.id,
+              error: cleanupErr instanceof Error ? cleanupErr.message : String(cleanupErr),
+            })
+          }
+          throw lastError
+        },
+      }),
       ...buildSsoPlugins(),
     ],
   })
 }
 
-export type Auth = ReturnType<typeof createAuth>
+export type Auth = Awaited<ReturnType<typeof createAuth>>

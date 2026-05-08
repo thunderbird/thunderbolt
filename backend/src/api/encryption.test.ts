@@ -151,7 +151,7 @@ describe('Encryption API', () => {
     const testEnv = await createTestDb()
     db = testEnv.db
     cleanup = testEnv.cleanup
-    const auth = createAuth(db)
+    const auth = await createAuth(db)
     app = new Elysia().use(createEncryptionRoutes(auth, db)) as unknown as ReturnType<typeof createEncryptionRoutes>
   })
 

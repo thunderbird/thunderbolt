@@ -5,6 +5,7 @@
 import type { Auth } from '@/auth/elysia-plugin'
 import type { Settings } from '@/config/settings'
 import { isOriginAllowed } from '@/config/settings'
+import { ForbiddenError } from '@/errors/http-errors'
 import { applyOperation, getActiveSessionByToken, getDeviceById, getUserById, upsertDevice } from '@/dal'
 import type { db as DbType } from '@/db/client'
 import { verifySignedBearerToken } from '@/auth/bearer-token'
@@ -167,6 +168,17 @@ export const createPowerSyncRoutes = (auth: Auth, settings: Settings, database: 
 
       // Path 1: Authenticated via session. Issue PowerSync JWT; check device revoked, then upsert device.
       if (user) {
+        // INVARIANT: isAnonymous must not be projected away when fetching user rows in routes
+        // that issue PowerSync tokens — otherwise the guard below silently passes.
+        // NOTE: When M3 registers isAnonymous as a Better Auth additionalField, the session user
+        // will carry isAnonymous directly (eliminating this extra DB query).
+        if (settings.anonymousSyncGuardEnabled) {
+          const userRecord = await getUserById(database, user.id)
+          if (userRecord?.isAnonymous) {
+            throw new ForbiddenError('Anonymous users cannot sync')
+          }
+        }
+
         const result = await issuePowerSyncToken(user.id, request, powersyncJwt, settings, database)
         if (!result.ok) {
           set.status = result.status
@@ -205,6 +217,10 @@ export const createPowerSyncRoutes = (auth: Auth, settings: Settings, database: 
       }
 
       // Token refresh: valid Bearer + user exists -> issue new PowerSync JWT (same as Path 1).
+      if (settings.anonymousSyncGuardEnabled && userRow.isAnonymous) {
+        throw new ForbiddenError('Anonymous users cannot sync')
+      }
+
       const userId = sessionRow.userId
       const result = await issuePowerSyncToken(userId, request, powersyncJwt, settings, database)
       if (!result.ok) {
@@ -225,6 +241,15 @@ export const createPowerSyncRoutes = (auth: Auth, settings: Settings, database: 
         if (!user) {
           set.status = 401
           return { error: 'Unauthorized' }
+        }
+
+        // NOTE: When M3 registers isAnonymous as a Better Auth additionalField, user.isAnonymous
+        // will be available directly (eliminating this extra DB query).
+        if (settings.anonymousSyncGuardEnabled) {
+          const userRecord = await getUserById(database, user.id)
+          if (userRecord?.isAnonymous) {
+            throw new ForbiddenError('Anonymous users cannot sync')
+          }
         }
 
         const validation = await validateDeviceForSync(user.id, request, database, settings)

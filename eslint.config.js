@@ -5,21 +5,25 @@
 // For more info, see https://github.com/storybookjs/eslint-plugin-storybook#configuration-flat-config-format
 import storybook from 'eslint-plugin-storybook'
 
+import js from '@eslint/js'
+import typescript from '@typescript-eslint/eslint-plugin'
+import typescriptParser from '@typescript-eslint/parser'
+import prettier from 'eslint-config-prettier'
 import react from 'eslint-plugin-react'
 import reactHooks from 'eslint-plugin-react-hooks'
 import globals from 'globals'
-import { baseConfigs, sharedTypescriptConfig } from './shared/eslint/base.js'
+import { sharedParserOptions, sharedRules } from './shared/eslint/base.js'
 
 export default [
-  ...baseConfigs,
+  js.configs.recommended,
+  prettier,
   {
-    ...sharedTypescriptConfig,
     files: ['src/**/*.{ts,tsx}'],
     ignores: ['node_modules', 'dist', 'dist-isolation', 'src-tauri', 'thunderbird-*', 'backend'],
     languageOptions: {
-      ...sharedTypescriptConfig.languageOptions,
+      parser: typescriptParser,
       parserOptions: {
-        ...sharedTypescriptConfig.languageOptions.parserOptions,
+        ...sharedParserOptions,
         ecmaFeatures: { jsx: true },
       },
       globals: {
@@ -33,7 +37,7 @@ export default [
       },
     },
     plugins: {
-      ...sharedTypescriptConfig.plugins,
+      '@typescript-eslint': typescript,
       react,
       'react-hooks': reactHooks,
     },
@@ -41,7 +45,7 @@ export default [
       react: { version: 'detect' },
     },
     rules: {
-      ...sharedTypescriptConfig.rules,
+      ...sharedRules,
 
       // React
       'react/react-in-jsx-scope': 'off',

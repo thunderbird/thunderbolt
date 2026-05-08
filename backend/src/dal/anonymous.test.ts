@@ -53,7 +53,9 @@ const seedAllTables = async (db: Db, userId: string) => {
 
   await db.insert(settingsTable).values({ key: 'theme', value: 'dark', userId })
   await db.insert(chatThreadsTable).values({ id: `ct-${userId}`, title: 'Thread', userId })
-  await db.insert(chatMessagesTable).values({ id: `cm-${userId}`, content: 'Hello', role: 'user', chatThreadId: `ct-${userId}`, userId })
+  await db
+    .insert(chatMessagesTable)
+    .values({ id: `cm-${userId}`, content: 'Hello', role: 'user', chatThreadId: `ct-${userId}`, userId })
   await db.insert(tasksTable).values({ id, userId })
   await db.insert(modelsTable).values({ id, name: 'GPT', provider: 'openai', userId })
   await db.insert(mcpServersTable).values({ id: `mcp-${userId}`, name: 'Server', userId })
@@ -107,7 +109,7 @@ describe('anonymous DAL', () => {
   describe('schema-drift test — tablesToMigrate registry', () => {
     it('covers every powersync table not in EXCLUDED_FROM_MIGRATION', () => {
       const expected = powersyncTableNames.filter((name) => !EXCLUDED_FROM_MIGRATION.has(name))
-      const registered = new Set(tablesToMigrate.map((t) => getTableName(t)))
+      const registered: Set<string> = new Set(tablesToMigrate.map((t) => getTableName(t)))
       const missing = expected.filter((name) => !registered.has(name))
       expect(missing).toEqual(
         // prettier-ignore

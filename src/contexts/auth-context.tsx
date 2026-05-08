@@ -7,7 +7,7 @@ import { usePowerSyncCredentialsInvalidListener } from '@/hooks/use-powersync-cr
 import { isSsoMode } from '@/lib/auth-mode'
 import { clearAuthToken, getAuthToken, setAuthToken } from '@/lib/auth-token'
 import { getPlatform } from '@/lib/platform'
-import { emailOTPClient } from 'better-auth/client/plugins'
+import { anonymousClient, emailOTPClient } from 'better-auth/client/plugins'
 import { createAuthClient } from 'better-auth/react'
 import { createContext, useContext, useEffect, useMemo, useRef, type ReactNode } from 'react'
 
@@ -24,7 +24,7 @@ const createAuthClientInstance = (cloudUrl: string) => {
   return createAuthClient({
     baseURL,
     basePath: '/v1/api/auth',
-    plugins: [emailOTPClient()],
+    plugins: [emailOTPClient(), anonymousClient()],
     fetchOptions: buildFetchOptions(platform),
   })
 }

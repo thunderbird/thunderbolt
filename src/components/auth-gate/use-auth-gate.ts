@@ -24,6 +24,10 @@ type ResolvedState = { status: 'allowed' } | { status: 'redirect' }
 export const useAuthGate = (require: AuthRequirement): AuthGateState => {
   const authClient = useAuth()
   const { data: session, isPending } = authClient.useSession()
+  // Anonymous users are treated as authenticated for routing purposes.
+  // They have a real session.user record (with isAnonymous: true) and full app
+  // access. Capability gating per route is the responsibility of the route, not
+  // this guard. DO NOT tighten this to `!session.user.isAnonymous`.
   const isAuthenticated = !!session?.user
   const hasToken = Boolean(getAuthToken())
   const resolvedRef = useRef<ResolvedState | null>(null)

@@ -2474,13 +2474,13 @@ describe('PowerSync API (E2EE disabled)', () => {
 describe('PowerSync API — anonymous sync guard', () => {
   let db: Awaited<ReturnType<typeof createTestDb>>['db']
   let cleanup: () => Promise<void>
-  let auth: ReturnType<typeof createBetterAuthPlugin>['auth']
+  let auth: Awaited<ReturnType<typeof createBetterAuthPlugin>>['auth']
 
   beforeEach(async () => {
     const testEnv = await createTestDb()
     db = testEnv.db
     cleanup = testEnv.cleanup
-    const plugin = createBetterAuthPlugin(db)
+    const plugin = await createBetterAuthPlugin(db)
     auth = plugin.auth
   })
 

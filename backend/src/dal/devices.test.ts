@@ -89,11 +89,11 @@ describe('devices DAL', () => {
   })
 
   describe('countActiveDevices', () => {
-    it('counts non-revoked devices for user', async () => {
+    it('counts trusted, non-revoked devices for user', async () => {
       const now = new Date()
       await db.insert(devicesTable).values([
-        { id: 'active-1', userId, name: 'Phone', lastSeen: now, createdAt: now },
-        { id: 'active-2', userId, name: 'Laptop', lastSeen: now, createdAt: now },
+        { id: 'active-1', userId, name: 'Phone', trusted: true, lastSeen: now, createdAt: now },
+        { id: 'active-2', userId, name: 'Laptop', trusted: true, lastSeen: now, createdAt: now },
         { id: 'revoked-1', userId, name: 'Old Phone', lastSeen: now, createdAt: now, revokedAt: now },
       ])
       const count = await countActiveDevices(db, userId)
@@ -103,6 +103,17 @@ describe('devices DAL', () => {
     it('returns 0 when user has no devices', async () => {
       const count = await countActiveDevices(db, userId)
       expect(count).toBe(0)
+    })
+
+    it('does not count pending or limbo devices (THU-502)', async () => {
+      const now = new Date()
+      await db.insert(devicesTable).values([
+        { id: 'trusted-1', userId, name: 'Trusted', trusted: true, lastSeen: now, createdAt: now },
+        { id: 'pending-1', userId, name: 'Pending', approvalPending: true, lastSeen: now, createdAt: now },
+        { id: 'limbo-1', userId, name: 'Limbo', lastSeen: now, createdAt: now },
+      ])
+      const count = await countActiveDevices(db, userId)
+      expect(count).toBe(1)
     })
 
     it('does not count devices from other users', async () => {
@@ -117,8 +128,8 @@ describe('devices DAL', () => {
         updatedAt: now,
       })
       await db.insert(devicesTable).values([
-        { id: 'my-device', userId, name: 'Mine', lastSeen: now, createdAt: now },
-        { id: 'their-device', userId: otherUserId, name: 'Theirs', lastSeen: now, createdAt: now },
+        { id: 'my-device', userId, name: 'Mine', trusted: true, lastSeen: now, createdAt: now },
+        { id: 'their-device', userId: otherUserId, name: 'Theirs', trusted: true, lastSeen: now, createdAt: now },
       ])
       const count = await countActiveDevices(db, userId)
       expect(count).toBe(1)

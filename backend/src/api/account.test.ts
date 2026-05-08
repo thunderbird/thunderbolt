@@ -51,7 +51,7 @@ describe('Account API', () => {
     const testEnv = await createTestDb()
     db = testEnv.db
     cleanup = testEnv.cleanup
-    const auth = createAuth(db)
+    const auth = await createAuth(db)
     app = new Elysia({ prefix: '/v1' }).use(createAccountRoutes(auth, db)) as unknown as ReturnType<
       typeof createAccountRoutes
     >

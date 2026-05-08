@@ -207,4 +207,80 @@ describe('devices DAL', () => {
       expect(row!.revokedAt).toBeNull()
     })
   })
+
+  describe('markDeviceTrusted', () => {
+    it('returns updated row when device is not revoked', async () => {
+      const now = new Date()
+      await db.insert(devicesTable).values({
+        id: 'd-mt-1',
+        userId,
+        name: 'Pending',
+        approvalPending: true,
+        lastSeen: now,
+        createdAt: now,
+      })
+      const rows = await markDeviceTrusted(db, 'd-mt-1', userId)
+      expect(rows).toHaveLength(1)
+      expect(rows[0].trusted).toBe(true)
+      expect(rows[0].approvalPending).toBe(false)
+    })
+
+    it('returns empty array when device was revoked (Finding D)', async () => {
+      const now = new Date()
+      await db.insert(devicesTable).values({
+        id: 'd-mt-revoked',
+        userId,
+        name: 'Revoked',
+        approvalPending: true,
+        revokedAt: now,
+        lastSeen: now,
+        createdAt: now,
+      })
+      // Simulate concurrent revoke landing between in-tx target read and this UPDATE:
+      // markDeviceTrusted must not silently succeed on a revoked device.
+      const rows = await markDeviceTrusted(db, 'd-mt-revoked', userId)
+      expect(rows).toHaveLength(0)
+      const row = await getDeviceById(db, 'd-mt-revoked')
+      expect(row!.trusted).toBe(false)
+      expect(row!.revokedAt).not.toBeNull()
+    })
+
+    it('returns empty array for wrong user', async () => {
+      const now = new Date()
+      await db.insert(devicesTable).values({
+        id: 'd-mt-wrong-user',
+        userId,
+        name: 'Pending',
+        approvalPending: true,
+        lastSeen: now,
+        createdAt: now,
+      })
+      const rows = await markDeviceTrusted(db, 'd-mt-wrong-user', 'other-user')
+      expect(rows).toHaveLength(0)
+      const row = await getDeviceById(db, 'd-mt-wrong-user')
+      expect(row!.trusted).toBe(false)
+    })
+
+    it('is a no-op when device was concurrently denied (Finding E)', async () => {
+      const now = new Date()
+      // Device in (trusted=false, approvalPending=false, revokedAt=null) — the state denyDevice
+      // leaves it in. If markDeviceTrusted runs after denyDevice committed, it must not silently
+      // promote the denied device.
+      await db.insert(devicesTable).values({
+        id: 'd-mt-denied',
+        userId,
+        name: 'Denied',
+        trusted: false,
+        approvalPending: false,
+        lastSeen: now,
+        createdAt: now,
+      })
+      const rows = await markDeviceTrusted(db, 'd-mt-denied', userId)
+      expect(rows).toHaveLength(0)
+      const row = await getDeviceById(db, 'd-mt-denied')
+      expect(row!.trusted).toBe(false)
+      expect(row!.approvalPending).toBe(false)
+      expect(row!.revokedAt).toBeNull()
+    })
+  })
 })

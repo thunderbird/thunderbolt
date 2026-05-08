@@ -20,6 +20,7 @@ import {
 import type { db as DbType } from '@/db/client'
 import { BadRequestError, ForbiddenError } from '@/errors/http-errors'
 import { hashCanarySecret, verifyCanaryProof, verifyCanaryProofWithMetadata } from '@/lib/canary'
+import { sql } from 'drizzle-orm'
 import { Elysia, t } from 'elysia'
 
 const MAX_DEVICES_PER_USER = 10
@@ -174,6 +175,12 @@ export const createEncryptionRoutes = (auth: Auth, database: typeof DbType) =>
           await database.transaction(async (tx) => {
             const txDb = tx as unknown as typeof database
 
+            // Serialize concurrent device approvals for this user to prevent cap bypass
+            // (Finding F): without this, two concurrent envelope txs both see count<MAX
+            // and both promote pending devices, exceeding the cap. The advisory lock
+            // auto-releases on commit/rollback.
+            await txDb.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${userId})::bigint)`)
+
             const envelopesExist = await hasEnvelopesForUser(txDb, userId)
             const isFirstDeviceBootstrap = !envelopesExist && callerDeviceId === deviceId
 
@@ -260,8 +267,12 @@ export const createEncryptionRoutes = (auth: Auth, database: typeof DbType) =>
               }
             }
 
-            // Mark device as trusted
-            await markDeviceTrusted(txDb, deviceId, userId)
+            // Mark device as trusted. Check rows returned to detect a concurrent revoke
+            // that committed between the in-tx target read above and this UPDATE.
+            const updated = await markDeviceTrusted(txDb, deviceId, userId)
+            if (updated.length === 0) {
+              throw new ForbiddenError('Device has been revoked')
+            }
           })
         } catch (err) {
           if (err instanceof BadRequestError) {

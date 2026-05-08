@@ -191,6 +191,9 @@ export type EventType =
   | 'ui_shortcut_use'
   | 'ui_sidebar_open'
   | 'ui_sidebar_close'
+  // Anonymous session & promotion
+  | 'anonymous_session_started'
+  | 'anonymous_user_promoted'
   // Sync Diagnostics
   | 'sync_connect'
   | 'sync_connect_error'

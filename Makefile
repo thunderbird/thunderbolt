@@ -180,9 +180,10 @@ dev-desktop:
 	@-lsof -ti:8000 | xargs kill -9 2>/dev/null || true
 	@cd backend && bun run dev & \
 	BACKEND_PID=$$!; \
+	trap "kill $$BACKEND_PID 2>/dev/null" EXIT; \
 	echo "$(GREEN)✓ Backend started (PID: $$BACKEND_PID)$(NC)"; \
 	sleep 2; \
-	bun tauri:dev:desktop || (kill $$BACKEND_PID 2>/dev/null && exit 1)
+	bun tauri:dev:desktop
 
 # Tauri iOS dev on simulator. Picks the first booted simulator to avoid Wi-Fi-paired iPhones
 # being auto-selected by `tauri ios dev`.
@@ -197,8 +198,9 @@ dev-ios:
 	echo "$(GREEN)✓ Targeting simulator $$SIM_UDID$(NC)"; \
 	cd backend && bun run dev & \
 	BACKEND_PID=$$!; \
+	trap "kill $$BACKEND_PID 2>/dev/null" EXIT; \
 	sleep 2; \
-	bun tauri ios dev --config src-tauri/tauri.dev.conf.json "$$SIM_UDID" || (kill $$BACKEND_PID 2>/dev/null && exit 1)
+	bun tauri ios dev --config src-tauri/tauri.dev.conf.json "$$SIM_UDID"
 
 # Tauri Android dev. Re-runs init with the dev config first so the package paths match
 # the .dev identifier (the chart's gen/android is committed for the prod identifier).
@@ -212,8 +214,9 @@ dev-android: dev-android-init
 	@-lsof -ti:8000 | xargs kill -9 2>/dev/null || true
 	@cd backend && bun run dev & \
 	BACKEND_PID=$$!; \
+	trap "kill $$BACKEND_PID 2>/dev/null" EXIT; \
 	sleep 2; \
-	bun tauri:dev:android || (kill $$BACKEND_PID 2>/dev/null && exit 1)
+	bun tauri:dev:android
 
 # Desktop release build that skips updater signing (for local artifact testing).
 # Real releases use the CI flow which provides TAURI_SIGNING_PRIVATE_KEY.

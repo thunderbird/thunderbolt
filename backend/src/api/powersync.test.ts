@@ -54,6 +54,7 @@ const powersyncSettings: Settings = {
   oidcClientId: '',
   oidcClientSecret: '',
   oidcIssuer: '',
+  oidcDiscoveryUrl: '',
   betterAuthUrl: 'http://localhost:8000',
   betterAuthSecret,
   e2eeEnabled: true,

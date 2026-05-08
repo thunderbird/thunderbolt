@@ -5,6 +5,7 @@
 import type { ConsoleSpies } from '@/test-utils/console-spies'
 import { setupConsoleSpy } from '@/test-utils/console-spies'
 import { mockAuth } from '@/test-utils/mock-auth'
+import { createTestSettings } from '@/test-utils/settings'
 import { afterAll, beforeAll, beforeEach, describe, expect, it, mock, spyOn } from 'bun:test'
 import { Elysia } from 'elysia'
 import { createMcpProxyRoutes } from './routes'
@@ -24,47 +25,15 @@ describe('MCP Proxy Routes', () => {
   const createMockResponse = (body: string, options: ResponseInit = {}) =>
     new Response(body, { status: 200, headers: { 'content-type': 'application/json' }, ...options })
 
-  const mockSettings = {
-    fireworksApiKey: '',
-    mistralApiKey: '',
-    anthropicApiKey: '',
-    exaApiKey: '',
-    thunderboltInferenceUrl: '',
-    thunderboltInferenceApiKey: '',
-    monitoringToken: '',
-    googleClientId: '',
-    googleClientSecret: '',
-    microsoftClientId: '',
-    microsoftClientSecret: '',
-    logLevel: 'INFO',
-    port: 8000,
-    appUrl: 'http://localhost:1420',
-    posthogHost: 'https://us.i.posthog.com',
-    posthogApiKey: '',
-    corsOrigins: 'http://localhost:1420',
-    corsAllowCredentials: true,
-    corsAllowMethods: 'GET,POST,PUT,DELETE,PATCH,OPTIONS',
+  const mockSettings = createTestSettings({
     corsAllowHeaders:
       'Content-Type,Authorization,X-Mcp-Target-Url,Mcp-Authorization,Mcp-Session-Id,Mcp-Protocol-Version',
     corsExposeHeaders: 'mcp-session-id,set-auth-token',
-    waitlistEnabled: false,
-    waitlistAutoApproveDomains: '',
-    powersyncUrl: '',
-    powersyncJwtKid: '',
-    powersyncJwtSecret: '',
-    powersyncTokenExpirySeconds: 3600,
-    authMode: 'consumer' as const,
-    oidcClientId: '',
-    oidcClientSecret: '',
-    oidcIssuer: '',
-    betterAuthUrl: 'http://localhost:8000',
-  }
+  })
 
   beforeAll(() => {
     consoleSpies = setupConsoleSpy()
-    getSettingsSpy = spyOn(settingsModule, 'getSettings').mockReturnValue(
-      mockSettings as ReturnType<typeof settingsModule.getSettings>,
-    )
+    getSettingsSpy = spyOn(settingsModule, 'getSettings').mockReturnValue(mockSettings)
     mockFetch = mock(() => Promise.resolve(createMockResponse('{"ok":true}')))
     app = new Elysia().use(createMcpProxyRoutes(mockAuth, mockFetch as unknown as typeof fetch))
   })

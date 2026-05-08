@@ -83,7 +83,9 @@ describe('Encryption API', () => {
   ) => {
     const {
       trusted = false,
-      approvalPending = true,
+      // Mirror production semantics: trusted devices are not approval-pending. Tests that
+      // need the illegal `(trusted=true, approvalPending=true)` state must pass it explicitly.
+      approvalPending = !trusted,
       publicKey = 'pk-test',
       mlkemPublicKey = 'mlkem-pk-test',
       revokedAt,
@@ -700,9 +702,12 @@ describe('Encryption API', () => {
       expect(body.error).toBe('Cannot overwrite envelope of an already-trusted device')
     })
 
-    it('allows trusted device to re-key its own envelope', async () => {
+    it('allows trusted device to re-key its own envelope (production-shape state)', async () => {
+      // Production-shape state: trusted=true + approvalPending=false. The fix gates
+      // markDeviceTrusted on !targetDevice.trusted, so re-key skips the state transition
+      // entirely (its WHERE requires approvalPending=true and would match 0 rows).
       await createUserAndSession(p('u-rekey'), p('tok-rekey'))
-      await insertDevice(p('d-rekey'), p('u-rekey'), { trusted: true })
+      await insertDevice(p('d-rekey'), p('u-rekey'), { trusted: true, approvalPending: false })
       await insertEnvelope(p('d-rekey'), p('u-rekey'), 'old-wck')
       await insertCanaryWithSecret(p('u-rekey'))
 
@@ -727,6 +732,15 @@ describe('Encryption API', () => {
         .from(envelopesTable)
         .where(eq(envelopesTable.deviceId, p('d-rekey')))
       expect(envelope.wrappedCk).toBe('new-wck')
+
+      // Device state must be unchanged after re-key
+      const [device] = await db
+        .select()
+        .from(devicesTable)
+        .where(eq(devicesTable.id, p('d-rekey')))
+      expect(device.trusted).toBe(true)
+      expect(device.approvalPending).toBe(false)
+      expect(device.revokedAt).toBeNull()
     })
 
     it('returns 404 when target deviceId does not exist', async () => {
@@ -988,6 +1002,102 @@ describe('Encryption API', () => {
         .from(devicesTable)
         .where(eq(devicesTable.id, p('d-recover')))
       expect(device.trusted).toBe(true)
+    })
+
+    it('enforces device cap at approval time when user has 10 trusted devices', async () => {
+      await createUserAndSession(p('u-cap'), p('tok-cap'))
+      // Seed 10 trusted devices (one of which is the caller)
+      for (let i = 0; i < 10; i++) {
+        await insertDevice(p(`d-cap-trusted-${i}`), p('u-cap'), { trusted: true })
+        await insertEnvelope(p(`d-cap-trusted-${i}`), p('u-cap'))
+      }
+      // 11th pending device awaiting approval
+      await insertDevice(p('d-cap-pending'), p('u-cap'))
+      await insertCanaryWithSecret(p('u-cap'))
+
+      const response = await app.handle(
+        new Request(`${BASE}/devices/${p('d-cap-pending')}/envelope`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${signToken(p('tok-cap'))}`,
+            'X-Device-ID': p('d-cap-trusted-0'),
+          },
+          body: JSON.stringify({ wrappedCK: 'wck', canarySecret: testCanarySecret }),
+        }),
+      )
+
+      expect(response.status).toBe(403)
+      const body = await response.json()
+      expect(body.error).toContain('Device limit reached')
+      // Note: cannot assert post-throw DB state — PGlite rolls back the outer
+      // test transaction when the inner tx throws (see top-of-file comment).
+    })
+
+    it('allows approval when below cap (9 trusted + 1 pending)', async () => {
+      await createUserAndSession(p('u-undercap'), p('tok-undercap'))
+      for (let i = 0; i < 9; i++) {
+        await insertDevice(p(`d-undercap-trusted-${i}`), p('u-undercap'), { trusted: true })
+        await insertEnvelope(p(`d-undercap-trusted-${i}`), p('u-undercap'))
+      }
+      await insertDevice(p('d-undercap-pending'), p('u-undercap'))
+      await insertCanaryWithSecret(p('u-undercap'))
+
+      const response = await app.handle(
+        new Request(`${BASE}/devices/${p('d-undercap-pending')}/envelope`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${signToken(p('tok-undercap'))}`,
+            'X-Device-ID': p('d-undercap-trusted-0'),
+          },
+          body: JSON.stringify({ wrappedCK: 'wck', canarySecret: testCanarySecret }),
+        }),
+      )
+
+      expect(response.status).toBe(200)
+      const body = await response.json()
+      expect(body.trusted).toBe(true)
+
+      const [device] = await db
+        .select()
+        .from(devicesTable)
+        .where(eq(devicesTable.id, p('d-undercap-pending')))
+      expect(device.trusted).toBe(true)
+    })
+
+    it('allows re-key for already-trusted device even when at cap', async () => {
+      await createUserAndSession(p('u-rekey-cap'), p('tok-rekey-cap'))
+      // 10 trusted devices in production-shape state (trusted=true, approvalPending=false).
+      // One will re-key its own envelope.
+      for (let i = 0; i < 10; i++) {
+        await insertDevice(p(`d-rekey-cap-${i}`), p('u-rekey-cap'), { trusted: true, approvalPending: false })
+        await insertEnvelope(p(`d-rekey-cap-${i}`), p('u-rekey-cap'), 'old-wck')
+      }
+      await insertCanaryWithSecret(p('u-rekey-cap'))
+
+      // Self re-key on device 0 (caller === target)
+      const response = await app.handle(
+        new Request(`${BASE}/devices/${p('d-rekey-cap-0')}/envelope`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${signToken(p('tok-rekey-cap'))}`,
+            'X-Device-ID': p('d-rekey-cap-0'),
+          },
+          body: JSON.stringify({ wrappedCK: 'rotated-wck', canarySecret: testCanarySecret }),
+        }),
+      )
+
+      expect(response.status).toBe(200)
+      const body = await response.json()
+      expect(body.trusted).toBe(true)
+
+      const [envelope] = await db
+        .select()
+        .from(envelopesTable)
+        .where(eq(envelopesTable.deviceId, p('d-rekey-cap-0')))
+      expect(envelope.wrappedCk).toBe('rotated-wck')
     })
 
     it('does not overwrite existing canary on subsequent envelope submissions', async () => {

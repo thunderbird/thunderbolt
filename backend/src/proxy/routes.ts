@@ -1,3 +1,7 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+
 import type { Auth } from '@/auth/elysia-plugin'
 import { createAuthMacro } from '@/auth/elysia-plugin'
 import { safeErrorHandler } from '@/middleware/error-handling'
@@ -85,7 +89,9 @@ export const createUniversalProxyRoutes = (
           const upstreamAuthRaw = ctx.request.headers.get('x-upstream-authorization')
           if (upstreamAuthRaw && !isPrintableAscii(upstreamAuthRaw)) {
             ctx.set.status = 400
-            return new Response('Invalid X-Upstream-Authorization header', { headers: { 'Content-Type': 'text/plain' } })
+            return new Response('Invalid X-Upstream-Authorization header', {
+              headers: { 'Content-Type': 'text/plain' },
+            })
           }
 
           // Buffer request body once (so 307/308 can replay it)
@@ -126,7 +132,6 @@ export const createUniversalProxyRoutes = (
           let currentBody: ArrayBuffer | null = requestBody
 
           for (let hop = 0; hop <= maxHops; hop++) {
-
             // DNS-pin each hop
             let pinnedUrl: string
             let pinnedHeaders: Headers
@@ -228,14 +233,13 @@ const buildProxyResponse = (response: Response, upstreamCtl: AbortController): R
   headers.set('x-content-type-options', 'nosniff')
   headers.set('cross-origin-resource-policy', 'cross-origin')
 
-  const body =
-    response.body
-      ? capStream(response.body, {
-          maxBytes: streamCapBytes,
-          idleTimeoutMs: streamIdleMs,
-          onAbort: () => upstreamCtl.abort(),
-        })
-      : null
+  const body = response.body
+    ? capStream(response.body, {
+        maxBytes: streamCapBytes,
+        idleTimeoutMs: streamIdleMs,
+        onAbort: () => upstreamCtl.abort(),
+      })
+    : null
 
   return new Response(body, {
     status: response.status,

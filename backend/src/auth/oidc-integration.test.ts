@@ -6,7 +6,7 @@ import { mock } from 'bun:test'
 import * as authUtils from '@/auth/utils'
 import * as waitlistUtils from '@/waitlist/utils'
 import * as settingsModule from '@/config/settings'
-import type { Settings } from '@/config/settings'
+import { createTestSettings } from '@/test-utils/settings'
 
 // createAuth transitively imports email-sending functions at the module level.
 // Until createAuth accepts these as injectable dependencies, we mock them here
@@ -31,49 +31,13 @@ import { createTestDb } from '@/test-utils/db'
 const realFetch = (globalThis as Record<string, unknown>).__originalFetch as typeof fetch
 
 /** Base settings for OIDC tests — issuer URL is overridden per-suite */
-const baseSettings: Settings = {
-  fireworksApiKey: '',
-  mistralApiKey: '',
-  anthropicApiKey: '',
-  exaApiKey: '',
-  thunderboltInferenceUrl: '',
-  thunderboltInferenceApiKey: '',
-  monitoringToken: '',
-  googleClientId: '',
-  googleClientSecret: '',
-  microsoftClientId: '',
-  microsoftClientSecret: '',
+const baseSettings = createTestSettings({
   logLevel: 'ERROR',
-  port: 8000,
-  appUrl: 'http://localhost:1420',
   posthogHost: '',
-  posthogApiKey: '',
-  corsOrigins: 'http://localhost:1420',
-  corsAllowCredentials: true,
-  corsAllowMethods: 'GET,POST,PUT,DELETE,PATCH,OPTIONS',
-  corsAllowHeaders: 'Content-Type,Authorization',
-  corsExposeHeaders: '',
-  waitlistEnabled: false,
-  waitlistAutoApproveDomains: '',
-  powersyncUrl: '',
-  powersyncJwtKid: '',
-  powersyncJwtSecret: '',
-  powersyncTokenExpirySeconds: 3600,
-  authMode: 'oidc' as const,
+  authMode: 'oidc',
   oidcClientId: 'thunderbolt-app',
   oidcClientSecret: 'thunderbolt-dev-secret',
-  oidcIssuer: '', // set per-suite once mock server is up
-  betterAuthUrl: 'http://localhost:8000',
-  betterAuthSecret: 'test-secret-at-least-32-chars-long!!',
-  rateLimitEnabled: false,
-  swaggerEnabled: false,
-  e2eeEnabled: false,
-  trustedProxy: '',
-  samlEntryPoint: '',
-  samlEntityId: '',
-  samlIdpIssuer: '',
-  samlCert: '',
-}
+})
 
 /** Save and restore globalThis.fetch + process.env.TRUSTED_ORIGINS around a test body. */
 const withRealFetch = async (oidcIssuerUrl: string, fn: () => Promise<void>) => {
@@ -122,7 +86,7 @@ describe('OIDC Integration', () => {
       getSettingsSpy = spyOn(settingsModule, 'getSettings').mockReturnValue({
         ...baseSettings,
         oidcIssuer: oidcIssuerUrl,
-      } as Settings)
+      })
     })
 
     it('should return a redirect URL pointing to the OIDC provider', async () => {
@@ -212,7 +176,7 @@ describe('OIDC Integration', () => {
         oidcIssuer: '',
         oidcClientId: 'some-client',
         oidcClientSecret: 'some-secret',
-      } as Settings)
+      })
 
       const { createAuth } = await import('./auth')
       expect(() => createAuth(db)).toThrow('OIDC_ISSUER')
@@ -224,7 +188,7 @@ describe('OIDC Integration', () => {
         oidcIssuer: 'https://idp.example.com',
         oidcClientId: '',
         oidcClientSecret: 'some-secret',
-      } as Settings)
+      })
 
       const { createAuth } = await import('./auth')
       expect(() => createAuth(db)).toThrow('OIDC_CLIENT_ID')
@@ -236,7 +200,7 @@ describe('OIDC Integration', () => {
         oidcIssuer: 'https://idp.example.com',
         oidcClientId: 'some-client',
         oidcClientSecret: '',
-      } as Settings)
+      })
 
       const { createAuth } = await import('./auth')
       expect(() => createAuth(db)).toThrow('OIDC_CLIENT_SECRET')
@@ -251,7 +215,7 @@ describe('OIDC Integration', () => {
         oidcIssuer: '',
         oidcClientId: '',
         oidcClientSecret: '',
-      } as Settings)
+      })
 
       const { createAuth } = await import('./auth')
       const auth = createAuth(db)

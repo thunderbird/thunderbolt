@@ -21,16 +21,23 @@ const settingsSchema = z
     monitoringToken: z.string().default(''),
 
     // OAuth Settings
-    googleClientId: z.string().default(''),
-    googleClientSecret: z.string().default(''),
-    microsoftClientId: z.string().default(''),
-    microsoftClientSecret: z.string().default(''),
+    googleClientId: z.string().trim().default(''),
+    googleClientSecret: z.string().trim().default(''),
+    microsoftClientId: z.string().trim().default(''),
+    microsoftClientSecret: z.string().trim().default(''),
 
     // OIDC Settings (enterprise self-hosted)
     authMode: z.enum(['consumer', 'oidc', 'saml']).default('consumer'),
     oidcClientId: z.string().default(''),
     oidcClientSecret: z.string().default(''),
     oidcIssuer: z.string().default(''),
+    // Optional override for the OIDC discovery endpoint URL. Defaults to
+    // `${oidcIssuer}/.well-known/openid-configuration` when unset, which is correct for
+    // any deployment where the backend reaches the IdP at the same hostname embedded in
+    // tokens. Containerized self-hosted setups can split the two: backend hits
+    // discovery at an internal hostname (e.g. `http://keycloak:8080/...`) while
+    // tokens are issued with a browser-facing hostname (e.g. `http://localhost:8180/...`).
+    oidcDiscoveryUrl: z.string().default(''),
     samlEntryPoint: z.string().default(''),
     samlEntityId: z.string().default(''),
     samlIdpIssuer: z.string().default(''),
@@ -41,7 +48,10 @@ const settingsSchema = z
     // General settings
     logLevel: z.enum(['DEBUG', 'INFO', 'WARN', 'ERROR']).default('INFO'),
     port: z.coerce.number().default(8000),
-    appUrl: z.string().default('http://localhost:1420'),
+    appUrl: z
+      .string()
+      .default('http://localhost:1420')
+      .transform((s) => s.replace(/\/$/, '')),
 
     // Analytics settings
     posthogHost: z.string().default('https://us.i.posthog.com'),
@@ -119,6 +129,7 @@ const parseSettings = (): Settings => {
     oidcClientId: process.env.OIDC_CLIENT_ID || '',
     oidcClientSecret: process.env.OIDC_CLIENT_SECRET || '',
     oidcIssuer: process.env.OIDC_ISSUER || '',
+    oidcDiscoveryUrl: process.env.OIDC_DISCOVERY_URL || '',
     samlEntryPoint: process.env.SAML_ENTRY_POINT || '',
     samlEntityId: process.env.SAML_ENTITY_ID || '',
     samlIdpIssuer: process.env.SAML_IDP_ISSUER || '',

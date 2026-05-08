@@ -248,6 +248,18 @@ export const createEncryptionRoutes = (auth: Auth, database: typeof DbType) =>
               })
             }
 
+            // Re-validate device cap at approval time (only for untrusted → trusted transitions).
+            // registerDevice checks the cap, but pending devices don't count toward it. Without
+            // this guard, a user could register N+1 pending devices and approve them all,
+            // exceeding MAX_DEVICES_PER_USER. Skipped for re-keys (already-trusted target) so
+            // existing devices can rotate envelopes even when the user is at the cap.
+            if (!targetDevice.trusted) {
+              const activeCount = await countActiveDevices(txDb, userId)
+              if (activeCount >= MAX_DEVICES_PER_USER) {
+                throw new ForbiddenError('Device limit reached — revoke an existing device first')
+              }
+            }
+
             // Mark device as trusted
             await markDeviceTrusted(txDb, deviceId, userId)
           })

@@ -185,19 +185,28 @@ validate_env_file() {
 validate_env_file "$PROJECT_ROOT/.env"
 validate_env_file "$PROJECT_ROOT/backend/.env"
 
-# BETTER_AUTH_SECRET: required, must be a real value. If missing or placeholder, generate one.
+# BETTER_AUTH_SECRET: required, must be a real value. If missing or placeholder, offer to generate.
+# Auto-write only happens when stdout is a TTY (interactive `make doctor`) or when
+# THUNDERDOCTOR_AUTOFIX=true is explicitly opted-in (CI / scripted use). Otherwise we warn —
+# silently rewriting backend/.env in someone's editor save loop or CI script is hostile.
 PLACEHOLDER_SECRET="better-auth-secret-change-in-production-12345678901234567890"
 if [ -f "$PROJECT_ROOT/backend/.env" ]; then
   current_secret=$(grep -E '^BETTER_AUTH_SECRET=' "$PROJECT_ROOT/backend/.env" | head -1 | sed -E 's/^BETTER_AUTH_SECRET=//; s/^"(.*)"$/\1/' || true)
   # Better Auth warns when secret length × log2(unique chars) < 120 bits. A 32-char base64
   # secret clears the bar; anything shorter than 32 is regenerated to avoid the warning.
   if [ -z "$current_secret" ] || [ "$current_secret" = "$PLACEHOLDER_SECRET" ] || [ ${#current_secret} -lt 32 ]; then
-    if command -v openssl >/dev/null 2>&1; then
+    if [ ! -t 1 ] && [ "${THUNDERDOCTOR_AUTOFIX:-}" != "true" ]; then
+      has_critical_failure=true
+      echo -e "  ${FAIL} BETTER_AUTH_SECRET is empty/placeholder/short — won't auto-fix from a non-interactive shell. Run \`make doctor\` from a terminal, or set THUNDERDOCTOR_AUTOFIX=true to opt in."
+    elif command -v openssl >/dev/null 2>&1; then
       new_secret=$(openssl rand -base64 32)
-      # Use a python-free in-place edit that's portable across BSD and GNU sed.
+      echo -e "  ${YELLOW}→${NC} Writing a fresh BETTER_AUTH_SECRET to backend/.env..."
+      # Pass the new secret via the environment (ENVIRON[]) instead of `awk -v` to avoid
+      # awk's backslash-escape interpretation. base64 output doesn't include backslashes
+      # today, but this keeps the rewrite safe if we ever swap the generator.
       tmp=$(mktemp)
-      awk -v val="$new_secret" '
-        BEGIN { replaced = 0 }
+      NEW_SECRET="$new_secret" awk '
+        BEGIN { val = ENVIRON["NEW_SECRET"]; replaced = 0 }
         /^BETTER_AUTH_SECRET=/ { print "BETTER_AUTH_SECRET=" val; replaced = 1; next }
         { print }
         END { if (!replaced) print "BETTER_AUTH_SECRET=" val }

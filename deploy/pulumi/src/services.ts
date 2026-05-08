@@ -206,18 +206,21 @@ export const createServices = (args: ServiceArgs) => {
         environment: [
           { name: 'POSTGRES_USER', value: 'postgres' },
           { name: 'POSTGRES_DB', value: 'postgres' },
-          // PGDATA intentionally unset — postgres:18 picks a version-specific subdir
-          // (/var/lib/postgresql/18/docker) under the volume mount, which keeps future
-          // pg_upgrade invocations possible without mount-point boundary issues.
+          // Pin PGDATA to the legacy `/data/pgdata` subdir so existing EFS volumes (created
+          // before the v17→v18 image bump) keep working. postgres:18's strict-mode error
+          // ("These Docker images are configured to store database data...") only fires when
+          // PGDATA is unset *and* legacy data is detected at /var/lib/postgresql/data — by
+          // pinning PGDATA we opt out of the auto-discovery and use the existing layout.
+          { name: 'PGDATA', value: '/var/lib/postgresql/data/pgdata' },
         ],
         secrets: [
           { name: 'POSTGRES_PASSWORD', valueFrom: postgresPasswordSecret.arn },
           { name: 'POWERSYNC_DB_PASSWORD', valueFrom: powersyncDbPasswordSecret.arn },
         ],
         portMappings: [{ containerPort: 5432 }],
-        // Mount EFS at /var/lib/postgresql (not /data); postgres:18+ rejects the old
-        // path. See deploy/docker/postgres.Dockerfile and docker-library/postgres#1259.
-        mountPoints: [{ sourceVolume: 'pg-data', containerPath: '/var/lib/postgresql' }],
+        // Mount EFS at /var/lib/postgresql/data (the legacy path) so existing stacks'
+        // data volumes continue resolving to the same on-disk location after the v18 bump.
+        mountPoints: [{ sourceVolume: 'pg-data', containerPath: '/var/lib/postgresql/data' }],
         logConfiguration: logConfig('postgres'),
         ...(repositoryCredentials && { repositoryCredentials }),
       },

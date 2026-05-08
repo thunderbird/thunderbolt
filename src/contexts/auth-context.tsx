@@ -9,6 +9,7 @@ import { clearAuthToken, getAuthToken, setAuthToken } from '@/lib/auth-token'
 import { getPlatform } from '@/lib/platform'
 import { anonymousClient, emailOTPClient } from 'better-auth/client/plugins'
 import { createAuthClient } from 'better-auth/react'
+import { consumePendingSsoAnonAlias } from '@/lib/analytics/anonymous-promotion-sso-bridge'
 import { createContext, useContext, useEffect, useMemo, useRef, type ReactNode } from 'react'
 
 /**
@@ -94,6 +95,18 @@ export const AuthProvider = ({ children, cloudUrl, authClient: overrideClient }:
     const client = createAuthClientInstance(cloudUrl)
     return { authClient: client }
   }, [cloudUrl, overrideClient])
+
+  // Consume any pending SSO anon-id alias from sessionStorage (written before the SSO redirect
+  // by persistForSso()). A ref guard prevents StrictMode's double-invocation from firing alias
+  // twice. This is a legitimate useEffect use (async one-time side effect at mount).
+  const ssoAliasConsumedRef = useRef(false)
+  useEffect(() => {
+    if (!value?.authClient || ssoAliasConsumedRef.current) {
+      return
+    }
+    ssoAliasConsumedRef.current = true
+    void consumePendingSsoAnonAlias(value.authClient)
+  }, [value])
 
   // Validate the stored token on mount via HttpClient — its afterResponse hook fires
   // session_expired on the first 401. Avoids Better Auth's auth client to sidestep its

@@ -4,6 +4,7 @@
 
 import type { AuthClient } from '@/contexts'
 import { challengeTokenHeader, otpLength } from '@/lib/constants'
+import { useAnonymousPromotionAnalytics } from '@/lib/analytics/use-anonymous-promotion-analytics'
 import { HttpError, type HttpClient } from '@/lib/http'
 import { getOtpErrorMessage } from '@/lib/otp-error-messages'
 import { updateSettings } from '@/dal'
@@ -152,6 +153,7 @@ export const useSignInFormState = ({
     challengeToken: canSkipToOtp ? (initialChallengeToken ?? '') : '',
   })
 
+  const analytics = useAnonymousPromotionAnalytics()
   const isValidEmail = isValidEmailFormat(state.email.trim())
 
   const handleSubmit = async (e: FormEvent) => {
@@ -188,6 +190,8 @@ export const useSignInFormState = ({
       return
     }
 
+    await analytics.captureAnonId(authClient)
+
     dispatch({ type: 'START_VERIFYING' })
 
     try {
@@ -206,6 +210,9 @@ export const useSignInFormState = ({
 
       const isNewUser = isNewAuthUser(result.data?.user)
       await onSignInSuccess(isNewUser)
+      if (result.data?.user?.id) {
+        analytics.onPromotionSuccess(result.data.user.id)
+      }
 
       // Sign-in successful - show success state
       dispatch({ type: 'VERIFY_SUCCESS' })

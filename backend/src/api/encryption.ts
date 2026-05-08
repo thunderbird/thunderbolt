@@ -23,7 +23,7 @@ import { hashCanarySecret, verifyCanaryProof, verifyCanaryProofWithMetadata } fr
 import { sql } from 'drizzle-orm'
 import { Elysia, t } from 'elysia'
 
-const MAX_DEVICES_PER_USER = 10
+const maxDevicesPerUser = 10
 
 /**
  * Check if the caller is performing a self-recovery.
@@ -97,7 +97,7 @@ export const createEncryptionRoutes = (auth: Auth, database: typeof DbType) =>
           const freshDevice = await getDeviceById(txDb, deviceId)
           if (!freshDevice) {
             const activeCount = await countActiveDevices(txDb, userId)
-            if (activeCount >= MAX_DEVICES_PER_USER) {
+            if (activeCount >= maxDevicesPerUser) {
               return { limitReached: true as const }
             }
           }
@@ -267,9 +267,9 @@ export const createEncryptionRoutes = (auth: Auth, database: typeof DbType) =>
             if (!targetDevice.trusted) {
               // registerDevice checks the cap, but pending devices don't count toward it. Without
               // this guard, a user could register N+1 pending devices and approve them all,
-              // exceeding MAX_DEVICES_PER_USER.
+              // exceeding maxDevicesPerUser.
               const activeCount = await countActiveDevices(txDb, userId)
-              if (activeCount >= MAX_DEVICES_PER_USER) {
+              if (activeCount >= maxDevicesPerUser) {
                 throw new ForbiddenError('Device limit reached — revoke an existing device first')
               }
 

@@ -54,7 +54,11 @@ export const sharedRules = {
     {
       selector: 'variable',
       modifiers: ['const'],
-      format: ['camelCase', 'PascalCase', 'UPPER_CASE'],
+      format: ['camelCase', 'PascalCase'],
+      custom: {
+        regex: '^[A-Z][A-Z0-9]*$',
+        match: false, // reject single-word all-caps (e.g. SCOPES, HELLO)
+      },
       filter: {
         regex: '^[A-Z]',
         match: true,

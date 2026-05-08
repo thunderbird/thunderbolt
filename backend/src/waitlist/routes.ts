@@ -87,7 +87,7 @@ const resolveApproval = async (
 }
 
 /** Default cooldown between OTP requests per email (15 seconds). */
-const DEFAULT_COOLDOWN_MS = 15_000
+const defaultCooldownMs = 15_000
 
 type WaitlistRoutesOptions = {
   database: typeof db
@@ -102,7 +102,7 @@ export const createWaitlistRoutes = ({
   database,
   auth,
   emailService = defaultEmailService,
-  cooldownMs = DEFAULT_COOLDOWN_MS,
+  cooldownMs = defaultCooldownMs,
   ipRateLimit,
 }: WaitlistRoutesOptions) => {
   // Per-instance cooldown tracker. Tracks when the last OTP request was made for each email

@@ -9,9 +9,9 @@ import { safeErrorHandler } from '@/middleware/error-handling'
 import { Elysia, t } from 'elysia'
 import { codeRequestSchema, refreshRequestSchema, type OAuthTokenResponse } from './types'
 
-const MICROSOFT_TOKEN_URL = 'https://login.microsoftonline.com/common/oauth2/v2.0/token'
+const microsoftTokenUrl = 'https://login.microsoftonline.com/common/oauth2/v2.0/token'
 // Must match scopes requested by the frontend (see integrations/microsoft/auth.ts)
-const SCOPES = 'https://graph.microsoft.com/mail.read User.Read offline_access'
+const scopes = 'https://graph.microsoft.com/mail.read User.Read offline_access'
 
 /**
  * Microsoft OAuth confidential client proxy — keeps the client secret server-side
@@ -60,11 +60,11 @@ export const createMicrosoftAuthRoutes = (auth: Auth, fetchFn: typeof fetch = gl
           redirect_uri: validatedBody.redirect_uri,
           grant_type: 'authorization_code',
           code_verifier: validatedBody.code_verifier,
-          scope: SCOPES,
+          scope: scopes,
         })
 
         try {
-          const response = await fetchFn(MICROSOFT_TOKEN_URL, {
+          const response = await fetchFn(microsoftTokenUrl, {
             method: 'POST',
             headers: {
               'Content-Type': 'application/x-www-form-urlencoded',
@@ -132,11 +132,11 @@ export const createMicrosoftAuthRoutes = (auth: Auth, fetchFn: typeof fetch = gl
           client_secret: settings.microsoftClientSecret,
           refresh_token: validatedBody.refresh_token,
           grant_type: 'refresh_token',
-          scope: SCOPES,
+          scope: scopes,
         })
 
         try {
-          const response = await fetchFn(MICROSOFT_TOKEN_URL, {
+          const response = await fetchFn(microsoftTokenUrl, {
             method: 'POST',
             headers: {
               'Content-Type': 'application/x-www-form-urlencoded',

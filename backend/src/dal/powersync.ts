@@ -31,7 +31,7 @@ type PowerSyncOperation = {
 }
 
 /** DB column names that use Drizzle timestamp(); JSON sends them as ISO strings, so we convert to Date. */
-const TIMESTAMP_DB_COLUMNS = new Set(['deleted_at', 'last_seen', 'created_at', 'revoked_at', 'updated_at'])
+const timestampDbColumns = new Set(['deleted_at', 'last_seen', 'created_at', 'revoked_at', 'updated_at'])
 
 /**
  * Convert payload with DB column names to schema keys and filter to valid columns only.
@@ -50,7 +50,7 @@ const toSchemaRecord = (
     const schemaKey = dbNameToKey[dbName]
     if (schemaKey && value !== undefined) {
       let mapped = value
-      if (TIMESTAMP_DB_COLUMNS.has(dbName) && typeof value === 'string') {
+      if (timestampDbColumns.has(dbName) && typeof value === 'string') {
         const d = new Date(value)
         mapped = Number.isNaN(d.getTime()) ? value : d
       }

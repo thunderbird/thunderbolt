@@ -68,6 +68,8 @@ setup: setup-symlinks
 	bun install
 	@echo "$(BLUE)→ Installing backend dependencies...$(NC)"
 	cd backend && bun install
+	@echo "$(BLUE)→ Installing Playwright browsers (for `make e2e` tests)...$(NC)"
+	bunx playwright install
 	@echo "$(GREEN)✓ Setup complete!$(NC)"
 
 # Install dependencies
@@ -194,7 +196,7 @@ dev-ios:
 	cd backend && bun run dev & \
 	BACKEND_PID=$$!; \
 	sleep 2; \
-	cd .. && bun tauri ios dev --config src-tauri/tauri.dev.conf.json "$$SIM_UDID" || (kill $$BACKEND_PID 2>/dev/null && exit 1)
+	bun tauri ios dev --config src-tauri/tauri.dev.conf.json "$$SIM_UDID" || (kill $$BACKEND_PID 2>/dev/null && exit 1)
 
 # Tauri Android dev. Re-runs init with the dev config first so the package paths match
 # the .dev identifier (the chart's gen/android is committed for the prod identifier).

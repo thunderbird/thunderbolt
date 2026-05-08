@@ -66,7 +66,9 @@ export default defineConfig({
     {
       command: 'cd backend && bun run dev',
       url: `http://localhost:${oidcBackendPort}/v1/health`,
-      reuseExistingServer: !isCI,
+      // Backend env is test-specific (mock IdP, e2e secrets, rate limit off) — never reuse a
+      // dev backend that happened to bind :8000. Playwright will fail fast if the port is taken.
+      reuseExistingServer: false,
       timeout: 30_000,
       env: {
         PORT: String(oidcBackendPort),
@@ -98,7 +100,8 @@ export default defineConfig({
     {
       command: 'cd backend && bun run dev',
       url: `http://localhost:${samlBackendPort}/v1/health`,
-      reuseExistingServer: !isCI,
+      // Backend env is test-specific — see OIDC backend comment above.
+      reuseExistingServer: false,
       timeout: 30_000,
       env: {
         PORT: String(samlBackendPort),

@@ -255,23 +255,26 @@ export const createEncryptionRoutes = (auth: Auth, database: typeof DbType) =>
               })
             }
 
-            // Re-validate device cap at approval time (only for untrusted → trusted transitions).
-            // registerDevice checks the cap, but pending devices don't count toward it. Without
-            // this guard, a user could register N+1 pending devices and approve them all,
-            // exceeding MAX_DEVICES_PER_USER. Skipped for re-keys (already-trusted target) so
-            // existing devices can rotate envelopes even when the user is at the cap.
+            // Approval-only state transition: cap check + markDeviceTrusted only run when
+            // transitioning untrusted → trusted. For re-key (already-trusted devices rotating
+            // envelopes), the upsertEnvelope above is the only state change needed. Running
+            // markDeviceTrusted on an already-trusted device matches 0 rows (its WHERE requires
+            // approvalPending=true) and would falsely throw 'Device has been revoked'.
             if (!targetDevice.trusted) {
+              // registerDevice checks the cap, but pending devices don't count toward it. Without
+              // this guard, a user could register N+1 pending devices and approve them all,
+              // exceeding MAX_DEVICES_PER_USER.
               const activeCount = await countActiveDevices(txDb, userId)
               if (activeCount >= MAX_DEVICES_PER_USER) {
                 throw new ForbiddenError('Device limit reached — revoke an existing device first')
               }
-            }
 
-            // Mark device as trusted. Check rows returned to detect a concurrent revoke
-            // that committed between the in-tx target read above and this UPDATE.
-            const updated = await markDeviceTrusted(txDb, deviceId, userId)
-            if (updated.length === 0) {
-              throw new ForbiddenError('Device has been revoked')
+              // Mark device as trusted. Check rows returned to detect a concurrent revoke
+              // that committed between the in-tx target read above and this UPDATE.
+              const updated = await markDeviceTrusted(txDb, deviceId, userId)
+              if (updated.length === 0) {
+                throw new ForbiddenError('Device has been revoked')
+              }
             }
           })
         } catch (err) {

@@ -83,7 +83,9 @@ describe('Encryption API', () => {
   ) => {
     const {
       trusted = false,
-      approvalPending = true,
+      // Mirror production semantics: trusted devices are not approval-pending. Tests that
+      // need the illegal `(trusted=true, approvalPending=true)` state must pass it explicitly.
+      approvalPending = !trusted,
       publicKey = 'pk-test',
       mlkemPublicKey = 'mlkem-pk-test',
       revokedAt,
@@ -700,9 +702,12 @@ describe('Encryption API', () => {
       expect(body.error).toBe('Cannot overwrite envelope of an already-trusted device')
     })
 
-    it('allows trusted device to re-key its own envelope', async () => {
+    it('allows trusted device to re-key its own envelope (production-shape state)', async () => {
+      // Production-shape state: trusted=true + approvalPending=false. The fix gates
+      // markDeviceTrusted on !targetDevice.trusted, so re-key skips the state transition
+      // entirely (its WHERE requires approvalPending=true and would match 0 rows).
       await createUserAndSession(p('u-rekey'), p('tok-rekey'))
-      await insertDevice(p('d-rekey'), p('u-rekey'), { trusted: true })
+      await insertDevice(p('d-rekey'), p('u-rekey'), { trusted: true, approvalPending: false })
       await insertEnvelope(p('d-rekey'), p('u-rekey'), 'old-wck')
       await insertCanaryWithSecret(p('u-rekey'))
 
@@ -727,6 +732,15 @@ describe('Encryption API', () => {
         .from(envelopesTable)
         .where(eq(envelopesTable.deviceId, p('d-rekey')))
       expect(envelope.wrappedCk).toBe('new-wck')
+
+      // Device state must be unchanged after re-key
+      const [device] = await db
+        .select()
+        .from(devicesTable)
+        .where(eq(devicesTable.id, p('d-rekey')))
+      expect(device.trusted).toBe(true)
+      expect(device.approvalPending).toBe(false)
+      expect(device.revokedAt).toBeNull()
     })
 
     it('returns 404 when target deviceId does not exist', async () => {
@@ -1054,9 +1068,10 @@ describe('Encryption API', () => {
 
     it('allows re-key for already-trusted device even when at cap', async () => {
       await createUserAndSession(p('u-rekey-cap'), p('tok-rekey-cap'))
-      // 10 trusted devices — one of which will re-key its own envelope
+      // 10 trusted devices in production-shape state (trusted=true, approvalPending=false).
+      // One will re-key its own envelope.
       for (let i = 0; i < 10; i++) {
-        await insertDevice(p(`d-rekey-cap-${i}`), p('u-rekey-cap'), { trusted: true })
+        await insertDevice(p(`d-rekey-cap-${i}`), p('u-rekey-cap'), { trusted: true, approvalPending: false })
         await insertEnvelope(p(`d-rekey-cap-${i}`), p('u-rekey-cap'), 'old-wck')
       }
       await insertCanaryWithSecret(p('u-rekey-cap'))

@@ -13,11 +13,7 @@ import {
   markUserNotNew,
   validateOtpChallenge,
 } from '@/dal'
-import {
-  migrateAnonymousUserData,
-  assertAnonymousRowCountUnderCap,
-  isTransientDbError,
-} from '@/dal/anonymous'
+import { migrateAnonymousUserData, assertAnonymousRowCountUnderCap, isTransientDbError } from '@/dal/anonymous'
 import type { db as DbType } from '@/db/client'
 import * as schema from '@/db/schema'
 import { normalizeEmail } from '@/lib/email'
@@ -394,6 +390,11 @@ export const createAuth = async (database: typeof DbType) => {
                 await migrateAnonymousUserData(txDb, anonymousUser.user.id, newUser.user.id)
                 // We own the anonymous-user delete (disableDeleteAnonymousUser: true).
                 // In-tx so migration + delete are atomic; on rollback both revert.
+                // SAFE: migrateAnonymousUserData (above) re-keys ALL FK-referencing rows to
+                // newUser.id BEFORE this DELETE. Every PowerSync table has ON DELETE CASCADE
+                // on user.id — that cascade is what makes this DELETE safe within the same
+                // tx: there are no rows left to cascade-wipe because the UPDATE already
+                // moved them. DO NOT REORDER (DELETE-before-UPDATE would cascade-wipe content).
                 await tx.delete(schema.user).where(eq(schema.user.id, anonymousUser.user.id))
               })
               return

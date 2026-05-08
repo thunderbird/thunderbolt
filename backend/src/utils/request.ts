@@ -57,7 +57,9 @@ export const extractClientIp = (
   fallback = 'unknown',
   trustedProxy: '' | 'cloudflare' | 'akamai' = '',
 ): string => {
-  if (!trustedProxy) return fallback
+  if (!trustedProxy) {
+    return fallback
+  }
 
   if (trustedProxy === 'cloudflare') {
     return headers.get('cf-connecting-ip') ?? fallback
@@ -81,8 +83,12 @@ export const extractClientIp = (
  * silently disables rate limiting in production.
  */
 export const getTrustedIpHeaders = (trustedProxy: '' | 'cloudflare' | 'akamai'): string[] | undefined => {
-  if (trustedProxy === 'cloudflare') return ['cf-connecting-ip']
-  if (trustedProxy === 'akamai') return ['true-client-ip']
+  if (trustedProxy === 'cloudflare') {
+    return ['cf-connecting-ip']
+  }
+  if (trustedProxy === 'akamai') {
+    return ['true-client-ip']
+  }
   return undefined
 }
 
@@ -115,15 +121,14 @@ export const filterHeaders = <T extends Record<string, string | undefined> | Hea
       }
     })
     return cleanHeaders as T extends Headers ? Headers : Record<string, string>
-  } else {
-    const cleanHeaders: Record<string, string> = {}
-    Object.entries(headers).forEach(([key, value]) => {
-      if (value && !shouldExclude(key)) {
-        cleanHeaders[key] = value
-      }
-    })
-    return cleanHeaders as T extends Headers ? Headers : Record<string, string>
   }
+  const cleanHeaders: Record<string, string> = {}
+  Object.entries(headers).forEach(([key, value]) => {
+    if (value && !shouldExclude(key)) {
+      cleanHeaders[key] = value
+    }
+  })
+  return cleanHeaders as T extends Headers ? Headers : Record<string, string>
 }
 
 /**
@@ -134,7 +139,9 @@ export const filterHeaders = <T extends Record<string, string | undefined> | Hea
  * @returns Query string with leading '?' if parameters exist, empty string otherwise
  */
 export const buildQueryString = (query: Record<string, unknown> | undefined): string => {
-  if (!query) return ''
+  if (!query) {
+    return ''
+  }
 
   try {
     const queryParams = new URLSearchParams(query as Record<string, string>)

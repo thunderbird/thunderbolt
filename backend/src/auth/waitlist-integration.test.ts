@@ -25,7 +25,7 @@ mock.module('@/waitlist/utils', () => ({
 }))
 
 // Now import the rest
-import { user, verification } from '@/db/auth-schema'
+import { user } from '@/db/auth-schema'
 import { waitlist } from '@/db/schema'
 import { challengeTokenHeader } from '@/auth/otp-constants'
 import { createAuth } from '@/auth/auth'

@@ -33,13 +33,17 @@ export const memoize = <Fn extends (...args: any[]) => any>(fn: Fn, key?: string
 
   return ((...args: any[]) => {
     if (key) {
-      if (key in keyCache) return keyCache[key] as ReturnType<Fn>
+      if (key in keyCache) {
+        return keyCache[key] as ReturnType<Fn>
+      }
       const result = fn(...args)
       keyCache[key] = result
       return result
     }
 
-    if (funcCache.has(fn)) return funcCache.get(fn) as ReturnType<Fn>
+    if (funcCache.has(fn)) {
+      return funcCache.get(fn) as ReturnType<Fn>
+    }
     const result = fn(...args)
     funcCache.set(fn, result)
     return result

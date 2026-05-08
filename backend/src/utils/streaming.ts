@@ -14,7 +14,7 @@ type CompletionStream = AsyncIterable<ChatCompletionChunk> & { controller: Abort
  */
 export const createSSEStreamFromCompletion = (
   completion: CompletionStream,
-  model: string,
+  _model: string,
 ): ReadableStream<Uint8Array> => {
   const encoder = new TextEncoder()
   let lastUsage: any = null
@@ -39,7 +39,7 @@ export const createSSEStreamFromCompletion = (
 
           try {
             controller.enqueue(encoder.encode(sseChunk))
-          } catch (enqueueError) {
+          } catch (_enqueueError) {
             // Controller already closed (client disconnected)
             break
           }

@@ -253,7 +253,7 @@ export const createAuth = (database: typeof DbType) => {
         // code requests + session binding (challenge token) make brute-force infeasible.
         // TODO(THU-113): proof-of-work (ALTCHA) will add further distributed protection.
 
-        async sendVerificationOTP({ email, otp, type }, ctx) {
+        async sendVerificationOTP({ email, otp, type }, _ctx) {
           // We only support sign-in (no password-based auth, so no email-verification or forget-password)
           if (type !== 'sign-in') {
             console.warn(`Unexpected OTP type requested: ${type}`)

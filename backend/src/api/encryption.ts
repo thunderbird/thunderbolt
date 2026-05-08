@@ -36,7 +36,9 @@ const checkSelfRecovery = async (
   deviceId: string,
   canarySecret?: string,
 ): Promise<boolean> => {
-  if (callerDeviceId !== deviceId || !canarySecret) return false
+  if (callerDeviceId !== deviceId || !canarySecret) {
+    return false
+  }
   return verifyCanaryProof(txDb, userId, canarySecret)
 }
 
@@ -95,7 +97,9 @@ export const createEncryptionRoutes = (auth: Auth, database: typeof DbType) =>
           const freshDevice = await getDeviceById(txDb, deviceId)
           if (!freshDevice) {
             const activeCount = await countActiveDevices(txDb, userId)
-            if (activeCount >= MAX_DEVICES_PER_USER) return { limitReached: true as const }
+            if (activeCount >= MAX_DEVICES_PER_USER) {
+              return { limitReached: true as const }
+            }
           }
 
           const registered = await registerDevice(txDb, {

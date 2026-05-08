@@ -225,7 +225,9 @@ describe('Inference Routes - PostHog Privacy Integration', () => {
 
       // If PostHog sent events, verify they don't contain conversation content
       for (const request of posthogRequests) {
-        if (!request.body) continue
+        if (!request.body) {
+          continue
+        }
 
         const batch = 'batch' in request.body ? request.body.batch : [request.body]
 

@@ -47,7 +47,9 @@ describe('Utils - Streaming', () => {
       try {
         while (true) {
           const { done, value } = await reader.read()
-          if (done) break
+          if (done) {
+            break
+          }
           chunks.push(decoder.decode(value))
         }
       } finally {
@@ -165,7 +167,9 @@ describe('Utils - Streaming', () => {
       await expect(async () => {
         while (true) {
           const { done } = await reader.read()
-          if (done) break
+          if (done) {
+            break
+          }
         }
       }).toThrow('Stream error')
 

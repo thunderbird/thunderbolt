@@ -3,3 +3,8 @@ minimumReleaseAge = 604800 # 7 days in seconds
 
 [test]
 preload = ["./happydom.ts", "./src/testing-library.ts"]
+# Bun walks cwd recursively to discover test files. From the repo root that pulls in
+# `backend/src/**/*.test.ts` and `e2e/**/*.spec.ts` — neither belongs in the frontend
+# runner. Backend has its own `bunfig.toml` and `cd backend && bun test` flow; e2e is
+# Playwright. Requires Bun ≥ 1.3.11 (silent no-op below); CI is 1.3.13.
+pathIgnorePatterns = ["backend/**", "e2e/**"]

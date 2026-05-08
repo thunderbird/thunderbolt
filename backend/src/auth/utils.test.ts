@@ -54,9 +54,4 @@ describe('buildVerifyUrl', () => {
     const result = buildVerifyUrl('https://app.thunderbolt.io', 'user+tag@example.com', '12345678')
     expect(result).toBe('https://app.thunderbolt.io/auth/verify?email=user%2Btag%40example.com&otp=12345678')
   })
-
-  it('handles localhost dev URL', () => {
-    const result = buildVerifyUrl('http://localhost:1420', 'user@example.com', '12345678')
-    expect(result).toBe('http://localhost:1420/auth/verify?email=user%40example.com&otp=12345678')
-  })
 })

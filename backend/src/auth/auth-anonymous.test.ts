@@ -10,7 +10,6 @@
  * - Transient retry: deadlock retried up to 3 times, then succeeds
  * - Permanent failure: new user deleted, anon user remains, error propagates
  * - Cap exceeded: AnonymousRowCapExceededError propagates, no migration
- * - Startup health check: createAuth succeeds with migration; throws without it
  * - Session-fixation guard: authenticated user cannot acquire anonymous session
  */
 
@@ -40,7 +39,7 @@ import { createAuth } from '@/auth/auth'
 import * as anonymousDal from '@/dal/anonymous'
 import { createTestDb } from '@/test-utils/db'
 import { createTestChallenge } from '@/test-utils/otp-challenge'
-import { eq, sql } from 'drizzle-orm'
+import { eq } from 'drizzle-orm'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 
 // ---------------------------------------------------------------------------
@@ -58,11 +57,7 @@ const insertAnonUser = async (db: Awaited<ReturnType<typeof createTestDb>>['db']
   })
 }
 
-const insertRealUser = async (
-  db: Awaited<ReturnType<typeof createTestDb>>['db'],
-  id: string,
-  email: string,
-) => {
+const insertRealUser = async (db: Awaited<ReturnType<typeof createTestDb>>['db'], id: string, email: string) => {
   await db.insert(userTable).values({
     id,
     name: 'Real User',
@@ -78,7 +73,7 @@ const insertRealUser = async (
 // ---------------------------------------------------------------------------
 
 describe('M3 anonymous plugin — happy path promotion', () => {
-  let auth: Awaited<ReturnType<typeof createAuth>>
+  let auth: ReturnType<typeof createAuth>
   let db: Awaited<ReturnType<typeof createTestDb>>['db']
   let cleanup: () => Promise<void>
 
@@ -87,7 +82,7 @@ describe('M3 anonymous plugin — happy path promotion', () => {
     const testEnv = await createTestDb()
     db = testEnv.db
     cleanup = testEnv.cleanup
-    auth = await createAuth(db)
+    auth = createAuth(db)
   })
 
   afterEach(async () => {
@@ -320,48 +315,11 @@ describe('M3 anonymous plugin — row cap exceeded', () => {
 })
 
 // ---------------------------------------------------------------------------
-// Suite: Startup health check
-// ---------------------------------------------------------------------------
-
-describe('M3 anonymous plugin — startup health check', () => {
-  let db: Awaited<ReturnType<typeof createTestDb>>['db']
-  let cleanup: () => Promise<void>
-
-  beforeEach(async () => {
-    const testEnv = await createTestDb()
-    db = testEnv.db
-    cleanup = testEnv.cleanup
-  })
-
-  afterEach(async () => {
-    await cleanup()
-  })
-
-  it('createAuth resolves when is_anonymous column exists (migration applied)', async () => {
-    await expect(createAuth(db)).resolves.toBeDefined()
-  })
-
-  it('createAuth rejects when is_anonymous column is missing', async () => {
-    // Drop the is_anonymous column inside a savepoint, run createAuth, then roll back.
-    // This directly tests the health check against a real "column absent" state.
-    // We use SAVEPOINT / ROLLBACK TO SAVEPOINT to restore the column after the test.
-    // Note: DDL inside a transaction is supported in PostgreSQL (and PGlite).
-    await db.execute(sql`SAVEPOINT before_drop_col`)
-    try {
-      await db.execute(sql`ALTER TABLE "user" DROP COLUMN IF EXISTS "is_anonymous"`)
-      await expect(createAuth(db)).rejects.toThrow('[AUTH-INIT]')
-    } finally {
-      await db.execute(sql`ROLLBACK TO SAVEPOINT before_drop_col`)
-    }
-  })
-})
-
-// ---------------------------------------------------------------------------
 // Suite: Session-fixation guard
 // ---------------------------------------------------------------------------
 
 describe('M3 anonymous plugin — session-fixation guard', () => {
-  let auth: Awaited<ReturnType<typeof createAuth>>
+  let auth: ReturnType<typeof createAuth>
   let db: Awaited<ReturnType<typeof createTestDb>>['db']
   let cleanup: () => Promise<void>
 
@@ -370,7 +328,7 @@ describe('M3 anonymous plugin — session-fixation guard', () => {
     const testEnv = await createTestDb()
     db = testEnv.db
     cleanup = testEnv.cleanup
-    auth = await createAuth(db)
+    auth = createAuth(db)
   })
 
   afterEach(async () => {
@@ -393,9 +351,7 @@ describe('M3 anonymous plugin — session-fixation guard', () => {
     await db.insert(waitlist).values({ id: crypto.randomUUID(), email: realEmail, status: 'approved' })
 
     await auth.api.sendVerificationOTP({ body: { email: realEmail, type: 'sign-in' } })
-    const otp = (
-      mockSendSignInEmail.mock.calls as unknown as Array<[{ otp: string }]>
-    )[0]?.[0]?.otp
+    const otp = (mockSendSignInEmail.mock.calls as unknown as Array<[{ otp: string }]>)[0]?.[0]?.otp
     expect(otp).toBeDefined()
 
     const challengeToken = await createTestChallenge(db, realEmail)

@@ -70,7 +70,7 @@ export const createApp = async (deps?: AppDeps) => {
   const ipRateLimitSettings = { ...rateLimitSettings, trustedProxy: settings.trustedProxy }
 
   // Create auth plugin with the database instance (tests may inject their own auth)
-  const { plugin: betterAuthPlugin, auth: createdAuth } = await createBetterAuthPlugin(
+  const { plugin: betterAuthPlugin, auth: createdAuth } = createBetterAuthPlugin(
     database,
     createAuthIpRateLimit(database, ipRateLimitSettings),
   )

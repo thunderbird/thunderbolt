@@ -37,7 +37,7 @@ import { eq, like } from 'drizzle-orm'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 
 describe('OTP Security Hardening', () => {
-  let auth: Awaited<ReturnType<typeof createAuth>>
+  let auth: ReturnType<typeof createAuth>
   let app: Awaited<ReturnType<typeof createApp>>
   let db: Awaited<ReturnType<typeof createTestDb>>['db']
   let cleanup: () => Promise<void>
@@ -96,7 +96,7 @@ describe('OTP Security Hardening', () => {
     const testEnv = await createTestDb()
     db = testEnv.db
     cleanup = testEnv.cleanup
-    auth = await createAuth(db)
+    auth = createAuth(db)
     app = await createApp({ database: db, otpCooldownMs: 0 })
   })
 

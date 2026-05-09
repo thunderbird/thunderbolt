@@ -77,7 +77,7 @@ describe('PowerSync API', () => {
     const testEnv = await createTestDb()
     db = testEnv.db
     cleanup = testEnv.cleanup
-    const { auth } = await createBetterAuthPlugin(db)
+    const { auth } = createBetterAuthPlugin(db)
     app = new Elysia().use(createPowerSyncRoutes(auth, powersyncSettings, db)) as unknown as Elysia
   })
 
@@ -1983,7 +1983,7 @@ describe('PowerSync cross-origin injection protection', () => {
     const testEnv = await createTestDb()
     db = testEnv.db
     cleanup = testEnv.cleanup
-    const { auth } = await createBetterAuthPlugin(db)
+    const { auth } = createBetterAuthPlugin(db)
     app = new Elysia().use(createPowerSyncRoutes(auth, corsSettings, db)) as unknown as Elysia
   })
 
@@ -2228,7 +2228,7 @@ describe('PowerSync API (E2EE disabled)', () => {
     const testEnv = await createTestDb()
     db = testEnv.db
     cleanup = testEnv.cleanup
-    const { auth } = await createBetterAuthPlugin(db)
+    const { auth } = createBetterAuthPlugin(db)
     app = new Elysia().use(createPowerSyncRoutes(auth, e2eeDisabledSettings, db)) as unknown as Elysia
   })
 
@@ -2480,7 +2480,7 @@ describe('PowerSync API — anonymous sync guard', () => {
     const testEnv = await createTestDb()
     db = testEnv.db
     cleanup = testEnv.cleanup
-    const plugin = await createBetterAuthPlugin(db)
+    const plugin = createBetterAuthPlugin(db)
     auth = plugin.auth
   })
 
@@ -2706,7 +2706,7 @@ describe('PowerSync API — anonymous sync guard', () => {
 describe('PowerSync API (not configured)', () => {
   it('GET /powersync/token returns 404 when PowerSync is not configured', async () => {
     const testEnv = await createTestDb()
-    const { auth } = await createBetterAuthPlugin(testEnv.db)
+    const { auth } = createBetterAuthPlugin(testEnv.db)
     const noPowersyncSettings: Settings = {
       ...powersyncSettings,
       powersyncJwtSecret: '',

@@ -77,7 +77,7 @@ describe('SAML Integration', () => {
     it('should return a redirect URL pointing to the SAML IdP', async () => {
       await withRealFetch(async () => {
         const { createAuth } = await import('./auth')
-        const auth = await createAuth(db)
+        const auth = createAuth(db)
         const app = new Elysia({ prefix: '/v1' }).mount(auth.handler)
 
         const res = await app.handle(
@@ -102,7 +102,7 @@ describe('SAML Integration', () => {
     it('should include SP entity ID and ACS URL in the SAMLRequest', async () => {
       await withRealFetch(async () => {
         const { createAuth } = await import('./auth')
-        const auth = await createAuth(db)
+        const auth = createAuth(db)
         const app = new Elysia({ prefix: '/v1' }).mount(auth.handler)
 
         const res = await app.handle(
@@ -135,7 +135,7 @@ describe('SAML Integration', () => {
     it('should reject sign-in with unknown providerId', async () => {
       await withRealFetch(async () => {
         const { createAuth } = await import('./auth')
-        const auth = await createAuth(db)
+        const auth = createAuth(db)
         const app = new Elysia({ prefix: '/v1' }).mount(auth.handler)
 
         const res = await app.handle(
@@ -162,7 +162,7 @@ describe('SAML Integration', () => {
       })
 
       const { createAuth } = await import('./auth')
-      await expect(createAuth(db)).rejects.toThrow('SAML_ENTRY_POINT')
+      expect(() => createAuth(db)).toThrow('SAML_ENTRY_POINT')
     })
 
     it('should throw when SAML_CERT is missing', async () => {
@@ -172,7 +172,7 @@ describe('SAML Integration', () => {
       })
 
       const { createAuth } = await import('./auth')
-      await expect(createAuth(db)).rejects.toThrow('SAML_CERT')
+      expect(() => createAuth(db)).toThrow('SAML_CERT')
     })
 
     it('should throw when SAML_ENTITY_ID is missing', async () => {
@@ -182,7 +182,7 @@ describe('SAML Integration', () => {
       })
 
       const { createAuth } = await import('./auth')
-      await expect(createAuth(db)).rejects.toThrow('SAML_ENTITY_ID')
+      expect(() => createAuth(db)).toThrow('SAML_ENTITY_ID')
     })
 
     it('should throw when SAML_IDP_ISSUER is missing', async () => {
@@ -192,7 +192,7 @@ describe('SAML Integration', () => {
       })
 
       const { createAuth } = await import('./auth')
-      await expect(createAuth(db)).rejects.toThrow('SAML_IDP_ISSUER')
+      expect(() => createAuth(db)).toThrow('SAML_IDP_ISSUER')
     })
   })
 
@@ -208,7 +208,7 @@ describe('SAML Integration', () => {
       })
 
       const { createAuth } = await import('./auth')
-      const auth = await createAuth(db)
+      const auth = createAuth(db)
       const app = new Elysia({ prefix: '/v1' }).mount(auth.handler)
 
       const res = await app.handle(

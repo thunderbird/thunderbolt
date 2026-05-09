@@ -27,7 +27,7 @@ import { sso } from '@better-auth/sso'
 import { isAutoApprovedDomain, sendWaitlistJoinedEmail, sendWaitlistNotReadyEmail } from '@/waitlist/utils'
 import { challengeTokenHeader, otpExpiryMs, otpExpirySeconds } from './otp-constants'
 import { buildVerifyUrl, parseTrustedOrigins, sendSignInEmail } from './utils'
-import { eq, sql } from 'drizzle-orm'
+import { eq } from 'drizzle-orm'
 
 const otpSignInPath = '/sign-in/email-otp'
 
@@ -109,30 +109,9 @@ const buildSsoPlugins = () => {
   return []
 }
 
-export const createAuth = async (database: typeof DbType) => {
+export const createAuth = (database: typeof DbType) => {
   const settings = getSettings()
   const parsedOrigins = parseTrustedOrigins(process.env.TRUSTED_ORIGINS)
-
-  // Startup health check (external-4): refuse to boot if the anonymous-user migration hasn't
-  // run yet. Prevents the "plugin enabled before migration" deployment hazard where the
-  // anonymous plugin is active but the `is_anonymous` column doesn't exist yet.
-  // Run migration `bun db migrate` (backend/drizzle/0015_anonymous_user.sql) if this throws.
-  const columnCheck = await database.execute<Record<string, unknown>>(sql`
-    SELECT 1 FROM information_schema.columns
-    WHERE table_name = 'user' AND column_name = 'is_anonymous'
-  `)
-  // Drizzle returns driver-specific shapes: postgres-js gives a RowList (Array subclass),
-  // PGlite gives { rows: Row[] }. Normalize to a row count for the nil check.
-  const columnCheckRowCount = Array.isArray(columnCheck)
-    ? columnCheck.length
-    : (columnCheck as { rows: unknown[] }).rows.length
-  if (columnCheckRowCount === 0) {
-    throw new Error(
-      '[AUTH-INIT] Database is missing the `user.is_anonymous` column. ' +
-        'Run pending migrations (`bun db migrate`) before starting the auth module. ' +
-        'See backend/drizzle/0015_anonymous_user.sql.',
-    )
-  }
 
   // Include the backend's own origin so the SSO desktop-callback can be used as callbackURL.
   // Spread to avoid mutating the shared default array returned by parseTrustedOrigins.
@@ -435,4 +414,4 @@ export const createAuth = async (database: typeof DbType) => {
   })
 }
 
-export type Auth = Awaited<ReturnType<typeof createAuth>>
+export type Auth = ReturnType<typeof createAuth>

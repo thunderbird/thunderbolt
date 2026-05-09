@@ -155,7 +155,10 @@ export const createPowerSyncRoutes = (auth: Auth, settings: Settings, database: 
     )
     .derive(async ({ request }) => {
       const session = await auth.api.getSession({ headers: request.headers })
-      return { user: session?.user ?? null }
+      // Better Auth populates session.user with `additionalFields` (M3 registers `isAnonymous`),
+      // so `user.isAnonymous` is available here without an extra DB lookup.
+      const sessionUser = session?.user as (NonNullable<typeof session>['user'] & { isAnonymous?: boolean }) | undefined
+      return { user: sessionUser ?? null }
     })
     .get('/token', async ({ powersyncJwt, request, set, user }) => {
       if (!validateOrigin(request, settings)) {
@@ -170,15 +173,8 @@ export const createPowerSyncRoutes = (auth: Auth, settings: Settings, database: 
 
       // Path 1: Authenticated via session. Issue PowerSync JWT; check device revoked, then upsert device.
       if (user) {
-        // INVARIANT: isAnonymous must not be projected away when fetching user rows in routes
-        // that issue PowerSync tokens — otherwise the guard below silently passes.
-        // NOTE: When M3 registers isAnonymous as a Better Auth additionalField, the session user
-        // will carry isAnonymous directly (eliminating this extra DB query).
-        if (settings.anonymousSyncGuardEnabled) {
-          const userRecord = await getUserById(database, user.id)
-          if (userRecord?.isAnonymous) {
-            throw new ForbiddenError('Anonymous users cannot sync')
-          }
+        if (settings.anonymousSyncGuardEnabled && user.isAnonymous) {
+          throw new ForbiddenError('Anonymous users cannot sync')
         }
 
         const result = await issuePowerSyncToken(user.id, request, powersyncJwt, settings, database)
@@ -245,13 +241,8 @@ export const createPowerSyncRoutes = (auth: Auth, settings: Settings, database: 
           return { error: 'Unauthorized' }
         }
 
-        // NOTE: When M3 registers isAnonymous as a Better Auth additionalField, user.isAnonymous
-        // will be available directly (eliminating this extra DB query).
-        if (settings.anonymousSyncGuardEnabled) {
-          const userRecord = await getUserById(database, user.id)
-          if (userRecord?.isAnonymous) {
-            throw new ForbiddenError('Anonymous users cannot sync')
-          }
+        if (settings.anonymousSyncGuardEnabled && user.isAnonymous) {
+          throw new ForbiddenError('Anonymous users cannot sync')
         }
 
         const validation = await validateDeviceForSync(user.id, request, database, settings)

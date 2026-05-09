@@ -116,9 +116,7 @@ export const usePowerSyncCredentialsInvalidListener = (): void => {
         return
       }
       if (!next && prev) {
-        window.dispatchEvent(
-          new CustomEvent(powersyncCredentialsInvalid, { detail: { reason: 'session_expired' } }),
-        )
+        window.dispatchEvent(new CustomEvent(powersyncCredentialsInvalid, { detail: { reason: 'session_expired' } }))
       }
     })
   }, [])

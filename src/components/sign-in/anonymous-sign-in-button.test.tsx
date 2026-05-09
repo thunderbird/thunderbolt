@@ -6,7 +6,7 @@ import { resetTestDatabase, setupTestDatabase, teardownTestDatabase } from '@/da
 import { createMockAuthClient } from '@/test-utils/auth-client'
 import { createTestProvider } from '@/test-utils/test-provider'
 import { act, fireEvent, render, screen } from '@testing-library/react'
-import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, mock } from 'bun:test'
+import { afterAll, beforeAll, beforeEach, describe, expect, it, mock } from 'bun:test'
 import { AnonymousSignInButton } from './anonymous-sign-in-button'
 
 const mockNavigate = mock(() => {})
@@ -26,10 +26,6 @@ describe('AnonymousSignInButton', () => {
   beforeEach(async () => {
     mockNavigate.mockClear()
     await resetTestDatabase()
-  })
-
-  afterEach(() => {
-    // Component-level cleanup (createTestProvider's QueryClient is per-render)
   })
 
   const renderButton = (

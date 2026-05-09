@@ -171,7 +171,7 @@ export const createPowerSyncRoutes = (auth: Auth, settings: Settings, database: 
 
       // Path 1: Authenticated via session. Issue PowerSync JWT; check device revoked, then upsert device.
       if (user) {
-        if (settings.anonymousSyncGuardEnabled && user.isAnonymous) {
+        if (user.isAnonymous) {
           throw new ForbiddenError('Anonymous users cannot sync')
         }
 
@@ -213,7 +213,7 @@ export const createPowerSyncRoutes = (auth: Auth, settings: Settings, database: 
       }
 
       // Token refresh: valid Bearer + user exists -> issue new PowerSync JWT (same as Path 1).
-      if (settings.anonymousSyncGuardEnabled && userRow.isAnonymous) {
+      if (userRow.isAnonymous) {
         throw new ForbiddenError('Anonymous users cannot sync')
       }
 
@@ -239,7 +239,7 @@ export const createPowerSyncRoutes = (auth: Auth, settings: Settings, database: 
           return { error: 'Unauthorized' }
         }
 
-        if (settings.anonymousSyncGuardEnabled && user.isAnonymous) {
+        if (user.isAnonymous) {
           throw new ForbiddenError('Anonymous users cannot sync')
         }
 

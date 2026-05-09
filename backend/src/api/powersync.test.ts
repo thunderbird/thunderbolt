@@ -65,7 +65,6 @@ const powersyncSettings: Settings = {
   samlEntityId: '',
   samlIdpIssuer: '',
   samlCert: '',
-  anonymousSyncGuardEnabled: true,
 }
 
 describe('PowerSync API', () => {
@@ -2557,9 +2556,7 @@ describe('PowerSync API — anonymous sync guard', () => {
   }
 
   it('GET /powersync/token Path 2 (Bearer only) — anonymous user → 403 Forbidden', async () => {
-    const app = new Elysia().use(
-      createPowerSyncRoutes(auth, { ...powersyncSettings, anonymousSyncGuardEnabled: true }, db),
-    ) as unknown as Elysia
+    const app = new Elysia().use(createPowerSyncRoutes(auth, powersyncSettings, db)) as unknown as Elysia
 
     const { signedBearer } = await seedAnonUser('path2')
 
@@ -2578,7 +2575,7 @@ describe('PowerSync API — anonymous sync guard', () => {
 
   it('GET /powersync/token Path 2 (Bearer only) — non-anonymous user → 200 (regression)', async () => {
     const app = new Elysia().use(
-      createPowerSyncRoutes(auth, { ...powersyncSettings, e2eeEnabled: false, anonymousSyncGuardEnabled: true }, db),
+      createPowerSyncRoutes(auth, { ...powersyncSettings, e2eeEnabled: false }, db),
     ) as unknown as Elysia
 
     const { signedBearer, deviceId } = await seedRegularUser('path2-ok')
@@ -2597,29 +2594,8 @@ describe('PowerSync API — anonymous sync guard', () => {
     expect(data).toHaveProperty('powerSyncUrl')
   })
 
-  it('GET /powersync/token Path 2 (Bearer only) — anonymous user, guard disabled → not 403', async () => {
-    const app = new Elysia().use(
-      createPowerSyncRoutes(auth, { ...powersyncSettings, e2eeEnabled: false, anonymousSyncGuardEnabled: false }, db),
-    ) as unknown as Elysia
-
-    const { signedBearer } = await seedAnonUser('path2-flag-off')
-
-    const response = await app.handle(
-      new Request('http://localhost/powersync/token', {
-        headers: {
-          Authorization: `Bearer ${signedBearer}`,
-          'X-Device-ID': 'anon-device-flag-off',
-        },
-      }),
-    )
-    // Guard is off — should not get 403. May get 200 or device error, but not the guard error.
-    expect(response.status).not.toBe(403)
-  })
-
   it('PUT /powersync/upload — anonymous user → 403 Forbidden', async () => {
-    const app = new Elysia().use(
-      createPowerSyncRoutes(auth, { ...powersyncSettings, anonymousSyncGuardEnabled: true }, db),
-    ) as unknown as Elysia
+    const app = new Elysia().use(createPowerSyncRoutes(auth, powersyncSettings, db)) as unknown as Elysia
 
     const { userId, signedBearer } = await seedAnonUser('upload')
     const now = new Date()
@@ -2650,7 +2626,7 @@ describe('PowerSync API — anonymous sync guard', () => {
 
   it('PUT /powersync/upload — non-anonymous user → 200 (regression)', async () => {
     const app = new Elysia().use(
-      createPowerSyncRoutes(auth, { ...powersyncSettings, e2eeEnabled: false, anonymousSyncGuardEnabled: true }, db),
+      createPowerSyncRoutes(auth, { ...powersyncSettings, e2eeEnabled: false }, db),
     ) as unknown as Elysia
 
     const { signedBearer, deviceId } = await seedRegularUser('upload-ok')
@@ -2669,37 +2645,6 @@ describe('PowerSync API — anonymous sync guard', () => {
     expect(response.status).toBe(200)
     const data = await response.json()
     expect(data).toEqual({ success: true })
-  })
-
-  it('PUT /powersync/upload — anonymous user, guard disabled → not 403', async () => {
-    const app = new Elysia().use(
-      createPowerSyncRoutes(auth, { ...powersyncSettings, e2eeEnabled: false, anonymousSyncGuardEnabled: false }, db),
-    ) as unknown as Elysia
-
-    const { userId, signedBearer } = await seedAnonUser('upload-flag-off')
-    const now = new Date()
-    await db.insert(devicesTable).values({
-      id: 'anon-upload-device-flag-off',
-      userId,
-      name: 'Anon Device',
-      trusted: true,
-      lastSeen: now,
-      createdAt: now,
-    })
-
-    const response = await app.handle(
-      new Request('http://localhost/powersync/upload', {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${signedBearer}`,
-          'X-Device-ID': 'anon-upload-device-flag-off',
-        },
-        body: JSON.stringify({ operations: [] }),
-      }),
-    )
-    // Guard is off — should not get 403 from the anonymous guard.
-    expect(response.status).not.toBe(403)
   })
 })
 

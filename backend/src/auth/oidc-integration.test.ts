@@ -92,7 +92,7 @@ describe('OIDC Integration', () => {
     it('should return a redirect URL pointing to the OIDC provider', async () => {
       await withRealFetch(oidcIssuerUrl, async () => {
         const { createAuth } = await import('./auth')
-        const auth = await createAuth(db)
+        const auth = createAuth(db)
         const app = new Elysia({ prefix: '/v1' }).mount(auth.handler)
 
         const res = await app.handle(
@@ -118,7 +118,7 @@ describe('OIDC Integration', () => {
     it('should include PKCE code_challenge in the redirect URL', async () => {
       await withRealFetch(oidcIssuerUrl, async () => {
         const { createAuth } = await import('./auth')
-        const auth = await createAuth(db)
+        const auth = createAuth(db)
         const app = new Elysia({ prefix: '/v1' }).mount(auth.handler)
 
         const res = await app.handle(
@@ -143,7 +143,7 @@ describe('OIDC Integration', () => {
     it('should include openid, profile, and email scopes', async () => {
       await withRealFetch(oidcIssuerUrl, async () => {
         const { createAuth } = await import('./auth')
-        const auth = await createAuth(db)
+        const auth = createAuth(db)
         const app = new Elysia({ prefix: '/v1' }).mount(auth.handler)
 
         const res = await app.handle(
@@ -179,7 +179,7 @@ describe('OIDC Integration', () => {
       })
 
       const { createAuth } = await import('./auth')
-      await expect(createAuth(db)).rejects.toThrow('OIDC_ISSUER')
+      expect(() => createAuth(db)).toThrow('OIDC_ISSUER')
     })
 
     it('should throw when OIDC_CLIENT_ID is missing', async () => {
@@ -191,7 +191,7 @@ describe('OIDC Integration', () => {
       })
 
       const { createAuth } = await import('./auth')
-      await expect(createAuth(db)).rejects.toThrow('OIDC_CLIENT_ID')
+      expect(() => createAuth(db)).toThrow('OIDC_CLIENT_ID')
     })
 
     it('should throw when OIDC_CLIENT_SECRET is missing', async () => {
@@ -203,7 +203,7 @@ describe('OIDC Integration', () => {
       })
 
       const { createAuth } = await import('./auth')
-      await expect(createAuth(db)).rejects.toThrow('OIDC_CLIENT_SECRET')
+      expect(() => createAuth(db)).toThrow('OIDC_CLIENT_SECRET')
     })
   })
 
@@ -218,7 +218,7 @@ describe('OIDC Integration', () => {
       })
 
       const { createAuth } = await import('./auth')
-      const auth = await createAuth(db)
+      const auth = createAuth(db)
       const app = new Elysia({ prefix: '/v1' }).mount(auth.handler)
 
       const res = await app.handle(

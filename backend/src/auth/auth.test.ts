@@ -119,7 +119,7 @@ describe('Auth - Email Normalization', () => {
 })
 
 describe('Auth - user.isNew in sign-in response', () => {
-  let auth: Awaited<ReturnType<typeof createAuth>>
+  let auth: ReturnType<typeof createAuth>
   let db: Awaited<ReturnType<typeof createTestDb>>['db']
   let cleanup: () => Promise<void>
 
@@ -129,7 +129,7 @@ describe('Auth - user.isNew in sign-in response', () => {
     const testEnv = await createTestDb()
     db = testEnv.db
     cleanup = testEnv.cleanup
-    auth = await createAuth(db)
+    auth = createAuth(db)
   })
 
   afterEach(async () => {

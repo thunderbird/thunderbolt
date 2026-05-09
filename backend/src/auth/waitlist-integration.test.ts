@@ -36,7 +36,7 @@ import { eq } from 'drizzle-orm'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 
 describe('Auth Waitlist Integration', () => {
-  let auth: Awaited<ReturnType<typeof createAuth>>
+  let auth: ReturnType<typeof createAuth>
   let db: Awaited<ReturnType<typeof createTestDb>>['db']
   let cleanup: () => Promise<void>
 
@@ -48,7 +48,7 @@ describe('Auth Waitlist Integration', () => {
     const testEnv = await createTestDb()
     db = testEnv.db
     cleanup = testEnv.cleanup
-    auth = await createAuth(db)
+    auth = createAuth(db)
   })
 
   afterEach(async () => {

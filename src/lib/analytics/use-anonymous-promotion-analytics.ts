@@ -5,8 +5,16 @@
 import { useRef } from 'react'
 import posthog from 'posthog-js'
 import { trackEvent } from '@/lib/posthog'
-import type { AnonymousPromotionAnalytics } from './use-anonymous-promotion-analytics.types'
 import type { AuthClient } from '@/contexts'
+
+export type AnonymousPromotionAnalytics = {
+  /** Read the current session via `authClient.getSession()`; capture the user.id if isAnonymous === true. Idempotent. */
+  captureAnonId: (authClient: AuthClient) => Promise<void>
+  /** Persist captured anon id to sessionStorage for cross-redirect retrieval (used by SSO flow). Call BEFORE any redirect. */
+  persistForSso: () => void
+  /** Fire posthog.alias(newUserId, capturedAnonId). Also fires the 'anonymous_user_promoted' event. Safe to call when no anon id was captured (no-op). */
+  onPromotionSuccess: (newUserId: string) => void
+}
 
 // Module-private sessionStorage key shared with the SSO bridge.
 export const PENDING_ANON_ID_KEY = 'thunderbolt_pending_anon_id'
@@ -26,9 +34,9 @@ const fireAlias = (newUserId: string, anonId: string) => {
  * Create the promotion analytics state machine bound to an external mutable ref.
  * Extracted so the pure logic can be unit-tested without a React renderer.
  */
-export const createAnonymousPromotionAnalytics = (
-  capturedIdRef: { current: string | null },
-): AnonymousPromotionAnalytics => ({
+export const createAnonymousPromotionAnalytics = (capturedIdRef: {
+  current: string | null
+}): AnonymousPromotionAnalytics => ({
   captureAnonId: async (authClient: AuthClient) => {
     const { data } = await authClient.getSession()
     if (data?.user?.isAnonymous === true) {
@@ -72,11 +80,5 @@ export const createAnonymousPromotionAnalytics = (
  */
 export const useAnonymousPromotionAnalytics = (): AnonymousPromotionAnalytics => {
   const capturedIdRef = useRef<string | null>(null)
-  // Return a stable object — the functions close over the ref, not state, so re-renders
-  // don't create new function identities that would bust memoized children.
-  const analyticsRef = useRef<AnonymousPromotionAnalytics | null>(null)
-  if (!analyticsRef.current) {
-    analyticsRef.current = createAnonymousPromotionAnalytics(capturedIdRef)
-  }
-  return analyticsRef.current
+  return createAnonymousPromotionAnalytics(capturedIdRef)
 }

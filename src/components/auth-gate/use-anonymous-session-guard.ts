@@ -34,14 +34,18 @@ export const useAnonymousSessionGuard = (): AnonymousSessionGuardState => {
     }
     triedRef.current = true
     setPhase('trying')
-    // Silent failure by design. Both paths land in `.finally` → phase='done' → Outlet
-    // renders. A rejected promise (network/throw) goes through `.catch`; a resolved
-    // `{ error }` from Better Auth skips `.catch` entirely. Downstream features (chat
-    // etc.) surface their own errors when invoked without a session.
-    authClient.signIn
-      .anonymous()
-      .catch(() => {})
-      .finally(() => setPhase('done'))
+    // Silent failure by design — downstream features (chat etc.) surface their own
+    // errors when invoked without a session. The catch covers thrown rejections;
+    // Better Auth's resolved `{ error }` path is also intentionally a no-op here.
+    void (async () => {
+      try {
+        await authClient.signIn.anonymous()
+      } catch {
+        // intentional no-op
+      } finally {
+        setPhase('done')
+      }
+    })()
   }, [isPending, session?.user, hasToken, authClient])
 
   if (phase === 'trying') {

@@ -312,6 +312,29 @@ const isGitClean = (): boolean => {
 }
 
 /**
+ * Regenerate CHANGELOG.md from git history with the new version labeled.
+ * Skipped for platform-specific RC releases (only unified releases update the changelog).
+ * Requires `git-cliff` on PATH (install via `brew install git-cliff` or `cargo install git-cliff`).
+ */
+const generateChangelog = (version: string, platform: string) => {
+  if (platform !== 'all') {
+    console.log('  ⊘ CHANGELOG.md: skipped (RC release)')
+    return
+  }
+
+  console.log('\n📝 Regenerating CHANGELOG.md')
+
+  try {
+    exec(`git-cliff --tag v${version} -o CHANGELOG.md`)
+    console.log(`  ✓ CHANGELOG.md: labeled section as v${version}`)
+  } catch (error) {
+    console.error('\n❌ Error: git-cliff failed (or is not installed).')
+    console.error('   Install via: brew install git-cliff (macOS) or cargo install git-cliff')
+    throw error
+  }
+}
+
+/**
  * Check if a tag exists (locally or remotely)
  */
 const tagExists = (tagName: string): boolean => {
@@ -346,11 +369,21 @@ const commitAndTag = (version: string, platform: string, shouldPush: boolean) =>
     process.exit(1)
   }
 
+  generateChangelog(version, platform)
+
   console.log('\n📦 Committing changes...')
 
-  exec(
-    'git add package.json src-tauri/Cargo.toml src-tauri/Cargo.lock src-tauri/tauri.conf.json src-tauri/gen/android/app/tauri.properties',
-  )
+  const filesToAdd = [
+    'package.json',
+    'src-tauri/Cargo.toml',
+    'src-tauri/Cargo.lock',
+    'src-tauri/tauri.conf.json',
+    'src-tauri/gen/android/app/tauri.properties',
+  ]
+  if (platform === 'all') {
+    filesToAdd.push('CHANGELOG.md')
+  }
+  exec(`git add ${filesToAdd.join(' ')}`)
 
   exec(
     `git commit -m "chore: bump version to ${version}${platform === 'all' ? ' for release' : ` for ${platform} release`}"`,
@@ -442,6 +475,9 @@ const main = () => {
     console.log('  - src-tauri/gen/android/app/tauri.properties (versionName)')
     if (platform === 'ios') {
       console.log('  - src-tauri/gen/apple/project.yml (if exists)')
+    }
+    if (platform === 'all') {
+      console.log('  - CHANGELOG.md (regenerated via git-cliff)')
     }
     const tagName = platform === 'all' ? `v${newVersion}` : `v${newVersion}-${platform}-rc`
     console.log(`\nWould create tag: ${tagName}`)

@@ -4,93 +4,84 @@
 
 import '@testing-library/jest-dom'
 import { cleanup, render, screen } from '@testing-library/react'
-import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
-import { type ComponentProps, type ReactNode } from 'react'
+import { afterAll, afterEach, beforeAll, describe, expect, it, mock } from 'bun:test'
+import { type ReactNode } from 'react'
 import { MemoryRouter } from 'react-router'
 
-// ---- module mocks (must come before component import) ----
+import { setupTestDatabase, teardownTestDatabase } from '@/dal/test-utils'
+import { createMockAuthClient } from '@/test-utils/auth-client'
+import { createTestProvider } from '@/test-utils/test-provider'
 
-let mockSession: { user: { id: string; email: string; name: string; isAnonymous?: boolean } } | null = null
-let mockIsPending = false
+// Mock only single-export leaf modal components per docs/development/testing.md.
+// SignInModalProvider/SidebarProvider/LogoutModal pull these in but we never open them
+// in these tests.
+mock.module('@/components/sign-in-modal', () => ({ SignInModal: () => null }))
+mock.module('@/components/sync-setup/sync-setup-modal', () => ({ SyncSetupModal: () => null }))
 
-mock.module('@/contexts', () => ({
-  useAuth: () => ({
-    useSession: () => ({
-      data: mockSession,
-      isPending: mockIsPending,
-      isRefetching: false,
-      error: null,
-      refetch: async () => {},
-    }),
-  }),
-  useSignInModal: () => ({ openSignInModal: mock() }),
-}))
-
-mock.module('@/hooks/use-settings', () => ({
-  useSettings: () => ({ preferredName: { value: '' } }),
-}))
-
-mock.module('@/lib/platform', () => ({
-  isTauri: () => false,
-  isWebDesktopPlatform: () => false,
-}))
-
-mock.module('@/components/ui/sidebar', () => {
-  const passthrough = ({ children }: { children: ReactNode }) => <>{children}</>
-  return {
-    SidebarFooter: passthrough,
-    SidebarMenu: passthrough,
-    SidebarMenuButton: ({ children, ...props }: ComponentProps<'button'>) => <button {...props}>{children}</button>,
-    SidebarMenuItem: passthrough,
-    useSidebar: () => ({ isMobile: false, setOpenMobile: mock(), state: 'expanded' }),
-  }
-})
-
-mock.module('@/components/logout-modal', () => ({
-  LogoutModal: () => null,
-}))
-
+import { SidebarProvider } from '@/components/ui/sidebar'
+import { SignInModalProvider } from '@/contexts'
+import type { AuthClient } from '@/contexts'
 import { SidebarFooter } from './sidebar-footer'
 
-const renderFooter = () =>
-  render(
+beforeAll(async () => {
+  await setupTestDatabase()
+})
+
+afterAll(async () => {
+  await teardownTestDatabase()
+})
+
+afterEach(() => {
+  cleanup()
+})
+
+const renderWithProviders = (authClient: AuthClient) => {
+  const TestProvider = createTestProvider({ authClient })
+  const Wrapper = ({ children }: { children: ReactNode }) => (
     <MemoryRouter>
-      <SidebarFooter />
-    </MemoryRouter>,
+      <TestProvider>
+        <SignInModalProvider>
+          <SidebarProvider>{children}</SidebarProvider>
+        </SignInModalProvider>
+      </TestProvider>
+    </MemoryRouter>
   )
+  return render(<SidebarFooter />, { wrapper: Wrapper })
+}
 
 describe('SidebarFooter', () => {
-  afterEach(() => {
-    cleanup()
-    mockSession = null
-    mockIsPending = false
-  })
-
   describe('anonymous users', () => {
-    beforeEach(() => {
-      mockSession = { user: { id: 'anon-1', email: 'temp@anon.com', name: 'Anonymous', isAnonymous: true } }
-    })
-
-    it('shows the Sign In affordance and treats the session as logged-out', () => {
-      renderFooter()
+    it('shows the Sign In affordance (treats anonymous as logged-out)', () => {
+      const authClient = createMockAuthClient({
+        session: { user: { id: 'anon-1', email: 'temp@anon.com', name: 'Anonymous', isAnonymous: true } },
+      })
+      renderWithProviders(authClient)
       expect(screen.getByText('Sign In')).toBeInTheDocument()
     })
 
     it('does NOT leak the synthetic anonymous email into the UI', () => {
-      renderFooter()
+      const authClient = createMockAuthClient({
+        session: { user: { id: 'anon-1', email: 'temp@anon.com', name: 'Anonymous', isAnonymous: true } },
+      })
+      renderWithProviders(authClient)
       expect(screen.queryByText('temp@anon.com')).toBeNull()
     })
 
     it('does NOT show "Anonymous" as a logged-in display name', () => {
-      renderFooter()
+      const authClient = createMockAuthClient({
+        session: { user: { id: 'anon-1', email: 'temp@anon.com', name: 'Anonymous', isAnonymous: true } },
+      })
+      renderWithProviders(authClient)
       expect(screen.queryByText('Anonymous')).toBeNull()
     })
   })
 
   describe('real authenticated users', () => {
     it('shows the user email and not the Sign In affordance', () => {
-      mockSession = { user: { id: 'real-1', email: 'user@example.com', name: 'Real User', isAnonymous: false } }
-      renderFooter()
+      const authClient = createMockAuthClient({
+        session: { user: { id: 'real-1', email: 'user@example.com', name: 'Real User', isAnonymous: false } },
+      })
+      renderWithProviders(authClient)
       expect(screen.getByText('user@example.com')).toBeInTheDocument()
       expect(screen.queryByText('Sign In')).toBeNull()
     })
@@ -98,17 +89,16 @@ describe('SidebarFooter', () => {
 
   describe('fully logged-out users', () => {
     it('shows the Sign In affordance', () => {
-      mockSession = null
-      renderFooter()
+      const authClient = createMockAuthClient({ session: null })
+      renderWithProviders(authClient)
       expect(screen.getByText('Sign In')).toBeInTheDocument()
     })
   })
 
   describe('pending session', () => {
     it('shows the loading indicator', () => {
-      mockSession = null
-      mockIsPending = true
-      renderFooter()
+      const authClient = createMockAuthClient({ session: null, isPending: true })
+      renderWithProviders(authClient)
       expect(screen.getByText('Loading...')).toBeInTheDocument()
     })
   })

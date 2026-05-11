@@ -4,93 +4,70 @@
 
 import '@testing-library/jest-dom'
 import { cleanup, render, screen } from '@testing-library/react'
-import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
+import { afterAll, afterEach, beforeAll, describe, expect, it, mock } from 'bun:test'
+import { type ReactNode } from 'react'
 
-// ---- module mocks (must come before component import) ----
+import { setupTestDatabase, teardownTestDatabase } from '@/dal/test-utils'
+import { createMockAuthClient } from '@/test-utils/auth-client'
+import { createTestProvider } from '@/test-utils/test-provider'
 
-let mockSession: { user: { id: string; email: string; name: string; isAnonymous?: boolean } } | null = null
+// Mock only single-export leaf modules per docs/development/testing.md.
+// - SignInModal / SyncSetupModal are dialog components rendered by SignInModalProvider;
+//   we don't need to test the modal flows here.
+// - useIsMobile reads window.matchMedia, which is unreliable in happy-dom.
+mock.module('@/components/sign-in-modal', () => ({ SignInModal: () => null }))
+mock.module('@/components/sync-setup/sync-setup-modal', () => ({ SyncSetupModal: () => null }))
+mock.module('@/hooks/use-mobile', () => ({ useIsMobile: () => ({ isMobile: false }) }))
 
-mock.module('@/contexts/auth-context', () => ({
-  useAuth: () => ({
-    useSession: () => ({
-      data: mockSession,
-      isPending: false,
-      isRefetching: false,
-      error: null,
-      refetch: async () => {},
-    }),
-  }),
-}))
-
-mock.module('@/contexts/sign-in-modal-context', () => ({
-  useSignInModal: () => ({ openSignInModal: mock() }),
-}))
-
-mock.module('@/hooks/use-powersync-status', () => ({
-  usePowerSyncStatus: () => ({ connectionStatus: 'connected', hasSynced: false, lastSyncedAt: null }),
-}))
-
-mock.module('@/hooks/use-sync-enabled-toggle', () => ({
-  useSyncEnabledToggle: () => ({
-    syncEnabled: true,
-    syncSetupOpen: false,
-    setSyncSetupOpen: mock(),
-    handleSyncToggle: mock(),
-    handleSyncSetupComplete: mock(),
-  }),
-}))
-
-mock.module('@/hooks/use-mobile', () => ({
-  useIsMobile: () => ({ isMobile: false }),
-}))
-
-mock.module('@/components/ui/sidebar', () => ({
-  useSidebar: () => ({ setOpenMobile: mock() }),
-}))
-
-mock.module('@/db/powersync', () => ({
-  reconnectSync: mock(),
-}))
-
-mock.module('@/components/sync-setup/sync-setup-modal', () => ({
-  SyncSetupModal: () => null,
-}))
-
+import { SidebarProvider } from '@/components/ui/sidebar'
+import { SignInModalProvider } from '@/contexts'
+import type { AuthClient } from '@/contexts'
 import { PowerSyncStatus } from './powersync-status'
 
+beforeAll(async () => {
+  await setupTestDatabase()
+})
+
+afterAll(async () => {
+  await teardownTestDatabase()
+})
+
+afterEach(() => {
+  cleanup()
+})
+
+const renderWithProviders = (authClient: AuthClient) => {
+  const TestProvider = createTestProvider({ authClient })
+  const Wrapper = ({ children }: { children: ReactNode }) => (
+    <TestProvider>
+      <SignInModalProvider>
+        <SidebarProvider>{children}</SidebarProvider>
+      </SignInModalProvider>
+    </TestProvider>
+  )
+  return render(<PowerSyncStatus />, { wrapper: Wrapper })
+}
+
 describe('PowerSyncStatus', () => {
-  afterEach(() => {
-    cleanup()
-    mockSession = null
+  it('renders nothing when the session user is anonymous', () => {
+    const authClient = createMockAuthClient({
+      session: { user: { id: 'anon-1', email: 'temp@anon.com', name: 'Anonymous', isAnonymous: true } },
+    })
+    renderWithProviders(authClient)
+    expect(screen.queryByLabelText('Sync status')).toBeNull()
   })
 
-  describe('anonymous users', () => {
-    beforeEach(() => {
-      mockSession = { user: { id: 'anon-1', email: 'temp@anon.com', name: 'Anonymous', isAnonymous: true } }
+  it('renders the sync status button for an authenticated real user', () => {
+    const authClient = createMockAuthClient({
+      session: { user: { id: 'real-1', email: 'user@example.com', name: 'User', isAnonymous: false } },
     })
-
-    it('renders nothing when the session is anonymous', () => {
-      const { container } = render(<PowerSyncStatus />)
-      expect(container).toBeEmptyDOMElement()
-    })
-
-    it('does NOT render the Sync status button for anonymous sessions', () => {
-      render(<PowerSyncStatus />)
-      expect(screen.queryByLabelText('Sync status')).toBeNull()
-    })
+    renderWithProviders(authClient)
+    expect(screen.getByLabelText('Sync status')).toBeInTheDocument()
   })
 
-  describe('non-anonymous users', () => {
-    it('renders the sync status button for an authenticated real user', () => {
-      mockSession = { user: { id: 'real-1', email: 'user@example.com', name: 'User', isAnonymous: false } }
-      render(<PowerSyncStatus />)
-      expect(screen.getByLabelText('Sync status')).toBeInTheDocument()
-    })
-
-    it('renders the sync status button when there is no session at all (logged out)', () => {
-      mockSession = null
-      render(<PowerSyncStatus />)
-      expect(screen.getByLabelText('Sync status')).toBeInTheDocument()
-    })
+  it('renders the sync status button when there is no session (logged-out fallback)', () => {
+    const authClient = createMockAuthClient({ session: null })
+    renderWithProviders(authClient)
+    expect(screen.getByLabelText('Sync status')).toBeInTheDocument()
   })
 })

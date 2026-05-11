@@ -14,6 +14,7 @@ import {
 } from '@/ai/step-logic'
 import { getModel, getModelProfile, getSettings } from '@/dal'
 import { getDb } from '@/db/database'
+import { getLocalSetting } from '@/stores/local-settings-store'
 import { isSsoMode } from '@/lib/auth-mode'
 import { getAuthToken } from '@/lib/auth-token'
 import { fetch as baseFetch } from '@/lib/fetch'
@@ -72,8 +73,7 @@ type AiFetchStreamingResponseOptions = {
 export const createModel = async (modelConfig: Model) => {
   switch (modelConfig.provider) {
     case 'thunderbolt': {
-      const db = getDb()
-      const { cloudUrl } = await getSettings(db, { cloud_url: 'http://localhost:8000/v1' })
+      const cloudUrl = getLocalSetting('cloudUrl')
       const token = getAuthToken() || 'thunderbolt'
       // SSO web flow authenticates via session cookies — the SSO callback is a
       // browser redirect, not an XHR, so `set-auth-token` never reaches the

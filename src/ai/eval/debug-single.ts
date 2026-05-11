@@ -7,9 +7,8 @@
  * Usage: bun run src/ai/eval/debug-single.ts
  */
 import { aiFetchStreamingResponse } from '@/ai/fetch'
-import { getSettings } from '@/dal'
 import { setupTestDatabase, teardownTestDatabase } from '@/dal/test-utils'
-import { getDb } from '@/db/database'
+import { getLocalSetting } from '@/stores/local-settings-store'
 import { defaultModelGptOss120b } from '@/defaults/models'
 import { defaultModeChat } from '@/defaults/modes'
 import { isSsoMode } from '@/lib/auth-mode'
@@ -40,8 +39,7 @@ const run = async () => {
   console.log(`[2/5] Mode: ${defaultModeChat.name}`)
   console.log(`[2/5] Prompt: "${prompt}"\n`)
 
-  const db = getDb()
-  const { cloudUrl } = await getSettings(db, { cloud_url: 'http://localhost:8000/v1' })
+  const cloudUrl = getLocalSetting('cloudUrl')
   const httpClient = createAuthenticatedClient(cloudUrl, getAuthToken, {
     credentials: isSsoMode() ? 'include' : undefined,
   })

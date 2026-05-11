@@ -8,6 +8,7 @@ import { getSettings } from '@/dal'
 import { getModel } from '@/dal/models'
 import { getModelProfile } from '@/dal/model-profiles'
 import { getDb } from '@/db/database'
+import { getLocalSetting } from '@/stores/local-settings-store'
 import { isSsoMode } from '@/lib/auth-mode'
 import { getAuthToken } from '@/lib/auth-token'
 import { createAuthenticatedClient } from '@/lib/http'
@@ -24,8 +25,7 @@ let _evalHttpClientPromise: Promise<import('@/lib/http').HttpClient> | null = nu
 const getEvalHttpClient = () => {
   if (!_evalHttpClientPromise) {
     _evalHttpClientPromise = (async () => {
-      const db = getDb()
-      const { cloudUrl } = await getSettings(db, { cloud_url: 'http://localhost:8000/v1' })
+      const cloudUrl = getLocalSetting('cloudUrl')
       return createAuthenticatedClient(cloudUrl, getAuthToken, {
         credentials: isSsoMode() ? 'include' : undefined,
       })

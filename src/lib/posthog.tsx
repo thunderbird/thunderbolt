@@ -5,6 +5,7 @@
 import { type HttpClient } from '@/contexts'
 import { getSettings } from '@/dal'
 import { getDb } from '@/db/database'
+import { getLocalSetting } from '@/stores/local-settings-store'
 import { createHandleError } from '@/lib/error-utils'
 import { createClient } from '@/lib/http'
 import type { HandleError, HandleResult } from '@/types/handle-errors'
@@ -53,11 +54,11 @@ export const sanitizeUrl = (url: string): string => {
  */
 export const initPosthog = async (httpClient?: HttpClient): Promise<HandleResult<PostHog | null>> => {
   try {
+    const cloudUrl = getLocalSetting('cloudUrl')
+    const debugPosthog = getLocalSetting('debugPosthog')
     const db = getDb()
-    const { cloudUrl, dataCollection, debugPosthog } = await getSettings(db, {
-      cloud_url: 'http://localhost:8000/v1',
+    const { dataCollection } = await getSettings(db, {
       data_collection: true,
-      debug_posthog: false,
     })
 
     const client = httpClient ?? createClient({ prefixUrl: cloudUrl })

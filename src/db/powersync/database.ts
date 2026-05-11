@@ -3,8 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { fetchConfig } from '@/api/config'
-import { getSettings } from '@/dal'
-import { defaultSettingCloudUrl } from '@/defaults/settings'
+import { getLocalSetting } from '@/stores/local-settings-store'
 import { withTimeout } from '@/lib/timeout'
 import type { AbstractPowerSyncDatabase } from '@powersync/common'
 import { SyncStreamConnectionMethod, WASQLiteOpenFactory, WASQLiteVFS } from '@powersync/web'
@@ -245,7 +244,7 @@ export class PowerSyncDatabaseImpl implements DatabaseInterface {
     }
 
     try {
-      const { cloudUrl } = await getSettings(this._db, { cloud_url: defaultSettingCloudUrl.value })
+      const cloudUrl = getLocalSetting('cloudUrl')
 
       // Re-fetch config before connecting so the upload encoder has the correct E2EE flag.
       // If /config failed at app init (e.g. offline), this retries before sync starts.

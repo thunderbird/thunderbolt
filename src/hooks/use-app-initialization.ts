@@ -8,7 +8,7 @@ import { getSettings } from '@/dal'
 import { getAuthToken } from '@/lib/auth-token'
 import { Database, getCurrentDatabase, setDatabase } from '@/db/database'
 import type { AnyDrizzleDatabase } from '@/db/database-interface'
-import { defaultSettingCloudUrl } from '@/defaults/settings'
+import { getLocalSetting } from '@/stores/local-settings-store'
 import { createHandleError } from '@/lib/error-utils'
 import { createAppDir, resetAppDir } from '@/lib/fs'
 import { isSsoMode } from '@/lib/auth-mode'
@@ -59,7 +59,7 @@ const initializePostHog = async (httpClient?: HttpClient): Promise<PostHog | nul
 const executeInitializationSteps = async (httpClient?: HttpClient): Promise<HandleResult<InitData>> => {
   // Step 0: Fetch backend config and hydrate store (only on success).
   // When fetch fails (offline/error), the store retains its persisted localStorage value.
-  await fetchConfig(defaultSettingCloudUrl.value!, httpClient)
+  await fetchConfig(getLocalSetting('cloudUrl'), httpClient)
 
   // Step 1: App directory creation
   let appDirPath: string
@@ -115,8 +115,8 @@ const executeInitializationSteps = async (httpClient?: HttpClient): Promise<Hand
   }
 
   // Step 5: Get cloud url and experimental feature tasks
-  const { cloudUrl, experimentalFeatureTasks } = await getSettings(db, {
-    cloud_url: defaultSettingCloudUrl.value,
+  const cloudUrl = getLocalSetting('cloudUrl')
+  const { experimentalFeatureTasks } = await getSettings(db, {
     experimental_feature_tasks: false,
   })
 

@@ -8,16 +8,18 @@ import { PageHeader } from '@/components/ui/page-header'
 import { SectionCard } from '@/components/ui/section-card'
 import { Switch } from '@/components/ui/switch'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
-import { useSettings } from '@/hooks/use-settings'
+import { initialLocalSettings, useLocalSettingsStore } from '@/stores/local-settings-store'
 import { getCapabilities, isTauri } from '@/lib/platform'
 import { useQuery } from '@tanstack/react-query'
 
 export default function DevSettingsPage() {
-  const { cloudUrl, isNativeFetchEnabled, debugPosthog } = useSettings({
-    cloud_url: '',
-    is_native_fetch_enabled: false,
-    debug_posthog: false,
-  })
+  const { cloudUrl, isNativeFetchEnabled, debugPosthog, setLocalSetting } = useLocalSettingsStore()
+
+  const isModified = <K extends keyof typeof initialLocalSettings>(key: K) =>
+    useLocalSettingsStore.getState()[key] !== initialLocalSettings[key]
+
+  const resetSetting = <K extends keyof typeof initialLocalSettings>(key: K) =>
+    setLocalSetting(key, initialLocalSettings[key])
 
   const { data: capabilities } = useQuery({
     queryKey: ['capabilities'],
@@ -36,15 +38,15 @@ export default function DevSettingsPage() {
             <ModificationIndicator
               as="label"
               className="block text-sm font-medium"
-              hasModifications={cloudUrl.isModified}
-              onReset={cloudUrl.reset}
+              hasModifications={isModified('cloudUrl')}
+              onReset={() => resetSetting('cloudUrl')}
             >
               Cloud URL
             </ModificationIndicator>
             <Input
               type="url"
-              value={cloudUrl.value}
-              onChange={(e) => cloudUrl.setValue(e.target.value || null)}
+              value={cloudUrl}
+              onChange={(e) => setLocalSetting('cloudUrl', e.target.value || initialLocalSettings.cloudUrl)}
               placeholder="http://localhost:8000"
             />
             <p className="text-sm text-muted-foreground">The URL of the Thunderbolt backend</p>
@@ -58,8 +60,8 @@ export default function DevSettingsPage() {
               <ModificationIndicator
                 as="label"
                 className="text-sm font-medium"
-                hasModifications={isNativeFetchEnabled.isModified}
-                onReset={isNativeFetchEnabled.reset}
+                hasModifications={isModified('isNativeFetchEnabled')}
+                onReset={() => resetSetting('isNativeFetchEnabled')}
               >
                 Use Native Fetch
               </ModificationIndicator>
@@ -69,8 +71,8 @@ export default function DevSettingsPage() {
               <TooltipTrigger asChild>
                 <span>
                   <Switch
-                    checked={isNativeFetchEnabled.value}
-                    onCheckedChange={isNativeFetchEnabled.setValue}
+                    checked={isNativeFetchEnabled}
+                    onCheckedChange={(value) => setLocalSetting('isNativeFetchEnabled', value)}
                     disabled={!capabilities?.native_fetch}
                   />
                 </span>
@@ -92,14 +94,14 @@ export default function DevSettingsPage() {
               <ModificationIndicator
                 as="label"
                 className="text-sm font-medium"
-                hasModifications={debugPosthog.isModified}
-                onReset={debugPosthog.reset}
+                hasModifications={isModified('debugPosthog')}
+                onReset={() => resetSetting('debugPosthog')}
               >
                 Debug PostHog
               </ModificationIndicator>
               <p className="text-sm text-muted-foreground">Enable verbose analytics logging in the console</p>
             </div>
-            <Switch checked={debugPosthog.value} onCheckedChange={debugPosthog.setValue} />
+            <Switch checked={debugPosthog} onCheckedChange={(value) => setLocalSetting('debugPosthog', value)} />
           </div>
         </div>
       </SectionCard>

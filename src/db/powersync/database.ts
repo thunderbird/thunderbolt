@@ -3,7 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { fetchConfig } from '@/api/config'
-import { getLocalSetting } from '@/stores/local-settings-store'
+import { getLocalSetting, useLocalSettingsStore } from '@/stores/local-settings-store'
 import { withTimeout } from '@/lib/timeout'
 import type { AbstractPowerSyncDatabase } from '@powersync/common'
 import { SyncStreamConnectionMethod, WASQLiteOpenFactory, WASQLiteVFS } from '@powersync/web'
@@ -43,9 +43,6 @@ export const getPowerSyncDatabaseConfig = (
   }
   return 'safari-tauri'
 }
-
-/** LocalStorage key for sync enabled flag */
-const syncEnabledKey = 'powersync_sync_enabled'
 
 /** Max time to wait for initial sync before continuing (e.g. when network is down) */
 const initialSyncTimeoutMs = 10_000
@@ -89,23 +86,14 @@ export const reconnectSync = async (): Promise<void> => {
 /**
  * Check if sync is enabled by user preference
  */
-export const isSyncEnabled = (): boolean => {
-  if (typeof localStorage === 'undefined') {
-    return false
-  }
-  return localStorage.getItem(syncEnabledKey) === 'true'
-}
+export const isSyncEnabled = (): boolean => getLocalSetting('syncEnabled')
 
 /**
  * Set sync enabled preference, connect/disconnect from PowerSync, and dispatch change event
  */
 export const setSyncEnabled = async (enabled: boolean): Promise<void> => {
-  if (typeof localStorage === 'undefined') {
-    return
-  }
-
-  // Update localStorage and dispatch event
-  localStorage.setItem(syncEnabledKey, String(enabled))
+  // Update store and dispatch event
+  useLocalSettingsStore.getState().setLocalSetting('syncEnabled', enabled)
   window.dispatchEvent(new CustomEvent(syncEnabledChangeEvent, { detail: enabled }))
 
   // Connect or disconnect from PowerSync Cloud

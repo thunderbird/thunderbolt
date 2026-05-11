@@ -8,6 +8,9 @@
  * error throwing on non-2xx, prefixUrl, and beforeRequest hooks.
  */
 
+import { getDeviceId } from '@/lib/auth-token'
+import { getDeviceDisplayName } from '@/lib/platform'
+
 export class HttpError extends Error {
   response: Response
   constructor(response: Response) {
@@ -162,12 +165,20 @@ export const createAuthenticatedClient = (
     hooks: {
       beforeRequest: [
         (request) => {
-          if (request.headers.has('Authorization')) {
-            return
+          if (!request.headers.has('Authorization')) {
+            const token = getToken()
+            if (token) {
+              request.headers.set('Authorization', `Bearer ${token}`)
+            }
           }
-          const token = getToken()
-          if (token) {
-            request.headers.set('Authorization', `Bearer ${token}`)
+          // Inject device identity headers only for app backend requests (not external APIs).
+          // Uses the same prefix guard as the afterResponse 401 handler below.
+          if (request.url === prefixUrl || request.url.startsWith(normalizedPrefix)) {
+            const deviceId = getDeviceId()
+            if (deviceId) {
+              request.headers.set('X-Device-ID', deviceId)
+              request.headers.set('X-Device-Name', getDeviceDisplayName())
+            }
           }
         },
       ],

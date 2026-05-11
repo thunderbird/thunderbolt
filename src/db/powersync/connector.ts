@@ -2,9 +2,8 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { getDeviceId, getAuthToken } from '@/lib/auth-token'
+import { getAuthenticatedHeaders, getAuthToken } from '@/lib/auth-token'
 import { isSsoMode } from '@/lib/auth-mode'
-import { getDeviceDisplayName } from '@/lib/platform'
 import type { AbstractPowerSyncDatabase, PowerSyncBackendConnector, PowerSyncCredentials } from '@powersync/web'
 import { encodeForUpload } from '@/db/encryption'
 import { sanitizeErrorForTracking, trackSyncEvent } from './sync-tracker'
@@ -65,23 +64,6 @@ export const handleCredentialsInvalidIfNeeded = (status: number, body: ErrorBody
 }
 
 /**
- * Build headers with Authorization Bearer token and device id/name if available.
- */
-const buildHeaders = (additionalHeaders?: Record<string, string>): Record<string, string> => {
-  const headers: Record<string, string> = { ...additionalHeaders }
-  const token = getAuthToken()
-  if (token) {
-    headers['Authorization'] = `Bearer ${token}`
-  }
-  const deviceId = getDeviceId()
-  if (deviceId) {
-    headers['X-Device-ID'] = deviceId
-    headers['X-Device-Name'] = getDeviceDisplayName()
-  }
-  return headers
-}
-
-/**
  * PowerSync connector that handles authentication and data upload.
  * - fetchCredentials: Gets JWT tokens from the backend (requires auth)
  * - uploadData: Sends local changes to the backend for persistence (requires auth)
@@ -102,7 +84,7 @@ export class ThunderboltConnector implements PowerSyncBackendConnector {
       }
 
       const response = await fetch(`${this.backendUrl}/powersync/token`, {
-        headers: buildHeaders(),
+        headers: getAuthenticatedHeaders(),
         credentials: ssoMode ? 'include' : undefined,
       })
 
@@ -174,7 +156,7 @@ export class ThunderboltConnector implements PowerSyncBackendConnector {
 
       const response = await fetch(`${this.backendUrl}/powersync/upload`, {
         method: 'PUT',
-        headers: { ...buildHeaders(), 'Content-Type': 'application/json' },
+        headers: { ...getAuthenticatedHeaders(), 'Content-Type': 'application/json' },
         body: JSON.stringify({ operations }),
         credentials: isSsoMode() ? 'include' : undefined,
       })

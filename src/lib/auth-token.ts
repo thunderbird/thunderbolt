@@ -11,6 +11,8 @@
  * TODO: once we have a proper encryption middleware, we should store the auth token in the settings database.
  */
 
+import { getDeviceDisplayName } from '@/lib/platform'
+
 const deviceIdKey = 'thunderbolt_device_id'
 const authTokenKey = 'thunderbolt_auth_token'
 
@@ -40,4 +42,22 @@ export const clearAuthToken = (): void => {
 /** Clear the device ID (for revoked devices — forces a new ID on next login). */
 export const clearDeviceId = (): void => {
   localStorage.removeItem(deviceIdKey)
+}
+
+/**
+ * Build authenticated headers (Authorization + device identity).
+ * Single source of truth for callers that cannot use the HTTP client (e.g. PowerSync connector).
+ */
+export const getAuthenticatedHeaders = (): Record<string, string> => {
+  const headers: Record<string, string> = {}
+  const token = getAuthToken()
+  if (token) {
+    headers['Authorization'] = `Bearer ${token}`
+  }
+  const deviceId = getDeviceId()
+  if (deviceId) {
+    headers['X-Device-ID'] = deviceId
+    headers['X-Device-Name'] = getDeviceDisplayName()
+  }
+  return headers
 }

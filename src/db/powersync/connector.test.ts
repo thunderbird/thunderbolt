@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { clearAuthToken, setAuthToken } from '@/lib/auth-token'
+import { clearAuthToken, clearDeviceId, setAuthToken } from '@/lib/auth-token'
 import { getClock } from '@/testing-library'
 import { act } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
@@ -118,6 +118,7 @@ describe('ThunderboltConnector', () => {
     globalThis.fetch = fetchMock as unknown as typeof fetch
     window.dispatchEvent = dispatchSpy as unknown as typeof window.dispatchEvent
     clearAuthToken()
+    clearDeviceId()
   })
 
   afterEach(() => {
@@ -160,8 +161,12 @@ describe('ThunderboltConnector', () => {
       expiresAt: new Date(tokenData.expiresAt),
     })
     expect(fetchMock).toHaveBeenCalledTimes(1)
-    const [url] = fetchMock.mock.calls[0] as [string]
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit]
     expect(url).toContain('/powersync/token')
+    const headers = init.headers as Record<string, string>
+    expect(headers['Authorization']).toBe(`Bearer ${authToken}`)
+    expect(headers['X-Device-ID']).toBeTruthy()
+    expect(headers['X-Device-Name']).toBeTruthy()
   })
 
   it('fetchCredentials returns null and dispatches event when backend returns 410', async () => {

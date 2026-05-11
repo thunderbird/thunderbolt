@@ -22,7 +22,7 @@ type WeatherPreferences = {
   temperatureUnit?: 'c' | 'f'
 }
 
-interface Location {
+type Location = {
   name: string
   admin1?: string
   country?: string
@@ -296,7 +296,7 @@ export class OpenMeteoWeather {
         temperature_unit: temperatureUnit,
       }
     } catch (error) {
-      throw new Error(`Could not fetch forecast data: ${String(error)}`)
+      throw new Error(`Could not fetch forecast data: ${String(error)}`, { cause: error })
     }
   }
 

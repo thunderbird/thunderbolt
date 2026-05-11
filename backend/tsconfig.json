@@ -1,26 +1,17 @@
 {
+  "extends": "../shared/tsconfig.base.json",
   "compilerOptions": {
     "target": "ESNext",
-    "module": "ESNext",
-    "moduleResolution": "bundler",
-    "allowImportingTsExtensions": true,
-    "noEmit": true,
     "composite": false,
-    "strict": true,
     "ignoreDeprecations": "6.0",
-    "skipLibCheck": true,
-    "jsx": "react-jsx",
-    "forceConsistentCasingInFileNames": true,
-    "allowJs": true,
-    "types": ["bun-types"],
-    "resolveJsonModule": true,
-    "isolatedModules": true,
     "verbatimModuleSyntax": true,
+    "allowJs": true,
     "baseUrl": ".",
     "paths": {
       "@/*": ["./src/*"],
       "@shared/*": ["../shared/*"]
-    }
+    },
+    "types": ["bun-types"]
   },
   "include": ["src/**/*.ts", "src/**/*.tsx", "src/**/*.d.ts", "test/**/*.ts", "../shared/**/*.ts"],
   "exclude": ["node_modules", "dist"]

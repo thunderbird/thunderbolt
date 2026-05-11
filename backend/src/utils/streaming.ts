@@ -9,15 +9,10 @@ type CompletionStream = AsyncIterable<ChatCompletionChunk> & { controller: Abort
 /**
  * Creates a ReadableStream from an OpenAI completion stream with SSE formatting
  * @param completion - The OpenAI completion stream
- * @param model - Model name for logging purposes
  * @returns ReadableStream formatted for Server-Sent Events
  */
-export const createSSEStreamFromCompletion = (
-  completion: CompletionStream,
-  model: string,
-): ReadableStream<Uint8Array> => {
+export const createSSEStreamFromCompletion = (completion: CompletionStream): ReadableStream<Uint8Array> => {
   const encoder = new TextEncoder()
-  let lastUsage: any = null
   let isCancelled = false
 
   return new ReadableStream<Uint8Array>({
@@ -29,17 +24,12 @@ export const createSSEStreamFromCompletion = (
             break
           }
 
-          // Track usage data if present
-          if (chunk.usage) {
-            lastUsage = chunk.usage
-          }
-
           // Convert chunk back to SSE format for client compatibility
           const sseChunk = `data: ${JSON.stringify(chunk)}\n\n`
 
           try {
             controller.enqueue(encoder.encode(sseChunk))
-          } catch (enqueueError) {
+          } catch {
             // Controller already closed (client disconnected)
             break
           }
@@ -52,15 +42,6 @@ export const createSSEStreamFromCompletion = (
           } catch {
             // Ignore if controller is closed
           }
-        }
-
-        // Log usage if captured (PostHog will also capture this automatically)
-        if (lastUsage) {
-          // console.log('Fireworks usage', {
-          //   model,
-          //   usage: lastUsage,
-          //   analytics: 'captured by PostHog',
-          // })
         }
 
         if (controller.desiredSize !== null) {

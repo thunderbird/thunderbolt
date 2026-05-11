@@ -20,7 +20,9 @@ class TestDbManager {
    * This MUST be called before any tests run
    */
   async initialize() {
-    if (this.initialized) return
+    if (this.initialized) {
+      return
+    }
 
     this.client = new PGlite()
     this.db = drizzle({ client: this.client, schema })

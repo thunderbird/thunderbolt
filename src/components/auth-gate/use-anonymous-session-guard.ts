@@ -29,21 +29,15 @@ export const useAnonymousSessionGuard = (): AnonymousSessionGuardState => {
     if (isPending || session?.user || hasToken || hasAttempted) {
       return
     }
-    let ignore = false
     void (async () => {
       try {
         await authClient.signIn.anonymous()
       } catch {
         // silent failure by design — downstream features surface their own errors
       } finally {
-        if (!ignore) {
-          setHasAttempted(true)
-        }
+        setHasAttempted(true)
       }
     })()
-    return () => {
-      ignore = true
-    }
   }, [isPending, session?.user, hasToken, hasAttempted, authClient])
 
   if (isPending && !hasToken && !session?.user) {

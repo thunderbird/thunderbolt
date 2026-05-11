@@ -3,7 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { describe, it, expect, spyOn, beforeEach, afterEach, mock } from 'bun:test'
-import { createAnonymousPromotionAnalytics, PENDING_ANON_ID_KEY } from './use-anonymous-promotion-analytics'
+import { createAnonymousPromotionAnalytics, pendingAnonIdKey } from './use-anonymous-promotion-analytics'
 import * as posthogModule from '@/lib/posthog'
 import type { AuthClient } from '@/contexts'
 
@@ -75,7 +75,7 @@ describe('createAnonymousPromotionAnalytics', () => {
     await analytics.captureAnonId(makeAuthClient(true, 'anon-123'))
     analytics.persistForSso()
 
-    expect(sessionStorage.getItem(PENDING_ANON_ID_KEY)).toBe('anon-123')
+    expect(sessionStorage.getItem(pendingAnonIdKey)).toBe('anon-123')
   })
 
   it('persistForSso is a no-op when no anon id was captured', () => {
@@ -83,7 +83,7 @@ describe('createAnonymousPromotionAnalytics', () => {
 
     analytics.persistForSso()
 
-    expect(sessionStorage.getItem(PENDING_ANON_ID_KEY)).toBeNull()
+    expect(sessionStorage.getItem(pendingAnonIdKey)).toBeNull()
   })
 
   it('onPromotionSuccess calls alias and fires trackEvent when anon id was captured', async () => {

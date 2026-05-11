@@ -32,9 +32,9 @@ import { eq } from 'drizzle-orm'
 const otpSignInPath = '/sign-in/email-otp'
 
 // Retry tuning constants for anonymous promotion (M3).
-// Increase ANONYMOUS_PROMOTION_MAX_ATTEMPTS if transient error rates rise above 1%.
-const ANONYMOUS_PROMOTION_MAX_ATTEMPTS = 3
-const ANONYMOUS_PROMOTION_BACKOFF_MS = 100
+// Increase anonymousPromotionMaxAttempts if transient error rates rise above 1%.
+const anonymousPromotionMaxAttempts = 3
+const anonymousPromotionBackoffMs = 100
 
 /**
  * Create a Better Auth instance with the provided database
@@ -355,7 +355,7 @@ export const createAuth = (database: typeof DbType) => {
         disableDeleteAnonymousUser: true, // We own the in-tx delete — see comment above
         onLinkAccount: async ({ anonymousUser, newUser, ctx }) => {
           let lastError: unknown
-          for (let attempt = 0; attempt < ANONYMOUS_PROMOTION_MAX_ATTEMPTS; attempt++) {
+          for (let attempt = 0; attempt < anonymousPromotionMaxAttempts; attempt++) {
             try {
               await database.transaction(async (tx) => {
                 // N-3: cap check INSIDE the same tx for snapshot atomicity — must not be
@@ -382,8 +382,10 @@ export const createAuth = (database: typeof DbType) => {
               // DrizzleQueryError wraps the PG error code in err.cause.code, not err.code
               // (M2 discovery). Pass err.cause ?? err so isTransientDbError sees the right shape.
               const cause = (err as { cause?: unknown }).cause ?? err
-              if (!isTransientDbError(cause)) break
-              await new Promise((r) => setTimeout(r, ANONYMOUS_PROMOTION_BACKOFF_MS * (attempt + 1)))
+              if (!isTransientDbError(cause)) {
+                break
+              }
+              await new Promise((r) => setTimeout(r, anonymousPromotionBackoffMs * (attempt + 1)))
             }
           }
 

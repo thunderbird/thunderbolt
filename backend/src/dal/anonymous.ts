@@ -32,7 +32,7 @@ import type { AnyPgTable } from 'drizzle-orm/pg-core'
  * (the device record is created during full registration, not before).
  * Adding to this set REQUIRES an inline comment explaining why.
  */
-export const EXCLUDED_FROM_MIGRATION = new Set<PowerSyncTableName>(['devices'] as const)
+export const excludedFromMigration = new Set<PowerSyncTableName>(['devices'] as const)
 
 /**
  * Ordered list of PowerSync content tables to migrate from anonymous → real user.
@@ -130,8 +130,12 @@ export const migrateAnonymousUserData = async (
   fromAnonId: string,
   toRealId: string,
 ): Promise<void> => {
-  if (!fromAnonId) throw new Error('migrateAnonymousUserData: fromAnonId must be a non-empty string')
-  if (!toRealId) throw new Error('migrateAnonymousUserData: toRealId must be a non-empty string')
+  if (!fromAnonId) {
+    throw new Error('migrateAnonymousUserData: fromAnonId must be a non-empty string')
+  }
+  if (!toRealId) {
+    throw new Error('migrateAnonymousUserData: toRealId must be a non-empty string')
+  }
 
   for (const table of tablesToMigrate) {
     const t = table as TableWithUserId
@@ -156,8 +160,12 @@ export const migrateAnonymousUserData = async (
  * so that M3's retry loop falls through to the delete-new-user fallback.
  */
 export const isTransientDbError = (err: unknown): boolean => {
-  if (!err || typeof err !== 'object') return false
+  if (!err || typeof err !== 'object') {
+    return false
+  }
   const code = (err as Record<string, unknown>).code
-  if (typeof code !== 'string') return false
+  if (typeof code !== 'string') {
+    return false
+  }
   return code === '40001' || code === '40P01' || code === '08006'
 }

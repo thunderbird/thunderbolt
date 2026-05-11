@@ -49,6 +49,6 @@ export {
   assertAnonymousRowCountUnderCap,
   isTransientDbError,
   tablesToMigrate,
-  EXCLUDED_FROM_MIGRATION,
+  excludedFromMigration,
   AnonymousRowCapExceededError,
 } from './anonymous'

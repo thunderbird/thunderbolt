@@ -28,6 +28,7 @@ export const PowerSyncStatus = () => {
   const authClient = useAuth()
   const { data: session } = authClient.useSession()
   const isAuthenticated = !!session?.user
+  const sessionUser = session?.user as (NonNullable<typeof session>['user'] & { isAnonymous?: boolean }) | undefined
   const { openSignInModal } = useSignInModal()
   const [popoverOpen, setPopoverOpen] = useState(false)
   const [isReconnecting, setIsReconnecting] = useState(false)
@@ -37,6 +38,14 @@ export const PowerSyncStatus = () => {
   const { connectionStatus, hasSynced, lastSyncedAt } = usePowerSyncStatus()
   const { syncEnabled, syncSetupOpen, setSyncSetupOpen, handleSyncToggle, handleSyncSetupComplete } =
     useSyncEnabledToggle()
+
+  // Anonymous users cannot sync (PowerSync rejects them server-side — see
+  // backend/src/api/powersync.ts). Hide the indicator entirely; the same UI affordance
+  // is unavailable to fully logged-out users, who are redirected to /waitlist before
+  // reaching this header. Keeping it hidden for anonymous keeps the two states consistent.
+  if (sessionUser?.isAnonymous) {
+    return null
+  }
 
   const isConnected = connectionStatus === 'connected'
   const isConnecting = connectionStatus === 'connecting'

@@ -29,7 +29,7 @@ import { challengeTokenHeader, otpExpiryMs, otpExpirySeconds } from './otp-const
 import { buildVerifyUrl, parseTrustedOrigins, sendSignInEmail } from './utils'
 import { eq } from 'drizzle-orm'
 
-const OTP_SIGN_IN_PATH = '/sign-in/email-otp'
+const otpSignInPath = '/sign-in/email-otp'
 
 // Retry tuning constants for anonymous promotion (M3).
 // Increase ANONYMOUS_PROMOTION_MAX_ATTEMPTS if transient error rates rise above 1%.
@@ -211,7 +211,7 @@ export const createAuth = (database: typeof DbType) => {
           return
         }
 
-        if (ctx.path !== OTP_SIGN_IN_PATH) {
+        if (ctx.path !== otpSignInPath) {
           // Anonymous sign-in (above) is intentionally NOT waitlist-gated — that's the feature.
           // All other non-OTP paths are also unchecked here.
           return
@@ -245,7 +245,7 @@ export const createAuth = (database: typeof DbType) => {
         // (after hook) or by expiry. This allows the 3-attempt limit to work correctly.
       }),
       after: createAuthMiddleware(async (ctx) => {
-        if (ctx.path !== OTP_SIGN_IN_PATH) {
+        if (ctx.path !== otpSignInPath) {
           return
         }
 
@@ -283,7 +283,7 @@ export const createAuth = (database: typeof DbType) => {
         // code requests + session binding (challenge token) make brute-force infeasible.
         // TODO(THU-113): proof-of-work (ALTCHA) will add further distributed protection.
 
-        async sendVerificationOTP({ email, otp, type }, ctx) {
+        async sendVerificationOTP({ email, otp, type }) {
           // We only support sign-in (no password-based auth, so no email-verification or forget-password)
           if (type !== 'sign-in') {
             console.warn(`Unexpected OTP type requested: ${type}`)

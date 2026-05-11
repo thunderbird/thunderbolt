@@ -131,10 +131,18 @@ const inferImageContentType = (headerContentType: string | null, imageUrl: strin
   }
   try {
     const ext = new URL(imageUrl).pathname.split('.').pop()?.toLowerCase()
-    if (ext === 'png') return 'image/png'
-    if (ext === 'gif') return 'image/gif'
-    if (ext === 'webp') return 'image/webp'
-    if (ext === 'svg') return 'image/svg+xml'
+    if (ext === 'png') {
+      return 'image/png'
+    }
+    if (ext === 'gif') {
+      return 'image/gif'
+    }
+    if (ext === 'webp') {
+      return 'image/webp'
+    }
+    if (ext === 'svg') {
+      return 'image/svg+xml'
+    }
     return 'image/jpeg'
   } catch {
     return 'image/jpeg'

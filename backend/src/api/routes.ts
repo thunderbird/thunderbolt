@@ -125,7 +125,7 @@ export const createMainRoutes = (auth: Auth, fetchFn: typeof fetch = globalThis.
             throw error // Re-throw with original message and status
           }
           set.status = 503
-          throw new Error('Geocoding service unavailable')
+          throw new Error('Geocoding service unavailable', { cause: error })
         }
       },
       {

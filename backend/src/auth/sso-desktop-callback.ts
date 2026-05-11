@@ -7,11 +7,11 @@ import type { Settings } from '@/config/settings'
 import { safeErrorHandler } from '@/middleware/error-handling'
 import { Elysia, t } from 'elysia'
 
-const SESSION_COOKIE_NAME = 'better-auth.session_token'
-const NONCE_COOKIE_NAME = 'thunderbolt_desktop_sso_nonce'
+const sessionCookieName = 'better-auth.session_token'
+const nonceCookieName = 'thunderbolt_desktop_sso_nonce'
 
 /** Allowed loopback ports — must match OAUTH_PORTS in src-tauri/src/commands.rs */
-const ALLOWED_LOOPBACK_PORTS = new Set([17421, 17422, 17423])
+const allowedLoopbackPorts = new Set([17421, 17422, 17423])
 
 /** Parse a specific cookie value from a raw Cookie header string. */
 const parseCookieValue = (cookieHeader: string, name: string): string | undefined => {
@@ -65,7 +65,7 @@ export const createSsoDesktopCallbackRoutes = (settings: Settings) => {
         '/desktop-initiate',
         async ({ query, request }) => {
           const port = Number(query.loopback_port)
-          if (!ALLOWED_LOOPBACK_PORTS.has(port)) {
+          if (!allowedLoopbackPorts.has(port)) {
             return new Response(errorHtml('Invalid loopback port. Please try signing in again from the app.'), {
               status: 400,
               headers: { 'content-type': 'text/html' },
@@ -110,7 +110,7 @@ export const createSsoDesktopCallbackRoutes = (settings: Settings) => {
           const secureSuffix = isSecure ? '; Secure' : ''
           headers.append(
             'set-cookie',
-            `${NONCE_COOKIE_NAME}=${nonce}; HttpOnly; SameSite=Lax; Path=/v1/api/auth/sso; Max-Age=600${secureSuffix}`,
+            `${nonceCookieName}=${nonce}; HttpOnly; SameSite=Lax; Path=/v1/api/auth/sso; Max-Age=600${secureSuffix}`,
           )
 
           return new Response(null, { status: 302, headers })
@@ -127,7 +127,7 @@ export const createSsoDesktopCallbackRoutes = (settings: Settings) => {
         '/desktop-callback',
         ({ request, query }) => {
           const port = Number(query.loopback_port)
-          if (!ALLOWED_LOOPBACK_PORTS.has(port)) {
+          if (!allowedLoopbackPorts.has(port)) {
             return new Response(errorHtml('Invalid loopback port. Please try signing in again from the app.'), {
               status: 400,
               headers: { 'content-type': 'text/html' },
@@ -141,7 +141,7 @@ export const createSsoDesktopCallbackRoutes = (settings: Settings) => {
           // attributes (HttpOnly, SameSite=Lax, scoped Path) which ensure only a
           // legitimate desktop-initiate flow can set this cookie. Server-side value
           // validation would require a session store for negligible security gain.
-          const nonce = parseCookieValue(cookieHeader, NONCE_COOKIE_NAME)
+          const nonce = parseCookieValue(cookieHeader, nonceCookieName)
           if (!nonce) {
             return new Response(errorHtml('Invalid request. Please start the sign-in flow from the app.'), {
               status: 403,
@@ -149,7 +149,7 @@ export const createSsoDesktopCallbackRoutes = (settings: Settings) => {
             })
           }
 
-          const encodedToken = parseCookieValue(cookieHeader, SESSION_COOKIE_NAME)
+          const encodedToken = parseCookieValue(cookieHeader, sessionCookieName)
           if (!encodedToken) {
             return new Response(errorHtml('Session not found. Please try signing in again from the app.'), {
               status: 401,
@@ -166,7 +166,7 @@ export const createSsoDesktopCallbackRoutes = (settings: Settings) => {
             status: 302,
             headers: [
               ['location', `http://127.0.0.1:${port}/?token=${encodeURIComponent(bearerToken)}`],
-              ['set-cookie', `${NONCE_COOKIE_NAME}=; HttpOnly; SameSite=Lax; Path=/v1/api/auth/sso; Max-Age=0`],
+              ['set-cookie', `${nonceCookieName}=; HttpOnly; SameSite=Lax; Path=/v1/api/auth/sso; Max-Age=0`],
             ],
           })
         },

@@ -97,7 +97,9 @@ const createUserRateLimitMiddleware = (limiter: RateLimiterDrizzle) =>
     .onBeforeHandle(async (ctx) => {
       const { set } = ctx
       const user = (ctx as AuthResolvedContext).user
-      if (!user?.id) return
+      if (!user?.id) {
+        return
+      }
       return consumeOrReject(limiter, `user:${user.id}`, set)
     })
     .as('scoped')
@@ -116,28 +118,36 @@ const createIpRateLimitMiddleware = (limiter: RateLimiterDrizzle, trustedProxy: 
       const { set } = ctx
       const socketIp = ctx.server?.requestIP(ctx.request)?.address ?? 'unknown'
       const clientIp = extractClientIp(ctx.request.headers, socketIp, trustedProxy)
-      if (clientIp === 'unknown') return
+      if (clientIp === 'unknown') {
+        return
+      }
       return consumeOrReject(limiter, `ip:${clientIp}`, set)
     })
     .as('scoped')
 
 /** Create rate limit middleware for inference routes (keyed by user). */
 export const createInferenceRateLimit = (database: typeof DbType, settings: RateLimitSettings) => {
-  if (!settings.enabled) return new Elysia()
+  if (!settings.enabled) {
+    return new Elysia()
+  }
   const limiter = createLimiter(database, 'inference')
   return createUserRateLimitMiddleware(limiter)
 }
 
 /** Create rate limit middleware for pro tool routes (keyed by user). */
 export const createProRateLimit = (database: typeof DbType, settings: RateLimitSettings) => {
-  if (!settings.enabled) return new Elysia()
+  if (!settings.enabled) {
+    return new Elysia()
+  }
   const limiter = createLimiter(database, 'pro')
   return createUserRateLimitMiddleware(limiter)
 }
 
 /** Create IP-based rate limit middleware for auth and unauthenticated routes. */
 export const createAuthIpRateLimit = (database: typeof DbType, settings: IpRateLimitSettings) => {
-  if (!settings.enabled) return new Elysia()
+  if (!settings.enabled) {
+    return new Elysia()
+  }
   const limiter = createLimiter(database, 'auth')
   return createIpRateLimitMiddleware(limiter, settings.trustedProxy)
 }

@@ -95,7 +95,7 @@ export const createInferenceRoutes = (auth: Auth, rateLimit?: AnyElysia) => {
           }),
         })
 
-        const stream = createSSEStreamFromCompletion(completion, body.model)
+        const stream = createSSEStreamFromCompletion(completion)
 
         // Merge rate-limit headers (set by middleware on ctx.set.headers) into the
         // streaming Response so clients can read them. Elysia skips ctx.set.headers
@@ -115,11 +115,11 @@ export const createInferenceRoutes = (auth: Auth, rateLimit?: AnyElysia) => {
       } catch (error) {
         if (error instanceof APIConnectionError) {
           console.error('Failed to connect to inference provider', error.cause)
-          throw new Error('Failed to connect to inference provider')
+          throw new Error('Failed to connect to inference provider', { cause: error })
         }
         if (error instanceof APIConnectionTimeoutError) {
           console.error('Connection timeout to inference provider', error.cause)
-          throw new Error('Connection timeout to inference provider')
+          throw new Error('Connection timeout to inference provider', { cause: error })
         }
         throw error
       }

@@ -10,7 +10,9 @@ import { createHmac, timingSafeEqual } from 'crypto'
  */
 export const verifySignedBearerToken = (bearerValue: string, secret: string): string | null => {
   const dotIndex = bearerValue.lastIndexOf('.')
-  if (dotIndex < 1) return null
+  if (dotIndex < 1) {
+    return null
+  }
 
   const rawToken = bearerValue.substring(0, dotIndex)
   const signature = bearerValue.substring(dotIndex + 1)
@@ -18,7 +20,9 @@ export const verifySignedBearerToken = (bearerValue: string, secret: string): st
   const expected = createHmac('sha256', secret).update(rawToken).digest('base64')
   const sigBuf = Buffer.from(signature)
   const expBuf = Buffer.from(expected)
-  if (sigBuf.length !== expBuf.length || !timingSafeEqual(sigBuf, expBuf)) return null
+  if (sigBuf.length !== expBuf.length || !timingSafeEqual(sigBuf, expBuf)) {
+    return null
+  }
 
   return rawToken
 }

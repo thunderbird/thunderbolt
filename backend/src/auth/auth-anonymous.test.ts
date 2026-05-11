@@ -73,7 +73,6 @@ const insertRealUser = async (db: Awaited<ReturnType<typeof createTestDb>>['db']
 // ---------------------------------------------------------------------------
 
 describe('M3 anonymous plugin — happy path promotion', () => {
-  let auth: ReturnType<typeof createAuth>
   let db: Awaited<ReturnType<typeof createTestDb>>['db']
   let cleanup: () => Promise<void>
 
@@ -82,7 +81,6 @@ describe('M3 anonymous plugin — happy path promotion', () => {
     const testEnv = await createTestDb()
     db = testEnv.db
     cleanup = testEnv.cleanup
-    auth = createAuth(db)
   })
 
   afterEach(async () => {
@@ -162,7 +160,6 @@ describe('M3 anonymous plugin — transient retry (PG deadlock)', () => {
       return originalMigrate(...args)
     })
 
-    let lastError: unknown
     let succeeded = false
 
     for (let attempt = 0; attempt < 3; attempt++) {
@@ -175,7 +172,6 @@ describe('M3 anonymous plugin — transient retry (PG deadlock)', () => {
         succeeded = true
         break
       } catch (err) {
-        lastError = err
         // Use err.cause ?? err (per M2 discovery — DrizzleQueryError wraps PG code)
         const cause = (err as { cause?: unknown }).cause ?? err
         if (!anonymousDal.isTransientDbError(cause)) break

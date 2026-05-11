@@ -13,7 +13,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import { Elysia } from 'elysia'
 import { createEncryptionRoutes } from './encryption'
 
-const BASE = 'http://localhost'
+const baseUrl = 'http://localhost'
 
 const betterAuthSecret = 'better-auth-secret-12345678901234567890'
 const signToken = (token: string): string => {
@@ -164,7 +164,7 @@ describe('Encryption API', () => {
   describe('POST /devices', () => {
     it('returns 401 without auth', async () => {
       const response = await app.handle(
-        new Request(`${BASE}/devices`, {
+        new Request(`${baseUrl}/devices`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ deviceId: p('d1'), publicKey: 'pk', mlkemPublicKey: 'mlkem-pk' }),
@@ -175,7 +175,7 @@ describe('Encryption API', () => {
 
     it('returns 401 with invalid token', async () => {
       const response = await app.handle(
-        new Request(`${BASE}/devices`, {
+        new Request(`${baseUrl}/devices`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -191,7 +191,7 @@ describe('Encryption API', () => {
       await createUserAndSession(p('u1'), p('tok-u1'))
 
       const response = await app.handle(
-        new Request(`${BASE}/devices`, {
+        new Request(`${baseUrl}/devices`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -221,7 +221,7 @@ describe('Encryption API', () => {
       await insertEnvelope(p('d-existing'), p('u2'))
 
       const response = await app.handle(
-        new Request(`${BASE}/devices`, {
+        new Request(`${baseUrl}/devices`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -242,7 +242,7 @@ describe('Encryption API', () => {
       await insertEnvelope(p('d-trusted'), p('u3'), 'my-wrapped-ck')
 
       const response = await app.handle(
-        new Request(`${BASE}/devices`, {
+        new Request(`${baseUrl}/devices`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -263,7 +263,7 @@ describe('Encryption API', () => {
       await insertDevice(p('d-pending'), p('u4'))
 
       const response = await app.handle(
-        new Request(`${BASE}/devices`, {
+        new Request(`${baseUrl}/devices`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -284,7 +284,7 @@ describe('Encryption API', () => {
       await insertDevice(p('d-conflict'), p('u5a'))
 
       const response = await app.handle(
-        new Request(`${BASE}/devices`, {
+        new Request(`${baseUrl}/devices`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -304,7 +304,7 @@ describe('Encryption API', () => {
       await insertDevice(p('d-revoked'), p('u6'), { revokedAt: now })
 
       const response = await app.handle(
-        new Request(`${BASE}/devices`, {
+        new Request(`${baseUrl}/devices`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -324,7 +324,7 @@ describe('Encryption API', () => {
 
       // Empty name
       await app.handle(
-        new Request(`${BASE}/devices`, {
+        new Request(`${baseUrl}/devices`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -347,7 +347,7 @@ describe('Encryption API', () => {
 
       // Name > 100 chars — rejected by Elysia schema validation (maxLength: 100)
       const longNameResponse = await app.handle(
-        new Request(`${BASE}/devices`, {
+        new Request(`${baseUrl}/devices`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -370,7 +370,7 @@ describe('Encryption API', () => {
   describe('POST /devices/:deviceId/envelope', () => {
     it('returns 401 without auth', async () => {
       const response = await app.handle(
-        new Request(`${BASE}/devices/${p('d1')}/envelope`, {
+        new Request(`${baseUrl}/devices/${p('d1')}/envelope`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ wrappedCK: 'wck' }),
@@ -384,7 +384,7 @@ describe('Encryption API', () => {
       await insertDevice(p('d-env1'), p('u-env1'))
 
       const response = await app.handle(
-        new Request(`${BASE}/devices/${p('d-env1')}/envelope`, {
+        new Request(`${baseUrl}/devices/${p('d-env1')}/envelope`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -404,7 +404,7 @@ describe('Encryption API', () => {
       await insertDevice(p('d-boot'), p('u-boot'))
 
       const response = await app.handle(
-        new Request(`${BASE}/devices/${p('d-boot')}/envelope`, {
+        new Request(`${baseUrl}/devices/${p('d-boot')}/envelope`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -444,7 +444,7 @@ describe('Encryption API', () => {
       await insertDevice(p('d-self'), p('u-self'))
 
       const response = await app.handle(
-        new Request(`${BASE}/devices/${p('d-self')}/envelope`, {
+        new Request(`${baseUrl}/devices/${p('d-self')}/envelope`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -472,7 +472,7 @@ describe('Encryption API', () => {
       await insertDevice(p('d-recov-new'), p('u-recov'))
 
       const response = await app.handle(
-        new Request(`${BASE}/devices/${p('d-recov-new')}/envelope`, {
+        new Request(`${baseUrl}/devices/${p('d-recov-new')}/envelope`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -506,7 +506,7 @@ describe('Encryption API', () => {
       await insertDevice(p('d-badrecov-new'), p('u-badrecov'))
 
       const response = await app.handle(
-        new Request(`${BASE}/devices/${p('d-badrecov-new')}/envelope`, {
+        new Request(`${baseUrl}/devices/${p('d-badrecov-new')}/envelope`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -534,7 +534,7 @@ describe('Encryption API', () => {
 
       // Attacker replays canaryIv/canaryCtext from GET /encryption/canary without the secret
       const response = await app.handle(
-        new Request(`${BASE}/devices/${p('d-replay-new')}/envelope`, {
+        new Request(`${baseUrl}/devices/${p('d-replay-new')}/envelope`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -563,7 +563,7 @@ describe('Encryption API', () => {
       await insertDevice(p('d-pp-target'), p('u-pp'))
 
       const response = await app.handle(
-        new Request(`${BASE}/devices/${p('d-pp-target')}/envelope`, {
+        new Request(`${baseUrl}/devices/${p('d-pp-target')}/envelope`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -587,7 +587,7 @@ describe('Encryption API', () => {
       await insertDevice(p('d-diff-target'), p('u-diff2'))
 
       const response = await app.handle(
-        new Request(`${BASE}/devices/${p('d-diff-target')}/envelope`, {
+        new Request(`${baseUrl}/devices/${p('d-diff-target')}/envelope`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -614,7 +614,7 @@ describe('Encryption API', () => {
       await insertEnvelope(p('d-cdiff-existing'), p('u-cdiff1'))
 
       const response = await app.handle(
-        new Request(`${BASE}/devices/${p('d-cdiff-target')}/envelope`, {
+        new Request(`${baseUrl}/devices/${p('d-cdiff-target')}/envelope`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -637,7 +637,7 @@ describe('Encryption API', () => {
       await insertDevice(p('d-trev-target'), p('u-trev'), { revokedAt: now })
 
       const response = await app.handle(
-        new Request(`${BASE}/devices/${p('d-trev-target')}/envelope`, {
+        new Request(`${baseUrl}/devices/${p('d-trev-target')}/envelope`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -662,7 +662,7 @@ describe('Encryption API', () => {
       await insertEnvelope(p('d-crev-existing'), p('u-crev'))
 
       const response = await app.handle(
-        new Request(`${BASE}/devices/${p('d-crev-target')}/envelope`, {
+        new Request(`${baseUrl}/devices/${p('d-crev-target')}/envelope`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -686,7 +686,7 @@ describe('Encryption API', () => {
       await insertEnvelope(p('d-ow-target'), p('u-ow'))
 
       const response = await app.handle(
-        new Request(`${BASE}/devices/${p('d-ow-target')}/envelope`, {
+        new Request(`${baseUrl}/devices/${p('d-ow-target')}/envelope`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -712,7 +712,7 @@ describe('Encryption API', () => {
       await insertCanaryWithSecret(p('u-rekey'))
 
       const response = await app.handle(
-        new Request(`${BASE}/devices/${p('d-rekey')}/envelope`, {
+        new Request(`${baseUrl}/devices/${p('d-rekey')}/envelope`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -749,7 +749,7 @@ describe('Encryption API', () => {
       await insertEnvelope(p('d-nodev-caller'), p('u-nodev'))
 
       const response = await app.handle(
-        new Request(`${BASE}/devices/${p('d-nonexistent')}/envelope`, {
+        new Request(`${baseUrl}/devices/${p('d-nonexistent')}/envelope`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -773,7 +773,7 @@ describe('Encryption API', () => {
       await insertEnvelope(p('d-nocaller-existing'), p('u-nocaller'))
 
       const response = await app.handle(
-        new Request(`${BASE}/devices/${p('d-nocaller-target')}/envelope`, {
+        new Request(`${baseUrl}/devices/${p('d-nocaller-target')}/envelope`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -797,7 +797,7 @@ describe('Encryption API', () => {
       await insertCanaryWithSecret(p('u-approve'))
 
       const response = await app.handle(
-        new Request(`${BASE}/devices/${p('d-approve-target')}/envelope`, {
+        new Request(`${baseUrl}/devices/${p('d-approve-target')}/envelope`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -833,7 +833,7 @@ describe('Encryption API', () => {
       await insertCanaryWithSecret(p('u-noproof'))
 
       const response = await app.handle(
-        new Request(`${BASE}/devices/${p('d-noproof-target')}/envelope`, {
+        new Request(`${baseUrl}/devices/${p('d-noproof-target')}/envelope`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -857,7 +857,7 @@ describe('Encryption API', () => {
       await insertCanaryWithSecret(p('u-badproof'))
 
       const response = await app.handle(
-        new Request(`${BASE}/devices/${p('d-badproof-target')}/envelope`, {
+        new Request(`${baseUrl}/devices/${p('d-badproof-target')}/envelope`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -882,7 +882,7 @@ describe('Encryption API', () => {
 
       // Pending device spoofs X-Device-ID to trusted device — but cannot provide canary secret
       const response = await app.handle(
-        new Request(`${BASE}/devices/${p('d-spoof-pending')}/envelope`, {
+        new Request(`${baseUrl}/devices/${p('d-spoof-pending')}/envelope`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -903,7 +903,7 @@ describe('Encryption API', () => {
       await insertDevice(p('d-canary'), p('u-canary'))
 
       const response = await app.handle(
-        new Request(`${BASE}/devices/${p('d-canary')}/envelope`, {
+        new Request(`${baseUrl}/devices/${p('d-canary')}/envelope`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -940,7 +940,7 @@ describe('Encryption API', () => {
 
       // Attacker tries first-device bootstrap with a fake canary secret
       const response = await app.handle(
-        new Request(`${BASE}/devices/${p('d-reboot')}/envelope`, {
+        new Request(`${baseUrl}/devices/${p('d-reboot')}/envelope`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -976,7 +976,7 @@ describe('Encryption API', () => {
 
       // Legitimate user re-bootstraps with the correct canary secret (e.g. from recovery key)
       const response = await app.handle(
-        new Request(`${BASE}/devices/${p('d-recover')}/envelope`, {
+        new Request(`${baseUrl}/devices/${p('d-recover')}/envelope`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -1016,7 +1016,7 @@ describe('Encryption API', () => {
       await insertCanaryWithSecret(p('u-cap'))
 
       const response = await app.handle(
-        new Request(`${BASE}/devices/${p('d-cap-pending')}/envelope`, {
+        new Request(`${baseUrl}/devices/${p('d-cap-pending')}/envelope`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -1044,7 +1044,7 @@ describe('Encryption API', () => {
       await insertCanaryWithSecret(p('u-undercap'))
 
       const response = await app.handle(
-        new Request(`${BASE}/devices/${p('d-undercap-pending')}/envelope`, {
+        new Request(`${baseUrl}/devices/${p('d-undercap-pending')}/envelope`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -1078,7 +1078,7 @@ describe('Encryption API', () => {
 
       // Self re-key on device 0 (caller === target)
       const response = await app.handle(
-        new Request(`${BASE}/devices/${p('d-rekey-cap-0')}/envelope`, {
+        new Request(`${baseUrl}/devices/${p('d-rekey-cap-0')}/envelope`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -1108,7 +1108,7 @@ describe('Encryption API', () => {
       await insertDevice(p('d-noow-target'), p('u-noow'))
 
       const response = await app.handle(
-        new Request(`${BASE}/devices/${p('d-noow-target')}/envelope`, {
+        new Request(`${baseUrl}/devices/${p('d-noow-target')}/envelope`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -1139,7 +1139,7 @@ describe('Encryption API', () => {
 
   describe('GET /devices/me/envelope', () => {
     it('returns 401 without auth', async () => {
-      const response = await app.handle(new Request(`${BASE}/devices/me/envelope`))
+      const response = await app.handle(new Request(`${baseUrl}/devices/me/envelope`))
       expect(response.status).toBe(401)
     })
 
@@ -1147,7 +1147,7 @@ describe('Encryption API', () => {
       await createUserAndSession(p('u-me1'), p('tok-me1'))
 
       const response = await app.handle(
-        new Request(`${BASE}/devices/me/envelope`, {
+        new Request(`${baseUrl}/devices/me/envelope`, {
           headers: { Authorization: `Bearer ${signToken(p('tok-me1'))}` },
         }),
       )
@@ -1163,7 +1163,7 @@ describe('Encryption API', () => {
       await insertEnvelope(p('d-me2'), p('u-me2'), 'my-wrapped-ck')
 
       const response = await app.handle(
-        new Request(`${BASE}/devices/me/envelope`, {
+        new Request(`${baseUrl}/devices/me/envelope`, {
           headers: {
             Authorization: `Bearer ${signToken(p('tok-me2'))}`,
             'X-Device-ID': p('d-me2'),
@@ -1184,7 +1184,7 @@ describe('Encryption API', () => {
       await insertEnvelope(p('d-me3'), p('u-me3b'))
 
       const response = await app.handle(
-        new Request(`${BASE}/devices/me/envelope`, {
+        new Request(`${baseUrl}/devices/me/envelope`, {
           headers: {
             Authorization: `Bearer ${signToken(p('tok-me3a'))}`,
             'X-Device-ID': p('d-me3'),
@@ -1202,7 +1202,7 @@ describe('Encryption API', () => {
       await insertDevice(p('d-me4'), p('u-me4'), { revokedAt: now })
 
       const response = await app.handle(
-        new Request(`${BASE}/devices/me/envelope`, {
+        new Request(`${baseUrl}/devices/me/envelope`, {
           headers: {
             Authorization: `Bearer ${signToken(p('tok-me4'))}`,
             'X-Device-ID': p('d-me4'),
@@ -1220,7 +1220,7 @@ describe('Encryption API', () => {
       await insertDevice(p('d-me5'), p('u-me5'))
 
       const response = await app.handle(
-        new Request(`${BASE}/devices/me/envelope`, {
+        new Request(`${baseUrl}/devices/me/envelope`, {
           headers: {
             Authorization: `Bearer ${signToken(p('tok-me5'))}`,
             'X-Device-ID': p('d-me5'),
@@ -1237,7 +1237,7 @@ describe('Encryption API', () => {
       await createUserAndSession(p('u-me6'), p('tok-me6'))
 
       const response = await app.handle(
-        new Request(`${BASE}/devices/me/envelope`, {
+        new Request(`${baseUrl}/devices/me/envelope`, {
           headers: {
             Authorization: `Bearer ${signToken(p('tok-me6'))}`,
             'X-Device-ID': p('d-ghost'),
@@ -1255,7 +1255,7 @@ describe('Encryption API', () => {
 
   describe('GET /encryption/canary', () => {
     it('returns 401 without auth', async () => {
-      const response = await app.handle(new Request(`${BASE}/encryption/canary`))
+      const response = await app.handle(new Request(`${baseUrl}/encryption/canary`))
       expect(response.status).toBe(401)
     })
 
@@ -1264,7 +1264,7 @@ describe('Encryption API', () => {
       await insertCanary(p('u-can1'), 'stored-iv', 'stored-ctext')
 
       const response = await app.handle(
-        new Request(`${BASE}/encryption/canary`, {
+        new Request(`${baseUrl}/encryption/canary`, {
           headers: { Authorization: `Bearer ${signToken(p('tok-can1'))}` },
         }),
       )
@@ -1279,7 +1279,7 @@ describe('Encryption API', () => {
       await createUserAndSession(p('u-can2'), p('tok-can2'))
 
       const response = await app.handle(
-        new Request(`${BASE}/encryption/canary`, {
+        new Request(`${baseUrl}/encryption/canary`, {
           headers: { Authorization: `Bearer ${signToken(p('tok-can2'))}` },
         }),
       )
@@ -1299,7 +1299,7 @@ describe('Encryption API', () => {
       await insertDevice(p('d-deny-nobody-target'), p('u-deny-nobody'))
 
       const response = await app.handle(
-        new Request(`${BASE}/devices/${p('d-deny-nobody-target')}/deny`, {
+        new Request(`${baseUrl}/devices/${p('d-deny-nobody-target')}/deny`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -1319,7 +1319,7 @@ describe('Encryption API', () => {
       await insertCanaryWithSecret(p('u-deny-bad'))
 
       const response = await app.handle(
-        new Request(`${BASE}/devices/${p('d-deny-bad-target')}/deny`, {
+        new Request(`${baseUrl}/devices/${p('d-deny-bad-target')}/deny`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -1342,7 +1342,7 @@ describe('Encryption API', () => {
       await insertCanaryWithSecret(p('u-deny-ok'))
 
       const response = await app.handle(
-        new Request(`${BASE}/devices/${p('d-deny-ok-target')}/deny`, {
+        new Request(`${baseUrl}/devices/${p('d-deny-ok-target')}/deny`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',

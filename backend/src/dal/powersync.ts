@@ -31,7 +31,7 @@ type PowerSyncOperation = {
 }
 
 /** DB column names that use Drizzle timestamp(); JSON sends them as ISO strings, so we convert to Date. */
-const TIMESTAMP_DB_COLUMNS = new Set(['deleted_at', 'last_seen', 'created_at', 'revoked_at', 'updated_at'])
+const timestampDbColumns = new Set(['deleted_at', 'last_seen', 'created_at', 'revoked_at', 'updated_at'])
 
 /**
  * Convert payload with DB column names to schema keys and filter to valid columns only.
@@ -44,11 +44,13 @@ const toSchemaRecord = (
 ): Record<string, unknown> => {
   const out: Record<string, unknown> = {}
   for (const [dbName, value] of Object.entries(dbRecord)) {
-    if (!validDbNames.has(dbName)) continue
+    if (!validDbNames.has(dbName)) {
+      continue
+    }
     const schemaKey = dbNameToKey[dbName]
     if (schemaKey && value !== undefined) {
       let mapped = value
-      if (TIMESTAMP_DB_COLUMNS.has(dbName) && typeof value === 'string') {
+      if (timestampDbColumns.has(dbName) && typeof value === 'string') {
         const d = new Date(value)
         mapped = Number.isNaN(d.getTime()) ? value : d
       }
@@ -76,7 +78,9 @@ export const applyOperation = async (
   const dbNameToKey = powersyncDbNameToSchemaKey[tableName]
   const pkColumn = powersyncPkColumn[tableName]
   const conflictTarget = powersyncConflictTarget[tableName]
-  if (!table || !dbNameToKey || !pkColumn || !conflictTarget) return false
+  if (!table || !dbNameToKey || !pkColumn || !conflictTarget) {
+    return false
+  }
 
   const validDbNames = new Set(Object.keys(dbNameToKey))
   const tableWithUserId = table as AnyPgTable & { userId: typeof table.userId }
@@ -86,10 +90,14 @@ export const applyOperation = async (
       const payload = { ...(op.data ?? {}) } as Record<string, unknown>
       delete payload.id
       delete payload.user_id
-      for (const col of uploadDenyColumns[tableName] ?? []) delete payload[col]
+      for (const col of uploadDenyColumns[tableName] ?? []) {
+        delete payload[col]
+      }
       const rawData: Record<string, unknown> = { ...payload, id: op.id, user_id: userId }
       const schemaValues = toSchemaRecord(rawData, validDbNames, dbNameToKey)
-      if (Object.keys(schemaValues).length === 0) return false
+      if (Object.keys(schemaValues).length === 0) {
+        return false
+      }
 
       const updateSet = { ...schemaValues }
       delete updateSet.id
@@ -115,9 +123,13 @@ export const applyOperation = async (
       const patchPayload = { ...op.data } as Record<string, unknown>
       delete patchPayload.id
       delete patchPayload.user_id
-      for (const col of uploadDenyColumns[tableName] ?? []) delete patchPayload[col]
+      for (const col of uploadDenyColumns[tableName] ?? []) {
+        delete patchPayload[col]
+      }
       const schemaPatch = toSchemaRecord(patchPayload, validDbNames, dbNameToKey)
-      if (Object.keys(schemaPatch).length === 0) return false
+      if (Object.keys(schemaPatch).length === 0) {
+        return false
+      }
 
       const patched = await database
         .update(table)
@@ -128,7 +140,9 @@ export const applyOperation = async (
       return patched.length > 0
     }
     case 'DELETE': {
-      if (uploadDenyDelete.has(tableName)) return false
+      if (uploadDenyDelete.has(tableName)) {
+        return false
+      }
 
       const deleted = await database
         .delete(table)

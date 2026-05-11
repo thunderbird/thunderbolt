@@ -35,7 +35,7 @@ import { WaitlistLayout, WaitlistPage } from '@/waitlist'
 import AutomationsPage from './automations'
 import { useTriggerScheduler } from './automations/use-trigger-scheduler'
 import { AppErrorScreen } from './components/app-error-screen'
-import { AuthGate } from './components/auth-gate'
+import { AnonymousSessionGuard, AuthGate } from './components/auth-gate'
 import NotFound from './components/not-found'
 import { OnboardingDialog } from './components/onboarding/onboarding-dialog'
 import { WelcomeDialog } from './components/welcome-dialog'
@@ -133,52 +133,55 @@ const AppRoutes = ({ initData }: { initData: InitData }) => {
           )
         }
       >
-        <Route
-          path="/"
-          element={
-            <>
-              <Layout />
-              <OnboardingDialog />
-              <WelcomeDialog />
-            </>
-          }
-        >
-          {/* Home routes with HomeLayout */}
-          <Route element={<ChatLayout />}>
-            <Route index element={<Navigate to="/chats/new" replace />} />
-            <Route path="chats/:chatThreadId" element={<ChatDetailPage />} />
-            {experimentalFeatureTasks.value && <Route path="tasks" element={<TasksPage />} />}
-            <Route path="automations" element={<AutomationsPage />} />
-            {import.meta.env.DEV && (
-              <Route
-                path="message-simulator"
-                element={
-                  <Suspense>
-                    <MessageSimulatorPage />
-                  </Suspense>
-                }
-              />
-            )}
-          </Route>
+        {/* Identity layer: ensure a session exists past the access gate, creating anonymous if needed. */}
+        <Route element={<AnonymousSessionGuard />}>
+          <Route
+            path="/"
+            element={
+              <>
+                <Layout />
+                <OnboardingDialog />
+                <WelcomeDialog />
+              </>
+            }
+          >
+            {/* Home routes with HomeLayout */}
+            <Route element={<ChatLayout />}>
+              <Route index element={<Navigate to="/chats/new" replace />} />
+              <Route path="chats/:chatThreadId" element={<ChatDetailPage />} />
+              {experimentalFeatureTasks.value && <Route path="tasks" element={<TasksPage />} />}
+              <Route path="automations" element={<AutomationsPage />} />
+              {import.meta.env.DEV && (
+                <Route
+                  path="message-simulator"
+                  element={
+                    <Suspense>
+                      <MessageSimulatorPage />
+                    </Suspense>
+                  }
+                />
+              )}
+            </Route>
 
-          {/* Settings routes with SettingsLayout */}
-          <Route path="settings" element={<SettingsLayout />}>
-            <Route index element={<Settings />} />
-            <Route path="preferences" element={<PreferencesSettingsPage />} />
-            <Route path="models" element={<ModelsPage />} />
-            <Route path="devices" element={<DevicesSettingsPage />} />
-            <Route path="mcp-servers" element={<McpServersPage />} />
-            <Route path="integrations" element={<IntegrationsPage />} />
-            {import.meta.env.DEV && (
-              <Route
-                path="dev-settings"
-                element={
-                  <Suspense>
-                    <DevSettingsPage />
-                  </Suspense>
-                }
-              />
-            )}
+            {/* Settings routes with SettingsLayout */}
+            <Route path="settings" element={<SettingsLayout />}>
+              <Route index element={<Settings />} />
+              <Route path="preferences" element={<PreferencesSettingsPage />} />
+              <Route path="models" element={<ModelsPage />} />
+              <Route path="devices" element={<DevicesSettingsPage />} />
+              <Route path="mcp-servers" element={<McpServersPage />} />
+              <Route path="integrations" element={<IntegrationsPage />} />
+              {import.meta.env.DEV && (
+                <Route
+                  path="dev-settings"
+                  element={
+                    <Suspense>
+                      <DevSettingsPage />
+                    </Suspense>
+                  }
+                />
+              )}
+            </Route>
           </Route>
         </Route>
       </Route>

@@ -252,7 +252,7 @@ export const App = () => {
   }
 
   return (
-    <ThemeProvider defaultTheme="system">
+    <ThemeProvider>
       {renderAppContent()}
       <RevokedDeviceModal open={revokedDeviceOpen} />
     </ThemeProvider>

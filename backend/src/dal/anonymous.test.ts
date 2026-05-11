@@ -21,7 +21,7 @@ import { eq, getTableName } from 'drizzle-orm'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import {
   AnonymousRowCapExceededError,
-  EXCLUDED_FROM_MIGRATION,
+  excludedFromMigration,
   assertAnonymousRowCountUnderCap,
   isTransientDbError,
   migrateAnonymousUserData,
@@ -107,14 +107,14 @@ describe('anonymous DAL', () => {
 
   // -------------------------------------------------------------------------
   describe('schema-drift test — tablesToMigrate registry', () => {
-    it('covers every powersync table not in EXCLUDED_FROM_MIGRATION', () => {
-      const expected = powersyncTableNames.filter((name) => !EXCLUDED_FROM_MIGRATION.has(name))
+    it('covers every powersync table not in excludedFromMigration', () => {
+      const expected = powersyncTableNames.filter((name) => !excludedFromMigration.has(name))
       const registered: Set<string> = new Set(tablesToMigrate.map((t) => getTableName(t)))
       const missing = expected.filter((name) => !registered.has(name))
       expect(missing).toEqual(
         // prettier-ignore
         /** If this fails, either add the new table to `tablesToMigrate`, or add it to
-         * `EXCLUDED_FROM_MIGRATION` with a comment explaining why anonymous users
+         * `excludedFromMigration` with a comment explaining why anonymous users
          * can't have rows in it. */
         [],
       )

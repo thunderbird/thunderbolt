@@ -17,7 +17,7 @@ export type AnonymousPromotionAnalytics = {
 }
 
 // Module-private sessionStorage key shared with the SSO bridge.
-export const PENDING_ANON_ID_KEY = 'thunderbolt_pending_anon_id'
+export const pendingAnonIdKey = 'thunderbolt_pending_anon_id'
 
 // Module-private posthog alias helper — the ONLY site in the codebase allowed to call alias.
 // Uses top-level import; posthog-js is in the project. If the client was never initialized
@@ -49,7 +49,7 @@ export const createAnonymousPromotionAnalytics = (capturedIdRef: {
     if (!anonId) {
       return
     }
-    sessionStorage.setItem(PENDING_ANON_ID_KEY, anonId)
+    sessionStorage.setItem(pendingAnonIdKey, anonId)
   },
 
   onPromotionSuccess: (newUserId: string) => {

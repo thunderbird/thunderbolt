@@ -4,7 +4,7 @@
 
 import posthog from 'posthog-js'
 import { trackEvent } from '@/lib/posthog'
-import { PENDING_ANON_ID_KEY } from './use-anonymous-promotion-analytics'
+import { pendingAnonIdKey } from './use-anonymous-promotion-analytics'
 import type { AuthClient } from '@/contexts'
 
 /**
@@ -17,7 +17,7 @@ import type { AuthClient } from '@/contexts'
  * Mount once from `AuthProvider` using a ref guard to prevent StrictMode double-invocation.
  */
 export const consumePendingSsoAnonAlias = async (authClient: AuthClient): Promise<void> => {
-  const pendingAnonId = sessionStorage.getItem(PENDING_ANON_ID_KEY)
+  const pendingAnonId = sessionStorage.getItem(pendingAnonIdKey)
   if (!pendingAnonId) {
     return
   }
@@ -31,7 +31,7 @@ export const consumePendingSsoAnonAlias = async (authClient: AuthClient): Promis
 
   const newUserId = data.user.id
   if (newUserId === pendingAnonId) {
-    sessionStorage.removeItem(PENDING_ANON_ID_KEY)
+    sessionStorage.removeItem(pendingAnonIdKey)
     return
   }
 
@@ -42,5 +42,5 @@ export const consumePendingSsoAnonAlias = async (authClient: AuthClient): Promis
   }
 
   trackEvent('anonymous_user_promoted')
-  sessionStorage.removeItem(PENDING_ANON_ID_KEY)
+  sessionStorage.removeItem(pendingAnonIdKey)
 }

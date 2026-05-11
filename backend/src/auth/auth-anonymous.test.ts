@@ -174,7 +174,9 @@ describe('M3 anonymous plugin — transient retry (PG deadlock)', () => {
       } catch (err) {
         // Use err.cause ?? err (per M2 discovery — DrizzleQueryError wraps PG code)
         const cause = (err as { cause?: unknown }).cause ?? err
-        if (!anonymousDal.isTransientDbError(cause)) break
+        if (!anonymousDal.isTransientDbError(cause)) {
+          break
+        }
         await new Promise((r) => setTimeout(r, 10))
       }
     }
@@ -228,7 +230,9 @@ describe('M3 anonymous plugin — permanent failure recovery', () => {
       } catch (err) {
         lastError = err
         const cause = (err as { cause?: unknown }).cause ?? err
-        if (!anonymousDal.isTransientDbError(cause)) break
+        if (!anonymousDal.isTransientDbError(cause)) {
+          break
+        }
       }
     }
 

@@ -4,20 +4,16 @@
 
 import '@testing-library/jest-dom'
 import { cleanup, render, screen } from '@testing-library/react'
-import { afterAll, afterEach, beforeAll, describe, expect, it, mock } from 'bun:test'
+import { afterAll, afterEach, beforeAll, describe, expect, it } from 'bun:test'
 import { type ReactNode } from 'react'
 
 import { setupTestDatabase, teardownTestDatabase } from '@/dal/test-utils'
 import { createMockAuthClient } from '@/test-utils/auth-client'
 import { createTestProvider } from '@/test-utils/test-provider'
 
-// Mock only single-export leaf modules per docs/development/testing.md.
-// - SignInModal / SyncSetupModal are dialog components rendered by SignInModalProvider;
-//   we don't need to test the modal flows here.
-// - useIsMobile reads window.matchMedia, which is unreliable in happy-dom.
-mock.module('@/components/sign-in-modal', () => ({ SignInModal: () => null }))
-mock.module('@/components/sync-setup/sync-setup-modal', () => ({ SyncSetupModal: () => null }))
-mock.module('@/hooks/use-mobile', () => ({ useIsMobile: () => ({ isMobile: false }) }))
+// Per docs/development/testing.md: do NOT mock app-internal modules. Real implementations
+// are used via createTestProvider + SignInModalProvider + SidebarProvider. `posthog-js` is
+// globally mocked by src/testing-library.ts.
 
 import { SidebarProvider } from '@/components/ui/sidebar'
 import { SignInModalProvider } from '@/contexts'

@@ -4,7 +4,7 @@
 
 import '@testing-library/jest-dom'
 import { cleanup, render, screen } from '@testing-library/react'
-import { afterAll, afterEach, beforeAll, describe, expect, it, mock } from 'bun:test'
+import { afterAll, afterEach, beforeAll, describe, expect, it } from 'bun:test'
 import { type ReactNode } from 'react'
 import { MemoryRouter } from 'react-router'
 
@@ -12,11 +12,9 @@ import { setupTestDatabase, teardownTestDatabase } from '@/dal/test-utils'
 import { createMockAuthClient } from '@/test-utils/auth-client'
 import { createTestProvider } from '@/test-utils/test-provider'
 
-// Mock only single-export leaf modal components per docs/development/testing.md.
-// SignInModalProvider/SidebarProvider/LogoutModal pull these in but we never open them
-// in these tests.
-mock.module('@/components/sign-in-modal', () => ({ SignInModal: () => null }))
-mock.module('@/components/sync-setup/sync-setup-modal', () => ({ SyncSetupModal: () => null }))
+// Per docs/development/testing.md: do NOT mock app-internal modules. Real implementations
+// are used via createTestProvider + SignInModalProvider + SidebarProvider. Modal components
+// only render their dialog when `open={true}`, so leaving them real is harmless here.
 
 import { SidebarProvider } from '@/components/ui/sidebar'
 import { SignInModalProvider } from '@/contexts'

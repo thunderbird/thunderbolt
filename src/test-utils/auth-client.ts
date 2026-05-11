@@ -10,6 +10,7 @@ type MockAuthClientOptions = {
       id: string
       email: string
       name?: string
+      isAnonymous?: boolean
     }
   } | null
   isPending?: boolean

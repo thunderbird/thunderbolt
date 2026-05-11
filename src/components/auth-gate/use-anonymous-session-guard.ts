@@ -2,11 +2,9 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useAuth } from '@/contexts'
 import { getAuthToken } from '@/lib/auth-token'
-
-type Phase = 'idle' | 'trying' | 'done'
 
 export type AnonymousSessionGuardState = { status: 'loading' } | { status: 'ready' }
 
@@ -25,33 +23,36 @@ export const useAnonymousSessionGuard = (): AnonymousSessionGuardState => {
   const authClient = useAuth()
   const { data: session, isPending } = authClient.useSession()
   const hasToken = Boolean(getAuthToken())
-  const triedRef = useRef(false)
-  const [phase, setPhase] = useState<Phase>('idle')
+  const [hasAttempted, setHasAttempted] = useState(false)
 
   useEffect(() => {
-    if (triedRef.current || isPending || session?.user || hasToken) {
+    if (isPending || session?.user || hasToken || hasAttempted) {
       return
     }
-    triedRef.current = true
-    setPhase('trying')
-    // Silent failure by design — downstream features (chat etc.) surface their own
-    // errors when invoked without a session. The catch covers thrown rejections;
-    // Better Auth's resolved `{ error }` path is also intentionally a no-op here.
+    let ignore = false
     void (async () => {
       try {
         await authClient.signIn.anonymous()
       } catch {
-        // intentional no-op
+        // silent failure by design — downstream features surface their own errors
       } finally {
-        setPhase('done')
+        if (!ignore) {
+          setHasAttempted(true)
+        }
       }
     })()
-  }, [isPending, session?.user, hasToken, authClient])
+    return () => {
+      ignore = true
+    }
+  }, [isPending, session?.user, hasToken, hasAttempted, authClient])
 
-  if (phase === 'trying') {
+  if (isPending && !hasToken && !session?.user) {
     return { status: 'loading' }
   }
-  if (isPending && !hasToken && !session?.user) {
+  // "About to fire" or "currently firing" — both derive from observable state during
+  // render, eliminating the mount→unmount→remount gap caused by deferring this decision
+  // to the post-commit effect.
+  if (!hasAttempted && !session?.user && !hasToken) {
     return { status: 'loading' }
   }
   return { status: 'ready' }

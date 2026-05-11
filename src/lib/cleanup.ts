@@ -6,6 +6,7 @@ import { setSyncEnabled } from '@/db/powersync'
 import { clearAuthToken, clearDeviceId } from '@/lib/auth-token'
 import { resetAppDir } from '@/lib/fs'
 import { handleFullWipe } from '@/services/encryption'
+import { initialLocalSettings, useLocalSettingsStore } from '@/stores/local-settings-store'
 
 type ClearLocalDataOptions = {
   /** Disable PowerSync sync connection (default: true) */
@@ -49,6 +50,9 @@ export const clearLocalData = async (options?: ClearLocalDataOptions): Promise<v
     } catch (error) {
       console.error('[clearLocalData] Failed to reset app directory:', error)
     }
+
+    // Reset local settings to defaults (previously these lived in the DB and were deleted with it)
+    useLocalSettingsStore.setState(initialLocalSettings)
   }
 
   if (clearAuth) {

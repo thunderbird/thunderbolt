@@ -77,8 +77,15 @@ describe('PreferencesSettingsPage — sync toggle gating', () => {
     expect(screen.getByText('Delete All Local Data')).toBeInTheDocument()
   })
 
-  it('shows Delete My Account for anonymous users (R-23)', () => {
+  it('hides Delete My Account for anonymous users (no real account exists to delete)', () => {
     const authClient = createMockAuthClient({ session: anonSession })
+    renderPage(authClient)
+
+    expect(screen.queryByText('Delete My Account')).toBeNull()
+  })
+
+  it('shows Delete My Account for authenticated (non-anonymous) users', () => {
+    const authClient = createMockAuthClient({ session: authedSession })
     renderPage(authClient)
 
     expect(screen.getByText('Delete My Account')).toBeInTheDocument()

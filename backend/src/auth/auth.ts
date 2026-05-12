@@ -13,7 +13,6 @@ import {
   markUserNotNew,
   validateOtpChallenge,
 } from '@/dal'
-import { migrateAnonymousUserData, assertAnonymousRowCountUnderCap, isTransientDbError } from '@/dal/anonymous'
 import type { db as DbType } from '@/db/client'
 import * as schema from '@/db/schema'
 import { normalizeEmail } from '@/lib/email'
@@ -30,11 +29,6 @@ import { buildVerifyUrl, parseTrustedOrigins, sendSignInEmail } from './utils'
 import { eq } from 'drizzle-orm'
 
 const otpSignInPath = '/sign-in/email-otp'
-
-// Retry tuning constants for anonymous promotion (M3).
-// Increase anonymousPromotionMaxAttempts if transient error rates rise above 1%.
-const anonymousPromotionMaxAttempts = 3
-const anonymousPromotionBackoffMs = 100
 
 /**
  * Create a Better Auth instance with the provided database
@@ -335,80 +329,13 @@ export const createAuth = (database: typeof DbType) => {
           await sendSignInEmail({ email: normalizedEmail, otp, verifyUrl })
         },
       }),
-      // Anonymous sessions plugin (THU-383).
-      //
-      // `disableDeleteAnonymousUser: true` is INTENTIONAL and MUST NOT be removed.
-      // Reasons:
-      //   1. We own the anonymous-user delete ourselves inside `onLinkAccount`'s transaction
-      //      so that migration + delete are atomic. Letting the plugin delete outside our tx
-      //      would create a window where migration succeeds but anon-user delete fails,
-      //      leaving a ghost anon-user record.
-      //   2. This flag also disables the `/delete-anonymous-user` endpoint, which removes
-      //      an unauthenticated CSRF surface (external-3).
-      //
-      // Better Auth v1.6.9 library validation (N-1 confirmed):
-      // The after-hook for linkAccount reads:
-      //   `if (options?.disableDeleteAnonymousUser || isSameUser || newSessionIsAnonymous) return`
-      // The disable flag is the FIRST check — no eager `getUser(anonId)` occurs before it.
-      // Safe to keep this flag without paying the cost of an extra round-trip.
       anonymous({
-        disableDeleteAnonymousUser: true, // We own the in-tx delete — see comment above
-        onLinkAccount: async ({ anonymousUser, newUser, ctx }) => {
-          let lastError: unknown
-          for (let attempt = 0; attempt < anonymousPromotionMaxAttempts; attempt++) {
-            try {
-              await database.transaction(async (tx) => {
-                // N-3: cap check INSIDE the same tx for snapshot atomicity — must not be
-                // moved outside the transaction boundary.
-                // Cast tx: Drizzle transactions are structurally compatible with
-                // the DB type for DML operations. The M2 DAL types the param as
-                // `typeof DbType` (which includes `$client` from the driver instance).
-                // Transactions omit `$client`, but all actual query operations work.
-                const txDb = tx as unknown as typeof database
-                await assertAnonymousRowCountUnderCap(txDb, anonymousUser.user.id, 10000)
-                await migrateAnonymousUserData(txDb, anonymousUser.user.id, newUser.user.id)
-                // We own the anonymous-user delete (disableDeleteAnonymousUser: true).
-                // In-tx so migration + delete are atomic; on rollback both revert.
-                // SAFE: migrateAnonymousUserData (above) re-keys ALL FK-referencing rows to
-                // newUser.id BEFORE this DELETE. Every PowerSync table has ON DELETE CASCADE
-                // on user.id — that cascade is what makes this DELETE safe within the same
-                // tx: there are no rows left to cascade-wipe because the UPDATE already
-                // moved them. DO NOT REORDER (DELETE-before-UPDATE would cascade-wipe content).
-                await tx.delete(schema.user).where(eq(schema.user.id, anonymousUser.user.id))
-              })
-              return
-            } catch (err) {
-              lastError = err
-              // DrizzleQueryError wraps the PG error code in err.cause.code, not err.code
-              // (M2 discovery). Pass err.cause ?? err so isTransientDbError sees the right shape.
-              const cause = (err as { cause?: unknown }).cause ?? err
-              if (!isTransientDbError(cause)) {
-                break
-              }
-              await new Promise((r) => setTimeout(r, anonymousPromotionBackoffMs * (attempt + 1)))
-            }
-          }
-
-          // Permanent failure (option c): delete the brand-new real user, rethrow so
-          // the client receives an error and the user remains anonymous. They can retry
-          // OTP sign-in cleanly — their anonymous session is intact.
-          console.error('[ANON-PROMOTE-FAIL]', {
-            anonId: anonymousUser.user.id,
-            newId: newUser.user.id,
-            // Log message only — never log email or other PII here.
-            error: lastError instanceof Error ? lastError.message : String(lastError),
-          })
-          try {
-            await ctx.context.internalAdapter.deleteUser(newUser.user.id)
-          } catch (cleanupErr) {
-            // Both the migration AND the cleanup failed — ops must intervene manually.
-            // The new user record is now orphaned; see runbook in docs/architecture/e2e-encryption.md.
-            console.error('[ANON-PROMOTE-CATASTROPHIC]', {
-              newId: newUser.user.id,
-              error: cleanupErr instanceof Error ? cleanupErr.message : String(cleanupErr),
-            })
-          }
-          throw lastError
+        // Disables Better Auth's auto-delete + `/delete-anonymous-user` endpoint — the
+        // latter is an unauthenticated CSRF surface (external-3). We own the delete in
+        // onLinkAccount instead so the endpoint stays closed.
+        disableDeleteAnonymousUser: true,
+        onLinkAccount: async ({ anonymousUser }) => {
+          await database.delete(schema.user).where(eq(schema.user.id, anonymousUser.user.id))
         },
       }),
       ...buildSsoPlugins(),

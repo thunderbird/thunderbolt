@@ -11,6 +11,7 @@ import { generateCodeChallenge, generateCodeVerifier } from '@/lib/pkce'
 import type { ReturnContext } from '@/lib/oauth-state'
 import { isMobile, isTauri } from '@/lib/platform'
 import { openUrl } from '@tauri-apps/plugin-opener'
+import { useQueryClient } from '@tanstack/react-query'
 import { useEffect, useRef, useState } from 'react'
 import { v4 as uuidv4 } from 'uuid'
 
@@ -93,6 +94,7 @@ const getInitialConnectingState = (key: string | undefined): boolean => {
 export const useOAuthConnect = (options: UseOAuthConnectOptions = {}): UseOAuthConnectResult => {
   const db = useDatabase()
   const httpClient = useHttpClient()
+  const queryClient = useQueryClient()
   const {
     connectingKey,
     onSuccess,
@@ -149,6 +151,7 @@ export const useOAuthConnect = (options: UseOAuthConnectOptions = {}): UseOAuthC
     }
 
     await saveIntegrationCredentials(db, provider, credentials, true)
+    await queryClient.invalidateQueries({ queryKey: ['integrationStatus'] })
 
     if (setPreferredName && userInfo.name) {
       await updateSettings(db, { preferred_name: userInfo.name })

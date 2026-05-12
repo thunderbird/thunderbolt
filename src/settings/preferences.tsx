@@ -717,7 +717,7 @@ export default function PreferencesSettingsPage() {
             </>
           )}
 
-          {isAuthenticated && (
+          {isAuthenticated && !isAnonymous && (
             <>
               <div className="h-px bg-border -mx-6" />
 

@@ -8,7 +8,7 @@ import { setSyncEnabled } from '@/db/powersync'
 import { powersyncCredentialsInvalid } from '@/db/powersync/connector'
 import type { CredentialsInvalidReason } from '@/db/powersync/connector'
 import { showRevokedDeviceModalEvent, showSignInModalEvent, signInSuccessEvent } from '@/hooks/use-credential-events'
-import { clearAuthToken, getAuthToken, getDeviceId, onAuthTokenChangedInOtherTab } from '@/lib/auth-token'
+import { clearAuthToken, getAuthToken, getDeviceId } from '@/lib/auth-token'
 import { clearLocalData } from '@/lib/cleanup'
 import { toCompilableQuery } from '@powersync/drizzle-driver'
 import { useQuery } from '@powersync/tanstack-react-query'
@@ -101,24 +101,6 @@ export const usePowerSyncCredentialsInvalidListener = (): void => {
 
     window.addEventListener(powersyncCredentialsInvalid, handler)
     return () => window.removeEventListener(powersyncCredentialsInvalid, handler)
-  }, [])
-
-  // Cross-tab token change listener (legitimate useEffect use per CLAUDE.md: "DOM event listeners
-  // with cleanup"). Handles two scenarios from another tab:
-  //   - Token rotated (next truthy, changed): reload to pick up the new session identity.
-  //   - Token cleared (next falsy, prev truthy): sign-out in another tab → dispatch
-  //     powersync_credentials_invalid with reason 'session_expired' so the existing handler
-  //     above shows the sign-in modal (same flow as a 401 response).
-  useEffect(() => {
-    return onAuthTokenChangedInOtherTab((next, prev) => {
-      if (next && next !== prev) {
-        window.location.reload()
-        return
-      }
-      if (!next && prev) {
-        window.dispatchEvent(new CustomEvent(powersyncCredentialsInvalid, { detail: { reason: 'session_expired' } }))
-      }
-    })
   }, [])
 
   // After successful re-authentication, allow a future session expiry to re-trigger the modal.

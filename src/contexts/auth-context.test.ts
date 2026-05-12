@@ -2,9 +2,27 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { setupTestDatabase, teardownTestDatabase } from '@/dal/test-utils'
+import { powersyncCredentialsInvalid } from '@/db/powersync/connector'
 import { clearAuthToken, getAuthToken, setAuthToken } from '@/lib/auth-token'
-import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
+import { createMockAuthClient } from '@/test-utils/auth-client'
+import { createTestProvider } from '@/test-utils/test-provider'
+import { cleanup, render } from '@testing-library/react'
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, mock } from 'bun:test'
 import { buildFetchOptions } from './auth-context'
+
+const authTokenKey = 'thunderbolt_auth_token'
+
+const fireStorageEvent = (newValue: string | null, oldValue: string | null) => {
+  window.dispatchEvent(
+    new StorageEvent('storage', {
+      key: authTokenKey,
+      newValue,
+      oldValue,
+      storageArea: localStorage,
+    }),
+  )
+}
 
 const originalDispatch = window.dispatchEvent
 
@@ -55,5 +73,70 @@ describe('buildFetchOptions onError', () => {
 
     expect(getAuthToken()).toBe('valid-token')
     expect(dispatchSpy).not.toHaveBeenCalled()
+  })
+})
+
+describe('AuthProvider — cross-tab auth-token listener', () => {
+  beforeAll(async () => {
+    await setupTestDatabase()
+  })
+
+  afterAll(async () => {
+    await teardownTestDatabase()
+  })
+
+  let reloadSpy: ReturnType<typeof mock>
+  let capturedEvents: CustomEvent[] = []
+  const originalReload = window.location.reload
+
+  const handleCapturedEvent = (e: Event) => {
+    capturedEvents.push(e as CustomEvent)
+  }
+
+  beforeEach(() => {
+    capturedEvents = []
+    reloadSpy = mock(() => {})
+    Object.defineProperty(window.location, 'reload', {
+      configurable: true,
+      value: reloadSpy,
+    })
+    window.addEventListener(powersyncCredentialsInvalid, handleCapturedEvent)
+    clearAuthToken()
+  })
+
+  afterEach(() => {
+    window.removeEventListener(powersyncCredentialsInvalid, handleCapturedEvent)
+    Object.defineProperty(window.location, 'reload', {
+      configurable: true,
+      value: originalReload,
+    })
+    cleanup()
+    clearAuthToken()
+  })
+
+  const renderAuthProvider = () => {
+    const authClient = createMockAuthClient({ session: null })
+    const TestProvider = createTestProvider({ authClient })
+    return render(null, { wrapper: TestProvider })
+  }
+
+  it('reloads when another tab rotates the token (newValue truthy and different)', () => {
+    renderAuthProvider()
+
+    fireStorageEvent('new-token', 'old-token')
+
+    expect(reloadSpy).toHaveBeenCalledTimes(1)
+    expect(capturedEvents).toHaveLength(0)
+  })
+
+  it('dispatches session_expired when another tab clears the token', () => {
+    renderAuthProvider()
+
+    fireStorageEvent(null, 'old-token')
+
+    expect(reloadSpy).not.toHaveBeenCalled()
+    expect(capturedEvents).toHaveLength(1)
+    expect(capturedEvents[0].type).toBe(powersyncCredentialsInvalid)
+    expect(capturedEvents[0].detail).toEqual({ reason: 'session_expired' })
   })
 })

@@ -10,13 +10,14 @@ import type { ChatThread } from '@/layout/sidebar/types'
 const makeModel = (overrides: Partial<Model> & { id: string; name: string }): Model =>
   ({
     model: 'test-model',
-    provider: 'test',
+    provider: 'thunderbolt',
     enabled: 1,
     toolUsage: 'auto',
     isConfidential: 0,
     startWithReasoning: 0,
     supportsParallelToolCalls: 1,
     isSystem: 1,
+    apiKey: null,
     ...overrides,
   }) as Model
 

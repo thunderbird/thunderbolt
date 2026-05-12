@@ -35,7 +35,7 @@ import { useQuery } from '@powersync/tanstack-react-query'
 import { toCompilableQuery } from '@powersync/drizzle-driver'
 import { generateText } from 'ai'
 import { http } from '@/lib/http'
-import { Check, Cpu, Loader2, Lock, Plus, Trash2, X } from 'lucide-react'
+import { AlertTriangle, Check, Cpu, Loader2, Lock, Plus, Trash2, X } from 'lucide-react'
 import { useEffect, useMemo, useReducer, useRef, type KeyboardEvent } from 'react'
 import { useForm } from 'react-hook-form'
 import { v7 as uuidv7 } from 'uuid'
@@ -977,6 +977,18 @@ export default function ModelsPage() {
                               </TooltipTrigger>
                               <TooltipContent side="bottom">
                                 <p>Encrypted</p>
+                              </TooltipContent>
+                            </Tooltip>
+                          </TooltipProvider>
+                        )}
+                        {model.provider !== 'thunderbolt' && !model.apiKey && (
+                          <TooltipProvider>
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <AlertTriangle className="size-3.5 text-amber-500" />
+                              </TooltipTrigger>
+                              <TooltipContent side="bottom">
+                                <p>API key not configured</p>
                               </TooltipContent>
                             </Tooltip>
                           </TooltipProvider>

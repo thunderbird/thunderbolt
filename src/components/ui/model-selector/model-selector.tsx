@@ -4,11 +4,12 @@
 
 import { Button } from '@/components/ui/button'
 import { SearchableMenu, type SearchableMenuGroup, type SearchableMenuItem } from '@/components/ui/searchable-menu'
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 import { useHaptics } from '@/hooks/use-haptics'
 import { cn } from '@/lib/utils'
 import type { ChatThread } from '@/layout/sidebar/types'
 import type { Model } from '@/types'
-import { ChevronDown, Lock, Plus } from 'lucide-react'
+import { AlertTriangle, ChevronDown, Lock, Plus } from 'lucide-react'
 import { useCallback, useMemo } from 'react'
 
 export type ModelSelectorProps = {
@@ -24,6 +25,9 @@ export type ModelSelectorProps = {
 type ModelItemData = {
   model: Model
 }
+
+/** Models that are not Thunderbolt-hosted and have no local API key need configuration. */
+const needsApiKey = (model: Model) => model.provider !== 'thunderbolt' && !model.apiKey
 
 const toMenuItem = (model: Model, isDisabled: boolean): SearchableMenuItem<ModelItemData> => ({
   id: model.id,
@@ -45,10 +49,11 @@ export const categorizeModels = (
   const disabledStandard: SearchableMenuItem<ModelItemData>[] = []
 
   for (const model of models) {
-    const isDisabled = chatThread ? chatThread.isEncrypted !== model.isConfidential : false
+    const isDisabledByEncryption = chatThread ? chatThread.isEncrypted !== model.isConfidential : false
+    const isDisabled = isDisabledByEncryption || needsApiKey(model)
     const item = toMenuItem(model, isDisabled)
 
-    if (isDisabled) {
+    if (isDisabledByEncryption) {
       if (model.isConfidential === 1) {
         disabledConfidential.push(item)
       } else {
@@ -107,30 +112,52 @@ export const ModelSelector = ({
         isOpen ? 'bg-secondary' : 'hover:bg-secondary/50',
       )}
     >
-      {selected?.data?.model.isConfidential === 1 && <Lock className="size-3.5 text-muted-foreground" />}
+      {selected?.data?.model && needsApiKey(selected.data.model) ? (
+        <AlertTriangle className="size-3.5 text-amber-500" />
+      ) : selected?.data?.model.isConfidential === 1 ? (
+        <Lock className="size-3.5 text-muted-foreground" />
+      ) : null}
       <span className="font-medium">{selected?.label ?? 'Select Model'}</span>
       <ChevronDown className={cn('size-3.5 text-muted-foreground transition-transform', isOpen && 'rotate-180')} />
     </div>
   )
 
-  const renderItem = (item: SearchableMenuItem<ModelItemData>, isSelected: boolean) => (
-    <div
-      className={cn(
-        'w-full flex items-center justify-between px-3 py-2 rounded-lg transition-colors text-left cursor-pointer',
-        'hover:bg-accent/50',
-        isSelected && 'bg-accent',
-        item.disabled && 'opacity-50 cursor-not-allowed',
-      )}
-    >
-      <div className="flex flex-col gap-0.5 min-w-0">
-        <div className="flex items-center gap-2">
-          <span className="font-medium truncate">{item.label}</span>
-          {item.icon}
+  const renderItem = (item: SearchableMenuItem<ModelItemData>, isSelected: boolean) => {
+    const model = item.data?.model
+    const missingKey = model ? needsApiKey(model) : false
+
+    const content = (
+      <div
+        className={cn(
+          'w-full flex items-center justify-between px-3 py-2 rounded-lg transition-colors text-left cursor-pointer',
+          'hover:bg-accent/50',
+          isSelected && 'bg-accent',
+          item.disabled && 'opacity-50 cursor-not-allowed',
+        )}
+      >
+        <div className="flex flex-col gap-0.5 min-w-0">
+          <div className="flex items-center gap-2">
+            <span className="font-medium truncate">{item.label}</span>
+            {missingKey ? <AlertTriangle className="size-3.5 text-amber-500 flex-shrink-0" /> : item.icon}
+          </div>
+          <span className="text-sm text-muted-foreground truncate">{item.description}</span>
         </div>
-        <span className="text-sm text-muted-foreground truncate">{item.description}</span>
       </div>
-    </div>
-  )
+    )
+
+    if (missingKey) {
+      return (
+        <TooltipProvider>
+          <Tooltip>
+            <TooltipTrigger asChild>{content}</TooltipTrigger>
+            <TooltipContent side="right">API key not configured</TooltipContent>
+          </Tooltip>
+        </TooltipProvider>
+      )
+    }
+
+    return content
+  }
 
   const footer = onAddModels ? (
     <Button variant="ghost" onClick={onAddModels} className="w-full justify-start gap-2 text-muted-foreground">

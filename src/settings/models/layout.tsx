@@ -4,7 +4,7 @@
 
 import { Button } from '@/components/ui/button'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { Plus } from 'lucide-react'
+import { AlertTriangle, Plus } from 'lucide-react'
 import { Navigate, Outlet, useNavigate, useParams } from 'react-router'
 import { useDatabase } from '@/contexts'
 import { getAllModels } from '@/dal'
@@ -59,12 +59,17 @@ export default function ModelsLayout() {
         <SelectContent>
           {models.map((model) => (
             <SelectItem key={model.id} value={model.id}>
-              <p className="text-left">
-                {model.provider === 'thunderbolt' && 'Thunderbolt'}
-                {model.provider === 'openai' && 'OpenAI'}
-                {model.provider === 'openrouter' && 'OpenRouter'}
-                {model.provider === 'custom' && 'Custom'} - {model.model}
-              </p>
+              <div className="flex items-center gap-2 text-left">
+                {model.provider !== 'thunderbolt' && !model.apiKey && (
+                  <AlertTriangle className="size-3.5 text-amber-500 flex-shrink-0" />
+                )}
+                <p>
+                  {model.provider === 'thunderbolt' && 'Thunderbolt'}
+                  {model.provider === 'openai' && 'OpenAI'}
+                  {model.provider === 'openrouter' && 'OpenRouter'}
+                  {model.provider === 'custom' && 'Custom'} - {model.model}
+                </p>
+              </div>
             </SelectItem>
           ))}
         </SelectContent>

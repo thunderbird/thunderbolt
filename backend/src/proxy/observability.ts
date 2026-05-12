@@ -4,15 +4,37 @@
 
 /**
  * Universal proxy observability — emits a structured `proxy_request` /
- * `proxy_ws_relay` event per request, plus a privacy-mode PostHog
- * `$proxy_request` event. The full target URL never leaves this module —
- * only the hostname is recorded.
+ * `proxy_ws_relay` event per request through Pino, and sets matching
+ * attributes on the active OpenTelemetry span (so the proxy hop shows up in
+ * traces under the same parent Elysia span). The full target URL never leaves
+ * this module — only the hostname is recorded.
  *
- * Logger and PostHog client are passed in by dependency injection (see
- * createApp/AppDeps) so tests can substitute fakes without touching module
- * mocks. This avoids the test-pollution pattern the global Pino/PostHog
- * mocks would produce — see docs/development/testing.md.
+ * No PostHog: the proxy is infra plumbing, not a product event surface. Pino
+ * + OTel cover ops and incident response; product analytics shouldn't see
+ * per-request proxy traffic.
+ *
+ * Logger is passed in by dependency injection (see createApp/AppDeps) so tests
+ * can substitute a recorder fake without touching module mocks. This avoids
+ * the test-pollution pattern global Pino mocks would produce — see
+ * docs/development/testing.md.
  */
+
+import { trace } from '@opentelemetry/api'
+
+/**
+ * Categorised proxy failure modes. Tagged on every failure path so dashboards
+ * and alerts can distinguish a client-side mistake (`invalid_target`) from an
+ * upstream outage (`upstream_5xx`) from an exfiltration attempt (`ssrf`).
+ */
+export type ProxyErrorType =
+  | 'ssrf'
+  | 'dns_timeout'
+  | 'idle_timeout'
+  | 'cap_exceeded'
+  | 'upstream_5xx'
+  | 'upstream_4xx'
+  | 'auth_reject'
+  | 'invalid_target'
 
 export type ProxyEventBase = {
   method: string
@@ -20,9 +42,14 @@ export type ProxyEventBase = {
   target_host: string
   status: number
   duration_ms: number
+  /** Compressed bytes received from upstream (after `content-encoding`
+   *  passthrough — what the wire actually carried). */
+  bytes_in: number
+  /** Bytes sent to the caller after the proxy's body cap. */
+  bytes_out: number
   user_id: string
   request_id: string
-  error?: string
+  error_type?: ProxyErrorType
 }
 
 /** Minimal logger surface the proxy uses — narrower than Pino so tests
@@ -31,19 +58,19 @@ export type ProxyLogger = {
   info: (event: object) => void
 }
 
-/** Minimal PostHog client surface the proxy uses. */
-export type ProxyPostHog = {
-  capture: (call: { distinctId: string; event: string; properties: Record<string, unknown> }) => void
+export type ProxyRequestFields = Omit<ProxyEventBase, 'target_host'> & { target_url: string }
+
+export type ProxyWsRelayFields = Omit<ProxyEventBase, 'target_host' | 'status' | 'bytes_in' | 'bytes_out'> & {
+  target_url: string
+  close_code: number
+  /** Optional free-form failure reason (e.g. close-code label). Distinct from
+   *  `error_type` — WS relay doesn't always have a clean category. */
+  error?: string
 }
 
 export type ObservabilityRecorder = {
-  proxyRequest: (fields: Omit<ProxyEventBase, 'target_host'> & { target_url: string }) => void
-  proxyWsRelay: (
-    fields: Omit<ProxyEventBase, 'target_host' | 'status'> & {
-      target_url: string
-      close_code: number
-    },
-  ) => void
+  proxyRequest: (fields: ProxyRequestFields) => void
+  proxyWsRelay: (fields: ProxyWsRelayFields) => void
 }
 
 const safeHostname = (rawUrl: string): string => {
@@ -54,27 +81,25 @@ const safeHostname = (rawUrl: string): string => {
   }
 }
 
-/** Build a recorder bound to a specific logger + posthog client. Pass nulls
- *  to disable either output. */
-export const createObservabilityRecorder = (deps: {
-  logger: ProxyLogger | null
-  posthog: ProxyPostHog | null
-}): ObservabilityRecorder => {
+/** Set proxy-namespaced attributes on the active OTel span (if any). No-ops
+ *  cleanly when tracing isn't configured — `trace.getActiveSpan()` returns
+ *  undefined and the chained call short-circuits. */
+const recordSpanAttributes = (attrs: Record<string, string | number | undefined>) => {
+  const span = trace.getActiveSpan()
+  if (!span) return
+  const filtered: Record<string, string | number> = {}
+  for (const [key, value] of Object.entries(attrs)) {
+    if (value !== undefined) filtered[key] = value
+  }
+  span.setAttributes(filtered)
+}
+
+/** Build a recorder bound to a specific logger. Pass `null` to disable
+ *  logging (OTel attributes are still set on the active span). */
+export const createObservabilityRecorder = (deps: { logger: ProxyLogger | null }): ObservabilityRecorder => {
   const emitLog = (event: object) => {
     if (!deps.logger) return
     deps.logger.info(event)
-  }
-
-  const emitPostHog = (distinctId: string, properties: Record<string, unknown>, error?: string) => {
-    if (!deps.posthog) return
-    deps.posthog.capture({
-      distinctId,
-      event: '$proxy_request',
-      properties: {
-        ...properties,
-        ...(error ? { error_type: 'upstream_error' } : {}),
-      },
-    })
   }
 
   return {
@@ -86,21 +111,21 @@ export const createObservabilityRecorder = (deps: {
         target_host,
         status: fields.status,
         duration_ms: fields.duration_ms,
+        bytes_in: fields.bytes_in,
+        bytes_out: fields.bytes_out,
         user_id: fields.user_id,
         request_id: fields.request_id,
-        ...(fields.error ? { error: fields.error } : {}),
+        ...(fields.error_type ? { error_type: fields.error_type } : {}),
       })
-      emitPostHog(
-        fields.user_id,
-        {
-          target_host,
-          method: fields.method,
-          status: fields.status,
-          duration_ms: fields.duration_ms,
-          proxy_kind: 'http' as const,
-        },
-        fields.error,
-      )
+      recordSpanAttributes({
+        'proxy.target_host': target_host,
+        'proxy.method': fields.method,
+        'proxy.status': fields.status,
+        'proxy.duration_ms': fields.duration_ms,
+        'proxy.bytes_in': fields.bytes_in,
+        'proxy.bytes_out': fields.bytes_out,
+        'proxy.error_type': fields.error_type,
+      })
     },
     proxyWsRelay(fields) {
       const target_host = safeHostname(fields.target_url)
@@ -112,25 +137,19 @@ export const createObservabilityRecorder = (deps: {
         duration_ms: fields.duration_ms,
         user_id: fields.user_id,
         request_id: fields.request_id,
+        ...(fields.error_type ? { error_type: fields.error_type } : {}),
         ...(fields.error ? { error: fields.error } : {}),
       })
-      emitPostHog(
-        fields.user_id,
-        {
-          target_host,
-          method: 'WS',
-          status: fields.close_code,
-          duration_ms: fields.duration_ms,
-          proxy_kind: 'ws' as const,
-        },
-        fields.error,
-      )
+      recordSpanAttributes({
+        'proxy.target_host': target_host,
+        'proxy.method': 'WS',
+        'proxy.status': fields.close_code,
+        'proxy.duration_ms': fields.duration_ms,
+        'proxy.error_type': fields.error_type,
+      })
     },
   }
 }
 
 /** No-op recorder for tests/contexts that don't care about observability. */
-export const noopObservability: ObservabilityRecorder = createObservabilityRecorder({
-  logger: null,
-  posthog: null,
-})
+export const noopObservability: ObservabilityRecorder = createObservabilityRecorder({ logger: null })

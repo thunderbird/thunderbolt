@@ -610,4 +610,174 @@ describe('createUniversalProxyRoutes', () => {
     expect(res.status).toBe(401)
     expect(mockFetch).not.toHaveBeenCalled()
   })
+
+  // ---------------------------------------------------------------------------
+  // content-encoding passthrough — `decompress: false` on the upstream call
+  // (Italo review item, perf-only — preserves gzip/br bytes for the browser).
+  // ---------------------------------------------------------------------------
+
+  it('passes `decompress: false` to the upstream fetch so encoded bodies stream through', async () => {
+    const target = 'https://example.com/resource'
+    await app.handle(proxyRequest(target, { method: 'GET' }))
+    const [, init] = mockFetch.mock.calls[0] as [string, RequestInit & { decompress?: boolean }]
+    expect(init.decompress).toBe(false)
+  })
+
+  it('forwards upstream `content-encoding` response header to the caller (no longer dropped)', async () => {
+    mockFetch.mockImplementationOnce(() =>
+      Promise.resolve(
+        new Response('compressed-bytes', {
+          status: 200,
+          headers: { 'content-type': 'application/json', 'content-encoding': 'gzip' },
+        }),
+      ),
+    )
+    const target = 'https://example.com/api'
+    const res = await app.handle(proxyRequest(target, { method: 'GET' }))
+    expect(res.headers.get('x-proxy-passthrough-content-encoding')).toBe('gzip')
+  })
+
+  // ---------------------------------------------------------------------------
+  // Observability wiring — fixes the bot MEDIUM findings (hardcoded status,
+  // hardcoded duration/bytes) by routing every emission through a recorder DI.
+  // ---------------------------------------------------------------------------
+
+  describe('observability wiring', () => {
+    type ProxyRequestEvent = {
+      method: string
+      target_url: string
+      status: number
+      duration_ms: number
+      bytes_in: number
+      bytes_out: number
+      user_id: string
+      request_id: string
+      error_type?: string
+    }
+
+    const buildApp = () => {
+      const events: ProxyRequestEvent[] = []
+      const recorder = {
+        proxyRequest: (e: ProxyRequestEvent) => events.push(e),
+        proxyWsRelay: () => {},
+      }
+      const app = new Elysia().use(
+        createUniversalProxyRoutes({
+          auth: fakeAuth,
+          fetchFn: mockFetch as unknown as typeof fetch,
+          dnsLookup: mockDnsLookup,
+          observability: recorder,
+        }),
+      )
+      return { app, events }
+    }
+
+    /** Drain the response body so capStream.onComplete fires and observability emits. */
+    const drain = async (res: Response) => {
+      if (res.body) await res.arrayBuffer()
+    }
+
+    it('records the real upstream status (not hardcoded 200) — bot MEDIUM fix', async () => {
+      mockFetch.mockImplementationOnce(() => Promise.resolve(new Response('teapot', { status: 418 })))
+      const { app: a, events } = buildApp()
+      const res = await a.handle(proxyRequest('https://example.com/r', { method: 'GET' }))
+      await drain(res)
+      expect(res.status).toBe(418)
+      expect(events).toHaveLength(1)
+      expect(events[0].status).toBe(418)
+    })
+
+    it('records non-zero duration_ms (not hardcoded 0) — bot MEDIUM fix', async () => {
+      mockFetch.mockImplementationOnce(
+        () =>
+          new Promise((resolve) =>
+            setTimeout(() => resolve(new Response('ok', { status: 200 })), 15),
+          ),
+      )
+      const { app: a, events } = buildApp()
+      const res = await a.handle(proxyRequest('https://example.com/r', { method: 'GET' }))
+      await drain(res)
+      // Generous lower bound — CI clocks vary; we just need to prove it isn't 0.
+      expect(events[0].duration_ms).toBeGreaterThanOrEqual(5)
+    })
+
+    it('records non-zero bytes_out from the streamed response body — bot MEDIUM fix', async () => {
+      const payload = 'x'.repeat(1024)
+      mockFetch.mockImplementationOnce(() => Promise.resolve(new Response(payload, { status: 200 })))
+      const { app: a, events } = buildApp()
+      const res = await a.handle(proxyRequest('https://example.com/r', { method: 'GET' }))
+      await drain(res)
+      expect(events[0].bytes_out).toBe(payload.length)
+    })
+
+    it('records bytes_in from a buffered request body (POST with follow-redirects)', async () => {
+      const body = new TextEncoder().encode('a'.repeat(512))
+      mockFetch
+        .mockImplementationOnce(() =>
+          Promise.resolve(new Response(null, { status: 303, headers: { location: 'https://example.com/done' } })),
+        )
+        .mockImplementationOnce(() => Promise.resolve(new Response('ok', { status: 200 })))
+      const { app: a, events } = buildApp()
+      const res = await a.handle(
+        proxyRequest('https://example.com/submit', {
+          method: 'POST',
+          body,
+          headers: { 'content-type': 'application/octet-stream', 'x-proxy-follow-redirects': 'true' },
+        }),
+      )
+      await drain(res)
+      // 303 forces GET, body dropped — but `bytes_in` reports the buffered upload size of the final hop's body.
+      // The final hop is a GET with `null` body → 0 bytes_in. The proxy reports the final hop's bytes_in, not aggregate.
+      expect(events).toHaveLength(1)
+      expect(events[0].bytes_in).toBe(0)
+    })
+
+    it('tags error_type="ssrf" when target resolves to a private address', async () => {
+      mockDnsLookup.mockImplementationOnce(() => Promise.resolve([{ address: '192.168.1.1', family: 4 }]))
+      const { app: a, events } = buildApp()
+      const res = await a.handle(proxyRequest('https://blocked.example.com/x', { method: 'GET' }))
+      expect(res.status).toBe(400)
+      expect(events).toHaveLength(1)
+      expect(events[0].error_type).toBe('ssrf')
+    })
+
+    it('tags error_type="invalid_target" for a missing X-Proxy-Target-Url header', async () => {
+      const { app: a, events } = buildApp()
+      const res = await a.handle(new Request('http://localhost/proxy', { method: 'GET' }))
+      expect(res.status).toBe(400)
+      expect(events[0].error_type).toBe('invalid_target')
+    })
+
+    it('tags error_type="upstream_5xx" when upstream returns 503', async () => {
+      mockFetch.mockImplementationOnce(() => Promise.resolve(new Response('down', { status: 503 })))
+      const { app: a, events } = buildApp()
+      const res = await a.handle(proxyRequest('https://example.com/r', { method: 'GET' }))
+      await drain(res)
+      expect(events[0].error_type).toBe('upstream_5xx')
+    })
+
+    it('tags error_type="upstream_4xx" when upstream returns 404', async () => {
+      mockFetch.mockImplementationOnce(() => Promise.resolve(new Response('gone', { status: 404 })))
+      const { app: a, events } = buildApp()
+      const res = await a.handle(proxyRequest('https://example.com/r', { method: 'GET' }))
+      await drain(res)
+      expect(events[0].error_type).toBe('upstream_4xx')
+    })
+
+    it('omits error_type on 2xx and 3xx responses', async () => {
+      mockFetch.mockImplementationOnce(() => Promise.resolve(new Response('ok', { status: 200 })))
+      const { app: a, events } = buildApp()
+      const res = await a.handle(proxyRequest('https://example.com/r', { method: 'GET' }))
+      await drain(res)
+      expect(events[0].error_type).toBeUndefined()
+    })
+
+    it('records the authenticated user_id, not "unknown"', async () => {
+      mockFetch.mockImplementationOnce(() => Promise.resolve(new Response('ok', { status: 200 })))
+      const { app: a, events } = buildApp()
+      const res = await a.handle(proxyRequest('https://example.com/r', { method: 'GET' }))
+      await drain(res)
+      expect(events[0].user_id).toBe('user-1')
+    })
+  })
 })

@@ -17,8 +17,13 @@ import {
 } from '@shared/proxy-protocol'
 import { Elysia, type AnyElysia } from 'elysia'
 import { capStream } from './streaming'
-import { noopObservability, type ObservabilityRecorder } from './observability'
+import { noopObservability, type ObservabilityRecorder, type ProxyErrorType } from './observability'
 
+/** Body cap is enforced post-content-encoding-passthrough: bytes counted are
+ *  the compressed bytes coming off the wire. A user requesting a gzip-bombed
+ *  resource sees the cap fire on the gzip stream, not the inflated bytes —
+ *  this is acceptable per spec because the caller (browser, Tauri client)
+ *  performs decompression and bears that risk for its own traffic. */
 const maxBodyBytes = 10 * 1024 * 1024
 const maxHops = 5
 const dnsTimeoutMs = 5_000
@@ -89,7 +94,9 @@ const buildOutboundHeaders = (
 }
 
 /** Re-prefix every upstream response header so the browser ignores them and the
- *  caller's `proxyFetch` helper unwraps them back into a normal-looking Response. */
+ *  caller's `proxyFetch` helper unwraps them back into a normal-looking Response.
+ *  `content-encoding` IS forwarded — Bun is called with `decompress: false` so
+ *  the original compressed bytes flow through and the browser decodes. */
 const buildResponseHeaders = (upstream: Headers, finalUrl: string): Headers => {
   const out = new Headers()
   upstream.forEach((value, key) => {
@@ -105,6 +112,15 @@ const buildResponseHeaders = (upstream: Headers, finalUrl: string): Headers => {
   out.set('Cross-Origin-Resource-Policy', 'cross-origin')
   out.set(FINAL_URL_HEADER, finalUrl)
   return out
+}
+
+/** Classify an upstream HTTP status into an observability error category, or
+ *  return undefined if the response is not an error from the proxy's POV.
+ *  Upstream redirect statuses are intentionally NOT errors. */
+const classifyUpstreamStatus = (status: number): ProxyErrorType | undefined => {
+  if (status >= 500) return 'upstream_5xx'
+  if (status >= 400) return 'upstream_4xx'
+  return undefined
 }
 
 export type CreateUniversalProxyRoutesOptions = {
@@ -132,42 +148,60 @@ export const createUniversalProxyRoutes = (options: CreateUniversalProxyRoutesOp
           proxyRequestId: crypto.randomUUID(),
           proxyTargetUrl: request.headers.get(targetUrlHeaderLower) ?? '',
         }))
-        .onAfterResponse(({ set, user, proxyStartedAt, proxyRequestId, proxyTargetUrl, request }) => {
-          observability.proxyRequest({
-            method: request.method.toUpperCase(),
-            target_url: proxyTargetUrl,
-            status: typeof set.status === 'number' ? set.status : 200,
-            duration_ms: Math.round(performance.now() - proxyStartedAt),
-            user_id: (user as { id?: string } | undefined)?.id ?? 'unknown',
-            request_id: proxyRequestId,
-          })
-        })
         .all(
           '/',
           async (ctx) => {
             const method = ctx.request.method.toUpperCase()
+            const userId = (ctx.user as { id?: string } | undefined)?.id ?? 'unknown'
+
+            /** Emit a final observability event. `bytesIn`/`bytesOut` default to 0
+             *  for paths that never opened an upstream connection. */
+            const emit = (params: {
+              response: Response
+              targetUrl: string
+              bytesIn: number
+              bytesOut: number
+              errorType?: ProxyErrorType
+            }) => {
+              observability.proxyRequest({
+                method,
+                target_url: params.targetUrl,
+                status: params.response.status,
+                duration_ms: Math.round(performance.now() - ctx.proxyStartedAt),
+                bytes_in: params.bytesIn,
+                bytes_out: params.bytesOut,
+                user_id: userId,
+                request_id: ctx.proxyRequestId,
+                error_type: params.errorType,
+              })
+            }
+
+            /** Build + emit a failure Response in one shot. Status is derived
+             *  from the textResponse, so observability never disagrees with
+             *  what the caller actually sees. */
+            const fail = (status: number, body: string, errorType: ProxyErrorType, targetUrl = ''): Response => {
+              const response = textResponse(status, body)
+              emit({ response, targetUrl, bytesIn: 0, bytesOut: 0, errorType })
+              return response
+            }
 
             if (!allowedMethods.has(method)) {
-              ctx.set.status = 405
-              return textResponse(405, 'Method not allowed')
+              return fail(405, 'Method not allowed', 'invalid_target')
             }
 
             // Read target URL from header (not path). Keeps user-supplied paths/queries
             // out of standard HTTP access logs which only record method + path.
             const targetHeader = ctx.proxyTargetUrl
             if (!targetHeader || targetHeader.trim() === '') {
-              ctx.set.status = 400
-              return textResponse(400, `Missing ${TARGET_URL_HEADER} header`)
+              return fail(400, `Missing ${TARGET_URL_HEADER} header`, 'invalid_target')
             }
             if (!isPrintableAscii(targetHeader)) {
-              ctx.set.status = 400
-              return textResponse(400, `Invalid ${TARGET_URL_HEADER} header`)
+              return fail(400, `Invalid ${TARGET_URL_HEADER} header`, 'invalid_target')
             }
 
             const normalised = normaliseTargetUrl(targetHeader)
             if ('error' in normalised) {
-              ctx.set.status = 400
-              return textResponse(400, normalised.error)
+              return fail(400, normalised.error, 'invalid_target')
             }
 
             // Strip userinfo before any further processing (matches validateAndPin).
@@ -184,8 +218,7 @@ export const createUniversalProxyRoutes = (options: CreateUniversalProxyRoutesOp
               if (contentLength) {
                 const cl = parseInt(contentLength, 10)
                 if (Number.isFinite(cl) && cl > maxBodyBytes) {
-                  ctx.set.status = 413
-                  return textResponse(413, 'Request body too large')
+                  return fail(413, 'Request body too large', 'cap_exceeded', targetUrl)
                 }
               }
             }
@@ -197,8 +230,7 @@ export const createUniversalProxyRoutes = (options: CreateUniversalProxyRoutesOp
 
             const initialHeadersResult = buildOutboundHeaders(ctx.request.headers)
             if ('error' in initialHeadersResult) {
-              ctx.set.status = 400
-              return textResponse(400, initialHeadersResult.error)
+              return fail(400, initialHeadersResult.error, 'invalid_target', targetUrl)
             }
             const initialPassthroughHeaders = initialHeadersResult
 
@@ -214,8 +246,7 @@ export const createUniversalProxyRoutes = (options: CreateUniversalProxyRoutesOp
             if (needsBodyBuffer && ctx.request.body) {
               bufferedBody = await new Response(ctx.request.body as BodyInit).arrayBuffer()
               if (bufferedBody.byteLength > maxBodyBytes) {
-                ctx.set.status = 413
-                return textResponse(413, 'Request body too large')
+                return fail(413, 'Request body too large', 'cap_exceeded', targetUrl)
               }
             }
 
@@ -235,12 +266,11 @@ export const createUniversalProxyRoutes = (options: CreateUniversalProxyRoutesOp
                 )
               } catch (err) {
                 const msg = err instanceof Error ? err.message : String(err)
+                const isTimeout = msg === 'DNS_TIMEOUT'
                 if (hop === 0) {
-                  ctx.set.status = 400
-                  return textResponse(400, `Blocked: ${msg}`)
+                  return fail(400, `Blocked: ${msg}`, isTimeout ? 'dns_timeout' : 'ssrf', currentUrl)
                 }
-                ctx.set.status = 502
-                return textResponse(502, 'Bad gateway (SSRF or DNS error on redirect)')
+                return fail(502, 'Bad gateway (SSRF or DNS error on redirect)', isTimeout ? 'dns_timeout' : 'ssrf', currentUrl)
               }
 
               // Compose hop-specific headers: passthrough + Host (for SNI).
@@ -249,8 +279,7 @@ export const createUniversalProxyRoutes = (options: CreateUniversalProxyRoutesOp
                   ? initialPassthroughHeaders
                   : buildOutboundHeaders(ctx.request.headers, { dropAuthorization: dropAuthorizationOnHop })
               if ('error' in hopHeadersResult) {
-                ctx.set.status = 400
-                return textResponse(400, hopHeadersResult.error)
+                return fail(400, hopHeadersResult.error, 'invalid_target', currentUrl)
               }
               const hopHeaders = new Headers(hopHeadersResult)
               pinnedExtraHeaders.forEach((value, key) => {
@@ -261,8 +290,9 @@ export const createUniversalProxyRoutes = (options: CreateUniversalProxyRoutesOp
               const isInitialHopStream = hop === 0 && !needsBodyBuffer && !bodylessMethods.has(currentMethod)
 
               // Wrap the inbound stream with capStream on the streaming initial hop so
-              // body-size and idle-timeout limits still apply without buffering.
-              const streamedInitialBody =
+              // body-size and idle-timeout limits still apply without buffering. The
+              // returned `bytesRead()` gives observability the real upload size.
+              const requestCap =
                 isInitialHopStream && ctx.request.body
                   ? capStream(ctx.request.body, {
                       maxBytes: streamCapBytes,
@@ -271,31 +301,53 @@ export const createUniversalProxyRoutes = (options: CreateUniversalProxyRoutesOp
                     })
                   : null
 
-              const upstreamBody: BodyInit | null = streamedInitialBody ?? currentBufferedBody ?? null
+              const upstreamBody: BodyInit | null =
+                requestCap?.stream ?? currentBufferedBody ?? null
 
+              // Bun-specific fetch options: `decompress: false` lets the original
+              // compressed bytes (and `content-encoding`) pass through unchanged so
+              // the browser decodes; `duplex: 'half'` enables streaming request
+              // bodies. Both are absent from the standard `RequestInit` type.
               const response = await fetchFn(pinnedUrl, {
                 method: currentMethod,
                 headers: hopHeaders,
                 body: upstreamBody,
                 redirect: 'manual',
                 signal: upstreamCtl.signal,
-                // @ts-expect-error -- Bun fetch supports duplex:'half' for streaming bodies
+                decompress: false,
                 duplex: 'half',
-              })
+              } as RequestInit & { decompress: boolean; duplex: 'half' })
+
+              /** Bytes uploaded to upstream — buffered bodies have a fixed size,
+               *  streamed bodies report what flowed through capStream. */
+              const bytesIn =
+                requestCap?.bytesRead() ?? currentBufferedBody?.byteLength ?? 0
 
               if (!REDIRECT_STATUSES.has(response.status)) {
-                return buildProxyResponse(response, upstreamCtl, currentUrl)
+                return buildProxyResponse(response, upstreamCtl, currentUrl, {
+                  emit,
+                  targetUrl: currentUrl,
+                  bytesIn,
+                })
               }
 
               const defaultFollow = bodylessMethods.has(currentMethod)
               const shouldFollow = followOverride !== null ? followOverride : defaultFollow
               if (!shouldFollow) {
-                return buildProxyResponse(response, upstreamCtl, currentUrl)
+                return buildProxyResponse(response, upstreamCtl, currentUrl, {
+                  emit,
+                  targetUrl: currentUrl,
+                  bytesIn,
+                })
               }
 
               const location = response.headers.get('location')
               if (!location) {
-                return buildProxyResponse(response, upstreamCtl, currentUrl)
+                return buildProxyResponse(response, upstreamCtl, currentUrl, {
+                  emit,
+                  targetUrl: currentUrl,
+                  bytesIn,
+                })
               }
 
               // Resolve relative Location and auto-upgrade http://.
@@ -303,8 +355,7 @@ export const createUniversalProxyRoutes = (options: CreateUniversalProxyRoutesOp
               const nextNormalised = normaliseTargetUrl(nextRaw)
               if ('error' in nextNormalised) {
                 upstreamCtl.abort()
-                ctx.set.status = 502
-                return textResponse(502, 'Redirect target is not http(s)')
+                return fail(502, 'Redirect target is not http(s)', 'invalid_target', currentUrl)
               }
               nextNormalised.username = ''
               nextNormalised.password = ''
@@ -333,27 +384,70 @@ export const createUniversalProxyRoutes = (options: CreateUniversalProxyRoutesOp
               currentBufferedBody = nextBody
             }
 
-            ctx.set.status = 502
-            return textResponse(502, 'Too many redirects')
+            return fail(502, 'Too many redirects', 'upstream_5xx', currentUrl)
           },
           { parse: 'none' },
         )
     })
 }
 
-const buildProxyResponse = (response: Response, upstreamCtl: AbortController, finalUrl: string): Response => {
+/** Wrap the upstream response: cap+idle on the response body, force security
+ *  headers, and emit the observability event when the response stream finishes
+ *  (or aborts). The capStream `onComplete` is the single emission point so cap
+ *  bytes and event timing are always consistent. */
+const buildProxyResponse = (
+  response: Response,
+  upstreamCtl: AbortController,
+  finalUrl: string,
+  observe: {
+    emit: (params: {
+      response: Response
+      targetUrl: string
+      bytesIn: number
+      bytesOut: number
+      errorType?: ProxyErrorType
+    }) => void
+    targetUrl: string
+    bytesIn: number
+  },
+): Response => {
   const headers = buildResponseHeaders(response.headers, finalUrl)
+  const out = new Response(null, { status: response.status, headers })
+  const upstreamErrorType = classifyUpstreamStatus(response.status)
 
-  const body = response.body
-    ? capStream(response.body, {
-        maxBytes: streamCapBytes,
-        idleTimeoutMs: streamIdleMs,
-        onAbort: () => upstreamCtl.abort(),
+  if (!response.body) {
+    observe.emit({
+      response: out,
+      targetUrl: observe.targetUrl,
+      bytesIn: observe.bytesIn,
+      bytesOut: 0,
+      errorType: upstreamErrorType,
+    })
+    return out
+  }
+
+  // capStream's onAbort fires before onComplete; latch the abort reason so the
+  // single onComplete emission can promote `error_type` accordingly.
+  let abortReason: 'cap' | 'idle' | null = null
+  const cap = capStream(response.body, {
+    maxBytes: streamCapBytes,
+    idleTimeoutMs: streamIdleMs,
+    onAbort: (reason) => {
+      abortReason = reason
+      upstreamCtl.abort()
+    },
+    onComplete: (bytesOut) => {
+      const errorType: ProxyErrorType | undefined =
+        abortReason === 'cap' ? 'cap_exceeded' : abortReason === 'idle' ? 'idle_timeout' : upstreamErrorType
+      observe.emit({
+        response: out,
+        targetUrl: observe.targetUrl,
+        bytesIn: observe.bytesIn,
+        bytesOut,
+        errorType,
       })
-    : null
-
-  return new Response(body, {
-    status: response.status,
-    headers,
+    },
   })
+
+  return new Response(cap.stream, { status: response.status, headers })
 }

@@ -13,17 +13,25 @@ import {
 } from '@/test-utils/e2e'
 import { createObservabilityRecorder } from './observability'
 
-/** Build a recorder whose logger and posthog client capture into local arrays.
- *  Tests pass this through createApp's `proxyObservability` dep — no module
- *  mocks, no cross-file leakage. */
+/** Build a recorder whose logger captures into a local array. Tests pass this
+ *  through createApp's `proxyObservability` dep — no module mocks, no
+ *  cross-file leakage. PostHog is intentionally not part of the proxy
+ *  observability surface (proxy traffic is infra plumbing, not product
+ *  analytics — Pino + OTel cover ops and incident response). */
 const captureRecorder = () => {
   const logs: Array<Record<string, unknown>> = []
-  const posthog: Array<{ distinctId: string; event: string; properties: Record<string, unknown> }> = []
   const recorder = createObservabilityRecorder({
     logger: { info: (event) => logs.push(event as Record<string, unknown>) },
-    posthog: { capture: (call) => posthog.push(call) },
   })
-  return { recorder, logs, posthog }
+  return { recorder, logs }
+}
+
+/** Drain a Response body so the proxy's `capStream.onComplete` fires.
+ *  Production Bun does this automatically when writing to the wire; tests
+ *  using `app.handle(req)` need to do it explicitly. */
+const drainResponse = async (res: Response) => {
+  if (!res.body) return
+  await res.arrayBuffer()
 }
 
 describe('Universal proxy observability redaction', () => {
@@ -35,7 +43,7 @@ describe('Universal proxy observability redaction', () => {
 
   it('logs only target_host (hostname) — no full URL, path, or query, no header values', async () => {
     const upstream = createTestUpstream('observe.test', () => new Response('ok', { status: 200 }))
-    const { recorder, logs, posthog } = captureRecorder()
+    const { recorder, logs } = captureRecorder()
     handle = await createTestApp({
       fetchFn: createUpstreamRouter({ 'observe.test': upstream }),
       proxyObservability: recorder,
@@ -54,11 +62,10 @@ describe('Universal proxy observability redaction', () => {
       }),
     )
     expect(res.status).toBe(200)
-
-    // onAfterResponse fires after the response — give it a tick.
+    await drainResponse(res)
     await new Promise((r) => setTimeout(r, 10))
 
-    const allRecordedJson = JSON.stringify({ logs, posthog })
+    const allRecordedJson = JSON.stringify(logs)
 
     // Hostname must appear (it's the proof of correctness, not a leak).
     expect(allRecordedJson).toContain('observe.test')
@@ -75,24 +82,30 @@ describe('Universal proxy observability redaction', () => {
     // Structured log shape.
     const proxyLogs = logs.filter((l) => (l as { event?: string }).event === 'proxy_request')
     expect(proxyLogs.length).toBeGreaterThan(0)
-    expect((proxyLogs[0] as { target_host?: string }).target_host).toBe('observe.test')
-
-    // PostHog event shape.
-    const proxyEvents = posthog.filter((c) => c.event === '$proxy_request')
-    expect(proxyEvents.length).toBeGreaterThan(0)
-    expect(proxyEvents[0].properties.target_host).toBe('observe.test')
-    expect(proxyEvents[0].properties.proxy_kind).toBe('http')
+    const log = proxyLogs[0] as {
+      target_host?: string
+      bytes_in?: number
+      bytes_out?: number
+      duration_ms?: number
+      status?: number
+    }
+    expect(log.target_host).toBe('observe.test')
+    // New observability fields wired in this refactor.
+    expect(typeof log.bytes_in).toBe('number')
+    expect(typeof log.bytes_out).toBe('number')
+    expect(typeof log.duration_ms).toBe('number')
+    expect(log.status).toBe(200)
   })
 
   it('records the authenticated user_id, not the email or session token', async () => {
     const upstream = createTestUpstream('observe.test', () => new Response('ok', { status: 200 }))
-    const { recorder, logs, posthog } = captureRecorder()
+    const { recorder, logs } = captureRecorder()
     handle = await createTestApp({
       fetchFn: createUpstreamRouter({ 'observe.test': upstream }),
       proxyObservability: recorder,
     })
 
-    await handle.app.handle(
+    const res = await handle.app.handle(
       new Request('http://localhost/v1/proxy', {
         method: 'GET',
         headers: {
@@ -101,6 +114,7 @@ describe('Universal proxy observability redaction', () => {
         },
       }),
     )
+    await drainResponse(res)
     await new Promise((r) => setTimeout(r, 10))
 
     const proxyLog = logs.find((l) => (l as { event?: string }).event === 'proxy_request')
@@ -109,10 +123,5 @@ describe('Universal proxy observability redaction', () => {
     expect(userId).toBeTruthy()
     expect(userId).not.toBe('unknown')
     expect(userId).not.toBe(handle.email)
-
-    // The user_id must also appear as PostHog distinctId, not the email.
-    const proxyEvent = posthog.find((c) => c.event === '$proxy_request')
-    expect(proxyEvent?.distinctId).toBe(userId)
-    expect(proxyEvent?.distinctId).not.toBe(handle.email)
   })
 })

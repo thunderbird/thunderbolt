@@ -18,7 +18,6 @@ import { createAuthIpRateLimit, createInferenceRateLimit, createProRateLimit } f
 import { createUniversalProxyRoutes } from '@/proxy/routes'
 import { createUniversalProxyWsRoutes } from '@/proxy/ws'
 import { createObservabilityRecorder } from '@/proxy/observability'
-import { getPostHogClient, isPostHogConfigured } from '@/posthog/client'
 import { createSearchRoutes } from '@/api/search'
 import { createPreviewRoutes } from '@/api/preview'
 import { createPostHogRoutes } from '@/posthog/routes'
@@ -82,11 +81,12 @@ export const createApp = async (deps?: AppDeps) => {
   const auth = deps?.auth ?? createdAuth
 
   // Build the production observability recorder unless tests injected their own.
+  // Proxy events go to Pino + OTel only — not PostHog (proxy traffic is infra
+  // plumbing, not product analytics).
   const proxyObservability =
     deps?.proxyObservability ??
     createObservabilityRecorder({
       logger: createStandaloneLogger(settings),
-      posthog: isPostHogConfigured() ? getPostHogClient() : null,
     })
 
   return (

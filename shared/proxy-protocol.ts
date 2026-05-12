@@ -32,12 +32,15 @@ export const WS_TARGET_PREFIX = 'tbproxy.target.'
 export const REDIRECT_STATUSES = new Set([301, 302, 303, 307, 308])
 
 /** Wire-level / hop-by-hop response headers the proxy never propagates. The proxy
- *  hands a fresh body to the client, so any framing/encoding/length headers from
- *  upstream describe the wrong thing. Set-Cookie family is dropped to preserve
- *  cookie isolation: the response's *origin* is Thunderbolt, not the upstream. */
+ *  hands a fresh body to the client, so any framing/length headers from upstream
+ *  describe the wrong thing. Set-Cookie family is dropped to preserve cookie
+ *  isolation: the response's *origin* is Thunderbolt, not the upstream.
+ *
+ *  `content-encoding` is intentionally NOT dropped — the proxy passes
+ *  compressed bodies through untouched (Bun fetch is called with
+ *  `decompress: false`) so the browser performs the decode itself. */
 export const DROPPED_RESPONSE_HEADERS = new Set([
   'content-length',
-  'content-encoding',
   'transfer-encoding',
   'connection',
   'keep-alive',

@@ -42,13 +42,3 @@ export {
   getEncryptionMetadata,
   insertEncryptionMetadataIfNotExists,
 } from './encryption'
-
-// Anonymous user migration
-export {
-  migrateAnonymousUserData,
-  assertAnonymousRowCountUnderCap,
-  isTransientDbError,
-  tablesToMigrate,
-  excludedFromMigration,
-  AnonymousRowCapExceededError,
-} from './anonymous'

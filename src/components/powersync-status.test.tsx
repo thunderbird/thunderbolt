@@ -45,12 +45,14 @@ const renderWithProviders = (authClient: AuthClient) => {
 }
 
 describe('PowerSyncStatus', () => {
-  it('renders nothing when the session user is anonymous', () => {
+  it('renders the sync status button with a sign-in popover for anonymous users', () => {
     const authClient = createMockAuthClient({
       session: { user: { id: 'anon-1', email: 'temp@anon.com', name: 'Anonymous', isAnonymous: true } },
     })
     renderWithProviders(authClient)
-    expect(screen.queryByLabelText('Sync status')).toBeNull()
+    // The button is visible (same affordance as fully logged-out users get) — the popover
+    // content then shows a Sign In CTA because anonymous is gated out of real sync.
+    expect(screen.getByLabelText('Sync status')).toBeInTheDocument()
   })
 
   it('renders the sync status button for an authenticated real user', () => {

@@ -30,6 +30,10 @@ const localOnlyTables = {
     tableDefinition: tables.modelsSecretsTable,
     options: { localOnly: true },
   } satisfies DrizzleTableWithPowerSyncOptions,
+  integrations_secrets: {
+    tableDefinition: tables.integrationsSecretsTable,
+    options: { localOnly: true },
+  } satisfies DrizzleTableWithPowerSyncOptions,
 }
 
 /**

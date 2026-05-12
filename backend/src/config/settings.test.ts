@@ -213,9 +213,8 @@ describe('Config Settings', () => {
           corsOrigins: 'http://localhost:1420',
           corsAllowCredentials: true,
           corsAllowMethods: 'GET,POST,PUT,DELETE,PATCH,OPTIONS',
-          corsAllowHeaders:
-            'Content-Type,Authorization,Accept,Accept-Encoding,Accept-Language,Cache-Control,User-Agent,X-Requested-With',
-          corsExposeHeaders: 'mcp-session-id',
+          corsAllowHeaders: '',
+          corsExposeHeaders: 'set-auth-token',
         }
 
         // Should not throw with valid default values

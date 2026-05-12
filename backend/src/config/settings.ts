@@ -64,20 +64,18 @@ const settingsSchema = z
     powersyncJwtSecret: z.string().default('powersync-dev-secret-change-in-production'),
     powersyncTokenExpirySeconds: z.coerce.number().int().positive().default(3600),
 
-    // CORS settings — comma-separated list of exact origins
+    // CORS settings — comma-separated list of exact origins.
+    // `corsAllowHeaders` is no longer authoritative for the main backend: it
+    // now uses `cors({ allowedHeaders: true })`, which echoes the request's
+    // Access-Control-Request-Headers. The env var stays in place for the
+    // PostHog proxy mount, which still pins a static allowlist.
     corsOrigins: z.string().default('http://localhost:1420,tauri://localhost,http://tauri.localhost'),
     corsAllowCredentials: z.boolean().default(true),
     corsAllowMethods: z.string().default('GET,POST,PUT,DELETE,PATCH,OPTIONS'),
-    corsAllowHeaders: z
-      .string()
-      .default(
-        'Content-Type,Authorization,Accept,Accept-Encoding,Accept-Language,Cache-Control,User-Agent,X-Requested-With,X-Client-Platform,X-Device-ID,X-Device-Name,X-Challenge-Token,X-Proxy-Target-Url,X-Proxy-Follow-Redirects,X-Proxy-Passthrough-Content-Type,X-Proxy-Passthrough-Authorization,X-Proxy-Passthrough-Accept,X-Proxy-Passthrough-Cache-Control,X-Proxy-Passthrough-Mcp-Session-Id,X-Proxy-Passthrough-Mcp-Protocol-Version,X-Proxy-Passthrough-Anthropic-Version,X-Proxy-Passthrough-Anthropic-Beta,X-Proxy-Passthrough-Openai-Beta',
-      ),
+    corsAllowHeaders: z.string().default(''),
     corsExposeHeaders: z
       .string()
-      .default(
-        'set-auth-token,ratelimit-limit,ratelimit-remaining,ratelimit-reset,retry-after,X-Proxy-Final-Url,X-Proxy-Passthrough-Content-Type,X-Proxy-Passthrough-Mcp-Session-Id,X-Proxy-Passthrough-Mcp-Protocol-Version,X-Proxy-Passthrough-Location,X-Proxy-Passthrough-Anthropic-Version',
-      ),
+      .default('set-auth-token,ratelimit-limit,ratelimit-remaining,ratelimit-reset,retry-after'),
 
     // E2E encryption — when true, devices must complete the trust flow before syncing
     e2eeEnabled: z.boolean().default(false),
@@ -149,12 +147,10 @@ const parseSettings = (): Settings => {
     corsOrigins: process.env.CORS_ORIGINS || 'http://localhost:1420,tauri://localhost,http://tauri.localhost',
     corsAllowCredentials: process.env.CORS_ALLOW_CREDENTIALS !== 'false',
     corsAllowMethods: process.env.CORS_ALLOW_METHODS || 'GET,POST,PUT,DELETE,PATCH,OPTIONS',
-    corsAllowHeaders:
-      process.env.CORS_ALLOW_HEADERS ||
-      'Content-Type,Authorization,Accept,Accept-Encoding,Accept-Language,Cache-Control,User-Agent,X-Requested-With,X-Client-Platform,X-Device-ID,X-Device-Name,X-Challenge-Token,X-Proxy-Target-Url,X-Proxy-Follow-Redirects,X-Proxy-Passthrough-Content-Type,X-Proxy-Passthrough-Authorization,X-Proxy-Passthrough-Accept,X-Proxy-Passthrough-Cache-Control,X-Proxy-Passthrough-Mcp-Session-Id,X-Proxy-Passthrough-Mcp-Protocol-Version,X-Proxy-Passthrough-Anthropic-Version,X-Proxy-Passthrough-Anthropic-Beta,X-Proxy-Passthrough-Openai-Beta',
+    corsAllowHeaders: process.env.CORS_ALLOW_HEADERS || '',
     corsExposeHeaders:
       process.env.CORS_EXPOSE_HEADERS ||
-      'set-auth-token,ratelimit-limit,ratelimit-remaining,ratelimit-reset,retry-after,X-Proxy-Final-Url,X-Proxy-Passthrough-Content-Type,X-Proxy-Passthrough-Mcp-Session-Id,X-Proxy-Passthrough-Mcp-Protocol-Version,X-Proxy-Passthrough-Location,X-Proxy-Passthrough-Anthropic-Version',
+      'set-auth-token,ratelimit-limit,ratelimit-remaining,ratelimit-reset,retry-after',
     e2eeEnabled: process.env.E2EE_ENABLED === 'true',
     swaggerEnabled: process.env.SWAGGER_ENABLED === 'true',
     rateLimitEnabled: process.env.RATE_LIMIT_ENABLED !== 'false',

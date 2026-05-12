@@ -25,55 +25,21 @@ const getLogLevel = (level: Settings['logLevel']): 'debug' | 'info' | 'warn' | '
 }
 
 /**
- * Pino redact paths covering the universal proxy's PII surface area.
- * Caller-controlled URLs, bodies, and credentials must never reach a log line.
+ * Create a Pino logger instance.
+ *
+ * The universal proxy is designed so caller-controlled URLs, bodies, and
+ * credentials never reach a log line: the proxy module logs only the upstream
+ * hostname (see `proxy/observability.ts`) and the standard Elysia request
+ * logger never receives proxy passthrough headers. We therefore rely on Pino's
+ * default behaviour rather than bolting on a bespoke redact list.
  */
-const proxyRedactPaths = [
-  'req.headers.authorization',
-  'req.headers.cookie',
-  'req.headers["x-proxy-target-url"]',
-  'res.headers["set-cookie"]',
-  'targetUrl',
-  'target_url',
-  'body',
-  'requestBody',
-  'responseBody',
-]
-
-/** Drop any X-Proxy-Passthrough-* header before logging — Pino redact can't
- *  pattern-match keys, so we strip via a serialiser. */
-const dropPassthroughHeaders = (headers: Record<string, unknown> | undefined) => {
-  if (!headers) return headers
-  const out: Record<string, unknown> = {}
-  for (const [k, v] of Object.entries(headers)) {
-    if (/^x-proxy-passthrough-/i.test(k)) continue
-    out[k] = v
-  }
-  return out
-}
-
-/**
- * Create a Pino logger instance
- */
-const createPinoLogger = (settings: Settings): Logger => {
+const createStandaloneLogger = (settings: Settings): Logger => {
   const isDevelopment = process.env.NODE_ENV !== 'production'
   const level = getLogLevel(settings.logLevel)
 
-  const baseOptions = {
-    level,
-    redact: { paths: proxyRedactPaths, censor: '[REDACTED]' },
-    serializers: {
-      req: (req: { headers?: Record<string, unknown>; [k: string]: unknown }) => ({
-        ...req,
-        headers: dropPassthroughHeaders(req.headers),
-      }),
-    },
-  }
-
   if (isDevelopment) {
-    // Development: Pretty printed logs with colors
     return pino({
-      ...baseOptions,
+      level,
       transport: {
         target: 'pino-pretty',
         options: {
@@ -85,16 +51,15 @@ const createPinoLogger = (settings: Settings): Logger => {
     })
   }
 
-  // Production: JSON structured logs
-  return pino(baseOptions)
+  return pino({ level })
 }
 
 /**
  * Minimal logger middleware: only decorates ctx.log with pino
  */
 const createLoggerMiddleware = (settings: Settings) => {
-  const logger = createPinoLogger(settings)
+  const logger = createStandaloneLogger(settings)
   return new Elysia({ name: 'logger' }).decorate('log', logger)
 }
 
-export { createLoggerMiddleware, createPinoLogger as createStandaloneLogger }
+export { createLoggerMiddleware, createStandaloneLogger }

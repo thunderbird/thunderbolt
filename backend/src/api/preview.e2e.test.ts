@@ -45,6 +45,8 @@ describe('GET /v1/preview — e2e', () => {
       }),
     )
     expect(res.status).toBe(200)
+    // Italo's review: per-user 10 min cache; no shared/CDN cache (`private`).
+    expect(res.headers.get('cache-control')).toBe('private, max-age=600')
     const data = (await res.json()) as Record<string, string | null>
     expect(data.title).toBe('Hello & world')
     expect(data.summary).toBe('A "short" summary')

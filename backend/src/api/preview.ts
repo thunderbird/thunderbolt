@@ -136,6 +136,12 @@ export const createPreviewRoutes = (options: CreatePreviewRoutesOptions) => {
             return { error: validation.error ?? 'Invalid URL' }
           }
 
+          // Cache OG metadata per-user for 10 minutes. Safe here (unlike /v1/proxy)
+          // because the response is a small, derived JSON DTO — not the raw upstream
+          // body — and the request body is the only cache key (no `?token=` style
+          // explosion). `private` keeps shared/CDN caches out.
+          set.headers['Cache-Control'] = 'private, max-age=600'
+
           const controller = new AbortController()
           const timeoutId = setTimeout(() => controller.abort(), fetchTimeoutMs)
           try {

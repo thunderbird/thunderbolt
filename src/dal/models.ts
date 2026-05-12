@@ -142,10 +142,12 @@ export const updateModel = async (db: AnyDrizzleDatabase, id: string, updates: P
   }
 
   if (apiKey !== undefined) {
-    await db.insert(modelsSecretsTable).values({ modelId: id, apiKey }).onConflictDoUpdate({
-      target: modelsSecretsTable.modelId,
-      set: { apiKey },
-    })
+    const existing = await db.select().from(modelsSecretsTable).where(eq(modelsSecretsTable.modelId, id)).get()
+    if (existing) {
+      await db.update(modelsSecretsTable).set({ apiKey }).where(eq(modelsSecretsTable.modelId, id))
+    } else {
+      await db.insert(modelsSecretsTable).values({ modelId: id, apiKey })
+    }
   }
 }
 

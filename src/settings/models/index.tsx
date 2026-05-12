@@ -4,7 +4,18 @@
 
 import { createModel } from '@/ai/fetch'
 import { ModificationIndicator } from '@/components/modification-indicator'
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog'
 import { Button } from '@/components/ui/button'
+import { ButtonGroup, ButtonGroupItem } from '@/components/ui/button-group'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Combobox, type ComboboxItem } from '@/components/ui/combobox'
@@ -12,7 +23,6 @@ import { Dialog, DialogTrigger } from '@/components/ui/dialog'
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form'
 import { Input } from '@/components/ui/input'
 import { PageHeader } from '@/components/ui/page-header'
-import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import {
   ResponsiveModalContentComposable,
   ResponsiveModalDescription,
@@ -35,8 +45,8 @@ import { useQuery } from '@powersync/tanstack-react-query'
 import { toCompilableQuery } from '@powersync/drizzle-driver'
 import { generateText } from 'ai'
 import { http } from '@/lib/http'
-import { AlertTriangle, Check, Cpu, Loader2, Lock, Plus, Trash2, X } from 'lucide-react'
-import { useEffect, useMemo, useReducer, useRef, type KeyboardEvent } from 'react'
+import { AlertTriangle, Check, Cpu, Loader2, Lock, Pen, Plus, Trash2, X } from 'lucide-react'
+import { useEffect, useMemo, useReducer, useRef, useState, type KeyboardEvent } from 'react'
 import { useForm } from 'react-hook-form'
 import { v7 as uuidv7 } from 'uuid'
 import { z } from 'zod'
@@ -187,9 +197,139 @@ const formSchema = z
     },
   )
 
+const editFormSchema = z.object({
+  name: z.string().min(1, { message: 'Name is required.' }),
+  model: z.string().min(1, { message: 'Model name is required.' }),
+  url: z.string().optional(),
+  apiKey: z.string().optional(),
+})
+
+const EditModelModal = ({
+  model,
+  onOpenChange,
+  onSubmit,
+  isPending,
+}: {
+  model: Model | null
+  onOpenChange: (open: boolean) => void
+  onSubmit: (values: z.infer<typeof editFormSchema> & { id: string }) => void
+  isPending: boolean
+}) => {
+  const form = useForm<z.infer<typeof editFormSchema>>({
+    resolver: zodResolver(editFormSchema),
+    defaultValues: {
+      name: model?.name || '',
+      model: model?.model || '',
+      url: model?.url || '',
+      apiKey: model?.apiKey || '',
+    },
+  })
+
+  useEffect(() => {
+    if (model) {
+      form.reset({
+        name: model.name || '',
+        model: model.model || '',
+        url: model.url || '',
+        apiKey: model.apiKey || '',
+      })
+    }
+  }, [model, form])
+
+  const handleSubmit = (values: z.infer<typeof editFormSchema>) => {
+    if (model) {
+      onSubmit({ ...values, id: model.id })
+    }
+  }
+
+  return (
+    <Dialog open={!!model} onOpenChange={onOpenChange}>
+      <ResponsiveModalContentComposable className="sm:max-w-[500px]">
+        <ResponsiveModalHeader>
+          <ResponsiveModalTitle>Edit Model</ResponsiveModalTitle>
+          <ResponsiveModalDescription className="sr-only">Edit model configuration</ResponsiveModalDescription>
+        </ResponsiveModalHeader>
+        <Form {...form}>
+          <form onSubmit={form.handleSubmit(handleSubmit)} className="grid gap-4 pt-4 pb-2">
+            <FormField
+              control={form.control}
+              name="name"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Name</FormLabel>
+                  <FormControl>
+                    <Input {...field} className="rounded-lg" />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
+            <FormField
+              control={form.control}
+              name="model"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Model</FormLabel>
+                  <FormControl>
+                    <Input {...field} className="rounded-lg" />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
+            {model?.provider === 'custom' && (
+              <FormField
+                control={form.control}
+                name="url"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>URL</FormLabel>
+                    <FormControl>
+                      <Input {...field} className="rounded-lg" />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            )}
+
+            {model?.provider !== 'thunderbolt' && (
+              <FormField
+                control={form.control}
+                name="apiKey"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>API Key</FormLabel>
+                    <FormControl>
+                      <Input type="password" {...field} placeholder="sk-..." className="rounded-lg" />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            )}
+
+            <div className="flex justify-end gap-3 pt-2">
+              <Button type="button" variant="ghost" onClick={() => onOpenChange(false)}>
+                Cancel
+              </Button>
+              <Button type="submit" disabled={isPending || !form.formState.isDirty}>
+                Save
+              </Button>
+            </div>
+          </form>
+        </Form>
+      </ResponsiveModalContentComposable>
+    </Dialog>
+  )
+}
+
 export default function ModelsPage() {
   const db = useDatabase()
   const [state, dispatch] = useReducer(modelReducer, initialState)
+  const [editingModel, setEditingModel] = useState<Model | null>(null)
   const {
     isAddDialogOpen,
     deleteConfirmOpen,
@@ -237,6 +377,20 @@ export default function ModelsPage() {
     },
     onSuccess: () => {
       dispatch({ type: 'CLOSE_DELETE_CONFIRM' })
+    },
+  })
+
+  const editModelMutation = useMutation({
+    mutationFn: async (values: z.infer<typeof editFormSchema> & { id: string }) => {
+      const { id, ...fields } = values
+      await updateModel(db, id, {
+        ...fields,
+        apiKey: fields.apiKey || null,
+        url: fields.url || null,
+      })
+    },
+    onSuccess: () => {
+      setEditingModel(null)
     },
   })
 
@@ -1027,59 +1181,23 @@ export default function ModelsPage() {
                         </TooltipContent>
                       </Tooltip>
                     </TooltipProvider>
-                    {isSystemModel ? (
-                      <TooltipProvider>
-                        <Tooltip>
-                          <TooltipTrigger asChild>
-                            <Button variant="ghost" size="sm" className="h-8 w-8 p-0" disabled>
-                              <Trash2 className="h-4 w-4" />
-                            </Button>
-                          </TooltipTrigger>
-                          <TooltipContent side="bottom">
-                            <p>System models can't be deleted</p>
-                          </TooltipContent>
-                        </Tooltip>
-                      </TooltipProvider>
-                    ) : (
-                      <Popover
-                        open={deleteConfirmOpen === model.id}
-                        onOpenChange={(open) =>
-                          dispatch(
-                            open
-                              ? { type: 'OPEN_DELETE_CONFIRM', modelId: model.id }
-                              : { type: 'CLOSE_DELETE_CONFIRM' },
-                          )
-                        }
+
+                    <ButtonGroup size="icon">
+                      <ButtonGroupItem
+                        variant="outline"
+                        onClick={() => setEditingModel(model)}
+                        disabled={isSystemModel}
                       >
-                        <PopoverTrigger asChild>
-                          <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
-                            <Trash2 className="h-4 w-4" />
-                          </Button>
-                        </PopoverTrigger>
-                        <PopoverContent className="w-80" side="bottom" align="end">
-                          <div className="space-y-3">
-                            <div>
-                              <h4 className="font-medium">Remove Model</h4>
-                              <p className="text-sm text-muted-foreground">
-                                Are you sure you want to remove this model? This action cannot be undone.
-                              </p>
-                            </div>
-                            <div className="flex justify-end gap-2">
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                onClick={() => dispatch({ type: 'CLOSE_DELETE_CONFIRM' })}
-                              >
-                                Cancel
-                              </Button>
-                              <Button variant="destructive" size="sm" onClick={() => handleDeleteModel(model.id)}>
-                                Remove
-                              </Button>
-                            </div>
-                          </div>
-                        </PopoverContent>
-                      </Popover>
-                    )}
+                        <Pen className="h-3 w-3" />
+                      </ButtonGroupItem>
+                      <ButtonGroupItem
+                        variant="outline"
+                        onClick={() => dispatch({ type: 'OPEN_DELETE_CONFIRM', modelId: model.id })}
+                        disabled={isSystemModel}
+                      >
+                        <Trash2 className="h-3 w-3" />
+                      </ButtonGroupItem>
+                    </ButtonGroup>
                   </div>
                 </div>
               </CardHeader>
@@ -1122,6 +1240,43 @@ export default function ModelsPage() {
           </Card>
         )}
       </div>
+
+      {/* Edit Model Modal */}
+      <EditModelModal
+        model={editingModel}
+        onOpenChange={(open) => !open && setEditingModel(null)}
+        onSubmit={(values) => editModelMutation.mutate(values)}
+        isPending={editModelMutation.isPending}
+      />
+
+      {/* Delete Confirmation */}
+      <AlertDialog
+        open={!!deleteConfirmOpen}
+        onOpenChange={(open) => !open && dispatch({ type: 'CLOSE_DELETE_CONFIRM' })}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Remove Model</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to remove this model? This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={deleteModelMutation.isPending}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                if (deleteConfirmOpen) {
+                  handleDeleteModel(deleteConfirmOpen)
+                }
+              }}
+              disabled={deleteModelMutation.isPending}
+              className="bg-destructive text-white hover:bg-destructive/90"
+            >
+              {deleteModelMutation.isPending ? 'Removing...' : 'Remove'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   )
 }

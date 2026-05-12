@@ -4,7 +4,7 @@
 
 // New file with Microsoft Graph tools
 
-import { getSettings, updateSettings } from '@/dal'
+import { getIntegrationCredentials, saveIntegrationCredentials } from '@/dal'
 import { getDb } from '@/db/database'
 import { llmContentCharLimit } from '@/lib/utils'
 import type { ToolConfig } from '@/types'
@@ -146,19 +146,17 @@ const getOneDriveFileCategory = (mime: string): OneDriveFileContent['file_catego
 // Internal helpers
 // ---------------------------------------------------------------------------
 
-const getMicrosoftCredentials = async () => {
+const getMicrosoftCredentials = async (): Promise<{
+  access_token: string
+  refresh_token: string
+  expires_at?: number
+}> => {
   const db = getDb()
-  const settings = await getSettings(db, { integrations_microsoft_credentials: String })
-  const credentialsStr = settings.integrationsMicrosoftCredentials
-  if (!credentialsStr) {
+  const row = await getIntegrationCredentials(db, 'microsoft')
+  if (!row) {
     throw new Error('Microsoft integration not connected')
   }
-
-  try {
-    return JSON.parse(credentialsStr)
-  } catch {
-    throw new Error('Invalid Microsoft credentials')
-  }
+  return row.credentials as { access_token: string; refresh_token: string; expires_at?: number }
 }
 
 /**
@@ -191,7 +189,7 @@ const ensureValidToken = async (
   }
 
   const db = getDb()
-  await updateSettings(db, { integrations_microsoft_credentials: JSON.stringify(updated) })
+  await saveIntegrationCredentials(db, 'microsoft', updated, true)
 
   return newTokens.access_token
 }

@@ -4,7 +4,7 @@
 
 import { refreshAccessToken } from '@/lib/auth'
 import type { HttpClient } from '@/lib/http'
-import { getSettings, updateSettings } from '@/dal'
+import { getIntegrationCredentials, saveIntegrationCredentials } from '@/dal'
 import { getDb } from '@/db/database'
 import type { DraftEmailParams } from './tools'
 
@@ -137,17 +137,11 @@ export const getGoogleCredentials = async (): Promise<{
   expires_at?: number
 }> => {
   const db = getDb()
-  const settings = await getSettings(db, { integrations_google_credentials: String })
-  const credentialsStr = settings.integrationsGoogleCredentials
-  if (!credentialsStr) {
+  const row = await getIntegrationCredentials(db, 'google')
+  if (!row) {
     throw new Error('Google integration not connected')
   }
-
-  try {
-    return JSON.parse(credentialsStr)
-  } catch {
-    throw new Error('Invalid Google credentials')
-  }
+  return row.credentials
 }
 
 /**
@@ -181,7 +175,7 @@ export const ensureValidGoogleToken = async (
   }
 
   const db = getDb()
-  await updateSettings(db, { integrations_google_credentials: JSON.stringify(updated) })
+  await saveIntegrationCredentials(db, 'google', updated, true)
 
   return updated.access_token
 }

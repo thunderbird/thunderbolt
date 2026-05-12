@@ -3,7 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { useDatabase, useHttpClient } from '@/contexts'
-import { updateSettings } from '@/dal'
+import { saveIntegrationCredentials, updateSettings } from '@/dal'
 import { buildAuthUrl, exchangeCodeForTokens, getUserInfo, redirectOAuthFlow, type OAuthProvider } from '@/lib/auth'
 import { startOAuthFlowLoopback } from '@/lib/oauth-loopback'
 import { clearOAuthState, getOAuthState, setOAuthState } from '@/lib/oauth-state'
@@ -148,10 +148,7 @@ export const useOAuthConnect = (options: UseOAuthConnectOptions = {}): UseOAuthC
       },
     }
 
-    await updateSettings(db, {
-      [`integrations_${provider}_credentials`]: JSON.stringify(credentials),
-      [`integrations_${provider}_is_enabled`]: 'true',
-    })
+    await saveIntegrationCredentials(db, provider, credentials, true)
 
     if (setPreferredName && userInfo.name) {
       await updateSettings(db, { preferred_name: userInfo.name })

@@ -5,8 +5,7 @@
 import { eq } from 'drizzle-orm'
 import type { AnyDrizzleDatabase } from '../db/database-interface'
 import { integrationsSecretsTable } from '../db/tables'
-
-type IntegrationProvider = 'google' | 'microsoft'
+import type { OAuthProvider } from '../lib/auth'
 
 type IntegrationCredentials = {
   access_token: string
@@ -27,7 +26,7 @@ type IntegrationRow = {
 /** Get credentials and enabled flag for a provider. Returns null if no row exists. */
 export const getIntegrationCredentials = async (
   db: AnyDrizzleDatabase,
-  provider: IntegrationProvider,
+  provider: OAuthProvider,
 ): Promise<IntegrationRow | null> => {
   const row = await db
     .select()
@@ -55,7 +54,7 @@ export const getIntegrationCredentials = async (
  */
 export const saveIntegrationCredentials = async (
   db: AnyDrizzleDatabase,
-  provider: IntegrationProvider,
+  provider: OAuthProvider,
   credentials: IntegrationCredentials,
   enabled: boolean,
 ): Promise<void> => {
@@ -83,7 +82,7 @@ export const saveIntegrationCredentials = async (
 /** Toggle the enabled flag for a provider without changing credentials. */
 export const setIntegrationEnabled = async (
   db: AnyDrizzleDatabase,
-  provider: IntegrationProvider,
+  provider: OAuthProvider,
   enabled: boolean,
 ): Promise<void> => {
   await db
@@ -93,10 +92,7 @@ export const setIntegrationEnabled = async (
 }
 
 /** Delete credentials for a provider (disconnect). */
-export const deleteIntegrationCredentials = async (
-  db: AnyDrizzleDatabase,
-  provider: IntegrationProvider,
-): Promise<void> => {
+export const deleteIntegrationCredentials = async (db: AnyDrizzleDatabase, provider: OAuthProvider): Promise<void> => {
   await db.delete(integrationsSecretsTable).where(eq(integrationsSecretsTable.provider, provider))
 }
 

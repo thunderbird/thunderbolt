@@ -59,10 +59,6 @@ const logVerbosePrompt = async (scenario: EvalScenario, modeSystemPrompt: string
     time_format: '12h',
     currency: 'USD',
     integrations_do_not_ask_again: false,
-    integrations_google_credentials: '',
-    integrations_google_is_enabled: false,
-    integrations_microsoft_credentials: '',
-    integrations_microsoft_is_enabled: false,
   })
 
   const systemPrompt = createPrompt({

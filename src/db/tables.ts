@@ -87,7 +87,6 @@ export const modelsTable = sqliteTable(
     name: text('name'),
     model: text('model'),
     url: text('url'),
-    apiKey: text('api_key'),
     isSystem: integer('is_system').default(0),
     enabled: integer('enabled').default(1),
     toolUsage: integer('tool_usage').default(1),
@@ -107,6 +106,12 @@ export const modelsTable = sqliteTable(
       .where(sql`${table.deletedAt} IS NULL`),
   ],
 )
+
+/** Local-only table for model API keys. Never synced via PowerSync. */
+export const modelsSecretsTable = sqliteTable('models_secrets', {
+  modelId: text('id').primaryKey(),
+  apiKey: text('api_key'),
+})
 
 export const mcpServersTable = sqliteTable(
   'mcp_servers',

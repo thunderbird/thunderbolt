@@ -50,7 +50,6 @@ const createTestModel = async () => {
     toolUsage: 1,
     startWithReasoning: 0,
     deletedAt: null,
-    apiKey: null,
     url: null,
     defaultHash: null,
   })

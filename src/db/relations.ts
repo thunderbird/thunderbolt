@@ -3,7 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { relations } from 'drizzle-orm'
-import { chatMessagesTable, chatThreadsTable, modelProfilesTable, modelsTable } from './tables'
+import { chatMessagesTable, chatThreadsTable, modelProfilesTable, modelsSecretsTable, modelsTable } from './tables'
 
 export const chatThreadsRelations = relations(chatThreadsTable, ({ many }) => ({
   messages: many(chatMessagesTable),
@@ -33,6 +33,17 @@ export const modelsRelations = relations(modelsTable, ({ one, many }) => ({
   profile: one(modelProfilesTable, {
     fields: [modelsTable.id],
     references: [modelProfilesTable.modelId],
+  }),
+  secret: one(modelsSecretsTable, {
+    fields: [modelsTable.id],
+    references: [modelsSecretsTable.modelId],
+  }),
+}))
+
+export const modelsSecretsRelations = relations(modelsSecretsTable, ({ one }) => ({
+  model: one(modelsTable, {
+    fields: [modelsSecretsTable.modelId],
+    references: [modelsTable.id],
   }),
 }))
 

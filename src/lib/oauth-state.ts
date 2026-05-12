@@ -2,14 +2,15 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { getSettings, updateSettings, deleteSetting } from '@/dal'
-import { getDb } from '@/db/database'
 import type { OAuthProvider } from './auth'
 
 export type ReturnContext = 'onboarding' | 'integrations' | `/${string}`
 
+const storageKey = 'oauth_flow_state'
+
 /**
- * OAuth state stored in sqlite settings
+ * OAuth state stored in sessionStorage (device-local, survives page reload, dies with tab).
+ * Never synced — PKCE verifiers and CSRF tokens are security-critical single-use values.
  */
 type OAuthState = {
   state: string | null
@@ -18,60 +19,27 @@ type OAuthState = {
   returnContext: ReturnContext | null
 }
 
-/**
- * Gets all OAuth state from sqlite settings
- */
-export const getOAuthState = async (): Promise<OAuthState> => {
-  const db = getDb()
-  const settings = await getSettings(db, {
-    oauth_state: String,
-    oauth_provider: String,
-    oauth_verifier: String,
-    oauth_return_context: String,
-  })
-
-  return {
-    state: settings.oauthState,
-    provider: settings.oauthProvider as OAuthProvider | null,
-    verifier: settings.oauthVerifier,
-    returnContext: settings.oauthReturnContext as ReturnContext | null,
+/** Gets all OAuth flow state from sessionStorage. */
+export const getOAuthState = (): OAuthState => {
+  const raw = sessionStorage.getItem(storageKey)
+  if (!raw) {
+    return { state: null, provider: null, verifier: null, returnContext: null }
+  }
+  try {
+    return JSON.parse(raw) as OAuthState
+  } catch {
+    return { state: null, provider: null, verifier: null, returnContext: null }
   }
 }
 
-/**
- * Sets OAuth state in sqlite settings
- */
-export const setOAuthState = async (state: Partial<OAuthState>): Promise<void> => {
-  const settings: Record<string, string | null> = {}
-
-  if (state.state !== undefined) {
-    settings.oauth_state = state.state
-  }
-  if (state.provider !== undefined) {
-    settings.oauth_provider = state.provider
-  }
-  if (state.verifier !== undefined) {
-    settings.oauth_verifier = state.verifier
-  }
-  if (state.returnContext !== undefined) {
-    settings.oauth_return_context = state.returnContext
-  }
-
-  if (Object.keys(settings).length > 0) {
-    const db = getDb()
-    await updateSettings(db, settings)
-  }
+/** Sets OAuth flow state in sessionStorage (merges with existing). */
+export const setOAuthState = (update: Partial<OAuthState>): void => {
+  const current = getOAuthState()
+  const merged = { ...current, ...update }
+  sessionStorage.setItem(storageKey, JSON.stringify(merged))
 }
 
-/**
- * Clears OAuth state from sqlite settings
- */
-export const clearOAuthState = async (): Promise<void> => {
-  const db = getDb()
-  await Promise.all([
-    deleteSetting(db, 'oauth_state'),
-    deleteSetting(db, 'oauth_provider'),
-    deleteSetting(db, 'oauth_verifier'),
-    deleteSetting(db, 'oauth_return_context'),
-  ])
+/** Clears all OAuth flow state from sessionStorage. */
+export const clearOAuthState = (): void => {
+  sessionStorage.removeItem(storageKey)
 }

@@ -2,9 +2,8 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { getSettings, updateSettings } from '@/dal'
+import { getOAuthState, setOAuthState } from '@/lib/oauth-state'
 import { resetTestDatabase, setupTestDatabase, teardownTestDatabase } from '@/dal/test-utils'
-import { getDb } from '@/db/database'
 import { cleanupSessionStorage, mockOAuthCallbackData, mockOAuthErrorCallbackData } from '@/test-utils/oauth'
 import { createQueryTestWrapper } from '@/test-utils/react-query'
 import { act, renderHook } from '@testing-library/react'
@@ -19,10 +18,10 @@ const createMockDependencies = (): OAuthDependencies => ({
   },
   redirectOAuthFlow: async (_httpClient, provider) => {
     // Simulate what the real redirectOAuthFlow does before redirecting
-    await updateSettings(getDb(), {
-      oauth_state: 'mock_state_12345',
-      oauth_provider: provider,
-      oauth_verifier: 'mock_verifier_67890',
+    setOAuthState({
+      state: 'mock_state_12345',
+      provider,
+      verifier: 'mock_verifier_67890',
     })
     // Throw to simulate the redirect
     throw new Error('Redirecting for OAuth')
@@ -175,20 +174,20 @@ describe('useOAuthConnect', () => {
         }
       })
 
-      // Verify return context was stored in sqlite
-      const settings = await getSettings(getDb(), { oauth_return_context: String })
-      expect(settings.oauthReturnContext).toBe('onboarding')
+      // Verify return context was stored in sessionStorage
+      const oauthState = getOAuthState()
+      expect(oauthState.returnContext).toBe('onboarding')
     })
   })
 
   describe('processCallback', () => {
     it('should handle successful OAuth callback', async () => {
       const callbackData = mockOAuthCallbackData()
-      // Setup sqlite settings
-      await updateSettings(getDb(), {
-        oauth_state: callbackData.state!,
-        oauth_provider: 'google',
-        oauth_verifier: 'mock_verifier_67890',
+      // Setup OAuth state in sessionStorage
+      setOAuthState({
+        state: callbackData.state!,
+        provider: 'google',
+        verifier: 'mock_verifier_67890',
       })
 
       const onSuccess = mock()
@@ -218,11 +217,11 @@ describe('useOAuthConnect', () => {
 
     it('should handle state mismatch', async () => {
       const callbackData = mockOAuthCallbackData()
-      // Setup sqlite settings with mismatched state
-      await updateSettings(getDb(), {
-        oauth_state: 'different_state',
-        oauth_provider: 'google',
-        oauth_verifier: 'mock_verifier_67890',
+      // Setup sessionStorage with mismatched state
+      setOAuthState({
+        state: 'different_state',
+        provider: 'google',
+        verifier: 'mock_verifier_67890',
       })
 
       const onSuccess = mock()
@@ -319,9 +318,9 @@ describe('useOAuthConnect', () => {
         }
       })
 
-      // Verify return context was stored in sqlite
-      const settings = await getSettings(getDb(), { oauth_return_context: String })
-      expect(settings.oauthReturnContext).toBe('onboarding')
+      // Verify return context was stored in sessionStorage
+      const oauthState = getOAuthState()
+      expect(oauthState.returnContext).toBe('onboarding')
     })
   })
 

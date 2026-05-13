@@ -109,7 +109,7 @@ jobs:
       - name: Compute and save metrics baseline
         if: github.ref == 'refs/heads/main'
         run: |
-          bun test ./src ./scripts --timeout 5000 --coverage 2>&1 | tee /tmp/coverage.txt || true
+          bun test --cwd=src --timeout 5000 --coverage 2>&1 | tee /tmp/coverage.txt || true
           COVERAGE=$(grep -E "All files" /tmp/coverage.txt | grep -oE '[0-9]+\.[0-9]+' | head -1)
           bunx size-limit --json > /tmp/size-limit.json 2>/dev/null || true
           BUNDLE=$(jq -r '.[0].size // 0' /tmp/size-limit.json 2>/dev/null || echo 0)

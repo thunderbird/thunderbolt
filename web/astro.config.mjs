@@ -13,6 +13,12 @@ export default defineConfig({
 	site: 'https://thunderbolt.io',
 	redirects: {
 		'/announcing-thunderbolt': '/blog/mozilla-introduces-thunderbolt',
+		// Old root-level self-hosting docs were duplicates of /docs/self-hosting/*.
+		// Removed to eliminate drift; redirect old URLs to the canonical ones.
+		'/docs/configuration': '/docs/self-hosting/configuration',
+		'/docs/kubernetes': '/docs/self-hosting/kubernetes',
+		'/docs/docker-compose': '/docs/self-hosting/docker-compose',
+		'/docs/pulumi': '/docs/self-hosting/pulumi',
 	},
 	integrations: [
 		react(),
@@ -96,6 +102,7 @@ export default defineConfig({
 					label: 'Development',
 					items: [
 						{ label: 'Quick Start', slug: 'docs/development/quick-start' },
+						{ label: 'Mobile Setup', slug: 'docs/development/mobile-setup' },
 						{ label: 'Testing', slug: 'docs/development/testing' },
 					],
 				},

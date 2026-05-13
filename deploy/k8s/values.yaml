@@ -10,7 +10,7 @@ appUrl: http://localhost
 # =============================================================================
 frontend:
   image:
-    repository: ghcr.io/your-org/thunderbolt/frontend
+    repository: ghcr.io/thunderbird/thunderbolt/thunderbolt-frontend
     tag: latest
     pullPolicy: IfNotPresent
   replicas: 1
@@ -22,7 +22,7 @@ frontend:
 # =============================================================================
 marketing:
   image:
-    repository: ghcr.io/your-org/thunderbolt/marketing
+    repository: ghcr.io/thunderbird/thunderbolt/thunderbolt-marketing
     tag: latest
     pullPolicy: IfNotPresent
   replicas: 1
@@ -34,7 +34,7 @@ marketing:
 # =============================================================================
 backend:
   image:
-    repository: ghcr.io/your-org/thunderbolt/backend
+    repository: ghcr.io/thunderbird/thunderbolt/thunderbolt-backend
     tag: latest
     pullPolicy: IfNotPresent
   replicas: 1

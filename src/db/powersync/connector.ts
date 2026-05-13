@@ -115,9 +115,13 @@ export class ThunderboltConnector implements PowerSyncBackendConnector {
           // ignore
         }
         handleCredentialsInvalidIfNeeded(status, body)
-        // 401 surfaces as session_expired (modal opens), DEVICE_NOT_TRUSTED is expected during setup —
-        // both are surfaced to the user via dedicated UI, so don't pollute the console.
-        if (status !== 401 && body.code !== 'DEVICE_NOT_TRUSTED') {
+        // 401 surfaces as session_expired (modal opens) and DEVICE_NOT_TRUSTED is expected during setup,
+        // so we don't pollute the console with those. 503 is also quieted in dev (fires repeatedly when
+        // POWERSYNC_URL is unset and is surfaced via doctor checks), but in production a 503 is a real
+        // outage signal operators need to see.
+        const isQuietStatus =
+          status === 401 || body.code === 'DEVICE_NOT_TRUSTED' || (status === 503 && import.meta.env.DEV)
+        if (!isQuietStatus) {
           console.error('Failed to fetch PowerSync credentials:', status, body)
         }
         trackSyncEvent('sync_credentials_error', {

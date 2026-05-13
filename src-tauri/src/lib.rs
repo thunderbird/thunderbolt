@@ -52,6 +52,10 @@ pub fn create_app() -> tauri::Builder<tauri::Wry> {
 
     #[cfg(debug_assertions)]
     {
+        // tauri-plugin-devtools pulls in reqwest 0.13 (rustls). On iOS dev builds the rustls
+        // stack panics on first HTTPS call without an explicit crypto provider — release builds
+        // exclude this plugin entirely so they're unaffected.
+        let _ = rustls::crypto::aws_lc_rs::default_provider().install_default();
         builder = builder.plugin(tauri_plugin_devtools::init());
     }
 

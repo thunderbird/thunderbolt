@@ -71,7 +71,7 @@ jobs:
       - name: Run tests with coverage
         id: coverage
         run: |
-          bun test ./src ./scripts --timeout 5000 --coverage 2>&1 | tee /tmp/coverage.txt || true
+          bun test --cwd=src --timeout 5000 --coverage 2>&1 | tee /tmp/coverage.txt || true
           TOTAL=$(grep -E "All files" /tmp/coverage.txt | grep -oE '[0-9]+\.[0-9]+' | head -1)
           echo "total=${TOTAL:-N/A}" >> $GITHUB_OUTPUT
         continue-on-error: true

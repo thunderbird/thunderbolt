@@ -51,6 +51,11 @@ tauri-plugin-haptics = "2.3"
 tauri-plugin-updater = "2.3"
 tauri-plugin-store = "2.4.3"
 
+# Used only in debug builds to install a rustls crypto provider before
+# tauri-plugin-devtools' reqwest stack initializes (otherwise iOS dev panics
+# at first HTTPS call: "No provider set"). Already a transitive dep via reqwest.
+rustls = { version = "0.23", default-features = false, features = ["aws-lc-rs"] }
+
 [target.'cfg(not(any(target_os = "android", target_os = "ios")))'.dependencies]
 tauri-plugin-single-instance = "2"
 

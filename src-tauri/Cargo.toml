@@ -31,7 +31,7 @@ path = "src/main.rs"
 tauri-build = { version = "2.6.0", features = [] }
 
 [dependencies]
-tauri = { version = "2.11.0", features = [
+tauri = { version = "2.11.1", features = [
     "tray-icon",
     "devtools",
     "unstable",  # Required for webview

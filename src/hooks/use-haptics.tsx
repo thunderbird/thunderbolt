@@ -34,7 +34,7 @@ const HapticsContext = createContext<HapticsContextValue>({
  * a provider get silent no-ops, keeping them usable as dumb components.
  */
 export const HapticsProvider = ({ children }: { children: ReactNode }) => {
-  const { hapticsEnabled } = useLocalSettingsStore()
+  const hapticsEnabled = useLocalSettingsStore((s) => s.hapticsEnabled)
   const { trigger } = useWebHaptics({ debug: import.meta.env.DEV })
 
   const triggerSelectionHaptic = useCallback(() => {

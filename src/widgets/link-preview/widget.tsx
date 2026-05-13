@@ -75,7 +75,7 @@ const InstantLinkPreview = ({ sourceData, cloudUrl }: { sourceData: SourceMetada
 }
 
 export const LinkPreviewWidget = ({ url, source, sources, messageId, fetchPreviewFn }: LinkPreviewWidgetProps) => {
-  const { cloudUrl } = useLocalSettingsStore()
+  const cloudUrl = useLocalSettingsStore((s) => s.cloudUrl)
 
   // Instant render path: resolve from source registry (O(1) index lookup)
   if (source && sources) {

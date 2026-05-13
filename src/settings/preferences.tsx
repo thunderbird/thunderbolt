@@ -132,7 +132,8 @@ export default function PreferencesSettingsPage() {
     currency: 'USD',
   })
 
-  const { hapticsEnabled, setLocalSetting } = useLocalSettingsStore()
+  const hapticsEnabled = useLocalSettingsStore((s) => s.hapticsEnabled)
+  const setLocalSetting = useLocalSettingsStore((s) => s.setLocalSetting)
 
   // Local state for name input (only save on blur to avoid DB writes on every keystroke)
   const [nameInput, setNameInput] = useState('')

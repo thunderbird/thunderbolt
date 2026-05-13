@@ -47,7 +47,8 @@ const initialState: ThemeProviderState = {
 const ThemeProviderContext = createContext<ThemeProviderState>(initialState)
 
 export const ThemeProvider = ({ children }: { children: ReactNode }) => {
-  const { theme, setLocalSetting } = useLocalSettingsStore()
+  const theme = useLocalSettingsStore((s) => s.theme)
+  const setLocalSetting = useLocalSettingsStore((s) => s.setLocalSetting)
 
   const setTheme = useCallback((newTheme: Theme) => setLocalSetting('theme', newTheme), [setLocalSetting])
 

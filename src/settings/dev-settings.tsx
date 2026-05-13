@@ -11,9 +11,17 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip
 import { initialLocalSettings, useLocalSettingsStore } from '@/stores/local-settings-store'
 import { getCapabilities, isTauri } from '@/lib/platform'
 import { useQuery } from '@tanstack/react-query'
+import { useShallow } from 'zustand/react/shallow'
 
 export default function DevSettingsPage() {
-  const { cloudUrl, isNativeFetchEnabled, debugPosthog, setLocalSetting } = useLocalSettingsStore()
+  const { cloudUrl, isNativeFetchEnabled, debugPosthog } = useLocalSettingsStore(
+    useShallow((s) => ({
+      cloudUrl: s.cloudUrl,
+      isNativeFetchEnabled: s.isNativeFetchEnabled,
+      debugPosthog: s.debugPosthog,
+    })),
+  )
+  const setLocalSetting = useLocalSettingsStore((s) => s.setLocalSetting)
 
   const isModified = <K extends keyof typeof initialLocalSettings>(key: K) =>
     useLocalSettingsStore.getState()[key] !== initialLocalSettings[key]

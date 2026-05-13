@@ -44,7 +44,7 @@ export const extractFaviconUrl = (toolName: string, output: unknown): string | n
  */
 const useToolFavicon = (toolName: string, toolOutput: unknown, isLoading: boolean, isError: boolean) => {
   const [failedFavicons, setFailedFavicons] = useState<Set<string>>(new Set())
-  const { cloudUrl } = useLocalSettingsStore()
+  const cloudUrl = useLocalSettingsStore((s) => s.cloudUrl)
 
   const handleFaviconError = (url: string) => {
     setFailedFavicons((prev) => new Set(prev).add(url))

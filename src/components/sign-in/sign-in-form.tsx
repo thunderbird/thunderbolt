@@ -79,7 +79,7 @@ export const SignInForm = ({
 }: SignInFormProps) => {
   const authClient = useAuth()
   const httpClient = useHttpClient()
-  const { cloudUrl } = useLocalSettingsStore()
+  const cloudUrl = useLocalSettingsStore((s) => s.cloudUrl)
   const { preferredName } = useSettings({ preferred_name: '' })
   const isLocalhost = isLocalhostUrl(cloudUrl)
   const displayName = preferredName.value as string

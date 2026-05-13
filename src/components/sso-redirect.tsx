@@ -19,7 +19,7 @@ import Loading from '@/loading'
  * of navigating the webview (WKWebView drops cookies during cross-origin redirects).
  */
 const SsoRedirect = () => {
-  const { cloudUrl } = useLocalSettingsStore()
+  const cloudUrl = useLocalSettingsStore((s) => s.cloudUrl)
   const [error, setError] = useState(false)
   const [retryKey, setRetryKey] = useState(0)
 

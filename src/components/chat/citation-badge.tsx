@@ -91,7 +91,7 @@ ManagedBadge.displayName = 'ManagedBadge'
 const StandaloneBadge = memo(({ sources }: { sources: CitationSource[] }) => {
   const [isOpen, setIsOpen] = useState(false)
   const { isMobile } = useIsMobile()
-  const { cloudUrl } = useLocalSettingsStore()
+  const cloudUrl = useLocalSettingsStore((s) => s.cloudUrl)
   const { displayName, additionalCount, ariaLabel } = getBadgeLabel(sources)
 
   const badge = (

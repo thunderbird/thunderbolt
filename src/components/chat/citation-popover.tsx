@@ -64,7 +64,7 @@ export const CitationPopoverProvider = ({ children }: { children: ReactNode }) =
 
 const CitationOverlay = memo(({ popover, close }: { popover: PopoverData | null; close: () => void }) => {
   const { isMobile } = useIsMobile()
-  const { cloudUrl } = useLocalSettingsStore()
+  const cloudUrl = useLocalSettingsStore((s) => s.cloudUrl)
   const anchorRef = useRef<HTMLSpanElement>(null)
 
   useEffect(() => {

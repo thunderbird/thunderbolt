@@ -98,7 +98,15 @@ if (isSharedStack) {
 } else if (sharedStackName) {
   // Per-PR stack consuming the shared stack via StackReference. Only owns the
   // PR-specific bits (backend/frontend/marketing services + per-PR routing).
-  const sharedRef = new pulumi.StackReference(sharedStackName)
+  //
+  // Pulumi requires StackReference names in the fully-qualified
+  // `<organization>/<project>/<stack>` form. The workflow passes just the bare
+  // stack name (`previews-shared`) since org/project are implicit, so qualify
+  // here using the current stack's own org/project.
+  const qualifiedSharedStackName = sharedStackName.includes('/')
+    ? sharedStackName
+    : `${pulumi.getOrganization()}/${pulumi.getProject()}/${sharedStackName}`
+  const sharedRef = new pulumi.StackReference(qualifiedSharedStackName)
   const sharedOutputs = loadSharedStackOutputs(sharedRef)
 
   const imagePrefix = 'ghcr.io/thunderbird/thunderbolt'

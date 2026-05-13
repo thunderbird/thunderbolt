@@ -27,7 +27,7 @@ import { isAutoApprovedDomain, sendWaitlistJoinedEmail, sendWaitlistNotReadyEmai
 import { challengeTokenHeader, otpExpiryMs, otpExpirySeconds } from './otp-constants'
 import { buildVerifyUrl, parseTrustedOrigins, sendSignInEmail } from './utils'
 
-const OTP_SIGN_IN_PATH = '/sign-in/email-otp'
+const otpSignInPath = '/sign-in/email-otp'
 
 /**
  * Create a Better Auth instance with the provided database
@@ -183,7 +183,7 @@ export const createAuth = (database: typeof DbType) => {
     },
     hooks: {
       before: createAuthMiddleware(async (ctx) => {
-        if (ctx.path !== OTP_SIGN_IN_PATH) {
+        if (ctx.path !== otpSignInPath) {
           return
         }
 
@@ -215,7 +215,7 @@ export const createAuth = (database: typeof DbType) => {
         // (after hook) or by expiry. This allows the 3-attempt limit to work correctly.
       }),
       after: createAuthMiddleware(async (ctx) => {
-        if (ctx.path !== OTP_SIGN_IN_PATH) {
+        if (ctx.path !== otpSignInPath) {
           return
         }
 
@@ -253,7 +253,7 @@ export const createAuth = (database: typeof DbType) => {
         // code requests + session binding (challenge token) make brute-force infeasible.
         // TODO(THU-113): proof-of-work (ALTCHA) will add further distributed protection.
 
-        async sendVerificationOTP({ email, otp, type }, ctx) {
+        async sendVerificationOTP({ email, otp, type }) {
           // We only support sign-in (no password-based auth, so no email-verification or forget-password)
           if (type !== 'sign-in') {
             console.warn(`Unexpected OTP type requested: ${type}`)

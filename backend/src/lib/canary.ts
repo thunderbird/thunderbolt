@@ -18,7 +18,9 @@ const verifyAgainstHash = async (canarySecret: string, storedHash: string): Prom
   const hash = await hashCanarySecret(canarySecret)
   const hashBuf = Buffer.from(hash)
   const storedBuf = Buffer.from(storedHash)
-  if (hashBuf.length !== storedBuf.length) return false
+  if (hashBuf.length !== storedBuf.length) {
+    return false
+  }
   return timingSafeEqual(hashBuf, storedBuf)
 }
 
@@ -29,7 +31,9 @@ const verifyAgainstHash = async (canarySecret: string, storedHash: string): Prom
  */
 export const verifyCanaryProof = async (db: typeof DbType, userId: string, canarySecret: string): Promise<boolean> => {
   const metadata = await getEncryptionMetadata(db, userId)
-  if (!metadata?.canarySecretHash) return false
+  if (!metadata?.canarySecretHash) {
+    return false
+  }
   return verifyAgainstHash(canarySecret, metadata.canarySecretHash)
 }
 
@@ -41,6 +45,8 @@ export const verifyCanaryProofWithMetadata = async (
   canarySecret: string,
   storedHash: string | null | undefined,
 ): Promise<boolean> => {
-  if (!storedHash) return false
+  if (!storedHash) {
+    return false
+  }
   return verifyAgainstHash(canarySecret, storedHash)
 }

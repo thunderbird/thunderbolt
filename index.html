@@ -21,9 +21,15 @@
   <body>
     <script>
       // Apply theme before first paint to prevent flash of white on dark mode.
-      // Must stay in sync with the storageKey and logic in src/lib/theme-provider.tsx.
+      // Must stay in sync with the storageKey and logic in src/stores/local-settings-store.ts.
       ;(function () {
-        var theme = localStorage.getItem('ui_theme')
+        var theme = null
+        try {
+          var raw = localStorage.getItem('thunderbolt-local-settings')
+          if (raw) {
+            theme = JSON.parse(raw).state.theme
+          }
+        } catch (e) {}
         var isDark =
           theme === 'dark' || (theme !== 'light' && matchMedia('(prefers-color-scheme: dark)').matches)
         document.documentElement.classList.add(isDark ? 'dark' : 'light')

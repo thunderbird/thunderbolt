@@ -145,7 +145,7 @@ export const updateModel = async (db: AnyDrizzleDatabase, id: string, updates: P
     const existing = await db.select().from(modelsSecretsTable).where(eq(modelsSecretsTable.modelId, id)).get()
     if (existing) {
       await db.update(modelsSecretsTable).set({ apiKey }).where(eq(modelsSecretsTable.modelId, id))
-    } else {
+    } else if (apiKey != null) {
       await db.insert(modelsSecretsTable).values({ modelId: id, apiKey })
     }
   }

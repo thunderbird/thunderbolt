@@ -1090,6 +1090,23 @@ describe('Models DAL', () => {
       expect(model?.apiKey).toBeNull()
     })
 
+    it('should not create a secret row when updating with null apiKey and no existing row', async () => {
+      const db = getDb()
+      const modelId = uuidv7()
+
+      await createModel(db, {
+        id: modelId,
+        provider: 'openai',
+        name: 'No key model',
+        model: 'gpt-4',
+      })
+
+      await updateModel(db, modelId, { apiKey: null })
+
+      const secret = await db.select().from(modelsSecretsTable).where(eq(modelsSecretsTable.modelId, modelId)).get()
+      expect(secret).toBeUndefined()
+    })
+
     it('should upsert apiKey via updateModel', async () => {
       const db = getDb()
       const modelId = uuidv7()

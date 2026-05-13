@@ -201,7 +201,7 @@ jobs:
           true
 
       - name: Deploy
-        uses: pulumi/actions@8582a9e8cc630786854029b4e09281acd6794b58 # v6
+        uses: pulumi/actions@8e5e406f4007fca908480587cb9893c07090f58d # v7.0.0
         with:
           command: up
           stack-name: ${{ inputs.stack_name }}
@@ -240,7 +240,7 @@ jobs:
         run: bun install --frozen-lockfile
 
       - name: Destroy
-        uses: pulumi/actions@8582a9e8cc630786854029b4e09281acd6794b58 # v6
+        uses: pulumi/actions@8e5e406f4007fca908480587cb9893c07090f58d # v7.0.0
         with:
           command: destroy
           stack-name: ${{ inputs.stack_name }}

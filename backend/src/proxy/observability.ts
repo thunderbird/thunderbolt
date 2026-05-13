@@ -63,8 +63,11 @@ export type ProxyRequestFields = Omit<ProxyEventBase, 'target_host'> & { target_
 export type ProxyWsRelayFields = Omit<ProxyEventBase, 'target_host' | 'status' | 'bytes_in' | 'bytes_out'> & {
   target_url: string
   close_code: number
-  /** Optional free-form failure reason (e.g. close-code label). Distinct from
-   *  `error_type` — WS relay doesn't always have a clean category. */
+  /** Optional free-form failure reason — used to surface upstream-derived
+   *  diagnostic text the typed `error_type` enum cannot capture (e.g. the
+   *  upstream WS server's `CloseEvent.reason`, or the OS-level message from a
+   *  synchronous `new WebSocket(url)` failure). Categorical alerting should
+   *  key off `error_type`; this field is for incident-response context only. */
   error?: string
 }
 

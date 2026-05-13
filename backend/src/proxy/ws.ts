@@ -6,7 +6,7 @@ import type { Auth } from '@/auth/elysia-plugin'
 import { createAuthMacro } from '@/auth/elysia-plugin'
 import { isPrivateAddress } from '@/utils/url-validation'
 import { Elysia, type AnyElysia } from 'elysia'
-import { noopObservability, type ObservabilityRecorder } from './observability'
+import { noopObservability, type ObservabilityRecorder, type ProxyErrorType } from './observability'
 
 const targetPrefix = 'tbproxy.target.'
 
@@ -24,6 +24,17 @@ export const wsCloseCodes = {
   /** Pre-connect message queue exceeded byte or message budget. */
   queueOverflow: 4008,
 } as const
+
+/** Map a downstream-observed close code to a categorical proxy error.
+ *  Returns undefined for benign closes (1000 / 1001) and upstream-propagated
+ *  codes the proxy can't safely categorise — these emit without `error_type`,
+ *  the same way HTTP 2xx/3xx responses do on the routes path. */
+export const classifyWsCloseCode = (code: number): ProxyErrorType | undefined => {
+  if (code === wsCloseCodes.invalidSubprotocol || code === wsCloseCodes.schemeRejected) return 'invalid_target'
+  if (code === wsCloseCodes.queueOverflow) return 'cap_exceeded'
+  if (code === wsCloseCodes.internalError) return 'upstream_5xx'
+  return undefined
+}
 
 export type ParsedSubprotocol =
   | { ok: true; target: string; callerProtocols: string[] }
@@ -243,6 +254,7 @@ export const createUniversalProxyWsRoutes = (
           if (!observedClose) {
             return
           }
+          const errorType = classifyWsCloseCode(observedClose.code)
           observability.proxyWsRelay({
             method: 'WS',
             target_url: targetUrl,
@@ -250,6 +262,7 @@ export const createUniversalProxyWsRoutes = (
             duration_ms: Math.round(performance.now() - startedAt),
             user_id: userId,
             request_id: requestId,
+            ...(errorType ? { error_type: errorType } : {}),
             ...(observedClose.reason ? { error: observedClose.reason } : {}),
           })
           observedClose = null

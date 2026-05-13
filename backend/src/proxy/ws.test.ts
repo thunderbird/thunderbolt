@@ -3,7 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { describe, expect, it } from 'bun:test'
-import { parseTargetSubprotocol, validateWsTarget } from './ws'
+import { classifyWsCloseCode, parseTargetSubprotocol, validateWsTarget, wsCloseCodes } from './ws'
 
 describe('parseTargetSubprotocol', () => {
   it('extracts target from base64url subprotocol entry', () => {
@@ -74,5 +74,36 @@ describe('validateWsTarget', () => {
     const r = validateWsTarget('wss://10.0.0.1/path')
     expect(r.ok).toBe(false)
     if (!r.ok) expect(r.reason).toBe('private-host')
+  })
+})
+
+describe('classifyWsCloseCode', () => {
+  it('maps invalidSubprotocol (4002) to invalid_target', () => {
+    expect(classifyWsCloseCode(wsCloseCodes.invalidSubprotocol)).toBe('invalid_target')
+  })
+
+  it('maps schemeRejected (4003) to invalid_target', () => {
+    // Pre-upgrade rejection: included so future code paths that close with 4003
+    // post-upgrade categorise consistently with the 4002 sibling.
+    expect(classifyWsCloseCode(wsCloseCodes.schemeRejected)).toBe('invalid_target')
+  })
+
+  it('maps queueOverflow (4008) to cap_exceeded', () => {
+    expect(classifyWsCloseCode(wsCloseCodes.queueOverflow)).toBe('cap_exceeded')
+  })
+
+  it('maps internalError (1011) to upstream_5xx', () => {
+    expect(classifyWsCloseCode(wsCloseCodes.internalError)).toBe('upstream_5xx')
+  })
+
+  it('returns undefined for clean closes (1000, 1001)', () => {
+    expect(classifyWsCloseCode(1000)).toBeUndefined()
+    expect(classifyWsCloseCode(1001)).toBeUndefined()
+  })
+
+  it('returns undefined for upstream-propagated app codes (4321)', () => {
+    // Upstream-defined close codes pass through but stay uncategorised — only
+    // proxy-initiated closes have a known semantic category.
+    expect(classifyWsCloseCode(4321)).toBeUndefined()
   })
 })

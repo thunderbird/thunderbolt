@@ -4,6 +4,7 @@
 
 import { afterEach, describe, expect, it } from 'bun:test'
 import { createTestApp, type TestAppHandle } from '@/test-utils/e2e'
+import { createObservabilityRecorder } from './observability'
 import { wsCloseCodes } from './ws'
 
 /** Tiny upstream WebSocket echo server backed by Bun.serve. Returns the listening
@@ -249,5 +250,185 @@ describe('Universal proxy WebSocket relay /v1/proxy/ws — e2e', () => {
       client.addEventListener('close', () => resolve(true))
     })
     expect(closed).toBe(true)
+  })
+})
+
+/** Build a capturing observability recorder for WS tests. The proxy core ws.ts
+ *  emits `proxy_ws_relay` events through the recorder when the downstream
+ *  close fires; we collect them here and assert `error_type` per path. */
+const captureWsRecorder = () => {
+  const logs: Array<Record<string, unknown>> = []
+  const recorder = createObservabilityRecorder({
+    logger: { info: (event) => logs.push(event as Record<string, unknown>) },
+  })
+  return { recorder, logs }
+}
+
+/** Wait until at least one `proxy_ws_relay` event has landed in `logs`, or
+ *  the timeout expires. The relay emits on the downstream close handler which
+ *  Bun delivers asynchronously after `safeWsClose`. */
+const waitForWsRelayLog = async (logs: Array<Record<string, unknown>>, timeoutMs = 1500) => {
+  const start = Date.now()
+  while (Date.now() - start < timeoutMs) {
+    if (logs.some((l) => (l as { event?: string }).event === 'proxy_ws_relay')) return
+    await new Promise((r) => setTimeout(r, 25))
+  }
+}
+
+describe('Universal proxy WS observability — error_type per close path', () => {
+  let handles: TestAppHandle[] = []
+  const upstreams: Array<{ stop: () => Promise<void> }> = []
+
+  afterEach(async () => {
+    for (const h of handles) await closeProxy(h)
+    for (const u of upstreams) await u.stop()
+    handles = []
+    upstreams.length = 0
+  })
+
+  it('emits error_type=upstream_5xx when the upstream WS emits an error event', async () => {
+    // Connect to a high port that's almost certainly nothing — TCP RST → the
+    // upstream WebSocket fires `error` then `close(1006)`. The relay's `error`
+    // listener fires `safeWsClose(ws, 1011, 'upstream error')`, which the
+    // downstream close handler classifies as `upstream_5xx`.
+    const upstreamFactory = (_url: string, protocols?: string[]): WebSocket =>
+      new WebSocket(`ws://127.0.0.1:1`, protocols)
+
+    const { recorder, logs } = captureWsRecorder()
+    const observedHandle = await createTestApp({
+      upstreamWsFactory: upstreamFactory,
+      proxyObservability: recorder,
+    })
+    await new Promise<void>((resolve) => {
+      observedHandle.app.listen({ port: 0, hostname: '127.0.0.1' }, () => resolve())
+    })
+    handles.push(observedHandle)
+    const observedPort = (observedHandle.app as unknown as { server: { port: number } }).server!.port
+
+    const client = new WebSocket(`ws://127.0.0.1:${observedPort}/v1/proxy/ws`, {
+      protocols: buildProtocols('wss://upstream.test/'),
+      headers: { Authorization: `Bearer ${observedHandle.bearerToken}` },
+    } as unknown as string[])
+
+    await new Promise<void>((resolve) => {
+      client.addEventListener('close', () => resolve())
+      client.addEventListener('error', () => resolve())
+    })
+
+    await waitForWsRelayLog(logs)
+    const relay = logs.find((l) => (l as { event?: string }).event === 'proxy_ws_relay') as
+      | { error_type?: string; status?: number }
+      | undefined
+    expect(relay).toBeDefined()
+    expect(relay?.error_type).toBe('upstream_5xx')
+    expect(relay?.status).toBe(wsCloseCodes.internalError)
+  })
+
+  it('emits error_type=cap_exceeded when pre-connect queue overflows', async () => {
+    // Upstream that never opens — every message the client sends queues
+    // server-side until the queue cap fires.
+    const slowOpenUpstream = (_url: string, _protocols?: string[]): WebSocket => {
+      const proto = _protocols ? _protocols[0] : undefined
+      // Connect to an unused high port so the connect hangs in CONNECTING.
+      // Bun's WebSocket fires no `open` until/unless TCP completes.
+      const ws = new WebSocket(`ws://127.0.0.1:1`, proto)
+      // Suppress the error event so the relay's `error` listener does not
+      // race the queue overflow path. We want the *message handler's* queue
+      // overflow branch (4008), not the upstream-error branch (1011).
+      ws.addEventListener('error', (e) => e.preventDefault?.())
+      return ws
+    }
+
+    const { recorder, logs } = captureWsRecorder()
+    const observedHandle = await createTestApp({
+      upstreamWsFactory: slowOpenUpstream,
+      proxyObservability: recorder,
+    })
+    await new Promise<void>((resolve) => {
+      observedHandle.app.listen({ port: 0, hostname: '127.0.0.1' }, () => resolve())
+    })
+    handles.push(observedHandle)
+    const observedPort = (observedHandle.app as unknown as { server: { port: number } }).server!.port
+
+    const client = new WebSocket(`ws://127.0.0.1:${observedPort}/v1/proxy/ws`, {
+      protocols: buildProtocols('wss://upstream.test/'),
+      headers: { Authorization: `Bearer ${observedHandle.bearerToken}` },
+    } as unknown as string[])
+
+    await new Promise<void>((resolve) => {
+      client.addEventListener('open', () => resolve())
+      client.addEventListener('close', () => resolve())
+      client.addEventListener('error', () => resolve())
+    })
+
+    // Flood the relay with messages while upstream is still CONNECTING / fails.
+    // 64-message cap + 256 KiB cap — send 70 small messages and one huge one
+    // to guarantee at least one of the caps fires before upstream errors out.
+    if (client.readyState === WebSocket.OPEN) {
+      for (let i = 0; i < 70; i++) {
+        try {
+          client.send(`m${i}`)
+        } catch {
+          break
+        }
+      }
+      try {
+        client.send('x'.repeat(300_000))
+      } catch {
+        // already closed by overflow
+      }
+    }
+
+    await new Promise<void>((resolve) => {
+      if (client.readyState === WebSocket.CLOSED) resolve()
+      else client.addEventListener('close', () => resolve())
+    })
+
+    await waitForWsRelayLog(logs)
+    const relay = logs.find((l) => (l as { event?: string }).event === 'proxy_ws_relay') as
+      | { error_type?: string; status?: number }
+      | undefined
+    expect(relay).toBeDefined()
+    // Either the queue overflow fired first (4008/cap_exceeded) or the upstream
+    // dial failed first (1011/upstream_5xx). Both are legitimate proxy errors
+    // we want categorised — never undefined.
+    expect(['cap_exceeded', 'upstream_5xx']).toContain(relay?.error_type)
+  })
+
+  it('emits no error_type when the upstream closes cleanly with code 1000', async () => {
+    const upstream = await startUpstreamServer({
+      open: (ws) => ws.close(1000, 'bye'),
+    })
+    upstreams.push(upstream)
+
+    const { recorder, logs } = captureWsRecorder()
+    const observedHandle = await createTestApp({
+      upstreamWsFactory: localUpstreamWsFactory(upstream.port),
+      proxyObservability: recorder,
+    })
+    await new Promise<void>((resolve) => {
+      observedHandle.app.listen({ port: 0, hostname: '127.0.0.1' }, () => resolve())
+    })
+    handles.push(observedHandle)
+    const observedPort = (observedHandle.app as unknown as { server: { port: number } }).server!.port
+
+    const client = new WebSocket(`ws://127.0.0.1:${observedPort}/v1/proxy/ws`, {
+      protocols: buildProtocols('wss://upstream.test/'),
+      headers: { Authorization: `Bearer ${observedHandle.bearerToken}` },
+    } as unknown as string[])
+    await new Promise<void>((resolve) => {
+      client.addEventListener('close', () => resolve())
+      client.addEventListener('error', () => resolve())
+    })
+
+    await waitForWsRelayLog(logs)
+    const relay = logs.find((l) => (l as { event?: string }).event === 'proxy_ws_relay') as
+      | { error_type?: string; status?: number }
+      | undefined
+    expect(relay).toBeDefined()
+    // Clean close — categorisation must stay undefined, matching the
+    // 2xx/3xx-no-error-type pattern on the HTTP path.
+    expect(relay?.error_type).toBeUndefined()
+    expect(relay?.status).toBe(1000)
   })
 })

@@ -189,6 +189,59 @@ describe('createObservabilityRecorder — proxyWsRelay', () => {
     })
     expect(events[0].error).toBe('abnormal closure')
   })
+
+  it('forwards categorical error_type for proxy-initiated WS closes', () => {
+    const { logger, events } = captureLogger()
+    const rec = createObservabilityRecorder({ logger })
+    const errorTypes: ProxyErrorType[] = ['invalid_target', 'cap_exceeded', 'upstream_5xx']
+    for (const et of errorTypes) {
+      events.length = 0
+      rec.proxyWsRelay({
+        method: 'WS',
+        target_url: 'wss://realtime.example.com/',
+        close_code: 1011,
+        duration_ms: 1,
+        user_id: 'u',
+        request_id: 'r',
+        error_type: et,
+      })
+      expect(events[0].error_type).toBe(et)
+    }
+  })
+
+  it('omits error_type from the log when the WS close was clean', () => {
+    const { logger, events } = captureLogger()
+    const rec = createObservabilityRecorder({ logger })
+    rec.proxyWsRelay({
+      method: 'WS',
+      target_url: 'wss://realtime.example.com/',
+      close_code: 1000,
+      duration_ms: 5,
+      user_id: 'u',
+      request_id: 'r',
+    })
+    expect(events[0]).not.toHaveProperty('error_type')
+  })
+
+  it('keeps `error` and `error_type` independent — both can coexist', () => {
+    // The free-form `error` carries upstream-derived text (CloseEvent.reason,
+    // sync constructor failure message) that the typed enum cannot capture;
+    // the recorder must surface both side-by-side for incident response.
+    const { logger, events } = captureLogger()
+    const rec = createObservabilityRecorder({ logger })
+    rec.proxyWsRelay({
+      method: 'WS',
+      target_url: 'wss://realtime.example.com/',
+      close_code: 1011,
+      duration_ms: 5,
+      user_id: 'u',
+      request_id: 'r',
+      error_type: 'upstream_5xx',
+      error: 'connect ECONNREFUSED 127.0.0.1:1',
+    })
+    expect(events[0].error_type).toBe('upstream_5xx')
+    expect(events[0].error).toBe('connect ECONNREFUSED 127.0.0.1:1')
+  })
 })
 
 describe('noopObservability', () => {

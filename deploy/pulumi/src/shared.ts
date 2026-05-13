@@ -543,6 +543,12 @@ export const createSharedStack = (args: SharedStackArgs): SharedStackOutputs => 
           // but no Keycloak admin API plumbing needed in per-pr-stack.ts.
           { name: 'OIDC_REDIRECT_URI', value: pulumi.interpolate`https://${args.prApiHostPattern}/v1/api/auth/sso/callback/sso` },
           { name: 'OIDC_WEB_ORIGIN', value: pulumi.interpolate`https://${args.prAppHostPattern}` },
+          // The realm import substitutes ${OIDC_CLIENT_SECRET} into the
+          // `thunderbolt-app` client's `secret` field. Without this, Keycloak would
+          // fall back to the realm file's built-in default and per-PR backends —
+          // which receive the random secret via `oidcClientSecretArn` — would fail
+          // OIDC token exchange.
+          { name: 'OIDC_CLIENT_SECRET', value: args.oidcClientSecret },
         ],
         portMappings: [{ containerPort: 8080 }],
         logConfiguration: logConfig('keycloak'),

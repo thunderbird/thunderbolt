@@ -450,9 +450,9 @@ describe('Config Settings', () => {
       }
       const settings = getSettings()
 
-      expect(settings.powersyncUrl).toBe('http://localhost:8080')
-      expect(settings.powersyncJwtKid).toBe('powersync-dev')
-      expect(settings.powersyncJwtSecret).toBe('powersync-dev-secret-change-in-production')
+      expect(settings.powersyncUrl).toBe('')
+      expect(settings.powersyncJwtKid).toBe('')
+      expect(settings.powersyncJwtSecret).toBe('')
       expect(settings.powersyncTokenExpirySeconds).toBe(3600)
     })
 
@@ -504,6 +504,13 @@ describe('Config Settings', () => {
       process.env.POWERSYNC_URL = 'https://sync.example.com'
       process.env.POWERSYNC_JWT_SECRET = 'a'.repeat(32)
       expect(() => getSettings()).not.toThrow()
+    })
+
+    it('should allow empty JWT secret when powersyncUrl is empty', () => {
+      process.env.POWERSYNC_URL = ''
+      process.env.POWERSYNC_JWT_SECRET = ''
+      const settings = getSettings()
+      expect(settings.powersyncJwtSecret).toBe('')
     })
   })
 

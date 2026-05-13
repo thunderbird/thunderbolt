@@ -7,30 +7,22 @@ import { drizzle as drizzlePglite } from 'drizzle-orm/pglite'
 import { migrate as migratePglite } from 'drizzle-orm/pglite/migrator'
 import { drizzle as drizzlePostgres } from 'drizzle-orm/postgres-js'
 import { migrate as migratePostgres } from 'drizzle-orm/postgres-js/migrator'
-import { mkdirSync } from 'fs'
 import { resolve } from 'path'
 import postgres from 'postgres'
 import * as schema from './schema'
 
-// Default driver is postgres pointing at the local Docker stack (powersync-service/).
-// PGlite is opt-in via DATABASE_DRIVER=pglite for backend-only work without Docker;
-// note that PowerSync cannot replicate from PGlite.
-const isPglite = process.env.DATABASE_DRIVER === 'pglite'
-const postgresUrl = isPglite
-  ? null
-  : process.env.DATABASE_URL || 'postgresql://postgres:postgres@localhost:5433/postgres'
-
-if (isPglite && process.env.DATABASE_URL) {
-  mkdirSync(resolve(process.env.DATABASE_URL), { recursive: true })
+// For postgres driver, DATABASE_URL is required
+if (process.env.DATABASE_DRIVER === 'postgres' && !process.env.DATABASE_URL) {
+  throw new Error('DATABASE_URL is required when DATABASE_DRIVER=postgres')
 }
+
+const isPglite = process.env.DATABASE_DRIVER !== 'postgres'
 
 const pgliteClient = isPglite ? new PGlite(process.env.DATABASE_URL) : null // undefined = in-memory
 
 const pgliteDb = pgliteClient ? drizzlePglite({ client: pgliteClient, schema }) : null
 
-const postgresDb = postgresUrl
-  ? drizzlePostgres({ client: postgres(postgresUrl, { onnotice: () => {} }), schema })
-  : null
+const postgresDb = isPglite ? null : drizzlePostgres({ client: postgres(process.env.DATABASE_URL!), schema })
 
 export const db = pgliteDb ?? postgresDb!
 
@@ -56,7 +48,9 @@ export const getMigrationsFolder = () => process.env.MIGRATIONS_DIR ?? resolve(p
  * Disable with SKIP_MIGRATIONS=true (e.g. when migrations are handled externally).
  */
 export const runMigrations = async () => {
-  if (process.env.SKIP_MIGRATIONS === 'true') return
+  if (process.env.SKIP_MIGRATIONS === 'true') {
+    return
+  }
   const migrationsFolder = getMigrationsFolder()
   if (pgliteDb) {
     await migratePglite(pgliteDb, { migrationsFolder })

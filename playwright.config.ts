@@ -49,16 +49,6 @@ export default defineConfig({
         baseURL: `http://localhost:${samlVitePort}`,
       },
     },
-    // Proxy specs share the OIDC dev server (they need a real auth flow to load
-    // the authenticated app shell, but mock /v1/proxy via page.route()).
-    {
-      name: 'proxy',
-      testMatch: /proxy-/,
-      use: {
-        ...devices['Desktop Chrome'],
-        baseURL: `http://localhost:${oidcVitePort}`,
-      },
-    },
   ],
   webServer: [
     // --- OIDC frontend ---
@@ -74,10 +64,7 @@ export default defineConfig({
     },
     // --- OIDC backend ---
     {
-      // Bypass `bun run dev` (which goes through scripts/dev.sh and triggers
-      // a slow `op run` when local devs have OP_ENVIRONMENT_ID in their .env).
-      // The env block below provides every var the backend needs for tests.
-      command: 'cd backend && bun run --watch src/index.ts',
+      command: 'cd backend && bun run dev',
       url: `http://localhost:${oidcBackendPort}/v1/health`,
       reuseExistingServer: !isCI,
       timeout: 30_000,
@@ -93,7 +80,6 @@ export default defineConfig({
         CORS_ORIGINS: `http://localhost:${oidcVitePort}`,
         TRUSTED_ORIGINS: `http://localhost:${oidcVitePort},http://localhost:${mockOidcPort}`,
         RATE_LIMIT_ENABLED: 'false',
-        DATABASE_DRIVER: 'pglite',
       },
     },
     // --- SAML frontend ---
@@ -110,10 +96,7 @@ export default defineConfig({
     },
     // --- SAML backend ---
     {
-      // Bypass `bun run dev` (which goes through scripts/dev.sh and triggers
-      // a slow `op run` when local devs have OP_ENVIRONMENT_ID in their .env).
-      // The env block below provides every var the backend needs for tests.
-      command: 'cd backend && bun run --watch src/index.ts',
+      command: 'cd backend && bun run dev',
       url: `http://localhost:${samlBackendPort}/v1/health`,
       reuseExistingServer: !isCI,
       timeout: 30_000,
@@ -130,7 +113,6 @@ export default defineConfig({
         CORS_ORIGINS: `http://localhost:${samlVitePort}`,
         TRUSTED_ORIGINS: `http://localhost:${samlVitePort},http://localhost:${mockSamlPort}`,
         RATE_LIMIT_ENABLED: 'false',
-        DATABASE_DRIVER: 'pglite',
       },
     },
   ],

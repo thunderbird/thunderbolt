@@ -37,7 +37,17 @@ export const useLocalSettingsStore = create<LocalSettingsStore>()(
     }),
     {
       name: 'thunderbolt-local-settings',
-      partialize: ({ setLocalSetting: _, ...settings }) => settings,
+      // Listed explicitly (rather than spread + omit) so TS errors if a new
+      // LocalSettingsState field is added without persisting it, and so no
+      // future store action can silently leak into localStorage.
+      partialize: (s): LocalSettingsState => ({
+        cloudUrl: s.cloudUrl,
+        debugPosthog: s.debugPosthog,
+        isNativeFetchEnabled: s.isNativeFetchEnabled,
+        hapticsEnabled: s.hapticsEnabled,
+        syncEnabled: s.syncEnabled,
+        theme: s.theme,
+      }),
     },
   ),
 )

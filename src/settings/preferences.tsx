@@ -671,10 +671,6 @@ export default function PreferencesSettingsPage() {
               </div>
               <Switch checked={syncEnabled} onCheckedChange={handleSyncToggle} disabled={isConnecting} />
             </div>
-          ) : isAnonymous ? (
-            <p className="text-[length:var(--font-size-sm)] text-muted-foreground">
-              Sign in to enable sync across devices.
-            </p>
           ) : (
             <div className="flex flex-col gap-2">
               <label className="text-sm font-medium">Sync This Device With Cloud</label>

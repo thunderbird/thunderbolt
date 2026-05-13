@@ -488,8 +488,12 @@ export const createSharedStack = (args: SharedStackArgs): SharedStackOutputs => 
             name: 'PS_STORAGE_URI',
             value: pulumi.interpolate`postgresql://postgres:${args.postgresPassword}@postgres.${NAMESPACE_DOMAIN}:5432/powersync_storage`,
           },
+          // Base64 of POWERSYNC_JWT_SECRET. Read by powersync-config.yaml's
+          // `client_auth.jwks.keys[].k: !env POWERSYNC_JWT_KEY_BASE64` to verify
+          // the JWT signatures the backend issues. Must match the secret the backend
+          // signs with — both come from the same `args.powersyncJwtSecret`.
           {
-            name: 'PS_JWT_KEY_BASE64',
+            name: 'POWERSYNC_JWT_KEY_BASE64',
             value: args.powersyncJwtSecret.apply((s) => Buffer.from(s).toString('base64')),
           },
         ],

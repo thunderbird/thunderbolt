@@ -68,7 +68,15 @@ spec:
               value: {{ .Values.appUrl }}
             - name: APP_URL
               value: {{ .Values.appUrl }}
-            # http://keycloak:8080 is included so Better Auth's SSO plugin trusts the internal OIDC_DISCOVERY_URL.
+            # The internal Keycloak hostname is included so Better Auth's SSO plugin
+            # trusts OIDC_DISCOVERY_URL when fetching the discovery doc server-to-server
+            # (see backend/src/auth/auth.ts where `trustedOrigins` is consumed).
+            #
+            # CSRF protection is not weakened by this entry: the `Origin` request header
+            # is on the Fetch-spec Forbidden Header list, so JS in a browser cannot forge
+            # it. Browser-mediated attackers can only present their own page's real Origin.
+            # Primary CSRF defenses (SameSite cookies + `X-Challenge-Token` custom header
+            # on sensitive endpoints) are unaffected.
             - name: TRUSTED_ORIGINS
               value: "{{ .Values.appUrl }},http://keycloak:8080"
             - name: CORS_ORIGINS

@@ -54,19 +54,19 @@ describe('PreferencesSettingsPage — sync toggle gating', () => {
     cleanup()
   })
 
-  it('shows hint text and no sync toggle for anonymous users', () => {
+  it('shows Sign In button and no sync toggle for anonymous users', () => {
     const authClient = createMockAuthClient({ session: anonSession })
     renderPage(authClient)
 
-    expect(screen.getByText('Sign in to enable sync across devices.')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Sign In' })).toBeInTheDocument()
     expect(screen.queryByRole('switch', { name: /sync this device/i })).not.toBeInTheDocument()
   })
 
-  it('shows sync toggle and no hint for authenticated (non-anonymous) users', () => {
+  it('shows sync toggle and no Sign In button for authenticated (non-anonymous) users', () => {
     const authClient = createMockAuthClient({ session: authedSession })
     renderPage(authClient)
 
-    expect(screen.queryByText('Sign in to enable sync across devices.')).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Sign In' })).toBeNull()
     expect(screen.getByText('Sync This Device With Cloud')).toBeInTheDocument()
   })
 

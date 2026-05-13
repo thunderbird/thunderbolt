@@ -12,7 +12,6 @@ type LocalSettingsState = {
   hapticsEnabled: boolean
   syncEnabled: boolean
   theme: 'light' | 'dark' | 'system'
-  lastActiveWorkspaceId: string | null
 }
 
 type LocalSettingsActions = {
@@ -28,7 +27,6 @@ export const initialLocalSettings: LocalSettingsState = {
   hapticsEnabled: true,
   syncEnabled: false,
   theme: 'system',
-  lastActiveWorkspaceId: null,
 }
 
 export const useLocalSettingsStore = create<LocalSettingsStore>()(

@@ -118,7 +118,7 @@ describe('Inference Routes', () => {
         stream: true,
       })
 
-      expect(createSSEStreamSpy).toHaveBeenCalledWith(mockCompletion, validRequestBody.model)
+      expect(createSSEStreamSpy).toHaveBeenCalledWith(mockCompletion)
     })
 
     it('should route gpt-oss-120b model to thunderbolt provider', async () => {

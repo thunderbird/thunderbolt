@@ -25,7 +25,9 @@ const blockedRanges = new Set([
 export const isPrivateAddress = (rawHostname: string): boolean => {
   const hostname = rawHostname.startsWith('[') && rawHostname.endsWith(']') ? rawHostname.slice(1, -1) : rawHostname
 
-  if (!ipaddr.isValid(hostname)) return false
+  if (!ipaddr.isValid(hostname)) {
+    return false
+  }
 
   // process() normalizes IPv4-mapped IPv6 (::ffff:127.0.0.1 / ::ffff:7f00:1) to IPv4
   const addr = ipaddr.process(hostname)
@@ -35,8 +37,12 @@ export const isPrivateAddress = (rawHostname: string): boolean => {
 /** Returns true if the hostname is a loopback address (127.0.0.0/8, ::1, or localhost). */
 const isLoopback = (hostname: string): boolean => {
   const h = hostname.toLowerCase()
-  if (h === 'localhost') return true
-  if (!ipaddr.isValid(h)) return false
+  if (h === 'localhost') {
+    return true
+  }
+  if (!ipaddr.isValid(h)) {
+    return false
+  }
   return ipaddr.process(h).range() === 'loopback'
 }
 
@@ -92,7 +98,9 @@ export const validateAndPin = async (
   }
 
   const addresses = await dnsPromises.lookup(hostname, { all: true })
-  if (!addresses.length) throw new Error(`DNS resolution returned no addresses for ${hostname}`)
+  if (!addresses.length) {
+    throw new Error(`DNS resolution returned no addresses for ${hostname}`)
+  }
 
   for (const { address } of addresses) {
     if (isPrivateAddress(address)) {
@@ -136,7 +144,9 @@ export const createSafeFetch = (fetchFn: typeof fetch) => {
     let currentUrl = url
     for (let i = 0; i < maxRedirects; i++) {
       const location = currentResponse.headers.get('location')
-      if (!location) return currentResponse
+      if (!location) {
+        return currentResponse
+      }
 
       const redirectUrl = new URL(location, currentUrl).toString()
       currentUrl = redirectUrl

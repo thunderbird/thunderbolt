@@ -210,10 +210,10 @@ jobs:
           cd backend
           bun run type-check
 
-      # - name: Lint backend
-      #   run: |
-      #     cd backend
-      #     bun run lint
+      - name: Lint backend
+        run: |
+          cd backend
+          bun run lint
 
       - name: Test backend
         run: |

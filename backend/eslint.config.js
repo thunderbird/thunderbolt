@@ -5,61 +5,30 @@
 import js from '@eslint/js'
 import typescript from '@typescript-eslint/eslint-plugin'
 import typescriptParser from '@typescript-eslint/parser'
+import prettier from 'eslint-config-prettier'
 import globals from 'globals'
+import { sharedParserOptions, sharedRules } from '../shared/eslint/base.js'
 
 export default [
   js.configs.recommended,
+  prettier,
   {
     files: ['src/**/*.{ts,tsx}'],
     ignores: ['node_modules', 'dist'],
     languageOptions: {
       parser: typescriptParser,
-      parserOptions: {
-        ecmaVersion: 'latest',
-        sourceType: 'module',
-      },
+      parserOptions: sharedParserOptions,
       globals: {
         ...globals.node,
         ...globals.es2022,
-        // Web API types used in server context
         BodyInit: 'readonly',
-        RequestInfo: 'readonly', 
+        RequestInfo: 'readonly',
         RequestInit: 'readonly',
       },
     },
     plugins: {
       '@typescript-eslint': typescript,
     },
-    rules: {
-      // TypeScript rules
-      'no-unused-vars': 'off',
-      '@typescript-eslint/no-unused-vars': [
-        'error',
-        {
-          args: 'all',
-          argsIgnorePattern: '^_',
-          varsIgnorePattern: '^_',
-          caughtErrors: 'all',
-          caughtErrorsIgnorePattern: '^_',
-          ignoreRestSiblings: true,
-        },
-      ],
-      '@typescript-eslint/no-explicit-any': 'warn',
-      '@typescript-eslint/no-non-null-assertion': 'off',
-
-      // General rules
-      'no-console': ['warn', { allow: ['warn', 'error'] }],
-      'prefer-const': 'error',
-      'no-async-promise-executor': 'off',
-      
-      // Enforce type imports to always use the `type` keyword
-      '@typescript-eslint/consistent-type-imports': [
-        'error',
-        {
-          prefer: 'type-imports',
-          disallowTypeAnnotations: false,
-        },
-      ],
-    },
+    rules: sharedRules,
   },
 ]

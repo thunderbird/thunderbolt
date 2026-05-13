@@ -8,7 +8,9 @@ import { capStream } from './streaming'
 const makeStream = (chunks: Uint8Array[]) =>
   new ReadableStream<Uint8Array>({
     start(controller) {
-      for (const chunk of chunks) controller.enqueue(chunk)
+      for (const chunk of chunks) {
+        controller.enqueue(chunk)
+      }
       controller.close()
     },
   })
@@ -18,7 +20,9 @@ const collectStream = async (stream: ReadableStream<Uint8Array>): Promise<Uint8A
   const reader = stream.getReader()
   while (true) {
     const { done, value } = await reader.read()
-    if (done) break
+    if (done) {
+      break
+    }
     parts.push(value)
   }
   const total = parts.reduce((acc, p) => acc + p.byteLength, 0)

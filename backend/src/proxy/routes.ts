@@ -47,7 +47,9 @@ export const createUniversalProxyRoutes = (
     .onError(safeErrorHandler)
     .use(createAuthMacro(auth))
     .guard({ auth: true }, (g) => {
-      if (rateLimit) g.use(rateLimit)
+      if (rateLimit) {
+        g.use(rateLimit)
+      }
 
       return g.all(
         '/*',
@@ -182,7 +184,9 @@ export const createUniversalProxyRoutes = (
 
             // Resolve next hop URL
             const location = response.headers.get('location')
-            if (!location) return buildProxyResponse(response, upstreamCtl)
+            if (!location) {
+              return buildProxyResponse(response, upstreamCtl)
+            }
 
             const nextUrl = new URL(location, currentUrl).toString()
 

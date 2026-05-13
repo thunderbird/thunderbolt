@@ -74,7 +74,9 @@ const validateDeviceForSync = async (
  */
 const validateOrigin = (request: Request, appSettings: Settings): boolean => {
   const origin = request.headers.get('origin')
-  if (!origin) return true
+  if (!origin) {
+    return true
+  }
   return isOriginAllowed(origin, appSettings)
 }
 

@@ -88,6 +88,12 @@ jobs:
       - name: Setup Bun
         uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
 
+      - name: Install git-cliff
+        if: ${{ !inputs.nightly }}
+        uses: taiki-e/install-action@fa0dd4cd0a40696e6f9766370614a5ce482e6aa8 # v2
+        with:
+          tool: git-cliff
+
       # Regular releases: use existing create-release script
       - name: Run create-release script
         if: ${{ !inputs.nightly }}
@@ -175,21 +181,16 @@ jobs:
       - name: Generate changelog
         if: ${{ !inputs.nightly }}
         id: changelog
-        env:
-          TAG_NAME: ${{ steps.tag.outputs.tag_name }}
         run: |
-          # Find the previous version tag (excluding the one just created)
-          PREV_TAG=$(git tag --sort=-creatordate | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+' | grep -v "${TAG_NAME}" | head -1 || true)
-
-          if [ -z "$PREV_TAG" ]; then
-            echo "No previous tag found; using full history"
-            git log --pretty=format:"- %s (%h) by %an" > changelog.txt
-          else
-            echo "Generating changelog since $PREV_TAG"
-            git log --pretty=format:"- %s (%h) by %an" "$PREV_TAG..HEAD" > changelog.txt
+          # The create-release script already wrote CHANGELOG.md and tagged the
+          # version-bump commit. For RC tags (skip-tags pattern in cliff.toml),
+          # --current falls back to --unreleased so the release body still
+          # captures the new commits.
+          if ! git-cliff --current --strip header -o changelog.txt; then
+            git-cliff --unreleased --strip header -o changelog.txt
           fi
 
-          # Use base64 encoding to safely pass multiline content
+          # Base64 encode to safely pass multiline content through GITHUB_OUTPUT.
           CHANGELOG_B64=$(base64 -w 0 changelog.txt)
           echo "changelog_b64=$CHANGELOG_B64" >> $GITHUB_OUTPUT
 

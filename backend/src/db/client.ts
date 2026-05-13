@@ -48,7 +48,9 @@ export const getMigrationsFolder = () => process.env.MIGRATIONS_DIR ?? resolve(p
  * Disable with SKIP_MIGRATIONS=true (e.g. when migrations are handled externally).
  */
 export const runMigrations = async () => {
-  if (process.env.SKIP_MIGRATIONS === 'true') return
+  if (process.env.SKIP_MIGRATIONS === 'true') {
+    return
+  }
   const migrationsFolder = getMigrationsFolder()
   if (pgliteDb) {
     await migratePglite(pgliteDb, { migrationsFolder })

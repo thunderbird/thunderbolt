@@ -204,6 +204,107 @@ const editFormSchema = z.object({
   apiKey: z.string().optional(),
 })
 
+const EditModelForm = ({
+  model,
+  onCancel,
+  onSubmit,
+  isPending,
+}: {
+  model: Model
+  onCancel: () => void
+  onSubmit: (values: z.infer<typeof editFormSchema> & { id: string }) => void
+  isPending: boolean
+}) => {
+  const form = useForm<z.infer<typeof editFormSchema>>({
+    resolver: zodResolver(editFormSchema),
+    defaultValues: {
+      name: model.name || '',
+      model: model.model || '',
+      url: model.url || '',
+      apiKey: model.apiKey || '',
+    },
+  })
+
+  const handleSubmit = (values: z.infer<typeof editFormSchema>) => {
+    onSubmit({ ...values, id: model.id })
+  }
+
+  return (
+    <Form {...form}>
+      <form onSubmit={form.handleSubmit(handleSubmit)} className="grid gap-4 pt-4 pb-2">
+        <FormField
+          control={form.control}
+          name="name"
+          render={({ field }) => (
+            <FormItem>
+              <FormLabel>Name</FormLabel>
+              <FormControl>
+                <Input {...field} className="rounded-lg" />
+              </FormControl>
+              <FormMessage />
+            </FormItem>
+          )}
+        />
+
+        <FormField
+          control={form.control}
+          name="model"
+          render={({ field }) => (
+            <FormItem>
+              <FormLabel>Model</FormLabel>
+              <FormControl>
+                <Input {...field} className="rounded-lg" />
+              </FormControl>
+              <FormMessage />
+            </FormItem>
+          )}
+        />
+
+        {model.provider === 'custom' && (
+          <FormField
+            control={form.control}
+            name="url"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>URL</FormLabel>
+                <FormControl>
+                  <Input {...field} className="rounded-lg" />
+                </FormControl>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+        )}
+
+        {model.provider !== 'thunderbolt' && (
+          <FormField
+            control={form.control}
+            name="apiKey"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>API Key</FormLabel>
+                <FormControl>
+                  <Input type="password" {...field} placeholder="sk-..." className="rounded-lg" />
+                </FormControl>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+        )}
+
+        <div className="flex justify-end gap-3 pt-2">
+          <Button type="button" variant="ghost" onClick={onCancel}>
+            Cancel
+          </Button>
+          <Button type="submit" disabled={isPending || !form.formState.isDirty}>
+            Save
+          </Button>
+        </div>
+      </form>
+    </Form>
+  )
+}
+
 const EditModelModal = ({
   model,
   onOpenChange,
@@ -214,117 +315,25 @@ const EditModelModal = ({
   onOpenChange: (open: boolean) => void
   onSubmit: (values: z.infer<typeof editFormSchema> & { id: string }) => void
   isPending: boolean
-}) => {
-  const form = useForm<z.infer<typeof editFormSchema>>({
-    resolver: zodResolver(editFormSchema),
-    defaultValues: {
-      name: model?.name || '',
-      model: model?.model || '',
-      url: model?.url || '',
-      apiKey: model?.apiKey || '',
-    },
-  })
-
-  useEffect(() => {
-    if (model) {
-      form.reset({
-        name: model.name || '',
-        model: model.model || '',
-        url: model.url || '',
-        apiKey: model.apiKey || '',
-      })
-    }
-  }, [model, form])
-
-  const handleSubmit = (values: z.infer<typeof editFormSchema>) => {
-    if (model) {
-      onSubmit({ ...values, id: model.id })
-    }
-  }
-
-  return (
-    <Dialog open={!!model} onOpenChange={onOpenChange}>
-      <ResponsiveModalContentComposable className="sm:max-w-[500px]">
-        <ResponsiveModalHeader>
-          <ResponsiveModalTitle>Edit Model</ResponsiveModalTitle>
-          <ResponsiveModalDescription className="sr-only">Edit model configuration</ResponsiveModalDescription>
-        </ResponsiveModalHeader>
-        <Form {...form}>
-          <form onSubmit={form.handleSubmit(handleSubmit)} className="grid gap-4 pt-4 pb-2">
-            <FormField
-              control={form.control}
-              name="name"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Name</FormLabel>
-                  <FormControl>
-                    <Input {...field} className="rounded-lg" />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-
-            <FormField
-              control={form.control}
-              name="model"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Model</FormLabel>
-                  <FormControl>
-                    <Input {...field} className="rounded-lg" />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-
-            {model?.provider === 'custom' && (
-              <FormField
-                control={form.control}
-                name="url"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>URL</FormLabel>
-                    <FormControl>
-                      <Input {...field} className="rounded-lg" />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-            )}
-
-            {model?.provider !== 'thunderbolt' && (
-              <FormField
-                control={form.control}
-                name="apiKey"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>API Key</FormLabel>
-                    <FormControl>
-                      <Input type="password" {...field} placeholder="sk-..." className="rounded-lg" />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-            )}
-
-            <div className="flex justify-end gap-3 pt-2">
-              <Button type="button" variant="ghost" onClick={() => onOpenChange(false)}>
-                Cancel
-              </Button>
-              <Button type="submit" disabled={isPending || !form.formState.isDirty}>
-                Save
-              </Button>
-            </div>
-          </form>
-        </Form>
-      </ResponsiveModalContentComposable>
-    </Dialog>
-  )
-}
+}) => (
+  <Dialog open={!!model} onOpenChange={onOpenChange}>
+    <ResponsiveModalContentComposable className="sm:max-w-[500px]">
+      <ResponsiveModalHeader>
+        <ResponsiveModalTitle>Edit Model</ResponsiveModalTitle>
+        <ResponsiveModalDescription className="sr-only">Edit model configuration</ResponsiveModalDescription>
+      </ResponsiveModalHeader>
+      {model && (
+        <EditModelForm
+          key={model.id}
+          model={model}
+          onCancel={() => onOpenChange(false)}
+          onSubmit={onSubmit}
+          isPending={isPending}
+        />
+      )}
+    </ResponsiveModalContentComposable>
+  </Dialog>
+)
 
 export default function ModelsPage() {
   const db = useDatabase()
@@ -367,6 +376,8 @@ export default function ModelsPage() {
       })
     },
     onSuccess: () => {
+      form.reset()
+      form.clearErrors()
       dispatch({ type: 'CLOSE_DIALOG' })
     },
   })

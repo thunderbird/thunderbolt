@@ -27,13 +27,16 @@ import {
 } from '@shared/proxy-protocol'
 import { isTauri } from './platform'
 
+const defaultIsStandalone = isTauri
+const defaultReadProxyEnabled = (): string | null =>
+  typeof localStorage === 'undefined' ? null : localStorage.getItem('proxy_enabled')
+
 /** Computes whether the cloud proxy is effectively enabled.
  *  Web always proxies (CORS forces it). Tauri respects the `proxy_enabled`
  *  toggle, defaulting to false (direct upstream) when storage is absent. */
 export const computeEffectiveProxyEnabled = (
-  isStandalone: () => boolean = isTauri,
-  read: () => string | null = () =>
-    typeof localStorage === 'undefined' ? null : localStorage.getItem('proxy_enabled'),
+  isStandalone: () => boolean = defaultIsStandalone,
+  read: () => string | null = defaultReadProxyEnabled,
 ): boolean => (isStandalone() ? read() === 'true' : true)
 
 /** Headers the browser injects automatically and that should never be promoted

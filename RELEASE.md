@@ -9,6 +9,32 @@ Our release process uses GitHub Actions to automate building and publishing rele
 - **Desktop**: Linux, macOS (Intel + Apple Silicon), Windows (x64 + ARM64)
 - **Mobile**: iOS (TestFlight), Android (Play Store Internal Track)
 
+## PR Title Convention
+
+PR titles are validated by `.github/workflows/lint-pr-title.yml` and drive automated changelog generation (since the repo uses squash-merge, the PR title becomes the commit on `main`).
+
+Two formats are accepted:
+
+**Conventional Commits** (preferred):
+
+```
+<type>[(<scope>)]: <description>
+
+feat(THU-58): add changelog automation
+fix: remove invalid header on mobile
+chore(deps): bump @tauri-apps/api to 2.11.0
+```
+
+Allowed types: `feat`, `fix`, `chore`, `docs`, `refactor`, `perf`, `test`, `ci`, `build`, `style`.
+
+**Legacy `THU-XXX:` format** (accepted, prefer Conventional going forward):
+
+```
+THU-58: add changelog automation
+```
+
+Invalid titles (e.g. `random text`, missing type, missing description) fail the `Lint PR Title` check and block merge.
+
 ## Quick Start
 
 The easiest way to create a release is via GitHub Actions:

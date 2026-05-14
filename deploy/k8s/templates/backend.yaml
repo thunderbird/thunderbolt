@@ -46,8 +46,12 @@ spec:
               value: {{ .Values.backend.env.databaseDriver }}
             - name: DATABASE_URL
               value: "postgresql://{{ .Values.postgres.credentials.user }}:{{ .Values.postgres.credentials.passwordBase64 | b64dec }}@postgres:5432/{{ .Values.postgres.credentials.database }}"
+            # OIDC_ISSUER must equal what Keycloak puts in the `iss` claim of issued tokens —
+            # i.e. the browser-facing URL. The backend reaches Keycloak in-cluster via OIDC_DISCOVERY_URL.
             - name: OIDC_ISSUER
-              value: "http://keycloak:8080/realms/thunderbolt"
+              value: "{{ .Values.appUrl }}/realms/thunderbolt"
+            - name: OIDC_DISCOVERY_URL
+              value: "http://keycloak:8080/realms/thunderbolt/.well-known/openid-configuration"
             - name: OIDC_CLIENT_ID
               value: {{ .Values.keycloak.oidc.clientId }}
             - name: OIDC_CLIENT_SECRET
@@ -64,8 +68,17 @@ spec:
               value: {{ .Values.appUrl }}
             - name: APP_URL
               value: {{ .Values.appUrl }}
+            # The internal Keycloak hostname is included so Better Auth's SSO plugin
+            # trusts OIDC_DISCOVERY_URL when fetching the discovery doc server-to-server
+            # (see backend/src/auth/auth.ts where `trustedOrigins` is consumed).
+            #
+            # CSRF protection is not weakened by this entry: the `Origin` request header
+            # is on the Fetch-spec Forbidden Header list, so JS in a browser cannot forge
+            # it. Browser-mediated attackers can only present their own page's real Origin.
+            # Primary CSRF defenses (SameSite cookies + `X-Challenge-Token` custom header
+            # on sensitive endpoints) are unaffected.
             - name: TRUSTED_ORIGINS
-              value: {{ .Values.appUrl }}
+              value: "{{ .Values.appUrl }},http://keycloak:8080"
             - name: CORS_ORIGINS
               value: {{ .Values.appUrl }}
             - name: POWERSYNC_URL

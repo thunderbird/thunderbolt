@@ -139,11 +139,69 @@ describe('createAuthenticatedClient', () => {
     const client = createAuthenticatedClient('https://api.example.com', () => 'app-token', { fetch })
 
     // Normal app API call with other headers but no Authorization
-    await client.get('data', { headers: { 'X-Device-ID': 'device-123' } })
+    await client.get('data', { headers: { 'X-Custom': 'value' } })
 
     const req = fetch.mock.calls[0][0] as Request
     expect(req.headers.get('Authorization')).toBe('Bearer app-token')
-    expect(req.headers.get('X-Device-ID')).toBe('device-123')
+    expect(req.headers.get('X-Custom')).toBe('value')
+  })
+
+  describe('device identity headers', () => {
+    const deviceIdKey = 'thunderbolt_device_id'
+
+    beforeEach(() => {
+      localStorage.setItem(deviceIdKey, 'test-device-id')
+    })
+
+    afterEach(() => {
+      localStorage.removeItem(deviceIdKey)
+    })
+
+    it('injects X-Device-ID and X-Device-Name for app backend requests (relative URL)', async () => {
+      const fetch = mockFetch()
+      const client = createAuthenticatedClient('https://api.example.com', () => 'app-token', { fetch })
+
+      await client.get('data')
+
+      const req = fetch.mock.calls[0][0] as Request
+      expect(req.headers.get('X-Device-ID')).toBe('test-device-id')
+      expect(req.headers.get('X-Device-Name')).toBeTruthy()
+    })
+
+    it('injects device headers for absolute URL matching prefixUrl', async () => {
+      const fetch = mockFetch()
+      const client = createAuthenticatedClient('https://api.example.com', () => 'app-token', { fetch })
+
+      await client.get('https://api.example.com/v1/foo')
+
+      const req = fetch.mock.calls[0][0] as Request
+      expect(req.headers.get('X-Device-ID')).toBe('test-device-id')
+      expect(req.headers.get('X-Device-Name')).toBeTruthy()
+    })
+
+    it('does NOT inject device headers for external API URLs', async () => {
+      const fetch = mockFetch()
+      const client = createAuthenticatedClient('https://api.example.com', () => 'app-token', { fetch })
+
+      await client.get('https://www.googleapis.com/gmail/v1/users/me/messages', {
+        headers: { Authorization: 'Bearer google-oauth-token' },
+      })
+
+      const req = fetch.mock.calls[0][0] as Request
+      expect(req.headers.get('X-Device-ID')).toBeNull()
+      expect(req.headers.get('X-Device-Name')).toBeNull()
+    })
+
+    it('does NOT inject device headers for unrelated external URLs', async () => {
+      const fetch = mockFetch()
+      const client = createAuthenticatedClient('https://api.example.com', () => 'app-token', { fetch })
+
+      await client.get('https://other.com/data')
+
+      const req = fetch.mock.calls[0][0] as Request
+      expect(req.headers.get('X-Device-ID')).toBeNull()
+      expect(req.headers.get('X-Device-Name')).toBeNull()
+    })
   })
 
   describe('session expiry detection', () => {

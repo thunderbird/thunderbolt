@@ -1,0 +1,166 @@
+name: Previews Shared Deploy
+
+# Creates or updates the long-lived `previews-shared` Pulumi stack that backs
+# the shared-stack preview model (THU-495). Runs:
+#   - Manually via workflow_dispatch
+#   - Weekly on schedule to detect drift
+#
+# What this stack owns:
+#   - VPC, NAT, EIP, IGW, subnets, security groups
+#   - EFS file system + access point
+#   - ECS cluster + CloudWatch log group
+#   - Cloud Map private DNS namespace (thunderbolt.local)
+#   - ALB + HTTPS listener
+#   - Postgres, Keycloak, PowerSync ECS Fargate services
+#   - Shared secrets (AI provider keys, postgres pwd, JWT secret, etc.)
+#
+# Per-PR `preview-pr-*` stacks consume this via Pulumi StackReference; see
+# `deploy/pulumi/SHARED.md` for the architecture overview.
+
+on:
+  workflow_dispatch:
+    inputs:
+      stack_name:
+        description: 'Pulumi stack name'
+        type: string
+        default: 'previews-shared'
+        required: true
+      version:
+        description: 'Image tag for postgres / keycloak / powersync containers (default: package.json version)'
+        type: string
+        required: false
+      auth_hostname:
+        description: 'Public hostname for the shared Keycloak'
+        type: string
+        default: 'auth.shared.preview.thunderbolt.io'
+        required: true
+      powersync_hostname:
+        description: 'Public hostname for the shared PowerSync'
+        type: string
+        default: 'powersync.shared.preview.thunderbolt.io'
+        required: true
+      pr_api_host_pattern:
+        description: 'Wildcard pattern for per-PR API hostnames (used in Keycloak realm OIDC client redirect URIs)'
+        type: string
+        default: 'api-pr-*.preview.thunderbolt.io'
+        required: true
+      pr_app_host_pattern:
+        description: 'Wildcard pattern for per-PR app hostnames (used in Keycloak realm webOrigins)'
+        type: string
+        default: 'app-pr-*.preview.thunderbolt.io'
+        required: true
+      region:
+        description: 'AWS region'
+        type: choice
+        default: 'us-east-1'
+        options:
+          - us-east-1
+          - us-west-2
+          - eu-west-1
+        required: true
+  schedule:
+    # Weekly drift check — runs `pulumi up` against the live stack. Should be a
+    # no-op when nothing has drifted; surfaces unexpected changes if anything has.
+    - cron: '0 7 * * 1' # Mondays 07:00 UTC
+
+permissions:
+  contents: read
+  id-token: write
+
+env:
+  PULUMI_ACCESS_TOKEN: ${{ secrets.PULUMI_ACCESS_TOKEN }}
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: preview
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+
+      - uses: aws-actions/configure-aws-credentials@ec61189d14ec14c8efccab744f656cffd0e33f37 # v6.1.0
+        with:
+          role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ inputs.region || 'us-east-1' }}
+
+      - name: Resolve version
+        id: version
+        env:
+          INPUT_VERSION: ${{ inputs.version }}
+        run: |
+          if [ -n "$INPUT_VERSION" ]; then
+            echo "version=$INPUT_VERSION" >> $GITHUB_OUTPUT
+          else
+            echo "version=$(jq -r .version package.json)" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Install Pulumi dependencies
+        working-directory: deploy/pulumi
+        run: bun install --frozen-lockfile
+
+      - name: Ensure Pulumi stack exists
+        working-directory: deploy/pulumi
+        env:
+          INPUT_STACK_NAME: ${{ inputs.stack_name || 'previews-shared' }}
+        run: |
+          pulumi stack select --create "$INPUT_STACK_NAME" --non-interactive
+
+      - name: Configure Pulumi stack
+        working-directory: deploy/pulumi
+        env:
+          INPUT_STACK_NAME: ${{ inputs.stack_name || 'previews-shared' }}
+          INPUT_VERSION: ${{ steps.version.outputs.version }}
+          INPUT_AUTH_HOSTNAME: ${{ inputs.auth_hostname || 'auth.shared.preview.thunderbolt.io' }}
+          INPUT_POWERSYNC_HOSTNAME: ${{ inputs.powersync_hostname || 'powersync.shared.preview.thunderbolt.io' }}
+          INPUT_PR_API_HOST_PATTERN: ${{ inputs.pr_api_host_pattern || 'api-pr-*.preview.thunderbolt.io' }}
+          INPUT_PR_APP_HOST_PATTERN: ${{ inputs.pr_app_host_pattern || 'app-pr-*.preview.thunderbolt.io' }}
+          INPUT_GHCR_PAT: ${{ secrets.GHCR_PAT }}
+          INPUT_CLOUDFLARE_ZONE_ID: ${{ vars.CLOUDFLARE_ZONE_ID }}
+          INPUT_CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          INPUT_ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          INPUT_FIREWORKS_API_KEY: ${{ secrets.FIREWORKS_API_KEY }}
+          INPUT_MISTRAL_API_KEY: ${{ secrets.MISTRAL_API_KEY }}
+          INPUT_THUNDERBOLT_INFERENCE_API_KEY: ${{ secrets.THUNDERBOLT_INFERENCE_API_KEY }}
+          INPUT_EXA_API_KEY: ${{ secrets.EXA_API_KEY }}
+        run: |
+          pulumi config set version "$INPUT_VERSION" -s "$INPUT_STACK_NAME" --non-interactive
+          pulumi config set authHostname "$INPUT_AUTH_HOSTNAME" -s "$INPUT_STACK_NAME" --non-interactive
+          pulumi config set powersyncHostname "$INPUT_POWERSYNC_HOSTNAME" -s "$INPUT_STACK_NAME" --non-interactive
+          pulumi config set prApiHostPattern "$INPUT_PR_API_HOST_PATTERN" -s "$INPUT_STACK_NAME" --non-interactive
+          pulumi config set prAppHostPattern "$INPUT_PR_APP_HOST_PATTERN" -s "$INPUT_STACK_NAME" --non-interactive
+
+          if [ -n "$INPUT_GHCR_PAT" ]; then
+            pulumi config set --secret ghcrToken "$INPUT_GHCR_PAT" -s "$INPUT_STACK_NAME" --non-interactive
+          fi
+          if [ -n "$INPUT_CLOUDFLARE_ZONE_ID" ]; then
+            pulumi config set cloudflareZoneId "$INPUT_CLOUDFLARE_ZONE_ID" -s "$INPUT_STACK_NAME" --non-interactive
+          fi
+          if [ -n "$INPUT_CLOUDFLARE_API_TOKEN" ]; then
+            pulumi config set --secret cloudflareApiToken "$INPUT_CLOUDFLARE_API_TOKEN" -s "$INPUT_STACK_NAME" --non-interactive
+          fi
+          [ -n "$INPUT_ANTHROPIC_API_KEY" ]             && pulumi config set --secret anthropicApiKey             "$INPUT_ANTHROPIC_API_KEY"             -s "$INPUT_STACK_NAME" --non-interactive
+          [ -n "$INPUT_FIREWORKS_API_KEY" ]             && pulumi config set --secret fireworksApiKey             "$INPUT_FIREWORKS_API_KEY"             -s "$INPUT_STACK_NAME" --non-interactive
+          [ -n "$INPUT_MISTRAL_API_KEY" ]               && pulumi config set --secret mistralApiKey               "$INPUT_MISTRAL_API_KEY"               -s "$INPUT_STACK_NAME" --non-interactive
+          [ -n "$INPUT_THUNDERBOLT_INFERENCE_API_KEY" ] && pulumi config set --secret thunderboltInferenceApiKey "$INPUT_THUNDERBOLT_INFERENCE_API_KEY" -s "$INPUT_STACK_NAME" --non-interactive
+          [ -n "$INPUT_EXA_API_KEY" ]                   && pulumi config set --secret exaApiKey                   "$INPUT_EXA_API_KEY"                   -s "$INPUT_STACK_NAME" --non-interactive
+          true
+
+      - name: Deploy
+        uses: pulumi/actions@8582a9e8cc630786854029b4e09281acd6794b58 # v6
+        with:
+          command: up
+          stack-name: ${{ inputs.stack_name || 'previews-shared' }}
+          work-dir: deploy/pulumi
+          upsert: true
+
+      - name: Capture stack outputs
+        working-directory: deploy/pulumi
+        env:
+          INPUT_STACK_NAME: ${{ inputs.stack_name || 'previews-shared' }}
+        run: |
+          echo "## Shared stack outputs" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo '```json' >> $GITHUB_STEP_SUMMARY
+          pulumi stack output --json -s "$INPUT_STACK_NAME" | tee -a $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY

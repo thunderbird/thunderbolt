@@ -171,7 +171,40 @@ Deploy to any Kubernetes cluster using the Helm chart in `deploy/k8s/`.
 Pick one:
 
 **Docker Desktop** (easiest):
-Settings -> Kubernetes -> Enable Kubernetes -> Apply & Restart
+Settings → Kubernetes → Enable Kubernetes → Apply & Restart.
+
+**kind** (recommended for clean isolation):
+
+```bash
+brew install kind
+
+cat > /tmp/kind-thunderbolt.yaml <<'EOF'
+kind: Cluster
+apiVersion: kind.x-k8s.io/v1alpha4
+nodes:
+  - role: control-plane
+    kubeadmConfigPatches:
+      - |
+        kind: InitConfiguration
+        nodeRegistration:
+          kubeletExtraArgs:
+            node-labels: "ingress-ready=true"
+    extraPortMappings:
+      - containerPort: 80
+        hostPort: 80
+        protocol: TCP
+      - containerPort: 443
+        hostPort: 443
+        protocol: TCP
+EOF
+
+kind create cluster --name thunderbolt --config /tmp/kind-thunderbolt.yaml
+```
+
+The `extraPortMappings` and `ingress-ready` label are required for the chart's
+ingress to be reachable at `http://localhost`. A bare `kind create cluster`
+boots a cluster with no host port mappings, and the ingress install in the next
+step will succeed but be unreachable.
 
 **Minikube**:
 
@@ -180,14 +213,20 @@ brew install minikube
 minikube start
 ```
 
-**kind**:
+### Install nginx-ingress
+
+For **kind**, use the kind-flavored manifest (binds to the labeled node):
 
 ```bash
-brew install kind
-kind create cluster --name thunderbolt
+kubectl apply -f https://kind.sigs.k8s.io/examples/ingress/deploy-ingress-nginx.yaml
+
+kubectl wait --namespace ingress-nginx \
+  --for=condition=ready pod \
+  --selector=app.kubernetes.io/component=controller \
+  --timeout=120s
 ```
 
-### Install nginx-ingress
+For **Docker Desktop / Minikube**, use the standard chart:
 
 ```bash
 helm repo add ingress-nginx https://kubernetes.github.io/ingress-nginx
@@ -217,19 +256,29 @@ docker build -f deploy/docker/powersync.Dockerfile -t thunderbolt-powersync .
 
 ### Deploy with Helm
 
+The chart requires `backend.betterAuthSecretBase64`. Generate one and install:
+
 ```bash
 cd deploy/k8s
 
-# Install with default values (local dev)
-helm install thunderbolt . -n thunderbolt --create-namespace
+BETTER_AUTH_SECRET=$(openssl rand -base64 32 | tr -d '\n' | base64)
 
-# Or customize values
 helm install thunderbolt . -n thunderbolt --create-namespace \
-  --set appUrl=http://my-domain.com \
-  --set frontend.image.repository=thunderbolt-frontend \
-  --set frontend.image.tag=latest \
-  --set backend.image.repository=thunderbolt-backend \
-  --set backend.image.tag=latest
+  --set backend.betterAuthSecretBase64="$BETTER_AUTH_SECRET"
+```
+
+Default image repos point at the public images at
+`ghcr.io/thunderbird/thunderbolt/*` — no pull secret needed for a local install.
+
+To customize for a production deploy:
+
+```bash
+helm install thunderbolt . -n thunderbolt --create-namespace \
+  --set backend.betterAuthSecretBase64="$BETTER_AUTH_SECRET" \
+  --set appUrl=https://thunderbolt.your-domain.com \
+  --set ingress.host=thunderbolt.your-domain.com \
+  --set frontend.image.tag=0.1.95 \
+  --set backend.image.tag=0.1.95
 ```
 
 ### Watch Startup

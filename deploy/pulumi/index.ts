@@ -12,6 +12,8 @@ import { createServiceDiscovery } from './src/discovery'
 import { createAlb } from './src/alb'
 import { createServices } from './src/services'
 import { createDns } from './src/dns'
+import { createSharedStack, loadSharedStackOutputs } from './src/shared'
+import { createPerPrStack } from './src/per-pr-stack'
 
 const config = new pulumi.Config()
 const stackName = pulumi.getStack()
@@ -19,209 +21,338 @@ const name = `tb-${stackName}`
 const platform = config.get('platform') || 'fargate'
 const version = config.require('version')
 
-// --- Optional Cloudflare subdomain wiring (used by preview-pr-* stacks) ---
+// --- Shared-stack architecture (Phase 1 scaffolding) ---
 //
-// Preview stacks set five per-service hostnames (marketing/app/api/auth/powersync).
-// Pulumi creates a proxied CNAME in Cloudflare for each and wires per-service URLs
-// into the container env vars. Enterprise stacks leave these unset and fall back
-// to the raw ALB hostname + path-based ALB routing.
+// Three deployment shapes coexist in this file:
 //
-// Back-compat: also accepts legacy `subdomain` (single hostname used for everything)
-// and `hostnames` (comma-separated, first is the marketing/primary).
-const marketingHostname = config.get('marketingHostname')
-const appHostname = config.get('appHostname')
-const apiHostname = config.get('apiHostname')
-const authHostname = config.get('authHostname')
-const powersyncHostname = config.get('powersyncHostname')
+//   1. `previews-shared` stack — long-lived, owns VPC/ALB/cluster/postgres/keycloak/
+//      powersync. Created by a separate workflow; outputs consumed via StackReference.
+//   2. `preview-pr-<n>` with `sharedStackName` config set — slim per-PR stack that
+//      reads the shared stack's outputs and only creates backend/frontend/marketing
+//      + per-PR routing.
+//   3. Legacy monolithic — every other stack name (dev, jkab-org/demo, enterprise
+//      customers, AND `preview-pr-<n>` stacks where `sharedStackName` is unset). This
+//      preserves existing behavior so no live deploys break during migration.
+//
+// Phase 1 wires up shape (1) and (2) as throwing stubs so we can iterate without
+// touching the monolithic path. See deploy/pulumi/src/shared.ts and per-pr-stack.ts.
+const isSharedStack = stackName === 'previews-shared'
+const sharedStackName = config.get('sharedStackName')
 
-const legacyHostnames = (config.get('hostnames') ?? config.get('subdomain') ?? '')
-  .split(',')
-  .map((s) => s.trim())
-  .filter((s) => s.length > 0)
+if (isSharedStack) {
+  // The shared stack owns: VPC, ALB, ECS cluster, EFS, namespace, Postgres,
+  // Keycloak, PowerSync, AI provider secrets. Per-PR stacks consume these via
+  // StackReference.
+  const imagePrefix = 'ghcr.io/thunderbird/thunderbolt'
 
-const hasSubdomainRouting =
-  Boolean(marketingHostname || appHostname || apiHostname || authHostname || powersyncHostname) ||
-  legacyHostnames.length > 0
-
-const cloudflareZoneId = config.get('cloudflareZoneId')
-const cloudflareApiToken = config.getSecret('cloudflareApiToken')
-
-if (hasSubdomainRouting && (!cloudflareZoneId || !cloudflareApiToken)) {
-  throw new Error(
-    'subdomain routing is configured but cloudflareZoneId and/or cloudflareApiToken are missing — ' +
-      'run `pulumi config set cloudflareZoneId <id>` and `pulumi config set --secret cloudflareApiToken <token>`',
-  )
-}
-
-// Resolve each service's hostname. When a per-service hostname is set, use it.
-// Otherwise fall back to the first legacy hostname (single-hostname mode).
-const resolvedHostnames = {
-  marketing: marketingHostname || legacyHostnames[0],
-  app: appHostname || legacyHostnames[0],
-  api: apiHostname || legacyHostnames[0],
-  auth: authHostname || legacyHostnames[0],
-  powersync: powersyncHostname || legacyHostnames[0],
-} as const
-
-// Dedupe for DNS creation (legacy mode may reuse the same hostname for multiple services)
-const uniqueHostnamesForDns = hasSubdomainRouting
-  ? Array.from(new Set(Object.values(resolvedHostnames).filter((h): h is string => Boolean(h))))
-  : []
-
-// All images are pre-built and published to GHCR by the images-publish workflow
-const imagePrefix = 'ghcr.io/thunderbird/thunderbolt'
-const images = {
-  frontend: `${imagePrefix}/thunderbolt-frontend:${version}`,
-  backend: `${imagePrefix}/thunderbolt-backend:${version}`,
-  postgres: `${imagePrefix}/thunderbolt-postgres:${version}`,
-  keycloak: `${imagePrefix}/thunderbolt-keycloak:${version}`,
-  powersync: `${imagePrefix}/thunderbolt-powersync:${version}`,
-  marketing: `${imagePrefix}/thunderbolt-marketing:${version}`,
-}
-
-// Preview stacks (`preview-pr-*`) are publicly reachable, so the friendly defaults
-// would be a credential leak — they're visible in this repo. For preview stacks,
-// generate a per-stack random value when no explicit `pulumi config set` override is
-// present. Local (`pulumi up` against the dev stack) and enterprise customer stacks
-// keep the defaults so the workflow stays low-friction. Secrets that need to remain
-// stable across rebuilds are persisted by Pulumi state.
-const isPreviewStack = stackName.startsWith('preview-')
-
-const previewSecret = (resourceName: string, fallback: string, length = 48): pulumi.Output<string> =>
-  isPreviewStack
-    ? new random.RandomPassword(`${name}-${resourceName}`, { length, special: false }).result
-    : pulumi.output(fallback)
-
-// Secrets — override per-stack via `pulumi config set --secret <key> <value>`. When no
-// override is set on a preview stack, machine-only secrets are generated randomly
-// per stack and stored in Pulumi state + AWS Secrets Manager (see services.ts).
-const secrets = {
-  postgresPassword: config.getSecret('postgresPassword') ?? previewSecret('postgres-password', 'postgres'),
-  keycloakAdminPassword: config.getSecret('keycloakAdminPassword') ?? pulumi.output('admin'),
-  oidcClientSecret: config.getSecret('oidcClientSecret') ?? pulumi.output('thunderbolt-enterprise-secret'),
-  powersyncJwtSecret:
+  // Random secrets for the shared stack — persisted in Pulumi state.
+  const postgresPassword =
+    config.getSecret('postgresPassword') ??
+    new random.RandomPassword(`${name}-postgres-password`, { length: 48, special: false }).result
+  const powersyncDbPassword =
+    config.getSecret('powersyncDbPassword') ??
+    new random.RandomPassword(`${name}-powersync-db-password`, { length: 48, special: false }).result
+  const keycloakAdminPassword =
+    config.getSecret('keycloakAdminPassword') ??
+    new random.RandomPassword(`${name}-keycloak-admin-password`, { length: 48, special: false }).result
+  const powersyncJwtSecret =
     config.getSecret('powersyncJwtSecret') ??
-    previewSecret('powersync-jwt-secret', 'enterprise-thunderbolt-powersync-jwt-default-secret', 64),
-  betterAuthSecret:
-    config.getSecret('betterAuthSecret') ??
-    previewSecret('better-auth-secret', 'enterprise-thunderbolt-better-auth-default-secret', 64),
-  powersyncDbPassword:
-    config.getSecret('powersyncDbPassword') ?? previewSecret('powersync-db-password', 'myhighlyrandompassword'),
-  // AI provider keys — empty default so enterprise stacks don't need them set.
-  anthropicApiKey: config.getSecret('anthropicApiKey') ?? pulumi.output(''),
-  fireworksApiKey: config.getSecret('fireworksApiKey') ?? pulumi.output(''),
-  mistralApiKey: config.getSecret('mistralApiKey') ?? pulumi.output(''),
-  thunderboltInferenceApiKey: config.getSecret('thunderboltInferenceApiKey') ?? pulumi.output(''),
-  exaApiKey: config.getSecret('exaApiKey') ?? pulumi.output(''),
-}
+    new random.RandomPassword(`${name}-powersync-jwt-secret`, { length: 64, special: false }).result
+  const oidcClientSecret =
+    config.getSecret('oidcClientSecret') ??
+    new random.RandomPassword(`${name}-oidc-client-secret`, { length: 48, special: false }).result
 
-// Thunderbolt inference gateway URL (not a secret; set per-stack)
-const thunderboltInferenceUrl = config.get('thunderboltInferenceUrl') ?? ''
-
-// Shared: VPC (both platforms need this)
-const { vpc, publicSubnets, privateSubnets, albSg, servicesSg } = createVpc(name)
-
-if (platform === 'k8s') {
-  // ---------- Kubernetes (EKS) ----------
-  const appUrl = config.get('appUrl') || 'http://localhost'
-  const { cluster } = createEksCluster({
+  const outputs = createSharedStack({
     name,
     version,
     imagePrefix,
-    appUrl,
-    vpcId: vpc.id,
-    publicSubnetIds: publicSubnets.map((s) => s.id),
-    privateSubnetIds: privateSubnets.map((s) => s.id),
     ghcrToken: config.getSecret('ghcrToken'),
-    betterAuthSecretBase64: secrets.betterAuthSecret.apply((s) => Buffer.from(s).toString('base64')),
+    authHostname: config.require('authHostname'),
+    powersyncHostname: config.require('powersyncHostname'),
+    prApiHostPattern: config.require('prApiHostPattern'),
+    prAppHostPattern: config.require('prAppHostPattern'),
+    cloudflareZoneId: config.get('cloudflareZoneId'),
+    cloudflareApiToken: config.getSecret('cloudflareApiToken'),
+    aiSecrets: {
+      anthropicApiKey: config.getSecret('anthropicApiKey') ?? pulumi.output(''),
+      fireworksApiKey: config.getSecret('fireworksApiKey') ?? pulumi.output(''),
+      mistralApiKey: config.getSecret('mistralApiKey') ?? pulumi.output(''),
+      thunderboltInferenceApiKey: config.getSecret('thunderboltInferenceApiKey') ?? pulumi.output(''),
+      exaApiKey: config.getSecret('exaApiKey') ?? pulumi.output(''),
+    },
+    postgresPassword,
+    powersyncDbPassword,
+    keycloakAdminPassword,
+    powersyncJwtSecret,
+    oidcClientSecret,
+  })
+
+  // The full shape goes into stack outputs so per-PR StackReference reads work.
+  module.exports = {
+    ...outputs,
+    stackInfo: {
+      name: stackName,
+      destroy: `pulumi destroy -s ${stackName} -y`,
+    },
+  }
+} else if (sharedStackName) {
+  // Per-PR stack consuming the shared stack via StackReference. Only owns the
+  // PR-specific bits (backend/frontend/marketing services + per-PR routing).
+  //
+  // Pulumi requires StackReference names in the fully-qualified
+  // `<organization>/<project>/<stack>` form. The workflow passes just the bare
+  // stack name (`previews-shared`) since org/project are implicit, so qualify
+  // here using the current stack's own org/project.
+  const qualifiedSharedStackName = sharedStackName.includes('/')
+    ? sharedStackName
+    : `${pulumi.getOrganization()}/${pulumi.getProject()}/${sharedStackName}`
+  const sharedRef = new pulumi.StackReference(qualifiedSharedStackName)
+  const sharedOutputs = loadSharedStackOutputs(sharedRef)
+
+  const imagePrefix = 'ghcr.io/thunderbird/thunderbolt'
+
+  const cloudflareZoneIdInput = config.require('cloudflareZoneId')
+  const cloudflareApiTokenInput = config.requireSecret('cloudflareApiToken')
+
+  const betterAuthSecretInput =
+    config.getSecret('betterAuthSecret') ??
+    new random.RandomPassword(`${name}-better-auth-secret`, { length: 64, special: false }).result
+
+  const perPrOutputs = createPerPrStack({
+    stackName,
+    name,
+    version,
+    imagePrefix,
+    ghcrToken: config.getSecret('ghcrToken'),
+    hostnames: {
+      marketing: config.require('marketingHostname'),
+      app: config.require('appHostname'),
+      api: config.require('apiHostname'),
+    },
+    cloudflareZoneId: cloudflareZoneIdInput,
+    cloudflareApiToken: cloudflareApiTokenInput,
+    shared: sharedOutputs,
+    betterAuthSecret: betterAuthSecretInput,
+    thunderboltInferenceUrl: config.get('thunderboltInferenceUrl'),
   })
 
   module.exports = {
-    platform: 'k8s',
-    kubeconfig: cluster.kubeconfigJson,
-    note: 'Run: kubectl get svc -n ingress-nginx ingress-nginx-controller -o jsonpath="{.status.loadBalancer.ingress[0].hostname}" to get the URL',
+    platform: 'fargate-shared',
+    url: perPrOutputs.url,
+    urls: perPrOutputs.urls,
     stackInfo: {
       name: stackName,
+      sharedStackName,
       destroy: `pulumi destroy -s ${stackName} -y`,
     },
   }
 } else {
-  // ---------- Fargate (ECS) ----------
-  const storage = createStorage(
-    name,
-    vpc.id,
-    privateSubnets.map((s) => s.id),
-    servicesSg.id,
-  )
+  // Otherwise: legacy monolithic path (unchanged).
 
-  const { cluster, logGroup } = createCluster(name)
-  const { services: discoveryServices } = createServiceDiscovery(name, vpc.id)
+  // --- Optional Cloudflare subdomain wiring (used by preview-pr-* stacks) ---
+  //
+  // Preview stacks set five per-service hostnames (marketing/app/api/auth/powersync).
+  // Pulumi creates a proxied CNAME in Cloudflare for each and wires per-service URLs
+  // into the container env vars. Enterprise stacks leave these unset and fall back
+  // to the raw ALB hostname + path-based ALB routing.
+  //
+  // Back-compat: also accepts legacy `subdomain` (single hostname used for everything)
+  // and `hostnames` (comma-separated, first is the marketing/primary).
+  const marketingHostname = config.get('marketingHostname')
+  const appHostname = config.get('appHostname')
+  const apiHostname = config.get('apiHostname')
+  const authHostname = config.get('authHostname')
+  const powersyncHostname = config.get('powersyncHostname')
 
-  const { alb, listener, frontendTg, backendTg, keycloakTg, powersyncTg, marketingTg } = createAlb({
-    name,
-    vpcId: vpc.id,
-    publicSubnetIds: publicSubnets.map((s) => s.id),
-    albSgId: albSg.id,
-    hostnames: hasSubdomainRouting ? resolvedHostnames : undefined,
-  })
+  const legacyHostnames = (config.get('hostnames') ?? config.get('subdomain') ?? '')
+    .split(',')
+    .map((s) => s.trim())
+    .filter((s) => s.length > 0)
 
-  // Create Cloudflare CNAMEs for each unique hostname, all pointing at the ALB.
-  if (hasSubdomainRouting) {
-    createDns({
+  const hasSubdomainRouting =
+    Boolean(marketingHostname || appHostname || apiHostname || authHostname || powersyncHostname) ||
+    legacyHostnames.length > 0
+
+  const cloudflareZoneId = config.get('cloudflareZoneId')
+  const cloudflareApiToken = config.getSecret('cloudflareApiToken')
+
+  if (hasSubdomainRouting && (!cloudflareZoneId || !cloudflareApiToken)) {
+    throw new Error(
+      'subdomain routing is configured but cloudflareZoneId and/or cloudflareApiToken are missing — ' +
+        'run `pulumi config set cloudflareZoneId <id>` and `pulumi config set --secret cloudflareApiToken <token>`',
+    )
+  }
+
+  // Resolve each service's hostname. When a per-service hostname is set, use it.
+  // Otherwise fall back to the first legacy hostname (single-hostname mode).
+  const resolvedHostnames = {
+    marketing: marketingHostname || legacyHostnames[0],
+    app: appHostname || legacyHostnames[0],
+    api: apiHostname || legacyHostnames[0],
+    auth: authHostname || legacyHostnames[0],
+    powersync: powersyncHostname || legacyHostnames[0],
+  } as const
+
+  // Dedupe for DNS creation (legacy mode may reuse the same hostname for multiple services)
+  const uniqueHostnamesForDns = hasSubdomainRouting
+    ? Array.from(new Set(Object.values(resolvedHostnames).filter((h): h is string => Boolean(h))))
+    : []
+
+  // All images are pre-built and published to GHCR by the images-publish workflow
+  const imagePrefix = 'ghcr.io/thunderbird/thunderbolt'
+  const images = {
+    frontend: `${imagePrefix}/thunderbolt-frontend:${version}`,
+    backend: `${imagePrefix}/thunderbolt-backend:${version}`,
+    postgres: `${imagePrefix}/thunderbolt-postgres:${version}`,
+    keycloak: `${imagePrefix}/thunderbolt-keycloak:${version}`,
+    powersync: `${imagePrefix}/thunderbolt-powersync:${version}`,
+    marketing: `${imagePrefix}/thunderbolt-marketing:${version}`,
+  }
+
+  // Preview stacks (`preview-pr-*`) are publicly reachable, so the friendly defaults
+  // would be a credential leak — they're visible in this repo. For preview stacks,
+  // generate a per-stack random value when no explicit `pulumi config set` override is
+  // present. Local (`pulumi up` against the dev stack) and enterprise customer stacks
+  // keep the defaults so the workflow stays low-friction. Secrets that need to remain
+  // stable across rebuilds are persisted by Pulumi state.
+  const isPreviewStack = stackName.startsWith('preview-')
+
+  const previewSecret = (resourceName: string, fallback: string, length = 48): pulumi.Output<string> =>
+    isPreviewStack
+      ? new random.RandomPassword(`${name}-${resourceName}`, { length, special: false }).result
+      : pulumi.output(fallback)
+
+  // Secrets — override per-stack via `pulumi config set --secret <key> <value>`. When no
+  // override is set on a preview stack, machine-only secrets are generated randomly
+  // per stack and stored in Pulumi state + AWS Secrets Manager (see services.ts).
+  const secrets = {
+    postgresPassword: config.getSecret('postgresPassword') ?? previewSecret('postgres-password', 'postgres'),
+    keycloakAdminPassword: config.getSecret('keycloakAdminPassword') ?? pulumi.output('admin'),
+    oidcClientSecret: config.getSecret('oidcClientSecret') ?? pulumi.output('thunderbolt-enterprise-secret'),
+    powersyncJwtSecret:
+      config.getSecret('powersyncJwtSecret') ??
+      previewSecret('powersync-jwt-secret', 'enterprise-thunderbolt-powersync-jwt-default-secret', 64),
+    betterAuthSecret:
+      config.getSecret('betterAuthSecret') ??
+      previewSecret('better-auth-secret', 'enterprise-thunderbolt-better-auth-default-secret', 64),
+    powersyncDbPassword:
+      config.getSecret('powersyncDbPassword') ?? previewSecret('powersync-db-password', 'myhighlyrandompassword'),
+    // AI provider keys — empty default so enterprise stacks don't need them set.
+    anthropicApiKey: config.getSecret('anthropicApiKey') ?? pulumi.output(''),
+    fireworksApiKey: config.getSecret('fireworksApiKey') ?? pulumi.output(''),
+    mistralApiKey: config.getSecret('mistralApiKey') ?? pulumi.output(''),
+    thunderboltInferenceApiKey: config.getSecret('thunderboltInferenceApiKey') ?? pulumi.output(''),
+    exaApiKey: config.getSecret('exaApiKey') ?? pulumi.output(''),
+  }
+
+  // Thunderbolt inference gateway URL (not a secret; set per-stack)
+  const thunderboltInferenceUrl = config.get('thunderboltInferenceUrl') ?? ''
+
+  // Shared: VPC (both platforms need this)
+  const { vpc, publicSubnets, privateSubnets, albSg, servicesSg } = createVpc(name)
+
+  if (platform === 'k8s') {
+    // ---------- Kubernetes (EKS) ----------
+    const appUrl = config.get('appUrl') || 'http://localhost'
+    const { cluster } = createEksCluster({
       name,
-      zoneId: cloudflareZoneId!,
-      hostnames: uniqueHostnamesForDns,
-      target: alb.dnsName,
-      apiToken: cloudflareApiToken!,
+      version,
+      imagePrefix,
+      appUrl,
+      vpcId: vpc.id,
+      publicSubnetIds: publicSubnets.map((s) => s.id),
+      privateSubnetIds: privateSubnets.map((s) => s.id),
+      ghcrToken: config.getSecret('ghcrToken'),
+      betterAuthSecretBase64: secrets.betterAuthSecret.apply((s) => Buffer.from(s).toString('base64')),
     })
-  }
 
-  // Per-service public URLs for env var wiring. If subdomain routing is active,
-  // each service uses its own subdomain URL. Otherwise all services share the
-  // raw ALB URL and routing falls back to path-based (enterprise stacks).
-  const albFallback = pulumi.interpolate`http://${alb.dnsName}`
-  const publicUrls = {
-    marketing: resolvedHostnames.marketing ? (pulumi.interpolate`https://${resolvedHostnames.marketing}` as pulumi.Input<string>) : albFallback,
-    app: resolvedHostnames.app ? (pulumi.interpolate`https://${resolvedHostnames.app}` as pulumi.Input<string>) : albFallback,
-    api: resolvedHostnames.api ? (pulumi.interpolate`https://${resolvedHostnames.api}` as pulumi.Input<string>) : albFallback,
-    auth: resolvedHostnames.auth ? (pulumi.interpolate`https://${resolvedHostnames.auth}` as pulumi.Input<string>) : albFallback,
-    powersync: resolvedHostnames.powersync ? (pulumi.interpolate`https://${resolvedHostnames.powersync}` as pulumi.Input<string>) : albFallback,
-  }
+    module.exports = {
+      platform: 'k8s',
+      kubeconfig: cluster.kubeconfigJson,
+      note: 'Run: kubectl get svc -n ingress-nginx ingress-nginx-controller -o jsonpath="{.status.loadBalancer.ingress[0].hostname}" to get the URL',
+      stackInfo: {
+        name: stackName,
+        destroy: `pulumi destroy -s ${stackName} -y`,
+      },
+    }
+  } else {
+    // ---------- Fargate (ECS) ----------
+    const storage = createStorage(
+      name,
+      vpc.id,
+      privateSubnets.map((s) => s.id),
+      servicesSg.id,
+    )
 
-  createServices({
-    name,
-    cluster,
-    logGroup,
-    privateSubnetIds: privateSubnets.map((s) => s.id),
-    servicesSgId: servicesSg.id,
-    efsId: storage.efs.id,
-    pgAccessPointId: storage.pgAccessPoint.id,
-    images,
-    secrets,
-    ghcrToken: config.getSecret('ghcrToken'),
-    publicUrls,
-    thunderboltInferenceUrl,
-    behindCloudflareProxy: hasSubdomainRouting,
-    albListener: listener,
-    targetGroups: {
-      frontend: frontendTg,
-      backend: backendTg,
-      keycloak: keycloakTg,
-      powersync: powersyncTg,
-      marketing: marketingTg,
-    },
-    discoveryServices,
-  })
+    const { cluster, logGroup } = createCluster(name)
+    const { services: discoveryServices } = createServiceDiscovery(name, vpc.id)
 
-  module.exports = {
-    platform: 'fargate',
-    // Primary user-facing URL is the marketing/app entry (preview: marketing; enterprise: ALB path-based)
-    url: publicUrls.marketing,
-    urls: publicUrls,
-    albDnsName: alb.dnsName,
-    stackInfo: {
-      name: stackName,
-      destroy: `pulumi destroy -s ${stackName} -y`,
-    },
+    const { alb, listener, frontendTg, backendTg, keycloakTg, powersyncTg, marketingTg } = createAlb({
+      name,
+      vpcId: vpc.id,
+      publicSubnetIds: publicSubnets.map((s) => s.id),
+      albSgId: albSg.id,
+      hostnames: hasSubdomainRouting ? resolvedHostnames : undefined,
+    })
+
+    // Create Cloudflare CNAMEs for each unique hostname, all pointing at the ALB.
+    if (hasSubdomainRouting) {
+      createDns({
+        name,
+        zoneId: cloudflareZoneId!,
+        hostnames: uniqueHostnamesForDns,
+        target: alb.dnsName,
+        apiToken: cloudflareApiToken!,
+      })
+    }
+
+    // Per-service public URLs for env var wiring. If subdomain routing is active,
+    // each service uses its own subdomain URL. Otherwise all services share the
+    // raw ALB URL and routing falls back to path-based (enterprise stacks).
+    const albFallback = pulumi.interpolate`http://${alb.dnsName}`
+    const publicUrls = {
+      marketing: resolvedHostnames.marketing ? (pulumi.interpolate`https://${resolvedHostnames.marketing}` as pulumi.Input<string>) : albFallback,
+      app: resolvedHostnames.app ? (pulumi.interpolate`https://${resolvedHostnames.app}` as pulumi.Input<string>) : albFallback,
+      api: resolvedHostnames.api ? (pulumi.interpolate`https://${resolvedHostnames.api}` as pulumi.Input<string>) : albFallback,
+      auth: resolvedHostnames.auth ? (pulumi.interpolate`https://${resolvedHostnames.auth}` as pulumi.Input<string>) : albFallback,
+      powersync: resolvedHostnames.powersync ? (pulumi.interpolate`https://${resolvedHostnames.powersync}` as pulumi.Input<string>) : albFallback,
+    }
+
+    createServices({
+      name,
+      cluster,
+      logGroup,
+      privateSubnetIds: privateSubnets.map((s) => s.id),
+      servicesSgId: servicesSg.id,
+      efsId: storage.efs.id,
+      pgAccessPointId: storage.pgAccessPoint.id,
+      images,
+      secrets,
+      ghcrToken: config.getSecret('ghcrToken'),
+      publicUrls,
+      thunderboltInferenceUrl,
+      behindCloudflareProxy: hasSubdomainRouting,
+      albListener: listener,
+      targetGroups: {
+        frontend: frontendTg,
+        backend: backendTg,
+        keycloak: keycloakTg,
+        powersync: powersyncTg,
+        marketing: marketingTg,
+      },
+      discoveryServices,
+    })
+
+    module.exports = {
+      platform: 'fargate',
+      // Primary user-facing URL is the marketing/app entry (preview: marketing; enterprise: ALB path-based)
+      url: publicUrls.marketing,
+      urls: publicUrls,
+      albDnsName: alb.dnsName,
+      stackInfo: {
+        name: stackName,
+        destroy: `pulumi destroy -s ${stackName} -y`,
+      },
+    }
   }
 }

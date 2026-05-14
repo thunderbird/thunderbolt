@@ -3,7 +3,15 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { beforeAll, beforeEach, describe, expect, it, mock } from 'bun:test'
-import { clearAuthToken, getAuthToken, onAuthTokenChangedInOtherTab, setAuthToken } from './auth-token'
+import {
+  clearAuthToken,
+  clearDeviceId,
+  getAuthenticatedHeaders,
+  getAuthToken,
+  getDeviceId,
+  onAuthTokenChangedInOtherTab,
+  setAuthToken,
+} from './auth-token'
 
 const authTokenKey = 'thunderbolt_auth_token'
 
@@ -38,6 +46,7 @@ beforeAll(() => {
 
 beforeEach(() => {
   clearAuthToken()
+  clearDeviceId()
 })
 
 describe('auth-token', () => {
@@ -80,6 +89,36 @@ describe('auth-token', () => {
       expect(getAuthToken()).toBeNull()
       setAuthToken('other')
       expect(getAuthToken()).toBe('other')
+    })
+  })
+
+  describe('getAuthenticatedHeaders', () => {
+    it('returns Authorization, X-Device-ID, and X-Device-Name when token and device ID exist', () => {
+      setAuthToken('my-token')
+      getDeviceId() // ensure device ID is created
+
+      const headers = getAuthenticatedHeaders()
+
+      expect(headers['Authorization']).toBe('Bearer my-token')
+      expect(headers['X-Device-ID']).toBeTruthy()
+      expect(headers['X-Device-Name']).toBeTruthy()
+    })
+
+    it('returns device headers but no Authorization when no auth token', () => {
+      getDeviceId() // ensure device ID is created
+
+      const headers = getAuthenticatedHeaders()
+
+      expect(headers['Authorization']).toBeUndefined()
+      expect(headers['X-Device-ID']).toBeTruthy()
+      expect(headers['X-Device-Name']).toBeTruthy()
+    })
+
+    it('returns consistent device ID across calls', () => {
+      const headers1 = getAuthenticatedHeaders()
+      const headers2 = getAuthenticatedHeaders()
+
+      expect(headers1['X-Device-ID']).toBe(headers2['X-Device-ID'])
     })
   })
 })

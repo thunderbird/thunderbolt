@@ -27,7 +27,7 @@ type ModelItemData = {
 }
 
 /** Models that are not Thunderbolt-hosted and have no local API key need configuration. */
-const needsApiKey = (model: Model) => model.provider !== 'thunderbolt' && !model.apiKey
+export const needsApiKey = (model: Model) => model.provider !== 'thunderbolt' && !model.apiKey
 
 const toMenuItem = (model: Model, isDisabled: boolean): SearchableMenuItem<ModelItemData> => ({
   id: model.id,

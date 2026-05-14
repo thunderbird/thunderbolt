@@ -19,6 +19,7 @@ import { ButtonGroup, ButtonGroupItem } from '@/components/ui/button-group'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Combobox, type ComboboxItem } from '@/components/ui/combobox'
+import { needsApiKey } from '@/components/ui/model-selector/model-selector'
 import { Dialog, DialogTrigger } from '@/components/ui/dialog'
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form'
 import { Input } from '@/components/ui/input'
@@ -1146,7 +1147,7 @@ export default function ModelsPage() {
                             </Tooltip>
                           </TooltipProvider>
                         )}
-                        {model.provider !== 'thunderbolt' && !model.apiKey && (
+                        {needsApiKey(model) && (
                           <TooltipProvider>
                             <Tooltip>
                               <TooltipTrigger asChild>

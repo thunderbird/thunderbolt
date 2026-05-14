@@ -137,18 +137,20 @@ export const updateModel = async (db: AnyDrizzleDatabase, id: string, updates: P
   // Don't allow updating defaultHash - it must be preserved for modification tracking
   const { defaultHash, apiKey, ...updateFields } = updates as Partial<Model> & { defaultHash?: string }
 
-  if (Object.keys(updateFields).length > 0) {
-    await db.update(modelsTable).set(updateFields).where(eq(modelsTable.id, id))
-  }
-
-  if (apiKey !== undefined) {
-    const existing = await db.select().from(modelsSecretsTable).where(eq(modelsSecretsTable.modelId, id)).get()
-    if (existing) {
-      await db.update(modelsSecretsTable).set({ apiKey }).where(eq(modelsSecretsTable.modelId, id))
-    } else if (apiKey != null) {
-      await db.insert(modelsSecretsTable).values({ modelId: id, apiKey })
+  await db.transaction(async (tx) => {
+    if (Object.keys(updateFields).length > 0) {
+      await tx.update(modelsTable).set(updateFields).where(eq(modelsTable.id, id))
     }
-  }
+
+    if (apiKey !== undefined) {
+      const existing = await tx.select().from(modelsSecretsTable).where(eq(modelsSecretsTable.modelId, id)).get()
+      if (existing) {
+        await tx.update(modelsSecretsTable).set({ apiKey }).where(eq(modelsSecretsTable.modelId, id))
+      } else if (apiKey != null) {
+        await tx.insert(modelsSecretsTable).values({ modelId: id, apiKey })
+      }
+    }
+  })
 }
 
 /**
@@ -156,8 +158,10 @@ export const updateModel = async (db: AnyDrizzleDatabase, id: string, updates: P
  */
 export const resetModelToDefault = async (db: AnyDrizzleDatabase, id: string, defaultModel: Model): Promise<void> => {
   const { defaultHash, apiKey, ...defaultFields } = defaultModel
-  await db.update(modelsTable).set(defaultFields).where(eq(modelsTable.id, id))
-  await db.delete(modelsSecretsTable).where(eq(modelsSecretsTable.modelId, id))
+  await db.transaction(async (tx) => {
+    await tx.update(modelsTable).set(defaultFields).where(eq(modelsTable.id, id))
+    await tx.delete(modelsSecretsTable).where(eq(modelsSecretsTable.modelId, id))
+  })
 }
 
 /**

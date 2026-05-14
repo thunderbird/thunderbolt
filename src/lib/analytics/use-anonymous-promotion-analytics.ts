@@ -4,7 +4,7 @@
 
 import { useRef } from 'react'
 import posthog from 'posthog-js'
-import { trackEvent } from '@/lib/posthog'
+import { trackEvent as defaultTrackEvent } from '@/lib/posthog'
 import type { AuthClient } from '@/contexts'
 
 export type AnonymousPromotionAnalytics = {
@@ -19,10 +19,10 @@ export type AnonymousPromotionAnalytics = {
 // Module-private sessionStorage key shared with the SSO bridge.
 export const pendingAnonIdKey = 'thunderbolt_pending_anon_id'
 
-// Module-private posthog alias helper — the ONLY site in the codebase allowed to call alias.
-// Uses top-level import; posthog-js is in the project. If the client was never initialized
-// (self-hosted, no key), alias() is a silent no-op because posthog-js handles uninitialized state.
-const fireAlias = (newUserId: string, anonId: string) => {
+// Default posthog alias helper — the ONLY production site allowed to call alias.
+// If the client was never initialized (self-hosted, no key), alias() is a silent
+// no-op because posthog-js handles uninitialized state.
+const defaultAlias = (newUserId: string, anonId: string) => {
   try {
     posthog.alias(newUserId, anonId)
   } catch {
@@ -31,12 +31,26 @@ const fireAlias = (newUserId: string, anonId: string) => {
 }
 
 /**
+ * Dependencies for the promotion analytics state machine. Injected so unit
+ * tests can pass fresh fakes per test (avoids `spyOn` on ESM namespace imports
+ * — which is unreliable across bun versions and leaks across `--rerun-each`).
+ */
+export type AnonymousPromotionAnalyticsDeps = {
+  trackEvent: typeof defaultTrackEvent
+  alias: (newUserId: string, anonId: string) => void
+}
+
+/**
  * Create the promotion analytics state machine bound to an external mutable ref.
  * Extracted so the pure logic can be unit-tested without a React renderer.
+ *
+ * Deps are injected (default to the real posthog implementations) so tests can
+ * pass fakes without module mocking.
  */
-export const createAnonymousPromotionAnalytics = (capturedIdRef: {
-  current: string | null
-}): AnonymousPromotionAnalytics => ({
+export const createAnonymousPromotionAnalytics = (
+  capturedIdRef: { current: string | null },
+  deps: AnonymousPromotionAnalyticsDeps = { trackEvent: defaultTrackEvent, alias: defaultAlias },
+): AnonymousPromotionAnalytics => ({
   captureAnonId: async (authClient: AuthClient) => {
     const { data } = await authClient.getSession()
     if (data?.user?.isAnonymous === true) {
@@ -60,8 +74,8 @@ export const createAnonymousPromotionAnalytics = (capturedIdRef: {
 
     // Order: alias BEFORE any navigate (external-7). PostHog queues requests to localStorage
     // so the event will replay even if the page unloads before the network request completes.
-    fireAlias(newUserId, anonId)
-    trackEvent('anonymous_user_promoted')
+    deps.alias(newUserId, anonId)
+    deps.trackEvent('anonymous_user_promoted')
 
     capturedIdRef.current = null
   },

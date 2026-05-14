@@ -3,7 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { act, renderHook } from '@testing-library/react'
-import { afterAll, beforeAll, beforeEach, afterEach, describe, expect, it, mock } from 'bun:test'
+import { afterAll, beforeAll, beforeEach, afterEach, describe, expect, it, mock, spyOn } from 'bun:test'
 import { setupTestDatabase, teardownTestDatabase, resetTestDatabase } from '@/dal/test-utils'
 import { createMockChatInstance, hydrateStore, resetStore } from '@/test-utils/chat-store-mocks'
 import { createQueryTestWrapper } from '@/test-utils/react-query'
@@ -17,39 +17,19 @@ import { updateSettings } from '@/dal/settings'
 import type { ThunderboltUIMessage } from '@/types'
 import { getClock } from '@/testing-library'
 
-const mockAddEventListener = mock()
-const mockRemoveEventListener = mock()
+/**
+ * Dispatches an oauthRetryEvent on the real `window` so the hook's registered listener
+ * runs naturally. Replaces the previous (fragile) pattern of permanently overwriting
+ * `window.addEventListener` to capture the handler — that pattern leaked to sibling tests
+ * (auth-token.test.ts, auth-context.test.ts) under `--randomize --rerun-each` and silently
+ * broke any test that registered storage listeners after this file loaded.
+ */
+const dispatchOAuthRetry = (widgetMessageId: string) => {
+  window.dispatchEvent(new CustomEvent(oauthRetryEvent, { detail: { widgetMessageId } }))
+}
 
 beforeAll(async () => {
   await setupTestDatabase()
-
-  if (typeof global.window === 'undefined') {
-    Object.defineProperty(global, 'window', {
-      value: {
-        addEventListener: mockAddEventListener,
-        removeEventListener: mockRemoveEventListener,
-      },
-      writable: true,
-      configurable: true,
-    })
-  } else {
-    global.window.addEventListener = mockAddEventListener
-    global.window.removeEventListener = mockRemoveEventListener
-  }
-
-  if (typeof global.sessionStorage === 'undefined') {
-    const store = new Map<string, string>()
-    Object.defineProperty(global, 'sessionStorage', {
-      value: {
-        getItem: (key: string) => store.get(key) ?? null,
-        setItem: (key: string, value: string) => store.set(key, value),
-        removeItem: (key: string) => store.delete(key),
-        clear: () => store.clear(),
-      },
-      writable: true,
-      configurable: true,
-    })
-  }
 })
 
 afterAll(async () => {
@@ -58,24 +38,14 @@ afterAll(async () => {
 
 describe('useHandleIntegrationCompletion', () => {
   beforeEach(() => {
-    // Reset the real store state before each test
     resetStore()
-
-    if (global.sessionStorage) {
-      global.sessionStorage.clear()
-    }
-    mockAddEventListener.mockClear()
-    mockRemoveEventListener.mockClear()
+    sessionStorage.clear()
   })
 
   afterEach(async () => {
-    // Reset the real store state after each test
     resetStore()
-
     await resetTestDatabase()
-    if (global.sessionStorage) {
-      global.sessionStorage.clear()
-    }
+    sessionStorage.clear()
   })
 
   /**
@@ -111,7 +81,6 @@ describe('useHandleIntegrationCompletion', () => {
     const mockSaveMessages = createMockSaveMessages()
     const mockChatInstance = createMockChatInstance()
 
-    // Use the real store and hydrate it with test data
     hydrateStore({
       chatInstance: mockChatInstance,
       chatThread: null,
@@ -127,18 +96,23 @@ describe('useHandleIntegrationCompletion', () => {
       integrations_microsoft_credentials: '',
     })
 
-    renderHook(() => useHandleIntegrationCompletion({ saveMessages: mockSaveMessages }), {
-      wrapper: createQueryTestWrapper(),
-    })
+    const addEventListenerSpy = spyOn(window, 'addEventListener')
 
-    expect(mockAddEventListener).toHaveBeenCalledWith(oauthRetryEvent, expect.any(Function))
+    try {
+      renderHook(() => useHandleIntegrationCompletion({ saveMessages: mockSaveMessages }), {
+        wrapper: createQueryTestWrapper(),
+      })
+
+      expect(addEventListenerSpy).toHaveBeenCalledWith(oauthRetryEvent, expect.any(Function))
+    } finally {
+      addEventListenerSpy.mockRestore()
+    }
   })
 
   it('should remove event listener on unmount', async () => {
     const mockSaveMessages = createMockSaveMessages()
     const mockChatInstance = createMockChatInstance()
 
-    // Use the real store and hydrate it with test data
     hydrateStore({
       chatInstance: mockChatInstance,
       chatThread: null,
@@ -154,13 +128,19 @@ describe('useHandleIntegrationCompletion', () => {
       integrations_microsoft_credentials: '',
     })
 
-    const { unmount } = renderHook(() => useHandleIntegrationCompletion({ saveMessages: mockSaveMessages }), {
-      wrapper: createQueryTestWrapper(),
-    })
+    const removeEventListenerSpy = spyOn(window, 'removeEventListener')
 
-    unmount()
+    try {
+      const { unmount } = renderHook(() => useHandleIntegrationCompletion({ saveMessages: mockSaveMessages }), {
+        wrapper: createQueryTestWrapper(),
+      })
 
-    expect(mockRemoveEventListener).toHaveBeenCalledWith(oauthRetryEvent, expect.any(Function))
+      unmount()
+
+      expect(removeEventListenerSpy).toHaveBeenCalledWith(oauthRetryEvent, expect.any(Function))
+    } finally {
+      removeEventListenerSpy.mockRestore()
+    }
   })
 
   it('should not process retry if widgetMessageId is missing', async () => {
@@ -187,13 +167,7 @@ describe('useHandleIntegrationCompletion', () => {
       wrapper: createQueryTestWrapper(),
     })
 
-    const eventHandler = mockAddEventListener.mock.calls[0]?.[1] as ((event: Event) => void) | undefined
-    if (!eventHandler) {
-      throw new Error('Event handler not found')
-    }
-
-    const event = new CustomEvent(oauthRetryEvent, { detail: { widgetMessageId: '' } })
-    eventHandler(event as Event)
+    dispatchOAuthRetry('')
 
     await act(async () => {
       await getClock().tickAsync(100)
@@ -217,13 +191,7 @@ describe('useHandleIntegrationCompletion', () => {
       wrapper: createQueryTestWrapper(),
     })
 
-    const eventHandler = mockAddEventListener.mock.calls[0]?.[1] as ((event: Event) => void) | undefined
-    if (!eventHandler) {
-      throw new Error('Event handler not found')
-    }
-
-    const event = new CustomEvent(oauthRetryEvent, { detail: { widgetMessageId: 'widget-1' } })
-    eventHandler(event as Event)
+    dispatchOAuthRetry('widget-1')
 
     await act(async () => {
       await getClock().tickAsync(100)
@@ -287,13 +255,7 @@ describe('useHandleIntegrationCompletion', () => {
       }),
     })
 
-    const eventHandler = mockAddEventListener.mock.calls[0]?.[1] as ((event: Event) => void) | undefined
-    if (!eventHandler) {
-      throw new Error('Event handler not found')
-    }
-
-    const event = new CustomEvent(oauthRetryEvent, { detail: { widgetMessageId } })
-    eventHandler(event as Event)
+    dispatchOAuthRetry(widgetMessageId)
 
     await act(async () => {
       await getClock().runAllAsync()
@@ -376,13 +338,7 @@ describe('useHandleIntegrationCompletion', () => {
       }),
     })
 
-    const eventHandler = mockAddEventListener.mock.calls[0]?.[1] as ((event: Event) => void) | undefined
-    if (!eventHandler) {
-      throw new Error('Event handler not found')
-    }
-
-    const event = new CustomEvent(oauthRetryEvent, { detail: { widgetMessageId } })
-    eventHandler(event as Event)
+    dispatchOAuthRetry(widgetMessageId)
 
     await act(async () => {
       await getClock().runAllAsync()
@@ -392,7 +348,7 @@ describe('useHandleIntegrationCompletion', () => {
 
     mockSaveMessages.mockClear()
 
-    eventHandler(event as Event)
+    dispatchOAuthRetry(widgetMessageId)
 
     await act(async () => {
       await getClock().tickAsync(500)
@@ -454,13 +410,7 @@ describe('useHandleIntegrationCompletion', () => {
       }),
     })
 
-    const eventHandler = mockAddEventListener.mock.calls[0]?.[1] as ((event: Event) => void) | undefined
-    if (!eventHandler) {
-      throw new Error('Event handler not found')
-    }
-
-    const event = new CustomEvent(oauthRetryEvent, { detail: { widgetMessageId } })
-    eventHandler(event)
+    dispatchOAuthRetry(widgetMessageId)
 
     await act(async () => {
       await getClock().tickAsync(200)
@@ -519,13 +469,7 @@ describe('useHandleIntegrationCompletion', () => {
       }),
     })
 
-    const eventHandler = mockAddEventListener.mock.calls[0]?.[1] as ((event: Event) => void) | undefined
-    if (!eventHandler) {
-      throw new Error('Event handler not found')
-    }
-
-    const event = new CustomEvent(oauthRetryEvent, { detail: { widgetMessageId } })
-    eventHandler(event as Event)
+    dispatchOAuthRetry(widgetMessageId)
 
     await act(async () => {
       await getClock().runAllAsync()
@@ -586,13 +530,7 @@ describe('useHandleIntegrationCompletion', () => {
       }),
     })
 
-    const eventHandler = mockAddEventListener.mock.calls[0]?.[1] as ((event: Event) => void) | undefined
-    if (!eventHandler) {
-      throw new Error('Event handler not found')
-    }
-
-    const event = new CustomEvent(oauthRetryEvent, { detail: { widgetMessageId } })
-    eventHandler(event as Event)
+    dispatchOAuthRetry(widgetMessageId)
 
     await act(async () => {
       await getClock().runAllAsync()
@@ -662,13 +600,7 @@ describe('useHandleIntegrationCompletion', () => {
         }),
       })
 
-      const eventHandler = mockAddEventListener.mock.calls[0]?.[1] as ((event: Event) => void) | undefined
-      if (!eventHandler) {
-        throw new Error('Event handler not found')
-      }
-
-      const event = new CustomEvent(oauthRetryEvent, { detail: { widgetMessageId } })
-      eventHandler(event as Event)
+      dispatchOAuthRetry(widgetMessageId)
 
       // Advance timers step by step to allow the hook to process through its polling stages
       await act(async () => {

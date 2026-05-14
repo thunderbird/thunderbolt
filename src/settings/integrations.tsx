@@ -33,15 +33,6 @@ type Integration = {
   isEnabled: boolean
   isConnected: boolean
   userEmail?: string
-  credentials?: {
-    access_token: string
-    refresh_token: string
-    expires_at: number
-    profile?: {
-      email?: string
-      name?: string
-    }
-  }
 }
 
 const ThunderboltProIcon = () => (
@@ -95,6 +86,7 @@ export default function IntegrationsPage() {
         icon: <GoogleIcon />,
         isEnabled: integrationStatusData?.googleEnabled ?? false,
         isConnected: integrationStatusData?.googleConnected ?? false,
+        userEmail: integrationStatusData?.googleEmail ?? undefined,
       },
       {
         id: 'microsoft',
@@ -104,6 +96,7 @@ export default function IntegrationsPage() {
         icon: <MicrosoftIcon />,
         isEnabled: integrationStatusData?.microsoftEnabled ?? false,
         isConnected: integrationStatusData?.microsoftConnected ?? false,
+        userEmail: integrationStatusData?.microsoftEmail ?? undefined,
       },
     ]
   }, [integrationSettings.integrationsProIsEnabled.value, integrationStatusData, proStatus?.isProUser])

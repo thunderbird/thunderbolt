@@ -9,8 +9,10 @@ import { useQuery } from '@tanstack/react-query'
 export type IntegrationStatus = {
   googleConnected: boolean
   googleEnabled: boolean
+  googleEmail: string | null
   microsoftConnected: boolean
   microsoftEnabled: boolean
+  microsoftEmail: string | null
   availableProviders: {
     google: boolean
     microsoft: boolean

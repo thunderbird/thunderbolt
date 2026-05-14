@@ -50,8 +50,10 @@ describe('useIntegrationStatus', () => {
       expect(result.current.data).toEqual({
         googleConnected: false,
         googleEnabled: false,
+        googleEmail: null,
         microsoftConnected: false,
         microsoftEnabled: false,
+        microsoftEmail: null,
         availableProviders: {
           google: false,
           microsoft: false,
@@ -77,8 +79,10 @@ describe('useIntegrationStatus', () => {
       expect(result.current.data).toEqual({
         googleConnected: true,
         googleEnabled: true,
+        googleEmail: null,
         microsoftConnected: false,
         microsoftEnabled: false,
+        microsoftEmail: null,
         availableProviders: {
           google: true,
           microsoft: false,
@@ -103,8 +107,10 @@ describe('useIntegrationStatus', () => {
       expect(result.current.data).toEqual({
         googleConnected: false,
         googleEnabled: false,
+        googleEmail: null,
         microsoftConnected: true,
         microsoftEnabled: true,
+        microsoftEmail: null,
         availableProviders: {
           google: false,
           microsoft: true,
@@ -130,13 +136,43 @@ describe('useIntegrationStatus', () => {
       expect(result.current.data).toEqual({
         googleConnected: true,
         googleEnabled: true,
+        googleEmail: null,
         microsoftConnected: true,
         microsoftEnabled: true,
+        microsoftEmail: null,
         availableProviders: {
           google: true,
           microsoft: true,
         },
       })
+    })
+  })
+
+  describe('Email surfacing', () => {
+    it('should surface profile.email from stored credentials', async () => {
+      await saveIntegrationCredentials(
+        getDb(),
+        'google',
+        { access_token: 'g', profile: { email: 'user@example.com', name: 'User' } },
+        true,
+      )
+      await saveIntegrationCredentials(
+        getDb(),
+        'microsoft',
+        { access_token: 'm', profile: { email: 'user@outlook.com', name: 'User' } },
+        true,
+      )
+
+      const { result } = renderHook(() => useIntegrationStatus(), {
+        wrapper: createQueryTestWrapper(),
+      })
+
+      await act(async () => {
+        await getClock().runAllAsync()
+      })
+
+      expect(result.current.data?.googleEmail).toBe('user@example.com')
+      expect(result.current.data?.microsoftEmail).toBe('user@outlook.com')
     })
   })
 

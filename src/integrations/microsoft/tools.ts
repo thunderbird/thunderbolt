@@ -4,7 +4,7 @@
 
 // New file with Microsoft Graph tools
 
-import { getIntegrationCredentials, saveIntegrationCredentials } from '@/dal'
+import { getIntegrationCredentials, updateIntegrationCredentials } from '@/dal'
 import { getDb } from '@/db/database'
 import { llmContentCharLimit } from '@/lib/utils'
 import type { ToolConfig } from '@/types'
@@ -189,7 +189,7 @@ const ensureValidToken = async (
   }
 
   const db = getDb()
-  await saveIntegrationCredentials(db, 'microsoft', updated, true)
+  await updateIntegrationCredentials(db, 'microsoft', updated)
 
   return newTokens.access_token
 }

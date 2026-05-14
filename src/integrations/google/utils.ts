@@ -4,7 +4,7 @@
 
 import { refreshAccessToken } from '@/lib/auth'
 import type { HttpClient } from '@/lib/http'
-import { getIntegrationCredentials, saveIntegrationCredentials } from '@/dal'
+import { getIntegrationCredentials, updateIntegrationCredentials } from '@/dal'
 import { getDb } from '@/db/database'
 import type { DraftEmailParams } from './tools'
 
@@ -175,7 +175,7 @@ export const ensureValidGoogleToken = async (
   }
 
   const db = getDb()
-  await saveIntegrationCredentials(db, 'google', updated, true)
+  await updateIntegrationCredentials(db, 'google', updated)
 
   return updated.access_token
 }

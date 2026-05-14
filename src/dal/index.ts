@@ -109,4 +109,5 @@ export {
   getIntegrationStatus,
   saveIntegrationCredentials,
   setIntegrationEnabled,
+  updateIntegrationCredentials,
 } from './integrations'

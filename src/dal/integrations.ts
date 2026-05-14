@@ -79,6 +79,21 @@ export const saveIntegrationCredentials = async (
   }
 }
 
+/**
+ * Update credentials for a provider without changing the enabled flag.
+ * No-op if the provider has no existing row (only callable after a connect).
+ */
+export const updateIntegrationCredentials = async (
+  db: AnyDrizzleDatabase,
+  provider: OAuthProvider,
+  credentials: IntegrationCredentials,
+): Promise<void> => {
+  await db
+    .update(integrationsSecretsTable)
+    .set({ credentials: JSON.stringify(credentials) })
+    .where(eq(integrationsSecretsTable.provider, provider))
+}
+
 /** Toggle the enabled flag for a provider without changing credentials. */
 export const setIntegrationEnabled = async (
   db: AnyDrizzleDatabase,
@@ -96,14 +111,27 @@ export const deleteIntegrationCredentials = async (db: AnyDrizzleDatabase, provi
   await db.delete(integrationsSecretsTable).where(eq(integrationsSecretsTable.provider, provider))
 }
 
+const parseEmail = (raw: string | null | undefined): string | null => {
+  if (!raw) {
+    return null
+  }
+  try {
+    return (JSON.parse(raw) as IntegrationCredentials).profile?.email ?? null
+  } catch {
+    return null
+  }
+}
+
 /** Get connection/enabled status for all integration providers. */
 export const getIntegrationStatus = async (
   db: AnyDrizzleDatabase,
 ): Promise<{
   googleConnected: boolean
   googleEnabled: boolean
+  googleEmail: string | null
   microsoftConnected: boolean
   microsoftEnabled: boolean
+  microsoftEmail: string | null
 }> => {
   const rows = await db.select().from(integrationsSecretsTable).all()
 
@@ -113,7 +141,9 @@ export const getIntegrationStatus = async (
   return {
     googleConnected: !!google?.credentials,
     googleEnabled: google?.enabled === 1,
+    googleEmail: parseEmail(google?.credentials),
     microsoftConnected: !!microsoft?.credentials,
     microsoftEnabled: microsoft?.enabled === 1,
+    microsoftEmail: parseEmail(microsoft?.credentials),
   }
 }

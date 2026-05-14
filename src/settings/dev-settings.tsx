@@ -14,17 +14,17 @@ import { useQuery } from '@tanstack/react-query'
 import { useShallow } from 'zustand/react/shallow'
 
 export default function DevSettingsPage() {
-  const { cloudUrl, isNativeFetchEnabled, debugPosthog } = useLocalSettingsStore(
+  const settings = useLocalSettingsStore(
     useShallow((s) => ({
       cloudUrl: s.cloudUrl,
       isNativeFetchEnabled: s.isNativeFetchEnabled,
       debugPosthog: s.debugPosthog,
     })),
   )
+  const { cloudUrl, isNativeFetchEnabled, debugPosthog } = settings
   const setLocalSetting = useLocalSettingsStore((s) => s.setLocalSetting)
 
-  const isModified = <K extends keyof typeof initialLocalSettings>(key: K) =>
-    useLocalSettingsStore.getState()[key] !== initialLocalSettings[key]
+  const isModified = <K extends keyof typeof settings>(key: K) => settings[key] !== initialLocalSettings[key]
 
   const resetSetting = <K extends keyof typeof initialLocalSettings>(key: K) =>
     setLocalSetting(key, initialLocalSettings[key])

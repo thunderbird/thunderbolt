@@ -33,8 +33,8 @@ describe('handleCredentialsInvalidIfNeeded', () => {
     )
   })
 
-  it('dispatches event with reason device_revoked for 403 + DEVICE_DISCONNECTED', () => {
-    const result = handleCredentialsInvalidIfNeeded(403, { code: 'DEVICE_DISCONNECTED' })
+  it('dispatches event with reason device_revoked for 403 + deviceDisconnected', () => {
+    const result = handleCredentialsInvalidIfNeeded(403, { code: 'deviceDisconnected' })
 
     expect(result).toBe(true)
     expect(dispatchSpy).toHaveBeenCalledTimes(1)
@@ -43,8 +43,8 @@ describe('handleCredentialsInvalidIfNeeded', () => {
     )
   })
 
-  it('dispatches event with reason device_id_taken for 409 + DEVICE_ID_TAKEN', () => {
-    const result = handleCredentialsInvalidIfNeeded(409, { code: 'DEVICE_ID_TAKEN' })
+  it('dispatches event with reason device_id_taken for 409 + deviceIdTaken', () => {
+    const result = handleCredentialsInvalidIfNeeded(409, { code: 'deviceIdTaken' })
 
     expect(result).toBe(true)
     expect(dispatchSpy).toHaveBeenCalledTimes(1)
@@ -53,8 +53,8 @@ describe('handleCredentialsInvalidIfNeeded', () => {
     )
   })
 
-  it('dispatches event with reason device_id_required for 400 + DEVICE_ID_REQUIRED', () => {
-    const result = handleCredentialsInvalidIfNeeded(400, { code: 'DEVICE_ID_REQUIRED' })
+  it('dispatches event with reason device_id_required for 400 + deviceIdRequired', () => {
+    const result = handleCredentialsInvalidIfNeeded(400, { code: 'deviceIdRequired' })
 
     expect(result).toBe(true)
     expect(dispatchSpy).toHaveBeenCalledTimes(1)
@@ -73,7 +73,7 @@ describe('handleCredentialsInvalidIfNeeded', () => {
     )
   })
 
-  it('does not dispatch and returns false for 403 without DEVICE_DISCONNECTED', () => {
+  it('does not dispatch and returns false for 403 without deviceDisconnected', () => {
     const result = handleCredentialsInvalidIfNeeded(403, { code: 'OTHER_ERROR' })
 
     expect(result).toBe(false)
@@ -87,7 +87,7 @@ describe('handleCredentialsInvalidIfNeeded', () => {
     expect(dispatchSpy).not.toHaveBeenCalled()
   })
 
-  it('does not dispatch and returns false for 400 without DEVICE_ID_REQUIRED', () => {
+  it('does not dispatch and returns false for 400 without deviceIdRequired', () => {
     const result = handleCredentialsInvalidIfNeeded(400, { code: 'INVALID_REQUEST' })
 
     expect(result).toBe(false)

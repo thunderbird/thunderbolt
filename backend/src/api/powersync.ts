@@ -15,15 +15,15 @@ import { Elysia, t } from 'elysia'
 
 type DeviceValidationResult =
   | { ok: true }
-  | { ok: false; status: 400; body: { code: 'DEVICE_ID_REQUIRED' } }
-  | { ok: false; status: 403; body: { code: 'DEVICE_DISCONNECTED' | 'DEVICE_NOT_TRUSTED' } }
-  | { ok: false; status: 409; body: { code: 'DEVICE_ID_TAKEN' } }
+  | { ok: false; status: 400; body: { code: 'deviceIdRequired' } }
+  | { ok: false; status: 403; body: { code: 'deviceDisconnected' | 'deviceNotTrusted' } }
+  | { ok: false; status: 409; body: { code: 'deviceIdTaken' } }
 
 type IssuePowerSyncTokenResult =
   | { ok: true; token: string; expiresAt: string; powerSyncUrl: string }
-  | { ok: false; status: 400; body: { code: 'DEVICE_ID_REQUIRED' } }
-  | { ok: false; status: 403; body: { code: 'DEVICE_DISCONNECTED' | 'DEVICE_NOT_TRUSTED' } }
-  | { ok: false; status: 409; body: { code: 'DEVICE_ID_TAKEN' } }
+  | { ok: false; status: 400; body: { code: 'deviceIdRequired' } }
+  | { ok: false; status: 403; body: { code: 'deviceDisconnected' | 'deviceNotTrusted' } }
+  | { ok: false; status: 409; body: { code: 'deviceIdTaken' } }
 
 /**
  * Validates that the device belongs to the user, is not revoked, and (when E2EE is enabled) is trusted.
@@ -42,7 +42,7 @@ const validateDeviceForSync = async (
 ): Promise<DeviceValidationResult> => {
   const deviceId = request.headers.get('x-device-id')?.trim()
   if (!deviceId) {
-    return { ok: false, status: 400, body: { code: 'DEVICE_ID_REQUIRED' } }
+    return { ok: false, status: 400, body: { code: 'deviceIdRequired' } }
   }
 
   const deviceRow = await getDeviceById(database, deviceId)
@@ -53,17 +53,17 @@ const validateDeviceForSync = async (
     if (!e2eeEnabled && allowNewDevice) {
       return { ok: true }
     }
-    return { ok: false, status: 403, body: { code: 'DEVICE_NOT_TRUSTED' } }
+    return { ok: false, status: 403, body: { code: 'deviceNotTrusted' } }
   }
 
   if (deviceRow.userId !== userId) {
-    return { ok: false, status: 409, body: { code: 'DEVICE_ID_TAKEN' } }
+    return { ok: false, status: 409, body: { code: 'deviceIdTaken' } }
   }
   if (deviceRow.revokedAt != null) {
-    return { ok: false, status: 403, body: { code: 'DEVICE_DISCONNECTED' } }
+    return { ok: false, status: 403, body: { code: 'deviceDisconnected' } }
   }
   if (e2eeEnabled && !deviceRow.trusted) {
-    return { ok: false, status: 403, body: { code: 'DEVICE_NOT_TRUSTED' } }
+    return { ok: false, status: 403, body: { code: 'deviceNotTrusted' } }
   }
 
   return { ok: true }
@@ -114,7 +114,7 @@ const issuePowerSyncToken = async (
   })
 
   if (upserted.length === 0 || upserted[0].userId !== userId) {
-    return { ok: false, status: 409, body: { code: 'DEVICE_ID_TAKEN' } }
+    return { ok: false, status: 409, body: { code: 'deviceIdTaken' } }
   }
 
   const token = await powersyncJwt.sign({ sub: userId, user_id: userId })
@@ -163,7 +163,7 @@ export const createPowerSyncRoutes = (auth: Auth, settings: Settings, database: 
     .get('/token', async ({ powersyncJwt, request, set, user }) => {
       if (!validateOrigin(request, settings)) {
         set.status = 403
-        return { error: 'Forbidden', code: 'ORIGIN_NOT_ALLOWED' }
+        return { error: 'Forbidden', code: 'originNotAllowed' }
       }
 
       if (!settings.powersyncUrl || !settings.powersyncJwtSecret) {
@@ -232,7 +232,7 @@ export const createPowerSyncRoutes = (auth: Auth, settings: Settings, database: 
       async ({ body, request, set, user }) => {
         if (!validateOrigin(request, settings)) {
           set.status = 403
-          return { error: 'Forbidden', code: 'ORIGIN_NOT_ALLOWED' }
+          return { error: 'Forbidden', code: 'originNotAllowed' }
         }
 
         // Requires authenticated user; applies batched CRUD from PowerSync.

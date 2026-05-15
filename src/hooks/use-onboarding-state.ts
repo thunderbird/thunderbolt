@@ -243,11 +243,7 @@ export const useOnboardingState = () => {
     }
   }, [preferredName.value, preferredName.isLoading])
 
-  useEffect(() => {
-    if (integrationStatusData?.googleConnected) {
-      dispatch({ type: 'SET_PROVIDER_CONNECTED', payload: true })
-    }
-  }, [integrationStatusData?.googleConnected])
+  const isProviderConnected = state.isProviderConnected || (integrationStatusData?.googleConnected ?? false)
 
   const actions = {
     setCurrentStep: (step: OnboardingStep) => dispatch({ type: 'SET_CURRENT_STEP', payload: step }),
@@ -336,7 +332,7 @@ export const useOnboardingState = () => {
     },
   }
 
-  return { state, actions }
+  return { state: { ...state, isProviderConnected }, actions }
 }
 
 export type { OnboardingAction, OnboardingState }

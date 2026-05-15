@@ -266,7 +266,7 @@ export const useOAuthConnect = (options: UseOAuthConnectOptions = {}): UseOAuthC
 
     const { code, state: returnedState, error: oauthError } = callbackData
 
-    // Get OAuth state from sessionStorage (needed for both success and error cleanup)
+    // Get OAuth state from oauth-state (needed for both success and error cleanup)
     const oauthState = getOAuthState()
     const storedState = oauthState.state
     const provider = oauthState.provider

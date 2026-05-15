@@ -146,7 +146,7 @@ export const useDeepLinkListener = (handler?: DeepLinkHandler, dependencies?: De
           // Handle OAuth callback deep links
           const oauthData = parseOAuthCallback(url)
           if (oauthData) {
-            // Get the return context from sessionStorage (where mobile flow stores it)
+            // Get the return context from oauth-state (where mobile flow stores it)
             const oauthState = getOAuthState()
             const target = determineNavigationTarget(oauthState.returnContext, oauthData)
 

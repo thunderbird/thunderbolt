@@ -6,15 +6,8 @@ import { llmContentCharLimit, truncateText } from '@/lib/utils'
 import type { ToolConfig } from '@/types'
 import { http, type HttpClient } from '@/lib/http'
 import { z } from 'zod'
-import {
-  buildRawMessage,
-  ensureValidGoogleToken,
-  extractBody,
-  getGoogleCredentials,
-  getHeader,
-  parseEmailAddress,
-  transformDriveQuery,
-} from './utils'
+import { buildRawMessage, extractBody, getHeader, parseEmailAddress, transformDriveQuery } from './utils'
+import { ensureValidOAuthToken, getOAuthCredentials, type OAuthCredentials } from '@/integrations/oauth-credentials'
 
 // =============================================================================
 // DEPENDENCY INJECTION
@@ -22,13 +15,13 @@ import {
 
 /** Inject-able auth dependencies for testing (DB + HTTP side effects) */
 export type GoogleAuthDeps = {
-  getCredentials: typeof getGoogleCredentials
-  ensureToken: typeof ensureValidGoogleToken
+  getCredentials: () => Promise<OAuthCredentials>
+  ensureToken: (httpClient: HttpClient, credentials: OAuthCredentials) => Promise<string>
 }
 
 const defaultAuthDeps: GoogleAuthDeps = {
-  getCredentials: getGoogleCredentials,
-  ensureToken: ensureValidGoogleToken,
+  getCredentials: () => getOAuthCredentials('google'),
+  ensureToken: (httpClient, credentials) => ensureValidOAuthToken(httpClient, 'google', credentials),
 }
 
 // =============================================================================

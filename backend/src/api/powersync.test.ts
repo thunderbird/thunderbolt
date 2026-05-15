@@ -200,7 +200,7 @@ describe('PowerSync API', () => {
       )
       expect(response.status).toBe(403)
       const data = await response.json()
-      expect(data).toEqual({ code: 'DEVICE_DISCONNECTED' })
+      expect(data).toEqual({ code: 'deviceDisconnected' })
     })
 
     it('returns 409 when device id belongs to another user', async () => {
@@ -242,7 +242,7 @@ describe('PowerSync API', () => {
       )
       expect(response.status).toBe(409)
       const data = await response.json()
-      expect(data).toEqual({ code: 'DEVICE_ID_TAKEN' })
+      expect(data).toEqual({ code: 'deviceIdTaken' })
     })
 
     it('returns 403 when device does not exist in the database', async () => {
@@ -278,7 +278,7 @@ describe('PowerSync API', () => {
       )
       expect(response.status).toBe(403)
       const data = await response.json()
-      expect(data).toEqual({ code: 'DEVICE_NOT_TRUSTED' })
+      expect(data).toEqual({ code: 'deviceNotTrusted' })
     })
 
     it('returns 403 when device is untrusted (pending approval)', async () => {
@@ -323,7 +323,7 @@ describe('PowerSync API', () => {
       )
       expect(response.status).toBe(403)
       const data = await response.json()
-      expect(data).toEqual({ code: 'DEVICE_NOT_TRUSTED' })
+      expect(data).toEqual({ code: 'deviceNotTrusted' })
     })
 
     it('returns 400 when x-device-id is missing', async () => {
@@ -356,7 +356,7 @@ describe('PowerSync API', () => {
       )
       expect(response.status).toBe(400)
       const data = await response.json()
-      expect(data).toEqual({ code: 'DEVICE_ID_REQUIRED' })
+      expect(data).toEqual({ code: 'deviceIdRequired' })
     })
 
     it('returns 400 when x-device-id is empty', async () => {
@@ -392,7 +392,7 @@ describe('PowerSync API', () => {
       )
       expect(response.status).toBe(400)
       const data = await response.json()
-      expect(data).toEqual({ code: 'DEVICE_ID_REQUIRED' })
+      expect(data).toEqual({ code: 'deviceIdRequired' })
     })
 
     it('revoked device cannot bypass by omitting x-device-id', async () => {
@@ -435,7 +435,7 @@ describe('PowerSync API', () => {
       )
       expect(response.status).toBe(400)
       const data = await response.json()
-      expect(data).toEqual({ code: 'DEVICE_ID_REQUIRED' })
+      expect(data).toEqual({ code: 'deviceIdRequired' })
     })
 
     it('rejects token request for unregistered device ID', async () => {
@@ -472,7 +472,7 @@ describe('PowerSync API', () => {
       )
       expect(response.status).toBe(403)
       const data = await response.json()
-      expect(data).toEqual({ code: 'DEVICE_NOT_TRUSTED' })
+      expect(data).toEqual({ code: 'deviceNotTrusted' })
     })
 
     it('revoked device cannot bypass by using a new unregistered device ID', async () => {
@@ -519,7 +519,7 @@ describe('PowerSync API', () => {
         }),
       )
       expect(revokedResponse.status).toBe(403)
-      expect(await revokedResponse.json()).toEqual({ code: 'DEVICE_DISCONNECTED' })
+      expect(await revokedResponse.json()).toEqual({ code: 'deviceDisconnected' })
 
       // Attempt bypass: use a NEW device ID that doesn't exist in the DB
       const bypassResponse = await app.handle(
@@ -532,7 +532,7 @@ describe('PowerSync API', () => {
       )
       // Must NOT succeed — unknown device IDs should be rejected
       expect(bypassResponse.status).toBe(403)
-      expect(await bypassResponse.json()).toEqual({ code: 'DEVICE_NOT_TRUSTED' })
+      expect(await bypassResponse.json()).toEqual({ code: 'deviceNotTrusted' })
     })
 
     it('returns token and powerSyncUrl when authenticated via session with x-device-id', async () => {
@@ -828,7 +828,7 @@ describe('PowerSync API', () => {
       )
       expect(response.status).toBe(400)
       const data = (await response.json()) as { code: string }
-      expect(data.code).toBe('DEVICE_ID_REQUIRED')
+      expect(data.code).toBe('deviceIdRequired')
     })
 
     it('returns 403 when device is revoked', async () => {
@@ -874,7 +874,7 @@ describe('PowerSync API', () => {
       )
       expect(response.status).toBe(403)
       const data = (await response.json()) as { code: string }
-      expect(data.code).toBe('DEVICE_DISCONNECTED')
+      expect(data.code).toBe('deviceDisconnected')
     })
 
     it('rejects upload for unregistered device ID', async () => {
@@ -912,7 +912,7 @@ describe('PowerSync API', () => {
       )
       expect(response.status).toBe(403)
       const data = (await response.json()) as { code: string }
-      expect(data.code).toBe('DEVICE_NOT_TRUSTED')
+      expect(data.code).toBe('deviceNotTrusted')
     })
 
     it('returns 422 when body schema is invalid (operations not an array)', async () => {
@@ -2011,7 +2011,7 @@ describe('PowerSync cross-origin injection protection', () => {
       )
       expect(response.status).toBe(403)
       const data = (await response.json()) as { code: string }
-      expect(data.code).toBe('ORIGIN_NOT_ALLOWED')
+      expect(data.code).toBe('originNotAllowed')
 
       // Verify nothing was written
       const rows = await db.select().from(settingsTable).where(eq(settingsTable.key, 'cloud_url'))
@@ -2184,7 +2184,7 @@ describe('PowerSync cross-origin injection protection', () => {
       )
       expect(response.status).toBe(403)
       const data = (await response.json()) as { code: string }
-      expect(data.code).toBe('ORIGIN_NOT_ALLOWED')
+      expect(data.code).toBe('originNotAllowed')
     })
 
     it('allows token request from legitimate origin', async () => {
@@ -2420,7 +2420,7 @@ describe('PowerSync API (E2EE disabled)', () => {
       }),
     )
     expect(response.status).toBe(403)
-    expect(await response.json()).toEqual({ code: 'DEVICE_NOT_TRUSTED' })
+    expect(await response.json()).toEqual({ code: 'deviceNotTrusted' })
   })
 
   it('still rejects revoked device when E2EE is disabled', async () => {
@@ -2466,7 +2466,7 @@ describe('PowerSync API (E2EE disabled)', () => {
     )
     expect(response.status).toBe(403)
     const data = await response.json()
-    expect(data).toEqual({ code: 'DEVICE_DISCONNECTED' })
+    expect(data).toEqual({ code: 'deviceDisconnected' })
   })
 })
 

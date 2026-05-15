@@ -5,7 +5,7 @@
 import { clearAuthToken, clearDeviceId, setAuthToken } from '@/lib/auth-token'
 import { getClock } from '@/testing-library'
 import { act } from '@testing-library/react'
-import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
+import { afterEach, beforeEach, describe, expect, it, mock, spyOn } from 'bun:test'
 import { handleCredentialsInvalidIfNeeded, powersyncCredentialsInvalid, ThunderboltConnector } from './connector'
 
 const authToken = 'test-auth-token'
@@ -71,6 +71,23 @@ describe('handleCredentialsInvalidIfNeeded', () => {
     expect(dispatchSpy).toHaveBeenCalledWith(
       expect.objectContaining({ type: powersyncCredentialsInvalid, detail: { reason: 'session_expired' } }),
     )
+  })
+
+  it('dispatches event with reason sync_not_permitted for 403 + anonymousSyncForbidden', () => {
+    const result = handleCredentialsInvalidIfNeeded(403, { code: 'anonymousSyncForbidden' })
+
+    expect(result).toBe(true)
+    expect(dispatchSpy).toHaveBeenCalledTimes(1)
+    expect(dispatchSpy).toHaveBeenCalledWith(
+      expect.objectContaining({ type: powersyncCredentialsInvalid, detail: { reason: 'sync_not_permitted' } }),
+    )
+  })
+
+  it('does not dispatch and returns false for 403 with an unknown code', () => {
+    const result = handleCredentialsInvalidIfNeeded(403, { code: 'somethingElse' })
+
+    expect(result).toBe(false)
+    expect(dispatchSpy).not.toHaveBeenCalled()
   })
 
   it('does not dispatch and returns false for 403 without deviceDisconnected', () => {
@@ -222,5 +239,48 @@ describe('ThunderboltConnector', () => {
     const result = await resultPromise
 
     expect(result).toBeNull()
+  })
+
+  it('fetchCredentials returns null and dispatches sync_not_permitted for 403 + anonymousSyncForbidden', async () => {
+    setAuthToken(authToken)
+    fetchMock.mockImplementation(() =>
+      Promise.resolve(
+        new Response(JSON.stringify({ error: 'Forbidden', code: 'anonymousSyncForbidden' }), {
+          status: 403,
+          headers: { 'Content-Type': 'application/json' },
+        }),
+      ),
+    )
+    const connector = new ThunderboltConnector(backendUrl)
+
+    const result = await connector.fetchCredentials()
+
+    expect(result).toBeNull()
+    expect(dispatchSpy).toHaveBeenCalledWith(
+      expect.objectContaining({ type: powersyncCredentialsInvalid, detail: { reason: 'sync_not_permitted' } }),
+    )
+  })
+
+  it('fetchCredentials does not log to console.error for the quiet anonymousSyncForbidden 403', async () => {
+    setAuthToken(authToken)
+    const errorSpy = spyOn(console, 'error').mockImplementation(() => {})
+    try {
+      fetchMock.mockImplementation(() =>
+        Promise.resolve(
+          new Response(JSON.stringify({ error: 'Forbidden', code: 'anonymousSyncForbidden' }), {
+            status: 403,
+            headers: { 'Content-Type': 'application/json' },
+          }),
+        ),
+      )
+      const connector = new ThunderboltConnector(backendUrl)
+
+      const result = await connector.fetchCredentials()
+
+      expect(result).toBeNull()
+      expect(errorSpy).not.toHaveBeenCalled()
+    } finally {
+      errorSpy.mockRestore()
+    }
   })
 })

@@ -2555,7 +2555,7 @@ describe('PowerSync API — anonymous sync guard', () => {
     return { userId, signedBearer: signToken(sessionToken), deviceId }
   }
 
-  it('GET /powersync/token Path 2 (Bearer only) — anonymous user → 403 Forbidden', async () => {
+  it('GET /powersync/token Path 2 (Bearer only) — anonymous user → 403 + code anonymousSyncForbidden', async () => {
     const app = new Elysia().use(createPowerSyncRoutes(auth, powersyncSettings, db)) as unknown as Elysia
 
     const { signedBearer } = await seedAnonUser('path2')
@@ -2570,7 +2570,30 @@ describe('PowerSync API — anonymous sync guard', () => {
     )
     expect(response.status).toBe(403)
     const data = await response.json()
-    expect(data).toEqual({ success: false, data: null, error: 'Forbidden' })
+    expect(data).toEqual({ error: 'Forbidden', code: 'anonymousSyncForbidden' })
+  })
+
+  it('GET /powersync/token Path 1 (session) — anonymous user → 403 + code anonymousSyncForbidden', async () => {
+    const app = new Elysia().use(createPowerSyncRoutes(auth, powersyncSettings, db)) as unknown as Elysia
+
+    // Use Better Auth's real anonymous sign-in flow + cookie so the request goes through Path 1
+    // (auth.api.getSession resolves the session via cookie and sets `user`).
+    const anonResponse = (await auth.api.signInAnonymous({ asResponse: true })) as Response
+    expect(anonResponse.status).toBe(200)
+    const anonCookie = anonResponse.headers.get('set-cookie')
+    expect(anonCookie).toBeTruthy()
+
+    const response = await app.handle(
+      new Request('http://localhost/powersync/token', {
+        headers: {
+          Cookie: anonCookie!,
+          'X-Device-ID': 'anon-device-path1',
+        },
+      }),
+    )
+    expect(response.status).toBe(403)
+    const data = await response.json()
+    expect(data).toEqual({ error: 'Forbidden', code: 'anonymousSyncForbidden' })
   })
 
   it('GET /powersync/token Path 2 (Bearer only) — non-anonymous user → 200 (regression)', async () => {
@@ -2594,7 +2617,7 @@ describe('PowerSync API — anonymous sync guard', () => {
     expect(data).toHaveProperty('powerSyncUrl')
   })
 
-  it('PUT /powersync/upload — anonymous user → 403 Forbidden', async () => {
+  it('PUT /powersync/upload — anonymous user → 403 + code anonymousSyncForbidden', async () => {
     const app = new Elysia().use(createPowerSyncRoutes(auth, powersyncSettings, db)) as unknown as Elysia
 
     const { userId, signedBearer } = await seedAnonUser('upload')
@@ -2621,7 +2644,7 @@ describe('PowerSync API — anonymous sync guard', () => {
     )
     expect(response.status).toBe(403)
     const data = await response.json()
-    expect(data).toEqual({ success: false, data: null, error: 'Forbidden' })
+    expect(data).toEqual({ error: 'Forbidden', code: 'anonymousSyncForbidden' })
   })
 
   it('PUT /powersync/upload — non-anonymous user → 200 (regression)', async () => {

@@ -5,7 +5,6 @@
 import type { Auth } from '@/auth/elysia-plugin'
 import type { Settings } from '@/config/settings'
 import { isOriginAllowed } from '@/config/settings'
-import { ForbiddenError } from '@/errors/http-errors'
 import { applyOperation, getActiveSessionByToken, getDeviceById, getUserById, upsertDevice } from '@/dal'
 import type { db as DbType } from '@/db/client'
 import { verifySignedBearerToken } from '@/auth/bearer-token'
@@ -174,7 +173,8 @@ export const createPowerSyncRoutes = (auth: Auth, settings: Settings, database: 
       // Path 1: Authenticated via session. Issue PowerSync JWT; check device revoked, then upsert device.
       if (user) {
         if (user.isAnonymous) {
-          throw new ForbiddenError('Anonymous users cannot sync')
+          set.status = 403
+          return { error: 'Forbidden', code: 'anonymousSyncForbidden' }
         }
 
         const result = await issuePowerSyncToken(user.id, request, powersyncJwt, settings, database)
@@ -216,7 +216,8 @@ export const createPowerSyncRoutes = (auth: Auth, settings: Settings, database: 
 
       // Token refresh: valid Bearer + user exists -> issue new PowerSync JWT (same as Path 1).
       if (userRow.isAnonymous) {
-        throw new ForbiddenError('Anonymous users cannot sync')
+        set.status = 403
+        return { error: 'Forbidden', code: 'anonymousSyncForbidden' }
       }
 
       const userId = sessionRow.userId
@@ -242,7 +243,8 @@ export const createPowerSyncRoutes = (auth: Auth, settings: Settings, database: 
         }
 
         if (user.isAnonymous) {
-          throw new ForbiddenError('Anonymous users cannot sync')
+          set.status = 403
+          return { error: 'Forbidden', code: 'anonymousSyncForbidden' }
         }
 
         const validation = await validateDeviceForSync(user.id, request, database, settings)

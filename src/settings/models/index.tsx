@@ -205,6 +205,12 @@ const editFormSchema = z.object({
   apiKey: z.string().optional(),
 })
 
+const buildEditFormSchema = (provider: Model['provider']) =>
+  editFormSchema.refine((data) => provider !== 'custom' || (!!data.url && data.url.length > 0), {
+    message: 'URL is required for Custom providers',
+    path: ['url'],
+  })
+
 const EditModelForm = ({
   model,
   onCancel,
@@ -217,7 +223,7 @@ const EditModelForm = ({
   isPending: boolean
 }) => {
   const form = useForm<z.infer<typeof editFormSchema>>({
-    resolver: zodResolver(editFormSchema),
+    resolver: zodResolver(buildEditFormSchema(model.provider)),
     defaultValues: {
       name: model.name || '',
       model: model.model || '',

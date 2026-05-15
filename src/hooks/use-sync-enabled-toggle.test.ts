@@ -5,6 +5,7 @@
 import { act, renderHook } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
 import { ThunderboltConnector } from '@/db/powersync/connector'
+import { syncEnabledChangeEvent } from '@/db/powersync/database'
 
 const mockSetSyncEnabled = mock(() => Promise.resolve())
 const mockTrackEvent = mock(() => {})
@@ -17,7 +18,7 @@ mock.module('@/db/powersync', () => ({
   getPowerSyncInstance: () => null,
   isSyncEnabled: () => false,
   setSyncEnabled: mockSetSyncEnabled,
-  syncEnabledChangeEvent: 'powersync_sync_enabled_change',
+  syncEnabledChangeEvent,
 }))
 
 mock.module('@/lib/posthog', () => ({

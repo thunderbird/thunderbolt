@@ -56,7 +56,7 @@ export const initPosthog = async (httpClient?: HttpClient): Promise<HandleResult
     const db = getDb()
     const { cloudUrl, dataCollection, debugPosthog } = await getSettings(db, {
       cloud_url: 'http://localhost:8000/v1',
-      data_collection: true,
+      data_collection: false,
       debug_posthog: false,
     })
 

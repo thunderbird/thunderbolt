@@ -71,7 +71,7 @@ describe('Rate Limiting', () => {
     it('should return 429 after an authenticated user exceeds the limit', async () => {
       const app = createTestApp(database, enabledSettings, createInferenceRateLimit, 'user-2')
 
-      for (let i = 0; i < 20; i++) {
+      for (let i = 0; i < 60; i++) {
         await app.handle(new Request('http://localhost/v1/test'))
       }
 
@@ -87,15 +87,15 @@ describe('Rate Limiting', () => {
 
       const response = await app.handle(new Request('http://localhost/v1/test'))
 
-      expect(response.headers.get('ratelimit-limit')).toBe('20')
-      expect(response.headers.get('ratelimit-remaining')).toBe('19')
+      expect(response.headers.get('ratelimit-limit')).toBe('60')
+      expect(response.headers.get('ratelimit-remaining')).toBe('59')
       expect(response.headers.get('ratelimit-reset')).toBeTruthy()
     })
 
     it('should set Retry-After header on 429 responses', async () => {
       const app = createTestApp(database, enabledSettings, createInferenceRateLimit, 'user-4')
 
-      for (let i = 0; i < 20; i++) {
+      for (let i = 0; i < 60; i++) {
         await app.handle(new Request('http://localhost/v1/test'))
       }
 
@@ -108,7 +108,7 @@ describe('Rate Limiting', () => {
     it('should skip rate limiting when no user context is available', async () => {
       const app = createTestApp(database, enabledSettings, createInferenceRateLimit)
 
-      for (let i = 0; i < 25; i++) {
+      for (let i = 0; i < 65; i++) {
         const response = await app.handle(new Request('http://localhost/v1/test'))
         expect(response.status).toBe(200)
       }
@@ -119,7 +119,7 @@ describe('Rate Limiting', () => {
       const appB = createTestApp(database, enabledSettings, createInferenceRateLimit, 'user-5b')
 
       // Exhaust user A's limit
-      for (let i = 0; i < 20; i++) {
+      for (let i = 0; i < 60; i++) {
         await appA.handle(new Request('http://localhost/v1/test'))
       }
 
@@ -139,14 +139,14 @@ describe('Rate Limiting', () => {
       const response = await app.handle(new Request('http://localhost/v1/test'))
 
       expect(response.status).toBe(200)
-      expect(response.headers.get('ratelimit-limit')).toBe('50')
-      expect(response.headers.get('ratelimit-remaining')).toBe('49')
+      expect(response.headers.get('ratelimit-limit')).toBe('100')
+      expect(response.headers.get('ratelimit-remaining')).toBe('99')
     })
 
     it('should return 429 after exceeding the pro tier limit', async () => {
       const app = createTestApp(database, enabledSettings, createProRateLimit, 'pro-user-2')
 
-      for (let i = 0; i < 50; i++) {
+      for (let i = 0; i < 100; i++) {
         await app.handle(new Request('http://localhost/v1/test'))
       }
 
@@ -161,8 +161,8 @@ describe('Rate Limiting', () => {
       const inferenceApp = createTestApp(database, enabledSettings, createInferenceRateLimit, 'shared-user')
       const proApp = createTestApp(database, enabledSettings, createProRateLimit, 'shared-user')
 
-      // Exhaust inference limit (20 requests)
-      for (let i = 0; i < 20; i++) {
+      // Exhaust inference limit (60 requests)
+      for (let i = 0; i < 60; i++) {
         await inferenceApp.handle(new Request('http://localhost/v1/test'))
       }
       const blockedInference = await inferenceApp.handle(new Request('http://localhost/v1/test'))
@@ -179,7 +179,7 @@ describe('Rate Limiting', () => {
       const disabledSettings: RateLimitSettings = { enabled: false }
       const app = createTestApp(database, disabledSettings, createInferenceRateLimit, 'user-6')
 
-      for (let i = 0; i < 25; i++) {
+      for (let i = 0; i < 65; i++) {
         const response = await app.handle(new Request('http://localhost/v1/test'))
         expect(response.status).toBe(200)
       }
@@ -189,7 +189,7 @@ describe('Rate Limiting', () => {
       const disabledSettings: RateLimitSettings = { enabled: false }
       const app = createTestApp(database, disabledSettings, createProRateLimit, 'user-disabled-pro')
 
-      for (let i = 0; i < 55; i++) {
+      for (let i = 0; i < 105; i++) {
         const response = await app.handle(new Request('http://localhost/v1/test'))
         expect(response.status).toBe(200)
       }

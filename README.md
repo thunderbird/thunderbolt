@@ -18,6 +18,17 @@ Thunderbolt is an open-source, cross-platform AI client that can be deployed on-
 
 **Thunderbolt is under active development, currently undergoing a security audit, and preparing for enterprise production readiness.**
 
+## Get Started Locally
+
+```sh
+make doctor    # verify your tools — prints exact install commands for anything missing
+make setup     # install frontend + backend dependencies, wire up agent symlinks
+make up        # start Postgres + PowerSync in Docker
+make run       # start the backend (:8000) and frontend (:1420)
+```
+
+For self-hosting with Docker Compose or Kubernetes, see [`deploy/README.md`](./deploy/README.md). For full dev-environment details, see [`docs/development/quick-start.md`](./docs/development/quick-start.md).
+
 ## Need Help?
 
 Found a bug? Have an idea?

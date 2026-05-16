@@ -3,7 +3,6 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { type HttpClient } from '@/contexts'
-import { getAuthToken, getDeviceId } from '@/lib/auth-token'
 
 // =============================================================================
 // Response types (matching backend)
@@ -18,23 +17,6 @@ type FetchEnvelopeResponse = { trusted: boolean; wrappedCK: string }
 type FetchCanaryResponse = { canaryIv: string; canaryCtext: string }
 
 // =============================================================================
-// Auth headers helper
-// =============================================================================
-
-export const authHeaders = (): Record<string, string> => {
-  const headers: Record<string, string> = {}
-  const token = getAuthToken()
-  if (token) {
-    headers['Authorization'] = `Bearer ${token}`
-  }
-  const deviceId = getDeviceId()
-  if (deviceId) {
-    headers['X-Device-ID'] = deviceId
-  }
-  return headers
-}
-
-// =============================================================================
 // API functions
 // =============================================================================
 
@@ -42,13 +24,7 @@ export const authHeaders = (): Record<string, string> => {
 export const registerDevice = async (
   httpClient: HttpClient,
   params: { deviceId: string; publicKey: string; mlkemPublicKey: string; name?: string },
-): Promise<RegisterDeviceResponse> =>
-  httpClient
-    .post('devices', {
-      json: params,
-      headers: authHeaders(),
-    })
-    .json<RegisterDeviceResponse>()
+): Promise<RegisterDeviceResponse> => httpClient.post('devices', { json: params }).json<RegisterDeviceResponse>()
 
 /** Store a wrapped content key (envelope) for a device. Optionally includes canary on first setup or secret for recovery. */
 export const storeEnvelope = async (
@@ -57,60 +33,39 @@ export const storeEnvelope = async (
 ): Promise<StoreEnvelopeResponse> => {
   const { deviceId, ...body } = params
   return httpClient
-    .post(`devices/${encodeURIComponent(deviceId)}/envelope`, {
-      json: body,
-      headers: authHeaders(),
-    })
+    .post(`devices/${encodeURIComponent(deviceId)}/envelope`, { json: body })
     .json<StoreEnvelopeResponse>()
 }
 
 /** Fetch the wrapped content key for the current device. */
 export const fetchMyEnvelope = async (httpClient: HttpClient): Promise<FetchEnvelopeResponse> =>
-  httpClient
-    .get('devices/me/envelope', {
-      headers: authHeaders(),
-    })
-    .json<FetchEnvelopeResponse>()
+  httpClient.get('devices/me/envelope').json<FetchEnvelopeResponse>()
 
 /** Fetch the canary for recovery key verification. */
 export const fetchCanary = async (httpClient: HttpClient): Promise<FetchCanaryResponse> =>
-  httpClient
-    .get('encryption/canary', {
-      headers: authHeaders(),
-    })
-    .json<FetchCanaryResponse>()
+  httpClient.get('encryption/canary').json<FetchCanaryResponse>()
 
 /** Deny a pending device (called by a trusted device). Requires canary proof-of-CK-possession. */
 export const denyDevice = async (httpClient: HttpClient, deviceId: string, canarySecret: string): Promise<void> => {
-  await httpClient.post(`devices/${encodeURIComponent(deviceId)}/deny`, {
-    json: { canarySecret },
-    headers: authHeaders(),
-  })
+  await httpClient.post(`devices/${encodeURIComponent(deviceId)}/deny`, { json: { canarySecret } })
 }
 
 /** Revoke a device. Includes canary proof-of-CK-possession when E2EE is active. */
 export const revokeDevice = async (httpClient: HttpClient, deviceId: string, canarySecret?: string): Promise<void> => {
   await httpClient.post(`account/devices/${encodeURIComponent(deviceId)}/revoke`, {
     json: canarySecret ? { canarySecret } : {},
-    headers: authHeaders(),
   })
 }
 
 /** Cancel this device's pending approval state (called by the pending device itself). */
 export const cancelPending = async (httpClient: HttpClient): Promise<void> => {
-  await httpClient.post('devices/me/cancel-pending', {
-    headers: authHeaders(),
-  })
+  await httpClient.post('devices/me/cancel-pending')
 }
 
 /** Check if the user has encryption set up (canary exists on server). */
 export const checkCanaryExists = async (httpClient: HttpClient): Promise<boolean> => {
   try {
-    await httpClient
-      .get('encryption/canary', {
-        headers: authHeaders(),
-      })
-      .json()
+    await httpClient.get('encryption/canary').json()
     return true
   } catch (err) {
     if (err instanceof Error && 'response' in err) {

@@ -104,6 +104,11 @@ jobs:
       powersync_hostname: powersync-pr-${{ needs.resolve.outputs.pr_number }}.preview.thunderbolt.io
       cloudflare_zone_id: ${{ vars.CLOUDFLARE_ZONE_ID }}
       thunderbolt_inference_url: ${{ vars.THUNDERBOLT_INFERENCE_URL }}
+      # Per-PR stacks read VPC/ALB/postgres/keycloak/powersync from the long-lived
+      # `previews-shared` stack via Pulumi StackReference. The shared stack must
+      # exist before this runs; deploy it once via the `Previews Shared Deploy`
+      # workflow. See deploy/pulumi/SHARED.md.
+      shared_stack_name: previews-shared
     secrets: inherit
 
   comment:

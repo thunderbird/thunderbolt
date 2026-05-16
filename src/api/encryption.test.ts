@@ -4,7 +4,8 @@
 
 import { describe, expect, it, beforeEach, afterEach } from 'bun:test'
 import { type HttpClient } from '@/contexts'
-import { createClient } from '@/lib/http'
+import { getAuthToken } from '@/lib/auth-token'
+import { createAuthenticatedClient } from '@/lib/http'
 import { registerDevice, storeEnvelope, fetchMyEnvelope, fetchCanary } from './encryption'
 
 const deviceIdKey = 'thunderbolt_device_id'
@@ -41,7 +42,9 @@ const createCapturingHttpClient = (
   }
 
   return {
-    httpClient: createClient({ fetch: mockFetch as unknown as typeof fetch, prefixUrl: 'http://test-api.local' }),
+    httpClient: createAuthenticatedClient('http://test-api.local', getAuthToken, {
+      fetch: mockFetch as unknown as typeof fetch,
+    }),
     getLastRequest: () => lastRequest,
   }
 }
@@ -80,6 +83,7 @@ describe('encryption API client', () => {
       })
       expect(req.headers.get('authorization')).toBe('Bearer test-token')
       expect(req.headers.get('x-device-id')).toBe('test-device-id')
+      expect(req.headers.get('x-device-name')).toBeTruthy()
       expect(result).toEqual(mockResponse)
     })
 
@@ -144,6 +148,7 @@ describe('encryption API client', () => {
       expect(req.url).toContain('/devices/me/envelope')
       expect(req.method).toBe('GET')
       expect(req.headers.get('x-device-id')).toBe('test-device-id')
+      expect(req.headers.get('x-device-name')).toBeTruthy()
       expect(result).toEqual(mockResponse)
     })
   })
@@ -159,6 +164,8 @@ describe('encryption API client', () => {
       expect(req.url).toContain('/encryption/canary')
       expect(req.method).toBe('GET')
       expect(req.headers.get('authorization')).toBe('Bearer test-token')
+      expect(req.headers.get('x-device-id')).toBe('test-device-id')
+      expect(req.headers.get('x-device-name')).toBeTruthy()
       expect(result).toEqual(mockResponse)
     })
   })

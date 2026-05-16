@@ -46,6 +46,10 @@ on:
         description: 'Thunderbolt inference gateway URL (non-secret; passed as plain config).'
         type: string
         required: false
+      shared_stack_name:
+        description: 'When set, switches per-PR deploys into shared-stack mode (THU-495) — backend/frontend/marketing only, with VPC/ALB/postgres/keycloak/powersync read from the named shared stack via Pulumi StackReference. Leave empty for legacy monolithic deploys.'
+        type: string
+        required: false
     outputs:
       url:
         description: 'Public URL of the deployed stack (subdomain if configured, raw ALB otherwise)'
@@ -149,6 +153,7 @@ jobs:
           INPUT_CLOUDFLARE_ZONE_ID: ${{ inputs.cloudflare_zone_id }}
           INPUT_CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           INPUT_THUNDERBOLT_INFERENCE_URL: ${{ inputs.thunderbolt_inference_url }}
+          INPUT_SHARED_STACK_NAME: ${{ inputs.shared_stack_name }}
           INPUT_ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           INPUT_FIREWORKS_API_KEY: ${{ secrets.FIREWORKS_API_KEY }}
           INPUT_MISTRAL_API_KEY: ${{ secrets.MISTRAL_API_KEY }}
@@ -173,6 +178,13 @@ jobs:
             [ -n "$INPUT_API_HOSTNAME" ]       && pulumi config set apiHostname       "$INPUT_API_HOSTNAME"       -s "$INPUT_STACK_NAME" --non-interactive
             [ -n "$INPUT_AUTH_HOSTNAME" ]      && pulumi config set authHostname      "$INPUT_AUTH_HOSTNAME"      -s "$INPUT_STACK_NAME" --non-interactive
             [ -n "$INPUT_POWERSYNC_HOSTNAME" ] && pulumi config set powersyncHostname "$INPUT_POWERSYNC_HOSTNAME" -s "$INPUT_STACK_NAME" --non-interactive
+          fi
+
+          # Shared-stack mode (THU-495): when set, the per-PR stack reads VPC, ALB,
+          # postgres, keycloak, powersync from the named shared stack via StackReference
+          # instead of creating its own. Empty/unset → legacy monolithic deploy.
+          if [ -n "$INPUT_SHARED_STACK_NAME" ]; then
+            pulumi config set sharedStackName "$INPUT_SHARED_STACK_NAME" -s "$INPUT_STACK_NAME" --non-interactive
           fi
 
           # AI provider keys + inference gateway URL. Written into Pulumi stack config

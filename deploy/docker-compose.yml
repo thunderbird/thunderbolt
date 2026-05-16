@@ -85,9 +85,10 @@ services:
       PS_PG_URI: postgresql://powersync_role:myhighlyrandompassword@postgres:5432/postgres
       PS_STORAGE_URI: postgresql://postgres:postgres@postgres:5432/powersync_storage
       # Base64 of the JWT secret used by both backend (signs) and powersync (verifies).
+      # The PS_ prefix is required by PowerSync's YAML config loader for !env vars.
       # Default value below = base64("enterprise-thunderbolt-powersync-jwt-default-secret"),
       # which matches the default backend POWERSYNC_JWT_SECRET.
-      POWERSYNC_JWT_KEY_BASE64: ZW50ZXJwcmlzZS10aHVuZGVyYm9sdC1wb3dlcnN5bmMtand0LWRlZmF1bHQtc2VjcmV0
+      PS_JWT_KEY_BASE64: ZW50ZXJwcmlzZS10aHVuZGVyYm9sdC1wb3dlcnN5bmMtand0LWRlZmF1bHQtc2VjcmV0
     volumes:
       - ./config/powersync-config.yaml:/config/config.yaml
     ports:

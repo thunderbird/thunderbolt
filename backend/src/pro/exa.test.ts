@@ -4,6 +4,7 @@
 
 import { beforeEach, describe, expect, it, mock } from 'bun:test'
 import { Elysia, t } from 'elysia'
+import { createExaClient } from './exa'
 
 // Create a test version of the plugin with mocked Exa client
 const createTestExaPlugin = (mockExaClient: any) => {
@@ -26,7 +27,6 @@ const createTestExaPlugin = (mockExaClient: any) => {
 
         const response = await store.exaClient.search(body.query, {
           numResults: body.max_results,
-          useAutoprompt: true,
           type: 'fast',
         })
 
@@ -57,6 +57,7 @@ const createTestExaPlugin = (mockExaClient: any) => {
 
         const response = await store.exaClient.getContents([body.url], {
           livecrawlTimeout: 5_000,
+          maxAgeHours: 24,
           extras: { imageLinks: 1 },
           text: { maxCharacters },
         })
@@ -141,7 +142,6 @@ describe('Pro - Exa Plugin', () => {
       })
       expect(mockSearch).toHaveBeenCalledWith('test search', {
         numResults: 10,
-        useAutoprompt: true,
         type: 'fast',
       })
     })
@@ -160,9 +160,23 @@ describe('Pro - Exa Plugin', () => {
       expect(response.status).toBe(200)
       expect(mockSearch).toHaveBeenCalledWith('test search', {
         numResults: 5,
-        useAutoprompt: true,
         type: 'fast',
       })
+    })
+
+    it('should not send useAutoprompt (undocumented in current API reference)', async () => {
+      mockSearch.mockResolvedValueOnce({ results: [] })
+
+      await app.handle(
+        new Request('http://localhost/search', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ query: 'test search' }),
+        }),
+      )
+
+      const [, options] = mockSearch.mock.calls[0]
+      expect(options).not.toHaveProperty('useAutoprompt')
     })
 
     it('should use default max_results when not provided', async () => {
@@ -178,7 +192,6 @@ describe('Pro - Exa Plugin', () => {
 
       expect(mockSearch).toHaveBeenCalledWith('test search', {
         numResults: 10,
-        useAutoprompt: true,
         type: 'fast',
       })
     })
@@ -319,6 +332,7 @@ describe('Pro - Exa Plugin', () => {
       })
       expect(mockGetContents).toHaveBeenCalledWith(['https://example.com'], {
         livecrawlTimeout: 5_000,
+        maxAgeHours: 24,
         extras: { imageLinks: 1 },
         text: { maxCharacters: 16_000 },
       })
@@ -426,6 +440,7 @@ describe('Pro - Exa Plugin', () => {
         expect(response.status).toBe(200)
         expect(mockGetContents).toHaveBeenCalledWith([url], {
           livecrawlTimeout: 5_000,
+          maxAgeHours: 24,
           extras: { imageLinks: 1 },
           text: { maxCharacters: 16_000 },
         })
@@ -525,6 +540,7 @@ describe('Pro - Exa Plugin', () => {
       expect(response.status).toBe(200)
       expect(mockGetContents).toHaveBeenCalledWith(['https://example.com'], {
         livecrawlTimeout: 5_000,
+        maxAgeHours: 24,
         extras: { imageLinks: 1 },
         text: { maxCharacters: 32_000 },
       })
@@ -551,6 +567,7 @@ describe('Pro - Exa Plugin', () => {
       expect(response.status).toBe(200)
       expect(mockGetContents).toHaveBeenCalledWith(['https://example.com'], {
         livecrawlTimeout: 5_000,
+        maxAgeHours: 24,
         extras: { imageLinks: 1 },
         text: { maxCharacters: 64_000 },
       })
@@ -577,6 +594,7 @@ describe('Pro - Exa Plugin', () => {
       expect(response.status).toBe(200)
       expect(mockGetContents).toHaveBeenCalledWith(['https://example.com'], {
         livecrawlTimeout: 5_000,
+        maxAgeHours: 24,
         extras: { imageLinks: 1 },
         text: { maxCharacters: 1_000 },
       })
@@ -630,6 +648,21 @@ describe('Pro - Exa Plugin', () => {
       const data = await response.json()
       expect(data.data.isTruncated).toBe(true)
       expect(data.data.text).toContain('[Content truncated. Call fetch_content with max_length=64000 for more.]')
+    })
+  })
+
+  describe('createExaClient', () => {
+    it('should attach x-exa-integration header for API attribution', () => {
+      const client = createExaClient('test-api-key')
+      const headers = (client as unknown as { headers: Headers }).headers
+      expect(headers.get('x-exa-integration')).toBe('thunderbolt')
+    })
+
+    it('should preserve the x-api-key header alongside the integration header', () => {
+      const client = createExaClient('test-api-key')
+      const headers = (client as unknown as { headers: Headers }).headers
+      expect(headers.get('x-api-key')).toBe('test-api-key')
+      expect(headers.get('x-exa-integration')).toBe('thunderbolt')
     })
   })
 })

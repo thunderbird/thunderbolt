@@ -25,14 +25,19 @@ const getLogLevel = (level: Settings['logLevel']): 'debug' | 'info' | 'warn' | '
 }
 
 /**
- * Create a Pino logger instance
+ * Create a Pino logger instance.
+ *
+ * The universal proxy is designed so caller-controlled URLs, bodies, and
+ * credentials never reach a log line: the proxy module logs only the upstream
+ * hostname (see `proxy/observability.ts`) and the standard Elysia request
+ * logger never receives proxy passthrough headers. We therefore rely on Pino's
+ * default behaviour rather than bolting on a bespoke redact list.
  */
-const createPinoLogger = (settings: Settings): Logger => {
+const createStandaloneLogger = (settings: Settings): Logger => {
   const isDevelopment = process.env.NODE_ENV !== 'production'
   const level = getLogLevel(settings.logLevel)
 
   if (isDevelopment) {
-    // Development: Pretty printed logs with colors
     return pino({
       level,
       transport: {
@@ -46,25 +51,15 @@ const createPinoLogger = (settings: Settings): Logger => {
     })
   }
 
-  // Production: JSON structured logs
-  return pino({
-    level,
-  })
+  return pino({ level })
 }
 
 /**
  * Minimal logger middleware: only decorates ctx.log with pino
  */
 const createLoggerMiddleware = (settings: Settings) => {
-  const logger = createPinoLogger(settings)
+  const logger = createStandaloneLogger(settings)
   return new Elysia({ name: 'logger' }).decorate('log', logger)
 }
 
-/**
- * Create a standalone logger instance for use outside request contexts
- */
-const createStandaloneLogger = (settings: Settings): Logger => {
-  return createPinoLogger(settings)
-}
-
-export { createLoggerMiddleware, createPinoLogger, createStandaloneLogger }
+export { createLoggerMiddleware, createStandaloneLogger }

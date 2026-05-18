@@ -15,8 +15,11 @@ import { createInferenceRoutes } from '@/inference/routes'
 import { createErrorHandlingMiddleware } from '@/middleware/error-handling'
 import { createHttpLoggingMiddleware } from '@/middleware/http-logging'
 import { createAuthIpRateLimit, createInferenceRateLimit, createProRateLimit } from '@/middleware/rate-limit'
-import { createMcpProxyRoutes } from '@/mcp-proxy/routes'
 import { createUniversalProxyRoutes } from '@/proxy/routes'
+import { createUniversalProxyWsRoutes } from '@/proxy/ws'
+import { createObservabilityRecorder } from '@/proxy/observability'
+import { createSearchRoutes } from '@/api/search'
+import { createPreviewRoutes } from '@/api/preview'
 import { createPostHogRoutes } from '@/posthog/routes'
 import { createProToolsRoutes } from '@/pro/routes'
 import { createWaitlistRoutes } from '@/waitlist/routes'
@@ -68,6 +71,7 @@ export const createApp = async (deps?: AppDeps) => {
 
   const rateLimitSettings = { enabled: settings.rateLimitEnabled }
   const ipRateLimitSettings = { ...rateLimitSettings, trustedProxy: settings.trustedProxy }
+  const proRateLimit = createProRateLimit(database, rateLimitSettings)
 
   // Create auth plugin with the database instance (tests may inject their own auth)
   const { plugin: betterAuthPlugin, auth: createdAuth } = createBetterAuthPlugin(
@@ -76,6 +80,15 @@ export const createApp = async (deps?: AppDeps) => {
   )
   const auth = deps?.auth ?? createdAuth
 
+  // Build the production observability recorder unless tests injected their own.
+  // Proxy events go to Pino + OTel only — not PostHog (proxy traffic is infra
+  // plumbing, not product analytics).
+  const proxyObservability =
+    deps?.proxyObservability ??
+    createObservabilityRecorder({
+      logger: createStandaloneLogger(settings),
+    })
+
   return (
     configuredApp
       .use(
@@ -83,7 +96,12 @@ export const createApp = async (deps?: AppDeps) => {
           origin: getCorsOriginsList(settings),
           credentials: settings.corsAllowCredentials,
           methods: settings.corsAllowMethods,
-          allowedHeaders: settings.corsAllowHeaders,
+          // Echo back the client's Access-Control-Request-Headers. The universal
+          // proxy at /v1/proxy forwards arbitrary upstream headers as
+          // X-Proxy-Passthrough-* (provider SDKs add x-api-key, x-stainless-*,
+          // openai-organization, anthropic-beta, …). A static allowlist can't
+          // enumerate every upstream's header set without breaking preflight.
+          allowedHeaders: true,
           exposeHeaders: settings.corsExposeHeaders,
         }),
       )
@@ -98,12 +116,28 @@ export const createApp = async (deps?: AppDeps) => {
       .use(createMicrosoftAuthRoutes(auth, fetchFn))
       .use(createOidcConfigRoutes())
       .use(createSsoDesktopCallbackRoutes(settings))
-      .use(createProToolsRoutes(auth, fetchFn, createProRateLimit(database, rateLimitSettings)))
-      .use(createUniversalProxyRoutes(auth, fetchFn, createProRateLimit(database, rateLimitSettings)))
+      .use(createProToolsRoutes(auth, fetchFn, proRateLimit))
+      .use(
+        createUniversalProxyRoutes({
+          auth,
+          fetchFn,
+          rateLimit: proRateLimit,
+          observability: proxyObservability,
+          dnsLookup: deps?.dnsLookup,
+        }),
+      )
+      .use(
+        createUniversalProxyWsRoutes(auth, {
+          rateLimit: proRateLimit,
+          wsFactory: deps?.upstreamWsFactory,
+          observability: proxyObservability,
+        }),
+      )
+      .use(createSearchRoutes(auth, proRateLimit, { exaClient: deps?.searchExaClient }))
+      .use(createPreviewRoutes({ auth, fetchFn, rateLimit: proRateLimit, dnsLookup: deps?.dnsLookup }))
       .use(createInferenceRoutes(auth, createInferenceRateLimit(database, rateLimitSettings)))
       .use(createConfigRoutes(settings))
       .use(createPostHogRoutes(fetchFn))
-      .use(createMcpProxyRoutes(auth, fetchFn))
       .use(
         createWaitlistRoutes({
           database,

@@ -48,6 +48,7 @@ import { useCredentialEvents } from './hooks/use-credential-events'
 import { useSafeAreaInset } from './hooks/use-safe-area-inset'
 import Layout from './layout'
 import { MCPProvider } from './lib/mcp-provider'
+import { ProxyFetchProvider } from './lib/proxy-fetch-context'
 import { TrayProvider } from './lib/tray'
 import Loading from './loading'
 import SettingsLayout from './settings/layout'
@@ -229,17 +230,19 @@ export const App = () => {
                 <SignInModalProvider>
                   <PostHogProvider client={initData.posthogClient}>
                     <TrayProvider tray={initData.tray} window={initData.window}>
-                      <MCPProvider>
-                        <HapticsProvider>
-                          <SidebarProvider>
-                            <ContentViewProvider>
-                              <ExternalLinkDialogProvider>
-                                <AppContent initData={initData} />
-                              </ExternalLinkDialogProvider>
-                            </ContentViewProvider>
-                          </SidebarProvider>
-                        </HapticsProvider>
-                      </MCPProvider>
+                      <ProxyFetchProvider>
+                        <MCPProvider>
+                          <HapticsProvider>
+                            <SidebarProvider>
+                              <ContentViewProvider>
+                                <ExternalLinkDialogProvider>
+                                  <AppContent initData={initData} />
+                                </ExternalLinkDialogProvider>
+                              </ContentViewProvider>
+                            </SidebarProvider>
+                          </HapticsProvider>
+                        </MCPProvider>
+                      </ProxyFetchProvider>
                     </TrayProvider>
                   </PostHogProvider>
                 </SignInModalProvider>

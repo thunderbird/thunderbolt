@@ -57,7 +57,7 @@ export default defineConfig({
       name: 'configure-response-headers',
       configureServer: (server) => {
         server.middlewares.use((req, res, next) => {
-          res.setHeader('Cross-Origin-Embedder-Policy', 'require-corp')
+          res.setHeader('Cross-Origin-Embedder-Policy', 'credentialless')
           res.setHeader('Cross-Origin-Opener-Policy', 'same-origin')
 
           // Set correct Content-Type for .well-known files (required for Universal Links / App Links)

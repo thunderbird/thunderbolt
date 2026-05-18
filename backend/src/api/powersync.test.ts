@@ -200,7 +200,7 @@ describe('PowerSync API', () => {
       )
       expect(response.status).toBe(403)
       const data = await response.json()
-      expect(data).toEqual({ code: 'DEVICE_DISCONNECTED' })
+      expect(data).toEqual({ code: 'deviceDisconnected' })
     })
 
     it('returns 409 when device id belongs to another user', async () => {
@@ -242,7 +242,7 @@ describe('PowerSync API', () => {
       )
       expect(response.status).toBe(409)
       const data = await response.json()
-      expect(data).toEqual({ code: 'DEVICE_ID_TAKEN' })
+      expect(data).toEqual({ code: 'deviceIdTaken' })
     })
 
     it('returns 403 when device does not exist in the database', async () => {
@@ -278,7 +278,7 @@ describe('PowerSync API', () => {
       )
       expect(response.status).toBe(403)
       const data = await response.json()
-      expect(data).toEqual({ code: 'DEVICE_NOT_TRUSTED' })
+      expect(data).toEqual({ code: 'deviceNotTrusted' })
     })
 
     it('returns 403 when device is untrusted (pending approval)', async () => {
@@ -323,7 +323,7 @@ describe('PowerSync API', () => {
       )
       expect(response.status).toBe(403)
       const data = await response.json()
-      expect(data).toEqual({ code: 'DEVICE_NOT_TRUSTED' })
+      expect(data).toEqual({ code: 'deviceNotTrusted' })
     })
 
     it('returns 400 when x-device-id is missing', async () => {
@@ -356,7 +356,7 @@ describe('PowerSync API', () => {
       )
       expect(response.status).toBe(400)
       const data = await response.json()
-      expect(data).toEqual({ code: 'DEVICE_ID_REQUIRED' })
+      expect(data).toEqual({ code: 'deviceIdRequired' })
     })
 
     it('returns 400 when x-device-id is empty', async () => {
@@ -392,7 +392,7 @@ describe('PowerSync API', () => {
       )
       expect(response.status).toBe(400)
       const data = await response.json()
-      expect(data).toEqual({ code: 'DEVICE_ID_REQUIRED' })
+      expect(data).toEqual({ code: 'deviceIdRequired' })
     })
 
     it('revoked device cannot bypass by omitting x-device-id', async () => {
@@ -435,7 +435,7 @@ describe('PowerSync API', () => {
       )
       expect(response.status).toBe(400)
       const data = await response.json()
-      expect(data).toEqual({ code: 'DEVICE_ID_REQUIRED' })
+      expect(data).toEqual({ code: 'deviceIdRequired' })
     })
 
     it('rejects token request for unregistered device ID', async () => {
@@ -472,7 +472,7 @@ describe('PowerSync API', () => {
       )
       expect(response.status).toBe(403)
       const data = await response.json()
-      expect(data).toEqual({ code: 'DEVICE_NOT_TRUSTED' })
+      expect(data).toEqual({ code: 'deviceNotTrusted' })
     })
 
     it('revoked device cannot bypass by using a new unregistered device ID', async () => {
@@ -519,7 +519,7 @@ describe('PowerSync API', () => {
         }),
       )
       expect(revokedResponse.status).toBe(403)
-      expect(await revokedResponse.json()).toEqual({ code: 'DEVICE_DISCONNECTED' })
+      expect(await revokedResponse.json()).toEqual({ code: 'deviceDisconnected' })
 
       // Attempt bypass: use a NEW device ID that doesn't exist in the DB
       const bypassResponse = await app.handle(
@@ -532,7 +532,7 @@ describe('PowerSync API', () => {
       )
       // Must NOT succeed — unknown device IDs should be rejected
       expect(bypassResponse.status).toBe(403)
-      expect(await bypassResponse.json()).toEqual({ code: 'DEVICE_NOT_TRUSTED' })
+      expect(await bypassResponse.json()).toEqual({ code: 'deviceNotTrusted' })
     })
 
     it('returns token and powerSyncUrl when authenticated via session with x-device-id', async () => {
@@ -828,7 +828,7 @@ describe('PowerSync API', () => {
       )
       expect(response.status).toBe(400)
       const data = (await response.json()) as { code: string }
-      expect(data.code).toBe('DEVICE_ID_REQUIRED')
+      expect(data.code).toBe('deviceIdRequired')
     })
 
     it('returns 403 when device is revoked', async () => {
@@ -874,7 +874,7 @@ describe('PowerSync API', () => {
       )
       expect(response.status).toBe(403)
       const data = (await response.json()) as { code: string }
-      expect(data.code).toBe('DEVICE_DISCONNECTED')
+      expect(data.code).toBe('deviceDisconnected')
     })
 
     it('rejects upload for unregistered device ID', async () => {
@@ -912,7 +912,7 @@ describe('PowerSync API', () => {
       )
       expect(response.status).toBe(403)
       const data = (await response.json()) as { code: string }
-      expect(data.code).toBe('DEVICE_NOT_TRUSTED')
+      expect(data.code).toBe('deviceNotTrusted')
     })
 
     it('returns 422 when body schema is invalid (operations not an array)', async () => {
@@ -2011,7 +2011,7 @@ describe('PowerSync cross-origin injection protection', () => {
       )
       expect(response.status).toBe(403)
       const data = (await response.json()) as { code: string }
-      expect(data.code).toBe('ORIGIN_NOT_ALLOWED')
+      expect(data.code).toBe('originNotAllowed')
 
       // Verify nothing was written
       const rows = await db.select().from(settingsTable).where(eq(settingsTable.key, 'cloud_url'))
@@ -2184,7 +2184,7 @@ describe('PowerSync cross-origin injection protection', () => {
       )
       expect(response.status).toBe(403)
       const data = (await response.json()) as { code: string }
-      expect(data.code).toBe('ORIGIN_NOT_ALLOWED')
+      expect(data.code).toBe('originNotAllowed')
     })
 
     it('allows token request from legitimate origin', async () => {
@@ -2420,7 +2420,7 @@ describe('PowerSync API (E2EE disabled)', () => {
       }),
     )
     expect(response.status).toBe(403)
-    expect(await response.json()).toEqual({ code: 'DEVICE_NOT_TRUSTED' })
+    expect(await response.json()).toEqual({ code: 'deviceNotTrusted' })
   })
 
   it('still rejects revoked device when E2EE is disabled', async () => {
@@ -2466,7 +2466,208 @@ describe('PowerSync API (E2EE disabled)', () => {
     )
     expect(response.status).toBe(403)
     const data = await response.json()
-    expect(data).toEqual({ code: 'DEVICE_DISCONNECTED' })
+    expect(data).toEqual({ code: 'deviceDisconnected' })
+  })
+})
+
+describe('PowerSync API — anonymous sync guard', () => {
+  let db: Awaited<ReturnType<typeof createTestDb>>['db']
+  let cleanup: () => Promise<void>
+  let auth: Awaited<ReturnType<typeof createBetterAuthPlugin>>['auth']
+
+  beforeEach(async () => {
+    const testEnv = await createTestDb()
+    db = testEnv.db
+    cleanup = testEnv.cleanup
+    const plugin = createBetterAuthPlugin(db)
+    auth = plugin.auth
+  })
+
+  afterEach(async () => {
+    await cleanup()
+  })
+
+  /** Seed an anonymous user + session and return the signed bearer token. */
+  const seedAnonUser = async (suffix: string) => {
+    const userId = `anon-user-${suffix}`
+    const sessionToken = `anon-session-token-${suffix}`
+    const now = new Date()
+    const expiresAt = new Date(now.getTime() + 3600 * 1000)
+
+    await db.insert(userTable).values({
+      id: userId,
+      name: 'Anonymous',
+      email: `anon-${suffix}@example.com`,
+      emailVerified: false,
+      isAnonymous: true,
+      createdAt: now,
+      updatedAt: now,
+    })
+
+    await db.insert(sessionTable).values({
+      id: `anon-session-${suffix}`,
+      expiresAt,
+      token: sessionToken,
+      createdAt: now,
+      updatedAt: now,
+      userId,
+    })
+
+    return { userId, signedBearer: signToken(sessionToken) }
+  }
+
+  /** Seed a non-anonymous user + session + trusted device. */
+  const seedRegularUser = async (suffix: string) => {
+    const userId = `regular-user-${suffix}`
+    const sessionToken = `regular-session-token-${suffix}`
+    const deviceId = `regular-device-${suffix}`
+    const now = new Date()
+    const expiresAt = new Date(now.getTime() + 3600 * 1000)
+
+    await db.insert(userTable).values({
+      id: userId,
+      name: 'Regular User',
+      email: `regular-${suffix}@example.com`,
+      emailVerified: true,
+      isAnonymous: false,
+      createdAt: now,
+      updatedAt: now,
+    })
+
+    await db.insert(sessionTable).values({
+      id: `regular-session-${suffix}`,
+      expiresAt,
+      token: sessionToken,
+      createdAt: now,
+      updatedAt: now,
+      userId,
+    })
+
+    await db.insert(devicesTable).values({
+      id: deviceId,
+      userId,
+      name: 'Regular Device',
+      trusted: true,
+      lastSeen: now,
+      createdAt: now,
+    })
+
+    return { userId, signedBearer: signToken(sessionToken), deviceId }
+  }
+
+  it('GET /powersync/token Path 2 (Bearer only) — anonymous user → 403 + code anonymousSyncForbidden', async () => {
+    const app = new Elysia().use(createPowerSyncRoutes(auth, powersyncSettings, db)) as unknown as Elysia
+
+    const { signedBearer } = await seedAnonUser('path2')
+
+    const response = await app.handle(
+      new Request('http://localhost/powersync/token', {
+        headers: {
+          Authorization: `Bearer ${signedBearer}`,
+          'X-Device-ID': 'anon-device-path2',
+        },
+      }),
+    )
+    expect(response.status).toBe(403)
+    const data = await response.json()
+    expect(data).toEqual({ error: 'Forbidden', code: 'anonymousSyncForbidden' })
+  })
+
+  it('GET /powersync/token Path 1 (session) — anonymous user → 403 + code anonymousSyncForbidden', async () => {
+    const app = new Elysia().use(createPowerSyncRoutes(auth, powersyncSettings, db)) as unknown as Elysia
+
+    // Use Better Auth's real anonymous sign-in flow + cookie so the request goes through Path 1
+    // (auth.api.getSession resolves the session via cookie and sets `user`).
+    const anonResponse = (await auth.api.signInAnonymous({ asResponse: true })) as Response
+    expect(anonResponse.status).toBe(200)
+    const anonCookie = anonResponse.headers.get('set-cookie')
+    expect(anonCookie).toBeTruthy()
+
+    const response = await app.handle(
+      new Request('http://localhost/powersync/token', {
+        headers: {
+          Cookie: anonCookie!,
+          'X-Device-ID': 'anon-device-path1',
+        },
+      }),
+    )
+    expect(response.status).toBe(403)
+    const data = await response.json()
+    expect(data).toEqual({ error: 'Forbidden', code: 'anonymousSyncForbidden' })
+  })
+
+  it('GET /powersync/token Path 2 (Bearer only) — non-anonymous user → 200 (regression)', async () => {
+    const app = new Elysia().use(
+      createPowerSyncRoutes(auth, { ...powersyncSettings, e2eeEnabled: false }, db),
+    ) as unknown as Elysia
+
+    const { signedBearer, deviceId } = await seedRegularUser('path2-ok')
+
+    const response = await app.handle(
+      new Request('http://localhost/powersync/token', {
+        headers: {
+          Authorization: `Bearer ${signedBearer}`,
+          'X-Device-ID': deviceId,
+        },
+      }),
+    )
+    expect(response.status).toBe(200)
+    const data = await response.json()
+    expect(data).toHaveProperty('token')
+    expect(data).toHaveProperty('powerSyncUrl')
+  })
+
+  it('PUT /powersync/upload — anonymous user → 403 + code anonymousSyncForbidden', async () => {
+    const app = new Elysia().use(createPowerSyncRoutes(auth, powersyncSettings, db)) as unknown as Elysia
+
+    const { userId, signedBearer } = await seedAnonUser('upload')
+    const now = new Date()
+    await db.insert(devicesTable).values({
+      id: 'anon-upload-device',
+      userId,
+      name: 'Anon Device',
+      trusted: true,
+      lastSeen: now,
+      createdAt: now,
+    })
+
+    const response = await app.handle(
+      new Request('http://localhost/powersync/upload', {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${signedBearer}`,
+          'X-Device-ID': 'anon-upload-device',
+        },
+        body: JSON.stringify({ operations: [] }),
+      }),
+    )
+    expect(response.status).toBe(403)
+    const data = await response.json()
+    expect(data).toEqual({ error: 'Forbidden', code: 'anonymousSyncForbidden' })
+  })
+
+  it('PUT /powersync/upload — non-anonymous user → 200 (regression)', async () => {
+    const app = new Elysia().use(
+      createPowerSyncRoutes(auth, { ...powersyncSettings, e2eeEnabled: false }, db),
+    ) as unknown as Elysia
+
+    const { signedBearer, deviceId } = await seedRegularUser('upload-ok')
+
+    const response = await app.handle(
+      new Request('http://localhost/powersync/upload', {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${signedBearer}`,
+          'X-Device-ID': deviceId,
+        },
+        body: JSON.stringify({ operations: [] }),
+      }),
+    )
+    expect(response.status).toBe(200)
+    const data = await response.json()
+    expect(data).toEqual({ success: true })
   })
 })
 

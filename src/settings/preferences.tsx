@@ -88,6 +88,7 @@ export default function PreferencesSettingsPage() {
   const authClient = useAuth()
   const { data: session } = authClient.useSession()
   const isAuthenticated = !!session?.user
+  const isAnonymous = session?.user?.isAnonymous === true
   const { openSignInModal } = useSignInModal()
 
   const { fetchCountryUnits } = useCountryUnits()
@@ -662,7 +663,7 @@ export default function PreferencesSettingsPage() {
 
       <SectionCard title="Data">
         <div className="flex flex-col gap-6">
-          {isAuthenticated ? (
+          {isAuthenticated && !isAnonymous ? (
             <div className="flex-row flex items-center gap-4 justify-between">
               <div>
                 <label className="text-sm font-medium">Sync This Device With Cloud</label>
@@ -676,7 +677,7 @@ export default function PreferencesSettingsPage() {
             </div>
           )}
 
-          {!isAuthenticated && (
+          {(!isAuthenticated || isAnonymous) && (
             <>
               <div className="h-px bg-border -mx-6" />
 
@@ -711,7 +712,7 @@ export default function PreferencesSettingsPage() {
             </>
           )}
 
-          {isAuthenticated && (
+          {isAuthenticated && !isAnonymous && (
             <>
               <div className="h-px bg-border -mx-6" />
 

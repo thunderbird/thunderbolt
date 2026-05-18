@@ -92,7 +92,11 @@ export const SidebarFooter = ({ className }: SidebarFooterProps) => {
   }
 
   const { data: session, isPending } = authClient.useSession()
-  const user = session?.user
+  // Treat anonymous sessions as logged-out for the footer UI: anonymous users have a
+  // synthetic email and no real account, so showing them as "logged in" is misleading.
+  // The Sign In affordance (below) is the correct surface for them to upgrade.
+  const sessionUser = session?.user as (NonNullable<typeof session>['user'] & { isAnonymous?: boolean }) | undefined
+  const user = sessionUser?.isAnonymous ? null : sessionUser
 
   const { preferredName } = useSettings({ preferred_name: '' })
   const displayName = user ? (preferredName.value as string) || user.name || null : null

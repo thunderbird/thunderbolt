@@ -392,7 +392,7 @@ export default function PreferencesSettingsPage() {
             </ModificationIndicator>
             <Input
               placeholder="Your name"
-              className="rounded-lg"
+              className="rounded-xl"
               value={nameInput}
               onChange={(e) => setNameInput(e.target.value)}
               onBlur={async (e) => {
@@ -450,7 +450,7 @@ export default function PreferencesSettingsPage() {
               }}
               disabled={unitsOptionsLoading}
             >
-              <SelectTrigger className="w-auto rounded-lg">
+              <SelectTrigger className="w-auto rounded-xl">
                 <SelectValue placeholder="Loading..." />
               </SelectTrigger>
               <SelectContent>
@@ -483,7 +483,7 @@ export default function PreferencesSettingsPage() {
               }}
               disabled={unitsOptionsLoading}
             >
-              <SelectTrigger className="w-auto rounded-lg">
+              <SelectTrigger className="w-auto rounded-xl">
                 <SelectValue placeholder="Loading..." />
               </SelectTrigger>
               <SelectContent>
@@ -516,7 +516,7 @@ export default function PreferencesSettingsPage() {
               }}
               disabled={unitsOptionsLoading}
             >
-              <SelectTrigger className="w-auto rounded-lg">
+              <SelectTrigger className="w-auto rounded-xl">
                 <SelectValue placeholder="Loading..." />
               </SelectTrigger>
               <SelectContent>
@@ -549,7 +549,7 @@ export default function PreferencesSettingsPage() {
               }}
               disabled={unitsOptionsLoading}
             >
-              <SelectTrigger className="w-auto rounded-lg">
+              <SelectTrigger className="w-auto rounded-xl">
                 <SelectValue placeholder="Loading..." />
               </SelectTrigger>
               <SelectContent>

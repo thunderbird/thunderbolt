@@ -85,7 +85,7 @@ const SsoRedirect = () => {
         <button
           type="button"
           onClick={() => setRetryKey((k) => k + 1)}
-          className="h-[var(--touch-height-default)] rounded-lg bg-primary px-4 text-[length:var(--font-size-body)] text-primary-foreground"
+          className="h-[var(--touch-height-default)] rounded-xl bg-primary px-4 text-[length:var(--font-size-body)] text-primary-foreground"
         >
           Try again
         </button>

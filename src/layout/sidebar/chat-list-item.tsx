@@ -109,7 +109,7 @@ export const ChatListItem = memo(
                 />
               </DropdownMenuTrigger>
             </SidebarMenuButton>
-            <DropdownMenuContent side="right" align="start" className="min-w-56 rounded-lg">
+            <DropdownMenuContent side="right" align="start" className="min-w-56 rounded-xl">
               <DropdownMenuItem onClick={() => setRenameDialogOpen(true)} className="cursor-pointer">
                 <Pencil className="size-4 mr-2" />
                 Rename

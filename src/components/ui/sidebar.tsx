@@ -381,7 +381,7 @@ const SidebarInset = forwardRef<HTMLDivElement, ComponentProps<'main'>>(({ class
       ref={ref}
       className={cn(
         'relative flex flex-1 flex-col bg-background',
-        'peer-data-[variant=inset]:min-h-[calc(100svh-(--spacing(4)))] md:peer-data-[variant=inset]:m-2 md:peer-data-[variant=inset]:peer-data-[state=collapsed]:ml-2 md:peer-data-[variant=inset]:ml-0 md:peer-data-[variant=inset]:rounded-xl md:peer-data-[variant=inset]:shadow-sm',
+        'peer-data-[variant=inset]:min-h-[calc(100svh-(--spacing(4)))] md:peer-data-[variant=inset]:m-2 md:peer-data-[variant=inset]:peer-data-[state=collapsed]:ml-2 md:peer-data-[variant=inset]:ml-0 md:peer-data-[variant=inset]:rounded-lg md:peer-data-[variant=inset]:shadow-sm',
         className,
       )}
       {...props}
@@ -451,7 +451,7 @@ const SidebarGroup = forwardRef<HTMLDivElement, ComponentProps<'div'>>(({ classN
     <div
       ref={ref}
       data-sidebar="group"
-      className={cn('relative flex w-full min-w-0 flex-col p-2', className)}
+      className={cn('relative flex w-full min-w-0 flex-col px-2 py-1', className)}
       {...props}
     />
   )

@@ -62,7 +62,7 @@ export const PendingDeviceModal = () => {
               <p className="text-muted-foreground">A new device is requesting access to your encrypted data.</p>
 
               {pendingDeviceToNotify && (
-                <div className="flex items-center gap-3 rounded-lg border bg-secondary/50 p-4 text-left">
+                <div className="flex items-center gap-3 rounded-xl border bg-secondary/50 p-4 text-left">
                   <Smartphone className="size-5 shrink-0 text-muted-foreground" />
                   <div className="min-w-0 flex-1">
                     <span className="font-medium truncate">{pendingDeviceToNotify.name}</span>

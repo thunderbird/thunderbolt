@@ -136,7 +136,7 @@ export const PowerSyncStatus = () => {
                 }
               : 0
           }
-          className={cn('rounded-2xl shadow-lg duration-100', isMobile && popoverOpen && 'z-50')}
+          className={cn('rounded-xl shadow-lg duration-100', isMobile && popoverOpen && 'z-50')}
           style={{
             width: isMobile ? `calc(${mobileSidebarWidthRatio * 100}vw - ${edgeSpacing.mobile * 2}px)` : undefined,
           }}

@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+@import url('https://fonts.googleapis.com/css2?family=Instrument+Serif&display=swap');
 @import 'tailwindcss';
 
 @plugin 'tailwindcss-animate';
@@ -9,56 +10,124 @@
 
 @variant dark (&:where(.dark, .dark *));
 
-@theme {
-  --color-background: oklch(1 0 0);
-  --color-foreground: oklch(0.145 0 0);
-  --color-card: oklch(1 0 0);
-  --color-card-foreground: oklch(0.145 0 0);
-  --color-popover: oklch(1 0 0);
-  --color-popover-foreground: oklch(0.145 0 0);
-  --color-primary: #191919;
-  --color-primary-foreground: #ffffff;
-  --color-secondary: #f7f7f8;
-  --color-secondary-foreground: #000000;
-  --color-tertiary: #808080;
-  --color-muted: oklch(0.97 0 0);
-  --color-muted-foreground: oklch(0.556 0 0);
-  --color-accent: oklch(0.97 0 0);
-  --color-accent-foreground: oklch(0.205 0 0);
-  --color-destructive: oklch(0.577 0.245 27.325);
-  --color-destructive-foreground: oklch(0.577 0.245 27.325);
-  --color-border: oklch(0.922 0 0);
-  --color-input: oklch(0.922 0 0);
-  --color-ring: oklch(0.708 0 0);
+@theme inline {
+  --font-display: 'Instrument Serif', ui-serif, Georgia, serif;
+  --font-brand: 'Instrument Serif', ui-serif, Georgia, serif;
+
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-tertiary: var(--warm-500);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--primary-foreground);
+  --color-border: var(--border);
+  --color-border-strong: var(--border-strong);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-card-border: var(--border);
+
+  --color-sidebar: var(--bg-sidebar);
+  --color-sidebar-foreground: var(--foreground);
+  --color-sidebar-primary: var(--primary);
+  --color-sidebar-primary-foreground: var(--primary-foreground);
+  --color-sidebar-accent: var(--accent);
+  --color-sidebar-accent-foreground: var(--accent-foreground);
+  --color-sidebar-border: var(--border);
+  --color-sidebar-ring: var(--ring);
+
+  --color-bg-hover: var(--bg-hover);
+  --color-bg-active: var(--bg-active);
+
+  --color-icon-brand: #dce875;
+
+  /* Custom red ramp centered on red-500: #FB6982 (hue ~350°).
+     Overrides Tailwind's stock red-* utilities. */
+  --color-red-50: #fef1f3;
+  --color-red-100: #fee2e6;
+  --color-red-200: #fdc3cd;
+  --color-red-300: #fdaab8;
+  --color-red-400: #fc8d9f;
+  --color-red-500: #fb6982;
+  --color-red-600: #f0425f;
+  --color-red-700: #dc1839;
+  --color-red-800: #aa1831;
+  --color-red-900: #791526;
+  --color-red-950: #4c101a;
+
   --color-chart-1: oklch(0.646 0.222 41.116);
   --color-chart-2: oklch(0.6 0.118 184.704);
   --color-chart-3: oklch(0.398 0.07 227.392);
   --color-chart-4: oklch(0.828 0.189 84.429);
   --color-chart-5: oklch(0.769 0.188 70.08);
-  --radius: 0.625rem;
-  --color-sidebar: oklch(0.985 0 0);
-  --color-sidebar-foreground: oklch(0.145 0 0);
-  --color-sidebar-primary: oklch(0.205 0 0);
-  --color-sidebar-primary-foreground: oklch(0.985 0 0);
-  --color-sidebar-accent: oklch(0.97 0 0);
-  --color-sidebar-accent-foreground: oklch(0.205 0 0);
-  --color-sidebar-border: oklch(0.922 0 0);
-  --color-sidebar-ring: oklch(0.708 0 0);
-  --color-card-border: #dee8df;
+
+  --ease-out: cubic-bezier(0.2, 0.7, 0.2, 1);
 }
 
-/* ===========================
-   Responsive Touch Target System
-   =========================== */
+:root {
+  --warm-50: #f8f8f5;
+  --warm-100: #f4f4f1;
+  --warm-150: #ededea;
+  --warm-200: #e8e8e4;
+  --warm-300: #d4d4cf;
+  --warm-400: #9b9b94;
+  --warm-500: #6b6b65;
+  --warm-600: #3f3f3a;
+  --warm-700: #262624;
+  --warm-800: #18181a;
+  --warm-900: #0a0a0c;
+
+  --background: #fcfcfb;
+  --foreground: var(--warm-800);
+  --card: var(--warm-50);
+  --card-foreground: var(--warm-800);
+  --popover: #fafaf8;
+  --popover-foreground: var(--warm-800);
+
+  --primary: var(--warm-900);
+  --primary-foreground: var(--warm-50);
+
+  --secondary: var(--warm-100);
+  --secondary-foreground: var(--warm-800);
+  --muted: var(--warm-100);
+  --muted-foreground: var(--warm-500);
+  --accent: var(--warm-150);
+  --accent-foreground: var(--warm-800);
+
+  --destructive: #c0392b;
+  --border: var(--warm-200);
+  --border-strong: var(--warm-300);
+  --input: var(--warm-200);
+  --ring: rgba(122, 60, 240, 0.42);
+
+  --bg-sidebar: var(--warm-50);
+  --bg-hover: rgba(10, 10, 12, 0.04);
+  --bg-active: rgba(10, 10, 12, 0.06);
+
+  --chat-user-bg: var(--warm-100);
+  --chat-ai-bg: transparent;
+}
+
 :root {
   /* Heights - Touch targets */
   --touch-height-xl: 3.5rem; /* 56px mobile */
   --touch-height-lg: 3rem; /* 48px mobile */
   --touch-height-default: 2.75rem; /* 44px mobile - primary touch target */
-  --touch-height-sm: 2.5rem; /* 40px mobile */
+  --touch-height-sm: 2.75rem; /* 44px mobile - bumped to meet WCAG 2.5.5 / iOS HIG */
 
   /* Icon sizes */
-  --icon-size-default: 1.25rem; /* 20px mobile */
+  --icon-size-lg: 1.5rem; /* 24px mobile - standalone icons (e.g. header) */
+  --icon-size-default: 1rem; /* 16px mobile */
   --icon-size-sm: 1rem; /* 16px mobile */
 
   /* Font sizes */
@@ -74,7 +143,7 @@
   --radius-2xl: 1.25rem; /* 20px mobile */
 
   /* Minimum sizes */
-  --min-touch-height: 2.5rem; /* 40px mobile */
+  --min-touch-height: 2.75rem; /* 44px mobile - WCAG 2.5.5 / iOS HIG floor */
 
   /* Switch component specific */
   --switch-track-height: 1.5rem; /* 24px mobile - slightly larger for touch */
@@ -92,6 +161,7 @@
     --touch-height-sm: 2rem; /* 32px desktop */
 
     /* Icon sizes */
+    --icon-size-lg: 1.25rem; /* 20px desktop - standalone icons (e.g. header) */
     --icon-size-default: 1rem; /* 16px desktop */
     --icon-size-sm: 0.875rem; /* 14px desktop */
 
@@ -119,38 +189,47 @@
 }
 
 .dark {
-  --color-background: oklch(0.145 0 0);
-  --color-foreground: oklch(0.985 0 0);
-  --color-card: oklch(0.145 0 0);
-  --color-card-foreground: oklch(0.985 0 0);
-  --color-popover: oklch(0.145 0 0);
-  --color-popover-foreground: oklch(0.985 0 0);
-  --color-primary: oklch(0.985 0 0);
-  --color-primary-foreground: oklch(0.205 0 0);
-  --color-secondary: oklch(0.269 0 0);
-  --color-secondary-foreground: oklch(0.985 0 0);
-  --color-muted: oklch(0.269 0 0);
-  --color-muted-foreground: oklch(0.708 0 0);
-  --color-accent: oklch(0.269 0 0);
-  --color-accent-foreground: oklch(0.985 0 0);
-  --color-destructive: oklch(0.396 0.141 25.723);
-  --color-destructive-foreground: oklch(0.637 0.237 25.331);
-  --color-border: oklch(0.269 0 0);
-  --color-input: oklch(0.269 0 0);
-  --color-ring: oklch(0.439 0 0);
-  --color-chart-1: oklch(0.488 0.243 264.376);
-  --color-chart-2: oklch(0.696 0.17 162.48);
-  --color-chart-3: oklch(0.769 0.188 70.08);
-  --color-chart-4: oklch(0.627 0.265 303.9);
-  --color-chart-5: oklch(0.645 0.246 16.439);
-  --color-sidebar: oklch(0.205 0 0);
-  --color-sidebar-foreground: oklch(0.985 0 0);
-  --color-sidebar-primary: oklch(0.488 0.243 264.376);
-  --color-sidebar-primary-foreground: oklch(0.985 0 0);
-  --color-sidebar-accent: oklch(0.269 0 0);
-  --color-sidebar-accent-foreground: oklch(0.985 0 0);
-  --color-sidebar-border: oklch(0.269 0 0);
-  --color-sidebar-ring: oklch(0.439 0 0);
+  --warm-50: #1a2329;
+  --warm-100: #263035;
+  --warm-150: #2d373d;
+  --warm-200: #354149;
+  --warm-300: #344054;
+  --warm-400: #475467;
+  --warm-500: #667085;
+  --warm-600: #98a2b3;
+  --warm-700: #d0d5dd;
+  --warm-800: #f2f7fc;
+  --warm-900: #ffffff;
+
+  --background: #1a2329;
+  --foreground: #f2f7fc;
+  --card: #263035;
+  --card-foreground: #f2f7fc;
+  --popover: #354149;
+  --popover-foreground: #f2f7fc;
+
+  --primary: #ffffff;
+  --primary-foreground: #1a2329;
+
+  --secondary: #263035;
+  --secondary-foreground: #f2f7fc;
+  --muted: #263035;
+  --muted-foreground: #98a2b3;
+  --accent: #354149;
+  --accent-foreground: #f2f7fc;
+
+  --destructive: #f26d5b;
+  --border: #344054;
+  --border-strong: #475467;
+  --input: #344054;
+  --ring: #475467;
+
+  --bg-sidebar: #263035;
+  --bg-hover: rgba(242, 247, 252, 0.05);
+  --bg-active: #354149;
+
+  --chat-user-bg: #354149;
+  --chat-ai-bg: transparent;
 }
 
 @keyframes accordion-down {
@@ -207,6 +286,9 @@
   body {
     background-color: var(--color-background);
     color: var(--color-foreground);
+    font-feature-settings: 'ss01', 'cv11';
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
   }
 }
 

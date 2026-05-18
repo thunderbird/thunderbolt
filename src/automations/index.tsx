@@ -117,7 +117,6 @@ export default function AutomationsPage() {
               <Button
                 variant="outline"
                 size="icon"
-                className="rounded-lg"
                 onClick={() => {
                   setIsCreateModalOpen(true)
                   trackEvent('automation_modal_create_open')
@@ -143,9 +142,9 @@ export default function AutomationsPage() {
                           <Skeleton className="h-3.5 w-2/3" />
                         </div>
                         <div className="flex gap-2 shrink-0">
-                          <Skeleton className="h-8 w-8 rounded-lg" />
-                          <Skeleton className="h-8 w-8 rounded-lg" />
-                          <Skeleton className="h-8 w-8 rounded-lg" />
+                          <Skeleton className="h-8 w-8 rounded-xl" />
+                          <Skeleton className="h-8 w-8 rounded-xl" />
+                          <Skeleton className="h-8 w-8 rounded-xl" />
                         </div>
                       </div>
                     </CardContent>

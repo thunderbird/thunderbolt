@@ -55,7 +55,7 @@ export const UpdateNotification = () => {
           exit={{ opacity: 0, y: 20 }}
           className="fixed bottom-4 right-4 z-50 max-w-sm"
         >
-          <div className="bg-card border border-border rounded-lg shadow-lg p-4">
+          <div className="bg-card border border-border rounded-xl shadow-lg p-4">
             <div className="flex items-start gap-3">
               <div className="flex-shrink-0">
                 <Icon

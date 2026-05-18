@@ -36,8 +36,9 @@ export default function Sidebar() {
 
   const { chatThreadId: currentChatThreadId } = useParams()
 
-  // Simple route check: any /settings/* path triggers the settings sidebar variant on mobile
-  const isSettingsRoute = location.pathname.startsWith('/settings')
+  // Settings sidebar variant covers /settings/* and /marketplace (marketplace lives
+  // alongside settings conceptually — same "Customization" group in the nav).
+  const isSettingsRoute = location.pathname.startsWith('/settings') || location.pathname.startsWith('/marketplace')
 
   // Only use collapsed icon view on desktop, not mobile
   const isCollapsed = !isMobile && state === 'collapsed'
@@ -146,7 +147,7 @@ export default function Sidebar() {
 
   const showSettingsMenu = () => {
     if (!isSettingsRoute) {
-      navigate('/settings/preferences')
+      navigate(isMobile ? '/settings' : '/settings/preferences')
     }
   }
 
@@ -162,6 +163,9 @@ export default function Sidebar() {
       navigate(`/chats/${data[0].id}`)
     } else {
       await createNewChat(false)
+    }
+    if (isMobile) {
+      setOpenMobile(false)
     }
   }
 

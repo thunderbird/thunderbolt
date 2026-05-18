@@ -272,7 +272,7 @@ export const MixedCompleteness: Story = {
 
 export const ScrollableContainer = {
   render: () => (
-    <div className="border rounded-lg p-4 max-h-96 overflow-y-auto">
+    <div className="border rounded-xl p-4 max-h-96 overflow-y-auto">
       <h3 className="text-sm font-semibold mb-3">Sources (Scrollable)</h3>
       <SourceList
         sources={[

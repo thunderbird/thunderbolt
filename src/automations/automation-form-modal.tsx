@@ -310,7 +310,6 @@ export default function AutomationFormModal({
                             placeholder="Automation title"
                             value={titleText}
                             onChange={(e) => handleTitleChange(e.target.value)}
-                            className="rounded-lg"
                           />
                         </FormControl>
                         <FormMessage />

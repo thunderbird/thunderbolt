@@ -4,7 +4,7 @@
 
 import { NavLink } from '@/components/ui/nav-link'
 import { SidebarMenuButton, SidebarMenuItem } from '@/components/ui/sidebar'
-import { CheckSquare, MessageCirclePlus, Settings, Zap } from 'lucide-react'
+import { CheckSquare, MessageSquarePlus, Settings } from 'lucide-react'
 
 type NavigationMenuProps = {
   isMobile: boolean
@@ -30,7 +30,7 @@ export const NavigationMenu = ({
           className="cursor-pointer"
           isActive={currentPath === '/chats/new'}
         >
-          <MessageCirclePlus className="size-[var(--icon-size-default)]" />
+          <MessageSquarePlus className="size-[var(--icon-size-default)]" />
           <span>New Chat</span>
         </SidebarMenuButton>
       </SidebarMenuItem>
@@ -44,14 +44,6 @@ export const NavigationMenu = ({
           </SidebarMenuButton>
         </SidebarMenuItem>
       )}
-      <SidebarMenuItem>
-        <SidebarMenuButton asChild tooltip="Automations" isActive={currentPath.startsWith('/automations')}>
-          <NavLink to="/automations">
-            <Zap className="size-[var(--icon-size-default)]" />
-            <span>Automations</span>
-          </NavLink>
-        </SidebarMenuButton>
-      </SidebarMenuItem>
       <SidebarMenuItem>
         {isMobile ? (
           <SidebarMenuButton

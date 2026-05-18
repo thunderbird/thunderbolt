@@ -12,7 +12,7 @@ import {
   SidebarMenuButton,
   SidebarMenuItem,
 } from '@/components/ui/sidebar'
-import { Flame, Loader2, Search } from 'lucide-react'
+import { ChevronDown, Flame, Loader2, Search } from 'lucide-react'
 import { ChatActions } from './chat-actions'
 import { ChatListItem } from './chat-list-item'
 import type { ChatListProps } from './types'
@@ -41,7 +41,12 @@ export const ChatList = ({
       <SidebarGroup className="flex-1 flex flex-col min-h-0">
         {!isCollapsed && (chatThreads.length > 0 || debouncedSearchQuery) && (
           <div className="flex items-center justify-between flex-shrink-0">
-            <SidebarGroupLabel>Recent Chats</SidebarGroupLabel>
+            <SidebarGroupLabel>
+              <span className="flex items-center gap-1">
+                Recents
+                <ChevronDown className="size-3.5" aria-hidden="true" />
+              </span>
+            </SidebarGroupLabel>
             <ChatActions
               isCollapsed={isCollapsed}
               debouncedSearchQuery={debouncedSearchQuery}

@@ -694,7 +694,7 @@ export default function ModelsPage() {
       <PageHeader title="Models">
         <Dialog open={isAddDialogOpen} onOpenChange={handleDialogOpenChange}>
           <DialogTrigger asChild>
-            <Button variant="outline" size="icon" className="rounded-lg">
+            <Button variant="outline" size="icon">
               <Plus />
             </Button>
           </DialogTrigger>
@@ -713,7 +713,7 @@ export default function ModelsPage() {
                       <FormLabel>Provider</FormLabel>
                       <FormControl>
                         <Select onValueChange={field.onChange} value={field.value}>
-                          <SelectTrigger className="w-full rounded-lg">
+                          <SelectTrigger className="w-full rounded-xl">
                             <SelectValue placeholder="Select provider" />
                           </SelectTrigger>
                           <SelectContent>
@@ -740,7 +740,7 @@ export default function ModelsPage() {
                         <FormLabel>URL</FormLabel>
                         <FormControl>
                           <div className="relative">
-                            <Input {...field} placeholder="http://localhost:11434/v1" className="pr-10 rounded-lg" />
+                            <Input {...field} placeholder="http://localhost:11434/v1" className="pr-10" />
                             {isLoadingModels && (
                               <Loader2 className="absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 animate-spin text-muted-foreground" />
                             )}
@@ -764,7 +764,7 @@ export default function ModelsPage() {
                       <FormItem>
                         <FormLabel>API Key{form.watch('provider') === 'custom' ? ' (Optional)' : ''}</FormLabel>
                         <FormControl>
-                          <Input type="password" {...field} placeholder="sk-..." className="rounded-lg" />
+                          <Input type="password" {...field} placeholder="sk-..." />
                         </FormControl>
                         {modelLoadError && form.watch('provider') !== 'custom' && (
                           <p className="text-sm text-destructive mt-1 whitespace-pre-line">{modelLoadError}</p>
@@ -833,7 +833,7 @@ export default function ModelsPage() {
                           <Input
                             {...field}
                             placeholder="e.g., gpt-4-turbo-preview"
-                            className="rounded-lg"
+                            className="rounded-xl"
                             onChange={(e) => {
                               field.onChange(e)
                               form.setValue('model', e.target.value)
@@ -856,7 +856,7 @@ export default function ModelsPage() {
                         <FormItem>
                           <FormLabel>Display Name</FormLabel>
                           <FormControl>
-                            <Input {...field} placeholder="e.g., GPT-4 Turbo" className="rounded-lg" />
+                            <Input {...field} placeholder="e.g., GPT-4 Turbo" />
                           </FormControl>
                           <FormMessage />
                         </FormItem>

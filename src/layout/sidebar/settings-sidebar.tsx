@@ -3,6 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { SidebarFooter } from '@/components/sidebar-footer'
+import { Button } from '@/components/ui/button'
 import {
   SidebarContent,
   SidebarGroup,
@@ -11,12 +12,11 @@ import {
   SidebarMenu,
   SidebarMenuButton,
   SidebarMenuItem,
-  SidebarSeparator,
   useSidebar,
 } from '@/components/ui/sidebar'
-import { ArrowLeft, Cpu, Plug, Server, SlidersHorizontal, Smartphone } from 'lucide-react'
+import { useIsMobile } from '@/hooks/use-mobile'
+import { ChevronLeft, Cpu, PanelLeft, Plug, Server, SlidersHorizontal, Smartphone, Store, Zap } from 'lucide-react'
 import { useLocation } from 'react-router'
-import { SidebarHeader } from './sidebar-header'
 
 type SettingsSidebarContentProps = {
   onBackClick: () => void
@@ -24,30 +24,59 @@ type SettingsSidebarContentProps = {
 }
 
 export const SettingsSidebarContent = ({ onBackClick, onSettingsNavigate }: SettingsSidebarContentProps) => {
-  const { toggleSidebar } = useSidebar()
+  const { toggleSidebar, state } = useSidebar()
+  const { isMobile } = useIsMobile()
   const location = useLocation()
+
+  // Back-to-Chat button replaces the logo slot in the settings sidebar header.
+  // When the sidebar is collapsed to icons (desktop only), show just the
+  // chevron icon — matches the slot used for the logo/toggle in chat mode.
+  const isExpanded = isMobile || state === 'expanded'
 
   return (
     <SidebarContent className="flex flex-col h-full">
-      <SidebarHeader onToggle={toggleSidebar} />
+      <div className="pt-4 pb-2 px-2 flex items-center justify-between flex-shrink-0 gap-1.5">
+        {isExpanded ? (
+          <>
+            <button
+              type="button"
+              onClick={onBackClick}
+              aria-label="Back to Chat"
+              className="flex flex-1 items-center gap-2 h-[var(--touch-height-default)] rounded-lg bg-accent px-2 text-[length:var(--font-size-body)] text-accent-foreground transition-colors hover:bg-accent/80 cursor-pointer"
+            >
+              <ChevronLeft className="size-4 shrink-0" aria-hidden="true" />
+              <span className="truncate">Back to Chat</span>
+            </button>
+            {!isMobile && (
+              <Button
+                variant="ghost"
+                size="icon-lg"
+                onClick={toggleSidebar}
+                aria-label="Toggle sidebar"
+                className="size-9 text-muted-foreground hover:bg-foreground/10 hover:text-foreground"
+              >
+                <PanelLeft className="size-4" />
+              </Button>
+            )}
+          </>
+        ) : (
+          // Collapsed (desktop icon-only): show the panel-toggle so the user can
+          // expand the sidebar again. The Back-to-Chat affordance only fits in
+          // the expanded layout.
+          <Button
+            variant="ghost"
+            size="icon-lg"
+            onClick={toggleSidebar}
+            aria-label="Expand sidebar"
+            className="mx-auto size-9 text-muted-foreground hover:bg-foreground/10 hover:text-foreground"
+          >
+            <PanelLeft className="size-4" />
+          </Button>
+        )}
+      </div>
 
       <SidebarGroup>
-        <SidebarGroupContent>
-          <SidebarMenu>
-            <SidebarMenuItem>
-              <SidebarMenuButton onClick={onBackClick} tooltip="Back to Chat" className="cursor-pointer">
-                <ArrowLeft className="size-4" />
-                <span>Back</span>
-              </SidebarMenuButton>
-            </SidebarMenuItem>
-          </SidebarMenu>
-        </SidebarGroupContent>
-      </SidebarGroup>
-
-      <SidebarSeparator className="m-0" />
-
-      <SidebarGroup className="flex-1">
-        <SidebarGroupLabel>Settings</SidebarGroupLabel>
+        <SidebarGroupLabel>General</SidebarGroupLabel>
         <SidebarGroupContent>
           <SidebarMenu>
             <SidebarMenuItem>
@@ -63,17 +92,6 @@ export const SettingsSidebarContent = ({ onBackClick, onSettingsNavigate }: Sett
             </SidebarMenuItem>
             <SidebarMenuItem>
               <SidebarMenuButton
-                onClick={() => onSettingsNavigate('/settings/integrations')}
-                tooltip="Integrations"
-                className="cursor-pointer"
-                isActive={location.pathname === '/settings/integrations'}
-              >
-                <Plug className="size-4" />
-                <span>Integrations</span>
-              </SidebarMenuButton>
-            </SidebarMenuItem>
-            <SidebarMenuItem>
-              <SidebarMenuButton
                 onClick={() => onSettingsNavigate('/settings/devices')}
                 tooltip="Devices"
                 className="cursor-pointer"
@@ -81,6 +99,36 @@ export const SettingsSidebarContent = ({ onBackClick, onSettingsNavigate }: Sett
               >
                 <Smartphone className="size-4" />
                 <span>Devices</span>
+              </SidebarMenuButton>
+            </SidebarMenuItem>
+          </SidebarMenu>
+        </SidebarGroupContent>
+      </SidebarGroup>
+
+      <SidebarGroup className="flex-1">
+        <SidebarGroupLabel>Customization</SidebarGroupLabel>
+        <SidebarGroupContent>
+          <SidebarMenu>
+            <SidebarMenuItem>
+              <SidebarMenuButton
+                onClick={() => onSettingsNavigate('/settings/skills')}
+                tooltip="Skills"
+                className="cursor-pointer"
+                isActive={location.pathname === '/settings/skills'}
+              >
+                <Zap className="size-4" />
+                <span>Skills</span>
+              </SidebarMenuButton>
+            </SidebarMenuItem>
+            <SidebarMenuItem>
+              <SidebarMenuButton
+                onClick={() => onSettingsNavigate('/settings/integrations')}
+                tooltip="Integrations"
+                className="cursor-pointer"
+                isActive={location.pathname === '/settings/integrations'}
+              >
+                <Plug className="size-4" />
+                <span>Integrations</span>
               </SidebarMenuButton>
             </SidebarMenuItem>
             <SidebarMenuItem>
@@ -103,6 +151,17 @@ export const SettingsSidebarContent = ({ onBackClick, onSettingsNavigate }: Sett
               >
                 <Server className="size-4" />
                 <span>MCP Servers</span>
+              </SidebarMenuButton>
+            </SidebarMenuItem>
+            <SidebarMenuItem>
+              <SidebarMenuButton
+                onClick={() => onSettingsNavigate('/marketplace')}
+                tooltip="Marketplace"
+                className="cursor-pointer"
+                isActive={location.pathname.startsWith('/marketplace')}
+              >
+                <Store className="size-4" />
+                <span>Marketplace</span>
               </SidebarMenuButton>
             </SidebarMenuItem>
           </SidebarMenu>

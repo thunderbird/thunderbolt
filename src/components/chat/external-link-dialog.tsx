@@ -64,7 +64,7 @@ export const ExternalLinkDialog = memo(
             </button>
           </AlertDialogHeader>
 
-          <div className="rounded-lg border bg-muted px-4 py-3 text-sm font-mono break-all max-h-32 overflow-y-auto">
+          <div className="rounded-xl border bg-muted px-4 py-3 text-sm font-mono break-all max-h-32 overflow-y-auto">
             {url}
           </div>
 

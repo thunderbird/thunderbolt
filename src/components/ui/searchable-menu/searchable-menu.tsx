@@ -36,7 +36,7 @@ const ItemButton = memo(<T,>({ item, isSelected, onClick, renderItem }: ItemButt
       disabled={item.disabled}
       onClick={onClick}
       className={cn(
-        'w-full flex items-center gap-2 px-3 py-2 rounded-lg transition-colors text-left cursor-pointer',
+        'w-full flex items-center gap-2 px-3 py-2 rounded-xl transition-colors text-left cursor-pointer',
         'hover:bg-accent/50 focus:bg-accent/50 focus:outline-none',
         isSelected && 'bg-accent',
         item.disabled && 'opacity-50 cursor-not-allowed',
@@ -211,7 +211,7 @@ export const SearchableMenu = <T,>({
         side={side}
         sideOffset={5}
         collisionPadding={isMobile ? edgeSpacing.mobile : edgeSpacing.desktop}
-        className={cn('p-0 rounded-2xl shadow-lg overflow-hidden duration-100', showBlur && 'z-50', contentClassName)}
+        className={cn('p-0 rounded-xl shadow-lg overflow-hidden duration-100', showBlur && 'z-50', contentClassName)}
         style={{ width: contentWidth }}
         onOpenAutoFocus={(e) => e.preventDefault()}
       >
@@ -224,7 +224,7 @@ export const SearchableMenu = <T,>({
                   placeholder={searchPlaceholder}
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
-                  className="pl-9 rounded-lg"
+                  className="pl-9 rounded-xl"
                   autoFocus={false}
                 />
               </div>

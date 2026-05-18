@@ -29,7 +29,7 @@ export const SidebarHeader = ({ onToggle }: SidebarHeaderProps) => {
   const isExpanded = isMobile || state === 'expanded'
 
   return (
-    <div className="h-[var(--touch-height-xl)] border-b border-border flex items-center justify-between px-2 flex-shrink-0">
+    <div className="pt-4 pb-2 px-2 flex items-center justify-between flex-shrink-0">
       <div
         className="flex items-center gap-3 h-8 px-2 relative flex-1"
         onMouseEnter={() => !isMobile && !isExpanded && setShowExpandButton(true)}
@@ -48,11 +48,27 @@ export const SidebarHeader = ({ onToggle }: SidebarHeaderProps) => {
               </SidebarMenu>
             </SidebarGroupContent>
           </SidebarGroup>
-        ) : (
+        ) : isExpanded ? (
           <>
-            <AppLogo />
-            {isExpanded && <span className="text-[length:var(--font-size-body)] truncate">Thunderbolt</span>}
+            <img
+              src="/thunderbolt-logo-light.svg"
+              alt="Thunderbolt"
+              width={136}
+              height={15}
+              draggable={false}
+              className="h-[15px] w-auto select-none dark:hidden"
+            />
+            <img
+              src="/thunderbolt-logo-dark.svg"
+              alt="Thunderbolt"
+              width={136}
+              height={15}
+              draggable={false}
+              className="hidden h-[15px] w-auto select-none dark:block"
+            />
           </>
+        ) : (
+          <AppLogo />
         )}
       </div>
       {isExpanded && (

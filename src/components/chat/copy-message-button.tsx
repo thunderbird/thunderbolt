@@ -23,7 +23,7 @@ export const CopyMessageButton = ({ text, className }: CopyMessageButtonProps) =
     <Button
       variant="ghost"
       size="icon"
-      className={cn('size-8 rounded-lg', className)}
+      className={cn('size-8', className)}
       title="Copy message"
       aria-label="Copy message"
       onClick={() => copy(text)}

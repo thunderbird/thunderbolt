@@ -4,7 +4,7 @@
 
 import { cn } from '@/lib/utils'
 import * as PopoverPrimitive from '@radix-ui/react-popover'
-import { CheckIcon, ChevronDownIcon, Loader2 } from 'lucide-react'
+import { ChevronDownIcon, Loader2 } from 'lucide-react'
 import { type ComponentPropsWithoutRef, type ReactNode, useCallback, useState } from 'react'
 import { Command, CommandEmpty, CommandInput, CommandItem, CommandList } from './command'
 
@@ -105,7 +105,7 @@ export const Combobox = ({
           disabled={disabled}
           {...triggerProps}
           className={cn(
-            "border-input data-[placeholder]:text-muted-foreground [&_svg:not([class*='text-'])]:text-muted-foreground focus-visible:border-ring focus-visible:ring-ring/50 aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 aria-invalid:border-destructive dark:bg-input/30 dark:hover:bg-input/50 flex w-full items-center justify-between gap-2 rounded-lg border bg-transparent px-3 py-2 text-[length:var(--font-size-body)] whitespace-nowrap shadow-xs transition-[color,box-shadow] outline-none focus-visible:ring-[3px] disabled:cursor-not-allowed disabled:opacity-50 h-[var(--touch-height-default)] [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
+            "border-input data-[placeholder]:text-muted-foreground [&_svg:not([class*='text-'])]:text-muted-foreground focus-visible:border-ring focus-visible:ring-ring/50 aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 aria-invalid:border-destructive dark:bg-input/30 dark:hover:bg-input/50 flex w-full items-center justify-between gap-2 rounded-xl border bg-transparent px-3 py-2 text-[length:var(--font-size-body)] whitespace-nowrap transition-[color,box-shadow] outline-none focus-visible:ring-[3px] disabled:cursor-not-allowed disabled:opacity-50 h-[var(--touch-height-default)] [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
             !triggerLabel && 'text-muted-foreground',
             className,
           )}
@@ -121,7 +121,7 @@ export const Combobox = ({
           align={align}
           sideOffset={4}
           className={cn(
-            'bg-popover text-popover-foreground data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2 relative z-50 min-w-[8rem] origin-(--radix-popover-content-transform-origin) overflow-hidden rounded-lg border shadow-md w-[--radix-popover-trigger-width]',
+            'bg-popover text-popover-foreground data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2 relative z-50 min-w-[8rem] origin-(--radix-popover-content-transform-origin) overflow-hidden rounded-xl border shadow-md w-[--radix-popover-trigger-width]',
             contentClassName,
           )}
         >
@@ -149,7 +149,7 @@ export const Combobox = ({
                     keywords={[item.label, item.filterValue, item.description].filter(Boolean) as string[]}
                     disabled={item.disabled}
                     onSelect={() => handleSelect(item.id)}
-                    className="items-start pr-9 md:pr-8"
+                    className={cn('items-start', value === item.id && 'bg-accent text-accent-foreground')}
                   >
                     {item.icon && <span className="shrink-0">{item.icon}</span>}
                     <div className="flex flex-col gap-0.5 min-w-0">
@@ -160,9 +160,6 @@ export const Combobox = ({
                         </span>
                       )}
                     </div>
-                    <span className="absolute right-2 top-1/2 -translate-y-1/2 flex size-3.5 items-center justify-center">
-                      {value === item.id && <CheckIcon className="size-4" />}
-                    </span>
                   </CommandItem>
                 ))}
               </CommandList>

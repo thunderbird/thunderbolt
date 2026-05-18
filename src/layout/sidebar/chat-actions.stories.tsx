@@ -22,7 +22,7 @@ const meta = {
     (Story) => (
       <SidebarProvider>
         <TooltipProvider>
-          <div className="w-64 border rounded-lg p-2 bg-sidebar">
+          <div className="w-64 border rounded-xl p-2 bg-sidebar">
             <Story />
           </div>
         </TooltipProvider>

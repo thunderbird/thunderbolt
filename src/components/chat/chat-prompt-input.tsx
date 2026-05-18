@@ -11,8 +11,18 @@ import { trackEvent as trackEvent_default } from '@/lib/posthog'
 import { type Model } from '@/types'
 import { useChat as useChat_default } from '@ai-sdk/react'
 import { useDraftInput } from '@/hooks/use-draft-input'
-import { forwardRef, useCallback, useImperativeHandle, useRef, useState } from 'react'
-import { useNavigate as useNavigate_default } from 'react-router'
+import { Plus } from 'lucide-react'
+import { forwardRef, useCallback, useImperativeHandle, useMemo, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
+import { Link, useNavigate as useNavigate_default } from 'react-router'
+import { Button } from '@/components/ui/button'
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
+import { renderHighlightedSkillTokens } from '@/skills/highlight-skill-tokens'
+import { ReorderPanel } from '@/skills/reorder-panel'
+import { SlashPopup } from '@/skills/slash-popup'
+import { SuggestionChip } from '@/skills/suggestion-chip'
+import { useEnabledSkills, useLibrarySkills, usePinnedSkills, useRecentSkills } from '@/skills/use-skills-placeholder'
+import { useSlashCommand } from '@/skills/use-slash-command'
 import { ContextOverflowModal } from '../context-overflow-modal'
 import { ContextUsageIndicator } from '../context-usage-indicator'
 import { ModeSelector } from '../ui/mode-selector'
@@ -66,6 +76,44 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
     const [input, setInput, clearDraft] = useDraftInput(draftKey, { persist: !isNewChat })
     const formRef = useRef<HTMLFormElement>(null)
     const { triggerSelection } = useHaptics()
+
+    // Skill UX state
+    const [openChip, setOpenChip] = useState<string | null>(null)
+    const [reorderMode, setReorderMode] = useState(false)
+    const { pinned, movePinned, togglePin } = usePinnedSkills()
+    const { skills: library } = useLibrarySkills()
+    const { isEnabled } = useEnabledSkills()
+    const { recent, recordUsed } = useRecentSkills()
+    const skillNames = useMemo(() => new Set(library.map((s) => s.name)), [library])
+    const isValidSkill = useCallback(
+      (token: string) => skillNames.has(token) && isEnabled(token),
+      [skillNames, isEnabled],
+    )
+
+    const textareaRef = useRef<HTMLTextAreaElement | null>(null)
+    const getTextarea = () => {
+      textareaRef.current = formRef.current?.querySelector('textarea') ?? null
+      return textareaRef.current
+    }
+    const slashInputRef = { current: getTextarea() }
+
+    const {
+      setCursorPos,
+      popupSkills,
+      popupOpen,
+      highlightedIdx,
+      setHighlightedIdx,
+      selectSkill: selectSkillFromPopup,
+      handleKeyDown: handleSlashKeyDown,
+    } = useSlashCommand({
+      value: input,
+      setValue: setInput,
+      inputRef: slashInputRef,
+      library,
+      isEnabled,
+      recent,
+      recordUsed,
+    })
 
     const handleModeChange = useCallback(
       (modeId: string) => {
@@ -131,6 +179,38 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
       setInput,
     }))
 
+    const addSkillChip = (name: string) => {
+      const trimmed = input.trim()
+      const onlyHoldsSkill = trimmed.length > 0 && skillNames.has(trimmed)
+      const next = input.length === 0 || onlyHoldsSkill ? `${name} ` : `${input.replace(/\s+$/, '')} ${name} `
+      setInput(next)
+      recordUsed(name)
+      requestAnimationFrame(() => {
+        const ta = getTextarea()
+        ta?.focus()
+        ta?.setSelectionRange(next.length, next.length)
+        setCursorPos(next.length)
+      })
+    }
+
+    const insertInstructionText = (text: string) => {
+      const ta = getTextarea()
+      const start = ta?.selectionStart ?? input.length
+      const end = ta?.selectionEnd ?? input.length
+      const needsSpace = start > 0 && input[start - 1] !== ' '
+      const insert = needsSpace ? ` ${text}` : text
+      const next = input.slice(0, start) + insert + input.slice(end)
+      setInput(next)
+      requestAnimationFrame(() => {
+        const focused = getTextarea()
+        focused?.focus()
+        const pos = start + insert.length
+        focused?.setSelectionRange(pos, pos)
+      })
+    }
+
+    const suggestions = pinned
+
     const footerStartElements = (
       <div className="flex items-center gap-2">
         {modes.length > 0 && (
@@ -142,23 +222,93 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
       </div>
     )
 
+    const showSkillOverlay = isMobile && (openChip !== null || reorderMode)
+
     return (
       <>
-        <PromptInput
-          ref={formRef}
-          value={input}
-          onChange={(value: string) => setInput(value)}
-          placeholder="Ask me anything..."
-          showSubmitButton
-          onSubmit={handleSubmit}
-          isLoading={isStreaming}
-          isStreaming={isStreaming}
-          onStop={stop}
-          autoFocus={!isMobile}
-          submitOnEnter={!isStreaming && !shouldInsertNewlineOnEnter}
-          className="flex flex-col w-full gap-0 p-2"
-          footerStartElements={footerStartElements}
-        />
+        {showSkillOverlay &&
+          createPortal(
+            <div
+              className="fixed inset-0 z-[5] bg-black/30 backdrop-blur-sm"
+              aria-hidden="true"
+              onClick={() => {
+                setOpenChip(null)
+                setReorderMode(false)
+              }}
+            />,
+            document.body,
+          )}
+        <div className="flex w-full flex-col gap-3">
+          {reorderMode ? (
+            <ReorderPanel skills={suggestions} onMove={movePinned} onClose={() => setReorderMode(false)} />
+          ) : suggestions.length > 0 ? (
+            <div className="-mx-1 flex items-center gap-2 overflow-x-auto px-1 [&::-webkit-scrollbar]:hidden [scrollbar-width:none]">
+              {suggestions.map((name) => {
+                const skill = library.find((s) => s.name === name)
+                return (
+                  <SuggestionChip
+                    key={name}
+                    label={name}
+                    dimmed={openChip !== null && openChip !== name}
+                    onClick={() => addSkillChip(name)}
+                    onOpenChange={(open) => setOpenChip(open ? name : null)}
+                    runHref={`/?run=${encodeURIComponent(name)}`}
+                    onAddInstruction={() => insertInstructionText(skill?.instruction ?? name)}
+                    onReorder={() => setReorderMode(true)}
+                    onUnpin={() => togglePin(name)}
+                  />
+                )
+              })}
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    asChild
+                    variant="outline"
+                    size="icon-sm"
+                    aria-label="Manage skills"
+                    className={`size-8 shrink-0 rounded-full bg-card transition-opacity ${
+                      openChip ? 'opacity-40' : ''
+                    }`}
+                  >
+                    <Link to="/settings/skills">
+                      <Plus />
+                    </Link>
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>Pin skills for quick access</TooltipContent>
+              </Tooltip>
+            </div>
+          ) : null}
+
+          <PromptInput
+            ref={formRef}
+            value={input}
+            onChange={(value: string) => setInput(value)}
+            placeholder="Ask me anything..."
+            showSubmitButton
+            onSubmit={handleSubmit}
+            isLoading={isStreaming}
+            isStreaming={isStreaming}
+            onStop={stop}
+            autoFocus={!isMobile}
+            submitOnEnter={!isStreaming && !shouldInsertNewlineOnEnter}
+            className="flex flex-col w-full gap-0 p-3 bg-card border rounded-xl"
+            footerStartElements={footerStartElements}
+            renderOverlay={(value) => renderHighlightedSkillTokens(value, isValidSkill)}
+            popoverSlot={
+              popupOpen ? (
+                <SlashPopup
+                  skills={popupSkills}
+                  highlightedIdx={highlightedIdx}
+                  onSelect={selectSkillFromPopup}
+                  onHover={setHighlightedIdx}
+                />
+              ) : null
+            }
+            onTextareaKeyDown={handleSlashKeyDown}
+            onTextareaSelect={(e) => setCursorPos(e.currentTarget.selectionStart)}
+          />
+        </div>
         <ContextOverflowModal
           isOpen={showOverflowModal}
           onClose={() => setShowOverflowModal(false)}

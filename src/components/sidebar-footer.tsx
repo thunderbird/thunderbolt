@@ -6,6 +6,7 @@ import { ChevronsUpDown, Loader2, LogOut, Terminal, UserRound, Download } from '
 import { type ReactNode, useState } from 'react'
 
 import { LogoutModal } from '@/components/logout-modal'
+import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 import { MobileBlurBackdrop } from '@/components/ui/mobile-blur-backdrop'
 import { NavLink } from '@/components/ui/nav-link'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
@@ -41,7 +42,7 @@ type AccountMenuItem = {
 
 const AccountMenuItemButton = ({ icon, label, onClick, to, onNavigate }: AccountMenuItem) => {
   const className = cn(
-    'w-full flex items-center gap-2 px-3 py-2 rounded-lg transition-colors text-left cursor-pointer',
+    'w-full flex items-center gap-2 px-3 py-2 rounded-xl transition-colors text-left cursor-pointer',
     'hover:bg-accent/50',
   )
 
@@ -107,9 +108,15 @@ export const SidebarFooter = ({ className }: SidebarFooterProps) => {
     setMenuOpen(false)
   }
 
+  const initial = (displayName?.trim() || displayEmail?.trim() || '·').charAt(0).toUpperCase()
+
   const triggerContent = (
     <>
-      <UserRound className="size-[var(--icon-size-default)] shrink-0 text-muted-foreground" />
+      <Avatar className="size-7 shrink-0 bg-primary text-primary-foreground">
+        <AvatarFallback className="bg-primary text-primary-foreground text-sm font-medium leading-none">
+          {initial}
+        </AvatarFallback>
+      </Avatar>
       {isExpanded && (
         <>
           <div className="flex flex-1 flex-col justify-center text-left leading-tight min-w-0">
@@ -124,13 +131,13 @@ export const SidebarFooter = ({ className }: SidebarFooterProps) => {
 
   return (
     <Popover open={menuOpen} onOpenChange={setMenuOpen} modal={isMobile}>
-      <ShadcnSidebarFooter className={cn('border-t border-border !p-0 !gap-0', className)}>
+      <ShadcnSidebarFooter className={cn('!p-0 !gap-0', className)}>
         <SidebarMenu>
           <SidebarMenuItem>
             {isPending ? (
               // Loading state
               <SidebarMenuButton size="lg" className="cursor-default">
-                <div className="flex size-[var(--touch-height-sm)] items-center justify-center rounded-lg">
+                <div className="flex size-[var(--touch-height-sm)] items-center justify-center rounded-xl">
                   <Loader2 className="size-[var(--icon-size-default)] animate-spin text-muted-foreground" />
                 </div>
                 {isExpanded && (
@@ -206,7 +213,7 @@ export const SidebarFooter = ({ className }: SidebarFooterProps) => {
         sideOffset={isMobile ? 8 : 5}
         align={isMobile ? 'center' : 'start'}
         collisionPadding={isMobile ? edgeSpacing.mobile : 4}
-        className={cn('p-0 rounded-2xl shadow-lg overflow-hidden', isMobile && menuOpen && 'z-50')}
+        className={cn('p-0 rounded-xl shadow-lg overflow-hidden', isMobile && menuOpen && 'z-50')}
         style={{
           width: isMobile
             ? `calc(${mobileSidebarWidthRatio * 100}vw - ${edgeSpacing.mobile * 2}px)`
@@ -223,7 +230,7 @@ export const SidebarFooter = ({ className }: SidebarFooterProps) => {
       >
         <div className="flex flex-col gap-2 bg-background">
           <div className="flex items-center gap-2 px-3 pt-3 pb-1 text-[length:var(--font-size-body)]">
-            <div className="flex size-[var(--touch-height-sm)] shrink-0 items-center justify-center rounded-lg border border-border">
+            <div className="flex size-[var(--touch-height-sm)] shrink-0 items-center justify-center rounded-xl border border-border">
               <UserRound className={cn(iconSize, 'text-muted-foreground')} />
             </div>
             <div className="flex flex-1 flex-col justify-center text-left leading-tight min-w-0">

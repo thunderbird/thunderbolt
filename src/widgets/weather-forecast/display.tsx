@@ -25,7 +25,7 @@ export const WeatherForecast = ({ days = [], temperature_unit }: WeatherForecast
   return (
     <div className="my-4 w-full">
       <div className="flex flex-col gap-1.5 md:flex-row">
-        <div className="flex items-center justify-between rounded-2xl border border-border px-4 md:w-auto md:min-w-[280px] md:gap-4">
+        <div className="flex items-center justify-between rounded-xl border border-border px-4 md:w-auto md:min-w-[280px] md:gap-4">
           <div className="flex flex-col py-3 md:gap-1">
             <p className="text-[length:var(--font-size-sm)] text-muted-foreground">
               {dayjs(today.date).format('dddd, MMM D')}
@@ -56,7 +56,7 @@ export const WeatherForecast = ({ days = [], temperature_unit }: WeatherForecast
             return (
               <div
                 key={day.date}
-                className="flex flex-1 flex-col items-center gap-0.5 rounded-lg bg-secondary/60 px-1.5 py-2 dark:bg-secondary/40"
+                className="flex flex-1 flex-col items-center gap-0.5 rounded-xl bg-secondary/60 px-1.5 py-2 dark:bg-secondary/40"
               >
                 <p className="text-[length:var(--font-size-xs)] font-medium text-muted-foreground">
                   {dayjs(day.date).format('ddd')}
@@ -111,10 +111,10 @@ export const WeatherForecast = ({ days = [], temperature_unit }: WeatherForecast
 export const WeatherForecastSkeleton = () => (
   <div className="my-4 w-full">
     <div className="flex flex-col gap-1.5 md:flex-row">
-      <Skeleton className="h-[88px] w-full rounded-2xl md:w-[280px]" />
+      <Skeleton className="h-[88px] w-full rounded-xl md:w-[280px]" />
       <div className="flex flex-1 gap-1.5">
         {Array.from({ length: 5 }).map((_, i) => (
-          <Skeleton key={i} className="h-[88px] flex-1 rounded-lg" />
+          <Skeleton key={i} className="h-[88px] flex-1 rounded-xl" />
         ))}
       </div>
     </div>

@@ -83,6 +83,7 @@ data:
         }
       ],
       "users": [
+        {{- if .Values.keycloak.demoUserEnabled }}
         {
           "username": "demo",
           "email": "demo@thunderbolt.io",
@@ -98,6 +99,7 @@ data:
             }
           ]
         }
+        {{- end }}
       ]
     }
 ---

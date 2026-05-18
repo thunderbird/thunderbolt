@@ -129,6 +129,10 @@ keycloak:
     clientId: thunderbolt-app
     # -- Base64-encoded client secret (default: "thunderbolt-enterprise-secret")
     clientSecretBase64: dGh1bmRlcmJvbHQtZW50ZXJwcmlzZS1zZWNyZXQ=
+  # -- Include a `demo@thunderbolt.io` / `demo` user in the imported realm.
+  # Convenient for local/preview environments and docs walk-throughs; set to
+  # `false` for production deployments. Default `true` preserves current behavior.
+  demoUserEnabled: true
   podAnnotations: {}
   resources: {}
 

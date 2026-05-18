@@ -43,7 +43,7 @@ data:
       jwks:
         keys:
           - kty: oct
-            k: {{ .Values.powersync.jwt.secretBase64 }}
+            k: !env POWERSYNC_JWT_SECRET_B64
             alg: HS256
             kid: {{ .Values.powersync.jwt.kid }}
       telemetry:

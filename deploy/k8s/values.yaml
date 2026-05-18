@@ -83,6 +83,10 @@ postgres:
     database: postgres
     # -- Base64-encoded password (default: "postgres")
     passwordBase64: cG9zdGdyZXM=
+  # -- TLS mode used by PowerSync when connecting to Postgres. Default `disable`
+  # matches the in-cluster StatefulSet which ships without TLS. Set to `require`
+  # (or stricter) when pointing at a TLS-terminating Postgres like RDS.
+  sslmode: disable
   podAnnotations: {}
   resources: {}
 

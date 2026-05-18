@@ -5,6 +5,10 @@ imagePullSecrets: []
 # -- Base URL the app is served from (used for CORS, redirects, auth callbacks)
 appUrl: http://localhost
 
+# -- Annotations applied to every pod in the chart. Merged with per-component
+# `<component>.podAnnotations` (per-component wins on key conflict).
+podAnnotations: {}
+
 # =============================================================================
 # Frontend
 # =============================================================================
@@ -16,6 +20,8 @@ frontend:
   replicas: 1
   service:
     port: 80
+  podAnnotations: {}
+  resources: {}
 
 # =============================================================================
 # Marketing (Astro static site: landing page, blog, docs)
@@ -28,6 +34,8 @@ marketing:
   replicas: 1
   service:
     port: 80
+  podAnnotations: {}
+  resources: {}
 
 # =============================================================================
 # Backend
@@ -59,6 +67,8 @@ backend:
     mistralApiKeyBase64: ""
     thunderboltInferenceApiKeyBase64: ""
     exaApiKeyBase64: ""
+  podAnnotations: {}
+  resources: {}
 
 # =============================================================================
 # PostgreSQL
@@ -73,6 +83,8 @@ postgres:
     database: postgres
     # -- Base64-encoded password (default: "postgres")
     passwordBase64: cG9zdGdyZXM=
+  podAnnotations: {}
+  resources: {}
 
 # =============================================================================
 # PowerSync
@@ -93,6 +105,8 @@ powersync:
   db:
     # -- Base64-encoded powersync_role database password (default: "myhighlyrandompassword")
     passwordBase64: bXloaWdobHlyYW5kb21wYXNzd29yZA==
+  podAnnotations: {}
+  resources: {}
 
 # =============================================================================
 # Keycloak (OIDC Identity Provider)
@@ -111,6 +125,8 @@ keycloak:
     clientId: thunderbolt-app
     # -- Base64-encoded client secret (default: "thunderbolt-enterprise-secret")
     clientSecretBase64: dGh1bmRlcmJvbHQtZW50ZXJwcmlzZS1zZWNyZXQ=
+  podAnnotations: {}
+  resources: {}
 
 # =============================================================================
 # Ingress

@@ -25,6 +25,11 @@ spec:
     metadata:
       labels:
         app: keycloak
+      {{- $podAnnotations := merge (deepCopy (.Values.keycloak.podAnnotations | default dict)) (.Values.podAnnotations | default dict) }}
+      {{- if $podAnnotations }}
+      annotations:
+        {{- toYaml $podAnnotations | nindent 8 }}
+      {{- end }}
     spec:
       {{- include "thunderbolt.imagePullSecrets" . | nindent 6 }}
       containers:
@@ -47,6 +52,10 @@ spec:
           volumeMounts:
             - name: realm
               mountPath: /opt/keycloak/data/import
+          {{- with .Values.keycloak.resources }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
           readinessProbe:
             tcpSocket:
               port: 8080

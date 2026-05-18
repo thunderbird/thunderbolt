@@ -25,6 +25,11 @@ spec:
     metadata:
       labels:
         app: backend
+      {{- $podAnnotations := merge (deepCopy (.Values.backend.podAnnotations | default dict)) (.Values.podAnnotations | default dict) }}
+      {{- if $podAnnotations }}
+      annotations:
+        {{- toYaml $podAnnotations | nindent 8 }}
+      {{- end }}
     spec:
       {{- include "thunderbolt.imagePullSecrets" . | nindent 6 }}
       containers:
@@ -119,6 +124,10 @@ spec:
                 secretKeyRef:
                   name: thunderbolt-secrets
                   key: exa-api-key
+          {{- with .Values.backend.resources }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
           readinessProbe:
             httpGet:
               path: /v1/health

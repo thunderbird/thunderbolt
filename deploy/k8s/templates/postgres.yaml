@@ -27,6 +27,11 @@ spec:
     metadata:
       labels:
         app: postgres
+      {{- $podAnnotations := merge (deepCopy (.Values.postgres.podAnnotations | default dict)) (.Values.podAnnotations | default dict) }}
+      {{- if $podAnnotations }}
+      annotations:
+        {{- toYaml $podAnnotations | nindent 8 }}
+      {{- end }}
     spec:
       {{- include "thunderbolt.imagePullSecrets" . | nindent 6 }}
       containers:
@@ -57,6 +62,10 @@ spec:
               mountPath: /var/lib/postgresql/data
             - name: init-scripts
               mountPath: /docker-entrypoint-initdb.d
+          {{- with .Values.postgres.resources }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
           readinessProbe:
             exec:
               command: ["pg_isready", "-U", {{ .Values.postgres.credentials.user | quote }}]

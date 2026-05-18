@@ -358,6 +358,10 @@ See `deploy/k8s/values.yaml` for all configurable values. Key ones:
 | `ingress.className` | `nginx`            | Ingress class                                |
 | `ingress.host`      | `""`               | Set for production (empty = default rule)    |
 
+### Known caveats
+
+- **PowerSync storage on RDS Postgres 17.** PowerSync 1.20.5 fails opaquely inside `PostgresLockManager.init` when its internal storage points at an RDS-managed Postgres 17 instance — the underlying `pgwire` 0.8.1 client swallows the actual server-side error. The same DDL succeeds via `psql` against the same database, so it's not a privilege issue. Workaround: keep PowerSync's storage off RDS (use the in-cluster Postgres StatefulSet, an unmanaged Postgres elsewhere, or MongoDB storage) until PowerSync ships a fix. The app's Postgres connection (read/write + logical replication) is unaffected.
+
 ---
 
 ## 3. AWS with Pulumi

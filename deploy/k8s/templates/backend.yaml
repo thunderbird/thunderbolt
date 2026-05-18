@@ -49,8 +49,15 @@ spec:
               value: {{ .Values.backend.env.waitlistEnabled | quote }}
             - name: DATABASE_DRIVER
               value: {{ .Values.backend.env.databaseDriver }}
+            # POSTGRES_PASSWORD must appear before DATABASE_URL so the
+            # `$(POSTGRES_PASSWORD)` k8s env-var expansion resolves.
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: thunderbolt-secrets
+                  key: postgres-password
             - name: DATABASE_URL
-              value: "postgresql://{{ .Values.postgres.credentials.user }}:{{ .Values.postgres.credentials.passwordBase64 | b64dec }}@postgres:5432/{{ .Values.postgres.credentials.database }}"
+              value: "postgresql://{{ .Values.postgres.credentials.user }}:$(POSTGRES_PASSWORD)@postgres:5432/{{ .Values.postgres.credentials.database }}"
             # OIDC_ISSUER must equal what Keycloak puts in the `iss` claim of issued tokens —
             # i.e. the browser-facing URL. The backend reaches Keycloak in-cluster via OIDC_DISCOVERY_URL.
             - name: OIDC_ISSUER

@@ -25,11 +25,7 @@ spec:
     metadata:
       labels:
         app: marketing
-      {{- $podAnnotations := merge (deepCopy (.Values.marketing.podAnnotations | default dict)) (.Values.podAnnotations | default dict) }}
-      {{- if $podAnnotations }}
-      annotations:
-        {{- toYaml $podAnnotations | nindent 8 }}
-      {{- end }}
+      {{- include "thunderbolt.podAnnotations" (dict "component" .Values.marketing "root" .) | nindent 6 }}
     spec:
       {{- include "thunderbolt.imagePullSecrets" . | nindent 6 }}
       containers:
@@ -38,10 +34,7 @@ spec:
           imagePullPolicy: {{ .Values.marketing.image.pullPolicy }}
           ports:
             - containerPort: 80
-          {{- with .Values.marketing.resources }}
-          resources:
-            {{- toYaml . | nindent 12 }}
-          {{- end }}
+          {{- include "thunderbolt.resources" .Values.marketing.resources | nindent 10 }}
           readinessProbe:
             httpGet:
               path: /

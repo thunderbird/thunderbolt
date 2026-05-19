@@ -9,6 +9,7 @@
     "@pulumi/cloudflare": "^6.14.0",
     "@pulumi/docker-build": "^0.0.15",
     "@pulumi/eks": "^4.0.0",
+    "@pulumi/keycloak": "^6.10.1",
     "@pulumi/kubernetes": "^4.0.0",
     "@pulumi/pulumi": "^3.0.0",
     "@pulumi/random": "^4.19.2"

@@ -39,16 +39,6 @@ on:
         type: string
         default: 'powersync.shared.preview.thunderbolt.io'
         required: true
-      pr_api_host_pattern:
-        description: 'Wildcard pattern for per-PR API hostnames (used in Keycloak realm OIDC client redirect URIs)'
-        type: string
-        default: 'api-pr-*.preview.thunderbolt.io'
-        required: true
-      pr_app_host_pattern:
-        description: 'Wildcard pattern for per-PR app hostnames (used in Keycloak realm webOrigins)'
-        type: string
-        default: 'app-pr-*.preview.thunderbolt.io'
-        required: true
       region:
         description: 'AWS region'
         type: choice
@@ -113,8 +103,6 @@ jobs:
           INPUT_VERSION: ${{ steps.version.outputs.version }}
           INPUT_AUTH_HOSTNAME: ${{ inputs.auth_hostname || 'auth.shared.preview.thunderbolt.io' }}
           INPUT_POWERSYNC_HOSTNAME: ${{ inputs.powersync_hostname || 'powersync.shared.preview.thunderbolt.io' }}
-          INPUT_PR_API_HOST_PATTERN: ${{ inputs.pr_api_host_pattern || 'api-pr-*.preview.thunderbolt.io' }}
-          INPUT_PR_APP_HOST_PATTERN: ${{ inputs.pr_app_host_pattern || 'app-pr-*.preview.thunderbolt.io' }}
           INPUT_GHCR_PAT: ${{ secrets.GHCR_PAT }}
           INPUT_CLOUDFLARE_ZONE_ID: ${{ vars.CLOUDFLARE_ZONE_ID }}
           INPUT_CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
@@ -127,8 +115,6 @@ jobs:
           pulumi config set version "$INPUT_VERSION" -s "$INPUT_STACK_NAME" --non-interactive
           pulumi config set authHostname "$INPUT_AUTH_HOSTNAME" -s "$INPUT_STACK_NAME" --non-interactive
           pulumi config set powersyncHostname "$INPUT_POWERSYNC_HOSTNAME" -s "$INPUT_STACK_NAME" --non-interactive
-          pulumi config set prApiHostPattern "$INPUT_PR_API_HOST_PATTERN" -s "$INPUT_STACK_NAME" --non-interactive
-          pulumi config set prAppHostPattern "$INPUT_PR_APP_HOST_PATTERN" -s "$INPUT_STACK_NAME" --non-interactive
 
           if [ -n "$INPUT_GHCR_PAT" ]; then
             pulumi config set --secret ghcrToken "$INPUT_GHCR_PAT" -s "$INPUT_STACK_NAME" --non-interactive

@@ -13,7 +13,7 @@ import { getDb } from '@/db/database'
 import { chatThreadsTable } from '@/db/tables'
 import { v7 as uuidv7 } from 'uuid'
 import { saveMessagesWithContextUpdate, getMessage } from '@/dal/chat-messages'
-import { updateSettings } from '@/dal/settings'
+import { saveIntegrationCredentials } from '@/dal'
 import type { ThunderboltUIMessage } from '@/types'
 import { getClock } from '@/testing-library'
 
@@ -91,10 +91,7 @@ describe('useHandleIntegrationCompletion', () => {
       triggerData: null,
     })
 
-    await updateSettings(getDb(), {
-      integrations_google_credentials: '',
-      integrations_microsoft_credentials: '',
-    })
+    // No integration credentials — local-only table is empty by default
 
     const addEventListenerSpy = spyOn(window, 'addEventListener')
 
@@ -123,10 +120,7 @@ describe('useHandleIntegrationCompletion', () => {
       triggerData: null,
     })
 
-    await updateSettings(getDb(), {
-      integrations_google_credentials: '',
-      integrations_microsoft_credentials: '',
-    })
+    // No integration credentials — local-only table is empty by default
 
     const removeEventListenerSpy = spyOn(window, 'removeEventListener')
 
@@ -158,10 +152,7 @@ describe('useHandleIntegrationCompletion', () => {
       triggerData: null,
     })
 
-    await updateSettings(getDb(), {
-      integrations_google_credentials: '',
-      integrations_microsoft_credentials: '',
-    })
+    // No integration credentials — local-only table is empty by default
 
     renderHook(() => useHandleIntegrationCompletion({ saveMessages: mockSaveMessages }), {
       wrapper: createQueryTestWrapper(),
@@ -182,10 +173,7 @@ describe('useHandleIntegrationCompletion', () => {
     // Use the real store and hydrate it with test data (id is null - no session created)
     resetStore()
 
-    await updateSettings(getDb(), {
-      integrations_google_credentials: '',
-      integrations_microsoft_credentials: '',
-    })
+    // No integration credentials — local-only table is empty by default
 
     renderHook(() => useHandleIntegrationCompletion({ saveMessages: mockSaveMessages }), {
       wrapper: createQueryTestWrapper(),
@@ -238,10 +226,7 @@ describe('useHandleIntegrationCompletion', () => {
       triggerData: null,
     })
 
-    await updateSettings(getDb(), {
-      integrations_google_credentials: JSON.stringify({ access_token: 'test_token' }),
-      integrations_microsoft_credentials: '',
-    })
+    await saveIntegrationCredentials(getDb(), 'google', { access_token: 'test_token' }, true)
 
     renderHook(() => useHandleIntegrationCompletion({ saveMessages: mockSaveMessages }), {
       wrapper: createQueryTestWrapper({
@@ -321,10 +306,7 @@ describe('useHandleIntegrationCompletion', () => {
       triggerData: null,
     })
 
-    await updateSettings(getDb(), {
-      integrations_google_credentials: JSON.stringify({ access_token: 'test_token' }),
-      integrations_microsoft_credentials: '',
-    })
+    await saveIntegrationCredentials(getDb(), 'google', { access_token: 'test_token' }, true)
 
     renderHook(() => useHandleIntegrationCompletion({ saveMessages: mockSaveMessages }), {
       wrapper: createQueryTestWrapper({
@@ -393,10 +375,7 @@ describe('useHandleIntegrationCompletion', () => {
     })
 
     // Start with no credentials
-    await updateSettings(getDb(), {
-      integrations_google_credentials: '',
-      integrations_microsoft_credentials: '',
-    })
+    // No integration credentials — local-only table is empty by default
 
     renderHook(() => useHandleIntegrationCompletion({ saveMessages: mockSaveMessages }), {
       wrapper: createQueryTestWrapper({
@@ -419,7 +398,7 @@ describe('useHandleIntegrationCompletion', () => {
     expect(mockSaveMessages).not.toHaveBeenCalled()
 
     // Now add credentials to simulate connection
-    await updateSettings(getDb(), { integrations_google_credentials: JSON.stringify({ access_token: 'test_token' }) })
+    await saveIntegrationCredentials(getDb(), 'google', { access_token: 'test_token' }, true)
 
     await act(async () => {
       await getClock().runAllAsync()
@@ -448,10 +427,7 @@ describe('useHandleIntegrationCompletion', () => {
       triggerData: null,
     })
 
-    await updateSettings(getDb(), {
-      integrations_google_credentials: JSON.stringify({ access_token: 'test_token' }),
-      integrations_microsoft_credentials: '',
-    })
+    await saveIntegrationCredentials(getDb(), 'google', { access_token: 'test_token' }, true)
 
     const originalWarn = console.warn
     const consoleWarnSpy = mock(() => {})
@@ -509,10 +485,7 @@ describe('useHandleIntegrationCompletion', () => {
       triggerData: null,
     })
 
-    await updateSettings(getDb(), {
-      integrations_google_credentials: JSON.stringify({ access_token: 'test_token' }),
-      integrations_microsoft_credentials: '',
-    })
+    await saveIntegrationCredentials(getDb(), 'google', { access_token: 'test_token' }, true)
 
     const originalWarn = console.warn
     const consoleWarnSpy = mock(() => {})
@@ -583,10 +556,7 @@ describe('useHandleIntegrationCompletion', () => {
         triggerData: null,
       })
 
-      await updateSettings(getDb(), {
-        integrations_google_credentials: JSON.stringify({ access_token: 'test_token' }),
-        integrations_microsoft_credentials: '',
-      })
+      await saveIntegrationCredentials(getDb(), 'google', { access_token: 'test_token' }, true)
 
       renderHook(() => useHandleIntegrationCompletion({ saveMessages: mockSaveMessages }), {
         wrapper: createQueryTestWrapper({

@@ -113,6 +113,13 @@ export const modelsSecretsTable = sqliteTable('models_secrets', {
   apiKey: text('api_key'),
 })
 
+/** Local-only table for integration credentials (Google, Microsoft OAuth tokens). Never synced via PowerSync. */
+export const integrationsSecretsTable = sqliteTable('integrations_secrets', {
+  provider: text('id').primaryKey(), // 'google' | 'microsoft'
+  credentials: text('credentials'), // JSON blob (OAuth tokens)
+  enabled: integer('enabled').default(0),
+})
+
 export const mcpServersTable = sqliteTable(
   'mcp_servers',
   {

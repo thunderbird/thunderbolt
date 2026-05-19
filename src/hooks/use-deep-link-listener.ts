@@ -2,9 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { useDatabase } from '@/contexts'
-import { getSettings } from '@/dal'
-import type { ReturnContext } from '@/lib/oauth-state'
+import { getOAuthState, type ReturnContext } from '@/lib/oauth-state'
 import { isTauri } from '@/lib/platform'
 import { getCurrent, onOpenUrl } from '@tauri-apps/plugin-deep-link'
 import { useEffect } from 'react'
@@ -99,7 +97,6 @@ type DeepLinkDependencies = {
   isTauri?: typeof isTauri
   getCurrent?: typeof getCurrent
   onOpenUrl?: typeof onOpenUrl
-  getSettings?: typeof getSettings
 }
 
 /**
@@ -110,7 +107,6 @@ type DeepLinkDependencies = {
  * @param dependencies Optional dependencies for testing (uses real implementations by default)
  */
 export const useDeepLinkListener = (handler?: DeepLinkHandler, dependencies?: DeepLinkDependencies) => {
-  const db = useDatabase()
   const navigate = useNavigate()
 
   // Use injected dependencies or fall back to real implementations
@@ -118,7 +114,6 @@ export const useDeepLinkListener = (handler?: DeepLinkHandler, dependencies?: De
     isTauri: checkIsTauri = isTauri,
     getCurrent: getCurrentUrls = getCurrent,
     onOpenUrl: listenToOpenUrl = onOpenUrl,
-    getSettings: getSettingsData = getSettings,
   } = dependencies || {}
 
   useEffect(() => {
@@ -151,9 +146,9 @@ export const useDeepLinkListener = (handler?: DeepLinkHandler, dependencies?: De
           // Handle OAuth callback deep links
           const oauthData = parseOAuthCallback(url)
           if (oauthData) {
-            // Get the return context from SQLite settings (where mobile flow stores it)
-            const settings = await getSettingsData(db, { oauth_return_context: String })
-            const target = determineNavigationTarget(settings.oauthReturnContext as ReturnContext | null, oauthData)
+            // Get the return context from oauth-state (where mobile flow stores it)
+            const oauthState = getOAuthState()
+            const target = determineNavigationTarget(oauthState.returnContext, oauthData)
 
             navigate(target.path, {
               state: { oauth: target.oauth },

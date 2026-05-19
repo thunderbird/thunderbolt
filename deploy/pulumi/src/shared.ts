@@ -55,17 +55,6 @@ export type SharedStackArgs = {
   keycloakAdminPassword: pulumi.Output<string>
   /** PowerSync JWT signing secret (per-PR backends sign with this; PowerSync verifies). */
   powersyncJwtSecret: pulumi.Output<string>
-  /**
-   * Wildcard hostname for per-PR API subdomains, e.g. `api-pr-*.preview.thunderbolt.io`.
-   * The shared Keycloak realm registers a single OIDC client whose `redirectUris`
-   * field uses this wildcard, so all per-PR backends share one client_id/secret
-   * but Keycloak validates the redirect target matches the wildcard pattern.
-   */
-  prApiHostPattern: pulumi.Input<string>
-  /** Wildcard hostname for per-PR app subdomains, e.g. `app-pr-*.preview.thunderbolt.io`. */
-  prAppHostPattern: pulumi.Input<string>
-  /** Shared OIDC client secret (random per shared-stack; used by all per-PR backends). */
-  oidcClientSecret: pulumi.Output<string>
 }
 
 /**
@@ -121,10 +110,22 @@ export type SharedStackOutputs = {
   powersyncJwtSecretArn: pulumi.Output<string>
   /** Per-PR backends fetch tokens from `${keycloakIssuerUrl}/.well-known/...`. */
   keycloakIssuerUrl: pulumi.Output<string>
-  /** OIDC client id all per-PR backends use against the shared Keycloak realm. */
-  oidcClientId: pulumi.Output<string>
-  /** Secrets Manager ARN holding the OIDC client secret for the above client. */
-  oidcClientSecretArn: pulumi.Output<string>
+  /**
+   * Base URL of the shared Keycloak (no realm suffix). Per-PR stacks point the
+   * `@pulumi/keycloak` provider at this URL to provision their own OIDC client.
+   */
+  keycloakUrl: pulumi.Output<string>
+  /** Realm where per-PR OIDC clients are created. */
+  keycloakRealm: pulumi.Output<string>
+  /** Admin username for the Keycloak admin API (master realm). */
+  keycloakAdminUsername: pulumi.Output<string>
+  /**
+   * Admin password for the Keycloak admin API. Exposed in plaintext through
+   * StackReference (encrypted at rest in Pulumi state) so per-PR stacks can
+   * construct the keycloak.Provider without a Secrets Manager round-trip at
+   * preview time. Same pattern as `postgresPassword`.
+   */
+  keycloakAdminPassword: pulumi.Output<string>
 
   // -- Shared AI provider secrets (same values across all per-PR stacks) --
   anthropicApiKeySecretArn: pulumi.Output<string>
@@ -360,14 +361,6 @@ export const createSharedStack = (args: SharedStackArgs): SharedStackOutputs => 
     secretString: args.powersyncJwtSecret,
   })
 
-  const oidcClientSecretSecret = new aws.secretsmanager.Secret(`${name}-oidc-client-secret`, {
-    tags: { Name: `${name}-oidc-client-secret` },
-  })
-  new aws.secretsmanager.SecretVersion(`${name}-oidc-client-secret-version`, {
-    secretId: oidcClientSecretSecret.id,
-    secretString: args.oidcClientSecret,
-  })
-
   // AI provider secrets — created in the shared stack so per-PR stacks just reference
   // them. Per-PR exec roles grant GetSecretValue against these ARNs (passed via
   // StackReference outputs).
@@ -515,11 +508,17 @@ export const createSharedStack = (args: SharedStackArgs): SharedStackOutputs => 
   }, { dependsOn: [listener] })
 
   // -------- 9. Keycloak ECS service --------
-  // The shared Keycloak imports the `thunderbolt` realm at boot. Per-PR backends
-  // each register a Keycloak OIDC client (via the @pulumi/keycloak provider in
-  // per-pr-stack.ts) with its own redirect URI matching the PR's `api-pr-<n>` host.
+  // The shared Keycloak imports the `thunderbolt` realm at boot. Per-PR stacks
+  // each register their own `keycloak.openid.Client` resource in `per-pr-stack.ts`
+  // — with `validRedirectUris` and `webOrigins` scoped to that PR's hostnames —
+  // because Keycloak's redirect URI matching only honors `*` as a path suffix
+  // (no hostname wildcards), so the previous wildcard `api-pr-*.…` redirect URI
+  // never matched any real PR host. The `thunderbolt-app` client baked into the
+  // realm import still exists but is unused for preview-pr traffic.
   const kcImage = `${imagePrefix}/thunderbolt-keycloak:${version}`
   const kcAuthUrl = pulumi.interpolate`https://${args.authHostname}`
+  const keycloakRealm = 'thunderbolt'
+  const keycloakAdminUsername = 'admin'
   const kcTaskDef = new aws.ecs.TaskDefinition(`${name}-kc-task`, {
     family: `${name}-keycloak`,
     requiresCompatibilities: ['FARGATE'],
@@ -535,24 +534,11 @@ export const createSharedStack = (args: SharedStackArgs): SharedStackOutputs => 
         essential: true,
         command: ['start-dev', '--import-realm'],
         environment: [
-          { name: 'KC_BOOTSTRAP_ADMIN_USERNAME', value: 'admin' },
+          { name: 'KC_BOOTSTRAP_ADMIN_USERNAME', value: keycloakAdminUsername },
           { name: 'KC_BOOTSTRAP_ADMIN_PASSWORD', value: args.keycloakAdminPassword },
           { name: 'KC_HTTP_PORT', value: '8080' },
           { name: 'KC_HOSTNAME', value: kcAuthUrl },
           { name: 'KC_PROXY_HEADERS', value: 'xforwarded' },
-          // The shared Keycloak realm registers ONE `thunderbolt-app` client. Its
-          // redirectUris / webOrigins use wildcards (`api-pr-*.…`) so every per-PR
-          // backend can use the same client_id + client_secret without per-PR realm
-          // mutation. Tradeoff vs. dynamic per-PR clients: less isolation between PRs,
-          // but no Keycloak admin API plumbing needed in per-pr-stack.ts.
-          { name: 'OIDC_REDIRECT_URI', value: pulumi.interpolate`https://${args.prApiHostPattern}/v1/api/auth/sso/callback/sso` },
-          { name: 'OIDC_WEB_ORIGIN', value: pulumi.interpolate`https://${args.prAppHostPattern}` },
-          // The realm import substitutes ${OIDC_CLIENT_SECRET} into the
-          // `thunderbolt-app` client's `secret` field. Without this, Keycloak would
-          // fall back to the realm file's built-in default and per-PR backends —
-          // which receive the random secret via `oidcClientSecretArn` — would fail
-          // OIDC token exchange.
-          { name: 'OIDC_CLIENT_SECRET', value: args.oidcClientSecret },
         ],
         portMappings: [{ containerPort: 8080 }],
         logConfiguration: logConfig('keycloak'),
@@ -603,9 +589,11 @@ export const createSharedStack = (args: SharedStackArgs): SharedStackOutputs => 
     powersyncHost: pulumi.output(`powersync.${NAMESPACE_DOMAIN}`),
     powersyncPublicUrl: pulumi.interpolate`https://${args.powersyncHostname}`,
     powersyncJwtSecretArn: powersyncJwtSecretSecret.arn,
-    keycloakIssuerUrl: pulumi.interpolate`${kcAuthUrl}/realms/thunderbolt`,
-    oidcClientId: pulumi.output('thunderbolt-app'),
-    oidcClientSecretArn: oidcClientSecretSecret.arn,
+    keycloakIssuerUrl: pulumi.interpolate`${kcAuthUrl}/realms/${keycloakRealm}`,
+    keycloakUrl: kcAuthUrl,
+    keycloakRealm: pulumi.output(keycloakRealm),
+    keycloakAdminUsername: pulumi.output(keycloakAdminUsername),
+    keycloakAdminPassword: args.keycloakAdminPassword,
 
     anthropicApiKeySecretArn: aiSecretArns.anthropicApiKey,
     fireworksApiKeySecretArn: aiSecretArns.fireworksApiKey,
@@ -649,8 +637,10 @@ export const loadSharedStackOutputs = (ref: pulumi.StackReference): SharedStackO
     powersyncPublicUrl: get<string>('powersyncPublicUrl'),
     powersyncJwtSecretArn: get<string>('powersyncJwtSecretArn'),
     keycloakIssuerUrl: get<string>('keycloakIssuerUrl'),
-    oidcClientId: get<string>('oidcClientId'),
-    oidcClientSecretArn: get<string>('oidcClientSecretArn'),
+    keycloakUrl: get<string>('keycloakUrl'),
+    keycloakRealm: get<string>('keycloakRealm'),
+    keycloakAdminUsername: get<string>('keycloakAdminUsername'),
+    keycloakAdminPassword: get<string>('keycloakAdminPassword'),
     anthropicApiKeySecretArn: get<string>('anthropicApiKeySecretArn'),
     fireworksApiKeySecretArn: get<string>('fireworksApiKeySecretArn'),
     mistralApiKeySecretArn: get<string>('mistralApiKeySecretArn'),

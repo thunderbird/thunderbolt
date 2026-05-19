@@ -58,9 +58,6 @@ if (isSharedStack) {
   const powersyncJwtSecret =
     config.getSecret('powersyncJwtSecret') ??
     new random.RandomPassword(`${name}-powersync-jwt-secret`, { length: 64, special: false }).result
-  const oidcClientSecret =
-    config.getSecret('oidcClientSecret') ??
-    new random.RandomPassword(`${name}-oidc-client-secret`, { length: 48, special: false }).result
 
   const outputs = createSharedStack({
     name,
@@ -69,8 +66,6 @@ if (isSharedStack) {
     ghcrToken: config.getSecret('ghcrToken'),
     authHostname: config.require('authHostname'),
     powersyncHostname: config.require('powersyncHostname'),
-    prApiHostPattern: config.require('prApiHostPattern'),
-    prAppHostPattern: config.require('prAppHostPattern'),
     cloudflareZoneId: config.get('cloudflareZoneId'),
     cloudflareApiToken: config.getSecret('cloudflareApiToken'),
     aiSecrets: {
@@ -84,7 +79,6 @@ if (isSharedStack) {
     powersyncDbPassword,
     keycloakAdminPassword,
     powersyncJwtSecret,
-    oidcClientSecret,
   })
 
   // The full shape goes into stack outputs so per-PR StackReference reads work.

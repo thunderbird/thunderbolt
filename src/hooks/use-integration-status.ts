@@ -3,12 +3,16 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { useDatabase } from '@/contexts'
-import { getSettings } from '@/dal'
+import { getIntegrationStatus } from '@/dal'
 import { useQuery } from '@tanstack/react-query'
 
 export type IntegrationStatus = {
   googleConnected: boolean
+  googleEnabled: boolean
+  googleEmail: string | null
   microsoftConnected: boolean
+  microsoftEnabled: boolean
+  microsoftEmail: string | null
   availableProviders: {
     google: boolean
     microsoft: boolean
@@ -25,20 +29,13 @@ export const useIntegrationStatus = (): {
   const query = useQuery({
     queryKey: ['integrationStatus'],
     queryFn: async (): Promise<IntegrationStatus> => {
-      const { integrationsGoogleCredentials, integrationsMicrosoftCredentials } = await getSettings(db, {
-        integrations_google_credentials: '',
-        integrations_microsoft_credentials: '',
-      })
-
-      const googleConnected = !!integrationsGoogleCredentials && integrationsGoogleCredentials !== ''
-      const microsoftConnected = !!integrationsMicrosoftCredentials && integrationsMicrosoftCredentials !== ''
+      const status = await getIntegrationStatus(db)
 
       return {
-        googleConnected,
-        microsoftConnected,
+        ...status,
         availableProviders: {
-          google: googleConnected,
-          microsoft: microsoftConnected,
+          google: status.googleConnected,
+          microsoft: status.microsoftConnected,
         },
       }
     },

@@ -118,9 +118,13 @@ on the shared model.
      bastion infra.
   3. Lambda triggered by Pulumi.
   Phase 3 will pick option 1 unless we hit issues.
-- **Per-PR Keycloak OIDC client.** Use `@pulumi/keycloak` provider against the
+- ~~**Per-PR Keycloak OIDC client.** Use `@pulumi/keycloak` provider against the
   shared Keycloak admin API. Provider needs admin creds — shared stack exports
-  them. Resource: `keycloak.openid.Client`.
+  them. Resource: `keycloak.openid.Client`.~~ Done — `per-pr-stack.ts` provisions
+  `thunderbolt-app-<stack>` with exact-match redirect/origin URIs. Required
+  because Keycloak only honors `*` as a trailing path wildcard (no hostname
+  wildcards), so the prior shared-client + `api-pr-*.…` redirect URI approach
+  never matched any real PR.
 - **PowerSync wildcard JWT issuer.** Per-PR backends sign JWTs with the shared
   PowerSync JWT secret. PowerSync verifies signatures regardless of which PR
   issued them. ✓ no per-PR config needed.

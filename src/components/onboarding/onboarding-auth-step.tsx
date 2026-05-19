@@ -6,10 +6,11 @@ import { ConnectProviderButton } from '@/components/connect-provider-button'
 import { GoogleLogo } from '@/components/ui/google-logo'
 import { MicrosoftLogo } from '@/components/ui/microsoft-logo'
 import { useDatabase } from '@/contexts'
-import { updateSettings } from '@/dal'
+import { deleteIntegrationCredentials } from '@/dal'
 import { useOAuthConnect } from '@/hooks/use-oauth-connect'
 import type { UseOAuthConnectResult } from '@/hooks/use-oauth-connect'
 import { type OAuthProvider } from '@/lib/auth'
+import { useQueryClient } from '@tanstack/react-query'
 import { Calendar, File, Mail } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router'
@@ -35,6 +36,7 @@ export const OnboardingAuthStep = ({
   const db = useDatabase()
   const location = useLocation()
   const navigate = useNavigate()
+  const queryClient = useQueryClient()
 
   // Determine which provider to use for this step (first in list)
   const provider = providers[0]
@@ -84,10 +86,8 @@ export const OnboardingAuthStep = ({
 
   const handleDisconnect = async () => {
     try {
-      await updateSettings(db, {
-        [`integrations_${provider}_credentials`]: '',
-        [`integrations_${provider}_is_enabled`]: 'false',
-      })
+      await deleteIntegrationCredentials(db, provider)
+      await queryClient.invalidateQueries({ queryKey: ['integrationStatus'] })
       onConnectionChange(false)
     } catch (error) {
       console.error('Failed to disconnect:', error)

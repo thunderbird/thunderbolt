@@ -29,7 +29,7 @@ Both flows rely on the same **graceful reset**: disable sync, clear localStorage
 3. Backend sets `revoked_at` on that device row (soft revoke). PowerSync syncs the updated `devices` table to all clients.
 4. On the **revoked device**:
    - **Immediate**: The app watches the current device’s row via React Query (`getDevice(deviceId)`). When the synced row has `revoked_at` set, the app runs the same reset flow.
-   - **On token refresh**: When PowerSync refreshes the token, the backend returns **403 Forbidden** with `code: 'deviceDisconnected'`. The connector dispatches the same “credentials invalid” event and the app resets.
+   - **On token refresh**: When PowerSync refreshes the token, the backend returns **403 Forbidden** with `code: 'DEVICE_DISCONNECTED'`. The connector dispatches the same “credentials invalid” event and the app resets.
 
 So revoke is visible either as soon as the `devices` row syncs or when the next token refresh returns 403.
 
@@ -39,7 +39,7 @@ So revoke is visible either as soon as the `devices` row syncs or when the next 
 
 - **Authenticated (session)**  
   If the request includes `X-Device-ID`:
-  - The backend checks the `devices` row for that id. If `revoked_at` is set, it returns **403** with `{ code: 'deviceDisconnected' }` and does not issue a token.
+  - The backend checks the `devices` row for that id. If `revoked_at` is set, it returns **403** with `{ code: 'DEVICE_DISCONNECTED' }` and does not issue a token.
   - Otherwise it issues a PowerSync JWT and upserts the device (id, user_id, name, last_seen, created_at).
 - **Bearer token only (e.g. PowerSync credential refresh)**  
   Backend resolves the session from the Bearer token, then looks up the user:
@@ -49,7 +49,7 @@ So revoke is visible either as soon as the `devices` row syncs or when the next 
 So:
 
 - **410** = account deleted (client should reset).
-- **403** with `deviceDisconnected` = this device was revoked (client should reset).
+- **403** with `DEVICE_DISCONNECTED` = this device was revoked (client should reset).
 - **401** = generic auth failure (e.g. token refresh in the future, not necessarily a full reset).
 
 ### Revoke Device Endpoint (`POST /v1/account/devices/:id/revoke`)
@@ -79,7 +79,7 @@ This is triggered in two ways:
 1. **Event `powersyncCredentialsInvalid`**  
    The PowerSync connector dispatches this when:
    - The token request returns **410** (account deleted), or
-   - The token request returns **403** with body `code: 'deviceDisconnected'` (and a token was sent).  
+   - The token request returns **403** with body `code: 'DEVICE_DISCONNECTED'` (and a token was sent).  
      So any token refresh that gets 410 or 403 (revoked) leads to reset.
 
 2. **Devices table (current device revoked)**  

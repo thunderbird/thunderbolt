@@ -9,7 +9,8 @@ import { devicesTable, mcpServersTable, modelsTable, promptsTable, settingsTable
 import { createTestDb } from '@/test-utils/db'
 import { createHmac } from 'crypto'
 import { eq } from 'drizzle-orm'
-import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'bun:test'
+import { clearSettingsCache } from '@/config/settings'
 import { Elysia } from 'elysia'
 import { createPowerSyncRoutes } from './powersync'
 
@@ -51,6 +52,7 @@ const powersyncSettings: Settings = {
   powersyncJwtSecret: 'test-jwt-secret-min-32-chars-long',
   powersyncTokenExpirySeconds: 3600,
   authMode: 'consumer' as const,
+  authAllowAnonymous: false,
   oidcClientId: '',
   oidcClientSecret: '',
   oidcIssuer: '',
@@ -200,7 +202,7 @@ describe('PowerSync API', () => {
       )
       expect(response.status).toBe(403)
       const data = await response.json()
-      expect(data).toEqual({ code: 'deviceDisconnected' })
+      expect(data).toEqual({ code: 'DEVICE_DISCONNECTED' })
     })
 
     it('returns 409 when device id belongs to another user', async () => {
@@ -242,7 +244,7 @@ describe('PowerSync API', () => {
       )
       expect(response.status).toBe(409)
       const data = await response.json()
-      expect(data).toEqual({ code: 'deviceIdTaken' })
+      expect(data).toEqual({ code: 'DEVICE_ID_TAKEN' })
     })
 
     it('returns 403 when device does not exist in the database', async () => {
@@ -278,7 +280,7 @@ describe('PowerSync API', () => {
       )
       expect(response.status).toBe(403)
       const data = await response.json()
-      expect(data).toEqual({ code: 'deviceNotTrusted' })
+      expect(data).toEqual({ code: 'DEVICE_NOT_TRUSTED' })
     })
 
     it('returns 403 when device is untrusted (pending approval)', async () => {
@@ -323,7 +325,7 @@ describe('PowerSync API', () => {
       )
       expect(response.status).toBe(403)
       const data = await response.json()
-      expect(data).toEqual({ code: 'deviceNotTrusted' })
+      expect(data).toEqual({ code: 'DEVICE_NOT_TRUSTED' })
     })
 
     it('returns 400 when x-device-id is missing', async () => {
@@ -356,7 +358,7 @@ describe('PowerSync API', () => {
       )
       expect(response.status).toBe(400)
       const data = await response.json()
-      expect(data).toEqual({ code: 'deviceIdRequired' })
+      expect(data).toEqual({ code: 'DEVICE_ID_REQUIRED' })
     })
 
     it('returns 400 when x-device-id is empty', async () => {
@@ -392,7 +394,7 @@ describe('PowerSync API', () => {
       )
       expect(response.status).toBe(400)
       const data = await response.json()
-      expect(data).toEqual({ code: 'deviceIdRequired' })
+      expect(data).toEqual({ code: 'DEVICE_ID_REQUIRED' })
     })
 
     it('revoked device cannot bypass by omitting x-device-id', async () => {
@@ -435,7 +437,7 @@ describe('PowerSync API', () => {
       )
       expect(response.status).toBe(400)
       const data = await response.json()
-      expect(data).toEqual({ code: 'deviceIdRequired' })
+      expect(data).toEqual({ code: 'DEVICE_ID_REQUIRED' })
     })
 
     it('rejects token request for unregistered device ID', async () => {
@@ -472,7 +474,7 @@ describe('PowerSync API', () => {
       )
       expect(response.status).toBe(403)
       const data = await response.json()
-      expect(data).toEqual({ code: 'deviceNotTrusted' })
+      expect(data).toEqual({ code: 'DEVICE_NOT_TRUSTED' })
     })
 
     it('revoked device cannot bypass by using a new unregistered device ID', async () => {
@@ -519,7 +521,7 @@ describe('PowerSync API', () => {
         }),
       )
       expect(revokedResponse.status).toBe(403)
-      expect(await revokedResponse.json()).toEqual({ code: 'deviceDisconnected' })
+      expect(await revokedResponse.json()).toEqual({ code: 'DEVICE_DISCONNECTED' })
 
       // Attempt bypass: use a NEW device ID that doesn't exist in the DB
       const bypassResponse = await app.handle(
@@ -532,7 +534,7 @@ describe('PowerSync API', () => {
       )
       // Must NOT succeed — unknown device IDs should be rejected
       expect(bypassResponse.status).toBe(403)
-      expect(await bypassResponse.json()).toEqual({ code: 'deviceNotTrusted' })
+      expect(await bypassResponse.json()).toEqual({ code: 'DEVICE_NOT_TRUSTED' })
     })
 
     it('returns token and powerSyncUrl when authenticated via session with x-device-id', async () => {
@@ -828,7 +830,7 @@ describe('PowerSync API', () => {
       )
       expect(response.status).toBe(400)
       const data = (await response.json()) as { code: string }
-      expect(data.code).toBe('deviceIdRequired')
+      expect(data.code).toBe('DEVICE_ID_REQUIRED')
     })
 
     it('returns 403 when device is revoked', async () => {
@@ -874,7 +876,7 @@ describe('PowerSync API', () => {
       )
       expect(response.status).toBe(403)
       const data = (await response.json()) as { code: string }
-      expect(data.code).toBe('deviceDisconnected')
+      expect(data.code).toBe('DEVICE_DISCONNECTED')
     })
 
     it('rejects upload for unregistered device ID', async () => {
@@ -912,7 +914,7 @@ describe('PowerSync API', () => {
       )
       expect(response.status).toBe(403)
       const data = (await response.json()) as { code: string }
-      expect(data.code).toBe('deviceNotTrusted')
+      expect(data.code).toBe('DEVICE_NOT_TRUSTED')
     })
 
     it('returns 422 when body schema is invalid (operations not an array)', async () => {
@@ -2011,7 +2013,7 @@ describe('PowerSync cross-origin injection protection', () => {
       )
       expect(response.status).toBe(403)
       const data = (await response.json()) as { code: string }
-      expect(data.code).toBe('originNotAllowed')
+      expect(data.code).toBe('ORIGIN_NOT_ALLOWED')
 
       // Verify nothing was written
       const rows = await db.select().from(settingsTable).where(eq(settingsTable.key, 'cloud_url'))
@@ -2184,7 +2186,7 @@ describe('PowerSync cross-origin injection protection', () => {
       )
       expect(response.status).toBe(403)
       const data = (await response.json()) as { code: string }
-      expect(data.code).toBe('originNotAllowed')
+      expect(data.code).toBe('ORIGIN_NOT_ALLOWED')
     })
 
     it('allows token request from legitimate origin', async () => {
@@ -2420,7 +2422,7 @@ describe('PowerSync API (E2EE disabled)', () => {
       }),
     )
     expect(response.status).toBe(403)
-    expect(await response.json()).toEqual({ code: 'deviceNotTrusted' })
+    expect(await response.json()).toEqual({ code: 'DEVICE_NOT_TRUSTED' })
   })
 
   it('still rejects revoked device when E2EE is disabled', async () => {
@@ -2466,7 +2468,7 @@ describe('PowerSync API (E2EE disabled)', () => {
     )
     expect(response.status).toBe(403)
     const data = await response.json()
-    expect(data).toEqual({ code: 'deviceDisconnected' })
+    expect(data).toEqual({ code: 'DEVICE_DISCONNECTED' })
   })
 })
 
@@ -2474,6 +2476,23 @@ describe('PowerSync API — anonymous sync guard', () => {
   let db: Awaited<ReturnType<typeof createTestDb>>['db']
   let cleanup: () => Promise<void>
   let auth: Awaited<ReturnType<typeof createBetterAuthPlugin>>['auth']
+
+  // The anonymous() Better Auth plugin is gated by AUTH_ALLOW_ANONYMOUS — enable it
+  // for this suite so signInAnonymous() routes exist, and restore the env on teardown.
+  let savedAllowAnonymous: string | undefined
+  beforeAll(() => {
+    savedAllowAnonymous = process.env.AUTH_ALLOW_ANONYMOUS
+    process.env.AUTH_ALLOW_ANONYMOUS = 'true'
+    clearSettingsCache()
+  })
+  afterAll(() => {
+    if (savedAllowAnonymous === undefined) {
+      delete process.env.AUTH_ALLOW_ANONYMOUS
+    } else {
+      process.env.AUTH_ALLOW_ANONYMOUS = savedAllowAnonymous
+    }
+    clearSettingsCache()
+  })
 
   beforeEach(async () => {
     const testEnv = await createTestDb()
@@ -2555,7 +2574,7 @@ describe('PowerSync API — anonymous sync guard', () => {
     return { userId, signedBearer: signToken(sessionToken), deviceId }
   }
 
-  it('GET /powersync/token Path 2 (Bearer only) — anonymous user → 403 + code anonymousSyncForbidden', async () => {
+  it('GET /powersync/token Path 2 (Bearer only) — anonymous user → 403 + code ANONYMOUS_SYNC_FORBIDDEN', async () => {
     const app = new Elysia().use(createPowerSyncRoutes(auth, powersyncSettings, db)) as unknown as Elysia
 
     const { signedBearer } = await seedAnonUser('path2')
@@ -2570,10 +2589,10 @@ describe('PowerSync API — anonymous sync guard', () => {
     )
     expect(response.status).toBe(403)
     const data = await response.json()
-    expect(data).toEqual({ error: 'Forbidden', code: 'anonymousSyncForbidden' })
+    expect(data).toEqual({ error: 'Forbidden', code: 'ANONYMOUS_SYNC_FORBIDDEN' })
   })
 
-  it('GET /powersync/token Path 1 (session) — anonymous user → 403 + code anonymousSyncForbidden', async () => {
+  it('GET /powersync/token Path 1 (session) — anonymous user → 403 + code ANONYMOUS_SYNC_FORBIDDEN', async () => {
     const app = new Elysia().use(createPowerSyncRoutes(auth, powersyncSettings, db)) as unknown as Elysia
 
     // Use Better Auth's real anonymous sign-in flow + cookie so the request goes through Path 1
@@ -2593,7 +2612,7 @@ describe('PowerSync API — anonymous sync guard', () => {
     )
     expect(response.status).toBe(403)
     const data = await response.json()
-    expect(data).toEqual({ error: 'Forbidden', code: 'anonymousSyncForbidden' })
+    expect(data).toEqual({ error: 'Forbidden', code: 'ANONYMOUS_SYNC_FORBIDDEN' })
   })
 
   it('GET /powersync/token Path 2 (Bearer only) — non-anonymous user → 200 (regression)', async () => {
@@ -2617,7 +2636,7 @@ describe('PowerSync API — anonymous sync guard', () => {
     expect(data).toHaveProperty('powerSyncUrl')
   })
 
-  it('PUT /powersync/upload — anonymous user → 403 + code anonymousSyncForbidden', async () => {
+  it('PUT /powersync/upload — anonymous user → 403 + code ANONYMOUS_SYNC_FORBIDDEN', async () => {
     const app = new Elysia().use(createPowerSyncRoutes(auth, powersyncSettings, db)) as unknown as Elysia
 
     const { userId, signedBearer } = await seedAnonUser('upload')
@@ -2644,7 +2663,7 @@ describe('PowerSync API — anonymous sync guard', () => {
     )
     expect(response.status).toBe(403)
     const data = await response.json()
-    expect(data).toEqual({ error: 'Forbidden', code: 'anonymousSyncForbidden' })
+    expect(data).toEqual({ error: 'Forbidden', code: 'ANONYMOUS_SYNC_FORBIDDEN' })
   })
 
   it('PUT /powersync/upload — non-anonymous user → 200 (regression)', async () => {

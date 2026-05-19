@@ -10,10 +10,10 @@ import { sanitizeErrorForTracking, trackSyncEvent } from './sync-tracker'
 
 /**
  * Dispatched when the backend rejects credentials. The detail.reason discriminates handling:
- * - 410 (account deleted), 409 + deviceIdTaken, 400 + deviceIdRequired → full reset
- * - 403 + deviceDisconnected → open revoked-device modal, preserve local data
+ * - 410 (account deleted), 409 + DEVICE_ID_TAKEN, 400 + DEVICE_ID_REQUIRED → full reset
+ * - 403 + DEVICE_DISCONNECTED → open revoked-device modal, preserve local data
  * - 401 (session expired) → open sign-in modal, preserve local data
- * - 403 + anonymousSyncForbidden → backend says this session may not sync (e.g. anonymous user);
+ * - 403 + ANONYMOUS_SYNC_FORBIDDEN → backend says this session may not sync (e.g. anonymous user);
  *   we disable local sync via setSyncEnabled(false)
  */
 export const powersyncCredentialsInvalid = 'powersync_credentials_invalid'
@@ -42,16 +42,16 @@ const getCredentialsInvalidReason = (status: number, body: ErrorBody): Credentia
   if (status === 410) {
     return 'account_deleted'
   }
-  if (status === 403 && body.code === 'deviceDisconnected') {
+  if (status === 403 && body.code === 'DEVICE_DISCONNECTED') {
     return 'device_revoked'
   }
-  if (status === 403 && body.code === 'anonymousSyncForbidden') {
+  if (status === 403 && body.code === 'ANONYMOUS_SYNC_FORBIDDEN') {
     return 'sync_not_permitted'
   }
-  if (status === 409 && body.code === 'deviceIdTaken') {
+  if (status === 409 && body.code === 'DEVICE_ID_TAKEN') {
     return 'device_id_taken'
   }
-  if (status === 400 && body.code === 'deviceIdRequired') {
+  if (status === 400 && body.code === 'DEVICE_ID_REQUIRED') {
     return 'device_id_required'
   }
   if (status === 401) {
@@ -103,16 +103,16 @@ export class ThunderboltConnector implements PowerSyncBackendConnector {
           // ignore
         }
         handleCredentialsInvalidIfNeeded(status, body)
-        // 401 surfaces as session_expired (modal opens) and deviceNotTrusted is expected during setup,
-        // so we don't pollute the console with those. anonymousSyncForbidden is also quieted: the
+        // 401 surfaces as session_expired (modal opens) and DEVICE_NOT_TRUSTED is expected during setup,
+        // so we don't pollute the console with those. ANONYMOUS_SYNC_FORBIDDEN is also quieted: the
         // listener immediately disables sync in response, so further requests don't happen — the log
         // would be the single transition event, which is fine to suppress. 503 is also quieted in
         // dev (fires repeatedly when POWERSYNC_URL is unset and is surfaced via doctor checks), but
         // in production a 503 is a real outage signal operators need to see.
         const isQuietStatus =
           status === 401 ||
-          body.code === 'deviceNotTrusted' ||
-          body.code === 'anonymousSyncForbidden' ||
+          body.code === 'DEVICE_NOT_TRUSTED' ||
+          body.code === 'ANONYMOUS_SYNC_FORBIDDEN' ||
           (status === 503 && import.meta.env.DEV)
         if (!isQuietStatus) {
           console.error('Failed to fetch PowerSync credentials:', status, body)

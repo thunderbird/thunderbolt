@@ -124,7 +124,7 @@ The local `config/config.yaml` uses HS256 with the same secret (base64) and kid 
 2. Backend runs a transaction: deletes the device’s envelope from the `envelopes` table, then sets `status` to `REVOKED` and `revoked_at` on the device row. The wrapped CK is permanently removed, preventing future CK recovery even if the device’s private key is compromised. PowerSync syncs the updated `devices` table.
 3. On the **revoked device**:
    - **Immediate:** The app watches the current device’s row via React Query (`getDevice(deviceId)`). When the synced row has `status === ‘REVOKED’` or `revoked_at` set, the app runs the reset flow.
-   - **On token refresh:** Backend returns **403 Forbidden** with `code: ‘deviceDisconnected’`; the connector dispatches credentials invalid and the app resets.
+   - **On token refresh:** Backend returns **403 Forbidden** with `code: ‘DEVICE_DISCONNECTED’`; the connector dispatches credentials invalid and the app resets.
 
 ### Auth Token and Device ID
 
@@ -138,7 +138,7 @@ The local `config/config.yaml` uses HS256 with the same secret (base64) and kid 
 ### PowerSync Token (`GET /powersync/token`)
 
 - **With `X-Device-ID`:**
-  - Backend checks the `devices` row for that id. If `status === 'REVOKED'` or `revoked_at` is set → **403** with `{ code: 'deviceDisconnected' }`, no token.
+  - Backend checks the `devices` row for that id. If `status === 'REVOKED'` or `revoked_at` is set → **403** with `{ code: 'DEVICE_DISCONNECTED' }`, no token.
   - Otherwise: issues a PowerSync JWT and upserts the device (id, user_id, name, last_seen, created_at).
 - **Bearer token only (e.g. credential refresh):**
   - If the user no longer exists (account deleted) → **410 Gone** with `{ code: 'ACCOUNT_DELETED' }`.
@@ -147,14 +147,14 @@ The local `config/config.yaml` uses HS256 with the same secret (base64) and kid 
 ### PowerSync Upload (`PUT /powersync/upload`)
 
 - Requires authenticated user and `X-Device-ID` header.
-- Same device validation as token: if device is revoked → **403** with `{ code: 'deviceDisconnected' }`. If `X-Device-ID` is missing → **400** with `{ code: 'deviceIdRequired' }`.
+- Same device validation as token: if device is revoked → **403** with `{ code: 'DEVICE_DISCONNECTED' }`. If `X-Device-ID` is missing → **400** with `{ code: 'DEVICE_ID_REQUIRED' }`.
 - Only non-revoked devices can upload data.
 
 Summary for client:
 
 - **410** → account deleted (reset).
-- **403** with `deviceDisconnected` → this device revoked (reset).
-- **409** with `deviceIdTaken` → device id already registered to another user; reset to get a fresh device id.
+- **403** with `DEVICE_DISCONNECTED` → this device revoked (reset).
+- **409** with `DEVICE_ID_TAKEN` → device id already registered to another user; reset to get a fresh device id.
 - **401** → generic auth failure.
 
 ### Revoke Device (`POST /v1/account/devices/:id/revoke`)
@@ -186,7 +186,7 @@ When the app should reset (account deleted or device revoked), it runs a single 
 Triggered in two ways:
 
 1. **Event `powersyncCredentialsInvalid`**  
-   Dispatched when the token request returns **410** or **403** with body `code: 'deviceDisconnected'`.
+   Dispatched when the token request returns **410** or **403** with body `code: 'DEVICE_DISCONNECTED'`.
 2. **Devices table (current device revoked)**  
    `usePowerSyncCredentialsInvalidListener` uses React Query `getDevice(deviceId)` and key `['devices', deviceId]`. When the synced `devices` row has `revoked_at` set for the current device, the hook runs the same reset flow (immediate, without waiting for next token refresh).
 

@@ -33,8 +33,8 @@ describe('handleCredentialsInvalidIfNeeded', () => {
     )
   })
 
-  it('dispatches event with reason device_revoked for 403 + deviceDisconnected', () => {
-    const result = handleCredentialsInvalidIfNeeded(403, { code: 'deviceDisconnected' })
+  it('dispatches event with reason device_revoked for 403 + DEVICE_DISCONNECTED', () => {
+    const result = handleCredentialsInvalidIfNeeded(403, { code: 'DEVICE_DISCONNECTED' })
 
     expect(result).toBe(true)
     expect(dispatchSpy).toHaveBeenCalledTimes(1)
@@ -43,8 +43,8 @@ describe('handleCredentialsInvalidIfNeeded', () => {
     )
   })
 
-  it('dispatches event with reason device_id_taken for 409 + deviceIdTaken', () => {
-    const result = handleCredentialsInvalidIfNeeded(409, { code: 'deviceIdTaken' })
+  it('dispatches event with reason device_id_taken for 409 + DEVICE_ID_TAKEN', () => {
+    const result = handleCredentialsInvalidIfNeeded(409, { code: 'DEVICE_ID_TAKEN' })
 
     expect(result).toBe(true)
     expect(dispatchSpy).toHaveBeenCalledTimes(1)
@@ -53,8 +53,8 @@ describe('handleCredentialsInvalidIfNeeded', () => {
     )
   })
 
-  it('dispatches event with reason device_id_required for 400 + deviceIdRequired', () => {
-    const result = handleCredentialsInvalidIfNeeded(400, { code: 'deviceIdRequired' })
+  it('dispatches event with reason device_id_required for 400 + DEVICE_ID_REQUIRED', () => {
+    const result = handleCredentialsInvalidIfNeeded(400, { code: 'DEVICE_ID_REQUIRED' })
 
     expect(result).toBe(true)
     expect(dispatchSpy).toHaveBeenCalledTimes(1)
@@ -73,8 +73,8 @@ describe('handleCredentialsInvalidIfNeeded', () => {
     )
   })
 
-  it('dispatches event with reason sync_not_permitted for 403 + anonymousSyncForbidden', () => {
-    const result = handleCredentialsInvalidIfNeeded(403, { code: 'anonymousSyncForbidden' })
+  it('dispatches event with reason sync_not_permitted for 403 + ANONYMOUS_SYNC_FORBIDDEN', () => {
+    const result = handleCredentialsInvalidIfNeeded(403, { code: 'ANONYMOUS_SYNC_FORBIDDEN' })
 
     expect(result).toBe(true)
     expect(dispatchSpy).toHaveBeenCalledTimes(1)
@@ -90,7 +90,7 @@ describe('handleCredentialsInvalidIfNeeded', () => {
     expect(dispatchSpy).not.toHaveBeenCalled()
   })
 
-  it('does not dispatch and returns false for 403 without deviceDisconnected', () => {
+  it('does not dispatch and returns false for 403 without DEVICE_DISCONNECTED', () => {
     const result = handleCredentialsInvalidIfNeeded(403, { code: 'OTHER_ERROR' })
 
     expect(result).toBe(false)
@@ -104,7 +104,7 @@ describe('handleCredentialsInvalidIfNeeded', () => {
     expect(dispatchSpy).not.toHaveBeenCalled()
   })
 
-  it('does not dispatch and returns false for 400 without deviceIdRequired', () => {
+  it('does not dispatch and returns false for 400 without DEVICE_ID_REQUIRED', () => {
     const result = handleCredentialsInvalidIfNeeded(400, { code: 'INVALID_REQUEST' })
 
     expect(result).toBe(false)
@@ -241,11 +241,11 @@ describe('ThunderboltConnector', () => {
     expect(result).toBeNull()
   })
 
-  it('fetchCredentials returns null and dispatches sync_not_permitted for 403 + anonymousSyncForbidden', async () => {
+  it('fetchCredentials returns null and dispatches sync_not_permitted for 403 + ANONYMOUS_SYNC_FORBIDDEN', async () => {
     setAuthToken(authToken)
     fetchMock.mockImplementation(() =>
       Promise.resolve(
-        new Response(JSON.stringify({ error: 'Forbidden', code: 'anonymousSyncForbidden' }), {
+        new Response(JSON.stringify({ error: 'Forbidden', code: 'ANONYMOUS_SYNC_FORBIDDEN' }), {
           status: 403,
           headers: { 'Content-Type': 'application/json' },
         }),
@@ -261,13 +261,13 @@ describe('ThunderboltConnector', () => {
     )
   })
 
-  it('fetchCredentials does not log to console.error for the quiet anonymousSyncForbidden 403', async () => {
+  it('fetchCredentials does not log to console.error for the quiet ANONYMOUS_SYNC_FORBIDDEN 403', async () => {
     setAuthToken(authToken)
     const errorSpy = spyOn(console, 'error').mockImplementation(() => {})
     try {
       fetchMock.mockImplementation(() =>
         Promise.resolve(
-          new Response(JSON.stringify({ error: 'Forbidden', code: 'anonymousSyncForbidden' }), {
+          new Response(JSON.stringify({ error: 'Forbidden', code: 'ANONYMOUS_SYNC_FORBIDDEN' }), {
             status: 403,
             headers: { 'Content-Type': 'application/json' },
           }),

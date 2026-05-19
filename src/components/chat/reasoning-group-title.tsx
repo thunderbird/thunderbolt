@@ -5,7 +5,7 @@
 import { formatDuration, splitPartType } from '@/lib/utils'
 import { getToolMetadataSync } from '@/lib/tool-metadata'
 import { type ToolUIPart } from 'ai'
-import { AnimatePresence, motion } from 'framer-motion'
+import { AnimatePresence, m } from 'framer-motion'
 
 type ReasoningGroupTitleProps = {
   totalDuration: number
@@ -25,7 +25,7 @@ export const ReasoningGroupTitle = ({ totalDuration, isGroupReasoning, tools }: 
       <AnimatePresence mode="wait">
         {isGroupReasoning ? (
           activeToolMetadata ? (
-            <motion.div
+            <m.div
               key={`tool-${activeIndex}`}
               // Skip entrance animation for tools already in progress (e.g., when switching back to a chat with active streaming)
               initial={activeTool?.state === 'input-streaming' ? { y: 20, opacity: 0 } : { y: 0, opacity: 1 }}
@@ -37,10 +37,10 @@ export const ReasoningGroupTitle = ({ totalDuration, isGroupReasoning, tools }: 
               <span className="text-xs text-muted-foreground italic animate-pulse truncate min-w-0">
                 {activeToolMetadata.loadingMessage}
               </span>
-            </motion.div>
+            </m.div>
           ) : null
         ) : (
-          <motion.div
+          <m.div
             key="completed"
             initial={{ y: 20, opacity: 0 }}
             animate={{ y: 0, opacity: 1, scale: 1 }}
@@ -50,7 +50,7 @@ export const ReasoningGroupTitle = ({ totalDuration, isGroupReasoning, tools }: 
             {tools.length > 0
               ? `Completed ${tools.length} steps in ${formatDuration(totalDuration)}`
               : `Thought for ${formatDuration(totalDuration)}`}
-          </motion.div>
+          </m.div>
         )}
       </AnimatePresence>
     </div>

@@ -4,7 +4,7 @@
 
 import { Download } from 'lucide-react'
 import { useState } from 'react'
-import { AnimatePresence, motion } from 'framer-motion'
+import { AnimatePresence, m } from 'framer-motion'
 
 import { Button } from '@/components/ui/button'
 import { getDownloadUrl } from '@/lib/download-links'
@@ -39,7 +39,7 @@ export const DownloadAppBannerDesktop = () => {
   return (
     <AnimatePresence>
       {!dismissed && (
-        <motion.div
+        <m.div
           key="download-banner-desktop"
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
@@ -65,7 +65,7 @@ export const DownloadAppBannerDesktop = () => {
               </div>
             </div>
           </div>
-        </motion.div>
+        </m.div>
       )}
     </AnimatePresence>
   )

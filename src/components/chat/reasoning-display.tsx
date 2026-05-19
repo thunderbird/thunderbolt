@@ -3,7 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { useAutoScroll } from '@/hooks/use-auto-scroll'
-import { AnimatePresence, motion } from 'framer-motion'
+import { AnimatePresence, m } from 'framer-motion'
 import { useEffect, useEffectEvent, useRef, useState } from 'react'
 
 type ReasoningDisplayProps = {
@@ -94,7 +94,7 @@ export const ReasoningDisplay = ({ text, isStreaming, instanceKey }: ReasoningDi
     <div className="relative mt-1 min-h-[200px]">
       <AnimatePresence mode="wait">
         {shouldShow && hasText && (
-          <motion.div
+          <m.div
             key={instanceKey}
             initial={{ opacity: 0, y: -10 }}
             animate={{ opacity: 1, y: 0 }}
@@ -109,7 +109,7 @@ export const ReasoningDisplay = ({ text, isStreaming, instanceKey }: ReasoningDi
               <div ref={scrollTargetRef} />
             </div>
             <div className="absolute bottom-0 w-full h-6 bg-gradient-to-b from-transparent to-background" />
-          </motion.div>
+          </m.div>
         )}
       </AnimatePresence>
     </div>

@@ -11,7 +11,7 @@ import type { ChatListItemProps } from './types'
 import { useChatStore } from '@/chats/chat-store'
 import { useShallow } from 'zustand/react/shallow'
 import { useChat } from '@ai-sdk/react'
-import { AnimatePresence, motion } from 'framer-motion'
+import { AnimatePresence, m } from 'framer-motion'
 import { RenameChatDialog } from './rename-chat-dialog'
 
 export const ChatListItem = memo(
@@ -86,7 +86,7 @@ export const ChatListItem = memo(
               <div className="flex items-center gap-2 flex-1 min-w-0">
                 <AnimatePresence>
                   {status === 'streaming' && (
-                    <motion.div
+                    <m.div
                       key={`${thread.id}-loading`}
                       initial={{ opacity: 0, width: 0 }}
                       animate={{ opacity: 1, width: 'auto' }}
@@ -94,7 +94,7 @@ export const ChatListItem = memo(
                       className="flex-shrink-0"
                     >
                       <Loader2 className="size-[var(--icon-size-default)] animate-spin text-muted-foreground" />
-                    </motion.div>
+                    </m.div>
                   )}
                 </AnimatePresence>
                 <span className="truncate flex-1 min-w-0">{displayTitle}</span>

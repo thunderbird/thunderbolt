@@ -5,7 +5,7 @@
 import { getToolMetadataSync } from '@/lib/tool-metadata'
 import { splitPartType } from '@/lib/utils'
 import type { ToolUIPart } from 'ai'
-import { motion } from 'framer-motion'
+import { m } from 'framer-motion'
 import { Tooltip, TooltipContent, TooltipTrigger } from '../ui/tooltip'
 import { ToolIcon } from './tool-icon'
 
@@ -49,7 +49,7 @@ export const ToolItem = ({ tool, index, onOpenDetails }: ToolItemProps) => {
   return (
     <Tooltip key={tooltipKey}>
       <TooltipTrigger asChild>
-        <motion.div
+        <m.div
           initial={{ scale: 0 }}
           animate={{
             scale: 1,
@@ -65,7 +65,7 @@ export const ToolItem = ({ tool, index, onOpenDetails }: ToolItemProps) => {
             tooltipKey={tooltipKey}
             onClick={() => !isLoading && !isError && onOpenDetails(tool)}
           />
-        </motion.div>
+        </m.div>
       </TooltipTrigger>
       <TooltipContent className="max-w-xs">
         <p className="font-medium">{metadata.displayName}</p>

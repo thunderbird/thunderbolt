@@ -5,7 +5,7 @@
 import { useHaptics } from '@/hooks/use-haptics'
 import { cn } from '@/lib/utils'
 import * as DialogPrimitive from '@radix-ui/react-dialog'
-import { animate, motion, useMotionValue, useTransform, type PanInfo } from 'framer-motion'
+import { animate, m, useMotionValue, useTransform, type PanInfo } from 'framer-motion'
 import { useEffect, useState, type CSSProperties, type ReactNode } from 'react'
 
 type MobileSidebarProps = {
@@ -125,7 +125,7 @@ export const MobileSidebar = ({
     <DialogPrimitive.Root open={internalOpen}>
       <DialogPrimitive.Portal>
         {/* Animated overlay with blur */}
-        <motion.div
+        <m.div
           className="fixed inset-0 z-50 bg-black/40 backdrop-blur-lg"
           style={{
             opacity: overlayOpacity,
@@ -136,7 +136,7 @@ export const MobileSidebar = ({
         />
 
         {/* Animated sidebar content */}
-        <motion.div
+        <m.div
           drag="x"
           dragConstraints={{
             left: side === 'left' ? -getSidebarWidth() : 0,
@@ -169,7 +169,7 @@ export const MobileSidebar = ({
           >
             <div className="flex h-full w-full flex-col">{children}</div>
           </div>
-        </motion.div>
+        </m.div>
       </DialogPrimitive.Portal>
     </DialogPrimitive.Root>
   )

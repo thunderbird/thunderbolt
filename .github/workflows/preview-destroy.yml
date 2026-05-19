@@ -48,8 +48,27 @@ jobs:
             fi
           fi
 
-  destroy:
+  drop-db:
     needs: resolve-pr
+    if: needs.resolve-pr.outputs.is_internal == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+      - uses: aws-actions/configure-aws-credentials@ec61189d14ec14c8efccab744f656cffd0e33f37 # v6.1.0
+        with:
+          role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: us-east-1
+      - name: Drop per-stack database
+        # Must run before `pulumi destroy` — the per-stack secrets and backend
+        # task definition disappear with the stack, and we need both to invoke
+        # the drop. Script is idempotent if the stack is already partially gone.
+        run: ./scripts/drop-preview-db.sh "${{ needs.resolve-pr.outputs.pr_number }}"
+
+  destroy:
+    needs: [resolve-pr, drop-db]
     if: needs.resolve-pr.outputs.is_internal == 'true'
     uses: ./.github/workflows/stack-deploy.yml
     with:
@@ -61,7 +80,7 @@ jobs:
     secrets: inherit
 
   comment:
-    needs: [resolve-pr, destroy]
+    needs: [resolve-pr, drop-db, destroy]
     if: ${{ needs.resolve-pr.outputs.is_internal == 'true' && github.event.pull_request.number }}
     runs-on: ubuntu-latest
     steps:

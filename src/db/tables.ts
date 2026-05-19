@@ -87,7 +87,6 @@ export const modelsTable = sqliteTable(
     name: text('name'),
     model: text('model'),
     url: text('url'),
-    apiKey: text('api_key'),
     isSystem: integer('is_system').default(0),
     enabled: integer('enabled').default(1),
     toolUsage: integer('tool_usage').default(1),
@@ -107,6 +106,19 @@ export const modelsTable = sqliteTable(
       .where(sql`${table.deletedAt} IS NULL`),
   ],
 )
+
+/** Local-only table for model API keys. Never synced via PowerSync. */
+export const modelsSecretsTable = sqliteTable('models_secrets', {
+  modelId: text('id').primaryKey(),
+  apiKey: text('api_key'),
+})
+
+/** Local-only table for integration credentials (Google, Microsoft OAuth tokens). Never synced via PowerSync. */
+export const integrationsSecretsTable = sqliteTable('integrations_secrets', {
+  provider: text('id').primaryKey(), // 'google' | 'microsoft'
+  credentials: text('credentials'), // JSON blob (OAuth tokens)
+  enabled: integer('enabled').default(0),
+})
 
 export const mcpServersTable = sqliteTable(
   'mcp_servers',

@@ -104,7 +104,6 @@ export const modelsTable = powersyncSchema.table(
     name: text('name'),
     model: text('model'),
     url: text('url'),
-    apiKey: text('api_key'),
     isSystem: integer('is_system').default(0),
     enabled: integer('enabled').default(1),
     toolUsage: integer('tool_usage').default(1),

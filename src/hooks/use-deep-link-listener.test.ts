@@ -7,7 +7,7 @@ import { createElement, type ReactNode } from 'react'
 import { BrowserRouter } from 'react-router'
 import { afterAll, beforeAll, describe, expect, it } from 'bun:test'
 import { setupTestDatabase, teardownTestDatabase } from '@/dal/test-utils'
-import type { ReturnContext } from '@/lib/oauth-state'
+import { setOAuthState, type ReturnContext } from '@/lib/oauth-state'
 import { getClock } from '@/testing-library'
 import { createQueryTestWrapper } from '@/test-utils/react-query'
 import {
@@ -368,7 +368,6 @@ describe('useDeepLinkListener hook', () => {
   it('does not set up listeners when not running in Tauri', () => {
     const getCurrent = () => Promise.resolve(null)
     const onOpenUrl = () => Promise.resolve(() => {})
-    const getSettings = () => Promise.resolve({ oauthReturnContext: null })
 
     renderHook(
       () =>
@@ -376,7 +375,6 @@ describe('useDeepLinkListener hook', () => {
           isTauri: () => false,
           getCurrent,
           onOpenUrl,
-          getSettings,
         }),
       { wrapper },
     )
@@ -396,7 +394,6 @@ describe('useDeepLinkListener hook', () => {
       callback = cb
       return Promise.resolve(async () => {})
     }
-    const getSettings = () => Promise.resolve({ oauthReturnContext: null })
 
     const customHandler = async (urls: string[]) => {
       customHandlerCalled = true
@@ -409,7 +406,6 @@ describe('useDeepLinkListener hook', () => {
           isTauri: () => true,
           getCurrent,
           onOpenUrl,
-          getSettings,
         }),
       { wrapper },
     )
@@ -439,7 +435,7 @@ describe('useDeepLinkListener hook', () => {
       callback = cb
       return Promise.resolve(async () => {})
     }
-    const getSettings = () => Promise.resolve({ oauthReturnContext: '/chats/test' })
+    setOAuthState({ returnContext: '/chats/test' })
 
     const customHandler = async (_urls: string[]) => {
       customHandlerCalled = true
@@ -451,7 +447,6 @@ describe('useDeepLinkListener hook', () => {
           isTauri: () => true,
           getCurrent,
           onOpenUrl,
-          getSettings,
         }),
       { wrapper },
     )
@@ -481,7 +476,6 @@ describe('useDeepLinkListener hook', () => {
       callback = cb
       return Promise.resolve(async () => {})
     }
-    const getSettings = () => Promise.resolve({ oauthReturnContext: null })
 
     const customHandler = async (_urls: string[]) => {
       customHandlerCalled = true
@@ -493,7 +487,6 @@ describe('useDeepLinkListener hook', () => {
           isTauri: () => true,
           getCurrent,
           onOpenUrl,
-          getSettings,
         }),
       { wrapper },
     )
@@ -528,7 +521,6 @@ describe('useDeepLinkListener hook', () => {
       callback = cb
       return Promise.resolve(async () => {})
     }
-    const getSettings = () => Promise.resolve({ oauthReturnContext: null })
 
     const customHandler = async (urls: string[]) => {
       customHandlerCallCount++
@@ -541,7 +533,6 @@ describe('useDeepLinkListener hook', () => {
           isTauri: () => true,
           getCurrent,
           onOpenUrl,
-          getSettings,
         }),
       { wrapper },
     )
@@ -577,7 +568,7 @@ describe('useDeepLinkListener hook', () => {
       callback = cb
       return Promise.resolve(async () => {})
     }
-    const getSettings = () => Promise.resolve({ oauthReturnContext: '/chats/test' })
+    setOAuthState({ returnContext: '/chats/test' })
 
     const customHandler = async (urls: string[]) => {
       receivedUrls = urls
@@ -589,7 +580,6 @@ describe('useDeepLinkListener hook', () => {
           isTauri: () => true,
           getCurrent,
           onOpenUrl,
-          getSettings,
         }),
       { wrapper },
     )
@@ -614,7 +604,6 @@ describe('useDeepLinkListener hook', () => {
 
     const getCurrent = () => Promise.resolve(mockUrls)
     const onOpenUrl = () => Promise.resolve(() => {})
-    const getSettings = () => Promise.resolve({ oauthReturnContext: null })
 
     // Should not throw error
     renderHook(
@@ -623,7 +612,6 @@ describe('useDeepLinkListener hook', () => {
           isTauri: () => true,
           getCurrent,
           onOpenUrl,
-          getSettings,
         }),
       { wrapper },
     )
@@ -645,7 +633,7 @@ describe('useDeepLinkListener hook', () => {
       storedCallback = callback
       return Promise.resolve(async () => {})
     }
-    const getSettings = () => Promise.resolve({ oauthReturnContext: '/chats/active' })
+    setOAuthState({ returnContext: '/chats/active' })
 
     renderHook(
       () =>
@@ -653,7 +641,6 @@ describe('useDeepLinkListener hook', () => {
           isTauri: () => true,
           getCurrent,
           onOpenUrl,
-          getSettings,
         }),
       { wrapper },
     )

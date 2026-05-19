@@ -5,6 +5,7 @@
 import { getDb } from '@/db/database'
 import { devicesTable } from '@/db/tables'
 import { resetTestDatabase, setupTestDatabase, teardownTestDatabase } from '@/dal/test-utils'
+import { useLocalSettingsStore } from '@/stores/local-settings-store'
 import { renderWithReactivity, waitForElement } from '@/test-utils/powersync-reactivity-test'
 import { createMockHttpClient } from '@/test-utils/http-client'
 import { HttpClientProvider } from '@/contexts/http-client-context'
@@ -20,15 +21,15 @@ const pendingDeviceId1 = uuidv7()
 
 const deviceIdKey = 'thunderbolt_device_id'
 const authTokenKey = 'thunderbolt_auth_token'
-const syncEnabledKey = 'powersync_sync_enabled'
 const sessionStorageKey = 'pending_device_dismissed_ids'
 
-// Re-export real powersync module with localStorage-based isSyncEnabled to prevent
-// bleed from other test files that mock.module('@/db/powersync').
+// Defend against bleed from other test files that fully mock '@/db/powersync'.
+// `isSyncEnabled` is pinned to the real production source (useLocalSettingsStore),
+// which the suite below seeds directly.
 const realPowersync = await import('@/db/powersync')
 mock.module('@/db/powersync', () => ({
   ...realPowersync,
-  isSyncEnabled: () => localStorage.getItem('powersync_sync_enabled') === 'true',
+  isSyncEnabled: () => useLocalSettingsStore.getState().syncEnabled,
 }))
 
 // These tests verify E2EE pending device behavior — encryption must be enabled.
@@ -65,14 +66,14 @@ describe('PendingDeviceModal', () => {
     await resetTestDatabase()
     localStorage.setItem(deviceIdKey, currentDeviceId)
     localStorage.setItem(authTokenKey, 'test-token')
-    localStorage.setItem(syncEnabledKey, 'true')
+    useLocalSettingsStore.setState({ syncEnabled: true })
     sessionStorage.removeItem(sessionStorageKey)
   })
 
   afterEach(() => {
     localStorage.removeItem(deviceIdKey)
     localStorage.removeItem(authTokenKey)
-    localStorage.removeItem(syncEnabledKey)
+    useLocalSettingsStore.setState({ syncEnabled: false })
     sessionStorage.removeItem(sessionStorageKey)
     cleanup()
   })
@@ -195,7 +196,7 @@ describe('PendingDeviceModal', () => {
   })
 
   it('does not render modal when sync is disabled', async () => {
-    localStorage.removeItem(syncEnabledKey)
+    useLocalSettingsStore.setState({ syncEnabled: false })
     const db = getDb()
 
     await db.insert(devicesTable).values([

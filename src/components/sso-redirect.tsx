@@ -8,7 +8,7 @@ import { setAuthToken } from '@/lib/auth-token'
 import { isSafeUrl } from '@/lib/url-utils'
 import { isTauri } from '@/lib/platform'
 import { startSsoFlowLoopback } from '@/lib/sso-loopback'
-import { useSettings } from '@/hooks/use-settings'
+import { useLocalSettingsStore } from '@/stores/local-settings-store'
 import Loading from '@/loading'
 
 /**
@@ -19,18 +19,14 @@ import Loading from '@/loading'
  * of navigating the webview (WKWebView drops cookies during cross-origin redirects).
  */
 const SsoRedirect = () => {
-  const { cloudUrl } = useSettings({ cloud_url: String })
+  const cloudUrl = useLocalSettingsStore((s) => s.cloudUrl)
   const [error, setError] = useState(false)
   const [retryKey, setRetryKey] = useState(0)
 
   useEffect(() => {
-    if (cloudUrl.isLoading || !cloudUrl.value) {
-      return
-    }
-
     setError(false)
     const abortController = new AbortController()
-    const baseUrl = cloudUrl.value.replace(/\/v1$/, '')
+    const baseUrl = cloudUrl.replace(/\/v1$/, '')
 
     const redirectToSso = async () => {
       try {
@@ -74,7 +70,7 @@ const SsoRedirect = () => {
     redirectToSso()
 
     return () => abortController.abort()
-  }, [cloudUrl.isLoading, cloudUrl.value, retryKey])
+  }, [cloudUrl, retryKey])
 
   if (error) {
     return (

@@ -27,6 +27,7 @@ spec:
     metadata:
       labels:
         app: postgres
+      {{- include "thunderbolt.podAnnotations" (dict "component" .Values.postgres "root" .) | nindent 6 }}
     spec:
       {{- include "thunderbolt.imagePullSecrets" . | nindent 6 }}
       containers:
@@ -57,6 +58,7 @@ spec:
               mountPath: /var/lib/postgresql/data
             - name: init-scripts
               mountPath: /docker-entrypoint-initdb.d
+          {{- include "thunderbolt.resources" .Values.postgres.resources | nindent 10 }}
           readinessProbe:
             exec:
               command: ["pg_isready", "-U", {{ .Values.postgres.credentials.user | quote }}]

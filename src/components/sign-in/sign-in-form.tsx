@@ -4,6 +4,7 @@
 
 import { useAuth, useHttpClient } from '@/contexts'
 import { useSettings } from '@/hooks/use-settings'
+import { useLocalSettingsStore } from '@/stores/local-settings-store'
 import { isLocalhostUrl } from '@/lib/utils'
 import { type ReactNode, type RefObject, useCallback, useEffect } from 'react'
 import { SignInEmailStep } from './sign-in-email-step'
@@ -78,8 +79,9 @@ export const SignInForm = ({
 }: SignInFormProps) => {
   const authClient = useAuth()
   const httpClient = useHttpClient()
-  const { cloudUrl, preferredName } = useSettings({ cloud_url: 'http://localhost:8000/v1', preferred_name: '' })
-  const isLocalhost = isLocalhostUrl(cloudUrl.value)
+  const cloudUrl = useLocalSettingsStore((s) => s.cloudUrl)
+  const { preferredName } = useSettings({ preferred_name: '' })
+  const isLocalhost = isLocalhostUrl(cloudUrl)
   const displayName = preferredName.value as string
 
   const { state, isValidEmail, actions } = useSignInFormState({

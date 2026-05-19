@@ -3,15 +3,14 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import type { PowerSyncTableName } from '@shared/powersync-tables'
-import { DrizzleAppSchema } from '@powersync/drizzle-driver'
+import { DrizzleAppSchema, type DrizzleTableWithPowerSyncOptions } from '@powersync/drizzle-driver'
 import * as tables from '../tables'
 
 /**
- * Drizzle schema for PowerSync - keys are snake_case (table names).
- * Type-checked: every PowerSyncTableName must have an entry.
- * The driver uses the table's config name, not our keys; snake_case keeps types in sync with shared.
+ * Synced tables — type-checked against PowerSyncTableName.
+ * Keys are snake_case (table names). The driver uses the table's config name, not our keys.
  */
-export const drizzleSchema = {
+const syncedTables = {
   settings: tables.settingsTable,
   chat_threads: tables.chatThreadsTable,
   chat_messages: tables.chatMessagesTable,
@@ -24,6 +23,26 @@ export const drizzleSchema = {
   model_profiles: tables.modelProfilesTable,
   devices: tables.devicesTable,
 } satisfies Record<PowerSyncTableName, unknown>
+
+/** Local-only tables — created in SQLite but never synced via PowerSync. */
+const localOnlyTables = {
+  models_secrets: {
+    tableDefinition: tables.modelsSecretsTable,
+    options: { localOnly: true },
+  } satisfies DrizzleTableWithPowerSyncOptions,
+  integrations_secrets: {
+    tableDefinition: tables.integrationsSecretsTable,
+    options: { localOnly: true },
+  } satisfies DrizzleTableWithPowerSyncOptions,
+}
+
+/**
+ * Combined Drizzle schema for PowerSync AppSchema.
+ */
+export const drizzleSchema = {
+  ...syncedTables,
+  ...localOnlyTables,
+}
 
 /**
  * PowerSync AppSchema derived from Drizzle table definitions.

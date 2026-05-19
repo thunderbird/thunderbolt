@@ -358,6 +358,12 @@ See `deploy/k8s/values.yaml` for all configurable values. Key ones:
 | `ingress.className` | `nginx`            | Ingress class                                |
 | `ingress.host`      | `""`               | Set for production (empty = default rule)    |
 
+### Known caveats
+
+- **TLS to RDS Postgres.** RDS rejects plaintext connections by default, so when pointing any Postgres URI at RDS (or another TLS-terminating Postgres) set `postgres.sslmode: require` in `values.yaml`. The value flows into both the backend's `DATABASE_URL` (as `?sslmode=...`) and PowerSync's `replication`/`storage` config. A wrong `sslmode` produces a different failure shape than the PowerSync caveat below — operators hitting RDS issues should check this setting first.
+
+- **PowerSync storage on RDS Postgres 17.** PowerSync 1.20.5 fails opaquely when its internal `storage` connection points at an RDS-managed Postgres 17 instance. Observed signature: the service hangs partway through `PostgresLockManager.init` and never reaches the "Power up" log line; the underlying `pgwire` 0.8.1 client swallows the actual server-side error, so the only visible symptom is the missing readiness probe success. The same bootstrap DDL succeeds via `psql` against the same database, so it is not a privilege issue. Scope confirmed on PowerSync 1.20.5; PowerSync 1.15/1.16 were not retested by us and may or may not be affected. This caveat applies to the `storage` connection only — the app's primary Postgres connection (read/write + logical replication, pointed at any reachable Postgres) is unaffected. If you hit this and the `postgres.sslmode` setting above did not resolve it, please open an issue against [powersync-ja/powersync-service](https://github.com/powersync-ja/powersync-service/issues) with your RDS PG major version and PowerSync version so the report is searchable. Workaround: keep PowerSync's storage off RDS (use the in-cluster Postgres StatefulSet, an unmanaged Postgres elsewhere, or MongoDB storage).
+
 ---
 
 ## 3. AWS with Pulumi

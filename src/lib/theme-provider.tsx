@@ -2,8 +2,9 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { useLocalSettingsStore } from '@/stores/local-settings-store'
 import { invoke } from '@tauri-apps/api/core'
-import { createContext, useContext, useEffect, useState, type ReactNode } from 'react'
+import { createContext, useCallback, useContext, useEffect, type ReactNode } from 'react'
 import { isTauri } from './platform'
 import { setAndroidBarColor } from './set-android-bar-color'
 
@@ -33,12 +34,6 @@ const persistThemeToNativeStore = async (theme: string) => {
 
 type Theme = 'dark' | 'light' | 'system'
 
-type ThemeProviderProps = {
-  children: ReactNode
-  defaultTheme?: Theme
-  storageKey?: string
-}
-
 type ThemeProviderState = {
   theme: Theme
   setTheme: (theme: Theme) => void
@@ -51,23 +46,15 @@ const initialState: ThemeProviderState = {
 
 const ThemeProviderContext = createContext<ThemeProviderState>(initialState)
 
-const isValidTheme = (value: string | null): value is Theme =>
-  value === 'dark' || value === 'light' || value === 'system'
+export const ThemeProvider = ({ children }: { children: ReactNode }) => {
+  const theme = useLocalSettingsStore((s) => s.theme)
+  const setLocalSetting = useLocalSettingsStore((s) => s.setLocalSetting)
 
-export const ThemeProvider = ({
-  children,
-  defaultTheme = 'system',
-  storageKey = 'ui_theme',
-  ...props
-}: ThemeProviderProps) => {
-  const savedTheme = window.localStorage.getItem(storageKey)
-
-  const [theme, setTheme] = useState<Theme>(isValidTheme(savedTheme) ? savedTheme : defaultTheme)
+  const setTheme = useCallback((newTheme: Theme) => setLocalSetting('theme', newTheme), [setLocalSetting])
 
   useEffect(() => {
-    window.localStorage.setItem(storageKey, theme)
     persistThemeToNativeStore(theme).catch(() => {})
-  }, [storageKey, theme])
+  }, [theme])
 
   useEffect(() => {
     const root = window.document.documentElement
@@ -130,11 +117,7 @@ export const ThemeProvider = ({
     setTheme,
   }
 
-  return (
-    <ThemeProviderContext.Provider {...props} value={value}>
-      {children}
-    </ThemeProviderContext.Provider>
-  )
+  return <ThemeProviderContext.Provider value={value}>{children}</ThemeProviderContext.Provider>
 }
 
 export const useTheme = () => {

@@ -25,6 +25,7 @@ spec:
     metadata:
       labels:
         app: backend
+      {{- include "thunderbolt.podAnnotations" (dict "component" .Values.backend "root" .) | nindent 6 }}
     spec:
       {{- include "thunderbolt.imagePullSecrets" . | nindent 6 }}
       containers:
@@ -44,8 +45,26 @@ spec:
               value: {{ .Values.backend.env.waitlistEnabled | quote }}
             - name: DATABASE_DRIVER
               value: {{ .Values.backend.env.databaseDriver }}
+            # THUNDERBOLT_POSTGRES_PASSWORD must appear before DATABASE_URL so the
+            # `$(THUNDERBOLT_POSTGRES_PASSWORD)` substitution resolves (Kubernetes
+            # dependent environment variables — earlier entries are interpolated into
+            # later ones via `$(VAR)`, which is k8s syntax, not the shell).
+            #
+            # The name is intentionally namespaced: bare `POSTGRES_PASSWORD` is
+            # auto-consumed by libpq tools (psql, pgcli, pg_dump). A future sidecar
+            # or `kubectl exec` in this pod would silently inherit superuser
+            # credentials. Namespacing prevents that.
+            #
+            # NOTE: the decoded postgres password must be URL-safe. URL-reserved
+            # chars (`@:/?#`) silently break this DATABASE_URL (and the equivalent
+            # URIs in templates/powersync.yaml).
+            - name: THUNDERBOLT_POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: thunderbolt-secrets
+                  key: postgres-password
             - name: DATABASE_URL
-              value: "postgresql://{{ .Values.postgres.credentials.user }}:{{ .Values.postgres.credentials.passwordBase64 | b64dec }}@postgres:5432/{{ .Values.postgres.credentials.database }}"
+              value: "postgresql://{{ .Values.postgres.credentials.user }}:$(THUNDERBOLT_POSTGRES_PASSWORD)@postgres:5432/{{ .Values.postgres.credentials.database }}?sslmode={{ .Values.postgres.sslmode | default "disable" }}"
             # OIDC_ISSUER must equal what Keycloak puts in the `iss` claim of issued tokens —
             # i.e. the browser-facing URL. The backend reaches Keycloak in-cluster via OIDC_DISCOVERY_URL.
             - name: OIDC_ISSUER
@@ -119,6 +138,7 @@ spec:
                 secretKeyRef:
                   name: thunderbolt-secrets
                   key: exa-api-key
+          {{- include "thunderbolt.resources" .Values.backend.resources | nindent 10 }}
           readinessProbe:
             httpGet:
               path: /v1/health

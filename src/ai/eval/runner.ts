@@ -8,6 +8,7 @@ import { getSettings } from '@/dal'
 import { getModel } from '@/dal/models'
 import { getModelProfile } from '@/dal/model-profiles'
 import { getDb } from '@/db/database'
+import { getLocalSetting } from '@/stores/local-settings-store'
 import { isSsoMode } from '@/lib/auth-mode'
 import { getAuthToken } from '@/lib/auth-token'
 import { createAuthenticatedClient } from '@/lib/http'
@@ -24,8 +25,7 @@ let _evalHttpClientPromise: Promise<import('@/lib/http').HttpClient> | null = nu
 const getEvalHttpClient = () => {
   if (!_evalHttpClientPromise) {
     _evalHttpClientPromise = (async () => {
-      const db = getDb()
-      const { cloudUrl } = await getSettings(db, { cloud_url: 'http://localhost:8000/v1' })
+      const cloudUrl = getLocalSetting('cloudUrl')
       return createAuthenticatedClient(cloudUrl, getAuthToken, {
         credentials: isSsoMode() ? 'include' : undefined,
       })
@@ -59,10 +59,6 @@ const logVerbosePrompt = async (scenario: EvalScenario, modeSystemPrompt: string
     time_format: '12h',
     currency: 'USD',
     integrations_do_not_ask_again: false,
-    integrations_google_credentials: '',
-    integrations_google_is_enabled: false,
-    integrations_microsoft_credentials: '',
-    integrations_microsoft_is_enabled: false,
   })
 
   const systemPrompt = createPrompt({

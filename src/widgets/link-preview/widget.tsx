@@ -6,7 +6,7 @@ import { Card, CardHeader } from '@/components/ui/card'
 import { Skeleton } from '@/components/ui/skeleton'
 import { useHttpClient } from '@/contexts'
 import { useMessageCache } from '@/hooks/use-message-cache'
-import { useSettings } from '@/hooks/use-settings'
+import { useLocalSettingsStore } from '@/stores/local-settings-store'
 import { fetchLinkPreview } from '@/integrations/thunderbolt-pro/api'
 import type { SourceMetadata } from '@/types/source'
 import { LinkPreview } from './display'
@@ -47,23 +47,23 @@ export const LinkPreviewSkeleton = () => {
 }
 
 /** Builds a proxied image URL via /proxy-image (when direct image URL is known) */
-const buildProxyImageUrl = (imageUrl: string | null | undefined, cloudUrl: string | null): string | null => {
-  if (!imageUrl || !cloudUrl?.trim()) {
+const buildProxyImageUrl = (imageUrl: string | null | undefined, cloudUrl: string): string | null => {
+  if (!imageUrl) {
     return null
   }
   return `${cloudUrl}/pro/link-preview/proxy-image/${encodeURIComponent(imageUrl)}`
 }
 
 /** Builds an image URL via /image (extracts og:image from page and proxies it in one request) */
-const buildPageImageUrl = (pageUrl: string, cloudUrl: string | null): string | null => {
-  if (!pageUrl || !cloudUrl?.trim()) {
+const buildPageImageUrl = (pageUrl: string, cloudUrl: string): string | null => {
+  if (!pageUrl) {
     return null
   }
   return `${cloudUrl}/pro/link-preview/image/${encodeURIComponent(pageUrl)}`
 }
 
 /** Renders a link preview instantly from source registry metadata */
-const InstantLinkPreview = ({ sourceData, cloudUrl }: { sourceData: SourceMetadata; cloudUrl: string | null }) => {
+const InstantLinkPreview = ({ sourceData, cloudUrl }: { sourceData: SourceMetadata; cloudUrl: string }) => {
   return (
     <LinkPreview
       title={sourceData.title || getHostname(sourceData.url)}
@@ -75,19 +75,19 @@ const InstantLinkPreview = ({ sourceData, cloudUrl }: { sourceData: SourceMetada
 }
 
 export const LinkPreviewWidget = ({ url, source, sources, messageId, fetchPreviewFn }: LinkPreviewWidgetProps) => {
-  const { cloudUrl } = useSettings({ cloud_url: 'http://localhost:8000/v1' })
+  const cloudUrl = useLocalSettingsStore((s) => s.cloudUrl)
 
   // Instant render path: resolve from source registry (O(1) index lookup)
   if (source && sources) {
     const sourceIndex = parseInt(source, 10)
     const sourceData = sources[sourceIndex - 1]
     if (sourceData && sourceData.title) {
-      return <InstantLinkPreview sourceData={sourceData} cloudUrl={cloudUrl.value} />
+      return <InstantLinkPreview sourceData={sourceData} cloudUrl={cloudUrl} />
     }
   }
 
   // Fallback: existing fetch-based path
-  return <FetchLinkPreview url={url} messageId={messageId} cloudUrl={cloudUrl.value} fetchPreviewFn={fetchPreviewFn} />
+  return <FetchLinkPreview url={url} messageId={messageId} cloudUrl={cloudUrl} fetchPreviewFn={fetchPreviewFn} />
 }
 
 /** Fallback component that fetches link preview data via the message cache */
@@ -99,7 +99,7 @@ const FetchLinkPreview = ({
 }: {
   url: string
   messageId: string
-  cloudUrl: string | null
+  cloudUrl: string
   fetchPreviewFn?: (params: { url: string }) => Promise<{
     title: string | null
     description: string | null

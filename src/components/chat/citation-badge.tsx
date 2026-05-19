@@ -5,7 +5,7 @@
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet'
 import { useIsMobile } from '@/hooks/use-mobile'
-import { useSettings } from '@/hooks/use-settings'
+import { useLocalSettingsStore } from '@/stores/local-settings-store'
 import type { CitationSource } from '@/types/citation'
 import { memo, useState } from 'react'
 import { useCitationPopover } from './citation-popover'
@@ -91,7 +91,7 @@ ManagedBadge.displayName = 'ManagedBadge'
 const StandaloneBadge = memo(({ sources }: { sources: CitationSource[] }) => {
   const [isOpen, setIsOpen] = useState(false)
   const { isMobile } = useIsMobile()
-  const { cloudUrl } = useSettings({ cloud_url: 'http://localhost:8000/v1' })
+  const cloudUrl = useLocalSettingsStore((s) => s.cloudUrl)
   const { displayName, additionalCount, ariaLabel } = getBadgeLabel(sources)
 
   const badge = (
@@ -118,7 +118,7 @@ const StandaloneBadge = memo(({ sources }: { sources: CitationSource[] }) => {
       <Popover open={isOpen} onOpenChange={setIsOpen}>
         <PopoverTrigger asChild>{badge}</PopoverTrigger>
         <PopoverContent align="start" side="bottom" className="w-[420px] overflow-hidden rounded-2xl p-0">
-          <SourceList sources={sources} proxyBase={cloudUrl.value} />
+          <SourceList sources={sources} proxyBase={cloudUrl} />
         </PopoverContent>
       </Popover>
     )
@@ -137,7 +137,7 @@ const StandaloneBadge = memo(({ sources }: { sources: CitationSource[] }) => {
           <SheetHeader className="sr-only">
             <SheetTitle>{sources.length === 1 ? 'Source' : 'Sources'}</SheetTitle>
           </SheetHeader>
-          <SourceList sources={sources} proxyBase={cloudUrl.value} />
+          <SourceList sources={sources} proxyBase={cloudUrl} />
         </SheetContent>
       </Sheet>
     </>

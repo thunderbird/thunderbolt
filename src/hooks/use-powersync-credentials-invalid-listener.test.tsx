@@ -6,6 +6,7 @@ import { getDevice } from '@/dal'
 import { resetTestDatabase, setupTestDatabase, teardownTestDatabase } from '@/dal/test-utils'
 import { ThunderboltConnector } from '@/db/powersync/connector'
 import { powersyncCredentialsInvalid } from '@/db/powersync/connector'
+import { syncEnabledChangeEvent } from '@/db/powersync/database'
 import { devicesTable } from '@/db/tables'
 import { getAuthToken, setAuthToken } from '@/lib/auth-token'
 import { createTestProvider } from '@/test-utils/test-provider'
@@ -55,7 +56,7 @@ mock.module('@/db/powersync', () => ({
   getPowerSyncInstance: () => null,
   isSyncEnabled: () => false,
   setSyncEnabled: mock(() => Promise.resolve()),
-  syncEnabledChangeEvent: 'powersync_sync_enabled_change',
+  syncEnabledChangeEvent,
 }))
 
 describe('usePowerSyncCredentialsInvalidListener', () => {

@@ -50,22 +50,6 @@ export const defaultSettingExperimentalFeatureTasks: Setting = {
   userId: null,
 }
 
-export const defaultSettingNativeFetchEnabled: Setting = {
-  key: 'is_native_fetch_enabled',
-  value: 'false',
-  updatedAt: null,
-  defaultHash: null,
-  userId: null,
-}
-
-export const defaultSettingDebugPosthog: Setting = {
-  key: 'debug_posthog',
-  value: 'false',
-  updatedAt: null,
-  defaultHash: null,
-  userId: null,
-}
-
 export const defaultSettingPreferredName: Setting = {
   key: 'preferred_name',
   value: null,
@@ -93,22 +77,6 @@ export const defaultSettingLocationLat: Setting = {
 export const defaultSettingLocationLng: Setting = {
   key: 'location_lng',
   value: null,
-  updatedAt: null,
-  defaultHash: null,
-  userId: null,
-}
-
-export const defaultSettingCloudUrl: Setting = {
-  key: 'cloud_url',
-  value: import.meta.env.VITE_THUNDERBOLT_CLOUD_URL || 'http://localhost:8000/v1',
-  updatedAt: null,
-  defaultHash: null,
-  userId: null,
-}
-
-export const defaultSettingTheme: Setting = {
-  key: 'ui-theme',
-  value: 'system',
   updatedAt: null,
   defaultHash: null,
   userId: null,
@@ -186,14 +154,6 @@ export const defaultSettingIntegrationsDoNotAskAgain: Setting = {
   userId: null,
 }
 
-export const defaultSettingHapticsEnabled: Setting = {
-  key: 'haptics_enabled',
-  value: 'true',
-  updatedAt: null,
-  defaultHash: null,
-  userId: null,
-}
-
 /**
  * Array of all default settings for iteration
  */
@@ -201,14 +161,10 @@ export const defaultSettings: ReadonlyArray<Setting> = [
   defaultSettingDataCollection,
   defaultSettingTriggersEnabled,
   defaultSettingExperimentalFeatureTasks,
-  defaultSettingNativeFetchEnabled,
-  defaultSettingDebugPosthog,
   defaultSettingPreferredName,
   defaultSettingLocationName,
   defaultSettingLocationLat,
   defaultSettingLocationLng,
-  defaultSettingCloudUrl,
-  defaultSettingTheme,
   defaultSettingDistanceUnit,
   defaultSettingTemperatureUnit,
   defaultSettingDateFormat,
@@ -218,5 +174,4 @@ export const defaultSettings: ReadonlyArray<Setting> = [
   defaultSettingUserHasCompletedOnboarding,
   defaultSettingContentViewWidth,
   defaultSettingIntegrationsDoNotAskAgain,
-  defaultSettingHapticsEnabled,
 ] as const

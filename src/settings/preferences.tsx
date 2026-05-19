@@ -7,6 +7,7 @@ import { useSignInModal } from '@/contexts/sign-in-modal-context'
 import { useCountryUnits } from '@/hooks/use-country-units'
 import type { LocationData } from '@/hooks/use-location-search'
 import { useSettings } from '@/hooks/use-settings'
+import { initialLocalSettings, useLocalSettingsStore } from '@/stores/local-settings-store'
 import { useUnitsOptions } from '@/hooks/use-units-options'
 import { privacyPolicyUrl } from '@/lib/constants'
 import { extractCountryFromLocation } from '@/lib/country-utils'
@@ -112,7 +113,6 @@ export default function PreferencesSettingsPage() {
     locationLng,
     dataCollection,
     experimentalFeatureTasks,
-    hapticsEnabled,
     distanceUnit,
     temperatureUnit,
     dateFormat,
@@ -125,14 +125,15 @@ export default function PreferencesSettingsPage() {
     location_lng: '',
     data_collection: false,
     experimental_feature_tasks: false,
-    haptics_enabled: true,
     distance_unit: 'imperial',
     temperature_unit: 'f',
     date_format: 'MM/DD/YYYY',
     time_format: '12h',
     currency: 'USD',
-    cloud_url: 'http://localhost:8000/v1',
   })
+
+  const hapticsEnabled = useLocalSettingsStore((s) => s.hapticsEnabled)
+  const setLocalSetting = useLocalSettingsStore((s) => s.setLocalSetting)
 
   // Local state for name input (only save on blur to avoid DB writes on every keystroke)
   const [nameInput, setNameInput] = useState('')
@@ -362,14 +363,14 @@ export default function PreferencesSettingsPage() {
               <ModificationIndicator
                 as="label"
                 className="text-sm font-medium"
-                hasModifications={hapticsEnabled.isModified}
-                onReset={hapticsEnabled.reset}
+                hasModifications={hapticsEnabled !== initialLocalSettings.hapticsEnabled}
+                onReset={() => setLocalSetting('hapticsEnabled', initialLocalSettings.hapticsEnabled)}
               >
                 Haptic Feedback
               </ModificationIndicator>
               <p className="text-sm text-muted-foreground">Vibrate on tap</p>
             </div>
-            <Switch checked={hapticsEnabled.value} onCheckedChange={(value) => hapticsEnabled.setValue(value)} />
+            <Switch checked={hapticsEnabled} onCheckedChange={(value) => setLocalSetting('hapticsEnabled', value)} />
           </div>
         </div>
       </SectionCard>

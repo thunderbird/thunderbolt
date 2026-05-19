@@ -32,3 +32,34 @@ imagePullSecrets:
 {{- end }}
 {{- end }}
 {{- end -}}
+
+{{/*
+Pod annotations block. Merges per-component annotations with the chart-wide
+`podAnnotations`. Sprig `merge` is dst-wins, so per-component keys take
+precedence over chart-wide keys. Renders the full `annotations:` YAML key (or
+nothing, if both maps are empty).
+
+Usage:
+  {{- include "thunderbolt.podAnnotations" (dict "component" .Values.backend "root" .) | nindent 6 }}
+*/}}
+{{- define "thunderbolt.podAnnotations" -}}
+{{- $merged := merge (deepCopy (.component.podAnnotations | default dict)) (.root.Values.podAnnotations | default dict) -}}
+{{- if $merged }}
+annotations:
+  {{- toYaml $merged | nindent 2 }}
+{{- end }}
+{{- end -}}
+
+{{/*
+Resources block. Renders the full `resources:` YAML key (or nothing, if the
+component has no `resources` set).
+
+Usage:
+  {{- include "thunderbolt.resources" .Values.backend.resources | nindent 10 }}
+*/}}
+{{- define "thunderbolt.resources" -}}
+{{- with . }}
+resources:
+  {{- toYaml . | nindent 2 }}
+{{- end }}
+{{- end -}}

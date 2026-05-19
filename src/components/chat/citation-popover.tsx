@@ -5,7 +5,7 @@
 import { Popover, PopoverAnchor, PopoverContent } from '@/components/ui/popover'
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet'
 import { useIsMobile } from '@/hooks/use-mobile'
-import { useSettings } from '@/hooks/use-settings'
+import { useLocalSettingsStore } from '@/stores/local-settings-store'
 import type { CitationSource } from '@/types/citation'
 import {
   createContext,
@@ -64,7 +64,7 @@ export const CitationPopoverProvider = ({ children }: { children: ReactNode }) =
 
 const CitationOverlay = memo(({ popover, close }: { popover: PopoverData | null; close: () => void }) => {
   const { isMobile } = useIsMobile()
-  const { cloudUrl } = useSettings({ cloud_url: 'http://localhost:8000/v1' })
+  const cloudUrl = useLocalSettingsStore((s) => s.cloudUrl)
   const anchorRef = useRef<HTMLSpanElement>(null)
 
   useEffect(() => {
@@ -105,7 +105,7 @@ const CitationOverlay = memo(({ popover, close }: { popover: PopoverData | null;
           <SheetHeader className="sr-only">
             <SheetTitle>{sources.length === 1 ? 'Source' : 'Sources'}</SheetTitle>
           </SheetHeader>
-          <SourceList sources={sources} proxyBase={cloudUrl.value} />
+          <SourceList sources={sources} proxyBase={cloudUrl} />
         </SheetContent>
       </Sheet>
     )
@@ -124,7 +124,7 @@ const CitationOverlay = memo(({ popover, close }: { popover: PopoverData | null;
         />
       </PopoverAnchor>
       <PopoverContent align="start" side="bottom" className="w-[420px] overflow-hidden rounded-2xl p-0">
-        <SourceList sources={sources} proxyBase={cloudUrl.value} />
+        <SourceList sources={sources} proxyBase={cloudUrl} />
       </PopoverContent>
     </Popover>
   )

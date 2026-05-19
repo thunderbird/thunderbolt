@@ -4,7 +4,7 @@
 
 import { createContext, type ReactNode, useCallback, useContext } from 'react'
 import { useWebHaptics } from 'web-haptics/react'
-import { useSettings } from './use-settings'
+import { useLocalSettingsStore } from '@/stores/local-settings-store'
 import {
   triggerImpact,
   triggerNotification,
@@ -34,12 +34,11 @@ const HapticsContext = createContext<HapticsContextValue>({
  * a provider get silent no-ops, keeping them usable as dumb components.
  */
 export const HapticsProvider = ({ children }: { children: ReactNode }) => {
-  const { hapticsEnabled } = useSettings({ haptics_enabled: true })
+  const hapticsEnabled = useLocalSettingsStore((s) => s.hapticsEnabled)
   const { trigger } = useWebHaptics({ debug: import.meta.env.DEV })
-  const enabled = hapticsEnabled.value === true
 
   const triggerSelectionHaptic = useCallback(() => {
-    if (!enabled) {
+    if (!hapticsEnabled) {
       return
     }
     if (isTauri() && isMobile()) {
@@ -47,11 +46,11 @@ export const HapticsProvider = ({ children }: { children: ReactNode }) => {
     } else {
       void trigger('selection')
     }
-  }, [enabled, trigger])
+  }, [hapticsEnabled, trigger])
 
   const triggerImpactHaptic = useCallback(
     (style: ImpactFeedbackStyle = 'light') => {
-      if (!enabled) {
+      if (!hapticsEnabled) {
         return
       }
       if (isTauri() && isMobile()) {
@@ -60,12 +59,12 @@ export const HapticsProvider = ({ children }: { children: ReactNode }) => {
         void trigger(style)
       }
     },
-    [enabled, trigger],
+    [hapticsEnabled, trigger],
   )
 
   const triggerNotificationHaptic = useCallback(
     (type: NotificationFeedbackType) => {
-      if (!enabled) {
+      if (!hapticsEnabled) {
         return
       }
       if (isTauri() && isMobile()) {
@@ -74,7 +73,7 @@ export const HapticsProvider = ({ children }: { children: ReactNode }) => {
         void trigger(type)
       }
     },
-    [enabled, trigger],
+    [hapticsEnabled, trigger],
   )
 
   return (

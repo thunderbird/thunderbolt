@@ -6,9 +6,9 @@ import { act, renderHook } from '@testing-library/react'
 import { afterAll, beforeAll, afterEach, describe, expect, it } from 'bun:test'
 import { setupTestDatabase, teardownTestDatabase, resetTestDatabase } from '@/dal/test-utils'
 import { getDb } from '@/db/database'
+import { saveIntegrationCredentials } from '@/dal'
 import { createQueryTestWrapper } from '@/test-utils/react-query'
 import { useIntegrationStatus } from './use-integration-status'
-import { updateSettings } from '@/dal/settings'
 import { getClock } from '@/testing-library'
 
 describe('useIntegrationStatus', () => {
@@ -37,12 +37,7 @@ describe('useIntegrationStatus', () => {
   })
 
   describe('No providers connected', () => {
-    it('should return both providers as not connected when credentials are empty', async () => {
-      await updateSettings(getDb(), {
-        integrations_google_credentials: '',
-        integrations_microsoft_credentials: '',
-      })
-
+    it('should return both providers as not connected when no credentials exist', async () => {
       const { result } = renderHook(() => useIntegrationStatus(), {
         wrapper: createQueryTestWrapper(),
       })
@@ -52,37 +47,13 @@ describe('useIntegrationStatus', () => {
       })
 
       expect(result.current.isLoading).toBe(false)
-
       expect(result.current.data).toEqual({
         googleConnected: false,
+        googleEnabled: false,
+        googleEmail: null,
         microsoftConnected: false,
-        availableProviders: {
-          google: false,
-          microsoft: false,
-        },
-      })
-      expect(result.current.error).toBeNull()
-    })
-
-    it('should return both providers as not connected when credentials are null', async () => {
-      await updateSettings(getDb(), {
-        integrations_google_credentials: null,
-        integrations_microsoft_credentials: null,
-      })
-
-      const { result } = renderHook(() => useIntegrationStatus(), {
-        wrapper: createQueryTestWrapper(),
-      })
-
-      await act(async () => {
-        await getClock().runAllAsync()
-      })
-
-      expect(result.current.isLoading).toBe(false)
-
-      expect(result.current.data).toEqual({
-        googleConnected: false,
-        microsoftConnected: false,
+        microsoftEnabled: false,
+        microsoftEmail: null,
         availableProviders: {
           google: false,
           microsoft: false,
@@ -94,10 +65,7 @@ describe('useIntegrationStatus', () => {
 
   describe('Google provider connected', () => {
     it('should return Google as connected when credentials exist', async () => {
-      await updateSettings(getDb(), {
-        integrations_google_credentials: JSON.stringify({ access_token: 'test_token' }),
-        integrations_microsoft_credentials: '',
-      })
+      await saveIntegrationCredentials(getDb(), 'google', { access_token: 'test_token' }, true)
 
       const { result } = renderHook(() => useIntegrationStatus(), {
         wrapper: createQueryTestWrapper(),
@@ -108,25 +76,24 @@ describe('useIntegrationStatus', () => {
       })
 
       expect(result.current.isLoading).toBe(false)
-
       expect(result.current.data).toEqual({
         googleConnected: true,
+        googleEnabled: true,
+        googleEmail: null,
         microsoftConnected: false,
+        microsoftEnabled: false,
+        microsoftEmail: null,
         availableProviders: {
           google: true,
           microsoft: false,
         },
       })
-      expect(result.current.error).toBeNull()
     })
   })
 
   describe('Microsoft provider connected', () => {
     it('should return Microsoft as connected when credentials exist', async () => {
-      await updateSettings(getDb(), {
-        integrations_google_credentials: '',
-        integrations_microsoft_credentials: JSON.stringify({ access_token: 'test_token' }),
-      })
+      await saveIntegrationCredentials(getDb(), 'microsoft', { access_token: 'test_token' }, true)
 
       const { result } = renderHook(() => useIntegrationStatus(), {
         wrapper: createQueryTestWrapper(),
@@ -137,25 +104,25 @@ describe('useIntegrationStatus', () => {
       })
 
       expect(result.current.isLoading).toBe(false)
-
       expect(result.current.data).toEqual({
         googleConnected: false,
+        googleEnabled: false,
+        googleEmail: null,
         microsoftConnected: true,
+        microsoftEnabled: true,
+        microsoftEmail: null,
         availableProviders: {
           google: false,
           microsoft: true,
         },
       })
-      expect(result.current.error).toBeNull()
     })
   })
 
   describe('Both providers connected', () => {
     it('should return both providers as connected when both credentials exist', async () => {
-      await updateSettings(getDb(), {
-        integrations_google_credentials: JSON.stringify({ access_token: 'google_token' }),
-        integrations_microsoft_credentials: JSON.stringify({ access_token: 'microsoft_token' }),
-      })
+      await saveIntegrationCredentials(getDb(), 'google', { access_token: 'google_token' }, true)
+      await saveIntegrationCredentials(getDb(), 'microsoft', { access_token: 'microsoft_token' }, true)
 
       const { result } = renderHook(() => useIntegrationStatus(), {
         wrapper: createQueryTestWrapper(),
@@ -166,25 +133,35 @@ describe('useIntegrationStatus', () => {
       })
 
       expect(result.current.isLoading).toBe(false)
-
       expect(result.current.data).toEqual({
         googleConnected: true,
+        googleEnabled: true,
+        googleEmail: null,
         microsoftConnected: true,
+        microsoftEnabled: true,
+        microsoftEmail: null,
         availableProviders: {
           google: true,
           microsoft: true,
         },
       })
-      expect(result.current.error).toBeNull()
     })
   })
 
-  describe('Edge cases', () => {
-    it('should treat empty string as not connected', async () => {
-      await updateSettings(getDb(), {
-        integrations_google_credentials: '',
-        integrations_microsoft_credentials: '',
-      })
+  describe('Email surfacing', () => {
+    it('should surface profile.email from stored credentials', async () => {
+      await saveIntegrationCredentials(
+        getDb(),
+        'google',
+        { access_token: 'g', profile: { email: 'user@example.com', name: 'User' } },
+        true,
+      )
+      await saveIntegrationCredentials(
+        getDb(),
+        'microsoft',
+        { access_token: 'm', profile: { email: 'user@outlook.com', name: 'User' } },
+        true,
+      )
 
       const { result } = renderHook(() => useIntegrationStatus(), {
         wrapper: createQueryTestWrapper(),
@@ -194,66 +171,8 @@ describe('useIntegrationStatus', () => {
         await getClock().runAllAsync()
       })
 
-      expect(result.current.isLoading).toBe(false)
-
-      expect(result.current.data?.googleConnected).toBe(false)
-      expect(result.current.data?.microsoftConnected).toBe(false)
-    })
-
-    it('should correctly identify connection status for different credential states', async () => {
-      await updateSettings(getDb(), {
-        integrations_google_credentials: '',
-        integrations_microsoft_credentials: '',
-      })
-
-      const { result: result1 } = renderHook(() => useIntegrationStatus(), {
-        wrapper: createQueryTestWrapper(),
-      })
-
-      await act(async () => {
-        await getClock().runAllAsync()
-      })
-
-      expect(result1.current.isLoading).toBe(false)
-      expect(result1.current.data?.googleConnected).toBe(false)
-      expect(result1.current.data?.microsoftConnected).toBe(false)
-
-      await updateSettings(getDb(), { integrations_google_credentials: JSON.stringify({ access_token: 'new_token' }) })
-
-      const { result: result2 } = renderHook(() => useIntegrationStatus(), {
-        wrapper: createQueryTestWrapper(),
-      })
-
-      await act(async () => {
-        await getClock().runAllAsync()
-      })
-
-      expect(result2.current.isLoading).toBe(false)
-      expect(result2.current.data?.googleConnected).toBe(true)
-      expect(result2.current.data?.microsoftConnected).toBe(false)
-    })
-
-    it('should return data structure with correct types', async () => {
-      await updateSettings(getDb(), {
-        integrations_google_credentials: JSON.stringify({ access_token: 'test_token' }),
-        integrations_microsoft_credentials: JSON.stringify({ access_token: 'test_token' }),
-      })
-
-      const { result } = renderHook(() => useIntegrationStatus(), {
-        wrapper: createQueryTestWrapper(),
-      })
-
-      await act(async () => {
-        await getClock().runAllAsync()
-      })
-
-      expect(result.current.isLoading).toBe(false)
-
-      expect(result.current.data).toBeDefined()
-      expect(typeof result.current.data?.googleConnected).toBe('boolean')
-      expect(typeof result.current.data?.microsoftConnected).toBe('boolean')
-      expect(typeof result.current.data?.availableProviders.google).toBe('boolean')
-      expect(typeof result.current.data?.availableProviders.microsoft).toBe('boolean')
+      expect(result.current.data?.googleEmail).toBe('user@example.com')
+      expect(result.current.data?.microsoftEmail).toBe('user@outlook.com')
     })
   })
 
@@ -268,11 +187,6 @@ describe('useIntegrationStatus', () => {
     })
 
     it('should handle query completion successfully', async () => {
-      await updateSettings(getDb(), {
-        integrations_google_credentials: '',
-        integrations_microsoft_credentials: '',
-      })
-
       const { result } = renderHook(() => useIntegrationStatus(), {
         wrapper: createQueryTestWrapper({
           defaultOptions: {
@@ -288,7 +202,6 @@ describe('useIntegrationStatus', () => {
       })
 
       expect(result.current.isLoading).toBe(false)
-
       expect(result.current.data).toBeDefined()
       expect(result.current.error).toBeNull()
     })

@@ -62,6 +62,7 @@ export type ModelProfileRow = InferSelectModel<typeof modelProfilesTable>
 // Application types - Row types with previously-required fields made non-null
 export type ChatMessage = WithRequired<ChatMessageRow, 'content' | 'role' | 'chatThreadId'>
 export type ChatThread = WithRequired<ChatThreadRow, 'isEncrypted' | 'wasTriggeredByAutomation'>
+/** apiKey comes from LEFT JOIN with models_secrets in DAL queries, not from the models table. */
 export type Model = WithRequired<
   ModelRow,
   | 'provider'
@@ -72,7 +73,7 @@ export type Model = WithRequired<
   | 'isConfidential'
   | 'startWithReasoning'
   | 'supportsParallelToolCalls'
->
+> & { apiKey: string | null }
 export type Mode = WithRequired<ModeRow, 'name' | 'label' | 'icon' | 'order'>
 export type Task = WithRequired<TaskRow, 'item' | 'order' | 'isComplete'>
 export type McpServer = WithRequired<McpServerRow, 'name' | 'type' | 'enabled'>

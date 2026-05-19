@@ -25,6 +25,7 @@ spec:
     metadata:
       labels:
         app: marketing
+      {{- include "thunderbolt.podAnnotations" (dict "component" .Values.marketing "root" .) | nindent 6 }}
     spec:
       {{- include "thunderbolt.imagePullSecrets" . | nindent 6 }}
       containers:
@@ -33,6 +34,7 @@ spec:
           imagePullPolicy: {{ .Values.marketing.image.pullPolicy }}
           ports:
             - containerPort: 80
+          {{- include "thunderbolt.resources" .Values.marketing.resources | nindent 10 }}
           readinessProbe:
             httpGet:
               path: /

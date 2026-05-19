@@ -25,6 +25,7 @@ spec:
     metadata:
       labels:
         app: frontend
+      {{- include "thunderbolt.podAnnotations" (dict "component" .Values.frontend "root" .) | nindent 6 }}
     spec:
       {{- include "thunderbolt.imagePullSecrets" . | nindent 6 }}
       containers:
@@ -33,6 +34,7 @@ spec:
           imagePullPolicy: {{ .Values.frontend.image.pullPolicy }}
           ports:
             - containerPort: 80
+          {{- include "thunderbolt.resources" .Values.frontend.resources | nindent 10 }}
           readinessProbe:
             httpGet:
               path: /

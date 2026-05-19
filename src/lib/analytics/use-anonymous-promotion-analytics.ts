@@ -23,33 +23,20 @@ export const pendingAnonIdKey = 'thunderbolt_pending_anon_id'
 // If the client was never initialized (self-hosted, no key), alias() is a silent
 // no-op because posthog-js handles uninitialized state.
 const defaultAlias = (newUserId: string, anonId: string) => {
-  try {
-    posthog.alias(newUserId, anonId)
-  } catch {
-    // posthog not initialized — silent no-op.
-  }
-}
-
-/**
- * Dependencies for the promotion analytics state machine. Injected so unit
- * tests can pass fresh fakes per test (avoids `spyOn` on ESM namespace imports
- * — which is unreliable across bun versions and leaks across `--rerun-each`).
- */
-export type AnonymousPromotionAnalyticsDeps = {
-  trackEvent: typeof defaultTrackEvent
-  alias: (newUserId: string, anonId: string) => void
+  posthog.alias(newUserId, anonId)
 }
 
 /**
  * Create the promotion analytics state machine bound to an external mutable ref.
  * Extracted so the pure logic can be unit-tested without a React renderer.
  *
- * Deps are injected (default to the real posthog implementations) so tests can
- * pass fakes without module mocking.
+ * `trackEvent` and `alias` are injected (defaulting to the real posthog implementations)
+ * so tests can pass fakes without module mocking.
  */
 export const createAnonymousPromotionAnalytics = (
   capturedIdRef: { current: string | null },
-  deps: AnonymousPromotionAnalyticsDeps = { trackEvent: defaultTrackEvent, alias: defaultAlias },
+  trackEvent: typeof defaultTrackEvent = defaultTrackEvent,
+  alias: (newUserId: string, anonId: string) => void = defaultAlias,
 ): AnonymousPromotionAnalytics => ({
   captureAnonId: async (authClient: AuthClient) => {
     const { data } = await authClient.getSession()
@@ -74,8 +61,8 @@ export const createAnonymousPromotionAnalytics = (
 
     // Order: alias BEFORE any navigate (external-7). PostHog queues requests to localStorage
     // so the event will replay even if the page unloads before the network request completes.
-    deps.alias(newUserId, anonId)
-    deps.trackEvent('anonymous_user_promoted')
+    alias(newUserId, anonId)
+    trackEvent('anonymous_user_promoted')
 
     capturedIdRef.current = null
   },

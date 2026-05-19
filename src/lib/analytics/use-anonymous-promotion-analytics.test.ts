@@ -3,11 +3,8 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { describe, it, expect, beforeEach, afterEach, mock } from 'bun:test'
-import {
-  createAnonymousPromotionAnalytics,
-  pendingAnonIdKey,
-  type AnonymousPromotionAnalyticsDeps,
-} from './use-anonymous-promotion-analytics'
+import { createAnonymousPromotionAnalytics, pendingAnonIdKey } from './use-anonymous-promotion-analytics'
+import type { trackEvent as defaultTrackEvent } from '@/lib/posthog'
 import type { AuthClient } from '@/contexts'
 
 const makeAuthClient = (isAnonymous: boolean, userId = 'user-abc') =>
@@ -27,16 +24,15 @@ const makeRef = (initial: string | null = null) => ({ current: initial })
 describe('createAnonymousPromotionAnalytics', () => {
   let trackEventMock: ReturnType<typeof mock>
   let aliasMock: ReturnType<typeof mock>
-  let deps: AnonymousPromotionAnalyticsDeps
+  let trackEvent: typeof defaultTrackEvent
+  let alias: (newUserId: string, anonId: string) => void
 
   beforeEach(() => {
     sessionStorage.clear()
     trackEventMock = mock(() => {})
     aliasMock = mock(() => {})
-    deps = {
-      trackEvent: trackEventMock as unknown as AnonymousPromotionAnalyticsDeps['trackEvent'],
-      alias: aliasMock as unknown as AnonymousPromotionAnalyticsDeps['alias'],
-    }
+    trackEvent = trackEventMock as unknown as typeof defaultTrackEvent
+    alias = aliasMock as unknown as (newUserId: string, anonId: string) => void
   })
 
   afterEach(() => {
@@ -45,7 +41,7 @@ describe('createAnonymousPromotionAnalytics', () => {
 
   it('captureAnonId stores the id when session is anonymous', async () => {
     const ref = makeRef()
-    const analytics = createAnonymousPromotionAnalytics(ref, deps)
+    const analytics = createAnonymousPromotionAnalytics(ref, trackEvent, alias)
 
     await analytics.captureAnonId(makeAuthClient(true, 'anon-123'))
 
@@ -54,7 +50,7 @@ describe('createAnonymousPromotionAnalytics', () => {
 
   it('captureAnonId is a no-op when session is non-anonymous', async () => {
     const ref = makeRef()
-    const analytics = createAnonymousPromotionAnalytics(ref, deps)
+    const analytics = createAnonymousPromotionAnalytics(ref, trackEvent, alias)
 
     await analytics.captureAnonId(makeAuthClient(false, 'real-user'))
 
@@ -63,7 +59,7 @@ describe('createAnonymousPromotionAnalytics', () => {
 
   it('captureAnonId is a no-op when session data is null', async () => {
     const ref = makeRef()
-    const analytics = createAnonymousPromotionAnalytics(ref, deps)
+    const analytics = createAnonymousPromotionAnalytics(ref, trackEvent, alias)
 
     await analytics.captureAnonId(makeEmptyAuthClient())
 
@@ -72,7 +68,7 @@ describe('createAnonymousPromotionAnalytics', () => {
 
   it('persistForSso writes the anon id to sessionStorage', async () => {
     const ref = makeRef()
-    const analytics = createAnonymousPromotionAnalytics(ref, deps)
+    const analytics = createAnonymousPromotionAnalytics(ref, trackEvent, alias)
 
     await analytics.captureAnonId(makeAuthClient(true, 'anon-123'))
     analytics.persistForSso()
@@ -81,7 +77,7 @@ describe('createAnonymousPromotionAnalytics', () => {
   })
 
   it('persistForSso is a no-op when no anon id was captured', () => {
-    const analytics = createAnonymousPromotionAnalytics(makeRef(), deps)
+    const analytics = createAnonymousPromotionAnalytics(makeRef(), trackEvent, alias)
 
     analytics.persistForSso()
 
@@ -90,7 +86,7 @@ describe('createAnonymousPromotionAnalytics', () => {
 
   it('onPromotionSuccess calls alias and fires trackEvent when anon id was captured', async () => {
     const ref = makeRef()
-    const analytics = createAnonymousPromotionAnalytics(ref, deps)
+    const analytics = createAnonymousPromotionAnalytics(ref, trackEvent, alias)
 
     await analytics.captureAnonId(makeAuthClient(true, 'anon-123'))
     analytics.onPromotionSuccess('real-user-456')
@@ -100,7 +96,7 @@ describe('createAnonymousPromotionAnalytics', () => {
   })
 
   it('onPromotionSuccess is a no-op when no anon id was captured', () => {
-    const analytics = createAnonymousPromotionAnalytics(makeRef(), deps)
+    const analytics = createAnonymousPromotionAnalytics(makeRef(), trackEvent, alias)
 
     analytics.onPromotionSuccess('real-user-456')
 
@@ -110,7 +106,7 @@ describe('createAnonymousPromotionAnalytics', () => {
 
   it('onPromotionSuccess is a no-op when newUserId equals captured anon id', async () => {
     const ref = makeRef()
-    const analytics = createAnonymousPromotionAnalytics(ref, deps)
+    const analytics = createAnonymousPromotionAnalytics(ref, trackEvent, alias)
 
     await analytics.captureAnonId(makeAuthClient(true, 'same-id'))
     analytics.onPromotionSuccess('same-id')
@@ -121,7 +117,7 @@ describe('createAnonymousPromotionAnalytics', () => {
 
   it('clears the captured id after promotion so second call is a no-op', async () => {
     const ref = makeRef()
-    const analytics = createAnonymousPromotionAnalytics(ref, deps)
+    const analytics = createAnonymousPromotionAnalytics(ref, trackEvent, alias)
 
     await analytics.captureAnonId(makeAuthClient(true, 'anon-123'))
     analytics.onPromotionSuccess('real-user-456')
@@ -134,7 +130,7 @@ describe('createAnonymousPromotionAnalytics', () => {
 
   it('captureAnonId is idempotent — same anon id captured twice yields same ref', async () => {
     const ref = makeRef()
-    const analytics = createAnonymousPromotionAnalytics(ref, deps)
+    const analytics = createAnonymousPromotionAnalytics(ref, trackEvent, alias)
     const authClient = makeAuthClient(true, 'anon-123')
 
     await analytics.captureAnonId(authClient)

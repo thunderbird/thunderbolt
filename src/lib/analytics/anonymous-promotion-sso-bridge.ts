@@ -35,11 +35,7 @@ export const consumePendingSsoAnonAlias = async (authClient: AuthClient): Promis
     return
   }
 
-  try {
-    posthog.alias(newUserId, pendingAnonId)
-  } catch {
-    // posthog not initialized — silent no-op.
-  }
+  posthog.alias(newUserId, pendingAnonId)
 
   trackEvent('anonymous_user_promoted')
   sessionStorage.removeItem(pendingAnonIdKey)

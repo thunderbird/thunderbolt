@@ -17,7 +17,6 @@ import {
   useSidebar,
 } from '@/components/ui/sidebar'
 import { useAuth, useSignInModal } from '@/contexts'
-import { useSettings } from '@/hooks/use-settings'
 import { getDownloadUrl } from '@/lib/download-links'
 import { isWebDesktopPlatform, isTauri } from '@/lib/platform'
 import { edgeSpacing, mobileSidebarWidthRatio } from '@/lib/constants'
@@ -98,8 +97,7 @@ export const SidebarFooter = ({ className }: SidebarFooterProps) => {
   const sessionUser = session?.user as (NonNullable<typeof session>['user'] & { isAnonymous?: boolean }) | undefined
   const user = sessionUser?.isAnonymous ? null : sessionUser
 
-  const { preferredName } = useSettings({ preferred_name: '' })
-  const displayName = user ? (preferredName.value as string) || user.name || null : null
+  const displayName = user?.name ?? null
   const displayEmail = user?.email
 
   const handleMenuAction = (action: () => void) => {

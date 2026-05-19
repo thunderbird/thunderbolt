@@ -78,6 +78,7 @@ type UseWaitlistStateOptions = {
 export const useWaitlistState = ({ authClient, onVerified }: UseWaitlistStateOptions) => {
   const httpClient = useHttpClient()
   const analytics = useAnonymousPromotionAnalytics()
+  const { data: session } = authClient.useSession()
   const [state, dispatch] = useReducer(reducer, initialState)
 
   const isValidEmail = isValidEmailFormat(state.email.trim())
@@ -111,6 +112,10 @@ export const useWaitlistState = ({ authClient, onVerified }: UseWaitlistStateOpt
 
     await analytics.captureAnonId(authClient)
 
+    // Snapshot BEFORE the sign-in mutation — after it resolves, the session has flipped
+    // to the new identity and `isAnonymous` no longer reflects the pre-promotion state.
+    const wasAnonymous = session?.user?.isAnonymous === true
+
     dispatch({ type: 'START_VERIFYING' })
 
     try {
@@ -128,7 +133,7 @@ export const useWaitlistState = ({ authClient, onVerified }: UseWaitlistStateOpt
       }
 
       const isNewUser = isNewAuthUser(result.data.user)
-      await onSignInSuccess(isNewUser)
+      await onSignInSuccess(isNewUser, wasAnonymous)
       analytics.onPromotionSuccess(result.data.user.id)
 
       if (!isNewUser) {

@@ -69,7 +69,9 @@ jobs:
 
   destroy:
     needs: [resolve-pr, drop-db]
-    if: needs.resolve-pr.outputs.is_internal == 'true'
+    # Run even if drop-db failed — a flaky DB drop must not orphan the whole
+    # stack (ECS services, ALB, secrets) and leak cost indefinitely.
+    if: ${{ always() && needs.resolve-pr.result == 'success' && needs.resolve-pr.outputs.is_internal == 'true' }}
     uses: ./.github/workflows/stack-deploy.yml
     with:
       action: destroy
@@ -81,7 +83,7 @@ jobs:
 
   comment:
     needs: [resolve-pr, drop-db, destroy]
-    if: ${{ needs.resolve-pr.outputs.is_internal == 'true' && github.event.pull_request.number }}
+    if: ${{ always() && needs.resolve-pr.result == 'success' && needs.resolve-pr.outputs.is_internal == 'true' && github.event.pull_request.number }}
     runs-on: ubuntu-latest
     steps:
       - name: Update sticky comment to note teardown

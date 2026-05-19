@@ -35,7 +35,7 @@ import { WaitlistLayout, WaitlistPage } from '@/waitlist'
 import AutomationsPage from './automations'
 import { useTriggerScheduler } from './automations/use-trigger-scheduler'
 import { AppErrorScreen } from './components/app-error-screen'
-import { AnonymousSessionGuard, AuthGate } from './components/auth-gate'
+import { AuthGate } from './components/auth-gate'
 import NotFound from './components/not-found'
 import { OnboardingDialog } from './components/onboarding/onboarding-dialog'
 import { WelcomeDialog } from './components/welcome-dialog'
@@ -116,72 +116,62 @@ const AppRoutes = ({ initData }: { initData: InitData }) => {
 
       {/* Waitlist routes - unauthenticated only (skip when bypass or SSO mode) */}
       {!ssoMode && !shouldBypassWaitlist && (
-        <Route element={<AuthGate require="unauthenticated" redirectTo="/" />}>
+        <Route element={<AuthGate require="unauthenticated" />}>
           <Route path="waitlist" element={<WaitlistLayout />}>
             <Route index element={<WaitlistPage />} />
           </Route>
         </Route>
       )}
 
-      {/* Main app routes - authenticated only (pass-through when bypass enabled) */}
-      <Route
-        element={
-          shouldBypassWaitlist ? (
-            <Outlet />
-          ) : (
-            <AuthGate require="authenticated" redirectTo={ssoMode ? '/sso-redirect' : '/waitlist'} />
-          )
-        }
-      >
-        {/* Identity layer: ensure a session exists past the access gate, creating anonymous if needed. */}
-        <Route element={<AnonymousSessionGuard />}>
-          <Route
-            path="/"
-            element={
-              <>
-                <Layout />
-                <OnboardingDialog />
-                <WelcomeDialog />
-              </>
-            }
-          >
-            {/* Home routes with HomeLayout */}
-            <Route element={<ChatLayout />}>
-              <Route index element={<Navigate to="/chats/new" replace />} />
-              <Route path="chats/:chatThreadId" element={<ChatDetailPage />} />
-              {experimentalFeatureTasks.value && <Route path="tasks" element={<TasksPage />} />}
-              <Route path="automations" element={<AutomationsPage />} />
-              {import.meta.env.DEV && (
-                <Route
-                  path="message-simulator"
-                  element={
-                    <Suspense>
-                      <MessageSimulatorPage />
-                    </Suspense>
-                  }
-                />
-              )}
-            </Route>
+      {/* Main app routes - authenticated only (pass-through when bypass enabled). The gate
+          decides redirect targets internally from VITE_AUTH_MODE + VITE_AUTH_ENABLE_ANONYMOUS. */}
+      <Route element={shouldBypassWaitlist ? <Outlet /> : <AuthGate require="authenticated" />}>
+        <Route
+          path="/"
+          element={
+            <>
+              <Layout />
+              <OnboardingDialog />
+              <WelcomeDialog />
+            </>
+          }
+        >
+          {/* Home routes with HomeLayout */}
+          <Route element={<ChatLayout />}>
+            <Route index element={<Navigate to="/chats/new" replace />} />
+            <Route path="chats/:chatThreadId" element={<ChatDetailPage />} />
+            {experimentalFeatureTasks.value && <Route path="tasks" element={<TasksPage />} />}
+            <Route path="automations" element={<AutomationsPage />} />
+            {import.meta.env.DEV && (
+              <Route
+                path="message-simulator"
+                element={
+                  <Suspense>
+                    <MessageSimulatorPage />
+                  </Suspense>
+                }
+              />
+            )}
+          </Route>
 
-            {/* Settings routes with SettingsLayout */}
-            <Route path="settings" element={<SettingsLayout />}>
-              <Route index element={<Settings />} />
-              <Route path="preferences" element={<PreferencesSettingsPage />} />
-              <Route path="models" element={<ModelsPage />} />
-              <Route path="devices" element={<DevicesSettingsPage />} />
-              <Route path="mcp-servers" element={<McpServersPage />} />
-              <Route path="integrations" element={<IntegrationsPage />} />
-              {import.meta.env.DEV && (
-                <Route
-                  path="dev-settings"
-                  element={
-                    <Suspense>
-                      <DevSettingsPage />
-                    </Suspense>
-                  }
-                />
-              )}
-            </Route>
+          {/* Settings routes with SettingsLayout */}
+          <Route path="settings" element={<SettingsLayout />}>
+            <Route index element={<Settings />} />
+            <Route path="preferences" element={<PreferencesSettingsPage />} />
+            <Route path="models" element={<ModelsPage />} />
+            <Route path="devices" element={<DevicesSettingsPage />} />
+            <Route path="mcp-servers" element={<McpServersPage />} />
+            <Route path="integrations" element={<IntegrationsPage />} />
+            {import.meta.env.DEV && (
+              <Route
+                path="dev-settings"
+                element={
+                  <Suspense>
+                    <DevSettingsPage />
+                  </Suspense>
+                }
+              />
+            )}
           </Route>
         </Route>
       </Route>

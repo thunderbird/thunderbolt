@@ -3,3 +3,9 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 export const isSsoMode = () => import.meta.env.VITE_AUTH_MODE === 'sso'
+
+/**
+ * Returns true when anonymous-session auto-creation is enabled for this deployment.
+ * Mirrors the operator-controlled overlay alongside the primary auth path (email-OTP or SSO).
+ */
+export const isAnonymousAuthEnabled = () => import.meta.env.VITE_AUTH_ENABLE_ANONYMOUS === 'true'

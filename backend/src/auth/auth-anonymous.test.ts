@@ -32,10 +32,28 @@ import { user as userTable } from '@/db/auth-schema'
 import { waitlist } from '@/db/schema'
 import { challengeTokenHeader } from '@/auth/otp-constants'
 import { createAuth } from '@/auth/auth'
+import { clearSettingsCache } from '@/config/settings'
 import { createTestDb } from '@/test-utils/db'
 import { createTestChallenge } from '@/test-utils/otp-challenge'
 import { eq } from 'drizzle-orm'
-import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
+import { afterEach, beforeAll, afterAll, beforeEach, describe, expect, it } from 'bun:test'
+
+// All suites here exercise the anonymous() plugin, which is operator-gated by
+// AUTH_ALLOW_ANONYMOUS. Enable it for the file and restore on teardown.
+let savedAllowAnonymous: string | undefined
+beforeAll(() => {
+  savedAllowAnonymous = process.env.AUTH_ALLOW_ANONYMOUS
+  process.env.AUTH_ALLOW_ANONYMOUS = 'true'
+  clearSettingsCache()
+})
+afterAll(() => {
+  if (savedAllowAnonymous === undefined) {
+    delete process.env.AUTH_ALLOW_ANONYMOUS
+  } else {
+    process.env.AUTH_ALLOW_ANONYMOUS = savedAllowAnonymous
+  }
+  clearSettingsCache()
+})
 
 // ---------------------------------------------------------------------------
 // Suite: onLinkAccount deletes the anonymous user row
@@ -184,6 +202,44 @@ describe('M3 anonymous plugin — session-fixation guard', () => {
     if (second.status === 400) {
       const body = (await second.clone().json()) as { message?: string }
       expect(body.message).not.toBe('Already authenticated')
+    }
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Suite: AUTH_ALLOW_ANONYMOUS=false unregisters the plugin (defense-in-depth)
+// ---------------------------------------------------------------------------
+
+describe('anonymous plugin — gated by AUTH_ALLOW_ANONYMOUS', () => {
+  let db: Awaited<ReturnType<typeof createTestDb>>['db']
+  let cleanup: () => Promise<void>
+
+  beforeEach(async () => {
+    const testEnv = await createTestDb()
+    db = testEnv.db
+    cleanup = testEnv.cleanup
+  })
+
+  afterEach(async () => {
+    await cleanup()
+  })
+
+  it('does NOT expose /sign-in/anonymous when AUTH_ALLOW_ANONYMOUS is unset (default false)', async () => {
+    const previous = process.env.AUTH_ALLOW_ANONYMOUS
+    delete process.env.AUTH_ALLOW_ANONYMOUS
+    clearSettingsCache()
+    try {
+      const gatedAuth = createAuth(db)
+      // The plugin is the only thing that adds `signInAnonymous` to `auth.api`; without it,
+      // the method is undefined.
+      expect((gatedAuth.api as unknown as { signInAnonymous?: unknown }).signInAnonymous).toBeUndefined()
+    } finally {
+      if (previous === undefined) {
+        delete process.env.AUTH_ALLOW_ANONYMOUS
+      } else {
+        process.env.AUTH_ALLOW_ANONYMOUS = previous
+      }
+      clearSettingsCache()
     }
   })
 })

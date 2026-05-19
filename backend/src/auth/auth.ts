@@ -329,15 +329,22 @@ export const createAuth = (database: typeof DbType) => {
           await sendSignInEmail({ email: normalizedEmail, otp, verifyUrl })
         },
       }),
-      anonymous({
-        // Disables Better Auth's auto-delete + `/delete-anonymous-user` endpoint — the
-        // latter is an unauthenticated CSRF surface (external-3). We own the delete in
-        // onLinkAccount instead so the endpoint stays closed.
-        disableDeleteAnonymousUser: true,
-        onLinkAccount: async ({ anonymousUser }) => {
-          await database.delete(schema.user).where(eq(schema.user.id, anonymousUser.user.id))
-        },
-      }),
+      // Anonymous plugin is operator-gated: register only when AUTH_ALLOW_ANONYMOUS=true.
+      // Otherwise /v1/api/auth/sign-in/anonymous returns 404 — defense-in-depth against
+      // a malicious client bypassing the frontend `VITE_AUTH_ENABLE_ANONYMOUS` overlay.
+      ...(settings.authAllowAnonymous
+        ? [
+            anonymous({
+              // Disables Better Auth's auto-delete + `/delete-anonymous-user` endpoint — the
+              // latter is an unauthenticated CSRF surface (external-3). We own the delete in
+              // onLinkAccount instead so the endpoint stays closed.
+              disableDeleteAnonymousUser: true,
+              onLinkAccount: async ({ anonymousUser }) => {
+                await database.delete(schema.user).where(eq(schema.user.id, anonymousUser.user.id))
+              },
+            }),
+          ]
+        : []),
       ...buildSsoPlugins(),
     ],
   })

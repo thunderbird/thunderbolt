@@ -5,6 +5,7 @@
 import { extractCountryFromLocation } from '@/lib/country-utils'
 import { useEffect, useReducer } from 'react'
 import { useCountryUnits } from './use-country-units'
+import { useIntegrationStatus } from './use-integration-status'
 import { useSettings } from './use-settings'
 
 type OnboardingStep = 1 | 2 | 3 | 4 | 5
@@ -211,7 +212,6 @@ export const useOnboardingState = () => {
     dateFormat,
     timeFormat,
     currency,
-    integrationsGoogleIsEnabled,
   } = useSettings({
     preferred_name: '',
     location_name: '',
@@ -222,8 +222,8 @@ export const useOnboardingState = () => {
     date_format: 'MM/DD/YYYY',
     time_format: '12h',
     currency: 'USD',
-    integrations_google_is_enabled: false,
   })
+  const { data: integrationStatusData } = useIntegrationStatus()
 
   const { fetchCountryUnits } = useCountryUnits()
 
@@ -243,11 +243,7 @@ export const useOnboardingState = () => {
     }
   }, [preferredName.value, preferredName.isLoading])
 
-  useEffect(() => {
-    if (integrationsGoogleIsEnabled.value && !integrationsGoogleIsEnabled.isLoading) {
-      dispatch({ type: 'SET_PROVIDER_CONNECTED', payload: true })
-    }
-  }, [integrationsGoogleIsEnabled.value, integrationsGoogleIsEnabled.isLoading])
+  const isProviderConnected = state.isProviderConnected || (integrationStatusData?.googleConnected ?? false)
 
   const actions = {
     setCurrentStep: (step: OnboardingStep) => dispatch({ type: 'SET_CURRENT_STEP', payload: step }),
@@ -336,7 +332,7 @@ export const useOnboardingState = () => {
     },
   }
 
-  return { state, actions }
+  return { state: { ...state, isProviderConnected }, actions }
 }
 
 export type { OnboardingAction, OnboardingState }

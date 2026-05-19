@@ -4,8 +4,7 @@
 
 // New file with Microsoft Graph tools
 
-import { getSettings, updateSettings } from '@/dal'
-import { getDb } from '@/db/database'
+import { ensureValidOAuthToken, getOAuthCredentials, type OAuthCredentials } from '@/integrations/oauth-credentials'
 import { llmContentCharLimit } from '@/lib/utils'
 import type { ToolConfig } from '@/types'
 import { http, type HttpClient } from '@/lib/http'
@@ -146,55 +145,10 @@ const getOneDriveFileCategory = (mime: string): OneDriveFileContent['file_catego
 // Internal helpers
 // ---------------------------------------------------------------------------
 
-const getMicrosoftCredentials = async () => {
-  const db = getDb()
-  const settings = await getSettings(db, { integrations_microsoft_credentials: String })
-  const credentialsStr = settings.integrationsMicrosoftCredentials
-  if (!credentialsStr) {
-    throw new Error('Microsoft integration not connected')
-  }
+const getMicrosoftCredentials = (): Promise<OAuthCredentials> => getOAuthCredentials('microsoft')
 
-  try {
-    return JSON.parse(credentialsStr)
-  } catch {
-    throw new Error('Invalid Microsoft credentials')
-  }
-}
-
-/**
- * Check whether a token is still valid with a 60-second safety buffer.
- * Returns true when the token can be reused without refreshing.
- */
-export const isTokenFresh = (expiresAt: number | undefined, now: number): boolean =>
-  expiresAt !== undefined && expiresAt - 60_000 > now
-
-/** Refresh access token if needed */
-const ensureValidToken = async (
-  httpClient: HttpClient,
-  credentials: { access_token: string; refresh_token: string; expires_at?: number },
-) => {
-  const now = Date.now()
-  if (isTokenFresh(credentials.expires_at, now)) {
-    return credentials.access_token
-  }
-
-  if (!credentials.refresh_token) {
-    throw new Error('Access token expired and no refresh token available')
-  }
-
-  const { refreshAccessToken } = await import('@/lib/auth')
-  const newTokens = await refreshAccessToken(httpClient, 'microsoft', credentials.refresh_token)
-  const updated = {
-    ...credentials,
-    access_token: newTokens.access_token,
-    expires_at: Date.now() + newTokens.expires_in * 1000,
-  }
-
-  const db = getDb()
-  await updateSettings(db, { integrations_microsoft_credentials: JSON.stringify(updated) })
-
-  return newTokens.access_token
-}
+const ensureValidToken = (httpClient: HttpClient, credentials: OAuthCredentials): Promise<string> =>
+  ensureValidOAuthToken(httpClient, 'microsoft', credentials)
 
 // ---------------------------------------------------------------------------
 // Public API

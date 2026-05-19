@@ -2,14 +2,21 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { getSettings, updateSettings, deleteSetting } from '@/dal'
-import { getDb } from '@/db/database'
 import type { OAuthProvider } from './auth'
 
 export type ReturnContext = 'onboarding' | 'integrations' | `/${string}`
 
+const storageKey = 'oauth_flow_state'
+
 /**
- * OAuth state stored in sqlite settings
+ * OAuth state stored in localStorage (device-local, never synced).
+ *
+ * localStorage (not sessionStorage) because on Tauri mobile the OS may
+ * terminate the app while the user is in the system browser completing
+ * OAuth — sessionStorage would be wiped on relaunch, breaking the
+ * deep-link callback validation. The IdP enforces code expiry server-side,
+ * so no client-side TTL is needed; the next flow's setOAuthState
+ * overwrites any abandoned entry.
  */
 type OAuthState = {
   state: string | null
@@ -18,60 +25,34 @@ type OAuthState = {
   returnContext: ReturnContext | null
 }
 
-/**
- * Gets all OAuth state from sqlite settings
- */
-export const getOAuthState = async (): Promise<OAuthState> => {
-  const db = getDb()
-  const settings = await getSettings(db, {
-    oauth_state: String,
-    oauth_provider: String,
-    oauth_verifier: String,
-    oauth_return_context: String,
-  })
+const emptyState = (): OAuthState => ({
+  state: null,
+  provider: null,
+  verifier: null,
+  returnContext: null,
+})
 
-  return {
-    state: settings.oauthState,
-    provider: settings.oauthProvider as OAuthProvider | null,
-    verifier: settings.oauthVerifier,
-    returnContext: settings.oauthReturnContext as ReturnContext | null,
+/** Gets all OAuth flow state from localStorage. */
+export const getOAuthState = (): OAuthState => {
+  const raw = localStorage.getItem(storageKey)
+  if (!raw) {
+    return emptyState()
+  }
+  try {
+    return JSON.parse(raw) as OAuthState
+  } catch {
+    return emptyState()
   }
 }
 
-/**
- * Sets OAuth state in sqlite settings
- */
-export const setOAuthState = async (state: Partial<OAuthState>): Promise<void> => {
-  const settings: Record<string, string | null> = {}
-
-  if (state.state !== undefined) {
-    settings.oauth_state = state.state
-  }
-  if (state.provider !== undefined) {
-    settings.oauth_provider = state.provider
-  }
-  if (state.verifier !== undefined) {
-    settings.oauth_verifier = state.verifier
-  }
-  if (state.returnContext !== undefined) {
-    settings.oauth_return_context = state.returnContext
-  }
-
-  if (Object.keys(settings).length > 0) {
-    const db = getDb()
-    await updateSettings(db, settings)
-  }
+/** Sets OAuth flow state in localStorage (merges with existing). */
+export const setOAuthState = (update: Partial<OAuthState>): void => {
+  const current = getOAuthState()
+  const merged = { ...current, ...update }
+  localStorage.setItem(storageKey, JSON.stringify(merged))
 }
 
-/**
- * Clears OAuth state from sqlite settings
- */
-export const clearOAuthState = async (): Promise<void> => {
-  const db = getDb()
-  await Promise.all([
-    deleteSetting(db, 'oauth_state'),
-    deleteSetting(db, 'oauth_provider'),
-    deleteSetting(db, 'oauth_verifier'),
-    deleteSetting(db, 'oauth_return_context'),
-  ])
+/** Clears all OAuth flow state from localStorage. */
+export const clearOAuthState = (): void => {
+  localStorage.removeItem(storageKey)
 }

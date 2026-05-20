@@ -14,7 +14,7 @@ import { createAppDir, resetAppDir } from '@/lib/fs'
 import { isSsoMode } from '@/lib/auth-mode'
 import { createAuthenticatedClient } from '@/lib/http'
 import { getDatabasePath, getDatabaseType } from '@/lib/platform'
-import { initPosthog, type PosthogInitResult, trackError } from '@/lib/posthog'
+import { initPosthog, type PostHogInitResult, trackError } from '@/lib/posthog'
 import { reconcileDefaults } from '@/lib/reconcile-defaults'
 import { TrayManager } from '@/lib/tray'
 import type { InitData } from '@/types'
@@ -50,7 +50,7 @@ const initializeTray = async (): Promise<{ tray: TrayIcon | undefined; window: W
   return await TrayManager.initIfSupported()
 }
 
-const initializePostHog = async (httpClient?: HttpClient): Promise<PosthogInitResult> => {
+const initializePostHog = async (httpClient?: HttpClient): Promise<PostHogInitResult> => {
   const result = await initPosthog(httpClient)
   return result.success ? result.data : { client: null, telemetryAvailable: false }
 }
@@ -151,7 +151,7 @@ const executeInitializationSteps = async (httpClient?: HttpClient): Promise<Hand
   }
 
   // Step 8: PostHog initialization (non-critical).
-  let posthogResult: PosthogInitResult = { client: null, telemetryAvailable: false }
+  let posthogResult: PostHogInitResult = { client: null, telemetryAvailable: false }
   try {
     posthogResult = await initializePostHog(client)
   } catch (error) {

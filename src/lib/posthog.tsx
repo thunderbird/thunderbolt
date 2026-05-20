@@ -47,7 +47,7 @@ export const sanitizeUrl = (url: string): string => {
   return url
 }
 
-export type PosthogInitResult = {
+export type PostHogInitResult = {
   client: PostHog | null
   telemetryAvailable: boolean
 }
@@ -57,7 +57,7 @@ export type PosthogInitResult = {
  * after the user has opted in, so the SDK lives in an async chunk.
  * `telemetryAvailable` reports whether the backend has an API key configured.
  */
-export const initPosthog = async (httpClient?: HttpClient): Promise<HandleResult<PosthogInitResult>> => {
+export const initPosthog = async (httpClient?: HttpClient): Promise<HandleResult<PostHogInitResult>> => {
   try {
     const cloudUrl = getLocalSetting('cloudUrl')
     const debugPosthog = getLocalSetting('debugPosthog')
@@ -131,12 +131,12 @@ export const initPosthog = async (httpClient?: HttpClient): Promise<HandleResult
 
 const TelemetryAvailableContext = createContext(false)
 
-type PosthogClientContextValue = {
+type PostHogClientContextValue = {
   client: PostHog | null
   setClient: Dispatch<SetStateAction<PostHog | null>>
 }
 
-const PosthogClientContext = createContext<PosthogClientContextValue | null>(null)
+const PostHogClientContext = createContext<PostHogClientContextValue | null>(null)
 
 /**
  * True when the backend has a PostHog API key configured. Independent of the
@@ -144,19 +144,19 @@ const PosthogClientContext = createContext<PosthogClientContextValue | null>(nul
  */
 export const useTelemetryAvailable = () => useContext(TelemetryAvailableContext)
 
-const usePosthogClientContext = (): PosthogClientContextValue => {
-  const ctx = useContext(PosthogClientContext)
+const usePostHogClientContext = (): PostHogClientContextValue => {
+  const ctx = useContext(PostHogClientContext)
   if (!ctx) {
-    throw new Error('usePosthog must be used inside <PostHogProvider>')
+    throw new Error('PostHog hooks must be used inside <PostHogProvider>')
   }
   return ctx
 }
 
 /** Loaded PostHog client, or null when the SDK has not been initialized. */
-export const usePosthog = (): PostHog | null => usePosthogClientContext().client
+export const usePosthog = (): PostHog | null => usePostHogClientContext().client
 
 /** Publish a freshly-loaded client into the tree after a lazy opt-in init. */
-export const useSetPosthog = (): Dispatch<SetStateAction<PostHog | null>> => usePosthogClientContext().setClient
+export const useSetPosthog = (): Dispatch<SetStateAction<PostHog | null>> => usePostHogClientContext().setClient
 
 export const PostHogProvider = ({
   children,
@@ -171,7 +171,7 @@ export const PostHogProvider = ({
   const value = useMemo(() => ({ client, setClient }), [client])
   return (
     <TelemetryAvailableContext.Provider value={telemetryAvailable}>
-      <PosthogClientContext.Provider value={value}>{children}</PosthogClientContext.Provider>
+      <PostHogClientContext.Provider value={value}>{children}</PostHogClientContext.Provider>
     </TelemetryAvailableContext.Provider>
   )
 }

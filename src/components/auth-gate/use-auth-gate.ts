@@ -4,8 +4,7 @@
 
 import { useEffect, useRef, useState } from 'react'
 import { useAuth } from '@/contexts'
-import { isAnonymousAuthEnabled, isSsoMode } from '@/lib/auth-mode'
-import { isPrPreview } from '@/lib/platform'
+import { isAnonymousAuthEnabled, isSsoMode, isWaitlistBypassed } from '@/lib/auth-mode'
 
 export type AuthRequirement = 'authenticated' | 'unauthenticated'
 
@@ -15,8 +14,6 @@ export type AuthGateState =
   | { status: 'loading' }
   | { status: 'allowed' }
   | { status: 'redirect'; target: RedirectTarget }
-
-const isBypassWaitlistEnabled = () => import.meta.env.VITE_BYPASS_WAITLIST === 'true'
 
 /**
  * Hook that determines route access based on authentication state.
@@ -40,7 +37,7 @@ export const useAuthGate = (require: AuthRequirement): AuthGateState => {
   const { data: session, isPending } = authClient.useSession()
   const isAuthenticated = !!session?.user
 
-  const waitlistBypassed = isPrPreview() || isBypassWaitlistEnabled()
+  const waitlistBypassed = isWaitlistBypassed()
   const anonymousAllowed = isAnonymousAuthEnabled() && !isSsoMode()
 
   const shouldAutoAnon =

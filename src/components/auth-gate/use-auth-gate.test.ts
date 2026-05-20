@@ -33,8 +33,8 @@ type EnvOverrides = {
 
 /**
  * Stash and restore selected import.meta.env overrides for a test. The hook
- * reads env via `isSsoMode()` / `isAnonymousAuthEnabled()` / inline bypass
- * check, all of which read `import.meta.env` at call time.
+ * reads env via `isSsoMode()` / `isAnonymousAuthEnabled()` / `isWaitlistBypassed()`,
+ * all of which read `import.meta.env` at call time.
  */
 const withEnv = (overrides: EnvOverrides) => {
   const env = import.meta.env as unknown as Record<string, string | undefined>

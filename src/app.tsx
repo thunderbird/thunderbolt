@@ -4,7 +4,7 @@
 
 import '@/lib/dayjs'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { BrowserRouter, Navigate, Outlet, Route, Routes } from 'react-router'
+import { BrowserRouter, Navigate, Route, Routes } from 'react-router'
 import { PowerSyncContext } from '@powersync/react'
 
 import ChatDetailPage from '@/chats/detail'
@@ -125,7 +125,7 @@ const AppRoutes = ({ initData }: { initData: InitData }) => {
 
       {/* Main app routes - authenticated only (pass-through when bypass enabled). The gate
           decides redirect targets internally from VITE_AUTH_MODE + VITE_AUTH_ENABLE_ANONYMOUS. */}
-      <Route element={shouldBypassWaitlist ? <Outlet /> : <AuthGate require="authenticated" />}>
+      <Route element={<AuthGate require="authenticated" />}>
         <Route
           path="/"
           element={

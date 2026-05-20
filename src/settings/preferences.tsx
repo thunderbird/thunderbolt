@@ -143,8 +143,21 @@ export default function PreferencesSettingsPage() {
   const { data: unitsOptionsData, isLoading: unitsOptionsLoading } = useUnitsOptions()
   const { data: countryUnitsData, isLoading: countryUnitsLoading } = useCountryUnits()
 
+  const enableTelemetryCapture = async () => {
+    let client = postHog
+    if (!client && telemetryAvailable) {
+      const result = await initPosthog(httpClient)
+      if (result.success && result.data.client) {
+        client = result.data.client
+        setPostHog(client)
+      }
+    }
+    client?.opt_in_capturing()
+  }
+
   const handleEnableTelemetry = async (featureName?: string | null) => {
     await dataCollection.setValue(true)
+    await enableTelemetryCapture()
     if (featureName === 'experimentalFeatureTasks') {
       await experimentalFeatureTasks.setValue(true)
     }
@@ -188,16 +201,7 @@ export default function PreferencesSettingsPage() {
     await dataCollection.setValue(value)
 
     if (value) {
-      // Lazy-init when the user opts in after startup.
-      let client = postHog
-      if (!client && telemetryAvailable) {
-        const result = await initPosthog(httpClient)
-        if (result.success && result.data.client) {
-          client = result.data.client
-          setPostHog(client)
-        }
-      }
-      client?.opt_in_capturing()
+      await enableTelemetryCapture()
       trackEvent('settings_data_collection_enabled')
     } else {
       trackEvent('settings_data_collection_disabled')

@@ -24,3 +24,5 @@ export const AccountDeleted = () => (
     </div>
   </div>
 )
+
+export default AccountDeleted

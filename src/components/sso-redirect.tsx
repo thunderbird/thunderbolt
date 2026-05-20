@@ -65,7 +65,7 @@ const SsoRedirect = () => {
           return
         }
 
-        // Persist the anon id to sessionStorage BEFORE the browser navigates away (external-7).
+        // Persist the anon id to sessionStorage BEFORE the browser navigates away.
         analytics.persistForSso()
         window.location.href = data.url
       } catch (err) {

@@ -164,7 +164,7 @@ export const createAuth = (database: typeof DbType) => {
           defaultValue: true,
         },
         // Exposes isAnonymous on the session user object so downstream consumers
-        // (e.g. M4's PowerSync guard) can read it without an extra DB lookup.
+        // (e.g. the PowerSync route guard) can read it without an extra DB lookup.
         isAnonymous: {
           type: 'boolean',
           required: false,
@@ -195,8 +195,8 @@ export const createAuth = (database: typeof DbType) => {
       before: createAuthMiddleware(async (ctx) => {
         // Guard: prevent session fixation. A real (non-anonymous) user MUST NOT be
         // able to acquire a new anonymous session that could shadow their real session.
-        // This is external-14: reject /sign-in/anonymous if caller is already authenticated
-        // as a non-anonymous user. Anonymous sign-in is intentionally NOT waitlist-gated.
+        // Reject /sign-in/anonymous if caller is already authenticated as a non-anonymous
+        // user. Anonymous sign-in is intentionally NOT waitlist-gated.
         if (ctx.path === '/sign-in/anonymous') {
           const existing = await getSessionFromCtx(ctx, { disableRefresh: true })
           if (existing?.user && (existing.user as { isAnonymous?: boolean }).isAnonymous !== true) {
@@ -336,8 +336,8 @@ export const createAuth = (database: typeof DbType) => {
         ? [
             anonymous({
               // Disables Better Auth's auto-delete + `/delete-anonymous-user` endpoint — the
-              // latter is an unauthenticated CSRF surface (external-3). We own the delete in
-              // onLinkAccount instead so the endpoint stays closed.
+              // latter is an unauthenticated CSRF surface. We own the delete in onLinkAccount
+              // instead so the endpoint stays closed.
               disableDeleteAnonymousUser: true,
               onLinkAccount: async ({ anonymousUser }) => {
                 await database.delete(schema.user).where(eq(schema.user.id, anonymousUser.user.id))

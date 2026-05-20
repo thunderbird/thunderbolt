@@ -59,8 +59,8 @@ export const createAnonymousPromotionAnalytics = (
       return
     }
 
-    // Order: alias BEFORE any navigate (external-7). PostHog queues requests to localStorage
-    // so the event will replay even if the page unloads before the network request completes.
+    // Order: alias BEFORE any navigate. PostHog queues requests to localStorage so the event
+    // will replay even if the page unloads before the network request completes.
     alias(newUserId, anonId)
     trackEvent('anonymous_user_promoted')
 

@@ -118,7 +118,7 @@ type OnSignInSuccessDeps = {
  * `wasAnonymous` short-circuits this for the anonymous → real-account promotion case —
  * the queued PUTs in `ps_crud` are exactly the anon-session writes we WANT to upload
  * under the new identity. Wiping them here would silently destroy the user's anon-session
- * work. See `.context/promotion-flow-trace.md` §3.2 for the full trace.
+ * work.
  */
 export const onSignInSuccess = async (
   isNewUser: boolean,

@@ -115,7 +115,7 @@ describe('anonymous plugin — link deletes anonymous user', () => {
 // Suite: Session-fixation guard
 // ---------------------------------------------------------------------------
 
-describe('M3 anonymous plugin — session-fixation guard', () => {
+describe('anonymous plugin — session-fixation guard', () => {
   let auth: ReturnType<typeof createAuth>
   let db: Awaited<ReturnType<typeof createTestDb>>['db']
   let cleanup: () => Promise<void>

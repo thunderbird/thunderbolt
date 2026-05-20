@@ -65,13 +65,8 @@ export const getAuthenticatedHeaders = (): Record<string, string> => {
 /**
  * Subscribe to auth token changes originating in a different browser tab.
  *
- * Uses `window.addEventListener('storage', ...)` — a legitimate useEffect use per CLAUDE.md
- * ("DOM event listeners with cleanup"). The `storage` event only fires in tabs OTHER than the
- * one that wrote the value, making it the correct mechanism for cross-tab coordination.
- *
- * Defense (external-6): skips double-fire when the value is empty/falsy but our own
- * localStorage still has a token (another tab may have cleared it, but our in-memory state
- * hasn't been updated yet — the listener fires once; React will reconcile the rest).
+ * The `storage` event only fires in tabs OTHER than the one that wrote the value, making
+ * it the correct mechanism for cross-tab coordination.
  *
  * @returns Unsubscribe function — call on component unmount.
  */
@@ -91,9 +86,9 @@ export const onAuthTokenChangedInOtherTab = (
       return
     }
 
-    // Defense-in-depth (external-6): if the incoming value is empty/falsy but our own token
-    // is still present, the event is legitimate (another tab signed out) — fire the listener
-    // once. We do NOT suppress this case; the listener decides how to react.
+    // If the incoming value is empty/falsy but our own token is still present, the event is
+    // legitimate (another tab signed out) — fire the listener once. We do NOT suppress this
+    // case; the listener decides how to react.
     listener(next, prev)
   }
 

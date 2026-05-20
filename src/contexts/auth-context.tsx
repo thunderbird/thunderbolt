@@ -107,7 +107,7 @@ export const AuthProvider = ({ children, cloudUrl, authClient: overrideClient }:
 
   // Consume any pending SSO anon-id alias from sessionStorage (written before the SSO redirect
   // by persistForSso()). A ref guard prevents StrictMode's double-invocation from firing alias
-  // twice. This is a legitimate useEffect use (async one-time side effect at mount).
+  // twice.
   const ssoAliasConsumedRef = useRef(false)
   useEffect(() => {
     if (!value?.authClient || ssoAliasConsumedRef.current) {

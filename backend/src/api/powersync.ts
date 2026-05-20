@@ -154,7 +154,7 @@ export const createPowerSyncRoutes = (auth: Auth, settings: Settings, database: 
     )
     .derive(async ({ request }) => {
       const session = await auth.api.getSession({ headers: request.headers })
-      // Better Auth populates session.user with `additionalFields` (M3 registers `isAnonymous`),
+      // Better Auth populates session.user with `additionalFields` (including `isAnonymous`),
       // so `user.isAnonymous` is available here without an extra DB lookup.
       const sessionUser = session?.user as (NonNullable<typeof session>['user'] & { isAnonymous?: boolean }) | undefined
       return { user: sessionUser ?? null }

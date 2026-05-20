@@ -28,6 +28,14 @@ const createAuthClientInstance = (cloudUrl: string) => {
     basePath: '/v1/api/auth',
     plugins: [emailOTPClient(), anonymousClient()],
     fetchOptions: buildFetchOptions(platform),
+    // Disable Better Auth's focus/online refetch — Thunderbolt's own cross-tab sync
+    // (`onAuthTokenChangedInOtherTab` in src/lib/auth-token.ts) plus the 401 safety net
+    // in HttpClient.afterResponse already cover the relevant scenarios without burning
+    // rate-limit budget on every tab focus / visibilitychange / online event.
+    sessionOptions: {
+      refetchOnWindowFocus: false,
+      refetchWhenOffline: false,
+    },
   })
 }
 

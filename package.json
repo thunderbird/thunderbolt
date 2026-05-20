@@ -43,7 +43,12 @@
   },
   "size-limit": [
     {
-      "name": "JS bundle",
+      "name": "JS entry chunk (FCP)",
+      "path": "dist/assets/entry-*.js",
+      "gzip": true
+    },
+    {
+      "name": "JS bundle (total)",
       "path": "dist/assets/*.js",
       "gzip": true
     }

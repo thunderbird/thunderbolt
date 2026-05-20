@@ -7,6 +7,11 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router'
 import { PowerSyncContext } from '@powersync/react'
 
+import MagicLinkVerify from '@/components/magic-link-verify'
+import OAuthCallback from '@/components/oauth-callback'
+import { AccountDeleted } from '@/components/account-deleted'
+import { SignedOut } from '@/components/signed-out'
+import NotFound from '@/components/not-found'
 import { RevokedDeviceModal } from '@/components/revoked-device-modal'
 import { SidebarProvider } from '@/components/ui/sidebar'
 import { HapticsProvider } from '@/hooks/use-haptics'
@@ -65,11 +70,6 @@ const McpServersPage = lazy(() => import('@/settings/mcp-servers'))
 const SkillsPage = lazy(() => import('@/settings/skills'))
 const IntegrationsPage = lazy(() => import('@/settings/integrations'))
 const WaitlistPage = lazy(() => import('@/waitlist/waitlist-page'))
-const MagicLinkVerify = lazy(() => import('@/components/magic-link-verify'))
-const OAuthCallback = lazy(() => import('@/components/oauth-callback'))
-const AccountDeleted = lazy(() => import('@/components/account-deleted'))
-const SignedOut = lazy(() => import('@/components/signed-out'))
-const NotFound = lazy(() => import('@/components/not-found'))
 
 // Lazily import SSO components so non-enterprise deployments don't pay
 // for the extra bundle size and attack surface.

@@ -22,5 +22,3 @@ export const SignedOut = () => (
     </div>
   </div>
 )
-
-export default SignedOut

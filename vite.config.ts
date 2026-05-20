@@ -33,6 +33,11 @@ export default defineConfig({
     sourcemap,
     rollupOptions: {
       external: ['bun:sqlite'],
+      output: {
+        // Distinct prefix for the entry chunk so size-limit can track the
+        // FCP-blocking bytes separately from on-demand route chunks.
+        entryFileNames: 'assets/entry-[hash].js',
+      },
     },
   },
   plugins: [

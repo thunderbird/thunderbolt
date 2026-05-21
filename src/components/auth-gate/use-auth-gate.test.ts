@@ -29,7 +29,9 @@ class TestErrorBoundary extends Component<{ capture: ErrorCaptureState; children
     this.props.capture.error = error
   }
   render() {
-    if (this.state.hasError) return null
+    if (this.state.hasError) {
+      return null
+    }
     return this.props.children
   }
 }

@@ -73,9 +73,14 @@ export const handleCredentialsInvalidIfNeeded = (status: number, body: ErrorBody
  * PowerSync connector that handles authentication and data upload.
  * - fetchCredentials: Gets JWT tokens from the backend (requires auth)
  * - uploadData: Sends local changes to the backend for persistence (requires auth)
+ *
+ * `fetchFn` is injectable for tests; defaults to `globalThis.fetch`.
  */
 export class ThunderboltConnector implements PowerSyncBackendConnector {
-  constructor(private backendUrl: string) {}
+  constructor(
+    private backendUrl: string,
+    private fetchFn: typeof fetch = globalThis.fetch.bind(globalThis),
+  ) {}
 
   /**
    * Fetch credentials (JWT token) from the backend.
@@ -89,7 +94,7 @@ export class ThunderboltConnector implements PowerSyncBackendConnector {
         return null
       }
 
-      const response = await fetch(`${this.backendUrl}/powersync/token`, {
+      const response = await this.fetchFn(`${this.backendUrl}/powersync/token`, {
         headers: getAuthenticatedHeaders(),
         credentials: ssoMode ? 'include' : undefined,
       })
@@ -169,7 +174,7 @@ export class ThunderboltConnector implements PowerSyncBackendConnector {
 
       console.info(`Uploading ${operations.length} operations to backend`)
 
-      const response = await fetch(`${this.backendUrl}/powersync/upload`, {
+      const response = await this.fetchFn(`${this.backendUrl}/powersync/upload`, {
         method: 'PUT',
         headers: { ...getAuthenticatedHeaders(), 'Content-Type': 'application/json' },
         body: JSON.stringify({ operations }),

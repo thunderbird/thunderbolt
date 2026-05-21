@@ -8,6 +8,7 @@ import { isOriginAllowed } from '@/config/settings'
 import { applyOperation, getActiveSessionByToken, getDeviceById, getUserById, upsertDevice } from '@/dal'
 import type { db as DbType } from '@/db/client'
 import { verifySignedBearerToken } from '@/auth/bearer-token'
+import type { User } from '@shared/types/auth'
 import { safeErrorHandler } from '@/middleware/error-handling'
 import { jwt } from '@elysiajs/jwt'
 import { Elysia, t } from 'elysia'
@@ -156,7 +157,7 @@ export const createPowerSyncRoutes = (auth: Auth, settings: Settings, database: 
       const session = await auth.api.getSession({ headers: request.headers })
       // Better Auth populates session.user with `additionalFields` (including `isAnonymous`),
       // so `user.isAnonymous` is available here without an extra DB lookup.
-      const sessionUser = session?.user as (NonNullable<typeof session>['user'] & { isAnonymous?: boolean }) | undefined
+      const sessionUser = session?.user as User | undefined
       return { user: sessionUser ?? null }
     })
     .get('/token', async ({ powersyncJwt, request, set, user }) => {

@@ -5,6 +5,8 @@
 import { ChevronsUpDown, Loader2, LogOut, Terminal, UserRound, Download } from 'lucide-react'
 import { type ReactNode, useState } from 'react'
 
+import type { User } from '@shared/types/auth'
+
 import { LogoutModal } from '@/components/logout-modal'
 import { MobileBlurBackdrop } from '@/components/ui/mobile-blur-backdrop'
 import { NavLink } from '@/components/ui/nav-link'
@@ -94,7 +96,7 @@ export const SidebarFooter = ({ className }: SidebarFooterProps) => {
   // Treat anonymous sessions as logged-out for the footer UI: anonymous users have a
   // synthetic email and no real account, so showing them as "logged in" is misleading.
   // The Sign In affordance (below) is the correct surface for them to upgrade.
-  const sessionUser = session?.user as (NonNullable<typeof session>['user'] & { isAnonymous?: boolean }) | undefined
+  const sessionUser = session?.user as User | undefined
   const user = sessionUser?.isAnonymous ? null : sessionUser
 
   const displayName = user?.name ?? null

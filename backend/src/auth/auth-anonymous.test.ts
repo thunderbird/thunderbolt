@@ -10,33 +10,29 @@
  * - The session-fixation guard rejects /sign-in/anonymous from a real session.
  */
 
-import { mock } from 'bun:test'
-import * as authUtils from '@/auth/utils'
-import * as waitlistUtils from '@/waitlist/utils'
-
-const mockSendSignInEmail = mock(() => Promise.resolve())
-
-mock.module('@/auth/utils', () => ({
-  ...authUtils,
-  sendSignInEmail: mockSendSignInEmail,
-}))
-
-mock.module('@/waitlist/utils', () => ({
-  ...waitlistUtils,
-  sendWaitlistNotReadyEmail: mock(() => Promise.resolve()),
-  sendWaitlistJoinedEmail: mock(() => Promise.resolve()),
-  sendWaitlistReminderEmail: mock(() => Promise.resolve()),
-}))
-
 import { user as userTable } from '@/db/auth-schema'
 import { waitlist } from '@/db/schema'
 import { challengeTokenHeader } from '@/auth/otp-constants'
-import { createAuth } from '@/auth/auth'
+import { createAuth, type AuthEmailDeps } from '@/auth/auth'
 import { clearSettingsCache } from '@/config/settings'
 import { createTestDb } from '@/test-utils/db'
 import { createTestChallenge } from '@/test-utils/otp-challenge'
 import { eq } from 'drizzle-orm'
-import { afterEach, beforeAll, afterAll, beforeEach, describe, expect, it } from 'bun:test'
+import { afterEach, beforeAll, afterAll, beforeEach, describe, expect, it, mock } from 'bun:test'
+
+const mockSendSignInEmail = mock(() => Promise.resolve())
+
+/**
+ * Build the email-dep overrides for `createAuth` so tests don't actually hit
+ * the email service. Injected via the producer arg instead of module-level
+ * mocking — keeps overrides scoped to this file and prevents cross-file leakage
+ * in the same Bun worker.
+ */
+const buildEmailDeps = (): AuthEmailDeps => ({
+  sendSignInEmail: mockSendSignInEmail,
+  sendWaitlistJoinedEmail: mock(() => Promise.resolve()),
+  sendWaitlistNotReadyEmail: mock(() => Promise.resolve()),
+})
 
 // All suites here exercise the anonymous() plugin, which is operator-gated by
 // AUTH_ALLOW_ANONYMOUS. Enable it for the file and restore on teardown.
@@ -69,7 +65,7 @@ describe('anonymous plugin — link deletes anonymous user', () => {
     const testEnv = await createTestDb()
     db = testEnv.db
     cleanup = testEnv.cleanup
-    auth = createAuth(db)
+    auth = createAuth(db, buildEmailDeps())
   })
 
   afterEach(async () => {
@@ -125,7 +121,7 @@ describe('anonymous plugin — session-fixation guard', () => {
     const testEnv = await createTestDb()
     db = testEnv.db
     cleanup = testEnv.cleanup
-    auth = createAuth(db)
+    auth = createAuth(db, buildEmailDeps())
   })
 
   afterEach(async () => {
@@ -229,7 +225,7 @@ describe('anonymous plugin — gated by AUTH_ALLOW_ANONYMOUS', () => {
     delete process.env.AUTH_ALLOW_ANONYMOUS
     clearSettingsCache()
     try {
-      const gatedAuth = createAuth(db)
+      const gatedAuth = createAuth(db, buildEmailDeps())
       // The plugin is the only thing that adds `signInAnonymous` to `auth.api`; without it,
       // the method is undefined.
       expect((gatedAuth.api as unknown as { signInAnonymous?: unknown }).signInAnonymous).toBeUndefined()

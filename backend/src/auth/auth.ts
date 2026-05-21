@@ -23,10 +23,24 @@ import { betterAuth } from 'better-auth'
 import { drizzleAdapter } from 'better-auth/adapters/drizzle'
 import { anonymous, bearer, emailOTP } from 'better-auth/plugins'
 import { sso } from '@better-auth/sso'
-import { isAutoApprovedDomain, sendWaitlistJoinedEmail, sendWaitlistNotReadyEmail } from '@/waitlist/utils'
+import {
+  isAutoApprovedDomain,
+  sendWaitlistJoinedEmail as defaultSendWaitlistJoinedEmail,
+  sendWaitlistNotReadyEmail as defaultSendWaitlistNotReadyEmail,
+} from '@/waitlist/utils'
 import { challengeTokenHeader, otpExpiryMs, otpExpirySeconds } from './otp-constants'
-import { buildVerifyUrl, parseTrustedOrigins, sendSignInEmail } from './utils'
+import { buildVerifyUrl, parseTrustedOrigins, sendSignInEmail as defaultSendSignInEmail } from './utils'
 import { eq } from 'drizzle-orm'
+
+/**
+ * Email-sending dependencies for `createAuth`. Tests can inject mocks here
+ * instead of using `mock.module()` (which leaks across files in the same worker).
+ */
+export type AuthEmailDeps = {
+  sendSignInEmail?: typeof defaultSendSignInEmail
+  sendWaitlistJoinedEmail?: typeof defaultSendWaitlistJoinedEmail
+  sendWaitlistNotReadyEmail?: typeof defaultSendWaitlistNotReadyEmail
+}
 
 const otpSignInPath = '/sign-in/email-otp'
 
@@ -103,9 +117,12 @@ const buildSsoPlugins = () => {
   return []
 }
 
-export const createAuth = (database: typeof DbType) => {
+export const createAuth = (database: typeof DbType, emailDeps: AuthEmailDeps = {}) => {
   const settings = getSettings()
   const parsedOrigins = parseTrustedOrigins(process.env.TRUSTED_ORIGINS)
+  const sendSignInEmail = emailDeps.sendSignInEmail ?? defaultSendSignInEmail
+  const sendWaitlistJoinedEmail = emailDeps.sendWaitlistJoinedEmail ?? defaultSendWaitlistJoinedEmail
+  const sendWaitlistNotReadyEmail = emailDeps.sendWaitlistNotReadyEmail ?? defaultSendWaitlistNotReadyEmail
 
   // Include the backend's own origin so the SSO desktop-callback can be used as callbackURL.
   // Spread to avoid mutating the shared default array returned by parseTrustedOrigins.

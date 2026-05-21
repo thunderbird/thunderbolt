@@ -9,6 +9,8 @@ import { isSafeUrl } from '@/lib/url-utils'
 import { isTauri } from '@/lib/platform'
 import { startSsoFlowLoopback } from '@/lib/sso-loopback'
 import { useLocalSettingsStore } from '@/stores/local-settings-store'
+import { useAnonymousPromotionAnalytics } from '@/lib/analytics/use-anonymous-promotion-analytics'
+import { useAuth } from '@/contexts'
 import Loading from '@/loading'
 
 /**
@@ -20,6 +22,8 @@ import Loading from '@/loading'
  */
 const SsoRedirect = () => {
   const cloudUrl = useLocalSettingsStore((s) => s.cloudUrl)
+  const authClient = useAuth()
+  const analytics = useAnonymousPromotionAnalytics()
   const [error, setError] = useState(false)
   const [retryKey, setRetryKey] = useState(0)
 
@@ -30,8 +34,12 @@ const SsoRedirect = () => {
 
     const redirectToSso = async () => {
       try {
+        // Capture the anonymous id before any redirect so persistForSso() has it available.
+        await analytics.captureAnonId(authClient)
+
         // Tauri desktop: use system browser + loopback server (RFC 8252)
         if (isTauri()) {
+          analytics.persistForSso()
           const token = await startSsoFlowLoopback(baseUrl)
           if (token) {
             setAuthToken(token)
@@ -57,6 +65,8 @@ const SsoRedirect = () => {
           return
         }
 
+        // Persist the anon id to sessionStorage BEFORE the browser navigates away.
+        analytics.persistForSso()
         window.location.href = data.url
       } catch (err) {
         if (err instanceof DOMException && err.name === 'AbortError') {

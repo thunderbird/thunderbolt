@@ -10,6 +10,7 @@ type MockAuthClientOptions = {
       id: string
       email: string
       name?: string
+      isAnonymous?: boolean
     }
   } | null
   isPending?: boolean
@@ -17,6 +18,10 @@ type MockAuthClientOptions = {
     email: string
     otp: string
   }) => Promise<{ error: { message: string; code?: string } | null }>
+  signInAnonymous?: () => Promise<{
+    error: { status: number; code: string } | null
+    data: { user: { id: string } } | null
+  }>
   sendVerificationOtp?: (options: { email: string; type: string }) => Promise<{ error: { message: string } | null }>
   signOut?: () => Promise<void>
   getSession?: () => Promise<{ data: unknown; error: { message: string } | null }>
@@ -31,6 +36,7 @@ export const createMockAuthClient = (options: MockAuthClientOptions = {}): AuthC
     session = null,
     isPending = false,
     signInEmailOtp = async () => ({ error: null }),
+    signInAnonymous = async () => ({ error: null, data: { user: { id: 'anon-mock' } } }),
     sendVerificationOtp = async () => ({ error: null }),
     signOut = async () => {},
     getSession = async () => ({ data: session, error: null }),
@@ -48,6 +54,7 @@ export const createMockAuthClient = (options: MockAuthClientOptions = {}): AuthC
     getSession,
     signIn: {
       emailOtp: signInEmailOtp,
+      anonymous: signInAnonymous,
     },
     emailOtp: {
       sendVerificationOtp,

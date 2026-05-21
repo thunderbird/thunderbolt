@@ -39,7 +39,7 @@ describe('users DAL', () => {
     it('returns user when found', async () => {
       await insertUser('u1', 'u1@test.com')
       const result = await getUserById(db, 'u1')
-      expect(result).toEqual({ id: 'u1' })
+      expect(result).toEqual({ id: 'u1', isAnonymous: false })
     })
 
     it('returns null when not found', async () => {

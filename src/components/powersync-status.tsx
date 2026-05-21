@@ -2,6 +2,8 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import type { User } from '@shared/types/auth'
+
 import { useAuth } from '@/contexts/auth-context'
 import { usePowerSyncStatus } from '@/hooks/use-powersync-status'
 import { useIsMobile } from '@/hooks/use-mobile'
@@ -27,7 +29,11 @@ import { useState } from 'react'
 export const PowerSyncStatus = () => {
   const authClient = useAuth()
   const { data: session } = authClient.useSession()
-  const isAuthenticated = !!session?.user
+  const sessionUser = session?.user as User | undefined
+  // Anonymous users cannot sync (PowerSync rejects them server-side — see
+  // backend/src/api/powersync.ts), so they get the same Sign-In popover that fully
+  // logged-out users would. Real sync is gated on having a non-anonymous account.
+  const isAuthenticated = !!session?.user && !sessionUser?.isAnonymous
   const { openSignInModal } = useSignInModal()
   const [popoverOpen, setPopoverOpen] = useState(false)
   const [isReconnecting, setIsReconnecting] = useState(false)

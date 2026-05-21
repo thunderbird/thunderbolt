@@ -8,6 +8,7 @@ import { isOriginAllowed } from '@/config/settings'
 import { applyOperation, getActiveSessionByToken, getDeviceById, getUserById, upsertDevice } from '@/dal'
 import type { db as DbType } from '@/db/client'
 import { verifySignedBearerToken } from '@/auth/bearer-token'
+import type { User } from '@shared/types/auth'
 import { safeErrorHandler } from '@/middleware/error-handling'
 import { jwt } from '@elysiajs/jwt'
 import { Elysia, t } from 'elysia'
@@ -154,7 +155,10 @@ export const createPowerSyncRoutes = (auth: Auth, settings: Settings, database: 
     )
     .derive(async ({ request }) => {
       const session = await auth.api.getSession({ headers: request.headers })
-      return { user: session?.user ?? null }
+      // Better Auth populates session.user with `additionalFields` (including `isAnonymous`),
+      // so `user.isAnonymous` is available here without an extra DB lookup.
+      const sessionUser = session?.user as User | undefined
+      return { user: sessionUser ?? null }
     })
     .get('/token', async ({ powersyncJwt, request, set, user }) => {
       if (!validateOrigin(request, settings)) {
@@ -169,6 +173,11 @@ export const createPowerSyncRoutes = (auth: Auth, settings: Settings, database: 
 
       // Path 1: Authenticated via session. Issue PowerSync JWT; check device revoked, then upsert device.
       if (user) {
+        if (user.isAnonymous) {
+          set.status = 403
+          return { error: 'Forbidden', code: 'ANONYMOUS_SYNC_FORBIDDEN' }
+        }
+
         const result = await issuePowerSyncToken(user.id, request, powersyncJwt, settings, database)
         if (!result.ok) {
           set.status = result.status
@@ -207,6 +216,11 @@ export const createPowerSyncRoutes = (auth: Auth, settings: Settings, database: 
       }
 
       // Token refresh: valid Bearer + user exists -> issue new PowerSync JWT (same as Path 1).
+      if (userRow.isAnonymous) {
+        set.status = 403
+        return { error: 'Forbidden', code: 'ANONYMOUS_SYNC_FORBIDDEN' }
+      }
+
       const userId = sessionRow.userId
       const result = await issuePowerSyncToken(userId, request, powersyncJwt, settings, database)
       if (!result.ok) {
@@ -227,6 +241,11 @@ export const createPowerSyncRoutes = (auth: Auth, settings: Settings, database: 
         if (!user) {
           set.status = 401
           return { error: 'Unauthorized' }
+        }
+
+        if (user.isAnonymous) {
+          set.status = 403
+          return { error: 'Forbidden', code: 'ANONYMOUS_SYNC_FORBIDDEN' }
         }
 
         const validation = await validateDeviceForSync(user.id, request, database, settings)

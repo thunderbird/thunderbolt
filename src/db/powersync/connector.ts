@@ -13,6 +13,8 @@ import { sanitizeErrorForTracking, trackSyncEvent } from './sync-tracker'
  * - 410 (account deleted), 409 + DEVICE_ID_TAKEN, 400 + DEVICE_ID_REQUIRED → full reset
  * - 403 + DEVICE_DISCONNECTED → open revoked-device modal, preserve local data
  * - 401 (session expired) → open sign-in modal, preserve local data
+ * - 403 + ANONYMOUS_SYNC_FORBIDDEN → backend says this session may not sync (e.g. anonymous user);
+ *   we disable local sync via setSyncEnabled(false)
  */
 export const powersyncCredentialsInvalid = 'powersync_credentials_invalid'
 
@@ -22,6 +24,7 @@ export type CredentialsInvalidReason =
   | 'device_id_taken'
   | 'device_id_required'
   | 'session_expired'
+  | 'sync_not_permitted'
 
 type TokenResponse = {
   token: string
@@ -41,6 +44,9 @@ const getCredentialsInvalidReason = (status: number, body: ErrorBody): Credentia
   }
   if (status === 403 && body.code === 'DEVICE_DISCONNECTED') {
     return 'device_revoked'
+  }
+  if (status === 403 && body.code === 'ANONYMOUS_SYNC_FORBIDDEN') {
+    return 'sync_not_permitted'
   }
   if (status === 409 && body.code === 'DEVICE_ID_TAKEN') {
     return 'device_id_taken'
@@ -67,9 +73,14 @@ export const handleCredentialsInvalidIfNeeded = (status: number, body: ErrorBody
  * PowerSync connector that handles authentication and data upload.
  * - fetchCredentials: Gets JWT tokens from the backend (requires auth)
  * - uploadData: Sends local changes to the backend for persistence (requires auth)
+ *
+ * `fetchFn` is injectable for tests; defaults to `globalThis.fetch`.
  */
 export class ThunderboltConnector implements PowerSyncBackendConnector {
-  constructor(private backendUrl: string) {}
+  constructor(
+    private backendUrl: string,
+    private fetchFn: typeof fetch = globalThis.fetch.bind(globalThis),
+  ) {}
 
   /**
    * Fetch credentials (JWT token) from the backend.
@@ -83,7 +94,7 @@ export class ThunderboltConnector implements PowerSyncBackendConnector {
         return null
       }
 
-      const response = await fetch(`${this.backendUrl}/powersync/token`, {
+      const response = await this.fetchFn(`${this.backendUrl}/powersync/token`, {
         headers: getAuthenticatedHeaders(),
         credentials: ssoMode ? 'include' : undefined,
       })
@@ -98,11 +109,16 @@ export class ThunderboltConnector implements PowerSyncBackendConnector {
         }
         handleCredentialsInvalidIfNeeded(status, body)
         // 401 surfaces as session_expired (modal opens) and DEVICE_NOT_TRUSTED is expected during setup,
-        // so we don't pollute the console with those. 503 is also quieted in dev (fires repeatedly when
-        // POWERSYNC_URL is unset and is surfaced via doctor checks), but in production a 503 is a real
-        // outage signal operators need to see.
+        // so we don't pollute the console with those. ANONYMOUS_SYNC_FORBIDDEN is also quieted: the
+        // listener immediately disables sync in response, so further requests don't happen — the log
+        // would be the single transition event, which is fine to suppress. 503 is also quieted in
+        // dev (fires repeatedly when POWERSYNC_URL is unset and is surfaced via doctor checks), but
+        // in production a 503 is a real outage signal operators need to see.
         const isQuietStatus =
-          status === 401 || body.code === 'DEVICE_NOT_TRUSTED' || (status === 503 && import.meta.env.DEV)
+          status === 401 ||
+          body.code === 'DEVICE_NOT_TRUSTED' ||
+          body.code === 'ANONYMOUS_SYNC_FORBIDDEN' ||
+          (status === 503 && import.meta.env.DEV)
         if (!isQuietStatus) {
           console.error('Failed to fetch PowerSync credentials:', status, body)
         }
@@ -158,7 +174,7 @@ export class ThunderboltConnector implements PowerSyncBackendConnector {
 
       console.info(`Uploading ${operations.length} operations to backend`)
 
-      const response = await fetch(`${this.backendUrl}/powersync/upload`, {
+      const response = await this.fetchFn(`${this.backendUrl}/powersync/upload`, {
         method: 'PUT',
         headers: { ...getAuthenticatedHeaders(), 'Content-Type': 'application/json' },
         body: JSON.stringify({ operations }),

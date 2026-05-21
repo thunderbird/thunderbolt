@@ -4,7 +4,7 @@
 
 import '@/lib/dayjs'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { BrowserRouter, Navigate, Outlet, Route, Routes } from 'react-router'
+import { BrowserRouter, Navigate, Route, Routes } from 'react-router'
 import { PowerSyncContext } from '@powersync/react'
 
 import ChatDetailPage from '@/chats/detail'
@@ -53,8 +53,8 @@ import Loading from './loading'
 import SettingsLayout from './settings/layout'
 import type { InitData } from './types'
 import { useSettings } from './hooks/use-settings'
-import { isSsoMode } from './lib/auth-mode'
-import { isPrPreview, isTauri } from './lib/platform'
+import { isSsoMode, isWaitlistBypassed } from './lib/auth-mode'
+import { isTauri } from './lib/platform'
 import { getPowerSyncInstance } from './db/powersync'
 import { type ComponentProps, Suspense, lazy, useEffect } from 'react'
 
@@ -94,7 +94,7 @@ const AppRoutes = ({ initData }: { initData: InitData }) => {
   })
 
   const ssoMode = isSsoMode()
-  const shouldBypassWaitlist = import.meta.env.VITE_BYPASS_WAITLIST === 'true' || isPrPreview()
+  const shouldBypassWaitlist = isWaitlistBypassed()
 
   return (
     <Routes>
@@ -116,23 +116,16 @@ const AppRoutes = ({ initData }: { initData: InitData }) => {
 
       {/* Waitlist routes - unauthenticated only (skip when bypass or SSO mode) */}
       {!ssoMode && !shouldBypassWaitlist && (
-        <Route element={<AuthGate require="unauthenticated" redirectTo="/" />}>
+        <Route element={<AuthGate require="unauthenticated" />}>
           <Route path="waitlist" element={<WaitlistLayout />}>
             <Route index element={<WaitlistPage />} />
           </Route>
         </Route>
       )}
 
-      {/* Main app routes - authenticated only (pass-through when bypass enabled) */}
-      <Route
-        element={
-          shouldBypassWaitlist ? (
-            <Outlet />
-          ) : (
-            <AuthGate require="authenticated" redirectTo={ssoMode ? '/sso-redirect' : '/waitlist'} />
-          )
-        }
-      >
+      {/* Main app routes - authenticated only (pass-through when bypass enabled). The gate
+          decides redirect targets internally from VITE_AUTH_MODE + VITE_AUTH_ENABLE_ANONYMOUS. */}
+      <Route element={<AuthGate require="authenticated" />}>
         <Route
           path="/"
           element={

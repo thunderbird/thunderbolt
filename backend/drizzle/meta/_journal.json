@@ -113,6 +113,13 @@
       "when": 1778537774824,
       "tag": "0015_panoramic_sheva_callister",
       "breakpoints": true
+    },
+    {
+      "idx": 16,
+      "version": "7",
+      "when": 1779197919383,
+      "tag": "0016_anonymous_user",
+      "breakpoints": true
     }
   ]
 }

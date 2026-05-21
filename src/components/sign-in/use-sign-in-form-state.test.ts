@@ -8,7 +8,7 @@ import type { FormEvent } from 'react'
 import type { HttpClient } from '@/lib/http'
 import { createMockAuthClient } from '@/test-utils/auth-client'
 import { createSpyHttpClient, jsonResponse } from '@/test-utils/http-client-spy'
-import { useSignInFormState } from './use-sign-in-form-state'
+import { onSignInSuccess, useSignInFormState } from './use-sign-in-form-state'
 
 const challengeToken = 'test-challenge-token'
 const waitlistResponse = { success: true, challengeToken }
@@ -218,5 +218,62 @@ describe('useSignInFormState', () => {
       expect(result.current.state.status).toBe('sent')
       expect(result.current.state.challengeToken).toBe('')
     })
+  })
+})
+
+describe('onSignInSuccess', () => {
+  type Deps = NonNullable<Parameters<typeof onSignInSuccess>[2]>
+
+  const buildDeps = () => {
+    const clearPendingCrudOperations = mock(async () => {})
+    const getDatabase = mock(() => ({ clearPendingCrudOperations })) as unknown as NonNullable<Deps['getDatabase']>
+    // updateSettings(db, ...) calls db.transaction(cb) and the callback chains drizzle builders
+    // like `tx.insert(table).values(row)`. Build a self-referential Proxy that is also a thenable,
+    // so any chained property access or call resolves cleanly.
+    const txStub: unknown = new Proxy(function () {}, {
+      get: (_target, prop) => {
+        if (prop === 'then') {
+          return (resolve: (v: unknown) => void) => resolve(undefined)
+        }
+        return txStub
+      },
+      apply: () => txStub,
+    })
+    const drizzle = {
+      transaction: mock(async (cb: (tx: unknown) => Promise<void>) => {
+        await cb(txStub)
+      }),
+    }
+    const getDrizzle = mock(() => drizzle) as unknown as NonNullable<Deps['getDrizzle']>
+    return { clearPendingCrudOperations, getDatabase, getDrizzle }
+  }
+
+  it('does not clear the CRUD queue when promoting an anonymous session (wasAnonymous=true)', async () => {
+    const { clearPendingCrudOperations, getDatabase, getDrizzle } = buildDeps()
+
+    await onSignInSuccess(false, true, { getDatabase, getDrizzle })
+
+    expect(getDatabase).not.toHaveBeenCalled()
+    expect(getDrizzle).not.toHaveBeenCalled()
+    expect(clearPendingCrudOperations).not.toHaveBeenCalled()
+  })
+
+  it('does not clear the CRUD queue for a new user signup (isNewUser=true)', async () => {
+    const { clearPendingCrudOperations, getDatabase, getDrizzle } = buildDeps()
+
+    await onSignInSuccess(true, false, { getDatabase, getDrizzle })
+
+    expect(getDatabase).not.toHaveBeenCalled()
+    expect(getDrizzle).not.toHaveBeenCalled()
+    expect(clearPendingCrudOperations).not.toHaveBeenCalled()
+  })
+
+  it('clears the CRUD queue for a returning non-anonymous user (isNewUser=false, wasAnonymous=false)', async () => {
+    const { clearPendingCrudOperations, getDatabase, getDrizzle } = buildDeps()
+
+    await onSignInSuccess(false, false, { getDatabase, getDrizzle })
+
+    expect(getDatabase).toHaveBeenCalledTimes(1)
+    expect(clearPendingCrudOperations).toHaveBeenCalledTimes(1)
   })
 })

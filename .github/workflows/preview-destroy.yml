@@ -3,9 +3,16 @@ name: Preview Destroy
 # Destroys the per-PR preview stack when the PR is closed/merged.
 # Also supports manual teardown via workflow_dispatch (e.g. to clean up an orphan
 # or force-destroy a stack outside normal PR lifecycle).
+#
+# Uses `pull_request_target` (rather than `pull_request`) so we have secrets
+# available for fork-PR closures — fork-PR previews are now deployed via the
+# pull_request_target path in preview-deploy.yml, and need to be torn down
+# the same way. No approval gate needed on destroy: no fork code is checked
+# out (we run our own scripts from main against the stack name), so there's
+# nothing untrusted executing with credentials.
 
 on:
-  pull_request:
+  pull_request_target:
     types: [closed]
     branches: [main]
   workflow_dispatch:
@@ -25,38 +32,37 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       pr_number: ${{ steps.resolve.outputs.pr_number }}
-      is_internal: ${{ steps.resolve.outputs.is_internal }}
     steps:
       - name: Resolve PR number
         id: resolve
         env:
           PR_NUMBER_FROM_EVENT: ${{ github.event.pull_request.number }}
           PR_NUMBER_FROM_DISPATCH: ${{ inputs.pr_number }}
-          HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}
-          BASE_REPO: ${{ github.repository }}
         run: |
           if [ -n "$PR_NUMBER_FROM_DISPATCH" ]; then
             echo "pr_number=$PR_NUMBER_FROM_DISPATCH" >> $GITHUB_OUTPUT
-            echo "is_internal=true" >> $GITHUB_OUTPUT
           else
             echo "pr_number=$PR_NUMBER_FROM_EVENT" >> $GITHUB_OUTPUT
-            # Skip teardown for fork PRs — they never had a stack to destroy.
-            if [ "$HEAD_REPO" = "$BASE_REPO" ]; then
-              echo "is_internal=true" >> $GITHUB_OUTPUT
-            else
-              echo "is_internal=false" >> $GITHUB_OUTPUT
-            fi
           fi
+          # No fork gate: destroys are idempotent (drop-preview-db.sh exits
+          # cleanly if the stack's resources are missing; Pulumi destroy
+          # likewise no-ops on already-gone resources), and fork-PR previews
+          # are now real things that need teardown on close.
 
   drop-db:
     needs: resolve-pr
-    if: needs.resolve-pr.outputs.is_internal == 'true'
     runs-on: ubuntu-latest
     permissions:
       contents: read
       id-token: write
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          # Explicit `ref: main` — never run a fork's version of the drop
+          # script with our deploy creds. (pull_request_target defaults to
+          # the base ref anyway, but being explicit prevents accidents if
+          # the trigger is ever changed.)
+          ref: main
       - uses: aws-actions/configure-aws-credentials@ec61189d14ec14c8efccab744f656cffd0e33f37 # v6.1.0
         with:
           role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
@@ -71,7 +77,7 @@ jobs:
     needs: [resolve-pr, drop-db]
     # Run even if drop-db failed — a flaky DB drop must not orphan the whole
     # stack (ECS services, ALB, secrets) and leak cost indefinitely.
-    if: ${{ always() && needs.resolve-pr.result == 'success' && needs.resolve-pr.outputs.is_internal == 'true' }}
+    if: ${{ always() && needs.resolve-pr.result == 'success' }}
     uses: ./.github/workflows/stack-deploy.yml
     with:
       action: destroy
@@ -83,7 +89,7 @@ jobs:
 
   comment:
     needs: [resolve-pr, drop-db, destroy]
-    if: ${{ always() && needs.resolve-pr.result == 'success' && needs.resolve-pr.outputs.is_internal == 'true' && github.event.pull_request.number }}
+    if: ${{ always() && needs.resolve-pr.result == 'success' && github.event.pull_request.number }}
     runs-on: ubuntu-latest
     steps:
       - name: Update sticky comment to note teardown

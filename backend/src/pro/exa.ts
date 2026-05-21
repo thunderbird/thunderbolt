@@ -12,7 +12,9 @@ import type { FetchContentResponse } from './types'
 /** Memoized Exa client — exported so other modules (e.g. /search) reuse the same instance. */
 export const getExaClient = memoize((): Exa | null => {
   const apiKey = getSettings().exaApiKey
-  if (!apiKey) return null
+  if (!apiKey) {
+    return null
+  }
   return new Exa(apiKey)
 })
 

@@ -123,7 +123,7 @@ export const accountRelations = relations(account, ({ one }) => ({
  * removed, or has its type changed without updating both sides, this assignment
  * fails type-check. Keep both definitions in lockstep.
  */
-type _AssertUserMatchesShared = typeof user.$inferSelect extends SharedUser ? true : never
-type _AssertSharedMatchesUser = SharedUser extends typeof user.$inferSelect ? true : never
-const _userTypeDriftCheck: _AssertUserMatchesShared & _AssertSharedMatchesUser = true
+type AssertUserMatchesShared = typeof user.$inferSelect extends SharedUser ? true : never
+type AssertSharedMatchesUser = SharedUser extends typeof user.$inferSelect ? true : never
+const _userTypeDriftCheck: AssertUserMatchesShared & AssertSharedMatchesUser = true
 void _userTypeDriftCheck

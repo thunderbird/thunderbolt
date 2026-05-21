@@ -6,10 +6,33 @@ import type { AuthClient } from '@/contexts'
 import { setupTestDatabase, teardownTestDatabase } from '@/dal/test-utils'
 import { createMockAuthClient } from '@/test-utils/auth-client'
 import { createTestProvider } from '@/test-utils/test-provider'
+import { getClock } from '@/testing-library'
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, mock } from 'bun:test'
-import { renderHook, waitFor } from '@testing-library/react'
-import { createElement, StrictMode, type ReactNode } from 'react'
+import { act, render, renderHook, waitFor } from '@testing-library/react'
+import { Component, createElement, StrictMode, type ReactNode } from 'react'
 import { useAuthGate } from './use-auth-gate'
+
+type ErrorCaptureState = { error: Error | null }
+
+/**
+ * Minimal error boundary that records the caught error on a shared object so
+ * tests can assert that the wrapped component threw. Used to verify the gate
+ * surfaces signIn errors (a thrown error here is the in-band signal to render
+ * an error UI in production).
+ */
+class TestErrorBoundary extends Component<{ capture: ErrorCaptureState; children: ReactNode }> {
+  state = { hasError: false }
+  static getDerivedStateFromError() {
+    return { hasError: true }
+  }
+  componentDidCatch(error: Error) {
+    this.props.capture.error = error
+  }
+  render() {
+    if (this.state.hasError) return null
+    return this.props.children
+  }
+}
 
 const wrapInStrictMode = (Wrapper: (props: { children: ReactNode }) => ReactNode) => {
   const StrictWrapper = ({ children }: { children: ReactNode }) =>
@@ -206,6 +229,40 @@ describe('useAuthGate — require="authenticated"', () => {
     rerender()
     expect(signInSpy).not.toHaveBeenCalled()
     expect(result.current).toEqual({ status: 'redirect', target: 'waitlist' })
+  })
+
+  it('throws to error boundary when signIn.anonymous resolves with { error } (e.g. HTTP 429)', async () => {
+    restoreEnv()
+    restoreEnv = withEnv({ VITE_AUTH_ENABLE_ANONYMOUS: 'true', VITE_BYPASS_WAITLIST: 'true' })
+    const { authClient, signInSpy } = createAuthClientWithAnonSpy({
+      initialSession: null,
+      initialPending: false,
+      signInResolvesError: { status: 429, code: 'TOO_MANY_REQUESTS' },
+    })
+    const Provider = createTestProvider({ authClient })
+
+    // We don't use renderHook here because the hook is supposed to throw during
+    // render, and we want an error boundary to absorb that throw so the test
+    // can observe it without crashing the renderer.
+    const capture: ErrorCaptureState = { error: null }
+    const Consumer = () => {
+      useAuthGate('authenticated')
+      return null
+    }
+    const tree = createElement(Provider, null, [
+      createElement(TestErrorBoundary, { key: 'boundary', capture, children: createElement(Consumer) }),
+    ])
+    render(tree)
+
+    // Flush the effect's async signIn + the resulting setAnonError → re-render
+    // → throw → error boundary cycle. Fake timers + microtasks need explicit
+    // advancement here; waitFor stalls because the gate's render throws.
+    await act(async () => {
+      await getClock().runAllAsync()
+    })
+
+    expect(signInSpy).toHaveBeenCalledTimes(1)
+    expect(capture.error).toBeInstanceOf(Error)
   })
 
   it('fires signIn.anonymous exactly once even under React StrictMode double-invoke', async () => {

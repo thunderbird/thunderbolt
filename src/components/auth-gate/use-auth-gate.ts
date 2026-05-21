@@ -47,6 +47,11 @@ export const useAuthGate = (require: AuthRequirement): AuthGateState => {
 
   // Strict Mode invokes effects twice on mount; the ref dedups so we never fire
   // signIn.anonymous() more than once per gate mount.
+  //
+  // Better Auth client methods resolve with `{ data, error }` for HTTP failures
+  // (4xx/5xx) — they do NOT throw. Only network errors / aborts reject. We must
+  // surface both paths to the error boundary; otherwise an HTTP error leaves the
+  // gate stuck in `loading` forever (the ref prevents a retry).
   useEffect(() => {
     const shouldFireAnon =
       !isPending && !isAuthenticated && require === 'authenticated' && isAnonymousAllowed && !triedAnonRef.current
@@ -54,7 +59,17 @@ export const useAuthGate = (require: AuthRequirement): AuthGateState => {
       return
     }
     triedAnonRef.current = true
-    authClient.signIn.anonymous().catch(setAnonError)
+    const run = async () => {
+      try {
+        const result = await authClient.signIn.anonymous()
+        if (result?.error) {
+          setAnonError(new Error(result.error.message ?? 'Anonymous sign-in failed'))
+        }
+      } catch (err) {
+        setAnonError(err instanceof Error ? err : new Error(String(err)))
+      }
+    }
+    void run()
   }, [isPending, isAuthenticated, require, isAnonymousAllowed, authClient])
 
   if (isPending) {

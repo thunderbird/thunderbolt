@@ -131,6 +131,9 @@ export const onSignInSuccess = async (
 
   const { getDatabase = getDatabaseInstance, getDrizzle = getDb } = deps
 
+  // Error containment: failures in post-auth housekeeping must NOT propagate to the caller's
+  // sign-in handler, which translates any throw into a "verification failed" UI even though
+  // the OTP was already consumed and the user is authenticated. Log and swallow here.
   try {
     const database = getDatabase()
     if ('clearPendingCrudOperations' in database) {

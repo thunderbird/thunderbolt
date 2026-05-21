@@ -11,18 +11,13 @@ import { trackEvent as trackEvent_default } from '@/lib/posthog'
 import { type Model } from '@/types'
 import { useChat as useChat_default } from '@ai-sdk/react'
 import { useDraftInput } from '@/hooks/use-draft-input'
-import { Plus } from 'lucide-react'
 import { forwardRef, useCallback, useImperativeHandle, useMemo, useRef, useState } from 'react'
-import { createPortal } from 'react-dom'
-import { Link, useNavigate as useNavigate_default } from 'react-router'
-import { Button } from '@/components/ui/button'
-import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
+import { useNavigate as useNavigate_default } from 'react-router'
 import { renderHighlightedSkillTokens } from '@/skills/highlight-skill-tokens'
-import { ReorderPanel } from '@/skills/reorder-panel'
 import { SlashPopup } from '@/skills/slash-popup'
-import { SuggestionChip } from '@/skills/suggestion-chip'
-import { useEnabledSkills, useLibrarySkills, usePinnedSkills, useRecentSkills } from '@/skills/use-skills-placeholder'
+import { useEnabledSkills, useLibrarySkills, useRecentSkills } from '@/skills/use-skills-placeholder'
 import { useSlashCommand } from '@/skills/use-slash-command'
+import { ChatSkillsBar } from './chat-skills-bar'
 import { ContextOverflowModal } from '../context-overflow-modal'
 import { ContextUsageIndicator } from '../context-usage-indicator'
 import { ModeSelector } from '../ui/mode-selector'
@@ -77,10 +72,6 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
     const formRef = useRef<HTMLFormElement>(null)
     const { triggerSelection } = useHaptics()
 
-    // Skill UX state
-    const [openChip, setOpenChip] = useState<string | null>(null)
-    const [reorderMode, setReorderMode] = useState(false)
-    const { pinned, movePinned, togglePin } = usePinnedSkills()
     const { skills: library } = useLibrarySkills()
     const { isEnabled } = useEnabledSkills()
     const { recent, recordUsed } = useRecentSkills()
@@ -209,8 +200,6 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
       })
     }
 
-    const suggestions = pinned
-
     const footerStartElements = (
       <div className="flex items-center gap-2">
         {modes.length > 0 && (
@@ -222,63 +211,10 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
       </div>
     )
 
-    const showSkillOverlay = isMobile && (openChip !== null || reorderMode)
-
     return (
       <>
-        {showSkillOverlay &&
-          createPortal(
-            <div
-              className="fixed inset-0 z-[5] bg-black/30 backdrop-blur-sm"
-              aria-hidden="true"
-              onClick={() => {
-                setOpenChip(null)
-                setReorderMode(false)
-              }}
-            />,
-            document.body,
-          )}
         <div className="flex w-full flex-col gap-3">
-          {reorderMode ? (
-            <ReorderPanel skills={suggestions} onMove={movePinned} onClose={() => setReorderMode(false)} />
-          ) : suggestions.length > 0 ? (
-            <div className="-mx-1 flex items-center gap-2 overflow-x-auto px-1 [&::-webkit-scrollbar]:hidden [scrollbar-width:none]">
-              {suggestions.map((name) => {
-                const skill = library.find((s) => s.name === name)
-                return (
-                  <SuggestionChip
-                    key={name}
-                    label={name}
-                    dimmed={openChip !== null && openChip !== name}
-                    onClick={() => addSkillChip(name)}
-                    onOpenChange={(open) => setOpenChip(open ? name : null)}
-                    runHref={`/?run=${encodeURIComponent(name)}`}
-                    onAddInstruction={() => insertInstructionText(skill?.instruction ?? name)}
-                    onReorder={() => setReorderMode(true)}
-                    onUnpin={() => togglePin(name)}
-                  />
-                )
-              })}
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Button
-                    asChild
-                    variant="outline"
-                    size="icon-sm"
-                    aria-label="Manage skills"
-                    className={`size-8 shrink-0 rounded-full bg-card transition-opacity ${
-                      openChip ? 'opacity-40' : ''
-                    }`}
-                  >
-                    <Link to="/settings/skills">
-                      <Plus />
-                    </Link>
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent>Pin skills for quick access</TooltipContent>
-              </Tooltip>
-            </div>
-          ) : null}
+          <ChatSkillsBar onAddToChat={addSkillChip} onAddInstruction={insertInstructionText} />
 
           <PromptInput
             ref={formRef}

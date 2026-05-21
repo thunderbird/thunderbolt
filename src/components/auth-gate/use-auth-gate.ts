@@ -37,11 +37,7 @@ export const useAuthGate = (require: AuthRequirement): AuthGateState => {
   const { data: session, isPending } = authClient.useSession()
   const isAuthenticated = !!session?.user
 
-  const waitlistBypassed = isWaitlistBypassed()
-  const anonymousAllowed = isAnonymousAuthEnabled() && !isSsoMode()
-
-  const shouldAutoAnon =
-    !isPending && !isAuthenticated && require === 'authenticated' && waitlistBypassed && anonymousAllowed
+  const isAnonymousAllowed = isAnonymousAuthEnabled() && !isSsoMode() && isWaitlistBypassed()
 
   const triedAnonRef = useRef(false)
   const [anonError, setAnonError] = useState<Error | null>(null)
@@ -49,13 +45,17 @@ export const useAuthGate = (require: AuthRequirement): AuthGateState => {
     throw anonError
   }
 
+  // Strict Mode invokes effects twice on mount; the ref dedups so we never fire
+  // signIn.anonymous() more than once per gate mount.
   useEffect(() => {
-    if (!shouldAutoAnon || triedAnonRef.current) {
+    const shouldFireAnon =
+      !isPending && !isAuthenticated && require === 'authenticated' && isAnonymousAllowed && !triedAnonRef.current
+    if (!shouldFireAnon) {
       return
     }
     triedAnonRef.current = true
     authClient.signIn.anonymous().catch(setAnonError)
-  }, [shouldAutoAnon, authClient])
+  }, [isPending, isAuthenticated, require, isAnonymousAllowed, authClient])
 
   if (isPending) {
     return { status: 'loading' }
@@ -69,12 +69,12 @@ export const useAuthGate = (require: AuthRequirement): AuthGateState => {
     return { status: 'allowed' }
   }
 
-  if (isSsoMode()) {
-    return { status: 'redirect', target: 'sso' }
+  if (isAnonymousAllowed) {
+    return { status: 'loading' }
   }
 
-  if (shouldAutoAnon) {
-    return { status: 'loading' }
+  if (isSsoMode()) {
+    return { status: 'redirect', target: 'sso' }
   }
 
   return { status: 'redirect', target: 'waitlist' }

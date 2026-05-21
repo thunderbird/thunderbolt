@@ -11,7 +11,7 @@ import { createSpyHttpClient, jsonResponse } from '@/test-utils/http-client-spy'
 import type { HttpClient } from '@/lib/http'
 import { getClock } from '@/testing-library'
 import '@testing-library/jest-dom'
-import { act, fireEvent, render, screen } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, mock } from 'bun:test'
 
 // Mock InputOTP to avoid timer issues in tests
@@ -89,6 +89,7 @@ describe('SignInModal', () => {
   })
 
   afterEach(async () => {
+    cleanup()
     await resetTestDatabase()
     mockOnOpenChange.mockClear()
   })

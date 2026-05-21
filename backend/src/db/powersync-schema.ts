@@ -158,6 +158,24 @@ export const promptsTable = powersyncSchema.table(
   (table) => [primaryKey({ columns: [table.id, table.userId] }), index('idx_prompts_user_id').on(table.userId)],
 )
 
+export const skillsTable = powersyncSchema.table(
+  'skills',
+  {
+    id: text('id').notNull(),
+    name: text('name'),
+    description: text('description'),
+    instruction: text('instruction'),
+    enabled: integer('enabled').default(1),
+    pinnedOrder: integer('pinned_order'),
+    deletedAt: timestamp('deleted_at'),
+    defaultHash: text('default_hash'),
+    userId: text('user_id')
+      .notNull()
+      .references(() => user.id, { onDelete: 'cascade' }),
+  },
+  (table) => [primaryKey({ columns: [table.id, table.userId] }), index('idx_skills_user_id').on(table.userId)],
+)
+
 export const triggersTable = powersyncSchema.table(
   'triggers',
   {
@@ -257,6 +275,7 @@ export const powersyncTablesByName = {
   models: modelsTable,
   mcp_servers: mcpServersTable,
   prompts: promptsTable,
+  skills: skillsTable,
   triggers: triggersTable,
   modes: modesTable,
   model_profiles: modelProfilesTable,
@@ -285,6 +304,7 @@ export const powersyncPkColumn: Record<PowerSyncTableName, AnyPgColumn> = {
   models: modelsTable.id,
   mcp_servers: mcpServersTable.id,
   prompts: promptsTable.id,
+  skills: skillsTable.id,
   triggers: triggersTable.id,
   modes: modesTable.id,
   model_profiles: modelProfilesTable.id,
@@ -304,6 +324,7 @@ export const powersyncConflictTarget: Record<PowerSyncTableName, AnyPgColumn[]> 
   models: [modelsTable.id, modelsTable.userId],
   mcp_servers: [mcpServersTable.id],
   prompts: [promptsTable.id, promptsTable.userId],
+  skills: [skillsTable.id, skillsTable.userId],
   triggers: [triggersTable.id],
   modes: [modesTable.id, modesTable.userId],
   model_profiles: [modelProfilesTable.id, modelProfilesTable.userId],

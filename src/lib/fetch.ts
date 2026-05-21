@@ -2,9 +2,8 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { getSettings } from '@/dal'
-import { getDb } from '@/db/database'
 import { isTauri } from '@/lib/platform'
+import { getLocalSetting } from '@/stores/local-settings-store'
 
 /**
  * Custom fetch function that handles CORS issues by routing through Tauri when available
@@ -17,10 +16,7 @@ export const fetch = async (input: RequestInfo | URL, init?: RequestInit): Promi
     return globalThis.fetch(input, init)
   }
 
-  const db = getDb()
-  const { isNativeFetchEnabled } = await getSettings(db, { is_native_fetch_enabled: false })
-
-  if (isNativeFetchEnabled) {
+  if (getLocalSetting('isNativeFetchEnabled')) {
     const { fetch: tauriFetch } = await import('@tauri-apps/plugin-http')
     return tauriFetch(input, init)
   }

@@ -30,6 +30,19 @@ const proxyRequest = (
   return app.handle(new Request('http://localhost/v1/proxy', { ...init, headers }))
 }
 
+/** Drain the response body so the proxy's `capStream` idle timer clears.
+ *  Production Bun does this automatically when writing to the wire; tests
+ *  that just inspect `Response` must drain explicitly or leak 30s timers
+ *  that flood subsequent tests under `--rerun-each` and starve their
+ *  `beforeEach` hooks. Skips drain when the body is already consumed by
+ *  the test (e.g., `await res.text()` or a stream reader). */
+const drain = async (res: Response): Promise<Response> => {
+  if (res.body && !res.bodyUsed) {
+    await res.arrayBuffer()
+  }
+  return res
+}
+
 const setUpstreams = async (upstreams: Record<string, TestUpstream>): Promise<TestAppHandle> => {
   const router = createUpstreamRouter(upstreams)
   return createTestApp({ fetchFn: router })
@@ -39,7 +52,9 @@ describe('Universal proxy /v1/proxy — e2e', () => {
   let handle: TestAppHandle
 
   afterEach(async () => {
-    if (handle) await handle.cleanup()
+    if (handle) {
+      await handle.cleanup()
+    }
   })
 
   // --- happy paths ---------------------------------------------------------
@@ -67,11 +82,13 @@ describe('Universal proxy /v1/proxy — e2e', () => {
     handle = await setUpstreams({ 'upstream.test': upstream })
 
     const payload = JSON.stringify({ name: 'ana', count: 42 })
-    const res = await proxyRequest(handle.app, handle.bearerToken, 'https://upstream.test/api', {
-      method: 'POST',
-      body: payload,
-      passthrough: { 'Content-Type': 'application/json' },
-    })
+    const res = await drain(
+      await proxyRequest(handle.app, handle.bearerToken, 'https://upstream.test/api', {
+        method: 'POST',
+        body: payload,
+        passthrough: { 'Content-Type': 'application/json' },
+      }),
+    )
     expect(res.status).toBe(200)
     expect(upstreamBody).toBe(payload)
   })
@@ -85,11 +102,13 @@ describe('Universal proxy /v1/proxy — e2e', () => {
     })
     handle = await setUpstreams({ 'upstream.test': upstream })
 
-    const res = await proxyRequest(handle.app, handle.bearerToken, 'https://upstream.test/api', {
-      method: 'POST',
-      body: '{}',
-      passthrough: { 'Content-Type': 'application/json' },
-    })
+    const res = await drain(
+      await proxyRequest(handle.app, handle.bearerToken, 'https://upstream.test/api', {
+        method: 'POST',
+        body: '{}',
+        passthrough: { 'Content-Type': 'application/json' },
+      }),
+    )
     expect(res.status).toBe(200)
   })
 
@@ -100,9 +119,11 @@ describe('Universal proxy /v1/proxy — e2e', () => {
     })
     handle = await setUpstreams({ 'upstream.test': upstream })
 
-    const res = await proxyRequest(handle.app, handle.bearerToken, 'https://upstream.test/api', {
-      passthrough: { Authorization: 'Bearer upstream-key' },
-    })
+    const res = await drain(
+      await proxyRequest(handle.app, handle.bearerToken, 'https://upstream.test/api', {
+        passthrough: { Authorization: 'Bearer upstream-key' },
+      }),
+    )
     expect(res.status).toBe(200)
   })
 
@@ -114,7 +135,7 @@ describe('Universal proxy /v1/proxy — e2e', () => {
     })
     handle = await setUpstreams({ 'upstream.test': upstream })
 
-    const res = await proxyRequest(handle.app, handle.bearerToken, 'https://upstream.test/api')
+    const res = await drain(await proxyRequest(handle.app, handle.bearerToken, 'https://upstream.test/api'))
     expect(res.status).toBe(200)
   })
 
@@ -129,7 +150,7 @@ describe('Universal proxy /v1/proxy — e2e', () => {
     )
     handle = await setUpstreams({ 'upstream.test': upstream })
 
-    const res = await proxyRequest(handle.app, handle.bearerToken, 'https://upstream.test/api')
+    const res = await drain(await proxyRequest(handle.app, handle.bearerToken, 'https://upstream.test/api'))
     expect(res.headers.get('x-proxy-passthrough-content-type')).toBe('application/json')
     expect(res.headers.get('x-proxy-passthrough-mcp-session-id')).toBe('sess-xyz')
   })
@@ -145,7 +166,7 @@ describe('Universal proxy /v1/proxy — e2e', () => {
     )
     handle = await setUpstreams({ 'upstream.test': upstream })
 
-    const res = await proxyRequest(handle.app, handle.bearerToken, 'https://upstream.test/api')
+    const res = await drain(await proxyRequest(handle.app, handle.bearerToken, 'https://upstream.test/api'))
     expect(res.headers.get('set-cookie')).toBeNull()
     expect(res.headers.get('x-proxy-passthrough-set-cookie')).toBeNull()
   })
@@ -180,7 +201,9 @@ describe('Universal proxy /v1/proxy — e2e', () => {
     const received: string[] = []
     while (true) {
       const { value, done } = await reader.read()
-      if (done) break
+      if (done) {
+        break
+      }
       received.push(decoder.decode(value))
     }
     expect(received.join('')).toBe(events.join(''))
@@ -219,9 +242,11 @@ describe('Universal proxy /v1/proxy — e2e', () => {
     })
     handle = await setUpstreams({ 'start.test': start, 'other.test': other })
 
-    const res = await proxyRequest(handle.app, handle.bearerToken, 'https://start.test/begin', {
-      passthrough: { Authorization: 'Bearer leak-me' },
-    })
+    const res = await drain(
+      await proxyRequest(handle.app, handle.bearerToken, 'https://start.test/begin', {
+        passthrough: { Authorization: 'Bearer leak-me' },
+      }),
+    )
     expect(res.status).toBe(200)
   })
 
@@ -232,10 +257,12 @@ describe('Universal proxy /v1/proxy — e2e', () => {
     )
     handle = await setUpstreams({ 'upstream.test': upstream })
 
-    const res = await proxyRequest(handle.app, handle.bearerToken, 'https://upstream.test/submit', {
-      method: 'POST',
-      body: 'payload',
-    })
+    const res = await drain(
+      await proxyRequest(handle.app, handle.bearerToken, 'https://upstream.test/submit', {
+        method: 'POST',
+        body: 'payload',
+      }),
+    )
     expect(res.status).toBe(302)
     expect(res.headers.get('x-proxy-passthrough-location')).toBe('https://upstream.test/final')
     expect(upstream.requests).toHaveLength(1)
@@ -247,24 +274,26 @@ describe('Universal proxy /v1/proxy — e2e', () => {
     const upstream = createTestUpstream('upstream.test', () => new Response('ok', { status: 200 }))
     handle = await setUpstreams({ 'upstream.test': upstream })
 
-    const res = await proxyRequest(handle.app, handle.bearerToken, 'http://upstream.test/page')
+    const res = await drain(await proxyRequest(handle.app, handle.bearerToken, 'http://upstream.test/page'))
     expect(res.status).toBe(200)
     expect(res.headers.get('x-proxy-final-url')).toBe('https://upstream.test/page')
   })
 
   it('rejects ftp:// and other non-http(s) schemes with 400', async () => {
     handle = await setUpstreams({})
-    const res = await proxyRequest(handle.app, handle.bearerToken, 'ftp://upstream.test/file')
+    const res = await drain(await proxyRequest(handle.app, handle.bearerToken, 'ftp://upstream.test/file'))
     expect(res.status).toBe(400)
   })
 
   it('rejects missing X-Proxy-Target-Url with 400', async () => {
     handle = await setUpstreams({})
-    const res = await handle.app.handle(
-      new Request('http://localhost/v1/proxy', {
-        method: 'GET',
-        headers: authHeaders(handle.bearerToken),
-      }),
+    const res = await drain(
+      await handle.app.handle(
+        new Request('http://localhost/v1/proxy', {
+          method: 'GET',
+          headers: authHeaders(handle.bearerToken),
+        }),
+      ),
     )
     expect(res.status).toBe(400)
   })
@@ -273,13 +302,13 @@ describe('Universal proxy /v1/proxy — e2e', () => {
 
   it('rejects target resolving to a private address with 400 (DNS pin)', async () => {
     handle = await setUpstreams({})
-    const res = await proxyRequest(handle.app, handle.bearerToken, 'https://private.test/secret')
+    const res = await drain(await proxyRequest(handle.app, handle.bearerToken, 'https://private.test/secret'))
     expect(res.status).toBe(400)
   })
 
   it('rejects direct private-IP target with 400', async () => {
     handle = await setUpstreams({})
-    const res = await proxyRequest(handle.app, handle.bearerToken, 'https://127.0.0.1/secret')
+    const res = await drain(await proxyRequest(handle.app, handle.bearerToken, 'https://127.0.0.1/secret'))
     expect(res.status).toBe(400)
   })
 
@@ -287,11 +316,13 @@ describe('Universal proxy /v1/proxy — e2e', () => {
 
   it('returns 401 for an unauthenticated request', async () => {
     handle = await setUpstreams({})
-    const res = await handle.app.handle(
-      new Request('http://localhost/v1/proxy', {
-        method: 'GET',
-        headers: { 'X-Proxy-Target-Url': 'https://upstream.test/api' },
-      }),
+    const res = await drain(
+      await handle.app.handle(
+        new Request('http://localhost/v1/proxy', {
+          method: 'GET',
+          headers: { 'X-Proxy-Target-Url': 'https://upstream.test/api' },
+        }),
+      ),
     )
     expect(res.status).toBe(401)
   })

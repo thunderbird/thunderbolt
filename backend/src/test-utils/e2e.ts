@@ -19,7 +19,9 @@ import { createTestDb } from './db'
  *  Injected as a `createApp` dep — replaces the `mock.module('node:dns')`
  *  pattern, which leaks across test files (see docs/development/testing.md). */
 export const e2eDnsLookup: DnsLookup = (host) => {
-  if (host === 'private.test') return Promise.resolve([{ address: '192.168.1.1', family: 4 }])
+  if (host === 'private.test') {
+    return Promise.resolve([{ address: '192.168.1.1', family: 4 }])
+  }
   return Promise.resolve([{ address: '1.2.3.4', family: 4 }])
 }
 

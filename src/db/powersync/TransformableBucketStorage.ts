@@ -67,8 +67,8 @@ export class TransformableBucketStorage extends SqliteBucketStorage {
   /** Lazy-loads the BSON module for deserializing/serializing binary sync payloads. */
   private async getBSON() {
     if (!this.bsonModule) {
-      const { BSON } = await import('bson')
-      this.bsonModule = BSON
+      const { BSON: bson } = await import('bson')
+      this.bsonModule = bson
     }
     return this.bsonModule
   }

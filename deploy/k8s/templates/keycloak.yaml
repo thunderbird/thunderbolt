@@ -25,6 +25,7 @@ spec:
     metadata:
       labels:
         app: keycloak
+      {{- include "thunderbolt.podAnnotations" (dict "component" .Values.keycloak "root" .) | nindent 6 }}
     spec:
       {{- include "thunderbolt.imagePullSecrets" . | nindent 6 }}
       containers:
@@ -47,6 +48,7 @@ spec:
           volumeMounts:
             - name: realm
               mountPath: /opt/keycloak/data/import
+          {{- include "thunderbolt.resources" .Values.keycloak.resources | nindent 10 }}
           readinessProbe:
             tcpSocket:
               port: 8080

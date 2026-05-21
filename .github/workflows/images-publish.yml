@@ -52,6 +52,13 @@ jobs:
       version: ${{ steps.version.outputs.version }}
 
     steps:
+      # Note: when invoked from preview-deploy.yml under pull_request_target, this
+      # checks out a fork's ref. That ref is consumed only as Docker build context
+      # (docker/build-push-action runs in a sandboxed daemon, not on the runner)
+      # and the caller workflow gates this job behind a maintainer-approval
+      # environment. The version step below reads package.json from the checkout
+      # but routes the value through a $GITHUB_OUTPUT → env var, never interpolated
+      # into a shell with ${{ }} syntax.
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
         with:
           ref: ${{ inputs.ref || github.ref }}
@@ -167,13 +174,18 @@ jobs:
 
       - name: Update chart version
         if: steps.version.outputs.publish_latest == 'true'
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
         run: |
-          VERSION="${{ steps.version.outputs.version }}"
           sed -i "s/^version:.*/version: $VERSION/" deploy/k8s/Chart.yaml
           sed -i "s/^appVersion:.*/appVersion: \"$VERSION\"/" deploy/k8s/Chart.yaml
 
       - name: Package and push Helm chart
         if: steps.version.outputs.publish_latest == 'true'
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+          REGISTRY: ${{ env.REGISTRY }}
+          REPO_OWNER: ${{ github.repository_owner }}
         run: |
           helm package deploy/k8s/ --destination .
-          helm push thunderbolt-${{ steps.version.outputs.version }}.tgz oci://${{ env.REGISTRY }}/${{ github.repository_owner }}/charts
+          helm push "thunderbolt-${VERSION}.tgz" "oci://${REGISTRY}/${REPO_OWNER}/charts"

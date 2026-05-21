@@ -30,9 +30,15 @@ export const wsCloseCodes = {
  *  codes the proxy can't safely categorise — these emit without `error_type`,
  *  the same way HTTP 2xx/3xx responses do on the routes path. */
 export const classifyWsCloseCode = (code: number): ProxyErrorType | undefined => {
-  if (code === wsCloseCodes.invalidSubprotocol || code === wsCloseCodes.schemeRejected) return 'invalid_target'
-  if (code === wsCloseCodes.queueOverflow) return 'cap_exceeded'
-  if (code === wsCloseCodes.internalError) return 'upstream_5xx'
+  if (code === wsCloseCodes.invalidSubprotocol || code === wsCloseCodes.schemeRejected) {
+    return 'invalid_target'
+  }
+  if (code === wsCloseCodes.queueOverflow) {
+    return 'cap_exceeded'
+  }
+  if (code === wsCloseCodes.internalError) {
+    return 'upstream_5xx'
+  }
   return undefined
 }
 

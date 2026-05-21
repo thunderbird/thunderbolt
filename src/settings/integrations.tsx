@@ -16,10 +16,11 @@ import { configs as proToolConfigs } from '@/integrations/thunderbolt-pro/tools'
 import { getProStatus } from '@/integrations/thunderbolt-pro/utils'
 import { type OAuthProvider } from '@/lib/auth'
 import { useDatabase } from '@/contexts'
-import { updateSettings } from '@/dal'
+import { deleteIntegrationCredentials, setIntegrationEnabled, updateSettings } from '@/dal'
+import { useIntegrationStatus } from '@/hooks/use-integration-status'
 import { useOAuthConnect } from '@/hooks/use-oauth-connect'
 import { useSettings } from '@/hooks/use-settings'
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import { useLocation, useNavigate } from 'react-router'
 
@@ -32,15 +33,6 @@ type Integration = {
   isEnabled: boolean
   isConnected: boolean
   userEmail?: string
-  credentials?: {
-    access_token: string
-    refresh_token: string
-    expires_at: number
-    profile?: {
-      email?: string
-      name?: string
-    }
-  }
 }
 
 const ThunderboltProIcon = () => (
@@ -48,18 +40,6 @@ const ThunderboltProIcon = () => (
     <path d="M13 2L3 12h7l-2 8 10-10h-7l2-8z" fill="currentColor" className="text-amber-500" />
   </svg>
 )
-
-const parseCredentials = (credentialsJson: string): Integration['credentials'] | undefined => {
-  if (!credentialsJson) {
-    return undefined
-  }
-  try {
-    return JSON.parse(credentialsJson) as Integration['credentials']
-  } catch (e) {
-    console.error('Failed to parse credentials:', e)
-    return undefined
-  }
-}
 
 export default function IntegrationsPage() {
   const db = useDatabase()
@@ -72,13 +52,11 @@ export default function IntegrationsPage() {
     return !!oauth
   })
 
+  const queryClient = useQueryClient()
   const integrationSettings = useSettings({
     integrations_pro_is_enabled: false,
-    integrations_google_is_enabled: false,
-    integrations_google_credentials: '',
-    integrations_microsoft_is_enabled: false,
-    integrations_microsoft_credentials: '',
   })
+  const { data: integrationStatusData } = useIntegrationStatus()
 
   const { data: proStatus, isLoading: proStatusLoading } = useQuery({
     queryKey: ['proStatus'],
@@ -87,13 +65,6 @@ export default function IntegrationsPage() {
 
   const integrations = useMemo((): Integration[] => {
     const proEnabled = integrationSettings.integrationsProIsEnabled.value
-    const googleEnabled = integrationSettings.integrationsGoogleIsEnabled.value
-    const googleCredentials = integrationSettings.integrationsGoogleCredentials.value ?? ''
-    const microsoftEnabled = integrationSettings.integrationsMicrosoftIsEnabled.value
-    const microsoftCredentials = integrationSettings.integrationsMicrosoftCredentials.value ?? ''
-
-    const gParsed = parseCredentials(googleCredentials)
-    const mParsed = parseCredentials(microsoftCredentials)
     const isProUser = proStatus?.isProUser ?? false
 
     return [
@@ -113,10 +84,9 @@ export default function IntegrationsPage() {
         provider: 'google',
         connectLabel: 'Connect Google',
         icon: <GoogleIcon />,
-        isEnabled: googleEnabled,
-        isConnected: !!gParsed,
-        userEmail: gParsed?.profile?.email,
-        credentials: gParsed,
+        isEnabled: integrationStatusData?.googleEnabled ?? false,
+        isConnected: integrationStatusData?.googleConnected ?? false,
+        userEmail: integrationStatusData?.googleEmail ?? undefined,
       },
       {
         id: 'microsoft',
@@ -124,20 +94,12 @@ export default function IntegrationsPage() {
         provider: 'microsoft',
         connectLabel: 'Connect Microsoft',
         icon: <MicrosoftIcon />,
-        isEnabled: microsoftEnabled,
-        isConnected: !!mParsed,
-        userEmail: mParsed?.profile?.email,
-        credentials: mParsed,
+        isEnabled: integrationStatusData?.microsoftEnabled ?? false,
+        isConnected: integrationStatusData?.microsoftConnected ?? false,
+        userEmail: integrationStatusData?.microsoftEmail ?? undefined,
       },
     ]
-  }, [
-    integrationSettings.integrationsProIsEnabled.value,
-    integrationSettings.integrationsGoogleIsEnabled.value,
-    integrationSettings.integrationsGoogleCredentials.value,
-    integrationSettings.integrationsMicrosoftIsEnabled.value,
-    integrationSettings.integrationsMicrosoftCredentials.value,
-    proStatus?.isProUser,
-  ])
+  }, [integrationSettings.integrationsProIsEnabled.value, integrationStatusData, proStatus?.isProUser])
 
   const { processCallback } = useOAuthConnect({
     onError: (err) => {
@@ -178,28 +140,28 @@ export default function IntegrationsPage() {
 
   const handleDisconnect = async (integration: Integration) => {
     try {
-      await updateSettings(db, {
-        [`integrations_${integration.provider}_credentials`]: '',
-        [`integrations_${integration.provider}_is_enabled`]: 'false',
-      })
+      await deleteIntegrationCredentials(db, integration.provider as OAuthProvider)
+      await queryClient.invalidateQueries({ queryKey: ['integrationStatus'] })
     } catch (err) {
       console.error('Failed to disconnect integration', err)
+      setError(err instanceof Error ? err.message : 'Failed to disconnect integration')
     }
   }
 
   const handleToggleEnabled = async (integration: Integration, enabled: boolean) => {
     try {
-      const settingKey =
-        integration.provider === 'thunderbolt-pro'
-          ? 'integrations_pro_is_enabled'
-          : `integrations_${integration.provider}_is_enabled`
-      await updateSettings(db, { [settingKey]: enabled.toString() })
+      if (integration.provider === 'thunderbolt-pro') {
+        await updateSettings(db, { integrations_pro_is_enabled: enabled.toString() })
+      } else {
+        await setIntegrationEnabled(db, integration.provider as OAuthProvider, enabled)
+        await queryClient.invalidateQueries({ queryKey: ['integrationStatus'] })
+      }
     } catch (err) {
       console.error('Failed to update integration', err)
     }
   }
 
-  const loading = integrationSettings.integrationsProIsEnabled.isLoading || proStatusLoading
+  const loading = integrationSettings.integrationsProIsEnabled.isLoading || proStatusLoading || !integrationStatusData
 
   if (loading) {
     return (

@@ -37,7 +37,9 @@ export const capStream = (
   let completed = false
 
   const fireComplete = () => {
-    if (completed) return
+    if (completed) {
+      return
+    }
     completed = true
     opts.onComplete?.(bytesReceived)
   }

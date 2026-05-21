@@ -171,7 +171,40 @@ Deploy to any Kubernetes cluster using the Helm chart in `deploy/k8s/`.
 Pick one:
 
 **Docker Desktop** (easiest):
-Settings -> Kubernetes -> Enable Kubernetes -> Apply & Restart
+Settings → Kubernetes → Enable Kubernetes → Apply & Restart.
+
+**kind** (recommended for clean isolation):
+
+```bash
+brew install kind
+
+cat > /tmp/kind-thunderbolt.yaml <<'EOF'
+kind: Cluster
+apiVersion: kind.x-k8s.io/v1alpha4
+nodes:
+  - role: control-plane
+    kubeadmConfigPatches:
+      - |
+        kind: InitConfiguration
+        nodeRegistration:
+          kubeletExtraArgs:
+            node-labels: "ingress-ready=true"
+    extraPortMappings:
+      - containerPort: 80
+        hostPort: 80
+        protocol: TCP
+      - containerPort: 443
+        hostPort: 443
+        protocol: TCP
+EOF
+
+kind create cluster --name thunderbolt --config /tmp/kind-thunderbolt.yaml
+```
+
+The `extraPortMappings` and `ingress-ready` label are required for the chart's
+ingress to be reachable at `http://localhost`. A bare `kind create cluster`
+boots a cluster with no host port mappings, and the ingress install in the next
+step will succeed but be unreachable.
 
 **Minikube**:
 
@@ -180,14 +213,20 @@ brew install minikube
 minikube start
 ```
 
-**kind**:
+### Install nginx-ingress
+
+For **kind**, use the kind-flavored manifest (binds to the labeled node):
 
 ```bash
-brew install kind
-kind create cluster --name thunderbolt
+kubectl apply -f https://kind.sigs.k8s.io/examples/ingress/deploy-ingress-nginx.yaml
+
+kubectl wait --namespace ingress-nginx \
+  --for=condition=ready pod \
+  --selector=app.kubernetes.io/component=controller \
+  --timeout=120s
 ```
 
-### Install nginx-ingress
+For **Docker Desktop / Minikube**, use the standard chart:
 
 ```bash
 helm repo add ingress-nginx https://kubernetes.github.io/ingress-nginx
@@ -217,19 +256,29 @@ docker build -f deploy/docker/powersync.Dockerfile -t thunderbolt-powersync .
 
 ### Deploy with Helm
 
+The chart requires `backend.betterAuthSecretBase64`. Generate one and install:
+
 ```bash
 cd deploy/k8s
 
-# Install with default values (local dev)
-helm install thunderbolt . -n thunderbolt --create-namespace
+BETTER_AUTH_SECRET=$(openssl rand -base64 32 | tr -d '\n' | base64)
 
-# Or customize values
 helm install thunderbolt . -n thunderbolt --create-namespace \
-  --set appUrl=http://my-domain.com \
-  --set frontend.image.repository=thunderbolt-frontend \
-  --set frontend.image.tag=latest \
-  --set backend.image.repository=thunderbolt-backend \
-  --set backend.image.tag=latest
+  --set backend.betterAuthSecretBase64="$BETTER_AUTH_SECRET"
+```
+
+Default image repos point at the public images at
+`ghcr.io/thunderbird/thunderbolt/*` — no pull secret needed for a local install.
+
+To customize for a production deploy:
+
+```bash
+helm install thunderbolt . -n thunderbolt --create-namespace \
+  --set backend.betterAuthSecretBase64="$BETTER_AUTH_SECRET" \
+  --set appUrl=https://thunderbolt.your-domain.com \
+  --set ingress.host=thunderbolt.your-domain.com \
+  --set frontend.image.tag=0.1.95 \
+  --set backend.image.tag=0.1.95
 ```
 
 ### Watch Startup
@@ -308,6 +357,12 @@ See `deploy/k8s/values.yaml` for all configurable values. Key ones:
 | `ingress.enabled`   | `true`             | Create Ingress resource                      |
 | `ingress.className` | `nginx`            | Ingress class                                |
 | `ingress.host`      | `""`               | Set for production (empty = default rule)    |
+
+### Known caveats
+
+- **TLS to RDS Postgres.** RDS rejects plaintext connections by default, so when pointing any Postgres URI at RDS (or another TLS-terminating Postgres) set `postgres.sslmode: require` in `values.yaml`. The value flows into both the backend's `DATABASE_URL` (as `?sslmode=...`) and PowerSync's `replication`/`storage` config. A wrong `sslmode` produces a different failure shape than the PowerSync caveat below — operators hitting RDS issues should check this setting first.
+
+- **PowerSync storage on RDS Postgres 17.** PowerSync 1.20.5 fails opaquely when its internal `storage` connection points at an RDS-managed Postgres 17 instance. Observed signature: the service hangs partway through `PostgresLockManager.init` and never reaches the "Power up" log line; the underlying `pgwire` 0.8.1 client swallows the actual server-side error, so the only visible symptom is the missing readiness probe success. The same bootstrap DDL succeeds via `psql` against the same database, so it is not a privilege issue. Scope confirmed on PowerSync 1.20.5; PowerSync 1.15/1.16 were not retested by us and may or may not be affected. This caveat applies to the `storage` connection only — the app's primary Postgres connection (read/write + logical replication, pointed at any reachable Postgres) is unaffected. If you hit this and the `postgres.sslmode` setting above did not resolve it, please open an issue against [powersync-ja/powersync-service](https://github.com/powersync-ja/powersync-service/issues) with your RDS PG major version and PowerSync version so the report is searchable. Workaround: keep PowerSync's storage off RDS (use the in-cluster Postgres StatefulSet, an unmanaged Postgres elsewhere, or MongoDB storage).
 
 ---
 

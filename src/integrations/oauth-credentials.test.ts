@@ -3,7 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { describe, expect, it } from 'bun:test'
-import { isTokenFresh } from './tools'
+import { isTokenFresh } from './oauth-credentials'
 
 describe('isTokenFresh', () => {
   const now = 1_700_000_000_000

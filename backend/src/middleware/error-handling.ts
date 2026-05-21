@@ -91,7 +91,9 @@ export const safeErrorHandler: ErrorHandler = ({ code, error, set, request }) =>
     const cause = error.cause
     if (cause instanceof Error) {
       console.error('Caused by:', cause.message)
-      if (cause.stack) console.error(cause.stack)
+      if (cause.stack) {
+        console.error(cause.stack)
+      }
     } else {
       console.error('Caused by:', cause)
     }

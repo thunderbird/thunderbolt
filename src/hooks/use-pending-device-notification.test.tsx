@@ -5,6 +5,7 @@
 import { getDb } from '@/db/database'
 import { devicesTable } from '@/db/tables'
 import { resetTestDatabase, setupTestDatabase, teardownTestDatabase } from '@/dal/test-utils'
+import { useLocalSettingsStore } from '@/stores/local-settings-store'
 import { renderWithReactivity, waitForElement } from '@/test-utils/powersync-reactivity-test'
 import '@testing-library/jest-dom'
 import { cleanup, screen } from '@testing-library/react'
@@ -17,14 +18,14 @@ const pendingDeviceId2 = uuidv7()
 
 const deviceIdKey = 'thunderbolt_device_id'
 const authTokenKey = 'thunderbolt_auth_token'
-const syncEnabledKey = 'powersync_sync_enabled'
 
-// Re-export the real module but override isSyncEnabled to read localStorage directly,
-// preventing bleed from other test files that mock.module('@/db/powersync').
+// Defend against bleed from other test files that fully mock '@/db/powersync'.
+// `isSyncEnabled` is pinned to the real production source (useLocalSettingsStore),
+// which the suite below seeds directly.
 const realPowersync = await import('@/db/powersync')
 mock.module('@/db/powersync', () => ({
   ...realPowersync,
-  isSyncEnabled: () => localStorage.getItem(syncEnabledKey) === 'true',
+  isSyncEnabled: () => useLocalSettingsStore.getState().syncEnabled,
 }))
 
 // These tests verify E2EE pending device behavior — encryption must be enabled.
@@ -60,18 +61,18 @@ describe('usePendingDeviceNotification', () => {
     await resetTestDatabase()
     localStorage.setItem(deviceIdKey, currentDeviceId)
     localStorage.setItem(authTokenKey, 'test-token')
-    localStorage.setItem(syncEnabledKey, 'true')
+    useLocalSettingsStore.setState({ syncEnabled: true })
   })
 
   afterEach(() => {
     localStorage.removeItem(deviceIdKey)
     localStorage.removeItem(authTokenKey)
-    localStorage.removeItem(syncEnabledKey)
+    useLocalSettingsStore.setState({ syncEnabled: false })
     cleanup()
   })
 
   it('returns null when sync is not enabled', async () => {
-    localStorage.removeItem(syncEnabledKey)
+    useLocalSettingsStore.setState({ syncEnabled: false })
     const db = getDb()
 
     await db.insert(devicesTable).values([

@@ -18,10 +18,10 @@ import * as schema from '@/db/schema'
 import { normalizeEmail } from '@/lib/email'
 import { getSettings } from '@/config/settings'
 import { getTrustedIpHeaders } from '@/utils/request'
-import { createAuthMiddleware } from 'better-auth/api'
+import { createAuthMiddleware, getSessionFromCtx } from 'better-auth/api'
 import { betterAuth } from 'better-auth'
 import { drizzleAdapter } from 'better-auth/adapters/drizzle'
-import { bearer, emailOTP } from 'better-auth/plugins'
+import { anonymous, bearer, emailOTP } from 'better-auth/plugins'
 import { sso } from '@better-auth/sso'
 import {
   isAutoApprovedDomain,
@@ -29,24 +29,20 @@ import {
   sendWaitlistNotReadyEmail as defaultSendWaitlistNotReadyEmail,
 } from '@/waitlist/utils'
 import { challengeTokenHeader, otpExpiryMs, otpExpirySeconds } from './otp-constants'
-import {
-  buildVerifyUrl,
-  getValidatedOrigin,
-  parseTrustedOrigins,
-  sendSignInEmail as defaultSendSignInEmail,
-} from './utils'
+import { buildVerifyUrl, parseTrustedOrigins, sendSignInEmail as defaultSendSignInEmail } from './utils'
+import { eq } from 'drizzle-orm'
 
-/** Email-sending callbacks invoked by Better Auth's emailOTP flow. Tests
- *  inject capturing fakes via `createAuth(db, deps)` to avoid
- *  `mock.module('@/auth/utils')` (which leaks across files — see
- *  docs/development/testing.md). */
+/**
+ * Email-sending dependencies for `createAuth`. Tests can inject mocks here
+ * instead of using `mock.module()` (which leaks across files in the same worker).
+ */
 export type AuthEmailDeps = {
   sendSignInEmail?: typeof defaultSendSignInEmail
   sendWaitlistJoinedEmail?: typeof defaultSendWaitlistJoinedEmail
   sendWaitlistNotReadyEmail?: typeof defaultSendWaitlistNotReadyEmail
 }
 
-const OTP_SIGN_IN_PATH = '/sign-in/email-otp'
+const otpSignInPath = '/sign-in/email-otp'
 
 /**
  * Create a Better Auth instance with the provided database
@@ -122,11 +118,11 @@ const buildSsoPlugins = () => {
 }
 
 export const createAuth = (database: typeof DbType, emailDeps: AuthEmailDeps = {}) => {
+  const settings = getSettings()
+  const parsedOrigins = parseTrustedOrigins(process.env.TRUSTED_ORIGINS)
   const sendSignInEmail = emailDeps.sendSignInEmail ?? defaultSendSignInEmail
   const sendWaitlistJoinedEmail = emailDeps.sendWaitlistJoinedEmail ?? defaultSendWaitlistJoinedEmail
   const sendWaitlistNotReadyEmail = emailDeps.sendWaitlistNotReadyEmail ?? defaultSendWaitlistNotReadyEmail
-  const settings = getSettings()
-  const parsedOrigins = parseTrustedOrigins(process.env.TRUSTED_ORIGINS)
 
   // Include the backend's own origin so the SSO desktop-callback can be used as callbackURL.
   // Spread to avoid mutating the shared default array returned by parseTrustedOrigins.
@@ -151,7 +147,6 @@ export const createAuth = (database: typeof DbType, emailDeps: AuthEmailDeps = {
   const ssoEnabled = settings.authMode === 'oidc' || settings.authMode === 'saml'
 
   return betterAuth({
-    baseURL: settings.betterAuthUrl,
     basePath: '/v1/api/auth',
     database: drizzleAdapter(database, {
       provider: 'pg',
@@ -185,6 +180,13 @@ export const createAuth = (database: typeof DbType, emailDeps: AuthEmailDeps = {
           required: false,
           defaultValue: true,
         },
+        // Exposes isAnonymous on the session user object so downstream consumers
+        // (e.g. the PowerSync route guard) can read it without an extra DB lookup.
+        isAnonymous: {
+          type: 'boolean',
+          required: false,
+          defaultValue: false,
+        },
       },
     },
     session: {
@@ -198,6 +200,8 @@ export const createAuth = (database: typeof DbType, emailDeps: AuthEmailDeps = {
     databaseHooks: {
       user: {
         create: {
+          // normalizeEmail is .toLowerCase().trim() — idempotent on Better Auth's
+          // synthetic anonymous emails (`temp@{generateId()}.com`). No guard needed.
           before: async (userData) => ({
             data: { ...userData, email: normalizeEmail(userData.email) },
           }),
@@ -206,7 +210,21 @@ export const createAuth = (database: typeof DbType, emailDeps: AuthEmailDeps = {
     },
     hooks: {
       before: createAuthMiddleware(async (ctx) => {
-        if (ctx.path !== OTP_SIGN_IN_PATH) {
+        // Guard: prevent session fixation. A real (non-anonymous) user MUST NOT be
+        // able to acquire a new anonymous session that could shadow their real session.
+        // Reject /sign-in/anonymous if caller is already authenticated as a non-anonymous
+        // user. Anonymous sign-in is intentionally NOT waitlist-gated.
+        if (ctx.path === '/sign-in/anonymous') {
+          const existing = await getSessionFromCtx(ctx, { disableRefresh: true })
+          if (existing?.user && (existing.user as { isAnonymous?: boolean }).isAnonymous !== true) {
+            throw ctx.error('BAD_REQUEST', { message: 'Already authenticated' })
+          }
+          return
+        }
+
+        if (ctx.path !== otpSignInPath) {
+          // Anonymous sign-in (above) is intentionally NOT waitlist-gated — that's the feature.
+          // All other non-OTP paths are also unchecked here.
           return
         }
 
@@ -238,7 +256,7 @@ export const createAuth = (database: typeof DbType, emailDeps: AuthEmailDeps = {
         // (after hook) or by expiry. This allows the 3-attempt limit to work correctly.
       }),
       after: createAuthMiddleware(async (ctx) => {
-        if (ctx.path !== OTP_SIGN_IN_PATH) {
+        if (ctx.path !== otpSignInPath) {
           return
         }
 
@@ -276,7 +294,7 @@ export const createAuth = (database: typeof DbType, emailDeps: AuthEmailDeps = {
         // code requests + session binding (challenge token) make brute-force infeasible.
         // TODO(THU-113): proof-of-work (ALTCHA) will add further distributed protection.
 
-        async sendVerificationOTP({ email, otp, type }, ctx) {
+        async sendVerificationOTP({ email, otp, type }) {
           // We only support sign-in (no password-based auth, so no email-verification or forget-password)
           if (type !== 'sign-in') {
             console.warn(`Unexpected OTP type requested: ${type}`)
@@ -315,7 +333,6 @@ export const createAuth = (database: typeof DbType, emailDeps: AuthEmailDeps = {
             }
           }
 
-          const origin = getValidatedOrigin(trustedOrigins, ctx?.request)
           // First-writer-wins: reuses existing challenge if /waitlist/join already
           // created one, or creates on-demand for Better Auth's native send-OTP endpoint.
           const challengeToken = await getOrCreateOtpChallenge(database, {
@@ -324,11 +341,27 @@ export const createAuth = (database: typeof DbType, emailDeps: AuthEmailDeps = {
             challengeToken: crypto.randomUUID(),
             expiresAt: new Date(Date.now() + otpExpiryMs),
           })
-          const verifyUrl = buildVerifyUrl(origin, normalizedEmail, otp, ctx?.request, challengeToken)
+          const verifyUrl = buildVerifyUrl(settings.appUrl, normalizedEmail, otp, challengeToken)
 
           await sendSignInEmail({ email: normalizedEmail, otp, verifyUrl })
         },
       }),
+      // Anonymous plugin is operator-gated: register only when AUTH_ALLOW_ANONYMOUS=true.
+      // Otherwise /v1/api/auth/sign-in/anonymous returns 404 — defense-in-depth against
+      // a malicious client bypassing the frontend `VITE_AUTH_ENABLE_ANONYMOUS` overlay.
+      ...(settings.authAllowAnonymous
+        ? [
+            anonymous({
+              // Disables Better Auth's auto-delete + `/delete-anonymous-user` endpoint — the
+              // latter is an unauthenticated CSRF surface. We own the delete in onLinkAccount
+              // instead so the endpoint stays closed.
+              disableDeleteAnonymousUser: true,
+              onLinkAccount: async ({ anonymousUser }) => {
+                await database.delete(schema.user).where(eq(schema.user.id, anonymousUser.user.id))
+              },
+            }),
+          ]
+        : []),
       ...buildSsoPlugins(),
     ],
   })

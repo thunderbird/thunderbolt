@@ -33,7 +33,9 @@ export const createSearchRoutes = (auth: Auth, rateLimit?: AnyElysia, deps: Sear
     .onError(safeErrorHandler)
     .use(createAuthMacro(auth))
     .guard({ auth: true }, (g) => {
-      if (rateLimit) g.use(rateLimit)
+      if (rateLimit) {
+        g.use(rateLimit)
+      }
       return g.get(
         '/search',
         async ({ query, set }): Promise<SearchResponseDto | { error: string }> => {
@@ -53,7 +55,9 @@ export const createSearchRoutes = (auth: Auth, rateLimit?: AnyElysia, deps: Sear
           const results: SearchResultDto[] = []
           for (const r of response.results) {
             const pageUrl = ensureHttps(r.url)
-            if (!pageUrl) continue
+            if (!pageUrl) {
+              continue
+            }
             const faviconUrl = ensureHttps(r.favicon ?? null) ?? deriveFaviconUrl(pageUrl)
             const previewImageUrl = ensureHttps(r.image ?? null)
             results.push({

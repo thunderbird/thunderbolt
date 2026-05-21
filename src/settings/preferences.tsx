@@ -8,11 +8,13 @@ import { useCountryUnits } from '@/hooks/use-country-units'
 import { useLocalStorage } from '@/hooks/use-local-storage'
 import type { LocationData } from '@/hooks/use-location-search'
 import { useSettings } from '@/hooks/use-settings'
+import { initialLocalSettings, useLocalSettingsStore } from '@/stores/local-settings-store'
 import { useUnitsOptions } from '@/hooks/use-units-options'
 import { privacyPolicyUrl } from '@/lib/constants'
 import { extractCountryFromLocation } from '@/lib/country-utils'
 import { clearLocalData } from '@/lib/cleanup'
 import { isTauri } from '@/lib/platform'
+import { computeEffectiveProxyEnabled } from '@/lib/proxy-fetch'
 import { trackEvent, useTelemetryAvailable } from '@/lib/posthog'
 import type { CountryUnitsData } from '@/types'
 import { useHttpClient } from '@/contexts'
@@ -91,6 +93,8 @@ export default function PreferencesSettingsPage() {
   const authClient = useAuth()
   const { data: session } = authClient.useSession()
   const isAuthenticated = !!session?.user
+  const isAnonymous = session?.user?.isAnonymous === true
+  const isFullUser = isAuthenticated && !isAnonymous
   const { openSignInModal } = useSignInModal()
 
   const { fetchCountryUnits } = useCountryUnits()
@@ -107,7 +111,17 @@ export default function PreferencesSettingsPage() {
   // proxy path — so the toggle is UI-disabled with an explanatory tooltip.
   const onTauri = isTauri()
   const [proxyEnabledStr, setProxyEnabledStr] = useLocalStorage('proxy_enabled', 'false')
-  const effectiveProxyEnabled = onTauri ? proxyEnabledStr === 'true' : true
+  const effectiveProxyEnabled = computeEffectiveProxyEnabled(
+    () => onTauri,
+    () => proxyEnabledStr,
+  )
+  const proxyDisabled = !onTauri || !isAuthenticated
+  const tooltipReason = !onTauri
+    ? 'Proxying is required in the web app to bypass browser CORS restrictions.'
+    : 'Sign in to enable cloud proxy.'
+  // When the toggle is auth-disabled, render it as OFF so the UI honestly reflects
+  // that the user can't use the proxy until they sign in.
+  const proxyChecked = proxyDisabled && onTauri ? false : effectiveProxyEnabled
 
   const httpClient = useHttpClient()
   const { syncEnabled, syncSetupOpen, setSyncSetupOpen, handleSyncToggle, handleSyncSetupComplete } =
@@ -123,7 +137,6 @@ export default function PreferencesSettingsPage() {
     locationLng,
     dataCollection,
     experimentalFeatureTasks,
-    hapticsEnabled,
     distanceUnit,
     temperatureUnit,
     dateFormat,
@@ -136,14 +149,15 @@ export default function PreferencesSettingsPage() {
     location_lng: '',
     data_collection: true,
     experimental_feature_tasks: false,
-    haptics_enabled: true,
     distance_unit: 'imperial',
     temperature_unit: 'f',
     date_format: 'MM/DD/YYYY',
     time_format: '12h',
     currency: 'USD',
-    cloud_url: 'http://localhost:8000/v1',
   })
+
+  const hapticsEnabled = useLocalSettingsStore((s) => s.hapticsEnabled)
+  const setLocalSetting = useLocalSettingsStore((s) => s.setLocalSetting)
 
   // Local state for name input (only save on blur to avoid DB writes on every keystroke)
   const [nameInput, setNameInput] = useState('')
@@ -373,14 +387,14 @@ export default function PreferencesSettingsPage() {
               <ModificationIndicator
                 as="label"
                 className="text-sm font-medium"
-                hasModifications={hapticsEnabled.isModified}
-                onReset={hapticsEnabled.reset}
+                hasModifications={hapticsEnabled !== initialLocalSettings.hapticsEnabled}
+                onReset={() => setLocalSetting('hapticsEnabled', initialLocalSettings.hapticsEnabled)}
               >
                 Haptic Feedback
               </ModificationIndicator>
               <p className="text-sm text-muted-foreground">Vibrate on tap</p>
             </div>
-            <Switch checked={hapticsEnabled.value} onCheckedChange={(value) => hapticsEnabled.setValue(value)} />
+            <Switch checked={hapticsEnabled} onCheckedChange={(value) => setLocalSetting('hapticsEnabled', value)} />
           </div>
         </div>
       </SectionCard>
@@ -612,22 +626,15 @@ export default function PreferencesSettingsPage() {
           <div className="flex-1">
             <label className="text-sm font-medium">Use Cloud Proxy</label>
             <p className="text-sm text-muted-foreground">
-              When enabled, requests are routed through Thunderbolt's cloud proxy. When disabled, the app connects
-              directly to upstream servers.
+              When enabled, requests are routed through Thunderbolt's cloud proxy.
             </p>
           </div>
-          {onTauri ? (
-            <Switch
-              checked={effectiveProxyEnabled}
-              onCheckedChange={(checked) => setProxyEnabledStr(checked ? 'true' : 'false')}
-              aria-label="Use Cloud Proxy"
-            />
-          ) : (
+          {proxyDisabled ? (
             <Tooltip>
               <TooltipTrigger asChild>
-                <span tabIndex={0} aria-label="Cloud proxy is required in the web app">
+                <span tabIndex={0} aria-label={tooltipReason}>
                   <Switch
-                    checked={effectiveProxyEnabled}
+                    checked={proxyChecked}
                     disabled
                     aria-label="Use Cloud Proxy"
                     className="pointer-events-none"
@@ -635,9 +642,15 @@ export default function PreferencesSettingsPage() {
                 </span>
               </TooltipTrigger>
               <TooltipContent side="top">
-                <p>Proxying is required in the web app to bypass browser CORS restrictions.</p>
+                <p>{tooltipReason}</p>
               </TooltipContent>
             </Tooltip>
+          ) : (
+            <Switch
+              checked={proxyChecked}
+              onCheckedChange={(checked) => setProxyEnabledStr(checked ? 'true' : 'false')}
+              aria-label="Use Cloud Proxy"
+            />
           )}
         </div>
       </SectionCard>
@@ -710,7 +723,7 @@ export default function PreferencesSettingsPage() {
 
       <SectionCard title="Data">
         <div className="flex flex-col gap-6">
-          {isAuthenticated ? (
+          {isFullUser ? (
             <div className="flex-row flex items-center gap-4 justify-between">
               <div>
                 <label className="text-sm font-medium">Sync This Device With Cloud</label>
@@ -724,7 +737,7 @@ export default function PreferencesSettingsPage() {
             </div>
           )}
 
-          {!isAuthenticated && (
+          {isAnonymous && (
             <>
               <div className="h-px bg-border -mx-6" />
 
@@ -759,7 +772,7 @@ export default function PreferencesSettingsPage() {
             </>
           )}
 
-          {isAuthenticated && (
+          {isFullUser && (
             <>
               <div className="h-px bg-border -mx-6" />
 

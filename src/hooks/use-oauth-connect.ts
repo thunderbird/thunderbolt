@@ -3,13 +3,15 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { useDatabase, useHttpClient } from '@/contexts'
-import { deleteSetting, getSettings, updateSettings } from '@/dal'
+import { saveIntegrationCredentials, updateSettings } from '@/dal'
 import { buildAuthUrl, exchangeCodeForTokens, getUserInfo, redirectOAuthFlow, type OAuthProvider } from '@/lib/auth'
 import { startOAuthFlowLoopback } from '@/lib/oauth-loopback'
+import { clearOAuthState, getOAuthState, setOAuthState } from '@/lib/oauth-state'
 import { generateCodeChallenge, generateCodeVerifier } from '@/lib/pkce'
 import type { ReturnContext } from '@/lib/oauth-state'
 import { isMobile, isTauri } from '@/lib/platform'
 import { openUrl } from '@tauri-apps/plugin-opener'
+import { useQueryClient } from '@tanstack/react-query'
 import { useEffect, useRef, useState } from 'react'
 import { v4 as uuidv4 } from 'uuid'
 
@@ -92,6 +94,7 @@ const getInitialConnectingState = (key: string | undefined): boolean => {
 export const useOAuthConnect = (options: UseOAuthConnectOptions = {}): UseOAuthConnectResult => {
   const db = useDatabase()
   const httpClient = useHttpClient()
+  const queryClient = useQueryClient()
   const {
     connectingKey,
     onSuccess,
@@ -147,10 +150,8 @@ export const useOAuthConnect = (options: UseOAuthConnectOptions = {}): UseOAuthC
       },
     }
 
-    await updateSettings(db, {
-      [`integrations_${provider}_credentials`]: JSON.stringify(credentials),
-      [`integrations_${provider}_is_enabled`]: 'true',
-    })
+    await saveIntegrationCredentials(db, provider, credentials, true)
+    await queryClient.invalidateQueries({ queryKey: ['integrationStatus'] })
 
     if (setPreferredName && userInfo.name) {
       await updateSettings(db, { preferred_name: userInfo.name })
@@ -204,11 +205,11 @@ export const useOAuthConnect = (options: UseOAuthConnectOptions = {}): UseOAuthC
           const codeChallenge = await generateCodeChallenge(codeVerifier)
 
           // Store OAuth state for callback validation
-          await updateSettings(db, {
-            oauth_state: state,
-            oauth_provider: provider,
-            oauth_verifier: codeVerifier,
-            oauth_return_context: returnContext,
+          setOAuthState({
+            state,
+            provider,
+            verifier: codeVerifier,
+            returnContext,
           })
 
           const authUrl = await buildAuthUrl(httpClient, provider, state, codeChallenge)
@@ -240,7 +241,7 @@ export const useOAuthConnect = (options: UseOAuthConnectOptions = {}): UseOAuthC
         }
       } else {
         // For web: Use redirect flow
-        await updateSettings(db, { oauth_return_context: returnContext })
+        setOAuthState({ returnContext })
         await redirect(httpClient, provider)
       }
     } catch (e: unknown) {
@@ -265,16 +266,11 @@ export const useOAuthConnect = (options: UseOAuthConnectOptions = {}): UseOAuthC
 
     const { code, state: returnedState, error: oauthError } = callbackData
 
-    // Get OAuth state from sqlite settings (needed for both success and error cleanup)
-    const settings = await getSettings(db, {
-      oauth_state: String,
-      oauth_provider: String,
-      oauth_verifier: String,
-    })
-
-    const storedState = settings.oauthState
-    const provider = settings.oauthProvider as OAuthProvider | null
-    const codeVerifier = settings.oauthVerifier
+    // Get OAuth state from oauth-state (needed for both success and error cleanup)
+    const oauthState = getOAuthState()
+    const storedState = oauthState.state
+    const provider = oauthState.provider
+    const codeVerifier = oauthState.verifier
 
     // Helper to cleanup connecting state - uses connectingKey if available, otherwise provider
     const cleanup = () => {
@@ -311,13 +307,7 @@ export const useOAuthConnect = (options: UseOAuthConnectOptions = {}): UseOAuthC
 
       await saveCredentials(provider, tokens, userInfo)
 
-      // Cleanup OAuth state from sqlite
-      await Promise.all([
-        deleteSetting(db, 'oauth_state'),
-        deleteSetting(db, 'oauth_provider'),
-        deleteSetting(db, 'oauth_verifier'),
-        deleteSetting(db, 'oauth_return_context'),
-      ])
+      clearOAuthState()
 
       cleanup()
       onSuccess?.()

@@ -10,12 +10,12 @@ data:
       connections:
         - type: postgresql
           uri: !env PS_PG_URI
-          sslmode: disable
+          sslmode: {{ .Values.postgres.sslmode | default "disable" }}
 
     storage:
       type: postgresql
       uri: !env PS_STORAGE_URI
-      sslmode: disable
+      sslmode: {{ .Values.postgres.sslmode | default "disable" }}
 
     port: {{ .Values.powersync.service.port }}
 
@@ -43,7 +43,7 @@ data:
       jwks:
         keys:
           - kty: oct
-            k: {{ .Values.powersync.jwt.secretBase64 }}
+            k: !env POWERSYNC_JWT_SECRET_B64
             alg: HS256
             kid: {{ .Values.powersync.jwt.kid }}
       telemetry:
@@ -83,6 +83,7 @@ data:
         }
       ],
       "users": [
+        {{- if .Values.keycloak.demoUserEnabled }}
         {
           "username": "demo",
           "email": "demo@thunderbolt.io",
@@ -98,6 +99,7 @@ data:
             }
           ]
         }
+        {{- end }}
       ]
     }
 ---

@@ -9,13 +9,13 @@ const isCI = !!process.env.CI
 const mockOidcPort = process.env.MOCK_OIDC_PORT ?? '9876'
 const mockSamlPort = process.env.MOCK_SAML_PORT ?? '9877'
 
-// OIDC: frontend 1421, backend 8000
+// OIDC: frontend 1421, backend 8002 (off :8000 so e2e doesn't collide with `make dev`)
 const oidcVitePort = 1421
-const oidcBackendPort = 8000
+const oidcBackendPort = 8002
 
-// SAML: frontend 1422, backend 8001
+// SAML: frontend 1422, backend 8003 (off :8001 to keep both backends in their own band)
 const samlVitePort = 1422
-const samlBackendPort = 8001
+const samlBackendPort = 8003
 
 export default defineConfig({
   testDir: './e2e',
@@ -49,16 +49,6 @@ export default defineConfig({
         baseURL: `http://localhost:${samlVitePort}`,
       },
     },
-    // Proxy specs share the OIDC dev server (they need a real auth flow to load
-    // the authenticated app shell, but mock /v1/proxy via page.route()).
-    {
-      name: 'proxy',
-      testMatch: /proxy-/,
-      use: {
-        ...devices['Desktop Chrome'],
-        baseURL: `http://localhost:${oidcVitePort}`,
-      },
-    },
   ],
   webServer: [
     // --- OIDC frontend ---
@@ -70,16 +60,18 @@ export default defineConfig({
       env: {
         VITE_AUTH_MODE: 'sso',
         VITE_SKIP_ONBOARDING: 'true',
+        // Explicit cloud URL so the frontend hits the test-mode OIDC backend on 8002,
+        // not the dev backend on 8000 if one happens to be running.
+        VITE_THUNDERBOLT_CLOUD_URL: `http://localhost:${oidcBackendPort}/v1`,
       },
     },
     // --- OIDC backend ---
     {
-      // Bypass `bun run dev` (which goes through scripts/dev.sh and triggers
-      // a slow `op run` when local devs have OP_ENVIRONMENT_ID in their .env).
-      // The env block below provides every var the backend needs for tests.
-      command: 'cd backend && bun run --watch src/index.ts',
+      command: 'cd backend && bun run dev',
       url: `http://localhost:${oidcBackendPort}/v1/health`,
-      reuseExistingServer: !isCI,
+      // Backend env is test-specific (mock IdP, e2e secrets, rate limit off) — never reuse a
+      // dev backend that happened to bind :8000. Playwright will fail fast if the port is taken.
+      reuseExistingServer: false,
       timeout: 30_000,
       env: {
         PORT: String(oidcBackendPort),
@@ -110,12 +102,10 @@ export default defineConfig({
     },
     // --- SAML backend ---
     {
-      // Bypass `bun run dev` (which goes through scripts/dev.sh and triggers
-      // a slow `op run` when local devs have OP_ENVIRONMENT_ID in their .env).
-      // The env block below provides every var the backend needs for tests.
-      command: 'cd backend && bun run --watch src/index.ts',
+      command: 'cd backend && bun run dev',
       url: `http://localhost:${samlBackendPort}/v1/health`,
-      reuseExistingServer: !isCI,
+      // Backend env is test-specific — see OIDC backend comment above.
+      reuseExistingServer: false,
       timeout: 30_000,
       env: {
         PORT: String(samlBackendPort),

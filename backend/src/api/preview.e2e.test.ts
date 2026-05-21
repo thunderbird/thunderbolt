@@ -18,7 +18,9 @@ describe('GET /v1/preview — e2e', () => {
   let handle: TestAppHandle
 
   afterEach(async () => {
-    if (handle) await handle.cleanup()
+    if (handle) {
+      await handle.cleanup()
+    }
   })
 
   it('returns OG metadata with HTTPS-upgraded image, title, summary, siteName', async () => {

@@ -50,28 +50,44 @@ export const revokeDevice = async (database: typeof DbType, deviceId: string, us
     .where(and(eq(devicesTable.id, deviceId), eq(devicesTable.userId, userId), isNull(devicesTable.revokedAt)))
     .returning()
 
-/** Mark a device as trusted and clear pending state. Called when an envelope is stored for the device. */
+/** Mark a device as trusted and clear pending state. Called when an envelope is stored for the device.
+ * Excludes revoked devices to prevent zombie state from a concurrent revoke transaction.
+ * Requires `approvalPending=true` to guard against the deny→approve race: if denyDevice committed
+ * first and cleared approvalPending, this UPDATE is a no-op so a denied device cannot be silently
+ * trusted (Finding E).
+ * Returns updated rows so callers can detect the 0-row case (concurrent revoke or deny commits
+ * between the in-tx target read and this UPDATE). */
 export const markDeviceTrusted = async (database: typeof DbType, deviceId: string, userId: string) =>
   database
     .update(devicesTable)
     .set({ trusted: true, approvalPending: false })
-    .where(and(eq(devicesTable.id, deviceId), eq(devicesTable.userId, userId)))
+    .where(
+      and(
+        eq(devicesTable.id, deviceId),
+        eq(devicesTable.userId, userId),
+        eq(devicesTable.approvalPending, true),
+        isNull(devicesTable.revokedAt),
+      ),
+    )
+    .returning()
 
-/** Count active (non-revoked) devices for a user. */
+/** Count active (trusted, non-revoked) devices for a user.
+ * Pending and limbo devices do NOT count toward the device cap (THU-502). */
 export const countActiveDevices = async (database: typeof DbType, userId: string) => {
   const rows = await database
     .select({ count: count() })
     .from(devicesTable)
-    .where(and(eq(devicesTable.userId, userId), isNull(devicesTable.revokedAt)))
+    .where(and(eq(devicesTable.userId, userId), eq(devicesTable.trusted, true), isNull(devicesTable.revokedAt)))
   return rows[0]?.count ?? 0
 }
 
-/** Deny a pending device by clearing its approval_pending flag. Does not revoke. */
+/** Deny a pending device by clearing approval_pending. The trusted=false guard prevents
+ * a TOCTOU race from revoking a concurrently-approved device. */
 export const denyDevice = async (database: typeof DbType, deviceId: string, userId: string) =>
   database
     .update(devicesTable)
     .set({ approvalPending: false })
-    .where(and(eq(devicesTable.id, deviceId), eq(devicesTable.userId, userId)))
+    .where(and(eq(devicesTable.id, deviceId), eq(devicesTable.userId, userId), eq(devicesTable.trusted, false)))
     .returning()
 
 /**

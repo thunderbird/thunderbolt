@@ -13,7 +13,9 @@ if (cluster.isPrimary) {
       ? os.availableParallelism()
       : 1
 
-  for (let i = 0; i < concurrency; i++) cluster.fork()
+  for (let i = 0; i < concurrency; i++) {
+    cluster.fork()
+  }
 } else {
   const { startServer } = await import('.')
   await startServer()

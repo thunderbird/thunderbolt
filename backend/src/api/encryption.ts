@@ -20,9 +20,10 @@ import {
 import type { db as DbType } from '@/db/client'
 import { BadRequestError, ForbiddenError } from '@/errors/http-errors'
 import { hashCanarySecret, verifyCanaryProof, verifyCanaryProofWithMetadata } from '@/lib/canary'
+import { sql } from 'drizzle-orm'
 import { Elysia, t } from 'elysia'
 
-const MAX_DEVICES_PER_USER = 10
+const maxDevicesPerUser = 10
 
 /**
  * Check if the caller is performing a self-recovery.
@@ -35,7 +36,9 @@ const checkSelfRecovery = async (
   deviceId: string,
   canarySecret?: string,
 ): Promise<boolean> => {
-  if (callerDeviceId !== deviceId || !canarySecret) return false
+  if (callerDeviceId !== deviceId || !canarySecret) {
+    return false
+  }
   return verifyCanaryProof(txDb, userId, canarySecret)
 }
 
@@ -94,7 +97,9 @@ export const createEncryptionRoutes = (auth: Auth, database: typeof DbType) =>
           const freshDevice = await getDeviceById(txDb, deviceId)
           if (!freshDevice) {
             const activeCount = await countActiveDevices(txDb, userId)
-            if (activeCount >= MAX_DEVICES_PER_USER) return { limitReached: true as const }
+            if (activeCount >= maxDevicesPerUser) {
+              return { limitReached: true as const }
+            }
           }
 
           const registered = await registerDevice(txDb, {
@@ -174,6 +179,12 @@ export const createEncryptionRoutes = (auth: Auth, database: typeof DbType) =>
           await database.transaction(async (tx) => {
             const txDb = tx as unknown as typeof database
 
+            // Serialize concurrent device approvals for this user to prevent cap bypass
+            // (Finding F): without this, two concurrent envelope txs both see count<MAX
+            // and both promote pending devices, exceeding the cap. The advisory lock
+            // auto-releases on commit/rollback.
+            await txDb.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${userId})::bigint)`)
+
             const envelopesExist = await hasEnvelopesForUser(txDb, userId)
             const isFirstDeviceBootstrap = !envelopesExist && callerDeviceId === deviceId
 
@@ -248,8 +259,27 @@ export const createEncryptionRoutes = (auth: Auth, database: typeof DbType) =>
               })
             }
 
-            // Mark device as trusted
-            await markDeviceTrusted(txDb, deviceId, userId)
+            // Approval-only state transition: cap check + markDeviceTrusted only run when
+            // transitioning untrusted → trusted. For re-key (already-trusted devices rotating
+            // envelopes), the upsertEnvelope above is the only state change needed. Running
+            // markDeviceTrusted on an already-trusted device matches 0 rows (its WHERE requires
+            // approvalPending=true) and would falsely throw 'Device has been revoked'.
+            if (!targetDevice.trusted) {
+              // registerDevice checks the cap, but pending devices don't count toward it. Without
+              // this guard, a user could register N+1 pending devices and approve them all,
+              // exceeding maxDevicesPerUser.
+              const activeCount = await countActiveDevices(txDb, userId)
+              if (activeCount >= maxDevicesPerUser) {
+                throw new ForbiddenError('Device limit reached — revoke an existing device first')
+              }
+
+              // Mark device as trusted. Check rows returned to detect a concurrent revoke
+              // that committed between the in-tx target read above and this UPDATE.
+              const updated = await markDeviceTrusted(txDb, deviceId, userId)
+              if (updated.length === 0) {
+                throw new ForbiddenError('Device has been revoked')
+              }
+            }
           })
         } catch (err) {
           if (err instanceof BadRequestError) {

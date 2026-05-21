@@ -28,6 +28,10 @@ const settingsSchema = z
 
     // OIDC Settings (enterprise self-hosted)
     authMode: z.enum(['consumer', 'oidc', 'saml']).default('consumer'),
+    // Anonymous-session overlay — opt-in. When false, the anonymous() Better Auth plugin
+    // is NOT registered so /v1/api/auth/sign-in/anonymous returns 404. Defense-in-depth
+    // against a malicious client bypassing the frontend gate via direct curl.
+    authAllowAnonymous: z.boolean().default(false),
     oidcClientId: z.string().default(''),
     oidcClientSecret: z.string().default(''),
     oidcIssuer: z.string().default(''),
@@ -48,7 +52,10 @@ const settingsSchema = z
     // General settings
     logLevel: z.enum(['DEBUG', 'INFO', 'WARN', 'ERROR']).default('INFO'),
     port: z.coerce.number().default(8000),
-    appUrl: z.string().default('http://localhost:1420'),
+    appUrl: z
+      .string()
+      .default('http://localhost:1420')
+      .transform((s) => s.replace(/\/$/, '')),
 
     // Analytics settings
     posthogHost: z.string().default('https://us.i.posthog.com'),
@@ -127,6 +134,7 @@ const parseSettings = (): Settings => {
     microsoftClientId: process.env.MICROSOFT_CLIENT_ID || '',
     microsoftClientSecret: process.env.MICROSOFT_CLIENT_SECRET || '',
     authMode: (process.env.AUTH_MODE || 'consumer').toLowerCase(),
+    authAllowAnonymous: process.env.AUTH_ALLOW_ANONYMOUS === 'true',
     oidcClientId: process.env.OIDC_CLIENT_ID || '',
     oidcClientSecret: process.env.OIDC_CLIENT_SECRET || '',
     oidcIssuer: process.env.OIDC_ISSUER || '',

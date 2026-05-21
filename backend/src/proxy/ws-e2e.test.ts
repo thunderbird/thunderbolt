@@ -30,8 +30,9 @@ const startUpstreamServer = async (
         srv.upgrade(req, {
           headers: chosen ? { 'sec-websocket-protocol': chosen } : undefined,
         })
-      )
+      ) {
         return
+      }
       return new Response('not a ws request', { status: 400 })
     },
     websocket: {
@@ -105,8 +106,12 @@ describe('Universal proxy WebSocket relay /v1/proxy/ws — e2e', () => {
   const upstreams: Array<{ stop: () => Promise<void> }> = []
 
   afterEach(async () => {
-    for (const h of handles) await closeProxy(h)
-    for (const u of upstreams) await u.stop()
+    for (const h of handles) {
+      await closeProxy(h)
+    }
+    for (const u of upstreams) {
+      await u.stop()
+    }
     handles = []
     upstreams.length = 0
   })
@@ -270,7 +275,9 @@ const captureWsRecorder = () => {
 const waitForWsRelayLog = async (logs: Array<Record<string, unknown>>, timeoutMs = 1500) => {
   const start = Date.now()
   while (Date.now() - start < timeoutMs) {
-    if (logs.some((l) => (l as { event?: string }).event === 'proxy_ws_relay')) return
+    if (logs.some((l) => (l as { event?: string }).event === 'proxy_ws_relay')) {
+      return
+    }
     await new Promise((r) => setTimeout(r, 25))
   }
 }
@@ -280,8 +287,12 @@ describe('Universal proxy WS observability — error_type per close path', () =>
   const upstreams: Array<{ stop: () => Promise<void> }> = []
 
   afterEach(async () => {
-    for (const h of handles) await closeProxy(h)
-    for (const u of upstreams) await u.stop()
+    for (const h of handles) {
+      await closeProxy(h)
+    }
+    for (const u of upstreams) {
+      await u.stop()
+    }
     handles = []
     upstreams.length = 0
   })
@@ -380,8 +391,11 @@ describe('Universal proxy WS observability — error_type per close path', () =>
     }
 
     await new Promise<void>((resolve) => {
-      if (client.readyState === WebSocket.CLOSED) resolve()
-      else client.addEventListener('close', () => resolve())
+      if (client.readyState === WebSocket.CLOSED) {
+        resolve()
+      } else {
+        client.addEventListener('close', () => resolve())
+      }
     })
 
     await waitForWsRelayLog(logs)
@@ -392,7 +406,8 @@ describe('Universal proxy WS observability — error_type per close path', () =>
     // Either the queue overflow fired first (4008/cap_exceeded) or the upstream
     // dial failed first (1011/upstream_5xx). Both are legitimate proxy errors
     // we want categorised — never undefined.
-    expect(['cap_exceeded', 'upstream_5xx']).toContain(relay?.error_type)
+    expect(relay?.error_type).toBeDefined()
+    expect(['cap_exceeded', 'upstream_5xx']).toContain(relay?.error_type as string)
   })
 
   it('emits no error_type when the upstream closes cleanly with code 1000', async () => {

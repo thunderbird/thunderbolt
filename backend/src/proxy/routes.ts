@@ -79,17 +79,25 @@ const buildOutboundHeaders = (
   let invalid = false
   inbound.forEach((value, key) => {
     const lower = key.toLowerCase()
-    if (!lower.startsWith(passthroughPrefix)) return
+    if (!lower.startsWith(passthroughPrefix)) {
+      return
+    }
     const upstreamKey = lower.slice(passthroughPrefix.length)
-    if (!upstreamKey) return
+    if (!upstreamKey) {
+      return
+    }
     if (!isPrintableAscii(value)) {
       invalid = true
       return
     }
-    if (dropAuthorization && upstreamKey === 'authorization') return
+    if (dropAuthorization && upstreamKey === 'authorization') {
+      return
+    }
     out.set(upstreamKey, value)
   })
-  if (invalid) return { error: 'Invalid passthrough header value' }
+  if (invalid) {
+    return { error: 'Invalid passthrough header value' }
+  }
   return out
 }
 
@@ -100,7 +108,9 @@ const buildOutboundHeaders = (
 const buildResponseHeaders = (upstream: Headers, finalUrl: string): Headers => {
   const out = new Headers()
   upstream.forEach((value, key) => {
-    if (droppedResponseHeaders.has(key.toLowerCase())) return
+    if (droppedResponseHeaders.has(key.toLowerCase())) {
+      return
+    }
     out.set(`${passthroughPrefixCased}${key}`, value)
   })
 
@@ -118,8 +128,12 @@ const buildResponseHeaders = (upstream: Headers, finalUrl: string): Headers => {
  *  return undefined if the response is not an error from the proxy's POV.
  *  Upstream redirect statuses are intentionally NOT errors. */
 const classifyUpstreamStatus = (status: number): ProxyErrorType | undefined => {
-  if (status >= 500) return 'upstream_5xx'
-  if (status >= 400) return 'upstream_4xx'
+  if (status >= 500) {
+    return 'upstream_5xx'
+  }
+  if (status >= 400) {
+    return 'upstream_4xx'
+  }
   return undefined
 }
 
@@ -140,7 +154,9 @@ export const createUniversalProxyRoutes = (options: CreateUniversalProxyRoutesOp
     .onError(safeErrorHandler)
     .use(createAuthMacro(auth))
     .guard({ auth: true }, (g) => {
-      if (rateLimit) g.use(rateLimit)
+      if (rateLimit) {
+        g.use(rateLimit)
+      }
 
       return g
         .derive(({ request }) => ({
@@ -254,7 +270,9 @@ export const createUniversalProxyRoutes = (options: CreateUniversalProxyRoutesOp
               try {
                 for (;;) {
                   const { done, value } = await reader.read()
-                  if (done) break
+                  if (done) {
+                    break
+                  }
                   total += value.byteLength
                   if (total > maxBodyBytes) {
                     reader.cancel().catch(() => {})

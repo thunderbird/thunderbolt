@@ -3,7 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import type { HttpClient } from '@/contexts'
-import { getSettings } from '@/dal'
+import { getIntegrationStatus, getSettings } from '@/dal'
 import { getDb } from '@/db/database'
 import * as tasksTools from '@/extensions/tasks/tools'
 import { createConfigs as createGoogleConfigs } from '@/integrations/google/tools'
@@ -21,17 +21,11 @@ export const getAvailableTools = async (
   // Check Thunderbolt Pro access and integration enabled state
   const db = getDb()
   const proEnabled = await hasProAccess()
-  const {
-    experimentalFeatureTasks,
-    integrationsProIsEnabled,
-    integrationsGoogleIsEnabled,
-    integrationsMicrosoftIsEnabled,
-  } = await getSettings(db, {
+  const { experimentalFeatureTasks, integrationsProIsEnabled } = await getSettings(db, {
     experimental_feature_tasks: false,
     integrations_pro_is_enabled: false,
-    integrations_google_is_enabled: false,
-    integrations_microsoft_is_enabled: false,
   })
+  const integrationStatus = await getIntegrationStatus(db)
 
   const baseTools: ToolConfig[] = experimentalFeatureTasks ? [...Object.values(tasksTools)] : []
 
@@ -41,11 +35,11 @@ export const getAvailableTools = async (
     baseTools.push(...createProConfigs(httpClient, sourceCollector))
   }
 
-  if (integrationsGoogleIsEnabled) {
+  if (integrationStatus.googleEnabled) {
     baseTools.push(...createGoogleConfigs(httpClient))
   }
 
-  if (integrationsMicrosoftIsEnabled) {
+  if (integrationStatus.microsoftEnabled) {
     baseTools.push(...createMicrosoftConfigs(httpClient))
   }
 

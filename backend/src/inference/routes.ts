@@ -95,7 +95,7 @@ export const createInferenceRoutes = (auth: Auth, rateLimit?: AnyElysia) => {
           }),
         })
 
-        const stream = createSSEStreamFromCompletion(completion, body.model)
+        const stream = createSSEStreamFromCompletion(completion)
 
         // Merge rate-limit headers (set by middleware on ctx.set.headers) into the
         // streaming Response so clients can read them. Elysia skips ctx.set.headers

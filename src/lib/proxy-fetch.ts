@@ -27,6 +27,33 @@ import {
 } from '@shared/proxy-protocol'
 import { isTauri } from './platform'
 
+const defaultIsStandalone = isTauri
+const defaultReadProxyEnabled = (): string | null =>
+  typeof localStorage === 'undefined' ? null : localStorage.getItem('proxy_enabled')
+
+/** Computes whether the cloud proxy is effectively enabled.
+ *  Web always proxies (CORS forces it). Tauri respects the `proxy_enabled`
+ *  toggle, defaulting to false (direct upstream) when storage is absent. */
+export const computeEffectiveProxyEnabled = (
+  isStandalone: () => boolean = defaultIsStandalone,
+  read: () => string | null = defaultReadProxyEnabled,
+): boolean => (isStandalone() ? read() === 'true' : true)
+
+/**
+ * Canonical fetch-function shape used across the proxy / AI plumbing.
+ *
+ * `typeof fetch` is ambiguous in this codebase: Bun's globals declare a
+ * `preconnect(url, options): void`, while the DOM lib declares
+ * `preconnect(): Promise<boolean>`. Depending on which file TypeScript binds
+ * `fetch` to, `typeof fetch` resolves to one shape or the other, causing
+ * structural mismatches when a value flows between modules. Pinning to a
+ * single `FetchFn` alias keeps the shape consistent across producers and
+ * consumers (matches the DOM-lib shape attached to `src/lib/fetch.ts`).
+ */
+export type FetchFn = ((input: RequestInfo | URL, init?: RequestInit) => Promise<Response>) & {
+  preconnect: () => Promise<boolean>
+}
+
 /** Headers the browser injects automatically and that should never be promoted
  *  to passthrough headers (forwarding them would leak browser context to upstreams
  *  or duplicate the proxy's own framing headers). */
@@ -131,9 +158,9 @@ export type ProxyFetchOptions = {
 }
 
 /** Build a fetch implementation that hides Hosted/Standalone mode from callers. */
-export const createProxyFetch = (options: ProxyFetchOptions): typeof fetch => {
+export const createProxyFetch = (options: ProxyFetchOptions): FetchFn => {
   const proxyUrl = `${options.cloudUrl.replace(/\/$/, '')}/proxy`
-  return (async (input, init) => {
+  const proxyFetch = async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
     const standalone = (options.isStandalone ?? isTauri)()
     const proxyEnabled = options.getProxyEnabled?.() ?? true
     if (standalone && !proxyEnabled) {
@@ -152,7 +179,8 @@ export const createProxyFetch = (options: ProxyFetchOptions): typeof fetch => {
     const f = options.fetchImpl ?? globalThis.fetch
     const proxyResponse = await f(proxyRequest)
     return unwrapHostedResponse(proxyResponse)
-  }) as typeof fetch
+  }
+  return Object.assign(proxyFetch, { preconnect: () => Promise.resolve(false) })
 }
 
 /** Build a WebSocket constructor that hides Hosted/Standalone mode from callers.

@@ -101,3 +101,13 @@ export {
 
 // Devices
 export { getAllDevices, getDevice, getPendingDevices, type Device } from './devices'
+
+// Integrations
+export {
+  deleteIntegrationCredentials,
+  getIntegrationCredentials,
+  getIntegrationStatus,
+  saveIntegrationCredentials,
+  setIntegrationEnabled,
+  updateIntegrationCredentials,
+} from './integrations'

@@ -89,10 +89,14 @@ const safeHostname = (rawUrl: string): string => {
  *  undefined and the chained call short-circuits. */
 const recordSpanAttributes = (attrs: Record<string, string | number | undefined>) => {
   const span = trace.getActiveSpan()
-  if (!span) return
+  if (!span) {
+    return
+  }
   const filtered: Record<string, string | number> = {}
   for (const [key, value] of Object.entries(attrs)) {
-    if (value !== undefined) filtered[key] = value
+    if (value !== undefined) {
+      filtered[key] = value
+    }
   }
   span.setAttributes(filtered)
 }
@@ -101,17 +105,19 @@ const recordSpanAttributes = (attrs: Record<string, string | number | undefined>
  *  logging (OTel attributes are still set on the active span). */
 export const createObservabilityRecorder = (deps: { logger: ProxyLogger | null }): ObservabilityRecorder => {
   const emitLog = (event: object) => {
-    if (!deps.logger) return
+    if (!deps.logger) {
+      return
+    }
     deps.logger.info(event)
   }
 
   return {
     proxyRequest(fields) {
-      const target_host = safeHostname(fields.target_url)
+      const targetHost = safeHostname(fields.target_url)
       emitLog({
         event: 'proxy_request',
         method: fields.method,
-        target_host,
+        target_host: targetHost,
         status: fields.status,
         duration_ms: fields.duration_ms,
         bytes_in: fields.bytes_in,
@@ -121,7 +127,7 @@ export const createObservabilityRecorder = (deps: { logger: ProxyLogger | null }
         ...(fields.error_type ? { error_type: fields.error_type } : {}),
       })
       recordSpanAttributes({
-        'proxy.target_host': target_host,
+        'proxy.target_host': targetHost,
         'proxy.method': fields.method,
         'proxy.status': fields.status,
         'proxy.duration_ms': fields.duration_ms,
@@ -131,11 +137,11 @@ export const createObservabilityRecorder = (deps: { logger: ProxyLogger | null }
       })
     },
     proxyWsRelay(fields) {
-      const target_host = safeHostname(fields.target_url)
+      const targetHost = safeHostname(fields.target_url)
       emitLog({
         event: 'proxy_ws_relay',
         method: 'WS',
-        target_host,
+        target_host: targetHost,
         status: fields.close_code,
         duration_ms: fields.duration_ms,
         user_id: fields.user_id,
@@ -144,7 +150,7 @@ export const createObservabilityRecorder = (deps: { logger: ProxyLogger | null }
         ...(fields.error ? { error: fields.error } : {}),
       })
       recordSpanAttributes({
-        'proxy.target_host': target_host,
+        'proxy.target_host': targetHost,
         'proxy.method': 'WS',
         'proxy.status': fields.close_code,
         'proxy.duration_ms': fields.duration_ms,

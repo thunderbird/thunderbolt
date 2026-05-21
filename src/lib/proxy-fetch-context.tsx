@@ -9,21 +9,25 @@
  * call `useFetch()` from any component or hook to get a `fetch`-shaped function
  * that hides Hosted (web) vs Standalone (Tauri) mode — see `proxy-fetch.ts`.
  *
- * Non-React callers (e.g. `src/ai/fetch.ts`) cannot use this hook directly; they
- * should construct or cache their own `proxyFetch` via `createProxyFetch`. Note
- * that the module-scoped cache in `src/ai/fetch.ts` is independent of this
- * context — the two are not coordinated.
+ * Non-React callers (e.g. `aiFetchStreamingResponse`) live behind closures (the
+ * AI SDK's `customFetch`, the chat instance) that capture context values at
+ * creation time, so `useFetch()`'s memoized value would freeze them to whatever
+ * the proxy looked like when the chat was opened. `useProxyFetchGetter()`
+ * returns a stable getter backed by a ref — call it at invocation time to
+ * always read the current proxy fetch, even after `cloud_url` or the
+ * `proxy_enabled` toggle changes.
  */
 
-import { defaultSettingCloudUrl } from '@/defaults/settings'
 import { useLocalStorage } from '@/hooks/use-local-storage'
-import { useSettings } from '@/hooks/use-settings'
+import { getAuthToken } from '@/lib/auth-token'
 import { isTauri } from '@/lib/platform'
-import { createContext, useContext, useMemo, type ReactNode } from 'react'
-import { createProxyFetch } from './proxy-fetch'
+import { useLocalSettingsStore } from '@/stores/local-settings-store'
+import { createContext, useCallback, useContext, useMemo, useRef, type ReactNode } from 'react'
+import { computeEffectiveProxyEnabled, createProxyFetch, type FetchFn } from './proxy-fetch'
 
 type ProxyFetchContextValue = {
-  proxyFetch: typeof fetch
+  proxyFetch: FetchFn
+  getProxyFetch: () => FetchFn
 }
 
 const ProxyFetchContext = createContext<ProxyFetchContextValue | undefined>(undefined)
@@ -31,7 +35,7 @@ const ProxyFetchContext = createContext<ProxyFetchContextValue | undefined>(unde
 type ProxyFetchProviderProps = {
   children: ReactNode
   /** Override the proxy fetch in tests so callers don't need a real backend. */
-  proxyFetch?: typeof fetch
+  proxyFetch?: FetchFn
   /** Optional Tauri-detection override for tests. Production callers omit this. */
   isStandalone?: () => boolean
 }
@@ -47,34 +51,67 @@ type ProxyFetchProviderProps = {
  *   - Tauri: respects the user toggle; default OFF means upstream-direct.
  */
 export const ProxyFetchProvider = ({ children, proxyFetch: override, isStandalone }: ProxyFetchProviderProps) => {
-  // `useSettings` applies the default when the stored value is null, so `cloudUrl.value`
-  // is always a non-null string here — no extra `??` chain needed.
-  const { cloudUrl } = useSettings({ cloud_url: defaultSettingCloudUrl.value ?? 'http://localhost:8000/v1' })
+  // `cloudUrl` is sourced from the persisted local-settings-store (seeded from
+  // VITE_THUNDERBOLT_CLOUD_URL with a localhost fallback), so it's always a
+  // non-null string here.
+  const cloudUrl = useLocalSettingsStore((s) => s.cloudUrl)
   const [proxyEnabledStr] = useLocalStorage('proxy_enabled', 'false')
 
   // Web always proxies (toggle is UI-disabled). Tauri respects the stored value.
   const onTauri = (isStandalone ?? isTauri)()
-  const effectiveProxyEnabled = onTauri ? proxyEnabledStr === 'true' : true
+  const effectiveProxyEnabled = computeEffectiveProxyEnabled(
+    () => onTauri,
+    () => proxyEnabledStr,
+  )
 
   const proxyFetch = useMemo(() => {
     if (override) {
       return override
     }
     return createProxyFetch({
-      cloudUrl: cloudUrl.value,
+      cloudUrl,
       isStandalone,
       getProxyEnabled: () => effectiveProxyEnabled,
+      getProxyAuthToken: getAuthToken,
     })
-  }, [override, cloudUrl.value, effectiveProxyEnabled, isStandalone])
+  }, [override, cloudUrl, effectiveProxyEnabled, isStandalone])
 
-  return <ProxyFetchContext.Provider value={{ proxyFetch }}>{children}</ProxyFetchContext.Provider>
+  // Mirror `proxyFetch` into a ref so the stable `getProxyFetch` getter below
+  // always returns the *current* fetch. Closures captured by non-React callers
+  // (chat-instance.ts customFetch, eval scripts) read through the getter, so a
+  // cloudUrl/toggle change propagates without recreating the chat instance.
+  // Direct ref assignment in render is the React-recommended pattern here
+  // (see CLAUDE.md `useEffect` discipline → "Assigning to refs").
+  const proxyFetchRef = useRef(proxyFetch)
+  proxyFetchRef.current = proxyFetch
+  const getProxyFetch = useCallback(() => proxyFetchRef.current, [])
+
+  const value = useMemo(() => ({ proxyFetch, getProxyFetch }), [proxyFetch, getProxyFetch])
+
+  return <ProxyFetchContext.Provider value={value}>{children}</ProxyFetchContext.Provider>
 }
 
 /** Returns the proxy fetch for the current cloudUrl. Throws if used outside the provider. */
-export const useFetch = (): typeof fetch => {
+export const useFetch = (): FetchFn => {
   const context = useContext(ProxyFetchContext)
   if (!context) {
     throw new Error('useFetch must be used within a ProxyFetchProvider')
   }
   return context.proxyFetch
+}
+
+/**
+ * Returns a stable getter for the current proxy fetch. Use this when the call
+ * site lives in a closure that outlives a single render — for example,
+ * `aiFetchStreamingResponse` is invoked from the AI SDK's `customFetch`, which
+ * is built once when a chat session is created. Calling `useFetch()` there
+ * would capture the proxy fetch at chat creation; this getter reads through a
+ * ref so settings changes propagate to in-flight sessions.
+ */
+export const useProxyFetchGetter = (): (() => FetchFn) => {
+  const context = useContext(ProxyFetchContext)
+  if (!context) {
+    throw new Error('useProxyFetchGetter must be used within a ProxyFetchProvider')
+  }
+  return context.getProxyFetch
 }

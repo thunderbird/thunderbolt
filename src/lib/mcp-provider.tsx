@@ -5,7 +5,7 @@
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js'
 import { createMCPClient } from '@ai-sdk/mcp'
 import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from 'react'
-import { useSettings } from '@/hooks/use-settings'
+import { useLocalSettingsStore } from '@/stores/local-settings-store'
 import { createProxyFetch } from './proxy-fetch'
 
 type MCPClient = Awaited<ReturnType<typeof createMCPClient>>
@@ -35,7 +35,7 @@ export const MCPProvider = ({ children }: { children: ReactNode }) => {
   const [servers, setServers] = useState<MCPServerConnection[]>([])
   const clientRefs = useRef<Map<string, MCPClient>>(new Map())
   const serversRef = useRef<MCPServerConnection[]>([])
-  const { cloudUrl } = useSettings({ cloud_url: 'http://localhost:8000/v1' })
+  const cloudUrl = useLocalSettingsStore((s) => s.cloudUrl)
 
   serversRef.current = servers
 
@@ -46,7 +46,7 @@ export const MCPProvider = ({ children }: { children: ReactNode }) => {
     // through /v1/proxy with header rewriting; Standalone mode (Tauri) hits the
     // upstream directly via Tauri's HTTP plugin. The MCP transport accepts a
     // custom fetch natively, so the same code path works everywhere.
-    const proxyFetch = createProxyFetch({ cloudUrl: cloudUrl.value ?? 'http://localhost:8000/v1' })
+    const proxyFetch = createProxyFetch({ cloudUrl })
 
     const transport = new StreamableHTTPClientTransport(urlObj, {
       fetch: (url: string | URL, init?: RequestInit) => proxyFetch(url, init),

@@ -7,6 +7,7 @@ import {
   chatMessagesTable,
   chatThreadsTable,
   modelProfilesTable,
+  modelsSecretsTable,
   modelsTable,
   promptsTable,
   triggersTable,
@@ -1016,6 +1017,139 @@ describe('Models DAL', () => {
 
       const profile = await db.select().from(modelProfilesTable).where(eq(modelProfilesTable.modelId, modelId)).get()
       expect(profile).toBeUndefined()
+    })
+  })
+
+  describe('models_secrets (local-only table)', () => {
+    it('should store apiKey in models_secrets when creating a model with apiKey', async () => {
+      const db = getDb()
+      const modelId = uuidv7()
+
+      await createModel(db, {
+        id: modelId,
+        provider: 'openai',
+        name: 'Model with key',
+        model: 'gpt-4',
+        apiKey: 'sk-test-key',
+      })
+
+      // apiKey should NOT be on the models table
+      const rawModel = await db.select().from(modelsTable).where(eq(modelsTable.id, modelId)).get()
+      expect(rawModel).not.toBeUndefined()
+      expect('apiKey' in (rawModel ?? {})).toBe(false)
+
+      // apiKey should be in the secrets table
+      const secret = await db.select().from(modelsSecretsTable).where(eq(modelsSecretsTable.modelId, modelId)).get()
+      expect(secret?.apiKey).toBe('sk-test-key')
+    })
+
+    it('should not create a secret row when apiKey is null', async () => {
+      const db = getDb()
+      const modelId = uuidv7()
+
+      await createModel(db, {
+        id: modelId,
+        provider: 'thunderbolt',
+        name: 'System Model',
+        model: 'gpt-oss-120b',
+        apiKey: null,
+      })
+
+      const secret = await db.select().from(modelsSecretsTable).where(eq(modelsSecretsTable.modelId, modelId)).get()
+      expect(secret).toBeUndefined()
+    })
+
+    it('should return apiKey from getModel via LEFT JOIN', async () => {
+      const db = getDb()
+      const modelId = uuidv7()
+
+      await createModel(db, {
+        id: modelId,
+        provider: 'openai',
+        name: 'Model with key',
+        model: 'gpt-4',
+        apiKey: 'sk-joined-key',
+      })
+
+      const model = await getModel(db, modelId)
+      expect(model?.apiKey).toBe('sk-joined-key')
+    })
+
+    it('should return apiKey as null when no secret exists', async () => {
+      const db = getDb()
+      const modelId = uuidv7()
+
+      await createModel(db, {
+        id: modelId,
+        provider: 'thunderbolt',
+        name: 'No key model',
+        model: 'gpt-oss-120b',
+      })
+
+      const model = await getModel(db, modelId)
+      expect(model?.apiKey).toBeNull()
+    })
+
+    it('should not create a secret row when updating with null apiKey and no existing row', async () => {
+      const db = getDb()
+      const modelId = uuidv7()
+
+      await createModel(db, {
+        id: modelId,
+        provider: 'openai',
+        name: 'No key model',
+        model: 'gpt-4',
+      })
+
+      await updateModel(db, modelId, { apiKey: null })
+
+      const secret = await db.select().from(modelsSecretsTable).where(eq(modelsSecretsTable.modelId, modelId)).get()
+      expect(secret).toBeUndefined()
+    })
+
+    it('should upsert apiKey via updateModel', async () => {
+      const db = getDb()
+      const modelId = uuidv7()
+
+      await createModel(db, {
+        id: modelId,
+        provider: 'openai',
+        name: 'Test Model',
+        model: 'gpt-4',
+      })
+
+      // First update creates the secret
+      await updateModel(db, modelId, { apiKey: 'sk-first' })
+      let model = await getModel(db, modelId)
+      expect(model?.apiKey).toBe('sk-first')
+
+      // Second update replaces it
+      await updateModel(db, modelId, { apiKey: 'sk-second' })
+      model = await getModel(db, modelId)
+      expect(model?.apiKey).toBe('sk-second')
+    })
+
+    it('should hard-delete secret when model is deleted', async () => {
+      const db = getDb()
+      const modelId = uuidv7()
+
+      await createModel(db, {
+        id: modelId,
+        provider: 'openai',
+        name: 'Model to delete',
+        model: 'gpt-4',
+        apiKey: 'sk-to-delete',
+      })
+
+      // Verify secret exists
+      let secret = await db.select().from(modelsSecretsTable).where(eq(modelsSecretsTable.modelId, modelId)).get()
+      expect(secret?.apiKey).toBe('sk-to-delete')
+
+      await deleteModel(db, modelId)
+
+      // Secret should be gone (hard-deleted)
+      secret = await db.select().from(modelsSecretsTable).where(eq(modelsSecretsTable.modelId, modelId)).get()
+      expect(secret).toBeUndefined()
     })
   })
 

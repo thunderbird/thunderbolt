@@ -3,6 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { useDatabase, useHttpClient } from '@/contexts'
+import { useProxyFetchGetter } from '@/lib/proxy-fetch-context'
 import {
   getAllModes,
   getAvailableModels,
@@ -33,6 +34,7 @@ type UseHydrateChatStoreParams = {
 export const useHydrateChatStore = ({ id, isNew }: UseHydrateChatStoreParams) => {
   const db = useDatabase()
   const httpClient = useHttpClient()
+  const getProxyFetch = useProxyFetchGetter()
   const navigate = useNavigate()
 
   const [isReady, setIsReady] = useState(false)
@@ -139,6 +141,7 @@ export const useHydrateChatStore = ({ id, isNew }: UseHydrateChatStoreParams) =>
       initialMessages.map(convertDbChatMessageToUIMessage) as ThunderboltUIMessage[],
       saveMessages,
       httpClient,
+      getProxyFetch,
     )
 
     createSession({

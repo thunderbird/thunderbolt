@@ -7,7 +7,8 @@ import { createTestProvider } from '@/test-utils/test-provider'
 import { renderHook } from '@testing-library/react'
 import { afterAll, afterEach, beforeAll, describe, expect, it, mock, spyOn } from 'bun:test'
 import { type ReactNode } from 'react'
-import { ProxyFetchProvider, useFetch } from './proxy-fetch-context'
+import { ProxyFetchProvider, useFetch, useProxyFetchGetter } from './proxy-fetch-context'
+import type { FetchFn } from './proxy-fetch'
 
 describe('useFetch + ProxyFetchProvider', () => {
   beforeAll(async () => {
@@ -23,7 +24,7 @@ describe('useFetch + ProxyFetchProvider', () => {
   })
 
   it('returns the override fetch when one is supplied to the provider', () => {
-    const fakeFetch = mock(async () => new Response('ok')) as unknown as typeof fetch
+    const fakeFetch = mock(async () => new Response('ok')) as unknown as FetchFn
     const TestProvider = createTestProvider()
     const wrapper = ({ children }: { children: ReactNode }) => (
       <TestProvider>
@@ -37,7 +38,7 @@ describe('useFetch + ProxyFetchProvider', () => {
   })
 
   it('returns a stable fetch reference across re-renders when cloudUrl is unchanged', () => {
-    const fakeFetch = mock(async () => new Response('ok')) as unknown as typeof fetch
+    const fakeFetch = mock(async () => new Response('ok')) as unknown as FetchFn
     const TestProvider = createTestProvider()
     const wrapper = ({ children }: { children: ReactNode }) => (
       <TestProvider>
@@ -72,6 +73,51 @@ describe('useFetch + ProxyFetchProvider', () => {
     } finally {
       consoleSpy.mockRestore()
     }
+  })
+
+  describe('useProxyFetchGetter', () => {
+    it('returns a stable getter whose value tracks the current proxyFetch across rebuilds', () => {
+      // Models the non-React caller: createChatInstance grabs the getter once
+      // at chat creation, then settings change and the provider rebuilds the
+      // proxy fetch. Calling the same getter after the rebuild must return
+      // the new fetch — that's the whole reason this hook exists.
+      const firstFetch = mock(async () => new Response('first')) as unknown as FetchFn
+      const secondFetch = mock(async () => new Response('second')) as unknown as FetchFn
+      // Wrapper reads from this slot; rerender() will pick up the new value.
+      let currentFetch: FetchFn = firstFetch
+
+      const TestProvider = createTestProvider()
+      const wrapper = ({ children }: { children: ReactNode }) => (
+        <TestProvider>
+          <ProxyFetchProvider proxyFetch={currentFetch}>{children}</ProxyFetchProvider>
+        </TestProvider>
+      )
+
+      const { result, rerender } = renderHook(() => ({ getProxyFetch: useProxyFetchGetter(), fetch: useFetch() }), {
+        wrapper,
+      })
+
+      const getterRef = result.current.getProxyFetch
+      expect(getterRef()).toBe(firstFetch)
+
+      currentFetch = secondFetch
+      rerender()
+
+      // Stable identity (so captured closures don't go stale), fresh value.
+      expect(result.current.getProxyFetch).toBe(getterRef)
+      expect(getterRef()).toBe(secondFetch)
+    })
+
+    it('throws when used outside of ProxyFetchProvider', () => {
+      const consoleSpy = spyOn(console, 'error').mockImplementation(() => {})
+      try {
+        expect(() => renderHook(() => useProxyFetchGetter())).toThrow(
+          'useProxyFetchGetter must be used within a ProxyFetchProvider',
+        )
+      } finally {
+        consoleSpy.mockRestore()
+      }
+    })
   })
 
   describe('proxy_enabled toggle propagation', () => {

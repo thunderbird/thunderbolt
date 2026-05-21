@@ -30,7 +30,9 @@ const captureRecorder = () => {
  *  Production Bun does this automatically when writing to the wire; tests
  *  using `app.handle(req)` need to do it explicitly. */
 const drainResponse = async (res: Response) => {
-  if (!res.body) return
+  if (!res.body) {
+    return
+  }
   await res.arrayBuffer()
 }
 
@@ -38,7 +40,9 @@ describe('Universal proxy observability redaction', () => {
   let handle: TestAppHandle
 
   afterEach(async () => {
-    if (handle) await handle.cleanup()
+    if (handle) {
+      await handle.cleanup()
+    }
   })
 
   it('logs only target_host (hostname) — no full URL, path, or query, no header values', async () => {

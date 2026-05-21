@@ -36,7 +36,9 @@ describe('GET /v1/search — e2e', () => {
   let handle: TestAppHandle
 
   afterEach(async () => {
-    if (handle) await handle.cleanup()
+    if (handle) {
+      await handle.cleanup()
+    }
   })
 
   it('returns normalised results with HTTPS-only URLs', async () => {

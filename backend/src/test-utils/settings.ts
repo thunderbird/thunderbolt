@@ -22,6 +22,7 @@ export const createTestSettings = (overrides: Partial<Settings> = {}): Settings 
   microsoftClientId: '',
   microsoftClientSecret: '',
   authMode: 'consumer' as const,
+  authAllowAnonymous: false,
   oidcClientId: '',
   oidcClientSecret: '',
   oidcIssuer: '',

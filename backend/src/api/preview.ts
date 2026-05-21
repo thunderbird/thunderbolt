@@ -31,7 +31,9 @@ const readCappedBody = async (body: ReadableStream<Uint8Array>, maxBytes: number
   try {
     while (true) {
       const { done, value } = await reader.read()
-      if (done) break
+      if (done) {
+        break
+      }
       total += value.byteLength
       if (total > maxBytes) {
         await reader.cancel().catch(() => {})
@@ -73,7 +75,9 @@ const metaRegexCache = new Map<string, [RegExp, RegExp]>()
 const getMetaRegex = (attr: 'property' | 'name', value: string): [RegExp, RegExp] => {
   const key = `${attr}:${value}`
   const cached = metaRegexCache.get(key)
-  if (cached) return cached
+  if (cached) {
+    return cached
+  }
   const pair: [RegExp, RegExp] = [
     new RegExp(`<meta[^>]*${attr}=["']${value}["'][^>]*content=["']([^"']+)["'][^>]*>`, 'i'),
     new RegExp(`<meta[^>]*content=["']([^"']+)["'][^>]*${attr}=["']${value}["'][^>]*>`, 'i'),
@@ -124,7 +128,9 @@ export const createPreviewRoutes = (options: CreatePreviewRoutesOptions) => {
     .onError(safeErrorHandler)
     .use(createAuthMacro(auth))
     .guard({ auth: true }, (g) => {
-      if (rateLimit) g.use(rateLimit)
+      if (rateLimit) {
+        g.use(rateLimit)
+      }
       // POST so target URLs do not appear in access logs.
       return g.post(
         '/preview',
@@ -149,13 +155,21 @@ export const createPreviewRoutes = (options: CreatePreviewRoutesOptions) => {
               signal: controller.signal,
             })
 
-            if (!response.ok) return emptyPreview
+            if (!response.ok) {
+              return emptyPreview
+            }
             const contentLength = response.headers.get('content-length')
             const parsed = contentLength ? parseInt(contentLength, 10) : null
-            if (parsed !== null && Number.isFinite(parsed) && parsed > maxHtmlBytes) return emptyPreview
-            if (!response.body) return emptyPreview
+            if (parsed !== null && Number.isFinite(parsed) && parsed > maxHtmlBytes) {
+              return emptyPreview
+            }
+            if (!response.body) {
+              return emptyPreview
+            }
             const buffer = await readCappedBody(response.body, maxHtmlBytes)
-            if (!buffer) return emptyPreview
+            if (!buffer) {
+              return emptyPreview
+            }
             const html = new TextDecoder().decode(buffer)
             // Cache successful OG metadata per-user for 10 minutes. Safe here (unlike
             // /v1/proxy) because the response is a small, derived JSON DTO — not the

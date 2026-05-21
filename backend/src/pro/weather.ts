@@ -22,7 +22,7 @@ type WeatherPreferences = {
   temperatureUnit?: 'c' | 'f'
 }
 
-interface Location {
+type Location = {
   name: string
   admin1?: string
   country?: string

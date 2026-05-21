@@ -46,6 +46,18 @@ const proxyRequest = (target: string, init: RequestInit = {}) => {
   return new Request('http://localhost/proxy', { ...init, headers })
 }
 
+/** Drain the response body so the proxy's `capStream` idle timer clears.
+ *  Production Bun does this automatically when writing to the wire; tests
+ *  that just inspect `Response` must drain explicitly or leak 30s timers
+ *  that flood subsequent tests under `--rerun-each` and starve their
+ *  `beforeEach` hooks. */
+const drain = async (res: Response): Promise<Response> => {
+  if (res.body) {
+    await res.arrayBuffer()
+  }
+  return res
+}
+
 describe('createUniversalProxyRoutes', () => {
   let app: { handle: Elysia['handle'] }
   let consoleSpies: ConsoleSpies
@@ -81,11 +93,13 @@ describe('createUniversalProxyRoutes', () => {
 
   it('GET — proxies correctly and does not forward inbound Authorization', async () => {
     const target = 'https://example.com/resource'
-    const res = await app.handle(
-      proxyRequest(target, {
-        method: 'GET',
-        headers: { Authorization: 'Bearer secret', Cookie: 'session=abc' },
-      }),
+    const res = await drain(
+      await app.handle(
+        proxyRequest(target, {
+          method: 'GET',
+          headers: { Authorization: 'Bearer secret', Cookie: 'session=abc' },
+        }),
+      ),
     )
     expect(res.status).toBe(200)
     expect(mockFetch).toHaveBeenCalledTimes(1)
@@ -99,12 +113,14 @@ describe('createUniversalProxyRoutes', () => {
 
   it('POST — proxies with body', async () => {
     const target = 'https://example.com/api'
-    const res = await app.handle(
-      proxyRequest(target, {
-        method: 'POST',
-        body: JSON.stringify({ x: 1 }),
-        headers: { 'x-proxy-passthrough-content-type': 'application/json' },
-      }),
+    const res = await drain(
+      await app.handle(
+        proxyRequest(target, {
+          method: 'POST',
+          body: JSON.stringify({ x: 1 }),
+          headers: { 'x-proxy-passthrough-content-type': 'application/json' },
+        }),
+      ),
     )
     expect(res.status).toBe(200)
     const [, init] = mockFetch.mock.calls[0] as [string, RequestInit]
@@ -115,7 +131,7 @@ describe('createUniversalProxyRoutes', () => {
 
   it('PUT — proxies correctly', async () => {
     const target = 'https://example.com/update'
-    const res = await app.handle(proxyRequest(target, { method: 'PUT', body: 'data' }))
+    const res = await drain(await app.handle(proxyRequest(target, { method: 'PUT', body: 'data' })))
     expect(res.status).toBe(200)
     const [, init] = mockFetch.mock.calls[0] as [string, RequestInit]
     expect(init.method).toBe('PUT')
@@ -123,7 +139,7 @@ describe('createUniversalProxyRoutes', () => {
 
   it('DELETE — proxies correctly', async () => {
     const target = 'https://example.com/item/1'
-    const res = await app.handle(proxyRequest(target, { method: 'DELETE' }))
+    const res = await drain(await app.handle(proxyRequest(target, { method: 'DELETE' })))
     expect(res.status).toBe(200)
     const [, init] = mockFetch.mock.calls[0] as [string, RequestInit]
     expect(init.method).toBe('DELETE')
@@ -131,7 +147,7 @@ describe('createUniversalProxyRoutes', () => {
 
   it('PATCH — proxies correctly', async () => {
     const target = 'https://example.com/item/1'
-    const res = await app.handle(proxyRequest(target, { method: 'PATCH', body: '{"name":"new"}' }))
+    const res = await drain(await app.handle(proxyRequest(target, { method: 'PATCH', body: '{"name":"new"}' })))
     expect(res.status).toBe(200)
     const [, init] = mockFetch.mock.calls[0] as [string, RequestInit]
     expect(init.method).toBe('PATCH')
@@ -142,7 +158,7 @@ describe('createUniversalProxyRoutes', () => {
     mockFetch.mockImplementationOnce(() =>
       Promise.resolve(new Response(null, { status: 200, headers: { 'content-type': 'text/plain' } })),
     )
-    const res = await app.handle(proxyRequest(target, { method: 'HEAD' }))
+    const res = await drain(await app.handle(proxyRequest(target, { method: 'HEAD' })))
     expect(res.status).toBe(200)
     const [, init] = mockFetch.mock.calls[0] as [string, RequestInit]
     expect(init.method).toBe('HEAD')
@@ -162,7 +178,7 @@ describe('createUniversalProxyRoutes', () => {
         }),
       ),
     )
-    const res = await app.handle(proxyRequest(target, { method: 'OPTIONS' }))
+    const res = await drain(await app.handle(proxyRequest(target, { method: 'OPTIONS' })))
     expect(res.status).toBe(204)
     const [, init] = mockFetch.mock.calls[0] as [string, RequestInit]
     expect(init.method).toBe('OPTIONS')
@@ -175,16 +191,18 @@ describe('createUniversalProxyRoutes', () => {
 
   it('forwards X-Proxy-Passthrough-* headers stripped of prefix to upstream', async () => {
     const target = 'https://example.com/api'
-    const res = await app.handle(
-      proxyRequest(target, {
-        method: 'GET',
-        headers: {
-          'x-proxy-passthrough-content-type': 'application/json',
-          'x-proxy-passthrough-accept': 'text/event-stream',
-          'x-proxy-passthrough-mcp-session-id': 'session-abc',
-          'user-agent': 'should-not-be-forwarded',
-        },
-      }),
+    const res = await drain(
+      await app.handle(
+        proxyRequest(target, {
+          method: 'GET',
+          headers: {
+            'x-proxy-passthrough-content-type': 'application/json',
+            'x-proxy-passthrough-accept': 'text/event-stream',
+            'x-proxy-passthrough-mcp-session-id': 'session-abc',
+            'user-agent': 'should-not-be-forwarded',
+          },
+        }),
+      ),
     )
     expect(res.status).toBe(200)
     const [, init] = mockFetch.mock.calls[0] as [string, RequestInit]
@@ -198,11 +216,13 @@ describe('createUniversalProxyRoutes', () => {
 
   it('X-Proxy-Passthrough-Authorization is forwarded as Authorization', async () => {
     const target = 'https://example.com/api'
-    const res = await app.handle(
-      proxyRequest(target, {
-        method: 'GET',
-        headers: { 'x-proxy-passthrough-authorization': 'Bearer upstream-key' },
-      }),
+    const res = await drain(
+      await app.handle(
+        proxyRequest(target, {
+          method: 'GET',
+          headers: { 'x-proxy-passthrough-authorization': 'Bearer upstream-key' },
+        }),
+      ),
     )
     expect(res.status).toBe(200)
     const [, init] = mockFetch.mock.calls[0] as [string, RequestInit]
@@ -212,11 +232,13 @@ describe('createUniversalProxyRoutes', () => {
 
   it('inbound Authorization (proxy auth) is NEVER forwarded', async () => {
     const target = 'https://example.com/api'
-    const res = await app.handle(
-      proxyRequest(target, {
-        method: 'GET',
-        headers: { Authorization: 'Bearer proxy-session-token' },
-      }),
+    const res = await drain(
+      await app.handle(
+        proxyRequest(target, {
+          method: 'GET',
+          headers: { Authorization: 'Bearer proxy-session-token' },
+        }),
+      ),
     )
     expect(res.status).toBe(200)
     const [, init] = mockFetch.mock.calls[0] as [string, RequestInit]
@@ -237,7 +259,7 @@ describe('createUniversalProxyRoutes', () => {
       ),
     )
     const target = 'https://example.com/api'
-    const res = await app.handle(proxyRequest(target, { method: 'GET' }))
+    const res = await drain(await app.handle(proxyRequest(target, { method: 'GET' })))
     expect(res.status).toBe(200)
     expect(res.headers.get('x-proxy-passthrough-content-type')).toBe('application/json')
     expect(res.headers.get('x-proxy-passthrough-mcp-session-id')).toBe('sess-xyz')
@@ -245,11 +267,13 @@ describe('createUniversalProxyRoutes', () => {
 
   it('rejects passthrough header values with control characters (CRLF)', async () => {
     const target = 'https://example.com/api'
-    const res = await app.handle(
-      proxyRequest(target, {
-        method: 'GET',
-        headers: { 'x-proxy-passthrough-authorization': 'Bearer abc\x7Fevil' },
-      }),
+    const res = await drain(
+      await app.handle(
+        proxyRequest(target, {
+          method: 'GET',
+          headers: { 'x-proxy-passthrough-authorization': 'Bearer abc\x7Fevil' },
+        }),
+      ),
     )
     expect(res.status).toBe(400)
     expect(mockFetch).not.toHaveBeenCalled()
@@ -261,7 +285,7 @@ describe('createUniversalProxyRoutes', () => {
 
   it('exposes X-Proxy-Final-Url matching the target on a non-redirected request', async () => {
     const target = 'https://example.com/resource'
-    const res = await app.handle(proxyRequest(target, { method: 'GET' }))
+    const res = await drain(await app.handle(proxyRequest(target, { method: 'GET' })))
     expect(res.headers.get('x-proxy-final-url')).toBe(target)
   })
 
@@ -272,7 +296,7 @@ describe('createUniversalProxyRoutes', () => {
       )
       .mockImplementationOnce(() => Promise.resolve(makeOkResponse('final')))
     const target = 'https://example.com/start'
-    const res = await app.handle(proxyRequest(target, { method: 'GET' }))
+    const res = await drain(await app.handle(proxyRequest(target, { method: 'GET' })))
     expect(res.status).toBe(200)
     expect(res.headers.get('x-proxy-final-url')).toBe('https://example.com/final')
   })
@@ -283,33 +307,33 @@ describe('createUniversalProxyRoutes', () => {
 
   it('auto-upgrades http:// target to https://', async () => {
     const target = 'http://example.com/resource'
-    const res = await app.handle(proxyRequest(target, { method: 'GET' }))
+    const res = await drain(await app.handle(proxyRequest(target, { method: 'GET' })))
     expect(res.status).toBe(200)
     const [calledUrl] = mockFetch.mock.calls[0] as [string, RequestInit]
     expect(calledUrl).toBe(pinnedUrl('https://example.com/resource'))
   })
 
   it('returns 400 for missing X-Proxy-Target-Url header', async () => {
-    const res = await app.handle(new Request('http://localhost/proxy', { method: 'GET' }))
+    const res = await drain(await app.handle(new Request('http://localhost/proxy', { method: 'GET' })))
     expect(res.status).toBe(400)
     expect(mockFetch).not.toHaveBeenCalled()
   })
 
   it('returns 400 for invalid URL', async () => {
-    const res = await app.handle(proxyRequest('not a url', { method: 'GET' }))
+    const res = await drain(await app.handle(proxyRequest('not a url', { method: 'GET' })))
     expect(res.status).toBe(400)
     expect(mockFetch).not.toHaveBeenCalled()
   })
 
   it('returns 400 for non-http(s) scheme (ftp://)', async () => {
-    const res = await app.handle(proxyRequest('ftp://example.com/resource', { method: 'GET' }))
+    const res = await drain(await app.handle(proxyRequest('ftp://example.com/resource', { method: 'GET' })))
     expect(res.status).toBe(400)
     expect(mockFetch).not.toHaveBeenCalled()
   })
 
   it('returns 405 for TRACE method', async () => {
     const target = 'https://example.com/resource'
-    const res = await app.handle(proxyRequest(target, { method: 'TRACE' }))
+    const res = await drain(await app.handle(proxyRequest(target, { method: 'TRACE' })))
     expect(res.status).toBe(405)
     expect(mockFetch).not.toHaveBeenCalled()
   })
@@ -320,7 +344,7 @@ describe('createUniversalProxyRoutes', () => {
 
   it('returns 400 for direct SSRF to 127.0.0.1', async () => {
     const target = 'https://127.0.0.1/secret'
-    const res = await app.handle(proxyRequest(target, { method: 'GET' }))
+    const res = await drain(await app.handle(proxyRequest(target, { method: 'GET' })))
     expect(res.status).toBe(400)
     expect(mockFetch).not.toHaveBeenCalled()
   })
@@ -338,14 +362,14 @@ describe('createUniversalProxyRoutes', () => {
       .mockImplementationOnce(() => Promise.resolve([{ address: '1.1.1.1', family: 4 }]))
       .mockImplementationOnce(() => Promise.resolve([{ address: '192.168.1.1', family: 4 }]))
     const target = 'https://example.com/resource'
-    const res = await app.handle(proxyRequest(target, { method: 'GET' }))
+    const res = await drain(await app.handle(proxyRequest(target, { method: 'GET' })))
     expect(res.status).toBe(502)
   })
 
   it('returns 400 when DNS times out on the initial hop', async () => {
     mockDnsLookup.mockImplementation(() => new Promise(() => {}))
     const target = 'https://slow-dns.example.com/resource'
-    const res = await app.handle(proxyRequest(target, { method: 'GET' }))
+    const res = await drain(await app.handle(proxyRequest(target, { method: 'GET' })))
     expect(res.status).toBe(400)
     expect(mockFetch).not.toHaveBeenCalled()
   }, 10_000)
@@ -361,7 +385,7 @@ describe('createUniversalProxyRoutes', () => {
       )
       .mockImplementationOnce(() => Promise.resolve(makeOkResponse('final')))
     const target = 'https://example.com/start'
-    const res = await app.handle(proxyRequest(target, { method: 'GET' }))
+    const res = await drain(await app.handle(proxyRequest(target, { method: 'GET' })))
     expect(res.status).toBe(200)
     expect(mockFetch).toHaveBeenCalledTimes(2)
   })
@@ -371,7 +395,7 @@ describe('createUniversalProxyRoutes', () => {
       Promise.resolve(new Response(null, { status: 302, headers: { location: 'https://example.com/final' } })),
     )
     const target = 'https://example.com/submit'
-    const res = await app.handle(proxyRequest(target, { method: 'POST', body: 'payload' }))
+    const res = await drain(await app.handle(proxyRequest(target, { method: 'POST', body: 'payload' })))
     expect(res.status).toBe(302)
     expect(mockFetch).toHaveBeenCalledTimes(1)
     // Location header is exposed prefixed for the caller to read.
@@ -383,8 +407,8 @@ describe('createUniversalProxyRoutes', () => {
       Promise.resolve(new Response(null, { status: 302, headers: { location: 'https://example.com/final' } })),
     )
     const target = 'https://example.com/start'
-    const res = await app.handle(
-      proxyRequest(target, { method: 'GET', headers: { 'x-proxy-follow-redirects': 'false' } }),
+    const res = await drain(
+      await app.handle(proxyRequest(target, { method: 'GET', headers: { 'x-proxy-follow-redirects': 'false' } })),
     )
     expect(res.status).toBe(302)
     expect(mockFetch).toHaveBeenCalledTimes(1)
@@ -397,12 +421,14 @@ describe('createUniversalProxyRoutes', () => {
       )
       .mockImplementationOnce(() => Promise.resolve(makeOkResponse('result')))
     const target = 'https://example.com/submit'
-    const res = await app.handle(
-      proxyRequest(target, {
-        method: 'POST',
-        body: 'payload',
-        headers: { 'x-proxy-follow-redirects': 'true' },
-      }),
+    const res = await drain(
+      await app.handle(
+        proxyRequest(target, {
+          method: 'POST',
+          body: 'payload',
+          headers: { 'x-proxy-follow-redirects': 'true' },
+        }),
+      ),
     )
     expect(res.status).toBe(200)
     expect(mockFetch).toHaveBeenCalledTimes(2)
@@ -420,12 +446,14 @@ describe('createUniversalProxyRoutes', () => {
       .mockImplementationOnce(() => Promise.resolve(makeOkResponse('done')))
 
     const target = 'https://example.com/submit'
-    const res = await app.handle(
-      proxyRequest(target, {
-        method: 'POST',
-        body: bodyPayload,
-        headers: { 'content-type': 'application/json', 'x-proxy-follow-redirects': 'true' },
-      }),
+    const res = await drain(
+      await app.handle(
+        proxyRequest(target, {
+          method: 'POST',
+          body: bodyPayload,
+          headers: { 'content-type': 'application/json', 'x-proxy-follow-redirects': 'true' },
+        }),
+      ),
     )
     expect(res.status).toBe(200)
     expect(mockFetch).toHaveBeenCalledTimes(2)
@@ -442,7 +470,7 @@ describe('createUniversalProxyRoutes', () => {
       Promise.resolve(new Response(null, { status: 302, headers: { location: 'https://example.com/redirect' } })),
     )
     const target = 'https://example.com/start'
-    const res = await app.handle(proxyRequest(target, { method: 'GET' }))
+    const res = await drain(await app.handle(proxyRequest(target, { method: 'GET' })))
     expect(res.status).toBe(502)
     expect(mockFetch).toHaveBeenCalledTimes(6)
   })
@@ -454,7 +482,7 @@ describe('createUniversalProxyRoutes', () => {
       )
       .mockImplementationOnce(() => Promise.resolve(makeOkResponse('final')))
     const target = 'https://example.com/start'
-    const res = await app.handle(proxyRequest(target, { method: 'GET' }))
+    const res = await drain(await app.handle(proxyRequest(target, { method: 'GET' })))
     expect(res.status).toBe(200)
     const [secondUrl] = mockFetch.mock.calls[1] as [string, RequestInit]
     expect(secondUrl).toBe(pinnedUrl('https://example.com/final'))
@@ -462,7 +490,7 @@ describe('createUniversalProxyRoutes', () => {
 
   it('strips userinfo from the target URL before forwarding', async () => {
     const target = 'https://user:pass@example.com/path'
-    const res = await app.handle(proxyRequest(target, { method: 'GET' }))
+    const res = await drain(await app.handle(proxyRequest(target, { method: 'GET' })))
     expect(res.status).toBe(200)
     const [calledUrl] = mockFetch.mock.calls[0] as [string, RequestInit]
     expect(calledUrl).not.toContain('@')
@@ -478,11 +506,13 @@ describe('createUniversalProxyRoutes', () => {
       .mockImplementationOnce(() => Promise.resolve(makeOkResponse()))
 
     const target = 'https://api.foo.com/resource'
-    const res = await app.handle(
-      proxyRequest(target, {
-        method: 'GET',
-        headers: { 'x-proxy-passthrough-authorization': 'Bearer token123' },
-      }),
+    const res = await drain(
+      await app.handle(
+        proxyRequest(target, {
+          method: 'GET',
+          headers: { 'x-proxy-passthrough-authorization': 'Bearer token123' },
+        }),
+      ),
     )
     expect(res.status).toBe(200)
     const [, secondInit] = mockFetch.mock.calls[1] as [string, RequestInit]
@@ -498,11 +528,13 @@ describe('createUniversalProxyRoutes', () => {
       .mockImplementationOnce(() => Promise.resolve(makeOkResponse()))
 
     const target = 'https://api.foo.com/resource'
-    const res = await app.handle(
-      proxyRequest(target, {
-        method: 'GET',
-        headers: { 'x-proxy-passthrough-authorization': 'Bearer token123' },
-      }),
+    const res = await drain(
+      await app.handle(
+        proxyRequest(target, {
+          method: 'GET',
+          headers: { 'x-proxy-passthrough-authorization': 'Bearer token123' },
+        }),
+      ),
     )
     expect(res.status).toBe(200)
     const [, secondInit] = mockFetch.mock.calls[1] as [string, RequestInit]
@@ -516,7 +548,7 @@ describe('createUniversalProxyRoutes', () => {
 
   it('sets all 4 forced security headers on response', async () => {
     const target = 'https://example.com/page'
-    const res = await app.handle(proxyRequest(target, { method: 'GET' }))
+    const res = await drain(await app.handle(proxyRequest(target, { method: 'GET' })))
     expect(res.headers.get('content-security-policy')).toBe('sandbox')
     expect(res.headers.get('content-disposition')).toBe('attachment')
     expect(res.headers.get('x-content-type-options')).toBe('nosniff')
@@ -539,7 +571,7 @@ describe('createUniversalProxyRoutes', () => {
       ),
     )
     const target = 'https://example.com/resource'
-    const res = await app.handle(proxyRequest(target, { method: 'GET' }))
+    const res = await drain(await app.handle(proxyRequest(target, { method: 'GET' })))
     expect(res.headers.get('set-cookie')).toBeNull()
     expect(res.headers.get('set-cookie2')).toBeNull()
     expect(res.headers.get('x-proxy-passthrough-set-cookie')).toBeNull()
@@ -568,7 +600,7 @@ describe('createUniversalProxyRoutes', () => {
       }),
     )
     const target = 'https://example.com/resource'
-    const res = await rateLimitedApp.handle(proxyRequest(target, { method: 'GET' }))
+    const res = await drain(await rateLimitedApp.handle(proxyRequest(target, { method: 'GET' })))
     expect(res.status).toBe(429)
     expect(res.headers.get('Retry-After')).toBeTruthy()
     expect(mockFetch).not.toHaveBeenCalled()
@@ -581,12 +613,14 @@ describe('createUniversalProxyRoutes', () => {
   it('returns 413 for request body over 10 MB (Content-Length pre-check)', async () => {
     const target = 'https://example.com/upload'
     const bigBody = new Uint8Array(11 * 1024 * 1024)
-    const res = await app.handle(
-      proxyRequest(target, {
-        method: 'POST',
-        body: bigBody,
-        headers: { 'content-length': String(bigBody.byteLength) },
-      }),
+    const res = await drain(
+      await app.handle(
+        proxyRequest(target, {
+          method: 'POST',
+          body: bigBody,
+          headers: { 'content-length': String(bigBody.byteLength) },
+        }),
+      ),
     )
     expect(res.status).toBe(413)
     expect(mockFetch).not.toHaveBeenCalled()
@@ -611,18 +645,20 @@ describe('createUniversalProxyRoutes', () => {
         chunksProduced++
       },
     })
-    const res = await app.handle(
-      // Critically: NO content-length header. needsBodyBuffer=true via follow-redirects.
-      new Request('http://localhost/proxy', {
-        method: 'POST',
-        body: stream,
-        headers: {
-          'x-proxy-target-url': target,
-          'x-proxy-follow-redirects': 'true',
-        },
-        // @ts-expect-error — duplex is not in the standard RequestInit type
-        duplex: 'half',
-      }),
+    const res = await drain(
+      await app.handle(
+        // Critically: NO content-length header. needsBodyBuffer=true via follow-redirects.
+        new Request('http://localhost/proxy', {
+          method: 'POST',
+          body: stream,
+          headers: {
+            'x-proxy-target-url': target,
+            'x-proxy-follow-redirects': 'true',
+          },
+          // @ts-expect-error — duplex is not in the standard RequestInit type
+          duplex: 'half',
+        }),
+      ),
     )
     expect(res.status).toBe(413)
     expect(mockFetch).not.toHaveBeenCalled()
@@ -644,7 +680,7 @@ describe('createUniversalProxyRoutes', () => {
       }),
     )
     const target = 'https://example.com/resource'
-    const res = await noAuthApp.handle(proxyRequest(target, { method: 'GET' }))
+    const res = await drain(await noAuthApp.handle(proxyRequest(target, { method: 'GET' })))
     expect(res.status).toBe(401)
     expect(mockFetch).not.toHaveBeenCalled()
   })
@@ -656,7 +692,7 @@ describe('createUniversalProxyRoutes', () => {
 
   it('passes `decompress: false` to the upstream fetch so encoded bodies stream through', async () => {
     const target = 'https://example.com/resource'
-    await app.handle(proxyRequest(target, { method: 'GET' }))
+    await drain(await app.handle(proxyRequest(target, { method: 'GET' })))
     const [, init] = mockFetch.mock.calls[0] as [string, RequestInit & { decompress?: boolean }]
     expect(init.decompress).toBe(false)
   })
@@ -671,7 +707,7 @@ describe('createUniversalProxyRoutes', () => {
       ),
     )
     const target = 'https://example.com/api'
-    const res = await app.handle(proxyRequest(target, { method: 'GET' }))
+    const res = await drain(await app.handle(proxyRequest(target, { method: 'GET' })))
     expect(res.headers.get('x-proxy-passthrough-content-encoding')).toBe('gzip')
   })
 
@@ -712,7 +748,9 @@ describe('createUniversalProxyRoutes', () => {
 
     /** Drain the response body so capStream.onComplete fires and observability emits. */
     const drain = async (res: Response) => {
-      if (res.body) await res.arrayBuffer()
+      if (res.body) {
+        await res.arrayBuffer()
+      }
     }
 
     it('records the real upstream status (not hardcoded 200) — bot MEDIUM fix', async () => {
@@ -785,7 +823,9 @@ describe('createUniversalProxyRoutes', () => {
           const reader = init.body.getReader()
           while (true) {
             const { done } = await reader.read()
-            if (done) break
+            if (done) {
+              break
+            }
           }
         }
         return new Response('ok', { status: 200 })

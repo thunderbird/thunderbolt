@@ -4,6 +4,7 @@
 
 import type { AuthClient } from '@/contexts'
 import { challengeTokenHeader, otpLength } from '@/lib/constants'
+import { useAnonymousPromotionAnalytics } from '@/lib/analytics/use-anonymous-promotion-analytics'
 import { HttpError, type HttpClient } from '@/lib/http'
 import { getOtpErrorMessage } from '@/lib/otp-error-messages'
 import { updateSettings } from '@/dal'
@@ -104,23 +105,42 @@ type UseSignInFormStateOptions = {
 export const isNewAuthUser = (user: unknown): boolean =>
   typeof user === 'object' && user !== null && 'isNew' in user && (user as { isNew: unknown }).isNew === true
 
+type OnSignInSuccessDeps = {
+  getDatabase?: typeof getDatabaseInstance
+  getDrizzle?: typeof getDb
+}
+
 /**
  * Sync is disabled by default after sign-in/sign-up; user can enable it in Preferences.
- * For returning users only: reset pending CRUD operations so that when they later enable
- * sync, local ops do not conflict with cloud data.
+ * For returning non-anonymous users only: reset pending CRUD operations so that when they
+ * later enable sync, local ops do not conflict with cloud data.
+ *
+ * `wasAnonymous` short-circuits this for the anonymous → real-account promotion case —
+ * the queued PUTs in `ps_crud` are exactly the anon-session writes we WANT to upload
+ * under the new identity. Wiping them here would silently destroy the user's anon-session
+ * work.
  */
-export const onSignInSuccess = async (isNewUser: boolean): Promise<void> => {
-  if (isNewUser) {
+export const onSignInSuccess = async (
+  isNewUser: boolean,
+  wasAnonymous: boolean,
+  deps: OnSignInSuccessDeps = {},
+): Promise<void> => {
+  if (isNewUser || wasAnonymous) {
     return
   }
 
+  const { getDatabase = getDatabaseInstance, getDrizzle = getDb } = deps
+
+  // Error containment: failures in post-auth housekeeping must NOT propagate to the caller's
+  // sign-in handler, which translates any throw into a "verification failed" UI even though
+  // the OTP was already consumed and the user is authenticated. Log and swallow here.
   try {
-    const database = getDatabaseInstance()
+    const database = getDatabase()
     if ('clearPendingCrudOperations' in database) {
       // on sign in (existing user), set user_has_completed_onboarding to true
       // we consider that an existing user has completed onboarding since they have signed in previously
       // this is necessary because sync is disabled by default - so we don't have a way to know if they have actually completed onboarding
-      const db = getDb()
+      const db = getDrizzle()
       await updateSettings(db, { user_has_completed_onboarding: true })
       await (database as { clearPendingCrudOperations: () => Promise<void> }).clearPendingCrudOperations()
     }
@@ -152,6 +172,8 @@ export const useSignInFormState = ({
     challengeToken: canSkipToOtp ? (initialChallengeToken ?? '') : '',
   })
 
+  const analytics = useAnonymousPromotionAnalytics()
+  const { data: session } = authClient.useSession()
   const isValidEmail = isValidEmailFormat(state.email.trim())
 
   const handleSubmit = async (e: FormEvent) => {
@@ -188,6 +210,12 @@ export const useSignInFormState = ({
       return
     }
 
+    await analytics.captureAnonId(authClient)
+
+    // Snapshot BEFORE the sign-in mutation — after it resolves, the session has flipped
+    // to the new identity and `isAnonymous` no longer reflects the pre-promotion state.
+    const wasAnonymous = session?.user?.isAnonymous === true
+
     dispatch({ type: 'START_VERIFYING' })
 
     try {
@@ -205,7 +233,10 @@ export const useSignInFormState = ({
       }
 
       const isNewUser = isNewAuthUser(result.data?.user)
-      await onSignInSuccess(isNewUser)
+      await onSignInSuccess(isNewUser, wasAnonymous)
+      if (result.data?.user?.id) {
+        analytics.onPromotionSuccess(result.data.user.id)
+      }
 
       // Sign-in successful - show success state
       dispatch({ type: 'VERIFY_SUCCESS' })

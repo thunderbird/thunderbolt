@@ -12,13 +12,13 @@ import {
   isFinalStep,
   shouldRetry,
 } from '@/ai/step-logic'
-import { getModel, getModelProfile, getSettings } from '@/dal'
+import { getIntegrationStatus, getModel, getModelProfile, getSettings } from '@/dal'
 import { getDb } from '@/db/database'
+import { getLocalSetting } from '@/stores/local-settings-store'
 import { isSsoMode } from '@/lib/auth-mode'
 import { getAuthToken } from '@/lib/auth-token'
 import { fetch as baseFetch } from '@/lib/fetch'
-import { isTauri } from '@/lib/platform'
-import { createProxyFetch } from '@/lib/proxy-fetch'
+import type { FetchFn } from '@/lib/proxy-fetch'
 import { createToolset, getAvailableTools } from '@/lib/tools'
 import type { Model, SaveMessagesFunction, ThunderboltUIMessage } from '@/types'
 import type { SourceMetadata } from '@/types/source'
@@ -69,80 +69,20 @@ type AiFetchStreamingResponseOptions = {
   modeName?: string
   mcpClients?: MCPClient[]
   httpClient: HttpClient
+  /** Returns the current proxy fetch. Production callers pass the getter from
+   *  `ProxyFetchProvider` (`useProxyFetchGetter()`); non-React callers (eval
+   *  scripts) build a `proxyFetch` directly and wrap it in `() => fn`. */
+  getProxyFetch: () => FetchFn
 }
 
-/**
- * Memoized `proxyFetch` keyed on `cloudUrl` AND the effective `proxy_enabled`
- * toggle. Construction is cheap, but creating a fresh fetch (and re-reading
- * settings) on every `createModel` call adds up across multi-step tool loops.
- * Cached at module scope so consecutive calls in the same browser session reuse
- * one instance — see Chris's TODO at the call sites below. Including the toggle
- * in the cache key means flipping the Network preference invalidates the cache
- * the next time `createModel` runs.
- */
-type ProxyFetch = ReturnType<typeof createProxyFetch>
-
-type CacheKey = { cloudUrl: string; proxyEnabled: boolean }
-let cachedProxyFetch: { key: CacheKey; proxyFetch: ProxyFetch } | null = null
-
-/** Derive effective proxy_enabled from localStorage + platform. Web ignores the
- *  toggle (browser CORS forces proxying); Tauri respects it (default off). */
-const computeEffectiveProxyEnabled = (
-  isStandalone: () => boolean = isTauri,
-  read: () => string | null = () =>
-    typeof localStorage === 'undefined' ? null : localStorage.getItem('proxy_enabled'),
-): boolean => {
-  if (!isStandalone()) {
-    return true
-  }
-  return read() === 'true'
-}
-
-/**
- * Returns the proxy fetch for the given `cloudUrl`, reusing the previous instance
- * when both the URL and the effective `proxy_enabled` toggle are unchanged.
- *
- * NOTE: `createModel` is invoked from non-React contexts (`aiFetchStreamingResponse`
- * via `chat-instance.ts`'s `customFetch`, and from `src/ai/eval/*`), so it can't
- * call the React `useFetch()` hook. The React `ProxyFetchProvider` in
- * `src/lib/proxy-fetch-context.tsx` covers consumers in the React tree; this
- * module-level cache is the equivalent for non-React callers.
- *
- * Exported for unit testing; production callers should let `createModel` invoke this.
- *
- * The optional `deps` parameter is a testing seam — production callers omit it.
- */
-export const getOrCreateProxyFetch = (
-  cloudUrl: string,
-  deps?: { isStandalone?: () => boolean; readProxyEnabled?: () => string | null },
-): ProxyFetch => {
-  const proxyEnabled = computeEffectiveProxyEnabled(deps?.isStandalone, deps?.readProxyEnabled)
-  if (cachedProxyFetch?.key.cloudUrl === cloudUrl && cachedProxyFetch.key.proxyEnabled === proxyEnabled) {
-    return cachedProxyFetch.proxyFetch
-  }
-  const proxyFetch = createProxyFetch({
-    cloudUrl,
-    isStandalone: deps?.isStandalone,
-    getProxyEnabled: () => proxyEnabled,
-  })
-  cachedProxyFetch = { key: { cloudUrl, proxyEnabled }, proxyFetch }
-  return proxyFetch
-}
-
-/** Test-only: clears the module-scoped proxy-fetch cache so tests start from a known state. */
-export const resetProxyFetchCacheForTests = () => {
-  cachedProxyFetch = null
-}
-
-export const createModel = async (modelConfig: Model) => {
-  // Hoisted out of the per-provider switch: every branch needs the cloudUrl and
-  // (for non-thunderbolt providers) a proxy fetch. Loading the DB + settings +
-  // building a fetch once per call is what Chris's "janky" TODO flagged.
-  const db = getDb()
-  const { cloudUrl } = await getSettings(db, { cloud_url: 'http://localhost:8000/v1' })
-
+export const createModel = async (modelConfig: Model, getProxyFetch: () => FetchFn) => {
+  // The thunderbolt provider goes through its own SSO-aware fetch below; all
+  // other providers route through the universal proxy. We resolve the proxy
+  // fetch lazily so a settings change between chat creation and this call
+  // (e.g. cloudUrl, proxy_enabled toggle) is picked up.
   switch (modelConfig.provider) {
     case 'thunderbolt': {
+      const cloudUrl = getLocalSetting('cloudUrl')
       const token = getAuthToken() || 'thunderbolt'
       // SSO web flow authenticates via session cookies — the SSO callback is a
       // browser redirect, not an XHR, so `set-auth-token` never reaches the
@@ -186,7 +126,7 @@ export const createModel = async (modelConfig: Model) => {
       // Anthropic key never goes through Thunderbolt's session auth path.
       const anthropic = createAnthropic({
         apiKey: modelConfig.apiKey || '',
-        fetch: getOrCreateProxyFetch(cloudUrl),
+        fetch: getProxyFetch(),
       })
       return anthropic(modelConfig.model)
     }
@@ -196,7 +136,7 @@ export const createModel = async (modelConfig: Model) => {
       }
       const openai = createOpenAI({
         apiKey: modelConfig.apiKey,
-        fetch: getOrCreateProxyFetch(cloudUrl),
+        fetch: getProxyFetch(),
       })
       return openai(modelConfig.model)
     }
@@ -208,7 +148,7 @@ export const createModel = async (modelConfig: Model) => {
         name: 'custom',
         baseURL: modelConfig.url,
         apiKey: modelConfig.apiKey || undefined,
-        fetch: getOrCreateProxyFetch(cloudUrl),
+        fetch: getProxyFetch(),
       })
       return openaiCompatible(modelConfig.model)
     }
@@ -222,7 +162,7 @@ export const createModel = async (modelConfig: Model) => {
         name: 'openrouter',
         baseURL: 'https://openrouter.ai/api/v1',
         apiKey: modelConfig.apiKey,
-        fetch: getOrCreateProxyFetch(cloudUrl),
+        fetch: getProxyFetch(),
       })
       return openrouter(modelConfig.model)
     }
@@ -239,6 +179,7 @@ export const aiFetchStreamingResponse = async ({
   modeName,
   mcpClients,
   httpClient,
+  getProxyFetch,
 }: AiFetchStreamingResponseOptions) => {
   const options = init as RequestInit & { body: string }
   const body = JSON.parse(options.body)
@@ -261,11 +202,9 @@ export const aiFetchStreamingResponse = async ({
     time_format: '12h',
     currency: 'USD',
     integrations_do_not_ask_again: false,
-    integrations_google_credentials: '',
-    integrations_google_is_enabled: false,
-    integrations_microsoft_credentials: '',
-    integrations_microsoft_is_enabled: false,
   })
+
+  const integrationStatus = await getIntegrationStatus(db)
 
   const model = await getModel(db, modelId)
 
@@ -299,17 +238,15 @@ export const aiFetchStreamingResponse = async ({
   }
 
   // Compute integration status for the model (can return multiple statuses)
-  const getIntegrationStatus = (): string => {
+  const computeIntegrationStatusLabel = (): string => {
     const statuses: string[] = []
 
-    // Check for disabled integrations (connected but turned off)
-    if (settings.integrationsGoogleCredentials && !settings.integrationsGoogleIsEnabled) {
+    if (integrationStatus.googleConnected && !integrationStatus.googleEnabled) {
       statuses.push('GOOGLE_DISABLED')
     }
-    if (settings.integrationsMicrosoftCredentials && !settings.integrationsMicrosoftIsEnabled) {
+    if (integrationStatus.microsoftConnected && !integrationStatus.microsoftEnabled) {
       statuses.push('MICROSOFT_DISABLED')
     }
-    // Check if user chose "Don't ask again"
     if (settings.integrationsDoNotAskAgain) {
       statuses.push('PROMPTS_DISABLED')
     }
@@ -334,14 +271,14 @@ export const aiFetchStreamingResponse = async ({
       timeFormat: settings.timeFormat,
       currency: settings.currency,
     },
-    integrationStatus: getIntegrationStatus(),
+    integrationStatus: computeIntegrationStatusLabel(),
     modeSystemPrompt,
   })
 
   const activeNudges = getNudgeMessagesFromProfile(profile, modeName)
 
   try {
-    const baseModel = await createModel(model)
+    const baseModel = await createModel(model, getProxyFetch)
 
     const wrappedModel = wrapLanguageModel({
       providerId: model.provider,

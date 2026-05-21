@@ -25,6 +25,7 @@ spec:
     metadata:
       labels:
         app: powersync
+      {{- include "thunderbolt.podAnnotations" (dict "component" .Values.powersync "root" .) | nindent 6 }}
     spec:
       {{- include "thunderbolt.imagePullSecrets" . | nindent 6 }}
       containers:
@@ -36,12 +37,19 @@ spec:
           env:
             - name: POWERSYNC_CONFIG_PATH
               value: /config/config.yaml
+            - name: POWERSYNC_JWT_SECRET_B64
+              valueFrom:
+                secretKeyRef:
+                  name: thunderbolt-secrets
+                  key: powersync-jwt-secret-b64
             - name: POWERSYNC_DB_PASSWORD
               valueFrom:
                 secretKeyRef:
                   name: thunderbolt-secrets
                   key: powersync-db-password
-            - name: POSTGRES_PASSWORD
+            # Bare `POSTGRES_PASSWORD` would be auto-consumed by libpq tools
+            # (psql, pg_dump) running in this pod, so we namespace it.
+            - name: THUNDERBOLT_POSTGRES_PASSWORD
               valueFrom:
                 secretKeyRef:
                   name: thunderbolt-secrets
@@ -49,10 +57,11 @@ spec:
             - name: PS_PG_URI
               value: "postgresql://powersync_role:$(POWERSYNC_DB_PASSWORD)@postgres:5432/{{ .Values.postgres.credentials.database }}"
             - name: PS_STORAGE_URI
-              value: "postgresql://{{ .Values.postgres.credentials.user }}:$(POSTGRES_PASSWORD)@postgres:5432/powersync_storage"
+              value: "postgresql://{{ .Values.postgres.credentials.user }}:$(THUNDERBOLT_POSTGRES_PASSWORD)@postgres:5432/powersync_storage"
           volumeMounts:
             - name: config
               mountPath: /config
+          {{- include "thunderbolt.resources" .Values.powersync.resources | nindent 10 }}
           readinessProbe:
             tcpSocket:
               port: 8080

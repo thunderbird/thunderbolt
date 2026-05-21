@@ -8,9 +8,11 @@ import { getSettings } from '@/dal'
 import { getModel } from '@/dal/models'
 import { getModelProfile } from '@/dal/model-profiles'
 import { getDb } from '@/db/database'
+import { getLocalSetting } from '@/stores/local-settings-store'
 import { isSsoMode } from '@/lib/auth-mode'
 import { getAuthToken } from '@/lib/auth-token'
 import { createAuthenticatedClient } from '@/lib/http'
+import { createProxyFetch } from '@/lib/proxy-fetch'
 import type { SaveMessagesFunction } from '@/types'
 import { v7 as uuidv7 } from 'uuid'
 import { getModelId } from './scenarios'
@@ -24,8 +26,7 @@ let _evalHttpClientPromise: Promise<import('@/lib/http').HttpClient> | null = nu
 const getEvalHttpClient = () => {
   if (!_evalHttpClientPromise) {
     _evalHttpClientPromise = (async () => {
-      const db = getDb()
-      const { cloudUrl } = await getSettings(db, { cloud_url: 'http://localhost:8000/v1' })
+      const cloudUrl = getLocalSetting('cloudUrl')
       return createAuthenticatedClient(cloudUrl, getAuthToken, {
         credentials: isSsoMode() ? 'include' : undefined,
       })
@@ -59,10 +60,6 @@ const logVerbosePrompt = async (scenario: EvalScenario, modeSystemPrompt: string
     time_format: '12h',
     currency: 'USD',
     integrations_do_not_ask_again: false,
-    integrations_google_credentials: '',
-    integrations_google_is_enabled: false,
-    integrations_microsoft_credentials: '',
-    integrations_microsoft_is_enabled: false,
   })
 
   const systemPrompt = createPrompt({
@@ -137,6 +134,11 @@ export const runScenario = async (scenario: EvalScenario): Promise<EvalResult> =
 
     const httpClient = await getEvalHttpClient()
 
+    // Eval runs in Node, not a browser — no React tree, no `ProxyFetchProvider`.
+    // Build the proxy fetch directly from the same cloudUrl the HTTP client uses.
+    const cloudUrl = getLocalSetting('cloudUrl')
+    const proxyFetch = createProxyFetch({ cloudUrl })
+
     // Call the actual AI pipeline with a timeout
     const response = await Promise.race([
       aiFetchStreamingResponse({
@@ -146,6 +148,7 @@ export const runScenario = async (scenario: EvalScenario): Promise<EvalResult> =
         modeSystemPrompt: mode.systemPrompt ?? undefined,
         modeName: mode.name,
         httpClient,
+        getProxyFetch: () => proxyFetch,
       }),
       new Promise<never>((_, reject) => setTimeout(() => reject(new Error('Scenario timed out')), timeout)),
     ])

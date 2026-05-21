@@ -153,6 +153,60 @@ describe('createProxyFetch — proxy_enabled toggle', () => {
   })
 })
 
+describe('createProxyFetch — getProxyAuthToken wiring', () => {
+  it('attaches `Authorization: Bearer <token>` on the proxy Request when the getter returns a token', async () => {
+    const calls: Array<{ url: string; headers: Headers }> = []
+    const fakeFetch = (async (input: RequestInfo | URL) => {
+      const req = input as Request
+      calls.push({ url: req.url, headers: new Headers(req.headers) })
+      return new Response('ok', { status: 200 })
+    }) as typeof fetch
+
+    const proxyFetch = createProxyFetch({
+      cloudUrl: 'http://localhost:8000/v1',
+      fetchImpl: fakeFetch,
+      isStandalone: () => false,
+      getProxyAuthToken: () => 'session-token-abc',
+    })
+
+    await proxyFetch('https://example.com/api', { method: 'GET' })
+
+    expect(calls).toHaveLength(1)
+    expect(calls[0].url).toBe('http://localhost:8000/v1/proxy')
+    expect(calls[0].headers.get('authorization')).toBe('Bearer session-token-abc')
+  })
+
+  it('omits the Authorization header when the getter is absent or returns null', async () => {
+    const captureAuth = (input: RequestInfo | URL): string | null =>
+      new Headers((input as Request).headers).get('authorization')
+
+    const withoutGetterCalls: Array<string | null> = []
+    const proxyFetchNoGetter = createProxyFetch({
+      cloudUrl: 'http://localhost:8000/v1',
+      fetchImpl: (async (input) => {
+        withoutGetterCalls.push(captureAuth(input))
+        return new Response('ok', { status: 200 })
+      }) as typeof fetch,
+      isStandalone: () => false,
+    })
+    await proxyFetchNoGetter('https://example.com/api', { method: 'GET' })
+    expect(withoutGetterCalls).toEqual([null])
+
+    const withNullGetterCalls: Array<string | null> = []
+    const proxyFetchNullGetter = createProxyFetch({
+      cloudUrl: 'http://localhost:8000/v1',
+      fetchImpl: (async (input) => {
+        withNullGetterCalls.push(captureAuth(input))
+        return new Response('ok', { status: 200 })
+      }) as typeof fetch,
+      isStandalone: () => false,
+      getProxyAuthToken: () => null,
+    })
+    await proxyFetchNullGetter('https://example.com/api', { method: 'GET' })
+    expect(withNullGetterCalls).toEqual([null])
+  })
+})
+
 describe('createProxyWebSocket', () => {
   it('Hosted: encodes target as tbproxy.target.<base64url> and connects to /proxy/ws', () => {
     let capturedUrl = ''

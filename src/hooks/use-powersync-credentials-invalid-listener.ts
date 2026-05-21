@@ -95,6 +95,14 @@ export const usePowerSyncCredentialsInvalidListener = (): void => {
         return
       }
 
+      if (reason === 'sync_not_permitted') {
+        // Backend says this session may not sync (e.g. anonymous user). Disable sync locally so
+        // PowerSync stops polling the token endpoint; preserve DB, encryption keys, device id,
+        // and auth token. Upgrading to a real account re-enables sync via sign-in-modal-context.
+        void setSyncEnabled(false)
+        return
+      }
+
       hasTriggeredResetRef.current = true
       void performCredentialsInvalidReset(reason === 'account_deleted' ? '/account-deleted' : '/')
     }

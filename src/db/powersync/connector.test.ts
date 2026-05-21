@@ -2,10 +2,10 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { clearAuthToken, setAuthToken } from '@/lib/auth-token'
+import { clearAuthToken, clearDeviceId, setAuthToken } from '@/lib/auth-token'
 import { getClock } from '@/testing-library'
 import { act } from '@testing-library/react'
-import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
+import { afterEach, beforeEach, describe, expect, it, mock, spyOn } from 'bun:test'
 import { handleCredentialsInvalidIfNeeded, powersyncCredentialsInvalid, ThunderboltConnector } from './connector'
 
 const authToken = 'test-auth-token'
@@ -73,6 +73,23 @@ describe('handleCredentialsInvalidIfNeeded', () => {
     )
   })
 
+  it('dispatches event with reason sync_not_permitted for 403 + ANONYMOUS_SYNC_FORBIDDEN', () => {
+    const result = handleCredentialsInvalidIfNeeded(403, { code: 'ANONYMOUS_SYNC_FORBIDDEN' })
+
+    expect(result).toBe(true)
+    expect(dispatchSpy).toHaveBeenCalledTimes(1)
+    expect(dispatchSpy).toHaveBeenCalledWith(
+      expect.objectContaining({ type: powersyncCredentialsInvalid, detail: { reason: 'sync_not_permitted' } }),
+    )
+  })
+
+  it('does not dispatch and returns false for 403 with an unknown code', () => {
+    const result = handleCredentialsInvalidIfNeeded(403, { code: 'somethingElse' })
+
+    expect(result).toBe(false)
+    expect(dispatchSpy).not.toHaveBeenCalled()
+  })
+
   it('does not dispatch and returns false for 403 without DEVICE_DISCONNECTED', () => {
     const result = handleCredentialsInvalidIfNeeded(403, { code: 'OTHER_ERROR' })
 
@@ -103,31 +120,28 @@ describe('handleCredentialsInvalidIfNeeded', () => {
 })
 
 describe('ThunderboltConnector', () => {
-  let savedFetch: typeof globalThis.fetch
   let savedAuthMode: string | undefined
   let fetchMock: ReturnType<typeof mock>
   let dispatchSpy: ReturnType<typeof mock>
 
   beforeEach(() => {
-    savedFetch = globalThis.fetch
     savedAuthMode = import.meta.env.VITE_AUTH_MODE
     // Default to consumer mode so tests don't depend on local .env
     ;(import.meta.env as Record<string, unknown>).VITE_AUTH_MODE = undefined
     fetchMock = mock()
     dispatchSpy = mock(() => {})
-    globalThis.fetch = fetchMock as unknown as typeof fetch
     window.dispatchEvent = dispatchSpy as unknown as typeof window.dispatchEvent
     clearAuthToken()
+    clearDeviceId()
   })
 
   afterEach(() => {
-    globalThis.fetch = savedFetch
     ;(import.meta.env as Record<string, unknown>).VITE_AUTH_MODE = savedAuthMode
   })
 
   it('fetchCredentials returns null when no auth token', async () => {
     clearAuthToken()
-    const connector = new ThunderboltConnector(backendUrl)
+    const connector = new ThunderboltConnector(backendUrl, fetchMock as unknown as typeof fetch)
 
     const result = await connector.fetchCredentials()
 
@@ -150,7 +164,7 @@ describe('ThunderboltConnector', () => {
         }),
       ),
     )
-    const connector = new ThunderboltConnector(backendUrl)
+    const connector = new ThunderboltConnector(backendUrl, fetchMock as unknown as typeof fetch)
 
     const result = await connector.fetchCredentials()
 
@@ -160,8 +174,12 @@ describe('ThunderboltConnector', () => {
       expiresAt: new Date(tokenData.expiresAt),
     })
     expect(fetchMock).toHaveBeenCalledTimes(1)
-    const [url] = fetchMock.mock.calls[0] as [string]
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit]
     expect(url).toContain('/powersync/token')
+    const headers = init.headers as Record<string, string>
+    expect(headers['Authorization']).toBe(`Bearer ${authToken}`)
+    expect(headers['X-Device-ID']).toBeTruthy()
+    expect(headers['X-Device-Name']).toBeTruthy()
   })
 
   it('fetchCredentials returns null and dispatches event when backend returns 410', async () => {
@@ -174,7 +192,7 @@ describe('ThunderboltConnector', () => {
         }),
       ),
     )
-    const connector = new ThunderboltConnector(backendUrl)
+    const connector = new ThunderboltConnector(backendUrl, fetchMock as unknown as typeof fetch)
 
     const result = await connector.fetchCredentials()
 
@@ -195,7 +213,7 @@ describe('ThunderboltConnector', () => {
         }),
       ),
     )
-    const connector = new ThunderboltConnector(backendUrl)
+    const connector = new ThunderboltConnector(backendUrl, fetchMock as unknown as typeof fetch)
 
     const result = await connector.fetchCredentials()
 
@@ -208,7 +226,7 @@ describe('ThunderboltConnector', () => {
   it('fetchCredentials returns null on network error', async () => {
     setAuthToken(authToken)
     fetchMock.mockImplementation(() => Promise.reject(new Error('Network error')))
-    const connector = new ThunderboltConnector(backendUrl)
+    const connector = new ThunderboltConnector(backendUrl, fetchMock as unknown as typeof fetch)
 
     const resultPromise = connector.fetchCredentials()
     await act(async () => {
@@ -217,5 +235,48 @@ describe('ThunderboltConnector', () => {
     const result = await resultPromise
 
     expect(result).toBeNull()
+  })
+
+  it('fetchCredentials returns null and dispatches sync_not_permitted for 403 + ANONYMOUS_SYNC_FORBIDDEN', async () => {
+    setAuthToken(authToken)
+    fetchMock.mockImplementation(() =>
+      Promise.resolve(
+        new Response(JSON.stringify({ error: 'Forbidden', code: 'ANONYMOUS_SYNC_FORBIDDEN' }), {
+          status: 403,
+          headers: { 'Content-Type': 'application/json' },
+        }),
+      ),
+    )
+    const connector = new ThunderboltConnector(backendUrl, fetchMock as unknown as typeof fetch)
+
+    const result = await connector.fetchCredentials()
+
+    expect(result).toBeNull()
+    expect(dispatchSpy).toHaveBeenCalledWith(
+      expect.objectContaining({ type: powersyncCredentialsInvalid, detail: { reason: 'sync_not_permitted' } }),
+    )
+  })
+
+  it('fetchCredentials does not log to console.error for the quiet ANONYMOUS_SYNC_FORBIDDEN 403', async () => {
+    setAuthToken(authToken)
+    const errorSpy = spyOn(console, 'error').mockImplementation(() => {})
+    try {
+      fetchMock.mockImplementation(() =>
+        Promise.resolve(
+          new Response(JSON.stringify({ error: 'Forbidden', code: 'ANONYMOUS_SYNC_FORBIDDEN' }), {
+            status: 403,
+            headers: { 'Content-Type': 'application/json' },
+          }),
+        ),
+      )
+      const connector = new ThunderboltConnector(backendUrl, fetchMock as unknown as typeof fetch)
+
+      const result = await connector.fetchCredentials()
+
+      expect(result).toBeNull()
+      expect(errorSpy).not.toHaveBeenCalled()
+    } finally {
+      errorSpy.mockRestore()
+    }
   })
 })

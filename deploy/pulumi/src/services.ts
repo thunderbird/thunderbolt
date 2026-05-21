@@ -206,6 +206,11 @@ export const createServices = (args: ServiceArgs) => {
         environment: [
           { name: 'POSTGRES_USER', value: 'postgres' },
           { name: 'POSTGRES_DB', value: 'postgres' },
+          // Pin PGDATA to the legacy `/data/pgdata` subdir so existing EFS volumes (created
+          // before the v17→v18 image bump) keep working. postgres:18's strict-mode error
+          // ("These Docker images are configured to store database data...") only fires when
+          // PGDATA is unset *and* legacy data is detected at /var/lib/postgresql/data — by
+          // pinning PGDATA we opt out of the auto-discovery and use the existing layout.
           { name: 'PGDATA', value: '/var/lib/postgresql/data/pgdata' },
         ],
         secrets: [
@@ -213,6 +218,8 @@ export const createServices = (args: ServiceArgs) => {
           { name: 'POWERSYNC_DB_PASSWORD', valueFrom: powersyncDbPasswordSecret.arn },
         ],
         portMappings: [{ containerPort: 5432 }],
+        // Mount EFS at /var/lib/postgresql/data (the legacy path) so existing stacks'
+        // data volumes continue resolving to the same on-disk location after the v18 bump.
         mountPoints: [{ sourceVolume: 'pg-data', containerPath: '/var/lib/postgresql/data' }],
         logConfiguration: logConfig('postgres'),
         ...(repositoryCredentials && { repositoryCredentials }),
@@ -255,10 +262,12 @@ export const createServices = (args: ServiceArgs) => {
           { name: 'PS_PG_URI', value: pulumi.interpolate`postgresql://powersync_role:${args.secrets.powersyncDbPassword}@postgres.thunderbolt.local:5432/postgres` },
           { name: 'PS_STORAGE_URI', value: pulumi.interpolate`postgresql://postgres:${args.secrets.postgresPassword}@postgres.thunderbolt.local:5432/powersync_storage` },
           // Base64 of POWERSYNC_JWT_SECRET. Read by powersync-config.yaml's
-          // `client_auth.jwks.keys[].k: !env POWERSYNC_JWT_KEY_BASE64` to verify
+          // `client_auth.jwks.keys[].k: !env PS_JWT_KEY_BASE64` to verify
           // the JWT signatures the backend issues. Must match the secret the backend
           // signs with — both come from the same `args.secrets.powersyncJwtSecret`.
-          { name: 'POWERSYNC_JWT_KEY_BASE64', value: args.secrets.powersyncJwtSecret.apply((s) => Buffer.from(s).toString('base64')) },
+          // The PS_ prefix is mandatory: PowerSync's YAML loader rejects !env vars
+          // that don't start with it.
+          { name: 'PS_JWT_KEY_BASE64', value: args.secrets.powersyncJwtSecret.apply((s) => Buffer.from(s).toString('base64')) },
         ],
         portMappings: [{ containerPort: 8080 }],
         logConfiguration: logConfig('powersync'),

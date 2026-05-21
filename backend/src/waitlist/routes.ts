@@ -51,12 +51,16 @@ const resolveApproval = async (
   emailService: WaitlistEmailService,
 ): Promise<boolean> => {
   const existingUser = await getUserByEmail(database, email)
-  if (existingUser) return true
+  if (existingUser) {
+    return true
+  }
 
   const existing = await getWaitlistByEmail(database, email)
 
   if (existing) {
-    if (existing.status === 'approved') return true
+    if (existing.status === 'approved') {
+      return true
+    }
 
     if (isAutoApprovedDomain(email)) {
       await approveWaitlistEntry(database, existing.id)
@@ -74,14 +78,16 @@ const resolveApproval = async (
     status: autoApproved ? 'approved' : 'pending',
   })
 
-  if (autoApproved) return true
+  if (autoApproved) {
+    return true
+  }
 
   await emailService.sendJoinedEmail({ email })
   return false
 }
 
 /** Default cooldown between OTP requests per email (15 seconds). */
-const DEFAULT_COOLDOWN_MS = 15_000
+const defaultCooldownMs = 15_000
 
 type WaitlistRoutesOptions = {
   database: typeof db
@@ -96,7 +102,7 @@ export const createWaitlistRoutes = ({
   database,
   auth,
   emailService = defaultEmailService,
-  cooldownMs = DEFAULT_COOLDOWN_MS,
+  cooldownMs = defaultCooldownMs,
   ipRateLimit,
 }: WaitlistRoutesOptions) => {
   // Per-instance cooldown tracker. Tracks when the last OTP request was made for each email
@@ -126,7 +132,9 @@ export const createWaitlistRoutes = ({
         // Prune expired entries to prevent unbounded growth
         if (emailCooldowns.size > 1000) {
           for (const [key, ts] of emailCooldowns) {
-            if (now - ts >= cooldownMs) emailCooldowns.delete(key)
+            if (now - ts >= cooldownMs) {
+              emailCooldowns.delete(key)
+            }
           }
         }
       }

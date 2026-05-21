@@ -47,7 +47,9 @@ describe('Utils - Streaming', () => {
       try {
         while (true) {
           const { done, value } = await reader.read()
-          if (done) break
+          if (done) {
+            break
+          }
           chunks.push(decoder.decode(value))
         }
       } finally {
@@ -64,7 +66,7 @@ describe('Utils - Streaming', () => {
       ]
 
       const mockCompletion = createMockCompletion(mockChunks)
-      const stream = createSSEStreamFromCompletion(mockCompletion as any, 'test-model')
+      const stream = createSSEStreamFromCompletion(mockCompletion as any)
 
       const chunks = await readStreamChunks(stream)
 
@@ -85,7 +87,7 @@ describe('Utils - Streaming', () => {
       ]
 
       const mockCompletion = createMockCompletion(mockChunks)
-      const stream = createSSEStreamFromCompletion(mockCompletion as any, 'test-model')
+      const stream = createSSEStreamFromCompletion(mockCompletion as any)
 
       const chunks = await readStreamChunks(stream)
 
@@ -112,7 +114,7 @@ describe('Utils - Streaming', () => {
       ]
 
       const mockCompletion = createMockCompletion(mockChunks)
-      const stream = createSSEStreamFromCompletion(mockCompletion as any, 'test-model')
+      const stream = createSSEStreamFromCompletion(mockCompletion as any)
 
       const chunks = await readStreamChunks(stream)
 
@@ -131,7 +133,7 @@ describe('Utils - Streaming', () => {
       ]
 
       const mockCompletion = createMockCompletion(mockChunks)
-      const stream = createSSEStreamFromCompletion(mockCompletion as any, 'test-model')
+      const stream = createSSEStreamFromCompletion(mockCompletion as any)
 
       await readStreamChunks(stream)
 
@@ -140,7 +142,7 @@ describe('Utils - Streaming', () => {
 
     it('should handle empty completion stream', async () => {
       const mockCompletion = createMockCompletion([])
-      const stream = createSSEStreamFromCompletion(mockCompletion as any, 'test-model')
+      const stream = createSSEStreamFromCompletion(mockCompletion as any)
 
       const chunks = await readStreamChunks(stream)
 
@@ -158,14 +160,16 @@ describe('Utils - Streaming', () => {
         },
       }
 
-      const stream = createSSEStreamFromCompletion(mockCompletion as any, 'test-model')
+      const stream = createSSEStreamFromCompletion(mockCompletion as any)
 
       // Stream should error when trying to read
       const reader = stream.getReader()
       await expect(async () => {
         while (true) {
           const { done } = await reader.read()
-          if (done) break
+          if (done) {
+            break
+          }
         }
       }).toThrow('Stream error')
 
@@ -191,7 +195,7 @@ describe('Utils - Streaming', () => {
       }
 
       const mockCompletion = createMockCompletion([complexChunk])
-      const stream = createSSEStreamFromCompletion(mockCompletion as any, 'test-model')
+      const stream = createSSEStreamFromCompletion(mockCompletion as any)
 
       const chunks = await readStreamChunks(stream)
 
@@ -207,7 +211,7 @@ describe('Utils - Streaming', () => {
       ]
 
       const mockCompletion = createMockCompletion(mockChunks)
-      const stream = createSSEStreamFromCompletion(mockCompletion as any, 'test-model')
+      const stream = createSSEStreamFromCompletion(mockCompletion as any)
 
       const chunks = await readStreamChunks(stream)
 
@@ -232,7 +236,7 @@ describe('Utils - Streaming', () => {
         controller: { abort: mockAbort },
       }
 
-      const stream = createSSEStreamFromCompletion(mockCompletion as any, 'test-model')
+      const stream = createSSEStreamFromCompletion(mockCompletion as any)
       const reader = stream.getReader()
 
       // Read first chunk

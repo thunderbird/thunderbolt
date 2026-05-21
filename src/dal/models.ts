@@ -4,20 +4,31 @@
 
 import { and, desc, eq, getTableColumns, isNotNull, isNull, or, sql } from 'drizzle-orm'
 import type { AnyDrizzleDatabase } from '../db/database-interface'
-import { modelsTable, settingsTable } from '../db/tables'
+import { modelsSecretsTable, modelsTable, settingsTable } from '../db/tables'
 import { clearNullableColumns, nowIso } from '../lib/utils'
 import type { DrizzleQueryWithPromise, Model } from '@/types'
 import { getLastMessage } from './chat-messages'
 import { createDefaultModelProfile, deleteModelProfileForModel } from './model-profiles'
+
+/** Select columns: all model columns + apiKey from the local-only secrets table. */
+const modelWithSecretColumns = {
+  ...getTableColumns(modelsTable),
+  apiKey: modelsSecretsTable.apiKey,
+}
+
+/** Base query that LEFT JOINs models with their local-only secrets. */
+const selectModelsWithSecrets = (db: AnyDrizzleDatabase) =>
+  db
+    .select(modelWithSecretColumns)
+    .from(modelsTable)
+    .leftJoin(modelsSecretsTable, eq(modelsTable.id, modelsSecretsTable.modelId))
 
 /**
  * Gets all models from the database (excluding soft-deleted)
  * Sorted with system models first, then alphabetically by name
  */
 export const getAllModels = (db: AnyDrizzleDatabase) => {
-  const query = db
-    .select()
-    .from(modelsTable)
+  const query = selectModelsWithSecrets(db)
     .where(isNull(modelsTable.deletedAt))
     .orderBy(desc(modelsTable.isSystem), modelsTable.name)
 
@@ -29,9 +40,7 @@ export const getAllModels = (db: AnyDrizzleDatabase) => {
  * Sorted with system models first, then alphabetically by name
  */
 export const getAvailableModels = (db: AnyDrizzleDatabase) => {
-  const query = db
-    .select()
-    .from(modelsTable)
+  const query = selectModelsWithSecrets(db)
     .where(and(eq(modelsTable.enabled, 1), isNull(modelsTable.deletedAt)))
     .orderBy(desc(modelsTable.isSystem), modelsTable.name)
 
@@ -39,10 +48,7 @@ export const getAvailableModels = (db: AnyDrizzleDatabase) => {
 }
 
 export const getModelQuery = (db: AnyDrizzleDatabase, id: string) => {
-  const query = db
-    .select()
-    .from(modelsTable)
-    .where(and(eq(modelsTable.id, id), isNull(modelsTable.deletedAt)))
+  const query = selectModelsWithSecrets(db).where(and(eq(modelsTable.id, id), isNull(modelsTable.deletedAt)))
 
   return query as typeof query & DrizzleQueryWithPromise<Model>
 }
@@ -53,9 +59,7 @@ export const getModelQuery = (db: AnyDrizzleDatabase, id: string) => {
  * Returns the selected model if it exists and is enabled; otherwise the system model.
  */
 export const getSelectedModelQuery = (db: AnyDrizzleDatabase) => {
-  const query = db
-    .select(getTableColumns(modelsTable))
-    .from(modelsTable)
+  const query = selectModelsWithSecrets(db)
     .leftJoin(
       settingsTable,
       and(eq(settingsTable.key, 'selected_model'), eq(settingsTable.value, modelsTable.id), eq(modelsTable.enabled, 1)),
@@ -76,9 +80,7 @@ export const getModel = async (db: AnyDrizzleDatabase, id: string): Promise<Mode
 }
 
 export const getSystemModel = async (db: AnyDrizzleDatabase): Promise<Model | null> => {
-  const systemModel = await db
-    .select()
-    .from(modelsTable)
+  const systemModel = await selectModelsWithSecrets(db)
     .where(and(eq(modelsTable.isSystem, 1), isNull(modelsTable.deletedAt)))
     .orderBy(modelsTable.name)
     .get()
@@ -133,16 +135,35 @@ export const getDefaultModelForThread = async (
  */
 export const updateModel = async (db: AnyDrizzleDatabase, id: string, updates: Partial<Model>): Promise<void> => {
   // Don't allow updating defaultHash - it must be preserved for modification tracking
-  const { defaultHash, ...updateFields } = updates as Partial<Model> & { defaultHash?: string }
-  await db.update(modelsTable).set(updateFields).where(eq(modelsTable.id, id))
+  const { defaultHash, apiKey, ...updateFields } = updates as Partial<Model> & { defaultHash?: string }
+
+  await db.transaction(async (tx) => {
+    if (Object.keys(updateFields).length > 0) {
+      await tx.update(modelsTable).set(updateFields).where(eq(modelsTable.id, id))
+    }
+
+    // PowerSync exposes local-only tables as SQLite views, which don't support
+    // INSERT...ON CONFLICT DO UPDATE. Emulate UPSERT with SELECT-then-INSERT/UPDATE.
+    if (apiKey !== undefined) {
+      const existing = await tx.select().from(modelsSecretsTable).where(eq(modelsSecretsTable.modelId, id)).get()
+      if (existing) {
+        await tx.update(modelsSecretsTable).set({ apiKey }).where(eq(modelsSecretsTable.modelId, id))
+      } else if (apiKey != null) {
+        await tx.insert(modelsSecretsTable).values({ modelId: id, apiKey })
+      }
+    }
+  })
 }
 
 /**
  * Reset a model to its default state
  */
 export const resetModelToDefault = async (db: AnyDrizzleDatabase, id: string, defaultModel: Model): Promise<void> => {
-  const { defaultHash, ...defaultFields } = defaultModel
-  await db.update(modelsTable).set(defaultFields).where(eq(modelsTable.id, id))
+  const { defaultHash, apiKey, ...defaultFields } = defaultModel
+  await db.transaction(async (tx) => {
+    await tx.update(modelsTable).set(defaultFields).where(eq(modelsTable.id, id))
+    await tx.delete(modelsSecretsTable).where(eq(modelsSecretsTable.modelId, id))
+  })
 }
 
 /**
@@ -157,6 +178,7 @@ export const deleteModel = async (db: AnyDrizzleDatabase, id: string): Promise<v
   await db.transaction(async (tx) => {
     await deleteModelProfileForModel(tx, id)
     await deletePromptsForModel(tx, id)
+    await tx.delete(modelsSecretsTable).where(eq(modelsSecretsTable.modelId, id))
     await tx
       .update(modelsTable)
       .set({ ...clearNullableColumns(modelsTable), deletedAt: nowIso() })
@@ -171,8 +193,12 @@ export const createModel = async (
   db: AnyDrizzleDatabase,
   data: Partial<Model> & Pick<Model, 'id' | 'provider' | 'name' | 'model'>,
 ): Promise<void> => {
+  const { apiKey, ...modelData } = data
   await db.transaction(async (tx) => {
-    await tx.insert(modelsTable).values(data)
+    await tx.insert(modelsTable).values(modelData)
+    if (apiKey != null) {
+      await tx.insert(modelsSecretsTable).values({ modelId: data.id, apiKey })
+    }
     await createDefaultModelProfile(tx, data.id)
   })
 }

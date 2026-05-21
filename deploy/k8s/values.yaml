@@ -5,36 +5,53 @@ imagePullSecrets: []
 # -- Base URL the app is served from (used for CORS, redirects, auth callbacks)
 appUrl: http://localhost
 
+# -- Annotations applied to every pod in the chart. Merged with per-component
+# `<component>.podAnnotations`; per-component keys win on conflict.
+# Implementation note: this uses Sprig `merge`, which is dst-wins (counter to
+# many other merge libraries), so the per-component map is passed as the
+# destination — see `thunderbolt.podAnnotations` in `templates/_helpers.tpl`.
+podAnnotations: {}
+
 # =============================================================================
 # Frontend
 # =============================================================================
 frontend:
   image:
-    repository: ghcr.io/your-org/thunderbolt/frontend
+    repository: ghcr.io/thunderbird/thunderbolt/thunderbolt-frontend
     tag: latest
     pullPolicy: IfNotPresent
   replicas: 1
   service:
     port: 80
+  # -- Pod annotations applied to frontend pods. Merged with top-level
+  # `podAnnotations`; these win on key conflict.
+  podAnnotations: {}
+  # -- Pod resource requests/limits for the frontend container.
+  resources: {}
 
 # =============================================================================
 # Marketing (Astro static site: landing page, blog, docs)
 # =============================================================================
 marketing:
   image:
-    repository: ghcr.io/your-org/thunderbolt/marketing
+    repository: ghcr.io/thunderbird/thunderbolt/thunderbolt-marketing
     tag: latest
     pullPolicy: IfNotPresent
   replicas: 1
   service:
     port: 80
+  # -- Pod annotations applied to marketing pods. Merged with top-level
+  # `podAnnotations`; these win on key conflict.
+  podAnnotations: {}
+  # -- Pod resource requests/limits for the marketing container.
+  resources: {}
 
 # =============================================================================
 # Backend
 # =============================================================================
 backend:
   image:
-    repository: ghcr.io/your-org/thunderbolt/backend
+    repository: ghcr.io/thunderbird/thunderbolt/thunderbolt-backend
     tag: latest
     pullPolicy: IfNotPresent
   replicas: 1
@@ -59,6 +76,11 @@ backend:
     mistralApiKeyBase64: ""
     thunderboltInferenceApiKeyBase64: ""
     exaApiKeyBase64: ""
+  # -- Pod annotations applied to backend pods. Merged with top-level
+  # `podAnnotations`; these win on key conflict.
+  podAnnotations: {}
+  # -- Pod resource requests/limits for the backend container.
+  resources: {}
 
 # =============================================================================
 # PostgreSQL
@@ -73,6 +95,17 @@ postgres:
     database: postgres
     # -- Base64-encoded password (default: "postgres")
     passwordBase64: cG9zdGdyZXM=
+  # -- TLS mode for Postgres connections. Wired into both the backend's
+  # `DATABASE_URL` (as `?sslmode=...`) and PowerSync's `replication`/`storage`
+  # config. Default `disable` matches the in-cluster StatefulSet which ships
+  # without TLS. Set to `require` (or stricter) when pointing at a
+  # TLS-terminating Postgres like RDS.
+  sslmode: disable
+  # -- Pod annotations applied to postgres pods. Merged with top-level
+  # `podAnnotations`; these win on key conflict.
+  podAnnotations: {}
+  # -- Pod resource requests/limits for the postgres container.
+  resources: {}
 
 # =============================================================================
 # PowerSync
@@ -86,13 +119,25 @@ powersync:
     port: 8080
   jwt:
     kid: enterprise-powersync
-    # -- Base64-encoded JWT secret. Minimum 32 chars when decoded (backend validation).
+    # -- JWT signing secret, encoded with **base64url** (RFC 7518). The string
+    # is consumed both as the HS256 signing secret and as the JWK `k` field
+    # PowerSync uses to verify tokens, and JWK requires base64url specifically.
+    # Decoded length must be >= 32 chars (backend validation).
     # Default: "enterprise-thunderbolt-powersync-jwt-default-secret" (51 chars).
-    # Override for production: echo -n "<your-secret>" | base64
+    #
+    # WARNING: do NOT use `openssl rand -base64`; its output can include `+/=`
+    # which the JWK parser rejects. Use one of:
+    #   openssl rand 32 | basenc --base64url --wrap=0
+    #   openssl rand -base64 32 | tr '+/' '-_' | tr -d '='
     secretBase64: ZW50ZXJwcmlzZS10aHVuZGVyYm9sdC1wb3dlcnN5bmMtand0LWRlZmF1bHQtc2VjcmV0
   db:
     # -- Base64-encoded powersync_role database password (default: "myhighlyrandompassword")
     passwordBase64: bXloaWdobHlyYW5kb21wYXNzd29yZA==
+  # -- Pod annotations applied to powersync pods. Merged with top-level
+  # `podAnnotations`; these win on key conflict.
+  podAnnotations: {}
+  # -- Pod resource requests/limits for the powersync container.
+  resources: {}
 
 # =============================================================================
 # Keycloak (OIDC Identity Provider)
@@ -111,6 +156,21 @@ keycloak:
     clientId: thunderbolt-app
     # -- Base64-encoded client secret (default: "thunderbolt-enterprise-secret")
     clientSecretBase64: dGh1bmRlcmJvbHQtZW50ZXJwcmlzZS1zZWNyZXQ=
+  # -- Include a `demo@thunderbolt.io` / `demo` user in the imported realm.
+  # Convenient for local/preview environments and docs walk-throughs; set to
+  # `false` for production deployments. Default `true` preserves current behavior.
+  #
+  # IMPORTANT: realm import is one-shot. Keycloak only imports the realm JSON
+  # on first boot of an empty database, so flipping this from `true` to `false`
+  # on an existing cluster does NOT delete a previously-imported demo user.
+  # To remove an already-imported demo user, delete it from the Keycloak admin
+  # console (Users → demo → Delete), or destroy the Keycloak storage volume.
+  demoUserEnabled: true
+  # -- Pod annotations applied to keycloak pods. Merged with top-level
+  # `podAnnotations`; these win on key conflict.
+  podAnnotations: {}
+  # -- Pod resource requests/limits for the keycloak container.
+  resources: {}
 
 # =============================================================================
 # Ingress

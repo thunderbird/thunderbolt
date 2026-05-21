@@ -15,7 +15,6 @@ export const hashModel = (model: Model): string => {
     model.provider,
     model.model,
     model.url,
-    model.apiKey,
     model.isSystem,
     model.enabled,
     model.toolUsage,

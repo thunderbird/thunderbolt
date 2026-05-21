@@ -9,7 +9,7 @@ import { safeErrorHandler } from '@/middleware/error-handling'
 import { Elysia, t } from 'elysia'
 import { codeRequestSchema, refreshRequestSchema, type OAuthTokenResponse } from './types'
 
-const GOOGLE_TOKEN_URL = 'https://oauth2.googleapis.com/token'
+const googleTokenUrl = 'https://oauth2.googleapis.com/token'
 
 /**
  * Google OAuth confidential client proxy — keeps the client secret server-side
@@ -61,7 +61,7 @@ export const createGoogleAuthRoutes = (auth: Auth, fetchFn: typeof fetch = globa
         })
 
         try {
-          const response = await fetchFn(GOOGLE_TOKEN_URL, {
+          const response = await fetchFn(googleTokenUrl, {
             method: 'POST',
             headers: {
               'Content-Type': 'application/x-www-form-urlencoded',
@@ -132,7 +132,7 @@ export const createGoogleAuthRoutes = (auth: Auth, fetchFn: typeof fetch = globa
         })
 
         try {
-          const response = await fetchFn(GOOGLE_TOKEN_URL, {
+          const response = await fetchFn(googleTokenUrl, {
             method: 'POST',
             headers: {
               'Content-Type': 'application/x-www-form-urlencoded',

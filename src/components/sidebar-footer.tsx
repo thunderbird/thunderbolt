@@ -5,6 +5,8 @@
 import { ChevronsUpDown, Loader2, LogOut, Terminal, UserRound, Download } from 'lucide-react'
 import { type ReactNode, useState } from 'react'
 
+import type { User } from '@shared/types/auth'
+
 import { LogoutModal } from '@/components/logout-modal'
 import { MobileBlurBackdrop } from '@/components/ui/mobile-blur-backdrop'
 import { NavLink } from '@/components/ui/nav-link'
@@ -17,7 +19,6 @@ import {
   useSidebar,
 } from '@/components/ui/sidebar'
 import { useAuth, useSignInModal } from '@/contexts'
-import { useSettings } from '@/hooks/use-settings'
 import { getDownloadUrl } from '@/lib/download-links'
 import { isWebDesktopPlatform, isTauri } from '@/lib/platform'
 import { edgeSpacing, mobileSidebarWidthRatio } from '@/lib/constants'
@@ -92,10 +93,13 @@ export const SidebarFooter = ({ className }: SidebarFooterProps) => {
   }
 
   const { data: session, isPending } = authClient.useSession()
-  const user = session?.user
+  // Treat anonymous sessions as logged-out for the footer UI: anonymous users have a
+  // synthetic email and no real account, so showing them as "logged in" is misleading.
+  // The Sign In affordance (below) is the correct surface for them to upgrade.
+  const sessionUser = session?.user as User | undefined
+  const user = sessionUser?.isAnonymous ? null : sessionUser
 
-  const { preferredName } = useSettings({ preferred_name: '' })
-  const displayName = user ? (preferredName.value as string) || user.name || null : null
+  const displayName = user?.name ?? null
   const displayEmail = user?.email
 
   const handleMenuAction = (action: () => void) => {

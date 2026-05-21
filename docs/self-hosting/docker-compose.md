@@ -6,7 +6,7 @@ The Docker Compose stack is the fastest path to a working Thunderbolt install. I
 
 - Docker 24+ with the Compose plugin (`docker compose version` must succeed)
 - 4 GB RAM minimum, 8 GB recommended
-- Ports `3000`, `5432`, `8180` available (or edit `deploy/docker-compose.yml` to remap)
+- Ports `3000`, `5434`, `8081`, `8180` available (or edit `deploy/.env` to remap — `FRONTEND_PORT`, `POSTGRES_PORT`, `POWERSYNC_PORT`, `KEYCLOAK_PORT`)
 
 ## Spin It Up
 
@@ -14,8 +14,10 @@ The Docker Compose stack is the fastest path to a working Thunderbolt install. I
 git clone https://github.com/thunderbird/thunderbolt.git
 cd thunderbolt/deploy
 cp .env.example .env
-# Edit .env — at minimum set BETTER_AUTH_SECRET, POWERSYNC_JWT_SECRET,
-# and one AI provider API key
+# Edit .env — at minimum set BETTER_AUTH_SECRET (32+ chars; generate with
+# `openssl rand -base64 32`) and one AI provider API key.
+# Note: POWERSYNC_JWT_SECRET is hardcoded in docker-compose.yml; override
+# only if you fork the compose file.
 docker compose up --build
 ```
 
@@ -27,7 +29,7 @@ The backend entrypoint runs Drizzle migrations before serving traffic, the Keycl
 | -------------- | ---------------------------- | ------------------------------------------ |
 | App            | `http://localhost:3000`      | Keycloak SSO (demo user below)             |
 | Keycloak admin | `http://localhost:8180`      | `admin` / `admin` — **rotate immediately** |
-| Demo user      | (sign in via app)            | `demo@thunderbolt.so` / `demo`             |
+| Demo user      | (sign in via app)            | `demo@thunderbolt.io` / `demo`             |
 
 Behind the scenes, the compose file boots:
 
@@ -35,10 +37,9 @@ Behind the scenes, the compose file boots:
 | ----------------------------- | ---------------------------------- | --------------------------------------------------------------------- |
 | `docker/frontend.Dockerfile`  | `oven/bun` → `nginx:alpine`        | Vite SPA with COEP/COOP headers                                       |
 | `docker/backend.Dockerfile`   | `oven/bun:latest`                  | Elysia API; entrypoint runs `bun drizzle-kit migrate` before starting |
-| `docker/postgres.Dockerfile`  | `postgres:18-alpine`               | PostgreSQL with PowerSync replication role (`deploy/docker/postgres-init/01-powersync.sql`) |
+| `docker/postgres.Dockerfile`  | `postgres:18-alpine`               | PostgreSQL with PowerSync replication role (`deploy/docker/postgres-init/01-powersync.sh`) |
 | `docker/keycloak.Dockerfile`  | `keycloak:26.0`                    | OIDC/SAML with the `thunderbolt` realm pre-imported                   |
-| `docker/powersync.Dockerfile` | `journeyapps/powersync-service`    | PowerSync service with the synced-table rules                         |
-| (official) `mongo:7.0`        | —                                  | PowerSync operational store                                           |
+| `docker/powersync.Dockerfile` | `journeyapps/powersync-service`    | PowerSync service with the synced-table rules; also stores its bucket data in Postgres (`powersync_storage` DB) |
 
 ## Customization
 

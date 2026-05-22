@@ -160,6 +160,26 @@ export const promptsTable = sqliteTable(
   ],
 )
 
+export const skillsTable = sqliteTable(
+  'skills',
+  {
+    id: text('id').primaryKey(),
+    name: text('name'),
+    description: text('description'),
+    instruction: text('instruction'),
+    enabled: integer('enabled').default(1),
+    pinnedOrder: integer('pinned_order'),
+    deletedAt: text('deleted_at'),
+    defaultHash: text('default_hash'),
+    userId: text('user_id'),
+  },
+  (table) => [
+    index('idx_skills_active')
+      .on(table.id)
+      .where(sql`${table.deletedAt} IS NULL`),
+  ],
+)
+
 export const triggersTable = sqliteTable(
   'triggers',
   {

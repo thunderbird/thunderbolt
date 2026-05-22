@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { beforeAll, beforeEach, describe, expect, it, mock } from 'bun:test'
+import { beforeEach, describe, expect, it, mock } from 'bun:test'
 import {
   clearAuthToken,
   clearDeviceId,
@@ -26,25 +26,43 @@ const fireStorageEvent = (newValue: string | null, oldValue: string | null, key 
   )
 }
 
-beforeAll(() => {
-  if (typeof localStorage === 'undefined') {
-    const store: Record<string, string> = {}
-    Object.defineProperty(globalThis, 'localStorage', {
-      value: {
-        getItem: (k: string) => store[k] ?? null,
-        setItem: (k: string, v: string) => {
-          store[k] = v
-        },
-        removeItem: (k: string) => {
-          delete store[k]
-        },
-      },
-      writable: true,
-    })
-  }
-})
-
+/**
+ * Install a known-good localStorage on every test.
+ *
+ * `onAuthTokenChangedInOtherTab`'s handler short-circuits on
+ * `event.storageArea !== localStorage` (reference equality). If an earlier
+ * test in the same `bun test` run has replaced `globalThis.localStorage`
+ * with a different object and not restored it, our `fireStorageEvent`'s
+ * `storageArea: localStorage` would refer to one object while the impl's
+ * `localStorage` (resolved from globalThis at handler-call time) would
+ * refer to the previous one — comparison fails, listener never fires.
+ *
+ * Resetting per-test isolates this file from any upstream pollution.
+ */
 beforeEach(() => {
+  const store: Record<string, string> = {}
+  Object.defineProperty(globalThis, 'localStorage', {
+    value: {
+      getItem: (k: string) => store[k] ?? null,
+      setItem: (k: string, v: string) => {
+        store[k] = v
+      },
+      removeItem: (k: string) => {
+        delete store[k]
+      },
+      clear: () => {
+        for (const k of Object.keys(store)) {
+          delete store[k]
+        }
+      },
+      key: (i: number) => Object.keys(store)[i] ?? null,
+      get length() {
+        return Object.keys(store).length
+      },
+    },
+    writable: true,
+    configurable: true,
+  })
   clearAuthToken()
   clearDeviceId()
 })

@@ -7,7 +7,7 @@ import { setupTestDatabase, teardownTestDatabase } from '@/dal/test-utils'
 import { createMockAuthClient } from '@/test-utils/auth-client'
 import { createTestProvider } from '@/test-utils/test-provider'
 import { getClock } from '@/testing-library'
-import { afterAll, beforeAll, beforeEach, describe, expect, it, mock } from 'bun:test'
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, mock } from 'bun:test'
 import { act, render, renderHook, waitFor } from '@testing-library/react'
 import { Component, createElement, StrictMode, type ReactNode } from 'react'
 import { useAuthGate } from './use-auth-gate'
@@ -113,9 +113,22 @@ beforeAll(async () => {
 
 afterAll(async () => {
   await teardownTestDatabase()
+  // The `mock.module('@/lib/auth-mode', ...)` at module load replaces the
+  // module process-wide. Reset the flags after the file completes so later
+  // test files (e.g. db/powersync/connector.test.ts) don't inherit a
+  // leaked `isSsoMode() === true` from this file's last SSO-mode test.
+  mockSsoMode = false
+  mockAnonymousEnabled = false
+  mockWaitlistBypassed = false
 })
 
 beforeEach(() => {
+  mockSsoMode = false
+  mockAnonymousEnabled = false
+  mockWaitlistBypassed = false
+})
+
+afterEach(() => {
   mockSsoMode = false
   mockAnonymousEnabled = false
   mockWaitlistBypassed = false

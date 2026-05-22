@@ -45,6 +45,14 @@ describe('LogoutModal', () => {
   afterAll(async () => {
     consoleSpies.restore()
     await teardownTestDatabase()
+    // bun's `mock.module('@/lib/auth-mode', ...)` above replaces the module
+    // for the entire test process, and the mock fn we install retains its
+    // last `mockReturnValue` after this file completes. Reset to false so
+    // any later test file that transitively imports `@/lib/auth-mode` sees
+    // the production default (non-SSO) — otherwise tests like
+    // db/powersync/connector.test.ts get an unexpected `isSsoMode() === true`
+    // and call paths gated on it fire when they shouldn't.
+    mockIsSsoMode.mockReturnValue(false)
   })
 
   beforeEach(async () => {

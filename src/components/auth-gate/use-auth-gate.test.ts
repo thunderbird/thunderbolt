@@ -7,7 +7,7 @@ import { setupTestDatabase, teardownTestDatabase } from '@/dal/test-utils'
 import { createMockAuthClient } from '@/test-utils/auth-client'
 import { createTestProvider } from '@/test-utils/test-provider'
 import { getClock } from '@/testing-library'
-import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, mock } from 'bun:test'
+import { afterAll, beforeAll, beforeEach, describe, expect, it, mock } from 'bun:test'
 import { act, render, renderHook, waitFor } from '@testing-library/react'
 import { Component, createElement, StrictMode, type ReactNode } from 'react'
 import { useAuthGate } from './use-auth-gate'
@@ -50,34 +50,22 @@ const anonymousSession = {
   user: { id: 'anon-1', email: 'temp@anon.com', name: 'Anon', isAnonymous: true },
 }
 
-type EnvOverrides = {
-  VITE_AUTH_MODE?: string
-  VITE_AUTH_ENABLE_ANONYMOUS?: string
-  VITE_BYPASS_WAITLIST?: string
-}
+// Per-test-controllable flags for the auth-mode module. We mock the module
+// outright (below) instead of mutating `import.meta.env` directly — the env
+// mutation path was fragile under `--randomize` + `--rerun-each` (the
+// mutations did not consistently propagate to the auth-mode module's view
+// of `import.meta.env` in CI), causing tests that depended on `isSsoMode()`
+// to fail when the hook re-read env after another test had loaded the
+// module with different values cached.
+let mockSsoMode = false
+let mockAnonymousEnabled = false
+let mockWaitlistBypassed = false
 
-/**
- * Stash and restore selected import.meta.env overrides for a test. The hook
- * reads env via `isSsoMode()` / `isAnonymousAuthEnabled()` / `isWaitlistBypassed()`,
- * all of which read `import.meta.env` at call time.
- */
-const withEnv = (overrides: EnvOverrides) => {
-  const env = import.meta.env as unknown as Record<string, string | undefined>
-  const original: Record<string, string | undefined> = {}
-  for (const key of Object.keys(overrides) as (keyof EnvOverrides)[]) {
-    original[key] = env[key]
-    env[key] = overrides[key]
-  }
-  return () => {
-    for (const key of Object.keys(original)) {
-      if (original[key] === undefined) {
-        delete env[key]
-      } else {
-        env[key] = original[key]
-      }
-    }
-  }
-}
+mock.module('@/lib/auth-mode', () => ({
+  isSsoMode: () => mockSsoMode,
+  isAnonymousAuthEnabled: () => mockAnonymousEnabled,
+  isWaitlistBypassed: () => mockWaitlistBypassed,
+}))
 
 const createAuthClientWithAnonSpy = (params: {
   initialSession?: typeof realSession | null
@@ -127,18 +115,10 @@ afterAll(async () => {
   await teardownTestDatabase()
 })
 
-let restoreEnv: () => void = () => {}
-
 beforeEach(() => {
-  restoreEnv = withEnv({
-    VITE_AUTH_MODE: undefined,
-    VITE_AUTH_ENABLE_ANONYMOUS: undefined,
-    VITE_BYPASS_WAITLIST: undefined,
-  })
-})
-
-afterEach(() => {
-  restoreEnv()
+  mockSsoMode = false
+  mockAnonymousEnabled = false
+  mockWaitlistBypassed = false
 })
 
 describe('useAuthGate — require="authenticated"', () => {
@@ -164,8 +144,7 @@ describe('useAuthGate — require="authenticated"', () => {
   })
 
   it('returns redirect to sso when no session and SSO mode is active', () => {
-    restoreEnv()
-    restoreEnv = withEnv({ VITE_AUTH_MODE: 'sso' })
+    mockSsoMode = true
     const authClient = createMockAuthClient({ session: null, isPending: false })
     const wrapper = createTestProvider({ authClient })
     const { result } = renderHook(() => useAuthGate('authenticated'), { wrapper })
@@ -180,8 +159,8 @@ describe('useAuthGate — require="authenticated"', () => {
   })
 
   it('fires signIn.anonymous and shows loading when no session, waitlist bypassed, and anonymous allowed', async () => {
-    restoreEnv()
-    restoreEnv = withEnv({ VITE_AUTH_ENABLE_ANONYMOUS: 'true', VITE_BYPASS_WAITLIST: 'true' })
+    mockAnonymousEnabled = true
+    mockWaitlistBypassed = true
     const { authClient, signInSpy } = createAuthClientWithAnonSpy({
       initialSession: null,
       initialPending: false,
@@ -197,12 +176,9 @@ describe('useAuthGate — require="authenticated"', () => {
   })
 
   it('does NOT call signIn.anonymous when anonymous is enabled but SSO mode is active (mutex)', async () => {
-    restoreEnv()
-    restoreEnv = withEnv({
-      VITE_AUTH_MODE: 'sso',
-      VITE_AUTH_ENABLE_ANONYMOUS: 'true',
-      VITE_BYPASS_WAITLIST: 'true',
-    })
+    mockSsoMode = true
+    mockAnonymousEnabled = true
+    mockWaitlistBypassed = true
     const { authClient, signInSpy } = createAuthClientWithAnonSpy({
       initialSession: null,
       initialPending: false,
@@ -218,8 +194,7 @@ describe('useAuthGate — require="authenticated"', () => {
   })
 
   it('does NOT call signIn.anonymous when anonymous is enabled but waitlist is active (no bypass)', () => {
-    restoreEnv()
-    restoreEnv = withEnv({ VITE_AUTH_ENABLE_ANONYMOUS: 'true' })
+    mockAnonymousEnabled = true
     const { authClient, signInSpy } = createAuthClientWithAnonSpy({
       initialSession: null,
       initialPending: false,
@@ -234,8 +209,8 @@ describe('useAuthGate — require="authenticated"', () => {
   })
 
   it('throws to error boundary when signIn.anonymous resolves with { error } (e.g. HTTP 429)', async () => {
-    restoreEnv()
-    restoreEnv = withEnv({ VITE_AUTH_ENABLE_ANONYMOUS: 'true', VITE_BYPASS_WAITLIST: 'true' })
+    mockAnonymousEnabled = true
+    mockWaitlistBypassed = true
     const { authClient, signInSpy } = createAuthClientWithAnonSpy({
       initialSession: null,
       initialPending: false,
@@ -268,8 +243,8 @@ describe('useAuthGate — require="authenticated"', () => {
   })
 
   it('fires signIn.anonymous exactly once even under React StrictMode double-invoke', async () => {
-    restoreEnv()
-    restoreEnv = withEnv({ VITE_AUTH_ENABLE_ANONYMOUS: 'true', VITE_BYPASS_WAITLIST: 'true' })
+    mockAnonymousEnabled = true
+    mockWaitlistBypassed = true
     const { authClient, signInSpy } = createAuthClientWithAnonSpy({
       initialSession: null,
       initialPending: false,
@@ -303,8 +278,8 @@ describe('useAuthGate — require="unauthenticated"', () => {
   })
 
   it('returns loading while pending (no auto-anon for unauthenticated routes)', () => {
-    restoreEnv()
-    restoreEnv = withEnv({ VITE_AUTH_ENABLE_ANONYMOUS: 'true', VITE_BYPASS_WAITLIST: 'true' })
+    mockAnonymousEnabled = true
+    mockWaitlistBypassed = true
     const { authClient, signInSpy } = createAuthClientWithAnonSpy({
       initialSession: null,
       initialPending: true,

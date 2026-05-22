@@ -4,12 +4,18 @@
 
 import { Header } from '@/components/ui/header'
 import { SidebarInset } from '@/components/ui/sidebar'
+import { Loader2 } from 'lucide-react'
+import { Suspense } from 'react'
 import { Outlet, useLocation } from 'react-router'
 
-// Sub-routes that provide their own page chrome (heading + actions + mobile
-// sidebar trigger inside their own component) and want the full content height
-// available. The settings-level Header would otherwise add ~56px of unused
-// space at the top.
+const PageFallback = () => (
+  <div className="flex items-center justify-center h-full w-full">
+    <Loader2 className="animate-spin text-muted-foreground" size={24} />
+  </div>
+)
+
+// Sub-routes that provide their own page chrome and want the full content height.
+// The settings-level Header would otherwise add ~56px of unused space at the top.
 const routesWithOwnHeader = new Set(['/settings/skills'])
 
 const SettingsLayout = () => {
@@ -33,7 +39,9 @@ const SettingsLayout = () => {
               paddingBottom: 'var(--safe-area-bottom-padding)',
             }}
           >
-            <Outlet />
+            <Suspense fallback={<PageFallback />}>
+              <Outlet />
+            </Suspense>
           </div>
         </div>
       </SidebarInset>

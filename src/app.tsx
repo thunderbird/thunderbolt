@@ -7,12 +7,15 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router'
 import { PowerSyncContext } from '@powersync/react'
 
+import ChatDetailPage from '@/chats/detail'
 import MagicLinkVerify from '@/components/magic-link-verify'
 import OAuthCallback from '@/components/oauth-callback'
 import { AccountDeleted } from '@/components/account-deleted'
 import { SignedOut } from '@/components/signed-out'
 import NotFound from '@/components/not-found'
 import { RevokedDeviceModal } from '@/components/revoked-device-modal'
+import ChatLayout from '@/layout/main-layout'
+import SettingsLayout from '@/settings/layout'
 import { SidebarProvider } from '@/components/ui/sidebar'
 import { HapticsProvider } from '@/hooks/use-haptics'
 import { AuthProvider, DatabaseProvider, HttpClientProvider, SignInModalProvider } from '@/contexts'
@@ -52,14 +55,10 @@ import { LazyMotion } from 'framer-motion'
 // async chunk instead of the entry bundle.
 const loadMotionFeatures = () => import('@/lib/motion-features').then((mod) => mod.default)
 
-// Each page (and the layouts that nest them) ships in its own async chunk
-// so the entry bundle stays small. A single <Suspense> below the router
-// covers all of them.
-const ChatLayout = lazy(() => import('@/layout/main-layout'))
-const SettingsLayout = lazy(() => import('./settings/layout'))
+// Pages below ship in their own async chunk; the layouts that host them are
+// static so route navigation only swaps the inner content. ChatLayout and
+// ChatDetailPage stay in the entry bundle so the landing page is instant.
 const WaitlistLayout = lazy(() => import('@/waitlist/layout'))
-
-const ChatDetailPage = lazy(() => import('@/chats/detail'))
 const TasksPage = lazy(() => import('@/tasks'))
 const AutomationsPage = lazy(() => import('./automations'))
 const Settings = lazy(() => import('@/settings/index'))

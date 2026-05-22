@@ -16,6 +16,7 @@ import NotFound from '@/components/not-found'
 import { RevokedDeviceModal } from '@/components/revoked-device-modal'
 import ChatLayout from '@/layout/main-layout'
 import SettingsLayout from '@/settings/layout'
+import WaitlistLayout from '@/waitlist/layout'
 import { SidebarProvider } from '@/components/ui/sidebar'
 import { HapticsProvider } from '@/hooks/use-haptics'
 import { AuthProvider, DatabaseProvider, HttpClientProvider, SignInModalProvider } from '@/contexts'
@@ -58,7 +59,6 @@ const loadMotionFeatures = () => import('@/lib/motion-features').then((mod) => m
 // Pages below ship in their own async chunk; the layouts that host them are
 // static so route navigation only swaps the inner content. ChatLayout and
 // ChatDetailPage stay in the entry bundle so the landing page is instant.
-const WaitlistLayout = lazy(() => import('@/waitlist/layout'))
 const TasksPage = lazy(() => import('@/tasks'))
 const AutomationsPage = lazy(() => import('./automations'))
 const Settings = lazy(() => import('@/settings/index'))

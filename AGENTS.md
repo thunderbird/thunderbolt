@@ -66,13 +66,13 @@ Keep the entry bundle small by lazy-loading routes that aren't on the critical l
 
 **Static (in the entry bundle):**
 - Chat (`ChatLayout`, `ChatDetailPage`) — the landing page must feel instant.
-- Settings layout (`SettingsLayout`) — chrome around settings pages, but the inner pages stay lazy.
+- Layouts (`SettingsLayout`, `WaitlistLayout`) — chrome around their pages. Lazy-loading a layout creates a sequential waterfall (layout chunk → page chunk) before anything paints, and the layouts themselves are tiny.
 - Small auth/error pages (`MagicLinkVerify`, `OAuthCallback`, `AccountDeleted`, `SignedOut`, `NotFound`) — the per-chunk overhead exceeds their payload.
 
 **Lazy (`React.lazy(() => import(...))`):**
 - All settings/admin pages (`PreferencesSettingsPage`, `ModelsPage`, `DevicesSettingsPage`, `McpServersPage`, `IntegrationsPage`, dev-only routes).
 - Secondary features (`TasksPage`, `AutomationsPage`).
-- Waitlist + SSO flows (only hit by a subset of users).
+- `WaitlistPage` and SSO flows (only hit by a subset of users).
 
 When adding a new route, default to lazy unless the route is on the chat/landing critical path. Pair the lazy import with a content-area `<Suspense fallback={...}>` placed around the relevant `<Outlet />` (see `src/layout/main-layout.tsx` and `src/settings/layout.tsx`) so the sidebar/nav stays mounted while the chunk loads.
 

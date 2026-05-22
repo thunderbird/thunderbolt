@@ -4,15 +4,9 @@
 
 import { Header } from '@/components/ui/header'
 import { SidebarInset } from '@/components/ui/sidebar'
-import { Loader2 } from 'lucide-react'
+import { PageFallback } from '@/loading'
 import { Suspense } from 'react'
 import { Outlet, useLocation } from 'react-router'
-
-const PageFallback = () => (
-  <div className="flex items-center justify-center h-full w-full">
-    <Loader2 className="animate-spin text-muted-foreground" size={24} />
-  </div>
-)
 
 // Sub-routes that provide their own page chrome and want the full content height.
 // The settings-level Header would otherwise add ~56px of unused space at the top.

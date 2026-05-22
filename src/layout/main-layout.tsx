@@ -15,16 +15,10 @@ import { useIsMobile } from '@/hooks/use-mobile'
 import { isTauri } from '@/lib/platform'
 import { useSettings } from '@/hooks/use-settings'
 import { animate, AnimatePresence, m } from 'framer-motion'
-import { Loader2 } from 'lucide-react'
 import { Suspense, useEffect, useRef } from 'react'
 import { usePanelRef } from 'react-resizable-panels'
 import { Outlet } from 'react-router'
-
-const PageFallback = () => (
-  <div className="flex items-center justify-center h-full w-full">
-    <Loader2 className="animate-spin text-muted-foreground" size={24} />
-  </div>
-)
+import { PageFallback } from '@/loading'
 
 export default function Page() {
   const panelRef = usePanelRef()

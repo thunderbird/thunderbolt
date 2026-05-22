@@ -62,20 +62,47 @@ describe('OIDC Integration', () => {
   let getSettingsSpy: ReturnType<typeof spyOn>
 
   beforeAll(async () => {
-    oidcServer = new OAuth2Server()
-    await oidcServer.issuer.keys.generate('RS256')
-    await oidcServer.start(0, 'localhost')
-    oidcIssuerUrl = oidcServer.issuer.url!
+    const t0 = Date.now()
+    console.log(`[OIDC-BEFOREALL] start t=0`)
 
+    oidcServer = new OAuth2Server()
+    console.log(`[OIDC-BEFOREALL] after new OAuth2Server t=${Date.now() - t0}ms`)
+
+    await oidcServer.issuer.keys.generate('RS256')
+    console.log(`[OIDC-BEFOREALL] after keys.generate t=${Date.now() - t0}ms`)
+
+    await oidcServer.start(0, 'localhost')
+    console.log(`[OIDC-BEFOREALL] after server.start t=${Date.now() - t0}ms`)
+
+    oidcIssuerUrl = oidcServer.issuer.url!
     const testEnv = await createTestDb()
+    console.log(`[OIDC-BEFOREALL] after createTestDb t=${Date.now() - t0}ms`)
+
     db = testEnv.db
     cleanup = testEnv.cleanup
-  })
+    console.log(`[OIDC-BEFOREALL] complete t=${Date.now() - t0}ms`)
+  }, 60_000)
 
   afterAll(async () => {
-    await oidcServer.stop()
-    await cleanup()
-  })
+    const t0 = Date.now()
+    console.log(`[OIDC-AFTERALL] start`)
+
+    if (oidcServer && (oidcServer as unknown as { listening: boolean }).listening) {
+      await oidcServer.stop().catch((err) => {
+        console.log(`[OIDC-AFTERALL] stop error: ${err?.message}`)
+      })
+      console.log(`[OIDC-AFTERALL] after server.stop t=${Date.now() - t0}ms`)
+    } else {
+      console.log(`[OIDC-AFTERALL] skipping server.stop (not listening)`)
+    }
+
+    if (cleanup) {
+      await cleanup().catch((err) => {
+        console.log(`[OIDC-AFTERALL] cleanup error: ${err?.message}`)
+      })
+      console.log(`[OIDC-AFTERALL] after cleanup t=${Date.now() - t0}ms`)
+    }
+  }, 60_000)
 
   afterEach(() => {
     getSettingsSpy?.mockRestore()

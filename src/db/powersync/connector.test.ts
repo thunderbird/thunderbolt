@@ -12,15 +12,14 @@ const authToken = 'test-auth-token'
 const backendUrl = 'https://api.test'
 
 describe('handleCredentialsInvalidIfNeeded', () => {
-  let dispatchSpy: ReturnType<typeof mock>
+  let dispatchSpy: ReturnType<typeof spyOn>
 
   beforeEach(() => {
-    dispatchSpy = mock(() => {})
-    window.dispatchEvent = dispatchSpy as unknown as typeof window.dispatchEvent
+    dispatchSpy = spyOn(window, 'dispatchEvent').mockImplementation(() => true)
   })
 
   afterEach(() => {
-    dispatchSpy.mockRestore?.()
+    dispatchSpy.mockRestore()
   })
 
   it('dispatches event with reason account_deleted for 410', () => {
@@ -122,21 +121,21 @@ describe('handleCredentialsInvalidIfNeeded', () => {
 describe('ThunderboltConnector', () => {
   let savedAuthMode: string | undefined
   let fetchMock: ReturnType<typeof mock>
-  let dispatchSpy: ReturnType<typeof mock>
+  let dispatchSpy: ReturnType<typeof spyOn>
 
   beforeEach(() => {
     savedAuthMode = import.meta.env.VITE_AUTH_MODE
     // Default to consumer mode so tests don't depend on local .env
     ;(import.meta.env as Record<string, unknown>).VITE_AUTH_MODE = undefined
     fetchMock = mock()
-    dispatchSpy = mock(() => {})
-    window.dispatchEvent = dispatchSpy as unknown as typeof window.dispatchEvent
+    dispatchSpy = spyOn(window, 'dispatchEvent').mockImplementation(() => true)
     clearAuthToken()
     clearDeviceId()
   })
 
   afterEach(() => {
     ;(import.meta.env as Record<string, unknown>).VITE_AUTH_MODE = savedAuthMode
+    dispatchSpy.mockRestore()
   })
 
   it('fetchCredentials returns null when no auth token', async () => {

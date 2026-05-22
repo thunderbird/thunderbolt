@@ -4,11 +4,15 @@
 
 import { AuthProvider, DatabaseProvider, HttpClientProvider, type AuthClient, type HttpClient } from '@/contexts'
 import { getDb } from '@/db/database'
+import type { FetchFn } from '@/lib/proxy-fetch'
+import { ProxyFetchProvider } from '@/lib/proxy-fetch-context'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { type ReactNode } from 'react'
 import { createMockAuthClient } from './auth-client'
 import { createMockHttpClient } from './http-client'
 import { PowerSyncMockProvider } from './powersync-mock'
+
+const mockProxyFetch = (async () => new Response()) as unknown as FetchFn
 
 type TestProviderOptions = {
   mockResponse?: unknown
@@ -70,7 +74,9 @@ export const createTestProvider = (options?: TestProviderOptions) => {
         <PowerSyncMockProvider>
           <QueryClientProvider client={queryClient}>
             <HttpClientProvider httpClient={mockHttpClient}>
-              <AuthProvider authClient={mockAuthClient}>{children}</AuthProvider>
+              <AuthProvider authClient={mockAuthClient}>
+                <ProxyFetchProvider proxyFetch={mockProxyFetch}>{children}</ProxyFetchProvider>
+              </AuthProvider>
             </HttpClientProvider>
           </QueryClientProvider>
         </PowerSyncMockProvider>

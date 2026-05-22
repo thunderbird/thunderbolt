@@ -67,7 +67,8 @@ export default defineConfig({
     },
     // --- OIDC backend ---
     {
-      command: 'cd backend && bun run dev',
+      // Bypass `bun run dev` (which goes through scripts/dev.sh — lives in stacked PR #862)
+      command: 'cd backend && bun run --watch src/index.ts',
       url: `http://localhost:${oidcBackendPort}/v1/health`,
       // Backend env is test-specific (mock IdP, e2e secrets, rate limit off) — never reuse a
       // dev backend that happened to bind :8000. Playwright will fail fast if the port is taken.
@@ -102,7 +103,8 @@ export default defineConfig({
     },
     // --- SAML backend ---
     {
-      command: 'cd backend && bun run dev',
+      // Bypass `bun run dev` (which goes through scripts/dev.sh — lives in stacked PR #862)
+      command: 'cd backend && bun run --watch src/index.ts',
       url: `http://localhost:${samlBackendPort}/v1/health`,
       // Backend env is test-specific — see OIDC backend comment above.
       reuseExistingServer: false,

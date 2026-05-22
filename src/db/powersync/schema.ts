@@ -18,6 +18,7 @@ const syncedTables = {
   models: tables.modelsTable,
   mcp_servers: tables.mcpServersTable,
   prompts: tables.promptsTable,
+  skills: tables.skillsTable,
   triggers: tables.triggersTable,
   modes: tables.modesTable,
   model_profiles: tables.modelProfilesTable,

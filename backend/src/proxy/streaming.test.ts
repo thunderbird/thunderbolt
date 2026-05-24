@@ -44,9 +44,10 @@ describe('capStream', () => {
       idleTimeoutMs: 5000,
       onAbort: (r) => aborts.push(r),
     })
-    const result = await collectStream(capped)
+    const result = await collectStream(capped.stream)
     expect(result).toEqual(data)
     expect(aborts).toEqual([])
+    expect(capped.bytesRead()).toBe(data.byteLength)
   })
 
   it('calls onAbort("cap") and terminates when bytes exceed cap', async () => {
@@ -58,7 +59,7 @@ describe('capStream', () => {
       idleTimeoutMs: 5000,
       onAbort: (r) => aborts.push(r),
     })
-    await collectStream(capped)
+    await collectStream(capped.stream)
     expect(aborts).toEqual(['cap'])
   })
 
@@ -74,7 +75,7 @@ describe('capStream', () => {
       idleTimeoutMs: 20,
       onAbort: (r) => aborts.push(r),
     })
-    await collectStream(capped)
+    await collectStream(capped.stream)
     expect(aborts).toEqual(['idle'])
   })
 
@@ -99,7 +100,7 @@ describe('capStream', () => {
       idleTimeoutMs: idleTimeout,
       onAbort: (r) => aborts.push(r),
     })
-    const result = await collectStream(capped)
+    const result = await collectStream(capped.stream)
     expect(result.byteLength).toBe(5)
     expect(aborts).toEqual([])
   })
@@ -120,7 +121,7 @@ describe('capStream', () => {
       idleTimeoutMs: idleTimeout,
       onAbort: (r) => aborts.push(r),
     })
-    await collectStream(capped)
+    await collectStream(capped.stream)
     // Wait longer than the idle timeout to confirm the lingering timer was cleared
     await new Promise((r) => setTimeout(r, idleTimeout * 2))
     expect(aborts).toEqual(['cap'])
@@ -134,7 +135,7 @@ describe('capStream', () => {
       idleTimeoutMs: 20,
       onAbort: (r) => aborts.push(r),
     })
-    await collectStream(capped)
+    await collectStream(capped.stream)
     // Wait longer than the idle timeout to confirm it was cleared
     await new Promise((r) => setTimeout(r, 40))
     expect(aborts).toEqual([])
@@ -151,9 +152,97 @@ describe('capStream', () => {
       onAbort: (r) => aborts.push(r),
     })
     // Simulate client disconnect
-    await capped.cancel()
+    await capped.stream.cancel()
     // Wait longer than the idle timeout to confirm the timer was cleared
     await new Promise((r) => setTimeout(r, idleTimeout * 3))
     expect(aborts).toEqual([])
+  })
+
+  // ---------------------------------------------------------------------------
+  // Byte counter + onComplete contract — the observability layer reads these
+  // ---------------------------------------------------------------------------
+
+  it('bytesRead() returns the total bytes that flowed through on graceful completion', async () => {
+    const chunks = [new Uint8Array(7), new Uint8Array(3), new Uint8Array(5)]
+    const capped = capStream(makeStream(chunks), {
+      maxBytes: 100,
+      idleTimeoutMs: 1000,
+      onAbort: () => {},
+    })
+    await collectStream(capped.stream)
+    expect(capped.bytesRead()).toBe(15)
+  })
+
+  it('bytesRead() reports bytes consumed even when cap fires mid-stream', async () => {
+    const chunks = [new Uint8Array(8), new Uint8Array(8)]
+    const capped = capStream(makeStream(chunks), {
+      maxBytes: 10,
+      idleTimeoutMs: 1000,
+      onAbort: () => {},
+    })
+    await collectStream(capped.stream)
+    // First chunk (8B) passed, second pushed total over 10 — both have been
+    // counted by the transform before terminate runs.
+    expect(capped.bytesRead()).toBe(16)
+  })
+
+  it('onComplete fires once with the final byte count on graceful end', async () => {
+    const completions: number[] = []
+    const data = new Uint8Array([1, 2, 3])
+    const capped = capStream(makeStream([data]), {
+      maxBytes: 100,
+      idleTimeoutMs: 1000,
+      onAbort: () => {},
+      onComplete: (n) => completions.push(n),
+    })
+    await collectStream(capped.stream)
+    expect(completions).toEqual([3])
+  })
+
+  it('onComplete fires once with the abort byte count when cap triggers', async () => {
+    const completions: number[] = []
+    const chunks = [new Uint8Array(8), new Uint8Array(8)]
+    const capped = capStream(makeStream(chunks), {
+      maxBytes: 10,
+      idleTimeoutMs: 1000,
+      onAbort: () => {},
+      onComplete: (n) => completions.push(n),
+    })
+    await collectStream(capped.stream)
+    // onAbort runs before onComplete; onComplete must still see the bytes
+    // counted up to the abort point and fire exactly once.
+    expect(completions.length).toBe(1)
+    expect(completions[0]).toBe(16)
+  })
+
+  it('onComplete fires once on idle timeout', async () => {
+    const completions: number[] = []
+    const slow = new ReadableStream<Uint8Array>({ start() {} })
+    const capped = capStream(slow, {
+      maxBytes: 1_000_000,
+      idleTimeoutMs: 20,
+      onAbort: () => {},
+      onComplete: (n) => completions.push(n),
+    })
+    await collectStream(capped.stream)
+    // Idle path fires onComplete from the timer + flush is never reached.
+    expect(completions.length).toBe(1)
+    expect(completions[0]).toBe(0)
+  })
+
+  it('onComplete fires once even after downstream cancel', async () => {
+    const completions: number[] = []
+    const slow = new ReadableStream<Uint8Array>({ start() {} })
+    const capped = capStream(slow, {
+      maxBytes: 1_000_000,
+      idleTimeoutMs: 50,
+      onAbort: () => {},
+      onComplete: (n) => completions.push(n),
+    })
+    await capped.stream.cancel()
+    // pipeTo rejects on cancel; the .catch() in capStream fires onComplete once.
+    await new Promise((r) => setTimeout(r, 10))
+    expect(completions.length).toBe(1)
+    expect(completions[0]).toBe(0)
   })
 })

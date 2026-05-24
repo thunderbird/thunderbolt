@@ -8,23 +8,48 @@
  * client receives a truncated but valid chunked response — the proxy cannot
  * retroactively change the HTTP status because headers have already been sent.
  * `onAbort` is called first so the caller can abort the upstream connection.
+ *
+ * Returns `bytesRead()` so observability can record the actual transferred byte
+ * count after the stream has been consumed. With `content-encoding` passthrough
+ * the bytes counted are post-compression (what the wire saw), which is exactly
+ * what we want to log.
  */
+export type CappedStream = {
+  stream: ReadableStream<Uint8Array>
+  /** Total bytes that flowed through the cap. Read after stream completion. */
+  bytesRead: () => number
+}
+
 export const capStream = (
   source: ReadableStream<Uint8Array>,
   opts: {
     maxBytes: number
     idleTimeoutMs: number
     onAbort: (reason: 'cap' | 'idle') => void
+    /** Fired exactly once after the stream finishes (graceful close, cap-hit,
+     *  idle, source error, or downstream cancel). Receives the total bytes
+     *  that flowed through. Use for post-stream observability emission. */
+    onComplete?: (bytesRead: number) => void
   },
-): ReadableStream<Uint8Array> => {
+): CappedStream => {
   let bytesReceived = 0
   let idleTimer: ReturnType<typeof setTimeout> | undefined
+  let completed = false
+
+  const fireComplete = () => {
+    if (completed) {
+      return
+    }
+    completed = true
+    opts.onComplete?.(bytesReceived)
+  }
 
   const resetIdleTimer = (controller: TransformStreamDefaultController<Uint8Array>) => {
     clearTimeout(idleTimer)
     idleTimer = setTimeout(() => {
       opts.onAbort('idle')
       controller.terminate()
+      fireComplete()
     }, opts.idleTimeoutMs)
   }
 
@@ -38,6 +63,7 @@ export const capStream = (
         clearTimeout(idleTimer)
         opts.onAbort('cap')
         controller.terminate()
+        fireComplete()
         return
       }
       controller.enqueue(chunk)
@@ -45,6 +71,7 @@ export const capStream = (
     },
     flush() {
       clearTimeout(idleTimer)
+      fireComplete()
     },
   })
 
@@ -53,7 +80,11 @@ export const capStream = (
     // was cancelled). Clear the idle timer here so it doesn't fire after the stream
     // has been torn down — running terminate() on an errored controller throws.
     clearTimeout(idleTimer)
+    fireComplete()
   })
 
-  return readable
+  return {
+    stream: readable,
+    bytesRead: () => bytesReceived,
+  }
 }

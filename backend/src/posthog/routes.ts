@@ -23,7 +23,8 @@ export const createPostHogRoutes = (fetchFn: typeof fetch = globalThis.fetch) =>
     .use(
       cors({
         origin: getCorsOriginsList(settings),
-        allowedHeaders: settings.corsAllowHeaders,
+        // allowedHeaders: true → mirrors main backend mount and Access-Control-Request-Headers (avoids static allowlist drift)
+        allowedHeaders: true,
         exposeHeaders: settings.corsExposeHeaders,
       }),
     )

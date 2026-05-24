@@ -5,10 +5,14 @@
 import { DatabaseProvider } from '@/contexts/database-context'
 import { HttpClientProvider } from '@/contexts/http-client-context'
 import { getDb, isDbRegistered } from '@/db/database'
+import type { FetchFn } from '@/lib/proxy-fetch'
+import { ProxyFetchProvider } from '@/lib/proxy-fetch-context'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import type { ReactNode } from 'react'
 import { createMockHttpClient } from './http-client'
 import { PowerSyncMockProvider } from './powersync-mock'
+
+const mockProxyFetch = (async () => new Response()) as unknown as FetchFn
 
 /**
  * Creates a test wrapper with React Query client, PowerSync mock, and DatabaseProvider (when available)
@@ -40,7 +44,9 @@ export const createQueryTestWrapper = (options?: {
     const inner = (
       <HttpClientProvider httpClient={mockHttpClient}>
         <PowerSyncMockProvider>
-          <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+          <QueryClientProvider client={queryClient}>
+            <ProxyFetchProvider proxyFetch={mockProxyFetch}>{children}</ProxyFetchProvider>
+          </QueryClientProvider>
         </PowerSyncMockProvider>
       </HttpClientProvider>
     )

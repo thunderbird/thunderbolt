@@ -14,6 +14,7 @@ import { defaultModeChat } from '@/defaults/modes'
 import { isSsoMode } from '@/lib/auth-mode'
 import { getAuthToken } from '@/lib/auth-token'
 import { createAuthenticatedClient } from '@/lib/http'
+import { createProxyFetch } from '@/lib/proxy-fetch'
 import type { SaveMessagesFunction } from '@/types'
 import { v7 as uuidv7 } from 'uuid'
 import { parseStream } from './stream-parser'
@@ -43,6 +44,8 @@ const run = async () => {
   const httpClient = createAuthenticatedClient(cloudUrl, getAuthToken, {
     credentials: isSsoMode() ? 'include' : undefined,
   })
+  // Node CLI — no React tree to source the proxy fetch from.
+  const proxyFetch = createProxyFetch({ cloudUrl })
 
   console.log('[3/5] Calling aiFetchStreamingResponse...')
   const start = performance.now()
@@ -54,6 +57,7 @@ const run = async () => {
     modeSystemPrompt: defaultModeChat.systemPrompt ?? undefined,
     modeName: defaultModeChat.name,
     httpClient,
+    getProxyFetch: () => proxyFetch,
   })
 
   const callDuration = ((performance.now() - start) / 1000).toFixed(1)

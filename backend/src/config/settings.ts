@@ -28,6 +28,10 @@ const settingsSchema = z
 
     // OIDC Settings (enterprise self-hosted)
     authMode: z.enum(['consumer', 'oidc', 'saml']).default('consumer'),
+    // Anonymous-session overlay — opt-in. When false, the anonymous() Better Auth plugin
+    // is NOT registered so /v1/api/auth/sign-in/anonymous returns 404. Defense-in-depth
+    // against a malicious client bypassing the frontend gate via direct curl.
+    authAllowAnonymous: z.boolean().default(false),
     oidcClientId: z.string().default(''),
     oidcClientSecret: z.string().default(''),
     oidcIssuer: z.string().default(''),
@@ -67,18 +71,21 @@ const settingsSchema = z
     powersyncJwtSecret: z.string().default(''),
     powersyncTokenExpirySeconds: z.coerce.number().int().positive().default(3600),
 
-    // CORS settings — comma-separated list of exact origins
+    // CORS settings — comma-separated list of exact origins.
+    // `corsAllowHeaders` is no longer consumed by any production mount: both
+    // the main backend and the PostHog proxy use `cors({ allowedHeaders: true })`,
+    // which echoes the request's Access-Control-Request-Headers. The env var
+    // and default remain only for backward compat and test fixtures.
     corsOrigins: z.string().default('http://localhost:1420,tauri://localhost,http://tauri.localhost'),
     corsAllowCredentials: z.boolean().default(true),
     corsAllowMethods: z.string().default('GET,POST,PUT,DELETE,PATCH,OPTIONS'),
-    corsAllowHeaders: z
-      .string()
-      .default(
-        'Content-Type,Authorization,Accept,Accept-Encoding,Accept-Language,Cache-Control,User-Agent,X-Requested-With,X-Client-Platform,X-Device-ID,X-Device-Name,X-Challenge-Token,X-Mcp-Target-Url,Mcp-Authorization,Mcp-Session-Id,Mcp-Protocol-Version',
-      ),
+    corsAllowHeaders: z.string().default(''),
+    // Protocol-required: frontend proxy-fetch.ts unwrap needs these visible cross-origin (cors does not echo expose-headers).
     corsExposeHeaders: z
       .string()
-      .default('mcp-session-id,set-auth-token,ratelimit-limit,ratelimit-remaining,ratelimit-reset,retry-after'),
+      .default(
+        'set-auth-token,X-Proxy-Final-Url,X-Proxy-Passthrough-Content-Type,X-Proxy-Passthrough-Mcp-Session-Id,X-Proxy-Passthrough-Mcp-Protocol-Version,X-Proxy-Passthrough-Location,X-Proxy-Passthrough-Anthropic-Version',
+      ),
 
     // E2E encryption — when true, devices must complete the trust flow before syncing
     e2eeEnabled: z.boolean().default(false),
@@ -126,6 +133,7 @@ const parseSettings = (): Settings => {
     microsoftClientId: process.env.MICROSOFT_CLIENT_ID || '',
     microsoftClientSecret: process.env.MICROSOFT_CLIENT_SECRET || '',
     authMode: (process.env.AUTH_MODE || 'consumer').toLowerCase(),
+    authAllowAnonymous: process.env.AUTH_ALLOW_ANONYMOUS === 'true',
     oidcClientId: process.env.OIDC_CLIENT_ID || '',
     oidcClientSecret: process.env.OIDC_CLIENT_SECRET || '',
     oidcIssuer: process.env.OIDC_ISSUER || '',
@@ -150,12 +158,10 @@ const parseSettings = (): Settings => {
     corsOrigins: process.env.CORS_ORIGINS || 'http://localhost:1420,tauri://localhost,http://tauri.localhost',
     corsAllowCredentials: process.env.CORS_ALLOW_CREDENTIALS !== 'false',
     corsAllowMethods: process.env.CORS_ALLOW_METHODS || 'GET,POST,PUT,DELETE,PATCH,OPTIONS',
-    corsAllowHeaders:
-      process.env.CORS_ALLOW_HEADERS ||
-      'Content-Type,Authorization,Accept,Accept-Encoding,Accept-Language,Cache-Control,User-Agent,X-Requested-With,X-Client-Platform,X-Device-ID,X-Device-Name,X-Challenge-Token,X-Mcp-Target-Url,Mcp-Authorization,Mcp-Session-Id,Mcp-Protocol-Version',
+    corsAllowHeaders: process.env.CORS_ALLOW_HEADERS || '',
     corsExposeHeaders:
       process.env.CORS_EXPOSE_HEADERS ||
-      'mcp-session-id,set-auth-token,ratelimit-limit,ratelimit-remaining,ratelimit-reset,retry-after',
+      'set-auth-token,X-Proxy-Final-Url,X-Proxy-Passthrough-Content-Type,X-Proxy-Passthrough-Mcp-Session-Id,X-Proxy-Passthrough-Mcp-Protocol-Version,X-Proxy-Passthrough-Location,X-Proxy-Passthrough-Anthropic-Version',
     e2eeEnabled: process.env.E2EE_ENABLED === 'true',
     swaggerEnabled: process.env.SWAGGER_ENABLED === 'true',
     rateLimitEnabled: process.env.RATE_LIMIT_ENABLED !== 'false',

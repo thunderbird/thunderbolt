@@ -18,6 +18,7 @@ import { getLocalSetting } from '@/stores/local-settings-store'
 import { isSsoMode } from '@/lib/auth-mode'
 import { getAuthToken } from '@/lib/auth-token'
 import { fetch as baseFetch } from '@/lib/fetch'
+import type { FetchFn } from '@/lib/proxy-fetch'
 import { createToolset, getAvailableTools } from '@/lib/tools'
 import type { Model, SaveMessagesFunction, ThunderboltUIMessage } from '@/types'
 import type { SourceMetadata } from '@/types/source'
@@ -25,6 +26,7 @@ import { createAnthropic } from '@ai-sdk/anthropic'
 import { createOpenAI } from '@ai-sdk/openai'
 import { createOpenAICompatible } from '@ai-sdk/openai-compatible'
 import type { HttpClient } from '@/lib/http'
+import type { SecureClient } from 'tinfoil'
 import { v7 as uuidv7 } from 'uuid'
 
 // Currently @openrouter/ai-sdk-provider is NOT compatible with Vercel AI SDK v5. If you enable this, you will get the following error:
@@ -60,6 +62,21 @@ export const ollama = createOpenAI({
   fetch,
 })
 
+// Reuse one SecureClient across requests so attestation runs once per page load.
+// The `tinfoil` module is dynamically imported so its attestation/crypto deps
+// (sigstore-browser, verifier, ehbp) are code-split into their own chunk and
+// only loaded when a user actually selects the Tinfoil provider.
+let tinfoilClient: SecureClient | null = null
+
+export const getTinfoilClient = async (): Promise<SecureClient> => {
+  if (!tinfoilClient) {
+    const { SecureClient } = await import('tinfoil')
+    tinfoilClient = new SecureClient()
+  }
+  await tinfoilClient.ready()
+  return tinfoilClient
+}
+
 type AiFetchStreamingResponseOptions = {
   init: RequestInit
   saveMessages: SaveMessagesFunction
@@ -68,9 +85,17 @@ type AiFetchStreamingResponseOptions = {
   modeName?: string
   mcpClients?: MCPClient[]
   httpClient: HttpClient
+  /** Returns the current proxy fetch. Production callers pass the getter from
+   *  `ProxyFetchProvider` (`useProxyFetchGetter()`); non-React callers (eval
+   *  scripts) build a `proxyFetch` directly and wrap it in `() => fn`. */
+  getProxyFetch: () => FetchFn
 }
 
-export const createModel = async (modelConfig: Model) => {
+export const createModel = async (modelConfig: Model, getProxyFetch: () => FetchFn) => {
+  // The thunderbolt provider goes through its own SSO-aware fetch below; all
+  // other providers route through the universal proxy. We resolve the proxy
+  // fetch lazily so a settings change between chat creation and this call
+  // (e.g. cloudUrl, proxy_enabled toggle) is picked up.
   switch (modelConfig.provider) {
     case 'thunderbolt': {
       const cloudUrl = getLocalSetting('cloudUrl')
@@ -110,16 +135,14 @@ export const createModel = async (modelConfig: Model) => {
       return provider(modelConfig.model)
     }
     case 'anthropic': {
+      // Route Anthropic through the universal proxy. Hosted mode (web) sends
+      // the request to /v1/proxy with Authorization rewritten to
+      // X-Proxy-Passthrough-Authorization; Standalone mode (Tauri) hits
+      // Anthropic directly via the Rust HTTP plugin. Either way, the user's
+      // Anthropic key never goes through Thunderbolt's session auth path.
       const anthropic = createAnthropic({
         apiKey: modelConfig.apiKey || '',
-        fetch,
-        headers: {
-          // When a user adds their own Anthropic API key, calls go directly from the
-          // browser to Anthropic's API (not through our backend). Anthropic blocks
-          // browser-origin requests by default to prevent accidental key exposure.
-          // This header opts in, acknowledging the risk.
-          'anthropic-dangerous-direct-browser-access': 'true',
-        },
+        fetch: getProxyFetch(),
       })
       return anthropic(modelConfig.model)
     }
@@ -129,7 +152,7 @@ export const createModel = async (modelConfig: Model) => {
       }
       const openai = createOpenAI({
         apiKey: modelConfig.apiKey,
-        fetch,
+        fetch: getProxyFetch(),
       })
       return openai(modelConfig.model)
     }
@@ -141,7 +164,7 @@ export const createModel = async (modelConfig: Model) => {
         name: 'custom',
         baseURL: modelConfig.url,
         apiKey: modelConfig.apiKey || undefined,
-        fetch,
+        fetch: getProxyFetch(),
       })
       return openaiCompatible(modelConfig.model)
     }
@@ -155,9 +178,22 @@ export const createModel = async (modelConfig: Model) => {
         name: 'openrouter',
         baseURL: 'https://openrouter.ai/api/v1',
         apiKey: modelConfig.apiKey,
-        fetch,
+        fetch: getProxyFetch(),
       })
       return openrouter(modelConfig.model)
+    }
+    case 'tinfoil': {
+      if (!modelConfig.apiKey) {
+        throw new Error('No API key provided')
+      }
+      const client = await getTinfoilClient()
+      const tinfoil = createOpenAICompatible({
+        name: 'tinfoil',
+        baseURL: client.getBaseURL()!,
+        apiKey: modelConfig.apiKey,
+        fetch: client.fetch,
+      })
+      return tinfoil(modelConfig.model)
     }
     default:
       throw new Error(`Unsupported provider: ${modelConfig.provider}`)
@@ -172,6 +208,7 @@ export const aiFetchStreamingResponse = async ({
   modeName,
   mcpClients,
   httpClient,
+  getProxyFetch,
 }: AiFetchStreamingResponseOptions) => {
   const options = init as RequestInit & { body: string }
   const body = JSON.parse(options.body)
@@ -270,7 +307,7 @@ export const aiFetchStreamingResponse = async ({
   const activeNudges = getNudgeMessagesFromProfile(profile, modeName)
 
   try {
-    const baseModel = await createModel(model)
+    const baseModel = await createModel(model, getProxyFetch)
 
     const wrappedModel = wrapLanguageModel({
       providerId: model.provider,

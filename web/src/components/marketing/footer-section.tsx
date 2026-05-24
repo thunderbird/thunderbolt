@@ -82,6 +82,16 @@ export const FooterSection = ({ className = '' }: FooterSectionProps) => (
           </a>
         </div>
       </div>
+      <div className="mt-6 flex justify-center">
+        <a
+          href="https://www.thunderbird.net/en-US/privacy/"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="border-b border-[#667085]/40 text-xs leading-4 text-[#667085] transition-colors hover:text-[#344054]"
+        >
+          Privacy Policy
+        </a>
+      </div>
     </div>
   </footer>
 )

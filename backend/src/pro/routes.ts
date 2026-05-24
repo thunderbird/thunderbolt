@@ -7,8 +7,6 @@ import { createAuthMacro } from '@/auth/elysia-plugin'
 import { safeErrorHandler } from '@/middleware/error-handling'
 import { Elysia, type AnyElysia, t } from 'elysia'
 import { exaPlugin } from './exa'
-import { createLinkPreviewRoutes } from './link-preview'
-import { createProxyRoutes } from './proxy'
 import type {
   LocationSearchRequest,
   LocationSearchResponse,
@@ -44,8 +42,6 @@ export const createProToolsRoutes = (auth: Auth, fetchFn: typeof fetch = globalT
 
     return guardedApp
       .use(exaPlugin)
-      .use(createProxyRoutes(fetchFn))
-      .use(createLinkPreviewRoutes(fetchFn))
 
       .post(
         '/weather/current',

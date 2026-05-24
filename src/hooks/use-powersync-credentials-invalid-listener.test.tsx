@@ -23,6 +23,7 @@ import { PowerSyncMockProvider } from '@/test-utils/powersync-mock'
 import { showRevokedDeviceModalEvent, showSignInModalEvent, signInSuccessEvent } from './use-credential-events'
 import { usePowerSyncCredentialsInvalidListener } from './use-powersync-credentials-invalid-listener'
 import { getDb } from '@/db/database'
+import { setSyncEnabled } from '@/db/powersync'
 
 const deviceId = 'test-device-id'
 const authToken = 'test-auth-token'
@@ -100,7 +101,13 @@ describe('usePowerSyncCredentialsInvalidListener', () => {
   }
 
   const dispatchCredentialsInvalid = (
-    reason: 'account_deleted' | 'device_revoked' | 'device_id_taken' | 'device_id_required' | 'session_expired',
+    reason:
+      | 'account_deleted'
+      | 'device_revoked'
+      | 'device_id_taken'
+      | 'device_id_required'
+      | 'session_expired'
+      | 'sync_not_permitted',
   ) => {
     window.dispatchEvent(new CustomEvent(powersyncCredentialsInvalid, { detail: { reason } }))
   }
@@ -263,6 +270,33 @@ describe('usePowerSyncCredentialsInvalidListener', () => {
 
       expect(revokedModalListener).toHaveBeenCalled()
       expect(signInModalListener).not.toHaveBeenCalled()
+
+      window.removeEventListener(showSignInModalEvent, signInModalListener)
+      window.removeEventListener(showRevokedDeviceModalEvent, revokedModalListener)
+    })
+
+    it("calls setSyncEnabled(false) when reason is 'sync_not_permitted' and does NOT clear data or dispatch modals", () => {
+      setAuthToken(authToken)
+      const signInModalListener = mock()
+      const revokedModalListener = mock()
+      window.addEventListener(showSignInModalEvent, signInModalListener)
+      window.addEventListener(showRevokedDeviceModalEvent, revokedModalListener)
+      ;(setSyncEnabled as unknown as ReturnType<typeof mock>).mockClear()
+
+      renderHook(() => usePowerSyncCredentialsInvalidListener(), {
+        wrapper: createTestProvider(),
+      })
+
+      act(() => {
+        dispatchCredentialsInvalid('sync_not_permitted')
+      })
+
+      expect(setSyncEnabled).toHaveBeenCalledWith(false)
+      expect(getAuthToken()).toBe(authToken)
+      expect(mockClearLocalData).not.toHaveBeenCalled()
+      expect(mockReplace).not.toHaveBeenCalled()
+      expect(signInModalListener).not.toHaveBeenCalled()
+      expect(revokedModalListener).not.toHaveBeenCalled()
 
       window.removeEventListener(showSignInModalEvent, signInModalListener)
       window.removeEventListener(showRevokedDeviceModalEvent, revokedModalListener)

@@ -82,7 +82,7 @@ export const modelsTable = sqliteTable(
   {
     id: text('id').primaryKey(),
     provider: text('provider', {
-      enum: ['openai', 'custom', 'openrouter', 'thunderbolt', 'anthropic'],
+      enum: ['openai', 'custom', 'openrouter', 'thunderbolt', 'anthropic', 'tinfoil'],
     }),
     name: text('name'),
     model: text('model'),
@@ -155,6 +155,26 @@ export const promptsTable = sqliteTable(
   },
   (table) => [
     index('idx_prompts_active')
+      .on(table.id)
+      .where(sql`${table.deletedAt} IS NULL`),
+  ],
+)
+
+export const skillsTable = sqliteTable(
+  'skills',
+  {
+    id: text('id').primaryKey(),
+    name: text('name'),
+    description: text('description'),
+    instruction: text('instruction'),
+    enabled: integer('enabled').default(1),
+    pinnedOrder: integer('pinned_order'),
+    deletedAt: text('deleted_at'),
+    defaultHash: text('default_hash'),
+    userId: text('user_id'),
+  },
+  (table) => [
+    index('idx_skills_active')
       .on(table.id)
       .where(sql`${table.deletedAt} IS NULL`),
   ],

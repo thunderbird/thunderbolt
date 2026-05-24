@@ -94,25 +94,6 @@ describe('Pro Tools Routes', () => {
     consoleSpies.restore()
   })
 
-  it('should return error when search API key is not configured', async () => {
-    const response = await app.handle(
-      new Request('http://localhost/pro/search', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ query: 'test search', max_results: 5 }),
-      }),
-    )
-
-    expect(response.status).toBe(500)
-    const data = await response.json()
-    // Error handler sanitizes internal error messages for security
-    expect(data).toEqual({
-      success: false,
-      data: null,
-      error: 'Internal Server Error',
-    })
-  })
-
   it('should return error when fetch-content API key is not configured', async () => {
     const response = await app.handle(
       new Request('http://localhost/pro/fetch-content', {
@@ -182,10 +163,10 @@ describe('Pro Tools Routes', () => {
       const unauthenticatedApp = createProToolsRoutes(mockAuthUnauthenticated, mockFetch as unknown as typeof fetch)
 
       const response = await unauthenticatedApp.handle(
-        new Request('http://localhost/pro/search', {
+        new Request('http://localhost/pro/fetch-content', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ query: 'test', max_results: 5 }),
+          body: JSON.stringify({ url: 'https://example.com' }),
         }),
       )
 
@@ -195,7 +176,7 @@ describe('Pro Tools Routes', () => {
 
   it('should require valid body for requests', async () => {
     const response = await app.handle(
-      new Request('http://localhost/pro/search', {
+      new Request('http://localhost/pro/fetch-content', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({}),

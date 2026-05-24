@@ -65,17 +65,22 @@ describe('OIDC Integration', () => {
     oidcServer = new OAuth2Server()
     await oidcServer.issuer.keys.generate('RS256')
     await oidcServer.start(0, 'localhost')
-    oidcIssuerUrl = oidcServer.issuer.url!
 
+    oidcIssuerUrl = oidcServer.issuer.url!
     const testEnv = await createTestDb()
     db = testEnv.db
     cleanup = testEnv.cleanup
-  })
+  }, 60_000)
 
   afterAll(async () => {
-    await oidcServer.stop()
-    await cleanup()
-  })
+    if (oidcServer && (oidcServer as unknown as { listening: boolean }).listening) {
+      await oidcServer.stop().catch(() => {})
+    }
+
+    if (cleanup) {
+      await cleanup().catch(() => {})
+    }
+  }, 60_000)
 
   afterEach(() => {
     getSettingsSpy?.mockRestore()

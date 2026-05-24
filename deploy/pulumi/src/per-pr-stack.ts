@@ -4,7 +4,9 @@
 
 import * as aws from '@pulumi/aws'
 import * as cloudflare from '@pulumi/cloudflare'
+import * as keycloak from '@pulumi/keycloak'
 import * as pulumi from '@pulumi/pulumi'
+import * as random from '@pulumi/random'
 import type { SharedStackOutputs } from './shared'
 
 /**
@@ -201,8 +203,57 @@ export const createPerPrStack = (args: PerPrStackArgs): PerPrStackOutputs => {
     )
   }
 
-  // -------- 6. Per-PR secrets --------
+  // -------- 6. Per-PR Keycloak OIDC client --------
+  // Keycloak only honors `*` as a trailing path wildcard in `validRedirectUris` —
+  // hostname wildcards aren't supported — so the shared client can't cover every
+  // PR's `api-pr-<n>` host. Each per-PR stack instead provisions its own client
+  // in the shared `thunderbolt` realm with exact-match redirect/origin URIs.
+  const keycloakProvider = new keycloak.Provider(`${name}-keycloak`, {
+    url: shared.keycloakUrl,
+    realm: 'master',
+    clientId: 'admin-cli',
+    username: shared.keycloakAdminUsername,
+    password: shared.keycloakAdminPassword,
+  })
+
+  const oidcClientSecretValue = new random.RandomPassword(`${name}-oidc-client-secret`, {
+    length: 48,
+    special: false,
+  }).result
+
+  const oidcClientIdValue = `thunderbolt-app-${args.stackName}`
+  const apiCallbackUrl = pulumi.interpolate`https://${args.hostnames.api}/v1/api/auth/sso/callback/sso`
+
+  const oidcClient = new keycloak.openid.Client(
+    `${name}-oidc-client`,
+    {
+      realmId: shared.keycloakRealm,
+      clientId: oidcClientIdValue,
+      name: oidcClientIdValue,
+      enabled: true,
+      accessType: 'CONFIDENTIAL',
+      clientSecret: oidcClientSecretValue,
+      standardFlowEnabled: true,
+      directAccessGrantsEnabled: false,
+      validRedirectUris: [apiCallbackUrl],
+      webOrigins: [pulumi.interpolate`https://${args.hostnames.app}`],
+    },
+    { provider: keycloakProvider },
+  )
+
+  // -------- 7. Per-PR secrets --------
   const dbName = dbNameFromStack(args.stackName)
+
+  const oidcClientSecretArn = (() => {
+    const s = new aws.secretsmanager.Secret(`${name}-oidc-client-secret`, {
+      tags: { Name: `${name}-oidc-client-secret` },
+    })
+    new aws.secretsmanager.SecretVersion(`${name}-oidc-client-secret-version`, {
+      secretId: s.id,
+      secretString: oidcClient.clientSecret,
+    })
+    return s.arn
+  })()
 
   const betterAuthSecretArn = (() => {
     const s = new aws.secretsmanager.Secret(`${name}-better-auth-secret`, {
@@ -234,7 +285,7 @@ export const createPerPrStack = (args: PerPrStackArgs): PerPrStackOutputs => {
     secretString: pulumi.interpolate`postgresql://postgres:${shared.postgresPassword}@${shared.postgresHost}:${shared.postgresPort}/postgres`,
   })
 
-  // -------- 7. Per-PR exec role policy: read per-PR secrets + shared secrets --------
+  // -------- 8. Per-PR exec role policy: read per-PR secrets + shared secrets --------
   new aws.iam.RolePolicy(`${name}-exec-secrets-policy`, {
     role: execRole.name,
     policy: pulumi.jsonStringify({
@@ -248,8 +299,8 @@ export const createPerPrStack = (args: PerPrStackArgs): PerPrStackOutputs => {
             betterAuthSecretArn,
             databaseUrlSecret.arn,
             postgresAdminUrlSecret.arn,
+            oidcClientSecretArn,
             // Shared (consumed by per-PR backend at startup)
-            shared.oidcClientSecretArn,
             shared.powersyncJwtSecretArn,
             shared.anthropicApiKeySecretArn,
             shared.fireworksApiKeySecretArn,
@@ -262,7 +313,7 @@ export const createPerPrStack = (args: PerPrStackArgs): PerPrStackOutputs => {
     }),
   })
 
-  // -------- 8. Per-PR ECS services (backend / frontend / marketing) --------
+  // -------- 9. Per-PR ECS services (backend / frontend / marketing) --------
   const beImage = `${imagePrefix}/thunderbolt-backend:${version}`
   const feImage = `${imagePrefix}/thunderbolt-frontend:${version}`
   const mkImage = `${imagePrefix}/thunderbolt-marketing:${version}`
@@ -291,7 +342,7 @@ export const createPerPrStack = (args: PerPrStackArgs): PerPrStackOutputs => {
           { name: 'WAITLIST_ENABLED', value: 'false' },
           { name: 'DATABASE_DRIVER', value: 'postgres' },
           { name: 'OIDC_ISSUER', value: shared.keycloakIssuerUrl },
-          { name: 'OIDC_CLIENT_ID', value: shared.oidcClientId },
+          { name: 'OIDC_CLIENT_ID', value: oidcClient.clientId },
           { name: 'BETTER_AUTH_URL', value: apiUrl },
           { name: 'APP_URL', value: appUrl },
           // TRUSTED_ORIGINS includes the shared auth subdomain (Better Auth's SSO
@@ -312,7 +363,7 @@ export const createPerPrStack = (args: PerPrStackArgs): PerPrStackOutputs => {
         secrets: [
           { name: 'DATABASE_URL', valueFrom: databaseUrlSecret.arn },
           { name: 'POSTGRES_ADMIN_URL', valueFrom: postgresAdminUrlSecret.arn },
-          { name: 'OIDC_CLIENT_SECRET', valueFrom: shared.oidcClientSecretArn },
+          { name: 'OIDC_CLIENT_SECRET', valueFrom: oidcClientSecretArn },
           { name: 'BETTER_AUTH_SECRET', valueFrom: betterAuthSecretArn },
           { name: 'POWERSYNC_JWT_SECRET', valueFrom: shared.powersyncJwtSecretArn },
           { name: 'ANTHROPIC_API_KEY', valueFrom: shared.anthropicApiKeySecretArn },
@@ -396,7 +447,7 @@ export const createPerPrStack = (args: PerPrStackArgs): PerPrStackOutputs => {
     loadBalancers: [{ targetGroupArn: marketingTg.arn, containerName: 'marketing', containerPort: 80 }],
   })
 
-  // -------- 9. Outputs --------
+  // -------- 10. Outputs --------
   // Auth + powersync URLs come from the shared stack so users see consistent
   // hostnames per environment regardless of which PR they came in through.
   const authUrl = shared.keycloakIssuerUrl.apply((u) => u.replace(/\/realms\/.*$/, ''))

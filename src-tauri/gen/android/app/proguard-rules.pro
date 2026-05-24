@@ -19,3 +19,12 @@
 # If you keep the line number information, uncomment this to
 # hide the original source file name.
 #-renamesourcefileattribute SourceFile
+
+# tao calls WryActivity.getId() via JNI from Rust at every activity lifecycle
+# event (onCreate, onSaveInstanceState, onDestroy). R8 strips the
+# Kotlin-generated getter because there are no Java/Kotlin call sites, which
+# crashes release builds with `Err(JavaException)` at tao/.../ndk_glue.rs:393.
+# The shipped wry proguard-wry.pro template misses this rule.
+-keepclassmembers class net.thunderbird.thunderbolt.WryActivity {
+    int getId();
+}

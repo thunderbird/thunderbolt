@@ -5,6 +5,8 @@
 import { relations } from 'drizzle-orm'
 import { pgTable, text, timestamp, boolean, index } from 'drizzle-orm/pg-core'
 
+import type { User as SharedUser } from '@shared/types/auth'
+
 export const user = pgTable('user', {
   id: text('id').primaryKey(),
   name: text('name').notNull(),
@@ -12,6 +14,7 @@ export const user = pgTable('user', {
   emailVerified: boolean('email_verified').default(false).notNull(),
   image: text('image'),
   isNew: boolean('is_new').default(true).notNull(),
+  isAnonymous: boolean('is_anonymous').default(false).notNull(),
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at')
     .defaultNow()
@@ -113,3 +116,14 @@ export const accountRelations = relations(account, ({ one }) => ({
     references: [user.id],
   }),
 }))
+
+/**
+ * Compile-time guard that the Drizzle `user` row type and the shared `User` type
+ * (`shared/types/auth.ts`) stay structurally identical. If a column is added,
+ * removed, or has its type changed without updating both sides, this assignment
+ * fails type-check. Keep both definitions in lockstep.
+ */
+type AssertUserMatchesShared = typeof user.$inferSelect extends SharedUser ? true : never
+type AssertSharedMatchesUser = SharedUser extends typeof user.$inferSelect ? true : never
+const _userTypeDriftCheck: AssertUserMatchesShared & AssertSharedMatchesUser = true
+void _userTypeDriftCheck

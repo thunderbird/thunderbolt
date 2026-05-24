@@ -9,14 +9,25 @@ name: Preview Deploy
 #   auth-pr-{N}.preview.thunderbolt.io          → keycloak OIDC
 #   powersync-pr-{N}.preview.thunderbolt.io     → powersync
 #
-# Fork PRs are explicitly not supported and are silently skipped.
+# Fork PRs are supported via the `pull_request_target` trigger, gated behind
+# the `fork-preview-approval` environment so a maintainer must explicitly
+# approve each run (including each new push). Internal (same-repo) PRs use
+# `pull_request` and auto-deploy with no human gate, same as before.
 #
-# Also supports workflow_dispatch for manual testing from any branch (useful
-# before the workflow file is on main, where pull_request-triggered runs pull
-# the workflow YAML from the base branch).
+# Trust boundary: under `pull_request_target`, the workflow file is read from
+# main (so a fork cannot modify how the deploy behaves) and the default
+# `actions/checkout` in `stack-deploy.yml` picks up main's Pulumi program —
+# meaning fork PRs deploy main's infrastructure code with the fork's built
+# images. The maintainer-approval gate is the human check on what's in those
+# images; nothing on the runner ever executes fork shell scripts with secrets.
+#
+# Also supports workflow_dispatch for manual testing from any branch.
 
 on:
   pull_request:
+    types: [opened, synchronize, reopened]
+    branches: [main]
+  pull_request_target:
     types: [opened, synchronize, reopened]
     branches: [main]
   workflow_dispatch:
@@ -27,7 +38,9 @@ on:
         required: true
 
 concurrency:
-  group: preview-pr-${{ github.event.pull_request.number || inputs.pr_number }}
+  # event_name in the key so the no-op pull_request run for a fork doesn't
+  # cancel the approval-pending pull_request_target run on the same PR.
+  group: preview-pr-${{ github.event.pull_request.number || inputs.pr_number }}-${{ github.event_name }}
   cancel-in-progress: true
 
 permissions:
@@ -42,12 +55,14 @@ jobs:
     outputs:
       pr_number: ${{ steps.r.outputs.pr_number }}
       head_sha: ${{ steps.r.outputs.head_sha }}
-      is_internal: ${{ steps.r.outputs.is_internal }}
+      proceed: ${{ steps.r.outputs.proceed }}
+      is_fork: ${{ steps.r.outputs.is_fork }}
     steps:
-      - name: Resolve PR number + head SHA
+      - name: Resolve PR + route event
         id: r
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          EVENT_NAME: ${{ github.event_name }}
           EVENT_PR_NUMBER: ${{ github.event.pull_request.number }}
           EVENT_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
           EVENT_HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}
@@ -55,33 +70,66 @@ jobs:
           INPUT_PR_NUMBER: ${{ inputs.pr_number }}
         run: |
           set -euo pipefail
-          if [ -n "$EVENT_PR_NUMBER" ]; then
-            PR_NUM="$EVENT_PR_NUMBER"
-            HEAD_SHA="$EVENT_HEAD_SHA"
-            # Fork PR guard (for pull_request events)
-            if [ "$EVENT_HEAD_REPO" != "$EVENT_BASE_REPO" ]; then
-              echo "is_internal=false" >> $GITHUB_OUTPUT
-              echo "Fork PR detected — skipping preview deploy."
-              exit 0
-            fi
-          else
+          # Both pull_request and pull_request_target fire for every PR. We
+          # claim each event for exactly one path so the same PR doesn't try
+          # to deploy twice:
+          #   pull_request         → handle ONLY internal (same-repo) PRs
+          #   pull_request_target  → handle ONLY fork PRs (with approval gate)
+          #   workflow_dispatch    → handle either; forks still hit the gate
+          if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
             PR_NUM="$INPUT_PR_NUMBER"
             HEAD_SHA=$(gh pr view "$PR_NUM" --repo "$EVENT_BASE_REPO" --json headRefOid -q .headRefOid)
             HEAD_REPO=$(gh pr view "$PR_NUM" --repo "$EVENT_BASE_REPO" --json headRepository -q '.headRepository.nameWithOwner')
-            if [ "$HEAD_REPO" != "$EVENT_BASE_REPO" ]; then
-              echo "is_internal=false" >> $GITHUB_OUTPUT
-              echo "PR #$PR_NUM is from a fork ($HEAD_REPO) — skipping."
-              exit 0
-            fi
+          else
+            PR_NUM="$EVENT_PR_NUMBER"
+            HEAD_SHA="$EVENT_HEAD_SHA"
+            HEAD_REPO="$EVENT_HEAD_REPO"
           fi
+
+          IS_FORK=false
+          if [ "$HEAD_REPO" != "$EVENT_BASE_REPO" ]; then
+            IS_FORK=true
+          fi
+
+          if [ "$EVENT_NAME" = "pull_request" ] && [ "$IS_FORK" = "true" ]; then
+            echo "proceed=false" >> $GITHUB_OUTPUT
+            echo "Fork PR — pull_request_target will handle this; exiting."
+            exit 0
+          fi
+          if [ "$EVENT_NAME" = "pull_request_target" ] && [ "$IS_FORK" = "false" ]; then
+            echo "proceed=false" >> $GITHUB_OUTPUT
+            echo "Internal PR — pull_request already handled this; exiting."
+            exit 0
+          fi
+
           echo "pr_number=$PR_NUM" >> $GITHUB_OUTPUT
           echo "head_sha=$HEAD_SHA" >> $GITHUB_OUTPUT
-          echo "is_internal=true" >> $GITHUB_OUTPUT
-          echo "PR #$PR_NUM @ $HEAD_SHA"
+          echo "is_fork=$IS_FORK" >> $GITHUB_OUTPUT
+          echo "proceed=true" >> $GITHUB_OUTPUT
+          echo "PR #$PR_NUM @ $HEAD_SHA (fork=$IS_FORK, event=$EVENT_NAME)"
+
+  approve-fork:
+    # Required-reviewer gate for fork PRs. Configure required reviewers on the
+    # `fork-preview-approval` environment in repo Settings → Environments.
+    # Each new push to a fork PR re-enters this gate (concurrency cancels the
+    # prior pending run), so approval is per-commit, not per-PR.
+    needs: resolve
+    if: needs.resolve.outputs.proceed == 'true' && needs.resolve.outputs.is_fork == 'true'
+    runs-on: ubuntu-latest
+    environment: fork-preview-approval
+    steps:
+      - run: |
+          echo "Fork preview approved for PR #${{ needs.resolve.outputs.pr_number }} @ ${{ needs.resolve.outputs.head_sha }}"
 
   publish:
-    needs: resolve
-    if: needs.resolve.outputs.is_internal == 'true'
+    needs: [resolve, approve-fork]
+    # Runs when resolve told us to proceed AND either:
+    #   - approve-fork ran and succeeded (fork path), OR
+    #   - approve-fork was skipped (internal path; no gate needed)
+    if: |
+      always() &&
+      needs.resolve.outputs.proceed == 'true' &&
+      (needs.approve-fork.result == 'success' || needs.approve-fork.result == 'skipped')
     uses: ./.github/workflows/images-publish.yml
     with:
       tag_override: pr-${{ needs.resolve.outputs.pr_number }}-${{ needs.resolve.outputs.head_sha }}
@@ -90,6 +138,7 @@ jobs:
 
   deploy:
     needs: [resolve, publish]
+    if: always() && needs.publish.result == 'success'
     uses: ./.github/workflows/stack-deploy.yml
     with:
       action: deploy
@@ -113,6 +162,7 @@ jobs:
 
   comment:
     needs: [resolve, deploy]
+    if: always() && needs.deploy.result == 'success'
     runs-on: ubuntu-latest
     steps:
       - name: Sticky PR comment with preview URLs

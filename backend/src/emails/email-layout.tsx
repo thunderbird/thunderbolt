@@ -23,7 +23,7 @@ const emailColors = {
 
 type EmailLayoutProps = {
   preview: string
-  children: React.ReactNode
+  children: import('react').ReactNode
 }
 
 export const EmailLayout = ({ preview, children }: EmailLayoutProps) => {

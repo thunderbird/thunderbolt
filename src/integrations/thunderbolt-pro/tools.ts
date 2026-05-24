@@ -54,27 +54,27 @@ export const createConfigs = (httpClient: HttpClient, sourceCollector?: SourceMe
         const results = await search(params, httpClient)
 
         return results.map((result) => {
-          const existingSource = sourceCollector?.find((s) => s.url === result.url)
+          const existingSource = sourceCollector?.find((s) => s.url === result.pageUrl)
           const sourceIndex = existingSource ? existingSource.index : nextIndex
 
           if (!existingSource && sourceCollector && sourceCollector.length < sourceRegistryCap) {
             sourceCollector.push({
               index: sourceIndex,
-              url: result.url,
-              title: result.title ?? result.url,
-              description: result.summary,
-              image: result.image,
-              favicon: result.favicon,
-              siteName: deriveSiteName(result.url),
-              author: result.author,
-              publishedDate: result.publishedDate,
+              url: result.pageUrl,
+              title: result.title,
+              description: undefined,
+              image: result.previewImageUrl,
+              favicon: result.faviconUrl,
+              siteName: deriveSiteName(result.pageUrl),
+              author: null,
+              publishedDate: null,
               toolName: 'search',
             })
             nextIndex++
           } else if (!existingSource) {
             if (sourceCollector && sourceCollector.length >= sourceRegistryCap) {
               console.warn(
-                `Source registry cap (${sourceRegistryCap}) reached — dropping source [${sourceIndex}]: ${result.url}`,
+                `Source registry cap (${sourceRegistryCap}) reached — dropping source [${sourceIndex}]: ${result.pageUrl}`,
               )
             }
             nextIndex++
@@ -111,7 +111,7 @@ export const createConfigs = (httpClient: HttpClient, sourceCollector?: SourceMe
             url: result.url,
             title: result.title ?? result.url,
             description: result.text?.slice(0, 200),
-            image: preview?.image ?? result.image,
+            image: preview?.previewImageUrl ?? result.image,
             favicon: result.favicon,
             siteName: ogSiteName || deriveSiteName(result.url),
             author: result.author,
@@ -127,8 +127,8 @@ export const createConfigs = (httpClient: HttpClient, sourceCollector?: SourceMe
           if (result.text) {
             existingSource.description = result.text.slice(0, 200)
           }
-          if (preview?.image ?? result.image) {
-            existingSource.image = preview?.image ?? result.image
+          if (preview?.previewImageUrl ?? result.image) {
+            existingSource.image = preview?.previewImageUrl ?? result.image
           }
           if (result.favicon) {
             existingSource.favicon = result.favicon

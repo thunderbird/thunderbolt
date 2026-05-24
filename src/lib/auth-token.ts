@@ -61,3 +61,37 @@ export const getAuthenticatedHeaders = (): Record<string, string> => {
   }
   return headers
 }
+
+/**
+ * Subscribe to auth token changes originating in a different browser tab.
+ *
+ * The `storage` event only fires in tabs OTHER than the one that wrote the value, making
+ * it the correct mechanism for cross-tab coordination.
+ *
+ * @returns Unsubscribe function — call on component unmount.
+ */
+export const onAuthTokenChangedInOtherTab = (
+  listener: (next: string | null, prev: string | null) => void,
+): (() => void) => {
+  const handler = (event: StorageEvent) => {
+    if (event.storageArea !== localStorage || event.key !== authTokenKey) {
+      return
+    }
+
+    const next = event.newValue
+    const prev = event.oldValue
+
+    // Skip same-value writes (no real change).
+    if (next === prev) {
+      return
+    }
+
+    // If the incoming value is empty/falsy but our own token is still present, the event is
+    // legitimate (another tab signed out) — fire the listener once. We do NOT suppress this
+    // case; the listener decides how to react.
+    listener(next, prev)
+  }
+
+  window.addEventListener('storage', handler)
+  return () => window.removeEventListener('storage', handler)
+}

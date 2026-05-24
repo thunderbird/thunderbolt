@@ -22,8 +22,11 @@ export default [
         ...globals.node,
         ...globals.es2022,
         BodyInit: 'readonly',
+        HeadersInit: 'readonly',
         RequestInfo: 'readonly',
         RequestInit: 'readonly',
+        // Bun runtime globals
+        Bun: 'readonly',
       },
     },
     plugins: {

@@ -9,7 +9,7 @@ import { eq } from 'drizzle-orm'
 /** Get a user by ID. Returns null if not found. */
 export const getUserById = async (database: typeof DbType, id: string) =>
   database
-    .select({ id: user.id })
+    .select({ id: user.id, isAnonymous: user.isAnonymous })
     .from(user)
     .where(eq(user.id, id))
     .limit(1)

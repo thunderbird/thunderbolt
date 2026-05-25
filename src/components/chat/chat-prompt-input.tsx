@@ -11,8 +11,13 @@ import { trackEvent as trackEvent_default } from '@/lib/posthog'
 import { type Model } from '@/types'
 import { useChat as useChat_default } from '@ai-sdk/react'
 import { useDraftInput } from '@/hooks/use-draft-input'
-import { forwardRef, useCallback, useImperativeHandle, useRef, useState } from 'react'
+import { forwardRef, useCallback, useImperativeHandle, useMemo, useRef, useState } from 'react'
 import { useNavigate as useNavigate_default } from 'react-router'
+import { renderHighlightedSkillTokens } from '@/skills/highlight-skill-tokens'
+import { SlashPopup } from '@/skills/slash-popup'
+import { useEnabledSkills, useLibrarySkills, useRecentSkills } from '@/skills/use-skills-placeholder'
+import { useSlashCommand } from '@/skills/use-slash-command'
+import { ChatSkillsBar } from './chat-skills-bar'
 import { ContextOverflowModal } from '../context-overflow-modal'
 import { ContextUsageIndicator } from '../context-usage-indicator'
 import { ModeSelector } from '../ui/mode-selector'
@@ -66,6 +71,40 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
     const [input, setInput, clearDraft] = useDraftInput(draftKey, { persist: !isNewChat })
     const formRef = useRef<HTMLFormElement>(null)
     const { triggerSelection } = useHaptics()
+
+    const { skills: library } = useLibrarySkills()
+    const { isEnabled } = useEnabledSkills()
+    const { recent, recordUsed } = useRecentSkills()
+    const skillNames = useMemo(() => new Set(library.map((s) => s.name)), [library])
+    const isValidSkill = useCallback(
+      (token: string) => skillNames.has(token) && isEnabled(token),
+      [skillNames, isEnabled],
+    )
+
+    const textareaRef = useRef<HTMLTextAreaElement | null>(null)
+    const getTextarea = () => {
+      textareaRef.current = formRef.current?.querySelector('textarea') ?? null
+      return textareaRef.current
+    }
+    const slashInputRef = { current: getTextarea() }
+
+    const {
+      setCursorPos,
+      popupSkills,
+      popupOpen,
+      highlightedIdx,
+      setHighlightedIdx,
+      selectSkill: selectSkillFromPopup,
+      handleKeyDown: handleSlashKeyDown,
+    } = useSlashCommand({
+      value: input,
+      setValue: setInput,
+      inputRef: slashInputRef,
+      library,
+      isEnabled,
+      recent,
+      recordUsed,
+    })
 
     const handleModeChange = useCallback(
       (modeId: string) => {
@@ -131,6 +170,36 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
       setInput,
     }))
 
+    const addSkillChip = (name: string) => {
+      const trimmed = input.trim()
+      const onlyHoldsSkill = trimmed.length > 0 && skillNames.has(trimmed)
+      const next = input.length === 0 || onlyHoldsSkill ? `${name} ` : `${input.replace(/\s+$/, '')} ${name} `
+      setInput(next)
+      recordUsed(name)
+      requestAnimationFrame(() => {
+        const ta = getTextarea()
+        ta?.focus()
+        ta?.setSelectionRange(next.length, next.length)
+        setCursorPos(next.length)
+      })
+    }
+
+    const insertInstructionText = (text: string) => {
+      const ta = getTextarea()
+      const start = ta?.selectionStart ?? input.length
+      const end = ta?.selectionEnd ?? input.length
+      const needsSpace = start > 0 && input[start - 1] !== ' '
+      const insert = needsSpace ? ` ${text}` : text
+      const next = input.slice(0, start) + insert + input.slice(end)
+      setInput(next)
+      requestAnimationFrame(() => {
+        const focused = getTextarea()
+        focused?.focus()
+        const pos = start + insert.length
+        focused?.setSelectionRange(pos, pos)
+      })
+    }
+
     const footerStartElements = (
       <div className="flex items-center gap-2">
         {modes.length > 0 && (
@@ -144,21 +213,38 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
 
     return (
       <>
-        <PromptInput
-          ref={formRef}
-          value={input}
-          onChange={(value: string) => setInput(value)}
-          placeholder="Ask me anything..."
-          showSubmitButton
-          onSubmit={handleSubmit}
-          isLoading={isStreaming}
-          isStreaming={isStreaming}
-          onStop={stop}
-          autoFocus={!isMobile}
-          submitOnEnter={!isStreaming && !shouldInsertNewlineOnEnter}
-          className="flex flex-col w-full gap-0 p-2"
-          footerStartElements={footerStartElements}
-        />
+        <div className="flex w-full flex-col gap-3">
+          <ChatSkillsBar onAddToChat={addSkillChip} onAddInstruction={insertInstructionText} />
+
+          <PromptInput
+            ref={formRef}
+            value={input}
+            onChange={(value: string) => setInput(value)}
+            placeholder="Ask me anything..."
+            showSubmitButton
+            onSubmit={handleSubmit}
+            isLoading={isStreaming}
+            isStreaming={isStreaming}
+            onStop={stop}
+            autoFocus={!isMobile}
+            submitOnEnter={!isStreaming && !shouldInsertNewlineOnEnter}
+            className="flex flex-col w-full gap-0 p-3 bg-card border rounded-xl"
+            footerStartElements={footerStartElements}
+            renderOverlay={(value) => renderHighlightedSkillTokens(value, isValidSkill)}
+            popoverSlot={
+              popupOpen ? (
+                <SlashPopup
+                  skills={popupSkills}
+                  highlightedIdx={highlightedIdx}
+                  onSelect={selectSkillFromPopup}
+                  onHover={setHighlightedIdx}
+                />
+              ) : null
+            }
+            onTextareaKeyDown={handleSlashKeyDown}
+            onTextareaSelect={(e) => setCursorPos(e.currentTarget.selectionStart)}
+          />
+        </div>
         <ContextOverflowModal
           isOpen={showOverflowModal}
           onClose={() => setShowOverflowModal(false)}

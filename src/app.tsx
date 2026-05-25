@@ -30,6 +30,8 @@ import IntegrationsPage from '@/settings/integrations'
 import McpServersPage from '@/settings/mcp-servers'
 import ModelsPage from '@/settings/models'
 import PreferencesSettingsPage from '@/settings/preferences'
+import SkillsPage from '@/settings/skills'
+import MarketplacePage from '@/marketplace'
 import TasksPage from '@/tasks'
 import { WaitlistLayout, WaitlistPage } from '@/waitlist'
 import AutomationsPage from './automations'
@@ -163,6 +165,7 @@ const AppRoutes = ({ initData }: { initData: InitData }) => {
             <Route path="devices" element={<DevicesSettingsPage />} />
             <Route path="mcp-servers" element={<McpServersPage />} />
             <Route path="integrations" element={<IntegrationsPage />} />
+            <Route path="skills" element={<SkillsPage />} />
             {import.meta.env.DEV && (
               <Route
                 path="dev-settings"
@@ -173,6 +176,11 @@ const AppRoutes = ({ initData }: { initData: InitData }) => {
                 }
               />
             )}
+          </Route>
+
+          {/* Marketplace route — uses SettingsLayout so the settings sidebar + header chrome wraps it */}
+          <Route element={<SettingsLayout />}>
+            <Route path="marketplace" element={<MarketplacePage />} />
           </Route>
         </Route>
       </Route>

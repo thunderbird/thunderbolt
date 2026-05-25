@@ -60,6 +60,9 @@ beforeAll(async () => {
 
 afterAll(async () => {
   await teardownTestDatabase()
+  // bun's mock.module is process-global; clear the client so later test
+  // files don't inherit our stubbed posthog.
+  resetPosthogClient()
 })
 
 describe('analytics sanitizeUrl', () => {

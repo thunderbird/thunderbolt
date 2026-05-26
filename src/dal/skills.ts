@@ -1,0 +1,203 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+
+import { and, asc, eq, inArray, isNotNull, isNull, ne, sql } from 'drizzle-orm'
+import { v7 as uuidv7 } from 'uuid'
+import type { AnyDrizzleDatabase } from '../db/database-interface'
+import { skillsTable } from '../db/tables'
+import type { DrizzleQueryWithPromise, Skill } from '../types'
+import { nowIso } from '../lib/utils'
+
+/** Maximum pinned skills per user (spec §Scope). */
+export const maxPinnedSkills = 10
+
+/** Returned when a write would create two skills with the same `name`. */
+export class SkillNameTakenError extends Error {
+  constructor(public readonly name: string) {
+    super(`A skill named "${name}" already exists.`)
+    this.name = 'SkillNameTakenError'
+  }
+}
+
+/** Returned when pinning would exceed the {@link maxPinnedSkills} cap. */
+export class PinLimitExceededError extends Error {
+  constructor() {
+    super(`Pinned skill limit reached (${maxPinnedSkills}). Unpin one to add another.`)
+    this.name = 'PinLimitExceededError'
+  }
+}
+
+/**
+ * Drizzle query for all non-deleted skills, ordered by name.
+ * Use with PowerSync's `toCompilableQuery` or `await` for a one-shot read.
+ */
+export const getAllSkills = (db: AnyDrizzleDatabase) => {
+  const query = db.select().from(skillsTable).where(isNull(skillsTable.deletedAt)).orderBy(asc(skillsTable.name))
+
+  return query as typeof query & DrizzleQueryWithPromise<Skill>
+}
+
+/** Drizzle query for pinned skills (non-null `pinned_order`), ordered by `pinned_order`. */
+export const getPinnedSkills = (db: AnyDrizzleDatabase) => {
+  const query = db
+    .select()
+    .from(skillsTable)
+    .where(and(isNull(skillsTable.deletedAt), isNotNull(skillsTable.pinnedOrder)))
+    .orderBy(asc(skillsTable.pinnedOrder))
+
+  return query as typeof query & DrizzleQueryWithPromise<Skill>
+}
+
+export const getSkill = async (db: AnyDrizzleDatabase, id: string): Promise<Skill | null> => {
+  const row = await db
+    .select()
+    .from(skillsTable)
+    .where(and(eq(skillsTable.id, id), isNull(skillsTable.deletedAt)))
+    .get()
+  return (row ?? null) as Skill | null
+}
+
+export const getSkillByName = async (db: AnyDrizzleDatabase, name: string): Promise<Skill | null> => {
+  const row = await db
+    .select()
+    .from(skillsTable)
+    .where(and(eq(skillsTable.name, name), isNull(skillsTable.deletedAt)))
+    .get()
+  return (row ?? null) as Skill | null
+}
+
+const assertNameAvailable = async (db: AnyDrizzleDatabase, name: string, excludeId?: string) => {
+  // Soft-deleted rows have `name = NULL` after `softDeleteSkill`, so
+  // `name = ?` already excludes tombstones — no extra deleted_at filter needed.
+  const existing = await db
+    .select({ id: skillsTable.id })
+    .from(skillsTable)
+    .where(excludeId ? and(eq(skillsTable.name, name), ne(skillsTable.id, excludeId)) : eq(skillsTable.name, name))
+    .get()
+  if (existing) {
+    throw new SkillNameTakenError(name)
+  }
+}
+
+const countPinned = async (db: AnyDrizzleDatabase, excludeId?: string): Promise<number> => {
+  const rows = await db
+    .select({ id: skillsTable.id })
+    .from(skillsTable)
+    .where(
+      excludeId
+        ? and(isNull(skillsTable.deletedAt), isNotNull(skillsTable.pinnedOrder), ne(skillsTable.id, excludeId))
+        : and(isNull(skillsTable.deletedAt), isNotNull(skillsTable.pinnedOrder)),
+    )
+  return rows.length
+}
+
+export type CreateSkillInput = {
+  name: string
+  description: string
+  instruction: string
+}
+
+/** Insert a new skill. Throws {@link SkillNameTakenError} if `name` already exists. */
+export const createSkill = async (db: AnyDrizzleDatabase, input: CreateSkillInput): Promise<Skill> => {
+  await assertNameAvailable(db, input.name)
+  const row: Skill = {
+    id: uuidv7(),
+    name: input.name,
+    description: input.description,
+    instruction: input.instruction,
+    enabled: 1,
+    pinnedOrder: null,
+    deletedAt: null,
+    defaultHash: null,
+    userId: null,
+  }
+  await db.insert(skillsTable).values(row)
+  return row
+}
+
+export type UpdateSkillInput = Partial<Pick<Skill, 'name' | 'description' | 'instruction'>>
+
+/** Patch an existing skill. Throws {@link SkillNameTakenError} if `name` collides with another skill. */
+export const updateSkill = async (db: AnyDrizzleDatabase, id: string, patch: UpdateSkillInput): Promise<void> => {
+  if (patch.name !== undefined) {
+    await assertNameAvailable(db, patch.name, id)
+  }
+  await db.update(skillsTable).set(patch).where(eq(skillsTable.id, id))
+}
+
+/**
+ * Soft-delete a skill: set `deleted_at` and wipe user content (`name`, `description`, `instruction`).
+ * The tombstone (`id`, `user_id`, `deleted_at`) remains so PowerSync propagates the delete to other devices.
+ */
+export const softDeleteSkill = async (db: AnyDrizzleDatabase, id: string): Promise<void> => {
+  await db
+    .update(skillsTable)
+    .set({
+      name: null,
+      description: null,
+      instruction: null,
+      pinnedOrder: null,
+      deletedAt: nowIso(),
+    })
+    .where(and(eq(skillsTable.id, id), isNull(skillsTable.deletedAt)))
+}
+
+/**
+ * Pin or unpin a skill. Pass `null` to unpin. Pass a number to set the pin position.
+ * Throws {@link PinLimitExceededError} if pinning would exceed {@link maxPinnedSkills}.
+ */
+export const setPinned = async (db: AnyDrizzleDatabase, id: string, order: number | null): Promise<void> => {
+  if (order !== null) {
+    const pinned = await countPinned(db, id)
+    if (pinned >= maxPinnedSkills) {
+      throw new PinLimitExceededError()
+    }
+  }
+  await db.update(skillsTable).set({ pinnedOrder: order }).where(eq(skillsTable.id, id))
+}
+
+export const setEnabled = async (db: AnyDrizzleDatabase, id: string, next: boolean): Promise<void> => {
+  await db
+    .update(skillsTable)
+    .set({ enabled: next ? 1 : 0 })
+    .where(eq(skillsTable.id, id))
+}
+
+/**
+ * Rewrite the `pinned_order` of the supplied ids in a single transaction (index = position).
+ * Ids not in the list keep their existing order. Bounded by the 10-pin cap.
+ */
+export const reorderPins = async (db: AnyDrizzleDatabase, ids: string[]): Promise<void> => {
+  if (ids.length === 0) {
+    return
+  }
+  if (ids.length > maxPinnedSkills) {
+    throw new PinLimitExceededError()
+  }
+  await db.transaction(async (tx) => {
+    // Two-phase update to avoid hitting the (id, pinned_order) collision space
+    // mid-rewrite: stage everything to negative ordinals first, then settle.
+    for (let i = 0; i < ids.length; i++) {
+      await tx
+        .update(skillsTable)
+        .set({ pinnedOrder: sql`${-1 - i}` })
+        .where(eq(skillsTable.id, ids[i]!))
+    }
+    for (let i = 0; i < ids.length; i++) {
+      await tx.update(skillsTable).set({ pinnedOrder: i }).where(eq(skillsTable.id, ids[i]!))
+    }
+  })
+}
+
+/** Bulk lookup by id, excluding soft-deleted rows. */
+export const getSkillsByIds = async (db: AnyDrizzleDatabase, ids: string[]): Promise<Skill[]> => {
+  if (ids.length === 0) {
+    return []
+  }
+  const rows = await db
+    .select()
+    .from(skillsTable)
+    .where(and(inArray(skillsTable.id, ids), isNull(skillsTable.deletedAt)))
+  return rows as Skill[]
+}

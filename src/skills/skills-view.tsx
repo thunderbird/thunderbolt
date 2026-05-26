@@ -205,7 +205,7 @@ export const SkillsView = () => {
   // but it's the "I deleted everything" path. Stays inside the master/detail
   // layout so the list (and its + button) keep their normal position.
   const emptyPanel = (
-    <section className="flex h-full flex-1 flex-col items-center justify-center gap-3 border-l border-border/50 bg-background px-6 text-center text-foreground">
+    <section className="flex h-full flex-1 flex-col items-center justify-center gap-3 bg-background px-6 text-center text-foreground">
       <h2 className="text-xl">No skill selected</h2>
       <p className="max-w-md text-sm text-muted-foreground">
         Skills are reusable instruction templates you can summon with a slash command.

@@ -3,25 +3,21 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { AnimatePresence, m } from 'framer-motion'
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useReducer } from 'react'
 
 import { PinLimitExceededError, SkillNameInvalidError, SkillNameTakenError } from '@/dal'
 import { useIsMobile } from '@/hooks/use-mobile'
-import type { Skill } from '@/types'
 import { DeleteSkillDialog } from './delete-skill-dialog'
-import { DependentsDialog, type DependentsAction } from './dependents-dialog'
+import { DependentsDialog } from './dependents-dialog'
 import { DiscardCreateDialog } from './discard-create-dialog'
 import { findDependents } from './find-dependents'
 import { SkillDetail } from './skill-detail'
 import { SkillForm, type SkillFormValues } from './skill-form'
+import { initialSkillsViewState, skillsViewReducer } from './skills-view-state'
 import { SkillsList } from './skills-list'
 import { useEnabledSkills, useLibrarySkills, usePinnedSkills } from './use-skills'
 
 const pinErrorDismissMs = 4000
-
-type Mode = 'detail' | 'create' | 'edit'
-
-type PendingLeave = { type: 'cancel' } | { type: 'select'; id: string } | null
 
 export const SkillsView = () => {
   const { isMobile } = useIsMobile()
@@ -30,28 +26,26 @@ export const SkillsView = () => {
   const { isEnabled, setEnabled } = useEnabledSkills()
   const isPinned = useCallback((id: string) => pinnedSet.has(id), [pinnedSet])
 
-  // Mobile uses a master/detail stack — list at the base, panel slides in.
-  // Desktop ignores `mobileView` and always renders both side-by-side.
-  const [mobileView, setMobileView] = useState<'list' | 'panel'>('list')
-  const [mode, setMode] = useState<Mode>('detail')
-  const [activeId, setActiveId] = useState<string | null>(null)
-  const [isDirty, setIsDirty] = useState(false)
-  const [resetSignal, setResetSignal] = useState(0)
-  const [pendingLeave, setPendingLeave] = useState<PendingLeave>(null)
-  const [pendingDelete, setPendingDelete] = useState<Skill | null>(null)
-  const [pendingDependents, setPendingDependents] = useState<{
-    action: DependentsAction
-    skill: Skill
-    dependents: Skill[]
-  } | null>(null)
-  const [nameError, setNameError] = useState<string | null>(null)
-  const [pinError, setPinError] = useState<string | null>(null)
+  const [state, dispatch] = useReducer(skillsViewReducer, initialSkillsViewState)
+  const {
+    mode,
+    activeId,
+    mobileView,
+    isDirty,
+    resetSignal,
+    pendingLeave,
+    pendingDelete,
+    pendingDependents,
+    nameError,
+    pinError,
+  } = state
 
+  // Auto-dismiss the pin-cap error after a short delay.
   useEffect(() => {
     if (!pinError) {
       return
     }
-    const id = setTimeout(() => setPinError(null), pinErrorDismissMs)
+    const id = setTimeout(() => dispatch({ type: 'CLEAR_PIN_ERROR' }), pinErrorDismissMs)
     return () => clearTimeout(id)
   }, [pinError])
 
@@ -59,10 +53,9 @@ export const SkillsView = () => {
     async (id: string) => {
       try {
         await togglePin(id)
-        setPinError(null)
       } catch (error) {
         if (error instanceof PinLimitExceededError) {
-          setPinError(error.message)
+          dispatch({ type: 'SET_PIN_ERROR', message: error.message })
           return
         }
         throw error
@@ -80,10 +73,10 @@ export const SkillsView = () => {
   const handleToggleEnabled = useCallback(
     async (id: string, next: boolean) => {
       if (!next) {
-        const skill = skills.find((s) => s.id === id)
-        const dependents = skill ? findDependents(skill.name ?? '', skills) : []
-        if (skill && dependents.length > 0) {
-          setPendingDependents({ action: 'disable', skill, dependents })
+        const target = skills.find((s) => s.id === id)
+        const dependents = target ? findDependents(target.name ?? '', skills) : []
+        if (target && dependents.length > 0) {
+          dispatch({ type: 'OPEN_DEPENDENTS', payload: { action: 'disable', skill: target, dependents } })
           return
         }
       }
@@ -99,35 +92,20 @@ export const SkillsView = () => {
     [setEnabled, pinnedSet, togglePin, skills],
   )
 
-  const performLeave = (action: { type: 'cancel' } | { type: 'select'; id: string }) => {
-    if (action.type === 'select') {
-      setActiveId(action.id)
-    }
-    setMode('detail')
-    setResetSignal((n) => n + 1)
-    setIsDirty(false)
-    setNameError(null)
-    // On mobile a `cancel` from the form should drop the user back to the
-    // list. Driving this from `performLeave` (not the form's onCancel) ensures
-    // the panel stays visible while the discard-confirmation dialog is open —
-    // if the user picks "Keep editing" the form remains accessible.
-    if (isMobile && action.type === 'cancel') {
-      setMobileView('list')
-    }
-  }
-
-  const requestLeave = (action: { type: 'cancel' } | { type: 'select'; id: string }) => {
-    if ((mode === 'create' || mode === 'edit') && isDirty) {
-      setPendingLeave(action)
-    } else {
-      performLeave(action)
-    }
-  }
+  const requestLeave = useCallback(
+    (leave: { type: 'cancel' } | { type: 'select'; id: string }) => {
+      if ((mode === 'create' || mode === 'edit') && isDirty) {
+        dispatch({ type: 'REQUEST_LEAVE', leave })
+      } else {
+        dispatch({ type: 'PERFORM_LEAVE', leave, isMobile })
+      }
+    },
+    [mode, isDirty, isMobile],
+  )
 
   const onSelectSkill = (id: string) => {
     if (mode === 'detail') {
-      setActiveId(id)
-      setMobileView('panel')
+      dispatch({ type: 'SELECT_SKILL', id })
     } else {
       requestLeave({ type: 'select', id })
     }
@@ -135,16 +113,12 @@ export const SkillsView = () => {
 
   const onConfirmDiscard = () => {
     if (pendingLeave) {
-      performLeave(pendingLeave)
-      setPendingLeave(null)
+      dispatch({ type: 'PERFORM_LEAVE', leave: pendingLeave, isMobile })
     }
   }
 
   const onEdit = (id: string) => {
-    setActiveId(id)
-    setMode('edit')
-    setNameError(null)
-    setMobileView('panel')
+    dispatch({ type: 'START_EDIT', id })
   }
 
   const onDelete = (id: string) => {
@@ -152,14 +126,11 @@ export const SkillsView = () => {
     if (!target) {
       return
     }
-    setActiveId(id)
     const dependents = findDependents(target.name ?? '', skills)
     if (dependents.length > 0) {
-      setPendingDependents({ action: 'delete', skill: target, dependents })
+      dispatch({ type: 'OPEN_DEPENDENTS', payload: { action: 'delete', skill: target, dependents } })
     } else {
-      // Snapshot the target skill so a concurrent sync that mutates `skills`
-      // between open and confirm can't redirect the delete to a different row.
-      setPendingDelete(target)
+      dispatch({ type: 'OPEN_DELETE', skill: target })
     }
   }
 
@@ -178,7 +149,7 @@ export const SkillsView = () => {
       return
     }
     const { action, skill } = pendingDependents
-    setPendingDependents(null)
+    dispatch({ type: 'CLOSE_DEPENDENTS' })
     if (action === 'disable') {
       await setEnabled(skill.id, false)
       if (pinnedSet.has(skill.id)) {
@@ -190,33 +161,21 @@ export const SkillsView = () => {
   }
 
   const onJumpToDependent = (id: string) => {
-    setActiveId(id)
-    setMode('edit')
-    setPendingDependents(null)
-    // On mobile the dependents dialog can be triggered while `mobileView` is
-    // still 'list' (when launched from a list-row action), so dismiss the
-    // dialog and slide the panel in or the edit form has no surface to render.
-    if (isMobile) {
-      setMobileView('panel')
-    }
+    dispatch({ type: 'JUMP_TO_DEPENDENT', id, isMobile })
   }
 
   const handleSubmit = async (values: SkillFormValues) => {
     try {
       if (mode === 'create') {
         const created = await createSkill(values)
-        setActiveId(created.id)
+        dispatch({ type: 'SUBMIT_SUCCESS', activeId: created.id })
       } else if (active) {
         await updateSkill({ id: active.id, patch: values })
-        setActiveId(active.id)
+        dispatch({ type: 'SUBMIT_SUCCESS', activeId: active.id })
       }
-      setMode('detail')
-      setIsDirty(false)
-      setResetSignal((n) => n + 1)
-      setNameError(null)
     } catch (error) {
       if (error instanceof SkillNameTakenError || error instanceof SkillNameInvalidError) {
-        setNameError(error.message)
+        dispatch({ type: 'SET_NAME_ERROR', message: error.message })
         return
       }
       throw error
@@ -242,7 +201,7 @@ export const SkillsView = () => {
       mode="create"
       onCancel={() => requestLeave({ type: 'cancel' })}
       onSubmit={handleSubmit}
-      onDirtyChange={setIsDirty}
+      onDirtyChange={(dirty) => dispatch({ type: 'SET_DIRTY', dirty })}
       resetSignal={resetSignal}
       nameError={nameError}
     />
@@ -265,7 +224,7 @@ export const SkillsView = () => {
         onToggleEnabled={(next) => handleToggleEnabled(active.id, next)}
         onEdit={() => onEdit(active.id)}
         onDelete={() => onDelete(active.id)}
-        onBack={isMobile ? () => setMobileView('list') : undefined}
+        onBack={isMobile ? () => dispatch({ type: 'BACK_TO_LIST' }) : undefined}
       />
     ) : (
       <SkillForm
@@ -278,7 +237,7 @@ export const SkillsView = () => {
         }}
         onCancel={() => requestLeave({ type: 'cancel' })}
         onSubmit={handleSubmit}
-        onDirtyChange={setIsDirty}
+        onDirtyChange={(dirty) => dispatch({ type: 'SET_DIRTY', dirty })}
         resetSignal={resetSignal}
         nameError={nameError}
       />
@@ -299,9 +258,7 @@ export const SkillsView = () => {
           if ((mode === 'create' || mode === 'edit') && isDirty) {
             return
           }
-          setMode('create')
-          setNameError(null)
-          setMobileView('panel')
+          dispatch({ type: 'START_CREATE' })
         }}
         onSelectSkill={onSelectSkill}
         onEdit={onEdit}
@@ -329,7 +286,7 @@ export const SkillsView = () => {
           open
           onOpenChange={(open) => {
             if (!open) {
-              setPendingDependents(null)
+              dispatch({ type: 'CLOSE_DEPENDENTS' })
             }
           }}
           action={pendingDependents.action}
@@ -344,12 +301,12 @@ export const SkillsView = () => {
           open
           onOpenChange={(open) => {
             if (!open) {
-              setPendingDelete(null)
+              dispatch({ type: 'CLOSE_DELETE' })
             }
           }}
           onConfirm={() => {
             void removeSkill(pendingDelete.id)
-            setPendingDelete(null)
+            dispatch({ type: 'CLOSE_DELETE' })
           }}
           skillName={pendingDelete.name ?? ''}
         />
@@ -358,7 +315,7 @@ export const SkillsView = () => {
         open={pendingLeave !== null}
         onOpenChange={(open) => {
           if (!open) {
-            setPendingLeave(null)
+            dispatch({ type: 'CANCEL_DISCARD' })
           }
         }}
         onConfirm={onConfirmDiscard}

@@ -128,6 +128,7 @@ export {
   SkillNameInvalidError,
   SkillNameTakenError,
   softDeleteSkill,
+  stripLegacyNameSlashes,
   updateSkill,
   validateSkillName,
   type CreateSkillInput,

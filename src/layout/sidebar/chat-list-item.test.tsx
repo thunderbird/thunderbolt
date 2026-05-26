@@ -4,50 +4,18 @@
 
 import { fireEvent, render, screen } from '@testing-library/react'
 import { describe, expect, it, mock } from 'bun:test'
-import { createElement, type ReactNode } from 'react'
+import { type ReactNode } from 'react'
 import { ChatListItem } from './chat-list-item'
 import type { ChatListItemProps } from './types'
 import { SidebarProvider } from '@/components/ui/sidebar'
 import { TooltipProvider } from '@/components/ui/tooltip'
+// Import for side effect: registers the framer-motion `mock.module` covering
+// every symbol concurrent test files (e.g. skills-view) might also reference.
+import '@/test-utils/framer-motion-mock'
 
 // Mock useChat
 mock.module('@ai-sdk/react', () => ({
   useChat: () => ({ status: 'ready' }),
-}))
-
-// Mock framer-motion. Bun's `mock.module` is process-global and persists across
-// test files in the same run, so this mock must export every framer-motion
-// symbol any concurrent test might reference — otherwise their components
-// crash with "Element type is invalid" when an undefined re-export (e.g.
-// `<m.ul>`, `<LayoutGroup>`, `<LazyMotion>`) is rendered. The cache below
-// keeps per-tag components stable across accesses so React doesn't unmount and
-// remount on every render (which triggered "Maximum update depth exceeded" in
-// downstream tests).
-const motionTagCache = new Map<string, (props: Record<string, unknown>) => ReactNode>()
-const createMotionTag = (tag: string) => {
-  const cached = motionTagCache.get(tag)
-  if (cached) {
-    return cached
-  }
-  const Component = ({ children, ...props }: Record<string, unknown>) =>
-    createElement(tag, props, children as ReactNode)
-  motionTagCache.set(tag, Component)
-  return Component
-}
-const motionTagProxy = new Proxy(
-  {},
-  {
-    get: (_, tag: string) => createMotionTag(tag),
-  },
-)
-mock.module('framer-motion', () => ({
-  AnimatePresence: ({ children }: { children: ReactNode }) => children,
-  LayoutGroup: ({ children }: { children: ReactNode }) => children,
-  LazyMotion: ({ children }: { children: ReactNode }) => children,
-  domAnimation: {},
-  domMax: {},
-  m: motionTagProxy,
-  motion: motionTagProxy,
 }))
 
 // Mock Radix dropdown to render inline (avoids portal issues in tests)

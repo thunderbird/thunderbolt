@@ -21,11 +21,13 @@ import { useQuery } from '@powersync/tanstack-react-query'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { useMemo } from 'react'
 
-// PowerSync's `useQuery` *should* re-run when the underlying SQLite table
-// changes, but in practice we've seen the cache not invalidate immediately
-// after a write — the new row only shows up after a manual reload. Explicit
-// invalidation via React Query keeps the UI in sync without waiting for the
-// PowerSync table-change signal.
+// `@powersync/tanstack-react-query` auto-invalidates this query whenever the
+// `skills` table fires a `tablesUpdated` event (Drizzle writes through
+// PowerSync's `writeLock`, which routes through SQLite's commit hook). That
+// path *does* fire — but PowerSync wraps the listener in a 30ms
+// `throttleTrailing` (`DEFAULT_WATCH_THROTTLE_MS` in `@powersync/common`),
+// so the row a mutation just wrote can miss the very next render. Explicit
+// invalidation on mutation success cuts that to zero latency.
 const skillsQueryKey = ['skills']
 
 /**

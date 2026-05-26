@@ -12,6 +12,10 @@ import { MemoryRouter } from 'react-router'
 
 import { SidebarProvider } from '@/components/ui/sidebar'
 import { createSkill, getSkill, getSkillByName, setSkillPinned } from '@/dal'
+// Import for side effect: registers the framer-motion `mock.module` so the
+// `m.li layoutId` rows from `library-row.tsx` render to plain `<li>` and the
+// `LazyMotion` wrapper below is the no-op passthrough.
+import '@/test-utils/framer-motion-mock'
 import { resetTestDatabase, setupTestDatabase, teardownTestDatabase } from '@/dal/test-utils'
 import { getDb } from '@/db/database'
 import { skillsTable } from '@/db/tables'

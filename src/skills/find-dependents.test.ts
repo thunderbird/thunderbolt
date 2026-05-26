@@ -77,6 +77,21 @@ describe('findDependents', () => {
     ])
   })
 
+  it('matches when the slash token is followed by punctuation', () => {
+    // Real instructions often punctuate references: "run /task-triage, then..."
+    // or "see /meeting-notes." — these still reference the target and the
+    // dependents dialog should surface them.
+    const target = 'task-triage'
+    const comma = skill({ id: 'a', name: 'a', instruction: 'run /task-triage, then continue' })
+    const period = skill({ id: 'b', name: 'b', instruction: 'See /task-triage.' })
+    const paren = skill({ id: 'c', name: 'c', instruction: 'first (/task-triage) before next' })
+    expect(findDependents(target, [skill({ id: 't', name: target }), comma, period, paren])).toEqual([
+      comma,
+      period,
+      paren,
+    ])
+  })
+
   it('does not match a longer slug with the target as a prefix', () => {
     const target = 'foo'
     // `/foo-bar` is a different skill — must not be flagged as a dependent of `/foo`.

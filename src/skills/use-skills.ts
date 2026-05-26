@@ -29,17 +29,28 @@ import { useMemo } from 'react'
 const skillsQueryKey = ['skills']
 
 /**
+ * Read-only subscription to all non-deleted skills. Shared by
+ * {@link useLibrarySkills} and {@link useEnabledSkills} so co-located callers
+ * don't register duplicate `useMutation`s for create/update/remove they won't
+ * use — React Query already deduplicates the underlying query by key.
+ */
+const useSkillsQuery = () => {
+  const db = useDatabase()
+  const { data: skills = [], isLoading } = useQuery({
+    queryKey: skillsQueryKey,
+    query: toCompilableQuery(getAllSkills(db)),
+  })
+  return { skills: skills as Skill[], isLoading }
+}
+
+/**
  * Library of non-deleted skills + mutations to create / update / soft-delete.
  */
 export const useLibrarySkills = () => {
   const db = useDatabase()
   const queryClient = useQueryClient()
   const invalidate = () => queryClient.invalidateQueries({ queryKey: skillsQueryKey })
-
-  const { data: skills = [], isLoading } = useQuery({
-    queryKey: skillsQueryKey,
-    query: toCompilableQuery(getAllSkills(db)),
-  })
+  const { skills, isLoading } = useSkillsQuery()
 
   const create = useMutation({
     mutationFn: (input: CreateSkillInput) => createSkill(db, input),
@@ -55,7 +66,7 @@ export const useLibrarySkills = () => {
   })
 
   return {
-    skills: skills as Skill[],
+    skills,
     isLoading,
     createSkill: create.mutateAsync,
     updateSkill: update.mutateAsync,
@@ -112,14 +123,15 @@ export const usePinnedSkills = () => {
 }
 
 /**
- * Enabled-state lookup + toggle. Reads from the same library query so it
- * stays in lockstep with {@link useLibrarySkills}; no separate fetch.
+ * Enabled-state lookup + toggle. Subscribes to the shared library query (not
+ * `useLibrarySkills`) so co-located callers don't register the create/update/
+ * remove mutations they won't use.
  */
 export const useEnabledSkills = () => {
   const db = useDatabase()
   const queryClient = useQueryClient()
   const invalidate = () => queryClient.invalidateQueries({ queryKey: skillsQueryKey })
-  const { skills } = useLibrarySkills()
+  const { skills } = useSkillsQuery()
 
   const enabledById = useMemo(() => {
     const map = new Map<string, boolean>()

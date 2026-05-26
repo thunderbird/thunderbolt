@@ -55,7 +55,7 @@ export const SkillDetail = ({
   }
 
   return (
-    <section className="flex h-full flex-1 flex-col gap-4 overflow-hidden border-l border-border/50 bg-background px-4 py-4 md:px-5 text-foreground">
+    <section className="flex h-full flex-1 flex-col gap-4 overflow-hidden border-l border-border/50 bg-background px-4 pb-4 md:px-5 text-foreground">
       <header className="flex flex-col gap-5 md:gap-2.5">
         <div className="relative flex items-center justify-between gap-4">
           <div className="flex items-center gap-2">

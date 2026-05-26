@@ -59,7 +59,7 @@ export const SkillsList = ({
   }, [skills, search, isEnabled, isPinned])
 
   return (
-    <section className="flex h-full w-full flex-col gap-3 border-r border-border/50 bg-background px-4 py-4 md:px-5 text-foreground md:w-[378px] md:shrink-0">
+    <section className="flex h-full w-full flex-col gap-3 border-r border-border/50 bg-background px-4 pb-4 md:px-5 text-foreground md:w-[378px] md:shrink-0">
       <header className="relative flex items-center justify-between gap-2">
         <div className="flex items-center gap-2">
           {isMobile && (

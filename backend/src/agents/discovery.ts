@@ -7,7 +7,7 @@ import type { RemoteAgentDescriptor } from '@shared/acp-types'
 
 /**
  * An agent provider contributes one or more {@link RemoteAgentDescriptor} entries
- * to the `GET /agents` response. M4 (Haystack) calls {@link registerAgentProvider}
+ * to the `GET /agents` response. The Haystack module calls {@link registerAgentProvider}
  * at startup with its provider; future managed agents follow the same shape.
  */
 export type AgentProvider = {
@@ -20,7 +20,7 @@ export type AgentProvider = {
 }
 
 /**
- * Module-level registry. Side-effectful by design: M4's `createHaystackRoutes()`
+ * Module-level registry. Side-effectful by design: `createHaystackRoutes()`
  * calls {@link registerAgentProvider} as part of its construction, and the
  * discovery route reads back via {@link getRegisteredProviders}. Idempotent on
  * `id` so HMR / repeated test setup doesn't double-register.

@@ -24,7 +24,7 @@ const wsCloseUnauthorized = 4001
 /**
  * Mount the Haystack ACP adapter routes.
  *
- *  - Registers the Haystack provider into M3's agent discovery registry on
+ *  - Registers the Haystack provider into the agent discovery registry on
  *    construction (idempotent — `registerAgentProvider` dedupes on `id`, so
  *    HMR / repeated test setup is safe).
  *  - Exposes `WS /v1/haystack/ws?pipeline={pipelineId}` for the ACP wire.

@@ -4,7 +4,7 @@
 
 /**
  * HTTP+SSE transport for ACP. Connected mode routes JSON-RPC requests through
- * the Universal Proxy via `getProxyFetch()`. Standalone Tauri uses M5's Rust
+ * the Universal Proxy via `getProxyFetch()`. Standalone Tauri uses the Rust
  * command (`src/lib/tauri-acp-http.ts`) so the request hits the upstream
  * directly via `reqwest` — the SSE response is streamed back over a
  * `tauri::ipc::Channel`.

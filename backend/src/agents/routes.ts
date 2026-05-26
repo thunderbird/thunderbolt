@@ -20,8 +20,8 @@ import type { AgentsErrorResponse } from './types'
  *   never see system agents; the FE falls back to the built-in only)
  * - Authenticated regular user → `AgentDiscoveryResponse`
  *
- * The agent list is built from {@link getRegisteredProviders}; M4 registers the
- * Haystack provider into the same registry. `ENABLED_AGENTS` (comma-separated)
+ * The agent list is built from {@link getRegisteredProviders}; the Haystack
+ * module registers its provider into the same registry. `ENABLED_AGENTS` (comma-separated)
  * narrows the result. `ALLOW_CUSTOM_AGENTS` is echoed back so the UI can hide
  * "+ Add Custom Agent" per deployment.
  *

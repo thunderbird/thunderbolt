@@ -105,7 +105,7 @@ const settingsSchema = z
     enabledAgents: z.string().default(''),
     // When false, the discovery response sets allowCustomAgents: false and the UI hides "+ Add Custom Agent".
     allowCustomAgents: z.boolean().default(true),
-    // Haystack-specific config (consumed by M4's provider, defined here for centralized config).
+    // Haystack-specific config (consumed by the Haystack provider, defined here for centralized config).
     haystackBaseUrl: z.string().default(''),
     haystackApiKey: z.string().default(''),
     // JSON array of pipeline descriptors: [{id, name, pipelineId, description?}]

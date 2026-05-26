@@ -8,7 +8,7 @@
  * port and connects with Bun's WebSocket (which supports the `headers` option
  * required for bearer-auth ws upgrades).
  *
- * Per the M4 spec:
+ * Auth contract:
  *  - Unauthenticated → close 4001.
  *  - Invalid ticket (no session, query-only) → close 4001.
  *  - Anonymous user → close 4001.

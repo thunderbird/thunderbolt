@@ -5,9 +5,9 @@
 /**
  * Public surface for the ACP client library.
  *
- * Consumers (currently `src/chats/chat-instance.ts` via M7) should only
- * import from this entry point. Internal modules (transports, translator) are
- * not re-exported — they're implementation details that may move.
+ * Consumers (currently `src/chats/chat-instance.ts`) should only import from
+ * this entry point. Internal modules (transports, translator) are not
+ * re-exported — they're implementation details that may move.
  */
 
 export { connectToAgent, type ConnectToAgentContext, type ConnectToAgentDeps } from './connect'

@@ -3,7 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 /**
- * Route-level tests for `GET /agents` (M3). Following backend/docs/testing.md:
+ * Route-level tests for `GET /agents`. Following backend/docs/testing.md:
  * - DI for the `Auth` mock (no module mocks).
  * - Env-var manipulation around `clearSettingsCache()` for the env-driven branches.
  * - Each test resets the provider registry via `resetAgentProvidersForTesting()` so

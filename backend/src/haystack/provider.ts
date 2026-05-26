@@ -10,9 +10,9 @@ import type { RemoteAgentDescriptor } from '@shared/acp-types'
 import { haystackPipelinesEnvSchema } from './types'
 
 /**
- * Provider id registered into M3's agent discovery registry. The string is
- * stable: M3 dedupes on it, so re-importing this module never double-registers
- * the provider.
+ * Provider id registered into the agent discovery registry. The string is
+ * stable: the registry dedupes on it, so re-importing this module never
+ * double-registers the provider.
  */
 export const haystackProviderId = 'haystack'
 
@@ -53,8 +53,8 @@ export const createHaystackProvider = (): AgentProvider => ({
  * array of {@link haystackPipelinesEnvSchema} entries. Empty / missing values
  * return `[]`. A malformed value also returns `[]` but is logged at WARN —
  * silent dropping would hide a deployment-side typo, but throwing would
- * cascade into a `GET /agents` 500 for unrelated providers (M3 catches the
- * throw, but the operator wouldn't get a structured signal).
+ * cascade into a `GET /agents` 500 for unrelated providers (the discovery
+ * route catches the throw, but the operator wouldn't get a structured signal).
  */
 export const parsePipelinesEnv = (settings: Settings) => {
   const raw = settings.haystackPipelines.trim()

@@ -3,7 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 /**
- * Public entry point for the chat layer (M7). Given an `Agent` row + per-call
+ * Public entry point for the chat layer. Given an `Agent` row + per-call
  * context, return an `AgentAdapter` whose `fetch(init, ctx)` produces a
  * streaming `Response` shaped for the AI SDK.
  *

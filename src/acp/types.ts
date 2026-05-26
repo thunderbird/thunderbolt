@@ -22,9 +22,8 @@ export type AcpTransport = {
 }
 
 /** Event payload from the Tauri Rust HTTP+SSE command. Mirrors `AcpHttpEvent`
- *  declared in `src/lib/tauri-acp-http.ts` (M5 owns the runtime). Kept here so
- *  the HTTP transport compiles before M5 lands. M5's wrapper re-exports its
- *  own definitions; the shapes MUST match. */
+ *  declared in `src/lib/tauri-acp-http.ts`, which owns the runtime. The Tauri
+ *  wrapper re-exports its own definitions; the shapes MUST match. */
 export type AcpHttpEvent =
   | { type: 'headers'; status: number }
   | { type: 'chunk'; data: string }

@@ -7,7 +7,7 @@
  * subprotocol-tunnelled via `createProxyWebSocket` in Connected) and adapts it
  * to the ACP SDK's `Stream` type (a pair of newline-delimited JSON streams).
  *
- * Reconnect strategy (per plan §5 M2):
+ * Reconnect strategy:
  *   - Up to 3 retries with exponential backoff (1s, 2s, 4s).
  *   - Don't reconnect on normal close (code 1000) or auth close (code 4001).
  *   - All retries respect the caller's `AbortController` — `disconnect()` aborts

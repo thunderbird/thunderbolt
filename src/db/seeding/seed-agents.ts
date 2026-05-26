@@ -20,8 +20,7 @@ export type RefreshSystemAgentsResult =
 
 /**
  * Reconcile the local-only `agents_system` table against the backend's
- * `GET /agents` discovery endpoint. Called on bootstrap by M9; M8 just exposes
- * the function.
+ * `GET /agents` discovery endpoint. Called on bootstrap.
  *
  * Behavior:
  * - 200 → upsert every returned agent into `agents_system` (stamping `fetchedAt`),

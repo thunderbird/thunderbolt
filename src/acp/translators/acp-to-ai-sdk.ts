@@ -10,7 +10,7 @@
  * `data: <json>\n\n` line. AI SDK's `DefaultChatTransport` consumes this
  * format directly from the `Response.body` returned by an adapter's `fetch`.
  *
- * Mapping (per plan §4.6):
+ * Mapping:
  *   agent_message_chunk (text)      → text-start (once) → text-delta…   → text-end (on finish)
  *   agent_message_chunk (reasoning) → reasoning-start … → reasoning-delta … (rare)
  *   agent_thought_chunk             → reasoning-start (once) → reasoning-delta … → reasoning-end
@@ -211,7 +211,7 @@ export const createTranslator = (emit: (chunk: AiSdkChunk) => void, options: Tra
         })
         return
       }
-      // Ignored in MVP per plan §4.6.
+      // Ignored in MVP.
       case 'plan':
       case 'available_commands_update':
       case 'current_mode_update':

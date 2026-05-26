@@ -9,6 +9,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
+import { validateSkillName } from '@/dal'
 
 export type SkillFormMode = 'create' | 'edit'
 
@@ -50,7 +51,11 @@ export const SkillForm = ({
   const [description, setDescription] = useState(initialDescription)
   const [instruction, setInstruction] = useState(initialInstruction)
 
-  const canSubmit = name.trim() !== '' && description.trim() !== '' && instruction.trim() !== ''
+  // Surface AgentSkills-spec violations inline as soon as the user has typed
+  // something, but don't shout at an empty initial state.
+  const localNameError = name.trim() === '' ? null : validateSkillName(name)
+  const canSubmit =
+    name.trim() !== '' && description.trim() !== '' && instruction.trim() !== '' && localNameError === null
 
   const isDirty =
     mode === 'edit'
@@ -97,9 +102,16 @@ export const SkillForm = ({
             value={name}
             onChange={(e) => setName(e.target.value)}
             className="h-9"
-            aria-invalid={nameError ? true : undefined}
+            aria-describedby="skill-name-help"
+            aria-invalid={localNameError || nameError ? true : undefined}
           />
-          {nameError && <p className="text-sm text-destructive">{nameError}</p>}
+          {localNameError || nameError ? (
+            <p className="text-sm text-destructive">{localNameError ?? nameError}</p>
+          ) : (
+            <p id="skill-name-help" className="text-sm text-muted-foreground">
+              Lowercase letters, numbers, and hyphens. 1–64 characters.
+            </p>
+          )}
         </div>
 
         <div className="flex flex-col gap-2">

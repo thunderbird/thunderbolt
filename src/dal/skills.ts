@@ -20,12 +20,53 @@ export class SkillNameTakenError extends Error {
   }
 }
 
+/** Returned when a skill name fails the AgentSkills spec validation. */
+export class SkillNameInvalidError extends Error {
+  constructor(reason: string) {
+    super(reason)
+    this.name = 'SkillNameInvalidError'
+  }
+}
+
 /** Returned when pinning would exceed the {@link maxPinnedSkills} cap. */
 export class PinLimitExceededError extends Error {
   constructor() {
     super(`Pinned skill limit reached (${maxPinnedSkills}). Unpin one to add another.`)
     this.name = 'PinLimitExceededError'
   }
+}
+
+const maxSkillNameLength = 64
+
+/**
+ * Validate a skill name against the [AgentSkills spec](https://agentskills.io/specification#name-field):
+ * 1–64 chars; lowercase a–z, 0–9, hyphens only; no leading/trailing hyphen;
+ * no consecutive hyphens.
+ *
+ * Accepts both `meeting-notes` and `/meeting-notes` forms — the leading `/`
+ * is a Thunderbolt chat-trigger convention, not part of the spec name. The
+ * slug (without `/`) is what gets validated.
+ *
+ * @returns A human-readable error string when invalid, or `null` when valid.
+ */
+export const validateSkillName = (raw: string): string | null => {
+  const slug = raw.startsWith('/') ? raw.slice(1) : raw
+  if (slug.length === 0) {
+    return 'Name is required.'
+  }
+  if (slug.length > maxSkillNameLength) {
+    return `Name must be ${maxSkillNameLength} characters or fewer.`
+  }
+  if (!/^[a-z0-9-]+$/.test(slug)) {
+    return 'Name may only contain lowercase letters, numbers, and hyphens.'
+  }
+  if (slug.startsWith('-') || slug.endsWith('-')) {
+    return 'Name cannot start or end with a hyphen.'
+  }
+  if (slug.includes('--')) {
+    return 'Name cannot contain consecutive hyphens.'
+  }
+  return null
 }
 
 /**
@@ -98,8 +139,16 @@ export type CreateSkillInput = {
   instruction: string
 }
 
-/** Insert a new skill. Throws {@link SkillNameTakenError} if `name` already exists. */
+/**
+ * Insert a new skill. Throws {@link SkillNameInvalidError} if `name` fails the
+ * AgentSkills spec, or {@link SkillNameTakenError} if it collides with another
+ * skill.
+ */
 export const createSkill = async (db: AnyDrizzleDatabase, input: CreateSkillInput): Promise<Skill> => {
+  const nameError = validateSkillName(input.name)
+  if (nameError) {
+    throw new SkillNameInvalidError(nameError)
+  }
   await assertNameAvailable(db, input.name)
   const row: Skill = {
     id: uuidv7(),
@@ -118,9 +167,17 @@ export const createSkill = async (db: AnyDrizzleDatabase, input: CreateSkillInpu
 
 export type UpdateSkillInput = Partial<Pick<Skill, 'name' | 'description' | 'instruction'>>
 
-/** Patch an existing skill. Throws {@link SkillNameTakenError} if `name` collides with another skill. */
+/**
+ * Patch an existing skill. Throws {@link SkillNameInvalidError} if `name` fails
+ * the AgentSkills spec, or {@link SkillNameTakenError} if it collides with
+ * another skill.
+ */
 export const updateSkill = async (db: AnyDrizzleDatabase, id: string, patch: UpdateSkillInput): Promise<void> => {
   if (patch.name !== undefined) {
+    const nameError = validateSkillName(patch.name)
+    if (nameError) {
+      throw new SkillNameInvalidError(nameError)
+    }
     await assertNameAvailable(db, patch.name, id)
   }
   await db.update(skillsTable).set(patch).where(eq(skillsTable.id, id))

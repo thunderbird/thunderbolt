@@ -5,7 +5,7 @@
 import { AnimatePresence, m } from 'framer-motion'
 import { useCallback, useEffect, useState } from 'react'
 
-import { PinLimitExceededError, SkillNameTakenError } from '@/dal'
+import { PinLimitExceededError, SkillNameInvalidError, SkillNameTakenError } from '@/dal'
 import { useIsMobile } from '@/hooks/use-mobile'
 import type { Skill } from '@/types'
 import { DeleteSkillDialog } from './delete-skill-dialog'
@@ -193,7 +193,7 @@ export const SkillsView = () => {
       setResetSignal((n) => n + 1)
       setNameError(null)
     } catch (error) {
-      if (error instanceof SkillNameTakenError) {
+      if (error instanceof SkillNameTakenError || error instanceof SkillNameInvalidError) {
         setNameError(error.message)
         return
       }

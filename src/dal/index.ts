@@ -125,9 +125,11 @@ export {
   reorderPins,
   setEnabled as setSkillEnabled,
   setPinned as setSkillPinned,
+  SkillNameInvalidError,
   SkillNameTakenError,
   softDeleteSkill,
   updateSkill,
+  validateSkillName,
   type CreateSkillInput,
   type UpdateSkillInput,
 } from './skills'

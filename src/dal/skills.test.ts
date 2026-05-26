@@ -18,9 +18,11 @@ import {
   reorderPins,
   setEnabled,
   setPinned,
+  SkillNameInvalidError,
   SkillNameTakenError,
   softDeleteSkill,
   updateSkill,
+  validateSkillName,
 } from './skills'
 import { resetTestDatabase, setupTestDatabase, teardownTestDatabase } from './test-utils'
 
@@ -42,6 +44,53 @@ const seed = async (input: { name: string; description?: string; instruction?: s
     description: input.description ?? `desc for ${input.name}`,
     instruction: input.instruction ?? `instruction for ${input.name}`,
   })
+
+describe('validateSkillName (AgentSkills spec)', () => {
+  it('accepts canonical slugs', () => {
+    expect(validateSkillName('meeting-notes')).toBeNull()
+    expect(validateSkillName('a')).toBeNull()
+    expect(validateSkillName('skill-1')).toBeNull()
+    expect(validateSkillName('a'.repeat(64))).toBeNull()
+  })
+
+  it('accepts the same slug prefixed with /', () => {
+    expect(validateSkillName('/meeting-notes')).toBeNull()
+    expect(validateSkillName('/a')).toBeNull()
+  })
+
+  it('rejects empty', () => {
+    expect(validateSkillName('')).toMatch(/required/i)
+    expect(validateSkillName('/')).toMatch(/required/i)
+  })
+
+  it('rejects > 64 chars (after stripping /)', () => {
+    expect(validateSkillName('a'.repeat(65))).toMatch(/64 characters/)
+    expect(validateSkillName(`/${'a'.repeat(65)}`)).toMatch(/64 characters/)
+  })
+
+  it('rejects uppercase letters', () => {
+    expect(validateSkillName('Meeting-Notes')).toMatch(/lowercase/i)
+    expect(validateSkillName('/meetingNotes')).toMatch(/lowercase/i)
+  })
+
+  it('rejects non-alphanumeric/hyphen characters', () => {
+    expect(validateSkillName('meeting notes')).toMatch(/lowercase letters, numbers, and hyphens/i)
+    expect(validateSkillName('meeting.notes')).toMatch(/lowercase letters, numbers, and hyphens/i)
+    expect(validateSkillName('meeting_notes')).toMatch(/lowercase letters, numbers, and hyphens/i)
+    expect(validateSkillName('café')).toMatch(/lowercase letters, numbers, and hyphens/i)
+  })
+
+  it('rejects leading or trailing hyphen', () => {
+    expect(validateSkillName('-meeting')).toMatch(/start or end/i)
+    expect(validateSkillName('meeting-')).toMatch(/start or end/i)
+    expect(validateSkillName('/-meeting')).toMatch(/start or end/i)
+  })
+
+  it('rejects consecutive hyphens', () => {
+    expect(validateSkillName('meeting--notes')).toMatch(/consecutive hyphens/i)
+    expect(validateSkillName('a--b')).toMatch(/consecutive hyphens/i)
+  })
+})
 
 describe('skills DAL', () => {
   describe('createSkill', () => {
@@ -69,6 +118,13 @@ describe('skills DAL', () => {
       const reborn = await seed({ name: '/task-triage' })
       expect(reborn.id).not.toBe(first.id)
     })
+
+    it('throws SkillNameInvalidError for spec violations', async () => {
+      await expect(seed({ name: '/Meeting-Notes' })).rejects.toBeInstanceOf(SkillNameInvalidError)
+      await expect(seed({ name: '/has space' })).rejects.toBeInstanceOf(SkillNameInvalidError)
+      await expect(seed({ name: '/-leading-hyphen' })).rejects.toBeInstanceOf(SkillNameInvalidError)
+      await expect(seed({ name: '/double--hyphen' })).rejects.toBeInstanceOf(SkillNameInvalidError)
+    })
   })
 
   describe('updateSkill', () => {
@@ -91,6 +147,11 @@ describe('skills DAL', () => {
       await updateSkill(getDb(), a.id, { name: '/keepme', description: 'updated' })
       const after = await getSkill(getDb(), a.id)
       expect(after?.description).toBe('updated')
+    })
+
+    it('throws SkillNameInvalidError when renaming to a spec violation', async () => {
+      const a = await seed({ name: '/legit-name' })
+      await expect(updateSkill(getDb(), a.id, { name: '/SHOUTING' })).rejects.toBeInstanceOf(SkillNameInvalidError)
     })
   })
 

@@ -71,7 +71,11 @@ export const SkillsView = () => {
     [togglePin],
   )
 
-  const active = skills.find((s) => s.id === activeId) ?? skills[0] ?? null
+  // `.at(0)` returns `Skill | undefined` honestly — `[0]` would be typed as
+  // `Skill` even on an empty array (no `noUncheckedIndexedAccess` in tsconfig),
+  // and a `| undefined` annotation wouldn't widen the rhs. Forcing undefined
+  // into the type means TS catches every unguarded `active.*` access.
+  const active = skills.find((s) => s.id === activeId) ?? skills.at(0)
 
   const handleToggleEnabled = useCallback(
     async (id: string, next: boolean) => {
@@ -326,17 +330,17 @@ export const SkillsView = () => {
           onJumpToDependent={onJumpToDependent}
         />
       )}
-      <DeleteSkillDialog
-        open={deleteOpen}
-        onOpenChange={setDeleteOpen}
-        onConfirm={() => {
-          if (active) {
+      {active && (
+        <DeleteSkillDialog
+          open={deleteOpen}
+          onOpenChange={setDeleteOpen}
+          onConfirm={() => {
             void removeSkill(active.id)
-          }
-          setDeleteOpen(false)
-        }}
-        skillName={active.name ?? ''}
-      />
+            setDeleteOpen(false)
+          }}
+          skillName={active.name ?? ''}
+        />
+      )}
       <DiscardCreateDialog
         open={pendingLeave !== null}
         onOpenChange={(open) => {

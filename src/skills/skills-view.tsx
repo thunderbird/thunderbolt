@@ -276,7 +276,7 @@ export const SkillsView = () => {
       <SkillsList
         skills={skills}
         pinned={pinned}
-        activeSkillId={mode === 'detail' ? active.id : null}
+        activeSkillId={mode === 'detail' && active ? active.id : null}
         isEnabled={isEnabled}
         isPinned={isPinned}
         onToggleEnabled={handleToggleEnabled}

@@ -18,13 +18,7 @@ type AgentListProps = {
 export const AgentList = ({ agents, currentUserId, onToggle, onDelete }: AgentListProps) => (
   <div className="grid gap-3" data-testid="agent-list">
     {agents.map((agent) => (
-      <AgentRow
-        key={agent.id}
-        agent={agent}
-        currentUserId={currentUserId}
-        onToggle={onToggle}
-        onDelete={onDelete}
-      />
+      <AgentRow key={agent.id} agent={agent} currentUserId={currentUserId} onToggle={onToggle} onDelete={onDelete} />
     ))}
   </div>
 )

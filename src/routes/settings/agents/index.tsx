@@ -8,10 +8,7 @@ import { Plus } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { PageHeader } from '@/components/ui/page-header'
 import { AgentList } from '@/components/settings/agents/agent-list'
-import {
-  AddCustomAgentDialog,
-  type AddCustomAgentPayload,
-} from '@/components/settings/agents/add-custom-agent-dialog'
+import { AddCustomAgentDialog, type AddCustomAgentPayload } from '@/components/settings/agents/add-custom-agent-dialog'
 import { createAgent, deleteAgent, updateAgent, useAllAgents } from '@/dal'
 import { useDatabase } from '@/contexts'
 import { useAuth } from '@/contexts'

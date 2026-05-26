@@ -4,7 +4,7 @@
 
 import { fireEvent, render, screen } from '@testing-library/react'
 import { describe, expect, it, mock } from 'bun:test'
-import type { ReactNode } from 'react'
+import { createElement, type ReactNode } from 'react'
 import { ChatListItem } from './chat-list-item'
 import type { ChatListItemProps } from './types'
 import { SidebarProvider } from '@/components/ui/sidebar'
@@ -15,12 +15,29 @@ mock.module('@ai-sdk/react', () => ({
   useChat: () => ({ status: 'ready' }),
 }))
 
-// Mock framer-motion
+// Mock framer-motion. Bun's `mock.module` is process-global and persists across
+// test files in the same run, so this mock must export every framer-motion
+// symbol any concurrent test might reference — otherwise their components
+// crash with "Element type is invalid" when an undefined re-export (e.g.
+// `<m.ul>`, `<LayoutGroup>`, `<LazyMotion>`) is rendered.
+const createMotionTag =
+  (tag: string) =>
+  ({ children, ...props }: Record<string, unknown>) =>
+    createElement(tag, props, children as ReactNode)
+const motionTagProxy = new Proxy(
+  {},
+  {
+    get: (_, tag: string) => createMotionTag(tag),
+  },
+)
 mock.module('framer-motion', () => ({
   AnimatePresence: ({ children }: { children: ReactNode }) => children,
-  m: {
-    div: ({ children, ...props }: Record<string, unknown>) => <div {...props}>{children as ReactNode}</div>,
-  },
+  LayoutGroup: ({ children }: { children: ReactNode }) => children,
+  LazyMotion: ({ children }: { children: ReactNode }) => children,
+  domAnimation: {},
+  domMax: {},
+  m: motionTagProxy,
+  motion: motionTagProxy,
 }))
 
 // Mock Radix dropdown to render inline (avoids portal issues in tests)

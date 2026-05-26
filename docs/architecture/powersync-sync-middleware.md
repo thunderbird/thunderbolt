@@ -52,8 +52,8 @@ flowchart TD
 
     Server -->|"sync stream<br/>(TEXT_LINE or BSON_LINE)"| TSSI
     TSSI --> TBS
-    TBS -->|"SyncDataBatch"| MW
-    MW -->|"transformed batch"| TBS
+    TBS -->|"SyncDataBucket"| MW
+    MW -->|"transformed bucket"| TBS
     TBS --> SBS
     SBS -->|"writes"| SQLite
     SQLite --> Drizzle
@@ -81,8 +81,8 @@ flowchart TD
     Server -->|"sync stream"| WASM
     WASM -->|"control(PROCESS_TEXT_LINE)<br/>via MessagePort"| TPS
     TPS --> TBS
-    TBS -->|"SyncDataBatch"| MW
-    MW -->|"transformed batch"| TBS
+    TBS -->|"SyncDataBucket"| MW
+    MW -->|"transformed bucket"| TBS
     TBS --> SBS
     SBS -->|"writes"| SQLite
     SQLite --> Drizzle
@@ -99,11 +99,11 @@ adapter.control(PROCESS_TEXT_LINE, jsonPayload)   // NDJSON responses
 adapter.control(PROCESS_BSON_LINE, bsonPayload)   // BSON responses (preferred since @powersync/web 1.37+)
 ```
 
-`TransformableBucketStorage` overrides `control()` to intercept both formats. When a sync data command arrives, it:
+`TransformableBucketStorage` overrides `control()` to intercept both formats. The Rust sync client delivers **one bucket per `control()` call** (one NDJSON line, or one BSON line). When a sync data command arrives, it:
 
-1. Parses the payload (JSON string or BSON binary) to extract `SyncDataBucketJSON`
+1. Parses the payload (JSON string or BSON binary) to extract the `SyncDataBucket`
 2. Runs it through the registered transformer pipeline (each transformer receives the output of the previous)
-3. Re-encodes the transformed data in the **same format** as the original (JSON → JSON, BSON → BSON)
+3. Re-encodes the transformed bucket in the **same format** as the original (JSON → JSON, BSON → BSON)
 4. Passes the result to `super.control()` → `SqliteBucketStorage` → SQLite
 
 All other control commands (START, STOP, etc.) pass through unchanged.
@@ -114,15 +114,17 @@ All other control commands (START, STOP, etc.) pass through unchanged.
 
 ```typescript
 type DataTransformMiddleware = {
-  transform(batch: SyncDataBatch): Promise<SyncDataBatch> | SyncDataBatch
+  transform(bucket: SyncDataBucket): Promise<SyncDataBucket> | SyncDataBucket
 }
 ```
 
-Transformers operate on `SyncDataBatch` → `SyncDataBucket[]` → `OplogEntry[]`. Each entry has:
+Transformers operate on a single `SyncDataBucket` → `OplogEntry[]` (via `bucket.data`). Each entry has:
 - `object_type` — table name (e.g. `"tasks"`)
 - `object_id` — row ID
 - `data` — JSON string of the row (modify this to transform field values)
 - `op` — `INSERT` / `UPDATE` / `DELETE`
+
+> **Why per-bucket and not per-batch?** The Rust sync client streams data one bucket at a time via `control(PROCESS_*_LINE)`. The legacy `SyncDataBatch` abstraction belonged to the (now-removed) JavaScript sync client, which buffered multiple buckets before writing. Our middleware never sees more than one bucket per invocation.
 
 ### Registering Transformers
 

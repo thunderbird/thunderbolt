@@ -15,15 +15,15 @@
         "@dnd-kit/utilities": "^3.2.2",
         "@hookform/resolvers": "^5.2.1",
         "@icons-pack/react-simple-icons": "^13.13.0",
-        "@journeyapps/wa-sqlite": "^1.5.0",
+        "@journeyapps/wa-sqlite": "^1.7.0",
         "@modelcontextprotocol/sdk": "^1.25.2",
         "@noble/post-quantum": "^0.6.0",
         "@openrouter/ai-sdk-provider": "^2.6.0",
-        "@powersync/common": "1.52.0",
+        "@powersync/common": "1.53.1",
         "@powersync/drizzle-driver": "0.7.3",
         "@powersync/react": "1.10.0",
-        "@powersync/tanstack-react-query": "0.2.5",
-        "@powersync/web": "1.37.2",
+        "@powersync/tanstack-react-query": "0.2.7",
+        "@powersync/web": "1.38.1",
         "@radix-ui/react-accordion": "^1.2.12",
         "@radix-ui/react-alert-dialog": "^1.1.15",
         "@radix-ui/react-avatar": "^1.1.10",
@@ -54,6 +54,7 @@
         "@tauri-apps/plugin-updater": "^2.10.1",
         "ai": "^6.0.37",
         "better-auth": "^1.6.9",
+        "bson": "^6.10.4",
         "class-variance-authority": "^0.7.1",
         "clsx": "^2.1.1",
         "cmdk": "^1.1.1",
@@ -364,7 +365,7 @@
 
     "@joshwooding/vite-plugin-react-docgen-typescript": ["@joshwooding/vite-plugin-react-docgen-typescript@0.7.0", "", { "dependencies": { "glob": "^13.0.1", "react-docgen-typescript": "^2.2.2" }, "peerDependencies": { "typescript": ">= 4.3.x", "vite": "^3.0.0 || ^4.0.0 || ^5.0.0 || ^6.0.0 || ^7.0.0 || ^8.0.0" }, "optionalPeers": ["typescript"] }, "sha512-qvsTEwEFefhdirGOPnu9Wp6ChfIwy2dBCRuETU3uE+4cC+PFoxMSiiEhxk4lOluA34eARHA0OxqsEUYDqRMgeQ=="],
 
-    "@journeyapps/wa-sqlite": ["@journeyapps/wa-sqlite@1.5.0", "", {}, "sha512-oASXW/9Ktbhn6kJjxCJzRKxNnlOyj7GKBLF/59dkz1kbOLw7kAXBTwWTUvqfT97OEshtrK/J8bJUYbpggdCZ9Q=="],
+    "@journeyapps/wa-sqlite": ["@journeyapps/wa-sqlite@1.7.0", "", {}, "sha512-xQZ670aKDo4FWxIFpLqY0AGDpURr09aYIO08UkLdWvFw8C018nCiqY0ILJudGRhRdXORhv7K2xD2OXZ2QxU39w=="],
 
     "@jridgewell/gen-mapping": ["@jridgewell/gen-mapping@0.3.13", "", { "dependencies": { "@jridgewell/sourcemap-codec": "^1.5.0", "@jridgewell/trace-mapping": "^0.3.24" } }, "sha512-2kkt/7niJ6MgEPxF0bYdQ6etZaA+fQvDcLKckhy1yIQOzaoKjBBjSj63/aLVjYE3qhRt5dvM+uUyfCg6UKCBbA=="],
 
@@ -432,15 +433,15 @@
 
     "@posthog/types": ["@posthog/types@1.365.4", "", {}, "sha512-59ImmdPc+EG0ik6p1XSdqi+ivHZOMR/B0E4054h92mikKA09wn7CCNqM/ieKrSlGgX3nU0g/LlTBsZghYxGUWg=="],
 
-    "@powersync/common": ["@powersync/common@1.52.0", "", { "dependencies": { "event-iterator": "^2.0.0" } }, "sha512-rs50iEPcUSjLdKjnQZ4VbtK3U5+MTaY/YVCruN0hGmDMIn6wlT+EDsNFosAUAh6waLDEDfuKbvtHRhPKdBQ/Qg=="],
+    "@powersync/common": ["@powersync/common@1.53.1", "", { "dependencies": { "event-iterator": "^2.0.0", "js-logger": "^1.6.1" } }, "sha512-WAW/XQKpYPCBC66WIf9VjgLzA0YLpQg1TEMwzpCqKm6BuuLoHh6rLMb3PKJ84foFzUHcyF6thw7fB5VvwyguQw=="],
 
     "@powersync/drizzle-driver": ["@powersync/drizzle-driver@0.7.3", "", { "dependencies": { "tslib": "^2.8.1" }, "peerDependencies": { "@powersync/common": "^1.47.0", "drizzle-orm": "<1.0.0" } }, "sha512-s/JuurgeQrWgY9nSfTAPq2f0sMFuvDD4pMDljDSrxRJeHBA2Q9dLuwPNxGU2yIIfrbVTJcQuNPtVUyDdF5xnFw=="],
 
     "@powersync/react": ["@powersync/react@1.10.0", "", { "peerDependencies": { "@powersync/common": "^1.51.0", "react": "*" } }, "sha512-orM29qocbF8zYTBM27j9nPNztyplpbNVaw8djpqxl8N2wESqHTbHOKpatg+Fa5aofgjzmrkiGwevJvCbiWYYWQ=="],
 
-    "@powersync/tanstack-react-query": ["@powersync/tanstack-react-query@0.2.5", "", { "dependencies": { "@powersync/common": "1.52.0", "@powersync/react": "1.10.0", "@tanstack/react-query": "^5.70.0" }, "peerDependencies": { "react": "*" } }, "sha512-pIkSOPMQn5+ATk0/A03jlKpNBOIhadgxKNdJPrnGyExTo8rkvvKKQ/6k6sd42Q2HmcsLzlioSlRdM1qhzDK8iQ=="],
+    "@powersync/tanstack-react-query": ["@powersync/tanstack-react-query@0.2.7", "", { "dependencies": { "@powersync/common": "1.53.1", "@powersync/react": "1.10.0", "@tanstack/react-query": "^5.70.0" }, "peerDependencies": { "react": "*" } }, "sha512-XUT3ntAIdjTvdTOCZfZDIJa+a5KMLLJfvJAGPX8piE6KZrf4hrpZAWTon2rn3LK8P4YOJ2rfZ5w6fFgdR9JBMw=="],
 
-    "@powersync/web": ["@powersync/web@1.37.2", "", { "dependencies": { "@powersync/common": "1.52.0", "bson": "^6.10.4", "comlink": "^4.4.2", "commander": "^12.1.0" }, "peerDependencies": { "@journeyapps/wa-sqlite": "^1.5.0" }, "bin": { "powersync-web": "bin/powersync.cjs" } }, "sha512-czCY8QFm3LGXAB8LD0O2D0dW2PAx+HZjuEPFMb+Y9MfsWBz124d4q//oJtChBXORfFIW/N6Bc9bxKod/OMXBxg=="],
+    "@powersync/web": ["@powersync/web@1.38.1", "", { "dependencies": { "@powersync/common": "1.53.1", "comlink": "^4.4.2", "commander": "^12.1.0" }, "peerDependencies": { "@journeyapps/wa-sqlite": "^1.5.0" }, "bin": { "powersync-web": "bin/powersync.cjs" } }, "sha512-mr5cd8CLgMJJ3QV5TvZyTSvr+ibc9ib6eU/5p9XQypxYG5fA/YrktSk2yTFzve4R0Y5xBLwRhPd61HeKYTjMjA=="],
 
     "@protobufjs/aspromise": ["@protobufjs/aspromise@1.1.2", "", {}, "sha512-j+gKExEuLmKwvz3OgROXtrJ2UG2x8Ch2YZUxahh+s1F2HZ+wAceUNLkvy6zKCPVRkU++ZWQrdxsUeQXmcg4uoQ=="],
 
@@ -1365,6 +1366,8 @@
     "jiti": ["jiti@2.6.1", "", { "bin": { "jiti": "lib/jiti-cli.mjs" } }, "sha512-ekilCSN1jwRvIbgeg/57YFh8qQDNbwDb9xT/qu2DAHbFFZUicIl4ygVaAvzveMhMVr3LnpSKTNnwt8PoOfmKhQ=="],
 
     "jose": ["jose@6.2.2", "", {}, "sha512-d7kPDd34KO/YnzaDOlikGpOurfF0ByC2sEV4cANCtdqLlTfBlw2p14O/5d/zv40gJPbIQxfES3nSx1/oYNyuZQ=="],
+
+    "js-logger": ["js-logger@1.6.1", "", {}, "sha512-yTgMCPXVjhmg28CuUH8CKjU+cIKL/G+zTu4Fn4lQxs8mRFH/03QTNvEFngcxfg/gRDiQAOoyCKmMTOm9ayOzXA=="],
 
     "js-tokens": ["js-tokens@10.0.0", "", {}, "sha512-lM/UBzQmfJRo9ABXbPWemivdCW8V2G8FHaHdypQaIy523snUjog0W71ayWXTjiR+ixeMyVHN2XcpnTd/liPg/Q=="],
 

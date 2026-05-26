@@ -60,7 +60,9 @@ export const SkillsList = ({
 
   return (
     <section className="flex h-full w-full flex-col gap-3 border-r border-border/50 bg-background px-4 pb-4 md:px-5 text-foreground md:w-[378px] md:shrink-0">
-      <header className="relative flex items-center justify-between gap-2">
+      {/* Title row matches the sidebar's Thunderbolt header height so the
+          "Skills" heading sits at the same y-position as the app logo. */}
+      <header className="relative flex h-[var(--touch-height-xl)] shrink-0 items-center justify-between gap-2">
         <div className="flex items-center gap-2">
           {isMobile && (
             <Button

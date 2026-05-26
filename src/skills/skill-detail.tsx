@@ -57,7 +57,9 @@ export const SkillDetail = ({
   return (
     <section className="flex h-full flex-1 flex-col gap-4 overflow-hidden border-l border-border/50 bg-background px-4 pb-4 md:px-5 text-foreground">
       <header className="flex flex-col gap-5 md:gap-2.5">
-        <div className="relative flex items-center justify-between gap-4">
+        {/* Title row matches the sidebar's app-logo height so the skill name
+            sits at the same y-position as the Thunderbolt label. */}
+        <div className="relative flex h-[var(--touch-height-xl)] shrink-0 items-center justify-between gap-4">
           <div className="flex items-center gap-2">
             {onBack && (
               <Button
@@ -103,9 +105,7 @@ export const SkillDetail = ({
                     />
                   </span>
                 </TooltipTrigger>
-                <TooltipContent>
-                  {enabled ? "Disable skill. AI won't use it and pinned skills get unpinned." : 'Enable skill'}
-                </TooltipContent>
+                <TooltipContent>{enabled ? "Disable skill. The AI won't use it." : 'Enable skill'}</TooltipContent>
               </Tooltip>
             )}
             <DropdownMenu>

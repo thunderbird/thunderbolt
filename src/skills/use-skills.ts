@@ -18,27 +18,41 @@ import {
 import type { Skill } from '@/types'
 import { toCompilableQuery } from '@powersync/drizzle-driver'
 import { useQuery } from '@powersync/tanstack-react-query'
-import { useMutation } from '@tanstack/react-query'
+import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { useMemo } from 'react'
+
+// PowerSync's `useQuery` *should* re-run when the underlying SQLite table
+// changes, but in practice we've seen the cache not invalidate immediately
+// after a write — the new row only shows up after a manual reload. Explicit
+// invalidation via React Query keeps the UI in sync without waiting for the
+// PowerSync table-change signal.
+const skillsQueryKey = ['skills']
 
 /**
  * Library of non-deleted skills + mutations to create / update / soft-delete.
- * Query reactivity is handled by PowerSync's `useQuery`; the table-changed
- * trigger re-runs the query automatically.
  */
 export const useLibrarySkills = () => {
   const db = useDatabase()
+  const queryClient = useQueryClient()
+  const invalidate = () => queryClient.invalidateQueries({ queryKey: skillsQueryKey })
 
   const { data: skills = [], isLoading } = useQuery({
-    queryKey: ['skills'],
+    queryKey: skillsQueryKey,
     query: toCompilableQuery(getAllSkills(db)),
   })
 
-  const create = useMutation({ mutationFn: (input: CreateSkillInput) => createSkill(db, input) })
+  const create = useMutation({
+    mutationFn: (input: CreateSkillInput) => createSkill(db, input),
+    onSuccess: invalidate,
+  })
   const update = useMutation({
     mutationFn: ({ id, patch }: { id: string; patch: UpdateSkillInput }) => updateSkill(db, id, patch),
+    onSuccess: invalidate,
   })
-  const remove = useMutation({ mutationFn: (id: string) => softDeleteSkill(db, id) })
+  const remove = useMutation({
+    mutationFn: (id: string) => softDeleteSkill(db, id),
+    onSuccess: invalidate,
+  })
 
   return {
     skills: skills as Skill[],
@@ -56,9 +70,11 @@ export const useLibrarySkills = () => {
  */
 export const usePinnedSkills = () => {
   const db = useDatabase()
+  const queryClient = useQueryClient()
+  const invalidate = () => queryClient.invalidateQueries({ queryKey: skillsQueryKey })
 
   const { data: pinned = [] } = useQuery({
-    queryKey: ['skills', 'pinned'],
+    queryKey: [...skillsQueryKey, 'pinned'],
     query: toCompilableQuery(getPinnedSkills(db)),
   })
   const pinnedSkills = pinned as Skill[]
@@ -67,8 +83,12 @@ export const usePinnedSkills = () => {
 
   const pin = useMutation({
     mutationFn: ({ id, order }: { id: string; order: number | null }) => setSkillPinned(db, id, order),
+    onSuccess: invalidate,
   })
-  const reorder = useMutation({ mutationFn: (ids: string[]) => reorderPins(db, ids) })
+  const reorder = useMutation({
+    mutationFn: (ids: string[]) => reorderPins(db, ids),
+    onSuccess: invalidate,
+  })
 
   /**
    * Toggle pin state. Pins land at the next available position (current count).
@@ -97,6 +117,8 @@ export const usePinnedSkills = () => {
  */
 export const useEnabledSkills = () => {
   const db = useDatabase()
+  const queryClient = useQueryClient()
+  const invalidate = () => queryClient.invalidateQueries({ queryKey: skillsQueryKey })
   const { skills } = useLibrarySkills()
 
   const enabledById = useMemo(() => {
@@ -109,6 +131,7 @@ export const useEnabledSkills = () => {
 
   const set = useMutation({
     mutationFn: ({ id, next }: { id: string; next: boolean }) => setSkillEnabled(db, id, next),
+    onSuccess: invalidate,
   })
 
   const isEnabled = (id: string) => enabledById.get(id) ?? true

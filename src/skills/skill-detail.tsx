@@ -76,18 +76,18 @@ export const SkillDetail = ({
               <button
                 type="button"
                 onClick={onTogglePin}
-                aria-label={pinned ? `Unpin ${name}` : `Pin ${name}`}
+                aria-label={pinned ? `Unpin /${name}` : `Pin /${name}`}
                 aria-pressed={pinned}
                 className={`shrink-0 transition-colors ${pinned ? 'text-foreground' : 'text-muted-foreground'}`}
               >
                 <Pin size={20} strokeWidth={1.75} fill={pinned ? 'currentColor' : 'none'} />
               </button>
             )}
-            {!isMobile && <h2 className="text-xl leading-tight text-foreground">{name}</h2>}
+            {!isMobile && <h2 className="text-xl leading-tight text-foreground">/{name}</h2>}
           </div>
           {isMobile && (
             <h2 className="absolute left-1/2 -translate-x-1/2 truncate max-w-[60%] text-center text-xl text-foreground pointer-events-none">
-              {name}
+              /{name}
             </h2>
           )}
           <div className="flex items-center gap-2">

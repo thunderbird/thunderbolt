@@ -74,7 +74,7 @@ const PinnedRow = ({
       >
         <button
           type="button"
-          aria-label={`Drag to reorder ${skill.name}`}
+          aria-label={`Drag to reorder /${skill.name}`}
           // Listeners attach the drag handle to dnd-kit; stop propagation so
           // the click doesn't double-fire the row's select handler.
           {...attributes}
@@ -88,7 +88,7 @@ const PinnedRow = ({
           <Switch
             checked={enabled}
             onCheckedChange={(next) => onToggleEnabled(skill.id, next)}
-            aria-label={enabled ? `Disable ${skill.name}` : `Enable ${skill.name}`}
+            aria-label={enabled ? `Disable /${skill.name}` : `Enable /${skill.name}`}
           />
         </span>
         <Pin size={14} className="shrink-0 fill-current text-muted-foreground" aria-hidden="true" />

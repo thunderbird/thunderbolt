@@ -66,16 +66,16 @@ export const LibraryRow = ({
             <Switch
               checked={enabled}
               onCheckedChange={(next) => onToggleEnabled(skill.id, next)}
-              aria-label={enabled ? `Disable ${skill.name}` : `Enable ${skill.name}`}
+              aria-label={enabled ? `Disable /${skill.name}` : `Enable /${skill.name}`}
             />
           </span>
-          <span className="truncate">{skill.name}</span>
+          <span className="truncate">/{skill.name}</span>
         </span>
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <button
               type="button"
-              aria-label={`Open ${skill.name} menu`}
+              aria-label={`Open /${skill.name} menu`}
               onClick={(e) => e.stopPropagation()}
               className="inline-flex size-6 shrink-0 items-center justify-center rounded-md text-muted-foreground opacity-0 transition-opacity transition-colors hover:bg-foreground/10 hover:text-foreground focus-visible:opacity-100 group-hover:opacity-100 aria-expanded:bg-foreground/10 aria-expanded:opacity-100"
             >

@@ -42,7 +42,7 @@ export const DependentsDialog = ({
       <div className="flex flex-col gap-3 pr-6">
         <DialogTitle className="flex items-center gap-2 text-base font-medium text-foreground">
           <AlertTriangle size={16} className="shrink-0 text-yellow-500" />
-          <span>Other skills reference &ldquo;{targetName}&rdquo;</span>
+          <span>Other skills reference &ldquo;/{targetName}&rdquo;</span>
         </DialogTitle>
         <DialogDescription className="pl-6 text-sm text-muted-foreground">
           If you {verbLower[action]} this skill, the following skills may break:
@@ -56,7 +56,7 @@ export const DependentsDialog = ({
               onClick={() => onJumpToDependent(dep.id)}
               className="flex w-full items-center justify-between rounded-xl border border-border bg-background px-3 py-2 text-sm text-foreground transition-colors hover:bg-accent"
             >
-              <span>{dep.name}</span>
+              <span>/{dep.name}</span>
               <ArrowRight size={16} className="text-muted-foreground" />
             </button>
           </li>

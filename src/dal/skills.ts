@@ -43,14 +43,12 @@ const maxSkillNameLength = 64
  * 1–64 chars; lowercase a–z, 0–9, hyphens only; no leading/trailing hyphen;
  * no consecutive hyphens.
  *
- * Accepts both `meeting-notes` and `/meeting-notes` forms — the leading `/`
- * is a Thunderbolt chat-trigger convention, not part of the spec name. The
- * slug (without `/`) is what gets validated.
+ * Names are stored as bare slugs (no leading `/`). The slash is a chat
+ * trigger added at display + parse time only, not part of the data.
  *
  * @returns A human-readable error string when invalid, or `null` when valid.
  */
-export const validateSkillName = (raw: string): string | null => {
-  const slug = raw.startsWith('/') ? raw.slice(1) : raw
+export const validateSkillName = (slug: string): string | null => {
   if (slug.length === 0) {
     return 'Name is required.'
   }

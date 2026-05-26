@@ -53,7 +53,7 @@ Do not produce sub-tasks unless asked.`
  */
 export const defaultSkillMeetingNotes: Skill = {
   id: '01996330-0000-7000-8000-000000000001',
-  name: '/meeting-notes',
+  name: 'meeting-notes',
   description:
     'Use this skill when the user shares raw meeting notes, a transcript, or bullets from a recent call and wants them cleaned up, summarized, or turned into action items.',
   instruction: meetingNotesInstruction,
@@ -66,7 +66,7 @@ export const defaultSkillMeetingNotes: Skill = {
 
 export const defaultSkillWeeklyReview: Skill = {
   id: '01996330-0000-7000-8000-000000000002',
-  name: '/weekly-review',
+  name: 'weekly-review',
   description:
     'Use this skill when the user wants to run a weekly review, reflect on the past week, plan the upcoming week, or process notes and tasks accumulated over the last 7 days.',
   instruction: weeklyReviewInstruction,
@@ -79,7 +79,7 @@ export const defaultSkillWeeklyReview: Skill = {
 
 export const defaultSkillTaskTriage: Skill = {
   id: '01996330-0000-7000-8000-000000000003',
-  name: '/task-triage',
+  name: 'task-triage',
   description:
     'Use this skill when the user dumps a list of tasks, a backlog, or a to-do brain-dump and wants help prioritizing.',
   instruction: taskTriageInstruction,

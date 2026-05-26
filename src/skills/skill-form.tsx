@@ -43,7 +43,10 @@ export const SkillForm = ({
   /** Inline name-uniqueness error from the DAL pre-check. */
   nameError?: string | null
 }) => {
-  const initialName = initialValues?.name ?? ''
+  // Strip a leading `/` defensively — names are stored bare per the
+  // AgentSkills spec, but legacy rows from before THU-534 landed may still
+  // carry the prefix and we don't want the editor to show `//foo`.
+  const initialName = (initialValues?.name ?? '').replace(/^\/+/, '')
   const initialDescription = initialValues?.description ?? ''
   const initialInstruction = initialValues?.instruction ?? ''
 
@@ -78,10 +81,8 @@ export const SkillForm = ({
     if (!canSubmit) {
       return
     }
-    const trimmedName = name.trim()
-    const finalName = trimmedName.startsWith('/') ? trimmedName : `/${trimmedName}`
     onSubmit({
-      name: finalName,
+      name: name.trim(),
       description: description.trim(),
       instruction: instruction.trim(),
     })
@@ -96,15 +97,29 @@ export const SkillForm = ({
           <label htmlFor="skill-name" className="text-base text-foreground">
             Skill name
           </label>
-          <Input
-            id="skill-name"
-            placeholder="meeting-notes"
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            className="h-9"
-            aria-describedby="skill-name-help"
-            aria-invalid={localNameError || nameError ? true : undefined}
-          />
+          <div className="relative">
+            {/* Stripe-style fixed `/` prefix. Sits inside the input visually
+                but is not part of the value — the user can't select, delete,
+                or edit it. Stored names are bare slugs per the AgentSkills
+                spec; the slash is the chat trigger added at display time. */}
+            <span
+              aria-hidden="true"
+              className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 select-none text-muted-foreground"
+            >
+              /
+            </span>
+            <Input
+              id="skill-name"
+              placeholder="meeting-notes"
+              value={name}
+              // Strip any pasted leading `/` so the value mirrors what
+              // appears after the prefix glyph.
+              onChange={(e) => setName(e.target.value.replace(/^\/+/, ''))}
+              className="h-9 pl-7"
+              aria-describedby="skill-name-help"
+              aria-invalid={localNameError || nameError ? true : undefined}
+            />
+          </div>
           {localNameError || nameError ? (
             <p className="text-sm text-destructive">{localNameError ?? nameError}</p>
           ) : (

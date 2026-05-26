@@ -28,7 +28,7 @@ export const DeleteSkillDialog = ({
       <DialogHeader className="items-center gap-4 text-center">
         <DialogTitle className="text-xl font-medium text-foreground">
           <span className="block">Delete skill:</span>
-          <span className="block">{skillName}</span>
+          <span className="block">/{skillName}</span>
         </DialogTitle>
         <DialogDescription className="text-base text-muted-foreground">
           Are you sure you want to delete this skill?

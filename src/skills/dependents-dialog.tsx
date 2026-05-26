@@ -2,10 +2,18 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { AlertTriangle, ArrowRight } from 'lucide-react'
+import { ArrowRight } from 'lucide-react'
 
+import {
+  AlertDialog,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog'
 import { Button } from '@/components/ui/button'
-import { Dialog, DialogClose, DialogContent, DialogDescription, DialogTitle } from '@/components/ui/dialog'
 import type { Skill } from '@/types'
 
 export type DependentsAction = 'disable' | 'delete'
@@ -37,41 +45,37 @@ export const DependentsDialog = ({
   onConfirm: () => void
   onJumpToDependent: (id: string) => void
 }) => (
-  <Dialog open={open} onOpenChange={onOpenChange}>
-    <DialogContent className="gap-0 bg-card p-6 sm:max-w-[400px]" showCloseButton={false}>
-      <div className="flex flex-col gap-3 pr-6">
-        <DialogTitle className="flex items-center gap-2 text-base font-medium text-foreground">
-          <AlertTriangle size={16} className="shrink-0 text-yellow-500" />
-          <span>Other skills reference &ldquo;/{targetName}&rdquo;</span>
-        </DialogTitle>
-        <DialogDescription className="pl-6 text-sm text-muted-foreground">
-          If you {verbLower[action]} this skill, the following skills may break:
-        </DialogDescription>
-      </div>
-      <ul className="mt-1.5 flex flex-col gap-1.5">
+  <AlertDialog open={open} onOpenChange={onOpenChange}>
+    <AlertDialogContent>
+      <AlertDialogHeader>
+        <AlertDialogTitle>
+          {verbLabel[action]} /{targetName}?
+        </AlertDialogTitle>
+        <AlertDialogDescription>
+          {dependents.length === 1 ? 'One skill references' : `${dependents.length} skills reference`} this. If you{' '}
+          {verbLower[action]} it, they may no longer resolve:
+        </AlertDialogDescription>
+      </AlertDialogHeader>
+      <ul className="flex flex-col gap-1.5">
         {dependents.map((dep) => (
           <li key={dep.id}>
             <button
               type="button"
               onClick={() => onJumpToDependent(dep.id)}
-              className="flex w-full items-center justify-between rounded-xl border border-border bg-background px-3 py-2 text-sm text-foreground transition-colors hover:bg-accent"
+              className="flex w-full items-center justify-between rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground transition-colors hover:bg-accent"
             >
               <span>/{dep.name}</span>
-              <ArrowRight size={16} className="text-muted-foreground" />
+              <ArrowRight size={14} className="text-muted-foreground" />
             </button>
           </li>
         ))}
       </ul>
-      <div className="mt-6 grid grid-cols-2 gap-3">
-        <DialogClose asChild>
-          <Button variant="outline" size="lg" className="h-9 w-full text-sm">
-            Cancel
-          </Button>
-        </DialogClose>
-        <Button variant="destructive" size="lg" onClick={onConfirm} className="h-9 w-full text-sm">
-          {verbLabel[action]}
+      <AlertDialogFooter>
+        <AlertDialogCancel>Cancel</AlertDialogCancel>
+        <Button variant="destructive" onClick={onConfirm}>
+          {verbLabel[action]} skill
         </Button>
-      </div>
-    </DialogContent>
-  </Dialog>
+      </AlertDialogFooter>
+    </AlertDialogContent>
+  </AlertDialog>
 )

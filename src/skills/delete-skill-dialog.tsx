@@ -2,15 +2,16 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { Button } from '@/components/ui/button'
 import {
-  Dialog,
-  DialogClose,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog'
+  AlertDialog,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog'
+import { Button } from '@/components/ui/button'
 
 export const DeleteSkillDialog = ({
   open,
@@ -23,27 +24,20 @@ export const DeleteSkillDialog = ({
   onConfirm: () => void
   skillName: string
 }) => (
-  <Dialog open={open} onOpenChange={onOpenChange}>
-    <DialogContent className="gap-6 bg-background p-8 sm:max-w-[466px]" showCloseButton={false}>
-      <DialogHeader className="items-center gap-4 text-center">
-        <DialogTitle className="text-xl font-medium text-foreground">
-          <span className="block">Delete skill:</span>
-          <span className="block">/{skillName}</span>
-        </DialogTitle>
-        <DialogDescription className="text-base text-muted-foreground">
-          Are you sure you want to delete this skill?
-        </DialogDescription>
-      </DialogHeader>
-      <div className="grid grid-cols-2 gap-3">
-        <DialogClose asChild>
-          <Button variant="outline" size="lg" className="h-12 w-full">
-            Cancel
-          </Button>
-        </DialogClose>
-        <Button variant="destructive" size="lg" onClick={onConfirm} className="h-12 w-full">
-          Delete
+  <AlertDialog open={open} onOpenChange={onOpenChange}>
+    <AlertDialogContent>
+      <AlertDialogHeader>
+        <AlertDialogTitle>Delete /{skillName}?</AlertDialogTitle>
+        <AlertDialogDescription>
+          This will permanently delete the skill. Other skills that reference it may no longer resolve.
+        </AlertDialogDescription>
+      </AlertDialogHeader>
+      <AlertDialogFooter>
+        <AlertDialogCancel>Cancel</AlertDialogCancel>
+        <Button variant="destructive" onClick={onConfirm}>
+          Delete skill
         </Button>
-      </div>
-    </DialogContent>
-  </Dialog>
+      </AlertDialogFooter>
+    </AlertDialogContent>
+  </AlertDialog>
 )

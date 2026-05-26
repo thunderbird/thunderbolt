@@ -30,6 +30,7 @@ import IntegrationsPage from '@/settings/integrations'
 import McpServersPage from '@/settings/mcp-servers'
 import ModelsPage from '@/settings/models'
 import PreferencesSettingsPage from '@/settings/preferences'
+import SkillsPage from '@/settings/skills'
 import TasksPage from '@/tasks'
 import { WaitlistLayout, WaitlistPage } from '@/waitlist'
 import AutomationsPage from './automations'
@@ -167,6 +168,7 @@ const AppRoutes = ({ initData }: { initData: InitData }) => {
             <Route path="models" element={<ModelsPage />} />
             <Route path="devices" element={<DevicesSettingsPage />} />
             <Route path="mcp-servers" element={<McpServersPage />} />
+            <Route path="skills" element={<SkillsPage />} />
             <Route path="integrations" element={<IntegrationsPage />} />
             {import.meta.env.DEV && (
               <Route

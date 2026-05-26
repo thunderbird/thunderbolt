@@ -14,7 +14,7 @@ import {
   SidebarSeparator,
   useSidebar,
 } from '@/components/ui/sidebar'
-import { ArrowLeft, Cpu, Plug, Server, SlidersHorizontal, Smartphone } from 'lucide-react'
+import { ArrowLeft, Cpu, Plug, Server, SlidersHorizontal, Smartphone, Zap } from 'lucide-react'
 import { useLocation } from 'react-router'
 import { SidebarHeader } from './sidebar-header'
 
@@ -103,6 +103,17 @@ export const SettingsSidebarContent = ({ onBackClick, onSettingsNavigate }: Sett
               >
                 <Server className="size-4" />
                 <span>MCP Servers</span>
+              </SidebarMenuButton>
+            </SidebarMenuItem>
+            <SidebarMenuItem>
+              <SidebarMenuButton
+                onClick={() => onSettingsNavigate('/settings/skills')}
+                tooltip="Skills"
+                className="cursor-pointer"
+                isActive={location.pathname === '/settings/skills'}
+              >
+                <Zap className="size-4" />
+                <span>Skills</span>
               </SidebarMenuButton>
             </SidebarMenuItem>
           </SidebarMenu>

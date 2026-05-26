@@ -19,11 +19,21 @@ mock.module('@ai-sdk/react', () => ({
 // test files in the same run, so this mock must export every framer-motion
 // symbol any concurrent test might reference — otherwise their components
 // crash with "Element type is invalid" when an undefined re-export (e.g.
-// `<m.ul>`, `<LayoutGroup>`, `<LazyMotion>`) is rendered.
-const createMotionTag =
-  (tag: string) =>
-  ({ children, ...props }: Record<string, unknown>) =>
+// `<m.ul>`, `<LayoutGroup>`, `<LazyMotion>`) is rendered. The cache below
+// keeps per-tag components stable across accesses so React doesn't unmount and
+// remount on every render (which triggered "Maximum update depth exceeded" in
+// downstream tests).
+const motionTagCache = new Map<string, (props: Record<string, unknown>) => ReactNode>()
+const createMotionTag = (tag: string) => {
+  const cached = motionTagCache.get(tag)
+  if (cached) {
+    return cached
+  }
+  const Component = ({ children, ...props }: Record<string, unknown>) =>
     createElement(tag, props, children as ReactNode)
+  motionTagCache.set(tag, Component)
+  return Component
+}
 const motionTagProxy = new Proxy(
   {},
   {

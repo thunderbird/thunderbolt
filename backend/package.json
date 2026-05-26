@@ -49,7 +49,7 @@
   "devDependencies": {
     "@electric-sql/pglite-socket": "^0.1.4",
     "@eslint/js": "^10.0.1",
-    "@react-email/ui": "6.1.4",
+    "@react-email/ui": "6.1.5",
     "@types/react": "^19.1.10",
     "@typescript-eslint/eslint-plugin": "^8.59.1",
     "@typescript-eslint/parser": "^8.59.1",

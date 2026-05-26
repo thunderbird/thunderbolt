@@ -37,7 +37,7 @@
       "devDependencies": {
         "@electric-sql/pglite-socket": "^0.1.4",
         "@eslint/js": "^10.0.1",
-        "@react-email/ui": "6.1.4",
+        "@react-email/ui": "6.1.5",
         "@types/react": "^19.1.10",
         "@typescript-eslint/eslint-plugin": "^8.59.1",
         "@typescript-eslint/parser": "^8.59.1",
@@ -387,7 +387,7 @@
 
     "@react-email/render": ["@react-email/render@2.0.8", "", { "dependencies": { "html-to-text": "^9.0.5", "prettier": "^3.5.3" }, "peerDependencies": { "react": "^18.0 || ^19.0 || ^19.0.0-rc", "react-dom": "^18.0 || ^19.0 || ^19.0.0-rc" } }, "sha512-5udvVr3U/WuGJZfLdLBOhkzrqRWd2Q5ZYmF7ppcy7FzWcwgshdqLMNqJOXcVzAXJXg/2bm7D+WGJzTtZOZMQnQ=="],
 
-    "@react-email/ui": ["@react-email/ui@6.1.4", "", { "dependencies": { "esbuild": "0.28.0", "next": "16.2.6" } }, "sha512-FyMCx7uNV0ugZY9ZWNAnWFTrXnYOhRQm97ybbZapJCQLu6uhZHmluXv2HcsSZ0RaMAzuLJgw0ziLQjq4uYEiNg=="],
+    "@react-email/ui": ["@react-email/ui@6.1.5", "", { "dependencies": { "esbuild": "0.28.0", "next": "16.2.6" } }, "sha512-IJYZFEk3+VjM0hoPXXIiarps1MNOopQgycKMYzhG1iRHut32JKFMt9J0KFu7qmif5wpbGGxv6MhurdW3MG0WEA=="],
 
     "@scalar/openapi-types": ["@scalar/openapi-types@0.1.1", "", {}, "sha512-NMy3QNk6ytcCoPUGJH0t4NNr36OWXgZhA3ormr3TvhX1NDgoF95wFyodGVH8xiHeUyn2/FxtETm8UBLbB5xEmg=="],
 

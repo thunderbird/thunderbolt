@@ -8,7 +8,7 @@
         "@pulumi/aws": "^7.27.0",
         "@pulumi/awsx": "^3.5.0",
         "@pulumi/cloudflare": "^6.14.0",
-        "@pulumi/docker-build": "^0.0.16",
+        "@pulumi/docker-build": "^0.0.17",
         "@pulumi/eks": "^4.0.0",
         "@pulumi/keycloak": "^6.10.1",
         "@pulumi/kubernetes": "^4.0.0",
@@ -195,7 +195,7 @@
 
     "@pulumi/docker": ["@pulumi/docker@4.11.2", "", { "dependencies": { "@pulumi/pulumi": "^3.142.0", "semver": "^5.4.0" } }, "sha512-mm8Uscb/3S7OieYyg1E/vvFx3OS4bAkZvtFvi1yTqYda9NbnYOMbJi7a5fU5xB0N0Kd/uliS8olJ/e6nnvVVPg=="],
 
-    "@pulumi/docker-build": ["@pulumi/docker-build@0.0.16", "", { "dependencies": { "@pulumi/pulumi": "^3.142.0" } }, "sha512-T/k14ppyODV6+J+KvzkbFDfKyKESv5JqbiUZgtfjm+fQoIueuovjMmg1/jQnkhUeS748YAwI46JNR9c5w7lQdw=="],
+    "@pulumi/docker-build": ["@pulumi/docker-build@0.0.17", "", { "dependencies": { "@pulumi/pulumi": "^3.142.0" } }, "sha512-PpPxo8f2nt9VAPeBvpW5grmSFCJh+ediqObKgLFkhQ9D/zJ7vnNEaVKn7cCAvM0ive11Sl50U79Oym3OO8MkHg=="],
 
     "@pulumi/eks": ["@pulumi/eks@4.2.0", "", { "dependencies": { "@pulumi/aws": "^7.14.0", "@pulumi/kubernetes": "^4.19.0", "@pulumi/pulumi": "^3.142.0", "https-proxy-agent": "^5.0.1", "js-yaml": "^4.1.0", "netmask": "^2.0.2", "semver": "^7.3.7", "which": "^1.3.1" } }, "sha512-myGhOksnF/BUun7oWvuphp+2l6CNV9meE7Gu/8+JulcOhA2jYttGdSI+15BvUnDNgUBv3qNlu+NQ473C3q4Wvg=="],
 

@@ -3,7 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { Info } from 'lucide-react'
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -60,14 +60,27 @@ export const SkillForm = ({
   const canSubmit =
     name.trim() !== '' && description.trim() !== '' && instruction.trim() !== '' && localNameError === null
 
-  const isDirty =
+  // Compute dirty against a hypothetical next-state so each onChange handler
+  // can report it before React has applied the setState. Avoids the
+  // useEffect-notifying-parent anti-pattern.
+  const computeDirty = (next: { name: string; description: string; instruction: string }) =>
     mode === 'edit'
-      ? name !== initialName || description !== initialDescription || instruction !== initialInstruction
-      : name.length > 0 || description.length > 0 || instruction.length > 0
+      ? next.name !== initialName || next.description !== initialDescription || next.instruction !== initialInstruction
+      : next.name.length > 0 || next.description.length > 0 || next.instruction.length > 0
 
-  useEffect(() => {
-    onDirtyChange?.(isDirty)
-  }, [isDirty, onDirtyChange])
+  const handleNameChange = (raw: string) => {
+    const v = raw.replace(/^\/+/, '')
+    setName(v)
+    onDirtyChange?.(computeDirty({ name: v, description, instruction }))
+  }
+  const handleDescriptionChange = (v: string) => {
+    setDescription(v)
+    onDirtyChange?.(computeDirty({ name, description: v, instruction }))
+  }
+  const handleInstructionChange = (v: string) => {
+    setInstruction(v)
+    onDirtyChange?.(computeDirty({ name, description, instruction: v }))
+  }
 
   const [prevResetSignal, setPrevResetSignal] = useState(resetSignal)
   if (resetSignal !== undefined && prevResetSignal !== resetSignal) {
@@ -75,6 +88,8 @@ export const SkillForm = ({
     setName(initialName)
     setDescription(initialDescription)
     setInstruction(initialInstruction)
+    // Parent already knows it triggered the reset; it sets its own isDirty
+    // back to false in the same handler, so no notification needed here.
   }
 
   const handleSubmit = () => {
@@ -112,9 +127,7 @@ export const SkillForm = ({
               id="skill-name"
               placeholder="meeting-notes"
               value={name}
-              // Strip any pasted leading `/` so the value mirrors what
-              // appears after the prefix glyph.
-              onChange={(e) => setName(e.target.value.replace(/^\/+/, ''))}
+              onChange={(e) => handleNameChange(e.target.value)}
               className="h-9 pl-7"
               aria-describedby="skill-name-help"
               aria-invalid={localNameError || nameError ? true : undefined}
@@ -152,7 +165,7 @@ export const SkillForm = ({
             rows={3}
             placeholder="Use when the user shares raw meeting notes or a transcript and wants it cleaned up, summarized, or turned into action items."
             value={description}
-            onChange={(e) => setDescription(e.target.value)}
+            onChange={(e) => handleDescriptionChange(e.target.value)}
           />
         </div>
 
@@ -164,7 +177,7 @@ export const SkillForm = ({
             id="skill-instruction"
             placeholder={`Pull out three things from the notes: decisions made, action items (who does what by when), and open questions.\n\nDon't add a summary paragraph – just the lists. Then ask if they want help sending it to anyone.`}
             value={instruction}
-            onChange={(e) => setInstruction(e.target.value)}
+            onChange={(e) => handleInstructionChange(e.target.value)}
             className="min-h-0 flex-1 resize-none"
           />
         </div>

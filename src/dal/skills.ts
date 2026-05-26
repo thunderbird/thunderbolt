@@ -88,6 +88,7 @@ export const getPinnedSkills = (db: AnyDrizzleDatabase) => {
   return query as typeof query & DrizzleQueryWithPromise<Skill>
 }
 
+/** One-shot read of a single non-deleted skill by id. */
 export const getSkill = async (db: AnyDrizzleDatabase, id: string): Promise<Skill | null> => {
   const row = await db
     .select()
@@ -97,6 +98,7 @@ export const getSkill = async (db: AnyDrizzleDatabase, id: string): Promise<Skil
   return (row ?? null) as Skill | null
 }
 
+/** One-shot read of a single non-deleted skill by name (case-sensitive). */
 export const getSkillByName = async (db: AnyDrizzleDatabase, name: string): Promise<Skill | null> => {
   const row = await db
     .select()
@@ -212,6 +214,7 @@ export const setPinned = async (db: AnyDrizzleDatabase, id: string, order: numbe
   await db.update(skillsTable).set({ pinnedOrder: order }).where(eq(skillsTable.id, id))
 }
 
+/** Toggle the `enabled` flag. SkillsView auto-unpins on disable as a side-effect at the call site. */
 export const setEnabled = async (db: AnyDrizzleDatabase, id: string, next: boolean): Promise<void> => {
   await db
     .update(skillsTable)

@@ -15,10 +15,5 @@ import type { Skill } from '@/types'
 export const findDependents = (targetName: string, library: Skill[]): Skill[] => {
   const escaped = targetName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
   const pattern = new RegExp(`/${escaped}(?=\\s|$)`)
-  return library.filter(
-    (s) =>
-      s.name !== targetName &&
-      ((s.description !== null && pattern.test(s.description)) ||
-        (s.instruction !== null && pattern.test(s.instruction))),
-  )
+  return library.filter((s) => s.name !== targetName && (pattern.test(s.description) || pattern.test(s.instruction)))
 }

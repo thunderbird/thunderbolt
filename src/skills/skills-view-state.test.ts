@@ -209,6 +209,19 @@ describe('skillsViewReducer', () => {
       // Name error should NOT be cleared by the pin-error timer.
       expect(cleared.nameError).toBe('bad name')
     })
+
+    it('CLEAR_NAME_ERROR drops a stale name error', () => {
+      const withName = skillsViewReducer(initialSkillsViewState, { type: 'SET_NAME_ERROR', message: 'taken' })
+      const cleared = skillsViewReducer(withName, { type: 'CLEAR_NAME_ERROR' })
+      expect(cleared.nameError).toBeNull()
+    })
+
+    it('CLEAR_NAME_ERROR is a no-op (same reference) when there is no error', () => {
+      const next = skillsViewReducer(initialSkillsViewState, { type: 'CLEAR_NAME_ERROR' })
+      // Reference equality keeps unrelated subscribers from re-rendering on
+      // every keystroke once the error is already gone.
+      expect(next).toBe(initialSkillsViewState)
+    })
   })
 
   describe('BACK_TO_LIST', () => {

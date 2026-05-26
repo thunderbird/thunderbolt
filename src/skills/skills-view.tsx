@@ -70,6 +70,20 @@ export const SkillsView = () => {
   // into the type means TS catches every unguarded `active.*` access.
   const active = skills.find((s) => s.id === activeId) ?? skills.at(0)
 
+  // Disabling a pinned skill auto-unpins it: a disabled skill can't be
+  // summoned from the chat pinned bar, so keeping it in a pin slot wastes
+  // one of the 10 available. The row animates from PINNED into DISABLED.
+  // Re-enabling does NOT auto-repin; the user pins again deliberately.
+  const disableSkill = useCallback(
+    async (id: string) => {
+      await setEnabled(id, false)
+      if (pinnedSet.has(id)) {
+        await togglePin(id)
+      }
+    },
+    [setEnabled, pinnedSet, togglePin],
+  )
+
   const handleToggleEnabled = useCallback(
     async (id: string, next: boolean) => {
       if (!next) {
@@ -79,17 +93,12 @@ export const SkillsView = () => {
           dispatch({ type: 'OPEN_DEPENDENTS', payload: { action: 'disable', skill: target, dependents } })
           return
         }
+        await disableSkill(id)
+        return
       }
       await setEnabled(id, next)
-      // Disabling a pinned skill auto-unpins it: a disabled skill can't be
-      // summoned from the chat pinned bar, so keeping it in a pin slot wastes
-      // one of the 10 available. The row animates from PINNED into DISABLED.
-      // Re-enabling does NOT auto-repin; the user pins again deliberately.
-      if (!next && pinnedSet.has(id)) {
-        await togglePin(id)
-      }
     },
-    [setEnabled, pinnedSet, togglePin, skills],
+    [setEnabled, disableSkill, skills],
   )
 
   const requestLeave = useCallback(
@@ -134,15 +143,10 @@ export const SkillsView = () => {
     }
   }
 
-  const removeSkill = useCallback(
-    async (id: string) => {
-      await softDeleteSkill(id)
-      if (pinnedSet.has(id)) {
-        await togglePin(id)
-      }
-    },
-    [softDeleteSkill, pinnedSet, togglePin],
-  )
+  // `softDeleteSkill` already nulls `pinnedOrder` in the same write, so no
+  // explicit unpin call is needed here — that would be a redundant write on
+  // the tombstone row.
+  const removeSkill = useCallback((id: string) => softDeleteSkill(id), [softDeleteSkill])
 
   const confirmPendingDependents = async () => {
     if (!pendingDependents) {
@@ -151,10 +155,7 @@ export const SkillsView = () => {
     const { action, skill } = pendingDependents
     dispatch({ type: 'CLOSE_DEPENDENTS' })
     if (action === 'disable') {
-      await setEnabled(skill.id, false)
-      if (pinnedSet.has(skill.id)) {
-        await togglePin(skill.id)
-      }
+      await disableSkill(skill.id)
     } else {
       await removeSkill(skill.id)
     }
@@ -202,6 +203,7 @@ export const SkillsView = () => {
       onCancel={() => requestLeave({ type: 'cancel' })}
       onSubmit={handleSubmit}
       onDirtyChange={(dirty) => dispatch({ type: 'SET_DIRTY', dirty })}
+      onNameChange={() => dispatch({ type: 'CLEAR_NAME_ERROR' })}
       resetSignal={resetSignal}
       nameError={nameError}
     />
@@ -238,6 +240,7 @@ export const SkillsView = () => {
         onCancel={() => requestLeave({ type: 'cancel' })}
         onSubmit={handleSubmit}
         onDirtyChange={(dirty) => dispatch({ type: 'SET_DIRTY', dirty })}
+        onNameChange={() => dispatch({ type: 'CLEAR_NAME_ERROR' })}
         resetSignal={resetSignal}
         nameError={nameError}
       />

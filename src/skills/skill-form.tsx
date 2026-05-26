@@ -28,6 +28,7 @@ export const SkillForm = ({
   onCancel,
   onSubmit,
   onDirtyChange,
+  onNameChange,
   resetSignal,
   mode = 'create',
   initialValues,
@@ -36,6 +37,9 @@ export const SkillForm = ({
   onCancel: () => void
   onSubmit: (values: SkillFormValues) => void
   onDirtyChange?: (dirty: boolean) => void
+  /** Fires whenever the user edits the name. Used to clear stale parent-side
+   *  uniqueness errors so they don't persist past the edit that invalidates them. */
+  onNameChange?: () => void
   /** Increment to force the form to reset back to {@link initialValues}. */
   resetSignal?: number
   mode?: SkillFormMode
@@ -55,10 +59,13 @@ export const SkillForm = ({
   const [instruction, setInstruction] = useState(initialInstruction)
 
   // Surface AgentSkills-spec violations inline as soon as the user has typed
-  // something, but don't shout at an empty initial state.
-  const localNameError = name.trim() === '' ? null : validateSkillName(name)
+  // something, but don't shout at an empty initial state. Validate against the
+  // trimmed value — `handleSubmit` submits the trimmed name, so the two must
+  // agree (otherwise " meeting-notes " reads as invalid even though it isn't).
+  const trimmedName = name.trim()
+  const localNameError = trimmedName === '' ? null : validateSkillName(trimmedName)
   const canSubmit =
-    name.trim() !== '' && description.trim() !== '' && instruction.trim() !== '' && localNameError === null
+    trimmedName !== '' && description.trim() !== '' && instruction.trim() !== '' && localNameError === null
 
   // Compute dirty against a hypothetical next-state so each onChange handler
   // can report it before React has applied the setState. Avoids the
@@ -72,6 +79,10 @@ export const SkillForm = ({
     const v = raw.replace(/^\/+/, '')
     setName(v)
     onDirtyChange?.(computeDirty({ name: v, description, instruction }))
+    // A "name already exists" error from the parent applies to the *previous*
+    // value; clear it as soon as the user edits so they don't see a stale
+    // message about a name they're no longer trying to submit.
+    onNameChange?.()
   }
   const handleDescriptionChange = (v: string) => {
     setDescription(v)

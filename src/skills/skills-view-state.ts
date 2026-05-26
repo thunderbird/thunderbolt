@@ -85,6 +85,8 @@ export type SkillsViewAction =
   | { type: 'SUBMIT_SUCCESS'; activeId: string }
   /** Inline name-error from the form's local validator or the DAL. */
   | { type: 'SET_NAME_ERROR'; message: string }
+  /** User edited the name field — clear any stale uniqueness error. */
+  | { type: 'CLEAR_NAME_ERROR' }
   /** Pin-cap error from a togglePin attempt; auto-cleared by a timer. */
   | { type: 'SET_PIN_ERROR'; message: string }
   /** Pin-cap error timer fired. */
@@ -172,6 +174,9 @@ export const skillsViewReducer = (state: SkillsViewState, action: SkillsViewActi
 
     case 'SET_NAME_ERROR':
       return { ...state, nameError: action.message }
+
+    case 'CLEAR_NAME_ERROR':
+      return state.nameError === null ? state : { ...state, nameError: null }
 
     case 'SET_PIN_ERROR':
       return { ...state, pinError: action.message }

@@ -87,12 +87,16 @@ export const SkillsView = () => {
           return
         }
       }
-      // Enabled state is independent of pin state: disabling a pinned skill
-      // keeps it pinned (and rendered with its grip + pin icon, just dimmed).
-      // The user pins / unpins separately via the row menu or detail view.
       await setEnabled(id, next)
+      // Disabling a pinned skill auto-unpins it: a disabled skill can't be
+      // summoned from the chat pinned bar, so keeping it in a pin slot wastes
+      // one of the 10 available. The row animates from PINNED into DISABLED.
+      // Re-enabling does NOT auto-repin; the user pins again deliberately.
+      if (!next && pinnedSet.has(id)) {
+        await togglePin(id)
+      }
     },
-    [setEnabled, skills],
+    [setEnabled, pinnedSet, togglePin, skills],
   )
 
   const performLeave = (action: { type: 'cancel' } | { type: 'select'; id: string }) => {
@@ -168,6 +172,9 @@ export const SkillsView = () => {
     setPendingDependents(null)
     if (action === 'disable') {
       await setEnabled(skill.id, false)
+      if (pinnedSet.has(skill.id)) {
+        await togglePin(skill.id)
+      }
     } else {
       await removeSkill(skill.id)
     }

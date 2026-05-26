@@ -105,7 +105,9 @@ export const SkillDetail = ({
                     />
                   </span>
                 </TooltipTrigger>
-                <TooltipContent>{enabled ? "Disable skill. The AI won't use it." : 'Enable skill'}</TooltipContent>
+                <TooltipContent>
+                  {enabled ? "Disable skill. The AI won't use it, and it will be unpinned." : 'Enable skill'}
+                </TooltipContent>
               </Tooltip>
             )}
             <DropdownMenu>

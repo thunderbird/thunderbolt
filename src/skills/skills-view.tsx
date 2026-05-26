@@ -107,6 +107,13 @@ export const SkillsView = () => {
     setResetSignal((n) => n + 1)
     setIsDirty(false)
     setNameError(null)
+    // On mobile a `cancel` from the form should drop the user back to the
+    // list. Driving this from `performLeave` (not the form's onCancel) ensures
+    // the panel stays visible while the discard-confirmation dialog is open —
+    // if the user picks "Keep editing" the form remains accessible.
+    if (isMobile && action.type === 'cancel') {
+      setMobileView('list')
+    }
   }
 
   const requestLeave = (action: { type: 'cancel' } | { type: 'select'; id: string }) => {
@@ -186,6 +193,12 @@ export const SkillsView = () => {
     setActiveId(id)
     setMode('edit')
     setPendingDependents(null)
+    // On mobile the dependents dialog can be triggered while `mobileView` is
+    // still 'list' (when launched from a list-row action), so dismiss the
+    // dialog and slide the panel in or the edit form has no surface to render.
+    if (isMobile) {
+      setMobileView('panel')
+    }
   }
 
   const handleSubmit = async (values: SkillFormValues) => {
@@ -227,12 +240,7 @@ export const SkillsView = () => {
     <SkillForm
       key="create"
       mode="create"
-      onCancel={() => {
-        requestLeave({ type: 'cancel' })
-        if (isMobile) {
-          setMobileView('list')
-        }
-      }}
+      onCancel={() => requestLeave({ type: 'cancel' })}
       onSubmit={handleSubmit}
       onDirtyChange={setIsDirty}
       resetSignal={resetSignal}
@@ -268,12 +276,7 @@ export const SkillsView = () => {
           description: active.description ?? '',
           instruction: active.instruction ?? '',
         }}
-        onCancel={() => {
-          requestLeave({ type: 'cancel' })
-          if (isMobile) {
-            setMobileView('list')
-          }
-        }}
+        onCancel={() => requestLeave({ type: 'cancel' })}
         onSubmit={handleSubmit}
         onDirtyChange={setIsDirty}
         resetSignal={resetSignal}

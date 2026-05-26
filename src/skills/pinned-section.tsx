@@ -19,8 +19,10 @@ import {
   verticalListSortingStrategy,
 } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
-import { GripVertical, Pin } from 'lucide-react'
+import { GripVertical, MoreHorizontal, Pin, PinOff, Play, SquarePen, Trash2 } from 'lucide-react'
+import { useNavigate } from 'react-router'
 
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 import { Switch } from '@/components/ui/switch'
 import type { Skill } from '@/types'
 
@@ -30,10 +32,23 @@ type PinnedRowProps = {
   enabled: boolean
   onSelect: (id: string) => void
   onToggleEnabled: (id: string, next: boolean) => void
+  onTogglePin: (id: string) => void
+  onEdit: (id: string) => void
+  onDelete: (id: string) => void
 }
 
-const PinnedRow = ({ skill, isActive, enabled, onSelect, onToggleEnabled }: PinnedRowProps) => {
+const PinnedRow = ({
+  skill,
+  isActive,
+  enabled,
+  onSelect,
+  onToggleEnabled,
+  onTogglePin,
+  onEdit,
+  onDelete,
+}: PinnedRowProps) => {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: skill.id })
+  const navigate = useNavigate()
 
   const style = {
     transform: CSS.Transform.toString(transform),
@@ -77,7 +92,65 @@ const PinnedRow = ({ skill, isActive, enabled, onSelect, onToggleEnabled }: Pinn
           />
         </span>
         <Pin size={14} className="shrink-0 fill-current text-muted-foreground" aria-hidden="true" />
-        <span className="truncate">{skill.name}</span>
+        <span className="min-w-0 flex-1 truncate">{skill.name}</span>
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <button
+              type="button"
+              aria-label={`Open ${skill.name} menu`}
+              onClick={(e) => e.stopPropagation()}
+              className="inline-flex size-6 shrink-0 items-center justify-center rounded-md text-muted-foreground opacity-0 transition-opacity transition-colors hover:bg-foreground/10 hover:text-foreground focus-visible:opacity-100 group-hover:opacity-100 aria-expanded:bg-foreground/10 aria-expanded:opacity-100"
+            >
+              <MoreHorizontal size={16} />
+            </button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent
+            align="end"
+            sideOffset={8}
+            className="flex w-56 flex-col gap-0 rounded-xl border border-border bg-card px-2 py-3"
+          >
+            <DropdownMenuItem
+              onClick={(e) => {
+                e.stopPropagation()
+                onTogglePin(skill.id)
+              }}
+              className="h-9 gap-1.5 px-2 text-sm [&_svg:not([class*='size-'])]:size-4"
+            >
+              <PinOff />
+              Unpin
+            </DropdownMenuItem>
+            <DropdownMenuItem
+              onClick={(e) => {
+                e.stopPropagation()
+                onEdit(skill.id)
+              }}
+              className="h-9 gap-1.5 px-2 text-sm [&_svg:not([class*='size-'])]:size-4"
+            >
+              <SquarePen />
+              Edit
+            </DropdownMenuItem>
+            <DropdownMenuItem
+              onClick={(e) => {
+                e.stopPropagation()
+                navigate('/', { state: { runSkill: skill.name } })
+              }}
+              className="h-9 gap-1.5 px-2 text-sm [&_svg:not([class*='size-'])]:size-4"
+            >
+              <Play />
+              Run in chat
+            </DropdownMenuItem>
+            <DropdownMenuItem
+              onClick={(e) => {
+                e.stopPropagation()
+                onDelete(skill.id)
+              }}
+              className="h-9 gap-1.5 px-2 text-sm [&_svg:not([class*='size-'])]:size-4"
+            >
+              <Trash2 />
+              Delete
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
       </div>
     </li>
   )
@@ -93,14 +166,20 @@ export const PinnedSection = ({
   activeSkillId,
   isEnabled,
   onToggleEnabled,
+  onTogglePin,
   onSelectSkill,
+  onEdit,
+  onDelete,
   onReorder,
 }: {
   pinned: Skill[]
   activeSkillId: string | null
   isEnabled: (id: string) => boolean
   onToggleEnabled: (id: string, next: boolean) => void
+  onTogglePin: (id: string) => void
   onSelectSkill: (id: string) => void
+  onEdit: (id: string) => void
+  onDelete: (id: string) => void
   onReorder: (ids: string[]) => void
 }) => {
   const sensors = useSensors(
@@ -140,6 +219,9 @@ export const PinnedSection = ({
                 enabled={isEnabled(skill.id)}
                 onSelect={onSelectSkill}
                 onToggleEnabled={onToggleEnabled}
+                onTogglePin={onTogglePin}
+                onEdit={onEdit}
+                onDelete={onDelete}
               />
             ))}
           </ul>

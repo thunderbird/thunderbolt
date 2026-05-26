@@ -110,7 +110,10 @@ export const SkillsList = ({
           activeSkillId={activeSkillId}
           isEnabled={isEnabled}
           onToggleEnabled={onToggleEnabled}
+          onTogglePin={onTogglePin}
           onSelectSkill={onSelectSkill}
+          onEdit={onEdit}
+          onDelete={onDelete}
           onReorder={onReorderPins}
         />
         <ul className="flex flex-col gap-1.5">

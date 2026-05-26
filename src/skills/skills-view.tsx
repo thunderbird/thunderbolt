@@ -200,42 +200,42 @@ export const SkillsView = () => {
     }
   }
 
-  if (skills.length === 0) {
-    // Empty state — the seeded starter set means most users never see this;
-    // it's the "I deleted everything" path. Copy is intentionally minimal.
-    return (
-      <div className="flex h-full flex-col items-center justify-center gap-4 px-6 text-center text-foreground">
-        <h2 className="text-xl">No skills yet</h2>
-        <p className="max-w-md text-sm text-muted-foreground">
-          Skills are reusable instruction templates you can summon with a slash command. Create one to get started.
-        </p>
-        <SkillsList
-          skills={[]}
-          pinned={[]}
-          activeSkillId={null}
-          isEnabled={() => false}
-          isPinned={() => false}
-          onToggleEnabled={() => {}}
-          onTogglePin={() => {}}
-          onReorderPins={() => {}}
-          onCreate={() => {
-            setMode('create')
-            setMobileView('panel')
-          }}
-          onSelectSkill={() => {}}
-          onEdit={() => {}}
-          onDelete={() => {}}
-        />
-      </div>
-    )
-  }
+  // Empty-state panel — most users never see this once seeded defaults land,
+  // but it's the "I deleted everything" path. Stays inside the master/detail
+  // layout so the list (and its + button) keep their normal position.
+  const emptyPanel = (
+    <section className="flex h-full flex-1 flex-col items-center justify-center gap-3 border-l border-border/50 bg-background px-6 text-center text-foreground">
+      <h2 className="text-xl">No skill selected</h2>
+      <p className="max-w-md text-sm text-muted-foreground">
+        Skills are reusable instruction templates you can summon with a slash command.
+        {skills.length === 0 ? ' Create one to get started.' : ' Select a skill from the list to view or edit it.'}
+      </p>
+    </section>
+  )
 
-  if (!active) {
-    return null
-  }
+  const createForm = (
+    <SkillForm
+      key="create"
+      mode="create"
+      onCancel={() => {
+        requestLeave({ type: 'cancel' })
+        if (isMobile) {
+          setMobileView('list')
+        }
+      }}
+      onSubmit={handleSubmit}
+      onDirtyChange={setIsDirty}
+      resetSignal={resetSignal}
+      nameError={nameError}
+    />
+  )
 
   const panel =
-    mode === 'detail' ? (
+    mode === 'create' ? (
+      createForm
+    ) : !active ? (
+      emptyPanel
+    ) : mode === 'detail' ? (
       <SkillDetail
         name={active.name ?? ''}
         description={active.description ?? ''}
@@ -251,17 +251,13 @@ export const SkillsView = () => {
       />
     ) : (
       <SkillForm
-        key={mode === 'edit' ? `edit:${active.id}` : 'create'}
-        mode={mode === 'edit' ? 'edit' : 'create'}
-        initialValues={
-          mode === 'edit'
-            ? {
-                name: active.name ?? '',
-                description: active.description ?? '',
-                instruction: active.instruction ?? '',
-              }
-            : undefined
-        }
+        key={`edit:${active.id}`}
+        mode="edit"
+        initialValues={{
+          name: active.name ?? '',
+          description: active.description ?? '',
+          instruction: active.instruction ?? '',
+        }}
         onCancel={() => {
           requestLeave({ type: 'cancel' })
           if (isMobile) {

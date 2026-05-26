@@ -24,6 +24,7 @@ import { useMcpSync } from '@/hooks/use-mcp-sync'
 import ChatLayout from '@/layout/main-layout'
 import { PostHogProvider } from '@/lib/posthog'
 import { ThemeProvider } from '@/lib/theme-provider'
+import AgentsSettingsPage from '@/routes/settings/agents'
 import DevicesSettingsPage from '@/settings/devices'
 import { default as Settings } from '@/settings/index'
 import IntegrationsPage from '@/settings/integrations'
@@ -169,6 +170,7 @@ const AppRoutes = ({ initData }: { initData: InitData }) => {
             <Route path="devices" element={<DevicesSettingsPage />} />
             <Route path="mcp-servers" element={<McpServersPage />} />
             <Route path="skills" element={<SkillsPage />} />
+            <Route path="agents" element={<AgentsSettingsPage />} />
             <Route path="integrations" element={<IntegrationsPage />} />
             {import.meta.env.DEV && (
               <Route

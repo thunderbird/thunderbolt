@@ -106,6 +106,8 @@ export const SkillsList = ({
         <PinnedSection
           pinned={pinned}
           activeSkillId={activeSkillId}
+          isEnabled={isEnabled}
+          onToggleEnabled={onToggleEnabled}
           onSelectSkill={onSelectSkill}
           onReorder={onReorderPins}
         />

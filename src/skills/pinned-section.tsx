@@ -21,15 +21,18 @@ import {
 import { CSS } from '@dnd-kit/utilities'
 import { GripVertical, Pin } from 'lucide-react'
 
+import { Switch } from '@/components/ui/switch'
 import type { Skill } from '@/types'
 
 type PinnedRowProps = {
   skill: Skill
   isActive: boolean
+  enabled: boolean
   onSelect: (id: string) => void
+  onToggleEnabled: (id: string, next: boolean) => void
 }
 
-const PinnedRow = ({ skill, isActive, onSelect }: PinnedRowProps) => {
+const PinnedRow = ({ skill, isActive, enabled, onSelect, onToggleEnabled }: PinnedRowProps) => {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: skill.id })
 
   const style = {
@@ -51,8 +54,8 @@ const PinnedRow = ({ skill, isActive, onSelect }: PinnedRowProps) => {
           }
         }}
         className={`group flex h-[var(--touch-height-default)] w-full cursor-pointer items-center gap-2 rounded-lg px-1.5 text-base transition-colors ${
-          isActive ? 'bg-accent' : 'hover:bg-accent'
-        }`}
+          enabled ? 'text-foreground' : 'text-muted-foreground/60'
+        } ${isActive ? 'bg-accent' : 'hover:bg-accent'}`}
       >
         <button
           type="button"
@@ -66,8 +69,15 @@ const PinnedRow = ({ skill, isActive, onSelect }: PinnedRowProps) => {
         >
           <GripVertical size={14} />
         </button>
+        <span className="shrink-0" onClick={(e) => e.stopPropagation()} onKeyDown={(e) => e.stopPropagation()}>
+          <Switch
+            checked={enabled}
+            onCheckedChange={(next) => onToggleEnabled(skill.id, next)}
+            aria-label={enabled ? `Disable ${skill.name}` : `Enable ${skill.name}`}
+          />
+        </span>
         <Pin size={14} className="shrink-0 fill-current text-muted-foreground" aria-hidden="true" />
-        <span className="truncate text-foreground">{skill.name}</span>
+        <span className="truncate">{skill.name}</span>
       </div>
     </li>
   )
@@ -81,11 +91,15 @@ const PinnedRow = ({ skill, isActive, onSelect }: PinnedRowProps) => {
 export const PinnedSection = ({
   pinned,
   activeSkillId,
+  isEnabled,
+  onToggleEnabled,
   onSelectSkill,
   onReorder,
 }: {
   pinned: Skill[]
   activeSkillId: string | null
+  isEnabled: (id: string) => boolean
+  onToggleEnabled: (id: string, next: boolean) => void
   onSelectSkill: (id: string) => void
   onReorder: (ids: string[]) => void
 }) => {
@@ -119,7 +133,14 @@ export const PinnedSection = ({
         <SortableContext items={pinned.map((s) => s.id)} strategy={verticalListSortingStrategy}>
           <ul className="flex flex-col gap-0.5">
             {pinned.map((skill) => (
-              <PinnedRow key={skill.id} skill={skill} isActive={skill.id === activeSkillId} onSelect={onSelectSkill} />
+              <PinnedRow
+                key={skill.id}
+                skill={skill}
+                isActive={skill.id === activeSkillId}
+                enabled={isEnabled(skill.id)}
+                onSelect={onSelectSkill}
+                onToggleEnabled={onToggleEnabled}
+              />
             ))}
           </ul>
         </SortableContext>

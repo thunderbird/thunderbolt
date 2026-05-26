@@ -2,7 +2,6 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { aiFetchStreamingResponse } from '@/ai/fetch'
 import { isRateLimitError } from '@/lib/error-utils'
 import type { HttpClient } from '@/lib/http'
 import { trackEvent } from '@/lib/posthog'
@@ -42,6 +41,9 @@ export const createChatInstance = (
         throw new Error('No session found')
       }
 
+      // `fetch.ts` carries the Vercel AI SDK + all provider SDKs; importing
+      // it on first send keeps that weight out of the entry chunk.
+      const { aiFetchStreamingResponse } = await import('@/ai/fetch')
       return aiFetchStreamingResponse({
         init,
         saveMessages,

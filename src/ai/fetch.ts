@@ -22,9 +22,6 @@ import type { FetchFn } from '@/lib/proxy-fetch'
 import { createToolset, getAvailableTools } from '@/lib/tools'
 import type { Model, SaveMessagesFunction, ThunderboltUIMessage } from '@/types'
 import type { SourceMetadata } from '@/types/source'
-import { createAnthropic } from '@ai-sdk/anthropic'
-import { createOpenAI } from '@ai-sdk/openai'
-import { createOpenAICompatible } from '@ai-sdk/openai-compatible'
 import type { HttpClient } from '@/lib/http'
 import type { SecureClient } from 'tinfoil'
 import { v7 as uuidv7 } from 'uuid'
@@ -54,13 +51,6 @@ import { createMessageMetadata } from './message-metadata'
 const fetch: typeof baseFetch = (input, init) =>
   baseFetch(input, isSsoMode() ? { ...init, credentials: 'include' } : init)
 fetch.preconnect = baseFetch.preconnect
-
-export const ollama = createOpenAI({
-  baseURL: 'http://localhost:11434/v1',
-  // compatibility: 'compatible',
-  apiKey: 'ollama',
-  fetch,
-})
 
 // Reuse one SecureClient across requests so attestation runs once per page load.
 // The `tinfoil` module is dynamically imported so its attestation/crypto deps
@@ -123,9 +113,11 @@ export const createModel = async (modelConfig: Model, getProxyFetch: () => Fetch
       // GPT OSS (vendor: 'openai') uses createOpenAI with .chat() to force Chat Completions API
       // (AI SDK 5 defaults createOpenAI to Responses API which our backend doesn't support)
       if (modelConfig.vendor === 'openai') {
+        const { createOpenAI } = await import('@ai-sdk/openai')
         const provider = createOpenAI({ baseURL: cloudUrl, apiKey: token, fetch: providerFetch })
         return provider.chat(modelConfig.model)
       }
+      const { createOpenAICompatible } = await import('@ai-sdk/openai-compatible')
       const provider = createOpenAICompatible({
         name: 'thunderbolt',
         baseURL: cloudUrl,
@@ -140,6 +132,7 @@ export const createModel = async (modelConfig: Model, getProxyFetch: () => Fetch
       // X-Proxy-Passthrough-Authorization; Standalone mode (Tauri) hits
       // Anthropic directly via the Rust HTTP plugin. Either way, the user's
       // Anthropic key never goes through Thunderbolt's session auth path.
+      const { createAnthropic } = await import('@ai-sdk/anthropic')
       const anthropic = createAnthropic({
         apiKey: modelConfig.apiKey || '',
         fetch: getProxyFetch(),
@@ -150,6 +143,7 @@ export const createModel = async (modelConfig: Model, getProxyFetch: () => Fetch
       if (!modelConfig.apiKey) {
         throw new Error('No API key provided')
       }
+      const { createOpenAI } = await import('@ai-sdk/openai')
       const openai = createOpenAI({
         apiKey: modelConfig.apiKey,
         fetch: getProxyFetch(),
@@ -160,6 +154,7 @@ export const createModel = async (modelConfig: Model, getProxyFetch: () => Fetch
       if (!modelConfig.url) {
         throw new Error('No URL provided for custom provider')
       }
+      const { createOpenAICompatible } = await import('@ai-sdk/openai-compatible')
       const openaiCompatible = createOpenAICompatible({
         name: 'custom',
         baseURL: modelConfig.url,
@@ -174,6 +169,7 @@ export const createModel = async (modelConfig: Model, getProxyFetch: () => Fetch
       }
       // Using OpenAI-compatible approach until @openrouter/ai-sdk-provider supports Vercel AI SDK v5
       // https://github.com/OpenRouterTeam/ai-sdk-provider/pull/77
+      const { createOpenAICompatible } = await import('@ai-sdk/openai-compatible')
       const openrouter = createOpenAICompatible({
         name: 'openrouter',
         baseURL: 'https://openrouter.ai/api/v1',
@@ -187,6 +183,7 @@ export const createModel = async (modelConfig: Model, getProxyFetch: () => Fetch
         throw new Error('No API key provided')
       }
       const client = await getTinfoilClient()
+      const { createOpenAICompatible } = await import('@ai-sdk/openai-compatible')
       const tinfoil = createOpenAICompatible({
         name: 'tinfoil',
         baseURL: client.getBaseURL()!,

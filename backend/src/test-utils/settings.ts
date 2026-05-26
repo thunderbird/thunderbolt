@@ -53,5 +53,10 @@ export const createTestSettings = (overrides: Partial<Settings> = {}): Settings 
   swaggerEnabled: false,
   rateLimitEnabled: false,
   trustedProxy: '' as const,
+  enabledAgents: '',
+  allowCustomAgents: true,
+  haystackBaseUrl: '',
+  haystackApiKey: '',
+  haystackPipelines: '',
   ...overrides,
 })

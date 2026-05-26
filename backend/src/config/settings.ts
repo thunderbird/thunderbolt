@@ -99,6 +99,17 @@ const settingsSchema = z
     // Set to 'cloudflare' to trust CF-Connecting-IP, 'akamai' for True-Client-IP,
     // or leave empty to use only the direct socket IP (proxy headers are NOT trusted)
     trustedProxy: z.enum(['', 'cloudflare', 'akamai']).default(''),
+
+    // ACP (Agent Client Protocol) settings
+    // Comma-separated list of agent IDs to expose via GET /agents. Empty = all registered.
+    enabledAgents: z.string().default(''),
+    // When false, the discovery response sets allowCustomAgents: false and the UI hides "+ Add Custom Agent".
+    allowCustomAgents: z.boolean().default(true),
+    // Haystack-specific config (consumed by M4's provider, defined here for centralized config).
+    haystackBaseUrl: z.string().default(''),
+    haystackApiKey: z.string().default(''),
+    // JSON array of pipeline descriptors: [{id, name, pipelineId, description?}]
+    haystackPipelines: z.string().default(''),
   })
   .superRefine((data, ctx) => {
     if (data.powersyncUrl && data.powersyncJwtSecret.length < 32) {
@@ -171,6 +182,11 @@ const parseSettings = (): Settings => {
     swaggerEnabled: process.env.SWAGGER_ENABLED === 'true',
     rateLimitEnabled: process.env.RATE_LIMIT_ENABLED !== 'false',
     trustedProxy: (process.env.TRUSTED_PROXY || '').toLowerCase(),
+    enabledAgents: process.env.ENABLED_AGENTS || '',
+    allowCustomAgents: process.env.ALLOW_CUSTOM_AGENTS !== 'false',
+    haystackBaseUrl: process.env.HAYSTACK_BASE_URL || '',
+    haystackApiKey: process.env.HAYSTACK_API_KEY || '',
+    haystackPipelines: process.env.HAYSTACK_PIPELINES || '',
   }
 
   return settingsSchema.parse(env)
@@ -234,6 +250,17 @@ export const getCorsMethodsList = (settings: Settings): string[] => {
     .split(',')
     .map((method) => method.trim())
     .filter((method) => method.length > 0)
+}
+
+/**
+ * Parse comma-separated ENABLED_AGENTS into a list. Empty string yields an empty
+ * array — callers MUST interpret that as "no filter, expose all registered providers".
+ */
+export const getEnabledAgentsList = (settings: Pick<Settings, 'enabledAgents'>): string[] => {
+  return settings.enabledAgents
+    .split(',')
+    .map((id) => id.trim())
+    .filter((id) => id.length > 0)
 }
 
 /** Parse comma-separated auto-approved domains into a list */

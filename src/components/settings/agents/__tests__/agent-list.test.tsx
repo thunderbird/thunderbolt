@@ -106,23 +106,16 @@ describe('AgentList', () => {
   })
 
   it('calls onToggle with the new enabled value when a custom agent toggle flips', () => {
-    const onToggle = mock(() => {})
-    const onDelete = mock(() => {})
+    const onToggle = mock<(agent: Agent, enabled: boolean) => void>(() => {})
+    const onDelete = mock<(agent: Agent) => void>(() => {})
 
-    render(
-      <AgentList
-        agents={[customAgent]}
-        currentUserId="user-42"
-        onToggle={onToggle}
-        onDelete={onDelete}
-      />,
-    )
+    render(<AgentList agents={[customAgent]} currentUserId="user-42" onToggle={onToggle} onDelete={onDelete} />)
 
     const toggle = screen.getByTestId(`agent-toggle-${customAgent.id}`)
     fireEvent.click(toggle)
 
     expect(onToggle).toHaveBeenCalledTimes(1)
-    const [agentArg, enabledArg] = onToggle.mock.calls[0] as [Agent, boolean]
+    const [agentArg, enabledArg] = onToggle.mock.calls[0]
     expect(agentArg.id).toBe(customAgent.id)
     expect(enabledArg).toBe(false)
   })
@@ -131,14 +124,7 @@ describe('AgentList', () => {
     const onToggle = mock(() => {})
     const onDelete = mock(() => {})
 
-    render(
-      <AgentList
-        agents={[builtInAgent]}
-        currentUserId="user-42"
-        onToggle={onToggle}
-        onDelete={onDelete}
-      />,
-    )
+    render(<AgentList agents={[builtInAgent]} currentUserId="user-42" onToggle={onToggle} onDelete={onDelete} />)
 
     expect(screen.getByTestId(`agent-toggle-${builtInAgent.id}`)).toBeDisabled()
   })

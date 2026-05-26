@@ -89,9 +89,7 @@ describe('AddCustomAgentDialog', () => {
   it('keeps Add Agent disabled until both name and URL are filled', () => {
     const onSubmit = mock(async () => {})
     const onOpenChange = mock(() => {})
-    render(
-      <AddCustomAgentDialog open={true} onOpenChange={onOpenChange} onSubmit={onSubmit} isIos={notIos} />,
-    )
+    render(<AddCustomAgentDialog open={true} onOpenChange={onOpenChange} onSubmit={onSubmit} isIos={notIos} />)
 
     const submit = screen.getByRole('button', { name: /add agent/i })
     expect(submit).toBeDisabled()
@@ -104,14 +102,9 @@ describe('AddCustomAgentDialog', () => {
   })
 
   it('invokes onSubmit with the inferred transport and trimmed values', async () => {
-    let payload: AddCustomAgentPayload | null = null
-    const onSubmit = mock(async (p: AddCustomAgentPayload) => {
-      payload = p
-    })
+    const onSubmit = mock(async (_: AddCustomAgentPayload) => {})
     const onOpenChange = mock(() => {})
-    render(
-      <AddCustomAgentDialog open={true} onOpenChange={onOpenChange} onSubmit={onSubmit} isIos={notIos} />,
-    )
+    render(<AddCustomAgentDialog open={true} onOpenChange={onOpenChange} onSubmit={onSubmit} isIos={notIos} />)
 
     fireEvent.change(screen.getByLabelText(/name/i), { target: { value: '  My Agent  ' } })
     fireEvent.change(screen.getByLabelText(/url/i), { target: { value: '  https://example.com/acp  ' } })
@@ -122,7 +115,7 @@ describe('AddCustomAgentDialog', () => {
     })
 
     expect(onSubmit).toHaveBeenCalledTimes(1)
-    expect(payload).toEqual({
+    expect(onSubmit).toHaveBeenCalledWith({
       name: 'My Agent',
       url: 'https://example.com/acp',
       description: 'Demo',
@@ -135,14 +128,7 @@ describe('AddCustomAgentDialog', () => {
   it('shows the iOS rejection inline and does NOT call onSubmit', async () => {
     const onSubmit = mock(async () => {})
     const onOpenChange = mock(() => {})
-    render(
-      <AddCustomAgentDialog
-        open={true}
-        onOpenChange={onOpenChange}
-        onSubmit={onSubmit}
-        isIos={() => true}
-      />,
-    )
+    render(<AddCustomAgentDialog open={true} onOpenChange={onOpenChange} onSubmit={onSubmit} isIos={() => true} />)
 
     fireEvent.change(screen.getByLabelText(/name/i), { target: { value: 'iOS Agent' } })
     fireEvent.change(screen.getByLabelText(/url/i), { target: { value: 'ws://example.com/ws' } })
@@ -158,9 +144,7 @@ describe('AddCustomAgentDialog', () => {
   it('shows an inline error for unsupported schemes and does NOT call onSubmit', async () => {
     const onSubmit = mock(async () => {})
     const onOpenChange = mock(() => {})
-    render(
-      <AddCustomAgentDialog open={true} onOpenChange={onOpenChange} onSubmit={onSubmit} isIos={notIos} />,
-    )
+    render(<AddCustomAgentDialog open={true} onOpenChange={onOpenChange} onSubmit={onSubmit} isIos={notIos} />)
 
     fireEvent.change(screen.getByLabelText(/name/i), { target: { value: 'Bad Agent' } })
     fireEvent.change(screen.getByLabelText(/url/i), { target: { value: 'ftp://example.com' } })

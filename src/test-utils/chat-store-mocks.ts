@@ -3,6 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { useChatStore } from '@/chats/chat-store'
+import { builtInAgent } from '@/defaults/agents'
 import type { AutomationRun, ChatThread, Mode, Model, ThunderboltUIMessage } from '@/types'
 import { type Chat } from '@ai-sdk/react'
 import { mock } from 'bun:test'
@@ -219,6 +220,7 @@ export const hydrateStore = (state: {
       id: state.id,
       retryCount: 0,
       retriesExhausted: false,
+      selectedAgent: builtInAgent,
       selectedMode: state.selectedMode ?? defaultTestMode,
       selectedModel: state.selectedModel ?? defaultTestModel,
       triggerData: state.triggerData,

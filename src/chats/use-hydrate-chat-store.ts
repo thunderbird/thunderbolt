@@ -17,6 +17,7 @@ import {
   saveMessagesWithContextUpdate,
 } from '@/dal'
 import { getOrCreateChatThread, updateChatThread } from '@/dal/chat-threads'
+import { builtInAgent } from '@/defaults/agents'
 import { useMCP } from '@/lib/mcp-provider'
 import { generateTitle } from '@/lib/title-generator'
 import { convertDbChatMessageToUIMessage } from '@/lib/utils'
@@ -150,6 +151,9 @@ export const useHydrateChatStore = ({ id, isNew }: UseHydrateChatStoreParams) =>
       id,
       retryCount: 0,
       retriesExhausted: false,
+      // MVP: no persisted thread→agent mapping; default to built-in. Switching
+      // agents mid-session lives in-memory only (see chat-store.setSelectedAgent).
+      selectedAgent: builtInAgent,
       selectedMode,
       selectedModel: defaultModel,
       triggerData,

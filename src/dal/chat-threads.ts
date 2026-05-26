@@ -61,11 +61,17 @@ export const createChatThread = async (
 
 /**
  * Update a chat thread
+ *
+ * `acpSessionId` is included so the chat layer (`src/chats/chat-instance.ts`)
+ * can persist the ACP `sessionId` returned by `session/new` for non-built-in
+ * agents — future loads call `session/load` when the agent advertises it.
  */
 export const updateChatThread = async (
   db: AnyDrizzleDatabase,
   id: string,
-  data: Partial<Pick<ChatThread, 'contextSize' | 'modeId' | 'title' | 'triggeredBy' | 'wasTriggeredByAutomation'>>,
+  data: Partial<
+    Pick<ChatThread, 'acpSessionId' | 'contextSize' | 'modeId' | 'title' | 'triggeredBy' | 'wasTriggeredByAutomation'>
+  >,
 ): Promise<void> => {
   await db.update(chatThreadsTable).set(data).where(eq(chatThreadsTable.id, id))
 }

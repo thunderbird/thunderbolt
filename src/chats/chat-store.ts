@@ -6,17 +6,19 @@ import { updateSettings } from '@/dal'
 import { getDb } from '@/db/database'
 import { type MCPClient } from '@/lib/mcp-provider'
 import { trackEvent } from '@/lib/posthog'
+import type { Agent } from '@/types/acp'
 import type { AutomationRun, ChatThread, Mode, Model, ThunderboltUIMessage } from '@/types'
 import { create } from 'zustand'
 import type { Chat } from '@ai-sdk/react'
 import { useShallow } from 'zustand/react/shallow'
 
-type ChatSession = {
+export type ChatSession = {
   chatInstance: Chat<ThunderboltUIMessage>
   chatThread: ChatThread | null
   id: string
   retryCount: number
   retriesExhausted: boolean
+  selectedAgent: Agent
   selectedMode: Mode
   selectedModel: Model
   triggerData: AutomationRun | null
@@ -36,6 +38,7 @@ type ChatStoreActions = {
   setMcpClients(mcpClients: MCPClient[]): void
   setModes(modes: Mode[]): void
   setModels(models: Model[]): void
+  setSelectedAgent(id: string, agent: Agent): void
   setSelectedMode(id: string, modeId: string | null): Promise<void>
   setSelectedModel(id: string, modelId: string | null): Promise<void>
   updateSession(id: string, session: Partial<Omit<ChatSession, 'id'>>): void
@@ -81,6 +84,21 @@ export const useChatStore = create<ChatStore>()((set, get) => ({
 
   setModels: (models) => {
     set({ models })
+  },
+
+  setSelectedAgent: (id, agent) => {
+    const { sessions } = get()
+
+    const session = sessions.get(id)
+
+    if (!session) {
+      throw new Error('No session found')
+    }
+
+    const nextSessions = new Map(sessions)
+    nextSessions.set(id, { ...session, selectedAgent: agent })
+
+    set({ sessions: nextSessions })
   },
 
   setSelectedMode: async (id, modeId) => {

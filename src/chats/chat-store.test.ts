@@ -5,6 +5,7 @@
 import { getSettings } from '@/dal'
 import { setupTestDatabase, teardownTestDatabase, resetTestDatabase } from '@/dal/test-utils'
 import { getDb } from '@/db/database'
+import { builtInAgent } from '@/defaults/agents'
 import type { Mode } from '@/types'
 import {
   createMockAutomationRun,
@@ -115,6 +116,7 @@ describe('chat-store', () => {
               chatInstance,
               chatThread: null,
               id: 'test-id',
+              selectedAgent: builtInAgent,
               selectedMode: null as unknown as Mode,
               retryCount: 0,
               retriesExhausted: false,

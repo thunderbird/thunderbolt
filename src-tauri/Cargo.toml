@@ -51,6 +51,12 @@ tauri-plugin-haptics = "2.3"
 tauri-plugin-updater = "2.3"
 tauri-plugin-store = "2.4.3"
 
+# Used by `src-tauri/src/acp_http.rs` (added by M5) to stream HTTP+SSE responses
+# from ACP agents in Tauri Standalone mode. `stream` enables `bytes_stream()`.
+reqwest = { version = "0.12", features = ["stream"] }
+# Provides `StreamExt` for consuming the reqwest byte stream in `acp_http.rs`.
+futures-util = "0.3"
+
 # Used only in debug builds to install a rustls crypto provider before
 # tauri-plugin-devtools' reqwest stack initializes (otherwise iOS dev panics
 # at first HTTPS call: "No provider set"). Already a transitive dep via reqwest.

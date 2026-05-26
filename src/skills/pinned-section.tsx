@@ -92,7 +92,7 @@ const PinnedRow = ({
           />
         </span>
         <Pin size={14} className="shrink-0 fill-current text-muted-foreground" aria-hidden="true" />
-        <span className="min-w-0 flex-1 truncate">{skill.name}</span>
+        <span className="min-w-0 flex-1 truncate">/{skill.name}</span>
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <button

@@ -38,7 +38,7 @@ export const SkillsView = () => {
   const [isDirty, setIsDirty] = useState(false)
   const [resetSignal, setResetSignal] = useState(0)
   const [pendingLeave, setPendingLeave] = useState<PendingLeave>(null)
-  const [deleteOpen, setDeleteOpen] = useState(false)
+  const [pendingDelete, setPendingDelete] = useState<Skill | null>(null)
   const [pendingDependents, setPendingDependents] = useState<{
     action: DependentsAction
     skill: Skill
@@ -150,7 +150,9 @@ export const SkillsView = () => {
     if (dependents.length > 0) {
       setPendingDependents({ action: 'delete', skill: target, dependents })
     } else {
-      setDeleteOpen(true)
+      // Snapshot the target skill so a concurrent sync that mutates `skills`
+      // between open and confirm can't redirect the delete to a different row.
+      setPendingDelete(target)
     }
   }
 
@@ -321,7 +323,7 @@ export const SkillsView = () => {
       )}
       {pendingDependents && (
         <DependentsDialog
-          open={pendingDependents !== null}
+          open
           onOpenChange={(open) => {
             if (!open) {
               setPendingDependents(null)
@@ -334,15 +336,19 @@ export const SkillsView = () => {
           onJumpToDependent={onJumpToDependent}
         />
       )}
-      {active && (
+      {pendingDelete && (
         <DeleteSkillDialog
-          open={deleteOpen}
-          onOpenChange={setDeleteOpen}
-          onConfirm={() => {
-            void removeSkill(active.id)
-            setDeleteOpen(false)
+          open
+          onOpenChange={(open) => {
+            if (!open) {
+              setPendingDelete(null)
+            }
           }}
-          skillName={active.name ?? ''}
+          onConfirm={() => {
+            void removeSkill(pendingDelete.id)
+            setPendingDelete(null)
+          }}
+          skillName={pendingDelete.name ?? ''}
         />
       )}
       <DiscardCreateDialog

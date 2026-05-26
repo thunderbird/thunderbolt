@@ -14,8 +14,8 @@ export const maxPinnedSkills = 10
 
 /** Returned when a write would create two skills with the same `name`. */
 export class SkillNameTakenError extends Error {
-  constructor(public readonly name: string) {
-    super(`A skill named "${name}" already exists.`)
+  constructor(public readonly skillName: string) {
+    super(`A skill named "${skillName}" already exists.`)
     this.name = 'SkillNameTakenError'
   }
 }

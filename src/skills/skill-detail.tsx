@@ -25,6 +25,7 @@ export const SkillDetail = ({
   instruction,
   pinned,
   enabled,
+  pinError,
   onTogglePin,
   onToggleEnabled,
   onEdit,
@@ -36,6 +37,8 @@ export const SkillDetail = ({
   instruction: string
   pinned: boolean
   enabled: boolean
+  /** Inline pin-cap error from the parent; shown for ~4s next to the pin trigger. */
+  pinError?: string | null
   onTogglePin: () => void
   onToggleEnabled: (next: boolean) => void
   onEdit: () => void
@@ -168,6 +171,11 @@ export const SkillDetail = ({
             </DropdownMenu>
           </div>
         </div>
+        {pinError && (
+          <p role="alert" className="text-sm text-destructive">
+            {pinError}
+          </p>
+        )}
       </header>
 
       <Accordion

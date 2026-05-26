@@ -3,9 +3,9 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { AnimatePresence, m } from 'framer-motion'
-import { useCallback, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 
-import { SkillNameTakenError } from '@/dal'
+import { PinLimitExceededError, SkillNameTakenError } from '@/dal'
 import { useIsMobile } from '@/hooks/use-mobile'
 import type { Skill } from '@/types'
 import { DeleteSkillDialog } from './delete-skill-dialog'
@@ -17,6 +17,8 @@ import { SkillForm, type SkillFormValues } from './skill-form'
 import { SkillsList } from './skills-list'
 import { useEnabledSkills, useLibrarySkills, usePinnedSkills } from './use-skills'
 
+const pinErrorDismissMs = 4000
+
 type Mode = 'detail' | 'create' | 'edit'
 
 type PendingLeave = { type: 'cancel' } | { type: 'select'; id: string } | null
@@ -24,8 +26,9 @@ type PendingLeave = { type: 'cancel' } | { type: 'select'; id: string } | null
 export const SkillsView = () => {
   const { isMobile } = useIsMobile()
   const { skills, createSkill, updateSkill, softDeleteSkill } = useLibrarySkills()
-  const { pinnedSet, togglePin } = usePinnedSkills()
+  const { pinned, pinnedSet, togglePin, reorderPins } = usePinnedSkills()
   const { isEnabled, setEnabled } = useEnabledSkills()
+  const isPinned = useCallback((id: string) => pinnedSet.has(id), [pinnedSet])
 
   // Mobile uses a master/detail stack — list at the base, panel slides in.
   // Desktop ignores `mobileView` and always renders both side-by-side.
@@ -42,6 +45,31 @@ export const SkillsView = () => {
     dependents: Skill[]
   } | null>(null)
   const [nameError, setNameError] = useState<string | null>(null)
+  const [pinError, setPinError] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (!pinError) {
+      return
+    }
+    const id = setTimeout(() => setPinError(null), pinErrorDismissMs)
+    return () => clearTimeout(id)
+  }, [pinError])
+
+  const tryTogglePin = useCallback(
+    async (id: string) => {
+      try {
+        await togglePin(id)
+        setPinError(null)
+      } catch (error) {
+        if (error instanceof PinLimitExceededError) {
+          setPinError(error.message)
+          return
+        }
+        throw error
+      }
+    },
+    [togglePin],
+  )
 
   const active = skills.find((s) => s.id === activeId) ?? skills[0] ?? null
 
@@ -183,9 +211,13 @@ export const SkillsView = () => {
         </p>
         <SkillsList
           skills={[]}
+          pinned={[]}
           activeSkillId={null}
           isEnabled={() => false}
+          isPinned={() => false}
           onToggleEnabled={() => {}}
+          onTogglePin={() => {}}
+          onReorderPins={() => {}}
           onCreate={() => {
             setMode('create')
             setMobileView('panel')
@@ -210,7 +242,8 @@ export const SkillsView = () => {
         instruction={active.instruction ?? ''}
         pinned={pinnedSet.has(active.id)}
         enabled={isEnabled(active.id)}
-        onTogglePin={() => togglePin(active.id)}
+        pinError={pinError}
+        onTogglePin={() => tryTogglePin(active.id)}
         onToggleEnabled={(next) => handleToggleEnabled(active.id, next)}
         onEdit={() => onEdit(active.id)}
         onDelete={() => onDelete(active.id)}
@@ -246,9 +279,13 @@ export const SkillsView = () => {
     <div className="relative flex h-full">
       <SkillsList
         skills={skills}
+        pinned={pinned}
         activeSkillId={mode === 'detail' ? active.id : null}
         isEnabled={isEnabled}
+        isPinned={isPinned}
         onToggleEnabled={handleToggleEnabled}
+        onTogglePin={tryTogglePin}
+        onReorderPins={reorderPins}
         onCreate={() => {
           if ((mode === 'create' || mode === 'edit') && isDirty) {
             return

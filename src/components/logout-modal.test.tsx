@@ -14,15 +14,12 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, mock 
 import { LogoutModal } from './logout-modal'
 
 const mockClearLocalData = mock(() => Promise.resolve())
-const mockIsSsoMode = mock(() => false)
 
 mock.module('@/lib/cleanup', () => ({
   clearLocalData: mockClearLocalData,
 }))
 
-mock.module('@/lib/auth-mode', () => ({
-  isSsoMode: mockIsSsoMode,
-}))
+const env = import.meta.env as Record<string, string | undefined>
 
 // Mock window.location
 const mockReload = mock()
@@ -54,11 +51,11 @@ describe('LogoutModal', () => {
     mockClearLocalData.mockClear()
     mockReload.mockClear()
     mockReplace.mockClear()
-    mockIsSsoMode.mockReturnValue(false)
   })
 
   afterEach(() => {
     mockOnOpenChange.mockClear()
+    delete env.VITE_AUTH_MODE
   })
 
   const renderModal = (props: Partial<{ open: boolean; onOpenChange: (open: boolean) => void }> = {}) => {
@@ -270,7 +267,7 @@ describe('LogoutModal', () => {
 
   describe('SSO mode logout', () => {
     beforeEach(() => {
-      mockIsSsoMode.mockReturnValue(true)
+      env.VITE_AUTH_MODE = 'sso'
     })
 
     it('navigates to /signed-out instead of reloading in SSO mode', async () => {

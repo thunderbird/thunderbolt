@@ -31,20 +31,6 @@ const authToken = 'test-auth-token'
 const mockReplace = mock()
 const mockClearLocalData = mock(() => Promise.resolve())
 
-/** Get real event APIs from an untouched iframe — other tests replace window's and never restore */
-const getRealEventApis = () => {
-  const iframe = document.createElement('iframe')
-  document.body.appendChild(iframe)
-  const win = iframe.contentWindow!
-  const apis = {
-    addEventListener: win.addEventListener,
-    removeEventListener: win.removeEventListener,
-    dispatchEvent: win.dispatchEvent,
-  }
-  document.body.removeChild(iframe)
-  return apis
-}
-
 mock.module('@/lib/cleanup', () => ({
   clearLocalData: mockClearLocalData,
 }))
@@ -63,10 +49,6 @@ mock.module('@/db/powersync', () => ({
 describe('usePowerSyncCredentialsInvalidListener', () => {
   beforeAll(async () => {
     await setupTestDatabase()
-    const { addEventListener: add, removeEventListener: remove, dispatchEvent: dispatch } = getRealEventApis()
-    window.addEventListener = add.bind(window)
-    window.removeEventListener = remove.bind(window)
-    window.dispatchEvent = dispatch.bind(window)
   })
 
   afterAll(async () => {

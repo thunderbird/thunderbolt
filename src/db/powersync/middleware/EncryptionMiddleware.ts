@@ -2,12 +2,11 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import type { SyncDataBatch } from '@powersync/common'
-import type { DataTransformMiddleware } from '../TransformableBucketStorage'
+import type { DataTransformMiddleware, SyncDataBucket } from '../TransformableBucketStorage'
 import { encryptedColumnsMap } from '@/db/encryption/config'
 import { codec } from '@/db/encryption/codec'
 
-type SyncEntry = SyncDataBatch['buckets'][number]['data'][number]
+type SyncEntry = SyncDataBucket['data'][number]
 
 /** Decrypt encrypted columns in a single sync entry. Mutates entry.data in place. */
 const decryptEntry = async (entry: SyncEntry) => {
@@ -51,12 +50,10 @@ const decryptEntry = async (entry: SyncEntry) => {
  * localStorage is unavailable. The codec safely handles both encrypted and plaintext data.
  */
 export const encryptionMiddleware: DataTransformMiddleware = {
-  async transform(batch) {
-    for (const bucket of batch.buckets) {
-      for (const entry of bucket.data) {
-        await decryptEntry(entry)
-      }
+  async transform(bucket) {
+    for (const entry of bucket.data) {
+      await decryptEntry(entry)
     }
-    return batch
+    return bucket
   },
 }

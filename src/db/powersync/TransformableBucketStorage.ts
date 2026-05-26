@@ -2,14 +2,18 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import type { DBAdapter, SyncDataBatch } from '@powersync/common'
-import {
-  PowerSyncControlCommand,
-  SqliteBucketStorage,
-  SyncDataBucket,
-  SyncDataBatch as SyncDataBatchClass,
-} from '@powersync/common'
-import type { SyncDataBucketJSON } from '@powersync/common'
+import type { DBAdapter } from '@powersync/common'
+import { PowerSyncControlCommand, SqliteBucketStorage } from '@powersync/common'
+import type { SyncDataBucketJSON } from '@powersync/common/internal/sync_protocol'
+
+/**
+ * One bucket of sync data — the unit delivered by the Rust sync client via a
+ * single `control(PROCESS_TEXT_LINE | PROCESS_BSON_LINE)` call.
+ *
+ * Re-exported with a friendly name so middleware authors don't import from
+ * PowerSync's `internal/sync_protocol` path.
+ */
+export type SyncDataBucket = SyncDataBucketJSON
 
 /**
  * A middleware that transforms sync data before it is written to the local database.
@@ -17,8 +21,8 @@ import type { SyncDataBucketJSON } from '@powersync/common'
  * Use for: data normalization, format conversion, decompression, decryption, etc.
  */
 export type DataTransformMiddleware = {
-  /** Receives a batch of sync data; returns the transformed batch. */
-  transform(batch: SyncDataBatch): Promise<SyncDataBatch> | SyncDataBatch
+  /** Receives one bucket of sync data; returns the transformed bucket. */
+  transform(bucket: SyncDataBucket): Promise<SyncDataBucket> | SyncDataBucket
 }
 
 /**
@@ -56,8 +60,8 @@ export class TransformableBucketStorage extends SqliteBucketStorage {
   }
 
   /** Runs all transformers in order. Each transformer receives the output of the previous. */
-  private async runTransformers(batch: SyncDataBatch): Promise<SyncDataBatch> {
-    let result = batch
+  private async runTransformers(bucket: SyncDataBucket): Promise<SyncDataBucket> {
+    let result = bucket
     for (const transformer of this.transformers) {
       result = await transformer.transform(result)
     }
@@ -90,9 +94,9 @@ export class TransformableBucketStorage extends SqliteBucketStorage {
 
     if (op === PowerSyncControlCommand.PROCESS_TEXT_LINE && typeof payload === 'string') {
       try {
-        const line = JSON.parse(payload) as { data?: SyncDataBucketJSON }
+        const line = JSON.parse(payload) as { data?: SyncDataBucket }
         if (line?.data) {
-          const transformed = await this.transformBucket(line.data)
+          const transformed = await this.runTransformers(line.data)
           return super.control(op, JSON.stringify({ data: transformed }))
         }
       } catch (err) {
@@ -105,9 +109,9 @@ export class TransformableBucketStorage extends SqliteBucketStorage {
       try {
         const bson = await this.getBSON()
         const bytes = payload instanceof Uint8Array ? payload : new Uint8Array(payload)
-        const line = bson.deserialize(bytes) as { data?: SyncDataBucketJSON }
+        const line = bson.deserialize(bytes) as { data?: SyncDataBucket }
         if (line?.data) {
-          const transformed = await this.transformBucket(line.data)
+          const transformed = await this.runTransformers(line.data)
           return super.control(op, bson.serialize({ data: transformed }))
         }
       } catch (err) {
@@ -117,13 +121,5 @@ export class TransformableBucketStorage extends SqliteBucketStorage {
     }
 
     return super.control(op, payload)
-  }
-
-  /** Transforms a single sync data bucket through the middleware pipeline. */
-  private async transformBucket(syncData: SyncDataBucketJSON): Promise<SyncDataBucketJSON> {
-    const bucket = SyncDataBucket.fromRow(syncData)
-    const batch = new SyncDataBatchClass([bucket])
-    const transformed = await this.runTransformers(batch)
-    return transformed.buckets[0].toJSON(true)
   }
 }

@@ -387,7 +387,11 @@ describe('chat-store', () => {
       expect(stored?.agentId).toBe(customAgent.id)
     })
 
-    it('skips the DB write when no chat thread exists yet (new-chat scratch)', async () => {
+    it('updates in-memory state and skips the DB write when no chat thread exists yet', async () => {
+      // For brand-new chats (no `chat_threads` row yet) the selection is held
+      // in memory until the first message is sent. Persistence happens inside
+      // `getOrCreateChatThread` — see `use-hydrate-chat-store.ts` saveMessages.
+      // This test covers the pre-first-message path only.
       const model = createMockModel()
       hydrateStore({
         chatInstance: createMockChatInstanceWithValidation(),
@@ -404,6 +408,10 @@ describe('chat-store', () => {
 
       const session = getCurrentSession()
       expect(session?.selectedAgent.id).toBe(customAgent.id)
+
+      // Verify no row was created behind the scenes.
+      const stored = await getChatThread(getDb(), 'thread-no-row')
+      expect(stored).toBeNull()
     })
 
     it('throws when the session is missing', async () => {

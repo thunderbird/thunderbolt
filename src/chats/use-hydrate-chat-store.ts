@@ -73,8 +73,11 @@ export const useHydrateChatStore = ({ id, isNew }: UseHydrateChatStoreParams) =>
       throw new Error('No session found')
     }
 
-    // Fetch thread info to check if we need to generate a title
-    const thread = await getOrCreateChatThread(db, id, session.selectedModel.id)
+    // Fetch thread info to check if we need to generate a title.
+    // Pass `selectedAgent.id` so a brand-new thread is created with the user's
+    // currently-selected agent — otherwise the row would default to `null`
+    // and a reload would silently fall back to the built-in agent.
+    const thread = await getOrCreateChatThread(db, id, session.selectedModel.id, session.selectedAgent.id)
 
     // Save messages and update context size using DAL
     await saveMessagesWithContextUpdate(db, id, messages)

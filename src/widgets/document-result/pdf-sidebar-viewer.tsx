@@ -5,7 +5,7 @@
 import { ContentViewHeader } from '@/content-view/header'
 import { useContentView } from '@/content-view/context'
 import { Button } from '@/components/ui/button'
-import { useSettings } from '@/hooks/use-settings'
+import { useHttpClient } from '@/contexts'
 import { Download, Loader2 } from 'lucide-react'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Document, Page, pdfjs } from 'react-pdf'
@@ -44,7 +44,7 @@ type PdfSidebarViewerProps = {
  */
 export const PdfSidebarViewer = ({ fileId, fileName, initialPage }: PdfSidebarViewerProps) => {
   const { close } = useContentView()
-  const { cloudUrl } = useSettings({ cloud_url: 'http://localhost:8000/v1' })
+  const httpClient = useHttpClient()
   const [blobUrl, setBlobUrl] = useState<string | null>(null)
   const [docxHtml, setDocxHtml] = useState<string | null>(null)
   const [numPages, setNumPages] = useState<number | null>(null)
@@ -58,11 +58,10 @@ export const PdfSidebarViewer = ({ fileId, fileName, initialPage }: PdfSidebarVi
     let cancelled = false
 
     const fetchFile = async () => {
-      const response = await fetch(`${cloudUrl.value}/haystack/files/${fileId}`)
-      if (!response.ok) {
-        throw new Error(`Failed to download file: ${response.status}`)
-      }
-
+      // `httpClient` is the authenticated backend client (Bearer token + device
+      // headers). It throws `HttpError` on non-2xx — we let it bubble into the
+      // `.catch()` below, which surfaces the message to the user.
+      const response = await httpClient.get(`haystack/files/${fileId}`)
       const blob = await response.blob()
       if (cancelled) {
         return
@@ -105,7 +104,7 @@ export const PdfSidebarViewer = ({ fileId, fileName, initialPage }: PdfSidebarVi
         blobUrlRef.current = null
       }
     }
-  }, [fileId, fileType, cloudUrl.value])
+  }, [fileId, fileType, httpClient])
 
   const handleDownload = useCallback(() => {
     if (!blobUrl) {

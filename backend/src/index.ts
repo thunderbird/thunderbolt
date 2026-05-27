@@ -155,7 +155,7 @@ export const createApp = async (deps?: AppDeps) => {
       .use(createAccountRoutes(auth, database))
       .use(createAgentsRoutes(auth))
       .use(createWsTicketRoutes(auth))
-      .use(createHaystackRoutes(settings))
+      .use(createHaystackRoutes(settings, auth, { fetchFn }))
   )
 }
 

@@ -3,12 +3,13 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { registerAgentProvider } from '@/agents'
+import type { Auth } from '@/auth/elysia-plugin'
 import { getWsTicketStore, type WsTicketStore } from '@/auth/ws-ticket-store'
 import { createStandaloneLogger } from '@/config/logger'
 import type { Settings } from '@/config/settings'
 import { safeErrorHandler } from '@/middleware/error-handling'
 import type { User } from '@shared/types/auth'
-import { Elysia } from 'elysia'
+import { Elysia, t } from 'elysia'
 import { HaystackAcpServer, type HaystackAcpDeps } from './acp-server'
 import { createHaystackProvider, parsePipelinesEnv } from './provider'
 
@@ -74,86 +75,155 @@ const wsCloseUnauthorized = 4001
  */
 export const createHaystackRoutes = (
   settings: Settings,
+  auth: Auth,
   deps?: HaystackAcpDeps,
   ticketStore: WsTicketStore = getWsTicketStore(),
 ) => {
   registerAgentProvider(createHaystackProvider())
 
-  return new Elysia({ name: 'haystack-routes', prefix: '/haystack' }).onError(safeErrorHandler).ws('/ws', {
-    upgrade({ request, set }) {
-      // Echo the carrier subprotocol so strict WS clients (Bun, browsers) see
-      // the offer was accepted. The auth-bearing `thunderbolt.ticket.*`
-      // subprotocol is intentionally NOT echoed — keeping it off the response
-      // header means it never lands in `WebSocket.protocol` (page JS) or
-      // proxy response logs. This hook is idempotent — setting a response
-      // header has no observable side effect if called more than once.
-      const subprotocolHeader = request.headers.get('sec-websocket-protocol')
-      if (subprotocolHeader?.split(',').some((entry) => entry.trim() === wsCarrierSubprotocol)) {
-        set.headers['sec-websocket-protocol'] = wsCarrierSubprotocol
-      }
-    },
-    open(ws) {
-      const log = createStandaloneLogger(settings)
-      const data = ws.data as unknown as { request?: Request }
+  const fetchFn = deps?.fetchFn ?? globalThis.fetch
 
-      // Consume the single-use ticket exactly once per accepted socket. Doing
-      // this in `beforeHandle` instead would burn the ticket on the first
-      // invocation and reject the second (Bun's adapter can call beforeHandle
-      // twice on the same upgrade, e.g. during query/header validation).
-      const subprotocolHeader = data.request?.headers.get('sec-websocket-protocol') ?? null
-      const nonce = extractTicket(subprotocolHeader)
-      const consumed = nonce ? ticketStore.consumeTicket(nonce, 'haystack') : null
-      if (!consumed) {
-        ws.close(wsCloseUnauthorized, 'unauthorized')
-        return
-      }
-      // Synthesize a minimal user shape — only `id` and `isAnonymous` are
-      // read downstream. Anonymous users can't mint tickets (the ticket
-      // route returns 403 for them), so this is always a regular user.
-      const user: User = { id: consumed.userId, isAnonymous: false } as User
+  return new Elysia({ name: 'haystack-routes', prefix: '/haystack' })
+    .onError(safeErrorHandler)
+    .derive(async ({ request }) => {
+      const session = await auth.api.getSession({ headers: request.headers })
+      // Better Auth populates `session.user` with `additionalFields` (`isAnonymous`).
+      const sessionUser = session?.user as User | undefined
+      return { authedUser: sessionUser ?? null }
+    })
+    .get(
+      '/files/:fileId',
+      async ({ params, set, authedUser }) => {
+        if (!authedUser) {
+          set.status = 401
+          return { error: 'Unauthorized' }
+        }
+        if (authedUser.isAnonymous) {
+          set.status = 403
+          return { error: 'Forbidden', code: 'ANONYMOUS_FILE_FORBIDDEN' }
+        }
 
-      const url = new URL(data.request?.url ?? 'http://localhost/haystack/ws')
-      const pipelineSlug = url.searchParams.get('pipeline')
-      if (!pipelineSlug) {
-        ws.close(wsCloseUnauthorized, 'missing pipeline parameter')
-        return
-      }
+        const base = settings.haystackBaseUrl.replace(/\/$/, '')
+        const url = `${base}/api/v1/workspaces/${settings.haystackWorkspace}/files/${encodeURIComponent(params.fileId)}`
+        const upstream = await fetchFn(url, {
+          method: 'GET',
+          headers: {
+            authorization: `Bearer ${settings.haystackApiKey}`,
+            accept: '*/*',
+          },
+        })
 
-      // Resolve the public slug back to its Deepset identifiers. A missing
-      // descriptor here means a stale FE URL or a redeploy that dropped the
-      // pipeline — we close instead of opening to keep error surface tight.
-      const descriptor = parsePipelinesEnv(settings).find((p) => p.id === pipelineSlug)
-      if (!descriptor) {
-        ws.close(wsCloseUnauthorized, 'unknown pipeline')
-        return
-      }
+        if (!upstream.ok) {
+          // Auth failures upstream indicate a misconfigured server-side key, not a
+          // client problem — surface as 502 so the client doesn't try to re-login.
+          if (upstream.status === 401 || upstream.status === 403) {
+            const log = createStandaloneLogger(settings)
+            log.error({ status: upstream.status, fileId: params.fileId }, 'haystack file upstream auth failed')
+            set.status = 502
+            return { error: 'upstream auth failed' }
+          }
+          set.status = upstream.status
+          return { error: `upstream ${upstream.status} ${upstream.statusText}` }
+        }
 
-      const server = new HaystackAcpServer({
-        send: (payload) => {
-          ws.send(payload)
-        },
-        pipelineId: descriptor.pipelineId,
-        pipelineName: descriptor.pipelineName,
-        settings,
-        deps,
-      })
-      ;(ws.data as unknown as { __haystackServer?: HaystackAcpServer }).__haystackServer = server
-      log.debug({ pipelineSlug, pipelineName: descriptor.pipelineName, userId: user.id }, 'haystack ws opened')
-    },
-    async message(ws, message) {
-      const server = (ws.data as unknown as { __haystackServer?: HaystackAcpServer }).__haystackServer
-      if (!server) {
-        // Auth already rejected this socket; the client may still race a
-        // first frame before the close lands. Drop quietly.
-        return
-      }
-      const text = typeof message === 'string' ? message : JSON.stringify(message)
-      await server.handleMessage(text)
-    },
-    close(ws) {
-      const slot = ws.data as unknown as { __haystackServer?: HaystackAcpServer }
-      slot.__haystackServer?.dispose()
-      slot.__haystackServer = undefined
-    },
-  })
+        // Stream the body straight back. We don't buffer — Deepset files can be
+        // multi-MB and the Response constructor accepts a ReadableStream directly.
+        const headers: Record<string, string> = { 'x-content-type-options': 'nosniff' }
+        const contentType = upstream.headers.get('content-type')
+        if (contentType) {
+          headers['content-type'] = contentType
+        }
+        const contentLength = upstream.headers.get('content-length')
+        if (contentLength) {
+          headers['content-length'] = contentLength
+        }
+        const contentDisposition = upstream.headers.get('content-disposition')
+        if (contentDisposition) {
+          headers['content-disposition'] = contentDisposition
+        }
+        return new Response(upstream.body, { status: 200, headers })
+      },
+      {
+        // Restrict to a conservative charset — Deepset file ids are UUID-like
+        // (`[\w-]+`). Anything else is rejected before we make the upstream call.
+        params: t.Object({ fileId: t.String({ pattern: '^[\\w-]+$' }) }),
+      },
+    )
+    .ws('/ws', {
+      upgrade({ request, set }) {
+        // Echo the carrier subprotocol so strict WS clients (Bun, browsers) see
+        // the offer was accepted. The auth-bearing `thunderbolt.ticket.*`
+        // subprotocol is intentionally NOT echoed — keeping it off the response
+        // header means it never lands in `WebSocket.protocol` (page JS) or
+        // proxy response logs. This hook is idempotent — setting a response
+        // header has no observable side effect if called more than once.
+        const subprotocolHeader = request.headers.get('sec-websocket-protocol')
+        if (subprotocolHeader?.split(',').some((entry) => entry.trim() === wsCarrierSubprotocol)) {
+          set.headers['sec-websocket-protocol'] = wsCarrierSubprotocol
+        }
+      },
+      open(ws) {
+        const log = createStandaloneLogger(settings)
+        const data = ws.data as unknown as { request?: Request }
+
+        // Consume the single-use ticket exactly once per accepted socket. Doing
+        // this in `beforeHandle` instead would burn the ticket on the first
+        // invocation and reject the second (Bun's adapter can call beforeHandle
+        // twice on the same upgrade, e.g. during query/header validation).
+        const subprotocolHeader = data.request?.headers.get('sec-websocket-protocol') ?? null
+        const nonce = extractTicket(subprotocolHeader)
+        const consumed = nonce ? ticketStore.consumeTicket(nonce, 'haystack') : null
+        if (!consumed) {
+          ws.close(wsCloseUnauthorized, 'unauthorized')
+          return
+        }
+        // Synthesize a minimal user shape — only `id` and `isAnonymous` are
+        // read downstream. Anonymous users can't mint tickets (the ticket
+        // route returns 403 for them), so this is always a regular user.
+        const user: User = { id: consumed.userId, isAnonymous: false } as User
+
+        const url = new URL(data.request?.url ?? 'http://localhost/haystack/ws')
+        const pipelineSlug = url.searchParams.get('pipeline')
+        if (!pipelineSlug) {
+          ws.close(wsCloseUnauthorized, 'missing pipeline parameter')
+          return
+        }
+
+        // Resolve the public slug back to its Deepset identifiers. A missing
+        // descriptor here means a stale FE URL or a redeploy that dropped the
+        // pipeline — we close instead of opening to keep error surface tight.
+        const descriptor = parsePipelinesEnv(settings).find((p) => p.id === pipelineSlug)
+        if (!descriptor) {
+          ws.close(wsCloseUnauthorized, 'unknown pipeline')
+          return
+        }
+
+        const server = new HaystackAcpServer({
+          send: (payload) => {
+            ws.send(payload)
+          },
+          pipelineId: descriptor.pipelineId,
+          pipelineName: descriptor.pipelineName,
+          settings,
+          deps,
+        })
+        ;(ws.data as unknown as { __haystackServer?: HaystackAcpServer }).__haystackServer = server
+        log.debug({ pipelineSlug, pipelineName: descriptor.pipelineName, userId: user.id }, 'haystack ws opened')
+      },
+      async message(ws, message) {
+        const server = (ws.data as unknown as { __haystackServer?: HaystackAcpServer }).__haystackServer
+        if (!server) {
+          // Auth already rejected this socket; the client may still race a
+          // first frame before the close lands. Drop quietly.
+          return
+        }
+        const text = typeof message === 'string' ? message : JSON.stringify(message)
+        await server.handleMessage(text)
+      },
+      close(ws) {
+        const slot = ws.data as unknown as { __haystackServer?: HaystackAcpServer }
+        slot.__haystackServer?.dispose()
+        slot.__haystackServer = undefined
+      },
+    })
 }

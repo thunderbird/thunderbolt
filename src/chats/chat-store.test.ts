@@ -3,6 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { getSettings } from '@/dal'
+import { createChatThread, getChatThread } from '@/dal/chat-threads'
 import { setupTestDatabase, teardownTestDatabase, resetTestDatabase } from '@/dal/test-utils'
 import { getDb } from '@/db/database'
 import { builtInAgent } from '@/defaults/agents'
@@ -358,7 +359,6 @@ describe('chat-store', () => {
     })
 
     it('persists agentId on the chat_threads row when a thread exists', async () => {
-      const { createChatThread, getChatThread } = await import('@/dal/chat-threads')
       const model = createMockModel()
       const chatThread = createMockChatThread({ id: 'thread-persist' })
 

@@ -9,7 +9,7 @@ import { useHaptics } from '@/hooks/use-haptics'
 import { cn } from '@/lib/utils'
 import type { Agent } from '@/types/acp'
 import { ChevronDown, Globe, Server, Settings2, Zap } from 'lucide-react'
-import { useCallback, useMemo, useState, type ComponentType } from 'react'
+import { useMemo, useState, type ComponentType } from 'react'
 
 export type AgentSelectorProps = {
   selectedAgent: Agent
@@ -92,17 +92,14 @@ export const AgentSelector = ({
   const [open, setOpen] = useState(false)
   const { triggerSelection } = useHaptics()
 
-  const handleAgentChange = useCallback(
-    (_id: string, item: SearchableMenuItem<AgentItemData>) => {
-      const agent = item.data?.agent
-      if (!agent) {
-        return
-      }
-      triggerSelection()
-      onSelect(agent)
-    },
-    [onSelect, triggerSelection],
-  )
+  const handleAgentChange = (_id: string, item: SearchableMenuItem<AgentItemData>) => {
+    const agent = item.data?.agent
+    if (!agent) {
+      return
+    }
+    triggerSelection()
+    onSelect(agent)
+  }
 
   const renderTrigger = (selected: SearchableMenuItem<AgentItemData> | undefined, isOpen: boolean) => {
     const Icon = iconForAgent(selected?.data?.agent ?? selectedAgent)

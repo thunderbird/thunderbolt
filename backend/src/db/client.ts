@@ -24,8 +24,7 @@ if (!isPglite && !process.env.DATABASE_URL && !isDevelopment) {
 
 const postgresUrl = isPglite
   ? null
-  : process.env.DATABASE_URL ||
-    (isDevelopment ? 'postgresql://postgres:postgres@localhost:5433/postgres' : '')
+  : process.env.DATABASE_URL || (isDevelopment ? 'postgresql://postgres:postgres@localhost:5433/postgres' : '')
 
 if (isPglite && process.env.DATABASE_URL) {
   mkdirSync(resolve(process.env.DATABASE_URL), { recursive: true })

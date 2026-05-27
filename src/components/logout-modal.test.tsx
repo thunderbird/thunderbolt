@@ -15,10 +15,6 @@ import { LogoutModal } from './logout-modal'
 
 const mockClearLocalData = mock(() => Promise.resolve())
 
-mock.module('@/lib/cleanup', () => ({
-  clearLocalData: mockClearLocalData,
-}))
-
 const env = import.meta.env as Record<string, string | undefined>
 
 // Mock window.location
@@ -62,9 +58,12 @@ describe('LogoutModal', () => {
     const authClient = createMockAuthClient({
       signOut: mockSignOut,
     })
-    return render(<LogoutModal open={true} onOpenChange={mockOnOpenChange} {...props} />, {
-      wrapper: createTestProvider({ authClient }),
-    })
+    return render(
+      <LogoutModal open={true} onOpenChange={mockOnOpenChange} clearLocalData={mockClearLocalData} {...props} />,
+      {
+        wrapper: createTestProvider({ authClient }),
+      },
+    )
   }
 
   describe('rendering', () => {

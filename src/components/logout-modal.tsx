@@ -17,14 +17,21 @@ import {
 import { SelectableCard, type DataOption } from '@/components/ui/selectable-card'
 import { useAuth } from '@/contexts'
 import { isSsoMode } from '@/lib/auth-mode'
-import { clearLocalData } from '@/lib/cleanup'
+import { clearLocalData as defaultClearLocalData } from '@/lib/cleanup'
 
 type LogoutModalProps = {
   open: boolean
   onOpenChange: (open: boolean) => void
+  /**
+   * Injectable for tests. Defaults to the real {@link clearLocalData} — the
+   * shipped UI never overrides this. Lets the test pass a stub instead of
+   * `mock.module('@/lib/cleanup', ...)`, which would leak across files (see
+   * `docs/development/testing.md` §65).
+   */
+  clearLocalData?: typeof defaultClearLocalData
 }
 
-export const LogoutModal = ({ open, onOpenChange }: LogoutModalProps) => {
+export const LogoutModal = ({ open, onOpenChange, clearLocalData = defaultClearLocalData }: LogoutModalProps) => {
   const authClient = useAuth()
   const [selectedOption, setSelectedOption] = useState<DataOption>('keep')
   const [isLoggingOut, setIsLoggingOut] = useState(false)

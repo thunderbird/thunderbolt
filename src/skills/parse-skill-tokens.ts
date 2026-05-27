@@ -4,15 +4,23 @@
 
 /**
  * Slash-token grammar: `/` followed by one or more `[a-z0-9-_]` chars,
- * matched only when terminated by whitespace or end-of-input. Mirrors the
- * AgentSkills spec name field — the parser intentionally does **not** match
- * tokens followed by punctuation (`/foo.`) so a sentence-final period in
- * prose doesn't accidentally consume the trailing char of the name.
+ * matched only when *preceded* by whitespace or start-of-input AND
+ * terminated by whitespace or end-of-input. Mirrors the AgentSkills spec
+ * name field — the parser intentionally does **not** match tokens followed
+ * by punctuation (`/foo.`) so a sentence-final period in prose doesn't
+ * accidentally consume the trailing char of the name.
+ *
+ * The lookbehind prevents `/slug` matches inside URLs or paths
+ * (e.g. `docs/meeting-notes`, `example.com/meeting-notes`) — without it,
+ * the parser would silently inject skill instructions for tokens the user
+ * never actually typed as commands. The autocomplete popup in
+ * `use-slash-command.ts` already requires whitespace before `/`, so this
+ * keeps both surfaces in agreement.
  *
  * The captured group is the bare slug (no leading `/`), which is also how
  * skills are stored after THU-533 (the `/` is display only).
  */
-const tokenRegex = /\/([\w-]+)(?=\s|$)/g
+const tokenRegex = /(?<=^|\s)\/([\w-]+)(?=\s|$)/g
 
 /**
  * Resolve a bare slug to a skill's instruction text, or `null` if the slug

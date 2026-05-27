@@ -90,6 +90,15 @@ describe('parseSkillTokens', () => {
     expect(parseSkillTokens('a/b/c', resolve).systemMessages).toEqual([])
   })
 
+  it('does not match slash tokens inside URLs or paths', () => {
+    // `/meeting-notes` is a known skill, but it appears mid-URL — the parser
+    // must not resolve it, otherwise prose containing arbitrary URLs would
+    // silently inject skill instructions.
+    expect(parseSkillTokens('see docs/meeting-notes for details', resolve).systemMessages).toEqual([])
+    expect(parseSkillTokens('visit https://example.com/meeting-notes', resolve).systemMessages).toEqual([])
+    expect(parseSkillTokens('path/meeting-notes ', resolve).systemMessages).toEqual([])
+  })
+
   it('passes the bare slug (no leading slash) to the resolver', () => {
     const calls: string[] = []
     parseSkillTokens('/meeting-notes', (slug) => {

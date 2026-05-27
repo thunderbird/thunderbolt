@@ -3,7 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { File, ListOrdered, Pin, Play, Plus } from 'lucide-react'
-import { useState } from 'react'
+import { useRef, useState, type PointerEvent } from 'react'
 
 import { Button } from '@/components/ui/button'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
@@ -45,15 +45,65 @@ export const SuggestionChip = ({
     onOpenChange?.(next)
   }
 
+  // Long-press detection for touch — opens the action menu without firing
+  // the chip-insertion onClick. Mouse left-clicks fall through to onClick.
+  const longPressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const longPressFiredRef = useRef(false)
+
+  const clearLongPress = () => {
+    if (longPressTimerRef.current) {
+      clearTimeout(longPressTimerRef.current)
+      longPressTimerRef.current = null
+    }
+  }
+
+  // `DropdownMenuTrigger` opens the menu on pointer-down for primary clicks,
+  // which would conflict with our click-to-insert affordance. Calling
+  // `preventDefault()` on pointer-down for primary clicks short-circuits the
+  // trigger's open behavior (Radix checks `defaultPrevented` before opening)
+  // while still letting the subsequent `click` event fire normally.
+  const handleTriggerPointerDown = (e: PointerEvent<HTMLButtonElement>) => {
+    if (e.pointerType === 'touch') {
+      longPressFiredRef.current = false
+      clearLongPress()
+      longPressTimerRef.current = setTimeout(() => {
+        longPressFiredRef.current = true
+        handleOpenChange(true)
+      }, 500)
+      // Block Radix from opening on touch — we manage open via long-press.
+      e.preventDefault()
+      return
+    }
+    if (e.button === 0) {
+      // Mouse left-click: block Radix's open-on-pointer-down behavior so that
+      // only the subsequent `click` (which fires onClick) reaches us.
+      e.preventDefault()
+    }
+    // Right-click (button=2) falls through; `onContextMenu` handles it below.
+  }
+
+  const handleClick = () => {
+    if (longPressFiredRef.current) {
+      longPressFiredRef.current = false
+      return
+    }
+    onClick()
+  }
+
   return (
     <DropdownMenu open={open} onOpenChange={handleOpenChange}>
       <DropdownMenuTrigger asChild>
         <Button
           variant="outline"
           size="sm"
-          onClick={onClick}
+          onClick={handleClick}
+          onPointerDown={handleTriggerPointerDown}
+          onPointerUp={clearLongPress}
+          onPointerLeave={clearLongPress}
+          onPointerCancel={clearLongPress}
           onContextMenu={(e) => {
             e.preventDefault()
+            clearLongPress()
             handleOpenChange(true)
           }}
           className={`h-8 shrink-0 cursor-pointer rounded-full bg-card px-3 text-sm font-normal transition-opacity ${
@@ -80,7 +130,13 @@ export const SuggestionChip = ({
           <Play />
           Run skill
         </DropdownMenuItem>
-        <DropdownMenuItem onSelect={onClick} className="cursor-pointer">
+        <DropdownMenuItem
+          onSelect={() => {
+            onClick()
+            handleOpenChange(false)
+          }}
+          className="cursor-pointer"
+        >
           <Plus />
           Add to chat
         </DropdownMenuItem>

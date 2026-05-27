@@ -17,6 +17,8 @@
  * Opaque-nonce + server-stored is chosen over signed/stateless because
  * single-use enforcement is the threat model goal here.
  */
+import { randomBytes } from 'node:crypto'
+
 export type WsTicketScope = 'haystack'
 
 type StoredTicket = {
@@ -75,8 +77,8 @@ export const createWsTicketStore = (options: WsTicketStoreOptions = {}): WsTicke
   }
 
   const interval = setInterval(sweep, sweepIntervalMs)
-  if (unrefInterval && typeof (interval as { unref?: () => void }).unref === 'function') {
-    ;(interval as { unref: () => void }).unref()
+  if (unrefInterval) {
+    interval.unref()
   }
 
   const issueTicket = (userId: string, scope: WsTicketScope, ttlMs: number): string => {
@@ -135,21 +137,7 @@ export class WsTicketStoreFullError extends Error {
 }
 
 /** Cryptographically secure base64url nonce. 32 bytes ≈ 256 bits of entropy, ≈43 chars unpadded. */
-const generateNonce = (): string => {
-  // Bun supports node:crypto; using the Web Crypto API would also work but
-  // `randomBytes` is the most direct path and matches Better-Auth's own usage.
-  const bytes = new Uint8Array(32)
-  crypto.getRandomValues(bytes)
-  return base64UrlEncode(bytes)
-}
-
-const base64UrlEncode = (bytes: Uint8Array): string => {
-  let s = ''
-  for (const b of bytes) {
-    s += String.fromCharCode(b)
-  }
-  return btoa(s).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '')
-}
+const generateNonce = (): string => randomBytes(32).toString('base64url')
 
 // Module-level singleton for production. Tests should NOT touch this — they
 // build their own store via `createWsTicketStore` (or inject one).

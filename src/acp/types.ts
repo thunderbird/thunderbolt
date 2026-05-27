@@ -63,6 +63,7 @@ export type AiSdkChunk =
       output: unknown
     }
   | { type: 'tool-output-error'; toolCallId: string; errorText: string }
+  | { type: 'message-metadata'; messageMetadata: Record<string, unknown> }
   | { type: 'finish-step' }
   | { type: 'finish' }
   | { type: 'error'; errorText: string }

@@ -104,6 +104,39 @@ export type UIMessageMetadata = {
   reasoningTime?: Record<string, number>
   reasoningStartTimes?: Record<string, number>
   sources?: SourceMetadata[]
+  /** Inline citation markers emitted by the Haystack pipeline. */
+  haystackReferences?: HaystackReferenceMeta[]
+  /** Source documents surfaced by the Haystack pipeline. */
+  haystackDocuments?: HaystackDocumentMeta[]
+}
+
+/**
+ * Inline citation reference emitted by the Haystack pipeline.
+ * Each entry corresponds to a [N] marker in the message text.
+ */
+export type HaystackReferenceMeta = {
+  /** 1-based position of the [N] marker in the text. */
+  position: number
+  /** Deepset file UUID. */
+  fileId: string
+  /** Display name of the file. */
+  fileName: string
+  /** Optional page number within the file. */
+  pageNumber?: number
+}
+
+/**
+ * Source document surfaced by the Haystack pipeline.
+ */
+export type HaystackDocumentMeta = {
+  /** Deepset document UUID. */
+  id: string
+  /** Snippet text. */
+  content: string
+  /** Relevance score (0-1). */
+  score: number
+  /** File reference. */
+  file: { id: string; name: string }
 }
 
 export type ToolConfig = {

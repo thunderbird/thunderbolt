@@ -26,6 +26,7 @@
  */
 
 import type { SessionConfigOption, SessionNotification, ToolCallStatus } from '@agentclientprotocol/sdk'
+import type { HaystackDocumentMeta, HaystackReferenceMeta } from '@/types'
 import type { AiSdkChunk } from '../types'
 
 const sseDataPrefix = 'data: '
@@ -149,6 +150,48 @@ export const createTranslator = (emit: (chunk: AiSdkChunk) => void, options: Tra
   // emits the right output chunk even if its raw output sneaks in via a prior
   // `in_progress` update.
   const toolStatus = new Map<string, ToolCallStatus>()
+  // Haystack metadata accumulators. Backend emits these in `_meta` on
+  // `agent_message_chunk` updates; references keyed by position so later chunks
+  // override earlier ones for the same marker.
+  const haystackReferencesByPosition = new Map<number, HaystackReferenceMeta>()
+  const haystackDocumentsById = new Map<string, HaystackDocumentMeta>()
+
+  const ingestHaystackMeta = (meta: { [key: string]: unknown } | null | undefined): void => {
+    if (!meta) {
+      return
+    }
+    const refs = meta.haystackReferences
+    if (Array.isArray(refs)) {
+      for (const ref of refs as HaystackReferenceMeta[]) {
+        haystackReferencesByPosition.set(ref.position, ref)
+      }
+    }
+    const docs = meta.haystackDocuments
+    if (Array.isArray(docs)) {
+      for (const doc of docs as HaystackDocumentMeta[]) {
+        haystackDocumentsById.set(doc.id, doc)
+      }
+    }
+    if (Array.isArray(refs) || Array.isArray(docs)) {
+      emitHaystackMetadata()
+    }
+  }
+
+  const emitHaystackMetadata = (): void => {
+    const messageMetadata: Record<string, unknown> = {}
+    if (haystackReferencesByPosition.size > 0) {
+      messageMetadata.haystackReferences = Array.from(haystackReferencesByPosition.values()).sort(
+        (a, b) => a.position - b.position,
+      )
+    }
+    if (haystackDocumentsById.size > 0) {
+      messageMetadata.haystackDocuments = Array.from(haystackDocumentsById.values())
+    }
+    if (Object.keys(messageMetadata).length === 0) {
+      return
+    }
+    emit({ type: 'message-metadata', messageMetadata })
+  }
 
   const ensureTextStarted = (): void => {
     if (textStarted) {
@@ -170,6 +213,7 @@ export const createTranslator = (emit: (chunk: AiSdkChunk) => void, options: Tra
     const update = notification.update
     switch (update.sessionUpdate) {
       case 'agent_message_chunk': {
+        ingestHaystackMeta(update._meta)
         const block = update.content
         if (block.type !== 'text') {
           return

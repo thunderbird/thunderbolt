@@ -103,7 +103,7 @@ const CitationOverlay = memo(({ popover, close }: { popover: PopoverData | null;
           <SheetHeader className="sr-only">
             <SheetTitle>{sources.length === 1 ? 'Source' : 'Sources'}</SheetTitle>
           </SheetHeader>
-          <SourceList sources={sources} />
+          <SourceList sources={sources} onSelect={close} />
         </SheetContent>
       </Sheet>
     )
@@ -122,7 +122,7 @@ const CitationOverlay = memo(({ popover, close }: { popover: PopoverData | null;
         />
       </PopoverAnchor>
       <PopoverContent align="start" side="bottom" className="w-[420px] overflow-hidden rounded-2xl p-0">
-        <SourceList sources={sources} />
+        <SourceList sources={sources} onSelect={close} />
       </PopoverContent>
     </Popover>
   )

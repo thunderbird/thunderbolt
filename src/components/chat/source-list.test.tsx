@@ -3,15 +3,22 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import '@/testing-library'
+import { ContentViewProvider } from '@/content-view/context'
 import { render, screen } from '@testing-library/react'
 import { describe, expect, it } from 'bun:test'
 import type { CitationSource } from '@/types/citation'
 import { ExternalLinkDialogProvider } from './markdown-utils'
 import { SourceList } from './source-list'
-import { type ReactElement } from 'react'
+import { type ReactElement, type ReactNode } from 'react'
 
 const renderWithProvider = (ui: ReactElement) =>
-  render(ui, { wrapper: ({ children }) => <ExternalLinkDialogProvider>{children}</ExternalLinkDialogProvider> })
+  render(ui, {
+    wrapper: ({ children }: { children: ReactNode }) => (
+      <ContentViewProvider>
+        <ExternalLinkDialogProvider>{children}</ExternalLinkDialogProvider>
+      </ContentViewProvider>
+    ),
+  })
 
 describe('SourceList', () => {
   const mockSources: CitationSource[] = [

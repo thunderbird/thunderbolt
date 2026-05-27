@@ -10,13 +10,15 @@ import { cn } from '@/lib/utils'
 type SourceListProps = {
   sources: CitationSource[]
   className?: string
+  /** Called when a source is selected (e.g. to close the containing popover) */
+  onSelect?: () => void
 }
 
 /**
  * Container component that renders multiple SourceCard components with dividers
  * Matches Figma design: dark background with border and dividers between items
  */
-export const SourceList = ({ sources, className }: SourceListProps) => {
+export const SourceList = ({ sources, className, onSelect }: SourceListProps) => {
   if (sources.length === 0) {
     return <div className="text-muted-foreground text-sm text-center py-4">No sources available</div>
   }
@@ -33,7 +35,7 @@ export const SourceList = ({ sources, className }: SourceListProps) => {
     <div className={cn('overflow-hidden', className)} role="list">
       {sortedSources.map((source, index) => (
         <div key={source.id}>
-          <SourceCard source={source} />
+          <SourceCard source={source} onSelect={onSelect} />
           {index < sortedSources.length - 1 && <Separator />}
         </div>
       ))}

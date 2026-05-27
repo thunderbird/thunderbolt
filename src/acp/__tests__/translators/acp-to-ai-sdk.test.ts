@@ -237,3 +237,104 @@ describe('createTranslator — side effects', () => {
     expect(chunks.map((c) => c.type)).toEqual(['start', 'start-step'])
   })
 })
+
+describe('createTranslator — haystack metadata', () => {
+  it('emits message-metadata when agent_message_chunk carries haystackReferences in _meta', () => {
+    const { emit, chunks } = collect()
+    const t = createTranslator(emit)
+    t.start()
+    t.handle(
+      notification({
+        sessionUpdate: 'agent_message_chunk',
+        content: { type: 'text', text: 'See [1].' },
+        _meta: {
+          haystackReferences: [{ position: 1, fileId: 'f1', fileName: 'a.pdf', pageNumber: 2 }],
+        },
+      }),
+    )
+    const meta = chunks.find((c) => c.type === 'message-metadata')
+    expect(meta).toBeDefined()
+    expect(meta).toMatchObject({
+      type: 'message-metadata',
+      messageMetadata: {
+        haystackReferences: [{ position: 1, fileId: 'f1', fileName: 'a.pdf', pageNumber: 2 }],
+      },
+    })
+  })
+
+  it('accumulates references across chunks, sorted by position, with last writer wins per position', () => {
+    const { emit, chunks } = collect()
+    const t = createTranslator(emit)
+    t.start()
+    t.handle(
+      notification({
+        sessionUpdate: 'agent_message_chunk',
+        content: { type: 'text', text: 'a' },
+        _meta: {
+          haystackReferences: [{ position: 2, fileId: 'f2', fileName: 'b.pdf' }],
+        },
+      }),
+    )
+    t.handle(
+      notification({
+        sessionUpdate: 'agent_message_chunk',
+        content: { type: 'text', text: 'b' },
+        _meta: {
+          haystackReferences: [
+            { position: 1, fileId: 'f1', fileName: 'a.pdf' },
+            { position: 2, fileId: 'f2-new', fileName: 'b-new.pdf' },
+          ],
+        },
+      }),
+    )
+
+    const metaChunks = chunks.filter((c) => c.type === 'message-metadata')
+    expect(metaChunks).toHaveLength(2)
+    const last = metaChunks[metaChunks.length - 1]
+    expect(last).toMatchObject({
+      type: 'message-metadata',
+      messageMetadata: {
+        haystackReferences: [
+          { position: 1, fileId: 'f1', fileName: 'a.pdf' },
+          { position: 2, fileId: 'f2-new', fileName: 'b-new.pdf' },
+        ],
+      },
+    })
+  })
+
+  it('passes haystackDocuments through alongside references', () => {
+    const { emit, chunks } = collect()
+    const t = createTranslator(emit)
+    t.start()
+    t.handle(
+      notification({
+        sessionUpdate: 'agent_message_chunk',
+        content: { type: 'text', text: 'x' },
+        _meta: {
+          haystackDocuments: [{ id: 'doc-1', content: 'snippet', score: 0.9, file: { id: 'f1', name: 'a.pdf' } }],
+        },
+      }),
+    )
+    const meta = chunks.find((c) => c.type === 'message-metadata')
+    expect(meta).toMatchObject({
+      type: 'message-metadata',
+      messageMetadata: {
+        haystackDocuments: [{ id: 'doc-1', content: 'snippet', score: 0.9, file: { id: 'f1', name: 'a.pdf' } }],
+      },
+    })
+  })
+
+  it('does not emit message-metadata when _meta is empty or lacks haystack keys', () => {
+    const { emit, chunks } = collect()
+    const t = createTranslator(emit)
+    t.start()
+    t.handle(
+      notification({
+        sessionUpdate: 'agent_message_chunk',
+        content: { type: 'text', text: 'x' },
+        _meta: { unrelated: 'value' },
+      }),
+    )
+    expect(chunks.some((c) => c.type === 'message-metadata')).toBe(false)
+  })
+})

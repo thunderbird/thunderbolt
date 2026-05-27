@@ -145,15 +145,39 @@ export const SuggestionChip = ({
           <Plus />
           Add to chat
         </DropdownMenuItem>
-        <DropdownMenuItem onSelect={onAddInstruction} className="cursor-pointer">
+        <DropdownMenuItem
+          onSelect={() => {
+            onAddInstruction()
+            handleOpenChange(false)
+          }}
+          className="cursor-pointer"
+        >
           <File />
           Add instructions to chat
         </DropdownMenuItem>
-        <DropdownMenuItem onSelect={onReorder} className="cursor-pointer">
+        <DropdownMenuItem
+          onSelect={() => {
+            // Close before triggering reorder mode — the parent unmounts the
+            // chip when entering reorder, so Radix's automatic
+            // `onOpenChange(false)` may not reach `setOpenChipId(null)` and
+            // would leave sibling chips visually dimmed.
+            handleOpenChange(false)
+            onReorder()
+          }}
+          className="cursor-pointer"
+        >
           <ListOrdered />
           Reorder
         </DropdownMenuItem>
-        <DropdownMenuItem onSelect={onUnpin} className="cursor-pointer">
+        <DropdownMenuItem
+          onSelect={() => {
+            // Same reasoning as Reorder: unpinning unmounts the chip, so we
+            // close the menu first to guarantee the dim-state callback fires.
+            handleOpenChange(false)
+            onUnpin()
+          }}
+          className="cursor-pointer"
+        >
           <Pin />
           Unpin
         </DropdownMenuItem>

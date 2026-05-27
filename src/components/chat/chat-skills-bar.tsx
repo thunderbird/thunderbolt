@@ -76,7 +76,10 @@ export const ChatSkillsBar = ({
             dimmed={openChipId !== null && openChipId !== skill.id}
             onClick={() => onAddToChat(skill.name)}
             onOpenChange={(open) => setOpenChipId(open ? skill.id : null)}
-            onRun={() => navigate('/', { state: { runSkill: skill.name } })}
+            // Navigate directly to /chats/new (not /) — the `/` index route does
+            // `<Navigate to="/chats/new" replace />`, and that wrapper does NOT
+            // forward `location.state`, so the runSkill payload would be lost.
+            onRun={() => navigate('/chats/new', { state: { runSkill: skill.name } })}
             onAddInstruction={() => onAddInstruction(skill.instruction)}
             onReorder={() => setReorderMode(true)}
             onUnpin={() => togglePin(skill.id)}

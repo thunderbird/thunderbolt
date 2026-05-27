@@ -50,8 +50,10 @@ export const SkillDetail = ({
 
   const runInChat = () => {
     // Router state (not a URL param) by design: the entry point is internal
-    // navigation only in v1 — no URL surface, no deep-linkability.
-    navigate('/', { state: { runSkill: name } })
+    // navigation only in v1 — no URL surface, no deep-linkability. Target
+    // `/chats/new` directly because the `/` index route's `<Navigate replace />`
+    // wrapper drops `location.state` during the redirect.
+    navigate('/chats/new', { state: { runSkill: name } })
   }
 
   return (

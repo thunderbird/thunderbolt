@@ -106,7 +106,10 @@ export const LibraryRow = ({
             <DropdownMenuItem
               onClick={(e) => {
                 e.stopPropagation()
-                navigate('/', { state: { runSkill: skill.name } })
+                // Navigate to /chats/new directly — the `/` index route does
+                // `<Navigate to="/chats/new" replace />` which does NOT forward
+                // `location.state`, so a `state` payload sent to `/` is lost.
+                navigate('/chats/new', { state: { runSkill: skill.name } })
               }}
               className="cursor-pointer"
             >

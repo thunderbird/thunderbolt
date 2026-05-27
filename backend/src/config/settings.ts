@@ -108,7 +108,10 @@ const settingsSchema = z
     // Haystack-specific config (consumed by the Haystack provider, defined here for centralized config).
     haystackBaseUrl: z.string().default(''),
     haystackApiKey: z.string().default(''),
-    // JSON array of pipeline descriptors: [{id, name, pipelineId, description?}]
+    // Deepset workspace slug. URLs are `${baseUrl}/api/v1/workspaces/${workspace}/...`.
+    haystackWorkspace: z.string().default(''),
+    // JSON array of pipeline descriptors: [{id, name, pipelineName, pipelineId, description?, icon?}].
+    // `id` is the public slug; `pipelineName` is the Deepset URL slug; `pipelineId` is the Deepset UUID.
     haystackPipelines: z.string().default(''),
 
     // WebSocket handshake-auth tickets (see backend/src/auth/ws-ticket-store.ts).
@@ -193,6 +196,7 @@ const parseSettings = (): Settings => {
     allowCustomAgents: process.env.ALLOW_CUSTOM_AGENTS !== 'false',
     haystackBaseUrl: process.env.HAYSTACK_BASE_URL || '',
     haystackApiKey: process.env.HAYSTACK_API_KEY || '',
+    haystackWorkspace: process.env.HAYSTACK_WORKSPACE || '',
     haystackPipelines: process.env.HAYSTACK_PIPELINES || '',
     wsTicketTtlMs: process.env.WS_TICKET_TTL_MS || '30000',
     wsTicketMaxActive: process.env.WS_TICKET_MAX_ACTIVE || '10000',

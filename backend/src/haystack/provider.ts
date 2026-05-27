@@ -40,9 +40,11 @@ export const createHaystackProvider = (): AgentProvider => ({
       name: pipeline.name,
       type: 'managed-acp',
       transport: 'websocket',
-      url: buildWebSocketUrl(request, `/haystack/ws?pipeline=${encodeURIComponent(pipeline.pipelineId)}`),
+      // URL carries the public slug — the WS route resolves it back to the
+      // Deepset pipelineName / pipelineId from the same env-driven descriptor.
+      url: buildWebSocketUrl(request, `/haystack/ws?pipeline=${encodeURIComponent(pipeline.id)}`),
       description: pipeline.description ?? null,
-      icon: null,
+      icon: pipeline.icon ?? null,
       isSystem: 1,
     }))
   },

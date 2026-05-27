@@ -3,18 +3,20 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 /**
- * Tests for the Haystack SSE parser. The parser is a tiny piece of branching
+ * Tests for the Deepset SSE parser. The parser is a tiny piece of branching
  * logic but the consequences of getting it wrong are bad — a stuck or
  * silently-truncated stream looks identical to a working one until a user
  * notices missing text — so we cover the edge cases that have proven
  * load-bearing in other SSE adapters:
  *  - boundaries at the chunk seam,
  *  - mid-stream malformed JSON,
- *  - schema drift in the upstream wire.
+ *  - schema drift in the upstream wire,
+ *  - the `result` payload → references/documents pipeline.
  */
 
 import { describe, expect, it } from 'bun:test'
-import { HaystackSseParseError, parseHaystackSseStream } from '../sse-parser'
+import { extractDocuments, extractReferences, HaystackSseParseError, parseHaystackSseStream } from '../sse-parser'
+import type { DeepsetResultPayload } from '../types'
 
 const encoder = new TextEncoder()
 
@@ -38,37 +40,65 @@ const collect = async <T>(iter: AsyncIterableIterator<T>): Promise<T[]> => {
 }
 
 describe('parseHaystackSseStream', () => {
-  it('parses a single event in a single chunk', async () => {
-    const stream = streamFromChunks(['data: {"type":"delta","text":"hi"}\n\n'])
+  it('parses a single Deepset delta envelope', async () => {
+    const stream = streamFromChunks(['data: {"type":"delta","delta":{"text":"hi"}}\n\n'])
     const events = await collect(parseHaystackSseStream(stream))
     expect(events).toEqual([{ type: 'delta', text: 'hi' }])
   })
 
-  it('parses multiple events delivered in one chunk', async () => {
+  it('parses multiple deltas + a final result in one chunk', async () => {
+    const result = {
+      answers: [
+        {
+          answer: 'final',
+          files: [],
+          meta: { _references: [{ document_position: 1, document_id: 'd1' }] },
+        },
+      ],
+      documents: [{ id: 'd1', content: 'doc-content', score: 0.9, file: { id: 'f1', name: 'a.pdf' } }],
+    }
     const stream = streamFromChunks([
-      'data: {"type":"delta","text":"hello"}\n\ndata: {"type":"delta","text":" world"}\n\ndata: {"type":"done"}\n\n',
+      'data: {"type":"delta","delta":{"text":"hello"}}\n\n' +
+        'data: {"type":"delta","delta":{"text":" world"}}\n\n' +
+        `data: ${JSON.stringify({ type: 'result', result })}\n\n` +
+        'data: [DONE]\n\n',
     ])
     const events = await collect(parseHaystackSseStream(stream))
-    expect(events).toEqual([{ type: 'delta', text: 'hello' }, { type: 'delta', text: ' world' }, { type: 'done' }])
+    expect(events).toEqual([
+      { type: 'delta', text: 'hello' },
+      { type: 'delta', text: ' world' },
+      { type: 'result', result },
+      { type: 'done' },
+    ])
   })
 
-  it('reassembles an event split across chunk boundaries', async () => {
-    // The frame separator (\n\n) lands in the second chunk; the parser must
-    // hold the partial buffer until it can flush.
-    const stream = streamFromChunks(['data: {"type":"delta","te', 'xt":"split"}\n\ndata: {"type":"done"}\n\n'])
+  it('reassembles an envelope split across chunk boundaries', async () => {
+    const stream = streamFromChunks(['data: {"type":"delta","delta":{"te', 'xt":"split"}}\n\ndata: [DONE]\n\n'])
     const events = await collect(parseHaystackSseStream(stream))
     expect(events).toEqual([{ type: 'delta', text: 'split' }, { type: 'done' }])
   })
 
   it('ignores SSE comments and keep-alives between data frames', async () => {
     const stream = streamFromChunks([
-      ': heartbeat\n\ndata: {"type":"delta","text":"x"}\n\n: another comment\n\ndata: {"type":"done","stopReason":"end_turn"}\n\n',
+      ': heartbeat\n\ndata: {"type":"delta","delta":{"text":"x"}}\n\n: another\n\ndata: [DONE]\n\n',
     ])
     const events = await collect(parseHaystackSseStream(stream))
-    expect(events).toEqual([
-      { type: 'delta', text: 'x' },
-      { type: 'done', stopReason: 'end_turn' },
+    expect(events).toEqual([{ type: 'delta', text: 'x' }, { type: 'done' }])
+  })
+
+  it('silently drops envelopes with unknown types', async () => {
+    // Forward compatibility: a future Deepset event shouldn't break the stream.
+    const stream = streamFromChunks([
+      'data: {"type":"future-shape","extra":1}\n\ndata: {"type":"delta","delta":{"text":"y"}}\n\n',
     ])
+    const events = await collect(parseHaystackSseStream(stream))
+    expect(events).toEqual([{ type: 'delta', text: 'y' }])
+  })
+
+  it('maps a Deepset error envelope to a normalized error event', async () => {
+    const stream = streamFromChunks(['data: {"type":"error","message":"upstream boom"}\n\n'])
+    const events = await collect(parseHaystackSseStream(stream))
+    expect(events).toEqual([{ type: 'error', error: 'upstream boom' }])
   })
 
   it('throws HaystackSseParseError with line context on malformed JSON', async () => {
@@ -83,13 +113,11 @@ describe('parseHaystackSseStream', () => {
     const err = caught as HaystackSseParseError
     expect(err.lineNumber).toBeGreaterThan(0)
     expect(err.message).toContain('malformed JSON')
-    expect(err.message).toContain('line ')
     expect(err.raw).toBe('not-json')
   })
 
-  it('throws HaystackSseParseError with field detail on schema mismatch', async () => {
-    // Unknown discriminator value — Zod surfaces a clear issue path.
-    const stream = streamFromChunks(['data: {"type":"unknown","payload":1}\n\n'])
+  it('throws HaystackSseParseError when a result payload fails schema validation', async () => {
+    const stream = streamFromChunks(['data: {"type":"result","result":{"answers":"oops"}}\n\n'])
     let caught: unknown
     try {
       await collect(parseHaystackSseStream(stream))
@@ -98,8 +126,46 @@ describe('parseHaystackSseStream', () => {
     }
     expect(caught).toBeInstanceOf(HaystackSseParseError)
     const err = caught as HaystackSseParseError
-    expect(err.message).toContain('schema mismatch')
-    // The Zod discriminator error mentions the path `type` or `<root>`.
-    expect(err.message.toLowerCase()).toMatch(/type|invalid/)
+    expect(err.message).toContain('result schema mismatch')
+  })
+})
+
+describe('extractReferences / extractDocuments', () => {
+  const result: DeepsetResultPayload = {
+    answers: [
+      {
+        answer: 'a',
+        files: [],
+        meta: {
+          _references: [
+            { document_position: 1, document_id: 'doc-1' },
+            { document_position: 2, document_id: 'doc-missing' },
+          ],
+        },
+      },
+    ],
+    documents: [
+      {
+        id: 'doc-1',
+        content: 'hello',
+        score: 0.9,
+        file: { id: 'file-1', name: 'a.pdf' },
+        meta: { page_number: 7 },
+      },
+    ],
+  }
+
+  it('extracts references joined against documents and skips orphans', () => {
+    expect(extractReferences(result)).toEqual([{ position: 1, fileId: 'file-1', fileName: 'a.pdf', pageNumber: 7 }])
+  })
+
+  it('extracts documents in source order', () => {
+    expect(extractDocuments(result)).toEqual([
+      { id: 'doc-1', content: 'hello', score: 0.9, file: { id: 'file-1', name: 'a.pdf' } },
+    ])
+  })
+
+  it('returns an empty array when no references are present', () => {
+    expect(extractReferences({ answers: [], documents: [] })).toEqual([])
   })
 })

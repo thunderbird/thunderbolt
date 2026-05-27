@@ -9,18 +9,30 @@ import { z } from 'zod'
  * environment variable. The variable is a JSON array of these objects. Each
  * pipeline becomes one {@link RemoteAgentDescriptor} on `GET /agents`.
  *
- * - `id`: stable agent id surfaced to the frontend (`haystack-rag` etc.).
- * - `name`: human-readable label.
- * - `pipelineId`: the Haystack-side identifier we POST to `/runs`. Distinct
- *   from `id` so the public agent surface stays portable when Haystack renames
- *   pipelines server-side.
- * - `description`: optional one-line description shown in the agent picker.
+ * Deepset Cloud surfaces pipelines under two identifiers:
+ *  - `pipelineName` — URL slug used in `/pipelines/${pipelineName}/chat-stream`.
+ *  - `pipelineId`   — the workspace-scoped UUID, used as the `pipeline_id`
+ *                     body field when bootstrapping a `search_session`.
+ *
+ * We keep them as separate fields because Deepset can rename a pipeline (slug
+ * changes) without re-issuing its UUID, and vice versa.
+ *
+ *  - `id`          — public slug we surface to the FE (`rag-chat`, etc). The
+ *                    only identifier the FE sees.
+ *  - `name`        — human-readable label for the agent picker.
+ *  - `pipelineName`— Deepset URL slug.
+ *  - `pipelineId`  — Deepset UUID.
+ *  - `description` — optional one-line description shown in the picker.
+ *  - `icon`        — optional Phosphor icon name; defaults applied by the
+ *                    provider when omitted.
  */
 export const haystackPipelineDescriptorSchema = z.object({
   id: z.string().min(1),
   name: z.string().min(1),
+  pipelineName: z.string().min(1),
   pipelineId: z.string().min(1),
   description: z.string().optional(),
+  icon: z.string().optional(),
 })
 
 export type HaystackPipelineDescriptor = z.infer<typeof haystackPipelineDescriptorSchema>
@@ -28,23 +40,65 @@ export type HaystackPipelineDescriptor = z.infer<typeof haystackPipelineDescript
 export const haystackPipelinesEnvSchema = z.array(haystackPipelineDescriptorSchema)
 
 /**
- * Subset of a Haystack `/runs` SSE event the adapter understands. Haystack
- * emits a stream of `data: {...}\n\n` lines; we validate each one with this
- * schema before forwarding to the ACP client.
+ * SSE event types emitted by Deepset's `/chat-stream` endpoint. Mirrors the
+ * shape exercised by Deepset Cloud production traffic and the upstream
+ * reference client (PR #531 `backend/src/haystack/client.ts:parseSSE`):
  *
- * The Haystack streaming wire is intentionally narrow here — we accept only
- * the event types we know how to translate today (`delta` and `done`).
- * Anything else is rejected loudly via Zod so silent breakage at the upstream
- * surface is impossible.
+ *  - `{ type: "delta", delta: { text: string } }`  — partial answer chunk.
+ *  - `{ type: "result", result: <DeepsetResultPayload> }` — final answers +
+ *    documents with `_references` to source documents.
+ *  - `{ type: "error", message: string }` — upstream surface error.
+ *  - `data: [DONE]` — sentinel line terminating the stream (no JSON object).
  *
- * Fields:
- *  - `type`: discriminator. `delta` ships a partial text chunk; `done` signals
- *    end-of-stream and carries an optional `stopReason`.
- *  - `text`: the partial text content for `delta` events (required there).
- *  - `stopReason`: optional. When present on `done`, the ACP server forwards
- *    it as the `PromptResponse.stopReason`. Default is `end_turn`.
- *  - `error`: optional string for `error` events; the WS closes the prompt
- *    turn with `refusal` after surfacing the error chunk.
+ * The normalized event surface we propagate to the ACP server collapses these
+ * to a discriminated union; we lose the original envelope shape but preserve
+ * every load-bearing field.
+ */
+const deepsetReferenceSchema = z.object({
+  document_position: z.number(),
+  document_id: z.string(),
+})
+
+const deepsetFileSchema = z.object({
+  id: z.string(),
+  name: z.string(),
+})
+
+const deepsetAnswerSchema = z.object({
+  answer: z.string(),
+  files: z.array(deepsetFileSchema).default([]),
+  meta: z
+    .object({
+      _references: z.array(deepsetReferenceSchema).default([]),
+    })
+    .partial()
+    .optional(),
+})
+
+const deepsetDocumentSchema = z.object({
+  id: z.string(),
+  content: z.string(),
+  score: z.number(),
+  file: deepsetFileSchema,
+  meta: z
+    .object({
+      page_number: z.number().optional(),
+    })
+    .passthrough()
+    .optional(),
+})
+
+export const deepsetResultPayloadSchema = z.object({
+  answers: z.array(deepsetAnswerSchema).default([]),
+  documents: z.array(deepsetDocumentSchema).default([]),
+})
+
+export type DeepsetResultPayload = z.infer<typeof deepsetResultPayloadSchema>
+
+/**
+ * Normalized SSE event surface the parser yields. The Deepset envelope
+ * (`{type, delta:{text}, ...}`) is collapsed here so downstream code never
+ * touches raw upstream shapes.
  */
 export const haystackEventSchema = z.discriminatedUnion('type', [
   z.object({
@@ -52,23 +106,49 @@ export const haystackEventSchema = z.discriminatedUnion('type', [
     text: z.string(),
   }),
   z.object({
-    type: z.literal('done'),
-    stopReason: z.enum(['end_turn', 'max_tokens', 'refusal', 'cancelled']).optional(),
+    type: z.literal('result'),
+    result: deepsetResultPayloadSchema,
   }),
   z.object({
     type: z.literal('error'),
     error: z.string(),
   }),
+  z.object({
+    type: z.literal('done'),
+  }),
 ])
 
 export type HaystackEvent = z.infer<typeof haystackEventSchema>
+
+/** Reference metadata extracted from a Deepset result for ACP `_meta`. */
+export type HaystackReferenceMeta = {
+  position: number
+  fileId: string
+  fileName: string
+  pageNumber?: number
+}
+
+/** Document metadata extracted from a Deepset result for ACP `_meta`. */
+export type HaystackDocumentMeta = {
+  id: string
+  content: string
+  score: number
+  file: { id: string; name: string }
+}
 
 /** Per-session in-memory state for an open Haystack ACP connection. */
 export type HaystackSessionContext = {
   /** ACP session id (UUID generated on `session/new`). */
   sessionId: string
-  /** Pipeline id selected by the `?pipeline=` query parameter. */
+  /** Deepset pipeline UUID (used for `search_session` bootstrap). */
   pipelineId: string
-  /** Abort controller that cancels the upstream `/runs` request. */
+  /** Deepset pipeline URL slug (used for `/chat-stream`). */
+  pipelineName: string
+  /**
+   * Deepset `search_session_id`, lazily bootstrapped on the first prompt.
+   * Reused across prompts so multi-turn chat history is preserved upstream.
+   */
+  searchSessionId: string | null
+  /** Abort controller that cancels the upstream request. */
   abort: AbortController
 }

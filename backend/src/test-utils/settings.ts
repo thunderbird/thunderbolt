@@ -57,6 +57,7 @@ export const createTestSettings = (overrides: Partial<Settings> = {}): Settings 
   allowCustomAgents: true,
   haystackBaseUrl: '',
   haystackApiKey: '',
+  haystackWorkspace: '',
   haystackPipelines: '',
   wsTicketTtlMs: 30_000,
   wsTicketMaxActive: 10_000,

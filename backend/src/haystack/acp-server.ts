@@ -13,8 +13,9 @@ import {
   type PromptResponse,
   type SessionNotification,
 } from '@agentclientprotocol/sdk'
-import { parseHaystackSseStream } from './sse-parser'
-import type { HaystackEvent, HaystackSessionContext } from './types'
+import { z } from 'zod'
+import { extractDocuments, extractReferences, parseHaystackSseStream } from './sse-parser'
+import type { HaystackDocumentMeta, HaystackEvent, HaystackReferenceMeta, HaystackSessionContext } from './types'
 
 /**
  * Minimal JSON-RPC 2.0 envelope. We don't pull the SDK's `AnyMessage` type
@@ -57,11 +58,39 @@ const rpcErrors = {
   internalError: -32603,
 } as const
 
+/**
+ * HTTP status Deepset returns when a pipeline is waking from idle. The
+ * pipeline is cold and will be available shortly — retry with backoff.
+ */
+const pipelineNotReadyStatus = 591
+const maxRetryAttempts = 3
+const defaultRetryBaseDelayMs = 1_000
+
+/** Zod schema for the Deepset `search_sessions` response. */
+const searchSessionResponseSchema = z.object({
+  search_session_id: z.string().min(1),
+})
+
 export type HaystackAcpDeps = {
-  /** Injected so tests can mock the Haystack `/runs` endpoint. */
+  /** Injected so tests can mock the Deepset upstream. */
   fetchFn?: typeof fetch
   /** UUID generator override for deterministic session ids in tests. */
   generateSessionId?: () => string
+  /**
+   * Base delay (ms) between 591 retry attempts. Defaults to 1 s; tests pin to
+   * 0 so the backoff doesn't add wall-clock seconds.
+   */
+  retryBaseDelayMs?: number
+}
+
+export type HaystackAcpServerOptions = {
+  send: Sender
+  /** Deepset pipeline UUID — used as `pipeline_id` body when creating a search session. */
+  pipelineId: string
+  /** Deepset pipeline URL slug — used in the `/pipelines/${pipelineName}/chat-stream` path. */
+  pipelineName: string
+  settings: Settings
+  deps?: HaystackAcpDeps
 }
 
 /**
@@ -69,30 +98,38 @@ export type HaystackAcpDeps = {
  * `open`, dispatches each incoming text frame through {@link handleMessage},
  * and disposes via {@link dispose} on close.
  *
- * Design notes:
- *  - State is keyed by ACP `sessionId`. A single WebSocket may host multiple
- *    sessions, but in MVP the FE opens one connection per chat thread so we
- *    expect 1:1. The map keeps the invariant cheap to verify in tests.
- *  - Each session owns an `AbortController` so `session/cancel` aborts the
- *    in-flight upstream stream without disturbing the other sessions on the
- *    same socket.
- *  - The class is deliberately not exported as a singleton — Elysia hands us
- *    a fresh `data` object per connection, so we instantiate per `open`.
+ * Upstream wire (Deepset Cloud):
+ *  1. `POST {base}/api/v1/workspaces/{workspace}/search_sessions`
+ *     body `{ pipeline_id: <uuid> }` → returns `{ search_session_id }`.
+ *     Bootstrapped lazily on the first `session/prompt`, reused thereafter
+ *     so multi-turn chat history is preserved server-side.
+ *  2. `POST {base}/api/v1/workspaces/{workspace}/pipelines/{pipelineName}/chat-stream`
+ *     body `{ query, search_session_id, include_result: true }` with
+ *     `Accept: text/event-stream`. SSE response → translated into ACP
+ *     `session/update` notifications.
+ *
+ * Both upstream calls go through {@link fetchWithPipelineRetry} which retries
+ * HTTP 591 (cold pipeline) with exponential backoff (1 s → 2 s → 4 s, capped
+ * at 3 attempts).
  */
 export class HaystackAcpServer {
   private readonly sessions = new Map<string, HaystackSessionContext>()
   private readonly send: Sender
   private readonly pipelineId: string
+  private readonly pipelineName: string
   private readonly settings: Settings
   private readonly fetchFn: typeof fetch
   private readonly generateSessionId: () => string
+  private readonly retryBaseDelayMs: number
 
-  constructor(opts: { send: Sender; pipelineId: string; settings: Settings; deps?: HaystackAcpDeps }) {
+  constructor(opts: HaystackAcpServerOptions) {
     this.send = opts.send
     this.pipelineId = opts.pipelineId
+    this.pipelineName = opts.pipelineName
     this.settings = opts.settings
     this.fetchFn = opts.deps?.fetchFn ?? globalThis.fetch
     this.generateSessionId = opts.deps?.generateSessionId ?? (() => crypto.randomUUID())
+    this.retryBaseDelayMs = opts.deps?.retryBaseDelayMs ?? defaultRetryBaseDelayMs
   }
 
   /** Handle a single inbound WebSocket text frame. */
@@ -109,7 +146,6 @@ export class HaystackAcpServer {
       return
     }
 
-    // Notifications carry no `id`. Cancellation is the only one we observe.
     if (!('id' in message) || message.id === undefined) {
       await this.handleNotification(message as JsonRpcNotification)
       return
@@ -143,7 +179,6 @@ export class HaystackAcpServer {
 
   private async handleNotification(note: JsonRpcNotification): Promise<void> {
     if (note.method !== AGENT_METHODS.session_cancel) {
-      // Unknown notifications are dropped silently per JSON-RPC 2.0.
       return
     }
     const params = note.params as CancelNotification | undefined
@@ -158,10 +193,10 @@ export class HaystackAcpServer {
   }
 
   /**
-   * MVP capability set: Haystack RAG returns plaintext deltas. We deliberately
-   * advertise `loadSession: false` because Haystack's `/runs` is stateless per
-   * call — there is no server-side conversation to resume. Image / audio /
-   * embedded context are disabled until the upstream supports them.
+   * MVP capability set: Haystack RAG returns plaintext deltas + a final
+   * result payload with citation metadata. We advertise `loadSession: false`
+   * because Deepset's `search_session` is server-side state but doesn't
+   * expose a "resume by id" surface to us.
    */
   private buildInitializeResponse(): InitializeResponse {
     return {
@@ -183,6 +218,8 @@ export class HaystackAcpServer {
     this.sessions.set(sessionId, {
       sessionId,
       pipelineId: this.pipelineId,
+      pipelineName: this.pipelineName,
+      searchSessionId: null,
       abort: new AbortController(),
     })
     return { sessionId }
@@ -191,17 +228,18 @@ export class HaystackAcpServer {
   /**
    * Drive a `session/prompt` turn end-to-end:
    *  1. Look up the ACP session (404-ish error if unknown).
-   *  2. Concatenate text content blocks into a single Haystack query string.
-   *  3. POST to `${HAYSTACK_BASE_URL}/runs` with SSE accept and pipeline body.
-   *  4. Stream events; for each `delta` emit `session/update` with an
-   *     `agent_message_chunk` of type text. On `done`, reply with the
-   *     `session/prompt` result; on `error`, reply with `refusal` after
-   *     surfacing the error as a final chunk.
+   *  2. Bootstrap a Deepset `search_session_id` if we don't already have one
+   *     for this ACP session. Reusing the id preserves multi-turn chat
+   *     history server-side.
+   *  3. Concatenate text content blocks into a single query string.
+   *  4. POST to `/pipelines/{pipelineName}/chat-stream` with SSE accept.
+   *  5. Stream events; for each `delta` emit `session/update` with an
+   *     `agent_message_chunk`. On `result`, attach citation metadata as
+   *     `_meta` on a terminal chunk + the prompt response. On `done` or
+   *     stream-end, reply with `end_turn`.
    *
-   * The per-session AbortController is wired into the fetch — `session/cancel`
-   * trips it, which both stops upstream and resolves the prompt with
-   * `cancelled`. We treat that as the spec-mandated "respond with cancelled
-   * stop reason" path.
+   * The per-session AbortController is wired into both fetches — `session/cancel`
+   * trips it and the prompt resolves with `cancelled`.
    */
   private async runPrompt(req: JsonRpcRequest): Promise<void> {
     const params = req.params as PromptRequest | undefined
@@ -216,81 +254,171 @@ export class HaystackAcpServer {
     }
 
     const userText = extractUserText(params)
-    const upstreamUrl = `${this.settings.haystackBaseUrl.replace(/\/$/, '')}/runs`
 
-    const startResponse = await this.fetchFn(upstreamUrl, {
-      method: 'POST',
-      headers: {
-        'content-type': 'application/json',
-        accept: 'text/event-stream',
-        ...(this.settings.haystackApiKey ? { authorization: `Bearer ${this.settings.haystackApiKey}` } : {}),
-      },
-      body: JSON.stringify({
-        pipeline_id: ctx.pipelineId,
-        query: userText,
-        stream: true,
-      }),
-      signal: ctx.abort.signal,
-    })
-
-    if (!startResponse.ok || !startResponse.body) {
-      const detail = await safeReadText(startResponse)
-      this.sendError(req.id, rpcErrors.internalError, `upstream ${startResponse.status}: ${detail.slice(0, 200)}`)
-      return
-    }
-
-    const stopReason = await this.streamUpstream(ctx, startResponse.body)
-    const promptResponse: PromptResponse = { stopReason }
-    this.sendResult(req.id, promptResponse)
-  }
-
-  /**
-   * Translate Haystack SSE events into ACP `session/update` notifications and
-   * return the final stop reason. Translation table:
-   *  - `delta` → `session/update` with `update.sessionUpdate = "agent_message_chunk"`,
-   *    `update.content = { type: "text", text }`.
-   *  - `done`  → terminate; stop reason from event payload (default `end_turn`).
-   *  - `error` → emit a final text chunk carrying the error message, return
-   *    `refusal`. The upstream message is surfaced verbatim so the FE can
-   *    show actionable detail.
-   *  - AbortError on the fetch → stop reason `cancelled`.
-   */
-  private async streamUpstream(
-    ctx: HaystackSessionContext,
-    body: ReadableStream<Uint8Array>,
-  ): Promise<PromptResponse['stopReason']> {
     try {
-      for await (const event of parseHaystackSseStream(body)) {
-        const terminal = this.translateEvent(ctx, event)
-        if (terminal !== null) {
-          return terminal
-        }
+      if (ctx.searchSessionId === null) {
+        ctx.searchSessionId = await this.createSearchSession(ctx)
       }
-      return 'end_turn'
+
+      const streamResponse = await this.openChatStream(ctx, userText)
+      if (!streamResponse.body) {
+        this.sendError(req.id, rpcErrors.internalError, 'haystack chat-stream response has no body')
+        return
+      }
+
+      const { references, documents, stopReason } = await this.streamUpstream(ctx, streamResponse.body)
+      const promptResponse: PromptResponse = {
+        stopReason,
+        ...(references.length > 0 || documents.length > 0
+          ? { _meta: { haystackReferences: references, haystackDocuments: documents } }
+          : {}),
+      }
+      this.sendResult(req.id, promptResponse)
     } catch (err) {
-      if ((err as { name?: string }).name === 'AbortError') {
-        return 'cancelled'
+      if (isAbortError(err)) {
+        this.sendResult(req.id, { stopReason: 'cancelled' } as PromptResponse)
+        return
       }
-      // Surface parser/schema failures as a refusal chunk so the FE sees why.
-      this.emitAgentTextChunk(ctx, `[haystack error] ${(err as Error).message}`)
-      return 'refusal'
+      const message = (err as Error).message ?? 'haystack request failed'
+      this.emitAgentTextChunk(ctx, `[haystack error] ${message}`)
+      this.sendError(req.id, rpcErrors.internalError, message)
     } finally {
       this.sessions.delete(ctx.sessionId)
     }
   }
 
-  /** Per-event branch. Returns the terminal stop reason or null to continue. */
-  private translateEvent(ctx: HaystackSessionContext, event: HaystackEvent): PromptResponse['stopReason'] | null {
+  /** Bootstrap a Deepset `search_session_id` for this ACP session. */
+  private async createSearchSession(ctx: HaystackSessionContext): Promise<string> {
+    const url = `${this.workspaceBaseUrl()}/search_sessions`
+    const response = await this.fetchWithPipelineRetry(url, {
+      method: 'POST',
+      headers: this.jsonHeaders(),
+      body: JSON.stringify({ pipeline_id: ctx.pipelineId }),
+      signal: ctx.abort.signal,
+    })
+    const data = (await response.json()) as unknown
+    const parsed = searchSessionResponseSchema.parse(data)
+    return parsed.search_session_id
+  }
+
+  /** Open the SSE chat stream for a single prompt turn. */
+  private openChatStream(ctx: HaystackSessionContext, query: string): Promise<Response> {
+    const url = `${this.workspaceBaseUrl()}/pipelines/${ctx.pipelineName}/chat-stream`
+    return this.fetchWithPipelineRetry(url, {
+      method: 'POST',
+      headers: { ...this.jsonHeaders(), accept: 'text/event-stream' },
+      body: JSON.stringify({
+        query,
+        search_session_id: ctx.searchSessionId,
+        include_result: true,
+      }),
+      signal: ctx.abort.signal,
+    })
+  }
+
+  /**
+   * Retry a fetch on 591 (Deepset cold-pipeline) with exponential backoff.
+   * Bails on the first non-591 non-OK response with a structured error.
+   */
+  private async fetchWithPipelineRetry(url: string, init: RequestInit): Promise<Response> {
+    for (let attempt = 0; attempt < maxRetryAttempts; attempt++) {
+      const response = await this.fetchFn(url, init)
+      if (response.ok) {
+        return response
+      }
+      if (response.status === pipelineNotReadyStatus && attempt < maxRetryAttempts - 1) {
+        await this.abortableSleep(this.retryBaseDelayMs * Math.pow(2, attempt), init.signal ?? null)
+        continue
+      }
+      const body = await response.text().catch(() => '')
+      throw new Error(
+        `haystack upstream ${response.status} ${response.statusText}${body ? `: ${body.slice(0, 200)}` : ''}`,
+      )
+    }
+    throw new Error('haystack upstream: 591 retries exhausted')
+  }
+
+  private abortableSleep(ms: number, signal: AbortSignal | null): Promise<void> {
+    if (ms <= 0) {
+      return Promise.resolve()
+    }
+    if (signal?.aborted) {
+      return Promise.reject(abortReason(signal))
+    }
+    return new Promise<void>((resolve, reject) => {
+      const onAbort = () => {
+        clearTimeout(timer)
+        reject(abortReason(signal!))
+      }
+      const timer = setTimeout(() => {
+        signal?.removeEventListener('abort', onAbort)
+        resolve()
+      }, ms)
+      signal?.addEventListener('abort', onAbort, { once: true })
+    })
+  }
+
+  /**
+   * Translate Haystack SSE events into ACP `session/update` notifications
+   * and return references/documents extracted from the final `result` event.
+   *
+   *  - `delta` → `session/update` with `agent_message_chunk` text content.
+   *  - `result`→ extract refs/docs; if refs are non-empty, also emit a
+   *    terminal empty chunk carrying `_meta.haystackReferences` so the FE
+   *    can render citations as soon as they land.
+   *  - `error` → throw; caller converts to JSON-RPC error.
+   *  - `done`  → terminate the stream loop.
+   *  - AbortError on the fetch → propagated up to caller (becomes `cancelled`).
+   */
+  private async streamUpstream(
+    ctx: HaystackSessionContext,
+    body: ReadableStream<Uint8Array>,
+  ): Promise<{
+    references: HaystackReferenceMeta[]
+    documents: HaystackDocumentMeta[]
+    stopReason: PromptResponse['stopReason']
+  }> {
+    let references: HaystackReferenceMeta[] = []
+    let documents: HaystackDocumentMeta[] = []
+
+    for await (const event of parseHaystackSseStream(body)) {
+      if (ctx.abort.signal.aborted) {
+        return { references, documents, stopReason: 'cancelled' }
+      }
+      const terminal = this.translateEvent(ctx, event, (refs, docs) => {
+        references = refs
+        documents = docs
+      })
+      if (terminal !== null) {
+        return { references, documents, stopReason: terminal }
+      }
+    }
+    return { references, documents, stopReason: 'end_turn' }
+  }
+
+  private translateEvent(
+    ctx: HaystackSessionContext,
+    event: HaystackEvent,
+    captureResult: (refs: HaystackReferenceMeta[], docs: HaystackDocumentMeta[]) => void,
+  ): PromptResponse['stopReason'] | null {
     if (event.type === 'delta') {
       this.emitAgentTextChunk(ctx, event.text)
       return null
     }
+    if (event.type === 'result') {
+      const refs = extractReferences(event.result)
+      const docs = extractDocuments(event.result)
+      captureResult(refs, docs)
+      if (refs.length > 0) {
+        this.emitAgentTextChunkWithMeta(ctx, '', { haystackReferences: refs })
+      }
+      return null
+    }
     if (event.type === 'done') {
-      return event.stopReason ?? 'end_turn'
+      return 'end_turn'
     }
     // event.type === 'error'
-    this.emitAgentTextChunk(ctx, `[haystack error] ${event.error}`)
-    return 'refusal'
+    throw new Error(event.error)
   }
 
   private emitAgentTextChunk(ctx: HaystackSessionContext, text: string): void {
@@ -302,6 +430,31 @@ export class HaystackAcpServer {
       },
     }
     this.sendNotification('session/update', notification)
+  }
+
+  private emitAgentTextChunkWithMeta(ctx: HaystackSessionContext, text: string, meta: Record<string, unknown>): void {
+    const notification: SessionNotification = {
+      sessionId: ctx.sessionId,
+      update: {
+        sessionUpdate: 'agent_message_chunk',
+        content: { type: 'text', text },
+      },
+      _meta: meta,
+    }
+    this.sendNotification('session/update', notification)
+  }
+
+  private workspaceBaseUrl(): string {
+    const base = this.settings.haystackBaseUrl.replace(/\/$/, '')
+    return `${base}/api/v1/workspaces/${this.settings.haystackWorkspace}`
+  }
+
+  private jsonHeaders(): Record<string, string> {
+    return {
+      'content-type': 'application/json',
+      accept: 'application/json',
+      ...(this.settings.haystackApiKey ? { authorization: `Bearer ${this.settings.haystackApiKey}` } : {}),
+    }
   }
 
   private sendResult(id: JsonRpcRequest['id'], result: unknown): void {
@@ -331,8 +484,7 @@ const isJsonRpcMessage = (value: unknown): value is JsonRpcRequest | JsonRpcNoti
 /**
  * Pull plain text out of an ACP `PromptRequest`. ACP allows mixed content
  * blocks; Haystack accepts a single query string, so we join text blocks and
- * ignore non-text content (image/audio/resource). Image support is wired off
- * via `promptCapabilities.image: false` so we never receive those here.
+ * ignore non-text content (image/audio/resource).
  */
 const extractUserText = (params: PromptRequest): string => {
   const blocks = params.prompt ?? []
@@ -345,10 +497,13 @@ const extractUserText = (params: PromptRequest): string => {
   return texts.join('\n')
 }
 
-const safeReadText = async (response: Response): Promise<string> => {
-  try {
-    return await response.text()
-  } catch {
-    return ''
+const isAbortError = (err: unknown): boolean => {
+  if (typeof err !== 'object' || err === null) {
+    return false
   }
+  const name = (err as { name?: string }).name
+  return name === 'AbortError'
 }
+
+const abortReason = (signal: AbortSignal): unknown =>
+  signal.reason ?? Object.assign(new Error('aborted'), { name: 'AbortError' })

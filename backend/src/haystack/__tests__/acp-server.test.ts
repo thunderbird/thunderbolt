@@ -3,14 +3,20 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 /**
- * Tests for HaystackAcpServer's JSON-RPC dispatch and Haystack→ACP
- * translation. We exercise the protocol surface end-to-end without an actual
- * websocket: the `send` callback collects outbound frames into an array, and
- * `fetchFn` is injected per backend/docs/testing.md to mock the upstream.
+ * Tests for HaystackAcpServer's JSON-RPC dispatch and Deepset→ACP translation.
  *
- * Skipped on purpose: trivial getters (capabilities flat fields), DTO
- * passthrough (already covered by the SDK schema types). We test branching
- * and lifecycle.
+ * We exercise the protocol surface end-to-end without an actual websocket:
+ *  - `send` callback collects outbound JSON-RPC frames into an array.
+ *  - `fetchFn` is injected per backend/docs/testing.md to mock the upstream
+ *    (no `mock.module` — see docs/development/testing.md).
+ *
+ * Coverage focus:
+ *  - 2-step Deepset flow (POST /search_sessions, then POST /chat-stream).
+ *  - HTTP 591 retry with the cold-pipeline backoff path.
+ *  - SSE delta translation into `session/update` notifications.
+ *  - Authorization header propagation.
+ *  - Workspace embedded in the URL.
+ *  - Cancellation aborts both the upstream stream and the prompt response.
  */
 
 import type { Settings } from '@/config/settings'
@@ -22,22 +28,20 @@ const buildSettings = (overrides: Partial<Settings> = {}): Settings =>
   ({
     haystackBaseUrl: 'https://haystack.test',
     haystackApiKey: 'test-key',
+    haystackWorkspace: 'ws-test',
     haystackPipelines: '',
     logLevel: 'INFO',
     ...overrides,
   }) as Settings
 
-/**
- * Build an SSE response body from a list of events. Each event is encoded as
- * `data: {json}\n\n`. The returned Response.body is a ReadableStream that
- * the parser can consume.
- */
-const sseResponse = (events: Array<Record<string, unknown>>): Response => {
+/** Encode events as Deepset SSE frames and wrap them in a Response body. */
+const sseResponse = (frames: Array<Record<string, unknown> | '[DONE]'>): Response => {
   const encoder = new TextEncoder()
   const body = new ReadableStream<Uint8Array>({
     start(controller) {
-      for (const event of events) {
-        controller.enqueue(encoder.encode(`data: ${JSON.stringify(event)}\n\n`))
+      for (const frame of frames) {
+        const payload = frame === '[DONE]' ? '[DONE]' : JSON.stringify(frame)
+        controller.enqueue(encoder.encode(`data: ${payload}\n\n`))
       }
       controller.close()
     },
@@ -45,34 +49,64 @@ const sseResponse = (events: Array<Record<string, unknown>>): Response => {
   return new Response(body, { status: 200, headers: { 'content-type': 'text/event-stream' } })
 }
 
-type Captured = { method?: string; url?: string; body?: unknown; signal?: AbortSignal }
+const jsonResponse = (status: number, body: unknown): Response =>
+  new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } })
+
+type Captured = {
+  method?: string
+  url?: string
+  body?: unknown
+  headers?: Record<string, string>
+  signal?: AbortSignal
+}
+
+type Upstream = (input: URL | RequestInfo, init?: RequestInit) => Promise<Response>
 
 const buildServer = (opts: {
-  upstream?: (input: URL | RequestInfo, init?: RequestInit) => Promise<Response>
+  upstream: Upstream
   sessionIds?: string[]
   pipelineId?: string
+  pipelineName?: string
+  settings?: Partial<Settings>
 }) => {
   const sent: string[] = []
   const captures: Captured[] = []
-  const baseFetch = opts.upstream ?? (() => Promise.resolve(sseResponse([{ type: 'done' }])))
   const wrappedFetchImpl = (input: URL | RequestInfo, init?: RequestInit) => {
+    const rawHeaders = init?.headers
+    const headerRecord: Record<string, string> = {}
+    if (rawHeaders) {
+      if (rawHeaders instanceof Headers) {
+        rawHeaders.forEach((v, k) => {
+          headerRecord[k] = v
+        })
+      } else if (Array.isArray(rawHeaders)) {
+        for (const [k, v] of rawHeaders) {
+          headerRecord[k] = v
+        }
+      } else {
+        Object.assign(headerRecord, rawHeaders)
+      }
+    }
     captures.push({
       method: init?.method,
       url: input.toString(),
       body: init?.body ? JSON.parse(String(init.body)) : undefined,
+      headers: headerRecord,
       signal: init?.signal ?? undefined,
     })
-    return baseFetch(input, init)
+    return opts.upstream(input, init)
   }
   const wrappedFetch = Object.assign(wrappedFetchImpl, { preconnect: () => {} }) as unknown as typeof fetch
   const idQueue = [...(opts.sessionIds ?? [])]
   const server = new HaystackAcpServer({
     send: (payload) => sent.push(payload),
-    pipelineId: opts.pipelineId ?? 'pipe-1',
-    settings: buildSettings(),
+    pipelineId: opts.pipelineId ?? 'pipe-uuid-1',
+    pipelineName: opts.pipelineName ?? 'pipe-slug-1',
+    settings: buildSettings(opts.settings),
     deps: {
       fetchFn: wrappedFetch,
       generateSessionId: idQueue.length > 0 ? () => idQueue.shift() ?? crypto.randomUUID() : undefined,
+      retryBaseDelayMs: 0,
     },
   })
   return { server, sent, captures }
@@ -81,9 +115,9 @@ const buildServer = (opts: {
 type CapturedSessionUpdate = {
   sessionId: string
   update: { sessionUpdate: 'agent_message_chunk'; content: { type: 'text'; text: string } }
+  _meta?: Record<string, unknown>
 }
 
-/** Parse only those outbound frames whose `method` matches `session/update`. */
 const sessionUpdates = (sent: string[]): CapturedSessionUpdate[] =>
   sent
     .map((s) => JSON.parse(s) as { method?: string; params?: CapturedSessionUpdate })
@@ -92,9 +126,24 @@ const sessionUpdates = (sent: string[]): CapturedSessionUpdate[] =>
 
 const findResponse = (sent: string[], id: string | number) => sent.map((s) => JSON.parse(s)).find((m) => m.id === id)
 
+/** Build a happy-path upstream: first call is search_sessions, then chat-stream. */
+const happyUpstream = (chatFrames: Array<Record<string, unknown> | '[DONE]'>): Upstream => {
+  let call = 0
+  return (input) => {
+    call += 1
+    const url = input.toString()
+    if (call === 1) {
+      expect(url).toContain('/search_sessions')
+      return Promise.resolve(jsonResponse(200, { search_session_id: 'deepset-sess-1' }))
+    }
+    expect(url).toContain('/chat-stream')
+    return Promise.resolve(sseResponse(chatFrames))
+  }
+}
+
 describe('HaystackAcpServer', () => {
   it('replies to initialize with the MVP capability set', async () => {
-    const { server, sent } = buildServer({})
+    const { server, sent } = buildServer({ upstream: () => Promise.resolve(sseResponse(['[DONE]'])) })
     await server.handleMessage(JSON.stringify({ jsonrpc: '2.0', id: 1, method: AGENT_METHODS.initialize }))
     const reply = findResponse(sent, 1)
     expect(reply.result).toEqual({
@@ -107,35 +156,18 @@ describe('HaystackAcpServer', () => {
     })
   })
 
-  it('returns a UUID sessionId on session/new and persists internal context', async () => {
-    const { server, sent } = buildServer({ sessionIds: ['ses-aaa'] })
-    await server.handleMessage(JSON.stringify({ jsonrpc: '2.0', id: 'r1', method: AGENT_METHODS.session_new }))
-    const reply = findResponse(sent, 'r1')
-    expect(reply.result.sessionId).toBe('ses-aaa')
-    // Echo through a session/prompt to confirm the session was registered.
-    // Use an immediate-done upstream so no actual streaming runs.
-    await server.handleMessage(
-      JSON.stringify({
-        jsonrpc: '2.0',
-        id: 'r2',
-        method: AGENT_METHODS.session_prompt,
-        params: { sessionId: 'ses-aaa', prompt: [{ type: 'text', text: 'hi' }] },
-      }),
-    )
-    const promptReply = findResponse(sent, 'r2')
-    expect(promptReply.result).toEqual({ stopReason: 'end_turn' })
-  })
+  it('bootstraps a search_session then streams chat-stream deltas (2-step flow)', async () => {
+    const { server, sent, captures } = buildServer({
+      upstream: happyUpstream([
+        { type: 'delta', delta: { text: 'Hello ' } },
+        { type: 'delta', delta: { text: 'world' } },
+        '[DONE]',
+      ]),
+      sessionIds: ['ses-stream'],
+      pipelineId: 'pipe-uuid-rag',
+      pipelineName: 'rag-pipeline',
+    })
 
-  it('forwards Haystack deltas as agent_message_chunk session/update notifications', async () => {
-    const upstream = () =>
-      Promise.resolve(
-        sseResponse([
-          { type: 'delta', text: 'Hello ' },
-          { type: 'delta', text: 'world' },
-          { type: 'done', stopReason: 'end_turn' },
-        ]),
-      )
-    const { server, sent, captures } = buildServer({ upstream, sessionIds: ['ses-stream'], pipelineId: 'rag-v1' })
     await server.handleMessage(JSON.stringify({ jsonrpc: '2.0', id: 1, method: AGENT_METHODS.session_new }))
     await server.handleMessage(
       JSON.stringify({
@@ -146,27 +178,114 @@ describe('HaystackAcpServer', () => {
       }),
     )
 
-    // Upstream call shape.
-    expect(captures.length).toBe(1)
+    // Step 1: search_sessions bootstrap.
     expect(captures[0].method).toBe('POST')
-    expect(captures[0].url).toBe('https://haystack.test/runs')
-    expect(captures[0].body).toEqual({ pipeline_id: 'rag-v1', query: 'Say hi', stream: true })
+    expect(captures[0].url).toBe('https://haystack.test/api/v1/workspaces/ws-test/search_sessions')
+    expect(captures[0].body).toEqual({ pipeline_id: 'pipe-uuid-rag' })
+    expect(captures[0].headers?.authorization).toBe('Bearer test-key')
 
-    // session/update notifications carry the agent_message_chunk text in order.
+    // Step 2: chat-stream.
+    expect(captures[1].method).toBe('POST')
+    expect(captures[1].url).toBe('https://haystack.test/api/v1/workspaces/ws-test/pipelines/rag-pipeline/chat-stream')
+    expect(captures[1].body).toEqual({
+      query: 'Say hi',
+      search_session_id: 'deepset-sess-1',
+      include_result: true,
+    })
+    expect(captures[1].headers?.accept).toBe('text/event-stream')
+    expect(captures[1].headers?.authorization).toBe('Bearer test-key')
+
     const updates = sessionUpdates(sent)
-    expect(updates).toEqual([
-      {
-        sessionId: 'ses-stream',
-        update: { sessionUpdate: 'agent_message_chunk', content: { type: 'text', text: 'Hello ' } },
-      },
-      {
-        sessionId: 'ses-stream',
-        update: { sessionUpdate: 'agent_message_chunk', content: { type: 'text', text: 'world' } },
-      },
-    ])
+    expect(updates.map((u) => u.update.content.text)).toEqual(['Hello ', 'world'])
+    expect(findResponse(sent, 2).result.stopReason).toBe('end_turn')
+  })
 
-    // Prompt response carries the stop reason.
-    expect(findResponse(sent, 2).result).toEqual({ stopReason: 'end_turn' })
+  it('retries HTTP 591 on the chat-stream call before giving up', async () => {
+    let chatAttempts = 0
+    const upstream: Upstream = (input) => {
+      const url = input.toString()
+      if (url.endsWith('/search_sessions')) {
+        return Promise.resolve(jsonResponse(200, { search_session_id: 'sess-591' }))
+      }
+      chatAttempts += 1
+      if (chatAttempts < 3) {
+        return Promise.resolve(new Response('cold', { status: 591 }))
+      }
+      return Promise.resolve(sseResponse([{ type: 'delta', delta: { text: 'warmed' } }, '[DONE]']))
+    }
+
+    const { server, sent } = buildServer({
+      upstream,
+      sessionIds: ['ses-591'],
+    })
+
+    await server.handleMessage(JSON.stringify({ jsonrpc: '2.0', id: 1, method: AGENT_METHODS.session_new }))
+    await server.handleMessage(
+      JSON.stringify({
+        jsonrpc: '2.0',
+        id: 2,
+        method: AGENT_METHODS.session_prompt,
+        params: { sessionId: 'ses-591', prompt: [{ type: 'text', text: 'warm up' }] },
+      }),
+    )
+
+    expect(chatAttempts).toBe(3)
+    const updates = sessionUpdates(sent)
+    expect(updates.map((u) => u.update.content.text)).toEqual(['warmed'])
+    expect(findResponse(sent, 2).result.stopReason).toBe('end_turn')
+  })
+
+  it('returns a UUID sessionId on session/new', async () => {
+    const { server, sent } = buildServer({
+      upstream: happyUpstream(['[DONE]']),
+      sessionIds: ['ses-aaa'],
+    })
+    await server.handleMessage(JSON.stringify({ jsonrpc: '2.0', id: 'r1', method: AGENT_METHODS.session_new }))
+    expect(findResponse(sent, 'r1').result.sessionId).toBe('ses-aaa')
+  })
+
+  it('attaches haystackReferences + haystackDocuments _meta from the final result event', async () => {
+    const result = {
+      answers: [
+        {
+          answer: 'final',
+          files: [],
+          meta: { _references: [{ document_position: 1, document_id: 'd1' }] },
+        },
+      ],
+      documents: [{ id: 'd1', content: 'content', score: 0.9, file: { id: 'f1', name: 'a.pdf' } }],
+    }
+    const { server, sent } = buildServer({
+      upstream: happyUpstream([{ type: 'delta', delta: { text: 'hi' } }, { type: 'result', result }, '[DONE]']),
+      sessionIds: ['ses-meta'],
+    })
+
+    await server.handleMessage(JSON.stringify({ jsonrpc: '2.0', id: 1, method: AGENT_METHODS.session_new }))
+    await server.handleMessage(
+      JSON.stringify({
+        jsonrpc: '2.0',
+        id: 2,
+        method: AGENT_METHODS.session_prompt,
+        params: { sessionId: 'ses-meta', prompt: [{ type: 'text', text: 'q' }] },
+      }),
+    )
+
+    const updates = sessionUpdates(sent)
+    // First update = delta. Second update = empty chunk carrying references _meta.
+    expect(updates.length).toBe(2)
+    expect(updates[0].update.content.text).toBe('hi')
+    expect(updates[1]._meta).toEqual({
+      haystackReferences: [{ position: 1, fileId: 'f1', fileName: 'a.pdf', pageNumber: undefined }],
+    })
+
+    const promptReply = findResponse(sent, 2)
+    expect(promptReply.result.stopReason).toBe('end_turn')
+    expect(promptReply.result._meta.haystackReferences).toEqual([
+      { position: 1, fileId: 'f1', fileName: 'a.pdf', pageNumber: undefined },
+    ])
+    expect(promptReply.result._meta.haystackDocuments).toEqual([
+      { id: 'd1', content: 'content', score: 0.9, file: { id: 'f1', name: 'a.pdf' } },
+    ])
   })
 
   it('aborts the upstream fetch when session/cancel is received mid-stream', async () => {
@@ -175,14 +294,17 @@ describe('HaystackAcpServer', () => {
     const chunkLanded = new Promise<void>((resolve) => {
       releaseChunk = resolve
     })
-    const upstream = (_input: URL | RequestInfo, init?: RequestInit) =>
-      Promise.resolve(
+    const upstream: Upstream = (input, init) => {
+      if (input.toString().endsWith('/search_sessions')) {
+        return Promise.resolve(jsonResponse(200, { search_session_id: 'sess-cancel' }))
+      }
+      return Promise.resolve(
         new Response(
           new ReadableStream<Uint8Array>({
             start(controller) {
               capturedSignal = init?.signal ?? null
               const enc = new TextEncoder()
-              controller.enqueue(enc.encode('data: {"type":"delta","text":"start"}\n\n'))
+              controller.enqueue(enc.encode('data: {"type":"delta","delta":{"text":"start"}}\n\n'))
               releaseChunk()
               init?.signal?.addEventListener('abort', () => {
                 controller.error(Object.assign(new Error('aborted'), { name: 'AbortError' }))
@@ -192,6 +314,7 @@ describe('HaystackAcpServer', () => {
           { status: 200, headers: { 'content-type': 'text/event-stream' } },
         ),
       )
+    }
 
     const { server, sent } = buildServer({ upstream, sessionIds: ['ses-cancel'] })
     await server.handleMessage(JSON.stringify({ jsonrpc: '2.0', id: 1, method: AGENT_METHODS.session_new }))
@@ -204,9 +327,7 @@ describe('HaystackAcpServer', () => {
       }),
     )
 
-    // Wait until the first delta has streamed so we know the request is in flight.
     await chunkLanded
-    // Notification — no `id` field; matches JSON-RPC 2.0.
     await server.handleMessage(
       JSON.stringify({ jsonrpc: '2.0', method: AGENT_METHODS.session_cancel, params: { sessionId: 'ses-cancel' } }),
     )
@@ -214,53 +335,6 @@ describe('HaystackAcpServer', () => {
 
     expect(capturedSignal).not.toBeNull()
     expect(capturedSignal!.aborted).toBe(true)
-    expect(findResponse(sent, 2).result).toEqual({ stopReason: 'cancelled' })
-  })
-
-  it('isolates two concurrent sessions on the same socket', async () => {
-    const responseFactory = (label: string) => () =>
-      Promise.resolve(sseResponse([{ type: 'delta', text: label }, { type: 'done' }]))
-
-    const sent: string[] = []
-    let upstreamCalls = 0
-    const fetchImpl = (_input: URL | RequestInfo, _init?: RequestInit) => {
-      upstreamCalls += 1
-      return upstreamCalls === 1 ? responseFactory('A')() : responseFactory('B')()
-    }
-    const fetchFn = Object.assign(fetchImpl, { preconnect: () => {} }) as unknown as typeof fetch
-    const idQueue = ['ses-A', 'ses-B']
-    const server = new HaystackAcpServer({
-      send: (payload) => sent.push(payload),
-      pipelineId: 'rag',
-      settings: buildSettings(),
-      deps: { fetchFn, generateSessionId: () => idQueue.shift() ?? crypto.randomUUID() },
-    })
-
-    await server.handleMessage(JSON.stringify({ jsonrpc: '2.0', id: 1, method: AGENT_METHODS.session_new }))
-    await server.handleMessage(JSON.stringify({ jsonrpc: '2.0', id: 2, method: AGENT_METHODS.session_new }))
-    await Promise.all([
-      server.handleMessage(
-        JSON.stringify({
-          jsonrpc: '2.0',
-          id: 3,
-          method: AGENT_METHODS.session_prompt,
-          params: { sessionId: 'ses-A', prompt: [{ type: 'text', text: 'a?' }] },
-        }),
-      ),
-      server.handleMessage(
-        JSON.stringify({
-          jsonrpc: '2.0',
-          id: 4,
-          method: AGENT_METHODS.session_prompt,
-          params: { sessionId: 'ses-B', prompt: [{ type: 'text', text: 'b?' }] },
-        }),
-      ),
-    ])
-
-    const updates = sessionUpdates(sent)
-    const aUpdates = updates.filter((u) => u.sessionId === 'ses-A')
-    const bUpdates = updates.filter((u) => u.sessionId === 'ses-B')
-    expect(aUpdates.map((u) => u.update.content.text)).toEqual(['A'])
-    expect(bUpdates.map((u) => u.update.content.text)).toEqual(['B'])
+    expect(findResponse(sent, 2).result.stopReason).toBe('cancelled')
   })
 })

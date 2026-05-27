@@ -2,7 +2,13 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { haystackEventSchema, type HaystackEvent } from './types'
+import {
+  deepsetResultPayloadSchema,
+  type DeepsetResultPayload,
+  type HaystackDocumentMeta,
+  type HaystackEvent,
+  type HaystackReferenceMeta,
+} from './types'
 
 /**
  * Error thrown when an SSE chunk cannot be parsed or fails schema validation.
@@ -23,20 +29,62 @@ export class HaystackSseParseError extends Error {
 const decoder = new TextDecoder()
 
 /**
- * Streaming SSE parser tailored to Haystack `/runs`. The contract is the
- * standard `data: <json>\n\n` framing — comments (`:` prefix), keep-alives
- * (blank lines), and `event:` / `id:` fields are accepted but only `data:`
- * lines yield events. Each `data:` payload is JSON-parsed and validated
- * against {@link haystackEventSchema}.
+ * Translate a parsed Deepset SSE JSON object into our normalized
+ * {@link HaystackEvent}. Returns `null` for envelope shapes we don't care
+ * about (e.g. `delta` with no `text`, unknown types) — the parser drops them
+ * silently so a forward-compatible upstream extension can't break the stream.
  *
- * Why streaming: `/runs` responses can be multi-MB. Buffering the whole body
- * is wasteful and would let upstream stalls bubble straight through to the
- * websocket client. The async iterator yields events as soon as a complete
- * frame lands in the buffer.
+ * The Deepset envelopes we observe in production:
+ *  - `{ type: "delta", delta: { text: string } }`
+ *  - `{ type: "result", result: { answers, documents } }`
+ *  - `{ type: "error", message: string }`
  *
- * Why no try/catch around the schema: defensive failure on a malformed
- * upstream is a bug we want surfaced loudly. The caller can decide whether
- * to abort the session or fail open — this parser never silently drops data.
+ * Any malformed `result` payload throws — that's a real upstream contract
+ * break worth surfacing loudly.
+ */
+const translateDeepsetEnvelope = (
+  raw: Record<string, unknown>,
+  lineNumber: number,
+  rawText: string,
+): HaystackEvent | null => {
+  const type = raw.type
+  if (type === 'delta') {
+    const delta = raw.delta as Record<string, unknown> | undefined
+    if (delta && typeof delta.text === 'string') {
+      return { type: 'delta', text: delta.text }
+    }
+    return null
+  }
+  if (type === 'result') {
+    const parsed = deepsetResultPayloadSchema.safeParse(raw.result)
+    if (!parsed.success) {
+      const issues = parsed.error.issues.map((i) => `${i.path.join('.') || '<root>'}: ${i.message}`).join('; ')
+      throw new HaystackSseParseError(`result schema mismatch — ${issues}`, lineNumber, rawText)
+    }
+    return { type: 'result', result: parsed.data }
+  }
+  if (type === 'error') {
+    const message = typeof raw.message === 'string' ? raw.message : 'unknown upstream error'
+    return { type: 'error', error: message }
+  }
+  // Forward-compatible: ignore envelope shapes we don't recognize.
+  return null
+}
+
+/**
+ * Streaming SSE parser for Deepset Cloud's `/chat-stream` endpoint.
+ *
+ * Contract: standard `data: <json>\n\n` framing. Comments (`:` prefix),
+ * keep-alives (blank lines), and `event:`/`id:`/`retry:` fields are accepted
+ * but only `data:` lines yield events. The sentinel `data: [DONE]` line
+ * terminates the stream and yields a `done` event.
+ *
+ * Why streaming: chat-stream responses can be multi-MB. Buffering would let
+ * upstream stalls bubble straight through to the websocket client.
+ *
+ * Why no defensive try/catch around the schema: a malformed `result` payload
+ * is a real upstream contract break — we want it surfaced loudly so the FE
+ * sees the failure instead of receiving a silently-truncated answer.
  */
 export const parseHaystackSseStream = async function* (
   source: ReadableStream<Uint8Array> | AsyncIterable<Uint8Array>,
@@ -45,8 +93,6 @@ export const parseHaystackSseStream = async function* (
   let lineNumber = 0
 
   const flushFrame = (frame: string): HaystackEvent | null => {
-    // A frame is the block of lines between two consecutive \n\n separators.
-    // Concatenate any `data:` payloads; ignore other fields.
     let dataPayload: string | null = null
     for (const rawLine of frame.split('\n')) {
       lineNumber += 1
@@ -59,13 +105,14 @@ export const parseHaystackSseStream = async function* (
         dataPayload = dataPayload === null ? payload : `${dataPayload}\n${payload}`
         continue
       }
-      // `event:`, `id:`, `retry:` etc. are valid SSE but unused upstream.
-      // Skipping them preserves forward compatibility without widening the
-      // event surface.
+      // `event:`, `id:`, `retry:` — valid SSE but unused upstream.
     }
 
     if (dataPayload === null) {
       return null
+    }
+    if (dataPayload === '[DONE]') {
+      return { type: 'done' }
     }
 
     let json: unknown
@@ -79,18 +126,14 @@ export const parseHaystackSseStream = async function* (
       )
     }
 
-    const parsed = haystackEventSchema.safeParse(json)
-    if (!parsed.success) {
-      const issues = parsed.error.issues.map((i) => `${i.path.join('.') || '<root>'}: ${i.message}`).join('; ')
-      throw new HaystackSseParseError(`schema mismatch — ${issues}`, lineNumber, dataPayload)
+    if (typeof json !== 'object' || json === null) {
+      throw new HaystackSseParseError('data payload is not a JSON object', lineNumber, dataPayload)
     }
-    return parsed.data
+
+    return translateDeepsetEnvelope(json as Record<string, unknown>, lineNumber, dataPayload)
   }
 
   const drainBuffer = function* (): IterableIterator<HaystackEvent> {
-    // Frames are separated by a blank line (`\n\n`). Process as many complete
-    // frames as the buffer currently holds, leaving the unterminated tail in
-    // place for the next chunk.
     let separatorIndex = buffer.indexOf('\n\n')
     while (separatorIndex !== -1) {
       const frame = buffer.slice(0, separatorIndex)
@@ -115,8 +158,6 @@ export const parseHaystackSseStream = async function* (
     yield* drainBuffer()
   }
 
-  // Flush any final bytes from the decoder + handle a trailing frame that
-  // wasn't separator-terminated.
   buffer += decoder.decode()
   if (buffer.length > 0 && !buffer.endsWith('\n\n')) {
     const event = flushFrame(buffer)
@@ -129,8 +170,7 @@ export const parseHaystackSseStream = async function* (
   }
 }
 
-/** Adapt a Web `ReadableStream` to an `AsyncIterator` (no `[Symbol.asyncIterator]`
- *  in Bun yet for byte streams in some paths — keep the bridge explicit). */
+/** Adapt a Web `ReadableStream` to an `AsyncIterator`. */
 const readableStreamIterator = (stream: ReadableStream<Uint8Array>): AsyncIterator<Uint8Array> => {
   const reader = stream.getReader()
   return {
@@ -147,3 +187,39 @@ const readableStreamIterator = (stream: ReadableStream<Uint8Array>): AsyncIterat
     },
   }
 }
+
+/**
+ * Extract citation references from a Deepset `result` payload. Joins the
+ * `_references` array against the result's `documents` to resolve file
+ * metadata and page numbers.
+ */
+export const extractReferences = (result: DeepsetResultPayload): HaystackReferenceMeta[] => {
+  const refs = result.answers[0]?.meta?._references
+  if (!refs || refs.length === 0) {
+    return []
+  }
+  const docsById = new Map(result.documents.map((d) => [d.id, d]))
+  return refs.flatMap((ref) => {
+    const doc = docsById.get(ref.document_id)
+    if (!doc) {
+      return []
+    }
+    return [
+      {
+        position: ref.document_position,
+        fileId: doc.file.id,
+        fileName: doc.file.name,
+        pageNumber: doc.meta?.page_number,
+      },
+    ]
+  })
+}
+
+/** Extract document metadata from a Deepset `result` payload. */
+export const extractDocuments = (result: DeepsetResultPayload): HaystackDocumentMeta[] =>
+  result.documents.map((d) => ({
+    id: d.id,
+    content: d.content,
+    score: d.score,
+    file: d.file,
+  }))

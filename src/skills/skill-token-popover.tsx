@@ -2,23 +2,29 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { useEffect, useRef, useState, type ReactNode } from 'react'
+import { type ReactNode } from 'react'
 import { Link } from 'react-router'
 
-import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
+import { HoverCard, HoverCardContent, HoverCardTrigger } from '@/components/ui/hover-card'
 
 /**
- * Hover-shows / hover-stays popover anchored to a slash token in the chat
- * input overlay. The Radix `Tooltip` primitive closes on mouse-leave even
- * if you're moving into the tooltip's own content, which would prevent the
- * user from clicking the embedded Enable / Create link — so this is a
- * `Popover` with manual mouse-enter / mouse-leave timing instead.
+ * Hover-shows / hover-stays card anchored to a slash token in the chat
+ * input overlay. We use Radix `HoverCard` rather than a hand-rolled
+ * `Popover` + mouse-timer pair because the latter ping-pongs when the
+ * popover content overlaps the trigger — closing the content makes the
+ * cursor "re-enter" the trigger and re-open immediately. HoverCard
+ * handles the trigger ↔ content boundary correctly.
  *
- * The colored token span is `pointer-events-auto` (the overlay it sits in
- * is `pointer-events-none`). Hovering or focusing the token opens the
- * popover; the popover stays open while the cursor is inside either the
- * token or the content; clicking the link inside closes it implicitly by
- * navigating away.
+ * Desktop: hover the colored token → card opens after ~`openDelay` ms and
+ * stays open while the cursor is inside the trigger or the content;
+ * leaving both with no immediate re-entry closes it.
+ *
+ * Mobile: HoverCard primitive on touch devices opens on tap; tapping the
+ * card backdrop closes it. The `Link` inside is tap-targetable.
+ *
+ * The trigger span is `pointer-events-auto` so it can capture hover even
+ * though the surrounding overlay is `pointer-events-none` (the textarea
+ * underneath must stay interactive).
  */
 type SkillTokenPopoverProps = {
   /** The colored token span the user sees in the overlay. */
@@ -31,65 +37,28 @@ type SkillTokenPopoverProps = {
   state: { editSkill: string } | { createSkill: string }
 }
 
-const closeDelayMs = 200
+const openDelayMs = 120
+const closeDelayMs = 180
 
 export const SkillTokenPopover = ({ trigger, message, actionLabel, state }: SkillTokenPopoverProps) => {
-  const [open, setOpen] = useState(false)
-  const closeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-
-  const cancelClose = () => {
-    if (closeTimerRef.current) {
-      clearTimeout(closeTimerRef.current)
-      closeTimerRef.current = null
-    }
-  }
-
-  const scheduleClose = () => {
-    cancelClose()
-    closeTimerRef.current = setTimeout(() => {
-      setOpen(false)
-      closeTimerRef.current = null
-    }, closeDelayMs)
-  }
-
-  // Kill the pending close-timer if the popover unmounts mid-hover (e.g. the
-  // user edits the token away). React would otherwise warn about a setState
-  // on an unmounted component.
-  useEffect(() => () => cancelClose(), [])
-
   return (
-    <Popover open={open} onOpenChange={setOpen}>
-      <PopoverTrigger asChild>
-        <span
-          className="pointer-events-auto cursor-help"
-          onMouseEnter={() => {
-            cancelClose()
-            setOpen(true)
-          }}
-          onMouseLeave={scheduleClose}
-          onFocus={() => {
-            cancelClose()
-            setOpen(true)
-          }}
-          onBlur={scheduleClose}
-          tabIndex={0}
-        >
+    <HoverCard openDelay={openDelayMs} closeDelay={closeDelayMs}>
+      <HoverCardTrigger asChild>
+        <span className="pointer-events-auto cursor-help" tabIndex={0}>
           {trigger}
         </span>
-      </PopoverTrigger>
-      <PopoverContent
+      </HoverCardTrigger>
+      <HoverCardContent
         side="top"
         align="start"
         sideOffset={6}
         className="flex w-auto max-w-xs flex-col gap-2 p-3 text-[length:var(--font-size-sm)]"
-        onMouseEnter={cancelClose}
-        onMouseLeave={scheduleClose}
       >
         <p className="text-foreground">{message}</p>
         <Link to="/settings/skills" state={state} className="underline underline-offset-2 hover:text-foreground">
           {actionLabel}
         </Link>
-      </PopoverContent>
-    </Popover>
+      </HoverCardContent>
+    </HoverCard>
   )
 }

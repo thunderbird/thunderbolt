@@ -206,3 +206,34 @@ describe('createTranslatorStream — wire format', () => {
     expect(text.endsWith('data: [DONE]\n\n')).toBe(true)
   })
 })
+
+describe('createTranslator — side effects', () => {
+  it('current_mode_update emits mode_changed without any AI SDK chunk', () => {
+    const { emit, chunks } = collect()
+    const effects: unknown[] = []
+    const t = createTranslator(emit, { onSideEffect: (e) => effects.push(e) })
+    t.start()
+    t.handle(notification({ sessionUpdate: 'current_mode_update', currentModeId: 'rag' }))
+    expect(chunks.map((c) => c.type)).toEqual(['start', 'start-step'])
+    expect(effects).toEqual([{ type: 'mode_changed', modeId: 'rag' }])
+  })
+
+  it('config_option_update forwards configOptions array on the sink', () => {
+    const { emit, chunks } = collect()
+    const effects: unknown[] = []
+    const t = createTranslator(emit, { onSideEffect: (e) => effects.push(e) })
+    t.start()
+    const options = [{ optionId: 'model', name: 'Model', type: 'select', value: 'gpt-4' }] as never
+    t.handle(notification({ sessionUpdate: 'config_option_update', configOptions: options }))
+    expect(chunks.map((c) => c.type)).toEqual(['start', 'start-step'])
+    expect(effects).toEqual([{ type: 'config_options_changed', options }])
+  })
+
+  it('without a sink, side-effecting updates are silently ignored', () => {
+    const { emit, chunks } = collect()
+    const t = createTranslator(emit)
+    t.start()
+    t.handle(notification({ sessionUpdate: 'current_mode_update', currentModeId: 'rag' }))
+    expect(chunks.map((c) => c.type)).toEqual(['start', 'start-step'])
+  })
+})

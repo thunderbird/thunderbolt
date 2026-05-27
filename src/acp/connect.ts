@@ -20,6 +20,7 @@ import type { FetchFn } from '@/lib/proxy-fetch'
 import type { Agent, AgentAdapter } from '@/types/acp'
 import { connectAcpAdapter, type AcpAdapterDeps, type RequestPermissionFn } from './acp-adapter'
 import { createBuiltInAdapter, type BuiltInAdapterOptions } from './built-in-adapter'
+import type { SessionSideEffectSink } from './translators/acp-to-ai-sdk'
 
 export type ConnectToAgentContext = {
   httpClient: HttpClient
@@ -31,6 +32,9 @@ export type ConnectToAgentContext = {
   /** Forwarded to ACP adapters so they can prompt the UI for tool-call
    *  approvals. Ignored for built-in agents. */
   requestPermission?: RequestPermissionFn
+  /** Forwarded to ACP adapters so the chat layer can react to server-driven
+   *  mode and config updates. Ignored for built-in agents. */
+  onSessionSideEffect?: SessionSideEffectSink
 }
 
 export type ConnectToAgentDeps = BuiltInAdapterOptions & AcpAdapterDeps
@@ -52,6 +56,7 @@ export const connectToAgent = async (
       acpSessionId: ctx.acpSessionId ?? null,
       onAcpSessionId: ctx.onAcpSessionId ?? (async () => {}),
       requestPermission: ctx.requestPermission,
+      onSessionSideEffect: ctx.onSessionSideEffect,
     },
     {
       openTransport: deps.openTransport,

@@ -37,7 +37,7 @@ import type { FetchFn } from '@/lib/proxy-fetch'
 import type { ThunderboltUIMessage } from '@/types'
 import { openTransport } from './transports'
 import type { AcpTransport } from './types'
-import { createTranslatorStream } from './translators/acp-to-ai-sdk'
+import { createTranslatorStream, type SessionSideEffectSink } from './translators/acp-to-ai-sdk'
 import type { WebSocketFactory } from './transports/websocket'
 
 const protocolVersion = 1
@@ -130,6 +130,10 @@ export type AcpAdapterContext = {
    *  layer surfaces a dialog and resolves the response. Optional; defaults to
    *  auto-cancelling so unwired agents stay safe. */
   requestPermission?: RequestPermissionFn
+  /** Invoked when the agent emits a `current_mode_update` or
+   *  `config_option_update`. The chat layer reflects the new server state in
+   *  the store. Optional; default is no-op. */
+  onSessionSideEffect?: SessionSideEffectSink
 }
 
 /** Open and handshake an ACP adapter against `agent`. The returned adapter is
@@ -204,6 +208,7 @@ export const connectAcpAdapter = async (
 
     const { body, translator, close } = createTranslatorStream({
       textDeltaThrottleMs: deps.textDeltaThrottleMs,
+      onSideEffect: ctx.onSessionSideEffect,
     })
 
     sessionUpdateSink = (notification) => {

@@ -25,7 +25,7 @@
  * finish, any buffered delta is flushed before emitting `finish`.
  */
 
-import type { SessionNotification, ToolCallStatus } from '@agentclientprotocol/sdk'
+import type { SessionConfigOption, SessionNotification, ToolCallStatus } from '@agentclientprotocol/sdk'
 import type { AiSdkChunk } from '../types'
 
 const sseDataPrefix = 'data: '
@@ -94,6 +94,17 @@ const pushThrottled = (t: DeltaThrottle, delta: string, throttleMs: number): voi
   }, throttleMs)
 }
 
+/** Side-channel events the translator surfaces for ACP `sessionUpdate`s that
+ *  don't map to AI SDK chunks (mode change, config option change, etc.).
+ *  Consumers wire this to the chat-store so the UI reacts to server-driven
+ *  state. Server is the source of truth; user-initiated changes flow through
+ *  their normal store actions and would simply be confirmed by the next emit. */
+export type SessionSideEffect =
+  | { type: 'mode_changed'; modeId: string }
+  | { type: 'config_options_changed'; options: SessionConfigOption[] }
+
+export type SessionSideEffectSink = (effect: SessionSideEffect) => void
+
 export type TranslateOptions = {
   /** Stable id for the assistant text message. Defaults to `'acp-text-0'`. */
   textMessageId?: string
@@ -101,6 +112,9 @@ export type TranslateOptions = {
   reasoningMessageId?: string
   /** Override throttle for tests. */
   textDeltaThrottleMs?: number
+  /** Callback for non-stream session updates (mode change, config option
+   *  change). Omit to keep the prior behavior of silently ignoring them. */
+  onSideEffect?: SessionSideEffectSink
 }
 
 /** Translation state for a single ACP prompt turn. Reused across many calls
@@ -125,6 +139,7 @@ export const createTranslator = (emit: (chunk: AiSdkChunk) => void, options: Tra
   const textId = options.textMessageId ?? 'acp-text-0'
   const reasoningId = options.reasoningMessageId ?? 'acp-reasoning-0'
   const throttleMs = options.textDeltaThrottleMs ?? textDeltaThrottleMsDefault
+  const sideEffect = options.onSideEffect ?? (() => {})
 
   const textThrottle = createThrottle('text', textId, emit)
   const reasoningThrottle = createThrottle('reasoning', reasoningId, emit)
@@ -211,11 +226,17 @@ export const createTranslator = (emit: (chunk: AiSdkChunk) => void, options: Tra
         })
         return
       }
+      case 'current_mode_update': {
+        sideEffect({ type: 'mode_changed', modeId: update.currentModeId })
+        return
+      }
+      case 'config_option_update': {
+        sideEffect({ type: 'config_options_changed', options: update.configOptions })
+        return
+      }
       // Ignored in MVP.
       case 'plan':
       case 'available_commands_update':
-      case 'current_mode_update':
-      case 'config_option_update':
       case 'session_info_update':
       case 'usage_update':
       case 'user_message_chunk':

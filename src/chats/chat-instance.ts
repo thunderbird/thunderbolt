@@ -3,6 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { connectToAgent as defaultConnectToAgent } from '@/acp'
+import type { SessionSideEffect } from '@/acp/translators/acp-to-ai-sdk'
 import { updateChatThread as defaultUpdateChatThread } from '@/dal/chat-threads'
 import { getDb as defaultGetDb } from '@/db/database'
 import { isRateLimitError } from '@/lib/error-utils'
@@ -37,6 +38,26 @@ const requestPermissionViaStore = (
     const requestId = uuidv7()
     useChatStore.getState().setPendingPermission(sessionId, { requestId, request, resolve })
   })
+
+/** Forward translator side effects to the chat store + analytics. The server
+ *  is the source of truth for ACP-side mode and config option state, so a
+ *  mode/config emit always wins over a stale optimistic UI update.
+ *
+ *  This branch ships the wire but no UI surface reads it yet — the local
+ *  mode selector continues to use `selectedMode` from the user's mode list.
+ *  When a future PR adds ACP-mode UI it will subscribe to `agentSessionState`
+ *  populated here. */
+const applySessionSideEffect = (sessionId: string, effect: SessionSideEffect): void => {
+  if (effect.type === 'mode_changed') {
+    trackEvent('acp_mode_changed', { mode_id: effect.modeId })
+    return
+  }
+  if (effect.type === 'config_options_changed') {
+    trackEvent('acp_config_options_changed', { count: effect.options.length })
+    return
+  }
+  void sessionId
+}
 
 /** DI seams for tests. Production binds to the real ACP entry point and the
  *  DAL's `updateChatThread`. Module-level functions are passed by reference so
@@ -116,6 +137,7 @@ export const createAgentRoutingFetch = (
               acpSessionId: chatThread?.acpSessionId ?? null,
               onAcpSessionId: persistAcpSessionId,
               requestPermission: (request) => requestPermissionViaStore(id, request),
+              onSessionSideEffect: (effect) => applySessionSideEffect(id, effect),
             },
             {},
           )

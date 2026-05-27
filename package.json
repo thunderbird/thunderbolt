@@ -148,7 +148,7 @@
     "@types/sinonjs__fake-timers": "^15.0.1",
     "@typescript-eslint/eslint-plugin": "^8.59.1",
     "@typescript-eslint/parser": "^8.59.1",
-    "@vitejs/plugin-react": "^5.0.1",
+    "@vitejs/plugin-react": "^6.0.2",
     "@vitest/browser": "^4.1.4",
     "@vitest/coverage-v8": "^4.1.4",
     "bun-types": "^1.2.20",

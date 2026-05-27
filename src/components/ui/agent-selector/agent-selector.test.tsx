@@ -9,14 +9,6 @@ import { builtInAgent } from '@/defaults/agents'
 import type { Agent } from '@/types/acp'
 import { AgentSelector, categorizeAgents } from './agent-selector'
 
-mock.module('@/hooks/use-mobile', () => ({
-  useIsMobile: () => ({ isMobile: false }),
-}))
-
-mock.module('@/hooks/use-haptics', () => ({
-  useHaptics: () => ({ triggerSelection: () => {} }),
-}))
-
 const systemAgent: Agent = {
   id: 'haystack-rag',
   name: 'RAG Chat',

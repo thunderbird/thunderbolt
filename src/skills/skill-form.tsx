@@ -64,8 +64,15 @@ export const SkillForm = ({
   // agree (otherwise " meeting-notes " reads as invalid even though it isn't).
   const trimmedName = name.trim()
   const localNameError = trimmedName === '' ? null : validateSkillName(trimmedName)
+  // Block submission while a server-side name error (e.g. SkillNameTakenError) is
+  // still showing — `handleNameChange` clears it as soon as the user edits the
+  // name, so the button re-enables on the next keystroke.
   const canSubmit =
-    trimmedName !== '' && description.trim() !== '' && instruction.trim() !== '' && localNameError === null
+    trimmedName !== '' &&
+    description.trim() !== '' &&
+    instruction.trim() !== '' &&
+    localNameError === null &&
+    !nameError
 
   // Compute dirty against a hypothetical next-state so each onChange handler
   // can report it before React has applied the setState. Avoids the

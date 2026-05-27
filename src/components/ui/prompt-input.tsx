@@ -5,9 +5,19 @@
 import { AutosizeTextarea } from '@/components/ui/autosize-textarea'
 import { Button } from '@/components/ui/button'
 import { type ChatThread } from '@/layout/sidebar/types'
+import { cn } from '@/lib/utils'
 import type { Model } from '@/types'
 import { ArrowUp, Square } from 'lucide-react'
-import { type FormEvent, forwardRef, type ChangeEvent, type KeyboardEvent, type ReactNode } from 'react'
+import {
+  type ChangeEvent,
+  type FormEvent,
+  forwardRef,
+  type KeyboardEvent,
+  type ReactNode,
+  type SyntheticEvent,
+  type UIEvent,
+  useRef,
+} from 'react'
 import { ModelSelector } from './model-selector'
 
 type PromptInputProps = {
@@ -29,6 +39,24 @@ type PromptInputProps = {
   models?: Model[]
   selectedModel?: Model | null
   onModelChange?: (modelId: string) => void
+  /**
+   * When provided, the textarea's own text is rendered transparent and this
+   * overlay is layered above to paint highlighted skill tokens. Scroll is
+   * kept in sync between the textarea and the overlay.
+   */
+  renderOverlay?: (value: string) => ReactNode
+  /**
+   * Optional slot rendered inside the textarea wrapper, above the textarea.
+   * Used for the slash-autocomplete popup so it positions relative to the
+   * input.
+   */
+  popoverSlot?: ReactNode
+  /** Receives every keydown so callers can intercept ↑↓/Enter/Esc for autocomplete. */
+  onTextareaKeyDown?: (e: KeyboardEvent<HTMLTextAreaElement>) => void
+  /** Fires on selection change so callers can track the caret position. */
+  onTextareaSelect?: (e: SyntheticEvent<HTMLTextAreaElement>) => void
+  /** Fires on scroll so callers can sync overlays / popups. */
+  onTextareaScroll?: (e: UIEvent<HTMLTextAreaElement>) => void
 }
 
 /**
@@ -55,9 +83,16 @@ export const PromptInput = forwardRef<HTMLFormElement, PromptInputProps>(
       models,
       selectedModel,
       onModelChange,
+      renderOverlay,
+      popoverSlot,
+      onTextareaKeyDown,
+      onTextareaSelect,
+      onTextareaScroll,
     },
     ref,
   ) => {
+    const overlayRef = useRef<HTMLDivElement>(null)
+
     const handleSubmit = (e: FormEvent<HTMLFormElement>) => {
       e.preventDefault()
       if (!isStreaming) {
@@ -68,11 +103,24 @@ export const PromptInput = forwardRef<HTMLFormElement, PromptInputProps>(
     const handleTextareaChange = (e: ChangeEvent<HTMLTextAreaElement>) => onChange(e.target.value)
 
     const handleKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
+      onTextareaKeyDown?.(e)
+      if (e.defaultPrevented) {
+        return
+      }
       if (!isStreaming && submitOnEnter && e.key === 'Enter' && !e.shiftKey) {
         e.preventDefault()
         onSubmit?.()
       }
     }
+
+    const handleScroll = (e: UIEvent<HTMLTextAreaElement>) => {
+      if (overlayRef.current) {
+        overlayRef.current.scrollTop = e.currentTarget.scrollTop
+      }
+      onTextareaScroll?.(e)
+    }
+
+    const hasTextareaHooks = Boolean(renderOverlay || onTextareaKeyDown || onTextareaSelect || onTextareaScroll)
 
     const showModelSelect = models && models.length > 0 && onModelChange
 
@@ -100,16 +148,33 @@ export const PromptInput = forwardRef<HTMLFormElement, PromptInputProps>(
 
     const content = (
       <>
-        <AutosizeTextarea
-          value={value}
-          onChange={handleTextareaChange}
-          onKeyDown={submitOnEnter ? handleKeyDown : undefined}
-          placeholder={placeholder}
-          minHeight={42}
-          maxHeight={240}
-          autoFocus={autoFocus}
-          className="w-full border-none bg-transparent focus-visible:ring-0 focus-visible:ring-offset-0 resize-none px-1 py-2 text-base leading-5"
-        />
+        <div className="relative w-full">
+          {popoverSlot}
+          {renderOverlay && (
+            <div
+              ref={overlayRef}
+              aria-hidden="true"
+              className="pointer-events-none absolute inset-0 z-10 overflow-hidden whitespace-pre-wrap break-words px-1 py-2 text-base leading-5 text-foreground"
+            >
+              {renderOverlay(value)}
+            </div>
+          )}
+          <AutosizeTextarea
+            value={value}
+            onChange={handleTextareaChange}
+            onKeyDown={submitOnEnter || hasTextareaHooks ? handleKeyDown : undefined}
+            onSelect={onTextareaSelect}
+            onScroll={hasTextareaHooks ? handleScroll : undefined}
+            placeholder={placeholder}
+            minHeight={42}
+            maxHeight={240}
+            autoFocus={autoFocus}
+            className={cn(
+              'w-full border-none bg-transparent focus-visible:ring-0 focus-visible:ring-offset-0 resize-none px-1 py-2 text-base leading-5',
+              renderOverlay && 'text-transparent caret-foreground',
+            )}
+          />
+        </div>
 
         <div className="flex justify-between items-end w-full">
           <div className="flex items-center gap-2">{footerStartElements}</div>

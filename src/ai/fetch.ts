@@ -12,7 +12,8 @@ import {
   isFinalStep,
   shouldRetry,
 } from '@/ai/step-logic'
-import { getIntegrationStatus, getModel, getModelProfile, getSettings } from '@/dal'
+import { getAllSkills, getIntegrationStatus, getModel, getModelProfile, getSettings } from '@/dal'
+import { parseSkillTokens } from '@/skills/parse-skill-tokens'
 import { getDb } from '@/db/database'
 import { getLocalSetting } from '@/stores/local-settings-store'
 import { isSsoMode } from '@/lib/auth-mode'
@@ -420,10 +421,35 @@ export const aiFetchStreamingResponse = async ({
     // Following the official SDK pattern for multi-step streams:
     // - First stream: sendFinish: false (in case we need to continue)
     // - Continuation stream: sendStart: false (continues same message)
+    // Skills v1 §4: resolve slash tokens in the most recent user message
+    // into ephemeral system messages. Re-resolution happens on every send /
+    // regenerate so the model sees the user's *current* skill library, not
+    // a snapshot from when the message was originally typed.
+    const lastUserMessage = [...messages].reverse().find((m) => m.role === 'user')
+    const lastUserText =
+      lastUserMessage?.parts
+        .filter((p): p is { type: 'text'; text: string } => p.type === 'text')
+        .map((p) => p.text)
+        .join('\n') ?? ''
+    const allSkills = await getAllSkills(db)
+    const skillByName = new Map(
+      allSkills
+        .filter((s) => s.enabled === 1 && s.name && s.instruction)
+        .map((s) => [s.name as string, s.instruction as string]),
+    )
+    const { systemMessages: skillSystemMessages } = parseSkillTokens(lastUserText, (slug) => {
+      const instruction = skillByName.get(slug)
+      return instruction ? { instruction } : null
+    })
+
     const stream = createUIMessageStream({
       generateId: uuidv7,
       execute: async ({ writer }) => {
-        let currentMessages = await convertToModelMessages(messages)
+        const baseMessages = await convertToModelMessages(messages)
+        let currentMessages: typeof baseMessages = [
+          ...skillSystemMessages.map((content) => ({ role: 'system' as const, content })),
+          ...baseMessages,
+        ]
         let attemptNumber = 1
         let isRetry = false
         // Track tool calls across ALL attempts — a retry may produce no tool calls

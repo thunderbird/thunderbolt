@@ -17,7 +17,7 @@
 import type { HttpClient } from '@/lib/http'
 
 /** Scope literals that the backend recognises (mirror of WsTicketScope on the server). */
-export type WsTicketScope = 'haystack'
+export type WsTicketScope = 'haystack' | 'proxy'
 
 export type WsTicketResponse = {
   ticket: string

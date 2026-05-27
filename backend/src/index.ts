@@ -130,7 +130,7 @@ export const createApp = async (deps?: AppDeps) => {
         }),
       )
       .use(
-        createUniversalProxyWsRoutes(auth, {
+        createUniversalProxyWsRoutes({
           rateLimit: proRateLimit,
           wsFactory: deps?.upstreamWsFactory,
           observability: proxyObservability,

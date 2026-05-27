@@ -64,10 +64,10 @@ export const createWsTicketRoutes = (auth: Auth, store: WsTicketStore = getWsTic
       },
       {
         body: t.Object({
-          // Enum is the future-proof shape: adding a second WS endpoint means
-          // adding `'other'` here and a matching consumer call. A string would
+          // Enum is the future-proof shape: adding a new WS endpoint means
+          // adding a literal here and a matching consumer call. A string would
           // open us up to silent scope mismatches.
-          scope: t.Union([t.Literal('haystack')]),
+          scope: t.Union([t.Literal('haystack'), t.Literal('proxy')]),
         }),
       },
     )

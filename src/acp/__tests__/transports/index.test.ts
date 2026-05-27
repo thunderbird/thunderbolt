@@ -163,11 +163,17 @@ describe('openTransport — agent-type routing', () => {
       isStandalone: () => false,
       readProxyEnabled: () => null,
       backoffMs: () => 1,
+      // Browser WS can't attach `Authorization` headers — the proxy upgrade is
+      // authenticated by a single-use ticket as a Sec-WebSocket-Protocol entry.
+      httpClient: stubHttpClient,
+      fetchTicket: () => Promise.resolve('proxy-ticket-xyz'),
     })
 
     expect(FakeBrowserSocket.instances).toHaveLength(1)
     const socket = FakeBrowserSocket.instances[0]
     expect(socket.url).toBe('ws://cloud.test/v1/proxy/ws')
+    expect(socket.protocols).toContain('thunderbolt.v1')
+    expect(socket.protocols).toContain('thunderbolt.ticket.proxy-ticket-xyz')
     const target = socket.protocols.find((p) => p.startsWith(wsTargetPrefix))
     expect(target).toBeDefined()
 

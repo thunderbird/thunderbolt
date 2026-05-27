@@ -114,6 +114,44 @@ describe('POST /v1/ws-ticket', () => {
     expect(store.consumeTicket(body.ticket, 'haystack')).toBeNull()
   })
 
+  it('returns 200 with a proxy-scope ticket, and the ticket is consumable for that scope', async () => {
+    const handle = await createTestApp()
+    cleanups.push(handle.cleanup)
+
+    const res = await handle.app.handle(
+      new Request('http://localhost/v1/ws-ticket', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...authHeaders(handle.bearerToken) },
+        body: JSON.stringify({ scope: 'proxy' }),
+      }),
+    )
+    expect(res.status).toBe(200)
+    const body = (await res.json()) as { ticket: string; expiresAt: number }
+    expect(typeof body.ticket).toBe('string')
+    expect(body.ticket.length).toBeGreaterThan(20)
+
+    const store = getWsTicketStore()
+    // Single-use semantics hold across scopes: consume in the issued scope works.
+    expect(store.consumeTicket(body.ticket, 'proxy')).not.toBeNull()
+    expect(store.consumeTicket(body.ticket, 'proxy')).toBeNull()
+  })
+
+  it('proxy-scope tickets do not satisfy haystack-scope consumption', async () => {
+    const handle = await createTestApp()
+    cleanups.push(handle.cleanup)
+
+    const res = await handle.app.handle(
+      new Request('http://localhost/v1/ws-ticket', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...authHeaders(handle.bearerToken) },
+        body: JSON.stringify({ scope: 'proxy' }),
+      }),
+    )
+    const body = (await res.json()) as { ticket: string }
+    const store = getWsTicketStore()
+    expect(store.consumeTicket(body.ticket, 'haystack')).toBeNull()
+  })
+
   it('returns 400/422 for an invalid scope', async () => {
     const handle = await createTestApp()
     cleanups.push(handle.cleanup)

@@ -70,12 +70,18 @@ describe('createWsTicketStore', () => {
     const { store } = buildStore()
     track(store)
     const ticket = store.issueTicket('user-1', 'haystack', 30_000)
-    // The store is single-scope today; cast through unknown lets us exercise
-    // the mismatch branch without faking a new literal.
-    const wrongScope = 'other' as unknown as 'haystack'
-    expect(store.consumeTicket(ticket, wrongScope)).toBeNull()
-    // And scope mismatch still consumes — defense against replay.
+    // 'proxy' is a sibling scope — consuming with the wrong scope must fail.
+    expect(store.consumeTicket(ticket, 'proxy')).toBeNull()
+    // And scope mismatch still consumes the entry — defense against replay.
     expect(store.consumeTicket(ticket, 'haystack')).toBeNull()
+  })
+
+  it('issueTicket + consumeTicket round-trips correctly for the proxy scope', () => {
+    const { store } = buildStore()
+    track(store)
+    const ticket = store.issueTicket('user-1', 'proxy', 30_000)
+    expect(store.consumeTicket(ticket, 'proxy')).toEqual({ userId: 'user-1' })
+    expect(store.consumeTicket(ticket, 'proxy')).toBeNull()
   })
 
   it('consumeTicket returns null for an unknown nonce', () => {

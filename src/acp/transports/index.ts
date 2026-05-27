@@ -97,7 +97,14 @@ export const openTransport = async (inputs: OpenTransportInputs): Promise<AcpTra
 
 /** Pick the WebSocket constructor for the given inputs. Managed agents skip
  *  the universal proxy unconditionally — see file header. Remote agents fall
- *  through to the standalone-vs-proxied decision. */
+ *  through to the standalone-vs-proxied decision.
+ *
+ *  When the proxied path is selected, `createProxyWebSocket` returns a sync
+ *  factory whose returned object is a deferred-WebSocket wrapper. The wrapper
+ *  fetches a single-use auth ticket via `POST /v1/ws-ticket` (browsers can't
+ *  attach `Authorization` headers to `new WebSocket()`) then constructs the
+ *  real WebSocket — listeners are queued and replayed in order, so callers
+ *  see the same async-by-events surface as the native API. */
 const resolveWebSocketFactory = async (inputs: OpenTransportInputs): Promise<WebSocketFactory> => {
   if (inputs.agentType === 'managed-acp') {
     return resolveManagedAcpFactory(inputs)
@@ -106,7 +113,12 @@ const resolveWebSocketFactory = async (inputs: OpenTransportInputs): Promise<Web
   if (standalone) {
     return nativeWebSocketFactory
   }
-  const proxyWs = createProxyWebSocket({ cloudUrl: cloudWsUrl(), isStandalone: inputs.isStandalone })
+  const proxyWs = createProxyWebSocket({
+    cloudUrl: cloudWsUrl(),
+    isStandalone: inputs.isStandalone,
+    httpClient: inputs.httpClient,
+    fetchTicket: inputs.fetchTicket,
+  })
   return (url) => proxyWs(url) as unknown as WebSocketLike
 }
 

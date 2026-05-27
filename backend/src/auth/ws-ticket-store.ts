@@ -19,7 +19,7 @@
  */
 import { randomBytes } from 'node:crypto'
 
-export type WsTicketScope = 'haystack'
+export type WsTicketScope = 'haystack' | 'proxy'
 
 type StoredTicket = {
   userId: string

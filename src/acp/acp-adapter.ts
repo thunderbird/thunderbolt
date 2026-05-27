@@ -224,10 +224,14 @@ export const connectAcpAdapter = async (
     // synchronous return value so the AI SDK can attach immediately.
     void (async () => {
       try {
-        await connection.prompt({
+        const response = await connection.prompt({
           sessionId,
           prompt: [{ type: 'text', text: promptText }],
         })
+        // The Haystack adapter mirrors citation metadata on the terminal
+        // `agent_message_chunk` AND on the `PromptResponse._meta`. Ingesting
+        // both makes us resilient to adapters that only set one path.
+        translator.ingestMeta(response._meta)
       } catch (err) {
         translator.error(err instanceof Error ? err.message : String(err))
       } finally {

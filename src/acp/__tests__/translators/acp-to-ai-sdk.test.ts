@@ -337,4 +337,51 @@ describe('createTranslator — haystack metadata', () => {
     )
     expect(chunks.some((c) => c.type === 'message-metadata')).toBe(false)
   })
+
+  it('ingests notification-level _meta (Haystack adapter places it there per ACP spec)', () => {
+    // Regression: the backend Haystack adapter puts `_meta` on the
+    // `SessionNotification` itself (alongside `sessionId`/`update`), not on the
+    // inner `update`. Without ingesting both, citations never reach the UI.
+    const { emit, chunks } = collect()
+    const t = createTranslator(emit)
+    t.start()
+    t.handle({
+      sessionId: 'sess-1',
+      update: {
+        sessionUpdate: 'agent_message_chunk',
+        content: { type: 'text', text: 'See [1].' },
+      },
+      _meta: {
+        haystackReferences: [{ position: 1, fileId: 'f1', fileName: 'a.pdf' }],
+      },
+    })
+    const meta = chunks.find((c) => c.type === 'message-metadata')
+    expect(meta).toMatchObject({
+      type: 'message-metadata',
+      messageMetadata: {
+        haystackReferences: [{ position: 1, fileId: 'f1', fileName: 'a.pdf' }],
+      },
+    })
+  })
+
+  it('ingestMeta surfaces a PromptResponse `_meta` payload outside the notification stream', () => {
+    // The adapter awaits `connection.prompt(...)` whose `PromptResponse._meta`
+    // mirrors the terminal citation metadata. We feed that into the translator
+    // so the citations land even if the inline notification was dropped.
+    const { emit, chunks } = collect()
+    const t = createTranslator(emit)
+    t.start()
+    t.ingestMeta({
+      haystackReferences: [{ position: 1, fileId: 'f1', fileName: 'a.pdf' }],
+      haystackDocuments: [{ id: 'doc-1', content: 'snip', score: 0.9, file: { id: 'f1', name: 'a.pdf' } }],
+    })
+    const meta = chunks.find((c) => c.type === 'message-metadata')
+    expect(meta).toMatchObject({
+      type: 'message-metadata',
+      messageMetadata: {
+        haystackReferences: [{ position: 1, fileId: 'f1', fileName: 'a.pdf' }],
+        haystackDocuments: [{ id: 'doc-1', content: 'snip', score: 0.9, file: { id: 'f1', name: 'a.pdf' } }],
+      },
+    })
+  })
 })

@@ -126,6 +126,11 @@ export type Translator = {
   start: () => void
   /** Translate one ACP notification and emit zero or more AI SDK chunks. */
   handle: (notification: SessionNotification) => void
+  /** Ingest a free-form `_meta` object — typically the `PromptResponse._meta`
+   *  surfaced by the SDK's `connection.prompt(...)` return. Same shape as the
+   *  notification-level `_meta`; merges into the running haystack metadata
+   *  and emits a `message-metadata` chunk if any haystack keys are present. */
+  ingestMeta: (meta: { [key: string]: unknown } | null | undefined) => void
   /** Flush any buffered deltas, close any open text/reasoning parts, and emit
    *  `finish-step` + `finish`. Call once when the ACP prompt resolves. */
   finish: () => void
@@ -211,6 +216,11 @@ export const createTranslator = (emit: (chunk: AiSdkChunk) => void, options: Tra
 
   const handle = (notification: SessionNotification): void => {
     const update = notification.update
+    // ACP `_meta` lives on the SessionNotification itself, but agents may also
+    // attach it to the inner update (per ACP spec — both `SessionNotification`
+    // and `ContentChunk` declare an optional `_meta`). Ingest from both so the
+    // pipeline works regardless of where the agent placed the metadata.
+    ingestHaystackMeta(notification._meta)
     switch (update.sessionUpdate) {
       case 'agent_message_chunk': {
         ingestHaystackMeta(update._meta)
@@ -312,7 +322,7 @@ export const createTranslator = (emit: (chunk: AiSdkChunk) => void, options: Tra
     emit({ type: 'error', errorText: message })
   }
 
-  return { start, handle, finish, error }
+  return { start, handle, ingestMeta: ingestHaystackMeta, finish, error }
 }
 
 /** Convenience: build a `ReadableStream<Uint8Array>` of SSE-formatted chunks

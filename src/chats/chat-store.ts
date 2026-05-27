@@ -13,9 +13,15 @@ import { create } from 'zustand'
 import type { Chat } from '@ai-sdk/react'
 import { useShallow } from 'zustand/react/shallow'
 
+/** Connection state for the per-session ACP adapter. `idle` covers built-in
+ *  agents (no handshake) and the initial state before the first send. */
+export type ConnectionStatus = 'idle' | 'connecting' | 'ready' | 'error'
+
 export type ChatSession = {
   chatInstance: Chat<ThunderboltUIMessage>
   chatThread: ChatThread | null
+  connectionStatus: ConnectionStatus
+  connectionError: Error | null
   id: string
   retryCount: number
   retriesExhausted: boolean

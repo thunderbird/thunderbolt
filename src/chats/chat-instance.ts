@@ -89,18 +89,28 @@ export const createAgentRoutingFetch = (
         // BEFORE the new connect so any transport handles release promptly.
         if (cachedAdapter) {
           cachedAdapter.disconnect()
+          cachedAdapter = null
         }
-        cachedAdapter = await connectToAgent(
-          selectedAgent,
-          {
-            httpClient,
-            getProxyFetch,
-            acpSessionId: chatThread?.acpSessionId ?? null,
-            onAcpSessionId: persistAcpSessionId,
-          },
-          {},
-        )
+        cachedKey = null
+        useChatStore.getState().updateSession(id, { connectionStatus: 'connecting', connectionError: null })
+        try {
+          cachedAdapter = await connectToAgent(
+            selectedAgent,
+            {
+              httpClient,
+              getProxyFetch,
+              acpSessionId: chatThread?.acpSessionId ?? null,
+              onAcpSessionId: persistAcpSessionId,
+            },
+            {},
+          )
+        } catch (err) {
+          const error = err instanceof Error ? err : new Error(String(err))
+          useChatStore.getState().updateSession(id, { connectionStatus: 'error', connectionError: error })
+          throw error
+        }
         cachedKey = cacheKey
+        useChatStore.getState().updateSession(id, { connectionStatus: 'ready', connectionError: null })
       }
 
       const adapter = cachedAdapter

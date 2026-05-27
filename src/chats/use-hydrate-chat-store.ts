@@ -197,6 +197,8 @@ export const useHydrateChatStore = ({ id, isNew }: UseHydrateChatStoreParams) =>
     createSession({
       chatInstance,
       chatThread,
+      connectionStatus: 'idle',
+      connectionError: null,
       id,
       retryCount: 0,
       retriesExhausted: false,

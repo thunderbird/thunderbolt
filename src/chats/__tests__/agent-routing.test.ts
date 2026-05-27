@@ -91,6 +91,8 @@ const hydrateSessionWith = (id: string, agent: Agent, chatThread: ChatThread | n
   const session: ChatSession = {
     chatInstance: mockChatInstance,
     chatThread,
+    connectionStatus: 'idle',
+    connectionError: null,
     id,
     retryCount: 0,
     retriesExhausted: false,

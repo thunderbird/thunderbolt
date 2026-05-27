@@ -11,6 +11,7 @@ import { trackEvent as trackEvent_default } from '@/lib/posthog'
 import { type Model } from '@/types'
 import { useChat as useChat_default } from '@ai-sdk/react'
 import { useDraftInput } from '@/hooks/use-draft-input'
+import { AlertCircle, Loader2 } from 'lucide-react'
 import { forwardRef, useCallback, useImperativeHandle, useRef, useState } from 'react'
 import { useNavigate as useNavigate_default } from 'react-router'
 import { ContextOverflowModal } from '../context-overflow-modal'
@@ -48,11 +49,22 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
 
     const { isMobile } = useIsMobile()
 
-    const { chatInstance, chatThread, id: chatThreadId, selectedMode, selectedModel } = useCurrentChatSession()
+    const {
+      chatInstance,
+      chatThread,
+      connectionStatus,
+      connectionError,
+      id: chatThreadId,
+      selectedAgent,
+      selectedMode,
+      selectedModel,
+    } = useCurrentChatSession()
 
     const { messages, status, stop, sendMessage } = useChat({ chat: chatInstance })
 
     const isStreaming = status === 'streaming'
+    const isConnecting = connectionStatus === 'connecting'
+    const isConnectionError = connectionStatus === 'error' && connectionError != null
 
     // isMobile = viewport is narrow (responsive breakpoint, e.g. desktop browser resized small)
     // isPlatformMobile() = native platform is iOS/Android (Tauri mobile app)
@@ -133,8 +145,32 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
 
     const footerStartElements = (
       <div className="flex items-center gap-2">
-        {modes.length > 0 && (
-          <ModeSelector modes={modes} selectedMode={selectedMode} onModeChange={handleModeChange} iconOnly={isMobile} />
+        {isConnecting ? (
+          <div
+            role="status"
+            aria-live="polite"
+            className="flex items-center gap-2 px-3 h-[var(--touch-height-sm)] text-muted-foreground text-[length:var(--font-size-body)]"
+          >
+            <Loader2 className="size-[var(--icon-size-default)] shrink-0 animate-spin" />
+            <span>Connecting to {selectedAgent.name}...</span>
+          </div>
+        ) : isConnectionError ? (
+          <div
+            role="alert"
+            className="flex items-center gap-2 px-3 h-[var(--touch-height-sm)] text-destructive text-[length:var(--font-size-body)]"
+          >
+            <AlertCircle className="size-[var(--icon-size-default)] shrink-0" />
+            <span>Failed to connect to {selectedAgent.name}</span>
+          </div>
+        ) : (
+          modes.length > 0 && (
+            <ModeSelector
+              modes={modes}
+              selectedMode={selectedMode}
+              onModeChange={handleModeChange}
+              iconOnly={isMobile}
+            />
+          )
         )}
         {isContextKnown && !isMobile && (
           <ContextUsageIndicator usedTokens={usedTokens ?? 0} maxTokens={maxTokens ?? 0} />
@@ -151,7 +187,7 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
           placeholder="Ask me anything..."
           showSubmitButton
           onSubmit={handleSubmit}
-          isLoading={isStreaming}
+          isLoading={isStreaming || isConnecting}
           isStreaming={isStreaming}
           onStop={stop}
           autoFocus={!isMobile}

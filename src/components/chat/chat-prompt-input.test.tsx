@@ -17,6 +17,7 @@ import { act, cleanup, render, screen } from '@testing-library/react'
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, mock } from 'bun:test'
 import { createElement, type ReactNode, type RefObject } from 'react'
 import { BrowserRouter } from 'react-router'
+import { useChatStore } from '@/chats/chat-store'
 import { ChatPromptInput, type ChatPromptInputRef } from './chat-prompt-input'
 
 const createMockUseContextTracking =
@@ -212,6 +213,44 @@ describe('ChatPromptInput', () => {
 
       // On mobile, Enter should NOT be prevented (it creates a newline naturally)
       expect(preventDefaultSpy).not.toHaveBeenCalled()
+    })
+  })
+
+  describe('connection status', () => {
+    it('shows connecting indicator when the session is mid-connect', () => {
+      const { mockUseChat } = setupStore()
+      useChatStore.getState().updateSession('thread-1', { connectionStatus: 'connecting', connectionError: null })
+
+      render(<ChatPromptInput useChat={mockUseChat} useIsMobile={createMockUseIsMobile()} />, {
+        wrapper: TestWrapper,
+      })
+
+      expect(screen.getByRole('status').textContent ?? '').toMatch(/Connecting to /)
+    })
+
+    it('shows error indicator when the connection failed', () => {
+      const { mockUseChat } = setupStore()
+      useChatStore.getState().updateSession('thread-1', {
+        connectionStatus: 'error',
+        connectionError: new Error('boom'),
+      })
+
+      render(<ChatPromptInput useChat={mockUseChat} useIsMobile={createMockUseIsMobile()} />, {
+        wrapper: TestWrapper,
+      })
+
+      expect(screen.getByRole('alert').textContent ?? '').toMatch(/Failed to connect to /)
+    })
+
+    it('falls back to default selector when connectionStatus is idle', () => {
+      const { mockUseChat } = setupStore()
+
+      render(<ChatPromptInput useChat={mockUseChat} useIsMobile={createMockUseIsMobile()} />, {
+        wrapper: TestWrapper,
+      })
+
+      expect(screen.queryByRole('status')).toBeNull()
+      expect(screen.queryByRole('alert')).toBeNull()
     })
   })
 

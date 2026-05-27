@@ -253,7 +253,23 @@ describe('ChatPromptInput', () => {
         wrapper: TestWrapper,
       })
 
-      expect(screen.getByRole('alert').textContent ?? '').toMatch(/Failed to connect to /)
+      const alert = screen.getByRole('alert')
+      expect(alert.textContent ?? '').toMatch(/Failed to connect to /)
+      expect(alert.querySelector('span[title]')?.getAttribute('title')).toBe('boom')
+    })
+
+    it('extracts JSON-RPC error message into the connection-error tooltip', () => {
+      const { mockUseChat } = setupStore()
+      useChatStore.getState().updateSession('thread-1', {
+        connectionStatus: 'error',
+        connectionError: new Error(JSON.stringify({ data: { message: 'agent offline' } })),
+      })
+
+      render(<ChatPromptInput useChat={mockUseChat} useIsMobile={createMockUseIsMobile()} />, {
+        wrapper: TestWrapper,
+      })
+
+      expect(screen.getByRole('alert').querySelector('span[title]')?.getAttribute('title')).toBe('agent offline')
     })
 
     it('falls back to default selector when connectionStatus is idle', () => {

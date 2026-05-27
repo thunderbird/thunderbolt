@@ -19,6 +19,29 @@ import { ContextUsageIndicator } from '../context-usage-indicator'
 import { PromptInput } from '../ui/prompt-input'
 import { ChatModePicker } from './chat-mode-picker'
 
+/**
+ * Extract a human-readable display string from a connection error.
+ * Handles JSON-RPC error messages (which have nested data.message),
+ * plain strings, and generic Error objects.
+ */
+const extractErrorDisplay = (error: Error | null | undefined): string => {
+  if (!error?.message) {
+    return 'Connection failed'
+  }
+
+  try {
+    const parsed = JSON.parse(error.message)
+    const message = parsed?.data?.message ?? parsed?.data?.details ?? parsed?.message
+    if (typeof message === 'string') {
+      return message
+    }
+  } catch {
+    // Not JSON — use the raw message
+  }
+
+  return error.message
+}
+
 export type ChatPromptInputRef = {
   focus: () => void
   setInput: (text: string) => void
@@ -151,7 +174,9 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
             className="flex items-center gap-2 px-3 h-[var(--touch-height-sm)] text-destructive text-[length:var(--font-size-body)]"
           >
             <AlertCircle className="size-[var(--icon-size-default)] shrink-0" />
-            <span>Failed to connect to {selectedAgent.name}</span>
+            <span className="truncate" title={extractErrorDisplay(connectionError)}>
+              Failed to connect to {selectedAgent.name}
+            </span>
           </div>
         ) : (
           <ChatModePicker iconOnly={isMobile} />

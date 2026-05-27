@@ -56,8 +56,12 @@ describe('computeSkillRefProblems', () => {
     ['task-triage', disabledSkill],
   ])
   const classify: SkillStatusClassifier = (slug) => {
-    if (slug === 'meeting-notes') return 'enabled'
-    if (slug === 'task-triage') return 'disabled'
+    if (slug === 'meeting-notes') {
+      return 'enabled'
+    }
+    if (slug === 'task-triage') {
+      return 'disabled'
+    }
     return 'unknown'
   }
 

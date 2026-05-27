@@ -157,10 +157,14 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
     // Run-in-chat router-state nav (Skills v1 §5). Read once during render
     // and clear the state via `navigate(replace)` so back/forward doesn't
     // re-trigger. Tracked via `consumedRunSkillRef` so React's StrictMode
-    // double-render doesn't insert the token twice.
+    // double-render doesn't insert the token twice. Once the state is
+    // cleared we reset the ref so the user can click "Run skill" on the
+    // same skill again.
     const consumedRunSkillRef = useRef<string | null>(null)
     const runSkill = (location.state as { runSkill?: string } | null)?.runSkill
-    if (runSkill && consumedRunSkillRef.current !== runSkill) {
+    if (!runSkill) {
+      consumedRunSkillRef.current = null
+    } else if (consumedRunSkillRef.current !== runSkill) {
       consumedRunSkillRef.current = runSkill
       // Defer setState until after render to avoid setState-in-render warnings.
       queueMicrotask(() => {

@@ -4,14 +4,17 @@
 
 import type { ReactNode } from 'react'
 
-import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { findSkillTokens } from './parse-skill-tokens'
 
 /**
  * Render the chat input's text with `/slug` tokens highlighted:
  * - Tokens that resolve to an enabled skill render in blue.
- * - Tokens that don't resolve render in orange with a
- *   "no skill by this name" tooltip — the user notices before they send.
+ * - Tokens that don't resolve render in orange so the user spots the typo
+ *   before they send.
+ *
+ * The overlay this renders into is `pointer-events-none` (so the textarea
+ * underneath stays interactive), which is why we lean on color alone for
+ * the unresolved-token cue — a hover tooltip would be unreachable.
  *
  * The trailing zero-width space preserves a final newline; without it the
  * overlay collapses and falls one row behind the textarea.
@@ -33,22 +36,12 @@ export const renderHighlightedSkillTokens = (value: string, isValidSkill: (slug:
       parts.push(value.slice(cursor, start))
     }
     const token = value.slice(start, end)
-    if (isValidSkill(slug)) {
-      parts.push(
-        <span key={key++} className="text-sky-500 dark:text-sky-400">
-          {token}
-        </span>,
-      )
-    } else {
-      parts.push(
-        <Tooltip key={key++}>
-          <TooltipTrigger asChild>
-            <span className="text-orange-500 dark:text-orange-400">{token}</span>
-          </TooltipTrigger>
-          <TooltipContent>No skill by this name</TooltipContent>
-        </Tooltip>,
-      )
-    }
+    const className = isValidSkill(slug) ? 'text-sky-500 dark:text-sky-400' : 'text-orange-500 dark:text-orange-400'
+    parts.push(
+      <span key={key++} className={className}>
+        {token}
+      </span>,
+    )
     cursor = end
   }
   if (cursor < value.length) {

@@ -150,7 +150,7 @@ export const useSlashCommand = ({
       if (!popupOpen) {
         return
       }
-      if (e.key === 'Enter' && !e.shiftKey) {
+      if ((e.key === 'Enter' && !e.shiftKey) || e.key === 'Tab') {
         e.preventDefault()
         const picked = popupSkills[highlightedIdx]
         if (picked) {

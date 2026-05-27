@@ -53,5 +53,9 @@ export const encryptedColumnsMap: Readonly<Record<string, readonly string[]>> = 
   ],
   modes: ['name', 'label', 'icon', 'system_prompt'],
   devices: ['name'],
+<<<<<<< HEAD
   skills: ['name', 'description', 'instruction'],
+=======
+  // agents table syncs plaintext (matches skills/models pattern; creds live in local-only agents_secrets)
+>>>>>>> ec52b2a0 (feat(acp): add agents tables and acpSessionId column)
 }

@@ -3,7 +3,8 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { AnimatePresence, m } from 'framer-motion'
-import { useCallback, useEffect, useReducer } from 'react'
+import { useCallback, useEffect, useReducer, useRef } from 'react'
+import { useLocation, useNavigate } from 'react-router'
 
 import { PinLimitExceededError, SkillNameInvalidError, SkillNameTakenError } from '@/dal'
 import { useIsMobile } from '@/hooks/use-mobile'
@@ -38,6 +39,7 @@ export const SkillsView = () => {
     pendingDependents,
     nameError,
     pinError,
+    createInitialName,
   } = state
 
   // Auto-dismiss the pin-cap error after a short delay.
@@ -48,6 +50,38 @@ export const SkillsView = () => {
     const id = setTimeout(() => dispatch({ type: 'CLEAR_PIN_ERROR' }), pinErrorDismissMs)
     return () => clearTimeout(id)
   }, [pinError])
+
+  // Deep-link from the chat composer's broken-reference alerts —
+  // `editSkill` selects an existing (disabled) skill so the user can enable
+  // it; `createSkill` opens the create form pre-filled with the slug the
+  // user just typed. Both consume the router state once on mount and clear
+  // it so back/forward doesn't re-trigger. Mirrors the `runSkill` pattern
+  // in chat-prompt-input.
+  const navigate = useNavigate()
+  const location = useLocation()
+  const consumedEditSkillRef = useRef<string | null>(null)
+  const consumedCreateSkillRef = useRef<string | null>(null)
+  const navState = (location.state ?? null) as { editSkill?: string; createSkill?: string } | null
+  const editSkillNav = navState?.editSkill
+  const createSkillNav = navState?.createSkill
+  if (!editSkillNav) {
+    consumedEditSkillRef.current = null
+  } else if (consumedEditSkillRef.current !== editSkillNav) {
+    consumedEditSkillRef.current = editSkillNav
+    queueMicrotask(() => {
+      dispatch({ type: 'SELECT_SKILL', id: editSkillNav })
+      navigate(location.pathname, { replace: true, state: {} })
+    })
+  }
+  if (!createSkillNav) {
+    consumedCreateSkillRef.current = null
+  } else if (consumedCreateSkillRef.current !== createSkillNav) {
+    consumedCreateSkillRef.current = createSkillNav
+    queueMicrotask(() => {
+      dispatch({ type: 'START_CREATE', initialName: createSkillNav })
+      navigate(location.pathname, { replace: true, state: {} })
+    })
+  }
 
   const tryTogglePin = useCallback(
     async (id: string) => {
@@ -198,8 +232,11 @@ export const SkillsView = () => {
 
   const createForm = (
     <SkillForm
-      key="create"
+      // Keying on the pre-filled slug forces a fresh form mount when the
+      // user clicks "Create it" for a different slug back-to-back.
+      key={createInitialName ? `create:${createInitialName}` : 'create'}
       mode="create"
+      initialValues={createInitialName ? { name: createInitialName, description: '', instruction: '' } : undefined}
       onCancel={() => requestLeave({ type: 'cancel' })}
       onSubmit={handleSubmit}
       onDirtyChange={(dirty) => dispatch({ type: 'SET_DIRTY', dirty })}

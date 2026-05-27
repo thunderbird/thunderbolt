@@ -2,8 +2,30 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { describe, expect, it } from 'bun:test'
-import { getSlashState } from './use-slash-command'
+import { describe, expect, it, mock } from 'bun:test'
+import { act, renderHook } from '@testing-library/react'
+import { createRef, type KeyboardEvent } from 'react'
+
+import type { Skill } from '@/types'
+import { getSlashState, useSlashCommand } from './use-slash-command'
+
+const fakeSkill = (name: string): Skill => ({
+  id: name,
+  name,
+  description: '',
+  instruction: `instruction for ${name}`,
+  enabled: 1,
+  pinnedOrder: null,
+  deletedAt: null,
+  defaultHash: null,
+  userId: null,
+})
+
+/** Build a partial KeyboardEvent that's just enough to satisfy the hook. */
+const keyEvent = (key: string): KeyboardEvent<HTMLTextAreaElement> => {
+  const e = { key, shiftKey: false, preventDefault: mock() }
+  return e as unknown as KeyboardEvent<HTMLTextAreaElement>
+}
 
 describe('getSlashState', () => {
   it('returns null when the caret is outside the value bounds', () => {
@@ -47,5 +69,55 @@ describe('getSlashState', () => {
     // in-progress query is "mee" — the trailing "t later" is not yet typed
     // from the autocomplete state machine's perspective.
     expect(getSlashState('hi /meet later', 7)).toEqual({ tokenStart: 3, query: 'mee' })
+  })
+})
+
+describe('useSlashCommand handleKeyDown', () => {
+  const library = [fakeSkill('alpha'), fakeSkill('beta')]
+  const inputRef = createRef<HTMLTextAreaElement>()
+
+  const setupOpen = () => {
+    let value = '/al'
+    const setValue = (v: string) => {
+      value = v
+    }
+    const hook = renderHook(() =>
+      useSlashCommand({
+        value,
+        setValue,
+        inputRef,
+        library,
+        isEnabled: () => true,
+      }),
+    )
+    // Caret right after "/al" so the popup opens with one match (alpha).
+    act(() => hook.result.current.setCursorPos(3))
+    return { hook, getValue: () => value }
+  }
+
+  it('Tab accepts the highlighted suggestion just like Enter', () => {
+    const { hook, getValue } = setupOpen()
+    expect(hook.result.current.popupOpen).toBe(true)
+    const event = keyEvent('Tab')
+    act(() => hook.result.current.handleKeyDown(event))
+    expect(event.preventDefault).toHaveBeenCalled()
+    // setValue was called with the canonical token + trailing space.
+    expect(getValue()).toBe('/alpha ')
+  })
+
+  it('Enter accepts (regression — Tab path must not break Enter)', () => {
+    const { hook, getValue } = setupOpen()
+    const event = keyEvent('Enter')
+    act(() => hook.result.current.handleKeyDown(event))
+    expect(event.preventDefault).toHaveBeenCalled()
+    expect(getValue()).toBe('/alpha ')
+  })
+
+  it('does nothing on non-accept keys', () => {
+    const { hook, getValue } = setupOpen()
+    const event = keyEvent('a')
+    act(() => hook.result.current.handleKeyDown(event))
+    expect(event.preventDefault).not.toHaveBeenCalled()
+    expect(getValue()).toBe('/al')
   })
 })

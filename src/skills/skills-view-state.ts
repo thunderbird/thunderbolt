@@ -32,6 +32,12 @@ export type SkillsViewState = {
   pendingDependents: PendingDependents
   nameError: string | null
   pinError: string | null
+  /**
+   * Optional initial name for the create form — set when a "create it" deep
+   * link arrives from the chat composer's broken-reference alert. `null`
+   * for an empty form. Cleared on submit / leave.
+   */
+  createInitialName: string | null
 }
 
 export const initialSkillsViewState: SkillsViewState = {
@@ -45,6 +51,7 @@ export const initialSkillsViewState: SkillsViewState = {
   pendingDependents: null,
   nameError: null,
   pinError: null,
+  createInitialName: null,
 }
 
 /**
@@ -57,8 +64,10 @@ export const initialSkillsViewState: SkillsViewState = {
 export type SkillsViewAction =
   /** User selected a skill in the list while in `detail` mode. */
   | { type: 'SELECT_SKILL'; id: string }
-  /** User opened the create form. Side effect: panel slides in on mobile. */
-  | { type: 'START_CREATE' }
+  /** User opened the create form. Side effect: panel slides in on mobile.
+   * `initialName` pre-fills the form when arriving from a "create it" deep
+   * link out of the chat composer. */
+  | { type: 'START_CREATE'; initialName?: string }
   /** User opened the edit form for a specific skill. */
   | { type: 'START_EDIT'; id: string }
   /** Leave the form (confirmed). `cancel` returns to detail of the current
@@ -100,7 +109,16 @@ export const skillsViewReducer = (state: SkillsViewState, action: SkillsViewActi
       return { ...state, activeId: action.id, mobileView: 'panel' }
 
     case 'START_CREATE':
-      return { ...state, mode: 'create', nameError: null, mobileView: 'panel' }
+      return {
+        ...state,
+        mode: 'create',
+        nameError: null,
+        mobileView: 'panel',
+        createInitialName: action.initialName ?? null,
+        // Bump the reset signal so SkillForm remounts with the new initial
+        // values when the user clicks "Create it" twice for different slugs.
+        resetSignal: state.resetSignal + 1,
+      }
 
     case 'START_EDIT':
       return { ...state, mode: 'edit', activeId: action.id, nameError: null, mobileView: 'panel' }
@@ -121,6 +139,7 @@ export const skillsViewReducer = (state: SkillsViewState, action: SkillsViewActi
         nameError: null,
         pendingLeave: null,
         mobileView: nextMobileView,
+        createInitialName: null,
       }
     }
 
@@ -183,6 +202,7 @@ export const skillsViewReducer = (state: SkillsViewState, action: SkillsViewActi
         isDirty: false,
         resetSignal: state.resetSignal + 1,
         nameError: null,
+        createInitialName: null,
       }
 
     case 'SET_NAME_ERROR':

@@ -9,8 +9,9 @@ import { useContextTracking as useContextTracking_default } from '@/hooks/use-co
 import { useIsMobile as useIsMobile_default } from '@/hooks/use-mobile'
 import { isMobile as isPlatformMobile } from '@/lib/platform'
 import { trackEvent as trackEvent_default } from '@/lib/posthog'
-import { renderHighlightedSkillTokens } from '@/skills/highlight-skill-tokens'
+import { renderHighlightedSkillTokens, type SkillStatusClassifier } from '@/skills/highlight-skill-tokens'
 import { findSkillTokens } from '@/skills/parse-skill-tokens'
+import { SkillRefAlerts, type SkillRefProblem } from '@/skills/skill-ref-alerts'
 import { SlashPopup } from '@/skills/slash-popup'
 import { useSlashCommand } from '@/skills/use-slash-command'
 import {
@@ -71,11 +72,22 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
 
     const { skills: library } = useLibrarySkills()
     const { isEnabled } = useEnabledSkills()
+    const skillBySlug = useMemo(() => new Map(library.map((s) => [s.name, s])), [library])
     const enabledSlugs = useMemo(
       () => new Set(library.filter((s) => isEnabled(s.id)).map((s) => s.name)),
       [library, isEnabled],
     )
     const isValidSkillSlug = useCallback((slug: string) => enabledSlugs.has(slug), [enabledSlugs])
+    const classifySkill = useCallback<SkillStatusClassifier>(
+      (slug) => {
+        const skill = skillBySlug.get(slug)
+        if (!skill) {
+          return 'unknown'
+        }
+        return isEnabled(skill.id) ? 'enabled' : 'disabled'
+      },
+      [skillBySlug, isEnabled],
+    )
 
     const isStreaming = status === 'streaming'
 
@@ -181,6 +193,33 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
       },
       [chatThreadId, setSelectedMode, triggerSelection],
     )
+
+    // Collect committed slash tokens that *won't* resolve at send time:
+    // disabled skills (we offer an "Enable" link) and unknown names (no
+    // such skill exists). In-progress tokens — still being typed at the
+    // end of input — are skipped so we don't nag the user mid-keystroke.
+    const skillRefProblems = useMemo<SkillRefProblem[]>(() => {
+      const tokens = findSkillTokens(input)
+      const seen = new Set<string>()
+      const problems: SkillRefProblem[] = []
+      for (const { slug, committed } of tokens) {
+        if (!committed || seen.has(slug)) {
+          continue
+        }
+        seen.add(slug)
+        const status = classifySkill(slug)
+        if (status === 'enabled') {
+          continue
+        }
+        const skill = skillBySlug.get(slug)
+        if (status === 'disabled' && skill) {
+          problems.push({ kind: 'disabled', slug, skillId: skill.id })
+        } else {
+          problems.push({ kind: 'unknown', slug })
+        }
+      }
+      return problems
+    }, [input, classifySkill, skillBySlug])
 
     // Estimate the token cost of resolved skill instructions so the
     // overflow modal fires correctly when /name tokens push the send past
@@ -290,6 +329,7 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
       <>
         <div className="flex w-full flex-col gap-3">
           <ChatSkillsBar onAddToChat={handleAddChipFromBar} onAddInstruction={insertInstructionText} />
+          <SkillRefAlerts problems={skillRefProblems} />
           <PromptInput
             ref={formRef}
             value={input}
@@ -304,7 +344,7 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
             submitOnEnter={!isStreaming && !shouldInsertNewlineOnEnter}
             className="flex flex-col w-full gap-0 rounded-2xl border bg-card p-2 dark:border-input dark:bg-[oklch(0.182_0_0)]"
             footerStartElements={footerStartElements}
-            renderOverlay={(value) => renderHighlightedSkillTokens(value, isValidSkillSlug)}
+            renderOverlay={(value) => renderHighlightedSkillTokens(value, classifySkill)}
             popoverSlot={
               popupOpen ? (
                 <SlashPopup

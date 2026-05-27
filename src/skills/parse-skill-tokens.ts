@@ -72,15 +72,23 @@ export const parseSkillTokens = (text: string, resolve: SkillResolver): ParsedSk
  * Iterate over the raw slash tokens in `text` without resolving them.
  * Useful for the highlight overlay and slash autocomplete, which want token
  * positions but compute their own resolution decision.
+ *
+ * `committed` is true when the token is followed by whitespace (the user
+ * has finished typing it). It is false when the token sits at the very
+ * end of `text` — the user is likely still typing.
  */
-export const findSkillTokens = (text: string): Array<{ slug: string; start: number; end: number }> => {
-  const tokens: Array<{ slug: string; start: number; end: number }> = []
+export const findSkillTokens = (
+  text: string,
+): Array<{ slug: string; start: number; end: number; committed: boolean }> => {
+  const tokens: Array<{ slug: string; start: number; end: number; committed: boolean }> = []
   for (const match of text.matchAll(tokenRegex)) {
     const slug = match[1]
     if (slug === undefined || match.index === undefined) {
       continue
     }
-    tokens.push({ slug, start: match.index, end: match.index + match[0].length })
+    const end = match.index + match[0].length
+    const committed = end < text.length // i.e., the lookahead matched whitespace, not $
+    tokens.push({ slug, start: match.index, end, committed })
   }
   return tokens
 }

@@ -111,7 +111,9 @@ describe('parseSkillTokens', () => {
 
 describe('findSkillTokens', () => {
   it('reports each token with start/end positions and bare slug', () => {
-    expect(findSkillTokens('hi /meeting-notes there')).toEqual([{ slug: 'meeting-notes', start: 3, end: 17 }])
+    expect(findSkillTokens('hi /meeting-notes there')).toEqual([
+      { slug: 'meeting-notes', start: 3, end: 17, committed: true },
+    ])
   })
 
   it('reports duplicates separately (no dedupe — caller decides)', () => {
@@ -121,5 +123,25 @@ describe('findSkillTokens', () => {
 
   it('returns an empty list when there are no tokens', () => {
     expect(findSkillTokens('plain text')).toEqual([])
+  })
+
+  it('flags a token at end-of-input as not committed (still typing)', () => {
+    const tokens = findSkillTokens('hello /meeting')
+    expect(tokens).toEqual([{ slug: 'meeting', start: 6, end: 14, committed: false }])
+  })
+
+  it('flags a token followed by whitespace as committed', () => {
+    const tokens = findSkillTokens('hello /meeting hi')
+    expect(tokens[0]?.committed).toBe(true)
+  })
+
+  it('flags a token followed by a newline as committed', () => {
+    const tokens = findSkillTokens('/meeting\nnext')
+    expect(tokens[0]?.committed).toBe(true)
+  })
+
+  it('marks earlier tokens committed when only the last one is in-progress', () => {
+    const tokens = findSkillTokens('/a then /b')
+    expect(tokens.map((t) => t.committed)).toEqual([true, false])
   })
 })

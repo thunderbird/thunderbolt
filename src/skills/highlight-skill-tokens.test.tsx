@@ -5,38 +5,69 @@
 import { describe, expect, it } from 'bun:test'
 import { render } from '@testing-library/react'
 
-import { renderHighlightedSkillTokens } from './highlight-skill-tokens'
+import { renderHighlightedSkillTokens, type SkillStatusClassifier } from './highlight-skill-tokens'
 
-const isValid = (slug: string) => slug === 'meeting-notes' || slug === 'weekly-review'
+const classify: SkillStatusClassifier = (slug) => {
+  if (slug === 'meeting-notes' || slug === 'weekly-review') {
+    return 'enabled'
+  }
+  if (slug === 'task-triage') {
+    return 'disabled'
+  }
+  return 'unknown'
+}
 
 describe('renderHighlightedSkillTokens', () => {
   it('renders plain text unchanged when no tokens are present', () => {
-    const { container } = render(<>{renderHighlightedSkillTokens('just a message', isValid)}</>)
+    const { container } = render(<>{renderHighlightedSkillTokens('just a message', classify)}</>)
     expect(container.textContent).toContain('just a message')
   })
 
-  it('wraps a resolved token in the sky-toned highlight span', () => {
-    const { container } = render(<>{renderHighlightedSkillTokens('use /meeting-notes please', isValid)}</>)
+  it('paints a committed enabled token blue (sky)', () => {
+    // Trailing space → committed.
+    const { container } = render(<>{renderHighlightedSkillTokens('use /meeting-notes please', classify)}</>)
     const span = container.querySelector('.text-sky-500')
     expect(span?.textContent).toBe('/meeting-notes')
   })
 
-  it('wraps an unresolved token in the orange highlight span', () => {
-    const { container } = render(<>{renderHighlightedSkillTokens('hi /unknown there', isValid)}</>)
+  it('paints a committed disabled token orange', () => {
+    const { container } = render(<>{renderHighlightedSkillTokens('please /task-triage me', classify)}</>)
     const span = container.querySelector('.text-orange-500')
-    expect(span?.textContent).toBe('/unknown')
+    expect(span?.textContent).toBe('/task-triage')
+    expect(container.querySelector('.text-red-500')).toBeNull()
+    expect(container.querySelector('.text-sky-500')).toBeNull()
   })
 
-  it('renders both resolved and unresolved tokens in a single string', () => {
+  it('paints a committed unknown token red', () => {
+    const { container } = render(<>{renderHighlightedSkillTokens('hi /no-such-skill there', classify)}</>)
+    const span = container.querySelector('.text-red-500')
+    expect(span?.textContent).toBe('/no-such-skill')
+  })
+
+  it('paints an in-progress (end-of-input, no trailing space) token orange even when the slug resolves', () => {
+    // No trailing whitespace → in-progress regardless of resolution status.
+    const { container } = render(<>{renderHighlightedSkillTokens('/meeting-notes', classify)}</>)
+    expect(container.querySelector('.text-sky-500')).toBeNull()
+    expect(container.querySelector('.text-orange-500')?.textContent).toBe('/meeting-notes')
+  })
+
+  it('paints in-progress orange even for an unknown slug — the user is still typing', () => {
+    const { container } = render(<>{renderHighlightedSkillTokens('hello /partial', classify)}</>)
+    expect(container.querySelector('.text-red-500')).toBeNull()
+    expect(container.querySelector('.text-orange-500')?.textContent).toBe('/partial')
+  })
+
+  it('renders a mix of statuses in one string', () => {
     const { container } = render(
-      <>{renderHighlightedSkillTokens('try /meeting-notes then /unknown next /weekly-review', isValid)}</>,
+      <>{renderHighlightedSkillTokens('try /meeting-notes then /no-real next /task-triage end', classify)}</>,
     )
-    expect(container.querySelectorAll('.text-sky-500')).toHaveLength(2)
+    expect(container.querySelectorAll('.text-sky-500')).toHaveLength(1)
     expect(container.querySelectorAll('.text-orange-500')).toHaveLength(1)
+    expect(container.querySelectorAll('.text-red-500')).toHaveLength(1)
   })
 
   it('returns an array ending with a zero-width space to preserve trailing newlines', () => {
-    const nodes = renderHighlightedSkillTokens('hello\n', isValid)
+    const nodes = renderHighlightedSkillTokens('hello\n', classify)
     expect(nodes[nodes.length - 1]).toBe('​')
   })
 })

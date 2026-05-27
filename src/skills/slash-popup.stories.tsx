@@ -73,12 +73,18 @@ const sampleSkills: Skill[] = [
   },
 ]
 
+const noop = () => undefined
+const noPins = () => false
+
 export const Default: Story = {
   args: {
     skills: sampleSkills,
     highlightedIdx: 0,
-    onSelect: () => {},
-    onHover: () => {},
+    isPinned: noPins,
+    pinCapReached: false,
+    onSelect: noop,
+    onHover: noop,
+    onTogglePin: noop,
   },
 }
 
@@ -88,4 +94,12 @@ export const SecondRowHighlighted: Story = {
 
 export const SingleResult: Story = {
   args: { ...Default.args, skills: [sampleSkills[0]!], highlightedIdx: 0 },
+}
+
+export const SomePinned: Story = {
+  args: { ...Default.args, isPinned: (id: string) => id === '1' || id === '3' },
+}
+
+export const PinCapReached: Story = {
+  args: { ...Default.args, isPinned: (id: string) => id === '1', pinCapReached: true },
 }

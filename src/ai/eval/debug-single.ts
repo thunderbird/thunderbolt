@@ -15,7 +15,6 @@ import { isSsoMode } from '@/lib/auth-mode'
 import { getAuthToken } from '@/lib/auth-token'
 import { createAuthenticatedClient } from '@/lib/http'
 import { createProxyFetch } from '@/lib/proxy-fetch'
-import type { SaveMessagesFunction } from '@/types'
 import { v7 as uuidv7 } from 'uuid'
 import { parseStream } from './stream-parser'
 import { extractCitations, extractLinkPreviewUrls, extractWidgets } from './scoring'
@@ -29,7 +28,6 @@ const run = async () => {
 
   const modelId = defaultModelGptOss120b.id
   const prompt = "What's the current price of Bitcoin?"
-  const saveMessages: SaveMessagesFunction = async () => {}
 
   const body = JSON.stringify({
     messages: [{ id: uuidv7(), role: 'user', parts: [{ type: 'text', text: prompt }] }],
@@ -52,7 +50,6 @@ const run = async () => {
 
   const response = await aiFetchStreamingResponse({
     init: { method: 'POST', body },
-    saveMessages,
     modelId,
     modeSystemPrompt: defaultModeChat.systemPrompt ?? undefined,
     modeName: defaultModeChat.name,

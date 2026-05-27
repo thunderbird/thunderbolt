@@ -26,7 +26,6 @@ export const createBuiltInAdapter = (agent: Agent, options: BuiltInAdapterOption
   const fetch = (init: RequestInit, context: AgentAdapterContext): Promise<Response> =>
     aiFetch({
       init,
-      saveMessages: context.saveMessages,
       modelId: context.selectedModel.id,
       modeSystemPrompt: context.selectedMode.systemPrompt ?? undefined,
       modeName: context.selectedMode.name ?? undefined,

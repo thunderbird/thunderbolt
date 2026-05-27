@@ -234,6 +234,71 @@ describe('createAgentRoutingFetch', () => {
     expect(call[2]).toMatchObject({ acpSessionId: 'acp-sess-xyz' })
   })
 
+  it('saves the user message before invoking the adapter (built-in agent)', async () => {
+    resetStore()
+    const order: string[] = []
+    const saveMessagesSpy = mock(async (_args: { id: string; messages: ThunderboltUIMessage[] }) => {
+      order.push('save')
+    })
+    const adapterFetch = mock(async () => {
+      order.push('fetch')
+      return new Response('streamed')
+    })
+    const adapter: AgentAdapter = {
+      agent: builtInAgent,
+      capabilities: null,
+      fetch: adapterFetch as unknown as AgentAdapter['fetch'],
+      disconnect: mock(() => {}),
+    }
+    const connectToAgent = mock(async () => adapter)
+    hydrateSessionWith('t-save-builtin', builtInAgent)
+
+    const userMessage: ThunderboltUIMessage = {
+      id: 'msg-1',
+      role: 'user',
+      parts: [{ type: 'text', text: 'Hello world' }],
+    }
+
+    const customFetch = createAgentRoutingFetch('t-save-builtin', saveMessagesSpy, httpClient, getProxyFetch, {
+      connectToAgent: connectToAgent as never,
+    })
+
+    await customFetch('/chat', {
+      method: 'POST',
+      body: JSON.stringify({ messages: [userMessage], id: 't-save-builtin' }),
+    })
+
+    expect(saveMessagesSpy).toHaveBeenCalledTimes(1)
+    expect(saveMessagesSpy.mock.calls[0]?.[0]).toEqual({ id: 't-save-builtin', messages: [userMessage] })
+    expect(order).toEqual(['save', 'fetch'])
+  })
+
+  it('saves the user message before invoking the adapter (remote-acp agent)', async () => {
+    resetStore()
+    const saveMessagesSpy = mock(async (_args: { id: string; messages: ThunderboltUIMessage[] }) => {})
+    const { adapter } = buildFakeAdapter(remoteAgent)
+    const connectToAgent = mock(async () => adapter)
+    hydrateSessionWith('t-save-remote', remoteAgent)
+
+    const userMessage: ThunderboltUIMessage = {
+      id: 'msg-1',
+      role: 'user',
+      parts: [{ type: 'text', text: 'ACP question' }],
+    }
+
+    const customFetch = createAgentRoutingFetch('t-save-remote', saveMessagesSpy, httpClient, getProxyFetch, {
+      connectToAgent: connectToAgent as never,
+    })
+
+    await customFetch('/chat', {
+      method: 'POST',
+      body: JSON.stringify({ messages: [userMessage], id: 't-save-remote' }),
+    })
+
+    expect(saveMessagesSpy).toHaveBeenCalledTimes(1)
+    expect(saveMessagesSpy.mock.calls[0]?.[0]).toEqual({ id: 't-save-remote', messages: [userMessage] })
+  })
+
   it('does NOT persist acpSessionId when the session has no chatThread (new chat)', async () => {
     resetStore()
     const fetch = mock(async () => new Response('streamed'))

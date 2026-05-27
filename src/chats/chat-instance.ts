@@ -110,6 +110,19 @@ export const createAgentRoutingFetch = (
       const { chatThread, selectedAgent, selectedMode, selectedModel } = session
       const cacheKey = `${id}:${selectedAgent.id}`
 
+      // Save the user message before invoking the adapter. This serves three
+      // purposes that previously only the built-in pipeline got for free:
+      //   1. Creates the `chat_threads` row on the first message (so the
+      //      thread is persisted regardless of agent type).
+      //   2. Lets `updateThreadTitle` see the first user message and replace
+      //      the placeholder "New Chat" title — ACP agents only emit assistant
+      //      messages from `onFinish`, so without this save the title would
+      //      never be generated.
+      //   3. Keeps message ordering consistent: the user turn is durable
+      //      before the assistant stream starts.
+      const requestBody = JSON.parse(init.body as string) as { messages: ThunderboltUIMessage[] }
+      await saveMessages({ id, messages: requestBody.messages })
+
       const persistAcpSessionId = async (newSessionId: string): Promise<void> => {
         if (!chatThread) {
           return

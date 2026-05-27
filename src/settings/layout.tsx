@@ -4,9 +4,18 @@
 
 import { Header } from '@/components/ui/header'
 import { SidebarInset } from '@/components/ui/sidebar'
-import { Outlet } from 'react-router'
+import { Outlet, useLocation } from 'react-router'
 
-export default function SettingsLayout() {
+// Sub-routes that provide their own page chrome (heading + actions + mobile
+// sidebar trigger inside their own component) and want the full content height
+// available. The settings-level Header would otherwise add ~56px of unused
+// space at the top.
+const routesWithOwnHeader = new Set(['/settings/skills'])
+
+const SettingsLayout = () => {
+  const location = useLocation()
+  const showHeader = !routesWithOwnHeader.has(location.pathname)
+
   return (
     <>
       <SidebarInset className="h-full overflow-hidden flex flex-col">
@@ -17,7 +26,7 @@ export default function SettingsLayout() {
             paddingBottom: 'var(--kb, 0px)',
           }}
         >
-          <Header />
+          {showHeader && <Header />}
           <div
             className="flex-1 overflow-auto"
             style={{
@@ -31,3 +40,5 @@ export default function SettingsLayout() {
     </>
   )
 }
+
+export default SettingsLayout

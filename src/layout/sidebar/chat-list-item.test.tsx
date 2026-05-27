@@ -4,23 +4,18 @@
 
 import { fireEvent, render, screen } from '@testing-library/react'
 import { describe, expect, it, mock } from 'bun:test'
-import type { ReactNode } from 'react'
+import { type ReactNode } from 'react'
 import { ChatListItem } from './chat-list-item'
 import type { ChatListItemProps } from './types'
 import { SidebarProvider } from '@/components/ui/sidebar'
 import { TooltipProvider } from '@/components/ui/tooltip'
+// Import for side effect: registers the framer-motion `mock.module` covering
+// every symbol concurrent test files (e.g. skills-view) might also reference.
+import '@/test-utils/framer-motion-mock'
 
 // Mock useChat
 mock.module('@ai-sdk/react', () => ({
   useChat: () => ({ status: 'ready' }),
-}))
-
-// Mock framer-motion
-mock.module('framer-motion', () => ({
-  AnimatePresence: ({ children }: { children: ReactNode }) => children,
-  m: {
-    div: ({ children, ...props }: Record<string, unknown>) => <div {...props}>{children as ReactNode}</div>,
-  },
 }))
 
 // Mock Radix dropdown to render inline (avoids portal issues in tests)

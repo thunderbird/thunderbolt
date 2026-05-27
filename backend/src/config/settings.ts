@@ -120,6 +120,7 @@ export type Settings = z.infer<typeof settingsSchema>
  * Parse and validate environment variables into settings
  */
 const parseSettings = (): Settings => {
+  const isDevelopment = process.env.NODE_ENV === 'development'
   const env = {
     fireworksApiKey: process.env.FIREWORKS_API_KEY || '',
     mistralApiKey: process.env.MISTRAL_API_KEY || '',
@@ -151,9 +152,13 @@ const parseSettings = (): Settings => {
     posthogApiKey: process.env.POSTHOG_API_KEY || '',
     waitlistEnabled: process.env.WAITLIST_ENABLED === 'true',
     waitlistAutoApproveDomains: process.env.WAITLIST_AUTO_APPROVE_DOMAINS || '',
-    powersyncUrl: process.env.POWERSYNC_URL || '',
-    powersyncJwtKid: process.env.POWERSYNC_JWT_KID || '',
-    powersyncJwtSecret: process.env.POWERSYNC_JWT_SECRET || '',
+    // Localhost defaults apply only in development. In any other NODE_ENV the
+    // value defaults to '' so the schema's superRefine guard correctly rejects
+    // an empty JWT secret whenever POWERSYNC_URL is set explicitly.
+    powersyncUrl: process.env.POWERSYNC_URL || (isDevelopment ? 'http://localhost:8080' : ''),
+    powersyncJwtKid: process.env.POWERSYNC_JWT_KID || (isDevelopment ? 'powersync-dev' : ''),
+    powersyncJwtSecret:
+      process.env.POWERSYNC_JWT_SECRET || (isDevelopment ? 'powersync-dev-secret-change-in-production' : ''),
     powersyncTokenExpirySeconds: process.env.POWERSYNC_TOKEN_EXPIRY_SECONDS || '3600',
     corsOrigins: process.env.CORS_ORIGINS || 'http://localhost:1420,tauri://localhost,http://tauri.localhost',
     corsAllowCredentials: process.env.CORS_ALLOW_CREDENTIALS !== 'false',

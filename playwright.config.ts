@@ -86,6 +86,7 @@ export default defineConfig({
         CORS_ORIGINS: `http://localhost:${oidcVitePort}`,
         TRUSTED_ORIGINS: `http://localhost:${oidcVitePort},http://localhost:${mockOidcPort}`,
         RATE_LIMIT_ENABLED: 'false',
+        DATABASE_DRIVER: 'pglite',
       },
     },
     // --- SAML frontend ---
@@ -121,6 +122,7 @@ export default defineConfig({
         CORS_ORIGINS: `http://localhost:${samlVitePort}`,
         TRUSTED_ORIGINS: `http://localhost:${samlVitePort},http://localhost:${mockSamlPort}`,
         RATE_LIMIT_ENABLED: 'false',
+        DATABASE_DRIVER: 'pglite',
       },
     },
   ],

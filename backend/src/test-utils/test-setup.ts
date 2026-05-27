@@ -11,6 +11,12 @@
 import { afterAll } from 'bun:test'
 import { testDbManager } from './db'
 
+// Tests use PGlite (in-memory). The dev-env PR flipped the default driver from
+// pglite to postgres; preload the test driver explicitly so db/client.ts doesn't
+// throw at module load when DATABASE_URL is not set (e.g. swagger.test.ts and
+// other tests that transitively import createApp from @/index).
+process.env.DATABASE_DRIVER = 'pglite'
+
 // Disable rate limiting in tests: RateLimiterDrizzle uses its own internal
 // queries that bypass PGlite transaction isolation, which breaks test cleanup
 process.env.RATE_LIMIT_ENABLED = 'false'

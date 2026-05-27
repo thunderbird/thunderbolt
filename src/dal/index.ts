@@ -111,3 +111,26 @@ export {
   setIntegrationEnabled,
   updateIntegrationCredentials,
 } from './integrations'
+
+// Skills
+export {
+  createSkill,
+  getAllSkills,
+  getPinnedSkills,
+  getSkill,
+  getSkillByName,
+  getSkillsByIds,
+  maxPinnedSkills,
+  PinLimitExceededError,
+  reorderPins,
+  setEnabled as setSkillEnabled,
+  setPinned as setSkillPinned,
+  SkillNameInvalidError,
+  SkillNameTakenError,
+  softDeleteSkill,
+  stripLegacyNameSlashes,
+  updateSkill,
+  validateSkillName,
+  type CreateSkillInput,
+  type UpdateSkillInput,
+} from './skills'

@@ -3,16 +3,25 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import type { AnyDrizzleDatabase } from '@/db/database-interface'
-import { createSetting } from '@/dal'
+import { createSetting, stripLegacyNameSlashes } from '@/dal'
 import { eq } from 'drizzle-orm'
 import type { SQLiteTableWithColumns } from 'drizzle-orm/sqlite-core'
 import { v7 as uuidv7 } from 'uuid'
-import { modelProfilesTable, modelsTable, modesTable, promptsTable, settingsTable, tasksTable } from '../db/tables'
+import {
+  modelProfilesTable,
+  modelsTable,
+  modesTable,
+  promptsTable,
+  settingsTable,
+  skillsTable,
+  tasksTable,
+} from '../db/tables'
 import { defaultAutomations, hashPrompt } from '../defaults/automations'
 import { defaultModelProfiles, hashModelProfile } from '../defaults/model-profiles'
 import { defaultModes, hashMode } from '../defaults/modes'
 import { defaultModels, hashModel } from '../defaults/models'
 import { defaultSettings, hashSetting } from '../defaults/settings'
+import { defaultSkills, hashSkill } from '../defaults/skills'
 import { defaultTasks, hashTask } from '../defaults/tasks'
 
 /**
@@ -95,6 +104,11 @@ export const reconcileDefaults = async (db: AnyDrizzleDatabase) => {
 
     // Automations (Prompts)
     await reconcileDefaultsForTable(tx, promptsTable, defaultAutomations, hashPrompt)
+
+    // Skills — one-shot legacy rename runs first so the `defaultHash` match
+    // in `reconcileDefaultsForTable` sees the post-rename rows.
+    await stripLegacyNameSlashes(tx)
+    await reconcileDefaultsForTable(tx, skillsTable, defaultSkills, hashSkill)
 
     // Settings
     await reconcileDefaultsForTable(tx, settingsTable, defaultSettings, hashSetting, 'key')

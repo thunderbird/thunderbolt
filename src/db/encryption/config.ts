@@ -53,4 +53,5 @@ export const encryptedColumnsMap: Readonly<Record<string, readonly string[]>> = 
   ],
   modes: ['name', 'label', 'icon', 'system_prompt'],
   devices: ['name'],
+  skills: ['name', 'description', 'instruction'],
 }

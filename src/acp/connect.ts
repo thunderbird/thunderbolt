@@ -53,7 +53,6 @@ export const connectToAgent = async (
       openTransport: deps.openTransport,
       ClientSideConnection: deps.ClientSideConnection,
       webSocketFactory: deps.webSocketFactory,
-      acpHttpSseRequest: deps.acpHttpSseRequest,
       textDeltaThrottleMs: deps.textDeltaThrottleMs,
     },
   )

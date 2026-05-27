@@ -15,36 +15,17 @@
 import type { Stream } from '@agentclientprotocol/sdk'
 
 /** Bidirectional ACP message stream + a lifecycle hook the adapter calls to
- *  tear the transport down (closes the WebSocket, cancels the SSE request). */
+ *  tear the transport down (closes the WebSocket). */
 export type AcpTransport = {
   stream: Stream
   close: () => void
 }
 
-/** Event payload from the Tauri Rust HTTP+SSE command. Mirrors `AcpHttpEvent`
- *  declared in `src/lib/tauri-acp-http.ts`, which owns the runtime. The Tauri
- *  wrapper re-exports its own definitions; the shapes MUST match. */
-export type AcpHttpEvent =
-  | { type: 'headers'; status: number }
-  | { type: 'chunk'; data: string }
-  | { type: 'end' }
-  | { type: 'error'; message: string }
-
-export type AcpHttpHandle = {
-  cancel: () => Promise<void>
-}
-
-export type AcpHttpSseRequestFn = (
-  url: string,
-  init: { method: string; headers: Record<string, string>; body: string },
-  onEvent: (event: AcpHttpEvent) => void,
-) => Promise<AcpHttpHandle>
-
-/** Inputs to `openTransport(...)`. The factory dispatches to ws or http-sse
- *  based on `agent.transport`; both branches honour the proxy toggle. */
+/** Inputs to `openTransport(...)`. WebSocket is the only remote transport;
+ *  the factory honours the proxy toggle (native socket vs subprotocol tunnel). */
 export type OpenTransportOptions = {
   url: string
-  transport: 'websocket' | 'http'
+  transport: 'websocket'
   /** AbortSignal that, when aborted, must close the transport and cancel any
    *  in-flight retries. The adapter owns this controller and aborts on
    *  `disconnect()`. */

@@ -34,7 +34,7 @@ import type { Agent, AgentAdapter, AgentAdapterContext, AgentCapabilities } from
 import type { FetchFn } from '@/lib/proxy-fetch'
 import type { ThunderboltUIMessage } from '@/types'
 import { openTransport } from './transports'
-import type { AcpHttpSseRequestFn, AcpTransport } from './types'
+import type { AcpTransport } from './types'
 import { createTranslatorStream } from './translators/acp-to-ai-sdk'
 import type { WebSocketFactory } from './transports/websocket'
 
@@ -91,7 +91,7 @@ const extractUserPrompt = (init: RequestInit): string => {
 
 export type AcpAdapterDeps = {
   /** Override transport opening for tests. Production omits and the factory
-   *  builds either a WS or HTTP-SSE transport based on `agent.transport`. */
+   *  builds a WebSocket transport. */
   openTransport?: typeof openTransport
   /** Override SDK connection constructor for tests. */
   ClientSideConnection?: new (
@@ -99,7 +99,6 @@ export type AcpAdapterDeps = {
     stream: AcpTransport['stream'],
   ) => ClientSideConnection
   webSocketFactory?: WebSocketFactory
-  acpHttpSseRequest?: AcpHttpSseRequestFn
   /** Override throttle for tests of the prompt → translator pipeline. */
   textDeltaThrottleMs?: number
 }
@@ -125,7 +124,7 @@ export const connectAcpAdapter = async (
   if (!agent.url) {
     throw new Error(`ACP agent ${agent.id} has no url`)
   }
-  if (agent.transport !== 'websocket' && agent.transport !== 'http') {
+  if (agent.transport !== 'websocket') {
     throw new Error(`ACP agent ${agent.id} has unsupported transport ${agent.transport}`)
   }
 
@@ -137,9 +136,7 @@ export const connectAcpAdapter = async (
     url: agent.url,
     transport: agent.transport,
     signal: transportController.signal,
-    getProxyFetch: ctx.getProxyFetch,
     webSocketFactory: deps.webSocketFactory,
-    acpHttpSseRequest: deps.acpHttpSseRequest,
   })
 
   // The `sessionUpdate` sink is rebound per prompt-turn so notifications from

@@ -101,7 +101,7 @@ export type CreateAgentInput = {
   id: string
   name: string
   type: 'remote-acp' | 'managed-acp'
-  transport: 'websocket' | 'http'
+  transport: 'websocket'
   url: string
   description?: string | null
   icon?: string | null

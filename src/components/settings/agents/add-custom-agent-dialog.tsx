@@ -16,16 +16,13 @@ import { Dialog } from '@/components/ui/dialog'
 import { getPlatform, isTauri } from '@/lib/platform'
 
 /** Maps a user-entered URL to the ACP transport flavor we support, or `null`
- *  when the scheme is unsupported (or the URL is malformed). Exported so the
- *  connect logic / future validation can reuse the same single source of truth. */
-export const inferTransport = (url: string): 'websocket' | 'http' | null => {
+ *  when the scheme is unsupported (or the URL is malformed). WebSocket is the
+ *  only supported remote transport — HTTP/HTTPS endpoints are rejected. */
+export const inferTransport = (url: string): 'websocket' | null => {
   try {
     const u = new URL(url)
     if (u.protocol === 'ws:' || u.protocol === 'wss:') {
       return 'websocket'
-    }
-    if (u.protocol === 'http:' || u.protocol === 'https:') {
-      return 'http'
     }
     return null
   } catch {
@@ -34,8 +31,8 @@ export const inferTransport = (url: string): 'websocket' | 'http' | null => {
 }
 
 /** True when running on iOS via Tauri — Apple's App Transport Security rejects
- *  cleartext (`ws://`, `http://`) by default, so we surface a clear error
- *  upfront instead of letting the connection silently fail. */
+ *  cleartext (`ws://`) by default, so we surface a clear error upfront instead
+ *  of letting the connection silently fail. */
 const defaultIsTauriIOS = (): boolean => isTauri() && getPlatform() === 'ios'
 
 /** Pure validation of `url` against the platform's transport rules. Returns
@@ -44,22 +41,13 @@ const defaultIsTauriIOS = (): boolean => isTauri() && getPlatform() === 'ios'
 export const validateAgentUrl = (
   url: string,
   isIos: () => boolean = defaultIsTauriIOS,
-): { transport: 'websocket' | 'http' } | { error: string } => {
+): { transport: 'websocket' } | { error: string } => {
   const transport = inferTransport(url)
   if (!transport) {
-    return { error: 'URL must start with wss://, ws://, https://, or http://' }
+    return { error: 'Only WebSocket endpoints are supported (wss:// or ws://)' }
   }
-  if (isIos()) {
-    try {
-      const protocol = new URL(url).protocol
-      if (protocol === 'ws:' || protocol === 'http:') {
-        return { error: 'iOS requires a secure URL (wss:// or https://)' }
-      }
-    } catch {
-      // inferTransport already returned non-null, so URL parsing succeeded.
-      // Reaching this branch is impossible; keep the guard tight either way.
-      return { error: 'Invalid URL' }
-    }
+  if (isIos() && new URL(url).protocol === 'ws:') {
+    return { error: 'iOS requires a secure URL (wss://)' }
   }
   return { transport }
 }
@@ -68,7 +56,7 @@ export type AddCustomAgentPayload = {
   name: string
   url: string
   description: string | null
-  transport: 'websocket' | 'http'
+  transport: 'websocket'
 }
 
 type AddCustomAgentDialogProps = {
@@ -151,7 +139,7 @@ export const AddCustomAgentDialog = ({ open, onOpenChange, onSubmit, isIos }: Ad
             <Label htmlFor="agent-url">URL</Label>
             <Input
               id="agent-url"
-              placeholder="wss://example.com/ws  or  https://example.com/acp"
+              placeholder="wss://example.com/ws"
               value={url}
               onChange={(e) => {
                 setUrl(e.target.value)
@@ -162,7 +150,7 @@ export const AddCustomAgentDialog = ({ open, onOpenChange, onSubmit, isIos }: Ad
               autoComplete="off"
             />
             <p className="text-[length:var(--font-size-xs)] text-muted-foreground">
-              WebSocket (wss://) or HTTP (https://) endpoint for the remote ACP agent
+              WebSocket endpoint for the remote ACP agent
             </p>
           </div>
           <div className="grid gap-2">

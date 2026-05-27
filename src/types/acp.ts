@@ -34,7 +34,7 @@ export type Agent = {
   id: string
   name: string
   type: 'built-in' | 'remote-acp' | 'managed-acp'
-  transport: 'in-process' | 'websocket' | 'http'
+  transport: 'in-process' | 'websocket'
   url: string | null
   description: string | null
   icon: string | null

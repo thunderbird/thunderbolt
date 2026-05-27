@@ -74,8 +74,8 @@ describe('agents DAL', () => {
         id: 'agent-default',
         name: 'Defaults',
         type: 'remote-acp',
-        transport: 'http',
-        url: 'https://example.test/acp',
+        transport: 'websocket',
+        url: 'wss://example.test/acp',
         userId: 'u1',
       })
       const row = await getDb().select().from(agentsTable).get()
@@ -110,8 +110,8 @@ describe('agents DAL', () => {
         id: 'a2',
         name: 'Untouched',
         type: 'remote-acp',
-        transport: 'http',
-        url: 'https://x',
+        transport: 'websocket',
+        url: 'wss://x',
         userId: 'u1',
       })
       await updateAgent(getDb(), 'a2', {})

@@ -3,13 +3,12 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 /**
- * Transport factory. Chooses between WebSocket and HTTP+SSE based on
- * `agent.transport`. Connected vs Standalone is layered orthogonally:
+ * Transport factory. WebSocket is the only supported remote ACP transport.
+ * Connected vs Standalone is layered orthogonally:
  *
- *   - Web (always Connected): proxied transport always.
- *   - Tauri + proxy toggle ON  (Connected):  proxied transport.
- *   - Tauri + proxy toggle OFF (Standalone): native transport
- *     (real `new WebSocket()` / Rust SSE command).
+ *   - Web (always Connected): proxied WebSocket via `createProxyWebSocket`.
+ *   - Tauri + proxy toggle ON  (Connected):  proxied WebSocket.
+ *   - Tauri + proxy toggle OFF (Standalone): native `new WebSocket()`.
  *
  * The effective proxy value is read from `computeEffectiveProxyEnabled` so the
  * factory matches the rest of the codebase (one source of truth).
@@ -17,20 +16,17 @@
 
 import type { AnyMessage } from '@agentclientprotocol/sdk'
 import { isTauri } from '@/lib/platform'
-import { computeEffectiveProxyEnabled, createProxyWebSocket, type FetchFn } from '@/lib/proxy-fetch'
+import { computeEffectiveProxyEnabled, createProxyWebSocket } from '@/lib/proxy-fetch'
 import { useLocalSettingsStore } from '@/stores/local-settings-store'
-import type { AcpHttpSseRequestFn, AcpTransport } from '../types'
-import { openHttpSseTransport } from './http-sse'
+import type { AcpTransport } from '../types'
 import { openWebSocketTransport, type WebSocketFactory, type WebSocketLike } from './websocket'
 
 export type OpenTransportInputs = {
   url: string
-  transport: 'websocket' | 'http'
+  transport: 'websocket'
   signal: AbortSignal
-  getProxyFetch: () => FetchFn
-  /** Test seam — production omits these and the factory builds defaults. */
+  /** Test seam — production omits and the factory builds a default. */
   webSocketFactory?: WebSocketFactory
-  acpHttpSseRequest?: AcpHttpSseRequestFn
   /** Overrides for the proxy-effective + standalone determinations. Tests pass
    *  explicit values to avoid touching the platform / localStorage globals. */
   isStandalone?: () => boolean
@@ -57,34 +53,23 @@ export const isStandaloneTransport = (
 export const openTransport = async (inputs: OpenTransportInputs): Promise<AcpTransport> => {
   const standalone = isStandaloneTransport(inputs.isStandalone, inputs.readProxyEnabled)
 
-  if (inputs.transport === 'websocket') {
-    const factory: WebSocketFactory =
-      inputs.webSocketFactory ??
-      (standalone
-        ? (url) => new WebSocket(url) as unknown as WebSocketLike
-        : (() => {
-            const proxyWs = createProxyWebSocket({ cloudUrl: cloudWsUrl(), isStandalone: inputs.isStandalone })
-            return (url) => proxyWs(url) as unknown as WebSocketLike
-          })())
+  const factory: WebSocketFactory =
+    inputs.webSocketFactory ??
+    (standalone
+      ? (url) => new WebSocket(url) as unknown as WebSocketLike
+      : (() => {
+          const proxyWs = createProxyWebSocket({ cloudUrl: cloudWsUrl(), isStandalone: inputs.isStandalone })
+          return (url) => proxyWs(url) as unknown as WebSocketLike
+        })())
 
-    return openWebSocketTransport({
-      url: inputs.url,
-      signal: inputs.signal,
-      webSocketFactory: factory,
-      backoffMs: inputs.backoffMs,
-    })
-  }
-
-  return openHttpSseTransport({
+  return openWebSocketTransport({
     url: inputs.url,
     signal: inputs.signal,
-    useTauriNative: standalone,
-    getProxyFetch: inputs.getProxyFetch,
-    acpHttpSseRequest: inputs.acpHttpSseRequest,
+    webSocketFactory: factory,
+    backoffMs: inputs.backoffMs,
   })
 }
 
 // Re-export for callers that build their own transport (e.g. integration tests).
 export type { AnyMessage }
 export { openWebSocketTransport } from './websocket'
-export { openHttpSseTransport } from './http-sse'

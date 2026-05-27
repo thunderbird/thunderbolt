@@ -12,7 +12,7 @@
 
 export type AgentType = 'built-in' | 'remote-acp' | 'managed-acp'
 
-export type AgentTransport = 'in-process' | 'websocket' | 'http'
+export type AgentTransport = 'in-process' | 'websocket'
 
 /** Descriptor returned by `GET /agents` for remote (`remote-acp`) and
  *  server-managed (`managed-acp`) agents. The built-in agent is never on the
@@ -21,7 +21,7 @@ export type RemoteAgentDescriptor = {
   id: string
   name: string
   type: 'remote-acp' | 'managed-acp'
-  transport: 'websocket' | 'http'
+  transport: 'websocket'
   url: string
   description: string | null
   icon: string | null

@@ -25,12 +25,12 @@ describe('inferTransport', () => {
     expect(inferTransport('ws://example.com/ws')).toBe('websocket')
   })
 
-  it('returns http for https:// URLs', () => {
-    expect(inferTransport('https://example.com/acp')).toBe('http')
+  it('returns null for http:// URLs (unsupported)', () => {
+    expect(inferTransport('http://example.com/acp')).toBeNull()
   })
 
-  it('returns http for http:// URLs', () => {
-    expect(inferTransport('http://example.com/acp')).toBe('http')
+  it('returns null for https:// URLs (unsupported)', () => {
+    expect(inferTransport('https://example.com/acp')).toBeNull()
   })
 
   it('returns null for unsupported schemes', () => {
@@ -51,17 +51,23 @@ describe('validateAgentUrl', () => {
     expect(validateAgentUrl('wss://example.com', notIos)).toEqual({ transport: 'websocket' })
   })
 
-  it('accepts https:// on non-iOS platforms', () => {
-    expect(validateAgentUrl('https://example.com/acp', notIos)).toEqual({ transport: 'http' })
-  })
-
   it('accepts ws:// on non-iOS platforms (LAN/dev use)', () => {
     expect(validateAgentUrl('ws://localhost:8080/ws', notIos)).toEqual({ transport: 'websocket' })
   })
 
+  it('rejects http:// with a clear "WebSocket only" message', () => {
+    const result = validateAgentUrl('http://example.com/acp', notIos)
+    expect('error' in result && result.error).toMatch(/WebSocket|wss:\/\/|ws:\/\//i)
+  })
+
+  it('rejects https:// with a clear "WebSocket only" message', () => {
+    const result = validateAgentUrl('https://example.com/acp', notIos)
+    expect('error' in result && result.error).toMatch(/WebSocket|wss:\/\/|ws:\/\//i)
+  })
+
   it('rejects unsupported schemes with a user-facing message', () => {
     const result = validateAgentUrl('ftp://example.com', notIos)
-    expect('error' in result && result.error).toMatch(/wss:\/\/|ws:\/\/|https:\/\/|http:\/\//)
+    expect('error' in result && result.error).toMatch(/WebSocket|wss:\/\/|ws:\/\//i)
   })
 
   it('rejects ws:// on Tauri iOS (ATS forbids cleartext)', () => {
@@ -69,17 +75,8 @@ describe('validateAgentUrl', () => {
     expect('error' in result && result.error).toMatch(/iOS.*secure/i)
   })
 
-  it('rejects http:// on Tauri iOS', () => {
-    const result = validateAgentUrl('http://example.com', isIos)
-    expect('error' in result && result.error).toMatch(/iOS.*secure/i)
-  })
-
   it('still accepts wss:// on Tauri iOS', () => {
     expect(validateAgentUrl('wss://example.com', isIos)).toEqual({ transport: 'websocket' })
-  })
-
-  it('still accepts https:// on Tauri iOS', () => {
-    expect(validateAgentUrl('https://example.com', isIos)).toEqual({ transport: 'http' })
   })
 })
 
@@ -101,13 +98,13 @@ describe('AddCustomAgentDialog', () => {
     expect(submit).not.toBeDisabled()
   })
 
-  it('invokes onSubmit with the inferred transport and trimmed values', async () => {
+  it('invokes onSubmit with websocket transport and trimmed values', async () => {
     const onSubmit = mock(async (_: AddCustomAgentPayload) => {})
     const onOpenChange = mock(() => {})
     render(<AddCustomAgentDialog open={true} onOpenChange={onOpenChange} onSubmit={onSubmit} isIos={notIos} />)
 
     fireEvent.change(screen.getByLabelText(/name/i), { target: { value: '  My Agent  ' } })
-    fireEvent.change(screen.getByLabelText(/url/i), { target: { value: '  https://example.com/acp  ' } })
+    fireEvent.change(screen.getByLabelText(/url/i), { target: { value: '  wss://example.com/ws  ' } })
     fireEvent.change(screen.getByLabelText(/description/i), { target: { value: 'Demo' } })
 
     await act(async () => {
@@ -117,15 +114,15 @@ describe('AddCustomAgentDialog', () => {
     expect(onSubmit).toHaveBeenCalledTimes(1)
     expect(onSubmit).toHaveBeenCalledWith({
       name: 'My Agent',
-      url: 'https://example.com/acp',
+      url: 'wss://example.com/ws',
       description: 'Demo',
-      transport: 'http',
+      transport: 'websocket',
     })
     // Closes dialog on success.
     expect(onOpenChange).toHaveBeenCalledWith(false)
   })
 
-  it('shows the iOS rejection inline and does NOT call onSubmit', async () => {
+  it('shows the iOS rejection inline for ws:// and does NOT call onSubmit', async () => {
     const onSubmit = mock(async () => {})
     const onOpenChange = mock(() => {})
     render(<AddCustomAgentDialog open={true} onOpenChange={onOpenChange} onSubmit={onSubmit} isIos={() => true} />)
@@ -139,6 +136,22 @@ describe('AddCustomAgentDialog', () => {
 
     expect(onSubmit).not.toHaveBeenCalled()
     expect(screen.getByRole('alert')).toHaveTextContent(/secure/i)
+  })
+
+  it('shows an inline error for http:// (unsupported scheme) and does NOT call onSubmit', async () => {
+    const onSubmit = mock(async () => {})
+    const onOpenChange = mock(() => {})
+    render(<AddCustomAgentDialog open={true} onOpenChange={onOpenChange} onSubmit={onSubmit} isIos={notIos} />)
+
+    fireEvent.change(screen.getByLabelText(/name/i), { target: { value: 'Bad Agent' } })
+    fireEvent.change(screen.getByLabelText(/url/i), { target: { value: 'http://example.com' } })
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: /add agent/i }))
+    })
+
+    expect(onSubmit).not.toHaveBeenCalled()
+    expect(screen.getByRole('alert')).toBeInTheDocument()
   })
 
   it('shows an inline error for unsupported schemes and does NOT call onSubmit', async () => {

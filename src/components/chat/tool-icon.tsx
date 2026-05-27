@@ -3,7 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { cn } from '@/lib/utils'
-import { motion } from 'framer-motion'
+import { m } from 'framer-motion'
 import type { LucideIcon } from 'lucide-react'
 import { useState } from 'react'
 import { Avatar, AvatarFallback } from '../ui/avatar'
@@ -89,7 +89,7 @@ export const ToolIcon = ({
     >
       <AvatarFallback>
         {favicon ? (
-          <motion.div
+          <m.div
             key={`${tooltipKey}-favicon`}
             initial={{ scale: 0 }}
             animate={{
@@ -103,7 +103,7 @@ export const ToolIcon = ({
               className="size-4 object-cover rounded-full"
               onError={() => originalFaviconUrl && handleFaviconError(originalFaviconUrl)}
             />
-          </motion.div>
+          </m.div>
         ) : Icon ? (
           <Icon className={cn('size-4', isError && 'text-yellow-500')} />
         ) : (

@@ -4,7 +4,7 @@
 
 import { useObjectView } from '@/content-view/context'
 import type { ToolUIPart } from 'ai'
-import { motion } from 'framer-motion'
+import { m } from 'framer-motion'
 import { Tooltip, TooltipContent, TooltipTrigger } from '../ui/tooltip'
 import { ToolIcon } from './tool-icon'
 import { ToolItem } from './tool-item'
@@ -64,7 +64,7 @@ export const ToolGroup = ({ tools, isStreaming, isLastPartInMessage, hasTextInMe
       {showLoadingNext && (
         <Tooltip>
           <TooltipTrigger asChild>
-            <motion.div
+            <m.div
               initial={{ scale: 0 }}
               animate={{
                 scale: 1,
@@ -80,7 +80,7 @@ export const ToolGroup = ({ tools, isStreaming, isLastPartInMessage, hasTextInMe
                 tooltipKey="next-action-loading"
                 onClick={() => {}}
               />
-            </motion.div>
+            </m.div>
           </TooltipTrigger>
           <TooltipContent className="max-w-xs">
             <p className="font-medium">Thinking...</p>

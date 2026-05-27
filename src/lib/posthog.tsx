@@ -58,7 +58,7 @@ export const initPosthog = async (httpClient?: HttpClient): Promise<HandleResult
     const debugPosthog = getLocalSetting('debugPosthog')
     const db = getDb()
     const { dataCollection } = await getSettings(db, {
-      data_collection: true,
+      data_collection: false,
     })
 
     const client = httpClient ?? createClient({ prefixUrl: cloudUrl })

@@ -14,7 +14,7 @@ import { SidebarWebview } from '@/content-view/sidebar-webview'
 import { useIsMobile } from '@/hooks/use-mobile'
 import { isTauri } from '@/lib/platform'
 import { useSettings } from '@/hooks/use-settings'
-import { animate, AnimatePresence, motion } from 'framer-motion'
+import { animate, AnimatePresence, m } from 'framer-motion'
 import { useEffect, useRef } from 'react'
 import { usePanelRef } from 'react-resizable-panels'
 import { Outlet } from 'react-router'
@@ -141,7 +141,7 @@ export default function Page() {
         >
           <AnimatePresence initial={false}>
             {isOpen && (
-              <motion.div
+              <m.div
                 key="sidebar-content"
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
@@ -153,7 +153,7 @@ export default function Page() {
                   <SidebarWebview config={state.data} onClose={close} hidden={previewHidden} />
                 )}
                 {state.type === 'object-view' && <ObjectSidebarContent content={state.data} onClose={close} />}
-              </motion.div>
+              </m.div>
             )}
           </AnimatePresence>
         </ResizablePanel>

@@ -4,7 +4,7 @@
 
 import { Download, RefreshCw, X, CheckCircle, AlertCircle, Loader2 } from 'lucide-react'
 import { useState } from 'react'
-import { motion, AnimatePresence } from 'framer-motion'
+import { m, AnimatePresence } from 'framer-motion'
 import { useDesktopUpdate, type UpdateStatus } from '@/hooks/use-desktop-update'
 import { Button } from '@/components/ui/button'
 import { isDesktop } from '@/lib/platform'
@@ -48,7 +48,7 @@ export const UpdateNotification = () => {
   return (
     <AnimatePresence>
       {isVisible && (
-        <motion.div
+        <m.div
           key="update-notification"
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
@@ -100,7 +100,7 @@ export const UpdateNotification = () => {
               </button>
             </div>
           </div>
-        </motion.div>
+        </m.div>
       )}
     </AnimatePresence>
   )

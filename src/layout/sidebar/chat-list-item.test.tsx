@@ -18,7 +18,7 @@ mock.module('@ai-sdk/react', () => ({
 // Mock framer-motion
 mock.module('framer-motion', () => ({
   AnimatePresence: ({ children }: { children: ReactNode }) => children,
-  motion: {
+  m: {
     div: ({ children, ...props }: Record<string, unknown>) => <div {...props}>{children as ReactNode}</div>,
   },
 }))

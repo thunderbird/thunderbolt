@@ -4,7 +4,7 @@
 
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
-import { AnimatePresence, motion } from 'framer-motion'
+import { AnimatePresence, m } from 'framer-motion'
 import { ChevronDown } from 'lucide-react'
 
 type ScrollToBottomButtonProps = {
@@ -16,7 +16,7 @@ type ScrollToBottomButtonProps = {
 export const ScrollToBottomButton = ({ isVisible, onClick, className }: ScrollToBottomButtonProps) => (
   <AnimatePresence>
     {isVisible && (
-      <motion.div
+      <m.div
         initial={{ opacity: 0, y: 10 }}
         animate={{ opacity: 1, y: 0 }}
         exit={{ opacity: 0, y: 10 }}
@@ -32,7 +32,7 @@ export const ScrollToBottomButton = ({ isVisible, onClick, className }: ScrollTo
         >
           <ChevronDown className="size-[var(--icon-size-default)]" />
         </Button>
-      </motion.div>
+      </m.div>
     )}
   </AnimatePresence>
 )

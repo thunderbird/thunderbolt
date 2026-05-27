@@ -4,7 +4,7 @@
 
 import { useIsMobile } from '@/hooks/use-mobile'
 import { cn } from '@/lib/utils'
-import { AnimatePresence, motion } from 'framer-motion'
+import { AnimatePresence, m } from 'framer-motion'
 import { useEffect, useRef } from 'react'
 import { useChatScrollHandler } from '@/chats/use-chat-scroll-handler'
 import { ChatMessages } from './chat-messages'
@@ -55,7 +55,7 @@ export default function ChatUI() {
           {hasMessages ? (
             <div key="messages" className="relative flex-1 min-h-0">
               <div className="pointer-events-none absolute inset-x-0 top-0 z-10 h-12 bg-gradient-to-b from-background via-background/50 to-transparent" />
-              <motion.div
+              <m.div
                 ref={scrollContainerRef}
                 {...scrollHandlers}
                 initial={{ opacity: 0 }}
@@ -65,7 +65,7 @@ export default function ChatUI() {
               >
                 <ChatMessages />
                 <div ref={scrollTargetRef} className="shrink-0 !mt-0 h-2 md:h-3" />
-              </motion.div>
+              </m.div>
               <ScrollToBottomButton
                 isVisible={!isAtBottom}
                 onClick={() => scrollToBottomAndActivate(true)}
@@ -73,7 +73,7 @@ export default function ChatUI() {
               />
             </div>
           ) : isMobile ? (
-            <motion.div
+            <m.div
               key="logo"
               className="flex-1 flex items-center justify-center"
               initial={{ opacity: 0 }}
@@ -81,11 +81,11 @@ export default function ChatUI() {
               exit={{ opacity: 0 }}
             >
               <AppLogo size={64} className="opacity-60" />
-            </motion.div>
+            </m.div>
           ) : null}
         </AnimatePresence>
 
-        <motion.div
+        <m.div
           className={cn(
             '-mt-3 md:-mt-4 relative z-10 px-3 pb-3 md:px-4 md:pb-4 flex',
             !hasMessages && !isMobile && 'flex-1 items-center',
@@ -98,7 +98,7 @@ export default function ChatUI() {
             duration: 0.25,
           }}
         >
-          <motion.div
+          <m.div
             className="flex flex-col items-center w-full"
             layout
             transition={{
@@ -107,7 +107,7 @@ export default function ChatUI() {
               duration: 0.25,
             }}
           >
-            <motion.div
+            <m.div
               className="w-full max-w-[696px] min-w-[268px] bg-card dark:bg-[oklch(0.182_0_0)] border dark:border-input rounded-2xl"
               layout
               transition={{
@@ -117,9 +117,9 @@ export default function ChatUI() {
               }}
             >
               <ChatPromptInput />
-            </motion.div>
-          </motion.div>
-        </motion.div>
+            </m.div>
+          </m.div>
+        </m.div>
       </div>
     </div>
   )

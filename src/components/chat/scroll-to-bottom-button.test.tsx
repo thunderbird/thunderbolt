@@ -65,7 +65,7 @@ describe('ScrollToBottomButton', () => {
         await getClock().tickAsync(300)
       })
 
-      // The className is applied to the motion.div wrapper, not the button
+      // The className is applied to the m.div wrapper, not the button
       // We can verify the button exists and has proper styling
       const button = screen.getByRole('button', { name: 'Scroll to bottom' })
       expect(button).toBeInTheDocument()

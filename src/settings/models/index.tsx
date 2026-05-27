@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { createModel } from '@/ai/fetch'
+import { createModel, getTinfoilClient } from '@/ai/fetch'
 import { ModificationIndicator } from '@/components/modification-indicator'
 import {
   AlertDialog,
@@ -163,7 +163,7 @@ const modelReducer = (state: ModelState, action: ModelAction): ModelState => {
 
 const formSchema = z
   .object({
-    provider: z.enum(['thunderbolt', 'anthropic', 'openai', 'custom', 'openrouter']),
+    provider: z.enum(['thunderbolt', 'anthropic', 'openai', 'custom', 'openrouter', 'tinfoil']),
     name: z.string().min(1, { message: 'Name is required.' }),
     model: z.string().min(1, { message: 'Model name is required.' }),
     customModel: z.string().optional(),
@@ -581,6 +581,24 @@ export default function ModelsPage() {
           endpoint = 'https://openrouter.ai/api/v1/models'
           headers = { Authorization: `Bearer ${apiKey}` }
           break
+        case 'tinfoil': {
+          // /v1/models is unauthenticated, but route through SecureClient so
+          // attestation is warmed up before the user's first chat.
+          const client = await getTinfoilClient()
+          const response = await http.get(`${client.getBaseURL()}models`, { fetch: client.fetch }).json<{
+            data: Array<AvailableModel & { endpoints?: string[]; tool_calling?: boolean }>
+          }>()
+
+          // The catalog also includes embedding, audio, document, and tts
+          // models; filter to ones that expose chat completions.
+          const tinfoilModels = (response.data || [])
+            .filter((m) => Array.isArray(m.endpoints) && m.endpoints.includes('/v1/chat/completions'))
+            .map((m) => ({ ...m, supports_tools: m.tool_calling === true }))
+            .sort((a, b) => a.id.localeCompare(b.id))
+
+          dispatch({ type: 'FETCH_MODELS_SUCCESS', models: tinfoilModels })
+          return
+        }
         case 'thunderbolt': {
           const thunderboltModels = [
             { id: 'kimi-k2-instruct', name: 'Kimi K2', supports_tools: true },
@@ -781,7 +799,7 @@ export default function ModelsPage() {
       form.setValue('toolUsage', true, { shouldValidate: false, shouldDirty: false })
 
       // Fetch models if we have the necessary credentials
-      if (['thunderbolt', 'anthropic'].includes(currentProvider)) {
+      if (['thunderbolt', 'tinfoil', 'anthropic'].includes(currentProvider)) {
         fetchAvailableModels(currentProvider)
       }
 
@@ -811,6 +829,8 @@ export default function ModelsPage() {
     switch (provider) {
       case 'thunderbolt':
         return 'Thunderbolt'
+      case 'tinfoil':
+        return 'Tinfoil'
       case 'anthropic':
         return 'Anthropic'
       case 'openai':
@@ -856,7 +876,7 @@ export default function ModelsPage() {
   const watchedModel = form.watch('model')
 
   const canTestConnection = useMemo(() => {
-    if (watchedProvider === 'anthropic') {
+    if (['anthropic', 'tinfoil'].includes(watchedProvider)) {
       return !!watchedModel && watchedApiKey
     }
 
@@ -892,6 +912,7 @@ export default function ModelsPage() {
                           </SelectTrigger>
                           <SelectContent>
                             <SelectItem value="thunderbolt">Thunderbolt</SelectItem>
+                            <SelectItem value="tinfoil">Tinfoil</SelectItem>
                             <SelectItem value="openai">OpenAI</SelectItem>
                             <SelectItem value="openrouter">OpenRouter</SelectItem>
                             <SelectItem value="anthropic">Anthropic</SelectItem>
@@ -956,13 +977,13 @@ export default function ModelsPage() {
                   const url = form.watch('url')
 
                   // Show model selection if:
-                  // 1. Thunderbolt (no API key needed)
+                  // 1. Thunderbolt / Tinfoil (no API key needed)
                   // 1. Anthropic (API key required for testing - model list is hardwired)
                   // 2. Other providers with API key
                   // 3. OpenAI Compatible with URL (API key optional)
                   const showModelSelection =
                     !modelLoadError &&
-                    (['thunderbolt', 'anthropic'].includes(provider) ||
+                    (['thunderbolt', 'tinfoil', 'anthropic'].includes(provider) ||
                       (provider && apiKey) ||
                       (provider === 'custom' && url))
 

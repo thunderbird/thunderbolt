@@ -58,6 +58,11 @@ import { isSsoMode, isWaitlistBypassed } from './lib/auth-mode'
 import { isTauri } from './lib/platform'
 import { getPowerSyncInstance } from './db/powersync'
 import { type ComponentProps, Suspense, lazy, useEffect } from 'react'
+import { LazyMotion } from 'framer-motion'
+
+// Loaded after first paint so framer-motion feature code lives in an
+// async chunk instead of the entry bundle.
+const loadMotionFeatures = () => import('@/lib/motion-features').then((mod) => mod.default)
 
 // Lazily import SSO components so non-enterprise deployments don't pay
 // for the extra bundle size and attack surface.
@@ -249,8 +254,10 @@ export const App = () => {
 
   return (
     <ThemeProvider>
-      {renderAppContent()}
-      <RevokedDeviceModal open={revokedDeviceOpen} />
+      <LazyMotion features={loadMotionFeatures} strict>
+        {renderAppContent()}
+        <RevokedDeviceModal open={revokedDeviceOpen} />
+      </LazyMotion>
     </ThemeProvider>
   )
 }

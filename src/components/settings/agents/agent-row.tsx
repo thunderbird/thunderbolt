@@ -50,6 +50,20 @@ export const canDeleteAgent = (agent: Agent, currentUserId: string | null): bool
   return agent.userId === currentUserId
 }
 
+/** Computes the toggle's disabled state and the corresponding "always available"
+ *  tooltip text. Built-in is an in-code constant; system agents are configured
+ *  on the backend via env vars — neither can be toggled by the user. Exported
+ *  for unit testing the branching without rendering the portaled tooltip. */
+export const agentToggleDisabled = (agent: Agent): { disabled: boolean; disabledTooltip: string | null } => {
+  if (agent.type === 'built-in') {
+    return { disabled: true, disabledTooltip: 'Built-in agent is always available' }
+  }
+  if (agent.type === 'managed-acp' && agent.isSystem === 1) {
+    return { disabled: true, disabledTooltip: 'System agent is always available' }
+  }
+  return { disabled: false, disabledTooltip: null }
+}
+
 type AgentRowProps = {
   agent: Agent
   currentUserId: string | null
@@ -61,8 +75,7 @@ export const AgentRow = ({ agent, currentUserId, onToggle, onDelete }: AgentRowP
   const Icon = iconForAgent(agent)
   const badge = badgeForAgent(agent)
   const showDelete = canDeleteAgent(agent, currentUserId)
-  // Built-in is an in-code constant — the toggle is for visual parity only.
-  const toggleDisabled = agent.type === 'built-in'
+  const { disabled: toggleDisabled, disabledTooltip } = agentToggleDisabled(agent)
   const isEnabled = agent.enabled === 1
   const [deleteOpen, setDeleteOpen] = useState(false)
 
@@ -106,7 +119,7 @@ export const AgentRow = ({ agent, currentUserId, onToggle, onDelete }: AgentRowP
               </TooltipTrigger>
               <TooltipContent side="bottom">
                 <p>
-                  {toggleDisabled ? 'Built-in agent is always available' : isEnabled ? 'Disable agent' : 'Enable agent'}
+                  {disabledTooltip ?? (isEnabled ? 'Disable agent' : 'Enable agent')}
                 </p>
               </TooltipContent>
             </Tooltip>

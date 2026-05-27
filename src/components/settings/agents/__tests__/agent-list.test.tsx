@@ -8,7 +8,7 @@ import { afterEach, describe, expect, it, mock } from 'bun:test'
 import { builtInAgent } from '@/defaults/agents'
 import type { Agent } from '@/types/acp'
 import { AgentList } from '../agent-list'
-import { canDeleteAgent } from '../agent-row'
+import { agentToggleDisabled, canDeleteAgent } from '../agent-row'
 
 afterEach(() => {
   cleanup()
@@ -127,5 +127,46 @@ describe('AgentList', () => {
     render(<AgentList agents={[builtInAgent]} currentUserId="user-42" onToggle={onToggle} onDelete={onDelete} />)
 
     expect(screen.getByTestId(`agent-toggle-${builtInAgent.id}`)).toBeDisabled()
+  })
+
+  it('disables the toggle for system agents', () => {
+    const onToggle = mock(() => {})
+    const onDelete = mock(() => {})
+
+    render(<AgentList agents={[systemAgent]} currentUserId="user-42" onToggle={onToggle} onDelete={onDelete} />)
+
+    expect(screen.getByTestId(`agent-toggle-${systemAgent.id}`)).toBeDisabled()
+  })
+
+  it('keeps the toggle enabled for custom agents', () => {
+    const onToggle = mock(() => {})
+    const onDelete = mock(() => {})
+
+    render(<AgentList agents={[customAgent]} currentUserId="user-42" onToggle={onToggle} onDelete={onDelete} />)
+
+    expect(screen.getByTestId(`agent-toggle-${customAgent.id}`)).not.toBeDisabled()
+  })
+})
+
+describe('agentToggleDisabled', () => {
+  it('disables the toggle for the built-in agent with the built-in tooltip', () => {
+    expect(agentToggleDisabled(builtInAgent)).toEqual({
+      disabled: true,
+      disabledTooltip: 'Built-in agent is always available',
+    })
+  })
+
+  it('disables the toggle for system agents with the system tooltip', () => {
+    expect(agentToggleDisabled(systemAgent)).toEqual({
+      disabled: true,
+      disabledTooltip: 'System agent is always available',
+    })
+  })
+
+  it('keeps the toggle enabled for custom agents and emits no tooltip', () => {
+    expect(agentToggleDisabled(customAgent)).toEqual({
+      disabled: false,
+      disabledTooltip: null,
+    })
   })
 })

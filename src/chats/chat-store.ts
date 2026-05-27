@@ -3,6 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { updateSettings } from '@/dal'
+import { updateChatThread } from '@/dal/chat-threads'
 import { getDb } from '@/db/database'
 import { type MCPClient } from '@/lib/mcp-provider'
 import { trackEvent } from '@/lib/posthog'
@@ -38,7 +39,7 @@ type ChatStoreActions = {
   setMcpClients(mcpClients: MCPClient[]): void
   setModes(modes: Mode[]): void
   setModels(models: Model[]): void
-  setSelectedAgent(id: string, agent: Agent): void
+  setSelectedAgent(id: string, agent: Agent): Promise<void>
   setSelectedMode(id: string, modeId: string | null): Promise<void>
   setSelectedModel(id: string, modelId: string | null): Promise<void>
   updateSession(id: string, session: Partial<Omit<ChatSession, 'id'>>): void
@@ -86,7 +87,7 @@ export const useChatStore = create<ChatStore>()((set, get) => ({
     set({ models })
   },
 
-  setSelectedAgent: (id, agent) => {
+  setSelectedAgent: async (id, agent) => {
     const { sessions } = get()
 
     const session = sessions.get(id)
@@ -96,9 +97,16 @@ export const useChatStore = create<ChatStore>()((set, get) => ({
     }
 
     const nextSessions = new Map(sessions)
-    nextSessions.set(id, { ...session, selectedAgent: agent })
+    const nextChatThread = session.chatThread ? { ...session.chatThread, agentId: agent.id } : session.chatThread
+    nextSessions.set(id, { ...session, chatThread: nextChatThread, selectedAgent: agent })
 
     set({ sessions: nextSessions })
+
+    if (session.chatThread) {
+      await updateChatThread(getDb(), session.chatThread.id, { agentId: agent.id })
+    }
+
+    trackEvent('agent_select', { agent: agent.id })
   },
 
   setSelectedMode: async (id, modeId) => {

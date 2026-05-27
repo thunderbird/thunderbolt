@@ -5,7 +5,10 @@
 import { useDatabase, useHttpClient } from '@/contexts'
 import { useProxyFetchGetter } from '@/lib/proxy-fetch-context'
 import {
+  composeAllAgents,
+  getAllAgents,
   getAllModes,
+  getAllSystemAgents,
   getAvailableModels,
   getChatMessages,
   getChatThread,
@@ -119,17 +122,63 @@ export const useHydrateChatStore = ({ id, isNew }: UseHydrateChatStoreParams) =>
     // If the session does not exist, create it below
     const settings = await getSettings(db, { selected_model: String })
 
-    const [defaultModel, selectedMode, chatThread, initialMessages, modes, models, triggerData, mcpClients] =
-      await Promise.all([
-        getDefaultModelForThread(db, id, settings.selectedModel ?? undefined),
-        getSelectedMode(db),
-        getChatThread(db, id),
-        getChatMessages(db, id),
-        getAllModes(db),
-        getAvailableModels(db),
-        getTriggerPromptForThread(db, id),
-        getEnabledClients(),
-      ])
+    const [
+      defaultModel,
+      selectedMode,
+      chatThread,
+      initialMessages,
+      modes,
+      models,
+      triggerData,
+      mcpClients,
+      customAgentRows,
+      systemAgentRows,
+    ] = await Promise.all([
+      getDefaultModelForThread(db, id, settings.selectedModel ?? undefined),
+      getSelectedMode(db),
+      getChatThread(db, id),
+      getChatMessages(db, id),
+      getAllModes(db),
+      getAvailableModels(db),
+      getTriggerPromptForThread(db, id),
+      getEnabledClients(),
+      getAllAgents(db),
+      getAllSystemAgents(db),
+    ])
+
+    // Built-in is implicit (lives in code); the DB rows are only customs + system.
+    const allAgents = composeAllAgents(
+      systemAgentRows.map((row) => ({
+        id: row.id,
+        name: row.name,
+        type: row.type,
+        transport: row.transport,
+        url: row.url,
+        description: row.description,
+        icon: row.icon,
+        isSystem: 1 as const,
+        enabled: 1 as const,
+        deletedAt: null,
+        userId: null,
+      })),
+      customAgentRows.map((row) => ({
+        id: row.id,
+        name: row.name,
+        type: row.type,
+        transport: row.transport,
+        url: row.url,
+        description: row.description,
+        icon: row.icon,
+        isSystem: 0 as const,
+        enabled: row.enabled === 1 ? (1 as const) : (0 as const),
+        deletedAt: row.deletedAt,
+        userId: row.userId,
+      })),
+    )
+    const persistedAgentId = chatThread?.agentId ?? null
+    const selectedAgent = persistedAgentId
+      ? (allAgents.find((a) => a.id === persistedAgentId) ?? builtInAgent)
+      : builtInAgent
 
     // If chat doesn't exist and this isn't a new chat, redirect to 404
     if (!chatThread && !isNew) {
@@ -151,9 +200,10 @@ export const useHydrateChatStore = ({ id, isNew }: UseHydrateChatStoreParams) =>
       id,
       retryCount: 0,
       retriesExhausted: false,
-      // MVP: no persisted thread→agent mapping; default to built-in. Switching
-      // agents mid-session lives in-memory only (see chat-store.setSelectedAgent).
-      selectedAgent: builtInAgent,
+      // Persisted via `chatThreads.agentId`. Falls back to built-in when the
+      // thread predates the column, has no value, or references a row that
+      // no longer resolves (deleted custom, unsynced system agent).
+      selectedAgent,
       selectedMode,
       selectedModel: defaultModel,
       triggerData,

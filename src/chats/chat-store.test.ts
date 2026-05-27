@@ -323,4 +323,88 @@ describe('chat-store', () => {
       expect(session?.selectedModel?.id).toBe('tracked-model')
     })
   })
+
+  describe('setSelectedAgent', () => {
+    const customAgent = {
+      id: 'custom-agent-1',
+      name: 'My Agent',
+      type: 'remote-acp' as const,
+      transport: 'websocket' as const,
+      url: 'wss://example.test/ws',
+      description: null,
+      icon: null,
+      isSystem: 0 as const,
+      enabled: 1 as const,
+      deletedAt: null,
+      userId: 'u1',
+    }
+
+    it('updates the in-memory session selectedAgent', async () => {
+      const model = createMockModel()
+      hydrateStore({
+        chatInstance: createMockChatInstanceWithValidation(),
+        chatThread: null,
+        id: 'thread-1',
+        mcpClients: [],
+        models: [model],
+        selectedModel: model,
+        triggerData: null,
+      })
+
+      await useChatStore.getState().setSelectedAgent('thread-1', customAgent)
+
+      const session = getCurrentSession()
+      expect(session?.selectedAgent.id).toBe(customAgent.id)
+    })
+
+    it('persists agentId on the chat_threads row when a thread exists', async () => {
+      const { createChatThread, getChatThread } = await import('@/dal/chat-threads')
+      const model = createMockModel()
+      const chatThread = createMockChatThread({ id: 'thread-persist' })
+
+      await createChatThread(
+        getDb(),
+        { id: chatThread.id, title: 'x', contextSize: null, triggeredBy: null, wasTriggeredByAutomation: 0 },
+        model,
+      )
+
+      hydrateStore({
+        chatInstance: createMockChatInstanceWithValidation(),
+        chatThread,
+        id: chatThread.id,
+        mcpClients: [],
+        models: [model],
+        selectedModel: model,
+        triggerData: null,
+      })
+
+      await useChatStore.getState().setSelectedAgent(chatThread.id, customAgent)
+
+      const stored = await getChatThread(getDb(), chatThread.id)
+      expect(stored?.agentId).toBe(customAgent.id)
+    })
+
+    it('skips the DB write when no chat thread exists yet (new-chat scratch)', async () => {
+      const model = createMockModel()
+      hydrateStore({
+        chatInstance: createMockChatInstanceWithValidation(),
+        chatThread: null,
+        id: 'thread-no-row',
+        mcpClients: [],
+        models: [model],
+        selectedModel: model,
+        triggerData: null,
+      })
+
+      // Should not throw despite no DB row existing.
+      await useChatStore.getState().setSelectedAgent('thread-no-row', customAgent)
+
+      const session = getCurrentSession()
+      expect(session?.selectedAgent.id).toBe(customAgent.id)
+    })
+
+    it('throws when the session is missing', async () => {
+      await expect(useChatStore.getState().setSelectedAgent('nope', customAgent)).rejects.toThrow('No session found')
+    })
+  })
 })

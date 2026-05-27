@@ -121,3 +121,49 @@ describe('useSlashCommand handleKeyDown', () => {
     expect(getValue()).toBe('/al')
   })
 })
+
+describe('useSlashCommand selectSkill', () => {
+  const library = [fakeSkill('alpha')]
+  const inputRef = createRef<HTMLTextAreaElement>()
+
+  const setup = (initial: string, caret: number) => {
+    let value = initial
+    const setValue = (v: string) => {
+      value = v
+    }
+    const hook = renderHook(() =>
+      useSlashCommand({
+        value,
+        setValue,
+        inputRef,
+        library,
+        isEnabled: () => true,
+      }),
+    )
+    act(() => hook.result.current.setCursorPos(caret))
+    return { hook, getValue: () => value }
+  }
+
+  it('does not insert a double space when the following text already starts with whitespace', () => {
+    // caret right after "/al"; text after the token starts with " world".
+    const { hook, getValue } = setup('/al world', 3)
+    act(() => hook.result.current.selectSkill(fakeSkill('alpha')))
+    expect(getValue()).toBe('/alpha world')
+  })
+
+  it('inserts a trailing space when there is no whitespace after the token', () => {
+    const { hook, getValue } = setup('/al', 3)
+    act(() => hook.result.current.selectSkill(fakeSkill('alpha')))
+    expect(getValue()).toBe('/alpha ')
+  })
+
+  it('does not leave the popup open at the stale cursor after selection', () => {
+    // Regression: previously SET_CURSOR was deferred to rAF, so the render
+    // between setValue and the cursor update could re-detect a slash token at
+    // the stale caret and flash popupOpen back to true.
+    const { hook } = setup('/al', 3)
+    expect(hook.result.current.popupOpen).toBe(true)
+    act(() => hook.result.current.selectSkill(fakeSkill('alpha')))
+    expect(hook.result.current.popupOpen).toBe(false)
+  })
+})

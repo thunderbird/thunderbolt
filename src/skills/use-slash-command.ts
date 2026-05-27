@@ -132,14 +132,19 @@ export const useSlashCommand = ({
       const tokenEnd = slashState.tokenStart + 1 + slashState.query.length
       const before = value.slice(0, slashState.tokenStart)
       const after = value.slice(tokenEnd)
-      const insert = `/${skill.name} `
+      // Skip the trailing space when the following text already starts with
+      // whitespace — otherwise the user sees a doubled space after completion.
+      const needsTrailingSpace = !/^\s/.test(after)
+      const insert = `/${skill.name}${needsTrailingSpace ? ' ' : ''}`
       const next = before + insert + after
+      const newCursor = slashState.tokenStart + insert.length + (needsTrailingSpace ? 0 : 1)
+      // Update value and cursor in the same commit so the popup doesn't
+      // flicker open on a stale-cursor render between setValue and rAF.
       setValue(next)
-      const newCursor = slashState.tokenStart + insert.length
+      dispatch({ type: 'SET_CURSOR', pos: newCursor })
       requestAnimationFrame(() => {
         inputRef.current?.focus()
         inputRef.current?.setSelectionRange(newCursor, newCursor)
-        dispatch({ type: 'SET_CURSOR', pos: newCursor })
       })
     },
     [slashState, value, setValue, inputRef],

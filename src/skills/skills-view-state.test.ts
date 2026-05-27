@@ -233,17 +233,9 @@ describe('skillsViewReducer', () => {
   })
 
   describe('error states', () => {
-    it('SET_NAME_ERROR / SET_PIN_ERROR / CLEAR_PIN_ERROR', () => {
-      const withName = skillsViewReducer(initialSkillsViewState, { type: 'SET_NAME_ERROR', message: 'bad name' })
-      expect(withName.nameError).toBe('bad name')
-
-      const withPin = skillsViewReducer(withName, { type: 'SET_PIN_ERROR', message: '11th pin' })
-      expect(withPin.pinError).toBe('11th pin')
-
-      const cleared = skillsViewReducer(withPin, { type: 'CLEAR_PIN_ERROR' })
-      expect(cleared.pinError).toBeNull()
-      // Name error should NOT be cleared by the pin-error timer.
-      expect(cleared.nameError).toBe('bad name')
+    it('SET_NAME_ERROR stores the message', () => {
+      const next = skillsViewReducer(initialSkillsViewState, { type: 'SET_NAME_ERROR', message: 'bad name' })
+      expect(next.nameError).toBe('bad name')
     })
 
     it('CLEAR_NAME_ERROR drops a stale name error', () => {

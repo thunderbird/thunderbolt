@@ -119,11 +119,17 @@ export const SuggestionChip = ({
           /{label}
         </Button>
       </DropdownMenuTrigger>
+      {/*
+        Anchor the menu's bottom-left to the chip's top-left so the popup
+        opens upward from the chip's anchor corner — matches the
+        ModeSelector dropdown shape elsewhere on the chat screen, including
+        its `rounded-2xl` border-radius.
+      */}
       <DropdownMenuContent
         side="top"
-        align="end"
+        align="start"
         collisionPadding={16}
-        className={isMobile ? 'w-[calc(100vw-2rem)] min-w-56' : 'min-w-56'}
+        className={isMobile ? 'w-[calc(100vw-2rem)] min-w-56 rounded-2xl' : 'min-w-56 rounded-2xl'}
       >
         <DropdownMenuItem
           onSelect={() => {

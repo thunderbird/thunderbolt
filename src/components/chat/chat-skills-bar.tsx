@@ -19,6 +19,12 @@ type ChatSkillsBarProps = {
   onAddToChat: (slug: string) => void
   /** Insert the resolved skill's instruction prose into the chat input. */
   onAddInstruction: (instruction: string) => void
+  /**
+   * When `true`, render nothing. The composer toggles this on once any
+   * message has been sent so the chips don't compete for space in an
+   * ongoing thread — pinning is a "starting a new chat" affordance.
+   */
+  hidden?: boolean
   // Dependency injection for tests / Storybook.
   usePinnedSkills?: typeof usePinnedSkills_default
   useNavigate?: typeof useNavigate_default
@@ -36,6 +42,7 @@ type ChatSkillsBarProps = {
 export const ChatSkillsBar = ({
   onAddToChat,
   onAddInstruction,
+  hidden,
   usePinnedSkills = usePinnedSkills_default,
   useNavigate = useNavigate_default,
 }: ChatSkillsBarProps) => {
@@ -45,6 +52,10 @@ export const ChatSkillsBar = ({
 
   const [openChipId, setOpenChipId] = useState<string | null>(null)
   const [reorderMode, setReorderMode] = useState(false)
+
+  if (hidden) {
+    return null
+  }
 
   const showOverlay = isMobile && (openChipId !== null || reorderMode)
   const dismissOverlay = () => {

@@ -3,7 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { m } from 'framer-motion'
-import { MoreHorizontal, Pin, PinOff, Play, SquarePen, Trash2 } from 'lucide-react'
+import { MoreHorizontal, Pin, Play, SquarePen, Trash2 } from 'lucide-react'
 import { useNavigate } from 'react-router'
 
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
@@ -11,16 +11,15 @@ import { Switch } from '@/components/ui/switch'
 import type { Skill } from '@/types'
 
 /**
- * Row used in the Enabled and Disabled library sections.
+ * Row used in the Enabled and Disabled sections of `/settings/skills`.
  * Wrapped in `m.li layoutId={skill.id}` so framer-motion animates the row's
  * move between sections when the user toggles enabled state — the row
  * unmounts from one `<ul>` and remounts in the other, and the shared
  * layoutId carries position state across the transition.
  *
- * Pinned rows live in `pinned-section.tsx` and use dnd-kit's transform for
- * drag-reorder, which doesn't compose cleanly with layout animations, so
- * pinned <-> library transitions don't animate. That's acceptable —
- * enable/disable is the high-frequency interaction.
+ * Pinning is managed from the chat composer, not here. A small pin glyph
+ * on the right of the row indicates a skill is currently pinned — it's a
+ * read-only badge, not a control.
  */
 export const LibraryRow = ({
   skill,
@@ -29,7 +28,6 @@ export const LibraryRow = ({
   isActive,
   onSelect,
   onToggleEnabled,
-  onTogglePin,
   onEdit,
   onDelete,
 }: {
@@ -39,14 +37,21 @@ export const LibraryRow = ({
   isActive: boolean
   onSelect: (id: string) => void
   onToggleEnabled: (id: string, next: boolean) => void
-  onTogglePin: (id: string) => void
   onEdit: (id: string) => void
   onDelete: (id: string) => void
 }) => {
   const navigate = useNavigate()
 
   return (
-    <m.li layout layoutId={skill.id} transition={{ type: 'spring', damping: 28, stiffness: 380, mass: 0.6 }}>
+    <m.li
+      layout
+      layoutId={skill.id}
+      // Softened animation: lower stiffness + a brief delay so toggling
+      // enabled state doesn't feel snappy / flashy. The row crosses between
+      // the Enabled and Disabled sections; the gentler spring + delay reads
+      // as "settling into place" rather than "popping."
+      transition={{ type: 'spring', damping: 32, stiffness: 220, mass: 0.85, delay: 0.05 }}
+    >
       <div
         role="button"
         tabIndex={0}
@@ -70,6 +75,9 @@ export const LibraryRow = ({
             />
           </span>
           <span className="truncate">/{skill.name}</span>
+          {isPinned && (
+            <Pin size={12} className="shrink-0 fill-current text-muted-foreground" aria-label="Pinned" role="img" />
+          )}
         </span>
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
@@ -83,16 +91,6 @@ export const LibraryRow = ({
             </button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" className="min-w-56">
-            <DropdownMenuItem
-              onClick={(e) => {
-                e.stopPropagation()
-                onTogglePin(skill.id)
-              }}
-              className="cursor-pointer"
-            >
-              {isPinned ? <PinOff /> : <Pin />}
-              {isPinned ? 'Unpin' : 'Pin'}
-            </DropdownMenuItem>
             <DropdownMenuItem
               onClick={(e) => {
                 e.stopPropagation()

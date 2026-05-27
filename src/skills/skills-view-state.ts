@@ -31,7 +31,6 @@ export type SkillsViewState = {
   pendingDelete: Skill | null
   pendingDependents: PendingDependents
   nameError: string | null
-  pinError: string | null
   /**
    * Optional initial name for the create form — set when a "create it" deep
    * link arrives from the chat composer's broken-reference alert. `null`
@@ -50,7 +49,6 @@ export const initialSkillsViewState: SkillsViewState = {
   pendingDelete: null,
   pendingDependents: null,
   nameError: null,
-  pinError: null,
   createInitialName: null,
 }
 
@@ -96,10 +94,6 @@ export type SkillsViewAction =
   | { type: 'SET_NAME_ERROR'; message: string }
   /** User edited the name field — clear any stale uniqueness error. */
   | { type: 'CLEAR_NAME_ERROR' }
-  /** Pin-cap error from a togglePin attempt; auto-cleared by a timer. */
-  | { type: 'SET_PIN_ERROR'; message: string }
-  /** Pin-cap error timer fired. */
-  | { type: 'CLEAR_PIN_ERROR' }
   /** Mobile back button on the detail panel. */
   | { type: 'BACK_TO_LIST' }
 
@@ -210,12 +204,6 @@ export const skillsViewReducer = (state: SkillsViewState, action: SkillsViewActi
 
     case 'CLEAR_NAME_ERROR':
       return state.nameError === null ? state : { ...state, nameError: null }
-
-    case 'SET_PIN_ERROR':
-      return { ...state, pinError: action.message }
-
-    case 'CLEAR_PIN_ERROR':
-      return { ...state, pinError: null }
 
     case 'BACK_TO_LIST':
       return { ...state, mobileView: 'list' }

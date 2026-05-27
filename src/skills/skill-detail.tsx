@@ -3,7 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import * as AccordionPrimitive from '@radix-ui/react-accordion'
-import { ChevronDown, ChevronLeft, Info, MoreHorizontal, Pin, Play, Power, SquarePen, Trash2 } from 'lucide-react'
+import { ChevronDown, ChevronLeft, Info, MoreHorizontal, Play, Power, SquarePen, Trash2 } from 'lucide-react'
 import { useNavigate } from 'react-router'
 
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion'
@@ -19,14 +19,16 @@ import { Switch } from '@/components/ui/switch'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { useIsMobile } from '@/hooks/use-mobile'
 
+/**
+ * Detail / edit panel for a single skill. Pinning is managed from the chat
+ * composer; this view shows the skill's content + enable / edit / delete /
+ * run-in-chat controls.
+ */
 export const SkillDetail = ({
   name,
   description,
   instruction,
-  pinned,
   enabled,
-  pinError,
-  onTogglePin,
   onToggleEnabled,
   onEdit,
   onDelete,
@@ -35,11 +37,7 @@ export const SkillDetail = ({
   name: string
   description: string
   instruction: string
-  pinned: boolean
   enabled: boolean
-  /** Inline pin-cap error from the parent; shown for ~4s next to the pin trigger. */
-  pinError?: string | null
-  onTogglePin: () => void
   onToggleEnabled: (next: boolean) => void
   onEdit: () => void
   onDelete: () => void
@@ -73,17 +71,6 @@ export const SkillDetail = ({
               >
                 <ChevronLeft className="size-5 md:size-4" />
               </Button>
-            )}
-            {!isMobile && (
-              <button
-                type="button"
-                onClick={onTogglePin}
-                aria-label={pinned ? `Unpin /${name}` : `Pin /${name}`}
-                aria-pressed={pinned}
-                className={`shrink-0 transition-colors ${pinned ? 'text-foreground' : 'text-muted-foreground'}`}
-              >
-                <Pin size={20} strokeWidth={1.75} fill={pinned ? 'currentColor' : 'none'} />
-              </button>
             )}
             {!isMobile && <h2 className="text-xl leading-tight text-foreground">/{name}</h2>}
           </div>
@@ -126,10 +113,6 @@ export const SkillDetail = ({
               <DropdownMenuContent align="end" className="min-w-56">
                 {isMobile && (
                   <>
-                    <DropdownMenuItem onSelect={onTogglePin} className="cursor-pointer">
-                      <Pin fill={pinned ? 'currentColor' : 'none'} />
-                      {pinned ? 'Unpin skill' : 'Pin skill'}
-                    </DropdownMenuItem>
                     <DropdownMenuItem
                       onSelect={(e) => {
                         e.preventDefault()
@@ -159,11 +142,6 @@ export const SkillDetail = ({
             </DropdownMenu>
           </div>
         </div>
-        {pinError && (
-          <p role="alert" className="text-sm text-destructive">
-            {pinError}
-          </p>
-        )}
       </header>
 
       <Accordion

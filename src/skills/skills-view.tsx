@@ -3,10 +3,10 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { AnimatePresence, m } from 'framer-motion'
-import { useCallback, useEffect, useReducer, useRef } from 'react'
+import { useCallback, useReducer, useRef } from 'react'
 import { useLocation, useNavigate } from 'react-router'
 
-import { PinLimitExceededError, SkillNameInvalidError, SkillNameTakenError } from '@/dal'
+import { SkillNameInvalidError, SkillNameTakenError } from '@/dal'
 import { useIsMobile } from '@/hooks/use-mobile'
 import { DeleteSkillDialog } from './delete-skill-dialog'
 import { DependentsDialog } from './dependents-dialog'
@@ -18,12 +18,12 @@ import { initialSkillsViewState, skillsViewReducer } from './skills-view-state'
 import { SkillsList } from './skills-list'
 import { useEnabledSkills, useLibrarySkills, usePinnedSkills } from './use-skills'
 
-const pinErrorDismissMs = 4000
-
 export const SkillsView = () => {
   const { isMobile } = useIsMobile()
   const { skills, createSkill, updateSkill, softDeleteSkill } = useLibrarySkills()
-  const { pinned, pinnedSet, togglePin, reorderPins } = usePinnedSkills()
+  // Pinning is managed from the chat composer; the settings list shows a
+  // read-only indicator on pinned rows via `isPinned`.
+  const { pinnedSet, togglePin } = usePinnedSkills()
   const { isEnabled, setEnabled } = useEnabledSkills()
   const isPinned = useCallback((id: string) => pinnedSet.has(id), [pinnedSet])
 
@@ -38,18 +38,8 @@ export const SkillsView = () => {
     pendingDelete,
     pendingDependents,
     nameError,
-    pinError,
     createInitialName,
   } = state
-
-  // Auto-dismiss the pin-cap error after a short delay.
-  useEffect(() => {
-    if (!pinError) {
-      return
-    }
-    const id = setTimeout(() => dispatch({ type: 'CLEAR_PIN_ERROR' }), pinErrorDismissMs)
-    return () => clearTimeout(id)
-  }, [pinError])
 
   // Deep-link from the chat composer's broken-reference alerts —
   // `editSkill` selects an existing (disabled) skill so the user can enable
@@ -82,21 +72,6 @@ export const SkillsView = () => {
       navigate(location.pathname, { replace: true, state: {} })
     })
   }
-
-  const tryTogglePin = useCallback(
-    async (id: string) => {
-      try {
-        await togglePin(id)
-      } catch (error) {
-        if (error instanceof PinLimitExceededError) {
-          dispatch({ type: 'SET_PIN_ERROR', message: error.message })
-          return
-        }
-        throw error
-      }
-    },
-    [togglePin],
-  )
 
   // `.at(0)` returns `Skill | undefined` honestly — `[0]` would be typed as
   // `Skill` even on an empty array (no `noUncheckedIndexedAccess` in tsconfig),
@@ -256,10 +231,7 @@ export const SkillsView = () => {
         name={active.name}
         description={active.description}
         instruction={active.instruction}
-        pinned={pinnedSet.has(active.id)}
         enabled={isEnabled(active.id)}
-        pinError={pinError}
-        onTogglePin={() => tryTogglePin(active.id)}
         onToggleEnabled={(next) => handleToggleEnabled(active.id, next)}
         onEdit={() => onEdit(active.id)}
         onDelete={() => onDelete(active.id)}
@@ -287,13 +259,10 @@ export const SkillsView = () => {
     <div className="relative flex h-full">
       <SkillsList
         skills={skills}
-        pinned={pinned}
         activeSkillId={mode === 'detail' && active ? active.id : null}
         isEnabled={isEnabled}
         isPinned={isPinned}
         onToggleEnabled={handleToggleEnabled}
-        onTogglePin={tryTogglePin}
-        onReorderPins={reorderPins}
         onCreate={() => {
           if ((mode === 'create' || mode === 'edit') && isDirty) {
             return

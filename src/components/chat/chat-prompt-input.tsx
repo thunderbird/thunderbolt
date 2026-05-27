@@ -9,10 +9,9 @@ import { useContextTracking as useContextTracking_default } from '@/hooks/use-co
 import { useIsMobile as useIsMobile_default } from '@/hooks/use-mobile'
 import { isMobile as isPlatformMobile } from '@/lib/platform'
 import { trackEvent as trackEvent_default } from '@/lib/posthog'
-import { appendSlashToken, computeSkillRefProblems } from '@/skills/compose-chat-input'
+import { appendSlashToken } from '@/skills/compose-chat-input'
 import { renderHighlightedSkillTokens, type SkillStatusClassifier } from '@/skills/highlight-skill-tokens'
 import { resolveSkillTokenInstructions } from '@/skills/resolve-skill-system-messages'
-import { SkillRefAlerts } from '@/skills/skill-ref-alerts'
 import { SlashPopup } from '@/skills/slash-popup'
 import { useSlashCommand } from '@/skills/use-slash-command'
 import {
@@ -83,9 +82,11 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
       (slug) => {
         const skill = skillBySlug.get(slug)
         if (!skill) {
-          return 'unknown'
+          return { status: 'unknown' }
         }
-        return isEnabled(skill.id) ? 'enabled' : 'disabled'
+        return isEnabled(skill.id)
+          ? { status: 'enabled', skillId: skill.id }
+          : { status: 'disabled', skillId: skill.id }
       },
       [skillBySlug, isEnabled],
     )
@@ -194,11 +195,6 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
         setSelectedMode(chatThreadId, modeId).catch(console.error)
       },
       [chatThreadId, setSelectedMode, triggerSelection],
-    )
-
-    const skillRefProblems = useMemo(
-      () => computeSkillRefProblems(input, classifySkill, skillBySlug),
-      [input, classifySkill, skillBySlug],
     )
 
     // Map of enabled-skill slug → instruction. Shared by the overflow
@@ -314,8 +310,13 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
     return (
       <>
         <div className="flex w-full flex-col gap-3">
-          <ChatSkillsBar onAddToChat={handleAddChipFromBar} onAddInstruction={insertInstructionText} />
-          <SkillRefAlerts problems={skillRefProblems} />
+          <ChatSkillsBar
+            onAddToChat={handleAddChipFromBar}
+            onAddInstruction={insertInstructionText}
+            // Pinning is a "starting a new chat" affordance — once the thread
+            // has any message, hide the bar so chips don't compete for space.
+            hidden={messages.length > 0}
+          />
           <PromptInput
             ref={formRef}
             value={input}

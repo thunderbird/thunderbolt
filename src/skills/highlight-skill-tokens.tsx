@@ -5,10 +5,22 @@
 import type { ReactNode } from 'react'
 
 import { findSkillTokens } from './parse-skill-tokens'
+import { SkillTokenPopover } from './skill-token-popover'
 
 /** Resolution state of a slash token against the user's skill library. */
 export type SkillTokenStatus = 'enabled' | 'disabled' | 'unknown'
-export type SkillStatusClassifier = (slug: string) => SkillTokenStatus
+
+/**
+ * Lookup function passed by the composer. Resolves a bare slug to:
+ * - `enabled`: an enabled skill exists; we also return its id for deep-link.
+ * - `disabled`: a soft-disabled skill exists; id is for the "Enable" link.
+ * - `unknown`: no skill by that name.
+ *
+ * Returning a structured object (rather than separate predicates) keeps the
+ * renderer's switch statement honest — the popover for `disabled` needs the
+ * skill id, the popover for `unknown` doesn't.
+ */
+export type SkillStatusClassifier = (slug: string) => { status: SkillTokenStatus; skillId?: string }
 
 /**
  * Render the chat input's text with `/slug` tokens highlighted:
@@ -17,17 +29,13 @@ export type SkillStatusClassifier = (slug: string) => SkillTokenStatus
  *   orange, the "still pending" / "needs attention" signal.
  * - Committed + unknown → red, "no skill by this name."
  *
- * The overlay this renders into is `pointer-events-none` (so the textarea
- * underneath stays interactive), which is why we lean on color alone for
- * the resolution cue — a hover tooltip would be unreachable. Actionable
- * remediation (enable / create) lives in the `SkillRefAlerts` strip
- * rendered below the input.
+ * Committed disabled / unknown tokens are wrapped in {@link SkillTokenPopover}
+ * so hovering the token surfaces an Enable / Create-it action. Those spans
+ * are individually `pointer-events-auto`; the overlay around them stays
+ * `pointer-events-none` so the textarea below remains interactive.
  *
  * The trailing zero-width space preserves a final newline; without it the
  * overlay collapses and falls one row behind the textarea.
- *
- * @param value The current textarea value.
- * @param classify Tri-state classifier against the bare slug.
  */
 export const renderHighlightedSkillTokens = (value: string, classify: SkillStatusClassifier): ReactNode[] => {
   const tokens = findSkillTokens(value)
@@ -43,12 +51,40 @@ export const renderHighlightedSkillTokens = (value: string, classify: SkillStatu
       parts.push(value.slice(cursor, start))
     }
     const token = value.slice(start, end)
-    const status = classify(slug)
-    parts.push(
-      <span key={key++} className={colorClassFor(committed, status)}>
+    const { status, skillId } = classify(slug)
+    const colorClass = colorClassFor(committed, status)
+    const tokenSpan = (
+      <span key={key++} className={colorClass}>
         {token}
-      </span>,
+      </span>
     )
+
+    // Only committed problematic tokens get the interactive popover. In-progress
+    // tokens (still typing) and enabled tokens stay inert so the textarea below
+    // remains clickable for cursor positioning.
+    if (!committed || status === 'enabled') {
+      parts.push(tokenSpan)
+    } else if (status === 'disabled' && skillId) {
+      parts.push(
+        <SkillTokenPopover
+          key={key++}
+          trigger={tokenSpan}
+          message={`Skill ${token} is disabled.`}
+          actionLabel="Enable"
+          state={{ editSkill: skillId }}
+        />,
+      )
+    } else {
+      parts.push(
+        <SkillTokenPopover
+          key={key++}
+          trigger={tokenSpan}
+          message={`No skill named ${token}.`}
+          actionLabel="Create it"
+          state={{ createSkill: slug }}
+        />,
+      )
+    }
     cursor = end
   }
   if (cursor < value.length) {

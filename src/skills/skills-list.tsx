@@ -12,30 +12,30 @@ import { useSidebar } from '@/components/ui/sidebar'
 import { useIsMobile } from '@/hooks/use-mobile'
 import type { Skill } from '@/types'
 import { LibraryRow } from './library-row'
-import { PinnedSection } from './pinned-section'
 
+/**
+ * Sidebar list for `/settings/skills`. Skills are grouped by enabled state
+ * (Enabled at top, Disabled below); each group is alphabetical, inherited
+ * from `getAllSkills`'s `ORDER BY name ASC` in the DAL. Pinning is managed
+ * from the chat composer per product direction — this list shows a small
+ * indicator on the right of pinned rows but offers no pin/reorder controls.
+ */
 export const SkillsList = ({
   skills,
-  pinned,
   activeSkillId,
   isEnabled,
   isPinned,
   onToggleEnabled,
-  onTogglePin,
-  onReorderPins,
   onCreate,
   onSelectSkill,
   onEdit,
   onDelete,
 }: {
   skills: Skill[]
-  pinned: Skill[]
   activeSkillId: string | null
   isEnabled: (id: string) => boolean
   isPinned: (id: string) => boolean
   onToggleEnabled: (id: string, next: boolean) => void
-  onTogglePin: (id: string) => void
-  onReorderPins: (ids: string[]) => void
   onCreate: () => void
   onSelectSkill: (id: string) => void
   onEdit: (id: string) => void
@@ -45,19 +45,16 @@ export const SkillsList = ({
   const { isMobile } = useIsMobile()
   const { toggleSidebar } = useSidebar()
 
-  // Pinned skills render in their own drag-reorder section above the library;
-  // exclude them from the enabled/disabled split below.
   const { enabledRows, disabledRows } = useMemo(() => {
     const query = search.trim().toLowerCase()
-    const unpinned = skills.filter((s) => !isPinned(s.id))
-    const filtered = query === '' ? unpinned : unpinned.filter((s) => s.name.toLowerCase().includes(query))
+    const filtered = query === '' ? skills : skills.filter((s) => s.name.toLowerCase().includes(query))
     const enabled: Skill[] = []
     const disabled: Skill[] = []
     for (const s of filtered) {
       ;(isEnabled(s.id) ? enabled : disabled).push(s)
     }
     return { enabledRows: enabled, disabledRows: disabled }
-  }, [skills, search, isEnabled, isPinned])
+  }, [skills, search, isEnabled])
 
   return (
     <section className="flex h-full w-full flex-col gap-3 border-r border-sidebar-border bg-background px-4 pb-4 md:px-5 text-foreground md:w-[378px] md:shrink-0">
@@ -111,18 +108,6 @@ export const SkillsList = ({
           animates between the two positions. */}
       <LayoutGroup>
         <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto">
-          <PinnedSection
-            pinned={pinned}
-            activeSkillId={activeSkillId}
-            isEnabled={isEnabled}
-            onToggleEnabled={onToggleEnabled}
-            onTogglePin={onTogglePin}
-            onSelectSkill={onSelectSkill}
-            onEdit={onEdit}
-            onDelete={onDelete}
-            onReorder={onReorderPins}
-          />
-
           {enabledRows.length > 0 && (
             <m.ul layout className="flex flex-col gap-1.5">
               {enabledRows.map((skill) => (
@@ -130,11 +115,10 @@ export const SkillsList = ({
                   key={skill.id}
                   skill={skill}
                   enabled
-                  isPinned={false}
+                  isPinned={isPinned(skill.id)}
                   isActive={skill.id === activeSkillId}
                   onSelect={onSelectSkill}
                   onToggleEnabled={onToggleEnabled}
-                  onTogglePin={onTogglePin}
                   onEdit={onEdit}
                   onDelete={onDelete}
                 />
@@ -151,11 +135,10 @@ export const SkillsList = ({
                     key={skill.id}
                     skill={skill}
                     enabled={false}
-                    isPinned={false}
+                    isPinned={isPinned(skill.id)}
                     isActive={skill.id === activeSkillId}
                     onSelect={onSelectSkill}
                     onToggleEnabled={onToggleEnabled}
-                    onTogglePin={onTogglePin}
                     onEdit={onEdit}
                     onDelete={onDelete}
                   />
@@ -164,7 +147,7 @@ export const SkillsList = ({
             </m.div>
           )}
 
-          {enabledRows.length === 0 && disabledRows.length === 0 && pinned.length === 0 && (
+          {enabledRows.length === 0 && disabledRows.length === 0 && (
             // Search-empty state. The user-deleted-everything empty state lives
             // a level up in SkillsView.
             <p className="flex h-32 items-center justify-center text-sm text-muted-foreground">No matching skills.</p>

@@ -47,16 +47,14 @@ const requestPermissionViaStore = (
  *  mode selector continues to use `selectedMode` from the user's mode list.
  *  When a future PR adds ACP-mode UI it will subscribe to `agentSessionState`
  *  populated here. */
-const applySessionSideEffect = (sessionId: string, effect: SessionSideEffect): void => {
+const applySessionSideEffect = (effect: SessionSideEffect): void => {
   if (effect.type === 'mode_changed') {
     trackEvent('acp_mode_changed', { mode_id: effect.modeId })
     return
   }
   if (effect.type === 'config_options_changed') {
     trackEvent('acp_config_options_changed', { count: effect.options.length })
-    return
   }
-  void sessionId
 }
 
 /** DI seams for tests. Production binds to the real ACP entry point and the
@@ -137,7 +135,7 @@ export const createAgentRoutingFetch = (
               acpSessionId: chatThread?.acpSessionId ?? null,
               onAcpSessionId: persistAcpSessionId,
               requestPermission: (request) => requestPermissionViaStore(id, request),
-              onSessionSideEffect: (effect) => applySessionSideEffect(id, effect),
+              onSessionSideEffect: applySessionSideEffect,
             },
             {},
           )

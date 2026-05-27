@@ -410,7 +410,7 @@ export class HaystackAcpServer {
       const docs = extractDocuments(event.result)
       captureResult(refs, docs)
       if (refs.length > 0) {
-        this.emitAgentTextChunkWithMeta(ctx, '', { haystackReferences: refs })
+        this.emitAgentTextChunk(ctx, '', { haystackReferences: refs })
       }
       return null
     }
@@ -421,25 +421,14 @@ export class HaystackAcpServer {
     throw new Error(event.error)
   }
 
-  private emitAgentTextChunk(ctx: HaystackSessionContext, text: string): void {
+  private emitAgentTextChunk(ctx: HaystackSessionContext, text: string, meta?: Record<string, unknown>): void {
     const notification: SessionNotification = {
       sessionId: ctx.sessionId,
       update: {
         sessionUpdate: 'agent_message_chunk',
         content: { type: 'text', text },
       },
-    }
-    this.sendNotification('session/update', notification)
-  }
-
-  private emitAgentTextChunkWithMeta(ctx: HaystackSessionContext, text: string, meta: Record<string, unknown>): void {
-    const notification: SessionNotification = {
-      sessionId: ctx.sessionId,
-      update: {
-        sessionUpdate: 'agent_message_chunk',
-        content: { type: 'text', text },
-      },
-      _meta: meta,
+      ...(meta ? { _meta: meta } : {}),
     }
     this.sendNotification('session/update', notification)
   }

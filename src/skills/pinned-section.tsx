@@ -99,22 +99,18 @@ const PinnedRow = ({
               type="button"
               aria-label={`Open ${skill.name} menu`}
               onClick={(e) => e.stopPropagation()}
-              className="inline-flex size-6 shrink-0 items-center justify-center rounded-md text-muted-foreground opacity-0 transition-opacity transition-colors hover:bg-foreground/10 hover:text-foreground focus-visible:opacity-100 group-hover:opacity-100 aria-expanded:bg-foreground/10 aria-expanded:opacity-100"
+              className="inline-flex size-6 shrink-0 cursor-pointer items-center justify-center rounded-md text-muted-foreground opacity-0 transition-opacity transition-colors hover:bg-foreground/10 hover:text-foreground focus-visible:opacity-100 group-hover:opacity-100 aria-expanded:bg-foreground/10 aria-expanded:opacity-100"
             >
               <MoreHorizontal size={16} />
             </button>
           </DropdownMenuTrigger>
-          <DropdownMenuContent
-            align="end"
-            sideOffset={8}
-            className="flex w-56 flex-col gap-0 rounded-xl border border-border bg-card px-2 py-3"
-          >
+          <DropdownMenuContent align="end" className="min-w-56">
             <DropdownMenuItem
               onClick={(e) => {
                 e.stopPropagation()
                 onTogglePin(skill.id)
               }}
-              className="h-9 gap-1.5 px-2 text-sm [&_svg:not([class*='size-'])]:size-4"
+              className="cursor-pointer"
             >
               <PinOff />
               Unpin
@@ -124,7 +120,7 @@ const PinnedRow = ({
                 e.stopPropagation()
                 onEdit(skill.id)
               }}
-              className="h-9 gap-1.5 px-2 text-sm [&_svg:not([class*='size-'])]:size-4"
+              className="cursor-pointer"
             >
               <SquarePen />
               Edit
@@ -134,7 +130,7 @@ const PinnedRow = ({
                 e.stopPropagation()
                 navigate('/', { state: { runSkill: skill.name } })
               }}
-              className="h-9 gap-1.5 px-2 text-sm [&_svg:not([class*='size-'])]:size-4"
+              className="cursor-pointer"
             >
               <Play />
               Run in chat
@@ -144,7 +140,7 @@ const PinnedRow = ({
                 e.stopPropagation()
                 onDelete(skill.id)
               }}
-              className="h-9 gap-1.5 px-2 text-sm [&_svg:not([class*='size-'])]:size-4"
+              className="cursor-pointer"
             >
               <Trash2 />
               Delete

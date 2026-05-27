@@ -121,17 +121,10 @@ export const SkillDetail = ({
                   <MoreHorizontal />
                 </Button>
               </DropdownMenuTrigger>
-              <DropdownMenuContent
-                align="end"
-                sideOffset={8}
-                className="flex w-56 flex-col gap-0 rounded-xl border border-border bg-card px-2 py-3"
-              >
+              <DropdownMenuContent align="end" className="min-w-56">
                 {isMobile && (
                   <>
-                    <DropdownMenuItem
-                      onSelect={onTogglePin}
-                      className="h-9 gap-1.5 px-2 text-sm [&_svg:not([class*='size-'])]:size-4"
-                    >
+                    <DropdownMenuItem onSelect={onTogglePin} className="cursor-pointer">
                       <Pin fill={pinned ? 'currentColor' : 'none'} />
                       {pinned ? 'Unpin skill' : 'Pin skill'}
                     </DropdownMenuItem>
@@ -140,7 +133,7 @@ export const SkillDetail = ({
                         e.preventDefault()
                         onToggleEnabled(!enabled)
                       }}
-                      className="h-9 gap-1.5 px-2 text-sm [&_svg:not([class*='size-'])]:size-4"
+                      className="cursor-pointer"
                     >
                       <Power />
                       {enabled ? 'Disable skill' : 'Enable skill'}
@@ -148,24 +141,15 @@ export const SkillDetail = ({
                     <DropdownMenuSeparator />
                   </>
                 )}
-                <DropdownMenuItem
-                  onClick={onEdit}
-                  className="h-9 gap-1.5 px-2 text-sm [&_svg:not([class*='size-'])]:size-4"
-                >
+                <DropdownMenuItem onClick={onEdit} className="cursor-pointer">
                   <SquarePen />
                   Edit
                 </DropdownMenuItem>
-                <DropdownMenuItem
-                  onClick={runInChat}
-                  className="h-9 gap-1.5 px-2 text-sm [&_svg:not([class*='size-'])]:size-4"
-                >
+                <DropdownMenuItem onClick={runInChat} className="cursor-pointer">
                   <Play />
                   Run in chat
                 </DropdownMenuItem>
-                <DropdownMenuItem
-                  onClick={onDelete}
-                  className="h-9 gap-1.5 px-2 text-sm [&_svg:not([class*='size-'])]:size-4"
-                >
+                <DropdownMenuItem onClick={onDelete} className="cursor-pointer">
                   <Trash2 />
                   Delete
                 </DropdownMenuItem>

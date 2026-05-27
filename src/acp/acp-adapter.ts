@@ -135,6 +135,7 @@ export const connectAcpAdapter = async (
   const transport = await transportFactory({
     url: agent.url,
     transport: agent.transport,
+    agentType: agent.type,
     signal: transportController.signal,
     webSocketFactory: deps.webSocketFactory,
   })

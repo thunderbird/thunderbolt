@@ -3,8 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { isAgentAvailable as isAgentAvailable_default } from '@/acp/agent-availability'
-import { useCurrentChatSession, useChatStore } from '@/chats/chat-store'
-import { useHaptics } from '@/hooks/use-haptics'
+import { useCurrentChatSession } from '@/chats/chat-store'
 import { useContextTracking as useContextTracking_default } from '@/hooks/use-context-tracking'
 import { useIsMobile as useIsMobile_default } from '@/hooks/use-mobile'
 import { isMobile as isPlatformMobile } from '@/lib/platform'
@@ -17,8 +16,8 @@ import { forwardRef, useCallback, useImperativeHandle, useRef, useState } from '
 import { useNavigate as useNavigate_default } from 'react-router'
 import { ContextOverflowModal } from '../context-overflow-modal'
 import { ContextUsageIndicator } from '../context-usage-indicator'
-import { ModeSelector } from '../ui/mode-selector'
 import { PromptInput } from '../ui/prompt-input'
+import { ChatModePicker } from './chat-mode-picker'
 
 export type ChatPromptInputRef = {
   focus: () => void
@@ -48,8 +47,6 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
     ref,
   ) => {
     const navigate = useNavigate()
-    const modes = useChatStore((state) => state.modes)
-    const setSelectedMode = useChatStore((state) => state.setSelectedMode)
 
     const { isMobile } = useIsMobile()
 
@@ -60,7 +57,6 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
       connectionError,
       id: chatThreadId,
       selectedAgent,
-      selectedMode,
       selectedModel,
     } = useCurrentChatSession()
 
@@ -81,15 +77,6 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
     const isNewChat = !chatThread
     const [input, setInput, clearDraft] = useDraftInput(draftKey, { persist: !isNewChat })
     const formRef = useRef<HTMLFormElement>(null)
-    const { triggerSelection } = useHaptics()
-
-    const handleModeChange = useCallback(
-      (modeId: string) => {
-        triggerSelection()
-        setSelectedMode(chatThreadId, modeId).catch(console.error)
-      },
-      [chatThreadId, setSelectedMode, triggerSelection],
-    )
 
     const { usedTokens, maxTokens, isContextKnown, isOverflowing } = useContextTracking({
       model: selectedModel,
@@ -167,14 +154,7 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
             <span>Failed to connect to {selectedAgent.name}</span>
           </div>
         ) : (
-          modes.length > 0 && (
-            <ModeSelector
-              modes={modes}
-              selectedMode={selectedMode}
-              onModeChange={handleModeChange}
-              iconOnly={isMobile}
-            />
-          )
+          <ChatModePicker iconOnly={isMobile} />
         )}
         {isContextKnown && !isMobile && (
           <ContextUsageIndicator usedTokens={usedTokens ?? 0} maxTokens={maxTokens ?? 0} />

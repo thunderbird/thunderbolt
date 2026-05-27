@@ -88,7 +88,7 @@ export const SkillsView = () => {
     async (id: string, next: boolean) => {
       if (!next) {
         const target = skills.find((s) => s.id === id)
-        const dependents = target ? findDependents(target.name ?? '', skills) : []
+        const dependents = target ? findDependents(target.name, skills) : []
         if (target && dependents.length > 0) {
           dispatch({ type: 'OPEN_DEPENDENTS', payload: { action: 'disable', skill: target, dependents } })
           return
@@ -135,7 +135,7 @@ export const SkillsView = () => {
     if (!target) {
       return
     }
-    const dependents = findDependents(target.name ?? '', skills)
+    const dependents = findDependents(target.name, skills)
     if (dependents.length > 0) {
       dispatch({ type: 'OPEN_DEPENDENTS', payload: { action: 'delete', skill: target, dependents } })
     } else {
@@ -216,9 +216,9 @@ export const SkillsView = () => {
       emptyPanel
     ) : mode === 'detail' ? (
       <SkillDetail
-        name={active.name ?? ''}
-        description={active.description ?? ''}
-        instruction={active.instruction ?? ''}
+        name={active.name}
+        description={active.description}
+        instruction={active.instruction}
         pinned={pinnedSet.has(active.id)}
         enabled={isEnabled(active.id)}
         pinError={pinError}
@@ -233,9 +233,9 @@ export const SkillsView = () => {
         key={`edit:${active.id}`}
         mode="edit"
         initialValues={{
-          name: active.name ?? '',
-          description: active.description ?? '',
-          instruction: active.instruction ?? '',
+          name: active.name,
+          description: active.description,
+          instruction: active.instruction,
         }}
         onCancel={() => requestLeave({ type: 'cancel' })}
         onSubmit={handleSubmit}
@@ -293,7 +293,7 @@ export const SkillsView = () => {
             }
           }}
           action={pendingDependents.action}
-          targetName={pendingDependents.skill.name ?? ''}
+          targetName={pendingDependents.skill.name}
           dependents={pendingDependents.dependents}
           onConfirm={confirmPendingDependents}
           onJumpToDependent={onJumpToDependent}
@@ -311,7 +311,7 @@ export const SkillsView = () => {
             void removeSkill(pendingDelete.id)
             dispatch({ type: 'CLOSE_DELETE' })
           }}
-          skillName={pendingDelete.name ?? ''}
+          skillName={pendingDelete.name}
         />
       )}
       <DiscardCreateDialog

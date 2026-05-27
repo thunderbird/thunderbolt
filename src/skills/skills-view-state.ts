@@ -135,10 +135,16 @@ export const skillsViewReducer = (state: SkillsViewState, action: SkillsViewActi
       return { ...state, activeId: action.skill.id, pendingDelete: action.skill }
 
     case 'OPEN_DEPENDENTS':
+      // Opening the dependents dialog from inside an edit session can later
+      // trigger JUMP_TO_DEPENDENT, which starts a fresh edit on another skill.
+      // Reset `isDirty` and `nameError` now so the inherited edit-session state
+      // doesn't bleed into the new form.
       return {
         ...state,
         activeId: action.payload.skill.id,
         pendingDependents: action.payload,
+        isDirty: false,
+        nameError: null,
       }
 
     case 'CLOSE_DELETE':
@@ -148,11 +154,18 @@ export const skillsViewReducer = (state: SkillsViewState, action: SkillsViewActi
       return { ...state, pendingDependents: null }
 
     case 'JUMP_TO_DEPENDENT':
+      // Fresh edit session on a different skill: clear `isDirty` and
+      // `nameError` so a stale dirty flag from the prior form doesn't trigger
+      // a spurious discard-changes dialog on the new (untouched) form.
+      // SkillForm remounts via its `key` change, so the values themselves are
+      // already clean — this resets the parent's tracking state to match.
       return {
         ...state,
         activeId: action.id,
         mode: 'edit',
         pendingDependents: null,
+        isDirty: false,
+        nameError: null,
         // The dependents dialog can be opened from a list-row action while
         // mobileView is still 'list'; sliding the panel in here gives the
         // edit form a surface to render on.

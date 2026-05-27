@@ -50,7 +50,7 @@ export const SkillsList = ({
   const { enabledRows, disabledRows } = useMemo(() => {
     const query = search.trim().toLowerCase()
     const unpinned = skills.filter((s) => !isPinned(s.id))
-    const filtered = query === '' ? unpinned : unpinned.filter((s) => (s.name ?? '').toLowerCase().includes(query))
+    const filtered = query === '' ? unpinned : unpinned.filter((s) => s.name.toLowerCase().includes(query))
     const enabled: Skill[] = []
     const disabled: Skill[] = []
     for (const s of filtered) {

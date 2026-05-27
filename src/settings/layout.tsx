@@ -12,7 +12,7 @@ import { Outlet, useLocation } from 'react-router'
 // space at the top.
 const routesWithOwnHeader = new Set(['/settings/skills'])
 
-export default function SettingsLayout() {
+const SettingsLayout = () => {
   const location = useLocation()
   const showHeader = !routesWithOwnHeader.has(location.pathname)
 
@@ -40,3 +40,5 @@ export default function SettingsLayout() {
     </>
   )
 }
+
+export default SettingsLayout

@@ -64,7 +64,7 @@ export const createMockAutomationRun = (overrides?: Partial<AutomationRun>): Aut
  */
 export const createMockChatInstance = (
   messages: ThunderboltUIMessage[] = [],
-  status: 'ready' | 'streaming' = 'ready',
+  status: 'ready' | 'streaming' | 'submitted' | 'error' = 'ready',
 ): Chat<ThunderboltUIMessage> => {
   const sendMessage = mock(async (_params: { text: string; metadata?: Record<string, unknown> }) => {
     // Mock implementation

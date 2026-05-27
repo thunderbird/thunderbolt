@@ -15,10 +15,17 @@ import * as schema from './schema'
 // Default driver is postgres pointing at the local Docker stack (powersync-service/).
 // PGlite is opt-in via DATABASE_DRIVER=pglite for backend-only work without Docker;
 // note that PowerSync cannot replicate from PGlite.
+const isDevelopment = process.env.NODE_ENV === 'development'
 const isPglite = process.env.DATABASE_DRIVER === 'pglite'
+
+if (!isPglite && !process.env.DATABASE_URL && !isDevelopment) {
+  throw new Error('DATABASE_URL is required when DATABASE_DRIVER=postgres (outside development)')
+}
+
 const postgresUrl = isPglite
   ? null
-  : process.env.DATABASE_URL || 'postgresql://postgres:postgres@localhost:5433/postgres'
+  : process.env.DATABASE_URL ||
+    (isDevelopment ? 'postgresql://postgres:postgres@localhost:5433/postgres' : '')
 
 if (isPglite && process.env.DATABASE_URL) {
   mkdirSync(resolve(process.env.DATABASE_URL), { recursive: true })

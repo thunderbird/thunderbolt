@@ -549,6 +549,7 @@ describe('Config Settings', () => {
     })
 
     it('should allow empty JWT secret when powersyncUrl is empty', () => {
+      delete process.env.NODE_ENV
       process.env.POWERSYNC_URL = ''
       process.env.POWERSYNC_JWT_SECRET = ''
       const settings = getSettings()

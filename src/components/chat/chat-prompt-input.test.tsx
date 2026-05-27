@@ -216,6 +216,20 @@ describe('ChatPromptInput', () => {
     })
   })
 
+  describe('agent availability', () => {
+    it('renders a read-only fallback when the agent is unavailable on this platform', () => {
+      const { mockUseChat } = setupStore()
+
+      render(
+        <ChatPromptInput useChat={mockUseChat} useIsMobile={createMockUseIsMobile()} isAgentAvailable={() => false} />,
+        { wrapper: TestWrapper },
+      )
+
+      expect(screen.queryByPlaceholderText('Ask me anything...')).toBeNull()
+      expect(screen.getByRole('status').textContent ?? '').toMatch(/not available on this platform/)
+    })
+  })
+
   describe('connection status', () => {
     it('shows connecting indicator when the session is mid-connect', () => {
       const { mockUseChat } = setupStore()

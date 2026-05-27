@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { isAgentAvailable as isAgentAvailable_default } from '@/acp/agent-availability'
 import { useCurrentChatSession, useChatStore } from '@/chats/chat-store'
 import { useHaptics } from '@/hooks/use-haptics'
 import { useContextTracking as useContextTracking_default } from '@/hooks/use-context-tracking'
@@ -30,6 +31,8 @@ type ChatPromptInputProps = {
   useContextTracking?: typeof useContextTracking_default
   trackEvent?: typeof trackEvent_default
   useIsMobile?: typeof useIsMobile_default
+  /** Inject for tests that need to drive the unavailable-agent fallback. */
+  isAgentAvailable?: typeof isAgentAvailable_default
 }
 
 export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputProps>(
@@ -40,6 +43,7 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
       useContextTracking = useContextTracking_default,
       trackEvent = trackEvent_default,
       useIsMobile = useIsMobile_default,
+      isAgentAvailable = isAgentAvailable_default,
     },
     ref,
   ) => {
@@ -177,6 +181,17 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
         )}
       </div>
     )
+
+    if (!isAgentAvailable(selectedAgent)) {
+      return (
+        <div
+          role="status"
+          className="flex items-center justify-center px-4 py-3 text-muted-foreground text-[length:var(--font-size-sm)]"
+        >
+          <span>This chat uses {selectedAgent.name}, which is not available on this platform.</span>
+        </div>
+      )
+    }
 
     return (
       <>

@@ -18,7 +18,7 @@
 import type { HttpClient } from '@/lib/http'
 import type { FetchFn } from '@/lib/proxy-fetch'
 import type { Agent, AgentAdapter } from '@/types/acp'
-import { connectAcpAdapter, type AcpAdapterDeps } from './acp-adapter'
+import { connectAcpAdapter, type AcpAdapterDeps, type RequestPermissionFn } from './acp-adapter'
 import { createBuiltInAdapter, type BuiltInAdapterOptions } from './built-in-adapter'
 
 export type ConnectToAgentContext = {
@@ -28,6 +28,9 @@ export type ConnectToAgentContext = {
    *  the first message in a thread or for agents without `loadSession`. */
   acpSessionId?: string | null
   onAcpSessionId?: (sessionId: string) => Promise<void>
+  /** Forwarded to ACP adapters so they can prompt the UI for tool-call
+   *  approvals. Ignored for built-in agents. */
+  requestPermission?: RequestPermissionFn
 }
 
 export type ConnectToAgentDeps = BuiltInAdapterOptions & AcpAdapterDeps
@@ -48,6 +51,7 @@ export const connectToAgent = async (
       getProxyFetch: ctx.getProxyFetch,
       acpSessionId: ctx.acpSessionId ?? null,
       onAcpSessionId: ctx.onAcpSessionId ?? (async () => {}),
+      requestPermission: ctx.requestPermission,
     },
     {
       openTransport: deps.openTransport,

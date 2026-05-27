@@ -220,6 +220,7 @@ export const hydrateStore = (state: {
       connectionStatus: 'idle' as const,
       connectionError: null,
       id: state.id,
+      pendingPermission: null,
       retryCount: 0,
       retriesExhausted: false,
       selectedAgent: builtInAgent,

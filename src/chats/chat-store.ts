@@ -11,7 +11,18 @@ import type { Agent } from '@/types/acp'
 import type { AutomationRun, ChatThread, Mode, Model, ThunderboltUIMessage } from '@/types'
 import { create } from 'zustand'
 import type { Chat } from '@ai-sdk/react'
+import type { RequestPermissionRequest, RequestPermissionResponse } from '@agentclientprotocol/sdk'
 import { useShallow } from 'zustand/react/shallow'
+
+/** Outstanding ACP permission request awaiting user response. The promise
+ *  resolver lives here so the dialog UI can complete it via a store action;
+ *  the adapter awaits the same promise inside its `requestPermission` client
+ *  handler. */
+export type PendingPermission = {
+  requestId: string
+  request: RequestPermissionRequest
+  resolve: (response: RequestPermissionResponse) => void
+}
 
 /** Connection state for the per-session ACP adapter. `idle` covers built-in
  *  agents (no handshake) and the initial state before the first send. */
@@ -23,6 +34,7 @@ export type ChatSession = {
   connectionStatus: ConnectionStatus
   connectionError: Error | null
   id: string
+  pendingPermission: PendingPermission | null
   retryCount: number
   retriesExhausted: boolean
   selectedAgent: Agent
@@ -45,6 +57,8 @@ type ChatStoreActions = {
   setMcpClients(mcpClients: MCPClient[]): void
   setModes(modes: Mode[]): void
   setModels(models: Model[]): void
+  setPendingPermission(id: string, permission: PendingPermission | null): void
+  resolvePendingPermission(id: string, response: RequestPermissionResponse): void
   setSelectedAgent(id: string, agent: Agent): Promise<void>
   setSelectedMode(id: string, modeId: string | null): Promise<void>
   setSelectedModel(id: string, modelId: string | null): Promise<void>
@@ -91,6 +105,38 @@ export const useChatStore = create<ChatStore>()((set, get) => ({
 
   setModels: (models) => {
     set({ models })
+  },
+
+  setPendingPermission: (id, permission) => {
+    const { sessions } = get()
+
+    const session = sessions.get(id)
+
+    if (!session) {
+      throw new Error('No session found')
+    }
+
+    const nextSessions = new Map(sessions)
+    nextSessions.set(id, { ...session, pendingPermission: permission })
+    set({ sessions: nextSessions })
+  },
+
+  resolvePendingPermission: (id, response) => {
+    const { sessions } = get()
+
+    const session = sessions.get(id)
+
+    if (!session?.pendingPermission) {
+      return
+    }
+
+    const { resolve } = session.pendingPermission
+
+    const nextSessions = new Map(sessions)
+    nextSessions.set(id, { ...session, pendingPermission: null })
+    set({ sessions: nextSessions })
+
+    resolve(response)
   },
 
   setSelectedAgent: async (id, agent) => {

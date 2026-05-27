@@ -27,6 +27,8 @@ import type {
   ClientSideConnection,
   Client,
   InitializeResponse,
+  RequestPermissionRequest,
+  RequestPermissionResponse,
   SessionNotification,
 } from '@agentclientprotocol/sdk'
 import { ClientSideConnection as ClientSideConnectionImpl } from '@agentclientprotocol/sdk'
@@ -46,16 +48,29 @@ const sessionCwd = '/'
 const clientName = 'thunderbolt'
 const clientVersion = '0.2.0'
 
+/** Callback type the adapter invokes when the agent requests permission. The
+ *  chat layer resolves it from a UI dialog; in tests it can be stubbed to
+ *  return a fixed response synchronously. */
+export type RequestPermissionFn = (request: RequestPermissionRequest) => Promise<RequestPermissionResponse>
+
+/** Default fallback when no `requestPermission` callback is wired — preserves
+ *  the prior stub behavior so existing tests and built-in flows still work. */
+const cancelledPermission: RequestPermissionFn = async () => ({
+  outcome: { outcome: 'cancelled' },
+})
+
 /** The minimum Client implementation we register with `ClientSideConnection`.
  *  We accept tool calls / session updates but never request files or terminals
- *  in MVP. All `sessionUpdate` notifications flow into the caller's sink. */
-const createClientHandler = (onSessionUpdate: (notification: SessionNotification) => void): Client => ({
+ *  in MVP. All `sessionUpdate` notifications flow into the caller's sink, and
+ *  permission prompts are forwarded to the supplied `requestPermission`. */
+const createClientHandler = (
+  onSessionUpdate: (notification: SessionNotification) => void,
+  requestPermission: RequestPermissionFn,
+): Client => ({
   sessionUpdate: async (params) => {
     onSessionUpdate(params)
   },
-  requestPermission: async () => ({
-    outcome: { outcome: 'cancelled' },
-  }),
+  requestPermission,
 })
 
 const adaptCapabilities = (response: InitializeResponse): AgentCapabilities => {
@@ -111,6 +126,10 @@ export type AcpAdapterContext = {
    *  `loadSession`. */
   acpSessionId: string | null
   onAcpSessionId: AgentAdapterContext['onAcpSessionId']
+  /** Invoked when the agent requests permission for a tool call. The chat
+   *  layer surfaces a dialog and resolves the response. Optional; defaults to
+   *  auto-cancelling so unwired agents stay safe. */
+  requestPermission?: RequestPermissionFn
 }
 
 /** Open and handshake an ACP adapter against `agent`. The returned adapter is
@@ -149,7 +168,12 @@ export const connectAcpAdapter = async (
   // are no-ops (the agent SHOULD only emit them inside a turn anyway).
   let sessionUpdateSink: (notification: SessionNotification) => void = () => {}
 
-  const connection = new ConnectionCtor(() => createClientHandler((n) => sessionUpdateSink(n)), transport.stream)
+  const requestPermission = ctx.requestPermission ?? cancelledPermission
+
+  const connection = new ConnectionCtor(
+    () => createClientHandler((n) => sessionUpdateSink(n), requestPermission),
+    transport.stream,
+  )
 
   const initializeResponse = await connection.initialize({
     protocolVersion: protocolVersion,

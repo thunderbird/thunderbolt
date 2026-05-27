@@ -200,6 +200,7 @@ export const useHydrateChatStore = ({ id, isNew }: UseHydrateChatStoreParams) =>
       connectionStatus: 'idle',
       connectionError: null,
       id,
+      pendingPermission: null,
       retryCount: 0,
       retriesExhausted: false,
       // Persisted via `chatThreads.agentId`. Falls back to built-in when the

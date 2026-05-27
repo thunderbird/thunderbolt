@@ -12,6 +12,7 @@ import type { FetchFn } from '@/lib/proxy-fetch'
 import type { AgentAdapter } from '@/types/acp'
 import type { SaveMessagesFunction, ThunderboltUIMessage } from '@/types'
 import { Chat } from '@ai-sdk/react'
+import type { RequestPermissionRequest, RequestPermissionResponse } from '@agentclientprotocol/sdk'
 import { DefaultChatTransport } from 'ai'
 import { v7 as uuidv7 } from 'uuid'
 import { useChatStore } from './chat-store'
@@ -23,6 +24,19 @@ export const maxRetries = 3
  * Jitter prevents synchronized retries from overwhelming servers.
  */
 const getRetryDelay = (attempt: number) => 2000 * attempt * (0.5 + Math.random())
+
+/** Bridge an ACP `requestPermission` call to the chat-store dialog flow.
+ *  Generates a request id, stashes the resolver on the session's
+ *  `pendingPermission` slot, and returns the promise the adapter awaits. The
+ *  store's `resolvePendingPermission` action completes it from the dialog. */
+const requestPermissionViaStore = (
+  sessionId: string,
+  request: RequestPermissionRequest,
+): Promise<RequestPermissionResponse> =>
+  new Promise<RequestPermissionResponse>((resolve) => {
+    const requestId = uuidv7()
+    useChatStore.getState().setPendingPermission(sessionId, { requestId, request, resolve })
+  })
 
 /** DI seams for tests. Production binds to the real ACP entry point and the
  *  DAL's `updateChatThread`. Module-level functions are passed by reference so
@@ -101,6 +115,7 @@ export const createAgentRoutingFetch = (
               getProxyFetch,
               acpSessionId: chatThread?.acpSessionId ?? null,
               onAcpSessionId: persistAcpSessionId,
+              requestPermission: (request) => requestPermissionViaStore(id, request),
             },
             {},
           )

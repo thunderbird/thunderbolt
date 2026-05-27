@@ -119,6 +119,7 @@ describe('chat-store', () => {
               connectionStatus: 'idle' as const,
               connectionError: null,
               id: 'test-id',
+              pendingPermission: null,
               selectedAgent: builtInAgent,
               selectedMode: null as unknown as Mode,
               retryCount: 0,

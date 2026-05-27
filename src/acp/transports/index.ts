@@ -23,12 +23,20 @@
  */
 
 import type { AnyMessage } from '@agentclientprotocol/sdk'
+import type { HttpClient } from '@/lib/http'
 import { isTauri } from '@/lib/platform'
 import { computeEffectiveProxyEnabled, createProxyWebSocket } from '@/lib/proxy-fetch'
 import { useLocalSettingsStore } from '@/stores/local-settings-store'
+import { fetchWsTicket } from '@/lib/ws-ticket'
 import type { AgentType } from '@shared/acp-types'
 import type { AcpTransport } from '../types'
 import { openWebSocketTransport, type WebSocketFactory, type WebSocketLike } from './websocket'
+
+/** Carrier subprotocol the managed-ACP WS handshake offers. Server echoes this back. */
+const managedAcpCarrierSubprotocol = 'thunderbolt.v1'
+
+/** Prefix for the single-use ticket subprotocol entry. Server consumes + strips. */
+const managedAcpTicketSubprotocolPrefix = 'thunderbolt.ticket.'
 
 export type OpenTransportInputs = {
   url: string
@@ -44,6 +52,12 @@ export type OpenTransportInputs = {
   isStandalone?: () => boolean
   readProxyEnabled?: () => string | null
   backoffMs?: (attempt: number) => number
+  /** Authenticated HttpClient used to mint a single-use WebSocket ticket for
+   *  managed-ACP (Haystack) connections. Omitted on Tauri Standalone where
+   *  there is no cloud backend and managed-ACP isn't reachable anyway. */
+  httpClient?: HttpClient
+  /** Test seam — production omits and the factory calls `fetchWsTicket`. */
+  fetchTicket?: (httpClient: HttpClient) => Promise<string>
 }
 
 const cloudWsUrl = (): string => useLocalSettingsStore.getState().cloudUrl
@@ -63,12 +77,20 @@ export const isStandaloneTransport = (
 const nativeWebSocketFactory: WebSocketFactory = (url) => new WebSocket(url) as unknown as WebSocketLike
 
 /** Open a transport for the given ACP agent URL. The returned `AcpTransport`
- *  is the bidirectional stream `ClientSideConnection` expects. */
+ *  is the bidirectional stream `ClientSideConnection` expects.
+ *
+ *  Managed-ACP on web: fetches a single-use ticket and constructs the
+ *  WebSocket with `['thunderbolt.v1', 'thunderbolt.ticket.<nonce>']` so the
+ *  server can authenticate the upgrade without leaking the credential via the
+ *  URL or relying on a third-party-context cookie. The ticket fetch is
+ *  awaited up front so a failure surfaces as a transport-open rejection (the
+ *  SDK then rejects `initialize` with a clear reason). */
 export const openTransport = async (inputs: OpenTransportInputs): Promise<AcpTransport> => {
+  const webSocketFactory = inputs.webSocketFactory ?? (await resolveWebSocketFactory(inputs))
   return openWebSocketTransport({
     url: inputs.url,
     signal: inputs.signal,
-    webSocketFactory: inputs.webSocketFactory ?? resolveWebSocketFactory(inputs),
+    webSocketFactory,
     backoffMs: inputs.backoffMs,
   })
 }
@@ -76,9 +98,9 @@ export const openTransport = async (inputs: OpenTransportInputs): Promise<AcpTra
 /** Pick the WebSocket constructor for the given inputs. Managed agents skip
  *  the universal proxy unconditionally — see file header. Remote agents fall
  *  through to the standalone-vs-proxied decision. */
-const resolveWebSocketFactory = (inputs: OpenTransportInputs): WebSocketFactory => {
+const resolveWebSocketFactory = async (inputs: OpenTransportInputs): Promise<WebSocketFactory> => {
   if (inputs.agentType === 'managed-acp') {
-    return nativeWebSocketFactory
+    return resolveManagedAcpFactory(inputs)
   }
   const standalone = isStandaloneTransport(inputs.isStandalone, inputs.readProxyEnabled)
   if (standalone) {
@@ -87,6 +109,23 @@ const resolveWebSocketFactory = (inputs: OpenTransportInputs): WebSocketFactory 
   const proxyWs = createProxyWebSocket({ cloudUrl: cloudWsUrl(), isStandalone: inputs.isStandalone })
   return (url) => proxyWs(url) as unknown as WebSocketLike
 }
+
+/** Build a WebSocket factory for managed-ACP. On web (Connected) we mint a
+ *  ticket and pass it as a subprotocol entry; in Standalone Tauri there is no
+ *  cloud backend to mint against, so we connect direct (managed-ACP isn't
+ *  reachable from Standalone anyway — kept as a graceful no-op for symmetry). */
+const resolveManagedAcpFactory = async (inputs: OpenTransportInputs): Promise<WebSocketFactory> => {
+  const standalone = isStandaloneTransport(inputs.isStandalone, inputs.readProxyEnabled)
+  if (standalone || !inputs.httpClient) {
+    return nativeWebSocketFactory
+  }
+  const fetcher = inputs.fetchTicket ?? defaultFetchTicket
+  const ticket = await fetcher(inputs.httpClient)
+  const protocols = [managedAcpCarrierSubprotocol, `${managedAcpTicketSubprotocolPrefix}${ticket}`]
+  return (url) => new WebSocket(url, protocols) as unknown as WebSocketLike
+}
+
+const defaultFetchTicket = (httpClient: HttpClient): Promise<string> => fetchWsTicket('haystack', { httpClient })
 
 // Re-export for callers that build their own transport (e.g. integration tests).
 export type { AnyMessage }

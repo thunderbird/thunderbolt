@@ -26,6 +26,7 @@ import { createWaitlistRoutes } from '@/waitlist/routes'
 import { createAccountRoutes } from '@/api/account'
 import { createAgentsRoutes } from '@/agents'
 import { createHaystackRoutes } from '@/haystack'
+import { createWsTicketRoutes } from '@/auth/ws-ticket-routes'
 import { createConfigRoutes } from '@/api/config'
 import { createEncryptionRoutes } from '@/api/encryption'
 import { createPowerSyncRoutes } from '@/api/powersync'
@@ -153,6 +154,7 @@ export const createApp = async (deps?: AppDeps) => {
       .use(createEncryptionRoutes(auth, database))
       .use(createAccountRoutes(auth, database))
       .use(createAgentsRoutes(auth))
+      .use(createWsTicketRoutes(auth))
       .use(createHaystackRoutes(auth, settings))
   )
 }

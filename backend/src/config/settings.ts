@@ -110,6 +110,13 @@ const settingsSchema = z
     haystackApiKey: z.string().default(''),
     // JSON array of pipeline descriptors: [{id, name, pipelineId, description?}]
     haystackPipelines: z.string().default(''),
+
+    // WebSocket handshake-auth tickets (see backend/src/auth/ws-ticket-store.ts).
+    // 30 s matches Slack RTM exactly; long enough for browser handshake under
+    // bad networks, short enough to bound replay risk.
+    wsTicketTtlMs: z.coerce.number().int().positive().default(30_000),
+    // DoS guard for the in-memory store. 10k tickets ≈ 1 MB worst case.
+    wsTicketMaxActive: z.coerce.number().int().positive().default(10_000),
   })
   .superRefine((data, ctx) => {
     if (data.powersyncUrl && data.powersyncJwtSecret.length < 32) {
@@ -187,6 +194,8 @@ const parseSettings = (): Settings => {
     haystackBaseUrl: process.env.HAYSTACK_BASE_URL || '',
     haystackApiKey: process.env.HAYSTACK_API_KEY || '',
     haystackPipelines: process.env.HAYSTACK_PIPELINES || '',
+    wsTicketTtlMs: process.env.WS_TICKET_TTL_MS || '30000',
+    wsTicketMaxActive: process.env.WS_TICKET_MAX_ACTIVE || '10000',
   }
 
   return settingsSchema.parse(env)

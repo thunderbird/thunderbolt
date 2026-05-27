@@ -4,6 +4,7 @@
 
 import { registerAgentProvider } from '@/agents'
 import type { Auth } from '@/auth/elysia-plugin'
+import { getWsTicketStore, type WsTicketStore } from '@/auth/ws-ticket-store'
 import { createStandaloneLogger } from '@/config/logger'
 import type { Settings } from '@/config/settings'
 import { safeErrorHandler } from '@/middleware/error-handling'
@@ -11,6 +12,36 @@ import type { User } from '@shared/types/auth'
 import { Elysia } from 'elysia'
 import { HaystackAcpServer, type HaystackAcpDeps } from './acp-server'
 import { createHaystackProvider } from './provider'
+
+/**
+ * Carrier subprotocol the client always advertises alongside the ticket. The
+ * server echoes this back as `Sec-WebSocket-Protocol` so the upgrade
+ * completes — RFC 6455 requires the server to pick one of the offered
+ * subprotocols. The ticket subprotocol (`thunderbolt.ticket.<nonce>`) is
+ * *never* echoed back so it doesn't surface to JS via `WebSocket.protocol`.
+ */
+const wsCarrierSubprotocol = 'thunderbolt.v1'
+
+/** Ticket subprotocol entries start with this prefix; the rest is the opaque nonce. */
+const wsTicketSubprotocolPrefix = 'thunderbolt.ticket.'
+
+/**
+ * Extract the ticket nonce from a comma-separated `Sec-WebSocket-Protocol`
+ * value. Returns `null` if no ticket entry is present.
+ */
+const extractTicket = (header: string | null): string | null => {
+  if (!header) {
+    return null
+  }
+  for (const raw of header.split(',')) {
+    const entry = raw.trim()
+    if (entry.startsWith(wsTicketSubprotocolPrefix)) {
+      const nonce = entry.slice(wsTicketSubprotocolPrefix.length)
+      return nonce.length > 0 ? nonce : null
+    }
+  }
+  return null
+}
 
 /**
  * Close code emitted when the WebSocket upgrade succeeds but auth fails. We
@@ -34,21 +65,51 @@ const wsCloseUnauthorized = 4001
  * are only meaningful after the upgrade lands, and (b) the FE wants to
  * distinguish 4001 from a generic HTTP 401 (different toasts).
  */
-export const createHaystackRoutes = (auth: Auth, settings: Settings, deps?: HaystackAcpDeps) => {
+export const createHaystackRoutes = (
+  auth: Auth,
+  settings: Settings,
+  deps?: HaystackAcpDeps,
+  ticketStore: WsTicketStore = getWsTicketStore(),
+) => {
   registerAgentProvider(createHaystackProvider())
 
   return new Elysia({ name: 'haystack-routes', prefix: '/haystack' })
     .onError(safeErrorHandler)
     .derive(({ request }) => ({ request, sessionUser: null as User | null }))
     .ws('/ws', {
-      async beforeHandle({ request, store }) {
-        // Resolve the session up-front so `open` can decide whether to close
-        // 4001 without re-running getSession inside the ws context. Stash the
-        // result on the per-connection `data` via `derive`-side store cast.
-        const session = await auth.api.getSession({ headers: request.headers })
-        const user = (session?.user as User | undefined) ?? null
-        // The cast is the documented escape hatch — Elysia's ws context type
-        // doesn't surface custom data, but the per-call object is the same.
+      async beforeHandle({ request, set, store }) {
+        // Preferred path: consume a single-use ticket from the
+        // Sec-WebSocket-Protocol header (no cross-origin cookie, no token in
+        // URL/Referer/logs). Falls back to session-cookie auth so existing
+        // managed-ACP clients keep working during rollout.
+        const subprotocolHeader = request.headers.get('sec-websocket-protocol')
+        const nonce = extractTicket(subprotocolHeader)
+        let user: User | null = null
+
+        if (nonce) {
+          const consumed = ticketStore.consumeTicket(nonce, 'haystack')
+          if (consumed) {
+            // Synthesize a minimal user shape — only `id` and `isAnonymous` are
+            // read downstream. Anonymous users can't mint tickets (route returns
+            // 403), so this is always a regular user.
+            user = { id: consumed.userId, isAnonymous: false } as User
+          }
+        }
+
+        if (!user) {
+          const session = await auth.api.getSession({ headers: request.headers })
+          user = (session?.user as User | undefined) ?? null
+        }
+
+        // Echo the carrier subprotocol so strict WS clients (Bun, browsers) see
+        // the offer was accepted. The auth-bearing `thunderbolt.ticket.*`
+        // subprotocol is intentionally NOT echoed — keeping it off the response
+        // header means it never lands in `WebSocket.protocol` (page JS) or
+        // proxy response logs.
+        if (subprotocolHeader?.split(',').some((entry) => entry.trim() === wsCarrierSubprotocol)) {
+          set.headers['sec-websocket-protocol'] = wsCarrierSubprotocol
+        }
+
         ;(store as unknown as { __haystackUser?: User | null }).__haystackUser = user
       },
       open(ws) {

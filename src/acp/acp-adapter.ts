@@ -138,6 +138,10 @@ export const connectAcpAdapter = async (
     agentType: agent.type,
     signal: transportController.signal,
     webSocketFactory: deps.webSocketFactory,
+    // Managed-ACP needs the authenticated client to mint a single-use
+    // WebSocket ticket; remote-ACP ignores it (the universal proxy / native
+    // WebSocket carry their own auth).
+    httpClient: ctx.httpClient,
   })
 
   // The `sessionUpdate` sink is rebound per prompt-turn so notifications from

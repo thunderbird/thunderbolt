@@ -23,8 +23,10 @@ import { createApp } from '@/index'
 import { session as sessionTable, user as userTable } from '@/db/auth-schema'
 import { authHeaders, createTestApp, type TestAppHandle } from '@/test-utils/e2e'
 import { createTestDb } from '@/test-utils/db'
+import { getWsTicketStore, resetWsTicketStoreSingleton } from '@/auth/ws-ticket-store'
 import { afterEach, describe, expect, it } from 'bun:test'
 import { createHmac } from 'crypto'
+import { eq } from 'drizzle-orm'
 
 const betterAuthSecret = 'better-auth-secret-12345678901234567890'
 
@@ -96,6 +98,7 @@ describe('WS /v1/haystack/ws — auth gating', () => {
     for (const cleanup of cleanups.splice(0)) {
       await cleanup()
     }
+    resetWsTicketStoreSingleton()
   })
 
   it('closes 4001 when no auth credentials are supplied', async () => {
@@ -198,5 +201,76 @@ describe('WS /v1/haystack/ws — auth gating', () => {
     expect(reply.result.protocolVersion).toBeGreaterThan(0)
     expect(reply.result.agentCapabilities.loadSession).toBe(false)
     client.close()
+  })
+
+  it('opens the socket when the client passes a valid ticket via Sec-WebSocket-Protocol', async () => {
+    const handle = await createTestApp()
+    const port = await startApp(handle)
+    cleanups.push(() => closeApp(handle))
+
+    // Resolve the user behind the test bearer to mint a real ticket for them.
+    const sessionToken = handle.bearerToken.split('.')[0]
+    const [sessionRow] = await handle.db
+      .select({ userId: sessionTable.userId })
+      .from(sessionTable)
+      .where(eq(sessionTable.token, sessionToken))
+      .limit(1)
+    expect(sessionRow).toBeDefined()
+
+    const ticket = getWsTicketStore().issueTicket(sessionRow.userId, 'haystack', 30_000)
+
+    // No Authorization header — the ticket must be the sole credential.
+    const client = new WebSocket(`ws://127.0.0.1:${port}/v1/haystack/ws?pipeline=rag`, [
+      'thunderbolt.v1',
+      `thunderbolt.ticket.${ticket}`,
+    ])
+    await new Promise<void>((resolve, reject) => {
+      client.addEventListener('open', () => resolve())
+      client.addEventListener('close', () => reject(new Error('closed before open')))
+      client.addEventListener('error', () => reject(new Error('errored before open')))
+    })
+
+    // Browser sees only the carrier subprotocol — never the auth-bearing one.
+    expect(client.protocol).toBe('thunderbolt.v1')
+    client.close()
+  })
+
+  it('closes 4001 when the ticket subprotocol contains a garbage nonce', async () => {
+    const handle = await createTestApp()
+    const port = await startApp(handle)
+    cleanups.push(() => closeApp(handle))
+
+    const client = new WebSocket(`ws://127.0.0.1:${port}/v1/haystack/ws?pipeline=rag`, [
+      'thunderbolt.v1',
+      'thunderbolt.ticket.nope-not-real',
+    ])
+    const term = await observeWsTermination(client)
+    expect([4001, 1006]).toContain(term.code)
+  })
+
+  it('closes 4001 when the ticket was minted for a different scope', async () => {
+    const handle = await createTestApp()
+    const port = await startApp(handle)
+    cleanups.push(() => closeApp(handle))
+
+    const sessionToken = handle.bearerToken.split('.')[0]
+    const [sessionRow] = await handle.db
+      .select({ userId: sessionTable.userId })
+      .from(sessionTable)
+      .where(eq(sessionTable.token, sessionToken))
+      .limit(1)
+    // Bypass the route's body validator by hand-minting against the store
+    // with a scope value the consumer will reject. Cast `as 'haystack'`
+    // is the only way TS lets us pass a literal-typed scope arg today; the
+    // store treats the value opaquely so the mismatch path still exercises.
+    const wrongScope = 'other' as unknown as 'haystack'
+    const ticket = getWsTicketStore().issueTicket(sessionRow.userId, wrongScope, 30_000)
+
+    const client = new WebSocket(`ws://127.0.0.1:${port}/v1/haystack/ws?pipeline=rag`, [
+      'thunderbolt.v1',
+      `thunderbolt.ticket.${ticket}`,
+    ])
+    const term = await observeWsTermination(client)
+    expect([4001, 1006]).toContain(term.code)
   })
 })

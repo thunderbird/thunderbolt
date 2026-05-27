@@ -72,6 +72,8 @@ const powersyncSettings: Settings = {
   haystackBaseUrl: '',
   haystackApiKey: '',
   haystackPipelines: '',
+  wsTicketTtlMs: 30_000,
+  wsTicketMaxActive: 10_000,
 }
 
 describe('PowerSync API', () => {

@@ -77,8 +77,66 @@ afterEach(() => {
   globalThis.WebSocket = originalWebSocket
 })
 
+// A minimal HttpClient stub — `openTransport` only ever reaches into it
+// indirectly via `fetchTicket`, so the methods can be no-ops cast through unknown.
+const stubHttpClient = {
+  get: () => Promise.resolve(new Response()),
+  post: () => Promise.resolve(new Response()),
+  delete: () => Promise.resolve(new Response()),
+} as unknown as Parameters<typeof openTransport>[0]['httpClient']
+
 describe('openTransport — agent-type routing', () => {
-  it('managed-acp connects directly without proxy subprotocol on Web', async () => {
+  it('managed-acp on Web fetches a ticket and offers thunderbolt.v1 + thunderbolt.ticket.<nonce>', async () => {
+    const transport = await openTransport({
+      url: 'wss://cloud.test/v1/haystack/ws?pipeline=p1',
+      transport: 'websocket',
+      agentType: 'managed-acp',
+      signal: new AbortController().signal,
+      isStandalone: () => false,
+      readProxyEnabled: () => null,
+      backoffMs: () => 1,
+      httpClient: stubHttpClient,
+      fetchTicket: () => Promise.resolve('test-nonce-123'),
+    })
+
+    expect(FakeBrowserSocket.instances).toHaveLength(1)
+    const socket = FakeBrowserSocket.instances[0]
+    expect(socket.url).toBe('wss://cloud.test/v1/haystack/ws?pipeline=p1')
+    expect(socket.protocols).toContain('thunderbolt.v1')
+    expect(socket.protocols).toContain('thunderbolt.ticket.test-nonce-123')
+    expect(socket.protocols.some((p) => p.startsWith(wsTargetPrefix))).toBe(false)
+
+    transport.close()
+  })
+
+  it('managed-acp on Tauri Standalone connects direct (no ticket, no proxy)', async () => {
+    let fetched = false
+    const transport = await openTransport({
+      url: 'wss://cloud.test/v1/haystack/ws?pipeline=p1',
+      transport: 'websocket',
+      agentType: 'managed-acp',
+      signal: new AbortController().signal,
+      isStandalone: () => true,
+      readProxyEnabled: () => 'false',
+      backoffMs: () => 1,
+      httpClient: stubHttpClient,
+      fetchTicket: () => {
+        fetched = true
+        return Promise.resolve('should-not-be-used')
+      },
+    })
+
+    expect(fetched).toBe(false)
+    expect(FakeBrowserSocket.instances).toHaveLength(1)
+    const socket = FakeBrowserSocket.instances[0]
+    expect(socket.url).toBe('wss://cloud.test/v1/haystack/ws?pipeline=p1')
+    expect(socket.protocols).toHaveLength(0)
+    expect(socket.protocols.some((p) => p.startsWith(wsTargetPrefix))).toBe(false)
+
+    transport.close()
+  })
+
+  it('managed-acp with no httpClient falls back to a direct connect (graceful)', async () => {
     const transport = await openTransport({
       url: 'wss://cloud.test/v1/haystack/ws?pipeline=p1',
       transport: 'websocket',
@@ -91,27 +149,7 @@ describe('openTransport — agent-type routing', () => {
 
     expect(FakeBrowserSocket.instances).toHaveLength(1)
     const socket = FakeBrowserSocket.instances[0]
-    expect(socket.url).toBe('wss://cloud.test/v1/haystack/ws?pipeline=p1')
-    expect(socket.protocols.some((p) => p.startsWith(wsTargetPrefix))).toBe(false)
-
-    transport.close()
-  })
-
-  it('managed-acp connects directly on Tauri Standalone too', async () => {
-    const transport = await openTransport({
-      url: 'wss://cloud.test/v1/haystack/ws?pipeline=p1',
-      transport: 'websocket',
-      agentType: 'managed-acp',
-      signal: new AbortController().signal,
-      isStandalone: () => true,
-      readProxyEnabled: () => 'false',
-      backoffMs: () => 1,
-    })
-
-    expect(FakeBrowserSocket.instances).toHaveLength(1)
-    const socket = FakeBrowserSocket.instances[0]
-    expect(socket.url).toBe('wss://cloud.test/v1/haystack/ws?pipeline=p1')
-    expect(socket.protocols.some((p) => p.startsWith(wsTargetPrefix))).toBe(false)
+    expect(socket.protocols).toHaveLength(0)
 
     transport.close()
   })

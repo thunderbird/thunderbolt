@@ -3,7 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { Plus } from 'lucide-react'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { Link, useNavigate as useNavigate_default } from 'react-router'
 
@@ -105,8 +105,32 @@ export const ChatSkillsBar = ({
   )
 }
 
-const MobileOverlay = ({ onDismiss }: { onDismiss: () => void }) =>
-  createPortal(
-    <div className="fixed inset-0 z-[5] bg-black/30 backdrop-blur-sm" aria-hidden="true" onClick={onDismiss} />,
+/**
+ * Backdrop shown behind an open chip menu / the reorder panel on mobile.
+ * A `<button>` rather than a `<div>` so keyboard users can `Escape` /
+ * `Enter` / `Space` to dismiss; the document-level Escape listener is the
+ * primary path, but the button keeps the dismiss target focusable for
+ * screen readers and assistive tech.
+ */
+const MobileOverlay = ({ onDismiss }: { onDismiss: () => void }) => {
+  // Document-level Escape so users don't have to focus the backdrop first.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        onDismiss()
+      }
+    }
+    document.addEventListener('keydown', onKey)
+    return () => document.removeEventListener('keydown', onKey)
+  }, [onDismiss])
+
+  return createPortal(
+    <button
+      type="button"
+      aria-label="Dismiss"
+      className="fixed inset-0 z-[5] cursor-default bg-black/30 backdrop-blur-sm"
+      onClick={onDismiss}
+    />,
     document.body,
   )
+}

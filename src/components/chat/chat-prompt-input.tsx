@@ -9,9 +9,10 @@ import { useContextTracking as useContextTracking_default } from '@/hooks/use-co
 import { useIsMobile as useIsMobile_default } from '@/hooks/use-mobile'
 import { isMobile as isPlatformMobile } from '@/lib/platform'
 import { trackEvent as trackEvent_default } from '@/lib/posthog'
+import { appendSlashToken, computeSkillRefProblems } from '@/skills/compose-chat-input'
 import { renderHighlightedSkillTokens, type SkillStatusClassifier } from '@/skills/highlight-skill-tokens'
-import { findSkillTokens } from '@/skills/parse-skill-tokens'
-import { SkillRefAlerts, type SkillRefProblem } from '@/skills/skill-ref-alerts'
+import { resolveSkillTokenInstructions } from '@/skills/resolve-skill-system-messages'
+import { SkillRefAlerts } from '@/skills/skill-ref-alerts'
 import { SlashPopup } from '@/skills/slash-popup'
 import { useSlashCommand } from '@/skills/use-slash-command'
 import {
@@ -102,6 +103,11 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
     const isNewChat = !chatThread
     const [input, setInput, clearDraft] = useDraftInput(draftKey, { persist: !isNewChat })
     const formRef = useRef<HTMLFormElement>(null)
+    // Discovered lazily — the form ref is set after the first render, and we
+    // need a stable ref to pass to `useSlashCommand` so it can focus / set
+    // selection after inserting a token. Keeping a single ref (rather than
+    // one for the form and one for the textarea) avoids two cached pointers
+    // to the same node drifting out of sync.
     const textareaRef = useRef<HTMLTextAreaElement | null>(null)
     const { triggerSelection } = useHaptics()
 
@@ -110,8 +116,7 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
       return textareaRef.current
     }
 
-    const slashInputRef = useRef<HTMLTextAreaElement | null>(null)
-    slashInputRef.current = getTextarea()
+    textareaRef.current = getTextarea()
 
     const {
       setCursorPos,
@@ -124,17 +129,14 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
     } = useSlashCommand({
       value: input,
       setValue: setInput,
-      inputRef: slashInputRef,
+      inputRef: textareaRef,
       library,
       isEnabled: isValidSkillSlug,
     })
 
     const addSkillChip = useCallback(
       (slug: string) => {
-        const trimmed = input.trim()
-        const token = `/${slug}`
-        const onlyHoldsSkill = trimmed === token
-        const next = input.length === 0 || onlyHoldsSkill ? `${token} ` : `${input.replace(/\s+$/, '')} ${token} `
+        const next = appendSlashToken(input, slug)
         setInput(next)
         requestAnimationFrame(() => {
           const ta = getTextarea()
@@ -194,52 +196,36 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
       [chatThreadId, setSelectedMode, triggerSelection],
     )
 
-    // Collect committed slash tokens that *won't* resolve at send time:
-    // disabled skills (we offer an "Enable" link) and unknown names (no
-    // such skill exists). In-progress tokens — still being typed at the
-    // end of input — are skipped so we don't nag the user mid-keystroke.
-    const skillRefProblems = useMemo<SkillRefProblem[]>(() => {
-      const tokens = findSkillTokens(input)
-      const seen = new Set<string>()
-      const problems: SkillRefProblem[] = []
-      for (const { slug, committed } of tokens) {
-        if (!committed || seen.has(slug)) {
-          continue
-        }
-        seen.add(slug)
-        const status = classifySkill(slug)
-        if (status === 'enabled') {
-          continue
-        }
-        const skill = skillBySlug.get(slug)
-        if (status === 'disabled' && skill) {
-          problems.push({ kind: 'disabled', slug, skillId: skill.id })
-        } else {
-          problems.push({ kind: 'unknown', slug })
+    const skillRefProblems = useMemo(
+      () => computeSkillRefProblems(input, classifySkill, skillBySlug),
+      [input, classifySkill, skillBySlug],
+    )
+
+    // Map of enabled-skill slug → instruction. Shared by the overflow
+    // estimate below and the send-time resolver in `ai/fetch.ts` (via
+    // `resolveSkillTokenInstructions`), so a future change to resolution
+    // semantics moves both surfaces together.
+    const enabledInstructionBySlug = useMemo(() => {
+      const map = new Map<string, string>()
+      for (const skill of library) {
+        if (isEnabled(skill.id)) {
+          map.set(skill.name, skill.instruction)
         }
       }
-      return problems
-    }, [input, classifySkill, skillBySlug])
+      return map
+    }, [library, isEnabled])
 
     // Estimate the token cost of resolved skill instructions so the
     // overflow modal fires correctly when /name tokens push the send past
     // the model's context window — Skills v1 Open Q #5.
     const additionalInputTokens = useMemo(() => {
-      const tokens = findSkillTokens(input)
-      const seen = new Set<string>()
+      const instructions = resolveSkillTokenInstructions(input, enabledInstructionBySlug)
       let total = 0
-      for (const { slug } of tokens) {
-        if (seen.has(slug) || !enabledSlugs.has(slug)) {
-          continue
-        }
-        seen.add(slug)
-        const skill = library.find((s) => s.name === slug)
-        if (skill) {
-          total += estimateTokensForText(skill.instruction)
-        }
+      for (const instruction of instructions) {
+        total += estimateTokensForText(instruction)
       }
       return total
-    }, [input, enabledSlugs, library])
+    }, [input, enabledInstructionBySlug])
 
     const { usedTokens, maxTokens, isContextKnown, isOverflowing } = useContextTracking({
       model: selectedModel,

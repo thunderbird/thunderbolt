@@ -3,7 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { File, ListOrdered, Pin, Play, Plus } from 'lucide-react'
-import { useRef, useState, type PointerEvent } from 'react'
+import { useEffect, useRef, useState, type PointerEvent } from 'react'
 
 import { Button } from '@/components/ui/button'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
@@ -56,6 +56,11 @@ export const SuggestionChip = ({
       longPressTimerRef.current = null
     }
   }
+
+  // If the chip unmounts mid-press, kill the pending timer so it can't fire
+  // `handleOpenChange(true)` on a gone component (React warns; harmless but
+  // noisy in dev).
+  useEffect(() => clearLongPress, [])
 
   // `DropdownMenuTrigger` opens the menu on pointer-down for primary clicks,
   // which would conflict with our click-to-insert affordance. Calling

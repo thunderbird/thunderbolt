@@ -13,7 +13,7 @@ import {
   shouldRetry,
 } from '@/ai/step-logic'
 import { getAllSkills, getIntegrationStatus, getModel, getModelProfile, getSettings } from '@/dal'
-import { parseSkillTokens } from '@/skills/parse-skill-tokens'
+import { extractLastUserText, resolveSkillTokenInstructions } from '@/skills/resolve-skill-system-messages'
 import { getDb } from '@/db/database'
 import { getLocalSetting } from '@/stores/local-settings-store'
 import { isSsoMode } from '@/lib/auth-mode'
@@ -425,22 +425,19 @@ export const aiFetchStreamingResponse = async ({
     // into ephemeral system messages. Re-resolution happens on every send /
     // regenerate so the model sees the user's *current* skill library, not
     // a snapshot from when the message was originally typed.
-    const lastUserMessage = [...messages].reverse().find((m) => m.role === 'user')
-    const lastUserText =
-      lastUserMessage?.parts
-        .filter((p): p is { type: 'text'; text: string } => p.type === 'text')
-        .map((p) => p.text)
-        .join('\n') ?? ''
+    //
+    // The composer (`chat-prompt-input.tsx`) uses the same helpers to size
+    // the context-overflow estimate so the budget and the actual prepend
+    // stay in lockstep.
+    const lastUserText = extractLastUserText(messages)
     const allSkills = await getAllSkills(db)
-    const skillByName = new Map(
-      allSkills
-        .filter((s) => s.enabled === 1 && s.name && s.instruction)
-        .map((s) => [s.name as string, s.instruction as string]),
-    )
-    const { systemMessages: skillSystemMessages } = parseSkillTokens(lastUserText, (slug) => {
-      const instruction = skillByName.get(slug)
-      return instruction ? { instruction } : null
-    })
+    const instructionBySlug = new Map<string, string>()
+    for (const skill of allSkills) {
+      if (skill.enabled === 1 && skill.name && skill.instruction) {
+        instructionBySlug.set(skill.name, skill.instruction)
+      }
+    }
+    const skillSystemMessages = resolveSkillTokenInstructions(lastUserText, instructionBySlug)
 
     const stream = createUIMessageStream({
       generateId: uuidv7,

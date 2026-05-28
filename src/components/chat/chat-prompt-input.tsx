@@ -103,6 +103,12 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
     const [showOverflowModal, setShowOverflowModal] = useState(false)
     const isNewChat = !chatThread
     const [input, setInput, clearDraft] = useDraftInput(draftKey, { persist: !isNewChat })
+    // Latest-input ref so deferred callers (e.g. the `runSkill` microtask
+    // below) read the current value at execution time rather than the value
+    // captured when the callback was created. Without this, a draft restore
+    // racing with the microtask could silently discard the user's text.
+    const inputRef = useRef(input)
+    inputRef.current = input
     const formRef = useRef<HTMLFormElement>(null)
     // Discovered lazily — the form ref is set after the first render, and we
     // need a stable ref to pass to `useSlashCommand` so it can focus / set
@@ -137,16 +143,22 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
 
     const addSkillChip = useCallback(
       (slug: string) => {
-        const next = appendSlashToken(input, slug)
+        // Read the latest input from a ref so deferred callers (e.g. the
+        // `runSkill` microtask) don't operate on a stale closure value.
+        const next = appendSlashToken(inputRef.current, slug)
+        // Update value AND cursor in the same commit. Otherwise the re-render
+        // between `setInput` and the rAF runs with a stale `cursorPos` that
+        // may still point inside a `/slug` token, briefly flashing the slash
+        // popup open — same fix as `selectSkill` in `use-slash-command.ts`.
         setInput(next)
+        setCursorPos(next.length)
         requestAnimationFrame(() => {
           const ta = getTextarea()
           ta?.focus()
           ta?.setSelectionRange(next.length, next.length)
-          setCursorPos(next.length)
         })
       },
-      [input, setInput, setCursorPos],
+      [setInput, setCursorPos],
     )
 
     const insertInstructionText = useCallback(

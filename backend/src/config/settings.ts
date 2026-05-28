@@ -105,6 +105,10 @@ const settingsSchema = z
     enabledAgents: z.string().default(''),
     // When false, the discovery response sets allowCustomAgents: false and the UI hides "+ Add Custom Agent".
     allowCustomAgents: z.boolean().default(true),
+    // When true, the built-in Thunderbolt agent is omitted entirely from the client's agent
+    // list (not just disabled) — for deployments that ship only their own agents (e.g. Deepset).
+    // Surfaced to the UI via GET /config as `builtInAgentEnabled`.
+    disableBuiltInAgent: z.boolean().default(false),
     // Haystack-specific config (consumed by the Haystack provider, defined here for centralized config).
     haystackBaseUrl: z.string().default(''),
     haystackApiKey: z.string().default(''),
@@ -194,6 +198,7 @@ const parseSettings = (): Settings => {
     trustedProxy: (process.env.TRUSTED_PROXY || '').toLowerCase(),
     enabledAgents: process.env.ENABLED_AGENTS || '',
     allowCustomAgents: process.env.ALLOW_CUSTOM_AGENTS !== 'false',
+    disableBuiltInAgent: process.env.DISABLE_BUILT_IN_AGENT === 'true',
     haystackBaseUrl: process.env.HAYSTACK_BASE_URL || '',
     haystackApiKey: process.env.HAYSTACK_API_KEY || '',
     haystackWorkspace: process.env.HAYSTACK_WORKSPACE || '',

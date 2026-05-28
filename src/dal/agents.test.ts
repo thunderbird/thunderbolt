@@ -184,6 +184,22 @@ describe('agents DAL', () => {
       const result = composeAllAgents([], [])
       expect(result).toEqual([builtInAgent])
     })
+
+    it('includes built-in when includeBuiltIn is true', () => {
+      const result = composeAllAgents([systemAgent('sys-a', 'Alpha System')], [], { includeBuiltIn: true })
+      expect(result.map((a) => a.id)).toEqual([builtInAgent.id, 'sys-a'])
+    })
+
+    it('omits built-in entirely when includeBuiltIn is false', () => {
+      const result = composeAllAgents([systemAgent('sys-a', 'Alpha System')], [customAgent('c-a', 'Alpha Custom')], {
+        includeBuiltIn: false,
+      })
+      expect(result.map((a) => a.id)).toEqual(['sys-a', 'c-a'])
+    })
+
+    it('returns an empty list when built-in disabled and there are no other agents', () => {
+      expect(composeAllAgents([], [], { includeBuiltIn: false })).toEqual([])
+    })
   })
 
   describe('agent secrets', () => {

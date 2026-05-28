@@ -20,6 +20,7 @@ import {
   saveMessagesWithContextUpdate,
 } from '@/dal'
 import { getOrCreateChatThread, updateChatThread } from '@/dal/chat-threads'
+import { selectBuiltInAgentEnabled, useConfigStore } from '@/api/config-store'
 import { builtInAgent } from '@/defaults/agents'
 import { useMCP } from '@/lib/mcp-provider'
 import { generateTitle } from '@/lib/title-generator'
@@ -150,6 +151,9 @@ export const useHydrateChatStore = ({ id, isNew }: UseHydrateChatStoreParams) =>
     ])
 
     // Built-in is implicit (lives in code); the DB rows are only customs + system.
+    // Respect the deployment's `disableBuiltInAgent` flag so the resolved agent
+    // and the dropdown agree on whether the built-in exists.
+    const includeBuiltIn = selectBuiltInAgentEnabled(useConfigStore.getState().config)
     const allAgents = composeAllAgents(
       systemAgentRows.map((row) => ({
         id: row.id,
@@ -177,11 +181,16 @@ export const useHydrateChatStore = ({ id, isNew }: UseHydrateChatStoreParams) =>
         deletedAt: row.deletedAt,
         userId: row.userId,
       })),
+      { includeBuiltIn },
     )
+    // Resolve the thread's persisted agent. When it no longer resolves (deleted
+    // custom, unsynced system, or built-in disabled by the deployment) fall back
+    // to the first available agent — silently, so enterprise users who never had
+    // the built-in just continue with their own agent. `builtInAgent` is the
+    // last-resort safety net for the degenerate zero-agent deployment.
     const persistedAgentId = chatThread?.agentId ?? null
-    const selectedAgent = persistedAgentId
-      ? (allAgents.find((a) => a.id === persistedAgentId) ?? builtInAgent)
-      : builtInAgent
+    const selectedAgent =
+      (persistedAgentId ? allAgents.find((a) => a.id === persistedAgentId) : undefined) ?? allAgents[0] ?? builtInAgent
 
     // If chat doesn't exist and this isn't a new chat, redirect to 404
     if (!chatThread && !isNew) {
@@ -206,9 +215,8 @@ export const useHydrateChatStore = ({ id, isNew }: UseHydrateChatStoreParams) =>
       pendingPermission: null,
       retryCount: 0,
       retriesExhausted: false,
-      // Persisted via `chatThreads.agentId`. Falls back to built-in when the
-      // thread predates the column, has no value, or references a row that
-      // no longer resolves (deleted custom, unsynced system agent).
+      // Persisted via `chatThreads.agentId`; resolved above (first available
+      // agent when the persisted id no longer matches).
       selectedAgent,
       selectedMode,
       selectedModel: defaultModel,

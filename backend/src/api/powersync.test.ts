@@ -69,6 +69,7 @@ const powersyncSettings: Settings = {
   samlCert: '',
   enabledAgents: '',
   allowCustomAgents: true,
+  disableBuiltInAgent: false,
   haystackBaseUrl: '',
   haystackApiKey: '',
   haystackWorkspace: '',

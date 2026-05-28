@@ -55,6 +55,7 @@ export const createTestSettings = (overrides: Partial<Settings> = {}): Settings 
   trustedProxy: '' as const,
   enabledAgents: '',
   allowCustomAgents: true,
+  disableBuiltInAgent: false,
   haystackBaseUrl: '',
   haystackApiKey: '',
   haystackWorkspace: '',

@@ -6,6 +6,7 @@ import { and, asc, eq, isNull } from 'drizzle-orm'
 import { toCompilableQuery } from '@powersync/drizzle-driver'
 import { useQuery } from '@powersync/tanstack-react-query'
 import { useDatabase } from '@/contexts'
+import { selectBuiltInAgentEnabled, useConfigStore } from '@/api/config-store'
 import type { AnyDrizzleDatabase } from '../db/database-interface'
 import { agentsSecretsTable, agentsSystemTable, agentsTable } from '../db/tables'
 import { builtInAgent } from '../defaults/agents'
@@ -85,16 +86,23 @@ export const useSystemAgents = (): Agent[] => {
 /** Visual-order composer: built-in first, then system (alpha), then customs (alpha).
  *  Extracted from `useAllAgents` so the ordering rule is unit-testable without
  *  spinning up PowerSync + React. The DB queries already return rows sorted
- *  alpha by name, so this just concatenates them in the canonical order. */
-export const composeAllAgents = (systemAgents: Agent[], customAgents: Agent[]): Agent[] => [
-  builtInAgent,
-  ...systemAgents,
-  ...customAgents,
-]
+ *  alpha by name, so this just concatenates them in the canonical order.
+ *
+ *  `includeBuiltIn` defaults to true; deployments that ship only their own agents
+ *  (server config `disableBuiltInAgent`) pass `false` to omit it entirely — it is
+ *  dropped from the list, not merely disabled. */
+export const composeAllAgents = (
+  systemAgents: Agent[],
+  customAgents: Agent[],
+  options: { includeBuiltIn?: boolean } = {},
+): Agent[] => [...(options.includeBuiltIn === false ? [] : [builtInAgent]), ...systemAgents, ...customAgents]
 
-/** Combined list hook: built-in first, then system (alpha), then customs (alpha).
- *  Matches the Settings/Agents visual order spec. */
-export const useAllAgents = (): Agent[] => composeAllAgents(useSystemAgents(), useAgents())
+/** Combined list hook: built-in first (unless disabled by deployment), then
+ *  system (alpha), then customs (alpha). Matches the Settings/Agents visual order. */
+export const useAllAgents = (): Agent[] => {
+  const includeBuiltIn = useConfigStore((state) => selectBuiltInAgentEnabled(state.config))
+  return composeAllAgents(useSystemAgents(), useAgents(), { includeBuiltIn })
+}
 
 /** Fields accepted by `createAgent`. `id` is caller-generated (uuid). */
 export type CreateAgentInput = {

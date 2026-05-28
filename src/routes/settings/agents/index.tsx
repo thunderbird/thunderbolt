@@ -13,6 +13,7 @@ import { AddCustomAgentDialog, type AddCustomAgentPayload } from '@/components/s
 import { createAgent, deleteAgent, updateAgent, useAllAgents } from '@/dal'
 import { useDatabase } from '@/contexts'
 import { useAuth } from '@/contexts'
+import { selectAllowCustomAgents, useConfigStore } from '@/api/config-store'
 import { useAgentsSettingsHidden } from '@/hooks/use-agents-settings-hidden'
 import type { Agent } from '@/types/acp'
 
@@ -38,6 +39,7 @@ export default function AgentsSettingsPage({ isStandalone }: AgentsSettingsPageP
   const { data: session } = authClient.useSession()
   const currentUserId = session?.user?.id ?? null
   const agentsHidden = useAgentsSettingsHidden({ isStandalone })
+  const allowCustomAgents = useConfigStore((state) => selectAllowCustomAgents(state.config))
 
   const [dialogOpen, setDialogOpen] = useState(false)
 
@@ -87,16 +89,18 @@ export default function AgentsSettingsPage({ isStandalone }: AgentsSettingsPageP
   return (
     <div className="flex flex-col gap-6 p-4 w-full max-w-[760px] mx-auto">
       <PageHeader title="Agents">
-        <Button
-          variant="outline"
-          size="icon"
-          className="rounded-lg"
-          aria-label="Add Custom Agent"
-          onClick={() => setDialogOpen(true)}
-          disabled={!currentUserId}
-        >
-          <Plus />
-        </Button>
+        {allowCustomAgents && (
+          <Button
+            variant="outline"
+            size="icon"
+            className="rounded-lg"
+            aria-label="Add Custom Agent"
+            onClick={() => setDialogOpen(true)}
+            disabled={!currentUserId}
+          >
+            <Plus />
+          </Button>
+        )}
       </PageHeader>
 
       <AgentList agents={agents} currentUserId={currentUserId} onToggle={handleToggle} onDelete={handleDelete} />

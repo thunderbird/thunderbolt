@@ -23,6 +23,26 @@ const TestContextTrackingComponent = ({ chatThreadId, model }: { chatThreadId: s
   return <span data-testid="used-tokens">{usedTokens ?? 'null'}</span>
 }
 
+const TestOverflowComponent = ({
+  chatThreadId,
+  model,
+  currentInput,
+  additionalInputTokens,
+}: {
+  chatThreadId: string
+  model: Model
+  currentInput: string
+  additionalInputTokens: number
+}) => {
+  const { isOverflowing } = useContextTracking({
+    model,
+    chatThreadId,
+    currentInput,
+    additionalInputTokens,
+  })
+  return <span data-testid="is-overflowing">{String(isOverflowing)}</span>
+}
+
 describe('useContextTracking reactivity', () => {
   beforeAll(async () => {
     await setupTestDatabase()
@@ -90,5 +110,83 @@ describe('useContextTracking reactivity', () => {
       return el?.textContent === '500' ? el : null
     })
     expect(screen.getByTestId('used-tokens').textContent).toBe('500')
+  })
+
+  it('flips isOverflowing to true when additionalInputTokens (Skills v1) pushes total past the context window', async () => {
+    const db = getDb()
+    const modelId = uuidv7()
+    const threadId = uuidv7()
+
+    // Tiny model: 100-token window. Easy to overflow with skill instructions.
+    await createModel(db, {
+      id: modelId,
+      provider: 'openai',
+      name: 'Tiny Model',
+      model: 'gpt-4',
+      isSystem: 0,
+      enabled: 1,
+      contextWindow: 100,
+    })
+    const model = await import('@/dal').then((m) => m.getModel(db, modelId))
+    if (!model) {
+      throw new Error('Model not found')
+    }
+
+    // 60 tokens already used in the thread.
+    await createChatThread(
+      db,
+      { id: threadId, title: 'Test', contextSize: 60, triggeredBy: null, wasTriggeredByAutomation: 0 },
+      model,
+    )
+
+    // 60 (already used) + ~1 (user input) + 50 (skill instruction) = 111 > 100.
+    renderWithReactivity(
+      <TestOverflowComponent chatThreadId={threadId} model={model} currentInput="hi" additionalInputTokens={50} />,
+      { tables: ['chat_threads'] },
+    )
+
+    await waitForElement(() => {
+      const el = screen.queryByTestId('is-overflowing')
+      return el?.textContent === 'true' ? el : null
+    })
+    expect(screen.getByTestId('is-overflowing').textContent).toBe('true')
+  })
+
+  it('keeps isOverflowing false when additionalInputTokens is zero and the thread is well under the window', async () => {
+    const db = getDb()
+    const modelId = uuidv7()
+    const threadId = uuidv7()
+    await createModel(db, {
+      id: modelId,
+      provider: 'openai',
+      name: 'Big Model',
+      model: 'gpt-4',
+      isSystem: 0,
+      enabled: 1,
+      contextWindow: 100_000,
+    })
+    const model = await import('@/dal').then((m) => m.getModel(db, modelId))
+    if (!model) {
+      throw new Error('Model not found')
+    }
+    await createChatThread(
+      db,
+      { id: threadId, title: 'Test', contextSize: 200, triggeredBy: null, wasTriggeredByAutomation: 0 },
+      model,
+    )
+    renderWithReactivity(
+      <TestOverflowComponent
+        chatThreadId={threadId}
+        model={model}
+        currentInput="hello world"
+        additionalInputTokens={0}
+      />,
+      { tables: ['chat_threads'] },
+    )
+    await waitForElement(() => {
+      const el = screen.queryByTestId('is-overflowing')
+      return el?.textContent === 'false' ? el : null
+    })
+    expect(screen.getByTestId('is-overflowing').textContent).toBe('false')
   })
 })

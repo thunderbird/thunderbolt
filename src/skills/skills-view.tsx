@@ -3,9 +3,11 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { AnimatePresence, m } from 'framer-motion'
+import { Plus } from 'lucide-react'
 import { useCallback, useReducer, useRef } from 'react'
 import { useLocation, useNavigate } from 'react-router'
 
+import { Button } from '@/components/ui/button'
 import { SkillNameInvalidError, SkillNameTakenError } from '@/dal'
 import { useIsMobile } from '@/hooks/use-mobile'
 import { DeleteSkillDialog } from './delete-skill-dialog'
@@ -202,18 +204,30 @@ export const SkillsView = () => {
     }
   }
 
-  // Empty-state panel — most users never see this once seeded defaults land,
-  // but it's the "I deleted everything" path. Stays inside the master/detail
-  // layout so the list (and its + button) keep their normal position.
-  const emptyPanel = (
-    <section className="flex h-full flex-1 flex-col items-center justify-center gap-3 bg-background px-6 text-center text-foreground">
-      <h2 className="text-xl">No skill selected</h2>
-      <p className="max-w-md text-sm text-muted-foreground">
-        Skills are reusable instruction templates you can summon with a slash command.
-        {skills.length === 0 ? ' Create one to get started.' : ' Select a skill from the list to view or edit it.'}
-      </p>
-    </section>
-  )
+  // Empty-state panel — branches on whether the library is genuinely empty
+  // (the "I deleted everything" path; most users never hit this thanks to
+  // the seeded defaults) vs. "library has skills, none selected" (idle).
+  // Stays inside the master/detail layout so the list (and its + button)
+  // keep their normal position.
+  const emptyPanel =
+    skills.length === 0 ? (
+      <section className="flex h-full flex-1 flex-col items-center justify-center gap-3 bg-background px-6 text-center text-foreground">
+        <h2 className="text-xl">No skills yet</h2>
+        <p className="max-w-md text-sm text-muted-foreground">
+          Skills are reusable instruction templates you summon in chat with{' '}
+          <code className="rounded-sm bg-secondary px-1 font-mono text-xs">/name</code>.
+        </p>
+        <Button size="sm" onClick={() => dispatch({ type: 'START_CREATE' })}>
+          <Plus />
+          Create your first skill
+        </Button>
+      </section>
+    ) : (
+      <section className="flex h-full flex-1 flex-col items-center justify-center gap-2 bg-background px-6 text-center text-foreground">
+        <h2 className="text-xl text-muted-foreground">Select a skill</h2>
+        <p className="max-w-md text-sm text-muted-foreground">Pick a skill from the list to view or edit it.</p>
+      </section>
+    )
 
   const createForm = (
     <SkillForm

@@ -9,6 +9,7 @@ import { createPortal } from 'react-dom'
 import { Button } from '@/components/ui/button'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
+import { maxPinnedSkills } from '@/dal'
 import { useIsMobile } from '@/hooks/use-mobile'
 import { findMovedItem } from '@/skills/find-moved-item'
 import { ReorderPanel } from '@/skills/reorder-panel'
@@ -105,6 +106,17 @@ export const ChatSkillsBar = ({
   // pin candidates, never a dual "pin / unpin" surface — unpin lives on the
   // chip's own dropdown.
   const pinnable = library.filter((s) => isEnabled(s.id) && !pinnedSet.has(s.id))
+  const pinCapReached = pinnedSet.size >= maxPinnedSkills
+  // Disable the trigger when there's nothing to pin OR when adding one more
+  // would exceed the cap — the DAL throws PinLimitExceededError on the 11th
+  // pin and the catch below would swallow it silently; better to block the
+  // click upstream with explicit copy.
+  const addDisabled = pinnable.length === 0 || pinCapReached
+  const addTooltip = pinCapReached
+    ? `Pin limit reached (${maxPinnedSkills}). Unpin one first.`
+    : pinnable.length === 0
+      ? 'No more skills to pin'
+      : 'Pin a skill'
 
   // Hide the whole bar only when there's nothing to display *and* nothing
   // to add. If the user has zero pins but unpinned skills exist, we still
@@ -140,7 +152,7 @@ export const ChatSkillsBar = ({
                   variant="outline"
                   size="icon-sm"
                   aria-label="Pin a skill"
-                  disabled={pinnable.length === 0}
+                  disabled={addDisabled}
                   className={`size-8 shrink-0 cursor-pointer rounded-full bg-card transition-opacity disabled:cursor-not-allowed disabled:opacity-40 ${
                     openChipId ? 'opacity-40' : ''
                   }`}
@@ -149,7 +161,7 @@ export const ChatSkillsBar = ({
                 </Button>
               </PopoverTrigger>
             </TooltipTrigger>
-            <TooltipContent>{pinnable.length === 0 ? 'No more skills to pin' : 'Pin a skill'}</TooltipContent>
+            <TooltipContent>{addTooltip}</TooltipContent>
           </Tooltip>
           <PopoverContent side="top" align="start" sideOffset={6} className="w-72 max-w-[calc(100vw-2rem)] p-1">
             <ul className="max-h-64 overflow-y-auto">

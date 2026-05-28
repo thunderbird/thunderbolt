@@ -13,50 +13,59 @@ import type { Skill } from '@/types'
 export const hashSkill = (skill: Skill): string =>
   hashValues([skill.name, skill.description, skill.instruction, skill.enabled, skill.pinnedOrder, skill.deletedAt])
 
-const meetingNotesInstruction = `Pull three things out of the notes, in this order. Do not skip any of them.
+const dailyBriefInstruction = `Create a daily brief with the following sections. Do not ask the user for any missing information — just skip sections for which you are missing information or tools.
 
-1. DECISIONS — what was actually decided, in one line each. If a decision was hedged or deferred, mark it as "open" instead.
+1. If you know the user's location, show the 7-day forecast. If not, skip this section.
 
-2. ACTION ITEMS — who does what by when. Always include an owner; if the notes don't name one, ask. If a date is missing, ask.
+2. Today's top news stories. Use the fetch_content tool to get the content of apnews.com. Provide the top 10 headlines in an ordered list. Do not include link previews.
 
-3. OPEN QUESTIONS — anything that came up but didn't resolve. These are not action items; they're things to bring back next time.
+3. If you have access to email tools, check the inbox and summarize what has come in over the last 24 hours, focusing on what looks most important. If not, skip this section.
 
-End with one sentence asking whether the user wants help drafting a recap message to send to attendees.`
+4. If you have access to calendar tools, check the calendar and give a summary of what is coming up for the current day. Provide this as a personal assistant might. If not, skip this section.
 
-const weeklyReviewInstruction = `Walk the user through a weekly review in four passes. Do not skip steps, and do not combine them into one prompt — the value comes from doing each pass cleanly before moving to the next.
+Format the brief as follows:
 
-1. CAPTURE — Ask what's on their mind from the past week. Surface wins, frustrations, and anything still rattling around. Do not interpret yet, just collect.
+Good <morning/afternoon/evening> <user's name if available>,
 
-2. CLEAR — Go through their captured items and sort each into: done, drop, defer, or do-this-week. Be decisive; nudge them away from leaving things in limbo.
+Some friendly, witty variation of "I've put together a daily brief for you!" with an emoji.
 
-3. REFLECT — Ask one focused question: what worked this week, and what didn't? Keep the answer to 2-3 sentences total. Long reflection produces less follow-through than short reflection.
+# Weather
 
-4. PLAN — Identify the 3 most important outcomes for next week. Not tasks — outcomes. Tie each one to a specific day if possible.
+Today's forecast is ____.
 
-End with a one-paragraph summary the user can paste into their notes app.`
+# News
 
-const taskTriageInstruction = `Help the user sort a list of tasks using a priority and effort frame. Stay decisive; do not produce a long analysis.
+1. <headline>
+2. <headline>
+3. <headline>
 
-1. ESTIMATE — for each item, infer an effort level (S / M / L) and a priority (high / med / low). Surface anything ambiguous in one short clarifying question.
+# Inbox
 
-2. STACK-RANK — produce a single ordered list. High-priority Smalls go first ("quick wins"), then high-priority Mediums, then everything else by priority.
+This is what's in your inbox that you should be aware of...
 
-3. CALL OUT — name the top 1-3 items the user should do today, and any items that look like they should be dropped or delegated.
+# Calendar
 
-Do not produce sub-tasks unless asked.`
+This is what you've got on your calendar today...
+
+Do not show skipped sections at all, even placeholders — just skip them entirely.`
+
+const importantEmailsInstruction = `Review the user's inbox and summarize the 5 most important emails that need attention today. Include sender, subject, and why each is important.`
 
 /**
  * Default skills seeded for new users on first sign-in. UUIDs are stable so
  * the reconciler can recognize them across devices and across app restarts.
+ * The starter set mirrors the legacy `defaultAutomations` so new users get
+ * the same content under the Skills model.
+ *
  * Each lands enabled and pinned in the order listed; a user who soft-deletes
  * one will not see it re-seeded.
  */
-export const defaultSkillMeetingNotes: Skill = {
+export const defaultSkillDailyBrief: Skill = {
   id: '01996330-0000-7000-8000-000000000001',
-  name: 'meeting-notes',
+  name: 'daily-brief',
   description:
-    'Use this skill when the user shares raw meeting notes, a transcript, or bullets from a recent call and wants them cleaned up, summarized, or turned into action items.',
-  instruction: meetingNotesInstruction,
+    'Use this skill when the user asks for a daily brief, a morning rundown, or a summary of weather, news, inbox, and calendar.',
+  instruction: dailyBriefInstruction,
   enabled: 1,
   pinnedOrder: 0,
   deletedAt: null,
@@ -64,12 +73,12 @@ export const defaultSkillMeetingNotes: Skill = {
   userId: null,
 }
 
-export const defaultSkillWeeklyReview: Skill = {
+export const defaultSkillImportantEmails: Skill = {
   id: '01996330-0000-7000-8000-000000000002',
-  name: 'weekly-review',
+  name: 'important-emails',
   description:
-    'Use this skill when the user wants to run a weekly review, reflect on the past week, plan the upcoming week, or process notes and tasks accumulated over the last 7 days.',
-  instruction: weeklyReviewInstruction,
+    'Use this skill when the user wants to triage their inbox, see what needs attention, or surface the most important emails of the day.',
+  instruction: importantEmailsInstruction,
   enabled: 1,
   pinnedOrder: 1,
   deletedAt: null,
@@ -77,21 +86,4 @@ export const defaultSkillWeeklyReview: Skill = {
   userId: null,
 }
 
-export const defaultSkillTaskTriage: Skill = {
-  id: '01996330-0000-7000-8000-000000000003',
-  name: 'task-triage',
-  description:
-    'Use this skill when the user dumps a list of tasks, a backlog, or a to-do brain-dump and wants help prioritizing.',
-  instruction: taskTriageInstruction,
-  enabled: 1,
-  pinnedOrder: 2,
-  deletedAt: null,
-  defaultHash: null,
-  userId: null,
-}
-
-export const defaultSkills: ReadonlyArray<Skill> = [
-  defaultSkillMeetingNotes,
-  defaultSkillWeeklyReview,
-  defaultSkillTaskTriage,
-] as const
+export const defaultSkills: ReadonlyArray<Skill> = [defaultSkillDailyBrief, defaultSkillImportantEmails] as const

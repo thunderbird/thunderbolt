@@ -17,14 +17,13 @@ import { LibraryRow } from './library-row'
  * Sidebar list for `/settings/skills`. Skills are grouped by enabled state
  * (Enabled at top, Disabled below); each group is alphabetical, inherited
  * from `getAllSkills`'s `ORDER BY name ASC` in the DAL. Pinning is managed
- * from the chat composer per product direction — this list shows a small
- * indicator on the right of pinned rows but offers no pin/reorder controls.
+ * from the chat composer per product direction — this list offers no
+ * pin / reorder controls and no pinned-state indicator.
  */
 export const SkillsList = ({
   skills,
   activeSkillId,
   isEnabled,
-  isPinned,
   onToggleEnabled,
   onCreate,
   onSelectSkill,
@@ -34,7 +33,6 @@ export const SkillsList = ({
   skills: Skill[]
   activeSkillId: string | null
   isEnabled: (id: string) => boolean
-  isPinned: (id: string) => boolean
   onToggleEnabled: (id: string, next: boolean) => void
   onCreate: () => void
   onSelectSkill: (id: string) => void
@@ -115,7 +113,6 @@ export const SkillsList = ({
                   key={skill.id}
                   skill={skill}
                   enabled
-                  isPinned={isPinned(skill.id)}
                   isActive={skill.id === activeSkillId}
                   onSelect={onSelectSkill}
                   onToggleEnabled={onToggleEnabled}
@@ -135,7 +132,6 @@ export const SkillsList = ({
                     key={skill.id}
                     skill={skill}
                     enabled={false}
-                    isPinned={isPinned(skill.id)}
                     isActive={skill.id === activeSkillId}
                     onSelect={onSelectSkill}
                     onToggleEnabled={onToggleEnabled}

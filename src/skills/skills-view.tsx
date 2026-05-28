@@ -21,11 +21,12 @@ import { useEnabledSkills, useLibrarySkills, usePinnedSkills } from './use-skill
 export const SkillsView = () => {
   const { isMobile } = useIsMobile()
   const { skills, createSkill, updateSkill, softDeleteSkill } = useLibrarySkills()
-  // Pinning is managed from the chat composer; the settings list shows a
-  // read-only indicator on pinned rows via `isPinned`.
+  // Pinning is managed entirely from the chat composer; we only read
+  // `pinnedSet` here to auto-unpin on disable (a disabled skill can't be
+  // summoned from the chat pinned bar, so keeping its slot would waste
+  // one of the 10 available).
   const { pinnedSet, togglePin } = usePinnedSkills()
   const { isEnabled, setEnabled } = useEnabledSkills()
-  const isPinned = useCallback((id: string) => pinnedSet.has(id), [pinnedSet])
 
   const [state, dispatch] = useReducer(skillsViewReducer, initialSkillsViewState)
   const {
@@ -79,10 +80,8 @@ export const SkillsView = () => {
   // into the type means TS catches every unguarded `active.*` access.
   const active = skills.find((s) => s.id === activeId) ?? skills.at(0)
 
-  // Disabling a pinned skill auto-unpins it: a disabled skill can't be
-  // summoned from the chat pinned bar, so keeping it in a pin slot wastes
-  // one of the 10 available. The row animates from PINNED into DISABLED.
-  // Re-enabling does NOT auto-repin; the user pins again deliberately.
+  // Disabling a pinned skill auto-unpins it. Re-enabling does NOT auto-repin;
+  // the user pins again deliberately from the chat composer.
   const disableSkill = useCallback(
     async (id: string) => {
       await setEnabled(id, false)
@@ -261,7 +260,6 @@ export const SkillsView = () => {
         skills={skills}
         activeSkillId={mode === 'detail' && active ? active.id : null}
         isEnabled={isEnabled}
-        isPinned={isPinned}
         onToggleEnabled={handleToggleEnabled}
         onCreate={() => {
           if ((mode === 'create' || mode === 'edit') && isDirty) {

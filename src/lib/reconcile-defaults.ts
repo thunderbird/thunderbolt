@@ -3,7 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import type { AnyDrizzleDatabase } from '@/db/database-interface'
-import { createSetting, stripLegacyNameSlashes } from '@/dal'
+import { createSetting } from '@/dal'
 import { eq } from 'drizzle-orm'
 import type { SQLiteTableWithColumns } from 'drizzle-orm/sqlite-core'
 import { v7 as uuidv7 } from 'uuid'
@@ -105,9 +105,7 @@ export const reconcileDefaults = async (db: AnyDrizzleDatabase) => {
     // Automations (Prompts)
     await reconcileDefaultsForTable(tx, promptsTable, defaultAutomations, hashPrompt)
 
-    // Skills — one-shot legacy rename runs first so the `defaultHash` match
-    // in `reconcileDefaultsForTable` sees the post-rename rows.
-    await stripLegacyNameSlashes(tx)
+    // Skills
     await reconcileDefaultsForTable(tx, skillsTable, defaultSkills, hashSkill)
 
     // Settings

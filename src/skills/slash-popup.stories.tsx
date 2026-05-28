@@ -40,8 +40,8 @@ type Story = StoryObj<typeof meta>
 const sampleSkills: Skill[] = [
   {
     id: '1',
-    name: 'meeting-notes',
-    description: 'Summarize a meeting transcript into action items and decisions.',
+    name: 'daily-brief',
+    description: 'Weather, news, inbox, and calendar in one digest.',
     instruction: '',
     enabled: 1,
     pinnedOrder: 0,
@@ -51,8 +51,8 @@ const sampleSkills: Skill[] = [
   },
   {
     id: '2',
-    name: 'task-triage',
-    description: 'Sort a dump of tasks into priority buckets.',
+    name: 'important-emails',
+    description: 'Triage the inbox and surface the most important emails.',
     instruction: '',
     enabled: 1,
     pinnedOrder: 1,
@@ -60,31 +60,16 @@ const sampleSkills: Skill[] = [
     defaultHash: null,
     userId: null,
   },
-  {
-    id: '3',
-    name: 'weekly-review',
-    description: 'Reflect on the week. Wins, losses, next steps.',
-    instruction: '',
-    enabled: 1,
-    pinnedOrder: 2,
-    deletedAt: null,
-    defaultHash: null,
-    userId: null,
-  },
 ]
 
 const noop = () => undefined
-const noPins = () => false
 
 export const Default: Story = {
   args: {
     skills: sampleSkills,
     highlightedIdx: 0,
-    isPinned: noPins,
-    pinCapReached: false,
     onSelect: noop,
     onHover: noop,
-    onTogglePin: noop,
   },
 }
 
@@ -94,12 +79,4 @@ export const SecondRowHighlighted: Story = {
 
 export const SingleResult: Story = {
   args: { ...Default.args, skills: [sampleSkills[0]!], highlightedIdx: 0 },
-}
-
-export const SomePinned: Story = {
-  args: { ...Default.args, isPinned: (id: string) => id === '1' || id === '3' },
-}
-
-export const PinCapReached: Story = {
-  args: { ...Default.args, isPinned: (id: string) => id === '1', pinCapReached: true },
 }

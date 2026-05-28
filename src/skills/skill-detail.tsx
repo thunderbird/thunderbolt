@@ -3,7 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import * as AccordionPrimitive from '@radix-ui/react-accordion'
-import { ChevronDown, ChevronLeft, Info, MoreHorizontal, Play, Power, SquarePen, Trash2 } from 'lucide-react'
+import { ChevronDown, ChevronLeft, Info, MoreHorizontal, Plus, Power, SquarePen, Trash2 } from 'lucide-react'
 import { useNavigate } from 'react-router'
 
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion'
@@ -131,8 +131,8 @@ export const SkillDetail = ({
                   Edit
                 </DropdownMenuItem>
                 <DropdownMenuItem onClick={runInChat} className="cursor-pointer">
-                  <Play />
-                  Run in chat
+                  <Plus />
+                  Add to chat
                 </DropdownMenuItem>
                 <DropdownMenuItem onClick={onDelete} className="cursor-pointer">
                   <Trash2 />

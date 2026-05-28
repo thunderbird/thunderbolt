@@ -3,7 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { m } from 'framer-motion'
-import { MoreHorizontal, Pin, Play, SquarePen, Trash2 } from 'lucide-react'
+import { MoreHorizontal, Plus, SquarePen, Trash2 } from 'lucide-react'
 import { useNavigate } from 'react-router'
 
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
@@ -17,14 +17,14 @@ import type { Skill } from '@/types'
  * unmounts from one `<ul>` and remounts in the other, and the shared
  * layoutId carries position state across the transition.
  *
- * Pinning is managed from the chat composer, not here. A small pin glyph
- * on the right of the row indicates a skill is currently pinned — it's a
- * read-only badge, not a control.
+ * The animation has a deliberate ~1.2s delay so the row doesn't jump out
+ * from under the user's cursor the instant they toggle the switch — they
+ * have a moment to register the state change in place before the row
+ * settles into its new section.
  */
 export const LibraryRow = ({
   skill,
   enabled,
-  isPinned,
   isActive,
   onSelect,
   onToggleEnabled,
@@ -33,7 +33,6 @@ export const LibraryRow = ({
 }: {
   skill: Skill
   enabled: boolean
-  isPinned: boolean
   isActive: boolean
   onSelect: (id: string) => void
   onToggleEnabled: (id: string, next: boolean) => void
@@ -46,11 +45,7 @@ export const LibraryRow = ({
     <m.li
       layout
       layoutId={skill.id}
-      // Softened animation: lower stiffness + a brief delay so toggling
-      // enabled state doesn't feel snappy / flashy. The row crosses between
-      // the Enabled and Disabled sections; the gentler spring + delay reads
-      // as "settling into place" rather than "popping."
-      transition={{ type: 'spring', damping: 32, stiffness: 220, mass: 0.85, delay: 0.05 }}
+      transition={{ type: 'spring', damping: 32, stiffness: 220, mass: 0.85, delay: 1.2 }}
     >
       <div
         role="button"
@@ -67,17 +62,21 @@ export const LibraryRow = ({
         } ${isActive ? 'bg-accent' : 'hover:bg-accent'}`}
       >
         <span className="flex min-w-0 flex-1 items-center gap-2.5">
-          <span className="shrink-0" onClick={(e) => e.stopPropagation()} onKeyDown={(e) => e.stopPropagation()}>
+          {/* `inline-flex items-center` here keeps the Switch optically
+              centered with the name's text baseline — without it the toggle
+              renders flush to the top of the row's content-box. */}
+          <span
+            className="inline-flex shrink-0 items-center"
+            onClick={(e) => e.stopPropagation()}
+            onKeyDown={(e) => e.stopPropagation()}
+          >
             <Switch
               checked={enabled}
               onCheckedChange={(next) => onToggleEnabled(skill.id, next)}
               aria-label={enabled ? `Disable /${skill.name}` : `Enable /${skill.name}`}
             />
           </span>
-          <span className="truncate">/{skill.name}</span>
-          {isPinned && (
-            <Pin size={12} className="shrink-0 fill-current text-muted-foreground" aria-label="Pinned" role="img" />
-          )}
+          <span className="truncate leading-none">/{skill.name}</span>
         </span>
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
@@ -111,8 +110,8 @@ export const LibraryRow = ({
               }}
               className="cursor-pointer"
             >
-              <Play />
-              Run in chat
+              <Plus />
+              Add to chat
             </DropdownMenuItem>
             <DropdownMenuItem
               onClick={(e) => {

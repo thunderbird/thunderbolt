@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { File, ListOrdered, Pin, Play, Plus } from 'lucide-react'
+import { File, ListOrdered, Pin, Plus } from 'lucide-react'
 import { useEffect, useRef, useState, type PointerEvent } from 'react'
 
 import { Button } from '@/components/ui/button'
@@ -12,17 +12,14 @@ import { useIsMobile } from '@/hooks/use-mobile'
 /**
  * Pinned-skill chip shown above the chat input. Click → adds the slash
  * token to the input (does not auto-submit). Right-click / long-press on
- * mobile → context menu with run / add-to-chat / reorder / unpin.
- *
- * "Run skill" navigates via router state (not a URL) so the entry point
- * stays internal — Skills v1 §5 explicitly forbids `?run=` URL surfaces.
+ * mobile → context menu with add-to-chat / add-instructions / reorder /
+ * unpin.
  */
 export const SuggestionChip = ({
   label,
   dimmed,
   onClick,
   onOpenChange,
-  onRun,
   onAddInstruction,
   onReorder,
   onUnpin,
@@ -32,7 +29,6 @@ export const SuggestionChip = ({
   dimmed: boolean
   onClick: () => void
   onOpenChange?: (open: boolean) => void
-  onRun: () => void
   onAddInstruction: () => void
   onReorder: () => void
   onUnpin: () => void
@@ -131,16 +127,6 @@ export const SuggestionChip = ({
         collisionPadding={16}
         className={isMobile ? 'w-[calc(100vw-2rem)] min-w-56 rounded-2xl' : 'min-w-56 rounded-2xl'}
       >
-        <DropdownMenuItem
-          onSelect={() => {
-            onRun()
-            handleOpenChange(false)
-          }}
-          className="cursor-pointer"
-        >
-          <Play />
-          Run skill
-        </DropdownMenuItem>
         <DropdownMenuItem
           onSelect={() => {
             onClick()

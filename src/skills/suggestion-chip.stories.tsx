@@ -39,10 +39,9 @@ const noop = () => {}
 
 export const Default: Story = {
   args: {
-    label: 'meeting-notes',
+    label: 'daily-brief',
     dimmed: false,
     onClick: noop,
-    onRun: noop,
     onAddInstruction: noop,
     onReorder: noop,
     onUnpin: noop,
@@ -54,5 +53,5 @@ export const Dimmed: Story = {
 }
 
 export const LongName: Story = {
-  args: { ...Default.args, label: 'monthly-okr-review-with-stakeholders' },
+  args: { ...Default.args, label: 'long-skill-name-that-truncates' },
 }

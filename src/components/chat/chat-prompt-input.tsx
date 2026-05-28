@@ -14,11 +14,9 @@ import { renderHighlightedSkillTokens, type SkillStatusClassifier } from '@/skil
 import { resolveSkillTokenInstructions } from '@/skills/resolve-skill-system-messages'
 import { SlashPopup } from '@/skills/slash-popup'
 import { useSlashCommand } from '@/skills/use-slash-command'
-import { maxPinnedSkills } from '@/dal'
 import {
   useEnabledSkills as useEnabledSkills_default,
   useLibrarySkills as useLibrarySkills_default,
-  usePinnedSkills as usePinnedSkills_default,
 } from '@/skills/use-skills'
 import { type Model } from '@/types'
 import { useChat as useChat_default } from '@ai-sdk/react'
@@ -45,7 +43,6 @@ type ChatPromptInputProps = {
   useIsMobile?: typeof useIsMobile_default
   useLibrarySkills?: typeof useLibrarySkills_default
   useEnabledSkills?: typeof useEnabledSkills_default
-  usePinnedSkills?: typeof usePinnedSkills_default
 }
 
 export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputProps>(
@@ -59,7 +56,6 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
       useIsMobile = useIsMobile_default,
       useLibrarySkills = useLibrarySkills_default,
       useEnabledSkills = useEnabledSkills_default,
-      usePinnedSkills = usePinnedSkills_default,
     },
     ref,
   ) => {
@@ -76,22 +72,6 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
 
     const { skills: library } = useLibrarySkills()
     const { isEnabled } = useEnabledSkills()
-    const { pinnedSet, togglePin } = usePinnedSkills()
-    const isPinned = useCallback((id: string) => pinnedSet.has(id), [pinnedSet])
-    const pinCapReached = pinnedSet.size >= maxPinnedSkills
-    const handleTogglePin = useCallback(
-      (skill: { id: string }) => {
-        // togglePin is async but we don't need to await — PowerSync will
-        // reflect the new pin state on the next render via the query
-        // subscription. Swallow PinLimitExceededError silently: the popup
-        // already disables the pin button at the cap, so we only land here
-        // on a legitimate unpin.
-        void togglePin(skill.id).catch((error) => {
-          console.warn('togglePin failed:', error)
-        })
-      },
-      [togglePin],
-    )
     const skillBySlug = useMemo(() => new Map(library.map((s) => [s.name, s])), [library])
     const enabledSlugs = useMemo(
       () => new Set(library.filter((s) => isEnabled(s.id)).map((s) => s.name)),
@@ -357,11 +337,8 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
                 <SlashPopup
                   skills={popupSkills}
                   highlightedIdx={highlightedIdx}
-                  isPinned={isPinned}
-                  pinCapReached={pinCapReached}
                   onSelect={handleSelectFromSlashPopup}
                   onHover={setHighlightedIdx}
-                  onTogglePin={handleTogglePin}
                 />
               ) : null
             }

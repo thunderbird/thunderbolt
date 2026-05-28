@@ -5,14 +5,18 @@
 import { Plus } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { createPortal } from 'react-dom'
-import { Link, useNavigate as useNavigate_default } from 'react-router'
 
 import { Button } from '@/components/ui/button'
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { useIsMobile } from '@/hooks/use-mobile'
 import { ReorderPanel } from '@/skills/reorder-panel'
 import { SuggestionChip } from '@/skills/suggestion-chip'
-import { usePinnedSkills as usePinnedSkills_default } from '@/skills/use-skills'
+import {
+  useEnabledSkills as useEnabledSkills_default,
+  useLibrarySkills as useLibrarySkills_default,
+  usePinnedSkills as usePinnedSkills_default,
+} from '@/skills/use-skills'
 
 type ChatSkillsBarProps = {
   /** Insert `"/slug "` into the chat input at the cursor. */
@@ -27,31 +31,36 @@ type ChatSkillsBarProps = {
   hidden?: boolean
   // Dependency injection for tests / Storybook.
   usePinnedSkills?: typeof usePinnedSkills_default
-  useNavigate?: typeof useNavigate_default
+  useLibrarySkills?: typeof useLibrarySkills_default
+  useEnabledSkills?: typeof useEnabledSkills_default
 }
 
 /**
  * Pinned-skills bar shown above the chat input: a horizontal scroll of
- * pinned chips plus a `+` shortcut to the skills settings page. The chip
- * dropdown triggers run / add / reorder / unpin; while a chip dropdown is
- * open on mobile the bar shows a backdrop so taps outside dismiss it.
+ * pinned chips plus a `+` button that opens a popover listing enabled
+ * skills the user hasn't pinned yet — clicking one pins it on the spot
+ * (no navigation). This is the canonical "add a pinned skill" entry point;
+ * the `/settings/skills` route doesn't expose pin controls.
  *
- * Returns `null` when the user has no pinned skills — the chat input
- * occupies the full vertical slot in that case.
+ * Returns `null` when the user has no pinned skills *and* the popover is
+ * closed — once they pin one the bar reappears.
  */
 export const ChatSkillsBar = ({
   onAddToChat,
   onAddInstruction,
   hidden,
   usePinnedSkills = usePinnedSkills_default,
-  useNavigate = useNavigate_default,
+  useLibrarySkills = useLibrarySkills_default,
+  useEnabledSkills = useEnabledSkills_default,
 }: ChatSkillsBarProps) => {
-  const { pinned, reorderPins, togglePin } = usePinnedSkills()
+  const { pinned, pinnedSet, reorderPins, togglePin } = usePinnedSkills()
+  const { skills: library } = useLibrarySkills()
+  const { isEnabled } = useEnabledSkills()
   const { isMobile } = useIsMobile()
-  const navigate = useNavigate()
 
   const [openChipId, setOpenChipId] = useState<string | null>(null)
   const [reorderMode, setReorderMode] = useState(false)
+  const [addOpen, setAddOpen] = useState(false)
 
   if (hidden) {
     return null
@@ -72,7 +81,15 @@ export const ChatSkillsBar = ({
     )
   }
 
-  if (pinned.length === 0) {
+  // Pinnable = enabled and not already pinned. The popover only ever lists
+  // pin candidates, never a dual "pin / unpin" surface — unpin lives on the
+  // chip's own dropdown.
+  const pinnable = library.filter((s) => isEnabled(s.id) && !pinnedSet.has(s.id))
+
+  // Hide the whole bar only when there's nothing to display *and* nothing
+  // to add. If the user has zero pins but unpinned skills exist, we still
+  // show the `+` button so they can pin one.
+  if (pinned.length === 0 && pinnable.length === 0) {
     return null
   }
 
@@ -87,33 +104,54 @@ export const ChatSkillsBar = ({
             dimmed={openChipId !== null && openChipId !== skill.id}
             onClick={() => onAddToChat(skill.name)}
             onOpenChange={(open) => setOpenChipId(open ? skill.id : null)}
-            // Navigate directly to /chats/new (not /) — the `/` index route does
-            // `<Navigate to="/chats/new" replace />`, and that wrapper does NOT
-            // forward `location.state`, so the runSkill payload would be lost.
-            onRun={() => navigate('/chats/new', { state: { runSkill: skill.name } })}
             onAddInstruction={() => onAddInstruction(skill.instruction)}
             onReorder={() => setReorderMode(true)}
             onUnpin={() => togglePin(skill.id)}
           />
         ))}
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <Button
-              asChild
-              variant="outline"
-              size="icon-sm"
-              aria-label="Manage skills"
-              className={`size-8 shrink-0 cursor-pointer rounded-full bg-card transition-opacity ${
-                openChipId ? 'opacity-40' : ''
-              }`}
-            >
-              <Link to="/settings/skills">
-                <Plus />
-              </Link>
-            </Button>
-          </TooltipTrigger>
-          <TooltipContent>Pin skills for quick access</TooltipContent>
-        </Tooltip>
+        <Popover open={addOpen} onOpenChange={setAddOpen}>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <PopoverTrigger asChild>
+                <Button
+                  variant="outline"
+                  size="icon-sm"
+                  aria-label="Pin a skill"
+                  disabled={pinnable.length === 0}
+                  className={`size-8 shrink-0 cursor-pointer rounded-full bg-card transition-opacity disabled:cursor-not-allowed disabled:opacity-40 ${
+                    openChipId ? 'opacity-40' : ''
+                  }`}
+                >
+                  <Plus />
+                </Button>
+              </PopoverTrigger>
+            </TooltipTrigger>
+            <TooltipContent>{pinnable.length === 0 ? 'No more skills to pin' : 'Pin a skill'}</TooltipContent>
+          </Tooltip>
+          <PopoverContent side="top" align="start" sideOffset={6} className="w-72 max-w-[calc(100vw-2rem)] p-1">
+            <ul className="max-h-64 overflow-y-auto">
+              {pinnable.map((skill) => (
+                <li key={skill.id}>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      void togglePin(skill.id).catch((error) => console.warn('togglePin failed:', error))
+                      setAddOpen(false)
+                    }}
+                    className="flex w-full cursor-pointer flex-col gap-0.5 rounded-md px-2 py-1.5 text-left transition-colors hover:bg-accent"
+                  >
+                    <span className="truncate text-[length:var(--font-size-body)] text-foreground">/{skill.name}</span>
+                    {skill.description && (
+                      <span className="line-clamp-1 text-[length:var(--font-size-sm)] text-muted-foreground">
+                        {skill.description}
+                      </span>
+                    )}
+                  </button>
+                </li>
+              ))}
+            </ul>
+          </PopoverContent>
+        </Popover>
       </div>
     </>
   )

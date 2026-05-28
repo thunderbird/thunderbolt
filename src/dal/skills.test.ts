@@ -21,7 +21,6 @@ import {
   SkillNameInvalidError,
   SkillNameTakenError,
   softDeleteSkill,
-  stripLegacyNameSlashes,
   updateSkill,
   validateSkillName,
 } from './skills'
@@ -250,65 +249,6 @@ describe('skills DAL', () => {
       await softDeleteSkill(getDb(), b.id)
       const rows = await getSkillsByIds(getDb(), [a.id, b.id])
       expect(rows.map((s) => s.id)).toEqual([a.id])
-    })
-  })
-
-  describe('stripLegacyNameSlashes', () => {
-    it('rewrites /-prefixed names to bare slugs for non-deleted rows', async () => {
-      // Insert directly via Drizzle to bypass the DAL's validator (which now
-      // rejects `/`-prefixed names) — we need the "legacy row" shape on disk
-      // to test the migration.
-      const legacy = await getDb()
-        .insert(skillsTable)
-        .values({
-          id: crypto.randomUUID(),
-          name: '/legacy-skill',
-          description: 'd',
-          instruction: 'i',
-          enabled: 1,
-        })
-        .returning()
-        .get()
-
-      await stripLegacyNameSlashes(getDb())
-
-      const after = await getDb().select().from(skillsTable).where(eq(skillsTable.id, legacy.id)).get()
-      expect(after?.name).toBe('legacy-skill')
-    })
-
-    it('leaves bare slugs alone', async () => {
-      const fine = await seed({ name: 'already-bare' })
-      await stripLegacyNameSlashes(getDb())
-      const after = await getSkill(getDb(), fine.id)
-      expect(after?.name).toBe('already-bare')
-    })
-
-    it('skips soft-deleted tombstones (their name is already NULL)', async () => {
-      const s = await seed({ name: 'wipeme' })
-      await softDeleteSkill(getDb(), s.id)
-      // No throw, no rewrite of NULL → SUBSTR(NULL, 2) — `WHERE name LIKE '/%'`
-      // excludes NULLs.
-      await stripLegacyNameSlashes(getDb())
-      const tomb = await getDb().select().from(skillsTable).where(eq(skillsTable.id, s.id)).get()
-      expect(tomb?.name).toBeNull()
-    })
-
-    it('is idempotent (running twice is a no-op after the first pass)', async () => {
-      const legacy = await getDb()
-        .insert(skillsTable)
-        .values({
-          id: crypto.randomUUID(),
-          name: '/foo',
-          description: 'd',
-          instruction: 'i',
-          enabled: 1,
-        })
-        .returning()
-        .get()
-      await stripLegacyNameSlashes(getDb())
-      await stripLegacyNameSlashes(getDb())
-      const after = await getDb().select().from(skillsTable).where(eq(skillsTable.id, legacy.id)).get()
-      expect(after?.name).toBe('foo')
     })
   })
 })

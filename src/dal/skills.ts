@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { and, asc, eq, inArray, isNotNull, isNull, like, ne, sql } from 'drizzle-orm'
+import { and, asc, eq, inArray, isNotNull, isNull, ne, sql } from 'drizzle-orm'
 import { v7 as uuidv7 } from 'uuid'
 import type { AnyDrizzleDatabase } from '../db/database-interface'
 import { skillsTable } from '../db/tables'
@@ -258,23 +258,4 @@ export const getSkillsByIds = async (db: AnyDrizzleDatabase, ids: string[]): Pro
     .from(skillsTable)
     .where(and(inArray(skillsTable.id, ids), isNull(skillsTable.deletedAt)))
   return rows as Skill[]
-}
-
-/**
- * One-shot migration: strip the leading `/` from any non-deleted skill row
- * whose `name` still carries the legacy prefix. Skills migrated to bare slugs
- * per the AgentSkills spec mid-PR; default rows the reconciler hasn't yet
- * rewritten (or rows the user has edited, which the reconciler treats as
- * user-modified and never touches) need this fix.
- *
- * Idempotent — running it twice is a no-op once no rows match.
- *
- * TODO: drop this once the legacy population has churned through one app
- * launch on the new code (likely safe to remove ~30 days post-release).
- */
-export const stripLegacyNameSlashes = async (db: AnyDrizzleDatabase): Promise<void> => {
-  await db
-    .update(skillsTable)
-    .set({ name: sql`substr(${skillsTable.name}, 2)` })
-    .where(and(like(skillsTable.name, '/%'), isNull(skillsTable.deletedAt)))
 }

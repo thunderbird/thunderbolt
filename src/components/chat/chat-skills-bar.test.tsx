@@ -34,32 +34,31 @@ const fakeUsePinnedSkills = (overrides?: {
     reorderPins: overrides?.reorderPins ?? (async () => undefined),
   })) as unknown as typeof import('@/skills/use-skills').usePinnedSkills
 
-const renderBar = (props: Partial<Parameters<typeof ChatSkillsBar>[0]> & { isMobile?: boolean } = {}) => {
-  const { isMobile, ...rest } = props
-  if (isMobile !== undefined) {
-    // Force the useIsMobile() hook to a deterministic value via matchMedia.
-    Object.defineProperty(window, 'matchMedia', {
-      writable: true,
-      configurable: true,
-      value: (query: string) => ({
-        matches: isMobile,
-        media: query,
-        addEventListener: () => undefined,
-        removeEventListener: () => undefined,
-        addListener: () => undefined,
-        removeListener: () => undefined,
-        dispatchEvent: () => false,
-      }),
-    })
-  }
+const fakeUseLibrarySkills = (skills: Skill[] = []) =>
+  (() => ({
+    skills,
+    isLoading: false,
+    createSkill: async () => skills[0]!,
+    updateSkill: async () => undefined,
+    softDeleteSkill: async () => undefined,
+  })) as unknown as typeof import('@/skills/use-skills').useLibrarySkills
+
+const fakeUseEnabledSkills = (enabledIds: ReadonlySet<string>) =>
+  (() => ({
+    isEnabled: (id: string) => enabledIds.has(id),
+    setEnabled: async () => undefined,
+  })) as unknown as typeof import('@/skills/use-skills').useEnabledSkills
+
+const renderBar = (props: Partial<Parameters<typeof ChatSkillsBar>[0]> = {}) => {
   return render(
     <MemoryRouter>
       <TooltipProvider>
         <ChatSkillsBar
           onAddToChat={() => undefined}
           onAddInstruction={() => undefined}
-          usePinnedSkills={rest.usePinnedSkills ?? fakeUsePinnedSkills({ pinned: [] })}
-          useNavigate={rest.useNavigate ?? (() => () => undefined)}
+          usePinnedSkills={props.usePinnedSkills ?? fakeUsePinnedSkills({ pinned: [] })}
+          useLibrarySkills={props.useLibrarySkills ?? fakeUseLibrarySkills([])}
+          useEnabledSkills={props.useEnabledSkills ?? fakeUseEnabledSkills(new Set())}
         />
       </TooltipProvider>
     </MemoryRouter>,
@@ -69,31 +68,45 @@ const renderBar = (props: Partial<Parameters<typeof ChatSkillsBar>[0]> & { isMob
 describe('ChatSkillsBar', () => {
   afterEach(cleanup)
 
-  it('renders nothing when there are no pinned skills', () => {
+  it('renders nothing when there are no pinned skills and nothing to pin', () => {
     const { container } = renderBar()
     expect(container.firstChild).toBeNull()
   })
 
-  it('renders one chip per pinned skill plus the Manage shortcut', () => {
+  it('renders one chip per pinned skill plus the "Pin a skill" trigger', () => {
+    const a = skill('a', 'daily-brief')
+    const b = skill('b', 'important-emails')
     renderBar({
-      usePinnedSkills: fakeUsePinnedSkills({ pinned: [skill('a', 'meeting-notes'), skill('b', 'weekly-review')] }),
+      usePinnedSkills: fakeUsePinnedSkills({ pinned: [a, b] }),
+      useLibrarySkills: fakeUseLibrarySkills([a, b]),
+      useEnabledSkills: fakeUseEnabledSkills(new Set(['a', 'b'])),
     })
-    expect(screen.getByText('/meeting-notes')).toBeTruthy()
-    expect(screen.getByText('/weekly-review')).toBeTruthy()
-    expect(screen.getByLabelText('Manage skills')).toBeTruthy()
+    expect(screen.getByText('/daily-brief')).toBeTruthy()
+    expect(screen.getByText('/important-emails')).toBeTruthy()
+    expect(screen.getByLabelText('Pin a skill')).toBeTruthy()
   })
 
-  // The chip's click → onAddToChat path is exercised end-to-end in
-  // chat-prompt-input.test.tsx; the Radix DropdownMenuTrigger composes its
-  // own click handlers on top of ours, and reliably simulating that here
-  // requires either userEvent (not in the test deps) or mocking the menu
-  // primitives (a module-level mock.module leak, see testing.md §65). The
-  // chat-prompt-input integration test verifies the same user-visible
-  // behavior without the simulation friction.
-
-  it('the Manage shortcut links to /settings/skills', () => {
-    renderBar({ usePinnedSkills: fakeUsePinnedSkills({ pinned: [skill('a', 'meeting-notes')] }) })
-    const link = screen.getByLabelText('Manage skills') as HTMLAnchorElement
-    expect(link.getAttribute('href')).toBe('/settings/skills')
+  it('renders the "+ Pin a skill" trigger even when nothing is pinned, so long as the library has pin candidates', () => {
+    const a = skill('a', 'daily-brief')
+    renderBar({
+      usePinnedSkills: fakeUsePinnedSkills({ pinned: [] }),
+      useLibrarySkills: fakeUseLibrarySkills([a]),
+      useEnabledSkills: fakeUseEnabledSkills(new Set(['a'])),
+    })
+    expect(screen.getByLabelText('Pin a skill')).toBeTruthy()
   })
+
+  it('disables the "+ Pin a skill" trigger when every enabled skill is already pinned', () => {
+    const a = skill('a', 'daily-brief')
+    renderBar({
+      usePinnedSkills: fakeUsePinnedSkills({ pinned: [a] }),
+      useLibrarySkills: fakeUseLibrarySkills([a]),
+      useEnabledSkills: fakeUseEnabledSkills(new Set(['a'])),
+    })
+    const trigger = screen.getByLabelText('Pin a skill') as HTMLButtonElement
+    expect(trigger.disabled).toBe(true)
+  })
+
+  // The chip's click → onAddToChat path is exercised end-to-end at the
+  // composer level; here we trust Radix's primitives.
 })

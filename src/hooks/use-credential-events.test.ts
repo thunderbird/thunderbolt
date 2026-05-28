@@ -3,32 +3,11 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { act, renderHook } from '@testing-library/react'
-import { beforeAll, describe, expect, it, spyOn } from 'bun:test'
+import { describe, expect, it, spyOn } from 'bun:test'
 import { useCredentialEvents, showRevokedDeviceModalEvent } from './use-credential-events'
-
-/** Get real event APIs from an untouched iframe — other tests replace window's and never restore */
-const getRealEventApis = () => {
-  const iframe = document.createElement('iframe')
-  document.body.appendChild(iframe)
-  const win = iframe.contentWindow!
-  const apis = {
-    addEventListener: win.addEventListener,
-    removeEventListener: win.removeEventListener,
-    dispatchEvent: win.dispatchEvent,
-  }
-  document.body.removeChild(iframe)
-  return apis
-}
 
 describe('useCredentialEvents', () => {
   const dispatchRevokedDeviceEvent = () => window.dispatchEvent(new CustomEvent(showRevokedDeviceModalEvent))
-
-  beforeAll(() => {
-    const { addEventListener: add, removeEventListener: remove, dispatchEvent: dispatch } = getRealEventApis()
-    window.addEventListener = add.bind(window)
-    window.removeEventListener = remove.bind(window)
-    window.dispatchEvent = dispatch.bind(window)
-  })
 
   it('returns revokedDeviceOpen as false initially', () => {
     const { result } = renderHook(() => useCredentialEvents())

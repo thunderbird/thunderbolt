@@ -9,7 +9,7 @@ import { powersyncCredentialsInvalid } from '@/db/powersync/connector'
 import type { CredentialsInvalidReason } from '@/db/powersync/connector'
 import { showRevokedDeviceModalEvent, showSignInModalEvent, signInSuccessEvent } from '@/hooks/use-credential-events'
 import { clearAuthToken, getAuthToken, getDeviceId } from '@/lib/auth-token'
-import { clearLocalData } from '@/lib/cleanup'
+import { clearLocalData as defaultClearLocalData } from '@/lib/cleanup'
 import { toCompilableQuery } from '@powersync/drizzle-driver'
 import { useQuery } from '@powersync/tanstack-react-query'
 import { useEffect, useRef } from 'react'
@@ -19,7 +19,10 @@ import { useEffect, useRef } from 'react'
  * localStorage (token + device id), reset app directory (DB), then navigate away.
  * Leaves the user in a clean signed-out state so they can sign in again or use the app offline.
  */
-const performCredentialsInvalidReset = async (redirectTo: string): Promise<void> => {
+const performCredentialsInvalidReset = async (
+  redirectTo: string,
+  clearLocalData: typeof defaultClearLocalData,
+): Promise<void> => {
   await clearLocalData()
   window.location.replace(redirectTo)
 }
@@ -48,7 +51,22 @@ const performCredentialsInvalidReset = async (redirectTo: string): Promise<void>
  * the listener stays active and can trigger reset even when the rest of the app doesn't
  * render.
  */
-export const usePowerSyncCredentialsInvalidListener = (): void => {
+/**
+ * Options bag for {@link usePowerSyncCredentialsInvalidListener}.
+ *
+ * `clearLocalData` is injectable so tests can stub it directly rather than
+ * `mock.module('@/lib/cleanup', ...)` — module-level mocks of internal
+ * shared modules leak across files under `bun test --randomize` (see
+ * `docs/development/testing.md` §65). Production callers don't pass it;
+ * the default resolves to the real `clearLocalData` from `@/lib/cleanup`.
+ */
+export type UsePowerSyncCredentialsInvalidListenerOptions = {
+  clearLocalData?: typeof defaultClearLocalData
+}
+
+export const usePowerSyncCredentialsInvalidListener = ({
+  clearLocalData = defaultClearLocalData,
+}: UsePowerSyncCredentialsInvalidListenerOptions = {}): void => {
   const db = useDatabase()
   const hasTriggeredResetRef = useRef(false)
   const hasDispatchedRevokedModalRef = useRef(false)
@@ -104,12 +122,12 @@ export const usePowerSyncCredentialsInvalidListener = (): void => {
       }
 
       hasTriggeredResetRef.current = true
-      void performCredentialsInvalidReset(reason === 'account_deleted' ? '/account-deleted' : '/')
+      void performCredentialsInvalidReset(reason === 'account_deleted' ? '/account-deleted' : '/', clearLocalData)
     }
 
     window.addEventListener(powersyncCredentialsInvalid, handler)
     return () => window.removeEventListener(powersyncCredentialsInvalid, handler)
-  }, [])
+  }, [clearLocalData])
 
   // After successful re-authentication, allow a future session expiry to re-trigger the modal.
   useEffect(() => {
@@ -145,7 +163,7 @@ export const usePowerSyncCredentialsInvalidListener = (): void => {
 
     if (missingAfterHavingDevice) {
       hasTriggeredResetRef.current = true
-      void performCredentialsInvalidReset('/account-deleted')
+      void performCredentialsInvalidReset('/account-deleted', clearLocalData)
     }
-  }, [isFetched, deviceId, device])
+  }, [isFetched, deviceId, device, clearLocalData])
 }

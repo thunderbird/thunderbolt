@@ -273,7 +273,19 @@ describe('ThunderboltConnector', () => {
       const result = await connector.fetchCredentials()
 
       expect(result).toBeNull()
-      expect(errorSpy).not.toHaveBeenCalled()
+      // Assert only the credentials-fetch log is suppressed, not "no console.error
+      // anywhere". The connector also calls trackSyncEvent → trackEvent, whose catch
+      // block logs if posthogClient.capture() throws. posthogClient is a module-level
+      // singleton in lib/posthog.tsx that other test files (notably posthog.test.ts,
+      // which does mock.module('posthog-js') + initPosthog) leave initialized — under
+      // --randomize, that leaked client can throw during this test. Fixing the
+      // singleton properly is a follow-up; the scoped assertion is what the test name
+      // promises.
+      expect(errorSpy).not.toHaveBeenCalledWith(
+        expect.stringContaining('Failed to fetch PowerSync credentials'),
+        expect.anything(),
+        expect.anything(),
+      )
     } finally {
       errorSpy.mockRestore()
     }

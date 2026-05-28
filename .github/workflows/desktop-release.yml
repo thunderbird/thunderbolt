@@ -71,9 +71,11 @@ jobs:
       # Skip CrabNebula for nightly builds to prevent auto-updater from pushing unstable builds
       - name: Create CrabNebula Draft Release
         if: ${{ !inputs.nightly }}
+        env:
+          RELEASE_VERSION: ${{ inputs.version }}
         uses: crabnebula-dev/cloud-release@1a8803698ba41de6b23e42abc5dcc3721308233c # v0.2.6
         with:
-          command: release draft thunderbird/thunderbolt ${{ inputs.version }}
+          command: release draft thunderbird/thunderbolt "$RELEASE_VERSION"
           api-key: ${{ secrets.CRABNEBULA_CLOUD_API_KEY }}
 
   build:
@@ -350,33 +352,34 @@ jobs:
       # Skip CrabNebula for nightly builds
       - name: Upload to CrabNebula Cloud
         if: ${{ !inputs.nightly }}
+        env:
+          RELEASE_VERSION: ${{ inputs.version }}
         uses: crabnebula-dev/cloud-release@1a8803698ba41de6b23e42abc5dcc3721308233c # v0.2.6
         with:
-          command: release upload thunderbird/thunderbolt ${{ inputs.version }} --framework tauri
+          command: release upload thunderbird/thunderbolt "$RELEASE_VERSION" --framework tauri
           api-key: ${{ secrets.CRABNEBULA_CLOUD_API_KEY }}
 
   publish:
     name: Publish Release
     needs: [draft, build]
     # Run as long as the draft job succeeded, even if some builds failed.
-    if: always() && needs.draft.result == 'success'
+    if: ${{ !cancelled() && needs.draft.result == 'success' }}
     runs-on: ubuntu-24.04
     steps:
       - name: Publish GitHub Release
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           PRERELEASE: ${{ inputs.nightly }}
+          RELEASE_VERSION: ${{ inputs.version }}
         run: |
-          TAG="v${{ inputs.version }}"
-          RELEASE_ID=$(gh api "/repos/${{ github.repository }}/releases/tags/$TAG" --jq '.id')
-          gh api --method PATCH "/repos/${{ github.repository }}/releases/$RELEASE_ID" \
-            -F draft=false \
-            -F prerelease=$PRERELEASE
+          gh release edit "v${RELEASE_VERSION}" --draft=false --prerelease="${PRERELEASE}"
 
       # Publish release on CrabNebula Cloud for auto-updates (skip for nightly to prevent unstable auto-updates)
       - name: Publish to CrabNebula Cloud
         if: ${{ !inputs.nightly }}
+        env:
+          RELEASE_VERSION: ${{ inputs.version }}
         uses: crabnebula-dev/cloud-release@1a8803698ba41de6b23e42abc5dcc3721308233c # v0.2.6
         with:
-          command: release publish thunderbird/thunderbolt ${{ inputs.version }} --framework tauri
+          command: release publish thunderbird/thunderbolt "$RELEASE_VERSION" --framework tauri
           api-key: ${{ secrets.CRABNEBULA_CLOUD_API_KEY }}

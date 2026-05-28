@@ -4,8 +4,10 @@
 
 /**
  * Transport factory dispatch tests. Verifies the agent-type routing:
- *   - `managed-acp` always uses a native WebSocket (no `tbproxy.target.`
- *     subprotocol), regardless of platform.
+ *   - `managed-acp` mints a single-use ticket whenever an `httpClient` is
+ *     present (no `tbproxy.target.` subprotocol — it talks to the backend
+ *     directly, not through the universal proxy), falling back to an
+ *     unauthenticated direct connect only when no `httpClient` is wired.
  *   - `remote-acp` on Web routes through the universal proxy
  *     (subprotocol-tunnelled).
  *   - `remote-acp` on Tauri Standalone uses a native WebSocket.
@@ -104,33 +106,6 @@ describe('openTransport — agent-type routing', () => {
     expect(socket.url).toBe('wss://cloud.test/v1/haystack/ws?pipeline=p1')
     expect(socket.protocols).toContain('thunderbolt.v1')
     expect(socket.protocols).toContain('thunderbolt.ticket.test-nonce-123')
-    expect(socket.protocols.some((p) => p.startsWith(wsTargetPrefix))).toBe(false)
-
-    transport.close()
-  })
-
-  it('managed-acp on Tauri Standalone connects direct (no ticket, no proxy)', async () => {
-    let fetched = false
-    const transport = await openTransport({
-      url: 'wss://cloud.test/v1/haystack/ws?pipeline=p1',
-      transport: 'websocket',
-      agentType: 'managed-acp',
-      signal: new AbortController().signal,
-      isStandalone: () => true,
-      readProxyEnabled: () => 'false',
-      backoffMs: () => 1,
-      httpClient: stubHttpClient,
-      fetchTicket: () => {
-        fetched = true
-        return Promise.resolve('should-not-be-used')
-      },
-    })
-
-    expect(fetched).toBe(false)
-    expect(FakeBrowserSocket.instances).toHaveLength(1)
-    const socket = FakeBrowserSocket.instances[0]
-    expect(socket.url).toBe('wss://cloud.test/v1/haystack/ws?pipeline=p1')
-    expect(socket.protocols).toHaveLength(0)
     expect(socket.protocols.some((p) => p.startsWith(wsTargetPrefix))).toBe(false)
 
     transport.close()

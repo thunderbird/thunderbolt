@@ -31,8 +31,13 @@ const sourcemap = process.env.ENABLE_SOURCEMAP?.toLowerCase() === 'true' ? 'hidd
 export default defineConfig({
   build: {
     sourcemap,
-    rollupOptions: {
+    rolldownOptions: {
       external: ['bun:sqlite'],
+      output: {
+        // Distinct prefix for the entry chunk so size-limit can track the
+        // FCP-blocking bytes separately from on-demand route chunks.
+        entryFileNames: 'assets/entry-[hash].js',
+      },
     },
   },
   plugins: [

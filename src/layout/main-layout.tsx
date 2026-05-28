@@ -16,9 +16,10 @@ import { useIsMobile } from '@/hooks/use-mobile'
 import { isTauri } from '@/lib/platform'
 import { useSettings } from '@/hooks/use-settings'
 import { animate, AnimatePresence, m } from 'framer-motion'
-import { useEffect, useRef } from 'react'
+import { Suspense, useEffect, useRef } from 'react'
 import { usePanelRef } from 'react-resizable-panels'
 import { Outlet } from 'react-router'
+import { PageFallback } from '@/loading'
 
 export default function Page() {
   const panelRef = usePanelRef()
@@ -108,7 +109,9 @@ export default function Page() {
                 paddingBottom: 'var(--safe-area-bottom-padding)',
               }}
             >
-              <Outlet />
+              <Suspense fallback={<PageFallback />}>
+                <Outlet />
+              </Suspense>
             </div>
           </div>
         </ResizablePanel>

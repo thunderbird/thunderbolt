@@ -204,30 +204,24 @@ export const SkillsView = () => {
     }
   }
 
-  // Empty-state panel — branches on whether the library is genuinely empty
-  // (the "I deleted everything" path; most users never hit this thanks to
-  // the seeded defaults) vs. "library has skills, none selected" (idle).
-  // Stays inside the master/detail layout so the list (and its + button)
-  // keep their normal position.
-  const emptyPanel =
-    skills.length === 0 ? (
-      <section className="flex h-full flex-1 flex-col items-center justify-center gap-3 bg-background px-6 text-center text-foreground">
-        <h2 className="text-xl">No skills yet</h2>
-        <p className="max-w-md text-sm text-muted-foreground">
-          Skills are reusable instruction templates you summon in chat with{' '}
-          <code className="rounded-sm bg-secondary px-1 font-mono text-xs">/name</code>.
-        </p>
-        <Button size="sm" onClick={() => dispatch({ type: 'START_CREATE' })}>
-          <Plus />
-          Create your first skill
-        </Button>
-      </section>
-    ) : (
-      <section className="flex h-full flex-1 flex-col items-center justify-center gap-2 bg-background px-6 text-center text-foreground">
-        <h2 className="text-xl text-muted-foreground">Select a skill</h2>
-        <p className="max-w-md text-sm text-muted-foreground">Pick a skill from the list to view or edit it.</p>
-      </section>
-    )
+  // Empty-state panel — the "I deleted everything" path. `active` falls back
+  // to `skills.at(0)` (see below), so when the library has rows the panel
+  // always renders a skill detail; this empty state only fires when
+  // `skills.length === 0`. Stays inside the master/detail layout so the
+  // list (and its + button) keep their normal position.
+  const emptyPanel = (
+    <section className="flex h-full flex-1 flex-col items-center justify-center gap-3 bg-background px-6 text-center text-foreground">
+      <h2 className="text-xl">No skills yet</h2>
+      <p className="max-w-md text-sm text-muted-foreground">
+        Skills are reusable instruction templates you summon in chat with{' '}
+        <code className="rounded-sm bg-secondary px-1 font-mono text-xs">/name</code>.
+      </p>
+      <Button size="sm" onClick={() => dispatch({ type: 'START_CREATE' })}>
+        <Plus />
+        Create your first skill
+      </Button>
+    </section>
+  )
 
   const createForm = (
     <SkillForm

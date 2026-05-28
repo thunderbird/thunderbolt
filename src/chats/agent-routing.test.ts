@@ -23,7 +23,7 @@ import type { FetchFn } from '@/lib/proxy-fetch'
 import type { Agent, AgentAdapter } from '@/types/acp'
 import type { ChatThread, Mode, Model, ThunderboltUIMessage } from '@/types'
 import type { Chat } from '@ai-sdk/react'
-import { createAgentRoutingFetch } from '../chat-instance'
+import { createAgentRoutingFetch } from './chat-instance'
 
 const remoteAgent: Agent = {
   id: 'remote-foo',

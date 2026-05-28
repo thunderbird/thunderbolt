@@ -6,7 +6,7 @@ import '@/testing-library'
 
 import { describe, expect, it } from 'bun:test'
 import type { Agent } from '@/types/acp'
-import { isAgentAvailable } from '../agent-availability'
+import { isAgentAvailable } from './agent-availability'
 
 const baseAgent: Agent = {
   id: 'a1',

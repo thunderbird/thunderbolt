@@ -7,8 +7,8 @@ import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, describe, expect, it, mock } from 'bun:test'
 import { builtInAgent } from '@/defaults/agents'
 import type { Agent } from '@/types/acp'
-import { AgentList } from '../agent-list'
-import { agentToggleDisabled, canDeleteAgent } from '../agent-row'
+import { AgentList } from './agent-list'
+import { agentToggleDisabled, canDeleteAgent } from './agent-row'
 
 afterEach(() => {
   cleanup()

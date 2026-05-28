@@ -23,8 +23,8 @@ import '@/testing-library'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import { wsTargetPrefix } from '@shared/proxy-protocol'
 import { useLocalSettingsStore } from '@/stores/local-settings-store'
-import { openTransport } from '../../transports'
-import { type WebSocketEventMap } from '../../transports/websocket'
+import { openTransport } from './index'
+import { type WebSocketEventMap } from './websocket'
 
 type Listener<K extends keyof WebSocketEventMap> = (event: WebSocketEventMap[K]) => void
 

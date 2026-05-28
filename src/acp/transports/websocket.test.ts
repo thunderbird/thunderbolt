@@ -22,7 +22,7 @@ import {
   validateWebSocketUrl,
   type WebSocketEventMap,
   type WebSocketLike,
-} from '../../transports/websocket'
+} from './websocket'
 
 type Listener<K extends keyof WebSocketEventMap> = (event: WebSocketEventMap[K]) => void
 

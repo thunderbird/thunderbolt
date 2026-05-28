@@ -22,7 +22,7 @@
 import type { Settings } from '@/config/settings'
 import { AGENT_METHODS, PROTOCOL_VERSION } from '@agentclientprotocol/sdk'
 import { describe, expect, it } from 'bun:test'
-import { HaystackAcpServer } from '../acp-server'
+import { HaystackAcpServer } from './acp-server'
 
 const buildSettings = (overrides: Partial<Settings> = {}): Settings =>
   ({

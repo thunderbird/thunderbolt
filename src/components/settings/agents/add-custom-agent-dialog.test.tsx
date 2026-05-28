@@ -10,7 +10,7 @@ import {
   inferTransport,
   validateAgentUrl,
   type AddCustomAgentPayload,
-} from '../add-custom-agent-dialog'
+} from './add-custom-agent-dialog'
 
 afterEach(() => {
   cleanup()

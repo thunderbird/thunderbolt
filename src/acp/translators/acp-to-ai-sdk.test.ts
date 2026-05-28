@@ -15,8 +15,8 @@ import { act } from '@testing-library/react'
 import type { SessionNotification } from '@agentclientprotocol/sdk'
 import { describe, expect, it } from 'bun:test'
 import { getClock } from '@/testing-library'
-import { createTranslator, createTranslatorStream } from '../../translators/acp-to-ai-sdk'
-import type { AiSdkChunk } from '../../types'
+import { createTranslator, createTranslatorStream } from './acp-to-ai-sdk'
+import type { AiSdkChunk } from '../types'
 
 const notification = (update: SessionNotification['update']): SessionNotification => ({
   sessionId: 'sess-1',

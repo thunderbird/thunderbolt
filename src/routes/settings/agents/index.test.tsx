@@ -3,17 +3,15 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import type { AuthClient } from '@/contexts'
-import { SignInModalProvider } from '@/contexts'
-import { SidebarProvider } from '@/components/ui/sidebar'
 import { resetTestDatabase, setupTestDatabase, teardownTestDatabase } from '@/dal/test-utils'
 import { createMockAuthClient } from '@/test-utils/auth-client'
 import { createTestProvider } from '@/test-utils/test-provider'
 import '@testing-library/jest-dom'
 import { cleanup, render, screen } from '@testing-library/react'
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'bun:test'
-import { MemoryRouter } from 'react-router'
 import type { ReactNode } from 'react'
-import { SettingsSidebarContent } from '../settings-sidebar'
+import { MemoryRouter, Route, Routes } from 'react-router'
+import AgentsSettingsPage from './index'
 
 const anonSession = {
   user: { id: 'anon-1', email: '', name: '', isAnonymous: true },
@@ -23,27 +21,27 @@ const authedSession = {
   user: { id: 'user-1', email: 'a@b.com', name: 'Alice', isAnonymous: false },
 }
 
-const renderSidebar = (authClient: AuthClient, isStandalone: () => boolean) => {
+const settingsIndexMarker = 'settings-index-marker'
+
+const renderPage = (authClient: AuthClient, isStandalone: () => boolean) => {
   const TestProvider = createTestProvider({ authClient })
   const Wrapper = ({ children }: { children: ReactNode }) => (
     <TestProvider>
-      <SignInModalProvider>
-        <MemoryRouter initialEntries={['/settings']}>
-          <SidebarProvider>{children}</SidebarProvider>
-        </MemoryRouter>
-      </SignInModalProvider>
+      <MemoryRouter initialEntries={['/settings/agents']}>
+        <Routes>
+          <Route path="/settings/agents" element={children} />
+          <Route path="/settings" element={<div data-testid={settingsIndexMarker} />} />
+        </Routes>
+      </MemoryRouter>
     </TestProvider>
   )
-  return render(
-    <SettingsSidebarContent onBackClick={() => {}} onSettingsNavigate={() => {}} isStandalone={isStandalone} />,
-    { wrapper: Wrapper },
-  )
+  return render(<AgentsSettingsPage isStandalone={isStandalone} />, { wrapper: Wrapper })
 }
 
 const onTauri = () => true
 const offTauri = () => false
 
-describe('SettingsSidebarContent — Agents entry visibility', () => {
+describe('AgentsSettingsPage — hidden state guard', () => {
   beforeAll(async () => {
     await setupTestDatabase()
   })
@@ -62,40 +60,43 @@ describe('SettingsSidebarContent — Agents entry visibility', () => {
     localStorage.clear()
   })
 
-  it('hides the Agents entry for anonymous users when the proxy is effectively on (web)', () => {
+  it('redirects to /settings for anonymous users when the proxy is effectively on (web)', () => {
     const authClient = createMockAuthClient({ session: anonSession })
-    renderSidebar(authClient, offTauri)
+    renderPage(authClient, offTauri)
 
+    expect(screen.getByTestId(settingsIndexMarker)).toBeInTheDocument()
     expect(screen.queryByText('Agents')).not.toBeInTheDocument()
   })
 
-  it('hides the Agents entry for anonymous users on Tauri Connected (proxy_enabled=true)', () => {
+  it('redirects for anonymous users on Tauri Connected (proxy_enabled=true)', () => {
     localStorage.setItem('proxy_enabled', 'true')
     const authClient = createMockAuthClient({ session: anonSession })
-    renderSidebar(authClient, onTauri)
+    renderPage(authClient, onTauri)
 
-    expect(screen.queryByText('Agents')).not.toBeInTheDocument()
+    expect(screen.getByTestId(settingsIndexMarker)).toBeInTheDocument()
   })
 
-  it('shows the Agents entry for anonymous users on Tauri Standalone (proxy off)', () => {
-    // localStorage has no `proxy_enabled` — defaults to false on Tauri.
+  it('renders the page for anonymous users on Tauri Standalone (proxy off)', () => {
     const authClient = createMockAuthClient({ session: anonSession })
-    renderSidebar(authClient, onTauri)
+    renderPage(authClient, onTauri)
 
-    expect(screen.getByText('Agents')).toBeInTheDocument()
+    expect(screen.queryByTestId(settingsIndexMarker)).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /add custom agent/i })).toBeInTheDocument()
   })
 
-  it('shows the Agents entry for authenticated users behind the proxy (web)', () => {
+  it('renders the page for authenticated users behind the proxy (web)', () => {
     const authClient = createMockAuthClient({ session: authedSession })
-    renderSidebar(authClient, offTauri)
+    renderPage(authClient, offTauri)
 
-    expect(screen.getByText('Agents')).toBeInTheDocument()
+    expect(screen.queryByTestId(settingsIndexMarker)).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /add custom agent/i })).toBeInTheDocument()
   })
 
-  it('shows the Agents entry for authenticated users on Tauri Standalone (proxy off)', () => {
+  it('renders the page for authenticated users on Tauri Standalone', () => {
     const authClient = createMockAuthClient({ session: authedSession })
-    renderSidebar(authClient, onTauri)
+    renderPage(authClient, onTauri)
 
-    expect(screen.getByText('Agents')).toBeInTheDocument()
+    expect(screen.queryByTestId(settingsIndexMarker)).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /add custom agent/i })).toBeInTheDocument()
   })
 })

@@ -18,8 +18,8 @@ import { clearSettingsCache } from '@/config/settings'
 import type { RemoteAgentDescriptor } from '@shared/acp-types'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import { Elysia } from 'elysia'
-import { registerAgentProvider, resetAgentProvidersForTesting } from '../discovery'
-import { createAgentsRoutes } from '../routes'
+import { registerAgentProvider, resetAgentProvidersForTesting } from './discovery'
+import { createAgentsRoutes } from './routes'
 
 /** Build an `Auth` whose `getSession` returns the provided user shape. */
 const buildAuth = (user: { id: string; isAnonymous: boolean } | null): Auth => {

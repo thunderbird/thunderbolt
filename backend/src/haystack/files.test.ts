@@ -22,7 +22,7 @@ import { resetAgentProvidersForTesting } from '@/agents/discovery'
 import { createTestSettings } from '@/test-utils/settings'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import { Elysia } from 'elysia'
-import { createHaystackRoutes } from '../routes'
+import { createHaystackRoutes } from './routes'
 
 /** Build an `Auth` whose `getSession` returns the provided user shape. */
 const buildAuth = (user: { id: string; isAnonymous: boolean } | null): Auth => {

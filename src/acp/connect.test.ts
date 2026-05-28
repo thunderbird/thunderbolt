@@ -24,7 +24,7 @@ import type {
 import type { Agent, AgentAdapterContext } from '@/types/acp'
 import type { HttpClient } from '@/lib/http'
 import type { FetchFn } from '@/lib/proxy-fetch'
-import { connectToAgent } from '../connect'
+import { connectToAgent } from './connect'
 
 const builtInAgent: Agent = {
   id: 'built-in',

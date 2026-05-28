@@ -15,8 +15,8 @@
  */
 
 import { describe, expect, it } from 'bun:test'
-import { extractDocuments, extractReferences, HaystackSseParseError, parseHaystackSseStream } from '../sse-parser'
-import type { DeepsetResultPayload } from '../types'
+import { extractDocuments, extractReferences, HaystackSseParseError, parseHaystackSseStream } from './sse-parser'
+import type { DeepsetResultPayload } from './types'
 
 const encoder = new TextEncoder()
 

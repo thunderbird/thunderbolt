@@ -118,9 +118,7 @@ export const AgentRow = ({ agent, currentUserId, onToggle, onDelete }: AgentRowP
                 </div>
               </TooltipTrigger>
               <TooltipContent side="bottom">
-                <p>
-                  {disabledTooltip ?? (isEnabled ? 'Disable agent' : 'Enable agent')}
-                </p>
+                <p>{disabledTooltip ?? (isEnabled ? 'Disable agent' : 'Enable agent')}</p>
               </TooltipContent>
             </Tooltip>
             {showDelete && (

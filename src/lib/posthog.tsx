@@ -58,7 +58,7 @@ export const initPosthog = async (httpClient?: HttpClient): Promise<HandleResult
     const debugPosthog = getLocalSetting('debugPosthog')
     const db = getDb()
     const { dataCollection } = await getSettings(db, {
-      data_collection: true,
+      data_collection: false,
     })
 
     const client = httpClient ?? createClient({ prefixUrl: cloudUrl })
@@ -206,6 +206,14 @@ export type EventType =
   | 'sync_upload'
   | 'sync_upload_error'
   | 'sync_status_change'
+  // Skills v1 (THU-535) — see docs/architecture/skills-v1 spec §6.
+  | 'skill_used'
+  | 'skill_created'
+  | 'skill_edited'
+  | 'skill_deleted'
+  | 'skill_pinned'
+  | 'skill_unpinned'
+  | 'skill_reordered'
 
 export const trackEvent = (eventName: EventType, properties?: Record<string, unknown>) => {
   try {

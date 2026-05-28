@@ -108,7 +108,7 @@ export default function ChatUI() {
             }}
           >
             <m.div
-              className="w-full max-w-[696px] min-w-[268px] bg-card dark:bg-[oklch(0.182_0_0)] border dark:border-input rounded-2xl"
+              className="w-full max-w-[696px] min-w-[268px] rounded-2xl"
               layout
               transition={{
                 type: 'tween',

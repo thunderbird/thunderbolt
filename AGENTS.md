@@ -60,6 +60,22 @@
 
 **Legitimate `useEffect` uses** (keep these): DOM event listeners with cleanup, external system subscriptions (WebSocket, SDK listeners), DOM measurements/scroll, timers with cleanup, analytics/tracking, async operations on mount.
 
+## Route-level Code Splitting
+
+Keep the entry bundle small by lazy-loading routes that aren't on the critical landing path. New top-level routes added to `src/app.tsx` should follow these rules:
+
+**Static (in the entry bundle):**
+- Chat (`ChatLayout`, `ChatDetailPage`) — the landing page must feel instant.
+- Layouts (`SettingsLayout`, `WaitlistLayout`) — chrome around their pages. Lazy-loading a layout creates a sequential waterfall (layout chunk → page chunk) before anything paints, and the layouts themselves are tiny.
+- Small auth/error pages (`MagicLinkVerify`, `OAuthCallback`, `AccountDeleted`, `SignedOut`, `NotFound`) — the per-chunk overhead exceeds their payload.
+
+**Lazy (`React.lazy(() => import(...))`):**
+- All settings/admin pages (`PreferencesSettingsPage`, `ModelsPage`, `DevicesSettingsPage`, `McpServersPage`, `IntegrationsPage`, dev-only routes).
+- Secondary features (`TasksPage`, `AutomationsPage`).
+- `WaitlistPage` and SSO flows (only hit by a subset of users).
+
+When adding a new route, default to lazy unless the route is on the chat/landing critical path. Pair the lazy import with a content-area `<Suspense fallback={...}>` placed around the relevant `<Outlet />` (see `src/layout/main-layout.tsx` and `src/settings/layout.tsx`) so the sidebar/nav stays mounted while the chunk loads.
+
 ## Testing
 
 - Create test files as `<file>.test.ts` next to source files

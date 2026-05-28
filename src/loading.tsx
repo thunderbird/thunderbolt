@@ -18,4 +18,10 @@ export const Loading: FC<LoadingProps> = ({ className, size = 24 }) => {
   )
 }
 
+export const PageFallback: FC = () => (
+  <div className="flex items-center justify-center h-full w-full">
+    <Loader2 className="animate-spin text-muted-foreground" size={24} />
+  </div>
+)
+
 export default Loading

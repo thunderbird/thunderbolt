@@ -447,6 +447,7 @@ describe('Config Settings', () => {
       'POWERSYNC_JWT_KID',
       'POWERSYNC_JWT_SECRET',
       'POWERSYNC_TOKEN_EXPIRY_SECONDS',
+      'NODE_ENV',
     ] as const
 
     let savedEnv: Partial<Record<string, string>>
@@ -472,7 +473,7 @@ describe('Config Settings', () => {
       clearSettingsCache()
     })
 
-    it('should use default values when PowerSync env vars are unset', () => {
+    it('should default PowerSync env vars to empty strings outside development', () => {
       for (const key of powersyncEnvKeys) {
         delete process.env[key]
       }
@@ -482,6 +483,19 @@ describe('Config Settings', () => {
       expect(settings.powersyncJwtKid).toBe('')
       expect(settings.powersyncJwtSecret).toBe('')
       expect(settings.powersyncTokenExpirySeconds).toBe(3600)
+    })
+
+    it('should use localhost defaults when NODE_ENV=development', () => {
+      for (const key of powersyncEnvKeys) {
+        delete process.env[key]
+      }
+      process.env.NODE_ENV = 'development'
+
+      const settings = getSettings()
+
+      expect(settings.powersyncUrl).toBe('http://localhost:8080')
+      expect(settings.powersyncJwtKid).toBe('powersync-dev')
+      expect(settings.powersyncJwtSecret).toBe('powersync-dev-secret-change-in-production')
     })
 
     it('should read PowerSync values from env when set', () => {
@@ -535,10 +549,18 @@ describe('Config Settings', () => {
     })
 
     it('should allow empty JWT secret when powersyncUrl is empty', () => {
+      delete process.env.NODE_ENV
       process.env.POWERSYNC_URL = ''
       process.env.POWERSYNC_JWT_SECRET = ''
       const settings = getSettings()
       expect(settings.powersyncJwtSecret).toBe('')
+    })
+
+    it('should reject empty JWT secret in non-dev when POWERSYNC_URL is set', () => {
+      delete process.env.NODE_ENV
+      process.env.POWERSYNC_URL = 'https://sync.example.com'
+      delete process.env.POWERSYNC_JWT_SECRET
+      expect(() => getSettings()).toThrow()
     })
   })
 

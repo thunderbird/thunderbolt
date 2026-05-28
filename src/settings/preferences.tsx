@@ -147,7 +147,7 @@ export default function PreferencesSettingsPage() {
     location_name: '',
     location_lat: '',
     location_lng: '',
-    data_collection: true,
+    data_collection: false,
     experimental_feature_tasks: false,
     distance_unit: 'imperial',
     temperature_unit: 'f',

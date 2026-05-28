@@ -22,6 +22,7 @@ import type {
   modesTable,
   promptsTable,
   settingsTable,
+  skillsTable,
   tasksTable,
   triggersTable,
 } from './db/tables'
@@ -56,6 +57,7 @@ export type ModeRow = InferSelectModel<typeof modesTable>
 export type TaskRow = InferSelectModel<typeof tasksTable>
 export type McpServerRow = InferSelectModel<typeof mcpServersTable>
 export type PromptRow = InferSelectModel<typeof promptsTable>
+export type SkillRow = InferSelectModel<typeof skillsTable>
 export type TriggerRow = InferSelectModel<typeof triggersTable>
 export type ModelProfileRow = InferSelectModel<typeof modelProfilesTable>
 
@@ -78,6 +80,8 @@ export type Mode = WithRequired<ModeRow, 'name' | 'label' | 'icon' | 'order'>
 export type Task = WithRequired<TaskRow, 'item' | 'order' | 'isComplete'>
 export type McpServer = WithRequired<McpServerRow, 'name' | 'type' | 'enabled'>
 export type Prompt = WithRequired<PromptRow, 'prompt' | 'modelId'>
+/** Skills are user-authored slash commands. `enabled` defaults to 1; `pinnedOrder` is NULL when unpinned. */
+export type Skill = WithRequired<SkillRow, 'name' | 'description' | 'instruction' | 'enabled'>
 export type Trigger = WithRequired<TriggerRow, 'triggerType' | 'isEnabled' | 'promptId'>
 export type ModelProfile = WithRequired<ModelProfileRow, 'modelId'>
 

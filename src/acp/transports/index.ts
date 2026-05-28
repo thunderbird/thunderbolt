@@ -84,12 +84,13 @@ export const isStandaloneTransport = (
 /** Open a transport for the given ACP agent URL. The returned `AcpTransport`
  *  is the bidirectional stream `ClientSideConnection` expects.
  *
- *  Managed-ACP on web: fetches a single-use ticket and constructs the
- *  WebSocket with `['thunderbolt.v1', 'thunderbolt.ticket.<nonce>']` so the
- *  server can authenticate the upgrade without leaking the credential via the
- *  URL or relying on a third-party-context cookie. The ticket fetch is
- *  awaited up front so a failure surfaces as a transport-open rejection (the
- *  SDK then rejects `initialize` with a clear reason). */
+ *  Managed-ACP (web or Tauri whenever an `httpClient` is wired): fetches a
+ *  single-use ticket and constructs the WebSocket with
+ *  `['thunderbolt.v1', 'thunderbolt.ticket.<nonce>']` so the server can
+ *  authenticate the upgrade without leaking the credential via the URL or
+ *  relying on a third-party-context cookie. The ticket fetch is awaited up
+ *  front so a failure surfaces as a transport-open rejection (the SDK then
+ *  rejects `initialize` with a clear reason). */
 export const openTransport = async (inputs: OpenTransportInputs): Promise<AcpTransport> => {
   const webSocketFactory = inputs.webSocketFactory ?? (await resolveWebSocketFactory(inputs))
   return openWebSocketTransport({

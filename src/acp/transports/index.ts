@@ -29,15 +29,13 @@
 
 import type { AnyMessage } from '@agentclientprotocol/sdk'
 import type { HttpClient } from '@/lib/http'
-import { getPlatform, isTauri } from '@/lib/platform'
+import { isTauri } from '@/lib/platform'
 import { computeEffectiveProxyEnabled, createProxyWebSocket } from '@/lib/proxy-fetch'
 import { useLocalSettingsStore } from '@/stores/local-settings-store'
 import { fetchWsTicket } from '@/lib/ws-ticket'
 import type { AgentType } from '@shared/acp-types'
 import type { AcpTransport } from '../types'
 import { openWebSocketTransport, type WebSocketFactory, type WebSocketLike } from './websocket'
-
-const previewProtocol = (p: string): string => (p.length > 40 ? `${p.slice(0, 30)}...len=${p.length}` : p)
 
 /** Carrier subprotocol the managed-ACP WS handshake offers. Server echoes this back. */
 const managedAcpCarrierSubprotocol = 'thunderbolt.v1'
@@ -60,8 +58,10 @@ export type OpenTransportInputs = {
   readProxyEnabled?: () => string | null
   backoffMs?: (attempt: number) => number
   /** Authenticated HttpClient used to mint a single-use WebSocket ticket for
-   *  managed-ACP (Haystack) connections. Omitted on Tauri Standalone where
-   *  there is no cloud backend and managed-ACP isn't reachable anyway. */
+   *  managed-ACP (Haystack) connections. Omitted only in true Standalone where
+   *  no cloud backend is wired; in that case managed-ACP falls back to an
+   *  unauthenticated direct connect (graceful no-op — the endpoint isn't
+   *  reachable). */
   httpClient?: HttpClient
   /** Test seam — production omits and the factory calls `fetchWsTicket`. */
   fetchTicket?: (httpClient: HttpClient) => Promise<string>
@@ -114,19 +114,8 @@ const resolveWebSocketFactory = async (inputs: OpenTransportInputs): Promise<Web
   if (inputs.agentType === 'managed-acp') {
     return resolveManagedAcpFactory(inputs)
   }
-  const standalone = isStandaloneTransport(inputs.isStandalone, inputs.readProxyEnabled)
-  const proxyEnabled = computeEffectiveProxyEnabled(inputs.isStandalone, inputs.readProxyEnabled)
-  if (standalone) {
-    return (url) => {
-      console.log('[acp-debug] remote-acp transport open', {
-        url,
-        path: 'native-standalone',
-        platform: getPlatform(),
-        isTauri: isTauri(),
-        proxyEnabled,
-      })
-      return new WebSocket(url) as unknown as WebSocketLike
-    }
+  if (isStandaloneTransport(inputs.isStandalone, inputs.readProxyEnabled)) {
+    return nativeWebSocketFactory
   }
   const proxyWs = createProxyWebSocket({
     cloudUrl: cloudWsUrl(),
@@ -134,18 +123,10 @@ const resolveWebSocketFactory = async (inputs: OpenTransportInputs): Promise<Web
     httpClient: inputs.httpClient,
     fetchTicket: inputs.fetchTicket,
   })
-  return (url) => {
-    console.log('[acp-debug] remote-acp transport open', {
-      url,
-      path: 'proxied',
-      platform: getPlatform(),
-      isTauri: isTauri(),
-      proxyEnabled,
-      cloudUrl: cloudWsUrl(),
-    })
-    return proxyWs(url) as unknown as WebSocketLike
-  }
+  return (url) => proxyWs(url) as unknown as WebSocketLike
 }
+
+const nativeWebSocketFactory: WebSocketFactory = (url) => new WebSocket(url) as unknown as WebSocketLike
 
 /** Build a WebSocket factory for managed-ACP. Whenever an authenticated
  *  `httpClient` is available we mint a ticket and offer it as a subprotocol
@@ -154,43 +135,13 @@ const resolveWebSocketFactory = async (inputs: OpenTransportInputs): Promise<Web
  *  Without `httpClient` we fall back to a direct connect (true Standalone:
  *  no backend reachable to mint against, kept as a graceful no-op). */
 const resolveManagedAcpFactory = async (inputs: OpenTransportInputs): Promise<WebSocketFactory> => {
-  const proxyEnabled = computeEffectiveProxyEnabled(inputs.isStandalone, inputs.readProxyEnabled)
   if (!inputs.httpClient) {
-    console.log('[acp-debug] managed-acp factory resolved native', {
-      path: 'native',
-      hasHttpClient: false,
-      platform: getPlatform(),
-      isTauri: isTauri(),
-      proxyEnabled,
-    })
-    return (url) => {
-      console.log('[acp-debug] managed-acp transport open', {
-        url,
-        path: 'native',
-        protocolsCount: 0,
-        protocolsPreview: [],
-        platform: getPlatform(),
-        isTauri: isTauri(),
-        proxyEnabled,
-      })
-      return new WebSocket(url) as unknown as WebSocketLike
-    }
+    return nativeWebSocketFactory
   }
   const fetcher = inputs.fetchTicket ?? defaultFetchTicket
   const ticket = await fetcher(inputs.httpClient)
   const protocols = [managedAcpCarrierSubprotocol, `${managedAcpTicketSubprotocolPrefix}${ticket}`]
-  return (url) => {
-    console.log('[acp-debug] managed-acp transport open', {
-      url,
-      path: 'ticketed',
-      protocolsCount: protocols.length,
-      protocolsPreview: protocols.map(previewProtocol),
-      platform: getPlatform(),
-      isTauri: isTauri(),
-      proxyEnabled,
-    })
-    return new WebSocket(url, protocols) as unknown as WebSocketLike
-  }
+  return (url) => new WebSocket(url, protocols) as unknown as WebSocketLike
 }
 
 const defaultFetchTicket = (httpClient: HttpClient): Promise<string> => fetchWsTicket('haystack', { httpClient })

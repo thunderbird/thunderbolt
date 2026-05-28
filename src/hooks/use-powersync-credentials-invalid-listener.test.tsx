@@ -31,10 +31,6 @@ const authToken = 'test-auth-token'
 const mockReplace = mock()
 const mockClearLocalData = mock(() => Promise.resolve())
 
-mock.module('@/lib/cleanup', () => ({
-  clearLocalData: mockClearLocalData,
-}))
-
 mock.module('@/db/powersync', () => ({
   AppSchema: {},
   drizzleSchema: {},
@@ -96,7 +92,7 @@ describe('usePowerSyncCredentialsInvalidListener', () => {
 
   describe('event-driven: powersyncCredentialsInvalid', () => {
     it('redirects to /account-deleted when reason is account_deleted', async () => {
-      renderHook(() => usePowerSyncCredentialsInvalidListener(), {
+      renderHook(() => usePowerSyncCredentialsInvalidListener({ clearLocalData: mockClearLocalData }), {
         wrapper: createTestProvider(),
       })
 
@@ -116,7 +112,7 @@ describe('usePowerSyncCredentialsInvalidListener', () => {
       const revokedModalListener = mock()
       window.addEventListener(showRevokedDeviceModalEvent, revokedModalListener)
 
-      renderHook(() => usePowerSyncCredentialsInvalidListener(), {
+      renderHook(() => usePowerSyncCredentialsInvalidListener({ clearLocalData: mockClearLocalData }), {
         wrapper: createTestProvider(),
       })
 
@@ -131,7 +127,7 @@ describe('usePowerSyncCredentialsInvalidListener', () => {
     })
 
     it('redirects to / when reason is device_id_taken', async () => {
-      renderHook(() => usePowerSyncCredentialsInvalidListener(), {
+      renderHook(() => usePowerSyncCredentialsInvalidListener({ clearLocalData: mockClearLocalData }), {
         wrapper: createTestProvider(),
       })
 
@@ -147,7 +143,7 @@ describe('usePowerSyncCredentialsInvalidListener', () => {
     })
 
     it('redirects to / when reason is device_id_required', async () => {
-      renderHook(() => usePowerSyncCredentialsInvalidListener(), {
+      renderHook(() => usePowerSyncCredentialsInvalidListener({ clearLocalData: mockClearLocalData }), {
         wrapper: createTestProvider(),
       })
 
@@ -167,7 +163,7 @@ describe('usePowerSyncCredentialsInvalidListener', () => {
       const signInModalListener = mock()
       window.addEventListener(showSignInModalEvent, signInModalListener)
 
-      renderHook(() => usePowerSyncCredentialsInvalidListener(), {
+      renderHook(() => usePowerSyncCredentialsInvalidListener({ clearLocalData: mockClearLocalData }), {
         wrapper: createTestProvider(),
       })
 
@@ -188,7 +184,7 @@ describe('usePowerSyncCredentialsInvalidListener', () => {
       const signInModalListener = mock()
       window.addEventListener(showSignInModalEvent, signInModalListener)
 
-      renderHook(() => usePowerSyncCredentialsInvalidListener(), {
+      renderHook(() => usePowerSyncCredentialsInvalidListener({ clearLocalData: mockClearLocalData }), {
         wrapper: createTestProvider(),
       })
 
@@ -212,7 +208,7 @@ describe('usePowerSyncCredentialsInvalidListener', () => {
       const signInModalListener = mock()
       window.addEventListener(showSignInModalEvent, signInModalListener)
 
-      renderHook(() => usePowerSyncCredentialsInvalidListener(), {
+      renderHook(() => usePowerSyncCredentialsInvalidListener({ clearLocalData: mockClearLocalData }), {
         wrapper: createTestProvider(),
       })
 
@@ -241,7 +237,7 @@ describe('usePowerSyncCredentialsInvalidListener', () => {
       window.addEventListener(showSignInModalEvent, signInModalListener)
       window.addEventListener(showRevokedDeviceModalEvent, revokedModalListener)
 
-      renderHook(() => usePowerSyncCredentialsInvalidListener(), {
+      renderHook(() => usePowerSyncCredentialsInvalidListener({ clearLocalData: mockClearLocalData }), {
         wrapper: createTestProvider(),
       })
 
@@ -265,7 +261,7 @@ describe('usePowerSyncCredentialsInvalidListener', () => {
       window.addEventListener(showRevokedDeviceModalEvent, revokedModalListener)
       ;(setSyncEnabled as unknown as ReturnType<typeof mock>).mockClear()
 
-      renderHook(() => usePowerSyncCredentialsInvalidListener(), {
+      renderHook(() => usePowerSyncCredentialsInvalidListener({ clearLocalData: mockClearLocalData }), {
         wrapper: createTestProvider(),
       })
 
@@ -293,7 +289,7 @@ describe('usePowerSyncCredentialsInvalidListener', () => {
       const revokedModalListener = mock()
       window.addEventListener(showRevokedDeviceModalEvent, revokedModalListener)
 
-      renderHook(() => usePowerSyncCredentialsInvalidListener(), {
+      renderHook(() => usePowerSyncCredentialsInvalidListener({ clearLocalData: mockClearLocalData }), {
         wrapper: createTestProvider(),
       })
 
@@ -328,7 +324,7 @@ describe('usePowerSyncCredentialsInvalidListener', () => {
         </DatabaseProvider>
       )
 
-      renderHook(() => usePowerSyncCredentialsInvalidListener(), {
+      renderHook(() => usePowerSyncCredentialsInvalidListener({ clearLocalData: mockClearLocalData }), {
         wrapper: WrapperWithQueryClient,
       })
 
@@ -354,9 +350,12 @@ describe('usePowerSyncCredentialsInvalidListener', () => {
       const addSpy = spyOn(window, 'addEventListener')
       const removeSpy = spyOn(window, 'removeEventListener')
 
-      const { unmount } = renderHook(() => usePowerSyncCredentialsInvalidListener(), {
-        wrapper: createTestProvider(),
-      })
+      const { unmount } = renderHook(
+        () => usePowerSyncCredentialsInvalidListener({ clearLocalData: mockClearLocalData }),
+        {
+          wrapper: createTestProvider(),
+        },
+      )
 
       expect(addSpy).toHaveBeenCalledWith(powersyncCredentialsInvalid, expect.any(Function))
 

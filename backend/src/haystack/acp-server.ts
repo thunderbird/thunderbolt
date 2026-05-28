@@ -261,13 +261,7 @@ export class HaystackAcpServer {
 
   private buildNewSessionResponse(): NewSessionResponse {
     const sessionId = this.generateSessionId()
-    this.sessions.set(sessionId, {
-      sessionId,
-      pipelineId: this.pipelineId,
-      pipelineName: this.pipelineName,
-      searchSessionId: null,
-      currentTurnAbort: null,
-    })
+    this.registerSession(sessionId, null)
     return { sessionId }
   }
 
@@ -290,15 +284,20 @@ export class HaystackAcpServer {
       this.sendError(req.id, rpcErrors.resourceNotFound, `unknown session: ${params.sessionId}`)
       return
     }
-    this.sessions.set(params.sessionId, {
-      sessionId: params.sessionId,
+    this.registerSession(params.sessionId, searchSessionId)
+    const response: LoadSessionResponse = {}
+    this.sendResult(req.id, response)
+  }
+
+  /** Install a fresh idle session context into the per-connection map. */
+  private registerSession(sessionId: string, searchSessionId: string | null): void {
+    this.sessions.set(sessionId, {
+      sessionId,
       pipelineId: this.pipelineId,
       pipelineName: this.pipelineName,
       searchSessionId,
       currentTurnAbort: null,
     })
-    const response: LoadSessionResponse = {}
-    this.sendResult(req.id, response)
   }
 
   /**

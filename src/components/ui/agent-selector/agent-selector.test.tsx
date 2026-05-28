@@ -123,22 +123,22 @@ describe('AgentSelector', () => {
     expect(screen.queryByText('RAG Chat')).not.toBeInTheDocument()
   })
 
-  it('exposes the Manage agents footer that invokes its callback', () => {
+  it('exposes the Add Agent footer that invokes its callback', () => {
     const onSelect = mock(() => {})
-    const onManageAgents = mock(() => {})
+    const onAddAgent = mock(() => {})
     render(
       <AgentSelector
         selectedAgent={builtInAgent}
         agents={[builtInAgent]}
         onSelect={onSelect}
-        onManageAgents={onManageAgents}
+        onAddAgent={onAddAgent}
       />,
     )
 
     fireEvent.click(screen.getByTestId('agent-selector-trigger'))
-    fireEvent.click(screen.getByText('Manage agents'))
+    fireEvent.click(screen.getByText('Add Agent'))
 
-    expect(onManageAgents).toHaveBeenCalledTimes(1)
+    expect(onAddAgent).toHaveBeenCalledTimes(1)
   })
 
   it('renders without crashing when only the built-in agent is available', () => {

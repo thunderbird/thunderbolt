@@ -18,6 +18,7 @@ import { ContextOverflowModal } from '../context-overflow-modal'
 import { ContextUsageIndicator } from '../context-usage-indicator'
 import { PromptInput } from '../ui/prompt-input'
 import { ChatModePicker } from './chat-mode-picker'
+import { ChatModelPicker } from './chat-model-picker'
 
 /**
  * Extract a human-readable display string from a connection error.
@@ -179,7 +180,10 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
             </span>
           </div>
         ) : (
-          <ChatModePicker iconOnly={isMobile} />
+          <>
+            <ChatModePicker iconOnly={isMobile} />
+            <ChatModelPicker />
+          </>
         )}
         {isContextKnown && !isMobile && (
           <ContextUsageIndicator usedTokens={usedTokens ?? 0} maxTokens={maxTokens ?? 0} />

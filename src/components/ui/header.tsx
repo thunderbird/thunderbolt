@@ -9,9 +9,9 @@ import { useAllAgents } from '@/dal'
 import { builtInAgent } from '@/defaults/agents'
 import { useIsMobile } from '@/hooks/use-mobile'
 import { Menu, MessageCirclePlus } from 'lucide-react'
-import { ModelSelector } from './model-selector'
 import { useChatStore } from '@/chats/chat-store'
 import type { ChatSession } from '@/chats/chat-store'
+import { selectAllowCustomAgents, useConfigStore } from '@/api/config-store'
 import { useShallow } from 'zustand/react/shallow'
 import { useNavigate, useLocation } from 'react-router'
 import { useChat } from '@ai-sdk/react'
@@ -26,7 +26,9 @@ type HeaderAgentSelectorProps = {
   selectedAgent: Agent
   agents: Agent[]
   onSelect: (agent: Agent) => void
-  onManageAgents: () => void
+  /** Omitted when the deployment forbids custom agents — the selector then hides
+   *  its "Add Agent" footer. */
+  onAddAgent?: () => void
 }
 
 const HeaderAgentSelector = ({
@@ -34,7 +36,7 @@ const HeaderAgentSelector = ({
   selectedAgent,
   agents,
   onSelect,
-  onManageAgents,
+  onAddAgent,
 }: HeaderAgentSelectorProps) => {
   const { status } = useChat({ chat: chatInstance })
   const disabled = status === 'streaming' || status === 'submitted'
@@ -44,16 +46,15 @@ const HeaderAgentSelector = ({
       selectedAgent={selectedAgent}
       agents={agents}
       onSelect={onSelect}
-      onManageAgents={onManageAgents}
+      onAddAgent={onAddAgent}
       disabled={disabled}
     />
   )
 }
 
 /**
- * Reusable page header component with sidebar trigger, agent selector, and
- * model selector. The model selector renders only for the built-in agent —
- * ACP agents own their own model selection upstream.
+ * Reusable page header component with sidebar trigger and agent selector. Model
+ * selection lives in the chat composer (next to the mode picker), not here.
  */
 export const Header = () => {
   const { toggleSidebar } = useSidebar()
@@ -61,28 +62,16 @@ export const Header = () => {
   const navigate = useNavigate()
   const location = useLocation()
   const allAgents = useAllAgents()
+  const allowCustomAgents = useConfigStore((state) => selectAllowCustomAgents(state.config))
 
-  const {
-    chatInstance,
-    models,
-    selectedModel,
-    selectedAgent,
-    setSelectedAgent,
-    setSelectedModel,
-    chatThread,
-    chatThreadId,
-  } = useChatStore(
+  const { chatInstance, selectedAgent, setSelectedAgent, chatThreadId } = useChatStore(
     useShallow((state) => {
       const session = state.sessions.get(state.currentSessionId ?? '')
 
       return {
         chatInstance: session?.chatInstance,
-        models: state.models,
-        selectedModel: session?.selectedModel,
         selectedAgent: session?.selectedAgent,
         setSelectedAgent: state.setSelectedAgent,
-        setSelectedModel: state.setSelectedModel,
-        chatThread: session?.chatThread,
         chatThreadId: session?.id,
       }
     }),
@@ -97,13 +86,8 @@ export const Header = () => {
 
   const isChatRoute = location.pathname.startsWith('/chats')
   const showAgentSelector = isChatRoute && chatInstance !== undefined && allAgents.length > 0
-  const showModelSelector = isChatRoute && models.length > 0 && effectiveAgent.type === 'built-in'
 
-  const handleAddModels = () => {
-    navigate('/settings/models')
-  }
-
-  const handleManageAgents = () => {
+  const handleAddAgent = () => {
     navigate('/settings/agents')
   }
 
@@ -123,25 +107,11 @@ export const Header = () => {
       selectedAgent={effectiveAgent}
       agents={allAgents}
       onSelect={handleAgentSelect}
-      onManageAgents={handleManageAgents}
+      onAddAgent={allowCustomAgents ? handleAddAgent : undefined}
     />
   )
 
-  const modelSelector = showModelSelector && (
-    <ModelSelector
-      models={models}
-      selectedModel={selectedModel ?? null}
-      chatThread={chatThread ?? null}
-      onModelChange={(modelId) => {
-        if (chatThreadId && modelId) {
-          setSelectedModel(chatThreadId, modelId).catch(console.error)
-        }
-      }}
-      onAddModels={handleAddModels}
-    />
-  )
-
-  // Mobile: 3-column layout. Center holds Agent + Model selectors side by side.
+  // Mobile: 3-column layout. Center holds the agent selector.
   if (isMobile) {
     const showNewChatButton = isChatRoute && location.pathname !== '/chats/new'
 
@@ -159,10 +129,7 @@ export const Header = () => {
           </Button>
         </div>
 
-        <div className="flex shrink-0 items-center justify-center gap-2 min-w-0">
-          {agentSelector}
-          {modelSelector}
-        </div>
+        <div className="flex shrink-0 items-center justify-center gap-2 min-w-0">{agentSelector}</div>
 
         <div className="flex flex-1 items-center gap-1 justify-end">
           {showNewChatButton && (
@@ -181,13 +148,10 @@ export const Header = () => {
     )
   }
 
-  // Desktop: Agent + Model selectors left-aligned, PowerSync status right.
+  // Desktop: Agent selector left-aligned, PowerSync status right.
   return (
     <header className="flex h-[var(--touch-height-xl)] w-full items-center justify-between px-2 flex-shrink-0">
-      <div className="flex items-center gap-2">
-        {agentSelector}
-        {modelSelector}
-      </div>
+      <div className="flex items-center gap-2">{agentSelector}</div>
       <PowerSyncStatus />
     </header>
   )

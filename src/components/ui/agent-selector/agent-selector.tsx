@@ -8,14 +8,14 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/comp
 import { useHaptics } from '@/hooks/use-haptics'
 import { cn } from '@/lib/utils'
 import type { Agent } from '@/types/acp'
-import { ChevronDown, Globe, Server, Settings2, Zap } from 'lucide-react'
+import { ChevronDown, Globe, Plus, Server, Zap } from 'lucide-react'
 import { useMemo, useState, type ComponentType } from 'react'
 
 export type AgentSelectorProps = {
   selectedAgent: Agent
   agents: Agent[]
   onSelect: (agent: Agent) => void
-  onManageAgents?: () => void
+  onAddAgent?: () => void
   disabled?: boolean
   side?: 'top' | 'bottom' | 'left' | 'right'
   align?: 'start' | 'center' | 'end'
@@ -83,7 +83,7 @@ export const AgentSelector = ({
   selectedAgent,
   agents,
   onSelect,
-  onManageAgents,
+  onAddAgent,
   disabled = false,
   side,
   align,
@@ -138,17 +138,17 @@ export const AgentSelector = ({
     )
   }
 
-  const footer = onManageAgents ? (
+  const footer = onAddAgent ? (
     <Button
       variant="ghost"
       onClick={() => {
         setOpen(false)
-        onManageAgents()
+        onAddAgent()
       }}
       className="w-full justify-start gap-2 text-muted-foreground"
     >
-      <Settings2 className="size-4" />
-      Manage agents
+      <Plus className="size-4" />
+      Add Agent
     </Button>
   ) : undefined
 

@@ -137,7 +137,9 @@ export const ModelSelector = ({
       ) : selected?.data?.model.isConfidential === 1 ? (
         <Lock className="size-3.5 text-muted-foreground" />
       ) : null}
-      <span className="font-medium">{selected?.label ?? 'Select Model'}</span>
+      <span className={cn('font-medium', variant === 'bordered' && 'text-muted-foreground')}>
+        {selected?.label ?? 'Select Model'}
+      </span>
       <ChevronDown className={cn('size-3.5 text-muted-foreground transition-transform', isOpen && 'rotate-180')} />
     </div>
   )

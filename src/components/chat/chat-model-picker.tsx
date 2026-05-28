@@ -4,6 +4,7 @@
 
 import { useChatStore, useCurrentChatSession } from '@/chats/chat-store'
 import { ModelSelector } from '@/components/ui/model-selector'
+import { useIsMobile } from '@/hooks/use-mobile'
 import { useNavigate } from 'react-router'
 
 /**
@@ -13,12 +14,14 @@ import { useNavigate } from 'react-router'
  * them (mirroring {@link ChatModePicker}).
  *
  * Uses the `bordered` ModelSelector variant so it visually pairs with the
- * ModeSelector sitting beside it.
+ * ModeSelector sitting beside it, and mirrors its open direction (down on
+ * desktop, up on mobile) so the two dropdowns stay consistent.
  */
 export const ChatModelPicker = () => {
   const models = useChatStore((state) => state.models)
   const setSelectedModel = useChatStore((state) => state.setSelectedModel)
   const navigate = useNavigate()
+  const { isMobile } = useIsMobile()
   const { id: chatThreadId, selectedAgent, selectedModel, chatThread } = useCurrentChatSession()
 
   if (selectedAgent.type !== 'built-in' || models.length === 0) {
@@ -37,7 +40,7 @@ export const ChatModelPicker = () => {
       chatThread={chatThread ?? null}
       onModelChange={handleModelChange}
       onAddModels={() => navigate('/settings/models')}
-      side="top"
+      side={isMobile ? 'top' : 'bottom'}
       align="start"
     />
   )

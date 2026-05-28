@@ -10,8 +10,10 @@ import { Button } from '@/components/ui/button'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { useIsMobile } from '@/hooks/use-mobile'
+import { findMovedItem } from '@/skills/find-moved-item'
 import { ReorderPanel } from '@/skills/reorder-panel'
 import { SuggestionChip } from '@/skills/suggestion-chip'
+import { useSkillTelemetry } from '@/skills/telemetry'
 import {
   useEnabledSkills as useEnabledSkills_default,
   useLibrarySkills as useLibrarySkills_default,
@@ -57,6 +59,7 @@ export const ChatSkillsBar = ({
   const { skills: library } = useLibrarySkills()
   const { isEnabled } = useEnabledSkills()
   const { isMobile } = useIsMobile()
+  const trackSkillEvent = useSkillTelemetry()
 
   const [openChipId, setOpenChipId] = useState<string | null>(null)
   const [reorderMode, setReorderMode] = useState(false)
@@ -76,7 +79,24 @@ export const ChatSkillsBar = ({
     return (
       <>
         {showOverlay && <MobileOverlay onDismiss={dismissOverlay} />}
-        <ReorderPanel pinned={pinned} onReorder={reorderPins} onClose={() => setReorderMode(false)} />
+        <ReorderPanel
+          pinned={pinned}
+          onReorder={(ids) => {
+            // Track the single moved item by diffing the old and new orderings.
+            // findMovedItem returns null for no-op / multi-move shapes (we'd
+            // rather skip telemetry than misattribute), so the empty path is
+            // a clean fall-through.
+            const moved = findMovedItem(
+              pinned.map((s) => s.id),
+              ids,
+            )
+            if (moved) {
+              trackSkillEvent('skill_reordered', moved.id, { from_index: moved.from, to_index: moved.to })
+            }
+            void reorderPins(ids)
+          }}
+          onClose={() => setReorderMode(false)}
+        />
       </>
     )
   }
@@ -106,7 +126,10 @@ export const ChatSkillsBar = ({
             onOpenChange={(open) => setOpenChipId(open ? skill.id : null)}
             onAddInstruction={() => onAddInstruction(skill.instruction)}
             onReorder={() => setReorderMode(true)}
-            onUnpin={() => togglePin(skill.id)}
+            onUnpin={() => {
+              trackSkillEvent('skill_unpinned', skill.id, {})
+              void togglePin(skill.id)
+            }}
           />
         ))}
         <Popover open={addOpen} onOpenChange={setAddOpen}>
@@ -135,6 +158,7 @@ export const ChatSkillsBar = ({
                   <button
                     type="button"
                     onClick={() => {
+                      trackSkillEvent('skill_pinned', skill.id, {})
                       void togglePin(skill.id).catch((error) => console.warn('togglePin failed:', error))
                       setAddOpen(false)
                     }}

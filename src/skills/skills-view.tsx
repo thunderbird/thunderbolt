@@ -16,6 +16,7 @@ import { SkillDetail } from './skill-detail'
 import { SkillForm, type SkillFormValues } from './skill-form'
 import { initialSkillsViewState, skillsViewReducer } from './skills-view-state'
 import { SkillsList } from './skills-list'
+import { useSkillTelemetry } from './telemetry'
 import { useEnabledSkills, useLibrarySkills, usePinnedSkills } from './use-skills'
 
 export const SkillsView = () => {
@@ -27,6 +28,7 @@ export const SkillsView = () => {
   // one of the 10 available).
   const { pinnedSet, togglePin } = usePinnedSkills()
   const { isEnabled, setEnabled } = useEnabledSkills()
+  const trackSkillEvent = useSkillTelemetry()
 
   const [state, dispatch] = useReducer(skillsViewReducer, initialSkillsViewState)
   const {
@@ -154,7 +156,13 @@ export const SkillsView = () => {
   // `softDeleteSkill` already nulls `pinnedOrder` in the same write, so no
   // explicit unpin call is needed here — that would be a redundant write on
   // the tombstone row.
-  const removeSkill = useCallback((id: string) => softDeleteSkill(id), [softDeleteSkill])
+  const removeSkill = useCallback(
+    async (id: string) => {
+      await softDeleteSkill(id)
+      trackSkillEvent('skill_deleted', id, {})
+    },
+    [softDeleteSkill, trackSkillEvent],
+  )
 
   const confirmPendingDependents = async () => {
     if (!pendingDependents) {
@@ -177,9 +185,12 @@ export const SkillsView = () => {
     try {
       if (mode === 'create') {
         const created = await createSkill(values)
+        trackSkillEvent('skill_created', created.id, { instruction_length: values.instruction.length })
         dispatch({ type: 'SUBMIT_SUCCESS', activeId: created.id })
       } else if (active) {
+        const renamed = values.name !== active.name
         await updateSkill({ id: active.id, patch: values })
+        trackSkillEvent('skill_edited', active.id, { renamed })
         dispatch({ type: 'SUBMIT_SUCCESS', activeId: active.id })
       }
     } catch (error) {

@@ -181,7 +181,7 @@ describe('WS /v1/haystack/ws — auth gating', () => {
     expect(reply.jsonrpc).toBe('2.0')
     expect(reply.id).toBe(1)
     expect(reply.result.protocolVersion).toBeGreaterThan(0)
-    expect(reply.result.agentCapabilities.loadSession).toBe(false)
+    expect(reply.result.agentCapabilities.loadSession).toBe(true)
     client.close()
   })
 

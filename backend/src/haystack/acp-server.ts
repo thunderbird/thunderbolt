@@ -8,6 +8,8 @@ import {
   PROTOCOL_VERSION,
   type CancelNotification,
   type InitializeResponse,
+  type LoadSessionRequest,
+  type LoadSessionResponse,
   type NewSessionResponse,
   type PromptRequest,
   type PromptResponse,
@@ -50,12 +52,18 @@ type JsonRpcError = {
 
 type Sender = (payload: string) => void
 
-/** JSON-RPC error codes used by the adapter. */
+/**
+ * JSON-RPC error codes used by the adapter. `resourceNotFound` matches the
+ * ACP SDK's {@link RequestError.resourceNotFound} so clients that special-case
+ * the SDK error code keep working when we surface it from
+ * {@link runLoadSession}.
+ */
 const rpcErrors = {
   parseError: -32700,
   invalidRequest: -32600,
   methodNotFound: -32601,
   internalError: -32603,
+  resourceNotFound: -32002,
 } as const
 
 /**
@@ -65,6 +73,23 @@ const rpcErrors = {
 const pipelineNotReadyStatus = 591
 const maxRetryAttempts = 3
 const defaultRetryBaseDelayMs = 1_000
+
+/**
+ * Soft cap on how many `(acpSessionId → deepsetSearchSessionId)` mappings the
+ * server keeps in memory across WebSocket lifetimes. When exceeded, the
+ * oldest insertion-order entry is evicted (Map iteration is insertion-order,
+ * so `keys().next()` is the LRU-ish candidate). 1000 mirrors a reasonable
+ * upper bound for active per-process sessions in a single backend replica.
+ */
+const persistentSearchSessionsCap = 1_000
+
+/**
+ * Module-level mapping of ACP session id → Deepset `search_session_id`. This
+ * survives individual WebSocket connections so `session/load` can restore the
+ * upstream history after a transport-level reconnect. Tests get a fresh map
+ * via `HaystackAcpDeps.persistentSearchSessions` (DI).
+ */
+const defaultPersistentSearchSessions = new Map<string, string>()
 
 /** Zod schema for the Deepset `search_sessions` response. */
 const searchSessionResponseSchema = z.object({
@@ -81,6 +106,12 @@ export type HaystackAcpDeps = {
    * 0 so the backoff doesn't add wall-clock seconds.
    */
   retryBaseDelayMs?: number
+  /**
+   * Map backing `session/load` resume. Defaults to a module-level instance so
+   * production resume works across WebSocket reconnects on the same process;
+   * tests inject a fresh map for isolation.
+   */
+  persistentSearchSessions?: Map<string, string>
 }
 
 export type HaystackAcpServerOptions = {
@@ -127,6 +158,7 @@ export class HaystackAcpServer {
   private readonly fetchFn: typeof fetch
   private readonly generateSessionId: () => string
   private readonly retryBaseDelayMs: number
+  private readonly persistentSearchSessions: Map<string, string>
 
   constructor(opts: HaystackAcpServerOptions) {
     this.send = opts.send
@@ -136,6 +168,7 @@ export class HaystackAcpServer {
     this.fetchFn = opts.deps?.fetchFn ?? globalThis.fetch
     this.generateSessionId = opts.deps?.generateSessionId ?? (() => crypto.randomUUID())
     this.retryBaseDelayMs = opts.deps?.retryBaseDelayMs ?? defaultRetryBaseDelayMs
+    this.persistentSearchSessions = opts.deps?.persistentSearchSessions ?? defaultPersistentSearchSessions
   }
 
   /** Handle a single inbound WebSocket text frame. */
@@ -176,6 +209,9 @@ export class HaystackAcpServer {
       case AGENT_METHODS.session_new:
         this.sendResult(req.id, this.buildNewSessionResponse())
         return
+      case AGENT_METHODS.session_load:
+        this.runLoadSession(req)
+        return
       case AGENT_METHODS.session_prompt:
         await this.runPrompt(req)
         return
@@ -202,17 +238,18 @@ export class HaystackAcpServer {
   }
 
   /**
-   * MVP capability set: Haystack RAG returns plaintext deltas + a final
-   * result payload with citation metadata. We advertise `loadSession: false`
-   * because Deepset's `search_session` is server-side state but doesn't
-   * expose a "resume by id" surface to us.
+   * Capability set: Haystack RAG returns plaintext deltas + a final result
+   * payload with citation metadata, and we support `session/load` so a client
+   * can resume a session after a WebSocket reconnect. Resume is backed by a
+   * module-level `persistentSearchSessions` map that retains the Deepset
+   * `search_session_id` for each ACP session id across socket lifetimes.
    */
   private buildInitializeResponse(): InitializeResponse {
     return {
       protocolVersion: PROTOCOL_VERSION,
       agentInfo: { name: 'Thunderbolt Haystack Adapter', version: '1.0.0' },
       agentCapabilities: {
-        loadSession: false,
+        loadSession: true,
         promptCapabilities: {
           image: false,
           audio: false,
@@ -232,6 +269,51 @@ export class HaystackAcpServer {
       currentTurnAbort: null,
     })
     return { sessionId }
+  }
+
+  /**
+   * Restore a previously created session in this server instance from the
+   * module-level persistent map. The map is populated lazily — only sessions
+   * that have already bootstrapped a Deepset `search_session_id` (i.e. that
+   * received at least one prompt) are resumable. Unknown ids surface the ACP
+   * standard `resourceNotFound` (-32002) error so clients can fall back to
+   * `session/new`.
+   */
+  private runLoadSession(req: JsonRpcRequest): void {
+    const params = req.params as LoadSessionRequest | undefined
+    if (!params || typeof params.sessionId !== 'string') {
+      this.sendError(req.id, rpcErrors.invalidRequest, 'session/load requires sessionId')
+      return
+    }
+    const searchSessionId = this.persistentSearchSessions.get(params.sessionId)
+    if (!searchSessionId) {
+      this.sendError(req.id, rpcErrors.resourceNotFound, `unknown session: ${params.sessionId}`)
+      return
+    }
+    this.sessions.set(params.sessionId, {
+      sessionId: params.sessionId,
+      pipelineId: this.pipelineId,
+      pipelineName: this.pipelineName,
+      searchSessionId,
+      currentTurnAbort: null,
+    })
+    const response: LoadSessionResponse = {}
+    this.sendResult(req.id, response)
+  }
+
+  /**
+   * Record `(acpSessionId → deepsetSearchSessionId)` in the persistent map so
+   * future `session/load` requests on a different WebSocket can resume this
+   * session. Evicts the oldest entry once the soft cap is reached.
+   */
+  private rememberSearchSession(acpSessionId: string, searchSessionId: string): void {
+    if (this.persistentSearchSessions.size >= persistentSearchSessionsCap) {
+      const oldest = this.persistentSearchSessions.keys().next().value
+      if (oldest !== undefined) {
+        this.persistentSearchSessions.delete(oldest)
+      }
+    }
+    this.persistentSearchSessions.set(acpSessionId, searchSessionId)
   }
 
   /**
@@ -274,6 +356,7 @@ export class HaystackAcpServer {
     try {
       if (ctx.searchSessionId === null) {
         ctx.searchSessionId = await this.createSearchSession(ctx, turnAbort.signal)
+        this.rememberSearchSession(ctx.sessionId, ctx.searchSessionId)
       }
 
       const streamResponse = await this.openChatStream(ctx, userText, turnAbort.signal)

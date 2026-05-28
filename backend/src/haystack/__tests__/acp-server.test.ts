@@ -142,7 +142,7 @@ const happyUpstream = (chatFrames: Array<Record<string, unknown> | '[DONE]'>): U
 }
 
 describe('HaystackAcpServer', () => {
-  it('replies to initialize with the MVP capability set', async () => {
+  it('replies to initialize advertising loadSession + plaintext-only prompt capabilities', async () => {
     const { server, sent } = buildServer({ upstream: () => Promise.resolve(sseResponse(['[DONE]'])) })
     await server.handleMessage(JSON.stringify({ jsonrpc: '2.0', id: 1, method: AGENT_METHODS.initialize }))
     const reply = findResponse(sent, 1)
@@ -150,7 +150,7 @@ describe('HaystackAcpServer', () => {
       protocolVersion: PROTOCOL_VERSION,
       agentInfo: { name: 'Thunderbolt Haystack Adapter', version: '1.0.0' },
       agentCapabilities: {
-        loadSession: false,
+        loadSession: true,
         promptCapabilities: { image: false, audio: false, embeddedContext: false },
       },
     })

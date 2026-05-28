@@ -111,6 +111,31 @@ describe('openTransport — agent-type routing', () => {
     transport.close()
   })
 
+  it('managed-acp on Tauri Connected (proxy OFF) still mints a ticket against the backend', async () => {
+    // The "proxy toggle" governs external-traffic routing, not auth against
+    // the cloud backend that hosts managed-acp. A Tauri user with the toggle
+    // OFF is still authenticated against `httpClient`, so the transport must
+    // mint a ticket — bailing here is the bug that surfaced as 4001
+    // `missing_ticket` in production on Tauri desktop.
+    const transport = await openTransport({
+      url: 'wss://cloud.test/v1/haystack/ws?pipeline=p1',
+      transport: 'websocket',
+      agentType: 'managed-acp',
+      signal: new AbortController().signal,
+      isStandalone: () => true,
+      readProxyEnabled: () => 'false',
+      backoffMs: () => 1,
+      httpClient: stubHttpClient,
+      fetchTicket: () => Promise.resolve('tauri-nonce-456'),
+    })
+
+    expect(FakeBrowserSocket.instances).toHaveLength(1)
+    const socket = FakeBrowserSocket.instances[0]
+    expect(socket.protocols).toEqual(['thunderbolt.v1', 'thunderbolt.ticket.tauri-nonce-456'])
+
+    transport.close()
+  })
+
   it('managed-acp with no httpClient falls back to a direct connect (graceful)', async () => {
     const transport = await openTransport({
       url: 'wss://cloud.test/v1/haystack/ws?pipeline=p1',

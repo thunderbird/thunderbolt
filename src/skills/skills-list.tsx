@@ -11,7 +11,7 @@ import { Input } from '@/components/ui/input'
 import { useSidebar } from '@/components/ui/sidebar'
 import { useIsMobile } from '@/hooks/use-mobile'
 import type { Skill } from '@/types'
-import { LibraryRow } from './library-row'
+import { LibraryRow, skillRowTransition } from './library-row'
 
 /**
  * Sidebar list for `/settings/skills`. Skills are grouped by enabled state
@@ -106,8 +106,16 @@ export const SkillsList = ({
           animates between the two positions. */}
       <LayoutGroup>
         <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto">
+          {/* `layout="position"` on the wrappers (not full `layout`) so the
+              containers reposition without animating their bounding-box
+              SIZE — full `layout` interpolates height via a transform,
+              which visibly stretches the `<h2>` inside as the section
+              grows by a row. Children's cross-section positions are
+              still smooth: `LibraryRow`'s `m.li layoutId` migrates the
+              row across with its own delayed spring (`skillRowTransition`),
+              and the wrapper's height jumps instantly to fit. */}
           {enabledRows.length > 0 && (
-            <m.ul layout className="flex flex-col gap-1.5">
+            <m.ul layout="position" transition={skillRowTransition} className="flex flex-col gap-1.5">
               {enabledRows.map((skill) => (
                 <LibraryRow
                   key={skill.id}
@@ -124,9 +132,9 @@ export const SkillsList = ({
           )}
 
           {disabledRows.length > 0 && (
-            <m.div layout className="flex flex-col gap-1">
+            <m.div layout="position" transition={skillRowTransition} className="flex flex-col gap-1">
               <h2 className="px-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">Disabled</h2>
-              <m.ul layout className="flex flex-col gap-1.5">
+              <m.ul layout="position" transition={skillRowTransition} className="flex flex-col gap-1.5">
                 {disabledRows.map((skill) => (
                   <LibraryRow
                     key={skill.id}

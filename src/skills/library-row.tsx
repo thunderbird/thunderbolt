@@ -11,6 +11,15 @@ import { Switch } from '@/components/ui/switch'
 import type { Skill } from '@/types'
 
 /**
+ * Shared spring transition for the row's own layout shift AND for the
+ * surrounding `<m.ul>` / `<m.div>` wrappers in `SkillsList`. They all
+ * animate in lockstep — without the shared delay the wrappers would
+ * reflow immediately and the Disabled header would slide up underneath
+ * the row that's still frozen mid-toggle.
+ */
+export const skillRowTransition = { type: 'spring', damping: 32, stiffness: 220, mass: 0.85, delay: 0.3 } as const
+
+/**
  * Row used in the Enabled and Disabled sections of `/settings/skills`.
  * Wrapped in `m.li layoutId={skill.id}` so framer-motion animates the row's
  * move between sections when the user toggles enabled state — the row
@@ -42,11 +51,7 @@ export const LibraryRow = ({
   const navigate = useNavigate()
 
   return (
-    <m.li
-      layout
-      layoutId={skill.id}
-      transition={{ type: 'spring', damping: 32, stiffness: 220, mass: 0.85, delay: 1.2 }}
-    >
+    <m.li layout layoutId={skill.id} transition={skillRowTransition}>
       <div
         role="button"
         tabIndex={0}

@@ -149,6 +149,10 @@ export type HaystackSessionContext = {
    * Reused across prompts so multi-turn chat history is preserved upstream.
    */
   searchSessionId: string | null
-  /** Abort controller that cancels the upstream request. */
-  abort: AbortController
+  /**
+   * AbortController scoped to the currently running prompt turn. `null` when
+   * the session is idle. Replaced on every `session/prompt` so cancelling one
+   * turn never poisons subsequent turns on the same session.
+   */
+  currentTurnAbort: AbortController | null
 }

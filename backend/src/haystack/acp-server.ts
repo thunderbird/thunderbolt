@@ -98,6 +98,12 @@ export type HaystackAcpServerOptions = {
  * `open`, dispatches each incoming text frame through {@link handleMessage},
  * and disposes via {@link dispose} on close.
  *
+ * Sessions live for the entire WebSocket lifetime — they are NOT torn down at
+ * the end of a single `session/prompt`. This lets the FE drive a multi-turn
+ * chat against the same ACP session id over one socket. Each turn gets its
+ * own short-lived AbortController so that `session/cancel` only interrupts
+ * the in-flight turn and the session remains usable for the next prompt.
+ *
  * Upstream wire (Deepset Cloud):
  *  1. `POST {base}/api/v1/workspaces/{workspace}/search_sessions`
  *     body `{ pipeline_id: <uuid> }` → returns `{ search_session_id }`.
@@ -156,7 +162,8 @@ export class HaystackAcpServer {
   /** Tear down all sessions. Idempotent — `close` may fire twice in edge cases. */
   dispose(): void {
     for (const ctx of this.sessions.values()) {
-      ctx.abort.abort()
+      ctx.currentTurnAbort?.abort()
+      ctx.currentTurnAbort = null
     }
     this.sessions.clear()
   }
@@ -189,7 +196,9 @@ export class HaystackAcpServer {
     if (!ctx) {
       return
     }
-    ctx.abort.abort()
+    // Abort only the in-flight turn — the session itself stays alive so the
+    // FE can immediately follow up with another `session/prompt`.
+    ctx.currentTurnAbort?.abort()
   }
 
   /**
@@ -220,7 +229,7 @@ export class HaystackAcpServer {
       pipelineId: this.pipelineId,
       pipelineName: this.pipelineName,
       searchSessionId: null,
-      abort: new AbortController(),
+      currentTurnAbort: null,
     })
     return { sessionId }
   }
@@ -238,8 +247,9 @@ export class HaystackAcpServer {
    *     `_meta` on a terminal chunk + the prompt response. On `done` or
    *     stream-end, reply with `end_turn`.
    *
-   * The per-session AbortController is wired into both fetches — `session/cancel`
-   * trips it and the prompt resolves with `cancelled`.
+   * A fresh AbortController is created for each turn and stored on the
+   * session as `currentTurnAbort`. `session/cancel` aborts only the in-flight
+   * controller, leaving the session itself intact for follow-up prompts.
    */
   private async runPrompt(req: JsonRpcRequest): Promise<void> {
     const params = req.params as PromptRequest | undefined
@@ -253,20 +263,30 @@ export class HaystackAcpServer {
       return
     }
 
+    // Abort any previously running turn on this session — a reentrant
+    // `session/prompt` arriving before the prior turn finished supersedes it.
+    ctx.currentTurnAbort?.abort()
+    const turnAbort = new AbortController()
+    ctx.currentTurnAbort = turnAbort
+
     const userText = extractUserText(params)
 
     try {
       if (ctx.searchSessionId === null) {
-        ctx.searchSessionId = await this.createSearchSession(ctx)
+        ctx.searchSessionId = await this.createSearchSession(ctx, turnAbort.signal)
       }
 
-      const streamResponse = await this.openChatStream(ctx, userText)
+      const streamResponse = await this.openChatStream(ctx, userText, turnAbort.signal)
       if (!streamResponse.body) {
         this.sendError(req.id, rpcErrors.internalError, 'haystack chat-stream response has no body')
         return
       }
 
-      const { references, documents, stopReason } = await this.streamUpstream(ctx, streamResponse.body)
+      const { references, documents, stopReason } = await this.streamUpstream(
+        ctx,
+        streamResponse.body,
+        turnAbort.signal,
+      )
       const promptResponse: PromptResponse = {
         stopReason,
         ...(references.length > 0 || documents.length > 0
@@ -283,18 +303,20 @@ export class HaystackAcpServer {
       this.emitAgentTextChunk(ctx, `[haystack error] ${message}`)
       this.sendError(req.id, rpcErrors.internalError, message)
     } finally {
-      this.sessions.delete(ctx.sessionId)
+      if (ctx.currentTurnAbort === turnAbort) {
+        ctx.currentTurnAbort = null
+      }
     }
   }
 
   /** Bootstrap a Deepset `search_session_id` for this ACP session. */
-  private async createSearchSession(ctx: HaystackSessionContext): Promise<string> {
+  private async createSearchSession(ctx: HaystackSessionContext, signal: AbortSignal): Promise<string> {
     const url = `${this.workspaceBaseUrl()}/search_sessions`
     const response = await this.fetchWithPipelineRetry(url, {
       method: 'POST',
       headers: this.jsonHeaders(),
       body: JSON.stringify({ pipeline_id: ctx.pipelineId }),
-      signal: ctx.abort.signal,
+      signal,
     })
     const data = (await response.json()) as unknown
     const parsed = searchSessionResponseSchema.parse(data)
@@ -302,7 +324,7 @@ export class HaystackAcpServer {
   }
 
   /** Open the SSE chat stream for a single prompt turn. */
-  private openChatStream(ctx: HaystackSessionContext, query: string): Promise<Response> {
+  private openChatStream(ctx: HaystackSessionContext, query: string, signal: AbortSignal): Promise<Response> {
     const url = `${this.workspaceBaseUrl()}/pipelines/${ctx.pipelineName}/chat-stream`
     return this.fetchWithPipelineRetry(url, {
       method: 'POST',
@@ -312,7 +334,7 @@ export class HaystackAcpServer {
         search_session_id: ctx.searchSessionId,
         include_result: true,
       }),
-      signal: ctx.abort.signal,
+      signal,
     })
   }
 
@@ -373,6 +395,7 @@ export class HaystackAcpServer {
   private async streamUpstream(
     ctx: HaystackSessionContext,
     body: ReadableStream<Uint8Array>,
+    signal: AbortSignal,
   ): Promise<{
     references: HaystackReferenceMeta[]
     documents: HaystackDocumentMeta[]
@@ -382,7 +405,7 @@ export class HaystackAcpServer {
     let documents: HaystackDocumentMeta[] = []
 
     for await (const event of parseHaystackSseStream(body)) {
-      if (ctx.abort.signal.aborted) {
+      if (signal.aborted) {
         return { references, documents, stopReason: 'cancelled' }
       }
       const terminal = this.translateEvent(ctx, event, (refs, docs) => {

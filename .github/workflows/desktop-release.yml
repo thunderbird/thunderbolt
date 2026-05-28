@@ -71,11 +71,9 @@ jobs:
       # Skip CrabNebula for nightly builds to prevent auto-updater from pushing unstable builds
       - name: Create CrabNebula Draft Release
         if: ${{ !inputs.nightly }}
-        env:
-          RELEASE_VERSION: ${{ inputs.version }}
         uses: crabnebula-dev/cloud-release@1a8803698ba41de6b23e42abc5dcc3721308233c # v0.2.6
         with:
-          command: release draft thunderbird/thunderbolt "$RELEASE_VERSION"
+          command: release draft thunderbird/thunderbolt ${{ inputs.version }}
           api-key: ${{ secrets.CRABNEBULA_CLOUD_API_KEY }}
 
   build:
@@ -352,11 +350,9 @@ jobs:
       # Skip CrabNebula for nightly builds
       - name: Upload to CrabNebula Cloud
         if: ${{ !inputs.nightly }}
-        env:
-          RELEASE_VERSION: ${{ inputs.version }}
         uses: crabnebula-dev/cloud-release@1a8803698ba41de6b23e42abc5dcc3721308233c # v0.2.6
         with:
-          command: release upload thunderbird/thunderbolt "$RELEASE_VERSION" --framework tauri
+          command: release upload thunderbird/thunderbolt ${{ inputs.version }} --framework tauri
           api-key: ${{ secrets.CRABNEBULA_CLOUD_API_KEY }}
 
   publish:
@@ -377,9 +373,7 @@ jobs:
       # Publish release on CrabNebula Cloud for auto-updates (skip for nightly to prevent unstable auto-updates)
       - name: Publish to CrabNebula Cloud
         if: ${{ !inputs.nightly }}
-        env:
-          RELEASE_VERSION: ${{ inputs.version }}
         uses: crabnebula-dev/cloud-release@1a8803698ba41de6b23e42abc5dcc3721308233c # v0.2.6
         with:
-          command: release publish thunderbird/thunderbolt "$RELEASE_VERSION" --framework tauri
+          command: release publish thunderbird/thunderbolt ${{ inputs.version }} --framework tauri
           api-key: ${{ secrets.CRABNEBULA_CLOUD_API_KEY }}

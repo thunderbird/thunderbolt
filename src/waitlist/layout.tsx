@@ -2,6 +2,8 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { PageFallback } from '@/loading'
+import { Suspense } from 'react'
 import { Outlet } from 'react-router'
 
 /**
@@ -17,7 +19,9 @@ export const WaitlistLayout = () => {
         paddingBottom: 'calc(var(--safe-area-bottom-padding) + var(--kb, 0px))',
       }}
     >
-      <Outlet />
+      <Suspense fallback={<PageFallback />}>
+        <Outlet />
+      </Suspense>
     </div>
   )
 }

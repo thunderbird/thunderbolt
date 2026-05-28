@@ -40,7 +40,11 @@ export const SlashPopup = ({
     <div
       role="listbox"
       aria-label="Skills"
-      className="absolute bottom-full left-0 right-0 z-50 mb-2 rounded-xl border border-border bg-card p-1 shadow-lg"
+      // `rounded-2xl` to match the ModeSelector + chip dropdown across the
+      // chat screen. The row highlight below uses `rounded-xl` (one notch
+      // tighter) so the bg-accent fill sits concentrically inside the
+      // `p-1` padding — outer 16px radius minus 4px padding = 12px inner.
+      className="absolute bottom-full left-0 right-0 z-50 mb-2 rounded-2xl border border-border bg-card p-1 shadow-lg"
     >
       <ul ref={listRef} className="max-h-64 overflow-y-auto">
         {skills.map((skill, idx) => (
@@ -54,7 +58,7 @@ export const SlashPopup = ({
                 onSelect(skill)
               }}
               onMouseEnter={() => onHover(idx)}
-              className={`flex w-full cursor-pointer flex-col gap-0.5 rounded-md px-2 py-1.5 text-left transition-colors ${
+              className={`flex w-full cursor-pointer flex-col gap-0.5 rounded-xl px-2 py-1.5 text-left transition-colors ${
                 idx === highlightedIdx ? 'bg-accent' : 'hover:bg-accent'
               }`}
             >

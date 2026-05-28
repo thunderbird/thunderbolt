@@ -12,7 +12,11 @@ import MagicLinkVerify from '@/components/magic-link-verify'
 import OAuthCallback from '@/components/oauth-callback'
 import { AccountDeleted } from '@/components/account-deleted'
 import { SignedOut } from '@/components/signed-out'
+import NotFound from '@/components/not-found'
 import { RevokedDeviceModal } from '@/components/revoked-device-modal'
+import ChatLayout from '@/layout/main-layout'
+import SettingsLayout from '@/settings/layout'
+import WaitlistLayout from '@/waitlist/layout'
 import { SidebarProvider } from '@/components/ui/sidebar'
 import { HapticsProvider } from '@/hooks/use-haptics'
 import { AuthProvider, DatabaseProvider, HttpClientProvider, SignInModalProvider } from '@/contexts'
@@ -21,23 +25,11 @@ import { useDeepLinkListener } from '@/hooks/use-deep-link-listener'
 import { useKeyboardInset } from '@/hooks/use-keyboard-inset'
 import { useViewportLock } from '@/hooks/use-viewport-lock'
 import { useMcpSync } from '@/hooks/use-mcp-sync'
-import ChatLayout from '@/layout/main-layout'
 import { PostHogProvider } from '@/lib/posthog'
 import { ThemeProvider } from '@/lib/theme-provider'
-import DevicesSettingsPage from '@/settings/devices'
-import { default as Settings } from '@/settings/index'
-import IntegrationsPage from '@/settings/integrations'
-import McpServersPage from '@/settings/mcp-servers'
-import ModelsPage from '@/settings/models'
-import PreferencesSettingsPage from '@/settings/preferences'
-import SkillsPage from '@/settings/skills'
-import TasksPage from '@/tasks'
-import { WaitlistLayout, WaitlistPage } from '@/waitlist'
-import AutomationsPage from './automations'
 import { useTriggerScheduler } from './automations/use-trigger-scheduler'
 import { AppErrorScreen } from './components/app-error-screen'
 import { AuthGate } from './components/auth-gate'
-import NotFound from './components/not-found'
 import { OnboardingDialog } from './components/onboarding/onboarding-dialog'
 import { WelcomeDialog } from './components/welcome-dialog'
 import { PendingDeviceModal } from './components/pending-device-modal'
@@ -52,7 +44,6 @@ import { MCPProvider } from './lib/mcp-provider'
 import { ProxyFetchProvider } from './lib/proxy-fetch-context'
 import { TrayProvider } from './lib/tray'
 import Loading from './loading'
-import SettingsLayout from './settings/layout'
 import type { InitData } from './types'
 import { useSettings } from './hooks/use-settings'
 import { isSsoMode, isWaitlistBypassed } from './lib/auth-mode'
@@ -64,6 +55,20 @@ import { LazyMotion } from 'framer-motion'
 // Loaded after first paint so framer-motion feature code lives in an
 // async chunk instead of the entry bundle.
 const loadMotionFeatures = () => import('@/lib/motion-features').then((mod) => mod.default)
+
+// Pages below ship in their own async chunk; the layouts that host them are
+// static so route navigation only swaps the inner content. ChatLayout and
+// ChatDetailPage stay in the entry bundle so the landing page is instant.
+const TasksPage = lazy(() => import('@/tasks'))
+const AutomationsPage = lazy(() => import('./automations'))
+const Settings = lazy(() => import('@/settings/index'))
+const PreferencesSettingsPage = lazy(() => import('@/settings/preferences'))
+const ModelsPage = lazy(() => import('@/settings/models'))
+const DevicesSettingsPage = lazy(() => import('@/settings/devices'))
+const McpServersPage = lazy(() => import('@/settings/mcp-servers'))
+const SkillsPage = lazy(() => import('@/settings/skills'))
+const IntegrationsPage = lazy(() => import('@/settings/integrations'))
+const WaitlistPage = lazy(() => import('@/waitlist/waitlist-page'))
 
 // Lazily import SSO components so non-enterprise deployments don't pay
 // for the extra bundle size and attack surface.
@@ -104,92 +109,67 @@ const AppRoutes = ({ initData }: { initData: InitData }) => {
   const shouldBypassWaitlist = isWaitlistBypassed()
 
   return (
-    <Routes>
-      {/* Auth flow routes - NO guards (must work during auth) */}
-      <Route path="/oauth/callback" element={<OAuthCallback />} />
-      <Route path="/auth/verify" element={<MagicLinkVerify />} />
+    <Suspense fallback={<Loading />}>
+      <Routes>
+        {/* Auth flow routes - NO guards (must work during auth) */}
+        <Route path="/oauth/callback" element={<OAuthCallback />} />
+        <Route path="/auth/verify" element={<MagicLinkVerify />} />
 
-      {/* SSO redirect route — no guard, only in OIDC/SAML mode */}
-      {ssoMode && (
-        <Route
-          path="/sso-redirect"
-          element={
-            <Suspense fallback={<Loading />}>
-              <SsoRedirect />
-            </Suspense>
-          }
-        />
-      )}
+        {/* SSO redirect route — no guard, only in OIDC/SAML mode */}
+        {ssoMode && <Route path="/sso-redirect" element={<SsoRedirect />} />}
 
-      {/* Waitlist routes - unauthenticated only (skip when bypass or SSO mode) */}
-      {!ssoMode && !shouldBypassWaitlist && (
-        <Route element={<AuthGate require="unauthenticated" />}>
-          <Route path="waitlist" element={<WaitlistLayout />}>
-            <Route index element={<WaitlistPage />} />
+        {/* Waitlist routes - unauthenticated only (skip when bypass or SSO mode) */}
+        {!ssoMode && !shouldBypassWaitlist && (
+          <Route element={<AuthGate require="unauthenticated" />}>
+            <Route path="waitlist" element={<WaitlistLayout />}>
+              <Route index element={<WaitlistPage />} />
+            </Route>
+          </Route>
+        )}
+
+        {/* Main app routes - authenticated only. The gate decides redirect
+            targets internally from VITE_AUTH_MODE + VITE_AUTH_ENABLE_ANONYMOUS. */}
+        <Route element={<AuthGate require="authenticated" />}>
+          <Route
+            path="/"
+            element={
+              <>
+                <Layout />
+                <OnboardingDialog />
+                <WelcomeDialog />
+              </>
+            }
+          >
+            {/* Home routes with HomeLayout */}
+            <Route element={<ChatLayout />}>
+              <Route index element={<Navigate to="/chats/new" replace />} />
+              <Route path="chats/:chatThreadId" element={<ChatDetailPage />} />
+              {experimentalFeatureTasks.value && <Route path="tasks" element={<TasksPage />} />}
+              <Route path="automations" element={<AutomationsPage />} />
+              {import.meta.env.DEV && <Route path="message-simulator" element={<MessageSimulatorPage />} />}
+            </Route>
+
+            {/* Settings routes with SettingsLayout */}
+            <Route path="settings" element={<SettingsLayout />}>
+              <Route index element={<Settings />} />
+              <Route path="preferences" element={<PreferencesSettingsPage />} />
+              <Route path="models" element={<ModelsPage />} />
+              <Route path="devices" element={<DevicesSettingsPage />} />
+              <Route path="mcp-servers" element={<McpServersPage />} />
+              <Route path="skills" element={<SkillsPage />} />
+              <Route path="integrations" element={<IntegrationsPage />} />
+              {import.meta.env.DEV && <Route path="dev-settings" element={<DevSettingsPage />} />}
+            </Route>
           </Route>
         </Route>
-      )}
 
-      {/* Main app routes - authenticated only (pass-through when bypass enabled). The gate
-          decides redirect targets internally from VITE_AUTH_MODE + VITE_AUTH_ENABLE_ANONYMOUS. */}
-      <Route element={<AuthGate require="authenticated" />}>
-        <Route
-          path="/"
-          element={
-            <>
-              <Layout />
-              <OnboardingDialog />
-              <WelcomeDialog />
-            </>
-          }
-        >
-          {/* Home routes with HomeLayout */}
-          <Route element={<ChatLayout />}>
-            <Route index element={<Navigate to="/chats/new" replace />} />
-            <Route path="chats/:chatThreadId" element={<ChatDetailPage />} />
-            {experimentalFeatureTasks.value && <Route path="tasks" element={<TasksPage />} />}
-            <Route path="automations" element={<AutomationsPage />} />
-            {import.meta.env.DEV && (
-              <Route
-                path="message-simulator"
-                element={
-                  <Suspense>
-                    <MessageSimulatorPage />
-                  </Suspense>
-                }
-              />
-            )}
-          </Route>
-
-          {/* Settings routes with SettingsLayout */}
-          <Route path="settings" element={<SettingsLayout />}>
-            <Route index element={<Settings />} />
-            <Route path="preferences" element={<PreferencesSettingsPage />} />
-            <Route path="models" element={<ModelsPage />} />
-            <Route path="devices" element={<DevicesSettingsPage />} />
-            <Route path="mcp-servers" element={<McpServersPage />} />
-            <Route path="skills" element={<SkillsPage />} />
-            <Route path="integrations" element={<IntegrationsPage />} />
-            {import.meta.env.DEV && (
-              <Route
-                path="dev-settings"
-                element={
-                  <Suspense>
-                    <DevSettingsPage />
-                  </Suspense>
-                }
-              />
-            )}
-          </Route>
-        </Route>
-      </Route>
-
-      {/* Fallback routes - no guards */}
-      <Route path="/signed-out" element={<SignedOut />} />
-      <Route path="/account-deleted" element={<AccountDeleted />} />
-      <Route path="/not-found" element={<NotFound />} />
-      <Route path="*" element={<Navigate to="/not-found" replace />} />
-    </Routes>
+        {/* Fallback routes - no guards */}
+        <Route path="/signed-out" element={<SignedOut />} />
+        <Route path="/account-deleted" element={<AccountDeleted />} />
+        <Route path="/not-found" element={<NotFound />} />
+        <Route path="*" element={<Navigate to="/not-found" replace />} />
+      </Routes>
+    </Suspense>
   )
 }
 

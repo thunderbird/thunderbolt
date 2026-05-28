@@ -29,16 +29,16 @@ const config: StorybookConfig = {
     // Exclude bun:sqlite from the build since it's a Bun runtime module
     // that doesn't exist in browser environments
     config.build = config.build || {}
-    config.build.rollupOptions = config.build.rollupOptions || {}
+    config.build.rolldownOptions = config.build.rolldownOptions || {}
 
-    const existingExternal = config.build.rollupOptions.external
+    const existingExternal = config.build.rolldownOptions.external
     const externalArray: (string | RegExp)[] = Array.isArray(existingExternal)
       ? existingExternal
       : existingExternal
         ? [existingExternal as string | RegExp]
         : []
 
-    config.build.rollupOptions.external = [...externalArray, 'bun:sqlite']
+    config.build.rolldownOptions.external = [...externalArray, 'bun:sqlite']
 
     // Restrict @fs endpoint to frontend directories only (matches vite.config.ts)
     config.server = config.server || {}

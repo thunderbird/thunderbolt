@@ -11,14 +11,15 @@ import { getWsTicketStore, WsTicketStoreFullError, type WsTicketStore } from './
 
 /**
  * Mounts `POST /v1/ws-ticket`, the auth-via-subprotocol ticket exchange for
- * WebSocket endpoints (currently only `WS /v1/haystack/ws`).
+ * WebSocket endpoints (`WS /v1/haystack/ws` and `WS /v1/proxy/ws`).
  *
  * Flow:
  *  - Client (authenticated via session cookie or bearer token) POSTs `{ scope }`.
  *  - Server mints a short-lived single-use opaque nonce bound to (userId, scope).
  *  - Client opens the WebSocket with `['thunderbolt.v1', 'thunderbolt.ticket.<nonce>']`
- *    in `Sec-WebSocket-Protocol`. The server consumes the ticket inside
- *    `beforeHandle` and echoes only `thunderbolt.v1` back.
+ *    in `Sec-WebSocket-Protocol`. The consuming endpoint consumes the ticket inside
+ *    `open()` (not `beforeHandle`, which Elysia/Bun may invoke more than once per
+ *    upgrade) and echoes only `thunderbolt.v1` back.
  *
  * Auth contract (mirrors `/v1/agents`):
  *  - Unauthenticated → 401.

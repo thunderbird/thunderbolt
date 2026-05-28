@@ -68,6 +68,7 @@ const buildServer = (opts: {
   pipelineId?: string
   pipelineName?: string
   settings?: Partial<Settings>
+  persistentSearchSessions?: Map<string, string>
 }) => {
   const sent: string[] = []
   const captures: Captured[] = []
@@ -107,6 +108,7 @@ const buildServer = (opts: {
       fetchFn: wrappedFetch,
       generateSessionId: idQueue.length > 0 ? () => idQueue.shift() ?? crypto.randomUUID() : undefined,
       retryBaseDelayMs: 0,
+      persistentSearchSessions: opts.persistentSearchSessions ?? new Map<string, string>(),
     },
   })
   return { server, sent, captures }
@@ -336,5 +338,229 @@ describe('HaystackAcpServer', () => {
     expect(capturedSignal).not.toBeNull()
     expect(capturedSignal!.aborted).toBe(true)
     expect(findResponse(sent, 2).result.stopReason).toBe('cancelled')
+  })
+
+  it('keeps the session alive across multiple session/prompt turns on the same socket', async () => {
+    // Regression: an earlier revision deleted the session in runPrompt's
+    // `finally`, so the second prompt would 404 with `unknown session`.
+    let searchCalls = 0
+    const queries: string[] = []
+    const upstream: Upstream = (input, init) => {
+      const url = input.toString()
+      if (url.endsWith('/search_sessions')) {
+        searchCalls += 1
+        return Promise.resolve(jsonResponse(200, { search_session_id: 'sess-multi' }))
+      }
+      const body = JSON.parse(String(init?.body ?? '{}')) as { query: string }
+      queries.push(body.query)
+      return Promise.resolve(sseResponse([{ type: 'delta', delta: { text: `echo:${body.query}` } }, '[DONE]']))
+    }
+
+    const { server, sent } = buildServer({ upstream, sessionIds: ['ses-multi'] })
+
+    await server.handleMessage(JSON.stringify({ jsonrpc: '2.0', id: 1, method: AGENT_METHODS.session_new }))
+    for (let turn = 0; turn < 3; turn++) {
+      await server.handleMessage(
+        JSON.stringify({
+          jsonrpc: '2.0',
+          id: 10 + turn,
+          method: AGENT_METHODS.session_prompt,
+          params: { sessionId: 'ses-multi', prompt: [{ type: 'text', text: `q${turn}` }] },
+        }),
+      )
+    }
+
+    // search_sessions is bootstrapped exactly once and reused across all turns.
+    expect(searchCalls).toBe(1)
+    expect(queries).toEqual(['q0', 'q1', 'q2'])
+    for (let turn = 0; turn < 3; turn++) {
+      expect(findResponse(sent, 10 + turn).result.stopReason).toBe('end_turn')
+    }
+  })
+
+  it('resumes the same session after a prior turn was cancelled mid-stream', async () => {
+    // Regression: the shared per-session AbortController used to stay
+    // aborted, poisoning every follow-up prompt with an AbortError.
+    let chatCall = 0
+    let releaseFirstChunk: () => void = () => {}
+    const firstChunkLanded = new Promise<void>((resolve) => {
+      releaseFirstChunk = resolve
+    })
+
+    const upstream: Upstream = (input, init) => {
+      const url = input.toString()
+      if (url.endsWith('/search_sessions')) {
+        return Promise.resolve(jsonResponse(200, { search_session_id: 'sess-resume' }))
+      }
+      chatCall += 1
+      if (chatCall === 1) {
+        return Promise.resolve(
+          new Response(
+            new ReadableStream<Uint8Array>({
+              start(controller) {
+                const enc = new TextEncoder()
+                controller.enqueue(enc.encode('data: {"type":"delta","delta":{"text":"part-1"}}\n\n'))
+                releaseFirstChunk()
+                init?.signal?.addEventListener('abort', () => {
+                  controller.error(Object.assign(new Error('aborted'), { name: 'AbortError' }))
+                })
+              },
+            }),
+            { status: 200, headers: { 'content-type': 'text/event-stream' } },
+          ),
+        )
+      }
+      return Promise.resolve(sseResponse([{ type: 'delta', delta: { text: 'follow-up' } }, '[DONE]']))
+    }
+
+    const { server, sent } = buildServer({ upstream, sessionIds: ['ses-resume'] })
+    await server.handleMessage(JSON.stringify({ jsonrpc: '2.0', id: 1, method: AGENT_METHODS.session_new }))
+
+    const firstPrompt = server.handleMessage(
+      JSON.stringify({
+        jsonrpc: '2.0',
+        id: 2,
+        method: AGENT_METHODS.session_prompt,
+        params: { sessionId: 'ses-resume', prompt: [{ type: 'text', text: 'first' }] },
+      }),
+    )
+    await firstChunkLanded
+    await server.handleMessage(
+      JSON.stringify({ jsonrpc: '2.0', method: AGENT_METHODS.session_cancel, params: { sessionId: 'ses-resume' } }),
+    )
+    await firstPrompt
+    expect(findResponse(sent, 2).result.stopReason).toBe('cancelled')
+
+    await server.handleMessage(
+      JSON.stringify({
+        jsonrpc: '2.0',
+        id: 3,
+        method: AGENT_METHODS.session_prompt,
+        params: { sessionId: 'ses-resume', prompt: [{ type: 'text', text: 'second' }] },
+      }),
+    )
+    expect(findResponse(sent, 3).result.stopReason).toBe('end_turn')
+    expect(sessionUpdates(sent).some((u) => u.update.content.text === 'follow-up')).toBe(true)
+  })
+
+  it('resumes a session on a new server instance via session/load using the persistent map', async () => {
+    const persistentMap = new Map<string, string>()
+    const upstream: Upstream = (input, init) => {
+      const url = input.toString()
+      if (url.endsWith('/search_sessions')) {
+        return Promise.resolve(jsonResponse(200, { search_session_id: 'sess-persisted' }))
+      }
+      const body = JSON.parse(String(init?.body ?? '{}')) as { query: string; search_session_id: string }
+      return Promise.resolve(
+        sseResponse([{ type: 'delta', delta: { text: `${body.query}@${body.search_session_id}` } }, '[DONE]']),
+      )
+    }
+
+    // First socket: create session and run one prompt so the persistent map
+    // captures `ses-persist → sess-persisted`.
+    const first = buildServer({
+      upstream,
+      sessionIds: ['ses-persist'],
+      persistentSearchSessions: persistentMap,
+    })
+    await first.server.handleMessage(JSON.stringify({ jsonrpc: '2.0', id: 1, method: AGENT_METHODS.session_new }))
+    await first.server.handleMessage(
+      JSON.stringify({
+        jsonrpc: '2.0',
+        id: 2,
+        method: AGENT_METHODS.session_prompt,
+        params: { sessionId: 'ses-persist', prompt: [{ type: 'text', text: 'q1' }] },
+      }),
+    )
+    first.server.dispose()
+    expect(persistentMap.get('ses-persist')).toBe('sess-persisted')
+
+    // Second socket: a brand-new server with the same persistent map.
+    // session/load restores the session and the next prompt skips the
+    // search_sessions bootstrap entirely (reuses `sess-persisted`).
+    const second = buildServer({ upstream, persistentSearchSessions: persistentMap })
+    await second.server.handleMessage(
+      JSON.stringify({
+        jsonrpc: '2.0',
+        id: 10,
+        method: AGENT_METHODS.session_load,
+        params: { sessionId: 'ses-persist', cwd: '/x', mcpServers: [] },
+      }),
+    )
+    const loadReply = findResponse(second.sent, 10)
+    expect(loadReply.error).toBeUndefined()
+    expect(loadReply.result).toEqual({})
+
+    await second.server.handleMessage(
+      JSON.stringify({
+        jsonrpc: '2.0',
+        id: 11,
+        method: AGENT_METHODS.session_prompt,
+        params: { sessionId: 'ses-persist', prompt: [{ type: 'text', text: 'q2' }] },
+      }),
+    )
+    const promptReply = findResponse(second.sent, 11)
+    expect(promptReply.result.stopReason).toBe('end_turn')
+    expect(second.captures.some((c) => c.url?.endsWith('/search_sessions'))).toBe(false)
+    expect(sessionUpdates(second.sent).some((u) => u.update.content.text === 'q2@sess-persisted')).toBe(true)
+  })
+
+  it('returns resourceNotFound when session/load is called with an unknown id', async () => {
+    const { server, sent } = buildServer({
+      upstream: () => Promise.reject(new Error('upstream should not be called')),
+      persistentSearchSessions: new Map<string, string>(),
+    })
+
+    await server.handleMessage(
+      JSON.stringify({
+        jsonrpc: '2.0',
+        id: 1,
+        method: AGENT_METHODS.session_load,
+        params: { sessionId: 'does-not-exist', cwd: '/x', mcpServers: [] },
+      }),
+    )
+
+    const reply = findResponse(sent, 1)
+    expect(reply.error).toBeDefined()
+    expect(reply.error.code).toBe(-32002)
+    expect(reply.error.message).toContain('does-not-exist')
+  })
+
+  it('evicts the oldest entry once the persistent map exceeds its cap', async () => {
+    // Pre-fill the map up to the 1000-entry cap. A test seam keeps the loop
+    // cheap and the assertion focused on eviction order rather than absolute
+    // size — we just need to prove inserting a new id removes the oldest.
+    const cap = 1000
+    const persistentMap = new Map<string, string>()
+    for (let i = 0; i < cap; i++) {
+      persistentMap.set(`stale-${i}`, `search-${i}`)
+    }
+
+    const upstream: Upstream = (input) => {
+      const url = input.toString()
+      if (url.endsWith('/search_sessions')) {
+        return Promise.resolve(jsonResponse(200, { search_session_id: 'sess-fresh' }))
+      }
+      return Promise.resolve(sseResponse([{ type: 'delta', delta: { text: 'hi' } }, '[DONE]']))
+    }
+
+    const { server } = buildServer({
+      upstream,
+      sessionIds: ['ses-fresh'],
+      persistentSearchSessions: persistentMap,
+    })
+    await server.handleMessage(JSON.stringify({ jsonrpc: '2.0', id: 1, method: AGENT_METHODS.session_new }))
+    await server.handleMessage(
+      JSON.stringify({
+        jsonrpc: '2.0',
+        id: 2,
+        method: AGENT_METHODS.session_prompt,
+        params: { sessionId: 'ses-fresh', prompt: [{ type: 'text', text: 'go' }] },
+      }),
+    )
+
+    expect(persistentMap.size).toBe(cap)
+    expect(persistentMap.has('stale-0')).toBe(false)
+    expect(persistentMap.get('ses-fresh')).toBe('sess-fresh')
   })
 })

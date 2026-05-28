@@ -169,13 +169,18 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
         const needsSpace = start > 0 && input[start - 1] !== ' '
         const insert = needsSpace ? ` ${text}` : text
         const next = input.slice(0, start) + insert + input.slice(end)
+        const pos = start + insert.length
+        // Update value AND cursor in the same commit. Otherwise the re-render
+        // between `setInput` and the rAF runs with a stale `cursorPos` that
+        // may still point inside a `/slug` token, briefly flashing the slash
+        // popup open — same fix as `addSkillChip` above and `selectSkill`
+        // in `use-slash-command.ts`.
         setInput(next)
+        setCursorPos(pos)
         requestAnimationFrame(() => {
           const focused = getTextarea()
           focused?.focus()
-          const pos = start + insert.length
           focused?.setSelectionRange(pos, pos)
-          setCursorPos(pos)
         })
       },
       [input, setInput, setCursorPos],

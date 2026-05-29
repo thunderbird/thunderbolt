@@ -4,7 +4,13 @@
 
 import { type ContentPart, parseContentParts } from '@/ai/widget-parser'
 import { sourceToCitation } from '@/lib/source-utils'
-import type { CitationMap, CitationSource } from '@/types/citation'
+import {
+  buildDocumentSideviewId,
+  type CitationMap,
+  type CitationSource,
+  type DocumentCitationSource,
+} from '@/types/citation'
+import type { HaystackReferenceMeta } from '@/types'
 import type { SourceMetadata } from '@/types/source'
 import { type TextUIPart } from 'ai'
 import { memo, useMemo } from 'react'
@@ -17,6 +23,7 @@ type TextPartProps = {
   part: TextUIPart
   messageId: string
   sources?: SourceMetadata[]
+  haystackReferences?: HaystackReferenceMeta[]
 }
 
 /**
@@ -91,8 +98,59 @@ export const buildSourceCitationPlaceholders = (
   return { fullText, citations }
 }
 
-export const TextPart = memo(({ part, messageId, sources }: TextPartProps) => {
+/**
+ * Detects `[N]` citation patterns and builds a CitationMap from Haystack references.
+ * `position` on each reference matches the `[N]` index (1-based) in the text.
+ */
+export const buildDocumentCitationPlaceholders = (
+  text: string,
+  references: HaystackReferenceMeta[],
+  startKey = 0,
+): { fullText: string; citations: CitationMap } => {
+  const citations: CitationMap = new Map()
+  let nextKey = startKey
+
+  const refsByPosition = new Map(references.map((r) => [r.position, r]))
+
+  const fullText = text.replace(groupedCitationRegex, (match) => {
+    const validSources: CitationSource[] = []
+    for (const m of match.matchAll(individualCitationRegex)) {
+      const n = parseInt(m[1], 10)
+      const ref = refsByPosition.get(n)
+      if (!ref) {
+        continue
+      }
+      const ext = ref.fileName.split('.').pop()?.toLowerCase() ?? ''
+      const source: DocumentCitationSource = {
+        id: buildDocumentSideviewId(ref),
+        title: ref.fileName,
+        url: '',
+        siteName: ext.toUpperCase(),
+        isPrimary: validSources.length === 0,
+        documentMeta: {
+          fileId: ref.fileId,
+          fileName: ref.fileName,
+          pageNumber: ref.pageNumber,
+        },
+      }
+      validSources.push(source)
+    }
+
+    if (validSources.length === 0) {
+      return match
+    }
+
+    const key = nextKey++
+    citations.set(key, validSources)
+    return `{{CITE:${key}}}`
+  })
+
+  return { fullText, citations }
+}
+
+export const TextPart = memo(({ part, messageId, sources, haystackReferences }: TextPartProps) => {
   const hasNewSources = !!sources && sources.length > 0
+  const hasDocumentRefs = !!haystackReferences && haystackReferences.length > 0
 
   // Build citation data upfront so the hook is always called in the same order
   const { processedParts, citations, hasCitations, hasText } = useMemo(() => {
@@ -107,14 +165,22 @@ export const TextPart = memo(({ part, messageId, sources }: TextPartProps) => {
 
     const parts = parseContentParts(part.text)
 
-    if (hasNewSources) {
+    // Pick the citation builder based on which source type is active.
+    // Document references take priority when both are present.
+    const buildPlaceholders = hasDocumentRefs
+      ? (text: string, offset: number) => buildDocumentCitationPlaceholders(text, haystackReferences, offset)
+      : hasNewSources
+        ? (text: string, offset: number) => buildSourceCitationPlaceholders(text, sources, offset)
+        : null
+
+    if (buildPlaceholders) {
       let keyOffset = 0
       const mergedCitations: CitationMap = new Map()
       const processedParts: ContentPart[] = parts.map((p) => {
         if (p.type !== 'text') {
           return p
         }
-        const { fullText, citations } = buildSourceCitationPlaceholders(p.content, sources, keyOffset)
+        const { fullText, citations } = buildPlaceholders(p.content, keyOffset)
         for (const [key, value] of citations) {
           mergedCitations.set(key, value)
         }
@@ -137,7 +203,7 @@ export const TextPart = memo(({ part, messageId, sources }: TextPartProps) => {
       hasCitations: false,
       hasText: parts.some((p) => p.type === 'text'),
     }
-  }, [part.text, hasNewSources, sources])
+  }, [part.text, hasNewSources, hasDocumentRefs, sources, haystackReferences])
 
   const dedupedParts = useMemo(() => deduplicateLinkPreviews(processedParts), [processedParts])
 

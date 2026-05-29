@@ -3,6 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { AssistantMessage } from './assistant-message'
+import { SyntheticLoadingPart } from './synthetic-loading-part'
 import { UserMessage } from './user-message'
 import { EncryptionMessage } from './encryption-message'
 import { ErrorMessage } from './error-message'
@@ -37,6 +38,11 @@ export const ChatMessages = ({ useChat = useChat_default }: ChatMessagesProps) =
     () => messages.findLast((m) => m.role === 'assistant' && (m.parts?.length ?? 0) > 0),
     [messages],
   )
+
+  // After the user sends a message, AI SDK reports status `submitted` until the
+  // first assistant delta arrives. During that window there is no assistant
+  // message to host the synthetic loading indicator, so render it inline here.
+  const showSubmittedLoading = status === 'submitted' && lastMessage?.role !== 'assistant'
 
   const hasError = useMemo(() => {
     if (chatError) {
@@ -83,6 +89,8 @@ export const ChatMessages = ({ useChat = useChat_default }: ChatMessagesProps) =
 
         return null
       })}
+
+      {showSubmittedLoading && <SyntheticLoadingPart isStreaming />}
 
       {/* Show error message if there's an error */}
       {hasError && (

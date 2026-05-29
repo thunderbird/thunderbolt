@@ -47,6 +47,17 @@ export const getPowerSyncDatabaseConfig = (
 /** Max time to wait for initial sync before continuing (e.g. when network is down) */
 const initialSyncTimeoutMs = 10_000
 
+/**
+ * Sync rule priority we block app init on. Matches the `user_essentials` bucket in
+ * `powersync-service/config/config.yaml` (and the PowerSync Cloud dashboard rules):
+ * settings, models, modes, model_profiles, devices, chat_threads. Lower-priority buckets
+ * (chat_messages, tasks, etc.) stream in the background after the app is interactive.
+ *
+ * Falls back to global `hasSynced` if the deployed sync rules don't declare priorities yet
+ * (see `SyncStatus.statusForPriority`).
+ */
+const initialSyncPriority = 1
+
 /** Custom event name for sync enabled changes */
 export const syncEnabledChangeEvent = 'powersync_sync_enabled_change'
 
@@ -231,21 +242,30 @@ export class PowerSyncDatabaseImpl implements DatabaseInterface {
       return // Already connected
     }
 
+    const connectStartedAt = performance.now()
+    console.info('[PowerSync] Connecting…')
+
     try {
       const cloudUrl = getLocalSetting('cloudUrl')
 
       // Re-fetch config before connecting so the upload encoder has the correct E2EE flag.
       // If /config failed at app init (e.g. offline), this retries before sync starts.
+      const fetchConfigStartedAt = performance.now()
       await fetchConfig(cloudUrl)
+      console.info(`[PowerSync] fetchConfig: ${Math.round(performance.now() - fetchConfigStartedAt)}ms`)
 
       const connector = new ThunderboltConnector(cloudUrl)
       // Use HTTP streaming to avoid WebSocket "invalid opcode 7" with self-hosted service (ws library).
+      const connectInnerStartedAt = performance.now()
       await this.powerSync.connect(connector, {
         connectionMethod: SyncStreamConnectionMethod.HTTP,
         crudUploadThrottleMs: 5000,
       })
+      console.info(`[PowerSync] powerSync.connect: ${Math.round(performance.now() - connectInnerStartedAt)}ms`)
+
       this._isConnected = true
-      console.info('PowerSync connected')
+      console.info(`[PowerSync] Connected (total ${Math.round(performance.now() - connectStartedAt)}ms)`)
+      this.logFullSyncWhenReady(connectStartedAt)
       startSyncStatusListener(this.powerSync, getPowerSyncDatabaseConfig())
       trackSyncEvent('sync_connect')
       this.startVisibilityReconnect()
@@ -253,6 +273,32 @@ export class PowerSyncDatabaseImpl implements DatabaseInterface {
       console.warn('Failed to connect to PowerSync Cloud:', error)
       trackSyncEvent('sync_connect_error', { error: sanitizeErrorForTracking(error) })
     }
+  }
+
+  /**
+   * Logs when the full sync (all priorities) completes, measured from the time connectToSync started.
+   * One-shot: disposes itself once `hasSynced` is true.
+   */
+  private logFullSyncWhenReady(connectStartedAt: number): void {
+    if (!this.powerSync) {
+      return
+    }
+    if (this.powerSync.currentStatus?.hasSynced) {
+      console.info(
+        `[PowerSync] Full sync already complete (${Math.round(performance.now() - connectStartedAt)}ms since connect)`,
+      )
+      return
+    }
+    const dispose = this.powerSync.registerListener({
+      statusChanged: (status) => {
+        if (status.hasSynced) {
+          console.info(
+            `[PowerSync] Full sync complete (${Math.round(performance.now() - connectStartedAt)}ms since connect)`,
+          )
+          dispose()
+        }
+      },
+    })
   }
 
   /**
@@ -383,43 +429,51 @@ export class PowerSyncDatabaseImpl implements DatabaseInterface {
   }
 
   /**
-   * Wait for PowerSync to complete its initial sync.
-   * This ensures data from the cloud is available before reconciling defaults.
+   * Wait for PowerSync's priority-1 buckets to complete their initial sync (essentials —
+   * settings, models, modes, model_profiles, devices, chat_threads). Lower-priority data
+   * (chat_messages, tasks, etc.) continues streaming in the background.
+   *
    * Resolves after initialSyncTimeoutMs if sync never completes (e.g. network down).
    */
   async waitForInitialSync(): Promise<void> {
-    // Skip if sync is disabled or not connected
     if (!this.powerSync || !this._isConnected || !isSyncEnabled()) {
       return
     }
 
-    // Check if already synced
-    const status = this.powerSync.currentStatus
-    if (status?.hasSynced) {
-      return
-    }
+    const startedAt = performance.now()
+    console.info(`[PowerSync] Waiting for priority-${initialSyncPriority} sync…`)
 
-    let unsubscribe: (() => void) | undefined
-    const syncPromise = new Promise<void>((resolve) => {
-      unsubscribe = this.powerSync!.registerListener({
-        statusChanged: (newStatus) => {
-          if (newStatus.hasSynced) {
-            unsubscribe?.()
-            resolve()
-          }
-        },
-      })
-    })
-
+    const abortController = new AbortController()
+    let timeoutId: ReturnType<typeof setTimeout> | undefined
+    let timedOut = false
     const timeoutPromise = new Promise<void>((resolve) => {
-      setTimeout(() => {
-        unsubscribe?.()
-        console.warn('Initial sync timed out after', initialSyncTimeoutMs / 1000, 'seconds')
+      timeoutId = setTimeout(() => {
+        timedOut = true
+        console.warn(`[PowerSync] Priority-${initialSyncPriority} sync timed out after ${initialSyncTimeoutMs / 1000}s`)
         resolve()
       }, initialSyncTimeoutMs)
     })
 
-    await Promise.race([syncPromise, timeoutPromise])
+    try {
+      await Promise.race([
+        this.powerSync.waitForFirstSync({ signal: abortController.signal, priority: initialSyncPriority }),
+        timeoutPromise,
+      ])
+      if (!timedOut) {
+        console.info(
+          `[PowerSync] Priority-${initialSyncPriority} sync complete (${Math.round(performance.now() - startedAt)}ms)`,
+        )
+      }
+    } catch (error) {
+      // First sync is best-effort — the app must boot regardless. Swallow any unexpected
+      // rejection so it never propagates to the initialization caller.
+      console.warn('[PowerSync] waitForInitialSync failed; continuing without sync gate:', error)
+    } finally {
+      clearTimeout(timeoutId)
+      // Disposes the listener inside waitForFirstSync if the timeout won the race (or if
+      // sync already resolved, this is a no-op on the already-disposed listener).
+      abortController.abort()
+    }
   }
 
   async close(): Promise<void> {

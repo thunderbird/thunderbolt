@@ -9,6 +9,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'bun:test'
 import { createTestProvider } from '@/test-utils/test-provider'
 import { CitationBadge } from './citation-badge'
 import { CitationPopoverProvider } from './citation-popover'
+import { ContentViewProvider } from '@/content-view/context'
 import { ExternalLinkDialogProvider } from './markdown-utils'
 import type { CitationSource } from '@/types/citation'
 import { type ReactElement } from 'react'
@@ -27,7 +28,9 @@ const renderStandalone = (ui: ReactElement) => {
   return render(ui, {
     wrapper: ({ children }) => (
       <TestProvider>
-        <ExternalLinkDialogProvider>{children}</ExternalLinkDialogProvider>
+        <ContentViewProvider>
+          <ExternalLinkDialogProvider>{children}</ExternalLinkDialogProvider>
+        </ContentViewProvider>
       </TestProvider>
     ),
   })
@@ -39,9 +42,11 @@ const renderManaged = (ui: ReactElement) => {
   return render(ui, {
     wrapper: ({ children }) => (
       <TestProvider>
-        <ExternalLinkDialogProvider>
-          <CitationPopoverProvider>{children}</CitationPopoverProvider>
-        </ExternalLinkDialogProvider>
+        <ContentViewProvider>
+          <ExternalLinkDialogProvider>
+            <CitationPopoverProvider>{children}</CitationPopoverProvider>
+          </ExternalLinkDialogProvider>
+        </ContentViewProvider>
       </TestProvider>
     ),
   })

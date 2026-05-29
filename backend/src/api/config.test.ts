@@ -4,35 +4,44 @@
 
 import { describe, expect, it } from 'bun:test'
 import { Elysia } from 'elysia'
-import type { Settings } from '@/config/settings'
+import { createTestSettings } from '@/test-utils/settings'
 import { createConfigRoutes } from './config'
+
+const fetchConfig = async (settings: Parameters<typeof createConfigRoutes>[0]) => {
+  const app = new Elysia().use(createConfigRoutes(settings))
+  const response = await app.handle(new Request('http://localhost/config'))
+  return { status: response.status, body: await response.json() }
+}
 
 describe('Config Routes', () => {
   describe('GET /config', () => {
-    it('returns e2eeEnabled: false when disabled', async () => {
-      const app = new Elysia().use(createConfigRoutes({ e2eeEnabled: false } as Settings))
+    it('reflects e2eeEnabled', async () => {
+      const disabled = await fetchConfig(createTestSettings({ e2eeEnabled: false }))
+      expect(disabled.body.e2eeEnabled).toBe(false)
 
-      const response = await app.handle(new Request('http://localhost/config'))
-
-      expect(response.status).toBe(200)
-      expect(await response.json()).toEqual({ e2eeEnabled: false })
+      const enabled = await fetchConfig(createTestSettings({ e2eeEnabled: true }))
+      expect(enabled.body.e2eeEnabled).toBe(true)
     })
 
-    it('returns e2eeEnabled: true when enabled', async () => {
-      const app = new Elysia().use(createConfigRoutes({ e2eeEnabled: true } as Settings))
+    it('exposes builtInAgentEnabled: true by default and false when disabled', async () => {
+      const onByDefault = await fetchConfig(createTestSettings())
+      expect(onByDefault.body.builtInAgentEnabled).toBe(true)
 
-      const response = await app.handle(new Request('http://localhost/config'))
+      const disabled = await fetchConfig(createTestSettings({ disableBuiltInAgent: true }))
+      expect(disabled.body.builtInAgentEnabled).toBe(false)
+    })
 
-      expect(response.status).toBe(200)
-      expect(await response.json()).toEqual({ e2eeEnabled: true })
+    it('exposes allowCustomAgents', async () => {
+      const allowed = await fetchConfig(createTestSettings({ allowCustomAgents: true }))
+      expect(allowed.body.allowCustomAgents).toBe(true)
+
+      const forbidden = await fetchConfig(createTestSettings({ allowCustomAgents: false }))
+      expect(forbidden.body.allowCustomAgents).toBe(false)
     })
 
     it('does not require authentication', async () => {
-      const app = new Elysia().use(createConfigRoutes({ e2eeEnabled: false } as Settings))
-
-      const response = await app.handle(new Request('http://localhost/config'))
-
-      expect(response.status).toBe(200)
+      const { status } = await fetchConfig(createTestSettings())
+      expect(status).toBe(200)
     })
   })
 })

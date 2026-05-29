@@ -25,7 +25,14 @@ import {
   targetUrlHeader,
   wsTargetPrefix,
 } from '@shared/proxy-protocol'
+import { encodeWsBearer, wsBearerSubprotocolPrefix } from '@shared/ws-bearer'
+import { getAuthToken } from './auth-token'
 import { isTauri } from './platform'
+
+/** Carrier subprotocol the client always advertises alongside the bearer. The
+ *  proxy WS server echoes this back as `Sec-WebSocket-Protocol` so the upgrade
+ *  completes; the bearer entry is validated server-side and never echoed. */
+const proxyWsCarrierSubprotocol = 'thunderbolt.v1'
 
 const defaultIsStandalone = isTauri
 const defaultReadProxyEnabled = (): string | null =>
@@ -185,20 +192,46 @@ export const createProxyFetch = (options: ProxyFetchOptions): FetchFn => {
 
 /** Build a WebSocket constructor that hides Hosted/Standalone mode from callers.
  *
- *  Hosted: connects to `${cloudWsUrl}/proxy/ws` with the target encoded in the
- *  Sec-WebSocket-Protocol header as `tbproxy.target.<base64url(url)>`.
- *  Standalone: returns a real WebSocket to the upstream URL directly. */
-export const createProxyWebSocket =
-  (options: { cloudUrl: string; isStandalone?: () => boolean }) =>
-  (url: string, protocols?: string[]): WebSocket => {
-    const standalone = (options.isStandalone ?? isTauri)()
+ *  Hosted: connects to `${cloudWsUrl}/proxy/ws` with the bearer token and
+ *  target both encoded as `Sec-WebSocket-Protocol` entries (`thunderbolt.v1`,
+ *  `thunderbolt.bearer.<token>`, `tbproxy.target.<base64url(url)>`). Browsers
+ *  can't attach `Authorization` headers to `new WebSocket()` — the bearer
+ *  subprotocol is the only handshake-time channel that doesn't leak via
+ *  default request logs (URL/Referer do). The server validates the bearer via
+ *  the same signed-bearer path REST uses.
+ *
+ *  Standalone: returns a real WebSocket to the upstream URL directly.
+ *
+ *  Returns a *sync* factory `(url, protocols?) => WebSocket` so callers keep
+ *  the synchronous `(url) => WebSocketLike` contract used by the ACP transport.
+ *  The bearer token is read synchronously from local storage, so the real
+ *  WebSocket is constructed inline — no deferred wrapper is needed. */
+export const createProxyWebSocket = (options: {
+  cloudUrl: string
+  isStandalone?: () => boolean
+  /** Test seam — production omits and the factory reads `getAuthToken()`. */
+  getAuthToken?: () => string | null
+}): ((url: string, protocols?: string[]) => WebSocket) => {
+  const standaloneCheck = options.isStandalone ?? isTauri
+  const readAuthToken = options.getAuthToken ?? getAuthToken
+
+  return (url: string, protocols?: string[]): WebSocket => {
+    const standalone = standaloneCheck()
     if (standalone) {
       return new WebSocket(url, protocols)
     }
     const wsBase = options.cloudUrl.replace(/^http/, 'ws').replace(/\/$/, '')
     const targetSubprotocol = `${wsTargetPrefix}${b64UrlEncode(url)}`
-    return new WebSocket(`${wsBase}/proxy/ws`, [targetSubprotocol, ...(protocols ?? [])])
+    const token = readAuthToken()
+    const authEntries = token ? [`${wsBearerSubprotocolPrefix}${encodeWsBearer(token)}`] : []
+    return new WebSocket(`${wsBase}/proxy/ws`, [
+      proxyWsCarrierSubprotocol,
+      ...authEntries,
+      targetSubprotocol,
+      ...(protocols ?? []),
+    ])
   }
+}
 
 const b64UrlEncode = (text: string): string => {
   if (typeof Buffer !== 'undefined') {

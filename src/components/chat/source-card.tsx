@@ -3,14 +3,17 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { type MouseEvent, useState } from 'react'
-import type { CitationSource } from '@/types/citation'
+import { buildDocumentSideviewId, type CitationSource, isDocumentCitation } from '@/types/citation'
 import { useOpenExternalLink } from '@/components/chat/markdown-utils'
+import { useContentView } from '@/content-view/context'
 import { deriveFaviconUrl, isSafeUrl } from '@/lib/url-utils'
 import { cn } from '@/lib/utils'
 
 type SourceCardProps = {
   source: CitationSource
   className?: string
+  /** Called after the source action fires (open link / show sideview) */
+  onSelect?: () => void
 }
 
 /**
@@ -27,34 +30,39 @@ const getBadgeColor = (siteName: string = '') => {
  * Displays a single citation source with title and site badge
  * Matches Figma design: simple layout with circular initial badge
  */
-export const SourceCard = ({ source, className }: SourceCardProps) => {
+export const SourceCard = ({ source, className, onSelect }: SourceCardProps) => {
   const [faviconError, setFaviconError] = useState(false)
   const openExternalLink = useOpenExternalLink()
+  const { showSideview } = useContentView()
 
+  const isDocument = isDocumentCitation(source)
   const displayTitle = source.title || source.url
   const displaySiteName = source.siteName || 'Unknown'
-  const safeUrl = isSafeUrl(source.url) ? source.url : '#'
+  const safeUrl = !isDocument && isSafeUrl(source.url) ? source.url : '#'
   const explicitFavicon = source.favicon && isSafeUrl(source.favicon) ? source.favicon : null
-  const faviconUrl = explicitFavicon || deriveFaviconUrl(source.url)
+  const faviconUrl = explicitFavicon || (!isDocument ? deriveFaviconUrl(source.url) : null)
   const showFavicon = faviconUrl && !faviconError
   const initial = displaySiteName.charAt(0).toUpperCase()
   const badgeColor = getBadgeColor(displaySiteName)
 
-  const handleClick = (e: MouseEvent<HTMLAnchorElement>) => {
+  const handleClick = (e: MouseEvent<HTMLElement>) => {
     e.preventDefault()
-    if (safeUrl === '#') {
-      return
+    if (isDocument) {
+      showSideview('document', buildDocumentSideviewId(source.documentMeta))
+    } else if (safeUrl !== '#') {
+      openExternalLink(safeUrl)
     }
-    openExternalLink(safeUrl)
+    onSelect?.()
   }
 
   return (
-    <a
-      href={safeUrl}
-      target="_blank"
-      rel="noopener noreferrer"
+    <button
+      type="button"
       onClick={handleClick}
-      className={cn('flex flex-col gap-2.5 px-4 py-3 hover:bg-accent/50 transition-colors cursor-pointer', className)}
+      className={cn(
+        'flex flex-col gap-2.5 px-4 py-3 hover:bg-accent/50 transition-colors cursor-pointer w-full text-left',
+        className,
+      )}
       role="listitem"
     >
       <p className="text-base text-foreground leading-6 whitespace-pre-wrap">{displayTitle}</p>
@@ -77,6 +85,6 @@ export const SourceCard = ({ source, className }: SourceCardProps) => {
         )}
         <span className="text-xs text-muted-foreground leading-4">{displaySiteName}</span>
       </div>
-    </a>
+    </button>
   )
 }

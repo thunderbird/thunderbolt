@@ -2,13 +2,18 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { aiFetchStreamingResponse } from '@/ai/fetch'
+import { connectToAgent as defaultConnectToAgent } from '@/acp'
+import type { SessionSideEffect } from '@/acp/translators/acp-to-ai-sdk'
+import { updateChatThread as defaultUpdateChatThread } from '@/dal/chat-threads'
+import { getDb as defaultGetDb } from '@/db/database'
 import { isRateLimitError } from '@/lib/error-utils'
 import type { HttpClient } from '@/lib/http'
 import { trackEvent } from '@/lib/posthog'
 import type { FetchFn } from '@/lib/proxy-fetch'
+import type { AgentAdapter } from '@/types/acp'
 import type { SaveMessagesFunction, ThunderboltUIMessage } from '@/types'
 import { Chat } from '@ai-sdk/react'
+import type { RequestPermissionRequest, RequestPermissionResponse } from '@agentclientprotocol/sdk'
 import { DefaultChatTransport } from 'ai'
 import { v7 as uuidv7 } from 'uuid'
 import { useChatStore } from './chat-store'
@@ -21,14 +26,74 @@ export const maxRetries = 3
  */
 const getRetryDelay = (attempt: number) => 2000 * attempt * (0.5 + Math.random())
 
-export const createChatInstance = (
+/** Bridge an ACP `requestPermission` call to the chat-store dialog flow.
+ *  Generates a request id, stashes the resolver on the session's
+ *  `pendingPermission` slot, and returns the promise the adapter awaits. The
+ *  store's `resolvePendingPermission` action completes it from the dialog. */
+const requestPermissionViaStore = (
+  sessionId: string,
+  request: RequestPermissionRequest,
+): Promise<RequestPermissionResponse> =>
+  new Promise<RequestPermissionResponse>((resolve) => {
+    const requestId = uuidv7()
+    useChatStore.getState().setPendingPermission(sessionId, { requestId, request, resolve })
+  })
+
+/** Forward translator side effects to the chat store + analytics. The server
+ *  is the source of truth for ACP-side mode and config option state, so a
+ *  mode/config emit always wins over a stale optimistic UI update.
+ *
+ *  This branch ships the wire but no UI surface reads it yet — the local
+ *  mode selector continues to use `selectedMode` from the user's mode list.
+ *  When a future PR adds ACP-mode UI it will subscribe to `agentSessionState`
+ *  populated here. */
+const applySessionSideEffect = (effect: SessionSideEffect): void => {
+  if (effect.type === 'mode_changed') {
+    trackEvent('acp_mode_changed', { mode_id: effect.modeId })
+    return
+  }
+  if (effect.type === 'config_options_changed') {
+    trackEvent('acp_config_options_changed', { count: effect.options.length })
+  }
+}
+
+/** DI seams for tests. Production binds to the real ACP entry point and the
+ *  DAL's `updateChatThread`. Module-level functions are passed by reference so
+ *  test files can swap in fakes without `mock.module()`. */
+export type CreateChatInstanceDeps = {
+  connectToAgent?: typeof defaultConnectToAgent
+  updateChatThread?: typeof defaultUpdateChatThread
+  getDb?: typeof defaultGetDb
+}
+
+/**
+ * Build the `customFetch` the AI SDK's transport invokes for every
+ * `chat.sendMessage(...)`. The factory owns a per-session adapter cache keyed
+ * by `(sessionId, agentId)`. When the user switches agents mid-thread the
+ * key changes; we disconnect the stale adapter before connecting the new one.
+ *
+ * Built-in's `disconnect()` is a no-op (the AI SDK pipeline is stateless per
+ * call), so always disconnecting on switch is safe regardless of which agent
+ * type was active.
+ *
+ * Exported separately so unit tests can drive it without spinning up
+ * `@ai-sdk/react`'s `Chat` instance.
+ */
+export const createAgentRoutingFetch = (
   id: string,
-  messages: ThunderboltUIMessage[],
   saveMessages: SaveMessagesFunction,
   httpClient: HttpClient,
   getProxyFetch: () => FetchFn,
+  deps: CreateChatInstanceDeps = {},
 ) => {
-  const customFetch = Object.assign(
+  const connectToAgent = deps.connectToAgent ?? defaultConnectToAgent
+  const updateChatThread = deps.updateChatThread ?? defaultUpdateChatThread
+  const getDb = deps.getDb ?? defaultGetDb
+
+  let cachedKey: string | null = null
+  let cachedAdapter: AgentAdapter | null = null
+
+  return Object.assign(
     async (_requestInfo: RequestInfo | URL, init?: RequestInit) => {
       if (!init) {
         throw new Error('Missing init')
@@ -42,21 +107,94 @@ export const createChatInstance = (
         throw new Error('No session found')
       }
 
-      return aiFetchStreamingResponse({
-        init,
+      const { chatThread, selectedAgent, selectedMode, selectedModel } = session
+      const cacheKey = `${id}:${selectedAgent.id}`
+
+      // Save the user message before invoking the adapter. This serves three
+      // purposes that previously only the built-in pipeline got for free:
+      //   1. Creates the `chat_threads` row on the first message (so the
+      //      thread is persisted regardless of agent type).
+      //   2. Lets `updateThreadTitle` see the first user message and replace
+      //      the placeholder "New Chat" title — ACP agents only emit assistant
+      //      messages from `onFinish`, so without this save the title would
+      //      never be generated.
+      //   3. Keeps message ordering consistent: the user turn is durable
+      //      before the assistant stream starts.
+      const requestBody = JSON.parse(init.body as string) as { messages: ThunderboltUIMessage[] }
+      await saveMessages({ id, messages: requestBody.messages })
+
+      const persistAcpSessionId = async (newSessionId: string): Promise<void> => {
+        if (!chatThread) {
+          return
+        }
+        await updateChatThread(getDb(), chatThread.id, { acpSessionId: newSessionId })
+      }
+
+      if (cacheKey !== cachedKey) {
+        // Agent swapped within this session — tear down the stale adapter
+        // BEFORE the new connect so any transport handles release promptly.
+        if (cachedAdapter) {
+          cachedAdapter.disconnect()
+          cachedAdapter = null
+        }
+        cachedKey = null
+        useChatStore.getState().updateSession(id, { connectionStatus: 'connecting', connectionError: null })
+        try {
+          cachedAdapter = await connectToAgent(
+            selectedAgent,
+            {
+              httpClient,
+              getProxyFetch,
+              acpSessionId: chatThread?.acpSessionId ?? null,
+              onAcpSessionId: persistAcpSessionId,
+              requestPermission: (request) => requestPermissionViaStore(id, request),
+              onSessionSideEffect: applySessionSideEffect,
+            },
+            {},
+          )
+        } catch (err) {
+          const error = err instanceof Error ? err : new Error(String(err))
+          useChatStore.getState().updateSession(id, { connectionStatus: 'error', connectionError: error })
+          throw error
+        }
+        cachedKey = cacheKey
+        useChatStore.getState().updateSession(id, { connectionStatus: 'ready', connectionError: null })
+      }
+
+      const adapter = cachedAdapter
+
+      if (!adapter) {
+        throw new Error('Adapter missing after connect — unreachable')
+      }
+
+      return adapter.fetch(init, {
+        threadId: id,
+        chatThread,
+        acpSessionId: chatThread?.acpSessionId ?? null,
         saveMessages,
-        modelId: session.selectedModel.id,
-        modeSystemPrompt: session.selectedMode.systemPrompt ?? undefined,
-        modeName: session.selectedMode.name ?? undefined,
+        selectedMode,
+        selectedModel,
         mcpClients,
         httpClient,
         getProxyFetch,
+        onAcpSessionId: persistAcpSessionId,
       })
     },
     {
       preconnect: () => Promise.resolve(false),
     },
   )
+}
+
+export const createChatInstance = (
+  id: string,
+  messages: ThunderboltUIMessage[],
+  saveMessages: SaveMessagesFunction,
+  httpClient: HttpClient,
+  getProxyFetch: () => FetchFn,
+  deps: CreateChatInstanceDeps = {},
+) => {
+  const customFetch = createAgentRoutingFetch(id, saveMessages, httpClient, getProxyFetch, deps)
 
   let retryCount = 0
   let retryTimeout: ReturnType<typeof setTimeout> | null = null

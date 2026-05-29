@@ -163,6 +163,48 @@ describe('automationsToSkills', () => {
     expect(unpinnedMigrated.length).toBe(2)
   })
 
+  it('does not collide with non-contiguous existing pinnedOrder values', async () => {
+    // Seed existing skills at sparse pin slots [0, 1, 5] — the kind of
+    // shape a user produces by unpinning a middle skill without
+    // reordering. Naive `existingPinned.length` (3) would reassign 3, 4, 5
+    // and clobber the skill at slot 5.
+    for (const [i, order] of [
+      [0, 0],
+      [1, 1],
+      [2, 5],
+    ]) {
+      await getDb()
+        .insert(skillsTable)
+        .values({
+          id: `pre-${i}`,
+          name: `pre-${i}`,
+          description: 'pre-existing',
+          instruction: 'do the thing',
+          enabled: 1,
+          pinnedOrder: order,
+          deletedAt: null,
+          defaultHash: null,
+          userId: 'user-1',
+        })
+    }
+    await seedAutomation({ id: 'aut-1', title: 'Daily Review', prompt: 'Summarize my day.' })
+
+    await automationsToSkills.run(getDb())
+
+    // Migrated skill should land at slot 6 (max(0,1,5) + 1), not 3.
+    const expectedId = await deriveSkillIdFromAutomationId('aut-1')
+    const migrated = await getDb().select().from(skillsTable).where(eq(skillsTable.id, expectedId)).get()
+    expect(migrated?.pinnedOrder).toBe(6)
+
+    // Existing skills are untouched.
+    const preserved = await getDb()
+      .select({ id: skillsTable.id, pinnedOrder: skillsTable.pinnedOrder })
+      .from(skillsTable)
+      .where(and(isNotNull(skillsTable.pinnedOrder), isNull(skillsTable.deletedAt)))
+    const orders = preserved.map((s) => s.pinnedOrder).sort((a, b) => (a ?? 0) - (b ?? 0))
+    expect(orders).toEqual([0, 1, 5, 6])
+  })
+
   it('soft-deletes unmodified default-hashed automations without migrating', async () => {
     // Seed an automation that looks like an unmodified default: its
     // defaultHash equals hashAutomationRow(itself).

@@ -35,7 +35,9 @@ export default defineConfig({
   projects: [
     {
       name: 'oidc',
-      testMatch: /oidc/,
+      // ACP specs use the OIDC mock IdP via `loginViaOidc`, so they belong in
+      // this project alongside the auth flow tests.
+      testMatch: /(?:oidc|acp-)/,
       use: {
         ...devices['Desktop Chrome'],
         baseURL: `http://localhost:${oidcVitePort}`,

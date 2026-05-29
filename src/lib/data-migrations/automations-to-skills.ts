@@ -57,28 +57,37 @@ const runOnce = async (db: AnyDrizzleDatabase): Promise<number> => {
     return 0
   }
 
-  // Snapshot the current pin-slot occupancy so we can fill the remaining
-  // slots in id order. UUIDv7 sorts chronologically, so "id order" =
-  // "created order" — a reasonable proxy for "which automation did the
-  // user set up first."
+  // Snapshot the current pin slots so we can append migrated skills without
+  // colliding with existing `pinnedOrder` values. We track two things:
+  //   - `nextPinnedOrder` = max(existing pinnedOrder) + 1. Starting from the
+  //     count alone would collide when pins are non-contiguous (e.g. a user
+  //     unpinned one in the middle leaving slots [0, 1, 5]).
+  //   - `pinnedCount` = how many skills are currently pinned. The cap is
+  //     defined on count, not on slot index, so this is what we compare
+  //     against `maxPinnedSkills`.
   const existingPinned = await db
-    .select({ id: skillsTable.id })
+    .select({ pinnedOrder: skillsTable.pinnedOrder })
     .from(skillsTable)
     .where(and(isNull(skillsTable.deletedAt), isNotNull(skillsTable.pinnedOrder)))
-  let nextPinnedOrder = existingPinned.length
+  let nextPinnedOrder = existingPinned.reduce((m, p) => Math.max(m, p.pinnedOrder ?? -1), -1) + 1
+  let pinnedCount = existingPinned.length
 
   // Sort so the migration is deterministic across devices: same input order
-  // produces the same pin assignments.
+  // produces the same pin assignments. UUIDv7 sorts chronologically, so
+  // "id order" = "created order" — a reasonable proxy for "which automation
+  // did the user set up first."
   const sortedAutomations = [...automations].sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0))
 
   let migrated = 0
   for (const automation of sortedAutomations) {
+    const pinSlot = pinnedCount < maxPinnedSkills ? nextPinnedOrder : null
     try {
-      const ok = await migrateOne(db, automation, nextPinnedOrder)
+      const ok = await migrateOne(db, automation, pinSlot)
       if (ok) {
         migrated++
-        if (nextPinnedOrder < maxPinnedSkills) {
+        if (pinSlot !== null) {
           nextPinnedOrder++
+          pinnedCount++
         }
       }
     } catch (error) {
@@ -93,7 +102,7 @@ const runOnce = async (db: AnyDrizzleDatabase): Promise<number> => {
 const migrateOne = async (
   db: AnyDrizzleDatabase,
   automation: typeof promptsTable.$inferSelect,
-  pinSlot: number,
+  pinSlot: number | null,
 ): Promise<boolean> => {
   if (!automation.title || !automation.prompt) {
     // No content to migrate — soft-delete the husk and move on. (Defensive:
@@ -159,7 +168,7 @@ const migrateOne = async (
       description: `Migrated from automation: ${automation.title}`,
       instruction: automation.prompt,
       enabled: 1,
-      pinnedOrder: pinSlot < maxPinnedSkills ? pinSlot : null,
+      pinnedOrder: pinSlot,
       deletedAt: null,
       defaultHash: null,
       userId: automation.userId,

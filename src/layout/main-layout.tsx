@@ -11,6 +11,7 @@ import { defaultOpenWidth, minimumWidthThreshold } from '@/content-view/constant
 import { useContentView } from '@/content-view/context'
 import { ObjectSidebarContent } from '@/content-view/object-sidebar-content'
 import { SidebarWebview } from '@/content-view/sidebar-webview'
+import { Sideview } from '@/content-view/sideview'
 import { useIsMobile } from '@/hooks/use-mobile'
 import { isTauri } from '@/lib/platform'
 import { useSettings } from '@/hooks/use-settings'
@@ -156,6 +157,7 @@ export default function Page() {
                   <SidebarWebview config={state.data} onClose={close} hidden={previewHidden} />
                 )}
                 {state.type === 'object-view' && <ObjectSidebarContent content={state.data} onClose={close} />}
+                {state.type === 'sideview' && <Sideview />}
               </m.div>
             )}
           </AnimatePresence>

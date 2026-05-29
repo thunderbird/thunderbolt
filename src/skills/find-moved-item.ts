@@ -48,13 +48,7 @@ export const findMovedItem = (oldIds: readonly string[], newIds: readonly string
   if (oldIds.length !== newIds.length) {
     return null
   }
-  let firstDiff = -1
-  for (let i = 0; i < oldIds.length; i++) {
-    if (oldIds[i] !== newIds[i]) {
-      firstDiff = i
-      break
-    }
-  }
+  const firstDiff = oldIds.findIndex((id, i) => id !== newIds[i])
   if (firstDiff === -1) {
     return null
   }

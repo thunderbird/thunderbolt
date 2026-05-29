@@ -88,11 +88,11 @@ export const useSkillTelemetry = () => {
         return
       }
       void hashSkillId(userId, skillId).then((hashedId) => {
-        // Cast through `unknown` because PostHog's `trackEvent` signature
-        // takes a generic `Record<string, unknown>` — our per-event prop
-        // shape is the stricter type-checked contract for *callers* of
-        // `useSkillTelemetry`, but PostHog itself doesn't know about it.
-        trackEvent(event, { skill_id: hashedId, ...extras } as unknown as Record<string, unknown>)
+        // PostHog's `trackEvent` accepts a generic `Record<string, unknown>`;
+        // our per-event prop shape is the stricter type-checked contract for
+        // *callers* of `useSkillTelemetry`. The widening cast is just to
+        // satisfy that boundary.
+        trackEvent(event, { skill_id: hashedId, ...extras } as Record<string, unknown>)
       })
     },
     [enabled, userId],

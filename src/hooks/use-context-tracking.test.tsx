@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { createChatThread, createModel, updateChatThread } from '@/dal'
+import { createChatThread, createModel, getModel, updateChatThread } from '@/dal'
 import { resetTestDatabase, setupTestDatabase, teardownTestDatabase } from '@/dal/test-utils'
 import { getDb } from '@/db/database'
 import { renderWithReactivity, waitForElement } from '@/test-utils/powersync-reactivity-test'
@@ -75,7 +75,7 @@ describe('useContextTracking reactivity', () => {
       contextWindow: 128000,
     })
 
-    const model = await import('@/dal').then((m) => m.getModel(db, modelId))
+    const model = await getModel(db, modelId)
     if (!model) {
       throw new Error('Model not found')
     }
@@ -127,7 +127,7 @@ describe('useContextTracking reactivity', () => {
       enabled: 1,
       contextWindow: 100,
     })
-    const model = await import('@/dal').then((m) => m.getModel(db, modelId))
+    const model = await getModel(db, modelId)
     if (!model) {
       throw new Error('Model not found')
     }
@@ -165,7 +165,7 @@ describe('useContextTracking reactivity', () => {
       enabled: 1,
       contextWindow: 100_000,
     })
-    const model = await import('@/dal').then((m) => m.getModel(db, modelId))
+    const model = await getModel(db, modelId)
     if (!model) {
       throw new Error('Model not found')
     }

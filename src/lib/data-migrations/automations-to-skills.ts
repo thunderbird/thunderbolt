@@ -105,11 +105,12 @@ const migrateOne = async (
   pinSlot: number | null,
 ): Promise<boolean> => {
   if (!automation.title || !automation.prompt) {
-    // No content to migrate — soft-delete the husk and move on. (Defensive:
-    // the DAL nulls content on soft-delete, so a non-null `deletedAt` would
-    // have filtered this row out upstream; this branch covers a row that
-    // somehow lost its content without being soft-deleted.)
-    await db.update(promptsTable).set({ deletedAt: nowIso() }).where(eq(promptsTable.id, automation.id))
+    // No content to migrate — soft-delete the husk (and its triggers) and
+    // move on. (Defensive: the DAL nulls content on soft-delete, so a
+    // non-null `deletedAt` would have filtered this row out upstream;
+    // this branch covers a row that somehow lost its content without
+    // being soft-deleted.)
+    await softDeleteSourceAutomation(db, automation.id)
     return false
   }
 

@@ -261,6 +261,30 @@ describe('automationsToSkills', () => {
     expect(skill?.instruction).toBe('User has edited this prompt.')
   })
 
+  it('soft-deletes triggers attached to a no-content (husk) automation row', async () => {
+    // A row that's still alive (deletedAt == null) but has been emptied of
+    // its title/prompt content — a defensive branch in the migration that
+    // also needs to clean up attached triggers.
+    await getDb().insert(promptsTable).values({
+      id: 'aut-husk',
+      title: null,
+      prompt: null,
+      modelId: null,
+      deletedAt: null,
+      defaultHash: null,
+      userId: 'user-1',
+    })
+    await seedTrigger({ id: 'trg-husk', promptId: 'aut-husk' })
+
+    await automationsToSkills.run(getDb())
+
+    const source = await getDb().select().from(promptsTable).where(eq(promptsTable.id, 'aut-husk')).get()
+    expect(source?.deletedAt).not.toBeNull()
+
+    const trigger = await getDb().select().from(triggersTable).where(eq(triggersTable.id, 'trg-husk')).get()
+    expect(trigger?.deletedAt).not.toBeNull()
+  })
+
   it('skips already-soft-deleted automations', async () => {
     await getDb().insert(promptsTable).values({
       id: 'aut-deleted',

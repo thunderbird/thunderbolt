@@ -118,7 +118,7 @@ export const ChatSkillsBar = ({
                   size="icon-sm"
                   aria-label="Pin a skill"
                   disabled={pinnable.length === 0}
-                  className={`size-8 shrink-0 cursor-pointer rounded-full bg-card transition-opacity disabled:cursor-not-allowed disabled:opacity-40 ${
+                  className={`shrink-0 cursor-pointer rounded-full bg-card transition-opacity disabled:cursor-not-allowed disabled:opacity-40 ${
                     openChipId ? 'opacity-40' : ''
                   }`}
                 >

@@ -6,6 +6,7 @@ import { getDb } from '@/db/database'
 import { promptsTable, skillsTable, triggersTable } from '@/db/tables'
 import { resetTestDatabase, setupTestDatabase, teardownTestDatabase } from '@/dal/test-utils'
 import { hashValues } from '@/lib/utils'
+import { reconcileDefaults } from '@/lib/reconcile-defaults'
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'bun:test'
 import { and, eq, isNotNull, isNull } from 'drizzle-orm'
 
@@ -62,11 +63,19 @@ const seedTrigger = async (input: { id: string; promptId: string }) => {
 
 describe('automationsToSkills', () => {
   it('is a no-op when there are no automations', async () => {
+    // `resetTestDatabase` skips default reconciliation, so reconcile here to
+    // give the assertion something real to check — without seeded defaults,
+    // the table is empty and `every` would pass vacuously.
+    await reconcileDefaults(getDb())
+    const before = await getDb().select().from(skillsTable).where(isNull(skillsTable.deletedAt))
+    expect(before.length).toBeGreaterThan(0)
+
     await automationsToSkills.run(getDb())
-    const skills = await getDb().select().from(skillsTable).where(isNull(skillsTable.deletedAt))
-    // setupTestDatabase reconciles defaults; the migration shouldn't have
-    // added any non-default skills.
-    expect(skills.every((s) => s.defaultHash !== null)).toBe(true)
+
+    const after = await getDb().select().from(skillsTable).where(isNull(skillsTable.deletedAt))
+    // No new skills added, and every surviving skill is still a default.
+    expect(after.length).toBe(before.length)
+    expect(after.every((s) => s.defaultHash !== null)).toBe(true)
   })
 
   it('migrates an automation into a skill, soft-deletes the source, and pins it', async () => {

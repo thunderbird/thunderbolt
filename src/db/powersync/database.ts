@@ -413,8 +413,11 @@ export class PowerSyncDatabaseImpl implements DatabaseInterface {
       }, initialSyncTimeoutMs)
     })
 
-    await Promise.race([this.powerSync.waitForFirstSync({ priority: initialSyncPriority }), timeoutPromise])
-    clearTimeout(timeoutId)
+    try {
+      await Promise.race([this.powerSync.waitForFirstSync({ priority: initialSyncPriority }), timeoutPromise])
+    } finally {
+      clearTimeout(timeoutId)
+    }
   }
 
   async close(): Promise<void> {

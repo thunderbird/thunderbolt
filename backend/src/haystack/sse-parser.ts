@@ -26,8 +26,6 @@ export class HaystackSseParseError extends Error {
   }
 }
 
-const decoder = new TextDecoder()
-
 /**
  * Translate a parsed Deepset SSE JSON object into our normalized
  * {@link HaystackEvent}. Returns `null` for envelope shapes we don't care
@@ -89,6 +87,9 @@ const translateDeepsetEnvelope = (
 export const parseHaystackSseStream = async function* (
   source: ReadableStream<Uint8Array> | AsyncIterable<Uint8Array>,
 ): AsyncIterableIterator<HaystackEvent> {
+  // Per-invocation: a streaming TextDecoder retains partial multi-byte state between
+  // decode() calls, so a shared instance would corrupt bytes across concurrent streams.
+  const decoder = new TextDecoder()
   let buffer = ''
   let lineNumber = 0
 

@@ -15,6 +15,7 @@ import { isSsoMode } from '@/lib/auth-mode'
 import { createAuthenticatedClient } from '@/lib/http'
 import { getDatabasePath, getDatabaseType } from '@/lib/platform'
 import { initPosthog, trackError } from '@/lib/posthog'
+import { runDataMigrations } from '@/lib/data-migrations'
 import { reconcileDefaults } from '@/lib/reconcile-defaults'
 import { TrayManager } from '@/lib/tray'
 import type { InitData } from '@/types'
@@ -112,6 +113,20 @@ const executeInitializationSteps = async (httpClient?: HttpClient): Promise<Hand
       success: false,
       error: reconcileError,
     }
+  }
+
+  // Step 4b: Run data migrations. Sits *after* reconcileDefaults so any
+  // newly-seeded defaults (e.g. the daily-brief skill) are present when a
+  // migration checks for slug collisions. Migration failures are logged
+  // by the runner and don't block initialization — each migration retries
+  // on the next launch.
+  try {
+    await runDataMigrations(db)
+  } catch (error) {
+    // Defensive: the runner already swallows per-migration failures.
+    // Anything that escapes here is a runner-level bug worth logging but
+    // not blocking init for.
+    console.error('Data migration runner failed:', error)
   }
 
   // Step 5: Get cloud url and experimental feature tasks

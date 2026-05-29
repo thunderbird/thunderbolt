@@ -4,32 +4,15 @@
 
 import { registerAgentProvider } from '@/agents'
 import type { Auth } from '@/auth/elysia-plugin'
-import { authorizeWsBearer } from '@/auth/ws-bearer-auth'
+import { authorizeWsBearer, wsCloseUnauthorized } from '@/auth/ws-bearer-auth'
 import { createStandaloneLogger } from '@/config/logger'
 import type { Settings } from '@/config/settings'
 import { safeErrorHandler } from '@/middleware/error-handling'
 import type { User } from '@shared/types/auth'
+import { wsCarrierSubprotocol } from '@shared/ws-bearer'
 import { Elysia, t } from 'elysia'
 import { HaystackAcpServer, type HaystackAcpDeps } from './acp-server'
 import { createHaystackProvider, parsePipelinesEnv } from './provider'
-
-/**
- * Carrier subprotocol the client always advertises alongside the bearer. The
- * server echoes this back as `Sec-WebSocket-Protocol` so the upgrade
- * completes — RFC 6455 requires the server to pick one of the offered
- * subprotocols. The bearer subprotocol (`thunderbolt.bearer.<token>`) is
- * *never* echoed back so it doesn't surface to JS via `WebSocket.protocol`.
- */
-const wsCarrierSubprotocol = 'thunderbolt.v1'
-
-/**
- * Close code emitted when the WebSocket upgrade succeeds but auth fails. We
- * deliberately open the socket and then close with `4001` (in the
- * application-defined range 4000–4999) so the client distinguishes "the
- * server refused me" from "I never reached the server" — the former triggers
- * a re-login flow, the latter triggers a network-error toast.
- */
-const wsCloseUnauthorized = 4001
 
 /**
  * Mount the Haystack ACP adapter routes.

@@ -3,7 +3,15 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { describe, expect, it } from 'bun:test'
-import { decodeWsBearer, encodeWsBearer, wsBearerSubprotocolPrefix } from './ws-bearer'
+import { decodeWsBearer, encodeWsBearer, wsBearerSubprotocolPrefix, wsCarrierSubprotocol } from './ws-bearer'
+
+describe('ws-bearer carrier subprotocol', () => {
+  it('pins the wire value the client offers and both server routes echo', () => {
+    // Hardcoded literal (not the imported const) so this test independently
+    // pins the wire value — a refactor that changes the const would fail here.
+    expect(wsCarrierSubprotocol).toBe('thunderbolt.v1')
+  })
+})
 
 describe('ws-bearer codec', () => {
   it('round-trips a Better Auth bearer (sessionToken.base64Signature)', () => {

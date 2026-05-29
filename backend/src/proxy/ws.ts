@@ -3,28 +3,13 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import type { Auth } from '@/auth/elysia-plugin'
-import { authorizeWsBearer } from '@/auth/ws-bearer-auth'
+import { authorizeWsBearer, wsCloseUnauthorized } from '@/auth/ws-bearer-auth'
 import { isPrivateAddress } from '@/utils/url-validation'
+import { wsCarrierSubprotocol } from '@shared/ws-bearer'
 import { Elysia, type AnyElysia } from 'elysia'
 import { noopObservability, type ObservabilityRecorder, type ProxyErrorType } from './observability'
 
 const targetPrefix = 'tbproxy.target.'
-
-/**
- * Carrier subprotocol the client advertises alongside the bearer. Echoed back
- * so RFC 6455 strict clients (browsers, Bun) accept the upgrade. Stripped from
- * caller protocols before forwarding upstream so it never leaks past the relay.
- */
-const wsCarrierSubprotocol = 'thunderbolt.v1'
-
-/**
- * Close code emitted when the WebSocket upgrade succeeds but auth fails. We
- * deliberately open the socket and then close with 4001 (app-defined 4000–4999
- * range) so the client distinguishes "the server refused me" from "I never
- * reached the server" — the former triggers a re-login flow, the latter a
- * network-error toast. Mirrors the Haystack route.
- */
-const wsCloseUnauthorized = 4001
 
 const queueBytes = 256 * 1024
 const queueMessages = 64

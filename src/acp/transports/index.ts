@@ -34,12 +34,9 @@ import { isTauri } from '@/lib/platform'
 import { computeEffectiveProxyEnabled, createProxyWebSocket } from '@/lib/proxy-fetch'
 import { useLocalSettingsStore } from '@/stores/local-settings-store'
 import type { AgentType } from '@shared/acp-types'
-import { encodeWsBearer, wsBearerSubprotocolPrefix } from '@shared/ws-bearer'
+import { encodeWsBearer, wsBearerSubprotocolPrefix, wsCarrierSubprotocol } from '@shared/ws-bearer'
 import type { AcpTransport } from '../types'
 import { openWebSocketTransport, type WebSocketFactory, type WebSocketLike } from './websocket'
-
-/** Carrier subprotocol the managed-ACP WS handshake offers. Server echoes this back. */
-const managedAcpCarrierSubprotocol = 'thunderbolt.v1'
 
 export type OpenTransportInputs = {
   url: string
@@ -136,8 +133,8 @@ const resolveManagedAcpFactory = (inputs: OpenTransportInputs): WebSocketFactory
   }
   const token = (inputs.getAuthToken ?? getAuthToken)()
   const protocols = token
-    ? [managedAcpCarrierSubprotocol, `${wsBearerSubprotocolPrefix}${encodeWsBearer(token)}`]
-    : [managedAcpCarrierSubprotocol]
+    ? [wsCarrierSubprotocol, `${wsBearerSubprotocolPrefix}${encodeWsBearer(token)}`]
+    : [wsCarrierSubprotocol]
   return (url) => new WebSocket(url, protocols) as unknown as WebSocketLike
 }
 

@@ -87,13 +87,21 @@ export const useSkillTelemetry = () => {
       if (!enabled) {
         return
       }
-      void hashSkillId(userId, skillId).then((hashedId) => {
-        // PostHog's `trackEvent` accepts a generic `Record<string, unknown>`;
-        // our per-event prop shape is the stricter type-checked contract for
-        // *callers* of `useSkillTelemetry`. The widening cast is just to
-        // satisfy that boundary.
-        trackEvent(event, { skill_id: hashedId, ...extras } as Record<string, unknown>)
-      })
+      hashSkillId(userId, skillId)
+        .then((hashedId) => {
+          // PostHog's `trackEvent` accepts a generic `Record<string, unknown>`;
+          // our per-event prop shape is the stricter type-checked contract for
+          // *callers* of `useSkillTelemetry`. The widening cast is just to
+          // satisfy that boundary.
+          trackEvent(event, { skill_id: hashedId, ...extras } as Record<string, unknown>)
+        })
+        .catch((err) => {
+          // `crypto.subtle.digest` can reject in insecure contexts (e.g. when
+          // `crypto.subtle` is unavailable). Telemetry is fire-and-forget — we
+          // swallow the rejection so it doesn't surface as an unhandled
+          // promise rejection in browsers or crash Node-based test runners.
+          console.warn('[skills] telemetry hash failed', err)
+        })
     },
     [enabled, userId],
   )

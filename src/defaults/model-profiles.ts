@@ -3,9 +3,11 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 export {
+  defaultModelProfileDeepseekV4Pro,
+  defaultModelProfileGlm51,
   defaultModelProfileGptOss120b,
-  defaultModelProfileOpus47,
-  defaultModelProfileTinfoil,
+  defaultModelProfileKimiK26,
+  defaultModelProfileOpus48,
   defaultModelProfiles,
   hashModelProfile,
 } from './model-profiles/index'

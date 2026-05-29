@@ -4,13 +4,17 @@
 
 import { hashValues } from '@/lib/utils'
 import type { ModelProfile } from '@/types'
+import { defaultModelProfileDeepseekV4Pro } from './deepseek'
+import { defaultModelProfileGlm51 } from './glm'
 import { defaultModelProfileGptOss120b } from './gpt-oss'
-import { defaultModelProfileOpus47 } from './opus'
-import { defaultModelProfileTinfoil } from './tinfoil'
+import { defaultModelProfileKimiK26 } from './kimi'
+import { defaultModelProfileOpus48 } from './opus'
 
+export { defaultModelProfileDeepseekV4Pro } from './deepseek'
+export { defaultModelProfileGlm51 } from './glm'
 export { defaultModelProfileGptOss120b } from './gpt-oss'
-export { defaultModelProfileOpus47 } from './opus'
-export { defaultModelProfileTinfoil } from './tinfoil'
+export { defaultModelProfileKimiK26 } from './kimi'
+export { defaultModelProfileOpus48 } from './opus'
 
 /**
  * Compute hash of user-editable fields for a model profile.
@@ -44,6 +48,8 @@ export const hashModelProfile = (profile: ModelProfile): string =>
 /** All default model profiles for iteration */
 export const defaultModelProfiles: ReadonlyArray<ModelProfile> = [
   defaultModelProfileGptOss120b,
-  defaultModelProfileOpus47,
-  defaultModelProfileTinfoil,
+  defaultModelProfileOpus48,
+  defaultModelProfileDeepseekV4Pro,
+  defaultModelProfileKimiK26,
+  defaultModelProfileGlm51,
 ] as const

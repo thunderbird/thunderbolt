@@ -54,15 +54,14 @@ export const defaultModelGptOss120b: Model = {
 }
 
 /**
- * Opus 4.7 keeps the row id originally assigned to Sonnet 4.5.
- * Reconciliation detects the hash change and upgrades unmodified Sonnet 4.5
- * rows in place; users who edited their Sonnet 4.5 row keep it untouched.
+ * Opus 4.8 reuses the row id originally assigned to Sonnet 4.5 (and inherited by 4.7).
+ * Reconciliation upgrades unmodified rows in place; edited rows survive.
  */
-export const defaultModelOpus47: Model = {
+export const defaultModelOpus48: Model = {
   id: '019af08a-c27b-7074-8aac-95315d1ef3fd',
-  name: 'Opus 4.7',
+  name: 'Opus 4.8',
   provider: 'thunderbolt',
-  model: 'opus-4.7',
+  model: 'opus-4.8',
   isSystem: 1,
   enabled: 1,
   isConfidential: 0,
@@ -79,7 +78,7 @@ export const defaultModelOpus47: Model = {
   userId: null,
 }
 
-export const defaultModelTinfoil: Model = {
+export const defaultModelDeepseekV4Pro: Model = {
   id: '019e70af-e5b2-76d0-9ede-f22d8265bb14',
   name: 'DeepSeek V4 Pro',
   provider: 'tinfoil',
@@ -100,11 +99,56 @@ export const defaultModelTinfoil: Model = {
   userId: null,
 }
 
+export const defaultModelKimiK26: Model = {
+  id: '019e7580-2b0c-77d6-8b99-16a99abe4591',
+  name: 'Kimi K2.6',
+  provider: 'tinfoil',
+  model: 'kimi-k2.6',
+  isSystem: 1,
+  enabled: 1,
+  isConfidential: 1,
+  contextWindow: 131072,
+  toolUsage: 1,
+  startWithReasoning: 0,
+  supportsParallelToolCalls: 0,
+  deletedAt: null,
+  apiKey: null,
+  url: null,
+  defaultHash: null,
+  vendor: 'moonshot',
+  description: 'Confidential chat via Tinfoil',
+  userId: null,
+}
+
+export const defaultModelGlm51: Model = {
+  id: '019e7580-2b0e-719c-a43f-d2b56e7f31b4',
+  name: 'GLM 5.1',
+  provider: 'tinfoil',
+  model: 'glm-5.1',
+  isSystem: 1,
+  enabled: 1,
+  isConfidential: 1,
+  contextWindow: 131072,
+  toolUsage: 1,
+  startWithReasoning: 0,
+  supportsParallelToolCalls: 0,
+  deletedAt: null,
+  apiKey: null,
+  url: null,
+  defaultHash: null,
+  vendor: 'zhipu',
+  description: 'Confidential chat via Tinfoil',
+  userId: null,
+}
+
 /**
- * Array of all default models for iteration
+ * Array of all default models for iteration. Order = display order in the
+ * "Provided" group of the model picker. Reorder freely.
  */
 export const defaultModels: ReadonlyArray<Model> = [
   defaultModelGptOss120b,
-  defaultModelOpus47,
-  defaultModelTinfoil,
+  defaultModelOpus48,
+  defaultModelDeepseekV4Pro,
+  defaultModelKimiK26,
+  defaultModelGlm51,
 ] as const

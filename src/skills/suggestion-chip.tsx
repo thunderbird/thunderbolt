@@ -107,7 +107,17 @@ export const SuggestionChip = ({
             clearLongPress()
             handleOpenChange(true)
           }}
-          className={`h-8 shrink-0 cursor-pointer rounded-full bg-card px-3 text-sm font-normal transition-opacity ${
+          // `h-[var(--touch-height-sm)]` resolves to 40px on mobile, 32px on
+          // desktop — keeps the compact desktop look while meeting the
+          // 40px-min touch target the rest of the app uses on touch devices.
+          //
+          // `select-none` + `[-webkit-touch-callout:none]` suppress the OS
+          // text-selection that fires on long-press on iOS / Android. Without
+          // them the chip's label gets highlighted (and on iOS the system
+          // share/copy callout pops) while our long-press timer is waiting
+          // to open the action menu. Leaving `touch-action` at its default
+          // so the chip strip's horizontal scroll on mobile still works.
+          className={`h-[var(--touch-height-sm)] shrink-0 cursor-pointer select-none rounded-full bg-card px-3 text-sm font-normal transition-opacity [-webkit-touch-callout:none] ${
             dimmed ? 'opacity-40' : ''
           }`}
           aria-label={`Pinned skill /${label}`}
@@ -132,7 +142,7 @@ export const SuggestionChip = ({
             onClick()
             handleOpenChange(false)
           }}
-          className="cursor-pointer"
+          className="min-h-[var(--min-touch-height)] cursor-pointer"
         >
           <Plus />
           Add to chat
@@ -142,7 +152,7 @@ export const SuggestionChip = ({
             onAddInstruction()
             handleOpenChange(false)
           }}
-          className="cursor-pointer"
+          className="min-h-[var(--min-touch-height)] cursor-pointer"
         >
           <File />
           Add instructions to chat
@@ -156,7 +166,7 @@ export const SuggestionChip = ({
             handleOpenChange(false)
             onReorder()
           }}
-          className="cursor-pointer"
+          className="min-h-[var(--min-touch-height)] cursor-pointer"
         >
           <ListOrdered />
           Reorder
@@ -168,7 +178,7 @@ export const SuggestionChip = ({
             handleOpenChange(false)
             onUnpin()
           }}
-          className="cursor-pointer"
+          className="min-h-[var(--min-touch-height)] cursor-pointer"
         >
           <Pin />
           Unpin

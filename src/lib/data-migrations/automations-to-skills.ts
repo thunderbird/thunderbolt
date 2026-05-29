@@ -131,7 +131,9 @@ const migrateOne = async (
     // non-null `deletedAt` would have filtered this row out upstream;
     // this branch covers a row that somehow lost its content without
     // being soft-deleted.)
-    await softDeleteSourceAutomation(db, automation.id)
+    await db.transaction(async (tx) => {
+      await softDeleteSourceAutomation(tx, automation.id)
+    })
     return 'skipped'
   }
 
@@ -155,7 +157,9 @@ const migrateOne = async (
   // path. The customized row will slug-collide with the default skill
   // (skip + log), which is an acceptable trade-off for a tiny edge case.
   if (automation.defaultHash !== null && hashAutomationRow(automation) === automation.defaultHash) {
-    await softDeleteSourceAutomation(db, automation.id)
+    await db.transaction(async (tx) => {
+      await softDeleteSourceAutomation(tx, automation.id)
+    })
     return 'skipped'
   }
 
@@ -171,7 +175,9 @@ const migrateOne = async (
     .where(eq(skillsTable.id, skillId))
     .get()
   if (alreadyMigrated) {
-    await softDeleteSourceAutomation(db, automation.id)
+    await db.transaction(async (tx) => {
+      await softDeleteSourceAutomation(tx, automation.id)
+    })
     return 'skipped'
   }
 

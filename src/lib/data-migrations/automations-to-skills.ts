@@ -125,14 +125,27 @@ const migrateOne = async (
   automation: typeof promptsTable.$inferSelect,
   pinSlot: number | null,
 ): Promise<Outcome> => {
-  if (!automation.title || !automation.prompt) {
-    // No content to migrate — soft-delete the husk (and its triggers) and
+  if (!automation.title && !automation.prompt) {
+    // True husk — both fields empty, nothing recoverable. Soft-delete and
     // move on. (Defensive: the DAL nulls content on soft-delete, so a
     // non-null `deletedAt` would have filtered this row out upstream;
     // this branch covers a row that somehow lost its content without
     // being soft-deleted.)
     await softDeleteSourceAutomation(db, automation.id)
     return 'skipped'
+  }
+
+  if (!automation.title || !automation.prompt) {
+    // One field empty, one populated — destructive paths beyond this point
+    // would null the surviving field via soft-delete. Treat as stranded
+    // (source stays alive, telemetry surfaces it) so we don't silently
+    // discard recoverable content. THU-560's drop-the-table gate sees this
+    // in the `stranded` count.
+    console.warn(
+      `Skipping migration: automation "${automation.id}" has incomplete content ` +
+        `(title=${!!automation.title}, prompt=${!!automation.prompt}); leaving it in place.`,
+    )
+    return 'stranded'
   }
 
   // Unmodified default automation: the equivalent default skill is already

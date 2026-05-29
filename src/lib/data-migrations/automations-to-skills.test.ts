@@ -205,6 +205,52 @@ describe('automationsToSkills', () => {
     expect(orders).toEqual([0, 1, 5, 6])
   })
 
+  it('does not destroy prompt content when only the title is empty', async () => {
+    // User cleared the title field of an existing automation but the prompt
+    // is intact. The migration must NOT route this through the "husk"
+    // soft-delete (which would null the surviving prompt) — it should be
+    // stranded so the user's content stays recoverable in `promptsTable`.
+    await getDb().insert(promptsTable).values({
+      id: 'aut-title-cleared',
+      title: null,
+      prompt: 'This prompt should survive.',
+      modelId: null,
+      deletedAt: null,
+      defaultHash: null,
+      userId: 'user-1',
+    })
+
+    await automationsToSkills.run(getDb())
+
+    const source = await getDb().select().from(promptsTable).where(eq(promptsTable.id, 'aut-title-cleared')).get()
+    expect(source?.deletedAt).toBeNull()
+    expect(source?.prompt).toBe('This prompt should survive.')
+
+    const expectedId = await deriveSkillIdFromAutomationId('aut-title-cleared')
+    const skill = await getDb().select().from(skillsTable).where(eq(skillsTable.id, expectedId)).get()
+    expect(skill).toBeUndefined()
+  })
+
+  it('does not destroy title content when only the prompt is empty', async () => {
+    // Mirror of the previous test for the other axis. Same invariant:
+    // partial content is recoverable and must stay alive.
+    await getDb().insert(promptsTable).values({
+      id: 'aut-prompt-cleared',
+      title: 'A Surviving Title',
+      prompt: null,
+      modelId: null,
+      deletedAt: null,
+      defaultHash: null,
+      userId: 'user-1',
+    })
+
+    await automationsToSkills.run(getDb())
+
+    const source = await getDb().select().from(promptsTable).where(eq(promptsTable.id, 'aut-prompt-cleared')).get()
+    expect(source?.deletedAt).toBeNull()
+    expect(source?.title).toBe('A Surviving Title')
+  })
+
   it('strands automations with non-slugifiable titles (leaves source alive)', async () => {
     // "!!!" produces an empty slug — there's no way to migrate this without
     // a UI to rename. THU-560's drop-the-table gate must not fire while

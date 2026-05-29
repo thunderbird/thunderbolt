@@ -9,6 +9,7 @@
 // arguments — pure dependency injection.
 
 import { describe, expect, it, mock } from 'bun:test'
+import { encodeWsBearer } from '@shared/ws-bearer'
 import { createProxyFetch, createProxyWebSocket } from './proxy-fetch'
 
 describe('createProxyFetch — Hosted mode', () => {
@@ -208,76 +209,39 @@ describe('createProxyFetch — getProxyAuthToken wiring', () => {
 })
 
 describe('createProxyWebSocket', () => {
-  /** Minimal FakeWebSocket sufficient for the deferred wrapper's plumbing. */
+  /** Minimal FakeWebSocket capturing the url + offered subprotocols. */
   class FakeWS {
     static instances: Array<FakeWS> = []
-    readyState = 0 // CONNECTING — the wrapper only flushes sends after `open`
+    readyState = 0
     url: string
     protocols: string[]
-    listeners: Array<{ type: string; listener: (e: Event) => void }> = []
-    closed: { code?: number; reason?: string } | null = null
-    sent: string[] = []
     constructor(u: string, p?: string[]) {
       this.url = u
       this.protocols = p ?? []
       FakeWS.instances.push(this)
     }
-    addEventListener(type: string, listener: (e: Event) => void) {
-      this.listeners.push({ type, listener })
-    }
-    removeEventListener(type: string, listener: (e: Event) => void) {
-      const idx = this.listeners.findIndex((l) => l.type === type && l.listener === listener)
-      if (idx >= 0) {
-        this.listeners.splice(idx, 1)
-      }
-    }
-    send(data: string) {
-      this.sent.push(data)
-    }
-    close(code?: number, reason?: string) {
-      this.closed = { code, reason }
-    }
+    addEventListener() {}
+    removeEventListener() {}
+    send() {}
+    close() {}
   }
 
-  /** Hand-rolled fake HttpClient — only the `.post(...).json()` chain is used. */
-  const fakeHttpClient = (ticket: string) =>
-    ({
-      post: () => ({
-        json: async () => ({ ticket, expiresAt: Date.now() + 30_000 }),
-      }),
-    }) as unknown as import('./http').HttpClient
-
-  it('Hosted: fetches a ticket and includes carrier + ticket + target subprotocols on /proxy/ws', async () => {
+  it('Hosted: includes carrier + bearer + target subprotocols on /proxy/ws', () => {
     FakeWS.instances = []
     const originalWS = globalThis.WebSocket
     globalThis.WebSocket = FakeWS as unknown as typeof WebSocket
     try {
-      let ticketCalls = 0
-      const fetchTicket = async () => {
-        ticketCalls += 1
-        return 'fake-ticket-abc'
-      }
       const factory = createProxyWebSocket({
         cloudUrl: 'http://localhost:8000/v1',
         isStandalone: () => false,
-        httpClient: fakeHttpClient('fake-ticket-abc'),
-        fetchTicket,
+        getAuthToken: () => 'bearer-abc',
       })
       factory('wss://upstream.test/path', ['acp.v1'])
-      // The deferred wrapper kicks the opener on the next microtask; flush it.
-      // Flush microtasks so the deferred wrapper's opener resolves. We don't
-      // use `setTimeout(0)` here — fake timers are installed globally in this
-      // codebase (src/testing-library.ts) and 0ms timers never fire on their
-      // own. A bare `await Promise.resolve()` followed by another microtask
-      // round is enough: opener().then(...) is the only chain we need to drain.
-      await Promise.resolve()
-      await Promise.resolve()
-      expect(ticketCalls).toBe(1)
       expect(FakeWS.instances).toHaveLength(1)
       const real = FakeWS.instances[0]
       expect(real.url).toBe('ws://localhost:8000/v1/proxy/ws')
       expect(real.protocols[0]).toBe('thunderbolt.v1')
-      expect(real.protocols[1]).toBe('thunderbolt.ticket.fake-ticket-abc')
+      expect(real.protocols[1]).toBe(`thunderbolt.bearer.${encodeWsBearer('bearer-abc')}`)
       expect(real.protocols[2]?.startsWith('tbproxy.target.')).toBe(true)
       expect(real.protocols[3]).toBe('acp.v1')
     } finally {
@@ -285,7 +249,7 @@ describe('createProxyWebSocket', () => {
     }
   })
 
-  it('Hosted: queued listeners + sends are replayed once the real socket exists', async () => {
+  it('Hosted: omits the bearer entry when no token is available (still offers carrier + target)', () => {
     FakeWS.instances = []
     const originalWS = globalThis.WebSocket
     globalThis.WebSocket = FakeWS as unknown as typeof WebSocket
@@ -293,102 +257,37 @@ describe('createProxyWebSocket', () => {
       const factory = createProxyWebSocket({
         cloudUrl: 'http://localhost:8000/v1',
         isStandalone: () => false,
-        httpClient: fakeHttpClient('ticket-1'),
-        fetchTicket: async () => 'ticket-1',
+        getAuthToken: () => null,
       })
-      const wrapper = factory('wss://upstream.test/path') as unknown as {
-        addEventListener: (t: string, l: () => void) => void
-        send: (d: string) => void
-      }
-      const onOpen = () => {}
-      wrapper.addEventListener('open', onOpen)
-      wrapper.send('queued-1')
-      // Drain microtasks so the opener resolves and queued listeners replay.
-      for (let i = 0; i < 4; i++) {
-        await Promise.resolve()
-      }
+      factory('wss://upstream.test/path')
+      expect(FakeWS.instances).toHaveLength(1)
       const real = FakeWS.instances[0]
-      // The user 'open' listener should have been replayed onto the real socket.
-      expect(real.listeners.some((l) => l.type === 'open' && l.listener === onOpen)).toBe(true)
-      // Fire every 'open' listener — the wrapper installs an internal flush
-      // listener too, which is what actually pushes the buffered send through.
-      real.readyState = 1
-      for (const l of [...real.listeners].filter((entry) => entry.type === 'open')) {
-        l.listener({ type: 'open' } as Event)
-      }
-      expect(real.sent).toContain('queued-1')
+      expect(real.protocols[0]).toBe('thunderbolt.v1')
+      expect(real.protocols.some((p) => p.startsWith('thunderbolt.bearer.'))).toBe(false)
+      expect(real.protocols.some((p) => p.startsWith('tbproxy.target.'))).toBe(true)
     } finally {
       globalThis.WebSocket = originalWS
     }
   })
 
-  it('Hosted: ticket fetch failure surfaces as an error event on the wrapper', async () => {
+  it('Standalone: connects directly to the target URL with no bearer attached', () => {
     FakeWS.instances = []
     const originalWS = globalThis.WebSocket
     globalThis.WebSocket = FakeWS as unknown as typeof WebSocket
     try {
-      const factory = createProxyWebSocket({
-        cloudUrl: 'http://localhost:8000/v1',
-        isStandalone: () => false,
-        httpClient: fakeHttpClient('ignored'),
-        fetchTicket: async () => {
-          throw new Error('ticket fetch failed')
-        },
-      })
-      const wrapper = factory('wss://upstream.test/path') as unknown as {
-        addEventListener: (t: string, l: (e: { message?: string }) => void) => void
-      }
-      const errors: Array<{ message?: string }> = []
-      wrapper.addEventListener('error', (e) => errors.push(e))
-      // Drain a few microtask rounds — opener rejection schedules a
-      // queueMicrotask which schedules another microtask. Four awaits is
-      // overkill but stable across Bun versions. `setTimeout(0)` is avoided
-      // because fake timers are installed globally (src/testing-library.ts).
-      for (let i = 0; i < 4; i++) {
-        await Promise.resolve()
-      }
-      expect(errors).toHaveLength(1)
-      expect(errors[0].message).toBe('ticket fetch failed')
-      // No real WebSocket should have been constructed.
-      expect(FakeWS.instances).toHaveLength(0)
-    } finally {
-      globalThis.WebSocket = originalWS
-    }
-  })
-
-  it('Hosted: throws synchronously when httpClient is not provided', () => {
-    const originalWS = globalThis.WebSocket
-    globalThis.WebSocket = FakeWS as unknown as typeof WebSocket
-    try {
-      const factory = createProxyWebSocket({
-        cloudUrl: 'http://localhost:8000/v1',
-        isStandalone: () => false,
-        // no httpClient
-      })
-      expect(() => factory('wss://upstream.test/path')).toThrow(/httpClient is required/)
-    } finally {
-      globalThis.WebSocket = originalWS
-    }
-  })
-
-  it('Standalone: connects directly to the target URL with no ticket fetch', () => {
-    FakeWS.instances = []
-    const originalWS = globalThis.WebSocket
-    globalThis.WebSocket = FakeWS as unknown as typeof WebSocket
-    try {
-      let ticketCalls = 0
+      let tokenReads = 0
       const factory = createProxyWebSocket({
         cloudUrl: 'http://localhost:8000/v1',
         isStandalone: () => true,
-        fetchTicket: async () => {
-          ticketCalls += 1
-          return 'never-fetched'
+        getAuthToken: () => {
+          tokenReads += 1
+          return 'never-read'
         },
       })
       factory('wss://upstream.test/path')
       expect(FakeWS.instances).toHaveLength(1)
       expect(FakeWS.instances[0].url).toBe('wss://upstream.test/path')
-      expect(ticketCalls).toBe(0)
+      expect(tokenReads).toBe(0)
     } finally {
       globalThis.WebSocket = originalWS
     }

@@ -4,7 +4,7 @@
 
 import { registerAgentProvider } from '@/agents'
 import type { Auth } from '@/auth/elysia-plugin'
-import { getWsTicketStore, type WsTicketStore } from '@/auth/ws-ticket-store'
+import { authorizeWsBearer } from '@/auth/ws-bearer-auth'
 import { createStandaloneLogger } from '@/config/logger'
 import type { Settings } from '@/config/settings'
 import { safeErrorHandler } from '@/middleware/error-handling'
@@ -14,34 +14,13 @@ import { HaystackAcpServer, type HaystackAcpDeps } from './acp-server'
 import { createHaystackProvider, parsePipelinesEnv } from './provider'
 
 /**
- * Carrier subprotocol the client always advertises alongside the ticket. The
+ * Carrier subprotocol the client always advertises alongside the bearer. The
  * server echoes this back as `Sec-WebSocket-Protocol` so the upgrade
  * completes — RFC 6455 requires the server to pick one of the offered
- * subprotocols. The ticket subprotocol (`thunderbolt.ticket.<nonce>`) is
+ * subprotocols. The bearer subprotocol (`thunderbolt.bearer.<token>`) is
  * *never* echoed back so it doesn't surface to JS via `WebSocket.protocol`.
  */
 const wsCarrierSubprotocol = 'thunderbolt.v1'
-
-/** Ticket subprotocol entries start with this prefix; the rest is the opaque nonce. */
-const wsTicketSubprotocolPrefix = 'thunderbolt.ticket.'
-
-/**
- * Extract the ticket nonce from a comma-separated `Sec-WebSocket-Protocol`
- * value. Returns `null` if no ticket entry is present.
- */
-const extractTicket = (header: string | null): string | null => {
-  if (!header) {
-    return null
-  }
-  for (const raw of header.split(',')) {
-    const entry = raw.trim()
-    if (entry.startsWith(wsTicketSubprotocolPrefix)) {
-      const nonce = entry.slice(wsTicketSubprotocolPrefix.length)
-      return nonce.length > 0 ? nonce : null
-    }
-  }
-  return null
-}
 
 /**
  * Close code emitted when the WebSocket upgrade succeeds but auth fails. We
@@ -60,25 +39,20 @@ const wsCloseUnauthorized = 4001
  *    HMR / repeated test setup is safe).
  *  - Exposes `WS /v1/haystack/ws?pipeline={pipelineId}` for the ACP wire.
  *
- * Auth: single-use ticket carried as a `Sec-WebSocket-Protocol` entry of the
- * form `thunderbolt.ticket.<nonce>`. The ticket is consumed in `open()` (NOT
- * `beforeHandle`) because Elysia/Bun invokes `beforeHandle` more than once per
- * upgrade in some paths, and single-use semantics turn the second invocation
- * into a spurious 4001. `open()` is called exactly once per accepted socket by
- * the Bun WS adapter, mirroring the pattern in `agent-proxy/routes.ts`.
+ * Auth: the signed bearer token carried as a `Sec-WebSocket-Protocol` entry of
+ * the form `thunderbolt.bearer.<token>`. It is validated in `open()` (NOT
+ * `beforeHandle`, which Elysia/Bun invokes more than once per upgrade) via the
+ * same Better Auth path REST uses — HMAC signature check + DB session lookup.
+ * Anonymous users are rejected. `open()` is called exactly once per accepted
+ * socket by the Bun WS adapter.
  *
  * The carrier subprotocol echo happens in the `upgrade` hook, which Elysia
  * runs once per upgrade attempt before `server.upgrade()` and is purely
- * idempotent (sets a response header). The auth-bearing ticket subprotocol is
+ * idempotent (sets a response header). The auth-bearing bearer subprotocol is
  * intentionally NOT echoed so it never lands on `WebSocket.protocol` or in
  * proxy response logs.
  */
-export const createHaystackRoutes = (
-  settings: Settings,
-  auth: Auth,
-  deps?: HaystackAcpDeps,
-  ticketStore: WsTicketStore = getWsTicketStore(),
-) => {
+export const createHaystackRoutes = (settings: Settings, auth: Auth, deps?: HaystackAcpDeps) => {
   registerAgentProvider(createHaystackProvider())
 
   const fetchFn = deps?.fetchFn ?? globalThis.fetch
@@ -152,7 +126,7 @@ export const createHaystackRoutes = (
     .ws('/ws', {
       upgrade({ request, set }) {
         // Echo the carrier subprotocol so strict WS clients (Bun, browsers) see
-        // the offer was accepted. The auth-bearing `thunderbolt.ticket.*`
+        // the offer was accepted. The auth-bearing `thunderbolt.bearer.*`
         // subprotocol is intentionally NOT echoed — keeping it off the response
         // header means it never lands in `WebSocket.protocol` (page JS) or
         // proxy response logs. This hook is idempotent — setting a response
@@ -162,25 +136,21 @@ export const createHaystackRoutes = (
           set.headers['sec-websocket-protocol'] = wsCarrierSubprotocol
         }
       },
-      open(ws) {
+      async open(ws) {
         const log = createStandaloneLogger(settings)
         const data = ws.data as unknown as { request?: Request }
 
-        // Consume the single-use ticket exactly once per accepted socket. Doing
-        // this in `beforeHandle` instead would burn the ticket on the first
-        // invocation and reject the second (Bun's adapter can call beforeHandle
-        // twice on the same upgrade, e.g. during query/header validation).
+        // Validate the bearer exactly once per accepted socket. Doing this in
+        // `beforeHandle` instead is unsafe because Bun's adapter can call it
+        // more than once per upgrade. The bearer rides a subprotocol entry
+        // (browsers can't set `Authorization` on `new WebSocket()`); it is
+        // verified via the same Better Auth path REST uses (HMAC + DB lookup).
         const subprotocolHeader = data.request?.headers.get('sec-websocket-protocol') ?? null
-        const nonce = extractTicket(subprotocolHeader)
-        const consumed = nonce ? ticketStore.consumeTicket(nonce, 'haystack') : null
-        if (!consumed) {
+        const user: User | null = await authorizeWsBearer(auth, subprotocolHeader)
+        if (!user) {
           ws.close(wsCloseUnauthorized, 'unauthorized')
           return
         }
-        // Synthesize a minimal user shape — only `id` and `isAnonymous` are
-        // read downstream. Anonymous users can't mint tickets (the ticket
-        // route returns 403 for them), so this is always a regular user.
-        const user: User = { id: consumed.userId, isAnonymous: false } as User
 
         const url = new URL(data.request?.url ?? 'http://localhost/haystack/ws')
         const pipelineSlug = url.searchParams.get('pipeline')

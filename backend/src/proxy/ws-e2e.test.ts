@@ -3,9 +3,22 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { afterEach, describe, expect, it } from 'bun:test'
+import { createApp } from '@/index'
+import { user as userTable, session as sessionTable } from '@/db/auth-schema'
 import { createTestApp, type TestAppHandle } from '@/test-utils/e2e'
+import { createTestDb } from '@/test-utils/db'
+import { encodeWsBearer } from '@shared/ws-bearer'
+import { createHmac } from 'crypto'
 import { createObservabilityRecorder } from './observability'
 import { wsCloseCodes } from './ws'
+
+const betterAuthSecret = 'better-auth-secret-12345678901234567890'
+
+/** Sign a raw session token the way Better Auth's bearer plugin does. */
+const signToken = (token: string): string => {
+  const sig = createHmac('sha256', betterAuthSecret).update(token).digest('base64')
+  return `${token}.${sig}`
+}
 
 /** Tiny upstream WebSocket echo server backed by Bun.serve. Returns the listening
  *  port and a stop() helper. The upstream behavior is parametrised per test. */
@@ -57,31 +70,15 @@ const localUpstreamWsFactory =
   (_url: string, protocols?: string[]): WebSocket =>
     new WebSocket(`ws://127.0.0.1:${port}`, protocols)
 
-/** Build the Sec-WebSocket-Protocol value: carrier + ticket + target marker + caller protocols.
- *  Passing `null` for the ticket skips the ticket entry (auth-failure tests). */
-const buildProtocols = (target: string, ticket: string | null, callerProtocols: string[] = []): string[] => {
+/** Build the Sec-WebSocket-Protocol value: carrier + bearer + target marker + caller protocols.
+ *  Passing `null` for the bearer skips the bearer entry (auth-failure tests). */
+const buildProtocols = (target: string, bearer: string | null, callerProtocols: string[] = []): string[] => {
   const entries: string[] = ['thunderbolt.v1']
-  if (ticket !== null) {
-    entries.push(`thunderbolt.ticket.${ticket}`)
+  if (bearer !== null) {
+    entries.push(`thunderbolt.bearer.${encodeWsBearer(bearer)}`)
   }
   entries.push(`tbproxy.target.${Buffer.from(target).toString('base64url')}`)
   return [...entries, ...callerProtocols]
-}
-
-/** Mint a single-use proxy-scope WS ticket against the running test app. */
-const mintProxyTicket = async (handle: TestAppHandle): Promise<string> => {
-  const res = await handle.app.handle(
-    new Request('http://localhost/v1/ws-ticket', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${handle.bearerToken}` },
-      body: JSON.stringify({ scope: 'proxy' }),
-    }),
-  )
-  if (!res.ok) {
-    throw new Error(`e2e: ws-ticket mint failed (${res.status}): ${await res.text().catch(() => '')}`)
-  }
-  const body = (await res.json()) as { ticket: string }
-  return body.ticket
 }
 
 /** Spin up an authenticated test app on a real port and return both the proxy
@@ -148,10 +145,9 @@ describe('Universal proxy WebSocket relay /v1/proxy/ws — e2e', () => {
     })
     handles.push(handle)
 
-    const ticket = await mintProxyTicket(handle)
     const client = new WebSocket(
       `ws://127.0.0.1:${proxyPort}/v1/proxy/ws`,
-      buildProtocols('wss://upstream.test/path', ticket, ['acp.v1']),
+      buildProtocols('wss://upstream.test/path', handle.bearerToken, ['acp.v1']),
     )
 
     const messages: string[] = []
@@ -194,10 +190,9 @@ describe('Universal proxy WebSocket relay /v1/proxy/ws — e2e', () => {
     const { handle, proxyPort } = await startProxy({ upstreamWsFactory: upstreamFactory })
     handles.push(handle)
 
-    const ticket = await mintProxyTicket(handle)
     const client = new WebSocket(
       `ws://127.0.0.1:${proxyPort}/v1/proxy/ws`,
-      buildProtocols('wss://upstream.test/', ticket, ['acp.v1']),
+      buildProtocols('wss://upstream.test/', handle.bearerToken, ['acp.v1']),
     )
     client.onopen = () => client.send('please close')
     // Poll for the upstream-side close — Bun's same-process WS doesn't reliably
@@ -225,12 +220,11 @@ describe('Universal proxy WebSocket relay /v1/proxy/ws — e2e', () => {
     })
     handles.push(handle)
 
-    // No tbproxy.target.* entry in protocols (ticket is present but the
+    // No tbproxy.target.* entry in protocols (bearer is present but the
     // beforeHandle target validation rejects with HTTP 400 before open).
-    const ticket = await mintProxyTicket(handle)
     const client = new WebSocket(`ws://127.0.0.1:${proxyPort}/v1/proxy/ws`, [
       'thunderbolt.v1',
-      `thunderbolt.ticket.${ticket}`,
+      `thunderbolt.bearer.${encodeWsBearer(handle.bearerToken)}`,
       'acp.v1',
     ])
     await new Promise<void>((resolve) => {
@@ -250,10 +244,9 @@ describe('Universal proxy WebSocket relay /v1/proxy/ws — e2e', () => {
     handles.push(handle)
 
     // ws:// plaintext target — should be rejected (HTTP 400 pre-upgrade).
-    const ticket = await mintProxyTicket(handle)
     const client = new WebSocket(
       `ws://127.0.0.1:${proxyPort}/v1/proxy/ws`,
-      buildProtocols('ws://upstream.test/', ticket),
+      buildProtocols('ws://upstream.test/', handle.bearerToken),
     )
     const closeEvent = await waitForClose(client)
     // beforeHandle returns 400 → upgrade refused → browser sees the WS handshake fail.
@@ -263,7 +256,7 @@ describe('Universal proxy WebSocket relay /v1/proxy/ws — e2e', () => {
     expect(client.readyState).toBe(WebSocket.CLOSED)
   })
 
-  it('rejects WS upgrade with no ticket subprotocol (4001 close)', async () => {
+  it('rejects WS upgrade with no bearer subprotocol (4001 close)', async () => {
     const upstream = await startUpstreamServer()
     upstreams.push(upstream)
 
@@ -272,7 +265,7 @@ describe('Universal proxy WebSocket relay /v1/proxy/ws — e2e', () => {
     })
     handles.push(handle)
 
-    // No `thunderbolt.ticket.*` entry in protocols — server opens the socket
+    // No `thunderbolt.bearer.*` entry in protocols — server opens the socket
     // (subprotocol validation passes), then closes with 4001 in `open()`.
     const client = new WebSocket(
       `ws://127.0.0.1:${proxyPort}/v1/proxy/ws`,
@@ -282,7 +275,7 @@ describe('Universal proxy WebSocket relay /v1/proxy/ws — e2e', () => {
     expect(closeEvent.code).toBe(4001)
   })
 
-  it('rejects WS upgrade with a ticket minted for a different scope', async () => {
+  it('rejects WS upgrade with an invalid (garbage) bearer (4001 close)', async () => {
     const upstream = await startUpstreamServer()
     upstreams.push(upstream)
 
@@ -291,24 +284,66 @@ describe('Universal proxy WebSocket relay /v1/proxy/ws — e2e', () => {
     })
     handles.push(handle)
 
-    // Mint a haystack-scope ticket; the proxy WS route only accepts 'proxy'.
-    const res = await handle.app.handle(
-      new Request('http://localhost/v1/ws-ticket', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${handle.bearerToken}` },
-        body: JSON.stringify({ scope: 'haystack' }),
-      }),
-    )
-    const haystackTicket = ((await res.json()) as { ticket: string }).ticket
     const client = new WebSocket(
       `ws://127.0.0.1:${proxyPort}/v1/proxy/ws`,
-      buildProtocols('wss://upstream.test/', haystackTicket),
+      buildProtocols('wss://upstream.test/', 'not-a-real.signed-token'),
     )
     const closeEvent = await waitForClose(client)
     expect(closeEvent.code).toBe(4001)
   })
 
-  it('rejects a second connect attempt re-using the same ticket', async () => {
+  it('rejects WS upgrade for an anonymous user even with a validly-signed bearer', async () => {
+    const upstream = await startUpstreamServer()
+    upstreams.push(upstream)
+
+    const { db, cleanup } = await createTestDb()
+    const app = await createApp({
+      database: db,
+      upstreamWsFactory: localUpstreamWsFactory(upstream.port),
+    })
+    await new Promise<void>((resolve) => {
+      app.listen({ port: 0, hostname: '127.0.0.1' }, () => resolve())
+    })
+    const proxyPort = (app as unknown as { server: { port: number } }).server!.port
+    // Reuse the proxy teardown shape so afterEach force-closes connections.
+    handles.push({
+      app: app as unknown as TestAppHandle['app'],
+      db,
+      bearerToken: '',
+      email: '',
+      cleanup,
+    })
+
+    const userId = `anon-${crypto.randomUUID()}`
+    const sessionToken = `anon-session-${crypto.randomUUID()}`
+    const now = new Date()
+    await db.insert(userTable).values({
+      id: userId,
+      name: 'Anon',
+      email: `${userId}@anon.test`,
+      emailVerified: false,
+      isAnonymous: true,
+      createdAt: now,
+      updatedAt: now,
+    })
+    await db.insert(sessionTable).values({
+      id: `anon-session-row-${userId}`,
+      token: sessionToken,
+      expiresAt: new Date(now.getTime() + 60 * 60 * 1000),
+      userId,
+      createdAt: now,
+      updatedAt: now,
+    })
+
+    const client = new WebSocket(
+      `ws://127.0.0.1:${proxyPort}/v1/proxy/ws`,
+      buildProtocols('wss://upstream.test/', signToken(sessionToken)),
+    )
+    const closeEvent = await waitForClose(client)
+    expect(closeEvent.code).toBe(4001)
+  })
+
+  it('echoes back only the carrier subprotocol on a successful upgrade', async () => {
     const upstream = await startUpstreamServer({
       message: (ws, msg) => ws.send(`echo: ${typeof msg === 'string' ? msg : msg.toString('utf-8')}`),
     })
@@ -319,25 +354,18 @@ describe('Universal proxy WebSocket relay /v1/proxy/ws — e2e', () => {
     })
     handles.push(handle)
 
-    const ticket = await mintProxyTicket(handle)
-    // First connect — should succeed.
-    const first = new WebSocket(
+    const client = new WebSocket(
       `ws://127.0.0.1:${proxyPort}/v1/proxy/ws`,
-      buildProtocols('wss://upstream.test/', ticket),
+      buildProtocols('wss://upstream.test/', handle.bearerToken),
     )
     await new Promise<void>((resolve, reject) => {
-      first.addEventListener('open', () => resolve())
-      first.addEventListener('error', () => reject(new Error('first errored')))
+      client.addEventListener('open', () => resolve())
+      client.addEventListener('error', () => reject(new Error('client errored')))
     })
-    first.close()
 
-    // Second connect with the same ticket — server's single-use store rejects.
-    const second = new WebSocket(
-      `ws://127.0.0.1:${proxyPort}/v1/proxy/ws`,
-      buildProtocols('wss://upstream.test/', ticket),
-    )
-    const closeEvent = await waitForClose(second)
-    expect(closeEvent.code).toBe(4001)
+    // The auth-bearing bearer entry is never echoed — JS sees only the carrier.
+    expect(client.protocol).toBe('thunderbolt.v1')
+    client.close()
   })
 })
 
@@ -399,10 +427,9 @@ describe('Universal proxy WS observability — error_type per close path', () =>
     handles.push(observedHandle)
     const observedPort = (observedHandle.app as unknown as { server: { port: number } }).server!.port
 
-    const ticket = await mintProxyTicket(observedHandle)
     const client = new WebSocket(
       `ws://127.0.0.1:${observedPort}/v1/proxy/ws`,
-      buildProtocols('wss://upstream.test/', ticket),
+      buildProtocols('wss://upstream.test/', observedHandle.bearerToken),
     )
 
     await new Promise<void>((resolve) => {
@@ -445,10 +472,9 @@ describe('Universal proxy WS observability — error_type per close path', () =>
     handles.push(observedHandle)
     const observedPort = (observedHandle.app as unknown as { server: { port: number } }).server!.port
 
-    const ticket = await mintProxyTicket(observedHandle)
     const client = new WebSocket(
       `ws://127.0.0.1:${observedPort}/v1/proxy/ws`,
-      buildProtocols('wss://upstream.test/', ticket),
+      buildProtocols('wss://upstream.test/', observedHandle.bearerToken),
     )
 
     await new Promise<void>((resolve) => {
@@ -512,10 +538,9 @@ describe('Universal proxy WS observability — error_type per close path', () =>
     handles.push(observedHandle)
     const observedPort = (observedHandle.app as unknown as { server: { port: number } }).server!.port
 
-    const ticket = await mintProxyTicket(observedHandle)
     const client = new WebSocket(
       `ws://127.0.0.1:${observedPort}/v1/proxy/ws`,
-      buildProtocols('wss://upstream.test/', ticket),
+      buildProtocols('wss://upstream.test/', observedHandle.bearerToken),
     )
     await new Promise<void>((resolve) => {
       client.addEventListener('close', () => resolve())

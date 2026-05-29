@@ -25,17 +25,14 @@ import {
   targetUrlHeader,
   wsTargetPrefix,
 } from '@shared/proxy-protocol'
-import type { HttpClient } from './http'
+import { encodeWsBearer, wsBearerSubprotocolPrefix } from '@shared/ws-bearer'
+import { getAuthToken } from './auth-token'
 import { isTauri } from './platform'
-import { fetchWsTicket } from './ws-ticket'
 
-/** Carrier subprotocol the client always advertises alongside the ticket. The
+/** Carrier subprotocol the client always advertises alongside the bearer. The
  *  proxy WS server echoes this back as `Sec-WebSocket-Protocol` so the upgrade
- *  completes; the ticket entry is consumed server-side and never echoed. */
+ *  completes; the bearer entry is validated server-side and never echoed. */
 const proxyWsCarrierSubprotocol = 'thunderbolt.v1'
-
-/** Prefix for the single-use ticket subprotocol entry. */
-const proxyWsTicketSubprotocolPrefix = 'thunderbolt.ticket.'
 
 const defaultIsStandalone = isTauri
 const defaultReadProxyEnabled = (): string | null =>
@@ -195,178 +192,45 @@ export const createProxyFetch = (options: ProxyFetchOptions): FetchFn => {
 
 /** Build a WebSocket constructor that hides Hosted/Standalone mode from callers.
  *
- *  Hosted: mints a single-use auth ticket via `POST /v1/ws-ticket` (scope
- *  `proxy`), then connects to `${cloudWsUrl}/proxy/ws` with the ticket and
+ *  Hosted: connects to `${cloudWsUrl}/proxy/ws` with the bearer token and
  *  target both encoded as `Sec-WebSocket-Protocol` entries (`thunderbolt.v1`,
- *  `thunderbolt.ticket.<nonce>`, `tbproxy.target.<base64url(url)>`). Browsers
- *  can't attach `Authorization` headers to `new WebSocket()` — the ticket
+ *  `thunderbolt.bearer.<token>`, `tbproxy.target.<base64url(url)>`). Browsers
+ *  can't attach `Authorization` headers to `new WebSocket()` — the bearer
  *  subprotocol is the only handshake-time channel that doesn't leak via
- *  default request logs (URL/Referer do).
+ *  default request logs (URL/Referer do). The server validates the bearer via
+ *  the same signed-bearer path REST uses.
  *
  *  Standalone: returns a real WebSocket to the upstream URL directly.
  *
- *  Returns a *sync* factory `(url, protocols?) => WebSocket-like` so callers
- *  keep the synchronous `(url) => WebSocketLike` contract used by the ACP
- *  transport. The ticket fetch runs inside the returned object's lifecycle —
- *  listeners are queued until the real WebSocket is constructed, then replayed
- *  in order. This mirrors how the native WebSocket starts in `CONNECTING` and
- *  fires `open` asynchronously, so callers that already use event listeners
- *  see no behavioural difference. */
+ *  Returns a *sync* factory `(url, protocols?) => WebSocket` so callers keep
+ *  the synchronous `(url) => WebSocketLike` contract used by the ACP transport.
+ *  The bearer token is read synchronously from local storage, so the real
+ *  WebSocket is constructed inline — no deferred wrapper is needed. */
 export const createProxyWebSocket = (options: {
   cloudUrl: string
   isStandalone?: () => boolean
-  /** Authenticated HttpClient used to mint single-use proxy WS tickets. Required
-   *  for Hosted mode; omitted on Standalone (the standalone branch never hits
-   *  the cloud backend). */
-  httpClient?: HttpClient
-  /** Test seam — production omits and the factory calls `fetchWsTicket`. */
-  fetchTicket?: (httpClient: HttpClient) => Promise<string>
+  /** Test seam — production omits and the factory reads `getAuthToken()`. */
+  getAuthToken?: () => string | null
 }): ((url: string, protocols?: string[]) => WebSocket) => {
   const standaloneCheck = options.isStandalone ?? isTauri
-  const fetcher = options.fetchTicket ?? defaultFetchProxyTicket
+  const readAuthToken = options.getAuthToken ?? getAuthToken
 
   return (url: string, protocols?: string[]): WebSocket => {
     const standalone = standaloneCheck()
     if (standalone) {
       return new WebSocket(url, protocols)
     }
-    if (!options.httpClient) {
-      throw new Error('createProxyWebSocket: httpClient is required for Hosted mode (browser WS ticket auth)')
-    }
     const wsBase = options.cloudUrl.replace(/^http/, 'ws').replace(/\/$/, '')
     const targetSubprotocol = `${wsTargetPrefix}${b64UrlEncode(url)}`
-
-    const opener = async (): Promise<WebSocket> => {
-      const ticket = await fetcher(options.httpClient!)
-      return new WebSocket(`${wsBase}/proxy/ws`, [
-        proxyWsCarrierSubprotocol,
-        `${proxyWsTicketSubprotocolPrefix}${ticket}`,
-        targetSubprotocol,
-        ...(protocols ?? []),
-      ])
-    }
-    return createDeferredWebSocket(opener) as unknown as WebSocket
+    const token = readAuthToken()
+    const authEntries = token ? [`${wsBearerSubprotocolPrefix}${encodeWsBearer(token)}`] : []
+    return new WebSocket(`${wsBase}/proxy/ws`, [
+      proxyWsCarrierSubprotocol,
+      ...authEntries,
+      targetSubprotocol,
+      ...(protocols ?? []),
+    ])
   }
-}
-
-const defaultFetchProxyTicket = (httpClient: HttpClient): Promise<string> => fetchWsTicket('proxy', { httpClient })
-
-/** Minimal subset of the native `WebSocket` event surface the ACP transport
- *  uses. Kept local so this file doesn't depend on the transport package. */
-type DeferredWsListener = (event: Event) => void
-
-/**
- * Synchronous WebSocket-shaped wrapper around an asynchronously-constructed
- * real WebSocket. Listeners registered before the real socket exists are
- * queued and replayed on the real socket once it resolves; `send()` is
- * buffered until then; `close()` either tears down the future socket or
- * fast-aborts the opener. The wrapper surfaces an `error` event if the opener
- * itself rejects (e.g. ticket fetch fails) so the transport's `connectOnce`
- * rejects with a clear message and the SDK surfaces a transport-open error.
- */
-const createDeferredWebSocket = (opener: () => Promise<WebSocket>) => {
-  const queuedListeners: Array<{ type: string; listener: DeferredWsListener }> = []
-  const pendingSends: string[] = []
-  let real: WebSocket | null = null
-  let closeRequest: { code?: number; reason?: string } | null = null
-  let openerError: Error | null = null
-
-  // Eagerly start the opener so the round-trip overlaps with the caller's
-  // listener registration (typical pattern: `factory(url)` then attach
-  // 'open'/'error' listeners on the same tick).
-  void opener().then(
-    (ws) => {
-      real = ws
-      // Replay listeners in registration order.
-      for (const { type, listener } of queuedListeners) {
-        ws.addEventListener(type as never, listener as never)
-      }
-      // Microtask ordering nuance: `new WebSocket(...)` inside the opener may
-      // synchronously schedule its own `queueMicrotask` to fire `open` before
-      // the surrounding `.then(onResolve)` microtask runs (this is what
-      // happens with Bun's test runner + our FakeBrowserSocket). If the inner
-      // socket already reached OPEN before we got here, the queued 'open'
-      // listeners would have missed the event. Synthesize a synchronous fire
-      // so the caller still sees the event exactly once.
-      if (ws.readyState === 1) {
-        const openEvent = { type: 'open' } as unknown as Event
-        for (const { type, listener } of queuedListeners) {
-          if (type === 'open') {
-            listener(openEvent)
-          }
-        }
-      }
-      // Flush queued sends after `open` fires — adding the listener here is
-      // OK because at least the original 'open' listener was replayed above.
-      const flush = () => {
-        for (const data of pendingSends) {
-          ws.send(data)
-        }
-        pendingSends.length = 0
-      }
-      if (ws.readyState === 1) {
-        flush()
-      } else {
-        ws.addEventListener('open', flush, { once: true })
-      }
-      // Propagate a pre-resolve close request.
-      if (closeRequest) {
-        ws.close(closeRequest.code, closeRequest.reason)
-      }
-    },
-    (err) => {
-      openerError = err instanceof Error ? err : new Error(String(err))
-      // Synthesize an error event for any registered error listener so the
-      // transport's `connectOnce` rejects with the same shape it expects from
-      // a real socket-error. Schedule on microtask so the caller has time to
-      // attach the listener after `factory(url)` returns.
-      queueMicrotask(() => {
-        const errorListeners = queuedListeners.filter((l) => l.type === 'error')
-        const event = { type: 'error', message: openerError?.message } as unknown as Event
-        for (const { listener } of errorListeners) {
-          listener(event)
-        }
-      })
-    },
-  )
-
-  const wrapper = {
-    get readyState() {
-      return real ? real.readyState : WebSocket.CONNECTING
-    },
-    send(data: string) {
-      if (real && real.readyState === WebSocket.OPEN) {
-        real.send(data)
-        return
-      }
-      pendingSends.push(data)
-    },
-    close(code?: number, reason?: string) {
-      if (real) {
-        real.close(code, reason)
-        return
-      }
-      closeRequest = { code, reason }
-    },
-    addEventListener(type: string, listener: DeferredWsListener) {
-      if (real) {
-        real.addEventListener(type as never, listener as never)
-        return
-      }
-      queuedListeners.push({ type, listener })
-    },
-    removeEventListener(type: string, listener: DeferredWsListener) {
-      if (real) {
-        real.removeEventListener(type as never, listener as never)
-        return
-      }
-      const idx = queuedListeners.findIndex((l) => l.type === type && l.listener === listener)
-      if (idx >= 0) {
-        queuedListeners.splice(idx, 1)
-      }
-    },
-  }
-  return wrapper
 }
 
 const b64UrlEncode = (text: string): string => {

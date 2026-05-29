@@ -8,36 +8,50 @@
  * port and connects with Bun's WebSocket.
  *
  * Auth contract:
- *  - No ticket in `Sec-WebSocket-Protocol` → close 4001.
- *  - Unknown / already-consumed / wrong-scope ticket → close 4001.
- *  - Valid ticket → ws opens, initialize succeeds, ticket consumed exactly once.
+ *  - No bearer in `Sec-WebSocket-Protocol` → close 4001.
+ *  - Invalid / garbage bearer → close 4001.
+ *  - Anonymous user's bearer → close 4001.
+ *  - Valid bearer → ws opens, initialize succeeds, only `thunderbolt.v1` echoed.
  *
  * The session-cookie fallback that used to live in `beforeHandle` was removed:
  * the production WS client always opens with `credentials: 'omit'`, so the
- * cookie path was dead code. Auth runs in `open()` (not `beforeHandle`) so
- * the single-use ticket isn't burned twice by Bun's adapter calling
- * `beforeHandle` more than once per upgrade.
+ * cookie path was dead code. Auth runs in `open()` (not `beforeHandle`) because
+ * Bun's adapter can call `beforeHandle` more than once per upgrade. The bearer
+ * is validated via the same Better Auth path REST uses (HMAC + DB lookup).
  */
 
-import { session as sessionTable } from '@/db/auth-schema'
-import { createTestApp, type TestAppHandle } from '@/test-utils/e2e'
-import { getWsTicketStore, resetWsTicketStoreSingleton } from '@/auth/ws-ticket-store'
+import { user as userTable, session as sessionTable } from '@/db/auth-schema'
+import { createApp } from '@/index'
+import { createTestApp } from '@/test-utils/e2e'
+import { createTestDb } from '@/test-utils/db'
 import { clearSettingsCache } from '@/config/settings'
+import { encodeWsBearer } from '@shared/ws-bearer'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
-import { eq } from 'drizzle-orm'
+import { createHmac } from 'crypto'
 
-const startApp = async (handle: TestAppHandle): Promise<number> => {
-  await new Promise<void>((resolve) => {
-    handle.app.listen({ port: 0, hostname: '127.0.0.1' }, () => resolve())
-  })
-  const port = (handle.app as unknown as { server: { port: number } }).server!.port
-  return port
+const betterAuthSecret = 'better-auth-secret-12345678901234567890'
+
+/** Sign a raw session token the way Better Auth's bearer plugin does. */
+const signToken = (token: string): string => {
+  const sig = createHmac('sha256', betterAuthSecret).update(token).digest('base64')
+  return `${token}.${sig}`
 }
 
-const closeApp = async (handle: TestAppHandle) => {
-  const stop = handle.app.stop as unknown as (closeActiveConnections?: boolean) => Promise<void> | void
-  await Promise.race([Promise.resolve(stop.call(handle.app, true)), new Promise((r) => setTimeout(r, 500))])
-  await handle.cleanup()
+type RunningApp = {
+  listen: (port: { port: number; hostname?: string }, callback?: () => void) => unknown
+  stop: (closeActiveConnections?: boolean) => Promise<void> | void
+  server: { port: number } | null
+}
+
+const startApp = async (app: RunningApp): Promise<number> => {
+  await new Promise<void>((resolve) => {
+    app.listen({ port: 0, hostname: '127.0.0.1' }, () => resolve())
+  })
+  return app.server!.port
+}
+
+const stopApp = async (app: RunningApp): Promise<void> => {
+  await Promise.race([Promise.resolve(app.stop(true)), new Promise((r) => setTimeout(r, 500))])
 }
 
 /** Wait until the WS observes `close` or `error`, returning the close info. */
@@ -80,6 +94,11 @@ const nextMessage = (ws: WebSocket): Promise<string> =>
     ws.addEventListener('close', onClose)
   })
 
+const bearerProtocols = (bearerToken: string): string[] => [
+  'thunderbolt.v1',
+  `thunderbolt.bearer.${encodeWsBearer(bearerToken)}`,
+]
+
 describe('WS /v1/haystack/ws — auth gating', () => {
   const cleanups: Array<() => Promise<void>> = []
   // Real settings come from `getSettings()` which reads `process.env`. Inject a
@@ -103,7 +122,6 @@ describe('WS /v1/haystack/ws — auth gating', () => {
     for (const cleanup of cleanups.splice(0)) {
       await cleanup()
     }
-    resetWsTicketStoreSingleton()
     if (originalPipelinesEnv === undefined) {
       delete process.env.HAYSTACK_PIPELINES
     } else {
@@ -122,10 +140,13 @@ describe('WS /v1/haystack/ws — auth gating', () => {
     clearSettingsCache()
   })
 
-  it('closes 4001 when no subprotocol (and therefore no ticket) is offered', async () => {
+  it('closes 4001 when no subprotocol (and therefore no bearer) is offered', async () => {
     const handle = await createTestApp()
-    const port = await startApp(handle)
-    cleanups.push(() => closeApp(handle))
+    const port = await startApp(handle.app as unknown as RunningApp)
+    cleanups.push(async () => {
+      await stopApp(handle.app as unknown as RunningApp)
+      await handle.cleanup()
+    })
 
     const client = new WebSocket(`ws://127.0.0.1:${port}/v1/haystack/ws?pipeline=rag`)
     const term = await observeWsTermination(client)
@@ -134,38 +155,87 @@ describe('WS /v1/haystack/ws — auth gating', () => {
     expect([4001, 1006]).toContain(term.code)
   })
 
-  it('closes 4001 when only the carrier subprotocol is offered (no ticket entry)', async () => {
+  it('closes 4001 when only the carrier subprotocol is offered (no bearer entry)', async () => {
     const handle = await createTestApp()
-    const port = await startApp(handle)
-    cleanups.push(() => closeApp(handle))
+    const port = await startApp(handle.app as unknown as RunningApp)
+    cleanups.push(async () => {
+      await stopApp(handle.app as unknown as RunningApp)
+      await handle.cleanup()
+    })
 
     // The server echoes `thunderbolt.v1`, so the upgrade succeeds; auth in
-    // `open()` then rejects because no ticket subprotocol entry was offered.
+    // `open()` then rejects because no bearer subprotocol entry was offered.
     const client = new WebSocket(`ws://127.0.0.1:${port}/v1/haystack/ws?pipeline=rag`, ['thunderbolt.v1'])
     const term = await observeWsTermination(client)
     expect([4001, 1006]).toContain(term.code)
   })
 
-  it('opens the socket and answers initialize when a valid ticket is offered', async () => {
+  it('closes 4001 when the bearer subprotocol contains a garbage token', async () => {
     const handle = await createTestApp()
-    const port = await startApp(handle)
-    cleanups.push(() => closeApp(handle))
+    const port = await startApp(handle.app as unknown as RunningApp)
+    cleanups.push(async () => {
+      await stopApp(handle.app as unknown as RunningApp)
+      await handle.cleanup()
+    })
 
-    // Resolve the user behind the test bearer to mint a real ticket for them.
-    const sessionToken = handle.bearerToken.split('.')[0]
-    const [sessionRow] = await handle.db
-      .select({ userId: sessionTable.userId })
-      .from(sessionTable)
-      .where(eq(sessionTable.token, sessionToken))
-      .limit(1)
-    expect(sessionRow).toBeDefined()
+    const client = new WebSocket(
+      `ws://127.0.0.1:${port}/v1/haystack/ws?pipeline=rag`,
+      bearerProtocols('not-a-real.signed-token'),
+    )
+    const term = await observeWsTermination(client)
+    expect([4001, 1006]).toContain(term.code)
+  })
 
-    const ticket = getWsTicketStore().issueTicket(sessionRow.userId, 'haystack', 30_000)
+  it('closes 4001 for an anonymous user even with a validly-signed bearer', async () => {
+    const { db, cleanup } = await createTestDb()
+    const app = await createApp({ database: db })
+    const port = await startApp(app as unknown as RunningApp)
+    cleanups.push(async () => {
+      await stopApp(app as unknown as RunningApp)
+      await cleanup()
+    })
 
-    const client = new WebSocket(`ws://127.0.0.1:${port}/v1/haystack/ws?pipeline=rag`, [
-      'thunderbolt.v1',
-      `thunderbolt.ticket.${ticket}`,
-    ])
+    const userId = `anon-${crypto.randomUUID()}`
+    const sessionToken = `anon-session-${crypto.randomUUID()}`
+    const now = new Date()
+    await db.insert(userTable).values({
+      id: userId,
+      name: 'Anon',
+      email: `${userId}@anon.test`,
+      emailVerified: false,
+      isAnonymous: true,
+      createdAt: now,
+      updatedAt: now,
+    })
+    await db.insert(sessionTable).values({
+      id: `anon-session-row-${userId}`,
+      token: sessionToken,
+      expiresAt: new Date(now.getTime() + 60 * 60 * 1000),
+      userId,
+      createdAt: now,
+      updatedAt: now,
+    })
+
+    const client = new WebSocket(
+      `ws://127.0.0.1:${port}/v1/haystack/ws?pipeline=rag`,
+      bearerProtocols(signToken(sessionToken)),
+    )
+    const term = await observeWsTermination(client)
+    expect([4001, 1006]).toContain(term.code)
+  })
+
+  it('opens the socket and answers initialize when a valid bearer is offered', async () => {
+    const handle = await createTestApp()
+    const port = await startApp(handle.app as unknown as RunningApp)
+    cleanups.push(async () => {
+      await stopApp(handle.app as unknown as RunningApp)
+      await handle.cleanup()
+    })
+
+    const client = new WebSocket(
+      `ws://127.0.0.1:${port}/v1/haystack/ws?pipeline=rag`,
+      bearerProtocols(handle.bearerToken),
+    )
     await new Promise<void>((resolve, reject) => {
       client.addEventListener('open', () => resolve())
       client.addEventListener('close', () => reject(new Error('closed before open')))
@@ -185,100 +255,20 @@ describe('WS /v1/haystack/ws — auth gating', () => {
     client.close()
   })
 
-  it('consumes the ticket exactly once per upgrade (no double-burn)', async () => {
-    // Regression guard: in earlier versions auth ran in `beforeHandle`, which
-    // Bun's adapter can invoke more than once per upgrade. That burned the
-    // single-use ticket on the first call and then closed 4001 on the second.
-    // Now that the consume lives in `open()` — which fires exactly once per
-    // accepted socket — the store should shrink by exactly 1 per successful
-    // upgrade.
-    const handle = await createTestApp()
-    const port = await startApp(handle)
-    cleanups.push(() => closeApp(handle))
-
-    const sessionToken = handle.bearerToken.split('.')[0]
-    const [sessionRow] = await handle.db
-      .select({ userId: sessionTable.userId })
-      .from(sessionTable)
-      .where(eq(sessionTable.token, sessionToken))
-      .limit(1)
-
-    const store = getWsTicketStore()
-    const ticket = store.issueTicket(sessionRow.userId, 'haystack', 30_000)
-    const sizeBeforeUpgrade = store.size()
-
-    const client = new WebSocket(`ws://127.0.0.1:${port}/v1/haystack/ws?pipeline=rag`, [
-      'thunderbolt.v1',
-      `thunderbolt.ticket.${ticket}`,
-    ])
-    await new Promise<void>((resolve, reject) => {
-      client.addEventListener('open', () => resolve())
-      client.addEventListener('close', () => reject(new Error('closed before open')))
-      client.addEventListener('error', () => reject(new Error('errored before open')))
-    })
-
-    // Exactly one ticket was burned by this upgrade.
-    expect(store.size()).toBe(sizeBeforeUpgrade - 1)
-    client.close()
-  })
-
-  it('closes 4001 when the ticket subprotocol contains a garbage nonce', async () => {
-    const handle = await createTestApp()
-    const port = await startApp(handle)
-    cleanups.push(() => closeApp(handle))
-
-    const client = new WebSocket(`ws://127.0.0.1:${port}/v1/haystack/ws?pipeline=rag`, [
-      'thunderbolt.v1',
-      'thunderbolt.ticket.nope-not-real',
-    ])
-    const term = await observeWsTermination(client)
-    expect([4001, 1006]).toContain(term.code)
-  })
-
   it('closes 4001 when the ?pipeline= slug is not in HAYSTACK_PIPELINES', async () => {
     const handle = await createTestApp()
-    const port = await startApp(handle)
-    cleanups.push(() => closeApp(handle))
+    const port = await startApp(handle.app as unknown as RunningApp)
+    cleanups.push(async () => {
+      await stopApp(handle.app as unknown as RunningApp)
+      await handle.cleanup()
+    })
 
-    const sessionToken = handle.bearerToken.split('.')[0]
-    const [sessionRow] = await handle.db
-      .select({ userId: sessionTable.userId })
-      .from(sessionTable)
-      .where(eq(sessionTable.token, sessionToken))
-      .limit(1)
-    const ticket = getWsTicketStore().issueTicket(sessionRow.userId, 'haystack', 30_000)
-
-    // `rag` is configured in beforeEach; `nope` is not — the route should reject.
-    const client = new WebSocket(`ws://127.0.0.1:${port}/v1/haystack/ws?pipeline=nope`, [
-      'thunderbolt.v1',
-      `thunderbolt.ticket.${ticket}`,
-    ])
-    const term = await observeWsTermination(client)
-    expect([4001, 1006]).toContain(term.code)
-  })
-
-  it('closes 4001 when the ticket was minted for a different scope', async () => {
-    const handle = await createTestApp()
-    const port = await startApp(handle)
-    cleanups.push(() => closeApp(handle))
-
-    const sessionToken = handle.bearerToken.split('.')[0]
-    const [sessionRow] = await handle.db
-      .select({ userId: sessionTable.userId })
-      .from(sessionTable)
-      .where(eq(sessionTable.token, sessionToken))
-      .limit(1)
-    // Bypass the route's body validator by hand-minting against the store
-    // with a scope value the consumer will reject. Cast `as 'haystack'`
-    // is the only way TS lets us pass a literal-typed scope arg today; the
-    // store treats the value opaquely so the mismatch path still exercises.
-    const wrongScope = 'other' as unknown as 'haystack'
-    const ticket = getWsTicketStore().issueTicket(sessionRow.userId, wrongScope, 30_000)
-
-    const client = new WebSocket(`ws://127.0.0.1:${port}/v1/haystack/ws?pipeline=rag`, [
-      'thunderbolt.v1',
-      `thunderbolt.ticket.${ticket}`,
-    ])
+    // `rag` is configured in beforeEach; `nope` is not — the route should reject
+    // even with a valid bearer.
+    const client = new WebSocket(
+      `ws://127.0.0.1:${port}/v1/haystack/ws?pipeline=nope`,
+      bearerProtocols(handle.bearerToken),
+    )
     const term = await observeWsTermination(client)
     expect([4001, 1006]).toContain(term.code)
   })

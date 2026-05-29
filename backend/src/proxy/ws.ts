@@ -2,7 +2,8 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { getWsTicketStore, type WsTicketStore } from '@/auth/ws-ticket-store'
+import type { Auth } from '@/auth/elysia-plugin'
+import { authorizeWsBearer } from '@/auth/ws-bearer-auth'
 import { isPrivateAddress } from '@/utils/url-validation'
 import { Elysia, type AnyElysia } from 'elysia'
 import { noopObservability, type ObservabilityRecorder, type ProxyErrorType } from './observability'
@@ -10,14 +11,11 @@ import { noopObservability, type ObservabilityRecorder, type ProxyErrorType } fr
 const targetPrefix = 'tbproxy.target.'
 
 /**
- * Carrier subprotocol the client advertises alongside the ticket. Echoed back
+ * Carrier subprotocol the client advertises alongside the bearer. Echoed back
  * so RFC 6455 strict clients (browsers, Bun) accept the upgrade. Stripped from
  * caller protocols before forwarding upstream so it never leaks past the relay.
  */
 const wsCarrierSubprotocol = 'thunderbolt.v1'
-
-/** Ticket subprotocol entries start with this prefix; the rest is the opaque nonce. */
-const wsTicketSubprotocolPrefix = 'thunderbolt.ticket.'
 
 /**
  * Close code emitted when the WebSocket upgrade succeeds but auth fails. We
@@ -27,24 +25,6 @@ const wsTicketSubprotocolPrefix = 'thunderbolt.ticket.'
  * network-error toast. Mirrors the Haystack route.
  */
 const wsCloseUnauthorized = 4001
-
-/**
- * Extract the ticket nonce from a comma-separated `Sec-WebSocket-Protocol`
- * value. Returns `null` if no ticket entry is present.
- */
-const extractTicket = (header: string | null): string | null => {
-  if (!header) {
-    return null
-  }
-  for (const raw of header.split(',')) {
-    const entry = raw.trim()
-    if (entry.startsWith(wsTicketSubprotocolPrefix)) {
-      const nonce = entry.slice(wsTicketSubprotocolPrefix.length)
-      return nonce.length > 0 ? nonce : null
-    }
-  }
-  return null
-}
 
 const queueBytes = 256 * 1024
 const queueMessages = 64
@@ -115,8 +95,8 @@ export const parseTargetSubprotocol = (header: string | null): ParsedSubprotocol
     return { ok: false, reason: 'malformed' }
   }
   // Strip *all* tbproxy.* entries — the namespace is reserved for proxy control.
-  // Also strip `thunderbolt.*` (carrier `thunderbolt.v1` and ticket
-  // `thunderbolt.ticket.<nonce>`) — these are server-side auth plumbing and
+  // Also strip `thunderbolt.*` (carrier `thunderbolt.v1` and bearer
+  // `thunderbolt.bearer.<token>`) — these are server-side auth plumbing and
   // must never leak to the upstream handshake.
   const callerProtocols = protocols.filter((p) => !p.startsWith('tbproxy.') && !p.startsWith('thunderbolt.'))
   return {
@@ -242,32 +222,26 @@ const openUpstream = (
  *  can stub the upstream connection.
  *
  *  Auth: browsers can't attach `Authorization` headers or cross-site cookies
- *  to `new WebSocket()`. We use the same ticket-subprotocol pattern as the
- *  Haystack WS route — clients POST `/v1/ws-ticket` with `scope: 'proxy'` over
- *  the authenticated REST channel, then advertise the resulting nonce as
- *  `Sec-WebSocket-Protocol: thunderbolt.ticket.<nonce>`. The ticket is
- *  consumed exactly once inside `open(ws)` (not `beforeHandle` — Elysia/Bun
- *  invokes `beforeHandle` more than once per upgrade in some paths, and
- *  single-use semantics would turn the second invocation into a spurious
- *  4001). The carrier `thunderbolt.v1` is echoed in `upgrade(...)` (idempotent
- *  header set); the ticket entry is never echoed so it doesn't land on
- *  `WebSocket.protocol` or in proxy logs. */
-export const createUniversalProxyWsRoutes = (
-  options: {
-    /** Override the WebSocket constructor used to open the upstream connection.
-     *  Defaults to `globalThis.WebSocket`. Tests inject an in-process stub. */
-    wsFactory?: (url: string, protocols?: string[]) => WebSocket
-    rateLimit?: AnyElysia
-    observability?: ObservabilityRecorder
-    /** Ticket store used to authenticate upgrades. Tests inject an isolated
-     *  store; production uses the module singleton shared with the REST
-     *  ticket-issuance route. */
-    ticketStore?: WsTicketStore
-  } = {},
-) => {
+ *  to `new WebSocket()`. We carry the same signed bearer token the REST channel
+ *  uses as a `Sec-WebSocket-Protocol: thunderbolt.bearer.<token>` entry and
+ *  validate it inside `open(ws)` (not `beforeHandle` — Elysia/Bun invokes
+ *  `beforeHandle` more than once per upgrade in some paths) via the identical
+ *  Better Auth path (HMAC signature + DB session lookup). Anonymous users are
+ *  rejected. The carrier `thunderbolt.v1` is echoed in `upgrade(...)`
+ *  (idempotent header set); the bearer entry is never echoed so it doesn't land
+ *  on `WebSocket.protocol` or in proxy logs. */
+export const createUniversalProxyWsRoutes = (options: {
+  /** Better Auth instance used to validate the bearer subprotocol. */
+  auth: Auth
+  /** Override the WebSocket constructor used to open the upstream connection.
+   *  Defaults to `globalThis.WebSocket`. Tests inject an in-process stub. */
+  wsFactory?: (url: string, protocols?: string[]) => WebSocket
+  rateLimit?: AnyElysia
+  observability?: ObservabilityRecorder
+}) => {
+  const { auth } = options
   const wsFactory = options.wsFactory ?? ((url, protocols) => new WebSocket(url, protocols))
   const observability = options.observability ?? noopObservability
-  const ticketStore = options.ticketStore ?? getWsTicketStore()
 
   const plugin = new Elysia({ name: 'universal-proxy-ws' })
   if (options.rateLimit) {
@@ -314,24 +288,25 @@ export const createUniversalProxyWsRoutes = (
         return `Invalid target URL: ${validated.reason}`
       }
     },
-    open(ws) {
+    async open(ws) {
       const startedAt = performance.now()
       const extras = wsExtras(ws)
       const requestId = crypto.randomUUID()
       let observedClose: { code: number; reason?: string } | null = null
 
-      // Consume the single-use ticket exactly once per accepted socket.
-      // Anonymous users can't mint tickets (the REST route returns 403 for
-      // them), so a successful consume always identifies a regular user.
+      // Validate the bearer exactly once per accepted socket. The bearer rides
+      // a `thunderbolt.bearer.<token>` subprotocol entry (browsers can't set
+      // `Authorization` on `new WebSocket()`); it is verified via the same
+      // Better Auth path REST uses (HMAC + DB lookup). Anonymous users are
+      // rejected — they must never open a proxy WebSocket.
       const data = ws.data as unknown as { request?: Request }
       const subprotocolHeader = data.request?.headers.get('sec-websocket-protocol') ?? null
-      const nonce = extractTicket(subprotocolHeader)
-      const consumed = nonce ? ticketStore.consumeTicket(nonce, 'proxy') : null
-      if (!consumed) {
+      const user = await authorizeWsBearer(auth, subprotocolHeader)
+      if (!user) {
         ws.close(wsCloseUnauthorized, 'unauthorized')
         return
       }
-      const userId = consumed.userId
+      const userId = user.id
 
       const connectArgs = deriveConnectArgs(extras)
       if (!connectArgs) {

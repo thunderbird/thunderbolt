@@ -60,7 +60,5 @@ export const createTestSettings = (overrides: Partial<Settings> = {}): Settings 
   haystackApiKey: '',
   haystackWorkspace: '',
   haystackPipelines: '',
-  wsTicketTtlMs: 30_000,
-  wsTicketMaxActive: 10_000,
   ...overrides,
 })

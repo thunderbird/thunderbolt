@@ -38,23 +38,39 @@ const hashAutomationRow = (row: typeof promptsTable.$inferSelect): string =>
  * automations UX where the user's pinned-equivalents stayed reachable.
  *
  * TODO: delete this whole file once the active-user population converges
- * on `count === 0` events (see THU-560).
+ * on `count === 0 && stranded === 0` events (see THU-560). `count` alone
+ * isn't enough — a user with a slug-colliding automation reports 0
+ * migrated forever, but their source row is still alive in `promptsTable`
+ * and would be lost if THU-560 dropped the table on a count-only signal.
  */
 export const automationsToSkills: DataMigration = {
   id: 'automations-to-skills',
   run: async (db) => {
-    const count = await runOnce(db)
-    // Fire-and-forget telemetry on every run, even when count is 0 — the
-    // zero events are how we know the population has converged before
-    // THU-560 deletes the legacy code.
-    trackEvent('automations_migration_run', { count })
+    const result = await runOnce(db)
+    // Fire-and-forget telemetry on every run, even when both counts are 0 —
+    // the all-zero events are how we know the population has converged
+    // before THU-560 deletes the legacy code. `stranded` covers automations
+    // we couldn't migrate (slug collision or non-slugifiable title) — their
+    // source rows are still alive in `promptsTable` and would be lost if
+    // we dropped the table without addressing them.
+    trackEvent('automations_migration_run', { count: result.migrated, stranded: result.stranded })
   },
 }
 
-const runOnce = async (db: AnyDrizzleDatabase): Promise<number> => {
+type Outcome =
+  /** Source automation soft-deleted; a new skill row was inserted. */
+  | 'migrated'
+  /** Source soft-deleted but no new skill (no-content husk, default-hash match, or already-migrated). */
+  | 'skipped'
+  /** Source still alive in `promptsTable`. THU-560 must not drop the table while this is > 0. */
+  | 'stranded'
+
+type RunResult = { migrated: number; stranded: number }
+
+const runOnce = async (db: AnyDrizzleDatabase): Promise<RunResult> => {
   const automations = await db.select().from(promptsTable).where(isNull(promptsTable.deletedAt))
   if (automations.length === 0) {
-    return 0
+    return { migrated: 0, stranded: 0 }
   }
 
   // Snapshot the current pin slots so we can append migrated skills without
@@ -79,31 +95,36 @@ const runOnce = async (db: AnyDrizzleDatabase): Promise<number> => {
   const sortedAutomations = [...automations].sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0))
 
   let migrated = 0
+  let stranded = 0
   for (const automation of sortedAutomations) {
     const pinSlot = pinnedCount < maxPinnedSkills ? nextPinnedOrder : null
     try {
-      const ok = await migrateOne(db, automation, pinSlot)
-      if (ok) {
+      const outcome = await migrateOne(db, automation, pinSlot)
+      if (outcome === 'migrated') {
         migrated++
         if (pinSlot !== null) {
           nextPinnedOrder++
           pinnedCount++
         }
+      } else if (outcome === 'stranded') {
+        stranded++
       }
     } catch (error) {
       // One bad row shouldn't block the rest. The next launch will try
-      // again.
+      // again. Conservatively count it as stranded so the THU-560 gate
+      // doesn't fire while there's still an un-handled row.
+      stranded++
       console.error('Failed to migrate automation:', automation.id, error)
     }
   }
-  return migrated
+  return { migrated, stranded }
 }
 
 const migrateOne = async (
   db: AnyDrizzleDatabase,
   automation: typeof promptsTable.$inferSelect,
   pinSlot: number | null,
-): Promise<boolean> => {
+): Promise<Outcome> => {
   if (!automation.title || !automation.prompt) {
     // No content to migrate — soft-delete the husk (and its triggers) and
     // move on. (Defensive: the DAL nulls content on soft-delete, so a
@@ -111,7 +132,7 @@ const migrateOne = async (
     // this branch covers a row that somehow lost its content without
     // being soft-deleted.)
     await softDeleteSourceAutomation(db, automation.id)
-    return false
+    return 'skipped'
   }
 
   // Unmodified default automation: the equivalent default skill is already
@@ -122,7 +143,7 @@ const migrateOne = async (
   // (skip + log), which is an acceptable trade-off for a tiny edge case.
   if (automation.defaultHash !== null && hashAutomationRow(automation) === automation.defaultHash) {
     await softDeleteSourceAutomation(db, automation.id)
-    return false
+    return 'skipped'
   }
 
   const skillId = await deriveSkillIdFromAutomationId(automation.id)
@@ -138,18 +159,23 @@ const migrateOne = async (
     .get()
   if (alreadyMigrated) {
     await softDeleteSourceAutomation(db, automation.id)
-    return false
+    return 'skipped'
   }
 
   const slug = slugifySkillName(automation.title)
   if (!slug) {
+    // Stranded: title has no slugifiable characters at all (e.g. "!!!" or
+    // pure CJK). Source stays alive — without a UI to rename it, the user
+    // can't unstick it, but we surface the count in telemetry so the
+    // THU-560 gate doesn't drop the table while these rows exist.
     console.warn(`Skipping migration: automation "${automation.id}" has no slugifiable title.`)
-    return false
+    return 'stranded'
   }
 
   // Slug collision: an existing skill (default seed, user-created, or
   // previously migrated under a different automation id) already owns this
-  // name. Skip — user can rename either side and re-launch.
+  // name. Source stays alive — see the `stranded` outcome above for the
+  // telemetry implications.
   const slugTaken = await db
     .select({ id: skillsTable.id })
     .from(skillsTable)
@@ -159,7 +185,7 @@ const migrateOne = async (
     console.warn(
       `Skipping migration: skill name "${slug}" already taken; leaving automation "${automation.id}" in place.`,
     )
-    return false
+    return 'stranded'
   }
 
   await db.transaction(async (tx) => {
@@ -176,7 +202,7 @@ const migrateOne = async (
     })
     await softDeleteSourceAutomation(tx, automation.id)
   })
-  return true
+  return 'migrated'
 }
 
 /** Soft-delete the source automation and any triggers attached to it. */

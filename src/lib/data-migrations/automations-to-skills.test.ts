@@ -205,6 +205,24 @@ describe('automationsToSkills', () => {
     expect(orders).toEqual([0, 1, 5, 6])
   })
 
+  it('strands automations with non-slugifiable titles (leaves source alive)', async () => {
+    // "!!!" produces an empty slug — there's no way to migrate this without
+    // a UI to rename. THU-560's drop-the-table gate must not fire while
+    // stranded rows still exist, which is why this branch returns
+    // `stranded` for the telemetry counter rather than soft-deleting.
+    await seedAutomation({ id: 'aut-junk', title: '!!!', prompt: 'do something' })
+
+    await automationsToSkills.run(getDb())
+
+    const source = await getDb().select().from(promptsTable).where(eq(promptsTable.id, 'aut-junk')).get()
+    expect(source?.deletedAt).toBeNull()
+    expect(source?.title).toBe('!!!')
+
+    const expectedId = await deriveSkillIdFromAutomationId('aut-junk')
+    const skill = await getDb().select().from(skillsTable).where(eq(skillsTable.id, expectedId)).get()
+    expect(skill).toBeUndefined()
+  })
+
   it('soft-deletes unmodified default-hashed automations without migrating', async () => {
     // Seed an automation that looks like an unmodified default: its
     // defaultHash equals hashAutomationRow(itself).

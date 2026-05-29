@@ -5,11 +5,22 @@
 import { getDb } from '@/db/database'
 import { promptsTable, skillsTable, triggersTable } from '@/db/tables'
 import { resetTestDatabase, setupTestDatabase, teardownTestDatabase } from '@/dal/test-utils'
+import { hashValues } from '@/lib/utils'
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'bun:test'
 import { and, eq, isNotNull, isNull } from 'drizzle-orm'
 
 import { automationsToSkills } from './automations-to-skills'
 import { deriveSkillIdFromAutomationId } from './derive-skill-id'
+
+// Mirrors the private hashAutomationRow helper in automations-to-skills.ts —
+// we duplicate it here so the test verifies the migration's hash contract
+// without coupling to legacy defaults/automations.ts (deleted in THU-560).
+const hashAutomationRow = (row: {
+  title: string | null
+  prompt: string | null
+  modelId: string | null
+  deletedAt: string | null
+}) => hashValues([row.title, row.prompt, row.modelId, row.deletedAt])
 
 beforeAll(async () => {
   await setupTestDatabase()
@@ -150,6 +161,62 @@ describe('automationsToSkills', () => {
       .from(skillsTable)
       .where(and(isNull(skillsTable.deletedAt), isNull(skillsTable.pinnedOrder), isNull(skillsTable.defaultHash)))
     expect(unpinnedMigrated.length).toBe(2)
+  })
+
+  it('soft-deletes unmodified default-hashed automations without migrating', async () => {
+    // Seed an automation that looks like an unmodified default: its
+    // defaultHash equals hashAutomationRow(itself).
+    const defaultRow = {
+      id: 'aut-default-1',
+      title: 'Default Brief',
+      prompt: 'Do the default thing.',
+      modelId: null,
+      deletedAt: null,
+      defaultHash: null as string | null,
+      userId: 'user-1',
+    }
+    defaultRow.defaultHash = hashAutomationRow(defaultRow)
+    await getDb().insert(promptsTable).values(defaultRow)
+
+    await automationsToSkills.run(getDb())
+
+    // No new skill at the derived id (we skipped the migration).
+    const expectedId = await deriveSkillIdFromAutomationId('aut-default-1')
+    const skill = await getDb().select().from(skillsTable).where(eq(skillsTable.id, expectedId)).get()
+    expect(skill).toBeUndefined()
+
+    // Source automation is soft-deleted (equivalent default skill lives in
+    // the skills defaults system).
+    const source = await getDb().select().from(promptsTable).where(eq(promptsTable.id, 'aut-default-1')).get()
+    expect(source?.deletedAt).not.toBeNull()
+    expect(source?.title).toBeNull()
+    expect(source?.prompt).toBeNull()
+  })
+
+  it('migrates a customized default-hashed automation through the normal path', async () => {
+    // A row that was once a default (defaultHash set) but the user has
+    // since edited the prompt — current hash no longer matches defaultHash.
+    const original = {
+      id: 'aut-customized-1',
+      title: 'Edited Brief',
+      prompt: 'Original prompt',
+      modelId: null,
+      deletedAt: null,
+      defaultHash: null as string | null,
+      userId: 'user-1',
+    }
+    original.defaultHash = hashAutomationRow(original)
+    // Mutate the prompt — defaultHash now refers to the original content,
+    // not the current content.
+    const customized = { ...original, prompt: 'User has edited this prompt.' }
+    await getDb().insert(promptsTable).values(customized)
+
+    await automationsToSkills.run(getDb())
+
+    const expectedId = await deriveSkillIdFromAutomationId('aut-customized-1')
+    const skill = await getDb().select().from(skillsTable).where(eq(skillsTable.id, expectedId)).get()
+    expect(skill).toBeDefined()
+    expect(skill?.instruction).toBe('User has edited this prompt.')
   })
 
   it('skips already-soft-deleted automations', async () => {

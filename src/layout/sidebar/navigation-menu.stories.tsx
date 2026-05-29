@@ -15,7 +15,7 @@ const meta = {
     layout: 'padded',
     docs: {
       description: {
-        component: 'Navigation menu items for Tasks, Automations, and Settings.',
+        component: 'Navigation menu items for Tasks and Settings.',
       },
     },
   },
@@ -83,23 +83,6 @@ export const Mobile: Story = {
     docs: {
       description: {
         story: 'Mobile navigation menu - Settings uses onClick instead of NavLink.',
-      },
-    },
-  },
-}
-
-export const OnAutomationsPage: Story = {
-  args: {
-    isMobile: false,
-    currentPath: '/automations',
-    showTasks: true,
-    onCreateNewChat: () => console.log('New chat clicked'),
-    onSettingsClick: () => console.log('Settings clicked'),
-  },
-  parameters: {
-    docs: {
-      description: {
-        story: 'Navigation menu when on the Automations page (active state).',
       },
     },
   },

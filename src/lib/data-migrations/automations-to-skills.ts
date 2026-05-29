@@ -6,11 +6,20 @@ import { maxPinnedSkills } from '@/dal'
 import type { AnyDrizzleDatabase } from '@/db/database-interface'
 import { promptsTable, skillsTable, triggersTable } from '@/db/tables'
 import { trackEvent } from '@/lib/posthog'
-import { nowIso } from '@/lib/utils'
+import { hashValues, nowIso } from '@/lib/utils'
 import { and, eq, isNotNull, isNull } from 'drizzle-orm'
 import type { DataMigration } from './index'
 import { deriveSkillIdFromAutomationId } from './derive-skill-id'
 import { slugifySkillName } from './slugify-skill-name'
+
+/**
+ * Hash the user-editable fields of an automation row. Mirrors the legacy
+ * `defaults/automations.ts::hashPrompt`, but accepts the raw DB row shape
+ * (with nullable modelId). Defined here so this migration has no import
+ * from `@/defaults/automations` — that module disappears with THU-560.
+ */
+const hashAutomationRow = (row: typeof promptsTable.$inferSelect): string =>
+  hashValues([row.title, row.prompt, row.modelId, row.deletedAt])
 
 /**
  * Migrate each non-deleted `prompts` row into a `skills` row, then
@@ -92,6 +101,17 @@ const migrateOne = async (
     // have filtered this row out upstream; this branch covers a row that
     // somehow lost its content without being soft-deleted.)
     await db.update(promptsTable).set({ deletedAt: nowIso() }).where(eq(promptsTable.id, automation.id))
+    return false
+  }
+
+  // Unmodified default automation: the equivalent default skill is already
+  // seeded by reconcileDefaults, so don't create a parallel migrated copy
+  // — just soft-delete the source. If the user has customized the default
+  // (current hash != defaultHash), fall through to the normal migration
+  // path. The customized row will slug-collide with the default skill
+  // (skip + log), which is an acceptable trade-off for a tiny edge case.
+  if (automation.defaultHash !== null && hashAutomationRow(automation) === automation.defaultHash) {
+    await softDeleteSourceAutomation(db, automation.id)
     return false
   }
 

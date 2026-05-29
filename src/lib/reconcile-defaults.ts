@@ -7,16 +7,7 @@ import { createSetting } from '@/dal'
 import { eq } from 'drizzle-orm'
 import type { SQLiteTableWithColumns } from 'drizzle-orm/sqlite-core'
 import { v7 as uuidv7 } from 'uuid'
-import {
-  modelProfilesTable,
-  modelsTable,
-  modesTable,
-  promptsTable,
-  settingsTable,
-  skillsTable,
-  tasksTable,
-} from '../db/tables'
-import { defaultAutomations, hashPrompt } from '../defaults/automations'
+import { modelProfilesTable, modelsTable, modesTable, settingsTable, skillsTable, tasksTable } from '../db/tables'
 import { defaultModelProfiles, hashModelProfile } from '../defaults/model-profiles'
 import { defaultModes, hashMode } from '../defaults/modes'
 import { defaultModels, hashModel } from '../defaults/models'
@@ -102,10 +93,8 @@ export const reconcileDefaults = async (db: AnyDrizzleDatabase) => {
     // Tasks
     await reconcileDefaultsForTable(tx, tasksTable, defaultTasks, hashTask)
 
-    // Automations (Prompts)
-    await reconcileDefaultsForTable(tx, promptsTable, defaultAutomations, hashPrompt)
-
-    // Skills
+    // Skills (the default skills supersede the legacy default automations,
+    // which used to seed promptsTable here. See THU-547.)
     await reconcileDefaultsForTable(tx, skillsTable, defaultSkills, hashSkill)
 
     // Settings

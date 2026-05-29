@@ -16,6 +16,8 @@ const settingsSchema = z
     exaApiKey: z.string().default(''),
     thunderboltInferenceUrl: z.string().default(''),
     thunderboltInferenceApiKey: z.string().default(''),
+    tinfoilApiKey: z.string().default(''),
+    tinfoilEnclaveUrl: z.string().default('https://inference.tinfoil.sh'),
 
     // Health Check Configuration
     monitoringToken: z.string().default(''),
@@ -128,6 +130,8 @@ const parseSettings = (): Settings => {
     exaApiKey: process.env.EXA_API_KEY || '',
     thunderboltInferenceUrl: process.env.THUNDERBOLT_INFERENCE_URL || '',
     thunderboltInferenceApiKey: process.env.THUNDERBOLT_INFERENCE_API_KEY || '',
+    tinfoilApiKey: process.env.TINFOIL_API_KEY || '',
+    tinfoilEnclaveUrl: process.env.TINFOIL_ENCLAVE_URL || 'https://inference.tinfoil.sh',
     monitoringToken: process.env.MONITORING_TOKEN || '',
     googleClientId: process.env.GOOGLE_CLIENT_ID || '',
     googleClientSecret: process.env.GOOGLE_CLIENT_SECRET || '',

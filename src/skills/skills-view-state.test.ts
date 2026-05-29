@@ -49,6 +49,22 @@ describe('skillsViewReducer', () => {
       expect(next.mode).toBe('edit')
       expect(next.activeId).toBe('b')
     })
+
+    it('START_CREATE without initialName leaves createInitialName null', () => {
+      const next = skillsViewReducer(initialSkillsViewState, { type: 'START_CREATE' })
+      expect(next.createInitialName).toBeNull()
+    })
+
+    it('START_CREATE with initialName stores it for the form', () => {
+      const next = skillsViewReducer(initialSkillsViewState, { type: 'START_CREATE', initialName: 'meeting-notes' })
+      expect(next.mode).toBe('create')
+      expect(next.createInitialName).toBe('meeting-notes')
+    })
+
+    it('START_CREATE bumps resetSignal so the form re-mounts on back-to-back deep links', () => {
+      const next = skillsViewReducer({ ...initialSkillsViewState, resetSignal: 4 }, { type: 'START_CREATE' })
+      expect(next.resetSignal).toBe(5)
+    })
   })
 
   describe('REQUEST_LEAVE / CANCEL_DISCARD', () => {
@@ -87,6 +103,16 @@ describe('skillsViewReducer', () => {
       expect(next.nameError).toBeNull()
       expect(next.resetSignal).toBe(4)
       expect(next.pendingLeave).toBeNull()
+    })
+
+    it('clears createInitialName so the next START_CREATE starts blank again', () => {
+      const editing: SkillsViewState = {
+        ...initialSkillsViewState,
+        mode: 'create',
+        createInitialName: 'meeting-notes',
+      }
+      const next = skillsViewReducer(editing, { type: 'PERFORM_LEAVE', leave: { type: 'cancel' }, isMobile: false })
+      expect(next.createInitialName).toBeNull()
     })
 
     it('on mobile cancel, also slides back to the list', () => {
@@ -194,20 +220,22 @@ describe('skillsViewReducer', () => {
       expect(next.nameError).toBeNull()
       expect(next.resetSignal).toBe(2)
     })
+
+    it('SUBMIT_SUCCESS clears createInitialName so subsequent creates start blank', () => {
+      const creating: SkillsViewState = {
+        ...initialSkillsViewState,
+        mode: 'create',
+        createInitialName: 'meeting-notes',
+      }
+      const next = skillsViewReducer(creating, { type: 'SUBMIT_SUCCESS', activeId: 'new-id' })
+      expect(next.createInitialName).toBeNull()
+    })
   })
 
   describe('error states', () => {
-    it('SET_NAME_ERROR / SET_PIN_ERROR / CLEAR_PIN_ERROR', () => {
-      const withName = skillsViewReducer(initialSkillsViewState, { type: 'SET_NAME_ERROR', message: 'bad name' })
-      expect(withName.nameError).toBe('bad name')
-
-      const withPin = skillsViewReducer(withName, { type: 'SET_PIN_ERROR', message: '11th pin' })
-      expect(withPin.pinError).toBe('11th pin')
-
-      const cleared = skillsViewReducer(withPin, { type: 'CLEAR_PIN_ERROR' })
-      expect(cleared.pinError).toBeNull()
-      // Name error should NOT be cleared by the pin-error timer.
-      expect(cleared.nameError).toBe('bad name')
+    it('SET_NAME_ERROR stores the message', () => {
+      const next = skillsViewReducer(initialSkillsViewState, { type: 'SET_NAME_ERROR', message: 'bad name' })
+      expect(next.nameError).toBe('bad name')
     })
 
     it('CLEAR_NAME_ERROR drops a stale name error', () => {

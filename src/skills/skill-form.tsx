@@ -3,7 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { Info } from 'lucide-react'
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -57,6 +57,17 @@ export const SkillForm = ({
   const [name, setName] = useState(initialName)
   const [description, setDescription] = useState(initialDescription)
   const [instruction, setInstruction] = useState(initialInstruction)
+
+  // Auto-focus the name input on mount for `create` mode — the user just
+  // clicked "+", they're about to type a name. Edit mode skips this so we
+  // don't steal focus from a user who clicked into a specific skill to
+  // change one field.
+  const nameInputRef = useRef<HTMLInputElement>(null)
+  useEffect(() => {
+    if (mode === 'create') {
+      nameInputRef.current?.focus()
+    }
+  }, [mode])
 
   // Surface AgentSkills-spec violations inline as soon as the user has typed
   // something, but don't shout at an empty initial state. Validate against the
@@ -143,21 +154,15 @@ export const SkillForm = ({
             </span>
             <Input
               id="skill-name"
-              placeholder="meeting-notes"
+              ref={nameInputRef}
+              placeholder="daily-brief"
               value={name}
               onChange={(e) => handleNameChange(e.target.value)}
               className="h-9 pl-7"
-              aria-describedby="skill-name-help"
               aria-invalid={localNameError || nameError ? true : undefined}
             />
           </div>
-          {localNameError || nameError ? (
-            <p className="text-sm text-destructive">{localNameError ?? nameError}</p>
-          ) : (
-            <p id="skill-name-help" className="text-sm text-muted-foreground">
-              Lowercase letters, numbers, and hyphens. 1–64 characters.
-            </p>
-          )}
+          {(localNameError || nameError) && <p className="text-sm text-destructive">{localNameError ?? nameError}</p>}
         </div>
 
         <div className="flex flex-col gap-2">
@@ -181,7 +186,7 @@ export const SkillForm = ({
           <Textarea
             id="skill-description"
             rows={3}
-            placeholder="Use when the user shares raw meeting notes or a transcript and wants it cleaned up, summarized, or turned into action items."
+            placeholder="When to use this skill…"
             value={description}
             onChange={(e) => handleDescriptionChange(e.target.value)}
           />
@@ -193,7 +198,7 @@ export const SkillForm = ({
           </label>
           <Textarea
             id="skill-instruction"
-            placeholder={`Pull out three things from the notes: decisions made, action items (who does what by when), and open questions.\n\nDon't add a summary paragraph – just the lists. Then ask if they want help sending it to anyone.`}
+            placeholder="What the assistant should do…"
             value={instruction}
             onChange={(e) => handleInstructionChange(e.target.value)}
             className="min-h-0 flex-1 resize-none"

@@ -51,23 +51,6 @@ jobs:
         run: |
           echo "version=v$INPUT_VERSION" >> $GITHUB_OUTPUT
 
-      - name: Create GitHub Release (Stable)
-        if: ${{ !inputs.nightly }}
-        uses: softprops/action-gh-release@de2c0eb89ae2a093876385947365aca7b0e5f844 # v1
-        with:
-          tag_name: v${{ inputs.version }}
-          name: Release v${{ inputs.version }}
-          draft: true
-          prerelease: true
-          body: |
-            ## Release Candidate v${{ inputs.version }}
-
-            This is a release candidate. The final release will be created after successful builds.
-
-            ### Downloads
-
-            Binaries will be attached to this release after successful builds.
-
       - name: Create GitHub Release (Nightly)
         if: ${{ inputs.nightly }}
         uses: softprops/action-gh-release@de2c0eb89ae2a093876385947365aca7b0e5f844 # v1
@@ -375,64 +358,17 @@ jobs:
   publish:
     name: Publish Release
     needs: [draft, build]
+    # Run as long as the draft job succeeded, even if some builds failed.
+    if: ${{ !cancelled() && needs.draft.result == 'success' }}
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
-        with:
-          ref: v${{ inputs.version }}
-          fetch-depth: 0
-
-      - name: Publish GitHub Release (Stable)
-        if: ${{ !inputs.nightly }}
-        uses: softprops/action-gh-release@de2c0eb89ae2a093876385947365aca7b0e5f844 # v1
-        with:
-          tag_name: v${{ inputs.version }}
-          draft: false
-          prerelease: false
-          name: Release v${{ inputs.version }}
-          body: |
-            ## Release v${{ inputs.version }}
-
-            ### Downloads
-
-            Download the appropriate installer for your platform below.
-
-            - **Windows**: `.msi` or `.exe` installer
-            - **macOS**: `.dmg` installer (Intel and Apple Silicon)
-            - **Linux**: `.AppImage`, `.deb`, or `.rpm` package
-
-            ### Release Notes
-
-            _Add your release notes here_
-
-            ---
-
-            **Note:** iOS builds are deployed separately via the iOS Release workflow.
-
-      - name: Publish GitHub Release (Nightly)
-        if: ${{ inputs.nightly }}
-        uses: softprops/action-gh-release@de2c0eb89ae2a093876385947365aca7b0e5f844 # v1
-        with:
-          tag_name: v${{ inputs.version }}
-          draft: false
-          prerelease: true
-          name: Nightly Build v${{ inputs.version }}
-          body: |
-            ## Nightly Build v${{ inputs.version }}
-
-            **Warning:** This is an automated nightly build and may be unstable. Use at your own risk.
-
-            ### Downloads
-
-            Download the appropriate installer for your platform below.
-
-            - **Windows**: `.msi` or `.exe` installer
-            - **macOS**: `.dmg` installer (Intel and Apple Silicon)
-            - **Linux**: `.AppImage`, `.deb`, or `.rpm` package
-
-            ---
-
-            For stable releases, please visit the [latest release](../../releases/latest).
+      - name: Publish GitHub Release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PRERELEASE: ${{ inputs.nightly }}
+          RELEASE_VERSION: ${{ inputs.version }}
+        run: |
+          gh release edit "v${RELEASE_VERSION}" --draft=false --prerelease="${PRERELEASE}"
 
       # Publish release on CrabNebula Cloud for auto-updates (skip for nightly to prevent unstable auto-updates)
       - name: Publish to CrabNebula Cloud

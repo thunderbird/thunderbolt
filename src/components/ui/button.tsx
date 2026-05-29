@@ -26,8 +26,12 @@ const buttonVariants = cva(
       size: {
         default: 'h-[var(--touch-height-default)] px-4 py-2 has-[>svg]:px-3',
         sm: 'h-[var(--touch-height-sm)] gap-1.5 px-3 has-[>svg]:px-2',
+        xs: 'h-7 gap-1 px-2 text-[length:var(--font-size-xs)] has-[>svg]:px-1.5',
         lg: 'h-[var(--touch-height-lg)] px-6 has-[>svg]:px-4',
         icon: 'size-[var(--touch-height-default)]',
+        'icon-sm': 'size-[var(--touch-height-sm)]',
+        'icon-lg': 'size-[var(--touch-height-lg)]',
+        'icon-xs': 'size-7',
       },
     },
     defaultVariants: {

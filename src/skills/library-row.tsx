@@ -3,7 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { m } from 'framer-motion'
-import { MoreHorizontal, Pin, PinOff, Play, SquarePen, Trash2 } from 'lucide-react'
+import { MoreHorizontal, Plus, SquarePen, Trash2 } from 'lucide-react'
 import { useNavigate } from 'react-router'
 
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
@@ -11,42 +11,47 @@ import { Switch } from '@/components/ui/switch'
 import type { Skill } from '@/types'
 
 /**
- * Row used in the Enabled and Disabled library sections.
+ * Shared spring transition for the row's own layout shift AND for the
+ * surrounding `<m.ul>` / `<m.div>` wrappers in `SkillsList`. They all
+ * animate in lockstep — without the shared delay the wrappers would
+ * reflow immediately and the Disabled header would slide up underneath
+ * the row that's still frozen mid-toggle.
+ */
+export const skillRowTransition = { type: 'spring', damping: 32, stiffness: 220, mass: 0.85, delay: 0.3 } as const
+
+/**
+ * Row used in the Enabled and Disabled sections of `/settings/skills`.
  * Wrapped in `m.li layoutId={skill.id}` so framer-motion animates the row's
  * move between sections when the user toggles enabled state — the row
  * unmounts from one `<ul>` and remounts in the other, and the shared
  * layoutId carries position state across the transition.
  *
- * Pinned rows live in `pinned-section.tsx` and use dnd-kit's transform for
- * drag-reorder, which doesn't compose cleanly with layout animations, so
- * pinned <-> library transitions don't animate. That's acceptable —
- * enable/disable is the high-frequency interaction.
+ * The animation has a deliberate ~1.2s delay so the row doesn't jump out
+ * from under the user's cursor the instant they toggle the switch — they
+ * have a moment to register the state change in place before the row
+ * settles into its new section.
  */
 export const LibraryRow = ({
   skill,
   enabled,
-  isPinned,
   isActive,
   onSelect,
   onToggleEnabled,
-  onTogglePin,
   onEdit,
   onDelete,
 }: {
   skill: Skill
   enabled: boolean
-  isPinned: boolean
   isActive: boolean
   onSelect: (id: string) => void
   onToggleEnabled: (id: string, next: boolean) => void
-  onTogglePin: (id: string) => void
   onEdit: (id: string) => void
   onDelete: (id: string) => void
 }) => {
   const navigate = useNavigate()
 
   return (
-    <m.li layout layoutId={skill.id} transition={{ type: 'spring', damping: 28, stiffness: 380, mass: 0.6 }}>
+    <m.li layout layoutId={skill.id} transition={skillRowTransition}>
       <div
         role="button"
         tabIndex={0}
@@ -62,14 +67,21 @@ export const LibraryRow = ({
         } ${isActive ? 'bg-accent' : 'hover:bg-accent'}`}
       >
         <span className="flex min-w-0 flex-1 items-center gap-2.5">
-          <span className="shrink-0" onClick={(e) => e.stopPropagation()} onKeyDown={(e) => e.stopPropagation()}>
+          {/* `inline-flex items-center` here keeps the Switch optically
+              centered with the name's text baseline — without it the toggle
+              renders flush to the top of the row's content-box. */}
+          <span
+            className="inline-flex shrink-0 items-center"
+            onClick={(e) => e.stopPropagation()}
+            onKeyDown={(e) => e.stopPropagation()}
+          >
             <Switch
               checked={enabled}
               onCheckedChange={(next) => onToggleEnabled(skill.id, next)}
               aria-label={enabled ? `Disable /${skill.name}` : `Enable /${skill.name}`}
             />
           </span>
-          <span className="truncate">/{skill.name}</span>
+          <span className="truncate leading-none">/{skill.name}</span>
         </span>
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
@@ -86,16 +98,6 @@ export const LibraryRow = ({
             <DropdownMenuItem
               onClick={(e) => {
                 e.stopPropagation()
-                onTogglePin(skill.id)
-              }}
-              className="cursor-pointer"
-            >
-              {isPinned ? <PinOff /> : <Pin />}
-              {isPinned ? 'Unpin' : 'Pin'}
-            </DropdownMenuItem>
-            <DropdownMenuItem
-              onClick={(e) => {
-                e.stopPropagation()
                 onEdit(skill.id)
               }}
               className="cursor-pointer"
@@ -106,12 +108,15 @@ export const LibraryRow = ({
             <DropdownMenuItem
               onClick={(e) => {
                 e.stopPropagation()
-                navigate('/', { state: { runSkill: skill.name } })
+                // Navigate to /chats/new directly — the `/` index route does
+                // `<Navigate to="/chats/new" replace />` which does NOT forward
+                // `location.state`, so a `state` payload sent to `/` is lost.
+                navigate('/chats/new', { state: { runSkill: skill.name } })
               }}
               className="cursor-pointer"
             >
-              <Play />
-              Run in chat
+              <Plus />
+              Add to chat
             </DropdownMenuItem>
             <DropdownMenuItem
               onClick={(e) => {

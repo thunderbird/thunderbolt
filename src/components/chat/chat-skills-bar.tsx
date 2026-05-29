@@ -81,12 +81,17 @@ export const ChatSkillsBar = ({
         {showOverlay && <MobileOverlay onDismiss={dismissOverlay} />}
         <ReorderPanel
           pinned={pinned}
-          onReorder={(ids, move) => {
+          onReorder={async (ids, move) => {
             // `move` comes from dnd-kit's `active.id` / index lookup — unambiguous
             // even for adjacent swaps, where a diff-based heuristic can't tell
-            // which side the user actually dragged.
-            trackSkillEvent('skill_reordered', move.id, { from_index: move.from, to_index: move.to })
-            void reorderPins(ids)
+            // which side the user actually dragged. Await the mutation before
+            // firing telemetry so a rejection doesn't record a phantom event.
+            try {
+              await reorderPins(ids)
+              trackSkillEvent('skill_reordered', move.id, { from_index: move.from, to_index: move.to })
+            } catch (error) {
+              console.warn('reorderPins failed:', error)
+            }
           }}
           onClose={() => setReorderMode(false)}
         />
@@ -130,9 +135,15 @@ export const ChatSkillsBar = ({
             onOpenChange={(open) => setOpenChipId(open ? skill.id : null)}
             onAddInstruction={() => onAddInstruction(skill.instruction)}
             onReorder={() => setReorderMode(true)}
-            onUnpin={() => {
-              trackSkillEvent('skill_unpinned', skill.id, {})
-              void togglePin(skill.id)
+            onUnpin={async () => {
+              // Telemetry only fires after the mutation settles, so a rejection
+              // doesn't record an action the user didn't actually complete.
+              try {
+                await togglePin(skill.id)
+                trackSkillEvent('skill_unpinned', skill.id, {})
+              } catch (error) {
+                console.warn('togglePin failed:', error)
+              }
             }}
           />
         ))}
@@ -161,10 +172,18 @@ export const ChatSkillsBar = ({
                 <li key={skill.id}>
                   <button
                     type="button"
-                    onClick={() => {
-                      trackSkillEvent('skill_pinned', skill.id, {})
-                      void togglePin(skill.id).catch((error) => console.warn('togglePin failed:', error))
+                    onClick={async () => {
+                      // Close the popover synchronously so it doesn't sit open
+                      // while the mutation lands. Telemetry fires after the
+                      // mutation settles so we never report a phantom pin if
+                      // togglePin races past the cap guard.
                       setAddOpen(false)
+                      try {
+                        await togglePin(skill.id)
+                        trackSkillEvent('skill_pinned', skill.id, {})
+                      } catch (error) {
+                        console.warn('togglePin failed:', error)
+                      }
                     }}
                     className="flex w-full cursor-pointer flex-col gap-0.5 rounded-md px-2 py-1.5 text-left transition-colors hover:bg-accent"
                   >

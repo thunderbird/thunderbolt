@@ -88,8 +88,47 @@ export const reconcileDefaultsForTable = async <T extends { defaultHash: string 
   }
 }
 
+/**
+ * Soft-delete legacy system defaults whose hash still matches the original.
+ * Edited rows survive. Compute hashes with `hashValues([...])` against the
+ * legacy field order when adding entries.
+ */
+const removedDefaults: ReadonlyArray<{ modelId: string; modelHash: string; profileHash: string }> = [
+  {
+    // Mistral Medium 3.1 (removed in THU-545)
+    modelId: '019af08a-9836-783d-ab56-39b9fec48af1',
+    modelHash: '-3zuuqs',
+    profileHash: 'ytmc3a',
+  },
+]
+
+export const cleanupRemovedDefaults = async (db: AnyDrizzleDatabase) => {
+  const nowIso = new Date().toISOString()
+  for (const removed of removedDefaults) {
+    const model = await db.select().from(modelsTable).where(eq(modelsTable.id, removed.modelId)).get()
+    if (model && !model.deletedAt && model.defaultHash === removed.modelHash) {
+      await db.update(modelsTable).set({ deletedAt: nowIso }).where(eq(modelsTable.id, removed.modelId))
+    }
+
+    const profile = await db
+      .select()
+      .from(modelProfilesTable)
+      .where(eq(modelProfilesTable.modelId, removed.modelId))
+      .get()
+    if (profile && !profile.deletedAt && profile.defaultHash === removed.profileHash) {
+      await db
+        .update(modelProfilesTable)
+        .set({ deletedAt: nowIso })
+        .where(eq(modelProfilesTable.modelId, removed.modelId))
+    }
+  }
+}
+
 export const reconcileDefaults = async (db: AnyDrizzleDatabase) => {
   await db.transaction(async (tx) => {
+    // Soft-delete removed system defaults before reconciling current ones.
+    await cleanupRemovedDefaults(tx)
+
     // AI models
     await reconcileDefaultsForTable(tx, modelsTable, defaultModels, hashModel)
 

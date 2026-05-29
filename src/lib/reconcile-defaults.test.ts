@@ -7,13 +7,17 @@ import { resetTestDatabase, setupTestDatabase, teardownTestDatabase } from '@/da
 import { getDb } from '@/db/database'
 import { afterAll, afterEach, beforeAll, describe, expect, test } from 'bun:test'
 import { eq } from 'drizzle-orm'
-import { modelsTable, promptsTable, settingsTable } from '../db/tables'
+import { modelProfilesTable, modelsTable, promptsTable, settingsTable } from '../db/tables'
 import { defaultAutomations, hashPrompt } from '../defaults/automations'
 import { defaultModels, hashModel } from '../defaults/models'
 import { defaultSettings, hashSetting } from '../defaults/settings'
 import { nowIso } from './utils'
-import { reconcileDefaultsForTable } from './reconcile-defaults'
+import { cleanupRemovedDefaults, reconcileDefaultsForTable } from './reconcile-defaults'
 import type { Model, Prompt } from '@/types'
+
+const legacyMistralId = '019af08a-9836-783d-ab56-39b9fec48af1'
+const legacyMistralModelHash = '-3zuuqs'
+const legacyMistralProfileHash = 'ytmc3a'
 
 beforeAll(async () => {
   await setupTestDatabase()
@@ -132,6 +136,114 @@ describe('seedModels', () => {
     const modelsAfterReseed = await getAllModels(getDb())
     expect(modelsAfterReseed.length).toBe(defaultModels.length - 1)
     expect(modelsAfterReseed.find((m) => m.id === defaultModels[0].id)).toBeUndefined()
+  })
+})
+
+describe('cleanupRemovedDefaults', () => {
+  test('soft-deletes legacy Mistral model + profile when hashes match', async () => {
+    const db = getDb()
+    await db.insert(modelsTable).values({
+      id: legacyMistralId,
+      name: 'Mistral Medium 3.1',
+      provider: 'thunderbolt',
+      model: 'mistral-medium-3.1',
+      isSystem: 1,
+      enabled: 1,
+      isConfidential: 0,
+      contextWindow: 131072,
+      toolUsage: 1,
+      startWithReasoning: 0,
+      supportsParallelToolCalls: 0,
+      deletedAt: null,
+      url: null,
+      defaultHash: legacyMistralModelHash,
+      vendor: 'mistral',
+      description: 'Balanced performance and efficiency',
+      userId: null,
+    })
+    await db.insert(modelProfilesTable).values({
+      modelId: legacyMistralId,
+      defaultHash: legacyMistralProfileHash,
+      deletedAt: null,
+    })
+
+    await cleanupRemovedDefaults(db)
+
+    const model = await db.select().from(modelsTable).where(eq(modelsTable.id, legacyMistralId)).get()
+    expect(model?.deletedAt).not.toBeNull()
+    const profile = await db
+      .select()
+      .from(modelProfilesTable)
+      .where(eq(modelProfilesTable.modelId, legacyMistralId))
+      .get()
+    expect(profile?.deletedAt).not.toBeNull()
+  })
+
+  test('leaves user-edited Mistral alone (hash mismatch)', async () => {
+    const db = getDb()
+    await db.insert(modelsTable).values({
+      id: legacyMistralId,
+      name: 'My Custom Mistral',
+      provider: 'thunderbolt',
+      model: 'mistral-medium-3.1',
+      isSystem: 1,
+      enabled: 1,
+      isConfidential: 0,
+      contextWindow: 131072,
+      toolUsage: 1,
+      startWithReasoning: 0,
+      supportsParallelToolCalls: 0,
+      deletedAt: null,
+      url: null,
+      defaultHash: 'some-other-hash',
+      vendor: 'mistral',
+      description: 'Edited',
+      userId: null,
+    })
+
+    await cleanupRemovedDefaults(db)
+
+    const model = await db.select().from(modelsTable).where(eq(modelsTable.id, legacyMistralId)).get()
+    expect(model?.deletedAt).toBeNull()
+  })
+
+  test('no-op when row is absent', async () => {
+    const db = getDb()
+    await cleanupRemovedDefaults(db)
+    const model = await db.select().from(modelsTable).where(eq(modelsTable.id, legacyMistralId)).get()
+    expect(model).toBeUndefined()
+  })
+
+  test('idempotent — second run does not re-touch deletedAt', async () => {
+    const db = getDb()
+    await db.insert(modelsTable).values({
+      id: legacyMistralId,
+      name: 'Mistral Medium 3.1',
+      provider: 'thunderbolt',
+      model: 'mistral-medium-3.1',
+      isSystem: 1,
+      enabled: 1,
+      isConfidential: 0,
+      contextWindow: 131072,
+      toolUsage: 1,
+      startWithReasoning: 0,
+      supportsParallelToolCalls: 0,
+      deletedAt: null,
+      url: null,
+      defaultHash: legacyMistralModelHash,
+      vendor: 'mistral',
+      description: 'Balanced performance and efficiency',
+      userId: null,
+    })
+
+    await cleanupRemovedDefaults(db)
+    const after1 = await db.select().from(modelsTable).where(eq(modelsTable.id, legacyMistralId)).get()
+    const firstDeletedAt = after1?.deletedAt
+    expect(firstDeletedAt).not.toBeNull()
+
+    await cleanupRemovedDefaults(db)
+    const after2 = await db.select().from(modelsTable).where(eq(modelsTable.id, legacyMistralId)).get()
+    expect(after2?.deletedAt).toBe(firstDeletedAt!)
   })
 })
 

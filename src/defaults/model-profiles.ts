@@ -4,8 +4,8 @@
 
 export {
   defaultModelProfileGptOss120b,
-  defaultModelProfileMistralMedium31,
-  defaultModelProfileSonnet45,
+  defaultModelProfileOpus47,
+  defaultModelProfileTinfoil,
   defaultModelProfiles,
   hashModelProfile,
 } from './model-profiles/index'

@@ -3,10 +3,10 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import type { ModelProfile } from '@/types'
-import { defaultModelSonnet45 } from '@/defaults/models'
+import { defaultModelTinfoil } from '@/defaults/models'
 
-export const defaultModelProfileSonnet45: ModelProfile = {
-  modelId: defaultModelSonnet45.id,
+export const defaultModelProfileTinfoil: ModelProfile = {
+  modelId: defaultModelTinfoil.id,
   temperature: 0.2,
   maxSteps: 20,
   maxAttempts: 2,

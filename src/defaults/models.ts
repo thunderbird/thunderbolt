@@ -53,32 +53,16 @@ export const defaultModelGptOss120b: Model = {
   userId: null,
 }
 
-export const defaultModelMistralMedium31: Model = {
-  id: '019af08a-9836-783d-ab56-39b9fec48af1',
-  name: 'Mistral Medium 3.1',
-  provider: 'thunderbolt',
-  model: 'mistral-medium-3.1',
-  isSystem: 1,
-  enabled: 1,
-  isConfidential: 0,
-  contextWindow: 131072,
-  toolUsage: 1,
-  startWithReasoning: 0,
-  supportsParallelToolCalls: 0,
-  deletedAt: null,
-  apiKey: null,
-  url: null,
-  defaultHash: null,
-  vendor: 'mistral',
-  description: 'Balanced performance and efficiency',
-  userId: null,
-}
-
-export const defaultModelSonnet45: Model = {
+/**
+ * Opus 4.7 keeps the row id originally assigned to Sonnet 4.5.
+ * Reconciliation detects the hash change and upgrades unmodified Sonnet 4.5
+ * rows in place; users who edited their Sonnet 4.5 row keep it untouched.
+ */
+export const defaultModelOpus47: Model = {
   id: '019af08a-c27b-7074-8aac-95315d1ef3fd',
-  name: 'Sonnet 4.5',
+  name: 'Opus 4.7',
   provider: 'thunderbolt',
-  model: 'sonnet-4.5',
+  model: 'opus-4.7',
   isSystem: 1,
   enabled: 1,
   isConfidential: 0,
@@ -91,7 +75,28 @@ export const defaultModelSonnet45: Model = {
   url: null,
   defaultHash: null,
   vendor: 'anthropic',
-  description: 'Advanced reasoning and creativity',
+  description: 'Top-tier Anthropic reasoning',
+  userId: null,
+}
+
+export const defaultModelTinfoil: Model = {
+  id: '019e70af-e5b2-76d0-9ede-f22d8265bb14',
+  name: 'DeepSeek R1 70B',
+  provider: 'tinfoil',
+  model: 'deepseek-r1-70b',
+  isSystem: 1,
+  enabled: 1,
+  isConfidential: 1,
+  contextWindow: 131072,
+  toolUsage: 1,
+  startWithReasoning: 0,
+  supportsParallelToolCalls: 0,
+  deletedAt: null,
+  apiKey: null,
+  url: null,
+  defaultHash: null,
+  vendor: 'deepseek',
+  description: 'Confidential reasoning via Tinfoil',
   userId: null,
 }
 
@@ -100,6 +105,6 @@ export const defaultModelSonnet45: Model = {
  */
 export const defaultModels: ReadonlyArray<Model> = [
   defaultModelGptOss120b,
-  defaultModelMistralMedium31,
-  defaultModelSonnet45,
+  defaultModelOpus47,
+  defaultModelTinfoil,
 ] as const

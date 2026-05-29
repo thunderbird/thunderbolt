@@ -17,6 +17,7 @@ import { RevokedDeviceModal } from '@/components/revoked-device-modal'
 import ChatLayout from '@/layout/main-layout'
 import SettingsLayout from '@/settings/layout'
 import WaitlistLayout from '@/waitlist/layout'
+import WaitlistPage from '@/waitlist/waitlist-page'
 import { SidebarProvider } from '@/components/ui/sidebar'
 import { HapticsProvider } from '@/hooks/use-haptics'
 import {
@@ -79,7 +80,6 @@ const McpServersPage = lazy(() => import('@/settings/mcp-servers'))
 const SkillsPage = lazy(() => import('@/settings/skills'))
 const AgentsSettingsPage = lazy(() => import('@/routes/settings/agents'))
 const IntegrationsPage = lazy(() => import('@/settings/integrations'))
-const WaitlistPage = lazy(() => import('@/waitlist/waitlist-page'))
 
 // Lazily import SSO components so non-enterprise deployments don't pay
 // for the extra bundle size and attack surface.

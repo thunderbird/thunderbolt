@@ -47,6 +47,17 @@ export const getPowerSyncDatabaseConfig = (
 /** Max time to wait for initial sync before continuing (e.g. when network is down) */
 const initialSyncTimeoutMs = 10_000
 
+/**
+ * Sync rule priority we block app init on. Matches the `user_essentials` bucket in
+ * `powersync-service/config/config.yaml` (and the PowerSync Cloud dashboard rules):
+ * settings, models, modes, model_profiles, devices, chat_threads. Lower-priority buckets
+ * (chat_messages, tasks, etc.) stream in the background after the app is interactive.
+ *
+ * Falls back to global `hasSynced` if the deployed sync rules don't declare priorities yet
+ * (see `SyncStatus.statusForPriority`).
+ */
+const initialSyncPriority = 1
+
 /** Custom event name for sync enabled changes */
 export const syncEnabledChangeEvent = 'powersync_sync_enabled_change'
 
@@ -383,43 +394,28 @@ export class PowerSyncDatabaseImpl implements DatabaseInterface {
   }
 
   /**
-   * Wait for PowerSync to complete its initial sync.
-   * This ensures data from the cloud is available before reconciling defaults.
+   * Wait for PowerSync's priority-1 buckets to complete their initial sync (essentials —
+   * settings, models, modes, model_profiles, devices, chat_threads). Lower-priority data
+   * (chat_messages, tasks, etc.) continues streaming in the background.
+   *
    * Resolves after initialSyncTimeoutMs if sync never completes (e.g. network down).
    */
   async waitForInitialSync(): Promise<void> {
-    // Skip if sync is disabled or not connected
     if (!this.powerSync || !this._isConnected || !isSyncEnabled()) {
       return
     }
 
-    // Check if already synced
-    const status = this.powerSync.currentStatus
-    if (status?.hasSynced) {
-      return
+    const abortController = new AbortController()
+    const timeoutId = setTimeout(() => {
+      console.warn('Initial sync timed out after', initialSyncTimeoutMs / 1000, 'seconds')
+      abortController.abort()
+    }, initialSyncTimeoutMs)
+
+    try {
+      await this.powerSync.waitForFirstSync({ signal: abortController.signal, priority: initialSyncPriority })
+    } finally {
+      clearTimeout(timeoutId)
     }
-
-    let unsubscribe: (() => void) | undefined
-    const syncPromise = new Promise<void>((resolve) => {
-      unsubscribe = this.powerSync!.registerListener({
-        statusChanged: (newStatus) => {
-          if (newStatus.hasSynced) {
-            unsubscribe?.()
-            resolve()
-          }
-        },
-      })
-    })
-
-    const timeoutPromise = new Promise<void>((resolve) => {
-      setTimeout(() => {
-        unsubscribe?.()
-        console.warn('Initial sync timed out after', initialSyncTimeoutMs / 1000, 'seconds')
-        resolve()
-      }, initialSyncTimeoutMs)
-    })
-
-    await Promise.race([syncPromise, timeoutPromise])
   }
 
   async close(): Promise<void> {

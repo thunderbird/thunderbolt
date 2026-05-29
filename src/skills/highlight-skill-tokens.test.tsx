@@ -51,17 +51,22 @@ describe('renderHighlightedSkillTokens', () => {
     expect(span?.textContent).toBe('/no-such-skill')
   })
 
-  it('paints an in-progress (end-of-input, no trailing space) token orange even when the slug resolves', () => {
-    // No trailing whitespace → in-progress regardless of resolution status.
+  it('leaves an in-progress (end-of-input, no trailing space) token uncolored even when the slug resolves', () => {
+    // No trailing whitespace → in-progress; the token inherits surrounding
+    // text color so the highlight doesn't flicker as the user types.
     const { container } = renderTokens('/meeting-notes')
     expect(container.querySelector('.text-sky-500')).toBeNull()
-    expect(container.querySelector('.text-orange-500')?.textContent).toBe('/meeting-notes')
+    expect(container.querySelector('.text-orange-500')).toBeNull()
+    expect(container.querySelector('.text-red-500')).toBeNull()
+    expect(container.textContent).toContain('/meeting-notes')
   })
 
-  it('paints in-progress orange even for an unknown slug — the user is still typing', () => {
+  it('leaves an in-progress unknown slug uncolored — the user is still typing', () => {
     const { container } = renderTokens('hello /partial')
     expect(container.querySelector('.text-red-500')).toBeNull()
-    expect(container.querySelector('.text-orange-500')?.textContent).toBe('/partial')
+    expect(container.querySelector('.text-orange-500')).toBeNull()
+    expect(container.querySelector('.text-sky-500')).toBeNull()
+    expect(container.textContent).toContain('/partial')
   })
 
   it('renders a mix of statuses in one string', () => {

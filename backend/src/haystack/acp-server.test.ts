@@ -12,7 +12,8 @@
  *
  * Coverage focus:
  *  - 2-step Deepset flow (POST /search_sessions, then POST /chat-stream).
- *  - HTTP 591 retry with the cold-pipeline backoff path.
+ *  - Cold-pipeline retry: a 503 whose body carries Deepset's "temporarily
+ *    unavailable" marker is retried; any other 5xx fails fast.
  *  - SSE delta translation into `session/update` notifications.
  *  - Authorization header propagation.
  *  - Workspace embedded in the URL.
@@ -202,24 +203,29 @@ describe('HaystackAcpServer', () => {
     expect(findResponse(sent, 2).result.stopReason).toBe('end_turn')
   })
 
-  it('retries HTTP 591 on the chat-stream call before giving up', async () => {
+  it('retries a transient 503 (cold pipeline) on chat-stream until it warms up', async () => {
+    // Ground truth: Deepset answers a waking pipeline with 503 + body
+    // `{"errors":["The pipeline '<name>' is temporarily unavailable. ..."]}`.
+    // The retry is gated on that body marker, not the bare status.
     let chatAttempts = 0
     const upstream: Upstream = (input) => {
       const url = input.toString()
       if (url.endsWith('/search_sessions')) {
-        return Promise.resolve(jsonResponse(200, { search_session_id: 'sess-591' }))
+        return Promise.resolve(jsonResponse(200, { search_session_id: 'sess-cold' }))
       }
       chatAttempts += 1
       if (chatAttempts < 3) {
-        return Promise.resolve(new Response('cold', { status: 591 }))
+        return Promise.resolve(
+          new Response(
+            JSON.stringify({ errors: ["The pipeline 'rag' is temporarily unavailable. Try again in a few moments."] }),
+            { status: 503 },
+          ),
+        )
       }
       return Promise.resolve(sseResponse([{ type: 'delta', delta: { text: 'warmed' } }, '[DONE]']))
     }
 
-    const { server, sent } = buildServer({
-      upstream,
-      sessionIds: ['ses-591'],
-    })
+    const { server, sent } = buildServer({ upstream, sessionIds: ['ses-cold'] })
 
     await server.handleMessage(JSON.stringify({ jsonrpc: '2.0', id: 1, method: AGENT_METHODS.session_new }))
     await server.handleMessage(
@@ -227,13 +233,80 @@ describe('HaystackAcpServer', () => {
         jsonrpc: '2.0',
         id: 2,
         method: AGENT_METHODS.session_prompt,
-        params: { sessionId: 'ses-591', prompt: [{ type: 'text', text: 'warm up' }] },
+        params: { sessionId: 'ses-cold', prompt: [{ type: 'text', text: 'warm up' }] },
       }),
     )
 
     expect(chatAttempts).toBe(3)
     const updates = sessionUpdates(sent)
     expect(updates.map((u) => u.update.content.text)).toEqual(['warmed'])
+    expect(findResponse(sent, 2).result.stopReason).toBe('end_turn')
+  })
+
+  it('fails fast on a non-transient 5xx (no cold-pipeline marker, no retry)', async () => {
+    // A genuine outage: 503 without the "temporarily unavailable" marker must
+    // throw on the first response rather than triggering a retry storm.
+    let chatAttempts = 0
+    const upstream: Upstream = (input) => {
+      const url = input.toString()
+      if (url.endsWith('/search_sessions')) {
+        return Promise.resolve(jsonResponse(200, { search_session_id: 'sess-outage' }))
+      }
+      chatAttempts += 1
+      return Promise.resolve(new Response('upstream connect error', { status: 503 }))
+    }
+
+    const { server, sent } = buildServer({ upstream, sessionIds: ['ses-outage'] })
+
+    await server.handleMessage(JSON.stringify({ jsonrpc: '2.0', id: 1, method: AGENT_METHODS.session_new }))
+    await server.handleMessage(
+      JSON.stringify({
+        jsonrpc: '2.0',
+        id: 2,
+        method: AGENT_METHODS.session_prompt,
+        params: { sessionId: 'ses-outage', prompt: [{ type: 'text', text: 'go' }] },
+      }),
+    )
+
+    expect(chatAttempts).toBe(1)
+    const reply = findResponse(sent, 2)
+    expect(reply.error).toBeDefined()
+    expect(reply.error.message).toContain('503')
+    expect(reply.error.message).toContain('upstream connect error')
+  })
+
+  it('retries a transient 503 (cold pipeline) on the search_sessions bootstrap', async () => {
+    // The search_sessions call routes through fetchWithPipelineRetry too, so a
+    // cold pipeline on bootstrap must wake-and-retry the same way.
+    let searchAttempts = 0
+    const upstream: Upstream = (input) => {
+      const url = input.toString()
+      if (url.endsWith('/search_sessions')) {
+        searchAttempts += 1
+        if (searchAttempts < 2) {
+          return Promise.resolve(
+            new Response('The pipeline is temporarily unavailable. Try again in a few moments.', { status: 503 }),
+          )
+        }
+        return Promise.resolve(jsonResponse(200, { search_session_id: 'sess-warm' }))
+      }
+      return Promise.resolve(sseResponse([{ type: 'delta', delta: { text: 'ok' } }, '[DONE]']))
+    }
+
+    const { server, sent } = buildServer({ upstream, sessionIds: ['ses-bootstrap'] })
+
+    await server.handleMessage(JSON.stringify({ jsonrpc: '2.0', id: 1, method: AGENT_METHODS.session_new }))
+    await server.handleMessage(
+      JSON.stringify({
+        jsonrpc: '2.0',
+        id: 2,
+        method: AGENT_METHODS.session_prompt,
+        params: { sessionId: 'ses-bootstrap', prompt: [{ type: 'text', text: 'go' }] },
+      }),
+    )
+
+    expect(searchAttempts).toBe(2)
+    expect(sessionUpdates(sent).map((u) => u.update.content.text)).toEqual(['ok'])
     expect(findResponse(sent, 2).result.stopReason).toBe('end_turn')
   })
 

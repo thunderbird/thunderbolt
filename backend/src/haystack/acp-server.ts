@@ -67,12 +67,37 @@ const rpcErrors = {
 } as const
 
 /**
- * HTTP status Deepset returns when a pipeline is waking from idle. The
- * pipeline is cold and will be available shortly — retry with backoff.
+ * HTTP statuses worth retrying for a cold/idling Deepset pipeline. Deepset
+ * Cloud scales idle pipelines to zero replicas and, while a replica wakes,
+ * answers with `503` and the body
+ * `{"errors":["The pipeline '<name>' is temporarily unavailable. Try again
+ * in a few moments."]}` (verified against the live API). `502` is included
+ * because the load balancer can briefly fail to route to a just-spawned
+ * replica during the same wake. The legacy `591` from reference PR #531 was a
+ * fiction — Deepset never sends it — so it is dropped here; retrying on status
+ * alone masked genuine outages. Retry is additionally gated on the response
+ * BODY (see {@link isTransientPipelineWake}) so a real 5xx fails fast.
  */
-const pipelineNotReadyStatus = 591
-const maxRetryAttempts = 3
-const defaultRetryBaseDelayMs = 1_000
+const retryablePipelineStatuses = new Set([502, 503])
+const maxRetryAttempts = 5
+const defaultRetryBaseDelayMs = 2_000
+/** Per-step backoff ceiling so a single wait never blows the total budget. */
+const maxRetryStepDelayMs = 16_000
+
+/**
+ * Decide whether a non-OK Deepset response is a transient cold-pipeline wake
+ * (retry) versus a genuine error (fail fast). Gating on the body — not the
+ * status alone — is the whole point of the fix: every wake carries the
+ * "temporarily unavailable" marker, either as plain text or inside Deepset's
+ * `{ errors: [...] }` envelope. Anything else (empty body, different message,
+ * real outage) returns false and the caller throws immediately.
+ */
+const isTransientPipelineWake = (status: number, bodyText: string): boolean => {
+  if (!retryablePipelineStatuses.has(status)) {
+    return false
+  }
+  return /temporarily unavailable/i.test(bodyText)
+}
 
 /**
  * Soft cap on how many `(acpSessionId → deepsetSearchSessionId)` mappings the
@@ -102,8 +127,8 @@ export type HaystackAcpDeps = {
   /** UUID generator override for deterministic session ids in tests. */
   generateSessionId?: () => string
   /**
-   * Base delay (ms) between 591 retry attempts. Defaults to 1 s; tests pin to
-   * 0 so the backoff doesn't add wall-clock seconds.
+   * Base delay (ms) for the cold-pipeline retry backoff. Defaults to 2 s;
+   * tests pin to 0 so the backoff doesn't add wall-clock seconds.
    */
   retryBaseDelayMs?: number
   /**
@@ -146,8 +171,9 @@ export type HaystackAcpServerOptions = {
  *     `session/update` notifications.
  *
  * Both upstream calls go through {@link fetchWithPipelineRetry} which retries
- * HTTP 591 (cold pipeline) with exponential backoff (1 s → 2 s → 4 s, capped
- * at 3 attempts).
+ * a cold/idling pipeline — a `502`/`503` whose body carries Deepset's
+ * "temporarily unavailable" marker — with capped exponential backoff
+ * (2 s → 4 s → 8 s → 16 s → 16 s, 5 attempts). Any other 5xx fails fast.
  */
 export class HaystackAcpServer {
   private readonly sessions = new Map<string, HaystackSessionContext>()
@@ -421,8 +447,14 @@ export class HaystackAcpServer {
   }
 
   /**
-   * Retry a fetch on 591 (Deepset cold-pipeline) with exponential backoff.
-   * Bails on the first non-591 non-OK response with a structured error.
+   * Retry a fetch while a cold Deepset pipeline wakes from idle, then surface
+   * a structured error on anything else.
+   *
+   * The body is read exactly once per non-OK response because the retry
+   * decision depends on it (see {@link isTransientPipelineWake}) — status
+   * alone is insufficient. Reading it to completion also drains and releases
+   * the underlying socket, so a discarded retry response leaks nothing. When
+   * we DON'T retry, the already-read text is reused in the thrown error.
    */
   private async fetchWithPipelineRetry(url: string, init: RequestInit): Promise<Response> {
     for (let attempt = 0; attempt < maxRetryAttempts; attempt++) {
@@ -430,16 +462,30 @@ export class HaystackAcpServer {
       if (response.ok) {
         return response
       }
-      if (response.status === pipelineNotReadyStatus && attempt < maxRetryAttempts - 1) {
-        await this.abortableSleep(this.retryBaseDelayMs * Math.pow(2, attempt), init.signal ?? null)
+      const bodyText = await response.text().catch(() => '')
+      const isLastAttempt = attempt === maxRetryAttempts - 1
+      if (!isLastAttempt && isTransientPipelineWake(response.status, bodyText)) {
+        await this.abortableSleep(this.backoffDelayMs(attempt, response), init.signal ?? null)
         continue
       }
-      const body = await response.text().catch(() => '')
       throw new Error(
-        `haystack upstream ${response.status} ${response.statusText}${body ? `: ${body.slice(0, 200)}` : ''}`,
+        `haystack upstream ${response.status} ${response.statusText}${bodyText ? `: ${bodyText.slice(0, 200)}` : ''}`,
       )
     }
-    throw new Error('haystack upstream: 591 retries exhausted')
+    throw new Error('haystack upstream: cold-pipeline retries exhausted')
+  }
+
+  /**
+   * Capped exponential backoff for attempt `n` (0-based). Honors a numeric
+   * `Retry-After` header when Deepset sends one (clamped to the per-step
+   * cap), otherwise `base * 2^n`. Both are clamped so a single wait can't
+   * exceed {@link maxRetryStepDelayMs}.
+   */
+  private backoffDelayMs(attempt: number, response: Response): number {
+    const exponential = this.retryBaseDelayMs * 2 ** attempt
+    const retryAfterSeconds = Number(response.headers.get('retry-after'))
+    const retryAfterMs = Number.isFinite(retryAfterSeconds) && retryAfterSeconds > 0 ? retryAfterSeconds * 1_000 : 0
+    return Math.min(Math.max(exponential, retryAfterMs), maxRetryStepDelayMs)
   }
 
   private abortableSleep(ms: number, signal: AbortSignal | null): Promise<void> {

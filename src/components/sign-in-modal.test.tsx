@@ -3,6 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { resetTestDatabase, setupTestDatabase, teardownTestDatabase } from '@/dal/test-utils'
+import { useLocalSettingsStore } from '@/stores/local-settings-store'
 import type { ConsoleSpies } from '@/test-utils/console-spies'
 import { setupConsoleSpy } from '@/test-utils/console-spies'
 import { createTestProvider } from '@/test-utils/test-provider'
@@ -86,6 +87,12 @@ describe('SignInModal', () => {
     const { httpClient, fetchSpy } = createSpyHttpClient(undefined, waitlistResponse)
     mockHttpClient = httpClient
     mockFetchSpy = fetchSpy
+    // Pin `cloudUrl` to a localhost value so the post-submit assertion in
+    // `shows sent state after successful submission` is deterministic. The
+    // store *defaults* to localhost, but `VITE_THUNDERBOLT_CLOUD_URL`
+    // overrides that default in CI — leaving the test order-dependent
+    // under `--randomize`. See THU-561.
+    useLocalSettingsStore.setState({ cloudUrl: 'http://localhost:8000/v1' })
   })
 
   afterEach(async () => {

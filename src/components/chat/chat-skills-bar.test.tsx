@@ -107,6 +107,21 @@ describe('ChatSkillsBar', () => {
     expect(trigger.disabled).toBe(true)
   })
 
+  it('disables the "+ Pin a skill" trigger when the pin cap is reached (even with unpinned candidates available)', () => {
+    // 10 pinned + 1 unpinned candidate → cap reached. Without this guard the
+    // popover would show the candidate but clicking would silently fail
+    // because the DAL throws PinLimitExceededError on the 11th pin.
+    const pinnedSkills = Array.from({ length: 10 }, (_, i) => skill(`p-${i}`, `pinned-${i}`))
+    const candidate = skill('c', 'eleventh')
+    renderBar({
+      usePinnedSkills: fakeUsePinnedSkills({ pinned: pinnedSkills }),
+      useLibrarySkills: fakeUseLibrarySkills([...pinnedSkills, candidate]),
+      useEnabledSkills: fakeUseEnabledSkills(new Set([...pinnedSkills.map((s) => s.id), 'c'])),
+    })
+    const trigger = screen.getByLabelText('Pin a skill') as HTMLButtonElement
+    expect(trigger.disabled).toBe(true)
+  })
+
   // The chip's click → onAddToChat path is exercised end-to-end at the
   // composer level; here we trust Radix's primitives.
 })

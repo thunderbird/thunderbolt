@@ -2,7 +2,6 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { fetchConfig } from '@/api/config'
 import { getLocalSetting, useLocalSettingsStore } from '@/stores/local-settings-store'
 import { withTimeout } from '@/lib/timeout'
 import type { AbstractPowerSyncDatabase } from '@powersync/common'
@@ -245,15 +244,27 @@ export class PowerSyncDatabaseImpl implements DatabaseInterface {
     const connectStartedAt = performance.now()
     console.info('[PowerSync] Connecting…')
 
+    // Temporary status listener used only to time the connect() lifecycle; disposed
+    // before the long-lived sync-tracker listener is attached below.
+    let connectingEnteredAt: number | null = null
+    const disposeConnectTimer = this.powerSync.registerListener({
+      statusChanged: (status) => {
+        if (status.connecting && connectingEnteredAt === null) {
+          connectingEnteredAt = performance.now()
+          console.info(
+            `[PowerSync] connecting=true (${Math.round(connectingEnteredAt - connectStartedAt)}ms after connect start)`,
+          )
+        } else if (!status.connecting && connectingEnteredAt !== null) {
+          console.info(
+            `[PowerSync] stream established (${Math.round(performance.now() - connectingEnteredAt)}ms in connecting state)`,
+          )
+          connectingEnteredAt = null
+        }
+      },
+    })
+
     try {
       const cloudUrl = getLocalSetting('cloudUrl')
-
-      // Re-fetch config before connecting so the upload encoder has the correct E2EE flag.
-      // If /config failed at app init (e.g. offline), this retries before sync starts.
-      const fetchConfigStartedAt = performance.now()
-      await fetchConfig(cloudUrl)
-      console.info(`[PowerSync] fetchConfig: ${Math.round(performance.now() - fetchConfigStartedAt)}ms`)
-
       const connector = new ThunderboltConnector(cloudUrl)
       // Use HTTP streaming to avoid WebSocket "invalid opcode 7" with self-hosted service (ws library).
       const connectInnerStartedAt = performance.now()
@@ -272,6 +283,8 @@ export class PowerSyncDatabaseImpl implements DatabaseInterface {
     } catch (error) {
       console.warn('Failed to connect to PowerSync Cloud:', error)
       trackSyncEvent('sync_connect_error', { error: sanitizeErrorForTracking(error) })
+    } finally {
+      disposeConnectTimer()
     }
   }
 

@@ -24,9 +24,11 @@ export type SkillStatusClassifier = (slug: string) => { status: SkillTokenStatus
 
 /**
  * Render the chat input's text with `/slug` tokens highlighted:
+ * - In-progress (still typing at end of input) → no special color; the token
+ *   inherits the surrounding text color so partial input doesn't flicker
+ *   between states as the user types.
  * - Committed (followed by whitespace) + enabled → blue, the green light.
- * - In-progress (still typing at end of input) OR committed + disabled →
- *   orange, the "still pending" / "needs attention" signal.
+ * - Committed + disabled → orange, the "needs attention" signal.
  * - Committed + unknown → red, "no skill by this name."
  *
  * Committed disabled / unknown tokens are wrapped in {@link SkillTokenPopover}
@@ -96,9 +98,11 @@ export const renderHighlightedSkillTokens = (value: string, classify: SkillStatu
 
 const colorClassFor = (committed: boolean, status: SkillTokenStatus): string => {
   if (!committed) {
-    // Still typing — orange regardless of resolution. Once the user adds a
-    // trailing space we re-classify against the three committed states.
-    return 'text-orange-500 dark:text-orange-400'
+    // Still typing — inherit the surrounding text color so the in-progress
+    // token doesn't flicker between states as each character arrives. Once
+    // the user adds a trailing space we re-classify against the three
+    // committed states below.
+    return ''
   }
   if (status === 'enabled') {
     return 'text-sky-500 dark:text-sky-400'

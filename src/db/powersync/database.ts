@@ -280,6 +280,16 @@ export class PowerSyncDatabaseImpl implements DatabaseInterface {
       })
       console.info(`[PowerSync] powerSync.connect: ${Math.round(performance.now() - connectInnerStartedAt)}ms`)
 
+      // The fire-and-forget connect from initialize() can race with the user disabling sync
+      // mid-flight: disconnectFromSync would no-op while `_isConnected` is still false. Re-check
+      // the preference here; if the user opted out during the ~10s connect window, tear down
+      // immediately so we don't leave PowerSync connected against their will.
+      if (!isSyncEnabled()) {
+        console.info('[PowerSync] sync disabled during connect — disconnecting')
+        await this.powerSync.disconnect()
+        return
+      }
+
       this._isConnected = true
       console.info(`[PowerSync] Connected (total ${Math.round(performance.now() - connectStartedAt)}ms)`)
       this.logFullSyncWhenReady(connectStartedAt)

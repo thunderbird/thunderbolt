@@ -56,15 +56,27 @@ const initializePostHog = async (httpClient?: HttpClient): Promise<PostHog | nul
   return result.success ? result.data : null
 }
 
+const time = async <T>(label: string, fn: () => Promise<T>): Promise<T> => {
+  const startedAt = performance.now()
+  try {
+    return await fn()
+  } finally {
+    console.info(`[init] ${label}: ${Math.round(performance.now() - startedAt)}ms`)
+  }
+}
+
 const executeInitializationSteps = async (httpClient?: HttpClient): Promise<HandleResult<InitData>> => {
+  const totalStartedAt = performance.now()
+  console.info('[init] start')
+
   // Step 0: Fetch backend config and hydrate store (only on success).
   // When fetch fails (offline/error), the store retains its persisted localStorage value.
-  await fetchConfig(getLocalSetting('cloudUrl'), httpClient)
+  await time('step0_fetchConfig', () => fetchConfig(getLocalSetting('cloudUrl'), httpClient))
 
   // Step 1: App directory creation
   let appDirPath: string
   try {
-    appDirPath = await createAppDirectory()
+    appDirPath = await time('step1_createAppDir', () => createAppDirectory())
   } catch (error) {
     console.error('Failed to create app directory:', error)
     const appDirError = createHandleError('APP_DIR_CREATION_FAILED', 'Failed to create app directory', error)
@@ -79,7 +91,7 @@ const executeInitializationSteps = async (httpClient?: HttpClient): Promise<Hand
   let db: AnyDrizzleDatabase
   let database: Database
   try {
-    const result = await initializeDatabase(appDirPath)
+    const result = await time('step2_initializeDatabase', () => initializeDatabase(appDirPath))
     db = result.db
     database = result.database
   } catch (error) {
@@ -95,7 +107,7 @@ const executeInitializationSteps = async (httpClient?: HttpClient): Promise<Hand
   // Step 3: Wait for PowerSync initial sync before reconciling defaults
   // This ensures synced data from the cloud is available before we check for missing defaults
   try {
-    await database.waitForInitialSync()
+    await time('step3_waitForInitialSync', () => database.waitForInitialSync())
   } catch (error) {
     // Non-critical - log and continue
     console.warn('Failed to wait for initial sync:', error)
@@ -103,7 +115,7 @@ const executeInitializationSteps = async (httpClient?: HttpClient): Promise<Hand
 
   // Step 4: Reconcile defaults
   try {
-    await reconcileDefaultSettings(db)
+    await time('step4_reconcileDefaults', () => reconcileDefaultSettings(db))
   } catch (error) {
     console.error('Failed to reconcile default settings:', error)
     const reconcileError = createHandleError('RECONCILE_DEFAULTS_FAILED', 'Failed to reconcile default settings', error)
@@ -116,9 +128,11 @@ const executeInitializationSteps = async (httpClient?: HttpClient): Promise<Hand
 
   // Step 5: Get cloud url and experimental feature tasks
   const cloudUrl = getLocalSetting('cloudUrl')
-  const { experimentalFeatureTasks } = await getSettings(db, {
-    experimental_feature_tasks: false,
-  })
+  const { experimentalFeatureTasks } = await time('step5_getSettings', () =>
+    getSettings(db, {
+      experimental_feature_tasks: false,
+    }),
+  )
 
   // Step 6: HTTP client initialization (use provided client or create one)
   let client: HttpClient
@@ -144,7 +158,7 @@ const executeInitializationSteps = async (httpClient?: HttpClient): Promise<Hand
   // Step 7: Tray initialization (non-critical)
   let tray: { tray: TrayIcon | undefined; window: Window | undefined } = { tray: undefined, window: undefined }
   try {
-    tray = await initializeTray()
+    tray = await time('step7_initializeTray', () => initializeTray())
   } catch (error) {
     console.warn('Failed to initialize tray, continuing without tray support:', error)
     const trayError = createHandleError('TRAY_INIT_FAILED', 'Failed to initialize tray', error)
@@ -154,10 +168,12 @@ const executeInitializationSteps = async (httpClient?: HttpClient): Promise<Hand
   // Step 8: PostHog initialization (non-critical)
   let posthogClient: PostHog | null = null
   try {
-    posthogClient = await initializePostHog(client)
+    posthogClient = await time('step8_initializePostHog', () => initializePostHog(client))
   } catch (error) {
     console.warn('Unexpected error during PostHog initialization:', error)
   }
+
+  console.info(`[init] complete (total ${Math.round(performance.now() - totalStartedAt)}ms)`)
 
   return {
     success: true,

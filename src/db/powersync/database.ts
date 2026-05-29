@@ -242,21 +242,30 @@ export class PowerSyncDatabaseImpl implements DatabaseInterface {
       return // Already connected
     }
 
+    const connectStartedAt = performance.now()
+    console.info('[PowerSync] Connecting…')
+
     try {
       const cloudUrl = getLocalSetting('cloudUrl')
 
       // Re-fetch config before connecting so the upload encoder has the correct E2EE flag.
       // If /config failed at app init (e.g. offline), this retries before sync starts.
+      const fetchConfigStartedAt = performance.now()
       await fetchConfig(cloudUrl)
+      console.info(`[PowerSync] fetchConfig: ${Math.round(performance.now() - fetchConfigStartedAt)}ms`)
 
       const connector = new ThunderboltConnector(cloudUrl)
       // Use HTTP streaming to avoid WebSocket "invalid opcode 7" with self-hosted service (ws library).
+      const connectInnerStartedAt = performance.now()
       await this.powerSync.connect(connector, {
         connectionMethod: SyncStreamConnectionMethod.HTTP,
         crudUploadThrottleMs: 5000,
       })
+      console.info(`[PowerSync] powerSync.connect: ${Math.round(performance.now() - connectInnerStartedAt)}ms`)
+
       this._isConnected = true
-      console.info('PowerSync connected')
+      console.info(`[PowerSync] Connected (total ${Math.round(performance.now() - connectStartedAt)}ms)`)
+      this.logFullSyncWhenReady(connectStartedAt)
       startSyncStatusListener(this.powerSync, getPowerSyncDatabaseConfig())
       trackSyncEvent('sync_connect')
       this.startVisibilityReconnect()
@@ -264,6 +273,32 @@ export class PowerSyncDatabaseImpl implements DatabaseInterface {
       console.warn('Failed to connect to PowerSync Cloud:', error)
       trackSyncEvent('sync_connect_error', { error: sanitizeErrorForTracking(error) })
     }
+  }
+
+  /**
+   * Logs when the full sync (all priorities) completes, measured from the time connectToSync started.
+   * One-shot: disposes itself once `hasSynced` is true.
+   */
+  private logFullSyncWhenReady(connectStartedAt: number): void {
+    if (!this.powerSync) {
+      return
+    }
+    if (this.powerSync.currentStatus?.hasSynced) {
+      console.info(
+        `[PowerSync] Full sync already complete (${Math.round(performance.now() - connectStartedAt)}ms since connect)`,
+      )
+      return
+    }
+    const dispose = this.powerSync.registerListener({
+      statusChanged: (status) => {
+        if (status.hasSynced) {
+          console.info(
+            `[PowerSync] Full sync complete (${Math.round(performance.now() - connectStartedAt)}ms since connect)`,
+          )
+          dispose()
+        }
+      },
+    })
   }
 
   /**
@@ -405,11 +440,16 @@ export class PowerSyncDatabaseImpl implements DatabaseInterface {
       return
     }
 
+    const startedAt = performance.now()
+    console.info(`[PowerSync] Waiting for priority-${initialSyncPriority} sync…`)
+
     const abortController = new AbortController()
     let timeoutId: ReturnType<typeof setTimeout> | undefined
+    let timedOut = false
     const timeoutPromise = new Promise<void>((resolve) => {
       timeoutId = setTimeout(() => {
-        console.warn('Initial sync timed out after', initialSyncTimeoutMs / 1000, 'seconds')
+        timedOut = true
+        console.warn(`[PowerSync] Priority-${initialSyncPriority} sync timed out after ${initialSyncTimeoutMs / 1000}s`)
         resolve()
       }, initialSyncTimeoutMs)
     })
@@ -419,10 +459,15 @@ export class PowerSyncDatabaseImpl implements DatabaseInterface {
         this.powerSync.waitForFirstSync({ signal: abortController.signal, priority: initialSyncPriority }),
         timeoutPromise,
       ])
+      if (!timedOut) {
+        console.info(
+          `[PowerSync] Priority-${initialSyncPriority} sync complete (${Math.round(performance.now() - startedAt)}ms)`,
+        )
+      }
     } catch (error) {
       // First sync is best-effort — the app must boot regardless. Swallow any unexpected
       // rejection so it never propagates to the initialization caller.
-      console.warn('waitForInitialSync failed; continuing without sync gate:', error)
+      console.warn('[PowerSync] waitForInitialSync failed; continuing without sync gate:', error)
     } finally {
       clearTimeout(timeoutId)
       // Disposes the listener inside waitForFirstSync if the timeout won the race (or if

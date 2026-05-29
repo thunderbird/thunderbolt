@@ -11,7 +11,6 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { maxPinnedSkills } from '@/dal'
 import { useIsMobile } from '@/hooks/use-mobile'
-import { findMovedItem } from '@/skills/find-moved-item'
 import { ReorderPanel } from '@/skills/reorder-panel'
 import { SuggestionChip } from '@/skills/suggestion-chip'
 import { useSkillTelemetry } from '@/skills/telemetry'
@@ -82,18 +81,11 @@ export const ChatSkillsBar = ({
         {showOverlay && <MobileOverlay onDismiss={dismissOverlay} />}
         <ReorderPanel
           pinned={pinned}
-          onReorder={(ids) => {
-            // Track the single moved item by diffing the old and new orderings.
-            // findMovedItem returns null for no-op / multi-move shapes (we'd
-            // rather skip telemetry than misattribute), so the empty path is
-            // a clean fall-through.
-            const moved = findMovedItem(
-              pinned.map((s) => s.id),
-              ids,
-            )
-            if (moved) {
-              trackSkillEvent('skill_reordered', moved.id, { from_index: moved.from, to_index: moved.to })
-            }
+          onReorder={(ids, move) => {
+            // `move` comes from dnd-kit's `active.id` / index lookup — unambiguous
+            // even for adjacent swaps, where a diff-based heuristic can't tell
+            // which side the user actually dragged.
+            trackSkillEvent('skill_reordered', move.id, { from_index: move.from, to_index: move.to })
             void reorderPins(ids)
           }}
           onClose={() => setReorderMode(false)}

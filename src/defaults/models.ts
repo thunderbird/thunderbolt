@@ -81,9 +81,9 @@ export const defaultModelOpus47: Model = {
 
 export const defaultModelTinfoil: Model = {
   id: '019e70af-e5b2-76d0-9ede-f22d8265bb14',
-  name: 'DeepSeek R1 70B',
+  name: 'DeepSeek V4 Pro',
   provider: 'tinfoil',
-  model: 'deepseek-r1-70b',
+  model: 'deepseek-v4-pro',
   isSystem: 1,
   enabled: 1,
   isConfidential: 1,

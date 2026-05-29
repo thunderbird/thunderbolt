@@ -405,17 +405,16 @@ export class PowerSyncDatabaseImpl implements DatabaseInterface {
       return
     }
 
-    const abortController = new AbortController()
-    const timeoutId = setTimeout(() => {
-      console.warn('Initial sync timed out after', initialSyncTimeoutMs / 1000, 'seconds')
-      abortController.abort()
-    }, initialSyncTimeoutMs)
+    let timeoutId: ReturnType<typeof setTimeout> | undefined
+    const timeoutPromise = new Promise<void>((resolve) => {
+      timeoutId = setTimeout(() => {
+        console.warn('Initial sync timed out after', initialSyncTimeoutMs / 1000, 'seconds')
+        resolve()
+      }, initialSyncTimeoutMs)
+    })
 
-    try {
-      await this.powerSync.waitForFirstSync({ signal: abortController.signal, priority: initialSyncPriority })
-    } finally {
-      clearTimeout(timeoutId)
-    }
+    await Promise.race([this.powerSync.waitForFirstSync({ priority: initialSyncPriority }), timeoutPromise])
+    clearTimeout(timeoutId)
   }
 
   async close(): Promise<void> {

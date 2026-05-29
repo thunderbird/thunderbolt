@@ -51,9 +51,7 @@ const decryptEntry = async (entry: SyncEntry) => {
  */
 export const encryptionMiddleware: DataTransformMiddleware = {
   async transform(bucket) {
-    for (const entry of bucket.data) {
-      await decryptEntry(entry)
-    }
+    await Promise.all(bucket.data.map(decryptEntry))
     return bucket
   },
 }

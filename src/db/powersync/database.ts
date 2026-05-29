@@ -405,6 +405,7 @@ export class PowerSyncDatabaseImpl implements DatabaseInterface {
       return
     }
 
+    const abortController = new AbortController()
     let timeoutId: ReturnType<typeof setTimeout> | undefined
     const timeoutPromise = new Promise<void>((resolve) => {
       timeoutId = setTimeout(() => {
@@ -414,9 +415,19 @@ export class PowerSyncDatabaseImpl implements DatabaseInterface {
     })
 
     try {
-      await Promise.race([this.powerSync.waitForFirstSync({ priority: initialSyncPriority }), timeoutPromise])
+      await Promise.race([
+        this.powerSync.waitForFirstSync({ signal: abortController.signal, priority: initialSyncPriority }),
+        timeoutPromise,
+      ])
+    } catch (error) {
+      // First sync is best-effort — the app must boot regardless. Swallow any unexpected
+      // rejection so it never propagates to the initialization caller.
+      console.warn('waitForInitialSync failed; continuing without sync gate:', error)
     } finally {
       clearTimeout(timeoutId)
+      // Disposes the listener inside waitForFirstSync if the timeout won the race (or if
+      // sync already resolved, this is a no-op on the already-disposed listener).
+      abortController.abort()
     }
   }
 

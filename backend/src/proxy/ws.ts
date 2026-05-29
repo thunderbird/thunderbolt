@@ -254,7 +254,7 @@ export const createUniversalProxyWsRoutes = (options: {
       // accept the upgrade. Idempotent — setting the same response header
       // twice has no observable effect, which keeps us safe if Elysia ever
       // invokes `upgrade()` more than once per attempt. The auth-bearing
-      // ticket entry is intentionally NOT echoed: keeping it off the
+      // bearer entry is intentionally NOT echoed: keeping it off the
       // response header means it never lands on `WebSocket.protocol` (page
       // JS) or in proxy response logs.
       const subprotocolHeader = request.headers.get('sec-websocket-protocol')
@@ -266,16 +266,16 @@ export const createUniversalProxyWsRoutes = (options: {
       // Fall back to the first non-thunderbolt/tbproxy caller protocol so
       // legacy clients that don't advertise the carrier still complete the
       // handshake. This branch is retained for compatibility with the
-      // pre-ticket transport and the e2e tests that exercise it.
+      // pre-bearer transport and the e2e tests that exercise it.
       const chosen = offered.find((p) => !p.startsWith('thunderbolt.') && !p.startsWith('tbproxy.'))
       if (chosen) {
         set.headers['sec-websocket-protocol'] = chosen
       }
     },
     beforeHandle({ request, set }) {
-      // Sync, idempotent validations only — single-use state (the ticket) is
-      // consumed in `open()` because Elysia/Bun can invoke beforeHandle more
-      // than once per upgrade.
+      // Sync, idempotent target validations only. The (stateless) bearer is
+      // validated in `open()` instead, because Elysia/Bun can invoke
+      // beforeHandle more than once per upgrade.
       const subprotocolHeader = request.headers.get('sec-websocket-protocol')
       const parsed = parseTargetSubprotocol(subprotocolHeader)
       if (!parsed.ok) {

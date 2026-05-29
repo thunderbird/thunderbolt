@@ -163,7 +163,15 @@ describe('Universal proxy WebSocket relay /v1/proxy/ws — e2e', () => {
     })
 
     client.send('hello')
-    await new Promise((r) => setTimeout(r, 100))
+    // Poll for the echo rather than a fixed setTimeout — under CI load the
+    // round-trip (client → proxy → upstream → proxy → client) can routinely
+    // exceed 100ms. Cap at 3s so failures still hit the framework timeout
+    // budget if something is genuinely wrong.
+    let bidiPolls = 0
+    while (!messages.includes('echo: hello') && bidiPolls < 60) {
+      await new Promise((r) => setTimeout(r, 50))
+      bidiPolls++
+    }
     expect(messages).toContain('echo: hello')
     client.close()
   })
@@ -198,8 +206,13 @@ describe('Universal proxy WebSocket relay /v1/proxy/ws — e2e', () => {
     // Poll for the upstream-side close — Bun's same-process WS doesn't reliably
     // surface late-binding events on the downstream client, so we observe at
     // the upstream connection (where the proxy's relay sits) instead.
+    //
+    // Budget is 4.5s (90 × 50ms): the prior 2.5s ceiling failed reliably on
+    // CI runners under concurrent test load even though the upstream close
+    // had clearly already happened. 4.5s leaves a 500ms cushion before the
+    // framework's 5s --timeout, so a genuine hang still fails fast.
     let polls = 0
-    while (observed.code === null && polls < 50) {
+    while (observed.code === null && polls < 90) {
       await new Promise((r) => setTimeout(r, 50))
       polls++
     }

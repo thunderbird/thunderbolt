@@ -138,23 +138,38 @@ export const createHaystackRoutes = (settings: Settings, auth: Auth, deps?: Hays
       },
       async open(ws) {
         const log = createStandaloneLogger(settings)
-        const data = ws.data as unknown as { request?: Request }
+        const slot = ws.data as unknown as {
+          request?: Request
+          __haystackServer?: HaystackAcpServer
+          __pendingMessages?: string[] | null
+        }
+
+        // Buffer any client message that arrives during `open()`'s async work.
+        // The client's `onopen` fires as soon as the WS handshake completes,
+        // and Bun delivers `message(ws, ...)` before this handler's `await`s
+        // resolve. Without a queue, the message hits `__haystackServer` while
+        // it's still undefined and gets dropped, leaving the client hanging
+        // on the response. Set this synchronously, before any await.
+        const queue: string[] = []
+        slot.__pendingMessages = queue
 
         // Validate the bearer exactly once per accepted socket. Doing this in
         // `beforeHandle` instead is unsafe because Bun's adapter can call it
         // more than once per upgrade. The bearer rides a subprotocol entry
         // (browsers can't set `Authorization` on `new WebSocket()`); it is
         // verified via the same Better Auth path REST uses (HMAC + DB lookup).
-        const subprotocolHeader = data.request?.headers.get('sec-websocket-protocol') ?? null
+        const subprotocolHeader = slot.request?.headers.get('sec-websocket-protocol') ?? null
         const user: User | null = await authorizeWsBearer(auth, subprotocolHeader)
         if (!user) {
+          slot.__pendingMessages = null
           ws.close(wsCloseUnauthorized, 'unauthorized')
           return
         }
 
-        const url = new URL(data.request?.url ?? 'http://localhost/haystack/ws')
+        const url = new URL(slot.request?.url ?? 'http://localhost/haystack/ws')
         const pipelineSlug = url.searchParams.get('pipeline')
         if (!pipelineSlug) {
+          slot.__pendingMessages = null
           ws.close(wsCloseUnauthorized, 'missing pipeline parameter')
           return
         }
@@ -164,6 +179,7 @@ export const createHaystackRoutes = (settings: Settings, auth: Auth, deps?: Hays
         // pipeline — we close instead of opening to keep error surface tight.
         const descriptor = parsePipelinesEnv(settings).find((p) => p.id === pipelineSlug)
         if (!descriptor) {
+          slot.__pendingMessages = null
           ws.close(wsCloseUnauthorized, 'unknown pipeline')
           return
         }
@@ -177,23 +193,43 @@ export const createHaystackRoutes = (settings: Settings, auth: Auth, deps?: Hays
           settings,
           deps,
         })
-        ;(ws.data as unknown as { __haystackServer?: HaystackAcpServer }).__haystackServer = server
+        slot.__haystackServer = server
+        // Hand the buffered frames over to the server in arrival order before
+        // marking the queue closed; new frames go straight through after this.
+        slot.__pendingMessages = null
+        for (const buffered of queue) {
+          await server.handleMessage(buffered)
+        }
         log.debug({ pipelineSlug, pipelineName: descriptor.pipelineName, userId: user.id }, 'haystack ws opened')
       },
       async message(ws, message) {
-        const server = (ws.data as unknown as { __haystackServer?: HaystackAcpServer }).__haystackServer
-        if (!server) {
-          // Auth already rejected this socket; the client may still race a
-          // first frame before the close lands. Drop quietly.
-          return
+        const slot = ws.data as unknown as {
+          __haystackServer?: HaystackAcpServer
+          __pendingMessages?: string[] | null
         }
         const text = typeof message === 'string' ? message : JSON.stringify(message)
-        await server.handleMessage(text)
+        if (slot.__haystackServer) {
+          await slot.__haystackServer.handleMessage(text)
+          return
+        }
+        if (slot.__pendingMessages) {
+          // `open()` is mid-flight; queue for drain. Order is preserved
+          // because the drain runs synchronously to completion before the
+          // server is exposed via `__haystackServer`.
+          slot.__pendingMessages.push(text)
+          return
+        }
+        // Auth rejected this socket (or it's torn down). The close frame
+        // will arrive on its own — drop quietly.
       },
       close(ws) {
-        const slot = ws.data as unknown as { __haystackServer?: HaystackAcpServer }
+        const slot = ws.data as unknown as {
+          __haystackServer?: HaystackAcpServer
+          __pendingMessages?: string[] | null
+        }
         slot.__haystackServer?.dispose()
         slot.__haystackServer = undefined
+        slot.__pendingMessages = null
       },
     })
 }

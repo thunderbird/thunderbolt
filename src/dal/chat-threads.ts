@@ -50,10 +50,17 @@ export const getChatThread = async (db: AnyDrizzleDatabase, id: string): Promise
 /**
  * Create a new chat thread
  * @param model - Resolved model (caller must fetch via getModel);
+ *
+ * `agentId` is optional on creation so the first message can persist the
+ * user's currently-selected agent atomically. Without this, new threads were
+ * created with `agentId: null` and a reload would fall back to the built-in
+ * default — losing the user's selection.
  */
 export const createChatThread = async (
   db: AnyDrizzleDatabase,
-  data: Pick<ChatThread, 'contextSize' | 'id' | 'title' | 'triggeredBy' | 'wasTriggeredByAutomation'>,
+  data: Pick<ChatThread, 'contextSize' | 'id' | 'title' | 'triggeredBy' | 'wasTriggeredByAutomation'> & {
+    agentId?: string | null
+  },
   model: Model,
 ): Promise<void> => {
   await db.insert(chatThreadsTable).values({ ...data, isEncrypted: model.isConfidential })
@@ -61,22 +68,36 @@ export const createChatThread = async (
 
 /**
  * Update a chat thread
+ *
+ * `acpSessionId` is included so the chat layer (`src/chats/chat-instance.ts`)
+ * can persist the ACP `sessionId` returned by `session/new` for non-built-in
+ * agents — future loads call `session/load` when the agent advertises it.
  */
 export const updateChatThread = async (
   db: AnyDrizzleDatabase,
   id: string,
-  data: Partial<Pick<ChatThread, 'contextSize' | 'modeId' | 'title' | 'triggeredBy' | 'wasTriggeredByAutomation'>>,
+  data: Partial<
+    Pick<
+      ChatThread,
+      'acpSessionId' | 'agentId' | 'contextSize' | 'modeId' | 'title' | 'triggeredBy' | 'wasTriggeredByAutomation'
+    >
+  >,
 ): Promise<void> => {
   await db.update(chatThreadsTable).set(data).where(eq(chatThreadsTable.id, id))
 }
 
 /**
- * Gets a specific chat thread by ID or create a new one with the provided ID
+ * Gets a specific chat thread by ID or create a new one with the provided ID.
+ *
+ * Pass `agentId` so the thread row stores the user's currently-selected agent
+ * on creation. Existing threads are returned untouched — caller is responsible
+ * for any subsequent updates via `updateChatThread`.
  */
 export const getOrCreateChatThread = async (
   db: AnyDrizzleDatabase,
   id: string,
   modelId: string,
+  agentId: string | null = null,
 ): Promise<ChatThread> => {
   const thread = await getChatThread(db, id)
 
@@ -97,6 +118,7 @@ export const getOrCreateChatThread = async (
       contextSize: null,
       triggeredBy: null,
       wasTriggeredByAutomation: 0,
+      agentId,
     },
     model,
   )

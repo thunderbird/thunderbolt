@@ -3,7 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
-import { useConfigStore } from './config-store'
+import { selectAllowCustomAgents, selectBuiltInAgentEnabled, useConfigStore } from './config-store'
 
 const storageKey = 'thunderbolt-config'
 
@@ -46,5 +46,29 @@ describe('config store', () => {
     useConfigStore.getState().updateConfig({ e2eeEnabled: false })
 
     expect(useConfigStore.getState().config).toEqual({ e2eeEnabled: false })
+  })
+})
+
+describe('selectBuiltInAgentEnabled', () => {
+  it('defaults to enabled when the flag is absent (offline/standalone)', () => {
+    expect(selectBuiltInAgentEnabled({})).toBe(true)
+  })
+
+  it('is enabled when explicitly true', () => {
+    expect(selectBuiltInAgentEnabled({ builtInAgentEnabled: true })).toBe(true)
+  })
+
+  it('is disabled only when explicitly false', () => {
+    expect(selectBuiltInAgentEnabled({ builtInAgentEnabled: false })).toBe(false)
+  })
+})
+
+describe('selectAllowCustomAgents', () => {
+  it('defaults to allowed when the flag is absent', () => {
+    expect(selectAllowCustomAgents({})).toBe(true)
+  })
+
+  it('is forbidden only when explicitly false', () => {
+    expect(selectAllowCustomAgents({ allowCustomAgents: false })).toBe(false)
   })
 })

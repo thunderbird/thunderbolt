@@ -127,6 +127,13 @@
       "when": 1779393237270,
       "tag": "0017_bouncy_alex_wilder",
       "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1779889543095,
+      "tag": "0018_colorful_lorna_dane",
+      "breakpoints": true
     }
   ]
 }

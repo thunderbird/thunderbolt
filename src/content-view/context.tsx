@@ -15,15 +15,23 @@ export type ObjectViewData = {
   output: string
 }
 
+export type SideviewData = {
+  sideviewType: string
+  sideviewId: string
+}
+
 type ContentViewState =
   | { type: null; data: null }
   | { type: 'object-view'; data: ObjectViewData }
   | { type: 'preview'; data: SidebarWebviewConfig }
+  | { type: 'sideview'; data: SideviewData }
 
 type ContentViewContextType = {
   state: ContentViewState
   showObjectView: (content: ToolUIPart | ReasoningUIPart) => void
   showPreview: (url: string) => void
+  /** Open a typed sideview (e.g. `'document'`). Passing `null` clears the view. */
+  showSideview: (sideviewType: string | null, sideviewId: string | null) => void
   close: () => void
   isOpen: boolean
   previewHidden: boolean
@@ -38,6 +46,7 @@ const ContentViewContext = createContext<ContentViewContextType | undefined>(und
  * The content view can display:
  * - Object views (tool call results)
  * - Webview previews (link previews)
+ * - Sideviews (document viewer, etc.)
  */
 export const ContentViewProvider = ({ children }: { children: ReactNode }) => {
   const [state, setState] = useState<ContentViewState>({ type: null, data: null })
@@ -82,12 +91,21 @@ export const ContentViewProvider = ({ children }: { children: ReactNode }) => {
     })
   }, [])
 
+  const showSideview = useCallback((sideviewType: string | null, sideviewId: string | null) => {
+    if (sideviewType === null || sideviewId === null) {
+      setState({ type: null, data: null })
+      return
+    }
+    trackEvent('content_view_open', { view_type: 'sideview', sideview_type: sideviewType })
+    setState({ type: 'sideview', data: { sideviewType, sideviewId } })
+  }, [])
+
   const close = useCallback(() => {
     if (state.type !== null) {
       trackEvent('content_view_close', { view_type: state.type })
     }
     setState({ type: null, data: null })
-  }, [])
+  }, [state.type])
 
   // Close content view when crossing into mobile mode (only on transition, not continuously)
   useEffect(() => {
@@ -104,6 +122,7 @@ export const ContentViewProvider = ({ children }: { children: ReactNode }) => {
         state,
         showObjectView,
         showPreview,
+        showSideview,
         close,
         isOpen: state.type !== null,
         previewHidden,
@@ -154,4 +173,15 @@ export const useShowPreview = (): ((url: string) => void) | undefined => {
 /** Returns setPreviewHidden when inside ContentViewProvider, undefined otherwise. */
 export const useSetPreviewHidden = (): ((hidden: boolean) => void) | undefined => {
   return useContext(ContentViewContext)?.setPreviewHidden
+}
+
+/** Access the active sideview state. */
+export const useSideview = () => {
+  const { showSideview, state, close } = useContentView()
+  return {
+    sideviewType: state.type === 'sideview' ? state.data.sideviewType : null,
+    sideviewId: state.type === 'sideview' ? state.data.sideviewId : null,
+    showSideview,
+    closeSideview: close,
+  }
 }

@@ -112,6 +112,49 @@ describe('Chat Threads DAL', () => {
       expect(threads.map((t) => t.id)).toContain(threadId2)
     })
 
+    it('should persist agentId when provided', async () => {
+      const threadId = uuidv7()
+      const modelId = await createTestModel()
+      const model = await getModel(getDb(), modelId)
+      if (!model) {
+        throw new Error('Test setup failed')
+      }
+
+      await createChatThread(
+        getDb(),
+        {
+          id: threadId,
+          title: 'New Chat',
+          contextSize: null,
+          triggeredBy: null,
+          wasTriggeredByAutomation: 0,
+          agentId: 'haystack-rag',
+        },
+        model,
+      )
+
+      const stored = await getChatThread(getDb(), threadId)
+      expect(stored?.agentId).toBe('haystack-rag')
+    })
+
+    it('should default agentId to null when not provided', async () => {
+      const threadId = uuidv7()
+      const modelId = await createTestModel()
+      const model = await getModel(getDb(), modelId)
+      if (!model) {
+        throw new Error('Test setup failed')
+      }
+
+      await createChatThread(
+        getDb(),
+        { id: threadId, title: 'New Chat', contextSize: null, triggeredBy: null, wasTriggeredByAutomation: 0 },
+        model,
+      )
+
+      const stored = await getChatThread(getDb(), threadId)
+      expect(stored?.agentId).toBeNull()
+    })
+
     it('should throw when creating thread with same ID twice', async () => {
       const threadId = uuidv7()
       const modelId = await createTestModel()
@@ -300,6 +343,37 @@ describe('Chat Threads DAL', () => {
       const db = getDb()
       const threads = await db.select().from(chatThreadsTable)
       expect(threads).toHaveLength(1)
+    })
+
+    it('should persist agentId on new threads when provided', async () => {
+      const threadId = uuidv7()
+      const modelId = await createTestModel()
+
+      const thread = await getOrCreateChatThread(getDb(), threadId, modelId, 'haystack-rag')
+      expect(thread?.agentId).toBe('haystack-rag')
+
+      const stored = await getChatThread(getDb(), threadId)
+      expect(stored?.agentId).toBe('haystack-rag')
+    })
+
+    it('should default agentId to null on new threads when not provided', async () => {
+      const threadId = uuidv7()
+      const modelId = await createTestModel()
+
+      const thread = await getOrCreateChatThread(getDb(), threadId, modelId)
+      expect(thread?.agentId).toBeNull()
+    })
+
+    it('should NOT mutate existing thread agentId when called with a different one', async () => {
+      const threadId = uuidv7()
+      const modelId = await createTestModel()
+
+      // First call creates with one agent
+      await getOrCreateChatThread(getDb(), threadId, modelId, 'agent-a')
+
+      // Second call should return existing thread unchanged
+      const second = await getOrCreateChatThread(getDb(), threadId, modelId, 'agent-b')
+      expect(second?.agentId).toBe('agent-a')
     })
 
     it('should work correctly with different thread IDs', async () => {

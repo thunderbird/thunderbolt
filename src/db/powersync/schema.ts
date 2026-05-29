@@ -23,6 +23,7 @@ const syncedTables = {
   modes: tables.modesTable,
   model_profiles: tables.modelProfilesTable,
   devices: tables.devicesTable,
+  agents: tables.agentsTable,
 } satisfies Record<PowerSyncTableName, unknown>
 
 /** Local-only tables — created in SQLite but never synced via PowerSync. */
@@ -33,6 +34,14 @@ const localOnlyTables = {
   } satisfies DrizzleTableWithPowerSyncOptions,
   integrations_secrets: {
     tableDefinition: tables.integrationsSecretsTable,
+    options: { localOnly: true },
+  } satisfies DrizzleTableWithPowerSyncOptions,
+  agents_system: {
+    tableDefinition: tables.agentsSystemTable,
+    options: { localOnly: true },
+  } satisfies DrizzleTableWithPowerSyncOptions,
+  agents_secrets: {
+    tableDefinition: tables.agentsSecretsTable,
     options: { localOnly: true },
   } satisfies DrizzleTableWithPowerSyncOptions,
 }

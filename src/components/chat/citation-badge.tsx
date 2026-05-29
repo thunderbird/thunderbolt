@@ -100,6 +100,7 @@ ManagedBadge.displayName = 'ManagedBadge'
 const StandaloneBadge = memo(({ sources }: { sources: CitationSource[] }) => {
   const [isOpen, setIsOpen] = useState(false)
   const { isMobile } = useIsMobile()
+  const close = () => setIsOpen(false)
   const badge = <BadgeButton sources={sources} isOpen={isOpen} onToggle={() => setIsOpen(!isOpen)} />
 
   if (!isMobile) {
@@ -107,7 +108,7 @@ const StandaloneBadge = memo(({ sources }: { sources: CitationSource[] }) => {
       <Popover open={isOpen} onOpenChange={setIsOpen}>
         <PopoverTrigger asChild>{badge}</PopoverTrigger>
         <PopoverContent align="start" side="bottom" className="w-[420px] overflow-hidden rounded-2xl p-0">
-          <SourceList sources={sources} />
+          <SourceList sources={sources} onSelect={close} />
         </PopoverContent>
       </Popover>
     )
@@ -126,7 +127,7 @@ const StandaloneBadge = memo(({ sources }: { sources: CitationSource[] }) => {
           <SheetHeader className="sr-only">
             <SheetTitle>{sources.length === 1 ? 'Source' : 'Sources'}</SheetTitle>
           </SheetHeader>
-          <SourceList sources={sources} />
+          <SourceList sources={sources} onSelect={close} />
         </SheetContent>
       </Sheet>
     </>

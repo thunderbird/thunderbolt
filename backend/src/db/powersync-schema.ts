@@ -50,6 +50,8 @@ export const chatThreadsTable = powersyncSchema.table(
     wasTriggeredByAutomation: integer('was_triggered_by_automation').default(0),
     contextSize: integer('context_size'),
     modeId: text('mode_id'),
+    acpSessionId: text('acp_session_id'),
+    agentId: text('agent_id'),
     deletedAt: timestamp('deleted_at'),
     userId: text('user_id')
       .notNull()
@@ -263,6 +265,26 @@ export const devicesTable = powersyncSchema.table(
   (table) => [index('idx_devices_user_id').on(table.userId)],
 )
 
+/** Synced via PowerSync. User-created ACP agents only. System agents are not rows. */
+export const agentsTable = powersyncSchema.table(
+  'agents',
+  {
+    id: text('id').notNull(),
+    userId: text('user_id')
+      .notNull()
+      .references(() => user.id, { onDelete: 'cascade' }),
+    name: text('name').notNull(),
+    type: text('type', { enum: ['remote-acp', 'managed-acp'] }).notNull(),
+    transport: text('transport', { enum: ['websocket'] }).notNull(),
+    url: text('url').notNull(),
+    description: text('description'),
+    icon: text('icon'),
+    enabled: integer('enabled').default(1).notNull(),
+    deletedAt: timestamp('deleted_at'),
+  },
+  (table) => [primaryKey({ columns: [table.id, table.userId] }), index('idx_agents_user_id').on(table.userId)],
+)
+
 /**
  * Map of PowerSync table names to Drizzle tables for account delete.
  * Must have an entry for every PowerSyncTableName (type-checked).
@@ -280,6 +302,7 @@ export const powersyncTablesByName = {
   modes: modesTable,
   model_profiles: modelProfilesTable,
   devices: devicesTable,
+  agents: agentsTable,
 } satisfies Record<PowerSyncTableName, AnyPgTable>
 
 /**
@@ -309,6 +332,7 @@ export const powersyncPkColumn: Record<PowerSyncTableName, AnyPgColumn> = {
   modes: modesTable.id,
   model_profiles: modelProfilesTable.id,
   devices: devicesTable.id,
+  agents: agentsTable.id,
 }
 
 /**
@@ -329,4 +353,5 @@ export const powersyncConflictTarget: Record<PowerSyncTableName, AnyPgColumn[]> 
   modes: [modesTable.id, modesTable.userId],
   model_profiles: [modelProfilesTable.id, modelProfilesTable.userId],
   devices: [devicesTable.id],
+  agents: [agentsTable.id, agentsTable.userId],
 }

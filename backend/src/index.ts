@@ -24,6 +24,8 @@ import { createPostHogRoutes } from '@/posthog/routes'
 import { createProToolsRoutes } from '@/pro/routes'
 import { createWaitlistRoutes } from '@/waitlist/routes'
 import { createAccountRoutes } from '@/api/account'
+import { createAgentsRoutes } from '@/agents'
+import { createHaystackRoutes } from '@/haystack'
 import { createConfigRoutes } from '@/api/config'
 import { createEncryptionRoutes } from '@/api/encryption'
 import { createPowerSyncRoutes } from '@/api/powersync'
@@ -127,7 +129,8 @@ export const createApp = async (deps?: AppDeps) => {
         }),
       )
       .use(
-        createUniversalProxyWsRoutes(auth, {
+        createUniversalProxyWsRoutes({
+          auth,
           rateLimit: proRateLimit,
           wsFactory: deps?.upstreamWsFactory,
           observability: proxyObservability,
@@ -150,6 +153,8 @@ export const createApp = async (deps?: AppDeps) => {
       .use(createPowerSyncRoutes(auth, settings, database))
       .use(createEncryptionRoutes(auth, database))
       .use(createAccountRoutes(auth, database))
+      .use(createAgentsRoutes(auth))
+      .use(createHaystackRoutes(settings, auth, { fetchFn }))
   )
 }
 

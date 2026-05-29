@@ -468,4 +468,48 @@ describe('ChatMessages', () => {
       expect(screen.getByText('Hello')).toBeInTheDocument()
     })
   })
+
+  describe('submitted loading indicator', () => {
+    const setup = (status: 'submitted' | 'ready' | 'streaming', messages: ThunderboltUIMessage[]) => {
+      const mockChatInstance = createMockChatInstance(messages, status)
+      const mockUseChat = createMockUseChat(mockChatInstance)
+      hydrateStore({
+        chatInstance: mockChatInstance,
+        chatThread: createMockChatThread(),
+        id: 'thread-1',
+        mcpClients: [],
+        models: [],
+        selectedModel: null,
+        triggerData: null,
+      })
+      return render(<ChatMessages useChat={mockUseChat} />, { wrapper: createTestWrapper() })
+    }
+
+    it('renders the synthetic loading indicator when status is submitted and last message is user', () => {
+      const messages: ThunderboltUIMessage[] = [
+        createTestMessage({ role: 'user', parts: [{ type: 'text', text: 'Hello' }] }),
+      ]
+      const { container } = setup('submitted', messages)
+
+      const spinner = container.querySelector('.animate-spin')
+      expect(spinner).not.toBeNull()
+    })
+
+    it('does not render the indicator when status is ready', () => {
+      const messages: ThunderboltUIMessage[] = [
+        createTestMessage({ role: 'user', parts: [{ type: 'text', text: 'Hello' }] }),
+      ]
+      const { container } = setup('ready', messages)
+      expect(container.querySelector('.animate-spin')).toBeNull()
+    })
+
+    it('does not render the indicator when an assistant message already exists', () => {
+      const messages: ThunderboltUIMessage[] = [
+        createTestMessage({ role: 'user', parts: [{ type: 'text', text: 'Hi' }] }),
+        createTestMessage({ id: 'msg-2', role: 'assistant', parts: [{ type: 'text', text: 'reply' }] }),
+      ]
+      const { container } = setup('submitted', messages)
+      expect(container.querySelector('.animate-spin')).toBeNull()
+    })
+  })
 })

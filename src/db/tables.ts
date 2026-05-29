@@ -27,6 +27,8 @@ export const chatThreadsTable = sqliteTable(
     wasTriggeredByAutomation: integer('was_triggered_by_automation').default(0),
     contextSize: integer('context_size'),
     modeId: text('mode_id'),
+    acpSessionId: text('acp_session_id'),
+    agentId: text('agent_id'),
     deletedAt: text('deleted_at'),
     userId: text('user_id'),
   },
@@ -267,4 +269,45 @@ export const devicesTable = sqliteTable('devices', {
   lastSeen: text('last_seen'),
   createdAt: text('created_at'),
   revokedAt: text('revoked_at'),
+})
+
+/** Synced via PowerSync. User-created ACP agents only. `isSystem` is always 0; built-ins and system agents are not rows. */
+export const agentsTable = sqliteTable(
+  'agents',
+  {
+    id: text('id').primaryKey(),
+    name: text('name').notNull(),
+    type: text('type', { enum: ['remote-acp', 'managed-acp'] }).notNull(),
+    transport: text('transport', { enum: ['websocket'] }).notNull(),
+    url: text('url').notNull(),
+    description: text('description'),
+    icon: text('icon'),
+    enabled: integer('enabled').default(1).notNull(),
+    deletedAt: text('deleted_at'),
+    userId: text('user_id').notNull(),
+  },
+  (table) => [
+    index('idx_agents_active')
+      .on(table.id)
+      .where(sql`${table.deletedAt} IS NULL`),
+  ],
+)
+
+/** Local-only table for system-provided ACP agents (e.g. Haystack), hydrated from backend `/agents` discovery. */
+export const agentsSystemTable = sqliteTable('agents_system', {
+  id: text('id').primaryKey(),
+  name: text('name').notNull(),
+  type: text('type', { enum: ['managed-acp'] }).notNull(),
+  transport: text('transport', { enum: ['websocket'] }).notNull(),
+  url: text('url').notNull(),
+  description: text('description'),
+  icon: text('icon'),
+  fetchedAt: text('fetched_at').notNull(),
+})
+
+/** Local-only table for ACP agent credentials (synced or system). Never leaves the device. */
+export const agentsSecretsTable = sqliteTable('agents_secrets', {
+  agentId: text('id').primaryKey(),
+  apiKey: text('api_key'),
+  authMethod: text('auth_method'),
 })

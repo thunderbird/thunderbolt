@@ -67,6 +67,13 @@ const powersyncSettings: Settings = {
   samlEntityId: '',
   samlIdpIssuer: '',
   samlCert: '',
+  enabledAgents: '',
+  allowCustomAgents: true,
+  disableBuiltInAgent: false,
+  haystackBaseUrl: '',
+  haystackApiKey: '',
+  haystackWorkspace: '',
+  haystackPipelines: '',
 }
 
 describe('PowerSync API', () => {

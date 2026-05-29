@@ -99,6 +99,24 @@ const settingsSchema = z
     // Set to 'cloudflare' to trust CF-Connecting-IP, 'akamai' for True-Client-IP,
     // or leave empty to use only the direct socket IP (proxy headers are NOT trusted)
     trustedProxy: z.enum(['', 'cloudflare', 'akamai']).default(''),
+
+    // ACP (Agent Client Protocol) settings
+    // Comma-separated list of agent IDs to expose via GET /agents. Empty = all registered.
+    enabledAgents: z.string().default(''),
+    // When false, the discovery response sets allowCustomAgents: false and the UI hides "+ Add Custom Agent".
+    allowCustomAgents: z.boolean().default(true),
+    // When true, the built-in Thunderbolt agent is omitted entirely from the client's agent
+    // list (not just disabled) — for deployments that ship only their own agents (e.g. Deepset).
+    // Surfaced to the UI via GET /config as `builtInAgentEnabled`.
+    disableBuiltInAgent: z.boolean().default(false),
+    // Haystack-specific config (consumed by the Haystack provider, defined here for centralized config).
+    haystackBaseUrl: z.string().default(''),
+    haystackApiKey: z.string().default(''),
+    // Deepset workspace slug. URLs are `${baseUrl}/api/v1/workspaces/${workspace}/...`.
+    haystackWorkspace: z.string().default(''),
+    // JSON array of pipeline descriptors: [{id, name, pipelineName, pipelineId, description?, icon?}].
+    // `id` is the public slug; `pipelineName` is the Deepset URL slug; `pipelineId` is the Deepset UUID.
+    haystackPipelines: z.string().default(''),
   })
   .superRefine((data, ctx) => {
     if (data.powersyncUrl && data.powersyncJwtSecret.length < 32) {
@@ -171,6 +189,13 @@ const parseSettings = (): Settings => {
     swaggerEnabled: process.env.SWAGGER_ENABLED === 'true',
     rateLimitEnabled: process.env.RATE_LIMIT_ENABLED !== 'false',
     trustedProxy: (process.env.TRUSTED_PROXY || '').toLowerCase(),
+    enabledAgents: process.env.ENABLED_AGENTS || '',
+    allowCustomAgents: process.env.ALLOW_CUSTOM_AGENTS !== 'false',
+    disableBuiltInAgent: process.env.DISABLE_BUILT_IN_AGENT === 'true',
+    haystackBaseUrl: process.env.HAYSTACK_BASE_URL || '',
+    haystackApiKey: process.env.HAYSTACK_API_KEY || '',
+    haystackWorkspace: process.env.HAYSTACK_WORKSPACE || '',
+    haystackPipelines: process.env.HAYSTACK_PIPELINES || '',
   }
 
   return settingsSchema.parse(env)
@@ -234,6 +259,17 @@ export const getCorsMethodsList = (settings: Settings): string[] => {
     .split(',')
     .map((method) => method.trim())
     .filter((method) => method.length > 0)
+}
+
+/**
+ * Parse comma-separated ENABLED_AGENTS into a list. Empty string yields an empty
+ * array — callers MUST interpret that as "no filter, expose all registered providers".
+ */
+export const getEnabledAgentsList = (settings: Pick<Settings, 'enabledAgents'>): string[] => {
+  return settings.enabledAgents
+    .split(',')
+    .map((id) => id.trim())
+    .filter((id) => id.length > 0)
 }
 
 /** Parse comma-separated auto-approved domains into a list */

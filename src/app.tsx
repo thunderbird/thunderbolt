@@ -19,7 +19,15 @@ import SettingsLayout from '@/settings/layout'
 import WaitlistLayout from '@/waitlist/layout'
 import { SidebarProvider } from '@/components/ui/sidebar'
 import { HapticsProvider } from '@/hooks/use-haptics'
-import { AuthProvider, DatabaseProvider, HttpClientProvider, SignInModalProvider } from '@/contexts'
+import {
+  AuthProvider,
+  DatabaseProvider,
+  HttpClientProvider,
+  SignInModalProvider,
+  useAuth,
+  useDatabase,
+  useHttpClient,
+} from '@/contexts'
 import { usePageTracking } from '@/hooks/use-analytics'
 import { useDeepLinkListener } from '@/hooks/use-deep-link-listener'
 import { useKeyboardInset } from '@/hooks/use-keyboard-inset'
@@ -49,6 +57,8 @@ import { useSettings } from './hooks/use-settings'
 import { isSsoMode, isWaitlistBypassed } from './lib/auth-mode'
 import { isTauri } from './lib/platform'
 import { getPowerSyncInstance } from './db/powersync'
+import { refreshSystemAgents } from '@/db/seeding/seed-agents'
+import { useLocalSettingsStore } from '@/stores/local-settings-store'
 import { type ComponentProps, Suspense, lazy, useEffect } from 'react'
 import { LazyMotion } from 'framer-motion'
 
@@ -67,6 +77,7 @@ const ModelsPage = lazy(() => import('@/settings/models'))
 const DevicesSettingsPage = lazy(() => import('@/settings/devices'))
 const McpServersPage = lazy(() => import('@/settings/mcp-servers'))
 const SkillsPage = lazy(() => import('@/settings/skills'))
+const AgentsSettingsPage = lazy(() => import('@/routes/settings/agents'))
 const IntegrationsPage = lazy(() => import('@/settings/integrations'))
 const WaitlistPage = lazy(() => import('@/waitlist/waitlist-page'))
 
@@ -81,9 +92,37 @@ const MessageSimulatorPage = import.meta.env.DEV ? lazy(() => import('./devtools
 
 const queryClient = new QueryClient()
 
+/**
+ * Hydrate the local-only `agents_system` table from the backend's `/agents`
+ * discovery endpoint when the user has a real (non-anonymous) session.
+ *
+ * Legitimate `useEffect` per CLAUDE.md guidance: synchronizing app state with
+ * an external system (the backend) on auth/cloud-URL transitions. There is no
+ * render-time computation that could replace this — the fetch must run as a
+ * side effect when the gating conditions flip, and PowerSync's reactive query
+ * picks up the resulting rows automatically.
+ */
+const useBootstrapSystemAgents = () => {
+  const db = useDatabase()
+  const httpClient = useHttpClient()
+  const authClient = useAuth()
+  const { data: session } = authClient.useSession()
+  const cloudUrl = useLocalSettingsStore((s) => s.cloudUrl)
+
+  const isRealUser = !!session?.user && session.user.isAnonymous !== true
+
+  useEffect(() => {
+    if (!isRealUser || !cloudUrl) {
+      return
+    }
+    void refreshSystemAgents(db, cloudUrl, httpClient)
+  }, [isRealUser, cloudUrl, db, httpClient])
+}
+
 const AppContent = ({ initData }: { initData: InitData }) => {
   useMcpSync()
   useTriggerScheduler()
+  useBootstrapSystemAgents()
   useKeyboardInset()
   useViewportLock()
   useSafeAreaInset()
@@ -157,6 +196,7 @@ const AppRoutes = ({ initData }: { initData: InitData }) => {
               <Route path="devices" element={<DevicesSettingsPage />} />
               <Route path="mcp-servers" element={<McpServersPage />} />
               <Route path="skills" element={<SkillsPage />} />
+              <Route path="agents" element={<AgentsSettingsPage />} />
               <Route path="integrations" element={<IntegrationsPage />} />
               {import.meta.env.DEV && <Route path="dev-settings" element={<DevSettingsPage />} />}
             </Route>

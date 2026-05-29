@@ -3,8 +3,10 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { getSettings } from '@/dal'
+import { createChatThread, getChatThread } from '@/dal/chat-threads'
 import { setupTestDatabase, teardownTestDatabase, resetTestDatabase } from '@/dal/test-utils'
 import { getDb } from '@/db/database'
+import { builtInAgent } from '@/defaults/agents'
 import type { Mode } from '@/types'
 import {
   createMockAutomationRun,
@@ -114,7 +116,11 @@ describe('chat-store', () => {
             {
               chatInstance,
               chatThread: null,
+              connectionStatus: 'idle' as const,
+              connectionError: null,
               id: 'test-id',
+              pendingPermission: null,
+              selectedAgent: builtInAgent,
               selectedMode: null as unknown as Mode,
               retryCount: 0,
               retriesExhausted: false,
@@ -319,6 +325,97 @@ describe('chat-store', () => {
 
       const session = getCurrentSession()
       expect(session?.selectedModel?.id).toBe('tracked-model')
+    })
+  })
+
+  describe('setSelectedAgent', () => {
+    const customAgent = {
+      id: 'custom-agent-1',
+      name: 'My Agent',
+      type: 'remote-acp' as const,
+      transport: 'websocket' as const,
+      url: 'wss://example.test/ws',
+      description: null,
+      icon: null,
+      isSystem: 0 as const,
+      enabled: 1 as const,
+      deletedAt: null,
+      userId: 'u1',
+    }
+
+    it('updates the in-memory session selectedAgent', async () => {
+      const model = createMockModel()
+      hydrateStore({
+        chatInstance: createMockChatInstanceWithValidation(),
+        chatThread: null,
+        id: 'thread-1',
+        mcpClients: [],
+        models: [model],
+        selectedModel: model,
+        triggerData: null,
+      })
+
+      await useChatStore.getState().setSelectedAgent('thread-1', customAgent)
+
+      const session = getCurrentSession()
+      expect(session?.selectedAgent.id).toBe(customAgent.id)
+    })
+
+    it('persists agentId on the chat_threads row when a thread exists', async () => {
+      const model = createMockModel()
+      const chatThread = createMockChatThread({ id: 'thread-persist' })
+
+      await createChatThread(
+        getDb(),
+        { id: chatThread.id, title: 'x', contextSize: null, triggeredBy: null, wasTriggeredByAutomation: 0 },
+        model,
+      )
+
+      hydrateStore({
+        chatInstance: createMockChatInstanceWithValidation(),
+        chatThread,
+        id: chatThread.id,
+        mcpClients: [],
+        models: [model],
+        selectedModel: model,
+        triggerData: null,
+      })
+
+      await useChatStore.getState().setSelectedAgent(chatThread.id, customAgent)
+
+      const stored = await getChatThread(getDb(), chatThread.id)
+      expect(stored?.agentId).toBe(customAgent.id)
+    })
+
+    it('updates in-memory state and skips the DB write when no chat thread exists yet', async () => {
+      // For brand-new chats (no `chat_threads` row yet) the selection is held
+      // in memory until the first message is sent. Persistence happens inside
+      // `getOrCreateChatThread` — see `use-hydrate-chat-store.ts` saveMessages.
+      // This test covers the pre-first-message path only.
+      const model = createMockModel()
+      hydrateStore({
+        chatInstance: createMockChatInstanceWithValidation(),
+        chatThread: null,
+        id: 'thread-no-row',
+        mcpClients: [],
+        models: [model],
+        selectedModel: model,
+        triggerData: null,
+      })
+
+      // Should not throw despite no DB row existing.
+      await useChatStore.getState().setSelectedAgent('thread-no-row', customAgent)
+
+      const session = getCurrentSession()
+      expect(session?.selectedAgent.id).toBe(customAgent.id)
+
+      // Verify no row was created behind the scenes.
+      const stored = await getChatThread(getDb(), 'thread-no-row')
+      expect(stored).toBeNull()
+    })
+
+    it('throws when the session is missing', async () => {
+      await expect(useChatStore.getState().setSelectedAgent('nope', customAgent)).rejects.toThrow('No session found')
     })
   })
 })

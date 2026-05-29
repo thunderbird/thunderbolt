@@ -9,6 +9,7 @@ import { useEffect, useRef } from 'react'
 import { useChatScrollHandler } from '@/chats/use-chat-scroll-handler'
 import { ChatMessages } from './chat-messages'
 import { ChatPromptInput } from './chat-prompt-input'
+import { PermissionDialogHost } from './permission-dialog-host'
 import { useCurrentChatSession } from '@/chats/chat-store'
 import { useChat } from '@ai-sdk/react'
 import { useChatAutomation } from '@/chats/use-chat-automation'
@@ -107,6 +108,9 @@ export default function ChatUI() {
               duration: 0.25,
             }}
           >
+            <div className="w-full max-w-[696px] min-w-[268px]">
+              <PermissionDialogHost />
+            </div>
             <m.div
               className="w-full max-w-[696px] min-w-[268px] rounded-2xl"
               layout

@@ -17,6 +17,7 @@ import { act, cleanup, render, screen } from '@testing-library/react'
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, mock } from 'bun:test'
 import { createElement, type ReactNode, type RefObject } from 'react'
 import { BrowserRouter } from 'react-router'
+import { useChatStore } from '@/chats/chat-store'
 import { ChatPromptInput, type ChatPromptInputRef } from './chat-prompt-input'
 
 const createMockUseContextTracking =
@@ -212,6 +213,74 @@ describe('ChatPromptInput', () => {
 
       // On mobile, Enter should NOT be prevented (it creates a newline naturally)
       expect(preventDefaultSpy).not.toHaveBeenCalled()
+    })
+  })
+
+  describe('agent availability', () => {
+    it('renders a read-only fallback when the agent is unavailable on this platform', () => {
+      const { mockUseChat } = setupStore()
+
+      render(
+        <ChatPromptInput useChat={mockUseChat} useIsMobile={createMockUseIsMobile()} isAgentAvailable={() => false} />,
+        { wrapper: TestWrapper },
+      )
+
+      expect(screen.queryByPlaceholderText('Ask me anything...')).toBeNull()
+      expect(screen.getByRole('status').textContent ?? '').toMatch(/not available on this platform/)
+    })
+  })
+
+  describe('connection status', () => {
+    it('shows connecting indicator when the session is mid-connect', () => {
+      const { mockUseChat } = setupStore()
+      useChatStore.getState().updateSession('thread-1', { connectionStatus: 'connecting', connectionError: null })
+
+      render(<ChatPromptInput useChat={mockUseChat} useIsMobile={createMockUseIsMobile()} />, {
+        wrapper: TestWrapper,
+      })
+
+      expect(screen.getByRole('status').textContent ?? '').toMatch(/Connecting to /)
+    })
+
+    it('shows error indicator when the connection failed', () => {
+      const { mockUseChat } = setupStore()
+      useChatStore.getState().updateSession('thread-1', {
+        connectionStatus: 'error',
+        connectionError: new Error('boom'),
+      })
+
+      render(<ChatPromptInput useChat={mockUseChat} useIsMobile={createMockUseIsMobile()} />, {
+        wrapper: TestWrapper,
+      })
+
+      const alert = screen.getByRole('alert')
+      expect(alert.textContent ?? '').toMatch(/Failed to connect to /)
+      expect(alert.querySelector('span[title]')?.getAttribute('title')).toBe('boom')
+    })
+
+    it('extracts JSON-RPC error message into the connection-error tooltip', () => {
+      const { mockUseChat } = setupStore()
+      useChatStore.getState().updateSession('thread-1', {
+        connectionStatus: 'error',
+        connectionError: new Error(JSON.stringify({ data: { message: 'agent offline' } })),
+      })
+
+      render(<ChatPromptInput useChat={mockUseChat} useIsMobile={createMockUseIsMobile()} />, {
+        wrapper: TestWrapper,
+      })
+
+      expect(screen.getByRole('alert').querySelector('span[title]')?.getAttribute('title')).toBe('agent offline')
+    })
+
+    it('falls back to default selector when connectionStatus is idle', () => {
+      const { mockUseChat } = setupStore()
+
+      render(<ChatPromptInput useChat={mockUseChat} useIsMobile={createMockUseIsMobile()} />, {
+        wrapper: TestWrapper,
+      })
+
+      expect(screen.queryByRole('status')).toBeNull()
+      expect(screen.queryByRole('alert')).toBeNull()
     })
   })
 

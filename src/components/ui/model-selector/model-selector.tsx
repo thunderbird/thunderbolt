@@ -20,6 +20,10 @@ export type ModelSelectorProps = {
   onAddModels?: () => void
   side?: 'top' | 'bottom' | 'left' | 'right'
   align?: 'start' | 'center' | 'end'
+  /** Trigger appearance. `pill` (default) is the rounded standalone style used
+   *  in modals; `bordered` matches the chat composer's ModeSelector (squared,
+   *  bordered, taller) so the two composer controls read as a pair. */
+  variant?: 'pill' | 'bordered'
 }
 
 type ModelItemData = {
@@ -112,14 +116,20 @@ export const ModelSelector = ({
   onAddModels,
   side,
   align,
+  variant = 'pill',
 }: ModelSelectorProps) => {
   const groupedItems = useMemo(() => categorizeModels(models, chatThread), [models, chatThread])
 
   const renderTrigger = (selected: SearchableMenuItem<ModelItemData> | undefined, isOpen: boolean) => (
     <div
       className={cn(
-        'flex items-center gap-2 px-3 h-[var(--touch-height-sm)] rounded-full cursor-pointer transition-colors text-[length:var(--font-size-body)]',
-        isOpen ? 'bg-secondary' : 'hover:bg-secondary/50',
+        'flex items-center gap-2 px-3 cursor-pointer transition-colors text-[length:var(--font-size-body)]',
+        variant === 'bordered'
+          ? cn(
+              'h-[var(--touch-height-default)] rounded-lg border border-border',
+              isOpen ? 'bg-accent' : 'hover:bg-accent/50',
+            )
+          : cn('h-[var(--touch-height-sm)] rounded-full', isOpen ? 'bg-secondary' : 'hover:bg-secondary/50'),
       )}
     >
       {selected?.data?.model && needsApiKey(selected.data.model) ? (
@@ -127,7 +137,9 @@ export const ModelSelector = ({
       ) : selected?.data?.model.isConfidential === 1 ? (
         <Lock className="size-3.5 text-muted-foreground" />
       ) : null}
-      <span className="font-medium">{selected?.label ?? 'Select Model'}</span>
+      <span className={cn('font-medium', variant === 'bordered' && 'text-muted-foreground')}>
+        {selected?.label ?? 'Select Model'}
+      </span>
       <ChevronDown className={cn('size-3.5 text-muted-foreground transition-transform', isOpen && 'rotate-180')} />
     </div>
   )

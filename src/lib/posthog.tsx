@@ -151,6 +151,9 @@ export type EventType =
   // Model & Settings
   | 'model_select'
   | 'mode_select'
+  | 'agent_select'
+  | 'acp_mode_changed'
+  | 'acp_config_options_changed'
   | 'settings_theme_set'
   | 'settings_name_set'
   | 'settings_name_update'

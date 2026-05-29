@@ -21,7 +21,7 @@ import { getAuthToken } from '@/lib/auth-token'
 import { fetch as baseFetch } from '@/lib/fetch'
 import type { FetchFn } from '@/lib/proxy-fetch'
 import { createToolset, getAvailableTools } from '@/lib/tools'
-import type { Model, SaveMessagesFunction, ThunderboltUIMessage } from '@/types'
+import type { Model, ThunderboltUIMessage } from '@/types'
 import type { SourceMetadata } from '@/types/source'
 import { createAnthropic } from '@ai-sdk/anthropic'
 import { createOpenAI } from '@ai-sdk/openai'
@@ -80,7 +80,6 @@ export const getTinfoilClient = async (): Promise<SecureClient> => {
 
 type AiFetchStreamingResponseOptions = {
   init: RequestInit
-  saveMessages: SaveMessagesFunction
   modelId: string
   modeSystemPrompt?: string
   modeName?: string
@@ -203,7 +202,6 @@ export const createModel = async (modelConfig: Model, getProxyFetch: () => Fetch
 
 export const aiFetchStreamingResponse = async ({
   init,
-  saveMessages,
   modelId,
   modeSystemPrompt,
   modeName,
@@ -214,9 +212,11 @@ export const aiFetchStreamingResponse = async ({
   const options = init as RequestInit & { body: string }
   const body = JSON.parse(options.body)
   const abortSignal: AbortSignal | undefined = options.signal ?? undefined
-  const { messages, id } = body as { messages: ThunderboltUIMessage[]; id: string }
+  const { messages } = body as { messages: ThunderboltUIMessage[]; id: string }
 
-  await saveMessages({ id, messages })
+  // The chat instance saves the user message via `saveMessages` before
+  // invoking the adapter — see `src/chats/chat-instance.ts`. By the time we
+  // reach this function the user turn is already persisted.
 
   const db = getDb()
 

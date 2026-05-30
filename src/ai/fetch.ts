@@ -426,6 +426,12 @@ export const aiFetchStreamingResponse = async ({
     // regenerate so the model sees the user's *current* skill library, not
     // a snapshot from when the message was originally typed.
     //
+    // Skills v1 §OQ6: skills are intentionally available in *every* mode
+    // (Chat, Search, Research). There's no per-mode gating here — a skill
+    // is text injection, not a tool, and modes that disagree on tools
+    // still agree on text. If a future mode wants to exclude skills it'd
+    // need an explicit `noSkills` flag on the mode definition.
+    //
     // The composer (`chat-prompt-input.tsx`) uses the same helpers to size
     // the context-overflow estimate so the budget and the actual prepend
     // stay in lockstep.

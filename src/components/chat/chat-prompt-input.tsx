@@ -13,6 +13,7 @@ import { appendSlashToken } from '@/skills/compose-chat-input'
 import { renderHighlightedSkillTokens, type SkillStatusClassifier } from '@/skills/highlight-skill-tokens'
 import { resolveSkillTokenInstructions } from '@/skills/resolve-skill-system-messages'
 import { SlashPopup } from '@/skills/slash-popup'
+import { useSkillTelemetry } from '@/skills/telemetry'
 import { useSlashCommand } from '@/skills/use-slash-command'
 import {
   useEnabledSkills as useEnabledSkills_default,
@@ -106,6 +107,7 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
 
     const { skills: library } = useLibrarySkills()
     const { isEnabled } = useEnabledSkills()
+    const trackSkillEvent = useSkillTelemetry()
     const skillBySlug = useMemo(() => new Map(library.map((s) => [s.name, s])), [library])
     const enabledSlugs = useMemo(
       () => new Set(library.filter((s) => isEnabled(s.id)).map((s) => s.name)),
@@ -237,7 +239,10 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
       queueMicrotask(() => {
         addSkillChip(runSkill)
         navigate(location.pathname, { replace: true, state: {} })
-        trackEvent('skill_used', { via: 'settings-nav' })
+        const resolved = skillBySlug.get(runSkill)
+        if (resolved) {
+          trackSkillEvent('skill_used', resolved.id, { via: 'settings-nav' })
+        }
       })
     }
 
@@ -360,17 +365,20 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
     const handleAddChipFromBar = useCallback(
       (slug: string) => {
         addSkillChip(slug)
-        trackEvent('skill_used', { via: 'chip' })
+        const resolved = skillBySlug.get(slug)
+        if (resolved) {
+          trackSkillEvent('skill_used', resolved.id, { via: 'chip' })
+        }
       },
-      [addSkillChip, trackEvent],
+      [addSkillChip, skillBySlug, trackSkillEvent],
     )
 
     const handleSelectFromSlashPopup = useCallback(
       (skill: Parameters<typeof selectSkillFromPopup>[0]) => {
         selectSkillFromPopup(skill)
-        trackEvent('skill_used', { via: 'slash' })
+        trackSkillEvent('skill_used', skill.id, { via: 'slash' })
       },
-      [selectSkillFromPopup, trackEvent],
+      [selectSkillFromPopup, trackSkillEvent],
     )
 
     if (!isAgentAvailable(selectedAgent)) {

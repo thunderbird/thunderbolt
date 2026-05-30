@@ -3,9 +3,11 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { AnimatePresence, m } from 'framer-motion'
+import { Plus } from 'lucide-react'
 import { useCallback, useReducer, useRef } from 'react'
 import { useLocation, useNavigate } from 'react-router'
 
+import { Button } from '@/components/ui/button'
 import { SkillNameInvalidError, SkillNameTakenError } from '@/dal'
 import { useIsMobile } from '@/hooks/use-mobile'
 import { DeleteSkillDialog } from './delete-skill-dialog'
@@ -16,6 +18,7 @@ import { SkillDetail } from './skill-detail'
 import { SkillForm, type SkillFormValues } from './skill-form'
 import { initialSkillsViewState, skillsViewReducer } from './skills-view-state'
 import { SkillsList } from './skills-list'
+import { useSkillTelemetry } from './telemetry'
 import { useEnabledSkills, useLibrarySkills, usePinnedSkills } from './use-skills'
 
 export const SkillsView = () => {
@@ -27,6 +30,7 @@ export const SkillsView = () => {
   // one of the 10 available).
   const { pinnedSet, togglePin } = usePinnedSkills()
   const { isEnabled, setEnabled } = useEnabledSkills()
+  const trackSkillEvent = useSkillTelemetry()
 
   const [state, dispatch] = useReducer(skillsViewReducer, initialSkillsViewState)
   const {
@@ -154,7 +158,13 @@ export const SkillsView = () => {
   // `softDeleteSkill` already nulls `pinnedOrder` in the same write, so no
   // explicit unpin call is needed here — that would be a redundant write on
   // the tombstone row.
-  const removeSkill = useCallback((id: string) => softDeleteSkill(id), [softDeleteSkill])
+  const removeSkill = useCallback(
+    async (id: string) => {
+      await softDeleteSkill(id)
+      trackSkillEvent('skill_deleted', id, {})
+    },
+    [softDeleteSkill, trackSkillEvent],
+  )
 
   const confirmPendingDependents = async () => {
     if (!pendingDependents) {
@@ -177,9 +187,12 @@ export const SkillsView = () => {
     try {
       if (mode === 'create') {
         const created = await createSkill(values)
+        trackSkillEvent('skill_created', created.id, { instruction_length: values.instruction.length })
         dispatch({ type: 'SUBMIT_SUCCESS', activeId: created.id })
       } else if (active) {
+        const renamed = values.name !== active.name
         await updateSkill({ id: active.id, patch: values })
+        trackSkillEvent('skill_edited', active.id, { renamed })
         dispatch({ type: 'SUBMIT_SUCCESS', activeId: active.id })
       }
     } catch (error) {
@@ -191,16 +204,22 @@ export const SkillsView = () => {
     }
   }
 
-  // Empty-state panel — most users never see this once seeded defaults land,
-  // but it's the "I deleted everything" path. Stays inside the master/detail
-  // layout so the list (and its + button) keep their normal position.
+  // Empty-state panel — the "I deleted everything" path. `active` falls back
+  // to `skills.at(0)` (see below), so when the library has rows the panel
+  // always renders a skill detail; this empty state only fires when
+  // `skills.length === 0`. Stays inside the master/detail layout so the
+  // list (and its + button) keep their normal position.
   const emptyPanel = (
     <section className="flex h-full flex-1 flex-col items-center justify-center gap-3 bg-background px-6 text-center text-foreground">
-      <h2 className="text-xl">No skill selected</h2>
+      <h2 className="text-xl">No skills yet</h2>
       <p className="max-w-md text-sm text-muted-foreground">
-        Skills are reusable instruction templates you can summon with a slash command.
-        {skills.length === 0 ? ' Create one to get started.' : ' Select a skill from the list to view or edit it.'}
+        Skills are reusable instruction templates you summon in chat with{' '}
+        <code className="rounded-sm bg-secondary px-1 font-mono text-xs">/name</code>.
       </p>
+      <Button size="sm" onClick={() => dispatch({ type: 'START_CREATE' })}>
+        <Plus />
+        Create your first skill
+      </Button>
     </section>
   )
 

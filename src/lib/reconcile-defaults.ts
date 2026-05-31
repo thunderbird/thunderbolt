@@ -3,8 +3,9 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import type { AnyDrizzleDatabase } from '@/db/database-interface'
+import type { Model, ModelProfile } from '@/types'
 import { createSetting } from '@/dal'
-import { eq } from 'drizzle-orm'
+import { and, eq, isNull } from 'drizzle-orm'
 import type { SQLiteTableWithColumns } from 'drizzle-orm/sqlite-core'
 import { v7 as uuidv7 } from 'uuid'
 import {
@@ -23,6 +24,7 @@ import { defaultModels, hashModel } from '../defaults/models'
 import { defaultSettings, hashSetting } from '../defaults/settings'
 import { defaultSkills, hashSkill } from '../defaults/skills'
 import { defaultTasks, hashTask } from '../defaults/tasks'
+import { nowIso } from './utils'
 
 /**
  * Generic function to reconcile defaults into a table
@@ -89,37 +91,34 @@ export const reconcileDefaultsForTable = async <T extends { defaultHash: string 
 }
 
 /**
- * Soft-delete legacy system defaults whose hash still matches the original.
- * Edited rows survive. Compute hashes with `hashValues([...])` against the
- * legacy field order when adding entries.
+ * Soft-delete any unedited system default row whose id is no longer in the
+ * current defaults arrays. The hash-match guard ensures edited rows survive.
+ * Skips rows without a `defaultHash` (user-created).
  */
-const removedDefaults: ReadonlyArray<{ modelId: string; modelHash: string; profileHash: string }> = [
-  {
-    // Mistral Medium 3.1 (removed in THU-545)
-    modelId: '019af08a-9836-783d-ab56-39b9fec48af1',
-    modelHash: '-3zuuqs',
-    profileHash: 'ytmc3a',
-  },
-]
-
 export const cleanupRemovedDefaults = async (db: AnyDrizzleDatabase) => {
-  const nowIso = new Date().toISOString()
-  for (const removed of removedDefaults) {
-    const model = await db.select().from(modelsTable).where(eq(modelsTable.id, removed.modelId)).get()
-    if (model && !model.deletedAt && model.defaultHash === removed.modelHash) {
-      await db.update(modelsTable).set({ deletedAt: nowIso }).where(eq(modelsTable.id, removed.modelId))
-    }
+  const now = nowIso()
+  const currentModelIds = new Set(defaultModels.map((m) => m.id))
+  const currentProfileModelIds = new Set(defaultModelProfiles.map((p) => p.modelId))
 
-    const profile = await db
-      .select()
-      .from(modelProfilesTable)
-      .where(eq(modelProfilesTable.modelId, removed.modelId))
-      .get()
-    if (profile && !profile.deletedAt && profile.defaultHash === removed.profileHash) {
-      await db
-        .update(modelProfilesTable)
-        .set({ deletedAt: nowIso })
-        .where(eq(modelProfilesTable.modelId, removed.modelId))
+  const systemModels = (await db
+    .select()
+    .from(modelsTable)
+    .where(and(eq(modelsTable.isSystem, 1), isNull(modelsTable.deletedAt)))) as Model[]
+  for (const row of systemModels) {
+    if (currentModelIds.has(row.id) || !row.defaultHash) continue
+    if (hashModel(row) === row.defaultHash) {
+      await db.update(modelsTable).set({ deletedAt: now }).where(eq(modelsTable.id, row.id))
+    }
+  }
+
+  const profiles = (await db
+    .select()
+    .from(modelProfilesTable)
+    .where(isNull(modelProfilesTable.deletedAt))) as ModelProfile[]
+  for (const row of profiles) {
+    if (currentProfileModelIds.has(row.modelId) || !row.defaultHash) continue
+    if (hashModelProfile(row) === row.defaultHash) {
+      await db.update(modelProfilesTable).set({ deletedAt: now }).where(eq(modelProfilesTable.modelId, row.modelId))
     }
   }
 }

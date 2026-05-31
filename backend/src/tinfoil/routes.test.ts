@@ -9,8 +9,8 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it, mock } from 'bun
 import { Elysia } from 'elysia'
 import { createTinfoilRoutes } from './routes'
 
-const ENCLAVE_URL = 'https://inference.tinfoil.sh'
-const TEST_API_KEY = 'test-tinfoil-key'
+const enclaveUrl = 'https://inference.tinfoil.sh'
+const testApiKey = 'test-tinfoil-key'
 
 const makeOkResponse = (body = 'ok', extraHeaders: Record<string, string> = {}) =>
   new Response(body, {
@@ -50,8 +50,8 @@ describe('createTinfoilRoutes', () => {
       createTinfoilRoutes({
         auth: overrides.auth ?? mockAuth,
         fetchFn: mockFetch as unknown as typeof fetch,
-        apiKey: overrides.apiKey ?? TEST_API_KEY,
-        enclaveUrl: overrides.enclaveUrl ?? ENCLAVE_URL,
+        apiKey: overrides.apiKey ?? testApiKey,
+        enclaveUrl: overrides.enclaveUrl ?? enclaveUrl,
       }),
     )
 
@@ -101,7 +101,7 @@ describe('createTinfoilRoutes', () => {
       expect(mockFetch).toHaveBeenCalledTimes(1)
       const [, init] = mockFetch.mock.calls[0] as [string, RequestInit]
       const sent = init.headers as Headers
-      expect(sent.get('authorization')).toBe(`Bearer ${TEST_API_KEY}`)
+      expect(sent.get('authorization')).toBe(`Bearer ${testApiKey}`)
       expect(sent.get('authorization')).not.toBe('Bearer client-supplied-secret')
     })
 
@@ -144,7 +144,7 @@ describe('createTinfoilRoutes', () => {
 
       expect(mockFetch).toHaveBeenCalledTimes(1)
       const [calledUrl, init] = mockFetch.mock.calls[0] as [string, RequestInit]
-      expect(calledUrl).toBe(`${ENCLAVE_URL}/v1/chat/completions`)
+      expect(calledUrl).toBe(`${enclaveUrl}/v1/chat/completions`)
       expect(init.body).not.toBeNull()
       expect(init.method).toBe('POST')
     })
@@ -184,8 +184,8 @@ describe('createTinfoilRoutes', () => {
         createTinfoilRoutes({
           auth: mockAuth,
           fetchFn: mockFetch as unknown as typeof fetch,
-          apiKey: TEST_API_KEY,
-          enclaveUrl: ENCLAVE_URL,
+          apiKey: testApiKey,
+          enclaveUrl,
         }),
       )
 
@@ -199,15 +199,15 @@ describe('createTinfoilRoutes', () => {
       )
 
       const [calledUrl] = mockFetch.mock.calls[0] as [string, RequestInit]
-      expect(calledUrl).toBe(`${ENCLAVE_URL}/v1/chat/completions?stream=true`)
+      expect(calledUrl).toBe(`${enclaveUrl}/v1/chat/completions?stream=true`)
     })
 
     it('strips trailing slash on the enclave URL before composing the upstream URL', async () => {
-      const app = buildApp({ enclaveUrl: `${ENCLAVE_URL}/` })
+      const app = buildApp({ enclaveUrl: `${enclaveUrl}/` })
       await drain(await app.handle(new Request('http://localhost/tinfoil/v1/models', { method: 'GET' })))
 
       const [calledUrl] = mockFetch.mock.calls[0] as [string, RequestInit]
-      expect(calledUrl).toBe(`${ENCLAVE_URL}/v1/models`)
+      expect(calledUrl).toBe(`${enclaveUrl}/v1/models`)
     })
   })
 

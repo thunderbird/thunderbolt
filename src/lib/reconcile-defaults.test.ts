@@ -9,15 +9,72 @@ import { afterAll, afterEach, beforeAll, describe, expect, test } from 'bun:test
 import { eq } from 'drizzle-orm'
 import { modelProfilesTable, modelsTable, promptsTable, settingsTable } from '../db/tables'
 import { defaultAutomations, hashPrompt } from '../defaults/automations'
+import { hashModelProfile } from '../defaults/model-profiles'
 import { defaultModels, hashModel } from '../defaults/models'
 import { defaultSettings, hashSetting } from '../defaults/settings'
 import { nowIso } from './utils'
 import { cleanupRemovedDefaults, reconcileDefaultsForTable } from './reconcile-defaults'
-import type { Model, Prompt } from '@/types'
+import type { Model, ModelProfile, Prompt } from '@/types'
 
-const legacyMistralId = '019af08a-9836-783d-ab56-39b9fec48af1'
-const legacyMistralModelHash = '-3zuuqs'
-const legacyMistralProfileHash = 'ytmc3a'
+/** A model id no current default uses — stands in for any retired default. */
+const retiredModelId = '019af08a-9836-783d-ab56-39b9fec48af1'
+
+/** Build a fully-populated model row whose stored defaultHash matches its contents. */
+const buildRetiredModel = (overrides: Partial<Model> = {}): Model => {
+  const base: Model = {
+    id: retiredModelId,
+    name: 'Retired Model',
+    provider: 'thunderbolt',
+    model: 'retired-model',
+    isSystem: 1,
+    enabled: 1,
+    isConfidential: 0,
+    contextWindow: 131072,
+    toolUsage: 1,
+    startWithReasoning: 0,
+    supportsParallelToolCalls: 0,
+    deletedAt: null,
+    apiKey: null,
+    url: null,
+    defaultHash: null,
+    vendor: 'mistral',
+    description: 'Retired',
+    userId: null,
+    ...overrides,
+  }
+  return { ...base, defaultHash: hashModel(base) }
+}
+
+/** Build a profile whose stored defaultHash matches its contents. */
+const buildRetiredProfile = (overrides: Partial<ModelProfile> = {}): ModelProfile => {
+  const base: ModelProfile = {
+    modelId: retiredModelId,
+    temperature: 0.2,
+    maxSteps: 20,
+    maxAttempts: 2,
+    nudgeThreshold: 6,
+    useSystemMessageModeDeveloper: 0,
+    providerOptions: null,
+    toolsOverride: null,
+    linkPreviewsOverride: null,
+    chatModeAddendum: null,
+    searchModeAddendum: null,
+    researchModeAddendum: null,
+    citationReinforcementEnabled: 0,
+    citationReinforcementPrompt: null,
+    nudgeFinalStep: null,
+    nudgePreventive: null,
+    nudgeRetry: null,
+    nudgeSearchFinalStep: null,
+    nudgeSearchPreventive: null,
+    nudgeSearchRetry: null,
+    deletedAt: null,
+    defaultHash: null,
+    userId: null,
+    ...overrides,
+  }
+  return { ...base, defaultHash: hashModelProfile(base) }
+}
 
 beforeAll(async () => {
   await setupTestDatabase()
@@ -140,109 +197,74 @@ describe('seedModels', () => {
 })
 
 describe('cleanupRemovedDefaults', () => {
-  test('soft-deletes legacy Mistral model + profile when hashes match', async () => {
+  test('soft-deletes retired system model + profile whose hashes still match', async () => {
     const db = getDb()
-    await db.insert(modelsTable).values({
-      id: legacyMistralId,
-      name: 'Mistral Medium 3.1',
-      provider: 'thunderbolt',
-      model: 'mistral-medium-3.1',
-      isSystem: 1,
-      enabled: 1,
-      isConfidential: 0,
-      contextWindow: 131072,
-      toolUsage: 1,
-      startWithReasoning: 0,
-      supportsParallelToolCalls: 0,
-      deletedAt: null,
-      url: null,
-      defaultHash: legacyMistralModelHash,
-      vendor: 'mistral',
-      description: 'Balanced performance and efficiency',
-      userId: null,
-    })
-    await db.insert(modelProfilesTable).values({
-      modelId: legacyMistralId,
-      defaultHash: legacyMistralProfileHash,
-      deletedAt: null,
-    })
+    await db.insert(modelsTable).values(buildRetiredModel())
+    await db.insert(modelProfilesTable).values(buildRetiredProfile())
 
     await cleanupRemovedDefaults(db)
 
-    const model = await db.select().from(modelsTable).where(eq(modelsTable.id, legacyMistralId)).get()
+    const model = await db.select().from(modelsTable).where(eq(modelsTable.id, retiredModelId)).get()
     expect(model?.deletedAt).not.toBeNull()
     const profile = await db
       .select()
       .from(modelProfilesTable)
-      .where(eq(modelProfilesTable.modelId, legacyMistralId))
+      .where(eq(modelProfilesTable.modelId, retiredModelId))
       .get()
     expect(profile?.deletedAt).not.toBeNull()
   })
 
-  test('leaves user-edited Mistral alone (hash mismatch)', async () => {
+  test('leaves edited rows alone (hash mismatch)', async () => {
     const db = getDb()
-    await db.insert(modelsTable).values({
-      id: legacyMistralId,
-      name: 'My Custom Mistral',
-      provider: 'thunderbolt',
-      model: 'mistral-medium-3.1',
-      isSystem: 1,
-      enabled: 1,
-      isConfidential: 0,
-      contextWindow: 131072,
-      toolUsage: 1,
-      startWithReasoning: 0,
-      supportsParallelToolCalls: 0,
-      deletedAt: null,
-      url: null,
-      defaultHash: 'some-other-hash',
-      vendor: 'mistral',
-      description: 'Edited',
-      userId: null,
-    })
+    // Stored hash deliberately does not match the row contents → row counts as edited.
+    await db.insert(modelsTable).values({ ...buildRetiredModel(), name: 'User Renamed' })
 
     await cleanupRemovedDefaults(db)
 
-    const model = await db.select().from(modelsTable).where(eq(modelsTable.id, legacyMistralId)).get()
+    const model = await db.select().from(modelsTable).where(eq(modelsTable.id, retiredModelId)).get()
     expect(model?.deletedAt).toBeNull()
   })
 
-  test('no-op when row is absent', async () => {
+  test('leaves current defaults alone', async () => {
+    const db = getDb()
+    await reconcileDefaultsForTable(db, modelsTable, defaultModels, hashModel)
+
+    await cleanupRemovedDefaults(db)
+
+    for (const def of defaultModels) {
+      const row = await db.select().from(modelsTable).where(eq(modelsTable.id, def.id)).get()
+      expect(row?.deletedAt).toBeNull()
+    }
+  })
+
+  test('leaves user-created rows alone (no defaultHash)', async () => {
+    const db = getDb()
+    await db.insert(modelsTable).values({ ...buildRetiredModel(), isSystem: 0, defaultHash: null })
+
+    await cleanupRemovedDefaults(db)
+
+    const model = await db.select().from(modelsTable).where(eq(modelsTable.id, retiredModelId)).get()
+    expect(model?.deletedAt).toBeNull()
+  })
+
+  test('no-op when retired row is absent', async () => {
     const db = getDb()
     await cleanupRemovedDefaults(db)
-    const model = await db.select().from(modelsTable).where(eq(modelsTable.id, legacyMistralId)).get()
+    const model = await db.select().from(modelsTable).where(eq(modelsTable.id, retiredModelId)).get()
     expect(model).toBeUndefined()
   })
 
   test('idempotent — second run does not re-touch deletedAt', async () => {
     const db = getDb()
-    await db.insert(modelsTable).values({
-      id: legacyMistralId,
-      name: 'Mistral Medium 3.1',
-      provider: 'thunderbolt',
-      model: 'mistral-medium-3.1',
-      isSystem: 1,
-      enabled: 1,
-      isConfidential: 0,
-      contextWindow: 131072,
-      toolUsage: 1,
-      startWithReasoning: 0,
-      supportsParallelToolCalls: 0,
-      deletedAt: null,
-      url: null,
-      defaultHash: legacyMistralModelHash,
-      vendor: 'mistral',
-      description: 'Balanced performance and efficiency',
-      userId: null,
-    })
+    await db.insert(modelsTable).values(buildRetiredModel())
 
     await cleanupRemovedDefaults(db)
-    const after1 = await db.select().from(modelsTable).where(eq(modelsTable.id, legacyMistralId)).get()
+    const after1 = await db.select().from(modelsTable).where(eq(modelsTable.id, retiredModelId)).get()
     const firstDeletedAt = after1?.deletedAt
     expect(firstDeletedAt).not.toBeNull()
 
     await cleanupRemovedDefaults(db)
-    const after2 = await db.select().from(modelsTable).where(eq(modelsTable.id, legacyMistralId)).get()
+    const after2 = await db.select().from(modelsTable).where(eq(modelsTable.id, retiredModelId)).get()
     expect(after2?.deletedAt).toBe(firstDeletedAt!)
   })
 })

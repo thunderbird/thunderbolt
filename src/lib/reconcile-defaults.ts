@@ -105,7 +105,9 @@ export const cleanupRemovedDefaults = async (db: AnyDrizzleDatabase) => {
     .from(modelsTable)
     .where(and(eq(modelsTable.isSystem, 1), isNull(modelsTable.deletedAt)))) as Model[]
   for (const row of systemModels) {
-    if (currentModelIds.has(row.id) || !row.defaultHash) continue
+    if (currentModelIds.has(row.id) || !row.defaultHash) {
+      continue
+    }
     if (hashModel(row) === row.defaultHash) {
       await db.update(modelsTable).set({ deletedAt: now }).where(eq(modelsTable.id, row.id))
     }
@@ -116,7 +118,9 @@ export const cleanupRemovedDefaults = async (db: AnyDrizzleDatabase) => {
     .from(modelProfilesTable)
     .where(isNull(modelProfilesTable.deletedAt))) as ModelProfile[]
   for (const row of profiles) {
-    if (currentProfileModelIds.has(row.modelId) || !row.defaultHash) continue
+    if (currentProfileModelIds.has(row.modelId) || !row.defaultHash) {
+      continue
+    }
     if (hashModelProfile(row) === row.defaultHash) {
       await db.update(modelProfilesTable).set({ deletedAt: now }).where(eq(modelProfilesTable.modelId, row.modelId))
     }

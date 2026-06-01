@@ -3,6 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { getLocalSetting, useLocalSettingsStore } from '@/stores/local-settings-store'
+import { getActiveCloudUrl } from '@/stores/trust-domain-registry'
 import { withTimeout } from '@/lib/timeout'
 import type { AbstractPowerSyncDatabase } from '@powersync/common'
 import { SyncStreamConnectionMethod, WASQLiteOpenFactory, WASQLiteVFS } from '@powersync/web'
@@ -270,7 +271,13 @@ export class PowerSyncDatabaseImpl implements DatabaseInterface {
     })
 
     try {
-      const cloudUrl = getLocalSetting('cloudUrl')
+      const cloudUrl = getActiveCloudUrl()
+      if (!cloudUrl) {
+        // Standalone trust domain has no server to sync with; bail out cleanly so the
+        // caller treats sync as effectively disabled rather than blowing up on undefined.
+        console.info('[PowerSync] no active server — skipping connect (standalone trust domain)')
+        return
+      }
       const connector = new ThunderboltConnector(cloudUrl)
       // Use HTTP streaming to avoid WebSocket "invalid opcode 7" with self-hosted service (ws library).
       const connectInnerStartedAt = performance.now()

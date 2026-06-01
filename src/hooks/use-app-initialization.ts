@@ -9,8 +9,7 @@ import { getAuthToken } from '@/lib/auth-token'
 import { Database, getCurrentDatabase, setDatabase } from '@/db/database'
 import type { AnyDrizzleDatabase } from '@/db/database-interface'
 import { setupDbLifecycleReloadOnRemoteClose } from '@/db/db-lifecycle-broadcast'
-import { getLocalSetting } from '@/stores/local-settings-store'
-import { getActiveTrustDomain, useTrustDomainRegistry } from '@/stores/trust-domain-registry'
+import { getActiveCloudUrl, getActiveTrustDomain, useTrustDomainRegistry } from '@/stores/trust-domain-registry'
 import { createHandleError } from '@/lib/error-utils'
 import { createAppDir, resetAppDir } from '@/lib/fs'
 import { isSsoMode } from '@/lib/auth-mode'
@@ -137,9 +136,8 @@ const executeInitializationSteps = async (httpClient?: HttpClient): Promise<Hand
   // (e2eeEnabled, allowAnonUsers, etc.) current. First-boot already fetched inside the
   // resolver, so we skip the duplicate call. Non-blocking by design: offline keeps working
   // because the config store retains its persisted value when fetch fails.
-  if (isReturningBoot && resolution.trustDomain.kind === 'server') {
-    const refreshUrl = resolution.serverEntry?.cloudUrl ?? getLocalSetting('cloudUrl')
-    void fetchConfig(refreshUrl, httpClient)
+  if (isReturningBoot && resolution.trustDomain.kind === 'server' && resolution.serverEntry) {
+    void fetchConfig(resolution.serverEntry.cloudUrl, httpClient)
   }
 
   // Step 1: App directory creation
@@ -202,8 +200,20 @@ const executeInitializationSteps = async (httpClient?: HttpClient): Promise<Hand
   // initialization — each migration retries on the next launch.
   await runDataMigrations(db)
 
-  // Step 5: Get cloud url and experimental feature tasks
-  const cloudUrl = getLocalSetting('cloudUrl')
+  // Step 5: Resolve runtime cloud URL (from the active server entry, set by Step 0) and
+  // pull experimental feature tasks. The trust-domain registry is the source of truth;
+  // we throw here if it's somehow not set, since downstream consumers (HTTP client,
+  // AuthProvider, AI provider baseURL) all need a non-null URL in server trust domains.
+  const cloudUrl = getActiveCloudUrl()
+  if (!cloudUrl) {
+    const error = createHandleError(
+      'NO_TRUST_DOMAIN',
+      'Active server has no cloud URL (registry inconsistency after boot)',
+      undefined,
+    )
+    trackError(error, { initialization_step: 'trust_domain' })
+    return { success: false, error }
+  }
   const { experimentalFeatureTasks } = await time('step5_getSettings', () =>
     getSettings(db, {
       experimental_feature_tasks: false,

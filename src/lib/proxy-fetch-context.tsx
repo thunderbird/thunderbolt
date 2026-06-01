@@ -21,7 +21,7 @@
 import { useLocalStorage } from '@/hooks/use-local-storage'
 import { getAuthToken } from '@/lib/auth-token'
 import { isTauri } from '@/lib/platform'
-import { useLocalSettingsStore } from '@/stores/local-settings-store'
+import { useActiveCloudUrl } from '@/stores/trust-domain-registry'
 import { createContext, useCallback, useContext, useMemo, useRef, type ReactNode } from 'react'
 import { computeEffectiveProxyEnabled, createProxyFetch, type FetchFn } from './proxy-fetch'
 
@@ -51,10 +51,11 @@ type ProxyFetchProviderProps = {
  *   - Tauri: respects the user toggle; default OFF means upstream-direct.
  */
 export const ProxyFetchProvider = ({ children, proxyFetch: override, isStandalone }: ProxyFetchProviderProps) => {
-  // `cloudUrl` is sourced from the persisted local-settings-store (seeded from
-  // VITE_THUNDERBOLT_CLOUD_URL with a localhost fallback), so it's always a
-  // non-null string here.
-  const cloudUrl = useLocalSettingsStore((s) => s.cloudUrl)
+  // `cloudUrl` is sourced from the active trust-domain entry in the registry. In v1
+  // server-mode boots this is always a non-empty string by the time the provider mounts
+  // (boot Step 0 resolves it). The `?? ''` keeps the type a `string` for standalone
+  // trust domains where there is no server — proxy fetch is unused there.
+  const cloudUrl = useActiveCloudUrl() ?? ''
   const [proxyEnabledStr] = useLocalStorage('proxy_enabled', 'false')
 
   // Web always proxies (toggle is UI-disabled). Tauri respects the stored value.

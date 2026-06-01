@@ -26,9 +26,9 @@ export type ServerEntry = {
   serverId: string
   /**
    * Current URL for this server. May change without changing `serverId` — trust domain is
-   * keyed by ID, not URL. v1 consumers still read `VITE_THUNDERBOLT_CLOUD_URL` via
-   * `getLocalSetting('cloudUrl')`; this field becomes the authoritative source once the
-   * server-URL settings UI or multi-server switcher lands (both post-v1).
+   * keyed by ID, not URL. Authoritative source for runtime backend URL lookups; see
+   * `getActiveCloudUrl` / `useActiveCloudUrl`. `VITE_THUNDERBOLT_CLOUD_URL` is only the
+   * bootstrap default the resolver fetches `/v1/config` from on first boot.
    */
   cloudUrl: string
   lastUserId?: string
@@ -133,6 +133,26 @@ export const getActiveServerId = (): string | undefined => {
   const activeTrustDomain = useTrustDomainRegistry.getState().activeTrustDomain
   return activeTrustDomain?.kind === 'server' ? activeTrustDomain.serverId : undefined
 }
+
+/**
+ * URL of the active server, or `undefined` when standalone / no active domain.
+ *
+ * Authoritative source for runtime backend URL lookups (HTTP client, PowerSync connector,
+ * AI provider baseURL, PostHog proxy host, ACP transport, MCP proxy, SSO redirect).
+ * `VITE_THUNDERBOLT_CLOUD_URL` remains only as the bootstrap default the resolver fetches
+ * `/v1/config` from on first boot.
+ */
+export const getActiveCloudUrl = (): string | undefined => getActiveServerEntry()?.cloudUrl
+
+/** React-subscribing variant — re-renders consumers when the active server's URL changes. */
+export const useActiveCloudUrl = (): string | undefined =>
+  useTrustDomainRegistry((state) => {
+    const td = state.activeTrustDomain
+    if (td?.kind !== 'server') {
+      return undefined
+    }
+    return state.servers[td.serverId]?.cloudUrl
+  })
 
 /**
  * Active user id. Returns `localUserId` in standalone, the last-known session user id

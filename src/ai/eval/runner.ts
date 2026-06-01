@@ -8,7 +8,6 @@ import { getSettings } from '@/dal'
 import { getModel } from '@/dal/models'
 import { getModelProfile } from '@/dal/model-profiles'
 import { getDb } from '@/db/database'
-import { getLocalSetting } from '@/stores/local-settings-store'
 import { isSsoMode } from '@/lib/auth-mode'
 import { getAuthToken } from '@/lib/auth-token'
 import { createAuthenticatedClient } from '@/lib/http'
@@ -21,12 +20,15 @@ import type { EvalResult, EvalScenario } from './types'
 
 const timeout = parseInt(process.env.EVAL_timeout ?? '120000')
 
+// CLI eval — no boot, no trust-domain registry to read from. The env var fallback
+// matches the boot resolver's default so dev and eval point at the same backend.
+const evalCloudUrl = import.meta.env.VITE_THUNDERBOLT_CLOUD_URL || 'http://localhost:8000/v1'
+
 let _evalHttpClientPromise: Promise<import('@/lib/http').HttpClient> | null = null
 const getEvalHttpClient = () => {
   if (!_evalHttpClientPromise) {
     _evalHttpClientPromise = (async () => {
-      const cloudUrl = getLocalSetting('cloudUrl')
-      return createAuthenticatedClient(cloudUrl, getAuthToken, {
+      return createAuthenticatedClient(evalCloudUrl, getAuthToken, {
         credentials: isSsoMode() ? 'include' : undefined,
       })
     })()
@@ -131,9 +133,8 @@ export const runScenario = async (scenario: EvalScenario): Promise<EvalResult> =
     const httpClient = await getEvalHttpClient()
 
     // Eval runs in Node, not a browser — no React tree, no `ProxyFetchProvider`.
-    // Build the proxy fetch directly from the same cloudUrl the HTTP client uses.
-    const cloudUrl = getLocalSetting('cloudUrl')
-    const proxyFetch = createProxyFetch({ cloudUrl })
+    // Build the proxy fetch from the same env cloudUrl the HTTP client uses.
+    const proxyFetch = createProxyFetch({ cloudUrl: evalCloudUrl })
 
     // Call the actual AI pipeline with a timeout
     const response = await Promise.race([

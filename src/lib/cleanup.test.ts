@@ -36,8 +36,11 @@ const handleFullWipe = mock(async () => {
   calls.push('handleFullWipe')
 })
 
+// Include the full surface so this test's mock.module call doesn't shadow the real
+// exports for other test files (see docs/development/testing.md §65).
 mock.module('@/db/db-lifecycle-broadcast', () => ({
   broadcastDbLifecycle,
+  setupDbLifecycleReloadOnRemoteClose: () => {},
 }))
 
 mock.module('@/db/database', () => ({

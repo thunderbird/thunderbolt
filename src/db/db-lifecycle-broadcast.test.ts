@@ -3,17 +3,12 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { describe, expect, it } from 'bun:test'
-import {
-  broadcastDbLifecycle,
-  setupDbLifecycleReloadOnRemoteClose,
-  subscribeDbLifecycle,
-} from './db-lifecycle-broadcast'
+import { broadcastDbLifecycle, setupDbLifecycleReloadOnRemoteClose } from './db-lifecycle-broadcast'
 
-// The wrapper is intentionally thin — these tests exist to guard against accidental
-// regressions in the public surface (subscribe returns an unsubscribe function, broadcast
-// is a fire-and-forget no-throw, setup is idempotent). Round-trip behavior between tabs
-// is exercised by manual QA (the addendum's "manual: sign in → sign out → sign in again"
-// acceptance check) — same-realm BroadcastChannel delivery in Bun's test loop is unreliable.
+// The wrapper is intentionally thin — these tests guard against accidental regressions
+// in the public surface (broadcast is fire-and-forget no-throw, setup is idempotent).
+// Round-trip behavior between tabs is exercised by manual QA — same-realm
+// BroadcastChannel delivery in Bun's test loop is unreliable.
 
 describe('db-lifecycle broadcast', () => {
   it('broadcastDbLifecycle does not throw for any event kind', () => {
@@ -24,14 +19,6 @@ describe('db-lifecycle broadcast', () => {
         trustDomain: { kind: 'server', serverId: '11111111-1111-1111-1111-111111111111' },
       }),
     ).not.toThrow()
-    expect(() => broadcastDbLifecycle({ kind: 'db-reopened', trustDomain: { kind: 'standalone' } })).not.toThrow()
-  })
-
-  it('subscribeDbLifecycle returns an idempotent unsubscribe function', () => {
-    const unsub = subscribeDbLifecycle(() => {})
-    expect(typeof unsub).toBe('function')
-    expect(() => unsub()).not.toThrow()
-    expect(() => unsub()).not.toThrow()
   })
 
   it('setupDbLifecycleReloadOnRemoteClose is safe to call repeatedly', () => {

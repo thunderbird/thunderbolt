@@ -133,7 +133,7 @@ const parseSettings = (): Settings => {
     thunderboltInferenceUrl: process.env.THUNDERBOLT_INFERENCE_URL || '',
     thunderboltInferenceApiKey: process.env.THUNDERBOLT_INFERENCE_API_KEY || '',
     tinfoilApiKey: process.env.TINFOIL_API_KEY || '',
-    tinfoilEnclaveUrl: process.env.TINFOIL_ENCLAVE_URL || 'https://inference.tinfoil.sh',
+    tinfoilEnclaveUrl: process.env.TINFOIL_ENCLAVE_URL || 'https://inference.tinfoil.sh/v1',
     monitoringToken: process.env.MONITORING_TOKEN || '',
     googleClientId: process.env.GOOGLE_CLIENT_ID || '',
     googleClientSecret: process.env.GOOGLE_CLIENT_SECRET || '',

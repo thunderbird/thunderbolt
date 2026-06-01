@@ -36,11 +36,9 @@ export const createTinfoilRoutes = (options: CreateTinfoilRoutesOptions) => {
     .onError(safeErrorHandler)
     .use(createAuthMacro(auth))
     .guard({ auth: true }, (g) => {
-      if (rateLimit) {
-        g.use(rateLimit)
-      }
+      const chain = rateLimit ? g.use(rateLimit) : g
 
-      return g.all(
+      return chain.all(
         '/*',
         async (ctx) => {
           const method = ctx.request.method.toUpperCase()

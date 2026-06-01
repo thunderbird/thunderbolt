@@ -19,7 +19,7 @@
   "dependencies": {
     "@agentclientprotocol/sdk": "^0.22.1",
     "@better-auth/sso": "^1.6.9",
-    "@electric-sql/pglite": "^0.4.4",
+    "@electric-sql/pglite": "^0.4.6",
     "@elysiajs/cors": "^1.4.0",
     "@elysiajs/jwt": "^1.4.0",
     "@elysiajs/opentelemetry": "^1.4.0",

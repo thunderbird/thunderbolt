@@ -44,7 +44,16 @@ const createLimiter = (database: typeof DbType, tier: RateLimitTier) => {
     keyPrefix: tier,
     points: config.max,
     duration: config.durationSecs,
-    clearExpiredByTimeout: true,
+    // The expiry sweep arms a recurring, self-re-arming `setTimeout` that
+    // issues its own `DELETE FROM rate_limits` outside any caller transaction.
+    // Under PGlite (the in-memory driver used by tests and docker-less dev)
+    // that DELETE bypasses the per-test BEGIN/ROLLBACK isolation and the timer
+    // is never cleared, so it fires on the shared connection across test
+    // boundaries — corrupting whichever test's transaction is open and
+    // cascading failures (see test-setup.ts). PGlite is ephemeral, so expired
+    // rows disappear with the process anyway; only run the sweep on a real
+    // Postgres in production.
+    clearExpiredByTimeout: process.env.DATABASE_DRIVER !== 'pglite',
   })
 }
 

@@ -56,9 +56,19 @@ export const authorizeWsBearer = async (auth: Auth, subprotocolHeader: string | 
   if (!token) {
     return null
   }
-  const session = await auth.api.getSession({
-    headers: new Headers({ Authorization: `Bearer ${token}` }),
-  })
+  // Fail closed on a DB/auth error rather than letting it escape. This runs
+  // inside the async WS `open()` handler, which has no surrounding catch — an
+  // unhandled rejection there destabilizes the process (and in tests, where
+  // the session lookup races a shared-connection transaction teardown, surfaces
+  // as an "unhandled error between tests" that reds the whole run). Treating a
+  // lookup failure as "unauthorized" is the correct security posture and lets
+  // the handler close the socket cleanly with 4001.
+  const session = await auth.api
+    .getSession({ headers: new Headers({ Authorization: `Bearer ${token}` }) })
+    .catch((error: unknown) => {
+      console.warn('authorizeWsBearer: session lookup failed, denying upgrade:', error)
+      return null
+    })
   const user = session?.user as User | undefined
   if (!user || user.isAnonymous) {
     return null

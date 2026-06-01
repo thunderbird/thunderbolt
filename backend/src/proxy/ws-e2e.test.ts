@@ -99,15 +99,19 @@ const closeProxy = async (handle: TestAppHandle) => {
   // Force-close any remaining connections so WS-bearing tests don't hang afterEach.
   // Cap the stop with a short timeout — Bun's stop(true) has been observed to hang
   // when peer-side WS connections are half-closed; we don't want that to block tests.
+  //
+  // Crucially, attach a `.catch()` to the stop promise *before* racing it against
+  // the timeout. When the timeout wins the race, the stop promise stays pending;
+  // Bun's real-server WebSocket teardown then rejects it (an `ErrnoError`/ENOTDIR
+  // from the socket FD it was mid-closing). With nothing attached, that late
+  // rejection becomes an "Unhandled error between tests" that fails the whole run
+  // even with zero test failures. The pre-attached catch swallows it.
   const stopWithTimeout = async () => {
     const stop = handle.app.stop as unknown as (closeActiveConnections?: boolean) => Promise<void> | void
-    await Promise.race([Promise.resolve(stop.call(handle.app, true)), new Promise((r) => setTimeout(r, 500))])
+    const stopped = Promise.resolve(stop.call(handle.app, true)).catch(() => {})
+    await Promise.race([stopped, new Promise((r) => setTimeout(r, 500))])
   }
-  try {
-    await stopWithTimeout()
-  } catch {
-    // ignore
-  }
+  await stopWithTimeout()
   await handle.cleanup()
 }
 

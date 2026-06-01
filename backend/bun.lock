@@ -7,7 +7,7 @@
       "dependencies": {
         "@agentclientprotocol/sdk": "^0.22.1",
         "@better-auth/sso": "^1.6.9",
-        "@electric-sql/pglite": "^0.4.4",
+        "@electric-sql/pglite": "^0.4.6",
         "@elysiajs/cors": "^1.4.0",
         "@elysiajs/jwt": "^1.4.0",
         "@elysiajs/opentelemetry": "^1.4.0",
@@ -112,7 +112,7 @@
 
     "@drizzle-team/brocli": ["@drizzle-team/brocli@0.10.2", "", {}, "sha512-z33Il7l5dKjUgGULTqBsQBQwckHh5AbIuxhdsIxDDiZAzBOrZO6q9ogcWC65kU382AfynTfgNumVcNIjuIua6w=="],
 
-    "@electric-sql/pglite": ["@electric-sql/pglite@0.4.4", "", {}, "sha512-g/6CWAJ4XOkObWCWAQ2IReZD8VvsDy3poRHSKvpRR2F96F8WJ3HVbjpso3gN7l0q6QPPgvxSSpl/qo5k8a7mkQ=="],
+    "@electric-sql/pglite": ["@electric-sql/pglite@0.4.6", "", {}, "sha512-qmlmfN8UyKCee35qkV0r/MBp+Znl8FjBz7OpoglNvww3GJpw0/DLP0o1ZymvLNmcD5DTLOQdzKPtF8Hd3mdl1w=="],
 
     "@electric-sql/pglite-socket": ["@electric-sql/pglite-socket@0.1.4", "", { "peerDependencies": { "@electric-sql/pglite": "0.4.4" }, "bin": { "pglite-server": "dist/scripts/server.js" } }, "sha512-2LuMFxJPE2FbjWDrWpylWwhZ5uT03rQfBLM7g2AdZmiG3JjC8sbYFkFR4ZeoqVcn22wKzpJTXFV22mQ+s4Oueg=="],
 

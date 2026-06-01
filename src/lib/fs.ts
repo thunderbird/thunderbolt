@@ -84,6 +84,44 @@ const resetAppDirOpfs = async (): Promise<void> => {
 }
 
 /**
+ * Best-effort delete of a single database file from the active app data directory.
+ * Used by the logout wipe (where only the active trust domain's DB file should be removed,
+ * leaving other trust-domain files — if any — intact). Logs and returns on failure rather
+ * than throwing; the caller decides whether the failure is fatal.
+ *
+ * @param filename - DB filename, e.g. `server-<serverId>.db` or `standalone.db`.
+ */
+export const deleteDbFile = async (filename: string): Promise<void> => {
+  if (isTauri()) {
+    await loadTauriModules()
+    if (!tauriPath || !tauriFs) {
+      console.error('[deleteDbFile] Failed to load Tauri filesystem modules')
+      return
+    }
+    try {
+      await tauriFs.remove(`data/${filename}`, { baseDir: tauriPath.BaseDirectory.AppData })
+    } catch (error) {
+      // ENOENT is the no-op case (file already gone); anything else is logged.
+      console.error(`[deleteDbFile] Failed to remove Tauri file ${filename}:`, error)
+    }
+    return
+  }
+  if (!(await isOpfsAvailable())) {
+    // Private browsing / unsupported runtime — DB was :memory:, nothing on disk.
+    return
+  }
+  try {
+    const root = await navigator.storage.getDirectory()
+    await root.removeEntry(filename, { recursive: true })
+  } catch (error) {
+    // NotFoundError is the no-op case (file already gone); anything else is logged.
+    if (!(error instanceof DOMException) || error.name !== 'NotFoundError') {
+      console.error(`[deleteDbFile] Failed to remove OPFS entry ${filename}:`, error)
+    }
+  }
+}
+
+/**
  * Resets the data directory by deleting the database file and recreating the directory
  */
 export const resetAppDir = async (): Promise<void> => {

@@ -2,9 +2,14 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { getActiveServerId } from '@/stores/trust-domain-registry'
 import { StorageError } from './errors'
 
-const dbName = 'thunderbolt-keys'
+// IndexedDB DB name is namespaced by the active server's `serverId` so multiple
+// servers' encryption keys can coexist without leaking across trust domains.
+// E2E encryption only applies in server trust domains — callers MUST resolve an
+// active server before invoking any helper here.
+const dbNamePrefix = 'thunderbolt-keys__'
 const storeName = 'keys'
 const dbVersion = 1
 
@@ -14,13 +19,22 @@ const mlkemPublicKeyId = 'thunderbolt_mlkem_public_key'
 const mlkemSecretKeyId = 'thunderbolt_mlkem_secret_key'
 const ckId = 'thunderbolt_ck'
 
+/** Resolve the IDB DB name for the active server. Throws when there is no active server. */
+const resolveDbName = (): string => {
+  const serverId = getActiveServerId()
+  if (!serverId) {
+    throw new StorageError('Cannot access encryption-key storage without an active server trust domain')
+  }
+  return `${dbNamePrefix}${serverId}`
+}
+
 // =============================================================================
 // IndexedDB helpers
 // =============================================================================
 
 const openDB = (): Promise<IDBDatabase> =>
   new Promise((resolve, reject) => {
-    const request = indexedDB.open(dbName, dbVersion)
+    const request = indexedDB.open(resolveDbName(), dbVersion)
     request.onupgradeneeded = () => {
       const db = request.result
       if (!db.objectStoreNames.contains(storeName)) {

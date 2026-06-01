@@ -235,5 +235,5 @@ const softDeleteSourceAutomation = async (db: AnyDrizzleDatabase, automationId: 
   await db
     .update(promptsTable)
     .set({ ...clearNullableColumns(promptsTable), deletedAt: nowIso() })
-    .where(eq(promptsTable.id, automationId))
+    .where(and(eq(promptsTable.id, automationId), isNull(promptsTable.deletedAt)))
 }

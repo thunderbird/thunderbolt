@@ -19,9 +19,25 @@ const mlkemPublicKeyId = 'thunderbolt_mlkem_public_key'
 const mlkemSecretKeyId = 'thunderbolt_mlkem_secret_key'
 const ckId = 'thunderbolt_ck'
 
+/**
+ * Resolve the active server's `serverId` for key storage. Main thread reads from the
+ * trust-domain registry (Zustand + localStorage). The PowerSync SharedWorker — where
+ * the encryption codec also runs to decrypt incoming buckets — has no `localStorage`
+ * access, so the registry hydrates to its initial empty state in that context.
+ * We recover the `serverId` from `self.name`, which `getPowerSyncOptions` sets to
+ * `shared-sync-server-<serverId>.db` when constructing the worker.
+ */
+const resolveServerId = (): string | undefined => {
+  if (typeof window !== 'undefined') {
+    return getActiveServerId()
+  }
+  const workerName = typeof self !== 'undefined' ? (self as unknown as { name?: string }).name : undefined
+  return workerName?.match(/^shared-sync-server-(.+)\.db$/)?.[1]
+}
+
 /** Resolve the IDB DB name for the active server. Throws when there is no active server. */
 const resolveDbName = (): string => {
-  const serverId = getActiveServerId()
+  const serverId = resolveServerId()
   if (!serverId) {
     throw new StorageError('Cannot access encryption-key storage without an active server trust domain')
   }

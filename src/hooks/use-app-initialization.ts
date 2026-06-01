@@ -8,6 +8,7 @@ import { getSettings } from '@/dal'
 import { getAuthToken } from '@/lib/auth-token'
 import { Database, getCurrentDatabase, setDatabase } from '@/db/database'
 import type { AnyDrizzleDatabase } from '@/db/database-interface'
+import { setupDbLifecycleReloadOnRemoteClose } from '@/db/db-lifecycle-broadcast'
 import { getLocalSetting } from '@/stores/local-settings-store'
 import { getActiveTrustDomain, useTrustDomainRegistry } from '@/stores/trust-domain-registry'
 import { createHandleError } from '@/lib/error-utils'
@@ -71,6 +72,10 @@ const time = async <T>(label: string, fn: () => Promise<T>): Promise<T> => {
 const executeInitializationSteps = async (httpClient?: HttpClient): Promise<HandleResult<InitData>> => {
   const totalStartedAt = performance.now()
   console.info('[init] start')
+
+  // Multi-tab DB lifecycle listener — idempotent, mounted once per page lifetime so the
+  // app reloads when another tab wipes the active server's DB (logout / promotion).
+  setupDbLifecycleReloadOnRemoteClose()
 
   // Step 0: Resolve the active trust domain.
   //

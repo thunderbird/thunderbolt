@@ -129,17 +129,10 @@ const executeInitializationSteps = async (httpClient?: HttpClient): Promise<Hand
 
   // Step 4b: Run data migrations. Sits *after* reconcileDefaults so any
   // newly-seeded defaults (e.g. the daily-brief skill) are present when a
-  // migration checks for slug collisions. Migration failures are logged
-  // by the runner and don't block initialization — each migration retries
-  // on the next launch.
-  try {
-    await runDataMigrations(db)
-  } catch (error) {
-    // Defensive: the runner already swallows per-migration failures.
-    // Anything that escapes here is a runner-level bug worth logging but
-    // not blocking init for.
-    console.error('Data migration runner failed:', error)
-  }
+  // migration checks for slug collisions. The runner swallows per-migration
+  // failures itself (logging each one), so it never throws and never blocks
+  // initialization — each migration retries on the next launch.
+  await runDataMigrations(db)
 
   // Step 5: Get cloud url and experimental feature tasks
   const cloudUrl = getLocalSetting('cloudUrl')

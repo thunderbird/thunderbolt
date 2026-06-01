@@ -2,11 +2,11 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { maxPinnedSkills } from '@/dal'
+import { deleteTriggersForPrompt, maxPinnedSkills } from '@/dal'
 import type { AnyDrizzleDatabase } from '@/db/database-interface'
-import { promptsTable, skillsTable, triggersTable } from '@/db/tables'
+import { promptsTable, skillsTable } from '@/db/tables'
 import { trackEvent } from '@/lib/posthog'
-import { hashValues, nowIso } from '@/lib/utils'
+import { clearNullableColumns, hashValues, nowIso } from '@/lib/utils'
 import { and, eq, isNotNull, isNull } from 'drizzle-orm'
 import type { DataMigration } from './index'
 import { deriveSkillIdFromAutomationId } from './derive-skill-id'
@@ -224,12 +224,16 @@ const migrateOne = async (
   return 'migrated'
 }
 
-/** Soft-delete the source automation and any triggers attached to it. */
+/**
+ * Soft-delete the source automation and any triggers attached to it. Scrubs all
+ * nullable columns (not just title/prompt) so this stays in lock-step with the
+ * DAL's `deleteAutomation` — reuse `clearNullableColumns` and `deleteTriggersForPrompt`
+ * rather than hand-listing columns that could drift.
+ */
 const softDeleteSourceAutomation = async (db: AnyDrizzleDatabase, automationId: string): Promise<void> => {
-  const deletedAt = nowIso()
-  await db.update(promptsTable).set({ title: null, prompt: null, deletedAt }).where(eq(promptsTable.id, automationId))
+  await deleteTriggersForPrompt(db, automationId)
   await db
-    .update(triggersTable)
-    .set({ deletedAt })
-    .where(and(eq(triggersTable.promptId, automationId), isNull(triggersTable.deletedAt)))
+    .update(promptsTable)
+    .set({ ...clearNullableColumns(promptsTable), deletedAt: nowIso() })
+    .where(eq(promptsTable.id, automationId))
 }

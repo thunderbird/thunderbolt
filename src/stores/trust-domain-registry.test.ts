@@ -46,13 +46,13 @@ describe('trust-domain registry store', () => {
 
     it('merges into an existing entry without clobbering other fields', () => {
       const { activateServer } = useTrustDomainRegistry.getState()
-      activateServer({ serverId: serverA, cloudUrl: 'http://a.local', lastUserId: 'user-1' })
+      activateServer({ serverId: serverA, cloudUrl: 'http://a.local', userId: 'user-1' })
       activateServer({ serverId: serverA, cloudUrl: 'http://a-new.local' })
 
       expect(getRegistry().servers[serverA]).toEqual({
         serverId: serverA,
         cloudUrl: 'http://a-new.local',
-        lastUserId: 'user-1',
+        userId: 'user-1',
       })
     })
 
@@ -82,9 +82,9 @@ describe('trust-domain registry store', () => {
       state.activateServer({ serverId: serverB, cloudUrl: 'http://b.local' })
       state.activateServer({ serverId: serverA, cloudUrl: 'http://a.local' })
 
-      useTrustDomainRegistry.getState().patchActiveServer({ lastUserId: 'user-A', lastUserIsAnonymous: false })
+      useTrustDomainRegistry.getState().patchActiveServer({ userId: 'user-A', isAnonymous: false })
 
-      expect(getRegistry().servers[serverA]).toMatchObject({ lastUserId: 'user-A', lastUserIsAnonymous: false })
+      expect(getRegistry().servers[serverA]).toMatchObject({ userId: 'user-A', isAnonymous: false })
       expect(getRegistry().servers[serverB]).toEqual({ serverId: serverB, cloudUrl: 'http://b.local' })
     })
 
@@ -92,7 +92,7 @@ describe('trust-domain registry store', () => {
       const warn = spyOn(console, 'warn').mockImplementation(() => {})
       try {
         useTrustDomainRegistry.getState().activateStandalone()
-        useTrustDomainRegistry.getState().patchActiveServer({ lastUserId: 'whatever' })
+        useTrustDomainRegistry.getState().patchActiveServer({ userId: 'whatever' })
         expect(getRegistry().servers).toEqual({})
         expect(warn).toHaveBeenCalledTimes(1)
       } finally {
@@ -103,7 +103,7 @@ describe('trust-domain registry store', () => {
     it('warns and no-ops when no active domain is set', () => {
       const warn = spyOn(console, 'warn').mockImplementation(() => {})
       try {
-        useTrustDomainRegistry.getState().patchActiveServer({ lastUserId: 'whatever' })
+        useTrustDomainRegistry.getState().patchActiveServer({ userId: 'whatever' })
         expect(warn).toHaveBeenCalledTimes(1)
       } finally {
         warn.mockRestore()
@@ -145,7 +145,7 @@ describe('trust-domain registry store', () => {
       expect(getActiveCloudUrl()).toBeUndefined()
     })
 
-    it('getActiveUserId returns localUserId in standalone, lastUserId in server', () => {
+    it('getActiveUserId returns localUserId in standalone, the active server entry userId in server mode', () => {
       useTrustDomainRegistry.setState({
         localUserId: 'local-user-xyz',
         activeTrustDomain: { kind: 'standalone' },
@@ -153,7 +153,7 @@ describe('trust-domain registry store', () => {
       expect(getActiveUserId()).toBe('local-user-xyz')
 
       useTrustDomainRegistry.setState({
-        servers: { [serverA]: { serverId: serverA, cloudUrl: 'http://a.local', lastUserId: 'session-user-1' } },
+        servers: { [serverA]: { serverId: serverA, cloudUrl: 'http://a.local', userId: 'session-user-1' } },
         activeTrustDomain: { kind: 'server', serverId: serverA },
       })
       expect(getActiveUserId()).toBe('session-user-1')

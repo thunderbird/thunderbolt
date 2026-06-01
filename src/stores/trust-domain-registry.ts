@@ -31,8 +31,15 @@ export type ServerEntry = {
    * bootstrap default the resolver fetches `/v1/config` from on first boot.
    */
   cloudUrl: string
-  lastUserId?: string
-  lastUserIsAnonymous?: boolean
+  /**
+   * Current session's user id on this server. Populated by `SessionToRegistryMirror`
+   * (see `src/contexts/auth-context.tsx`) whenever Better Auth resolves a session.
+   * Persists across boots so multi-server switching (post-v1) keeps each server's
+   * sign-in state intact — `activeTrustDomain` is just a pointer; the session lives
+   * here.
+   */
+  userId?: string
+  isAnonymous?: boolean
 }
 
 type TrustDomainState = {
@@ -171,14 +178,14 @@ export const useActiveCloudUrl = (): string | undefined =>
   })
 
 /**
- * Active user id. Returns `localUserId` in standalone, the last-known session user id
- * in server mode (real or anonymous). May be `undefined` in server mode before the
- * first sign-in completes.
+ * Active user id. Returns `localUserId` in standalone, or the current session's user id
+ * on the active server (real or anonymous). May be `undefined` in server mode before
+ * the first sign-in completes — `SessionToRegistryMirror` populates it asynchronously.
  */
 export const getActiveUserId = (): string | undefined => {
   const state = useTrustDomainRegistry.getState()
   if (state.activeTrustDomain?.kind === 'standalone') {
     return state.localUserId
   }
-  return getActiveServerEntry()?.lastUserId
+  return getActiveServerEntry()?.userId
 }

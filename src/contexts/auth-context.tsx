@@ -8,6 +8,7 @@ import { usePowerSyncCredentialsInvalidListener } from '@/hooks/use-powersync-cr
 import { isSsoMode } from '@/lib/auth-mode'
 import { clearAuthToken, getAuthToken, onAuthTokenChangedInOtherTab, setAuthToken } from '@/lib/auth-token'
 import { getPlatform } from '@/lib/platform'
+import { useTrustDomainRegistry } from '@/stores/trust-domain-registry'
 import { anonymousClient, emailOTPClient } from 'better-auth/client/plugins'
 import { createAuthClient } from 'better-auth/react'
 import { consumePendingSsoAnonAlias } from '@/lib/analytics/anonymous-promotion-sso-bridge'
@@ -157,7 +158,44 @@ export const AuthProvider = ({ children, cloudUrl, authClient: overrideClient }:
     return null
   }
 
-  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>
+  return (
+    <AuthContext.Provider value={value}>
+      <SessionToRegistryMirror />
+      {children}
+    </AuthContext.Provider>
+  )
+}
+
+/**
+ * Mirrors Better Auth's session into the active server entry's `userId` + `isAnonymous`.
+ * The active server entry is the persistent record of "the current session on this
+ * server" — so each known server keeps its own session across boots (multi-server-ready),
+ * and `getActiveUserId()` resolves synchronously for non-React consumers.
+ *
+ * Lives as a child of `AuthContext.Provider` so `useAuth()` always resolves and the
+ * `useSession` subscription is only active while an auth client is mounted.
+ *
+ * On sign-out the session goes to `null` and the effect skips; the previous values
+ * linger on the server entry until the next sign-in overwrites them or the entry
+ * itself is cleared (server wipe / removal).
+ */
+const SessionToRegistryMirror = () => {
+  const authClient = useAuth()
+  const { data: session } = authClient.useSession()
+  const userId = session?.user?.id
+  const isAnonymous = session?.user?.isAnonymous
+
+  useEffect(() => {
+    if (!userId) {
+      return
+    }
+    useTrustDomainRegistry.getState().patchActiveServer({
+      userId,
+      isAnonymous: !!isAnonymous,
+    })
+  }, [userId, isAnonymous])
+
+  return null
 }
 
 export const useAuth = () => {

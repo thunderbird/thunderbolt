@@ -24,7 +24,12 @@ export type ActiveTrustDomain = StandaloneTrustDomain | ServerTrustDomain
 export type ServerEntry = {
   /** Stable per-deployment UUID returned by `GET /v1/config`. Registry key. */
   serverId: string
-  /** Current URL for this server. May change without changing `serverId` — trust domain is keyed by ID, not URL. */
+  /**
+   * Current URL for this server. May change without changing `serverId` — trust domain is
+   * keyed by ID, not URL. v1 consumers still read `VITE_THUNDERBOLT_CLOUD_URL` via
+   * `getLocalSetting('cloudUrl')`; this field becomes the authoritative source once the
+   * server-URL settings UI or multi-server switcher lands (both post-v1).
+   */
   cloudUrl: string
   lastUserId?: string
   lastUserIsAnonymous?: boolean

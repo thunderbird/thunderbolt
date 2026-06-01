@@ -220,6 +220,41 @@ if [ -f "$PROJECT_ROOT/backend/.env" ]; then
     echo -e "  ${PASS} BETTER_AUTH_SECRET is set"
   fi
 
+  # SERVER_ID: stable per-deployment UUID returned by GET /v1/config. Required at boot;
+  # the frontend namespaces its trust-domain registry by it. Auto-generate for local dev
+  # following the same TTY / THUNDERDOCTOR_AUTOFIX gate as BETTER_AUTH_SECRET above.
+  current_server_id=$(grep -E '^SERVER_ID=' "$PROJECT_ROOT/backend/.env" | head -1 | sed -E 's/^SERVER_ID=//; s/^"(.*)"$/\1/' || true)
+  if ! echo "$current_server_id" | grep -Eqi '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'; then
+    if [ ! -t 1 ] && [ "${THUNDERDOCTOR_AUTOFIX:-}" != "true" ]; then
+      has_critical_failure=true
+      echo -e "  ${FAIL} SERVER_ID is empty/invalid — won't auto-fix from a non-interactive shell. Run \`make doctor\` from a terminal, or set THUNDERDOCTOR_AUTOFIX=true to opt in."
+    else
+      if command -v uuidgen >/dev/null 2>&1; then
+        new_server_id=$(uuidgen | tr '[:upper:]' '[:lower:]')
+      elif [ -r /proc/sys/kernel/random/uuid ]; then
+        new_server_id=$(cat /proc/sys/kernel/random/uuid)
+      else
+        new_server_id=""
+      fi
+      if [ -n "$new_server_id" ]; then
+        echo -e "  ${YELLOW}→${NC} Writing a fresh SERVER_ID to backend/.env..."
+        tmp=$(mktemp)
+        NEW_SERVER_ID="$new_server_id" awk '
+          BEGIN { val = ENVIRON["NEW_SERVER_ID"]; replaced = 0 }
+          /^SERVER_ID=/ { print "SERVER_ID=" val; replaced = 1; next }
+          { print }
+          END { if (!replaced) print "SERVER_ID=" val }
+        ' "$PROJECT_ROOT/backend/.env" > "$tmp" && mv "$tmp" "$PROJECT_ROOT/backend/.env"
+        echo -e "  ${PASS} SERVER_ID generated and written to backend/.env"
+      else
+        has_critical_failure=true
+        echo -e "  ${FAIL} SERVER_ID is empty/invalid and neither uuidgen nor /proc/sys/kernel/random/uuid is available — set it manually to a UUID"
+      fi
+    fi
+  elif [ "$QUIET" = false ]; then
+    echo -e "  ${PASS} SERVER_ID is set"
+  fi
+
   # POWERSYNC_URL is required when DATABASE_DRIVER=postgres; the backend silently 503s without it.
   driver=$(grep -E '^DATABASE_DRIVER=' "$PROJECT_ROOT/backend/.env" | head -1 | sed -E 's/^DATABASE_DRIVER=//; s/^"(.*)"$/\1/' || true)
   if [ "$driver" = "postgres" ]; then

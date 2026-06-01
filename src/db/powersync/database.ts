@@ -222,9 +222,15 @@ export class PowerSyncDatabaseImpl implements DatabaseInterface {
       schema: drizzleSchema,
     }) as unknown as AnyDrizzleDatabase
 
-    // Connect to PowerSync Cloud if sync is enabled
+    // Connect to PowerSync Cloud in the background. Do not block app init on the network
+    // round-trip: connectToSync transitively awaits PowerSync's _isReadyPromise (WASQLite
+    // WASM compile, OPFS setup, schema sync, offline-status read) plus /powersync/token and
+    // the Cloud stream open — together ~10s on cold refresh. Local queries via Drizzle still
+    // wait on _isReadyPromise internally, and `waitForInitialSync` registers a listener that
+    // resolves once `statusForPriority(1).hasSynced` flips true (instant for returning users
+    // via offline-status restore, or once the background connect lands for new users).
     if (isSyncEnabled()) {
-      await this.connectToSync()
+      void this.connectToSync()
     }
   }
 
@@ -273,6 +279,16 @@ export class PowerSyncDatabaseImpl implements DatabaseInterface {
         crudUploadThrottleMs: 5000,
       })
       console.info(`[PowerSync] powerSync.connect: ${Math.round(performance.now() - connectInnerStartedAt)}ms`)
+
+      // The fire-and-forget connect from initialize() can race with the user disabling sync
+      // mid-flight: disconnectFromSync would no-op while `_isConnected` is still false. Re-check
+      // the preference here; if the user opted out during the ~10s connect window, tear down
+      // immediately so we don't leave PowerSync connected against their will.
+      if (!isSyncEnabled()) {
+        console.info('[PowerSync] sync disabled during connect — disconnecting')
+        await this.powerSync.disconnect()
+        return
+      }
 
       this._isConnected = true
       console.info(`[PowerSync] Connected (total ${Math.round(performance.now() - connectStartedAt)}ms)`)
@@ -449,7 +465,7 @@ export class PowerSyncDatabaseImpl implements DatabaseInterface {
    * Resolves after initialSyncTimeoutMs if sync never completes (e.g. network down).
    */
   async waitForInitialSync(): Promise<void> {
-    if (!this.powerSync || !this._isConnected || !isSyncEnabled()) {
+    if (!this.powerSync || !isSyncEnabled()) {
       return
     }
 

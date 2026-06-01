@@ -2,9 +2,10 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
+import { afterEach, beforeEach, describe, expect, it, spyOn } from 'bun:test'
 import { v7 as uuidv7 } from 'uuid'
 import {
+  getActiveCloudUrl,
   getActiveServerEntry,
   getActiveServerId,
   getActiveTrustDomain,
@@ -35,95 +36,136 @@ describe('trust-domain registry store', () => {
     expect(getActiveTrustDomain()).toBeUndefined()
   })
 
-  it('upsertServer adds a new entry', () => {
-    useTrustDomainRegistry.getState().upsertServer({ serverId: serverA, cloudUrl: 'http://a.local' })
-    expect(getRegistry().servers[serverA]).toEqual({ serverId: serverA, cloudUrl: 'http://a.local' })
-  })
+  describe('activateServer', () => {
+    it('upserts the entry and sets it as the active trust domain', () => {
+      useTrustDomainRegistry.getState().activateServer({ serverId: serverA, cloudUrl: 'http://a.local' })
 
-  it('upsertServer merges into an existing entry without clobbering other fields', () => {
-    const { upsertServer } = useTrustDomainRegistry.getState()
-    upsertServer({ serverId: serverA, cloudUrl: 'http://a.local', lastUserId: 'user-1' })
-    upsertServer({ serverId: serverA, cloudUrl: 'http://a-new.local' })
+      expect(getRegistry().servers[serverA]).toEqual({ serverId: serverA, cloudUrl: 'http://a.local' })
+      expect(getActiveTrustDomain()).toEqual({ kind: 'server', serverId: serverA })
+    })
 
-    expect(getRegistry().servers[serverA]).toEqual({
-      serverId: serverA,
-      cloudUrl: 'http://a-new.local',
-      lastUserId: 'user-1',
+    it('merges into an existing entry without clobbering other fields', () => {
+      const { activateServer } = useTrustDomainRegistry.getState()
+      activateServer({ serverId: serverA, cloudUrl: 'http://a.local', lastUserId: 'user-1' })
+      activateServer({ serverId: serverA, cloudUrl: 'http://a-new.local' })
+
+      expect(getRegistry().servers[serverA]).toEqual({
+        serverId: serverA,
+        cloudUrl: 'http://a-new.local',
+        lastUserId: 'user-1',
+      })
+    })
+
+    it('switching active server keeps the previous entry but updates activeTrustDomain', () => {
+      const { activateServer } = useTrustDomainRegistry.getState()
+      activateServer({ serverId: serverA, cloudUrl: 'http://a.local' })
+      activateServer({ serverId: serverB, cloudUrl: 'http://b.local' })
+
+      expect(getActiveServerId()).toBe(serverB)
+      expect(getActiveServerEntry()).toEqual({ serverId: serverB, cloudUrl: 'http://b.local' })
+      // The first server is still in the registry — switching doesn't evict it.
+      expect(getRegistry().servers[serverA]).toEqual({ serverId: serverA, cloudUrl: 'http://a.local' })
     })
   })
 
-  it('setActiveTrustDomain stores the active domain', () => {
-    useTrustDomainRegistry.getState().setActiveTrustDomain({ kind: 'server', serverId: serverA })
-    expect(getActiveTrustDomain()).toEqual({ kind: 'server', serverId: serverA })
-    expect(getActiveServerId()).toBe(serverA)
-  })
-
-  it('patchActiveServer updates only the active server entry', () => {
-    const state = useTrustDomainRegistry.getState()
-    state.upsertServer({ serverId: serverA, cloudUrl: 'http://a.local' })
-    state.upsertServer({ serverId: serverB, cloudUrl: 'http://b.local' })
-    state.setActiveTrustDomain({ kind: 'server', serverId: serverA })
-
-    useTrustDomainRegistry.getState().patchActiveServer({ lastUserId: 'user-A', lastUserIsAnonymous: false })
-
-    expect(getRegistry().servers[serverA]).toMatchObject({ lastUserId: 'user-A', lastUserIsAnonymous: false })
-    expect(getRegistry().servers[serverB]).toEqual({ serverId: serverB, cloudUrl: 'http://b.local' })
-  })
-
-  it('patchActiveServer is a no-op when the active domain is standalone', () => {
-    useTrustDomainRegistry.setState({ activeTrustDomain: { kind: 'standalone' } })
-    useTrustDomainRegistry.getState().patchActiveServer({ lastUserId: 'whatever' })
-    expect(getRegistry().servers).toEqual({})
-  })
-
-  it('getActiveServerEntry returns the active server entry, undefined otherwise', () => {
-    const state = useTrustDomainRegistry.getState()
-    state.upsertServer({ serverId: serverA, cloudUrl: 'http://a.local' })
-    expect(getActiveServerEntry()).toBeUndefined() // no active domain set
-
-    state.setActiveTrustDomain({ kind: 'server', serverId: serverA })
-    expect(getActiveServerEntry()).toEqual({ serverId: serverA, cloudUrl: 'http://a.local' })
-
-    state.setActiveTrustDomain({ kind: 'standalone' })
-    expect(getActiveServerEntry()).toBeUndefined()
-  })
-
-  it('getActiveServerId is the active server id, undefined in standalone', () => {
-    expect(getActiveServerId()).toBeUndefined()
-
-    useTrustDomainRegistry.setState({ activeTrustDomain: { kind: 'server', serverId: serverA } })
-    expect(getActiveServerId()).toBe(serverA)
-
-    useTrustDomainRegistry.setState({ activeTrustDomain: { kind: 'standalone' } })
-    expect(getActiveServerId()).toBeUndefined()
-  })
-
-  it('getActiveUserId returns localUserId in standalone, lastUserId in server', () => {
-    useTrustDomainRegistry.setState({
-      localUserId: 'local-user-xyz',
-      activeTrustDomain: { kind: 'standalone' },
+  describe('activateStandalone', () => {
+    it('sets the active trust domain to standalone', () => {
+      useTrustDomainRegistry.getState().activateStandalone()
+      expect(getActiveTrustDomain()).toEqual({ kind: 'standalone' })
+      expect(getActiveServerEntry()).toBeUndefined()
     })
-    expect(getActiveUserId()).toBe('local-user-xyz')
-
-    useTrustDomainRegistry.setState({
-      servers: { [serverA]: { serverId: serverA, cloudUrl: 'http://a.local', lastUserId: 'session-user-1' } },
-      activeTrustDomain: { kind: 'server', serverId: serverA },
-    })
-    expect(getActiveUserId()).toBe('session-user-1')
   })
 
-  it('getActiveUserId is undefined in server mode before a session has been observed', () => {
-    useTrustDomainRegistry.setState({
-      servers: { [serverA]: { serverId: serverA, cloudUrl: 'http://a.local' } },
-      activeTrustDomain: { kind: 'server', serverId: serverA },
+  describe('patchActiveServer', () => {
+    it('updates only the active server entry', () => {
+      const state = useTrustDomainRegistry.getState()
+      state.activateServer({ serverId: serverB, cloudUrl: 'http://b.local' })
+      state.activateServer({ serverId: serverA, cloudUrl: 'http://a.local' })
+
+      useTrustDomainRegistry.getState().patchActiveServer({ lastUserId: 'user-A', lastUserIsAnonymous: false })
+
+      expect(getRegistry().servers[serverA]).toMatchObject({ lastUserId: 'user-A', lastUserIsAnonymous: false })
+      expect(getRegistry().servers[serverB]).toEqual({ serverId: serverB, cloudUrl: 'http://b.local' })
     })
-    expect(getActiveUserId()).toBeUndefined()
+
+    it('warns and no-ops when the active domain is standalone', () => {
+      const warn = spyOn(console, 'warn').mockImplementation(() => {})
+      try {
+        useTrustDomainRegistry.getState().activateStandalone()
+        useTrustDomainRegistry.getState().patchActiveServer({ lastUserId: 'whatever' })
+        expect(getRegistry().servers).toEqual({})
+        expect(warn).toHaveBeenCalledTimes(1)
+      } finally {
+        warn.mockRestore()
+      }
+    })
+
+    it('warns and no-ops when no active domain is set', () => {
+      const warn = spyOn(console, 'warn').mockImplementation(() => {})
+      try {
+        useTrustDomainRegistry.getState().patchActiveServer({ lastUserId: 'whatever' })
+        expect(warn).toHaveBeenCalledTimes(1)
+      } finally {
+        warn.mockRestore()
+      }
+    })
   })
 
-  it('localUserId is generated by the store initializer on first creation', () => {
-    // The default initial state (from create()) provides a UUID; assert it's a
-    // valid v7 shape so we know the store is doing the lazy-create itself rather
-    // than relying on consumers to mint it.
+  describe('getters', () => {
+    it('getActiveServerEntry returns the active server entry, undefined otherwise', () => {
+      expect(getActiveServerEntry()).toBeUndefined()
+
+      useTrustDomainRegistry.getState().activateServer({ serverId: serverA, cloudUrl: 'http://a.local' })
+      expect(getActiveServerEntry()).toEqual({ serverId: serverA, cloudUrl: 'http://a.local' })
+
+      useTrustDomainRegistry.getState().activateStandalone()
+      expect(getActiveServerEntry()).toBeUndefined()
+    })
+
+    it('getActiveServerId is the active server id, undefined in standalone', () => {
+      expect(getActiveServerId()).toBeUndefined()
+
+      useTrustDomainRegistry.getState().activateServer({ serverId: serverA, cloudUrl: 'http://a.local' })
+      expect(getActiveServerId()).toBe(serverA)
+
+      useTrustDomainRegistry.getState().activateStandalone()
+      expect(getActiveServerId()).toBeUndefined()
+    })
+
+    it('getActiveCloudUrl reflects the active server entry', () => {
+      expect(getActiveCloudUrl()).toBeUndefined()
+
+      useTrustDomainRegistry.getState().activateServer({ serverId: serverA, cloudUrl: 'http://a.local' })
+      expect(getActiveCloudUrl()).toBe('http://a.local')
+
+      useTrustDomainRegistry.getState().patchActiveServer({ cloudUrl: 'http://a-new.local' })
+      expect(getActiveCloudUrl()).toBe('http://a-new.local')
+
+      useTrustDomainRegistry.getState().activateStandalone()
+      expect(getActiveCloudUrl()).toBeUndefined()
+    })
+
+    it('getActiveUserId returns localUserId in standalone, lastUserId in server', () => {
+      useTrustDomainRegistry.setState({
+        localUserId: 'local-user-xyz',
+        activeTrustDomain: { kind: 'standalone' },
+      })
+      expect(getActiveUserId()).toBe('local-user-xyz')
+
+      useTrustDomainRegistry.setState({
+        servers: { [serverA]: { serverId: serverA, cloudUrl: 'http://a.local', lastUserId: 'session-user-1' } },
+        activeTrustDomain: { kind: 'server', serverId: serverA },
+      })
+      expect(getActiveUserId()).toBe('session-user-1')
+    })
+
+    it('getActiveUserId is undefined in server mode before a session has been observed', () => {
+      useTrustDomainRegistry.getState().activateServer({ serverId: serverA, cloudUrl: 'http://a.local' })
+      expect(getActiveUserId()).toBeUndefined()
+    })
+  })
+
+  it('localUserId is a UUIDv7', () => {
     resetStore() // restores the fixture localUserId
 
     const fresh = uuidv7()

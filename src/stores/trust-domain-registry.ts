@@ -51,8 +51,18 @@ type TrustDomainState = {
 }
 
 type TrustDomainActions = {
-  setActiveTrustDomain: (domain: ActiveTrustDomain) => void
-  upsertServer: (entry: ServerEntry) => void
+  /**
+   * Upsert the server entry and set it as the active trust domain in a single atomic
+   * update. The "upsert before set" invariant means `getActiveServerEntry()` is never
+   * undefined when `activeTrustDomain.kind === 'server'`.
+   */
+  activateServer: (entry: ServerEntry) => void
+  /** Switch to the standalone trust domain. */
+  activateStandalone: () => void
+  /**
+   * Patch fields on the active server entry. No-op (with warning) when standalone or no
+   * active domain — callers that need the patch to land must check `getActiveTrustDomain`.
+   */
   patchActiveServer: (patch: Partial<Omit<ServerEntry, 'serverId'>>) => void
 }
 
@@ -69,20 +79,26 @@ export const useTrustDomainRegistry = create<TrustDomainStore>()(
       localUserId: createLocalUserId(),
       activeTrustDomain: undefined,
 
-      setActiveTrustDomain: (activeTrustDomain) => set({ activeTrustDomain }),
-
-      upsertServer: (entry) =>
+      activateServer: (entry) =>
         set((state) => ({
           servers: { ...state.servers, [entry.serverId]: { ...state.servers[entry.serverId], ...entry } },
+          activeTrustDomain: { kind: 'server', serverId: entry.serverId },
         })),
+
+      activateStandalone: () => set({ activeTrustDomain: { kind: 'standalone' } }),
 
       patchActiveServer: (patch) => {
         const { activeTrustDomain, servers } = get()
         if (activeTrustDomain?.kind !== 'server') {
+          console.warn('[trust-domain-registry] patchActiveServer skipped — no active server', patch)
           return
         }
         const existing = servers[activeTrustDomain.serverId]
         if (!existing) {
+          console.warn(
+            '[trust-domain-registry] patchActiveServer skipped — active server entry missing',
+            activeTrustDomain.serverId,
+          )
           return
         }
         set({ servers: { ...servers, [activeTrustDomain.serverId]: { ...existing, ...patch } } })

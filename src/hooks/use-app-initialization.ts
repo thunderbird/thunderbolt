@@ -126,11 +126,12 @@ const executeInitializationSteps = async (httpClient?: HttpClient): Promise<Hand
     trackError(error, { initialization_step: 'trust_domain' })
     return { success: false, error }
   }
-  const registry = useTrustDomainRegistry.getState()
-  if (resolution.serverEntry) {
-    registry.upsertServer(resolution.serverEntry)
+  // Standalone is short-circuited above; only server-kind resolutions reach this point.
+  // The resolver's contract guarantees a `serverEntry` whenever the trust domain is server.
+  if (resolution.trustDomain.kind !== 'server' || !resolution.serverEntry) {
+    throw new Error('resolveBootTrustDomain returned a server domain without a server entry')
   }
-  registry.setActiveTrustDomain(resolution.trustDomain)
+  useTrustDomainRegistry.getState().activateServer(resolution.serverEntry)
 
   // Background refresh of /v1/config for returning server-mode boots — keeps cached UI flags
   // (e2eeEnabled, allowAnonUsers, etc.) current. First-boot already fetched inside the

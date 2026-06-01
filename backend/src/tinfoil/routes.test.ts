@@ -209,6 +209,24 @@ describe('createTinfoilRoutes', () => {
       const [calledUrl] = mockFetch.mock.calls[0] as [string, RequestInit]
       expect(calledUrl).toBe(`${enclaveUrl}/v1/models`)
     })
+
+    it('composes the upstream URL correctly when the enclave URL carries the /v1 API prefix', async () => {
+      // Production wiring: TINFOIL_ENCLAVE_URL=https://inference.tinfoil.sh/v1,
+      // and the SDK builds the request URL without an inner /v1 (its baseURL is
+      // already <cloudUrl>/tinfoil, where cloudUrl ends in /v1).
+      const app = buildApp({ enclaveUrl: 'https://inference.tinfoil.sh/v1' })
+      await drain(
+        await app.handle(
+          new Request('http://localhost/tinfoil/chat/completions', {
+            method: 'POST',
+            body: 'opaque-bytes',
+          }),
+        ),
+      )
+
+      const [calledUrl] = mockFetch.mock.calls[0] as [string, RequestInit]
+      expect(calledUrl).toBe('https://inference.tinfoil.sh/v1/chat/completions')
+    })
   })
 
   describe('authentication', () => {

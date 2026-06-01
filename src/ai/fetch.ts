@@ -70,7 +70,7 @@ export const ollama = createOpenAI({
 //
 // Two variants:
 //   - system: HPKE-encrypted bodies are POSTed to Thunderbolt's backend
-//     (`<cloudUrl>/v1/tinfoil`), which forwards them opaquely to the enclave
+//     (`<cloudUrl>/tinfoil`), which forwards them opaquely to the enclave
 //     with our Tinfoil bearer key injected. Browser never sees the key.
 //   - user: direct connection to the Tinfoil enclave with the user's own key
 //     (BYOK). Used by manually added Tinfoil models in Settings → Models.
@@ -80,8 +80,10 @@ let userTinfoilClient: SecureClient | null = null
 export const getSystemTinfoilClient = async (): Promise<SecureClient> => {
   if (!systemTinfoilClient) {
     const { SecureClient } = await import('tinfoil')
+    // `cloudUrl` already includes the `/v1` prefix (it's the same baseURL the
+    // OpenAI SDK uses for /chat/completions). Just append `/tinfoil`.
     const cloudUrl = getLocalSetting('cloudUrl').replace(/\/$/, '')
-    systemTinfoilClient = new SecureClient({ baseURL: `${cloudUrl}/v1/tinfoil` })
+    systemTinfoilClient = new SecureClient({ baseURL: `${cloudUrl}/tinfoil` })
   }
   await systemTinfoilClient.ready()
   return systemTinfoilClient
@@ -208,11 +210,30 @@ export const createModel = async (modelConfig: Model, getProxyFetch: () => Fetch
       // the BYOK flow and require a real key.
       if (modelConfig.isSystem) {
         const client = await getSystemTinfoilClient()
+        // Wrap SecureClient.fetch so the backend route's auth guard sees the
+        // real Thunderbolt session token (Bearer) or cookies (SSO), not the
+        // `Bearer thunderbolt-managed` placeholder the OpenAI SDK adds.
+        const sso = isSsoMode()
+        const token = getAuthToken()
+        const wrappedFetch: typeof fetch = Object.assign(
+          (input: RequestInfo | URL, init?: RequestInit) => {
+            const headers = new Headers(init?.headers)
+            const upstreamInit: RequestInit = { ...init, headers }
+            if (sso && !token) {
+              upstreamInit.credentials = 'include'
+              headers.delete('authorization')
+            } else if (token) {
+              headers.set('Authorization', `Bearer ${token}`)
+            }
+            return client.fetch(input, upstreamInit)
+          },
+          { preconnect: fetch.preconnect },
+        )
         const tinfoil = createOpenAICompatible({
           name: 'tinfoil',
           baseURL: client.getBaseURL()!,
           apiKey: 'thunderbolt-managed',
-          fetch: client.fetch,
+          fetch: wrappedFetch,
         })
         return tinfoil(modelConfig.model)
       }

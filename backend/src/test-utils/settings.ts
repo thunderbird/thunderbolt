@@ -17,7 +17,7 @@ export const createTestSettings = (overrides: Partial<Settings> = {}): Settings 
   thunderboltInferenceUrl: '',
   thunderboltInferenceApiKey: '',
   tinfoilApiKey: '',
-  tinfoilEnclaveUrl: 'https://inference.tinfoil.sh',
+  tinfoilEnclaveUrl: 'https://inference.tinfoil.sh/v1',
   monitoringToken: '',
   googleClientId: '',
   googleClientSecret: '',

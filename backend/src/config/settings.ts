@@ -17,7 +17,9 @@ const settingsSchema = z
     thunderboltInferenceUrl: z.string().default(''),
     thunderboltInferenceApiKey: z.string().default(''),
     tinfoilApiKey: z.string().default(''),
-    tinfoilEnclaveUrl: z.string().default('https://inference.tinfoil.sh'),
+    // Include the `/v1` API prefix — Tinfoil's OpenAI-compatible endpoints live
+    // under `/v1/chat/completions`, `/v1/models`, etc.
+    tinfoilEnclaveUrl: z.string().default('https://inference.tinfoil.sh/v1'),
 
     // Health Check Configuration
     monitoringToken: z.string().default(''),

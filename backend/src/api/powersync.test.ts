@@ -31,7 +31,7 @@ const powersyncSettings: Settings = {
   thunderboltInferenceUrl: '',
   thunderboltInferenceApiKey: '',
   tinfoilApiKey: '',
-  tinfoilEnclaveUrl: 'https://inference.tinfoil.sh',
+  tinfoilEnclaveUrl: 'https://inference.tinfoil.sh/v1',
   monitoringToken: '',
   googleClientId: '',
   googleClientSecret: '',

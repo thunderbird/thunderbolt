@@ -183,8 +183,11 @@ describe('createAgentRoutingFetch', () => {
     expect(first.fetch).toHaveBeenCalledTimes(1)
     expect(first.disconnect).not.toHaveBeenCalled()
 
-    // User switches to a different agent on the same thread.
-    useChatStore.getState().setSelectedAgent('t-switch', otherRemoteAgent)
+    // User switches to a different agent on the same thread. Update the
+    // in-memory selection directly — this DB-free DI suite registers no
+    // database, and `setSelectedAgent` now persists the last-used agent via
+    // the DAL (routing reads `selectedAgent` from the store, not the DB).
+    hydrateSessionWith('t-switch', otherRemoteAgent)
 
     await customFetch('/chat', { method: 'POST', body: '{}' })
     expect(first.disconnect).toHaveBeenCalledTimes(1)

@@ -134,9 +134,9 @@ describe('needsApiKey', () => {
 
   test('non-thunderbolt/non-custom providers without a key need one', () => {
     const model = makeModel({
-      id: 'mistral-missing',
-      name: 'Mistral',
-      provider: 'mistral',
+      id: 'openai-missing',
+      name: 'OpenAI',
+      provider: 'openai',
       isSystem: 0,
       apiKey: null,
     })

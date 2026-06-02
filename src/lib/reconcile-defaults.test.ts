@@ -225,6 +225,24 @@ describe('cleanupRemovedDefaults', () => {
     expect(model?.deletedAt).toBeNull()
   })
 
+  test('keeps profile when its parent model survived via user edit', async () => {
+    const db = getDb()
+    // Parent model is edited (hash mismatch) → survives cleanup.
+    await db.insert(modelsTable).values({ ...buildRetiredModel(), name: 'User Renamed' })
+    // Profile is unedited (hash matches) — would have been soft-deleted under
+    // the old rule, leaving the model orphaned.
+    await db.insert(modelProfilesTable).values(buildRetiredProfile())
+
+    await cleanupRemovedDefaults(db)
+
+    const profile = await db
+      .select()
+      .from(modelProfilesTable)
+      .where(eq(modelProfilesTable.modelId, retiredModelId))
+      .get()
+    expect(profile?.deletedAt).toBeNull()
+  })
+
   test('leaves current defaults alone', async () => {
     const db = getDb()
     await reconcileDefaultsForTable(db, modelsTable, defaultModels, hashModel)

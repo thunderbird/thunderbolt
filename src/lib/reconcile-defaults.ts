@@ -98,7 +98,6 @@ export const reconcileDefaultsForTable = async <T extends { defaultHash: string 
 export const cleanupRemovedDefaults = async (db: AnyDrizzleDatabase) => {
   const now = nowIso()
   const currentModelIds = new Set(defaultModels.map((m) => m.id))
-  const currentProfileModelIds = new Set(defaultModelProfiles.map((p) => p.modelId))
 
   const systemModels = (await db
     .select()
@@ -113,12 +112,25 @@ export const cleanupRemovedDefaults = async (db: AnyDrizzleDatabase) => {
     }
   }
 
+  // Profiles are 1:1 with models. Mirror the model loop's "edited rows survive"
+  // rule by following the parent model's fate — only delete the profile when
+  // its parent is no longer alive. Otherwise a user who renamed a retired
+  // default model but left the profile at shipped defaults would be left with
+  // an orphaned model.
+  const aliveModelIds = new Set(
+    (
+      (await db.select({ id: modelsTable.id }).from(modelsTable).where(isNull(modelsTable.deletedAt))) as {
+        id: string
+      }[]
+    ).map((r) => r.id),
+  )
+
   const profiles = (await db
     .select()
     .from(modelProfilesTable)
     .where(isNull(modelProfilesTable.deletedAt))) as ModelProfile[]
   for (const row of profiles) {
-    if (currentProfileModelIds.has(row.modelId) || !row.defaultHash) {
+    if (aliveModelIds.has(row.modelId) || !row.defaultHash) {
       continue
     }
     if (hashModelProfile(row) === row.defaultHash) {

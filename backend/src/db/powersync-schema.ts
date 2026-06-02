@@ -129,7 +129,7 @@ export const mcpServersTable = powersyncSchema.table(
   {
     id: text('id').primaryKey(),
     name: text('name'),
-    type: text('type', { enum: ['http', 'stdio'] }).default('http'),
+    type: text('type', { enum: ['http', 'sse', 'stdio'] }).default('http'),
     url: text('url'),
     command: text('command'),
     args: text('args'),

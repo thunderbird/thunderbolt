@@ -36,6 +36,10 @@ const localOnlyTables = {
     tableDefinition: tables.integrationsSecretsTable,
     options: { localOnly: true },
   } satisfies DrizzleTableWithPowerSyncOptions,
+  mcp_secrets: {
+    tableDefinition: tables.mcpSecretsTable,
+    options: { localOnly: true },
+  } satisfies DrizzleTableWithPowerSyncOptions,
   agents_system: {
     tableDefinition: tables.agentsSystemTable,
     options: { localOnly: true },

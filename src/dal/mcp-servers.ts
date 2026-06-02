@@ -2,9 +2,9 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { and, eq, isNotNull, isNull } from 'drizzle-orm'
+import { and, eq, inArray, isNotNull, isNull } from 'drizzle-orm'
 import type { AnyDrizzleDatabase } from '../db/database-interface'
-import { mcpServersTable } from '../db/tables'
+import { mcpSecretsTable, mcpServersTable } from '../db/tables'
 import { clearNullableColumns, nowIso } from '../lib/utils'
 import { type McpServer } from '@/types'
 import type { DrizzleQueryWithPromise } from '@/types'
@@ -18,13 +18,20 @@ export const getAllMcpServers = (db: AnyDrizzleDatabase) => {
 }
 
 /**
- * Gets all HTTP MCP servers with non-null URLs from the database (excluding soft-deleted)
+ * Gets all remote (HTTP / SSE) MCP servers with non-null URLs from the database (excluding soft-deleted).
+ * Local (stdio) servers are excluded — they have no URL and are connected via a different transport.
  */
-export const getHttpMcpServers = (db: AnyDrizzleDatabase) => {
+export const getRemoteMcpServers = (db: AnyDrizzleDatabase) => {
   const query = db
     .select()
     .from(mcpServersTable)
-    .where(and(eq(mcpServersTable.type, 'http'), isNotNull(mcpServersTable.url), isNull(mcpServersTable.deletedAt)))
+    .where(
+      and(
+        inArray(mcpServersTable.type, ['http', 'sse']),
+        isNotNull(mcpServersTable.url),
+        isNull(mcpServersTable.deletedAt),
+      ),
+    )
   return query as typeof query & DrizzleQueryWithPromise<McpServer>
 }
 
@@ -34,10 +41,13 @@ export const getHttpMcpServers = (db: AnyDrizzleDatabase) => {
  * Only updates records that haven't been deleted yet to preserve original deletion datetimes
  */
 export const deleteMcpServer = async (db: AnyDrizzleDatabase, id: string): Promise<void> => {
-  await db
-    .update(mcpServersTable)
-    .set({ ...clearNullableColumns(mcpServersTable), deletedAt: nowIso() })
-    .where(and(eq(mcpServersTable.id, id), isNull(mcpServersTable.deletedAt)))
+  await db.transaction(async (tx) => {
+    await tx.delete(mcpSecretsTable).where(eq(mcpSecretsTable.id, id))
+    await tx
+      .update(mcpServersTable)
+      .set({ ...clearNullableColumns(mcpServersTable), deletedAt: nowIso() })
+      .where(and(eq(mcpServersTable.id, id), isNull(mcpServersTable.deletedAt)))
+  })
 }
 
 /**

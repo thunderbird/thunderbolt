@@ -122,12 +122,18 @@ export const integrationsSecretsTable = sqliteTable('integrations_secrets', {
   enabled: integer('enabled').default(0),
 })
 
+/** Local-only table for MCP server credentials (bearer tokens / API keys). Never synced via PowerSync. */
+export const mcpSecretsTable = sqliteTable('mcp_secrets', {
+  id: text('id').primaryKey(), // = mcp_servers.id
+  credentials: text('credentials'), // JSON blob (e.g. { type: 'bearer', token })
+})
+
 export const mcpServersTable = sqliteTable(
   'mcp_servers',
   {
     id: text('id').primaryKey(),
     name: text('name'),
-    type: text('type', { enum: ['http', 'stdio'] }).default('http'),
+    type: text('type', { enum: ['http', 'sse', 'stdio'] }).default('http'),
     url: text('url'),
     command: text('command'),
     args: text('args'),

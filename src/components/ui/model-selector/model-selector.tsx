@@ -88,21 +88,14 @@ export const categorizeModels = (
   if (custom.length > 0) {
     groups.push({ id: 'custom', label: 'Custom Models', items: custom })
   }
+  // Models disabled by an encryption mismatch are shown greyed out with no
+  // group heading or explanation (only one of these buckets is ever non-empty
+  // for a given chat, since the mismatch is one-directional).
   if (disabledStandard.length > 0) {
-    groups.push({
-      id: 'standard-disabled',
-      label: 'Standard Models',
-      subtitle: 'Only encrypted models can be used in this chat',
-      items: disabledStandard,
-    })
+    groups.push({ id: 'standard-disabled', items: disabledStandard })
   }
   if (disabledConfidential.length > 0) {
-    groups.push({
-      id: 'confidential-disabled',
-      label: 'Encrypted Models',
-      subtitle: 'Only available in encrypted chats',
-      items: disabledConfidential,
-    })
+    groups.push({ id: 'confidential-disabled', items: disabledConfidential })
   }
 
   return groups
@@ -146,8 +139,8 @@ export const ModelSelector = ({
 
   const renderItem = (item: SearchableMenuItem<ModelItemData>, isSelected: boolean) => {
     const model = item.data?.model
-    // Encryption mismatch already explains the disabled state via the group subtitle —
-    // don't double up with a missing-key hint that's not the real blocker.
+    // For an encryption-mismatch item the real blocker isn't a missing key, so
+    // suppress the missing-key hint (the item is simply shown greyed out).
     const showMissingKeyHint = model ? needsApiKey(model) && !item.data?.disabledByEncryption : false
 
     const content = (

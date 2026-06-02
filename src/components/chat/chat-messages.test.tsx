@@ -4,7 +4,6 @@
 
 import { setupTestDatabase, teardownTestDatabase, resetTestDatabase } from '@/dal/test-utils'
 import {
-  createMockAutomationRun,
   createMockChatInstance,
   createMockChatThread,
   createMockUseChat,
@@ -111,80 +110,6 @@ describe('ChatMessages', () => {
 
       // EncryptionMessage should be rendered with the confidential text
       expect(container.textContent).toContain('This conversation is confidential')
-    })
-  })
-
-  describe('trigger message', () => {
-    it('should show trigger message when automation was triggered', () => {
-      const messages: ThunderboltUIMessage[] = [
-        createTestMessage({
-          role: 'user',
-          parts: [{ type: 'text', text: 'Automation prompt' }],
-        }),
-      ]
-      const mockChatInstance = createMockChatInstance(messages)
-      const mockUseChat = createMockUseChat(mockChatInstance)
-
-      hydrateStore({
-        chatInstance: mockChatInstance,
-        chatThread: createMockChatThread(),
-        id: 'thread-1',
-        mcpClients: [],
-        models: [],
-        selectedModel: null,
-        triggerData: createMockAutomationRun({
-          wasTriggeredByAutomation: true,
-          prompt: {
-            id: 'prompt-1',
-            title: 'Test Automation',
-            prompt: 'Automation prompt',
-            deletedAt: null,
-            defaultHash: null,
-            userId: null,
-            modelId: 'model-1',
-          },
-        }),
-      })
-
-      const { container } = render(<ChatMessages useChat={mockUseChat} />, {
-        wrapper: createTestWrapper(),
-      })
-
-      // TriggerMessage should be rendered with "Triggered by automation" text
-      expect(container.textContent).toContain('Triggered by automation')
-    })
-
-    it('should skip first user message when automation was triggered', () => {
-      const messages: ThunderboltUIMessage[] = [
-        createTestMessage({
-          role: 'user',
-          parts: [{ type: 'text', text: 'Automation prompt' }],
-        }),
-        createTestMessage({
-          role: 'assistant',
-          parts: [{ type: 'text', text: 'Response' }],
-        }),
-      ]
-      const mockChatInstance = createMockChatInstance(messages)
-      const mockUseChat = createMockUseChat(mockChatInstance)
-
-      hydrateStore({
-        chatInstance: mockChatInstance,
-        chatThread: createMockChatThread(),
-        id: 'thread-1',
-        mcpClients: [],
-        models: [],
-        selectedModel: null,
-        triggerData: createMockAutomationRun({
-          wasTriggeredByAutomation: true,
-        }),
-      })
-
-      render(<ChatMessages useChat={mockUseChat} />, { wrapper: createTestWrapper() })
-
-      // First user message should be skipped, only assistant message should be visible
-      expect(screen.queryByText('Automation prompt')).not.toBeInTheDocument()
-      expect(screen.getByText('Response')).toBeInTheDocument()
     })
   })
 

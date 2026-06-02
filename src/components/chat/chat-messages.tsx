@@ -4,7 +4,6 @@
 
 import { AssistantMessage } from './assistant-message'
 import { SyntheticLoadingPart } from './synthetic-loading-part'
-import { TriggerMessage } from './trigger-message'
 import { UserMessage } from './user-message'
 import { EncryptionMessage } from './encryption-message'
 import { ErrorMessage } from './error-message'
@@ -19,14 +18,7 @@ type ChatMessagesProps = {
 }
 
 export const ChatMessages = ({ useChat = useChat_default }: ChatMessagesProps) => {
-  const {
-    chatInstance,
-    chatThread,
-    id: chatThreadId,
-    triggerData,
-    retryCount,
-    retriesExhausted,
-  } = useCurrentChatSession()
+  const { chatInstance, chatThread, retryCount, retriesExhausted } = useCurrentChatSession()
 
   const { error: chatError, status, messages, regenerate } = useChat({ chat: chatInstance })
   const { triggerNotification } = useHaptics()
@@ -59,36 +51,13 @@ export const ChatMessages = ({ useChat = useChat_default }: ChatMessagesProps) =
     return lastMessage?.role === 'assistant' && !lastMessage.parts?.length && !isStreaming
   }, [chatError, lastMessage, isStreaming])
 
-  // Extract prompt from the first message (automation prompt) for trigger display
-  const triggerPromptContent = useMemo(
-    () =>
-      triggerData?.wasTriggeredByAutomation && messages[0]?.parts?.[0]?.type === 'text'
-        ? messages[0].parts[0].text
-        : undefined,
-    [messages, triggerData?.wasTriggeredByAutomation],
-  )
-
   return (
     <div>
       {!!chatThread?.isEncrypted && <EncryptionMessage />}
-      {/* Automation trigger banner */}
-      {triggerData?.wasTriggeredByAutomation && (
-        <TriggerMessage
-          chatThreadId={chatThreadId}
-          title={triggerData.prompt?.title ?? undefined}
-          prompt={triggerPromptContent}
-          isDeleted={triggerData.isAutomationDeleted}
-        />
-      )}
 
-      {messages.map((message, i) => {
+      {messages.map((message) => {
         // Skip OAuth retry messages (they're hidden, only used to trigger regeneration)
         if (message.metadata?.oauthRetry === true) {
-          return null
-        }
-
-        // Skip the very first user message if it was the automation prompt (already shown above)
-        if (triggerData?.wasTriggeredByAutomation && i === 0) {
           return null
         }
 

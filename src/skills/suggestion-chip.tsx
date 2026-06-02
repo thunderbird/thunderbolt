@@ -134,6 +134,11 @@ export const SuggestionChip = ({
       <DropdownMenuContent
         side="top"
         align="start"
+        // `sideOffset={12}` matches the `gap-3` (12px) between the chips bar
+        // and the chat input below it, so the menu sits off the chip by the
+        // same gap the chip sits off the chat area. The default 4px read as
+        // cramped.
+        sideOffset={12}
         collisionPadding={16}
         className={isMobile ? 'w-[calc(100vw-2rem)] min-w-56 rounded-2xl' : 'min-w-56 rounded-2xl'}
       >
@@ -142,7 +147,7 @@ export const SuggestionChip = ({
             onClick()
             handleOpenChange(false)
           }}
-          className="min-h-[var(--min-touch-height)] cursor-pointer"
+          className="min-h-[var(--min-touch-height)] cursor-pointer rounded-xl"
         >
           <Plus />
           Add to chat
@@ -152,7 +157,7 @@ export const SuggestionChip = ({
             onAddInstruction()
             handleOpenChange(false)
           }}
-          className="min-h-[var(--min-touch-height)] cursor-pointer"
+          className="min-h-[var(--min-touch-height)] cursor-pointer rounded-xl"
         >
           <File />
           Add instructions to chat
@@ -166,7 +171,7 @@ export const SuggestionChip = ({
             handleOpenChange(false)
             onReorder()
           }}
-          className="min-h-[var(--min-touch-height)] cursor-pointer"
+          className="min-h-[var(--min-touch-height)] cursor-pointer rounded-xl"
         >
           <ListOrdered />
           Reorder
@@ -178,7 +183,7 @@ export const SuggestionChip = ({
             handleOpenChange(false)
             onUnpin()
           }}
-          className="min-h-[var(--min-touch-height)] cursor-pointer"
+          className="min-h-[var(--min-touch-height)] cursor-pointer rounded-xl"
         >
           <Pin />
           Unpin

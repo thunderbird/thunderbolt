@@ -217,6 +217,9 @@ export type EventType =
   | 'skill_pinned'
   | 'skill_unpinned'
   | 'skill_reordered'
+  // Data migrations (THU-547) — drops out once THU-560 deletes the legacy
+  // automations subsystem.
+  | 'automations_migration_run'
 
 export const trackEvent = (eventName: EventType, properties?: Record<string, unknown>) => {
   try {

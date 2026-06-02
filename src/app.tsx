@@ -36,7 +36,6 @@ import { useViewportLock } from '@/hooks/use-viewport-lock'
 import { useMcpSync } from '@/hooks/use-mcp-sync'
 import { PostHogProvider } from '@/lib/posthog'
 import { ThemeProvider } from '@/lib/theme-provider'
-import { useTriggerScheduler } from './automations/use-trigger-scheduler'
 import { AppErrorScreen } from './components/app-error-screen'
 import { AuthGate } from './components/auth-gate'
 import { OnboardingDialog } from './components/onboarding/onboarding-dialog'
@@ -71,7 +70,6 @@ const loadMotionFeatures = () => import('@/lib/motion-features').then((mod) => m
 // static so route navigation only swaps the inner content. ChatLayout and
 // ChatDetailPage stay in the entry bundle so the landing page is instant.
 const TasksPage = lazy(() => import('@/tasks'))
-const AutomationsPage = lazy(() => import('./automations'))
 const Settings = lazy(() => import('@/settings/index'))
 const PreferencesSettingsPage = lazy(() => import('@/settings/preferences'))
 const ModelsPage = lazy(() => import('@/settings/models'))
@@ -121,7 +119,6 @@ const useBootstrapSystemAgents = () => {
 
 const AppContent = ({ initData }: { initData: InitData }) => {
   useMcpSync()
-  useTriggerScheduler()
   useBootstrapSystemAgents()
   useKeyboardInset()
   useViewportLock()
@@ -184,7 +181,6 @@ const AppRoutes = ({ initData }: { initData: InitData }) => {
               <Route index element={<Navigate to="/chats/new" replace />} />
               <Route path="chats/:chatThreadId" element={<ChatDetailPage />} />
               {experimentalFeatureTasks.value && <Route path="tasks" element={<TasksPage />} />}
-              <Route path="automations" element={<AutomationsPage />} />
               {import.meta.env.DEV && <Route path="message-simulator" element={<MessageSimulatorPage />} />}
             </Route>
 

@@ -166,7 +166,22 @@ export const ChatSkillsBar = ({
             </TooltipTrigger>
             <TooltipContent>{addTooltip}</TooltipContent>
           </Tooltip>
-          <PopoverContent side="top" align="start" sideOffset={6} className="w-72 max-w-[calc(100vw-2rem)] p-1">
+          {/*
+            `collisionPadding={16}` keeps the popover 16px off the viewport
+            edges. On mobile the content is sized to `calc(100vw-2rem)` (32px
+            narrower than the viewport), so collision avoidance pins it to a
+            16px-both-sides margin — i.e. full-width and centered on the chat
+            input — mirroring the chip dropdown. On desktop the fixed `w-72`
+            leaves room, so the padding never shifts the `align="start"`
+            anchor off the `+` button.
+          */}
+          <PopoverContent
+            side="top"
+            align="start"
+            sideOffset={6}
+            collisionPadding={16}
+            className={isMobile ? 'w-[calc(100vw-2rem)] p-1' : 'w-72 max-w-[calc(100vw-2rem)] p-1'}
+          >
             <ul className="max-h-64 overflow-y-auto">
               {pinnable.map((skill) => (
                 <li key={skill.id}>
@@ -185,7 +200,11 @@ export const ChatSkillsBar = ({
                         console.warn('togglePin failed:', error)
                       }
                     }}
-                    className="flex w-full cursor-pointer flex-col gap-0.5 rounded-md px-2 py-1.5 text-left transition-colors hover:bg-accent"
+                    // `rounded-xl` (not `rounded-md`) so the hover highlight
+                    // sits concentrically inside the `rounded-2xl` container's
+                    // `p-1` padding — outer radius minus 4px padding. Matches
+                    // the slash autocomplete popover.
+                    className="flex w-full cursor-pointer flex-col gap-0.5 rounded-xl px-2 py-1.5 text-left transition-colors hover:bg-accent"
                   >
                     <span className="truncate text-[length:var(--font-size-body)] text-foreground">/{skill.name}</span>
                     {skill.description && (

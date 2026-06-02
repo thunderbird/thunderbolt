@@ -17,9 +17,10 @@ import {
   ResponsiveModalHeader,
   ResponsiveModalTitle,
 } from '@/components/ui/responsive-modal'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Switch } from '@/components/ui/switch'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
-import { createMcpServer, deleteMcpServer, getHttpMcpServers } from '@/dal'
+import { createMcpServer, deleteMcpServer, getRemoteMcpServers, setMcpServerCredentials } from '@/dal'
 import { useDatabase } from '@/contexts'
 import { mcpServersTable } from '@/db/tables'
 import { useMcpSync } from '@/hooks/use-mcp-sync'
@@ -30,8 +31,9 @@ import { eq } from 'drizzle-orm'
 import { Check, Copy, Globe, Plus, Server, Trash2, X } from 'lucide-react'
 import { useEffect, useRef, useState, type KeyboardEvent } from 'react'
 import { v7 as uuidv7 } from 'uuid'
-import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js'
 import { createMCPClient } from '@ai-sdk/mcp'
+import { buildMcpHeaders, createMcpTransport, type MCPTransportType } from '@/lib/mcp-transport'
+import { useLocalSettingsStore } from '@/stores/local-settings-store'
 import { toCompilableQuery } from '@powersync/drizzle-driver'
 
 type ServerTools = {
@@ -40,9 +42,12 @@ type ServerTools = {
 
 export default function McpServersPage() {
   const db = useDatabase()
+  const cloudUrl = useLocalSettingsStore((s) => s.cloudUrl)
   const { servers: mcpServers } = useMcpSync()
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false)
   const [newServerUrl, setNewServerUrl] = useState('')
+  const [newServerTransport, setNewServerTransport] = useState<MCPTransportType>('http')
+  const [newServerToken, setNewServerToken] = useState('')
   const [isTestingConnection, setIsTestingConnection] = useState(false)
   const [connectionStatus, setConnectionStatus] = useState<'idle' | 'success' | 'error'>('idle')
   const [serverCapabilities, setServerCapabilities] = useState<string[]>([])
@@ -56,7 +61,7 @@ export default function McpServersPage() {
   // TODO: Add support for stdio servers
   const { data: servers = [] } = useQuery({
     queryKey: ['mcp-servers'],
-    query: toCompilableQuery(getHttpMcpServers(db)),
+    query: toCompilableQuery(getRemoteMcpServers(db)),
   })
 
   // Fetch tools for connected servers
@@ -113,16 +118,23 @@ export default function McpServersPage() {
 
   const addServerMutation = useMutation({
     mutationFn: async ({ name, url }: { name: string; url: string }) => {
+      const id = uuidv7()
       await createMcpServer(db, {
-        id: uuidv7(),
+        id,
         name,
         url,
+        type: newServerTransport,
         enabled: 1,
       })
+      if (newServerToken) {
+        await setMcpServerCredentials(db, id, { type: 'bearer', token: newServerToken })
+      }
     },
     onSuccess: () => {
       setIsAddDialogOpen(false)
       setNewServerUrl('')
+      setNewServerTransport('http')
+      setNewServerToken('')
       setConnectionStatus('idle')
       setServerCapabilities([])
     },
@@ -147,17 +159,13 @@ export default function McpServersPage() {
     try {
       console.log('Testing connection to:', newServerUrl)
 
-      // Create a real MCP client using the same method as the provider
+      // Create a real MCP client using the same method as the provider —
+      // route through the universal proxy so the test matches the real
+      // connection path (web CORS would otherwise fail for remote servers).
       console.log('Creating MCP client...')
-      const mcpClient = await createMCPClient({
-        transport: new StreamableHTTPClientTransport(new URL(newServerUrl), {
-          requestInit: {
-            headers: {
-              Accept: 'application/json, text/event-stream',
-            },
-          },
-        }),
-      })
+      const headers = buildMcpHeaders(newServerToken || undefined)
+      const transport = createMcpTransport(newServerUrl, newServerTransport, cloudUrl, headers)
+      const mcpClient = await createMCPClient({ transport })
 
       console.log('MCP client created successfully')
 
@@ -319,6 +327,33 @@ export default function McpServersPage() {
                   value={newServerUrl}
                   onChange={(e) => setNewServerUrl(e.target.value)}
                   onKeyDown={handleUrlKeyDown}
+                />
+              </div>
+
+              <div className="grid gap-2">
+                <Label htmlFor="transport">Transport</Label>
+                <Select
+                  value={newServerTransport}
+                  onValueChange={(value) => setNewServerTransport(value as MCPTransportType)}
+                >
+                  <SelectTrigger id="transport" className="w-full rounded-lg">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="http">HTTP</SelectItem>
+                    <SelectItem value="sse">SSE</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="grid gap-2">
+                <Label htmlFor="token">Credential (optional)</Label>
+                <Input
+                  id="token"
+                  type="password"
+                  placeholder="Bearer token or API key"
+                  value={newServerToken}
+                  onChange={(e) => setNewServerToken(e.target.value)}
                 />
               </div>
 

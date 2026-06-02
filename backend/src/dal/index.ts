@@ -25,6 +25,9 @@ export { getWaitlistByEmail, createWaitlistEntry, approveWaitlistEntry } from '.
 // PowerSync
 export { applyOperation } from './powersync'
 
+// Workspaces
+export { bootstrapUserWorkspace } from './workspaces'
+
 // OTP Challenge (session binding)
 export {
   getOrCreateOtpChallenge,

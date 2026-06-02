@@ -11,7 +11,7 @@ import {
 } from '@/db/powersync-schema'
 import { type PowerSyncTableName, powersyncTableNames } from '@shared/powersync-tables'
 import { and, eq } from 'drizzle-orm'
-import type { AnyPgTable } from 'drizzle-orm/pg-core'
+import type { AnyPgColumn, AnyPgTable } from 'drizzle-orm/pg-core'
 
 const validTables = new Set<string>(powersyncTableNames)
 
@@ -83,7 +83,10 @@ export const applyOperation = async (
   }
 
   const validDbNames = new Set(Object.keys(dbNameToKey))
-  const tableWithUserId = table as AnyPgTable & { userId: typeof table.userId }
+  // Every table reaching this point carries a `user_id` column (workspace tables are
+  // routed to the upload handler factory; see THU-550 commit 2). `AnyPgColumn` is the
+  // loosest cast that compiles against the union of all table shapes here.
+  const tableWithUserId = table as AnyPgTable & { userId: AnyPgColumn }
 
   switch (op.op) {
     case 'PUT': {

@@ -311,3 +311,64 @@ export const agentsSecretsTable = sqliteTable('agents_secrets', {
   apiKey: text('api_key'),
   authMethod: text('auth_method'),
 })
+
+/**
+ * Workspace entity (synced via PowerSync). Personal workspace is BE-created for real
+ * users by the Better Auth post-create hook; shared workspaces are FE-created via
+ * PowerSync upload (commits in later PRs).
+ */
+export const workspacesTable = sqliteTable('workspaces', {
+  id: text('id').primaryKey(),
+  name: text('name').notNull(),
+  isPersonal: integer('is_personal').notNull().default(0),
+  ownerUserId: text('owner_user_id'),
+  createdAt: text('created_at'),
+  updatedAt: text('updated_at'),
+})
+
+/**
+ * Workspace membership and role assignment. Natural key `(workspace_id, user_id)`
+ * lives as a unique constraint on the BE; the FE keeps a single `id` PK to match
+ * PowerSync's row-tracking convention.
+ */
+export const workspaceMembershipsTable = sqliteTable(
+  'workspace_memberships',
+  {
+    id: text('id').primaryKey(),
+    workspaceId: text('workspace_id').notNull(),
+    userId: text('user_id').notNull(),
+    role: text('role', { enum: ['admin', 'member'] }).notNull(),
+    createdAt: text('created_at'),
+  },
+  (table) => [index('idx_workspace_memberships_workspace_user').on(table.workspaceId, table.userId)],
+)
+
+/**
+ * Pending direct-add for users without an account yet. Synced down only to admins
+ * of the target workspace (via sync rules in commit 3). Backend promotes matching
+ * rows into `workspace_memberships` when the email signs up.
+ */
+export const workspacePendingMembershipsTable = sqliteTable(
+  'workspace_pending_memberships',
+  {
+    id: text('id').primaryKey(),
+    workspaceId: text('workspace_id').notNull(),
+    email: text('email').notNull(),
+    role: text('role', { enum: ['admin', 'member'] }).notNull(),
+    invitedByUserId: text('invited_by_user_id').notNull(),
+    createdAt: text('created_at'),
+  },
+  (table) => [index('idx_workspace_pending_memberships_workspace_email').on(table.workspaceId, table.email)],
+)
+
+/** Per-workspace permission policy (Decision 10 — keys: manage_members, change_roles). */
+export const workspacePermissionsTable = sqliteTable(
+  'workspace_permissions',
+  {
+    id: text('id').primaryKey(),
+    workspaceId: text('workspace_id').notNull(),
+    permissionKey: text('permission_key', { enum: ['manage_members', 'change_roles'] }).notNull(),
+    requiredRole: text('required_role', { enum: ['admin', 'member'] }).notNull(),
+  },
+  (table) => [index('idx_workspace_permissions_workspace_key').on(table.workspaceId, table.permissionKey)],
+)

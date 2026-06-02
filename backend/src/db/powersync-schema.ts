@@ -14,8 +14,9 @@ import {
   real,
   text,
   timestamp,
+  uniqueIndex,
 } from 'drizzle-orm/pg-core'
-import { getTableColumns } from 'drizzle-orm'
+import { getTableColumns, sql } from 'drizzle-orm'
 import { user } from './auth-schema'
 
 /**
@@ -24,6 +25,109 @@ import { user } from './auth-schema'
  */
 
 const powersyncSchema = pgSchema('powersync')
+
+/**
+ * Workspace entity. Every real user gets one personal workspace (`is_personal = true`)
+ * created by the Better Auth post-create hook; shared workspaces are created later via
+ * PowerSync upload from the FE (gated by `allowWorkspaceCreationBy*` flags).
+ *
+ * `owner_user_id` defines who a personal workspace belongs to (NOT an access-control
+ * "owner" role — roles live in `workspace_memberships`). The partial unique index
+ * enforces "one personal workspace per user".
+ */
+export const workspacesTable = powersyncSchema.table(
+  'workspaces',
+  {
+    id: text('id').primaryKey(),
+    name: text('name').notNull(),
+    isPersonal: boolean('is_personal').notNull().default(false),
+    ownerUserId: text('owner_user_id').references(() => user.id, { onDelete: 'cascade' }),
+    createdAt: timestamp('created_at').notNull().defaultNow(),
+    updatedAt: timestamp('updated_at').notNull().defaultNow(),
+  },
+  (table) => [
+    uniqueIndex('idx_workspaces_personal_per_owner')
+      .on(table.ownerUserId)
+      .where(sql`${table.isPersonal} = true`),
+    index('idx_workspaces_owner_user_id').on(table.ownerUserId),
+  ],
+)
+
+/**
+ * Workspace membership and role assignment. The natural key per spec §3.7 is
+ * `(workspace_id, user_id)`; PowerSync requires a single `id` column for row tracking,
+ * so the natural key is enforced as a unique constraint instead of a composite PK.
+ *
+ * Roles are `admin` | `member` only (Decision 9 — no `owner`). Last-admin protection
+ * lives in the upload handler factory.
+ */
+export const workspaceMembershipsTable = powersyncSchema.table(
+  'workspace_memberships',
+  {
+    id: text('id').primaryKey(),
+    workspaceId: text('workspace_id')
+      .notNull()
+      .references(() => workspacesTable.id, { onDelete: 'cascade' }),
+    userId: text('user_id')
+      .notNull()
+      .references(() => user.id, { onDelete: 'cascade' }),
+    role: text('role', { enum: ['admin', 'member'] }).notNull(),
+    createdAt: timestamp('created_at').notNull().defaultNow(),
+  },
+  (table) => [
+    uniqueIndex('idx_workspace_memberships_workspace_user').on(table.workspaceId, table.userId),
+    index('idx_workspace_memberships_user').on(table.userId),
+    index('idx_workspace_memberships_workspace').on(table.workspaceId),
+  ],
+)
+
+/**
+ * Pending memberships: admin invites an email that doesn't yet have an account.
+ * On signup, the Better Auth post-create hook promotes any matching rows into
+ * `workspace_memberships` and deletes them here. Emails are stored normalized
+ * (lower-cased + trimmed) to match the `before` hook's normalization of `user.email`.
+ */
+export const workspacePendingMembershipsTable = powersyncSchema.table(
+  'workspace_pending_memberships',
+  {
+    id: text('id').primaryKey(),
+    workspaceId: text('workspace_id')
+      .notNull()
+      .references(() => workspacesTable.id, { onDelete: 'cascade' }),
+    email: text('email').notNull(),
+    role: text('role', { enum: ['admin', 'member'] }).notNull(),
+    invitedByUserId: text('invited_by_user_id')
+      .notNull()
+      .references(() => user.id, { onDelete: 'cascade' }),
+    createdAt: timestamp('created_at').notNull().defaultNow(),
+  },
+  (table) => [
+    uniqueIndex('idx_workspace_pending_memberships_workspace_email').on(table.workspaceId, table.email),
+    index('idx_workspace_pending_memberships_email').on(table.email),
+    index('idx_workspace_pending_memberships_workspace').on(table.workspaceId),
+  ],
+)
+
+/**
+ * Per-workspace permission policy. v1 ships two keys (`manage_members`, `change_roles`)
+ * with values `admin` | `member` (Decision 10). Schema designed so adding a new
+ * permission post-v1 is a row insert, not a schema change.
+ */
+export const workspacePermissionsTable = powersyncSchema.table(
+  'workspace_permissions',
+  {
+    id: text('id').primaryKey(),
+    workspaceId: text('workspace_id')
+      .notNull()
+      .references(() => workspacesTable.id, { onDelete: 'cascade' }),
+    permissionKey: text('permission_key', { enum: ['manage_members', 'change_roles'] }).notNull(),
+    requiredRole: text('required_role', { enum: ['admin', 'member'] }).notNull(),
+  },
+  (table) => [
+    uniqueIndex('idx_workspace_permissions_workspace_key').on(table.workspaceId, table.permissionKey),
+    index('idx_workspace_permissions_workspace').on(table.workspaceId),
+  ],
+)
 
 export const settingsTable = powersyncSchema.table(
   'settings',
@@ -303,6 +407,10 @@ export const powersyncTablesByName = {
   model_profiles: modelProfilesTable,
   devices: devicesTable,
   agents: agentsTable,
+  workspaces: workspacesTable,
+  workspace_memberships: workspaceMembershipsTable,
+  workspace_pending_memberships: workspacePendingMembershipsTable,
+  workspace_permissions: workspacePermissionsTable,
 } satisfies Record<PowerSyncTableName, AnyPgTable>
 
 /**
@@ -333,6 +441,10 @@ export const powersyncPkColumn: Record<PowerSyncTableName, AnyPgColumn> = {
   model_profiles: modelProfilesTable.id,
   devices: devicesTable.id,
   agents: agentsTable.id,
+  workspaces: workspacesTable.id,
+  workspace_memberships: workspaceMembershipsTable.id,
+  workspace_pending_memberships: workspacePendingMembershipsTable.id,
+  workspace_permissions: workspacePermissionsTable.id,
 }
 
 /**
@@ -354,4 +466,8 @@ export const powersyncConflictTarget: Record<PowerSyncTableName, AnyPgColumn[]> 
   model_profiles: [modelProfilesTable.id, modelProfilesTable.userId],
   devices: [devicesTable.id],
   agents: [agentsTable.id, agentsTable.userId],
+  workspaces: [workspacesTable.id],
+  workspace_memberships: [workspaceMembershipsTable.id],
+  workspace_pending_memberships: [workspacePendingMembershipsTable.id],
+  workspace_permissions: [workspacePermissionsTable.id],
 }

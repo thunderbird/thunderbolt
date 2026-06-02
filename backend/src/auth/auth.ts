@@ -4,6 +4,7 @@
 
 import {
   approveWaitlistEntry,
+  bootstrapUserWorkspace,
   getOrCreateOtpChallenge,
   createWaitlistEntry,
   deleteOtpChallengesForEmail,
@@ -208,6 +209,18 @@ export const createAuth = (database: typeof DbType, emailDeps: AuthEmailDeps = {
           before: async (userData) => ({
             data: { ...userData, email: normalizeEmail(userData.email) },
           }),
+          // Bootstrap the user's personal workspace + admin membership and promote any
+          // pending memberships invited by email. Skipped for anonymous users —
+          // anonymous personal workspaces are FE-created (workspaces addendum Decision 12)
+          // and anonymous users never sync (Decision 14), so a server-side row would be
+          // unreachable from the FE replica.
+          after: async (createdUser) => {
+            const isAnonymous = (createdUser as { isAnonymous?: boolean }).isAnonymous === true
+            if (isAnonymous) {
+              return
+            }
+            await bootstrapUserWorkspace(database, createdUser.id, createdUser.email)
+          },
         },
       },
     },

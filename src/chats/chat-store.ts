@@ -5,7 +5,7 @@
 import { updateSettings } from '@/dal'
 import { updateChatThread } from '@/dal/chat-threads'
 import { getDb } from '@/db/database'
-import { type MCPClient } from '@/lib/mcp-provider'
+import { type MCPClient, type ReconnectClient } from '@/lib/mcp-provider'
 import { trackEvent } from '@/lib/posthog'
 import type { Agent } from '@/types/acp'
 import type { AutomationRun, ChatThread, Mode, Model, ThunderboltUIMessage } from '@/types'
@@ -46,6 +46,7 @@ export type ChatSession = {
 type ChatStoreState = {
   currentSessionId: string | null
   mcpClients: MCPClient[]
+  reconnectClient: ReconnectClient
   modes: Mode[]
   models: Model[]
   sessions: Map<string, ChatSession>
@@ -55,6 +56,7 @@ type ChatStoreActions = {
   createSession(session: ChatSession): void
   setCurrentSessionId(id: string): void
   setMcpClients(mcpClients: MCPClient[]): void
+  setReconnectClient(reconnectClient: ReconnectClient): void
   setModes(modes: Mode[]): void
   setModels(models: Model[]): void
   setPendingPermission(id: string, permission: PendingPermission | null): void
@@ -70,6 +72,10 @@ type ChatStore = ChatStoreState & ChatStoreActions
 const initialState: ChatStoreState = {
   currentSessionId: null,
   mcpClients: [],
+  // Replaced by the MCP provider's `reconnectClient` on hydration. The default
+  // no-op (returns null) makes `mergeMcpTools` skip a dropped server rather than
+  // reconnect — correct for the pre-hydration / no-provider case.
+  reconnectClient: async () => null,
   modes: [],
   models: [],
   sessions: new Map(),
@@ -97,6 +103,10 @@ export const useChatStore = create<ChatStore>()((set, get) => ({
 
   setMcpClients: (mcpClients) => {
     set({ mcpClients })
+  },
+
+  setReconnectClient: (reconnectClient) => {
+    set({ reconnectClient })
   },
 
   setModes: (modes) => {

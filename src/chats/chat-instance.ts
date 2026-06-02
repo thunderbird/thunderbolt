@@ -99,7 +99,7 @@ export const createAgentRoutingFetch = (
         throw new Error('Missing init')
       }
 
-      const { mcpClients, sessions } = useChatStore.getState()
+      const { mcpClients, reconnectClient, sessions } = useChatStore.getState()
 
       const session = sessions.get(id)
 
@@ -175,6 +175,7 @@ export const createAgentRoutingFetch = (
         selectedMode,
         selectedModel,
         mcpClients,
+        reconnectClient,
         httpClient,
         getProxyFetch,
         onAcpSessionId: persistAcpSessionId,

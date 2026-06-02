@@ -56,6 +56,9 @@ export type AgentAdapterContext = {
   selectedMode: Mode
   selectedModel: Model
   mcpClients: MCPClient[]
+  /** Reconnect a dropped MCP client at the `tools()` boundary; returns a fresh
+   *  client or null. Supplied by the MCP provider via the chat store. */
+  reconnectClient: (client: MCPClient) => Promise<MCPClient | null>
   httpClient: HttpClient
   getProxyFetch: () => FetchFn
   /** Called when an ACP adapter created a fresh `sessionId` via `session/new`.

@@ -49,6 +49,7 @@ import {
   type ToolSet,
 } from 'ai'
 import { type MCPClient } from '@ai-sdk/mcp'
+import { isClosedConnectionError } from '@/lib/mcp-errors'
 import { createMessageMetadata } from './message-metadata'
 
 /** Wrap fetch to include credentials in SSO mode so session cookies are sent to the backend. */
@@ -78,17 +79,69 @@ export const getTinfoilClient = async (): Promise<SecureClient> => {
   return tinfoilClient
 }
 
+/** Reconnect a dropped MCP client; returns a fresh client or null. Supplied by
+ *  the MCP provider via the chat store. See `src/lib/mcp-provider.tsx`. */
+type ReconnectClient = (client: MCPClient) => Promise<MCPClient | null>
+
 type AiFetchStreamingResponseOptions = {
   init: RequestInit
   modelId: string
   modeSystemPrompt?: string
   modeName?: string
   mcpClients?: MCPClient[]
+  reconnectClient?: ReconnectClient
   httpClient: HttpClient
   /** Returns the current proxy fetch. Production callers pass the getter from
    *  `ProxyFetchProvider` (`useProxyFetchGetter()`); non-React callers (eval
    *  scripts) build a `proxyFetch` directly and wrap it in `() => fn`. */
   getProxyFetch: () => FetchFn
+}
+
+/**
+ * Merge every enabled MCP server's tools into `toolset` (mutated in place and
+ * returned). Per server we call `tools()`; if it rejects with a closed-connection
+ * error we reconnect once and retry. A reconnect that fails or a second `tools()`
+ * failure skips that server — discovery must never block the send. Non-closed
+ * errors propagate so real failures aren't masked. Tool names that collide with
+ * an already-registered tool (built-in or earlier MCP server) are skipped
+ * (first-registered wins). Injectable for unit tests.
+ */
+export const mergeMcpTools = async (
+  toolset: Record<string, Tool>,
+  mcpClients: MCPClient[],
+  reconnectClient: ReconnectClient,
+): Promise<Record<string, Tool>> => {
+  const addTools = (tools: Awaited<ReturnType<MCPClient['tools']>>) => {
+    for (const [name, tool] of Object.entries(tools)) {
+      if (toolset[name]) {
+        console.warn(`MCP tool "${name}" conflicts with an existing tool and was skipped`)
+        continue
+      }
+      toolset[name] = tool as Tool
+    }
+  }
+
+  for (const client of mcpClients) {
+    try {
+      addTools(await client.tools())
+    } catch (err) {
+      if (!isClosedConnectionError(err)) {
+        throw err
+      }
+      const fresh = await reconnectClient(client)
+      if (!fresh) {
+        console.warn('MCP server reconnect failed; skipping its tools for this send')
+        continue
+      }
+      try {
+        addTools(await fresh.tools())
+      } catch (retryErr) {
+        console.warn('MCP server still failing after reconnect; skipping its tools for this send', retryErr)
+      }
+    }
+  }
+
+  return toolset
 }
 
 export const createModel = async (modelConfig: Model, getProxyFetch: () => FetchFn) => {
@@ -206,6 +259,7 @@ export const aiFetchStreamingResponse = async ({
   modeSystemPrompt,
   modeName,
   mcpClients,
+  reconnectClient,
   httpClient,
   getProxyFetch,
 }: AiFetchStreamingResponseOptions) => {
@@ -253,16 +307,7 @@ export const aiFetchStreamingResponse = async ({
     const availableTools = await getAvailableTools(httpClient, sourceCollector)
     toolset = { ...createToolset(availableTools) }
 
-    for (const mcpClient of mcpClients || []) {
-      const mcpTools = await mcpClient.tools()
-      for (const [name, tool] of Object.entries(mcpTools)) {
-        if (toolset[name]) {
-          console.warn(`MCP tool "${name}" conflicts with an existing tool and was skipped`)
-          continue
-        }
-        toolset[name] = tool as Tool
-      }
-    }
+    await mergeMcpTools(toolset, mcpClients ?? [], reconnectClient ?? (async () => null))
   } else {
     console.log('Model does not support tools, skipping tool setup')
   }

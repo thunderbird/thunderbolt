@@ -44,7 +44,7 @@ export const useHydrateChatStore = ({ id, isNew }: UseHydrateChatStoreParams) =>
 
   const [isReady, setIsReady] = useState(false)
 
-  const { getEnabledClients } = useMCP()
+  const { getEnabledClients, reconnectClient } = useMCP()
 
   const updateThreadTitle = async (messages: ThunderboltUIMessage[], threadId: string) => {
     const firstUserMessage = messages.find((msg) => msg.role === 'user')
@@ -95,7 +95,8 @@ export const useHydrateChatStore = ({ id, isNew }: UseHydrateChatStoreParams) =>
   }
 
   const hydrateChatStore = async () => {
-    const { createSession, sessions, setCurrentSessionId, setMcpClients, setModes, setModels } = useChatStore.getState()
+    const { createSession, sessions, setCurrentSessionId, setMcpClients, setReconnectClient, setModes, setModels } =
+      useChatStore.getState()
 
     // Check if this ID belongs to a deleted chat - redirect to 404 if so
     const isDeleted = await isChatThreadDeleted(db, id)
@@ -115,6 +116,7 @@ export const useHydrateChatStore = ({ id, isNew }: UseHydrateChatStoreParams) =>
       ])
 
       setMcpClients(mcpClients)
+      setReconnectClient(reconnectClient)
       setModes(modes)
       setModels(models)
 
@@ -226,6 +228,7 @@ export const useHydrateChatStore = ({ id, isNew }: UseHydrateChatStoreParams) =>
     setCurrentSessionId(id)
 
     setMcpClients(mcpClients)
+    setReconnectClient(reconnectClient)
     setModes(modes)
     setModels(models)
 

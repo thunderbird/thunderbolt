@@ -49,7 +49,7 @@ export const defaultModelGptOss120b: Model = {
   url: null,
   defaultHash: null,
   vendor: 'openai',
-  description: 'Fast and confidential',
+  description: 'Fast',
   userId: null,
 }
 

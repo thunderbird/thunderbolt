@@ -92,15 +92,15 @@ export const categorizeModels = (
     groups.push({
       id: 'standard-disabled',
       label: 'Standard Models',
-      subtitle: 'Only confidential models can be used in this chat',
+      subtitle: 'Only encrypted models can be used in this chat',
       items: disabledStandard,
     })
   }
   if (disabledConfidential.length > 0) {
     groups.push({
       id: 'confidential-disabled',
-      label: 'Confidential Models',
-      subtitle: 'Only available in confidential chats',
+      label: 'Encrypted Models',
+      subtitle: 'Only available in encrypted chats',
       items: disabledConfidential,
     })
   }

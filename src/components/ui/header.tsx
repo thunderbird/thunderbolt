@@ -77,12 +77,12 @@ export const Header = () => {
     }),
   )
 
-  // Derive the effective agent during render. If the persisted agent id no
-  // longer resolves (deleted custom, unsynced system), fall back to built-in
-  // without mutating state — `setSelectedAgent` only fires on explicit user
-  // action via the dropdown.
-  const effectiveAgent =
-    (selectedAgent ? allAgents.find((a) => a.id === selectedAgent.id) : undefined) ?? selectedAgent ?? builtInAgent
+  // Prefer the session's already-resolved agent (hydration resolves the
+  // persisted thread agentId into `selectedAgent`). Re-searching `allAgents`
+  // here would show built-in on first render while `useAllAgents` is still
+  // loading and the list is empty. Fall back to built-in only when the thread
+  // has no agent.
+  const effectiveAgent = selectedAgent ?? builtInAgent
 
   const isChatRoute = location.pathname.startsWith('/chats')
   const showAgentSelector = isChatRoute && chatInstance !== undefined && allAgents.length > 0

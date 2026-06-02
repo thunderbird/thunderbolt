@@ -24,7 +24,7 @@ export type PendingPermission = {
   resolve: (response: RequestPermissionResponse) => void
 }
 
-/** Connection state for the per-session ACP adapter. `idle` covers built-in
+/** Connection state for the per-agent ACP adapter. `idle` covers built-in
  *  agents (no handshake) and the initial state before the first send. */
 export type ConnectionStatus = 'idle' | 'connecting' | 'ready' | 'error'
 
@@ -154,9 +154,16 @@ export const useChatStore = create<ChatStore>()((set, get) => ({
 
     set({ sessions: nextSessions })
 
+    const db = getDb()
+
     if (session.chatThread) {
-      await updateChatThread(getDb(), session.chatThread.id, { agentId: agent.id })
+      await updateChatThread(db, session.chatThread.id, { agentId: agent.id })
     }
+
+    // Persist the global last-used agent so new chats default to it (mirrors
+    // `setSelectedModel`/`setSelectedMode`). The per-thread write above keeps
+    // existing chats pinned to their own agent.
+    await updateSettings(db, { selected_agent: agent.id })
 
     trackEvent('agent_select', { agent: agent.id })
   },

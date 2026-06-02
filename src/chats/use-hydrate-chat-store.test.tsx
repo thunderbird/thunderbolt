@@ -13,6 +13,8 @@ import { getDb } from '@/db/database'
 import { modelsTable, modesTable } from '@/db/tables'
 import { v7 as uuidv7 } from 'uuid'
 import { createChatThread, getChatThread as getThread } from '@/dal/chat-threads'
+import { createAgent } from '@/dal/agents'
+import { updateSettings } from '@/dal/settings'
 import { getModel } from '@/dal/models'
 import { saveMessagesWithContextUpdate } from '@/dal/chat-messages'
 import type { ThunderboltUIMessage } from '@/types'
@@ -299,6 +301,33 @@ describe('useHydrateChatStore', () => {
       expect(session?.chatInstance).toBeDefined()
       expect(session?.chatInstance?.messages).toBeDefined()
       expect(session?.chatInstance?.messages.length).toBe(0)
+    })
+
+    it('defaults a new chat to the last-used agent from settings, not the built-in', async () => {
+      // A new chat has no `chat_threads` row, so the agent resolves from the
+      // global `selected_agent` setting (the user's last pick). It must win over
+      // `allAgents[0]`, which is always the built-in.
+      await createAgent(getDb(), {
+        id: 'custom-last-used',
+        name: 'Last Used Agent',
+        type: 'remote-acp',
+        transport: 'websocket',
+        url: 'wss://example.test/ws',
+        userId: 'u1',
+      })
+      await updateSettings(getDb(), { selected_agent: 'custom-last-used' })
+
+      const threadId = uuidv7()
+      const { result } = renderHook(() => useHydrateChatStore({ id: threadId, isNew: true }), {
+        wrapper: TestWrapper,
+      })
+
+      await act(async () => {
+        await result.current.hydrateChatStore()
+      })
+
+      const session = getCurrentSession()
+      expect(session?.selectedAgent.id).toBe('custom-last-used')
     })
   })
 

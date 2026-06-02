@@ -24,6 +24,9 @@ const signToken = (token: string): string => {
 }
 
 const powersyncSettings: Settings = {
+  serverId: 'd70c9c16-8665-4eb8-afb3-0d9f0214e4f8',
+  allowWorkspaceCreationByAnon: false,
+  allowWorkspaceCreationByMembers: false,
   fireworksApiKey: '',
   mistralApiKey: '',
   anthropicApiKey: '',

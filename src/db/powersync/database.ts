@@ -16,6 +16,7 @@ import { ThunderboltConnector } from './connector'
 import { getPlatform, getWebBrowser } from '@/lib/platform'
 import { ThunderboltPowerSyncDatabase } from './ThunderboltPowerSyncDatabase'
 import { encryptionMiddleware } from './middleware/EncryptionMiddleware'
+import { workerNameFor } from '../sync-worker-name'
 import {
   getMsSinceLastDownload,
   sanitizeErrorForTracking,
@@ -143,7 +144,7 @@ export const getPowerSyncOptions = (path: string, config: PowerSyncDatabaseConfi
         worker: () =>
           new SharedWorker(new URL('./worker/ThunderboltSharedSyncImplementation.worker.ts', import.meta.url), {
             type: 'module',
-            name: `shared-sync-${dbFilename}`,
+            name: workerNameFor(dbFilename),
           }),
       },
     }

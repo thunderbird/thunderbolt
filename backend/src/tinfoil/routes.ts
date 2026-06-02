@@ -32,75 +32,76 @@ export const createTinfoilRoutes = (options: CreateTinfoilRoutesOptions) => {
   const apiKey = options.apiKey ?? settings.tinfoilApiKey
   const enclaveUrl = (options.enclaveUrl ?? settings.tinfoilEnclaveUrl).replace(/\/$/, '')
 
+  const proxyToEnclave = async (request: Request, wildcard: string): Promise<Response> => {
+    const method = request.method.toUpperCase()
+
+    if (!allowedMethods.has(method)) {
+      return textResponse(405, 'Method not allowed')
+    }
+
+    if (!apiKey) {
+      return textResponse(503, 'Tinfoil provider not configured')
+    }
+
+    const subpath = wildcard.startsWith('/') ? wildcard : `/${wildcard}`
+    const search = new URL(request.url).search
+    const upstreamUrl = `${enclaveUrl}${subpath}${search}`
+
+    const headers = new Headers()
+    request.headers.forEach((value, key) => {
+      const lower = key.toLowerCase()
+      if (lower === 'authorization' || lower === 'host' || lower === 'cookie' || lower === 'connection') {
+        return
+      }
+      headers.set(key, value)
+    })
+    headers.set('Authorization', `Bearer ${apiKey}`)
+
+    const body = bodylessMethods.has(method) ? null : request.body
+
+    // Bun-specific fetch options: `duplex: 'half'` enables streaming request
+    // bodies; `decompress: false` keeps the HPKE-encrypted bytes opaque on
+    // the response path so the frontend SDK can decrypt them as-is.
+    const upstream = await fetchFn(upstreamUrl, {
+      method,
+      headers,
+      body,
+      redirect: 'manual',
+      decompress: false,
+      duplex: 'half',
+    } as RequestInit & { decompress: boolean; duplex: 'half' })
+
+    const responseHeaders = new Headers()
+    upstream.headers.forEach((value, key) => {
+      const lower = key.toLowerCase()
+      if (lower === 'transfer-encoding' || lower === 'connection') {
+        return
+      }
+      responseHeaders.set(key, value)
+    })
+
+    return new Response(upstream.body, {
+      status: upstream.status,
+      statusText: upstream.statusText,
+      headers: responseHeaders,
+    })
+  }
+
+  // `{ parse: 'none' }` keeps the request stream untouched so the HPKE-encrypted
+  // payload reaches the upstream unchanged, even for recognised content types.
+  // The wildcard-derived subpath survives changes to the outer mount prefix
+  // (e.g. `/v1` in src/index.ts). Branching at `.all()` keeps each chain's
+  // Elysia type concrete (a ternary `g` vs `g.use(...)` would union the types
+  // and make `.all()` uncallable / fall back to `any`).
   return new Elysia({ prefix: '/tinfoil' })
     .onError(safeErrorHandler)
     .use(createAuthMacro(auth))
     .guard({ auth: true }, (g) => {
-      const chain = rateLimit ? g.use(rateLimit) : g
-
-      return chain.all(
-        '/*',
-        async (ctx) => {
-          const method = ctx.request.method.toUpperCase()
-
-          if (!allowedMethods.has(method)) {
-            return textResponse(405, 'Method not allowed')
-          }
-
-          if (!apiKey) {
-            return textResponse(503, 'Tinfoil provider not configured')
-          }
-
-          // Derive the upstream path from the matched wildcard so it survives
-          // changes to the outer mount prefix (e.g. `/v1` in src/index.ts).
-          const wildcard = (ctx.params as Record<string, string | undefined>)['*'] ?? ''
-          const subpath = wildcard.startsWith('/') ? wildcard : `/${wildcard}`
-          const search = new URL(ctx.request.url).search
-          const upstreamUrl = `${enclaveUrl}${subpath}${search}`
-
-          const headers = new Headers()
-          ctx.request.headers.forEach((value, key) => {
-            const lower = key.toLowerCase()
-            if (lower === 'authorization' || lower === 'host' || lower === 'cookie' || lower === 'connection') {
-              return
-            }
-            headers.set(key, value)
-          })
-          headers.set('Authorization', `Bearer ${apiKey}`)
-
-          const body = bodylessMethods.has(method) ? null : ctx.request.body
-
-          // Bun-specific fetch options: `duplex: 'half'` enables streaming request
-          // bodies; `decompress: false` keeps the HPKE-encrypted bytes opaque on
-          // the response path so the frontend SDK can decrypt them as-is.
-          const upstream = await fetchFn(upstreamUrl, {
-            method,
-            headers,
-            body,
-            redirect: 'manual',
-            decompress: false,
-            duplex: 'half',
-          } as RequestInit & { decompress: boolean; duplex: 'half' })
-
-          const responseHeaders = new Headers()
-          upstream.headers.forEach((value, key) => {
-            const lower = key.toLowerCase()
-            if (lower === 'transfer-encoding' || lower === 'connection') {
-              return
-            }
-            responseHeaders.set(key, value)
-          })
-
-          return new Response(upstream.body, {
-            status: upstream.status,
-            statusText: upstream.statusText,
-            headers: responseHeaders,
-          })
-        },
-        // Tell Elysia not to parse the body — keeps the request stream untouched
-        // so the HPKE-encrypted payload reaches the upstream unchanged, even for
-        // recognised content types like `application/json`.
-        { parse: 'none' },
-      )
+      if (rateLimit) {
+        return g
+          .use(rateLimit)
+          .all('/*', (ctx) => proxyToEnclave(ctx.request, ctx.params['*'] ?? ''), { parse: 'none' })
+      }
+      return g.all('/*', (ctx) => proxyToEnclave(ctx.request, ctx.params['*'] ?? ''), { parse: 'none' })
     })
 }

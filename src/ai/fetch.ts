@@ -13,6 +13,8 @@ import {
   shouldRetry,
 } from '@/ai/step-logic'
 import { getAllSkills, getIntegrationStatus, getModel, getModelProfile, getSettings } from '@/dal'
+import { getMessage } from '@/dal/chat-messages'
+import { collectQuizEntriesFromCache, formatQuizResultsNote } from '@/widgets/quiz/lib'
 import { extractLastUserText, resolveSkillTokenInstructions } from '@/skills/resolve-skill-system-messages'
 import { getDb } from '@/db/database'
 import { getLocalSetting } from '@/stores/local-settings-store'
@@ -445,12 +447,28 @@ export const aiFetchStreamingResponse = async ({
     }
     const skillSystemMessages = resolveSkillTokenInstructions(lastUserText, instructionBySlug)
 
+    // Surface the user's persisted quiz answers (stored in each assistant
+    // message's cache by the quiz widget) so the model can report scores
+    // without asking the user to re-enter their choices.
+    const quizEntries = (
+      await Promise.all(
+        messages
+          .filter((message) => message.role === 'assistant')
+          .map(async (message) => {
+            const stored = await getMessage(db, message.id)
+            return stored?.cache ? collectQuizEntriesFromCache(stored.cache as Record<string, unknown>) : []
+          }),
+      )
+    ).flat()
+    const quizResultsNote = formatQuizResultsNote(quizEntries)
+    const systemNotes = [...skillSystemMessages, ...(quizResultsNote ? [quizResultsNote] : [])]
+
     const stream = createUIMessageStream({
       generateId: uuidv7,
       execute: async ({ writer }) => {
         const baseMessages = await convertToModelMessages(messages)
         let currentMessages: typeof baseMessages = [
-          ...skillSystemMessages.map((content) => ({ role: 'system' as const, content })),
+          ...systemNotes.map((content) => ({ role: 'system' as const, content })),
           ...baseMessages,
         ]
         let attemptNumber = 1

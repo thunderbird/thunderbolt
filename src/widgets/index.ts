@@ -22,6 +22,7 @@ import * as citation from './citation'
 import * as connectIntegration from './connect-integration'
 import * as documentResult from './document-result'
 import * as linkPreview from './link-preview'
+import * as quiz from './quiz'
 import * as weatherForecast from './weather-forecast'
 
 // Re-export components for easy importing
@@ -29,6 +30,7 @@ export { CitationBadge } from './citation'
 export { ConnectIntegrationWidget } from './connect-integration'
 export { DocumentResultWidget } from './document-result'
 export { LinkPreview, LinkPreviewSkeleton, LinkPreviewWidget } from './link-preview'
+export { Quiz } from './quiz'
 export { WeatherForecastWidget } from './weather-forecast'
 
 /**
@@ -55,6 +57,10 @@ export const widgetRegistry = [
   {
     name: 'link-preview' as const,
     module: linkPreview,
+  },
+  {
+    name: 'quiz' as const,
+    module: quiz,
   },
 ] as const
 
@@ -105,3 +111,4 @@ export type WidgetCacheData =
   | linkPreview.CacheData
   | weatherForecast.CacheData
   | citation.CacheData
+  | quiz.CacheData

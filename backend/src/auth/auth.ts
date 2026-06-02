@@ -167,6 +167,9 @@ export const createAuth = (database: typeof DbType, emailDeps: AuthEmailDeps = {
       enabled: settings.rateLimitEnabled,
       window: 60,
       max: 10,
+      customRules: {
+        '/get-session': { window: 1, max: 30 },
+      },
     },
     advanced: {
       ipAddress: {

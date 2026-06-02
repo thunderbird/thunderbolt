@@ -62,7 +62,7 @@ const groupedItems: SearchableMenuGroup[] = [
     id: 'provided',
     label: 'Provided Models',
     items: [
-      { id: 'gpt-oss', label: 'GPT-OSS 120B', description: 'Fast and confidential' },
+      { id: 'gpt-oss', label: 'GPT-OSS 120B', description: 'Fast' },
       { id: 'qwen3', label: 'Qwen3 Instruct', description: 'Balance between privacy and power' },
     ],
   },
@@ -259,19 +259,19 @@ const itemsWithDisabledReasons: SearchableMenuItem<DisabledItemData>[] = [
     icon: <Zap className="size-4 text-yellow-500" />,
   },
   {
-    id: 'confidential',
-    label: 'Confidential Model',
+    id: 'encrypted',
+    label: 'Encrypted Model',
     description: 'End-to-end encrypted',
     icon: <Lock className="size-4 text-green-500" />,
     disabled: true,
-    data: { disabledReason: 'This model is only available in confidential chats' },
+    data: { disabledReason: 'This model is only available in encrypted chats' },
   },
   {
-    id: 'non-confidential',
+    id: 'standard',
     label: 'Standard Model',
     description: 'Fast responses',
     disabled: true,
-    data: { disabledReason: 'Non-confidential models cannot be used in confidential chats' },
+    data: { disabledReason: 'Standard models cannot be used in encrypted chats' },
   },
 ]
 

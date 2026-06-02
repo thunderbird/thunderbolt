@@ -84,10 +84,20 @@ describe('validateAgentUrl', () => {
 describe('AddCustomAgentDialog', () => {
   const notIos = () => false
 
-  it('keeps Add Agent disabled until both name and URL are filled', () => {
+  const succeedingProbe: TestAcpConnectionFn = async () => ({ success: true })
+
+  it('keeps Add Agent disabled until both name and URL are filled and the connection test succeeds', async () => {
     const onSubmit = mock(async () => {})
     const onOpenChange = mock(() => {})
-    render(<AddCustomAgentDialog open={true} onOpenChange={onOpenChange} onSubmit={onSubmit} isIos={notIos} />)
+    render(
+      <AddCustomAgentDialog
+        open={true}
+        onOpenChange={onOpenChange}
+        onSubmit={onSubmit}
+        isIos={notIos}
+        testAcpConnection={succeedingProbe}
+      />,
+    )
 
     const submit = screen.getByRole('button', { name: /add agent/i })
     expect(submit).toBeDisabled()
@@ -96,17 +106,36 @@ describe('AddCustomAgentDialog', () => {
     expect(submit).toBeDisabled()
 
     fireEvent.change(screen.getByLabelText(/url/i), { target: { value: 'wss://example.com/ws' } })
+    // Name + URL alone no longer enable Add — a successful test is required.
+    expect(submit).toBeDisabled()
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: /test connection/i }))
+    })
     expect(submit).not.toBeDisabled()
   })
 
   it('invokes onSubmit with websocket transport and trimmed values', async () => {
     const onSubmit = mock(async (_: AddCustomAgentPayload) => {})
     const onOpenChange = mock(() => {})
-    render(<AddCustomAgentDialog open={true} onOpenChange={onOpenChange} onSubmit={onSubmit} isIos={notIos} />)
+    render(
+      <AddCustomAgentDialog
+        open={true}
+        onOpenChange={onOpenChange}
+        onSubmit={onSubmit}
+        isIos={notIos}
+        testAcpConnection={succeedingProbe}
+      />,
+    )
 
     fireEvent.change(screen.getByLabelText(/name/i), { target: { value: '  My Agent  ' } })
     fireEvent.change(screen.getByLabelText(/url/i), { target: { value: '  wss://example.com/ws  ' } })
     fireEvent.change(screen.getByLabelText(/description/i), { target: { value: 'Demo' } })
+
+    // Add is gated behind a successful test — run it first.
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: /test connection/i }))
+    })
 
     await act(async () => {
       fireEvent.click(screen.getByRole('button', { name: /add agent/i }))
@@ -123,7 +152,7 @@ describe('AddCustomAgentDialog', () => {
     expect(onOpenChange).toHaveBeenCalledWith(false)
   })
 
-  it('shows the iOS rejection inline for ws:// and does NOT call onSubmit', async () => {
+  it('shows the iOS rejection inline for ws:// at render time, keeps Add disabled, and does NOT call onSubmit', () => {
     const onSubmit = mock(async () => {})
     const onOpenChange = mock(() => {})
     render(<AddCustomAgentDialog open={true} onOpenChange={onOpenChange} onSubmit={onSubmit} isIos={() => true} />)
@@ -131,15 +160,13 @@ describe('AddCustomAgentDialog', () => {
     fireEvent.change(screen.getByLabelText(/name/i), { target: { value: 'iOS Agent' } })
     fireEvent.change(screen.getByLabelText(/url/i), { target: { value: 'ws://example.com/ws' } })
 
-    await act(async () => {
-      fireEvent.click(screen.getByRole('button', { name: /add agent/i }))
-    })
-
-    expect(onSubmit).not.toHaveBeenCalled()
+    // The error surfaces on entering the invalid URL — no Add click needed.
     expect(screen.getByRole('alert')).toHaveTextContent(/secure/i)
+    expect(screen.getByRole('button', { name: /add agent/i })).toBeDisabled()
+    expect(onSubmit).not.toHaveBeenCalled()
   })
 
-  it('shows an inline error for http:// (unsupported scheme) and does NOT call onSubmit', async () => {
+  it('shows an inline error for http:// (unsupported scheme) at render time and keeps Add disabled', () => {
     const onSubmit = mock(async () => {})
     const onOpenChange = mock(() => {})
     render(<AddCustomAgentDialog open={true} onOpenChange={onOpenChange} onSubmit={onSubmit} isIos={notIos} />)
@@ -147,15 +174,12 @@ describe('AddCustomAgentDialog', () => {
     fireEvent.change(screen.getByLabelText(/name/i), { target: { value: 'Bad Agent' } })
     fireEvent.change(screen.getByLabelText(/url/i), { target: { value: 'http://example.com' } })
 
-    await act(async () => {
-      fireEvent.click(screen.getByRole('button', { name: /add agent/i }))
-    })
-
-    expect(onSubmit).not.toHaveBeenCalled()
     expect(screen.getByRole('alert')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /add agent/i })).toBeDisabled()
+    expect(onSubmit).not.toHaveBeenCalled()
   })
 
-  it('shows an inline error for unsupported schemes and does NOT call onSubmit', async () => {
+  it('shows an inline error for unsupported schemes at render time and keeps Add disabled', () => {
     const onSubmit = mock(async () => {})
     const onOpenChange = mock(() => {})
     render(<AddCustomAgentDialog open={true} onOpenChange={onOpenChange} onSubmit={onSubmit} isIos={notIos} />)
@@ -163,12 +187,9 @@ describe('AddCustomAgentDialog', () => {
     fireEvent.change(screen.getByLabelText(/name/i), { target: { value: 'Bad Agent' } })
     fireEvent.change(screen.getByLabelText(/url/i), { target: { value: 'ftp://example.com' } })
 
-    await act(async () => {
-      fireEvent.click(screen.getByRole('button', { name: /add agent/i }))
-    })
-
-    expect(onSubmit).not.toHaveBeenCalled()
     expect(screen.getByRole('alert')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /add agent/i })).toBeDisabled()
+    expect(onSubmit).not.toHaveBeenCalled()
   })
 })
 
@@ -188,6 +209,11 @@ describe('AddCustomAgentDialog — connection status', () => {
       />,
     )
     return { onSubmit, onOpenChange }
+  }
+
+  const fillNameAndUrl = () => {
+    fireEvent.change(screen.getByLabelText(/name/i), { target: { value: 'My Agent' } })
+    fireEvent.change(screen.getByLabelText(/url/i), { target: { value: 'wss://example.com/ws' } })
   }
 
   it('hides the Test Connection button until the URL is a valid WebSocket endpoint', () => {
@@ -230,14 +256,30 @@ describe('AddCustomAgentDialog — connection status', () => {
     expect(screen.getByText(/could not reach agent/i)).toBeInTheDocument()
   })
 
-  it('does NOT gate Add Agent on the connection test (test is optional)', () => {
+  it('gates Add Agent on a successful connection test', async () => {
     renderWithProbe(async () => ({ success: false, error: 'nope' }))
 
-    fireEvent.change(screen.getByLabelText(/name/i), { target: { value: 'My Agent' } })
-    fireEvent.change(screen.getByLabelText(/url/i), { target: { value: 'wss://example.com/ws' } })
+    const submit = screen.getByRole('button', { name: /add agent/i })
+    fillNameAndUrl()
 
-    // Add Agent is enabled by name + url alone, regardless of any probe result.
-    expect(screen.getByRole('button', { name: /add agent/i })).not.toBeDisabled()
+    // Name + URL alone do not enable Add.
+    expect(submit).toBeDisabled()
+
+    // A failed test leaves Add disabled.
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: /test connection/i }))
+    })
+    expect(submit).toBeDisabled()
+
+    // Re-entering a valid URL clears the failure; a successful test enables Add.
+    cleanup()
+    renderWithProbe(async () => ({ success: true }))
+    const submitAfterSuccess = screen.getByRole('button', { name: /add agent/i })
+    fillNameAndUrl()
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: /test connection/i }))
+    })
+    expect(submitAfterSuccess).not.toBeDisabled()
   })
 
   it('clears a prior connection result when the URL changes', async () => {

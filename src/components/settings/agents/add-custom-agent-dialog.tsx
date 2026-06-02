@@ -82,7 +82,6 @@ type AgentDialogState = {
   name: string
   url: string
   description: string
-  error: string | null
   submitting: boolean
   isTestingConnection: boolean
   connectionStatus: 'idle' | 'success' | 'error'
@@ -93,7 +92,6 @@ type AgentDialogAction =
   | { type: 'SET_NAME'; value: string }
   | { type: 'SET_URL'; value: string }
   | { type: 'SET_DESCRIPTION'; value: string }
-  | { type: 'SET_ERROR'; error: string }
   | { type: 'START_SUBMIT' }
   | { type: 'END_SUBMIT' }
   | { type: 'START_CONNECTION_TEST' }
@@ -105,7 +103,6 @@ const initialState: AgentDialogState = {
   name: '',
   url: '',
   description: '',
-  error: null,
   submitting: false,
   isTestingConnection: false,
   connectionStatus: 'idle',
@@ -117,15 +114,13 @@ const agentDialogReducer = (state: AgentDialogState, action: AgentDialogAction):
     case 'SET_NAME':
       return { ...state, name: action.value }
     case 'SET_URL':
-      // Editing the URL invalidates any prior validation error or connection
-      // result — the user is targeting a (potentially) different endpoint.
-      return { ...state, url: action.value, error: null, connectionStatus: 'idle', connectionError: null }
+      // Editing the URL invalidates any prior connection result — the user is
+      // targeting a (potentially) different endpoint, so Add must be re-gated.
+      return { ...state, url: action.value, connectionStatus: 'idle', connectionError: null }
     case 'SET_DESCRIPTION':
       return { ...state, description: action.value }
-    case 'SET_ERROR':
-      return { ...state, error: action.error }
     case 'START_SUBMIT':
-      return { ...state, submitting: true, error: null }
+      return { ...state, submitting: true }
     case 'END_SUBMIT':
       return { ...state, submitting: false }
     case 'START_CONNECTION_TEST':
@@ -153,9 +148,16 @@ export const AddCustomAgentDialog = ({
   const trimmedName = state.name.trim()
   const trimmedUrl = state.url.trim()
   const trimmedDescription = state.description.trim()
-  const canSubmit = trimmedName.length > 0 && trimmedUrl.length > 0 && !state.submitting
+  const validation = validateAgentUrl(trimmedUrl, isIos)
+  // Surface an invalid-URL error at render time (once the field is non-empty)
+  // so the user sees why Test Connection is unavailable and Add stays gated.
+  const urlError = trimmedUrl.length > 0 && 'error' in validation ? validation.error : null
+  // Add is gated behind a successful Test Connection — a valid name, URL, and a
+  // confirmed connection are all required before the agent can be created.
+  const canSubmit =
+    trimmedName.length > 0 && trimmedUrl.length > 0 && state.connectionStatus === 'success' && !state.submitting
   // The probe is only meaningful once the URL is a valid WebSocket endpoint.
-  const canTestConnection = trimmedUrl.length > 0 && !('error' in validateAgentUrl(trimmedUrl, isIos))
+  const canTestConnection = trimmedUrl.length > 0 && !urlError
 
   const handleOpenChange = (next: boolean) => {
     if (!next) {
@@ -175,12 +177,9 @@ export const AddCustomAgentDialog = ({
   }
 
   const handleSubmit = async () => {
-    if (!canSubmit) {
-      return
-    }
-    const result = validateAgentUrl(trimmedUrl, isIos)
-    if ('error' in result) {
-      dispatch({ type: 'SET_ERROR', error: result.error })
+    // `canSubmit` already requires a successful connection test, which is only
+    // reachable for a valid WebSocket URL — so `validation` carries a transport.
+    if (!canSubmit || 'error' in validation) {
       return
     }
     dispatch({ type: 'START_SUBMIT' })
@@ -188,7 +187,7 @@ export const AddCustomAgentDialog = ({
       name: trimmedName,
       url: trimmedUrl,
       description: trimmedDescription.length > 0 ? trimmedDescription : null,
-      transport: result.transport,
+      transport: validation.transport,
     })
     dispatch({ type: 'END_SUBMIT' })
     dispatch({ type: 'RESET' })
@@ -280,9 +279,9 @@ export const AddCustomAgentDialog = ({
               className="bg-red-50/50 dark:bg-red-500/10 border-red-200/50 dark:border-red-500/20"
             />
           )}
-          {state.error && (
+          {urlError && (
             <p role="alert" className="text-[length:var(--font-size-sm)] text-destructive">
-              {state.error}
+              {urlError}
             </p>
           )}
         </div>

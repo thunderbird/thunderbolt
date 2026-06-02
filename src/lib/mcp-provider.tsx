@@ -2,29 +2,34 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js'
 import { createMCPClient } from '@ai-sdk/mcp'
 import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from 'react'
+import { useDatabase } from '@/contexts'
+import { getMcpServerCredentials } from '@/dal/mcp-secrets'
 import { useLocalSettingsStore } from '@/stores/local-settings-store'
-import { createProxyFetch } from './proxy-fetch'
+import { buildMcpHeaders, createMcpTransport, type MCPTransportType } from './mcp-transport'
 
 type MCPClient = Awaited<ReturnType<typeof createMCPClient>>
 
-type MCPServerConnection = {
+type MCPServer = {
   id: string
   name: string
   url: string
+  type: MCPTransportType
+  enabled: boolean
+}
+
+type MCPServerConnection = MCPServer & {
   client: MCPClient | null
   isConnected: boolean
   error: Error | null
-  enabled: boolean
 }
 
 type MCPContextType = {
   servers: MCPServerConnection[]
   getEnabledClients: () => MCPClient[]
   reconnectServer: (serverId: string) => Promise<void>
-  addServer: (server: { id: string; name: string; url: string; enabled: boolean }) => Promise<void>
+  addServer: (server: MCPServer) => Promise<void>
   removeServer: (serverId: string) => void
   updateServerStatus: (serverId: string, enabled: boolean) => void
 }
@@ -36,30 +41,19 @@ export const MCPProvider = ({ children }: { children: ReactNode }) => {
   const clientRefs = useRef<Map<string, MCPClient>>(new Map())
   const serversRef = useRef<MCPServerConnection[]>([])
   const cloudUrl = useLocalSettingsStore((s) => s.cloudUrl)
+  const db = useDatabase()
 
   serversRef.current = servers
 
-  const createClient = async (url: string): Promise<MCPClient> => {
-    const urlObj = new URL(url)
-
-    // Always go through the universal proxy fetch — Hosted mode (web) routes
-    // through /v1/proxy with header rewriting; Standalone mode (Tauri) hits the
-    // upstream directly via Tauri's HTTP plugin. The MCP transport accepts a
-    // custom fetch natively, so the same code path works everywhere.
-    const proxyFetch = createProxyFetch({ cloudUrl })
-
-    const transport = new StreamableHTTPClientTransport(urlObj, {
-      fetch: (url: string | URL, init?: RequestInit) => proxyFetch(url, init),
-      requestInit: {
-        headers: { Accept: 'application/json, text/event-stream' },
-      },
-    })
-
+  const createClient = async (serverId: string, url: string, type: MCPTransportType): Promise<MCPClient> => {
+    const credentials = await getMcpServerCredentials(db, serverId)
+    const headers = buildMcpHeaders(credentials?.type === 'bearer' ? credentials.token : undefined)
+    const transport = createMcpTransport(url, type, cloudUrl, headers)
     const mcpClient = await createMCPClient({ transport })
     return mcpClient
   }
 
-  const connectServer = async (server: { id: string; name: string; url: string; enabled: boolean }) => {
+  const connectServer = async (server: MCPServer) => {
     if (!server.enabled) {
       setServers((prev) =>
         prev.map((s) =>
@@ -71,7 +65,7 @@ export const MCPProvider = ({ children }: { children: ReactNode }) => {
 
     try {
       // Connecting to MCP server
-      const client = await createClient(server.url)
+      const client = await createClient(server.id, server.url, server.type)
 
       clientRefs.current.set(server.id, client)
 
@@ -104,7 +98,7 @@ export const MCPProvider = ({ children }: { children: ReactNode }) => {
     clientRefs.current.delete(serverId)
   }
 
-  const addServer = async (server: { id: string; name: string; url: string; enabled: boolean }) => {
+  const addServer = async (server: MCPServer) => {
     // Add server to state first
     setServers((prev) => [
       ...prev,

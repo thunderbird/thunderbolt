@@ -3,7 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { useDatabase } from '@/contexts'
-import { getAllMcpServers } from '@/dal'
+import { getRemoteMcpServers } from '@/dal'
 import { useMCP } from '@/lib/mcp-provider'
 import { toCompilableQuery } from '@powersync/drizzle-driver'
 import { useQuery } from '@powersync/tanstack-react-query'
@@ -15,7 +15,7 @@ export const useMcpSync = () => {
 
   const { data: dbServers = [] } = useQuery({
     queryKey: ['mcp-servers'],
-    query: toCompilableQuery(getAllMcpServers(db)),
+    query: toCompilableQuery(getRemoteMcpServers(db)),
   })
 
   // Sync database servers with MCP provider
@@ -31,6 +31,7 @@ export const useMcpSync = () => {
             id: dbServer.id,
             name: dbServer.name,
             url: dbServer.url || '',
+            type: dbServer.type === 'sse' ? 'sse' : 'http',
             enabled: dbServer.enabled === 1,
           })
         }

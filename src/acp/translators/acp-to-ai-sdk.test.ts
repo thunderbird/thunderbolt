@@ -121,8 +121,8 @@ describe('createTranslator — mapping', () => {
         rawOutput: { result: 'ok' },
       }),
     )
-    const last = chunks[chunks.length - 1]
-    expect(last).toMatchObject({ type: 'tool-output-available', toolCallId: 'tc1', output: { result: 'ok' } })
+    const output = chunks.find((c) => c.type === 'tool-output-available')
+    expect(output).toMatchObject({ type: 'tool-output-available', toolCallId: 'tc1', output: { result: 'ok' } })
   })
 
   it('tool_call_update (failed) emits tool-output-error', () => {
@@ -175,6 +175,108 @@ describe('createTranslator — mapping', () => {
     t.error('upstream blew up')
     const last = chunks[chunks.length - 1]
     expect(last).toMatchObject({ type: 'error', errorText: 'upstream blew up' })
+  })
+})
+
+describe('createTranslator — action durations', () => {
+  // Injectable epoch-millis clock the translator reads via `options.now`. We
+  // advance `value` between events so durations are deterministic and never read
+  // the real wall clock.
+  const fakeClock = () => {
+    let value = 0
+    return { now: () => value, advance: (ms: number) => (value += ms) }
+  }
+
+  it('emits reasoningTime keyed by toolCallId for a completed tool_call', () => {
+    const { emit, chunks } = collect()
+    const clock = fakeClock()
+    const t = createTranslator(emit, { now: clock.now })
+    t.start()
+    t.handle(notification({ sessionUpdate: 'tool_call', toolCallId: 'tc1', title: 'search', rawInput: {} }))
+    clock.advance(250)
+    t.handle(notification({ sessionUpdate: 'tool_call_update', toolCallId: 'tc1', status: 'completed', rawOutput: {} }))
+
+    const meta = chunks.filter((c) => c.type === 'message-metadata')
+    expect(meta).toHaveLength(1)
+    expect(meta[0]).toMatchObject({ type: 'message-metadata', messageMetadata: { reasoningTime: { tc1: 250 } } })
+  })
+
+  it('emits reasoningTime for a failed tool_call too', () => {
+    const { emit, chunks } = collect()
+    const clock = fakeClock()
+    const t = createTranslator(emit, { now: clock.now })
+    t.start()
+    t.handle(notification({ sessionUpdate: 'tool_call', toolCallId: 'tc1', title: 'search', rawInput: {} }))
+    clock.advance(40)
+    t.handle(
+      notification({ sessionUpdate: 'tool_call_update', toolCallId: 'tc1', status: 'failed', rawOutput: 'boom' }),
+    )
+
+    const meta = chunks.find((c) => c.type === 'message-metadata')
+    expect(meta).toMatchObject({ type: 'message-metadata', messageMetadata: { reasoningTime: { tc1: 40 } } })
+  })
+
+  it('does not re-emit a duration on a second terminal update for the same tool', () => {
+    const { emit, chunks } = collect()
+    const clock = fakeClock()
+    const t = createTranslator(emit, { now: clock.now })
+    t.start()
+    t.handle(notification({ sessionUpdate: 'tool_call', toolCallId: 'tc1', title: 'search', rawInput: {} }))
+    clock.advance(10)
+    t.handle(notification({ sessionUpdate: 'tool_call_update', toolCallId: 'tc1', status: 'completed', rawOutput: {} }))
+    clock.advance(10)
+    t.handle(notification({ sessionUpdate: 'tool_call_update', toolCallId: 'tc1', status: 'completed', rawOutput: {} }))
+
+    expect(chunks.filter((c) => c.type === 'message-metadata')).toHaveLength(1)
+  })
+
+  it('tracks independent durations per concurrent tool call', () => {
+    const { emit, chunks } = collect()
+    const clock = fakeClock()
+    const t = createTranslator(emit, { now: clock.now })
+    t.start()
+    t.handle(notification({ sessionUpdate: 'tool_call', toolCallId: 'a', title: 'read', rawInput: {} }))
+    clock.advance(100)
+    t.handle(notification({ sessionUpdate: 'tool_call', toolCallId: 'b', title: 'grep', rawInput: {} }))
+    clock.advance(100)
+    t.handle(notification({ sessionUpdate: 'tool_call_update', toolCallId: 'a', status: 'completed', rawOutput: {} }))
+    clock.advance(50)
+    t.handle(notification({ sessionUpdate: 'tool_call_update', toolCallId: 'b', status: 'completed', rawOutput: {} }))
+
+    const durations = chunks
+      .filter((c) => c.type === 'message-metadata')
+      .map((c) => (c.messageMetadata as { reasoningTime: Record<string, number> }).reasoningTime)
+    expect(durations).toEqual([{ a: 200 }, { b: 150 }])
+  })
+
+  it('emits reasoningTime keyed to reasoning-0 when reasoning ends at text-start', async () => {
+    const { emit, chunks } = collect()
+    const clock = fakeClock()
+    const t = createTranslator(emit, { now: clock.now, textDeltaThrottleMs: 100 })
+    t.start()
+    t.handle(notification({ sessionUpdate: 'agent_thought_chunk', content: { type: 'text', text: 'thinking' } }))
+    clock.advance(300)
+    // First text chunk marks the reasoning→text boundary.
+    t.handle(notification({ sessionUpdate: 'agent_message_chunk', content: { type: 'text', text: 'answer' } }))
+
+    const meta = chunks.find((c) => c.type === 'message-metadata')
+    expect(meta).toMatchObject({ type: 'message-metadata', messageMetadata: { reasoningTime: { 'reasoning-0': 300 } } })
+    await act(async () => {
+      await getClock().tickAsync(100)
+    })
+  })
+
+  it('emits reasoning-0 duration at finish for a reasoning-only turn (no text)', () => {
+    const { emit, chunks } = collect()
+    const clock = fakeClock()
+    const t = createTranslator(emit, { now: clock.now, textDeltaThrottleMs: 100 })
+    t.start()
+    t.handle(notification({ sessionUpdate: 'agent_thought_chunk', content: { type: 'text', text: 'thinking' } }))
+    clock.advance(120)
+    t.finish()
+
+    const meta = chunks.find((c) => c.type === 'message-metadata')
+    expect(meta).toMatchObject({ type: 'message-metadata', messageMetadata: { reasoningTime: { 'reasoning-0': 120 } } })
   })
 })
 

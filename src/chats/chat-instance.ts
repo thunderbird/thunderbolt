@@ -2,7 +2,8 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { connectToAgent as defaultConnectToAgent } from '@/acp'
+import type { connectToAgent as defaultConnectToAgent } from '@/acp'
+import { getOrConnectAdapter as defaultGetOrConnectAdapter } from '@/acp/adapter-cache'
 import type { SessionSideEffect } from '@/acp/translators/acp-to-ai-sdk'
 import { updateChatThread as defaultUpdateChatThread } from '@/dal/chat-threads'
 import { getDb as defaultGetDb } from '@/db/database'
@@ -10,7 +11,6 @@ import { isRateLimitError } from '@/lib/error-utils'
 import type { HttpClient } from '@/lib/http'
 import { trackEvent } from '@/lib/posthog'
 import type { FetchFn } from '@/lib/proxy-fetch'
-import type { AgentAdapter } from '@/types/acp'
 import type { SaveMessagesFunction, ThunderboltUIMessage } from '@/types'
 import { Chat } from '@ai-sdk/react'
 import type { RequestPermissionRequest, RequestPermissionResponse } from '@agentclientprotocol/sdk'
@@ -57,10 +57,13 @@ const applySessionSideEffect = (effect: SessionSideEffect): void => {
   }
 }
 
-/** DI seams for tests. Production binds to the real ACP entry point and the
- *  DAL's `updateChatThread`. Module-level functions are passed by reference so
- *  test files can swap in fakes without `mock.module()`. */
+/** DI seams for tests. Production binds to the real ACP cache + entry point and
+ *  the DAL's `updateChatThread`. Module-level functions are passed by reference
+ *  so test files can swap in fakes without `mock.module()`. `connectToAgent`
+ *  is forwarded through `getOrConnectAdapter` into the global cache so a test
+ *  can fake the connect while exercising the real reuse path. */
 export type CreateChatInstanceDeps = {
+  getOrConnectAdapter?: typeof defaultGetOrConnectAdapter
   connectToAgent?: typeof defaultConnectToAgent
   updateChatThread?: typeof defaultUpdateChatThread
   getDb?: typeof defaultGetDb
@@ -68,13 +71,20 @@ export type CreateChatInstanceDeps = {
 
 /**
  * Build the `customFetch` the AI SDK's transport invokes for every
- * `chat.sendMessage(...)`. The factory owns a per-session adapter cache keyed
- * by `(sessionId, agentId)`. When the user switches agents mid-thread the
- * key changes; we disconnect the stale adapter before connecting the new one.
+ * `chat.sendMessage(...)`. Each send routes to the GLOBAL per-agent adapter
+ * cache (`getOrConnectAdapter`): one transport + one `initialize` per agent,
+ * reused across every thread that targets it. Switching threads on the same
+ * agent reuses the warm connection — it is never torn down here.
  *
- * Built-in's `disconnect()` is a no-op (the AI SDK pipeline is stateless per
- * call), so always disconnecting on switch is safe regardless of which agent
- * type was active.
+ * Per-thread state (ACP session resolution, permission dialogs, side-effect
+ * sinks) is supplied on each `adapter.fetch(init, ctx)` call, so one connection
+ * multiplexes many threads without cross-thread bleed.
+ *
+ * `connectionStatus` reflects THIS thread's view: `connecting` is shown while
+ * the cache resolves the adapter for a newly-selected agent (instant on a warm
+ * cache), then `ready`. Switching the agent within a thread re-routes to a
+ * different cached connection but never disposes the previous one — other
+ * threads may still be using it.
  *
  * Exported separately so unit tests can drive it without spinning up
  * `@ai-sdk/react`'s `Chat` instance.
@@ -86,12 +96,11 @@ export const createAgentRoutingFetch = (
   getProxyFetch: () => FetchFn,
   deps: CreateChatInstanceDeps = {},
 ) => {
-  const connectToAgent = deps.connectToAgent ?? defaultConnectToAgent
+  const getOrConnectAdapter = deps.getOrConnectAdapter ?? defaultGetOrConnectAdapter
   const updateChatThread = deps.updateChatThread ?? defaultUpdateChatThread
   const getDb = deps.getDb ?? defaultGetDb
 
-  let cachedKey: string | null = null
-  let cachedAdapter: AgentAdapter | null = null
+  let routedAgentId: string | null = null
 
   return Object.assign(
     async (_requestInfo: RequestInfo | URL, init?: RequestInit) => {
@@ -108,7 +117,6 @@ export const createAgentRoutingFetch = (
       }
 
       const { chatThread, selectedAgent, selectedMode, selectedModel } = session
-      const cacheKey = `${id}:${selectedAgent.id}`
 
       // Save the user message before invoking the adapter. This serves three
       // purposes that previously only the built-in pipeline got for free:
@@ -130,41 +138,27 @@ export const createAgentRoutingFetch = (
         await updateChatThread(getDb(), chatThread.id, { acpSessionId: newSessionId })
       }
 
-      if (cacheKey !== cachedKey) {
-        // Agent swapped within this session — tear down the stale adapter
-        // BEFORE the new connect so any transport handles release promptly.
-        if (cachedAdapter) {
-          cachedAdapter.disconnect()
-          cachedAdapter = null
-        }
-        cachedKey = null
+      // Surface `connecting` only when routing to a different agent than this
+      // thread last used — a warm cache resolves instantly, but the per-thread
+      // UI still needs the transition for the cold-connect spinner.
+      const isNewAgent = selectedAgent.id !== routedAgentId
+      if (isNewAgent) {
         useChatStore.getState().updateSession(id, { connectionStatus: 'connecting', connectionError: null })
-        try {
-          cachedAdapter = await connectToAgent(
-            selectedAgent,
-            {
-              httpClient,
-              getProxyFetch,
-              acpSessionId: chatThread?.acpSessionId ?? null,
-              onAcpSessionId: persistAcpSessionId,
-              requestPermission: (request) => requestPermissionViaStore(id, request),
-              onSessionSideEffect: applySessionSideEffect,
-            },
-            {},
-          )
-        } catch (err) {
-          const error = err instanceof Error ? err : new Error(String(err))
-          useChatStore.getState().updateSession(id, { connectionStatus: 'error', connectionError: error })
-          throw error
-        }
-        cachedKey = cacheKey
-        useChatStore.getState().updateSession(id, { connectionStatus: 'ready', connectionError: null })
       }
 
-      const adapter = cachedAdapter
+      const adapter = await getOrConnectAdapter(
+        selectedAgent,
+        { httpClient, getProxyFetch },
+        { connectToAgent: deps.connectToAgent },
+      ).catch((err) => {
+        const error = err instanceof Error ? err : new Error(String(err))
+        useChatStore.getState().updateSession(id, { connectionStatus: 'error', connectionError: error })
+        throw error
+      })
 
-      if (!adapter) {
-        throw new Error('Adapter missing after connect — unreachable')
+      routedAgentId = selectedAgent.id
+      if (isNewAgent) {
+        useChatStore.getState().updateSession(id, { connectionStatus: 'ready', connectionError: null })
       }
 
       return adapter.fetch(init, {
@@ -178,6 +172,8 @@ export const createAgentRoutingFetch = (
         httpClient,
         getProxyFetch,
         onAcpSessionId: persistAcpSessionId,
+        requestPermission: (request) => requestPermissionViaStore(id, request),
+        onSessionSideEffect: applySessionSideEffect,
       })
     },
     {

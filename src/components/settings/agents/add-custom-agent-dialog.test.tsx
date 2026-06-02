@@ -10,6 +10,7 @@ import {
   inferTransport,
   validateAgentUrl,
   type AddCustomAgentPayload,
+  type TestAcpConnectionFn,
 } from './add-custom-agent-dialog'
 
 afterEach(() => {
@@ -168,5 +169,87 @@ describe('AddCustomAgentDialog', () => {
 
     expect(onSubmit).not.toHaveBeenCalled()
     expect(screen.getByRole('alert')).toBeInTheDocument()
+  })
+})
+
+describe('AddCustomAgentDialog — connection status', () => {
+  const notIos = () => false
+
+  const renderWithProbe = (testAcpConnection: TestAcpConnectionFn) => {
+    const onSubmit = mock(async () => {})
+    const onOpenChange = mock(() => {})
+    render(
+      <AddCustomAgentDialog
+        open={true}
+        onOpenChange={onOpenChange}
+        onSubmit={onSubmit}
+        isIos={notIos}
+        testAcpConnection={testAcpConnection}
+      />,
+    )
+    return { onSubmit, onOpenChange }
+  }
+
+  it('hides the Test Connection button until the URL is a valid WebSocket endpoint', () => {
+    renderWithProbe(async () => ({ success: true }))
+
+    expect(screen.queryByRole('button', { name: /test connection/i })).not.toBeInTheDocument()
+
+    fireEvent.change(screen.getByLabelText(/url/i), { target: { value: 'http://example.com' } })
+    expect(screen.queryByRole('button', { name: /test connection/i })).not.toBeInTheDocument()
+
+    fireEvent.change(screen.getByLabelText(/url/i), { target: { value: 'wss://example.com/ws' } })
+    expect(screen.getByRole('button', { name: /test connection/i })).toBeInTheDocument()
+  })
+
+  it('renders the success StatusCard when the probe resolves success', async () => {
+    const probe = mock<TestAcpConnectionFn>(async () => ({ success: true }))
+    renderWithProbe(probe)
+
+    fireEvent.change(screen.getByLabelText(/url/i), { target: { value: 'wss://example.com/ws' } })
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: /test connection/i }))
+    })
+
+    expect(probe).toHaveBeenCalledWith({ url: 'wss://example.com/ws' })
+    expect(screen.getByText(/connection successful/i)).toBeInTheDocument()
+  })
+
+  it('renders the error StatusCard with the probe error message on failure', async () => {
+    const probe = mock<TestAcpConnectionFn>(async () => ({ success: false, error: 'Could not reach agent' }))
+    renderWithProbe(probe)
+
+    fireEvent.change(screen.getByLabelText(/url/i), { target: { value: 'wss://example.com/ws' } })
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: /test connection/i }))
+    })
+
+    expect(screen.getByText(/connection failed/i)).toBeInTheDocument()
+    expect(screen.getByText(/could not reach agent/i)).toBeInTheDocument()
+  })
+
+  it('does NOT gate Add Agent on the connection test (test is optional)', () => {
+    renderWithProbe(async () => ({ success: false, error: 'nope' }))
+
+    fireEvent.change(screen.getByLabelText(/name/i), { target: { value: 'My Agent' } })
+    fireEvent.change(screen.getByLabelText(/url/i), { target: { value: 'wss://example.com/ws' } })
+
+    // Add Agent is enabled by name + url alone, regardless of any probe result.
+    expect(screen.getByRole('button', { name: /add agent/i })).not.toBeDisabled()
+  })
+
+  it('clears a prior connection result when the URL changes', async () => {
+    renderWithProbe(async () => ({ success: true }))
+
+    fireEvent.change(screen.getByLabelText(/url/i), { target: { value: 'wss://example.com/ws' } })
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: /test connection/i }))
+    })
+    expect(screen.getByText(/connection successful/i)).toBeInTheDocument()
+
+    fireEvent.change(screen.getByLabelText(/url/i), { target: { value: 'wss://other.com/ws' } })
+    expect(screen.queryByText(/connection successful/i)).not.toBeInTheDocument()
   })
 })

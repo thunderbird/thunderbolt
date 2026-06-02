@@ -17,6 +17,9 @@ import { getClock } from '@/testing-library'
 import {
   authCloseCode,
   normalCloseCode,
+  proxyRejectCloseCode,
+  proxyForbiddenCloseCode,
+  serverErrorCloseCode,
   isReconnectableCloseCode,
   openWebSocketTransport,
   validateWebSocketUrl,
@@ -98,13 +101,22 @@ describe('validateWebSocketUrl', () => {
 })
 
 describe('isReconnectableCloseCode', () => {
-  it('does not reconnect on normal (1000) or auth (4001) close', () => {
+  it('is terminal for clean/auth/proxy-reject/server-error codes', () => {
     expect(isReconnectableCloseCode(normalCloseCode)).toBe(false)
     expect(isReconnectableCloseCode(authCloseCode)).toBe(false)
+    expect(isReconnectableCloseCode(proxyRejectCloseCode)).toBe(false)
+    expect(isReconnectableCloseCode(proxyForbiddenCloseCode)).toBe(false)
+    expect(isReconnectableCloseCode(serverErrorCloseCode)).toBe(false)
+    // Spelled-out codes to lock the contract from the task.
+    expect(isReconnectableCloseCode(4001)).toBe(false)
+    expect(isReconnectableCloseCode(4002)).toBe(false)
+    expect(isReconnectableCloseCode(4003)).toBe(false)
+    expect(isReconnectableCloseCode(1011)).toBe(false)
   })
-  it('reconnects on transient codes (1006, etc.)', () => {
+  it('reconnects on genuinely transient codes (1006, 1012, 1013)', () => {
     expect(isReconnectableCloseCode(1006)).toBe(true)
-    expect(isReconnectableCloseCode(1011)).toBe(true)
+    expect(isReconnectableCloseCode(1012)).toBe(true)
+    expect(isReconnectableCloseCode(1013)).toBe(true)
   })
 })
 
@@ -309,5 +321,94 @@ describe('openWebSocketTransport — reconnect', () => {
     })
     expect(sockets.length).toBe(1)
     transport.close()
+  })
+})
+
+describe('openWebSocketTransport — terminal-close signal (closed promise)', () => {
+  const openSingleSocket = async () => {
+    const sockets: FakeSocket[] = []
+    const factory = (): WebSocketLike => {
+      const s = new FakeSocket()
+      sockets.push(s)
+      queueMicrotask(() => s.open())
+      return asWebSocketLike(s)
+    }
+    const transport = await openWebSocketTransport({
+      url: 'wss://example.com/ws',
+      signal: new AbortController().signal,
+      webSocketFactory: factory,
+      isTauriIos: () => false,
+      backoffMs: () => 1,
+      maxReconnectAttempts: 3,
+    })
+    return { transport, sockets }
+  }
+
+  /** Settle a `closed` promise to a tagged result so a test can assert on it
+   *  without `.rejects` hanging when the promise never settles. */
+  const observeClosed = (closed: Promise<void> | undefined): Promise<{ rejected: boolean; message?: string }> => {
+    if (!closed) {
+      throw new Error('transport.closed missing')
+    }
+    return closed.then(
+      () => ({ rejected: false }),
+      (err: Error) => ({ rejected: true, message: err.message }),
+    )
+  }
+
+  it('rejects `closed` on a terminal close code (4003) and does not reconnect', async () => {
+    const { transport, sockets } = await openSingleSocket()
+    const observed = observeClosed(transport.closed)
+
+    sockets[0].emit('close', { code: proxyForbiddenCloseCode, reason: 'forbidden' })
+    await act(async () => {
+      await getClock().tickAsync(10)
+    })
+
+    const result = await observed
+    expect(result.rejected).toBe(true)
+    expect(result.message).toMatch(/code 4003/)
+    expect(sockets.length).toBe(1)
+  })
+
+  it('rejects `closed` when reconnect attempts are exhausted', async () => {
+    const sockets: FakeSocket[] = []
+    const factory = (): WebSocketLike => {
+      const s = new FakeSocket()
+      sockets.push(s)
+      queueMicrotask(() => {
+        if (sockets.length === 1) {
+          s.open()
+        } else {
+          s.failOpen('boom')
+        }
+      })
+      return asWebSocketLike(s)
+    }
+    const transport = await openWebSocketTransport({
+      url: 'wss://example.com/ws',
+      signal: new AbortController().signal,
+      webSocketFactory: factory,
+      isTauriIos: () => false,
+      backoffMs: () => 1,
+      maxReconnectAttempts: 3,
+    })
+    const observed = observeClosed(transport.closed)
+
+    sockets[0].emit('close', { code: 1006, reason: 'transient' })
+    await act(async () => {
+      await getClock().runAllAsync()
+    })
+
+    const result = await observed
+    expect(result.rejected).toBe(true)
+    expect(result.message).toMatch(/reconnect attempts exhausted/)
+  })
+
+  it('resolves `closed` (no rejection) on caller-initiated close()', async () => {
+    const { transport } = await openSingleSocket()
+    transport.close()
+    const result = await observeClosed(transport.closed)
+    expect(result.rejected).toBe(false)
   })
 })

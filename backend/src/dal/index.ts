@@ -24,8 +24,9 @@ export { getWaitlistByEmail, createWaitlistEntry, approveWaitlistEntry } from '.
 
 // Workspaces
 export {
-  bootstrapUserWorkspace,
+  promotePendingMemberships,
   countWorkspaceAdmins,
+  countWorkspaceMemberships,
   deleteMembership,
   deletePendingMembership,
   deleteWorkspacePermission,
@@ -43,7 +44,7 @@ export {
   updateWorkspacePermission,
   upsertMembership,
   upsertPendingMembership,
-  upsertSharedWorkspace,
+  upsertWorkspace,
   upsertWorkspacePermission,
 } from './workspaces'
 

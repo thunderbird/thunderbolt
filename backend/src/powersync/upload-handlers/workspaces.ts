@@ -7,22 +7,26 @@ import {
   isAdminOfAnyWorkspace,
   isWorkspaceAdmin,
   updateSharedWorkspace,
-  upsertSharedWorkspace,
+  upsertWorkspace,
 } from '@/dal/workspaces'
+import { computePersonalWorkspaceId } from '@shared/workspaces'
 import { allow, reject } from './helpers'
 import { UploadRejection, type UploadHandler } from './types'
 
 /**
  * Upload handler for the `workspaces` table. Enforces:
  *
- * - Personal workspace rows are backend-only (Better Auth post-create hook owns them).
- *   Both creating one from the client and renaming an existing personal workspace
- *   are permanent rejects.
- * - Shared workspace creation is gated by `allowWorkspaceCreationByMembers`. Members
- *   may create only when the flag is on; users who already admin some workspace can
- *   always create new ones regardless of the flag.
- * - Updates require the caller to be an admin of the target workspace.
- * - Deletes are out of scope for v1 — permanently rejected.
+ * - **Personal workspace PUT**: allowed iff the row id matches the canonical
+ *   `computePersonalWorkspaceId(ctx.userId)` AND `owner_user_id === ctx.userId`.
+ *   The name is server-forced to `"Personal"` — Decision 11 (non-editable).
+ *   Idempotent across multi-device first-sign-ins: both devices compute the
+ *   same canonical id and upload the same row → upsert no-op.
+ * - **Personal workspace PATCH / DELETE**: rejected (immutable, deferred).
+ * - **Shared workspace PUT**: gated by `allowWorkspaceCreationByMembers`.
+ *   Members may create only when the flag is on; users who already admin some
+ *   workspace can always create regardless of the flag.
+ * - **Shared workspace PATCH**: requires the caller to be admin of the target.
+ * - **DELETE**: out of scope for v1.
  */
 export const workspacesHandler: UploadHandler = {
   validate: async (op, ctx, tx) => {
@@ -45,20 +49,39 @@ export const workspacesHandler: UploadHandler = {
       return allow()
     }
 
-    // PUT — either insert (existing == null) or update (existing != null).
-    if (existing) {
-      if (existing.isPersonal) {
-        return reject('permanent', 'PERSONAL_WORKSPACE_IMMUTABLE')
+    // PUT — split by personal vs shared via the payload + id checks.
+    const payloadIsPersonal = op.data?.is_personal === true
+    const canonicalPersonalId = computePersonalWorkspaceId(ctx.userId)
+    const idMatchesCanonical = op.id === canonicalPersonalId
+
+    if (payloadIsPersonal || idMatchesCanonical || existing?.isPersonal) {
+      // This is a personal-workspace PUT. Accept only if both the canonical id
+      // and the ownership claim match the caller. Anything else — wrong id,
+      // someone else's owner_user_id, or an attempt to "rename" via an
+      // existing row — is rejected.
+      if (!idMatchesCanonical) {
+        return reject('permanent', 'PERSONAL_WORKSPACE_ID_NOT_CANONICAL')
       }
-      if (!(await isWorkspaceAdmin(tx, op.id, ctx.userId))) {
-        return reject('permanent', 'NOT_WORKSPACE_ADMIN')
+      const claimedOwner = typeof op.data?.owner_user_id === 'string' ? op.data.owner_user_id : undefined
+      if (claimedOwner !== undefined && claimedOwner !== ctx.userId) {
+        return reject('permanent', 'PERSONAL_WORKSPACE_OWNER_MISMATCH')
+      }
+      if (existing && !existing.isPersonal) {
+        // The canonical id is already used by a non-personal workspace —
+        // structurally impossible if the canonical hashing is correct, but
+        // refuse anyway rather than silently mutate a shared workspace.
+        return reject('permanent', 'PERSONAL_WORKSPACE_ID_COLLISION')
       }
       return allow()
     }
 
-    const payloadIsPersonal = op.data?.is_personal === true
-    if (payloadIsPersonal) {
-      return reject('permanent', 'PERSONAL_WORKSPACE_SERVER_MANAGED')
+    // Shared workspace PUT.
+    if (existing) {
+      // Updating an existing shared workspace via PUT.
+      if (!(await isWorkspaceAdmin(tx, op.id, ctx.userId))) {
+        return reject('permanent', 'NOT_WORKSPACE_ADMIN')
+      }
+      return allow()
     }
 
     const memberMayCreate =
@@ -70,14 +93,21 @@ export const workspacesHandler: UploadHandler = {
     return allow()
   },
 
-  apply: async (op, _ctx, tx) => {
+  apply: async (op, ctx, tx) => {
     switch (op.op) {
       case 'PUT': {
+        const canonicalPersonalId = computePersonalWorkspaceId(ctx.userId)
+        const isPersonalPut = op.data?.is_personal === true || op.id === canonicalPersonalId
         const name = typeof op.data?.name === 'string' ? op.data.name : null
         if (!name) {
           throw new UploadRejection('permanent', 'WORKSPACE_NAME_REQUIRED')
         }
-        await upsertSharedWorkspace(tx, { id: op.id, name })
+        await upsertWorkspace(tx, {
+          id: op.id,
+          name,
+          isPersonal: isPersonalPut,
+          ownerUserId: isPersonalPut ? ctx.userId : null,
+        })
         return
       }
       case 'PATCH': {
@@ -92,7 +122,6 @@ export const workspacesHandler: UploadHandler = {
         return
       }
       case 'DELETE': {
-        // Guarded by validate; reachable only if validate is bypassed.
         throw new UploadRejection('permanent', 'WORKSPACE_DELETE_DISABLED')
       }
     }

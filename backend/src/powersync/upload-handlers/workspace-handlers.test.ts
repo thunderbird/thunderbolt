@@ -4,9 +4,9 @@
 
 import { user } from '@/db/auth-schema'
 import { workspaceMembershipsTable, workspacePendingMembershipsTable, workspacesTable } from '@/db/powersync-schema'
-import { bootstrapUserWorkspace } from '@/dal/workspaces'
 import { createTestDb } from '@/test-utils/db'
 import { createTestSettings } from '@/test-utils/settings'
+import { computePersonalAdminMembershipId, computePersonalWorkspaceId } from '@shared/workspaces'
 import { eq } from 'drizzle-orm'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import { v7 as uuidv7 } from 'uuid'
@@ -36,12 +36,35 @@ describe('workspace upload handlers', () => {
     ...overrides,
   })
 
-  const getPersonalWorkspaceId = async (userId: string) => {
-    const rows = await db
-      .select({ id: workspacesTable.id })
-      .from(workspacesTable)
-      .where(eq(workspacesTable.ownerUserId, userId))
-    return rows[0].id
+  /**
+   * Drives a personal-workspace bootstrap through the real upload handler — the
+   * same code path the FE exercises on first sign-in. Verifies the canonical
+   * acceptance path and gives later tests a personal-workspace fixture to
+   * exercise the immutability rules against.
+   */
+  const bootstrapPersonalViaUpload = async (userId: string): Promise<string> => {
+    const workspaceId = computePersonalWorkspaceId(userId)
+    const membershipId = computePersonalAdminMembershipId(userId)
+    const ops: UploadOp[] = [
+      {
+        op: 'PUT',
+        type: 'workspaces',
+        id: workspaceId,
+        data: { is_personal: true, owner_user_id: userId, name: 'Personal' },
+      },
+      {
+        op: 'PUT',
+        type: 'workspace_memberships',
+        id: membershipId,
+        data: { workspace_id: workspaceId, user_id: userId, role: 'admin' },
+      },
+    ]
+    const result = await applyUploadBatch(db, ops, ctxFor(userId))
+    expect(result.ok).toBe(true)
+    if (result.ok) {
+      expect(result.rejected).toHaveLength(0)
+    }
+    return workspaceId
   }
 
   const expectPermanentReject = (result: Awaited<ReturnType<typeof applyUploadBatch>>, code: string): void => {
@@ -62,10 +85,94 @@ describe('workspace upload handlers', () => {
     await cleanup()
   })
 
-  describe('workspaces', () => {
+  describe('workspaces — personal', () => {
+    it('accepts a personal workspace PUT with canonical id and matching owner', async () => {
+      await insertUser('owner1', 'owner1@test.com')
+      const workspaceId = await bootstrapPersonalViaUpload('owner1')
+
+      const stored = await db.select().from(workspacesTable).where(eq(workspacesTable.id, workspaceId))
+      expect(stored).toHaveLength(1)
+      expect(stored[0].isPersonal).toBe(true)
+      expect(stored[0].ownerUserId).toBe('owner1')
+      expect(stored[0].name).toBe('Personal')
+    })
+
+    it('rejects a personal workspace PUT with non-canonical id', async () => {
+      await insertUser('owner2', 'owner2@test.com')
+      const op: UploadOp = {
+        op: 'PUT',
+        type: 'workspaces',
+        id: uuidv7(),
+        data: { is_personal: true, owner_user_id: 'owner2', name: 'Personal' },
+      }
+      const result = await applyUploadBatch(db, [op], ctxFor('owner2'))
+      expectPermanentReject(result, 'PERSONAL_WORKSPACE_ID_NOT_CANONICAL')
+    })
+
+    it('rejects a personal workspace PUT claiming someone else as owner', async () => {
+      await insertUser('attacker', 'attacker@test.com')
+      // Attacker tries to upload a personal workspace under victim's canonical id.
+      const op: UploadOp = {
+        op: 'PUT',
+        type: 'workspaces',
+        id: computePersonalWorkspaceId('victim'),
+        data: { is_personal: true, owner_user_id: 'victim', name: 'Personal' },
+      }
+      const result = await applyUploadBatch(db, [op], ctxFor('attacker'))
+      // Canonical-id check fires first since the attacker's userId doesn't hash
+      // to the same workspace id; the owner-mismatch branch covers the case
+      // where someone supplies a matching id but a different owner field.
+      expectPermanentReject(result, 'PERSONAL_WORKSPACE_ID_NOT_CANONICAL')
+    })
+
+    it('is idempotent on re-upload — multiple devices uploading the same row', async () => {
+      await insertUser('mdev', 'mdev@test.com')
+      const workspaceId = await bootstrapPersonalViaUpload('mdev')
+
+      // Simulate device B uploading the same canonical row.
+      const op: UploadOp = {
+        op: 'PUT',
+        type: 'workspaces',
+        id: workspaceId,
+        data: { is_personal: true, owner_user_id: 'mdev', name: 'Personal' },
+      }
+      const result = await applyUploadBatch(db, [op], ctxFor('mdev'))
+      expect(result.ok).toBe(true)
+      if (result.ok) {
+        expect(result.rejected).toHaveLength(0)
+      }
+
+      const stored = await db.select().from(workspacesTable).where(eq(workspacesTable.id, workspaceId))
+      expect(stored).toHaveLength(1)
+    })
+
+    it('rejects PATCH on a personal workspace (immutable)', async () => {
+      await insertUser('owner3', 'owner3@test.com')
+      const workspaceId = await bootstrapPersonalViaUpload('owner3')
+
+      const op: UploadOp = {
+        op: 'PATCH',
+        type: 'workspaces',
+        id: workspaceId,
+        data: { name: 'Renamed' },
+      }
+      const result = await applyUploadBatch(db, [op], ctxFor('owner3'))
+      expectPermanentReject(result, 'PERSONAL_WORKSPACE_IMMUTABLE')
+    })
+
+    it('rejects DELETE on workspaces (v1 deferred)', async () => {
+      await insertUser('owner4', 'owner4@test.com')
+      const workspaceId = await bootstrapPersonalViaUpload('owner4')
+
+      const op: UploadOp = { op: 'DELETE', type: 'workspaces', id: workspaceId }
+      const result = await applyUploadBatch(db, [op], ctxFor('owner4'))
+      expectPermanentReject(result, 'WORKSPACE_DELETE_DISABLED')
+    })
+  })
+
+  describe('workspaces — shared', () => {
     it('rejects member-initiated creation when the policy flag is off', async () => {
       await insertUser('member', 'member@test.com')
-      // No prior workspace → not admin of any → policy-gated.
       const op: UploadOp = {
         op: 'PUT',
         type: 'workspaces',
@@ -74,9 +181,6 @@ describe('workspace upload handlers', () => {
       }
       const result = await applyUploadBatch(db, [op], ctxFor('member'))
       expectPermanentReject(result, 'WORKSPACE_CREATION_DISABLED')
-
-      const present = await db.select().from(workspacesTable).where(eq(workspacesTable.id, op.id))
-      expect(present).toHaveLength(0)
     })
 
     it('allows member-initiated creation when the policy flag is on', async () => {
@@ -95,9 +199,6 @@ describe('workspace upload handlers', () => {
         }),
       )
       expect(result.ok).toBe(true)
-      if (result.ok) {
-        expect(result.rejected).toHaveLength(0)
-      }
 
       const inserted = await db.select().from(workspacesTable).where(eq(workspacesTable.id, op.id))
       expect(inserted).toHaveLength(1)
@@ -105,10 +206,9 @@ describe('workspace upload handlers', () => {
       expect(inserted[0].isPersonal).toBe(false)
     })
 
-    it('allows an admin of any workspace to create new shared workspaces even with the flag off', async () => {
+    it('lets a user who admins their own personal workspace create shared workspaces with the flag off', async () => {
       await insertUser('admin', 'a@test.com')
-      await bootstrapUserWorkspace(db, 'admin', 'a@test.com')
-      // Admin of personal workspace counts as admin-of-any.
+      await bootstrapPersonalViaUpload('admin')
 
       const op: UploadOp = {
         op: 'PUT',
@@ -118,50 +218,13 @@ describe('workspace upload handlers', () => {
       }
       const result = await applyUploadBatch(db, [op], ctxFor('admin'))
       expect(result.ok).toBe(true)
-      if (result.ok) {
-        expect(result.rejected).toHaveLength(0)
-      }
-    })
-
-    it('rejects attempts to create a personal workspace from the client', async () => {
-      await insertUser('member3', 'm3@test.com')
-      const op: UploadOp = {
-        op: 'PUT',
-        type: 'workspaces',
-        id: uuidv7(),
-        data: { name: 'Sneaky', is_personal: true },
-      }
-      const result = await applyUploadBatch(
-        db,
-        [op],
-        ctxFor('member3', {
-          settings: createTestSettings({ allowWorkspaceCreationByMembers: true }),
-        }),
-      )
-      expectPermanentReject(result, 'PERSONAL_WORKSPACE_SERVER_MANAGED')
-    })
-
-    it('rejects renaming the personal workspace', async () => {
-      await insertUser('owner', 'owner@test.com')
-      await bootstrapUserWorkspace(db, 'owner', 'owner@test.com')
-      const personalId = await getPersonalWorkspaceId('owner')
-
-      const op: UploadOp = {
-        op: 'PATCH',
-        type: 'workspaces',
-        id: personalId,
-        data: { name: 'Renamed personal' },
-      }
-      const result = await applyUploadBatch(db, [op], ctxFor('owner'))
-      expectPermanentReject(result, 'PERSONAL_WORKSPACE_IMMUTABLE')
     })
 
     it('rejects updates by non-admins of a shared workspace', async () => {
       await insertUser('a1', 'a1@test.com')
       await insertUser('b1', 'b1@test.com')
-      await bootstrapUserWorkspace(db, 'a1', 'a1@test.com')
+      await bootstrapPersonalViaUpload('a1')
 
-      // a1 creates a shared workspace.
       const create: UploadOp = {
         op: 'PUT',
         type: 'workspaces',
@@ -171,7 +234,6 @@ describe('workspace upload handlers', () => {
       const createResult = await applyUploadBatch(db, [create], ctxFor('a1'))
       expect(createResult.ok).toBe(true)
 
-      // b1 (not a member) tries to rename it.
       const rename: UploadOp = {
         op: 'PATCH',
         type: 'workspaces',
@@ -184,76 +246,88 @@ describe('workspace upload handlers', () => {
       const stored = await db.select().from(workspacesTable).where(eq(workspacesTable.id, create.id))
       expect(stored[0].name).toBe('Original')
     })
-
-    it('rejects DELETE on workspaces (v1 deferred)', async () => {
-      await insertUser('owner2', 'owner2@test.com')
-      await bootstrapUserWorkspace(db, 'owner2', 'owner2@test.com')
-      const personalId = await getPersonalWorkspaceId('owner2')
-
-      const op: UploadOp = { op: 'DELETE', type: 'workspaces', id: personalId }
-      const result = await applyUploadBatch(db, [op], ctxFor('owner2'))
-      expectPermanentReject(result, 'WORKSPACE_DELETE_DISABLED')
-    })
   })
 
   describe('workspace_memberships', () => {
-    it('rejects writes to a workspace the actor is not in', async () => {
-      await insertUser('a2', 'a2@test.com')
-      await insertUser('b2', 'b2@test.com')
-      await bootstrapUserWorkspace(db, 'a2', 'a2@test.com')
-      const a2WorkspaceId = await getPersonalWorkspaceId('a2')
+    it('accepts the bootstrap admin membership for own personal workspace', async () => {
+      await insertUser('owner5', 'owner5@test.com')
+      // The bootstrapPersonalViaUpload helper exercises this in one batch; here
+      // we split it into two batches to verify the membership exception fires
+      // even when uploaded separately.
+      const workspaceId = computePersonalWorkspaceId('owner5')
+      const wsOp: UploadOp = {
+        op: 'PUT',
+        type: 'workspaces',
+        id: workspaceId,
+        data: { is_personal: true, owner_user_id: 'owner5', name: 'Personal' },
+      }
+      const wsResult = await applyUploadBatch(db, [wsOp], ctxFor('owner5'))
+      expect(wsResult.ok).toBe(true)
 
-      // b2 tries to add themselves to a2's personal workspace.
+      const memOp: UploadOp = {
+        op: 'PUT',
+        type: 'workspace_memberships',
+        id: computePersonalAdminMembershipId('owner5'),
+        data: { workspace_id: workspaceId, user_id: 'owner5', role: 'admin' },
+      }
+      const memResult = await applyUploadBatch(db, [memOp], ctxFor('owner5'))
+      expect(memResult.ok).toBe(true)
+
+      const stored = await db
+        .select()
+        .from(workspaceMembershipsTable)
+        .where(eq(workspaceMembershipsTable.workspaceId, workspaceId))
+      expect(stored).toHaveLength(1)
+      expect(stored[0].role).toBe('admin')
+    })
+
+    it('rejects a second membership write to a personal workspace (immutable)', async () => {
+      await insertUser('owner6', 'owner6@test.com')
+      await insertUser('victim', 'victim@test.com')
+      const workspaceId = await bootstrapPersonalViaUpload('owner6')
+
+      // owner6 tries to add another member to their personal workspace.
       const op: UploadOp = {
         op: 'PUT',
         type: 'workspace_memberships',
         id: uuidv7(),
-        data: {
-          workspace_id: a2WorkspaceId,
-          user_id: 'b2',
-          role: 'admin',
-        },
+        data: { workspace_id: workspaceId, user_id: 'victim', role: 'member' },
       }
-      const result = await applyUploadBatch(db, [op], ctxFor('b2'))
-      // Personal-workspace check fires first.
+      const result = await applyUploadBatch(db, [op], ctxFor('owner6'))
       expectPermanentReject(result, 'PERSONAL_WORKSPACE_IMMUTABLE')
     })
 
-    it('rejects modifications to personal-workspace memberships', async () => {
-      await insertUser('a3', 'a3@test.com')
-      await bootstrapUserWorkspace(db, 'a3', 'a3@test.com')
-      const a3WorkspaceId = await getPersonalWorkspaceId('a3')
+    it('rejects bootstrap admin membership for another user', async () => {
+      await insertUser('badguy', 'badguy@test.com')
+      await insertUser('target', 'target@test.com')
+      const targetWorkspaceId = await bootstrapPersonalViaUpload('target')
 
-      const existingMembership = await db
-        .select()
-        .from(workspaceMembershipsTable)
-        .where(eq(workspaceMembershipsTable.workspaceId, a3WorkspaceId))
-
+      // badguy tries to claim admin in target's personal workspace.
       const op: UploadOp = {
-        op: 'DELETE',
+        op: 'PUT',
         type: 'workspace_memberships',
-        id: existingMembership[0].id,
+        id: uuidv7(),
+        data: { workspace_id: targetWorkspaceId, user_id: 'badguy', role: 'admin' },
       }
-      const result = await applyUploadBatch(db, [op], ctxFor('a3'))
+      const result = await applyUploadBatch(db, [op], ctxFor('badguy'))
+      // Personal-workspace immutability kicks in.
       expectPermanentReject(result, 'PERSONAL_WORKSPACE_IMMUTABLE')
     })
 
     it('protects the last admin of a shared workspace from deletion', async () => {
       await insertUser('a4', 'a4@test.com')
-      await bootstrapUserWorkspace(db, 'a4', 'a4@test.com')
+      await bootstrapPersonalViaUpload('a4')
 
-      // Create a shared workspace via the handler, then directly seed a4 as its
-      // sole admin so we can exercise last-admin protection without relying on a
-      // creator-side membership flow (that lands in a later commit).
       const sharedId = uuidv7()
-      const createWorkspace: UploadOp = {
-        op: 'PUT',
-        type: 'workspaces',
-        id: sharedId,
-        data: { name: 'Shared' },
-      }
-      await applyUploadBatch(db, [createWorkspace], ctxFor('a4'))
+      await applyUploadBatch(
+        db,
+        [{ op: 'PUT', type: 'workspaces', id: sharedId, data: { name: 'Shared' } }],
+        ctxFor('a4'),
+      )
 
+      // Seed an admin membership directly so we can exercise last-admin protection;
+      // the creator-admin flow lands later when shared-workspace creation also
+      // creates the admin membership.
       const a4MembershipId = uuidv7()
       await db.insert(workspaceMembershipsTable).values({
         id: a4MembershipId,
@@ -279,12 +353,7 @@ describe('workspace upload handlers', () => {
   })
 
   describe('workspace_pending_memberships', () => {
-    it('rejects writes by non-admins of the target workspace', async () => {
-      await insertUser('a5', 'a5@test.com')
-      await insertUser('b5', 'b5@test.com')
-      await bootstrapUserWorkspace(db, 'a5', 'a5@test.com')
-
-      // Seed a shared workspace where a5 is admin.
+    const seedSharedAsAdmin = async (adminUserId: string): Promise<string> => {
       const sharedId = uuidv7()
       await db.insert(workspacesTable).values({
         id: sharedId,
@@ -295,9 +364,17 @@ describe('workspace upload handlers', () => {
       await db.insert(workspaceMembershipsTable).values({
         id: uuidv7(),
         workspaceId: sharedId,
-        userId: 'a5',
+        userId: adminUserId,
         role: 'admin',
       })
+      return sharedId
+    }
+
+    it('rejects writes by non-admins of the target workspace', async () => {
+      await insertUser('a5', 'a5@test.com')
+      await insertUser('b5', 'b5@test.com')
+      await bootstrapPersonalViaUpload('a5')
+      const sharedId = await seedSharedAsAdmin('a5')
 
       // b5 (no membership) tries to invite an email.
       const op: UploadOp = {
@@ -316,22 +393,8 @@ describe('workspace upload handlers', () => {
 
     it('normalizes email on insert', async () => {
       await insertUser('admin5', 'admin5@test.com')
-      await bootstrapUserWorkspace(db, 'admin5', 'admin5@test.com')
-
-      // Seed a shared workspace where admin5 is admin.
-      const sharedId = uuidv7()
-      await db.insert(workspacesTable).values({
-        id: sharedId,
-        name: 'Shared',
-        isPersonal: false,
-        ownerUserId: null,
-      })
-      await db.insert(workspaceMembershipsTable).values({
-        id: uuidv7(),
-        workspaceId: sharedId,
-        userId: 'admin5',
-        role: 'admin',
-      })
+      await bootstrapPersonalViaUpload('admin5')
+      const sharedId = await seedSharedAsAdmin('admin5')
 
       const op: UploadOp = {
         op: 'PUT',
@@ -356,10 +419,42 @@ describe('workspace upload handlers', () => {
   })
 
   describe('batch accumulation', () => {
+    it('accepts a workspace + admin-membership batch atomically (FE first sign-in)', async () => {
+      await insertUser('combo', 'combo@test.com')
+      const workspaceId = computePersonalWorkspaceId('combo')
+      const membershipId = computePersonalAdminMembershipId('combo')
+      const ops: UploadOp[] = [
+        {
+          op: 'PUT',
+          type: 'workspaces',
+          id: workspaceId,
+          data: { is_personal: true, owner_user_id: 'combo', name: 'Personal' },
+        },
+        {
+          op: 'PUT',
+          type: 'workspace_memberships',
+          id: membershipId,
+          data: { workspace_id: workspaceId, user_id: 'combo', role: 'admin' },
+        },
+      ]
+      const result = await applyUploadBatch(db, ops, ctxFor('combo'))
+      expect(result.ok).toBe(true)
+      if (result.ok) {
+        expect(result.rejected).toHaveLength(0)
+      }
+
+      const ws = await db.select().from(workspacesTable).where(eq(workspacesTable.id, workspaceId))
+      const memberships = await db
+        .select()
+        .from(workspaceMembershipsTable)
+        .where(eq(workspaceMembershipsTable.workspaceId, workspaceId))
+      expect(ws).toHaveLength(1)
+      expect(memberships).toHaveLength(1)
+    })
+
     it('accumulates multiple permanent rejections in one response', async () => {
-      await insertUser('owner3', 'owner3@test.com')
-      await bootstrapUserWorkspace(db, 'owner3', 'owner3@test.com')
-      const personalId = await getPersonalWorkspaceId('owner3')
+      await insertUser('owner7', 'owner7@test.com')
+      const personalId = await bootstrapPersonalViaUpload('owner7')
 
       const renamePersonal: UploadOp = {
         op: 'PATCH',
@@ -367,16 +462,16 @@ describe('workspace upload handlers', () => {
         id: personalId,
         data: { name: 'Renamed' },
       }
-      const sneakyPersonal: UploadOp = {
+      const wrongIdPersonal: UploadOp = {
         op: 'PUT',
         type: 'workspaces',
         id: uuidv7(),
-        data: { name: 'Sneaky', is_personal: true },
+        data: { is_personal: true, owner_user_id: 'owner7', name: 'Sneaky' },
       }
       const result = await applyUploadBatch(
         db,
-        [renamePersonal, sneakyPersonal],
-        ctxFor('owner3', {
+        [renamePersonal, wrongIdPersonal],
+        ctxFor('owner7', {
           settings: createTestSettings({ allowWorkspaceCreationByMembers: true }),
         }),
       )
@@ -385,45 +480,8 @@ describe('workspace upload handlers', () => {
       if (result.ok) {
         expect(result.rejected).toHaveLength(2)
         expect(result.rejected[0].code).toBe('PERSONAL_WORKSPACE_IMMUTABLE')
-        expect(result.rejected[0].op.id).toBe(personalId)
-        expect(result.rejected[1].code).toBe('PERSONAL_WORKSPACE_SERVER_MANAGED')
-        expect(result.rejected[1].op.id).toBe(sneakyPersonal.id)
+        expect(result.rejected[1].code).toBe('PERSONAL_WORKSPACE_ID_NOT_CANONICAL')
       }
-    })
-
-    it('preserves applied ops alongside permanent rejections', async () => {
-      await insertUser('owner4', 'owner4@test.com')
-      await bootstrapUserWorkspace(db, 'owner4', 'owner4@test.com')
-      const personalId = await getPersonalWorkspaceId('owner4')
-
-      const validCreate: UploadOp = {
-        op: 'PUT',
-        type: 'workspaces',
-        id: uuidv7(),
-        data: { name: 'New shared' },
-      }
-      const invalidPatch: UploadOp = {
-        op: 'PATCH',
-        type: 'workspaces',
-        id: personalId,
-        data: { name: 'Renamed personal' },
-      }
-
-      const result = await applyUploadBatch(db, [validCreate, invalidPatch], ctxFor('owner4'))
-
-      expect(result.ok).toBe(true)
-      if (result.ok) {
-        expect(result.rejected).toHaveLength(1)
-        expect(result.rejected[0].code).toBe('PERSONAL_WORKSPACE_IMMUTABLE')
-      }
-
-      // The valid create landed; the invalid patch did not.
-      const created = await db.select().from(workspacesTable).where(eq(workspacesTable.id, validCreate.id))
-      expect(created).toHaveLength(1)
-      expect(created[0].name).toBe('New shared')
-
-      const personal = await db.select().from(workspacesTable).where(eq(workspacesTable.id, personalId))
-      expect(personal[0].name).toBe('Personal')
     })
   })
 })

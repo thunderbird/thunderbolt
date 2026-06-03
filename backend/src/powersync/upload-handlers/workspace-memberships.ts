@@ -4,18 +4,66 @@
 
 import {
   countWorkspaceAdmins,
+  countWorkspaceMemberships,
   deleteMembership,
   getMembershipById,
+  getWorkspaceById,
   isPersonalWorkspace,
   isWorkspaceAdmin,
   type Role,
   updateMembership,
   upsertMembership,
 } from '@/dal/workspaces'
+import { computePersonalAdminMembershipId, computePersonalWorkspaceId } from '@shared/workspaces'
 import { allow, reject } from './helpers'
-import { UploadRejection, type UploadHandler } from './types'
+import { UploadRejection, type UploadHandler, type UploadTx } from './types'
 
 const isRole = (v: unknown): v is Role => v === 'admin' || v === 'member'
+
+/**
+ * Personal workspaces are created by the FE (uploaded with a deterministic id);
+ * the very first admin membership for that workspace has to land via upload
+ * too. The handler's general rule — "must be admin of the target workspace to
+ * write a membership" — would reject this initial claim because no admin exists
+ * yet. This narrow exception unlocks exactly one row:
+ *
+ *   - target workspace is personal
+ *   - workspace's owner is the caller
+ *   - membership id matches the canonical admin-self id for the caller
+ *   - membership references the caller as the user
+ *   - role is admin
+ *   - no memberships exist on the workspace yet
+ *
+ * Once the row lands the workspace is back in the immutable state — any
+ * subsequent membership write for a personal workspace is rejected as before.
+ */
+const isPersonalAdminBootstrap = async (
+  tx: UploadTx,
+  ctx: { userId: string },
+  membershipId: string,
+  data: Record<string, unknown> | undefined,
+): Promise<boolean> => {
+  if (membershipId !== computePersonalAdminMembershipId(ctx.userId)) {
+    return false
+  }
+  const targetWorkspaceId = typeof data?.workspace_id === 'string' ? data.workspace_id : null
+  if (targetWorkspaceId !== computePersonalWorkspaceId(ctx.userId)) {
+    return false
+  }
+  const targetUserId = typeof data?.user_id === 'string' ? data.user_id : null
+  if (targetUserId !== ctx.userId) {
+    return false
+  }
+  if (data?.role !== 'admin') {
+    return false
+  }
+  const workspace = await getWorkspaceById(tx, targetWorkspaceId)
+  if (!workspace || !workspace.isPersonal || workspace.ownerUserId !== ctx.userId) {
+    return false
+  }
+  const existingMemberships = await countWorkspaceMemberships(tx, targetWorkspaceId)
+  return existingMemberships === 0
+}
 
 /**
  * Upload handler for `workspace_memberships`. Enforces:
@@ -29,6 +77,10 @@ const isRole = (v: unknown): v is Role => v === 'admin' || v === 'member'
  */
 export const workspaceMembershipsHandler: UploadHandler = {
   validate: async (op, ctx, tx) => {
+    if (op.op === 'PUT' && (await isPersonalAdminBootstrap(tx, ctx, op.id, op.data))) {
+      return allow()
+    }
+
     const targetWorkspaceId =
       op.op === 'PUT' ? (typeof op.data?.workspace_id === 'string' ? op.data.workspace_id : null) : null
 

@@ -8,9 +8,9 @@ import { createTestDb } from '@/test-utils/db'
 import { and, eq } from 'drizzle-orm'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import { v7 as uuidv7 } from 'uuid'
-import { bootstrapUserWorkspace } from './workspaces'
+import { promotePendingMemberships } from './workspaces'
 
-describe('bootstrapUserWorkspace', () => {
+describe('promotePendingMemberships', () => {
   let db: Awaited<ReturnType<typeof createTestDb>>['db']
   let cleanup: () => Promise<void>
 
@@ -27,6 +27,15 @@ describe('bootstrapUserWorkspace', () => {
     })
   }
 
+  const insertSharedWorkspace = async (id: string): Promise<void> => {
+    await db.insert(workspacesTable).values({
+      id,
+      name: 'Shared',
+      isPersonal: false,
+      ownerUserId: null,
+    })
+  }
+
   beforeEach(async () => {
     const testEnv = await createTestDb()
     db = testEnv.db
@@ -37,46 +46,21 @@ describe('bootstrapUserWorkspace', () => {
     await cleanup()
   })
 
-  it('creates a personal workspace and an admin membership', async () => {
+  it('is a no-op for users with no matching pending memberships', async () => {
     await insertUser('u1', 'u1@test.com')
-
-    await bootstrapUserWorkspace(db, 'u1', 'u1@test.com')
-
-    const workspaces = await db.select().from(workspacesTable).where(eq(workspacesTable.ownerUserId, 'u1'))
-    expect(workspaces).toHaveLength(1)
-    expect(workspaces[0].isPersonal).toBe(true)
-    expect(workspaces[0].name).toBe('Personal')
+    await promotePendingMemberships(db, 'u1', 'u1@test.com')
 
     const memberships = await db
       .select()
       .from(workspaceMembershipsTable)
       .where(eq(workspaceMembershipsTable.userId, 'u1'))
-    expect(memberships).toHaveLength(1)
-    expect(memberships[0].workspaceId).toBe(workspaces[0].id)
-    expect(memberships[0].role).toBe('admin')
+    expect(memberships).toHaveLength(0)
   })
 
-  it('is idempotent on re-run for the same user', async () => {
-    await insertUser('u2', 'u2@test.com')
-
-    await bootstrapUserWorkspace(db, 'u2', 'u2@test.com')
-    await bootstrapUserWorkspace(db, 'u2', 'u2@test.com')
-
-    const workspaces = await db.select().from(workspacesTable).where(eq(workspacesTable.ownerUserId, 'u2'))
-    const memberships = await db
-      .select()
-      .from(workspaceMembershipsTable)
-      .where(eq(workspaceMembershipsTable.userId, 'u2'))
-    expect(workspaces).toHaveLength(1)
-    expect(memberships).toHaveLength(1)
-  })
-
-  it('promotes pending memberships matching the user email', async () => {
+  it('promotes pending memberships matching the user email into membership rows', async () => {
     await insertUser('admin1', 'admin1@test.com')
-    await bootstrapUserWorkspace(db, 'admin1', 'admin1@test.com')
-
-    const adminWorkspaces = await db.select().from(workspacesTable).where(eq(workspacesTable.ownerUserId, 'admin1'))
-    const sharedWorkspaceId = adminWorkspaces[0].id
+    const sharedWorkspaceId = uuidv7()
+    await insertSharedWorkspace(sharedWorkspaceId)
 
     await db.insert(workspacePendingMembershipsTable).values({
       id: uuidv7(),
@@ -87,17 +71,15 @@ describe('bootstrapUserWorkspace', () => {
     })
 
     await insertUser('newcomer', 'newcomer@test.com')
-    await bootstrapUserWorkspace(db, 'newcomer', 'newcomer@test.com')
+    await promotePendingMemberships(db, 'newcomer', 'newcomer@test.com')
 
     const memberships = await db
       .select()
       .from(workspaceMembershipsTable)
       .where(eq(workspaceMembershipsTable.userId, 'newcomer'))
-    // One for the newcomer's own personal workspace + one promoted from pending
-    expect(memberships).toHaveLength(2)
-    const shared = memberships.find((m) => m.workspaceId === sharedWorkspaceId)
-    expect(shared).toBeDefined()
-    expect(shared?.role).toBe('member')
+    expect(memberships).toHaveLength(1)
+    expect(memberships[0].workspaceId).toBe(sharedWorkspaceId)
+    expect(memberships[0].role).toBe('member')
 
     const remainingPending = await db
       .select()
@@ -108,12 +90,9 @@ describe('bootstrapUserWorkspace', () => {
 
   it('normalizes the email before matching pending memberships', async () => {
     await insertUser('admin2', 'admin2@test.com')
-    await bootstrapUserWorkspace(db, 'admin2', 'admin2@test.com')
+    const sharedWorkspaceId = uuidv7()
+    await insertSharedWorkspace(sharedWorkspaceId)
 
-    const adminWorkspaces = await db.select().from(workspacesTable).where(eq(workspacesTable.ownerUserId, 'admin2'))
-    const sharedWorkspaceId = adminWorkspaces[0].id
-
-    // Pending row stored with lowercase email (admin invite path normalizes too).
     await db.insert(workspacePendingMembershipsTable).values({
       id: uuidv7(),
       workspaceId: sharedWorkspaceId,
@@ -122,11 +101,9 @@ describe('bootstrapUserWorkspace', () => {
       invitedByUserId: 'admin2',
     })
 
-    // User signs up with mixed-case email — Better Auth's `before` hook normalizes
-    // user.email, so the bootstrap call receives lowercased input. Verify both halves
-    // of that contract by passing a mixed-case string here.
     await insertUser('mixed', 'mixedcase@test.com')
-    await bootstrapUserWorkspace(db, 'mixed', 'MixedCase@TEST.com')
+    // Mixed-case input — `promotePendingMemberships` normalizes before matching.
+    await promotePendingMemberships(db, 'mixed', 'MixedCase@TEST.com')
 
     const promoted = await db
       .select()
@@ -141,14 +118,43 @@ describe('bootstrapUserWorkspace', () => {
     expect(promoted[0].role).toBe('admin')
   })
 
-  it('handles a user with no matching pending memberships', async () => {
-    await insertUser('u3', 'u3@test.com')
-    await bootstrapUserWorkspace(db, 'u3', 'u3@test.com')
+  it('promotes multiple pending invites for the same email atomically', async () => {
+    await insertUser('admin3', 'admin3@test.com')
+    const ws1 = uuidv7()
+    const ws2 = uuidv7()
+    await insertSharedWorkspace(ws1)
+    await insertSharedWorkspace(ws2)
+
+    await db.insert(workspacePendingMembershipsTable).values([
+      {
+        id: uuidv7(),
+        workspaceId: ws1,
+        email: 'multi@test.com',
+        role: 'member',
+        invitedByUserId: 'admin3',
+      },
+      {
+        id: uuidv7(),
+        workspaceId: ws2,
+        email: 'multi@test.com',
+        role: 'admin',
+        invitedByUserId: 'admin3',
+      },
+    ])
+
+    await insertUser('multi', 'multi@test.com')
+    await promotePendingMemberships(db, 'multi', 'multi@test.com')
 
     const memberships = await db
       .select()
       .from(workspaceMembershipsTable)
-      .where(eq(workspaceMembershipsTable.userId, 'u3'))
-    expect(memberships).toHaveLength(1)
+      .where(eq(workspaceMembershipsTable.userId, 'multi'))
+    expect(memberships).toHaveLength(2)
+
+    const remainingPending = await db
+      .select()
+      .from(workspacePendingMembershipsTable)
+      .where(eq(workspacePendingMembershipsTable.email, 'multi@test.com'))
+    expect(remainingPending).toHaveLength(0)
   })
 })

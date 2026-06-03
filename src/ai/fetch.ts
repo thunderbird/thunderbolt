@@ -63,30 +63,28 @@ export const ollama = createOpenAI({
   fetch,
 })
 
-// Reuse SecureClients across requests so attestation runs once per page load.
-// The `tinfoil` module is dynamically imported so its attestation/crypto deps
-// (sigstore-browser, verifier, ehbp) are code-split into their own chunk and
-// only loaded when a user actually selects the Tinfoil provider.
+// Cached so attestation runs once per page load. `tinfoil` is dynamically
+// imported to code-split its attestation/crypto deps.
 //
-// Two variants:
-//   - system: HPKE-encrypted bodies are POSTed to Thunderbolt's backend
-//     (`<cloudUrl>/tinfoil`), which forwards them opaquely to the enclave
-//     with our Tinfoil bearer key injected. Browser never sees the key.
-//   - user: direct connection to the Tinfoil enclave with the user's own key
-//     (BYOK). Used by manually added Tinfoil models in Settings → Models.
-let systemTinfoilClient: SecureClient | null = null
+// system: HPKE body POSTs to <cloudUrl>/tinfoil; backend injects our key.
+// user:   BYOK — direct to the enclave with the user's own key.
+//
+// System cache is keyed by cloudUrl so a dev-tools URL switch hits the new
+// backend on the next call.
+const systemTinfoilClients = new Map<string, SecureClient>()
 let userTinfoilClient: SecureClient | null = null
 
 export const getSystemTinfoilClient = async (): Promise<SecureClient> => {
-  if (!systemTinfoilClient) {
+  // cloudUrl already ends in /v1 (shared with the OpenAI chat baseURL).
+  const cloudUrl = getLocalSetting('cloudUrl').replace(/\/$/, '')
+  let client = systemTinfoilClients.get(cloudUrl)
+  if (!client) {
     const { SecureClient } = await import('tinfoil')
-    // `cloudUrl` already includes the `/v1` prefix (it's the same baseURL the
-    // OpenAI SDK uses for /chat/completions). Just append `/tinfoil`.
-    const cloudUrl = getLocalSetting('cloudUrl').replace(/\/$/, '')
-    systemTinfoilClient = new SecureClient({ baseURL: `${cloudUrl}/tinfoil` })
+    client = new SecureClient({ baseURL: `${cloudUrl}/tinfoil` })
+    systemTinfoilClients.set(cloudUrl, client)
   }
-  await systemTinfoilClient.ready()
-  return systemTinfoilClient
+  await client.ready()
+  return client
 }
 
 export const getTinfoilClient = async (): Promise<SecureClient> => {

@@ -372,7 +372,7 @@ export default function McpServersPage() {
                   {serverCapabilities.length > 0 && (
                     <div className="mt-3">
                       <p className="text-sm text-green-700 font-medium">Available tools:</p>
-                      <ul className="text-sm text-green-600 mt-1 space-y-1">
+                      <ul className="text-sm text-green-600 mt-1 space-y-1 max-h-40 overflow-y-auto">
                         {serverCapabilities.map((capability, index) => (
                           <li key={index} className="flex items-center gap-2">
                             <div className="w-1 h-1 bg-green-600 rounded-full" />

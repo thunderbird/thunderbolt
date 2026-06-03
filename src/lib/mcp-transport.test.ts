@@ -20,6 +20,37 @@ describe('createMcpTransport', () => {
     const transport = createMcpTransport(url, 'http', cloudUrl, {})
     expect(transport).toBeInstanceOf(StreamableHTTPClientTransport)
   })
+
+  // `@ai-sdk/mcp`'s `init()` writes the negotiated protocol via a direct `transport.protocolVersion =`
+  // assignment, but the SDK's StreamableHTTPClientTransport exposes `protocolVersion` as a getter-only
+  // accessor (write goes through `setProtocolVersion()`). Without the seam adapter this throws
+  // `TypeError: Cannot set property protocolVersion ... which has only a getter` and breaks connect.
+  // The casts model `@ai-sdk/mcp`'s untyped runtime write; the SDK types forbid it (read-only/absent).
+  type MutableProtocol = { protocolVersion: string; setProtocolVersion: (v: string) => void }
+
+  it('allows the http transport protocolVersion to be set by direct assignment (round-trips)', () => {
+    const transport = createMcpTransport(url, 'http', cloudUrl, {}) as unknown as MutableProtocol
+    expect(() => {
+      transport.protocolVersion = '2025-06-18'
+    }).not.toThrow()
+    expect(transport.protocolVersion).toBe('2025-06-18')
+  })
+
+  it('routes the assignment through the SDK setProtocolVersion setter', () => {
+    const transport = createMcpTransport(url, 'http', cloudUrl, {}) as unknown as MutableProtocol
+    transport.setProtocolVersion('2024-11-05')
+    expect(transport.protocolVersion).toBe('2024-11-05')
+    transport.protocolVersion = '2025-06-18'
+    expect(transport.protocolVersion).toBe('2025-06-18')
+  })
+
+  it('allows the sse transport protocolVersion to be set by direct assignment', () => {
+    const transport = createMcpTransport(url, 'sse', cloudUrl, {}) as unknown as MutableProtocol
+    expect(() => {
+      transport.protocolVersion = '2025-06-18'
+    }).not.toThrow()
+    expect(transport.protocolVersion).toBe('2025-06-18')
+  })
 })
 
 describe('buildMcpHeaders', () => {

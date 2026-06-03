@@ -7,10 +7,43 @@
 // only way to reach legacy SSE-only servers, and there is no non-deprecated replacement for them.
 import { SSEClientTransport } from '@modelcontextprotocol/sdk/client/sse.js'
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js'
-import { createProxyFetch } from './proxy-fetch'
+import type { Transport } from '@modelcontextprotocol/sdk/shared/transport.js'
+import { getAuthToken } from './auth-token'
+import { computeEffectiveProxyEnabled, createProxyFetch } from './proxy-fetch'
 
 /** Remote transport kind. stdio (local) servers are connected by THU-575, not here. */
 export type MCPTransportType = 'http' | 'sse'
+
+/**
+ * Reconciles a version mismatch between `@ai-sdk/mcp` and `@modelcontextprotocol/sdk` at our
+ * transport seam. After the initialize handshake, `@ai-sdk/mcp`'s `init()` records the negotiated
+ * protocol via the *direct assignment* `this.transport.protocolVersion = result.protocolVersion`
+ * (see @ai-sdk/mcp dist `init()`). But `@modelcontextprotocol/sdk` (>=1.25) made `protocolVersion`
+ * a getter-only accessor on `StreamableHTTPClientTransport` and exposes a `setProtocolVersion()`
+ * setter instead — so the direct assignment throws
+ * `TypeError: Cannot set property protocolVersion ... which has only a getter`, breaking every
+ * remote (http/sse) MCP connect. The SDK's own client uses `transport.setProtocolVersion(...)`.
+ *
+ * No stable `@ai-sdk/mcp` release fixes the assignment (it persists through 1.0.45; only the
+ * AI-SDK-v6 `2.0.0-beta` line drops it, which would force a major upgrade of our v5 AI SDK stack),
+ * and the getter-only accessor exists across our whole declared `@modelcontextprotocol/sdk` range —
+ * so the proper, minimal fix lives here, where we own the transport. We shadow the getter-only
+ * accessor with a settable instance accessor that delegates writes to the SDK's own
+ * `setProtocolVersion()`, leaving reads unchanged.
+ */
+const installProtocolVersionSetter = (transport: Transport): Transport => {
+  Object.defineProperty(transport, 'protocolVersion', {
+    configurable: true,
+    enumerable: false,
+    get() {
+      return this._protocolVersion
+    },
+    set(version: string) {
+      this.setProtocolVersion?.(version)
+    },
+  })
+  return transport
+}
 
 /**
  * Builds the request headers for an MCP connection. Adds a **plain**
@@ -40,10 +73,21 @@ export const createMcpTransport = (
   headers: Record<string, string>,
 ) => {
   const urlObj = new URL(url)
-  const proxyFetch = createProxyFetch({ cloudUrl })
+  // Authenticate the proxy hop with the Thunderbolt session bearer (the same getter the
+  // app-wide ProxyFetchProvider uses) — without it `/v1/proxy` returns 401. The upstream
+  // MCP credential rides separately as `X-Proxy-Passthrough-Authorization` (createProxyFetch
+  // promotes the plain `Authorization` we set in buildMcpHeaders). `getProxyEnabled` honours
+  // the Tauri standalone toggle; web always proxies (CORS forces it).
+  const proxyFetch = createProxyFetch({
+    cloudUrl,
+    getProxyAuthToken: getAuthToken,
+    getProxyEnabled: () => computeEffectiveProxyEnabled(),
+  })
   const options = {
     fetch: (input: string | URL, init?: RequestInit) => proxyFetch(input, init),
     requestInit: { headers },
   }
-  return type === 'sse' ? new SSEClientTransport(urlObj, options) : new StreamableHTTPClientTransport(urlObj, options)
+  const transport =
+    type === 'sse' ? new SSEClientTransport(urlObj, options) : new StreamableHTTPClientTransport(urlObj, options)
+  return installProtocolVersionSetter(transport)
 }

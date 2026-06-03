@@ -106,7 +106,6 @@ export const MCPProvider = ({ children, createClient: injectedCreateClient }: MC
     }
 
     try {
-      // Connecting to MCP server
       const client = await createClient(server.id, server.url, server.type)
 
       cacheClient(server.id, client)
@@ -114,8 +113,6 @@ export const MCPProvider = ({ children, createClient: injectedCreateClient }: MC
       commitServers((prev) =>
         prev.map((s) => (s.id === server.id ? { ...s, client, isConnected: true, error: null, enabled: true } : s)),
       )
-
-      // MCP server connected successfully
     } catch (err) {
       console.error('Failed to connect to MCP server:', server.name, err)
       commitServers((prev) =>
@@ -157,7 +154,6 @@ export const MCPProvider = ({ children, createClient: injectedCreateClient }: MC
       return
     }
 
-    // Add server to state first
     commitServers((prev) => [
       ...prev,
       {
@@ -168,7 +164,6 @@ export const MCPProvider = ({ children, createClient: injectedCreateClient }: MC
       },
     ])
 
-    // Then try to connect if enabled
     if (server.enabled) {
       await connectServer(server)
     }
@@ -267,7 +262,6 @@ export const MCPProvider = ({ children, createClient: injectedCreateClient }: MC
     const clientsRef = clientRefs
     const reverseRef = clientToServerId
     return () => {
-      // Cleaning up MCP connections
       const clients = clientsRef.current
       clients.forEach((client, serverId) => {
         if (client?.close) {

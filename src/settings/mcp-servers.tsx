@@ -186,23 +186,16 @@ export default function McpServersPage() {
     setServerCapabilities([])
 
     try {
-      console.log('Testing connection to:', newServerUrl)
-
       // Create a real MCP client using the same method as the provider —
       // route through the universal proxy so the test matches the real
       // connection path (web CORS would otherwise fail for remote servers).
-      console.log('Creating MCP client...')
       const headers = buildMcpHeaders(newServerToken || undefined)
       const transport = createMcpTransport(newServerUrl, newServerTransport, cloudUrl, headers)
       const mcpClient = await createMCPClient({ transport })
 
-      console.log('MCP client created successfully')
-
       // Try to get tools to verify the connection works
-      console.log('Requesting tools...')
       const tools = await mcpClient.tools()
 
-      console.log('Tools response:', tools)
       setConnectionStatus('success')
 
       // Extract tool names for display
@@ -214,7 +207,6 @@ export default function McpServersPage() {
       }
 
       // Close the connection
-      console.log('Closing MCP client connection...')
       if (mcpClient.close) {
         try {
           mcpClient.close()

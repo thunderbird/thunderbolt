@@ -13,7 +13,6 @@ import { isSsoMode } from '@/lib/auth-mode'
 import { getAuthToken } from '@/lib/auth-token'
 import { createAuthenticatedClient } from '@/lib/http'
 import { createProxyFetch } from '@/lib/proxy-fetch'
-import type { SaveMessagesFunction } from '@/types'
 import { v7 as uuidv7 } from 'uuid'
 import { getModelId } from './scenarios'
 import { scoreResult } from './scoring'
@@ -115,9 +114,6 @@ export const runScenario = async (scenario: EvalScenario): Promise<EvalResult> =
       throw new Error(`Unknown mode: ${scenario.modeName}`)
     }
 
-    // No-op message saver — we don't need persistence for evals
-    const saveMessages: SaveMessagesFunction = async () => {}
-
     // Build request body (matches chat-instance.ts format)
     const body = JSON.stringify({
       messages: [
@@ -143,7 +139,6 @@ export const runScenario = async (scenario: EvalScenario): Promise<EvalResult> =
     const response = await Promise.race([
       aiFetchStreamingResponse({
         init: { method: 'POST', body },
-        saveMessages,
         modelId,
         modeSystemPrompt: mode.systemPrompt ?? undefined,
         modeName: mode.name,

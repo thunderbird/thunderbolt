@@ -41,7 +41,7 @@ describe('categorizeModels', () => {
     expect(groups[1].items[0].disabled).toBe(false)
   })
 
-  test('confidential chat: standard models in disabled section with subtitle', () => {
+  test('encrypted chat: standard models in disabled section', () => {
     const groups = categorizeModels([confidentialModel, standardModel], confidentialChat)
 
     const provided = groups.find((g) => g.id === 'provided')
@@ -52,14 +52,14 @@ describe('categorizeModels', () => {
 
     const disabled = groups.find((g) => g.id === 'standard-disabled')
     expect(disabled).toBeDefined()
-    expect(disabled!.label).toBe('Standard Models')
-    expect(disabled!.subtitle).toBe('Only confidential models can be used in this chat')
+    expect(disabled!.label).toBeUndefined()
+    expect(disabled!.subtitle).toBeUndefined()
     expect(disabled!.items).toHaveLength(1)
     expect(disabled!.items[0].id).toBe('std-1')
     expect(disabled!.items[0].disabled).toBe(true)
   })
 
-  test('standard chat: confidential models in disabled section with subtitle', () => {
+  test('standard chat: encrypted models in disabled section', () => {
     const groups = categorizeModels([confidentialModel, standardModel], standardChat)
 
     const provided = groups.find((g) => g.id === 'provided')
@@ -69,8 +69,8 @@ describe('categorizeModels', () => {
 
     const disabled = groups.find((g) => g.id === 'confidential-disabled')
     expect(disabled).toBeDefined()
-    expect(disabled!.label).toBe('Confidential Models')
-    expect(disabled!.subtitle).toBe('Only available in confidential chats')
+    expect(disabled!.label).toBeUndefined()
+    expect(disabled!.subtitle).toBeUndefined()
     expect(disabled!.items).toHaveLength(1)
     expect(disabled!.items[0].id).toBe('conf-1')
     expect(disabled!.items[0].disabled).toBe(true)

@@ -14,18 +14,29 @@ import {
   SidebarSeparator,
   useSidebar,
 } from '@/components/ui/sidebar'
-import { ArrowLeft, Cpu, Plug, Server, SlidersHorizontal, Smartphone, Zap } from 'lucide-react'
+import { useAgentsSettingsHidden } from '@/hooks/use-agents-settings-hidden'
+import { ArrowLeft, Bot, Cpu, Plug, Server, SlidersHorizontal, Smartphone, Zap } from 'lucide-react'
 import { useLocation } from 'react-router'
 import { SidebarHeader } from './sidebar-header'
 
 type SettingsSidebarContentProps = {
   onBackClick: () => void
   onSettingsNavigate: (path: string) => void
+  /** Test seam — production omits; the hook falls back to `isTauri()`. Lets
+   *  tests exercise Tauri Standalone vs. Hosted code paths without mocking
+   *  the shared `@/lib/platform` module (which would leak across files —
+   *  see `docs/development/testing.md`). */
+  isStandalone?: () => boolean
 }
 
-export const SettingsSidebarContent = ({ onBackClick, onSettingsNavigate }: SettingsSidebarContentProps) => {
+export const SettingsSidebarContent = ({
+  onBackClick,
+  onSettingsNavigate,
+  isStandalone,
+}: SettingsSidebarContentProps) => {
   const { toggleSidebar } = useSidebar()
   const location = useLocation()
+  const agentsHidden = useAgentsSettingsHidden({ isStandalone })
 
   return (
     <SidebarContent className="flex flex-col h-full">
@@ -116,6 +127,19 @@ export const SettingsSidebarContent = ({ onBackClick, onSettingsNavigate }: Sett
                 <span>Skills</span>
               </SidebarMenuButton>
             </SidebarMenuItem>
+            {!agentsHidden && (
+              <SidebarMenuItem>
+                <SidebarMenuButton
+                  onClick={() => onSettingsNavigate('/settings/agents')}
+                  tooltip="Agents"
+                  className="cursor-pointer"
+                  isActive={location.pathname === '/settings/agents'}
+                >
+                  <Bot className="size-4" />
+                  <span>Agents</span>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+            )}
           </SidebarMenu>
         </SidebarGroupContent>
       </SidebarGroup>

@@ -46,11 +46,15 @@ const SortableRow = ({ skill }: { skill: Skill }) => {
   )
 }
 
+export type ReorderMove = { id: string; from: number; to: number }
+
 /**
  * Drawer-style reorder panel for pinned skills, shown in place of the
  * pinned-chips bar while the user is rearranging. On drag end, the
- * entire new order is reported to the parent — caller commits via
- * `reorderPins(ids)` (single transaction in the DAL).
+ * entire new order is reported to the parent along with the moved item's
+ * id and indices (sourced from dnd-kit's `active.id` — the ground truth,
+ * unambiguous even for adjacent swaps). Caller commits via `reorderPins(ids)`
+ * (single transaction in the DAL).
  *
  * TouchSensor uses a 120ms delay so vertical page-scroll still works when
  * the user isn't actually dragging.
@@ -61,7 +65,7 @@ export const ReorderPanel = ({
   onClose,
 }: {
   pinned: Skill[]
-  onReorder: (ids: string[]) => void
+  onReorder: (ids: string[], move: ReorderMove) => void
   onClose: () => void
 }) => {
   const sensors = useSensors(
@@ -81,7 +85,10 @@ export const ReorderPanel = ({
       return
     }
     const next = arrayMove(pinned, oldIndex, newIndex)
-    onReorder(next.map((s) => s.id))
+    onReorder(
+      next.map((s) => s.id),
+      { id: String(active.id), from: oldIndex, to: newIndex },
+    )
   }
 
   return (

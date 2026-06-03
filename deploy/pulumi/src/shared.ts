@@ -46,6 +46,7 @@ export type SharedStackArgs = {
     mistralApiKey: pulumi.Output<string>
     thunderboltInferenceApiKey: pulumi.Output<string>
     exaApiKey: pulumi.Output<string>
+    tinfoilApiKey: pulumi.Output<string>
   }
   /** Postgres admin password (random per shared-stack; persisted in Pulumi state). */
   postgresPassword: pulumi.Output<string>
@@ -133,6 +134,7 @@ export type SharedStackOutputs = {
   mistralApiKeySecretArn: pulumi.Output<string>
   thunderboltInferenceApiKeySecretArn: pulumi.Output<string>
   exaApiKeySecretArn: pulumi.Output<string>
+  tinfoilApiKeySecretArn: pulumi.Output<string>
 }
 
 const NAMESPACE_DOMAIN = 'thunderbolt.local'
@@ -370,6 +372,7 @@ export const createSharedStack = (args: SharedStackArgs): SharedStackOutputs => 
     ['mistralApiKey', `${name}-mistral-api-key`],
     ['thunderboltInferenceApiKey', `${name}-tb-inference-api-key`],
     ['exaApiKey', `${name}-exa-api-key`],
+    ['tinfoilApiKey', `${name}-tinfoil-api-key`],
   ]
   const aiSecretArns: Record<keyof SharedStackArgs['aiSecrets'], pulumi.Output<string>> = {} as ReturnType<typeof Object>
   for (const [key, secretName] of aiSecretSpecs) {
@@ -600,6 +603,7 @@ export const createSharedStack = (args: SharedStackArgs): SharedStackOutputs => 
     mistralApiKeySecretArn: aiSecretArns.mistralApiKey,
     thunderboltInferenceApiKeySecretArn: aiSecretArns.thunderboltInferenceApiKey,
     exaApiKeySecretArn: aiSecretArns.exaApiKey,
+    tinfoilApiKeySecretArn: aiSecretArns.tinfoilApiKey,
   }
 }
 
@@ -646,5 +650,6 @@ export const loadSharedStackOutputs = (ref: pulumi.StackReference): SharedStackO
     mistralApiKeySecretArn: get<string>('mistralApiKeySecretArn'),
     thunderboltInferenceApiKeySecretArn: get<string>('thunderboltInferenceApiKeySecretArn'),
     exaApiKeySecretArn: get<string>('exaApiKeySecretArn'),
+    tinfoilApiKeySecretArn: get<string>('tinfoilApiKeySecretArn'),
   }
 }

@@ -159,6 +159,8 @@ jobs:
           INPUT_MISTRAL_API_KEY: ${{ secrets.MISTRAL_API_KEY }}
           INPUT_THUNDERBOLT_INFERENCE_API_KEY: ${{ secrets.THUNDERBOLT_INFERENCE_API_KEY }}
           INPUT_EXA_API_KEY: ${{ secrets.EXA_API_KEY }}
+          INPUT_TINFOIL_API_KEY: ${{ secrets.TINFOIL_API_KEY }}
+          INPUT_TINFOIL_ENCLAVE_URL: ${{ secrets.TINFOIL_ENCLAVE_URL }}
         run: |
           pulumi config set platform "$INPUT_PLATFORM" -s "$INPUT_STACK_NAME" --non-interactive
           pulumi config set version "$INPUT_VERSION" -s "$INPUT_STACK_NAME" --non-interactive
@@ -191,11 +193,13 @@ jobs:
           # so they propagate into AWS Secrets Manager via services.ts. Only set when
           # non-empty — lets enterprise stacks skip these entirely.
           [ -n "$INPUT_THUNDERBOLT_INFERENCE_URL" ] && pulumi config set thunderboltInferenceUrl "$INPUT_THUNDERBOLT_INFERENCE_URL" -s "$INPUT_STACK_NAME" --non-interactive
+          [ -n "$INPUT_TINFOIL_ENCLAVE_URL" ] && pulumi config set tinfoilEnclaveUrl "$INPUT_TINFOIL_ENCLAVE_URL" -s "$INPUT_STACK_NAME" --non-interactive
           [ -n "$INPUT_ANTHROPIC_API_KEY" ]             && pulumi config set --secret anthropicApiKey             "$INPUT_ANTHROPIC_API_KEY"             -s "$INPUT_STACK_NAME" --non-interactive
           [ -n "$INPUT_FIREWORKS_API_KEY" ]             && pulumi config set --secret fireworksApiKey             "$INPUT_FIREWORKS_API_KEY"             -s "$INPUT_STACK_NAME" --non-interactive
           [ -n "$INPUT_MISTRAL_API_KEY" ]               && pulumi config set --secret mistralApiKey               "$INPUT_MISTRAL_API_KEY"               -s "$INPUT_STACK_NAME" --non-interactive
           [ -n "$INPUT_THUNDERBOLT_INFERENCE_API_KEY" ] && pulumi config set --secret thunderboltInferenceApiKey "$INPUT_THUNDERBOLT_INFERENCE_API_KEY" -s "$INPUT_STACK_NAME" --non-interactive
           [ -n "$INPUT_EXA_API_KEY" ]                   && pulumi config set --secret exaApiKey                   "$INPUT_EXA_API_KEY"                   -s "$INPUT_STACK_NAME" --non-interactive
+          [ -n "$INPUT_TINFOIL_API_KEY" ]               && pulumi config set --secret tinfoilApiKey              "$INPUT_TINFOIL_API_KEY"               -s "$INPUT_STACK_NAME" --non-interactive
           # Unconditional `|| true` prevents the last `[ -n ... ] && ...` from
           # masking non-zero exit when a secret is empty (which is expected).
           true

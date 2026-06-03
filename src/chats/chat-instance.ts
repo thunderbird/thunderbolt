@@ -2,13 +2,18 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { aiFetchStreamingResponse } from '@/ai/fetch'
+import type { connectToAgent as defaultConnectToAgent } from '@/acp'
+import { getOrConnectAdapter as defaultGetOrConnectAdapter } from '@/acp/adapter-cache'
+import type { SessionSideEffect } from '@/acp/translators/acp-to-ai-sdk'
+import { updateChatThread as defaultUpdateChatThread } from '@/dal/chat-threads'
+import { getDb as defaultGetDb } from '@/db/database'
 import { isRateLimitError } from '@/lib/error-utils'
 import type { HttpClient } from '@/lib/http'
 import { trackEvent } from '@/lib/posthog'
 import type { FetchFn } from '@/lib/proxy-fetch'
 import type { SaveMessagesFunction, ThunderboltUIMessage } from '@/types'
 import { Chat } from '@ai-sdk/react'
+import type { RequestPermissionRequest, RequestPermissionResponse } from '@agentclientprotocol/sdk'
 import { DefaultChatTransport } from 'ai'
 import { v7 as uuidv7 } from 'uuid'
 import { useChatStore } from './chat-store'
@@ -21,14 +26,83 @@ export const maxRetries = 3
  */
 const getRetryDelay = (attempt: number) => 2000 * attempt * (0.5 + Math.random())
 
-export const createChatInstance = (
+/** Bridge an ACP `requestPermission` call to the chat-store dialog flow.
+ *  Generates a request id, stashes the resolver on the session's
+ *  `pendingPermission` slot, and returns the promise the adapter awaits. The
+ *  store's `resolvePendingPermission` action completes it from the dialog. */
+const requestPermissionViaStore = (
+  sessionId: string,
+  request: RequestPermissionRequest,
+): Promise<RequestPermissionResponse> =>
+  new Promise<RequestPermissionResponse>((resolve) => {
+    const requestId = uuidv7()
+    useChatStore.getState().setPendingPermission(sessionId, { requestId, request, resolve })
+  })
+
+/** Forward translator side effects to the chat store + analytics. The server
+ *  is the source of truth for ACP-side mode and config option state, so a
+ *  mode/config emit always wins over a stale optimistic UI update.
+ *
+ *  This branch ships the wire but no UI surface reads it yet — the local
+ *  mode selector continues to use `selectedMode` from the user's mode list.
+ *  When a future PR adds ACP-mode UI it will subscribe to `agentSessionState`
+ *  populated here. */
+const applySessionSideEffect = (effect: SessionSideEffect): void => {
+  if (effect.type === 'mode_changed') {
+    trackEvent('acp_mode_changed', { mode_id: effect.modeId })
+    return
+  }
+  if (effect.type === 'config_options_changed') {
+    trackEvent('acp_config_options_changed', { count: effect.options.length })
+  }
+}
+
+/** DI seams for tests. Production binds to the real ACP cache + entry point and
+ *  the DAL's `updateChatThread`. Module-level functions are passed by reference
+ *  so test files can swap in fakes without `mock.module()`. `connectToAgent`
+ *  is forwarded through `getOrConnectAdapter` into the global cache so a test
+ *  can fake the connect while exercising the real reuse path. */
+export type CreateChatInstanceDeps = {
+  getOrConnectAdapter?: typeof defaultGetOrConnectAdapter
+  connectToAgent?: typeof defaultConnectToAgent
+  updateChatThread?: typeof defaultUpdateChatThread
+  getDb?: typeof defaultGetDb
+}
+
+/**
+ * Build the `customFetch` the AI SDK's transport invokes for every
+ * `chat.sendMessage(...)`. Each send routes to the GLOBAL per-agent adapter
+ * cache (`getOrConnectAdapter`): one transport + one `initialize` per agent,
+ * reused across every thread that targets it. Switching threads on the same
+ * agent reuses the warm connection — it is never torn down here.
+ *
+ * Per-thread state (ACP session resolution, permission dialogs, side-effect
+ * sinks) is supplied on each `adapter.fetch(init, ctx)` call, so one connection
+ * multiplexes many threads without cross-thread bleed.
+ *
+ * `connectionStatus` reflects THIS thread's view: `connecting` is shown while
+ * the cache resolves the adapter for a newly-selected agent (instant on a warm
+ * cache), then `ready`. Switching the agent within a thread re-routes to a
+ * different cached connection but never disposes the previous one — other
+ * threads may still be using it.
+ *
+ * Exported separately so unit tests can drive it without spinning up
+ * `@ai-sdk/react`'s `Chat` instance.
+ */
+export const createAgentRoutingFetch = (
   id: string,
-  messages: ThunderboltUIMessage[],
   saveMessages: SaveMessagesFunction,
   httpClient: HttpClient,
   getProxyFetch: () => FetchFn,
+  deps: CreateChatInstanceDeps = {},
 ) => {
-  const customFetch = Object.assign(
+  const getOrConnectAdapter = deps.getOrConnectAdapter ?? defaultGetOrConnectAdapter
+  const updateChatThread = deps.updateChatThread ?? defaultUpdateChatThread
+  const getDb = deps.getDb ?? defaultGetDb
+
+  let routedAgentId: string | null = null
+
+  return Object.assign(
     async (_requestInfo: RequestInfo | URL, init?: RequestInit) => {
       if (!init) {
         throw new Error('Missing init')
@@ -42,21 +116,81 @@ export const createChatInstance = (
         throw new Error('No session found')
       }
 
-      return aiFetchStreamingResponse({
-        init,
+      const { chatThread, selectedAgent, selectedMode, selectedModel } = session
+
+      // Save the user message before invoking the adapter. This serves three
+      // purposes that previously only the built-in pipeline got for free:
+      //   1. Creates the `chat_threads` row on the first message (so the
+      //      thread is persisted regardless of agent type).
+      //   2. Lets `updateThreadTitle` see the first user message and replace
+      //      the placeholder "New Chat" title — ACP agents only emit assistant
+      //      messages from `onFinish`, so without this save the title would
+      //      never be generated.
+      //   3. Keeps message ordering consistent: the user turn is durable
+      //      before the assistant stream starts.
+      const requestBody = JSON.parse(init.body as string) as { messages: ThunderboltUIMessage[] }
+      await saveMessages({ id, messages: requestBody.messages })
+
+      const persistAcpSessionId = async (newSessionId: string): Promise<void> => {
+        if (!chatThread) {
+          return
+        }
+        await updateChatThread(getDb(), chatThread.id, { acpSessionId: newSessionId })
+      }
+
+      // Surface `connecting` only when routing to a different agent than this
+      // thread last used — a warm cache resolves instantly, but the per-thread
+      // UI still needs the transition for the cold-connect spinner.
+      const isNewAgent = selectedAgent.id !== routedAgentId
+      if (isNewAgent) {
+        useChatStore.getState().updateSession(id, { connectionStatus: 'connecting', connectionError: null })
+      }
+
+      const adapter = await getOrConnectAdapter(
+        selectedAgent,
+        { httpClient, getProxyFetch },
+        { connectToAgent: deps.connectToAgent },
+      ).catch((err) => {
+        const error = err instanceof Error ? err : new Error(String(err))
+        useChatStore.getState().updateSession(id, { connectionStatus: 'error', connectionError: error })
+        throw error
+      })
+
+      routedAgentId = selectedAgent.id
+      if (isNewAgent) {
+        useChatStore.getState().updateSession(id, { connectionStatus: 'ready', connectionError: null })
+      }
+
+      return adapter.fetch(init, {
+        threadId: id,
+        chatThread,
+        acpSessionId: chatThread?.acpSessionId ?? null,
         saveMessages,
-        modelId: session.selectedModel.id,
-        modeSystemPrompt: session.selectedMode.systemPrompt ?? undefined,
-        modeName: session.selectedMode.name ?? undefined,
+        selectedMode,
+        selectedModel,
         mcpClients,
         httpClient,
         getProxyFetch,
+        onAcpSessionId: persistAcpSessionId,
+        requestPermission: (request) => requestPermissionViaStore(id, request),
+        onSessionSideEffect: applySessionSideEffect,
       })
     },
     {
       preconnect: () => Promise.resolve(false),
     },
   )
+}
+
+export const createChatInstance = (
+  id: string,
+  messages: ThunderboltUIMessage[],
+  saveMessages: SaveMessagesFunction,
+  httpClient: HttpClient,
+  getProxyFetch: () => FetchFn,
+  deps: CreateChatInstanceDeps = {},
+) => {
+  const customFetch = createAgentRoutingFetch(id, saveMessages, httpClient, getProxyFetch, deps)
 
   let retryCount = 0
   let retryTimeout: ReturnType<typeof setTimeout> | null = null

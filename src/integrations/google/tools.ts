@@ -2,11 +2,11 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { llmContentCharLimit, truncateText } from '@/lib/utils'
+import { truncateText } from '@/lib/utils'
 import type { ToolConfig } from '@/types'
 import { http, type HttpClient } from '@/lib/http'
 import { z } from 'zod'
-import { buildRawMessage, extractBody, getHeader, parseEmailAddress, transformDriveQuery } from './utils'
+import { buildRawMessage, extractBody, getHeader, parseEmailAddress } from './utils'
 import { ensureValidOAuthToken, getOAuthCredentials, type OAuthCredentials } from '@/integrations/oauth-credentials'
 
 // =============================================================================
@@ -92,57 +92,6 @@ export const checkCalendarSchema = z
   })
   .strict()
 
-export const searchDriveSchema = z
-  .object({
-    query: z.string().describe(
-      `Google Drive search query using Google's native API syntax. Format: query_term operator 'value'
-
-QUERY TERMS:
-• name: File name (operators: contains, =, !=)
-• fullText: Content and metadata search (operator: contains)  
-• mimeType: File type (operators: =, !=)
-• modifiedTime: Last modification date (operators: <, <=, =, !=, >, >=)
-• viewedByMeTime: Last viewed date (operators: <, <=, =, !=, >, >=)
-• createdTime: Creation date (operators: <, <=, =, !=, >, >=)
-• trashed: In trash (operators: =, !=, values: true/false)
-• starred: Starred status (operators: =, !=, values: true/false)
-• sharedWithMe: Shared with user (operators: =, !=, values: true/false)
-• parents: Parent folder ID (operator: in, format: 'folderId' in parents)
-• owners: Owner email (operator: in, format: 'user@example.com' in owners)
-• writers: Write permission (operator: in, format: 'user@example.com' in writers)
-• readers: Read permission (operator: in, format: 'user@example.com' in readers)
-• properties: Public properties (operator: has, format: properties has {key='dept' and value='sales'})
-• appProperties: Private properties (operator: has)
-• visibility: Visibility level (operators: =, !=)
-
-OPERATORS: contains, =, !=, <, <=, >, >=, in, has, and, or, not
-
-VALUE FORMATTING:
-• Strings: Enclose in single quotes, escape quotes with \\'
-• Booleans: true or false (no quotes)  
-• Dates: RFC 3339 format '2025-01-01T00:00:00Z'
-• Use parentheses for grouping: (condition1 or condition2) and condition3
-
-EXAMPLES:
-• name contains 'report'
-• mimeType = 'application/pdf'  
-• modifiedTime > '2025-01-01T00:00:00Z'
-• name contains 'budget' and trashed = false
-• (name contains 'report' or fullText contains 'summary') and modifiedTime > '2024-12-01T00:00:00Z'
-• 'parentFolderId' in parents
-• starred = true and mimeType = 'application/vnd.google-apps.document'`,
-    ),
-    max_results: z.number().optional().default(20).describe('Maximum number of files to return (default: 20, max: 50)'),
-    include_trashed: z.boolean().optional().default(false).describe('Include files in trash folder'),
-  })
-  .strict()
-
-export const getDriveFileContentSchema = z
-  .object({
-    file_id: z.string().describe('The Google Drive file ID to retrieve content from'),
-  })
-  .strict()
-
 // =============================================================================
 // TYPES
 // =============================================================================
@@ -152,8 +101,6 @@ export type SearchEmailsParams = z.infer<typeof searchEmailsSchema>
 export type GetEmailParams = z.infer<typeof getEmailSchema>
 export type DraftEmailParams = z.infer<typeof draftEmailSchema>
 export type CheckCalendarParams = z.infer<typeof checkCalendarSchema>
-export type SearchDriveParams = z.infer<typeof searchDriveSchema>
-export type GetDriveFileContentParams = z.infer<typeof getDriveFileContentSchema>
 
 export type EmailSummary = {
   id: string
@@ -210,61 +157,6 @@ export type CalendarEvent = {
   attendees_count?: number
   meeting_link?: string
   status: 'confirmed' | 'tentative' | 'cancelled'
-}
-
-export type DriveFile = {
-  id: string
-  name: string
-  mime_type: string
-  size_bytes?: number
-  created_time: string
-  modified_time: string
-  web_view_link: string
-  web_content_link?: string
-  is_folder: boolean
-  shared: boolean
-  owned_by_me: boolean
-  parent_folders?: string[]
-  description?: string
-}
-
-/**
- * Result of attempting to extract text content from a Google Drive file.
- * Uses structured metadata to let the LLM craft appropriate responses.
- */
-export type DriveFileContent = {
-  file_id: string
-  file_name: string
-  mime_type: string
-  content: string | null
-  /** When true, content was truncated to prevent context overflow */
-  isTruncated?: boolean
-  /** When true, text extraction was not possible */
-  extraction_failed?: boolean
-  /** Category of failure: 'unsupported_type' | 'access_denied' | 'not_found' */
-  failure_reason?: 'unsupported_type' | 'access_denied' | 'not_found'
-  /** Hint about the file type category for LLM context */
-  file_category?: 'pdf' | 'image' | 'video' | 'audio' | 'binary' | 'unknown'
-}
-
-/** Categorize MIME type for LLM context when file type is unsupported */
-const getDriveFileCategory = (mime: string): DriveFileContent['file_category'] => {
-  if (mime === 'application/pdf') {
-    return 'pdf'
-  }
-  if (mime.startsWith('image/')) {
-    return 'image'
-  }
-  if (mime.startsWith('video/')) {
-    return 'video'
-  }
-  if (mime.startsWith('audio/')) {
-    return 'audio'
-  }
-  if (mime.includes('octet-stream') || mime.includes('binary')) {
-    return 'binary'
-  }
-  return 'unknown'
 }
 
 // =============================================================================
@@ -627,207 +519,6 @@ export const checkCalendar = async (
   }
 }
 
-/**
- * Search Google Drive files using Drive API
- */
-export const searchDrive = async (
-  params: SearchDriveParams,
-  httpClient: HttpClient = http,
-  auth: GoogleAuthDeps = defaultAuthDeps,
-) => {
-  const credentials = await auth.getCredentials()
-  const accessToken = await auth.ensureToken(httpClient, credentials)
-
-  const searchParams = new URLSearchParams()
-  searchParams.set('pageSize', Math.min(params.max_results, 50).toString())
-  searchParams.set(
-    'fields',
-    'files(id,name,mimeType,size,createdTime,modifiedTime,webViewLink,webContentLink,parents,description,shared,ownedByMe),nextPageToken',
-  )
-  // Enable access to files in Shared Drives (Team Drives)
-  searchParams.set('supportsAllDrives', 'true')
-  searchParams.set('includeItemsFromAllDrives', 'true')
-
-  // Build the search query
-  let searchQuery = transformDriveQuery(params.query)
-  if (!params.include_trashed) {
-    searchQuery = searchQuery ? `${searchQuery} and trashed=false` : 'trashed=false'
-  }
-
-  if (searchQuery) {
-    searchParams.set('q', searchQuery)
-  }
-
-  try {
-    const response = await httpClient
-      .get('https://www.googleapis.com/drive/v3/files', {
-        searchParams,
-        headers: { Authorization: `Bearer ${accessToken}` },
-      })
-      .json<any>()
-
-    const files: DriveFile[] = (response.files || []).map((file: any) => ({
-      id: file.id,
-      name: file.name || 'Untitled',
-      mime_type: file.mimeType || 'application/octet-stream',
-      size_bytes: file.size ? parseInt(file.size, 10) : undefined,
-      created_time: file.createdTime || '',
-      modified_time: file.modifiedTime || '',
-      web_view_link: file.webViewLink || '',
-      web_content_link: file.webContentLink,
-      is_folder: file.mimeType === 'application/vnd.google-apps.folder',
-      shared: file.shared || false,
-      owned_by_me: file.ownedByMe !== false, // Default to true if not specified
-      parent_folders: file.parents || [],
-      description: file.description ? truncateText(file.description, 200) : undefined,
-    }))
-
-    return {
-      files,
-      total_count: files.length,
-      has_more: !!response.nextPageToken,
-    }
-  } catch (error: any) {
-    // Drive API might not be enabled or accessible
-    if (error.response?.status === 403) {
-      return {
-        files: [],
-        total_count: 0,
-        has_more: false,
-        error: 'Google Drive access not available. Please enable Google Drive API access.',
-      }
-    }
-    throw error
-  }
-}
-
-/**
- * Extract file ID from a Google Drive/Docs/Sheets/Slides URL.
- * If the input is already a file ID (no URL pattern match), returns it as-is.
- */
-export const extractDriveFileId = (input: string): string => {
-  const patterns = [
-    /drive\.google\.com\/file\/d\/([a-zA-Z0-9_-]+)/,
-    /docs\.google\.com\/document\/d\/([a-zA-Z0-9_-]+)/,
-    /docs\.google\.com\/spreadsheets\/d\/([a-zA-Z0-9_-]+)/,
-    /docs\.google\.com\/presentation\/d\/([a-zA-Z0-9_-]+)/,
-  ]
-  for (const pattern of patterns) {
-    const match = input.match(pattern)
-    if (match) {
-      return match[1]
-    }
-  }
-  return input
-}
-
-/**
- * Get text content from a Google Drive file
- * Works with Google Docs, Sheets, Slides, and text files
- */
-export const getDriveFileContent = async (
-  params: GetDriveFileContentParams,
-  httpClient: HttpClient = http,
-  auth: GoogleAuthDeps = defaultAuthDeps,
-): Promise<DriveFileContent> => {
-  const credentials = await auth.getCredentials()
-  const accessToken = await auth.ensureToken(httpClient, credentials)
-
-  // Extract file ID from URL if a full URL was provided
-  const fileId = extractDriveFileId(params.file_id)
-
-  try {
-    // Get file metadata to determine type (supportsAllDrives enables Shared Drive access)
-    const fileResponse = await httpClient
-      .get(`https://www.googleapis.com/drive/v3/files/${fileId}`, {
-        searchParams: { fields: 'id,name,mimeType', supportsAllDrives: 'true' },
-        headers: { Authorization: `Bearer ${accessToken}` },
-      })
-      .json<any>()
-
-    const fileName = fileResponse.name || 'Unknown'
-    const mimeType = fileResponse.mimeType || 'application/octet-stream'
-
-    let content = ''
-
-    // Extract content based on file type
-    if (mimeType === 'application/vnd.google-apps.document') {
-      // Google Docs - export as plain text
-      const response = await httpClient.get(`https://www.googleapis.com/drive/v3/files/${fileId}/export`, {
-        searchParams: { mimeType: 'text/plain', supportsAllDrives: 'true' },
-        headers: { Authorization: `Bearer ${accessToken}` },
-      })
-      content = await response.text()
-    } else if (mimeType === 'application/vnd.google-apps.spreadsheet') {
-      // Google Sheets - export as CSV
-      const response = await httpClient.get(`https://www.googleapis.com/drive/v3/files/${fileId}/export`, {
-        searchParams: { mimeType: 'text/csv', supportsAllDrives: 'true' },
-        headers: { Authorization: `Bearer ${accessToken}` },
-      })
-      content = await response.text()
-    } else if (mimeType === 'application/vnd.google-apps.presentation') {
-      // Google Slides - export as plain text
-      const response = await httpClient.get(`https://www.googleapis.com/drive/v3/files/${fileId}/export`, {
-        searchParams: { mimeType: 'text/plain', supportsAllDrives: 'true' },
-        headers: { Authorization: `Bearer ${accessToken}` },
-      })
-      content = await response.text()
-    } else if (mimeType.startsWith('text/')) {
-      // Text files - get raw content
-      const response = await httpClient.get(`https://www.googleapis.com/drive/v3/files/${fileId}`, {
-        searchParams: { alt: 'media', supportsAllDrives: 'true' },
-        headers: { Authorization: `Bearer ${accessToken}` },
-      })
-      content = await response.text()
-    } else {
-      // Unsupported file type - return structured metadata for LLM to craft response
-      return {
-        file_id: fileId,
-        file_name: fileName,
-        mime_type: mimeType,
-        content: null,
-        extraction_failed: true,
-        failure_reason: 'unsupported_type',
-        file_category: getDriveFileCategory(mimeType),
-      }
-    }
-
-    const isTruncated = content.length > llmContentCharLimit
-    return {
-      file_id: fileId,
-      file_name: fileName,
-      mime_type: mimeType,
-      content: isTruncated ? content.substring(0, llmContentCharLimit) + '...[truncated]' : content,
-      isTruncated,
-    }
-  } catch (error: unknown) {
-    const httpError = error as { response?: { status: number } }
-    if (httpError.response?.status === 403) {
-      return {
-        file_id: fileId,
-        file_name: 'Unknown',
-        mime_type: 'unknown',
-        content: null,
-        extraction_failed: true,
-        failure_reason: 'access_denied',
-      }
-    }
-
-    if (httpError.response?.status === 404) {
-      return {
-        file_id: fileId,
-        file_name: 'Unknown',
-        mime_type: 'unknown',
-        content: null,
-        extraction_failed: true,
-        failure_reason: 'not_found',
-      }
-    }
-
-    throw error
-  }
-}
-
 // =============================================================================
 // TOOL CONFIGURATIONS
 // =============================================================================
@@ -835,7 +526,7 @@ export const getDriveFileContent = async (
 /**
  * Google Tools Configuration Factory
  *
- * This file exports 7 high-level, LLM-friendly Google tools that replace
+ * This file exports 5 high-level, LLM-friendly Google tools that replace
  * the previous 70+ low-level API tools. The new tools provide:
  *
  * 1. google_check_inbox - Check Gmail inbox/folders with lightweight conversation summaries
@@ -843,11 +534,9 @@ export const getDriveFileContent = async (
  * 3. google_get_email - Get full details of a specific email
  * 4. google_draft_email - Create email drafts (including replies)
  * 5. google_check_calendar - Check Google Calendar for upcoming events
- * 6. google_search_drive - Search Google Drive files using Drive API query syntax
- * 7. google_get_drive_file_content - Get content from Google Drive files (Docs, Sheets, Slides, etc.)
  *
  * Benefits:
- * - Reduced cognitive load for LLMs (7 vs 70+ tools)
+ * - Reduced cognitive load for LLMs (5 vs 70+ tools)
  * - Smaller, more manageable response payloads
  * - Higher-level abstractions that accomplish common tasks in single calls
  * - Read-only operations (except drafting) for safer usage
@@ -890,22 +579,6 @@ export const createConfigs = (httpClient: HttpClient): ToolConfig[] => [
     verb: 'Checking Google Calendar',
     parameters: checkCalendarSchema,
     execute: (params: CheckCalendarParams) => checkCalendar(params, httpClient),
-  },
-  {
-    name: 'google_search_drive',
-    description:
-      'Search Google Drive files using Drive API query syntax (e.g. "type:pdf name:contract" or "modifiedTime>2024-01-01T00:00:00Z"). Use RFC 3339 format for dates.',
-    verb: 'Searching Google Drive',
-    parameters: searchDriveSchema,
-    execute: (params: SearchDriveParams) => searchDrive(params, httpClient),
-  },
-  {
-    name: 'google_get_drive_file_content',
-    description:
-      'Get text content from a Google Drive file. Accepts file IDs or full Google URLs (drive.google.com, docs.google.com/document, docs.google.com/spreadsheets, docs.google.com/presentation). Supports Google Docs, Sheets (as CSV), Slides, and text files. For unsupported types (PDFs, images, etc.), returns file metadata with extraction_failed=true.',
-    verb: 'Getting Drive file content',
-    parameters: getDriveFileContentSchema,
-    execute: (params: GetDriveFileContentParams) => getDriveFileContent(params, httpClient),
   },
 ]
 

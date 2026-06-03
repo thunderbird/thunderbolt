@@ -20,6 +20,10 @@ export type ModelSelectorProps = {
   onAddModels?: () => void
   side?: 'top' | 'bottom' | 'left' | 'right'
   align?: 'start' | 'center' | 'end'
+  /** Trigger appearance. `pill` (default) is the rounded standalone style used
+   *  in modals; `bordered` matches the chat composer's ModeSelector (squared,
+   *  bordered, taller) so the two composer controls read as a pair. */
+  variant?: 'pill' | 'bordered'
 }
 
 type ModelItemData = {
@@ -92,21 +96,14 @@ export const categorizeModels = (
   if (custom.length > 0) {
     groups.push({ id: 'custom', label: 'Custom Models', items: custom })
   }
+  // Models disabled by an encryption mismatch are shown greyed out with no
+  // group heading or explanation (only one of these buckets is ever non-empty
+  // for a given chat, since the mismatch is one-directional).
   if (disabledStandard.length > 0) {
-    groups.push({
-      id: 'standard-disabled',
-      label: 'Standard Models',
-      subtitle: 'Only confidential models can be used in this chat',
-      items: disabledStandard,
-    })
+    groups.push({ id: 'standard-disabled', items: disabledStandard })
   }
   if (disabledConfidential.length > 0) {
-    groups.push({
-      id: 'confidential-disabled',
-      label: 'Confidential Models',
-      subtitle: 'Only available in confidential chats',
-      items: disabledConfidential,
-    })
+    groups.push({ id: 'confidential-disabled', items: disabledConfidential })
   }
 
   return groups
@@ -120,14 +117,20 @@ export const ModelSelector = ({
   onAddModels,
   side,
   align,
+  variant = 'pill',
 }: ModelSelectorProps) => {
   const groupedItems = useMemo(() => categorizeModels(models, chatThread), [models, chatThread])
 
   const renderTrigger = (selected: SearchableMenuItem<ModelItemData> | undefined, isOpen: boolean) => (
     <div
       className={cn(
-        'flex items-center gap-2 px-3 h-[var(--touch-height-sm)] rounded-full cursor-pointer transition-colors text-[length:var(--font-size-body)]',
-        isOpen ? 'bg-secondary' : 'hover:bg-secondary/50',
+        'flex items-center gap-2 px-3 cursor-pointer transition-colors text-[length:var(--font-size-body)]',
+        variant === 'bordered'
+          ? cn(
+              'h-[var(--touch-height-default)] rounded-lg border border-border',
+              isOpen ? 'bg-accent' : 'hover:bg-accent/50',
+            )
+          : cn('h-[var(--touch-height-sm)] rounded-full', isOpen ? 'bg-secondary' : 'hover:bg-secondary/50'),
       )}
     >
       {selected?.data?.model && needsApiKey(selected.data.model) ? (
@@ -135,15 +138,17 @@ export const ModelSelector = ({
       ) : selected?.data?.model.isConfidential === 1 ? (
         <Lock className="size-3.5 text-muted-foreground" />
       ) : null}
-      <span className="font-medium">{selected?.label ?? 'Select Model'}</span>
+      <span className={cn('font-medium', variant === 'bordered' && 'text-muted-foreground')}>
+        {selected?.label ?? 'Select Model'}
+      </span>
       <ChevronDown className={cn('size-3.5 text-muted-foreground transition-transform', isOpen && 'rotate-180')} />
     </div>
   )
 
   const renderItem = (item: SearchableMenuItem<ModelItemData>, isSelected: boolean) => {
     const model = item.data?.model
-    // Encryption mismatch already explains the disabled state via the group subtitle —
-    // don't double up with a missing-key hint that's not the real blocker.
+    // For an encryption-mismatch item the real blocker isn't a missing key, so
+    // suppress the missing-key hint (the item is simply shown greyed out).
     const showMissingKeyHint = model ? needsApiKey(model) && !item.data?.disabledByEncryption : false
 
     const content = (

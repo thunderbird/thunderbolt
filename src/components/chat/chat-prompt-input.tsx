@@ -2,9 +2,9 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { useCurrentChatSession, useChatStore } from '@/chats/chat-store'
+import { isAgentAvailable as isAgentAvailable_default } from '@/acp/agent-availability'
+import { useCurrentChatSession } from '@/chats/chat-store'
 import { estimateTokensForText } from '@/ai/tokenizers'
-import { useHaptics } from '@/hooks/use-haptics'
 import { useContextTracking as useContextTracking_default } from '@/hooks/use-context-tracking'
 import { useIsMobile as useIsMobile_default } from '@/hooks/use-mobile'
 import { isMobile as isPlatformMobile } from '@/lib/platform'
@@ -13,6 +13,7 @@ import { appendSlashToken } from '@/skills/compose-chat-input'
 import { renderHighlightedSkillTokens, type SkillStatusClassifier } from '@/skills/highlight-skill-tokens'
 import { resolveSkillTokenInstructions } from '@/skills/resolve-skill-system-messages'
 import { SlashPopup } from '@/skills/slash-popup'
+import { useSkillTelemetry } from '@/skills/telemetry'
 import { useSlashCommand } from '@/skills/use-slash-command'
 import {
   useEnabledSkills as useEnabledSkills_default,
@@ -21,13 +22,38 @@ import {
 import { type Model } from '@/types'
 import { useChat as useChat_default } from '@ai-sdk/react'
 import { useDraftInput } from '@/hooks/use-draft-input'
+import { AlertCircle, Loader2 } from 'lucide-react'
 import { forwardRef, useCallback, useImperativeHandle, useMemo, useRef, useState } from 'react'
 import { useLocation as useLocation_default, useNavigate as useNavigate_default } from 'react-router'
 import { ChatSkillsBar } from './chat-skills-bar'
 import { ContextOverflowModal } from '../context-overflow-modal'
 import { ContextUsageIndicator } from '../context-usage-indicator'
-import { ModeSelector } from '../ui/mode-selector'
 import { PromptInput } from '../ui/prompt-input'
+import { ChatModePicker } from './chat-mode-picker'
+import { ChatModelPicker } from './chat-model-picker'
+
+/**
+ * Extract a human-readable display string from a connection error.
+ * Handles JSON-RPC error messages (which have nested data.message),
+ * plain strings, and generic Error objects.
+ */
+const extractErrorDisplay = (error: Error | null | undefined): string => {
+  if (!error?.message) {
+    return 'Connection failed'
+  }
+
+  try {
+    const parsed = JSON.parse(error.message)
+    const message = parsed?.data?.message ?? parsed?.data?.details ?? parsed?.message
+    if (typeof message === 'string') {
+      return message
+    }
+  } catch {
+    // Not JSON — use the raw message
+  }
+
+  return error.message
+}
 
 export type ChatPromptInputRef = {
   focus: () => void
@@ -43,6 +69,8 @@ type ChatPromptInputProps = {
   useIsMobile?: typeof useIsMobile_default
   useLibrarySkills?: typeof useLibrarySkills_default
   useEnabledSkills?: typeof useEnabledSkills_default
+  /** Inject for tests that need to drive the unavailable-agent fallback. */
+  isAgentAvailable?: typeof isAgentAvailable_default
 }
 
 export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputProps>(
@@ -56,22 +84,30 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
       useIsMobile = useIsMobile_default,
       useLibrarySkills = useLibrarySkills_default,
       useEnabledSkills = useEnabledSkills_default,
+      isAgentAvailable = isAgentAvailable_default,
     },
     ref,
   ) => {
     const navigate = useNavigate()
     const location = useLocation()
-    const modes = useChatStore((state) => state.modes)
-    const setSelectedMode = useChatStore((state) => state.setSelectedMode)
 
     const { isMobile } = useIsMobile()
 
-    const { chatInstance, chatThread, id: chatThreadId, selectedMode, selectedModel } = useCurrentChatSession()
+    const {
+      chatInstance,
+      chatThread,
+      connectionStatus,
+      connectionError,
+      id: chatThreadId,
+      selectedAgent,
+      selectedModel,
+    } = useCurrentChatSession()
 
     const { messages, status, stop, sendMessage } = useChat({ chat: chatInstance })
 
     const { skills: library } = useLibrarySkills()
     const { isEnabled } = useEnabledSkills()
+    const trackSkillEvent = useSkillTelemetry()
     const skillBySlug = useMemo(() => new Map(library.map((s) => [s.name, s])), [library])
     const enabledSlugs = useMemo(
       () => new Set(library.filter((s) => isEnabled(s.id)).map((s) => s.name)),
@@ -92,6 +128,8 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
     )
 
     const isStreaming = status === 'streaming'
+    const isConnecting = connectionStatus === 'connecting'
+    const isConnectionError = connectionStatus === 'error' && connectionError != null
 
     // isMobile = viewport is narrow (responsive breakpoint, e.g. desktop browser resized small)
     // isPlatformMobile() = native platform is iOS/Android (Tauri mobile app)
@@ -116,7 +154,6 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
     // one for the form and one for the textarea) avoids two cached pointers
     // to the same node drifting out of sync.
     const textareaRef = useRef<HTMLTextAreaElement | null>(null)
-    const { triggerSelection } = useHaptics()
 
     const getTextarea = (): HTMLTextAreaElement | null => {
       textareaRef.current = formRef.current?.querySelector('textarea') ?? null
@@ -202,17 +239,12 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
       queueMicrotask(() => {
         addSkillChip(runSkill)
         navigate(location.pathname, { replace: true, state: {} })
-        trackEvent('skill_used', { via: 'settings-nav' })
+        const resolved = skillBySlug.get(runSkill)
+        if (resolved) {
+          trackSkillEvent('skill_used', resolved.id, { via: 'settings-nav' })
+        }
       })
     }
-
-    const handleModeChange = useCallback(
-      (modeId: string) => {
-        triggerSelection()
-        setSelectedMode(chatThreadId, modeId).catch(console.error)
-      },
-      [chatThreadId, setSelectedMode, triggerSelection],
-    )
 
     // Map of enabled-skill slug → instruction. Shared by the overflow
     // estimate below and the send-time resolver in `ai/fetch.ts` (via
@@ -299,8 +331,30 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
 
     const footerStartElements = (
       <div className="flex items-center gap-2">
-        {modes.length > 0 && (
-          <ModeSelector modes={modes} selectedMode={selectedMode} onModeChange={handleModeChange} iconOnly={isMobile} />
+        {isConnecting ? (
+          <div
+            role="status"
+            aria-live="polite"
+            className="flex items-center gap-2 px-3 h-[var(--touch-height-sm)] text-muted-foreground text-[length:var(--font-size-body)]"
+          >
+            <Loader2 className="size-[var(--icon-size-default)] shrink-0 animate-spin" />
+            <span>Connecting to {selectedAgent.name}...</span>
+          </div>
+        ) : isConnectionError ? (
+          <div
+            role="alert"
+            className="flex items-center gap-2 px-3 h-[var(--touch-height-sm)] text-destructive text-[length:var(--font-size-body)]"
+          >
+            <AlertCircle className="size-[var(--icon-size-default)] shrink-0" />
+            <span className="truncate" title={extractErrorDisplay(connectionError)}>
+              Failed to connect to {selectedAgent.name}
+            </span>
+          </div>
+        ) : (
+          <>
+            <ChatModePicker iconOnly={isMobile} />
+            <ChatModelPicker />
+          </>
         )}
         {isContextKnown && !isMobile && (
           <ContextUsageIndicator usedTokens={usedTokens ?? 0} maxTokens={maxTokens ?? 0} />
@@ -311,18 +365,32 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
     const handleAddChipFromBar = useCallback(
       (slug: string) => {
         addSkillChip(slug)
-        trackEvent('skill_used', { via: 'chip' })
+        const resolved = skillBySlug.get(slug)
+        if (resolved) {
+          trackSkillEvent('skill_used', resolved.id, { via: 'chip' })
+        }
       },
-      [addSkillChip, trackEvent],
+      [addSkillChip, skillBySlug, trackSkillEvent],
     )
 
     const handleSelectFromSlashPopup = useCallback(
       (skill: Parameters<typeof selectSkillFromPopup>[0]) => {
         selectSkillFromPopup(skill)
-        trackEvent('skill_used', { via: 'slash' })
+        trackSkillEvent('skill_used', skill.id, { via: 'slash' })
       },
-      [selectSkillFromPopup, trackEvent],
+      [selectSkillFromPopup, trackSkillEvent],
     )
+
+    if (!isAgentAvailable(selectedAgent)) {
+      return (
+        <div
+          role="status"
+          className="flex items-center justify-center px-4 py-3 text-muted-foreground text-[length:var(--font-size-sm)]"
+        >
+          <span>This chat uses {selectedAgent.name}, which is not available on this platform.</span>
+        </div>
+      )
+    }
 
     return (
       <>
@@ -341,7 +409,7 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
             placeholder="Ask me anything..."
             showSubmitButton
             onSubmit={handleSubmit}
-            isLoading={isStreaming}
+            isLoading={isStreaming || isConnecting}
             isStreaming={isStreaming}
             onStop={stop}
             autoFocus={!isMobile}

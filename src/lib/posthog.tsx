@@ -151,6 +151,9 @@ export type EventType =
   // Model & Settings
   | 'model_select'
   | 'mode_select'
+  | 'agent_select'
+  | 'acp_mode_changed'
+  | 'acp_config_options_changed'
   | 'settings_theme_set'
   | 'settings_name_set'
   | 'settings_name_update'
@@ -214,6 +217,9 @@ export type EventType =
   | 'skill_pinned'
   | 'skill_unpinned'
   | 'skill_reordered'
+  // Data migrations (THU-547) — drops out once THU-560 deletes the legacy
+  // automations subsystem.
+  | 'automations_migration_run'
 
 export const trackEvent = (eventName: EventType, properties?: Record<string, unknown>) => {
   try {

@@ -12,7 +12,7 @@ import { useChatStore } from './chat-store'
 import { getDb } from '@/db/database'
 import { modelsTable, modesTable } from '@/db/tables'
 import { v7 as uuidv7 } from 'uuid'
-import { createChatThread } from '@/dal/chat-threads'
+import { createChatThread, getChatThread as getThread } from '@/dal/chat-threads'
 import { getModel } from '@/dal/models'
 import { saveMessagesWithContextUpdate } from '@/dal/chat-messages'
 import type { ThunderboltUIMessage } from '@/types'
@@ -356,6 +356,52 @@ describe('useHydrateChatStore', () => {
 
       expect(error).not.toBeNull()
       expect(error instanceof Error && error.message).toBe('No session found')
+    })
+
+    it('persists selectedAgent.id on the thread row when the first message creates it', async () => {
+      // Regression test for: agent selection on a brand-new chat (no thread row
+      // yet) was lost on reload because `createChatThread` was called without
+      // `agentId`. The fix is to thread `selectedAgent.id` through
+      // `getOrCreateChatThread`, which `saveMessages` calls on every message.
+      await createSystemModel()
+      const threadId = uuidv7()
+
+      const { result } = renderHook(() => useHydrateChatStore({ id: threadId, isNew: true }), {
+        wrapper: TestWrapper,
+      })
+
+      await act(async () => {
+        await result.current.hydrateChatStore()
+      })
+
+      const customAgent = {
+        id: 'haystack-rag',
+        name: 'Haystack',
+        type: 'managed-acp' as const,
+        transport: 'websocket' as const,
+        url: 'wss://example.test',
+        description: null,
+        icon: null,
+        isSystem: 1 as const,
+        enabled: 1 as const,
+        deletedAt: null,
+        userId: null,
+      }
+
+      await act(async () => {
+        await useChatStore.getState().setSelectedAgent(threadId, customAgent)
+      })
+
+      await act(async () => {
+        await result.current.saveMessages({
+          id: threadId,
+          messages: [createTestMessage({ role: 'user', parts: [{ type: 'text', text: 'First message' }] })],
+        })
+      })
+
+      // The newly-created thread row should carry the agent the user picked.
+      const stored = await getThread(getDb(), threadId)
+      expect(stored?.agentId).toBe('haystack-rag')
     })
 
     it('should save messages when model is selected', async () => {

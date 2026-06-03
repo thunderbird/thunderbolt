@@ -5,7 +5,7 @@
 import { SearchableMenu, type SearchableMenuGroup, type SearchableMenuItem } from '@/components/ui/searchable-menu'
 import { cn } from '@/lib/utils'
 import type { Mode } from '@/types'
-import { Globe, MessageSquare, Microscope } from 'lucide-react'
+import { Globe, MessageCircle, Microscope } from 'lucide-react'
 import { useIsMobile } from '@/hooks/use-mobile'
 import { useMemo, type ReactNode } from 'react'
 
@@ -16,14 +16,17 @@ export type ModeSelectorProps = {
   iconOnly?: boolean
 }
 
+// Icons share the label's muted color so each pill reads as a single unit. The
+// chat mode's seeded icon token is 'message-square', but design wants the
+// rounded bubble (lucide message-circle) for it.
 const iconMap: Record<string, ReactNode> = {
-  'message-square': <MessageSquare className="size-[var(--icon-size-default)]" />,
-  globe: <Globe className="size-[var(--icon-size-default)]" />,
-  microscope: <Microscope className="size-[var(--icon-size-default)]" />,
+  'message-square': <MessageCircle className="size-[var(--icon-size-default)] text-muted-foreground" />,
+  globe: <Globe className="size-[var(--icon-size-default)] text-muted-foreground" />,
+  microscope: <Microscope className="size-[var(--icon-size-default)] text-muted-foreground" />,
 }
 
 const getModeIcon = (iconName: string): ReactNode => {
-  return iconMap[iconName] ?? <MessageSquare className="size-[var(--icon-size-default)]" />
+  return iconMap[iconName] ?? <MessageCircle className="size-[var(--icon-size-default)] text-muted-foreground" />
 }
 
 type ModeItemData = {
@@ -55,7 +58,7 @@ export const ModeSelector = ({ modes, selectedMode, onModeChange, iconOnly = fal
         isOpen ? 'bg-accent' : 'hover:bg-accent/50',
       )}
     >
-      {selected?.icon ?? <MessageSquare className="size-[var(--icon-size-default)]" />}
+      {selected?.icon ?? <MessageCircle className="size-[var(--icon-size-default)] text-muted-foreground" />}
       {!iconOnly && <span className="font-medium text-muted-foreground">{selected?.label ?? 'Chat'}</span>}
     </div>
   )

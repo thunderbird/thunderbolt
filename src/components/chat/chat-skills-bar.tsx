@@ -9,9 +9,11 @@ import { createPortal } from 'react-dom'
 import { Button } from '@/components/ui/button'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
+import { maxPinnedSkills } from '@/dal'
 import { useIsMobile } from '@/hooks/use-mobile'
 import { ReorderPanel } from '@/skills/reorder-panel'
 import { SuggestionChip } from '@/skills/suggestion-chip'
+import { useSkillTelemetry } from '@/skills/telemetry'
 import {
   useEnabledSkills as useEnabledSkills_default,
   useLibrarySkills as useLibrarySkills_default,
@@ -57,6 +59,7 @@ export const ChatSkillsBar = ({
   const { skills: library } = useLibrarySkills()
   const { isEnabled } = useEnabledSkills()
   const { isMobile } = useIsMobile()
+  const trackSkillEvent = useSkillTelemetry()
 
   const [openChipId, setOpenChipId] = useState<string | null>(null)
   const [reorderMode, setReorderMode] = useState(false)
@@ -76,7 +79,22 @@ export const ChatSkillsBar = ({
     return (
       <>
         {showOverlay && <MobileOverlay onDismiss={dismissOverlay} />}
-        <ReorderPanel pinned={pinned} onReorder={reorderPins} onClose={() => setReorderMode(false)} />
+        <ReorderPanel
+          pinned={pinned}
+          onReorder={async (ids, move) => {
+            // `move` comes from dnd-kit's `active.id` / index lookup — unambiguous
+            // even for adjacent swaps, where a diff-based heuristic can't tell
+            // which side the user actually dragged. Await the mutation before
+            // firing telemetry so a rejection doesn't record a phantom event.
+            try {
+              await reorderPins(ids)
+              trackSkillEvent('skill_reordered', move.id, { from_index: move.from, to_index: move.to })
+            } catch (error) {
+              console.warn('reorderPins failed:', error)
+            }
+          }}
+          onClose={() => setReorderMode(false)}
+        />
       </>
     )
   }
@@ -85,6 +103,17 @@ export const ChatSkillsBar = ({
   // pin candidates, never a dual "pin / unpin" surface — unpin lives on the
   // chip's own dropdown.
   const pinnable = library.filter((s) => isEnabled(s.id) && !pinnedSet.has(s.id))
+  const pinCapReached = pinnedSet.size >= maxPinnedSkills
+  // Disable the trigger when there's nothing to pin OR when adding one more
+  // would exceed the cap — the DAL throws PinLimitExceededError on the 11th
+  // pin and the catch below would swallow it silently; better to block the
+  // click upstream with explicit copy.
+  const addDisabled = pinnable.length === 0 || pinCapReached
+  const addTooltip = pinCapReached
+    ? `Pin limit reached (${maxPinnedSkills}). Unpin one first.`
+    : pinnable.length === 0
+      ? 'No more skills to pin'
+      : 'Pin a skill'
 
   // Hide the whole bar only when there's nothing to display *and* nothing
   // to add. If the user has zero pins but unpinned skills exist, we still
@@ -106,7 +135,16 @@ export const ChatSkillsBar = ({
             onOpenChange={(open) => setOpenChipId(open ? skill.id : null)}
             onAddInstruction={() => onAddInstruction(skill.instruction)}
             onReorder={() => setReorderMode(true)}
-            onUnpin={() => togglePin(skill.id)}
+            onUnpin={async () => {
+              // Telemetry only fires after the mutation settles, so a rejection
+              // doesn't record an action the user didn't actually complete.
+              try {
+                await togglePin(skill.id)
+                trackSkillEvent('skill_unpinned', skill.id, {})
+              } catch (error) {
+                console.warn('togglePin failed:', error)
+              }
+            }}
           />
         ))}
         <Popover open={addOpen} onOpenChange={setAddOpen}>
@@ -117,8 +155,8 @@ export const ChatSkillsBar = ({
                   variant="outline"
                   size="icon-sm"
                   aria-label="Pin a skill"
-                  disabled={pinnable.length === 0}
-                  className={`size-8 shrink-0 cursor-pointer rounded-full bg-card transition-opacity disabled:cursor-not-allowed disabled:opacity-40 ${
+                  disabled={addDisabled}
+                  className={`shrink-0 cursor-pointer rounded-full bg-card transition-opacity disabled:cursor-not-allowed disabled:opacity-40 ${
                     openChipId ? 'opacity-40' : ''
                   }`}
                 >
@@ -126,19 +164,47 @@ export const ChatSkillsBar = ({
                 </Button>
               </PopoverTrigger>
             </TooltipTrigger>
-            <TooltipContent>{pinnable.length === 0 ? 'No more skills to pin' : 'Pin a skill'}</TooltipContent>
+            <TooltipContent>{addTooltip}</TooltipContent>
           </Tooltip>
-          <PopoverContent side="top" align="start" sideOffset={6} className="w-72 max-w-[calc(100vw-2rem)] p-1">
+          {/*
+            `collisionPadding={16}` keeps the popover 16px off the viewport
+            edges. On mobile the content is sized to `calc(100vw-2rem)` (32px
+            narrower than the viewport), so collision avoidance pins it to a
+            16px-both-sides margin — i.e. full-width and centered on the chat
+            input — mirroring the chip dropdown. On desktop the fixed `w-72`
+            leaves room, so the padding never shifts the `align="start"`
+            anchor off the `+` button.
+          */}
+          <PopoverContent
+            side="top"
+            align="start"
+            sideOffset={6}
+            collisionPadding={16}
+            className={isMobile ? 'w-[calc(100vw-2rem)] p-1' : 'w-72 max-w-[calc(100vw-2rem)] p-1'}
+          >
             <ul className="max-h-64 overflow-y-auto">
               {pinnable.map((skill) => (
                 <li key={skill.id}>
                   <button
                     type="button"
-                    onClick={() => {
-                      void togglePin(skill.id).catch((error) => console.warn('togglePin failed:', error))
+                    onClick={async () => {
+                      // Close the popover synchronously so it doesn't sit open
+                      // while the mutation lands. Telemetry fires after the
+                      // mutation settles so we never report a phantom pin if
+                      // togglePin races past the cap guard.
                       setAddOpen(false)
+                      try {
+                        await togglePin(skill.id)
+                        trackSkillEvent('skill_pinned', skill.id, {})
+                      } catch (error) {
+                        console.warn('togglePin failed:', error)
+                      }
                     }}
-                    className="flex w-full cursor-pointer flex-col gap-0.5 rounded-md px-2 py-1.5 text-left transition-colors hover:bg-accent"
+                    // `rounded-xl` (not `rounded-md`) so the hover highlight
+                    // sits concentrically inside the `rounded-2xl` container's
+                    // `p-1` padding — outer radius minus 4px padding. Matches
+                    // the slash autocomplete popover.
+                    className="flex w-full cursor-pointer flex-col gap-0.5 rounded-xl px-2 py-1.5 text-left transition-colors hover:bg-accent"
                   >
                     <span className="truncate text-[length:var(--font-size-body)] text-foreground">/{skill.name}</span>
                     {skill.description && (

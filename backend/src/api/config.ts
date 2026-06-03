@@ -6,7 +6,16 @@ import type { Settings } from '@/config/settings'
 import { safeErrorHandler } from '@/middleware/error-handling'
 import { Elysia } from 'elysia'
 
+/**
+ * Public app config — the single source of deployment-level UI capability flags
+ * (no auth, fetched at boot). The frontend mirrors this into its config store and
+ * falls back to the cached value when offline (standalone mode keeps working).
+ */
 export const createConfigRoutes = (settings: Settings) =>
   new Elysia({ prefix: '/config' }).onError(safeErrorHandler).get('/', () => ({
     e2eeEnabled: settings.e2eeEnabled,
+    // Inverted so the env reads as an opt-in switch ("disable") while the wire
+    // contract reads as a positive capability ("enabled").
+    builtInAgentEnabled: !settings.disableBuiltInAgent,
+    allowCustomAgents: settings.allowCustomAgents,
   }))

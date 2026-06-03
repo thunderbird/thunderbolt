@@ -89,15 +89,18 @@ export class ThunderboltConnector implements PowerSyncBackendConnector {
   async fetchCredentials(): Promise<PowerSyncCredentials | null> {
     const hadToken = Boolean(getAuthToken())
     const ssoMode = isSsoMode()
+    const startedAt = performance.now()
     try {
       if (!hadToken && !ssoMode) {
         return null
       }
 
+      const tokenRequestStartedAt = performance.now()
       const response = await this.fetchFn(`${this.backendUrl}/powersync/token`, {
         headers: getAuthenticatedHeaders(),
         credentials: ssoMode ? 'include' : undefined,
       })
+      console.info(`[PowerSync] /powersync/token: ${Math.round(performance.now() - tokenRequestStartedAt)}ms`)
 
       if (!response.ok) {
         const status = response.status
@@ -144,6 +147,8 @@ export class ThunderboltConnector implements PowerSyncBackendConnector {
       console.error('Error fetching PowerSync credentials:', error)
       trackSyncEvent('sync_credentials_error', { had_token: hadToken, error: sanitizeErrorForTracking(error) })
       return null
+    } finally {
+      console.info(`[PowerSync] fetchCredentials: ${Math.round(performance.now() - startedAt)}ms`)
     }
   }
 

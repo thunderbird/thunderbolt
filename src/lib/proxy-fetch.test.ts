@@ -9,6 +9,7 @@
 // arguments — pure dependency injection.
 
 import { describe, expect, it, mock } from 'bun:test'
+import { encodeWsBearer } from '@shared/ws-bearer'
 import { createProxyFetch, createProxyWebSocket } from './proxy-fetch'
 
 describe('createProxyFetch — Hosted mode', () => {
@@ -208,47 +209,85 @@ describe('createProxyFetch — getProxyAuthToken wiring', () => {
 })
 
 describe('createProxyWebSocket', () => {
-  it('Hosted: encodes target as tbproxy.target.<base64url> and connects to /proxy/ws', () => {
-    let capturedUrl = ''
-    let capturedProtocols: string[] = []
-    class FakeWS {
-      constructor(u: string, p: string[]) {
-        capturedUrl = u
-        capturedProtocols = p
-      }
+  /** Minimal FakeWebSocket capturing the url + offered subprotocols. */
+  class FakeWS {
+    static instances: Array<FakeWS> = []
+    readyState = 0
+    url: string
+    protocols: string[]
+    constructor(u: string, p?: string[]) {
+      this.url = u
+      this.protocols = p ?? []
+      FakeWS.instances.push(this)
     }
+    addEventListener() {}
+    removeEventListener() {}
+    send() {}
+    close() {}
+  }
+
+  it('Hosted: includes carrier + bearer + target subprotocols on /proxy/ws', () => {
+    FakeWS.instances = []
     const originalWS = globalThis.WebSocket
     globalThis.WebSocket = FakeWS as unknown as typeof WebSocket
     try {
       const factory = createProxyWebSocket({
         cloudUrl: 'http://localhost:8000/v1',
         isStandalone: () => false,
+        getAuthToken: () => 'bearer-abc',
       })
       factory('wss://upstream.test/path', ['acp.v1'])
-      expect(capturedUrl).toBe('ws://localhost:8000/v1/proxy/ws')
-      expect(capturedProtocols[0].startsWith('tbproxy.target.')).toBe(true)
-      expect(capturedProtocols[1]).toBe('acp.v1')
+      expect(FakeWS.instances).toHaveLength(1)
+      const real = FakeWS.instances[0]
+      expect(real.url).toBe('ws://localhost:8000/v1/proxy/ws')
+      expect(real.protocols[0]).toBe('thunderbolt.v1')
+      expect(real.protocols[1]).toBe(`thunderbolt.bearer.${encodeWsBearer('bearer-abc')}`)
+      expect(real.protocols[2]?.startsWith('tbproxy.target.')).toBe(true)
+      expect(real.protocols[3]).toBe('acp.v1')
     } finally {
       globalThis.WebSocket = originalWS
     }
   })
 
-  it('Standalone: connects directly to the target URL', () => {
-    let capturedUrl = ''
-    class FakeWS {
-      constructor(u: string) {
-        capturedUrl = u
-      }
-    }
+  it('Hosted: omits the bearer entry when no token is available (still offers carrier + target)', () => {
+    FakeWS.instances = []
     const originalWS = globalThis.WebSocket
     globalThis.WebSocket = FakeWS as unknown as typeof WebSocket
     try {
       const factory = createProxyWebSocket({
         cloudUrl: 'http://localhost:8000/v1',
-        isStandalone: () => true,
+        isStandalone: () => false,
+        getAuthToken: () => null,
       })
       factory('wss://upstream.test/path')
-      expect(capturedUrl).toBe('wss://upstream.test/path')
+      expect(FakeWS.instances).toHaveLength(1)
+      const real = FakeWS.instances[0]
+      expect(real.protocols[0]).toBe('thunderbolt.v1')
+      expect(real.protocols.some((p) => p.startsWith('thunderbolt.bearer.'))).toBe(false)
+      expect(real.protocols.some((p) => p.startsWith('tbproxy.target.'))).toBe(true)
+    } finally {
+      globalThis.WebSocket = originalWS
+    }
+  })
+
+  it('Standalone: connects directly to the target URL with no bearer attached', () => {
+    FakeWS.instances = []
+    const originalWS = globalThis.WebSocket
+    globalThis.WebSocket = FakeWS as unknown as typeof WebSocket
+    try {
+      let tokenReads = 0
+      const factory = createProxyWebSocket({
+        cloudUrl: 'http://localhost:8000/v1',
+        isStandalone: () => true,
+        getAuthToken: () => {
+          tokenReads += 1
+          return 'never-read'
+        },
+      })
+      factory('wss://upstream.test/path')
+      expect(FakeWS.instances).toHaveLength(1)
+      expect(FakeWS.instances[0].url).toBe('wss://upstream.test/path')
+      expect(tokenReads).toBe(0)
     } finally {
       globalThis.WebSocket = originalWS
     }

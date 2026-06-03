@@ -5,9 +5,15 @@
 import { describe, expect, test } from 'bun:test'
 import type { ContentPart } from '@/ai/widget-parser'
 import { parseContentParts } from '@/ai/widget-parser'
-import type { CitationMap } from '@/types/citation'
+import type { CitationMap, DocumentCitationSource } from '@/types/citation'
+import { isDocumentCitation } from '@/types/citation'
+import type { HaystackReferenceMeta } from '@/types'
 import type { SourceMetadata } from '@/types/source'
-import { buildSourceCitationPlaceholders, deduplicateLinkPreviews } from './text-part'
+import {
+  buildDocumentCitationPlaceholders,
+  buildSourceCitationPlaceholders,
+  deduplicateLinkPreviews,
+} from './text-part'
 
 const makeSource = (index: number, title = `Source ${index}`): SourceMetadata => ({
   index,
@@ -358,5 +364,73 @@ describe('parseContentParts preserves widgets alongside citation text', () => {
 
     expect(textParts.length).toBeGreaterThanOrEqual(1)
     expect(widgetParts).toHaveLength(2)
+  })
+})
+
+const makeRef = (position: number, overrides: Partial<HaystackReferenceMeta> = {}): HaystackReferenceMeta => ({
+  position,
+  fileId: `file-${position}`,
+  fileName: `doc-${position}.pdf`,
+  ...overrides,
+})
+
+describe('buildDocumentCitationPlaceholders', () => {
+  test('replaces [1] with a placeholder built from the matching reference', () => {
+    const refs = [makeRef(1)]
+    const { fullText, citations } = buildDocumentCitationPlaceholders('See [1].', refs)
+
+    expect(fullText).toBe('See {{CITE:0}}.')
+    expect(citations.size).toBe(1)
+    const [source] = citations.get(0)!
+    expect(isDocumentCitation(source)).toBe(true)
+    const doc = source as DocumentCitationSource
+    expect(doc.documentMeta.fileId).toBe('file-1')
+    expect(doc.documentMeta.fileName).toBe('doc-1.pdf')
+    expect(doc.title).toBe('doc-1.pdf')
+    expect(doc.siteName).toBe('PDF')
+    expect(doc.isPrimary).toBe(true)
+  })
+
+  test('groups adjacent [1][2] markers into a single popover entry', () => {
+    const refs = [makeRef(1), makeRef(2, { pageNumber: 4 })]
+    const { fullText, citations } = buildDocumentCitationPlaceholders('Quoted [1][2] here.', refs)
+
+    expect(fullText).toBe('Quoted {{CITE:0}} here.')
+    const entry = citations.get(0)!
+    expect(entry).toHaveLength(2)
+    expect((entry[1] as DocumentCitationSource).documentMeta.pageNumber).toBe(4)
+  })
+
+  test('leaves [N] unchanged when reference is missing', () => {
+    const refs = [makeRef(1)]
+    const { fullText, citations } = buildDocumentCitationPlaceholders('See [9].', refs)
+
+    expect(fullText).toBe('See [9].')
+    expect(citations.size).toBe(0)
+  })
+
+  test('preserves startKey offset across segments', () => {
+    const refs = [makeRef(1), makeRef(2)]
+    const { fullText, citations } = buildDocumentCitationPlaceholders('A [1] B [2].', refs, 5)
+
+    expect(fullText).toBe('A {{CITE:5}} B {{CITE:6}}.')
+    expect(citations.size).toBe(2)
+    expect(citations.has(5)).toBe(true)
+    expect(citations.has(6)).toBe(true)
+  })
+
+  test('encodes ID as fileId:fileName:pageNumber when page provided', () => {
+    const refs = [makeRef(1, { pageNumber: 3 })]
+    const { citations } = buildDocumentCitationPlaceholders('See [1].', refs)
+
+    expect(citations.get(0)?.[0].id).toBe('file-1:doc-1.pdf:3')
+  })
+
+  test('does not match markdown link [N](url)', () => {
+    const refs = [makeRef(1)]
+    const { fullText, citations } = buildDocumentCitationPlaceholders('Click [1](https://x.com).', refs)
+
+    expect(fullText).toBe('Click [1](https://x.com).')
+    expect(citations.size).toBe(0)
   })
 })

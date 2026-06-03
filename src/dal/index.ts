@@ -133,3 +133,23 @@ export {
   type CreateSkillInput,
   type UpdateSkillInput,
 } from './skills'
+
+// Agents (ACP)
+export {
+  composeAllAgents,
+  createAgent,
+  deleteAgent,
+  getAgentSecrets,
+  getAllAgents,
+  getAllSystemAgents,
+  setAgentSecrets,
+  updateAgent,
+  useAgents,
+  useAllAgents,
+  useSystemAgents,
+  type AgentSecrets,
+  type CreateAgentInput,
+  type UpdateAgentPatch,
+} from './agents'
+export { builtInAgent } from '../defaults/agents'
+export { refreshSystemAgents, type RefreshSystemAgentsResult } from '../db/seeding/seed-agents'

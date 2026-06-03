@@ -2,7 +2,9 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { clearAdapterCache } from '@/acp/adapter-cache'
 import { useChatStore } from '@/chats/chat-store'
+import { builtInAgent } from '@/defaults/agents'
 import type { AutomationRun, ChatThread, Mode, Model, ThunderboltUIMessage } from '@/types'
 import { type Chat } from '@ai-sdk/react'
 import { mock } from 'bun:test'
@@ -63,7 +65,7 @@ export const createMockAutomationRun = (overrides?: Partial<AutomationRun>): Aut
  */
 export const createMockChatInstance = (
   messages: ThunderboltUIMessage[] = [],
-  status: 'ready' | 'streaming' = 'ready',
+  status: 'ready' | 'streaming' | 'submitted' | 'error' = 'ready',
 ): Chat<ThunderboltUIMessage> => {
   const sendMessage = mock(async (_params: { text: string; metadata?: Record<string, unknown> }) => {
     // Mock implementation
@@ -216,9 +218,13 @@ export const hydrateStore = (state: {
     const sessionData = {
       chatInstance: state.chatInstance,
       chatThread: state.chatThread,
+      connectionStatus: 'idle' as const,
+      connectionError: null,
       id: state.id,
+      pendingPermission: null,
       retryCount: 0,
       retriesExhausted: false,
+      selectedAgent: builtInAgent,
       selectedMode: state.selectedMode ?? defaultTestMode,
       selectedModel: state.selectedModel ?? defaultTestModel,
       triggerData: state.triggerData,
@@ -238,6 +244,10 @@ export const hydrateStore = (state: {
  * Resets the store to initial state for testing
  */
 export const resetStore = () => {
+  // The per-agent adapter cache is module-global, so a fresh test must forget
+  // any connection a prior test opened — otherwise a cache hit would suppress
+  // the next test's injected `connectToAgent`.
+  clearAdapterCache()
   useChatStore.setState({
     currentSessionId: null,
     mcpClients: [],

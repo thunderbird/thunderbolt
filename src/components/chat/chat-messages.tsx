@@ -3,9 +3,8 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { AssistantMessage } from './assistant-message'
-import { TriggerMessage } from './trigger-message'
+import { SyntheticLoadingPart } from './synthetic-loading-part'
 import { UserMessage } from './user-message'
-import { EncryptionMessage } from './encryption-message'
 import { ErrorMessage } from './error-message'
 import { useEffect, useMemo, useRef } from 'react'
 import { useCurrentChatSession } from '@/chats/chat-store'
@@ -18,14 +17,7 @@ type ChatMessagesProps = {
 }
 
 export const ChatMessages = ({ useChat = useChat_default }: ChatMessagesProps) => {
-  const {
-    chatInstance,
-    chatThread,
-    id: chatThreadId,
-    triggerData,
-    retryCount,
-    retriesExhausted,
-  } = useCurrentChatSession()
+  const { chatInstance, retryCount, retriesExhausted } = useCurrentChatSession()
 
   const { error: chatError, status, messages, regenerate } = useChat({ chat: chatInstance })
   const { triggerNotification } = useHaptics()
@@ -46,6 +38,11 @@ export const ChatMessages = ({ useChat = useChat_default }: ChatMessagesProps) =
     [messages],
   )
 
+  // After the user sends a message, AI SDK reports status `submitted` until the
+  // first assistant delta arrives. During that window there is no assistant
+  // message to host the synthetic loading indicator, so render it inline here.
+  const showSubmittedLoading = status === 'submitted' && lastMessage?.role !== 'assistant'
+
   const hasError = useMemo(() => {
     if (chatError) {
       return true
@@ -53,36 +50,11 @@ export const ChatMessages = ({ useChat = useChat_default }: ChatMessagesProps) =
     return lastMessage?.role === 'assistant' && !lastMessage.parts?.length && !isStreaming
   }, [chatError, lastMessage, isStreaming])
 
-  // Extract prompt from the first message (automation prompt) for trigger display
-  const triggerPromptContent = useMemo(
-    () =>
-      triggerData?.wasTriggeredByAutomation && messages[0]?.parts?.[0]?.type === 'text'
-        ? messages[0].parts[0].text
-        : undefined,
-    [messages, triggerData?.wasTriggeredByAutomation],
-  )
-
   return (
     <div>
-      {!!chatThread?.isEncrypted && <EncryptionMessage />}
-      {/* Automation trigger banner */}
-      {triggerData?.wasTriggeredByAutomation && (
-        <TriggerMessage
-          chatThreadId={chatThreadId}
-          title={triggerData.prompt?.title ?? undefined}
-          prompt={triggerPromptContent}
-          isDeleted={triggerData.isAutomationDeleted}
-        />
-      )}
-
-      {messages.map((message, i) => {
+      {messages.map((message) => {
         // Skip OAuth retry messages (they're hidden, only used to trigger regeneration)
         if (message.metadata?.oauthRetry === true) {
-          return null
-        }
-
-        // Skip the very first user message if it was the automation prompt (already shown above)
-        if (triggerData?.wasTriggeredByAutomation && i === 0) {
           return null
         }
 
@@ -114,6 +86,8 @@ export const ChatMessages = ({ useChat = useChat_default }: ChatMessagesProps) =
 
         return null
       })}
+
+      {showSubmittedLoading && <SyntheticLoadingPart isStreaming />}
 
       {/* Show error message if there's an error */}
       {hasError && (

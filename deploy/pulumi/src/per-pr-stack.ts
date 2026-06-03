@@ -39,6 +39,8 @@ export type PerPrStackArgs = {
   betterAuthSecret: pulumi.Output<string>
   /** Optional thunderbolt inference URL — same value across all stacks today. */
   thunderboltInferenceUrl?: pulumi.Input<string>
+  /** Optional Tinfoil enclave URL — same value across all stacks today. */
+  tinfoilEnclaveUrl?: pulumi.Input<string>
 }
 
 export type PerPrStackOutputs = {
@@ -307,6 +309,7 @@ export const createPerPrStack = (args: PerPrStackArgs): PerPrStackOutputs => {
             shared.mistralApiKeySecretArn,
             shared.thunderboltInferenceApiKeySecretArn,
             shared.exaApiKeySecretArn,
+            shared.tinfoilApiKeySecretArn,
           ],
         },
       ],
@@ -358,6 +361,7 @@ export const createPerPrStack = (args: PerPrStackArgs): PerPrStackOutputs => {
           { name: 'POWERSYNC_JWT_KID', value: 'enterprise-powersync' },
           { name: 'RATE_LIMIT_ENABLED', value: 'true' },
           { name: 'THUNDERBOLT_INFERENCE_URL', value: args.thunderboltInferenceUrl ?? '' },
+          { name: 'TINFOIL_ENCLAVE_URL', value: args.tinfoilEnclaveUrl ?? '' },
           { name: 'TRUSTED_PROXY', value: 'cloudflare' },
         ],
         secrets: [
@@ -371,6 +375,7 @@ export const createPerPrStack = (args: PerPrStackArgs): PerPrStackOutputs => {
           { name: 'MISTRAL_API_KEY', valueFrom: shared.mistralApiKeySecretArn },
           { name: 'THUNDERBOLT_INFERENCE_API_KEY', valueFrom: shared.thunderboltInferenceApiKeySecretArn },
           { name: 'EXA_API_KEY', valueFrom: shared.exaApiKeySecretArn },
+          { name: 'TINFOIL_API_KEY', valueFrom: shared.tinfoilApiKeySecretArn },
         ],
         portMappings: [{ containerPort: 8000 }],
         logConfiguration: logConfig('backend'),

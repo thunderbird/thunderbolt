@@ -26,6 +26,7 @@ type Secrets = {
   mistralApiKey: pulumi.Output<string>
   thunderboltInferenceApiKey: pulumi.Output<string>
   exaApiKey: pulumi.Output<string>
+  tinfoilApiKey: pulumi.Output<string>
 }
 
 type ServiceArgs = {
@@ -60,6 +61,8 @@ type ServiceArgs = {
   }
   /** URL for the Thunderbolt inference gateway (env: THUNDERBOLT_INFERENCE_URL). Optional. */
   thunderboltInferenceUrl?: pulumi.Input<string>
+  /** URL for the Tinfoil confidential-inference enclave (env: TINFOIL_ENCLAVE_URL). Optional. */
+  tinfoilEnclaveUrl?: pulumi.Input<string>
   /**
    * When true, backend runs behind a proxy whose X-Forwarded-* headers we trust
    * for client IP extraction (Cloudflare edge for preview stacks).
@@ -389,6 +392,9 @@ export const createServices = (args: ServiceArgs) => {
     exaApiKey: new aws.secretsmanager.Secret(`${name}-exa-api-key`, {
       tags: { Name: `${name}-exa-api-key` },
     }),
+    tinfoilApiKey: new aws.secretsmanager.Secret(`${name}-tinfoil-api-key`, {
+      tags: { Name: `${name}-tinfoil-api-key` },
+    }),
   }
 
   new aws.secretsmanager.SecretVersion(`${name}-oidc-secret-version`, {
@@ -427,6 +433,10 @@ export const createServices = (args: ServiceArgs) => {
     secretId: backendSecrets.exaApiKey.id,
     secretString: args.secrets.exaApiKey,
   })
+  new aws.secretsmanager.SecretVersion(`${name}-tinfoil-api-key-version`, {
+    secretId: backendSecrets.tinfoilApiKey.id,
+    secretString: args.secrets.tinfoilApiKey,
+  })
 
   new aws.iam.RolePolicy(`${name}-exec-backend-secrets-policy`, {
     role: execRoleInstance.name,
@@ -447,6 +457,7 @@ export const createServices = (args: ServiceArgs) => {
           backendSecrets.mistralApiKey.arn,
           backendSecrets.thunderboltInferenceApiKey.arn,
           backendSecrets.exaApiKey.arn,
+          backendSecrets.tinfoilApiKey.arn,
         ],
       }],
     }),
@@ -490,6 +501,7 @@ export const createServices = (args: ServiceArgs) => {
           { name: 'POWERSYNC_JWT_KID', value: 'enterprise-powersync' },
           { name: 'RATE_LIMIT_ENABLED', value: 'true' },
           { name: 'THUNDERBOLT_INFERENCE_URL', value: args.thunderboltInferenceUrl ?? '' },
+          { name: 'TINFOIL_ENCLAVE_URL', value: args.tinfoilEnclaveUrl ?? '' },
           // Cloudflare terminates TLS for preview stacks — trust its CF-Connecting-IP
           // header for rate limiting. Enterprise stacks leave this unset (direct socket IP).
           { name: 'TRUSTED_PROXY', value: args.behindCloudflareProxy ? 'cloudflare' : '' },
@@ -504,6 +516,7 @@ export const createServices = (args: ServiceArgs) => {
           { name: 'MISTRAL_API_KEY', valueFrom: backendSecrets.mistralApiKey.arn },
           { name: 'THUNDERBOLT_INFERENCE_API_KEY', valueFrom: backendSecrets.thunderboltInferenceApiKey.arn },
           { name: 'EXA_API_KEY', valueFrom: backendSecrets.exaApiKey.arn },
+          { name: 'TINFOIL_API_KEY', valueFrom: backendSecrets.tinfoilApiKey.arn },
         ],
         portMappings: [{ containerPort: 8000 }],
         logConfiguration: logConfig('backend'),

@@ -6,6 +6,7 @@ import { and, eq, inArray, isNull } from 'drizzle-orm'
 import type { AnyDrizzleDatabase } from '../db/database-interface'
 import { triggersTable } from '../db/tables'
 import { clearNullableColumns, nowIso } from '../lib/utils'
+import { getActiveWorkspaceId } from '../lib/active-workspace'
 import type { Trigger } from '../types'
 import type { DrizzleQueryWithPromise } from '@/types'
 
@@ -67,5 +68,5 @@ export const createTrigger = async (
   db: AnyDrizzleDatabase,
   data: Partial<Trigger> & Pick<Trigger, 'id' | 'promptId' | 'isEnabled' | 'triggerType' | 'triggerTime'>,
 ): Promise<void> => {
-  await db.insert(triggersTable).values(data)
+  await db.insert(triggersTable).values({ ...data, workspaceId: await getActiveWorkspaceId(db) })
 }

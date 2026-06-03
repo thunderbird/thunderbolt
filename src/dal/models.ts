@@ -7,6 +7,7 @@ import type { AnyDrizzleDatabase } from '../db/database-interface'
 import { modelsSecretsTable, modelsTable, settingsTable } from '../db/tables'
 import { hashModel } from '../defaults/models'
 import { clearNullableColumns, nowIso } from '../lib/utils'
+import { getActiveWorkspaceId } from '../lib/active-workspace'
 import type { DrizzleQueryWithPromise, Model } from '@/types'
 import { getLastMessage } from './chat-messages'
 import { createDefaultModelProfile, deleteModelProfileForModel } from './model-profiles'
@@ -203,8 +204,9 @@ export const createModel = async (
   data: Partial<Model> & Pick<Model, 'id' | 'provider' | 'name' | 'model'>,
 ): Promise<void> => {
   const { apiKey, ...modelData } = data
+  const workspaceId = await getActiveWorkspaceId(db)
   await db.transaction(async (tx) => {
-    await tx.insert(modelsTable).values(modelData)
+    await tx.insert(modelsTable).values({ ...modelData, workspaceId })
     if (apiKey != null) {
       await tx.insert(modelsSecretsTable).values({ modelId: data.id, apiKey })
     }

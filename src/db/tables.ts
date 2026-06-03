@@ -31,11 +31,13 @@ export const chatThreadsTable = sqliteTable(
     agentId: text('agent_id'),
     deletedAt: text('deleted_at'),
     userId: text('user_id'),
+    workspaceId: text('workspace_id'),
   },
   (table) => [
     index('idx_chat_threads_active')
       .on(table.id)
       .where(sql`${table.deletedAt} IS NULL`),
+    index('idx_chat_threads_workspace_id').on(table.workspaceId),
   ],
 )
 
@@ -53,11 +55,13 @@ export const chatMessagesTable = sqliteTable(
     metadata: text('metadata', { mode: 'json' }).$type<UIMessageMetadata>(),
     deletedAt: text('deleted_at'),
     userId: text('user_id'),
+    workspaceId: text('workspace_id'),
   },
   (table) => [
     index('idx_chat_messages_active')
       .on(table.chatThreadId)
       .where(sql`${table.deletedAt} IS NULL`),
+    index('idx_chat_messages_workspace_id').on(table.workspaceId),
   ],
 )
 
@@ -71,11 +75,13 @@ export const tasksTable = sqliteTable(
     defaultHash: text('default_hash'),
     deletedAt: text('deleted_at'),
     userId: text('user_id'),
+    workspaceId: text('workspace_id'),
   },
   (table) => [
     index('idx_tasks_active')
       .on(table.id)
       .where(sql`${table.deletedAt} IS NULL`),
+    index('idx_tasks_workspace_id').on(table.workspaceId),
   ],
 )
 
@@ -101,11 +107,13 @@ export const modelsTable = sqliteTable(
     vendor: text('vendor'),
     description: text('description'),
     userId: text('user_id'),
+    workspaceId: text('workspace_id'),
   },
   (table) => [
     index('idx_models_active')
       .on(table.id)
       .where(sql`${table.deletedAt} IS NULL`),
+    index('idx_models_workspace_id').on(table.workspaceId),
   ],
 )
 
@@ -136,11 +144,13 @@ export const mcpServersTable = sqliteTable(
     updatedAt: text('updated_at').default(sql`(datetime('now'))`),
     deletedAt: text('deleted_at'),
     userId: text('user_id'),
+    workspaceId: text('workspace_id'),
   },
   (table) => [
     index('idx_mcp_servers_active')
       .on(table.id)
       .where(sql`${table.deletedAt} IS NULL`),
+    index('idx_mcp_servers_workspace_id').on(table.workspaceId),
   ],
 )
 
@@ -154,11 +164,13 @@ export const promptsTable = sqliteTable(
     deletedAt: text('deleted_at'),
     defaultHash: text('default_hash'),
     userId: text('user_id'),
+    workspaceId: text('workspace_id'),
   },
   (table) => [
     index('idx_prompts_active')
       .on(table.id)
       .where(sql`${table.deletedAt} IS NULL`),
+    index('idx_prompts_workspace_id').on(table.workspaceId),
   ],
 )
 
@@ -174,11 +186,13 @@ export const skillsTable = sqliteTable(
     deletedAt: text('deleted_at'),
     defaultHash: text('default_hash'),
     userId: text('user_id'),
+    workspaceId: text('workspace_id'),
   },
   (table) => [
     index('idx_skills_active')
       .on(table.id)
       .where(sql`${table.deletedAt} IS NULL`),
+    index('idx_skills_workspace_id').on(table.workspaceId),
   ],
 )
 
@@ -192,11 +206,13 @@ export const triggersTable = sqliteTable(
     isEnabled: integer('is_enabled').default(1),
     deletedAt: text('deleted_at'),
     userId: text('user_id'),
+    workspaceId: text('workspace_id'),
   },
   (table) => [
     index('idx_triggers_active')
       .on(table.id)
       .where(sql`${table.deletedAt} IS NULL`),
+    index('idx_triggers_workspace_id').on(table.workspaceId),
   ],
 )
 
@@ -228,11 +244,13 @@ export const modelProfilesTable = sqliteTable(
     defaultHash: text('default_hash'),
     deletedAt: text('deleted_at'),
     userId: text('user_id'),
+    workspaceId: text('workspace_id'),
   },
   (table) => [
     index('idx_model_profiles_active')
       .on(table.modelId)
       .where(sql`${table.deletedAt} IS NULL`),
+    index('idx_model_profiles_workspace_id').on(table.workspaceId),
   ],
 )
 
@@ -249,11 +267,13 @@ export const modesTable = sqliteTable(
     defaultHash: text('default_hash'),
     deletedAt: text('deleted_at'),
     userId: text('user_id'),
+    workspaceId: text('workspace_id'),
   },
   (table) => [
     index('idx_modes_active')
       .on(table.id)
       .where(sql`${table.deletedAt} IS NULL`),
+    index('idx_modes_workspace_id').on(table.workspaceId),
   ],
 )
 
@@ -284,12 +304,14 @@ export const agentsTable = sqliteTable(
     icon: text('icon'),
     enabled: integer('enabled').default(1).notNull(),
     deletedAt: text('deleted_at'),
-    userId: text('user_id').notNull(),
+    userId: text('user_id'),
+    workspaceId: text('workspace_id'),
   },
   (table) => [
     index('idx_agents_active')
       .on(table.id)
       .where(sql`${table.deletedAt} IS NULL`),
+    index('idx_agents_workspace_id').on(table.workspaceId),
   ],
 )
 
@@ -335,7 +357,7 @@ export const workspaceMembershipsTable = sqliteTable(
   'workspace_memberships',
   {
     id: text('id').primaryKey(),
-    workspaceId: text('workspace_id').notNull(),
+    workspaceId: text('workspace_id'),
     userId: text('user_id').notNull(),
     role: text('role', { enum: ['admin', 'member'] }).notNull(),
     createdAt: text('created_at'),
@@ -352,7 +374,7 @@ export const workspacePendingMembershipsTable = sqliteTable(
   'workspace_pending_memberships',
   {
     id: text('id').primaryKey(),
-    workspaceId: text('workspace_id').notNull(),
+    workspaceId: text('workspace_id'),
     email: text('email').notNull(),
     role: text('role', { enum: ['admin', 'member'] }).notNull(),
     invitedByUserId: text('invited_by_user_id').notNull(),
@@ -366,7 +388,7 @@ export const workspacePermissionsTable = sqliteTable(
   'workspace_permissions',
   {
     id: text('id').primaryKey(),
-    workspaceId: text('workspace_id').notNull(),
+    workspaceId: text('workspace_id'),
     permissionKey: text('permission_key', { enum: ['manage_members', 'change_roles'] }).notNull(),
     requiredRole: text('required_role', { enum: ['admin', 'member'] }).notNull(),
   },

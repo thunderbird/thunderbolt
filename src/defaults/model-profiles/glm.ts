@@ -29,4 +29,5 @@ export const defaultModelProfileGlm51: ModelProfile = {
   deletedAt: null,
   defaultHash: null,
   userId: null,
+  workspaceId: null,
 }

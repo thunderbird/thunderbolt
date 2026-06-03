@@ -8,6 +8,7 @@ import { usePowerSyncCredentialsInvalidListener } from '@/hooks/use-powersync-cr
 import { isSsoMode } from '@/lib/auth-mode'
 import { clearAuthToken, getAuthToken, onAuthTokenChangedInOtherTab, setAuthToken } from '@/lib/auth-token'
 import { getPlatform } from '@/lib/platform'
+import { runPostAuthBootstrap } from '@/lib/post-auth-bootstrap'
 import { useTrustDomainRegistry } from '@/stores/trust-domain-registry'
 import { anonymousClient, emailOTPClient } from 'better-auth/client/plugins'
 import { createAuthClient } from 'better-auth/react'
@@ -161,6 +162,7 @@ export const AuthProvider = ({ children, cloudUrl, authClient: overrideClient }:
   return (
     <AuthContext.Provider value={value}>
       <SessionToRegistryMirror />
+      <SessionToWorkspaceBootstrap />
       {children}
     </AuthContext.Provider>
   )
@@ -192,6 +194,44 @@ const SessionToRegistryMirror = () => {
     useTrustDomainRegistry.getState().patchActiveServer({
       userId,
       isAnonymous: !!isAnonymous,
+    })
+  }, [userId, isAnonymous])
+
+  return null
+}
+
+/**
+ * Fires the post-auth bootstrap pipeline (connect sync → await personal
+ * workspace → reconcile defaults) on the leading edge of a non-null session.
+ *
+ * Sign-in handlers (OTP form, waitlist OTP, magic-link verify) also invoke
+ * `runPostAuthBootstrap` explicitly so their UI only finishes once the app is
+ * usable. This observer covers the cases without a click handler to hang the
+ * await off: SSO redirect completion, cached-token returning users, anon
+ * sign-in (post-v1). The function is in-flight-deduped so concurrent triggers
+ * share a single run.
+ */
+const SessionToWorkspaceBootstrap = () => {
+  const authClient = useAuth()
+  const { data: session } = authClient.useSession()
+  const userId = session?.user?.id
+  const isAnonymous = session?.user?.isAnonymous === true
+  const lastBootstrappedForRef = useRef<string | null>(null)
+
+  useEffect(() => {
+    if (!userId) {
+      return
+    }
+    if (lastBootstrappedForRef.current === userId) {
+      return
+    }
+    lastBootstrappedForRef.current = userId
+    void runPostAuthBootstrap({ kind: 'server', userId, isAnonymous }).catch((error) => {
+      // Sign-in handlers surface bootstrap failures to the user with a retry
+      // affordance. This observer fires for cases without a handler — log and
+      // let the workspace gate stay on its splash until the next try.
+      console.error('SessionToWorkspaceBootstrap failed:', error)
+      lastBootstrappedForRef.current = null
     })
   }, [userId, isAnonymous])
 

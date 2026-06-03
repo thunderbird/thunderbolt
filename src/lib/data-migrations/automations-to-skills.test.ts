@@ -66,7 +66,7 @@ describe('automationsToSkills', () => {
     // `resetTestDatabase` skips default reconciliation, so reconcile here to
     // give the assertion something real to check — without seeded defaults,
     // the table is empty and `every` would pass vacuously.
-    await reconcileDefaults(getDb())
+    await reconcileDefaults(getDb(), '00000000-0000-0000-0000-000000000001')
     const before = await getDb().select().from(skillsTable).where(isNull(skillsTable.deletedAt))
     expect(before.length).toBeGreaterThan(0)
 

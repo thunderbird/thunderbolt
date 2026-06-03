@@ -16,8 +16,6 @@ import { isSsoMode } from '@/lib/auth-mode'
 import { createAuthenticatedClient } from '@/lib/http'
 import { getDatabasePath, getDatabaseType } from '@/lib/platform'
 import { initPosthog, trackError } from '@/lib/posthog'
-import { runDataMigrations } from '@/lib/data-migrations'
-import { reconcileDefaults } from '@/lib/reconcile-defaults'
 import { resolveBootTrustDomain } from '@/lib/resolve-boot-trust-domain'
 import { TrayManager } from '@/lib/tray'
 import type { InitData } from '@/types'
@@ -44,10 +42,6 @@ const initializeDatabase = async (appDirPath: string): Promise<{ db: AnyDrizzleD
   const db = await database.initialize({ type: databaseType, path: dbPath })
   setDatabase(database)
   return { db, database }
-}
-
-const reconcileDefaultSettings = async (db: AnyDrizzleDatabase): Promise<void> => {
-  await reconcileDefaults(db)
 }
 
 const initializeTray = async (): Promise<{ tray: TrayIcon | undefined; window: Window | undefined }> => {
@@ -157,11 +151,9 @@ const executeInitializationSteps = async (httpClient?: HttpClient): Promise<Hand
 
   // Step 2: Database initialization
   let db: AnyDrizzleDatabase
-  let database: Database
   try {
     const result = await time('step2_initializeDatabase', () => initializeDatabase(appDirPath))
     db = result.db
-    database = result.database
   } catch (error) {
     console.error('Failed to initialize database:', error)
     const dbError = createHandleError('DATABASE_INIT_FAILED', 'Failed to initialize database', error)
@@ -172,34 +164,12 @@ const executeInitializationSteps = async (httpClient?: HttpClient): Promise<Hand
     }
   }
 
-  // Step 3: Wait for PowerSync initial sync before reconciling defaults
-  // This ensures synced data from the cloud is available before we check for missing defaults
-  try {
-    await time('step3_waitForInitialSync', () => database.waitForInitialSync())
-  } catch (error) {
-    // Non-critical - log and continue
-    console.warn('Failed to wait for initial sync:', error)
-  }
-
-  // Step 4: Reconcile defaults
-  try {
-    await time('step4_reconcileDefaults', () => reconcileDefaultSettings(db))
-  } catch (error) {
-    console.error('Failed to reconcile default settings:', error)
-    const reconcileError = createHandleError('RECONCILE_DEFAULTS_FAILED', 'Failed to reconcile default settings', error)
-    trackError(reconcileError, { initialization_step: 'reconcile_defaults' })
-    return {
-      success: false,
-      error: reconcileError,
-    }
-  }
-
-  // Step 4b: Run data migrations. Sits *after* reconcileDefaults so any
-  // newly-seeded defaults (e.g. the daily-brief skill) are present when a
-  // migration checks for slug collisions. The runner swallows per-migration
-  // failures itself (logging each one), so it never throws and never blocks
-  // initialization — each migration retries on the next launch.
-  await runDataMigrations(db)
+  // Sync, personal-workspace resolution, default reconciliation, and data
+  // migrations are post-auth concerns — they require either an authenticated
+  // session (server modes) or a local user id (standalone, post-v1). Running
+  // them here would crash for users sitting at the waitlist / login screen.
+  // They live in `runPostAuthBootstrap`, fired from each sign-in entry point
+  // and from a session-change observer in `AuthProvider`.
 
   // Step 5: Resolve runtime cloud URL (from the active server entry, set by Step 0) and
   // pull experimental feature tasks. The trust-domain registry is the source of truth;

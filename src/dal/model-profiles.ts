@@ -7,6 +7,7 @@ import type { AnyDrizzleDatabase } from '../db/database-interface'
 import { modelProfilesTable } from '../db/tables'
 import { defaultModelProfiles, hashModelProfile } from '../defaults/model-profiles'
 import { clearNullableColumns, nowIso } from '../lib/utils'
+import { getActiveWorkspaceId } from '../lib/active-workspace'
 import type { ModelProfile, ModelProfileRow } from '../types'
 
 const mapProfile = (row: ModelProfileRow): ModelProfile => row as ModelProfile
@@ -29,7 +30,7 @@ export const upsertModelProfile = async (
   const { defaultHash, ...updateFields } = data as Partial<ModelProfile> & { defaultHash?: string | null }
   await db
     .insert(modelProfilesTable)
-    .values(data)
+    .values({ ...data, workspaceId: await getActiveWorkspaceId(db) })
     .onConflictDoUpdate({
       target: modelProfilesTable.modelId,
       set: { ...updateFields, deletedAt: null },
@@ -48,6 +49,7 @@ export const createDefaultModelProfile = async (db: AnyDrizzleDatabase, modelId:
     .values({
       ...defaultProfile,
       defaultHash: hashModelProfile(defaultProfile),
+      workspaceId: await getActiveWorkspaceId(db),
     })
     .onConflictDoNothing()
 }

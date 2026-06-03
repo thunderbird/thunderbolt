@@ -20,6 +20,7 @@ const skill = (id: string, name: string): Skill => ({
   deletedAt: null,
   defaultHash: null,
   userId: null,
+  workspaceId: null,
 })
 
 const fakeUsePinnedSkills = (overrides?: {

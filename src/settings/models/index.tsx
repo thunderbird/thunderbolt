@@ -497,6 +497,7 @@ export default function ModelsPage() {
         vendor: null,
         description: null,
         userId: null,
+        workspaceId: null,
       }
       const model = await createModel(modelConfigWithDefaults, getProxyFetch)
 

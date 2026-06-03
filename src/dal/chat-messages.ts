@@ -8,6 +8,7 @@ import { isInsertConflictError } from '../lib/sqlite-errors'
 import { chatMessagesTable } from '../db/tables'
 import type { ChatMessage, ThunderboltUIMessage, UIMessageMetadata } from '../types'
 import { clearNullableColumns, convertUIMessageToDbChatMessage, nowIso } from '../lib/utils'
+import { getActiveWorkspaceId } from '../lib/active-workspace'
 import { getChatThread, updateChatThread } from './chat-threads'
 
 /**
@@ -77,6 +78,9 @@ export const saveMessagesWithContextUpdate = async (
     return convertUIMessageToDbChatMessage(message, threadId, messageParentId)
   })
 
+  // Resolve once before opening the tx — the same workspace applies to every
+  // message in the batch; recomputing per-row would mean redundant lookups.
+  const workspaceId = await getActiveWorkspaceId(db)
   await db.transaction(async (tx) => {
     // Insert-first pattern for PowerSync compatibility.
     // PowerSync uses views which don't support ON CONFLICT, so we can't use upsert.
@@ -84,7 +88,7 @@ export const saveMessagesWithContextUpdate = async (
     // when multiple components save messages simultaneously.
     for (const msg of dbChatMessages) {
       try {
-        await tx.insert(chatMessagesTable).values(msg)
+        await tx.insert(chatMessagesTable).values({ ...msg, workspaceId })
       } catch (err) {
         if (!isInsertConflictError(err)) {
           throw err

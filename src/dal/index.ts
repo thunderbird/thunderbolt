@@ -134,6 +134,24 @@ export {
   type UpdateSkillInput,
 } from './skills'
 
+// Workspaces
+export { ensurePersonalWorkspace, getPersonalWorkspaceByOwner, getWorkspaceById, type Workspace } from './workspaces'
+export {
+  getMembership,
+  getMembershipsByUser,
+  getMembershipsByWorkspace,
+  isWorkspaceAdmin,
+  type WorkspaceMembership,
+} from './workspace-memberships'
+export { getPendingByWorkspace, type WorkspacePendingMembership } from './workspace-pending-memberships'
+export {
+  getPermissionsByWorkspace,
+  getRequiredRoleForPermission,
+  type WorkspacePermission,
+  type WorkspacePermissionKey,
+  type WorkspacePermissionRole,
+} from './workspace-permissions'
+
 // Agents (ACP)
 export {
   composeAllAgents,

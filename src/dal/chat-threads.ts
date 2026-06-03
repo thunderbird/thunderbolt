@@ -6,6 +6,7 @@ import { and, desc, eq, isNotNull, isNull } from 'drizzle-orm'
 import type { AnyDrizzleDatabase } from '../db/database-interface'
 import { chatMessagesTable, chatThreadsTable } from '../db/tables'
 import { clearNullableColumns, nowIso } from '../lib/utils'
+import { getActiveWorkspaceId } from '../lib/active-workspace'
 import { type ChatThread, type Model } from '@/types'
 import { getModel } from './models'
 import type { DrizzleQueryWithPromise } from '@/types'
@@ -63,7 +64,9 @@ export const createChatThread = async (
   },
   model: Model,
 ): Promise<void> => {
-  await db.insert(chatThreadsTable).values({ ...data, isEncrypted: model.isConfidential })
+  await db
+    .insert(chatThreadsTable)
+    .values({ ...data, isEncrypted: model.isConfidential, workspaceId: await getActiveWorkspaceId(db) })
 }
 
 /**

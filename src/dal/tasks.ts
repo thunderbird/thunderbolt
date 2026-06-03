@@ -6,6 +6,7 @@ import { and, asc, desc, eq, inArray, isNotNull, isNull, like, sql } from 'drizz
 import type { AnyDrizzleDatabase } from '../db/database-interface'
 import { tasksTable } from '../db/tables'
 import { clearNullableColumns, nowIso } from '../lib/utils'
+import { getActiveWorkspaceId } from '../lib/active-workspace'
 import type { Task } from '../types'
 import type { DrizzleQueryWithPromise } from '@/types'
 
@@ -93,5 +94,5 @@ export const createTask = async (
   db: AnyDrizzleDatabase,
   data: Pick<Task, 'id' | 'item' | 'order' | 'isComplete'>,
 ): Promise<void> => {
-  await db.insert(tasksTable).values(data)
+  await db.insert(tasksTable).values({ ...data, workspaceId: await getActiveWorkspaceId(db) })
 }

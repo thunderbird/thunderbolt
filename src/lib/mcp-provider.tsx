@@ -144,6 +144,14 @@ export const MCPProvider = ({ children, createClient: injectedCreateClient }: MC
   }
 
   const addServer = async (server: MCPServer) => {
+    // Idempotency guard against the synchronous source of truth. Two sync
+    // consumers can each observe a stale server list and call addServer for the
+    // same id before React re-renders — skip the duplicate so the server isn't
+    // registered (and connected) twice.
+    if (serversRef.current.some((s) => s.id === server.id)) {
+      return
+    }
+
     // Add server to state first
     commitServers((prev) => [
       ...prev,

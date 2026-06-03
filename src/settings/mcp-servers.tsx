@@ -23,7 +23,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip
 import { createMcpServer, deleteMcpServer, getRemoteMcpServers, setMcpServerCredentials } from '@/dal'
 import { useDatabase } from '@/contexts'
 import { mcpServersTable } from '@/db/tables'
-import { useMcpSync } from '@/hooks/use-mcp-sync'
+import { useMCP } from '@/lib/mcp-provider'
 import { type McpServer } from '@/types'
 import { useMutation } from '@tanstack/react-query'
 import { useQuery } from '@powersync/tanstack-react-query'
@@ -43,7 +43,10 @@ type ServerTools = {
 export default function McpServersPage() {
   const db = useDatabase()
   const cloudUrl = useLocalSettingsStore((s) => s.cloudUrl)
-  const { servers: mcpServers } = useMcpSync()
+  // Read provider connection state read-only for status display. Sync ownership
+  // lives in the single global useMcpSync() in AppContent — running it here too
+  // would re-run the reconciliation effect and double-register servers.
+  const { servers: mcpServers } = useMCP()
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false)
   const [newServerUrl, setNewServerUrl] = useState('')
   const [newServerTransport, setNewServerTransport] = useState<MCPTransportType>('http')

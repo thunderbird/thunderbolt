@@ -92,6 +92,27 @@ describe('MCPProvider reconnect', () => {
     expect(results[1]).toBe(reconnected as unknown as ProviderMCPClient)
   })
 
+  it('adds a server only once when the same id is added twice (no double connection)', async () => {
+    let calls = 0
+    const createClient = async (): Promise<MCPClient> => {
+      calls++
+      return fakeClient()
+    }
+
+    const { result } = renderProvider(createClient)
+
+    await act(async () => {
+      await result.current.addServer(server)
+      await result.current.addServer(server)
+    })
+
+    // The idempotency guard kept the second add from registering a duplicate
+    // entry or opening a second connection.
+    expect(result.current.servers.filter((s) => s.id === server.id)).toHaveLength(1)
+    expect(calls).toBe(1)
+    expect(result.current.getEnabledClients()).toHaveLength(1)
+  })
+
   it('closes the orphan and returns null when the server is removed mid-reconnect', async () => {
     const initial = fakeClient()
     const orphan = fakeClient()

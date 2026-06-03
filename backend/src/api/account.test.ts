@@ -423,15 +423,19 @@ describe('Account API', () => {
         lastSeen: now,
         createdAt: now,
       })
+      // Placeholder workspaceId — this test predates workspaces and its runtime path
+      // is already broken on main; the literal satisfies the post-THU-550 NOT NULL type.
       await db.insert(tasksTable).values({
         id: 'task-cascade-1',
         item: 'Task',
         userId,
+        workspaceId: '00000000-0000-0000-0000-000000000000',
       })
       await db.insert(chatThreadsTable).values({
         id: 'thread-cascade-1',
         title: 'Thread',
         userId,
+        workspaceId: '00000000-0000-0000-0000-000000000000',
       })
 
       const response = await app.handle(

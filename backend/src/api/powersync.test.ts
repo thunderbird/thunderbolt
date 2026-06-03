@@ -1474,6 +1474,9 @@ describe('PowerSync API', () => {
         prompt: 'Hello',
         modelId: 'gpt-4',
         userId,
+        // Placeholder — this test was authored before workspaces existed; the runtime
+        // path is already broken on main, this satisfies the post-THU-550 type only.
+        workspaceId: '00000000-0000-0000-0000-000000000000',
       })
 
       const deletedAtIso = '2026-02-18T16:41:12.428Z'

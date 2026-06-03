@@ -5,6 +5,7 @@
 import type { db as DbType } from '@/db/client'
 import { type PowerSyncTableName } from '@shared/powersync-tables'
 import { createUserScopedHandler } from './user-scoped'
+import { createWorkspaceScopedHandler } from './workspace-scoped'
 import { UploadRejection, type RejectedOp, type UploadCtx, type UploadHandler, type UploadOp } from './types'
 import { workspacesHandler } from './workspaces'
 import { workspaceMembershipsHandler } from './workspace-memberships'
@@ -21,18 +22,8 @@ import { workspacePermissionsHandler } from './workspace-permissions'
  * row-relational rather than row-owned.
  */
 export const handlers: Record<PowerSyncTableName, UploadHandler> = {
+  // Account-level (user-scoped, not workspace-scoped).
   settings: createUserScopedHandler({ tableName: 'settings' }),
-  chat_threads: createUserScopedHandler({ tableName: 'chat_threads' }),
-  chat_messages: createUserScopedHandler({ tableName: 'chat_messages' }),
-  tasks: createUserScopedHandler({ tableName: 'tasks' }),
-  models: createUserScopedHandler({ tableName: 'models' }),
-  mcp_servers: createUserScopedHandler({ tableName: 'mcp_servers' }),
-  prompts: createUserScopedHandler({ tableName: 'prompts' }),
-  skills: createUserScopedHandler({ tableName: 'skills' }),
-  triggers: createUserScopedHandler({ tableName: 'triggers' }),
-  modes: createUserScopedHandler({ tableName: 'modes' }),
-  model_profiles: createUserScopedHandler({ tableName: 'model_profiles' }),
-  agents: createUserScopedHandler({ tableName: 'agents' }),
   // Devices are partially writable: server-managed columns are stripped, DELETE
   // goes through the dedicated revoke API (`/api/account/devices/:id`).
   devices: createUserScopedHandler({
@@ -40,6 +31,23 @@ export const handlers: Record<PowerSyncTableName, UploadHandler> = {
     denyColumns: ['revoked_at', 'trusted', 'public_key', 'mlkem_public_key', 'approval_pending'],
     denyDelete: true,
   }),
+
+  // Workspace-scoped, user-private (only the row's author may read/write).
+  chat_threads: createWorkspaceScopedHandler({ tableName: 'chat_threads', userPrivate: true }),
+  chat_messages: createWorkspaceScopedHandler({ tableName: 'chat_messages', userPrivate: true }),
+  tasks: createWorkspaceScopedHandler({ tableName: 'tasks', userPrivate: true }),
+
+  // Workspace-scoped, shared (any member of the workspace may read/write).
+  models: createWorkspaceScopedHandler({ tableName: 'models', userPrivate: false }),
+  mcp_servers: createWorkspaceScopedHandler({ tableName: 'mcp_servers', userPrivate: false }),
+  prompts: createWorkspaceScopedHandler({ tableName: 'prompts', userPrivate: false }),
+  skills: createWorkspaceScopedHandler({ tableName: 'skills', userPrivate: false }),
+  triggers: createWorkspaceScopedHandler({ tableName: 'triggers', userPrivate: false }),
+  modes: createWorkspaceScopedHandler({ tableName: 'modes', userPrivate: false }),
+  model_profiles: createWorkspaceScopedHandler({ tableName: 'model_profiles', userPrivate: false }),
+  agents: createWorkspaceScopedHandler({ tableName: 'agents', userPrivate: false }),
+
+  // Workspace registry tables — bespoke handlers (commit 2).
   workspaces: workspacesHandler,
   workspace_memberships: workspaceMembershipsHandler,
   workspace_pending_memberships: workspacePendingMembershipsHandler,

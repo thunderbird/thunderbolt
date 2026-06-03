@@ -30,9 +30,14 @@ type MCPServerConnection = MCPServer & {
  *  the server is gone/disabled or the reconnect failed. */
 type ReconnectClient = (client: MCPClient) => Promise<MCPClient | null>
 
+/** An enabled, connected client paired with its server name. The name is the
+ *  tool-namespacing prefix consumed by `mergeMcpTools` so different servers'
+ *  tools don't collide. */
+type NamedMCPClient = { name: string; client: MCPClient }
+
 type MCPContextType = {
   servers: MCPServerConnection[]
-  getEnabledClients: () => MCPClient[]
+  getEnabledClients: () => NamedMCPClient[]
   reconnectServer: (serverId: string) => Promise<MCPClient | null>
   reconnectClient: ReconnectClient
   addServer: (server: MCPServer) => Promise<void>
@@ -250,11 +255,11 @@ export const MCPProvider = ({ children, createClient: injectedCreateClient }: MC
     return reconnectServer(serverId)
   }
 
-  const getEnabledClients = (): MCPClient[] => {
+  const getEnabledClients = (): NamedMCPClient[] => {
     // Use ref to always get current servers, avoiding stale closures
     return serversRef.current
       .filter((server) => server.enabled && server.isConnected && server.client)
-      .map((server) => server.client!)
+      .map((server) => ({ name: server.name, client: server.client! }))
   }
 
   // Cleanup on unmount
@@ -303,5 +308,5 @@ export const useMCP = () => {
   return context
 }
 
-// Export the MCPClient + ReconnectClient types for use in other files
-export type { MCPClient, ReconnectClient }
+// Export the MCPClient + ReconnectClient + NamedMCPClient types for use in other files
+export type { MCPClient, NamedMCPClient, ReconnectClient }

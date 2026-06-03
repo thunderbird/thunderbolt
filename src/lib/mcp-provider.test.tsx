@@ -113,6 +113,22 @@ describe('MCPProvider reconnect', () => {
     expect(result.current.getEnabledClients()).toHaveLength(1)
   })
 
+  it('returns enabled clients as { name, client } pairs for tool namespacing', async () => {
+    const client = fakeClient()
+    const createClient = async (): Promise<MCPClient> => client
+
+    const { result } = renderProvider(createClient)
+
+    await act(async () => {
+      await result.current.addServer(server)
+    })
+
+    const enabled = result.current.getEnabledClients()
+    expect(enabled).toHaveLength(1)
+    expect(enabled[0].name).toBe(server.name)
+    expect(enabled[0].client).toBe(client as unknown as ProviderMCPClient)
+  })
+
   it('closes the orphan and returns null when the server is removed mid-reconnect', async () => {
     const initial = fakeClient()
     const orphan = fakeClient()

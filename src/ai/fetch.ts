@@ -49,8 +49,20 @@ import {
   type ToolSet,
 } from 'ai'
 import { type MCPClient } from '@ai-sdk/mcp'
+import type { NamedMCPClient } from '@/lib/mcp-provider'
 import { isClosedConnectionError } from '@/lib/mcp-errors'
 import { createMessageMetadata } from './message-metadata'
+
+/**
+ * Sanitizes a server name into a valid tool prefix.
+ * Server names are already meaningful (set by user or auto-generated),
+ * so this just lowercases and replaces non-alphanumeric chars with underscores.
+ */
+export const sanitizeToolPrefix = (serverName: string): string =>
+  serverName
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '_')
+    .replace(/^_|_$/g, '') || 'mcp'
 
 /** Wrap fetch to include credentials in SSO mode so session cookies are sent to the backend. */
 const fetch: typeof baseFetch = (input, init) =>
@@ -88,7 +100,7 @@ type AiFetchStreamingResponseOptions = {
   modelId: string
   modeSystemPrompt?: string
   modeName?: string
-  mcpClients?: MCPClient[]
+  mcpClients?: NamedMCPClient[]
   reconnectClient?: ReconnectClient
   httpClient: HttpClient
   /** Returns the current proxy fetch. Production callers pass the getter from
@@ -99,49 +111,78 @@ type AiFetchStreamingResponseOptions = {
 
 /**
  * Merge every enabled MCP server's tools into `toolset` (mutated in place and
- * returned). Per server we call `tools()`; if it rejects with a closed-connection
- * error we reconnect once and retry. A reconnect that fails or a second `tools()`
- * failure skips that server — discovery must never block the send. Non-closed
- * errors propagate so real failures aren't masked. Tool names that collide with
- * an already-registered tool (built-in or earlier MCP server) are skipped
- * (first-registered wins). Injectable for unit tests.
+ * returned alongside a human-readable summary). Each tool is namespaced
+ * `<prefix>_<toolName>` where `prefix` is the server name sanitized via
+ * {@link sanitizeToolPrefix} — so two servers that both expose `list_services`
+ * stay distinct and the model knows which server owns each tool. Servers whose
+ * names sanitize to the same prefix are disambiguated (`render`, `render_2`, …).
+ *
+ * Per server we call `tools()`; if it rejects with a closed-connection error we
+ * reconnect once and retry. A reconnect that fails or a second `tools()` failure
+ * skips that server — discovery must never block the send. Non-closed errors
+ * propagate so real failures aren't masked. After prefixing, a name that still
+ * collides with an already-registered tool is skipped (first-registered wins) as
+ * a safety net. The returned `summary` lists `- <prefix> (<n> tools)` per server
+ * (undefined when no MCP tools were added), injected into the system prompt.
+ * Injectable for unit tests.
  */
 export const mergeMcpTools = async (
   toolset: Record<string, Tool>,
-  mcpClients: MCPClient[],
+  mcpClients: NamedMCPClient[],
   reconnectClient: ReconnectClient,
-): Promise<Record<string, Tool>> => {
-  const addTools = (tools: Awaited<ReturnType<MCPClient['tools']>>) => {
+): Promise<{ toolset: Record<string, Tool>; summary?: string }> => {
+  const usedPrefixes = new Map<string, number>()
+  const mcpServerEntries: string[] = []
+
+  /** Prefix and merge one server's tools, returning how many were added. */
+  const addTools = (prefix: string, serverName: string, tools: Awaited<ReturnType<MCPClient['tools']>>): number => {
+    let added = 0
     for (const [name, tool] of Object.entries(tools)) {
-      if (toolset[name]) {
-        console.warn(`MCP tool "${name}" conflicts with an existing tool and was skipped`)
+      const prefixedName = `${prefix}_${name}`
+      if (toolset[prefixedName]) {
+        console.warn(`MCP tool "${prefixedName}" from "${serverName}" conflicts with an existing tool and was skipped`)
         continue
       }
-      toolset[name] = tool as Tool
+      toolset[prefixedName] = tool as Tool
+      added++
     }
+    return added
   }
 
-  for (const client of mcpClients) {
-    try {
-      addTools(await client.tools())
-    } catch (err) {
-      if (!isClosedConnectionError(err)) {
-        throw err
-      }
-      const fresh = await reconnectClient(client)
-      if (!fresh) {
-        console.warn('MCP server reconnect failed; skipping its tools for this send')
-        continue
-      }
+  for (const { name: serverName, client } of mcpClients) {
+    const basePrefix = sanitizeToolPrefix(serverName)
+    const count = usedPrefixes.get(basePrefix) ?? 0
+    const prefix = count > 0 ? `${basePrefix}_${count + 1}` : basePrefix
+    usedPrefixes.set(basePrefix, count + 1)
+
+    const merge = async (): Promise<number> => {
       try {
-        addTools(await fresh.tools())
-      } catch (retryErr) {
-        console.warn('MCP server still failing after reconnect; skipping its tools for this send', retryErr)
+        return addTools(prefix, serverName, await client.tools())
+      } catch (err) {
+        if (!isClosedConnectionError(err)) {
+          throw err
+        }
+        const fresh = await reconnectClient(client)
+        if (!fresh) {
+          console.warn('MCP server reconnect failed; skipping its tools for this send')
+          return 0
+        }
+        try {
+          return addTools(prefix, serverName, await fresh.tools())
+        } catch (retryErr) {
+          console.warn('MCP server still failing after reconnect; skipping its tools for this send', retryErr)
+          return 0
+        }
       }
+    }
+
+    const added = await merge()
+    if (added > 0) {
+      mcpServerEntries.push(`- ${prefix} (${added} tools)`)
     }
   }
 
-  return toolset
+  return { toolset, summary: mcpServerEntries.length > 0 ? mcpServerEntries.join('\n') : undefined }
 }
 
 export const createModel = async (modelConfig: Model, getProxyFetch: () => FetchFn) => {
@@ -303,11 +344,13 @@ export const aiFetchStreamingResponse = async ({
   const sourceCollector: SourceMetadata[] = []
 
   let toolset: Record<string, Tool> = {}
+  let mcpServersSummary: string | undefined
   if (supportsTools) {
     const availableTools = await getAvailableTools(httpClient, sourceCollector)
     toolset = { ...createToolset(availableTools) }
 
-    await mergeMcpTools(toolset, mcpClients ?? [], reconnectClient ?? (async () => null))
+    const merged = await mergeMcpTools(toolset, mcpClients ?? [], reconnectClient ?? (async () => null))
+    mcpServersSummary = merged.summary
   } else {
     console.log('Model does not support tools, skipping tool setup')
   }
@@ -348,6 +391,7 @@ export const aiFetchStreamingResponse = async ({
     },
     integrationStatus: computeIntegrationStatusLabel(),
     modeSystemPrompt,
+    mcpServersSummary,
   })
 
   const activeNudges = getNudgeMessagesFromProfile(profile, modeName)

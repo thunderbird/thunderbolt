@@ -5,7 +5,7 @@
 import { updateSettings } from '@/dal'
 import { updateChatThread } from '@/dal/chat-threads'
 import { getDb } from '@/db/database'
-import { type MCPClient, type ReconnectClient } from '@/lib/mcp-provider'
+import { type NamedMCPClient, type ReconnectClient } from '@/lib/mcp-provider'
 import { trackEvent } from '@/lib/posthog'
 import type { Agent } from '@/types/acp'
 import type { AutomationRun, ChatThread, Mode, Model, ThunderboltUIMessage } from '@/types'
@@ -45,7 +45,7 @@ export type ChatSession = {
 
 type ChatStoreState = {
   currentSessionId: string | null
-  mcpClients: MCPClient[]
+  mcpClients: NamedMCPClient[]
   reconnectClient: ReconnectClient
   modes: Mode[]
   models: Model[]
@@ -55,7 +55,7 @@ type ChatStoreState = {
 type ChatStoreActions = {
   createSession(session: ChatSession): void
   setCurrentSessionId(id: string): void
-  setMcpClients(mcpClients: MCPClient[]): void
+  setMcpClients(mcpClients: NamedMCPClient[]): void
   setReconnectClient(reconnectClient: ReconnectClient): void
   setModes(modes: Mode[]): void
   setModels(models: Model[]): void

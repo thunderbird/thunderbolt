@@ -40,6 +40,28 @@ type ServerTools = {
   [serverId: string]: string[]
 }
 
+/**
+ * Derives a short, meaningful server name from a remote MCP URL — used to
+ * pre-fill (and re-derive) the editable name field. The name namespaces the
+ * server's tools in the prompt, so a readable default like `github` or `render`
+ * beats the raw hostname.
+ * - Localhost: includes port for disambiguation (`localhost-3000`)
+ * - Remote: 3+ domain segments → second-to-last (`api.github.com` → `github`);
+ *   2 segments → first (`render.com` → `render`); 1 → as-is
+ */
+const generateServerName = (url: string): string => {
+  try {
+    const { hostname, port } = new URL(url)
+    if (hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '::1') {
+      return port ? `localhost-${port}` : 'localhost'
+    }
+    const parts = hostname.split('.')
+    return parts.length >= 3 ? parts[parts.length - 2] : parts[0]
+  } catch {
+    return ''
+  }
+}
+
 export default function McpServersPage() {
   const db = useDatabase()
   const cloudUrl = useLocalSettingsStore((s) => s.cloudUrl)
@@ -48,6 +70,8 @@ export default function McpServersPage() {
   // would re-run the reconciliation effect and double-register servers.
   const { servers: mcpServers } = useMCP()
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false)
+  const [newServerName, setNewServerName] = useState('')
+  const [nameManuallyEdited, setNameManuallyEdited] = useState(false)
   const [newServerUrl, setNewServerUrl] = useState('')
   const [newServerTransport, setNewServerTransport] = useState<MCPTransportType>('http')
   const [newServerToken, setNewServerToken] = useState('')
@@ -135,6 +159,8 @@ export default function McpServersPage() {
     },
     onSuccess: () => {
       setIsAddDialogOpen(false)
+      setNewServerName('')
+      setNameManuallyEdited(false)
       setNewServerUrl('')
       setNewServerTransport('http')
       setNewServerToken('')
@@ -209,9 +235,9 @@ export default function McpServersPage() {
       return
     }
 
-    // Extract server name from URL
-    const url = new URL(newServerUrl)
-    const name = `${url.hostname}${url.port ? `:${url.port}` : ''} MCP Server`
+    // Name prefixes the server's tools in the prompt. Use the user's name when
+    // set, otherwise fall back to the value derived from the URL.
+    const name = newServerName.trim() || generateServerName(newServerUrl)
 
     addServerMutation.mutate({ name, url: newServerUrl })
   }
@@ -323,12 +349,30 @@ export default function McpServersPage() {
             </ResponsiveModalHeader>
             <div className="grid gap-4 pt-4 pb-2">
               <div className="grid gap-2">
+                <Label htmlFor="name">Name</Label>
+                <Input
+                  id="name"
+                  placeholder="Server name (used to prefix tools)"
+                  value={newServerName}
+                  onChange={(e) => {
+                    setNewServerName(e.target.value)
+                    setNameManuallyEdited(true)
+                  }}
+                />
+              </div>
+
+              <div className="grid gap-2">
                 <Label htmlFor="url">Server URL</Label>
                 <Input
                   id="url"
                   placeholder="http://localhost:8000/mcp/"
                   value={newServerUrl}
-                  onChange={(e) => setNewServerUrl(e.target.value)}
+                  onChange={(e) => {
+                    setNewServerUrl(e.target.value)
+                    if (!nameManuallyEdited) {
+                      setNewServerName(generateServerName(e.target.value))
+                    }
+                  }}
                   onKeyDown={handleUrlKeyDown}
                 />
               </div>

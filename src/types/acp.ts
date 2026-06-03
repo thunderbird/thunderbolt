@@ -10,7 +10,7 @@
  * the adapter contract consumed by `src/chats/chat-instance.ts` `customFetch`.
  */
 
-import type { MCPClient } from '@ai-sdk/mcp'
+import type { MCPClient, NamedMCPClient } from '@/lib/mcp-provider'
 import type { HttpClient } from '@/lib/http'
 import type { FetchFn } from '@/lib/proxy-fetch'
 import type { ChatThread, Mode, Model, SaveMessagesFunction } from '@/types'
@@ -55,7 +55,7 @@ export type AgentAdapterContext = {
   saveMessages: SaveMessagesFunction
   selectedMode: Mode
   selectedModel: Model
-  mcpClients: MCPClient[]
+  mcpClients: NamedMCPClient[]
   /** Reconnect a dropped MCP client at the `tools()` boundary; returns a fresh
    *  client or null. Supplied by the MCP provider via the chat store. */
   reconnectClient: (client: MCPClient) => Promise<MCPClient | null>

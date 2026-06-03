@@ -45,7 +45,7 @@ export type ChatSession = {
 
 type ChatStoreState = {
   currentSessionId: string | null
-  mcpClients: NamedMCPClient[]
+  getMcpClients: () => NamedMCPClient[]
   reconnectClient: ReconnectClient
   modes: Mode[]
   models: Model[]
@@ -55,7 +55,7 @@ type ChatStoreState = {
 type ChatStoreActions = {
   createSession(session: ChatSession): void
   setCurrentSessionId(id: string): void
-  setMcpClients(mcpClients: NamedMCPClient[]): void
+  setGetMcpClients(getMcpClients: () => NamedMCPClient[]): void
   setReconnectClient(reconnectClient: ReconnectClient): void
   setModes(modes: Mode[]): void
   setModels(models: Model[]): void
@@ -71,7 +71,11 @@ type ChatStore = ChatStoreState & ChatStoreActions
 
 const initialState: ChatStoreState = {
   currentSessionId: null,
-  mcpClients: [],
+  // Read fresh per send (not snapshotted) so that after a provider reconnect
+  // swaps a server's client, the next send sees the new client instead of a
+  // stale, closed one. Hydration replaces this with the provider's
+  // `getEnabledClients` getter, which reads its live `serversRef`.
+  getMcpClients: () => [],
   // Replaced by the MCP provider's `reconnectClient` on hydration. The default
   // no-op (returns null) makes `mergeMcpTools` skip a dropped server rather than
   // reconnect — correct for the pre-hydration / no-provider case.
@@ -101,8 +105,8 @@ export const useChatStore = create<ChatStore>()((set, get) => ({
     set({ currentSessionId: id })
   },
 
-  setMcpClients: (mcpClients) => {
-    set({ mcpClients })
+  setGetMcpClients: (getMcpClients) => {
+    set({ getMcpClients })
   },
 
   setReconnectClient: (reconnectClient) => {

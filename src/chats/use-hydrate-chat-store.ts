@@ -95,7 +95,7 @@ export const useHydrateChatStore = ({ id, isNew }: UseHydrateChatStoreParams) =>
   }
 
   const hydrateChatStore = async () => {
-    const { createSession, sessions, setCurrentSessionId, setMcpClients, setReconnectClient, setModes, setModels } =
+    const { createSession, sessions, setCurrentSessionId, setGetMcpClients, setReconnectClient, setModes, setModels } =
       useChatStore.getState()
 
     // Check if this ID belongs to a deleted chat - redirect to 404 if so
@@ -109,13 +109,11 @@ export const useHydrateChatStore = ({ id, isNew }: UseHydrateChatStoreParams) =>
     if (sessions.has(id)) {
       setCurrentSessionId(id)
 
-      const [modes, models, mcpClients] = await Promise.all([
-        getAllModes(db),
-        getAvailableModels(db),
-        getEnabledClients(),
-      ])
+      const [modes, models] = await Promise.all([getAllModes(db), getAvailableModels(db)])
 
-      setMcpClients(mcpClients)
+      // Store the provider's getter (not a snapshot) so each send reads the
+      // current connected clients, including any swapped in by a reconnect.
+      setGetMcpClients(getEnabledClients)
       setReconnectClient(reconnectClient)
       setModes(modes)
       setModels(models)
@@ -136,7 +134,6 @@ export const useHydrateChatStore = ({ id, isNew }: UseHydrateChatStoreParams) =>
       modes,
       models,
       triggerData,
-      mcpClients,
       customAgentRows,
       systemAgentRows,
     ] = await Promise.all([
@@ -147,7 +144,6 @@ export const useHydrateChatStore = ({ id, isNew }: UseHydrateChatStoreParams) =>
       getAllModes(db),
       getAvailableModels(db),
       getTriggerPromptForThread(db, id),
-      getEnabledClients(),
       getAllAgents(db),
       getAllSystemAgents(db),
     ])
@@ -227,7 +223,9 @@ export const useHydrateChatStore = ({ id, isNew }: UseHydrateChatStoreParams) =>
 
     setCurrentSessionId(id)
 
-    setMcpClients(mcpClients)
+    // Store the provider's getter (not a snapshot) so each send reads the
+    // current connected clients, including any swapped in by a reconnect.
+    setGetMcpClients(getEnabledClients)
     setReconnectClient(reconnectClient)
     setModes(modes)
     setModels(models)

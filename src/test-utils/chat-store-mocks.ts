@@ -207,9 +207,11 @@ export const hydrateStore = (state: {
     store.setModels(state.models)
   }
 
-  // Set MCP clients
+  // Set MCP clients getter. Tests pass a static array; wrap it so the store's
+  // `getMcpClients()` returns it (mirrors the provider's live getter in prod).
   if (state.mcpClients) {
-    store.setMcpClients(state.mcpClients as never[])
+    const clients = state.mcpClients as never[]
+    store.setGetMcpClients(() => clients)
   }
 
   // Create or update session - use defaults if selectedMode/Model is null
@@ -245,7 +247,7 @@ export const hydrateStore = (state: {
 export const resetStore = () => {
   useChatStore.setState({
     currentSessionId: null,
-    mcpClients: [],
+    getMcpClients: () => [],
     modes: [],
     models: [],
     sessions: new Map(),

@@ -104,7 +104,7 @@ const hydrateSessionWith = (id: string, agent: Agent, chatThread: ChatThread | n
   }
   useChatStore.setState({
     currentSessionId: id,
-    mcpClients: [],
+    getMcpClients: () => [],
     modes: [mockMode],
     models: [mockModel],
     sessions: new Map([[id, session]]),

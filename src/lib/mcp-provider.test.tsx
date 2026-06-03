@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { useChatStore } from '@/chats/chat-store'
 import { setupTestDatabase, teardownTestDatabase } from '@/dal/test-utils'
 import { createQueryTestWrapper } from '@/test-utils/react-query'
 import type { MCPClient } from '@ai-sdk/mcp'
@@ -162,5 +163,39 @@ describe('MCPProvider reconnect', () => {
     expect(results[0]).toBeNull()
     // The freshly created client had nowhere to go → it was closed.
     expect(orphan.closeCount()).toBe(1)
+  })
+
+  it('chat store reading clients fresh sees the reconnected client, not a stale snapshot', async () => {
+    const initial = fakeClient()
+    const reconnected = fakeClient()
+    let calls = 0
+    const createClient = async (): Promise<MCPClient> => {
+      calls++
+      return calls === 1 ? initial : reconnected
+    }
+
+    const { result } = renderProvider(createClient)
+
+    await act(async () => {
+      await result.current.addServer(server)
+    })
+
+    // Mirror hydration: store the provider's getter (not a snapshot). This is
+    // the contract `use-hydrate-chat-store` relies on for option B.
+    useChatStore.getState().setGetMcpClients(result.current.getEnabledClients)
+
+    const before = useChatStore.getState().getMcpClients()
+    expect(before[0].client).toBe(initial as unknown as ProviderMCPClient)
+
+    // A drop forces a reconnect that swaps the client reference (C1 → C2).
+    await act(async () => {
+      await result.current.reconnectServer(server.id)
+    })
+
+    // The next send reads fresh: it must see the reconnected client. A stale
+    // snapshot would still return `initial` (the closed client) — the bug.
+    const after = useChatStore.getState().getMcpClients()
+    expect(after[0].client).toBe(reconnected as unknown as ProviderMCPClient)
+    expect(after[0].client).not.toBe(initial as unknown as ProviderMCPClient)
   })
 })

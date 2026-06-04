@@ -67,12 +67,12 @@ export const MCPProvider = ({ children, createClient: injectedCreateClient }: MC
   const cloudUrl = useLocalSettingsStore((s) => s.cloudUrl)
   const db = useDatabase()
 
-  serversRef.current = servers
-
-  /** Update the server list AND `serversRef` in lockstep. The ref is the
-   *  synchronous source of truth: async reconnect logic re-checks it after an
-   *  await to detect a server removed/disabled mid-flight, which can't wait for
-   *  React to flush the render that would otherwise refresh the ref. */
+  /** Update the server list AND `serversRef` in lockstep — this is the SOLE
+   *  writer of `servers`, so the ref stays in sync without a render-phase
+   *  mirror. The ref is the synchronous source of truth: async reconnect logic
+   *  re-checks it after an await to detect a server removed/disabled mid-flight,
+   *  which can't wait for React to flush the render that would otherwise refresh
+   *  the ref. */
   const commitServers = (next: (prev: MCPServerConnection[]) => MCPServerConnection[]) => {
     serversRef.current = next(serversRef.current)
     setServers(serversRef.current)
@@ -175,7 +175,7 @@ export const MCPProvider = ({ children, createClient: injectedCreateClient }: MC
   }
 
   const updateServerStatus = (serverId: string, enabled: boolean) => {
-    const server = servers.find((s) => s.id === serverId)
+    const server = serversRef.current.find((s) => s.id === serverId)
     if (!server) {
       return
     }

@@ -63,6 +63,7 @@ export const MCPProvider = ({ children, createClient: injectedCreateClient }: MC
   const clientRefs = useRef<Map<string, MCPClient>>(new Map())
   const clientToServerId = useRef<Map<MCPClient, string>>(new Map())
   const reconnectsInFlight = useRef<Map<string, Promise<MCPClient | null>>>(new Map())
+  const connectsInFlight = useRef<Map<string, Promise<void>>>(new Map())
   const serversRef = useRef<MCPServerConnection[]>([])
   const cloudUrl = useLocalSettingsStore((s) => s.cloudUrl)
   const db = useDatabase()
@@ -95,34 +96,66 @@ export const MCPProvider = ({ children, createClient: injectedCreateClient }: MC
     clientToServerId.current.set(client, serverId)
   }
 
-  const connectServer = async (server: MCPServer) => {
+  const connectServer = (server: MCPServer): Promise<void> => {
     if (!server.enabled) {
       commitServers((prev) =>
         prev.map((s) =>
           s.id === server.id ? { ...s, client: null, isConnected: false, error: null, enabled: false } : s,
         ),
       )
-      return
+      return Promise.resolve()
     }
 
-    try {
-      const client = await createClient(server.id, server.url, server.type)
-
-      cacheClient(server.id, client)
-
-      commitServers((prev) =>
-        prev.map((s) => (s.id === server.id ? { ...s, client, isConnected: true, error: null, enabled: true } : s)),
-      )
-    } catch (err) {
-      console.error('Failed to connect to MCP server:', server.name, err)
-      commitServers((prev) =>
-        prev.map((s) =>
-          s.id === server.id
-            ? { ...s, client: null, isConnected: false, error: err as Error, enabled: server.enabled }
-            : s,
-        ),
-      )
+    // Coalesce overlapping connects for the same server into one in-flight
+    // promise. Two sync consumers can re-fire the enable→connect path before
+    // React flushes (the addServer→connect vs updateServerStatus(enable)→connect
+    // race), so without this a second createClient could cacheClient over a live
+    // client without closing it — leaking the first connection.
+    const inFlight = connectsInFlight.current.get(server.id)
+    if (inFlight) {
+      return inFlight
     }
+
+    const promise = (async (): Promise<void> => {
+      try {
+        const client = await createClient(server.id, server.url, server.type)
+
+        // The server may have been removed/disabled while we were connecting —
+        // close the orphan rather than caching/committing (and re-enabling) a
+        // client nothing can reach.
+        const current = serversRef.current.find((s) => s.id === server.id)
+        if (!current || !current.enabled) {
+          closeClient(client)
+          return
+        }
+
+        cacheClient(server.id, client)
+
+        commitServers((prev) =>
+          prev.map((s) => (s.id === server.id ? { ...s, client, isConnected: true, error: null, enabled: true } : s)),
+        )
+      } catch (err) {
+        console.error('Failed to connect to MCP server:', server.name, err)
+        // Skip committing an error onto a server that was removed/disabled
+        // mid-connect — its row is gone or intentionally off.
+        const current = serversRef.current.find((s) => s.id === server.id)
+        if (!current || !current.enabled) {
+          return
+        }
+        commitServers((prev) =>
+          prev.map((s) =>
+            s.id === server.id
+              ? { ...s, client: null, isConnected: false, error: err as Error, enabled: server.enabled }
+              : s,
+          ),
+        )
+      }
+    })()
+
+    connectsInFlight.current.set(server.id, promise)
+    return promise.finally(() => {
+      connectsInFlight.current.delete(server.id)
+    })
   }
 
   /** Close and forget a client, clearing both lookup directions. */
@@ -229,6 +262,12 @@ export const MCPProvider = ({ children, createClient: injectedCreateClient }: MC
         return client
       } catch (err) {
         console.error('Failed to reconnect MCP server:', server.name, err)
+        // Skip committing an error onto a server that was removed/disabled
+        // mid-reconnect — its row is gone or intentionally off.
+        const current = serversRef.current.find((s) => s.id === serverId)
+        if (!current || !current.enabled) {
+          return null
+        }
         commitServers((prev) =>
           prev.map((s) => (s.id === serverId ? { ...s, client: null, isConnected: false, error: err as Error } : s)),
         )

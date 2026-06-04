@@ -165,6 +165,124 @@ describe('MCPProvider reconnect', () => {
     expect(orphan.closeCount()).toBe(1)
   })
 
+  // UNIT 1 (#3): a connect resolving after the server was removed/disabled
+  // mid-flight must close the orphan and not cache/commit/re-enable it.
+  it('closes the orphan and does not re-add the server when removed mid-connect', async () => {
+    const orphan = fakeClient()
+    const gate = deferred<void>()
+    const createClient = async (): Promise<MCPClient> => {
+      await gate.promise
+      return orphan
+    }
+
+    const { result } = renderProvider(createClient)
+
+    await act(async () => {
+      const pending = result.current.addServer(server)
+      // Remove the server while the initial connect's createClient is in flight.
+      result.current.removeServer(server.id)
+      gate.resolve()
+      await pending
+    })
+
+    expect(orphan.closeCount()).toBe(1)
+    expect(result.current.getEnabledClients()).toHaveLength(0)
+    expect(result.current.servers.some((s) => s.id === server.id)).toBe(false)
+  })
+
+  it('closes the orphan and does not re-enable the server when disabled mid-connect', async () => {
+    const orphan = fakeClient()
+    const gate = deferred<void>()
+    const createClient = async (): Promise<MCPClient> => {
+      await gate.promise
+      return orphan
+    }
+
+    const { result } = renderProvider(createClient)
+
+    await act(async () => {
+      const pending = result.current.addServer(server)
+      // Disable the server while the initial connect's createClient is in flight.
+      result.current.updateServerStatus(server.id, false)
+      gate.resolve()
+      await pending
+    })
+
+    expect(orphan.closeCount()).toBe(1)
+    expect(result.current.servers.find((s) => s.id === server.id)?.enabled).toBe(false)
+    expect(result.current.getEnabledClients()).toHaveLength(0)
+  })
+
+  // UNIT 1 (#2): the addServer→connect vs updateServerStatus(enable)→connect
+  // race. Without coalescing the second connect would cacheClient over the
+  // first live client without closing it, leaking the first connection.
+  it('coalesces overlapping connects for the same server (no leaked client)', async () => {
+    const created: Array<ReturnType<typeof fakeClient>> = []
+    const gate = deferred<void>()
+    const createClient = async (): Promise<MCPClient> => {
+      await gate.promise
+      const c = fakeClient()
+      created.push(c)
+      return c
+    }
+
+    const { result } = renderProvider(createClient)
+
+    await act(async () => {
+      // addServer fires the first connect; a concurrent enable re-fires it.
+      const a = result.current.addServer(server)
+      result.current.updateServerStatus(server.id, true)
+      gate.resolve()
+      await a
+    })
+
+    // Both connect calls collapsed into one createClient invocation.
+    expect(created).toHaveLength(1)
+    // Every created client is either the live enabled client or was closed —
+    // nothing leaked.
+    const enabled = result.current.getEnabledClients()
+    expect(enabled).toHaveLength(1)
+    created.forEach((c) => {
+      const isLive = enabled.some((e) => e.client === (c as unknown as ProviderMCPClient))
+      expect(isLive || c.closeCount() > 0).toBe(true)
+    })
+  })
+
+  // UNIT 1 (#6): a reconnect whose createClient rejects after the server was
+  // disabled mid-flight must NOT commit an error onto the now-disabled row.
+  it('does not commit a reconnect error onto a server disabled mid-reconnect', async () => {
+    const initial = fakeClient()
+    let calls = 0
+    const gate = deferred<void>()
+    const createClient = async (): Promise<MCPClient> => {
+      calls++
+      if (calls === 1) {
+        return initial
+      }
+      await gate.promise
+      throw new Error('reconnect boom')
+    }
+
+    const { result } = renderProvider(createClient)
+
+    await act(async () => {
+      await result.current.addServer(server)
+    })
+
+    await act(async () => {
+      const pending = result.current.reconnectServer(server.id)
+      // Disable the server while the reconnect's createClient is still pending.
+      result.current.updateServerStatus(server.id, false)
+      gate.resolve()
+      await pending
+    })
+
+    const row = result.current.servers.find((s) => s.id === server.id)
+    expect(row?.enabled).toBe(false)
+    // The error must not have been committed onto the disabled row.
+    expect(row?.error).toBeNull()
+  })
+
   it('chat store reading clients fresh sees the reconnected client, not a stale snapshot', async () => {
     const initial = fakeClient()
     const reconnected = fakeClient()

@@ -3,9 +3,14 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { createModel } from '@/dal'
-import { resetTestDatabase, setupTestDatabase, teardownTestDatabase } from '@/dal/test-utils'
+import { resetTestDatabase, setupTestDatabase, teardownTestDatabase, wsId } from '@/dal/test-utils'
 import { getDb } from '@/db/database'
-import { renderWithReactivity, waitForElement } from '@/test-utils/powersync-reactivity-test'
+import {
+  renderWithReactivity,
+  waitForElement,
+  resetTestTrustDomain,
+  seedTestTrustDomain,
+} from '@/test-utils/powersync-reactivity-test'
 import { getClock } from '@/testing-library'
 import '@testing-library/jest-dom'
 import { act, cleanup, screen } from '@testing-library/react'
@@ -23,17 +28,19 @@ describe('ModelsPage reactivity', () => {
   })
 
   beforeEach(async () => {
+    seedTestTrustDomain()
     await resetTestDatabase()
   })
 
   afterEach(() => {
+    resetTestTrustDomain()
     cleanup()
   })
 
   it('updates when models table changes', async () => {
     const db = getDb()
     const modelId1 = uuidv7()
-    await createModel(db, {
+    await createModel(db, wsId, {
       id: modelId1,
       provider: 'openai',
       name: 'First Model',
@@ -50,7 +57,7 @@ describe('ModelsPage reactivity', () => {
     expect(screen.getByText('First Model')).toBeInTheDocument()
 
     const modelId2 = uuidv7()
-    await createModel(db, {
+    await createModel(db, wsId, {
       id: modelId2,
       provider: 'anthropic',
       name: 'Second Model',

@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { setupTestDatabase, teardownTestDatabase, resetTestDatabase } from '@/dal/test-utils'
+import { setupTestDatabase, teardownTestDatabase, resetTestDatabase, wsId } from '@/dal/test-utils'
 import { getCurrentSession, resetStore } from '@/test-utils/chat-store-mocks'
 import { createQueryTestWrapper } from '@/test-utils/react-query'
 import { act, cleanup, renderHook } from '@testing-library/react'
@@ -38,6 +38,7 @@ const createDefaultMode = async () => {
     order: 0,
     deletedAt: null,
     defaultHash: null,
+    workspaceId: wsId,
   })
 
   return 'mode-chat'
@@ -64,6 +65,7 @@ const createSystemModel = async () => {
     deletedAt: null,
     url: null,
     defaultHash: null,
+    workspaceId: wsId,
   })
 
   return modelId
@@ -90,6 +92,7 @@ const createTestModel = async () => {
     deletedAt: null,
     url: null,
     defaultHash: null,
+    workspaceId: wsId,
   })
 
   return modelId
@@ -99,13 +102,14 @@ const createTestModel = async () => {
  * Helper function to create a test thread
  */
 const createTestThread = async (modelId: string, title: string = 'Test Thread') => {
-  const model = await getModel(getDb(), modelId)
+  const model = await getModel(getDb(), wsId, modelId)
   if (!model) {
     throw new Error('Test setup failed')
   }
   const threadId = uuidv7()
   await createChatThread(
     getDb(),
+    wsId,
     {
       id: threadId,
       title,
@@ -269,7 +273,7 @@ describe('useHydrateChatStore', () => {
         createTestMessage({ role: 'assistant', parts: [{ type: 'text', text: 'Hi there' }] }),
       ]
 
-      await saveMessagesWithContextUpdate(getDb(), threadId, messages)
+      await saveMessagesWithContextUpdate(getDb(), wsId, threadId, messages)
 
       const { result } = renderHook(() => useHydrateChatStore({ id: threadId, isNew: false }), {
         wrapper: TestWrapper,
@@ -429,7 +433,7 @@ describe('useHydrateChatStore', () => {
       })
 
       // The newly-created thread row should carry the agent the user picked.
-      const stored = await getThread(getDb(), threadId)
+      const stored = await getThread(getDb(), wsId, threadId)
       expect(stored?.agentId).toBe('haystack-rag')
     })
 

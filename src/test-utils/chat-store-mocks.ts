@@ -47,6 +47,7 @@ export const createMockChatThread = (overrides?: Partial<ChatThread>): ChatThrea
     id: 'thread-1',
     title: 'Test Thread',
     isEncrypted: 0,
+    workspaceId: '00000000-0000-0000-0000-000000000001',
     ...overrides,
   }) as ChatThread
 

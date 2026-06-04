@@ -13,6 +13,7 @@ import {
   shouldRetry,
 } from '@/ai/step-logic'
 import { getAllSkills, getIntegrationStatus, getModel, getModelProfile, getSettings } from '@/dal'
+import { requireActiveWorkspaceId } from '@/lib/active-workspace'
 import { extractLastUserText, resolveSkillTokenInstructions } from '@/skills/resolve-skill-system-messages'
 import { getDb } from '@/db/database'
 import { getActiveCloudUrl } from '@/stores/trust-domain-registry'
@@ -277,6 +278,7 @@ export const aiFetchStreamingResponse = async ({
   // reach this function the user turn is already persisted.
 
   const db = getDb()
+  const workspaceId = await requireActiveWorkspaceId(db)
 
   // Fetch all settings in a single query (returns camelCase by default)
   const settings = await getSettings(db, {
@@ -294,13 +296,13 @@ export const aiFetchStreamingResponse = async ({
 
   const integrationStatus = await getIntegrationStatus(db)
 
-  const model = await getModel(db, modelId)
+  const model = await getModel(db, workspaceId, modelId)
 
   if (!model) {
     throw new Error('Model not found')
   }
 
-  const profile = await getModelProfile(db, modelId)
+  const profile = await getModelProfile(db, workspaceId, modelId)
 
   const supportsTools = model.toolUsage !== 0
 
@@ -494,7 +496,7 @@ export const aiFetchStreamingResponse = async ({
     // the context-overflow estimate so the budget and the actual prepend
     // stay in lockstep.
     const lastUserText = extractLastUserText(messages)
-    const allSkills = await getAllSkills(db)
+    const allSkills = await getAllSkills(db, workspaceId)
     const instructionBySlug = new Map<string, string>()
     for (const skill of allSkills) {
       if (skill.enabled === 1 && skill.name && skill.instruction) {

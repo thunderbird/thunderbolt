@@ -156,8 +156,8 @@ export const useChatStore = create<ChatStore>()((set, get) => ({
 
     const db = getDb()
 
-    if (session.chatThread) {
-      await updateChatThread(db, session.chatThread.id, { agentId: agent.id })
+    if (session.chatThread?.workspaceId) {
+      await updateChatThread(db, session.chatThread.workspaceId, session.chatThread.id, { agentId: agent.id })
     }
 
     // Persist the global last-used agent so new chats default to it (mirrors

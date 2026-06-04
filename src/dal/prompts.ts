@@ -9,24 +9,28 @@ import { chatMessagesTable, chatThreadsTable, promptsTable } from '../db/tables'
 import { hashPrompt } from '../defaults/automations'
 import type { AutomationRun, Prompt } from '../types'
 import { clearNullableColumns, convertUIMessageToDbChatMessage, nowIso } from '../lib/utils'
-import { getActiveWorkspaceId } from '../lib/active-workspace'
 import { getModel } from './models'
 import { createChatThread } from './chat-threads'
 import { deleteTriggersForPrompt, deleteTriggersForPrompts } from './triggers'
 import type { DrizzleQueryWithPromise } from '@/types'
 
 /**
- * Returns a Drizzle query for all prompts, optionally filtered by search query (excluding soft-deleted).
- * Use with PowerSync's toCompilableQuery, or await the result to execute.
+ * Returns a Drizzle query for all prompts in the given workspace, optionally filtered
+ * by search query (excluding soft-deleted). Use with PowerSync's toCompilableQuery, or
+ * await the result to execute.
  */
-export const getAllPrompts = (db: AnyDrizzleDatabase, searchQuery?: string) => {
+export const getAllPrompts = (db: AnyDrizzleDatabase, workspaceId: string, searchQuery?: string) => {
   const query = db
     .select()
     .from(promptsTable)
     .where(
       searchQuery
-        ? and(like(promptsTable.prompt, `%${searchQuery}%`), isNull(promptsTable.deletedAt))
-        : isNull(promptsTable.deletedAt),
+        ? and(
+            eq(promptsTable.workspaceId, workspaceId),
+            like(promptsTable.prompt, `%${searchQuery}%`),
+            isNull(promptsTable.deletedAt),
+          )
+        : and(eq(promptsTable.workspaceId, workspaceId), isNull(promptsTable.deletedAt)),
     )
     .orderBy(asc(promptsTable.id))
     .limit(50)
@@ -35,10 +39,12 @@ export const getAllPrompts = (db: AnyDrizzleDatabase, searchQuery?: string) => {
 }
 
 /**
- * Returns information about the automation that triggered a chat thread, if any (excluding soft-deleted)
+ * Returns information about the automation that triggered a chat thread in the given
+ * workspace, if any (excluding soft-deleted).
  */
 export const getTriggerPromptForThread = async (
   db: AnyDrizzleDatabase,
+  workspaceId: string,
   threadId: string,
 ): Promise<AutomationRun | null> => {
   // Fetch the associated prompt and thread info in a single query via join
@@ -51,7 +57,13 @@ export const getTriggerPromptForThread = async (
     })
     .from(chatThreadsTable)
     .leftJoin(promptsTable, and(eq(chatThreadsTable.triggeredBy, promptsTable.id), isNull(promptsTable.deletedAt)))
-    .where(and(eq(chatThreadsTable.id, threadId), isNull(chatThreadsTable.deletedAt)))
+    .where(
+      and(
+        eq(chatThreadsTable.workspaceId, workspaceId),
+        eq(chatThreadsTable.id, threadId),
+        isNull(chatThreadsTable.deletedAt),
+      ),
+    )
     .get()
 
   if (!result) {
@@ -69,12 +81,26 @@ export const getTriggerPromptForThread = async (
 }
 
 /**
- * Update an automation/prompt (preserves defaultHash for modification tracking)
+ * Update an automation/prompt in the given workspace (preserves defaultHash for
+ * modification tracking).
  */
-export const updateAutomation = async (db: AnyDrizzleDatabase, id: string, updates: Partial<Prompt>): Promise<void> => {
-  // Don't allow updating defaultHash - it must be preserved for modification tracking
-  const { defaultHash, ...updateFields } = updates as Partial<Prompt> & { defaultHash?: string }
-  await db.update(promptsTable).set(updateFields).where(eq(promptsTable.id, id))
+export const updateAutomation = async (
+  db: AnyDrizzleDatabase,
+  workspaceId: string,
+  id: string,
+  updates: Partial<Prompt>,
+): Promise<void> => {
+  // Strip `defaultHash` (preserved for modification tracking) and `workspaceId`
+  // (the row stays in the workspace it was filtered to — callers can't reassign).
+  const {
+    defaultHash,
+    workspaceId: _workspaceId,
+    ...updateFields
+  } = updates as Partial<Prompt> & { defaultHash?: string }
+  await db
+    .update(promptsTable)
+    .set(updateFields)
+    .where(and(eq(promptsTable.id, id), eq(promptsTable.workspaceId, workspaceId)))
 }
 
 /**
@@ -88,83 +114,99 @@ export const updateAutomation = async (db: AnyDrizzleDatabase, id: string, updat
  */
 export const resetAutomationToDefault = async (
   db: AnyDrizzleDatabase,
+  workspaceId: string,
   id: string,
   defaultAutomation: Prompt,
 ): Promise<void> => {
-  const { defaultHash, userId, ...defaultFields } = defaultAutomation
+  const {
+    defaultHash,
+    workspaceId: _seedWs,
+    userId,
+    ...defaultFields
+  } = defaultAutomation as Prompt & {
+    workspaceId?: string | null
+  }
   await db
     .update(promptsTable)
     .set({ ...defaultFields, defaultHash: hashPrompt(defaultAutomation) })
-    .where(eq(promptsTable.id, id))
+    .where(and(eq(promptsTable.id, id), eq(promptsTable.workspaceId, workspaceId)))
 }
 
 /**
- * Soft deletes an automation and its associated triggers (sets deletedAt datetime)
- * Scrubs all nullable columns for privacy
- * Only updates records that haven't been deleted yet to preserve original deletion datetimes
+ * Soft deletes an automation and its associated triggers in the given workspace.
+ * Scrubs all nullable columns for privacy. Only updates records that haven't been
+ * deleted yet to preserve original deletion datetimes.
  */
-export const deleteAutomation = async (db: AnyDrizzleDatabase, id: string): Promise<void> => {
+export const deleteAutomation = async (db: AnyDrizzleDatabase, workspaceId: string, id: string): Promise<void> => {
   await db.transaction(async (tx) => {
-    await deleteTriggersForPrompt(tx, id)
+    await deleteTriggersForPrompt(tx, workspaceId, id)
     await tx
       .update(promptsTable)
       .set({ ...clearNullableColumns(promptsTable), deletedAt: nowIso() })
-      .where(and(eq(promptsTable.id, id), isNull(promptsTable.deletedAt)))
+      .where(and(eq(promptsTable.id, id), eq(promptsTable.workspaceId, workspaceId), isNull(promptsTable.deletedAt)))
   })
 }
 
 /**
- * Soft deletes all prompts that reference a model (sets deletedAt datetime)
- * Also soft-deletes all associated triggers for each prompt
- * Scrubs all nullable columns for privacy
- * This replaces the cascade behavior that no longer fires with soft deletes
+ * Soft deletes all prompts that reference a model in the given workspace. Also
+ * soft-deletes all associated triggers for each prompt. Scrubs all nullable columns
+ * for privacy. This replaces the cascade behavior that no longer fires with soft deletes.
  */
-export const deletePromptsForModel = async (db: AnyDrizzleDatabase, modelId: string): Promise<void> => {
+export const deletePromptsForModel = async (
+  db: AnyDrizzleDatabase,
+  workspaceId: string,
+  modelId: string,
+): Promise<void> => {
   const prompts = await db
     .select({ id: promptsTable.id })
     .from(promptsTable)
-    .where(and(eq(promptsTable.modelId, modelId), isNull(promptsTable.deletedAt)))
+    .where(
+      and(eq(promptsTable.workspaceId, workspaceId), eq(promptsTable.modelId, modelId), isNull(promptsTable.deletedAt)),
+    )
 
   const promptIds = prompts.map((p) => p.id)
 
-  await deleteTriggersForPrompts(db, promptIds)
+  await deleteTriggersForPrompts(db, workspaceId, promptIds)
   await db
     .update(promptsTable)
     .set({ ...clearNullableColumns(promptsTable), deletedAt: nowIso() })
-    .where(and(eq(promptsTable.modelId, modelId), isNull(promptsTable.deletedAt)))
+    .where(
+      and(eq(promptsTable.workspaceId, workspaceId), eq(promptsTable.modelId, modelId), isNull(promptsTable.deletedAt)),
+    )
 }
 
-export const getPrompt = async (db: AnyDrizzleDatabase, id: string): Promise<Prompt | null> => {
+export const getPrompt = async (db: AnyDrizzleDatabase, workspaceId: string, id: string): Promise<Prompt | null> => {
   const prompt = await db
     .select()
     .from(promptsTable)
-    .where(and(eq(promptsTable.id, id), isNull(promptsTable.deletedAt)))
+    .where(and(eq(promptsTable.id, id), eq(promptsTable.workspaceId, workspaceId), isNull(promptsTable.deletedAt)))
     .get()
 
   return (prompt ?? null) as Prompt | null
 }
 
 /**
- * Creates a new prompt/automation
+ * Creates a new prompt/automation in the given workspace.
  */
 export const createAutomation = async (
   db: AnyDrizzleDatabase,
+  workspaceId: string,
   data: Partial<Prompt> & Pick<Prompt, 'id' | 'prompt' | 'modelId'>,
 ): Promise<void> => {
-  await db.insert(promptsTable).values({ ...data, workspaceId: await getActiveWorkspaceId(db) })
+  await db.insert(promptsTable).values({ ...data, workspaceId })
 }
 
 /**
- * Runs an automation by creating a new chat thread and seeding it with the prompt
- * @returns The threadId of the newly created chat thread
+ * Runs an automation by creating a new chat thread in the given workspace and seeding
+ * it with the prompt. Returns the threadId of the newly created chat thread.
  */
-export const runAutomation = async (db: AnyDrizzleDatabase, promptId: string): Promise<string> => {
-  const prompt = await getPrompt(db, promptId)
+export const runAutomation = async (db: AnyDrizzleDatabase, workspaceId: string, promptId: string): Promise<string> => {
+  const prompt = await getPrompt(db, workspaceId, promptId)
   if (!prompt) {
     throw new Error('Prompt not found')
   }
 
-  const model = await getModel(db, prompt.modelId)
+  const model = await getModel(db, workspaceId, prompt.modelId)
   if (!model) {
     throw new Error('Model not found')
   }
@@ -174,6 +216,7 @@ export const runAutomation = async (db: AnyDrizzleDatabase, promptId: string): P
   await db.transaction(async (tx) => {
     await createChatThread(
       tx,
+      workspaceId,
       {
         id: threadId,
         title: prompt.title ?? 'Automation',
@@ -193,7 +236,7 @@ export const runAutomation = async (db: AnyDrizzleDatabase, promptId: string): P
 
     await tx.insert(chatMessagesTable).values({
       ...convertUIMessageToDbChatMessage(userMessage, threadId, null),
-      workspaceId: await getActiveWorkspaceId(db),
+      workspaceId,
     })
   })
 

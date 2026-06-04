@@ -73,3 +73,41 @@ export const testDbManager = new TestDbManager()
  * For test isolation, wrap each test in a Drizzle transaction and roll back.
  */
 export const createTestDb = () => testDbManager.createTestDb()
+
+/** An isolated, migrated PGlite instance plus a `close()` that releases its
+ *  WASM worker. */
+export type IsolatedTestDb = {
+  client: PGlite
+  db: typeof DbType
+  close: () => Promise<void>
+}
+
+/**
+ * Create a fully ISOLATED PGlite-backed test DB: its own WASM runtime and its
+ * own connection, NOT the shared BEGIN/ROLLBACK singleton (`createTestDb`).
+ *
+ * Use this for tests that bind a real `.listen()` server whose server-side
+ * `getSession` reads run on a separate task: those reads must see committed
+ * rows without racing the singleton's open transaction (head-of-line blocking
+ * under CI CPU starvation). Rows inserted here are committed on a real
+ * connection, so a concurrent reader on the same instance sees them.
+ *
+ * Caller MUST `await close()` in `afterAll` — PGlite 0.4.x leaves WASM worker
+ * threads open without an explicit close, crashing Bun with exit code 99 under
+ * `--rerun-each` (see test-setup.ts).
+ */
+export const createIsolatedTestDb = async (): Promise<IsolatedTestDb> => {
+  const client = new PGlite()
+  const db = drizzle({ client, schema })
+  const migrationsFolder = resolve(import.meta.dir, '../../drizzle')
+  await migrate(db, { migrationsFolder })
+  return {
+    client,
+    db,
+    close: async () => {
+      if (!client.closed) {
+        await client.close()
+      }
+    },
+  }
+}

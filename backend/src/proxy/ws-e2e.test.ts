@@ -2,11 +2,11 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { afterEach, describe, expect, it } from 'bun:test'
+import { afterAll, afterEach, beforeAll, describe, expect, it } from 'bun:test'
 import { createApp } from '@/index'
 import { user as userTable, session as sessionTable } from '@/db/auth-schema'
 import { createTestApp, type TestAppHandle } from '@/test-utils/e2e'
-import { createTestDb } from '@/test-utils/db'
+import { createIsolatedTestDb, type IsolatedTestDb } from '@/test-utils/db'
 import { encodeWsBearer } from '@shared/ws-bearer'
 import { createHmac } from 'crypto'
 import { createObservabilityRecorder } from './observability'
@@ -119,9 +119,65 @@ const waitForClose = (ws: WebSocket): Promise<{ code: number; reason: string }> 
     })
   })
 
+type WaitForOptions = { timeoutMs?: number; intervalMs?: number; label?: string }
+
+/** Poll `predicate` until it returns true, or reject after `timeoutMs`. Use ONLY
+ *  for conditions with no awaitable event (e.g. an upstream-side close code set
+ *  by a hooked `onclose`, or an observability log array filling). The poll
+ *  interval is the latency floor — keep it small. */
+const waitFor = async (predicate: () => boolean, options: WaitForOptions = {}): Promise<void> => {
+  const { timeoutMs = 4000, intervalMs = 5, label = 'condition' } = options
+  const deadline = Date.now() + timeoutMs
+  while (Date.now() < deadline) {
+    if (predicate()) {
+      return
+    }
+    await new Promise((r) => setTimeout(r, intervalMs))
+  }
+  if (predicate()) {
+    return
+  }
+  throw new Error(`waitFor timed out after ${timeoutMs}ms waiting for ${label}`)
+}
+
+type WsMessageEvent = { kind: 'message'; data: string }
+
+/** Resolve with the first `message` event on `ws`, or reject after `timeoutMs`.
+ *  Bind this BEFORE the trigger (send) so no message is missed; the timeout is
+ *  the only ceiling. Replaces fixed `setTimeout`-then-assert sleeps. */
+const nextMessageEvent = (ws: WebSocket, timeoutMs = 4000): Promise<WsMessageEvent> =>
+  new Promise((resolve, reject) => {
+    const timer = setTimeout(() => {
+      cleanup()
+      reject(new Error(`nextMessageEvent timed out after ${timeoutMs}ms`))
+    }, timeoutMs)
+    const onMessage = (e: MessageEvent) => {
+      cleanup()
+      resolve({ kind: 'message', data: typeof e.data === 'string' ? e.data : '' })
+    }
+    const cleanup = () => {
+      clearTimeout(timer)
+      ws.removeEventListener('message', onMessage)
+    }
+    ws.addEventListener('message', onMessage)
+  })
+
 describe('Universal proxy WebSocket relay /v1/proxy/ws — e2e', () => {
   let handles: TestAppHandle[] = []
   const upstreams: Array<{ stop: () => Promise<void> }> = []
+  // Isolated PGlite instance for the manual-`createApp` tests that bind a real
+  // `.listen()` server: their server-side getSession reads must not race the
+  // shared BEGIN/ROLLBACK singleton (head-of-line blocking under CI starvation).
+  let iso: IsolatedTestDb
+
+  beforeAll(async () => {
+    iso = await createIsolatedTestDb()
+  })
+
+  afterAll(async () => {
+    // PGlite 0.4.x leaves WASM workers open → Bun exit code 99 under --rerun-each.
+    await iso.close()
+  })
 
   afterEach(async () => {
     for (const h of handles) {
@@ -150,21 +206,18 @@ describe('Universal proxy WebSocket relay /v1/proxy/ws — e2e', () => {
       buildProtocols('wss://upstream.test/path', handle.bearerToken, ['acp.v1']),
     )
 
-    const messages: string[] = []
-    // Use onmessage rather than addEventListener: in Bun's same-process WS the
-    // addEventListener path has been observed to drop late-bound 'message' events.
-    client.onmessage = (e: MessageEvent) => {
-      messages.push(typeof e.data === 'string' ? e.data : '')
-    }
-
     await new Promise<void>((resolve, reject) => {
       client.addEventListener('open', () => resolve())
       client.addEventListener('error', () => reject(new Error('client errored')))
     })
 
+    // Bind the message listener BEFORE sending so no event is missed — this is
+    // the real fix for the "late-bound 'message' events get dropped" workaround
+    // (a flat 100ms sleep). Returns within ~1-5ms of the same-process round-trip.
+    const echo = nextMessageEvent(client)
     client.send('hello')
-    await new Promise((r) => setTimeout(r, 100))
-    expect(messages).toContain('echo: hello')
+    const ev = await echo
+    expect(ev.data).toBe('echo: hello')
     client.close()
   })
 
@@ -195,14 +248,12 @@ describe('Universal proxy WebSocket relay /v1/proxy/ws — e2e', () => {
       buildProtocols('wss://upstream.test/', handle.bearerToken, ['acp.v1']),
     )
     client.onopen = () => client.send('please close')
-    // Poll for the upstream-side close — Bun's same-process WS doesn't reliably
-    // surface late-binding events on the downstream client, so we observe at
-    // the upstream connection (where the proxy's relay sits) instead.
-    let polls = 0
-    while (observed.code === null && polls < 50) {
-      await new Promise((r) => setTimeout(r, 50))
-      polls++
-    }
+    // The upstream-side close code is set by a hooked `onclose` (no test-visible
+    // event to await), so this is a genuine condition — poll it. We observe at
+    // the upstream connection because on bun 1.3.13 the downstream client doesn't
+    // reliably surface late-binding close events (fixed upstream in 1.3.14:
+    // https://bun.com/blog/bun-v1.3.14 — close() during CONNECTING).
+    await waitFor(() => observed.code !== null, { timeoutMs: 4000, label: 'upstream close code' })
     expect(observed.code).toBe(4321)
     try {
       client.close()
@@ -296,9 +347,10 @@ describe('Universal proxy WebSocket relay /v1/proxy/ws — e2e', () => {
     const upstream = await startUpstreamServer()
     upstreams.push(upstream)
 
-    const { db, cleanup } = await createTestDb()
+    // Isolated DB (committed rows, no BEGIN/ROLLBACK): the real .listen() server
+    // reads this user/session on its own task without racing the shared singleton.
     const app = await createApp({
-      database: db,
+      database: iso.db,
       upstreamWsFactory: localUpstreamWsFactory(upstream.port),
     })
     await new Promise<void>((resolve) => {
@@ -306,18 +358,19 @@ describe('Universal proxy WebSocket relay /v1/proxy/ws — e2e', () => {
     })
     const proxyPort = (app as unknown as { server: { port: number } }).server!.port
     // Reuse the proxy teardown shape so afterEach force-closes connections.
+    // No per-handle DB cleanup: the isolated instance is closed once in afterAll.
     handles.push({
       app: app as unknown as TestAppHandle['app'],
-      db,
+      db: iso.db,
       bearerToken: '',
       email: '',
-      cleanup,
+      cleanup: async () => {},
     })
 
     const userId = `anon-${crypto.randomUUID()}`
     const sessionToken = `anon-session-${crypto.randomUUID()}`
     const now = new Date()
-    await db.insert(userTable).values({
+    await iso.db.insert(userTable).values({
       id: userId,
       name: 'Anon',
       email: `${userId}@anon.test`,
@@ -326,7 +379,7 @@ describe('Universal proxy WebSocket relay /v1/proxy/ws — e2e', () => {
       createdAt: now,
       updatedAt: now,
     })
-    await db.insert(sessionTable).values({
+    await iso.db.insert(sessionTable).values({
       id: `anon-session-row-${userId}`,
       token: sessionToken,
       expiresAt: new Date(now.getTime() + 60 * 60 * 1000),
@@ -380,22 +433,29 @@ const captureWsRecorder = () => {
   return { recorder, logs }
 }
 
-/** Wait until at least one `proxy_ws_relay` event has landed in `logs`, or
- *  the timeout expires. The relay emits on the downstream close handler which
- *  Bun delivers asynchronously after `safeWsClose`. */
-const waitForWsRelayLog = async (logs: Array<Record<string, unknown>>, timeoutMs = 1500) => {
-  const start = Date.now()
-  while (Date.now() - start < timeoutMs) {
-    if (logs.some((l) => (l as { event?: string }).event === 'proxy_ws_relay')) {
-      return
-    }
-    await new Promise((r) => setTimeout(r, 25))
-  }
-}
+/** Wait until at least one `proxy_ws_relay` event has landed in `logs`. The relay
+ *  emits on the downstream close handler, delivered asynchronously after
+ *  `safeWsClose`, so there's no single event to await — poll via `waitFor`. */
+const waitForWsRelayLog = (logs: Array<Record<string, unknown>>, timeoutMs = 4000): Promise<void> =>
+  waitFor(() => logs.some((l) => (l as { event?: string }).event === 'proxy_ws_relay'), {
+    timeoutMs,
+    label: 'proxy_ws_relay log',
+  })
 
 describe('Universal proxy WS observability — error_type per close path', () => {
   let handles: TestAppHandle[] = []
   const upstreams: Array<{ stop: () => Promise<void> }> = []
+  // Isolated instance shared by this describe's real-`.listen()` tests so their
+  // server-side getSession reads don't race the shared BEGIN/ROLLBACK singleton.
+  let iso: IsolatedTestDb
+
+  beforeAll(async () => {
+    iso = await createIsolatedTestDb()
+  })
+
+  afterAll(async () => {
+    await iso.close()
+  })
 
   afterEach(async () => {
     for (const h of handles) {
@@ -418,6 +478,7 @@ describe('Universal proxy WS observability — error_type per close path', () =>
 
     const { recorder, logs } = captureWsRecorder()
     const observedHandle = await createTestApp({
+      database: iso.db,
       upstreamWsFactory: upstreamFactory,
       proxyObservability: recorder,
     })
@@ -463,6 +524,7 @@ describe('Universal proxy WS observability — error_type per close path', () =>
 
     const { recorder, logs } = captureWsRecorder()
     const observedHandle = await createTestApp({
+      database: iso.db,
       upstreamWsFactory: slowOpenUpstream,
       proxyObservability: recorder,
     })
@@ -529,6 +591,7 @@ describe('Universal proxy WS observability — error_type per close path', () =>
 
     const { recorder, logs } = captureWsRecorder()
     const observedHandle = await createTestApp({
+      database: iso.db,
       upstreamWsFactory: localUpstreamWsFactory(upstream.port),
       proxyObservability: recorder,
     })

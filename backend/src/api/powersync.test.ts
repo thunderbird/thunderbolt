@@ -1212,6 +1212,63 @@ describe('PowerSync API', () => {
       expect(rows[0]?.value).toBe('unchanged')
     })
 
+    it('returns 200 for PATCH that contains only stripped fields (e.g. only user_id)', async () => {
+      // A buggy client (such as `resetModelToDefault` pre-fix) can queue a
+      // PATCH whose only field is server-managed (e.g. `{ user_id: null }`).
+      // The handler must treat the post-strip empty patch as a no-op success
+      // so the client's CRUD queue can drain — returning 400 would loop the
+      // upload and block every subsequent write behind it.
+      const userId = 'user-patch-only-stripped'
+      const now = new Date()
+      const expiresAt = new Date(now.getTime() + 3600 * 1000)
+
+      await db.insert(userTable).values({
+        id: userId,
+        name: 'Stripped Patch User',
+        email: 'patch-stripped@example.com',
+        emailVerified: true,
+        createdAt: now,
+        updatedAt: now,
+      })
+      await db.insert(sessionTable).values({
+        id: 'session-patch-stripped',
+        expiresAt,
+        token: 'bearer-patch-stripped',
+        createdAt: now,
+        updatedAt: now,
+        userId,
+      })
+      await insertTrustedDevice('test-device-id', userId)
+      await db.insert(settingsTable).values({
+        key: 'stripped_patch_setting',
+        value: 'unchanged',
+        userId,
+      })
+
+      const response = await app.handle(
+        new Request('http://localhost/powersync/upload', {
+          method: 'PUT',
+          headers: uploadHeaders('bearer-patch-stripped'),
+          body: JSON.stringify({
+            operations: [
+              {
+                op: 'PATCH' as const,
+                type: 'settings',
+                id: 'stripped_patch_setting',
+                data: { user_id: null },
+              },
+            ],
+          }),
+        }),
+      )
+      expect(response.status).toBe(200)
+
+      const rows = await db.select().from(settingsTable).where(eq(settingsTable.key, 'stripped_patch_setting'))
+      expect(rows).toHaveLength(1)
+      expect(rows[0]?.value).toBe('unchanged')
+      expect(rows[0]?.userId).toBe(userId)
+    })
+
     it('returns 400 when PATCH targets non-existent record', async () => {
       const userId = 'user-patch-nonexistent'
       const now = new Date()

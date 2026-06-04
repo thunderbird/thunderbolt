@@ -23,10 +23,10 @@
 import { user as userTable, session as sessionTable } from '@/db/auth-schema'
 import { createApp } from '@/index'
 import { createTestApp } from '@/test-utils/e2e'
-import { createIsolatedTestDb, type IsolatedTestDb } from '@/test-utils/db'
+import { getSharedIsolatedTestDb, type IsolatedTestDb } from '@/test-utils/db'
 import { clearSettingsCache } from '@/config/settings'
 import { encodeWsBearer } from '@shared/ws-bearer'
-import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'bun:test'
+import { afterEach, beforeAll, beforeEach, describe, expect, it } from 'bun:test'
 import { createHmac } from 'crypto'
 
 const betterAuthSecret = 'better-auth-secret-12345678901234567890'
@@ -115,11 +115,7 @@ describe('WS /v1/haystack/ws — auth gating', () => {
   const originalWorkspaceEnv = process.env.HAYSTACK_WORKSPACE
 
   beforeAll(async () => {
-    iso = await createIsolatedTestDb()
-  })
-
-  afterAll(async () => {
-    await iso.close()
+    iso = await getSharedIsolatedTestDb()
   })
 
   beforeEach(() => {

@@ -111,3 +111,30 @@ export const createIsolatedTestDb = async (): Promise<IsolatedTestDb> => {
     },
   }
 }
+
+let sharedIsolatedTestDb: IsolatedTestDb | null = null
+
+/**
+ * A SINGLE shared isolated PGlite instance, reused by every test that binds a
+ * real `.listen()` server. Creating a fresh `new PGlite()` per describe (× the
+ * `--rerun-each` passes) accumulated WASM workers on CI until `new PGlite()`
+ * hung — an 8-minute stall at the first ws-e2e `beforeAll`. One instance,
+ * created on first use and closed once in the global `afterAll` (test-setup.ts),
+ * removes the accumulation. Rows committed here are UUID-keyed and unique, so
+ * they can't collide across tests or reruns sharing the instance.
+ */
+export const getSharedIsolatedTestDb = async (): Promise<IsolatedTestDb> => {
+  if (!sharedIsolatedTestDb) {
+    sharedIsolatedTestDb = await createIsolatedTestDb()
+  }
+  return sharedIsolatedTestDb
+}
+
+/** Close + reset the shared isolated instance. Called once in the global
+ *  `afterAll` so its WASM worker is released before Bun tears down the process. */
+export const closeSharedIsolatedTestDb = async (): Promise<void> => {
+  if (sharedIsolatedTestDb) {
+    await sharedIsolatedTestDb.close()
+    sharedIsolatedTestDb = null
+  }
+}

@@ -78,6 +78,22 @@ describe('mergeMcpTools', () => {
     expect(summary).toBe('- render (1 tools)\n- render_2 (1 tools)')
   })
 
+  it('reserves generated prefixes so a server that sanitizes to one is bumped again (no collision)', async () => {
+    const first = named('render', async () => ({ deploy: tool('first') }))
+    const second = named('render', async () => ({ deploy: tool('second') }))
+    // Sanitizes to base `render_2` — the prefix generated for `second`.
+    const third = named('render 2', async () => ({ deploy: tool('third') }))
+
+    const { toolset } = await mergeMcpTools({}, [first, second, third], async () => null)
+
+    // first → render, second → render_2, third → render_2_2; all distinct.
+    expect(toolset.render_deploy).toEqual(tool('first'))
+    expect(toolset.render_2_deploy).toEqual(tool('second'))
+    expect(toolset.render_2_2_deploy).toEqual(tool('third'))
+    // No server's tool dropped to a prefix collision — every deploy survives.
+    expect(Object.keys(toolset).sort()).toEqual(['render_2_2_deploy', 'render_2_deploy', 'render_deploy'])
+  })
+
   it('skips a prefixed tool that collides with a pre-seeded built-in and keeps the built-in', async () => {
     const builtIn = tool('built-in')
     const toolset = { render_search: builtIn }

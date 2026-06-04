@@ -133,7 +133,9 @@ type AiFetchStreamingResponseOptions = {
  * `<prefix>_<toolName>` where `prefix` is the server name sanitized via
  * {@link sanitizeToolPrefix} — so two servers that both expose `list_services`
  * stay distinct and the model knows which server owns each tool. Servers whose
- * names sanitize to the same prefix are disambiguated (`render`, `render_2`, …).
+ * names sanitize to the same prefix are disambiguated by probing upward
+ * (`render`, `render_2`, …); each final prefix is reserved, so a later server
+ * that itself sanitizes to a generated prefix (`render_2`) is bumped again.
  *
  * Per server we call `tools()`; if it rejects with a closed-connection error we
  * reconnect once and retry. A reconnect that fails or a second `tools()` failure
@@ -149,7 +151,7 @@ export const mergeMcpTools = async (
   mcpClients: NamedMCPClient[],
   reconnectClient: ReconnectClient,
 ): Promise<{ toolset: Record<string, Tool>; summary?: string }> => {
-  const usedPrefixes = new Map<string, number>()
+  const takenPrefixes = new Set<string>()
   const mcpServerEntries: string[] = []
 
   /** Prefix and merge one server's tools, returning how many were added. */
@@ -169,9 +171,13 @@ export const mergeMcpTools = async (
 
   for (const { name: serverName, client } of mcpClients) {
     const basePrefix = sanitizeToolPrefix(serverName)
-    const count = usedPrefixes.get(basePrefix) ?? 0
-    const prefix = count > 0 ? `${basePrefix}_${count + 1}` : basePrefix
-    usedPrefixes.set(basePrefix, count + 1)
+    let prefix = basePrefix
+    let suffix = 2
+    while (takenPrefixes.has(prefix)) {
+      prefix = `${basePrefix}_${suffix}`
+      suffix++
+    }
+    takenPrefixes.add(prefix)
 
     const merge = async (): Promise<number> => {
       try {

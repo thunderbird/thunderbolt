@@ -11,6 +11,7 @@
     "test:watch": "bun test --cwd=src --watch",
     "test:backend": "cd backend && bun test --timeout 5000 --randomize",
     "test:backend:5x": "cd backend && bun test --timeout 5000 --randomize --rerun-each 5",
+    "test:backend:ws": "cd backend && bun test --timeout 5000 --randomize src/proxy/ws-e2e.test.ts src/haystack/routes.test.ts",
     "test:backend:watch": "cd backend && bun test --watch",
     "start": "vite",
     "dev": "vite",

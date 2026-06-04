@@ -44,6 +44,10 @@ jobs:
 
   typescript:
     runs-on: ubuntu-latest
+    # Happy path is a few minutes; the GitHub default is 360min (6h). A 20min cap
+    # kills a CPU-starved runner ~18x sooner and frees the cancel-in-progress slot
+    # instead of blocking the concurrency group for hours.
+    timeout-minutes: 20
     permissions:
       pull-requests: write
       contents: read
@@ -60,7 +64,7 @@ jobs:
       - name: Install Bun
         uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
         with:
-          bun-version: 1.3.13
+          bun-version: 1.3.14
 
       - name: Cache Bun dependencies
         uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
@@ -81,9 +85,25 @@ jobs:
       - name: Lint
         run: bun run lint
 
+      - name: Runner CPU/memory diagnostics (pre-test)
+        run: |
+          echo "== nproc =="; nproc
+          echo "== /proc/loadavg (1m 5m 15m runnable/total lastpid) =="; cat /proc/loadavg
+          echo "== free -m =="; free -m
+          echo "== vmstat 1 3 (watch the 'st' steal column under ----cpu----) =="; vmstat 1 3
+          echo "== cpuinfo model =="; grep -m1 'model name' /proc/cpuinfo || true
+
       - name: Run tests
         run: |
+          echo "::notice title=bun test seed::frontend test:5x uses --randomize; the chosen --seed=<N> is printed in the bun summary below (replay: bun test --cwd=src --seed <N> --rerun-each 5)"
           bun run test:5x
+
+      - name: Runner CPU/memory diagnostics (post-test)
+        if: always()
+        run: |
+          echo "== /proc/loadavg (post) =="; cat /proc/loadavg
+          echo "== free -m (post) =="; free -m
+          echo "== vmstat 1 3 (post) =="; vmstat 1 3
 
       # Upload source maps to PostHog only for main branch
       - name: Build application with source maps
@@ -182,13 +202,17 @@ jobs:
 
   backend:
     runs-on: ubuntu-latest
+    # Healthy run is ~130s; a CPU-starved one was observed at 4920s (~82min). A
+    # 15min cap = >6x headroom over the worst legitimate run (even with the 5x
+    # rerun gate) while killing a starved run ~24x sooner than the 360min default.
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
 
       - name: Install Bun
         uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
         with:
-          bun-version: 1.3.13
+          bun-version: 1.3.14
 
       - name: Cache Bun dependencies (backend)
         uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
@@ -215,6 +239,23 @@ jobs:
           cd backend
           bun run lint
 
-      - name: Test backend
+      - name: Runner CPU/memory diagnostics (pre-test)
         run: |
+          echo "== nproc =="; nproc
+          echo "== /proc/loadavg (1m 5m 15m runnable/total lastpid) =="; cat /proc/loadavg
+          echo "== free -m =="; free -m
+          echo "== vmstat 1 3 (watch the 'st' steal column under ----cpu----) =="; vmstat 1 3
+          echo "== cpuinfo model =="; grep -m1 'model name' /proc/cpuinfo || true
+
+      - name: Test backend
+        timeout-minutes: 10
+        run: |
+          echo "::notice title=bun test seed::backend test:backend:5x uses --randomize; the chosen --seed=<N> is printed in the bun summary below (replay: cd backend && bun test --seed <N> --rerun-each 5)"
           bun run test:backend:5x
+
+      - name: Runner CPU/memory diagnostics (post-test)
+        if: always()
+        run: |
+          echo "== /proc/loadavg (post) =="; cat /proc/loadavg
+          echo "== free -m (post) =="; free -m
+          echo "== vmstat 1 3 (post) =="; vmstat 1 3

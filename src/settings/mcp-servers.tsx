@@ -176,6 +176,17 @@ export default function McpServersPage() {
     },
   })
 
+  // Editing any field after a test invalidates that result, so the user can't
+  // add a url+transport+token combination that was never tested together. The
+  // idle guard avoids re-rendering on every keystroke once already cleared.
+  const resetConnectionTest = () => {
+    if (connectionStatus === 'idle') {
+      return
+    }
+    setConnectionStatus('idle')
+    setServerCapabilities([])
+  }
+
   const testConnection = async () => {
     if (!newServerUrl) {
       return
@@ -347,6 +358,7 @@ export default function McpServersPage() {
                   placeholder="Server name (used to prefix tools)"
                   value={newServerName}
                   onChange={(e) => {
+                    resetConnectionTest()
                     setNewServerName(e.target.value)
                     setNameManuallyEdited(true)
                   }}
@@ -360,6 +372,7 @@ export default function McpServersPage() {
                   placeholder="http://localhost:8000/mcp/"
                   value={newServerUrl}
                   onChange={(e) => {
+                    resetConnectionTest()
                     setNewServerUrl(e.target.value)
                     if (!nameManuallyEdited) {
                       setNewServerName(generateServerName(e.target.value))
@@ -373,7 +386,10 @@ export default function McpServersPage() {
                 <Label htmlFor="transport">Transport</Label>
                 <Select
                   value={newServerTransport}
-                  onValueChange={(value) => setNewServerTransport(value as MCPTransportType)}
+                  onValueChange={(value) => {
+                    resetConnectionTest()
+                    setNewServerTransport(value as MCPTransportType)
+                  }}
                 >
                   <SelectTrigger id="transport" className="w-full rounded-lg">
                     <SelectValue />
@@ -392,7 +408,10 @@ export default function McpServersPage() {
                   type="password"
                   placeholder="Bearer token or API key"
                   value={newServerToken}
-                  onChange={(e) => setNewServerToken(e.target.value)}
+                  onChange={(e) => {
+                    resetConnectionTest()
+                    setNewServerToken(e.target.value)
+                  }}
                 />
               </div>
 

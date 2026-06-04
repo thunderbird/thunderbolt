@@ -16,6 +16,10 @@ const settingsSchema = z
     exaApiKey: z.string().default(''),
     thunderboltInferenceUrl: z.string().default(''),
     thunderboltInferenceApiKey: z.string().default(''),
+    tinfoilApiKey: z.string().default(''),
+    // Include the `/v1` API prefix — Tinfoil's OpenAI-compatible endpoints live
+    // under `/v1/chat/completions`, `/v1/models`, etc.
+    tinfoilEnclaveUrl: z.string().default('https://inference.tinfoil.sh/v1'),
 
     // Health Check Configuration
     monitoringToken: z.string().default(''),
@@ -146,6 +150,8 @@ const parseSettings = (): Settings => {
     exaApiKey: process.env.EXA_API_KEY || '',
     thunderboltInferenceUrl: process.env.THUNDERBOLT_INFERENCE_URL || '',
     thunderboltInferenceApiKey: process.env.THUNDERBOLT_INFERENCE_API_KEY || '',
+    tinfoilApiKey: process.env.TINFOIL_API_KEY || '',
+    tinfoilEnclaveUrl: process.env.TINFOIL_ENCLAVE_URL || 'https://inference.tinfoil.sh/v1',
     monitoringToken: process.env.MONITORING_TOKEN || '',
     googleClientId: process.env.GOOGLE_CLIENT_ID || '',
     googleClientSecret: process.env.GOOGLE_CLIENT_SECRET || '',

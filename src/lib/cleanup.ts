@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { disposeAllAdapters } from '@/acp/adapter-cache'
 import { setSyncEnabled } from '@/db/powersync'
 import { clearAuthToken, clearDeviceId } from '@/lib/auth-token'
 import { resetAppDir } from '@/lib/fs'
@@ -27,6 +28,15 @@ type ClearLocalDataOptions = {
  */
 export const clearLocalData = async (options?: ClearLocalDataOptions): Promise<void> => {
   const { disableSync = true, clearEncryptionKeys = true, clearDatabase = true, clearAuth = true } = options ?? {}
+
+  // Tear down every warm ACP connection first so no agent transport survives
+  // across user identities (sign-out, account deletion, device revocation all
+  // funnel through here).
+  try {
+    await disposeAllAdapters()
+  } catch (error) {
+    console.error('[clearLocalData] Failed to dispose ACP adapters:', error)
+  }
 
   if (disableSync) {
     try {

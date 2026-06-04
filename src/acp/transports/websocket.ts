@@ -9,7 +9,11 @@
  *
  * Reconnect strategy:
  *   - Up to 3 retries with exponential backoff (1s, 2s, 4s).
- *   - Don't reconnect on normal close (code 1000) or auth close (code 4001).
+ *   - Don't reconnect on terminal codes: normal (1000), auth (4001), the
+ *     universal-proxy hard rejects (4002/4003), or a server error (1011) —
+ *     retrying those can never succeed, so we fail fast.
+ *   - A terminal close (or exhausting reconnects) rejects the `closed` promise
+ *     so the handshake surfaces a loud error instead of hanging on `initialize`.
  *   - All retries respect the caller's `AbortController` — `disconnect()` aborts
  *     pending retries and resolves any in-flight wait immediately.
  *
@@ -23,7 +27,25 @@ import type { AcpTransport } from '../types'
 
 export const normalCloseCode = 1000
 export const authCloseCode = 4001
+/** Universal-proxy hard rejects: target not allowlisted (4002) and target
+ *  forbidden, e.g. `ws://`/localhost/private-host (4003). Retrying can never
+ *  succeed — the proxy will reject identically every time. */
+export const proxyRejectCloseCode = 4002
+export const proxyForbiddenCloseCode = 4003
+/** Server-side terminal failure (1011). The upstream gave up; reconnecting to
+ *  the same broken endpoint just burns the retry budget. */
+export const serverErrorCloseCode = 1011
 export const maxReconnectAttempts = 3
+
+/** Close codes that mean "do not bother reconnecting": a clean close, an auth
+ *  rejection, the proxy's two hard rejects, and a server-internal error. */
+const terminalCloseCodes = new Set([
+  normalCloseCode,
+  authCloseCode,
+  proxyRejectCloseCode,
+  proxyForbiddenCloseCode,
+  serverErrorCloseCode,
+])
 
 /** Subset of the native `WebSocket` interface used by the transport. Lets us
  *  inject a fake socket in tests without `mock.module()`. Events are typed
@@ -97,7 +119,7 @@ export const validateWebSocketUrl = (url: string, isTauriIos: IsTauriIosFn = def
   }
 }
 
-export const isReconnectableCloseCode = (code: number): boolean => code !== normalCloseCode && code !== authCloseCode
+export const isReconnectableCloseCode = (code: number): boolean => !terminalCloseCodes.has(code)
 
 export type WebSocketTransportOptions = {
   url: string
@@ -127,6 +149,24 @@ export const openWebSocketTransport = async (options: WebSocketTransportOptions)
     transportController.abort()
   } else {
     options.signal.addEventListener('abort', () => transportController.abort(), { once: true })
+  }
+
+  // `closed` rejects the moment the transport gives up (terminal close code or
+  // exhausted reconnects) so the adapter's handshake fails loudly instead of
+  // hanging on a pending `initialize`. Caller-initiated `close()` resolves it.
+  let settleClosed: ((reason: Error | null) => void) | null = null
+  const closed = new Promise<void>((resolve, reject) => {
+    settleClosed = (reason) => (reason ? reject(reason) : resolve())
+  })
+  // Avoid an unhandled-rejection warning when nothing races `closed`.
+  closed.catch(() => {})
+  const settleClosedOnce = (reason: Error | null): void => {
+    if (!settleClosed) {
+      return
+    }
+    const settle = settleClosed
+    settleClosed = null
+    settle(reason)
   }
 
   let currentSocket: WebSocketLike | null = null
@@ -215,8 +255,12 @@ export const openWebSocketTransport = async (options: WebSocketTransportOptions)
 
   const handleClose = (code: number): void => {
     if (transportController.signal.aborted || !isReconnectableCloseCode(code)) {
+      // A non-reconnectable code is a terminal failure the handshake must hear
+      // about; an already-aborted controller means the caller closed us (clean).
+      const terminal = !transportController.signal.aborted
       closeReadable()
       transportController.abort()
+      settleClosedOnce(terminal ? new Error(`ACP transport closed (code ${code})`) : null)
       return
     }
     connectWithRetry()
@@ -226,8 +270,9 @@ export const openWebSocketTransport = async (options: WebSocketTransportOptions)
         drainWriteQueue()
       })
       .catch(() => {
-        readableController?.close()
+        closeReadable()
         transportController.abort()
+        settleClosedOnce(new Error('ACP transport closed: reconnect attempts exhausted'))
       })
   }
 
@@ -279,6 +324,7 @@ export const openWebSocketTransport = async (options: WebSocketTransportOptions)
     transportController.abort()
     currentSocket?.close(normalCloseCode)
     closeReadable()
+    settleClosedOnce(null)
   }
 
   transportController.signal.addEventListener(
@@ -289,5 +335,5 @@ export const openWebSocketTransport = async (options: WebSocketTransportOptions)
     { once: true },
   )
 
-  return { stream, close }
+  return { stream, close, closed }
 }

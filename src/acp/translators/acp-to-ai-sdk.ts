@@ -33,6 +33,12 @@ const sseDataPrefix = 'data: '
 const sseDataSuffix = '\n\n'
 const textDeltaThrottleMsDefault = 200
 
+// Key the reasoning duration to the first reasoning part in a group. The UI's
+// `groupMessageParts` labels reasoning items `reasoning-<counter>` (0-based per
+// message), and this translator emits a single reasoning stream, so its
+// duration always lands on `reasoning-0`.
+const reasoningDurationKey = 'reasoning-0'
+
 const encoder = new TextEncoder()
 
 const encodeChunk = (chunk: AiSdkChunk): Uint8Array =>
@@ -116,6 +122,9 @@ export type TranslateOptions = {
   /** Callback for non-stream session updates (mode change, config option
    *  change). Omit to keep the prior behavior of silently ignoring them. */
   onSideEffect?: SessionSideEffectSink
+  /** Epoch-millis clock used to measure per-action durations. Defaults to
+   *  `Date.now`. Inject a fake in tests so durations are deterministic. */
+  now?: () => number
 }
 
 /** Translation state for a single ACP prompt turn. Reused across many calls
@@ -146,6 +155,7 @@ export const createTranslator = (emit: (chunk: AiSdkChunk) => void, options: Tra
   const reasoningId = options.reasoningMessageId ?? 'acp-reasoning-0'
   const throttleMs = options.textDeltaThrottleMs ?? textDeltaThrottleMsDefault
   const sideEffect = options.onSideEffect ?? (() => {})
+  const now = options.now ?? Date.now
 
   const textThrottle = createThrottle('text', textId, emit)
   const reasoningThrottle = createThrottle('reasoning', reasoningId, emit)
@@ -155,6 +165,32 @@ export const createTranslator = (emit: (chunk: AiSdkChunk) => void, options: Tra
   // emits the right output chunk even if its raw output sneaks in via a prior
   // `in_progress` update.
   const toolStatus = new Map<string, ToolCallStatus>()
+  // Per-action start timestamps used to compute durations the UI renders.
+  // Tool calls key by `toolCallId` (the same id `groupMessageParts` assigns to
+  // a tool group item); reasoning keys by `reasoningDurationKey` (the first
+  // reasoning part in a group — the only reasoning stream this translator
+  // emits — which `groupMessageParts` labels `reasoning-0`).
+  const toolStartTimes = new Map<string, number>()
+  let reasoningStartTime: number | null = null
+  let reasoningDurationEmitted = false
+
+  // Emit a single duration into the running `reasoningTime` map. The AI SDK
+  // deep-merges successive `message-metadata` chunks, so one entry per action
+  // accumulates rather than overwrites — mirroring `createMessageMetadata`.
+  const emitDuration = (partId: string, elapsedMs: number): void => {
+    emit({ type: 'message-metadata', messageMetadata: { reasoningTime: { [partId]: elapsedMs } } })
+  }
+
+  // Reasoning truly ends when text generation begins (the reasoning stream stays
+  // open until then — see `message-metadata.ts`). Emit the reasoning duration at
+  // that boundary, or as a fallback when the turn finishes with no text.
+  const emitReasoningDuration = (): void => {
+    if (reasoningDurationEmitted || reasoningStartTime === null) {
+      return
+    }
+    reasoningDurationEmitted = true
+    emitDuration(reasoningDurationKey, now() - reasoningStartTime)
+  }
   // Haystack metadata accumulators. Backend emits these in `_meta` on
   // `agent_message_chunk` updates; references keyed by position so later chunks
   // override earlier ones for the same marker.
@@ -203,6 +239,7 @@ export const createTranslator = (emit: (chunk: AiSdkChunk) => void, options: Tra
       return
     }
     textStarted = true
+    emitReasoningDuration()
     emit({ type: 'text-start', id: textId })
   }
 
@@ -211,6 +248,7 @@ export const createTranslator = (emit: (chunk: AiSdkChunk) => void, options: Tra
       return
     }
     reasoningStarted = true
+    reasoningStartTime = now()
     emit({ type: 'reasoning-start', id: reasoningId })
   }
 
@@ -243,6 +281,7 @@ export const createTranslator = (emit: (chunk: AiSdkChunk) => void, options: Tra
       }
       case 'tool_call': {
         toolStatus.set(update.toolCallId, update.status ?? 'pending')
+        toolStartTimes.set(update.toolCallId, now())
         emit({
           type: 'tool-input-start',
           toolCallId: update.toolCallId,
@@ -270,14 +309,19 @@ export const createTranslator = (emit: (chunk: AiSdkChunk) => void, options: Tra
             toolCallId: update.toolCallId,
             errorText: typeof update.rawOutput === 'string' ? update.rawOutput : JSON.stringify(update.rawOutput ?? {}),
           })
-          return
+        } else {
+          // completed
+          emit({
+            type: 'tool-output-available',
+            toolCallId: update.toolCallId,
+            output: update.rawOutput ?? update.content ?? {},
+          })
         }
-        // completed
-        emit({
-          type: 'tool-output-available',
-          toolCallId: update.toolCallId,
-          output: update.rawOutput ?? update.content ?? {},
-        })
+        const startedAt = toolStartTimes.get(update.toolCallId)
+        if (startedAt !== undefined) {
+          toolStartTimes.delete(update.toolCallId)
+          emitDuration(update.toolCallId, now() - startedAt)
+        }
         return
       }
       case 'current_mode_update': {
@@ -307,6 +351,8 @@ export const createTranslator = (emit: (chunk: AiSdkChunk) => void, options: Tra
     flushThrottle(textThrottle)
     flushThrottle(reasoningThrottle)
     if (reasoningStarted) {
+      // Covers reasoning-only turns where no text-start boundary fired.
+      emitReasoningDuration()
       emit({ type: 'reasoning-end', id: reasoningId })
     }
     if (textStarted) {

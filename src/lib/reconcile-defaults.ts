@@ -3,8 +3,9 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import type { AnyDrizzleDatabase } from '@/db/database-interface'
+import type { Model, ModelProfile } from '@/types'
 import { createSetting } from '@/dal'
-import { eq } from 'drizzle-orm'
+import { and, eq, isNull } from 'drizzle-orm'
 import type { SQLiteTableWithColumns } from 'drizzle-orm/sqlite-core'
 import { v7 as uuidv7 } from 'uuid'
 import { modelProfilesTable, modelsTable, modesTable, settingsTable, skillsTable, tasksTable } from '../db/tables'
@@ -14,6 +15,7 @@ import { defaultModels, hashModel } from '../defaults/models'
 import { defaultSettings, hashSetting } from '../defaults/settings'
 import { defaultSkills, hashSkill } from '../defaults/skills'
 import { defaultTasks, hashTask } from '../defaults/tasks'
+import { nowIso } from './utils'
 
 /**
  * Generic function to reconcile defaults into a table
@@ -79,8 +81,60 @@ export const reconcileDefaultsForTable = async <T extends { defaultHash: string 
   }
 }
 
+/**
+ * Soft-delete any unedited system default row whose id is no longer in the
+ * current defaults arrays. The hash-match guard ensures edited rows survive.
+ * Skips rows without a `defaultHash` (user-created).
+ */
+export const cleanupRemovedDefaults = async (db: AnyDrizzleDatabase) => {
+  const now = nowIso()
+  const currentModelIds = new Set(defaultModels.map((m) => m.id))
+
+  const systemModels = (await db
+    .select()
+    .from(modelsTable)
+    .where(and(eq(modelsTable.isSystem, 1), isNull(modelsTable.deletedAt)))) as Model[]
+  for (const row of systemModels) {
+    if (currentModelIds.has(row.id) || !row.defaultHash) {
+      continue
+    }
+    if (hashModel(row) === row.defaultHash) {
+      await db.update(modelsTable).set({ deletedAt: now }).where(eq(modelsTable.id, row.id))
+    }
+  }
+
+  // Profiles are 1:1 with models. Mirror the model loop's "edited rows survive"
+  // rule by following the parent model's fate — only delete the profile when
+  // its parent is no longer alive. Otherwise a user who renamed a retired
+  // default model but left the profile at shipped defaults would be left with
+  // an orphaned model.
+  const aliveModelIds = new Set(
+    (
+      (await db.select({ id: modelsTable.id }).from(modelsTable).where(isNull(modelsTable.deletedAt))) as {
+        id: string
+      }[]
+    ).map((r) => r.id),
+  )
+
+  const profiles = (await db
+    .select()
+    .from(modelProfilesTable)
+    .where(isNull(modelProfilesTable.deletedAt))) as ModelProfile[]
+  for (const row of profiles) {
+    if (aliveModelIds.has(row.modelId) || !row.defaultHash) {
+      continue
+    }
+    if (hashModelProfile(row) === row.defaultHash) {
+      await db.update(modelProfilesTable).set({ deletedAt: now }).where(eq(modelProfilesTable.modelId, row.modelId))
+    }
+  }
+}
+
 export const reconcileDefaults = async (db: AnyDrizzleDatabase) => {
   await db.transaction(async (tx) => {
+    // Soft-delete removed system defaults before reconciling current ones.
+    await cleanupRemovedDefaults(tx)
+
     // AI models
     await reconcileDefaultsForTable(tx, modelsTable, defaultModels, hashModel)
 

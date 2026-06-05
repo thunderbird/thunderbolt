@@ -9,7 +9,7 @@
  * Add it to bunfig.toml preload array to ensure it runs first.
  */
 import { afterAll } from 'bun:test'
-import { testDbManager } from './db'
+import { closeSharedIsolatedTestDb, testDbManager } from './db'
 
 // Tests use PGlite (in-memory). The dev-env PR flipped the default driver from
 // pglite to postgres; preload the test driver explicitly so db/client.ts doesn't
@@ -53,6 +53,8 @@ globalThis.fetch = Object.assign(
 afterAll(async () => {
   await Promise.all([
     testDbManager.close(),
+    // Release the shared isolated instance used by the real-`.listen()` WS tests.
+    closeSharedIsolatedTestDb(),
     // Also close the db/client singleton if it was lazily loaded (e.g. swagger.test.ts)
     import('@/db/client').then(({ closeDb }) => closeDb()),
   ]).catch(() => {})

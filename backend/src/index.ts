@@ -22,6 +22,7 @@ import { createSearchRoutes } from '@/api/search'
 import { createPreviewRoutes } from '@/api/preview'
 import { createPostHogRoutes } from '@/posthog/routes'
 import { createProToolsRoutes } from '@/pro/routes'
+import { createTinfoilRoutes } from '@/tinfoil/routes'
 import { createWaitlistRoutes } from '@/waitlist/routes'
 import { createAccountRoutes } from '@/api/account'
 import { createAgentsRoutes } from '@/agents'
@@ -128,6 +129,7 @@ export const createApp = async (deps?: AppDeps) => {
           dnsLookup: deps?.dnsLookup,
         }),
       )
+      .use(createTinfoilRoutes({ auth, fetchFn, rateLimit: proRateLimit }))
       .use(
         createUniversalProxyWsRoutes({
           auth,

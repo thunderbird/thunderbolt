@@ -23,10 +23,10 @@
 import { user as userTable, session as sessionTable } from '@/db/auth-schema'
 import { createApp } from '@/index'
 import { createTestApp } from '@/test-utils/e2e'
-import { createTestDb } from '@/test-utils/db'
+import { getSharedIsolatedTestDb, type IsolatedTestDb } from '@/test-utils/db'
 import { clearSettingsCache } from '@/config/settings'
 import { encodeWsBearer } from '@shared/ws-bearer'
-import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
+import { afterEach, beforeAll, beforeEach, describe, expect, it } from 'bun:test'
 import { createHmac } from 'crypto'
 
 const betterAuthSecret = 'better-auth-secret-12345678901234567890'
@@ -101,6 +101,11 @@ const bearerProtocols = (bearerToken: string): string[] => [
 
 describe('WS /v1/haystack/ws — auth gating', () => {
   const cleanups: Array<() => Promise<void>> = []
+  // Isolated PGlite instance for the real-`.listen()` upgrades in this suite:
+  // their server-side getSession reads must not race the shared BEGIN/ROLLBACK
+  // singleton (head-of-line blocking under CI starvation; the 5s `initialize`
+  // timeout was the canary). Closed once in afterAll to avoid exit-99.
+  let iso: IsolatedTestDb
   // Real settings come from `getSettings()` which reads `process.env`. Inject a
   // valid pipelines config so the route's slug→descriptor lookup resolves;
   // otherwise even authenticated upgrades would close 4001 with "unknown
@@ -108,6 +113,10 @@ describe('WS /v1/haystack/ws — auth gating', () => {
   const originalPipelinesEnv = process.env.HAYSTACK_PIPELINES
   const originalBaseUrlEnv = process.env.HAYSTACK_BASE_URL
   const originalWorkspaceEnv = process.env.HAYSTACK_WORKSPACE
+
+  beforeAll(async () => {
+    iso = await getSharedIsolatedTestDb()
+  })
 
   beforeEach(() => {
     process.env.HAYSTACK_BASE_URL = 'https://haystack.test'
@@ -141,7 +150,7 @@ describe('WS /v1/haystack/ws — auth gating', () => {
   })
 
   it('closes 4001 when no subprotocol (and therefore no bearer) is offered', async () => {
-    const handle = await createTestApp()
+    const handle = await createTestApp({ database: iso.db })
     const port = await startApp(handle.app as unknown as RunningApp)
     cleanups.push(async () => {
       await stopApp(handle.app as unknown as RunningApp)
@@ -156,7 +165,7 @@ describe('WS /v1/haystack/ws — auth gating', () => {
   })
 
   it('closes 4001 when only the carrier subprotocol is offered (no bearer entry)', async () => {
-    const handle = await createTestApp()
+    const handle = await createTestApp({ database: iso.db })
     const port = await startApp(handle.app as unknown as RunningApp)
     cleanups.push(async () => {
       await stopApp(handle.app as unknown as RunningApp)
@@ -171,7 +180,7 @@ describe('WS /v1/haystack/ws — auth gating', () => {
   })
 
   it('closes 4001 when the bearer subprotocol contains a garbage token', async () => {
-    const handle = await createTestApp()
+    const handle = await createTestApp({ database: iso.db })
     const port = await startApp(handle.app as unknown as RunningApp)
     cleanups.push(async () => {
       await stopApp(handle.app as unknown as RunningApp)
@@ -187,18 +196,16 @@ describe('WS /v1/haystack/ws — auth gating', () => {
   })
 
   it('closes 4001 for an anonymous user even with a validly-signed bearer', async () => {
-    const { db, cleanup } = await createTestDb()
-    const app = await createApp({ database: db })
+    const app = await createApp({ database: iso.db })
     const port = await startApp(app as unknown as RunningApp)
     cleanups.push(async () => {
       await stopApp(app as unknown as RunningApp)
-      await cleanup()
     })
 
     const userId = `anon-${crypto.randomUUID()}`
     const sessionToken = `anon-session-${crypto.randomUUID()}`
     const now = new Date()
-    await db.insert(userTable).values({
+    await iso.db.insert(userTable).values({
       id: userId,
       name: 'Anon',
       email: `${userId}@anon.test`,
@@ -207,7 +214,7 @@ describe('WS /v1/haystack/ws — auth gating', () => {
       createdAt: now,
       updatedAt: now,
     })
-    await db.insert(sessionTable).values({
+    await iso.db.insert(sessionTable).values({
       id: `anon-session-row-${userId}`,
       token: sessionToken,
       expiresAt: new Date(now.getTime() + 60 * 60 * 1000),
@@ -225,7 +232,7 @@ describe('WS /v1/haystack/ws — auth gating', () => {
   })
 
   it('opens the socket and answers initialize when a valid bearer is offered', async () => {
-    const handle = await createTestApp()
+    const handle = await createTestApp({ database: iso.db })
     const port = await startApp(handle.app as unknown as RunningApp)
     cleanups.push(async () => {
       await stopApp(handle.app as unknown as RunningApp)
@@ -245,18 +252,23 @@ describe('WS /v1/haystack/ws — auth gating', () => {
     // Browser sees only the carrier subprotocol — never the auth-bearing one.
     expect(client.protocol).toBe('thunderbolt.v1')
 
+    // Bind the reply listener BEFORE send so no message is missed (mandatory:
+    // `nextMessage` otherwise binds after send — the same late-bind race fixed
+    // elsewhere). With the isolated DB the server-side bearer verify no longer
+    // races the shared singleton, so this resolves in single-digit ms.
+    const replyPromise = nextMessage(client)
     client.send(JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'initialize' }))
-    const raw = await nextMessage(client)
+    const raw = await replyPromise
     const reply = JSON.parse(raw)
     expect(reply.jsonrpc).toBe('2.0')
     expect(reply.id).toBe(1)
     expect(reply.result.protocolVersion).toBeGreaterThan(0)
     expect(reply.result.agentCapabilities.loadSession).toBe(true)
     client.close()
-  })
+  }, 15000)
 
   it('closes 4001 when the ?pipeline= slug is not in HAYSTACK_PIPELINES', async () => {
-    const handle = await createTestApp()
+    const handle = await createTestApp({ database: iso.db })
     const port = await startApp(handle.app as unknown as RunningApp)
     cleanups.push(async () => {
       await stopApp(handle.app as unknown as RunningApp)

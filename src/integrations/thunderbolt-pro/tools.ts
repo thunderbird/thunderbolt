@@ -87,7 +87,7 @@ export const createConfigs = (httpClient: HttpClient, sourceCollector?: SourceMe
     {
       name: 'fetch_content',
       description:
-        'Fetch and parse content from a PUBLIC webpage URL. Result has a [Source N] label. Cite with [N] at end of sentence. Do NOT use for Google Drive, Docs, Sheets, or Slides links (use google_get_drive_file_content instead). Do NOT use for OneDrive or SharePoint links (use microsoft_get_onedrive_file_content instead).',
+        'Fetch and parse content from a PUBLIC webpage URL. Result has a [Source N] label. Cite with [N] at end of sentence. Do NOT use for Google Drive, Docs, Sheets, or Slides links. Do NOT use for OneDrive or SharePoint links (use microsoft_get_onedrive_file_content instead).',
       verb: 'fetching {url}',
       parameters: fetchContentSchema,
       execute: async (params: FetchContentParams) => {

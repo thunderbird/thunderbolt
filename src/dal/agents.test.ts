@@ -7,11 +7,35 @@ import { agentsSystemTable, agentsTable } from '@/db/tables'
 import { builtInAgent } from '@/defaults/agents'
 import { HttpError, type HttpClient, type ResponsePromise } from '@/lib/http'
 import { refreshSystemAgents } from '@/db/seeding/seed-agents'
+import { clearAdapterCache, getOrConnectAdapter } from '@/acp/adapter-cache'
+import type { AgentAdapter } from '@/types/acp'
 import type { AgentDiscoveryResponse } from '@shared/acp-types'
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'bun:test'
 import { composeAllAgents, createAgent, deleteAgent, getAgentSecrets, setAgentSecrets, updateAgent } from './agents'
 import { resetTestDatabase, setupTestDatabase, teardownTestDatabase } from './test-utils'
 import type { Agent } from '@/types/acp'
+
+/** Seed the global adapter cache with a fake connection for `agentId` and hand
+ *  back a disconnect spy so a test can assert the DAL disposed it. */
+const seedCachedAdapter = async (agentId: string) => {
+  let disconnects = 0
+  const adapter: AgentAdapter = {
+    agent: { id: agentId } as Agent,
+    capabilities: null,
+    fetch: async () => new Response('ok'),
+    disconnect: () => {
+      disconnects++
+    },
+  }
+  await getOrConnectAdapter(
+    { id: agentId } as Agent,
+    { httpClient: {} as HttpClient, getProxyFetch: () => null as never },
+    {
+      connectToAgent: (async () => adapter) as never,
+    },
+  )
+  return { disconnectCount: () => disconnects }
+}
 
 beforeAll(async () => {
   await setupTestDatabase()
@@ -23,6 +47,7 @@ afterAll(async () => {
 
 beforeEach(async () => {
   await resetTestDatabase()
+  clearAdapterCache()
 })
 
 /** Build a stub HttpClient where `get` resolves to a JSON payload or throws.
@@ -118,6 +143,38 @@ describe('agents DAL', () => {
       const row = await getDb().select().from(agentsTable).get()
       expect(row?.name).toBe('Untouched')
     })
+
+    it('disposes the warm ACP connection when the wire identity (url) changes', async () => {
+      await createAgent(getDb(), {
+        id: 'a-url',
+        name: 'Wired',
+        type: 'remote-acp',
+        transport: 'websocket',
+        url: 'wss://old/ws',
+        userId: 'u1',
+      })
+      const cached = await seedCachedAdapter('a-url')
+
+      await updateAgent(getDb(), 'a-url', { url: 'wss://new/ws' })
+
+      expect(cached.disconnectCount()).toBe(1)
+    })
+
+    it('does NOT dispose the connection on a non-wire patch (rename only)', async () => {
+      await createAgent(getDb(), {
+        id: 'a-name',
+        name: 'Before',
+        type: 'remote-acp',
+        transport: 'websocket',
+        url: 'wss://keep/ws',
+        userId: 'u1',
+      })
+      const cached = await seedCachedAdapter('a-name')
+
+      await updateAgent(getDb(), 'a-name', { name: 'After' })
+
+      expect(cached.disconnectCount()).toBe(0)
+    })
   })
 
   describe('deleteAgent', () => {
@@ -140,6 +197,22 @@ describe('agents DAL', () => {
 
     it('refuses to delete the built-in agent', async () => {
       await expect(deleteAgent(getDb(), builtInAgent.id)).rejects.toThrow(/built-in/)
+    })
+
+    it('disposes the agent warm ACP connection on delete', async () => {
+      await createAgent(getDb(), {
+        id: 'a-disp',
+        name: 'Doomed',
+        type: 'remote-acp',
+        transport: 'websocket',
+        url: 'wss://x',
+        userId: 'u1',
+      })
+      const cached = await seedCachedAdapter('a-disp')
+
+      await deleteAgent(getDb(), 'a-disp')
+
+      expect(cached.disconnectCount()).toBe(1)
     })
   })
 

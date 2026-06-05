@@ -74,6 +74,7 @@ if (isSharedStack) {
       mistralApiKey: config.getSecret('mistralApiKey') ?? pulumi.output(''),
       thunderboltInferenceApiKey: config.getSecret('thunderboltInferenceApiKey') ?? pulumi.output(''),
       exaApiKey: config.getSecret('exaApiKey') ?? pulumi.output(''),
+      tinfoilApiKey: config.getSecret('tinfoilApiKey') ?? pulumi.output(''),
     },
     postgresPassword,
     powersyncDbPassword,
@@ -128,6 +129,7 @@ if (isSharedStack) {
     shared: sharedOutputs,
     betterAuthSecret: betterAuthSecretInput,
     thunderboltInferenceUrl: config.get('thunderboltInferenceUrl'),
+    tinfoilEnclaveUrl: config.get('tinfoilEnclaveUrl'),
   })
 
   module.exports = {
@@ -237,10 +239,13 @@ if (isSharedStack) {
     mistralApiKey: config.getSecret('mistralApiKey') ?? pulumi.output(''),
     thunderboltInferenceApiKey: config.getSecret('thunderboltInferenceApiKey') ?? pulumi.output(''),
     exaApiKey: config.getSecret('exaApiKey') ?? pulumi.output(''),
+    tinfoilApiKey: config.getSecret('tinfoilApiKey') ?? pulumi.output(''),
   }
 
   // Thunderbolt inference gateway URL (not a secret; set per-stack)
   const thunderboltInferenceUrl = config.get('thunderboltInferenceUrl') ?? ''
+  // Tinfoil confidential-inference enclave URL (not a secret; set per-stack)
+  const tinfoilEnclaveUrl = config.get('tinfoilEnclaveUrl') ?? ''
 
   // Shared: VPC (both platforms need this)
   const { vpc, publicSubnets, privateSubnets, albSg, servicesSg } = createVpc(name)
@@ -325,6 +330,7 @@ if (isSharedStack) {
       ghcrToken: config.getSecret('ghcrToken'),
       publicUrls,
       thunderboltInferenceUrl,
+      tinfoilEnclaveUrl,
       behindCloudflareProxy: hasSubdomainRouting,
       albListener: listener,
       targetGroups: {

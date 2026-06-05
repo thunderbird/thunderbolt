@@ -9,7 +9,7 @@ export const instructions = `## Connect Integration Widget
 
 ### Tools to check
 
-- Google: google_check_inbox, google_search_emails, google_get_email, google_draft_email, google_check_calendar, google_search_drive, google_get_drive_file_content
+- Google: google_check_inbox, google_search_emails, google_get_email, google_draft_email, google_check_calendar
 - Microsoft: microsoft_list_messages, microsoft_get_message, microsoft_search_onedrive, microsoft_get_onedrive_file_content
 
 If these tools are available, use them directly. Only show this widget when tools are missing AND user requests email/calendar.

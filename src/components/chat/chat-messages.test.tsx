@@ -89,30 +89,6 @@ describe('ChatMessages', () => {
     })
   })
 
-  describe('encryption message', () => {
-    it('should show encryption message when thread is encrypted', () => {
-      const mockChatInstance = createMockChatInstance([])
-      const mockUseChat = createMockUseChat(mockChatInstance)
-
-      hydrateStore({
-        chatInstance: mockChatInstance,
-        chatThread: createMockChatThread({ isEncrypted: 1 }),
-        id: 'thread-1',
-        mcpClients: [],
-        models: [],
-        selectedModel: null,
-        triggerData: null,
-      })
-
-      const { container } = render(<ChatMessages useChat={mockUseChat} />, {
-        wrapper: createTestWrapper(),
-      })
-
-      // EncryptionMessage should be rendered with the confidential text
-      expect(container.textContent).toContain('This conversation is confidential')
-    })
-  })
-
   describe('message filtering', () => {
     it('should skip OAuth retry messages and render other messages', () => {
       const messages: ThunderboltUIMessage[] = [

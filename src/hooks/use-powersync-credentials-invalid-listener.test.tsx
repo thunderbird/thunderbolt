@@ -4,9 +4,7 @@
 
 import { getDevice } from '@/dal'
 import { resetTestDatabase, setupTestDatabase, teardownTestDatabase } from '@/dal/test-utils'
-import { ThunderboltConnector } from '@/db/powersync/connector'
 import { powersyncCredentialsInvalid } from '@/db/powersync/connector'
-import { syncEnabledChangeEvent } from '@/db/powersync/database'
 import { devicesTable } from '@/db/tables'
 import { getAuthToken, setAuthToken } from '@/lib/auth-token'
 import { createTestProvider } from '@/test-utils/test-provider'
@@ -15,7 +13,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { eq } from 'drizzle-orm'
 import { type ReactNode } from 'react'
 import { act, renderHook } from '@testing-library/react'
-import { afterAll, beforeAll, beforeEach, describe, expect, it, mock, spyOn } from 'bun:test'
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, mock, spyOn } from 'bun:test'
 import { AuthProvider, DatabaseProvider, HttpClientProvider } from '@/contexts'
 import { createMockAuthClient } from '@/test-utils/auth-client'
 import { createMockHttpClient } from '@/test-utils/http-client'
@@ -23,7 +21,6 @@ import { PowerSyncMockProvider } from '@/test-utils/powersync-mock'
 import { showRevokedDeviceModalEvent, showSignInModalEvent, signInSuccessEvent } from './use-credential-events'
 import { usePowerSyncCredentialsInvalidListener } from './use-powersync-credentials-invalid-listener'
 import { getDb } from '@/db/database'
-import { setSyncEnabled } from '@/db/powersync'
 
 const deviceId = 'test-device-id'
 const authToken = 'test-auth-token'
@@ -31,15 +28,16 @@ const authToken = 'test-auth-token'
 const mockReplace = mock()
 const mockClearLocalData = mock(() => Promise.resolve())
 
+// Partial mock: spread the REAL module so every other export (AppSchema, drizzleSchema,
+// ThunderboltConnector, getPowerSyncInstance, reconnectSync, syncEnabledChangeEvent, isSyncEnabled)
+// is preserved and can't break dependents if this registration leaks across files under
+// `--randomize`. Only `setSyncEnabled` is overridden with a local spy the suite asserts on.
+// See docs/development/testing.md §65 and the sibling spread-mocks in use-pending-device-notification.test.tsx.
+const realPowersync = await import('@/db/powersync')
+const mockSetSyncEnabled = mock(() => Promise.resolve())
 mock.module('@/db/powersync', () => ({
-  AppSchema: {},
-  drizzleSchema: {},
-  ThunderboltConnector,
-  PowerSyncDatabaseImpl: class {},
-  getPowerSyncInstance: () => null,
-  isSyncEnabled: () => false,
-  setSyncEnabled: mock(() => Promise.resolve()),
-  syncEnabledChangeEvent,
+  ...realPowersync,
+  setSyncEnabled: mockSetSyncEnabled,
 }))
 
 describe('usePowerSyncCredentialsInvalidListener', () => {
@@ -59,6 +57,12 @@ describe('usePowerSyncCredentialsInvalidListener', () => {
       value: { replace: mockReplace },
       writable: true,
     })
+    localStorage.clear()
+  })
+
+  // Mirror the beforeEach cleanup so the last test's auth token can't leak into
+  // the next test file (AuthProvider's mount effect fires get-session on any token).
+  afterEach(() => {
     localStorage.clear()
   })
 
@@ -259,7 +263,7 @@ describe('usePowerSyncCredentialsInvalidListener', () => {
       const revokedModalListener = mock()
       window.addEventListener(showSignInModalEvent, signInModalListener)
       window.addEventListener(showRevokedDeviceModalEvent, revokedModalListener)
-      ;(setSyncEnabled as unknown as ReturnType<typeof mock>).mockClear()
+      mockSetSyncEnabled.mockClear()
 
       renderHook(() => usePowerSyncCredentialsInvalidListener({ clearLocalData: mockClearLocalData }), {
         wrapper: createTestProvider(),
@@ -269,7 +273,7 @@ describe('usePowerSyncCredentialsInvalidListener', () => {
         dispatchCredentialsInvalid('sync_not_permitted')
       })
 
-      expect(setSyncEnabled).toHaveBeenCalledWith(false)
+      expect(mockSetSyncEnabled).toHaveBeenCalledWith(false)
       expect(getAuthToken()).toBe(authToken)
       expect(mockClearLocalData).not.toHaveBeenCalled()
       expect(mockReplace).not.toHaveBeenCalled()

@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { clearAdapterCache } from '@/acp/adapter-cache'
 import { useChatStore } from '@/chats/chat-store'
 import { builtInAgent } from '@/defaults/agents'
 import type { AutomationRun, ChatThread, Mode, Model, ThunderboltUIMessage } from '@/types'
@@ -243,6 +244,10 @@ export const hydrateStore = (state: {
  * Resets the store to initial state for testing
  */
 export const resetStore = () => {
+  // The per-agent adapter cache is module-global, so a fresh test must forget
+  // any connection a prior test opened — otherwise a cache hit would suppress
+  // the next test's injected `connectToAgent`.
+  clearAdapterCache()
   useChatStore.setState({
     currentSessionId: null,
     mcpClients: [],

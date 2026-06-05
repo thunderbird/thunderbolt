@@ -6,6 +6,7 @@ import { and, asc, eq, isNull, like } from 'drizzle-orm'
 import { v7 as uuidv7 } from 'uuid'
 import type { AnyDrizzleDatabase } from '../db/database-interface'
 import { chatMessagesTable, chatThreadsTable, promptsTable } from '../db/tables'
+import { hashPrompt } from '../defaults/automations'
 import type { AutomationRun, Prompt } from '../types'
 import { clearNullableColumns, convertUIMessageToDbChatMessage, nowIso } from '../lib/utils'
 import { getModel } from './models'
@@ -76,15 +77,24 @@ export const updateAutomation = async (db: AnyDrizzleDatabase, id: string, updat
 }
 
 /**
- * Reset an automation to its default state
+ * Reset an automation to its default state. Recomputes `defaultHash` so that
+ * any legacy/stale value left over from a previous `hashPrompt` formula is
+ * replaced with the current one — otherwise `isAutomationModified` would keep
+ * flagging the row as modified even right after a reset. `userId` is stripped
+ * from the default template so we never overwrite the row's real owner with
+ * `null` (which would surface as an empty PATCH and a 400 from the upload
+ * handler).
  */
 export const resetAutomationToDefault = async (
   db: AnyDrizzleDatabase,
   id: string,
   defaultAutomation: Prompt,
 ): Promise<void> => {
-  const { defaultHash, ...defaultFields } = defaultAutomation
-  await db.update(promptsTable).set(defaultFields).where(eq(promptsTable.id, id))
+  const { defaultHash, userId, ...defaultFields } = defaultAutomation
+  await db
+    .update(promptsTable)
+    .set({ ...defaultFields, defaultHash: hashPrompt(defaultAutomation) })
+    .where(eq(promptsTable.id, id))
 }
 
 /**

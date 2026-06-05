@@ -45,7 +45,9 @@ describe('Auth - Email Normalization', () => {
   })
 
   afterEach(async () => {
-    await cleanup()
+    if (cleanup) {
+      await cleanup()
+    }
   })
 
   describe('databaseHooks.user.create', () => {
@@ -133,7 +135,9 @@ describe('Auth - user.isNew in sign-in response', () => {
   })
 
   afterEach(async () => {
-    await cleanup()
+    if (cleanup) {
+      await cleanup()
+    }
   })
 
   it('should return user.isNew: true when user signs in for the first time', async () => {

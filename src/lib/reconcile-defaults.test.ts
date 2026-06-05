@@ -7,13 +7,74 @@ import { resetTestDatabase, setupTestDatabase, teardownTestDatabase } from '@/da
 import { getDb } from '@/db/database'
 import { afterAll, afterEach, beforeAll, describe, expect, test } from 'bun:test'
 import { eq } from 'drizzle-orm'
-import { modelsTable, promptsTable, settingsTable } from '../db/tables'
+import { modelProfilesTable, modelsTable, promptsTable, settingsTable } from '../db/tables'
 import { defaultAutomations, hashPrompt } from '../defaults/automations'
+import { hashModelProfile } from '../defaults/model-profiles'
 import { defaultModels, hashModel } from '../defaults/models'
 import { defaultSettings, hashSetting } from '../defaults/settings'
 import { nowIso } from './utils'
-import { reconcileDefaultsForTable } from './reconcile-defaults'
-import type { Model, Prompt } from '@/types'
+import { cleanupRemovedDefaults, reconcileDefaultsForTable } from './reconcile-defaults'
+import type { Model, ModelProfile, Prompt } from '@/types'
+
+/** A model id no current default uses — stands in for any retired default. */
+const retiredModelId = '019af08a-9836-783d-ab56-39b9fec48af1'
+
+/** Build a fully-populated model row whose stored defaultHash matches its contents. */
+const buildRetiredModel = (overrides: Partial<Model> = {}): Model => {
+  const base: Model = {
+    id: retiredModelId,
+    name: 'Retired Model',
+    provider: 'thunderbolt',
+    model: 'retired-model',
+    isSystem: 1,
+    enabled: 1,
+    isConfidential: 0,
+    contextWindow: 131072,
+    toolUsage: 1,
+    startWithReasoning: 0,
+    supportsParallelToolCalls: 0,
+    deletedAt: null,
+    apiKey: null,
+    url: null,
+    defaultHash: null,
+    vendor: 'mistral',
+    description: 'Retired',
+    userId: null,
+    ...overrides,
+  }
+  return { ...base, defaultHash: hashModel(base) }
+}
+
+/** Build a profile whose stored defaultHash matches its contents. */
+const buildRetiredProfile = (overrides: Partial<ModelProfile> = {}): ModelProfile => {
+  const base: ModelProfile = {
+    modelId: retiredModelId,
+    temperature: 0.2,
+    maxSteps: 20,
+    maxAttempts: 2,
+    nudgeThreshold: 6,
+    useSystemMessageModeDeveloper: 0,
+    providerOptions: null,
+    toolsOverride: null,
+    linkPreviewsOverride: null,
+    chatModeAddendum: null,
+    searchModeAddendum: null,
+    researchModeAddendum: null,
+    citationReinforcementEnabled: 0,
+    citationReinforcementPrompt: null,
+    nudgeFinalStep: null,
+    nudgePreventive: null,
+    nudgeRetry: null,
+    nudgeSearchFinalStep: null,
+    nudgeSearchPreventive: null,
+    nudgeSearchRetry: null,
+    deletedAt: null,
+    defaultHash: null,
+    userId: null,
+    ...overrides,
+  }
+  return { ...base, defaultHash: hashModelProfile(base) }
+}
 
 beforeAll(async () => {
   await setupTestDatabase()
@@ -132,6 +193,97 @@ describe('seedModels', () => {
     const modelsAfterReseed = await getAllModels(getDb())
     expect(modelsAfterReseed.length).toBe(defaultModels.length - 1)
     expect(modelsAfterReseed.find((m) => m.id === defaultModels[0].id)).toBeUndefined()
+  })
+})
+
+describe('cleanupRemovedDefaults', () => {
+  test('soft-deletes retired system model + profile whose hashes still match', async () => {
+    const db = getDb()
+    await db.insert(modelsTable).values(buildRetiredModel())
+    await db.insert(modelProfilesTable).values(buildRetiredProfile())
+
+    await cleanupRemovedDefaults(db)
+
+    const model = await db.select().from(modelsTable).where(eq(modelsTable.id, retiredModelId)).get()
+    expect(model?.deletedAt).not.toBeNull()
+    const profile = await db
+      .select()
+      .from(modelProfilesTable)
+      .where(eq(modelProfilesTable.modelId, retiredModelId))
+      .get()
+    expect(profile?.deletedAt).not.toBeNull()
+  })
+
+  test('leaves edited rows alone (hash mismatch)', async () => {
+    const db = getDb()
+    // Stored hash deliberately does not match the row contents → row counts as edited.
+    await db.insert(modelsTable).values({ ...buildRetiredModel(), name: 'User Renamed' })
+
+    await cleanupRemovedDefaults(db)
+
+    const model = await db.select().from(modelsTable).where(eq(modelsTable.id, retiredModelId)).get()
+    expect(model?.deletedAt).toBeNull()
+  })
+
+  test('keeps profile when its parent model survived via user edit', async () => {
+    const db = getDb()
+    // Parent model is edited (hash mismatch) → survives cleanup.
+    await db.insert(modelsTable).values({ ...buildRetiredModel(), name: 'User Renamed' })
+    // Profile is unedited (hash matches) — would have been soft-deleted under
+    // the old rule, leaving the model orphaned.
+    await db.insert(modelProfilesTable).values(buildRetiredProfile())
+
+    await cleanupRemovedDefaults(db)
+
+    const profile = await db
+      .select()
+      .from(modelProfilesTable)
+      .where(eq(modelProfilesTable.modelId, retiredModelId))
+      .get()
+    expect(profile?.deletedAt).toBeNull()
+  })
+
+  test('leaves current defaults alone', async () => {
+    const db = getDb()
+    await reconcileDefaultsForTable(db, modelsTable, defaultModels, hashModel)
+
+    await cleanupRemovedDefaults(db)
+
+    for (const def of defaultModels) {
+      const row = await db.select().from(modelsTable).where(eq(modelsTable.id, def.id)).get()
+      expect(row?.deletedAt).toBeNull()
+    }
+  })
+
+  test('leaves user-created rows alone (no defaultHash)', async () => {
+    const db = getDb()
+    await db.insert(modelsTable).values({ ...buildRetiredModel(), isSystem: 0, defaultHash: null })
+
+    await cleanupRemovedDefaults(db)
+
+    const model = await db.select().from(modelsTable).where(eq(modelsTable.id, retiredModelId)).get()
+    expect(model?.deletedAt).toBeNull()
+  })
+
+  test('no-op when retired row is absent', async () => {
+    const db = getDb()
+    await cleanupRemovedDefaults(db)
+    const model = await db.select().from(modelsTable).where(eq(modelsTable.id, retiredModelId)).get()
+    expect(model).toBeUndefined()
+  })
+
+  test('idempotent — second run does not re-touch deletedAt', async () => {
+    const db = getDb()
+    await db.insert(modelsTable).values(buildRetiredModel())
+
+    await cleanupRemovedDefaults(db)
+    const after1 = await db.select().from(modelsTable).where(eq(modelsTable.id, retiredModelId)).get()
+    const firstDeletedAt = after1?.deletedAt
+    expect(firstDeletedAt).not.toBeNull()
+
+    await cleanupRemovedDefaults(db)
+    const after2 = await db.select().from(modelsTable).where(eq(modelsTable.id, retiredModelId)).get()
+    expect(after2?.deletedAt).toBe(firstDeletedAt!)
   })
 })
 

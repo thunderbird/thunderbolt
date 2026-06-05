@@ -63,19 +63,37 @@ export const ollama = createOpenAI({
   fetch,
 })
 
-// Reuse one SecureClient across requests so attestation runs once per page load.
-// The `tinfoil` module is dynamically imported so its attestation/crypto deps
-// (sigstore-browser, verifier, ehbp) are code-split into their own chunk and
-// only loaded when a user actually selects the Tinfoil provider.
-let tinfoilClient: SecureClient | null = null
+// Cached so attestation runs once per page load. `tinfoil` is dynamically
+// imported to code-split its attestation/crypto deps.
+//
+// system: HPKE body POSTs to <cloudUrl>/tinfoil; backend injects our key.
+// user:   BYOK — direct to the enclave with the user's own key.
+//
+// System cache is keyed by cloudUrl so a dev-tools URL switch hits the new
+// backend on the next call.
+const systemTinfoilClients = new Map<string, SecureClient>()
+let userTinfoilClient: SecureClient | null = null
+
+export const getSystemTinfoilClient = async (): Promise<SecureClient> => {
+  // cloudUrl already ends in /v1 (shared with the OpenAI chat baseURL).
+  const cloudUrl = getLocalSetting('cloudUrl').replace(/\/$/, '')
+  let client = systemTinfoilClients.get(cloudUrl)
+  if (!client) {
+    const { SecureClient } = await import('tinfoil')
+    client = new SecureClient({ baseURL: `${cloudUrl}/tinfoil` })
+    systemTinfoilClients.set(cloudUrl, client)
+  }
+  await client.ready()
+  return client
+}
 
 export const getTinfoilClient = async (): Promise<SecureClient> => {
-  if (!tinfoilClient) {
+  if (!userTinfoilClient) {
     const { SecureClient } = await import('tinfoil')
-    tinfoilClient = new SecureClient()
+    userTinfoilClient = new SecureClient()
   }
-  await tinfoilClient.ready()
-  return tinfoilClient
+  await userTinfoilClient.ready()
+  return userTinfoilClient
 }
 
 type AiFetchStreamingResponseOptions = {
@@ -183,6 +201,39 @@ export const createModel = async (modelConfig: Model, getProxyFetch: () => Fetch
       return openrouter(modelConfig.model)
     }
     case 'tinfoil': {
+      // System Tinfoil models proxy through Thunderbolt's backend; the bearer
+      // key is injected server-side, so we pass a placeholder here only to
+      // satisfy the SDK's apiKey requirement. User-added Tinfoil models keep
+      // the BYOK flow and require a real key.
+      if (modelConfig.isSystem) {
+        const client = await getSystemTinfoilClient()
+        // Wrap SecureClient.fetch so the backend route's auth guard sees the
+        // real Thunderbolt session token (Bearer) or cookies (SSO), not the
+        // `Bearer thunderbolt-managed` placeholder the OpenAI SDK adds.
+        const sso = isSsoMode()
+        const token = getAuthToken()
+        const wrappedFetch: typeof fetch = Object.assign(
+          (input: RequestInfo | URL, init?: RequestInit) => {
+            const headers = new Headers(init?.headers)
+            const upstreamInit: RequestInit = { ...init, headers }
+            if (sso && !token) {
+              upstreamInit.credentials = 'include'
+              headers.delete('authorization')
+            } else if (token) {
+              headers.set('Authorization', `Bearer ${token}`)
+            }
+            return client.fetch(input, upstreamInit)
+          },
+          { preconnect: fetch.preconnect },
+        )
+        const tinfoil = createOpenAICompatible({
+          name: 'tinfoil',
+          baseURL: client.getBaseURL()!,
+          apiKey: 'thunderbolt-managed',
+          fetch: wrappedFetch,
+        })
+        return tinfoil(modelConfig.model)
+      }
       if (!modelConfig.apiKey) {
         throw new Error('No API key provided')
       }

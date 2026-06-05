@@ -202,7 +202,7 @@ export const mergeMcpTools = async (
 
     const added = await merge()
     if (added > 0) {
-      mcpServerEntries.push(`- ${prefix} (${added} tools)`)
+      mcpServerEntries.push(`- ${prefix} (${added} ${added === 1 ? 'tool' : 'tools'})`)
     }
   }
 

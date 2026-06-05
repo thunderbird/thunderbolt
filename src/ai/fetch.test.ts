@@ -75,7 +75,7 @@ describe('mergeMcpTools', () => {
     expect(toolset.render_deploy).toEqual(tool('first'))
     expect(toolset.render_2_deploy).toEqual(tool('second'))
     expect(Object.keys(toolset).sort()).toEqual(['render_2_deploy', 'render_deploy'])
-    expect(summary).toBe('- render (1 tools)\n- render_2 (1 tools)')
+    expect(summary).toBe('- render (1 tool)\n- render_2 (1 tool)')
   })
 
   it('reserves generated prefixes so a server that sanitizes to one is bumped again (no collision)', async () => {
@@ -106,7 +106,7 @@ describe('mergeMcpTools', () => {
     expect(merged.render_search).toBe(builtIn)
     expect(Object.keys(merged).sort()).toEqual(['render_list', 'render_search'])
     // Only the one tool that actually merged is counted.
-    expect(summary).toBe('- render (1 tools)')
+    expect(summary).toBe('- render (1 tool)')
   })
 
   it('reconnects once and retries when tools() throws a closed-connection error', async () => {
@@ -138,7 +138,7 @@ describe('mergeMcpTools', () => {
     expect(reconnect).toHaveBeenCalledTimes(1)
     expect(Object.keys(toolset)).toEqual(['github_beta'])
     // The dropped server contributes nothing to the summary.
-    expect(summary).toBe('- github (1 tools)')
+    expect(summary).toBe('- github (1 tool)')
   })
 
   it('skips the server when the fresh client also fails after reconnect', async () => {

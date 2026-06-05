@@ -51,6 +51,10 @@ export const upsertModelProfile = async (
     .onConflictDoUpdate({
       target: modelProfilesTable.modelId,
       set: { ...updateFields, deletedAt: null },
+      // Restrict the UPDATE branch to the matching workspace so a second
+      // workspace's upsert for the same modelId doesn't overwrite the first's row.
+      // SQLite treats a false setWhere as DO NOTHING — no error, no cross-workspace mutation.
+      setWhere: eq(modelProfilesTable.workspaceId, workspaceId),
     })
 }
 

@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { useRef } from 'react'
 import {
   AlertDialog,
   AlertDialogAction,
@@ -24,6 +25,8 @@ type RevokedDeviceModalProps = {
 }
 
 export const RevokedDeviceModal = ({ open, signOutAndWipe = defaultSignOutAndWipe }: RevokedDeviceModalProps) => {
+  const wipingRef = useRef(false)
+
   // Server kicked this device — the active server's auth token is gone, encryption
   // keys are useless without it, and the per-trust-domain DB file has no path back
   // to the user. Per the THU-549 wipe model (addendum decision #16), revocation
@@ -31,6 +34,10 @@ export const RevokedDeviceModal = ({ open, signOutAndWipe = defaultSignOutAndWip
   // the server already invalidated the session). The user has no opt-out — there's
   // no Cancel button: confirm is the only path.
   const handleConfirm = () => {
+    if (wipingRef.current) {
+      return
+    }
+    wipingRef.current = true
     void signOutAndWipe({
       onComplete: () => window.location.replace('/'),
     })

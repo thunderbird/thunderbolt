@@ -9,6 +9,7 @@ import { disposeAllAdapters } from '@/acp/adapter-cache'
 import { setSyncEnabled } from '@/db/powersync'
 import { clearAuthToken, clearDeviceId } from '@/lib/auth-token'
 import { deleteDbFile } from '@/lib/fs'
+import { withTimeout } from '@/lib/timeout'
 import { handleFullWipe } from '@/services/encryption'
 import { initialLocalSettings, useLocalSettingsStore } from '@/stores/local-settings-store'
 import { getActiveTrustDomain } from '@/stores/trust-domain-registry'
@@ -59,9 +60,11 @@ export const clearLocalData = async (): Promise<void> => {
     broadcastDbLifecycle({ kind: 'db-closing', trustDomain })
   }
 
-  // Step 3: close our own DB handle and clear the module-level reference.
+  // Step 3: close our own DB handle and clear the module-level reference. The
+  // 10s timeout mirrors the old `resetAppDir` guard — if PowerSync's close hangs
+  // (e.g. a locked OPFS handle from another tab) we don't block the rest of the wipe.
   try {
-    await resetDatabase()
+    await withTimeout(resetDatabase(), 10_000, 'resetDatabase')
   } catch (error) {
     console.error('[clearLocalData] Failed to close database:', error)
   }

@@ -96,15 +96,16 @@ export const deleteDbFile = async (filename: string): Promise<void> => {
     await loadTauriModules()
     if (!tauriPath || !tauriFs) {
       console.error('[deleteDbFile] Failed to load Tauri filesystem modules')
-      return
+    } else {
+      try {
+        await tauriFs.remove(`data/${filename}`, { baseDir: tauriPath.BaseDirectory.AppData })
+      } catch (error) {
+        // ENOENT is the no-op case (file already gone); anything else is logged.
+        console.error(`[deleteDbFile] Failed to remove Tauri file ${filename}:`, error)
+      }
     }
-    try {
-      await tauriFs.remove(`data/${filename}`, { baseDir: tauriPath.BaseDirectory.AppData })
-    } catch (error) {
-      // ENOENT is the no-op case (file already gone); anything else is logged.
-      console.error(`[deleteDbFile] Failed to remove Tauri file ${filename}:`, error)
-    }
-    return
+    // Fall through: PowerSync on Tauri uses OPFSCoopSyncVFS, so the SQLite file
+    // lives in OPFS regardless of the Tauri filesystem path above.
   }
   if (!(await isOpfsAvailable())) {
     // Private browsing / unsupported runtime — DB was :memory:, nothing on disk.

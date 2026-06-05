@@ -35,11 +35,12 @@ export const getDeviceId = (): string => {
     return ''
   }
   const key = deviceIdKeyFor(serverId)
-  let id = localStorage.getItem(key)
-  if (!id) {
-    id = uuidv7()
-    localStorage.setItem(key, id)
+  const existing = localStorage.getItem(key)
+  if (existing) {
+    return existing
   }
+  const id = uuidv7()
+  localStorage.setItem(key, id)
   return id
 }
 

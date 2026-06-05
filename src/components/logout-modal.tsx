@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { useRef, useState } from 'react'
 import {
   AlertDialog,
   AlertDialogAction,
@@ -30,13 +31,18 @@ type LogoutModalProps = {
 
 export const LogoutModal = ({ open, onOpenChange, signOutAndWipe = defaultSignOutAndWipe }: LogoutModalProps) => {
   const authClient = useAuth()
+  const [isLoggingOut, setIsLoggingOut] = useState(false)
+  // Ref mirrors the state for synchronous reads: Radix fires onOpenToggle in the same
+  // click-handler tick as our onClick, before React commits the setState above.
+  const isLoggingOutRef = useRef(false)
 
   // Per addendum decision #16 (THU-549 §5): signing out always wipes the active trust
   // domain's local data. The previous "keep my data" affordance was incompatible with
   // per-trust-domain SQLite files — leftover data without a matching auth token has no
-  // path back to the user. AlertDialogAction closes the dialog synchronously; the async
-  // wipe + navigate happen after the close, mirroring the delete-account flow.
+  // path back to the user.
   const handleLogout = () => {
+    isLoggingOutRef.current = true
+    setIsLoggingOut(true)
     // SSO lands on `/signed-out` because IdP-bounce-back would silently re-auth the
     // user on reload; consumer mode reloads so the user re-enters the normal unauth
     // landing (sign-in or waitlist).
@@ -54,8 +60,15 @@ export const LogoutModal = ({ open, onOpenChange, signOutAndWipe = defaultSignOu
     })
   }
 
+  const handleOpenChange = (newOpen: boolean) => {
+    if (isLoggingOutRef.current) {
+      return
+    }
+    onOpenChange(newOpen)
+  }
+
   return (
-    <AlertDialog open={open} onOpenChange={onOpenChange}>
+    <AlertDialog open={open} onOpenChange={handleOpenChange}>
       <AlertDialogContent>
         <AlertDialogHeader>
           <AlertDialogTitle>Log out</AlertDialogTitle>
@@ -64,9 +77,13 @@ export const LogoutModal = ({ open, onOpenChange, signOutAndWipe = defaultSignOu
           </AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter>
-          <AlertDialogCancel>Cancel</AlertDialogCancel>
-          <AlertDialogAction onClick={handleLogout} className="bg-destructive text-white hover:bg-destructive/90">
-            Log out
+          <AlertDialogCancel disabled={isLoggingOut}>Cancel</AlertDialogCancel>
+          <AlertDialogAction
+            onClick={handleLogout}
+            disabled={isLoggingOut}
+            className="bg-destructive text-white hover:bg-destructive/90"
+          >
+            {isLoggingOut ? 'Logging out…' : 'Log out'}
           </AlertDialogAction>
         </AlertDialogFooter>
       </AlertDialogContent>

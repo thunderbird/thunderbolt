@@ -29,11 +29,22 @@ test.describe('ACP add custom agent', () => {
     const dialog = page.getByRole('dialog')
     await expect(dialog).toBeVisible()
 
-    await page.getByLabel('Name').fill('Test Agent')
-    await page.getByLabel('URL').fill('wss://invalid.example.test/ws')
-    await page.getByLabel('Description').fill('Test description')
+    // The dialog mounts behind a Radix open animation on a cold, first-hit
+    // transpiled chunk. A single synthetic `input` from `.fill()` can land before
+    // React has wired the controlled-input onChange, leaving `name`/`url` state
+    // empty while the DOM shows the text — which keeps the submit button
+    // `disabled={!canSubmit}` and hangs the click for the whole timeout.
+    // `pressSequentially` fires per-character events React commits reliably; scope
+    // the fields to the open dialog.
+    await dialog.getByLabel('Name').pressSequentially('Test Agent')
+    await dialog.getByLabel('URL').pressSequentially('wss://invalid.example.test/ws')
+    await dialog.getByLabel('Description').pressSequentially('Test description')
 
-    await page.getByRole('button', { name: 'Add Agent' }).click()
+    // Assert the enable-gate before clicking: a regression now fails fast and
+    // legibly instead of hanging 60s on a disabled button.
+    const submit = page.getByRole('button', { name: 'Add Agent' })
+    await expect(submit).toBeEnabled()
+    await submit.click()
 
     // Dialog dismisses on success — if validation rejected the URL the dialog
     // would stay open with an inline error.

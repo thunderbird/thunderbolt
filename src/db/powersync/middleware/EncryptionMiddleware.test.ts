@@ -19,7 +19,9 @@ let ckAvailable = true
 mock.module('@/db/encryption/codec', () => ({
   codec: {
     decode: async (val: string) => {
-      if (!ckAvailable || !val.startsWith('__enc:')) return val
+      if (!ckAvailable || !val.startsWith('__enc:')) {
+        return val
+      }
       return `decrypted(${val})`
     },
     encode: async (val: string) => `__enc:${val}`,

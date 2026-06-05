@@ -15,7 +15,8 @@ import {
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'bun:test'
 import { eq } from 'drizzle-orm'
 import { v7 as uuidv7 } from 'uuid'
-import { defaultModelGptOss120b } from '@/defaults/models'
+import { defaultModelGptOss120b, hashModel } from '@/defaults/models'
+import { isModelModified } from '@/defaults/utils'
 import type { Model } from '@/types'
 import {
   createModel,
@@ -27,6 +28,7 @@ import {
   getSelectedModel,
   getSelectedModelQuery,
   getSystemModel,
+  resetModelToDefault,
   updateModel,
 } from './models'
 import { getAllPrompts, getPrompt } from './prompts'
@@ -925,6 +927,64 @@ describe('Models DAL', () => {
       const rawModel = await db.select().from(modelsTable).where(eq(modelsTable.id, modelId)).get()
       expect(rawModel?.defaultHash).toBe('original-hash')
       expect(rawModel?.name).toBe('Updated')
+    })
+  })
+
+  describe('resetModelToDefault', () => {
+    it('restores default fields and refreshes defaultHash', async () => {
+      const db = getDb()
+      const defaultModel = defaultModelGptOss120b
+
+      await db.insert(modelsTable).values({
+        ...defaultModel,
+        name: 'User Edited Name',
+        enabled: 0,
+        defaultHash: 'stale-from-an-older-era',
+      })
+
+      const before = (await db.select().from(modelsTable).where(eq(modelsTable.id, defaultModel.id)).get()) as Model
+      expect(isModelModified(before)).toBe(true)
+
+      await resetModelToDefault(getDb(), defaultModel.id, defaultModel)
+
+      const after = (await db.select().from(modelsTable).where(eq(modelsTable.id, defaultModel.id)).get()) as Model
+      expect(after.name).toBe(defaultModel.name)
+      expect(after.enabled).toBe(defaultModel.enabled)
+      expect(after.defaultHash).toBe(hashModel(defaultModel))
+      expect(isModelModified(after)).toBe(false)
+    })
+
+    it('clears the local-only api key on reset', async () => {
+      const db = getDb()
+      const defaultModel = defaultModelGptOss120b
+
+      await db.insert(modelsTable).values({ ...defaultModel })
+      await db.insert(modelsSecretsTable).values({ modelId: defaultModel.id, apiKey: 'sk-user-supplied' })
+
+      await resetModelToDefault(getDb(), defaultModel.id, defaultModel)
+
+      const secret = await db
+        .select()
+        .from(modelsSecretsTable)
+        .where(eq(modelsSecretsTable.modelId, defaultModel.id))
+        .get()
+      expect(secret).toBeUndefined()
+    })
+
+    it('preserves the row userId (does not overwrite with null from the default template)', async () => {
+      const db = getDb()
+      const defaultModel = defaultModelGptOss120b
+
+      // The default template carries `userId: null`. A row that has already
+      // been synced has a real user_id — reset must not overwrite it, otherwise
+      // PowerSync queues a `{ user_id: null }` PATCH that the upload handler
+      // rejects (it strips user_id, leaving an empty payload → 400).
+      await db.insert(modelsTable).values({ ...defaultModel, userId: 'real-user-id' })
+
+      await resetModelToDefault(getDb(), defaultModel.id, defaultModel)
+
+      const after = (await db.select().from(modelsTable).where(eq(modelsTable.id, defaultModel.id)).get()) as Model
+      expect(after.userId).toBe('real-user-id')
     })
   })
 

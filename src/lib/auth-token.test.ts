@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { beforeAll, beforeEach, describe, expect, it, mock } from 'bun:test'
+import { afterEach, beforeAll, beforeEach, describe, expect, it, mock } from 'bun:test'
 import {
   clearAuthToken,
   clearDeviceId,
@@ -45,6 +45,13 @@ beforeAll(() => {
 })
 
 beforeEach(() => {
+  clearAuthToken()
+  clearDeviceId()
+})
+
+// Mirror the beforeEach cleanup so the last test's token can't leak into the
+// next test file (AuthProvider's mount effect fires get-session on any token).
+afterEach(() => {
   clearAuthToken()
   clearDeviceId()
 })

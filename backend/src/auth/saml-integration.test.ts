@@ -66,7 +66,9 @@ describe('SAML Integration', () => {
 
   afterEach(async () => {
     getSettingsSpy?.mockRestore()
-    await cleanup()
+    if (cleanup) {
+      await cleanup()
+    }
   })
 
   describe('SAML sign-in endpoint', () => {

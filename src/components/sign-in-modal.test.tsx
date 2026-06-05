@@ -280,6 +280,7 @@ describe('SignInModal', () => {
       const input = await waitForModal()
       const form = input.closest('form')!
 
+      mockFetchSpy.mockClear()
       fireEvent.submit(form)
 
       await act(async () => {

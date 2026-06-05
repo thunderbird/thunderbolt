@@ -156,7 +156,9 @@ describe('Encryption API', () => {
   })
 
   afterEach(async () => {
-    await cleanup()
+    if (cleanup) {
+      await cleanup()
+    }
   })
 
   // ─── POST /devices ──────────────────────────────────────────────────

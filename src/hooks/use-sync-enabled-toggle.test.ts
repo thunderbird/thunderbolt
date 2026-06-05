@@ -4,21 +4,18 @@
 
 import { act, renderHook } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
-import { ThunderboltConnector } from '@/db/powersync/connector'
-import { syncEnabledChangeEvent } from '@/db/powersync/database'
 
 const mockSetSyncEnabled = mock(() => Promise.resolve())
 const mockTrackEvent = mock(() => {})
 
+// Partial mock: spread the REAL module so every other export (incl. reconnectSync,
+// which powersync-status.test.tsx consumes for real) survives if this registration
+// leaks across files under `--randomize`. Only `setSyncEnabled` is overridden with
+// the local spy this suite asserts on. See docs/development/testing.md §65.
+const realPowersync = await import('@/db/powersync')
 mock.module('@/db/powersync', () => ({
-  AppSchema: {},
-  drizzleSchema: {},
-  ThunderboltConnector,
-  PowerSyncDatabaseImpl: class {},
-  getPowerSyncInstance: () => null,
-  isSyncEnabled: () => false,
+  ...realPowersync,
   setSyncEnabled: mockSetSyncEnabled,
-  syncEnabledChangeEvent,
 }))
 
 mock.module('@/lib/posthog', () => ({

@@ -24,7 +24,7 @@ const wsCarrierSubprotocol = 'thunderbolt.v1'
  * reached the server" — the former triggers a re-login flow, the latter a
  * network-error toast. Mirrors the Haystack route.
  */
-const wsCloseUnauthorized = 4001
+export const wsCloseUnauthorized = 4001
 
 const queueBytes = 256 * 1024
 const queueMessages = 64

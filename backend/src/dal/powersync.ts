@@ -127,8 +127,13 @@ export const applyOperation = async (
         delete patchPayload[col]
       }
       const schemaPatch = toSchemaRecord(patchPayload, validDbNames, dbNameToKey)
+      // Empty patch after stripping server-managed and unknown columns is a
+      // harmless no-op (e.g. a buggy client that only sent `{ user_id: null }`).
+      // Accept it so the client's CRUD queue can drain instead of looping on a
+      // 400 — refusing it would block every subsequent upload behind a write
+      // that has nothing to apply anyway.
       if (Object.keys(schemaPatch).length === 0) {
-        return false
+        return true
       }
 
       const patched = await database

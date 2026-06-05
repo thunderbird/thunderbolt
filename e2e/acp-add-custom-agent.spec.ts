@@ -8,16 +8,35 @@ import { collectPageErrors, loginViaOidc } from './helpers'
 /**
  * E2E for the "Add Custom Agent" CRUD path on `/settings/agents`.
  *
- * We open the dialog, submit a syntactically-valid (but unreachable) WebSocket
- * URL, and assert that the new row materialises in the agent list. The
- * connection attempt would obviously fail at runtime — that's not what this
- * test cares about. The contract under test is: dialog → DAL insert → PowerSync
- * live query → UI row. A regression in any of those layers would either keep
- * the dialog open, surface an exception, or leave the list empty.
+ * Since #933, "Add Agent" is gated behind a successful "Test Connection": the
+ * dialog opens a WebSocket to the entered URL and runs the ACP `initialize`
+ * handshake. CI can't reach a real agent, so we mock the WebSocket (Playwright
+ * `routeWebSocket`) and answer `initialize` with a minimal valid result — this
+ * exercises the real `testAcpConnection` path without an upstream. The contract
+ * under test: dialog → connection test → DAL insert → PowerSync live query → UI
+ * row.
  */
 test.describe('ACP add custom agent', () => {
   test('submitting the dialog persists a new row to the list', async ({ page }) => {
     const errors = collectPageErrors(page)
+
+    // Mock the ACP endpoint: accept the socket and answer the JSON-RPC
+    // `initialize` request so the dialog's connection test succeeds. ACP frames
+    // one JSON-RPC object per WS message (see src/acp/transports/websocket.ts).
+    await page.routeWebSocket(/invalid\.example\.test/, (ws) => {
+      ws.onMessage((message) => {
+        const rpc = JSON.parse(typeof message === 'string' ? message : message.toString())
+        if (rpc.method === 'initialize') {
+          ws.send(
+            JSON.stringify({
+              jsonrpc: '2.0',
+              id: rpc.id,
+              result: { protocolVersion: 1, agentCapabilities: {} },
+            }),
+          )
+        }
+      })
+    })
 
     await loginViaOidc(page)
 
@@ -32,6 +51,11 @@ test.describe('ACP add custom agent', () => {
     await page.getByLabel('Name').fill('Test Agent')
     await page.getByLabel('URL').fill('wss://invalid.example.test/ws')
     await page.getByLabel('Description').fill('Test description')
+
+    // Add Agent is gated behind a successful connection test (#933): run it and
+    // wait for the success state before submitting.
+    await dialog.getByRole('button', { name: 'Test Connection' }).click()
+    await expect(dialog.getByText('Connection successful!')).toBeVisible({ timeout: 10_000 })
 
     await page.getByRole('button', { name: 'Add Agent' }).click()
 

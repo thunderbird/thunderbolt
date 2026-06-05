@@ -103,7 +103,9 @@ describe('OTP Security Hardening', () => {
   afterEach(async () => {
     delete process.env.WAITLIST_AUTO_APPROVE_DOMAINS
     clearSettingsCache()
-    await cleanup()
+    if (cleanup) {
+      await cleanup()
+    }
   })
 
   // ---------------------------------------------------------------------------

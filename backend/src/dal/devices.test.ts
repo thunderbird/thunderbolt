@@ -31,7 +31,9 @@ describe('devices DAL', () => {
   })
 
   afterEach(async () => {
-    await cleanup()
+    if (cleanup) {
+      await cleanup()
+    }
   })
 
   describe('getDeviceById', () => {

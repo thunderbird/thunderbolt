@@ -43,9 +43,11 @@ export default defineConfig({
   projects: [
     {
       name: 'oidc',
-      // ACP specs use the OIDC mock IdP via `loginViaOidc`, so they belong in
-      // this project alongside the auth flow tests.
-      testMatch: /(?:oidc|acp-)/,
+      // ACP + proxy specs use the OIDC mock IdP via `loginViaOidc`, so they
+      // belong in this project alongside the auth flow tests. Anchor to
+      // `.spec.ts$` so non-spec helpers under e2e/ (mock-saml-idp.ts,
+      // saml-test-certs.ts, helpers.ts) are never misclassified as test files.
+      testMatch: /(?:oidc|acp-|proxy-).*\.spec\.ts$/,
       use: {
         ...devices['Desktop Chrome'],
         baseURL: `http://localhost:${oidcVitePort}`,
@@ -53,7 +55,11 @@ export default defineConfig({
     },
     {
       name: 'saml',
-      testMatch: /saml/,
+      // Anchor to `.spec.ts$` — a bare /saml/ also matched the helper files
+      // (mock-saml-idp.ts, saml-test-certs.ts), making Playwright treat them as
+      // test files and break `playwright test --list` ("test file should not
+      // import test file").
+      testMatch: /saml.*\.spec\.ts$/,
       use: {
         ...devices['Desktop Chrome'],
         baseURL: `http://localhost:${samlVitePort}`,

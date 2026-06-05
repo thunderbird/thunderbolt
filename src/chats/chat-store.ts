@@ -34,6 +34,7 @@ export type ChatSession = {
   connectionStatus: ConnectionStatus
   connectionError: Error | null
   id: string
+  workspaceId: string
   pendingPermission: PendingPermission | null
   retryCount: number
   retriesExhausted: boolean

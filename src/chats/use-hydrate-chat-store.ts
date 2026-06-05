@@ -118,23 +118,32 @@ export const useHydrateChatStore = ({ id, isNew }: UseHydrateChatStoreParams) =>
       return
     }
 
-    // If the session already exists, set the current session id and update the mcp clients and models
-    if (sessions.has(id)) {
-      setCurrentSessionId(id)
+    // If the session already exists, reuse it — unless it was built for a different
+    // workspace (workspace switch). In that case, evict it so the full create path
+    // rebuilds the closures with the new workspaceId.
+    const existingSession = sessions.get(id)
+    if (existingSession) {
+      if (existingSession.workspaceId !== workspaceId) {
+        const nextSessions = new Map(sessions)
+        nextSessions.delete(id)
+        useChatStore.setState({ sessions: nextSessions })
+        // fall through to full create path
+      } else {
+        setCurrentSessionId(id)
 
-      const [modes, models, mcpClients] = await Promise.all([
-        getAllModes(db, workspaceId),
-        getAvailableModels(db, workspaceId),
-        getEnabledClients(),
-      ])
+        const [modes, models, mcpClients] = await Promise.all([
+          getAllModes(db, workspaceId),
+          getAvailableModels(db, workspaceId),
+          getEnabledClients(),
+        ])
 
-      setMcpClients(mcpClients)
-      setModes(modes)
-      setModels(models)
+        setMcpClients(mcpClients)
+        setModes(modes)
+        setModels(models)
 
-      setIsReady(true)
-
-      return
+        setIsReady(true)
+        return
+      }
     }
 
     // If the session does not exist, create it below
@@ -230,6 +239,7 @@ export const useHydrateChatStore = ({ id, isNew }: UseHydrateChatStoreParams) =>
       connectionStatus: 'idle',
       connectionError: null,
       id,
+      workspaceId,
       pendingPermission: null,
       retryCount: 0,
       retriesExhausted: false,

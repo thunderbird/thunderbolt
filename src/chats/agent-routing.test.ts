@@ -96,6 +96,7 @@ const hydrateSessionWith = (id: string, agent: Agent, chatThread: ChatThread | n
     connectionStatus: 'idle',
     connectionError: null,
     id,
+    workspaceId: wsId,
     pendingPermission: null,
     retryCount: 0,
     retriesExhausted: false,

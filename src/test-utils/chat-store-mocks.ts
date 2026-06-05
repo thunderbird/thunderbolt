@@ -190,6 +190,7 @@ export const hydrateStore = (state: {
   chatInstance: Chat<ThunderboltUIMessage> | null
   chatThread: ChatThread | null
   id: string
+  workspaceId?: string
   mcpClients?: unknown[]
   modes?: Mode[]
   models?: Model[]
@@ -222,6 +223,7 @@ export const hydrateStore = (state: {
       connectionStatus: 'idle' as const,
       connectionError: null,
       id: state.id,
+      workspaceId: state.workspaceId ?? '00000000-0000-0000-0000-000000000001',
       pendingPermission: null,
       retryCount: 0,
       retriesExhausted: false,

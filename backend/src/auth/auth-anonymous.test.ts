@@ -69,7 +69,9 @@ describe('anonymous plugin — link deletes anonymous user', () => {
   })
 
   afterEach(async () => {
-    await cleanup()
+    if (cleanup) {
+      await cleanup()
+    }
   })
 
   it('deletes the anonymous user row after email-otp promotion', async () => {
@@ -125,7 +127,9 @@ describe('anonymous plugin — session-fixation guard', () => {
   })
 
   afterEach(async () => {
-    await cleanup()
+    if (cleanup) {
+      await cleanup()
+    }
   })
 
   it('allows /sign-in/anonymous when no session exists', async () => {
@@ -217,7 +221,9 @@ describe('anonymous plugin — gated by AUTH_ALLOW_ANONYMOUS', () => {
   })
 
   afterEach(async () => {
-    await cleanup()
+    if (cleanup) {
+      await cleanup()
+    }
   })
 
   it('does NOT expose /sign-in/anonymous when AUTH_ALLOW_ANONYMOUS is unset (default false)', async () => {

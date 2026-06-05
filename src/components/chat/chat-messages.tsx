@@ -5,7 +5,6 @@
 import { AssistantMessage } from './assistant-message'
 import { SyntheticLoadingPart } from './synthetic-loading-part'
 import { UserMessage } from './user-message'
-import { EncryptionMessage } from './encryption-message'
 import { ErrorMessage } from './error-message'
 import { useEffect, useMemo, useRef } from 'react'
 import { useCurrentChatSession } from '@/chats/chat-store'
@@ -18,7 +17,7 @@ type ChatMessagesProps = {
 }
 
 export const ChatMessages = ({ useChat = useChat_default }: ChatMessagesProps) => {
-  const { chatInstance, chatThread, retryCount, retriesExhausted } = useCurrentChatSession()
+  const { chatInstance, retryCount, retriesExhausted } = useCurrentChatSession()
 
   const { error: chatError, status, messages, regenerate } = useChat({ chat: chatInstance })
   const { triggerNotification } = useHaptics()
@@ -53,8 +52,6 @@ export const ChatMessages = ({ useChat = useChat_default }: ChatMessagesProps) =
 
   return (
     <div>
-      {!!chatThread?.isEncrypted && <EncryptionMessage />}
-
       {messages.map((message) => {
         // Skip OAuth retry messages (they're hidden, only used to trigger regeneration)
         if (message.metadata?.oauthRetry === true) {

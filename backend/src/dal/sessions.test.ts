@@ -30,7 +30,9 @@ describe('sessions DAL', () => {
   })
 
   afterEach(async () => {
-    await cleanup()
+    if (cleanup) {
+      await cleanup()
+    }
   })
 
   it('returns session for valid non-expired token', async () => {

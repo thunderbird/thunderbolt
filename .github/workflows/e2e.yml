@@ -19,6 +19,9 @@ permissions:
 jobs:
   e2e:
     runs-on: ubuntu-latest
+    # A healthy sharded run is a few minutes; a CPU-starved runner can hang at
+    # server boot. Cap so a stuck job fails fast and frees the concurrency slot.
+    timeout-minutes: 20
     strategy:
       fail-fast: false
       matrix:
@@ -29,7 +32,7 @@ jobs:
       - name: Install Bun
         uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
         with:
-          bun-version: 1.3.13
+          bun-version: 1.3.14
 
       - name: Cache Bun dependencies
         uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
@@ -49,6 +52,11 @@ jobs:
 
       - name: Install Playwright browsers
         run: bunx playwright install --with-deps chromium
+
+      - name: Runner CPU/memory diagnostics (pre-test)
+        run: |
+          echo "== nproc =="; nproc
+          echo "== vmstat 1 3 (watch the 'st' steal column under ----cpu----) =="; vmstat 1 3
 
       - name: Run e2e tests (shard ${{ matrix.shard }})
         run: bunx playwright test --shard=${{ matrix.shard }}
@@ -73,13 +81,14 @@ jobs:
     if: always() && needs.e2e.result != 'skipped'
     needs: e2e
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
 
       - name: Install Bun
         uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
         with:
-          bun-version: 1.3.13
+          bun-version: 1.3.14
 
       - name: Install dependencies
         run: bun install --frozen-lockfile

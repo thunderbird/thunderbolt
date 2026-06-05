@@ -34,10 +34,18 @@ type ModelItemData = {
 /**
  * Models that require an API key but don't have one yet need configuration.
  * Thunderbolt is server-authenticated; custom (OpenAI-compatible) endpoints treat
- * the key as optional, so neither flags as missing.
+ * the key as optional; system Tinfoil rows are also server-authenticated (the key
+ * is injected by the backend proxy) — none of those flag as missing.
  */
-export const needsApiKey = (model: Model) =>
-  model.provider !== 'thunderbolt' && model.provider !== 'custom' && !model.apiKey
+export const needsApiKey = (model: Model) => {
+  if (model.provider === 'thunderbolt' || model.provider === 'custom') {
+    return false
+  }
+  if (model.provider === 'tinfoil' && model.isSystem === 1) {
+    return false
+  }
+  return !model.apiKey
+}
 
 const toMenuItem = (
   model: Model,
@@ -88,21 +96,14 @@ export const categorizeModels = (
   if (custom.length > 0) {
     groups.push({ id: 'custom', label: 'Custom Models', items: custom })
   }
+  // Models disabled by an encryption mismatch are shown greyed out with no
+  // group heading or explanation (only one of these buckets is ever non-empty
+  // for a given chat, since the mismatch is one-directional).
   if (disabledStandard.length > 0) {
-    groups.push({
-      id: 'standard-disabled',
-      label: 'Standard Models',
-      subtitle: 'Only confidential models can be used in this chat',
-      items: disabledStandard,
-    })
+    groups.push({ id: 'standard-disabled', items: disabledStandard })
   }
   if (disabledConfidential.length > 0) {
-    groups.push({
-      id: 'confidential-disabled',
-      label: 'Confidential Models',
-      subtitle: 'Only available in confidential chats',
-      items: disabledConfidential,
-    })
+    groups.push({ id: 'confidential-disabled', items: disabledConfidential })
   }
 
   return groups
@@ -149,8 +150,8 @@ export const ModelSelector = ({
 
   const renderItem = (item: SearchableMenuItem<ModelItemData>, isSelected: boolean) => {
     const model = item.data?.model
-    // Encryption mismatch already explains the disabled state via the group subtitle —
-    // don't double up with a missing-key hint that's not the real blocker.
+    // For an encryption-mismatch item the real blocker isn't a missing key, so
+    // suppress the missing-key hint (the item is simply shown greyed out).
     const showMissingKeyHint = model ? needsApiKey(model) && !item.data?.disabledByEncryption : false
 
     const content = (

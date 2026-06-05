@@ -118,32 +118,3 @@ export const buildRawMessage = (params: DraftEmailParams): string => {
     .replace(/\+/g, '-')
     .replace(/\//g, '_')
 }
-
-// =============================================================================
-// DRIVE UTILITY FUNCTIONS
-// =============================================================================
-
-/**
- * Validates and passes through Google Drive API search queries without transformation
- *
- * This function expects queries to use Google's native Drive API syntax.
- * The LLM should generate proper syntax based on the comprehensive documentation
- * provided in the searchDriveSchema.
- *
- * @param query - Google Drive API search query using native syntax
- * @returns The trimmed query string, or empty string for blank input
- *
- * @example
- * // Valid query formats:
- * transformDriveQuery("name contains 'report'")
- * transformDriveQuery("mimeType = 'application/pdf' and trashed = false")
- * transformDriveQuery("(name contains 'budget') or (fullText contains 'finance')")
- */
-export const transformDriveQuery = (query: string): string => {
-  if (!query.trim()) {
-    return ''
-  }
-
-  // Return the query as-is - the LLM should generate proper Google Drive API syntax
-  return query.trim()
-}

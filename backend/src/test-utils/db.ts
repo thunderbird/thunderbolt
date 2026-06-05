@@ -73,3 +73,68 @@ export const testDbManager = new TestDbManager()
  * For test isolation, wrap each test in a Drizzle transaction and roll back.
  */
 export const createTestDb = () => testDbManager.createTestDb()
+
+/** An isolated, migrated PGlite instance plus a `close()` that releases its
+ *  WASM worker. */
+export type IsolatedTestDb = {
+  client: PGlite
+  db: typeof DbType
+  close: () => Promise<void>
+}
+
+/**
+ * Create a fully ISOLATED PGlite-backed test DB: its own WASM runtime and its
+ * own connection, NOT the shared BEGIN/ROLLBACK singleton (`createTestDb`).
+ *
+ * Use this for tests that bind a real `.listen()` server whose server-side
+ * `getSession` reads run on a separate task: those reads must see committed
+ * rows without racing the singleton's open transaction (head-of-line blocking
+ * under CI CPU starvation). Rows inserted here are committed on a real
+ * connection, so a concurrent reader on the same instance sees them.
+ *
+ * Caller MUST `await close()` in `afterAll` — PGlite 0.4.x leaves WASM worker
+ * threads open without an explicit close, crashing Bun with exit code 99 under
+ * `--rerun-each` (see test-setup.ts).
+ */
+export const createIsolatedTestDb = async (): Promise<IsolatedTestDb> => {
+  const client = new PGlite()
+  const db = drizzle({ client, schema })
+  const migrationsFolder = resolve(import.meta.dir, '../../drizzle')
+  await migrate(db, { migrationsFolder })
+  return {
+    client,
+    db,
+    close: async () => {
+      if (!client.closed) {
+        await client.close()
+      }
+    },
+  }
+}
+
+let sharedIsolatedTestDb: IsolatedTestDb | null = null
+
+/**
+ * A SINGLE shared isolated PGlite instance, reused by every test that binds a
+ * real `.listen()` server. Creating a fresh `new PGlite()` per describe (× the
+ * `--rerun-each` passes) accumulated WASM workers on CI until `new PGlite()`
+ * hung — an 8-minute stall at the first ws-e2e `beforeAll`. One instance,
+ * created on first use and closed once in the global `afterAll` (test-setup.ts),
+ * removes the accumulation. Rows committed here are UUID-keyed and unique, so
+ * they can't collide across tests or reruns sharing the instance.
+ */
+export const getSharedIsolatedTestDb = async (): Promise<IsolatedTestDb> => {
+  if (!sharedIsolatedTestDb) {
+    sharedIsolatedTestDb = await createIsolatedTestDb()
+  }
+  return sharedIsolatedTestDb
+}
+
+/** Close + reset the shared isolated instance. Called once in the global
+ *  `afterAll` so its WASM worker is released before Bun tears down the process. */
+export const closeSharedIsolatedTestDb = async (): Promise<void> => {
+  if (sharedIsolatedTestDb) {
+    await sharedIsolatedTestDb.close()
+    sharedIsolatedTestDb = null
+  }
+}

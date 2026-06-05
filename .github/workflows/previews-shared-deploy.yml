@@ -111,6 +111,7 @@ jobs:
           INPUT_MISTRAL_API_KEY: ${{ secrets.MISTRAL_API_KEY }}
           INPUT_THUNDERBOLT_INFERENCE_API_KEY: ${{ secrets.THUNDERBOLT_INFERENCE_API_KEY }}
           INPUT_EXA_API_KEY: ${{ secrets.EXA_API_KEY }}
+          INPUT_TINFOIL_API_KEY: ${{ secrets.TINFOIL_API_KEY }}
         run: |
           pulumi config set version "$INPUT_VERSION" -s "$INPUT_STACK_NAME" --non-interactive
           pulumi config set authHostname "$INPUT_AUTH_HOSTNAME" -s "$INPUT_STACK_NAME" --non-interactive
@@ -130,6 +131,7 @@ jobs:
           [ -n "$INPUT_MISTRAL_API_KEY" ]               && pulumi config set --secret mistralApiKey               "$INPUT_MISTRAL_API_KEY"               -s "$INPUT_STACK_NAME" --non-interactive
           [ -n "$INPUT_THUNDERBOLT_INFERENCE_API_KEY" ] && pulumi config set --secret thunderboltInferenceApiKey "$INPUT_THUNDERBOLT_INFERENCE_API_KEY" -s "$INPUT_STACK_NAME" --non-interactive
           [ -n "$INPUT_EXA_API_KEY" ]                   && pulumi config set --secret exaApiKey                   "$INPUT_EXA_API_KEY"                   -s "$INPUT_STACK_NAME" --non-interactive
+          [ -n "$INPUT_TINFOIL_API_KEY" ]               && pulumi config set --secret tinfoilApiKey              "$INPUT_TINFOIL_API_KEY"               -s "$INPUT_STACK_NAME" --non-interactive
           true
 
       - name: Deploy

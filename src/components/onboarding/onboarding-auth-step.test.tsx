@@ -246,12 +246,19 @@ describe('OnboardingAuthStep', () => {
   })
 
   describe('Feature cards', () => {
-    it('should display all feature cards with correct content', () => {
+    it('should display email and calendar cards for Google', () => {
       renderComponent()
 
       expect(screen.getByText('Email')).toBeInTheDocument()
       expect(screen.getByText('Calendar')).toBeInTheDocument()
-      expect(screen.getByText('Drive')).toBeInTheDocument()
+    })
+
+    it('should display a OneDrive card for Microsoft', () => {
+      renderComponent({ providers: ['microsoft'] })
+
+      expect(screen.getByText('Email')).toBeInTheDocument()
+      expect(screen.getByText('Calendar')).toBeInTheDocument()
+      expect(screen.getByText('OneDrive Access')).toBeInTheDocument()
     })
   })
 

@@ -26,7 +26,9 @@ describe('getOrCreateOtpChallenge', () => {
   })
 
   afterEach(async () => {
-    await cleanup()
+    if (cleanup) {
+      await cleanup()
+    }
   })
 
   it('should create a new challenge when none exists', async () => {
@@ -111,7 +113,9 @@ describe('validateOtpChallenge', () => {
   })
 
   afterEach(async () => {
-    await cleanup()
+    if (cleanup) {
+      await cleanup()
+    }
   })
 
   it('should return true for valid non-expired challenge', async () => {
@@ -162,7 +166,9 @@ describe('deleteOtpChallengesForEmail', () => {
   })
 
   afterEach(async () => {
-    await cleanup()
+    if (cleanup) {
+      await cleanup()
+    }
   })
 
   it('should delete all challenges for the given email', async () => {

@@ -43,6 +43,10 @@ export const supportedModels: Record<string, ModelConfig> = {
     provider: 'anthropic',
     internalName: 'claude-sonnet-4-5',
   },
+  'opus-4.8': {
+    provider: 'anthropic',
+    internalName: 'claude-opus-4-8',
+  },
 }
 
 /**

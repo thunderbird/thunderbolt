@@ -13,4 +13,5 @@
 export { connectToAgent, type ConnectToAgentContext, type ConnectToAgentDeps } from './connect'
 export { createBuiltInAdapter } from './built-in-adapter'
 export { connectAcpAdapter } from './acp-adapter'
+export { testAcpConnection } from './connection-test'
 export type { AcpTransport, AiSdkChunk } from './types'

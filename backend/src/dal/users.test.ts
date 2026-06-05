@@ -32,7 +32,9 @@ describe('users DAL', () => {
   })
 
   afterEach(async () => {
-    await cleanup()
+    if (cleanup) {
+      await cleanup()
+    }
   })
 
   describe('getUserById', () => {

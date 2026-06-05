@@ -331,6 +331,47 @@ describe('Prompts DAL', () => {
         expect(currentHash).toBe(automation.defaultHash!)
       }
     })
+
+    it('refreshes a stale defaultHash (e.g. from a previous hashPrompt formula)', async () => {
+      const db = getDb()
+      const defaultAutomation = defaultAutomations[0]
+
+      // Simulate a row whose defaultHash was stamped under an older hashPrompt
+      // formula — reset must overwrite it, not preserve it.
+      await db
+        .update(promptsTable)
+        .set({ defaultHash: 'stale-from-an-older-era' })
+        .where(eq(promptsTable.id, defaultAutomation.id))
+
+      await resetAutomationToDefault(getDb(), defaultAutomation.id, defaultAutomation)
+
+      const automation = (await db
+        .select()
+        .from(promptsTable)
+        .where(eq(promptsTable.id, defaultAutomation.id))
+        .get()) as Prompt
+      expect(automation?.defaultHash).toBe(hashPrompt(defaultAutomation))
+      expect(hashPrompt(automation)).toBe(automation.defaultHash!)
+    })
+
+    it('preserves the row userId (does not overwrite with null from the default template)', async () => {
+      const db = getDb()
+      const defaultAutomation = defaultAutomations[0]
+
+      // The default template carries `userId: null`. Reset must leave the
+      // row's real user_id intact — otherwise PowerSync queues a
+      // `{ user_id: null }` PATCH that the upload handler rejects.
+      await db.update(promptsTable).set({ userId: 'real-user-id' }).where(eq(promptsTable.id, defaultAutomation.id))
+
+      await resetAutomationToDefault(getDb(), defaultAutomation.id, defaultAutomation)
+
+      const automation = (await db
+        .select()
+        .from(promptsTable)
+        .where(eq(promptsTable.id, defaultAutomation.id))
+        .get()) as Prompt
+      expect(automation?.userId).toBe('real-user-id')
+    })
   })
 
   describe('createAutomation', () => {

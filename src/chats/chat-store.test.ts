@@ -414,6 +414,24 @@ describe('chat-store', () => {
       expect(stored).toBeNull()
     })
 
+    it('persists the global last-used agent in settings so new chats default to it', async () => {
+      const model = createMockModel()
+      hydrateStore({
+        chatInstance: createMockChatInstanceWithValidation(),
+        chatThread: null,
+        id: 'thread-1',
+        mcpClients: [],
+        models: [model],
+        selectedModel: model,
+        triggerData: null,
+      })
+
+      await useChatStore.getState().setSelectedAgent('thread-1', customAgent)
+
+      const settings = await getSettings(getDb(), { selected_agent: String })
+      expect(settings.selectedAgent).toBe(customAgent.id)
+    })
+
     it('throws when the session is missing', async () => {
       await expect(useChatStore.getState().setSelectedAgent('nope', customAgent)).rejects.toThrow('No session found')
     })

@@ -166,7 +166,7 @@ describe('createAgentRoutingFetch', () => {
     expect(adapterFetch).toHaveBeenCalledTimes(3)
   })
 
-  it('disconnects the stale adapter and connects a new one when selectedAgent changes mid-session', async () => {
+  it('routes to the new agent WITHOUT disconnecting the previous one when selectedAgent changes mid-session', async () => {
     resetStore()
     const first = buildFakeAdapter(remoteAgent)
     const second = buildFakeAdapter(otherRemoteAgent)
@@ -183,11 +183,15 @@ describe('createAgentRoutingFetch', () => {
     expect(first.fetch).toHaveBeenCalledTimes(1)
     expect(first.disconnect).not.toHaveBeenCalled()
 
-    // User switches to a different agent on the same thread.
-    useChatStore.getState().setSelectedAgent('t-switch', otherRemoteAgent)
+    // User switches to a different agent on the same thread. The previous
+    // agent's shared connection must stay warm — other threads may use it.
+    // Update the in-memory selection directly (this DB-free DI suite doesn't
+    // register a database; `setSelectedAgent` now persists the last-used agent
+    // via the DAL, which routing doesn't depend on).
+    hydrateSessionWith('t-switch', otherRemoteAgent)
 
     await customFetch('/chat', { method: 'POST', body: '{}' })
-    expect(first.disconnect).toHaveBeenCalledTimes(1)
+    expect(first.disconnect).not.toHaveBeenCalled()
     expect(connectToAgent).toHaveBeenCalledTimes(2)
     expect(second.fetch).toHaveBeenCalledTimes(1)
   })
@@ -195,20 +199,25 @@ describe('createAgentRoutingFetch', () => {
   it('persists ACP sessionId via updateChatThread when onAcpSessionId is invoked by the adapter', async () => {
     resetStore()
     const chatThread = { id: 'thread-77', acpSessionId: null } as ChatThread
-    const fetch = mock(async () => new Response('streamed'))
     const disconnect = mock(() => {})
     const fakeDb = { __id: 'fake-db' } as never
 
+    // `onAcpSessionId` now travels on the per-FETCH context (the shared
+    // connection resolves a session per thread), so capture it there.
     let capturedOnAcpSessionId: ((id: string) => Promise<void>) | null = null
-    const connectToAgent = mock(async (_agent: Agent, ctx: { onAcpSessionId: (id: string) => Promise<void> }) => {
+    const fetch = mock(async (_init: RequestInit, ctx: { onAcpSessionId: (id: string) => Promise<void> }) => {
       capturedOnAcpSessionId = ctx.onAcpSessionId
-      return {
-        agent: remoteAgent,
-        capabilities: null,
-        fetch: fetch as unknown as AgentAdapter['fetch'],
-        disconnect,
-      } as AgentAdapter
+      return new Response('streamed')
     })
+    const connectToAgent = mock(
+      async () =>
+        ({
+          agent: remoteAgent,
+          capabilities: null,
+          fetch: fetch as unknown as AgentAdapter['fetch'],
+          disconnect,
+        }) as AgentAdapter,
+    )
 
     const updateChatThread = mock(async () => {})
 
@@ -301,20 +310,23 @@ describe('createAgentRoutingFetch', () => {
 
   it('does NOT persist acpSessionId when the session has no chatThread (new chat)', async () => {
     resetStore()
-    const fetch = mock(async () => new Response('streamed'))
     const disconnect = mock(() => {})
     const fakeDb = { __id: 'fake-db' } as never
 
     let capturedOnAcpSessionId: ((id: string) => Promise<void>) | null = null
-    const connectToAgent = mock(async (_agent: Agent, ctx: { onAcpSessionId: (id: string) => Promise<void> }) => {
+    const fetch = mock(async (_init: RequestInit, ctx: { onAcpSessionId: (id: string) => Promise<void> }) => {
       capturedOnAcpSessionId = ctx.onAcpSessionId
-      return {
-        agent: remoteAgent,
-        capabilities: null,
-        fetch: fetch as unknown as AgentAdapter['fetch'],
-        disconnect,
-      } as AgentAdapter
+      return new Response('streamed')
     })
+    const connectToAgent = mock(
+      async () =>
+        ({
+          agent: remoteAgent,
+          capabilities: null,
+          fetch: fetch as unknown as AgentAdapter['fetch'],
+          disconnect,
+        }) as AgentAdapter,
+    )
 
     const updateChatThread = mock(async () => {})
 

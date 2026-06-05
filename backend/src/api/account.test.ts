@@ -58,7 +58,9 @@ describe('Account API', () => {
   })
 
   afterEach(async () => {
-    await cleanup()
+    if (cleanup) {
+      await cleanup()
+    }
   })
 
   /** Create a user, session, and trusted caller device. Returns { now, callerDeviceId }. */

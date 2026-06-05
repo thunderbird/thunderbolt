@@ -79,10 +79,9 @@ export const OnboardingAuthStep = ({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [location.state])
 
-  const providerName = provider === 'microsoft' ? 'Microsoft' : 'Google'
-  const TopIcon = provider === 'microsoft' ? MicrosoftLogo : GoogleLogo
-  const storageServiceName = provider === 'microsoft' ? 'OneDrive' : 'Google Drive'
-  const storageFeatureTitle = provider === 'microsoft' ? 'OneDrive Access' : 'Drive'
+  const isMicrosoft = provider === 'microsoft'
+  const providerName = isMicrosoft ? 'Microsoft' : 'Google'
+  const TopIcon = isMicrosoft ? MicrosoftLogo : GoogleLogo
 
   const handleDisconnect = async () => {
     try {
@@ -101,7 +100,11 @@ export const OnboardingAuthStep = ({
           <TopIcon className="w-8 h-8" />
         </IconCircle>
         <h2 className="text-2xl font-bold">Connect {providerName}</h2>
-        <p className="text-muted-foreground">Your assistant can help you manage your email, calendar, and documents.</p>
+        <p className="text-muted-foreground">
+          {isMicrosoft
+            ? 'Your assistant can help you manage your email, calendar, and documents.'
+            : 'Your assistant can help you manage your email and calendar.'}
+        </p>
       </div>
 
       <div className="pt-5">
@@ -109,19 +112,27 @@ export const OnboardingAuthStep = ({
           className="mb-4"
           icon={Calendar}
           title="Calendar"
-          description="View and manage your schedule; create + reschedule events."
+          description={
+            isMicrosoft
+              ? 'View and manage your schedule; create + reschedule events.'
+              : 'View your schedule and upcoming events.'
+          }
         />
         <OnboardingFeatureCard
           className="mb-4"
           icon={Mail}
           title="Email"
-          description="Read, compose, and organize your emails."
+          description={
+            isMicrosoft ? 'Read, compose, and organize your emails.' : 'Read your emails and compose drafts.'
+          }
         />
-        <OnboardingFeatureCard
-          icon={File}
-          title={storageFeatureTitle}
-          description={`Search and work with your ${storageServiceName} files and documents.`}
-        />
+        {isMicrosoft && (
+          <OnboardingFeatureCard
+            icon={File}
+            title="OneDrive Access"
+            description="Search and work with your OneDrive files and documents."
+          />
+        )}
 
         <div className="flex items-start rounded-lg pt-5">
           <ConnectProviderButton

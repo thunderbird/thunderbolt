@@ -368,7 +368,7 @@ jobs:
           PRERELEASE: ${{ inputs.nightly }}
           RELEASE_VERSION: ${{ inputs.version }}
         run: |
-          gh release edit "v${RELEASE_VERSION}" --draft=false --prerelease="${PRERELEASE}"
+          gh release edit "v${RELEASE_VERSION}" --repo "${{ github.repository }}" --draft=false --prerelease="${PRERELEASE}"
 
       # Publish release on CrabNebula Cloud for auto-updates (skip for nightly to prevent unstable auto-updates)
       - name: Publish to CrabNebula Cloud

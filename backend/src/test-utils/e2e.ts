@@ -57,9 +57,18 @@ export const createTestApp = async (
     proxyObservability?: import('@/proxy/observability').ObservabilityRecorder
     dnsLookup?: DnsLookup
     searchExaClient?: SearchExaClient | null
+    /** Inject an ISOLATED PGlite DB (own connection, committed rows) for tests
+     *  that bind a real `.listen()` server. Without this, the server-side
+     *  getSession read runs through the shared BEGIN/ROLLBACK singleton and can
+     *  be head-of-line-blocked behind another test's open transaction. When
+     *  provided, the caller owns the instance lifecycle (close in afterAll) and
+     *  `cleanup` here is a no-op. */
+    database?: typeof DbType
   } = {},
 ): Promise<TestAppHandle> => {
-  const { db, cleanup: cleanupDb } = await createTestDb()
+  const { db, cleanup: cleanupDb } = options.database
+    ? { db: options.database, cleanup: async () => {} }
+    : await createTestDb()
 
   const email = `e2e-${crypto.randomUUID()}@example.com`
 

@@ -124,7 +124,7 @@ export const useHydrateChatStore = ({ id, isNew }: UseHydrateChatStoreParams) =>
     }
 
     // If the session does not exist, create it below
-    const settings = await getSettings(db, { selected_model: String })
+    const settings = await getSettings(db, { selected_model: String, selected_agent: String })
 
     const [
       defaultModel,
@@ -185,12 +185,15 @@ export const useHydrateChatStore = ({ id, isNew }: UseHydrateChatStoreParams) =>
     )
     // Resolve the thread's persisted agent. When it no longer resolves (deleted
     // custom, unsynced system, or built-in disabled by the deployment) fall back
-    // to the first available agent — silently, so enterprise users who never had
-    // the built-in just continue with their own agent. `builtInAgent` is the
-    // last-resort safety net for the degenerate zero-agent deployment.
-    const persistedAgentId = chatThread?.agentId ?? null
+    // to the user's last-used agent (the global `selected_agent` setting), so a
+    // new chat defaults to it rather than always the first/built-in agent. Both
+    // fall back to the first available agent — silently, so enterprise users who
+    // never had the built-in just continue with their own agent. `builtInAgent`
+    // is the last-resort safety net for the degenerate zero-agent deployment.
+    const findAgent = (agentId: string | null | undefined) =>
+      agentId ? allAgents.find((a) => a.id === agentId) : undefined
     const selectedAgent =
-      (persistedAgentId ? allAgents.find((a) => a.id === persistedAgentId) : undefined) ?? allAgents[0] ?? builtInAgent
+      findAgent(chatThread?.agentId) ?? findAgent(settings.selectedAgent) ?? allAgents[0] ?? builtInAgent
 
     // If chat doesn't exist and this isn't a new chat, redirect to 404
     if (!chatThread && !isNew) {

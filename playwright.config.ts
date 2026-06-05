@@ -22,9 +22,17 @@ export default defineConfig({
   fullyParallel: true,
   forbidOnly: isCI,
   retries: isCI ? 1 : 0,
-  workers: isCI ? 2 : 1,
+  // One worker per shard: each CI runner already hosts 4 servers (2 Vite + 2
+  // backend) on 4 vCPUs, so a second browser worker oversubscribes the box and
+  // starves the cold first-navigation transpile. Parallelism comes from the 2
+  // shards running as separate jobs.
+  workers: 1,
   reporter: isCI ? 'blob' : 'list',
-  timeout: 30_000,
+  // 60s per test: the heaviest specs (loginViaOidc SSO round-trip → lazy-route
+  // navigation → form submit → PowerSync row) brush a 30s budget on a busy
+  // 4-vCPU runner. expect floor at 10s for the same reason.
+  timeout: 60_000,
+  expect: { timeout: 10_000 },
   globalSetup: './e2e/global-setup.ts',
   globalTeardown: './e2e/global-teardown.ts',
   use: {
@@ -35,9 +43,11 @@ export default defineConfig({
   projects: [
     {
       name: 'oidc',
-      // ACP specs use the OIDC mock IdP via `loginViaOidc`, so they belong in
-      // this project alongside the auth flow tests.
-      testMatch: /(?:oidc|acp-)/,
+      // ACP + proxy specs use the OIDC mock IdP via `loginViaOidc`, so they
+      // belong in this project alongside the auth flow tests. Anchor to
+      // `.spec.ts$` so non-spec helpers under e2e/ (mock-saml-idp.ts,
+      // saml-test-certs.ts, helpers.ts) are never misclassified as test files.
+      testMatch: /(?:oidc|acp-|proxy-).*\.spec\.ts$/,
       use: {
         ...devices['Desktop Chrome'],
         baseURL: `http://localhost:${oidcVitePort}`,
@@ -45,7 +55,11 @@ export default defineConfig({
     },
     {
       name: 'saml',
-      testMatch: /saml/,
+      // Anchor to `.spec.ts$` — a bare /saml/ also matched the helper files
+      // (mock-saml-idp.ts, saml-test-certs.ts), making Playwright treat them as
+      // test files and break `playwright test --list` ("test file should not
+      // import test file").
+      testMatch: /saml.*\.spec\.ts$/,
       use: {
         ...devices['Desktop Chrome'],
         baseURL: `http://localhost:${samlVitePort}`,
@@ -58,7 +72,7 @@ export default defineConfig({
       command: `bun run dev -- --port ${oidcVitePort}`,
       url: `http://localhost:${oidcVitePort}`,
       reuseExistingServer: !isCI,
-      timeout: 30_000,
+      timeout: 120_000,
       env: {
         VITE_AUTH_MODE: 'sso',
         VITE_SKIP_ONBOARDING: 'true',
@@ -75,7 +89,7 @@ export default defineConfig({
       // Backend env is test-specific (mock IdP, e2e secrets, rate limit off) — never reuse a
       // dev backend that happened to bind :8000. Playwright will fail fast if the port is taken.
       reuseExistingServer: false,
-      timeout: 30_000,
+      timeout: 120_000,
       env: {
         PORT: String(oidcBackendPort),
         AUTH_MODE: 'oidc',
@@ -96,7 +110,7 @@ export default defineConfig({
       command: `bun run dev -- --port ${samlVitePort}`,
       url: `http://localhost:${samlVitePort}`,
       reuseExistingServer: !isCI,
-      timeout: 30_000,
+      timeout: 120_000,
       env: {
         VITE_AUTH_MODE: 'sso',
         VITE_SKIP_ONBOARDING: 'true',
@@ -110,7 +124,7 @@ export default defineConfig({
       url: `http://localhost:${samlBackendPort}/v1/health`,
       // Backend env is test-specific — see OIDC backend comment above.
       reuseExistingServer: false,
-      timeout: 30_000,
+      timeout: 120_000,
       env: {
         PORT: String(samlBackendPort),
         AUTH_MODE: 'saml',

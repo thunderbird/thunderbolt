@@ -19,7 +19,9 @@ describe('waitlist DAL', () => {
   })
 
   afterEach(async () => {
-    await cleanup()
+    if (cleanup) {
+      await cleanup()
+    }
   })
 
   describe('getWaitlistByEmail', () => {

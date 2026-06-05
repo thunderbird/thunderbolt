@@ -90,7 +90,9 @@ describe('PowerSync API', () => {
   })
 
   afterEach(async () => {
-    await cleanup()
+    if (cleanup) {
+      await cleanup()
+    }
   })
 
   const uploadHeaders = (bearer: string, deviceId = 'test-device-id') => ({
@@ -1996,7 +1998,9 @@ describe('PowerSync cross-origin injection protection', () => {
   })
 
   afterEach(async () => {
-    await cleanup()
+    if (cleanup) {
+      await cleanup()
+    }
   })
 
   describe('PUT /powersync/upload origin validation', () => {
@@ -2241,7 +2245,9 @@ describe('PowerSync API (E2EE disabled)', () => {
   })
 
   afterEach(async () => {
-    await cleanup()
+    if (cleanup) {
+      await cleanup()
+    }
   })
 
   it('allows untrusted device to get token when E2EE is disabled', async () => {
@@ -2510,7 +2516,9 @@ describe('PowerSync API — anonymous sync guard', () => {
   })
 
   afterEach(async () => {
-    await cleanup()
+    if (cleanup) {
+      await cleanup()
+    }
   })
 
   /** Seed an anonymous user + session and return the signed bearer token. */

@@ -103,8 +103,11 @@ export const useHydrateChatStore = ({ id, isNew }: UseHydrateChatStoreParams) =>
   }
 
   const hydrateChatStore = async () => {
+    // WorkspaceGate passes before SessionToRegistryMirror's useEffect fires, so
+    // workspaceId can briefly be null on the first render. Return early — the
+    // caller includes workspaceId in its useEffect deps so it retries on resolve.
     if (!workspaceId) {
-      throw new Error('No active workspace')
+      return
     }
     const { createSession, sessions, setCurrentSessionId, setMcpClients, setModes, setModels } = useChatStore.getState()
 
@@ -247,5 +250,5 @@ export const useHydrateChatStore = ({ id, isNew }: UseHydrateChatStoreParams) =>
     setIsReady(true)
   }
 
-  return { hydrateChatStore, isReady, saveMessages }
+  return { hydrateChatStore, isReady, saveMessages, workspaceId }
 }

@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { testDbManager } from '@/test-utils/db'
+import { createIsolatedTestDb, type IsolatedTestDb } from '@/test-utils/db'
 import type { db as DbType } from '@/db/client'
 import { rateLimits } from '@/db/rate-limit-schema'
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'bun:test'
@@ -40,17 +40,22 @@ const requestWithIp = (ip: string) => new Request('http://localhost/v1/test', { 
 
 describe('Rate Limiting', () => {
   let database: typeof DbType
-  let cleanup: () => Promise<void>
+  let isolatedDb: IsolatedTestDb | undefined
 
+  // RateLimiterDrizzle issues its own `client.transaction()` calls, which open a
+  // nested raw BEGIN on the connection. On the shared `createTestDb` singleton
+  // (which is mid-BEGIN/ROLLBACK and serializes every test file through one WASM
+  // mutex) that breaks transaction isolation and, under CI CPU starvation, stalls
+  // the setup hook on the shared lock for tens of seconds. A dedicated isolated
+  // PGlite instance gives the rate limiter its own connection and mutex; each
+  // test still clears the table in beforeEach.
   beforeAll(async () => {
-    await testDbManager.initialize()
-    const testDb = await testDbManager.createTestDb()
-    database = testDb.db
-    cleanup = testDb.cleanup
+    isolatedDb = await createIsolatedTestDb()
+    database = isolatedDb.db
   })
 
   afterAll(async () => {
-    await cleanup()
+    await isolatedDb?.close()
   })
 
   beforeEach(async () => {

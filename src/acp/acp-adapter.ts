@@ -6,20 +6,30 @@
  * Generic ACP adapter. Used for both `remote-acp` and `managed-acp` agents —
  * the wire is identical, only the URL provenance differs.
  *
+ * One adapter owns ONE transport + ONE `ClientSideConnection` + ONE
+ * `initialize`, and MULTIPLEXES many per-thread ACP sessions over it. This is
+ * what lets a single agent connection be reused across every chat thread that
+ * targets that agent (see `src/acp/adapter-cache.ts`).
+ *
  * Lifecycle:
- *   1. `connectAcpAdapter(agent, ctx)` opens the transport, builds a
- *      `ClientSideConnection`, sends `initialize`, and stashes the agent
- *      capabilities reported by the server.
- *   2. If the chat thread carries a prior `acpSessionId` AND the agent
- *      advertises `loadSession`, the adapter calls `loadSession`. Otherwise
- *      it calls `newSession`, captures the fresh id, and notifies the chat
- *      layer via `ctx.onAcpSessionId(newId)`.
- *   3. Each `adapter.fetch(init, ctx)` parses the most recent user message,
- *      sends `prompt` with a single text `ContentBlock`, and pipes the
- *      `sessionUpdate` notifications through the translator into a
- *      `ReadableStream<Uint8Array>` that AI SDK consumes.
- *   4. `disconnect()` closes the transport (which aborts the SDK connection
- *      via its internal AbortSignal).
+ *   1. `connectAcpAdapter(agent, deps)` opens the transport, builds a
+ *      `ClientSideConnection`, and sends `initialize`. The handshake is raced
+ *      against the transport's terminal-close signal and a bounded timeout — a
+ *      permanently-failed or silent transport rejects loudly instead of hanging
+ *      the chat's fetch forever. NO per-thread session is resolved here.
+ *   2. Each `adapter.fetch(init, ctx)` resolves the calling thread's ACP
+ *      session lazily and once: if `ctx.acpSessionId` is set AND the agent
+ *      advertises `loadSession` it calls `loadSession`, otherwise it calls
+ *      `newSession`, captures the fresh id, and persists it via
+ *      `ctx.onAcpSessionId`. The resolved id is cached per thread so repeated
+ *      sends on the same thread never re-resolve. Both calls go through the
+ *      same handshake guard as `initialize`.
+ *   3. `session/update` notifications are routed by their `sessionId` to the
+ *      owning thread's translator via a `Map<sessionId, sink>`, so two threads
+ *      streaming at once never bleed into each other.
+ *   4. `disconnect()` closes the transport (which aborts the SDK connection via
+ *      its internal AbortSignal). Called only on real teardown — agent delete,
+ *      agent config edit, or sign-out.
  */
 
 import type {
@@ -33,14 +43,18 @@ import type {
 } from '@agentclientprotocol/sdk'
 import { ClientSideConnection as ClientSideConnectionImpl } from '@agentclientprotocol/sdk'
 import type { Agent, AgentAdapter, AgentAdapterContext, AgentCapabilities } from '@/types/acp'
-import type { FetchFn } from '@/lib/proxy-fetch'
 import type { ThunderboltUIMessage } from '@/types'
 import { openTransport } from './transports'
 import type { AcpTransport } from './types'
-import { createTranslatorStream, type SessionSideEffectSink } from './translators/acp-to-ai-sdk'
+import { createTranslatorStream } from './translators/acp-to-ai-sdk'
 import type { WebSocketFactory } from './transports/websocket'
 
 const protocolVersion = 1
+/** Connect-phase budget. Generous on purpose: a cold-starting upstream (e.g. a
+ *  Railway container) may take a while to answer `initialize`. This bounds ONLY
+ *  the handshake — never the prompt/streaming phase, which is legitimately long
+ *  and is torn down via the transport instead. */
+const defaultHandshakeTimeoutMs = 30_000
 /** ACP requires `cwd` on session/new + session/load. Browser/web agents have
  *  no real filesystem; we send a placeholder. The Haystack managed adapter
  *  and most remote agents ignore the field. */
@@ -60,20 +74,23 @@ const cancelledPermission: RequestPermissionFn = async () => ({
 })
 
 /** The minimum Client implementation we register with `ClientSideConnection`.
- *  We accept tool calls / session updates but never request files or terminals
- *  in MVP. All `sessionUpdate` notifications flow into the caller's sink, and
- *  permission prompts are forwarded to the supplied `requestPermission`. */
+ *  Session updates and permission prompts both carry an ACP `sessionId`, so we
+ *  route each to the owning thread's per-session handler. The handlers live in
+ *  caller-owned maps that the adapter mutates as threads start/stop prompting. */
 const createClientHandler = (
   onSessionUpdate: (notification: SessionNotification) => void,
-  requestPermission: RequestPermissionFn,
+  onRequestPermission: RequestPermissionFn,
 ): Client => ({
   sessionUpdate: async (params) => {
     onSessionUpdate(params)
   },
-  requestPermission,
+  requestPermission: onRequestPermission,
 })
 
-const adaptCapabilities = (response: InitializeResponse): AgentCapabilities => {
+/** Map the agent's `initialize` response to the flat {@link AgentCapabilities}
+ *  shape the UI cares about. Shared with the settings connection probe
+ *  (`./connection-test`) so both paths report capabilities identically. */
+export const adaptCapabilities = (response: InitializeResponse): AgentCapabilities => {
   const caps = response.agentCapabilities
   return {
     loadSession: caps?.loadSession ?? false,
@@ -116,29 +133,45 @@ export type AcpAdapterDeps = {
   webSocketFactory?: WebSocketFactory
   /** Override throttle for tests of the prompt → translator pipeline. */
   textDeltaThrottleMs?: number
+  /** Connect-phase timeout (ms). Defaults to a generous 30s. Tests inject a
+   *  small value to exercise the timeout path deterministically. */
+  handshakeTimeoutMs?: number
 }
 
+/** Connection-scoped context — everything needed to open ONE shared transport.
+ *  It deliberately omits per-thread fields (`acpSessionId`, `onAcpSessionId`,
+ *  `requestPermission`, `onSessionSideEffect`): those vary per thread and are
+ *  supplied on each `fetch` via {@link AgentAdapterContext}. */
 export type AcpAdapterContext = {
   httpClient: AgentAdapterContext['httpClient']
-  getProxyFetch: () => FetchFn
-  /** Persisted ACP session id from `chat_threads.acp_session_id` — null when
-   *  this is the first message in a thread or the agent doesn't support
-   *  `loadSession`. */
-  acpSessionId: string | null
-  onAcpSessionId: AgentAdapterContext['onAcpSessionId']
-  /** Invoked when the agent requests permission for a tool call. The chat
-   *  layer surfaces a dialog and resolves the response. Optional; defaults to
-   *  auto-cancelling so unwired agents stay safe. */
-  requestPermission?: RequestPermissionFn
-  /** Invoked when the agent emits a `current_mode_update` or
-   *  `config_option_update`. The chat layer reflects the new server state in
-   *  the store. Optional; default is no-op. */
-  onSessionSideEffect?: SessionSideEffectSink
 }
 
-/** Open and handshake an ACP adapter against `agent`. The returned adapter is
- *  bound to a single transport/connection — call `disconnect()` to tear it
- *  down when the chat session is destroyed. */
+/** Race a handshake step against a terminal-close signal and a timeout so a
+ *  permanently-failed or silent transport surfaces a loud error instead of
+ *  leaving `initialize`/`newSession` pending forever (the stuck-spinner bug).
+ *  The `terminalClose` promise is the transport's `closed` (rejects on terminal
+ *  close); when absent we fall back to timeout-only. */
+const withHandshakeGuard = async <T>(
+  step: Promise<T>,
+  terminalClose: Promise<void> | undefined,
+  timeoutMs: number,
+): Promise<T> => {
+  let timer: ReturnType<typeof setTimeout> | undefined
+  const timeout = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => reject(new Error(`ACP handshake timed out after ${timeoutMs}ms`)), timeoutMs)
+  })
+  const racers = terminalClose ? [step, terminalClose as Promise<never>, timeout] : [step, timeout]
+  try {
+    return await Promise.race(racers)
+  } finally {
+    clearTimeout(timer)
+  }
+}
+
+/** Open and handshake an ACP adapter against `agent`. The returned adapter owns
+ *  a single transport/connection and multiplexes per-thread sessions over it —
+ *  call `disconnect()` to tear it down on real teardown (agent delete / config
+ *  edit / sign-out), NOT on thread switch. */
 export const connectAcpAdapter = async (
   agent: Agent,
   ctx: AcpAdapterContext,
@@ -161,61 +194,111 @@ export const connectAcpAdapter = async (
     agentType: agent.type,
     signal: transportController.signal,
     webSocketFactory: deps.webSocketFactory,
-    // Managed-ACP needs the authenticated client to mint a single-use
-    // WebSocket ticket; remote-ACP ignores it (the universal proxy / native
-    // WebSocket carry their own auth).
+    // `httpClient` presence signals an authenticated cloud backend is wired:
+    // managed-ACP offers the signed bearer subprotocol when it's set; remote-ACP
+    // ignores it (the universal proxy / native WebSocket carry their own auth).
     httpClient: ctx.httpClient,
   })
 
-  // The `sessionUpdate` sink is rebound per prompt-turn so notifications from
-  // one prompt never leak into the next. While no prompt is active, updates
-  // are no-ops (the agent SHOULD only emit them inside a turn anyway).
-  let sessionUpdateSink: (notification: SessionNotification) => void = () => {}
+  // `session/update` notifications are routed to the owning thread's translator
+  // by ACP `sessionId`. While a thread isn't actively prompting its entry is
+  // absent and updates for it are dropped (the agent SHOULD only emit them
+  // inside a turn anyway). A per-session map — never a single last-writer-wins
+  // sink — is what prevents cross-thread bleed when two threads stream at once.
+  const sessionUpdateSinks = new Map<string, (notification: SessionNotification) => void>()
+  // Permission prompts also carry an ACP `sessionId`, so route them the same
+  // way. A thread registers its handler while connected; the fallback cancels.
+  const permissionHandlers = new Map<string, RequestPermissionFn>()
 
-  const requestPermission = ctx.requestPermission ?? cancelledPermission
+  const routeSessionUpdate = (notification: SessionNotification): void => {
+    sessionUpdateSinks.get(notification.sessionId)?.(notification)
+  }
+
+  const routePermission: RequestPermissionFn = (request) => {
+    const handler = permissionHandlers.get(request.sessionId)
+    return (handler ?? cancelledPermission)(request)
+  }
 
   const connection = new ConnectionCtor(
-    () => createClientHandler((n) => sessionUpdateSink(n), requestPermission),
+    () => createClientHandler(routeSessionUpdate, routePermission),
     transport.stream,
   )
 
-  const initializeResponse = await connection.initialize({
-    protocolVersion: protocolVersion,
-    clientInfo: { name: clientName, version: clientVersion },
-    clientCapabilities: { fs: { readTextFile: false, writeTextFile: false }, terminal: false },
-  })
+  const handshakeTimeoutMs = deps.handshakeTimeoutMs ?? defaultHandshakeTimeoutMs
 
-  const capabilities = adaptCapabilities(initializeResponse)
-
-  const resolveSessionId = async (): Promise<string> => {
-    if (ctx.acpSessionId && capabilities.loadSession) {
-      await connection.loadSession({
-        sessionId: ctx.acpSessionId,
-        cwd: sessionCwd,
-        mcpServers: [],
-      })
-      return ctx.acpSessionId
+  // A timed-out or terminally-closed `initialize` must tear the transport down
+  // before rethrowing — otherwise the open WebSocket and its reconnect
+  // machinery leak. The error still surfaces loudly so the chat fetch fails.
+  const runInitialize = async (): Promise<AgentCapabilities> => {
+    try {
+      const initializeResponse = await withHandshakeGuard(
+        connection.initialize({
+          protocolVersion: protocolVersion,
+          clientInfo: { name: clientName, version: clientVersion },
+          clientCapabilities: { fs: { readTextFile: false, writeTextFile: false }, terminal: false },
+        }),
+        transport.closed,
+        handshakeTimeoutMs,
+      )
+      return adaptCapabilities(initializeResponse)
+    } catch (err) {
+      transportController.abort()
+      transport.close()
+      throw err
     }
-    const newSession = await connection.newSession({ cwd: sessionCwd, mcpServers: [] })
-    await ctx.onAcpSessionId(newSession.sessionId)
-    return newSession.sessionId
   }
 
-  const sessionId = await resolveSessionId()
+  const capabilities = await runInitialize()
 
-  const fetch = async (init: RequestInit, _context: AgentAdapterContext): Promise<Response> => {
+  // Resolved ACP session id per chat thread. `null` while a thread's first
+  // resolution is in flight is impossible — we store the in-flight promise so
+  // concurrent sends on the same thread dedupe to one load/new call.
+  const sessionByThread = new Map<string, Promise<string>>()
+
+  /** Resolve (and cache) the ACP session id for the calling thread. First send
+   *  on a thread runs `loadSession` (when supported + a prior id exists) or
+   *  `newSession`; subsequent sends reuse the cached id. */
+  const resolveThreadSession = (context: AgentAdapterContext): Promise<string> => {
+    const existing = sessionByThread.get(context.threadId)
+    if (existing) {
+      return existing
+    }
+    const resolve = (async (): Promise<string> => {
+      if (context.acpSessionId && capabilities.loadSession) {
+        await withHandshakeGuard(
+          connection.loadSession({ sessionId: context.acpSessionId, cwd: sessionCwd, mcpServers: [] }),
+          transport.closed,
+          handshakeTimeoutMs,
+        )
+        return context.acpSessionId
+      }
+      const newSession = await withHandshakeGuard(
+        connection.newSession({ cwd: sessionCwd, mcpServers: [] }),
+        transport.closed,
+        handshakeTimeoutMs,
+      )
+      await context.onAcpSessionId(newSession.sessionId)
+      return newSession.sessionId
+    })()
+    // Evict on failure so a transient handshake error doesn't poison the thread
+    // — the next send retries a fresh resolution.
+    resolve.catch(() => sessionByThread.delete(context.threadId))
+    sessionByThread.set(context.threadId, resolve)
+    return resolve
+  }
+
+  const fetch = async (init: RequestInit, context: AgentAdapterContext): Promise<Response> => {
     const promptText = extractUserPrompt(init)
+    const sessionId = await resolveThreadSession(context)
 
     const { body, translator, close } = createTranslatorStream({
       textDeltaThrottleMs: deps.textDeltaThrottleMs,
-      onSideEffect: ctx.onSessionSideEffect,
+      onSideEffect: context.onSessionSideEffect,
     })
 
-    sessionUpdateSink = (notification) => {
-      if (notification.sessionId !== sessionId) {
-        return
-      }
-      translator.handle(notification)
+    sessionUpdateSinks.set(sessionId, (notification) => translator.handle(notification))
+    if (context.requestPermission) {
+      permissionHandlers.set(sessionId, context.requestPermission)
     }
 
     translator.start()
@@ -235,7 +318,8 @@ export const connectAcpAdapter = async (
       } catch (err) {
         translator.error(err instanceof Error ? err.message : String(err))
       } finally {
-        sessionUpdateSink = () => {}
+        sessionUpdateSinks.delete(sessionId)
+        permissionHandlers.delete(sessionId)
         translator.finish()
         close()
       }

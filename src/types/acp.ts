@@ -11,8 +11,10 @@
  */
 
 import type { MCPClient } from '@ai-sdk/mcp'
+import type { RequestPermissionRequest, RequestPermissionResponse } from '@agentclientprotocol/sdk'
 import type { HttpClient } from '@/lib/http'
 import type { FetchFn } from '@/lib/proxy-fetch'
+import type { SessionSideEffectSink } from '@/acp/translators/acp-to-ai-sdk'
 import type { ChatThread, Mode, Model, SaveMessagesFunction } from '@/types'
 
 /** Capabilities advertised by an ACP agent on `initialize`. Stored on the
@@ -62,6 +64,14 @@ export type AgentAdapterContext = {
    *  The chat layer persists it on `chatThreads.acpSessionId` so future loads
    *  can call `session/load` when the agent supports it. */
   onAcpSessionId: (sessionId: string) => Promise<void>
+  /** Invoked when the agent requests permission for a tool call on THIS
+   *  thread's ACP session. The chat layer surfaces a dialog and resolves the
+   *  response. Optional; a shared ACP connection routes each thread's prompts
+   *  to its own handler so dialogs never cross threads. */
+  requestPermission?: (request: RequestPermissionRequest) => Promise<RequestPermissionResponse>
+  /** Invoked when the agent emits a `current_mode_update` or
+   *  `config_option_update` on this thread's session. Optional; default no-op. */
+  onSessionSideEffect?: SessionSideEffectSink
 }
 
 /** Runtime adapter wrapping either the built-in pipeline or an ACP transport.

@@ -3,7 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { describe, expect, test } from 'bun:test'
-import { categorizeModels } from './model-selector'
+import { categorizeModels, needsApiKey } from './model-selector'
 import type { Model } from '@/types'
 import type { ChatThread } from '@/layout/sidebar/types'
 
@@ -95,5 +95,51 @@ describe('categorizeModels', () => {
   test('empty models returns empty groups', () => {
     const groups = categorizeModels([], null)
     expect(groups).toHaveLength(0)
+  })
+})
+
+describe('needsApiKey', () => {
+  test('system tinfoil rows do not need a key (injected by backend proxy)', () => {
+    const model = makeModel({
+      id: 'tinfoil-system',
+      name: 'DeepSeek V4 Pro',
+      provider: 'tinfoil',
+      isSystem: 1,
+      apiKey: null,
+    })
+    expect(needsApiKey(model)).toBe(false)
+  })
+
+  test('user-added tinfoil rows with a key do not need one', () => {
+    const model = makeModel({
+      id: 'tinfoil-byok-ok',
+      name: 'My Tinfoil',
+      provider: 'tinfoil',
+      isSystem: 0,
+      apiKey: 'tk-user',
+    })
+    expect(needsApiKey(model)).toBe(false)
+  })
+
+  test('user-added tinfoil rows without a key need one', () => {
+    const model = makeModel({
+      id: 'tinfoil-byok-missing',
+      name: 'My Tinfoil',
+      provider: 'tinfoil',
+      isSystem: 0,
+      apiKey: null,
+    })
+    expect(needsApiKey(model)).toBe(true)
+  })
+
+  test('non-thunderbolt/non-custom providers without a key need one', () => {
+    const model = makeModel({
+      id: 'openai-missing',
+      name: 'OpenAI',
+      provider: 'openai',
+      isSystem: 0,
+      apiKey: null,
+    })
+    expect(needsApiKey(model)).toBe(true)
   })
 })

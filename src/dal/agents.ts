@@ -7,6 +7,7 @@ import { toCompilableQuery } from '@powersync/drizzle-driver'
 import { useQuery } from '@powersync/tanstack-react-query'
 import { useDatabase } from '@/contexts'
 import { selectBuiltInAgentEnabled, useConfigStore } from '@/api/config-store'
+import { disposeAdapter } from '@/acp/adapter-cache'
 import type { AnyDrizzleDatabase } from '../db/database-interface'
 import { agentsSecretsTable, agentsSystemTable, agentsTable } from '../db/tables'
 import { builtInAgent } from '../defaults/agents'
@@ -139,9 +140,17 @@ export type UpdateAgentPatch = Partial<
   Pick<CreateAgentInput, 'name' | 'type' | 'transport' | 'url' | 'description' | 'icon' | 'enabled'>
 >
 
+/** Patch fields whose change invalidates a warm ACP connection — the wire
+ *  identity (endpoint + transport + agent type). Editing any of these means the
+ *  next chat must reconnect, so the cached adapter is disposed. */
+const connectionInvalidatingFields: ReadonlyArray<keyof UpdateAgentPatch> = ['url', 'transport', 'type']
+
 /** Patch an existing custom agent. Built-in and system agents are not editable
  *  through the DAL — built-in lives in code, system rows live in the local-only
- *  `agents_system` table which `updateAgent` never touches. */
+ *  `agents_system` table which `updateAgent` never touches.
+ *
+ *  Editing the wire identity (url/transport/type) disposes the agent's warm ACP
+ *  connection so the next chat reconnects against the new endpoint. */
 export const updateAgent = async (db: AnyDrizzleDatabase, id: string, patch: UpdateAgentPatch): Promise<void> => {
   if (id === builtInAgent.id) {
     throw new Error(`updateAgent: refusing to edit built-in agent "${id}"`)
@@ -153,11 +162,16 @@ export const updateAgent = async (db: AnyDrizzleDatabase, id: string, patch: Upd
     .update(agentsTable)
     .set(patch)
     .where(and(eq(agentsTable.id, id), isNull(agentsTable.deletedAt)))
+
+  if (connectionInvalidatingFields.some((field) => field in patch)) {
+    await disposeAdapter(id)
+  }
 }
 
 /** Soft delete a custom agent. Never hard-delete — sets `deletedAt` and lets
  *  PowerSync replicate the tombstone. Built-ins/system rows are not in this
- *  table and cannot be removed. */
+ *  table and cannot be removed. Disposes the agent's warm ACP connection so a
+ *  deleted agent leaves no live transport behind. */
 export const deleteAgent = async (db: AnyDrizzleDatabase, id: string): Promise<void> => {
   if (id === builtInAgent.id) {
     throw new Error(`deleteAgent: refusing to delete built-in agent "${id}"`)
@@ -166,6 +180,8 @@ export const deleteAgent = async (db: AnyDrizzleDatabase, id: string): Promise<v
     .update(agentsTable)
     .set({ deletedAt: nowIso() })
     .where(and(eq(agentsTable.id, id), isNull(agentsTable.deletedAt)))
+
+  await disposeAdapter(id)
 }
 
 /** Read credentials for an agent from the local-only secrets table.

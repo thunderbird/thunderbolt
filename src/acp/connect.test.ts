@@ -152,34 +152,47 @@ const buildFakeAcpDeps = (opts: { capabilities?: { loadSession?: boolean }; newS
   return { calls, FakeConnection, openTransport }
 }
 
+/** Build a prompt-only request body the ACP adapter's `fetch` can parse. */
+const promptInit = (text: string): RequestInit => ({
+  method: 'POST',
+  body: JSON.stringify({ id: 't1', messages: [{ role: 'user', parts: [{ type: 'text', text }] }] }),
+})
+
 describe('connectToAgent — remote-acp dispatch', () => {
-  it('sends initialize, then newSession when no acpSessionId is present', async () => {
+  it('sends initialize at connect, then newSession on first fetch when no acpSessionId is present', async () => {
     const { calls, FakeConnection, openTransport } = buildFakeAcpDeps({})
     const onAcpSessionId = mock(async (_id: string) => {})
 
     const adapter = await connectToAgent(
       remoteAgent,
-      { httpClient, getProxyFetch, acpSessionId: null, onAcpSessionId },
+      { httpClient, getProxyFetch },
       { openTransport, ClientSideConnection: FakeConnection as never },
     )
 
+    // initialize runs at connect; session resolution is now lazy/per-thread.
     expect(calls.initialize).toHaveLength(1)
+    expect(calls.newSession).toHaveLength(0)
+    expect(adapter.capabilities).toMatchObject({ loadSession: false })
+
+    await adapter.fetch(promptInit('hi'), baseAdapterContext({ acpSessionId: null, onAcpSessionId }))
+
     expect(calls.newSession).toHaveLength(1)
     expect(calls.loadSession).toHaveLength(0)
-    expect(adapter.capabilities).toMatchObject({ loadSession: false })
     expect(onAcpSessionId).toHaveBeenCalledWith('sess-new-1')
   })
 
-  it('sends loadSession when acpSessionId present AND capabilities.loadSession is true', async () => {
+  it('sends loadSession on fetch when acpSessionId present AND capabilities.loadSession is true', async () => {
     const { calls, FakeConnection, openTransport } = buildFakeAcpDeps({
       capabilities: { loadSession: true },
     })
 
-    await connectToAgent(
+    const adapter = await connectToAgent(
       remoteAgent,
-      { httpClient, getProxyFetch, acpSessionId: 'existing-sess', onAcpSessionId: async () => {} },
+      { httpClient, getProxyFetch },
       { openTransport, ClientSideConnection: FakeConnection as never },
     )
+
+    await adapter.fetch(promptInit('hi'), baseAdapterContext({ acpSessionId: 'existing-sess' }))
 
     expect(calls.newSession).toHaveLength(0)
     expect(calls.loadSession).toHaveLength(1)
@@ -193,11 +206,13 @@ describe('connectToAgent — remote-acp dispatch', () => {
     })
     const onAcpSessionId = mock(async (_id: string) => {})
 
-    await connectToAgent(
+    const adapter = await connectToAgent(
       remoteAgent,
-      { httpClient, getProxyFetch, acpSessionId: 'old-stale', onAcpSessionId },
+      { httpClient, getProxyFetch },
       { openTransport, ClientSideConnection: FakeConnection as never },
     )
+
+    await adapter.fetch(promptInit('hi'), baseAdapterContext({ acpSessionId: 'old-stale', onAcpSessionId }))
 
     expect(calls.loadSession).toHaveLength(0)
     expect(calls.newSession).toHaveLength(1)
@@ -209,7 +224,7 @@ describe('connectToAgent — remote-acp dispatch', () => {
 
     const adapter = await connectToAgent(
       remoteAgent,
-      { httpClient, getProxyFetch, acpSessionId: null, onAcpSessionId: async () => {} },
+      { httpClient, getProxyFetch },
       { openTransport, ClientSideConnection: FakeConnection as never },
     )
 

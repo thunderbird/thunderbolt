@@ -34,10 +34,18 @@ type ModelItemData = {
 /**
  * Models that require an API key but don't have one yet need configuration.
  * Thunderbolt is server-authenticated; custom (OpenAI-compatible) endpoints treat
- * the key as optional, so neither flags as missing.
+ * the key as optional; system Tinfoil rows are also server-authenticated (the key
+ * is injected by the backend proxy) — none of those flag as missing.
  */
-export const needsApiKey = (model: Model) =>
-  model.provider !== 'thunderbolt' && model.provider !== 'custom' && !model.apiKey
+export const needsApiKey = (model: Model) => {
+  if (model.provider === 'thunderbolt' || model.provider === 'custom') {
+    return false
+  }
+  if (model.provider === 'tinfoil' && model.isSystem === 1) {
+    return false
+  }
+  return !model.apiKey
+}
 
 const toMenuItem = (
   model: Model,

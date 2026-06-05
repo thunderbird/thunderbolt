@@ -5,6 +5,7 @@
 import { and, desc, eq, getTableColumns, isNotNull, isNull, or, sql } from 'drizzle-orm'
 import type { AnyDrizzleDatabase } from '../db/database-interface'
 import { modelsSecretsTable, modelsTable, settingsTable } from '../db/tables'
+import { hashModel } from '../defaults/models'
 import { clearNullableColumns, nowIso } from '../lib/utils'
 import type { DrizzleQueryWithPromise, Model } from '@/types'
 import { getLastMessage } from './chat-messages'
@@ -156,12 +157,20 @@ export const updateModel = async (db: AnyDrizzleDatabase, id: string, updates: P
 }
 
 /**
- * Reset a model to its default state
+ * Reset a model to its default state. Recomputes `defaultHash` so that any
+ * legacy/stale value left over from a previous `hashModel` formula is replaced
+ * with the current one — otherwise `isModelModified` would keep flagging the
+ * row as modified even right after a reset. `userId` is stripped from the
+ * default template so we never overwrite the row's real owner with `null`
+ * (which would surface as an empty PATCH and a 400 from the upload handler).
  */
 export const resetModelToDefault = async (db: AnyDrizzleDatabase, id: string, defaultModel: Model): Promise<void> => {
-  const { defaultHash, apiKey, ...defaultFields } = defaultModel
+  const { defaultHash, apiKey, userId, ...defaultFields } = defaultModel
   await db.transaction(async (tx) => {
-    await tx.update(modelsTable).set(defaultFields).where(eq(modelsTable.id, id))
+    await tx
+      .update(modelsTable)
+      .set({ ...defaultFields, defaultHash: hashModel(defaultModel) })
+      .where(eq(modelsTable.id, id))
     await tx.delete(modelsSecretsTable).where(eq(modelsSecretsTable.modelId, id))
   })
 }

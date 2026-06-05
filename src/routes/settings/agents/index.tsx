@@ -10,6 +10,7 @@ import { Button } from '@/components/ui/button'
 import { PageHeader } from '@/components/ui/page-header'
 import { AgentList } from '@/components/settings/agents/agent-list'
 import { AddCustomAgentDialog, type AddCustomAgentPayload } from '@/components/settings/agents/add-custom-agent-dialog'
+import { testAcpConnection } from '@/acp'
 import { createAgent, deleteAgent, updateAgent, useAllAgents } from '@/dal'
 import { useDatabase } from '@/contexts'
 import { useAuth } from '@/contexts'
@@ -105,7 +106,12 @@ export default function AgentsSettingsPage({ isStandalone }: AgentsSettingsPageP
 
       <AgentList agents={agents} currentUserId={currentUserId} onToggle={handleToggle} onDelete={handleDelete} />
 
-      <AddCustomAgentDialog open={dialogOpen} onOpenChange={setDialogOpen} onSubmit={handleSubmit} />
+      <AddCustomAgentDialog
+        open={dialogOpen}
+        onOpenChange={setDialogOpen}
+        onSubmit={handleSubmit}
+        testAcpConnection={testAcpConnection}
+      />
     </div>
   )
 }

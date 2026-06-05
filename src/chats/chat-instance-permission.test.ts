@@ -14,8 +14,7 @@ import type { RequestPermissionRequest, RequestPermissionResponse } from '@agent
 import type { HttpClient } from '@/lib/http'
 import type { FetchFn } from '@/lib/proxy-fetch'
 import { createMockChatInstance, hydrateStore, resetStore } from '@/test-utils/chat-store-mocks'
-import type { Agent, AgentAdapter } from '@/types/acp'
-import type { ConnectToAgentContext } from '@/acp'
+import type { Agent, AgentAdapter, AgentAdapterContext } from '@/types/acp'
 import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
 import { useChatStore } from './chat-store'
 import { createAgentRoutingFetch } from './chat-instance'
@@ -45,19 +44,22 @@ describe('requestPermission bridge', () => {
   })
 
   it('routes the adapter requestPermission into the store and resolves on dialog response', async () => {
-    let capturedRequestPermission: ConnectToAgentContext['requestPermission'] | undefined
+    // `requestPermission` now travels on the per-FETCH context — a shared agent
+    // connection routes each thread's prompts to its own handler — so capture
+    // it from `adapter.fetch`, not the connect context.
+    let capturedRequestPermission: AgentAdapterContext['requestPermission'] | undefined
 
     const adapter: AgentAdapter = {
       agent: {} as Agent,
       capabilities: null,
-      fetch: async () => new Response('ok'),
+      fetch: async (_init: RequestInit, ctx: AgentAdapterContext) => {
+        capturedRequestPermission = ctx.requestPermission
+        return new Response('ok')
+      },
       disconnect: () => {},
     }
 
-    const connectToAgent = mock(async (_agent: Agent, ctx: ConnectToAgentContext) => {
-      capturedRequestPermission = ctx.requestPermission
-      return adapter
-    })
+    const connectToAgent = mock(async () => adapter)
 
     const fetch = createAgentRoutingFetch(sessionId, async () => {}, httpClient, getProxyFetch, {
       connectToAgent: connectToAgent as never,

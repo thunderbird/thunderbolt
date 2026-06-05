@@ -3,38 +3,34 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 /**
- * Public entry point for the chat layer. Given an `Agent` row + per-call
- * context, return an `AgentAdapter` whose `fetch(init, ctx)` produces a
- * streaming `Response` shaped for the AI SDK.
+ * Public entry point for the chat layer. Given an `Agent` row + a
+ * connection-scoped context, return an `AgentAdapter` whose `fetch(init, ctx)`
+ * produces a streaming `Response` shaped for the AI SDK.
  *
  *   - `built-in` → wraps `aiFetchStreamingResponse` (no ACP wire).
- *   - `remote-acp` / `managed-acp` → opens transport + ACP handshake.
+ *   - `remote-acp` / `managed-acp` → opens transport + ACP `initialize`.
  *
- * The chat layer caches one adapter per `(sessionId, agentId)` and tears it
- * down via `adapter.disconnect()` when the session ends or the user switches
- * agents mid-thread.
+ * The chat layer caches ONE adapter per agent (see `src/acp/adapter-cache.ts`)
+ * and reuses it across every thread that targets that agent. Per-thread ACP
+ * sessions, permission prompts, and side-effect sinks are supplied on each
+ * `adapter.fetch(init, ctx)` call — not here — so a single connection can
+ * multiplex many threads. The cache tears the adapter down via
+ * `adapter.disconnect()` only on real teardown (agent delete / config edit /
+ * sign-out), never on thread switch.
  */
 
 import type { HttpClient } from '@/lib/http'
 import type { FetchFn } from '@/lib/proxy-fetch'
 import type { Agent, AgentAdapter } from '@/types/acp'
-import { connectAcpAdapter, type AcpAdapterDeps, type RequestPermissionFn } from './acp-adapter'
+import { connectAcpAdapter, type AcpAdapterDeps } from './acp-adapter'
 import { createBuiltInAdapter, type BuiltInAdapterOptions } from './built-in-adapter'
-import type { SessionSideEffectSink } from './translators/acp-to-ai-sdk'
 
+/** Connection-scoped context handed to {@link connectToAgent}. Deliberately
+ *  carries only what's needed to OPEN a connection — per-thread fields travel
+ *  on each `adapter.fetch` call instead, so one connection serves many threads. */
 export type ConnectToAgentContext = {
   httpClient: HttpClient
   getProxyFetch: () => FetchFn
-  /** Persisted ACP session id from `chat_threads.acp_session_id`. Null for
-   *  the first message in a thread or for agents without `loadSession`. */
-  acpSessionId?: string | null
-  onAcpSessionId?: (sessionId: string) => Promise<void>
-  /** Forwarded to ACP adapters so they can prompt the UI for tool-call
-   *  approvals. Ignored for built-in agents. */
-  requestPermission?: RequestPermissionFn
-  /** Forwarded to ACP adapters so the chat layer can react to server-driven
-   *  mode and config updates. Ignored for built-in agents. */
-  onSessionSideEffect?: SessionSideEffectSink
 }
 
 export type ConnectToAgentDeps = BuiltInAdapterOptions & AcpAdapterDeps
@@ -50,19 +46,13 @@ export const connectToAgent = async (
   }
   return connectAcpAdapter(
     agent,
-    {
-      httpClient: ctx.httpClient,
-      getProxyFetch: ctx.getProxyFetch,
-      acpSessionId: ctx.acpSessionId ?? null,
-      onAcpSessionId: ctx.onAcpSessionId ?? (async () => {}),
-      requestPermission: ctx.requestPermission,
-      onSessionSideEffect: ctx.onSessionSideEffect,
-    },
+    { httpClient: ctx.httpClient },
     {
       openTransport: deps.openTransport,
       ClientSideConnection: deps.ClientSideConnection,
       webSocketFactory: deps.webSocketFactory,
       textDeltaThrottleMs: deps.textDeltaThrottleMs,
+      handshakeTimeoutMs: deps.handshakeTimeoutMs,
     },
   )
 }

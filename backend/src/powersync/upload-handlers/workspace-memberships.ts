@@ -75,9 +75,47 @@ const isPersonalAdminBootstrap = async (
  *   rejected. The count is taken inside the same transaction as the delete so
  *   concurrent revokes can't both pass the check.
  */
+/**
+ * Shared workspace creator bootstrap: the FE creates a shared workspace and its
+ * own admin membership in the same upload batch. When the membership arrives the
+ * workspace exists but has zero members, so the general "must be admin" check
+ * would reject it. This exception allows exactly one initial claim:
+ *
+ *   - target workspace exists and is NOT personal
+ *   - membership's user_id equals the caller (no impersonation)
+ *   - role is admin
+ *   - no memberships exist on the workspace yet
+ */
+const isSharedWorkspaceAdminBootstrap = async (
+  tx: UploadTx,
+  ctx: { userId: string },
+  data: Record<string, unknown> | undefined,
+): Promise<boolean> => {
+  const targetWorkspaceId = typeof data?.workspace_id === 'string' ? data.workspace_id : null
+  if (!targetWorkspaceId) {
+    return false
+  }
+  const targetUserId = typeof data?.user_id === 'string' ? data.user_id : null
+  if (targetUserId !== ctx.userId) {
+    return false
+  }
+  if (data?.role !== 'admin') {
+    return false
+  }
+  const workspace = await getWorkspaceById(tx, targetWorkspaceId)
+  if (!workspace || workspace.isPersonal) {
+    return false
+  }
+  const existingMemberships = await countWorkspaceMemberships(tx, targetWorkspaceId)
+  return existingMemberships === 0
+}
+
 export const workspaceMembershipsHandler: UploadHandler = {
   validate: async (op, ctx, tx) => {
     if (op.op === 'PUT' && (await isPersonalAdminBootstrap(tx, ctx, op.id, op.data))) {
+      return allow()
+    }
+    if (op.op === 'PUT' && (await isSharedWorkspaceAdminBootstrap(tx, ctx, op.data))) {
       return allow()
     }
 

@@ -98,7 +98,9 @@ export const workspacesHandler: UploadHandler = {
       case 'PUT': {
         const canonicalPersonalId = computePersonalWorkspaceId(ctx.userId)
         const isPersonalPut = op.data?.is_personal === true || op.id === canonicalPersonalId
-        const name = typeof op.data?.name === 'string' ? op.data.name : null
+        // Personal workspace name is always forced to "Personal" server-side (Decision 11,
+        // non-editable in v1) regardless of what the client sends.
+        const name = isPersonalPut ? 'Personal' : typeof op.data?.name === 'string' ? op.data.name : null
         if (!name) {
           throw new UploadRejection('permanent', 'WORKSPACE_NAME_REQUIRED')
         }

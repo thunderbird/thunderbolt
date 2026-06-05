@@ -56,7 +56,14 @@ export const getTriggerPromptForThread = async (
       triggeredBy: chatThreadsTable.triggeredBy,
     })
     .from(chatThreadsTable)
-    .leftJoin(promptsTable, and(eq(chatThreadsTable.triggeredBy, promptsTable.id), isNull(promptsTable.deletedAt)))
+    .leftJoin(
+      promptsTable,
+      and(
+        eq(chatThreadsTable.triggeredBy, promptsTable.id),
+        eq(promptsTable.workspaceId, workspaceId),
+        isNull(promptsTable.deletedAt),
+      ),
+    )
     .where(
       and(
         eq(chatThreadsTable.workspaceId, workspaceId),

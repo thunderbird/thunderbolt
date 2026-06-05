@@ -3,18 +3,20 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import type { DataTransformMiddleware, SyncDataBucket } from '../TransformableBucketStorage'
-import { encryptedColumnsMap } from '@/db/encryption/config'
 import { codec } from '@/db/encryption/codec'
 
 type SyncEntry = SyncDataBucket['data'][number]
 
-/** Decrypt encrypted columns in a single sync entry. Mutates entry.data in place. */
+/**
+ * Decrypt all __enc:-prefixed values in a single sync entry. Mutates entry.data in place.
+ *
+ * Intentionally data-driven rather than map-driven: any string value starting with __enc:
+ * is decrypted regardless of whether its column appears in encryptedColumnsMap. This means
+ * a stale desktop client (whose bundled map predates a new encrypted column) still decrypts
+ * correctly — the __enc: prefix is the authoritative signal, not the config.
+ */
 const decryptEntry = async (entry: SyncEntry) => {
-  if (!entry.object_type || !entry.data) {
-    return
-  }
-  const columns = encryptedColumnsMap[entry.object_type]
-  if (!columns) {
+  if (!entry.data) {
     return
   }
 
@@ -23,10 +25,9 @@ const decryptEntry = async (entry: SyncEntry) => {
     let changed = false
 
     await Promise.all(
-      columns.map(async (col) => {
-        const val = obj[col]
-        if (typeof val === 'string') {
-          obj[col] = await codec.decode(val)
+      Object.entries(obj).map(async ([key, val]) => {
+        if (typeof val === 'string' && val.startsWith('__enc:')) {
+          obj[key] = await codec.decode(val)
           changed = true
         }
       }),
@@ -42,9 +43,9 @@ const decryptEntry = async (entry: SyncEntry) => {
 
 /**
  * Decrypts encrypted columns in sync data before it reaches SQLite.
- * Config-driven: uses encryptedColumnsMap to determine which columns to decrypt.
- * Handles __enc: (AES-GCM) format — codec.decode passes through plaintext unchanged.
- * Passes through when no CK is available (pre-setup or CK cleared).
+ * Data-driven: scans all string values for the __enc: prefix rather than consulting
+ * encryptedColumnsMap, so stale desktop bundles handle newly-encrypted columns correctly.
+ * codec.decode passes through plaintext and returns raw ciphertext when no CK is available.
  *
  * No isEncryptionEnabled() gate: this middleware runs in the SharedWorker where
  * localStorage is unavailable. The codec safely handles both encrypted and plaintext data.

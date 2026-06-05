@@ -35,9 +35,14 @@ export const reconcileDefaultsForTable = async <T extends { defaultHash: string 
   options: { keyField?: string; workspaceId?: string } = {},
 ) => {
   const { keyField = 'id', workspaceId } = options
+  const pkWhere = (keyValue: unknown) =>
+    workspaceId
+      ? and(eq(table[keyField], keyValue), eq((table as any).workspaceId, workspaceId))
+      : eq(table[keyField], keyValue)
+
   for (const defaultItem of defaults) {
     const keyValue = (defaultItem as any)[keyField]
-    const existing = await db.select().from(table).where(eq(table[keyField], keyValue)).get()
+    const existing = await db.select().from(table).where(pkWhere(keyValue)).get()
 
     if (!existing) {
       // New default - insert with computed hash
@@ -53,7 +58,7 @@ export const reconcileDefaultsForTable = async <T extends { defaultHash: string 
 
       if (!existing.defaultHash) {
         // No defaultHash - set it to the default hash to enable modification tracking
-        await db.update(table).set({ defaultHash: defaultHashValue }).where(eq(table[keyField], keyValue))
+        await db.update(table).set({ defaultHash: defaultHashValue }).where(pkWhere(keyValue))
       } else if (currentHash === existing.defaultHash) {
         // Skip update if default hasn't changed (prevents empty PATCH operations)
         // TODO: needs more testing
@@ -78,7 +83,7 @@ export const reconcileDefaultsForTable = async <T extends { defaultHash: string 
             ...defaultItem,
             defaultHash: defaultHashValue,
           })
-          .where(eq(table[keyField], keyValue))
+          .where(pkWhere(keyValue))
       }
       // If hashes don't match, user has modified (including soft-delete) - skip update
     }

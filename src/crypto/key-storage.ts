@@ -228,6 +228,20 @@ export const clearCK = async (): Promise<void> => deleteKey(ckId)
 // Full wipe
 // =============================================================================
 
-/** Clear all keys from IndexedDB (single atomic transaction for full data wipe / revocation). */
-export const clearAllKeys = async (): Promise<void> =>
-  deleteKeys([privateKeyId, publicKeyId, mlkemPublicKeyId, mlkemSecretKeyId, ckId])
+/** Clear all keys and delete the IDB database for the active server (full data wipe / revocation). */
+export const clearAllKeys = async (): Promise<void> => {
+  await deleteKeys([privateKeyId, publicKeyId, mlkemPublicKeyId, mlkemSecretKeyId, ckId])
+  const dbName = resolveDbName()
+  await new Promise<void>((resolve) => {
+    const request = indexedDB.deleteDatabase(dbName)
+    request.onsuccess = () => resolve()
+    request.onerror = () => {
+      console.error(`[clearAllKeys] Failed to delete IDB database ${dbName}:`, request.error)
+      resolve()
+    }
+    request.onblocked = () => {
+      console.warn(`[clearAllKeys] IDB delete blocked for ${dbName} — open connections still alive`)
+      resolve()
+    }
+  })
+}

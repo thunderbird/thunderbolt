@@ -120,6 +120,21 @@ export const deleteDbFile = async (filename: string): Promise<void> => {
       console.error(`[deleteDbFile] Failed to remove OPFS entry ${filename}:`, error)
     }
   }
+  // Chrome/Firefox default config: PowerSync uses IDBBatchAtomicVFS, which stores
+  // the SQLite database in IndexedDB under the same name as the filename. This is a
+  // no-op when the database doesn't exist (safari-tauri / OPFS path).
+  await new Promise<void>((resolve) => {
+    const request = indexedDB.deleteDatabase(filename)
+    request.onsuccess = () => resolve()
+    request.onerror = () => {
+      console.error(`[deleteDbFile] Failed to delete IDB database ${filename}:`, request.error)
+      resolve()
+    }
+    request.onblocked = () => {
+      console.warn(`[deleteDbFile] IDB delete blocked for ${filename} — open connections still alive`)
+      resolve()
+    }
+  })
 }
 
 /**

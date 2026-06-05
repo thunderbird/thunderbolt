@@ -120,6 +120,18 @@ export const signOutAndWipe = async ({
   signOut?: () => Promise<void>
   onComplete: () => void
 }): Promise<void> => {
+  // Wipe local data BEFORE calling signOut so that Better Auth's session cache
+  // stays populated during the wipe. If signOut ran first, Better Auth would
+  // immediately set useSession() → null, letting AuthGate redirect to
+  // /sso-redirect (SSO mode) or /waitlist between the awaits inside
+  // clearLocalData — potentially kicking off a new IdP sign-in flow before
+  // onComplete() can navigate away.
+  try {
+    await clearLocalData()
+  } catch (error) {
+    console.error('[signOutAndWipe] clearLocalData failed:', error)
+  }
+
   if (signOut) {
     try {
       await signOut()
@@ -128,11 +140,7 @@ export const signOutAndWipe = async ({
     }
   }
 
-  try {
-    await clearLocalData()
-  } catch (error) {
-    console.error('[signOutAndWipe] clearLocalData failed:', error)
-  }
-
+  // onComplete fires synchronously right after signOut resolves — no await
+  // between them so React cannot schedule a re-render before the hard navigation.
   onComplete()
 }

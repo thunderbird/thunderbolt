@@ -6,7 +6,7 @@ import type { LanguageModelV2Usage } from '@ai-sdk/provider'
 import type { TrayIcon } from '@tauri-apps/api/tray'
 import type { SourceMetadata } from './types/source'
 import type { Window } from '@tauri-apps/api/window'
-import type { UIDataTypes, UIMessage, UITools } from 'ai'
+import type { UIMessage, UITools } from 'ai'
 import type { DrizzleQuery } from '@powersync/drizzle-driver'
 import type { InferSelectModel } from 'drizzle-orm'
 import { type PostHog } from 'posthog-js'
@@ -37,7 +37,23 @@ export type InitData = {
   experimentalFeatureTasks: boolean
 }
 
-export type ThunderboltUIMessage = UIMessage<UIMessageMetadata, UIDataTypes, UITools>
+/**
+ * Reference to a locally-stored chat attachment (e.g. a PDF). Carries NO bytes:
+ * the blob lives on-device in IndexedDB (see `lib/file-blob-storage`) keyed by
+ * `localFileId`; only this reference is persisted in the message and synced.
+ */
+export type AttachmentData = {
+  localFileId: string
+  filename: string
+  mimeType: string
+}
+
+/** Custom `data-*` parts on Thunderbolt messages (`data-attachment` → {@link AttachmentData}). */
+export type ThunderboltUIDataTypes = {
+  attachment: AttachmentData
+}
+
+export type ThunderboltUIMessage = UIMessage<UIMessageMetadata, ThunderboltUIDataTypes, UITools>
 
 export type SaveMessagesFunction = ({ id, messages }: { id: string; messages: ThunderboltUIMessage[] }) => Promise<void>
 

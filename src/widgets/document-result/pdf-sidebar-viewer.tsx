@@ -11,7 +11,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { Document, Page, pdfjs } from 'react-pdf'
 import 'react-pdf/dist/Page/AnnotationLayer.css'
 import 'react-pdf/dist/Page/TextLayer.css'
-import { useDocumentBlob, type FileType } from './use-document-blob'
+import { useDocumentBlob, useLocalDocumentBlob, type DocumentBlobState, type FileType } from './use-document-blob'
 
 // Configure the pdfjs worker via Vite's `new URL(..., import.meta.url)` pattern
 // so the worker ships as its own bundle and is resolved relative to the build.
@@ -29,23 +29,21 @@ export const getFileType = (fileName: string): FileType => {
   return 'unsupported'
 }
 
-type PdfSidebarViewerProps = {
-  fileId: string
+type DocumentPreviewProps = {
   fileName: string
+  fileType: FileType
+  state: DocumentBlobState
   initialPage?: number
 }
 
 /**
- * Renders an inline preview of a Haystack-managed document in the sideview slot.
- * Loads the file as a blob via the backend, renders PDFs with react-pdf, and
- * DOCX content via mammoth into a sandboxed iframe. Falls back to a download
- * prompt for other extensions.
+ * Presentational document preview for the sideview slot: header + download,
+ * react-pdf for PDFs, mammoth-rendered HTML (sandboxed iframe) for DOCX, and a
+ * download fallback otherwise. Source-agnostic — the blob lifecycle is resolved
+ * by the caller (Haystack-backed or local IndexedDB) and passed in as `state`.
  */
-export const PdfSidebarViewer = ({ fileId, fileName, initialPage }: PdfSidebarViewerProps) => {
+const DocumentPreview = ({ fileName, fileType, state, initialPage }: DocumentPreviewProps) => {
   const { close } = useContentView()
-  const httpClient = useHttpClient()
-  const fileType = getFileType(fileName)
-  const state = useDocumentBlob(fileId, fileType, httpClient)
   const [numPages, setNumPages] = useState<number | null>(null)
 
   const blobUrl = state.status === 'ready' ? state.blobUrl : null
@@ -132,4 +130,31 @@ export const PdfSidebarViewer = ({ fileId, fileName, initialPage }: PdfSidebarVi
       )}
     </div>
   )
+}
+
+type PdfSidebarViewerProps = {
+  fileId: string
+  fileName: string
+  initialPage?: number
+}
+
+/** Preview a Haystack-managed document (fetched from the backend by file id). */
+export const PdfSidebarViewer = ({ fileId, fileName, initialPage }: PdfSidebarViewerProps) => {
+  const httpClient = useHttpClient()
+  const fileType = getFileType(fileName)
+  const state = useDocumentBlob(fileId, fileType, httpClient)
+  return <DocumentPreview fileName={fileName} fileType={fileType} state={state} initialPage={initialPage} />
+}
+
+type LocalPdfSidebarViewerProps = {
+  localFileId: string
+  fileName: string
+  initialPage?: number
+}
+
+/** Preview a locally-uploaded attachment (read from IndexedDB, never the backend). */
+export const LocalPdfSidebarViewer = ({ localFileId, fileName, initialPage }: LocalPdfSidebarViewerProps) => {
+  const fileType = getFileType(fileName)
+  const state = useLocalDocumentBlob(localFileId, fileType)
+  return <DocumentPreview fileName={fileName} fileType={fileType} state={state} initialPage={initialPage} />
 }

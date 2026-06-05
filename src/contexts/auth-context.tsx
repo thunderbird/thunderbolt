@@ -13,7 +13,7 @@ import { useTrustDomainRegistry } from '@/stores/trust-domain-registry'
 import { anonymousClient, emailOTPClient } from 'better-auth/client/plugins'
 import { createAuthClient } from 'better-auth/react'
 import { consumePendingSsoAnonAlias } from '@/lib/analytics/anonymous-promotion-sso-bridge'
-import { createContext, useContext, useEffect, useMemo, useRef, type ReactNode } from 'react'
+import { createContext, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 
 /**
  * Create an auth client instance with the given base URL
@@ -217,6 +217,13 @@ const SessionToWorkspaceBootstrap = () => {
   const userId = session?.user?.id
   const isAnonymous = session?.user?.isAnonymous === true
   const lastBootstrappedForRef = useRef<string | null>(null)
+  const [bootstrapError, setBootstrapError] = useState<Error | null>(null)
+
+  // Throw during render so the nearest error boundary (or React Router's route
+  // error handler) surfaces an actionable error instead of an infinite splash.
+  if (bootstrapError) {
+    throw bootstrapError
+  }
 
   useEffect(() => {
     if (!userId) {
@@ -227,11 +234,9 @@ const SessionToWorkspaceBootstrap = () => {
     }
     lastBootstrappedForRef.current = userId
     void runPostAuthBootstrap({ kind: 'server', userId, isAnonymous }).catch((error) => {
-      // Sign-in handlers surface bootstrap failures to the user with a retry
-      // affordance. This observer fires for cases without a handler — log and
-      // let the workspace gate stay on its splash until the next try.
       console.error('SessionToWorkspaceBootstrap failed:', error)
       lastBootstrappedForRef.current = null
+      setBootstrapError(error instanceof Error ? error : new Error(String(error)))
     })
   }, [userId, isAnonymous])
 

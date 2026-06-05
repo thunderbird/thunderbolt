@@ -10,7 +10,7 @@ import {
   powersyncTablesByName,
 } from '@/db/powersync-schema'
 import type { PowerSyncTableName } from '@shared/powersync-tables'
-import { eq } from 'drizzle-orm'
+import { and, eq } from 'drizzle-orm'
 import type { AnyPgColumn, AnyPgTable } from 'drizzle-orm/pg-core'
 import { allow, reject, toSchemaRecord } from './helpers'
 import { UploadRejection, type UploadHandler, type UploadTx } from './types'
@@ -183,10 +183,17 @@ export const createWorkspaceScopedHandler = (cfg: WorkspaceScopedConfig): Upload
             throw new UploadRejection('permanent', 'EMPTY_PAYLOAD')
           }
 
+          // Re-fetch scope to pin workspace_id in the WHERE clause. Composite PK
+          // (id, workspace_id) means WHERE id alone could touch rows across workspaces.
+          const patchScope = await fetchRowScope(tx, tableName, op.id)
+          if (!patchScope) {
+            throw new UploadRejection('permanent', 'ROW_NOT_FOUND')
+          }
+
           const patched = await tx
             .update(table)
             .set(schemaPatch as never)
-            .where(eq(pkColumn, op.id))
+            .where(and(eq(pkColumn, op.id), eq(table.workspaceId, patchScope.workspaceId)))
             .returning()
 
           if (patched.length === 0) {
@@ -195,7 +202,15 @@ export const createWorkspaceScopedHandler = (cfg: WorkspaceScopedConfig): Upload
           return
         }
         case 'DELETE': {
-          const deleted = await tx.delete(table).where(eq(pkColumn, op.id)).returning()
+          const deleteScope = await fetchRowScope(tx, tableName, op.id)
+          if (!deleteScope) {
+            throw new UploadRejection('permanent', 'ROW_NOT_FOUND')
+          }
+
+          const deleted = await tx
+            .delete(table)
+            .where(and(eq(pkColumn, op.id), eq(table.workspaceId, deleteScope.workspaceId)))
+            .returning()
 
           if (deleted.length === 0) {
             throw new UploadRejection('permanent', 'ROW_NOT_FOUND')

@@ -5,7 +5,7 @@
 import { createIsolatedTestDb, type IsolatedTestDb } from '@/test-utils/db'
 import type { db as DbType } from '@/db/client'
 import { rateLimits } from '@/db/rate-limit-schema'
-import { afterAll, beforeAll, beforeEach, describe, expect, it, setDefaultTimeout } from 'bun:test'
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'bun:test'
 import { Elysia } from 'elysia'
 import {
   createAuthIpRateLimit,
@@ -37,15 +37,6 @@ const createIpTestApp = (database: typeof DbType, settings: IpRateLimitSettings)
 
 /** Build a request with a given client IP via the CF-Connecting-IP header. */
 const requestWithIp = (ip: string) => new Request('http://localhost/v1/test', { headers: { 'cf-connecting-ip': ip } })
-
-// These tests drive real RateLimiterDrizzle transactions serialized through one
-// PGlite WASM connection — far heavier than the ~1ms unit tests the global 5s
-// default targets. On a CPU-starved 4-vCPU CI runner those WASM transactions
-// deschedule and the heaviest path (`.all('/*')` fetch-handler) brushes 5s; an
-// aborted test's in-flight transaction then backs up the next one on the shared
-// connection. 20s absorbs that worst case (and, by never aborting, removes the
-// cascade); a genuine hang still trips the 10-min CI step cap.
-setDefaultTimeout(20_000)
 
 describe('Rate Limiting', () => {
   let database: typeof DbType

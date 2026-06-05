@@ -13,7 +13,7 @@ import { act, cleanup, screen } from '@testing-library/react'
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'bun:test'
 import { createElement, type ReactNode } from 'react'
 import { v7 as uuidv7 } from 'uuid'
-import McpServersPage from './mcp-servers'
+import McpServersPage, { generateServerName } from './mcp-servers'
 
 // Wrap the page in a real MCPProvider with an injected createClient so the page
 // reads live (empty) connection state via useMCP — no need to mock the shared
@@ -80,5 +80,22 @@ describe('McpServersPage reactivity', () => {
     })
 
     expect(screen.getByText('localhost:9000/mcp')).toBeInTheDocument()
+  })
+})
+
+describe('generateServerName', () => {
+  const cases: Array<[string, string]> = [
+    ['http://192.168.1.100', '192.168.1.100'],
+    ['http://10.0.1.1', '10.0.1.1'],
+    ['https://api.github.com', 'github'],
+    ['https://render.com', 'render'],
+    ['http://localhost:3000', 'localhost-3000'],
+    ['https://example.com.', 'example'],
+    ['http://[::1]:8080', 'localhost-8080'],
+    ['http://[2001:db8::1]', '2001:db8::1'],
+  ]
+
+  it.each(cases)('derives %p → %p', (url, expected) => {
+    expect(generateServerName(url)).toBe(expected)
   })
 })

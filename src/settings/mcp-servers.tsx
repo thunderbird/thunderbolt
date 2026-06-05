@@ -46,16 +46,25 @@ type ServerTools = {
  * server's tools in the prompt, so a readable default like `github` or `render`
  * beats the raw hostname.
  * - Localhost: includes port for disambiguation (`localhost-3000`)
+ * - IP literals (IPv4 dotted-quad or IPv6): kept whole so distinct hosts stay
+ *   distinct (`192.168.1.100`, `2001:db8::1`)
  * - Remote: 3+ domain segments → second-to-last (`api.github.com` → `github`);
  *   2 segments → first (`render.com` → `render`); 1 → as-is
  */
-const generateServerName = (url: string): string => {
+export const generateServerName = (url: string): string => {
   try {
     const { hostname, port } = new URL(url)
-    if (hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '::1') {
+    // `URL` brackets IPv6 hosts (`[::1]`) and may keep a trailing FQDN dot — normalize both.
+    const host = hostname.replace(/^\[|\]$/g, '').replace(/\.$/, '')
+    if (host === 'localhost' || host === '127.0.0.1' || host === '::1') {
       return port ? `localhost-${port}` : 'localhost'
     }
-    const parts = hostname.split('.')
+    // IP literals (IPv4 dotted-quad or IPv6) have no registrable label to shorten to —
+    // use the whole address so distinct hosts stay distinct (sanitizeToolPrefix maps separators to `_`).
+    if (host.includes(':') || /^\d+\.\d+\.\d+\.\d+$/.test(host)) {
+      return host
+    }
+    const parts = host.split('.')
     return parts.length >= 3 ? parts[parts.length - 2] : parts[0]
   } catch {
     return ''

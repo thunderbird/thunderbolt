@@ -136,6 +136,10 @@ describe('ThunderboltConnector', () => {
   afterEach(() => {
     ;(import.meta.env as Record<string, unknown>).VITE_AUTH_MODE = savedAuthMode
     dispatchSpy.mockRestore()
+    // Clear the auth token/device id so the last test's value can't leak into
+    // the next test file and trigger AuthProvider's mount get-session call.
+    clearAuthToken()
+    clearDeviceId()
   })
 
   it('fetchCredentials returns null when no auth token', async () => {

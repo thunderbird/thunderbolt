@@ -13,7 +13,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { eq } from 'drizzle-orm'
 import { type ReactNode } from 'react'
 import { act, renderHook } from '@testing-library/react'
-import { afterAll, beforeAll, beforeEach, describe, expect, it, mock, spyOn } from 'bun:test'
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, mock, spyOn } from 'bun:test'
 import { AuthProvider, DatabaseProvider, HttpClientProvider } from '@/contexts'
 import { createMockAuthClient } from '@/test-utils/auth-client'
 import { createMockHttpClient } from '@/test-utils/http-client'
@@ -57,6 +57,12 @@ describe('usePowerSyncCredentialsInvalidListener', () => {
       value: { replace: mockReplace },
       writable: true,
     })
+    localStorage.clear()
+  })
+
+  // Mirror the beforeEach cleanup so the last test's auth token can't leak into
+  // the next test file (AuthProvider's mount effect fires get-session on any token).
+  afterEach(() => {
     localStorage.clear()
   })
 

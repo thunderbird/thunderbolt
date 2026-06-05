@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { clearAuthToken, clearDeviceId } from '@/lib/auth-token'
 import { clearMemoizeCache } from '@/lib/memoize'
 import { installFakeTimers } from '@/test-utils/fake-timers'
 import type { Clock } from '@sinonjs/fake-timers'
@@ -122,6 +123,11 @@ afterEach(() => {
     globalClock = null
   }
   cleanup()
+  // Backstop against cross-file auth-token leakage: any test that leaves a token
+  // in localStorage would otherwise make AuthProvider's mount effect fire an extra
+  // get-session call against the next file's HTTP client.
+  clearAuthToken()
+  clearDeviceId()
 })
 
 /**

@@ -10,8 +10,7 @@ type SyncEntry = SyncDataBucket['data'][number]
 const makeEntry = (object_type: string, data: Record<string, unknown>): SyncEntry =>
   ({ object_type, object_id: 'id-1', data: JSON.stringify(data), op: 'PUT' }) as SyncEntry
 
-const makeBucket = (...entries: SyncEntry[]): SyncDataBucket =>
-  ({ data: entries }) as SyncDataBucket
+const makeBucket = (...entries: SyncEntry[]): SyncDataBucket => ({ data: entries }) as SyncDataBucket
 
 // Controllable passthrough flag so individual tests can simulate a missing CK
 // without re-calling mock.module (which would bleed into subsequent tests).
@@ -20,7 +19,9 @@ let ckAvailable = true
 mock.module('@/db/encryption/codec', () => ({
   codec: {
     decode: async (val: string) => {
-      if (!ckAvailable || !val.startsWith('__enc:')) return val
+      if (!ckAvailable || !val.startsWith('__enc:')) {
+        return val
+      }
       return `decrypted(${val})`
     },
     encode: async (val: string) => `__enc:${val}`,

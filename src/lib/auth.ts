@@ -5,6 +5,7 @@
 import * as google from '@/integrations/google/auth'
 import type { GoogleUserInfo } from '@/integrations/google/types'
 import * as microsoft from '@/integrations/microsoft/auth'
+import * as tinfoil from '@/integrations/tinfoil/auth'
 import type { HttpClient } from '@/lib/http'
 import { setOAuthState } from '@/lib/oauth-state'
 import { generateCodeChallenge, generateCodeVerifier } from '@/lib/pkce'
@@ -15,7 +16,7 @@ import { v4 as uuidv4 } from 'uuid'
 // Types
 // ---------------------------------------------------------------------------
 
-export type OAuthProvider = 'google' | 'microsoft'
+export type OAuthProvider = 'google' | 'microsoft' | 'tinfoil'
 
 export type OAuthConfig = {
   clientId: string
@@ -29,12 +30,17 @@ type MissingPart = 'both' | 'secret'
 const providerLabels: Record<OAuthProvider, string> = {
   google: 'Google',
   microsoft: 'Microsoft',
+  tinfoil: 'Tinfoil',
 }
 
 const envVarPrefixes: Record<OAuthProvider, string> = {
   google: 'GOOGLE',
   microsoft: 'MICROSOFT',
+  tinfoil: 'TINFOIL',
 }
+
+/** Public OAuth clients (PKCE, no secret) — only a client_id can be missing. */
+const publicClients: ReadonlySet<OAuthProvider> = new Set(['tinfoil'])
 
 /**
  * Builds the user-facing error message shown when an OAuth provider is unconfigured.
@@ -43,6 +49,9 @@ const envVarPrefixes: Record<OAuthProvider, string> = {
 const buildMisconfiguredMessage = (provider: OAuthProvider, missing: MissingPart): string => {
   const label = providerLabels[provider]
   const prefix = envVarPrefixes[provider]
+  if (publicClients.has(provider)) {
+    return `${label} OAuth is not configured. Set ${prefix}_CLIENT_ID on the backend.`
+  }
   if (missing === 'both') {
     return `${label} OAuth is not configured. Set ${prefix}_CLIENT_ID and ${prefix}_CLIENT_SECRET on the backend.`
   }
@@ -78,6 +87,7 @@ export type OAuthUserInfo = GoogleUserInfo
 const providers = {
   google,
   microsoft,
+  tinfoil,
 } as const satisfies Record<OAuthProvider, typeof google>
 
 // ---------------------------------------------------------------------------

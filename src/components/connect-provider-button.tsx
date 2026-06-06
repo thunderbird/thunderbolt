@@ -8,6 +8,12 @@ import { type OAuthProvider } from '@/lib/auth'
 import { Check, Loader2, X } from 'lucide-react'
 import { useState } from 'react'
 
+const providerNames: Record<OAuthProvider, string> = {
+  google: 'Google',
+  microsoft: 'Microsoft',
+  tinfoil: 'Tinfoil',
+}
+
 type ConnectProviderButtonProps = {
   provider: OAuthProvider
   isConnected?: boolean
@@ -75,7 +81,7 @@ export const ConnectProviderButton = ({
     await connect(provider)
   }
 
-  const providerName = provider === 'microsoft' ? 'Microsoft' : 'Google'
+  const providerName = providerNames[provider]
   const defaultConnectLabel = connectLabel || `Connect ${providerName}`
 
   const showDisconnect = isConnected && allowDisconnect && isHovered

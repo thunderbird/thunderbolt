@@ -37,6 +37,7 @@ const powersyncSettings: Settings = {
   googleClientSecret: '',
   microsoftClientId: '',
   microsoftClientSecret: '',
+  tinfoilClientId: '',
   logLevel: 'INFO',
   port: 8000,
   appUrl: 'http://localhost:1420',

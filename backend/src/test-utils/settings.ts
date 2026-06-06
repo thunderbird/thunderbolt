@@ -23,6 +23,7 @@ export const createTestSettings = (overrides: Partial<Settings> = {}): Settings 
   googleClientSecret: '',
   microsoftClientId: '',
   microsoftClientSecret: '',
+  tinfoilClientId: '',
   authMode: 'consumer' as const,
   authAllowAnonymous: false,
   oidcClientId: '',

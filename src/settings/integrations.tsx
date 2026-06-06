@@ -9,13 +9,15 @@ import { Button } from '@/components/ui/button'
 import { Card, CardAction, CardContent, CardFooter, CardHeader, CardTitle } from '@/components/ui/card'
 import { Switch } from '@/components/ui/switch'
 import { ConnectProviderButton } from '@/components/connect-provider-button'
-import { GoogleIcon, MicrosoftIcon } from '@/components/provider-icons'
+import { GoogleIcon, MicrosoftIcon, TinfoilIcon } from '@/components/provider-icons'
 import { configs as googleToolConfigs } from '@/integrations/google/tools'
 import { configs as microsoftToolConfigs } from '@/integrations/microsoft/tools'
 import { configs as proToolConfigs } from '@/integrations/thunderbolt-pro/tools'
 import { getProStatus } from '@/integrations/thunderbolt-pro/utils'
+import { getOAuthCredentials } from '@/integrations/oauth-credentials'
+import { revokeTokens as revokeTinfoilTokens } from '@/integrations/tinfoil/auth'
 import { type OAuthProvider } from '@/lib/auth'
-import { useDatabase } from '@/contexts'
+import { useDatabase, useHttpClient } from '@/contexts'
 import { deleteIntegrationCredentials, setIntegrationEnabled, updateSettings } from '@/dal'
 import { useIntegrationStatus } from '@/hooks/use-integration-status'
 import { useOAuthConnect } from '@/hooks/use-oauth-connect'
@@ -43,6 +45,7 @@ const ThunderboltProIcon = () => (
 
 export default function IntegrationsPage() {
   const db = useDatabase()
+  const httpClient = useHttpClient()
   const location = useLocation()
   const navigate = useNavigate()
 
@@ -98,6 +101,16 @@ export default function IntegrationsPage() {
         isConnected: integrationStatusData?.microsoftConnected ?? false,
         userEmail: integrationStatusData?.microsoftEmail ?? undefined,
       },
+      {
+        id: 'tinfoil',
+        name: 'Tinfoil',
+        provider: 'tinfoil',
+        connectLabel: 'Connect Tinfoil',
+        icon: <TinfoilIcon />,
+        isEnabled: integrationStatusData?.tinfoilEnabled ?? false,
+        isConnected: integrationStatusData?.tinfoilConnected ?? false,
+        userEmail: integrationStatusData?.tinfoilEmail || undefined,
+      },
     ]
   }, [integrationSettings.integrationsProIsEnabled.value, integrationStatusData, proStatus?.isProUser])
 
@@ -140,6 +153,19 @@ export default function IntegrationsPage() {
 
   const handleDisconnect = async (integration: Integration) => {
     try {
+      if (integration.provider === 'tinfoil') {
+        // Revoke the token family server-side before clearing locally, so the
+        // paid credential stops working even if the local copy later leaks.
+        // Best-effort — a failed revoke must not block local disconnect.
+        try {
+          const creds = await getOAuthCredentials('tinfoil')
+          if (creds.refresh_token) {
+            await revokeTinfoilTokens(httpClient, creds.refresh_token)
+          }
+        } catch (revokeErr) {
+          console.warn('Tinfoil token revoke failed; continuing with local disconnect', revokeErr)
+        }
+      }
       await deleteIntegrationCredentials(db, integration.provider as OAuthProvider)
       await queryClient.invalidateQueries({ queryKey: ['integrationStatus'] })
     } catch (err) {

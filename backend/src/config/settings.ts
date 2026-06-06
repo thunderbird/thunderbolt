@@ -29,6 +29,8 @@ const settingsSchema = z
     googleClientSecret: z.string().trim().default(''),
     microsoftClientId: z.string().trim().default(''),
     microsoftClientSecret: z.string().trim().default(''),
+    // Tinfoil is a public OAuth client (PKCE, no secret) — only a client_id.
+    tinfoilClientId: z.string().trim().default(''),
 
     // OIDC Settings (enterprise self-hosted)
     authMode: z.enum(['consumer', 'oidc', 'saml']).default('consumer'),
@@ -157,6 +159,7 @@ const parseSettings = (): Settings => {
     googleClientSecret: process.env.GOOGLE_CLIENT_SECRET || '',
     microsoftClientId: process.env.MICROSOFT_CLIENT_ID || '',
     microsoftClientSecret: process.env.MICROSOFT_CLIENT_SECRET || '',
+    tinfoilClientId: process.env.TINFOIL_CLIENT_ID || '',
     authMode: (process.env.AUTH_MODE || 'consumer').toLowerCase(),
     authAllowAnonymous: process.env.AUTH_ALLOW_ANONYMOUS === 'true',
     oidcClientId: process.env.OIDC_CLIENT_ID || '',

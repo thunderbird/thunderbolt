@@ -54,6 +54,11 @@ export const ensureValidOAuthToken = async (
   const updated: OAuthCredentials = {
     ...credentials,
     access_token: newTokens.access_token,
+    // Persist a rotated refresh token. Tinfoil rotates on every refresh and
+    // revokes the whole token family if a spent one is replayed, so reusing the
+    // old token on the next refresh would disconnect the user. Providers that
+    // don't rotate simply re-issue the same value (or omit it → keep current).
+    refresh_token: newTokens.refresh_token ?? credentials.refresh_token,
     expires_at: Date.now() + newTokens.expires_in * 1000,
   }
 

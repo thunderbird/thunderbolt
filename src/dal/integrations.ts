@@ -132,11 +132,15 @@ export const getIntegrationStatus = async (
   microsoftConnected: boolean
   microsoftEnabled: boolean
   microsoftEmail: string | null
+  tinfoilConnected: boolean
+  tinfoilEnabled: boolean
+  tinfoilEmail: string | null
 }> => {
   const rows = await db.select().from(integrationsSecretsTable).all()
 
   const google = rows.find((r) => r.provider === 'google')
   const microsoft = rows.find((r) => r.provider === 'microsoft')
+  const tinfoil = rows.find((r) => r.provider === 'tinfoil')
 
   return {
     googleConnected: !!google?.credentials,
@@ -145,5 +149,8 @@ export const getIntegrationStatus = async (
     microsoftConnected: !!microsoft?.credentials,
     microsoftEnabled: microsoft?.enabled === 1,
     microsoftEmail: parseEmail(microsoft?.credentials),
+    tinfoilConnected: !!tinfoil?.credentials,
+    tinfoilEnabled: tinfoil?.enabled === 1,
+    tinfoilEmail: parseEmail(tinfoil?.credentials),
   }
 }

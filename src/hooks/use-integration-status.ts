@@ -13,9 +13,13 @@ export type IntegrationStatus = {
   microsoftConnected: boolean
   microsoftEnabled: boolean
   microsoftEmail: string | null
+  tinfoilConnected: boolean
+  tinfoilEnabled: boolean
+  tinfoilEmail: string | null
   availableProviders: {
     google: boolean
     microsoft: boolean
+    tinfoil: boolean
   }
 }
 
@@ -36,6 +40,7 @@ export const useIntegrationStatus = (): {
         availableProviders: {
           google: status.googleConnected,
           microsoft: status.microsoftConnected,
+          tinfoil: status.tinfoilConnected,
         },
       }
     },

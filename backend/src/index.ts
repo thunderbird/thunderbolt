@@ -6,6 +6,7 @@ import { createMainRoutes } from '@/api/routes'
 import { createBetterAuthPlugin } from '@/auth/elysia-plugin'
 import { createGoogleAuthRoutes } from '@/auth/google'
 import { createMicrosoftAuthRoutes } from '@/auth/microsoft'
+import { createTinfoilAuthRoutes } from '@/auth/tinfoil'
 import { createOidcConfigRoutes } from '@/auth/oidc'
 import { createSsoDesktopCallbackRoutes } from '@/auth/sso-desktop-callback'
 import { createLoggerMiddleware, createStandaloneLogger } from '@/config/logger'
@@ -117,6 +118,7 @@ export const createApp = async (deps?: AppDeps) => {
       .use(createMainRoutes(auth, fetchFn))
       .use(createGoogleAuthRoutes(auth, fetchFn))
       .use(createMicrosoftAuthRoutes(auth, fetchFn))
+      .use(createTinfoilAuthRoutes(auth, fetchFn))
       .use(createOidcConfigRoutes())
       .use(createSsoDesktopCallbackRoutes(settings))
       .use(createProToolsRoutes(auth, fetchFn, proRateLimit))

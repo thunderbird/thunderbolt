@@ -6,6 +6,7 @@ import { and, eq, isNotNull, isNull } from 'drizzle-orm'
 import type { AnyDrizzleDatabase } from '../db/database-interface'
 import { mcpServersTable } from '../db/tables'
 import { clearNullableColumns, nowIso } from '../lib/utils'
+import { getActiveWorkspaceId } from '../lib/active-workspace'
 import { type McpServer } from '@/types'
 import type { DrizzleQueryWithPromise } from '@/types'
 
@@ -47,5 +48,5 @@ export const createMcpServer = async (
   db: AnyDrizzleDatabase,
   data: Partial<McpServer> & Pick<McpServer, 'id' | 'name'>,
 ): Promise<void> => {
-  await db.insert(mcpServersTable).values(data)
+  await db.insert(mcpServersTable).values({ ...data, workspaceId: await getActiveWorkspaceId(db) })
 }

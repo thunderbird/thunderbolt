@@ -9,6 +9,7 @@ import { chatMessagesTable, chatThreadsTable, promptsTable } from '../db/tables'
 import { hashPrompt } from '../defaults/automations'
 import type { AutomationRun, Prompt } from '../types'
 import { clearNullableColumns, convertUIMessageToDbChatMessage, nowIso } from '../lib/utils'
+import { getActiveWorkspaceId } from '../lib/active-workspace'
 import { getModel } from './models'
 import { createChatThread } from './chat-threads'
 import { deleteTriggersForPrompt, deleteTriggersForPrompts } from './triggers'
@@ -150,7 +151,7 @@ export const createAutomation = async (
   db: AnyDrizzleDatabase,
   data: Partial<Prompt> & Pick<Prompt, 'id' | 'prompt' | 'modelId'>,
 ): Promise<void> => {
-  await db.insert(promptsTable).values(data)
+  await db.insert(promptsTable).values({ ...data, workspaceId: await getActiveWorkspaceId(db) })
 }
 
 /**
@@ -190,7 +191,10 @@ export const runAutomation = async (db: AnyDrizzleDatabase, promptId: string): P
       parts: [{ type: 'text' as const, text: prompt.prompt }],
     }
 
-    await tx.insert(chatMessagesTable).values(convertUIMessageToDbChatMessage(userMessage, threadId, null))
+    await tx.insert(chatMessagesTable).values({
+      ...convertUIMessageToDbChatMessage(userMessage, threadId, null),
+      workspaceId: await getActiveWorkspaceId(db),
+    })
   })
 
   return threadId

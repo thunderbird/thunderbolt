@@ -192,6 +192,13 @@ export class ThunderboltConnector implements PowerSyncBackendConnector {
         throw new Error(`Upload failed: ${response.status} ${JSON.stringify(body)}`)
       }
 
+      const body = (await response.json().catch(() => ({}))) as {
+        rejected?: Array<{ table: string; id: string; op: string; code: string }>
+      }
+      if (body.rejected?.length) {
+        console.warn('PowerSync upload: permanently rejected ops', body.rejected)
+      }
+
       await transaction.complete()
       console.info('PowerSync upload completed successfully')
       trackSyncEvent('sync_upload', { operation_count: operations.length })

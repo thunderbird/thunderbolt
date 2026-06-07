@@ -13,6 +13,7 @@ import { withTimeout } from '@/lib/timeout'
 import { handleFullWipe as defaultHandleFullWipe } from '@/services/encryption'
 import { initialLocalSettings, useLocalSettingsStore } from '@/stores/local-settings-store'
 import { getActiveTrustDomain } from '@/stores/trust-domain-registry'
+import { resetPostAuthBootstrap } from '@/lib/post-auth-bootstrap'
 
 type CleanupDeps = {
   clearAuthToken?: () => void
@@ -40,11 +41,23 @@ type CleanupDeps = {
  * The `deps` parameter exists for testing: pass mock functions to observe the call
  * sequence without mocking shared modules globally.
  */
+/**
+ * Reset module-level state that doesn't live in the DB / IDB / localStorage:
+ * the active-workspace store (and, transitively via the bootstrap reset, the
+ * inflight bootstrap promise). Done early so any concurrent observers can't
+ * see a stale workspace id after the wipe begins.
+ */
+const resetVolatileStores = (): void => {
+  resetPostAuthBootstrap()
+}
+
 export const clearLocalData = async ({
   clearAuthToken = defaultClearAuthToken,
   clearDeviceId = defaultClearDeviceId,
   handleFullWipe = defaultHandleFullWipe,
 }: CleanupDeps = {}): Promise<void> => {
+  resetVolatileStores()
+
   const trustDomain = getActiveTrustDomain()
 
   // Tear down every warm ACP connection first so no agent transport survives

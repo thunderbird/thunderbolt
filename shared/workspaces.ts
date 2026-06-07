@@ -1,0 +1,38 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+
+import { v5 as uuidv5 } from 'uuid'
+
+/**
+ * Fixed UUID namespace for deriving deterministic personal workspace and
+ * admin-membership ids from a user id. Do not change — changing this constant
+ * orphans every existing personal workspace.
+ */
+const PERSONAL_WORKSPACE_NAMESPACE = 'e2c4f9e0-b3a1-4a5c-9e8f-1d3a5c7e9f1b'
+
+/**
+ * Derive the canonical personal workspace id for a user.
+ *
+ * The personal workspace is FE-created on first sign-in and uploaded via
+ * PowerSync. Multiple devices that sign in for the same account independently
+ * compute the same id and upload the same row, so concurrent first-sign-ins
+ * become idempotent upserts on the BE rather than a partial-unique-index race.
+ *
+ * Used as the canonical anchor in the BE upload handler — the personal
+ * workspace PUT is accepted only when `op.id === computePersonalWorkspaceId(ctx.userId)`.
+ */
+export const computePersonalWorkspaceId = (userId: string): string =>
+  uuidv5(`personal:${userId}`, PERSONAL_WORKSPACE_NAMESPACE)
+
+/**
+ * Derive the canonical admin-membership id for a user's personal workspace.
+ *
+ * Same rationale as the workspace id — two devices uploading the bootstrap
+ * admin membership for the same user end up with the same row id, so the
+ * upload becomes an upsert no-op rather than two rows pointing at the same
+ * `(workspace_id, user_id)` natural key (which the unique constraint would
+ * reject for the second device).
+ */
+export const computePersonalAdminMembershipId = (userId: string): string =>
+  uuidv5(`personal-admin:${userId}`, PERSONAL_WORKSPACE_NAMESPACE)

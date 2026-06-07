@@ -26,9 +26,23 @@ export const needsSyncSetupWizard = async (): Promise<boolean> => {
  * Adding a table here automatically enables:
  * - Download decryption via EncryptionMiddleware (sync pipeline)
  * - Upload encryption via encodeForUpload (connector)
+ *
+ * Workspace-registry tables: only `workspaces.name` is encrypted. Other columns
+ * on workspace tables are server-readable by design:
+ * - `workspaces.is_personal` / `owner_user_id` — the BE handler branches on
+ *   these to gate personal vs shared writes; encrypting them would break the
+ *   policy logic.
+ * - `workspace_memberships.role` — the sync rules use `role = 'admin'` to scope
+ *   the admin-only bucket.
+ * - `workspace_pending_memberships.email` — the Better Auth post-create hook
+ *   matches this against the new user's email to promote pending invites into
+ *   real memberships. Plaintext is functionally required here.
+ * - `workspace_permissions.permission_key` / `required_role` — config policy
+ *   the BE handler reads.
  */
 export const encryptedColumnsMap: Readonly<Record<string, readonly string[]>> = {
   settings: ['value'],
+  workspaces: ['name'],
   chat_threads: ['title'],
   chat_messages: ['content', 'parts', 'cache', 'metadata'],
   tasks: ['item'],

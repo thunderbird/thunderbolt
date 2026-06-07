@@ -1,0 +1,83 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+
+import { and, eq } from 'drizzle-orm'
+import type { AnyDrizzleDatabase } from '../db/database-interface'
+import { workspaceMembershipsTable, workspacesTable } from '../db/tables'
+import { computePersonalAdminMembershipId, computePersonalWorkspaceId } from '@shared/workspaces'
+
+export type Workspace = {
+  id: string
+  name: string
+  isPersonal: number
+  ownerUserId: string | null
+  createdAt: string | null
+  updatedAt: string | null
+}
+
+/**
+ * Look up the personal workspace for a given user. Returns `null` if the row
+ * hasn't synced down yet (first signup) or if the user has none — the boot path
+ * awaits this becoming non-null before proceeding to reconcile defaults.
+ */
+export const getPersonalWorkspaceByOwner = async (
+  db: AnyDrizzleDatabase,
+  userId: string,
+): Promise<Workspace | null> => {
+  const row = await db
+    .select()
+    .from(workspacesTable)
+    .where(and(eq(workspacesTable.ownerUserId, userId), eq(workspacesTable.isPersonal, 1)))
+    .get()
+  return (row ?? null) as Workspace | null
+}
+
+/** Fetch a workspace by id. Used by the URL-driven workspace selector (PR 3). */
+export const getWorkspaceById = async (db: AnyDrizzleDatabase, id: string): Promise<Workspace | null> => {
+  const row = await db.select().from(workspacesTable).where(eq(workspacesTable.id, id)).get()
+  return (row ?? null) as Workspace | null
+}
+
+/**
+ * Resolve or create the user's personal workspace locally.
+ *
+ * The personal workspace + admin membership are FE-created with deterministic
+ * ids (`shared/workspaces.ts`). Multi-device safe by construction — every
+ * device computes the same id and uploads the same row, so PowerSync uploads
+ * become upserts on the BE rather than racing for a unique constraint.
+ *
+ * Called from `runPostAuthBootstrap` once a session is established. No sync
+ * dependency: the workspace is usable immediately, sync uploads it (and any
+ * later edits) when the user enables sync.
+ */
+export const ensurePersonalWorkspace = async (db: AnyDrizzleDatabase, userId: string): Promise<Workspace> => {
+  const existing = await getPersonalWorkspaceByOwner(db, userId)
+  if (existing) {
+    return existing
+  }
+
+  const workspaceId = computePersonalWorkspaceId(userId)
+  const membershipId = computePersonalAdminMembershipId(userId)
+
+  await db.transaction(async (tx) => {
+    await tx.insert(workspacesTable).values({
+      id: workspaceId,
+      name: 'Personal',
+      isPersonal: 1,
+      ownerUserId: userId,
+    })
+    await tx.insert(workspaceMembershipsTable).values({
+      id: membershipId,
+      workspaceId,
+      userId,
+      role: 'admin',
+    })
+  })
+
+  const created = await getPersonalWorkspaceByOwner(db, userId)
+  if (!created) {
+    throw new Error(`Failed to create personal workspace for user ${userId}`)
+  }
+  return created
+}

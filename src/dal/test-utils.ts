@@ -24,7 +24,9 @@ export const setupTestDatabase = async () => {
   setDatabase(database)
   const db = database.db
   await applySchema(db)
-  await reconcileDefaults(db)
+  // Deterministic test workspace id — tests can reference this if they need to
+  // assert workspaceId on rows that come from reconciled defaults.
+  await reconcileDefaults(db, '00000000-0000-0000-0000-000000000001')
 }
 
 /**

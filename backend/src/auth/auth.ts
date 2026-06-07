@@ -4,6 +4,7 @@
 
 import {
   approveWaitlistEntry,
+  promotePendingMemberships,
   getOrCreateOtpChallenge,
   createWaitlistEntry,
   deleteOtpChallengesForEmail,
@@ -208,6 +209,17 @@ export const createAuth = (database: typeof DbType, emailDeps: AuthEmailDeps = {
           before: async (userData) => ({
             data: { ...userData, email: normalizeEmail(userData.email) },
           }),
+          // Promote any pending memberships invited by email. The personal workspace
+          // itself is FE-created (uploaded via PowerSync with a deterministic id), so
+          // this hook only handles the admin-only pending-membership flow that the FE
+          // can't see. Skipped for anonymous users — anon never receives invites.
+          after: async (createdUser) => {
+            const isAnonymous = (createdUser as { isAnonymous?: boolean }).isAnonymous === true
+            if (isAnonymous) {
+              return
+            }
+            await promotePendingMemberships(database, createdUser.id, createdUser.email)
+          },
         },
       },
     },

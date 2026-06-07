@@ -12,6 +12,7 @@ import type { AnyDrizzleDatabase } from '../db/database-interface'
 import { agentsSecretsTable, agentsSystemTable, agentsTable } from '../db/tables'
 import { builtInAgent } from '../defaults/agents'
 import { nowIso } from '../lib/utils'
+import { getActiveWorkspaceId } from '../lib/active-workspace'
 import type { Agent } from '@/types/acp'
 
 /** Shape persisted in the local-only `agents_secrets` table. */
@@ -131,6 +132,7 @@ export const createAgent = async (db: AnyDrizzleDatabase, data: CreateAgentInput
     icon: data.icon ?? null,
     enabled: data.enabled ?? 1,
     userId: data.userId,
+    workspaceId: await getActiveWorkspaceId(db),
   })
 }
 

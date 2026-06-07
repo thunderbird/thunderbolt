@@ -23,23 +23,32 @@ import { nowIso } from './utils'
  * @param table - The database table to reconcile
  * @param defaults - Array of default items to reconcile
  * @param hashFn - Function to compute hash of an item
- * @param keyField - Name of the primary key field (defaults to 'id')
+ * @param options - Per-table options: PK field name and (for workspace-scoped
+ *   tables) the workspace id to tag inserts with. Settings is user-scoped and
+ *   omits `workspaceId`.
  */
 export const reconcileDefaultsForTable = async <T extends { defaultHash: string | null }>(
   db: AnyDrizzleDatabase,
   table: SQLiteTableWithColumns<any>,
   defaults: readonly T[],
   hashFn: (item: any) => string,
-  keyField: string = 'id',
+  options: { keyField?: string; workspaceId?: string } = {},
 ) => {
+  const { keyField = 'id', workspaceId } = options
+  const pkWhere = (keyValue: unknown) =>
+    workspaceId
+      ? and(eq(table[keyField], keyValue), eq((table as any).workspaceId, workspaceId))
+      : eq(table[keyField], keyValue)
+
   for (const defaultItem of defaults) {
     const keyValue = (defaultItem as any)[keyField]
-    const existing = await db.select().from(table).where(eq(table[keyField], keyValue)).get()
+    const existing = await db.select().from(table).where(pkWhere(keyValue)).get()
 
     if (!existing) {
       // New default - insert with computed hash
       await db.insert(table).values({
         ...defaultItem,
+        ...(workspaceId ? { workspaceId } : {}),
         defaultHash: hashFn(defaultItem),
       })
     } else {
@@ -49,7 +58,7 @@ export const reconcileDefaultsForTable = async <T extends { defaultHash: string 
 
       if (!existing.defaultHash) {
         // No defaultHash - set it to the default hash to enable modification tracking
-        await db.update(table).set({ defaultHash: defaultHashValue }).where(eq(table[keyField], keyValue))
+        await db.update(table).set({ defaultHash: defaultHashValue }).where(pkWhere(keyValue))
       } else if (currentHash === existing.defaultHash) {
         // Skip update if default hasn't changed (prevents empty PATCH operations)
         // TODO: needs more testing
@@ -74,7 +83,7 @@ export const reconcileDefaultsForTable = async <T extends { defaultHash: string 
             ...defaultItem,
             defaultHash: defaultHashValue,
           })
-          .where(eq(table[keyField], keyValue))
+          .where(pkWhere(keyValue))
       }
       // If hashes don't match, user has modified (including soft-delete) - skip update
     }
@@ -130,29 +139,39 @@ export const cleanupRemovedDefaults = async (db: AnyDrizzleDatabase) => {
   }
 }
 
-export const reconcileDefaults = async (db: AnyDrizzleDatabase) => {
+/**
+ * Reconciles default rows for all default-aware tables. The workspace-scoped
+ * defaults (models / modes / tasks / skills / model_profiles) are tagged with
+ * `workspaceId` — typically the caller's personal workspace, resolved by the
+ * boot path once sync has brought it down. Settings is user-scoped and does
+ * not take a workspace.
+ */
+export const reconcileDefaults = async (db: AnyDrizzleDatabase, workspaceId: string) => {
   await db.transaction(async (tx) => {
     // Soft-delete removed system defaults before reconciling current ones.
     await cleanupRemovedDefaults(tx)
 
     // AI models
-    await reconcileDefaultsForTable(tx, modelsTable, defaultModels, hashModel)
+    await reconcileDefaultsForTable(tx, modelsTable, defaultModels, hashModel, { workspaceId })
 
     // Model profiles (after models, because they reference model IDs)
-    await reconcileDefaultsForTable(tx, modelProfilesTable, defaultModelProfiles, hashModelProfile, 'modelId')
+    await reconcileDefaultsForTable(tx, modelProfilesTable, defaultModelProfiles, hashModelProfile, {
+      keyField: 'modelId',
+      workspaceId,
+    })
 
     // Modes
-    await reconcileDefaultsForTable(tx, modesTable, defaultModes, hashMode)
+    await reconcileDefaultsForTable(tx, modesTable, defaultModes, hashMode, { workspaceId })
 
     // Tasks
-    await reconcileDefaultsForTable(tx, tasksTable, defaultTasks, hashTask)
+    await reconcileDefaultsForTable(tx, tasksTable, defaultTasks, hashTask, { workspaceId })
 
     // Skills (the default skills supersede the legacy default automations,
     // which used to seed promptsTable here. See THU-547.)
-    await reconcileDefaultsForTable(tx, skillsTable, defaultSkills, hashSkill)
+    await reconcileDefaultsForTable(tx, skillsTable, defaultSkills, hashSkill, { workspaceId })
 
-    // Settings
-    await reconcileDefaultsForTable(tx, settingsTable, defaultSettings, hashSetting, 'key')
+    // Settings — user-scoped (not workspace-scoped).
+    await reconcileDefaultsForTable(tx, settingsTable, defaultSettings, hashSetting, { keyField: 'key' })
 
     // Initialize anonymous ID for analytics (unique per user)
     await createSetting(tx, 'anonymous_id', uuidv7())

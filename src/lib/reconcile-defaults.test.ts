@@ -40,6 +40,7 @@ const buildRetiredModel = (overrides: Partial<Model> = {}): Model => {
     vendor: 'mistral',
     description: 'Retired',
     userId: null,
+    workspaceId: null,
     ...overrides,
   }
   return { ...base, defaultHash: hashModel(base) }
@@ -71,6 +72,7 @@ const buildRetiredProfile = (overrides: Partial<ModelProfile> = {}): ModelProfil
     deletedAt: null,
     defaultHash: null,
     userId: null,
+    workspaceId: null,
     ...overrides,
   }
   return { ...base, defaultHash: hashModelProfile(base) }
@@ -352,7 +354,7 @@ describe('seedPrompts', () => {
 describe('reconcileDefaultsForTable', () => {
   test('inserts new defaults on first run', async () => {
     const db = getDb()
-    await reconcileDefaultsForTable(db, settingsTable, defaultSettings, hashSetting, 'key')
+    await reconcileDefaultsForTable(db, settingsTable, defaultSettings, hashSetting, { keyField: 'key' })
 
     const settings = await db.select().from(settingsTable)
     // Should have all default settings plus anonymous_id
@@ -369,14 +371,14 @@ describe('reconcileDefaultsForTable', () => {
 
   test('updates unmodified settings on re-seed', async () => {
     const db = getDb()
-    await reconcileDefaultsForTable(db, settingsTable, defaultSettings, hashSetting, 'key')
+    await reconcileDefaultsForTable(db, settingsTable, defaultSettings, hashSetting, { keyField: 'key' })
 
     // Get an unmodified setting
     const setting = await db.select().from(settingsTable).where(eq(settingsTable.key, defaultSettings[0].key)).get()
     expect(setting).toBeDefined()
 
     // Seed again - should be idempotent
-    await reconcileDefaultsForTable(db, settingsTable, defaultSettings, hashSetting, 'key')
+    await reconcileDefaultsForTable(db, settingsTable, defaultSettings, hashSetting, { keyField: 'key' })
 
     // Setting should still match default
     const settingAfterReseed = await db
@@ -391,7 +393,7 @@ describe('reconcileDefaultsForTable', () => {
 
   test('preserves user modifications', async () => {
     const db = getDb()
-    await reconcileDefaultsForTable(db, settingsTable, defaultSettings, hashSetting, 'key')
+    await reconcileDefaultsForTable(db, settingsTable, defaultSettings, hashSetting, { keyField: 'key' })
 
     // User modifies a setting
     const defaultSetting = defaultSettings[0]
@@ -401,7 +403,7 @@ describe('reconcileDefaultsForTable', () => {
       .where(eq(settingsTable.key, defaultSetting.key))
 
     // Seed again
-    await reconcileDefaultsForTable(db, settingsTable, defaultSettings, hashSetting, 'key')
+    await reconcileDefaultsForTable(db, settingsTable, defaultSettings, hashSetting, { keyField: 'key' })
 
     // Should NOT be overwritten
     const setting = await db.select().from(settingsTable).where(eq(settingsTable.key, defaultSetting.key)).get()
@@ -412,7 +414,7 @@ describe('reconcileDefaultsForTable', () => {
 
   test('handles mixed scenarios correctly', async () => {
     const db = getDb()
-    await reconcileDefaultsForTable(db, settingsTable, defaultSettings, hashSetting, 'key')
+    await reconcileDefaultsForTable(db, settingsTable, defaultSettings, hashSetting, { keyField: 'key' })
 
     // Scenario 1: User modifies setting 0
     await db.update(settingsTable).set({ value: 'modified' }).where(eq(settingsTable.key, defaultSettings[0].key))
@@ -420,7 +422,7 @@ describe('reconcileDefaultsForTable', () => {
     // Scenario 2: Setting 1 stays unmodified
 
     // Seed again
-    await reconcileDefaultsForTable(db, settingsTable, defaultSettings, hashSetting, 'key')
+    await reconcileDefaultsForTable(db, settingsTable, defaultSettings, hashSetting, { keyField: 'key' })
 
     const settings = await db.select().from(settingsTable)
 
@@ -454,7 +456,7 @@ describe('reconcileDefaultsForTable', () => {
     }
 
     // Seed with this default
-    await reconcileDefaultsForTable(db, settingsTable, [testDefault], hashSetting, 'key')
+    await reconcileDefaultsForTable(db, settingsTable, [testDefault], hashSetting, { keyField: 'key' })
 
     // Should now have a defaultHash
     const setting = await db.select().from(settingsTable).where(eq(settingsTable.key, 'test_setting_no_hash')).get()
@@ -503,7 +505,7 @@ describe('reconcileDefaultsForTable', () => {
     }
 
     // Run reconcile - this previously would overwrite user's "metric" with null
-    await reconcileDefaultsForTable(db, settingsTable, [nullDefault], hashSetting, 'key')
+    await reconcileDefaultsForTable(db, settingsTable, [nullDefault], hashSetting, { keyField: 'key' })
 
     // User's value should be PRESERVED, not overwritten with null
     const afterReconcile = await db.select().from(settingsTable).where(eq(settingsTable.key, testKey)).get()
@@ -539,7 +541,7 @@ describe('reconcileDefaultsForTable', () => {
     }
 
     // Run reconcile - should proceed (this is a no-op anyway)
-    await reconcileDefaultsForTable(db, settingsTable, [nullDefault], hashSetting, 'key')
+    await reconcileDefaultsForTable(db, settingsTable, [nullDefault], hashSetting, { keyField: 'key' })
 
     // Value should still be null (no change, but update was allowed)
     const afterReconcile = await db.select().from(settingsTable).where(eq(settingsTable.key, 'optional_setting')).get()

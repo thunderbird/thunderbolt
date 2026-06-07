@@ -38,6 +38,7 @@ import { PostHogProvider } from '@/lib/posthog'
 import { ThemeProvider } from '@/lib/theme-provider'
 import { AppErrorScreen } from './components/app-error-screen'
 import { AuthGate } from './components/auth-gate'
+import { WorkspaceGate } from './components/workspace-gate'
 import { OnboardingDialog } from './components/onboarding/onboarding-dialog'
 import { WelcomeDialog } from './components/welcome-dialog'
 import { PendingDeviceModal } from './components/pending-device-modal'
@@ -164,37 +165,42 @@ const AppRoutes = ({ initData }: { initData: InitData }) => {
         )}
 
         {/* Main app routes - authenticated only. The gate decides redirect
-            targets internally from VITE_AUTH_MODE + VITE_AUTH_ENABLE_ANONYMOUS. */}
+            targets internally from VITE_AUTH_MODE + VITE_AUTH_ENABLE_ANONYMOUS.
+            `WorkspaceGate` then holds the routes until `runPostAuthBootstrap`
+            has resolved the active workspace — keeps DAL inserts from firing
+            with a null workspace id between authentication and sync landing. */}
         <Route element={<AuthGate require="authenticated" />}>
-          <Route
-            path="/"
-            element={
-              <>
-                <Layout />
-                <OnboardingDialog />
-                <WelcomeDialog />
-              </>
-            }
-          >
-            {/* Home routes with HomeLayout */}
-            <Route element={<ChatLayout />}>
-              <Route index element={<Navigate to="/chats/new" replace />} />
-              <Route path="chats/:chatThreadId" element={<ChatDetailPage />} />
-              {experimentalFeatureTasks.value && <Route path="tasks" element={<TasksPage />} />}
-              {import.meta.env.DEV && <Route path="message-simulator" element={<MessageSimulatorPage />} />}
-            </Route>
+          <Route element={<WorkspaceGate />}>
+            <Route
+              path="/"
+              element={
+                <>
+                  <Layout />
+                  <OnboardingDialog />
+                  <WelcomeDialog />
+                </>
+              }
+            >
+              {/* Home routes with HomeLayout */}
+              <Route element={<ChatLayout />}>
+                <Route index element={<Navigate to="/chats/new" replace />} />
+                <Route path="chats/:chatThreadId" element={<ChatDetailPage />} />
+                {experimentalFeatureTasks.value && <Route path="tasks" element={<TasksPage />} />}
+                {import.meta.env.DEV && <Route path="message-simulator" element={<MessageSimulatorPage />} />}
+              </Route>
 
-            {/* Settings routes with SettingsLayout */}
-            <Route path="settings" element={<SettingsLayout />}>
-              <Route index element={<Settings />} />
-              <Route path="preferences" element={<PreferencesSettingsPage />} />
-              <Route path="models" element={<ModelsPage />} />
-              <Route path="devices" element={<DevicesSettingsPage />} />
-              <Route path="mcp-servers" element={<McpServersPage />} />
-              <Route path="skills" element={<SkillsPage />} />
-              <Route path="agents" element={<AgentsSettingsPage />} />
-              <Route path="integrations" element={<IntegrationsPage />} />
-              {import.meta.env.DEV && <Route path="dev-settings" element={<DevSettingsPage />} />}
+              {/* Settings routes with SettingsLayout */}
+              <Route path="settings" element={<SettingsLayout />}>
+                <Route index element={<Settings />} />
+                <Route path="preferences" element={<PreferencesSettingsPage />} />
+                <Route path="models" element={<ModelsPage />} />
+                <Route path="devices" element={<DevicesSettingsPage />} />
+                <Route path="mcp-servers" element={<McpServersPage />} />
+                <Route path="skills" element={<SkillsPage />} />
+                <Route path="agents" element={<AgentsSettingsPage />} />
+                <Route path="integrations" element={<IntegrationsPage />} />
+                {import.meta.env.DEV && <Route path="dev-settings" element={<DevSettingsPage />} />}
+              </Route>
             </Route>
           </Route>
         </Route>

@@ -8,6 +8,7 @@ import type { AnyDrizzleDatabase } from '../db/database-interface'
 import { skillsTable } from '../db/tables'
 import type { DrizzleQueryWithPromise, Skill } from '../types'
 import { nowIso } from '../lib/utils'
+import { getActiveWorkspaceId } from '../lib/active-workspace'
 
 /** Maximum pinned skills per user (spec §Scope). */
 export const maxPinnedSkills = 10
@@ -160,6 +161,7 @@ export const createSkill = async (db: AnyDrizzleDatabase, input: CreateSkillInpu
     deletedAt: null,
     defaultHash: null,
     userId: null,
+    workspaceId: await getActiveWorkspaceId(db),
   }
   await db.insert(skillsTable).values(row)
   return row

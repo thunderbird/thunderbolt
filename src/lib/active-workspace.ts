@@ -33,7 +33,7 @@ const matchWorkspaceIdInPath = (pathname: string): string | null => {
  * single-row `SELECT` on an indexed column — <1ms locally.
  */
 export const getActiveWorkspaceId = async (db: AnyDrizzleDatabase): Promise<string | null> => {
-  const fromUrl = matchWorkspaceIdInPath(window.location.pathname)
+  const fromUrl = matchWorkspaceIdInPath(window.location.pathname ?? '')
   if (fromUrl) {
     return fromUrl
   }

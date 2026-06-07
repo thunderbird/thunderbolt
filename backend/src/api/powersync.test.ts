@@ -5,11 +5,20 @@
 import type { Settings } from '@/config/settings'
 import { createBetterAuthPlugin } from '@/auth/elysia-plugin'
 import { session as sessionTable, user as userTable } from '@/db/auth-schema'
-import { devicesTable, mcpServersTable, modelsTable, promptsTable, settingsTable } from '@/db/schema'
+import {
+  devicesTable,
+  mcpServersTable,
+  modelsTable,
+  promptsTable,
+  settingsTable,
+  workspaceMembershipsTable,
+  workspacesTable,
+} from '@/db/schema'
 import { createTestDb } from '@/test-utils/db'
 import { createHmac } from 'crypto'
 import { eq } from 'drizzle-orm'
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'bun:test'
+import { v7 as uuidv7 } from 'uuid'
 import { clearSettingsCache } from '@/config/settings'
 import { Elysia } from 'elysia'
 import { createPowerSyncRoutes } from './powersync'
@@ -85,8 +94,13 @@ describe('PowerSync API', () => {
   let app: Elysia
   let db: Awaited<ReturnType<typeof createTestDb>>['db']
   let cleanup: () => Promise<void>
+  // Unique per test: the new upload handler uses database.transaction() which
+  // commits the outer BEGIN/ROLLBACK test transaction in PGlite, so we can't
+  // rely on rollback isolation. Unique device IDs prevent key collisions.
+  let testDeviceId: string
 
   beforeEach(async () => {
+    testDeviceId = uuidv7()
     const testEnv = await createTestDb()
     db = testEnv.db
     cleanup = testEnv.cleanup
@@ -100,7 +114,7 @@ describe('PowerSync API', () => {
     }
   })
 
-  const uploadHeaders = (bearer: string, deviceId = 'test-device-id') => ({
+  const uploadHeaders = (bearer: string, deviceId = testDeviceId) => ({
     'Content-Type': 'application/json',
     Authorization: `Bearer ${signToken(bearer)}`,
     'X-Device-ID': deviceId,
@@ -953,7 +967,7 @@ describe('PowerSync API', () => {
         updatedAt: now,
         userId,
       })
-      await insertTrustedDevice('test-device-id', userId)
+      await insertTrustedDevice(testDeviceId, userId)
 
       const response = await app.handle(
         new Request('http://localhost/powersync/upload', {
@@ -987,7 +1001,7 @@ describe('PowerSync API', () => {
         updatedAt: now,
         userId,
       })
-      await insertTrustedDevice('test-device-id', userId)
+      await insertTrustedDevice(testDeviceId, userId)
 
       const response = await app.handle(
         new Request('http://localhost/powersync/upload', {
@@ -1036,7 +1050,7 @@ describe('PowerSync API', () => {
         updatedAt: now,
         userId,
       })
-      await insertTrustedDevice('test-device-id', userId)
+      await insertTrustedDevice(testDeviceId, userId)
 
       const response = await app.handle(
         new Request('http://localhost/powersync/upload', {
@@ -1135,7 +1149,7 @@ describe('PowerSync API', () => {
         updatedAt: now,
         userId,
       })
-      await insertTrustedDevice('test-device-id', userId)
+      await insertTrustedDevice(testDeviceId, userId)
 
       await db.insert(settingsTable).values({
         key: 'patch_setting',
@@ -1187,7 +1201,7 @@ describe('PowerSync API', () => {
         updatedAt: now,
         userId,
       })
-      await insertTrustedDevice('test-device-id', userId)
+      await insertTrustedDevice(testDeviceId, userId)
       await db.insert(settingsTable).values({
         key: 'empty_patch_setting',
         value: 'unchanged',
@@ -1243,7 +1257,7 @@ describe('PowerSync API', () => {
         updatedAt: now,
         userId,
       })
-      await insertTrustedDevice('test-device-id', userId)
+      await insertTrustedDevice(testDeviceId, userId)
       await db.insert(settingsTable).values({
         key: 'stripped_patch_setting',
         value: 'unchanged',
@@ -1295,7 +1309,7 @@ describe('PowerSync API', () => {
         updatedAt: now,
         userId,
       })
-      await insertTrustedDevice('test-device-id', userId)
+      await insertTrustedDevice(testDeviceId, userId)
       // No settings row exists for 'nonexistent_key'
 
       const response = await app.handle(
@@ -1417,7 +1431,7 @@ describe('PowerSync API', () => {
         updatedAt: now,
         userId,
       })
-      await insertTrustedDevice('test-device-id', userId)
+      await insertTrustedDevice(testDeviceId, userId)
       await db.insert(settingsTable).values({
         key: 'patch_owned',
         value: 'initial',
@@ -1469,15 +1483,26 @@ describe('PowerSync API', () => {
         updatedAt: now,
         userId,
       })
-      await insertTrustedDevice('test-device-id', userId)
+      await insertTrustedDevice(testDeviceId, userId)
+      // Workspace + membership required by migration 0020 FK + workspace-scoped handler.
+      await db.insert(workspacesTable).values({
+        id: '00000000-0000-0000-0000-000000000000',
+        name: 'test-workspace',
+        isPersonal: false,
+        ownerUserId: userId,
+      })
+      await db.insert(workspaceMembershipsTable).values({
+        id: 'membership-patch-deleted-at',
+        workspaceId: '00000000-0000-0000-0000-000000000000',
+        userId,
+        role: 'admin',
+      })
       await db.insert(promptsTable).values({
         id: 'prompt-to-soft-delete',
         title: 'My Prompt',
         prompt: 'Hello',
         modelId: 'gpt-4',
         userId,
-        // Placeholder — this test was authored before workspaces existed; the runtime
-        // path is already broken on main, this satisfies the post-THU-550 type only.
         workspaceId: '00000000-0000-0000-0000-000000000000',
       })
 
@@ -1530,7 +1555,7 @@ describe('PowerSync API', () => {
         updatedAt: now,
         userId,
       })
-      await insertTrustedDevice('test-device-id', userId)
+      await insertTrustedDevice(testDeviceId, userId)
 
       await db.insert(settingsTable).values({
         key: 'to_delete',
@@ -1574,7 +1599,7 @@ describe('PowerSync API', () => {
         updatedAt: now,
         userId,
       })
-      await insertTrustedDevice('test-device-id', userId)
+      await insertTrustedDevice(testDeviceId, userId)
       // No settings row exists for 'nonexistent_to_delete'
 
       const response = await app.handle(
@@ -1682,7 +1707,7 @@ describe('PowerSync API', () => {
         updatedAt: now,
         userId,
       })
-      await insertTrustedDevice('test-device-id', userId)
+      await insertTrustedDevice(testDeviceId, userId)
 
       // Insert a second device that the attacker will try to delete via PowerSync
       await db.insert(devicesTable).values({
@@ -1736,7 +1761,7 @@ describe('PowerSync API', () => {
         updatedAt: now,
         userId,
       })
-      await insertTrustedDevice('test-device-id', userId)
+      await insertTrustedDevice(testDeviceId, userId)
 
       const response = await app.handle(
         new Request('http://localhost/powersync/upload', {
@@ -1953,7 +1978,7 @@ describe('PowerSync API', () => {
         updatedAt: now,
         userId,
       })
-      await insertTrustedDevice('test-device-id', userId)
+      await insertTrustedDevice(testDeviceId, userId)
 
       const response = await app.handle(
         new Request('http://localhost/powersync/upload', {
@@ -2004,7 +2029,7 @@ describe('PowerSync API', () => {
         updatedAt: now,
         userId,
       })
-      await insertTrustedDevice('test-device-id', userId)
+      await insertTrustedDevice(testDeviceId, userId)
 
       const response = await app.handle(
         new Request('http://localhost/powersync/upload', {
@@ -2773,7 +2798,9 @@ describe('PowerSync API — anonymous sync guard', () => {
     )
     expect(response.status).toBe(200)
     const data = await response.json()
-    expect(data).toEqual({ success: true })
+    // Response now includes `rejected: []` alongside `success`; use toMatchObject
+    // so adding fields to the response shape doesn't break this regression guard.
+    expect(data).toMatchObject({ success: true })
   })
 })
 

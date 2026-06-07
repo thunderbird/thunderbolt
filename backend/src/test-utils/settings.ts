@@ -10,7 +10,7 @@ import type { Settings } from '@/config/settings'
  * matching the schema in `@/config/settings`.
  */
 export const createTestSettings = (overrides: Partial<Settings> = {}): Settings => ({
-  serverId: '00000000-0000-0000-0000-000000000001',
+  serverId: '00000000-0000-0000-0000-000000000000',
   fireworksApiKey: '',
   mistralApiKey: '',
   anthropicApiKey: '',

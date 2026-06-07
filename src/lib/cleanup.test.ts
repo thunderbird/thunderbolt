@@ -24,50 +24,51 @@ const deleteDbFile = mock(async (filename: string) => {
   calls.push(`deleteDbFile:${filename}`)
 })
 
-const clearAuthToken = mock(() => {
-  calls.push('clearAuthToken')
-})
-
-const clearDeviceId = mock(() => {
-  calls.push('clearDeviceId')
-})
-
-const handleFullWipe = mock(async () => {
-  calls.push('handleFullWipe')
-})
-
-// Include the full surface so this test's mock.module call doesn't shadow the real
-// exports for other test files (see docs/development/testing.md §65).
+// Include the full surface so these mock.module calls don't shadow real exports for other
+// test files that load after this one (docs/development/testing.md §65).
+const realDbLifecycleBroadcast = await import('@/db/db-lifecycle-broadcast')
 mock.module('@/db/db-lifecycle-broadcast', () => ({
+  ...realDbLifecycleBroadcast,
   broadcastDbLifecycle,
   setupDbLifecycleReloadOnRemoteClose: () => {},
 }))
 
+const realDatabase = await import('@/db/database')
 mock.module('@/db/database', () => ({
+  ...realDatabase,
   resetDatabase,
 }))
 
+const realPowersync = await import('@/db/powersync')
 mock.module('@/db/powersync', () => ({
+  ...realPowersync,
   setSyncEnabled,
 }))
 
+const realFs = await import('@/lib/fs')
 mock.module('@/lib/fs', () => ({
+  ...realFs,
   deleteDbFile,
-}))
-
-mock.module('@/lib/auth-token', () => ({
-  clearAuthToken,
-  clearDeviceId,
-}))
-
-mock.module('@/services/encryption', () => ({
-  handleFullWipe,
 }))
 
 // Import after module mocks so the SUT picks them up.
 const { clearLocalData, signOutAndWipe } = await import('./cleanup')
 
 const serverId = '00000000-0000-0000-0000-0000000000aa'
+
+// Injected deps — passed directly to clearLocalData/signOutAndWipe rather than
+// mocking shared modules globally, per the testing docs DI guideline.
+const clearAuthToken = mock(() => {
+  calls.push('clearAuthToken')
+})
+const clearDeviceId = mock(() => {
+  calls.push('clearDeviceId')
+})
+const handleFullWipe = mock(async () => {
+  calls.push('handleFullWipe')
+})
+
+const deps = { clearAuthToken, clearDeviceId, handleFullWipe }
 
 describe('clearLocalData', () => {
   beforeEach(() => {
@@ -90,7 +91,7 @@ describe('clearLocalData', () => {
   })
 
   it('runs the server-mode wipe sequence in order', async () => {
-    await clearLocalData()
+    await clearLocalData(deps)
 
     expect(calls).toEqual([
       'setSyncEnabled:false',
@@ -107,7 +108,7 @@ describe('clearLocalData', () => {
   it('resets local-settings to their defaults', async () => {
     useLocalSettingsStore.setState({ theme: 'dark', debugPosthog: true, hapticsEnabled: false })
 
-    await clearLocalData()
+    await clearLocalData(deps)
 
     const state = useLocalSettingsStore.getState()
     expect(state.theme).toBe(initialLocalSettings.theme)
@@ -118,7 +119,7 @@ describe('clearLocalData', () => {
   it('skips encryption-key wipe in standalone mode', async () => {
     useTrustDomainRegistry.setState({ activeTrustDomain: { kind: 'standalone' } })
 
-    await clearLocalData()
+    await clearLocalData(deps)
 
     expect(calls).toContain('deleteDbFile:standalone.db')
     expect(calls).not.toContain('handleFullWipe')
@@ -129,7 +130,7 @@ describe('clearLocalData', () => {
     resetDatabase.mockRejectedValueOnce(new Error('close failed'))
     handleFullWipe.mockRejectedValueOnce(new Error('IDB gone'))
 
-    await clearLocalData()
+    await clearLocalData(deps)
 
     // setSyncEnabled, resetDatabase, and handleFullWipe rejected — they don't appear
     // in `calls` because the mocks above only push from the success path. We're
@@ -144,7 +145,7 @@ describe('clearLocalData', () => {
   it('skips all broadcast + file-delete steps when no active trust domain', async () => {
     useTrustDomainRegistry.setState({ activeTrustDomain: undefined })
 
-    await clearLocalData()
+    await clearLocalData(deps)
 
     expect(broadcastDbLifecycle).not.toHaveBeenCalled()
     expect(deleteDbFile).not.toHaveBeenCalled()
@@ -155,6 +156,7 @@ describe('clearLocalData', () => {
 
 describe('signOutAndWipe', () => {
   const mockReplace = mock()
+  const originalLocation = window.location
 
   beforeEach(() => {
     calls.length = 0
@@ -171,12 +173,21 @@ describe('signOutAndWipe', () => {
       activeTrustDomain: { kind: 'server', serverId },
     })
     Object.defineProperty(window, 'location', {
-      value: { replace: mockReplace },
+      value: { ...originalLocation, replace: mockReplace },
       writable: true,
+      configurable: true,
     })
   })
 
-  it('calls signOut → clearLocalData → onComplete in that order', async () => {
+  afterEach(() => {
+    Object.defineProperty(window, 'location', {
+      value: originalLocation,
+      writable: true,
+      configurable: true,
+    })
+  })
+
+  it('calls clearLocalData → signOut → onComplete in that order', async () => {
     const signOut = mock(async () => {
       calls.push('signOut')
     })
@@ -184,10 +195,10 @@ describe('signOutAndWipe', () => {
       calls.push('onComplete')
     })
 
-    await signOutAndWipe({ signOut, onComplete })
+    await signOutAndWipe({ signOut, onComplete, ...deps })
 
     expect(signOut).toHaveBeenCalledTimes(1)
-    expect(calls[0]).toBe('signOut')
+    expect(calls[0]).toBe('setSyncEnabled:false')
     expect(calls).toContain(`deleteDbFile:server-${serverId}.db`)
     expect(calls[calls.length - 1]).toBe('onComplete')
   })
@@ -195,7 +206,7 @@ describe('signOutAndWipe', () => {
   it('skips signOut when not provided (revoked-device path)', async () => {
     const onComplete = mock(() => {})
 
-    await signOutAndWipe({ onComplete })
+    await signOutAndWipe({ onComplete, ...deps })
 
     expect(calls[0]).toBe('setSyncEnabled:false')
     expect(onComplete).toHaveBeenCalledTimes(1)
@@ -207,7 +218,7 @@ describe('signOutAndWipe', () => {
     })
     const onComplete = mock(() => {})
 
-    await signOutAndWipe({ signOut, onComplete })
+    await signOutAndWipe({ signOut, onComplete, ...deps })
 
     expect(onComplete).toHaveBeenCalledTimes(1)
   })
@@ -216,7 +227,7 @@ describe('signOutAndWipe', () => {
     resetDatabase.mockRejectedValueOnce(new Error('close failed'))
     const onComplete = mock(() => {})
 
-    await signOutAndWipe({ onComplete })
+    await signOutAndWipe({ onComplete, ...deps })
 
     expect(onComplete).toHaveBeenCalledTimes(1)
   })

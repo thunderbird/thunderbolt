@@ -3,6 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { describe, expect, it, beforeEach, afterEach, mock } from 'bun:test'
+import { testServerId } from '@/testing-library'
 import { createClient } from '@/lib/http'
 import {
   generateKeyPair,
@@ -162,8 +163,8 @@ const generateFullKeyPair = async (): Promise<StoredKeyPair> => {
 // Tests
 // ---------------------------------------------------------------------------
 
-const deviceIdKey = 'thunderbolt_device_id'
-const authTokenKey = 'thunderbolt_auth_token'
+const deviceIdKey = `thunderbolt_device_id__${testServerId}`
+const authTokenKey = `thunderbolt_auth_token__${testServerId}`
 
 describe('encryption service', () => {
   beforeEach(() => {

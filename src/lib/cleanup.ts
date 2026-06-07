@@ -7,12 +7,18 @@ import { broadcastDbLifecycle } from '@/db/db-lifecycle-broadcast'
 import { resetDatabase } from '@/db/database'
 import { disposeAllAdapters } from '@/acp/adapter-cache'
 import { setSyncEnabled } from '@/db/powersync'
-import { clearAuthToken, clearDeviceId } from '@/lib/auth-token'
+import { clearAuthToken as defaultClearAuthToken, clearDeviceId as defaultClearDeviceId } from '@/lib/auth-token'
 import { deleteDbFile } from '@/lib/fs'
 import { withTimeout } from '@/lib/timeout'
-import { handleFullWipe } from '@/services/encryption'
+import { handleFullWipe as defaultHandleFullWipe } from '@/services/encryption'
 import { initialLocalSettings, useLocalSettingsStore } from '@/stores/local-settings-store'
 import { getActiveTrustDomain } from '@/stores/trust-domain-registry'
+
+type CleanupDeps = {
+  clearAuthToken?: () => void
+  clearDeviceId?: () => void
+  handleFullWipe?: () => Promise<void>
+}
 
 /**
  * Unconditional wipe of the active trust domain's local data.
@@ -30,8 +36,15 @@ import { getActiveTrustDomain } from '@/stores/trust-domain-registry'
  * nothing namespaced). The DB file (`standalone.db`) is still removed.
  *
  * Does NOT reload or navigate — callers do that explicitly.
+ *
+ * The `deps` parameter exists for testing: pass mock functions to observe the call
+ * sequence without mocking shared modules globally.
  */
-export const clearLocalData = async (): Promise<void> => {
+export const clearLocalData = async ({
+  clearAuthToken = defaultClearAuthToken,
+  clearDeviceId = defaultClearDeviceId,
+  handleFullWipe = defaultHandleFullWipe,
+}: CleanupDeps = {}): Promise<void> => {
   const trustDomain = getActiveTrustDomain()
 
   // Tear down every warm ACP connection first so no agent transport survives
@@ -116,10 +129,11 @@ export const clearLocalData = async (): Promise<void> => {
 export const signOutAndWipe = async ({
   signOut,
   onComplete,
+  ...deps
 }: {
   signOut?: () => Promise<void>
   onComplete: () => void
-}): Promise<void> => {
+} & CleanupDeps): Promise<void> => {
   // Wipe local data BEFORE calling signOut so that Better Auth's session cache
   // stays populated during the wipe. If signOut ran first, Better Auth would
   // immediately set useSession() → null, letting AuthGate redirect to
@@ -127,7 +141,7 @@ export const signOutAndWipe = async ({
   // clearLocalData — potentially kicking off a new IdP sign-in flow before
   // onComplete() can navigate away.
   try {
-    await clearLocalData()
+    await clearLocalData(deps)
   } catch (error) {
     console.error('[signOutAndWipe] clearLocalData failed:', error)
   }

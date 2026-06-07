@@ -27,7 +27,7 @@ process.env.BETTER_AUTH_SECRET = 'better-auth-secret-12345678901234567890'
 
 // Required by settingsSchema (z.string().uuid(), no default). Tests that call
 // clearSettingsCache() re-parse from env — without this they throw a ZodError.
-process.env.SERVER_ID = '00000000-0000-0000-0000-000000000001'
+process.env.SERVER_ID = '00000000-0000-0000-0000-000000000000'
 
 // Initialize the database before any tests run
 console.log('🔧 Initializing test database...')

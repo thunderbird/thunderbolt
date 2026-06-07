@@ -8,7 +8,6 @@
  */
 import { aiFetchStreamingResponse } from '@/ai/fetch'
 import { setupTestDatabase, teardownTestDatabase } from '@/dal/test-utils'
-import { getLocalSetting } from '@/stores/local-settings-store'
 import { defaultModelGptOss120b } from '@/defaults/models'
 import { defaultModeChat } from '@/defaults/modes'
 import { isSsoMode } from '@/lib/auth-mode'
@@ -38,7 +37,9 @@ const run = async () => {
   console.log(`[2/5] Mode: ${defaultModeChat.name}`)
   console.log(`[2/5] Prompt: "${prompt}"\n`)
 
-  const cloudUrl = getLocalSetting('cloudUrl')
+  // CLI script — no boot, no trust-domain registry to read from. Source the URL from
+  // the env var directly with the same localhost fallback the boot resolver uses.
+  const cloudUrl = import.meta.env.VITE_THUNDERBOLT_CLOUD_URL || 'http://localhost:8000/v1'
   const httpClient = createAuthenticatedClient(cloudUrl, getAuthToken, {
     credentials: isSsoMode() ? 'include' : undefined,
   })

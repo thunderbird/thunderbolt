@@ -3,7 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { resetTestDatabase, setupTestDatabase, teardownTestDatabase } from '@/dal/test-utils'
-import { useLocalSettingsStore } from '@/stores/local-settings-store'
+import { useTrustDomainRegistry } from '@/stores/trust-domain-registry'
 import type { ConsoleSpies } from '@/test-utils/console-spies'
 import { setupConsoleSpy } from '@/test-utils/console-spies'
 import { createTestProvider } from '@/test-utils/test-provider'
@@ -87,12 +87,15 @@ describe('SignInModal', () => {
     const { httpClient, fetchSpy } = createSpyHttpClient(undefined, waitlistResponse)
     mockHttpClient = httpClient
     mockFetchSpy = fetchSpy
-    // Pin `cloudUrl` to a localhost value so the post-submit assertion in
-    // `shows sent state after successful submission` is deterministic. The
-    // store *defaults* to localhost, but `VITE_THUNDERBOLT_CLOUD_URL`
-    // overrides that default in CI — leaving the test order-dependent
-    // under `--randomize`. See THU-561.
-    useLocalSettingsStore.setState({ cloudUrl: 'http://localhost:8000/v1' })
+    // Pin the active server's cloudUrl to a localhost value so the post-submit assertion
+    // in `shows sent state after successful submission` is deterministic. The env
+    // `VITE_THUNDERBOLT_CLOUD_URL` overrides the default in CI — leaving the test
+    // order-dependent under `--randomize` without this fixture. See THU-561.
+    const fixtureServerId = '00000000-0000-0000-0000-000000000001'
+    useTrustDomainRegistry.setState({
+      servers: { [fixtureServerId]: { serverId: fixtureServerId, cloudUrl: 'http://localhost:8000/v1' } },
+      activeTrustDomain: { kind: 'server', serverId: fixtureServerId },
+    })
   })
 
   afterEach(async () => {

@@ -9,20 +9,34 @@ import { SectionCard } from '@/components/ui/section-card'
 import { Switch } from '@/components/ui/switch'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { initialLocalSettings, useLocalSettingsStore } from '@/stores/local-settings-store'
+import { useActiveCloudUrl, useTrustDomainRegistry } from '@/stores/trust-domain-registry'
 import { getCapabilities, isTauri } from '@/lib/platform'
 import { useQuery } from '@tanstack/react-query'
 import { useShallow } from 'zustand/react/shallow'
 
+// The env-var fallback the boot resolver uses. If it were unset, boot would fail with
+// NO_TRUST_DOMAIN before this page renders, so a hardcoded localhost default would only
+// drift from whatever the rest of the app considers "default."
+const defaultCloudUrl = import.meta.env.VITE_THUNDERBOLT_CLOUD_URL ?? ''
+
 export default function DevSettingsPage() {
   const settings = useLocalSettingsStore(
     useShallow((s) => ({
-      cloudUrl: s.cloudUrl,
       isNativeFetchEnabled: s.isNativeFetchEnabled,
       debugPosthog: s.debugPosthog,
     })),
   )
-  const { cloudUrl, isNativeFetchEnabled, debugPosthog } = settings
+  const { isNativeFetchEnabled, debugPosthog } = settings
   const setLocalSetting = useLocalSettingsStore((s) => s.setLocalSetting)
+
+  // Cloud URL lives on the active server entry in the trust-domain registry; editing
+  // it here updates the registry directly so runtime consumers (HTTP, PowerSync, etc.)
+  // see the change on next read. Resetting falls back to the env-var default that the
+  // boot resolver also uses. NOTE: changing the URL does NOT update the active server's
+  // `serverId` — pointing at a different backend (different serverId) is post-v1 territory.
+  const cloudUrl = useActiveCloudUrl() ?? defaultCloudUrl
+  const patchActiveServer = useTrustDomainRegistry((s) => s.patchActiveServer)
+  const setCloudUrl = (value: string) => patchActiveServer({ cloudUrl: value || defaultCloudUrl })
 
   const isModified = <K extends keyof typeof settings>(key: K) => settings[key] !== initialLocalSettings[key]
 
@@ -46,15 +60,15 @@ export default function DevSettingsPage() {
             <ModificationIndicator
               as="label"
               className="block text-sm font-medium"
-              hasModifications={isModified('cloudUrl')}
-              onReset={() => resetSetting('cloudUrl')}
+              hasModifications={cloudUrl !== defaultCloudUrl}
+              onReset={() => setCloudUrl(defaultCloudUrl)}
             >
               Cloud URL
             </ModificationIndicator>
             <Input
               type="url"
               value={cloudUrl}
-              onChange={(e) => setLocalSetting('cloudUrl', e.target.value || initialLocalSettings.cloudUrl)}
+              onChange={(e) => setCloudUrl(e.target.value)}
               placeholder="http://localhost:8000"
             />
             <p className="text-sm text-muted-foreground">The URL of the Thunderbolt backend</p>

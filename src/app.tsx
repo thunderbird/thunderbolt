@@ -58,7 +58,7 @@ import { isSsoMode, isWaitlistBypassed } from './lib/auth-mode'
 import { isTauri } from './lib/platform'
 import { getPowerSyncInstance } from './db/powersync'
 import { refreshSystemAgents } from '@/db/seeding/seed-agents'
-import { useLocalSettingsStore } from '@/stores/local-settings-store'
+import { useActiveCloudUrl } from '@/stores/trust-domain-registry'
 import { type ComponentProps, Suspense, lazy, useEffect } from 'react'
 import { LazyMotion } from 'framer-motion'
 
@@ -105,7 +105,7 @@ const useBootstrapSystemAgents = () => {
   const httpClient = useHttpClient()
   const authClient = useAuth()
   const { data: session } = authClient.useSession()
-  const cloudUrl = useLocalSettingsStore((s) => s.cloudUrl)
+  const cloudUrl = useActiveCloudUrl()
 
   const isRealUser = !!session?.user && session.user.isAnonymous !== true
 

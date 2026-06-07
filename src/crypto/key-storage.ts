@@ -2,9 +2,15 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { serverIdFromWorkerName } from '@/db/sync-worker-name'
+import { getActiveServerId } from '@/stores/trust-domain-registry'
 import { StorageError } from './errors'
 
-const dbName = 'thunderbolt-keys'
+// IndexedDB DB name is namespaced by the active server's `serverId` so multiple
+// servers' encryption keys can coexist without leaking across trust domains.
+// E2E encryption only applies in server trust domains — callers MUST resolve an
+// active server before invoking any helper here.
+const dbNamePrefix = 'thunderbolt-keys__'
 const storeName = 'keys'
 const dbVersion = 1
 
@@ -14,13 +20,38 @@ const mlkemPublicKeyId = 'thunderbolt_mlkem_public_key'
 const mlkemSecretKeyId = 'thunderbolt_mlkem_secret_key'
 const ckId = 'thunderbolt_ck'
 
+/**
+ * Resolve the active server's `serverId` for key storage. Main thread reads from the
+ * trust-domain registry (Zustand + localStorage). The PowerSync SharedWorker — where
+ * the encryption codec also runs to decrypt incoming buckets — has no `localStorage`
+ * access, so the registry hydrates to its initial empty state in that context. We
+ * recover the `serverId` from `self.name` via the shared `sync-worker-name` helper,
+ * which is the same helper the producer (`getPowerSyncOptions`) uses to construct it.
+ */
+const resolveServerId = (): string | undefined => {
+  if (typeof window !== 'undefined') {
+    return getActiveServerId()
+  }
+  const workerName = typeof self !== 'undefined' ? (self as unknown as { name?: string }).name : undefined
+  return serverIdFromWorkerName(workerName)
+}
+
+/** Resolve the IDB DB name for the active server. Throws when there is no active server. */
+const resolveDbName = (): string => {
+  const serverId = resolveServerId()
+  if (!serverId) {
+    throw new StorageError('Cannot access encryption-key storage without an active server trust domain')
+  }
+  return `${dbNamePrefix}${serverId}`
+}
+
 // =============================================================================
 // IndexedDB helpers
 // =============================================================================
 
 const openDB = (): Promise<IDBDatabase> =>
   new Promise((resolve, reject) => {
-    const request = indexedDB.open(dbName, dbVersion)
+    const request = indexedDB.open(resolveDbName(), dbVersion)
     request.onupgradeneeded = () => {
       const db = request.result
       if (!db.objectStoreNames.contains(storeName)) {
@@ -197,6 +228,20 @@ export const clearCK = async (): Promise<void> => deleteKey(ckId)
 // Full wipe
 // =============================================================================
 
-/** Clear all keys from IndexedDB (single atomic transaction for full data wipe / revocation). */
-export const clearAllKeys = async (): Promise<void> =>
-  deleteKeys([privateKeyId, publicKeyId, mlkemPublicKeyId, mlkemSecretKeyId, ckId])
+/** Clear all keys and delete the IDB database for the active server (full data wipe / revocation). */
+export const clearAllKeys = async (): Promise<void> => {
+  await deleteKeys([privateKeyId, publicKeyId, mlkemPublicKeyId, mlkemSecretKeyId, ckId])
+  const dbName = resolveDbName()
+  await new Promise<void>((resolve) => {
+    const request = indexedDB.deleteDatabase(dbName)
+    request.onsuccess = () => resolve()
+    request.onerror = () => {
+      console.error(`[clearAllKeys] Failed to delete IDB database ${dbName}:`, request.error)
+      resolve()
+    }
+    request.onblocked = () => {
+      console.warn(`[clearAllKeys] IDB delete blocked for ${dbName} — open connections still alive`)
+      resolve()
+    }
+  })
+}

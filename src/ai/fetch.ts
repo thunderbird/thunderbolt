@@ -104,6 +104,37 @@ export const getTinfoilClient = async (): Promise<SecureClient> => {
   return userTinfoilClient
 }
 
+/**
+ * Resolve the attested SecureClient that actually serves `model`, mirroring the
+ * selection `createModel` makes for the 'tinfoil' provider:
+ *   - OAuth-connected system model → getTinfoilClient()      (direct enclave)
+ *   - managed system model         → getSystemTinfoilClient() (backend proxy)
+ *   - BYOK (user-added) model       → getTinfoilClient()
+ *
+ * Shared by inference and the Verification Center sidebar so the panel reflects
+ * the enclave really answering. The cached singletons mean the sidebar reuses
+ * the already-attested client instead of spinning up a second verifier.
+ *
+ * Direct-vs-managed is decided from the presence of an enabled Tinfoil OAuth
+ * credential, without refreshing the token (the sidebar must not trigger token
+ * rotation). createModel additionally refreshes the token for the bearer and
+ * falls back to the managed path if that refresh fails — so in the rare case a
+ * stored token can no longer be refreshed, inference uses managed while the
+ * panel may still show direct. Both still attest a real enclave end-to-end.
+ */
+export const getActiveTinfoilClient = async (model: Model, httpClient?: HttpClient): Promise<SecureClient> => {
+  if (model.isSystem) {
+    if (httpClient) {
+      const oauthRow = await getIntegrationCredentials(getDb(), 'tinfoil')
+      if (oauthRow?.enabled && oauthRow.credentials) {
+        return getTinfoilClient()
+      }
+    }
+    return getSystemTinfoilClient()
+  }
+  return getTinfoilClient()
+}
+
 type AiFetchStreamingResponseOptions = {
   init: RequestInit
   modelId: string
@@ -246,10 +277,11 @@ export const createModel = async (modelConfig: Model, getProxyFetch: () => Fetch
       }
       // System Tinfoil models otherwise proxy through Thunderbolt's backend; the
       // bearer key is injected server-side, so we pass a placeholder here only to
-      // satisfy the SDK's apiKey requirement. User-added Tinfoil models keep
-      // the BYOK flow and require a real key.
+      // satisfy the SDK's apiKey requirement. getActiveTinfoilClient (no
+      // httpClient → skips the OAuth path) resolves the same managed client the
+      // Verification Center sidebar shows.
       if (modelConfig.isSystem) {
-        const client = await getSystemTinfoilClient()
+        const client = await getActiveTinfoilClient(modelConfig)
         // Wrap SecureClient.fetch so the backend route's auth guard sees the
         // real Thunderbolt session token (Bearer) or cookies (SSO), not the
         // `Bearer thunderbolt-managed` placeholder the OpenAI SDK adds.
@@ -277,10 +309,11 @@ export const createModel = async (modelConfig: Model, getProxyFetch: () => Fetch
         })
         return tinfoil(modelConfig.model)
       }
+      // User-added Tinfoil models keep the BYOK flow and require a real key.
       if (!modelConfig.apiKey) {
         throw new Error('No API key provided')
       }
-      const client = await getTinfoilClient()
+      const client = await getActiveTinfoilClient(modelConfig)
       const tinfoil = createOpenAICompatible({
         name: 'tinfoil',
         baseURL: client.getBaseURL()!,

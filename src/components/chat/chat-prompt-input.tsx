@@ -31,6 +31,9 @@ import { ContextUsageIndicator } from '../context-usage-indicator'
 import { PromptInput } from '../ui/prompt-input'
 import { ChatModePicker } from './chat-mode-picker'
 import { ChatModelPicker } from './chat-model-picker'
+import { VerificationCenterDrawer } from './verification-center-drawer'
+import { VerificationStatusChip } from './verification-status-chip'
+import { useTinfoilVerification } from '@/hooks/use-tinfoil-verification'
 
 /**
  * Extract a human-readable display string from a connection error.
@@ -104,6 +107,18 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
     } = useCurrentChatSession()
 
     const { messages, status, stop, sendMessage } = useChat({ chat: chatInstance })
+
+    // Enclave verification for the active model. Only Tinfoil-provider models
+    // (served by a client-side SecureClient) carry an attestation document, so
+    // gate on `provider === 'tinfoil'`, not `isConfidential` — and only for
+    // built-in agents, since ACP agents don't route through the selected model.
+    const activeTinfoilModel = selectedAgent.type === 'built-in' ? selectedModel : null
+    const verification = useTinfoilVerification(activeTinfoilModel)
+    const [verifierOpen, setVerifierOpen] = useState(false)
+    // "Block sending until verified": hold sends to a Tinfoil enclave until
+    // attestation passes. The chip + drawer expose a retry so a transient
+    // failure isn't a dead end.
+    const sendBlockedByVerification = activeTinfoilModel?.provider === 'tinfoil' && verification.status !== 'verified'
 
     const { skills: library } = useLibrarySkills()
     const { isEnabled } = useEnabledSkills()
@@ -288,6 +303,13 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
           return
         }
 
+        if (sendBlockedByVerification) {
+          // Don't send plaintext to an enclave we haven't verified — surface the
+          // state so the user can inspect the proof or retry.
+          setVerifierOpen(true)
+          return
+        }
+
         if (isOverflowing) {
           handleShowOverflowModal(selectedModel, textToSend.length, messages.length + 1)
           return
@@ -356,6 +378,10 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
             <ChatModelPicker />
           </>
         )}
+        {/* Rendered in every connection state (self-hides for non-Tinfoil models)
+            so the enclave verification status stays visible whenever a Tinfoil
+            model is the one that will answer. */}
+        <VerificationStatusChip verification={verification} onOpen={() => setVerifierOpen(true)} />
         {isContextKnown && !isMobile && (
           <ContextUsageIndicator usedTokens={usedTokens ?? 0} maxTokens={maxTokens ?? 0} />
         )}
@@ -409,7 +435,7 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
             placeholder="Ask me anything..."
             showSubmitButton
             onSubmit={handleSubmit}
-            isLoading={isStreaming || isConnecting}
+            isLoading={isStreaming || isConnecting || sendBlockedByVerification}
             isStreaming={isStreaming}
             onStop={stop}
             autoFocus={!isMobile}
@@ -437,6 +463,7 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
           maxTokens={maxTokens ?? undefined}
           onNewChat={handleNewChat}
         />
+        <VerificationCenterDrawer open={verifierOpen} onOpenChange={setVerifierOpen} verification={verification} />
       </>
     )
   },

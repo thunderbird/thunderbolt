@@ -76,7 +76,11 @@ let userTinfoilClient: SecureClient | null = null
 
 export const getSystemTinfoilClient = async (): Promise<SecureClient> => {
   // cloudUrl already ends in /v1 (shared with the OpenAI chat baseURL).
-  const cloudUrl = getLocalSetting('cloudUrl').replace(/\/$/, '')
+  const activeCloudUrl = getActiveCloudUrl()
+  if (!activeCloudUrl) {
+    throw new Error('Cannot use the system Tinfoil client without an active server trust domain')
+  }
+  const cloudUrl = activeCloudUrl.replace(/\/$/, '')
   let client = systemTinfoilClients.get(cloudUrl)
   if (!client) {
     const { SecureClient } = await import('tinfoil')

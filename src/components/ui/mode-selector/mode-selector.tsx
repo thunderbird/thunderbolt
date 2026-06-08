@@ -53,8 +53,8 @@ export const ModeSelector = ({ modes, selectedMode, onModeChange, iconOnly = fal
   const renderTrigger = (selected: SearchableMenuItem<ModeItemData> | undefined, isOpen: boolean) => (
     <div
       className={cn(
-        'flex items-center rounded-lg cursor-pointer transition-colors text-[length:var(--font-size-body)] border border-border',
-        iconOnly ? 'size-[var(--touch-height-sm)] justify-center' : 'gap-2 px-3 h-[var(--touch-height-default)]',
+        'flex items-center rounded-lg cursor-pointer transition-colors text-[length:var(--font-size-sm)] border border-border',
+        iconOnly ? 'size-[var(--touch-height-sm)] justify-center' : 'gap-1.5 px-2.5 h-[var(--touch-height-sm)]',
         isOpen ? 'bg-accent' : 'hover:bg-accent/50',
       )}
     >

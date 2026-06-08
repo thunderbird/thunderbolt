@@ -3,9 +3,11 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 /**
- * Wire contract for WebSocket bearer-token authentication, shared by the
- * backend WS routes (`backend/src/auth/ws-bearer-auth.ts`) and the frontend
- * transports (`src/acp/transports/index.ts`, `src/lib/proxy-fetch.ts`).
+ * Wire contract for WebSocket bearer-token authentication and the carrier
+ * subprotocol that frames it, shared by the backend WS routes
+ * (`backend/src/auth/ws-bearer-auth.ts`, `backend/src/proxy/ws.ts`,
+ * `backend/src/haystack/routes.ts`) and the frontend transports
+ * (`src/acp/transports/index.ts`, `src/lib/proxy-fetch.ts`).
  *
  * Browsers can't set an `Authorization` header on `new WebSocket()`. The only
  * handshake-time channels are the URL (logged everywhere) and
@@ -16,8 +18,17 @@
  * contains `.`, `+`, `/`, and `=` — none of which are valid in an RFC 6455
  * subprotocol token. We therefore base64url-encode the whole bearer for
  * transport and decode it server-side before validation. Drift between the two
- * ends is silent breakage, so the prefix and codec live in one place.
+ * ends is silent breakage, so the prefix, carrier, and codec live in one place.
  */
+
+/**
+ * Carrier subprotocol the client offers alongside the bearer and the server
+ * echoes back as `Sec-WebSocket-Protocol`, satisfying RFC 6455 (the server must
+ * pick one offered subprotocol) so strict clients (browsers, Bun) accept the
+ * upgrade. The auth-bearing bearer entry is never echoed. The value must match
+ * byte-for-byte on both ends — drift is silent breakage — so it lives here.
+ */
+export const wsCarrierSubprotocol = 'thunderbolt.v1'
 
 /** Bearer subprotocol entries start with this prefix; the rest is the base64url-encoded token. */
 export const wsBearerSubprotocolPrefix = 'thunderbolt.bearer.'

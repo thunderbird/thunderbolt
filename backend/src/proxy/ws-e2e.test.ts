@@ -4,13 +4,14 @@
 
 import { afterEach, beforeAll, describe, expect, it } from 'bun:test'
 import { createApp } from '@/index'
+import { wsCloseUnauthorized } from '@/auth/ws-bearer-auth'
 import { user as userTable, session as sessionTable } from '@/db/auth-schema'
 import { createTestApp, type TestAppHandle } from '@/test-utils/e2e'
 import { getSharedIsolatedTestDb, type IsolatedTestDb } from '@/test-utils/db'
 import { encodeWsBearer } from '@shared/ws-bearer'
 import { createHmac } from 'crypto'
 import { createObservabilityRecorder } from './observability'
-import { wsCloseCodes, wsCloseUnauthorized } from './ws'
+import { wsCloseCodes } from './ws'
 
 const betterAuthSecret = 'better-auth-secret-12345678901234567890'
 

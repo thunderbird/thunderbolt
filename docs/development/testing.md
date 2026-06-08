@@ -3,7 +3,7 @@
 ## Running Tests
 
 ```sh
-# Run frontend tests (src/ + scripts/create-release.test.ts + .github/scripts/post-pr-metrics.test.js)
+# Run frontend tests (src/ + shared/*.test.ts + scripts/create-release.test.ts + .github/scripts/post-pr-metrics.test.js)
 bun run test
 
 # Run frontend tests in watch mode (src/ only)
@@ -20,7 +20,7 @@ bun run e2e
 bun run e2e:headed   # with a visible browser
 ```
 
-**Note**: Don't run `bun test` directly from the project root — Bun's positional args are substring filters (not paths), so a filter like `src/` matches `backend/src/...` and pulls in backend tests. The `test` script uses `bun test --cwd=src` to scope discovery to the frontend tree, then runs `scripts/create-release.test.ts` and `.github/scripts/post-pr-metrics.test.js` by explicit file path (Bun skips hidden dirs in discovery, so the path must be explicit).
+**Note**: Don't run `bun test` directly from the project root — Bun's positional args are substring filters (not paths), so a filter like `src/` matches `backend/src/...` and pulls in backend tests. The `test` script uses `bun test --cwd=src` to scope discovery to the frontend tree, then runs `shared/*.test.ts`, `scripts/create-release.test.ts`, and `.github/scripts/post-pr-metrics.test.js` by explicit path (`shared/` is outside `--cwd=src`, and Bun skips hidden dirs in discovery, so each path must be explicit).
 
 ## Testing Guidelines
 

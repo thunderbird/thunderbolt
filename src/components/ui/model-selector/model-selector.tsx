@@ -124,13 +124,16 @@ export const ModelSelector = ({
   const renderTrigger = (selected: SearchableMenuItem<ModelItemData> | undefined, isOpen: boolean) => (
     <div
       className={cn(
-        'flex items-center gap-2 px-3 cursor-pointer transition-colors text-[length:var(--font-size-body)]',
+        'flex items-center cursor-pointer transition-colors',
         variant === 'bordered'
           ? cn(
-              'h-[var(--touch-height-default)] rounded-lg border border-border',
+              'gap-1.5 px-2.5 h-[var(--touch-height-sm)] rounded-lg border border-border text-[length:var(--font-size-sm)]',
               isOpen ? 'bg-accent' : 'hover:bg-accent/50',
             )
-          : cn('h-[var(--touch-height-sm)] rounded-full', isOpen ? 'bg-secondary' : 'hover:bg-secondary/50'),
+          : cn(
+              'gap-2 px-3 h-[var(--touch-height-sm)] rounded-full text-[length:var(--font-size-body)]',
+              isOpen ? 'bg-secondary' : 'hover:bg-secondary/50',
+            ),
       )}
     >
       {selected?.data?.model && needsApiKey(selected.data.model) ? (

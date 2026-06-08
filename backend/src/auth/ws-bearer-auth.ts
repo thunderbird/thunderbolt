@@ -24,6 +24,12 @@ import type { Auth } from '@/auth/elysia-plugin'
 import type { User } from '@shared/types/auth'
 import { decodeWsBearer, wsBearerSubprotocolPrefix } from '@shared/ws-bearer'
 
+/** Close code (app-defined 4000–4999 range) emitted when the server accepts the
+ *  WebSocket upgrade but then refuses the socket, so the client distinguishes
+ *  "the server refused me" (re-login flow) from "I never reached the server"
+ *  (network-error toast). */
+export const wsCloseUnauthorized = 4001
+
 /**
  * Extract and decode the bearer token from a comma-separated
  * `Sec-WebSocket-Protocol` value. The entry payload is base64url-encoded (the

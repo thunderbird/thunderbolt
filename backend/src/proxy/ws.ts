@@ -3,28 +3,13 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import type { Auth } from '@/auth/elysia-plugin'
-import { authorizeWsBearer } from '@/auth/ws-bearer-auth'
+import { authorizeWsBearer, wsCloseUnauthorized } from '@/auth/ws-bearer-auth'
 import { isPrivateAddress } from '@/utils/url-validation'
+import { wsCarrierSubprotocol } from '@shared/ws-bearer'
 import { Elysia, type AnyElysia } from 'elysia'
 import { noopObservability, type ObservabilityRecorder, type ProxyErrorType } from './observability'
 
 const targetPrefix = 'tbproxy.target.'
-
-/**
- * Carrier subprotocol the client advertises alongside the bearer. Echoed back
- * so RFC 6455 strict clients (browsers, Bun) accept the upgrade. Stripped from
- * caller protocols before forwarding upstream so it never leaks past the relay.
- */
-const wsCarrierSubprotocol = 'thunderbolt.v1'
-
-/**
- * Close code emitted when the WebSocket upgrade succeeds but auth fails. We
- * deliberately open the socket and then close with 4001 (app-defined 4000–4999
- * range) so the client distinguishes "the server refused me" from "I never
- * reached the server" — the former triggers a re-login flow, the latter a
- * network-error toast. Mirrors the Haystack route.
- */
-export const wsCloseUnauthorized = 4001
 
 const queueBytes = 256 * 1024
 const queueMessages = 64
@@ -254,7 +239,7 @@ export const createUniversalProxyWsRoutes = (options: {
       // accept the upgrade. Idempotent — setting the same response header
       // twice has no observable effect, which keeps us safe if Elysia ever
       // invokes `upgrade()` more than once per attempt. The auth-bearing
-      // ticket entry is intentionally NOT echoed: keeping it off the
+      // bearer entry is intentionally NOT echoed: keeping it off the
       // response header means it never lands on `WebSocket.protocol` (page
       // JS) or in proxy response logs.
       const subprotocolHeader = request.headers.get('sec-websocket-protocol')
@@ -266,16 +251,16 @@ export const createUniversalProxyWsRoutes = (options: {
       // Fall back to the first non-thunderbolt/tbproxy caller protocol so
       // legacy clients that don't advertise the carrier still complete the
       // handshake. This branch is retained for compatibility with the
-      // pre-ticket transport and the e2e tests that exercise it.
+      // pre-bearer transport and the e2e tests that exercise it.
       const chosen = offered.find((p) => !p.startsWith('thunderbolt.') && !p.startsWith('tbproxy.'))
       if (chosen) {
         set.headers['sec-websocket-protocol'] = chosen
       }
     },
     beforeHandle({ request, set }) {
-      // Sync, idempotent validations only — single-use state (the ticket) is
-      // consumed in `open()` because Elysia/Bun can invoke beforeHandle more
-      // than once per upgrade.
+      // Sync, idempotent target validations only. The (stateless) bearer is
+      // validated in `open()` instead, because Elysia/Bun can invoke
+      // beforeHandle more than once per upgrade.
       const subprotocolHeader = request.headers.get('sec-websocket-protocol')
       const parsed = parseTargetSubprotocol(subprotocolHeader)
       if (!parsed.ok) {

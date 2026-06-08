@@ -25,14 +25,9 @@ import {
   targetUrlHeader,
   wsTargetPrefix,
 } from '@shared/proxy-protocol'
-import { encodeWsBearer, wsBearerSubprotocolPrefix } from '@shared/ws-bearer'
+import { encodeWsBearer, wsBearerSubprotocolPrefix, wsCarrierSubprotocol } from '@shared/ws-bearer'
 import { getAuthToken } from './auth-token'
 import { isTauri } from './platform'
-
-/** Carrier subprotocol the client always advertises alongside the bearer. The
- *  proxy WS server echoes this back as `Sec-WebSocket-Protocol` so the upgrade
- *  completes; the bearer entry is validated server-side and never echoed. */
-const proxyWsCarrierSubprotocol = 'thunderbolt.v1'
 
 const defaultIsStandalone = isTauri
 const defaultReadProxyEnabled = (): string | null =>
@@ -225,7 +220,7 @@ export const createProxyWebSocket = (options: {
     const token = readAuthToken()
     const authEntries = token ? [`${wsBearerSubprotocolPrefix}${encodeWsBearer(token)}`] : []
     return new WebSocket(`${wsBase}/proxy/ws`, [
-      proxyWsCarrierSubprotocol,
+      wsCarrierSubprotocol,
       ...authEntries,
       targetSubprotocol,
       ...(protocols ?? []),

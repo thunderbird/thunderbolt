@@ -24,7 +24,7 @@ const named = (name: string, tools: () => Promise<Record<string, Tool>>): NamedM
 })
 
 describe('sanitizeToolPrefix', () => {
-  const cases: Array<[string, string]> = [
+  const cases: Array<[string | null | undefined, string]> = [
     ['Render', 'render'],
     ['render.com', 'render_com'],
     ['My Server', 'my_server'],
@@ -34,6 +34,8 @@ describe('sanitizeToolPrefix', () => {
     ['weird!!!name', 'weird_name'],
     ['---', 'mcp'],
     ['', 'mcp'],
+    [null, 'mcp'],
+    [undefined, 'mcp'],
     ['localhost-3000', 'localhost_3000'],
   ]
 

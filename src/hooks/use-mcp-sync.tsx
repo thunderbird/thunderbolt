@@ -29,7 +29,7 @@ export const useMcpSync = () => {
         if (!providerServerIds.has(dbServer.id)) {
           await addServer({
             id: dbServer.id,
-            name: dbServer.name,
+            name: dbServer.name ?? '',
             url: dbServer.url || '',
             type: dbServer.type === 'sse' ? 'sse' : 'http',
             enabled: dbServer.enabled === 1,

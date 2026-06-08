@@ -57,9 +57,11 @@ import { createMessageMetadata } from './message-metadata'
  * Sanitizes a server name into a valid tool prefix.
  * Server names are already meaningful (set by user or auto-generated),
  * so this just lowercases and replaces non-alphanumeric chars with underscores.
+ * `mcp_servers.name` is a nullable synced column, so a null/missing name falls
+ * back to the generic `mcp` prefix rather than crashing the chat send.
  */
-export const sanitizeToolPrefix = (serverName: string): string =>
-  serverName
+export const sanitizeToolPrefix = (serverName: string | null | undefined): string =>
+  (serverName ?? '')
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, '_')
     .replace(/^_|_$/g, '') || 'mcp'

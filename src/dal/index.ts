@@ -147,6 +147,7 @@ export {
 } from './workspaces'
 export {
   getMembership,
+  getMembershipQuery,
   getMembershipsByUser,
   getMembershipsByWorkspace,
   isWorkspaceAdmin,

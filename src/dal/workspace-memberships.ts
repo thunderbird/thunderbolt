@@ -5,6 +5,7 @@
 import { and, eq } from 'drizzle-orm'
 import type { AnyDrizzleDatabase } from '../db/database-interface'
 import { workspaceMembershipsTable } from '../db/tables'
+import type { DrizzleQueryWithPromise } from '../types'
 
 export type WorkspaceMembership = {
   id: string
@@ -14,16 +15,27 @@ export type WorkspaceMembership = {
   createdAt: string | null
 }
 
+/**
+ * Drizzle query for the membership row matching `(workspaceId, userId)`. Use
+ * with PowerSync's `toCompilableQuery` for a live subscription — the route
+ * guard listens to this so a freshly-synced membership flips the gate without
+ * a manual refetch.
+ */
+export const getMembershipQuery = (db: AnyDrizzleDatabase, workspaceId: string, userId: string) => {
+  const query = db
+    .select()
+    .from(workspaceMembershipsTable)
+    .where(and(eq(workspaceMembershipsTable.workspaceId, workspaceId), eq(workspaceMembershipsTable.userId, userId)))
+    .limit(1)
+  return query as typeof query & DrizzleQueryWithPromise<WorkspaceMembership>
+}
+
 export const getMembership = async (
   db: AnyDrizzleDatabase,
   workspaceId: string,
   userId: string,
 ): Promise<WorkspaceMembership | null> => {
-  const row = await db
-    .select()
-    .from(workspaceMembershipsTable)
-    .where(and(eq(workspaceMembershipsTable.workspaceId, workspaceId), eq(workspaceMembershipsTable.userId, userId)))
-    .get()
+  const row = await getMembershipQuery(db, workspaceId, userId).get()
   return (row ?? null) as WorkspaceMembership | null
 }
 

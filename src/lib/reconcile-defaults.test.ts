@@ -3,7 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { getAllModels } from '@/dal'
-import { resetTestDatabase, setupTestDatabase, teardownTestDatabase } from '@/dal/test-utils'
+import { resetTestDatabase, setupTestDatabase, teardownTestDatabase, wsId } from '@/dal/test-utils'
 import { getDb } from '@/db/database'
 import { afterAll, afterEach, beforeAll, describe, expect, test } from 'bun:test'
 import { eq } from 'drizzle-orm'
@@ -176,23 +176,23 @@ describe('seedModels', () => {
 
   test('soft-deleted models do not appear in getAllModels', async () => {
     const db = getDb()
-    await reconcileDefaultsForTable(db, modelsTable, defaultModels, hashModel)
+    await reconcileDefaultsForTable(db, modelsTable, defaultModels, hashModel, { workspaceId: wsId })
 
     // Get all models before deletion
-    const modelsBefore = await getAllModels(getDb())
+    const modelsBefore = await getAllModels(getDb(), wsId)
     expect(modelsBefore.length).toBe(defaultModels.length)
 
     // Soft delete a model
     await db.update(modelsTable).set({ deletedAt: nowIso() }).where(eq(modelsTable.id, defaultModels[0].id))
 
     // Get all models after deletion - should not include soft-deleted model
-    const modelsAfter = await getAllModels(getDb())
+    const modelsAfter = await getAllModels(getDb(), wsId)
     expect(modelsAfter.length).toBe(defaultModels.length - 1)
     expect(modelsAfter.find((m) => m.id === defaultModels[0].id)).toBeUndefined()
 
     // Re-seed should not restore the deleted model
     await reconcileDefaultsForTable(db, modelsTable, defaultModels, hashModel)
-    const modelsAfterReseed = await getAllModels(getDb())
+    const modelsAfterReseed = await getAllModels(getDb(), wsId)
     expect(modelsAfterReseed.length).toBe(defaultModels.length - 1)
     expect(modelsAfterReseed.find((m) => m.id === defaultModels[0].id)).toBeUndefined()
   })

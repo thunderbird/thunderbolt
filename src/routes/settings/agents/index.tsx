@@ -14,6 +14,7 @@ import { testAcpConnection } from '@/acp'
 import { createAgent, deleteAgent, updateAgent, useAllAgents } from '@/dal'
 import { useDatabase } from '@/contexts'
 import { useAuth } from '@/contexts'
+import { useActiveWorkspaceId } from '@/lib/active-workspace'
 import { selectAllowCustomAgents, useConfigStore } from '@/api/config-store'
 import { useAgentsSettingsHidden } from '@/hooks/use-agents-settings-hidden'
 import type { Agent } from '@/types/acp'
@@ -35,6 +36,7 @@ type AgentsSettingsPageProps = {
  */
 export default function AgentsSettingsPage({ isStandalone }: AgentsSettingsPageProps = {}) {
   const db = useDatabase()
+  const workspaceId = useActiveWorkspaceId()
   const agents = useAllAgents()
   const authClient = useAuth()
   const { data: session } = authClient.useSession()
@@ -62,20 +64,26 @@ export default function AgentsSettingsPage({ isStandalone }: AgentsSettingsPageP
       // refreshed by discovery, not user-editable.
       return
     }
-    await updateAgent(db, agent.id, { enabled: enabled ? 1 : 0 })
+    if (!workspaceId) {
+      return
+    }
+    await updateAgent(db, workspaceId, agent.id, { enabled: enabled ? 1 : 0 })
   }
 
   const handleDelete = async (agent: Agent) => {
-    await deleteAgent(db, agent.id)
+    if (!workspaceId) {
+      return
+    }
+    await deleteAgent(db, workspaceId, agent.id)
   }
 
   const handleSubmit = async (payload: AddCustomAgentPayload) => {
-    if (!currentUserId) {
+    if (!currentUserId || !workspaceId) {
       // Anonymous sessions can't sync custom agents — the page hides the
       // dialog trigger in that case, but the guard keeps the write safe.
       return
     }
-    await createAgent(db, {
+    await createAgent(db, workspaceId, {
       id: uuidv7(),
       name: payload.name,
       type: 'remote-acp',

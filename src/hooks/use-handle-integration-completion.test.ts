@@ -2,9 +2,22 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { seedTestTrustDomain } from '@/test-utils/powersync-reactivity-test'
+
 import { act, renderHook } from '@testing-library/react'
 import { afterAll, beforeAll, beforeEach, afterEach, describe, expect, it, mock, spyOn } from 'bun:test'
-import { setupTestDatabase, teardownTestDatabase, resetTestDatabase } from '@/dal/test-utils'
+import { setupTestDatabase, teardownTestDatabase, resetTestDatabase, wsId } from '@/dal/test-utils'
+
+// `useActiveWorkspaceId` uses `@powersync/tanstack-react-query`'s live `useQuery`, which
+// the test-only `PowerSyncMockProvider` cannot back with real reactive data — its query
+// for the personal workspace would return empty even though the row exists in the
+// bun-sqlite test DB. Stub the hook to return the canonical test workspace id so the
+// retry handler can call `updateMessageCache` with a stable workspace context.
+mock.module('@/lib/active-workspace', () => ({
+  useActiveWorkspaceId: () => wsId,
+  getActiveWorkspaceId: async () => wsId,
+  requireActiveWorkspaceId: async () => wsId,
+}))
 import { createMockChatInstance, hydrateStore, resetStore } from '@/test-utils/chat-store-mocks'
 import { createQueryTestWrapper } from '@/test-utils/react-query'
 import { useHandleIntegrationCompletion } from './use-handle-integration-completion'
@@ -38,6 +51,7 @@ afterAll(async () => {
 
 describe('useHandleIntegrationCompletion', () => {
   beforeEach(() => {
+    seedTestTrustDomain()
     resetStore()
     sessionStorage.clear()
   })
@@ -64,6 +78,7 @@ describe('useHandleIntegrationCompletion', () => {
       id: threadId,
       title: 'Test Thread',
       isEncrypted: 0,
+      workspaceId: wsId,
     })
 
     return threadId
@@ -73,7 +88,7 @@ describe('useHandleIntegrationCompletion', () => {
    * Saves test messages to a thread in the database
    */
   const createTestMessages = async (threadId: string, messages: ThunderboltUIMessage[]) => {
-    await saveMessagesWithContextUpdate(getDb(), threadId, messages)
+    await saveMessagesWithContextUpdate(getDb(), wsId, threadId, messages)
     return messages
   }
 
@@ -257,7 +272,7 @@ describe('useHandleIntegrationCompletion', () => {
     expect(savedMessage?.metadata?.oauthRetry).toBe(true)
     expect(savedMessage?.parts[0]?.type === 'text' && savedMessage.parts[0].text).toContain('Send me an email')
 
-    const updatedWidgetMessage = await getMessage(getDb(), widgetMessageId)
+    const updatedWidgetMessage = await getMessage(getDb(), wsId, widgetMessageId)
     expect(updatedWidgetMessage).toBeDefined()
     expect(updatedWidgetMessage?.cache).toBeDefined()
     const cacheEntry = updatedWidgetMessage?.cache?.['connectIntegrationWidget']

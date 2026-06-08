@@ -4,7 +4,7 @@
 
 import { useChatStore } from '@/chats/chat-store'
 import { createAgent } from '@/dal'
-import { resetTestDatabase, setupTestDatabase, teardownTestDatabase } from '@/dal/test-utils'
+import { resetTestDatabase, setupTestDatabase, teardownTestDatabase, wsId } from '@/dal/test-utils'
 import { getDb } from '@/db/database'
 import { builtInAgent } from '@/defaults/agents'
 import { createTestProvider } from '@/test-utils/test-provider'
@@ -154,7 +154,7 @@ describe('Header', () => {
     // Once `useAllAgents` resolves and the thread's custom agent appears in the
     // list, the header must still display it (the selector now finds it by id).
     // This guards against the fix accidentally pinning to the empty-list state.
-    await createAgent(getDb(), {
+    await createAgent(getDb(), wsId, {
       id: customAgent.id,
       name: customAgent.name,
       type: 'remote-acp',

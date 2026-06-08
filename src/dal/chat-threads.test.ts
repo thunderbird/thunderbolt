@@ -20,7 +20,7 @@ import {
 } from './chat-threads'
 import { getModel } from './models'
 import { getChatMessages } from './chat-messages'
-import { resetTestDatabase, setupTestDatabase, teardownTestDatabase } from './test-utils'
+import { resetTestDatabase, setupTestDatabase, teardownTestDatabase, wsId } from './test-utils'
 import { nowIso } from '@/lib/utils'
 
 beforeAll(async () => {
@@ -52,6 +52,7 @@ const createTestModel = async () => {
     deletedAt: null,
     url: null,
     defaultHash: null,
+    workspaceId: wsId,
   })
 
   return modelId
@@ -67,13 +68,14 @@ describe('Chat Threads DAL', () => {
     it('should create a new chat thread with the provided ID', async () => {
       const threadId = uuidv7()
       const modelId = await createTestModel()
-      const model = await getModel(getDb(), modelId)
+      const model = await getModel(getDb(), wsId, modelId)
       if (!model) {
         throw new Error('Test setup failed')
       }
 
       await createChatThread(
         getDb(),
+        wsId,
         { id: threadId, title: 'New Chat', contextSize: null, triggeredBy: null, wasTriggeredByAutomation: 0 },
         model,
       )
@@ -89,18 +91,20 @@ describe('Chat Threads DAL', () => {
       const threadId1 = uuidv7()
       const threadId2 = uuidv7()
       const modelId = await createTestModel()
-      const model = await getModel(getDb(), modelId)
+      const model = await getModel(getDb(), wsId, modelId)
       if (!model) {
         throw new Error('Test setup failed')
       }
 
       await createChatThread(
         getDb(),
+        wsId,
         { id: threadId1, title: 'New Chat', contextSize: null, triggeredBy: null, wasTriggeredByAutomation: 0 },
         model,
       )
       await createChatThread(
         getDb(),
+        wsId,
         { id: threadId2, title: 'New Chat', contextSize: null, triggeredBy: null, wasTriggeredByAutomation: 0 },
         model,
       )
@@ -115,13 +119,14 @@ describe('Chat Threads DAL', () => {
     it('should persist agentId when provided', async () => {
       const threadId = uuidv7()
       const modelId = await createTestModel()
-      const model = await getModel(getDb(), modelId)
+      const model = await getModel(getDb(), wsId, modelId)
       if (!model) {
         throw new Error('Test setup failed')
       }
 
       await createChatThread(
         getDb(),
+        wsId,
         {
           id: threadId,
           title: 'New Chat',
@@ -133,38 +138,40 @@ describe('Chat Threads DAL', () => {
         model,
       )
 
-      const stored = await getChatThread(getDb(), threadId)
+      const stored = await getChatThread(getDb(), wsId, threadId)
       expect(stored?.agentId).toBe('haystack-rag')
     })
 
     it('should default agentId to null when not provided', async () => {
       const threadId = uuidv7()
       const modelId = await createTestModel()
-      const model = await getModel(getDb(), modelId)
+      const model = await getModel(getDb(), wsId, modelId)
       if (!model) {
         throw new Error('Test setup failed')
       }
 
       await createChatThread(
         getDb(),
+        wsId,
         { id: threadId, title: 'New Chat', contextSize: null, triggeredBy: null, wasTriggeredByAutomation: 0 },
         model,
       )
 
-      const stored = await getChatThread(getDb(), threadId)
+      const stored = await getChatThread(getDb(), wsId, threadId)
       expect(stored?.agentId).toBeNull()
     })
 
     it('should throw when creating thread with same ID twice', async () => {
       const threadId = uuidv7()
       const modelId = await createTestModel()
-      const model = await getModel(getDb(), modelId)
+      const model = await getModel(getDb(), wsId, modelId)
       if (!model) {
         throw new Error('Test setup failed')
       }
 
       await createChatThread(
         getDb(),
+        wsId,
         { id: threadId, title: 'New Chat', contextSize: null, triggeredBy: null, wasTriggeredByAutomation: 0 },
         model,
       )
@@ -173,6 +180,7 @@ describe('Chat Threads DAL', () => {
       await expect(
         createChatThread(
           getDb(),
+          wsId,
           { id: threadId, title: 'New Chat', contextSize: null, triggeredBy: null, wasTriggeredByAutomation: 0 },
           model,
         ),
@@ -188,7 +196,7 @@ describe('Chat Threads DAL', () => {
   describe('getChatThread', () => {
     it('should return undefined values when thread does not exist', async () => {
       const nonExistentId = uuidv7()
-      const thread = await getChatThread(getDb(), nonExistentId)
+      const thread = await getChatThread(getDb(), wsId, nonExistentId)
       expect(thread?.id).toBeUndefined()
       expect(thread?.title).toBeUndefined()
     })
@@ -202,9 +210,10 @@ describe('Chat Threads DAL', () => {
         id: threadId,
         title: 'Test Thread',
         isEncrypted: 0,
+        workspaceId: wsId,
       })
 
-      const thread = await getChatThread(getDb(), threadId)
+      const thread = await getChatThread(getDb(), wsId, threadId)
       expect(thread).not.toBeNull()
       expect(thread?.id).toBe(threadId)
       expect(thread?.title).toBe('Test Thread')
@@ -220,15 +229,17 @@ describe('Chat Threads DAL', () => {
         id: threadId1,
         title: 'First Thread',
         isEncrypted: 0,
+        workspaceId: wsId,
       })
       await db.insert(chatThreadsTable).values({
         id: threadId2,
         title: 'Second Thread',
         isEncrypted: 0,
+        workspaceId: wsId,
       })
 
-      const thread1 = await getChatThread(getDb(), threadId1)
-      const thread2 = await getChatThread(getDb(), threadId2)
+      const thread1 = await getChatThread(getDb(), wsId, threadId1)
+      const thread2 = await getChatThread(getDb(), wsId, threadId2)
 
       expect(thread1?.id).toBe(threadId1)
       expect(thread1?.title).toBe('First Thread')
@@ -240,7 +251,7 @@ describe('Chat Threads DAL', () => {
   describe('isChatThreadDeleted', () => {
     it('should return false for non-existent thread', async () => {
       const nonExistentId = uuidv7()
-      const isDeleted = await isChatThreadDeleted(getDb(), nonExistentId)
+      const isDeleted = await isChatThreadDeleted(getDb(), wsId, nonExistentId)
       expect(isDeleted).toBe(false)
     })
 
@@ -252,9 +263,10 @@ describe('Chat Threads DAL', () => {
         id: threadId,
         title: 'Active Thread',
         isEncrypted: 0,
+        workspaceId: wsId,
       })
 
-      const isDeleted = await isChatThreadDeleted(getDb(), threadId)
+      const isDeleted = await isChatThreadDeleted(getDb(), wsId, threadId)
       expect(isDeleted).toBe(false)
     })
 
@@ -267,9 +279,10 @@ describe('Chat Threads DAL', () => {
         title: 'Deleted Thread',
         isEncrypted: 0,
         deletedAt: nowIso(),
+        workspaceId: wsId,
       })
 
-      const isDeleted = await isChatThreadDeleted(getDb(), threadId)
+      const isDeleted = await isChatThreadDeleted(getDb(), wsId, threadId)
       expect(isDeleted).toBe(true)
     })
 
@@ -279,12 +292,12 @@ describe('Chat Threads DAL', () => {
       const db = getDb()
 
       await db.insert(chatThreadsTable).values([
-        { id: activeThreadId, title: 'Active', isEncrypted: 0 },
-        { id: deletedThreadId, title: 'Deleted', isEncrypted: 0, deletedAt: nowIso() },
+        { id: activeThreadId, title: 'Active', isEncrypted: 0, workspaceId: wsId },
+        { id: deletedThreadId, title: 'Deleted', isEncrypted: 0, deletedAt: nowIso(), workspaceId: wsId },
       ])
 
-      expect(await isChatThreadDeleted(getDb(), activeThreadId)).toBe(false)
-      expect(await isChatThreadDeleted(getDb(), deletedThreadId)).toBe(true)
+      expect(await isChatThreadDeleted(getDb(), wsId, activeThreadId)).toBe(false)
+      expect(await isChatThreadDeleted(getDb(), wsId, deletedThreadId)).toBe(true)
     })
   })
 
@@ -298,10 +311,11 @@ describe('Chat Threads DAL', () => {
         id: threadId,
         title: 'Existing Thread',
         isEncrypted: 0,
+        workspaceId: wsId,
       })
 
       const modelId = await createTestModel()
-      const thread = await getOrCreateChatThread(getDb(), threadId, modelId)
+      const thread = await getOrCreateChatThread(getDb(), wsId, threadId, modelId)
       expect(thread).not.toBeNull()
       expect(thread?.id).toBe(threadId)
       expect(thread?.title).toBe('Existing Thread')
@@ -315,7 +329,7 @@ describe('Chat Threads DAL', () => {
       const threadId = uuidv7()
       const modelId = await createTestModel()
 
-      const thread = await getOrCreateChatThread(getDb(), threadId, modelId)
+      const thread = await getOrCreateChatThread(getDb(), wsId, threadId, modelId)
       expect(thread).not.toBeNull()
       expect(thread?.id).toBe(threadId)
       expect(thread?.title).toBe('New Chat')
@@ -331,8 +345,8 @@ describe('Chat Threads DAL', () => {
       const threadId = uuidv7()
       const modelId = await createTestModel()
 
-      const thread1 = await getOrCreateChatThread(getDb(), threadId, modelId)
-      const thread2 = await getOrCreateChatThread(getDb(), threadId, modelId)
+      const thread1 = await getOrCreateChatThread(getDb(), wsId, threadId, modelId)
+      const thread2 = await getOrCreateChatThread(getDb(), wsId, threadId, modelId)
 
       expect(thread1?.id).toBe(threadId)
       expect(thread2?.id).toBe(threadId)
@@ -349,10 +363,10 @@ describe('Chat Threads DAL', () => {
       const threadId = uuidv7()
       const modelId = await createTestModel()
 
-      const thread = await getOrCreateChatThread(getDb(), threadId, modelId, 'haystack-rag')
+      const thread = await getOrCreateChatThread(getDb(), wsId, threadId, modelId, 'haystack-rag')
       expect(thread?.agentId).toBe('haystack-rag')
 
-      const stored = await getChatThread(getDb(), threadId)
+      const stored = await getChatThread(getDb(), wsId, threadId)
       expect(stored?.agentId).toBe('haystack-rag')
     })
 
@@ -360,7 +374,7 @@ describe('Chat Threads DAL', () => {
       const threadId = uuidv7()
       const modelId = await createTestModel()
 
-      const thread = await getOrCreateChatThread(getDb(), threadId, modelId)
+      const thread = await getOrCreateChatThread(getDb(), wsId, threadId, modelId)
       expect(thread?.agentId).toBeNull()
     })
 
@@ -369,10 +383,10 @@ describe('Chat Threads DAL', () => {
       const modelId = await createTestModel()
 
       // First call creates with one agent
-      await getOrCreateChatThread(getDb(), threadId, modelId, 'agent-a')
+      await getOrCreateChatThread(getDb(), wsId, threadId, modelId, 'agent-a')
 
       // Second call should return existing thread unchanged
-      const second = await getOrCreateChatThread(getDb(), threadId, modelId, 'agent-b')
+      const second = await getOrCreateChatThread(getDb(), wsId, threadId, modelId, 'agent-b')
       expect(second?.agentId).toBe('agent-a')
     })
 
@@ -381,8 +395,8 @@ describe('Chat Threads DAL', () => {
       const threadId2 = uuidv7()
       const modelId = await createTestModel()
 
-      const thread1 = await getOrCreateChatThread(getDb(), threadId1, modelId)
-      const thread2 = await getOrCreateChatThread(getDb(), threadId2, modelId)
+      const thread1 = await getOrCreateChatThread(getDb(), wsId, threadId1, modelId)
+      const thread2 = await getOrCreateChatThread(getDb(), wsId, threadId2, modelId)
 
       expect(thread1?.id).toBe(threadId1)
       expect(thread2?.id).toBe(threadId2)
@@ -399,7 +413,7 @@ describe('Chat Threads DAL', () => {
 
   describe('getAllChatThreads', () => {
     it('should return empty array when no threads exist', async () => {
-      const threads = await getAllChatThreads(getDb())
+      const threads = await getAllChatThreads(getDb(), wsId)
       expect(threads).toEqual([])
     })
 
@@ -413,15 +427,17 @@ describe('Chat Threads DAL', () => {
           id: threadId1,
           title: 'First Thread',
           isEncrypted: 0,
+          workspaceId: wsId,
         },
         {
           id: threadId2,
           title: 'Second Thread',
           isEncrypted: 0,
+          workspaceId: wsId,
         },
       ])
 
-      const threads = await getAllChatThreads(getDb())
+      const threads = await getAllChatThreads(getDb(), wsId)
       expect(threads).toHaveLength(2)
       expect(threads.map((t) => t.id)).toContain(threadId1)
       expect(threads.map((t) => t.id)).toContain(threadId2)
@@ -431,7 +447,7 @@ describe('Chat Threads DAL', () => {
   describe('getContextSizeForThread', () => {
     it('should return undefined when thread does not exist', async () => {
       const threadId = uuidv7()
-      const result = await getContextSizeForThread(getDb(), threadId).get()
+      const result = await getContextSizeForThread(getDb(), wsId, threadId).get()
       expect(result).toBeUndefined()
     })
 
@@ -443,9 +459,10 @@ describe('Chat Threads DAL', () => {
         id: threadId,
         title: 'Test Thread',
         isEncrypted: 0,
+        workspaceId: wsId,
       })
 
-      const result = await getContextSizeForThread(getDb(), threadId).get()
+      const result = await getContextSizeForThread(getDb(), wsId, threadId).get()
       expect(result?.contextSize).toBeNull()
     })
 
@@ -458,9 +475,10 @@ describe('Chat Threads DAL', () => {
         title: 'Test Thread',
         isEncrypted: 0,
         contextSize: 1500,
+        workspaceId: wsId,
       })
 
-      const result = await getContextSizeForThread(getDb(), threadId).get()
+      const result = await getContextSizeForThread(getDb(), wsId, threadId).get()
       expect(result?.contextSize).toBe(1500)
     })
   })
@@ -474,15 +492,16 @@ describe('Chat Threads DAL', () => {
         id: threadId,
         title: 'Test Thread',
         isEncrypted: 0,
+        workspaceId: wsId,
       })
 
-      const threadsBefore = await getAllChatThreads(getDb())
+      const threadsBefore = await getAllChatThreads(getDb(), wsId)
       expect(threadsBefore).toHaveLength(1)
 
-      await deleteChatThread(getDb(), threadId)
+      await deleteChatThread(getDb(), wsId, threadId)
 
       // Should not appear in getAllChatThreads (excludes soft-deleted)
-      const threadsAfter = await getAllChatThreads(getDb())
+      const threadsAfter = await getAllChatThreads(getDb(), wsId)
       expect(threadsAfter).toHaveLength(0)
 
       // But should still exist in database with deletedAt set
@@ -501,18 +520,20 @@ describe('Chat Threads DAL', () => {
           id: threadId1,
           title: 'First Thread',
           isEncrypted: 0,
+          workspaceId: wsId,
         },
         {
           id: threadId2,
           title: 'Second Thread',
           isEncrypted: 0,
+          workspaceId: wsId,
         },
       ])
 
-      await deleteChatThread(getDb(), threadId1)
+      await deleteChatThread(getDb(), wsId, threadId1)
 
       // Only one thread should be visible
-      const threads = await getAllChatThreads(getDb())
+      const threads = await getAllChatThreads(getDb(), wsId)
       expect(threads).toHaveLength(1)
       expect(threads[0]?.id).toBe(threadId2)
       expect(threads[0]?.title).toBe('Second Thread')
@@ -524,7 +545,7 @@ describe('Chat Threads DAL', () => {
 
     it('should not throw when deleting non-existent thread', async () => {
       const nonExistentId = uuidv7()
-      await expect(deleteChatThread(getDb(), nonExistentId)).resolves.toBeUndefined()
+      await expect(deleteChatThread(getDb(), wsId, nonExistentId)).resolves.toBeUndefined()
     })
 
     it('should not return soft-deleted thread via getChatThread', async () => {
@@ -535,16 +556,17 @@ describe('Chat Threads DAL', () => {
         id: threadId,
         title: 'Test Thread',
         isEncrypted: 0,
+        workspaceId: wsId,
       })
 
       // Thread should be found before deletion
-      const threadBefore = await getChatThread(getDb(), threadId)
+      const threadBefore = await getChatThread(getDb(), wsId, threadId)
       expect(threadBefore?.id).toBe(threadId)
 
-      await deleteChatThread(getDb(), threadId)
+      await deleteChatThread(getDb(), wsId, threadId)
 
       // Thread should not be found after soft deletion
-      const threadAfter = await getChatThread(getDb(), threadId)
+      const threadAfter = await getChatThread(getDb(), wsId, threadId)
       expect(threadAfter).toBeNull()
     })
 
@@ -558,6 +580,7 @@ describe('Chat Threads DAL', () => {
         id: threadId,
         title: 'Test Thread',
         isEncrypted: 0,
+        workspaceId: wsId,
       })
 
       await db.insert(chatMessagesTable).values([
@@ -566,23 +589,25 @@ describe('Chat Threads DAL', () => {
           chatThreadId: threadId,
           role: 'user',
           content: 'Hello',
+          workspaceId: wsId,
         },
         {
           id: messageId2,
           chatThreadId: threadId,
           role: 'assistant',
           content: 'Hi there',
+          workspaceId: wsId,
         },
       ])
 
       // Messages should be visible before deletion
-      const messagesBefore = await getChatMessages(getDb(), threadId)
+      const messagesBefore = await getChatMessages(getDb(), wsId, threadId)
       expect(messagesBefore).toHaveLength(2)
 
-      await deleteChatThread(getDb(), threadId)
+      await deleteChatThread(getDb(), wsId, threadId)
 
       // Messages should not be returned after thread deletion
-      const messagesAfter = await getChatMessages(getDb(), threadId)
+      const messagesAfter = await getChatMessages(getDb(), wsId, threadId)
       expect(messagesAfter).toHaveLength(0)
 
       // But messages should still exist in database with deletedAt set
@@ -599,8 +624,8 @@ describe('Chat Threads DAL', () => {
       const db = getDb()
 
       await db.insert(chatThreadsTable).values([
-        { id: threadId1, title: 'Thread 1', isEncrypted: 0 },
-        { id: threadId2, title: 'Thread 2', isEncrypted: 0 },
+        { id: threadId1, title: 'Thread 1', isEncrypted: 0, workspaceId: wsId },
+        { id: threadId2, title: 'Thread 2', isEncrypted: 0, workspaceId: wsId },
       ])
 
       await db.insert(chatMessagesTable).values([
@@ -609,23 +634,25 @@ describe('Chat Threads DAL', () => {
           chatThreadId: threadId1,
           role: 'user',
           content: 'Message in thread 1',
+          workspaceId: wsId,
         },
         {
           id: messageId2,
           chatThreadId: threadId2,
           role: 'user',
           content: 'Message in thread 2',
+          workspaceId: wsId,
         },
       ])
 
-      await deleteChatThread(getDb(), threadId1)
+      await deleteChatThread(getDb(), wsId, threadId1)
 
       // Messages in thread 1 should be soft-deleted
-      const messagesThread1 = await getChatMessages(getDb(), threadId1)
+      const messagesThread1 = await getChatMessages(getDb(), wsId, threadId1)
       expect(messagesThread1).toHaveLength(0)
 
       // Messages in thread 2 should still be visible
-      const messagesThread2 = await getChatMessages(getDb(), threadId2)
+      const messagesThread2 = await getChatMessages(getDb(), wsId, threadId2)
       expect(messagesThread2).toHaveLength(1)
       expect(messagesThread2[0]?.id).toBe(messageId2)
     })
@@ -639,18 +666,18 @@ describe('Chat Threads DAL', () => {
       const db = getDb()
 
       await db.insert(chatThreadsTable).values([
-        { id: threadId1, title: 'First Thread', isEncrypted: 0 },
-        { id: threadId2, title: 'Second Thread', isEncrypted: 0 },
-        { id: threadId3, title: 'Third Thread', isEncrypted: 0 },
+        { id: threadId1, title: 'First Thread', isEncrypted: 0, workspaceId: wsId },
+        { id: threadId2, title: 'Second Thread', isEncrypted: 0, workspaceId: wsId },
+        { id: threadId3, title: 'Third Thread', isEncrypted: 0, workspaceId: wsId },
       ])
 
-      const threadsBefore = await getAllChatThreads(getDb())
+      const threadsBefore = await getAllChatThreads(getDb(), wsId)
       expect(threadsBefore).toHaveLength(3)
 
-      await deleteAllChatThreads(getDb())
+      await deleteAllChatThreads(getDb(), wsId)
 
       // Should not appear in getAllChatThreads
-      const threadsAfter = await getAllChatThreads(getDb())
+      const threadsAfter = await getAllChatThreads(getDb(), wsId)
       expect(threadsAfter).toHaveLength(0)
 
       // But all should still exist in database with deletedAt set
@@ -660,10 +687,10 @@ describe('Chat Threads DAL', () => {
     })
 
     it('should not throw when soft deleting from empty table', async () => {
-      const threadsBefore = await getAllChatThreads(getDb())
+      const threadsBefore = await getAllChatThreads(getDb(), wsId)
       expect(threadsBefore).toHaveLength(0)
 
-      await expect(deleteAllChatThreads(getDb())).resolves.toBeUndefined()
+      await expect(deleteAllChatThreads(getDb(), wsId)).resolves.toBeUndefined()
     })
 
     it('should soft delete all messages when deleting all threads', async () => {
@@ -675,8 +702,8 @@ describe('Chat Threads DAL', () => {
       const db = getDb()
 
       await db.insert(chatThreadsTable).values([
-        { id: threadId1, title: 'Thread 1', isEncrypted: 0 },
-        { id: threadId2, title: 'Thread 2', isEncrypted: 0 },
+        { id: threadId1, title: 'Thread 1', isEncrypted: 0, workspaceId: wsId },
+        { id: threadId2, title: 'Thread 2', isEncrypted: 0, workspaceId: wsId },
       ])
 
       await db.insert(chatMessagesTable).values([
@@ -685,32 +712,35 @@ describe('Chat Threads DAL', () => {
           chatThreadId: threadId1,
           role: 'user',
           content: 'Message 1',
+          workspaceId: wsId,
         },
         {
           id: messageId2,
           chatThreadId: threadId1,
           role: 'assistant',
           content: 'Message 2',
+          workspaceId: wsId,
         },
         {
           id: messageId3,
           chatThreadId: threadId2,
           role: 'user',
           content: 'Message 3',
+          workspaceId: wsId,
         },
       ])
 
       // All messages should be visible before deletion
-      const messagesThread1Before = await getChatMessages(getDb(), threadId1)
-      const messagesThread2Before = await getChatMessages(getDb(), threadId2)
+      const messagesThread1Before = await getChatMessages(getDb(), wsId, threadId1)
+      const messagesThread2Before = await getChatMessages(getDb(), wsId, threadId2)
       expect(messagesThread1Before).toHaveLength(2)
       expect(messagesThread2Before).toHaveLength(1)
 
-      await deleteAllChatThreads(getDb())
+      await deleteAllChatThreads(getDb(), wsId)
 
       // No messages should be returned after deletion
-      const messagesThread1After = await getChatMessages(getDb(), threadId1)
-      const messagesThread2After = await getChatMessages(getDb(), threadId2)
+      const messagesThread1After = await getChatMessages(getDb(), wsId, threadId1)
+      const messagesThread2After = await getChatMessages(getDb(), wsId, threadId2)
       expect(messagesThread1After).toHaveLength(0)
       expect(messagesThread2After).toHaveLength(0)
 
@@ -728,15 +758,15 @@ describe('Chat Threads DAL', () => {
 
       // Create two threads
       await db.insert(chatThreadsTable).values([
-        { id: threadId1, title: 'Thread 1', isEncrypted: 0 },
-        { id: threadId2, title: 'Thread 2', isEncrypted: 0 },
+        { id: threadId1, title: 'Thread 1', isEncrypted: 0, workspaceId: wsId },
+        { id: threadId2, title: 'Thread 2', isEncrypted: 0, workspaceId: wsId },
       ])
 
       // Soft delete thread 1 with an older datetime
       await db.update(chatThreadsTable).set({ deletedAt: originalDeletedAt }).where(eq(chatThreadsTable.id, threadId1))
 
       // Now call deleteAllChatThreads - should only update thread 2
-      await deleteAllChatThreads(getDb())
+      await deleteAllChatThreads(getDb(), wsId)
 
       // Thread 1 should still have its original deletion datetime
       const rawThreads = await db.select().from(chatThreadsTable)
@@ -759,13 +789,14 @@ describe('Chat Threads DAL', () => {
         id: threadId,
         title: 'Original Title',
         isEncrypted: 0,
+        workspaceId: wsId,
       })
 
       // Update title
-      await updateChatThread(getDb(), threadId, { title: 'Updated Title' })
+      await updateChatThread(getDb(), wsId, threadId, { title: 'Updated Title' })
 
       // Verify update
-      const updatedThread = await getChatThread(getDb(), threadId)
+      const updatedThread = await getChatThread(getDb(), wsId, threadId)
       expect(updatedThread?.title).toBe('Updated Title')
       expect(updatedThread?.id).toBe(threadId)
       expect(updatedThread?.isEncrypted).toBe(0) // Should remain unchanged
@@ -780,13 +811,14 @@ describe('Chat Threads DAL', () => {
         id: threadId,
         title: 'Test Thread',
         isEncrypted: 0,
+        workspaceId: wsId,
       })
 
       // Update context size
-      await updateChatThread(getDb(), threadId, { contextSize: 2000 })
+      await updateChatThread(getDb(), wsId, threadId, { contextSize: 2000 })
 
       // Verify update
-      const updatedThread = await getChatThread(getDb(), threadId)
+      const updatedThread = await getChatThread(getDb(), wsId, threadId)
       expect(updatedThread?.contextSize).toBe(2000)
       expect(updatedThread?.title).toBe('Test Thread') // Should remain unchanged
     })
@@ -800,13 +832,14 @@ describe('Chat Threads DAL', () => {
         id: threadId,
         title: 'Test Thread',
         isEncrypted: 0,
+        workspaceId: wsId,
       })
 
       // Update triggeredBy to null (since we don't have a valid prompt ID)
-      await updateChatThread(getDb(), threadId, { triggeredBy: null })
+      await updateChatThread(getDb(), wsId, threadId, { triggeredBy: null })
 
       // Verify update
-      const updatedThread = await getChatThread(getDb(), threadId)
+      const updatedThread = await getChatThread(getDb(), wsId, threadId)
       expect(updatedThread?.triggeredBy).toBeNull()
     })
 
@@ -820,13 +853,14 @@ describe('Chat Threads DAL', () => {
         title: 'Test Thread',
         isEncrypted: 0,
         wasTriggeredByAutomation: 0,
+        workspaceId: wsId,
       })
 
       // Update wasTriggeredByAutomation
-      await updateChatThread(getDb(), threadId, { wasTriggeredByAutomation: 1 })
+      await updateChatThread(getDb(), wsId, threadId, { wasTriggeredByAutomation: 1 })
 
       // Verify update
-      const updatedThread = await getChatThread(getDb(), threadId)
+      const updatedThread = await getChatThread(getDb(), wsId, threadId)
       expect(updatedThread?.wasTriggeredByAutomation).toBe(1)
     })
 
@@ -841,10 +875,11 @@ describe('Chat Threads DAL', () => {
         isEncrypted: 0,
         contextSize: 1000,
         wasTriggeredByAutomation: 0,
+        workspaceId: wsId,
       })
 
       // Update multiple fields
-      await updateChatThread(getDb(), threadId, {
+      await updateChatThread(getDb(), wsId, threadId, {
         title: 'Updated Title',
         contextSize: 3000,
         triggeredBy: null,
@@ -852,7 +887,7 @@ describe('Chat Threads DAL', () => {
       })
 
       // Verify all updates
-      const updatedThread = await getChatThread(getDb(), threadId)
+      const updatedThread = await getChatThread(getDb(), wsId, threadId)
       expect(updatedThread?.title).toBe('Updated Title')
       expect(updatedThread?.contextSize).toBe(3000)
       expect(updatedThread?.triggeredBy).toBeNull()
@@ -872,13 +907,14 @@ describe('Chat Threads DAL', () => {
         isEncrypted: 0,
         contextSize: 1000,
         wasTriggeredByAutomation: 0,
+        workspaceId: wsId,
       })
 
       // Update only title
-      await updateChatThread(getDb(), threadId, { title: 'Updated Title' })
+      await updateChatThread(getDb(), wsId, threadId, { title: 'Updated Title' })
 
       // Verify only title changed
-      const updatedThread = await getChatThread(getDb(), threadId)
+      const updatedThread = await getChatThread(getDb(), wsId, threadId)
       expect(updatedThread?.title).toBe('Updated Title')
       expect(updatedThread?.contextSize).toBe(1000) // Should remain unchanged
       expect(updatedThread?.wasTriggeredByAutomation).toBe(0) // Should remain unchanged
@@ -888,7 +924,7 @@ describe('Chat Threads DAL', () => {
       const nonExistentId = uuidv7()
 
       // Should not throw
-      await expect(updateChatThread(getDb(), nonExistentId, { title: 'New Title' })).resolves.toBeUndefined()
+      await expect(updateChatThread(getDb(), wsId, nonExistentId, { title: 'New Title' })).resolves.toBeUndefined()
     })
 
     it('should update specific thread when multiple threads exist', async () => {
@@ -903,21 +939,23 @@ describe('Chat Threads DAL', () => {
           title: 'First Thread',
           isEncrypted: 0,
           contextSize: 1000,
+          workspaceId: wsId,
         },
         {
           id: threadId2,
           title: 'Second Thread',
           isEncrypted: 0,
           contextSize: 2000,
+          workspaceId: wsId,
         },
       ])
 
       // Update only the first thread
-      await updateChatThread(getDb(), threadId1, { title: 'Updated First Thread', contextSize: 1500 })
+      await updateChatThread(getDb(), wsId, threadId1, { title: 'Updated First Thread', contextSize: 1500 })
 
       // Verify only first thread was updated
-      const firstThread = await getChatThread(getDb(), threadId1)
-      const secondThread = await getChatThread(getDb(), threadId2)
+      const firstThread = await getChatThread(getDb(), wsId, threadId1)
+      const secondThread = await getChatThread(getDb(), wsId, threadId2)
 
       expect(firstThread?.title).toBe('Updated First Thread')
       expect(firstThread?.contextSize).toBe(1500)
@@ -935,17 +973,18 @@ describe('Chat Threads DAL', () => {
         title: 'Test Thread',
         isEncrypted: 0,
         contextSize: 1000,
-        triggeredBy: null, // Start with null to avoid foreign key constraint
+        triggeredBy: null, // Start with null to avoid foreign key constraint,
+        workspaceId: wsId,
       })
 
       // Update with null values
-      await updateChatThread(getDb(), threadId, {
+      await updateChatThread(getDb(), wsId, threadId, {
         contextSize: null,
         triggeredBy: null,
       })
 
       // Verify null values were set
-      const updatedThread = await getChatThread(getDb(), threadId)
+      const updatedThread = await getChatThread(getDb(), wsId, threadId)
       expect(updatedThread?.contextSize).toBeNull()
       expect(updatedThread?.triggeredBy).toBeNull()
       expect(updatedThread?.title).toBe('Test Thread') // Should remain unchanged
@@ -959,19 +998,19 @@ describe('Chat Threads DAL', () => {
 
       // Create three threads
       await db.insert(chatThreadsTable).values([
-        { id: threadId1, title: 'Thread 1', isEncrypted: 0, contextSize: 1000 },
-        { id: threadId2, title: 'Thread 2', isEncrypted: 0, contextSize: 2000 },
-        { id: threadId3, title: 'Thread 3', isEncrypted: 0, contextSize: 3000 },
+        { id: threadId1, title: 'Thread 1', isEncrypted: 0, contextSize: 1000, workspaceId: wsId },
+        { id: threadId2, title: 'Thread 2', isEncrypted: 0, contextSize: 2000, workspaceId: wsId },
+        { id: threadId3, title: 'Thread 3', isEncrypted: 0, contextSize: 3000, workspaceId: wsId },
       ])
 
       // Update only the second thread
-      await updateChatThread(getDb(), threadId2, {
+      await updateChatThread(getDb(), wsId, threadId2, {
         title: 'Updated Thread 2',
         contextSize: 2500,
       })
 
       // Verify all threads
-      const allThreads = await getAllChatThreads(getDb())
+      const allThreads = await getAllChatThreads(getDb(), wsId)
       expect(allThreads).toHaveLength(3)
 
       const thread1 = allThreads.find((t) => t.id === threadId1)

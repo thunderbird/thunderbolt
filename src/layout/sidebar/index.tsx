@@ -7,6 +7,7 @@ import type { DeleteChatDialogRef } from '@/components/delete-chat-dialog'
 import { Sidebar as SidebarRoot, useSidebar } from '@/components/ui/sidebar'
 import { TooltipProvider } from '@/components/ui/tooltip'
 import { useDatabase } from '@/contexts'
+import { useActiveWorkspaceId } from '@/lib/active-workspace'
 import { deleteAllChatThreads, deleteChatThread, getAllChatThreads, updateChatThread } from '@/dal'
 import { useDebounce } from '@/hooks/use-debounce'
 import { useIsMobile } from '@/hooks/use-mobile'
@@ -25,6 +26,7 @@ import { toCompilableQuery } from '@powersync/drizzle-driver'
  */
 export default function Sidebar() {
   const db = useDatabase()
+  const workspaceId = useActiveWorkspaceId()
   const navigate = useNavigate()
   const location = useLocation()
   const { setOpenMobile, state, toggleSidebar } = useSidebar()
@@ -64,9 +66,10 @@ export default function Sidebar() {
   }, [showSearch, isCollapsed])
 
   const { data, isPending } = useQuery({
-    queryKey: ['chatThreads'],
-    query: toCompilableQuery(getAllChatThreads(db)),
+    queryKey: ['chatThreads', workspaceId],
+    query: toCompilableQuery(getAllChatThreads(db, workspaceId ?? '')),
     placeholderData: (previousData) => previousData,
+    enabled: !!workspaceId,
   })
 
   const chatThreads = useMemo(() => {
@@ -79,7 +82,10 @@ export default function Sidebar() {
 
   const deleteChatMutation = useMutation({
     mutationFn: async ({ id }: { id: string }) => {
-      await deleteChatThread(db, id)
+      if (!workspaceId) {
+        throw new Error('No active workspace')
+      }
+      await deleteChatThread(db, workspaceId, id)
     },
     onSuccess: async () => {
       const deletedChatId = threadIdRef.current
@@ -95,7 +101,10 @@ export default function Sidebar() {
 
   const renameChatMutation = useMutation({
     mutationFn: async ({ id, title }: { id: string; title: string }) => {
-      await updateChatThread(db, id, { title })
+      if (!workspaceId) {
+        throw new Error('No active workspace')
+      }
+      await updateChatThread(db, workspaceId, id, { title })
     },
   })
 
@@ -109,7 +118,10 @@ export default function Sidebar() {
 
   const deleteAllChatsMutation = useMutation({
     mutationFn: async () => {
-      await deleteAllChatThreads(db)
+      if (!workspaceId) {
+        throw new Error('No active workspace')
+      }
+      await deleteAllChatThreads(db, workspaceId)
     },
     onSuccess: async () => {
       trackEvent('chat_clear_all')

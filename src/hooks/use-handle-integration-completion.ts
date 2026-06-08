@@ -12,6 +12,7 @@ import { useIntegrationStatus, type IntegrationStatus } from '@/hooks/use-integr
 import { useQueryClient } from '@tanstack/react-query'
 import { v7 as uuidv7 } from 'uuid'
 import { updateMessageCache } from '@/dal/chat-messages'
+import { useActiveWorkspaceId } from '@/lib/active-workspace'
 
 type UseHandleIntegrationCompletionParams = {
   saveMessages: SaveMessagesFunction
@@ -132,6 +133,7 @@ const waitForMessageInChat = async (
  */
 export const useHandleIntegrationCompletion = ({ saveMessages }: UseHandleIntegrationCompletionParams): void => {
   const db = useDatabase()
+  const workspaceId = useActiveWorkspaceId()
   const oauthRetryHandledRef = useRef<Set<string>>(new Set())
 
   const { chatInstance, chatThreadId } = useChatStore(
@@ -197,9 +199,12 @@ export const useHandleIntegrationCompletion = ({ saveMessages }: UseHandleIntegr
       })
 
       try {
-        await updateMessageCache(db, widgetMessageId, 'connectIntegrationWidget', { isHidden: true })
+        if (!workspaceId) {
+          throw new Error('No active workspace')
+        }
+        await updateMessageCache(db, workspaceId, widgetMessageId, 'connectIntegrationWidget', { isHidden: true })
         queryClient.invalidateQueries({
-          queryKey: ['messageCache', widgetMessageId, 'connectIntegrationWidget'],
+          queryKey: ['messageCache', workspaceId, widgetMessageId, 'connectIntegrationWidget'],
         })
       } catch (err) {
         console.warn('Failed to mark widget as hidden:', err)

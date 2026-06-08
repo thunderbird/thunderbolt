@@ -3,9 +3,14 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { createMcpServer } from '@/dal'
-import { resetTestDatabase, setupTestDatabase, teardownTestDatabase } from '@/dal/test-utils'
+import { resetTestDatabase, setupTestDatabase, teardownTestDatabase, wsId } from '@/dal/test-utils'
 import { getDb } from '@/db/database'
-import { renderWithReactivity, waitForElement } from '@/test-utils/powersync-reactivity-test'
+import {
+  renderWithReactivity,
+  waitForElement,
+  resetTestTrustDomain,
+  seedTestTrustDomain,
+} from '@/test-utils/powersync-reactivity-test'
 import { getClock } from '@/testing-library'
 import '@testing-library/jest-dom'
 import { act, cleanup, screen } from '@testing-library/react'
@@ -27,10 +32,12 @@ describe('McpServersPage reactivity', () => {
   })
 
   beforeEach(async () => {
+    seedTestTrustDomain()
     await resetTestDatabase()
   })
 
   afterEach(() => {
+    resetTestTrustDomain()
     cleanup()
   })
 
@@ -39,7 +46,7 @@ describe('McpServersPage reactivity', () => {
     const serverId1 = uuidv7()
     const serverId2 = uuidv7()
 
-    await createMcpServer(db, {
+    await createMcpServer(db, wsId, {
       id: serverId1,
       name: 'First Server',
       url: 'http://localhost:8000/mcp/',
@@ -54,7 +61,7 @@ describe('McpServersPage reactivity', () => {
     await waitForElement(() => screen.queryByText('localhost:8000/mcp'))
     expect(screen.getByText('localhost:8000/mcp')).toBeInTheDocument()
 
-    await createMcpServer(db, {
+    await createMcpServer(db, wsId, {
       id: serverId2,
       name: 'Second Server',
       url: 'http://localhost:9000/mcp/',

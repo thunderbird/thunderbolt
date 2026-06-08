@@ -65,7 +65,7 @@ export {
 } from './tasks'
 
 // MCP Servers
-export { createMcpServer, deleteMcpServer, getAllMcpServers, getHttpMcpServers } from './mcp-servers'
+export { createMcpServer, deleteMcpServer, getAllMcpServers, getHttpMcpServers, updateMcpServer } from './mcp-servers'
 
 // Prompts
 export {
@@ -135,7 +135,13 @@ export {
 } from './skills'
 
 // Workspaces
-export { ensurePersonalWorkspace, getPersonalWorkspaceByOwner, getWorkspaceById, type Workspace } from './workspaces'
+export {
+  ensurePersonalWorkspace,
+  getPersonalWorkspaceByOwner,
+  getPersonalWorkspaceByOwnerQuery,
+  getWorkspaceById,
+  type Workspace,
+} from './workspaces'
 export {
   getMembership,
   getMembershipsByUser,

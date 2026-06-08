@@ -3,6 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { useDatabase, useHttpClient } from '@/contexts'
+import { getActiveWorkspaceId, useActiveWorkspaceId } from '@/lib/active-workspace'
 import { useProxyFetchGetter } from '@/lib/proxy-fetch-context'
 import {
   composeAllAgents,
@@ -38,6 +39,7 @@ type UseHydrateChatStoreParams = {
 
 export const useHydrateChatStore = ({ id, isNew }: UseHydrateChatStoreParams) => {
   const db = useDatabase()
+  const workspaceId = useActiveWorkspaceId()
   const httpClient = useHttpClient()
   const getProxyFetch = useProxyFetchGetter()
   const navigate = useNavigate()
@@ -46,7 +48,7 @@ export const useHydrateChatStore = ({ id, isNew }: UseHydrateChatStoreParams) =>
 
   const { getEnabledClients } = useMCP()
 
-  const updateThreadTitle = async (messages: ThunderboltUIMessage[], threadId: string) => {
+  const updateThreadTitle = async (messages: ThunderboltUIMessage[], threadId: string, workspaceId: string) => {
     const firstUserMessage = messages.find((msg) => msg.role === 'user')
     if (!firstUserMessage) {
       return
@@ -62,10 +64,19 @@ export const useHydrateChatStore = ({ id, isNew }: UseHydrateChatStoreParams) =>
     }
 
     const title = await generateTitle(textContent)
-    await updateChatThread(db, threadId, { title })
+    await updateChatThread(db, workspaceId, threadId, { title })
   }
 
   const saveMessages: SaveMessagesFunction = async ({ id, messages }) => {
+    // Resolve workspaceId at call time rather than relying on the hook's
+    // closure-captured value, which may be stale on the first render before
+    // `useActiveWorkspaceId`'s React Query has resolved. The async getter
+    // reads the trust-domain registry + DB synchronously w.r.t. React's
+    // render lifecycle, so it's deterministic in tests.
+    const workspaceId = await getActiveWorkspaceId(db)
+    if (!workspaceId) {
+      throw new Error('No active workspace')
+    }
     const { sessions, updateSession } = useChatStore.getState()
 
     const session = sessions.get(id)
@@ -78,14 +89,14 @@ export const useHydrateChatStore = ({ id, isNew }: UseHydrateChatStoreParams) =>
     // Pass `selectedAgent.id` so a brand-new thread is created with the user's
     // currently-selected agent — otherwise the row would default to `null`
     // and a reload would silently fall back to the built-in agent.
-    const thread = await getOrCreateChatThread(db, id, session.selectedModel.id, session.selectedAgent.id)
+    const thread = await getOrCreateChatThread(db, workspaceId, id, session.selectedModel.id, session.selectedAgent.id)
 
     // Save messages and update context size using DAL
-    await saveMessagesWithContextUpdate(db, id, messages)
+    await saveMessagesWithContextUpdate(db, workspaceId, id, messages)
 
     // Generate title in background if needed
     if (thread?.title === 'New Chat') {
-      updateThreadTitle(messages, id)
+      updateThreadTitle(messages, id, workspaceId)
     }
 
     if (!session.chatThread) {
@@ -95,32 +106,51 @@ export const useHydrateChatStore = ({ id, isNew }: UseHydrateChatStoreParams) =>
   }
 
   const hydrateChatStore = async () => {
+    // Resolve workspaceId at call time rather than relying on the hook's
+    // closure-captured value. `useActiveWorkspaceId` may briefly return null
+    // on the first render (race between WorkspaceGate and React Query's
+    // resolution). The async getter reads the trust-domain registry + DB
+    // directly, so it's deterministic regardless of React render timing —
+    // which also means tests don't need to flush React Query before calling.
+    const workspaceId = await getActiveWorkspaceId(db)
+    if (!workspaceId) {
+      return
+    }
     const { createSession, sessions, setCurrentSessionId, setMcpClients, setModes, setModels } = useChatStore.getState()
 
     // Check if this ID belongs to a deleted chat - redirect to 404 if so
-    const isDeleted = await isChatThreadDeleted(db, id)
+    const isDeleted = await isChatThreadDeleted(db, workspaceId, id)
     if (isDeleted) {
       navigate('/not-found', { replace: true })
       return
     }
 
-    // If the session already exists, set the current session id and update the mcp clients and models
-    if (sessions.has(id)) {
-      setCurrentSessionId(id)
+    // If the session already exists, reuse it — unless it was built for a different
+    // workspace (workspace switch). In that case, evict it so the full create path
+    // rebuilds the closures with the new workspaceId.
+    const existingSession = sessions.get(id)
+    if (existingSession) {
+      if (existingSession.workspaceId !== workspaceId) {
+        const nextSessions = new Map(sessions)
+        nextSessions.delete(id)
+        useChatStore.setState({ sessions: nextSessions })
+        // fall through to full create path
+      } else {
+        setCurrentSessionId(id)
 
-      const [modes, models, mcpClients] = await Promise.all([
-        getAllModes(db),
-        getAvailableModels(db),
-        getEnabledClients(),
-      ])
+        const [modes, models, mcpClients] = await Promise.all([
+          getAllModes(db, workspaceId),
+          getAvailableModels(db, workspaceId),
+          getEnabledClients(),
+        ])
 
-      setMcpClients(mcpClients)
-      setModes(modes)
-      setModels(models)
+        setMcpClients(mcpClients)
+        setModes(modes)
+        setModels(models)
 
-      setIsReady(true)
-
-      return
+        setIsReady(true)
+        return
+      }
     }
 
     // If the session does not exist, create it below
@@ -138,15 +168,15 @@ export const useHydrateChatStore = ({ id, isNew }: UseHydrateChatStoreParams) =>
       customAgentRows,
       systemAgentRows,
     ] = await Promise.all([
-      getDefaultModelForThread(db, id, settings.selectedModel ?? undefined),
-      getSelectedMode(db),
-      getChatThread(db, id),
-      getChatMessages(db, id),
-      getAllModes(db),
-      getAvailableModels(db),
-      getTriggerPromptForThread(db, id),
+      getDefaultModelForThread(db, workspaceId, id, settings.selectedModel ?? undefined),
+      getSelectedMode(db, workspaceId),
+      getChatThread(db, workspaceId, id),
+      getChatMessages(db, workspaceId, id),
+      getAllModes(db, workspaceId),
+      getAvailableModels(db, workspaceId),
+      getTriggerPromptForThread(db, workspaceId, id),
       getEnabledClients(),
-      getAllAgents(db),
+      getAllAgents(db, workspaceId),
       getAllSystemAgents(db),
     ])
 
@@ -203,6 +233,7 @@ export const useHydrateChatStore = ({ id, isNew }: UseHydrateChatStoreParams) =>
 
     const chatInstance = createChatInstance(
       id,
+      workspaceId,
       initialMessages.map(convertDbChatMessageToUIMessage) as ThunderboltUIMessage[],
       saveMessages,
       httpClient,
@@ -215,6 +246,7 @@ export const useHydrateChatStore = ({ id, isNew }: UseHydrateChatStoreParams) =>
       connectionStatus: 'idle',
       connectionError: null,
       id,
+      workspaceId,
       pendingPermission: null,
       retryCount: 0,
       retriesExhausted: false,
@@ -235,5 +267,5 @@ export const useHydrateChatStore = ({ id, isNew }: UseHydrateChatStoreParams) =>
     setIsReady(true)
   }
 
-  return { hydrateChatStore, isReady, saveMessages }
+  return { hydrateChatStore, isReady, saveMessages, workspaceId }
 }

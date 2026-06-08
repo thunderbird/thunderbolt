@@ -5,6 +5,7 @@
 import { and, eq } from 'drizzle-orm'
 import type { AnyDrizzleDatabase } from '../db/database-interface'
 import { workspaceMembershipsTable, workspacesTable } from '../db/tables'
+import type { DrizzleQueryWithPromise } from '../types'
 import { computePersonalAdminMembershipId, computePersonalWorkspaceId } from '@shared/workspaces'
 
 export type Workspace = {
@@ -17,6 +18,22 @@ export type Workspace = {
 }
 
 /**
+ * Drizzle query for the personal workspace owned by `userId`. Use with
+ * PowerSync's `toCompilableQuery` (live React subscription) or `await` for a
+ * one-shot read. Single source of truth for the personal-workspace WHERE
+ * clause — `getPersonalWorkspaceByOwner` and `useActiveWorkspaceId` both go
+ * through this so they can't drift.
+ */
+export const getPersonalWorkspaceByOwnerQuery = (db: AnyDrizzleDatabase, userId: string) => {
+  const query = db
+    .select()
+    .from(workspacesTable)
+    .where(and(eq(workspacesTable.ownerUserId, userId), eq(workspacesTable.isPersonal, 1)))
+    .limit(1)
+  return query as typeof query & DrizzleQueryWithPromise<Workspace>
+}
+
+/**
  * Look up the personal workspace for a given user. Returns `null` if the row
  * hasn't synced down yet (first signup) or if the user has none — the boot path
  * awaits this becoming non-null before proceeding to reconcile defaults.
@@ -25,11 +42,7 @@ export const getPersonalWorkspaceByOwner = async (
   db: AnyDrizzleDatabase,
   userId: string,
 ): Promise<Workspace | null> => {
-  const row = await db
-    .select()
-    .from(workspacesTable)
-    .where(and(eq(workspacesTable.ownerUserId, userId), eq(workspacesTable.isPersonal, 1)))
-    .get()
+  const row = await getPersonalWorkspaceByOwnerQuery(db, userId).get()
   return (row ?? null) as Workspace | null
 }
 

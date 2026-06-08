@@ -35,6 +35,7 @@ import { StatusCard } from '@/components/ui/status-card'
 import { Switch } from '@/components/ui/switch'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 import { useDatabase } from '@/contexts'
+import { useActiveWorkspaceId } from '@/lib/active-workspace'
 import { createModel as createModelDAL, deleteModel, getAllModels, resetModelToDefault, updateModel } from '@/dal'
 import { defaultModels } from '@/defaults/models'
 import { isModelModified } from '@/defaults/utils'
@@ -345,6 +346,7 @@ const EditModelModal = ({
 
 export default function ModelsPage() {
   const db = useDatabase()
+  const workspaceId = useActiveWorkspaceId()
   const getProxyFetch = useProxyFetchGetter()
   const [state, dispatch] = useReducer(modelReducer, initialState)
   const [editingModel, setEditingModel] = useState<Model | null>(null)
@@ -361,19 +363,26 @@ export default function ModelsPage() {
   } = state
 
   const { data: models = [] } = useQuery({
-    queryKey: ['models'],
-    query: toCompilableQuery(getAllModels(db)),
+    queryKey: ['models', workspaceId],
+    query: toCompilableQuery(getAllModels(db, workspaceId ?? '')),
+    enabled: !!workspaceId,
   })
 
   const toggleModelMutation = useMutation({
     mutationFn: async ({ id, enabled }: { id: string; enabled: boolean }) => {
-      await updateModel(db, id, { enabled: enabled ? 1 : 0 })
+      if (!workspaceId) {
+        throw new Error('No active workspace')
+      }
+      await updateModel(db, workspaceId, id, { enabled: enabled ? 1 : 0 })
     },
   })
 
   const addModelMutation = useMutation({
     mutationFn: async (values: z.infer<typeof formSchema>) => {
-      await createModelDAL(db, {
+      if (!workspaceId) {
+        throw new Error('No active workspace')
+      }
+      await createModelDAL(db, workspaceId, {
         id: uuidv7(),
         ...values,
         apiKey: values.apiKey || null,
@@ -393,7 +402,10 @@ export default function ModelsPage() {
 
   const deleteModelMutation = useMutation({
     mutationFn: async (id: string) => {
-      await deleteModel(db, id)
+      if (!workspaceId) {
+        throw new Error('No active workspace')
+      }
+      await deleteModel(db, workspaceId, id)
     },
     onSuccess: () => {
       dispatch({ type: 'CLOSE_DELETE_CONFIRM' })
@@ -402,8 +414,11 @@ export default function ModelsPage() {
 
   const editModelMutation = useMutation({
     mutationFn: async (values: z.infer<typeof editFormSchema> & { id: string }) => {
+      if (!workspaceId) {
+        throw new Error('No active workspace')
+      }
       const { id, ...fields } = values
-      await updateModel(db, id, {
+      await updateModel(db, workspaceId, id, {
         ...fields,
         apiKey: fields.apiKey || null,
         url: fields.url || null,
@@ -416,11 +431,14 @@ export default function ModelsPage() {
 
   const resetModelMutation = useMutation({
     mutationFn: async (id: string) => {
+      if (!workspaceId) {
+        throw new Error('No active workspace')
+      }
       const defaultModel = defaultModels.find((m) => m.id === id)
       if (!defaultModel) {
         throw new Error('Model is not a default model')
       }
-      await resetModelToDefault(db, id, defaultModel)
+      await resetModelToDefault(db, workspaceId, id, defaultModel)
     },
   })
 

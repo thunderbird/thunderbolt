@@ -15,7 +15,7 @@ import {
   getIncompleteTasksCount,
   updateTask,
 } from './tasks'
-import { resetTestDatabase, setupTestDatabase, teardownTestDatabase } from './test-utils'
+import { otherWsId, resetTestDatabase, setupTestDatabase, teardownTestDatabase, wsId } from './test-utils'
 
 beforeAll(async () => {
   await setupTestDatabase()
@@ -39,12 +39,12 @@ describe('Tasks DAL', () => {
       const taskId3 = uuidv7()
 
       await db.insert(tasksTable).values([
-        { id: taskId1, item: 'Task 1', order: 1, isComplete: 0 },
-        { id: taskId2, item: 'Task 2', order: 2, isComplete: 0 },
-        { id: taskId3, item: 'Task 3', order: 3, isComplete: 0 },
+        { id: taskId1, item: 'Task 1', order: 1, isComplete: 0, workspaceId: wsId },
+        { id: taskId2, item: 'Task 2', order: 2, isComplete: 0, workspaceId: wsId },
+        { id: taskId3, item: 'Task 3', order: 3, isComplete: 0, workspaceId: wsId },
       ])
 
-      const tasks = await getAllTasks(getDb())
+      const tasks = await getAllTasks(getDb(), wsId)
       expect(tasks).toHaveLength(3)
       expect(tasks.map((t) => t.id)).toContain(taskId1)
       expect(tasks.map((t) => t.id)).toContain(taskId2)
@@ -54,7 +54,7 @@ describe('Tasks DAL', () => {
 
   describe('getIncompleteTasks', () => {
     it('should return empty array when no tasks exist', async () => {
-      const tasks = await getIncompleteTasks(getDb())
+      const tasks = await getIncompleteTasks(getDb(), wsId)
       expect(tasks).toEqual([])
     })
 
@@ -70,22 +70,25 @@ describe('Tasks DAL', () => {
           item: 'Incomplete task 1',
           isComplete: 0,
           order: 1,
+          workspaceId: wsId,
         },
         {
           id: taskId2,
           item: 'Incomplete task 2',
           isComplete: 0,
           order: 2,
+          workspaceId: wsId,
         },
         {
           id: taskId3,
           item: 'Completed task',
           isComplete: 1,
           order: 3,
+          workspaceId: wsId,
         },
       ])
 
-      const tasks = await getIncompleteTasks(getDb())
+      const tasks = await getIncompleteTasks(getDb(), wsId)
       expect(tasks).toHaveLength(2)
       expect(tasks.map((t) => t.id)).toContain(taskId1)
       expect(tasks.map((t) => t.id)).toContain(taskId2)
@@ -103,16 +106,18 @@ describe('Tasks DAL', () => {
           item: 'Buy groceries',
           isComplete: 0,
           order: 1,
+          workspaceId: wsId,
         },
         {
           id: taskId2,
           item: 'Walk the dog',
           isComplete: 0,
           order: 2,
+          workspaceId: wsId,
         },
       ])
 
-      const tasks = await getIncompleteTasks(getDb(), 'groceries')
+      const tasks = await getIncompleteTasks(getDb(), wsId, 'groceries')
       expect(tasks).toHaveLength(1)
       expect(tasks[0]?.id).toBe(taskId1)
     })
@@ -126,16 +131,17 @@ describe('Tasks DAL', () => {
         item: 'Buy groceries',
         isComplete: 0,
         order: 1,
+        workspaceId: wsId,
       })
 
-      const tasks = await getIncompleteTasks(getDb(), 'nonexistent')
+      const tasks = await getIncompleteTasks(getDb(), wsId, 'nonexistent')
       expect(tasks).toEqual([])
     })
   })
 
   describe('getIncompleteTasksCount', () => {
     it('should return 0 when no incomplete tasks exist', async () => {
-      const result = await getIncompleteTasksCount(getDb()).get()
+      const result = await getIncompleteTasksCount(getDb(), wsId).get()
       expect(result?.count).toBe(0)
     })
 
@@ -151,22 +157,25 @@ describe('Tasks DAL', () => {
           item: 'Incomplete task 1',
           isComplete: 0,
           order: 1,
+          workspaceId: wsId,
         },
         {
           id: taskId2,
           item: 'Incomplete task 2',
           isComplete: 0,
           order: 2,
+          workspaceId: wsId,
         },
         {
           id: taskId3,
           item: 'Completed task',
           isComplete: 1,
           order: 3,
+          workspaceId: wsId,
         },
       ])
 
-      const result = await getIncompleteTasksCount(getDb()).get()
+      const result = await getIncompleteTasksCount(getDb(), wsId).get()
       expect(result?.count).toBe(2)
     })
   })
@@ -181,16 +190,17 @@ describe('Tasks DAL', () => {
         item: 'Task to delete',
         isComplete: 0,
         order: 1,
+        workspaceId: wsId,
       })
 
       // Verify task exists
-      const tasksBefore = await getIncompleteTasks(getDb())
+      const tasksBefore = await getIncompleteTasks(getDb(), wsId)
       expect(tasksBefore).toHaveLength(1)
 
-      await deleteTask(getDb(), taskId)
+      await deleteTask(getDb(), wsId, taskId)
 
       // Verify task is soft deleted (not in getIncompleteTasks)
-      const tasksAfter = await getIncompleteTasks(getDb())
+      const tasksAfter = await getIncompleteTasks(getDb(), wsId)
       expect(tasksAfter).toHaveLength(0)
 
       // But should still exist in database with deletedAt set
@@ -200,7 +210,7 @@ describe('Tasks DAL', () => {
     })
 
     it('should not throw when deleting non-existent task', async () => {
-      await expect(deleteTask(getDb(), 'non-existent-id')).resolves.toBeUndefined()
+      await expect(deleteTask(getDb(), wsId, 'non-existent-id')).resolves.toBeUndefined()
     })
 
     it('should not return soft-deleted task via getAllTasks', async () => {
@@ -212,16 +222,17 @@ describe('Tasks DAL', () => {
         item: 'Task to delete',
         isComplete: 0,
         order: 1,
+        workspaceId: wsId,
       })
 
       // Verify task exists
-      const tasksBefore = await getAllTasks(getDb())
+      const tasksBefore = await getAllTasks(getDb(), wsId)
       expect(tasksBefore).toHaveLength(1)
 
-      await deleteTask(getDb(), taskId)
+      await deleteTask(getDb(), wsId, taskId)
 
       // Verify task is not returned by getAllTasks
-      const tasksAfter = await getAllTasks(getDb())
+      const tasksAfter = await getAllTasks(getDb(), wsId)
       expect(tasksAfter).toHaveLength(0)
     })
 
@@ -236,10 +247,11 @@ describe('Tasks DAL', () => {
         isComplete: 0,
         order: 1,
         deletedAt: originalDeletedAt,
+        workspaceId: wsId,
       })
 
       // Call delete again on already-deleted task
-      await deleteTask(getDb(), taskId)
+      await deleteTask(getDb(), wsId, taskId)
 
       // Verify original deletedAt is preserved
       const rawTask = await db.select().from(tasksTable).get()
@@ -255,19 +267,19 @@ describe('Tasks DAL', () => {
       const taskId3 = uuidv7()
 
       await db.insert(tasksTable).values([
-        { id: taskId1, item: 'Task 1', isComplete: 0, order: 1 },
-        { id: taskId2, item: 'Task 2', isComplete: 0, order: 2 },
-        { id: taskId3, item: 'Task 3', isComplete: 0, order: 3 },
+        { id: taskId1, item: 'Task 1', isComplete: 0, order: 1, workspaceId: wsId },
+        { id: taskId2, item: 'Task 2', isComplete: 0, order: 2, workspaceId: wsId },
+        { id: taskId3, item: 'Task 3', isComplete: 0, order: 3, workspaceId: wsId },
       ])
 
       // Verify all tasks exist
-      const tasksBefore = await getIncompleteTasks(getDb())
+      const tasksBefore = await getIncompleteTasks(getDb(), wsId)
       expect(tasksBefore).toHaveLength(3)
 
-      await deleteTasks(getDb(), [taskId1, taskId3])
+      await deleteTasks(getDb(), wsId, [taskId1, taskId3])
 
       // Verify only task 2 is visible
-      const tasksAfter = await getIncompleteTasks(getDb())
+      const tasksAfter = await getIncompleteTasks(getDb(), wsId)
       expect(tasksAfter).toHaveLength(1)
       expect(tasksAfter[0]?.id).toBe(taskId2)
 
@@ -289,17 +301,18 @@ describe('Tasks DAL', () => {
         item: 'Task',
         isComplete: 0,
         order: 1,
+        workspaceId: wsId,
       })
 
-      await deleteTasks(getDb(), [])
+      await deleteTasks(getDb(), wsId, [])
 
       // Verify task still exists
-      const tasks = await getIncompleteTasks(getDb())
+      const tasks = await getIncompleteTasks(getDb(), wsId)
       expect(tasks).toHaveLength(1)
     })
 
     it('should not throw when deleting non-existent tasks', async () => {
-      await expect(deleteTasks(getDb(), ['non-existent-1', 'non-existent-2'])).resolves.toBeUndefined()
+      await expect(deleteTasks(getDb(), wsId, ['non-existent-1', 'non-existent-2'])).resolves.toBeUndefined()
     })
 
     it('should preserve original deletedAt datetimes for already-deleted tasks', async () => {
@@ -310,13 +323,20 @@ describe('Tasks DAL', () => {
       const originalDeletedAt = '2024-01-15T12:00:00.000Z'
 
       await db.insert(tasksTable).values([
-        { id: taskId1, item: 'Already deleted', isComplete: 0, order: 1, deletedAt: originalDeletedAt },
-        { id: taskId2, item: 'Active task', isComplete: 0, order: 2, deletedAt: null },
-        { id: taskId3, item: 'Another active', isComplete: 0, order: 3, deletedAt: null },
+        {
+          id: taskId1,
+          item: 'Already deleted',
+          isComplete: 0,
+          order: 1,
+          deletedAt: originalDeletedAt,
+          workspaceId: wsId,
+        },
+        { id: taskId2, item: 'Active task', isComplete: 0, order: 2, deletedAt: null, workspaceId: wsId },
+        { id: taskId3, item: 'Another active', isComplete: 0, order: 3, deletedAt: null, workspaceId: wsId },
       ])
 
       // Delete all three tasks (one already deleted, two active)
-      await deleteTasks(getDb(), [taskId1, taskId2, taskId3])
+      await deleteTasks(getDb(), wsId, [taskId1, taskId2, taskId3])
 
       // Verify original deletedAt is preserved for already-deleted task
       const rawTasks = await db.select().from(tasksTable)
@@ -342,11 +362,12 @@ describe('Tasks DAL', () => {
         item: 'Original item',
         isComplete: 0,
         order: 1,
+        workspaceId: wsId,
       })
 
-      await updateTask(getDb(), taskId, { item: 'Updated item' })
+      await updateTask(getDb(), wsId, taskId, { item: 'Updated item' })
 
-      const tasks = await getIncompleteTasks(getDb())
+      const tasks = await getIncompleteTasks(getDb(), wsId)
       expect(tasks[0]?.item).toBe('Updated item')
     })
 
@@ -359,11 +380,12 @@ describe('Tasks DAL', () => {
         item: 'Task',
         isComplete: 0,
         order: 1,
+        workspaceId: wsId,
       })
 
-      await updateTask(getDb(), taskId, { order: 10 })
+      await updateTask(getDb(), wsId, taskId, { order: 10 })
 
-      const tasks = await getIncompleteTasks(getDb())
+      const tasks = await getIncompleteTasks(getDb(), wsId)
       expect(tasks[0]?.order).toBe(10)
     })
 
@@ -376,16 +398,17 @@ describe('Tasks DAL', () => {
         item: 'Task to complete',
         isComplete: 0,
         order: 1,
+        workspaceId: wsId,
       })
 
       // Verify task is incomplete
-      const tasksBefore = await getIncompleteTasks(getDb())
+      const tasksBefore = await getIncompleteTasks(getDb(), wsId)
       expect(tasksBefore).toHaveLength(1)
 
-      await updateTask(getDb(), taskId, { isComplete: 1 })
+      await updateTask(getDb(), wsId, taskId, { isComplete: 1 })
 
       // Verify task is no longer in incomplete list
-      const tasksAfter = await getIncompleteTasks(getDb())
+      const tasksAfter = await getIncompleteTasks(getDb(), wsId)
       expect(tasksAfter).toHaveLength(0)
     })
 
@@ -398,17 +421,18 @@ describe('Tasks DAL', () => {
         item: 'Original',
         isComplete: 0,
         order: 1,
+        workspaceId: wsId,
       })
 
-      await updateTask(getDb(), taskId, { item: 'Updated', order: 5 })
+      await updateTask(getDb(), wsId, taskId, { item: 'Updated', order: 5 })
 
-      const tasks = await getIncompleteTasks(getDb())
+      const tasks = await getIncompleteTasks(getDb(), wsId)
       expect(tasks[0]?.item).toBe('Updated')
       expect(tasks[0]?.order).toBe(5)
     })
 
     it('should not throw when updating non-existent task', async () => {
-      await expect(updateTask(getDb(), 'non-existent-id', { item: 'test' })).resolves.toBeUndefined()
+      await expect(updateTask(getDb(), wsId, 'non-existent-id', { item: 'test' })).resolves.toBeUndefined()
     })
 
     it('should not update defaultHash field', async () => {
@@ -421,12 +445,13 @@ describe('Tasks DAL', () => {
         isComplete: 0,
         order: 1,
         defaultHash: 'original-hash',
+        workspaceId: wsId,
       })
 
       // Try to update defaultHash (should be ignored)
-      await updateTask(getDb(), taskId, { item: 'Updated', defaultHash: 'new-hash' } as Parameters<
+      await updateTask(getDb(), wsId, taskId, { item: 'Updated', defaultHash: 'new-hash' } as Parameters<
         typeof updateTask
-      >[2])
+      >[3])
 
       // Verify defaultHash was not changed
       const task = await db.select().from(tasksTable).get()
@@ -439,40 +464,85 @@ describe('Tasks DAL', () => {
     it('should create a new task', async () => {
       const taskId = uuidv7()
 
-      await createTask(getDb(), {
+      await createTask(getDb(), wsId, {
         id: taskId,
         item: 'New task',
         order: 1,
         isComplete: 0,
       })
 
-      const tasks = await getIncompleteTasks(getDb())
+      const tasks = await getIncompleteTasks(getDb(), wsId)
       expect(tasks).toHaveLength(1)
       expect(tasks[0]?.id).toBe(taskId)
       expect(tasks[0]?.item).toBe('New task')
     })
 
     it('should create multiple tasks', async () => {
-      await createTask(getDb(), { id: uuidv7(), item: 'Task 1', order: 1, isComplete: 0 })
-      await createTask(getDb(), { id: uuidv7(), item: 'Task 2', order: 2, isComplete: 0 })
+      await createTask(getDb(), wsId, { id: uuidv7(), item: 'Task 1', order: 1, isComplete: 0 })
+      await createTask(getDb(), wsId, { id: uuidv7(), item: 'Task 2', order: 2, isComplete: 0 })
 
-      const tasks = await getIncompleteTasks(getDb())
+      const tasks = await getIncompleteTasks(getDb(), wsId)
       expect(tasks).toHaveLength(2)
     })
 
     it('should create a completed task that is excluded from incomplete tasks', async () => {
-      await createTask(getDb(), {
+      await createTask(getDb(), wsId, {
         id: uuidv7(),
         item: 'Completed task',
         order: 1,
         isComplete: 1,
       })
 
-      const incompleteTasks = await getIncompleteTasks(getDb())
+      const incompleteTasks = await getIncompleteTasks(getDb(), wsId)
       expect(incompleteTasks).toHaveLength(0)
 
-      const result = await getIncompleteTasksCount(getDb()).get()
+      const result = await getIncompleteTasksCount(getDb(), wsId).get()
       expect(result?.count).toBe(0)
+    })
+  })
+
+  describe('workspace isolation', () => {
+    it('should not return tasks from other workspaces', async () => {
+      const db = getDb()
+      const ownId = uuidv7()
+      const otherId = uuidv7()
+
+      await db.insert(tasksTable).values([
+        { id: ownId, item: 'Own task', isComplete: 0, order: 1, workspaceId: wsId },
+        { id: otherId, item: 'Other task', isComplete: 0, order: 2, workspaceId: otherWsId },
+      ])
+
+      const all = await getAllTasks(getDb(), wsId)
+      expect(all).toHaveLength(1)
+      expect(all[0]?.id).toBe(ownId)
+
+      const incomplete = await getIncompleteTasks(getDb(), wsId)
+      expect(incomplete).toHaveLength(1)
+      expect(incomplete[0]?.id).toBe(ownId)
+
+      const count = await getIncompleteTasksCount(getDb(), wsId).get()
+      expect(count?.count).toBe(1)
+    })
+
+    it('should not update or delete tasks from other workspaces', async () => {
+      const db = getDb()
+      const otherId = uuidv7()
+
+      await db.insert(tasksTable).values({
+        id: otherId,
+        item: 'Other task',
+        isComplete: 0,
+        order: 1,
+        workspaceId: otherWsId,
+      })
+
+      // Both should be no-ops.
+      await updateTask(getDb(), wsId, otherId, { item: 'changed' })
+      await deleteTask(getDb(), wsId, otherId)
+
+      const raw = await db.select().from(tasksTable).get()
+      expect(raw?.item).toBe('Other task')
+      expect(raw?.deletedAt).toBeNull()
     })
   })
 })

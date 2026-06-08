@@ -87,7 +87,7 @@ const runBootstrapInternal = async (ctx: BootstrapContext): Promise<void> => {
   // Data migrations sit AFTER reconcileDefaults so any newly-seeded defaults
   // (e.g. the daily-brief skill) are present when a migration checks for slug
   // collisions. The runner swallows per-migration failures so it never throws.
-  await runDataMigrations(db)
+  await runDataMigrations(db, workspace.id)
 }
 
 /**

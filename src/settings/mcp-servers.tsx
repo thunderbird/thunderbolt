@@ -19,14 +19,13 @@ import {
 } from '@/components/ui/responsive-modal'
 import { Switch } from '@/components/ui/switch'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
-import { createMcpServer, deleteMcpServer, getHttpMcpServers } from '@/dal'
+import { createMcpServer, deleteMcpServer, getHttpMcpServers, updateMcpServer } from '@/dal'
 import { useDatabase } from '@/contexts'
-import { mcpServersTable } from '@/db/tables'
 import { useMcpSync } from '@/hooks/use-mcp-sync'
+import { useActiveWorkspaceId } from '@/lib/active-workspace'
 import { type McpServer } from '@/types'
 import { useMutation } from '@tanstack/react-query'
 import { useQuery } from '@powersync/tanstack-react-query'
-import { eq } from 'drizzle-orm'
 import { Check, Copy, Globe, Plus, Server, Trash2, X } from 'lucide-react'
 import { useEffect, useRef, useState, type KeyboardEvent } from 'react'
 import { v7 as uuidv7 } from 'uuid'
@@ -40,6 +39,7 @@ type ServerTools = {
 
 export default function McpServersPage() {
   const db = useDatabase()
+  const workspaceId = useActiveWorkspaceId()
   const { servers: mcpServers } = useMcpSync()
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false)
   const [newServerUrl, setNewServerUrl] = useState('')
@@ -55,8 +55,9 @@ export default function McpServersPage() {
 
   // TODO: Add support for stdio servers
   const { data: servers = [] } = useQuery({
-    queryKey: ['mcp-servers'],
-    query: toCompilableQuery(getHttpMcpServers(db)),
+    queryKey: ['mcp-servers', 'http', workspaceId],
+    query: toCompilableQuery(getHttpMcpServers(db, workspaceId ?? '')),
+    enabled: !!workspaceId,
   })
 
   // Fetch tools for connected servers
@@ -104,16 +105,22 @@ export default function McpServersPage() {
 
   const toggleServerMutation = useMutation({
     mutationFn: async ({ id, enabled }: { id: string; enabled: boolean }) => {
-      await db
-        .update(mcpServersTable)
-        .set({ enabled: enabled ? 1 : 0, updatedAt: new Date().toISOString() })
-        .where(eq(mcpServersTable.id, id))
+      if (!workspaceId) {
+        throw new Error('No active workspace')
+      }
+      await updateMcpServer(db, workspaceId, id, {
+        enabled: enabled ? 1 : 0,
+        updatedAt: new Date().toISOString(),
+      })
     },
   })
 
   const addServerMutation = useMutation({
     mutationFn: async ({ name, url }: { name: string; url: string }) => {
-      await createMcpServer(db, {
+      if (!workspaceId) {
+        throw new Error('No active workspace')
+      }
+      await createMcpServer(db, workspaceId, {
         id: uuidv7(),
         name,
         url,
@@ -129,7 +136,12 @@ export default function McpServersPage() {
   })
 
   const deleteServerMutation = useMutation({
-    mutationFn: (id: string) => deleteMcpServer(db, id),
+    mutationFn: (id: string) => {
+      if (!workspaceId) {
+        throw new Error('No active workspace')
+      }
+      return deleteMcpServer(db, workspaceId, id)
+    },
     onSuccess: () => {
       setDeleteConfirmOpen(null)
     },

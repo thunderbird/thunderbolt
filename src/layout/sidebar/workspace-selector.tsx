@@ -4,12 +4,14 @@
 
 import { SearchableMenu, type SearchableMenuGroup, type SearchableMenuItem } from '@/components/ui/searchable-menu'
 import { useWorkspacesQuery, type Workspace } from '@/dal'
+import { useCanCreateWorkspace } from '@/hooks/use-can-create-workspace'
 import { useIsMobile } from '@/hooks/use-mobile'
 import { stripWorkspacePrefix, toWorkspaceUrl, useActiveWorkspace } from '@/lib/active-workspace'
 import { cn } from '@/lib/utils'
-import { ChevronsUpDown } from 'lucide-react'
-import { useMemo } from 'react'
+import { ChevronsUpDown, Plus } from 'lucide-react'
+import { useMemo, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router'
+import { CreateWorkspaceModal } from './create-workspace-modal'
 
 const initialOf = (name: string): string => {
   const trimmed = name.trim()
@@ -84,6 +86,8 @@ export const WorkspaceSelector = ({ collapsed = false }: WorkspaceSelectorProps)
   const active = useActiveWorkspace()
   const navigate = useNavigate()
   const location = useLocation()
+  const canCreate = useCanCreateWorkspace()
+  const [createOpen, setCreateOpen] = useState(false)
 
   const groupedItems = useMemo(() => groupWorkspaces(workspaces), [workspaces])
 
@@ -155,19 +159,37 @@ export const WorkspaceSelector = ({ collapsed = false }: WorkspaceSelectorProps)
     )
   }
 
+  const footer = canCreate ? (
+    <button
+      type="button"
+      onClick={() => setCreateOpen(true)}
+      className={cn(
+        'flex w-full items-center gap-2 rounded-md px-2 py-2 text-left text-[length:var(--font-size-body)]',
+        'cursor-pointer transition-colors hover:bg-accent/50',
+      )}
+    >
+      <Plus className="size-[var(--icon-size-default)] text-muted-foreground" />
+      <span className="font-medium">Create workspace</span>
+    </button>
+  ) : undefined
+
   return (
-    <SearchableMenu<WorkspaceItemData>
-      items={groupedItems}
-      value={active.id}
-      onValueChange={handleChange}
-      searchable={false}
-      blurBackdrop
-      side={isMobile ? 'top' : 'bottom'}
-      align="start"
-      trigger={renderTrigger}
-      renderItem={renderItem}
-      width={280}
-      maxHeight={400}
-    />
+    <>
+      <SearchableMenu<WorkspaceItemData>
+        items={groupedItems}
+        value={active.id}
+        onValueChange={handleChange}
+        searchable={false}
+        blurBackdrop
+        side={isMobile ? 'top' : 'bottom'}
+        align="start"
+        trigger={renderTrigger}
+        renderItem={renderItem}
+        width={280}
+        maxHeight={400}
+        footer={footer}
+      />
+      <CreateWorkspaceModal open={createOpen} onOpenChange={setCreateOpen} />
+    </>
   )
 }

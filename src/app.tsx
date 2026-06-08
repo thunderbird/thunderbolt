@@ -37,6 +37,7 @@ import { useMcpSync } from '@/hooks/use-mcp-sync'
 import { PostHogProvider } from '@/lib/posthog'
 import { ThemeProvider } from '@/lib/theme-provider'
 import { AppErrorScreen } from './components/app-error-screen'
+import { ModePicker } from './components/boot/mode-picker'
 import { AuthGate } from './components/auth-gate'
 import { WorkspaceGate } from './components/workspace-gate'
 import { OnboardingDialog } from './components/onboarding/onboarding-dialog'
@@ -229,6 +230,10 @@ export const App = () => {
   }, [])
 
   const renderAppContent = () => {
+    if (initError?.code === 'NO_TRUST_DOMAIN') {
+      return <ModePicker />
+    }
+
     if (initError) {
       return <AppErrorScreen error={initError} isClearingDatabase={isInitializing} onClearDatabase={clearDatabase} />
     }

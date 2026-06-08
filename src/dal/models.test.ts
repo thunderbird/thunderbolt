@@ -1018,6 +1018,7 @@ describe('Models DAL', () => {
 
       await db.insert(modelsTable).values({
         ...defaultModel,
+        workspaceId: wsId,
         name: 'User Edited Name',
         enabled: 0,
         defaultHash: 'stale-from-an-older-era',
@@ -1026,7 +1027,7 @@ describe('Models DAL', () => {
       const before = (await db.select().from(modelsTable).where(eq(modelsTable.id, defaultModel.id)).get()) as Model
       expect(isModelModified(before)).toBe(true)
 
-      await resetModelToDefault(getDb(), defaultModel.id, defaultModel)
+      await resetModelToDefault(getDb(), wsId, defaultModel.id, defaultModel)
 
       const after = (await db.select().from(modelsTable).where(eq(modelsTable.id, defaultModel.id)).get()) as Model
       expect(after.name).toBe(defaultModel.name)
@@ -1039,10 +1040,10 @@ describe('Models DAL', () => {
       const db = getDb()
       const defaultModel = defaultModelGptOss120b
 
-      await db.insert(modelsTable).values({ ...defaultModel })
+      await db.insert(modelsTable).values({ ...defaultModel, workspaceId: wsId })
       await db.insert(modelsSecretsTable).values({ modelId: defaultModel.id, apiKey: 'sk-user-supplied' })
 
-      await resetModelToDefault(getDb(), defaultModel.id, defaultModel)
+      await resetModelToDefault(getDb(), wsId, defaultModel.id, defaultModel)
 
       const secret = await db
         .select()
@@ -1060,9 +1061,9 @@ describe('Models DAL', () => {
       // been synced has a real user_id — reset must not overwrite it, otherwise
       // PowerSync queues a `{ user_id: null }` PATCH that the upload handler
       // rejects (it strips user_id, leaving an empty payload → 400).
-      await db.insert(modelsTable).values({ ...defaultModel, userId: 'real-user-id' })
+      await db.insert(modelsTable).values({ ...defaultModel, workspaceId: wsId, userId: 'real-user-id' })
 
-      await resetModelToDefault(getDb(), defaultModel.id, defaultModel)
+      await resetModelToDefault(getDb(), wsId, defaultModel.id, defaultModel)
 
       const after = (await db.select().from(modelsTable).where(eq(modelsTable.id, defaultModel.id)).get()) as Model
       expect(after.userId).toBe('real-user-id')

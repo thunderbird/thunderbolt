@@ -359,7 +359,7 @@ describe('Prompts DAL', () => {
         .set({ defaultHash: 'stale-from-an-older-era' })
         .where(eq(promptsTable.id, defaultAutomation.id))
 
-      await resetAutomationToDefault(getDb(), defaultAutomation.id, defaultAutomation)
+      await resetAutomationToDefault(getDb(), wsId, defaultAutomation.id, defaultAutomation)
 
       const automation = (await db
         .select()
@@ -379,7 +379,7 @@ describe('Prompts DAL', () => {
       // `{ user_id: null }` PATCH that the upload handler rejects.
       await db.update(promptsTable).set({ userId: 'real-user-id' }).where(eq(promptsTable.id, defaultAutomation.id))
 
-      await resetAutomationToDefault(getDb(), defaultAutomation.id, defaultAutomation)
+      await resetAutomationToDefault(getDb(), wsId, defaultAutomation.id, defaultAutomation)
 
       const automation = (await db
         .select()

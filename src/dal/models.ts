@@ -207,7 +207,7 @@ export const resetModelToDefault = async (
   await db.transaction(async (tx) => {
     await tx
       .update(modelsTable)
-      .set(defaultFields)
+      .set({ ...defaultFields, defaultHash: hashModel(defaultModel) })
       .where(and(eq(modelsTable.id, id), eq(modelsTable.workspaceId, workspaceId)))
     await tx.delete(modelsSecretsTable).where(eq(modelsSecretsTable.modelId, id))
   })

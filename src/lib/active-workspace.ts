@@ -14,8 +14,14 @@ import { useQuery } from '@powersync/tanstack-react-query'
  * `/w/<workspaceId>/...`. PR 3 introduces this routing; today no route uses
  * the `/w/...` prefix, so this is effectively a no-op feature flag — when the
  * routes land, this picks them up without further changes.
+ *
+ * Accepts `undefined` because happy-dom's `Location.pathname` is non-enumerable
+ * so spread-based `window.location` mocks in tests don't carry it through.
  */
-const matchWorkspaceIdInPath = (pathname: string): string | null => {
+const matchWorkspaceIdInPath = (pathname: string | undefined): string | null => {
+  if (!pathname) {
+    return null
+  }
   const match = pathname.match(/^\/w\/([^/]+)/)
   return match?.[1] ?? null
 }
@@ -36,7 +42,7 @@ const matchWorkspaceIdInPath = (pathname: string): string | null => {
  * single-row `SELECT` on an indexed column — <1ms locally.
  */
 export const getActiveWorkspaceId = async (db: AnyDrizzleDatabase): Promise<string | null> => {
-  const fromUrl = matchWorkspaceIdInPath(window.location.pathname ?? '')
+  const fromUrl = matchWorkspaceIdInPath(window.location.pathname)
   if (fromUrl) {
     return fromUrl
   }

@@ -3,7 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { useDatabase, useHttpClient } from '@/contexts'
-import { useActiveWorkspaceId } from '@/lib/active-workspace'
+import { getActiveWorkspaceId, useActiveWorkspaceId } from '@/lib/active-workspace'
 import { useProxyFetchGetter } from '@/lib/proxy-fetch-context'
 import {
   composeAllAgents,
@@ -48,7 +48,7 @@ export const useHydrateChatStore = ({ id, isNew }: UseHydrateChatStoreParams) =>
 
   const { getEnabledClients } = useMCP()
 
-  const updateThreadTitle = async (messages: ThunderboltUIMessage[], threadId: string) => {
+  const updateThreadTitle = async (messages: ThunderboltUIMessage[], threadId: string, workspaceId: string) => {
     const firstUserMessage = messages.find((msg) => msg.role === 'user')
     if (!firstUserMessage) {
       return
@@ -64,13 +64,16 @@ export const useHydrateChatStore = ({ id, isNew }: UseHydrateChatStoreParams) =>
     }
 
     const title = await generateTitle(textContent)
-    if (!workspaceId) {
-      throw new Error('No active workspace')
-    }
     await updateChatThread(db, workspaceId, threadId, { title })
   }
 
   const saveMessages: SaveMessagesFunction = async ({ id, messages }) => {
+    // Resolve workspaceId at call time rather than relying on the hook's
+    // closure-captured value, which may be stale on the first render before
+    // `useActiveWorkspaceId`'s React Query has resolved. The async getter
+    // reads the trust-domain registry + DB synchronously w.r.t. React's
+    // render lifecycle, so it's deterministic in tests.
+    const workspaceId = await getActiveWorkspaceId(db)
     if (!workspaceId) {
       throw new Error('No active workspace')
     }
@@ -93,7 +96,7 @@ export const useHydrateChatStore = ({ id, isNew }: UseHydrateChatStoreParams) =>
 
     // Generate title in background if needed
     if (thread?.title === 'New Chat') {
-      updateThreadTitle(messages, id)
+      updateThreadTitle(messages, id, workspaceId)
     }
 
     if (!session.chatThread) {
@@ -103,9 +106,13 @@ export const useHydrateChatStore = ({ id, isNew }: UseHydrateChatStoreParams) =>
   }
 
   const hydrateChatStore = async () => {
-    // WorkspaceGate passes before SessionToRegistryMirror's useEffect fires, so
-    // workspaceId can briefly be null on the first render. Return early — the
-    // caller includes workspaceId in its useEffect deps so it retries on resolve.
+    // Resolve workspaceId at call time rather than relying on the hook's
+    // closure-captured value. `useActiveWorkspaceId` may briefly return null
+    // on the first render (race between WorkspaceGate and React Query's
+    // resolution). The async getter reads the trust-domain registry + DB
+    // directly, so it's deterministic regardless of React render timing —
+    // which also means tests don't need to flush React Query before calling.
+    const workspaceId = await getActiveWorkspaceId(db)
     if (!workspaceId) {
       return
     }

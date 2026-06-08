@@ -145,7 +145,7 @@ describe('agents DAL', () => {
     })
 
     it('disposes the warm ACP connection when the wire identity (url) changes', async () => {
-      await createAgent(getDb(), {
+      await createAgent(getDb(), wsId, {
         id: 'a-url',
         name: 'Wired',
         type: 'remote-acp',
@@ -155,13 +155,13 @@ describe('agents DAL', () => {
       })
       const cached = await seedCachedAdapter('a-url')
 
-      await updateAgent(getDb(), 'a-url', { url: 'wss://new/ws' })
+      await updateAgent(getDb(), wsId, 'a-url', { url: 'wss://new/ws' })
 
       expect(cached.disconnectCount()).toBe(1)
     })
 
     it('does NOT dispose the connection on a non-wire patch (rename only)', async () => {
-      await createAgent(getDb(), {
+      await createAgent(getDb(), wsId, {
         id: 'a-name',
         name: 'Before',
         type: 'remote-acp',
@@ -171,7 +171,7 @@ describe('agents DAL', () => {
       })
       const cached = await seedCachedAdapter('a-name')
 
-      await updateAgent(getDb(), 'a-name', { name: 'After' })
+      await updateAgent(getDb(), wsId, 'a-name', { name: 'After' })
 
       expect(cached.disconnectCount()).toBe(0)
     })
@@ -200,7 +200,7 @@ describe('agents DAL', () => {
     })
 
     it('disposes the agent warm ACP connection on delete', async () => {
-      await createAgent(getDb(), {
+      await createAgent(getDb(), wsId, {
         id: 'a-disp',
         name: 'Doomed',
         type: 'remote-acp',
@@ -210,7 +210,7 @@ describe('agents DAL', () => {
       })
       const cached = await seedCachedAdapter('a-disp')
 
-      await deleteAgent(getDb(), 'a-disp')
+      await deleteAgent(getDb(), wsId, 'a-disp')
 
       expect(cached.disconnectCount()).toBe(1)
     })

@@ -4,6 +4,7 @@
 
 import { setupTestDatabase, teardownTestDatabase, resetTestDatabase, wsId } from '@/dal/test-utils'
 import { getCurrentSession, resetStore } from '@/test-utils/chat-store-mocks'
+import { resetTestTrustDomain, seedTestTrustDomain } from '@/test-utils/powersync-reactivity-test'
 import { createQueryTestWrapper } from '@/test-utils/react-query'
 import { act, cleanup, renderHook } from '@testing-library/react'
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'bun:test'
@@ -154,6 +155,10 @@ describe('useHydrateChatStore', () => {
   })
 
   beforeEach(async () => {
+    // Seed the trust-domain registry with a standalone user so `useActiveWorkspaceId`
+    // resolves to `wsId` (the personal workspace seeded by setupTestDatabase). The
+    // hook early-returns null without this, so hydrateChatStore would no-op.
+    seedTestTrustDomain()
     // Reset store state before each test
     resetStore()
     await resetTestDatabase()
@@ -167,6 +172,7 @@ describe('useHydrateChatStore', () => {
     cleanup()
     // Reset store state after each test
     resetStore()
+    resetTestTrustDomain()
     await resetTestDatabase()
   })
 
@@ -311,7 +317,7 @@ describe('useHydrateChatStore', () => {
       // A new chat has no `chat_threads` row, so the agent resolves from the
       // global `selected_agent` setting (the user's last pick). It must win over
       // `allAgents[0]`, which is always the built-in.
-      await createAgent(getDb(), {
+      await createAgent(getDb(), wsId, {
         id: 'custom-last-used',
         name: 'Last Used Agent',
         type: 'remote-acp',

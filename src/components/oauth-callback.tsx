@@ -15,6 +15,10 @@ export default function OAuthCallback() {
     const params = new URLSearchParams(window.location.search)
     const code = params.get('code')
     const state = params.get('state')
+    // RFC 9207 issuer identifier — forwarded for MCP OAuth callbacks that must
+    // validate it against the discovered authorization server. Harmless for the
+    // integrations flow, which ignores it.
+    const iss = params.get('iss')
     const error = params.get('error')
     const errorDescription = params.get('error_description')
 
@@ -54,19 +58,19 @@ export default function OAuthCallback() {
         if (returnContext?.startsWith('/') && !returnContext.startsWith('//')) {
           navigate(returnContext, {
             state: {
-              oauth: { code, state, error: errorDescription || error },
+              oauth: { code, state, iss, error: errorDescription || error },
             },
           })
         } else if (returnContext === 'onboarding') {
           navigate('/chats/new', {
             state: {
-              oauth: { code, state, error: errorDescription || error },
+              oauth: { code, state, iss, error: errorDescription || error },
             },
           })
         } else {
           navigate('/settings/integrations', {
             state: {
-              oauth: { code, state, error: errorDescription || error },
+              oauth: { code, state, iss, error: errorDescription || error },
             },
           })
         }

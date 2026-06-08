@@ -9,7 +9,6 @@
  * Add it to bunfig.toml preload array to ensure it runs first.
  */
 import { afterAll } from 'bun:test'
-import './wd' // DIAGNOSTIC (ci-hang-watchdog): hard-hang watchdog. Remove before merge.
 import { closeSharedIsolatedTestDb, testDbManager } from './db'
 
 // Tests use PGlite (in-memory). The dev-env PR flipped the default driver from

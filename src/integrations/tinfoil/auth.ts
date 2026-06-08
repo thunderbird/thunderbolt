@@ -9,16 +9,9 @@ import type { AuthProviderBackendConfig } from '@/types'
 import type { TinfoilUserInfo } from './types'
 
 /**
- * Tinfoil OAuth 2.1 public client (PKCE, no secret). The user links their
- * Tinfoil subscription and the app receives a short-lived signed access token
- * it forwards — unparsed — to the Tinfoil enclave, which verifies it locally.
- *
- * `inference:api` authorizes the inference API; `offline_access` is required to
- * receive a (rotating) refresh token so the ~15-minute access token can be
- * refreshed silently.
+ * Tinfoil OAuth 2.1 public client (PKCE, no secret): the app forwards the
+ * short-lived access token, unparsed, to the attested Tinfoil enclave.
  */
-const tinfoilScope = 'inference:api offline_access'
-const tinfoilAuthorizeUrl = 'https://dash.tinfoil.sh/oauth/authorize'
 
 let cachedConfig: AuthProviderBackendConfig | null = null
 
@@ -46,7 +39,7 @@ export const getOAuthConfig = async (httpClient: HttpClient): Promise<OAuthConfi
     clientId,
     configured,
     redirectUri,
-    scope: tinfoilScope,
+    scope: 'inference:api offline_access',
   }
 }
 
@@ -61,7 +54,7 @@ export const buildAuthUrl = async (
     // Public client — the only thing that can be missing is the client_id.
     throw new MisconfiguredOAuthError('tinfoil', 'both')
   }
-  const authUrl = new URL(tinfoilAuthorizeUrl)
+  const authUrl = new URL('https://dash.tinfoil.sh/oauth/authorize')
   authUrl.searchParams.set('response_type', 'code')
   authUrl.searchParams.set('client_id', config.clientId)
   authUrl.searchParams.set('redirect_uri', redirectUri ?? config.redirectUri)
@@ -86,13 +79,7 @@ export const exchangeCodeForTokens = async (
     .json<OAuthTokens>()
 }
 
-/**
- * Tinfoil's `inference:api` scope exposes no userinfo endpoint, and the access
- * token is an opaque bearer the client must not parse. So unlike Google/Microsoft
- * there is no profile to fetch — we surface a static identity for the connection
- * card. (The connection itself is the proof of an active Tinfoil subscription;
- * Tinfoil's authorization server refuses to issue a token without one.)
- */
+/** No userinfo endpoint for Tinfoil — return a static identity (see {@link TinfoilUserInfo}). */
 export const getUserInfo = async (_accessToken: string): Promise<TinfoilUserInfo> => {
   return {
     id: 'tinfoil',
@@ -108,8 +95,16 @@ export const refreshAccessToken = async (httpClient: HttpClient, refreshToken: s
 
 /**
  * Revoke the Tinfoil token family (RFC 7009) on disconnect. Best-effort — the
- * caller still clears local credentials even if this fails.
+ * caller still clears local credentials even if this throws. The backend always
+ * answers 200 and reports the real outcome in `{ revoked }` (false means the
+ * client_id is misconfigured or the control plane was unreachable), so a false
+ * flag is thrown rather than silently passed as success.
  */
 export const revokeTokens = async (httpClient: HttpClient, refreshToken: string): Promise<void> => {
-  await httpClient.post('auth/tinfoil/revoke', { json: { refresh_token: refreshToken } })
+  const { revoked } = await httpClient
+    .post('auth/tinfoil/revoke', { json: { refresh_token: refreshToken } })
+    .json<{ revoked: boolean }>()
+  if (!revoked) {
+    throw new Error('Tinfoil token revocation was not confirmed by the server')
+  }
 }

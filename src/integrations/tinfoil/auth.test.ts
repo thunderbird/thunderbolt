@@ -5,7 +5,7 @@
 import { MisconfiguredOAuthError } from '@/lib/auth'
 import { createClient, type HttpClient } from '@/lib/http'
 import { beforeEach, describe, expect, it } from 'bun:test'
-import { buildAuthUrl, getUserInfo, resetBackendConfigCacheForTests } from './auth'
+import { buildAuthUrl, getUserInfo, resetBackendConfigCacheForTests, revokeTokens } from './auth'
 
 const createMockHttpClient = (responses: unknown[]): { client: HttpClient; callCount: () => number } => {
   let callCount = 0
@@ -79,5 +79,20 @@ describe('Tinfoil getUserInfo', () => {
     const info = await getUserInfo('any-token')
     expect(info.name).toBe('Tinfoil')
     expect(info.id).toBe('tinfoil')
+  })
+})
+
+describe('Tinfoil revokeTokens', () => {
+  it('resolves when the backend confirms revocation', async () => {
+    const { client } = createMockHttpClient([{ revoked: true }])
+    const result = await revokeTokens(client, 'rt').catch((e) => e)
+    expect(result).toBeUndefined()
+  })
+
+  it('throws when the backend returns 200 but { revoked: false } (not actually revoked)', async () => {
+    const { client } = createMockHttpClient([{ revoked: false }])
+    const err = await revokeTokens(client, 'rt').catch((e) => e)
+    expect(err).toBeInstanceOf(Error)
+    expect(err.message).toContain('was not confirmed')
   })
 })

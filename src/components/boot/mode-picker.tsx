@@ -71,9 +71,11 @@ const normalizeBaseUrl = (url: string): string => {
   return s
 }
 
-type ValidationResult = { ok: true; serverId: string; cloudUrl: string } | { ok: false; message: string }
+export type ValidationResult = { ok: true; serverId: string; cloudUrl: string } | { ok: false; message: string }
 
-const validateServerUrl = async (userUrl: string): Promise<ValidationResult> => {
+export type ValidateServerUrlFn = (userUrl: string) => Promise<ValidationResult>
+
+export const validateServerUrl: ValidateServerUrlFn = async (userUrl) => {
   const base = normalizeBaseUrl(userUrl)
   const client = createClient({ prefixUrl: `${base}/v1` })
   try {
@@ -89,7 +91,17 @@ const validateServerUrl = async (userUrl: string): Promise<ValidationResult> => 
   }
 }
 
-export const ModePicker = () => {
+type ModePickerProps = {
+  /**
+   * Server URL validator. Optional override for tests — defaults to the real
+   * `validateServerUrl` which hits `GET <url>/v1/config`. Tests pass a mock
+   * here instead of `mock.module('@/lib/http', ...)` so the global module
+   * stays intact for other test files.
+   */
+  validate?: ValidateServerUrlFn
+}
+
+export const ModePicker = ({ validate = validateServerUrl }: ModePickerProps = {}) => {
   const [state, dispatch] = useReducer(reducer, initialState)
 
   const isServerMode = state.selection === 'server'
@@ -109,7 +121,7 @@ export const ModePicker = () => {
       return
     }
     dispatch({ type: 'VALIDATE_START' })
-    const result = await validateServerUrl(state.serverUrl)
+    const result = await validate(state.serverUrl)
     dispatch(result.ok ? { type: 'VALIDATE_SUCCESS' } : { type: 'VALIDATE_ERROR', message: result.message })
   }
 
@@ -122,7 +134,7 @@ export const ModePicker = () => {
 
     if (state.selection === 'server') {
       dispatch({ type: 'CONNECT' })
-      const result = await validateServerUrl(state.serverUrl)
+      const result = await validate(state.serverUrl)
       if (!result.ok) {
         dispatch({ type: 'VALIDATE_ERROR', message: result.message })
         return

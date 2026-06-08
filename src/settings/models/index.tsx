@@ -35,6 +35,7 @@ import { StatusCard } from '@/components/ui/status-card'
 import { Switch } from '@/components/ui/switch'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 import { useDatabase } from '@/contexts'
+import { useIntegrationStatus } from '@/hooks/use-integration-status'
 import { createModel as createModelDAL, deleteModel, getAllModels, resetModelToDefault, updateModel } from '@/dal'
 import { defaultModels } from '@/defaults/models'
 import { isModelModified } from '@/defaults/utils'
@@ -50,6 +51,7 @@ import { http } from '@/lib/http'
 import { AlertTriangle, Check, Cpu, Loader2, Lock, Pen, Plus, Trash2, X } from 'lucide-react'
 import { useEffect, useMemo, useReducer, useRef, useState, type KeyboardEvent } from 'react'
 import { useForm } from 'react-hook-form'
+import { useNavigate } from 'react-router'
 import { v7 as uuidv7 } from 'uuid'
 import { z } from 'zod'
 
@@ -345,7 +347,14 @@ const EditModelModal = ({
 
 export default function ModelsPage() {
   const db = useDatabase()
+  const navigate = useNavigate()
   const getProxyFetch = useProxyFetchGetter()
+  const { data: integrationStatusData } = useIntegrationStatus()
+  const tinfoilConnected = Boolean(integrationStatusData?.tinfoilConnected)
+  // A Tinfoil model is served on the user's own plan only when the OAuth
+  // integration is both connected and left enabled — mirroring the condition
+  // `src/ai/fetch.ts` uses before routing to the direct, plan-billed path.
+  const tinfoilPlanActive = Boolean(integrationStatusData?.tinfoilConnected && integrationStatusData?.tinfoilEnabled)
   const [state, dispatch] = useReducer(modelReducer, initialState)
   const [editingModel, setEditingModel] = useState<Model | null>(null)
   const {
@@ -1259,6 +1268,25 @@ export default function ModelsPage() {
                     )}
                     {model.provider === 'thunderbolt' && (
                       <div className="text-sm text-muted-foreground">Uses Thunderbolt cloud service</div>
+                    )}
+                    {model.provider === 'tinfoil' && model.isSystem === 1 && (
+                      <div className="text-sm text-muted-foreground">
+                        {tinfoilPlanActive ? (
+                          'Powered by your connected Tinfoil plan.'
+                        ) : (
+                          <>
+                            Runs on the managed Tinfoil service.{' '}
+                            <button
+                              type="button"
+                              onClick={() => navigate('/settings/integrations')}
+                              className="text-foreground underline underline-offset-2 hover:no-underline"
+                            >
+                              {tinfoilConnected ? 'Enable Tinfoil' : 'Connect Tinfoil'}
+                            </button>{' '}
+                            to power it with your plan.
+                          </>
+                        )}
+                      </div>
                     )}
                   </div>
                 </CardContent>

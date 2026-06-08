@@ -16,7 +16,9 @@ import { configs as proToolConfigs } from '@/integrations/thunderbolt-pro/tools'
 import { getProStatus } from '@/integrations/thunderbolt-pro/utils'
 import { getOAuthCredentials } from '@/integrations/oauth-credentials'
 import { revokeTokens as revokeTinfoilTokens } from '@/integrations/tinfoil/auth'
+import { tinfoilManageSubscriptionUrl } from '@/integrations/tinfoil/constants'
 import { type OAuthProvider } from '@/lib/auth'
+import { openExternalUrl } from '@/lib/open-external-url'
 import { useDatabase, useHttpClient } from '@/contexts'
 import { deleteIntegrationCredentials, setIntegrationEnabled, updateSettings } from '@/dal'
 import { useIntegrationStatus } from '@/hooks/use-integration-status'
@@ -35,6 +37,25 @@ type Integration = {
   isEnabled: boolean
   isConnected: boolean
   userEmail?: string
+  /** Optional one-line subtitle under the card title (e.g. plan framing). */
+  description?: string
+  /** When set, a "Manage subscription" outbound link is shown once connected. */
+  manageSubscriptionUrl?: string
+}
+
+/**
+ * Subtitle for the Tinfoil card. Mirrors the plan gate in `src/ai/fetch.ts`
+ * (direct, plan-billed path requires the integration connected AND enabled) and
+ * the models page, so the three surfaces never disagree about who's paying.
+ */
+const tinfoilCardDescription = (connected: boolean, enabled: boolean): string => {
+  if (!connected) {
+    return 'Power Tinfoil’s confidential models with your own plan. Connecting walks you through subscribing.'
+  }
+  if (enabled) {
+    return 'Connected — Tinfoil models run on your plan.'
+  }
+  return 'Connected, but disabled — Tinfoil models use the managed service until you re-enable.'
 }
 
 const ThunderboltProIcon = () => (
@@ -106,10 +127,15 @@ export default function IntegrationsPage() {
         name: 'Tinfoil',
         provider: 'tinfoil',
         connectLabel: 'Connect Tinfoil',
+        description: tinfoilCardDescription(
+          integrationStatusData?.tinfoilConnected ?? false,
+          integrationStatusData?.tinfoilEnabled ?? false,
+        ),
         icon: <TinfoilIcon />,
         isEnabled: integrationStatusData?.tinfoilEnabled ?? false,
         isConnected: integrationStatusData?.tinfoilConnected ?? false,
         userEmail: integrationStatusData?.tinfoilEmail || undefined,
+        manageSubscriptionUrl: tinfoilManageSubscriptionUrl,
       },
     ]
   }, [integrationSettings.integrationsProIsEnabled.value, integrationStatusData, proStatus?.isProUser])
@@ -211,11 +237,14 @@ export default function IntegrationsPage() {
         {integrations.map((integration) => (
           <Card key={integration.id} className="border border-border">
             <CardHeader className="grid grid-cols-[1fr_auto] items-center gap-x-4 gap-y-0 py-2">
-              <div className="flex items-center gap-2">
-                {integration.icon}
-                <CardTitle className="text-base">
-                  {integration.isConnected && integration.userEmail ? integration.userEmail : integration.name}
-                </CardTitle>
+              <div className="flex flex-col gap-1 min-w-0">
+                <div className="flex items-center gap-2">
+                  {integration.icon}
+                  <CardTitle className="text-base">
+                    {integration.isConnected && integration.userEmail ? integration.userEmail : integration.name}
+                  </CardTitle>
+                </div>
+                {integration.description && <p className="text-sm text-muted-foreground">{integration.description}</p>}
               </div>
 
               <CardAction className="flex items-center gap-2">
@@ -291,7 +320,16 @@ export default function IntegrationsPage() {
             )}
 
             {integration.isConnected && integration.provider !== 'thunderbolt-pro' && (
-              <CardFooter>
+              <CardFooter className="gap-2">
+                {integration.manageSubscriptionUrl && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => void openExternalUrl(integration.manageSubscriptionUrl!)}
+                  >
+                    Manage subscription
+                  </Button>
+                )}
                 <Button variant="outline" size="sm" onClick={() => handleDisconnect(integration)} className="ml-auto">
                   Disconnect
                 </Button>

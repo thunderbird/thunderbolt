@@ -21,7 +21,7 @@ Variables marked **required** must be set before the backend will start.
 | `GOOGLE_CLIENT_SECRET`    | —                          |          | Google OAuth client secret                                                                  |
 | `MICROSOFT_CLIENT_ID`     | —                          |          | Microsoft OAuth client ID                                                                   |
 | `MICROSOFT_CLIENT_SECRET` | —                          |          | Microsoft OAuth client secret                                                               |
-| `TINFOIL_CLIENT_ID`       | —                          |          | Tinfoil OAuth client ID (public PKCE client, no secret)                                       |
+| `TINFOIL_CLIENT_ID`       | —                          |          | Tinfoil OAuth client ID (public PKCE client, no secret). Use a `product=thunderbolt` client for the Thunderbolt SKU (Thunderbolt-subscription gating + in-flow subscribe + `product:"thunderbolt"` JWT claim); a chat-product client gates on a Tinfoil Chat subscription. |
 | `OIDC_ISSUER`             | —                          |          | OIDC issuer URL (required when `AUTH_MODE=oidc`)                                            |
 | `OIDC_DISCOVERY_URL`      | `${OIDC_ISSUER}/.well-known/openid-configuration` |          | Optional override for the OIDC discovery endpoint. Use when backend reaches the IdP at an internal hostname (e.g. `http://keycloak:8080/...`) but tokens are issued with a browser-facing hostname |
 | `OIDC_CLIENT_ID`          | —                          |          | OIDC client ID                                                                              |

@@ -233,8 +233,13 @@ export const createModel = async (modelConfig: Model, getProxyFetch: () => Fetch
           } catch (err) {
             // The OAuth token couldn't be refreshed — e.g. the Tinfoil
             // subscription lapsed or the refresh-token family was revoked.
-            // Don't break the built-in model: fall through to the
-            // backend-proxied managed path so it keeps working.
+            //
+            // Thunderbolt-SKU decision: keep the managed fallback rather than
+            // gating. Built-in Tinfoil models always work; connecting a plan
+            // changes who pays (and usage attribution via the OAuth client_id),
+            // not whether the model is reachable. Connection/subscription state
+            // is surfaced in Settings (Integrations + Models) instead of failing
+            // the request here.
             console.warn('Tinfoil OAuth token unavailable; falling back to the managed path', err)
           }
         }

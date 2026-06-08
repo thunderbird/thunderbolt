@@ -155,6 +155,14 @@ export default function McpServersPage() {
   const addServerMutation = useMutation({
     mutationFn: async ({ name, url }: { name: string; url: string }) => {
       const id = uuidv7()
+      // Persist credentials BEFORE the server row. useMcpSync reacts to the new
+      // mcp_servers row and the provider connects by reading credentials from the
+      // DB at connect time — if the token isn't stored yet the first connect is
+      // unauthenticated and nothing reconnects it. Writing the secret first
+      // (keyed by the same id) guarantees the connect sees the token.
+      if (newServerToken) {
+        await setMcpServerCredentials(db, id, { type: 'bearer', token: newServerToken })
+      }
       await createMcpServer(db, {
         id,
         name,
@@ -162,9 +170,6 @@ export default function McpServersPage() {
         type: newServerTransport,
         enabled: 1,
       })
-      if (newServerToken) {
-        await setMcpServerCredentials(db, id, { type: 'bearer', token: newServerToken })
-      }
     },
     onSuccess: () => {
       setIsAddDialogOpen(false)

@@ -29,6 +29,7 @@ import { convertDbChatMessageToUIMessage } from '@/lib/utils'
 import type { SaveMessagesFunction, ThunderboltUIMessage } from '@/types'
 import { useState } from 'react'
 import { useNavigate } from 'react-router'
+import { useWorkspaceNavigate } from '@/lib/active-workspace'
 import { useChatStore } from './chat-store'
 import { createChatInstance } from './chat-instance'
 
@@ -43,6 +44,7 @@ export const useHydrateChatStore = ({ id, isNew }: UseHydrateChatStoreParams) =>
   const httpClient = useHttpClient()
   const getProxyFetch = useProxyFetchGetter()
   const navigate = useNavigate()
+  const workspaceNavigate = useWorkspaceNavigate()
 
   const [isReady, setIsReady] = useState(false)
 
@@ -101,7 +103,7 @@ export const useHydrateChatStore = ({ id, isNew }: UseHydrateChatStoreParams) =>
 
     if (!session.chatThread) {
       updateSession(id, { chatThread: thread })
-      navigate(`/chats/${id}`, { relative: 'path' })
+      workspaceNavigate(`/chats/${id}`)
     }
   }
 

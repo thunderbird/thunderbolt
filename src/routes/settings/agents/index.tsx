@@ -14,7 +14,7 @@ import { testAcpConnection } from '@/acp'
 import { createAgent, deleteAgent, updateAgent, useAllAgents } from '@/dal'
 import { useDatabase } from '@/contexts'
 import { useAuth } from '@/contexts'
-import { useActiveWorkspaceId } from '@/lib/active-workspace'
+import { useActiveWorkspaceId, useWorkspaceUrl } from '@/lib/active-workspace'
 import { selectAllowCustomAgents, useConfigStore } from '@/api/config-store'
 import { useAgentsSettingsHidden } from '@/hooks/use-agents-settings-hidden'
 import type { Agent } from '@/types/acp'
@@ -43,6 +43,7 @@ export default function AgentsSettingsPage({ isStandalone }: AgentsSettingsPageP
   const currentUserId = session?.user?.id ?? null
   const agentsHidden = useAgentsSettingsHidden({ isStandalone })
   const allowCustomAgents = useConfigStore((state) => selectAllowCustomAgents(state.config))
+  const settingsUrl = useWorkspaceUrl('/settings')
 
   const [dialogOpen, setDialogOpen] = useState(false)
 
@@ -50,7 +51,7 @@ export default function AgentsSettingsPage({ isStandalone }: AgentsSettingsPageP
   // sidebar. Anonymous users behind the proxy can't reach managed agents, so
   // sending them back to the settings index keeps the UI honest.
   if (agentsHidden) {
-    return <Navigate to="/settings" replace />
+    return <Navigate to={settingsUrl} replace />
   }
 
   const handleToggle = async (agent: Agent, enabled: boolean) => {

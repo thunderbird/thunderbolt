@@ -4,10 +4,10 @@
 
 import { m } from 'framer-motion'
 import { MoreHorizontal, Plus, SquarePen, Trash2 } from 'lucide-react'
-import { useNavigate } from 'react-router'
 
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 import { Switch } from '@/components/ui/switch'
+import { useWorkspaceNavigate } from '@/lib/active-workspace'
 import type { Skill } from '@/types'
 
 /**
@@ -48,7 +48,7 @@ export const LibraryRow = ({
   onEdit: (id: string) => void
   onDelete: (id: string) => void
 }) => {
-  const navigate = useNavigate()
+  const navigate = useWorkspaceNavigate()
 
   return (
     <m.li layout layoutId={skill.id} transition={skillRowTransition}>

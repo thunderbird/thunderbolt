@@ -13,7 +13,8 @@ import type { AnyDrizzleDatabase } from '@/db/database-interface'
 import { getActiveUserId, useTrustDomainRegistry } from '@/stores/trust-domain-registry'
 import { toCompilableQuery } from '@powersync/drizzle-driver'
 import { useQuery } from '@powersync/tanstack-react-query'
-import { useInRouterContext, useLocation } from 'react-router'
+import { useCallback } from 'react'
+import { useInRouterContext, useLocation, useNavigate, type NavigateOptions } from 'react-router'
 
 /**
  * URL shape for shared workspaces: `/w/<workspaceId>/...`. The personal
@@ -189,10 +190,41 @@ export const useActiveWorkspaceId = (): string | null => useActiveWorkspace()?.i
  * (e.g. the selector itself), use `toWorkspaceUrl(workspace, path)` directly
  * with the target workspace instead.
  */
-export const useWorkspaceUrl = (path: string): string => {
-  const workspace = useActiveWorkspace()
-  if (!workspace) {
-    return path
+/**
+ * URL-only variant of `toWorkspaceUrl` used by the path-builder hooks. Mirrors
+ * the rule that the canonical personal-workspace URL is unprefixed: when the
+ * current pathname carries no `/w/<id>/` segment we treat the active workspace
+ * as personal and return `path` unchanged, otherwise we re-prefix with the id
+ * from the URL. Keeps the helpers DB-free so consumers can use them in tests
+ * that don't wire `<DatabaseProvider>` / `<WorkspaceGate>`.
+ */
+const applyWorkspacePrefixFromUrl = (pathname: string, path: string): string => {
+  const fromUrl = matchWorkspaceIdInPath(pathname)
+  const subPath = path.startsWith('/w/') ? stripWorkspacePrefix(path) : path.startsWith('/') ? path : `/${path}`
+  if (!fromUrl) {
+    return subPath
   }
-  return toWorkspaceUrl(workspace, path)
+  return `/w/${fromUrl}${subPath}`
+}
+
+export const useWorkspaceUrl = (path: string): string => {
+  const pathname = useReactivePathname()
+  return applyWorkspacePrefixFromUrl(pathname, path)
+}
+
+/**
+ * Workspace-aware `navigate` for event handlers. Returns a callback that
+ * prefixes each navigation target with the active workspace (no-op for
+ * personal). Use this anywhere a static `useWorkspaceUrl(...)` won't fit —
+ * dynamic paths interpolating ids, conditionals at click time, etc.
+ */
+export const useWorkspaceNavigate = (): ((path: string, options?: NavigateOptions) => void) => {
+  const navigate = useNavigate()
+  const pathname = useReactivePathname()
+  return useCallback(
+    (path: string, options?: NavigateOptions) => {
+      navigate(applyWorkspacePrefixFromUrl(pathname, path), options)
+    },
+    [navigate, pathname],
+  )
 }

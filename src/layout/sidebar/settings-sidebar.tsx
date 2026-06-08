@@ -15,6 +15,7 @@ import {
   useSidebar,
 } from '@/components/ui/sidebar'
 import { useAgentsSettingsHidden } from '@/hooks/use-agents-settings-hidden'
+import { stripWorkspacePrefix } from '@/lib/active-workspace'
 import { ArrowLeft, Bot, Cpu, Plug, Server, SlidersHorizontal, Smartphone, Zap } from 'lucide-react'
 import { useLocation } from 'react-router'
 import { SidebarHeader } from './sidebar-header'
@@ -37,6 +38,9 @@ export const SettingsSidebarContent = ({
   const { toggleSidebar } = useSidebar()
   const location = useLocation()
   const agentsHidden = useAgentsSettingsHidden({ isStandalone })
+  // `isActive` highlighting reads the sub-path so the same matching rules work
+  // for both personal (`/settings/...`) and shared (`/w/<id>/settings/...`) URLs.
+  const subPath = stripWorkspacePrefix(location.pathname)
 
   return (
     <SidebarContent className="flex flex-col h-full">
@@ -66,7 +70,7 @@ export const SettingsSidebarContent = ({
                 onClick={() => onSettingsNavigate('/settings/preferences')}
                 tooltip="Preferences"
                 className="cursor-pointer"
-                isActive={location.pathname === '/settings/preferences'}
+                isActive={subPath === '/settings/preferences'}
               >
                 <SlidersHorizontal className="size-4" />
                 <span>Preferences</span>
@@ -77,7 +81,7 @@ export const SettingsSidebarContent = ({
                 onClick={() => onSettingsNavigate('/settings/integrations')}
                 tooltip="Integrations"
                 className="cursor-pointer"
-                isActive={location.pathname === '/settings/integrations'}
+                isActive={subPath === '/settings/integrations'}
               >
                 <Plug className="size-4" />
                 <span>Integrations</span>
@@ -88,7 +92,7 @@ export const SettingsSidebarContent = ({
                 onClick={() => onSettingsNavigate('/settings/devices')}
                 tooltip="Devices"
                 className="cursor-pointer"
-                isActive={location.pathname === '/settings/devices'}
+                isActive={subPath === '/settings/devices'}
               >
                 <Smartphone className="size-4" />
                 <span>Devices</span>
@@ -99,7 +103,7 @@ export const SettingsSidebarContent = ({
                 onClick={() => onSettingsNavigate('/settings/models')}
                 tooltip="Models"
                 className="cursor-pointer"
-                isActive={location.pathname.startsWith('/settings/models')}
+                isActive={subPath.startsWith('/settings/models')}
               >
                 <Cpu className="size-4" />
                 <span>Models</span>
@@ -110,7 +114,7 @@ export const SettingsSidebarContent = ({
                 onClick={() => onSettingsNavigate('/settings/mcp-servers')}
                 tooltip="MCP Servers"
                 className="cursor-pointer"
-                isActive={location.pathname === '/settings/mcp-servers'}
+                isActive={subPath === '/settings/mcp-servers'}
               >
                 <Server className="size-4" />
                 <span>MCP Servers</span>
@@ -121,7 +125,7 @@ export const SettingsSidebarContent = ({
                 onClick={() => onSettingsNavigate('/settings/skills')}
                 tooltip="Skills"
                 className="cursor-pointer"
-                isActive={location.pathname === '/settings/skills'}
+                isActive={subPath === '/settings/skills'}
               >
                 <Zap className="size-4" />
                 <span>Skills</span>
@@ -133,7 +137,7 @@ export const SettingsSidebarContent = ({
                   onClick={() => onSettingsNavigate('/settings/agents')}
                   tooltip="Agents"
                   className="cursor-pointer"
-                  isActive={location.pathname === '/settings/agents'}
+                  isActive={subPath === '/settings/agents'}
                 >
                   <Bot className="size-4" />
                   <span>Agents</span>

@@ -7,10 +7,18 @@ import type { AnyDrizzleDatabase } from '../db/database-interface'
 import { mcpSecretsTable } from '../db/tables'
 
 /** Credential blob stored on-device for an MCP server. Forward-supports OAuth token sets. */
-export type McpServerCredentials = {
-  type: 'bearer'
-  token: string
-}
+export type McpServerCredentials =
+  | { type: 'bearer'; token: string }
+  | {
+      type: 'oauth'
+      access_token: string
+      refresh_token?: string
+      expires_at?: number // epoch ms
+      clientId?: string // DCR-issued client_id (per-AS); absent for CIMD
+      issuer?: string // AS issuer (per-AS binding)
+      tokenEndpoint?: string // discovered token endpoint (for refresh)
+      scope?: string
+    }
 
 /** Get credentials for an MCP server. Returns null when no row exists. */
 export const getMcpServerCredentials = async (

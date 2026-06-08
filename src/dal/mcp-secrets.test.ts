@@ -40,6 +40,24 @@ describe('MCP Secrets DAL', () => {
       expect(credentials).toEqual({ type: 'bearer', token: 'secret-token' })
     })
 
+    it('should round-trip the oauth credentials blob', async () => {
+      const id = uuidv7()
+      const oauthCredentials = {
+        type: 'oauth' as const,
+        access_token: 'access-123',
+        refresh_token: 'refresh-456',
+        expires_at: 1_900_000_000_000,
+        clientId: 'client-789',
+        issuer: 'https://auth.example.com',
+        tokenEndpoint: 'https://auth.example.com/token',
+        scope: 'read write',
+      }
+      await setMcpServerCredentials(getDb(), id, oauthCredentials)
+
+      const credentials = await getMcpServerCredentials(getDb(), id)
+      expect(credentials).toEqual(oauthCredentials)
+    })
+
     it('should update an existing row rather than insert a duplicate', async () => {
       const db = getDb()
       const id = uuidv7()

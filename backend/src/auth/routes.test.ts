@@ -11,6 +11,7 @@ import { afterAll, beforeAll, describe, expect, it, mock, spyOn } from 'bun:test
 import { Elysia } from 'elysia'
 import { createGoogleAuthRoutes } from './google'
 import { createMicrosoftAuthRoutes } from './microsoft'
+import { createTinfoilAuthRoutes } from './tinfoil'
 
 describe('Authentication Routes', () => {
   let app: { handle: Elysia['handle'] }
@@ -34,6 +35,7 @@ describe('Authentication Routes', () => {
         googleClientSecret: 'test-google-secret',
         microsoftClientId: 'test-microsoft-client-id',
         microsoftClientSecret: 'test-microsoft-secret',
+        tinfoilClientId: 'test-tinfoil-client-id',
       }),
     )
 
@@ -44,6 +46,7 @@ describe('Authentication Routes', () => {
     app = new Elysia()
       .use(createGoogleAuthRoutes(mockAuth, mockFetch as unknown as typeof fetch))
       .use(createMicrosoftAuthRoutes(mockAuth, mockFetch as unknown as typeof fetch))
+      .use(createTinfoilAuthRoutes(mockAuth, mockFetch as unknown as typeof fetch))
   })
 
   afterAll(async () => {
@@ -58,6 +61,7 @@ describe('Authentication Routes', () => {
       unauthApp = new Elysia()
         .use(createGoogleAuthRoutes(mockAuthUnauthenticated, mockFetch as unknown as typeof fetch))
         .use(createMicrosoftAuthRoutes(mockAuthUnauthenticated, mockFetch as unknown as typeof fetch))
+        .use(createTinfoilAuthRoutes(mockAuthUnauthenticated, mockFetch as unknown as typeof fetch))
     })
 
     it('should reject unauthenticated requests to Google config', async () => {
@@ -89,6 +93,11 @@ describe('Authentication Routes', () => {
           body: JSON.stringify({ code: 'test', code_verifier: 'test', redirect_uri: 'http://localhost' }),
         }),
       )
+      expect(response.status).toBe(401)
+    })
+
+    it('should reject unauthenticated requests to Tinfoil config', async () => {
+      const response = await unauthApp.handle(new Request('http://localhost/auth/tinfoil/config'))
       expect(response.status).toBe(401)
     })
   })
@@ -209,6 +218,112 @@ describe('Authentication Routes', () => {
     })
   })
 
+  // Tinfoil is a public OAuth 2.1 client (PKCE, no secret), so these assert the
+  // token requests carry a client_id + code_verifier and NEVER a client_secret.
+  describe('Tinfoil OAuth', () => {
+    const tinfoilTokenResponse = {
+      access_token: 'jwt.access.token',
+      refresh_token: 'rotated.refresh.token',
+      expires_in: 900,
+      token_type: 'Bearer',
+      scope: 'inference:api offline_access',
+    }
+
+    // The last outbound request the mock fetch received, as URL + parsed body.
+    const lastSent = () => {
+      const call = mockFetch.mock.calls.at(-1) as unknown as [string, RequestInit] | undefined
+      return { url: call?.[0], body: new URLSearchParams(String(call?.[1]?.body ?? '')) }
+    }
+
+    it('returns configured: true for /config when a client_id is set (no secret needed)', async () => {
+      const response = await app.handle(new Request('http://localhost/auth/tinfoil/config'))
+      expect(response.status).toBe(200)
+      const body = await response.json()
+      expect(body).toEqual({ client_id: 'test-tinfoil-client-id', configured: true })
+    })
+
+    it('exchanges the code as a public client — client_id + PKCE, never a secret', async () => {
+      mockFetch.mockClear()
+      mockFetch.mockResolvedValueOnce(createMockOAuthResponse(200, tinfoilTokenResponse))
+      const response = await app.handle(
+        new Request('http://localhost/auth/tinfoil/exchange', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            code: 'auth-code',
+            code_verifier: 'verifier',
+            redirect_uri: 'http://localhost:1420/oauth/callback',
+          }),
+        }),
+      )
+
+      expect(response.status).toBe(200)
+      expect(await response.json()).toEqual(tinfoilTokenResponse)
+
+      const sent = lastSent()
+      expect(sent.url).toBe('https://api.tinfoil.sh/oauth/token')
+      expect(sent.body.get('grant_type')).toBe('authorization_code')
+      expect(sent.body.get('client_id')).toBe('test-tinfoil-client-id')
+      expect(sent.body.get('code_verifier')).toBe('verifier')
+      expect(sent.body.has('client_secret')).toBe(false)
+    })
+
+    it('returns 503 for exchange when not configured', async () => {
+      getSettingsSpy.mockReturnValueOnce(createTestSettings({}))
+      const response = await app.handle(
+        new Request('http://localhost/auth/tinfoil/exchange', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            code: 'auth-code',
+            code_verifier: 'verifier',
+            redirect_uri: 'http://localhost:1420/oauth/callback',
+          }),
+        }),
+      )
+      expect(response.status).toBe(503)
+    })
+
+    it('refreshes and surfaces the rotated refresh token without a secret', async () => {
+      mockFetch.mockClear()
+      mockFetch.mockResolvedValueOnce(createMockOAuthResponse(200, tinfoilTokenResponse))
+      const response = await app.handle(
+        new Request('http://localhost/auth/tinfoil/refresh', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ refresh_token: 'old.refresh.token' }),
+        }),
+      )
+      const body = await response.json()
+
+      expect(response.status).toBe(200)
+      expect(body.refresh_token).toBe('rotated.refresh.token')
+
+      const sent = lastSent()
+      expect(sent.body.get('grant_type')).toBe('refresh_token')
+      expect(sent.body.get('client_id')).toBe('test-tinfoil-client-id')
+      expect(sent.body.has('client_secret')).toBe(false)
+    })
+
+    it('revokes the token and reports success', async () => {
+      mockFetch.mockClear()
+      mockFetch.mockResolvedValueOnce(createMockOAuthResponse(200, {}))
+      const response = await app.handle(
+        new Request('http://localhost/auth/tinfoil/revoke', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ refresh_token: 'some.refresh.token' }),
+        }),
+      )
+      expect(response.status).toBe(200)
+      expect(await response.json()).toEqual({ revoked: true })
+
+      const sent = lastSent()
+      expect(sent.url).toBe('https://api.tinfoil.sh/oauth/revoke')
+      expect(sent.body.get('token')).toBe('some.refresh.token')
+    })
+  })
+
   describe('redirect_uri validation', () => {
     it('rejects Google exchange with disallowed redirect_uri', async () => {
       mockFetch.mockClear()
@@ -231,6 +346,23 @@ describe('Authentication Routes', () => {
       mockFetch.mockClear()
       const response = await app.handle(
         new Request('http://localhost/auth/microsoft/exchange', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            code: 'test-code',
+            code_verifier: 'test-verifier',
+            redirect_uri: 'https://evil.com/steal',
+          }),
+        }),
+      )
+      expect(response.status).toBe(400)
+      expect(mockFetch).not.toHaveBeenCalled()
+    })
+
+    it('rejects Tinfoil exchange with disallowed redirect_uri', async () => {
+      mockFetch.mockClear()
+      const response = await app.handle(
+        new Request('http://localhost/auth/tinfoil/exchange', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({

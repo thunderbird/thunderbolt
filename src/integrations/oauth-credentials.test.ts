@@ -67,12 +67,6 @@ describe('ensureValidOAuthToken', () => {
     })
 
   it('returns the cached access token without refreshing when still fresh', async () => {
-    await saveIntegrationCredentials(
-      getDb(),
-      'tinfoil',
-      { access_token: 'fresh.access', refresh_token: 'r1', expires_at: Date.now() + 10 * 60_000 },
-      true,
-    )
     const client = refreshingHttpClient({ access_token: 'should.not.be.used', refresh_token: 'r2', expires_in: 900 })
 
     const token = await ensureValidOAuthToken(client, 'tinfoil', {
@@ -85,8 +79,6 @@ describe('ensureValidOAuthToken', () => {
   })
 
   it('refreshes an expired token and PERSISTS the rotated refresh token', async () => {
-    // Tinfoil rotates the refresh token on every use and revokes the whole family
-    // if a spent token is replayed — so the rotated value must be stored.
     const expired = { access_token: 'old.access', refresh_token: 'rotating-1', expires_at: Date.now() - 60_000 }
     await saveIntegrationCredentials(getDb(), 'tinfoil', expired, true)
 

@@ -39,7 +39,7 @@ const envVarPrefixes: Record<OAuthProvider, string> = {
   tinfoil: 'TINFOIL',
 }
 
-/** Public OAuth clients (PKCE, no secret) — only a client_id can be missing. */
+/** Public OAuth clients (PKCE, no secret). */
 const publicClients: ReadonlySet<OAuthProvider> = new Set(['tinfoil'])
 
 /**

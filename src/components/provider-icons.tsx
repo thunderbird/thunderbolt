@@ -38,23 +38,15 @@ export const MicrosoftIcon = () => (
 )
 
 /**
- * Tinfoil icon — a shield with a check mark, evoking the confidential-computing
- * (attested enclave) guarantee. Uses currentColor so it adapts to the theme.
+ * Tinfoil icon — the official Tinfoil brand mark (tinfoil.sh brand assets).
+ * Single-path glyph; uses currentColor so it resolves to the official
+ * black-on-light / white-on-dark variant for the active theme.
  */
 export const TinfoilIcon = () => (
-  <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <svg className="w-4 h-4" viewBox="0 0 960 960" fill="none" xmlns="http://www.w3.org/2000/svg">
     <path
-      d="M12 2 4 5v6c0 4.5 3.2 8.4 8 9.9 4.8-1.5 8-5.4 8-9.9V5l-8-3z"
-      stroke="currentColor"
-      strokeWidth="1.7"
-      strokeLinejoin="round"
-    />
-    <path
-      d="m8.7 11.8 2.3 2.3 4.3-4.6"
-      stroke="currentColor"
-      strokeWidth="1.7"
-      strokeLinecap="round"
-      strokeLinejoin="round"
+      d="M955.4,718.23l-674.69,205.77L6.34,708.97,268.9,35.01l686.5,683.22ZM164.94,665.52l143.05,112.11,397.97-121.37-387.26-385.41-153.76,394.66Z"
+      fill="currentColor"
     />
   </svg>
 )

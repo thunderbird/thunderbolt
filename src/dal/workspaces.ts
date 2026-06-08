@@ -2,7 +2,11 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { and, eq } from 'drizzle-orm'
+import { and, asc, desc, eq } from 'drizzle-orm'
+import { toCompilableQuery } from '@powersync/drizzle-driver'
+import { useQuery } from '@powersync/tanstack-react-query'
+import { useDatabase } from '@/contexts'
+import { useTrustDomainRegistry } from '@/stores/trust-domain-registry'
 import type { AnyDrizzleDatabase } from '../db/database-interface'
 import { workspaceMembershipsTable, workspacesTable } from '../db/tables'
 import type { DrizzleQueryWithPromise } from '../types'
@@ -46,10 +50,72 @@ export const getPersonalWorkspaceByOwner = async (
   return (row ?? null) as Workspace | null
 }
 
-/** Fetch a workspace by id. Used by the URL-driven workspace selector (PR 3). */
+/**
+ * Drizzle query for a workspace by id. Use with PowerSync's `toCompilableQuery`
+ * for a live subscription (the active-workspace hook does this when the URL
+ * carries a `/w/<id>/` prefix).
+ */
+export const getWorkspaceByIdQuery = (db: AnyDrizzleDatabase, id: string) => {
+  const query = db.select().from(workspacesTable).where(eq(workspacesTable.id, id)).limit(1)
+  return query as typeof query & DrizzleQueryWithPromise<Workspace>
+}
+
+/** Fetch a workspace by id. Used by the URL-driven workspace selector. */
 export const getWorkspaceById = async (db: AnyDrizzleDatabase, id: string): Promise<Workspace | null> => {
-  const row = await db.select().from(workspacesTable).where(eq(workspacesTable.id, id)).get()
+  const row = await getWorkspaceByIdQuery(db, id).get()
   return (row ?? null) as Workspace | null
+}
+
+/**
+ * Drizzle query for every workspace the user is a member of. Joins
+ * `workspaces × workspace_memberships` on `workspace_id`, scoped to
+ * `memberships.userId = userId`. Sorted personal-first, then alpha by name so
+ * the sidebar selector renders the user's home workspace at the top.
+ */
+export const getWorkspacesForUserQuery = (db: AnyDrizzleDatabase, userId: string) => {
+  const query = db
+    .select({
+      id: workspacesTable.id,
+      name: workspacesTable.name,
+      isPersonal: workspacesTable.isPersonal,
+      ownerUserId: workspacesTable.ownerUserId,
+      createdAt: workspacesTable.createdAt,
+      updatedAt: workspacesTable.updatedAt,
+    })
+    .from(workspacesTable)
+    .innerJoin(workspaceMembershipsTable, eq(workspaceMembershipsTable.workspaceId, workspacesTable.id))
+    .where(eq(workspaceMembershipsTable.userId, userId))
+    .orderBy(desc(workspacesTable.isPersonal), asc(workspacesTable.name))
+  return query as typeof query & DrizzleQueryWithPromise<Workspace>
+}
+
+/**
+ * Live hook returning every workspace the active user is a member of. Reads
+ * the active user id from the trust-domain registry (same source as
+ * `useActiveWorkspace`), so it works wherever the registry is mirrored from
+ * Better Auth — outside of `<AuthProvider>` it just stays empty until the
+ * registry hydrates. Returns `[]` until the live query resolves; consumers
+ * that need a loading state can inspect the underlying React Query (this hook
+ * intentionally keeps the signature minimal — sidebar / selector code reads
+ * the array, not a loading flag).
+ */
+export const useWorkspacesQuery = (): Workspace[] => {
+  const db = useDatabase()
+  const userId = useTrustDomainRegistry((state) => {
+    if (state.activeTrustDomain?.kind === 'standalone') {
+      return state.localUserId
+    }
+    if (state.activeTrustDomain?.kind === 'server') {
+      return state.servers[state.activeTrustDomain.serverId]?.userId
+    }
+    return undefined
+  })
+  const { data = [] } = useQuery({
+    queryKey: ['workspaces', 'for-user', userId],
+    query: toCompilableQuery(getWorkspacesForUserQuery(db, userId ?? '')),
+    enabled: !!userId,
+  })
+  return data
 }
 
 /**

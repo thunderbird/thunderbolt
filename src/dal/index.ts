@@ -140,10 +140,14 @@ export {
   getPersonalWorkspaceByOwner,
   getPersonalWorkspaceByOwnerQuery,
   getWorkspaceById,
+  getWorkspaceByIdQuery,
+  getWorkspacesForUserQuery,
+  useWorkspacesQuery,
   type Workspace,
 } from './workspaces'
 export {
   getMembership,
+  getMembershipQuery,
   getMembershipsByUser,
   getMembershipsByWorkspace,
   isWorkspaceAdmin,

@@ -2,21 +2,28 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { getPersonalWorkspaceByOwner, getPersonalWorkspaceByOwnerQuery } from '@/dal'
+import {
+  getPersonalWorkspaceByOwner,
+  getPersonalWorkspaceByOwnerQuery,
+  getWorkspaceByIdQuery,
+  type Workspace,
+} from '@/dal'
 import { useDatabase } from '@/contexts'
 import type { AnyDrizzleDatabase } from '@/db/database-interface'
 import { getActiveUserId, useTrustDomainRegistry } from '@/stores/trust-domain-registry'
 import { toCompilableQuery } from '@powersync/drizzle-driver'
 import { useQuery } from '@powersync/tanstack-react-query'
+import { useCallback } from 'react'
+import { useInRouterContext, useLocation, useNavigate, type NavigateOptions } from 'react-router'
 
 /**
- * Best-effort match for the workspace id segment in URLs shaped like
- * `/w/<workspaceId>/...`. PR 3 introduces this routing; today no route uses
- * the `/w/...` prefix, so this is effectively a no-op feature flag — when the
- * routes land, this picks them up without further changes.
- *
- * Accepts `undefined` because happy-dom's `Location.pathname` is non-enumerable
- * so spread-based `window.location` mocks in tests don't carry it through.
+ * URL shape for shared workspaces: `/w/<workspaceId>/...`. The personal
+ * workspace lives at unprefixed paths (`/chats/new`, `/settings/...`); only
+ * shared workspaces appear in the URL. This deviates from addendum §3.5,
+ * which mandates the prefix for every workspace — the deviation gives users
+ * cleaner URLs for the common case (one personal workspace, no membership in
+ * any shared one) without splitting the resolution rule (URL still wins when
+ * present; the personal-workspace lookup is the fallback).
  */
 const matchWorkspaceIdInPath = (pathname: string | undefined): string | null => {
   if (!pathname) {
@@ -27,22 +34,45 @@ const matchWorkspaceIdInPath = (pathname: string | undefined): string | null => 
 }
 
 /**
- * Resolve the active workspace id for the current user.
- *
- * Source of truth, in order:
- *   1. URL path (`/w/<id>/...`) — populated by PR 3's workspace selector.
- *   2. The user's personal workspace from the local DB.
+ * Strip the leading `/w/<id>` segment from a pathname, returning the bare
+ * sub-path (always leading `/`). Used by the workspace selector to preserve
+ * the current location when switching workspaces.
+ */
+export const stripWorkspacePrefix = (pathname: string): string => {
+  const stripped = pathname.replace(/^\/w\/[^/]+/, '')
+  return stripped.length > 0 ? stripped : '/'
+}
+
+/**
+ * Build a navigable URL for a workspace + sub-path. Personal workspaces return
+ * the sub-path unprefixed; shared workspaces get `/w/<id>` prepended. Passing
+ * a path that already carries a workspace prefix is a no-op (defensive — the
+ * sidebar's switch handler strips first, but other call sites may not).
+ */
+export const toWorkspaceUrl = (workspace: Workspace, path: string): string => {
+  const subPath = path.startsWith('/w/') ? stripWorkspacePrefix(path) : path
+  const normalized = subPath.startsWith('/') ? subPath : `/${subPath}`
+  if (workspace.isPersonal === 1) {
+    return normalized
+  }
+  return `/w/${workspace.id}${normalized}`
+}
+
+/**
+ * Resolve the active workspace id for non-React callers (extension tools, AI
+ * pipeline, background jobs). URL-first, personal-workspace fallback.
  *
  * Returns `null` when there's no active user (caller is unauthenticated) or
  * the personal workspace hasn't been created yet (pre-bootstrap). Consumers
  * that require a workspace context should either await the bootstrap signal
  * (`<WorkspaceGate>`) or handle the null case explicitly.
  *
- * Async because the personal-workspace fallback hits SQLite. The lookup is a
- * single-row `SELECT` on an indexed column — <1ms locally.
+ * Reads `window.location.pathname` directly because non-React callers don't
+ * have access to React Router's context. The same URL-first rule that the
+ * React hook applies still holds.
  */
 export const getActiveWorkspaceId = async (db: AnyDrizzleDatabase): Promise<string | null> => {
-  const fromUrl = matchWorkspaceIdInPath(window.location.pathname)
+  const fromUrl = typeof window !== 'undefined' ? matchWorkspaceIdInPath(window.location.pathname) : null
   if (fromUrl) {
     return fromUrl
   }
@@ -59,8 +89,6 @@ export const getActiveWorkspaceId = async (db: AnyDrizzleDatabase): Promise<stri
  * no recovery story for `null` — extension tools, AI pipeline entry points,
  * background jobs. Throws `Error('No active workspace')` instead of returning
  * null so callers can stay free of guard noise.
- *
- * Use `getActiveWorkspaceId(db)` if you can handle the null case yourself.
  */
 export const requireActiveWorkspaceId = async (db: AnyDrizzleDatabase): Promise<string> => {
   const id = await getActiveWorkspaceId(db)
@@ -71,30 +99,45 @@ export const requireActiveWorkspaceId = async (db: AnyDrizzleDatabase): Promise<
 }
 
 /**
- * React subscriber for the active workspace id. Same resolution order as
- * `getActiveWorkspaceId`: URL prefix wins, otherwise the user's personal
- * workspace from a live query.
+ * React subscriber for the active workspace row. URL prefix wins; personal
+ * workspace is the fallback. Reactively re-runs on URL changes via
+ * `useLocation()`, so navigation through `<Link>` / `navigate(...)` flips
+ * consumers without a manual subscription.
  *
  * Reads the active user id from the trust-domain registry (a Zustand store)
- * rather than from `useAuth()`/`useSession()` — the registry is mirrored from
- * Better Auth by `SessionToRegistryMirror` and is the canonical FE source of
- * "who is the user," same one `getActiveWorkspaceId(db)` uses. Sourcing from
- * the registry instead of an auth-context hook also means components rendered
- * outside `<AuthProvider>` (e.g. unit tests that mount only `<DatabaseProvider>`)
- * don't crash — the hook returns `null` until the registry has a user id.
+ * rather than from `useAuth()` — the registry is mirrored from Better Auth by
+ * `SessionToRegistryMirror` and is the canonical FE source of "who is the
+ * user," same one `getActiveWorkspaceId(db)` uses. Sourcing from the registry
+ * also means components rendered outside `<AuthProvider>` (e.g. unit tests
+ * that mount only `<DatabaseProvider>`) don't crash — the hook returns `null`
+ * until the registry has a user id.
  *
- * URL is read once from `window.location.pathname`; reactivity to URL changes
- * lands with PR 3's `/w/<id>` routing, at which point this hook should switch
- * to `useLocation()`.
- *
+ * Returns `null` until both the user id and the workspace row are available.
  * Components inside `<WorkspaceGate>` are guaranteed the personal workspace
  * exists, so the `null` is effectively only seen by the gate itself; everything
  * else can treat the value as eventually-non-null but should still guard React
  * Query with `enabled: !!workspaceId` to keep TypeScript honest.
  */
-export const useActiveWorkspaceId = (): string | null => {
+/**
+ * Reactive pathname inside a `<Router>` ancestor; a one-shot read of
+ * `window.location.pathname` otherwise. The conditional hook call is safe
+ * because `useInRouterContext()` returns a value stable for the lifetime of a
+ * given mount — React's rules of hooks require consistent ordering across
+ * renders of the same component, which this satisfies. Allowing the fallback
+ * means hook consumers don't have to wrap every test in a `<MemoryRouter>`.
+ */
+const useReactivePathname = (): string => {
+  const inRouter = useInRouterContext()
+  if (!inRouter) {
+    return typeof window !== 'undefined' ? window.location.pathname : '/'
+  }
+  // eslint-disable-next-line react-hooks/rules-of-hooks
+  return useLocation().pathname
+}
+
+export const useActiveWorkspace = (): Workspace | null => {
   const db = useDatabase()
-  // Subscribe reactively to the registry so a sign-in mid-render flips the id.
+  const pathname = useReactivePathname()
   const userId = useTrustDomainRegistry((state) => {
     if (state.activeTrustDomain?.kind === 'standalone') {
       return state.localUserId
@@ -105,19 +148,83 @@ export const useActiveWorkspaceId = (): string | null => {
     return undefined
   })
 
-  const fromUrl = typeof window !== 'undefined' ? matchWorkspaceIdInPath(window.location.pathname) : null
+  const fromUrl = matchWorkspaceIdInPath(pathname)
+  // Single live query that switches target — keying on the lookup descriptor
+  // means React Query treats by-id and personal as distinct queries with no
+  // cross-render pollution. We always pass *some* query (Drizzle errors on
+  // empty), and gate the consumer-visible result on `enabled` instead.
+  const lookup = fromUrl ? { kind: 'by-id' as const, id: fromUrl } : { kind: 'personal' as const, userId }
+  const query =
+    lookup.kind === 'by-id'
+      ? getWorkspaceByIdQuery(db, lookup.id)
+      : getPersonalWorkspaceByOwnerQuery(db, lookup.userId ?? '')
+  const enabled = lookup.kind === 'by-id' || !!lookup.userId
 
   const { data } = useQuery({
-    queryKey: ['workspaces', 'personal', userId],
-    query: toCompilableQuery(getPersonalWorkspaceByOwnerQuery(db, userId ?? '')),
-    enabled: !!userId,
+    queryKey:
+      lookup.kind === 'by-id'
+        ? ['workspaces', 'active', 'by-id', lookup.id]
+        : ['workspaces', 'active', 'personal', lookup.userId ?? ''],
+    query: toCompilableQuery(query),
+    enabled,
   })
 
-  if (fromUrl) {
-    return fromUrl
+  return data?.[0] ?? null
+}
+
+/**
+ * Convenience wrapper for the common case — just the id. Tracks the same URL
+ * + personal-fallback rule as `useActiveWorkspace`.
+ */
+export const useActiveWorkspaceId = (): string | null => useActiveWorkspace()?.id ?? null
+
+/**
+ * Build a URL for `path` in the active workspace. Returns `path` unchanged
+ * when the active workspace is personal; prefixes `/w/<id>` for shared
+ * workspaces. Returns `path` as-is during the brief window where the active
+ * workspace hasn't resolved yet (rare — inside `<WorkspaceGate>` this is
+ * effectively never the case).
+ *
+ * Use at every `navigate(...)` / `<Link to=...>` / `<NavLink to=...>` site
+ * that should "follow the active workspace." For cross-workspace teleports
+ * (e.g. the selector itself), use `toWorkspaceUrl(workspace, path)` directly
+ * with the target workspace instead.
+ */
+/**
+ * URL-only variant of `toWorkspaceUrl` used by the path-builder hooks. Mirrors
+ * the rule that the canonical personal-workspace URL is unprefixed: when the
+ * current pathname carries no `/w/<id>/` segment we treat the active workspace
+ * as personal and return `path` unchanged, otherwise we re-prefix with the id
+ * from the URL. Keeps the helpers DB-free so consumers can use them in tests
+ * that don't wire `<DatabaseProvider>` / `<WorkspaceGate>`.
+ */
+const applyWorkspacePrefixFromUrl = (pathname: string, path: string): string => {
+  const fromUrl = matchWorkspaceIdInPath(pathname)
+  const subPath = path.startsWith('/w/') ? stripWorkspacePrefix(path) : path.startsWith('/') ? path : `/${path}`
+  if (!fromUrl) {
+    return subPath
   }
-  if (!userId || !data || data.length === 0) {
-    return null
-  }
-  return data[0].id
+  return `/w/${fromUrl}${subPath}`
+}
+
+export const useWorkspaceUrl = (path: string): string => {
+  const pathname = useReactivePathname()
+  return applyWorkspacePrefixFromUrl(pathname, path)
+}
+
+/**
+ * Workspace-aware `navigate` for event handlers. Returns a callback that
+ * prefixes each navigation target with the active workspace (no-op for
+ * personal). Use this anywhere a static `useWorkspaceUrl(...)` won't fit —
+ * dynamic paths interpolating ids, conditionals at click time, etc.
+ */
+export const useWorkspaceNavigate = (): ((path: string, options?: NavigateOptions) => void) => {
+  const navigate = useNavigate()
+  const pathname = useReactivePathname()
+  return useCallback(
+    (path: string, options?: NavigateOptions) => {
+      navigate(applyWorkspacePrefixFromUrl(pathname, path), options)
+    },
+    [navigate, pathname],
+  )
 }

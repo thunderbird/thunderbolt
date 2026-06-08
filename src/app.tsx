@@ -40,6 +40,7 @@ import { AppErrorScreen } from './components/app-error-screen'
 import { ModePicker } from './components/boot/mode-picker'
 import { AuthGate } from './components/auth-gate'
 import { WorkspaceGate } from './components/workspace-gate'
+import { WorkspaceMembershipGate } from './components/workspace-membership-gate'
 import { OnboardingDialog } from './components/onboarding/onboarding-dialog'
 import { WelcomeDialog } from './components/welcome-dialog'
 import { PendingDeviceModal } from './components/pending-device-modal'
@@ -91,6 +92,37 @@ const DevSettingsPage = import.meta.env.DEV ? lazy(() => import('@/settings/dev-
 const MessageSimulatorPage = import.meta.env.DEV ? lazy(() => import('./devtools/message-simulator')) : () => null
 
 const queryClient = new QueryClient()
+
+/**
+ * Shared route sub-tree mounted under both the personal workspace (unprefixed)
+ * and `/w/:workspaceId` (shared, membership-gated). Paths are relative so each
+ * mount resolves them against its parent — `chats/new` becomes either
+ * `/chats/new` or `/w/<id>/chats/new`.
+ */
+const renderWorkspaceRoutes = ({ experimentalFeatureTasks }: { experimentalFeatureTasks: boolean }) => (
+  <>
+    {/* Home routes with HomeLayout */}
+    <Route element={<ChatLayout />}>
+      <Route index element={<Navigate to="chats/new" replace relative="route" />} />
+      <Route path="chats/:chatThreadId" element={<ChatDetailPage />} />
+      {experimentalFeatureTasks && <Route path="tasks" element={<TasksPage />} />}
+      {import.meta.env.DEV && <Route path="message-simulator" element={<MessageSimulatorPage />} />}
+    </Route>
+
+    {/* Settings routes with SettingsLayout */}
+    <Route path="settings" element={<SettingsLayout />}>
+      <Route index element={<Settings />} />
+      <Route path="preferences" element={<PreferencesSettingsPage />} />
+      <Route path="models" element={<ModelsPage />} />
+      <Route path="devices" element={<DevicesSettingsPage />} />
+      <Route path="mcp-servers" element={<McpServersPage />} />
+      <Route path="skills" element={<SkillsPage />} />
+      <Route path="agents" element={<AgentsSettingsPage />} />
+      <Route path="integrations" element={<IntegrationsPage />} />
+      {import.meta.env.DEV && <Route path="dev-settings" element={<DevSettingsPage />} />}
+    </Route>
+  </>
+)
 
 /**
  * Hydrate the local-only `agents_system` table from the backend's `/agents`
@@ -169,9 +201,16 @@ const AppRoutes = ({ initData }: { initData: InitData }) => {
             targets internally from VITE_AUTH_MODE + VITE_AUTH_ENABLE_ANONYMOUS.
             `WorkspaceGate` then holds the routes until `runPostAuthBootstrap`
             has resolved the active workspace — keeps DAL inserts from firing
-            with a null workspace id between authentication and sync landing. */}
+            with a null workspace id between authentication and sync landing.
+
+            The shared sub-tree (chat / settings / dev surfaces) is mounted
+            twice: unprefixed for the personal workspace (canonical) and under
+            `/w/:workspaceId/` for shared workspaces (membership-gated). Index
+            and child paths are relative so the same JSX resolves to either
+            `/chats/new` or `/w/:workspaceId/chats/new` based on its parent. */}
         <Route element={<AuthGate require="authenticated" />}>
           <Route element={<WorkspaceGate />}>
+            {/* Personal workspace — unprefixed canonical URLs. */}
             <Route
               path="/"
               element={
@@ -182,25 +221,21 @@ const AppRoutes = ({ initData }: { initData: InitData }) => {
                 </>
               }
             >
-              {/* Home routes with HomeLayout */}
-              <Route element={<ChatLayout />}>
-                <Route index element={<Navigate to="/chats/new" replace />} />
-                <Route path="chats/:chatThreadId" element={<ChatDetailPage />} />
-                {experimentalFeatureTasks.value && <Route path="tasks" element={<TasksPage />} />}
-                {import.meta.env.DEV && <Route path="message-simulator" element={<MessageSimulatorPage />} />}
-              </Route>
+              {renderWorkspaceRoutes({ experimentalFeatureTasks: experimentalFeatureTasks.value })}
+            </Route>
 
-              {/* Settings routes with SettingsLayout */}
-              <Route path="settings" element={<SettingsLayout />}>
-                <Route index element={<Settings />} />
-                <Route path="preferences" element={<PreferencesSettingsPage />} />
-                <Route path="models" element={<ModelsPage />} />
-                <Route path="devices" element={<DevicesSettingsPage />} />
-                <Route path="mcp-servers" element={<McpServersPage />} />
-                <Route path="skills" element={<SkillsPage />} />
-                <Route path="agents" element={<AgentsSettingsPage />} />
-                <Route path="integrations" element={<IntegrationsPage />} />
-                {import.meta.env.DEV && <Route path="dev-settings" element={<DevSettingsPage />} />}
+            {/* Shared workspaces — `/w/:workspaceId/...`, membership-gated. */}
+            <Route path="/w/:workspaceId" element={<WorkspaceMembershipGate />}>
+              <Route
+                element={
+                  <>
+                    <Layout />
+                    <OnboardingDialog />
+                    <WelcomeDialog />
+                  </>
+                }
+              >
+                {renderWorkspaceRoutes({ experimentalFeatureTasks: experimentalFeatureTasks.value })}
               </Route>
             </Route>
           </Route>

@@ -5,7 +5,7 @@
 import { useChatStore, useCurrentChatSession } from '@/chats/chat-store'
 import { ModelSelector } from '@/components/ui/model-selector'
 import { useIsMobile } from '@/hooks/use-mobile'
-import { useNavigate } from 'react-router'
+import { useWorkspaceNavigate } from '@/lib/active-workspace'
 
 /**
  * Model picker for the chat composer. Renders to the immediate right of the
@@ -20,7 +20,7 @@ import { useNavigate } from 'react-router'
 export const ChatModelPicker = () => {
   const models = useChatStore((state) => state.models)
   const setSelectedModel = useChatStore((state) => state.setSelectedModel)
-  const navigate = useNavigate()
+  const navigate = useWorkspaceNavigate()
   const { isMobile } = useIsMobile()
   const { id: chatThreadId, selectedAgent, selectedModel, chatThread } = useCurrentChatSession()
 

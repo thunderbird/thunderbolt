@@ -13,7 +13,8 @@ import { useChatStore } from '@/chats/chat-store'
 import type { ChatSession } from '@/chats/chat-store'
 import { selectAllowCustomAgents, useConfigStore } from '@/api/config-store'
 import { useShallow } from 'zustand/react/shallow'
-import { useNavigate, useLocation } from 'react-router'
+import { useLocation } from 'react-router'
+import { stripWorkspacePrefix, useWorkspaceNavigate } from '@/lib/active-workspace'
 import { useChat } from '@ai-sdk/react'
 import type { Agent } from '@/types/acp'
 import { PowerSyncStatus } from '@/components/powersync-status'
@@ -59,7 +60,7 @@ const HeaderAgentSelector = ({
 export const Header = () => {
   const { toggleSidebar } = useSidebar()
   const { isMobile } = useIsMobile()
-  const navigate = useNavigate()
+  const navigate = useWorkspaceNavigate()
   const location = useLocation()
   const allAgents = useAllAgents()
   const allowCustomAgents = useConfigStore((state) => selectAllowCustomAgents(state.config))
@@ -84,7 +85,10 @@ export const Header = () => {
   // has no agent.
   const effectiveAgent = selectedAgent ?? builtInAgent
 
-  const isChatRoute = location.pathname.startsWith('/chats')
+  // Strip the `/w/<id>` prefix so the chat-route check works identically for
+  // both personal (`/chats/...`) and shared (`/w/<id>/chats/...`) URLs.
+  const subPath = stripWorkspacePrefix(location.pathname)
+  const isChatRoute = subPath.startsWith('/chats')
   const showAgentSelector = isChatRoute && chatInstance !== undefined && allAgents.length > 0
 
   const handleAddAgent = () => {
@@ -113,7 +117,7 @@ export const Header = () => {
 
   // Mobile: 3-column layout. Center holds the agent selector.
   if (isMobile) {
-    const showNewChatButton = isChatRoute && location.pathname !== '/chats/new'
+    const showNewChatButton = isChatRoute && subPath !== '/chats/new'
 
     return (
       <header className="flex h-[var(--touch-height-xl)] w-full items-center justify-between px-2 flex-shrink-0">

@@ -9,8 +9,11 @@ import {
   isWorkspaceAdmin,
   type Role,
   updatePendingMembership,
+  upsertMembership,
   upsertPendingMembership,
 } from '@/dal/workspaces'
+import { getUserByEmail } from '@/dal/users'
+import { normalizeEmail } from '@/lib/email'
 import { allow, reject } from './helpers'
 import { UploadRejection, type UploadHandler } from './types'
 
@@ -78,6 +81,24 @@ export const workspacePendingMembershipsHandler: UploadHandler = {
           role,
           invitedByUserId,
         })
+
+        // Promote-on-insert: if the invited email already belongs to a real
+        // user on this server, write a membership row + delete the pending
+        // row in the same transaction. PostgreSQL emits both ops in WAL order
+        // so PowerSync ships the insert+delete back to the originating FE,
+        // which removes its optimistic local pending row organically. The
+        // signup hook (`promotePendingMemberships`) covers the unknown-email
+        // path when the invitee later signs up.
+        const matched = await getUserByEmail(tx, normalizeEmail(email))
+        if (matched) {
+          await upsertMembership(tx, {
+            id: crypto.randomUUID(),
+            workspaceId,
+            userId: matched.id,
+            role,
+          })
+          await deletePendingMembership(tx, op.id)
+        }
         return
       }
       case 'PATCH': {

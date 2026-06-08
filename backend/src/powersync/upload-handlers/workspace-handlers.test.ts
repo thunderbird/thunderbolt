@@ -416,6 +416,114 @@ describe('workspace upload handlers', () => {
         .where(eq(workspacePendingMembershipsTable.id, op.id))
       expect(stored[0].email).toBe('mixedcase@test.com')
     })
+
+    it('promotes to membership + deletes pending row when invited email matches an existing user', async () => {
+      await insertUser('admin6', 'admin6@test.com')
+      await insertUser('invitee1', 'invitee1@test.com')
+      await bootstrapPersonalViaUpload('admin6')
+      const sharedId = await seedSharedAsAdmin('admin6')
+
+      const op: UploadOp = {
+        op: 'PUT',
+        type: 'workspace_pending_memberships',
+        id: uuidv7(),
+        data: {
+          workspace_id: sharedId,
+          email: 'invitee1@test.com',
+          role: 'member',
+          invited_by_user_id: 'admin6',
+        },
+      }
+      const result = await applyUploadBatch(db, [op], ctxFor('admin6'))
+      expect(result.ok).toBe(true)
+      if (result.ok) {
+        expect(result.rejected).toHaveLength(0)
+      }
+
+      const pending = await db
+        .select()
+        .from(workspacePendingMembershipsTable)
+        .where(eq(workspacePendingMembershipsTable.id, op.id))
+      expect(pending).toHaveLength(0)
+
+      const memberships = await db
+        .select()
+        .from(workspaceMembershipsTable)
+        .where(eq(workspaceMembershipsTable.workspaceId, sharedId))
+      // admin6 (from seedSharedAsAdmin) + invitee1 (promoted)
+      expect(memberships).toHaveLength(2)
+      const invitee = memberships.find((m) => m.userId === 'invitee1')
+      expect(invitee).toBeDefined()
+      expect(invitee?.role).toBe('member')
+    })
+
+    it('promotes via normalized email match (case + whitespace)', async () => {
+      await insertUser('admin7', 'admin7@test.com')
+      await insertUser('invitee2', 'invitee2@test.com')
+      await bootstrapPersonalViaUpload('admin7')
+      const sharedId = await seedSharedAsAdmin('admin7')
+
+      const op: UploadOp = {
+        op: 'PUT',
+        type: 'workspace_pending_memberships',
+        id: uuidv7(),
+        data: {
+          workspace_id: sharedId,
+          email: ' Invitee2@TEST.com ',
+          role: 'admin',
+          invited_by_user_id: 'admin7',
+        },
+      }
+      const result = await applyUploadBatch(db, [op], ctxFor('admin7'))
+      expect(result.ok).toBe(true)
+
+      const pending = await db
+        .select()
+        .from(workspacePendingMembershipsTable)
+        .where(eq(workspacePendingMembershipsTable.id, op.id))
+      expect(pending).toHaveLength(0)
+
+      const memberships = await db
+        .select()
+        .from(workspaceMembershipsTable)
+        .where(eq(workspaceMembershipsTable.workspaceId, sharedId))
+      const invitee = memberships.find((m) => m.userId === 'invitee2')
+      expect(invitee?.role).toBe('admin')
+    })
+
+    it('keeps pending row when invited email does not match any user', async () => {
+      await insertUser('admin8', 'admin8@test.com')
+      await bootstrapPersonalViaUpload('admin8')
+      const sharedId = await seedSharedAsAdmin('admin8')
+
+      const op: UploadOp = {
+        op: 'PUT',
+        type: 'workspace_pending_memberships',
+        id: uuidv7(),
+        data: {
+          workspace_id: sharedId,
+          email: 'nobody@test.com',
+          role: 'member',
+          invited_by_user_id: 'admin8',
+        },
+      }
+      const result = await applyUploadBatch(db, [op], ctxFor('admin8'))
+      expect(result.ok).toBe(true)
+
+      const pending = await db
+        .select()
+        .from(workspacePendingMembershipsTable)
+        .where(eq(workspacePendingMembershipsTable.id, op.id))
+      expect(pending).toHaveLength(1)
+      expect(pending[0].email).toBe('nobody@test.com')
+
+      const memberships = await db
+        .select()
+        .from(workspaceMembershipsTable)
+        .where(eq(workspaceMembershipsTable.workspaceId, sharedId))
+      // only the seed admin — no promotion
+      expect(memberships).toHaveLength(1)
+    })
   })
 
   describe('batch accumulation', () => {

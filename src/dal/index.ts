@@ -141,6 +141,8 @@ export {
   getPersonalWorkspaceByOwnerQuery,
   getWorkspaceById,
   getWorkspaceByIdQuery,
+  getWorkspacesForUserQuery,
+  useWorkspacesQuery,
   type Workspace,
 } from './workspaces'
 export {

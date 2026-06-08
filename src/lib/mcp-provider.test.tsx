@@ -3,13 +3,17 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { useChatStore } from '@/chats/chat-store'
+import { setMcpServerCredentials } from '@/dal/mcp-secrets'
 import { setupTestDatabase, teardownTestDatabase } from '@/dal/test-utils'
+import { getDb } from '@/db/database'
 import { createQueryTestWrapper } from '@/test-utils/react-query'
 import type { MCPClient } from '@ai-sdk/mcp'
+import type { FetchLike } from '@modelcontextprotocol/sdk/shared/transport.js'
 import { act, cleanup, renderHook } from '@testing-library/react'
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'bun:test'
 import { createElement, type ReactNode } from 'react'
-import { MCPProvider, useMCP, type MCPClient as ProviderMCPClient } from './mcp-provider'
+import type { ensureValidMcpOAuthToken } from './mcp-auth/ensure-valid-token'
+import { MCPProvider, resolveMcpAccessToken, useMCP, type MCPClient as ProviderMCPClient } from './mcp-provider'
 
 /** A `Deferred` lets a test hold a fake `createClient` open so two concurrent
  *  reconnects (or a remove mid-reconnect) overlap deterministically. */
@@ -315,5 +319,76 @@ describe('MCPProvider reconnect', () => {
     const after = useChatStore.getState().getMcpClients()
     expect(after[0].client).toBe(reconnected as unknown as ProviderMCPClient)
     expect(after[0].client).not.toBe(initial as unknown as ProviderMCPClient)
+  })
+})
+
+// `resolveMcpAccessToken` is the per-connect credential→token resolution that
+// `defaultCreateClient` feeds into `buildMcpHeaders`. The reconnect suite above
+// injects `createClient` and so never exercises it; this asserts the OAuth
+// branch directly (the THU-573 bearer + no-auth paths must stay intact).
+describe('resolveMcpAccessToken', () => {
+  const cloudUrl = 'http://localhost:8000/v1'
+
+  beforeAll(async () => {
+    await setupTestDatabase()
+  })
+
+  afterAll(async () => {
+    await teardownTestDatabase()
+  })
+
+  it('injects the freshly refreshed token for an oauth credential', async () => {
+    const serverId = 'oauth-srv'
+    await setMcpServerCredentials(getDb(), serverId, {
+      type: 'oauth',
+      access_token: 'stale-token',
+      refresh_token: 'r1',
+      expires_at: Date.now() - 1_000,
+      issuer: 'https://auth.example.com',
+      tokenEndpoint: 'https://auth.example.com/token',
+      clientId: 'client-1',
+    })
+
+    // Fake ensure-valid stands in for the SDK refresh path: it returns the
+    // rotated access token the provider must inject. No real fetch/network.
+    let seenServerId: string | undefined
+    let seenFetch: FetchLike | undefined
+    const ensureValidToken: typeof ensureValidMcpOAuthToken = async (_db, id, fetchFn) => {
+      seenServerId = id
+      seenFetch = fetchFn
+      return 'refreshed-token'
+    }
+
+    const credentials = { type: 'oauth' as const, access_token: 'stale-token' }
+    const token = await resolveMcpAccessToken(getDb(), serverId, credentials, cloudUrl, ensureValidToken)
+
+    expect(token).toBe('refreshed-token')
+    expect(seenServerId).toBe(serverId)
+    // The proxy-routed fetch is threaded through to the refresh path.
+    expect(typeof seenFetch).toBe('function')
+  })
+
+  it('returns the static token verbatim for a bearer credential without touching oauth refresh', async () => {
+    let refreshCalled = false
+    const ensureValidToken: typeof ensureValidMcpOAuthToken = async () => {
+      refreshCalled = true
+      return 'should-not-be-used'
+    }
+
+    const token = await resolveMcpAccessToken(
+      getDb(),
+      'bearer-srv',
+      { type: 'bearer', token: 'static-bearer' },
+      cloudUrl,
+      ensureValidToken,
+    )
+
+    expect(token).toBe('static-bearer')
+    expect(refreshCalled).toBe(false)
+  })
+
+  it('returns undefined when the server has no stored credentials', async () => {
+    const token = await resolveMcpAccessToken(getDb(), 'no-auth-srv', null, cloudUrl)
+    expect(token).toBeUndefined()
   })
 })

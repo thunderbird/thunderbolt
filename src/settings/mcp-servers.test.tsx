@@ -12,13 +12,15 @@ import '@testing-library/jest-dom'
 import { act, cleanup, screen } from '@testing-library/react'
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'bun:test'
 import { createElement, type ReactNode } from 'react'
+import { MemoryRouter } from 'react-router'
 import { v7 as uuidv7 } from 'uuid'
 import McpServersPage, { generateServerName } from './mcp-servers'
 
 // Wrap the page in a real MCPProvider with an injected createClient so the page
 // reads live (empty) connection state via useMCP — no need to mock the shared
 // useMcpSync hook. The fake client never resolves tools, keeping the test
-// focused on the DB-driven server list rendering.
+// focused on the DB-driven server list rendering. A MemoryRouter satisfies the
+// page's useLocation/useNavigate (the OAuth callback handler).
 const neverResolves = (() => new Promise<MCPClient>(() => {})) as (
   id: string,
   url: string,
@@ -26,7 +28,7 @@ const neverResolves = (() => new Promise<MCPClient>(() => {})) as (
 ) => Promise<MCPClient>
 
 const McpProviderWrapper = ({ children }: { children: ReactNode }) =>
-  createElement(MCPProvider, { createClient: neverResolves, children })
+  createElement(MemoryRouter, { children: createElement(MCPProvider, { createClient: neverResolves, children }) })
 
 describe('McpServersPage reactivity', () => {
   beforeAll(async () => {

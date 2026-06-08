@@ -140,6 +140,7 @@ export {
   getPersonalWorkspaceByOwner,
   getPersonalWorkspaceByOwnerQuery,
   getWorkspaceById,
+  getWorkspaceByIdQuery,
   type Workspace,
 } from './workspaces'
 export {

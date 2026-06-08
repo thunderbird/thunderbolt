@@ -46,9 +46,19 @@ export const getPersonalWorkspaceByOwner = async (
   return (row ?? null) as Workspace | null
 }
 
-/** Fetch a workspace by id. Used by the URL-driven workspace selector (PR 3). */
+/**
+ * Drizzle query for a workspace by id. Use with PowerSync's `toCompilableQuery`
+ * for a live subscription (the active-workspace hook does this when the URL
+ * carries a `/w/<id>/` prefix).
+ */
+export const getWorkspaceByIdQuery = (db: AnyDrizzleDatabase, id: string) => {
+  const query = db.select().from(workspacesTable).where(eq(workspacesTable.id, id)).limit(1)
+  return query as typeof query & DrizzleQueryWithPromise<Workspace>
+}
+
+/** Fetch a workspace by id. Used by the URL-driven workspace selector. */
 export const getWorkspaceById = async (db: AnyDrizzleDatabase, id: string): Promise<Workspace | null> => {
-  const row = await db.select().from(workspacesTable).where(eq(workspacesTable.id, id)).get()
+  const row = await getWorkspaceByIdQuery(db, id).get()
   return (row ?? null) as Workspace | null
 }
 

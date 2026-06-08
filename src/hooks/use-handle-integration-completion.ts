@@ -12,10 +12,16 @@ import { useIntegrationStatus, type IntegrationStatus } from '@/hooks/use-integr
 import { useQueryClient } from '@tanstack/react-query'
 import { v7 as uuidv7 } from 'uuid'
 import { updateMessageCache } from '@/dal/chat-messages'
-import { useActiveWorkspaceId } from '@/lib/active-workspace'
 
 type UseHandleIntegrationCompletionParams = {
   saveMessages: SaveMessagesFunction
+  /**
+   * Active workspace id, injected by the caller. Passed in (rather than
+   * resolved internally via `useActiveWorkspaceId`) so tests can mount this
+   * hook outside a Router without needing a `mock.module` shim that would
+   * leak across files (per the DI pattern established by THU-553).
+   */
+  workspaceId: string | null
 }
 
 /**
@@ -131,9 +137,11 @@ const waitForMessageInChat = async (
  * When an integration is connected, it automatically retries the user's original request
  * by sending a new message with the original text and triggering a response.
  */
-export const useHandleIntegrationCompletion = ({ saveMessages }: UseHandleIntegrationCompletionParams): void => {
+export const useHandleIntegrationCompletion = ({
+  saveMessages,
+  workspaceId,
+}: UseHandleIntegrationCompletionParams): void => {
   const db = useDatabase()
-  const workspaceId = useActiveWorkspaceId()
   const oauthRetryHandledRef = useRef<Set<string>>(new Set())
 
   const { chatInstance, chatThreadId } = useChatStore(

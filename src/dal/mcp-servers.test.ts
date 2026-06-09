@@ -6,7 +6,14 @@ import { getDb } from '@/db/database'
 import { mcpServersTable } from '@/db/tables'
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'bun:test'
 import { v7 as uuidv7 } from 'uuid'
-import { createMcpServer, deleteMcpServer, getAllMcpServers, getRemoteMcpServers } from './mcp-servers'
+import {
+  createMcpServer,
+  createMcpServerWithCredentials,
+  deleteMcpServer,
+  getAllMcpServers,
+  getRemoteMcpServers,
+} from './mcp-servers'
+import { getMcpServerCredentials } from './mcp-secrets'
 import { resetTestDatabase, setupTestDatabase, teardownTestDatabase } from './test-utils'
 
 beforeAll(async () => {
@@ -21,6 +28,36 @@ describe('MCP Servers DAL', () => {
   beforeEach(async () => {
     // Reset database before each test to prevent pollution from randomized test order
     await resetTestDatabase()
+  })
+
+  describe('createMcpServerWithCredentials', () => {
+    it('writes the server row and its credential together', async () => {
+      const db = getDb()
+      const id = uuidv7()
+      await createMcpServerWithCredentials(
+        db,
+        { id, name: 'Auth Server', type: 'http', url: 'https://example.com/mcp', enabled: 1 },
+        { type: 'bearer', token: 'secret-token' },
+      )
+      const servers = await getAllMcpServers(db)
+      expect(servers).toHaveLength(1)
+      expect(servers[0]?.id).toBe(id)
+      expect(await getMcpServerCredentials(db, id)).toEqual({ type: 'bearer', token: 'secret-token' })
+    })
+
+    it('writes the server row with no credential when none is given', async () => {
+      const db = getDb()
+      const id = uuidv7()
+      await createMcpServerWithCredentials(db, {
+        id,
+        name: 'No-Auth Server',
+        type: 'http',
+        url: 'https://example.com/mcp',
+        enabled: 1,
+      })
+      expect(await getAllMcpServers(db)).toHaveLength(1)
+      expect(await getMcpServerCredentials(db, id)).toBeNull()
+    })
   })
 
   describe('getAllMcpServers', () => {

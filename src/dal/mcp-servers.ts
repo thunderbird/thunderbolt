@@ -6,6 +6,7 @@ import { and, eq, inArray, isNotNull, isNull } from 'drizzle-orm'
 import type { AnyDrizzleDatabase } from '../db/database-interface'
 import { mcpSecretsTable, mcpServersTable } from '../db/tables'
 import { clearNullableColumns, nowIso } from '../lib/utils'
+import { setMcpServerCredentials, type McpServerCredentials } from './mcp-secrets'
 import { type McpServer } from '@/types'
 import type { DrizzleQueryWithPromise } from '@/types'
 
@@ -58,4 +59,24 @@ export const createMcpServer = async (
   data: Partial<McpServer> & Pick<McpServer, 'id' | 'name'>,
 ): Promise<void> => {
   await db.insert(mcpServersTable).values(data)
+}
+
+/**
+ * Creates an MCP server together with its optional on-device credentials in a
+ * single transaction. `useMcpSync` connects on the new `mcp_servers` row and
+ * reads the secret at connect time, so the secret must commit alongside the row
+ * — a partial write would orphan the secret or connect unauthenticated.
+ * Symmetric to {@link deleteMcpServer}.
+ */
+export const createMcpServerWithCredentials = async (
+  db: AnyDrizzleDatabase,
+  data: Partial<McpServer> & Pick<McpServer, 'id' | 'name'>,
+  credentials?: McpServerCredentials,
+): Promise<void> => {
+  await db.transaction(async (tx) => {
+    if (credentials) {
+      await setMcpServerCredentials(tx, data.id, credentials)
+    }
+    await createMcpServer(tx, data)
+  })
 }

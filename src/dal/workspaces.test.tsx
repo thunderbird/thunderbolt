@@ -4,7 +4,16 @@
 
 import { DatabaseProvider } from '@/contexts'
 import { getDb } from '@/db/database'
-import { workspaceMembershipsTable, workspacePendingMembershipsTable, workspacesTable } from '@/db/tables'
+import {
+  modelProfilesTable,
+  modelsTable,
+  modesTable,
+  skillsTable,
+  tasksTable,
+  workspaceMembershipsTable,
+  workspacePendingMembershipsTable,
+  workspacesTable,
+} from '@/db/tables'
 import {
   renderWithReactivity,
   resetTestTrustDomain,
@@ -270,5 +279,25 @@ describe('createSharedWorkspace', () => {
       .from(workspacePendingMembershipsTable)
       .where(eq(workspacePendingMembershipsTable.workspaceId, workspaceId))
     expect(pending[0].role).toBe('admin')
+  })
+
+  it('seeds default models / modes / skills / tasks / profiles for the new workspace', async () => {
+    const db = getDb()
+    const workspaceId = await createSharedWorkspace(db, {
+      creatorUserId: testUserId,
+      name: 'Seeded',
+    })
+
+    const models = await db.select().from(modelsTable).where(eq(modelsTable.workspaceId, workspaceId))
+    const modes = await db.select().from(modesTable).where(eq(modesTable.workspaceId, workspaceId))
+    const skills = await db.select().from(skillsTable).where(eq(skillsTable.workspaceId, workspaceId))
+    const tasks = await db.select().from(tasksTable).where(eq(tasksTable.workspaceId, workspaceId))
+    const profiles = await db.select().from(modelProfilesTable).where(eq(modelProfilesTable.workspaceId, workspaceId))
+
+    expect(models.length).toBeGreaterThan(0)
+    expect(modes.length).toBeGreaterThan(0)
+    expect(skills.length).toBeGreaterThan(0)
+    expect(tasks.length).toBeGreaterThan(0)
+    expect(profiles.length).toBeGreaterThan(0)
   })
 })

@@ -7,6 +7,7 @@ import { toCompilableQuery } from '@powersync/drizzle-driver'
 import { useQuery } from '@powersync/tanstack-react-query'
 import { v7 as uuidv7 } from 'uuid'
 import { useDatabase } from '@/contexts'
+import { seedFreshWorkspaceDefaultsInTx } from '@/lib/reconcile-defaults'
 import { useTrustDomainRegistry } from '@/stores/trust-domain-registry'
 import type { AnyDrizzleDatabase } from '../db/database-interface'
 import { workspaceMembershipsTable, workspacePendingMembershipsTable, workspacesTable } from '../db/tables'
@@ -236,6 +237,13 @@ export const createSharedWorkspace = async (
         invitedByUserId: input.creatorUserId,
       })
     }
+    // Seed default models / modes / skills / tasks / profiles into the new
+    // workspace inside the same transaction so the workspace is usable the
+    // moment it commits — without this, the creator would land on
+    // /w/<newId>/ with empty pickers everywhere. Uses fresh per-workspace ids
+    // to avoid colliding with the personal workspace's default rows (the FE
+    // PK is single-column `id`).
+    await seedFreshWorkspaceDefaultsInTx(tx, workspaceId)
   })
 
   return workspaceId

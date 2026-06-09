@@ -17,13 +17,13 @@ import { addPendingMemberships } from '@/dal/workspaces'
 import { isValidEmailFormat } from '@/lib/utils'
 import { useEffect, useMemo, useRef, useState } from 'react'
 
-const SEPARATOR_REGEX = /[\s,;]+/
+const separatorRegex = /[\s,;]+/
 
 const parseEmails = (text: string): { valid: string[]; invalid: string[] } => {
   const valid: string[] = []
   const invalid: string[] = []
   const seen = new Set<string>()
-  for (const token of text.split(SEPARATOR_REGEX)) {
+  for (const token of text.split(separatorRegex)) {
     const email = token.trim().toLowerCase()
     if (!email) {
       continue

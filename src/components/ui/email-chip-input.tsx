@@ -6,7 +6,7 @@ import { cn, isValidEmailFormat } from '@/lib/utils'
 import { X } from 'lucide-react'
 import { type ClipboardEvent, type KeyboardEvent, useId, useRef, useState } from 'react'
 
-const SEPARATOR_REGEX = /[\s,;]+/
+const separatorRegex = /[\s,;]+/
 
 const normalize = (email: string): string => email.toLowerCase().trim()
 
@@ -101,11 +101,11 @@ export const EmailChipInput = ({
 
   const handlePaste = (event: ClipboardEvent<HTMLInputElement>) => {
     const text = event.clipboardData.getData('text')
-    if (!text || !SEPARATOR_REGEX.test(text)) {
+    if (!text || !separatorRegex.test(text)) {
       return
     }
     event.preventDefault()
-    const tokens = text.split(SEPARATOR_REGEX).filter(Boolean)
+    const tokens = text.split(separatorRegex).filter(Boolean)
     if (tokens.length === 0) {
       return
     }

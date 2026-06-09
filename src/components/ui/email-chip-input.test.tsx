@@ -8,13 +8,13 @@ import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { useState } from 'react'
 import { EmailChipInput } from './email-chip-input'
 
-const PLACEHOLDER = 'Enter emails…'
+const placeholderText = 'Enter emails…'
 
 const Harness = ({ initial = [] as string[] }: { initial?: string[] }) => {
   const [value, setValue] = useState<string[]>(initial)
   return (
     <>
-      <EmailChipInput value={value} onChange={setValue} placeholder={PLACEHOLDER} />
+      <EmailChipInput value={value} onChange={setValue} placeholder={placeholderText} />
       <div data-testid="value-json">{JSON.stringify(value)}</div>
     </>
   )
@@ -24,7 +24,7 @@ const findInput = (initial: string[] = []): HTMLInputElement => {
   // Placeholder only renders when value is empty; fall back to the email
   // autocomplete attribute (the input always has it) when we seeded chips.
   if (initial.length === 0) {
-    return screen.getByPlaceholderText(PLACEHOLDER) as HTMLInputElement
+    return screen.getByPlaceholderText(placeholderText) as HTMLInputElement
   }
   return screen.getByDisplayValue('') as HTMLInputElement
 }

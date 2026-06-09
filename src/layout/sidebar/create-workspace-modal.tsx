@@ -3,7 +3,6 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { Button } from '@/components/ui/button'
-import { EmailChipInput } from '@/components/ui/email-chip-input'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import {
@@ -16,174 +15,101 @@ import {
 } from '@/components/ui/responsive-modal'
 import { useAuth, useDatabase } from '@/contexts'
 import { createSharedWorkspace } from '@/dal/workspaces'
-import { useEffect, useReducer, useRef } from 'react'
-import { useNavigate } from 'react-router'
-
-type Step = 'name' | 'invite'
-
-type State = {
-  step: Step
-  name: string
-  emails: string[]
-  submitting: boolean
-}
-
-type Action =
-  | { type: 'set-name'; name: string }
-  | { type: 'continue' }
-  | { type: 'back' }
-  | { type: 'set-emails'; emails: string[] }
-  | { type: 'submit-start' }
-  | { type: 'submit-end' }
-  | { type: 'reset' }
-
-const initial: State = { step: 'name', name: '', emails: [], submitting: false }
-
-const reducer = (state: State, action: Action): State => {
-  switch (action.type) {
-    case 'set-name':
-      return { ...state, name: action.name }
-    case 'continue':
-      return state.name.trim().length > 0 ? { ...state, step: 'invite' } : state
-    case 'back':
-      return { ...state, step: 'name' }
-    case 'set-emails':
-      return { ...state, emails: action.emails }
-    case 'submit-start':
-      return { ...state, submitting: true }
-    case 'submit-end':
-      return { ...state, submitting: false }
-    case 'reset':
-      return initial
-  }
-}
+import { useEffect, useRef, useState } from 'react'
 
 type CreateWorkspaceModalProps = {
   open: boolean
   onOpenChange: (open: boolean) => void
+  /** Called after the workspace + defaults are committed locally. The caller is
+   *  expected to follow up with the invite modal and the navigation. */
+  onCreated: (workspaceId: string) => void
 }
 
 /**
- * Two-step "Create Workspace" wizard rendered from the sidebar selector
- * footer. Step 1 captures a name; step 2 captures optional email invites.
- * Submission writes the workspace + creator admin membership + one pending
- * row per email locally (PowerSync uploads the batch). The BE upload handler
- * promotes pending rows to active memberships for emails matching existing
- * users in the same upload transaction — see
- * `backend/src/powersync/upload-handlers/workspace-pending-memberships.ts`.
+ * Single-step "Create a Workspace" modal. Captures the workspace name; on
+ * submit, writes the workspace + creator admin membership + seeded defaults
+ * into a single local transaction (PowerSync uploads the batch).
  *
- * The modal closes optimistically as soon as the local writes commit and
- * navigates to the new workspace. Permanent BE rejects (server policy,
- * etc.) surface through the global sync status indicator; a per-write
- * rollback / toast is deferred to the `rejected_writes` track.
+ * After the local writes commit, control hands off to `onCreated` — the
+ * parent (sidebar selector) opens the invite modal and handles navigation
+ * once that closes.
  */
-export const CreateWorkspaceModal = ({ open, onOpenChange }: CreateWorkspaceModalProps) => {
-  const [state, dispatch] = useReducer(reducer, initial)
+export const CreateWorkspaceModal = ({ open, onOpenChange, onCreated }: CreateWorkspaceModalProps) => {
+  const [name, setName] = useState('')
+  const [submitting, setSubmitting] = useState(false)
   const db = useDatabase()
   const authClient = useAuth()
   const { data: session } = authClient.useSession()
-  const navigate = useNavigate()
 
-  // The reducer holds form state across re-opens by default; reset whenever
-  // the modal closes so the next open is a clean step-1 form. The transition
-  // (open → closed) is detected via a ref to avoid an extra useEffect on
-  // every render.
+  // Reset on close so the next open starts fresh.
   const previouslyOpenRef = useRef(open)
   useEffect(() => {
     if (previouslyOpenRef.current && !open) {
-      dispatch({ type: 'reset' })
+      setName('')
+      setSubmitting(false)
     }
     previouslyOpenRef.current = open
   }, [open])
 
   const userId = session?.user?.id
   const creatorEmail = session?.user?.email ?? undefined
-  const canSubmit = state.name.trim().length > 0 && !state.submitting && !!userId
+  const trimmed = name.trim()
+  const canSubmit = trimmed.length > 0 && !submitting && !!userId
 
   const submit = async () => {
     if (!canSubmit || !userId) {
       return
     }
-    dispatch({ type: 'submit-start' })
+    setSubmitting(true)
     try {
       const workspaceId = await createSharedWorkspace(db, {
         creatorUserId: userId,
         creatorEmail,
-        name: state.name,
-        invitedEmails: state.emails,
+        name: trimmed,
       })
-      onOpenChange(false)
-      navigate(`/w/${workspaceId}/`)
+      onCreated(workspaceId)
     } finally {
-      dispatch({ type: 'submit-end' })
+      setSubmitting(false)
     }
   }
 
   return (
-    <ResponsiveModal open={open} onOpenChange={onOpenChange}>
-      <ResponsiveModalHeader>
-        <ResponsiveModalTitle>{state.step === 'name' ? 'Create workspace' : 'Invite teammates'}</ResponsiveModalTitle>
-        <ResponsiveModalDescription>
-          {state.step === 'name'
-            ? 'Workspaces let you collaborate with teammates on shared chats, prompts, and tools.'
-            : 'Add the emails of people you want to invite. You can also skip and invite later.'}
+    <ResponsiveModal open={open} onOpenChange={onOpenChange} className="sm:min-h-fit">
+      <ResponsiveModalHeader className="mt-6">
+        <ResponsiveModalTitle className="text-xl leading-7 font-normal text-center">
+          Create a Workspace
+        </ResponsiveModalTitle>
+        <ResponsiveModalDescription className="text-[length:var(--font-size-body)] leading-7 font-normal text-center">
+          What kind of workspace do you want to create?
         </ResponsiveModalDescription>
       </ResponsiveModalHeader>
 
       <ResponsiveModalContent>
-        {state.step === 'name' ? (
-          <div className="flex flex-col gap-2">
-            <Label htmlFor="create-workspace-name">Workspace name</Label>
-            <Input
-              id="create-workspace-name"
-              autoFocus
-              value={state.name}
-              onChange={(e) => dispatch({ type: 'set-name', name: e.target.value })}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter' && state.name.trim().length > 0) {
-                  e.preventDefault()
-                  dispatch({ type: 'continue' })
-                }
-              }}
-              placeholder="e.g. Engineering"
-            />
-          </div>
-        ) : (
-          <div className="flex flex-col gap-2">
-            <Label htmlFor="create-workspace-emails">Invite by email</Label>
-            <EmailChipInput
-              inputId="create-workspace-emails"
-              value={state.emails}
-              onChange={(emails) => dispatch({ type: 'set-emails', emails })}
-              placeholder="alice@example.com, bob@example.com"
-            />
-          </div>
-        )}
+        <div className="flex flex-col gap-2">
+          <Label htmlFor="create-workspace-name" className="text-[length:var(--font-size-body)] leading-7 font-normal">
+            Workspace name
+          </Label>
+          <Input
+            id="create-workspace-name"
+            inputSize="lg"
+            autoFocus
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && canSubmit) {
+                e.preventDefault()
+                void submit()
+              }
+            }}
+            placeholder="e.g. Engineering"
+          />
+        </div>
       </ResponsiveModalContent>
 
-      <ResponsiveModalFooter>
-        {state.step === 'name' ? (
-          <>
-            <Button variant="ghost" onClick={() => onOpenChange(false)} disabled={state.submitting}>
-              Cancel
-            </Button>
-            <Button onClick={() => dispatch({ type: 'continue' })} disabled={state.name.trim().length === 0}>
-              Continue
-            </Button>
-          </>
-        ) : (
-          <>
-            <Button variant="ghost" onClick={() => dispatch({ type: 'back' })} disabled={state.submitting}>
-              Back
-            </Button>
-            <Button variant="outline" onClick={submit} disabled={!canSubmit}>
-              Skip
-            </Button>
-            <Button onClick={submit} disabled={!canSubmit}>
-              {state.submitting ? 'Creating…' : 'Create workspace'}
-            </Button>
-          </>
-        )}
+      <ResponsiveModalFooter className="mt-8 flex-col sm:flex-col">
+        <Button size="lg" className="w-full" onClick={submit} disabled={!canSubmit}>
+          {submitting ? 'Creating…' : 'Create'}
+        </Button>
       </ResponsiveModalFooter>
     </ResponsiveModal>
   )

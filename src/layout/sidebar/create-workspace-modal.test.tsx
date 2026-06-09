@@ -13,7 +13,7 @@ import '@testing-library/jest-dom'
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'bun:test'
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { eq } from 'drizzle-orm'
-import { MemoryRouter, Route, Routes, useLocation } from 'react-router'
+import { MemoryRouter } from 'react-router'
 import { useState, type ReactNode } from 'react'
 import { CreateWorkspaceModal } from './create-workspace-modal'
 
@@ -21,24 +21,21 @@ const session = { user: { id: testUserId, email: 'creator@test.com', name: 'Crea
 
 const Harness = ({ initialOpen = true }: { initialOpen?: boolean }) => {
   const [open, setOpen] = useState(initialOpen)
+  const [createdId, setCreatedId] = useState<string | null>(null)
+  // Mirror the real WorkspaceSelector behavior — onCreated closes the modal.
+  const handleCreated = (id: string) => {
+    setOpen(false)
+    setCreatedId(id)
+  }
   return (
     <>
-      <button onClick={() => setOpen(true)}>open</button>
-      <CreateWorkspaceModal open={open} onOpenChange={setOpen} />
+      <CreateWorkspaceModal open={open} onOpenChange={setOpen} onCreated={handleCreated} />
       <div data-testid="open">{open ? 'yes' : 'no'}</div>
+      <div data-testid="created-id">{createdId ?? ''}</div>
     </>
   )
 }
 
-const LocationProbe = () => {
-  const { pathname } = useLocation()
-  return <div data-testid="pathname">{pathname}</div>
-}
-
-// Minimal wrapper that gives the modal exactly what it needs (DB + QueryClient
-// + auth client) without mounting `<AuthProvider>` — the latter triggers
-// `runPostAuthBootstrap` → `reconcileDefaults`, whose async transaction races
-// the modal's own transaction and bun:sqlite rejects nested transactions.
 const wrap = (children: ReactNode) => {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false, gcTime: 0, staleTime: 0 } },
@@ -47,19 +44,7 @@ const wrap = (children: ReactNode) => {
     <DatabaseProvider db={getDb()}>
       <QueryClientProvider client={queryClient}>
         <AuthContext.Provider value={{ authClient: createMockAuthClient({ session }) }}>
-          <MemoryRouter initialEntries={['/chats/new']}>
-            <Routes>
-              <Route
-                path="/*"
-                element={
-                  <>
-                    {children}
-                    <LocationProbe />
-                  </>
-                }
-              />
-            </Routes>
-          </MemoryRouter>
+          <MemoryRouter initialEntries={['/chats/new']}>{children}</MemoryRouter>
         </AuthContext.Provider>
       </QueryClientProvider>
     </DatabaseProvider>
@@ -83,41 +68,24 @@ describe('CreateWorkspaceModal', () => {
     cleanup()
   })
 
-  it('disables Continue when name is empty / whitespace-only', () => {
+  it('disables Create when name is empty / whitespace-only', () => {
     render(wrap(<Harness />))
-    const cont = screen.getByRole('button', { name: 'Continue' }) as HTMLButtonElement
-    expect(cont).toBeDisabled()
+    const cta = screen.getByRole('button', { name: 'Create' }) as HTMLButtonElement
+    expect(cta).toBeDisabled()
 
     const input = screen.getByLabelText('Workspace name')
     fireEvent.change(input, { target: { value: '   ' } })
-    expect(cont).toBeDisabled()
+    expect(cta).toBeDisabled()
 
     fireEvent.change(input, { target: { value: 'Engineering' } })
-    expect(cont).not.toBeDisabled()
+    expect(cta).not.toBeDisabled()
   })
 
-  it('advances to invite step on Continue', () => {
-    render(wrap(<Harness />))
-    fireEvent.change(screen.getByLabelText('Workspace name'), { target: { value: 'Engineering' } })
-    fireEvent.click(screen.getByRole('button', { name: 'Continue' }))
-    expect(screen.getByLabelText('Invite by email')).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: /create workspace/i })).toBeInTheDocument()
-  })
-
-  it('Back returns to the name step keeping the entered name', () => {
-    render(wrap(<Harness />))
-    fireEvent.change(screen.getByLabelText('Workspace name'), { target: { value: 'Engineering' } })
-    fireEvent.click(screen.getByRole('button', { name: 'Continue' }))
-    fireEvent.click(screen.getByRole('button', { name: 'Back' }))
-    expect(screen.getByLabelText('Workspace name')).toHaveValue('Engineering')
-  })
-
-  it('Skip creates the workspace with no invites + closes + navigates', async () => {
+  it('Create writes workspace + admin membership + seeds defaults; calls onCreated and closes', async () => {
     render(wrap(<Harness />))
     fireEvent.change(screen.getByLabelText('Workspace name'), { target: { value: 'Acme' } })
-    fireEvent.click(screen.getByRole('button', { name: 'Continue' }))
     await act(async () => {
-      fireEvent.click(screen.getByRole('button', { name: 'Skip' }))
+      fireEvent.click(screen.getByRole('button', { name: 'Create' }))
     })
 
     await waitFor(() => expect(screen.getByTestId('open')).toHaveTextContent('no'))
@@ -125,6 +93,8 @@ describe('CreateWorkspaceModal', () => {
     const db = getDb()
     const wsRows = await db.select().from(workspacesTable).where(eq(workspacesTable.name, 'Acme'))
     expect(wsRows).toHaveLength(1)
+    expect(wsRows[0].isPersonal).toBe(0)
+
     const memberships = await db
       .select()
       .from(workspaceMembershipsTable)
@@ -133,77 +103,27 @@ describe('CreateWorkspaceModal', () => {
     expect(memberships[0].userId).toBe(testUserId)
     expect(memberships[0].role).toBe('admin')
 
+    // No pending memberships — that's the invite modal's job now.
     const pending = await db
       .select()
       .from(workspacePendingMembershipsTable)
       .where(eq(workspacePendingMembershipsTable.workspaceId, wsRows[0].id))
     expect(pending).toHaveLength(0)
 
-    expect(screen.getByTestId('pathname').textContent).toBe(`/w/${wsRows[0].id}/`)
+    expect(screen.getByTestId('created-id').textContent).toBe(wsRows[0].id)
   })
 
-  it('Create Workspace writes one pending row per invited email', async () => {
+  it('Enter on a non-empty name submits without clicking Create', async () => {
     render(wrap(<Harness />))
-    fireEvent.change(screen.getByLabelText('Workspace name'), { target: { value: 'Acme' } })
-    fireEvent.click(screen.getByRole('button', { name: 'Continue' }))
-
-    const emails = screen.getByLabelText('Invite by email')
-    fireEvent.change(emails, { target: { value: 'a@test.com' } })
-    fireEvent.keyDown(emails, { key: 'Enter' })
-    fireEvent.change(emails, { target: { value: 'b@test.com' } })
-    fireEvent.keyDown(emails, { key: 'Enter' })
-
+    const input = screen.getByLabelText('Workspace name')
+    fireEvent.change(input, { target: { value: 'Enter Submit' } })
     await act(async () => {
-      fireEvent.click(screen.getByRole('button', { name: /create workspace/i }))
+      fireEvent.keyDown(input, { key: 'Enter' })
     })
 
     await waitFor(() => expect(screen.getByTestId('open')).toHaveTextContent('no'))
-
     const db = getDb()
-    const wsRows = await db.select().from(workspacesTable).where(eq(workspacesTable.name, 'Acme'))
-    const pending = await db
-      .select()
-      .from(workspacePendingMembershipsTable)
-      .where(eq(workspacePendingMembershipsTable.workspaceId, wsRows[0].id))
-    const sortedEmails = pending.map((p) => p.email).sort()
-    expect(sortedEmails).toEqual(['a@test.com', 'b@test.com'])
-  })
-
-  it('filters the creator email out of invited emails', async () => {
-    render(wrap(<Harness />))
-    fireEvent.change(screen.getByLabelText('Workspace name'), { target: { value: 'SelfInvite' } })
-    fireEvent.click(screen.getByRole('button', { name: 'Continue' }))
-
-    const emails = screen.getByLabelText('Invite by email')
-    fireEvent.change(emails, { target: { value: 'creator@test.com' } })
-    fireEvent.keyDown(emails, { key: 'Enter' })
-    fireEvent.change(emails, { target: { value: 'other@test.com' } })
-    fireEvent.keyDown(emails, { key: 'Enter' })
-
-    await act(async () => {
-      fireEvent.click(screen.getByRole('button', { name: /create workspace/i }))
-    })
-
-    await waitFor(() => expect(screen.getByTestId('open')).toHaveTextContent('no'))
-
-    const db = getDb()
-    const wsRows = await db.select().from(workspacesTable).where(eq(workspacesTable.name, 'SelfInvite'))
-    const pending = await db
-      .select()
-      .from(workspacePendingMembershipsTable)
-      .where(eq(workspacePendingMembershipsTable.workspaceId, wsRows[0].id))
-    expect(pending.map((p) => p.email)).toEqual(['other@test.com'])
-  })
-
-  it('Cancel closes without writing anything', async () => {
-    render(wrap(<Harness />))
-    fireEvent.change(screen.getByLabelText('Workspace name'), { target: { value: 'Nope' } })
-    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }))
-
-    await waitFor(() => expect(screen.getByTestId('open')).toHaveTextContent('no'))
-
-    const db = getDb()
-    const wsRows = await db.select().from(workspacesTable).where(eq(workspacesTable.name, 'Nope'))
-    expect(wsRows).toHaveLength(0)
+    const wsRows = await db.select().from(workspacesTable).where(eq(workspacesTable.name, 'Enter Submit'))
+    expect(wsRows).toHaveLength(1)
   })
 })

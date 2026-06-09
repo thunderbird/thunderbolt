@@ -25,7 +25,12 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from
 import '@testing-library/jest-dom'
 import { cleanup, screen } from '@testing-library/react'
 import type { ReactNode } from 'react'
-import { createSharedWorkspace, getWorkspacesForUserQuery, useWorkspacesQuery } from './workspaces'
+import {
+  addPendingMemberships,
+  createSharedWorkspace,
+  getWorkspacesForUserQuery,
+  useWorkspacesQuery,
+} from './workspaces'
 import { otherWsId, resetTestDatabase, setupTestDatabase, teardownTestDatabase, testUserId, wsId } from './test-utils'
 
 const DbWrapper = ({ children }: { children: ReactNode }) => (
@@ -299,5 +304,87 @@ describe('createSharedWorkspace', () => {
     expect(skills.length).toBeGreaterThan(0)
     expect(tasks.length).toBeGreaterThan(0)
     expect(profiles.length).toBeGreaterThan(0)
+  })
+})
+
+describe('addPendingMemberships', () => {
+  beforeAll(async () => {
+    await setupTestDatabase()
+  })
+
+  afterAll(async () => {
+    await teardownTestDatabase()
+  })
+
+  beforeEach(async () => {
+    await resetTestDatabase()
+  })
+
+  it('writes one pending row per email + returns the count', async () => {
+    const db = getDb()
+    const workspaceId = await createSharedWorkspace(db, {
+      creatorUserId: testUserId,
+      name: 'For-invites',
+    })
+
+    const written = await addPendingMemberships(db, {
+      workspaceId,
+      invitedByUserId: testUserId,
+      emails: ['a@test.com', 'b@test.com'],
+    })
+    expect(written).toBe(2)
+
+    const pending = await db
+      .select()
+      .from(workspacePendingMembershipsTable)
+      .where(eq(workspacePendingMembershipsTable.workspaceId, workspaceId))
+    expect(pending.map((p) => p.email).sort()).toEqual(['a@test.com', 'b@test.com'])
+    for (const row of pending) {
+      expect(row.invitedByUserId).toBe(testUserId)
+      expect(row.role).toBe('member')
+    }
+  })
+
+  it('normalizes + dedupes + filters out the creator email', async () => {
+    const db = getDb()
+    const workspaceId = await createSharedWorkspace(db, {
+      creatorUserId: testUserId,
+      name: 'Norm-invites',
+    })
+
+    const written = await addPendingMemberships(db, {
+      workspaceId,
+      invitedByUserId: testUserId,
+      creatorEmail: 'me@test.com',
+      emails: [' Me@test.com', ' me@TEST.com ', 'Friend@test.com', 'friend@test.com'],
+    })
+    expect(written).toBe(1)
+
+    const pending = await db
+      .select()
+      .from(workspacePendingMembershipsTable)
+      .where(eq(workspacePendingMembershipsTable.workspaceId, workspaceId))
+    expect(pending.map((p) => p.email)).toEqual(['friend@test.com'])
+  })
+
+  it('returns 0 + writes nothing when the email list is empty', async () => {
+    const db = getDb()
+    const workspaceId = await createSharedWorkspace(db, {
+      creatorUserId: testUserId,
+      name: 'Empty-invites',
+    })
+
+    const written = await addPendingMemberships(db, {
+      workspaceId,
+      invitedByUserId: testUserId,
+      emails: [],
+    })
+    expect(written).toBe(0)
+
+    const pending = await db
+      .select()
+      .from(workspacePendingMembershipsTable)
+      .where(eq(workspacePendingMembershipsTable.workspaceId, workspaceId))
+    expect(pending).toHaveLength(0)
   })
 })

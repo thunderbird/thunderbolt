@@ -12,6 +12,7 @@ import { ChevronsUpDown, Plus } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router'
 import { CreateWorkspaceModal } from './create-workspace-modal'
+import { InviteMembersModal } from './invite-members-modal'
 
 const initialOf = (name: string): string => {
   const trimmed = name.trim()
@@ -88,6 +89,22 @@ export const WorkspaceSelector = ({ collapsed = false }: WorkspaceSelectorProps)
   const location = useLocation()
   const canCreate = useCanCreateWorkspace()
   const [createOpen, setCreateOpen] = useState(false)
+  // After create-modal commits, hold the new workspace id so the invite modal
+  // can target it; clearing this also closes the invite modal.
+  const [inviteWorkspaceId, setInviteWorkspaceId] = useState<string | null>(null)
+
+  const handleCreated = (workspaceId: string) => {
+    setCreateOpen(false)
+    setInviteWorkspaceId(workspaceId)
+  }
+
+  const handleInviteClose = () => {
+    const id = inviteWorkspaceId
+    setInviteWorkspaceId(null)
+    if (id) {
+      navigate(`/w/${id}/`)
+    }
+  }
 
   const groupedItems = useMemo(() => groupWorkspaces(workspaces), [workspaces])
 
@@ -189,7 +206,12 @@ export const WorkspaceSelector = ({ collapsed = false }: WorkspaceSelectorProps)
         maxHeight={400}
         footer={footer}
       />
-      <CreateWorkspaceModal open={createOpen} onOpenChange={setCreateOpen} />
+      <CreateWorkspaceModal open={createOpen} onOpenChange={setCreateOpen} onCreated={handleCreated} />
+      <InviteMembersModal
+        open={inviteWorkspaceId !== null}
+        workspaceId={inviteWorkspaceId}
+        onClose={handleInviteClose}
+      />
     </>
   )
 }

@@ -94,21 +94,32 @@ export const reconcileDefaultsForTable = async <T extends { defaultHash: string 
  * Soft-delete any unedited system default row whose id is no longer in the
  * current defaults arrays. The hash-match guard ensures edited rows survive.
  * Skips rows without a `defaultHash` (user-created).
+ *
+ * Scoped to a workspace so reconcile-on-boot for the personal workspace can't
+ * sweep away defaults seeded into a different workspace under per-workspace
+ * uuids (see `seedFreshWorkspaceDefaultsInTx`). Rows in other workspaces look
+ * "removed" to this cleanup because their ids don't match any shipped default
+ * id even though they ARE the shipped defaults under different ids.
  */
-export const cleanupRemovedDefaults = async (db: AnyDrizzleDatabase) => {
+export const cleanupRemovedDefaults = async (db: AnyDrizzleDatabase, workspaceId: string) => {
   const now = nowIso()
   const currentModelIds = new Set(defaultModels.map((m) => m.id))
 
   const systemModels = (await db
     .select()
     .from(modelsTable)
-    .where(and(eq(modelsTable.isSystem, 1), isNull(modelsTable.deletedAt)))) as Model[]
+    .where(
+      and(eq(modelsTable.isSystem, 1), eq(modelsTable.workspaceId, workspaceId), isNull(modelsTable.deletedAt)),
+    )) as Model[]
   for (const row of systemModels) {
     if (currentModelIds.has(row.id) || !row.defaultHash) {
       continue
     }
     if (hashModel(row) === row.defaultHash) {
-      await db.update(modelsTable).set({ deletedAt: now }).where(eq(modelsTable.id, row.id))
+      await db
+        .update(modelsTable)
+        .set({ deletedAt: now })
+        .where(and(eq(modelsTable.id, row.id), eq(modelsTable.workspaceId, workspaceId)))
     }
   }
 
@@ -119,7 +130,10 @@ export const cleanupRemovedDefaults = async (db: AnyDrizzleDatabase) => {
   // an orphaned model.
   const aliveModelIds = new Set(
     (
-      (await db.select({ id: modelsTable.id }).from(modelsTable).where(isNull(modelsTable.deletedAt))) as {
+      (await db
+        .select({ id: modelsTable.id })
+        .from(modelsTable)
+        .where(and(eq(modelsTable.workspaceId, workspaceId), isNull(modelsTable.deletedAt)))) as {
         id: string
       }[]
     ).map((r) => r.id),
@@ -128,13 +142,18 @@ export const cleanupRemovedDefaults = async (db: AnyDrizzleDatabase) => {
   const profiles = (await db
     .select()
     .from(modelProfilesTable)
-    .where(isNull(modelProfilesTable.deletedAt))) as ModelProfile[]
+    .where(
+      and(eq(modelProfilesTable.workspaceId, workspaceId), isNull(modelProfilesTable.deletedAt)),
+    )) as ModelProfile[]
   for (const row of profiles) {
     if (aliveModelIds.has(row.modelId) || !row.defaultHash) {
       continue
     }
     if (hashModelProfile(row) === row.defaultHash) {
-      await db.update(modelProfilesTable).set({ deletedAt: now }).where(eq(modelProfilesTable.modelId, row.modelId))
+      await db
+        .update(modelProfilesTable)
+        .set({ deletedAt: now })
+        .where(and(eq(modelProfilesTable.modelId, row.modelId), eq(modelProfilesTable.workspaceId, workspaceId)))
     }
   }
 }
@@ -154,7 +173,7 @@ export const cleanupRemovedDefaults = async (db: AnyDrizzleDatabase) => {
 export const reconcileDefaults = async (db: AnyDrizzleDatabase, workspaceId: string) => {
   await db.transaction(async (tx) => {
     // Soft-delete removed system defaults before reconciling current ones.
-    await cleanupRemovedDefaults(tx)
+    await cleanupRemovedDefaults(tx, workspaceId)
 
     // AI models
     await reconcileDefaultsForTable(tx, modelsTable, defaultModels, hashModel, { workspaceId })

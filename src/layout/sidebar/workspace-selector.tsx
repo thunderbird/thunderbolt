@@ -2,13 +2,14 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { AppLogo } from '@/components/app-logo'
 import { SearchableMenu, type SearchableMenuGroup, type SearchableMenuItem } from '@/components/ui/searchable-menu'
 import { useWorkspacesQuery, type Workspace } from '@/dal'
 import { useCanCreateWorkspace } from '@/hooks/use-can-create-workspace'
 import { useIsMobile } from '@/hooks/use-mobile'
 import { stripWorkspacePrefix, toWorkspaceUrl, useActiveWorkspace } from '@/lib/active-workspace'
 import { cn } from '@/lib/utils'
-import { ChevronsUpDown, Plus } from 'lucide-react'
+import { ChevronDown, Plus } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router'
 import { CreateWorkspaceModal } from './create-workspace-modal'
@@ -28,22 +29,27 @@ type WorkspaceAvatarProps = {
 }
 
 /**
- * Square avatar with the workspace's first initial. Same dimensions as the
- * `AppLogo` it replaces in the sidebar header so the visual rhythm stays
- * constant when the selector first mounts.
+ * 24×24 avatar for a workspace. Personal renders the Thunderbolt `AppLogo`
+ * (treats the user's home workspace as the product's "self" identity); shared
+ * workspaces render a colored square with the first initial.
  */
-const WorkspaceAvatar = ({ workspace, className }: WorkspaceAvatarProps) => (
-  <div
-    className={cn(
-      'flex items-center justify-center rounded-md bg-accent text-accent-foreground shrink-0',
-      'size-[var(--icon-size-default)] text-[length:var(--font-size-xs)] font-semibold',
-      className,
-    )}
-    aria-hidden="true"
-  >
-    {initialOf(workspace.name)}
-  </div>
-)
+const WorkspaceAvatar = ({ workspace, className }: WorkspaceAvatarProps) => {
+  if (workspace.isPersonal === 1) {
+    return <AppLogo size={24} className={cn('shrink-0', className)} />
+  }
+  return (
+    <div
+      className={cn(
+        'flex items-center justify-center rounded-md bg-accent text-accent-foreground shrink-0',
+        'size-6 text-[length:var(--font-size-xs)] font-semibold',
+        className,
+      )}
+      aria-hidden="true"
+    >
+      {initialOf(workspace.name)}
+    </div>
+  )
+}
 
 type WorkspaceItemData = {
   workspace: Workspace
@@ -135,8 +141,7 @@ export const WorkspaceSelector = ({ collapsed = false }: WorkspaceSelectorProps)
   }
 
   const renderTrigger = (_selected: SearchableMenuItem<WorkspaceItemData> | undefined, isOpen: boolean) => (
-    <button
-      type="button"
+    <div
       className={cn(
         'flex items-center cursor-pointer transition-colors rounded-md text-[length:var(--font-size-body)]',
         'hover:bg-sidebar-accent hover:text-sidebar-accent-foreground',
@@ -149,11 +154,13 @@ export const WorkspaceSelector = ({ collapsed = false }: WorkspaceSelectorProps)
       <WorkspaceAvatar workspace={active} />
       {!collapsed && (
         <>
-          <span className="truncate font-medium flex-1 text-left">{active.name}</span>
-          <ChevronsUpDown className="size-[var(--icon-size-default)] text-muted-foreground shrink-0" />
+          <span className="truncate font-sans font-semibold text-[length:var(--font-size-sm)] leading-5 flex-1 text-left">
+            {active.name}
+          </span>
+          <ChevronDown className="size-[var(--icon-size-default)] text-muted-foreground shrink-0" />
         </>
       )}
-    </button>
+    </div>
   )
 
   const renderItem = (item: SearchableMenuItem<WorkspaceItemData>, isSelected: boolean) => {
@@ -169,7 +176,7 @@ export const WorkspaceSelector = ({ collapsed = false }: WorkspaceSelectorProps)
         <span className="flex-1 truncate">{item.label}</span>
         {isPersonal && (
           <span className="text-muted-foreground text-[length:var(--font-size-xs)] uppercase tracking-wide">
-            Personal
+            My Workspace
           </span>
         )}
       </div>
@@ -181,12 +188,12 @@ export const WorkspaceSelector = ({ collapsed = false }: WorkspaceSelectorProps)
       type="button"
       onClick={() => setCreateOpen(true)}
       className={cn(
-        'flex w-full items-center gap-2 rounded-md px-2 py-2 text-left text-[length:var(--font-size-body)]',
+        'flex w-full items-center justify-between gap-2 rounded-md px-2 py-2 text-left text-[length:var(--font-size-body)]',
         'cursor-pointer transition-colors hover:bg-accent/50',
       )}
     >
-      <Plus className="size-[var(--icon-size-default)] text-muted-foreground" />
       <span className="font-medium">Create workspace</span>
+      <Plus className="size-[var(--icon-size-default)] text-muted-foreground" />
     </button>
   ) : undefined
 
@@ -205,6 +212,7 @@ export const WorkspaceSelector = ({ collapsed = false }: WorkspaceSelectorProps)
         width={280}
         maxHeight={400}
         footer={footer}
+        triggerClassName={collapsed ? undefined : 'w-full'}
       />
       <CreateWorkspaceModal open={createOpen} onOpenChange={setCreateOpen} onCreated={handleCreated} />
       <InviteMembersModal

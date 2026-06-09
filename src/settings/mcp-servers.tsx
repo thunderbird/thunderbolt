@@ -31,7 +31,7 @@ import { eq } from 'drizzle-orm'
 import { Check, Copy, Globe, Plus, Server, Trash2, X } from 'lucide-react'
 import { useEffect, useRef, useState, type KeyboardEvent } from 'react'
 import { v7 as uuidv7 } from 'uuid'
-import { createMCPClient } from '@ai-sdk/mcp'
+import { probeMcpServerTools } from '@/lib/mcp-connection-test'
 import { buildMcpHeaders, createMcpTransport, type MCPTransportType } from '@/lib/mcp-transport'
 import { useLocalSettingsStore } from '@/stores/local-settings-store'
 import { toCompilableQuery } from '@powersync/drizzle-driver'
@@ -201,34 +201,14 @@ export default function McpServersPage() {
     setServerCapabilities([])
 
     try {
-      // Create a real MCP client using the same method as the provider —
-      // route through the universal proxy so the test matches the real
-      // connection path (web CORS would otherwise fail for remote servers).
+      // Build the transport the same way the provider does — through the
+      // universal proxy so the test matches the real connection path (web CORS
+      // would otherwise fail for remote servers).
       const headers = buildMcpHeaders(newServerToken || undefined)
       const transport = createMcpTransport(newServerUrl, newServerTransport, cloudUrl, headers)
-      const mcpClient = await createMCPClient({ transport })
 
-      // Try to get tools to verify the connection works
-      const tools = await mcpClient.tools()
-
+      setServerCapabilities(await probeMcpServerTools(transport))
       setConnectionStatus('success')
-
-      // Extract tool names for display
-      if (tools && typeof tools === 'object') {
-        const toolNames = Object.keys(tools)
-        setServerCapabilities(toolNames.length > 0 ? toolNames : ['Connection successful - no tools available'])
-      } else {
-        setServerCapabilities(['Connection successful - no tools listed'])
-      }
-
-      // Close the connection
-      if (mcpClient.close) {
-        try {
-          mcpClient.close()
-        } catch (closeError) {
-          console.warn('Error closing MCP client:', closeError)
-        }
-      }
     } catch (error) {
       console.error('Connection test error:', error)
       setConnectionStatus('error')

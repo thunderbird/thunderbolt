@@ -151,6 +151,15 @@ export const AssistantMessage = memo(
       [message.parts],
     )
 
+    const lastPartIsReasoningGroup = useMemo(() => {
+      const lastPart = groupedParts[groupedParts.length - 1]
+      if (!lastPart) {
+        return false
+      }
+      const [partType] = splitPartType(lastPart.type)
+      return partType === 'reasoning_group'
+    }, [groupedParts])
+
     const showCopyOnHover = !isLastAssistantMessage
 
     return (
@@ -168,7 +177,7 @@ export const AssistantMessage = memo(
         ))}
         {!isStreaming && copyText && (
           <div
-            className={`flex items-center gap-2.5 px-4 ${hasWidgets ? 'mt-1' : '-mt-6'} ${showCopyOnHover ? 'md:opacity-0 md:group-hover:opacity-100 md:transition-opacity' : ''}`}
+            className={`flex items-center gap-2.5 px-4 ${hasWidgets || lastPartIsReasoningGroup ? 'mt-1' : '-mt-6'} ${showCopyOnHover ? 'md:opacity-0 md:group-hover:opacity-100 md:transition-opacity' : ''}`}
           >
             <CopyMessageButton text={copyText} />
           </div>

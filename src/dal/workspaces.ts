@@ -5,10 +5,12 @@
 import { and, asc, desc, eq } from 'drizzle-orm'
 import { toCompilableQuery } from '@powersync/drizzle-driver'
 import { useQuery } from '@powersync/tanstack-react-query'
+import { v7 as uuidv7 } from 'uuid'
 import { useDatabase } from '@/contexts'
+import { seedFreshWorkspaceDefaultsInTx } from '@/lib/reconcile-defaults'
 import { useTrustDomainRegistry } from '@/stores/trust-domain-registry'
 import type { AnyDrizzleDatabase } from '../db/database-interface'
-import { workspaceMembershipsTable, workspacesTable } from '../db/tables'
+import { workspaceMembershipsTable, workspacePendingMembershipsTable, workspacesTable } from '../db/tables'
 import type { DrizzleQueryWithPromise } from '../types'
 import { computePersonalAdminMembershipId, computePersonalWorkspaceId } from '@shared/workspaces'
 
@@ -159,4 +161,140 @@ export const ensurePersonalWorkspace = async (db: AnyDrizzleDatabase, userId: st
     throw new Error(`Failed to create personal workspace for user ${userId}`)
   }
   return created
+}
+
+export type CreateSharedWorkspaceInput = {
+  creatorUserId: string
+  /** Display name. Trimmed before storage. */
+  name: string
+  /** Raw emails from the invite step. Lowercased + trimmed + deduped here; the
+   *  creator's own email is filtered out so the modal can pass session input
+   *  verbatim without special-casing. */
+  invitedEmails?: string[]
+  /** The creator's email, used to filter their own address out of the invite
+   *  list. Optional — pass when known (real users); anon sessions have none. */
+  creatorEmail?: string
+  /** Role assigned to invitees. Defaults to 'member'. */
+  inviteRole?: 'admin' | 'member'
+}
+
+const normalizeInviteEmail = (email: string): string => email.toLowerCase().trim()
+
+/**
+ * Create a new shared workspace owned by the active user, with the creator as
+ * admin and one `workspace_pending_memberships` row per invited email.
+ *
+ * All inserts happen in a single local SQLite transaction; PowerSync uploads
+ * the four (or N+2) rows as one batch. The BE's `workspace_pending_memberships`
+ * upload handler resolves each invited email server-side — if it belongs to a
+ * real user, the BE promotes the pending row to an active membership in the
+ * same upload tx (see backend `workspace-pending-memberships.ts`).
+ *
+ * Returns the new workspace id. Caller is expected to navigate after this
+ * resolves.
+ */
+export const createSharedWorkspace = async (
+  db: AnyDrizzleDatabase,
+  input: CreateSharedWorkspaceInput,
+): Promise<string> => {
+  const trimmedName = input.name.trim()
+  if (!trimmedName) {
+    throw new Error('Workspace name is required')
+  }
+
+  const workspaceId = uuidv7()
+  const membershipId = uuidv7()
+  const role = input.inviteRole ?? 'member'
+
+  const normalizedCreatorEmail = input.creatorEmail ? normalizeInviteEmail(input.creatorEmail) : null
+  const emails = Array.from(
+    new Set(
+      (input.invitedEmails ?? [])
+        .map(normalizeInviteEmail)
+        .filter((email) => email.length > 0 && email !== normalizedCreatorEmail),
+    ),
+  )
+
+  await db.transaction(async (tx) => {
+    await tx.insert(workspacesTable).values({
+      id: workspaceId,
+      name: trimmedName,
+      isPersonal: 0,
+      ownerUserId: null,
+    })
+    await tx.insert(workspaceMembershipsTable).values({
+      id: membershipId,
+      workspaceId,
+      userId: input.creatorUserId,
+      role: 'admin',
+    })
+    for (const email of emails) {
+      await tx.insert(workspacePendingMembershipsTable).values({
+        id: uuidv7(),
+        workspaceId,
+        email,
+        role,
+        invitedByUserId: input.creatorUserId,
+      })
+    }
+    // Seed default models / modes / skills / tasks / profiles into the new
+    // workspace inside the same transaction so the workspace is usable the
+    // moment it commits — without this, the creator would land on
+    // /w/<newId>/ with empty pickers everywhere. Uses fresh per-workspace ids
+    // to avoid colliding with the personal workspace's default rows (the FE
+    // PK is single-column `id`).
+    await seedFreshWorkspaceDefaultsInTx(tx, workspaceId)
+  })
+
+  return workspaceId
+}
+
+export type AddPendingMembershipsInput = {
+  workspaceId: string
+  invitedByUserId: string
+  /** Optional — the inviter's email is normalized and filtered out so the modal
+   *  can pass raw textarea input without special-casing self-invites. */
+  creatorEmail?: string
+  emails: string[]
+  role?: 'admin' | 'member'
+}
+
+/**
+ * Inserts one `workspace_pending_memberships` row per (lowercased + trimmed)
+ * email into an existing workspace. Returns the number of pending rows
+ * written. Used by the post-create invite modal — the workspace itself is
+ * created by `createSharedWorkspace`.
+ *
+ * The BE upload handler promotes pending rows to active memberships when the
+ * invited email matches an existing user (see
+ * `backend/src/powersync/upload-handlers/workspace-pending-memberships.ts`).
+ */
+export const addPendingMemberships = async (
+  db: AnyDrizzleDatabase,
+  input: AddPendingMembershipsInput,
+): Promise<number> => {
+  const role = input.role ?? 'member'
+  const normalizedCreatorEmail = input.creatorEmail ? normalizeInviteEmail(input.creatorEmail) : null
+  const emails = Array.from(
+    new Set(
+      input.emails.map(normalizeInviteEmail).filter((email) => email.length > 0 && email !== normalizedCreatorEmail),
+    ),
+  )
+  if (emails.length === 0) {
+    return 0
+  }
+
+  await db.transaction(async (tx) => {
+    for (const email of emails) {
+      await tx.insert(workspacePendingMembershipsTable).values({
+        id: uuidv7(),
+        workspaceId: input.workspaceId,
+        email,
+        role,
+        invitedByUserId: input.invitedByUserId,
+      })
+    }
+  })
+
+  return emails.length
 }

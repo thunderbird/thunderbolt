@@ -2,10 +2,13 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { useConfigStore } from '@/api/config-store'
 import { DatabaseProvider } from '@/contexts'
+import { AuthContext } from '@/contexts/auth-context'
 import { getDb } from '@/db/database'
 import { workspaceMembershipsTable, workspacesTable } from '@/db/tables'
 import { SidebarProvider } from '@/components/ui/sidebar'
+import { createMockAuthClient } from '@/test-utils/auth-client'
 import {
   renderWithReactivity,
   resetTestTrustDomain,
@@ -20,6 +23,7 @@ import {
   testUserId,
   wsId,
 } from '@/dal/test-utils'
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'bun:test'
 import '@testing-library/jest-dom'
 import { act, cleanup, fireEvent, screen } from '@testing-library/react'
@@ -27,11 +31,22 @@ import type { ReactNode } from 'react'
 import { useLocation } from 'react-router'
 import { WorkspaceSelector } from './workspace-selector'
 
-const Wrapper = ({ children }: { children: ReactNode }) => (
-  <DatabaseProvider db={getDb()}>
-    <SidebarProvider>{children}</SidebarProvider>
-  </DatabaseProvider>
-)
+const realSession = { user: { id: testUserId, email: 'creator@test.com', name: 'Creator', isAnonymous: false } }
+
+const Wrapper = ({ children }: { children: ReactNode }) => {
+  const queryClient = new QueryClient({
+    defaultOptions: { queries: { retry: false, gcTime: 0, staleTime: 0 } },
+  })
+  return (
+    <DatabaseProvider db={getDb()}>
+      <QueryClientProvider client={queryClient}>
+        <AuthContext.Provider value={{ authClient: createMockAuthClient({ session: realSession }) }}>
+          <SidebarProvider>{children}</SidebarProvider>
+        </AuthContext.Provider>
+      </QueryClientProvider>
+    </DatabaseProvider>
+  )
+}
 
 /** Renders the current pathname so a test can assert the URL changed. */
 const LocationProbe = () => {
@@ -57,10 +72,14 @@ beforeEach(async () => {
     userId: testUserId,
     role: 'admin',
   })
+  // Reset server policy flags between tests so the footer-gating cases below
+  // start from a known "allowed" baseline.
+  useConfigStore.getState().updateConfig({})
 })
 
 afterEach(() => {
   resetTestTrustDomain()
+  useConfigStore.getState().updateConfig({})
   cleanup()
 })
 
@@ -157,5 +176,61 @@ describe('WorkspaceSelector', () => {
 
     await waitForElement(() => screen.queryByTestId('at-/settings/preferences'))
     expect(screen.getByTestId('at-/settings/preferences')).toBeInTheDocument()
+  })
+
+  it('renders the Create workspace footer button when allowed', async () => {
+    renderWithReactivity(<WorkspaceSelector />, {
+      route: '/chats/new',
+      routePath: '*',
+      tables: ['workspaces', 'workspace_memberships'],
+      wrapper: Wrapper,
+    })
+
+    const trigger = await waitForElement(() => screen.queryByText('Personal'))
+    await act(async () => {
+      fireEvent.click(trigger)
+    })
+
+    await waitForElement(() => screen.queryByRole('button', { name: /create workspace/i }))
+    expect(screen.getByRole('button', { name: /create workspace/i })).toBeInTheDocument()
+  })
+
+  it('hides the Create workspace button when allowWorkspaceCreationByMembers is false', async () => {
+    useConfigStore.getState().updateConfig({ allowWorkspaceCreationByMembers: false })
+
+    renderWithReactivity(<WorkspaceSelector />, {
+      route: '/chats/new',
+      routePath: '*',
+      tables: ['workspaces', 'workspace_memberships'],
+      wrapper: Wrapper,
+    })
+
+    const trigger = await waitForElement(() => screen.queryByText('Personal'))
+    await act(async () => {
+      fireEvent.click(trigger)
+    })
+
+    expect(screen.queryByRole('button', { name: /create workspace/i })).not.toBeInTheDocument()
+  })
+
+  it('clicking Create workspace opens the modal', async () => {
+    renderWithReactivity(<WorkspaceSelector />, {
+      route: '/chats/new',
+      routePath: '*',
+      tables: ['workspaces', 'workspace_memberships'],
+      wrapper: Wrapper,
+    })
+
+    const trigger = await waitForElement(() => screen.queryByText('Personal'))
+    await act(async () => {
+      fireEvent.click(trigger)
+    })
+
+    const createBtn = await waitForElement(() => screen.queryByRole('button', { name: /create workspace/i }))
+    await act(async () => {
+      fireEvent.click(createBtn)
+    })
+
+    expect(screen.getByLabelText('Workspace name')).toBeInTheDocument()
   })
 })

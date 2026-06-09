@@ -51,6 +51,10 @@ export type SearchableMenuProps<T = unknown> = {
   onOpenChange?: (open: boolean) => void
   /** Additional class for the content */
   contentClassName?: string
+  /** Additional class merged onto the trigger button (the wrapper that hosts
+   *  the `trigger` render). Use to opt into `w-full` for triggers that should
+   *  fill their parent — Radix's `asChild` button is content-sized by default. */
+  triggerClassName?: string
   /** Align popover */
   align?: 'start' | 'center' | 'end'
   /** Side of the trigger to open the popover (top opens upward, bottom opens downward) */

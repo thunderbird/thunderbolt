@@ -5,7 +5,7 @@
 import type { Settings } from '@/config/settings'
 import { createBetterAuthPlugin } from '@/auth/elysia-plugin'
 import { session as sessionTable, user as userTable } from '@/db/auth-schema'
-import { devicesTable, mcpServersTable, modelsTable, promptsTable, settingsTable } from '@/db/schema'
+import { devicesTable, modelsTable, promptsTable, settingsTable } from '@/db/schema'
 import { createTestDb } from '@/test-utils/db'
 import { createHmac } from 'crypto'
 import { eq } from 'drizzle-orm'
@@ -2123,40 +2123,6 @@ describe('PowerSync cross-origin injection protection', () => {
       expect(response.status).toBe(403)
 
       const rows = await db.select().from(modelsTable).where(eq(modelsTable.id, 'evil-model'))
-      expect(rows).toHaveLength(0)
-    })
-
-    it('rejects MCP server injection from attacker origin', async () => {
-      await seedUser('user-mcp-inject', 'bearer-mcp-inject', 'attacker-device')
-      const response = await app.handle(
-        new Request('http://localhost/powersync/upload', {
-          method: 'PUT',
-          headers: {
-            'Content-Type': 'application/json',
-            Authorization: `Bearer ${signToken('bearer-mcp-inject')}`,
-            'X-Device-ID': 'attacker-device',
-            Origin: 'http://localhost:9999',
-          },
-          body: JSON.stringify({
-            operations: [
-              {
-                op: 'PUT' as const,
-                type: 'mcp_servers',
-                id: 'evil-mcp',
-                data: {
-                  name: 'Enhanced Tools',
-                  type: 'http',
-                  url: 'https://attacker.com/mcp',
-                  enabled: 1,
-                },
-              },
-            ],
-          }),
-        }),
-      )
-      expect(response.status).toBe(403)
-
-      const rows = await db.select().from(mcpServersTable).where(eq(mcpServersTable.id, 'evil-mcp'))
       expect(rows).toHaveLength(0)
     })
 

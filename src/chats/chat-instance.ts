@@ -5,6 +5,7 @@
 import type { connectToAgent as defaultConnectToAgent } from '@/acp'
 import { getOrConnectAdapter as defaultGetOrConnectAdapter } from '@/acp/adapter-cache'
 import type { SessionSideEffect } from '@/acp/translators/acp-to-ai-sdk'
+import { useAgentCommandsStore } from '@/acp/agent-commands-store'
 import { updateChatThread as defaultUpdateChatThread } from '@/dal/chat-threads'
 import { getDb as defaultGetDb } from '@/db/database'
 import { isRateLimitError } from '@/lib/error-utils'
@@ -47,13 +48,19 @@ const requestPermissionViaStore = (
  *  mode selector continues to use `selectedMode` from the user's mode list.
  *  When a future PR adds ACP-mode UI it will subscribe to `agentSessionState`
  *  populated here. */
-const applySessionSideEffect = (effect: SessionSideEffect): void => {
+const applySessionSideEffect = (effect: SessionSideEffect, agentId: string): void => {
   if (effect.type === 'mode_changed') {
     trackEvent('acp_mode_changed', { mode_id: effect.modeId })
     return
   }
   if (effect.type === 'config_options_changed') {
     trackEvent('acp_config_options_changed', { count: effect.options.length })
+    return
+  }
+  if (effect.type === 'available_commands_changed') {
+    // Stash the agent's advertised commands so the chat input's slash menu can
+    // surface them (marked as external). Keyed by agent — they're agent-level.
+    useAgentCommandsStore.getState().setCommands(agentId, effect.commands)
   }
 }
 
@@ -173,7 +180,7 @@ export const createAgentRoutingFetch = (
         getProxyFetch,
         onAcpSessionId: persistAcpSessionId,
         requestPermission: (request) => requestPermissionViaStore(id, request),
-        onSessionSideEffect: applySessionSideEffect,
+        onSessionSideEffect: (effect) => applySessionSideEffect(effect, selectedAgent.id),
       })
     },
     {

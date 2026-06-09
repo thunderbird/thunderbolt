@@ -15,6 +15,7 @@ import { resolveSkillTokenInstructions } from '@/skills/resolve-skill-system-mes
 import { SlashPopup } from '@/skills/slash-popup'
 import { useSkillTelemetry } from '@/skills/telemetry'
 import { useSlashCommand } from '@/skills/use-slash-command'
+import { useAgentCommands } from '@/acp/agent-commands-store'
 import {
   useEnabledSkills as useEnabledSkills_default,
   useLibrarySkills as useLibrarySkills_default,
@@ -162,13 +163,17 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
 
     textareaRef.current = getTextarea()
 
+    // Commands the connected ACP agent advertises — surfaced in the slash menu
+    // as external suggestions alongside the user's own skills.
+    const agentCommands = useAgentCommands(selectedAgent.id)
+
     const {
       setCursorPos,
-      popupSkills,
+      popupItems,
       popupOpen,
       highlightedIdx,
       setHighlightedIdx,
-      selectSkill: selectSkillFromPopup,
+      selectItem: selectItemFromPopup,
       handleKeyDown: handleSlashKeyDown,
     } = useSlashCommand({
       value: input,
@@ -176,6 +181,7 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
       inputRef: textareaRef,
       library,
       isEnabled: isValidSkillSlug,
+      agentCommands,
     })
 
     const addSkillChip = useCallback(
@@ -374,11 +380,14 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
     )
 
     const handleSelectFromSlashPopup = useCallback(
-      (skill: Parameters<typeof selectSkillFromPopup>[0]) => {
-        selectSkillFromPopup(skill)
-        trackSkillEvent('skill_used', skill.id, { via: 'slash' })
+      (item: Parameters<typeof selectItemFromPopup>[0]) => {
+        selectItemFromPopup(item)
+        // Telemetry is for the user's own skills; agent commands are external.
+        if (item.kind === 'skill') {
+          trackSkillEvent('skill_used', item.skill.id, { via: 'slash' })
+        }
       },
-      [selectSkillFromPopup, trackSkillEvent],
+      [selectItemFromPopup, trackSkillEvent],
     )
 
     if (!isAgentAvailable(selectedAgent)) {
@@ -420,7 +429,7 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
             popoverSlot={
               popupOpen ? (
                 <SlashPopup
-                  skills={popupSkills}
+                  items={popupItems}
                   highlightedIdx={highlightedIdx}
                   onSelect={handleSelectFromSlashPopup}
                   onHover={setHighlightedIdx}

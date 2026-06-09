@@ -167,3 +167,42 @@ describe('useSlashCommand selectSkill', () => {
     expect(hook.result.current.popupOpen).toBe(false)
   })
 })
+
+describe('useSlashCommand agent commands', () => {
+  const inputRef = createRef<HTMLTextAreaElement>()
+
+  const setup = (agentCommands: { name: string; description: string }[]) => {
+    let value = '/'
+    const setValue = (v: string) => {
+      value = v
+    }
+    const hook = renderHook(() =>
+      useSlashCommand({
+        value,
+        setValue,
+        inputRef,
+        library: [fakeSkill('alpha')],
+        isEnabled: () => true,
+        agentCommands,
+      }),
+    )
+    act(() => hook.result.current.setCursorPos(1))
+    return { hook, getValue: () => value }
+  }
+
+  it('lists agent commands as external items after the user skills', () => {
+    const { hook } = setup([{ name: 'research_codebase', description: 'Explore the codebase' }])
+    expect(hook.result.current.popupItems.map((i) => `${i.kind}:${i.name}`)).toEqual([
+      'skill:alpha',
+      'command:research_codebase',
+    ])
+  })
+
+  it('selecting an agent command inserts its slash token', () => {
+    const { hook, getValue } = setup([{ name: 'research_codebase', description: 'Explore the codebase' }])
+    const command = hook.result.current.popupItems.find((i) => i.kind === 'command')
+    expect(command).toBeDefined()
+    act(() => hook.result.current.selectItem(command!))
+    expect(getValue()).toBe('/research_codebase ')
+  })
+})

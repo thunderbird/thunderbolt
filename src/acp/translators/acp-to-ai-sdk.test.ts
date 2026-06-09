@@ -331,6 +331,32 @@ describe('createTranslator — side effects', () => {
     expect(effects).toEqual([{ type: 'config_options_changed', options }])
   })
 
+  it('available_commands_update emits available_commands_changed on the sink', () => {
+    const { emit, chunks } = collect()
+    const effects: unknown[] = []
+    const t = createTranslator(emit, { onSideEffect: (e) => effects.push(e) })
+    t.start()
+    t.handle(
+      notification({
+        sessionUpdate: 'available_commands_update',
+        availableCommands: [
+          { name: 'research_codebase', description: 'Explore the codebase', input: { hint: 'topic' } },
+          { name: 'create_plan', description: 'Draft a plan' },
+        ],
+      }),
+    )
+    expect(chunks.map((c) => c.type)).toEqual(['start', 'start-step'])
+    expect(effects).toEqual([
+      {
+        type: 'available_commands_changed',
+        commands: [
+          { name: 'research_codebase', description: 'Explore the codebase', inputHint: 'topic' },
+          { name: 'create_plan', description: 'Draft a plan', inputHint: undefined },
+        ],
+      },
+    ])
+  })
+
   it('without a sink, side-effecting updates are silently ignored', () => {
     const { emit, chunks } = collect()
     const t = createTranslator(emit)

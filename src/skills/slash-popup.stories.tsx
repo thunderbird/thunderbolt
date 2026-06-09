@@ -7,6 +7,7 @@ import type { Meta, StoryObj } from '@storybook/react-vite'
 import { createTestProvider } from '@/test-utils/test-provider'
 import type { Skill } from '@/types'
 import { SlashPopup } from './slash-popup'
+import type { SlashItem } from './use-slash-command'
 
 const TestProvider = createTestProvider()
 
@@ -37,28 +38,33 @@ const meta = {
 export default meta
 type Story = StoryObj<typeof meta>
 
-const sampleSkills: Skill[] = [
-  {
-    id: '1',
-    name: 'daily-brief',
-    description: 'Weather, news, inbox, and calendar in one digest.',
+const skillItem = (id: string, name: string, description: string): SlashItem => ({
+  kind: 'skill',
+  id,
+  name,
+  description,
+  skill: {
+    id,
+    name,
+    description,
     instruction: '',
     enabled: 1,
-    pinnedOrder: 0,
+    pinnedOrder: null,
     deletedAt: null,
     defaultHash: null,
     userId: null,
-  },
+  } as Skill,
+})
+
+const sampleItems: SlashItem[] = [
+  skillItem('1', 'daily-brief', 'Weather, news, inbox, and calendar in one digest.'),
+  skillItem('2', 'important-emails', 'Triage the inbox and surface the most important emails.'),
+  // An external command advertised by the connected ACP agent.
   {
-    id: '2',
-    name: 'important-emails',
-    description: 'Triage the inbox and surface the most important emails.',
-    instruction: '',
-    enabled: 1,
-    pinnedOrder: 1,
-    deletedAt: null,
-    defaultHash: null,
-    userId: null,
+    kind: 'command',
+    id: 'command:research_codebase',
+    name: 'research_codebase',
+    description: 'Have the agent explore and summarize the codebase.',
   },
 ]
 
@@ -66,7 +72,7 @@ const noop = () => undefined
 
 export const Default: Story = {
   args: {
-    skills: sampleSkills,
+    items: sampleItems,
     highlightedIdx: 0,
     onSelect: noop,
     onHover: noop,
@@ -78,5 +84,5 @@ export const SecondRowHighlighted: Story = {
 }
 
 export const SingleResult: Story = {
-  args: { ...Default.args, skills: [sampleSkills[0]!], highlightedIdx: 0 },
+  args: { ...Default.args, items: [sampleItems[0]!], highlightedIdx: 0 },
 }

@@ -5,6 +5,15 @@
 import { useCallback, useMemo, useReducer, type KeyboardEvent, type RefObject } from 'react'
 
 import type { Skill } from '@/types'
+import type { AcpCommand } from '@/acp/translators/acp-to-ai-sdk'
+
+/**
+ * A selectable slash suggestion: a user-authored skill or an external command
+ * advertised by the connected ACP agent (`kind: 'command'`).
+ */
+export type SlashItem =
+  | { kind: 'skill'; id: string; name: string; description: string; skill: Skill }
+  | { kind: 'command'; id: string; name: string; description: string }
 
 /** Position of the in-progress `/slug` token at the caret, or `null`. */
 export type SlashState = { tokenStart: number; query: string }
@@ -85,29 +94,41 @@ export const useSlashCommand = ({
   inputRef,
   library,
   isEnabled,
+  agentCommands = [],
 }: {
   value: string
   setValue: (v: string) => void
   inputRef: RefObject<HTMLTextAreaElement | null>
   library: Skill[]
   isEnabled: (slug: string) => boolean
+  /** Commands advertised by the connected ACP agent, shown as external items. */
+  agentCommands?: AcpCommand[]
 }) => {
   const [state, dispatch] = useReducer(reducer, initialState)
   const { cursorPos, highlightedIdx, closedForToken } = state
 
   const slashState = useMemo(() => getSlashState(value, cursorPos), [value, cursorPos])
 
-  const popupSkills = useMemo(() => {
+  // User skills first, then the agent's external commands; each alphabetical,
+  // both filtered by the in-progress query.
+  const popupItems = useMemo<SlashItem[]>(() => {
     if (!slashState) {
       return []
     }
-    const enabled = library.filter((s) => isEnabled(s.name))
     const query = slashState.query.toLowerCase()
-    const filtered = query === '' ? enabled : enabled.filter((s) => s.name.toLowerCase().startsWith(query))
-    return filtered.sort((a, b) => a.name.localeCompare(b.name))
-  }, [slashState, library, isEnabled])
+    const matches = (name: string) => query === '' || name.toLowerCase().startsWith(query)
+    const skillItems: SlashItem[] = library
+      .filter((s) => isEnabled(s.name) && matches(s.name))
+      .sort((a, b) => a.name.localeCompare(b.name))
+      .map((s) => ({ kind: 'skill', id: s.id, name: s.name, description: s.description, skill: s }))
+    const commandItems: SlashItem[] = [...agentCommands]
+      .filter((c) => matches(c.name))
+      .sort((a, b) => a.name.localeCompare(b.name))
+      .map((c) => ({ kind: 'command', id: `command:${c.name}`, name: c.name, description: c.description }))
+    return [...skillItems, ...commandItems]
+  }, [slashState, library, isEnabled, agentCommands])
 
-  const popupOpen = slashState !== null && popupSkills.length > 0 && closedForToken !== slashState.tokenStart
+  const popupOpen = slashState !== null && popupItems.length > 0 && closedForToken !== slashState.tokenStart
 
   // Reset the highlight index when the slash token changes (different
   // start position OR different query string). Derived from render-time
@@ -124,8 +145,8 @@ export const useSlashCommand = ({
     dispatch({ type: 'CLEAR_DISMISS' })
   }
 
-  const selectSkill = useCallback(
-    (skill: Skill) => {
+  const insertToken = useCallback(
+    (name: string) => {
       if (!slashState) {
         return
       }
@@ -135,7 +156,7 @@ export const useSlashCommand = ({
       // Skip the trailing space when the following text already starts with
       // whitespace — otherwise the user sees a doubled space after completion.
       const needsTrailingSpace = !/^\s/.test(after)
-      const insert = `/${skill.name}${needsTrailingSpace ? ' ' : ''}`
+      const insert = `/${name}${needsTrailingSpace ? ' ' : ''}`
       const next = before + insert + after
       const newCursor = slashState.tokenStart + insert.length + (needsTrailingSpace ? 0 : 1)
       // Update value and cursor in the same commit so the popup doesn't
@@ -150,6 +171,10 @@ export const useSlashCommand = ({
     [slashState, value, setValue, inputRef],
   )
 
+  const selectItem = useCallback((item: SlashItem) => insertToken(item.name), [insertToken])
+  /** Insert a skill's slash token. Convenience for the skill path (and tests). */
+  const selectSkill = useCallback((skill: Skill) => insertToken(skill.name), [insertToken])
+
   const handleKeyDown = useCallback(
     (e: KeyboardEvent<HTMLTextAreaElement>) => {
       if (!popupOpen) {
@@ -157,13 +182,13 @@ export const useSlashCommand = ({
       }
       if ((e.key === 'Enter' && !e.shiftKey) || e.key === 'Tab') {
         e.preventDefault()
-        const picked = popupSkills[highlightedIdx]
+        const picked = popupItems[highlightedIdx]
         if (picked) {
-          selectSkill(picked)
+          selectItem(picked)
         }
       } else if (e.key === 'ArrowDown') {
         e.preventDefault()
-        dispatch({ type: 'SET_HIGHLIGHT', idx: Math.min(highlightedIdx + 1, popupSkills.length - 1) })
+        dispatch({ type: 'SET_HIGHLIGHT', idx: Math.min(highlightedIdx + 1, popupItems.length - 1) })
       } else if (e.key === 'ArrowUp') {
         e.preventDefault()
         dispatch({ type: 'SET_HIGHLIGHT', idx: Math.max(highlightedIdx - 1, 0) })
@@ -174,7 +199,7 @@ export const useSlashCommand = ({
         }
       }
     },
-    [popupOpen, popupSkills, highlightedIdx, selectSkill, slashState],
+    [popupOpen, popupItems, highlightedIdx, selectItem, slashState],
   )
 
   const setCursorPos = useCallback((pos: number) => dispatch({ type: 'SET_CURSOR', pos }), [])
@@ -182,10 +207,11 @@ export const useSlashCommand = ({
 
   return {
     setCursorPos,
-    popupSkills,
+    popupItems,
     popupOpen,
     highlightedIdx,
     setHighlightedIdx,
+    selectItem,
     selectSkill,
     handleKeyDown,
   }

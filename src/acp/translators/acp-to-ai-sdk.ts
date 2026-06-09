@@ -18,7 +18,8 @@
  *   tool_call_update (in_progress)  → buffered (no emit)
  *   tool_call_update (completed)    → tool-output-available
  *   tool_call_update (failed)       → tool-output-error
- *   plan, available_commands_update → ignored in MVP
+ *   available_commands_update      → side effect (agent-advertised commands)
+ *   plan                           → ignored in MVP
  *
  * Text-delta throttling: deltas for a given text-message id are coalesced and
  * flushed at most every `textDeltaThrottleMs` (default 200ms). On stream end /
@@ -106,9 +107,13 @@ const pushThrottled = (t: DeltaThrottle, delta: string, throttleMs: number): voi
  *  Consumers wire this to the chat-store so the UI reacts to server-driven
  *  state. Server is the source of truth; user-initiated changes flow through
  *  their normal store actions and would simply be confirmed by the next emit. */
+/** A command / "skill" an ACP agent advertises via `available_commands_update`. */
+export type AcpCommand = { name: string; description: string; inputHint?: string }
+
 export type SessionSideEffect =
   | { type: 'mode_changed'; modeId: string }
   | { type: 'config_options_changed'; options: SessionConfigOption[] }
+  | { type: 'available_commands_changed'; commands: AcpCommand[] }
 
 export type SessionSideEffectSink = (effect: SessionSideEffect) => void
 
@@ -332,9 +337,19 @@ export const createTranslator = (emit: (chunk: AiSdkChunk) => void, options: Tra
         sideEffect({ type: 'config_options_changed', options: update.configOptions })
         return
       }
+      case 'available_commands_update': {
+        sideEffect({
+          type: 'available_commands_changed',
+          commands: update.availableCommands.map((command) => ({
+            name: command.name,
+            description: command.description,
+            inputHint: command.input?.hint,
+          })),
+        })
+        return
+      }
       // Ignored in MVP.
       case 'plan':
-      case 'available_commands_update':
       case 'session_info_update':
       case 'usage_update':
       case 'user_message_chunk':

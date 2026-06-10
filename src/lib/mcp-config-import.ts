@@ -4,6 +4,7 @@
 
 import { validateMcpServerUrl } from '@/lib/mcp-url-validation'
 
+/** A remote MCP server parsed from an mcpServers JSON config. */
 export type ParsedMcpServer = {
   name: string
   url: string
@@ -25,11 +26,11 @@ const extractBearerToken = (headers: unknown): string | undefined => {
   if (!isRecord(headers)) {
     return undefined
   }
-  const authorization = headers.Authorization
-  if (typeof authorization !== 'string') {
+  const entry = Object.entries(headers).find(([key]) => key.toLowerCase() === 'authorization')
+  if (!entry || typeof entry[1] !== 'string') {
     return undefined
   }
-  const match = authorization.match(bearerPattern)
+  const match = entry[1].match(bearerPattern)
   return match ? match[1].trim() : undefined
 }
 

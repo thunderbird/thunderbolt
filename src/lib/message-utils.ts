@@ -15,7 +15,7 @@ export const extractTextFromParts = (parts: UIMessage['parts'], separator = '\n\
     .filter((part): part is TextPart => part.type === 'text')
     .map((part) =>
       part.text
-        .replace(/<widget:[^/]*\/>/g, '')
+        .replace(/<widget:[a-z][a-z0-9-]*\s+(?:[^/]|\/(?!>))+\/>/gi, '')
         .replace(/\[\d+\](?!\()(?:\s*\[\d+\](?!\())*/g, '')
         .trim(),
     )

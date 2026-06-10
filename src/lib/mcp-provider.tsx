@@ -10,6 +10,7 @@ import type { AnyDrizzleDatabase } from '@/db/database-interface'
 import { useLocalSettingsStore } from '@/stores/local-settings-store'
 import { getAuthToken } from './auth-token'
 import { ensureValidMcpOAuthToken } from './mcp-auth/ensure-valid-token'
+import { isUnauthorizedError } from './mcp-errors'
 import { buildMcpHeaders, createMcpTransport, type MCPTransportType } from './mcp-transport'
 import { computeEffectiveProxyEnabled, createProxyFetch } from './proxy-fetch'
 
@@ -174,7 +175,13 @@ export const MCPProvider = ({ children, createClient: injectedCreateClient }: MC
           prev.map((s) => (s.id === server.id ? { ...s, client, isConnected: true, error: null, enabled: true } : s)),
         )
       } catch (err) {
-        console.error('Failed to connect to MCP server:', server.name, err)
+        // A 401 means the server requires authorization and is waiting for a
+        // credential / OAuth — expected, not a failure. Keep other errors as errors.
+        if (isUnauthorizedError(err)) {
+          console.warn('MCP server requires authorization:', server.name)
+        } else {
+          console.error('Failed to connect to MCP server:', server.name, err)
+        }
         // Skip committing an error onto a server that was removed/disabled
         // mid-connect — its row is gone or intentionally off.
         const current = serversRef.current.find((s) => s.id === server.id)

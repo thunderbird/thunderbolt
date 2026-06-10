@@ -136,6 +136,7 @@ export {
 
 // Workspaces
 export {
+  duplicateWorkspace,
   ensurePersonalWorkspace,
   getPersonalWorkspaceByOwner,
   getPersonalWorkspaceByOwnerQuery,
@@ -144,6 +145,7 @@ export {
   getWorkspacesForUserQuery,
   updateWorkspace,
   useWorkspacesQuery,
+  type DuplicateWorkspaceInput,
   type UpdateWorkspacePatch,
   type Workspace,
 } from './workspaces'

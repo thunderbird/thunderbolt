@@ -2,6 +2,17 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from '@/components/ui/alert-dialog'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { Form } from '@/components/ui/form'
@@ -14,7 +25,7 @@ import {
   type WorkspaceFormValues,
 } from '@/components/workspace/workspace-form-fields'
 import { useDatabase } from '@/contexts'
-import { updateWorkspace, type UpdateWorkspacePatch, type Workspace } from '@/dal'
+import { duplicateWorkspace, updateWorkspace, type UpdateWorkspacePatch, type Workspace } from '@/dal'
 import { useActiveWorkspaceMembership } from '@/hooks/use-active-workspace-membership'
 import { useCanCreateWorkspace } from '@/hooks/use-can-create-workspace'
 import { useDebouncedCallback } from '@/hooks/use-debounce'
@@ -61,6 +72,63 @@ const WorkspaceMeta = ({ workspace }: { workspace: Workspace }) => {
           Created {created}
         </span>
       )}
+    </div>
+  )
+}
+
+const WorkspaceActions = ({ workspace }: { workspace: Workspace }) => {
+  const db = useDatabase()
+  const canCreate = useCanCreateWorkspace()
+  const navigate = useNavigate()
+  const userId = useActiveUserId()
+  const [busy, setBusy] = useState(false)
+
+  const handleDuplicate = async () => {
+    if (!userId || busy) {
+      return
+    }
+    setBusy(true)
+    try {
+      const newId = await duplicateWorkspace(db, workspace, {
+        creatorUserId: userId,
+        name: `${workspace.name} Copy`,
+        slug: workspace.slug ? `${workspace.slug}-copy` : null,
+        icon: workspace.icon,
+      })
+      navigate(`/w/${newId}/`)
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  if (!canCreate) {
+    return null
+  }
+
+  return (
+    <div className="flex flex-col items-start gap-2">
+      <AlertDialog>
+        <AlertDialogTrigger asChild>
+          <Button type="button" variant="outline" size="lg" disabled={busy || !userId}>
+            Duplicate Workspace
+          </Button>
+        </AlertDialogTrigger>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Duplicate workspace?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This will create a copy of <strong>{workspace.name}</strong> including models, MCP servers, prompts,
+              skills, agents, and tasks. Chat history won't be copied.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={handleDuplicate} disabled={busy || !userId}>
+              Duplicate
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   )
 }
@@ -184,6 +252,9 @@ const WorkspaceGeneralPage = () => {
               {/* Re-key by workspace id so switching workspaces fully remounts the
                *  form — defaultValues read from the new active.name, isDirty resets. */}
               <RenameWorkspaceForm key={active.id} workspace={active} />
+              <div className="mt-6">
+                <WorkspaceActions workspace={active} />
+              </div>
             </CardContent>
           </Card>
         </>

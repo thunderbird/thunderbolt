@@ -3,7 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import type { DataTransformMiddleware, SyncDataBucket } from '../TransformableBucketStorage'
-import { codec } from '@/db/encryption/codec'
+import { codec as defaultCodec, type EncryptionCodec } from '@/db/encryption/codec'
 
 type SyncEntry = SyncDataBucket['data'][number]
 
@@ -15,7 +15,7 @@ type SyncEntry = SyncDataBucket['data'][number]
  * a stale desktop client (whose bundled map predates a new encrypted column) still decrypts
  * correctly — the __enc: prefix is the authoritative signal, not the config.
  */
-const decryptEntry = async (entry: SyncEntry) => {
+const decryptEntry = async (entry: SyncEntry, codec: EncryptionCodec) => {
   if (!entry.data) {
     return
   }
@@ -49,10 +49,16 @@ const decryptEntry = async (entry: SyncEntry) => {
  *
  * No isEncryptionEnabled() gate: this middleware runs in the SharedWorker where
  * localStorage is unavailable. The codec safely handles both encrypted and plaintext data.
+ *
+ * The codec is injected (defaulting to the shared AES-GCM codec) so tests can supply a
+ * fake without `mock.module('@/db/encryption/codec')`, which leaks across test files in a
+ * non-isolated runner and corrupts the real codec's own suite.
  */
-export const encryptionMiddleware: DataTransformMiddleware = {
+export const createEncryptionMiddleware = (codec: EncryptionCodec = defaultCodec): DataTransformMiddleware => ({
   async transform(bucket) {
-    await Promise.all(bucket.data.map(decryptEntry))
+    await Promise.all(bucket.data.map((entry) => decryptEntry(entry, codec)))
     return bucket
   },
-}
+})
+
+export const encryptionMiddleware = createEncryptionMiddleware()

@@ -124,26 +124,6 @@ export const modelsTable = powersyncSchema.table(
   (table) => [primaryKey({ columns: [table.id, table.userId] }), index('idx_models_user_id').on(table.userId)],
 )
 
-export const mcpServersTable = powersyncSchema.table(
-  'mcp_servers',
-  {
-    id: text('id').primaryKey(),
-    name: text('name'),
-    type: text('type', { enum: ['http', 'stdio'] }).default('http'),
-    url: text('url'),
-    command: text('command'),
-    args: text('args'),
-    enabled: integer('enabled').default(1),
-    createdAt: timestamp('created_at').defaultNow(),
-    updatedAt: timestamp('updated_at').defaultNow(),
-    deletedAt: timestamp('deleted_at'),
-    userId: text('user_id')
-      .notNull()
-      .references(() => user.id, { onDelete: 'cascade' }),
-  },
-  (table) => [index('idx_mcp_servers_user_id').on(table.userId)],
-)
-
 export const promptsTable = powersyncSchema.table(
   'prompts',
   {
@@ -295,7 +275,6 @@ export const powersyncTablesByName = {
   chat_messages: chatMessagesTable,
   tasks: tasksTable,
   models: modelsTable,
-  mcp_servers: mcpServersTable,
   prompts: promptsTable,
   skills: skillsTable,
   triggers: triggersTable,
@@ -325,7 +304,6 @@ export const powersyncPkColumn: Record<PowerSyncTableName, AnyPgColumn> = {
   chat_messages: chatMessagesTable.id,
   tasks: tasksTable.id,
   models: modelsTable.id,
-  mcp_servers: mcpServersTable.id,
   prompts: promptsTable.id,
   skills: skillsTable.id,
   triggers: triggersTable.id,
@@ -346,7 +324,6 @@ export const powersyncConflictTarget: Record<PowerSyncTableName, AnyPgColumn[]> 
   chat_messages: [chatMessagesTable.id],
   tasks: [tasksTable.id, tasksTable.userId],
   models: [modelsTable.id, modelsTable.userId],
-  mcp_servers: [mcpServersTable.id],
   prompts: [promptsTable.id, promptsTable.userId],
   skills: [skillsTable.id, skillsTable.userId],
   triggers: [triggersTable.id],

@@ -44,7 +44,7 @@ export const useHydrateChatStore = ({ id, isNew }: UseHydrateChatStoreParams) =>
 
   const [isReady, setIsReady] = useState(false)
 
-  const { getEnabledClients } = useMCP()
+  const { getEnabledClients, reconnectClient } = useMCP()
 
   const updateThreadTitle = async (messages: ThunderboltUIMessage[], threadId: string) => {
     const firstUserMessage = messages.find((msg) => msg.role === 'user')
@@ -95,7 +95,8 @@ export const useHydrateChatStore = ({ id, isNew }: UseHydrateChatStoreParams) =>
   }
 
   const hydrateChatStore = async () => {
-    const { createSession, sessions, setCurrentSessionId, setMcpClients, setModes, setModels } = useChatStore.getState()
+    const { createSession, sessions, setCurrentSessionId, setGetMcpClients, setReconnectClient, setModes, setModels } =
+      useChatStore.getState()
 
     // Check if this ID belongs to a deleted chat - redirect to 404 if so
     const isDeleted = await isChatThreadDeleted(db, id)
@@ -108,13 +109,12 @@ export const useHydrateChatStore = ({ id, isNew }: UseHydrateChatStoreParams) =>
     if (sessions.has(id)) {
       setCurrentSessionId(id)
 
-      const [modes, models, mcpClients] = await Promise.all([
-        getAllModes(db),
-        getAvailableModels(db),
-        getEnabledClients(),
-      ])
+      const [modes, models] = await Promise.all([getAllModes(db), getAvailableModels(db)])
 
-      setMcpClients(mcpClients)
+      // Store the provider's getter (not a snapshot) so each send reads the
+      // current connected clients, including any swapped in by a reconnect.
+      setGetMcpClients(getEnabledClients)
+      setReconnectClient(reconnectClient)
       setModes(modes)
       setModels(models)
 
@@ -134,7 +134,6 @@ export const useHydrateChatStore = ({ id, isNew }: UseHydrateChatStoreParams) =>
       modes,
       models,
       triggerData,
-      mcpClients,
       customAgentRows,
       systemAgentRows,
     ] = await Promise.all([
@@ -145,7 +144,6 @@ export const useHydrateChatStore = ({ id, isNew }: UseHydrateChatStoreParams) =>
       getAllModes(db),
       getAvailableModels(db),
       getTriggerPromptForThread(db, id),
-      getEnabledClients(),
       getAllAgents(db),
       getAllSystemAgents(db),
     ])
@@ -228,7 +226,10 @@ export const useHydrateChatStore = ({ id, isNew }: UseHydrateChatStoreParams) =>
 
     setCurrentSessionId(id)
 
-    setMcpClients(mcpClients)
+    // Store the provider's getter (not a snapshot) so each send reads the
+    // current connected clients, including any swapped in by a reconnect.
+    setGetMcpClients(getEnabledClients)
+    setReconnectClient(reconnectClient)
     setModes(modes)
     setModels(models)
 

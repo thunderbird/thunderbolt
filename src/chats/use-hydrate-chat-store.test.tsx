@@ -223,7 +223,7 @@ describe('useHydrateChatStore', () => {
       expect(storeState.models.length).toBeGreaterThan(0)
       expect(session?.chatInstance).toBeDefined()
       expect(session?.chatInstance?.id).toBe(threadId)
-      expect(storeState.mcpClients).toBeDefined()
+      expect(storeState.getMcpClients()).toBeDefined()
       expect(session?.triggerData).toBeDefined()
     })
 

@@ -7,15 +7,26 @@ import { resetTestDatabase, setupTestDatabase, teardownTestDatabase } from '@/da
 import { getDb } from '@/db/database'
 import { renderWithReactivity, waitForElement } from '@/test-utils/powersync-reactivity-test'
 import { getClock } from '@/testing-library'
+import { MCPProvider, type MCPClient } from '@/lib/mcp-provider'
 import '@testing-library/jest-dom'
 import { act, cleanup, screen } from '@testing-library/react'
-import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, mock } from 'bun:test'
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'bun:test'
+import { createElement, type ReactNode } from 'react'
 import { v7 as uuidv7 } from 'uuid'
-import McpServersPage from './mcp-servers'
+import McpServersPage, { generateServerName } from './mcp-servers'
 
-mock.module('@/hooks/use-mcp-sync', () => ({
-  useMcpSync: () => ({ servers: [] }),
-}))
+// Wrap the page in a real MCPProvider with an injected createClient so the page
+// reads live (empty) connection state via useMCP — no need to mock the shared
+// useMcpSync hook. The fake client never resolves tools, keeping the test
+// focused on the DB-driven server list rendering.
+const neverResolves = (() => new Promise<MCPClient>(() => {})) as (
+  id: string,
+  url: string,
+  type: 'http' | 'sse',
+) => Promise<MCPClient>
+
+const McpProviderWrapper = ({ children }: { children: ReactNode }) =>
+  createElement(MCPProvider, { createClient: neverResolves, children })
 
 describe('McpServersPage reactivity', () => {
   beforeAll(async () => {
@@ -49,6 +60,7 @@ describe('McpServersPage reactivity', () => {
 
     const { triggerChange } = renderWithReactivity(<McpServersPage />, {
       tables: ['mcp_servers'],
+      wrapper: McpProviderWrapper,
     })
 
     await waitForElement(() => screen.queryByText('localhost:8000/mcp'))
@@ -68,5 +80,22 @@ describe('McpServersPage reactivity', () => {
     })
 
     expect(screen.getByText('localhost:9000/mcp')).toBeInTheDocument()
+  })
+})
+
+describe('generateServerName', () => {
+  const cases: Array<[string, string]> = [
+    ['http://192.168.1.100', '192.168.1.100'],
+    ['http://10.0.1.1', '10.0.1.1'],
+    ['https://api.github.com', 'github'],
+    ['https://render.com', 'render'],
+    ['http://localhost:3000', 'localhost-3000'],
+    ['https://example.com.', 'example'],
+    ['http://[::1]:8080', 'localhost-8080'],
+    ['http://[2001:db8::1]', '2001:db8::1'],
+  ]
+
+  it.each(cases)('derives %p → %p', (url, expected) => {
+    expect(generateServerName(url)).toBe(expected)
   })
 })

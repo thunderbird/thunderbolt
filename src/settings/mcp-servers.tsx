@@ -17,12 +17,13 @@ import {
   ResponsiveModalHeader,
   ResponsiveModalTitle,
 } from '@/components/ui/responsive-modal'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Switch } from '@/components/ui/switch'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
-import { createMcpServer, deleteMcpServer, getHttpMcpServers } from '@/dal'
+import { createMcpServerWithCredentials, deleteMcpServer, getRemoteMcpServers } from '@/dal'
 import { useDatabase } from '@/contexts'
 import { mcpServersTable } from '@/db/tables'
-import { useMcpSync } from '@/hooks/use-mcp-sync'
+import { useMCP } from '@/lib/mcp-provider'
 import { type McpServer } from '@/types'
 import { useMutation } from '@tanstack/react-query'
 import { useQuery } from '@powersync/tanstack-react-query'
@@ -30,19 +31,59 @@ import { eq } from 'drizzle-orm'
 import { Check, Copy, Globe, Plus, Server, Trash2, X } from 'lucide-react'
 import { useEffect, useRef, useState, type KeyboardEvent } from 'react'
 import { v7 as uuidv7 } from 'uuid'
-import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js'
-import { createMCPClient } from '@ai-sdk/mcp'
+import { probeMcpServerTools } from '@/lib/mcp-connection-test'
+import { buildMcpHeaders, createMcpTransport, type MCPTransportType } from '@/lib/mcp-transport'
+import { useLocalSettingsStore } from '@/stores/local-settings-store'
 import { toCompilableQuery } from '@powersync/drizzle-driver'
 
 type ServerTools = {
   [serverId: string]: string[]
 }
 
+/**
+ * Derives a short, meaningful server name from a remote MCP URL — used to
+ * pre-fill (and re-derive) the editable name field. The name namespaces the
+ * server's tools in the prompt, so a readable default like `github` or `render`
+ * beats the raw hostname.
+ * - Localhost: includes port for disambiguation (`localhost-3000`)
+ * - IP literals (IPv4 dotted-quad or IPv6): kept whole so distinct hosts stay
+ *   distinct (`192.168.1.100`, `2001:db8::1`)
+ * - Remote: 3+ domain segments → second-to-last (`api.github.com` → `github`);
+ *   2 segments → first (`render.com` → `render`); 1 → as-is
+ */
+export const generateServerName = (url: string): string => {
+  try {
+    const { hostname, port } = new URL(url)
+    // `URL` brackets IPv6 hosts (`[::1]`) and may keep a trailing FQDN dot — normalize both.
+    const host = hostname.replace(/^\[|\]$/g, '').replace(/\.$/, '')
+    if (host === 'localhost' || host === '127.0.0.1' || host === '::1') {
+      return port ? `localhost-${port}` : 'localhost'
+    }
+    // IP literals (IPv4 dotted-quad or IPv6) have no registrable label to shorten to —
+    // use the whole address so distinct hosts stay distinct (sanitizeToolPrefix maps separators to `_`).
+    if (host.includes(':') || /^\d+\.\d+\.\d+\.\d+$/.test(host)) {
+      return host
+    }
+    const parts = host.split('.')
+    return parts.length >= 3 ? parts[parts.length - 2] : parts[0]
+  } catch {
+    return ''
+  }
+}
+
 export default function McpServersPage() {
   const db = useDatabase()
-  const { servers: mcpServers } = useMcpSync()
+  const cloudUrl = useLocalSettingsStore((s) => s.cloudUrl)
+  // Read provider connection state read-only for status display. Sync ownership
+  // lives in the single global useMcpSync() in AppContent — running it here too
+  // would re-run the reconciliation effect and double-register servers.
+  const { servers: mcpServers } = useMCP()
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false)
+  const [newServerName, setNewServerName] = useState('')
+  const [nameManuallyEdited, setNameManuallyEdited] = useState(false)
   const [newServerUrl, setNewServerUrl] = useState('')
+  const [newServerTransport, setNewServerTransport] = useState<MCPTransportType>('http')
+  const [newServerToken, setNewServerToken] = useState('')
   const [isTestingConnection, setIsTestingConnection] = useState(false)
   const [connectionStatus, setConnectionStatus] = useState<'idle' | 'success' | 'error'>('idle')
   const [serverCapabilities, setServerCapabilities] = useState<string[]>([])
@@ -56,7 +97,7 @@ export default function McpServersPage() {
   // TODO: Add support for stdio servers
   const { data: servers = [] } = useQuery({
     queryKey: ['mcp-servers'],
-    query: toCompilableQuery(getHttpMcpServers(db)),
+    query: toCompilableQuery(getRemoteMcpServers(db)),
   })
 
   // Fetch tools for connected servers
@@ -113,16 +154,20 @@ export default function McpServersPage() {
 
   const addServerMutation = useMutation({
     mutationFn: async ({ name, url }: { name: string; url: string }) => {
-      await createMcpServer(db, {
-        id: uuidv7(),
-        name,
-        url,
-        enabled: 1,
-      })
+      const id = uuidv7()
+      await createMcpServerWithCredentials(
+        db,
+        { id, name, url, type: newServerTransport, enabled: 1 },
+        newServerToken ? { type: 'bearer', token: newServerToken } : undefined,
+      )
     },
     onSuccess: () => {
       setIsAddDialogOpen(false)
+      setNewServerName('')
+      setNameManuallyEdited(false)
       setNewServerUrl('')
+      setNewServerTransport('http')
+      setNewServerToken('')
       setConnectionStatus('idle')
       setServerCapabilities([])
     },
@@ -135,6 +180,17 @@ export default function McpServersPage() {
     },
   })
 
+  // Editing any field after a test invalidates that result, so the user can't
+  // add a url+transport+token combination that was never tested together. The
+  // idle guard avoids re-rendering on every keystroke once already cleared.
+  const resetConnectionTest = () => {
+    if (connectionStatus === 'idle') {
+      return
+    }
+    setConnectionStatus('idle')
+    setServerCapabilities([])
+  }
+
   const testConnection = async () => {
     if (!newServerUrl) {
       return
@@ -145,46 +201,14 @@ export default function McpServersPage() {
     setServerCapabilities([])
 
     try {
-      console.log('Testing connection to:', newServerUrl)
+      // Build the transport the same way the provider does — through the
+      // universal proxy so the test matches the real connection path (web CORS
+      // would otherwise fail for remote servers).
+      const headers = buildMcpHeaders(newServerToken || undefined)
+      const transport = createMcpTransport(newServerUrl, newServerTransport, cloudUrl, headers)
 
-      // Create a real MCP client using the same method as the provider
-      console.log('Creating MCP client...')
-      const mcpClient = await createMCPClient({
-        transport: new StreamableHTTPClientTransport(new URL(newServerUrl), {
-          requestInit: {
-            headers: {
-              Accept: 'application/json, text/event-stream',
-            },
-          },
-        }),
-      })
-
-      console.log('MCP client created successfully')
-
-      // Try to get tools to verify the connection works
-      console.log('Requesting tools...')
-      const tools = await mcpClient.tools()
-
-      console.log('Tools response:', tools)
+      setServerCapabilities(await probeMcpServerTools(transport))
       setConnectionStatus('success')
-
-      // Extract tool names for display
-      if (tools && typeof tools === 'object') {
-        const toolNames = Object.keys(tools)
-        setServerCapabilities(toolNames.length > 0 ? toolNames : ['Connection successful - no tools available'])
-      } else {
-        setServerCapabilities(['Connection successful - no tools listed'])
-      }
-
-      // Close the connection
-      console.log('Closing MCP client connection...')
-      if (mcpClient.close) {
-        try {
-          mcpClient.close()
-        } catch (closeError) {
-          console.warn('Error closing MCP client:', closeError)
-        }
-      }
     } catch (error) {
       console.error('Connection test error:', error)
       setConnectionStatus('error')
@@ -198,9 +222,9 @@ export default function McpServersPage() {
       return
     }
 
-    // Extract server name from URL
-    const url = new URL(newServerUrl)
-    const name = `${url.hostname}${url.port ? `:${url.port}` : ''} MCP Server`
+    // Name prefixes the server's tools in the prompt. Use the user's name when
+    // set, otherwise fall back to the value derived from the URL.
+    const name = newServerName.trim() || generateServerName(newServerUrl)
 
     addServerMutation.mutate({ name, url: newServerUrl })
   }
@@ -312,13 +336,66 @@ export default function McpServersPage() {
             </ResponsiveModalHeader>
             <div className="grid gap-4 pt-4 pb-2">
               <div className="grid gap-2">
+                <Label htmlFor="name">Name</Label>
+                <Input
+                  id="name"
+                  placeholder="Server name (used to prefix tools)"
+                  value={newServerName}
+                  onChange={(e) => {
+                    resetConnectionTest()
+                    setNewServerName(e.target.value)
+                    setNameManuallyEdited(true)
+                  }}
+                />
+              </div>
+
+              <div className="grid gap-2">
                 <Label htmlFor="url">Server URL</Label>
                 <Input
                   id="url"
                   placeholder="http://localhost:8000/mcp/"
                   value={newServerUrl}
-                  onChange={(e) => setNewServerUrl(e.target.value)}
+                  onChange={(e) => {
+                    resetConnectionTest()
+                    setNewServerUrl(e.target.value)
+                    if (!nameManuallyEdited) {
+                      setNewServerName(generateServerName(e.target.value))
+                    }
+                  }}
                   onKeyDown={handleUrlKeyDown}
+                />
+              </div>
+
+              <div className="grid gap-2">
+                <Label htmlFor="transport">Transport</Label>
+                <Select
+                  value={newServerTransport}
+                  onValueChange={(value) => {
+                    resetConnectionTest()
+                    setNewServerTransport(value as MCPTransportType)
+                  }}
+                >
+                  <SelectTrigger id="transport" className="w-full rounded-lg">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="http">HTTP</SelectItem>
+                    <SelectItem value="sse">SSE</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="grid gap-2">
+                <Label htmlFor="token">Credential (optional)</Label>
+                <Input
+                  id="token"
+                  type="password"
+                  placeholder="Bearer token or API key"
+                  value={newServerToken}
+                  onChange={(e) => {
+                    resetConnectionTest()
+                    setNewServerToken(e.target.value)
+                  }}
                 />
               </div>
 
@@ -337,7 +414,7 @@ export default function McpServersPage() {
                   {serverCapabilities.length > 0 && (
                     <div className="mt-3">
                       <p className="text-sm text-green-700 font-medium">Available tools:</p>
-                      <ul className="text-sm text-green-600 mt-1 space-y-1">
+                      <ul className="text-sm text-green-600 mt-1 space-y-1 max-h-40 overflow-y-auto">
                         {serverCapabilities.map((capability, index) => (
                           <li key={index} className="flex items-center gap-2">
                             <div className="w-1 h-1 bg-green-600 rounded-full" />

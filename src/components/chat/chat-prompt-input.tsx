@@ -16,6 +16,7 @@ import { SlashPopup } from '@/skills/slash-popup'
 import { useSkillTelemetry } from '@/skills/telemetry'
 import { useSlashCommand } from '@/skills/use-slash-command'
 import { useAgentCommands } from '@/acp/agent-commands-store'
+import { useWarmAcpCommands } from '@/chats/use-warm-acp-commands'
 import {
   useEnabledSkills as useEnabledSkills_default,
   useLibrarySkills as useLibrarySkills_default,
@@ -115,17 +116,30 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
       [library, isEnabled],
     )
     const isValidSkillSlug = useCallback((slug: string) => enabledSlugs.has(slug), [enabledSlugs])
+
+    // Commands the connected ACP agent advertises — surfaced in the slash menu
+    // as external suggestions alongside the user's own skills, and treated as
+    // valid slugs by the highlighter so they don't render red.
+    const agentCommands = useAgentCommands(selectedAgent.id)
+    const agentCommandNames = useMemo(() => new Set(agentCommands.map((c) => c.name)), [agentCommands])
+
     const classifySkill = useCallback<SkillStatusClassifier>(
       (slug) => {
         const skill = skillBySlug.get(slug)
-        if (!skill) {
-          return { status: 'unknown' }
+        if (skill) {
+          return isEnabled(skill.id)
+            ? { status: 'enabled', skillId: skill.id }
+            : { status: 'disabled', skillId: skill.id }
         }
-        return isEnabled(skill.id)
-          ? { status: 'enabled', skillId: skill.id }
-          : { status: 'disabled', skillId: skill.id }
+        // No user skill by that name — but an external command advertised by the
+        // connected agent is still a valid slug, so treat it as enabled rather
+        // than flagging it unknown (red, with a "Create it" popover).
+        if (agentCommandNames.has(slug)) {
+          return { status: 'enabled' }
+        }
+        return { status: 'unknown' }
       },
-      [skillBySlug, isEnabled],
+      [skillBySlug, isEnabled, agentCommandNames],
     )
 
     const isStreaming = status === 'streaming'
@@ -163,9 +177,9 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
 
     textareaRef.current = getTextarea()
 
-    // Commands the connected ACP agent advertises — surfaced in the slash menu
-    // as external suggestions alongside the user's own skills.
-    const agentCommands = useAgentCommands(selectedAgent.id)
+    // Eagerly connect the agent + warm its ACP session so the agent commands
+    // are populated before the user's first message (not just after a send).
+    useWarmAcpCommands({ id: chatThreadId, selectedAgent, chatThread })
 
     const {
       setCursorPos,
@@ -430,6 +444,7 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
               popupOpen ? (
                 <SlashPopup
                   items={popupItems}
+                  agentName={selectedAgent.name}
                   highlightedIdx={highlightedIdx}
                   onSelect={handleSelectFromSlashPopup}
                   onHover={setHighlightedIdx}

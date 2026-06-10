@@ -23,6 +23,7 @@ import type { HttpClient } from '@/lib/http'
 import type { FetchFn } from '@/lib/proxy-fetch'
 import type { Agent, AgentAdapter } from '@/types/acp'
 import { connectAcpAdapter, type AcpAdapterDeps } from './acp-adapter'
+import type { AcpCommand } from './translators/acp-to-ai-sdk'
 import { createBuiltInAdapter, type BuiltInAdapterOptions } from './built-in-adapter'
 
 /** Connection-scoped context handed to {@link connectToAgent}. Deliberately
@@ -31,6 +32,10 @@ import { createBuiltInAdapter, type BuiltInAdapterOptions } from './built-in-ada
 export type ConnectToAgentContext = {
   httpClient: HttpClient
   getProxyFetch: () => FetchFn
+  /** Agent-level sink for the commands the agent advertises. Stable + stateless
+   *  (writes to the global commands store keyed by agent id), so it doesn't
+   *  matter whether the first connect comes from a send or a warm-up. */
+  onAvailableCommands?: (commands: AcpCommand[]) => void
 }
 
 export type ConnectToAgentDeps = BuiltInAdapterOptions & AcpAdapterDeps
@@ -46,7 +51,7 @@ export const connectToAgent = async (
   }
   return connectAcpAdapter(
     agent,
-    { httpClient: ctx.httpClient },
+    { httpClient: ctx.httpClient, onAvailableCommands: ctx.onAvailableCommands },
     {
       openTransport: deps.openTransport,
       ClientSideConnection: deps.ClientSideConnection,

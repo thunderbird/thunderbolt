@@ -44,6 +44,7 @@ const buildAdapter = (agent: Agent) => {
     agent,
     capabilities: null,
     fetch: async () => new Response('ok'),
+    ensureSession: async () => {},
     disconnect: () => {
       disconnects++
     },

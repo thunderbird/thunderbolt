@@ -38,6 +38,8 @@ export const createBuiltInAdapter = (agent: Agent, options: BuiltInAdapterOption
     agent,
     capabilities: null,
     fetch,
+    // No ACP session to warm — the built-in pipeline advertises no commands.
+    ensureSession: async () => {},
     disconnect: () => {},
   }
 }

@@ -23,6 +23,7 @@ const seedCachedAdapter = async (agentId: string) => {
     agent: { id: agentId } as Agent,
     capabilities: null,
     fetch: async () => new Response('ok'),
+    ensureSession: async () => {},
     disconnect: () => {
       disconnects++
     },

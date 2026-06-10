@@ -42,11 +42,11 @@ import type {
   SessionNotification,
 } from '@agentclientprotocol/sdk'
 import { ClientSideConnection as ClientSideConnectionImpl } from '@agentclientprotocol/sdk'
-import type { Agent, AgentAdapter, AgentAdapterContext, AgentCapabilities } from '@/types/acp'
+import type { Agent, AgentAdapter, AgentAdapterContext, AgentCapabilities, EnsureSessionContext } from '@/types/acp'
 import type { ThunderboltUIMessage } from '@/types'
 import { openTransport } from './transports'
 import type { AcpTransport } from './types'
-import { createTranslatorStream } from './translators/acp-to-ai-sdk'
+import { createTranslatorStream, toAcpCommands, type AcpCommand } from './translators/acp-to-ai-sdk'
 import type { WebSocketFactory } from './transports/websocket'
 
 const protocolVersion = 1
@@ -144,6 +144,11 @@ export type AcpAdapterDeps = {
  *  supplied on each `fetch` via {@link AgentAdapterContext}. */
 export type AcpAdapterContext = {
   httpClient: AgentAdapterContext['httpClient']
+  /** Agent-level sink for the commands the agent advertises via
+   *  `available_commands_update`. Captured at the connection router (not the
+   *  per-prompt translator) so the command list surfaces whenever the agent
+   *  emits it — including before the first prompt, once a session exists. */
+  onAvailableCommands?: (commands: AcpCommand[]) => void
 }
 
 /** Race a handshake step against a terminal-close signal and a timeout so a
@@ -211,6 +216,13 @@ export const connectAcpAdapter = async (
   const permissionHandlers = new Map<string, RequestPermissionFn>()
 
   const routeSessionUpdate = (notification: SessionNotification): void => {
+    // The advertised command list is an agent-level capability, not part of a
+    // single prompt's stream — capture it here regardless of whether a thread
+    // is actively prompting, so commands surface before the first send too.
+    if (notification.update.sessionUpdate === 'available_commands_update') {
+      ctx.onAvailableCommands?.(toAcpCommands(notification.update.availableCommands))
+      return
+    }
     sessionUpdateSinks.get(notification.sessionId)?.(notification)
   }
 
@@ -258,7 +270,7 @@ export const connectAcpAdapter = async (
   /** Resolve (and cache) the ACP session id for the calling thread. First send
    *  on a thread runs `loadSession` (when supported + a prior id exists) or
    *  `newSession`; subsequent sends reuse the cached id. */
-  const resolveThreadSession = (context: AgentAdapterContext): Promise<string> => {
+  const resolveThreadSession = (context: EnsureSessionContext): Promise<string> => {
     const existing = sessionByThread.get(context.threadId)
     if (existing) {
       return existing
@@ -331,6 +343,14 @@ export const connectAcpAdapter = async (
     })
   }
 
+  // Warm the thread's session ahead of the first prompt so the agent emits its
+  // `available_commands_update` (captured by `routeSessionUpdate`) before the
+  // user sends anything. The session is cached per thread, so the subsequent
+  // first `fetch` reuses it — no extra `session/new`.
+  const ensureSession = async (context: EnsureSessionContext): Promise<void> => {
+    await resolveThreadSession(context)
+  }
+
   const disconnect = (): void => {
     transportController.abort()
     transport.close()
@@ -340,6 +360,7 @@ export const connectAcpAdapter = async (
     agent,
     capabilities,
     fetch,
+    ensureSession,
     disconnect,
   }
 }

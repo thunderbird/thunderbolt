@@ -82,6 +82,7 @@ const buildFakeAdapter = (agent: Agent) => {
     agent,
     capabilities: null,
     fetch: fetch as unknown as AgentAdapter['fetch'],
+    ensureSession: async () => {},
     disconnect,
   }
   return { adapter, fetch, disconnect }
@@ -215,6 +216,7 @@ describe('createAgentRoutingFetch', () => {
           agent: remoteAgent,
           capabilities: null,
           fetch: fetch as unknown as AgentAdapter['fetch'],
+          ensureSession: async () => {},
           disconnect,
         }) as AgentAdapter,
     )
@@ -257,6 +259,7 @@ describe('createAgentRoutingFetch', () => {
       agent: builtInAgent,
       capabilities: null,
       fetch: adapterFetch as unknown as AgentAdapter['fetch'],
+      ensureSession: async () => {},
       disconnect: mock(() => {}),
     }
     const connectToAgent = mock(async () => adapter)
@@ -324,6 +327,7 @@ describe('createAgentRoutingFetch', () => {
           agent: remoteAgent,
           capabilities: null,
           fetch: fetch as unknown as AgentAdapter['fetch'],
+          ensureSession: async () => {},
           disconnect,
         }) as AgentAdapter,
     )

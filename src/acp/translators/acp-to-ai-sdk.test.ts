@@ -331,7 +331,7 @@ describe('createTranslator — side effects', () => {
     expect(effects).toEqual([{ type: 'config_options_changed', options }])
   })
 
-  it('available_commands_update emits available_commands_changed on the sink', () => {
+  it('available_commands_update produces no chunk and no side effect (captured agent-level)', () => {
     const { emit, chunks } = collect()
     const effects: unknown[] = []
     const t = createTranslator(emit, { onSideEffect: (e) => effects.push(e) })
@@ -341,20 +341,14 @@ describe('createTranslator — side effects', () => {
         sessionUpdate: 'available_commands_update',
         availableCommands: [
           { name: 'research_codebase', description: 'Explore the codebase', input: { hint: 'topic' } },
-          { name: 'create_plan', description: 'Draft a plan' },
         ],
       }),
     )
+    // The command list is an agent capability captured by the adapter's session
+    // router, not the per-prompt translator — so neither a chunk nor a side
+    // effect flows from here.
     expect(chunks.map((c) => c.type)).toEqual(['start', 'start-step'])
-    expect(effects).toEqual([
-      {
-        type: 'available_commands_changed',
-        commands: [
-          { name: 'research_codebase', description: 'Explore the codebase', inputHint: 'topic' },
-          { name: 'create_plan', description: 'Draft a plan', inputHint: undefined },
-        ],
-      },
-    ])
+    expect(effects).toEqual([])
   })
 
   it('without a sink, side-effecting updates are silently ignored', () => {

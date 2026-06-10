@@ -27,6 +27,7 @@ const makeAdapter = (agent: Agent): AgentAdapter => ({
   agent,
   capabilities: null,
   fetch: async () => new Response('ok'),
+  ensureSession: async () => {},
   disconnect: () => {},
 })
 

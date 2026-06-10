@@ -74,6 +74,12 @@ export type AgentAdapterContext = {
   onSessionSideEffect?: SessionSideEffectSink
 }
 
+/** The slice of {@link AgentAdapterContext} needed to resolve a thread's ACP
+ *  session without sending a prompt. Used by `ensureSession` to warm the
+ *  connection — creating `session/new` early so the agent emits its
+ *  `available_commands_update` before the user's first message. */
+export type EnsureSessionContext = Pick<AgentAdapterContext, 'threadId' | 'acpSessionId' | 'onAcpSessionId'>
+
 /** Runtime adapter wrapping either the built-in pipeline or an ACP transport.
  *  `customFetch` in `chat-instance.ts` delegates to `adapter.fetch` and returns
  *  the resulting `Response` to the AI SDK unchanged. */
@@ -82,6 +88,10 @@ export type AgentAdapter = {
   /** `null` for the built-in adapter (no ACP handshake). */
   capabilities: AgentCapabilities | null
   fetch: (init: RequestInit, context: AgentAdapterContext) => Promise<Response>
+  /** Eagerly resolve the thread's ACP session (no prompt), so the agent emits
+   *  its advertised commands before the first send. No-op for the built-in
+   *  adapter. Idempotent per thread — reuses the cached session. */
+  ensureSession: (context: EnsureSessionContext) => Promise<void>
   disconnect: () => void
 }
 

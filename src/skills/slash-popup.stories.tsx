@@ -73,6 +73,7 @@ const noop = () => undefined
 export const Default: Story = {
   args: {
     items: sampleItems,
+    agentName: 'Hermes',
     highlightedIdx: 0,
     onSelect: noop,
     onHover: noop,

@@ -12,8 +12,9 @@ import type { SlashItem } from './use-slash-command'
  * suggestion rows have room for the description without truncating early.
  *
  * Items are user skills plus any commands advertised by the connected ACP
- * agent — the latter carry an "External" badge so it's clear they come from
- * the agent, not the user's own skill library.
+ * agent — the latter carry a badge naming the agent they come from (e.g.
+ * "Hermes") so it's clear they're the agent's commands, not the user's own
+ * skill library.
  *
  * Mouse-down (not click) selects so the textarea's blur handler doesn't
  * fire mid-selection. Pinning is *not* exposed here — `ChatSkillsBar`'s
@@ -21,11 +22,14 @@ import type { SlashItem } from './use-slash-command'
  */
 export const SlashPopup = ({
   items,
+  agentName,
   highlightedIdx,
   onSelect,
   onHover,
 }: {
   items: SlashItem[]
+  /** Name of the connected ACP agent, used as the badge label on its commands. */
+  agentName: string
   highlightedIdx: number
   onSelect: (item: SlashItem) => void
   onHover: (idx: number) => void
@@ -69,8 +73,8 @@ export const SlashPopup = ({
               <span className="flex items-center gap-1.5">
                 <span className="truncate text-[length:var(--font-size-body)] text-foreground">/{item.name}</span>
                 {item.kind === 'command' && (
-                  <span className="shrink-0 rounded-sm border border-border px-1 py-px text-[length:var(--font-size-xs)] uppercase tracking-wide text-muted-foreground">
-                    External
+                  <span className="max-w-[10rem] shrink-0 truncate rounded-sm border border-border px-1 py-px text-[length:var(--font-size-xs)] text-muted-foreground">
+                    {agentName}
                   </span>
                 )}
               </span>

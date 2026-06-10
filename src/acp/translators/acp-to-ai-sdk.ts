@@ -18,7 +18,10 @@
  *   tool_call_update (in_progress)  → buffered (no emit)
  *   tool_call_update (completed)    → tool-output-available
  *   tool_call_update (failed)       → tool-output-error
- *   available_commands_update      → side effect (agent-advertised commands)
+ *   available_commands_update      → ignored here (captured agent-level by the
+ *                                     adapter's session router, since the
+ *                                     command list is an agent capability, not
+ *                                     part of any single prompt's stream)
  *   plan                           → ignored in MVP
  *
  * Text-delta throttling: deltas for a given text-message id are coalesced and
@@ -26,7 +29,12 @@
  * finish, any buffered delta is flushed before emitting `finish`.
  */
 
-import type { SessionConfigOption, SessionNotification, ToolCallStatus } from '@agentclientprotocol/sdk'
+import type {
+  AvailableCommand,
+  SessionConfigOption,
+  SessionNotification,
+  ToolCallStatus,
+} from '@agentclientprotocol/sdk'
 import type { HaystackDocumentMeta, HaystackReferenceMeta } from '@/types'
 import type { AiSdkChunk } from '../types'
 
@@ -110,10 +118,19 @@ const pushThrottled = (t: DeltaThrottle, delta: string, throttleMs: number): voi
 /** A command / "skill" an ACP agent advertises via `available_commands_update`. */
 export type AcpCommand = { name: string; description: string; inputHint?: string }
 
+/** Map the SDK's `availableCommands` payload to our flat {@link AcpCommand}
+ *  shape. Lives here next to the type; used by the adapter's session router,
+ *  which captures the command list at the agent (not per-prompt) level. */
+export const toAcpCommands = (availableCommands: AvailableCommand[]): AcpCommand[] =>
+  availableCommands.map((command) => ({
+    name: command.name,
+    description: command.description,
+    inputHint: command.input?.hint,
+  }))
+
 export type SessionSideEffect =
   | { type: 'mode_changed'; modeId: string }
   | { type: 'config_options_changed'; options: SessionConfigOption[] }
-  | { type: 'available_commands_changed'; commands: AcpCommand[] }
 
 export type SessionSideEffectSink = (effect: SessionSideEffect) => void
 
@@ -337,18 +354,10 @@ export const createTranslator = (emit: (chunk: AiSdkChunk) => void, options: Tra
         sideEffect({ type: 'config_options_changed', options: update.configOptions })
         return
       }
-      case 'available_commands_update': {
-        sideEffect({
-          type: 'available_commands_changed',
-          commands: update.availableCommands.map((command) => ({
-            name: command.name,
-            description: command.description,
-            inputHint: command.input?.hint,
-          })),
-        })
-        return
-      }
-      // Ignored in MVP.
+      // Ignored here. `available_commands_update` is captured agent-level by the
+      // adapter's session router (it's an agent capability, not part of a single
+      // prompt's stream); the rest are not surfaced in the MVP.
+      case 'available_commands_update':
       case 'plan':
       case 'session_info_update':
       case 'usage_update':

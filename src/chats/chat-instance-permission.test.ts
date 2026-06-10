@@ -56,6 +56,7 @@ describe('requestPermission bridge', () => {
         capturedRequestPermission = ctx.requestPermission
         return new Response('ok')
       },
+      ensureSession: async () => {},
       disconnect: () => {},
     }
 

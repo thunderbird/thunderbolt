@@ -15,7 +15,8 @@ import type { FetchLike } from '@modelcontextprotocol/sdk/shared/transport.js'
 import { v4 as uuidv4 } from 'uuid'
 import { setMcpServerCredentials } from '@/dal/mcp-secrets'
 import type { AnyDrizzleDatabase } from '@/db/database-interface'
-import { createMcpOAuthClientProvider } from './oauth-client-provider'
+import type { McpAuthActionability } from './auth-decision'
+import { cimdClientMetadataAvailable, createMcpOAuthClientProvider } from './oauth-client-provider'
 import { validateMcpOAuthCallback } from './callback-validation'
 import { clearMcpOAuthState, getMcpOAuthState, setMcpOAuthState } from './mcp-oauth-state'
 
@@ -85,6 +86,38 @@ const discoverServer = async (
   }
 
   return { authorizationServerUrl, metadata }
+}
+
+/**
+ * Classifies how a remote MCP server can authenticate, for the Add dialog's
+ * empty-credential 401 path. PRM presence alone (`isOAuthServer`) is NOT enough:
+ * a server can publish RFC 9728 metadata yet have an authorization server that
+ * supports neither Dynamic Client Registration (`registration_endpoint`) nor CIMD
+ * (e.g. GitHub) — the SDK cannot obtain a client there, so `startMcpOAuthFlow`
+ * would throw. Those servers need a static token instead of an Authorize prompt.
+ *  - `authorizable`: AS supports a usable registration path (DCR, or CIMD with a
+ *    hosted client-metadata document) → offer "Add & Authorize".
+ *  - `token-only`: OAuth advertised (PRM) but the AS is unusable for client
+ *    registration → the user must supply a PAT / API key.
+ *  - `none`: no OAuth discoverable → a plain connection failure.
+ */
+export const classifyMcpServerAuth = async (
+  serverUrl: string,
+  fetchFn: FetchLike,
+  deps: WebOAuthDeps = {},
+  cimdAvailable: boolean = cimdClientMetadataAvailable(),
+): Promise<McpAuthActionability> => {
+  try {
+    const { metadata } = await discoverServer(serverUrl, fetchFn, deps)
+    const dcr = !!metadata.registration_endpoint
+    const cimd = metadata.client_id_metadata_document_supported === true && cimdAvailable
+    return dcr || cimd ? 'authorizable' : 'token-only'
+  } catch {
+    // The AS could not be discovered/validated (no PRM, no AS, issuer mismatch, or
+    // no PKCE S256). If OAuth was at least advertised via PRM the server still
+    // wants a token; otherwise it's a plain failure.
+    return (await isOAuthServer(serverUrl, fetchFn, deps)) ? 'token-only' : 'none'
+  }
 }
 
 /**

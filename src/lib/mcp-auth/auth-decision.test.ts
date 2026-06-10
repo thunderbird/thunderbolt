@@ -16,26 +16,42 @@ const error500 = () => Object.assign(new Error('Streamable HTTP error: boom'), {
 
 describe('decideTestConnectionResult (dialog precedence)', () => {
   it('credential supplied + 401 → token-rejected (static config wins, no Authorize)', () => {
-    // Even if OAuth would be discoverable, a supplied credential takes precedence.
-    expect(decideTestConnectionResult({ hasCredential: true, error: error401(), oauthDiscoverable: true })).toEqual({
+    // Even if OAuth would be actionable, a supplied credential takes precedence.
+    expect(
+      decideTestConnectionResult({ hasCredential: true, error: error401(), oauthActionability: 'authorizable' }),
+    ).toEqual({
       kind: 'token-rejected',
     })
   })
 
-  it('empty credential + 401 + OAuth discoverable → needs-oauth (Add & Authorize)', () => {
-    expect(decideTestConnectionResult({ hasCredential: false, error: error401(), oauthDiscoverable: true })).toEqual({
+  it('empty credential + 401 + OAuth authorizable → needs-oauth (Add & Authorize)', () => {
+    expect(
+      decideTestConnectionResult({ hasCredential: false, error: error401(), oauthActionability: 'authorizable' }),
+    ).toEqual({
       kind: 'needs-oauth',
     })
   })
 
-  it('empty credential + 401 + OAuth NOT discoverable → error (no supported auth)', () => {
-    expect(decideTestConnectionResult({ hasCredential: false, error: error401(), oauthDiscoverable: false })).toEqual({
-      kind: 'error',
+  it('empty credential + 401 + OAuth advertised but not actionable → needs-token (supply a PAT)', () => {
+    expect(
+      decideTestConnectionResult({ hasCredential: false, error: error401(), oauthActionability: 'token-only' }),
+    ).toEqual({
+      kind: 'needs-token',
     })
   })
 
+  it('empty credential + 401 + no OAuth discoverable → error (no supported auth)', () => {
+    expect(decideTestConnectionResult({ hasCredential: false, error: error401(), oauthActionability: 'none' })).toEqual(
+      {
+        kind: 'error',
+      },
+    )
+  })
+
   it('a non-401 error is always a plain connection error', () => {
-    expect(decideTestConnectionResult({ hasCredential: false, error: error500(), oauthDiscoverable: true })).toEqual({
+    expect(
+      decideTestConnectionResult({ hasCredential: false, error: error500(), oauthActionability: 'authorizable' }),
+    ).toEqual({
       kind: 'error',
     })
   })

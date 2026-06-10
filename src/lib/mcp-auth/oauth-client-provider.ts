@@ -29,6 +29,16 @@ const cimdEnabled = false
 /** Well-known location the AS fetches to read this client's metadata (SEP-991 / CIMD). */
 const clientMetadataPath = '/.well-known/oauth-client-metadata'
 
+/**
+ * Whether the CIMD client-metadata document is available to advertise as a
+ * client_id. Server-independent (depends only on the `cimdEnabled` master switch
+ * + backend connectivity), so callers without a server row — e.g. the Add dialog's
+ * actionability probe — can consult it. Mirrors `clientMetadataUrl !== undefined`.
+ */
+export const cimdClientMetadataAvailable = (
+  isBackendConnected: () => boolean = () => computeEffectiveProxyEnabled(),
+): boolean => cimdEnabled && isBackendConnected()
+
 type CreateProviderArgs = {
   serverId: string
   db: AnyDrizzleDatabase
@@ -87,7 +97,7 @@ class McpOAuthClientProvider implements OAuthClientProvider {
    * — points at the hosted document only when backend-connected.
    */
   get clientMetadataUrl(): string | undefined {
-    if (!cimdEnabled || !this.isBackendConnected()) {
+    if (!cimdClientMetadataAvailable(this.isBackendConnected)) {
       return undefined
     }
     return `${this.origin}${clientMetadataPath}`

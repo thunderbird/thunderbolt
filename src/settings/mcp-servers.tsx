@@ -41,7 +41,7 @@ import { getAuthToken } from '@/lib/auth-token'
 import { isUnauthorizedError } from '@/lib/mcp-errors'
 import { computeEffectiveProxyEnabled, createProxyFetch } from '@/lib/proxy-fetch'
 import { setOAuthState } from '@/lib/oauth-state'
-import { completeMcpOAuthFlow, isOAuthServer, startMcpOAuthFlow } from '@/lib/mcp-auth/web-oauth-flow'
+import { classifyMcpServerAuth, completeMcpOAuthFlow, startMcpOAuthFlow } from '@/lib/mcp-auth/web-oauth-flow'
 import { clearMcpOAuthState, getMcpOAuthState } from '@/lib/mcp-auth/mcp-oauth-state'
 import { McpOAuthNeedsReauthError } from '@/lib/mcp-auth/ensure-valid-token'
 import {
@@ -112,6 +112,17 @@ export const generateServerName = (url: string): string => {
   }
 }
 
+/** True when a string is a usable remote MCP URL (http/https with a host). Guards
+ *  the auto-detect probe from firing on partial/invalid input. */
+const isValidServerUrl = (url: string): boolean => {
+  try {
+    const { protocol, hostname } = new URL(url)
+    return (protocol === 'http:' || protocol === 'https:') && hostname.length > 0
+  } catch {
+    return false
+  }
+}
+
 export default function McpServersPage() {
   const db = useDatabase()
   const cloudUrl = useLocalSettingsStore((s) => s.cloudUrl)
@@ -131,12 +142,20 @@ export default function McpServersPage() {
   const [isTestingConnection, setIsTestingConnection] = useState(false)
   const [testResult, setTestResult] = useState<TestConnectionResult | { kind: 'idle' }>({ kind: 'idle' })
   const [serverCapabilities, setServerCapabilities] = useState<string[]>([])
+  // Dialog-scoped error shown when "Add & Authorize" fails to start the OAuth flow,
+  // so the failure is visible where the user acted (the dialog stays open).
+  const [addDialogError, setAddDialogError] = useState<string | null>(null)
   const [serverTools, setServerTools] = useState<ServerTools>({})
   const [selectedTools, setSelectedTools] = useState<{ [serverId: string]: { [tool: string]: boolean } }>({})
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState<string | null>(null)
   const [copiedUrl, setCopiedUrl] = useState<string | null>(null)
   const copiedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const titleRefs = useRef<{ [key: string]: HTMLElement | null }>({})
+  // Auto-detect: monotonic id to ignore a stale in-flight probe once the URL
+  // changes mid-flight, plus the last URL value auto-probed so the blur and the
+  // debounce don't double-fire for the same value.
+  const probeIdRef = useRef(0)
+  const lastAutoTestedUrlRef = useRef<string | null>(null)
 
   // TODO: Add support for stdio servers
   const { data: servers = [] } = useQuery({
@@ -222,16 +241,6 @@ export default function McpServersPage() {
       )
       return id
     },
-    onSuccess: () => {
-      setIsAddDialogOpen(false)
-      setNewServerName('')
-      setNameManuallyEdited(false)
-      setNewServerUrl('')
-      setNewServerTransport('http')
-      setNewServerToken('')
-      setTestResult({ kind: 'idle' })
-      setServerCapabilities([])
-    },
   })
 
   const deleteServerMutation = useMutation({
@@ -241,10 +250,25 @@ export default function McpServersPage() {
     },
   })
 
+  // Closes the Add dialog and clears all add-form state.
+  const resetAddDialog = () => {
+    setIsAddDialogOpen(false)
+    setNewServerName('')
+    setNameManuallyEdited(false)
+    setNewServerUrl('')
+    setNewServerTransport('http')
+    setNewServerToken('')
+    setTestResult({ kind: 'idle' })
+    setServerCapabilities([])
+    setAddDialogError(null)
+    lastAutoTestedUrlRef.current = null
+  }
+
   // Editing any field after a test invalidates that result, so the user can't
   // add a url+transport+token combination that was never tested together. The
   // idle guard avoids re-rendering on every keystroke once already cleared.
   const resetConnectionTest = () => {
+    setAddDialogError(null)
     if (testResult.kind === 'idle') {
       return
     }
@@ -256,6 +280,11 @@ export default function McpServersPage() {
     if (!newServerUrl) {
       return
     }
+    // Tag this probe so a slower earlier run can't overwrite a newer one's result
+    // (the URL can change while a probe is in flight), and record the tested value
+    // so the blur + debounce auto-triggers don't double-probe it.
+    const probeId = ++probeIdRef.current
+    lastAutoTestedUrlRef.current = newServerUrl
 
     setIsTestingConnection(true)
     setTestResult({ kind: 'idle' })
@@ -269,45 +298,92 @@ export default function McpServersPage() {
       const transport = createMcpTransport(newServerUrl, newServerTransport, cloudUrl, headers)
 
       const toolNames = await probeMcpServerTools(transport)
+      if (probeIdRef.current !== probeId) {
+        return
+      }
       setTestResult({ kind: 'success', tools: toolNames })
       setServerCapabilities(toolNames)
     } catch (error) {
-      console.error('Connection test error:', error)
-      // Auth precedence: a supplied credential that 401s is a rejected token
-      // (no Authorize). An empty-credential 401 runs OAuth discovery — offer
-      // "Add & Authorize" only when protected-resource metadata is discoverable.
-      const oauthDiscoverable =
-        !newServerToken && isUnauthorizedError(error) ? await isOAuthServer(newServerUrl, buildOAuthFetch()) : false
-      setTestResult(decideTestConnectionResult({ hasCredential: !!newServerToken, error, oauthDiscoverable }))
+      // A 401 here is the OAuth/credential probe signal, not a failure — keep it at warn.
+      console.warn('Connection test error:', error)
+      // Auth precedence: a supplied credential that 401s is a rejected token (no
+      // Authorize). An empty-credential 401 classifies the server: 'authorizable'
+      // (DCR/CIMD → Add & Authorize), 'token-only' (OAuth advertised but no usable
+      // registration, e.g. GitHub → ask for a static token), or 'none'.
+      const oauthActionability =
+        !newServerToken && isUnauthorizedError(error)
+          ? await classifyMcpServerAuth(newServerUrl, buildOAuthFetch())
+          : 'none'
+      if (probeIdRef.current !== probeId) {
+        return
+      }
+      setTestResult(decideTestConnectionResult({ hasCredential: !!newServerToken, error, oauthActionability }))
     } finally {
-      setIsTestingConnection(false)
+      if (probeIdRef.current === probeId) {
+        setIsTestingConnection(false)
+      }
     }
   }
+
+  // Auto-detect the server's auth requirement 700ms after the user stops typing a
+  // valid URL — a debounced network probe (timer cleared on each keystroke). The
+  // manual "Test Connection" button and the URL field's onBlur run the same probe
+  // immediately; `lastAutoTestedUrlRef` keeps blur + debounce from probing a value
+  // twice. Editing the credential/transport does NOT auto-probe (it only clears the
+  // stale result via resetConnectionTest) — re-test those with the button.
+  useEffect(() => {
+    if (!isValidServerUrl(newServerUrl) || newServerUrl === lastAutoTestedUrlRef.current) {
+      return
+    }
+    const timer = setTimeout(() => {
+      if (newServerUrl !== lastAutoTestedUrlRef.current) {
+        testConnection()
+      }
+    }, 700)
+    return () => clearTimeout(timer)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [newServerUrl])
 
   // Name prefixes the server's tools in the prompt. Use the user's name when
   // set, otherwise fall back to the value derived from the URL.
   const resolveServerName = () => newServerName.trim() || generateServerName(newServerUrl)
 
-  const handleAddServer = () => {
+  const handleAddServer = async () => {
     if (!newServerUrl) {
       return
     }
-    addServerMutation.mutate({ name: resolveServerName(), url: newServerUrl })
+    await addServerMutation.mutateAsync({ name: resolveServerName(), url: newServerUrl })
+    resetAddDialog()
   }
 
   /**
-   * Empty-credential + OAuth-discoverable path: add the server, then kick off the
-   * web OAuth flow for the freshly-created id. The redirect happens inside
-   * `handleAuthorize`, so the dialog closes (via `addServerMutation.onSuccess`)
-   * and the browser leaves for the authorization server.
+   * Empty-credential + OAuth-actionable path: add the server, then start the web
+   * OAuth flow for the freshly-created id. On success the browser redirects to the
+   * authorization server (the dialog leaves with the navigation); on failure the
+   * dialog stays open showing the error, so the failure is visible where the user
+   * acted. The created server row also surfaces an Authorize action on its card.
    */
   const handleAddAndAuthorize = async () => {
     if (!newServerUrl) {
       return
     }
+    setAddDialogError(null)
     const url = newServerUrl
     const id = await addServerMutation.mutateAsync({ name: resolveServerName(), url })
-    await handleAuthorize({ id, url } as McpServer)
+    try {
+      setOAuthState({ returnContext: '/settings/mcp-servers' })
+      await startMcpOAuthFlow({ db, serverId: id, serverUrl: url, fetchFn: buildOAuthFetch() })
+    } catch (error) {
+      console.error('Failed to start MCP OAuth flow:', error)
+      setAddDialogError('Could not start authorization. Please try again.')
+    }
+  }
+
+  // Leaving the URL field probes immediately (unless the debounce already did).
+  const handleUrlBlur = () => {
+    if (isValidServerUrl(newServerUrl) && newServerUrl !== lastAutoTestedUrlRef.current) {
+      testConnection()
+    }
   }
 
   const handleUrlKeyDown = (e: KeyboardEvent) => {
@@ -533,7 +609,15 @@ export default function McpServersPage() {
   return (
     <div className="flex flex-col gap-6 p-4 w-full max-w-[760px] mx-auto">
       <PageHeader title="MCP Servers">
-        <Dialog open={isAddDialogOpen} onOpenChange={setIsAddDialogOpen}>
+        <Dialog
+          open={isAddDialogOpen}
+          onOpenChange={(open) => {
+            setIsAddDialogOpen(open)
+            if (!open) {
+              setAddDialogError(null)
+            }
+          }}
+        >
           <DialogTrigger asChild>
             <Button variant="outline" size="icon" className="rounded-lg">
               <Plus />
@@ -572,6 +656,7 @@ export default function McpServersPage() {
                       setNewServerName(generateServerName(e.target.value))
                     }
                   }}
+                  onBlur={handleUrlBlur}
                   onKeyDown={handleUrlKeyDown}
                 />
               </div>
@@ -649,6 +734,19 @@ export default function McpServersPage() {
                 </div>
               )}
 
+              {testResult.kind === 'needs-token' && (
+                <div className="p-4 bg-amber-50 border border-amber-200 rounded-lg">
+                  <div className="flex items-center gap-2 text-amber-800">
+                    <LockKeyhole className="h-4 w-4" />
+                    <span className="font-medium">Access token required</span>
+                  </div>
+                  <p className="text-sm text-amber-700 mt-1">
+                    This server needs a personal access token or API key. Paste it in the Credential field above, then
+                    test again.
+                  </p>
+                </div>
+              )}
+
               {testResult.kind === 'token-rejected' && (
                 <div className="p-4 bg-red-50 border border-red-200 rounded-lg">
                   <div className="flex items-center gap-2 text-red-800">
@@ -670,6 +768,16 @@ export default function McpServersPage() {
                   <p className="text-sm text-red-600 mt-1">
                     Could not connect to the MCP server. Please check the URL and try again.
                   </p>
+                </div>
+              )}
+
+              {addDialogError && (
+                <div className="p-4 bg-red-50 border border-red-200 rounded-lg">
+                  <div className="flex items-center gap-2 text-red-800">
+                    <X className="h-4 w-4" />
+                    <span className="font-medium">Authorization error</span>
+                  </div>
+                  <p className="text-sm text-red-600 mt-1">{addDialogError}</p>
                 </div>
               )}
             </div>

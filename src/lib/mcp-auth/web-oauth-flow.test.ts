@@ -7,7 +7,13 @@ import { getMcpServerCredentials, setMcpServerCredentials } from '@/dal/mcp-secr
 import { getDb } from '@/db/database'
 import { resetTestDatabase, setupTestDatabase, teardownTestDatabase } from '@/dal/test-utils'
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'bun:test'
-import { completeMcpOAuthFlow, isOAuthServer, startMcpOAuthFlow, type WebOAuthDeps } from './web-oauth-flow'
+import {
+  classifyMcpServerAuth,
+  completeMcpOAuthFlow,
+  isOAuthServer,
+  startMcpOAuthFlow,
+  type WebOAuthDeps,
+} from './web-oauth-flow'
 import { getMcpOAuthState, setMcpOAuthState } from './mcp-oauth-state'
 
 const serverId = 'srv-1'
@@ -68,6 +74,60 @@ describe('isOAuthServer', () => {
       },
     })
     expect(result).toBe(false)
+  })
+})
+
+describe('classifyMcpServerAuth', () => {
+  it("is 'authorizable' when the AS advertises a DCR registration endpoint", async () => {
+    const result = await classifyMcpServerAuth(
+      serverUrl,
+      noFetch,
+      happyDiscovery(metadata({ registration_endpoint: `${authServerUrl}/register` })),
+    )
+    expect(result).toBe('authorizable')
+  })
+
+  it("is 'token-only' when OAuth is advertised but the AS has no DCR and no CIMD (the GitHub case)", async () => {
+    const result = await classifyMcpServerAuth(serverUrl, noFetch, happyDiscovery(metadata()))
+    expect(result).toBe('token-only')
+  })
+
+  it("is 'authorizable' when the AS supports CIMD and a client-metadata document is available", async () => {
+    const result = await classifyMcpServerAuth(
+      serverUrl,
+      noFetch,
+      happyDiscovery(metadata({ client_id_metadata_document_supported: true })),
+      true,
+    )
+    expect(result).toBe('authorizable')
+  })
+
+  it("is 'token-only' when the AS supports CIMD but no client-metadata document is available", async () => {
+    const result = await classifyMcpServerAuth(
+      serverUrl,
+      noFetch,
+      happyDiscovery(metadata({ client_id_metadata_document_supported: true })),
+      false,
+    )
+    expect(result).toBe('token-only')
+  })
+
+  it("is 'none' when no protected-resource metadata is discoverable", async () => {
+    const result = await classifyMcpServerAuth(serverUrl, noFetch, {
+      discoverOAuthProtectedResourceMetadata: async () => {
+        throw new Error('Resource server does not implement OAuth 2.0 Protected Resource Metadata.')
+      },
+    })
+    expect(result).toBe('none')
+  })
+
+  it("is 'token-only' when PRM is advertised but the AS is unusable (issuer mismatch)", async () => {
+    const result = await classifyMcpServerAuth(serverUrl, noFetch, {
+      discoverOAuthProtectedResourceMetadata: async () =>
+        ({ resource: serverUrl, authorization_servers: [authServerUrl] }) as never,
+      discoverAuthorizationServerMetadata: async () => metadata({ issuer: 'https://evil.example.com' }),
+    })
+    expect(result).toBe('token-only')
   })
 })
 

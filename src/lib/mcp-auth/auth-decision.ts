@@ -19,24 +19,40 @@ export type TestConnectionResult =
   /** A 401 with a user-supplied credential: the static token was rejected. No
    *  Authorize affordance — the config is wrong, exactly like Claude Code/Cline. */
   | { kind: 'token-rejected' }
-  /** A 401 with no credential and OAuth discoverable: offer "Add & Authorize". */
+  /** A 401 with no credential and OAuth actionable (DCR/CIMD): offer "Add & Authorize". */
   | { kind: 'needs-oauth' }
+  /** A 401 with no credential where the server advertises OAuth (PRM present) but
+   *  the authorization server supports NEITHER Dynamic Client Registration NOR
+   *  CIMD (e.g. GitHub) — the SDK can't obtain a client, so the user must supply a
+   *  static token (PAT / API key) instead of an Authorize affordance. */
+  | { kind: 'needs-token' }
   /** Anything else: a plain connection failure (incl. empty-cred 401 with no
    *  discoverable OAuth — "no supported auth"). */
   | { kind: 'error' }
 
 /**
+ * How a remote MCP server can authenticate, resolved by OAuth discovery on an
+ * empty-credential 401:
+ *  - `authorizable`: the authorization server supports a usable client-registration
+ *    path (DCR or CIMD) → offer "Add & Authorize".
+ *  - `token-only`: OAuth is advertised (PRM) but the AS supports no usable
+ *    registration → the user must supply a static token (PAT / API key).
+ *  - `none`: no OAuth discoverable → a plain connection failure.
+ */
+export type McpAuthActionability = 'authorizable' | 'token-only' | 'none'
+
+/**
  * Decides the Test Connection outcome from the probe error and whether the user
- * supplied a credential. OAuth discovery (`oauthDiscoverable`) is only consulted
- * on an empty-credential 401 — the caller skips the (network) discovery probe
- * otherwise. Pure: discovery is resolved by the caller and passed in.
+ * supplied a credential. OAuth actionability (`oauthActionability`) is only
+ * consulted on an empty-credential 401 — the caller skips the (network) discovery
+ * probe otherwise. Pure: discovery is resolved by the caller and passed in.
  */
 export const decideTestConnectionResult = (args: {
   hasCredential: boolean
   error: unknown
-  oauthDiscoverable: boolean
+  oauthActionability: McpAuthActionability
 }): TestConnectionResult => {
-  const { hasCredential, error, oauthDiscoverable } = args
+  const { hasCredential, error, oauthActionability } = args
   if (!isUnauthorizedError(error)) {
     return { kind: 'error' }
   }
@@ -45,7 +61,13 @@ export const decideTestConnectionResult = (args: {
   if (hasCredential) {
     return { kind: 'token-rejected' }
   }
-  return oauthDiscoverable ? { kind: 'needs-oauth' } : { kind: 'error' }
+  if (oauthActionability === 'authorizable') {
+    return { kind: 'needs-oauth' }
+  }
+  if (oauthActionability === 'token-only') {
+    return { kind: 'needs-token' }
+  }
+  return { kind: 'error' }
 }
 
 /** The credential type stored for a server, as read from the mcp_secrets blob. */

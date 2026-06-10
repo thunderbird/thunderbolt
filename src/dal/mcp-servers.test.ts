@@ -8,6 +8,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'bun:test'
 import { v7 as uuidv7 } from 'uuid'
 import {
   createMcpServer,
+  createMcpServersWithCredentials,
   createMcpServerWithCredentials,
   deleteMcpServer,
   getAllMcpServers,
@@ -57,6 +58,30 @@ describe('MCP Servers DAL', () => {
       })
       expect(await getAllMcpServers(db)).toHaveLength(1)
       expect(await getMcpServerCredentials(db, id)).toBeNull()
+    })
+  })
+
+  describe('createMcpServersWithCredentials', () => {
+    it('batch-creates servers with and without credentials in one transaction', async () => {
+      const db = getDb()
+      const withCredId = uuidv7()
+      const noCredId = uuidv7()
+      await createMcpServersWithCredentials(db, [
+        {
+          server: { id: withCredId, name: 'Bearer Server', type: 'http', url: 'https://a.example.com/mcp', enabled: 1 },
+          credential: { type: 'bearer', token: 'secret-token' },
+        },
+        {
+          server: { id: noCredId, name: 'No-Auth Server', type: 'sse', url: 'https://b.example.com/mcp', enabled: 0 },
+        },
+      ])
+
+      const servers = await getAllMcpServers(db)
+      expect(servers).toHaveLength(2)
+      expect(servers.map((s) => s.id)).toContain(withCredId)
+      expect(servers.map((s) => s.id)).toContain(noCredId)
+      expect(await getMcpServerCredentials(db, withCredId)).toEqual({ type: 'bearer', token: 'secret-token' })
+      expect(await getMcpServerCredentials(db, noCredId)).toBeNull()
     })
   })
 

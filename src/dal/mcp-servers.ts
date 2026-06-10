@@ -80,3 +80,30 @@ export const createMcpServerWithCredentials = async (
     await createMcpServer(tx, data)
   })
 }
+
+/** One server row plus its optional on-device credential, for batch creation. */
+export type McpServerWithCredential = {
+  server: Partial<McpServer> & Pick<McpServer, 'id' | 'name'>
+  credential?: McpServerCredentials
+}
+
+/**
+ * Creates many MCP servers and their optional credentials in a SINGLE
+ * transaction, so a JSON import is atomic on the write side — matching the
+ * parser's all-or-nothing contract. A failure on any item rolls back every row
+ * and secret. Batches the writes inline (not via
+ * {@link createMcpServerWithCredentials}, which opens its own transaction).
+ */
+export const createMcpServersWithCredentials = async (
+  db: AnyDrizzleDatabase,
+  items: McpServerWithCredential[],
+): Promise<void> => {
+  await db.transaction(async (tx) => {
+    for (const { server, credential } of items) {
+      await createMcpServer(tx, server)
+      if (credential) {
+        await setMcpServerCredentials(tx, server.id, credential)
+      }
+    }
+  })
+}

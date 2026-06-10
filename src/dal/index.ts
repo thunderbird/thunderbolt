@@ -67,10 +67,12 @@ export {
 // MCP Servers
 export {
   createMcpServer,
+  createMcpServersWithCredentials,
   createMcpServerWithCredentials,
   deleteMcpServer,
   getAllMcpServers,
   getRemoteMcpServers,
+  type McpServerWithCredential,
 } from './mcp-servers'
 
 // MCP Secrets (local-only credentials)

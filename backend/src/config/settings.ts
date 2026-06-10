@@ -121,6 +121,14 @@ const settingsSchema = z
     // JSON array of pipeline descriptors: [{id, name, pipelineName, pipelineId, description?, icon?}].
     // `id` is the public slug; `pipelineName` is the Deepset URL slug; `pipelineId` is the Deepset UUID.
     haystackPipelines: z.string().default(''),
+    // Coding-agent (self-hosted Cline) settings, consumed by the coding-agent provider/route.
+    // Workspace shim ACP endpoint the backend proxies to (may carry the shim token as a query
+    // param). Empty = the agent is not advertised.
+    codingAgentWorkspaceWsUrl: z.string().default(''),
+    // Broker base URL for per-user GitHub token provisioning. Empty = skip provisioning.
+    codingAgentBrokerUrl: z.string().default(''),
+    // Shared service token authenticating Thunderbolt → broker (sent as a Bearer token).
+    codingAgentServiceToken: z.string().default(''),
   })
   .superRefine((data, ctx) => {
     if (data.powersyncUrl && data.powersyncJwtSecret.length < 32) {
@@ -202,6 +210,9 @@ const parseSettings = (): Settings => {
     haystackApiKey: process.env.HAYSTACK_API_KEY || '',
     haystackWorkspace: process.env.HAYSTACK_WORKSPACE || '',
     haystackPipelines: process.env.HAYSTACK_PIPELINES || '',
+    codingAgentWorkspaceWsUrl: process.env.CODING_AGENT_WORKSPACE_WS_URL || '',
+    codingAgentBrokerUrl: process.env.CODING_AGENT_BROKER_URL || '',
+    codingAgentServiceToken: process.env.CODING_AGENT_SERVICE_TOKEN || '',
   }
 
   return settingsSchema.parse(env)

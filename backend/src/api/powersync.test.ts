@@ -76,6 +76,9 @@ const powersyncSettings: Settings = {
   haystackApiKey: '',
   haystackWorkspace: '',
   haystackPipelines: '',
+  codingAgentWorkspaceWsUrl: '',
+  codingAgentBrokerUrl: '',
+  codingAgentServiceToken: '',
 }
 
 describe('PowerSync API', () => {

@@ -62,5 +62,8 @@ export const createTestSettings = (overrides: Partial<Settings> = {}): Settings 
   haystackApiKey: '',
   haystackWorkspace: '',
   haystackPipelines: '',
+  codingAgentWorkspaceWsUrl: '',
+  codingAgentBrokerUrl: '',
+  codingAgentServiceToken: '',
   ...overrides,
 })

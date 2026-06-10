@@ -100,10 +100,12 @@ export const createMcpServersWithCredentials = async (
 ): Promise<void> => {
   await db.transaction(async (tx) => {
     for (const { server, credential } of items) {
-      await createMcpServer(tx, server)
+      // Credential before the row (matching createMcpServerWithCredentials) so the
+      // ordering is consistent and a future non-transactional refactor stays safe.
       if (credential) {
         await setMcpServerCredentials(tx, server.id, credential)
       }
+      await createMcpServer(tx, server)
     }
   })
 }

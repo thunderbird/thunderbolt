@@ -65,6 +65,12 @@ export const workspacesTable = powersyncSchema.table(
  *
  * Roles are `admin` | `member` only (Decision 9 — no `owner`). Last-admin protection
  * lives in the upload handler factory.
+ *
+ * `user_name` / `user_email` are denormalized from `auth.user` so the Members
+ * page can render display info without a synced `users` table — PowerSync sync
+ * rules can't follow a `user_id` foreign key across buckets. The upload handler
+ * fills them at insert time; the Better Auth `after('updateUser')` hook keeps
+ * them in step when a user later edits their name or email.
  */
 export const workspaceMembershipsTable = powersyncSchema.table(
   'workspace_memberships',
@@ -77,6 +83,8 @@ export const workspaceMembershipsTable = powersyncSchema.table(
       .notNull()
       .references(() => user.id, { onDelete: 'cascade' }),
     role: text('role', { enum: ['admin', 'member'] }).notNull(),
+    userName: text('user_name'),
+    userEmail: text('user_email'),
     createdAt: timestamp('created_at').notNull().defaultNow(),
   },
   (table) => [

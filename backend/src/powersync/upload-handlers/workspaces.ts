@@ -4,9 +4,10 @@
 
 import {
   getWorkspaceById,
+  insertPersonalWorkspaceIfMissing,
   isAdminOfAnyWorkspace,
   isWorkspaceAdmin,
-  updateSharedWorkspace,
+  updateWorkspace,
   upsertWorkspace,
 } from '@/dal/workspaces'
 import { computePersonalWorkspaceId } from '@shared/workspaces'
@@ -18,10 +19,11 @@ import { UploadRejection, type UploadHandler } from './types'
  *
  * - **Personal workspace PUT**: allowed iff the row id matches the canonical
  *   `computePersonalWorkspaceId(ctx.userId)` AND `owner_user_id === ctx.userId`.
- *   The name is server-forced to `"Personal"` — Decision 11 (non-editable).
- *   Idempotent across multi-device first-sign-ins: both devices compute the
- *   same canonical id and upload the same row → upsert no-op.
- * - **Personal workspace PATCH / DELETE**: rejected (immutable, deferred).
+ *   First-write wins on the name — if the row already exists, the PUT is a
+ *   no-op so a second device's idempotent bootstrap doesn't clobber a rename
+ *   the user made elsewhere.
+ * - **Personal workspace PATCH**: rename allowed, gated on admin of the
+ *   workspace (which is always true for the personal owner).
  * - **Shared workspace PUT**: gated by `allowWorkspaceCreationByMembers`.
  *   Members may create only when the flag is on; users who already admin some
  *   workspace can always create regardless of the flag.
@@ -40,9 +42,6 @@ export const workspacesHandler: UploadHandler = {
       if (!existing) {
         return reject('permanent', 'ROW_NOT_FOUND')
       }
-      if (existing.isPersonal) {
-        return reject('permanent', 'PERSONAL_WORKSPACE_IMMUTABLE')
-      }
       if (!(await isWorkspaceAdmin(tx, op.id, ctx.userId))) {
         return reject('permanent', 'NOT_WORKSPACE_ADMIN')
       }
@@ -57,8 +56,7 @@ export const workspacesHandler: UploadHandler = {
     if (payloadIsPersonal || idMatchesCanonical || existing?.isPersonal) {
       // This is a personal-workspace PUT. Accept only if both the canonical id
       // and the ownership claim match the caller. Anything else — wrong id,
-      // someone else's owner_user_id, or an attempt to "rename" via an
-      // existing row — is rejected.
+      // someone else's owner_user_id — is rejected.
       if (!idMatchesCanonical) {
         return reject('permanent', 'PERSONAL_WORKSPACE_ID_NOT_CANONICAL')
       }
@@ -98,17 +96,28 @@ export const workspacesHandler: UploadHandler = {
       case 'PUT': {
         const canonicalPersonalId = computePersonalWorkspaceId(ctx.userId)
         const isPersonalPut = op.data?.is_personal === true || op.id === canonicalPersonalId
-        // Personal workspace name is always forced to "Personal" server-side (Decision 11,
-        // non-editable in v1) regardless of what the client sends.
-        const name = isPersonalPut ? 'Personal' : typeof op.data?.name === 'string' ? op.data.name : null
+        const incomingName = typeof op.data?.name === 'string' ? op.data.name : null
+        // Personal workspaces default to "Default" if the client omitted the name
+        // (defensive — current clients always send one). Shared workspaces require it.
+        const name = incomingName ?? (isPersonalPut ? 'Default' : null)
         if (!name) {
           throw new UploadRejection('permanent', 'WORKSPACE_NAME_REQUIRED')
+        }
+        if (isPersonalPut) {
+          // `DO NOTHING` on conflict — preserves any later rename if a second
+          // device's bootstrap PUT lands after the user already renamed the row.
+          await insertPersonalWorkspaceIfMissing(tx, {
+            id: op.id,
+            name,
+            ownerUserId: ctx.userId,
+          })
+          return
         }
         await upsertWorkspace(tx, {
           id: op.id,
           name,
-          isPersonal: isPersonalPut,
-          ownerUserId: isPersonalPut ? ctx.userId : null,
+          isPersonal: false,
+          ownerUserId: null,
         })
         return
       }
@@ -117,7 +126,7 @@ export const workspacesHandler: UploadHandler = {
         if (name === undefined) {
           throw new UploadRejection('permanent', 'EMPTY_PAYLOAD')
         }
-        const affected = await updateSharedWorkspace(tx, op.id, { name })
+        const affected = await updateWorkspace(tx, op.id, { name })
         if (affected === 0) {
           throw new UploadRejection('permanent', 'ROW_NOT_FOUND')
         }

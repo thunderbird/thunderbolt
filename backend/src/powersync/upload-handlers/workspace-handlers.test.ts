@@ -146,7 +146,7 @@ describe('workspace upload handlers', () => {
       expect(stored).toHaveLength(1)
     })
 
-    it('rejects PATCH on a personal workspace (immutable)', async () => {
+    it('allows PATCH-rename on a personal workspace by its owner-admin', async () => {
       await insertUser('owner3', 'owner3@test.com')
       const workspaceId = await bootstrapPersonalViaUpload('owner3')
 
@@ -154,10 +154,63 @@ describe('workspace upload handlers', () => {
         op: 'PATCH',
         type: 'workspaces',
         id: workspaceId,
-        data: { name: 'Renamed' },
+        data: { name: 'Home base' },
       }
       const result = await applyUploadBatch(db, [op], ctxFor('owner3'))
-      expectPermanentReject(result, 'PERSONAL_WORKSPACE_IMMUTABLE')
+      expect(result.ok).toBe(true)
+      if (result.ok) {
+        expect(result.rejected).toHaveLength(0)
+      }
+
+      const stored = await db.select().from(workspacesTable).where(eq(workspacesTable.id, workspaceId))
+      expect(stored[0].name).toBe('Home base')
+    })
+
+    it('rejects PATCH on a personal workspace from a non-owner', async () => {
+      await insertUser('owner3b', 'owner3b@test.com')
+      await insertUser('attacker3', 'attacker3@test.com')
+      const workspaceId = await bootstrapPersonalViaUpload('owner3b')
+
+      const op: UploadOp = {
+        op: 'PATCH',
+        type: 'workspaces',
+        id: workspaceId,
+        data: { name: 'Hijacked' },
+      }
+      const result = await applyUploadBatch(db, [op], ctxFor('attacker3'))
+      expectPermanentReject(result, 'NOT_WORKSPACE_ADMIN')
+
+      const stored = await db.select().from(workspacesTable).where(eq(workspacesTable.id, workspaceId))
+      expect(stored[0].name).toBe('Personal')
+    })
+
+    it('preserves a prior rename when a second device re-uploads the bootstrap PUT', async () => {
+      await insertUser('mdev2', 'mdev2@test.com')
+      const workspaceId = await bootstrapPersonalViaUpload('mdev2')
+
+      // User renames on device A.
+      const renameOp: UploadOp = {
+        op: 'PATCH',
+        type: 'workspaces',
+        id: workspaceId,
+        data: { name: 'Renamed' },
+      }
+      const renameResult = await applyUploadBatch(db, [renameOp], ctxFor('mdev2'))
+      expect(renameResult.ok).toBe(true)
+
+      // Device B's idempotent bootstrap re-uploads the canonical PUT with the
+      // default name — must not clobber the rename.
+      const reBootstrap: UploadOp = {
+        op: 'PUT',
+        type: 'workspaces',
+        id: workspaceId,
+        data: { is_personal: true, owner_user_id: 'mdev2', name: 'Default' },
+      }
+      const reResult = await applyUploadBatch(db, [reBootstrap], ctxFor('mdev2'))
+      expect(reResult.ok).toBe(true)
+
+      const stored = await db.select().from(workspacesTable).where(eq(workspacesTable.id, workspaceId))
+      expect(stored[0].name).toBe('Renamed')
     })
 
     it('rejects DELETE on workspaces (v1 deferred)', async () => {
@@ -564,11 +617,11 @@ describe('workspace upload handlers', () => {
       await insertUser('owner7', 'owner7@test.com')
       const personalId = await bootstrapPersonalViaUpload('owner7')
 
-      const renamePersonal: UploadOp = {
-        op: 'PATCH',
+      const ownerMismatch: UploadOp = {
+        op: 'PUT',
         type: 'workspaces',
         id: personalId,
-        data: { name: 'Renamed' },
+        data: { is_personal: true, owner_user_id: 'somebody-else', name: 'Sneaky' },
       }
       const wrongIdPersonal: UploadOp = {
         op: 'PUT',
@@ -578,7 +631,7 @@ describe('workspace upload handlers', () => {
       }
       const result = await applyUploadBatch(
         db,
-        [renamePersonal, wrongIdPersonal],
+        [ownerMismatch, wrongIdPersonal],
         ctxFor('owner7', {
           settings: createTestSettings({ allowWorkspaceCreationByMembers: true }),
         }),
@@ -587,7 +640,7 @@ describe('workspace upload handlers', () => {
       expect(result.ok).toBe(true)
       if (result.ok) {
         expect(result.rejected).toHaveLength(2)
-        expect(result.rejected[0].code).toBe('PERSONAL_WORKSPACE_IMMUTABLE')
+        expect(result.rejected[0].code).toBe('PERSONAL_WORKSPACE_OWNER_MISMATCH')
         expect(result.rejected[1].code).toBe('PERSONAL_WORKSPACE_ID_NOT_CANONICAL')
       }
     })

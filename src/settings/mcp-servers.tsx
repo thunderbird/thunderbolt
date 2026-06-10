@@ -20,7 +20,7 @@ import {
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Switch } from '@/components/ui/switch'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
-import { createMcpServer, deleteMcpServer, getRemoteMcpServers, setMcpServerCredentials } from '@/dal'
+import { createMcpServerWithCredentials, deleteMcpServer, getRemoteMcpServers } from '@/dal'
 import type { McpServerCredentials } from '@/dal/mcp-secrets'
 import { useDatabase } from '@/contexts'
 import { mcpSecretsTable, mcpServersTable } from '@/db/tables'
@@ -33,7 +33,7 @@ import { Check, Copy, Globe, LockKeyhole, Plus, Server, Trash2, X } from 'lucide
 import { useEffect, useRef, useState, type KeyboardEvent } from 'react'
 import { useLocation, useNavigate } from 'react-router'
 import { v7 as uuidv7 } from 'uuid'
-import { createMCPClient } from '@ai-sdk/mcp'
+import { probeMcpServerTools } from '@/lib/mcp-connection-test'
 import { buildMcpHeaders, createMcpTransport, type MCPTransportType } from '@/lib/mcp-transport'
 import { useLocalSettingsStore } from '@/stores/local-settings-store'
 import { toCompilableQuery } from '@powersync/drizzle-driver'
@@ -213,22 +213,13 @@ export default function McpServersPage() {
   const addServerMutation = useMutation({
     mutationFn: async ({ name, url }: { name: string; url: string }): Promise<string> => {
       const id = uuidv7()
-      // Persist credentials BEFORE the server row. useMcpSync reacts to the new
-      // mcp_servers row and the provider connects by reading credentials from the
-      // DB at connect time — if the token isn't stored yet the first connect is
-      // unauthenticated and nothing reconnects it. Writing the secret first
-      // (keyed by the same id) guarantees the connect sees the token. (OAuth has
-      // no token here — it authorizes post-create and reconnects separately.)
-      if (newServerToken) {
-        await setMcpServerCredentials(db, id, { type: 'bearer', token: newServerToken })
-      }
-      await createMcpServer(db, {
-        id,
-        name,
-        url,
-        type: newServerTransport,
-        enabled: 1,
-      })
+      // OAuth servers have no credential here — they authorize post-create and
+      // reconnect separately (see handleAddAndAuthorize).
+      await createMcpServerWithCredentials(
+        db,
+        { id, name, url, type: newServerTransport, enabled: 1 },
+        newServerToken ? { type: 'bearer', token: newServerToken } : undefined,
+      )
       return id
     },
     onSuccess: () => {
@@ -271,28 +262,15 @@ export default function McpServersPage() {
     setServerCapabilities([])
 
     try {
-      // Create a real MCP client using the same method as the provider —
-      // route through the universal proxy so the test matches the real
-      // connection path (web CORS would otherwise fail for remote servers).
+      // Build the transport the same way the provider does — through the
+      // universal proxy so the test matches the real connection path (web CORS
+      // would otherwise fail for remote servers).
       const headers = buildMcpHeaders(newServerToken || undefined)
       const transport = createMcpTransport(newServerUrl, newServerTransport, cloudUrl, headers)
-      const mcpClient = await createMCPClient({ transport })
 
-      // Try to get tools to verify the connection works
-      const tools = await mcpClient.tools()
-
-      const toolNames = tools && typeof tools === 'object' ? Object.keys(tools) : []
+      const toolNames = await probeMcpServerTools(transport)
       setTestResult({ kind: 'success', tools: toolNames })
-      setServerCapabilities(toolNames.length > 0 ? toolNames : ['Connection successful - no tools available'])
-
-      // Close the connection
-      if (mcpClient.close) {
-        try {
-          mcpClient.close()
-        } catch (closeError) {
-          console.warn('Error closing MCP client:', closeError)
-        }
-      }
+      setServerCapabilities(toolNames)
     } catch (error) {
       console.error('Connection test error:', error)
       // Auth precedence: a supplied credential that 401s is a rejected token

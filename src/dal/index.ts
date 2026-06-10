@@ -65,7 +65,13 @@ export {
 } from './tasks'
 
 // MCP Servers
-export { createMcpServer, deleteMcpServer, getAllMcpServers, getRemoteMcpServers } from './mcp-servers'
+export {
+  createMcpServer,
+  createMcpServerWithCredentials,
+  deleteMcpServer,
+  getAllMcpServers,
+  getRemoteMcpServers,
+} from './mcp-servers'
 
 // MCP Secrets (local-only credentials)
 export { deleteMcpServerCredentials, getMcpServerCredentials, setMcpServerCredentials } from './mcp-secrets'

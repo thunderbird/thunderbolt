@@ -33,7 +33,6 @@ export const encryptedColumnsMap: Readonly<Record<string, readonly string[]>> = 
   chat_messages: ['content', 'parts', 'cache', 'metadata'],
   tasks: ['item'],
   models: ['name', 'model', 'url', 'vendor', 'description'],
-  mcp_servers: ['name', 'url', 'command', 'args'],
   prompts: ['title', 'prompt'],
   triggers: ['trigger_time'],
   model_profiles: [

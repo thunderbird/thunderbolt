@@ -142,8 +142,9 @@ export {
   getWorkspaceById,
   getWorkspaceByIdQuery,
   getWorkspacesForUserQuery,
-  updateWorkspaceName,
+  updateWorkspace,
   useWorkspacesQuery,
+  type UpdateWorkspacePatch,
   type Workspace,
 } from './workspaces'
 export {

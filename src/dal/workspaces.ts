@@ -312,19 +312,43 @@ export const addPendingMemberships = async (
   return emails.length
 }
 
+export type UpdateWorkspacePatch = {
+  /** Trimmed before writing; throws on empty/whitespace. Omit to leave unchanged. */
+  name?: string
+  /** Slug to persist (already sanitized). Pass `null` to clear, omit to leave unchanged. */
+  slug?: string | null
+  /** Icon (emoji or base64 image). Pass `null` to clear, omit to leave unchanged. */
+  icon?: string | null
+}
+
 /**
- * Rename a workspace. PowerSync emits a PATCH op; the BE upload handler accepts
- * iff the caller is admin of a shared workspace, and permanent-rejects PATCH on
- * personal workspaces (Decision 11 — non-editable). The FE UI gates access
- * before reaching this function; the throw here is a defensive backstop.
+ * Patch a workspace's mutable fields (`name`, `slug`, `icon`). PowerSync emits
+ * a PATCH op the BE handler validates as admin-of-the-workspace; Personal-slug
+ * writes are rejected server-side. The FE UI gates access before reaching this
+ * function; the empty-name throw is a defensive backstop.
  */
-export const updateWorkspaceName = async (db: AnyDrizzleDatabase, workspaceId: string, name: string): Promise<void> => {
-  const trimmed = name.trim()
-  if (!trimmed) {
-    throw new Error('Workspace name is required')
+export const updateWorkspace = async (
+  db: AnyDrizzleDatabase,
+  workspaceId: string,
+  patch: UpdateWorkspacePatch,
+): Promise<void> => {
+  const setClause: Record<string, unknown> = { updatedAt: new Date().toISOString() }
+  if (patch.name !== undefined) {
+    const trimmed = patch.name.trim()
+    if (!trimmed) {
+      throw new Error('Workspace name is required')
+    }
+    setClause.name = trimmed
   }
-  await db
-    .update(workspacesTable)
-    .set({ name: trimmed, updatedAt: new Date().toISOString() })
-    .where(eq(workspacesTable.id, workspaceId))
+  if (patch.slug !== undefined) {
+    setClause.slug = patch.slug
+  }
+  if (patch.icon !== undefined) {
+    setClause.icon = patch.icon
+  }
+  if (Object.keys(setClause).length === 1) {
+    // Only `updatedAt` would change — caller passed no actual edits. Skip the write.
+    return
+  }
+  await db.update(workspacesTable).set(setClause).where(eq(workspacesTable.id, workspaceId))
 }

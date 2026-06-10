@@ -8,14 +8,14 @@ import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '
 import { Input } from '@/components/ui/input'
 import { PageHeader } from '@/components/ui/page-header'
 import { useDatabase } from '@/contexts'
-import { updateWorkspaceName, type Workspace } from '@/dal'
+import { updateWorkspace, type UpdateWorkspacePatch, type Workspace } from '@/dal'
 import { useActiveWorkspaceMembership } from '@/hooks/use-active-workspace-membership'
 import { useCanCreateWorkspace } from '@/hooks/use-can-create-workspace'
 import { useDebouncedCallback } from '@/hooks/use-debounce'
 import { useActiveWorkspace } from '@/lib/active-workspace'
 import { CreateWorkspaceModal } from '@/layout/sidebar/create-workspace-modal'
 import { InviteMembersModal } from '@/layout/sidebar/invite-members-modal'
-import { useTrustDomainRegistry } from '@/stores/trust-domain-registry'
+import { useActiveCloudUrl, useTrustDomainRegistry } from '@/stores/trust-domain-registry'
 import { zodResolver } from '@hookform/resolvers/zod'
 import dayjs from 'dayjs'
 import { Calendar, User } from 'lucide-react'
@@ -34,6 +34,31 @@ const useActiveUserId = (): string | undefined =>
     }
     return undefined
   })
+
+const slugMaxLength = 50
+
+/** Slugify any text into a URL-safe shape: lowercase a–z 0–9 hyphens. */
+const slugify = (input: string): string =>
+  input
+    .normalize('NFKD')
+    .replace(/[̀-ͯ]/g, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, slugMaxLength)
+
+/** Allow lowercase a–z 0–9 and hyphens to flow through the slug input live. */
+const sanitizeSlugInput = (raw: string): string =>
+  raw
+    .toLowerCase()
+    .replace(/[^a-z0-9-]/g, '')
+    .slice(0, slugMaxLength)
+
+/** Strip protocol from the cloud URL for a clean inline prefix. */
+const formatSlugPrefix = (cloudUrl: string | undefined): string => {
+  const host = cloudUrl ? cloudUrl.replace(/^https?:\/\//, '').replace(/\/$/, '') : ''
+  return `${host}/w/`
+}
 
 const WorkspaceMeta = ({ workspace }: { workspace: Workspace }) => {
   const activeUserId = useActiveUserId()
@@ -62,6 +87,7 @@ const WorkspaceMeta = ({ workspace }: { workspace: Workspace }) => {
 
 const renameSchema = z.object({
   name: z.string().refine((value) => value.trim().length > 0, { message: 'Workspace name is required' }),
+  slug: z.string(),
 })
 
 type RenameFormValues = z.infer<typeof renameSchema>
@@ -70,41 +96,59 @@ const renameDebounceMs = 600
 
 const RenameWorkspaceForm = ({ workspace }: { workspace: Workspace }) => {
   const db = useDatabase()
+  const cloudUrl = useActiveCloudUrl()
+  const isPersonal = workspace.isPersonal === 1
+  const slugPrefix = formatSlugPrefix(cloudUrl)
+
+  const initialSlug = workspace.slug ?? slugify(workspace.name)
+  const [slugLocked, setSlugLocked] = useState(
+    () => workspace.slug !== null && workspace.slug !== slugify(workspace.name),
+  )
   const [submitError, setSubmitError] = useState<string | null>(null)
 
   const form = useForm<RenameFormValues>({
     resolver: zodResolver(renameSchema),
-    defaultValues: { name: workspace.name },
+    defaultValues: { name: workspace.name, slug: initialSlug },
     mode: 'onChange',
   })
 
-  // Shared save path used by both the debounced onChange and the immediate
-  // onBlur. Empty + baseline-match short-circuit so the debounce firing after
-  // a blur-triggered save is a harmless no-op.
-  const save = useCallback(
-    async (value: string) => {
-      const trimmed = value.trim()
-      if (!trimmed || trimmed === workspace.name) {
-        return
+  // Shared save path used by debounced onChange and immediate onBlur. Reads
+  // current form state on every call so the timer never fires with stale args.
+  const save = useCallback(async () => {
+    const { name, slug } = form.getValues()
+    const patch: UpdateWorkspacePatch = {}
+    const trimmedName = name.trim()
+    if (trimmedName && trimmedName !== workspace.name) {
+      patch.name = trimmedName
+    }
+    if (!isPersonal) {
+      const finalSlug = slugify(slug) || null
+      if (finalSlug !== (workspace.slug ?? null)) {
+        patch.slug = finalSlug
       }
-      setSubmitError(null)
-      try {
-        await updateWorkspaceName(db, workspace.id, trimmed)
-        // Reset baseline so subsequent saves compare against the just-written
-        // value, not the prop snapshot from when this callback was created.
-        form.reset({ name: trimmed })
-      } catch (e) {
-        setSubmitError(e instanceof Error ? e.message : 'Failed to save workspace name.')
-      }
-    },
-    [db, workspace.id, workspace.name, form],
-  )
+    }
+    if (Object.keys(patch).length === 0) {
+      return
+    }
+    setSubmitError(null)
+    try {
+      await updateWorkspace(db, workspace.id, patch)
+      // Reset baseline so future debounces compare against the just-saved
+      // values. Display the canonicalised slug we actually wrote.
+      form.reset({
+        name: patch.name ?? name,
+        slug: patch.slug !== undefined ? (patch.slug ?? '') : slug,
+      })
+    } catch (e) {
+      setSubmitError(e instanceof Error ? e.message : 'Failed to save workspace.')
+    }
+  }, [db, workspace.id, workspace.name, workspace.slug, isPersonal, form])
 
   const debouncedSave = useDebouncedCallback(save, renameDebounceMs)
 
   return (
     <Form {...form}>
-      <form className="flex flex-col gap-2">
+      <form className="flex flex-col gap-4">
         <FormField
           control={form.control}
           name="name"
@@ -118,11 +162,14 @@ const RenameWorkspaceForm = ({ workspace }: { workspace: Workspace }) => {
                   {...field}
                   onChange={(e) => {
                     field.onChange(e)
-                    debouncedSave(e.target.value)
+                    if (!slugLocked && !isPersonal) {
+                      form.setValue('slug', slugify(e.target.value), { shouldDirty: false })
+                    }
+                    debouncedSave()
                   }}
-                  onBlur={(e) => {
+                  onBlur={() => {
                     field.onBlur()
-                    void save(e.target.value)
+                    void save()
                   }}
                 />
               </FormControl>
@@ -130,6 +177,43 @@ const RenameWorkspaceForm = ({ workspace }: { workspace: Workspace }) => {
             </FormItem>
           )}
         />
+
+        {!isPersonal && (
+          <FormField
+            control={form.control}
+            name="slug"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel className="text-sm font-medium">URL</FormLabel>
+                <div className="flex h-[var(--touch-height-lg)] w-full rounded-lg border border-input bg-transparent overflow-hidden focus-within:border-ring focus-within:ring-ring/50 focus-within:ring-[3px]">
+                  <span className="flex items-center px-4 text-[length:var(--font-size-body)] text-muted-foreground bg-muted whitespace-nowrap select-none">
+                    {slugPrefix}
+                  </span>
+                  <FormControl>
+                    <input
+                      type="text"
+                      placeholder="engineering"
+                      className="flex-1 min-w-0 px-4 py-2 bg-transparent outline-none text-[length:var(--font-size-body)]"
+                      {...field}
+                      onChange={(e) => {
+                        const cleaned = sanitizeSlugInput(e.target.value)
+                        field.onChange(cleaned)
+                        setSlugLocked(true)
+                        debouncedSave()
+                      }}
+                      onBlur={() => {
+                        field.onBlur()
+                        void save()
+                      }}
+                    />
+                  </FormControl>
+                </div>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+        )}
+
         {submitError && (
           <p className="text-sm text-destructive" role="alert">
             {submitError}

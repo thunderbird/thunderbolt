@@ -214,4 +214,78 @@ describe('WorkspaceGeneralPage', () => {
     const rows = await db.select().from(workspacesTable).where(eq(workspacesTable.id, wsId))
     expect(rows[0].name).toBe('Home base')
   })
+
+  it('hides the Workspace URL field on a Personal Workspace', async () => {
+    renderWithReactivity(<WorkspaceGeneralPage />, {
+      route: '/settings/workspace/general',
+      routePath: '/*',
+      tables: ['workspaces'],
+      wrapper: DbWrapper,
+    })
+
+    await waitForElement(() => screen.queryByLabelText('Workspace name'))
+    expect(screen.queryByLabelText('Workspace URL')).not.toBeInTheDocument()
+  })
+
+  it('auto-derives the slug from the workspace name on a fresh shared workspace', async () => {
+    await seedSharedWorkspaceWithMembership('admin', 'Acme')
+
+    renderWithReactivity(<WorkspaceGeneralPage />, {
+      route: `/w/${otherWsId}/settings/workspace/general`,
+      routePath: '/*',
+      tables: ['workspaces'],
+      wrapper: DbWrapper,
+    })
+
+    const nameInput = (await waitForElement(() =>
+      (screen.getByLabelText('Workspace name') as HTMLInputElement).value === 'Acme'
+        ? screen.getByLabelText('Workspace name')
+        : null,
+    )) as HTMLInputElement
+    const slugInput = screen.getByLabelText('Workspace URL') as HTMLInputElement
+    // Initial slug derived from name (workspace.slug is null on seed).
+    expect(slugInput.value).toBe('acme')
+
+    await act(async () => {
+      fireEvent.change(nameInput, { target: { value: 'Engineering Team' } })
+    })
+    expect(slugInput.value).toBe('engineering-team')
+
+    await flushAutosave()
+
+    const db = getDb()
+    const rows = await db.select().from(workspacesTable).where(eq(workspacesTable.id, otherWsId))
+    expect(rows[0].name).toBe('Engineering Team')
+    expect(rows[0].slug).toBe('engineering-team')
+  })
+
+  it('stops auto-deriving the slug once the user edits it manually', async () => {
+    await seedSharedWorkspaceWithMembership('admin', 'Acme')
+
+    renderWithReactivity(<WorkspaceGeneralPage />, {
+      route: `/w/${otherWsId}/settings/workspace/general`,
+      routePath: '/*',
+      tables: ['workspaces'],
+      wrapper: DbWrapper,
+    })
+
+    const nameInput = (await waitForElement(() =>
+      (screen.getByLabelText('Workspace name') as HTMLInputElement).value === 'Acme'
+        ? screen.getByLabelText('Workspace name')
+        : null,
+    )) as HTMLInputElement
+    const slugInput = screen.getByLabelText('Workspace URL') as HTMLInputElement
+
+    // User customises slug → lock auto-derivation.
+    await act(async () => {
+      fireEvent.change(slugInput, { target: { value: 'custom-slug' } })
+    })
+    expect(slugInput.value).toBe('custom-slug')
+
+    // Now change name — slug should NOT auto-update.
+    await act(async () => {
+      fireEvent.change(nameInput, { target: { value: 'Different Name' } })
+    })
+    expect(slugInput.value).toBe('custom-slug')
+  })
 })

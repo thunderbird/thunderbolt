@@ -29,7 +29,7 @@ import {
   addPendingMemberships,
   createSharedWorkspace,
   getWorkspacesForUserQuery,
-  updateWorkspaceName,
+  updateWorkspace,
   useWorkspacesQuery,
 } from './workspaces'
 import { otherWsId, resetTestDatabase, setupTestDatabase, teardownTestDatabase, testUserId, wsId } from './test-utils'
@@ -390,7 +390,7 @@ describe('addPendingMemberships', () => {
   })
 })
 
-describe('updateWorkspaceName', () => {
+describe('updateWorkspace', () => {
   beforeAll(async () => {
     await setupTestDatabase()
   })
@@ -410,7 +410,7 @@ describe('updateWorkspaceName', () => {
       name: 'Old name',
     })
 
-    await updateWorkspaceName(db, workspaceId, 'New name')
+    await updateWorkspace(db, workspaceId, { name: 'New name' })
 
     const ws = await db.select().from(workspacesTable).where(eq(workspacesTable.id, workspaceId))
     expect(ws[0].name).toBe('New name')
@@ -423,7 +423,7 @@ describe('updateWorkspaceName', () => {
       name: 'Old',
     })
 
-    await updateWorkspaceName(db, workspaceId, '   Trimmed   ')
+    await updateWorkspace(db, workspaceId, { name: '   Trimmed   ' })
 
     const ws = await db.select().from(workspacesTable).where(eq(workspacesTable.id, workspaceId))
     expect(ws[0].name).toBe('Trimmed')
@@ -436,7 +436,7 @@ describe('updateWorkspaceName', () => {
       name: 'Untouched',
     })
 
-    await expect(updateWorkspaceName(db, workspaceId, '   ')).rejects.toThrow(/name is required/i)
+    await expect(updateWorkspace(db, workspaceId, { name: '   ' })).rejects.toThrow(/name is required/i)
 
     const ws = await db.select().from(workspacesTable).where(eq(workspacesTable.id, workspaceId))
     expect(ws[0].name).toBe('Untouched')
@@ -449,10 +449,54 @@ describe('updateWorkspaceName', () => {
       name: 'Stampme',
     })
 
-    await updateWorkspaceName(db, workspaceId, 'Stamped')
+    await updateWorkspace(db, workspaceId, { name: 'Stamped' })
 
     const ws = await db.select().from(workspacesTable).where(eq(workspacesTable.id, workspaceId))
     expect(ws[0].updatedAt).toBeTruthy()
     expect(() => new Date(ws[0].updatedAt as string).toISOString()).not.toThrow()
+  })
+
+  it('writes slug + icon when present', async () => {
+    const db = getDb()
+    const workspaceId = await createSharedWorkspace(db, {
+      creatorUserId: testUserId,
+      name: 'Acme',
+    })
+
+    await updateWorkspace(db, workspaceId, { slug: 'acme', icon: '🛠️' })
+
+    const ws = await db.select().from(workspacesTable).where(eq(workspacesTable.id, workspaceId))
+    expect(ws[0].slug).toBe('acme')
+    expect(ws[0].icon).toBe('🛠️')
+    expect(ws[0].name).toBe('Acme')
+  })
+
+  it('clears slug + icon when explicitly set to null', async () => {
+    const db = getDb()
+    const workspaceId = await createSharedWorkspace(db, {
+      creatorUserId: testUserId,
+      name: 'Acme',
+    })
+    await updateWorkspace(db, workspaceId, { slug: 'acme', icon: '🛠️' })
+
+    await updateWorkspace(db, workspaceId, { slug: null, icon: null })
+
+    const ws = await db.select().from(workspacesTable).where(eq(workspacesTable.id, workspaceId))
+    expect(ws[0].slug).toBeNull()
+    expect(ws[0].icon).toBeNull()
+  })
+
+  it('skips the write when the patch is empty', async () => {
+    const db = getDb()
+    const workspaceId = await createSharedWorkspace(db, {
+      creatorUserId: testUserId,
+      name: 'Untouched',
+    })
+    const before = await db.select().from(workspacesTable).where(eq(workspacesTable.id, workspaceId))
+
+    await updateWorkspace(db, workspaceId, {})
+
+    const after = await db.select().from(workspacesTable).where(eq(workspacesTable.id, workspaceId))
+    expect(after[0].updatedAt).toBe(before[0].updatedAt)
   })
 })

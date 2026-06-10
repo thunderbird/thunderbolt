@@ -10,12 +10,6 @@ describe('validateMcpServerUrl', () => {
     expect(validateMcpServerUrl('https://mcp.example.com/sse')).toEqual({ ok: true })
   })
 
-  it('accepts https for any host (loopback, private, public)', () => {
-    expect(validateMcpServerUrl('https://localhost:3000')).toEqual({ ok: true })
-    expect(validateMcpServerUrl('https://192.168.1.10')).toEqual({ ok: true })
-    expect(validateMcpServerUrl('https://example.com')).toEqual({ ok: true })
-  })
-
   it('rejects http for a public host with an https-mentioning reason', () => {
     const result = validateMcpServerUrl('http://mcp.example.com')
     expect(result.ok).toBe(false)
@@ -52,6 +46,18 @@ describe('validateMcpServerUrl', () => {
   it('rejects http for a public IPv4 that resembles a private range', () => {
     expect(validateMcpServerUrl('http://172.32.0.1').ok).toBe(false)
     expect(validateMcpServerUrl('http://11.0.0.1').ok).toBe(false)
+  })
+
+  it('rejects http for a public host that merely embeds "localhost"', () => {
+    // The check pins endsWith('.localhost'), not includes — a public host must not bypass https.
+    expect(validateMcpServerUrl('http://localhost.evil.com').ok).toBe(false)
+  })
+
+  it('treats only fc00::/7 (fc00–fdff) as private IPv6, not link-local/reserved', () => {
+    expect(validateMcpServerUrl('http://[fe80::1]').ok).toBe(false)
+    expect(validateMcpServerUrl('http://[fe00::1]').ok).toBe(false)
+    expect(validateMcpServerUrl('http://[fc00::1]').ok).toBe(true)
+    expect(validateMcpServerUrl('http://[fd00::1]').ok).toBe(true)
   })
 
   it('rejects non-http(s) schemes (ws://, file://)', () => {

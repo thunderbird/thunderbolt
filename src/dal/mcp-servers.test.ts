@@ -83,6 +83,38 @@ describe('MCP Servers DAL', () => {
       expect(await getMcpServerCredentials(db, withCredId)).toEqual({ type: 'bearer', token: 'secret-token' })
       expect(await getMcpServerCredentials(db, noCredId)).toBeNull()
     })
+
+    it('rolls back every row and secret when any item fails', async () => {
+      const db = getDb()
+      await db
+        .insert(mcpServersTable)
+        .values({ id: 'dup', name: 'Pre-existing', type: 'http', url: 'https://pre.example.com/mcp', enabled: 1 })
+
+      const goodId = uuidv7()
+      await expect(
+        createMcpServersWithCredentials(db, [
+          {
+            server: { id: goodId, name: 'Good Server', type: 'http', url: 'https://good.example.com/mcp', enabled: 1 },
+            credential: { type: 'bearer', token: 'secret-token' },
+          },
+          {
+            server: {
+              id: 'dup',
+              name: 'Duplicate Server',
+              type: 'http',
+              url: 'https://dup.example.com/mcp',
+              enabled: 1,
+            },
+          },
+        ]),
+      ).rejects.toThrow()
+
+      const servers = await getAllMcpServers(db)
+      expect(servers).toHaveLength(1)
+      expect(servers[0]?.id).toBe('dup')
+      expect(servers.map((s) => s.id)).not.toContain(goodId)
+      expect(await getMcpServerCredentials(db, goodId)).toBeNull()
+    })
   })
 
   describe('getAllMcpServers', () => {

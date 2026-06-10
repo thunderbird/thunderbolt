@@ -105,6 +105,17 @@ describe('parseMcpServersConfig', () => {
     expect(result.ok && result.servers[0].credential).toEqual({ type: 'bearer', token: 'lower' })
   })
 
+  it('extracts the credential from a lowercase "authorization" header key', () => {
+    // HTTP header names are case-insensitive; real configs use lowercase keys.
+    const result = parseMcpServersConfig(
+      JSON.stringify({
+        mcpServers: { Auth: { url: 'https://auth.example/mcp', headers: { authorization: 'Bearer lower-key' } } },
+      }),
+    )
+
+    expect(result.ok && result.servers[0].credential).toEqual({ type: 'bearer', token: 'lower-key' })
+  })
+
   it('ignores non-Bearer headers but still parses the server', () => {
     const result = parseMcpServersConfig(
       JSON.stringify({
@@ -116,20 +127,16 @@ describe('parseMcpServersConfig', () => {
     expect(result.ok && result.servers[0].credential).toBeUndefined()
   })
 
-  it('maps disabled:true to enabled:false', () => {
-    const result = parseMcpServersConfig(
+  it('maps disabled !== true to enabled (true ⇒ disabled, false ⇒ enabled)', () => {
+    const disabled = parseMcpServersConfig(
       JSON.stringify({ mcpServers: { Off: { url: 'https://off.example/mcp', disabled: true } } }),
     )
+    expect(disabled.ok && disabled.servers[0].enabled).toBe(false)
 
-    expect(result.ok && result.servers[0].enabled).toBe(false)
-  })
-
-  it('treats disabled:false (and absence) as enabled', () => {
-    const result = parseMcpServersConfig(
+    const enabled = parseMcpServersConfig(
       JSON.stringify({ mcpServers: { On: { url: 'https://on.example/mcp', disabled: false } } }),
     )
-
-    expect(result.ok && result.servers[0].enabled).toBe(true)
+    expect(enabled.ok && enabled.servers[0].enabled).toBe(true)
   })
 
   it('returns an error for malformed JSON', () => {
@@ -165,5 +172,44 @@ describe('parseMcpServersConfig', () => {
     expect(result.ok === false && result.errors).toEqual([
       'Bad: Use https:// (http is only allowed for localhost or a local network)',
     ])
+  })
+
+  it('accumulates every entry error in order (no early return)', () => {
+    const result = parseMcpServersConfig(
+      JSON.stringify({
+        mcpServers: {
+          A: { url: 'http://acme.example/mcp' },
+          B: { command: 'node' },
+          C: {},
+        },
+      }),
+    )
+
+    expect(result.ok).toBe(false)
+    expect(result.ok === false && result.errors).toEqual([
+      'A: Use https:// (http is only allowed for localhost or a local network)',
+      'B: local/stdio servers are not supported yet (coming in THU-575)',
+      'C: missing "url"',
+    ])
+  })
+
+  it('errors when an entry is not an object', () => {
+    const result = parseMcpServersConfig(JSON.stringify({ mcpServers: { X: 'not-an-object' } }))
+
+    expect(result.ok).toBe(false)
+    expect(result.ok === false && result.errors).toEqual(['X: expected an object'])
+  })
+
+  it('errors when an entry url is not a string', () => {
+    const result = parseMcpServersConfig(JSON.stringify({ mcpServers: { Num: { url: 1234 } } }))
+
+    expect(result.ok).toBe(false)
+    expect(result.ok === false && result.errors).toEqual(['Num: missing "url"'])
+  })
+
+  it('errors when the root is a JSON array', () => {
+    const result = parseMcpServersConfig(JSON.stringify([{ url: 'https://a.example/mcp' }]))
+
+    expect(result.ok).toBe(false)
   })
 })

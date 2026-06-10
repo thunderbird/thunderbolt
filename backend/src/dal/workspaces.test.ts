@@ -8,7 +8,7 @@ import { createTestDb } from '@/test-utils/db'
 import { and, eq } from 'drizzle-orm'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import { v7 as uuidv7 } from 'uuid'
-import { promotePendingMemberships } from './workspaces'
+import { promotePendingMemberships, syncMembershipDisplayInfo } from './workspaces'
 
 describe('promotePendingMemberships', () => {
   let db: Awaited<ReturnType<typeof createTestDb>>['db']
@@ -156,5 +156,103 @@ describe('promotePendingMemberships', () => {
       .from(workspacePendingMembershipsTable)
       .where(eq(workspacePendingMembershipsTable.email, 'multi@test.com'))
     expect(remainingPending).toHaveLength(0)
+  })
+})
+
+describe('syncMembershipDisplayInfo', () => {
+  let db: Awaited<ReturnType<typeof createTestDb>>['db']
+  let cleanup: () => Promise<void>
+
+  const insertUser = async (id: string, email: string, name = 'Original Name') => {
+    const now = new Date()
+    await db.insert(user).values({
+      id,
+      name,
+      email,
+      emailVerified: true,
+      isNew: true,
+      createdAt: now,
+      updatedAt: now,
+    })
+  }
+
+  const insertSharedWorkspace = async (id: string): Promise<void> => {
+    await db.insert(workspacesTable).values({ id, name: 'Shared', isPersonal: false, ownerUserId: null })
+  }
+
+  beforeEach(async () => {
+    const testEnv = await createTestDb()
+    db = testEnv.db
+    cleanup = testEnv.cleanup
+  })
+
+  afterEach(async () => {
+    await cleanup()
+  })
+
+  it('updates user_name and user_email on every membership row for the user', async () => {
+    await insertUser('alice', 'old@test.com', 'Old Name')
+    const ws1 = uuidv7()
+    const ws2 = uuidv7()
+    await insertSharedWorkspace(ws1)
+    await insertSharedWorkspace(ws2)
+
+    await db.insert(workspaceMembershipsTable).values([
+      {
+        id: uuidv7(),
+        workspaceId: ws1,
+        userId: 'alice',
+        role: 'admin',
+        userName: 'Old Name',
+        userEmail: 'old@test.com',
+      },
+      {
+        id: uuidv7(),
+        workspaceId: ws2,
+        userId: 'alice',
+        role: 'member',
+        userName: 'Old Name',
+        userEmail: 'old@test.com',
+      },
+    ])
+
+    await syncMembershipDisplayInfo(db, 'alice', 'New Name', 'new@test.com')
+
+    const rows = await db.select().from(workspaceMembershipsTable).where(eq(workspaceMembershipsTable.userId, 'alice'))
+    expect(rows).toHaveLength(2)
+    for (const row of rows) {
+      expect(row.userName).toBe('New Name')
+      expect(row.userEmail).toBe('new@test.com')
+    }
+  })
+
+  it('leaves rows for other users untouched', async () => {
+    await insertUser('alice', 'alice@test.com', 'Alice')
+    await insertUser('bob', 'bob@test.com', 'Bob')
+    const ws = uuidv7()
+    await insertSharedWorkspace(ws)
+
+    await db.insert(workspaceMembershipsTable).values([
+      { id: uuidv7(), workspaceId: ws, userId: 'alice', role: 'admin', userName: 'Alice', userEmail: 'alice@test.com' },
+      { id: uuidv7(), workspaceId: ws, userId: 'bob', role: 'member', userName: 'Bob', userEmail: 'bob@test.com' },
+    ])
+
+    await syncMembershipDisplayInfo(db, 'alice', 'Alice Updated', 'alice-new@test.com')
+
+    const bobRow = await db
+      .select()
+      .from(workspaceMembershipsTable)
+      .where(and(eq(workspaceMembershipsTable.workspaceId, ws), eq(workspaceMembershipsTable.userId, 'bob')))
+    expect(bobRow[0].userName).toBe('Bob')
+    expect(bobRow[0].userEmail).toBe('bob@test.com')
+  })
+
+  it('is a no-op when the user has no memberships', async () => {
+    await insertUser('lonely', 'lonely@test.com', 'Lonely')
+
+    await syncMembershipDisplayInfo(db, 'lonely', 'New', 'new@test.com')
+
+    const rows = await db.select().from(workspaceMembershipsTable).where(eq(workspaceMembershipsTable.userId, 'lonely'))
+    expect(rows).toHaveLength(0)
   })
 })

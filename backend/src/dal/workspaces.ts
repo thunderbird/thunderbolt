@@ -358,6 +358,24 @@ export const upsertMembership = async (database: typeof DbType, input: Membershi
     })
 }
 
+/**
+ * Mirrors a user's current display info onto every one of their membership rows.
+ * Called from the Better Auth `update.after` hook so name/email changes propagate
+ * to co-members on the next sync round-trip. Idempotent — safe to call on every
+ * user update regardless of whether name/email actually changed.
+ */
+export const syncMembershipDisplayInfo = async (
+  database: typeof DbType,
+  userId: string,
+  name: string,
+  email: string,
+): Promise<void> => {
+  await database
+    .update(workspaceMembershipsTable)
+    .set({ userName: name, userEmail: email })
+    .where(eq(workspaceMembershipsTable.userId, userId))
+}
+
 export const updateMembership = async (
   database: typeof DbType,
   id: string,

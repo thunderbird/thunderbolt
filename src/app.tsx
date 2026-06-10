@@ -41,6 +41,7 @@ import { ModePicker } from './components/boot/mode-picker'
 import { AuthGate } from './components/auth-gate'
 import { WorkspaceGate } from './components/workspace-gate'
 import { WorkspaceMembershipGate } from './components/workspace-membership-gate'
+import { WorkspaceSettingsGate } from './settings/workspace/gate'
 import { OnboardingDialog } from './components/onboarding/onboarding-dialog'
 import { WelcomeDialog } from './components/welcome-dialog'
 import { PendingDeviceModal } from './components/pending-device-modal'
@@ -81,6 +82,7 @@ const McpServersPage = lazy(() => import('@/settings/mcp-servers'))
 const SkillsPage = lazy(() => import('@/settings/skills'))
 const AgentsSettingsPage = lazy(() => import('@/routes/settings/agents'))
 const IntegrationsPage = lazy(() => import('@/settings/integrations'))
+const WorkspaceGeneralPage = lazy(() => import('@/settings/workspace/general'))
 
 // Lazily import SSO components so non-enterprise deployments don't pay
 // for the extra bundle size and attack surface.
@@ -119,6 +121,9 @@ const renderWorkspaceRoutes = ({ experimentalFeatureTasks }: { experimentalFeatu
       <Route path="skills" element={<SkillsPage />} />
       <Route path="agents" element={<AgentsSettingsPage />} />
       <Route path="integrations" element={<IntegrationsPage />} />
+      <Route path="workspace" element={<WorkspaceSettingsGate />}>
+        <Route path="general" element={<WorkspaceGeneralPage />} />
+      </Route>
       {import.meta.env.DEV && <Route path="dev-settings" element={<DevSettingsPage />} />}
     </Route>
   </>

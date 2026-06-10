@@ -19,8 +19,15 @@ import {
 } from '@/components/ui/responsive-modal'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Switch } from '@/components/ui/switch'
+import { Textarea } from '@/components/ui/textarea'
+import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
-import { createMcpServerWithCredentials, deleteMcpServer, getRemoteMcpServers } from '@/dal'
+import {
+  createMcpServersWithCredentials,
+  createMcpServerWithCredentials,
+  deleteMcpServer,
+  getRemoteMcpServers,
+} from '@/dal'
 import type { McpServerCredentials } from '@/dal/mcp-secrets'
 import { useDatabase } from '@/contexts'
 import { mcpSecretsTable, mcpServersTable } from '@/db/tables'
@@ -29,8 +36,8 @@ import { type McpServer } from '@/types'
 import { useMutation } from '@tanstack/react-query'
 import { useQuery } from '@powersync/tanstack-react-query'
 import { eq } from 'drizzle-orm'
-import { Check, Copy, Globe, LockKeyhole, Plus, Server, Trash2, X } from 'lucide-react'
-import { useEffect, useRef, useState, type KeyboardEvent } from 'react'
+import { Check, Copy, Globe, LockKeyhole, Plus, RefreshCw, Server, Trash2, X } from 'lucide-react'
+import { useEffect, useReducer, useRef, useState, useTransition, type KeyboardEvent, type ReactNode } from 'react'
 import { useLocation, useNavigate } from 'react-router'
 import { v7 as uuidv7 } from 'uuid'
 import { probeMcpServerTools } from '@/lib/mcp-connection-test'
@@ -50,6 +57,8 @@ import {
   type StoredCredentialType,
   type TestConnectionResult,
 } from '@/lib/mcp-auth/auth-decision'
+import { parseMcpServersConfig, type ParsedMcpServer } from '@/lib/mcp-config-import'
+import { validateMcpServerUrl } from '@/lib/mcp-url-validation'
 
 type ServerTools = {
   [serverId: string]: string[]
@@ -64,6 +73,125 @@ type OAuthCardState =
   | { phase: 'authorizing' }
   | { phase: 'error'; message: string }
   | { phase: 'needs-auth'; message?: string }
+
+/** Add-dialog mode: a single guided server form, or a raw JSON config paste. */
+type AddServerMode = 'simple' | 'advanced'
+
+/**
+ * All add-form field state, driven by a reducer so the dialog's many related
+ * fields update through one typed channel (per the project's useReducer rule).
+ * Imperative bookkeeping (probe ids, debounce guards) lives in refs, not here.
+ */
+type AddServerFormState = {
+  mode: AddServerMode
+  name: string
+  nameManuallyEdited: boolean
+  url: string
+  transport: MCPTransportType
+  token: string
+  jsonText: string
+  testResult: TestConnectionResult | { kind: 'idle' }
+  /** Dialog-scoped error shown when an action (Authorize / import) fails. */
+  addDialogError: string | null
+}
+
+type AddServerFormAction =
+  | { type: 'setMode'; mode: AddServerMode }
+  | { type: 'setName'; name: string }
+  | { type: 'setUrl'; url: string }
+  | { type: 'setTransport'; transport: MCPTransportType }
+  | { type: 'setToken'; token: string }
+  | { type: 'setJsonText'; jsonText: string }
+  | { type: 'setTestResult'; testResult: TestConnectionResult | { kind: 'idle' } }
+  | { type: 'setDialogError'; message: string | null }
+  | { type: 'reset' }
+
+/**
+ * Editing any probe input (name/url/transport/token) invalidates the stale test
+ * result and clears the dialog error, folded into each field's reducer pass.
+ */
+const invalidatedTest = { testResult: { kind: 'idle' }, addDialogError: null } as const
+
+const initialAddServerFormState: AddServerFormState = {
+  mode: 'simple',
+  name: '',
+  nameManuallyEdited: false,
+  url: '',
+  transport: 'http',
+  token: '',
+  jsonText: '',
+  testResult: { kind: 'idle' },
+  addDialogError: null,
+}
+
+const addServerFormReducer = (state: AddServerFormState, action: AddServerFormAction): AddServerFormState => {
+  switch (action.type) {
+    case 'setMode':
+      return { ...state, mode: action.mode, addDialogError: null }
+    case 'setName':
+      return { ...state, ...invalidatedTest, name: action.name, nameManuallyEdited: true }
+    case 'setUrl':
+      // Re-derive the name from the URL until the user edits it directly.
+      return {
+        ...state,
+        ...invalidatedTest,
+        url: action.url,
+        name: state.nameManuallyEdited ? state.name : generateServerName(action.url),
+      }
+    case 'setTransport':
+      return { ...state, ...invalidatedTest, transport: action.transport }
+    case 'setToken':
+      return { ...state, ...invalidatedTest, token: action.token }
+    case 'setJsonText':
+      return { ...state, jsonText: action.jsonText, addDialogError: null }
+    case 'setTestResult':
+      return { ...state, testResult: action.testResult }
+    case 'setDialogError':
+      return { ...state, addDialogError: action.message }
+    case 'reset':
+      return initialAddServerFormState
+  }
+}
+
+/**
+ * Bundles the add-form reducer with the editing-side effects every field share:
+ * mutating a field after a probe invalidates the stale result. Returns the
+ * current state plus narrow setters so the JSX stays declarative.
+ */
+const useAddServerForm = () => {
+  const [state, dispatch] = useReducer(addServerFormReducer, initialAddServerFormState)
+  return {
+    state,
+    setMode: (mode: AddServerMode) => dispatch({ type: 'setMode', mode }),
+    setName: (name: string) => dispatch({ type: 'setName', name }),
+    setUrl: (url: string) => dispatch({ type: 'setUrl', url }),
+    setTransport: (transport: MCPTransportType) => dispatch({ type: 'setTransport', transport }),
+    setToken: (token: string) => dispatch({ type: 'setToken', token }),
+    setJsonText: (jsonText: string) => dispatch({ type: 'setJsonText', jsonText }),
+    setTestResult: (testResult: TestConnectionResult | { kind: 'idle' }) =>
+      dispatch({ type: 'setTestResult', testResult }),
+    setDialogError: (message: string | null) => dispatch({ type: 'setDialogError', message }),
+    reset: () => dispatch({ type: 'reset' }),
+  }
+}
+
+/**
+ * Page-level UI state outside the add-form: which delete popover is open, which
+ * URL was just copied, and whether the Add dialog is open.
+ */
+const useMcpServersState = () => {
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState<string | null>(null)
+  const [copiedUrl, setCopiedUrl] = useState<string | null>(null)
+  const [isAddDialogOpen, setIsAddDialogOpen] = useState(false)
+  return {
+    deleteConfirmOpen,
+    setDeleteConfirmOpen,
+    copiedUrl,
+    setCopiedUrl,
+    isAddDialogOpen,
+    setIsAddDialogOpen,
+  }
+}
 
 /**
  * True when an MCP connection error is the M3 "token refresh failed, needs a
@@ -112,15 +240,80 @@ export const generateServerName = (url: string): string => {
   }
 }
 
-/** True when a string is a usable remote MCP URL (http/https with a host). Guards
- *  the auto-detect probe from firing on partial/invalid input. */
-const isValidServerUrl = (url: string): boolean => {
-  try {
-    const { protocol, hostname } = new URL(url)
-    return (protocol === 'http:' || protocol === 'https:') && hostname.length > 0
-  } catch {
-    return false
-  }
+type StatusTone = 'success' | 'warning' | 'destructive'
+
+/**
+ * Tone → full literal class strings. Tailwind v4's JIT scanner only sees static
+ * class names, so the tone must NEVER be interpolated into a class string —
+ * `bg-${tone}/10` would not be generated. Look the literals up here instead.
+ */
+const toneClasses: Record<StatusTone, { box: string; title: string; body: string }> = {
+  success: { box: 'bg-success/10 border-success/30', title: 'text-success', body: 'text-success/90' },
+  warning: { box: 'bg-warning/10 border-warning/30', title: 'text-warning', body: 'text-warning/90' },
+  destructive: {
+    box: 'bg-destructive/10 border-destructive/30',
+    title: 'text-destructive',
+    body: 'text-destructive/90',
+  },
+}
+
+/** A toned status box (icon + bold title row) used by the add-dialog result panels. */
+const StatusPanel = ({
+  tone,
+  icon,
+  title,
+  children,
+}: {
+  tone: StatusTone
+  icon: ReactNode
+  title: string
+  children?: ReactNode
+}) => {
+  const classes = toneClasses[tone]
+  return (
+    <div className={`p-4 border rounded-lg ${classes.box}`}>
+      <div className={`flex items-center gap-2 ${classes.title}`}>
+        {icon}
+        <span className="font-medium">{title}</span>
+      </div>
+      {children}
+    </div>
+  )
+}
+
+/**
+ * The non-success test-result panels are pure data — each maps a result `kind`
+ * to its tone, icon, title, and body copy. `success` is rendered separately
+ * because it carries a tools list as the panel's children.
+ */
+const testResultPanels: Record<
+  Exclude<TestConnectionResult['kind'], 'success'>,
+  { tone: StatusTone; icon: ReactNode; title: string; body: string }
+> = {
+  'needs-oauth': {
+    tone: 'warning',
+    icon: <LockKeyhole className="h-4 w-4" />,
+    title: 'Authorization required',
+    body: 'This server uses OAuth. Add it and authorize to connect.',
+  },
+  'needs-token': {
+    tone: 'warning',
+    icon: <LockKeyhole className="h-4 w-4" />,
+    title: 'Access token required',
+    body: 'This server needs a personal access token or API key. Paste it in the Credential field above, then test again.',
+  },
+  'token-rejected': {
+    tone: 'destructive',
+    icon: <X className="h-4 w-4" />,
+    title: 'Token rejected',
+    body: 'The server rejected the credential — check your bearer token or API key.',
+  },
+  error: {
+    tone: 'destructive',
+    icon: <X className="h-4 w-4" />,
+    title: 'Connection failed',
+    body: 'Could not connect to the MCP server. Please check the URL and try again.',
+  },
 }
 
 export default function McpServersPage() {
@@ -133,22 +326,10 @@ export default function McpServersPage() {
   const location = useLocation()
   const navigate = useNavigate()
   const [oauthCardState, setOauthCardState] = useState<Record<string, OAuthCardState>>({})
-  const [isAddDialogOpen, setIsAddDialogOpen] = useState(false)
-  const [newServerName, setNewServerName] = useState('')
-  const [nameManuallyEdited, setNameManuallyEdited] = useState(false)
-  const [newServerUrl, setNewServerUrl] = useState('')
-  const [newServerTransport, setNewServerTransport] = useState<MCPTransportType>('http')
-  const [newServerToken, setNewServerToken] = useState('')
-  const [isTestingConnection, setIsTestingConnection] = useState(false)
-  const [testResult, setTestResult] = useState<TestConnectionResult | { kind: 'idle' }>({ kind: 'idle' })
-  const [serverCapabilities, setServerCapabilities] = useState<string[]>([])
-  // Dialog-scoped error shown when "Add & Authorize" fails to start the OAuth flow,
-  // so the failure is visible where the user acted (the dialog stays open).
-  const [addDialogError, setAddDialogError] = useState<string | null>(null)
-  const [serverTools, setServerTools] = useState<ServerTools>({})
-  const [selectedTools, setSelectedTools] = useState<{ [serverId: string]: { [tool: string]: boolean } }>({})
-  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState<string | null>(null)
-  const [copiedUrl, setCopiedUrl] = useState<string | null>(null)
+  const form = useAddServerForm()
+  const ui = useMcpServersState()
+  const [isTestingConnection, startTesting] = useTransition()
+  const [retryingServerId, setRetryingServerId] = useState<string | null>(null)
   const copiedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const titleRefs = useRef<{ [key: string]: HTMLElement | null }>({})
   // Auto-detect: monotonic id to ignore a stale in-flight probe once the URL
@@ -156,6 +337,21 @@ export default function McpServersPage() {
   // debounce don't double-fire for the same value.
   const probeIdRef = useRef(0)
   const lastAutoTestedUrlRef = useRef<string | null>(null)
+
+  const {
+    mode,
+    name: newServerName,
+    url: newServerUrl,
+    transport: newServerTransport,
+    token: newServerToken,
+  } = form.state
+  const { testResult, addDialogError } = form.state
+  // `success` carries its tool list, so the capability list renders from the
+  // result directly — no separate serverCapabilities state to keep in sync.
+  const serverCapabilities = testResult.kind === 'success' ? testResult.tools : []
+  // In simple mode the URL gates auto-detect / Add; advanced mode imports raw JSON.
+  const urlValidation = newServerUrl ? validateMcpServerUrl(newServerUrl) : null
+  const isUrlValid = urlValidation?.ok === true
 
   // TODO: Add support for stdio servers
   const { data: servers = [] } = useQuery({
@@ -177,48 +373,35 @@ export default function McpServersPage() {
     return acc
   }, {})
 
-  // Fetch tools for connected servers
-  useEffect(() => {
-    const fetchServerTools = async () => {
-      const newServerTools: ServerTools = {}
-      const newSelectedTools: { [serverId: string]: { [tool: string]: boolean } } = {}
-
-      for (const server of servers) {
-        if (server.enabled) {
-          const mcpServer = mcpServers.find((s) => s.id === server.id)
-          if (mcpServer?.isConnected && mcpServer.client) {
-            try {
-              const tools = await mcpServer.client.tools()
-              if (tools && typeof tools === 'object') {
-                const toolNames = Object.keys(tools)
-                newServerTools[server.id] = toolNames
-
-                // Initialize all tools as selected by default, but preserve existing selections
-                if (!selectedTools[server.id]) {
-                  newSelectedTools[server.id] = {}
-                  toolNames.forEach((tool) => {
-                    newSelectedTools[server.id][tool] = true
-                  })
-                }
-              }
-            } catch (error) {
-              console.error('Failed to fetch tools for server:', server.name, error)
-            }
+  // Tools for connected servers, keyed by the connected ids so the query re-runs
+  // when the live set changes. Each connected client's tools() is fetched in
+  // parallel; failures degrade to an empty list rather than rejecting the query.
+  const connectedIds = mcpServers
+    .filter((s) => s.isConnected && s.client)
+    .map((s) => s.id)
+    .sort()
+  const { data: serverTools = {} } = useQuery<ServerTools>({
+    queryKey: ['mcp-server-tools', connectedIds],
+    enabled: connectedIds.length > 0,
+    queryFn: async () => {
+      const entries = await Promise.all(
+        connectedIds.map(async (id): Promise<[string, string[]]> => {
+          const client = mcpServers.find((s) => s.id === id)?.client
+          if (!client) {
+            return [id, []]
           }
-        }
-      }
-
-      setServerTools(newServerTools)
-      if (Object.keys(newSelectedTools).length > 0) {
-        setSelectedTools((prev) => ({ ...prev, ...newSelectedTools }))
-      }
-    }
-
-    // Only fetch if we have servers and mcpServers data
-    if (servers.length > 0 && mcpServers.length > 0) {
-      fetchServerTools()
-    }
-  }, [servers, mcpServers]) // Removed selectedTools from dependencies to avoid infinite loop
+          try {
+            const tools = await client.tools()
+            return [id, tools && typeof tools === 'object' ? Object.keys(tools) : []]
+          } catch (error) {
+            console.error('Failed to fetch tools for server:', id, error)
+            return [id, []]
+          }
+        }),
+      )
+      return Object.fromEntries(entries)
+    },
+  })
 
   const toggleServerMutation = useMutation({
     mutationFn: async ({ id, enabled }: { id: string; enabled: boolean }) => {
@@ -243,41 +426,40 @@ export default function McpServersPage() {
     },
   })
 
+  const importServersMutation = useMutation({
+    mutationFn: async (parsed: ParsedMcpServer[]): Promise<void> => {
+      await createMcpServersWithCredentials(
+        db,
+        parsed.map((server) => ({
+          server: {
+            id: uuidv7(),
+            name: server.name,
+            url: server.url,
+            type: server.transport,
+            enabled: server.enabled ? 1 : 0,
+          },
+          credential: server.credential,
+        })),
+      )
+    },
+  })
+
   const deleteServerMutation = useMutation({
     mutationFn: (id: string) => deleteMcpServer(db, id),
     onSuccess: () => {
-      setDeleteConfirmOpen(null)
+      ui.setDeleteConfirmOpen(null)
     },
   })
 
   // Closes the Add dialog and clears all add-form state.
   const resetAddDialog = () => {
-    setIsAddDialogOpen(false)
-    setNewServerName('')
-    setNameManuallyEdited(false)
-    setNewServerUrl('')
-    setNewServerTransport('http')
-    setNewServerToken('')
-    setTestResult({ kind: 'idle' })
-    setServerCapabilities([])
-    setAddDialogError(null)
+    ui.setIsAddDialogOpen(false)
+    form.reset()
     lastAutoTestedUrlRef.current = null
   }
 
-  // Editing any field after a test invalidates that result, so the user can't
-  // add a url+transport+token combination that was never tested together. The
-  // idle guard avoids re-rendering on every keystroke once already cleared.
-  const resetConnectionTest = () => {
-    setAddDialogError(null)
-    if (testResult.kind === 'idle') {
-      return
-    }
-    setTestResult({ kind: 'idle' })
-    setServerCapabilities([])
-  }
-
-  const testConnection = async () => {
-    if (!newServerUrl) {
+  const testConnection = () => {
+    if (!newServerUrl || !isUrlValid) {
       return
     }
     // Tag this probe so a slower earlier run can't overwrite a newer one's result
@@ -286,43 +468,38 @@ export default function McpServersPage() {
     const probeId = ++probeIdRef.current
     lastAutoTestedUrlRef.current = newServerUrl
 
-    setIsTestingConnection(true)
-    setTestResult({ kind: 'idle' })
-    setServerCapabilities([])
+    form.setTestResult({ kind: 'idle' })
 
-    try {
-      // Build the transport the same way the provider does — through the
-      // universal proxy so the test matches the real connection path (web CORS
-      // would otherwise fail for remote servers).
-      const headers = buildMcpHeaders(newServerToken || undefined)
-      const transport = createMcpTransport(newServerUrl, newServerTransport, cloudUrl, headers)
+    startTesting(async () => {
+      try {
+        // Build the transport the same way the provider does — through the
+        // universal proxy so the test matches the real connection path (web CORS
+        // would otherwise fail for remote servers).
+        const headers = buildMcpHeaders(newServerToken || undefined)
+        const transport = createMcpTransport(newServerUrl, newServerTransport, cloudUrl, headers)
 
-      const toolNames = await probeMcpServerTools(transport)
-      if (probeIdRef.current !== probeId) {
-        return
+        const toolNames = await probeMcpServerTools(transport)
+        if (probeIdRef.current !== probeId) {
+          return
+        }
+        form.setTestResult({ kind: 'success', tools: toolNames })
+      } catch (error) {
+        // A 401 here is the OAuth/credential probe signal, not a failure — keep it at warn.
+        console.warn('Connection test error:', error)
+        // Auth precedence: a supplied credential that 401s is a rejected token (no
+        // Authorize). An empty-credential 401 classifies the server: 'authorizable'
+        // (DCR/CIMD → Add & Authorize), 'token-only' (OAuth advertised but no usable
+        // registration, e.g. GitHub → ask for a static token), or 'none'.
+        const oauthActionability =
+          !newServerToken && isUnauthorizedError(error)
+            ? await classifyMcpServerAuth(newServerUrl, buildOAuthFetch())
+            : 'none'
+        if (probeIdRef.current !== probeId) {
+          return
+        }
+        form.setTestResult(decideTestConnectionResult({ hasCredential: !!newServerToken, error, oauthActionability }))
       }
-      setTestResult({ kind: 'success', tools: toolNames })
-      setServerCapabilities(toolNames)
-    } catch (error) {
-      // A 401 here is the OAuth/credential probe signal, not a failure — keep it at warn.
-      console.warn('Connection test error:', error)
-      // Auth precedence: a supplied credential that 401s is a rejected token (no
-      // Authorize). An empty-credential 401 classifies the server: 'authorizable'
-      // (DCR/CIMD → Add & Authorize), 'token-only' (OAuth advertised but no usable
-      // registration, e.g. GitHub → ask for a static token), or 'none'.
-      const oauthActionability =
-        !newServerToken && isUnauthorizedError(error)
-          ? await classifyMcpServerAuth(newServerUrl, buildOAuthFetch())
-          : 'none'
-      if (probeIdRef.current !== probeId) {
-        return
-      }
-      setTestResult(decideTestConnectionResult({ hasCredential: !!newServerToken, error, oauthActionability }))
-    } finally {
-      if (probeIdRef.current === probeId) {
-        setIsTestingConnection(false)
-      }
-    }
+    })
   }
 
   // Auto-detect the server's auth requirement 700ms after the user stops typing a
@@ -330,9 +507,9 @@ export default function McpServersPage() {
   // manual "Test Connection" button and the URL field's onBlur run the same probe
   // immediately; `lastAutoTestedUrlRef` keeps blur + debounce from probing a value
   // twice. Editing the credential/transport does NOT auto-probe (it only clears the
-  // stale result via resetConnectionTest) — re-test those with the button.
+  // stale result via the field reducer) — re-test those with the button.
   useEffect(() => {
-    if (!isValidServerUrl(newServerUrl) || newServerUrl === lastAutoTestedUrlRef.current) {
+    if (mode !== 'simple' || !isUrlValid || newServerUrl === lastAutoTestedUrlRef.current) {
       return
     }
     const timer = setTimeout(() => {
@@ -342,17 +519,33 @@ export default function McpServersPage() {
     }, 700)
     return () => clearTimeout(timer)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [newServerUrl])
+  }, [newServerUrl, mode])
 
   // Name prefixes the server's tools in the prompt. Use the user's name when
   // set, otherwise fall back to the value derived from the URL.
   const resolveServerName = () => newServerName.trim() || generateServerName(newServerUrl)
 
   const handleAddServer = async () => {
-    if (!newServerUrl) {
+    if (!newServerUrl || !isUrlValid) {
       return
     }
     await addServerMutation.mutateAsync({ name: resolveServerName(), url: newServerUrl })
+    resetAddDialog()
+  }
+
+  /**
+   * Advanced mode: parse the pasted JSON config and create every server it
+   * describes (all-or-nothing). On a parse error nothing is created and the
+   * collected messages render in the dialog; on success the dialog closes.
+   * No connection probe runs for an imported config.
+   */
+  const handleImportConfig = async () => {
+    const result = parseMcpServersConfig(form.state.jsonText)
+    if (!result.ok) {
+      form.setDialogError(result.errors.join('\n'))
+      return
+    }
+    await importServersMutation.mutateAsync(result.servers)
     resetAddDialog()
   }
 
@@ -364,10 +557,10 @@ export default function McpServersPage() {
    * acted. The created server row also surfaces an Authorize action on its card.
    */
   const handleAddAndAuthorize = async () => {
-    if (!newServerUrl) {
+    if (!newServerUrl || !isUrlValid) {
       return
     }
-    setAddDialogError(null)
+    form.setDialogError(null)
     const url = newServerUrl
     const id = await addServerMutation.mutateAsync({ name: resolveServerName(), url })
     try {
@@ -375,13 +568,13 @@ export default function McpServersPage() {
       await startMcpOAuthFlow({ db, serverId: id, serverUrl: url, fetchFn: buildOAuthFetch() })
     } catch (error) {
       console.error('Failed to start MCP OAuth flow:', error)
-      setAddDialogError('Could not start authorization. Please try again.')
+      form.setDialogError('Could not start authorization. Please try again.')
     }
   }
 
   // Leaving the URL field probes immediately (unless the debounce already did).
   const handleUrlBlur = () => {
-    if (isValidServerUrl(newServerUrl) && newServerUrl !== lastAutoTestedUrlRef.current) {
+    if (isUrlValid && newServerUrl !== lastAutoTestedUrlRef.current) {
       testConnection()
     }
   }
@@ -389,6 +582,9 @@ export default function McpServersPage() {
   const handleUrlKeyDown = (e: KeyboardEvent) => {
     if (e.key === 'Enter') {
       e.preventDefault()
+      if (!isUrlValid) {
+        return
+      }
       if (testResult.kind === 'idle' && newServerUrl) {
         testConnection()
       } else if (testResult.kind === 'success') {
@@ -402,11 +598,11 @@ export default function McpServersPage() {
   const handleCopyUrl = async (url: string) => {
     try {
       await navigator.clipboard.writeText(url)
-      setCopiedUrl(url)
+      ui.setCopiedUrl(url)
       if (copiedTimerRef.current) {
         clearTimeout(copiedTimerRef.current)
       }
-      copiedTimerRef.current = setTimeout(() => setCopiedUrl(null), 2000)
+      copiedTimerRef.current = setTimeout(() => ui.setCopiedUrl(null), 2000)
     } catch (error) {
       console.error('Failed to copy URL:', error)
     }
@@ -477,6 +673,15 @@ export default function McpServersPage() {
 
   const handleDeleteServer = (serverId: string) => {
     deleteServerMutation.mutate(serverId)
+  }
+
+  const handleRetryConnection = async (serverId: string) => {
+    setRetryingServerId(serverId)
+    try {
+      await reconnectServer(serverId)
+    } finally {
+      setRetryingServerId(null)
+    }
   }
 
   // Web OAuth discovery/exchange share the universal proxy fetch the transport
@@ -610,11 +815,11 @@ export default function McpServersPage() {
     <div className="flex flex-col gap-6 p-4 w-full max-w-[760px] mx-auto">
       <PageHeader title="MCP Servers">
         <Dialog
-          open={isAddDialogOpen}
+          open={ui.isAddDialogOpen}
           onOpenChange={(open) => {
-            setIsAddDialogOpen(open)
+            ui.setIsAddDialogOpen(open)
             if (!open) {
-              setAddDialogError(null)
+              resetAddDialog()
             }
           }}
         >
@@ -623,175 +828,178 @@ export default function McpServersPage() {
               <Plus />
             </Button>
           </DialogTrigger>
-          <ResponsiveModalContentComposable className="sm:max-w-[500px]">
+          <ResponsiveModalContentComposable className="sm:max-w-[500px] max-h-[85vh]">
             <ResponsiveModalHeader>
               <ResponsiveModalTitle>Add MCP Server</ResponsiveModalTitle>
               <ResponsiveModalDescription className="sr-only">Add a new MCP server</ResponsiveModalDescription>
             </ResponsiveModalHeader>
-            <div className="grid gap-4 pt-4 pb-2">
-              <div className="grid gap-2">
-                <Label htmlFor="name">Name</Label>
-                <Input
-                  id="name"
-                  placeholder="Server name (used to prefix tools)"
-                  value={newServerName}
-                  onChange={(e) => {
-                    resetConnectionTest()
-                    setNewServerName(e.target.value)
-                    setNameManuallyEdited(true)
-                  }}
-                />
-              </div>
 
-              <div className="grid gap-2">
-                <Label htmlFor="url">Server URL</Label>
-                <Input
-                  id="url"
-                  placeholder="http://localhost:8000/mcp/"
-                  value={newServerUrl}
-                  onChange={(e) => {
-                    resetConnectionTest()
-                    setNewServerUrl(e.target.value)
-                    if (!nameManuallyEdited) {
-                      setNewServerName(generateServerName(e.target.value))
-                    }
-                  }}
-                  onBlur={handleUrlBlur}
-                  onKeyDown={handleUrlKeyDown}
-                />
-              </div>
+            <ToggleGroup
+              type="single"
+              variant="outline"
+              value={mode}
+              onValueChange={(value) => {
+                if (value === 'simple' || value === 'advanced') {
+                  form.setMode(value)
+                }
+              }}
+              className="w-full flex-shrink-0"
+            >
+              <ToggleGroupItem value="simple">Simple</ToggleGroupItem>
+              <ToggleGroupItem value="advanced">Advanced (JSON)</ToggleGroupItem>
+            </ToggleGroup>
 
-              <div className="grid gap-2">
-                <Label htmlFor="transport">Transport</Label>
-                <Select
-                  value={newServerTransport}
-                  onValueChange={(value) => {
-                    resetConnectionTest()
-                    setNewServerTransport(value as MCPTransportType)
-                  }}
-                >
-                  <SelectTrigger id="transport" className="w-full rounded-lg">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="http">HTTP</SelectItem>
-                    <SelectItem value="sse">SSE</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-
-              <div className="grid gap-2">
-                <Label htmlFor="token">Credential (optional)</Label>
-                <Input
-                  id="token"
-                  type="password"
-                  placeholder="Bearer token or API key"
-                  value={newServerToken}
-                  onChange={(e) => {
-                    resetConnectionTest()
-                    setNewServerToken(e.target.value)
-                  }}
-                />
-              </div>
-
-              {newServerUrl && (
-                <Button onClick={testConnection} disabled={isTestingConnection} variant="outline" className="w-full">
-                  {isTestingConnection ? 'Testing Connection...' : 'Test Connection'}
-                </Button>
-              )}
-
-              {testResult.kind === 'success' && (
-                <div className="p-4 bg-green-50 border border-green-200 rounded-lg">
-                  <div className="flex items-center gap-2 text-green-800">
-                    <Check className="h-4 w-4" />
-                    <span className="font-medium">Connection successful!</span>
+            <div className="flex-1 overflow-y-auto px-1 -mx-1">
+              {mode === 'simple' ? (
+                <div className="grid gap-4 pt-4 pb-2">
+                  <div className="grid gap-2">
+                    <Label htmlFor="name">Name</Label>
+                    <Input
+                      id="name"
+                      placeholder="Server name (used to prefix tools)"
+                      value={newServerName}
+                      onChange={(e) => form.setName(e.target.value)}
+                    />
                   </div>
-                  {serverCapabilities.length > 0 && (
-                    <div className="mt-3">
-                      <p className="text-sm text-green-700 font-medium">Available tools:</p>
-                      <ul className="text-sm text-green-600 mt-1 space-y-1 max-h-40 overflow-y-auto">
-                        {serverCapabilities.map((capability, index) => (
-                          <li key={index} className="flex items-center gap-2">
-                            <div className="w-1 h-1 bg-green-600 rounded-full" />
-                            {capability}
-                          </li>
-                        ))}
-                      </ul>
-                    </div>
+
+                  <div className="grid gap-2">
+                    <Label htmlFor="url">Server URL</Label>
+                    <Input
+                      id="url"
+                      placeholder="http://localhost:8000/mcp/"
+                      value={newServerUrl}
+                      onChange={(e) => form.setUrl(e.target.value)}
+                      onBlur={handleUrlBlur}
+                      onKeyDown={handleUrlKeyDown}
+                      aria-invalid={urlValidation?.ok === false}
+                    />
+                    {urlValidation?.ok === false && (
+                      <p className="text-[length:var(--font-size-xs)] text-destructive">{urlValidation.reason}</p>
+                    )}
+                  </div>
+
+                  <div className="grid gap-2">
+                    <Label htmlFor="transport">Transport</Label>
+                    <Select
+                      value={newServerTransport}
+                      onValueChange={(value) => form.setTransport(value as MCPTransportType)}
+                    >
+                      <SelectTrigger id="transport" className="w-full rounded-lg">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="http">HTTP</SelectItem>
+                        <SelectItem value="sse">SSE</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  <div className="grid gap-2">
+                    <Label htmlFor="token">Credential (optional)</Label>
+                    <Input
+                      id="token"
+                      type="password"
+                      placeholder="Bearer token or API key"
+                      value={newServerToken}
+                      onChange={(e) => form.setToken(e.target.value)}
+                    />
+                  </div>
+
+                  {newServerUrl && isUrlValid && (
+                    <Button
+                      onClick={testConnection}
+                      disabled={isTestingConnection}
+                      variant="outline"
+                      className="w-full"
+                    >
+                      {isTestingConnection ? 'Testing Connection...' : 'Test Connection'}
+                    </Button>
                   )}
-                </div>
-              )}
 
-              {testResult.kind === 'needs-oauth' && (
-                <div className="p-4 bg-amber-50 border border-amber-200 rounded-lg">
-                  <div className="flex items-center gap-2 text-amber-800">
-                    <LockKeyhole className="h-4 w-4" />
-                    <span className="font-medium">Authorization required</span>
-                  </div>
-                  <p className="text-sm text-amber-700 mt-1">
-                    This server uses OAuth. Add it and authorize to connect.
-                  </p>
-                </div>
-              )}
+                  {testResult.kind === 'success' && (
+                    <StatusPanel tone="success" icon={<Check className="h-4 w-4" />} title="Connection successful!">
+                      {serverCapabilities.length > 0 && (
+                        <div className="mt-3">
+                          <p className="text-sm text-success font-medium">Available tools:</p>
+                          <ul className="text-sm text-success/90 mt-1 space-y-1 max-h-40 overflow-y-auto">
+                            {serverCapabilities.map((capability, index) => (
+                              <li key={index} className="flex items-center gap-2">
+                                <div className="w-1 h-1 bg-success rounded-full" />
+                                {capability}
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
+                      )}
+                    </StatusPanel>
+                  )}
 
-              {testResult.kind === 'needs-token' && (
-                <div className="p-4 bg-amber-50 border border-amber-200 rounded-lg">
-                  <div className="flex items-center gap-2 text-amber-800">
-                    <LockKeyhole className="h-4 w-4" />
-                    <span className="font-medium">Access token required</span>
-                  </div>
-                  <p className="text-sm text-amber-700 mt-1">
-                    This server needs a personal access token or API key. Paste it in the Credential field above, then
-                    test again.
-                  </p>
+                  {testResult.kind !== 'success' &&
+                    testResult.kind !== 'idle' &&
+                    (() => {
+                      const panel = testResultPanels[testResult.kind]
+                      return (
+                        <StatusPanel tone={panel.tone} icon={panel.icon} title={panel.title}>
+                          <p className={`text-sm mt-1 ${toneClasses[panel.tone].body}`}>{panel.body}</p>
+                        </StatusPanel>
+                      )
+                    })()}
                 </div>
-              )}
-
-              {testResult.kind === 'token-rejected' && (
-                <div className="p-4 bg-red-50 border border-red-200 rounded-lg">
-                  <div className="flex items-center gap-2 text-red-800">
-                    <X className="h-4 w-4" />
-                    <span className="font-medium">Token rejected</span>
+              ) : (
+                <div className="grid gap-4 pt-4 pb-2">
+                  <div className="grid gap-2">
+                    <Label htmlFor="json-config">Servers JSON</Label>
+                    <Textarea
+                      id="json-config"
+                      className="font-mono text-[length:var(--font-size-xs)] min-h-48 max-h-[40vh] overflow-y-auto resize-none"
+                      placeholder={
+                        '{\n  "mcpServers": {\n    "example": {\n      "url": "https://example.com/mcp"\n    }\n  }\n}'
+                      }
+                      value={form.state.jsonText}
+                      onChange={(e) => form.setJsonText(e.target.value)}
+                    />
+                    <p className="text-[length:var(--font-size-xs)] text-muted-foreground">
+                      Paste an <code>mcpServers</code> config. Only remote (http/sse) servers are supported; non-Bearer
+                      auth headers are ignored.
+                    </p>
                   </div>
-                  <p className="text-sm text-red-600 mt-1">
-                    The server rejected the credential — check your bearer token or API key.
-                  </p>
-                </div>
-              )}
-
-              {testResult.kind === 'error' && (
-                <div className="p-4 bg-red-50 border border-red-200 rounded-lg">
-                  <div className="flex items-center gap-2 text-red-800">
-                    <X className="h-4 w-4" />
-                    <span className="font-medium">Connection failed</span>
-                  </div>
-                  <p className="text-sm text-red-600 mt-1">
-                    Could not connect to the MCP server. Please check the URL and try again.
-                  </p>
                 </div>
               )}
 
               {addDialogError && (
-                <div className="p-4 bg-red-50 border border-red-200 rounded-lg">
-                  <div className="flex items-center gap-2 text-red-800">
-                    <X className="h-4 w-4" />
-                    <span className="font-medium">Authorization error</span>
-                  </div>
-                  <p className="text-sm text-red-600 mt-1">{addDialogError}</p>
+                <div className="mb-2">
+                  <StatusPanel
+                    tone="destructive"
+                    icon={<X className="h-4 w-4" />}
+                    title={mode === 'advanced' ? 'Import failed' : 'Authorization error'}
+                  >
+                    <p className="text-sm text-destructive/90 mt-1 whitespace-pre-line">{addDialogError}</p>
+                  </StatusPanel>
                 </div>
               )}
             </div>
-            <div className="flex justify-end gap-3 pt-2">
-              <Button variant="ghost" onClick={() => setIsAddDialogOpen(false)}>
+
+            <div className="flex justify-end gap-3 pt-2 flex-shrink-0">
+              <Button variant="ghost" onClick={resetAddDialog}>
                 Cancel
               </Button>
-              {testResult.kind === 'needs-oauth' ? (
-                <Button onClick={handleAddAndAuthorize} disabled={!newServerUrl}>
+              {mode === 'advanced' ? (
+                <Button
+                  onClick={handleImportConfig}
+                  disabled={!form.state.jsonText.trim() || importServersMutation.isPending}
+                >
+                  Import Servers
+                </Button>
+              ) : testResult.kind === 'needs-oauth' ? (
+                <Button onClick={handleAddAndAuthorize} disabled={!newServerUrl || !isUrlValid}>
                   <LockKeyhole className="h-3.5 w-3.5 mr-1.5" />
                   Add &amp; Authorize
                 </Button>
               ) : (
-                <Button onClick={handleAddServer} disabled={!newServerUrl || testResult.kind !== 'success'}>
+                <Button
+                  onClick={handleAddServer}
+                  disabled={!newServerUrl || !isUrlValid || testResult.kind !== 'success'}
+                >
                   Add Server
                 </Button>
               )}
@@ -809,6 +1017,12 @@ export default function McpServersPage() {
           const isAuthorizing = oauthState?.phase === 'authorizing'
           const showAuthorize = oauthState?.phase === 'needs-auth' || oauthState?.phase === 'error'
           const isAuthorized = oauthState?.phase === 'authorized'
+          const conn = mcpServers.find((s) => s.id === server.id)
+          // A genuine connection failure: enabled, not connected, has an error, and
+          // not an OAuth needs-auth case (those get the Authorize affordance instead).
+          const connectionError =
+            isEnabled && !conn?.isConnected && conn?.error && oauthState === null ? conn.error : null
+          const isRetrying = retryingServerId === server.id
 
           return (
             <Card key={server.id} className="border border-border">
@@ -818,11 +1032,14 @@ export default function McpServersPage() {
                     <Tooltip>
                       <TooltipTrigger asChild>
                         <div>
-                          <StatusIndicator status={status as 'connected' | 'connecting' | 'disconnected'} size="md" />
+                          <StatusIndicator
+                            status={connectionError ? 'error' : (status as 'connected' | 'connecting' | 'disconnected')}
+                            size="md"
+                          />
                         </div>
                       </TooltipTrigger>
                       <TooltipContent side="bottom">
-                        <p>{getStatusTooltipText(status)}</p>
+                        <p>{connectionError ? 'Connection error' : getStatusTooltipText(status)}</p>
                       </TooltipContent>
                     </Tooltip>
                     <div className="min-w-0 flex-1">
@@ -849,9 +1066,9 @@ export default function McpServersPage() {
                                   e.stopPropagation()
                                   handleCopyUrl(server.url ?? '')
                                 }}
-                                disabled={copiedUrl === server.url}
+                                disabled={ui.copiedUrl === server.url}
                               >
-                                {copiedUrl === server.url ? (
+                                {ui.copiedUrl === server.url ? (
                                   <Check className="h-3 w-3 text-muted-foreground" />
                                 ) : (
                                   <Copy className="h-3 w-3" />
@@ -872,6 +1089,17 @@ export default function McpServersPage() {
                     </div>
                   </div>
                   <div className="flex items-center gap-3 flex-shrink-0">
+                    {connectionError && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        disabled={isRetrying}
+                        onClick={() => handleRetryConnection(server.id)}
+                      >
+                        <RefreshCw className={`h-3.5 w-3.5 mr-1.5 ${isRetrying ? 'animate-spin' : ''}`} />
+                        {isRetrying ? 'Retrying...' : 'Retry connection'}
+                      </Button>
+                    )}
                     {(showAuthorize || isAuthorizing) && (
                       <Button
                         variant="outline"
@@ -887,7 +1115,7 @@ export default function McpServersPage() {
                       <Tooltip>
                         <TooltipTrigger asChild>
                           <Button variant="ghost" size="sm" onClick={() => handleAuthorize(server)}>
-                            <Check className="h-3.5 w-3.5 mr-1.5 text-green-600" />
+                            <Check className="h-3.5 w-3.5 mr-1.5 text-success" />
                             Re-authorize
                           </Button>
                         </TooltipTrigger>
@@ -913,8 +1141,8 @@ export default function McpServersPage() {
                       </TooltipContent>
                     </Tooltip>
                     <Popover
-                      open={deleteConfirmOpen === server.id}
-                      onOpenChange={(open) => setDeleteConfirmOpen(open ? server.id : null)}
+                      open={ui.deleteConfirmOpen === server.id}
+                      onOpenChange={(open) => ui.setDeleteConfirmOpen(open ? server.id : null)}
                     >
                       <PopoverTrigger asChild>
                         <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
@@ -930,7 +1158,7 @@ export default function McpServersPage() {
                             </p>
                           </div>
                           <div className="flex justify-end gap-2">
-                            <Button variant="outline" size="sm" onClick={() => setDeleteConfirmOpen(null)}>
+                            <Button variant="outline" size="sm" onClick={() => ui.setDeleteConfirmOpen(null)}>
                               Cancel
                             </Button>
                             <Button variant="destructive" size="sm" onClick={() => handleDeleteServer(server.id)}>
@@ -943,6 +1171,20 @@ export default function McpServersPage() {
                   </div>
                 </div>
               </CardHeader>
+              {connectionError && (
+                <CardContent className="pt-0">
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <p className="text-sm text-destructive cursor-default">
+                        Could not connect to this server. Check the URL and that the server is reachable.
+                      </p>
+                    </TooltipTrigger>
+                    <TooltipContent side="bottom">
+                      <p className="max-w-xs break-words">{connectionError.message}</p>
+                    </TooltipContent>
+                  </Tooltip>
+                </CardContent>
+              )}
               {oauthState?.phase === 'needs-auth' && (
                 <CardContent className="pt-0">
                   <p className="text-sm text-muted-foreground">
@@ -952,7 +1194,7 @@ export default function McpServersPage() {
               )}
               {oauthState?.phase === 'error' && (
                 <CardContent className="pt-0">
-                  <p className="text-sm text-red-600">{oauthState.message}</p>
+                  <p className="text-sm text-destructive">{oauthState.message}</p>
                 </CardContent>
               )}
               {isEnabled && tools.length > 0 && (
@@ -961,7 +1203,7 @@ export default function McpServersPage() {
                     className="pt-4"
                     tools={tools.map((tool) => ({
                       name: tool,
-                      enabled: selectedTools[server.id]?.[tool] ?? true,
+                      enabled: true,
                     }))}
                   />
                 </CardContent>
@@ -978,7 +1220,7 @@ export default function McpServersPage() {
               <p className="text-sm text-muted-foreground mb-4">
                 Get started by adding your first MCP server connection.
               </p>
-              <Button onClick={() => setIsAddDialogOpen(true)} variant="outline">
+              <Button onClick={() => ui.setIsAddDialogOpen(true)} variant="outline">
                 <Plus className="h-4 w-4 mr-2" />
                 Add Server
               </Button>

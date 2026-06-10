@@ -55,7 +55,7 @@
     }
   ],
   "dependencies": {
-    "@agentclientprotocol/sdk": "^0.22.1",
+    "@agentclientprotocol/sdk": "^0.24.0",
     "@ai-sdk/anthropic": "^3.0.14",
     "@ai-sdk/mcp": "^1.0.9",
     "@ai-sdk/openai": "^3.0.11",
@@ -70,10 +70,10 @@
     "@modelcontextprotocol/sdk": "^1.25.2",
     "@noble/post-quantum": "^0.6.0",
     "@openrouter/ai-sdk-provider": "^2.6.0",
-    "@powersync/common": "1.53.1",
+    "@powersync/common": "1.53.2",
     "@powersync/drizzle-driver": "0.7.3",
     "@powersync/react": "1.10.0",
-    "@powersync/tanstack-react-query": "0.2.7",
+    "@powersync/tanstack-react-query": "0.2.8",
     "@powersync/web": "1.38.1",
     "@radix-ui/react-accordion": "^1.2.12",
     "@radix-ui/react-alert-dialog": "^1.1.15",

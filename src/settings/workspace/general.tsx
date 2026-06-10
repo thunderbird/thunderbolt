@@ -23,6 +23,7 @@ import { useCallback, useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { useNavigate } from 'react-router'
 import { z } from 'zod'
+import { IconPicker } from './icon-picker'
 
 const useActiveUserId = (): string | undefined =>
   useTrustDomainRegistry((state) => {
@@ -88,6 +89,7 @@ const WorkspaceMeta = ({ workspace }: { workspace: Workspace }) => {
 const renameSchema = z.object({
   name: z.string().refine((value) => value.trim().length > 0, { message: 'Workspace name is required' }),
   slug: z.string(),
+  icon: z.string().nullable(),
 })
 
 type RenameFormValues = z.infer<typeof renameSchema>
@@ -108,14 +110,14 @@ const RenameWorkspaceForm = ({ workspace }: { workspace: Workspace }) => {
 
   const form = useForm<RenameFormValues>({
     resolver: zodResolver(renameSchema),
-    defaultValues: { name: workspace.name, slug: initialSlug },
+    defaultValues: { name: workspace.name, slug: initialSlug, icon: workspace.icon },
     mode: 'onChange',
   })
 
   // Shared save path used by debounced onChange and immediate onBlur. Reads
   // current form state on every call so the timer never fires with stale args.
   const save = useCallback(async () => {
-    const { name, slug } = form.getValues()
+    const { name, slug, icon } = form.getValues()
     const patch: UpdateWorkspacePatch = {}
     const trimmedName = name.trim()
     if (trimmedName && trimmedName !== workspace.name) {
@@ -126,6 +128,9 @@ const RenameWorkspaceForm = ({ workspace }: { workspace: Workspace }) => {
       if (finalSlug !== (workspace.slug ?? null)) {
         patch.slug = finalSlug
       }
+    }
+    if (icon !== (workspace.icon ?? null)) {
+      patch.icon = icon
     }
     if (Object.keys(patch).length === 0) {
       return
@@ -138,11 +143,12 @@ const RenameWorkspaceForm = ({ workspace }: { workspace: Workspace }) => {
       form.reset({
         name: patch.name ?? name,
         slug: patch.slug !== undefined ? (patch.slug ?? '') : slug,
+        icon: patch.icon !== undefined ? patch.icon : icon,
       })
     } catch (e) {
       setSubmitError(e instanceof Error ? e.message : 'Failed to save workspace.')
     }
-  }, [db, workspace.id, workspace.name, workspace.slug, isPersonal, form])
+  }, [db, workspace.id, workspace.name, workspace.slug, workspace.icon, isPersonal, form])
 
   const debouncedSave = useDebouncedCallback(save, renameDebounceMs)
 
@@ -184,7 +190,7 @@ const RenameWorkspaceForm = ({ workspace }: { workspace: Workspace }) => {
             name="slug"
             render={({ field }) => (
               <FormItem>
-                <FormLabel className="text-sm font-medium">URL</FormLabel>
+                <FormLabel className="text-sm font-medium">Workspace URL</FormLabel>
                 <div className="flex h-[var(--touch-height-lg)] w-full rounded-lg border border-input bg-transparent overflow-hidden focus-within:border-ring focus-within:ring-ring/50 focus-within:ring-[3px]">
                   <span className="flex items-center px-4 text-[length:var(--font-size-body)] text-muted-foreground bg-muted whitespace-nowrap select-none">
                     {slugPrefix}
@@ -213,6 +219,30 @@ const RenameWorkspaceForm = ({ workspace }: { workspace: Workspace }) => {
             )}
           />
         )}
+
+        <FormField
+          control={form.control}
+          name="icon"
+          render={({ field }) => (
+            <FormItem>
+              <FormLabel className="text-sm font-medium">Icon (optional)</FormLabel>
+              <p className="text-sm text-muted-foreground -mt-1">
+                Upload an image or pick an emoji. This icon will appear in your sidebar and notifications.
+              </p>
+              <FormControl>
+                <IconPicker
+                  value={field.value}
+                  onChange={(next) => {
+                    field.onChange(next)
+                    void save()
+                  }}
+                  placeholder={workspace.name.trim()[0]?.toUpperCase()}
+                />
+              </FormControl>
+              <FormMessage />
+            </FormItem>
+          )}
+        />
 
         {submitError && (
           <p className="text-sm text-destructive" role="alert">

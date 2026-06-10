@@ -362,6 +362,11 @@ export const workspaceMembershipsTable = sqliteTable(
     workspaceId: text('workspace_id'),
     userId: text('user_id').notNull(),
     role: text('role', { enum: ['admin', 'member'] }).notNull(),
+    // Denormalized display info written by the BE upload handler from `auth.user`.
+    // Synced down so the Members page can render names + emails without a `users`
+    // projection table (PowerSync sync rules can't follow `user_id` across buckets).
+    userName: text('user_name'),
+    userEmail: text('user_email'),
     createdAt: text('created_at'),
   },
   (table) => [index('idx_workspace_memberships_workspace_user').on(table.workspaceId, table.userId)],

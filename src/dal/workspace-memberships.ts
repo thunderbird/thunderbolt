@@ -12,6 +12,10 @@ export type WorkspaceMembership = {
   workspaceId: string
   userId: string
   role: 'admin' | 'member'
+  /** Denormalized from `auth.user`. `null` only on rows synced before commit 1's
+   *  backfill landed; treat that as "unknown" in the UI (fall back to the userId). */
+  userName: string | null
+  userEmail: string | null
   createdAt: string | null
 }
 

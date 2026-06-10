@@ -121,8 +121,11 @@ export const useSlashCommand = ({
       .filter((s) => isEnabled(s.name) && matches(s.name))
       .sort((a, b) => a.name.localeCompare(b.name))
       .map((s) => ({ kind: 'skill', id: s.id, name: s.name, description: s.description, skill: s }))
+    // A skill and an agent command can share a name; the skill wins so the
+    // menu doesn't show two identical `/foo` rows.
+    const skillNames = new Set(skillItems.map((s) => s.name.toLowerCase()))
     const commandItems: SlashItem[] = [...agentCommands]
-      .filter((c) => matches(c.name))
+      .filter((c) => matches(c.name) && !skillNames.has(c.name.toLowerCase()))
       .sort((a, b) => a.name.localeCompare(b.name))
       .map((c) => ({ kind: 'command', id: `command:${c.name}`, name: c.name, description: c.description }))
     return [...skillItems, ...commandItems]

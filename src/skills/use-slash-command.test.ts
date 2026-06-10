@@ -205,4 +205,15 @@ describe('useSlashCommand agent commands', () => {
     act(() => hook.result.current.selectItem(command!))
     expect(getValue()).toBe('/research_codebase ')
   })
+
+  it('drops an agent command that collides with a skill name (skill wins)', () => {
+    const { hook } = setup([
+      { name: 'alpha', description: 'agent alpha' },
+      { name: 'research_codebase', description: 'Explore the codebase' },
+    ])
+    expect(hook.result.current.popupItems.map((i) => `${i.kind}:${i.name}`)).toEqual([
+      'skill:alpha',
+      'command:research_codebase',
+    ])
+  })
 })

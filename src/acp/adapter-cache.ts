@@ -27,6 +27,7 @@
  * `disposeAllAdapters()` on sign-out. Thread switch does NOT dispose.
  */
 
+import { useAgentCommandsStore } from './agent-commands-store'
 import { connectToAgent as defaultConnectToAgent } from './connect'
 import type { ConnectToAgentContext, ConnectToAgentDeps } from './connect'
 import type { Agent, AgentAdapter } from '@/types/acp'
@@ -86,6 +87,7 @@ export const disposeAdapter = async (agentId: string): Promise<void> => {
     return
   }
   cache.delete(agentId)
+  useAgentCommandsStore.getState().clearCommands(agentId)
   await disconnectPending(pending)
 }
 
@@ -94,9 +96,15 @@ export const disposeAdapter = async (agentId: string): Promise<void> => {
  * connection survives across user identities.
  */
 export const disposeAllAdapters = async (): Promise<void> => {
-  const pending = [...cache.values()]
+  const entries = [...cache.entries()]
   cache.clear()
-  await Promise.all(pending.map(disconnectPending))
+  const { clearCommands } = useAgentCommandsStore.getState()
+  await Promise.all(
+    entries.map(([agentId, pending]) => {
+      clearCommands(agentId)
+      return disconnectPending(pending)
+    }),
+  )
 }
 
 /**

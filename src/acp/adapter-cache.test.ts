@@ -15,6 +15,7 @@ import { beforeEach, describe, expect, it } from 'bun:test'
 import type { ConnectToAgentContext } from './connect'
 import type { Agent, AgentAdapter } from '@/types/acp'
 import { clearAdapterCache, disposeAdapter, disposeAllAdapters, getOrConnectAdapter } from './adapter-cache'
+import { useAgentCommandsStore } from './agent-commands-store'
 
 const agentA: Agent = {
   id: 'agent-a',
@@ -138,6 +139,18 @@ describe('adapter-cache', () => {
 
   it('disposeAdapter is a no-op for an agent with no cached connection', async () => {
     await expect(disposeAdapter('never-connected')).resolves.toBeUndefined()
+  })
+
+  it('disposeAdapter clears the agent commands the slash menu surfaced', async () => {
+    const { adapter } = buildAdapter(agentA)
+    const { connectToAgent } = makeCounter(() => adapter)
+
+    await getOrConnectAdapter(agentA, ctx, { connectToAgent })
+    useAgentCommandsStore.getState().setCommands(agentA.id, [{ name: 'foo', description: 'bar' }])
+    expect(useAgentCommandsStore.getState().byAgentId[agentA.id]).toHaveLength(1)
+
+    await disposeAdapter(agentA.id)
+    expect(useAgentCommandsStore.getState().byAgentId[agentA.id]).toBeUndefined()
   })
 
   it('evicts a failed connect so the next call retries', async () => {

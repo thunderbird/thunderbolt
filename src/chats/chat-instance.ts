@@ -52,7 +52,7 @@ const requestPermissionViaStore = (
  *  the agent's advertised commands so the chat input's slash menu can surface
  *  them (badged with the agent name). Keyed by agent — they're agent-level, so
  *  the same sink serves every thread that targets the agent. */
-const makeCommandSink =
+export const makeCommandSink =
   (agentId: string) =>
   (commands: AcpCommand[]): void =>
     useAgentCommandsStore.getState().setCommands(agentId, commands)

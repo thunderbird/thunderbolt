@@ -5,13 +5,13 @@
 import { useEffect, useRef } from 'react'
 
 import { getOrConnectAdapter } from '@/acp/adapter-cache'
-import { useAgentCommandsStore } from '@/acp/agent-commands-store'
 import { useHttpClient } from '@/contexts'
 import { updateChatThread } from '@/dal/chat-threads'
 import { getDb } from '@/db/database'
 import { useProxyFetchGetter } from '@/lib/proxy-fetch-context'
 import type { ChatThread } from '@/types'
 import type { Agent } from '@/types/acp'
+import { makeCommandSink } from './chat-instance'
 
 /**
  * Eagerly connect a non-built-in agent and warm its ACP session as soon as it's
@@ -50,11 +50,12 @@ export const useWarmAcpCommands = (session: {
     warmedKey.current = key
 
     let cancelled = false
+    let warmed = false
     void (async () => {
       const adapter = await getOrConnectAdapter(selectedAgent, {
         httpClient,
         getProxyFetch,
-        onAvailableCommands: (commands) => useAgentCommandsStore.getState().setCommands(selectedAgent.id, commands),
+        onAvailableCommands: makeCommandSink(selectedAgent.id),
       }).catch(() => null)
 
       if (!adapter) {
@@ -78,10 +79,16 @@ export const useWarmAcpCommands = (session: {
           },
         })
         .catch(() => {})
+      warmed = true
     })()
 
     return () => {
       cancelled = true
+      // If we tore down before the session finished warming, release the guard
+      // so a remount with the same key retries instead of skipping forever.
+      if (!warmed && warmedKey.current === key) {
+        warmedKey.current = null
+      }
     }
   }, [id, selectedAgent, chatThread, httpClient, getProxyFetch])
 }

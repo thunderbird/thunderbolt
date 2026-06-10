@@ -14,11 +14,22 @@ import type { AcpCommand } from './translators/acp-to-ai-sdk'
 type AgentCommandsState = {
   byAgentId: Record<string, AcpCommand[]>
   setCommands: (agentId: string, commands: AcpCommand[]) => void
+  /** Drop an agent's commands when its connection is torn down, so the slash
+   *  menu doesn't keep offering commands from a disconnected agent. */
+  clearCommands: (agentId: string) => void
 }
 
 export const useAgentCommandsStore = create<AgentCommandsState>((set) => ({
   byAgentId: {},
   setCommands: (agentId, commands) => set((state) => ({ byAgentId: { ...state.byAgentId, [agentId]: commands } })),
+  clearCommands: (agentId) =>
+    set((state) => {
+      if (!(agentId in state.byAgentId)) {
+        return state
+      }
+      const { [agentId]: _removed, ...rest } = state.byAgentId
+      return { byAgentId: rest }
+    }),
 }))
 
 /** Stable empty reference so the selector doesn't churn when an agent has none. */

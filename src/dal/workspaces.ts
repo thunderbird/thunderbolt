@@ -140,19 +140,23 @@ export const ensurePersonalWorkspace = async (db: AnyDrizzleDatabase, userId: st
 
   const workspaceId = computePersonalWorkspaceId(userId)
   const membershipId = computePersonalAdminMembershipId(userId)
+  const nowIso = new Date().toISOString()
 
   await db.transaction(async (tx) => {
     await tx.insert(workspacesTable).values({
       id: workspaceId,
-      name: 'Personal',
+      name: 'Default',
       isPersonal: 1,
       ownerUserId: userId,
+      createdAt: nowIso,
+      updatedAt: nowIso,
     })
     await tx.insert(workspaceMembershipsTable).values({
       id: membershipId,
       workspaceId,
       userId,
       role: 'admin',
+      createdAt: nowIso,
     })
   })
 
@@ -205,6 +209,7 @@ export const createSharedWorkspace = async (
   const workspaceId = uuidv7()
   const membershipId = uuidv7()
   const role = input.inviteRole ?? 'member'
+  const nowIso = new Date().toISOString()
 
   const normalizedCreatorEmail = input.creatorEmail ? normalizeInviteEmail(input.creatorEmail) : null
   const emails = Array.from(
@@ -221,12 +226,15 @@ export const createSharedWorkspace = async (
       name: trimmedName,
       isPersonal: 0,
       ownerUserId: null,
+      createdAt: nowIso,
+      updatedAt: nowIso,
     })
     await tx.insert(workspaceMembershipsTable).values({
       id: membershipId,
       workspaceId,
       userId: input.creatorUserId,
       role: 'admin',
+      createdAt: nowIso,
     })
     for (const email of emails) {
       await tx.insert(workspacePendingMembershipsTable).values({
@@ -235,6 +243,7 @@ export const createSharedWorkspace = async (
         email,
         role,
         invitedByUserId: input.creatorUserId,
+        createdAt: nowIso,
       })
     }
     // Seed default models / modes / skills / tasks / profiles into the new
@@ -297,4 +306,21 @@ export const addPendingMemberships = async (
   })
 
   return emails.length
+}
+
+/**
+ * Rename a workspace. PowerSync emits a PATCH op; the BE upload handler accepts
+ * iff the caller is admin of a shared workspace, and permanent-rejects PATCH on
+ * personal workspaces (Decision 11 — non-editable). The FE UI gates access
+ * before reaching this function; the throw here is a defensive backstop.
+ */
+export const updateWorkspaceName = async (db: AnyDrizzleDatabase, workspaceId: string, name: string): Promise<void> => {
+  const trimmed = name.trim()
+  if (!trimmed) {
+    throw new Error('Workspace name is required')
+  }
+  await db
+    .update(workspacesTable)
+    .set({ name: trimmed, updatedAt: new Date().toISOString() })
+    .where(eq(workspacesTable.id, workspaceId))
 }

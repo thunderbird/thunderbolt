@@ -142,6 +142,7 @@ export {
   getWorkspaceById,
   getWorkspaceByIdQuery,
   getWorkspacesForUserQuery,
+  updateWorkspaceName,
   useWorkspacesQuery,
   type Workspace,
 } from './workspaces'

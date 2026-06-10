@@ -29,6 +29,7 @@ import {
   addPendingMemberships,
   createSharedWorkspace,
   getWorkspacesForUserQuery,
+  updateWorkspaceName,
   useWorkspacesQuery,
 } from './workspaces'
 import { otherWsId, resetTestDatabase, setupTestDatabase, teardownTestDatabase, testUserId, wsId } from './test-utils'
@@ -386,5 +387,72 @@ describe('addPendingMemberships', () => {
       .from(workspacePendingMembershipsTable)
       .where(eq(workspacePendingMembershipsTable.workspaceId, workspaceId))
     expect(pending).toHaveLength(0)
+  })
+})
+
+describe('updateWorkspaceName', () => {
+  beforeAll(async () => {
+    await setupTestDatabase()
+  })
+
+  afterAll(async () => {
+    await teardownTestDatabase()
+  })
+
+  beforeEach(async () => {
+    await resetTestDatabase()
+  })
+
+  it('updates the workspace name on the row', async () => {
+    const db = getDb()
+    const workspaceId = await createSharedWorkspace(db, {
+      creatorUserId: testUserId,
+      name: 'Old name',
+    })
+
+    await updateWorkspaceName(db, workspaceId, 'New name')
+
+    const ws = await db.select().from(workspacesTable).where(eq(workspacesTable.id, workspaceId))
+    expect(ws[0].name).toBe('New name')
+  })
+
+  it('trims whitespace before writing', async () => {
+    const db = getDb()
+    const workspaceId = await createSharedWorkspace(db, {
+      creatorUserId: testUserId,
+      name: 'Old',
+    })
+
+    await updateWorkspaceName(db, workspaceId, '   Trimmed   ')
+
+    const ws = await db.select().from(workspacesTable).where(eq(workspacesTable.id, workspaceId))
+    expect(ws[0].name).toBe('Trimmed')
+  })
+
+  it('throws on empty / whitespace-only name', async () => {
+    const db = getDb()
+    const workspaceId = await createSharedWorkspace(db, {
+      creatorUserId: testUserId,
+      name: 'Untouched',
+    })
+
+    await expect(updateWorkspaceName(db, workspaceId, '   ')).rejects.toThrow(/name is required/i)
+
+    const ws = await db.select().from(workspacesTable).where(eq(workspacesTable.id, workspaceId))
+    expect(ws[0].name).toBe('Untouched')
+  })
+
+  it('stamps updatedAt', async () => {
+    const db = getDb()
+    const workspaceId = await createSharedWorkspace(db, {
+      creatorUserId: testUserId,
+      name: 'Stampme',
+    })
+
+    await updateWorkspaceName(db, workspaceId, 'Stamped')
+
+    const ws = await db.select().from(workspacesTable).where(eq(workspacesTable.id, workspaceId))
+    expect(ws[0].updatedAt).toBeTruthy()
+    expect(() => new Date(ws[0].updatedAt as string).toISOString()).not.toThrow()
   })
 })

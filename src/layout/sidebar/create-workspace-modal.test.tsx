@@ -113,12 +113,16 @@ describe('CreateWorkspaceModal', () => {
     expect(screen.getByTestId('created-id').textContent).toBe(wsRows[0].id)
   })
 
-  it('Enter on a non-empty name submits without clicking Create', async () => {
+  it('submits via the form (Enter key in a real browser) once name is filled', async () => {
     render(wrap(<Harness />))
-    const input = screen.getByLabelText('Workspace name')
+    const input = screen.getByLabelText('Workspace name') as HTMLInputElement
     fireEvent.change(input, { target: { value: 'Enter Submit' } })
+    const formEl = input.closest('form')
+    expect(formEl).not.toBeNull()
     await act(async () => {
-      fireEvent.keyDown(input, { key: 'Enter' })
+      // Browsers implicitly submit a single-input form on Enter; jsdom doesn't
+      // bridge keydown → submit, so fire the form's submit event directly.
+      fireEvent.submit(formEl!)
     })
 
     await waitFor(() => expect(screen.getByTestId('open')).toHaveTextContent('no'))

@@ -14,9 +14,10 @@ import {
   SidebarSeparator,
   useSidebar,
 } from '@/components/ui/sidebar'
+import { useActiveWorkspaceMembership } from '@/hooks/use-active-workspace-membership'
 import { useAgentsSettingsHidden } from '@/hooks/use-agents-settings-hidden'
-import { stripWorkspacePrefix } from '@/lib/active-workspace'
-import { ArrowLeft, Bot, Cpu, Plug, Server, SlidersHorizontal, Smartphone, Zap } from 'lucide-react'
+import { stripWorkspacePrefix, useActiveWorkspace } from '@/lib/active-workspace'
+import { ArrowLeft, Bot, Building2, Cpu, Plug, Server, SlidersHorizontal, Smartphone, Zap } from 'lucide-react'
 import { useLocation } from 'react-router'
 import { SidebarHeader } from './sidebar-header'
 
@@ -38,6 +39,12 @@ export const SettingsSidebarContent = ({
   const { toggleSidebar } = useSidebar()
   const location = useLocation()
   const agentsHidden = useAgentsSettingsHidden({ isStandalone })
+  const activeWorkspace = useActiveWorkspace()
+  const { isAdmin } = useActiveWorkspaceMembership()
+  // Workspace-admin items (General — and later Members, Permissions) are hidden
+  // for shared-workspace members per Decision 25 (hide-not-disable). Personal
+  // is treated as admin-equivalent for nav purposes; the page renders read-only.
+  const workspaceAdminItemsVisible = activeWorkspace?.isPersonal === 1 || isAdmin
   // `isActive` highlighting reads the sub-path so the same matching rules work
   // for both personal (`/settings/...`) and shared (`/w/<id>/settings/...`) URLs.
   const subPath = stripWorkspacePrefix(location.pathname)
@@ -61,8 +68,8 @@ export const SettingsSidebarContent = ({
 
       <SidebarSeparator className="m-0" />
 
-      <SidebarGroup className="flex-1">
-        <SidebarGroupLabel>Settings</SidebarGroupLabel>
+      <SidebarGroup>
+        <SidebarGroupLabel>Account Settings</SidebarGroupLabel>
         <SidebarGroupContent>
           <SidebarMenu>
             <SidebarMenuItem>
@@ -98,6 +105,27 @@ export const SettingsSidebarContent = ({
                 <span>Devices</span>
               </SidebarMenuButton>
             </SidebarMenuItem>
+          </SidebarMenu>
+        </SidebarGroupContent>
+      </SidebarGroup>
+
+      <SidebarGroup className="flex-1">
+        <SidebarGroupLabel>Workspace</SidebarGroupLabel>
+        <SidebarGroupContent>
+          <SidebarMenu>
+            {workspaceAdminItemsVisible && (
+              <SidebarMenuItem>
+                <SidebarMenuButton
+                  onClick={() => onSettingsNavigate('/settings/workspace/general')}
+                  tooltip="General"
+                  className="cursor-pointer"
+                  isActive={subPath === '/settings/workspace/general'}
+                >
+                  <Building2 className="size-4" />
+                  <span>General</span>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+            )}
             <SidebarMenuItem>
               <SidebarMenuButton
                 onClick={() => onSettingsNavigate('/settings/models')}
@@ -120,17 +148,6 @@ export const SettingsSidebarContent = ({
                 <span>MCP Servers</span>
               </SidebarMenuButton>
             </SidebarMenuItem>
-            <SidebarMenuItem>
-              <SidebarMenuButton
-                onClick={() => onSettingsNavigate('/settings/skills')}
-                tooltip="Skills"
-                className="cursor-pointer"
-                isActive={subPath === '/settings/skills'}
-              >
-                <Zap className="size-4" />
-                <span>Skills</span>
-              </SidebarMenuButton>
-            </SidebarMenuItem>
             {!agentsHidden && (
               <SidebarMenuItem>
                 <SidebarMenuButton
@@ -144,6 +161,17 @@ export const SettingsSidebarContent = ({
                 </SidebarMenuButton>
               </SidebarMenuItem>
             )}
+            <SidebarMenuItem>
+              <SidebarMenuButton
+                onClick={() => onSettingsNavigate('/settings/skills')}
+                tooltip="Skills"
+                className="cursor-pointer"
+                isActive={subPath === '/settings/skills'}
+              >
+                <Zap className="size-4" />
+                <span>Skills</span>
+              </SidebarMenuButton>
+            </SidebarMenuItem>
           </SidebarMenu>
         </SidebarGroupContent>
       </SidebarGroup>

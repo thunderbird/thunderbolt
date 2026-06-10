@@ -148,6 +148,13 @@
       "when": 1780433554841,
       "tag": "0020_workspace_id_on_scoped_tables",
       "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "7",
+      "when": 1781094472865,
+      "tag": "0021_workspaces_slug_icon",
+      "breakpoints": true
     }
   ]
 }

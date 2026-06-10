@@ -6,6 +6,7 @@ import { AppLogo } from '@/components/app-logo'
 import { SearchableMenu, type SearchableMenuGroup, type SearchableMenuItem } from '@/components/ui/searchable-menu'
 import { useWorkspacesQuery, type Workspace } from '@/dal'
 import { useCanCreateWorkspace } from '@/hooks/use-can-create-workspace'
+import { isDataUrlIcon } from '@/components/workspace/icon-utils'
 import { useIsMobile } from '@/hooks/use-mobile'
 import { stripWorkspacePrefix, toWorkspaceUrl, useActiveWorkspace } from '@/lib/active-workspace'
 import { cn } from '@/lib/utils'
@@ -29,11 +30,37 @@ type WorkspaceAvatarProps = {
 }
 
 /**
- * 24×24 avatar for a workspace. Personal renders the Thunderbolt `AppLogo`
- * (treats the user's home workspace as the product's "self" identity); shared
- * workspaces render a colored square with the first initial.
+ * 24×24 avatar for a workspace. Resolution order:
+ * 1. `workspace.icon` set to a `data:` URL → render the uploaded image.
+ * 2. `workspace.icon` set to plain text → render as emoji.
+ * 3. Personal workspace with no icon → Thunderbolt `AppLogo` (home identity).
+ * 4. Shared workspace with no icon → first initial on an accent-coloured square.
  */
 const WorkspaceAvatar = ({ workspace, className }: WorkspaceAvatarProps) => {
+  if (isDataUrlIcon(workspace.icon)) {
+    return (
+      <img
+        src={workspace.icon}
+        alt=""
+        className={cn('size-6 rounded-md object-cover shrink-0', className)}
+        aria-hidden="true"
+      />
+    )
+  }
+  if (workspace.icon) {
+    return (
+      <div
+        className={cn(
+          'flex items-center justify-center rounded-md bg-accent text-accent-foreground shrink-0',
+          'size-6 text-base leading-none',
+          className,
+        )}
+        aria-hidden="true"
+      >
+        {workspace.icon}
+      </div>
+    )
+  }
   if (workspace.isPersonal === 1) {
     return <AppLogo size={24} className={cn('shrink-0', className)} />
   }

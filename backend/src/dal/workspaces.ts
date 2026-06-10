@@ -235,16 +235,20 @@ export type UpsertWorkspaceInput = {
   isPersonal: boolean
   /** Required when `isPersonal` is `true`; null/omitted for shared. */
   ownerUserId?: string | null
+  /** Optional slug. Shared-only; personal workspaces never carry one. */
+  slug?: string | null
+  /** Optional icon (emoji or base64 image). Either workspace kind may set it. */
+  icon?: string | null
 }
 
 /**
- * Upserts a workspace row. Used for both personal and shared paths — the
- * handler does the policy checks (id canonicality / ownership / creation flag),
- * this just persists what arrived. Conflict target is the PK; on conflict the
- * `name` is refreshed and `updated_at` bumped.
+ * Upserts a shared workspace row. Conflict target is the PK; on conflict the
+ * mutable fields are refreshed and `updated_at` bumped — covers the admin-
+ * rename-via-PUT path even though FE renames now flow through PATCH.
  *
- * Idempotent for multi-device personal-workspace uploads: both devices compute
- * the same canonical id and the same fields, so the second upload is a no-op.
+ * Use `insertPersonalWorkspaceIfMissing` for personal workspaces instead — the
+ * "do nothing on conflict" semantics avoid clobbering a user rename when a
+ * second device runs its idempotent bootstrap PUT.
  */
 export const upsertWorkspace = async (database: typeof DbType, input: UpsertWorkspaceInput): Promise<void> => {
   await database
@@ -252,37 +256,70 @@ export const upsertWorkspace = async (database: typeof DbType, input: UpsertWork
     .values({
       id: input.id,
       name: input.name,
+      slug: input.slug ?? null,
+      icon: input.icon ?? null,
       isPersonal: input.isPersonal,
       ownerUserId: input.ownerUserId ?? null,
     })
     .onConflictDoUpdate({
       target: workspacesTable.id,
-      set: { name: input.name, updatedAt: new Date() },
+      set: {
+        name: input.name,
+        ...(input.slug !== undefined ? { slug: input.slug } : {}),
+        ...(input.icon !== undefined ? { icon: input.icon } : {}),
+        updatedAt: new Date(),
+      },
     })
 }
 
 /**
- * Updates a shared workspace's mutable fields. The `is_personal = false` filter is
- * defense in depth — the upload handler already rejects personal-workspace patches
- * during validation, but the constraint here guarantees the row will not change
- * if a personal workspace ever reaches this path.
+ * Insert a personal workspace row if no row with this id exists. Multi-device
+ * safe: device A creates and renames the workspace; device B running its own
+ * `ensurePersonalWorkspace` bootstrap re-uploads the canonical PUT with the
+ * default name. `ON CONFLICT DO NOTHING` preserves the renamed name on the BE.
+ *
+ * `slug` is intentionally absent — personal workspaces don't appear in URLs
+ * (see THU-551 URL deviation) so the column stays null. `icon` is optional and
+ * persisted on first insert only.
+ */
+export const insertPersonalWorkspaceIfMissing = async (
+  database: typeof DbType,
+  input: { id: string; name: string; ownerUserId: string; icon?: string | null },
+): Promise<void> => {
+  await database
+    .insert(workspacesTable)
+    .values({
+      id: input.id,
+      name: input.name,
+      icon: input.icon ?? null,
+      isPersonal: true,
+      ownerUserId: input.ownerUserId,
+    })
+    .onConflictDoNothing({ target: workspacesTable.id })
+}
+
+/**
+ * Updates a workspace's mutable fields. The upload handler is the only caller
+ * and gates writes on admin-of-the-workspace — this just persists the patch.
  *
  * Returns the affected row count so callers can map 0 → ROW_NOT_FOUND.
  */
-export const updateSharedWorkspace = async (
+export const updateWorkspace = async (
   database: typeof DbType,
   id: string,
-  patch: { name?: string },
+  patch: { name?: string; slug?: string | null; icon?: string | null },
 ): Promise<number> => {
   const setClause: Record<string, unknown> = { updatedAt: new Date() }
   if (patch.name !== undefined) {
     setClause.name = patch.name
   }
-  const rows = await database
-    .update(workspacesTable)
-    .set(setClause)
-    .where(and(eq(workspacesTable.id, id), eq(workspacesTable.isPersonal, false)))
-    .returning()
+  if (patch.slug !== undefined) {
+    setClause.slug = patch.slug
+  }
+  if (patch.icon !== undefined) {
+    setClause.icon = patch.icon
+  }
+  const rows = await database.update(workspacesTable).set(setClause).where(eq(workspacesTable.id, id)).returning()
   return rows.length
 }
 

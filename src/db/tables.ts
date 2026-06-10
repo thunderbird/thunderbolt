@@ -342,6 +342,8 @@ export const agentsSecretsTable = sqliteTable('agents_secrets', {
 export const workspacesTable = sqliteTable('workspaces', {
   id: text('id').primaryKey(),
   name: text('name').notNull(),
+  slug: text('slug'),
+  icon: text('icon'),
   isPersonal: integer('is_personal').notNull().default(0),
   ownerUserId: text('owner_user_id'),
   createdAt: text('created_at'),

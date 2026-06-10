@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { and, asc, desc, eq } from 'drizzle-orm'
+import { and, asc, desc, eq, isNull } from 'drizzle-orm'
 import { toCompilableQuery } from '@powersync/drizzle-driver'
 import { useQuery } from '@powersync/tanstack-react-query'
 import { v7 as uuidv7 } from 'uuid'
@@ -10,13 +10,28 @@ import { useDatabase } from '@/contexts'
 import { seedFreshWorkspaceDefaultsInTx } from '@/lib/reconcile-defaults'
 import { useTrustDomainRegistry } from '@/stores/trust-domain-registry'
 import type { AnyDrizzleDatabase } from '../db/database-interface'
-import { workspaceMembershipsTable, workspacePendingMembershipsTable, workspacesTable } from '../db/tables'
+import {
+  agentsTable,
+  mcpServersTable,
+  modelProfilesTable,
+  modelsTable,
+  modesTable,
+  promptsTable,
+  skillsTable,
+  tasksTable,
+  triggersTable,
+  workspaceMembershipsTable,
+  workspacePendingMembershipsTable,
+  workspacesTable,
+} from '../db/tables'
 import type { DrizzleQueryWithPromise } from '../types'
 import { computePersonalAdminMembershipId, computePersonalWorkspaceId } from '@shared/workspaces'
 
 export type Workspace = {
   id: string
   name: string
+  slug: string | null
+  icon: string | null
   isPersonal: number
   ownerUserId: string | null
   createdAt: string | null
@@ -79,6 +94,8 @@ export const getWorkspacesForUserQuery = (db: AnyDrizzleDatabase, userId: string
     .select({
       id: workspacesTable.id,
       name: workspacesTable.name,
+      slug: workspacesTable.slug,
+      icon: workspacesTable.icon,
       isPersonal: workspacesTable.isPersonal,
       ownerUserId: workspacesTable.ownerUserId,
       createdAt: workspacesTable.createdAt,
@@ -140,19 +157,23 @@ export const ensurePersonalWorkspace = async (db: AnyDrizzleDatabase, userId: st
 
   const workspaceId = computePersonalWorkspaceId(userId)
   const membershipId = computePersonalAdminMembershipId(userId)
+  const nowIso = new Date().toISOString()
 
   await db.transaction(async (tx) => {
     await tx.insert(workspacesTable).values({
       id: workspaceId,
-      name: 'Personal',
+      name: 'Default',
       isPersonal: 1,
       ownerUserId: userId,
+      createdAt: nowIso,
+      updatedAt: nowIso,
     })
     await tx.insert(workspaceMembershipsTable).values({
       id: membershipId,
       workspaceId,
       userId,
       role: 'admin',
+      createdAt: nowIso,
     })
   })
 
@@ -167,6 +188,10 @@ export type CreateSharedWorkspaceInput = {
   creatorUserId: string
   /** Display name. Trimmed before storage. */
   name: string
+  /** Optional URL slug. Already-sanitised text expected; persisted as-is. */
+  slug?: string | null
+  /** Optional icon (emoji string or `data:image/...` URL). */
+  icon?: string | null
   /** Raw emails from the invite step. Lowercased + trimmed + deduped here; the
    *  creator's own email is filtered out so the modal can pass session input
    *  verbatim without special-casing. */
@@ -205,6 +230,7 @@ export const createSharedWorkspace = async (
   const workspaceId = uuidv7()
   const membershipId = uuidv7()
   const role = input.inviteRole ?? 'member'
+  const nowIso = new Date().toISOString()
 
   const normalizedCreatorEmail = input.creatorEmail ? normalizeInviteEmail(input.creatorEmail) : null
   const emails = Array.from(
@@ -215,18 +241,26 @@ export const createSharedWorkspace = async (
     ),
   )
 
+  const trimmedSlug = input.slug?.trim() || null
+  const icon = input.icon ?? null
+
   await db.transaction(async (tx) => {
     await tx.insert(workspacesTable).values({
       id: workspaceId,
       name: trimmedName,
+      slug: trimmedSlug,
+      icon,
       isPersonal: 0,
       ownerUserId: null,
+      createdAt: nowIso,
+      updatedAt: nowIso,
     })
     await tx.insert(workspaceMembershipsTable).values({
       id: membershipId,
       workspaceId,
       userId: input.creatorUserId,
       role: 'admin',
+      createdAt: nowIso,
     })
     for (const email of emails) {
       await tx.insert(workspacePendingMembershipsTable).values({
@@ -235,6 +269,7 @@ export const createSharedWorkspace = async (
         email,
         role,
         invitedByUserId: input.creatorUserId,
+        createdAt: nowIso,
       })
     }
     // Seed default models / modes / skills / tasks / profiles into the new
@@ -297,4 +332,237 @@ export const addPendingMemberships = async (
   })
 
   return emails.length
+}
+
+export type UpdateWorkspacePatch = {
+  /** Trimmed before writing; throws on empty/whitespace. Omit to leave unchanged. */
+  name?: string
+  /** Slug to persist (already sanitized). Pass `null` to clear, omit to leave unchanged. */
+  slug?: string | null
+  /** Icon (emoji or base64 image). Pass `null` to clear, omit to leave unchanged. */
+  icon?: string | null
+}
+
+/**
+ * Patch a workspace's mutable fields (`name`, `slug`, `icon`). PowerSync emits
+ * a PATCH op the BE handler validates as admin-of-the-workspace; Personal-slug
+ * writes are rejected server-side. The FE UI gates access before reaching this
+ * function; the empty-name throw is a defensive backstop.
+ */
+export const updateWorkspace = async (
+  db: AnyDrizzleDatabase,
+  workspaceId: string,
+  patch: UpdateWorkspacePatch,
+): Promise<void> => {
+  const setClause: Record<string, unknown> = { updatedAt: new Date().toISOString() }
+  if (patch.name !== undefined) {
+    const trimmed = patch.name.trim()
+    if (!trimmed) {
+      throw new Error('Workspace name is required')
+    }
+    setClause.name = trimmed
+  }
+  if (patch.slug !== undefined) {
+    setClause.slug = patch.slug
+  }
+  if (patch.icon !== undefined) {
+    setClause.icon = patch.icon
+  }
+  if (Object.keys(setClause).length === 1) {
+    // Only `updatedAt` would change — caller passed no actual edits. Skip the write.
+    return
+  }
+  await db.update(workspacesTable).set(setClause).where(eq(workspacesTable.id, workspaceId))
+}
+
+export type DuplicateWorkspaceInput = {
+  creatorUserId: string
+  /** Name for the new workspace (e.g. `${source.name} Copy`). Trimmed before storage. */
+  name: string
+  /** Optional slug for the new workspace. Persisted as-is; the BE handler rejects on collision. */
+  slug?: string | null
+  /** Optional icon (emoji or `data:` URL) inherited from the source by default. */
+  icon?: string | null
+}
+
+/**
+ * Duplicate a workspace into a brand-new shared workspace. Clones every
+ * workspace-scoped table EXCEPT `chat_threads` / `chat_messages` (per
+ * THU-554's UX call — chat history is conversation context, not workspace
+ * configuration, so it should not carry over).
+ *
+ * Foreign-key remap: source ids are replaced with freshly-generated `uuidv7`
+ * ids, and cross-table references are remapped via in-memory maps:
+ *   - `prompts.model_id` → remapped to the cloned model's new id.
+ *   - `triggers.prompt_id` → remapped to the cloned prompt's new id.
+ *   - `model_profiles.id` (which is the model id) → remapped to the cloned model.
+ *
+ * Soft-deleted rows (`deletedAt IS NOT NULL`) are skipped — duplicating
+ * tombstones serves no purpose. `defaultHash`, `userId`, and other attribution
+ * columns are preserved so reconcile-defaults treats the clones identically
+ * to the originals.
+ *
+ * **Perf:** all reads run as a single `Promise.all`, all writes as a single
+ * batched insert per table inside another `Promise.all`. SQLite still
+ * serialises statements under a single connection, but JS-side overhead and
+ * round-trip waiting drop to one per phase.
+ *
+ * Returns the new workspace id.
+ */
+export const duplicateWorkspace = async (
+  db: AnyDrizzleDatabase,
+  source: Workspace,
+  input: DuplicateWorkspaceInput,
+): Promise<string> => {
+  const trimmedName = input.name.trim()
+  if (!trimmedName) {
+    throw new Error('Workspace name is required')
+  }
+
+  const newWorkspaceId = uuidv7()
+  const membershipId = uuidv7()
+  const nowIso = new Date().toISOString()
+  const trimmedSlug = input.slug?.trim() || null
+  const icon = input.icon ?? null
+
+  await db.transaction(async (tx) => {
+    // Read every workspace-scoped table in parallel, then build the new rows
+    // in pure JS, then write them in parallel. Three phases, two awaits.
+    const [models, profiles, prompts, triggers, skills, modes, mcpServers, agents, tasks] = await Promise.all([
+      tx
+        .select()
+        .from(modelsTable)
+        .where(and(eq(modelsTable.workspaceId, source.id), isNull(modelsTable.deletedAt))),
+      tx
+        .select()
+        .from(modelProfilesTable)
+        .where(and(eq(modelProfilesTable.workspaceId, source.id), isNull(modelProfilesTable.deletedAt))),
+      tx
+        .select()
+        .from(promptsTable)
+        .where(and(eq(promptsTable.workspaceId, source.id), isNull(promptsTable.deletedAt))),
+      tx
+        .select()
+        .from(triggersTable)
+        .where(and(eq(triggersTable.workspaceId, source.id), isNull(triggersTable.deletedAt))),
+      tx
+        .select()
+        .from(skillsTable)
+        .where(and(eq(skillsTable.workspaceId, source.id), isNull(skillsTable.deletedAt))),
+      tx
+        .select()
+        .from(modesTable)
+        .where(and(eq(modesTable.workspaceId, source.id), isNull(modesTable.deletedAt))),
+      tx
+        .select()
+        .from(mcpServersTable)
+        .where(and(eq(mcpServersTable.workspaceId, source.id), isNull(mcpServersTable.deletedAt))),
+      tx
+        .select()
+        .from(agentsTable)
+        .where(and(eq(agentsTable.workspaceId, source.id), isNull(agentsTable.deletedAt))),
+      tx
+        .select()
+        .from(tasksTable)
+        .where(and(eq(tasksTable.workspaceId, source.id), isNull(tasksTable.deletedAt))),
+    ])
+
+    // Build id maps + new row arrays in pure JS — no awaits in this section.
+    const modelIdMap = new Map<string, string>()
+    const newModels = models.map((row) => {
+      const newId = uuidv7()
+      modelIdMap.set(row.id, newId)
+      return { ...row, id: newId, workspaceId: newWorkspaceId }
+    })
+
+    const promptIdMap = new Map<string, string>()
+    const newPrompts = prompts.map((row) => {
+      const newId = uuidv7()
+      promptIdMap.set(row.id, newId)
+      return {
+        ...row,
+        id: newId,
+        modelId: row.modelId ? (modelIdMap.get(row.modelId) ?? null) : null,
+        workspaceId: newWorkspaceId,
+      }
+    })
+
+    const newProfiles = profiles.flatMap((row) => {
+      const newModelId = modelIdMap.get(row.modelId)
+      if (!newModelId) {
+        return []
+      }
+      return [{ ...row, modelId: newModelId, workspaceId: newWorkspaceId }]
+    })
+
+    const newTriggers = triggers.map((row) => ({
+      ...row,
+      id: uuidv7(),
+      promptId: row.promptId ? (promptIdMap.get(row.promptId) ?? null) : null,
+      workspaceId: newWorkspaceId,
+    }))
+
+    const cloneFreshId = <T extends { id: string }>(row: T): T => ({
+      ...row,
+      id: uuidv7(),
+      workspaceId: newWorkspaceId,
+    })
+    const newSkills = skills.map(cloneFreshId)
+    const newModes = modes.map(cloneFreshId)
+    const newMcpServers = mcpServers.map(cloneFreshId)
+    const newAgents = agents.map(cloneFreshId)
+    const newTasks = tasks.map(cloneFreshId)
+
+    // All writes in parallel. Workspace + membership go alongside the table
+    // clones — none of the FE rows have FK constraints to enforce ordering.
+    const writes: Promise<unknown>[] = [
+      tx.insert(workspacesTable).values({
+        id: newWorkspaceId,
+        name: trimmedName,
+        slug: trimmedSlug,
+        icon,
+        isPersonal: 0,
+        ownerUserId: null,
+        createdAt: nowIso,
+        updatedAt: nowIso,
+      }),
+      tx.insert(workspaceMembershipsTable).values({
+        id: membershipId,
+        workspaceId: newWorkspaceId,
+        userId: input.creatorUserId,
+        role: 'admin',
+        createdAt: nowIso,
+      }),
+    ]
+    if (newModels.length) {
+      writes.push(tx.insert(modelsTable).values(newModels))
+    }
+    if (newProfiles.length) {
+      writes.push(tx.insert(modelProfilesTable).values(newProfiles))
+    }
+    if (newPrompts.length) {
+      writes.push(tx.insert(promptsTable).values(newPrompts))
+    }
+    if (newTriggers.length) {
+      writes.push(tx.insert(triggersTable).values(newTriggers))
+    }
+    if (newSkills.length) {
+      writes.push(tx.insert(skillsTable).values(newSkills))
+    }
+    if (newModes.length) {
+      writes.push(tx.insert(modesTable).values(newModes))
+    }
+    if (newMcpServers.length) {
+      writes.push(tx.insert(mcpServersTable).values(newMcpServers))
+    }
+    if (newAgents.length) {
+      writes.push(tx.insert(agentsTable).values(newAgents))
+    }
+    if (newTasks.length) {
+      writes.push(tx.insert(tasksTable).values(newTasks))
+    }
+    await Promise.all(writes)
+  })
+
+  return newWorkspaceId
 }

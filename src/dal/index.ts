@@ -136,13 +136,17 @@ export {
 
 // Workspaces
 export {
+  duplicateWorkspace,
   ensurePersonalWorkspace,
   getPersonalWorkspaceByOwner,
   getPersonalWorkspaceByOwnerQuery,
   getWorkspaceById,
   getWorkspaceByIdQuery,
   getWorkspacesForUserQuery,
+  updateWorkspace,
   useWorkspacesQuery,
+  type DuplicateWorkspaceInput,
+  type UpdateWorkspacePatch,
   type Workspace,
 } from './workspaces'
 export {

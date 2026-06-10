@@ -28,6 +28,8 @@ import type { ReactNode } from 'react'
 const personalWorkspace: Workspace = {
   id: wsId,
   name: 'Personal',
+  slug: null,
+  icon: null,
   isPersonal: 1,
   ownerUserId: 'test-user',
   createdAt: null,
@@ -37,6 +39,8 @@ const personalWorkspace: Workspace = {
 const sharedWorkspace: Workspace = {
   id: otherWsId,
   name: 'Acme',
+  slug: null,
+  icon: null,
   isPersonal: 0,
   ownerUserId: 'test-user',
   createdAt: null,

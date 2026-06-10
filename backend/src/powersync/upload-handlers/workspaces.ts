@@ -4,9 +4,10 @@
 
 import {
   getWorkspaceById,
+  insertPersonalWorkspaceIfMissing,
   isAdminOfAnyWorkspace,
   isWorkspaceAdmin,
-  updateSharedWorkspace,
+  updateWorkspace,
   upsertWorkspace,
 } from '@/dal/workspaces'
 import { computePersonalWorkspaceId } from '@shared/workspaces'
@@ -18,14 +19,20 @@ import { UploadRejection, type UploadHandler } from './types'
  *
  * - **Personal workspace PUT**: allowed iff the row id matches the canonical
  *   `computePersonalWorkspaceId(ctx.userId)` AND `owner_user_id === ctx.userId`.
- *   The name is server-forced to `"Personal"` — Decision 11 (non-editable).
- *   Idempotent across multi-device first-sign-ins: both devices compute the
- *   same canonical id and upload the same row → upsert no-op.
- * - **Personal workspace PATCH / DELETE**: rejected (immutable, deferred).
+ *   First-write wins on the name + icon — if the row already exists, the PUT
+ *   is a no-op so a second device's idempotent bootstrap doesn't clobber data
+ *   the user changed elsewhere. `slug` always stays null on personal (personal
+ *   workspaces don't carry URL slugs).
+ * - **Personal workspace PATCH**: name and icon mutable; slug is rejected
+ *   (`PERSONAL_WORKSPACE_SLUG_FORBIDDEN`). Gated on admin of the workspace.
  * - **Shared workspace PUT**: gated by `allowWorkspaceCreationByMembers`.
  *   Members may create only when the flag is on; users who already admin some
  *   workspace can always create regardless of the flag.
  * - **Shared workspace PATCH**: requires the caller to be admin of the target.
+ *   name, slug, and icon are mutable.
+ * - **Duplicate slug**: Postgres `UNIQUE INDEX idx_workspaces_slug` rejects
+ *   the write; the apply layer catches it and surfaces `WORKSPACE_SLUG_TAKEN`
+ *   as a permanent rejection.
  * - **DELETE**: out of scope for v1.
  */
 export const workspacesHandler: UploadHandler = {
@@ -40,11 +47,11 @@ export const workspacesHandler: UploadHandler = {
       if (!existing) {
         return reject('permanent', 'ROW_NOT_FOUND')
       }
-      if (existing.isPersonal) {
-        return reject('permanent', 'PERSONAL_WORKSPACE_IMMUTABLE')
-      }
       if (!(await isWorkspaceAdmin(tx, op.id, ctx.userId))) {
         return reject('permanent', 'NOT_WORKSPACE_ADMIN')
+      }
+      if (existing.isPersonal && op.data?.slug !== undefined) {
+        return reject('permanent', 'PERSONAL_WORKSPACE_SLUG_FORBIDDEN')
       }
       return allow()
     }
@@ -57,8 +64,7 @@ export const workspacesHandler: UploadHandler = {
     if (payloadIsPersonal || idMatchesCanonical || existing?.isPersonal) {
       // This is a personal-workspace PUT. Accept only if both the canonical id
       // and the ownership claim match the caller. Anything else — wrong id,
-      // someone else's owner_user_id, or an attempt to "rename" via an
-      // existing row — is rejected.
+      // someone else's owner_user_id — is rejected.
       if (!idMatchesCanonical) {
         return reject('permanent', 'PERSONAL_WORKSPACE_ID_NOT_CANONICAL')
       }
@@ -98,26 +104,53 @@ export const workspacesHandler: UploadHandler = {
       case 'PUT': {
         const canonicalPersonalId = computePersonalWorkspaceId(ctx.userId)
         const isPersonalPut = op.data?.is_personal === true || op.id === canonicalPersonalId
-        // Personal workspace name is always forced to "Personal" server-side (Decision 11,
-        // non-editable in v1) regardless of what the client sends.
-        const name = isPersonalPut ? 'Personal' : typeof op.data?.name === 'string' ? op.data.name : null
+        const incomingName = typeof op.data?.name === 'string' ? op.data.name : null
+        // Personal workspaces default to "Default" if the client omitted the name
+        // (defensive — current clients always send one). Shared workspaces require it.
+        const name = incomingName ?? (isPersonalPut ? 'Default' : null)
         if (!name) {
           throw new UploadRejection('permanent', 'WORKSPACE_NAME_REQUIRED')
         }
-        await upsertWorkspace(tx, {
-          id: op.id,
-          name,
-          isPersonal: isPersonalPut,
-          ownerUserId: isPersonalPut ? ctx.userId : null,
-        })
+        const slug = typeof op.data?.slug === 'string' ? op.data.slug : null
+        const icon = typeof op.data?.icon === 'string' ? op.data.icon : null
+        if (isPersonalPut) {
+          // `DO NOTHING` on conflict — preserves any later changes if a second
+          // device's bootstrap PUT lands after the user already mutated the row.
+          await insertPersonalWorkspaceIfMissing(tx, {
+            id: op.id,
+            name,
+            icon,
+            ownerUserId: ctx.userId,
+          })
+          return
+        }
+        await runWithSlugViolationGuard(() =>
+          upsertWorkspace(tx, {
+            id: op.id,
+            name,
+            slug,
+            icon,
+            isPersonal: false,
+            ownerUserId: null,
+          }),
+        )
         return
       }
       case 'PATCH': {
-        const name = typeof op.data?.name === 'string' ? op.data.name : undefined
-        if (name === undefined) {
+        const patch: { name?: string; slug?: string | null; icon?: string | null } = {}
+        if (typeof op.data?.name === 'string') {
+          patch.name = op.data.name
+        }
+        if (op.data?.slug !== undefined) {
+          patch.slug = typeof op.data.slug === 'string' ? op.data.slug : null
+        }
+        if (op.data?.icon !== undefined) {
+          patch.icon = typeof op.data.icon === 'string' ? op.data.icon : null
+        }
+        if (Object.keys(patch).length === 0) {
           throw new UploadRejection('permanent', 'EMPTY_PAYLOAD')
         }
-        const affected = await updateSharedWorkspace(tx, op.id, { name })
+        const affected = await runWithSlugViolationGuard(() => updateWorkspace(tx, op.id, patch))
         if (affected === 0) {
           throw new UploadRejection('permanent', 'ROW_NOT_FOUND')
         }
@@ -128,4 +161,40 @@ export const workspacesHandler: UploadHandler = {
       }
     }
   },
+}
+
+/**
+ * Wrap a write that may collide with the partial-unique slug index. Postgres
+ * raises `unique_violation` (SQLSTATE 23505) which would otherwise bubble out
+ * as a transient retry — we want a permanent `WORKSPACE_SLUG_TAKEN` instead.
+ */
+const runWithSlugViolationGuard = async <T>(write: () => Promise<T>): Promise<T> => {
+  try {
+    return await write()
+  } catch (err) {
+    if (isUniqueViolationOnSlugIndex(err)) {
+      throw new UploadRejection('permanent', 'WORKSPACE_SLUG_TAKEN')
+    }
+    throw err
+  }
+}
+
+const isUniqueViolationOnSlugIndex = (err: unknown): boolean => {
+  // Drizzle wraps the underlying postgres-js error in `.cause`; check both the
+  // outer object and its cause.
+  for (const candidate of [err, (err as { cause?: unknown } | null)?.cause]) {
+    if (!candidate || typeof candidate !== 'object') {
+      continue
+    }
+    const e = candidate as { code?: unknown; constraint_name?: unknown; constraint?: unknown }
+    if (e.code !== '23505') {
+      continue
+    }
+    const constraint =
+      typeof e.constraint === 'string' ? e.constraint : typeof e.constraint_name === 'string' ? e.constraint_name : null
+    if (constraint && constraint.includes('idx_workspaces_slug')) {
+      return true
+    }
+  }
+  return false
 }

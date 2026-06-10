@@ -41,7 +41,7 @@ describe('users DAL', () => {
     it('returns user when found', async () => {
       await insertUser('u1', 'u1@test.com')
       const result = await getUserById(db, 'u1')
-      expect(result).toEqual({ id: 'u1', isAnonymous: false })
+      expect(result).toEqual({ id: 'u1', isAnonymous: false, name: 'Test User', email: 'u1@test.com' })
     })
 
     it('returns null when not found', async () => {
@@ -54,7 +54,7 @@ describe('users DAL', () => {
     it('returns user when found', async () => {
       await insertUser('u2', 'u2@test.com')
       const result = await getUserByEmail(db, 'u2@test.com')
-      expect(result).toEqual({ id: 'u2' })
+      expect(result).toEqual({ id: 'u2', name: 'Test User', email: 'u2@test.com' })
     })
 
     it('returns null when not found', async () => {

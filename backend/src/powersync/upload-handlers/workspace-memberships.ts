@@ -14,6 +14,7 @@ import {
   updateMembership,
   upsertMembership,
 } from '@/dal/workspaces'
+import { getUserById } from '@/dal/users'
 import { computePersonalAdminMembershipId, computePersonalWorkspaceId } from '@shared/workspaces'
 import { allow, reject } from './helpers'
 import { UploadRejection, type UploadHandler, type UploadTx } from './types'
@@ -170,7 +171,22 @@ export const workspaceMembershipsHandler: UploadHandler = {
         if (!workspaceId || !userId || !role) {
           throw new UploadRejection('permanent', 'MEMBERSHIP_FIELDS_REQUIRED')
         }
-        await upsertMembership(tx, { id: op.id, workspaceId, userId, role })
+        // Enrich the row with the canonical name/email from `auth.user` so the
+        // FE Members page has display info without a synced `users` table. The
+        // FE never gets to set these fields directly — the BE is the only
+        // source of truth.
+        const targetUser = await getUserById(tx, userId)
+        if (!targetUser) {
+          throw new UploadRejection('permanent', 'USER_NOT_FOUND')
+        }
+        await upsertMembership(tx, {
+          id: op.id,
+          workspaceId,
+          userId,
+          role,
+          userName: targetUser.name,
+          userEmail: targetUser.email,
+        })
         return
       }
       case 'PATCH': {

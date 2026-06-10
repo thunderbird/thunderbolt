@@ -48,7 +48,7 @@ describe('promotePendingMemberships', () => {
 
   it('is a no-op for users with no matching pending memberships', async () => {
     await insertUser('u1', 'u1@test.com')
-    await promotePendingMemberships(db, 'u1', 'u1@test.com')
+    await promotePendingMemberships(db, 'u1', 'u1@test.com', 'Test User')
 
     const memberships = await db
       .select()
@@ -71,7 +71,7 @@ describe('promotePendingMemberships', () => {
     })
 
     await insertUser('newcomer', 'newcomer@test.com')
-    await promotePendingMemberships(db, 'newcomer', 'newcomer@test.com')
+    await promotePendingMemberships(db, 'newcomer', 'newcomer@test.com', 'Test User')
 
     const memberships = await db
       .select()
@@ -103,7 +103,7 @@ describe('promotePendingMemberships', () => {
 
     await insertUser('mixed', 'mixedcase@test.com')
     // Mixed-case input — `promotePendingMemberships` normalizes before matching.
-    await promotePendingMemberships(db, 'mixed', 'MixedCase@TEST.com')
+    await promotePendingMemberships(db, 'mixed', 'MixedCase@TEST.com', 'Test User')
 
     const promoted = await db
       .select()
@@ -143,7 +143,7 @@ describe('promotePendingMemberships', () => {
     ])
 
     await insertUser('multi', 'multi@test.com')
-    await promotePendingMemberships(db, 'multi', 'multi@test.com')
+    await promotePendingMemberships(db, 'multi', 'multi@test.com', 'Test User')
 
     const memberships = await db
       .select()

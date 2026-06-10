@@ -421,6 +421,10 @@ describe('workspace upload handlers', () => {
         .where(eq(workspaceMembershipsTable.workspaceId, workspaceId))
       expect(stored).toHaveLength(1)
       expect(stored[0].role).toBe('admin')
+      // Display info is denormalized from auth.user by the upload handler so the
+      // FE Members page can render without a synced users projection.
+      expect(stored[0].userName).toBe('Test User')
+      expect(stored[0].userEmail).toBe('owner5@test.com')
     })
 
     it('rejects a second membership write to a personal workspace (immutable)', async () => {
@@ -597,6 +601,9 @@ describe('workspace upload handlers', () => {
       const invitee = memberships.find((m) => m.userId === 'invitee1')
       expect(invitee).toBeDefined()
       expect(invitee?.role).toBe('member')
+      // Promotion carries the matched user's display info onto the membership row.
+      expect(invitee?.userName).toBe('Test User')
+      expect(invitee?.userEmail).toBe('invitee1@test.com')
     })
 
     it('promotes via normalized email match (case + whitespace)', async () => {

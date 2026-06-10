@@ -96,6 +96,8 @@ export const workspacePendingMembershipsHandler: UploadHandler = {
             workspaceId,
             userId: matched.id,
             role,
+            userName: matched.name,
+            userEmail: matched.email,
           })
           await deletePendingMembership(tx, op.id)
         }

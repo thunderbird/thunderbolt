@@ -29,6 +29,7 @@ export const promotePendingMemberships = async (
   database: typeof DbType,
   userId: string,
   email: string,
+  name: string,
 ): Promise<void> => {
   const normalizedEmail = normalizeEmail(email)
 
@@ -52,6 +53,8 @@ export const promotePendingMemberships = async (
           workspaceId: row.workspaceId,
           userId,
           role: row.role,
+          userName: name,
+          userEmail: normalizedEmail,
         })),
       )
       .onConflictDoNothing({
@@ -328,11 +331,18 @@ export type MembershipInput = {
   workspaceId: string
   userId: string
   role: Role
+  /** Denormalized from `auth.user`. Synced down so the Members page can render
+   *  display info without a `users` projection table (PowerSync sync rules
+   *  can't follow `user_id` across buckets). */
+  userName?: string | null
+  userEmail?: string | null
 }
 
 /**
  * Upserts a workspace membership. Conflict target is the natural key
- * `(workspace_id, user_id)`; on conflict the role is refreshed.
+ * `(workspace_id, user_id)`; on conflict the role is refreshed. Display info
+ * (`user_name`, `user_email`) is refreshed too so a stale denormalized row
+ * heals the next time the upload handler runs against it.
  */
 export const upsertMembership = async (database: typeof DbType, input: MembershipInput): Promise<void> => {
   await database
@@ -340,7 +350,11 @@ export const upsertMembership = async (database: typeof DbType, input: Membershi
     .values(input)
     .onConflictDoUpdate({
       target: [workspaceMembershipsTable.workspaceId, workspaceMembershipsTable.userId],
-      set: { role: input.role },
+      set: {
+        role: input.role,
+        ...(input.userName !== undefined ? { userName: input.userName } : {}),
+        ...(input.userEmail !== undefined ? { userEmail: input.userEmail } : {}),
+      },
     })
 }
 

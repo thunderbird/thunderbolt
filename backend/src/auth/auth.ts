@@ -218,7 +218,7 @@ export const createAuth = (database: typeof DbType, emailDeps: AuthEmailDeps = {
             if (isAnonymous) {
               return
             }
-            await promotePendingMemberships(database, createdUser.id, createdUser.email)
+            await promotePendingMemberships(database, createdUser.id, createdUser.email, createdUser.name)
           },
         },
       },

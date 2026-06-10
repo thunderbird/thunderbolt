@@ -12,7 +12,7 @@ import type { FC } from 'react'
  * @example
  *   <StatusIndicator status="online" />
  */
-export type StatusState = 'online' | 'offline' | 'connected' | 'disconnected' | 'connecting' | 'neutral'
+export type StatusState = 'online' | 'offline' | 'connected' | 'disconnected' | 'connecting' | 'error' | 'neutral'
 
 export type StatusIndicatorProps = {
   /**
@@ -42,6 +42,7 @@ const stateClasses: Record<StatusState, string> = {
   offline: 'bg-red-500',
   disconnected: 'bg-red-500',
   connecting: 'bg-yellow-500',
+  error: 'bg-destructive',
   neutral: 'bg-muted-foreground/30',
 }
 

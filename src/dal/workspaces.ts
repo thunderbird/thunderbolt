@@ -17,6 +17,8 @@ import { computePersonalAdminMembershipId, computePersonalWorkspaceId } from '@s
 export type Workspace = {
   id: string
   name: string
+  slug: string | null
+  icon: string | null
   isPersonal: number
   ownerUserId: string | null
   createdAt: string | null
@@ -79,6 +81,8 @@ export const getWorkspacesForUserQuery = (db: AnyDrizzleDatabase, userId: string
     .select({
       id: workspacesTable.id,
       name: workspacesTable.name,
+      slug: workspacesTable.slug,
+      icon: workspacesTable.icon,
       isPersonal: workspacesTable.isPersonal,
       ownerUserId: workspacesTable.ownerUserId,
       createdAt: workspacesTable.createdAt,

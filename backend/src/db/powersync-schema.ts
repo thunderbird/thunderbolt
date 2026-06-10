@@ -40,6 +40,8 @@ export const workspacesTable = powersyncSchema.table(
   {
     id: text('id').primaryKey(),
     name: text('name').notNull(),
+    slug: text('slug'),
+    icon: text('icon'),
     isPersonal: boolean('is_personal').notNull().default(false),
     ownerUserId: text('owner_user_id').references(() => user.id, { onDelete: 'cascade' }),
     createdAt: timestamp('created_at').notNull().defaultNow(),
@@ -50,6 +52,9 @@ export const workspacesTable = powersyncSchema.table(
       .on(table.ownerUserId)
       .where(sql`${table.isPersonal} = true`),
     index('idx_workspaces_owner_user_id').on(table.ownerUserId),
+    uniqueIndex('idx_workspaces_slug')
+      .on(table.slug)
+      .where(sql`${table.slug} IS NOT NULL`),
   ],
 )
 

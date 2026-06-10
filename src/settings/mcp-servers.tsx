@@ -545,8 +545,13 @@ export default function McpServersPage() {
       form.setDialogError(result.errors.join('\n'))
       return
     }
-    await importServersMutation.mutateAsync(result.servers)
-    resetAddDialog()
+    try {
+      await importServersMutation.mutateAsync(result.servers)
+      resetAddDialog()
+    } catch (error) {
+      console.error('Failed to import MCP servers:', error)
+      form.setDialogError('Could not import servers. Please try again.')
+    }
   }
 
   /**

@@ -4,9 +4,15 @@
 
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
-import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form'
-import { Input } from '@/components/ui/input'
+import { Form } from '@/components/ui/form'
 import { PageHeader } from '@/components/ui/page-header'
+import {
+  formatWorkspaceSlugPrefix,
+  slugifyWorkspaceName,
+  WorkspaceFormFields,
+  workspaceFormSchema,
+  type WorkspaceFormValues,
+} from '@/components/workspace/workspace-form-fields'
 import { useDatabase } from '@/contexts'
 import { updateWorkspace, type UpdateWorkspacePatch, type Workspace } from '@/dal'
 import { useActiveWorkspaceMembership } from '@/hooks/use-active-workspace-membership'
@@ -22,8 +28,6 @@ import { Calendar, User } from 'lucide-react'
 import { useCallback, useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { useNavigate } from 'react-router'
-import { z } from 'zod'
-import { IconPicker } from './icon-picker'
 
 const useActiveUserId = (): string | undefined =>
   useTrustDomainRegistry((state) => {
@@ -35,31 +39,6 @@ const useActiveUserId = (): string | undefined =>
     }
     return undefined
   })
-
-const slugMaxLength = 50
-
-/** Slugify any text into a URL-safe shape: lowercase a–z 0–9 hyphens. */
-const slugify = (input: string): string =>
-  input
-    .normalize('NFKD')
-    .replace(/[̀-ͯ]/g, '')
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-+|-+$/g, '')
-    .slice(0, slugMaxLength)
-
-/** Allow lowercase a–z 0–9 and hyphens to flow through the slug input live. */
-const sanitizeSlugInput = (raw: string): string =>
-  raw
-    .toLowerCase()
-    .replace(/[^a-z0-9-]/g, '')
-    .slice(0, slugMaxLength)
-
-/** Strip protocol from the cloud URL for a clean inline prefix. */
-const formatSlugPrefix = (cloudUrl: string | undefined): string => {
-  const host = cloudUrl ? cloudUrl.replace(/^https?:\/\//, '').replace(/\/$/, '') : ''
-  return `${host}/w/`
-}
 
 const WorkspaceMeta = ({ workspace }: { workspace: Workspace }) => {
   const activeUserId = useActiveUserId()
@@ -86,30 +65,20 @@ const WorkspaceMeta = ({ workspace }: { workspace: Workspace }) => {
   )
 }
 
-const renameSchema = z.object({
-  name: z.string().refine((value) => value.trim().length > 0, { message: 'Workspace name is required' }),
-  slug: z.string(),
-  icon: z.string().nullable(),
-})
-
-type RenameFormValues = z.infer<typeof renameSchema>
-
 const renameDebounceMs = 600
 
 const RenameWorkspaceForm = ({ workspace }: { workspace: Workspace }) => {
   const db = useDatabase()
   const cloudUrl = useActiveCloudUrl()
   const isPersonal = workspace.isPersonal === 1
-  const slugPrefix = formatSlugPrefix(cloudUrl)
+  const slugPrefix = formatWorkspaceSlugPrefix(cloudUrl)
 
-  const initialSlug = workspace.slug ?? slugify(workspace.name)
-  const [slugLocked, setSlugLocked] = useState(
-    () => workspace.slug !== null && workspace.slug !== slugify(workspace.name),
-  )
+  const initialSlug = workspace.slug ?? slugifyWorkspaceName(workspace.name)
+  const initialSlugLocked = workspace.slug !== null && workspace.slug !== slugifyWorkspaceName(workspace.name)
   const [submitError, setSubmitError] = useState<string | null>(null)
 
-  const form = useForm<RenameFormValues>({
-    resolver: zodResolver(renameSchema),
+  const form = useForm<WorkspaceFormValues>({
+    resolver: zodResolver(workspaceFormSchema),
     defaultValues: { name: workspace.name, slug: initialSlug, icon: workspace.icon },
     mode: 'onChange',
   })
@@ -124,7 +93,7 @@ const RenameWorkspaceForm = ({ workspace }: { workspace: Workspace }) => {
       patch.name = trimmedName
     }
     if (!isPersonal) {
-      const finalSlug = slugify(slug) || null
+      const finalSlug = slugifyWorkspaceName(slug) || null
       if (finalSlug !== (workspace.slug ?? null)) {
         patch.slug = finalSlug
       }
@@ -155,95 +124,15 @@ const RenameWorkspaceForm = ({ workspace }: { workspace: Workspace }) => {
   return (
     <Form {...form}>
       <form className="flex flex-col gap-4">
-        <FormField
-          control={form.control}
-          name="name"
-          render={({ field }) => (
-            <FormItem>
-              <FormLabel className="text-sm font-medium">Workspace name</FormLabel>
-              <FormControl>
-                <Input
-                  inputSize="lg"
-                  placeholder="e.g. Engineering"
-                  {...field}
-                  onChange={(e) => {
-                    field.onChange(e)
-                    if (!slugLocked && !isPersonal) {
-                      form.setValue('slug', slugify(e.target.value), { shouldDirty: false })
-                    }
-                    debouncedSave()
-                  }}
-                  onBlur={() => {
-                    field.onBlur()
-                    void save()
-                  }}
-                />
-              </FormControl>
-              <FormMessage />
-            </FormItem>
-          )}
+        <WorkspaceFormFields
+          form={form}
+          slugPrefix={slugPrefix}
+          showSlug={!isPersonal}
+          iconPlaceholder={workspace.name.trim()[0]?.toUpperCase()}
+          initialSlugLocked={initialSlugLocked}
+          onDebouncedChange={debouncedSave}
+          onCommit={() => void save()}
         />
-
-        {!isPersonal && (
-          <FormField
-            control={form.control}
-            name="slug"
-            render={({ field }) => (
-              <FormItem>
-                <FormLabel className="text-sm font-medium">Workspace URL</FormLabel>
-                <div className="flex h-[var(--touch-height-lg)] w-full rounded-lg border border-input bg-transparent overflow-hidden focus-within:border-ring focus-within:ring-ring/50 focus-within:ring-[3px]">
-                  <span className="flex items-center px-4 text-[length:var(--font-size-body)] text-muted-foreground bg-muted whitespace-nowrap select-none">
-                    {slugPrefix}
-                  </span>
-                  <FormControl>
-                    <input
-                      type="text"
-                      placeholder="engineering"
-                      className="flex-1 min-w-0 px-4 py-2 bg-transparent outline-none text-[length:var(--font-size-body)]"
-                      {...field}
-                      onChange={(e) => {
-                        const cleaned = sanitizeSlugInput(e.target.value)
-                        field.onChange(cleaned)
-                        setSlugLocked(true)
-                        debouncedSave()
-                      }}
-                      onBlur={() => {
-                        field.onBlur()
-                        void save()
-                      }}
-                    />
-                  </FormControl>
-                </div>
-                <FormMessage />
-              </FormItem>
-            )}
-          />
-        )}
-
-        <FormField
-          control={form.control}
-          name="icon"
-          render={({ field }) => (
-            <FormItem>
-              <FormLabel className="text-sm font-medium">Icon (optional)</FormLabel>
-              <p className="text-sm text-muted-foreground -mt-1">
-                Upload an image or pick an emoji. This icon will appear in your sidebar and notifications.
-              </p>
-              <FormControl>
-                <IconPicker
-                  value={field.value}
-                  onChange={(next) => {
-                    field.onChange(next)
-                    void save()
-                  }}
-                  placeholder={workspace.name.trim()[0]?.toUpperCase()}
-                />
-              </FormControl>
-              <FormMessage />
-            </FormItem>
-          )}
-        />
-
         {submitError && (
           <p className="text-sm text-destructive" role="alert">
             {submitError}

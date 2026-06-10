@@ -175,6 +175,10 @@ export type CreateSharedWorkspaceInput = {
   creatorUserId: string
   /** Display name. Trimmed before storage. */
   name: string
+  /** Optional URL slug. Already-sanitised text expected; persisted as-is. */
+  slug?: string | null
+  /** Optional icon (emoji string or `data:image/...` URL). */
+  icon?: string | null
   /** Raw emails from the invite step. Lowercased + trimmed + deduped here; the
    *  creator's own email is filtered out so the modal can pass session input
    *  verbatim without special-casing. */
@@ -224,10 +228,15 @@ export const createSharedWorkspace = async (
     ),
   )
 
+  const trimmedSlug = input.slug?.trim() || null
+  const icon = input.icon ?? null
+
   await db.transaction(async (tx) => {
     await tx.insert(workspacesTable).values({
       id: workspaceId,
       name: trimmedName,
+      slug: trimmedSlug,
+      icon,
       isPersonal: 0,
       ownerUserId: null,
       createdAt: nowIso,

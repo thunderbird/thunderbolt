@@ -158,6 +158,16 @@ describe('parseMcpServersConfig', () => {
     expect(result.ok).toBe(false)
   })
 
+  it('falls back to a populated "servers" when "mcpServers" is an empty object', () => {
+    const result = parseMcpServersConfig(
+      JSON.stringify({ mcpServers: {}, servers: { Acme: { url: 'https://acme.example/mcp' } } }),
+    )
+
+    expect(result.ok).toBe(true)
+    expect(result.ok && result.servers).toHaveLength(1)
+    expect(result.ok && result.servers[0].name).toBe('Acme')
+  })
+
   it('fails all-or-nothing when one entry among many is bad', () => {
     const result = parseMcpServersConfig(
       JSON.stringify({

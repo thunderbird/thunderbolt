@@ -20,6 +20,10 @@ const bearerPattern = /^Bearer\s+(.+)$/i
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null && !Array.isArray(value)
 
+/** Returns the value as a server-entries record only when it is a non-empty object. */
+const pickEntries = (value: unknown): Record<string, unknown> | undefined =>
+  isRecord(value) && Object.keys(value).length > 0 ? value : undefined
+
 const resolveTransport = (type: unknown): 'http' | 'sse' => (type === 'http' || type === 'sse' ? type : 'http')
 
 const extractBearerToken = (headers: unknown): string | undefined => {
@@ -60,9 +64,9 @@ export const parseMcpServersConfig = (text: string): ParseResult => {
     return { ok: false, errors: ['Expected a JSON object with an "mcpServers" or "servers" key'] }
   }
 
-  const entries = isRecord(root.mcpServers) ? root.mcpServers : isRecord(root.servers) ? root.servers : undefined
+  const entries = pickEntries(root.mcpServers) ?? pickEntries(root.servers)
 
-  if (!entries || Object.keys(entries).length === 0) {
+  if (!entries) {
     return { ok: false, errors: ['No servers found: expected a non-empty "mcpServers" or "servers" object'] }
   }
 

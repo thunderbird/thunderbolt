@@ -191,6 +191,38 @@ describe('RequireWorkspacePermission', () => {
     expect(screen.getByTestId('workspace-members')).toBeInTheDocument()
   })
 
+  it('redirects out when e2eeEnabled is true even for a shared-workspace admin (THU-593)', async () => {
+    const { useConfigStore } = await import('@/api/config-store')
+    const previous = useConfigStore.getState().config
+    useConfigStore.getState().updateConfig({ ...previous, e2eeEnabled: true })
+    try {
+      await seedShared('admin')
+
+      renderWithReactivity(
+        <Routes>
+          <Route
+            path="w/:workspaceId/settings/workspace"
+            element={<RequireWorkspacePermission permissionKey="manage_members" />}
+          >
+            <Route path="members" element={<MembersChild />} />
+          </Route>
+          <Route path="*" element={<LocationProbe />} />
+        </Routes>,
+        {
+          route: `/w/${otherWsId}/settings/workspace/members`,
+          routePath: '/*',
+          tables: ['workspaces', 'workspace_memberships', 'workspace_permissions'],
+          wrapper: DbWrapper,
+        },
+      )
+
+      await waitForElement(() => screen.queryByTestId(`at-/w/${otherWsId}/settings`))
+      expect(screen.queryByTestId('workspace-members')).not.toBeInTheDocument()
+    } finally {
+      useConfigStore.getState().updateConfig(previous)
+    }
+  })
+
   it('renders loading state (no redirect) while membership is still pending', async () => {
     // Workspace exists but no membership row → `isResolved` stays false; guard
     // must not redirect away.

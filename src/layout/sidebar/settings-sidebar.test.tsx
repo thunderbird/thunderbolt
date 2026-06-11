@@ -330,4 +330,29 @@ describe('SettingsSidebarContent — Workspace > Members entry visibility', () =
     await waitForElement(() => screen.queryByText('General'))
     expect(screen.queryByText('Members')).not.toBeInTheDocument()
   })
+
+  it('hides the Members entry when e2eeEnabled is true (THU-593)', async () => {
+    const { useConfigStore } = await import('@/api/config-store')
+    const previous = useConfigStore.getState().config
+    useConfigStore.getState().updateConfig({ ...previous, e2eeEnabled: true })
+    try {
+      await seedSharedWorkspaceWithMembership('admin')
+
+      renderWithReactivity(
+        <SettingsSidebarContent onBackClick={() => {}} onSettingsNavigate={() => {}} isStandalone={onTauri} />,
+        {
+          route: `/w/${otherWsId}/settings`,
+          routePath: '/*',
+          tables: ['workspaces', 'workspace_memberships', 'workspace_permissions'],
+          wrapper: ReactiveSidebarWrapper,
+        },
+      )
+
+      // Wait for an unrelated Workspace-group item so the active workspace has resolved.
+      await waitForElement(() => screen.queryByText('Models'))
+      expect(screen.queryByText('Members')).not.toBeInTheDocument()
+    } finally {
+      useConfigStore.getState().updateConfig(previous)
+    }
+  })
 })

@@ -120,6 +120,18 @@ export const workspaceMembershipsHandler: UploadHandler = {
       return allow()
     }
 
+    // @todo Revisit when the E2EE pipeline supports multi-recipient envelopes
+    // and is workspace-aware. Until then, adding a membership for another user
+    // on an E2EE-enabled server would produce data they can't decrypt. Self-row
+    // bootstraps are exempt (covered above) — the local user already owns the
+    // key for their own data. See THU-593.
+    if (op.op === 'PUT' && ctx.settings.e2eeEnabled) {
+      const targetUserId = typeof op.data?.user_id === 'string' ? op.data.user_id : null
+      if (targetUserId && targetUserId !== ctx.userId) {
+        return reject('permanent', 'E2EE_MEMBERSHIPS_DISABLED')
+      }
+    }
+
     const targetWorkspaceId =
       op.op === 'PUT' ? (typeof op.data?.workspace_id === 'string' ? op.data.workspace_id : null) : null
 

@@ -496,6 +496,57 @@ describe('workspace upload handlers', () => {
         .where(eq(workspaceMembershipsTable.id, a4MembershipId))
       expect(stillThere).toHaveLength(1)
     })
+
+    it('rejects a PUT adding another user when e2eeEnabled is true (THU-593)', async () => {
+      await insertUser('admin-e1', 'admin-e1@test.com')
+      await insertUser('invitee-e1', 'invitee-e1@test.com')
+      const sharedId = uuidv7()
+      await db.insert(workspacesTable).values({ id: sharedId, name: 'E2EE shared', isPersonal: false })
+      await db.insert(workspaceMembershipsTable).values({
+        id: uuidv7(),
+        workspaceId: sharedId,
+        userId: 'admin-e1',
+        role: 'admin',
+      })
+
+      const op: UploadOp = {
+        op: 'PUT',
+        type: 'workspace_memberships',
+        id: uuidv7(),
+        data: { workspace_id: sharedId, user_id: 'invitee-e1', role: 'member' },
+      }
+      const result = await applyUploadBatch(
+        db,
+        [op],
+        ctxFor('admin-e1', { settings: createTestSettings({ e2eeEnabled: true }) }),
+      )
+      expectPermanentReject(result, 'E2EE_MEMBERSHIPS_DISABLED')
+    })
+
+    it('still allows the self-bootstrap PUT when e2eeEnabled is true', async () => {
+      await insertUser('owner-e1', 'owner-e1@test.com')
+      const workspaceId = computePersonalWorkspaceId('owner-e1')
+      const ops: UploadOp[] = [
+        {
+          op: 'PUT',
+          type: 'workspaces',
+          id: workspaceId,
+          data: { is_personal: true, owner_user_id: 'owner-e1', name: 'Personal' },
+        },
+        {
+          op: 'PUT',
+          type: 'workspace_memberships',
+          id: computePersonalAdminMembershipId('owner-e1'),
+          data: { workspace_id: workspaceId, user_id: 'owner-e1', role: 'admin' },
+        },
+      ]
+      const result = await applyUploadBatch(
+        db,
+        ops,
+        ctxFor('owner-e1', { settings: createTestSettings({ e2eeEnabled: true }) }),
+      )
+      expect(result.ok).toBe(true)
+    })
   })
 
   describe('workspace_pending_memberships', () => {
@@ -672,6 +723,29 @@ describe('workspace upload handlers', () => {
         .where(eq(workspaceMembershipsTable.workspaceId, sharedId))
       // only the seed admin — no promotion
       expect(memberships).toHaveLength(1)
+    })
+
+    it('rejects a pending PUT when e2eeEnabled is true (THU-593)', async () => {
+      await insertUser('admin-e2', 'admin-e2@test.com')
+      const sharedId = await seedSharedAsAdmin('admin-e2')
+
+      const op: UploadOp = {
+        op: 'PUT',
+        type: 'workspace_pending_memberships',
+        id: uuidv7(),
+        data: {
+          workspace_id: sharedId,
+          email: 'invitee@test.com',
+          role: 'member',
+          invited_by_user_id: 'admin-e2',
+        },
+      }
+      const result = await applyUploadBatch(
+        db,
+        [op],
+        ctxFor('admin-e2', { settings: createTestSettings({ e2eeEnabled: true }) }),
+      )
+      expectPermanentReject(result, 'E2EE_MEMBERSHIPS_DISABLED')
     })
   })
 

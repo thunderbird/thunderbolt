@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { useConfigStore } from '@/api/config-store'
 import type { WorkspacePermissionKey } from '@/dal'
 import { useWorkspacePermission } from '@/hooks/use-workspace-permission'
 import { useActiveWorkspace } from '@/lib/active-workspace'
@@ -29,12 +30,21 @@ type RequireWorkspacePermissionProps = {
 export const RequireWorkspacePermission = ({ permissionKey }: RequireWorkspacePermissionProps) => {
   const active = useActiveWorkspace()
   const { isAllowed, isResolved } = useWorkspacePermission(permissionKey)
+  // @todo Drop this E2EE redirect once the encryption pipeline supports
+  // multi-recipient envelopes and is workspace-aware (see THU-593). Today an
+  // E2EE-enabled server is effectively single-user — member management would
+  // produce data the invitee can't decrypt, so we hide the affordance entirely.
+  const e2eeEnabled = useConfigStore((state) => state.config.e2eeEnabled === true)
 
   if (!active) {
     return <Loading />
   }
 
   if (active.isPersonal === 1) {
+    return <Navigate to=".." replace />
+  }
+
+  if (e2eeEnabled) {
     return <Navigate to=".." replace />
   }
 

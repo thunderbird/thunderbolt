@@ -26,6 +26,14 @@ const isRole = (v: unknown): v is Role => v === 'admin' || v === 'member'
  */
 export const workspacePendingMembershipsHandler: UploadHandler = {
   validate: async (op, ctx, tx) => {
+    // @todo Revisit when the E2EE pipeline supports multi-recipient envelopes
+    // and is workspace-aware. Pending memberships are by definition for someone
+    // else, so any insert on an E2EE-enabled server would produce data the
+    // invitee can't decrypt. See THU-593.
+    if (op.op === 'PUT' && ctx.settings.e2eeEnabled) {
+      return reject('permanent', 'E2EE_MEMBERSHIPS_DISABLED')
+    }
+
     if (op.op === 'PUT') {
       const targetWorkspaceId = typeof op.data?.workspace_id === 'string' ? op.data.workspace_id : undefined
       if (!targetWorkspaceId) {

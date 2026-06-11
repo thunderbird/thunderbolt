@@ -38,7 +38,13 @@ export const handlers: Record<PowerSyncTableName, UploadHandler> = {
   tasks: createWorkspaceScopedHandler({ tableName: 'tasks', userPrivate: true }),
 
   // Workspace-scoped, shared (any member of the workspace may read/write).
-  models: createWorkspaceScopedHandler({ tableName: 'models', userPrivate: false }),
+  models: createWorkspaceScopedHandler({
+    tableName: 'models',
+    userPrivate: false,
+    addPermissionKey: 'add_models',
+    removePermissionKey: 'remove_models',
+    softDeleteColumn: 'deleted_at',
+  }),
   mcp_servers: createWorkspaceScopedHandler({ tableName: 'mcp_servers', userPrivate: false }),
   prompts: createWorkspaceScopedHandler({ tableName: 'prompts', userPrivate: false }),
   skills: createWorkspaceScopedHandler({

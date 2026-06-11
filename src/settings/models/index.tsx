@@ -36,6 +36,7 @@ import { Switch } from '@/components/ui/switch'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 import { useDatabase } from '@/contexts'
 import { useActiveWorkspaceId } from '@/lib/active-workspace'
+import { useWorkspacePermission } from '@/hooks/use-workspace-permission'
 import { createModel as createModelDAL, deleteModel, getAllModels, resetModelToDefault, updateModel } from '@/dal'
 import { defaultModels } from '@/defaults/models'
 import { isModelModified } from '@/defaults/utils'
@@ -350,6 +351,10 @@ export default function ModelsPage() {
   const getProxyFetch = useProxyFetchGetter()
   const [state, dispatch] = useReducer(modelReducer, initialState)
   const [editingModel, setEditingModel] = useState<Model | null>(null)
+  // Workspace `add_models` / `remove_models` — BE enforces; FE hides
+  // affordances so the user isn't presented with actions that round-trip-fail.
+  const { isAllowed: canAddModels } = useWorkspacePermission('add_models')
+  const { isAllowed: canRemoveModels } = useWorkspacePermission('remove_models')
   const {
     isAddDialogOpen,
     deleteConfirmOpen,
@@ -906,11 +911,13 @@ export default function ModelsPage() {
     <div className="flex flex-col gap-6 p-4 pb-12 w-full max-w-[760px] mx-auto">
       <PageHeader title="Models">
         <Dialog open={isAddDialogOpen} onOpenChange={handleDialogOpenChange}>
-          <DialogTrigger asChild>
-            <Button variant="outline" size="icon" className="rounded-lg">
-              <Plus />
-            </Button>
-          </DialogTrigger>
+          {canAddModels && (
+            <DialogTrigger asChild>
+              <Button variant="outline" size="icon" className="rounded-lg">
+                <Plus />
+              </Button>
+            </DialogTrigger>
+          )}
           <ResponsiveModalContentComposable className="sm:max-w-[500px] max-h-[90vh] overflow-y-auto">
             <ResponsiveModalHeader>
               <ResponsiveModalTitle>Add Model</ResponsiveModalTitle>
@@ -1250,13 +1257,15 @@ export default function ModelsPage() {
                       >
                         <Pen className="h-3 w-3" />
                       </ButtonGroupItem>
-                      <ButtonGroupItem
-                        variant="outline"
-                        onClick={() => dispatch({ type: 'OPEN_DELETE_CONFIRM', modelId: model.id })}
-                        disabled={isSystemModel}
-                      >
-                        <Trash2 className="h-3 w-3" />
-                      </ButtonGroupItem>
+                      {canRemoveModels && (
+                        <ButtonGroupItem
+                          variant="outline"
+                          onClick={() => dispatch({ type: 'OPEN_DELETE_CONFIRM', modelId: model.id })}
+                          disabled={isSystemModel}
+                        >
+                          <Trash2 className="h-3 w-3" />
+                        </ButtonGroupItem>
+                      )}
                     </ButtonGroup>
                   </div>
                 </div>

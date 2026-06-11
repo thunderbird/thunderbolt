@@ -5,6 +5,7 @@
 import { user } from '@/db/auth-schema'
 import {
   agentsTable,
+  modelsTable,
   skillsTable,
   workspaceMembershipsTable,
   workspacePendingMembershipsTable,
@@ -1095,6 +1096,98 @@ describe('workspace upload handlers', () => {
       const result = await applyUploadBatch(db, [softDeleteOp], ctxFor('skMember4'))
       expect(result.ok).toBe(true)
       const stored = await db.select().from(skillsTable).where(eq(skillsTable.id, putOp.id))
+      expect(stored[0].deletedAt).not.toBeNull()
+    })
+  })
+
+  describe('models — workspace permission gating (add_models / remove_models)', () => {
+    const seedSharedWithAdminAndMember = async (adminId: string, memberId: string): Promise<string> => {
+      const workspaceId = uuidv7()
+      await db.insert(workspacesTable).values({ id: workspaceId, isPersonal: false, name: 'Acme' })
+      await db.insert(workspaceMembershipsTable).values({ id: uuidv7(), workspaceId, userId: adminId, role: 'admin' })
+      await db.insert(workspaceMembershipsTable).values({ id: uuidv7(), workspaceId, userId: memberId, role: 'member' })
+      return workspaceId
+    }
+
+    const setRequiredRole = async (
+      workspaceId: string,
+      key: 'add_models' | 'remove_models',
+      requiredRole: 'admin' | 'member',
+    ): Promise<void> => {
+      await db.insert(workspacePermissionsTable).values({ id: uuidv7(), workspaceId, permissionKey: key, requiredRole })
+    }
+
+    const modelPut = (workspaceId: string, id = uuidv7()): UploadOp => ({
+      op: 'PUT',
+      type: 'models',
+      id,
+      data: {
+        workspace_id: workspaceId,
+        provider: 'openai',
+        name: 'Test model',
+        model: 'gpt-test',
+        enabled: 1,
+      },
+    })
+
+    it('PUT model: member rejected when add_models required_role = admin (default)', async () => {
+      await insertUser('mdAdmin1', 'mdadmin1@test.com')
+      await insertUser('mdMember1', 'mdmember1@test.com')
+      const workspaceId = await seedSharedWithAdminAndMember('mdAdmin1', 'mdMember1')
+
+      const op = modelPut(workspaceId)
+      const result = await applyUploadBatch(db, [op], ctxFor('mdMember1'))
+      expectPermanentReject(result, 'INSUFFICIENT_PERMISSION')
+    })
+
+    it('PUT model: member allowed when add_models required_role = member', async () => {
+      await insertUser('mdAdmin2', 'mdadmin2@test.com')
+      await insertUser('mdMember2', 'mdmember2@test.com')
+      const workspaceId = await seedSharedWithAdminAndMember('mdAdmin2', 'mdMember2')
+      await setRequiredRole(workspaceId, 'add_models', 'member')
+
+      const op = modelPut(workspaceId)
+      const result = await applyUploadBatch(db, [op], ctxFor('mdMember2'))
+      expect(result.ok).toBe(true)
+      const stored = await db.select().from(modelsTable).where(eq(modelsTable.id, op.id))
+      expect(stored).toHaveLength(1)
+    })
+
+    it('soft-delete via PATCH(deleted_at) gates on remove_models, not add_models', async () => {
+      await insertUser('mdAdmin3', 'mdadmin3@test.com')
+      await insertUser('mdMember3', 'mdmember3@test.com')
+      const workspaceId = await seedSharedWithAdminAndMember('mdAdmin3', 'mdMember3')
+      const putOp = modelPut(workspaceId)
+      expect((await applyUploadBatch(db, [putOp], ctxFor('mdAdmin3'))).ok).toBe(true)
+      await setRequiredRole(workspaceId, 'add_models', 'member')
+
+      const softDeleteOp: UploadOp = {
+        op: 'PATCH',
+        type: 'models',
+        id: putOp.id,
+        data: { deleted_at: new Date().toISOString() },
+      }
+      const result = await applyUploadBatch(db, [softDeleteOp], ctxFor('mdMember3'))
+      expectPermanentReject(result, 'INSUFFICIENT_PERMISSION')
+    })
+
+    it('soft-delete via PATCH(deleted_at) is allowed when remove_models = member', async () => {
+      await insertUser('mdAdmin4', 'mdadmin4@test.com')
+      await insertUser('mdMember4', 'mdmember4@test.com')
+      const workspaceId = await seedSharedWithAdminAndMember('mdAdmin4', 'mdMember4')
+      const putOp = modelPut(workspaceId)
+      expect((await applyUploadBatch(db, [putOp], ctxFor('mdAdmin4'))).ok).toBe(true)
+      await setRequiredRole(workspaceId, 'remove_models', 'member')
+
+      const softDeleteOp: UploadOp = {
+        op: 'PATCH',
+        type: 'models',
+        id: putOp.id,
+        data: { deleted_at: new Date().toISOString() },
+      }
+      const result = await applyUploadBatch(db, [softDeleteOp], ctxFor('mdMember4'))
+      expect(result.ok).toBe(true)
+      const stored = await db.select().from(modelsTable).where(eq(modelsTable.id, putOp.id))
       expect(stored[0].deletedAt).not.toBeNull()
     })
   })

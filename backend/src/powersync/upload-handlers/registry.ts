@@ -45,7 +45,12 @@ export const handlers: Record<PowerSyncTableName, UploadHandler> = {
   triggers: createWorkspaceScopedHandler({ tableName: 'triggers', userPrivate: false }),
   modes: createWorkspaceScopedHandler({ tableName: 'modes', userPrivate: false }),
   model_profiles: createWorkspaceScopedHandler({ tableName: 'model_profiles', userPrivate: false }),
-  agents: createWorkspaceScopedHandler({ tableName: 'agents', userPrivate: false }),
+  agents: createWorkspaceScopedHandler({
+    tableName: 'agents',
+    userPrivate: false,
+    addPermissionKey: 'add_agents',
+    removePermissionKey: 'remove_agents',
+  }),
 
   // Workspace registry tables — bespoke handlers (commit 2).
   workspaces: workspacesHandler,

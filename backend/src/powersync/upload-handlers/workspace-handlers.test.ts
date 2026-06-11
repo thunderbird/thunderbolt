@@ -3,7 +3,13 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { user } from '@/db/auth-schema'
-import { workspaceMembershipsTable, workspacePendingMembershipsTable, workspacesTable } from '@/db/powersync-schema'
+import {
+  agentsTable,
+  workspaceMembershipsTable,
+  workspacePendingMembershipsTable,
+  workspacePermissionsTable,
+  workspacesTable,
+} from '@/db/powersync-schema'
 import { createTestDb } from '@/test-utils/db'
 import { createTestSettings } from '@/test-utils/settings'
 import { computePersonalAdminMembershipId, computePersonalWorkspaceId } from '@shared/workspaces'
@@ -813,6 +819,126 @@ describe('workspace upload handlers', () => {
         expect(result.rejected[0].code).toBe('PERSONAL_WORKSPACE_OWNER_MISMATCH')
         expect(result.rejected[1].code).toBe('PERSONAL_WORKSPACE_ID_NOT_CANONICAL')
       }
+    })
+  })
+
+  describe('agents — workspace permission gating (add_agents / remove_agents)', () => {
+    /**
+     * Sets up a shared workspace with `adminId` as admin and `memberId` as member.
+     * Both users must have already been inserted via `insertUser`. Returns the
+     * workspace id so the test can target it.
+     */
+    const seedSharedWithAdminAndMember = async (adminId: string, memberId: string): Promise<string> => {
+      const workspaceId = uuidv7()
+      await db.insert(workspacesTable).values({ id: workspaceId, isPersonal: false, name: 'Acme' })
+      await db.insert(workspaceMembershipsTable).values({ id: uuidv7(), workspaceId, userId: adminId, role: 'admin' })
+      await db.insert(workspaceMembershipsTable).values({ id: uuidv7(), workspaceId, userId: memberId, role: 'member' })
+      return workspaceId
+    }
+
+    const setRequiredRole = async (
+      workspaceId: string,
+      key: 'add_agents' | 'remove_agents',
+      requiredRole: 'admin' | 'member',
+    ): Promise<void> => {
+      await db.insert(workspacePermissionsTable).values({ id: uuidv7(), workspaceId, permissionKey: key, requiredRole })
+    }
+
+    const agentPut = (workspaceId: string, id = uuidv7()): UploadOp => ({
+      op: 'PUT',
+      type: 'agents',
+      id,
+      data: {
+        workspace_id: workspaceId,
+        name: 'Test agent',
+        type: 'remote-acp',
+        transport: 'websocket',
+        url: 'wss://example.invalid/acp',
+      },
+    })
+
+    it('PUT agent: admin always succeeds (default required_role = admin)', async () => {
+      await insertUser('agAdmin1', 'agadmin1@test.com')
+      await insertUser('agMember1', 'agmember1@test.com')
+      const workspaceId = await seedSharedWithAdminAndMember('agAdmin1', 'agMember1')
+
+      const op = agentPut(workspaceId)
+      const result = await applyUploadBatch(db, [op], ctxFor('agAdmin1'))
+      expect(result.ok).toBe(true)
+      const stored = await db.select().from(agentsTable).where(eq(agentsTable.id, op.id))
+      expect(stored).toHaveLength(1)
+    })
+
+    it('PUT agent: member rejected when add_agents required_role = admin (default)', async () => {
+      await insertUser('agAdmin2', 'agadmin2@test.com')
+      await insertUser('agMember2', 'agmember2@test.com')
+      const workspaceId = await seedSharedWithAdminAndMember('agAdmin2', 'agMember2')
+
+      const op = agentPut(workspaceId)
+      const result = await applyUploadBatch(db, [op], ctxFor('agMember2'))
+      expectPermanentReject(result, 'INSUFFICIENT_PERMISSION')
+      const stored = await db.select().from(agentsTable).where(eq(agentsTable.id, op.id))
+      expect(stored).toHaveLength(0)
+    })
+
+    it('PUT agent: member allowed when add_agents required_role = member', async () => {
+      await insertUser('agAdmin3', 'agadmin3@test.com')
+      await insertUser('agMember3', 'agmember3@test.com')
+      const workspaceId = await seedSharedWithAdminAndMember('agAdmin3', 'agMember3')
+      await setRequiredRole(workspaceId, 'add_agents', 'member')
+
+      const op = agentPut(workspaceId)
+      const result = await applyUploadBatch(db, [op], ctxFor('agMember3'))
+      expect(result.ok).toBe(true)
+      const stored = await db.select().from(agentsTable).where(eq(agentsTable.id, op.id))
+      expect(stored).toHaveLength(1)
+    })
+
+    it('DELETE agent: member rejected when remove_agents required_role = admin (default)', async () => {
+      await insertUser('agAdmin4', 'agadmin4@test.com')
+      await insertUser('agMember4', 'agmember4@test.com')
+      const workspaceId = await seedSharedWithAdminAndMember('agAdmin4', 'agMember4')
+      // Admin seeds the agent so the row exists.
+      const putOp = agentPut(workspaceId)
+      const putResult = await applyUploadBatch(db, [putOp], ctxFor('agAdmin4'))
+      expect(putResult.ok).toBe(true)
+
+      const deleteOp: UploadOp = { op: 'DELETE', type: 'agents', id: putOp.id }
+      const result = await applyUploadBatch(db, [deleteOp], ctxFor('agMember4'))
+      expectPermanentReject(result, 'INSUFFICIENT_PERMISSION')
+      const stored = await db.select().from(agentsTable).where(eq(agentsTable.id, putOp.id))
+      expect(stored).toHaveLength(1)
+    })
+
+    it('DELETE agent: member allowed when remove_agents required_role = member', async () => {
+      await insertUser('agAdmin5', 'agadmin5@test.com')
+      await insertUser('agMember5', 'agmember5@test.com')
+      const workspaceId = await seedSharedWithAdminAndMember('agAdmin5', 'agMember5')
+      const putOp = agentPut(workspaceId)
+      const putResult = await applyUploadBatch(db, [putOp], ctxFor('agAdmin5'))
+      expect(putResult.ok).toBe(true)
+      await setRequiredRole(workspaceId, 'remove_agents', 'member')
+
+      const deleteOp: UploadOp = { op: 'DELETE', type: 'agents', id: putOp.id }
+      const result = await applyUploadBatch(db, [deleteOp], ctxFor('agMember5'))
+      expect(result.ok).toBe(true)
+      const stored = await db.select().from(agentsTable).where(eq(agentsTable.id, putOp.id))
+      expect(stored).toHaveLength(0)
+    })
+
+    it('add_agents = member does not unlock DELETE (remove_agents still defaults to admin)', async () => {
+      await insertUser('agAdmin6', 'agadmin6@test.com')
+      await insertUser('agMember6', 'agmember6@test.com')
+      const workspaceId = await seedSharedWithAdminAndMember('agAdmin6', 'agMember6')
+      const putOp = agentPut(workspaceId)
+      const putResult = await applyUploadBatch(db, [putOp], ctxFor('agAdmin6'))
+      expect(putResult.ok).toBe(true)
+      // Member can add but the remove permission is still admin.
+      await setRequiredRole(workspaceId, 'add_agents', 'member')
+
+      const deleteOp: UploadOp = { op: 'DELETE', type: 'agents', id: putOp.id }
+      const result = await applyUploadBatch(db, [deleteOp], ctxFor('agMember6'))
+      expectPermanentReject(result, 'INSUFFICIENT_PERMISSION')
     })
   })
 })

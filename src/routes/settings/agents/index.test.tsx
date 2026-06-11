@@ -81,7 +81,9 @@ describe('AgentsSettingsPage — hidden state guard', () => {
     renderPage(authClient, onTauri)
 
     expect(screen.queryByTestId(settingsIndexMarker)).not.toBeInTheDocument()
-    expect(screen.getByRole('button', { name: /add custom agent/i })).toBeInTheDocument()
+    // Header is the stable rendered-marker; the Add affordance is workspace
+    // permission-gated and not seeded in these "hidden state guard" tests.
+    expect(screen.getByRole('heading', { name: 'Agents' })).toBeInTheDocument()
   })
 
   it('renders the page for authenticated users behind the proxy (web)', () => {
@@ -89,7 +91,9 @@ describe('AgentsSettingsPage — hidden state guard', () => {
     renderPage(authClient, offTauri)
 
     expect(screen.queryByTestId(settingsIndexMarker)).not.toBeInTheDocument()
-    expect(screen.getByRole('button', { name: /add custom agent/i })).toBeInTheDocument()
+    // Header is the stable rendered-marker; the Add affordance is workspace
+    // permission-gated and not seeded in these "hidden state guard" tests.
+    expect(screen.getByRole('heading', { name: 'Agents' })).toBeInTheDocument()
   })
 
   it('renders the page for authenticated users on Tauri Standalone', () => {
@@ -97,6 +101,8 @@ describe('AgentsSettingsPage — hidden state guard', () => {
     renderPage(authClient, onTauri)
 
     expect(screen.queryByTestId(settingsIndexMarker)).not.toBeInTheDocument()
-    expect(screen.getByRole('button', { name: /add custom agent/i })).toBeInTheDocument()
+    // Header is the stable rendered-marker; the Add affordance is workspace
+    // permission-gated and not seeded in these "hidden state guard" tests.
+    expect(screen.getByRole('heading', { name: 'Agents' })).toBeInTheDocument()
   })
 })

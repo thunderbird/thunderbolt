@@ -2,14 +2,17 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { toCompilableQuery } from '@powersync/drizzle-driver'
+import { useQuery } from '@powersync/tanstack-react-query'
 import { and, eq } from 'drizzle-orm'
 import { v7 as uuidv7 } from 'uuid'
+import { useDatabase } from '@/contexts'
 import type { AnyDrizzleDatabase } from '../db/database-interface'
 import { workspacePermissionsTable } from '../db/tables'
 import type { DrizzleQueryWithPromise } from '../types'
+import type { WorkspacePermissionKey, WorkspacePermissionRole } from '../../shared/workspaces'
 
-export type WorkspacePermissionKey = 'manage_members' | 'change_roles'
-export type WorkspacePermissionRole = 'admin' | 'member'
+export type { WorkspacePermissionKey, WorkspacePermissionRole }
 
 export type WorkspacePermission = {
   id: string
@@ -54,6 +57,37 @@ export const getRequiredRoleForPermission = async (
  * an empty result set when no row exists yet — consumers default to `'admin'`
  * (Decision 11) until the Permissions page (PR 8) writes an explicit value.
  */
+/**
+ * Live Drizzle query for every `workspace_permissions` row on a workspace.
+ * Use with PowerSync's `toCompilableQuery` for a reactive subscription.
+ */
+export const getPermissionsByWorkspaceQuery = (db: AnyDrizzleDatabase, workspaceId: string) => {
+  const query = db
+    .select()
+    .from(workspacePermissionsTable)
+    .where(eq(workspacePermissionsTable.workspaceId, workspaceId))
+  return query as typeof query & DrizzleQueryWithPromise<WorkspacePermission>
+}
+
+/**
+ * Reactive hook returning every `workspace_permissions` row for `workspaceId`,
+ * along with an `isPending` flag so consumers can disable inputs while the
+ * first live result is in-flight. Empty array is the steady-state for a
+ * workspace that has never had a Permissions row written (consumers default
+ * each key to `'admin'`).
+ */
+export const useWorkspacePermissionsQuery = (
+  workspaceId: string | undefined,
+): { rows: WorkspacePermission[]; isPending: boolean } => {
+  const db = useDatabase()
+  const { data, isPending } = useQuery({
+    queryKey: ['workspace-permissions', 'by-workspace', workspaceId],
+    query: toCompilableQuery(getPermissionsByWorkspaceQuery(db, workspaceId ?? '')),
+    enabled: !!workspaceId,
+  })
+  return { rows: (data ?? []) as WorkspacePermission[], isPending }
+}
+
 export const getRequiredRoleForPermissionQuery = (
   db: AnyDrizzleDatabase,
   workspaceId: string,

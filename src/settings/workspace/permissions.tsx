@@ -27,17 +27,14 @@ const permissionRows: ReadonlyArray<{
   key: WorkspacePermissionKey
   label: string
 }> = [
-  { key: 'join_workspace', label: 'Join the workspace' },
-  { key: 'invite_users', label: 'Invite Users' },
-  { key: 'change_roles', label: 'Change Roles' },
-  { key: 'remove_users', label: 'Remove Users' },
   { key: 'add_agents', label: 'Add Agents' },
   { key: 'remove_agents', label: 'Remove Agents' },
   { key: 'add_skills', label: 'Add Skills' },
   { key: 'remove_skills', label: 'Remove Skills' },
-  { key: 'change_general_settings', label: 'Change General Settings' },
-  { key: 'change_permissions', label: 'Change Permissions' },
-  { key: 'delete_workspace', label: 'Delete Workspace' },
+  { key: 'add_models', label: 'Add Models' },
+  { key: 'remove_models', label: 'Remove Models' },
+  { key: 'add_mcp_servers', label: 'Add MCPs' },
+  { key: 'remove_mcp_servers', label: 'Remove MCPs' },
 ]
 
 /**
@@ -94,7 +91,7 @@ const WorkspacePermissionsPage = () => {
                         </SelectTrigger>
                         <SelectContent>
                           <SelectItem value="admin">Admin</SelectItem>
-                          <SelectItem value="member">Member</SelectItem>
+                          <SelectItem value="member">Everyone</SelectItem>
                         </SelectContent>
                       </Select>
                     </TableCell>

@@ -60,17 +60,14 @@ const seedPermissionRow = async (key: WorkspacePermissionKey, requiredRole: 'adm
 }
 
 const expectedRows: ReadonlyArray<{ key: string; label: string }> = [
-  { key: 'join_workspace', label: 'Join the workspace' },
-  { key: 'invite_users', label: 'Invite Users' },
-  { key: 'change_roles', label: 'Change Roles' },
-  { key: 'remove_users', label: 'Remove Users' },
   { key: 'add_agents', label: 'Add Agents' },
   { key: 'remove_agents', label: 'Remove Agents' },
   { key: 'add_skills', label: 'Add Skills' },
   { key: 'remove_skills', label: 'Remove Skills' },
-  { key: 'change_general_settings', label: 'Change General Settings' },
-  { key: 'change_permissions', label: 'Change Permissions' },
-  { key: 'delete_workspace', label: 'Delete Workspace' },
+  { key: 'add_models', label: 'Add Models' },
+  { key: 'remove_models', label: 'Remove Models' },
+  { key: 'add_mcp_servers', label: 'Add MCPs' },
+  { key: 'remove_mcp_servers', label: 'Remove MCPs' },
 ]
 
 const renderPage = () => {
@@ -128,27 +125,31 @@ describe('WorkspacePermissionsPage', () => {
       expect(screen.getByTestId(`permission-row-${key}`)).toBeInTheDocument()
       expect(screen.getByText(label)).toBeInTheDocument()
     }
-    // The legacy `manage_members` key is not shown here.
+    // Keys that used to be exposed are no longer surfaced on the page.
     expect(screen.queryByTestId('permission-row-manage_members')).not.toBeInTheDocument()
+    expect(screen.queryByTestId('permission-row-invite_users')).not.toBeInTheDocument()
+    expect(screen.queryByTestId('permission-row-change_roles')).not.toBeInTheDocument()
+    expect(screen.queryByTestId('permission-row-delete_workspace')).not.toBeInTheDocument()
   })
 
   it('reflects the current requiredRole from existing workspace_permissions rows', async () => {
     await seedAdminInShared()
-    await seedPermissionRow('invite_users', 'member')
-    await seedPermissionRow('change_roles', 'admin')
-    await seedPermissionRow('delete_workspace', 'member')
+    await seedPermissionRow('add_agents', 'member')
+    await seedPermissionRow('remove_agents', 'admin')
+    await seedPermissionRow('add_skills', 'member')
 
     renderPage()
 
     // Wait until the live query lands the seeded `member` value on one of the
-    // rows — fallback "Admin" renders before the query resolves.
+    // rows — fallback "Admin" renders before the query resolves. `member` is
+    // surfaced in the UI as "Everyone".
     await waitForElement(() => {
-      const trigger = screen.queryByRole('combobox', { name: /Required role for Invite Users/ })
-      return trigger?.textContent?.includes('Member') ? trigger : null
+      const trigger = screen.queryByRole('combobox', { name: /Required role for Add Agents/ })
+      return trigger?.textContent?.includes('Everyone') ? trigger : null
     })
-    expect(screen.getByRole('combobox', { name: /Required role for Invite Users/ })).toHaveTextContent('Member')
-    expect(screen.getByRole('combobox', { name: /Required role for Change Roles/ })).toHaveTextContent('Admin')
-    expect(screen.getByRole('combobox', { name: /Required role for Delete Workspace/ })).toHaveTextContent('Member')
+    expect(screen.getByRole('combobox', { name: /Required role for Add Agents/ })).toHaveTextContent('Everyone')
+    expect(screen.getByRole('combobox', { name: /Required role for Remove Agents/ })).toHaveTextContent('Admin')
+    expect(screen.getByRole('combobox', { name: /Required role for Add Skills/ })).toHaveTextContent('Everyone')
   })
 
   it('falls back to Admin in the select for keys with no permission row', async () => {
@@ -156,9 +157,9 @@ describe('WorkspacePermissionsPage', () => {
 
     renderPage()
 
-    await waitForElement(() => screen.queryByRole('combobox', { name: /Required role for Invite Users/ }))
-    expect(screen.getByRole('combobox', { name: /Required role for Invite Users/ })).toHaveTextContent('Admin')
+    await waitForElement(() => screen.queryByRole('combobox', { name: /Required role for Add Agents/ }))
     expect(screen.getByRole('combobox', { name: /Required role for Add Agents/ })).toHaveTextContent('Admin')
+    expect(screen.getByRole('combobox', { name: /Required role for Remove Skills/ })).toHaveTextContent('Admin')
   })
 
   it('persists a role change through setWorkspacePermissionRequiredRole (upserts when no row exists)', async () => {
@@ -174,8 +175,8 @@ describe('WorkspacePermissionsPage', () => {
     // call (matches what `onValueChange` would emit) so we still cover the
     // upsert behaviour the page relies on.
     const { setWorkspacePermissionRequiredRole } = await import('@/dal')
-    await setWorkspacePermissionRequiredRole(getDb(), otherWsId, 'invite_users', 'member')
+    await setWorkspacePermissionRequiredRole(getDb(), otherWsId, 'add_agents', 'member')
 
-    expect(await readRequiredRole('invite_users')).toBe('member')
+    expect(await readRequiredRole('add_agents')).toBe('member')
   })
 })

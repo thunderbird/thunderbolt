@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { isWorkspaceMember } from '@/dal/workspaces'
+import { getRequiredRoleForPermission, getUserRoleInWorkspace, isWorkspaceMember } from '@/dal/workspaces'
 import {
   powersyncConflictTarget,
   powersyncDbNameToSchemaKey,
@@ -10,6 +10,7 @@ import {
   powersyncTablesByName,
 } from '@/db/powersync-schema'
 import type { PowerSyncTableName } from '@shared/powersync-tables'
+import { permissionAllows, type WorkspacePermissionKey } from '@shared/workspaces'
 import { and, eq } from 'drizzle-orm'
 import type { AnyPgColumn, AnyPgTable } from 'drizzle-orm/pg-core'
 import { allow, reject, toSchemaRecord } from './helpers'
@@ -26,6 +27,32 @@ export type WorkspaceScopedConfig = {
   userPrivate: boolean
   /** Columns the client may not set; stripped from PUT/PATCH payloads. */
   denyColumns?: readonly string[]
+  /**
+   * Permission key gating PUT/PATCH (create/update). When set, the handler
+   * reads `workspace_permissions.required_role` for this key and rejects the
+   * op unless the caller's role satisfies it. Default (no key) keeps the
+   * "any workspace member may write" behaviour.
+   */
+  addPermissionKey?: WorkspacePermissionKey
+  /** Permission key gating DELETE. Same semantics as `addPermissionKey`. */
+  removePermissionKey?: WorkspacePermissionKey
+}
+
+/**
+ * Resolves the caller's role + the configured permission's required role and
+ * returns whether the op is allowed. Defaults `required_role` to `'admin'`
+ * when no `workspace_permissions` row exists for the key (Decision 11) so an
+ * unconfigured workspace stays admin-only.
+ */
+const callerSatisfiesPermission = async (
+  tx: UploadTx,
+  workspaceId: string,
+  userId: string,
+  permissionKey: WorkspacePermissionKey,
+): Promise<boolean> => {
+  const required = (await getRequiredRoleForPermission(tx, workspaceId, permissionKey)) ?? 'admin'
+  const userRole = await getUserRoleInWorkspace(tx, workspaceId, userId)
+  return permissionAllows(userRole, required)
 }
 
 const isString = (v: unknown): v is string => typeof v === 'string'
@@ -79,7 +106,7 @@ const fetchRowScope = async (
  *   moved between workspaces via upload.
  */
 export const createWorkspaceScopedHandler = (cfg: WorkspaceScopedConfig): UploadHandler => {
-  const { tableName, userPrivate, denyColumns = [] } = cfg
+  const { tableName, userPrivate, denyColumns = [], addPermissionKey, removePermissionKey } = cfg
 
   return {
     validate: async (op, ctx, tx) => {
@@ -94,6 +121,12 @@ export const createWorkspaceScopedHandler = (cfg: WorkspaceScopedConfig): Upload
         if (!(await isWorkspaceMember(tx, resolvedWorkspaceId, ctx.userId))) {
           return reject('permanent', 'NOT_WORKSPACE_MEMBER')
         }
+        if (
+          addPermissionKey &&
+          !(await callerSatisfiesPermission(tx, resolvedWorkspaceId, ctx.userId, addPermissionKey))
+        ) {
+          return reject('permanent', 'INSUFFICIENT_PERMISSION')
+        }
         return allow()
       }
 
@@ -106,6 +139,15 @@ export const createWorkspaceScopedHandler = (cfg: WorkspaceScopedConfig): Upload
       }
       if (userPrivate && scope.userId !== ctx.userId) {
         return reject('permanent', 'NOT_ROW_OWNER')
+      }
+      // PATCH gates on `addPermissionKey` (update is part of the "add"
+      // capability); DELETE gates on `removePermissionKey`.
+      const requiredPermissionKey = op.op === 'DELETE' ? removePermissionKey : addPermissionKey
+      if (
+        requiredPermissionKey &&
+        !(await callerSatisfiesPermission(tx, scope.workspaceId, ctx.userId, requiredPermissionKey))
+      ) {
+        return reject('permanent', 'INSUFFICIENT_PERMISSION')
       }
       return allow()
     },

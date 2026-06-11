@@ -2,6 +2,16 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { PageHeader } from '@/components/ui/page-header'
@@ -9,6 +19,8 @@ import { SearchInput } from '@/components/ui/search-input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import {
+  removeMembership,
+  removePendingMembership,
   updateMembershipRole,
   updatePendingMembershipRole,
   useWorkspaceMembersQuery,
@@ -19,6 +31,7 @@ import {
 import { useDatabase } from '@/contexts'
 import { useWorkspacePermission } from '@/hooks/use-workspace-permission'
 import { useActiveWorkspaceId } from '@/lib/active-workspace'
+import { useTrustDomainRegistry } from '@/stores/trust-domain-registry'
 import { InviteMembersModal } from '@/layout/sidebar/invite-members-modal'
 import { Plus } from 'lucide-react'
 import { useState } from 'react'
@@ -39,12 +52,23 @@ const roleLabel = (role: 'admin' | 'member'): string => (role === 'admin' ? 'Adm
 const WorkspaceMembersPage = () => {
   const db = useDatabase()
   const workspaceId = useActiveWorkspaceId() ?? undefined
+  const activeUserId = useTrustDomainRegistry((state) => {
+    if (state.activeTrustDomain?.kind === 'standalone') {
+      return state.localUserId
+    }
+    if (state.activeTrustDomain?.kind === 'server') {
+      return state.servers[state.activeTrustDomain.serverId]?.userId
+    }
+    return undefined
+  })
   const actives = useWorkspaceMembersQuery(workspaceId)
   const pendings = useWorkspacePendingMembershipsQuery(workspaceId)
   const { isAllowed: canChangeRoles } = useWorkspacePermission('change_roles')
   const [inviteOpen, setInviteOpen] = useState(false)
   const [search, setSearch] = useState('')
   const normalizedSearch = search.trim().toLowerCase()
+  // Single confirmation dialog reused across rows. `null` means closed.
+  const [removeTarget, setRemoveTarget] = useState<Row | null>(null)
 
   // The local last-admin computation backs the demote-disable UX. The BE upload
   // handler enforces the same constraint authoritatively — this just keeps the
@@ -77,6 +101,21 @@ const WorkspaceMembersPage = () => {
     await updatePendingMembershipRole(db, pendingId, role)
   }
 
+  const removeLabel = (target: Row): string =>
+    target.kind === 'active' ? (target.row.userEmail ?? target.row.userName ?? target.row.userId) : target.row.email
+
+  const handleConfirmRemove = async () => {
+    if (!removeTarget) {
+      return
+    }
+    if (removeTarget.kind === 'active') {
+      await removeMembership(db, removeTarget.row.id)
+    } else {
+      await removePendingMembership(db, removeTarget.row.id)
+    }
+    setRemoveTarget(null)
+  }
+
   return (
     <div className="flex flex-col p-4 pb-12 w-full max-w-[760px] mx-auto">
       <PageHeader title="Members" />
@@ -89,6 +128,7 @@ const WorkspaceMembersPage = () => {
       </p>
       <div className="mt-6 mb-4 flex items-center gap-2">
         <SearchInput
+          inputSize="lg"
           showIcon
           placeholder="Search Users"
           containerClassName="flex-1"
@@ -120,18 +160,16 @@ const WorkspaceMembersPage = () => {
                     <TableRow key={`active-${entry.row.id}`} data-testid={`member-row-${entry.row.userId}`}>
                       <TableCell>
                         <div className="flex flex-col">
-                          <span className="font-semibold text-[length:var(--font-size-xs)] leading-4">
-                            {entry.row.userName ?? entry.row.userId}
-                          </span>
+                          <span className="font-semibold leading-4">{entry.row.userName ?? entry.row.userId}</span>
                           {entry.row.userEmail && (
-                            <span className="font-normal text-[length:var(--font-size-xs)] leading-4 text-muted-foreground">
+                            <span className="font-normal text-[length:var(--font-size-sm)] leading-4 text-muted-foreground">
                               {entry.row.userEmail}
                             </span>
                           )}
                         </div>
                       </TableCell>
                       <TableCell>
-                        {canChangeRoles ? (
+                        {canChangeRoles && entry.row.userId !== activeUserId ? (
                           <Select
                             value={entry.row.role}
                             onValueChange={(value) =>
@@ -152,20 +190,27 @@ const WorkspaceMembersPage = () => {
                             </SelectContent>
                           </Select>
                         ) : (
-                          <span>{roleLabel(entry.row.role)}</span>
+                          <span className="ml-3">{roleLabel(entry.row.role)}</span>
                         )}
                       </TableCell>
                       <TableCell>Joined</TableCell>
                       <TableCell className="text-right">
-                        <Button variant="ghost" size="sm" disabled>
-                          Remove
-                        </Button>
+                        {!(entry.row.role === 'admin' && adminCount <= 1) && (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => setRemoveTarget(entry)}
+                            aria-label={`Remove ${entry.row.userName ?? entry.row.userId}`}
+                          >
+                            Remove
+                          </Button>
+                        )}
                       </TableCell>
                     </TableRow>
                   ) : (
                     <TableRow key={`pending-${entry.row.id}`} data-testid={`pending-row-${entry.row.email}`}>
                       <TableCell>
-                        <span className="font-normal text-[length:var(--font-size-xs)] leading-4 text-muted-foreground">
+                        <span className="font-normal text-[length:var(--font-size-sm)] leading-4 text-muted-foreground">
                           {entry.row.email}
                         </span>
                       </TableCell>
@@ -189,12 +234,17 @@ const WorkspaceMembersPage = () => {
                             </SelectContent>
                           </Select>
                         ) : (
-                          <span>{roleLabel(entry.row.role)}</span>
+                          <span className="ml-3">{roleLabel(entry.row.role)}</span>
                         )}
                       </TableCell>
                       <TableCell className="text-muted-foreground">Pending</TableCell>
                       <TableCell className="text-right">
-                        <Button variant="ghost" size="sm" disabled>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => setRemoveTarget(entry)}
+                          aria-label={`Remove ${entry.row.email}`}
+                        >
                           Remove
                         </Button>
                       </TableCell>
@@ -207,6 +257,27 @@ const WorkspaceMembersPage = () => {
         </CardContent>
       </Card>
       <InviteMembersModal open={inviteOpen} workspaceId={workspaceId ?? null} onClose={() => setInviteOpen(false)} />
+      <AlertDialog
+        open={removeTarget !== null}
+        onOpenChange={(next) => {
+          if (!next) {
+            setRemoveTarget(null)
+          }
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Remove member?</AlertDialogTitle>
+            <AlertDialogDescription>
+              {removeTarget ? `Remove ${removeLabel(removeTarget)} from this workspace?` : ''}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={handleConfirmRemove}>Remove</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   )
 }

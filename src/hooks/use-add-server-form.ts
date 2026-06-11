@@ -71,7 +71,7 @@ type AddServerFormAction =
   | { type: 'set-url'; value: string; derivedName: string | null }
   | { type: 'set-transport'; value: MCPTransportType }
   | { type: 'set-token'; value: string }
-  | { type: 'clear-test-result' }
+  | { type: 'reset-test' }
   | { type: 'probe-start' }
   | { type: 'probe-result'; result: TestConnectionResult }
   | { type: 'probe-settled' }
@@ -102,8 +102,12 @@ const addServerFormReducer = (state: AddServerFormState, action: AddServerFormAc
       return { ...state, transport: action.value }
     case 'set-token':
       return { ...state, token: action.value }
-    case 'clear-test-result':
-      return { ...state, testResult: { kind: 'idle' } }
+    case 'reset-test':
+      // Invalidating a test clears both the result and any in-flight flag: a probe
+      // is invalidated by bumping `probeIdRef`, which makes its `finally` skip the
+      // `probe-settled` dispatch, so the flag must be cleared here or the spinner
+      // (and the disabled "Test Connection" button) would stay stuck forever.
+      return { ...state, isTestingConnection: false, testResult: { kind: 'idle' } }
     case 'probe-start':
       return { ...state, isTestingConnection: true, testResult: { kind: 'idle' } }
     case 'probe-result':
@@ -194,10 +198,12 @@ export const useAddServerForm = ({
   const resetConnectionTest = () => {
     onClearDialogError()
     probeIdRef.current += 1
-    if (state.testResult.kind === 'idle') {
+    // Nothing to clear when no probe is in flight and the result is already idle —
+    // skip the no-op dispatch (this runs on every keystroke).
+    if (!state.isTestingConnection && state.testResult.kind === 'idle') {
       return
     }
-    dispatch({ type: 'clear-test-result' })
+    dispatch({ type: 'reset-test' })
   }
 
   const testConnection = async () => {

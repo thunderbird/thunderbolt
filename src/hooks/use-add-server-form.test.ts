@@ -96,6 +96,38 @@ describe('useAddServerForm', () => {
     expect(result.current.serverCapabilities).toEqual([])
   })
 
+  it('clears the testing spinner when a field is edited while a probe is in flight', async () => {
+    let resolveProbe: (tools: string[]) => void = () => {}
+    const probeMcpServerTools = mock(
+      () => new Promise<string[]>((resolve) => (resolveProbe = resolve)),
+    ) as unknown as AddServerFormDeps['probeMcpServerTools']
+    const { result } = renderForm(makeDeps({ probeMcpServerTools }))
+
+    act(() => result.current.openDialog())
+    act(() => result.current.changeUrl('https://tools.example.com/mcp'))
+    await act(async () => {
+      getClock().tick(700)
+      await getClock().runAllAsync()
+    })
+    // The debounced probe is in flight.
+    expect(result.current.isTestingConnection).toBe(true)
+
+    // Editing a field mid-probe invalidates it — the spinner (and the disabled
+    // "Test Connection" button) must not stay stuck on the invalidated probe.
+    act(() => result.current.changeToken('pat-123'))
+    expect(result.current.isTestingConnection).toBe(false)
+    expect(result.current.testResult.kind).toBe('idle')
+
+    // The invalidated probe settling later must not clobber the reset state.
+    await act(async () => {
+      resolveProbe(['stale-tool'])
+      await getClock().runAllAsync()
+    })
+    expect(result.current.isTestingConnection).toBe(false)
+    expect(result.current.testResult.kind).toBe('idle')
+    expect(result.current.serverCapabilities).toEqual([])
+  })
+
   it('does not auto-probe while the dialog is closed', async () => {
     const probeMcpServerTools = mock(async () => ['tool']) as unknown as AddServerFormDeps['probeMcpServerTools']
     const { result } = renderForm(makeDeps({ probeMcpServerTools }))

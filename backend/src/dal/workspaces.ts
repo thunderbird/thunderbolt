@@ -229,8 +229,10 @@ export const getWorkspacePermissionById = async (
   return rows[0] ?? null
 }
 
+import type { WorkspacePermissionKey } from '@shared/workspaces'
+
 export type Role = 'admin' | 'member'
-export type WorkspacePermissionKey = 'manage_members' | 'change_roles'
+export type { WorkspacePermissionKey }
 
 export type UpsertWorkspaceInput = {
   id: string

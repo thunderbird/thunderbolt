@@ -242,6 +242,93 @@ describe('McpServersPage Add & Authorize', () => {
     expect(created).toHaveLength(1)
     expect(startMcpOAuthFlow).toHaveBeenCalledTimes(1)
   })
+
+  it('closes the Add dialog once the OAuth flow starts cleanly', async () => {
+    const startMcpOAuthFlow = mock(async () => ({ status: 'redirected' as const }))
+    await renderAddDialog(
+      {
+        probeMcpServerTools: async () => Promise.reject(unauthorized()),
+        classifyMcpServerAuth: async () => 'authorizable' as const,
+        startMcpOAuthFlow: startMcpOAuthFlow as unknown as McpServersPageDeps['startMcpOAuthFlow'],
+      },
+      { url: 'https://oauth.example.com/mcp' },
+    )
+    await flushAutoProbe()
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: /Add & Authorize/ }))
+      await getClock().runAllAsync()
+    })
+
+    // Dialog is gone — no lingering needs-oauth UI to trigger a duplicate add.
+    expect(screen.queryByPlaceholderText('http://localhost:8000/mcp/')).not.toBeInTheDocument()
+  })
+})
+
+describe('McpServersPage probe lifecycle', () => {
+  beforeAll(async () => {
+    await setupTestDatabase()
+  })
+
+  afterAll(async () => {
+    await teardownTestDatabase()
+  })
+
+  beforeEach(async () => {
+    await resetTestDatabase()
+  })
+
+  afterEach(() => {
+    cleanup()
+  })
+
+  it('discards an in-flight probe result after the URL field changes', async () => {
+    let resolveFirst: (tools: string[]) => void = () => {}
+    let call = 0
+    const probeMcpServerTools = mock(() => {
+      call += 1
+      // First probe (URL A) is held open; the later URL keeps its probe pending too.
+      return call === 1 ? new Promise<string[]>((resolve) => (resolveFirst = resolve)) : new Promise<string[]>(() => {})
+    })
+    await renderAddDialog(
+      { probeMcpServerTools: probeMcpServerTools as unknown as McpServersPageDeps['probeMcpServerTools'] },
+      { url: 'https://a.example.com/mcp' },
+    )
+    // Kick the probe for URL A (stays in flight — the promise is held).
+    await act(async () => {
+      getClock().tick(700)
+      await getClock().runAllAsync()
+    })
+    // Edit the URL before A resolves — this must invalidate A's probe.
+    await act(async () => {
+      fireEvent.change(screen.getByPlaceholderText('http://localhost:8000/mcp/'), {
+        target: { value: 'https://b.example.com/mcp' },
+      })
+    })
+    // A's response lands late — its result must be dropped, not shown for URL B.
+    await act(async () => {
+      resolveFirst(['stale-tool'])
+      await getClock().runAllAsync()
+    })
+
+    expect(screen.queryByText('Connection successful!')).not.toBeInTheDocument()
+    expect(screen.queryByText('stale-tool')).not.toBeInTheDocument()
+  })
+
+  it('does not auto-probe after the Add dialog is closed', async () => {
+    const probeMcpServerTools = mock(async () => ['tool'])
+    await renderAddDialog(
+      { probeMcpServerTools: probeMcpServerTools as unknown as McpServersPageDeps['probeMcpServerTools'] },
+      { url: 'https://late.example.com/mcp' },
+    )
+    // Close the dialog before the 700ms debounce fires.
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Cancel' }))
+    })
+    await flushAutoProbe()
+
+    expect(probeMcpServerTools).not.toHaveBeenCalled()
+  })
 })
 
 describe('generateServerName', () => {

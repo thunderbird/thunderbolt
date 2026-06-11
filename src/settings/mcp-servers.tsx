@@ -268,8 +268,10 @@ export default function McpServersPage({ deps = {} }: { deps?: McpServersPageDep
     },
   })
 
-  // Closes the Add dialog and clears all add-form state.
+  // Closes the Add dialog and clears all add-form state. Bumps the probe id so an
+  // in-flight connection probe can't land its result after the dialog is gone.
   const resetAddDialog = () => {
+    probeIdRef.current += 1
     setIsAddDialogOpen(false)
     setNewServerName('')
     setNameManuallyEdited(false)
@@ -283,10 +285,13 @@ export default function McpServersPage({ deps = {} }: { deps?: McpServersPageDep
   }
 
   // Editing any field after a test invalidates that result, so the user can't
-  // add a url+transport+token combination that was never tested together. The
-  // idle guard avoids re-rendering on every keystroke once already cleared.
+  // add a url+transport+token combination that was never tested together. Bumping
+  // the probe id first invalidates any in-flight probe (whose result is now stale
+  // for the edited value) — this must run before the idle guard, because a probe
+  // in flight has already reset testResult to idle.
   const resetConnectionTest = () => {
     clearDialogError()
+    probeIdRef.current += 1
     if (testResult.kind === 'idle') {
       return
     }
@@ -348,7 +353,7 @@ export default function McpServersPage({ deps = {} }: { deps?: McpServersPageDep
   // twice. Editing the credential/transport does NOT auto-probe (it only clears the
   // stale result via resetConnectionTest) — re-test those with the button.
   useEffect(() => {
-    if (!isValidServerUrl(newServerUrl) || newServerUrl === lastAutoTestedUrlRef.current) {
+    if (!isAddDialogOpen || !isValidServerUrl(newServerUrl) || newServerUrl === lastAutoTestedUrlRef.current) {
       return
     }
     const timer = setTimeout(() => {
@@ -358,7 +363,7 @@ export default function McpServersPage({ deps = {} }: { deps?: McpServersPageDep
     }, 700)
     return () => clearTimeout(timer)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [newServerUrl])
+  }, [newServerUrl, isAddDialogOpen])
 
   // Name prefixes the server's tools in the prompt. Use the user's name when
   // set, otherwise fall back to the value derived from the URL.
@@ -381,17 +386,23 @@ export default function McpServersPage({ deps = {} }: { deps?: McpServersPageDep
    * hook rolls the row back and surfaces the error in the dialog. The created
    * server row also surfaces an Authorize action on its card.
    */
-  const handleAddAndAuthorize = () => {
+  const handleAddAndAuthorize = async () => {
     if (!newServerUrl) {
       return
     }
     const url = newServerUrl
     const id = uuidv7()
-    startAddAndAuthorize({
+    const ok = await startAddAndAuthorize({
       serverId: id,
       serverUrl: url,
       createRow: () => addServerMutation.mutateAsync({ id, name: resolveServerName(), url }),
     })
+    // Close the dialog once the flow started cleanly (web navigates away; mobile
+    // opened the system browser; desktop completed inline). On failure it stays
+    // open with the dialog error so the user can retry.
+    if (ok) {
+      resetAddDialog()
+    }
   }
 
   // Leaving the URL field probes immediately (unless the debounce already did).
@@ -536,10 +547,13 @@ export default function McpServersPage({ deps = {} }: { deps?: McpServersPageDep
         <Dialog
           open={isAddDialogOpen}
           onOpenChange={(open) => {
-            setIsAddDialogOpen(open)
-            if (!open) {
-              clearDialogError()
+            if (open) {
+              setIsAddDialogOpen(true)
+              return
             }
+            // Closing (Escape / overlay / X) clears the form and cancels any
+            // in-flight or pending probe, so nothing lands in the background.
+            resetAddDialog()
           }}
         >
           <DialogTrigger asChild>
@@ -706,7 +720,7 @@ export default function McpServersPage({ deps = {} }: { deps?: McpServersPageDep
               )}
             </div>
             <div className="flex justify-end gap-3 pt-2">
-              <Button variant="ghost" onClick={() => setIsAddDialogOpen(false)}>
+              <Button variant="ghost" onClick={resetAddDialog}>
                 Cancel
               </Button>
               {testResult.kind === 'needs-oauth' ? (

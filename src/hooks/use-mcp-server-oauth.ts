@@ -164,7 +164,9 @@ export type UseMcpServerOAuthResult = {
   clearDialogError: () => void
   isAddAuthorizePending: boolean
   startAuthorize: (server: { id: string; url?: string | null }) => Promise<void>
-  startAddAndAuthorize: (args: AddAndAuthorizeArgs) => Promise<void>
+  /** Resolves `true` when the flow started/completed cleanly (caller can close the
+   *  dialog), `false` when it failed and rolled back (dialog stays open with the error). */
+  startAddAndAuthorize: (args: AddAndAuthorizeArgs) => Promise<boolean>
   processCallback: (oauth: McpOAuthCallback | undefined) => Promise<void>
 }
 
@@ -251,9 +253,9 @@ export const useMcpServerOAuth = (options: UseMcpServerOAuthOptions): UseMcpServ
    * desktop completes inline → reconnect. On throw, rolls back the just-created
    * row and surfaces the failure in the dialog (which stays open).
    */
-  const startAddAndAuthorize = async ({ serverId, serverUrl, createRow }: AddAndAuthorizeArgs) => {
+  const startAddAndAuthorize = async ({ serverId, serverUrl, createRow }: AddAndAuthorizeArgs): Promise<boolean> => {
     if (addAuthorizeInFlightRef.current) {
-      return
+      return false
     }
     addAuthorizeInFlightRef.current = true
     dispatch({ type: 'clear-dialog-error' })
@@ -265,6 +267,7 @@ export const useMcpServerOAuth = (options: UseMcpServerOAuthOptions): UseMcpServ
       if (result.status === 'completed') {
         await reconnectServer(serverId)
       }
+      return true
     } catch (error) {
       console.error('Failed to start MCP OAuth flow:', error)
       try {
@@ -276,6 +279,7 @@ export const useMcpServerOAuth = (options: UseMcpServerOAuthOptions): UseMcpServ
         type: 'set-dialog-error',
         message: errorMessage(error, 'Could not start authorization. Please try again.'),
       })
+      return false
     } finally {
       addAuthorizeInFlightRef.current = false
       dispatch({ type: 'set-add-authorize-pending', pending: false })

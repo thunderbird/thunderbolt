@@ -19,19 +19,7 @@ import { useActiveWorkspaceMembership } from '@/hooks/use-active-workspace-membe
 import { useAgentsSettingsHidden } from '@/hooks/use-agents-settings-hidden'
 import { useWorkspacePermission } from '@/hooks/use-workspace-permission'
 import { stripWorkspacePrefix, useActiveWorkspace } from '@/lib/active-workspace'
-import {
-  ArrowLeft,
-  Bot,
-  Cpu,
-  Globe,
-  Plug,
-  Server,
-  Shield,
-  SlidersHorizontal,
-  Smartphone,
-  Users,
-  Zap,
-} from 'lucide-react'
+import { ArrowLeft, Bot, Cpu, Globe, Lock, Plug, Server, SlidersHorizontal, Smartphone, Users, Zap } from 'lucide-react'
 import { useLocation } from 'react-router'
 import { SidebarHeader } from './sidebar-header'
 
@@ -174,7 +162,7 @@ export const SettingsSidebarContent = ({
                   className="cursor-pointer"
                   isActive={subPath === '/settings/workspace/permissions'}
                 >
-                  <Shield className="size-4" />
+                  <Lock className="size-4" />
                   <span>Permissions</span>
                 </SidebarMenuButton>
               </SidebarMenuItem>

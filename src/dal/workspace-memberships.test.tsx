@@ -15,7 +15,8 @@ import '@testing-library/jest-dom'
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'bun:test'
 import { cleanup, screen } from '@testing-library/react'
 import type { ReactNode } from 'react'
-import { useWorkspaceMembersQuery } from './workspace-memberships'
+import { eq } from 'drizzle-orm'
+import { removeMembership, updateMembershipRole, useWorkspaceMembersQuery } from './workspace-memberships'
 import { otherWsId, resetTestDatabase, setupTestDatabase, teardownTestDatabase, wsId } from './test-utils'
 
 const DbWrapper = ({ children }: { children: ReactNode }) => (
@@ -103,5 +104,56 @@ describe('useWorkspaceMembersQuery', () => {
 
     // Probe renders nothing when the array is empty.
     expect(screen.queryByTestId('m-row-u-alice')).not.toBeInTheDocument()
+  })
+})
+
+describe('updateMembershipRole / removeMembership', () => {
+  beforeAll(async () => {
+    await setupTestDatabase()
+  })
+
+  afterAll(async () => {
+    await teardownTestDatabase()
+  })
+
+  beforeEach(async () => {
+    await resetTestDatabase()
+  })
+
+  it('updateMembershipRole flips role on the target row only', async () => {
+    const db = getDb()
+    await seedSharedWorkspace(otherWsId)
+    await seedMembership(otherWsId, 'u-alice', 'Alice', 'a@test.com')
+    await seedMembership(otherWsId, 'u-bob', 'Bob', 'b@test.com')
+
+    await updateMembershipRole(db, `${otherWsId}-u-alice`, 'member')
+
+    const alice = await db
+      .select()
+      .from(workspaceMembershipsTable)
+      .where(eq(workspaceMembershipsTable.id, `${otherWsId}-u-alice`))
+    expect(alice[0].role).toBe('member')
+
+    const bob = await db
+      .select()
+      .from(workspaceMembershipsTable)
+      .where(eq(workspaceMembershipsTable.id, `${otherWsId}-u-bob`))
+    // Bob's role is unchanged.
+    expect(bob[0].role).toBe('admin')
+  })
+
+  it('removeMembership deletes the target row only', async () => {
+    const db = getDb()
+    await seedSharedWorkspace(otherWsId)
+    await seedMembership(otherWsId, 'u-alice', 'Alice', 'a@test.com')
+    await seedMembership(otherWsId, 'u-bob', 'Bob', 'b@test.com')
+
+    await removeMembership(db, `${otherWsId}-u-alice`)
+
+    const remaining = await db
+      .select()
+      .from(workspaceMembershipsTable)
+      .where(eq(workspaceMembershipsTable.workspaceId, otherWsId))
+    expect(remaining.map((r) => r.userId).sort()).toEqual(['u-bob'])
   })
 })

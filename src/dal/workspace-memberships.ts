@@ -105,3 +105,26 @@ export const isWorkspaceAdmin = async (
   const membership = await getMembership(db, workspaceId, userId)
   return membership?.role === 'admin'
 }
+
+/**
+ * Updates the role on a membership row. The BE upload handler enforces
+ * admin-of-workspace + last-admin protection — this DAL is a thin write that
+ * PowerSync emits as a PATCH. UI must hide the affordance for the last admin
+ * (see `RoleSelector` gating) as a UX backstop.
+ */
+export const updateMembershipRole = async (
+  db: AnyDrizzleDatabase,
+  membershipId: string,
+  role: 'admin' | 'member',
+): Promise<void> => {
+  await db.update(workspaceMembershipsTable).set({ role }).where(eq(workspaceMembershipsTable.id, membershipId))
+}
+
+/**
+ * Deletes a membership row. The BE upload handler enforces admin-of-workspace
+ * + last-admin protection + personal-workspace immutability. UI must hide the
+ * Remove button for the last admin row.
+ */
+export const removeMembership = async (db: AnyDrizzleDatabase, membershipId: string): Promise<void> => {
+  await db.delete(workspaceMembershipsTable).where(eq(workspaceMembershipsTable.id, membershipId))
+}

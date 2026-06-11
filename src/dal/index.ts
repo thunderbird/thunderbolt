@@ -156,13 +156,18 @@ export {
   getMembershipsByWorkspace,
   getMembershipsByWorkspaceQuery,
   isWorkspaceAdmin,
+  removeMembership,
+  updateMembershipRole,
   useWorkspaceMembersQuery,
   type WorkspaceMembership,
 } from './workspace-memberships'
 export {
+  addPendingMembership,
   getPendingByWorkspace,
   getPendingByWorkspaceQuery,
+  removePendingMembership,
   useWorkspacePendingMembershipsQuery,
+  type AddPendingMembershipInput,
   type WorkspacePendingMembership,
 } from './workspace-pending-memberships'
 export {

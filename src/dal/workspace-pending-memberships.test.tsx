@@ -15,7 +15,12 @@ import '@testing-library/jest-dom'
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'bun:test'
 import { cleanup, screen } from '@testing-library/react'
 import type { ReactNode } from 'react'
-import { useWorkspacePendingMembershipsQuery } from './workspace-pending-memberships'
+import { eq } from 'drizzle-orm'
+import {
+  addPendingMembership,
+  removePendingMembership,
+  useWorkspacePendingMembershipsQuery,
+} from './workspace-pending-memberships'
 import { otherWsId, resetTestDatabase, setupTestDatabase, teardownTestDatabase, testUserId, wsId } from './test-utils'
 
 const DbWrapper = ({ children }: { children: ReactNode }) => (
@@ -101,5 +106,81 @@ describe('useWorkspacePendingMembershipsQuery', () => {
     })
 
     expect(screen.queryByTestId('p-row-alice@test.com')).not.toBeInTheDocument()
+  })
+})
+
+describe('addPendingMembership / removePendingMembership', () => {
+  beforeAll(async () => {
+    await setupTestDatabase()
+  })
+
+  afterAll(async () => {
+    await teardownTestDatabase()
+  })
+
+  beforeEach(async () => {
+    await resetTestDatabase()
+  })
+
+  it('addPendingMembership inserts a row with normalized email + default member role', async () => {
+    const db = getDb()
+    await seedSharedWorkspace(otherWsId)
+
+    const id = await addPendingMembership(db, {
+      workspaceId: otherWsId,
+      email: '  Alice@TEST.com ',
+      invitedByUserId: testUserId,
+    })
+
+    const rows = await db
+      .select()
+      .from(workspacePendingMembershipsTable)
+      .where(eq(workspacePendingMembershipsTable.id, id))
+    expect(rows).toHaveLength(1)
+    expect(rows[0].email).toBe('alice@test.com')
+    expect(rows[0].role).toBe('member')
+    expect(rows[0].invitedByUserId).toBe(testUserId)
+  })
+
+  it('addPendingMembership honours an explicit admin role', async () => {
+    const db = getDb()
+    await seedSharedWorkspace(otherWsId)
+
+    const id = await addPendingMembership(db, {
+      workspaceId: otherWsId,
+      email: 'admin@test.com',
+      invitedByUserId: testUserId,
+      role: 'admin',
+    })
+
+    const rows = await db
+      .select()
+      .from(workspacePendingMembershipsTable)
+      .where(eq(workspacePendingMembershipsTable.id, id))
+    expect(rows[0].role).toBe('admin')
+  })
+
+  it('addPendingMembership throws on empty / whitespace email', async () => {
+    const db = getDb()
+    await seedSharedWorkspace(otherWsId)
+
+    await expect(
+      addPendingMembership(db, { workspaceId: otherWsId, email: '   ', invitedByUserId: testUserId }),
+    ).rejects.toThrow('Email is required')
+  })
+
+  it('removePendingMembership deletes the target row only', async () => {
+    const db = getDb()
+    await seedSharedWorkspace(otherWsId)
+    await seedPending(otherWsId, 'alice@test.com')
+    await seedPending(otherWsId, 'bob@test.com')
+
+    await removePendingMembership(db, `${otherWsId}-alice@test.com`)
+
+    const remaining = await db
+      .select()
+      .from(workspacePendingMembershipsTable)
+      .where(eq(workspacePendingMembershipsTable.workspaceId, otherWsId))
+    expect(remaining.map((r) => r.email).sort()).toEqual(['bob@test.com'])
   })
 })

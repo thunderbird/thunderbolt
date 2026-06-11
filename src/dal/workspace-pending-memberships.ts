@@ -5,6 +5,7 @@
 import { asc, eq } from 'drizzle-orm'
 import { toCompilableQuery } from '@powersync/drizzle-driver'
 import { useQuery } from '@powersync/tanstack-react-query'
+import { v7 as uuidv7 } from 'uuid'
 import { useDatabase } from '@/contexts'
 import type { AnyDrizzleDatabase } from '../db/database-interface'
 import { workspacePendingMembershipsTable } from '../db/tables'
@@ -57,4 +58,51 @@ export const useWorkspacePendingMembershipsQuery = (workspaceId: string | undefi
     enabled: !!workspaceId,
   })
   return data
+}
+
+export type AddPendingMembershipInput = {
+  workspaceId: string
+  email: string
+  invitedByUserId: string
+  /** Defaults to `'member'`. */
+  role?: 'admin' | 'member'
+}
+
+/**
+ * Inserts a single `workspace_pending_memberships` row. Email is lowercased +
+ * trimmed before write to match the BE's normalization (so cross-device
+ * variants land on the same `(workspace_id, email)` natural key). Throws on
+ * empty input; format validation stays at the UI layer.
+ *
+ * The BE upload handler promotes the pending row to an active membership when
+ * the invited email belongs to an existing user; otherwise the row stays
+ * pending until the invitee signs up.
+ *
+ * Returns the new row id.
+ */
+export const addPendingMembership = async (
+  db: AnyDrizzleDatabase,
+  input: AddPendingMembershipInput,
+): Promise<string> => {
+  const email = input.email.toLowerCase().trim()
+  if (!email) {
+    throw new Error('Email is required')
+  }
+  const id = uuidv7()
+  await db.insert(workspacePendingMembershipsTable).values({
+    id,
+    workspaceId: input.workspaceId,
+    email,
+    role: input.role ?? 'member',
+    invitedByUserId: input.invitedByUserId,
+  })
+  return id
+}
+
+/**
+ * Deletes a pending invite row. The BE upload handler enforces
+ * admin-of-workspace + personal-workspace immutability.
+ */
+export const removePendingMembership = async (db: AnyDrizzleDatabase, pendingId: string): Promise<void> => {
+  await db.delete(workspacePendingMembershipsTable).where(eq(workspacePendingMembershipsTable.id, pendingId))
 }

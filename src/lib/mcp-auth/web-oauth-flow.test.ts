@@ -236,7 +236,25 @@ describe('completeMcpOAuthFlow', () => {
     localStorage.clear()
   })
 
+  const pinnedMetadata = metadata({ authorization_response_iss_parameter_supported: true } as never)
+
+  // Production handshake: the authorization server is pinned at start, so the
+  // callback exchanges against it without re-discovering.
   const seedHandshake = () =>
+    setMcpOAuthState({
+      serverId,
+      serverUrl,
+      stateNonce: 'nonce-1',
+      issuer: authServerUrl,
+      codeVerifier: 'verifier-1',
+      redirectUrl: `${origin}/oauth/callback`,
+      clientInfo: JSON.stringify({ client_id: 'dcr-client' }),
+      authorizationServerUrl: authServerUrl,
+      metadata: JSON.stringify(pinnedMetadata),
+    })
+
+  // Handshake recorded before AS pinning existed: forces the re-discovery fallback.
+  const seedLegacyHandshake = () =>
     setMcpOAuthState({
       serverId,
       serverUrl,
@@ -383,5 +401,89 @@ describe('completeMcpOAuthFlow', () => {
 
     const cred = await getMcpServerCredentials(db, serverId)
     expect(cred).toEqual({ type: 'bearer', token: 'keep-me' })
+  })
+
+  it('reuses the pinned authorization server and never re-discovers it on callback', async () => {
+    const db = getDb()
+    seedHandshake()
+    let exchangedAuthServer: string | URL | undefined
+
+    await completeMcpOAuthFlow(
+      { db, serverId, code: 'auth-code', returnedState: 'nonce-1', returnedIss: authServerUrl, fetchFn: noFetch },
+      {
+        // Re-discovery must NOT run on the pinned path — make it throw to prove it.
+        discoverOAuthProtectedResourceMetadata: async () => {
+          throw new Error('re-discovery must not run on the pinned path')
+        },
+        discoverAuthorizationServerMetadata: async () => {
+          throw new Error('re-discovery must not run on the pinned path')
+        },
+        exchangeAuthorization: async (url) => {
+          exchangedAuthServer = url
+          return { access_token: 'access-1', token_type: 'Bearer' }
+        },
+      },
+    )
+
+    expect(String(exchangedAuthServer)).toBe(authServerUrl)
+  })
+
+  it('ignores a resource server that swaps its authorization server after the redirect', async () => {
+    const db = getDb()
+    seedHandshake()
+    let exchangedAuthServer: string | URL | undefined
+
+    // The server now advertises an attacker-controlled AS. The pinned path must
+    // exchange against the AS captured at start, never the swapped one — otherwise
+    // the code + PKCE verifier would be sent to the attacker's token endpoint.
+    await completeMcpOAuthFlow(
+      { db, serverId, code: 'auth-code', returnedState: 'nonce-1', returnedIss: authServerUrl, fetchFn: noFetch },
+      {
+        discoverOAuthProtectedResourceMetadata: async () =>
+          ({ resource: serverUrl, authorization_servers: ['https://evil.example.com'] }) as never,
+        discoverAuthorizationServerMetadata: async () =>
+          metadata({
+            issuer: 'https://evil.example.com',
+            authorization_endpoint: 'https://evil.example.com/authorize',
+            token_endpoint: 'https://evil.example.com/token',
+          }),
+        exchangeAuthorization: async (url) => {
+          exchangedAuthServer = url
+          return { access_token: 'access-1', token_type: 'Bearer' }
+        },
+      },
+    )
+
+    expect(String(exchangedAuthServer)).toBe(authServerUrl)
+    const cred = await getMcpServerCredentials(db, serverId)
+    expect(cred?.type === 'oauth' && cred.tokenEndpoint).toBe(`${authServerUrl}/token`)
+  })
+
+  it('falls back to discovery for a legacy handshake and rejects an issuer that drifts from start', async () => {
+    const db = getDb()
+    seedLegacyHandshake()
+    let exchanged = false
+
+    await expect(
+      completeMcpOAuthFlow(
+        { db, serverId, code: 'auth-code', returnedState: 'nonce-1', returnedIss: authServerUrl, fetchFn: noFetch },
+        {
+          discoverOAuthProtectedResourceMetadata: async () =>
+            ({ resource: serverUrl, authorization_servers: ['https://evil.example.com'] }) as never,
+          discoverAuthorizationServerMetadata: async () =>
+            metadata({
+              issuer: 'https://evil.example.com',
+              authorization_endpoint: 'https://evil.example.com/authorize',
+              token_endpoint: 'https://evil.example.com/token',
+            }),
+          exchangeAuthorization: async () => {
+            exchanged = true
+            return { access_token: 'x', token_type: 'Bearer' }
+          },
+        },
+      ),
+    ).rejects.toThrow(/changed between start and callback/)
+
+    expect(exchanged).toBe(false)
   })
 })

@@ -13,6 +13,8 @@ const emptyHandshake = {
   issuer: null,
   redirectUrl: null,
   clientInfo: null,
+  authorizationServerUrl: null,
+  metadata: null,
 }
 
 describe('MCP OAuth state', () => {
@@ -33,6 +35,11 @@ describe('MCP OAuth state', () => {
       issuer: 'https://auth.example.com',
       redirectUrl: 'https://app.example.com/oauth/callback',
       clientInfo: JSON.stringify({ client_id: 'client-123' }),
+      authorizationServerUrl: 'https://auth.example.com',
+      metadata: JSON.stringify({
+        issuer: 'https://auth.example.com',
+        token_endpoint: 'https://auth.example.com/token',
+      }),
     }
     setMcpOAuthState(handshake)
 

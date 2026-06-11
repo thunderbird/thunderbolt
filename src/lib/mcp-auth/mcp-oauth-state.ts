@@ -26,6 +26,14 @@ export type McpOAuthState = {
   issuer: string | null
   redirectUrl: string | null
   clientInfo: string | null
+  /**
+   * Authorization server discovered at the start of the flow, pinned so the
+   * callback exchanges the code against the AS we actually authorized with —
+   * never re-derived from the (now-untrusted) server URL after the redirect.
+   */
+  authorizationServerUrl: string | null
+  /** Serialized AS metadata captured at start, reused verbatim for the token exchange. */
+  metadata: string | null
 }
 
 const emptyState = (): McpOAuthState => ({
@@ -36,6 +44,8 @@ const emptyState = (): McpOAuthState => ({
   issuer: null,
   redirectUrl: null,
   clientInfo: null,
+  authorizationServerUrl: null,
+  metadata: null,
 })
 
 /** Reads the in-flight MCP OAuth handshake. Absent fields come back as null. */

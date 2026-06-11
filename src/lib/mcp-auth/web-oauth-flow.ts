@@ -175,9 +175,11 @@ export const startMcpOAuthFlow = async (
   const stateNonce = uuidv4()
   const resource = resourceUrlFromServerUrl(serverUrl)
 
-  // Persist the handshake (issuer + redirect + client_id + nonce) BEFORE building
-  // the authorization URL so the provider's state()/saveCodeVerifier hooks read a
-  // consistent record, and it survives the redirect.
+  // Persist the handshake (issuer + redirect + client_id + nonce + the discovered
+  // AS) BEFORE building the authorization URL so the provider's state()/
+  // saveCodeVerifier hooks read a consistent record, and it survives the redirect.
+  // Pinning authorizationServerUrl + metadata here is what lets the callback skip
+  // re-discovery and exchange the code against the AS we actually authorized with.
   setMcpOAuthState({
     serverId,
     serverUrl,
@@ -185,6 +187,8 @@ export const startMcpOAuthFlow = async (
     issuer: metadata.issuer,
     redirectUrl: provider.redirectUrl,
     clientInfo: JSON.stringify(clientInformation),
+    authorizationServerUrl,
+    metadata: JSON.stringify(metadata),
   })
 
   const { authorizationUrl, codeVerifier } = await start(authorizationServerUrl, {
@@ -212,11 +216,12 @@ type CompleteArgs = {
  * Completes the web OAuth flow on callback: reads the recorded handshake and
  * clears it immediately (single-use; with localStorage the read+clear is
  * atomic, so a concurrent callback can't double-exchange the code), validates
- * the CSRF nonce + RFC 9207 `iss` (assert-and-reject), re-discovers the AS to
- * obtain its token endpoint, exchanges the authorization code (with PKCE
- * verifier + RFC 8707 resource, using the REGISTERED redirect URI — never the
- * server URL), and persists the `oauth` credential blob. On any failure the
- * handshake is already cleared, so a retry requires re-authorization.
+ * the CSRF nonce + RFC 9207 `iss` (assert-and-reject), reuses the authorization
+ * server pinned at the start of the flow (never re-derived from the now-untrusted
+ * server URL), exchanges the authorization code (with PKCE verifier + RFC 8707
+ * resource, using the REGISTERED redirect URI — never the server URL), and
+ * persists the `oauth` credential blob. On any failure the handshake is already
+ * cleared, so a retry requires re-authorization.
  */
 export const completeMcpOAuthFlow = async (
   { db, serverId, code, returnedState, returnedIss, fetchFn }: CompleteArgs,
@@ -231,7 +236,24 @@ export const completeMcpOAuthFlow = async (
   // concurrent callback can't replay the authorization code.
   clearMcpOAuthState()
 
-  const { authorizationServerUrl, metadata } = await discoverServer(handshake.serverUrl ?? '', fetchFn, deps)
+  // Reuse the AS pinned at start. A malicious resource server can vary its PRM
+  // between start and callback, so re-discovering here would let it redirect the
+  // code + PKCE verifier exchange to an endpoint it controls. Only fall back to
+  // re-discovery for a handshake recorded before pinning existed, and even then
+  // reject any issuer drift before touching the token endpoint.
+  const { authorizationServerUrl, metadata } =
+    handshake.authorizationServerUrl && handshake.metadata
+      ? {
+          authorizationServerUrl: handshake.authorizationServerUrl,
+          metadata: JSON.parse(handshake.metadata) as AuthorizationServerMetadata,
+        }
+      : await (async () => {
+          const discovered = await discoverServer(handshake.serverUrl ?? '', fetchFn, deps)
+          if (handshake.issuer && discovered.metadata.issuer !== handshake.issuer) {
+            throw new Error('Authorization server changed between start and callback — authorization rejected.')
+          }
+          return discovered
+        })()
 
   const validation = validateMcpOAuthCallback({
     returnedState,

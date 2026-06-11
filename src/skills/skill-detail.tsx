@@ -29,6 +29,7 @@ export const SkillDetail = ({
   description,
   instruction,
   enabled,
+  canDelete = true,
   onToggleEnabled,
   onEdit,
   onDelete,
@@ -38,6 +39,8 @@ export const SkillDetail = ({
   description: string
   instruction: string
   enabled: boolean
+  /** Defaults to true. Mirrors the workspace `remove_skills` permission. */
+  canDelete?: boolean
   onToggleEnabled: (next: boolean) => void
   onEdit: () => void
   onDelete: () => void
@@ -134,10 +137,12 @@ export const SkillDetail = ({
                   <Plus />
                   Add to chat
                 </DropdownMenuItem>
-                <DropdownMenuItem onClick={onDelete} className="cursor-pointer">
-                  <Trash2 />
-                  Delete
-                </DropdownMenuItem>
+                {canDelete && (
+                  <DropdownMenuItem onClick={onDelete} className="cursor-pointer">
+                    <Trash2 />
+                    Delete
+                  </DropdownMenuItem>
+                )}
               </DropdownMenuContent>
             </DropdownMenu>
           </div>

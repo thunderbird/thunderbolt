@@ -24,6 +24,8 @@ export const SkillsList = ({
   skills,
   activeSkillId,
   isEnabled,
+  canCreate = true,
+  canDelete = true,
   onToggleEnabled,
   onCreate,
   onSelectSkill,
@@ -33,6 +35,10 @@ export const SkillsList = ({
   skills: Skill[]
   activeSkillId: string | null
   isEnabled: (id: string) => boolean
+  /** Defaults to true. Mirrors the workspace `add_skills` permission. */
+  canCreate?: boolean
+  /** Defaults to true. Mirrors the workspace `remove_skills` permission. */
+  canDelete?: boolean
   onToggleEnabled: (id: string, next: boolean) => void
   onCreate: () => void
   onSelectSkill: (id: string) => void
@@ -78,15 +84,17 @@ export const SkillsList = ({
             Skills
           </h1>
         )}
-        <Button
-          variant="outline"
-          size="icon"
-          aria-label="Create skill"
-          className="size-8 rounded-md"
-          onClick={onCreate}
-        >
-          <Plus />
-        </Button>
+        {canCreate && (
+          <Button
+            variant="outline"
+            size="icon"
+            aria-label="Create skill"
+            className="size-8 rounded-md"
+            onClick={onCreate}
+          >
+            <Plus />
+          </Button>
+        )}
       </header>
 
       <div className="relative">
@@ -122,6 +130,7 @@ export const SkillsList = ({
                   skill={skill}
                   enabled
                   isActive={skill.id === activeSkillId}
+                  canDelete={canDelete}
                   onSelect={onSelectSkill}
                   onToggleEnabled={onToggleEnabled}
                   onEdit={onEdit}
@@ -141,6 +150,7 @@ export const SkillsList = ({
                     skill={skill}
                     enabled={false}
                     isActive={skill.id === activeSkillId}
+                    canDelete={canDelete}
                     onSelect={onSelectSkill}
                     onToggleEnabled={onToggleEnabled}
                     onEdit={onEdit}

@@ -100,6 +100,22 @@ export const addPendingMembership = async (
 }
 
 /**
+ * Updates the role on a pending invite row. Same permission semantics as
+ * `updateMembershipRole` — the BE upload handler enforces admin-of-workspace.
+ * No last-admin protection applies here: pending rows aren't yet admins.
+ */
+export const updatePendingMembershipRole = async (
+  db: AnyDrizzleDatabase,
+  pendingId: string,
+  role: 'admin' | 'member',
+): Promise<void> => {
+  await db
+    .update(workspacePendingMembershipsTable)
+    .set({ role })
+    .where(eq(workspacePendingMembershipsTable.id, pendingId))
+}
+
+/**
  * Deletes a pending invite row. The BE upload handler enforces
  * admin-of-workspace + personal-workspace immutability.
  */

@@ -166,6 +166,7 @@ export {
   getPendingByWorkspace,
   getPendingByWorkspaceQuery,
   removePendingMembership,
+  updatePendingMembershipRole,
   useWorkspacePendingMembershipsQuery,
   type AddPendingMembershipInput,
   type WorkspacePendingMembership,

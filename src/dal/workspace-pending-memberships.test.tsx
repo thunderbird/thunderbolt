@@ -19,6 +19,7 @@ import { eq } from 'drizzle-orm'
 import {
   addPendingMembership,
   removePendingMembership,
+  updatePendingMembershipRole,
   useWorkspacePendingMembershipsQuery,
 } from './workspace-pending-memberships'
 import { otherWsId, resetTestDatabase, setupTestDatabase, teardownTestDatabase, testUserId, wsId } from './test-utils'
@@ -167,6 +168,27 @@ describe('addPendingMembership / removePendingMembership', () => {
     await expect(
       addPendingMembership(db, { workspaceId: otherWsId, email: '   ', invitedByUserId: testUserId }),
     ).rejects.toThrow('Email is required')
+  })
+
+  it('updatePendingMembershipRole flips role on the target row only', async () => {
+    const db = getDb()
+    await seedSharedWorkspace(otherWsId)
+    await seedPending(otherWsId, 'alice@test.com')
+    await seedPending(otherWsId, 'bob@test.com')
+
+    await updatePendingMembershipRole(db, `${otherWsId}-alice@test.com`, 'admin')
+
+    const alice = await db
+      .select()
+      .from(workspacePendingMembershipsTable)
+      .where(eq(workspacePendingMembershipsTable.id, `${otherWsId}-alice@test.com`))
+    expect(alice[0].role).toBe('admin')
+
+    const bob = await db
+      .select()
+      .from(workspacePendingMembershipsTable)
+      .where(eq(workspacePendingMembershipsTable.id, `${otherWsId}-bob@test.com`))
+    expect(bob[0].role).toBe('member')
   })
 
   it('removePendingMembership deletes the target row only', async () => {

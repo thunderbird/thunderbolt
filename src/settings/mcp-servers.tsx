@@ -40,9 +40,8 @@ import { toCompilableQuery } from '@powersync/drizzle-driver'
 import { getAuthToken } from '@/lib/auth-token'
 import { isUnauthorizedError } from '@/lib/mcp-errors'
 import { computeEffectiveProxyEnabled, createProxyFetch } from '@/lib/proxy-fetch'
-import { setOAuthState } from '@/lib/oauth-state'
-import { classifyMcpServerAuth, completeMcpOAuthFlow, startMcpOAuthFlow } from '@/lib/mcp-auth/web-oauth-flow'
-import { clearMcpOAuthState, getMcpOAuthState } from '@/lib/mcp-auth/mcp-oauth-state'
+import { classifyMcpServerAuth } from '@/lib/mcp-auth/web-oauth-flow'
+import type { completeMcpOAuthFlow, startMcpOAuthFlow } from '@/lib/mcp-auth/web-oauth-flow'
 import { McpOAuthNeedsReauthError } from '@/lib/mcp-auth/ensure-valid-token'
 import {
   decideTestConnectionResult,
@@ -50,36 +49,19 @@ import {
   type StoredCredentialType,
   type TestConnectionResult,
 } from '@/lib/mcp-auth/auth-decision'
+import { useMcpServerOAuth, type McpOAuthCallback, type OAuthCardState } from '@/hooks/use-mcp-server-oauth'
 
 type ServerTools = {
   [serverId: string]: string[]
 }
 
 /**
- * Per-server OAuth UI state. `needs-auth` / `authorized` are derived from the
- * live connection + stored credentials; `authorizing` / `error` are transient
- * states the page sets while a flow runs or fails.
- */
-type OAuthCardState =
-  | { phase: 'authorizing' }
-  | { phase: 'error'; message: string }
-  | { phase: 'needs-auth'; message?: string }
-
-/**
- * True when an MCP connection error is the M3 "token refresh failed, needs a
- * fresh authorization" signal. `defaultCreateClient` resolves the OAuth token
- * BEFORE constructing the client, so this error surfaces raw (un-wrapped) on the
+ * True when an MCP connection error is the "token refresh failed, needs a fresh
+ * authorization" signal. `defaultCreateClient` resolves the OAuth token BEFORE
+ * constructing the client, so this error surfaces raw (un-wrapped) on the
  * provider's `server.error`.
  */
 const isNeedsReauthError = (err: unknown): boolean => err instanceof McpOAuthNeedsReauthError
-
-/** Maps a raw OAuth `error` query value to a short, user-facing message. */
-const friendlyOAuthError = (error?: string): string => {
-  if (error === 'access_denied') {
-    return 'Authorization was declined.'
-  }
-  return 'Authorization failed. Please try again.'
-}
 
 /**
  * Derives a short, meaningful server name from a remote MCP URL — used to
@@ -123,7 +105,21 @@ const isValidServerUrl = (url: string): boolean => {
   }
 }
 
-export default function McpServersPage() {
+/**
+ * Test-only DI seams. The Add-dialog Test Connection probe and OAuth flow
+ * primitives are module imports in production; tests override them to exercise
+ * the classification + Add & Authorize wiring without real network calls.
+ */
+export type McpServersPageDeps = {
+  probeMcpServerTools?: typeof probeMcpServerTools
+  classifyMcpServerAuth?: typeof classifyMcpServerAuth
+  startMcpOAuthFlow?: typeof startMcpOAuthFlow
+  completeMcpOAuthFlow?: typeof completeMcpOAuthFlow
+}
+
+export default function McpServersPage({ deps = {} }: { deps?: McpServersPageDeps } = {}) {
+  const probeTools = deps.probeMcpServerTools ?? probeMcpServerTools
+  const classifyAuth = deps.classifyMcpServerAuth ?? classifyMcpServerAuth
   const db = useDatabase()
   const cloudUrl = useLocalSettingsStore((s) => s.cloudUrl)
   // Read provider connection state read-only for status display. Sync ownership
@@ -132,7 +128,6 @@ export default function McpServersPage() {
   const { servers: mcpServers, reconnectServer } = useMCP()
   const location = useLocation()
   const navigate = useNavigate()
-  const [oauthCardState, setOauthCardState] = useState<Record<string, OAuthCardState>>({})
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false)
   const [newServerName, setNewServerName] = useState('')
   const [nameManuallyEdited, setNameManuallyEdited] = useState(false)
@@ -142,9 +137,6 @@ export default function McpServersPage() {
   const [isTestingConnection, setIsTestingConnection] = useState(false)
   const [testResult, setTestResult] = useState<TestConnectionResult | { kind: 'idle' }>({ kind: 'idle' })
   const [serverCapabilities, setServerCapabilities] = useState<string[]>([])
-  // Dialog-scoped error shown when "Add & Authorize" fails to start the OAuth flow,
-  // so the failure is visible where the user acted (the dialog stays open).
-  const [addDialogError, setAddDialogError] = useState<string | null>(null)
   const [serverTools, setServerTools] = useState<ServerTools>({})
   const [selectedTools, setSelectedTools] = useState<{ [serverId: string]: { [tool: string]: boolean } }>({})
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState<string | null>(null)
@@ -156,6 +148,32 @@ export default function McpServersPage() {
   // debounce don't double-fire for the same value.
   const probeIdRef = useRef(0)
   const lastAutoTestedUrlRef = useRef<string | null>(null)
+
+  // Web OAuth discovery/exchange share the universal proxy fetch the transport
+  // uses, so SSRF stays covered by `/v1/proxy` and the path matches production.
+  const buildOAuthFetch = () =>
+    createProxyFetch({
+      cloudUrl,
+      getProxyAuthToken: getAuthToken,
+      getProxyEnabled: () => computeEffectiveProxyEnabled(),
+    })
+
+  const {
+    cardStateFor,
+    dialogError,
+    clearDialogError,
+    isAddAuthorizePending,
+    startAuthorize,
+    startAddAndAuthorize,
+    processCallback,
+  } = useMcpServerOAuth({
+    db,
+    buildOAuthFetch,
+    reconnectServer,
+    clearNavState: () => navigate('.', { replace: true, state: null }),
+    startMcpOAuthFlow: deps.startMcpOAuthFlow,
+    completeMcpOAuthFlow: deps.completeMcpOAuthFlow,
+  })
 
   // TODO: Add support for stdio servers
   const { data: servers = [] } = useQuery({
@@ -230,16 +248,16 @@ export default function McpServersPage() {
   })
 
   const addServerMutation = useMutation({
-    mutationFn: async ({ name, url }: { name: string; url: string }): Promise<string> => {
-      const id = uuidv7()
+    // The id is minted by the caller (not here) so an Add & Authorize retry can't
+    // mint a fresh id and orphan a duplicate row when the flow fails and rolls back.
+    mutationFn: async ({ id, name, url }: { id: string; name: string; url: string }) => {
       // OAuth servers have no credential here — they authorize post-create and
-      // reconnect separately (see handleAddAndAuthorize).
+      // reconnect separately (see the Add & Authorize handler).
       await createMcpServerWithCredentials(
         db,
         { id, name, url, type: newServerTransport, enabled: 1 },
         newServerToken ? { type: 'bearer', token: newServerToken } : undefined,
       )
-      return id
     },
   })
 
@@ -260,7 +278,7 @@ export default function McpServersPage() {
     setNewServerToken('')
     setTestResult({ kind: 'idle' })
     setServerCapabilities([])
-    setAddDialogError(null)
+    clearDialogError()
     lastAutoTestedUrlRef.current = null
   }
 
@@ -268,7 +286,7 @@ export default function McpServersPage() {
   // add a url+transport+token combination that was never tested together. The
   // idle guard avoids re-rendering on every keystroke once already cleared.
   const resetConnectionTest = () => {
-    setAddDialogError(null)
+    clearDialogError()
     if (testResult.kind === 'idle') {
       return
     }
@@ -297,7 +315,7 @@ export default function McpServersPage() {
       const headers = buildMcpHeaders(newServerToken || undefined)
       const transport = createMcpTransport(newServerUrl, newServerTransport, cloudUrl, headers)
 
-      const toolNames = await probeMcpServerTools(transport)
+      const toolNames = await probeTools(transport)
       if (probeIdRef.current !== probeId) {
         return
       }
@@ -311,9 +329,7 @@ export default function McpServersPage() {
       // (DCR/CIMD → Add & Authorize), 'token-only' (OAuth advertised but no usable
       // registration, e.g. GitHub → ask for a static token), or 'none'.
       const oauthActionability =
-        !newServerToken && isUnauthorizedError(error)
-          ? await classifyMcpServerAuth(newServerUrl, buildOAuthFetch())
-          : 'none'
+        !newServerToken && isUnauthorizedError(error) ? await classifyAuth(newServerUrl, buildOAuthFetch()) : 'none'
       if (probeIdRef.current !== probeId) {
         return
       }
@@ -352,36 +368,30 @@ export default function McpServersPage() {
     if (!newServerUrl) {
       return
     }
-    await addServerMutation.mutateAsync({ name: resolveServerName(), url: newServerUrl })
+    await addServerMutation.mutateAsync({ id: uuidv7(), name: resolveServerName(), url: newServerUrl })
     resetAddDialog()
   }
 
   /**
-   * Empty-credential + OAuth-actionable path: add the server, then start the web
-   * OAuth flow for the freshly-created id. On success the browser redirects to the
+   * Empty-credential + OAuth-actionable path: hands the create-then-authorize to
+   * the hook as one guarded operation (a caller-minted id keeps a retry from
+   * duplicating the row, and the hook's re-entry guard makes a double-click /
+   * Enter + click create only one row). On success the browser redirects to the
    * authorization server (the dialog leaves with the navigation); on failure the
-   * dialog stays open showing the error, so the failure is visible where the user
-   * acted. The created server row also surfaces an Authorize action on its card.
+   * hook rolls the row back and surfaces the error in the dialog. The created
+   * server row also surfaces an Authorize action on its card.
    */
-  const handleAddAndAuthorize = async () => {
+  const handleAddAndAuthorize = () => {
     if (!newServerUrl) {
       return
     }
-    setAddDialogError(null)
     const url = newServerUrl
-    const id = await addServerMutation.mutateAsync({ name: resolveServerName(), url })
-    try {
-      setOAuthState({ returnContext: '/settings/mcp-servers' })
-      const result = await startMcpOAuthFlow({ db, serverId: id, serverUrl: url, fetchFn: buildOAuthFetch() })
-      // Desktop completes the loopback flow inline; web/mobile navigate away or
-      // await the deep-link callback.
-      if (result.status === 'completed') {
-        await reconnectServer(id)
-      }
-    } catch (error) {
-      console.error('Failed to start MCP OAuth flow:', error)
-      setAddDialogError('Could not start authorization. Please try again.')
-    }
+    const id = uuidv7()
+    startAddAndAuthorize({
+      serverId: id,
+      serverUrl: url,
+      createRow: () => addServerMutation.mutateAsync({ id, name: resolveServerName(), url }),
+    })
   }
 
   // Leaving the URL field probes immediately (unless the debounce already did).
@@ -484,111 +494,11 @@ export default function McpServersPage() {
     deleteServerMutation.mutate(serverId)
   }
 
-  // Web OAuth discovery/exchange share the universal proxy fetch the transport
-  // uses, so SSRF stays covered by `/v1/proxy` and the path matches production.
-  const buildOAuthFetch = () =>
-    createProxyFetch({
-      cloudUrl,
-      getProxyAuthToken: getAuthToken,
-      getProxyEnabled: () => computeEffectiveProxyEnabled(),
-    })
-
-  /**
-   * Begins (or restarts) the OAuth flow for a server: discovers the AS,
-   * registers, builds the PKCE authorize URL, persists the handshake, and
-   * redirects the browser. Records the return path so `OAuthCallback` navigates
-   * back here with the code/state/iss.
-   */
-  const handleAuthorize = async (server: McpServer) => {
-    setOauthCardState((prev) => ({ ...prev, [server.id]: { phase: 'authorizing' } }))
-    setOAuthState({ returnContext: '/settings/mcp-servers' })
-    try {
-      const result = await startMcpOAuthFlow({
-        db,
-        serverId: server.id,
-        serverUrl: server.url ?? '',
-        fetchFn: buildOAuthFetch(),
-      })
-      // Desktop completes the loopback flow inline (same success handling as the
-      // callback effect); web/mobile navigate away or await the deep-link callback.
-      if (result.status === 'completed') {
-        setOauthCardState((prev) => {
-          const next = { ...prev }
-          delete next[server.id]
-          return next
-        })
-        await reconnectServer(server.id)
-      }
-    } catch (error) {
-      console.error('Failed to start MCP OAuth flow:', error)
-      setOauthCardState((prev) => ({
-        ...prev,
-        [server.id]: { phase: 'error', message: 'Could not start authorization. Please try again.' },
-      }))
-    }
-  }
-
   // Completes OAuth when navigated back from `/oauth/callback` with the code,
-  // state and iss in `location.state` (mirrors the integrations callback handler).
+  // state and iss in `location.state`. Thin shim — the hook owns the handling.
   useEffect(() => {
-    const oauth = (location.state as { oauth?: { code?: string; state?: string; iss?: string; error?: string } } | null)
-      ?.oauth
-    if (!oauth) {
-      return
-    }
-
-    const handleCallback = async () => {
-      const { serverId } = getMcpOAuthState()
-      // Always clear the navigation state so a refresh can't reprocess the callback.
-      navigate('.', { replace: true, state: null })
-      if (!serverId) {
-        return
-      }
-
-      if (oauth.error) {
-        setOauthCardState((prev) => ({
-          ...prev,
-          [serverId]: { phase: 'error', message: friendlyOAuthError(oauth.error) },
-        }))
-        clearMcpOAuthState()
-        return
-      }
-
-      if (!oauth.code) {
-        setOauthCardState((prev) => ({
-          ...prev,
-          [serverId]: { phase: 'error', message: 'Authorization was cancelled.' },
-        }))
-        clearMcpOAuthState()
-        return
-      }
-
-      setOauthCardState((prev) => ({ ...prev, [serverId]: { phase: 'authorizing' } }))
-      try {
-        await completeMcpOAuthFlow({
-          db,
-          serverId,
-          code: oauth.code,
-          returnedState: oauth.state,
-          returnedIss: oauth.iss,
-          fetchFn: buildOAuthFetch(),
-        })
-        setOauthCardState((prev) => {
-          const next = { ...prev }
-          delete next[serverId]
-          return next
-        })
-        await reconnectServer(serverId)
-      } catch (error) {
-        console.error('Failed to complete MCP OAuth flow:', error)
-        setOauthCardState((prev) => ({
-          ...prev,
-          [serverId]: { phase: 'error', message: error instanceof Error ? error.message : 'Authorization failed.' },
-        }))
-      }
-    }
-
-    handleCallback()
+    const oauth = (location.state as { oauth?: McpOAuthCallback } | null)?.oauth
+    processCallback(oauth)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [location.state])
 
@@ -600,7 +510,7 @@ export default function McpServersPage() {
    * (generic connection error) for a rejected bearer token.
    */
   const getOAuthCardState = (server: McpServer): OAuthCardState | { phase: 'authorized' } | null => {
-    const explicit = oauthCardState[server.id]
+    const explicit = cardStateFor(server.id)
     if (explicit) {
       return explicit
     }
@@ -628,7 +538,7 @@ export default function McpServersPage() {
           onOpenChange={(open) => {
             setIsAddDialogOpen(open)
             if (!open) {
-              setAddDialogError(null)
+              clearDialogError()
             }
           }}
         >
@@ -785,13 +695,13 @@ export default function McpServersPage() {
                 </div>
               )}
 
-              {addDialogError && (
+              {dialogError && (
                 <div className="p-4 bg-red-50 border border-red-200 rounded-lg">
                   <div className="flex items-center gap-2 text-red-800">
                     <X className="h-4 w-4" />
                     <span className="font-medium">Authorization error</span>
                   </div>
-                  <p className="text-sm text-red-600 mt-1">{addDialogError}</p>
+                  <p className="text-sm text-red-600 mt-1">{dialogError}</p>
                 </div>
               )}
             </div>
@@ -800,7 +710,7 @@ export default function McpServersPage() {
                 Cancel
               </Button>
               {testResult.kind === 'needs-oauth' ? (
-                <Button onClick={handleAddAndAuthorize} disabled={!newServerUrl}>
+                <Button onClick={handleAddAndAuthorize} disabled={!newServerUrl || isAddAuthorizePending}>
                   <LockKeyhole className="h-3.5 w-3.5 mr-1.5" />
                   Add &amp; Authorize
                 </Button>
@@ -891,7 +801,7 @@ export default function McpServersPage() {
                         variant="outline"
                         size="sm"
                         disabled={isAuthorizing}
-                        onClick={() => handleAuthorize(server)}
+                        onClick={() => startAuthorize(server)}
                       >
                         <LockKeyhole className="h-3.5 w-3.5 mr-1.5" />
                         {isAuthorizing ? 'Authorizing...' : 'Authorize'}
@@ -900,7 +810,7 @@ export default function McpServersPage() {
                     {isAuthorized && (
                       <Tooltip>
                         <TooltipTrigger asChild>
-                          <Button variant="ghost" size="sm" onClick={() => handleAuthorize(server)}>
+                          <Button variant="ghost" size="sm" onClick={() => startAuthorize(server)}>
                             <Check className="h-3.5 w-3.5 mr-1.5 text-green-600" />
                             Re-authorize
                           </Button>

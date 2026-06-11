@@ -2,29 +2,50 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { formatDuration, splitPartType } from '@/lib/utils'
+import { type ToolOrDynamicToolUIPart } from '@/lib/assistant-message'
+import { getMcpToolDisplay } from '@/lib/mcp-tool-display'
 import { getToolMetadataSync } from '@/lib/tool-metadata'
-import { type ToolUIPart } from 'ai'
+import { formatDuration } from '@/lib/utils'
+import type { UIMessageMetadata } from '@/types'
+import { getToolName } from 'ai'
 import { AnimatePresence, m } from 'framer-motion'
 
 type ReasoningGroupTitleProps = {
   totalDuration: number
   isGroupReasoning: boolean
-  tools: ToolUIPart[]
+  tools: ToolOrDynamicToolUIPart[]
+  mcpServers?: UIMessageMetadata['mcpServers']
 }
 
-export const ReasoningGroupTitle = ({ totalDuration, isGroupReasoning, tools }: ReasoningGroupTitleProps) => {
+/**
+ * Label shown for the in-progress tool. MCP `dynamic-tool` parts resolve to
+ * `<server> · <tool>` (no curated loading verb); built-ins use their metadata
+ * loading message.
+ */
+const activeToolLabel = (tool: ToolOrDynamicToolUIPart, mcpServers?: UIMessageMetadata['mcpServers']): string => {
+  const toolName = getToolName(tool)
+  if (tool.type === 'dynamic-tool') {
+    const { displayName, serverName } = getMcpToolDisplay(toolName, mcpServers, tool.title)
+    return serverName ? `${serverName} · ${displayName}` : displayName
+  }
+  return getToolMetadataSync(toolName, tool.input).loadingMessage
+}
+
+export const ReasoningGroupTitle = ({
+  totalDuration,
+  isGroupReasoning,
+  tools,
+  mcpServers,
+}: ReasoningGroupTitleProps) => {
   const activeIndex = tools.length - 1
   const activeTool = tools[activeIndex]
-  const activeToolMetadata = activeTool
-    ? getToolMetadataSync(splitPartType(activeTool.type)[1], activeTool.input)
-    : null
+  const loadingLabel = activeTool ? activeToolLabel(activeTool, mcpServers) : null
 
   return (
     <div className="relative">
       <AnimatePresence mode="wait">
         {isGroupReasoning ? (
-          activeToolMetadata ? (
+          loadingLabel ? (
             <m.div
               key={`tool-${activeIndex}`}
               // Skip entrance animation for tools already in progress (e.g., when switching back to a chat with active streaming)
@@ -35,7 +56,7 @@ export const ReasoningGroupTitle = ({ totalDuration, isGroupReasoning, tools }: 
               className="w-full"
             >
               <span className="text-xs text-muted-foreground italic animate-pulse truncate min-w-0">
-                {activeToolMetadata.loadingMessage}
+                {loadingLabel}
               </span>
             </m.div>
           ) : null

@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import type { ReasoningUIPart, TextUIPart, ToolUIPart, UIMessage } from 'ai'
+import type { DynamicToolUIPart, ReasoningUIPart, TextUIPart, ToolUIPart, UIMessage } from 'ai'
 import { describe, expect, it } from 'bun:test'
 import { filterMessageParts, groupMessageParts } from './assistant-message'
 
@@ -14,6 +14,17 @@ const createToolPart = (toolName: string): ToolUIPart =>
     input: { value: toolName },
     output: { value: toolName },
   }) as unknown as ToolUIPart
+
+// MCP tools arrive as `dynamic-tool` parts (tool name in `toolName`, not the part type).
+const createDynamicToolPart = (toolName: string): DynamicToolUIPart =>
+  ({
+    type: 'dynamic-tool',
+    toolName,
+    toolCallId: `${toolName}-call`,
+    state: 'output-available',
+    input: { value: toolName },
+    output: { value: toolName },
+  }) as unknown as DynamicToolUIPart
 
 describe('assistant-message utilities', () => {
   describe('groupMessageParts', () => {
@@ -53,6 +64,22 @@ describe('assistant-message utilities', () => {
           { type: 'tool', content: toolBeta, id: toolBeta.toolCallId },
           { type: 'reasoning', content: reasoningPart, id: 'reasoning-0' },
           { type: 'tool', content: toolGamma, id: toolGamma.toolCallId },
+        ],
+      })
+    })
+
+    it('groups MCP dynamic-tool parts as tool items alongside typed tool parts', () => {
+      const typedTool = createToolPart('search')
+      const mcpTool = createDynamicToolPart('render_list_services')
+
+      const grouped = groupMessageParts([typedTool, mcpTool])
+
+      expect(grouped).toHaveLength(1)
+      expect(grouped[0]).toEqual({
+        type: 'reasoning_group',
+        items: [
+          { type: 'tool', content: typedTool, id: typedTool.toolCallId },
+          { type: 'tool', content: mcpTool, id: mcpTool.toolCallId },
         ],
       })
     })
@@ -98,6 +125,15 @@ describe('assistant-message utilities', () => {
       const filtered = filterMessageParts(parts)
 
       expect(filtered).toEqual([textPart, reasoningPart, toolPart])
+    })
+
+    it('keeps MCP dynamic-tool parts instead of dropping them', () => {
+      const mcpTool = createDynamicToolPart('render_list_services')
+      const textPart: TextUIPart = { type: 'text', text: 'output' }
+
+      const filtered = filterMessageParts([textPart, mcpTool] as UIMessage['parts'])
+
+      expect(filtered).toEqual([textPart, mcpTool])
     })
   })
 })

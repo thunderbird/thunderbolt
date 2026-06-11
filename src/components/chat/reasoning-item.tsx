@@ -2,74 +2,112 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { type ReasoningGroupItem } from '@/lib/assistant-message'
+import { type ReasoningGroupItem, type ToolOrDynamicToolUIPart } from '@/lib/assistant-message'
+import { getMcpToolDisplay } from '@/lib/mcp-tool-display'
 import { getToolMetadataSync } from '@/lib/tool-metadata'
-import { formatDuration, splitPartType } from '@/lib/utils'
-import { type ReasoningUIPart, type ToolUIPart } from 'ai'
-import { Brain, DotIcon, Loader2 } from 'lucide-react'
+import { formatDuration } from '@/lib/utils'
+import type { UIMessageMetadata } from '@/types'
+import { getToolName, type ReasoningUIPart } from 'ai'
+import { Brain, DotIcon, Loader2, type LucideIcon } from 'lucide-react'
+import type { ComponentType, SVGProps } from 'react'
 
 type ReasoningItemProps = {
   part: ReasoningGroupItem
   onClick: () => void
   reasoningTime?: number
   isGroupReasoning: boolean
+  mcpServers?: UIMessageMetadata['mcpServers']
 }
 
-const getItemData = (part: ReasoningGroupItem, isGroupReasoning: boolean) => {
-  switch (part.type) {
-    case 'reasoning': {
-      const reasoningPart = part.content as ReasoningUIPart
+type ItemIcon = LucideIcon | ComponentType<SVGProps<SVGSVGElement>>
 
-      return {
-        Icon: Brain,
-        displayName: 'Thinking',
-        isLoading: isGroupReasoning && reasoningPart.state === 'streaming',
-        duration: (reasoningPart as any).metadata?.duration,
-      }
-    }
+type ItemData = {
+  Icon: ItemIcon
+  displayName: string
+  /** Resolved MCP server name, rendered as a `<server> · <tool>` prefix when present. */
+  serverName?: string
+  isLoading: boolean
+}
 
-    case 'tool': {
-      const toolPart = part.content as ToolUIPart
-      const [, toolName] = splitPartType(toolPart.type)
-      const metadata = getToolMetadataSync(toolName)
+const isToolLoading = (part: ToolOrDynamicToolUIPart, isGroupReasoning: boolean): boolean =>
+  isGroupReasoning && part.state !== 'output-available' && part.state !== 'output-error'
 
-      return {
-        Icon: metadata.icon || DotIcon,
-        displayName: metadata.displayName,
-        isLoading: isGroupReasoning && toolPart.state !== 'output-available' && toolPart.state !== 'output-error',
-        duration: (toolPart as any).metadata?.duration,
-      }
-    }
+/**
+ * MCP tools arrive as `dynamic-tool` parts and resolve their label/icon/server
+ * from the message's `mcpServers` map; typed `tool-<name>` parts are built-ins
+ * and keep their curated metadata icon.
+ */
+const getToolItemData = (
+  toolPart: ToolOrDynamicToolUIPart,
+  isGroupReasoning: boolean,
+  mcpServers?: UIMessageMetadata['mcpServers'],
+): ItemData => {
+  const toolName = getToolName(toolPart)
+  const isLoading = isToolLoading(toolPart, isGroupReasoning)
 
-    default:
-      return null
+  if (toolPart.type === 'dynamic-tool') {
+    const { displayName, icon, serverName } = getMcpToolDisplay(toolName, mcpServers, toolPart.title)
+    return { Icon: icon.icon, displayName, serverName, isLoading }
   }
+
+  const metadata = getToolMetadataSync(toolName)
+  return { Icon: metadata.icon || DotIcon, displayName: metadata.displayName, isLoading }
 }
 
-export const ReasoningItem = ({ part, onClick, reasoningTime, isGroupReasoning }: ReasoningItemProps) => {
-  const itemData = getItemData(part, isGroupReasoning)
+const getItemData = (
+  part: ReasoningGroupItem,
+  isGroupReasoning: boolean,
+  mcpServers?: UIMessageMetadata['mcpServers'],
+): ItemData | null => {
+  if (part.type === 'reasoning') {
+    const reasoningPart = part.content as ReasoningUIPart
+    return {
+      Icon: Brain,
+      displayName: 'Thinking',
+      isLoading: isGroupReasoning && reasoningPart.state === 'streaming',
+    }
+  }
+
+  if (part.type === 'tool') {
+    return getToolItemData(part.content as ToolOrDynamicToolUIPart, isGroupReasoning, mcpServers)
+  }
+
+  return null
+}
+
+export const ReasoningItem = ({ part, onClick, reasoningTime, isGroupReasoning, mcpServers }: ReasoningItemProps) => {
+  const itemData = getItemData(part, isGroupReasoning, mcpServers)
 
   if (!itemData) {
     return null
   }
 
-  const Icon = itemData.Icon
+  const { Icon, displayName, serverName, isLoading } = itemData
 
   return (
     <button
       onClick={onClick}
       className="flex items-center w-full py-2 px-3 hover:bg-accent/50 rounded-md transition-colors group text-left"
     >
-      <div className="flex gap-3 flex-row flex-1 items-center">
-        {itemData.isLoading ? (
-          <Loader2 className={`h-4 w-4 animate-spin text-muted-foreground`} />
+      <div className="flex gap-3 flex-row flex-1 items-center min-w-0">
+        {isLoading ? (
+          <Loader2 className="h-4 w-4 animate-spin text-muted-foreground flex-shrink-0" />
         ) : (
-          !!Icon && <Icon className="h-4 w-4 text-muted-foreground" />
+          // color="currentColor" keeps simple-icons brand glyphs monochrome (their default), matching lucide.
+          <Icon className="h-4 w-4 text-muted-foreground flex-shrink-0" color="currentColor" />
         )}
-        <span className="text-sm font-medium truncate text-foreground">{itemData.displayName}</span>
+        <span className="text-sm font-medium truncate text-foreground">
+          {serverName ? (
+            <>
+              <span className="text-muted-foreground">{serverName}</span> · {displayName}
+            </>
+          ) : (
+            displayName
+          )}
+        </span>
       </div>
       <span className="text-xs text-muted-foreground flex-shrink-0">
-        {reasoningTime ? formatDuration(reasoningTime) : itemData.isLoading ? '...' : '—'}
+        {reasoningTime ? formatDuration(reasoningTime) : isLoading ? '...' : '—'}
       </span>
     </button>
   )

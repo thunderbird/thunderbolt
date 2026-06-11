@@ -3,9 +3,10 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import type { ReasoningGroupItem } from '@/lib/assistant-message'
+import type { UIMessageMetadata } from '@/types'
 import '@testing-library/jest-dom'
 import { fireEvent, render, screen } from '@testing-library/react'
-import type { ReasoningUIPart, ToolUIPart } from 'ai'
+import type { DynamicToolUIPart, ReasoningUIPart, ToolUIPart } from 'ai'
 import { describe, expect, it, mock } from 'bun:test'
 import { ReasoningItem } from './reasoning-item'
 
@@ -42,6 +43,20 @@ const createMockToolPart = (
 
   return part
 }
+
+// MCP tools render as `dynamic-tool` parts; the bare name is namespaced with the server prefix.
+const createMockDynamicToolPart = (
+  toolName: string,
+  state: DynamicToolUIPart['state'] = 'output-available',
+): DynamicToolUIPart =>
+  ({
+    type: 'dynamic-tool',
+    toolName,
+    toolCallId: `call-${toolName}-${Math.random()}`,
+    state,
+    input: {},
+    output: state === 'output-available' ? { result: 'data' } : undefined,
+  }) as unknown as DynamicToolUIPart
 
 describe('ReasoningItem', () => {
   const testReasoningTime = 1000
@@ -261,6 +276,35 @@ describe('ReasoningItem', () => {
       fireEvent.click(button)
 
       expect(mockOnClick).toHaveBeenCalledTimes(1)
+    })
+  })
+
+  describe('mcp dynamic-tool type', () => {
+    const mcpServers: UIMessageMetadata['mcpServers'] = {
+      render: { id: 'srv-1', name: 'Render', url: 'https://render.com' },
+    }
+
+    it('renders "<server> · <tool>" when the prefix resolves to a server', () => {
+      const toolPart = createMockDynamicToolPart('render_list_services')
+      const part: ReasoningGroupItem = { type: 'tool', content: toolPart, id: toolPart.toolCallId }
+
+      const { container } = render(
+        <ReasoningItem part={part} onClick={mock()} isGroupReasoning={false} mcpServers={mcpServers} />,
+      )
+
+      // Label composes the server name and de-prefixed tool name; the brand icon's
+      // SVG <title> also reads "Render", so assert on the composed text instead.
+      expect(container.textContent).toContain('Render · List Services')
+    })
+
+    it('falls back to the prettified full name with no server when the map is missing', () => {
+      const toolPart = createMockDynamicToolPart('render_list_services')
+      const part: ReasoningGroupItem = { type: 'tool', content: toolPart, id: toolPart.toolCallId }
+
+      render(<ReasoningItem part={part} onClick={mock()} isGroupReasoning={false} />)
+
+      expect(screen.queryByText('Render')).not.toBeInTheDocument()
+      expect(screen.getByText(/Render List Services/i)).toBeInTheDocument()
     })
   })
 

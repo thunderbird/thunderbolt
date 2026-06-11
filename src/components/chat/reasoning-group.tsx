@@ -4,9 +4,10 @@
 
 import { useObjectView } from '@/content-view/context'
 import { useAutoScroll } from '@/hooks/use-auto-scroll'
-import { type ReasoningGroupItem } from '@/lib/assistant-message'
+import { type ReasoningGroupItem, type ToolOrDynamicToolUIPart } from '@/lib/assistant-message'
 import { computeWallClockTime } from '@/lib/utils'
-import { type ReasoningUIPart, type ToolUIPart } from 'ai'
+import type { UIMessageMetadata } from '@/types'
+import { type ReasoningUIPart } from 'ai'
 import { CheckIcon, Loader2 } from 'lucide-react'
 import { Expandable } from '../ui/expandable'
 import { ReasoningDisplay } from './reasoning-display'
@@ -20,6 +21,7 @@ type ReasoningGroupProps = {
   hasTextPart: boolean
   reasoningTime: Record<string, number>
   reasoningStartTimes?: Record<string, number>
+  mcpServers?: UIMessageMetadata['mcpServers']
 }
 
 export const ReasoningGroup = ({
@@ -29,10 +31,11 @@ export const ReasoningGroup = ({
   hasTextPart,
   reasoningTime,
   reasoningStartTimes,
+  mcpServers,
 }: ReasoningGroupProps) => {
   const { openObjectSidebar } = useObjectView()
 
-  const tools = parts.filter((part) => part.type === 'tool').map((part) => part.content) as ToolUIPart[]
+  const tools = parts.filter((part) => part.type === 'tool').map((part) => part.content) as ToolOrDynamicToolUIPart[]
 
   const currentReasoningPart = parts
     .filter((part) => part.type === 'reasoning')
@@ -81,7 +84,14 @@ export const ReasoningGroup = ({
           )
         }
         defaultOpen={false}
-        title={<ReasoningGroupTitle totalDuration={totalDuration} isGroupReasoning={isGroupReasoning} tools={tools} />}
+        title={
+          <ReasoningGroupTitle
+            totalDuration={totalDuration}
+            isGroupReasoning={isGroupReasoning}
+            tools={tools}
+            mcpServers={mcpServers}
+          />
+        }
       >
         <div className="max-h-[200px] overflow-y-auto" ref={scrollContainerRef}>
           {parts.map((part, index) => {
@@ -89,9 +99,10 @@ export const ReasoningGroup = ({
               <ReasoningItem
                 key={index}
                 part={part}
-                onClick={() => openObjectSidebar(part.content as ToolUIPart | ReasoningUIPart)}
+                onClick={() => openObjectSidebar(part.content as ToolOrDynamicToolUIPart | ReasoningUIPart, mcpServers)}
                 reasoningTime={reasoningTime?.[part.id]}
                 isGroupReasoning={isGroupReasoning}
+                mcpServers={mcpServers}
               />
             )
           })}

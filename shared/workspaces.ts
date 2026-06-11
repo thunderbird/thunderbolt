@@ -82,3 +82,23 @@ export const isWorkspacePermissionKey = (v: unknown): v is WorkspacePermissionKe
 /** Runtime narrowing for upload-handler payloads — checks `v` against `workspacePermissionRoles`. */
 export const isWorkspacePermissionRole = (v: unknown): v is WorkspacePermissionRole =>
   typeof v === 'string' && (workspacePermissionRoles as readonly string[]).includes(v)
+
+/**
+ * Whether `userRole` satisfies a `requiredRole` policy. Admins always satisfy;
+ * a `member` requirement is satisfied by both admins and members.
+ *
+ * Shared between FE (`useWorkspacePermission`) and BE (upload handler authz)
+ * so the same predicate gates UI affordances and write enforcement.
+ */
+export const permissionAllows = (
+  userRole: WorkspacePermissionRole | null | undefined,
+  requiredRole: WorkspacePermissionRole,
+): boolean => {
+  if (!userRole) {
+    return false
+  }
+  if (userRole === 'admin') {
+    return true
+  }
+  return requiredRole === 'member'
+}

@@ -940,5 +940,69 @@ describe('workspace upload handlers', () => {
       const result = await applyUploadBatch(db, [deleteOp], ctxFor('agMember6'))
       expectPermanentReject(result, 'INSUFFICIENT_PERMISSION')
     })
+
+    // FE DAL soft-deletes via PATCH(deleted_at = now), not DELETE. The handler
+    // classifies that PATCH as a remove and gates it on `remove_agents`.
+    it('soft-delete via PATCH(deleted_at) gates on remove_agents, not add_agents', async () => {
+      await insertUser('agAdmin7', 'agadmin7@test.com')
+      await insertUser('agMember7', 'agmember7@test.com')
+      const workspaceId = await seedSharedWithAdminAndMember('agAdmin7', 'agMember7')
+      const putOp = agentPut(workspaceId)
+      const putResult = await applyUploadBatch(db, [putOp], ctxFor('agAdmin7'))
+      expect(putResult.ok).toBe(true)
+      // Member can edit (add) but not soft-delete (remove).
+      await setRequiredRole(workspaceId, 'add_agents', 'member')
+
+      const softDeleteOp: UploadOp = {
+        op: 'PATCH',
+        type: 'agents',
+        id: putOp.id,
+        data: { deleted_at: new Date().toISOString() },
+      }
+      const result = await applyUploadBatch(db, [softDeleteOp], ctxFor('agMember7'))
+      expectPermanentReject(result, 'INSUFFICIENT_PERMISSION')
+    })
+
+    it('soft-delete via PATCH(deleted_at) is allowed when remove_agents = member', async () => {
+      await insertUser('agAdmin8', 'agadmin8@test.com')
+      await insertUser('agMember8', 'agmember8@test.com')
+      const workspaceId = await seedSharedWithAdminAndMember('agAdmin8', 'agMember8')
+      const putOp = agentPut(workspaceId)
+      const putResult = await applyUploadBatch(db, [putOp], ctxFor('agAdmin8'))
+      expect(putResult.ok).toBe(true)
+      await setRequiredRole(workspaceId, 'remove_agents', 'member')
+
+      const softDeleteOp: UploadOp = {
+        op: 'PATCH',
+        type: 'agents',
+        id: putOp.id,
+        data: { deleted_at: new Date().toISOString() },
+      }
+      const result = await applyUploadBatch(db, [softDeleteOp], ctxFor('agMember8'))
+      expect(result.ok).toBe(true)
+      const stored = await db.select().from(agentsTable).where(eq(agentsTable.id, putOp.id))
+      expect(stored[0].deletedAt).not.toBeNull()
+    })
+
+    // Edit PATCH (no deleted_at) still gates on add_agents, not remove_agents.
+    it('non-delete PATCH gates on add_agents even when remove_agents = member', async () => {
+      await insertUser('agAdmin9', 'agadmin9@test.com')
+      await insertUser('agMember9', 'agmember9@test.com')
+      const workspaceId = await seedSharedWithAdminAndMember('agAdmin9', 'agMember9')
+      const putOp = agentPut(workspaceId)
+      const putResult = await applyUploadBatch(db, [putOp], ctxFor('agAdmin9'))
+      expect(putResult.ok).toBe(true)
+      // Member has remove but not add; an edit (no deleted_at) should still reject.
+      await setRequiredRole(workspaceId, 'remove_agents', 'member')
+
+      const editOp: UploadOp = {
+        op: 'PATCH',
+        type: 'agents',
+        id: putOp.id,
+        data: { name: 'Renamed by member' },
+      }
+      const result = await applyUploadBatch(db, [editOp], ctxFor('agMember9'))
+      expectPermanentReject(result, 'INSUFFICIENT_PERMISSION')
+    })
   })
 })

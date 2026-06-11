@@ -50,6 +50,7 @@ export const handlers: Record<PowerSyncTableName, UploadHandler> = {
     userPrivate: false,
     addPermissionKey: 'add_agents',
     removePermissionKey: 'remove_agents',
+    softDeleteColumn: 'deleted_at',
   }),
 
   // Workspace registry tables — bespoke handlers (commit 2).

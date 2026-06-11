@@ -306,6 +306,37 @@ describe('createMessageMetadata', () => {
     })
   })
 
+  describe('mcpServers propagation', () => {
+    const mcpServers = {
+      render: { id: 'srv-1', name: 'Render', url: 'https://render.com/mcp' },
+    }
+
+    it('includes the mcpServers map in finish-step metadata', () => {
+      const metadata = createMessageMetadata(modelId, undefined, mcpServers)
+
+      const result = metadata({ part: { type: 'finish-step' } })
+
+      expect(result.mcpServers).toEqual(mcpServers)
+    })
+
+    it('omits mcpServers when not provided', () => {
+      const metadata = createMessageMetadata(modelId)
+
+      const result = metadata({ part: { type: 'finish-step' } })
+
+      expect(result).not.toHaveProperty('mcpServers')
+    })
+
+    it('does not attach mcpServers to non-finish parts', () => {
+      const metadata = createMessageMetadata(modelId, undefined, mcpServers)
+      Date.now = () => 1000
+
+      const result = metadata({ part: { type: 'tool-call', toolCallId: 'call-1' } })
+
+      expect(result).not.toHaveProperty('mcpServers')
+    })
+  })
+
   describe('isolation between instances', () => {
     it('each instance has independent state', () => {
       let currentTime = 1000

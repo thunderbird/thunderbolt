@@ -19,9 +19,17 @@ type StreamPart = {
  *
  * @param modelId - The model ID to include in metadata
  * @param sourceCollector - Optional shared array populated by tool execution with source metadata
+ * @param mcpServers - Optional prefix→server map so chat history can resolve a
+ *   dynamic-tool part back to its MCP server. Constant for the whole send; the
+ *   AI SDK deep-merges metadata chunks, so emitting it once persists it onto the
+ *   final saved message.
  * @returns A function that processes stream parts and returns appropriate metadata
  */
-export const createMessageMetadata = (modelId: string, sourceCollector?: SourceMetadata[]) => {
+export const createMessageMetadata = (
+  modelId: string,
+  sourceCollector?: SourceMetadata[],
+  mcpServers?: UIMessageMetadata['mcpServers'],
+) => {
   const startTimes = new Map<string, number>()
   const reasoningStack: string[] = []
   let reasoningIdCounter = 0
@@ -29,10 +37,12 @@ export const createMessageMetadata = (modelId: string, sourceCollector?: SourceM
   const getSourcesMetadata = (): Pick<UIMessageMetadata, 'sources'> =>
     sourceCollector && sourceCollector.length > 0 ? { sources: [...sourceCollector] } : {}
 
+  const mcpServersMetadata: Pick<UIMessageMetadata, 'mcpServers'> = mcpServers ? { mcpServers } : {}
+
   return ({ part }: { part: StreamPart }): UIMessageMetadata => {
     switch (part.type) {
       case 'finish-step':
-        return { modelId, usage: part.usage, ...getSourcesMetadata() }
+        return { modelId, usage: part.usage, ...getSourcesMetadata(), ...mcpServersMetadata }
 
       case 'tool-call': {
         const id = part.toolCallId ?? part.id ?? 'unknown'

@@ -30,10 +30,12 @@ type MCPServerConnection = MCPServer & {
  *  the server is gone/disabled or the reconnect failed. */
 type ReconnectClient = (client: MCPClient) => Promise<MCPClient | null>
 
-/** An enabled, connected client paired with its server name. The name is the
+/** An enabled, connected client paired with its server identity. `name` is the
  *  tool-namespacing prefix consumed by `mergeMcpTools` so different servers'
- *  tools don't collide. */
-type NamedMCPClient = { name: string; client: MCPClient }
+ *  tools don't collide; `id` and `url` flow through to the assistant message's
+ *  `mcpServers` metadata so chat history can resolve a tool call back to its
+ *  server (name, url, icon). */
+type NamedMCPClient = { id: string; name: string; url: string; client: MCPClient }
 
 type MCPContextType = {
   servers: MCPServerConnection[]
@@ -293,7 +295,7 @@ export const MCPProvider = ({ children, createClient: injectedCreateClient }: MC
     // Use ref to always get current servers, avoiding stale closures
     return serversRef.current
       .filter((server) => server.enabled && server.isConnected && server.client)
-      .map((server) => ({ name: server.name, client: server.client! }))
+      .map((server) => ({ id: server.id, name: server.name, url: server.url, client: server.client! }))
   }
 
   // Cleanup on unmount

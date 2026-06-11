@@ -108,6 +108,13 @@ export type UIMessageMetadata = {
   haystackReferences?: HaystackReferenceMeta[]
   /** Source documents surfaced by the Haystack pipeline. */
   haystackDocuments?: HaystackDocumentMeta[]
+  /**
+   * Map from the sanitized tool prefix `mergeMcpTools` assigns (e.g. `render`,
+   * `render_2`) to the MCP server that owns those tools. Lets the chat history
+   * resolve a dynamic-tool part back to its server's name/url/icon. Absent on
+   * messages produced before this metadata existed — render those gracefully.
+   */
+  mcpServers?: Record<string, { id: string; name: string; url: string }>
 }
 
 /**

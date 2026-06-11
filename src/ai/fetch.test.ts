@@ -17,9 +17,14 @@ const closedError = (message = 'Connection closed') => Object.assign(new Error(m
 const tool = (tag: string): Tool => ({ tag }) as unknown as Tool
 
 /** Minimal fake satisfying the slice of `MCPClient` that `mergeMcpTools` uses,
- *  paired with the server name that becomes the tool prefix. No SDK mocking. */
+ *  paired with the server identity. `name` becomes the tool prefix; `id`/`url`
+ *  ride through to the `mcpServers` metadata map. Derived from `name` so tests
+ *  can assert the prefix→server resolution without extra plumbing. No SDK
+ *  mocking. */
 const named = (name: string, tools: () => Promise<Record<string, Tool>>): NamedMCPClient => ({
+  id: `id-${name}`,
   name,
+  url: `https://${name}.example.com`,
   client: { tools, close: () => {} } as unknown as MCPClient,
 })
 
@@ -179,5 +184,50 @@ describe('mergeMcpTools', () => {
     const { summary } = await mergeMcpTools({}, [empty], async () => null)
 
     expect(summary).toBeUndefined()
+  })
+
+  describe('mcpServers metadata map', () => {
+    it('maps each final prefix to its owning server identity', async () => {
+      const render = named('render', async () => ({ list_services: tool('ls') }))
+
+      const { mcpServers } = await mergeMcpTools({}, [render], async () => null)
+
+      expect(mcpServers).toEqual({
+        render: { id: 'id-render', name: 'render', url: 'https://render.example.com' },
+      })
+    })
+
+    it('keys disambiguated prefixes (render / render_2) to the right server', async () => {
+      const first = named('Render', async () => ({ deploy: tool('first') }))
+      const second = named('render', async () => ({ deploy: tool('second') }))
+
+      const { mcpServers } = await mergeMcpTools({}, [first, second], async () => null)
+
+      // The prefix the tool name carries must resolve back to the server that
+      // produced it — `render` → first, `render_2` → second.
+      expect(mcpServers).toEqual({
+        render: { id: 'id-Render', name: 'Render', url: 'https://Render.example.com' },
+        render_2: { id: 'id-render', name: 'render', url: 'https://render.example.com' },
+      })
+    })
+
+    it('omits servers that contributed no tools', async () => {
+      const empty = named('render', async () => ({}))
+      const healthy = named('github', async () => ({ search: tool('s') }))
+
+      const { mcpServers } = await mergeMcpTools({}, [empty, healthy], async () => null)
+
+      expect(mcpServers).toEqual({
+        github: { id: 'id-github', name: 'github', url: 'https://github.example.com' },
+      })
+    })
+
+    it('is undefined when no MCP tools were added', async () => {
+      const empty = named('render', async () => ({}))
+
+      const { mcpServers } = await mergeMcpTools({}, [empty], async () => null)
+
+      expect(mcpServers).toBeUndefined()
+    })
   })
 })

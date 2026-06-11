@@ -21,7 +21,7 @@ import { getAuthToken } from '@/lib/auth-token'
 import { fetch as baseFetch } from '@/lib/fetch'
 import type { FetchFn } from '@/lib/proxy-fetch'
 import { createToolset, getAvailableTools } from '@/lib/tools'
-import type { Model, ThunderboltUIMessage } from '@/types'
+import type { Model, ThunderboltUIMessage, UIMessageMetadata } from '@/types'
 import type { SourceMetadata } from '@/types/source'
 import { createAnthropic } from '@ai-sdk/anthropic'
 import { createOpenAI } from '@ai-sdk/openai'
@@ -146,15 +146,21 @@ type AiFetchStreamingResponseOptions = {
  * collides with an already-registered tool is skipped (first-registered wins) as
  * a safety net. The returned `summary` lists `- <prefix> (<n> tools)` per server
  * (undefined when no MCP tools were added), injected into the system prompt.
- * Injectable for unit tests.
+ *
+ * Also returns `mcpServers`, mapping each final prefix to the owning server's
+ * `{ id, name, url }`. This rides on the assistant message metadata so chat
+ * history can resolve a `dynamic-tool` part (named `<prefix>_<tool>`) back to
+ * its server's display name, url, and icon. Only servers that contributed at
+ * least one tool are included. Injectable for unit tests.
  */
 export const mergeMcpTools = async (
   toolset: Record<string, Tool>,
   mcpClients: NamedMCPClient[],
   reconnectClient: ReconnectClient,
-): Promise<{ toolset: Record<string, Tool>; summary?: string }> => {
+): Promise<{ toolset: Record<string, Tool>; summary?: string; mcpServers: UIMessageMetadata['mcpServers'] }> => {
   const takenPrefixes = new Set<string>()
   const mcpServerEntries: string[] = []
+  const mcpServers: NonNullable<UIMessageMetadata['mcpServers']> = {}
 
   /** Prefix and merge one server's tools, returning how many were added. */
   const addTools = (prefix: string, serverName: string, tools: Awaited<ReturnType<MCPClient['tools']>>): number => {
@@ -171,7 +177,7 @@ export const mergeMcpTools = async (
     return added
   }
 
-  for (const { name: serverName, client } of mcpClients) {
+  for (const { id, name: serverName, url, client } of mcpClients) {
     const basePrefix = sanitizeToolPrefix(serverName)
     let prefix = basePrefix
     let suffix = 2
@@ -205,10 +211,15 @@ export const mergeMcpTools = async (
     const added = await merge()
     if (added > 0) {
       mcpServerEntries.push(`- ${prefix} (${added} ${added === 1 ? 'tool' : 'tools'})`)
+      mcpServers[prefix] = { id, name: serverName, url }
     }
   }
 
-  return { toolset, summary: mcpServerEntries.length > 0 ? mcpServerEntries.join('\n') : undefined }
+  return {
+    toolset,
+    summary: mcpServerEntries.length > 0 ? mcpServerEntries.join('\n') : undefined,
+    mcpServers: Object.keys(mcpServers).length > 0 ? mcpServers : undefined,
+  }
 }
 
 export const createModel = async (modelConfig: Model, getProxyFetch: () => FetchFn) => {
@@ -404,12 +415,14 @@ export const aiFetchStreamingResponse = async ({
 
   let toolset: Record<string, Tool> = {}
   let mcpServersSummary: string | undefined
+  let mcpServersMetadata: UIMessageMetadata['mcpServers']
   if (supportsTools) {
     const availableTools = await getAvailableTools(httpClient, sourceCollector)
     toolset = { ...createToolset(availableTools) }
 
     const merged = await mergeMcpTools(toolset, mcpClients ?? [], reconnectClient ?? (async () => null))
     mcpServersSummary = merged.summary
+    mcpServersMetadata = merged.mcpServers
   } else {
     console.log('Model does not support tools, skipping tool setup')
   }
@@ -609,7 +622,7 @@ export const aiFetchStreamingResponse = async ({
 
         while (attemptNumber <= maxAttempts) {
           const result = runStreamText(currentMessages)
-          const messageMetadata = createMessageMetadata(modelId, sourceCollector)
+          const messageMetadata = createMessageMetadata(modelId, sourceCollector, mcpServersMetadata)
 
           // If this is not the last possible attempt, we need to check for empty response
           if (attemptNumber < maxAttempts) {

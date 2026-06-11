@@ -21,6 +21,7 @@ import { Switch } from '@/components/ui/switch'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { createMcpServer, deleteMcpServer, getHttpMcpServers, updateMcpServer } from '@/dal'
 import { useDatabase } from '@/contexts'
+import { useWorkspacePermission } from '@/hooks/use-workspace-permission'
 import { useMcpSync } from '@/hooks/use-mcp-sync'
 import { useActiveWorkspaceId } from '@/lib/active-workspace'
 import { type McpServer } from '@/types'
@@ -40,6 +41,11 @@ type ServerTools = {
 export default function McpServersPage() {
   const db = useDatabase()
   const workspaceId = useActiveWorkspaceId()
+  // Workspace `add_mcp_servers` / `remove_mcp_servers` — BE enforces; FE
+  // hides affordances so the user isn't presented with actions that
+  // round-trip-fail.
+  const { isAllowed: canAddMcpServers } = useWorkspacePermission('add_mcp_servers')
+  const { isAllowed: canRemoveMcpServers } = useWorkspacePermission('remove_mcp_servers')
   const { servers: mcpServers } = useMcpSync()
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false)
   const [newServerUrl, setNewServerUrl] = useState('')
@@ -312,11 +318,13 @@ export default function McpServersPage() {
     <div className="flex flex-col gap-6 p-4 w-full max-w-[760px] mx-auto">
       <PageHeader title="MCP Servers">
         <Dialog open={isAddDialogOpen} onOpenChange={setIsAddDialogOpen}>
-          <DialogTrigger asChild>
-            <Button variant="outline" size="icon" className="rounded-lg">
-              <Plus />
-            </Button>
-          </DialogTrigger>
+          {canAddMcpServers && (
+            <DialogTrigger asChild>
+              <Button variant="outline" size="icon" className="rounded-lg">
+                <Plus />
+              </Button>
+            </DialogTrigger>
+          )}
           <ResponsiveModalContentComposable className="sm:max-w-[500px]">
             <ResponsiveModalHeader>
               <ResponsiveModalTitle>Add MCP Server</ResponsiveModalTitle>
@@ -474,11 +482,13 @@ export default function McpServersPage() {
                       open={deleteConfirmOpen === server.id}
                       onOpenChange={(open) => setDeleteConfirmOpen(open ? server.id : null)}
                     >
-                      <PopoverTrigger asChild>
-                        <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
-                      </PopoverTrigger>
+                      {canRemoveMcpServers && (
+                        <PopoverTrigger asChild>
+                          <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        </PopoverTrigger>
+                      )}
                       <PopoverContent className="w-80" side="bottom" align="end">
                         <div className="space-y-3">
                           <div>

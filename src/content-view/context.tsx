@@ -33,7 +33,7 @@ type ContentViewState =
 
 type ContentViewContextType = {
   state: ContentViewState
-  showObjectView: (content: ObjectViewContent, mcpServers?: UIMessageMetadata['mcpServers']) => void
+  showObjectView: (content: ObjectViewContent, mcpTools?: UIMessageMetadata['mcpTools']) => void
   showPreview: (url: string) => void
   /** Open a typed sideview (e.g. `'document'`). Passing `null` clears the view. */
   showSideview: (sideviewType: string | null, sideviewId: string | null) => void
@@ -59,7 +59,7 @@ export const ContentViewProvider = ({ children }: { children: ReactNode }) => {
   const { isMobile } = useIsMobile()
   const prevIsMobile = useRef(isMobile)
 
-  const showObjectView = useCallback((content: ObjectViewContent, mcpServers?: UIMessageMetadata['mcpServers']) => {
+  const showObjectView = useCallback((content: ObjectViewContent, mcpTools?: UIMessageMetadata['mcpTools']) => {
     if (content.type === 'reasoning') {
       trackEvent('content_view_open', { view_type: 'object-view', reasoning: true })
       setState({ type: 'object-view', data: { title: 'Reasoning', output: content.text } })
@@ -67,10 +67,10 @@ export const ContentViewProvider = ({ children }: { children: ReactNode }) => {
     }
 
     const toolName = getToolName(content)
-    // MCP dynamic-tool parts resolve their title from the server map; built-ins use curated metadata.
+    // MCP dynamic-tool parts resolve their title from the tool map; built-ins use curated metadata.
     const title =
       content.type === 'dynamic-tool'
-        ? getMcpToolDisplay(toolName, mcpServers, content.title).displayName
+        ? getMcpToolDisplay(toolName, mcpTools, content.title).displayName
         : getToolMetadataSync(toolName, content.input).displayName
     // Surface the error text when a tool failed; otherwise show its output.
     const output = content.state === 'output-error' ? content.errorText : formatToolOutput(content.output)

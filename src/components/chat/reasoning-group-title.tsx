@@ -14,7 +14,7 @@ type ReasoningGroupTitleProps = {
   totalDuration: number
   isGroupReasoning: boolean
   tools: ToolOrDynamicToolUIPart[]
-  mcpServers?: UIMessageMetadata['mcpServers']
+  mcpTools?: UIMessageMetadata['mcpTools']
 }
 
 /**
@@ -22,24 +22,19 @@ type ReasoningGroupTitleProps = {
  * `<server> · <tool>` (no curated loading verb); built-ins use their metadata
  * loading message.
  */
-const activeToolLabel = (tool: ToolOrDynamicToolUIPart, mcpServers?: UIMessageMetadata['mcpServers']): string => {
+const activeToolLabel = (tool: ToolOrDynamicToolUIPart, mcpTools?: UIMessageMetadata['mcpTools']): string => {
   const toolName = getToolName(tool)
   if (tool.type === 'dynamic-tool') {
-    const { displayName, serverName } = getMcpToolDisplay(toolName, mcpServers, tool.title)
+    const { displayName, serverName } = getMcpToolDisplay(toolName, mcpTools, tool.title)
     return serverName ? `${serverName} · ${displayName}` : displayName
   }
   return getToolMetadataSync(toolName, tool.input).loadingMessage
 }
 
-export const ReasoningGroupTitle = ({
-  totalDuration,
-  isGroupReasoning,
-  tools,
-  mcpServers,
-}: ReasoningGroupTitleProps) => {
+export const ReasoningGroupTitle = ({ totalDuration, isGroupReasoning, tools, mcpTools }: ReasoningGroupTitleProps) => {
   const activeIndex = tools.length - 1
   const activeTool = tools[activeIndex]
-  const loadingLabel = activeTool ? activeToolLabel(activeTool, mcpServers) : null
+  const loadingLabel = activeTool ? activeToolLabel(activeTool, mcpTools) : null
 
   return (
     <div className="relative">

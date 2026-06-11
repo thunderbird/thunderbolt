@@ -16,7 +16,7 @@ type ReasoningItemProps = {
   onClick: () => void
   reasoningTime?: number
   isGroupReasoning: boolean
-  mcpServers?: UIMessageMetadata['mcpServers']
+  mcpTools?: UIMessageMetadata['mcpTools']
 }
 
 type ItemIcon = LucideIcon | ComponentType<SVGProps<SVGSVGElement>>
@@ -34,19 +34,19 @@ const isToolLoading = (part: ToolOrDynamicToolUIPart, isGroupReasoning: boolean)
 
 /**
  * MCP tools arrive as `dynamic-tool` parts and resolve their label/icon/server
- * from the message's `mcpServers` map; typed `tool-<name>` parts are built-ins
+ * from the message's `mcpTools` map; typed `tool-<name>` parts are built-ins
  * and keep their curated metadata icon.
  */
 const getToolItemData = (
   toolPart: ToolOrDynamicToolUIPart,
   isGroupReasoning: boolean,
-  mcpServers?: UIMessageMetadata['mcpServers'],
+  mcpTools?: UIMessageMetadata['mcpTools'],
 ): ItemData => {
   const toolName = getToolName(toolPart)
   const isLoading = isToolLoading(toolPart, isGroupReasoning)
 
   if (toolPart.type === 'dynamic-tool') {
-    const { displayName, icon, serverName } = getMcpToolDisplay(toolName, mcpServers, toolPart.title)
+    const { displayName, icon, serverName } = getMcpToolDisplay(toolName, mcpTools, toolPart.title)
     return { Icon: icon.icon, displayName, serverName, isLoading }
   }
 
@@ -57,7 +57,7 @@ const getToolItemData = (
 const getItemData = (
   part: ReasoningGroupItem,
   isGroupReasoning: boolean,
-  mcpServers?: UIMessageMetadata['mcpServers'],
+  mcpTools?: UIMessageMetadata['mcpTools'],
 ): ItemData | null => {
   if (part.type === 'reasoning') {
     const reasoningPart = part.content as ReasoningUIPart
@@ -69,14 +69,14 @@ const getItemData = (
   }
 
   if (part.type === 'tool') {
-    return getToolItemData(part.content as ToolOrDynamicToolUIPart, isGroupReasoning, mcpServers)
+    return getToolItemData(part.content as ToolOrDynamicToolUIPart, isGroupReasoning, mcpTools)
   }
 
   return null
 }
 
-export const ReasoningItem = ({ part, onClick, reasoningTime, isGroupReasoning, mcpServers }: ReasoningItemProps) => {
-  const itemData = getItemData(part, isGroupReasoning, mcpServers)
+export const ReasoningItem = ({ part, onClick, reasoningTime, isGroupReasoning, mcpTools }: ReasoningItemProps) => {
+  const itemData = getItemData(part, isGroupReasoning, mcpTools)
 
   if (!itemData) {
     return null

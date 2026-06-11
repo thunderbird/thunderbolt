@@ -32,8 +32,8 @@ type ReconnectClient = (client: MCPClient) => Promise<MCPClient | null>
 
 /** An enabled, connected client paired with its server identity. `name` is the
  *  tool-namespacing prefix consumed by `mergeMcpTools` so different servers'
- *  tools don't collide; `id` and `url` flow through to the assistant message's
- *  `mcpServers` metadata so chat history can resolve a tool call back to its
+ *  tools don't collide; `name` and `url` flow through to the assistant message's
+ *  `mcpTools` metadata so chat history can resolve a tool call back to its
  *  server (name, url, icon). */
 type NamedMCPClient = { id: string; name: string; url: string; client: MCPClient }
 

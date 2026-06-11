@@ -10,6 +10,7 @@ type StreamPart = {
   type: string
   id?: string
   toolCallId?: string
+  toolName?: string
   usage?: LanguageModelV2Usage
 }
 
@@ -19,16 +20,17 @@ type StreamPart = {
  *
  * @param modelId - The model ID to include in metadata
  * @param sourceCollector - Optional shared array populated by tool execution with source metadata
- * @param mcpServers - Optional prefix→server map so chat history can resolve a
- *   dynamic-tool part back to its MCP server. Constant for the whole send; the
- *   AI SDK deep-merges metadata chunks, so emitting it once persists it onto the
- *   final saved message.
+ * @param mcpTools - Optional map of every available MCP tool's namespaced name →
+ *   owning-server info. Used to attach, per `tool-call`, the entry for the tool
+ *   actually invoked (scoping the persisted metadata to invoked tools only; the
+ *   AI SDK deep-merges these chunks onto the final saved message). Built-in tools
+ *   aren't in the map, so they contribute no MCP metadata.
  * @returns A function that processes stream parts and returns appropriate metadata
  */
 export const createMessageMetadata = (
   modelId: string,
   sourceCollector?: SourceMetadata[],
-  mcpServers?: UIMessageMetadata['mcpServers'],
+  mcpTools?: UIMessageMetadata['mcpTools'],
 ) => {
   const startTimes = new Map<string, number>()
   const reasoningStack: string[] = []
@@ -37,18 +39,24 @@ export const createMessageMetadata = (
   const getSourcesMetadata = (): Pick<UIMessageMetadata, 'sources'> =>
     sourceCollector && sourceCollector.length > 0 ? { sources: [...sourceCollector] } : {}
 
-  const mcpServersMetadata: Pick<UIMessageMetadata, 'mcpServers'> = mcpServers ? { mcpServers } : {}
-
   return ({ part }: { part: StreamPart }): UIMessageMetadata => {
     switch (part.type) {
       case 'finish-step':
-        return { modelId, usage: part.usage, ...getSourcesMetadata(), ...mcpServersMetadata }
+        return { modelId, usage: part.usage, ...getSourcesMetadata() }
 
       case 'tool-call': {
         const id = part.toolCallId ?? part.id ?? 'unknown'
         const now = Date.now()
         startTimes.set(id, now)
-        return { modelId, reasoningStartTimes: { [id]: now } }
+        const base = { modelId, reasoningStartTimes: { [id]: now } }
+        const { toolName } = part
+        if (!toolName) {
+          return base
+        }
+        // Scope persisted MCP metadata to the tool actually invoked; built-ins
+        // aren't in the map, so they add nothing.
+        const invokedTool = mcpTools?.[toolName]
+        return invokedTool ? { ...base, mcpTools: { [toolName]: invokedTool } } : base
       }
 
       case 'reasoning-start': {

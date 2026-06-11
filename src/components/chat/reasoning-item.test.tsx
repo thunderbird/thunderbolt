@@ -280,19 +280,19 @@ describe('ReasoningItem', () => {
   })
 
   describe('mcp dynamic-tool type', () => {
-    const mcpServers: UIMessageMetadata['mcpServers'] = {
-      render: { id: 'srv-1', name: 'Render', url: 'https://render.com' },
+    const mcpTools: UIMessageMetadata['mcpTools'] = {
+      render_list_services: { name: 'Render', url: 'https://render.com', toolName: 'list_services' },
     }
 
-    it('renders "<server> · <tool>" when the prefix resolves to a server', () => {
+    it('renders "<server> · <tool>" when the tool resolves to a server', () => {
       const toolPart = createMockDynamicToolPart('render_list_services')
       const part: ReasoningGroupItem = { type: 'tool', content: toolPart, id: toolPart.toolCallId }
 
       const { container } = render(
-        <ReasoningItem part={part} onClick={mock()} isGroupReasoning={false} mcpServers={mcpServers} />,
+        <ReasoningItem part={part} onClick={mock()} isGroupReasoning={false} mcpTools={mcpTools} />,
       )
 
-      // Label composes the server name and de-prefixed tool name; the brand icon's
+      // Label composes the server name and de-namespaced tool name; the brand icon's
       // SVG <title> also reads "Render", so assert on the composed text instead.
       expect(container.textContent).toContain('Render · List Services')
     })

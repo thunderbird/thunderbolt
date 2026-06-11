@@ -45,7 +45,7 @@ export const mountMessageParts = (
   reasoningStartTimes?: Record<string, number>,
   sources?: SourceMetadata[],
   haystackReferences?: HaystackReferenceMeta[],
-  mcpServers?: UIMessageMetadata['mcpServers'],
+  mcpTools?: UIMessageMetadata['mcpTools'],
 ) => {
   const partElements: ReactNode[] = []
 
@@ -74,7 +74,7 @@ export const mountMessageParts = (
             hasTextPart={hasTextPart}
             reasoningTime={reasoningTime}
             reasoningStartTimes={reasoningStartTimes}
-            mcpServers={mcpServers}
+            mcpTools={mcpTools}
           />,
         )
         break
@@ -126,10 +126,10 @@ export const AssistantMessage = memo(
       [JSON.stringify(message.metadata?.haystackReferences)],
     )
 
-    const mcpServers = useMemo(
-      () => message.metadata?.mcpServers,
+    const mcpTools = useMemo(
+      () => message.metadata?.mcpTools,
       // eslint-disable-next-line react-hooks/exhaustive-deps
-      [JSON.stringify(message.metadata?.mcpServers)],
+      [JSON.stringify(message.metadata?.mcpTools)],
     )
 
     // Memoize part element creation to prevent recreating React nodes unnecessarily
@@ -143,7 +143,7 @@ export const AssistantMessage = memo(
           reasoningStartTimes,
           sources,
           haystackReferences,
-          mcpServers,
+          mcpTools,
         ),
       [
         groupedParts,
@@ -153,7 +153,7 @@ export const AssistantMessage = memo(
         reasoningStartTimes,
         sources,
         haystackReferences,
-        mcpServers,
+        mcpTools,
       ],
     )
 

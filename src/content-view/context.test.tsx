@@ -95,7 +95,7 @@ describe('ContentView sideview mode', () => {
     expect(result.current.objectContent?.output).toBe('Upstream 500')
   })
 
-  test('object-view resolves an MCP tool title from the server map', () => {
+  test('object-view resolves an MCP tool title from the tool map', () => {
     const { result } = renderHook(() => useObjectView(), { wrapper })
 
     const mcpTool = {
@@ -109,7 +109,7 @@ describe('ContentView sideview mode', () => {
 
     act(() => {
       result.current.openObjectSidebar(mcpTool as ObjectViewContent, {
-        render: { id: 'srv-1', name: 'Render', url: 'https://render.com' },
+        render_list_services: { name: 'Render', url: 'https://render.com', toolName: 'list_services' },
       })
     })
 

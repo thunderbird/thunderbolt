@@ -306,34 +306,61 @@ describe('createMessageMetadata', () => {
     })
   })
 
-  describe('mcpServers propagation', () => {
-    const mcpServers = {
-      render: { id: 'srv-1', name: 'Render', url: 'https://render.com/mcp' },
+  describe('mcpTools propagation', () => {
+    const mcpTools = {
+      render_list_services: { name: 'Render', url: 'https://render.com/mcp', toolName: 'list_services' },
+      github_search: { name: 'Copilot', url: 'https://api.githubcopilot.com/mcp', toolName: 'search' },
     }
 
-    it('includes the mcpServers map in finish-step metadata', () => {
-      const metadata = createMessageMetadata(modelId, undefined, mcpServers)
-
-      const result = metadata({ part: { type: 'finish-step' } })
-
-      expect(result.mcpServers).toEqual(mcpServers)
-    })
-
-    it('omits mcpServers when not provided', () => {
-      const metadata = createMessageMetadata(modelId)
-
-      const result = metadata({ part: { type: 'finish-step' } })
-
-      expect(result).not.toHaveProperty('mcpServers')
-    })
-
-    it('does not attach mcpServers to non-finish parts', () => {
-      const metadata = createMessageMetadata(modelId, undefined, mcpServers)
+    it('attaches only the invoked MCP tool on its tool-call part', () => {
+      const metadata = createMessageMetadata(modelId, undefined, mcpTools)
       Date.now = () => 1000
 
-      const result = metadata({ part: { type: 'tool-call', toolCallId: 'call-1' } })
+      const result = metadata({ part: { type: 'tool-call', toolCallId: 'call-1', toolName: 'render_list_services' } })
 
-      expect(result).not.toHaveProperty('mcpServers')
+      expect(result.mcpTools).toEqual({ render_list_services: mcpTools.render_list_services })
+      expect(result.reasoningStartTimes).toEqual({ 'call-1': 1000 })
+      // Scoped to the server actually invoked — the other server is not attached.
+      expect(result.mcpTools).not.toHaveProperty('github_search')
+    })
+
+    it('does not attach mcpTools for a built-in tool not in the map', () => {
+      const metadata = createMessageMetadata(modelId, undefined, mcpTools)
+      Date.now = () => 1000
+
+      const result = metadata({ part: { type: 'tool-call', toolCallId: 'call-1', toolName: 'web_search' } })
+
+      expect(result).not.toHaveProperty('mcpTools')
+    })
+
+    it('does not attach mcpTools on finish-step (scoped to invoked tools only)', () => {
+      const metadata = createMessageMetadata(modelId, undefined, mcpTools)
+
+      const result = metadata({ part: { type: 'finish-step' } })
+
+      expect(result).not.toHaveProperty('mcpTools')
+    })
+
+    it('omits mcpTools when no map is provided', () => {
+      const metadata = createMessageMetadata(modelId)
+      Date.now = () => 1000
+
+      const result = metadata({ part: { type: 'tool-call', toolCallId: 'call-1', toolName: 'render_list_services' } })
+
+      expect(result).not.toHaveProperty('mcpTools')
+    })
+
+    it('carries no mcpTools across a message with zero MCP tool calls', () => {
+      const metadata = createMessageMetadata(modelId, undefined, mcpTools)
+      Date.now = () => 1000
+
+      const toolCall = metadata({ part: { type: 'tool-call', toolCallId: 'call-1', toolName: 'web_search' } })
+      const reasoning = metadata({ part: { type: 'reasoning-start' } })
+      const finish = metadata({ part: { type: 'finish-step' } })
+
+      expect(toolCall).not.toHaveProperty('mcpTools')
+      expect(reasoning).not.toHaveProperty('mcpTools')
+      expect(finish).not.toHaveProperty('mcpTools')
     })
   })
 

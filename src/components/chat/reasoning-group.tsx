@@ -21,7 +21,7 @@ type ReasoningGroupProps = {
   hasTextPart: boolean
   reasoningTime: Record<string, number>
   reasoningStartTimes?: Record<string, number>
-  mcpServers?: UIMessageMetadata['mcpServers']
+  mcpTools?: UIMessageMetadata['mcpTools']
 }
 
 export const ReasoningGroup = ({
@@ -31,7 +31,7 @@ export const ReasoningGroup = ({
   hasTextPart,
   reasoningTime,
   reasoningStartTimes,
-  mcpServers,
+  mcpTools,
 }: ReasoningGroupProps) => {
   const { openObjectSidebar } = useObjectView()
 
@@ -89,7 +89,7 @@ export const ReasoningGroup = ({
             totalDuration={totalDuration}
             isGroupReasoning={isGroupReasoning}
             tools={tools}
-            mcpServers={mcpServers}
+            mcpTools={mcpTools}
           />
         }
       >
@@ -99,10 +99,10 @@ export const ReasoningGroup = ({
               <ReasoningItem
                 key={index}
                 part={part}
-                onClick={() => openObjectSidebar(part.content as ToolOrDynamicToolUIPart | ReasoningUIPart, mcpServers)}
+                onClick={() => openObjectSidebar(part.content as ToolOrDynamicToolUIPart | ReasoningUIPart, mcpTools)}
                 reasoningTime={reasoningTime?.[part.id]}
                 isGroupReasoning={isGroupReasoning}
-                mcpServers={mcpServers}
+                mcpTools={mcpTools}
               />
             )
           })}

@@ -20,6 +20,14 @@ import { cimdClientMetadataAvailable, createMcpOAuthClientProvider } from './oau
 import { validateMcpOAuthCallback } from './callback-validation'
 import { clearMcpOAuthState, getMcpOAuthState, setMcpOAuthState } from './mcp-oauth-state'
 
+/**
+ * A pending handshake older than this is treated as abandoned (the user closed
+ * the tab mid-consent), so a new flow for a different server may replace it
+ * rather than being blocked forever. Exceeds the desktop loopback timeout (5 min)
+ * so a slow-but-live flow is never mistaken for abandoned.
+ */
+const abandonedFlowMs = 10 * 60 * 1000
+
 /** SDK auth helpers, injectable for tests. */
 export type WebOAuthDeps = {
   discoverOAuthProtectedResourceMetadata?: typeof discoverOAuthProtectedResourceMetadata
@@ -152,6 +160,21 @@ export const startMcpOAuthFlow = async (
   const register = deps.registerClient ?? registerClient
   const start = deps.startAuthorization ?? startAuthorization
 
+  // Single-flight across the app: the handshake lives in one shared slot, so a
+  // concurrent Authorize (another server card, or another tab) would clobber an
+  // in-flight flow and make both fail with a misleading CSRF error on callback.
+  // Refuse to start while a *fresh* flow for a different server is pending; a
+  // stale (abandoned) handshake is allowed to be replaced.
+  const pending = getMcpOAuthState()
+  if (
+    pending.serverId &&
+    pending.serverId !== serverId &&
+    pending.startedAt !== null &&
+    Date.now() - pending.startedAt < abandonedFlowMs
+  ) {
+    throw new Error('Another MCP authorization is already in progress — finish or cancel it first.')
+  }
+
   const { authorizationServerUrl, metadata } = await discoverServer(serverUrl, fetchFn, deps)
 
   const provider = createMcpOAuthClientProvider({ serverId, db, origin, isBackendConnected })
@@ -189,6 +212,7 @@ export const startMcpOAuthFlow = async (
     clientInfo: JSON.stringify(clientInformation),
     authorizationServerUrl,
     metadata: JSON.stringify(metadata),
+    startedAt: Date.now(),
   })
 
   const { authorizationUrl, codeVerifier } = await start(authorizationServerUrl, {

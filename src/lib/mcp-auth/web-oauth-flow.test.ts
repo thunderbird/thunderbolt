@@ -228,6 +228,65 @@ describe('startMcpOAuthFlow', () => {
       ),
     ).rejects.toThrow(/issuer mismatch/)
   })
+
+  it('refuses to start while a fresh flow for a different server is pending', async () => {
+    const db = getDb()
+    // A flow for another server is mid-redirect (slot occupied, just started).
+    setMcpOAuthState({ serverId: 'other-server', startedAt: Date.now() })
+
+    await expect(
+      startMcpOAuthFlow(
+        { db, serverId, serverUrl, fetchFn: noFetch, origin, isBackendConnected: () => false },
+        { ...happyDiscovery(metadata()) },
+      ),
+    ).rejects.toThrow(/already in progress/)
+
+    // The pending flow's slot is untouched.
+    expect(getMcpOAuthState().serverId).toBe('other-server')
+  })
+
+  it('allows restarting the same server while its flow is pending', async () => {
+    const db = getDb()
+    setMcpOAuthState({ serverId, startedAt: Date.now() })
+
+    await startMcpOAuthFlow(
+      { db, serverId, serverUrl, fetchFn: noFetch, origin, isBackendConnected: () => false },
+      {
+        ...happyDiscovery(metadata()),
+        registerClient: async () =>
+          ({ client_id: 'dcr-client', redirect_uris: [`${origin}/oauth/callback`] }) as OAuthClientInformationFull,
+        startAuthorization: async () => ({
+          authorizationUrl: new URL(`${authServerUrl}/authorize`),
+          codeVerifier: 'verifier-1',
+        }),
+      },
+    )
+
+    expect(redirectedTo).toBe(`${authServerUrl}/authorize`)
+  })
+
+  it('replaces an abandoned (stale) pending flow for a different server', async () => {
+    const db = getDb()
+    // A different server's flow started long ago and was never completed.
+    setMcpOAuthState({ serverId: 'other-server', startedAt: Date.now() - 11 * 60 * 1000 })
+
+    await startMcpOAuthFlow(
+      { db, serverId, serverUrl, fetchFn: noFetch, origin, isBackendConnected: () => false },
+      {
+        ...happyDiscovery(metadata()),
+        registerClient: async () =>
+          ({ client_id: 'dcr-client', redirect_uris: [`${origin}/oauth/callback`] }) as OAuthClientInformationFull,
+        startAuthorization: async () => ({
+          authorizationUrl: new URL(`${authServerUrl}/authorize`),
+          codeVerifier: 'verifier-1',
+        }),
+      },
+    )
+
+    // The stale slot was overwritten by this server's fresh handshake.
+    expect(getMcpOAuthState().serverId).toBe(serverId)
+    expect(redirectedTo).toBe(`${authServerUrl}/authorize`)
+  })
 })
 
 describe('completeMcpOAuthFlow', () => {

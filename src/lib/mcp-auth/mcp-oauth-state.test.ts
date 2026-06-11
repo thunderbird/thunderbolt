@@ -15,6 +15,7 @@ const emptyHandshake = {
   clientInfo: null,
   authorizationServerUrl: null,
   metadata: null,
+  startedAt: null,
 }
 
 describe('MCP OAuth state', () => {
@@ -40,6 +41,7 @@ describe('MCP OAuth state', () => {
         issuer: 'https://auth.example.com',
         token_endpoint: 'https://auth.example.com/token',
       }),
+      startedAt: 1_700_000_000_000,
     }
     setMcpOAuthState(handshake)
 

@@ -34,6 +34,12 @@ export type McpOAuthState = {
   authorizationServerUrl: string | null
   /** Serialized AS metadata captured at start, reused verbatim for the token exchange. */
   metadata: string | null
+  /**
+   * Epoch ms when the flow began. Lets a new flow detect an abandoned in-flight
+   * one (user closed the tab mid-consent) and replace it instead of being
+   * blocked forever by the single-flight guard.
+   */
+  startedAt: number | null
 }
 
 const emptyState = (): McpOAuthState => ({
@@ -46,6 +52,7 @@ const emptyState = (): McpOAuthState => ({
   clientInfo: null,
   authorizationServerUrl: null,
   metadata: null,
+  startedAt: null,
 })
 
 /** Reads the in-flight MCP OAuth handshake. Absent fields come back as null. */

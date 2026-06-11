@@ -18,7 +18,7 @@ import { useActiveWorkspaceMembership } from '@/hooks/use-active-workspace-membe
 import { useAgentsSettingsHidden } from '@/hooks/use-agents-settings-hidden'
 import { useWorkspacePermission } from '@/hooks/use-workspace-permission'
 import { stripWorkspacePrefix, useActiveWorkspace } from '@/lib/active-workspace'
-import { ArrowLeft, Bot, Building2, Cpu, Plug, Server, SlidersHorizontal, Smartphone, Users, Zap } from 'lucide-react'
+import { ArrowLeft, Bot, Cpu, Globe, Plug, Server, SlidersHorizontal, Smartphone, Users, Zap } from 'lucide-react'
 import { useLocation } from 'react-router'
 import { SidebarHeader } from './sidebar-header'
 
@@ -127,7 +127,7 @@ export const SettingsSidebarContent = ({
                   className="cursor-pointer"
                   isActive={subPath === '/settings/workspace/general'}
                 >
-                  <Building2 className="size-4" />
+                  <Globe className="size-4" />
                   <span>General</span>
                 </SidebarMenuButton>
               </SidebarMenuItem>

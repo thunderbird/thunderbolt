@@ -258,6 +258,28 @@ describe('startMcpOAuthFlow', () => {
     expect(registered).toBe(false)
   })
 
+  it('clears the persisted handshake when the flow throws after writing it', async () => {
+    const db = getDb()
+    await expect(
+      startMcpOAuthFlow(
+        { db, serverId, serverUrl, fetchFn: noFetch, origin, isBackendConnected: () => false },
+        {
+          ...happyDiscovery(metadata()),
+          registerClient: async () =>
+            ({ client_id: 'dcr-client', redirect_uris: [`${origin}/oauth/callback`] }) as OAuthClientInformationFull,
+          // The handshake is persisted just before this runs; its throw must not
+          // leave a stale single-flight slot behind.
+          startAuthorization: async () => {
+            throw new Error('boom')
+          },
+        },
+      ),
+    ).rejects.toThrow('boom')
+
+    // No leftover handshake to block another server for the abandoned-flow window.
+    expect(getMcpOAuthState().serverId).toBeNull()
+  })
+
   it('refuses to start while a fresh flow for a different server is pending', async () => {
     const db = getDb()
     // A flow for another server is mid-redirect (slot occupied, just started).

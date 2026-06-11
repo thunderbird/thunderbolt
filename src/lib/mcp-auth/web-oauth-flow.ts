@@ -314,24 +314,35 @@ export const startMcpOAuthFlow = async (
 
   assertNoConcurrentFlow(args.serverId)
 
-  if (isTauri() && !isMobile()) {
-    return startDesktopOAuthFlow(args, deps, { openUrl, runLoopback })
-  }
+  try {
+    if (isTauri() && !isMobile()) {
+      return await startDesktopOAuthFlow(args, deps, { openUrl, runLoopback })
+    }
 
-  const origin = args.origin ?? window.location.origin
-  const redirectUri = computeMcpOAuthRedirectUri(origin, { isTauri, isMobile })
-  const { authorizationUrl } = await prepareAuthorization(args, redirectUri, deps)
+    const origin = args.origin ?? window.location.origin
+    const redirectUri = computeMcpOAuthRedirectUri(origin, { isTauri, isMobile })
+    const { authorizationUrl } = await prepareAuthorization(args, redirectUri, deps)
 
-  if (isTauri() && isMobile()) {
-    // Open the system browser, never navigate the webview. The deep-link listener
-    // delivers the callback to the page's existing OAuth effect.
-    await openUrl(authorizationUrl.toString())
+    if (isTauri() && isMobile()) {
+      // Open the system browser, never navigate the webview. The deep-link listener
+      // delivers the callback to the page's existing OAuth effect.
+      await openUrl(authorizationUrl.toString())
+      return { status: 'redirected' }
+    }
+
+    // Web: full-page redirect via the provider's redirectToAuthorization.
+    createMcpOAuthClientProvider({ ...args, redirectUri }).redirectToAuthorization(authorizationUrl)
     return { status: 'redirected' }
+  } catch (error) {
+    // `prepareAuthorization` persists the handshake before building the auth URL,
+    // so a failure after that point (a throwing `startAuthorization`, a rejected
+    // `openUrl`, etc.) would otherwise leave a stale single-flight slot that blocks
+    // every other server's authorization for `abandonedFlowMs`. Clear it before
+    // surfacing. Success paths never reach here — web/mobile need the handshake for
+    // the callback, and desktop's `completeMcpOAuthFlow` already cleared it.
+    clearMcpOAuthState()
+    throw error
   }
-
-  // Web: full-page redirect via the provider's redirectToAuthorization.
-  createMcpOAuthClientProvider({ ...args, redirectUri }).redirectToAuthorization(authorizationUrl)
-  return { status: 'redirected' }
 }
 
 /**

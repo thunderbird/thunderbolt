@@ -239,6 +239,12 @@ const prepareAuthorization = async (
   // URL is set (backend-connected); DCR otherwise. The SDK applies the same
   // precedence in `auth()`; we mirror it here for the surgical flow.
   const useCimd = metadata.client_id_metadata_document_supported === true && !!provider.clientMetadataUrl
+  if (!useCimd && !metadata.registration_endpoint) {
+    // No usable client-registration path (no DCR, no CIMD) — e.g. GitHub. OAuth
+    // can't obtain a client here, so surface the actionable next step instead of a
+    // cryptic registration failure (mirrors `classifyMcpServerAuth`'s token-only case).
+    throw new Error('This server requires a personal access token. Add it as the credential to connect.')
+  }
   const clientInformation = useCimd
     ? { client_id: provider.clientMetadataUrl! }
     : await (async () => {

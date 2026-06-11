@@ -28,6 +28,8 @@ const noFetch = (async () => {
   throw new Error('fetch should not be called — SDK helpers are injected')
 }) as never
 
+// Default AS metadata advertises Dynamic Client Registration (the common case);
+// token-only tests opt out with `registration_endpoint: undefined`.
 const metadata = (overrides: Partial<AuthorizationServerMetadata> = {}): AuthorizationServerMetadata =>
   ({
     issuer: authServerUrl,
@@ -35,6 +37,7 @@ const metadata = (overrides: Partial<AuthorizationServerMetadata> = {}): Authori
     token_endpoint: `${authServerUrl}/token`,
     response_types_supported: ['code'],
     code_challenge_methods_supported: ['S256'],
+    registration_endpoint: `${authServerUrl}/register`,
     ...overrides,
   }) as AuthorizationServerMetadata
 
@@ -91,7 +94,11 @@ describe('classifyMcpServerAuth', () => {
   })
 
   it("is 'token-only' when OAuth is advertised but the AS has no DCR and no CIMD (the GitHub case)", async () => {
-    const result = await classifyMcpServerAuth(serverUrl, noFetch, happyDiscovery(metadata()))
+    const result = await classifyMcpServerAuth(
+      serverUrl,
+      noFetch,
+      happyDiscovery(metadata({ registration_endpoint: undefined })),
+    )
     expect(result).toBe('token-only')
   })
 
@@ -109,7 +116,7 @@ describe('classifyMcpServerAuth', () => {
     const result = await classifyMcpServerAuth(
       serverUrl,
       noFetch,
-      happyDiscovery(metadata({ client_id_metadata_document_supported: true })),
+      happyDiscovery(metadata({ client_id_metadata_document_supported: true, registration_endpoint: undefined })),
       false,
     )
     expect(result).toBe('token-only')
@@ -230,6 +237,25 @@ describe('startMcpOAuthFlow', () => {
         { ...happyDiscovery(metadata({ issuer: 'https://evil.example.com' })) },
       ),
     ).rejects.toThrow(/issuer mismatch/)
+  })
+
+  it('rejects a token-only AS (no DCR, no CIMD) with an actionable message and never registers', async () => {
+    const db = getDb()
+    let registered = false
+    await expect(
+      startMcpOAuthFlow(
+        { db, serverId, serverUrl, fetchFn: noFetch, origin, isBackendConnected: () => false },
+        {
+          ...happyDiscovery(metadata({ registration_endpoint: undefined })),
+          registerClient: async () => {
+            registered = true
+            return { client_id: 'x' } as OAuthClientInformationFull
+          },
+        },
+      ),
+    ).rejects.toThrow(/personal access token/)
+    // No client registration is attempted — the flow bails with the actionable hint.
+    expect(registered).toBe(false)
   })
 
   it('refuses to start while a fresh flow for a different server is pending', async () => {

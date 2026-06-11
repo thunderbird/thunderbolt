@@ -5,7 +5,7 @@
 import { Card, CardContent } from '@/components/ui/card'
 import { PageHeader } from '@/components/ui/page-header'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
+import { Table, TableBody, TableCell, TableRow } from '@/components/ui/table'
 import { useDatabase } from '@/contexts'
 import {
   setWorkspacePermissionRequiredRole,
@@ -70,17 +70,11 @@ const WorkspacePermissionsPage = () => {
     <div className="flex flex-col p-4 pb-12 w-full max-w-[760px] mx-auto">
       <PageHeader title="Permissions" />
       <p className="mt-3 text-[length:var(--font-size-sm)] text-muted-foreground">
-        Choose which role is required for each action in this workspace.
+        Define the permissions of your workspace. Only owners can manage permissions.
       </p>
       <Card className="mt-6">
         <CardContent>
           <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Permission</TableHead>
-                <TableHead>Role</TableHead>
-              </TableRow>
-            </TableHeader>
             <TableBody>
               {permissionRows.map(({ key, label }) => {
                 const value = requiredRoleByKey.get(key) ?? defaultRequiredRole
@@ -89,13 +83,13 @@ const WorkspacePermissionsPage = () => {
                     <TableCell>
                       <span className="font-semibold leading-4">{label}</span>
                     </TableCell>
-                    <TableCell>
+                    <TableCell className="text-right">
                       <Select
                         value={value}
                         disabled={isPending}
                         onValueChange={(next) => void handleChange(key, next as WorkspacePermissionRole)}
                       >
-                        <SelectTrigger className="w-32" aria-label={`Required role for ${label}`}>
+                        <SelectTrigger className="w-32 ml-auto" aria-label={`Required role for ${label}`}>
                           <SelectValue />
                         </SelectTrigger>
                         <SelectContent>

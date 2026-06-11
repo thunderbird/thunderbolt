@@ -123,7 +123,7 @@ describe('WorkspacePermissionsPage', () => {
 
     await waitForElement(() => screen.queryByRole('heading', { name: 'Permissions' }))
     expect(screen.getByRole('heading', { name: 'Permissions' })).toBeInTheDocument()
-    expect(screen.getByText(/Choose which role is required/)).toBeInTheDocument()
+    expect(screen.getByText(/Only owners can manage permissions/)).toBeInTheDocument()
     for (const { key, label } of expectedRows) {
       expect(screen.getByTestId(`permission-row-${key}`)).toBeInTheDocument()
       expect(screen.getByText(label)).toBeInTheDocument()

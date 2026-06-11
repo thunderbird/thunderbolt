@@ -3,7 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { beforeEach, describe, expect, it } from 'bun:test'
-import { clearMcpOAuthState, getMcpOAuthState, setMcpOAuthState } from './mcp-oauth-state'
+import { clearMcpOAuthState, getMcpOAuthState, isMcpOAuthCallback, setMcpOAuthState } from './mcp-oauth-state'
 
 const emptyHandshake = {
   serverId: null,
@@ -78,5 +78,28 @@ describe('MCP OAuth state', () => {
   it('returns all-null on corrupt JSON instead of throwing', () => {
     localStorage.setItem('mcp_oauth_flow_state', 'not-json{')
     expect(getMcpOAuthState()).toEqual(emptyHandshake)
+  })
+
+  describe('isMcpOAuthCallback', () => {
+    it('is true when the returned state matches the pending handshake nonce', () => {
+      setMcpOAuthState({ serverId: 'server-1', stateNonce: 'nonce-xyz', startedAt: Date.now() })
+      expect(isMcpOAuthCallback('nonce-xyz')).toBe(true)
+    })
+
+    it('is false when the returned state does not match the handshake nonce', () => {
+      setMcpOAuthState({ serverId: 'server-1', stateNonce: 'nonce-xyz', startedAt: Date.now() })
+      expect(isMcpOAuthCallback('a-different-nonce')).toBe(false)
+    })
+
+    it('is false when no handshake is pending', () => {
+      expect(isMcpOAuthCallback('nonce-xyz')).toBe(false)
+    })
+
+    it('is false for a missing/empty returned state (e.g. a non-compliant error redirect)', () => {
+      setMcpOAuthState({ serverId: 'server-1', stateNonce: 'nonce-xyz', startedAt: Date.now() })
+      expect(isMcpOAuthCallback(null)).toBe(false)
+      expect(isMcpOAuthCallback(undefined)).toBe(false)
+      expect(isMcpOAuthCallback('')).toBe(false)
+    })
   })
 })

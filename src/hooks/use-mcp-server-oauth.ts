@@ -4,7 +4,6 @@
 
 import type { AnyDrizzleDatabase } from '@/db/database-interface'
 import { deleteMcpServer } from '@/dal'
-import { setOAuthState } from '@/lib/oauth-state'
 import { clearMcpOAuthState, getMcpOAuthState } from '@/lib/mcp-auth/mcp-oauth-state'
 import { completeMcpOAuthFlow, startMcpOAuthFlow } from '@/lib/mcp-auth/web-oauth-flow'
 import type { FetchFn } from '@/lib/proxy-fetch'
@@ -85,9 +84,9 @@ export type McpOAuthCallbackDeps = {
  * Core OAuth-callback handler, kept pure (no React) so it can be unit-tested with
  * injected deps. Completes the flow when navigated back from `/oauth/callback`
  * with the code/state/iss in `location.state`. Branches:
- *  - no oauth payload → noop
- *  - clears the nav state, then reads the pending server id from the handshake
- *  - no pending server id → noop
+ *  - no oauth payload, or no pending MCP handshake → noop (don't touch nav state:
+ *    the payload may belong to another flow whose code we must not drop)
+ *  - clears the nav state so a refresh can't reprocess the callback
  *  - `oauth.error` → error card (friendly message) + clear handshake
  *  - missing `oauth.code` → cancelled card + clear handshake
  *  - otherwise → authorizing card, exchange + persist, clear card, reconnect
@@ -102,12 +101,16 @@ export const handleMcpOAuthCallback = async (
     return
   }
 
+  // Only act on a callback that belongs to our pending handshake. Nonce-based
+  // routing already keeps foreign (integrations) callbacks off this page; this
+  // guard ensures that if one ever slips through we don't clear its nav state
+  // (which would silently drop its code) or process it as ours.
   const { serverId } = getMcpOAuthState()
-  // Always clear the navigation state so a refresh can't reprocess the callback.
-  deps.clearNavState()
   if (!serverId) {
     return
   }
+  // Clear the navigation state so a refresh can't reprocess the callback.
+  deps.clearNavState()
 
   if (oauth.error) {
     deps.setCard(serverId, { phase: 'error', message: friendlyOAuthError(oauth.error) })
@@ -225,7 +228,6 @@ export const useMcpServerOAuth = (options: UseMcpServerOAuthOptions): UseMcpServ
    */
   const startAuthorize = async (server: { id: string; url?: string | null }) => {
     setCard(server.id, { phase: 'authorizing' })
-    setOAuthState({ returnContext: '/settings/mcp-servers' })
     try {
       const result = await startFlow({
         db,
@@ -262,7 +264,6 @@ export const useMcpServerOAuth = (options: UseMcpServerOAuthOptions): UseMcpServ
     dispatch({ type: 'set-add-authorize-pending', pending: true })
     try {
       await createRow()
-      setOAuthState({ returnContext: '/settings/mcp-servers' })
       const result = await startFlow({ db, serverId, serverUrl, fetchFn: buildOAuthFetch() })
       if (result.status === 'completed') {
         await reconnectServer(serverId)

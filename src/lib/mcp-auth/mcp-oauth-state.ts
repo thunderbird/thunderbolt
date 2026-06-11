@@ -79,3 +79,20 @@ export const setMcpOAuthState = (update: Partial<McpOAuthState>): void => {
 export const clearMcpOAuthState = (): void => {
   localStorage.removeItem(storageKey)
 }
+
+/**
+ * True when an OAuth callback's returned `state` belongs to the in-flight MCP
+ * handshake. The shared OAuth callback routers (web `oauth-callback.tsx` and the
+ * mobile deep link) use this to claim a callback for the MCP page by handshake
+ * ownership — the MCP flow never writes the shared `oauth_flow_state`
+ * return-context slot the integrations flow uses, so routing must not depend on
+ * it. Per RFC 6749 §4.1.2.1 the AS echoes `state` on error redirects too, so this
+ * covers both success and error callbacks; a missing/foreign `state` falls
+ * through to the integrations routing.
+ */
+export const isMcpOAuthCallback = (returnedState: string | null | undefined): boolean => {
+  if (!returnedState) {
+    return false
+  }
+  return getMcpOAuthState().stateNonce === returnedState
+}

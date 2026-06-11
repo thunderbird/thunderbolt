@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { isMcpOAuthCallback } from '@/lib/mcp-auth/mcp-oauth-state'
 import { getOAuthState, type ReturnContext } from '@/lib/oauth-state'
 import { isTauri } from '@/lib/platform'
 import { getCurrent, onOpenUrl } from '@tauri-apps/plugin-deep-link'
@@ -31,13 +32,25 @@ type NavigateTarget = {
 }
 
 /**
- * Determines the navigation target based on OAuth return context
- * Exported for testing
+ * Determines the navigation target based on OAuth return context.
+ *
+ * An MCP OAuth callback is routed by handshake ownership (its `state` matches the
+ * pending MCP handshake nonce), not the shared `oauth_flow_state` return-context
+ * slot — so a concurrent integrations flow can't misroute it. Everything else
+ * falls through to the integrations return-context routing.
+ *
+ * Exported for testing. `isMcpCallback` is injectable so the routing decision can
+ * be exercised without touching localStorage.
  */
 export const determineNavigationTarget = (
   oauthReturnContext: ReturnContext | null,
   oauth: OAuthCallbackData,
+  isMcpCallback: (returnedState: string | null | undefined) => boolean = isMcpOAuthCallback,
 ): NavigateTarget => {
+  if (isMcpCallback(oauth.state)) {
+    return { path: '/settings/mcp-servers', oauth }
+  }
+
   if (oauthReturnContext?.startsWith('/') && !oauthReturnContext.startsWith('//')) {
     return { path: oauthReturnContext, oauth }
   }

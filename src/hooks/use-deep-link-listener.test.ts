@@ -5,8 +5,9 @@
 import { act, renderHook } from '@testing-library/react'
 import { createElement, type ReactNode } from 'react'
 import { BrowserRouter } from 'react-router'
-import { afterAll, beforeAll, describe, expect, it } from 'bun:test'
+import { afterEach, afterAll, beforeAll, describe, expect, it } from 'bun:test'
 import { setupTestDatabase, teardownTestDatabase } from '@/dal/test-utils'
+import { clearMcpOAuthState, setMcpOAuthState } from '@/lib/mcp-auth/mcp-oauth-state'
 import { setOAuthState, type ReturnContext } from '@/lib/oauth-state'
 import { getClock } from '@/testing-library'
 import { createQueryTestWrapper } from '@/test-utils/react-query'
@@ -23,6 +24,12 @@ beforeAll(async () => {
 
 afterAll(async () => {
   await teardownTestDatabase()
+})
+
+// The MCP handshake lives in localStorage; clear it between tests so a nonce set
+// by one routing test can't leak into another.
+afterEach(() => {
+  clearMcpOAuthState()
 })
 
 const wrapper = ({ children }: { children: ReactNode }) => {
@@ -337,6 +344,30 @@ describe('determineNavigationTarget', () => {
 
   it('handles relative-looking paths that do not start with /', () => {
     const result = determineNavigationTarget('chats/123' as unknown as ReturnContext, mockOAuthData)
+
+    expect(result).toEqual({
+      path: '/settings/integrations',
+      oauth: mockOAuthData,
+    })
+  })
+
+  it('routes an MCP callback (matching handshake nonce) to the MCP servers page', () => {
+    // Even though the shared return-context slot points at integrations, a callback
+    // whose state matches the pending MCP handshake belongs to the MCP page.
+    setMcpOAuthState({ serverId: 'server-1', stateNonce: 'xyz789', startedAt: Date.now() })
+
+    const result = determineNavigationTarget('integrations', mockOAuthData)
+
+    expect(result).toEqual({
+      path: '/settings/mcp-servers',
+      oauth: mockOAuthData,
+    })
+  })
+
+  it('does not hijack an integrations callback whose state does not match the MCP handshake', () => {
+    setMcpOAuthState({ serverId: 'server-1', stateNonce: 'a-different-nonce', startedAt: Date.now() })
+
+    const result = determineNavigationTarget('integrations', mockOAuthData)
 
     expect(result).toEqual({
       path: '/settings/integrations',

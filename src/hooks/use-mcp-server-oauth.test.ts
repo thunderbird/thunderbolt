@@ -76,12 +76,21 @@ describe('handleMcpOAuthCallback', () => {
     expect(completeMcpOAuthFlow).not.toHaveBeenCalled()
   })
 
-  it('clears nav state but does nothing more when no flow is pending', async () => {
+  it('does not touch nav state or consume the payload when no MCP flow is pending', async () => {
+    // A callback that isn't ours (no pending handshake) must be left untouched —
+    // clearing nav state here would silently drop another flow's authorization code.
     const { deps, cards, clearNavState, completeMcpOAuthFlow } = makeDeps()
     await handleMcpOAuthCallback(validCallback, getDb(), deps)
-    expect(clearNavState).toHaveBeenCalledTimes(1)
+    expect(clearNavState).not.toHaveBeenCalled()
     expect(cards).toHaveLength(0)
     expect(completeMcpOAuthFlow).not.toHaveBeenCalled()
+  })
+
+  it('clears nav state once the callback matches the pending handshake', async () => {
+    setMcpOAuthState({ serverId: 'server-1', startedAt: Date.now() })
+    const { deps, clearNavState } = makeDeps()
+    await handleMcpOAuthCallback(validCallback, getDb(), deps)
+    expect(clearNavState).toHaveBeenCalledTimes(1)
   })
 
   it('sets an error card and clears the handshake when the AS returned an error', async () => {

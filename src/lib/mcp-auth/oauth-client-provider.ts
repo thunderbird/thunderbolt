@@ -47,6 +47,13 @@ type CreateProviderArgs = {
    * Defaults to `window.location.origin`; injectable for tests.
    */
   origin?: string
+  /**
+   * Explicit redirect URI to register and authorize with. The caller computes it
+   * per-platform (web callback route, mobile app-link, or desktop loopback
+   * `http://localhost:PORT`). Defaults to `${origin}${oauthCallbackPath}` to
+   * preserve the web behavior when not provided.
+   */
+  redirectUri?: string
   /** Predicate for "backend-connected"; defaults to the proxy-mode check. Injectable for tests. */
   isBackendConnected?: () => boolean
 }
@@ -66,23 +73,26 @@ class McpOAuthClientProvider implements OAuthClientProvider {
   private readonly serverId: string
   private readonly db: AnyDrizzleDatabase
   private readonly origin: string
+  private readonly redirectUri: string | undefined
   private readonly isBackendConnected: () => boolean
   private clientInfo: OAuthClientInformationFull | undefined
 
   constructor(
     args: Required<Pick<CreateProviderArgs, 'serverId' | 'db'>> & {
       origin: string
+      redirectUri?: string
       isBackendConnected: () => boolean
     },
   ) {
     this.serverId = args.serverId
     this.db = args.db
     this.origin = args.origin
+    this.redirectUri = args.redirectUri
     this.isBackendConnected = args.isBackendConnected
   }
 
   get redirectUrl(): string {
-    return `${this.origin}${oauthCallbackPath}`
+    return this.redirectUri ?? `${this.origin}${oauthCallbackPath}`
   }
 
   /**
@@ -202,6 +212,7 @@ export const createMcpOAuthClientProvider = (args: CreateProviderArgs): McpOAuth
     serverId: args.serverId,
     db: args.db,
     origin: args.origin ?? window.location.origin,
+    redirectUri: args.redirectUri,
     isBackendConnected: args.isBackendConnected ?? (() => computeEffectiveProxyEnabled()),
   })
 

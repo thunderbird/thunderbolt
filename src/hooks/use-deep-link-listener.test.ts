@@ -39,6 +39,21 @@ describe('parseOAuthCallback', () => {
       code: 'abc123',
       state: 'xyz789',
       error: null,
+      iss: null,
+    })
+  })
+
+  it('forwards the RFC 9207 iss parameter when present', () => {
+    const url = new URL(
+      'https://app.thunderbolt.io/oauth/callback?code=abc123&state=xyz789&iss=https%3A%2F%2Fauth.example.com',
+    )
+    const result = parseOAuthCallback(url)
+
+    expect(result).toEqual({
+      code: 'abc123',
+      state: 'xyz789',
+      error: null,
+      iss: 'https://auth.example.com',
     })
   })
 
@@ -50,6 +65,7 @@ describe('parseOAuthCallback', () => {
       code: null,
       state: null,
       error: 'access_denied',
+      iss: null,
     })
   })
 
@@ -63,6 +79,7 @@ describe('parseOAuthCallback', () => {
       code: null,
       state: null,
       error: 'User cancelled',
+      iss: null,
     })
   })
 
@@ -74,6 +91,7 @@ describe('parseOAuthCallback', () => {
       code: null,
       state: null,
       error: null,
+      iss: null,
     })
   })
 
@@ -85,6 +103,7 @@ describe('parseOAuthCallback', () => {
       code: 'abc123',
       state: 'xyz789',
       error: null,
+      iss: null,
     })
   })
 
@@ -216,6 +235,7 @@ describe('determineNavigationTarget', () => {
     code: 'abc123',
     state: 'xyz789',
     error: null,
+    iss: null,
   }
 
   it('navigates to absolute path when returnContext starts with /', () => {
@@ -295,6 +315,7 @@ describe('determineNavigationTarget', () => {
       code: null,
       state: null,
       error: 'access_denied',
+      iss: null,
     }
 
     const result = determineNavigationTarget('/chats/123', oauthWithError)
@@ -339,6 +360,7 @@ describe('parseOAuthCallback + determineNavigationTarget integration', () => {
         code: 'abc123',
         state: 'xyz789',
         error: null,
+        iss: null,
       },
     })
   })
@@ -359,6 +381,7 @@ describe('parseOAuthCallback + determineNavigationTarget integration', () => {
         code: null,
         state: null,
         error: 'User cancelled authorization',
+        iss: null,
       },
     })
   })

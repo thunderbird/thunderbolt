@@ -14,6 +14,8 @@ type OAuthCallbackData = {
   code: string | null
   state: string | null
   error: string | null
+  /** RFC 9207 issuer identifier. Used by the MCP callback handler; ignored by integrations. */
+  iss: string | null
 }
 
 type VerifyLinkData = {
@@ -65,11 +67,13 @@ export const parseOAuthCallback = (url: URL): OAuthCallbackData | null => {
   const state = url.searchParams.get('state')
   const error = url.searchParams.get('error')
   const errorDescription = url.searchParams.get('error_description')
+  const iss = url.searchParams.get('iss')
 
   return {
     code,
     state,
     error: errorDescription || error,
+    iss,
   }
 }
 

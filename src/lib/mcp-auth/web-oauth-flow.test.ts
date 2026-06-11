@@ -10,10 +10,13 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from
 import {
   classifyMcpServerAuth,
   completeMcpOAuthFlow,
+  computeMcpOAuthRedirectUri,
   isOAuthServer,
   startMcpOAuthFlow,
+  type PlatformDeps,
   type WebOAuthDeps,
 } from './web-oauth-flow'
+import type { LoopbackCallbackParams } from './mcp-oauth-loopback'
 import { getMcpOAuthState, setMcpOAuthState } from './mcp-oauth-state'
 
 const serverId = 'srv-1'
@@ -544,5 +547,204 @@ describe('completeMcpOAuthFlow', () => {
     ).rejects.toThrow(/changed between start and callback/)
 
     expect(exchanged).toBe(false)
+  })
+})
+
+describe('computeMcpOAuthRedirectUri', () => {
+  it('uses the app-origin callback route on web', () => {
+    const uri = computeMcpOAuthRedirectUri(origin, { isTauri: () => false, isMobile: () => false })
+    expect(uri).toBe(`${origin}/oauth/callback`)
+  })
+
+  it('uses the verified App Link on Tauri mobile', () => {
+    const uri = computeMcpOAuthRedirectUri(origin, { isTauri: () => true, isMobile: () => true })
+    expect(uri).toBe('https://app.thunderbolt.io/oauth/callback')
+  })
+})
+
+describe('startMcpOAuthFlow — mobile', () => {
+  beforeEach(async () => {
+    await resetTestDatabase()
+    localStorage.clear()
+  })
+
+  const mobilePlatform = (openUrl: PlatformDeps['openUrl']): PlatformDeps => ({
+    isTauri: () => true,
+    isMobile: () => true,
+    openUrl,
+  })
+
+  it('opens the system browser (not the webview) with the app-link redirect URI and returns redirected', async () => {
+    const db = getDb()
+    let openedUrl: string | undefined
+    let startedRedirect: string | URL | undefined
+
+    const result = await startMcpOAuthFlow(
+      { db, serverId, serverUrl, fetchFn: noFetch, origin, isBackendConnected: () => false },
+      {
+        ...happyDiscovery(metadata()),
+        registerClient: async () =>
+          ({
+            client_id: 'dcr-client',
+            redirect_uris: ['https://app.thunderbolt.io/oauth/callback'],
+          }) as OAuthClientInformationFull,
+        startAuthorization: async (_url, opts) => {
+          startedRedirect = opts.redirectUrl
+          return { authorizationUrl: new URL(`${authServerUrl}/authorize?x=1`), codeVerifier: 'verifier-1' }
+        },
+      },
+      mobilePlatform(async (url: string | URL) => {
+        openedUrl = String(url)
+      }),
+    )
+
+    expect(result).toEqual({ status: 'redirected' })
+    // The mobile app-link redirect URI is registered/authorized with.
+    expect(String(startedRedirect)).toBe('https://app.thunderbolt.io/oauth/callback')
+    // The system browser is opened — the webview is never navigated.
+    expect(openedUrl).toBe(`${authServerUrl}/authorize?x=1`)
+    // The handshake is persisted so the deep-link callback can complete it.
+    const handshake = getMcpOAuthState()
+    expect(handshake.serverId).toBe(serverId)
+    expect(handshake.redirectUrl).toBe('https://app.thunderbolt.io/oauth/callback')
+  })
+})
+
+describe('startMcpOAuthFlow — desktop loopback', () => {
+  beforeEach(async () => {
+    await resetTestDatabase()
+    localStorage.clear()
+  })
+
+  const loopbackPort = 17421
+
+  /**
+   * Simulates the desktop loopback server: hands the localhost redirect URI to
+   * `buildAuthorizationUrl` (which discovers + registers + persists the handshake
+   * against it), then crafts the callback. `craftCallback` receives the persisted
+   * `stateNonce` so a valid callback can echo the CSRF nonce the flow just stored.
+   */
+  const desktopPlatform = (
+    craftCallback: (stateNonce: string | null) => LoopbackCallbackParams | null,
+  ): PlatformDeps => ({
+    isTauri: () => true,
+    isMobile: () => false,
+    startMcpOAuthLoopback: async ({ buildAuthorizationUrl }) => {
+      await buildAuthorizationUrl(`http://localhost:${loopbackPort}`)
+      return craftCallback(getMcpOAuthState().stateNonce)
+    },
+  })
+
+  it('registers DCR against the loopback URI, persists the pinned handshake, completes inline, and returns completed', async () => {
+    const db = getDb()
+    let registeredRedirect: string | undefined
+    let exchangedRedirectUri: string | URL | undefined
+
+    const result = await startMcpOAuthFlow(
+      { db, serverId, serverUrl, fetchFn: noFetch, origin, isBackendConnected: () => false },
+      {
+        ...happyDiscovery(metadata({ authorization_response_iss_parameter_supported: true } as never)),
+        registerClient: async (_url, opts) => {
+          registeredRedirect = opts.clientMetadata.redirect_uris[0] as string
+          return {
+            client_id: 'dcr-client',
+            redirect_uris: opts.clientMetadata.redirect_uris,
+          } as OAuthClientInformationFull
+        },
+        startAuthorization: async () => ({
+          authorizationUrl: new URL(`${authServerUrl}/authorize`),
+          codeVerifier: 'verifier-1',
+        }),
+        exchangeAuthorization: async (_url, opts) => {
+          exchangedRedirectUri = opts.redirectUri
+          return { access_token: 'access-1', token_type: 'Bearer', refresh_token: 'refresh-1', expires_in: 3600 }
+        },
+      },
+      desktopPlatform((stateNonce) => ({
+        code: 'auth-code',
+        state: stateNonce,
+        iss: authServerUrl,
+        error: null,
+      })),
+    )
+
+    expect(result).toEqual({ status: 'completed' })
+    // DCR and the token exchange both used the loopback redirect URI — never the server URL.
+    expect(registeredRedirect).toBe(`http://localhost:${loopbackPort}`)
+    expect(String(exchangedRedirectUri)).toBe(`http://localhost:${loopbackPort}`)
+
+    // Tokens persisted by the inline completeMcpOAuthFlow.
+    const cred = await getMcpServerCredentials(db, serverId)
+    expect(cred?.type).toBe('oauth')
+    if (cred?.type === 'oauth') {
+      expect(cred.access_token).toBe('access-1')
+      expect(cred.refresh_token).toBe('refresh-1')
+      expect(cred.clientId).toBe('dcr-client')
+      expect(cred.issuer).toBe(authServerUrl)
+    }
+
+    // Handshake cleared by completeMcpOAuthFlow.
+    expect(getMcpOAuthState().serverId).toBeNull()
+  })
+
+  it('throws and clears the handshake when the loopback times out', async () => {
+    const db = getDb()
+
+    await expect(
+      startMcpOAuthFlow(
+        { db, serverId, serverUrl, fetchFn: noFetch, origin, isBackendConnected: () => false },
+        {
+          ...happyDiscovery(metadata()),
+          registerClient: async () =>
+            ({
+              client_id: 'dcr-client',
+              redirect_uris: [`http://localhost:${loopbackPort}`],
+            }) as OAuthClientInformationFull,
+          startAuthorization: async () => ({
+            authorizationUrl: new URL(`${authServerUrl}/authorize`),
+            codeVerifier: 'verifier-1',
+          }),
+        },
+        desktopPlatform(() => null),
+      ),
+    ).rejects.toThrow(/timed out/)
+
+    // No stuck handshake blocks a retry.
+    expect(getMcpOAuthState().serverId).toBeNull()
+    // DCR ran, so the placeholder oauth blob (client_id, empty token) exists — but
+    // no real access token was issued, exactly as in the web flow before callback.
+    const cred = await getMcpServerCredentials(db, serverId)
+    expect(cred?.type === 'oauth' && cred.access_token).toBe('')
+  })
+
+  it('surfaces an error returned by the loopback callback without exchanging', async () => {
+    const db = getDb()
+    let exchanged = false
+
+    await expect(
+      startMcpOAuthFlow(
+        { db, serverId, serverUrl, fetchFn: noFetch, origin, isBackendConnected: () => false },
+        {
+          ...happyDiscovery(metadata()),
+          registerClient: async () =>
+            ({
+              client_id: 'dcr-client',
+              redirect_uris: [`http://localhost:${loopbackPort}`],
+            }) as OAuthClientInformationFull,
+          startAuthorization: async () => ({
+            authorizationUrl: new URL(`${authServerUrl}/authorize`),
+            codeVerifier: 'verifier-1',
+          }),
+          exchangeAuthorization: async () => {
+            exchanged = true
+            return { access_token: 'x', token_type: 'Bearer' }
+          },
+        },
+        desktopPlatform(() => ({ code: null, state: null, iss: null, error: 'access_denied' })),
+      ),
+    ).rejects.toThrow(/access_denied/)
+
+    expect(exchanged).toBe(false)
+    expect(getMcpOAuthState().serverId).toBeNull()
   })
 })

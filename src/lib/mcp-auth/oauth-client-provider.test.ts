@@ -43,6 +43,22 @@ describe('McpOAuthClientProvider', () => {
       expect(metadata.grant_types).toEqual(['authorization_code', 'refresh_token'])
       expect(metadata.response_types).toEqual(['code'])
     })
+
+    it('defaults the redirect URI to the app-origin callback when none is injected', () => {
+      expect(makeProvider(true).redirectUrl).toBe(`${origin}/oauth/callback`)
+    })
+
+    it('uses an injected redirect URI (e.g. the desktop loopback) for both redirectUrl and redirect_uris', () => {
+      const provider = createMcpOAuthClientProvider({
+        serverId,
+        db: getDb(),
+        origin,
+        redirectUri: 'http://localhost:17421',
+        isBackendConnected: () => false,
+      })
+      expect(provider.redirectUrl).toBe('http://localhost:17421')
+      expect(provider.clientMetadata.redirect_uris).toEqual(['http://localhost:17421'])
+    })
   })
 
   describe('clientMetadataUrl (CIMD disabled in PR 1 — DCR everywhere)', () => {

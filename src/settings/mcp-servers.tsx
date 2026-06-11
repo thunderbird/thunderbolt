@@ -372,7 +372,12 @@ export default function McpServersPage() {
     const id = await addServerMutation.mutateAsync({ name: resolveServerName(), url })
     try {
       setOAuthState({ returnContext: '/settings/mcp-servers' })
-      await startMcpOAuthFlow({ db, serverId: id, serverUrl: url, fetchFn: buildOAuthFetch() })
+      const result = await startMcpOAuthFlow({ db, serverId: id, serverUrl: url, fetchFn: buildOAuthFetch() })
+      // Desktop completes the loopback flow inline; web/mobile navigate away or
+      // await the deep-link callback.
+      if (result.status === 'completed') {
+        await reconnectServer(id)
+      }
     } catch (error) {
       console.error('Failed to start MCP OAuth flow:', error)
       setAddDialogError('Could not start authorization. Please try again.')
@@ -498,13 +503,22 @@ export default function McpServersPage() {
     setOauthCardState((prev) => ({ ...prev, [server.id]: { phase: 'authorizing' } }))
     setOAuthState({ returnContext: '/settings/mcp-servers' })
     try {
-      await startMcpOAuthFlow({
+      const result = await startMcpOAuthFlow({
         db,
         serverId: server.id,
         serverUrl: server.url ?? '',
         fetchFn: buildOAuthFetch(),
       })
-      // On success the browser navigates away; nothing more to do here.
+      // Desktop completes the loopback flow inline (same success handling as the
+      // callback effect); web/mobile navigate away or await the deep-link callback.
+      if (result.status === 'completed') {
+        setOauthCardState((prev) => {
+          const next = { ...prev }
+          delete next[server.id]
+          return next
+        })
+        await reconnectServer(server.id)
+      }
     } catch (error) {
       console.error('Failed to start MCP OAuth flow:', error)
       setOauthCardState((prev) => ({

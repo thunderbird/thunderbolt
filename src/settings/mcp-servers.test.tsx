@@ -350,6 +350,52 @@ describe('McpServersPage probe lifecycle', () => {
   })
 })
 
+describe('McpServersPage add-dialog error labeling', () => {
+  beforeAll(async () => {
+    await setupTestDatabase()
+  })
+
+  afterAll(async () => {
+    await teardownTestDatabase()
+  })
+
+  beforeEach(async () => {
+    await resetTestDatabase()
+  })
+
+  afterEach(() => {
+    cleanup()
+  })
+
+  it('clears a JSON import error when switching back to simple mode', async () => {
+    renderWithReactivity(<McpServersPage />, {
+      tables: ['mcp_servers', 'mcp_secrets'],
+      wrapper: McpProviderWrapper,
+    })
+    const openButton = await waitForElement(() => screen.queryByRole('button', { name: 'Add Server' }))
+    fireEvent.click(openButton)
+
+    // Advanced mode: paste a config with no servers, then import → error panel.
+    fireEvent.click(screen.getByText('Advanced (JSON)'))
+    const textarea = await waitForElement(() => screen.queryByLabelText('Servers JSON'))
+    fireEvent.change(textarea, { target: { value: '{}' } })
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Import Servers' }))
+      await getClock().runAllAsync()
+    })
+    expect(screen.getByText('Import failed')).toBeInTheDocument()
+    const importMessage = 'No servers found: expected a non-empty "mcpServers" or "servers" object'
+    expect(screen.getByText(importMessage)).toBeInTheDocument()
+
+    // Switching back to Simple must clear the import error — not relabel it as an
+    // "Authorization error" (the simple-mode error title).
+    fireEvent.click(screen.getByText('Simple'))
+    expect(screen.queryByText('Import failed')).not.toBeInTheDocument()
+    expect(screen.queryByText('Authorization error')).not.toBeInTheDocument()
+    expect(screen.queryByText(importMessage)).not.toBeInTheDocument()
+  })
+})
+
 describe('generateServerName', () => {
   const cases: Array<[string, string]> = [
     ['http://192.168.1.100', '192.168.1.100'],

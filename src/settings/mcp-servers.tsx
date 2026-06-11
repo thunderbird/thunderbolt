@@ -232,6 +232,16 @@ export default function McpServersPage({ deps = {} }: { deps?: McpServersPageDep
   const urlValidation = newServerUrl ? validateMcpServerUrl(newServerUrl) : null
   const isUrlValid = urlValidation?.ok === true
 
+  // The add-dialog surfaces at most one error: a JSON import failure (advanced) or
+  // an OAuth authorization failure (simple). The title is derived from the error
+  // itself — not the current mode — so a message is always labeled by its own
+  // context (switching modes clears the other source, see the mode toggle).
+  const addDialogError = importError
+    ? { title: 'Import failed', body: importError }
+    : dialogError
+      ? { title: 'Authorization error', body: dialogError }
+      : null
+
   // TODO: Add support for stdio servers
   const { data: servers = [] } = useQuery({
     queryKey: ['mcp-servers'],
@@ -568,9 +578,15 @@ export default function McpServersPage({ deps = {} }: { deps?: McpServersPageDep
               variant="outline"
               value={mode}
               onValueChange={(value) => {
-                if (value === 'simple' || value === 'advanced') {
-                  setMode(value)
+                if (value !== 'simple' && value !== 'advanced') {
+                  return
                 }
+                // Each mode owns a different error source (JSON import vs OAuth
+                // authorization). Clear both on switch so a stale message from the
+                // mode you're leaving can't surface under the new mode's UI.
+                setImportError(null)
+                clearDialogError()
+                setMode(value)
               }}
               className="w-full flex-shrink-0"
             >
@@ -695,14 +711,10 @@ export default function McpServersPage({ deps = {} }: { deps?: McpServersPageDep
                 </div>
               )}
 
-              {(dialogError || importError) && (
+              {addDialogError && (
                 <div className="mb-2">
-                  <StatusPanel
-                    tone="destructive"
-                    icon={<X className="h-4 w-4" />}
-                    title={mode === 'advanced' ? 'Import failed' : 'Authorization error'}
-                  >
-                    <p className="text-sm text-destructive/90 mt-1 whitespace-pre-line">{dialogError ?? importError}</p>
+                  <StatusPanel tone="destructive" icon={<X className="h-4 w-4" />} title={addDialogError.title}>
+                    <p className="text-sm text-destructive/90 mt-1 whitespace-pre-line">{addDialogError.body}</p>
                   </StatusPanel>
                 </div>
               )}

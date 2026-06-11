@@ -3,7 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import type { OAuthClientInformationFull } from '@modelcontextprotocol/sdk/shared/auth.js'
-import { getMcpServerCredentials } from '@/dal/mcp-secrets'
+import { getMcpServerCredentials, setMcpServerCredentials } from '@/dal/mcp-secrets'
 import { getDb } from '@/db/database'
 import { resetTestDatabase, setupTestDatabase, teardownTestDatabase } from '@/dal/test-utils'
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'bun:test'
@@ -116,6 +116,72 @@ describe('McpOAuthClientProvider', () => {
       }
       expect(stored.access_token).toBe('a2')
       expect(stored.refresh_token).toBe('r1')
+    })
+
+    it('enriches a fresh token blob with the AS binding from the in-flight handshake', async () => {
+      setMcpOAuthState({
+        issuer: 'https://auth.example.com',
+        metadata: JSON.stringify({ token_endpoint: 'https://auth.example.com/token' }),
+        clientInfo: JSON.stringify({ client_id: 'handshake-client' }),
+      })
+
+      await makeProvider(true).saveTokens({ access_token: 'access-1', token_type: 'Bearer' })
+
+      const stored = await getMcpServerCredentials(getDb(), serverId)
+      if (stored?.type !== 'oauth') {
+        throw new Error('expected oauth credentials')
+      }
+      expect(stored.issuer).toBe('https://auth.example.com')
+      expect(stored.tokenEndpoint).toBe('https://auth.example.com/token')
+      expect(stored.clientId).toBe('handshake-client')
+    })
+
+    it('fails soft, leaving binding fields undefined when no handshake is present', async () => {
+      await makeProvider(true).saveTokens({ access_token: 'access-1', token_type: 'Bearer' })
+
+      const stored = await getMcpServerCredentials(getDb(), serverId)
+      if (stored?.type !== 'oauth') {
+        throw new Error('expected oauth credentials')
+      }
+      expect(stored.issuer).toBeUndefined()
+      expect(stored.tokenEndpoint).toBeUndefined()
+      expect(stored.clientId).toBeUndefined()
+    })
+
+    it('tolerates a handshake with null metadata (no token endpoint)', async () => {
+      setMcpOAuthState({ issuer: 'https://auth.example.com', metadata: null })
+
+      await makeProvider(true).saveTokens({ access_token: 'access-1', token_type: 'Bearer' })
+
+      const stored = await getMcpServerCredentials(getDb(), serverId)
+      if (stored?.type !== 'oauth') {
+        throw new Error('expected oauth credentials')
+      }
+      expect(stored.issuer).toBe('https://auth.example.com')
+      expect(stored.tokenEndpoint).toBeUndefined()
+    })
+
+    it('keeps an existing blob binding on refresh even after the handshake is cleared', async () => {
+      // Mirrors the authoritative blob `completeMcpOAuthFlow` writes; the handshake
+      // is already cleared by the time a later refresh calls saveTokens.
+      await setMcpServerCredentials(getDb(), serverId, {
+        type: 'oauth',
+        access_token: 'a1',
+        issuer: 'https://kept.example.com',
+        tokenEndpoint: 'https://kept.example.com/token',
+        clientId: 'kept-client',
+      })
+
+      await makeProvider(true).saveTokens({ access_token: 'a2', token_type: 'Bearer' })
+
+      const stored = await getMcpServerCredentials(getDb(), serverId)
+      if (stored?.type !== 'oauth') {
+        throw new Error('expected oauth credentials')
+      }
+      expect(stored.access_token).toBe('a2')
+      expect(stored.issuer).toBe('https://kept.example.com')
+      expect(stored.tokenEndpoint).toBe('https://kept.example.com/token')
+      expect(stored.clientId).toBe('kept-client')
     })
   })
 

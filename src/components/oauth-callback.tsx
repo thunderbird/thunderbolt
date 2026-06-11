@@ -55,11 +55,11 @@ export default function OAuthCallback() {
       const t = setTimeout(async () => {
         const oauthPayload = { code, state, iss, error: errorDescription || error }
 
-        // An MCP OAuth callback is claimed by handshake ownership (its `state`
-        // matches the pending MCP handshake nonce), independent of the shared
-        // return-context slot — so a concurrent integrations flow can't misroute
-        // it to the wrong page.
-        if (isMcpOAuthCallback(state)) {
+        // An MCP OAuth callback is claimed by handshake ownership (nonce match,
+        // or an otherwise-unattributable error redirect while an MCP handshake is
+        // pending), independent of the shared return-context slot — so a
+        // concurrent integrations flow can't misroute it to the wrong page.
+        if (isMcpOAuthCallback({ code, state, error })) {
           navigate('/settings/mcp-servers', { state: { oauth: oauthPayload } })
           return
         }

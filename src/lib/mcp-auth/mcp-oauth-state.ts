@@ -2,7 +2,17 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { getOAuthState } from '@/lib/oauth-state'
+
 const storageKey = 'mcp_oauth_flow_state'
+
+/**
+ * A pending handshake older than this is treated as abandoned (the user closed
+ * the tab mid-consent), so a new flow for a different server may replace it
+ * rather than being blocked forever. Exceeds the desktop loopback timeout (5 min)
+ * so a slow-but-live flow is never mistaken for abandoned.
+ */
+export const abandonedFlowMs = 10 * 60 * 1000
 
 /**
  * MCP OAuth in-flight handshake stored in localStorage (device-local, never
@@ -80,19 +90,44 @@ export const clearMcpOAuthState = (): void => {
   localStorage.removeItem(storageKey)
 }
 
+/** The callback params the routing decision depends on. */
+export type OAuthCallbackParams = {
+  code: string | null | undefined
+  state: string | null | undefined
+  error: string | null | undefined
+}
+
 /**
- * True when an OAuth callback's returned `state` belongs to the in-flight MCP
- * handshake. The shared OAuth callback routers (web `oauth-callback.tsx` and the
- * mobile deep link) use this to claim a callback for the MCP page by handshake
- * ownership — the MCP flow never writes the shared `oauth_flow_state`
- * return-context slot the integrations flow uses, so routing must not depend on
- * it. Per RFC 6749 §4.1.2.1 the AS echoes `state` on error redirects too, so this
- * covers both success and error callbacks; a missing/foreign `state` falls
- * through to the integrations routing.
+ * True when an OAuth callback belongs to the in-flight MCP handshake. The shared
+ * OAuth callback routers (web `oauth-callback.tsx` and the mobile deep link) use
+ * this to claim a callback for the MCP page by handshake ownership — the MCP flow
+ * never writes the shared `oauth_flow_state` return-context slot the integrations
+ * flow uses, so routing must not depend on it. Two rules:
+ *
+ * - A callback carrying a `code` is claimed ONLY by exact nonce match — the
+ *   code-exchange path stays strictly CSRF-gated.
+ * - An error callback (no code) is also claimed when its `state` is missing or
+ *   foreign, a fresh MCP handshake is pending, and the callback isn't the pending
+ *   integrations flow's (its `state` doesn't match that flow's nonce). RFC 6749
+ *   §4.1.2.1 requires the AS to echo `state` on error redirects, but
+ *   non-compliant ASes exist — an unclaimed error would leave the handshake
+ *   pending and block other servers' authorizations until `abandonedFlowMs`.
+ *
+ * Anything else falls through to the integrations routing.
  */
-export const isMcpOAuthCallback = (returnedState: string | null | undefined): boolean => {
-  if (!returnedState) {
+export const isMcpOAuthCallback = ({ code, state, error }: OAuthCallbackParams): boolean => {
+  const handshake = getMcpOAuthState()
+  if (state && handshake.stateNonce === state) {
+    return true
+  }
+  if (code || !error) {
     return false
   }
-  return getMcpOAuthState().stateNonce === returnedState
+  const isFreshHandshake =
+    !!handshake.serverId && handshake.startedAt !== null && Date.now() - handshake.startedAt < abandonedFlowMs
+  if (!isFreshHandshake) {
+    return false
+  }
+  const integrationsNonce = getOAuthState().state
+  return !(state && integrationsNonce && state === integrationsNonce)
 }

@@ -3,7 +3,14 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { beforeEach, describe, expect, it } from 'bun:test'
-import { clearMcpOAuthState, getMcpOAuthState, isMcpOAuthCallback, setMcpOAuthState } from './mcp-oauth-state'
+import { setOAuthState } from '@/lib/oauth-state'
+import {
+  abandonedFlowMs,
+  clearMcpOAuthState,
+  getMcpOAuthState,
+  isMcpOAuthCallback,
+  setMcpOAuthState,
+} from './mcp-oauth-state'
 
 const emptyHandshake = {
   serverId: null,
@@ -81,25 +88,62 @@ describe('MCP OAuth state', () => {
   })
 
   describe('isMcpOAuthCallback', () => {
-    it('is true when the returned state matches the pending handshake nonce', () => {
+    const pendingHandshake = () =>
       setMcpOAuthState({ serverId: 'server-1', stateNonce: 'nonce-xyz', startedAt: Date.now() })
-      expect(isMcpOAuthCallback('nonce-xyz')).toBe(true)
+
+    it('claims a code callback whose state matches the pending handshake nonce', () => {
+      pendingHandshake()
+      expect(isMcpOAuthCallback({ code: 'auth-code', state: 'nonce-xyz', error: null })).toBe(true)
     })
 
-    it('is false when the returned state does not match the handshake nonce', () => {
-      setMcpOAuthState({ serverId: 'server-1', stateNonce: 'nonce-xyz', startedAt: Date.now() })
-      expect(isMcpOAuthCallback('a-different-nonce')).toBe(false)
+    it('never claims a code callback with a non-matching state (code exchange stays nonce-gated)', () => {
+      pendingHandshake()
+      expect(isMcpOAuthCallback({ code: 'auth-code', state: 'a-different-nonce', error: null })).toBe(false)
+      expect(isMcpOAuthCallback({ code: 'auth-code', state: null, error: null })).toBe(false)
+      // Even when the AS (incorrectly) sends an error alongside a code.
+      expect(isMcpOAuthCallback({ code: 'auth-code', state: null, error: 'server_error' })).toBe(false)
     })
 
     it('is false when no handshake is pending', () => {
-      expect(isMcpOAuthCallback('nonce-xyz')).toBe(false)
+      expect(isMcpOAuthCallback({ code: 'auth-code', state: 'nonce-xyz', error: null })).toBe(false)
     })
 
-    it('is false for a missing/empty returned state (e.g. a non-compliant error redirect)', () => {
-      setMcpOAuthState({ serverId: 'server-1', stateNonce: 'nonce-xyz', startedAt: Date.now() })
-      expect(isMcpOAuthCallback(null)).toBe(false)
-      expect(isMcpOAuthCallback(undefined)).toBe(false)
-      expect(isMcpOAuthCallback('')).toBe(false)
+    it('claims an error callback without state while a fresh handshake is pending', () => {
+      // RFC 6749 §4.1.2.1 says the AS must echo `state` on error redirects, but
+      // non-compliant ASes exist — an unclaimed error would leave the handshake
+      // pending and block other servers' authorizations.
+      pendingHandshake()
+      expect(isMcpOAuthCallback({ code: null, state: null, error: 'access_denied' })).toBe(true)
+    })
+
+    it('claims an error callback with a foreign state (matches neither flow) while a handshake is pending', () => {
+      pendingHandshake()
+      setOAuthState({ state: 'integrations-nonce' })
+      expect(isMcpOAuthCallback({ code: null, state: 'unknown-nonce', error: 'access_denied' })).toBe(true)
+    })
+
+    it('does not claim an error callback when no handshake is pending', () => {
+      expect(isMcpOAuthCallback({ code: null, state: null, error: 'access_denied' })).toBe(false)
+    })
+
+    it('does not claim an error callback belonging to the pending integrations flow', () => {
+      pendingHandshake()
+      setOAuthState({ state: 'integrations-nonce' })
+      expect(isMcpOAuthCallback({ code: null, state: 'integrations-nonce', error: 'access_denied' })).toBe(false)
+    })
+
+    it('does not claim an error callback for a stale (abandoned) handshake', () => {
+      setMcpOAuthState({
+        serverId: 'server-1',
+        stateNonce: 'nonce-xyz',
+        startedAt: Date.now() - abandonedFlowMs - 1,
+      })
+      expect(isMcpOAuthCallback({ code: null, state: null, error: 'access_denied' })).toBe(false)
+    })
+
+    it('does not claim a callback with neither code nor error', () => {
+      pendingHandshake()
+      expect(isMcpOAuthCallback({ code: null, state: null, error: null })).toBe(false)
     })
   })
 })

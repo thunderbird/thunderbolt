@@ -21,15 +21,7 @@ import type { McpAuthActionability } from './auth-decision'
 import { cimdClientMetadataAvailable, createMcpOAuthClientProvider } from './oauth-client-provider'
 import { validateMcpOAuthCallback } from './callback-validation'
 import { startMcpOAuthLoopback } from './mcp-oauth-loopback'
-import { clearMcpOAuthState, getMcpOAuthState, setMcpOAuthState } from './mcp-oauth-state'
-
-/**
- * A pending handshake older than this is treated as abandoned (the user closed
- * the tab mid-consent), so a new flow for a different server may replace it
- * rather than being blocked forever. Exceeds the desktop loopback timeout (5 min)
- * so a slow-but-live flow is never mistaken for abandoned.
- */
-const abandonedFlowMs = 10 * 60 * 1000
+import { abandonedFlowMs, clearMcpOAuthState, getMcpOAuthState, setMcpOAuthState } from './mcp-oauth-state'
 
 /** Verified HTTPS App Link / Universal Link the mobile system browser returns to. */
 const mobileRedirectUri = 'https://app.thunderbolt.io/oauth/callback'

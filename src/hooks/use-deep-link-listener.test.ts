@@ -8,7 +8,7 @@ import { BrowserRouter } from 'react-router'
 import { afterEach, afterAll, beforeAll, describe, expect, it } from 'bun:test'
 import { setupTestDatabase, teardownTestDatabase } from '@/dal/test-utils'
 import { clearMcpOAuthState, setMcpOAuthState } from '@/lib/mcp-auth/mcp-oauth-state'
-import { setOAuthState, type ReturnContext } from '@/lib/oauth-state'
+import { clearOAuthState, setOAuthState, type ReturnContext } from '@/lib/oauth-state'
 import { getClock } from '@/testing-library'
 import { createQueryTestWrapper } from '@/test-utils/react-query'
 import {
@@ -26,10 +26,11 @@ afterAll(async () => {
   await teardownTestDatabase()
 })
 
-// The MCP handshake lives in localStorage; clear it between tests so a nonce set
-// by one routing test can't leak into another.
+// Both OAuth flow slots live in localStorage; clear them between tests so a
+// nonce set by one routing test can't leak into another.
 afterEach(() => {
   clearMcpOAuthState()
+  clearOAuthState()
 })
 
 const wrapper = ({ children }: { children: ReactNode }) => {
@@ -365,6 +366,7 @@ describe('determineNavigationTarget', () => {
   })
 
   it('does not hijack an integrations callback whose state does not match the MCP handshake', () => {
+    // Security invariant: a callback carrying a code is only claimed by exact nonce match.
     setMcpOAuthState({ serverId: 'server-1', stateNonce: 'a-different-nonce', startedAt: Date.now() })
 
     const result = determineNavigationTarget('integrations', mockOAuthData)
@@ -372,6 +374,45 @@ describe('determineNavigationTarget', () => {
     expect(result).toEqual({
       path: '/settings/integrations',
       oauth: mockOAuthData,
+    })
+  })
+
+  it('routes a stateless error callback to the MCP page while an MCP handshake is pending', () => {
+    // A non-compliant AS may omit `state` on the error redirect; the pending
+    // handshake must still be claimed (and cleared by the MCP page) or it would
+    // block other servers' authorizations until the abandoned-flow window lapses.
+    setMcpOAuthState({ serverId: 'server-1', stateNonce: 'nonce-xyz', startedAt: Date.now() })
+    const errorCallback = { code: null, state: null, error: 'access_denied', iss: null }
+
+    const result = determineNavigationTarget('integrations', errorCallback)
+
+    expect(result).toEqual({
+      path: '/settings/mcp-servers',
+      oauth: errorCallback,
+    })
+  })
+
+  it('routes a stateless error callback to integrations when no MCP handshake is pending', () => {
+    const errorCallback = { code: null, state: null, error: 'access_denied', iss: null }
+
+    const result = determineNavigationTarget('integrations', errorCallback)
+
+    expect(result).toEqual({
+      path: '/settings/integrations',
+      oauth: errorCallback,
+    })
+  })
+
+  it('routes an error callback belonging to the pending integrations flow to integrations', () => {
+    setMcpOAuthState({ serverId: 'server-1', stateNonce: 'nonce-xyz', startedAt: Date.now() })
+    setOAuthState({ state: 'integrations-nonce' })
+    const errorCallback = { code: null, state: 'integrations-nonce', error: 'access_denied', iss: null }
+
+    const result = determineNavigationTarget('integrations', errorCallback)
+
+    expect(result).toEqual({
+      path: '/settings/integrations',
+      oauth: errorCallback,
     })
   })
 })

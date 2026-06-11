@@ -5,9 +5,10 @@
 import { act, renderHook } from '@testing-library/react'
 import { createElement, type ReactNode } from 'react'
 import { BrowserRouter } from 'react-router'
-import { afterAll, beforeAll, describe, expect, it } from 'bun:test'
+import { afterEach, afterAll, beforeAll, describe, expect, it } from 'bun:test'
 import { setupTestDatabase, teardownTestDatabase } from '@/dal/test-utils'
-import { setOAuthState, type ReturnContext } from '@/lib/oauth-state'
+import { clearMcpOAuthState, setMcpOAuthState } from '@/lib/mcp-auth/mcp-oauth-state'
+import { clearOAuthState, setOAuthState, type ReturnContext } from '@/lib/oauth-state'
 import { getClock } from '@/testing-library'
 import { createQueryTestWrapper } from '@/test-utils/react-query'
 import {
@@ -25,6 +26,13 @@ afterAll(async () => {
   await teardownTestDatabase()
 })
 
+// Both OAuth flow slots live in localStorage; clear them between tests so a
+// nonce set by one routing test can't leak into another.
+afterEach(() => {
+  clearMcpOAuthState()
+  clearOAuthState()
+})
+
 const wrapper = ({ children }: { children: ReactNode }) => {
   const queryWrapper = createQueryTestWrapper()
   return createElement(BrowserRouter, null, createElement(queryWrapper, null, children))
@@ -39,6 +47,21 @@ describe('parseOAuthCallback', () => {
       code: 'abc123',
       state: 'xyz789',
       error: null,
+      iss: null,
+    })
+  })
+
+  it('forwards the RFC 9207 iss parameter when present', () => {
+    const url = new URL(
+      'https://app.thunderbolt.io/oauth/callback?code=abc123&state=xyz789&iss=https%3A%2F%2Fauth.example.com',
+    )
+    const result = parseOAuthCallback(url)
+
+    expect(result).toEqual({
+      code: 'abc123',
+      state: 'xyz789',
+      error: null,
+      iss: 'https://auth.example.com',
     })
   })
 
@@ -50,6 +73,7 @@ describe('parseOAuthCallback', () => {
       code: null,
       state: null,
       error: 'access_denied',
+      iss: null,
     })
   })
 
@@ -63,6 +87,7 @@ describe('parseOAuthCallback', () => {
       code: null,
       state: null,
       error: 'User cancelled',
+      iss: null,
     })
   })
 
@@ -74,6 +99,7 @@ describe('parseOAuthCallback', () => {
       code: null,
       state: null,
       error: null,
+      iss: null,
     })
   })
 
@@ -85,6 +111,7 @@ describe('parseOAuthCallback', () => {
       code: 'abc123',
       state: 'xyz789',
       error: null,
+      iss: null,
     })
   })
 
@@ -216,6 +243,7 @@ describe('determineNavigationTarget', () => {
     code: 'abc123',
     state: 'xyz789',
     error: null,
+    iss: null,
   }
 
   it('navigates to absolute path when returnContext starts with /', () => {
@@ -295,6 +323,7 @@ describe('determineNavigationTarget', () => {
       code: null,
       state: null,
       error: 'access_denied',
+      iss: null,
     }
 
     const result = determineNavigationTarget('/chats/123', oauthWithError)
@@ -322,6 +351,70 @@ describe('determineNavigationTarget', () => {
       oauth: mockOAuthData,
     })
   })
+
+  it('routes an MCP callback (matching handshake nonce) to the MCP servers page', () => {
+    // Even though the shared return-context slot points at integrations, a callback
+    // whose state matches the pending MCP handshake belongs to the MCP page.
+    setMcpOAuthState({ serverId: 'server-1', stateNonce: 'xyz789', startedAt: Date.now() })
+
+    const result = determineNavigationTarget('integrations', mockOAuthData)
+
+    expect(result).toEqual({
+      path: '/settings/mcp-servers',
+      oauth: mockOAuthData,
+    })
+  })
+
+  it('does not hijack an integrations callback whose state does not match the MCP handshake', () => {
+    // Security invariant: a callback carrying a code is only claimed by exact nonce match.
+    setMcpOAuthState({ serverId: 'server-1', stateNonce: 'a-different-nonce', startedAt: Date.now() })
+
+    const result = determineNavigationTarget('integrations', mockOAuthData)
+
+    expect(result).toEqual({
+      path: '/settings/integrations',
+      oauth: mockOAuthData,
+    })
+  })
+
+  it('routes a stateless error callback to the MCP page while an MCP handshake is pending', () => {
+    // A non-compliant AS may omit `state` on the error redirect; the pending
+    // handshake must still be claimed (and cleared by the MCP page) or it would
+    // block other servers' authorizations until the abandoned-flow window lapses.
+    setMcpOAuthState({ serverId: 'server-1', stateNonce: 'nonce-xyz', startedAt: Date.now() })
+    const errorCallback = { code: null, state: null, error: 'access_denied', iss: null }
+
+    const result = determineNavigationTarget('integrations', errorCallback)
+
+    expect(result).toEqual({
+      path: '/settings/mcp-servers',
+      oauth: errorCallback,
+    })
+  })
+
+  it('routes a stateless error callback to integrations when no MCP handshake is pending', () => {
+    const errorCallback = { code: null, state: null, error: 'access_denied', iss: null }
+
+    const result = determineNavigationTarget('integrations', errorCallback)
+
+    expect(result).toEqual({
+      path: '/settings/integrations',
+      oauth: errorCallback,
+    })
+  })
+
+  it('routes an error callback belonging to the pending integrations flow to integrations', () => {
+    setMcpOAuthState({ serverId: 'server-1', stateNonce: 'nonce-xyz', startedAt: Date.now() })
+    setOAuthState({ state: 'integrations-nonce' })
+    const errorCallback = { code: null, state: 'integrations-nonce', error: 'access_denied', iss: null }
+
+    const result = determineNavigationTarget('integrations', errorCallback)
+
+    expect(result).toEqual({
+      path: '/settings/integrations',
+      oauth: errorCallback,
+    })
+  })
 })
 
 describe('parseOAuthCallback + determineNavigationTarget integration', () => {
@@ -339,6 +432,7 @@ describe('parseOAuthCallback + determineNavigationTarget integration', () => {
         code: 'abc123',
         state: 'xyz789',
         error: null,
+        iss: null,
       },
     })
   })
@@ -359,6 +453,7 @@ describe('parseOAuthCallback + determineNavigationTarget integration', () => {
         code: null,
         state: null,
         error: 'User cancelled authorization',
+        iss: null,
       },
     })
   })

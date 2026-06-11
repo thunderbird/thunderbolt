@@ -50,21 +50,56 @@ const buildMetadata = (issuer: string, tokenEndpoint: string): AuthorizationServ
 type RefreshFn = typeof sdkRefreshAuthorization
 
 /**
+ * In-flight refreshes keyed by serverId so concurrent callers coalesce onto a
+ * single refresh instead of each presenting the same rotating refresh token.
+ * In-process only (one entry per tab); `mcp_secrets` is local-only, so a
+ * cross-tab race at worst writes the same fresh token twice — harmless.
+ */
+const tokenRefreshInFlight = new Map<string, Promise<string>>()
+
+/**
  * Returns a valid MCP OAuth access token for the server, refreshing proactively
  * when it is near expiry (60s buffer, mirroring `ensureValidOAuthToken`).
  *
+ * Concurrent calls for the same server share one in-flight refresh: OAuth 2.1
+ * reuse-detection rejects a second presentation of a rotating refresh token with
+ * `invalid_grant`, which would otherwise force a needless re-authorization.
+ *
  * On refresh the rotated refresh token replaces the stored one and `expires_at`
- * is recomputed from the new `expires_in`. The RFC 8707 `resource` (the canonical
- * MCP server URL) is sent on the refresh request. An `invalid_grant`
+ * is recomputed from the new `expires_in` (a response without `expires_in` is
+ * stored as non-expiring, never as the stale pre-refresh timestamp, which would
+ * trigger a refresh on every subsequent connect). The RFC 8707 `resource` (the
+ * canonical MCP server URL) is sent on the refresh request. An `invalid_grant`
  * (revoked/reused refresh token) surfaces as `McpOAuthNeedsReauthError` so the
  * UI can prompt a clean re-authorization. `refreshAuthorization` is injectable
  * for tests.
  */
-export const ensureValidMcpOAuthToken = async (
+export const ensureValidMcpOAuthToken = (
   db: AnyDrizzleDatabase,
   serverId: string,
   fetchFn: FetchLike,
   refreshAuthorization: RefreshFn = sdkRefreshAuthorization,
+): Promise<string> => {
+  const inFlight = tokenRefreshInFlight.get(serverId)
+  if (inFlight) {
+    return inFlight
+  }
+  // Evict on settle so the next call re-reads credentials and a failed refresh
+  // is retried rather than replaying a poisoned promise.
+  const promise = resolveValidMcpOAuthToken(db, serverId, fetchFn, refreshAuthorization).finally(() => {
+    if (tokenRefreshInFlight.get(serverId) === promise) {
+      tokenRefreshInFlight.delete(serverId)
+    }
+  })
+  tokenRefreshInFlight.set(serverId, promise)
+  return promise
+}
+
+const resolveValidMcpOAuthToken = async (
+  db: AnyDrizzleDatabase,
+  serverId: string,
+  fetchFn: FetchLike,
+  refreshAuthorization: RefreshFn,
 ): Promise<string> => {
   const cred = await getMcpServerCredentials(db, serverId)
   if (cred?.type !== 'oauth') {
@@ -105,7 +140,7 @@ export const ensureValidMcpOAuthToken = async (
     ...cred,
     access_token: tokens.access_token,
     refresh_token: tokens.refresh_token ?? cred.refresh_token,
-    expires_at: tokens.expires_in !== undefined ? Date.now() + tokens.expires_in * 1000 : cred.expires_at,
+    expires_at: tokens.expires_in !== undefined ? Date.now() + tokens.expires_in * 1000 : undefined,
     scope: tokens.scope ?? cred.scope,
   })
 

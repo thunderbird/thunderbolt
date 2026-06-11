@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { isMcpOAuthCallback, type OAuthCallbackParams } from '@/lib/mcp-auth/mcp-oauth-state'
 import { getOAuthState, type ReturnContext } from '@/lib/oauth-state'
 import { isTauri } from '@/lib/platform'
 import { getCurrent, onOpenUrl } from '@tauri-apps/plugin-deep-link'
@@ -14,6 +15,8 @@ type OAuthCallbackData = {
   code: string | null
   state: string | null
   error: string | null
+  /** RFC 9207 issuer identifier. Used by the MCP callback handler; ignored by integrations. */
+  iss: string | null
 }
 
 type VerifyLinkData = {
@@ -29,13 +32,26 @@ type NavigateTarget = {
 }
 
 /**
- * Determines the navigation target based on OAuth return context
- * Exported for testing
+ * Determines the navigation target based on OAuth return context.
+ *
+ * An MCP OAuth callback is routed by handshake ownership (nonce match, or an
+ * otherwise-unattributable error redirect while an MCP handshake is pending —
+ * see `isMcpOAuthCallback`), not the shared `oauth_flow_state` return-context
+ * slot — so a concurrent integrations flow can't misroute it. Everything else
+ * falls through to the integrations return-context routing.
+ *
+ * Exported for testing. `isMcpCallback` is injectable so the routing decision can
+ * be exercised without touching localStorage.
  */
 export const determineNavigationTarget = (
   oauthReturnContext: ReturnContext | null,
   oauth: OAuthCallbackData,
+  isMcpCallback: (callback: OAuthCallbackParams) => boolean = isMcpOAuthCallback,
 ): NavigateTarget => {
+  if (isMcpCallback(oauth)) {
+    return { path: '/settings/mcp-servers', oauth }
+  }
+
   if (oauthReturnContext?.startsWith('/') && !oauthReturnContext.startsWith('//')) {
     return { path: oauthReturnContext, oauth }
   }
@@ -65,11 +81,13 @@ export const parseOAuthCallback = (url: URL): OAuthCallbackData | null => {
   const state = url.searchParams.get('state')
   const error = url.searchParams.get('error')
   const errorDescription = url.searchParams.get('error_description')
+  const iss = url.searchParams.get('iss')
 
   return {
     code,
     state,
     error: errorDescription || error,
+    iss,
   }
 }
 

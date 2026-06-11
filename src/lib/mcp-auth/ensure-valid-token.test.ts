@@ -141,6 +141,93 @@ describe('ensureValidMcpOAuthToken', () => {
     expect(stored.scope).toBe('read')
   })
 
+  it('stores a refresh response without expires_in as non-expiring (no refresh storm)', async () => {
+    await seedServer()
+    await setMcpServerCredentials(getDb(), serverId, {
+      type: 'oauth',
+      access_token: 'stale',
+      refresh_token: 'r1',
+      expires_at: Date.now() - 1_000,
+      issuer,
+      tokenEndpoint,
+      clientId: 'client-1',
+    })
+
+    // Some authorization servers omit expires_in on refresh; the token must then
+    // be treated as non-expiring, not pinned to the already-past timestamp.
+    const refresh: RefreshFn = async () => ({ access_token: 'refreshed', token_type: 'Bearer' })
+
+    const token = await ensureValidMcpOAuthToken(getDb(), serverId, neverCalledFetch, refresh)
+    expect(token).toBe('refreshed')
+
+    const stored = await getMcpServerCredentials(getDb(), serverId)
+    if (stored?.type !== 'oauth') {
+      throw new Error('expected oauth credentials')
+    }
+    expect(stored.access_token).toBe('refreshed')
+    expect(stored.expires_at).toBeUndefined()
+  })
+
+  it('coalesces concurrent refreshes for the same server into a single refresh', async () => {
+    await seedServer()
+    await setMcpServerCredentials(getDb(), serverId, {
+      type: 'oauth',
+      access_token: 'stale',
+      refresh_token: 'rotating',
+      expires_at: Date.now() - 1_000,
+      issuer,
+      tokenEndpoint,
+      clientId: 'client-1',
+    })
+
+    let refreshCalls = 0
+    const refresh: RefreshFn = async () => {
+      refreshCalls += 1
+      // A rotating-refresh-token AS would reject a second presentation with
+      // invalid_grant; coalescing means it is only ever presented once.
+      return { access_token: 'fresh', token_type: 'Bearer', refresh_token: 'rotated', expires_in: 3600 }
+    }
+
+    const [a, b] = await Promise.all([
+      ensureValidMcpOAuthToken(getDb(), serverId, neverCalledFetch, refresh),
+      ensureValidMcpOAuthToken(getDb(), serverId, neverCalledFetch, refresh),
+    ])
+
+    expect(a).toBe('fresh')
+    expect(b).toBe('fresh')
+    expect(refreshCalls).toBe(1)
+  })
+
+  it('evicts a failed refresh so a later call retries instead of replaying it', async () => {
+    await seedServer()
+    await setMcpServerCredentials(getDb(), serverId, {
+      type: 'oauth',
+      access_token: 'stale',
+      refresh_token: 'r1',
+      expires_at: Date.now() - 1_000,
+      issuer,
+      tokenEndpoint,
+      clientId: 'client-1',
+    })
+
+    let attempt = 0
+    const refresh: RefreshFn = async () => {
+      attempt += 1
+      if (attempt === 1) {
+        throw new Error('transient network failure')
+      }
+      return { access_token: 'recovered', token_type: 'Bearer', expires_in: 3600 }
+    }
+
+    await expect(ensureValidMcpOAuthToken(getDb(), serverId, neverCalledFetch, refresh)).rejects.toThrow(
+      'transient network failure',
+    )
+    // The failed promise was evicted, so this call performs a fresh refresh.
+    const token = await ensureValidMcpOAuthToken(getDb(), serverId, neverCalledFetch, refresh)
+    expect(token).toBe('recovered')
+    expect(attempt).toBe(2)
+  })
+
   it('preserves the existing refresh token when the AS omits a new one', async () => {
     await seedServer()
     await setMcpServerCredentials(getDb(), serverId, {

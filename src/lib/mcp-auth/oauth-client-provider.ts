@@ -17,6 +17,18 @@ import { getMcpOAuthState, setMcpOAuthState } from './mcp-oauth-state'
 /** Path the OAuth callback route is registered at (`src/app.tsx`). */
 const oauthCallbackPath = '/oauth/callback'
 
+/** Parses a JSON string, returning undefined for null/empty/invalid input instead of throwing. */
+const parseJson = <T>(raw: string | null): T | undefined => {
+  if (!raw) {
+    return undefined
+  }
+  try {
+    return JSON.parse(raw) as T
+  } catch {
+    return undefined
+  }
+}
+
 /**
  * CIMD master switch. `false` in PR 1: the client-metadata document is not yet
  * hosted, so `clientMetadataUrl` always yields `undefined` and the SDK uses
@@ -47,6 +59,13 @@ type CreateProviderArgs = {
    * Defaults to `window.location.origin`; injectable for tests.
    */
   origin?: string
+  /**
+   * Explicit redirect URI to register and authorize with. The caller computes it
+   * per-platform (web callback route, mobile app-link, or desktop loopback
+   * `http://localhost:PORT`). Defaults to `${origin}${oauthCallbackPath}` to
+   * preserve the web behavior when not provided.
+   */
+  redirectUri?: string
   /** Predicate for "backend-connected"; defaults to the proxy-mode check. Injectable for tests. */
   isBackendConnected?: () => boolean
 }
@@ -66,23 +85,26 @@ class McpOAuthClientProvider implements OAuthClientProvider {
   private readonly serverId: string
   private readonly db: AnyDrizzleDatabase
   private readonly origin: string
+  private readonly redirectUri: string | undefined
   private readonly isBackendConnected: () => boolean
   private clientInfo: OAuthClientInformationFull | undefined
 
   constructor(
     args: Required<Pick<CreateProviderArgs, 'serverId' | 'db'>> & {
       origin: string
+      redirectUri?: string
       isBackendConnected: () => boolean
     },
   ) {
     this.serverId = args.serverId
     this.db = args.db
     this.origin = args.origin
+    this.redirectUri = args.redirectUri
     this.isBackendConnected = args.isBackendConnected
   }
 
   get redirectUrl(): string {
-    return `${this.origin}${oauthCallbackPath}`
+    return this.redirectUri ?? `${this.origin}${oauthCallbackPath}`
   }
 
   /**
@@ -159,13 +181,35 @@ class McpOAuthClientProvider implements OAuthClientProvider {
   async saveTokens(tokens: OAuthTokens): Promise<void> {
     const existing = await getMcpServerCredentials(this.db, this.serverId)
     const base = existing?.type === 'oauth' ? existing : { type: 'oauth' as const, access_token: '' }
+    // Carry the AS-binding fields (issuer / token endpoint / client_id) from the
+    // in-flight handshake so a freshly-written blob still has them. `completeMcpOAuthFlow`
+    // writes the authoritative blob directly today, but if completion ever routes
+    // through the SDK's `auth()` path, refresh needs the binding or it would break
+    // into a re-auth loop. `base` (an existing blob) takes precedence, so a refresh
+    // keeps the persisted binding even after the handshake is cleared.
     await setMcpServerCredentials(this.db, this.serverId, {
+      ...this.bindingFromHandshake(),
       ...base,
       access_token: tokens.access_token,
       refresh_token: tokens.refresh_token ?? base.refresh_token,
       expires_at: tokens.expires_in !== undefined ? Date.now() + tokens.expires_in * 1000 : base.expires_at,
       scope: tokens.scope ?? base.scope,
     })
+  }
+
+  /**
+   * Best-effort AS-binding fields from the in-flight MCP handshake, fail-soft:
+   * any missing or unparseable field comes back undefined (same as before).
+   */
+  private bindingFromHandshake(): { issuer?: string; tokenEndpoint?: string; clientId?: string } {
+    const handshake = getMcpOAuthState()
+    const metadata = parseJson<{ token_endpoint?: string }>(handshake.metadata)
+    const handshakeClientId = parseJson<{ client_id?: string }>(handshake.clientInfo)?.client_id
+    return {
+      issuer: handshake.issuer ?? undefined,
+      tokenEndpoint: metadata?.token_endpoint,
+      clientId: this.clientInfo?.client_id ?? handshakeClientId,
+    }
   }
 
   async state(): Promise<string> {
@@ -202,6 +246,7 @@ export const createMcpOAuthClientProvider = (args: CreateProviderArgs): McpOAuth
     serverId: args.serverId,
     db: args.db,
     origin: args.origin ?? window.location.origin,
+    redirectUri: args.redirectUri,
     isBackendConnected: args.isBackendConnected ?? (() => computeEffectiveProxyEnabled()),
   })
 

@@ -37,207 +37,55 @@ import { useMutation } from '@tanstack/react-query'
 import { useQuery } from '@powersync/tanstack-react-query'
 import { eq } from 'drizzle-orm'
 import { Check, Copy, Globe, LockKeyhole, Plus, RefreshCw, Server, Trash2, X } from 'lucide-react'
-import { useEffect, useReducer, useRef, useState, useTransition, type KeyboardEvent, type ReactNode } from 'react'
+import { useEffect, useRef, useState, type KeyboardEvent, type ReactNode } from 'react'
 import { useLocation, useNavigate } from 'react-router'
 import { v7 as uuidv7 } from 'uuid'
 import { probeMcpServerTools } from '@/lib/mcp-connection-test'
-import { buildMcpHeaders, createMcpTransport, type MCPTransportType } from '@/lib/mcp-transport'
+import { type MCPTransportType } from '@/lib/mcp-transport'
 import { useLocalSettingsStore } from '@/stores/local-settings-store'
 import { toCompilableQuery } from '@powersync/drizzle-driver'
 import { getAuthToken } from '@/lib/auth-token'
-import { isUnauthorizedError } from '@/lib/mcp-errors'
 import { computeEffectiveProxyEnabled, createProxyFetch } from '@/lib/proxy-fetch'
-import { setOAuthState } from '@/lib/oauth-state'
-import { classifyMcpServerAuth, completeMcpOAuthFlow, startMcpOAuthFlow } from '@/lib/mcp-auth/web-oauth-flow'
-import { clearMcpOAuthState, getMcpOAuthState } from '@/lib/mcp-auth/mcp-oauth-state'
+import { classifyMcpServerAuth } from '@/lib/mcp-auth/web-oauth-flow'
+import type { completeMcpOAuthFlow, startMcpOAuthFlow } from '@/lib/mcp-auth/web-oauth-flow'
 import { McpOAuthNeedsReauthError } from '@/lib/mcp-auth/ensure-valid-token'
 import {
-  decideTestConnectionResult,
   deriveOAuthCardDecision,
   type StoredCredentialType,
   type TestConnectionResult,
 } from '@/lib/mcp-auth/auth-decision'
 import { parseMcpServersConfig, type ParsedMcpServer } from '@/lib/mcp-config-import'
 import { validateMcpServerUrl } from '@/lib/mcp-url-validation'
+import { useMcpServerOAuth, type McpOAuthCallback, type OAuthCardState } from '@/hooks/use-mcp-server-oauth'
+import { generateServerName, useAddServerForm } from '@/hooks/use-add-server-form'
+
+export { generateServerName }
 
 type ServerTools = {
   [serverId: string]: string[]
 }
 
-/**
- * Per-server OAuth UI state. `needs-auth` / `authorized` are derived from the
- * live connection + stored credentials; `authorizing` / `error` are transient
- * states the page sets while a flow runs or fails.
- */
-type OAuthCardState =
-  | { phase: 'authorizing' }
-  | { phase: 'error'; message: string }
-  | { phase: 'needs-auth'; message?: string }
-
 /** Add-dialog mode: a single guided server form, or a raw JSON config paste. */
 type AddServerMode = 'simple' | 'advanced'
 
 /**
- * All add-form field state, driven by a reducer so the dialog's many related
- * fields update through one typed channel (per the project's useReducer rule).
- * Imperative bookkeeping (probe ids, debounce guards) lives in refs, not here.
- */
-type AddServerFormState = {
-  mode: AddServerMode
-  name: string
-  nameManuallyEdited: boolean
-  url: string
-  transport: MCPTransportType
-  token: string
-  jsonText: string
-  testResult: TestConnectionResult | { kind: 'idle' }
-  /** Dialog-scoped error shown when an action (Authorize / import) fails. */
-  addDialogError: string | null
-}
-
-type AddServerFormAction =
-  | { type: 'setMode'; mode: AddServerMode }
-  | { type: 'setName'; name: string }
-  | { type: 'setUrl'; url: string }
-  | { type: 'setTransport'; transport: MCPTransportType }
-  | { type: 'setToken'; token: string }
-  | { type: 'setJsonText'; jsonText: string }
-  | { type: 'setTestResult'; testResult: TestConnectionResult | { kind: 'idle' } }
-  | { type: 'setDialogError'; message: string | null }
-  | { type: 'reset' }
-
-/**
- * Editing any probe input (name/url/transport/token) invalidates the stale test
- * result and clears the dialog error, folded into each field's reducer pass.
- */
-const invalidatedTest = { testResult: { kind: 'idle' }, addDialogError: null } as const
-
-const initialAddServerFormState: AddServerFormState = {
-  mode: 'simple',
-  name: '',
-  nameManuallyEdited: false,
-  url: '',
-  transport: 'http',
-  token: '',
-  jsonText: '',
-  testResult: { kind: 'idle' },
-  addDialogError: null,
-}
-
-const addServerFormReducer = (state: AddServerFormState, action: AddServerFormAction): AddServerFormState => {
-  switch (action.type) {
-    case 'setMode':
-      return { ...state, mode: action.mode, addDialogError: null }
-    case 'setName':
-      return { ...state, ...invalidatedTest, name: action.name, nameManuallyEdited: true }
-    case 'setUrl':
-      // Re-derive the name from the URL until the user edits it directly.
-      return {
-        ...state,
-        ...invalidatedTest,
-        url: action.url,
-        name: state.nameManuallyEdited ? state.name : generateServerName(action.url),
-      }
-    case 'setTransport':
-      return { ...state, ...invalidatedTest, transport: action.transport }
-    case 'setToken':
-      return { ...state, ...invalidatedTest, token: action.token }
-    case 'setJsonText':
-      return { ...state, jsonText: action.jsonText, addDialogError: null }
-    case 'setTestResult':
-      return { ...state, testResult: action.testResult }
-    case 'setDialogError':
-      return { ...state, addDialogError: action.message }
-    case 'reset':
-      return initialAddServerFormState
-  }
-}
-
-/**
- * Bundles the add-form reducer with the editing-side effects every field share:
- * mutating a field after a probe invalidates the stale result. Returns the
- * current state plus narrow setters so the JSX stays declarative.
- */
-const useAddServerForm = () => {
-  const [state, dispatch] = useReducer(addServerFormReducer, initialAddServerFormState)
-  return {
-    state,
-    setMode: (mode: AddServerMode) => dispatch({ type: 'setMode', mode }),
-    setName: (name: string) => dispatch({ type: 'setName', name }),
-    setUrl: (url: string) => dispatch({ type: 'setUrl', url }),
-    setTransport: (transport: MCPTransportType) => dispatch({ type: 'setTransport', transport }),
-    setToken: (token: string) => dispatch({ type: 'setToken', token }),
-    setJsonText: (jsonText: string) => dispatch({ type: 'setJsonText', jsonText }),
-    setTestResult: (testResult: TestConnectionResult | { kind: 'idle' }) =>
-      dispatch({ type: 'setTestResult', testResult }),
-    setDialogError: (message: string | null) => dispatch({ type: 'setDialogError', message }),
-    reset: () => dispatch({ type: 'reset' }),
-  }
-}
-
-/**
- * Page-level UI state outside the add-form: which delete popover is open, which
- * URL was just copied, and whether the Add dialog is open.
- */
-const useMcpServersState = () => {
-  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState<string | null>(null)
-  const [copiedUrl, setCopiedUrl] = useState<string | null>(null)
-  const [isAddDialogOpen, setIsAddDialogOpen] = useState(false)
-  return {
-    deleteConfirmOpen,
-    setDeleteConfirmOpen,
-    copiedUrl,
-    setCopiedUrl,
-    isAddDialogOpen,
-    setIsAddDialogOpen,
-  }
-}
-
-/**
- * True when an MCP connection error is the M3 "token refresh failed, needs a
- * fresh authorization" signal. `defaultCreateClient` resolves the OAuth token
- * BEFORE constructing the client, so this error surfaces raw (un-wrapped) on the
+ * True when an MCP connection error is the "token refresh failed, needs a fresh
+ * authorization" signal. `defaultCreateClient` resolves the OAuth token BEFORE
+ * constructing the client, so this error surfaces raw (un-wrapped) on the
  * provider's `server.error`.
  */
 const isNeedsReauthError = (err: unknown): boolean => err instanceof McpOAuthNeedsReauthError
 
-/** Maps a raw OAuth `error` query value to a short, user-facing message. */
-const friendlyOAuthError = (error?: string): string => {
-  if (error === 'access_denied') {
-    return 'Authorization was declined.'
-  }
-  return 'Authorization failed. Please try again.'
-}
-
 /**
- * Derives a short, meaningful server name from a remote MCP URL — used to
- * pre-fill (and re-derive) the editable name field. The name namespaces the
- * server's tools in the prompt, so a readable default like `github` or `render`
- * beats the raw hostname.
- * - Localhost: includes port for disambiguation (`localhost-3000`)
- * - IP literals (IPv4 dotted-quad or IPv6): kept whole so distinct hosts stay
- *   distinct (`192.168.1.100`, `2001:db8::1`)
- * - Remote: 3+ domain segments → second-to-last (`api.github.com` → `github`);
- *   2 segments → first (`render.com` → `render`); 1 → as-is
+ * Test-only DI seams. The Add-dialog Test Connection probe and OAuth flow
+ * primitives are module imports in production; tests override them to exercise
+ * the classification + Add & Authorize wiring without real network calls.
  */
-export const generateServerName = (url: string): string => {
-  try {
-    const { hostname, port } = new URL(url)
-    // `URL` brackets IPv6 hosts (`[::1]`) and may keep a trailing FQDN dot — normalize both.
-    const host = hostname.replace(/^\[|\]$/g, '').replace(/\.$/, '')
-    if (host === 'localhost' || host === '127.0.0.1' || host === '::1') {
-      return port ? `localhost-${port}` : 'localhost'
-    }
-    // IP literals (IPv4 dotted-quad or IPv6) have no registrable label to shorten to —
-    // use the whole address so distinct hosts stay distinct (sanitizeToolPrefix maps separators to `_`).
-    if (host.includes(':') || /^\d+\.\d+\.\d+\.\d+$/.test(host)) {
-      return host
-    }
-    const parts = host.split('.')
-    return parts.length >= 3 ? parts[parts.length - 2] : parts[0]
-  } catch {
-    return ''
-  }
+export type McpServersPageDeps = {
+  probeMcpServerTools?: typeof probeMcpServerTools
+  classifyMcpServerAuth?: typeof classifyMcpServerAuth
+  startMcpOAuthFlow?: typeof startMcpOAuthFlow
+  completeMcpOAuthFlow?: typeof completeMcpOAuthFlow
 }
 
 type StatusTone = 'success' | 'warning' | 'destructive'
@@ -316,7 +164,9 @@ const testResultPanels: Record<
   },
 }
 
-export default function McpServersPage() {
+export default function McpServersPage({ deps = {} }: { deps?: McpServersPageDeps } = {}) {
+  const probeTools = deps.probeMcpServerTools ?? probeMcpServerTools
+  const classifyAuth = deps.classifyMcpServerAuth ?? classifyMcpServerAuth
   const db = useDatabase()
   const cloudUrl = useLocalSettingsStore((s) => s.cloudUrl)
   // Read provider connection state read-only for status display. Sync ownership
@@ -325,30 +175,59 @@ export default function McpServersPage() {
   const { servers: mcpServers, reconnectServer } = useMCP()
   const location = useLocation()
   const navigate = useNavigate()
-  const [oauthCardState, setOauthCardState] = useState<Record<string, OAuthCardState>>({})
-  const form = useAddServerForm()
-  const ui = useMcpServersState()
-  const [isTestingConnection, startTesting] = useTransition()
+  const [mode, setMode] = useState<AddServerMode>('simple')
+  const [jsonText, setJsonText] = useState('')
+  const [importError, setImportError] = useState<string | null>(null)
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState<string | null>(null)
+  const [copiedUrl, setCopiedUrl] = useState<string | null>(null)
   const [retryingServerId, setRetryingServerId] = useState<string | null>(null)
   const copiedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const titleRefs = useRef<{ [key: string]: HTMLElement | null }>({})
-  // Auto-detect: monotonic id to ignore a stale in-flight probe once the URL
-  // changes mid-flight, plus the last URL value auto-probed so the blur and the
-  // debounce don't double-fire for the same value.
-  const probeIdRef = useRef(0)
-  const lastAutoTestedUrlRef = useRef<string | null>(null)
+
+  // Web OAuth discovery/exchange share the universal proxy fetch the transport
+  // uses, so SSRF stays covered by `/v1/proxy` and the path matches production.
+  const buildOAuthFetch = () =>
+    createProxyFetch({
+      cloudUrl,
+      getProxyAuthToken: getAuthToken,
+      getProxyEnabled: () => computeEffectiveProxyEnabled(),
+    })
 
   const {
-    mode,
+    cardStateFor,
+    dialogError,
+    clearDialogError,
+    isAddAuthorizePending,
+    startAuthorize,
+    startAddAndAuthorize,
+    processCallback,
+  } = useMcpServerOAuth({
+    db,
+    buildOAuthFetch,
+    reconnectServer,
+    clearNavState: () => navigate('.', { replace: true, state: null }),
+    startMcpOAuthFlow: deps.startMcpOAuthFlow,
+    completeMcpOAuthFlow: deps.completeMcpOAuthFlow,
+  })
+
+  const form = useAddServerForm({
+    cloudUrl,
+    deps: { probeMcpServerTools: probeTools, classifyMcpServerAuth: classifyAuth, buildOAuthFetch },
+    onClearDialogError: clearDialogError,
+  })
+
+  const {
     name: newServerName,
     url: newServerUrl,
     transport: newServerTransport,
     token: newServerToken,
-  } = form.state
-  const { testResult, addDialogError } = form.state
-  // `success` carries its tool list, so the capability list renders from the
-  // result directly — no separate serverCapabilities state to keep in sync.
-  const serverCapabilities = testResult.kind === 'success' ? testResult.tools : []
+    testResult,
+    isTestingConnection,
+    serverCapabilities,
+    resolveServerName,
+    testConnection,
+    handleUrlBlur,
+  } = form
   // In simple mode the URL gates auto-detect / Add; advanced mode imports raw JSON.
   const urlValidation = newServerUrl ? validateMcpServerUrl(newServerUrl) : null
   const isUrlValid = urlValidation?.ok === true
@@ -413,16 +292,16 @@ export default function McpServersPage() {
   })
 
   const addServerMutation = useMutation({
-    mutationFn: async ({ name, url }: { name: string; url: string }): Promise<string> => {
-      const id = uuidv7()
+    // The id is minted by the caller (not here) so an Add & Authorize retry can't
+    // mint a fresh id and orphan a duplicate row when the flow fails and rolls back.
+    mutationFn: async ({ id, name, url }: { id: string; name: string; url: string }) => {
       // OAuth servers have no credential here — they authorize post-create and
-      // reconnect separately (see handleAddAndAuthorize).
+      // reconnect separately (see the Add & Authorize handler).
       await createMcpServerWithCredentials(
         db,
-        { id, name, url, type: newServerTransport, enabled: 1 },
-        newServerToken ? { type: 'bearer', token: newServerToken } : undefined,
+        { id, name, url, type: form.transport, enabled: 1 },
+        form.token ? { type: 'bearer', token: form.token } : undefined,
       )
-      return id
     },
   })
 
@@ -447,90 +326,25 @@ export default function McpServersPage() {
   const deleteServerMutation = useMutation({
     mutationFn: (id: string) => deleteMcpServer(db, id),
     onSuccess: () => {
-      ui.setDeleteConfirmOpen(null)
+      setDeleteConfirmOpen(null)
     },
   })
 
-  // Closes the Add dialog and clears all add-form state.
-  const resetAddDialog = () => {
-    ui.setIsAddDialogOpen(false)
-    form.reset()
-    lastAutoTestedUrlRef.current = null
+  // Clears add-dialog local state (mode, JSON text, import error) in sync with
+  // the external form hook's resetAddDialog so a re-open always starts clean.
+  const resetLocalDialogState = () => {
+    setMode('simple')
+    setJsonText('')
+    setImportError(null)
   }
-
-  const testConnection = () => {
-    if (!newServerUrl || !isUrlValid) {
-      return
-    }
-    // Tag this probe so a slower earlier run can't overwrite a newer one's result
-    // (the URL can change while a probe is in flight), and record the tested value
-    // so the blur + debounce auto-triggers don't double-probe it.
-    const probeId = ++probeIdRef.current
-    lastAutoTestedUrlRef.current = newServerUrl
-
-    form.setTestResult({ kind: 'idle' })
-
-    startTesting(async () => {
-      try {
-        // Build the transport the same way the provider does — through the
-        // universal proxy so the test matches the real connection path (web CORS
-        // would otherwise fail for remote servers).
-        const headers = buildMcpHeaders(newServerToken || undefined)
-        const transport = createMcpTransport(newServerUrl, newServerTransport, cloudUrl, headers)
-
-        const toolNames = await probeMcpServerTools(transport)
-        if (probeIdRef.current !== probeId) {
-          return
-        }
-        form.setTestResult({ kind: 'success', tools: toolNames })
-      } catch (error) {
-        // A 401 here is the OAuth/credential probe signal, not a failure — keep it at warn.
-        console.warn('Connection test error:', error)
-        // Auth precedence: a supplied credential that 401s is a rejected token (no
-        // Authorize). An empty-credential 401 classifies the server: 'authorizable'
-        // (DCR/CIMD → Add & Authorize), 'token-only' (OAuth advertised but no usable
-        // registration, e.g. GitHub → ask for a static token), or 'none'.
-        const oauthActionability =
-          !newServerToken && isUnauthorizedError(error)
-            ? await classifyMcpServerAuth(newServerUrl, buildOAuthFetch())
-            : 'none'
-        if (probeIdRef.current !== probeId) {
-          return
-        }
-        form.setTestResult(decideTestConnectionResult({ hasCredential: !!newServerToken, error, oauthActionability }))
-      }
-    })
-  }
-
-  // Auto-detect the server's auth requirement 700ms after the user stops typing a
-  // valid URL — a debounced network probe (timer cleared on each keystroke). The
-  // manual "Test Connection" button and the URL field's onBlur run the same probe
-  // immediately; `lastAutoTestedUrlRef` keeps blur + debounce from probing a value
-  // twice. Editing the credential/transport does NOT auto-probe (it only clears the
-  // stale result via the field reducer) — re-test those with the button.
-  useEffect(() => {
-    if (mode !== 'simple' || !isUrlValid || newServerUrl === lastAutoTestedUrlRef.current) {
-      return
-    }
-    const timer = setTimeout(() => {
-      if (newServerUrl !== lastAutoTestedUrlRef.current) {
-        testConnection()
-      }
-    }, 700)
-    return () => clearTimeout(timer)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [newServerUrl, mode])
-
-  // Name prefixes the server's tools in the prompt. Use the user's name when
-  // set, otherwise fall back to the value derived from the URL.
-  const resolveServerName = () => newServerName.trim() || generateServerName(newServerUrl)
 
   const handleAddServer = async () => {
     if (!newServerUrl || !isUrlValid) {
       return
     }
-    await addServerMutation.mutateAsync({ name: resolveServerName(), url: newServerUrl })
-    resetAddDialog()
+    await addServerMutation.mutateAsync({ id: uuidv7(), name: resolveServerName(), url: newServerUrl })
+    form.resetAddDialog()
+    resetLocalDialogState()
   }
 
   /**
@@ -540,57 +354,54 @@ export default function McpServersPage() {
    * No connection probe runs for an imported config.
    */
   const handleImportConfig = async () => {
-    const result = parseMcpServersConfig(form.state.jsonText)
+    const result = parseMcpServersConfig(jsonText)
     if (!result.ok) {
-      form.setDialogError(result.errors.join('\n'))
+      setImportError(result.errors.join('\n'))
       return
     }
     try {
       await importServersMutation.mutateAsync(result.servers)
-      resetAddDialog()
+      form.resetAddDialog()
+      resetLocalDialogState()
     } catch (error) {
       console.error('Failed to import MCP servers:', error)
-      form.setDialogError('Could not import servers. Please try again.')
+      setImportError('Could not import servers. Please try again.')
     }
   }
 
   /**
-   * Empty-credential + OAuth-actionable path: add the server, then start the web
-   * OAuth flow for the freshly-created id. On success the browser redirects to the
+   * Empty-credential + OAuth-actionable path: hands the create-then-authorize to
+   * the hook as one guarded operation (a caller-minted id keeps a retry from
+   * duplicating the row, and the hook's re-entry guard makes a double-click /
+   * Enter + click create only one row). On success the browser redirects to the
    * authorization server (the dialog leaves with the navigation); on failure the
-   * dialog stays open showing the error, so the failure is visible where the user
-   * acted. The created server row also surfaces an Authorize action on its card.
+   * hook rolls the row back and surfaces the error in the dialog. The created
+   * server row also surfaces an Authorize action on its card.
    */
   const handleAddAndAuthorize = async () => {
     if (!newServerUrl || !isUrlValid) {
       return
     }
-    form.setDialogError(null)
     const url = newServerUrl
-    const id = await addServerMutation.mutateAsync({ name: resolveServerName(), url })
-    try {
-      setOAuthState({ returnContext: '/settings/mcp-servers' })
-      await startMcpOAuthFlow({ db, serverId: id, serverUrl: url, fetchFn: buildOAuthFetch() })
-    } catch (error) {
-      console.error('Failed to start MCP OAuth flow:', error)
-      form.setDialogError('Could not start authorization. Please try again.')
-    }
-  }
-
-  // Leaving the URL field probes immediately (unless the debounce already did).
-  const handleUrlBlur = () => {
-    if (isUrlValid && newServerUrl !== lastAutoTestedUrlRef.current) {
-      testConnection()
+    const id = uuidv7()
+    const ok = await startAddAndAuthorize({
+      serverId: id,
+      serverUrl: url,
+      createRow: () => addServerMutation.mutateAsync({ id, name: resolveServerName(), url }),
+    })
+    // Close the dialog once the flow started cleanly (web navigates away; mobile
+    // opened the system browser; desktop completed inline). On failure it stays
+    // open with the dialog error so the user can retry.
+    if (ok) {
+      form.resetAddDialog()
+      resetLocalDialogState()
     }
   }
 
   const handleUrlKeyDown = (e: KeyboardEvent) => {
     if (e.key === 'Enter') {
       e.preventDefault()
-      if (!isUrlValid) {
-        return
-      }
-      if (testResult.kind === 'idle' && newServerUrl) {
+      if (testResult.kind === 'idle' && newServerUrl && isUrlValid) {
         testConnection()
       } else if (testResult.kind === 'success') {
         handleAddServer()
@@ -603,11 +414,11 @@ export default function McpServersPage() {
   const handleCopyUrl = async (url: string) => {
     try {
       await navigator.clipboard.writeText(url)
-      ui.setCopiedUrl(url)
+      setCopiedUrl(url)
       if (copiedTimerRef.current) {
         clearTimeout(copiedTimerRef.current)
       }
-      copiedTimerRef.current = setTimeout(() => ui.setCopiedUrl(null), 2000)
+      copiedTimerRef.current = setTimeout(() => setCopiedUrl(null), 2000)
     } catch (error) {
       console.error('Failed to copy URL:', error)
     }
@@ -689,102 +500,11 @@ export default function McpServersPage() {
     }
   }
 
-  // Web OAuth discovery/exchange share the universal proxy fetch the transport
-  // uses, so SSRF stays covered by `/v1/proxy` and the path matches production.
-  const buildOAuthFetch = () =>
-    createProxyFetch({
-      cloudUrl,
-      getProxyAuthToken: getAuthToken,
-      getProxyEnabled: () => computeEffectiveProxyEnabled(),
-    })
-
-  /**
-   * Begins (or restarts) the OAuth flow for a server: discovers the AS,
-   * registers, builds the PKCE authorize URL, persists the handshake, and
-   * redirects the browser. Records the return path so `OAuthCallback` navigates
-   * back here with the code/state/iss.
-   */
-  const handleAuthorize = async (server: McpServer) => {
-    setOauthCardState((prev) => ({ ...prev, [server.id]: { phase: 'authorizing' } }))
-    setOAuthState({ returnContext: '/settings/mcp-servers' })
-    try {
-      await startMcpOAuthFlow({
-        db,
-        serverId: server.id,
-        serverUrl: server.url ?? '',
-        fetchFn: buildOAuthFetch(),
-      })
-      // On success the browser navigates away; nothing more to do here.
-    } catch (error) {
-      console.error('Failed to start MCP OAuth flow:', error)
-      setOauthCardState((prev) => ({
-        ...prev,
-        [server.id]: { phase: 'error', message: 'Could not start authorization. Please try again.' },
-      }))
-    }
-  }
-
   // Completes OAuth when navigated back from `/oauth/callback` with the code,
-  // state and iss in `location.state` (mirrors the integrations callback handler).
+  // state and iss in `location.state`. Thin shim — the hook owns the handling.
   useEffect(() => {
-    const oauth = (location.state as { oauth?: { code?: string; state?: string; iss?: string; error?: string } } | null)
-      ?.oauth
-    if (!oauth) {
-      return
-    }
-
-    const handleCallback = async () => {
-      const { serverId } = getMcpOAuthState()
-      // Always clear the navigation state so a refresh can't reprocess the callback.
-      navigate('.', { replace: true, state: null })
-      if (!serverId) {
-        return
-      }
-
-      if (oauth.error) {
-        setOauthCardState((prev) => ({
-          ...prev,
-          [serverId]: { phase: 'error', message: friendlyOAuthError(oauth.error) },
-        }))
-        clearMcpOAuthState()
-        return
-      }
-
-      if (!oauth.code) {
-        setOauthCardState((prev) => ({
-          ...prev,
-          [serverId]: { phase: 'error', message: 'Authorization was cancelled.' },
-        }))
-        clearMcpOAuthState()
-        return
-      }
-
-      setOauthCardState((prev) => ({ ...prev, [serverId]: { phase: 'authorizing' } }))
-      try {
-        await completeMcpOAuthFlow({
-          db,
-          serverId,
-          code: oauth.code,
-          returnedState: oauth.state,
-          returnedIss: oauth.iss,
-          fetchFn: buildOAuthFetch(),
-        })
-        setOauthCardState((prev) => {
-          const next = { ...prev }
-          delete next[serverId]
-          return next
-        })
-        await reconnectServer(serverId)
-      } catch (error) {
-        console.error('Failed to complete MCP OAuth flow:', error)
-        setOauthCardState((prev) => ({
-          ...prev,
-          [serverId]: { phase: 'error', message: error instanceof Error ? error.message : 'Authorization failed.' },
-        }))
-      }
-    }
-
-    handleCallback()
+    const oauth = (location.state as { oauth?: McpOAuthCallback } | null)?.oauth
+    processCallback(oauth)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [location.state])
 
@@ -796,7 +516,7 @@ export default function McpServersPage() {
    * (generic connection error) for a rejected bearer token.
    */
   const getOAuthCardState = (server: McpServer): OAuthCardState | { phase: 'authorized' } | null => {
-    const explicit = oauthCardState[server.id]
+    const explicit = cardStateFor(server.id)
     if (explicit) {
       return explicit
     }
@@ -820,12 +540,16 @@ export default function McpServersPage() {
     <div className="flex flex-col gap-6 p-4 w-full max-w-[760px] mx-auto">
       <PageHeader title="MCP Servers">
         <Dialog
-          open={ui.isAddDialogOpen}
+          open={form.isAddDialogOpen}
           onOpenChange={(open) => {
-            ui.setIsAddDialogOpen(open)
-            if (!open) {
-              resetAddDialog()
+            if (open) {
+              form.openDialog()
+              return
             }
+            // Closing (Escape / overlay / X) clears the form and cancels any
+            // in-flight or pending probe, so nothing lands in the background.
+            form.resetAddDialog()
+            resetLocalDialogState()
           }}
         >
           <DialogTrigger asChild>
@@ -845,7 +569,7 @@ export default function McpServersPage() {
               value={mode}
               onValueChange={(value) => {
                 if (value === 'simple' || value === 'advanced') {
-                  form.setMode(value)
+                  setMode(value)
                 }
               }}
               className="w-full flex-shrink-0"
@@ -863,7 +587,7 @@ export default function McpServersPage() {
                       id="name"
                       placeholder="Server name (used to prefix tools)"
                       value={newServerName}
-                      onChange={(e) => form.setName(e.target.value)}
+                      onChange={(e) => form.changeName(e.target.value)}
                     />
                   </div>
 
@@ -873,7 +597,7 @@ export default function McpServersPage() {
                       id="url"
                       placeholder="http://localhost:8000/mcp/"
                       value={newServerUrl}
-                      onChange={(e) => form.setUrl(e.target.value)}
+                      onChange={(e) => form.changeUrl(e.target.value)}
                       onBlur={handleUrlBlur}
                       onKeyDown={handleUrlKeyDown}
                       aria-invalid={urlValidation?.ok === false}
@@ -887,7 +611,7 @@ export default function McpServersPage() {
                     <Label htmlFor="transport">Transport</Label>
                     <Select
                       value={newServerTransport}
-                      onValueChange={(value) => form.setTransport(value as MCPTransportType)}
+                      onValueChange={(value) => form.changeTransport(value as MCPTransportType)}
                     >
                       <SelectTrigger id="transport" className="w-full rounded-lg">
                         <SelectValue />
@@ -906,7 +630,7 @@ export default function McpServersPage() {
                       type="password"
                       placeholder="Bearer token or API key"
                       value={newServerToken}
-                      onChange={(e) => form.setToken(e.target.value)}
+                      onChange={(e) => form.changeToken(e.target.value)}
                     />
                   </div>
 
@@ -960,8 +684,8 @@ export default function McpServersPage() {
                       placeholder={
                         '{\n  "mcpServers": {\n    "example": {\n      "url": "https://example.com/mcp"\n    }\n  }\n}'
                       }
-                      value={form.state.jsonText}
-                      onChange={(e) => form.setJsonText(e.target.value)}
+                      value={jsonText}
+                      onChange={(e) => setJsonText(e.target.value)}
                     />
                     <p className="text-[length:var(--font-size-xs)] text-muted-foreground">
                       Paste an <code>mcpServers</code> config. Only remote (http/sse) servers are supported; non-Bearer
@@ -971,32 +695,38 @@ export default function McpServersPage() {
                 </div>
               )}
 
-              {addDialogError && (
+              {(dialogError || importError) && (
                 <div className="mb-2">
                   <StatusPanel
                     tone="destructive"
                     icon={<X className="h-4 w-4" />}
                     title={mode === 'advanced' ? 'Import failed' : 'Authorization error'}
                   >
-                    <p className="text-sm text-destructive/90 mt-1 whitespace-pre-line">{addDialogError}</p>
+                    <p className="text-sm text-destructive/90 mt-1 whitespace-pre-line">{dialogError ?? importError}</p>
                   </StatusPanel>
                 </div>
               )}
             </div>
 
             <div className="flex justify-end gap-3 pt-2 flex-shrink-0">
-              <Button variant="ghost" onClick={resetAddDialog}>
+              <Button
+                variant="ghost"
+                onClick={() => {
+                  form.resetAddDialog()
+                  resetLocalDialogState()
+                }}
+              >
                 Cancel
               </Button>
               {mode === 'advanced' ? (
-                <Button
-                  onClick={handleImportConfig}
-                  disabled={!form.state.jsonText.trim() || importServersMutation.isPending}
-                >
+                <Button onClick={handleImportConfig} disabled={!jsonText.trim() || importServersMutation.isPending}>
                   Import Servers
                 </Button>
               ) : testResult.kind === 'needs-oauth' ? (
-                <Button onClick={handleAddAndAuthorize} disabled={!newServerUrl || !isUrlValid}>
+                <Button
+                  onClick={handleAddAndAuthorize}
+                  disabled={!newServerUrl || !isUrlValid || isAddAuthorizePending}
+                >
                   <LockKeyhole className="h-3.5 w-3.5 mr-1.5" />
                   Add &amp; Authorize
                 </Button>
@@ -1071,9 +801,9 @@ export default function McpServersPage() {
                                   e.stopPropagation()
                                   handleCopyUrl(server.url ?? '')
                                 }}
-                                disabled={ui.copiedUrl === server.url}
+                                disabled={copiedUrl === server.url}
                               >
-                                {ui.copiedUrl === server.url ? (
+                                {copiedUrl === server.url ? (
                                   <Check className="h-3 w-3 text-muted-foreground" />
                                 ) : (
                                   <Copy className="h-3 w-3" />
@@ -1110,7 +840,7 @@ export default function McpServersPage() {
                         variant="outline"
                         size="sm"
                         disabled={isAuthorizing}
-                        onClick={() => handleAuthorize(server)}
+                        onClick={() => startAuthorize(server)}
                       >
                         <LockKeyhole className="h-3.5 w-3.5 mr-1.5" />
                         {isAuthorizing ? 'Authorizing...' : 'Authorize'}
@@ -1119,7 +849,7 @@ export default function McpServersPage() {
                     {isAuthorized && (
                       <Tooltip>
                         <TooltipTrigger asChild>
-                          <Button variant="ghost" size="sm" onClick={() => handleAuthorize(server)}>
+                          <Button variant="ghost" size="sm" onClick={() => startAuthorize(server)}>
                             <Check className="h-3.5 w-3.5 mr-1.5 text-success" />
                             Re-authorize
                           </Button>
@@ -1146,8 +876,8 @@ export default function McpServersPage() {
                       </TooltipContent>
                     </Tooltip>
                     <Popover
-                      open={ui.deleteConfirmOpen === server.id}
-                      onOpenChange={(open) => ui.setDeleteConfirmOpen(open ? server.id : null)}
+                      open={deleteConfirmOpen === server.id}
+                      onOpenChange={(open) => setDeleteConfirmOpen(open ? server.id : null)}
                     >
                       <PopoverTrigger asChild>
                         <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
@@ -1163,7 +893,7 @@ export default function McpServersPage() {
                             </p>
                           </div>
                           <div className="flex justify-end gap-2">
-                            <Button variant="outline" size="sm" onClick={() => ui.setDeleteConfirmOpen(null)}>
+                            <Button variant="outline" size="sm" onClick={() => setDeleteConfirmOpen(null)}>
                               Cancel
                             </Button>
                             <Button variant="destructive" size="sm" onClick={() => handleDeleteServer(server.id)}>
@@ -1225,7 +955,7 @@ export default function McpServersPage() {
               <p className="text-sm text-muted-foreground mb-4">
                 Get started by adding your first MCP server connection.
               </p>
-              <Button onClick={() => ui.setIsAddDialogOpen(true)} variant="outline">
+              <Button onClick={form.openDialog} variant="outline">
                 <Plus className="h-4 w-4 mr-2" />
                 Add Server
               </Button>

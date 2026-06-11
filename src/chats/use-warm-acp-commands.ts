@@ -4,14 +4,24 @@
 
 import { useEffect, useRef } from 'react'
 
-import { getOrConnectAdapter } from '@/acp/adapter-cache'
+import { getOrConnectAdapter as defaultGetOrConnectAdapter } from '@/acp/adapter-cache'
 import { useHttpClient } from '@/contexts'
-import { updateChatThread } from '@/dal/chat-threads'
-import { getDb } from '@/db/database'
+import { updateChatThread as defaultUpdateChatThread } from '@/dal/chat-threads'
+import { getDb as defaultGetDb } from '@/db/database'
 import { useProxyFetchGetter } from '@/lib/proxy-fetch-context'
 import type { ChatThread } from '@/types'
 import type { Agent } from '@/types/acp'
-import { makeCommandSink } from './chat-instance'
+import { makeCommandSink as defaultMakeCommandSink } from './chat-instance'
+
+/** DI seam so tests can inject fakes for the external dependencies without
+ *  `mock.module()` (which is global and would leak into unrelated suites).
+ *  Production omits these and binds to the real module-level functions. */
+export type WarmAcpCommandsDeps = {
+  getOrConnectAdapter?: typeof defaultGetOrConnectAdapter
+  updateChatThread?: typeof defaultUpdateChatThread
+  makeCommandSink?: typeof defaultMakeCommandSink
+  getDb?: typeof defaultGetDb
+}
 
 /**
  * Eagerly connect a non-built-in agent and warm its ACP session as soon as it's
@@ -29,12 +39,19 @@ import { makeCommandSink } from './chat-instance'
  * effect that can't be expressed in render). Re-warming is guarded to once per
  * (agent, thread); a failed warm clears the guard so a later render retries.
  */
-export const useWarmAcpCommands = (session: {
-  id: string
-  selectedAgent: Agent
-  chatThread: ChatThread | null
-}): void => {
+export const useWarmAcpCommands = (
+  session: {
+    id: string
+    selectedAgent: Agent
+    chatThread: ChatThread | null
+  },
+  deps: WarmAcpCommandsDeps = {},
+): void => {
   const { id, selectedAgent, chatThread } = session
+  const getOrConnectAdapter = deps.getOrConnectAdapter ?? defaultGetOrConnectAdapter
+  const updateChatThread = deps.updateChatThread ?? defaultUpdateChatThread
+  const makeCommandSink = deps.makeCommandSink ?? defaultMakeCommandSink
+  const getDb = deps.getDb ?? defaultGetDb
   const httpClient = useHttpClient()
   const getProxyFetch = useProxyFetchGetter()
   const warmedKey = useRef<string | null>(null)
@@ -90,5 +107,15 @@ export const useWarmAcpCommands = (session: {
         warmedKey.current = null
       }
     }
-  }, [id, selectedAgent, chatThread, httpClient, getProxyFetch])
+  }, [
+    id,
+    selectedAgent,
+    chatThread,
+    httpClient,
+    getProxyFetch,
+    getOrConnectAdapter,
+    updateChatThread,
+    makeCommandSink,
+    getDb,
+  ])
 }

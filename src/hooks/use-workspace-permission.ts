@@ -19,7 +19,7 @@ import { useQuery } from '@powersync/tanstack-react-query'
  * row exists yet for the given key. The Permissions page (PR 8) lets admins
  * override these per workspace.
  */
-const DEFAULT_REQUIRED_ROLE: WorkspacePermissionRole = 'admin'
+const defaultRequiredRole: WorkspacePermissionRole = 'admin'
 
 export type WorkspacePermissionState = {
   /** Active required role for this key. Falls back to `'admin'` when no row exists. */
@@ -56,7 +56,7 @@ export const useWorkspacePermission = (permissionKey: WorkspacePermissionKey): W
   })
 
   const row = (data?.[0] ?? null) as WorkspacePermission | null
-  const requiredRole = row?.requiredRole ?? DEFAULT_REQUIRED_ROLE
+  const requiredRole = row?.requiredRole ?? defaultRequiredRole
 
   // `isResolved` requires both: a membership row and a permission query that
   // has at least returned once (either a row or an empty result).

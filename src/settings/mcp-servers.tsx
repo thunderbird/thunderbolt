@@ -34,22 +34,19 @@ import { useEffect, useRef, useState, type KeyboardEvent } from 'react'
 import { useLocation, useNavigate } from 'react-router'
 import { v7 as uuidv7 } from 'uuid'
 import { probeMcpServerTools } from '@/lib/mcp-connection-test'
-import { buildMcpHeaders, createMcpTransport, type MCPTransportType } from '@/lib/mcp-transport'
+import { type MCPTransportType } from '@/lib/mcp-transport'
 import { useLocalSettingsStore } from '@/stores/local-settings-store'
 import { toCompilableQuery } from '@powersync/drizzle-driver'
 import { getAuthToken } from '@/lib/auth-token'
-import { isUnauthorizedError } from '@/lib/mcp-errors'
 import { computeEffectiveProxyEnabled, createProxyFetch } from '@/lib/proxy-fetch'
 import { classifyMcpServerAuth } from '@/lib/mcp-auth/web-oauth-flow'
 import type { completeMcpOAuthFlow, startMcpOAuthFlow } from '@/lib/mcp-auth/web-oauth-flow'
 import { McpOAuthNeedsReauthError } from '@/lib/mcp-auth/ensure-valid-token'
-import {
-  decideTestConnectionResult,
-  deriveOAuthCardDecision,
-  type StoredCredentialType,
-  type TestConnectionResult,
-} from '@/lib/mcp-auth/auth-decision'
+import { deriveOAuthCardDecision, type StoredCredentialType } from '@/lib/mcp-auth/auth-decision'
 import { useMcpServerOAuth, type McpOAuthCallback, type OAuthCardState } from '@/hooks/use-mcp-server-oauth'
+import { generateServerName, useAddServerForm } from '@/hooks/use-add-server-form'
+
+export { generateServerName }
 
 type ServerTools = {
   [serverId: string]: string[]
@@ -62,48 +59,6 @@ type ServerTools = {
  * provider's `server.error`.
  */
 const isNeedsReauthError = (err: unknown): boolean => err instanceof McpOAuthNeedsReauthError
-
-/**
- * Derives a short, meaningful server name from a remote MCP URL — used to
- * pre-fill (and re-derive) the editable name field. The name namespaces the
- * server's tools in the prompt, so a readable default like `github` or `render`
- * beats the raw hostname.
- * - Localhost: includes port for disambiguation (`localhost-3000`)
- * - IP literals (IPv4 dotted-quad or IPv6): kept whole so distinct hosts stay
- *   distinct (`192.168.1.100`, `2001:db8::1`)
- * - Remote: 3+ domain segments → second-to-last (`api.github.com` → `github`);
- *   2 segments → first (`render.com` → `render`); 1 → as-is
- */
-export const generateServerName = (url: string): string => {
-  try {
-    const { hostname, port } = new URL(url)
-    // `URL` brackets IPv6 hosts (`[::1]`) and may keep a trailing FQDN dot — normalize both.
-    const host = hostname.replace(/^\[|\]$/g, '').replace(/\.$/, '')
-    if (host === 'localhost' || host === '127.0.0.1' || host === '::1') {
-      return port ? `localhost-${port}` : 'localhost'
-    }
-    // IP literals (IPv4 dotted-quad or IPv6) have no registrable label to shorten to —
-    // use the whole address so distinct hosts stay distinct (sanitizeToolPrefix maps separators to `_`).
-    if (host.includes(':') || /^\d+\.\d+\.\d+\.\d+$/.test(host)) {
-      return host
-    }
-    const parts = host.split('.')
-    return parts.length >= 3 ? parts[parts.length - 2] : parts[0]
-  } catch {
-    return ''
-  }
-}
-
-/** True when a string is a usable remote MCP URL (http/https with a host). Guards
- *  the auto-detect probe from firing on partial/invalid input. */
-const isValidServerUrl = (url: string): boolean => {
-  try {
-    const { protocol, hostname } = new URL(url)
-    return (protocol === 'http:' || protocol === 'https:') && hostname.length > 0
-  } catch {
-    return false
-  }
-}
 
 /**
  * Test-only DI seams. The Add-dialog Test Connection probe and OAuth flow
@@ -128,26 +83,12 @@ export default function McpServersPage({ deps = {} }: { deps?: McpServersPageDep
   const { servers: mcpServers, reconnectServer } = useMCP()
   const location = useLocation()
   const navigate = useNavigate()
-  const [isAddDialogOpen, setIsAddDialogOpen] = useState(false)
-  const [newServerName, setNewServerName] = useState('')
-  const [nameManuallyEdited, setNameManuallyEdited] = useState(false)
-  const [newServerUrl, setNewServerUrl] = useState('')
-  const [newServerTransport, setNewServerTransport] = useState<MCPTransportType>('http')
-  const [newServerToken, setNewServerToken] = useState('')
-  const [isTestingConnection, setIsTestingConnection] = useState(false)
-  const [testResult, setTestResult] = useState<TestConnectionResult | { kind: 'idle' }>({ kind: 'idle' })
-  const [serverCapabilities, setServerCapabilities] = useState<string[]>([])
   const [serverTools, setServerTools] = useState<ServerTools>({})
   const [selectedTools, setSelectedTools] = useState<{ [serverId: string]: { [tool: string]: boolean } }>({})
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState<string | null>(null)
   const [copiedUrl, setCopiedUrl] = useState<string | null>(null)
   const copiedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const titleRefs = useRef<{ [key: string]: HTMLElement | null }>({})
-  // Auto-detect: monotonic id to ignore a stale in-flight probe once the URL
-  // changes mid-flight, plus the last URL value auto-probed so the blur and the
-  // debounce don't double-fire for the same value.
-  const probeIdRef = useRef(0)
-  const lastAutoTestedUrlRef = useRef<string | null>(null)
 
   // Web OAuth discovery/exchange share the universal proxy fetch the transport
   // uses, so SSRF stays covered by `/v1/proxy` and the path matches production.
@@ -173,6 +114,12 @@ export default function McpServersPage({ deps = {} }: { deps?: McpServersPageDep
     clearNavState: () => navigate('.', { replace: true, state: null }),
     startMcpOAuthFlow: deps.startMcpOAuthFlow,
     completeMcpOAuthFlow: deps.completeMcpOAuthFlow,
+  })
+
+  const form = useAddServerForm({
+    cloudUrl,
+    deps: { probeMcpServerTools: probeTools, classifyMcpServerAuth: classifyAuth, buildOAuthFetch },
+    onClearDialogError: clearDialogError,
   })
 
   // TODO: Add support for stdio servers
@@ -255,8 +202,8 @@ export default function McpServersPage({ deps = {} }: { deps?: McpServersPageDep
       // reconnect separately (see the Add & Authorize handler).
       await createMcpServerWithCredentials(
         db,
-        { id, name, url, type: newServerTransport, enabled: 1 },
-        newServerToken ? { type: 'bearer', token: newServerToken } : undefined,
+        { id, name, url, type: form.transport, enabled: 1 },
+        form.token ? { type: 'bearer', token: form.token } : undefined,
       )
     },
   })
@@ -268,113 +215,12 @@ export default function McpServersPage({ deps = {} }: { deps?: McpServersPageDep
     },
   })
 
-  // Closes the Add dialog and clears all add-form state. Bumps the probe id so an
-  // in-flight connection probe can't land its result after the dialog is gone.
-  const resetAddDialog = () => {
-    probeIdRef.current += 1
-    setIsAddDialogOpen(false)
-    setNewServerName('')
-    setNameManuallyEdited(false)
-    setNewServerUrl('')
-    setNewServerTransport('http')
-    setNewServerToken('')
-    setTestResult({ kind: 'idle' })
-    setServerCapabilities([])
-    clearDialogError()
-    lastAutoTestedUrlRef.current = null
-  }
-
-  // Editing any field after a test invalidates that result, so the user can't
-  // add a url+transport+token combination that was never tested together. Bumping
-  // the probe id first invalidates any in-flight probe (whose result is now stale
-  // for the edited value) — this must run before the idle guard, because a probe
-  // in flight has already reset testResult to idle.
-  const resetConnectionTest = () => {
-    clearDialogError()
-    probeIdRef.current += 1
-    if (testResult.kind === 'idle') {
-      return
-    }
-    setTestResult({ kind: 'idle' })
-    setServerCapabilities([])
-  }
-
-  const testConnection = async () => {
-    if (!newServerUrl) {
-      return
-    }
-    // Tag this probe so a slower earlier run can't overwrite a newer one's result
-    // (the URL can change while a probe is in flight), and record the tested value
-    // so the blur + debounce auto-triggers don't double-probe it.
-    const probeId = ++probeIdRef.current
-    lastAutoTestedUrlRef.current = newServerUrl
-
-    setIsTestingConnection(true)
-    setTestResult({ kind: 'idle' })
-    setServerCapabilities([])
-
-    try {
-      // Build the transport the same way the provider does — through the
-      // universal proxy so the test matches the real connection path (web CORS
-      // would otherwise fail for remote servers).
-      const headers = buildMcpHeaders(newServerToken || undefined)
-      const transport = createMcpTransport(newServerUrl, newServerTransport, cloudUrl, headers)
-
-      const toolNames = await probeTools(transport)
-      if (probeIdRef.current !== probeId) {
-        return
-      }
-      setTestResult({ kind: 'success', tools: toolNames })
-      setServerCapabilities(toolNames)
-    } catch (error) {
-      // A 401 here is the OAuth/credential probe signal, not a failure — keep it at warn.
-      console.warn('Connection test error:', error)
-      // Auth precedence: a supplied credential that 401s is a rejected token (no
-      // Authorize). An empty-credential 401 classifies the server: 'authorizable'
-      // (DCR/CIMD → Add & Authorize), 'token-only' (OAuth advertised but no usable
-      // registration, e.g. GitHub → ask for a static token), or 'none'.
-      const oauthActionability =
-        !newServerToken && isUnauthorizedError(error) ? await classifyAuth(newServerUrl, buildOAuthFetch()) : 'none'
-      if (probeIdRef.current !== probeId) {
-        return
-      }
-      setTestResult(decideTestConnectionResult({ hasCredential: !!newServerToken, error, oauthActionability }))
-    } finally {
-      if (probeIdRef.current === probeId) {
-        setIsTestingConnection(false)
-      }
-    }
-  }
-
-  // Auto-detect the server's auth requirement 700ms after the user stops typing a
-  // valid URL — a debounced network probe (timer cleared on each keystroke). The
-  // manual "Test Connection" button and the URL field's onBlur run the same probe
-  // immediately; `lastAutoTestedUrlRef` keeps blur + debounce from probing a value
-  // twice. Editing the credential/transport does NOT auto-probe (it only clears the
-  // stale result via resetConnectionTest) — re-test those with the button.
-  useEffect(() => {
-    if (!isAddDialogOpen || !isValidServerUrl(newServerUrl) || newServerUrl === lastAutoTestedUrlRef.current) {
-      return
-    }
-    const timer = setTimeout(() => {
-      if (newServerUrl !== lastAutoTestedUrlRef.current) {
-        testConnection()
-      }
-    }, 700)
-    return () => clearTimeout(timer)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [newServerUrl, isAddDialogOpen])
-
-  // Name prefixes the server's tools in the prompt. Use the user's name when
-  // set, otherwise fall back to the value derived from the URL.
-  const resolveServerName = () => newServerName.trim() || generateServerName(newServerUrl)
-
   const handleAddServer = async () => {
-    if (!newServerUrl) {
+    if (!form.url) {
       return
     }
-    await addServerMutation.mutateAsync({ id: uuidv7(), name: resolveServerName(), url: newServerUrl })
-    resetAddDialog()
+    await addServerMutation.mutateAsync({ id: uuidv7(), name: form.resolveServerName(), url: form.url })
+    form.resetAddDialog()
   }
 
   /**
@@ -387,39 +233,32 @@ export default function McpServersPage({ deps = {} }: { deps?: McpServersPageDep
    * server row also surfaces an Authorize action on its card.
    */
   const handleAddAndAuthorize = async () => {
-    if (!newServerUrl) {
+    if (!form.url) {
       return
     }
-    const url = newServerUrl
+    const url = form.url
     const id = uuidv7()
     const ok = await startAddAndAuthorize({
       serverId: id,
       serverUrl: url,
-      createRow: () => addServerMutation.mutateAsync({ id, name: resolveServerName(), url }),
+      createRow: () => addServerMutation.mutateAsync({ id, name: form.resolveServerName(), url }),
     })
     // Close the dialog once the flow started cleanly (web navigates away; mobile
     // opened the system browser; desktop completed inline). On failure it stays
     // open with the dialog error so the user can retry.
     if (ok) {
-      resetAddDialog()
-    }
-  }
-
-  // Leaving the URL field probes immediately (unless the debounce already did).
-  const handleUrlBlur = () => {
-    if (isValidServerUrl(newServerUrl) && newServerUrl !== lastAutoTestedUrlRef.current) {
-      testConnection()
+      form.resetAddDialog()
     }
   }
 
   const handleUrlKeyDown = (e: KeyboardEvent) => {
     if (e.key === 'Enter') {
       e.preventDefault()
-      if (testResult.kind === 'idle' && newServerUrl) {
-        testConnection()
-      } else if (testResult.kind === 'success') {
+      if (form.testResult.kind === 'idle' && form.url) {
+        form.testConnection()
+      } else if (form.testResult.kind === 'success') {
         handleAddServer()
-      } else if (testResult.kind === 'needs-oauth') {
+      } else if (form.testResult.kind === 'needs-oauth') {
         handleAddAndAuthorize()
       }
     }
@@ -545,15 +384,15 @@ export default function McpServersPage({ deps = {} }: { deps?: McpServersPageDep
     <div className="flex flex-col gap-6 p-4 w-full max-w-[760px] mx-auto">
       <PageHeader title="MCP Servers">
         <Dialog
-          open={isAddDialogOpen}
+          open={form.isAddDialogOpen}
           onOpenChange={(open) => {
             if (open) {
-              setIsAddDialogOpen(true)
+              form.openDialog()
               return
             }
             // Closing (Escape / overlay / X) clears the form and cancels any
             // in-flight or pending probe, so nothing lands in the background.
-            resetAddDialog()
+            form.resetAddDialog()
           }}
         >
           <DialogTrigger asChild>
@@ -572,12 +411,8 @@ export default function McpServersPage({ deps = {} }: { deps?: McpServersPageDep
                 <Input
                   id="name"
                   placeholder="Server name (used to prefix tools)"
-                  value={newServerName}
-                  onChange={(e) => {
-                    resetConnectionTest()
-                    setNewServerName(e.target.value)
-                    setNameManuallyEdited(true)
-                  }}
+                  value={form.name}
+                  onChange={(e) => form.changeName(e.target.value)}
                 />
               </div>
 
@@ -586,15 +421,9 @@ export default function McpServersPage({ deps = {} }: { deps?: McpServersPageDep
                 <Input
                   id="url"
                   placeholder="http://localhost:8000/mcp/"
-                  value={newServerUrl}
-                  onChange={(e) => {
-                    resetConnectionTest()
-                    setNewServerUrl(e.target.value)
-                    if (!nameManuallyEdited) {
-                      setNewServerName(generateServerName(e.target.value))
-                    }
-                  }}
-                  onBlur={handleUrlBlur}
+                  value={form.url}
+                  onChange={(e) => form.changeUrl(e.target.value)}
+                  onBlur={form.handleUrlBlur}
                   onKeyDown={handleUrlKeyDown}
                 />
               </div>
@@ -602,11 +431,8 @@ export default function McpServersPage({ deps = {} }: { deps?: McpServersPageDep
               <div className="grid gap-2">
                 <Label htmlFor="transport">Transport</Label>
                 <Select
-                  value={newServerTransport}
-                  onValueChange={(value) => {
-                    resetConnectionTest()
-                    setNewServerTransport(value as MCPTransportType)
-                  }}
+                  value={form.transport}
+                  onValueChange={(value) => form.changeTransport(value as MCPTransportType)}
                 >
                   <SelectTrigger id="transport" className="w-full rounded-lg">
                     <SelectValue />
@@ -624,31 +450,33 @@ export default function McpServersPage({ deps = {} }: { deps?: McpServersPageDep
                   id="token"
                   type="password"
                   placeholder="Bearer token or API key"
-                  value={newServerToken}
-                  onChange={(e) => {
-                    resetConnectionTest()
-                    setNewServerToken(e.target.value)
-                  }}
+                  value={form.token}
+                  onChange={(e) => form.changeToken(e.target.value)}
                 />
               </div>
 
-              {newServerUrl && (
-                <Button onClick={testConnection} disabled={isTestingConnection} variant="outline" className="w-full">
-                  {isTestingConnection ? 'Testing Connection...' : 'Test Connection'}
+              {form.url && (
+                <Button
+                  onClick={form.testConnection}
+                  disabled={form.isTestingConnection}
+                  variant="outline"
+                  className="w-full"
+                >
+                  {form.isTestingConnection ? 'Testing Connection...' : 'Test Connection'}
                 </Button>
               )}
 
-              {testResult.kind === 'success' && (
+              {form.testResult.kind === 'success' && (
                 <div className="p-4 bg-green-50 border border-green-200 rounded-lg">
                   <div className="flex items-center gap-2 text-green-800">
                     <Check className="h-4 w-4" />
                     <span className="font-medium">Connection successful!</span>
                   </div>
-                  {serverCapabilities.length > 0 && (
+                  {form.serverCapabilities.length > 0 && (
                     <div className="mt-3">
                       <p className="text-sm text-green-700 font-medium">Available tools:</p>
                       <ul className="text-sm text-green-600 mt-1 space-y-1 max-h-40 overflow-y-auto">
-                        {serverCapabilities.map((capability, index) => (
+                        {form.serverCapabilities.map((capability, index) => (
                           <li key={index} className="flex items-center gap-2">
                             <div className="w-1 h-1 bg-green-600 rounded-full" />
                             {capability}
@@ -660,7 +488,7 @@ export default function McpServersPage({ deps = {} }: { deps?: McpServersPageDep
                 </div>
               )}
 
-              {testResult.kind === 'needs-oauth' && (
+              {form.testResult.kind === 'needs-oauth' && (
                 <div className="p-4 bg-amber-50 border border-amber-200 rounded-lg">
                   <div className="flex items-center gap-2 text-amber-800">
                     <LockKeyhole className="h-4 w-4" />
@@ -672,7 +500,7 @@ export default function McpServersPage({ deps = {} }: { deps?: McpServersPageDep
                 </div>
               )}
 
-              {testResult.kind === 'needs-token' && (
+              {form.testResult.kind === 'needs-token' && (
                 <div className="p-4 bg-amber-50 border border-amber-200 rounded-lg">
                   <div className="flex items-center gap-2 text-amber-800">
                     <LockKeyhole className="h-4 w-4" />
@@ -685,7 +513,7 @@ export default function McpServersPage({ deps = {} }: { deps?: McpServersPageDep
                 </div>
               )}
 
-              {testResult.kind === 'token-rejected' && (
+              {form.testResult.kind === 'token-rejected' && (
                 <div className="p-4 bg-red-50 border border-red-200 rounded-lg">
                   <div className="flex items-center gap-2 text-red-800">
                     <X className="h-4 w-4" />
@@ -697,7 +525,7 @@ export default function McpServersPage({ deps = {} }: { deps?: McpServersPageDep
                 </div>
               )}
 
-              {testResult.kind === 'error' && (
+              {form.testResult.kind === 'error' && (
                 <div className="p-4 bg-red-50 border border-red-200 rounded-lg">
                   <div className="flex items-center gap-2 text-red-800">
                     <X className="h-4 w-4" />
@@ -720,16 +548,16 @@ export default function McpServersPage({ deps = {} }: { deps?: McpServersPageDep
               )}
             </div>
             <div className="flex justify-end gap-3 pt-2">
-              <Button variant="ghost" onClick={resetAddDialog}>
+              <Button variant="ghost" onClick={form.resetAddDialog}>
                 Cancel
               </Button>
-              {testResult.kind === 'needs-oauth' ? (
-                <Button onClick={handleAddAndAuthorize} disabled={!newServerUrl || isAddAuthorizePending}>
+              {form.testResult.kind === 'needs-oauth' ? (
+                <Button onClick={handleAddAndAuthorize} disabled={!form.url || isAddAuthorizePending}>
                   <LockKeyhole className="h-3.5 w-3.5 mr-1.5" />
                   Add &amp; Authorize
                 </Button>
               ) : (
-                <Button onClick={handleAddServer} disabled={!newServerUrl || testResult.kind !== 'success'}>
+                <Button onClick={handleAddServer} disabled={!form.url || form.testResult.kind !== 'success'}>
                   Add Server
                 </Button>
               )}
@@ -916,7 +744,7 @@ export default function McpServersPage({ deps = {} }: { deps?: McpServersPageDep
               <p className="text-sm text-muted-foreground mb-4">
                 Get started by adding your first MCP server connection.
               </p>
-              <Button onClick={() => setIsAddDialogOpen(true)} variant="outline">
+              <Button onClick={form.openDialog} variant="outline">
                 <Plus className="h-4 w-4 mr-2" />
                 Add Server
               </Button>

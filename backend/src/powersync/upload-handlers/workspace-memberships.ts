@@ -14,6 +14,7 @@ import {
   updateMembership,
   upsertMembership,
 } from '@/dal/workspaces'
+import { getUserById } from '@/dal/users'
 import { computePersonalAdminMembershipId, computePersonalWorkspaceId } from '@shared/workspaces'
 import { allow, reject } from './helpers'
 import { UploadRejection, type UploadHandler, type UploadTx } from './types'
@@ -119,6 +120,18 @@ export const workspaceMembershipsHandler: UploadHandler = {
       return allow()
     }
 
+    // @todo Revisit when the E2EE pipeline supports multi-recipient envelopes
+    // and is workspace-aware. Until then, adding a membership for another user
+    // on an E2EE-enabled server would produce data they can't decrypt. Self-row
+    // bootstraps are exempt (covered above) — the local user already owns the
+    // key for their own data. See THU-593.
+    if (op.op === 'PUT' && ctx.settings.e2eeEnabled) {
+      const targetUserId = typeof op.data?.user_id === 'string' ? op.data.user_id : null
+      if (targetUserId && targetUserId !== ctx.userId) {
+        return reject('permanent', 'E2EE_MEMBERSHIPS_DISABLED')
+      }
+    }
+
     const targetWorkspaceId =
       op.op === 'PUT' ? (typeof op.data?.workspace_id === 'string' ? op.data.workspace_id : null) : null
 
@@ -170,7 +183,22 @@ export const workspaceMembershipsHandler: UploadHandler = {
         if (!workspaceId || !userId || !role) {
           throw new UploadRejection('permanent', 'MEMBERSHIP_FIELDS_REQUIRED')
         }
-        await upsertMembership(tx, { id: op.id, workspaceId, userId, role })
+        // Enrich the row with the canonical name/email from `auth.user` so the
+        // FE Members page has display info without a synced `users` table. The
+        // FE never gets to set these fields directly — the BE is the only
+        // source of truth.
+        const targetUser = await getUserById(tx, userId)
+        if (!targetUser) {
+          throw new UploadRejection('permanent', 'USER_NOT_FOUND')
+        }
+        await upsertMembership(tx, {
+          id: op.id,
+          workspaceId,
+          userId,
+          role,
+          userName: targetUser.name,
+          userEmail: targetUser.email,
+        })
         return
       }
       case 'PATCH': {

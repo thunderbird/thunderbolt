@@ -233,6 +233,22 @@ export const useHydrateChatStore = ({ id, isNew }: UseHydrateChatStoreParams) =>
       return
     }
 
+    // Re-read the session map immediately before the write. The top-of-function
+    // existing-session check (above) is separated from `createSession` by the
+    // big Promise.all, so two concurrent hydrations for the same `id` can both
+    // pass the early dedup and race to `createSession` — which throws when
+    // both reach it. Surfaces when `[id, workspaceId]` flips twice in quick
+    // succession (e.g. landing on `/w/<newId>/chats/new` right after workspace
+    // creation, where `useActiveWorkspaceId()` is briefly null then resolves).
+    if (useChatStore.getState().sessions.has(id)) {
+      setCurrentSessionId(id)
+      setMcpClients(mcpClients)
+      setModes(modes)
+      setModels(models)
+      setIsReady(true)
+      return
+    }
+
     const chatInstance = createChatInstance(
       id,
       workspaceId,

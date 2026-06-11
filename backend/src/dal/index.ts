@@ -39,6 +39,7 @@ export {
   isPersonalWorkspace,
   isWorkspaceAdmin,
   isWorkspaceMember,
+  syncMembershipDisplayInfo,
   updateMembership,
   updatePendingMembership,
   updateWorkspace,

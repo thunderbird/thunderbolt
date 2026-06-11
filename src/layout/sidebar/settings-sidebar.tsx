@@ -14,10 +14,12 @@ import {
   SidebarSeparator,
   useSidebar,
 } from '@/components/ui/sidebar'
+import { useConfigStore } from '@/api/config-store'
 import { useActiveWorkspaceMembership } from '@/hooks/use-active-workspace-membership'
 import { useAgentsSettingsHidden } from '@/hooks/use-agents-settings-hidden'
+import { useWorkspacePermission } from '@/hooks/use-workspace-permission'
 import { stripWorkspacePrefix, useActiveWorkspace } from '@/lib/active-workspace'
-import { ArrowLeft, Bot, Building2, Cpu, Plug, Server, SlidersHorizontal, Smartphone, Zap } from 'lucide-react'
+import { ArrowLeft, Bot, Cpu, Globe, Plug, Server, SlidersHorizontal, Smartphone, Users, Zap } from 'lucide-react'
 import { useLocation } from 'react-router'
 import { SidebarHeader } from './sidebar-header'
 
@@ -41,10 +43,20 @@ export const SettingsSidebarContent = ({
   const agentsHidden = useAgentsSettingsHidden({ isStandalone })
   const activeWorkspace = useActiveWorkspace()
   const { isAdmin } = useActiveWorkspaceMembership()
-  // Workspace-admin items (General — and later Members, Permissions) are hidden
-  // for shared-workspace members per Decision 25 (hide-not-disable). Personal
-  // is treated as admin-equivalent for nav purposes; the page renders read-only.
+  // General — and later Permissions — are hidden for shared-workspace members
+  // per Decision 25 (hide-not-disable). Personal is treated as admin-equivalent
+  // for nav purposes; the page renders read-only.
   const workspaceAdminItemsVisible = activeWorkspace?.isPersonal === 1 || isAdmin
+  // Members visibility follows the configurable `manage_members` permission and
+  // is always hidden in Personal Workspaces (Decision 25 — personal can't manage
+  // members in v1).
+  // @todo Drop the e2eeEnabled gate once the encryption pipeline supports
+  // multi-recipient envelopes and is workspace-aware (see THU-593). Until then
+  // an E2EE-enabled server is effectively single-user and there's nothing to
+  // manage here.
+  const { isAllowed: canManageMembers } = useWorkspacePermission('manage_members')
+  const e2eeEnabled = useConfigStore((state) => state.config.e2eeEnabled === true)
+  const membersItemVisible = activeWorkspace?.isPersonal !== 1 && canManageMembers && !e2eeEnabled
   // `isActive` highlighting reads the sub-path so the same matching rules work
   // for both personal (`/settings/...`) and shared (`/w/<id>/settings/...`) URLs.
   const subPath = stripWorkspacePrefix(location.pathname)
@@ -121,8 +133,21 @@ export const SettingsSidebarContent = ({
                   className="cursor-pointer"
                   isActive={subPath === '/settings/workspace/general'}
                 >
-                  <Building2 className="size-4" />
+                  <Globe className="size-4" />
                   <span>General</span>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+            )}
+            {membersItemVisible && (
+              <SidebarMenuItem>
+                <SidebarMenuButton
+                  onClick={() => onSettingsNavigate('/settings/workspace/members')}
+                  tooltip="Members"
+                  className="cursor-pointer"
+                  isActive={subPath === '/settings/workspace/members'}
+                >
+                  <Users className="size-4" />
+                  <span>Members</span>
                 </SidebarMenuButton>
               </SidebarMenuItem>
             )}

@@ -29,6 +29,7 @@ export const promotePendingMemberships = async (
   database: typeof DbType,
   userId: string,
   email: string,
+  name: string,
 ): Promise<void> => {
   const normalizedEmail = normalizeEmail(email)
 
@@ -52,6 +53,8 @@ export const promotePendingMemberships = async (
           workspaceId: row.workspaceId,
           userId,
           role: row.role,
+          userName: name,
+          userEmail: normalizedEmail,
         })),
       )
       .onConflictDoNothing({
@@ -328,11 +331,18 @@ export type MembershipInput = {
   workspaceId: string
   userId: string
   role: Role
+  /** Denormalized from `auth.user`. Synced down so the Members page can render
+   *  display info without a `users` projection table (PowerSync sync rules
+   *  can't follow `user_id` across buckets). */
+  userName?: string | null
+  userEmail?: string | null
 }
 
 /**
  * Upserts a workspace membership. Conflict target is the natural key
- * `(workspace_id, user_id)`; on conflict the role is refreshed.
+ * `(workspace_id, user_id)`; on conflict the role is refreshed. Display info
+ * (`user_name`, `user_email`) is refreshed too so a stale denormalized row
+ * heals the next time the upload handler runs against it.
  */
 export const upsertMembership = async (database: typeof DbType, input: MembershipInput): Promise<void> => {
   await database
@@ -340,8 +350,30 @@ export const upsertMembership = async (database: typeof DbType, input: Membershi
     .values(input)
     .onConflictDoUpdate({
       target: [workspaceMembershipsTable.workspaceId, workspaceMembershipsTable.userId],
-      set: { role: input.role },
+      set: {
+        role: input.role,
+        ...(input.userName !== undefined ? { userName: input.userName } : {}),
+        ...(input.userEmail !== undefined ? { userEmail: input.userEmail } : {}),
+      },
     })
+}
+
+/**
+ * Mirrors a user's current display info onto every one of their membership rows.
+ * Called from the Better Auth `update.after` hook so name/email changes propagate
+ * to co-members on the next sync round-trip. Idempotent — safe to call on every
+ * user update regardless of whether name/email actually changed.
+ */
+export const syncMembershipDisplayInfo = async (
+  database: typeof DbType,
+  userId: string,
+  name: string,
+  email: string,
+): Promise<void> => {
+  await database
+    .update(workspaceMembershipsTable)
+    .set({ userName: name, userEmail: email })
+    .where(eq(workspaceMembershipsTable.userId, userId))
 }
 
 export const updateMembership = async (

@@ -158,6 +158,25 @@ describe('McpServersPage Test Connection classification', () => {
     expect(screen.getByRole('button', { name: /Add & Authorize/ })).toBeInTheDocument()
   })
 
+  it('the debounced probe reflects a credential entered during the window', async () => {
+    const classifyMcpServerAuth = mock(async () => 'authorizable' as const)
+    await renderAddDialog(
+      { probeMcpServerTools: async () => Promise.reject(unauthorized()), classifyMcpServerAuth },
+      { url: 'https://oauth.example.com/mcp' },
+    )
+    // Paste a token before the 700ms URL debounce fires — the probe must use it.
+    await act(async () => {
+      fireEvent.change(screen.getByPlaceholderText('Bearer token or API key'), { target: { value: 'pat-123' } })
+    })
+
+    await flushAutoProbe()
+
+    // Probed WITH the token → rejected credential, and OAuth discovery was skipped
+    // (a stale empty-token probe would have classified it as 'Authorization required').
+    expect(screen.getByText('Token rejected')).toBeInTheDocument()
+    expect(classifyMcpServerAuth).not.toHaveBeenCalled()
+  })
+
   it('shows a successful probe result with the discovered tools', async () => {
     await renderAddDialog(
       { probeMcpServerTools: async () => ['search', 'fetch'] },

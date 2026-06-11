@@ -249,12 +249,13 @@ export const useAddServerForm = ({
     }
   }
 
-  // Auto-detect the server's auth requirement 700ms after the user stops typing a
+  // Auto-detect the server's auth requirement 700ms after the user stops editing a
   // valid URL — a debounced network probe (timer cleared on each keystroke). The
-  // manual "Test Connection" button and the URL field's onBlur run the same probe
-  // immediately; `lastAutoTestedUrlRef` keeps blur + debounce from probing a value
-  // twice. Editing the credential/transport does NOT auto-probe (it only clears the
-  // stale result via resetConnectionTest) — re-test those with the button.
+  // credential and transport are in the deps so a value entered during the window
+  // reschedules the probe with the latest inputs instead of firing a stale snapshot
+  // (a pasted token would otherwise be ignored and the server misclassified).
+  // `lastAutoTestedUrlRef` still keeps a URL that already probed from re-probing, so
+  // a credential change after a result lands needs the manual "Test Connection".
   useEffect(() => {
     if (!state.isAddDialogOpen || !isValidServerUrl(state.url) || state.url === lastAutoTestedUrlRef.current) {
       return
@@ -266,7 +267,7 @@ export const useAddServerForm = ({
     }, 700)
     return () => clearTimeout(timer)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [state.url, state.isAddDialogOpen])
+  }, [state.url, state.token, state.transport, state.isAddDialogOpen])
 
   // Name prefixes the server's tools in the prompt. Use the user's name when
   // set, otherwise fall back to the value derived from the URL.

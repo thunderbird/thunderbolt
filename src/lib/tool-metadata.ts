@@ -98,7 +98,7 @@ const detectCategory = (toolName: string): ToolCategory => {
 /**
  * Formats tool name for display (snake_case/camelCase → Title Case)
  */
-const formatDisplayName = (toolName: string): string =>
+export const formatDisplayName = (toolName: string): string =>
   toolName
     .replace(/[._-]/g, ' ')
     .replace(/([a-z])([A-Z])/g, '$1 $2')

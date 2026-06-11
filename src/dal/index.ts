@@ -154,10 +154,17 @@ export {
   getMembershipQuery,
   getMembershipsByUser,
   getMembershipsByWorkspace,
+  getMembershipsByWorkspaceQuery,
   isWorkspaceAdmin,
+  useWorkspaceMembersQuery,
   type WorkspaceMembership,
 } from './workspace-memberships'
-export { getPendingByWorkspace, type WorkspacePendingMembership } from './workspace-pending-memberships'
+export {
+  getPendingByWorkspace,
+  getPendingByWorkspaceQuery,
+  useWorkspacePendingMembershipsQuery,
+  type WorkspacePendingMembership,
+} from './workspace-pending-memberships'
 export {
   getPermissionsByWorkspace,
   getRequiredRoleForPermission,

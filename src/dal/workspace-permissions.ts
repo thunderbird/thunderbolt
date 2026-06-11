@@ -3,6 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { and, eq } from 'drizzle-orm'
+import { v7 as uuidv7 } from 'uuid'
 import type { AnyDrizzleDatabase } from '../db/database-interface'
 import { workspacePermissionsTable } from '../db/tables'
 import type { DrizzleQueryWithPromise } from '../types'
@@ -69,4 +70,45 @@ export const getRequiredRoleForPermissionQuery = (
     )
     .limit(1)
   return query as typeof query & DrizzleQueryWithPromise<WorkspacePermission>
+}
+
+/**
+ * Upserts `workspace_permissions.required_role` for `(workspaceId, permissionKey)`.
+ * Updates the existing row when present; otherwise inserts a new row with a
+ * fresh `uuidv7` id. Defensive against legacy shared workspaces that pre-date
+ * the create-time seeding (Decision 11): the page can always write a value
+ * without having to know whether the row exists.
+ *
+ * The BE upload handler authorizes both PATCH and PUT identically
+ * (`isWorkspaceAdmin` + reject personal), so either branch round-trips.
+ */
+export const setWorkspacePermissionRequiredRole = async (
+  db: AnyDrizzleDatabase,
+  workspaceId: string,
+  permissionKey: WorkspacePermissionKey,
+  requiredRole: WorkspacePermissionRole,
+): Promise<void> => {
+  const existing = await db
+    .select({ id: workspacePermissionsTable.id })
+    .from(workspacePermissionsTable)
+    .where(
+      and(
+        eq(workspacePermissionsTable.workspaceId, workspaceId),
+        eq(workspacePermissionsTable.permissionKey, permissionKey),
+      ),
+    )
+    .get()
+  if (existing) {
+    await db
+      .update(workspacePermissionsTable)
+      .set({ requiredRole })
+      .where(eq(workspacePermissionsTable.id, existing.id))
+    return
+  }
+  await db.insert(workspacePermissionsTable).values({
+    id: uuidv7(),
+    workspaceId,
+    permissionKey,
+    requiredRole,
+  })
 }

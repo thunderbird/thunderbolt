@@ -175,6 +175,7 @@ export {
   getPermissionsByWorkspace,
   getRequiredRoleForPermission,
   getRequiredRoleForPermissionQuery,
+  setWorkspacePermissionRequiredRole,
   type WorkspacePermission,
   type WorkspacePermissionKey,
   type WorkspacePermissionRole,

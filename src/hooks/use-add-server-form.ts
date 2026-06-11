@@ -7,6 +7,7 @@ import type { classifyMcpServerAuth } from '@/lib/mcp-auth/web-oauth-flow'
 import { isUnauthorizedError } from '@/lib/mcp-errors'
 import type { probeMcpServerTools } from '@/lib/mcp-connection-test'
 import { buildMcpHeaders, createMcpTransport, type MCPTransportType } from '@/lib/mcp-transport'
+import { validateMcpServerUrl } from '@/lib/mcp-url-validation'
 import type { FetchFn } from '@/lib/proxy-fetch'
 import { useEffect, useReducer, useRef } from 'react'
 
@@ -38,17 +39,6 @@ export const generateServerName = (url: string): string => {
     return parts.length >= 3 ? parts[parts.length - 2] : parts[0]
   } catch {
     return ''
-  }
-}
-
-/** True when a string is a usable remote MCP URL (http/https with a host). Guards
- *  the auto-detect probe from firing on partial/invalid input. */
-const isValidServerUrl = (url: string): boolean => {
-  try {
-    const { protocol, hostname } = new URL(url)
-    return (protocol === 'http:' || protocol === 'https:') && hostname.length > 0
-  } catch {
-    return false
   }
 }
 
@@ -256,14 +246,17 @@ export const useAddServerForm = ({
   }
 
   // Auto-detect the server's auth requirement 700ms after the user stops editing a
-  // valid URL — a debounced network probe (timer cleared on each keystroke). The
-  // credential and transport are in the deps so a value entered during the window
-  // reschedules the probe with the latest inputs instead of firing a stale snapshot
-  // (a pasted token would otherwise be ignored and the server misclassified).
-  // `lastAutoTestedUrlRef` still keeps a URL that already probed from re-probing, so
-  // a credential change after a result lands needs the manual "Test Connection".
+  // valid URL — a debounced network probe (timer cleared on each keystroke). Gated
+  // on the same `validateMcpServerUrl` policy the page uses for Test Connection /
+  // Add, so a URL the UI already rejects (e.g. a public http:// host) never probes.
+  // The credential and transport are in the deps so a value entered during the
+  // window reschedules the probe with the latest inputs instead of firing a stale
+  // snapshot (a pasted token would otherwise be ignored and the server
+  // misclassified). `lastAutoTestedUrlRef` still keeps a URL that already probed
+  // from re-probing, so a credential change after a result lands needs the manual
+  // "Test Connection".
   useEffect(() => {
-    if (!state.isAddDialogOpen || !isValidServerUrl(state.url) || state.url === lastAutoTestedUrlRef.current) {
+    if (!state.isAddDialogOpen || !validateMcpServerUrl(state.url).ok || state.url === lastAutoTestedUrlRef.current) {
       return
     }
     const timer = setTimeout(() => {
@@ -279,9 +272,10 @@ export const useAddServerForm = ({
   // set, otherwise fall back to the value derived from the URL.
   const resolveServerName = () => state.name.trim() || generateServerName(state.url)
 
-  // Leaving the URL field probes immediately (unless the debounce already did).
+  // Leaving the URL field probes immediately (unless the debounce already did),
+  // subject to the same `validateMcpServerUrl` policy as the debounce and the page.
   const handleUrlBlur = () => {
-    if (isValidServerUrl(state.url) && state.url !== lastAutoTestedUrlRef.current) {
+    if (validateMcpServerUrl(state.url).ok && state.url !== lastAutoTestedUrlRef.current) {
       testConnection()
     }
   }

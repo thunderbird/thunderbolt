@@ -128,6 +128,50 @@ describe('useAddServerForm', () => {
     expect(result.current.serverCapabilities).toEqual([])
   })
 
+  it('does not auto-probe a public http URL the page rejects', async () => {
+    const probeMcpServerTools = mock(async () => ['tool']) as unknown as AddServerFormDeps['probeMcpServerTools']
+    const { result } = renderForm(makeDeps({ probeMcpServerTools }))
+
+    // Public http:// is rejected by validateMcpServerUrl (https required), so the
+    // debounce must respect that policy and not probe a URL the page already gates.
+    act(() => result.current.openDialog())
+    act(() => result.current.changeUrl('http://public.example.com/mcp'))
+    await act(async () => {
+      getClock().tick(700)
+      await getClock().runAllAsync()
+    })
+
+    expect(probeMcpServerTools).not.toHaveBeenCalled()
+  })
+
+  it('does not probe on blur for a public http URL the page rejects', async () => {
+    const probeMcpServerTools = mock(async () => ['tool']) as unknown as AddServerFormDeps['probeMcpServerTools']
+    const { result } = renderForm(makeDeps({ probeMcpServerTools }))
+
+    act(() => result.current.openDialog())
+    act(() => result.current.changeUrl('http://public.example.com/mcp'))
+    act(() => result.current.handleUrlBlur())
+    await act(async () => {
+      await getClock().runAllAsync()
+    })
+
+    expect(probeMcpServerTools).not.toHaveBeenCalled()
+  })
+
+  it('auto-probes a private http URL (localhost) the page allows', async () => {
+    const probeMcpServerTools = mock(async () => ['tool']) as unknown as AddServerFormDeps['probeMcpServerTools']
+    const { result } = renderForm(makeDeps({ probeMcpServerTools }))
+
+    act(() => result.current.openDialog())
+    act(() => result.current.changeUrl('http://localhost:8000/mcp'))
+    await act(async () => {
+      getClock().tick(700)
+      await getClock().runAllAsync()
+    })
+
+    expect(probeMcpServerTools).toHaveBeenCalledTimes(1)
+  })
+
   it('does not auto-probe while the dialog is closed', async () => {
     const probeMcpServerTools = mock(async () => ['tool']) as unknown as AddServerFormDeps['probeMcpServerTools']
     const { result } = renderForm(makeDeps({ probeMcpServerTools }))

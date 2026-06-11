@@ -5,6 +5,7 @@
 import { and, eq } from 'drizzle-orm'
 import type { AnyDrizzleDatabase } from '../db/database-interface'
 import { workspacePermissionsTable } from '../db/tables'
+import type { DrizzleQueryWithPromise } from '../types'
 
 export type WorkspacePermissionKey = 'manage_members' | 'change_roles'
 export type WorkspacePermissionRole = 'admin' | 'member'
@@ -44,4 +45,28 @@ export const getRequiredRoleForPermission = async (
     )
     .get()
   return (row as WorkspacePermission | undefined)?.requiredRole ?? null
+}
+
+/**
+ * Live Drizzle query for the permission row matching `(workspaceId, permissionKey)`.
+ * Use with PowerSync's `toCompilableQuery` for a reactive subscription. Returns
+ * an empty result set when no row exists yet — consumers default to `'admin'`
+ * (Decision 11) until the Permissions page (PR 8) writes an explicit value.
+ */
+export const getRequiredRoleForPermissionQuery = (
+  db: AnyDrizzleDatabase,
+  workspaceId: string,
+  permissionKey: WorkspacePermissionKey,
+) => {
+  const query = db
+    .select()
+    .from(workspacePermissionsTable)
+    .where(
+      and(
+        eq(workspacePermissionsTable.workspaceId, workspaceId),
+        eq(workspacePermissionsTable.permissionKey, permissionKey),
+      ),
+    )
+    .limit(1)
+  return query as typeof query & DrizzleQueryWithPromise<WorkspacePermission>
 }

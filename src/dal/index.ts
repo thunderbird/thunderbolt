@@ -173,6 +173,7 @@ export {
 export {
   getPermissionsByWorkspace,
   getRequiredRoleForPermission,
+  getRequiredRoleForPermissionQuery,
   type WorkspacePermission,
   type WorkspacePermissionKey,
   type WorkspacePermissionRole,

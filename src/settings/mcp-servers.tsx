@@ -31,7 +31,7 @@ import {
 import type { McpServerCredentials } from '@/dal/mcp-secrets'
 import { useDatabase } from '@/contexts'
 import { mcpSecretsTable, mcpServersTable } from '@/db/tables'
-import { useMCP } from '@/lib/mcp-provider'
+import { useMCP, type MCPClient } from '@/lib/mcp-provider'
 import { type McpServer } from '@/types'
 import { useMutation } from '@tanstack/react-query'
 import { useQuery } from '@powersync/tanstack-react-query'
@@ -63,6 +63,25 @@ export { generateServerName }
 
 type ServerTools = {
   [serverId: string]: string[]
+}
+
+/**
+ * Monotonic identity tag for an MCP client instance. A successful reconnect
+ * (Retry connection, OAuth re-authorize) swaps the client object without
+ * changing the server id, so the tools query keys on `id:generation` to detect
+ * the swap and refetch. The WeakMap hands every new instance a fresh generation
+ * while keeping replaced clients collectable.
+ */
+let nextClientGeneration = 0
+const clientGenerations = new WeakMap<MCPClient, number>()
+const clientGenerationOf = (client: MCPClient): number => {
+  const existing = clientGenerations.get(client)
+  if (existing !== undefined) {
+    return existing
+  }
+  nextClientGeneration += 1
+  clientGenerations.set(client, nextClientGeneration)
+  return nextClientGeneration
 }
 
 /** Add-dialog mode: a single guided server form, or a raw JSON config paste. */
@@ -262,23 +281,21 @@ export default function McpServersPage({ deps = {} }: { deps?: McpServersPageDep
     return acc
   }, {})
 
-  // Tools for connected servers, keyed by the connected ids so the query re-runs
-  // when the live set changes. Each connected client's tools() is fetched in
-  // parallel; failures degrade to an empty list rather than rejecting the query.
-  const connectedIds = mcpServers
-    .filter((s) => s.isConnected && s.client)
-    .map((s) => s.id)
-    .sort()
+  // Tools for connected servers. The query keys on each CONNECTION's identity
+  // (`id:generation`, where the generation changes whenever the provider swaps in
+  // a fresh client instance) — keying on the id set alone would serve the dead
+  // client's cached tools after a reconnect that doesn't change the set. Each
+  // client's tools() is fetched in parallel; failures degrade to an empty list
+  // rather than rejecting the query.
+  const connectedServers = mcpServers
+    .flatMap((s) => (s.isConnected && s.client ? [{ id: s.id, client: s.client }] : []))
+    .sort((a, b) => a.id.localeCompare(b.id))
   const { data: serverTools = {} } = useQuery<ServerTools>({
-    queryKey: ['mcp-server-tools', connectedIds],
-    enabled: connectedIds.length > 0,
+    queryKey: ['mcp-server-tools', connectedServers.map(({ id, client }) => `${id}:${clientGenerationOf(client)}`)],
+    enabled: connectedServers.length > 0,
     queryFn: async () => {
       const entries = await Promise.all(
-        connectedIds.map(async (id): Promise<[string, string[]]> => {
-          const client = mcpServers.find((s) => s.id === id)?.client
-          if (!client) {
-            return [id, []]
-          }
+        connectedServers.map(async ({ id, client }): Promise<[string, string[]]> => {
           try {
             const tools = await client.tools()
             return [id, tools && typeof tools === 'object' ? Object.keys(tools) : []]

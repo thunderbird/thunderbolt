@@ -7,11 +7,11 @@ import { resetTestDatabase, setupTestDatabase, teardownTestDatabase } from '@/da
 import { getDb } from '@/db/database'
 import { renderWithReactivity, waitForElement } from '@/test-utils/powersync-reactivity-test'
 import { getClock } from '@/testing-library'
-import { MCPProvider, type MCPClient } from '@/lib/mcp-provider'
+import { MCPProvider, useMCP, type MCPClient } from '@/lib/mcp-provider'
 import type { McpServersPageDeps } from './mcp-servers'
 import '@testing-library/jest-dom'
 import { act, cleanup, fireEvent, screen } from '@testing-library/react'
-import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, mock } from 'bun:test'
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, mock, spyOn } from 'bun:test'
 import { createElement, type ReactNode } from 'react'
 import { MemoryRouter } from 'react-router'
 import { v7 as uuidv7 } from 'uuid'
@@ -347,6 +347,153 @@ describe('McpServersPage probe lifecycle', () => {
     await flushAutoProbe()
 
     expect(probeMcpServerTools).not.toHaveBeenCalled()
+  })
+})
+
+type CreateClientFn = (serverId: string, url: string, type: 'http' | 'sse') => Promise<MCPClient>
+
+/** A connected-client stand-in whose tools() reports the given names. */
+const fakeClient = (toolNames: string[]): MCPClient =>
+  ({
+    tools: async () => Object.fromEntries(toolNames.map((name) => [name, {}])),
+    close: () => {},
+  }) as unknown as MCPClient
+
+/** createClient that serves each queued outcome once, failing on extra connects. */
+const queuedCreateClient = (queue: Array<() => Promise<MCPClient>>): CreateClientFn => {
+  return async () => {
+    const next = queue.shift()
+    if (!next) {
+      throw new Error('unexpected extra connect')
+    }
+    return next()
+  }
+}
+
+// Captures the live MCP context so tests can drive addServer/reconnectServer —
+// the page consumes the provider read-only and exposes no imperative handle.
+const mcpContextRef: { current: ReturnType<typeof useMCP> | null } = { current: null }
+
+const CaptureMcpContext = () => {
+  mcpContextRef.current = useMCP()
+  return null
+}
+
+const getMcp = () => {
+  const mcp = mcpContextRef.current
+  if (!mcp) {
+    throw new Error('MCP context not captured — render with makeMcpWrapper first')
+  }
+  return mcp
+}
+
+const makeMcpWrapper = (createClient: CreateClientFn) => {
+  const Wrapper = ({ children }: { children: ReactNode }) => (
+    <MemoryRouter>
+      <MCPProvider createClient={createClient}>
+        <CaptureMcpContext />
+        {children}
+      </MCPProvider>
+    </MemoryRouter>
+  )
+  return Wrapper
+}
+
+/** Expands the card's Available Tools accordion when it isn't already open. */
+const ensureToolsExpanded = async () => {
+  const label = await waitForElement(() => screen.queryByText('Available Tools'))
+  const trigger = label.closest('button')
+  if (trigger && trigger.getAttribute('data-state') !== 'open') {
+    fireEvent.click(trigger)
+  }
+}
+
+describe('McpServersPage tools refresh after reconnect', () => {
+  beforeAll(async () => {
+    // The dropped-connection scenarios intentionally fail a reconnect, which the
+    // provider logs via console.error.
+    spyOn(console, 'error').mockImplementation(() => {})
+    await setupTestDatabase()
+  })
+
+  afterAll(async () => {
+    await teardownTestDatabase()
+  })
+
+  beforeEach(async () => {
+    await resetTestDatabase()
+    mcpContextRef.current = null
+  })
+
+  afterEach(() => {
+    cleanup()
+  })
+
+  // Creates the DB row, renders the page inside a live MCPProvider using the
+  // given createClient, and registers + connects the server through the provider.
+  const addLiveServer = async (createClient: CreateClientFn) => {
+    const db = getDb()
+    const serverId = uuidv7()
+    const url = 'http://localhost:8000/mcp/'
+    await createMcpServer(db, { id: serverId, name: 'srv', url, type: 'http', enabled: 1 })
+    renderWithReactivity(<McpServersPage />, {
+      tables: ['mcp_servers', 'mcp_secrets'],
+      wrapper: makeMcpWrapper(createClient),
+    })
+    await act(async () => {
+      await getMcp().addServer({ id: serverId, name: 'srv', url, type: 'http', enabled: true })
+      await getClock().runAllAsync()
+    })
+    return serverId
+  }
+
+  it('refetches tools when a reconnect swaps the client without changing the connected set', async () => {
+    const serverId = await addLiveServer(
+      queuedCreateClient([async () => fakeClient(['alpha_tool']), async () => fakeClient(['beta_tool'])]),
+    )
+
+    await ensureToolsExpanded()
+    await waitForElement(() => screen.queryByText('alpha_tool'))
+    expect(screen.getByText('alpha_tool')).toBeInTheDocument()
+
+    // The server stays connected under the same id — only the client instance is
+    // replaced, so a queryKey of connected ids alone would never refetch.
+    await act(async () => {
+      await getMcp().reconnectServer(serverId)
+      await getClock().runAllAsync()
+    })
+
+    await ensureToolsExpanded()
+    await waitForElement(() => screen.queryByText('beta_tool'))
+    expect(screen.getByText('beta_tool')).toBeInTheDocument()
+    expect(screen.queryByText('alpha_tool')).not.toBeInTheDocument()
+  })
+
+  it('refetches tools after Retry connection restores a dropped server', async () => {
+    const serverId = await addLiveServer(
+      queuedCreateClient([
+        async () => fakeClient(['alpha_tool']),
+        async () => Promise.reject(new Error('connection dropped')),
+        async () => fakeClient(['beta_tool']),
+      ]),
+    )
+
+    // Drop the connection: the failed reconnect leaves the server errored, which
+    // surfaces the Retry connection affordance on the card.
+    await act(async () => {
+      await getMcp().reconnectServer(serverId)
+      await getClock().runAllAsync()
+    })
+
+    const retryButton = await waitForElement(() => screen.queryByRole('button', { name: 'Retry connection' }))
+    await act(async () => {
+      fireEvent.click(retryButton)
+      await getClock().runAllAsync()
+    })
+
+    await ensureToolsExpanded()
+    await waitForElement(() => screen.queryByText('beta_tool'))
+    expect(screen.getByText('beta_tool')).toBeInTheDocument()
   })
 })
 

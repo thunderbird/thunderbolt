@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import type { AnyDrizzleDatabase, DatabaseInterface } from './database-interface'
+import type { AnyDrizzleDatabase, DatabaseInterface, InitialSyncOutcome } from './database-interface'
 
 export type DatabaseType = 'wa-sqlite' | 'bun-sqlite' | 'powersync'
 
@@ -99,12 +99,13 @@ export class Database {
 
   /**
    * Wait for initial sync to complete (PowerSync only).
-   * For other database types, this resolves immediately.
+   * For other database types, this resolves immediately with `'disabled'`.
    */
-  public async waitForInitialSync(): Promise<void> {
+  public async waitForInitialSync(): Promise<InitialSyncOutcome> {
     if (this.#database?.waitForInitialSync) {
-      await this.#database.waitForInitialSync()
+      return await this.#database.waitForInitialSync()
     }
+    return 'disabled'
   }
 }
 

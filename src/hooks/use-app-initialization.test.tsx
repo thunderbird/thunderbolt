@@ -3,6 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { setupTestDatabase, teardownTestDatabase } from '@/dal/test-utils'
+import { getInitTimingPayload, resetInitTiming } from '@/lib/init-timing'
 import { createMockHttpClient } from '@/test-utils/http-client'
 import { createTestProvider } from '@/test-utils/test-provider'
 import { getClock } from '@/testing-library'
@@ -109,5 +110,39 @@ describe('useAppInitialization', () => {
     expect(result.current.isInitializing).toBe(false)
     expect(result.current.initData).toBeDefined()
     expect(result.current.initError).toBeUndefined()
+  })
+
+  it('records every init step duration for the app_init_timing payload', async () => {
+    resetInitTiming()
+    const mockHttpClient = createMockHttpClient(mockPostHogConfig)
+    const { result } = renderHook(() => useAppInitialization(mockHttpClient), {
+      wrapper: createTestProvider({ mockResponse: mockPostHogConfig }),
+    })
+
+    await act(async () => {
+      await getClock().runAllAsync()
+    })
+
+    expect(result.current.initData).toBeDefined()
+
+    const payload = getInitTimingPayload()
+    const expectedStepKeys = [
+      'step0_fetch_config_ms',
+      'step1_create_app_dir_ms',
+      'step2_initialize_database_ms',
+      'step2b_db_ready_ms',
+      'step3_wait_for_initial_sync_ms',
+      'step4_reconcile_defaults_ms',
+      'step4b_run_data_migrations_ms',
+      'step5_get_settings_ms',
+      'step7_initialize_tray_ms',
+      'step8_initialize_posthog_ms',
+    ]
+    for (const key of expectedStepKeys) {
+      expect(payload[key]).toBeNumber()
+    }
+    // step6 is skipped when an httpClient is injected (as in this test).
+    expect(payload).not.toHaveProperty('step6_create_http_client_ms')
+    expect(payload.init_run).toBeGreaterThanOrEqual(1)
   })
 })

@@ -13,8 +13,9 @@ import { createHandleError } from '@/lib/error-utils'
 import { createAppDir, resetAppDir } from '@/lib/fs'
 import { isSsoMode } from '@/lib/auth-mode'
 import { createAuthenticatedClient } from '@/lib/http'
-import { getDatabasePath, getDatabaseType } from '@/lib/platform'
-import { initPosthog, trackError } from '@/lib/posthog'
+import { beginInitRun, getInitTimingPayload, recordInitStep } from '@/lib/init-timing'
+import { getDatabasePath, getDatabaseType, getPlatform } from '@/lib/platform'
+import { initPosthog, trackError, trackEvent } from '@/lib/posthog'
 import { runDataMigrations } from '@/lib/data-migrations'
 import { reconcileDefaults } from '@/lib/reconcile-defaults'
 import { TrayManager } from '@/lib/tray'
@@ -23,6 +24,7 @@ import type { HandleError, HandleResult } from '@/types/handle-errors'
 import type { TrayIcon } from '@tauri-apps/api/tray'
 import type { Window } from '@tauri-apps/api/window'
 import type { PostHog } from 'posthog-js'
+import { sql } from 'drizzle-orm'
 import { useCallback, useEffect, useState } from 'react'
 
 const createAppDirectory = async (): Promise<string> => {
@@ -48,7 +50,9 @@ const reconcileDefaultSettings = async (db: AnyDrizzleDatabase): Promise<void> =
   await reconcileDefaults(db)
 }
 
-const initializeTray = async (): Promise<{ tray: TrayIcon | undefined; window: Window | undefined }> => {
+type TrayInitResult = { tray: TrayIcon | undefined; window: Window | undefined }
+
+const initializeTray = async (): Promise<TrayInitResult> => {
   return await TrayManager.initIfSupported()
 }
 
@@ -62,22 +66,50 @@ const time = async <T>(label: string, fn: () => Promise<T>): Promise<T> => {
   try {
     return await fn()
   } finally {
-    console.info(`[init] ${label}: ${Math.round(performance.now() - startedAt)}ms`)
+    const durationMs = performance.now() - startedAt
+    recordInitStep(label, durationMs)
+    console.info(`[init] ${label}: ${Math.round(durationMs)}ms`)
+  }
+}
+
+/** Step 7 wrapper: never throws — falls back to an empty tray on failure. */
+const initializeTraySafely = async (): Promise<TrayInitResult> => {
+  try {
+    return await time('step7_initialize_tray', () => initializeTray())
+  } catch (error) {
+    console.warn('Failed to initialize tray, continuing without tray support:', error)
+    const trayError = createHandleError('TRAY_INIT_FAILED', 'Failed to initialize tray', error)
+    trackError(trayError, { initialization_step: 'tray' })
+    return { tray: undefined, window: undefined }
+  }
+}
+
+/** Step 8 wrapper: never throws — falls back to a null PostHog client on failure. */
+const initializePostHogSafely = async (httpClient: HttpClient): Promise<PostHog | null> => {
+  try {
+    return await time('step8_initialize_posthog', () => initializePostHog(httpClient))
+  } catch (error) {
+    console.warn('Unexpected error during PostHog initialization:', error)
+    return null
   }
 }
 
 const executeInitializationSteps = async (httpClient?: HttpClient): Promise<HandleResult<InitData>> => {
+  beginInitRun()
   const totalStartedAt = performance.now()
   console.info('[init] start')
 
   // Step 0: Fetch backend config and hydrate store (only on success).
   // When fetch fails (offline/error), the store retains its persisted localStorage value.
-  await time('step0_fetchConfig', () => fetchConfig(getLocalSetting('cloudUrl'), httpClient))
+  // Not awaited here: nothing in this pipeline consumes the config (it is read
+  // reactively from the store later), so it overlaps with the steps below and
+  // is only awaited at the end to land its duration in app_init_timing.
+  const fetchConfigPromise = time('step0_fetch_config', () => fetchConfig(getLocalSetting('cloudUrl'), httpClient))
 
   // Step 1: App directory creation
   let appDirPath: string
   try {
-    appDirPath = await time('step1_createAppDir', () => createAppDirectory())
+    appDirPath = await time('step1_create_app_dir', () => createAppDirectory())
   } catch (error) {
     console.error('Failed to create app directory:', error)
     const appDirError = createHandleError('APP_DIR_CREATION_FAILED', 'Failed to create app directory', error)
@@ -92,7 +124,7 @@ const executeInitializationSteps = async (httpClient?: HttpClient): Promise<Hand
   let db: AnyDrizzleDatabase
   let database: Database
   try {
-    const result = await time('step2_initializeDatabase', () => initializeDatabase(appDirPath))
+    const result = await time('step2_initialize_database', () => initializeDatabase(appDirPath))
     db = result.db
     database = result.database
   } catch (error) {
@@ -105,18 +137,22 @@ const executeInitializationSteps = async (httpClient?: HttpClient): Promise<Hand
     }
   }
 
-  // Step 3: Wait for PowerSync initial sync before reconciling defaults
-  // This ensures synced data from the cloud is available before we check for missing defaults
-  try {
-    await time('step3_waitForInitialSync', () => database.waitForInitialSync())
-  } catch (error) {
-    // Non-critical - log and continue
-    console.warn('Failed to wait for initial sync:', error)
-  }
+  // Step 2b: Trivial first query. PowerSync defers its heavy ready gate (WASM
+  // compile, OPFS open, schema replace) to the first query — absorb it here so
+  // step4 measures only the reconcile work itself (THU-595).
+  await time('step2b_db_ready', async () => {
+    await db.get(sql`select 1`)
+  })
+
+  // Step 3: Wait for PowerSync initial sync before reconciling defaults.
+  // This ensures synced data from the cloud is available before we check for missing
+  // defaults. The implementation never rejects (best-effort with internal timeout);
+  // the outcome is reported in the app_init_timing event below.
+  const initialSyncOutcome = await time('step3_wait_for_initial_sync', () => database.waitForInitialSync())
 
   // Step 4: Reconcile defaults
   try {
-    await time('step4_reconcileDefaults', () => reconcileDefaultSettings(db))
+    await time('step4_reconcile_defaults', () => reconcileDefaultSettings(db))
   } catch (error) {
     console.error('Failed to reconcile default settings:', error)
     const reconcileError = createHandleError('RECONCILE_DEFAULTS_FAILED', 'Failed to reconcile default settings', error)
@@ -132,11 +168,11 @@ const executeInitializationSteps = async (httpClient?: HttpClient): Promise<Hand
   // migration checks for slug collisions. The runner swallows per-migration
   // failures itself (logging each one), so it never throws and never blocks
   // initialization — each migration retries on the next launch.
-  await runDataMigrations(db)
+  await time('step4b_run_data_migrations', () => runDataMigrations(db))
 
   // Step 5: Get cloud url and experimental feature tasks
   const cloudUrl = getLocalSetting('cloudUrl')
-  const { experimentalFeatureTasks } = await time('step5_getSettings', () =>
+  const { experimentalFeatureTasks } = await time('step5_get_settings', () =>
     getSettings(db, {
       experimental_feature_tasks: false,
     }),
@@ -149,9 +185,11 @@ const executeInitializationSteps = async (httpClient?: HttpClient): Promise<Hand
     client = httpClient
   } else {
     try {
-      client = createAuthenticatedClient(cloudUrl, getAuthToken, {
-        credentials: isSsoMode() ? 'include' : undefined,
-      })
+      client = await time('step6_create_http_client', async () =>
+        createAuthenticatedClient(cloudUrl, getAuthToken, {
+          credentials: isSsoMode() ? 'include' : undefined,
+        }),
+      )
     } catch (error) {
       console.error('Failed to initialize HTTP client:', error)
       const httpClientError = createHandleError('HTTP_CLIENT_INIT_FAILED', 'Failed to initialize HTTP client', error)
@@ -163,25 +201,29 @@ const executeInitializationSteps = async (httpClient?: HttpClient): Promise<Hand
     }
   }
 
-  // Step 7: Tray initialization (non-critical)
-  let tray: { tray: TrayIcon | undefined; window: Window | undefined } = { tray: undefined, window: undefined }
-  try {
-    tray = await time('step7_initializeTray', () => initializeTray())
-  } catch (error) {
-    console.warn('Failed to initialize tray, continuing without tray support:', error)
-    const trayError = createHandleError('TRAY_INIT_FAILED', 'Failed to initialize tray', error)
-    trackError(trayError, { initialization_step: 'tray' })
-  }
+  // Steps 7 + 8: Tray and PostHog initialization (non-critical, independent
+  // of each other) — run in parallel; each wrapper swallows its own failure.
+  const [tray, posthogClient] = await Promise.all([initializeTraySafely(), initializePostHogSafely(client)])
 
-  // Step 8: PostHog initialization (non-critical)
-  let posthogClient: PostHog | null = null
-  try {
-    posthogClient = await time('step8_initializePostHog', () => initializePostHog(client))
-  } catch (error) {
-    console.warn('Unexpected error during PostHog initialization:', error)
-  }
+  // Settle step0 so its duration is in the timing payload. fetchConfig never
+  // rejects (internal 5s timeout, errors caught) and in practice has long
+  // resolved while the steps above ran.
+  await fetchConfigPromise
 
-  console.info(`[init] complete (total ${Math.round(performance.now() - totalStartedAt)}ms)`)
+  const initTotalMs = Math.round(performance.now() - totalStartedAt)
+  console.info(`[init] complete (total ${initTotalMs}ms)`)
+
+  // Report the full startup timeline to PostHog (THU-595). This must run after
+  // step 8 — the PostHog client only exists from there on; if the user opted out
+  // of data collection, trackEvent no-ops.
+  const initTimingPayload = {
+    ...getInitTimingPayload(),
+    init_total_ms: initTotalMs,
+    initial_sync_outcome: initialSyncOutcome,
+    sync_enabled: getLocalSetting('syncEnabled'),
+    platform: getPlatform(),
+  }
+  trackEvent('app_init_timing', initTimingPayload)
 
   return {
     success: true,

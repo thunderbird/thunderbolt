@@ -76,6 +76,20 @@ Events follow the pattern: `<feature>_<action>`
 - `ui_sidebar_open` - Sidebar opens
 - `ui_sidebar_close` - Sidebar closes
 
+#### Startup Performance (`app_*`)
+
+Diagnostic events for investigating app initialization time (THU-595). All timing values are whole milliseconds measured from navigation start (`performance.timeOrigin`).
+
+- `app_init_timing` - Fired once per initialization run, after the init pipeline completes. Properties:
+  - `bundle_evaluated_ms` - entry bundle downloaded, parsed and evaluated
+  - `app_mounted_ms` - first render of the root React component
+  - `step0_fetch_config_ms` … `step8_initialize_posthog_ms` - duration of each init step (including `step2b_db_ready_ms` — the first trivial query that pays PowerSync's deferred ready gate — plus `step4b_run_data_migrations_ms` and `step6_create_http_client_ms`)
+  - `init_total_ms` - total pipeline duration
+  - `init_run` - run counter (greater than 1 means the user retried after an init error)
+  - `initial_sync_outcome` - how the initial-sync gate resolved: `disabled`, `synced`, `timed_out` or `failed`
+  - `sync_enabled`, `platform` - segmentation context
+- `app_chat_ready` - Fired at most once per session when the first chat finishes hydrating (with `chat_ready_ms`). Together with `app_init_timing`, this captures the user-perceived time to a usable chat.
+
 #### Sync Diagnostics (`sync_*`)
 
 Diagnostic events for debugging sync issues (especially iOS). All events include shared context: `platform`, `ps_config`, `ps_connected`, `ps_connecting`, `ps_has_synced`, `ps_last_synced_at`, `ps_uploading`, `ps_downloading`, `uptime_ms`.

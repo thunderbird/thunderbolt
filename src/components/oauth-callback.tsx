@@ -22,14 +22,20 @@ export default function OAuthCallback() {
     const iss = params.get('iss')
     const error = params.get('error')
     const errorDescription = params.get('error_description')
+    // Single error signal — some authorization servers send only
+    // `error_description`. The popup message, the MCP routing claim, and the
+    // navigation payload must all share this one value: claiming on the raw
+    // `error` while the payload coalesces would misroute description-only MCP
+    // errors to the integrations flow, leaving the MCP handshake pending.
+    const oauthError = errorDescription || error
 
     // Send message to parent window if this was opened as a popup
     if (window.opener && !window.opener.closed) {
-      if (error) {
+      if (oauthError) {
         window.opener.postMessage(
           {
             type: 'oauth-callback',
-            error: errorDescription || error,
+            error: oauthError,
           },
           window.location.origin,
         )
@@ -53,13 +59,13 @@ export default function OAuthCallback() {
        * defer OAuth redirect to fix the race condition issue
        */
       const t = setTimeout(async () => {
-        const oauthPayload = { code, state, iss, error: errorDescription || error }
+        const oauthPayload = { code, state, iss, error: oauthError }
 
         // An MCP OAuth callback is claimed by handshake ownership (nonce match,
         // or an otherwise-unattributable error redirect while an MCP handshake is
         // pending), independent of the shared return-context slot — so a
         // concurrent integrations flow can't misroute it to the wrong page.
-        if (isMcpOAuthCallback({ code, state, error })) {
+        if (isMcpOAuthCallback({ code, state, error: oauthError })) {
           navigate('/settings/mcp-servers', { state: { oauth: oauthPayload } })
           return
         }

@@ -94,6 +94,12 @@ export const clearMcpOAuthState = (): void => {
 export type OAuthCallbackParams = {
   code: string | null | undefined
   state: string | null | undefined
+  /**
+   * Coalesced error signal: callers pass `error_description || error`, since a
+   * non-compliant AS may send only the description. Claiming on the raw `error`
+   * alone would leave a description-only MCP error unclaimed (handshake stuck
+   * pending) and misrouted to the integrations flow.
+   */
   error: string | null | undefined
 }
 

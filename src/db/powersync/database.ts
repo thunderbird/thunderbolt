@@ -2,14 +2,13 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { getLocalSetting, useLocalSettingsStore } from '@/stores/local-settings-store'
-import { withTimeout } from '@/lib/timeout'
+import { getLocalSetting } from '@/stores/local-settings-store'
 import type { AbstractPowerSyncDatabase } from '@powersync/common'
 import { SyncStreamConnectionMethod, WASQLiteOpenFactory, WASQLiteVFS } from '@powersync/web'
 import type { PowerSyncDatabase, WebPowerSyncDatabaseOptions } from '@powersync/web'
 import { wrapPowerSyncWithDrizzle } from '@powersync/drizzle-driver'
-import type { DatabaseInterface, AnyDrizzleDatabase } from '../database-interface'
-import { getDatabaseInstance } from '../database'
+import type { DatabaseInterface, AnyDrizzleDatabase, InitialSyncOutcome } from '../database-interface'
+import { isSyncEnabled } from './sync-state'
 import { AppSchema, drizzleSchema } from './schema'
 import { ThunderboltConnector } from './connector'
 import { getPlatform, getWebBrowser } from '@/lib/platform'
@@ -56,74 +55,6 @@ const initialSyncTimeoutMs = 10_000
  * (see `SyncStatus.statusForPriority`).
  */
 const initialSyncPriority = 1
-
-/** Custom event name for sync enabled changes */
-export const syncEnabledChangeEvent = 'powersync_sync_enabled_change'
-
-/**
- * Get PowerSync instance from singleton if available.
- * Returns null if not using PowerSync or not initialized.
- */
-export const getPowerSyncInstance = (): PowerSyncDatabase | null => {
-  try {
-    const database = getDatabaseInstance()
-    // PowerSyncDatabaseImpl exposes powerSyncInstance as a typed getter, but getDatabaseInstance()
-    // returns the DatabaseInterface union which doesn't include PowerSync-specific properties.
-    if ('powerSyncInstance' in database) {
-      return (database as { powerSyncInstance: PowerSyncDatabase | null }).powerSyncInstance
-    }
-  } catch {
-    // Not initialized or not PowerSync
-  }
-  return null
-}
-
-/**
- * Force a disconnect + reconnect cycle via the singleton database.
- * Guarded against concurrent attempts — no-ops if a reconnect is already in-flight.
- */
-export const reconnectSync = async (): Promise<void> => {
-  try {
-    const database = getDatabaseInstance()
-    if ('reconnect' in database) {
-      await (database as { reconnect: () => Promise<void> }).reconnect()
-    }
-  } catch (error) {
-    console.warn('Failed to reconnect PowerSync:', error)
-  }
-}
-
-/**
- * Check if sync is enabled by user preference
- */
-export const isSyncEnabled = (): boolean => getLocalSetting('syncEnabled')
-
-/**
- * Set sync enabled preference, connect/disconnect from PowerSync, and dispatch change event
- */
-export const setSyncEnabled = async (enabled: boolean): Promise<void> => {
-  // Update store and dispatch event
-  useLocalSettingsStore.getState().setLocalSetting('syncEnabled', enabled)
-  window.dispatchEvent(new CustomEvent(syncEnabledChangeEvent, { detail: enabled }))
-
-  // Connect or disconnect from PowerSync Cloud
-  try {
-    const database = getDatabaseInstance()
-    if ('connectToSync' in database && 'disconnectFromSync' in database) {
-      if (enabled) {
-        await (database as { connectToSync: () => Promise<void> }).connectToSync()
-      } else {
-        await withTimeout(
-          (database as { disconnectFromSync: () => Promise<void> }).disconnectFromSync(),
-          10_000,
-          'disconnectFromSync',
-        )
-      }
-    }
-  } catch (error) {
-    console.error('Failed to connect/disconnect from PowerSync:', error)
-  }
-}
 
 /** @internal Exported for testing */
 export const getPowerSyncOptions = (path: string, config: PowerSyncDatabaseConfig = getPowerSyncDatabaseConfig()) => {
@@ -464,9 +395,9 @@ export class PowerSyncDatabaseImpl implements DatabaseInterface {
    *
    * Resolves after initialSyncTimeoutMs if sync never completes (e.g. network down).
    */
-  async waitForInitialSync(): Promise<void> {
+  async waitForInitialSync(): Promise<InitialSyncOutcome> {
     if (!this.powerSync || !isSyncEnabled()) {
-      return
+      return 'disabled'
     }
 
     const startedAt = performance.now()
@@ -488,15 +419,18 @@ export class PowerSyncDatabaseImpl implements DatabaseInterface {
         this.powerSync.waitForFirstSync({ signal: abortController.signal, priority: initialSyncPriority }),
         timeoutPromise,
       ])
-      if (!timedOut) {
-        console.info(
-          `[PowerSync] Priority-${initialSyncPriority} sync complete (${Math.round(performance.now() - startedAt)}ms)`,
-        )
+      if (timedOut) {
+        return 'timed_out'
       }
+      console.info(
+        `[PowerSync] Priority-${initialSyncPriority} sync complete (${Math.round(performance.now() - startedAt)}ms)`,
+      )
+      return 'synced'
     } catch (error) {
       // First sync is best-effort — the app must boot regardless. Swallow any unexpected
       // rejection so it never propagates to the initialization caller.
       console.warn('[PowerSync] waitForInitialSync failed; continuing without sync gate:', error)
+      return 'failed'
     } finally {
       clearTimeout(timeoutId)
       // Disposes the listener inside waitForFirstSync if the timeout won the race (or if

@@ -512,6 +512,14 @@ describe('reconcileDefaultsForTable', () => {
     expect(afterReconcile?.defaultHash).toBe(hashSetting(userSetting))
   })
 
+  test('no-op when defaults array is empty', async () => {
+    const db = getDb()
+    await reconcileDefaultsForTable(db, settingsTable, [], hashSetting, 'key')
+
+    const settings = await db.select().from(settingsTable)
+    expect(settings.length).toBe(0)
+  })
+
   test('still updates when both existing and default values are null', async () => {
     const db = getDb()
 

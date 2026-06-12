@@ -22,7 +22,9 @@ import {
 import { getOrCreateChatThread, updateChatThread } from '@/dal/chat-threads'
 import { selectBuiltInAgentEnabled, useConfigStore } from '@/api/config-store'
 import { builtInAgent } from '@/defaults/agents'
+import { markChatReady } from '@/lib/init-timing'
 import { useMCP } from '@/lib/mcp-provider'
+import { trackEvent } from '@/lib/posthog'
 import { generateTitle } from '@/lib/title-generator'
 import { convertDbChatMessageToUIMessage } from '@/lib/utils'
 import type { SaveMessagesFunction, ThunderboltUIMessage } from '@/types'
@@ -34,6 +36,17 @@ import { createChatInstance } from './chat-instance'
 type UseHydrateChatStoreParams = {
   id: string
   isNew: boolean
+}
+
+/**
+ * Reports the time from navigation start until the first chat is usable
+ * (startup telemetry). Fires at most once per app session.
+ */
+const trackChatReadyOnce = () => {
+  const chatReadyMs = markChatReady()
+  if (chatReadyMs !== null) {
+    trackEvent('app_chat_ready', { chat_ready_ms: Math.round(chatReadyMs) })
+  }
 }
 
 export const useHydrateChatStore = ({ id, isNew }: UseHydrateChatStoreParams) => {
@@ -119,6 +132,7 @@ export const useHydrateChatStore = ({ id, isNew }: UseHydrateChatStoreParams) =>
       setModels(models)
 
       setIsReady(true)
+      trackChatReadyOnce()
 
       return
     }
@@ -234,6 +248,7 @@ export const useHydrateChatStore = ({ id, isNew }: UseHydrateChatStoreParams) =>
     setModels(models)
 
     setIsReady(true)
+    trackChatReadyOnce()
   }
 
   return { hydrateChatStore, isReady, saveMessages }

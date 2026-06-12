@@ -7,8 +7,13 @@ import { App } from './app'
 import './polyfills'
 
 import './index.css'
+import { markBundleEvaluated } from './lib/init-timing'
 import { initializeLinkInterception } from './lib/intercept-links'
 import { handlePostUpdateRedirect } from './lib/post-update-redirect'
+
+// Running here means every static import above (the whole entry bundle) has
+// been downloaded, parsed and evaluated — record that phase.
+markBundleEvaluated()
 
 // After an update+relaunch, the WebView may restore a stale route (e.g. /waitlist
 // verify screen). Detect this and force a clean start at root.

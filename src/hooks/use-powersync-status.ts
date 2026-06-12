@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { getPowerSyncInstance } from '@/db/powersync'
+import { getPowerSyncInstance } from '@/db/powersync/sync-state'
 import type { SyncStatus } from '@powersync/web'
 import { useSyncExternalStore } from 'react'
 

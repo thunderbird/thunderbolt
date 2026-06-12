@@ -3,7 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { needsSyncSetupWizard } from '@/db/encryption'
-import { isSyncEnabled, setSyncEnabled, syncEnabledChangeEvent } from '@/db/powersync'
+import { isSyncEnabled, setSyncEnabled, syncEnabledChangeEvent } from '@/db/powersync/sync-state'
 import { trackEvent } from '@/lib/posthog'
 import { useEffect, useState } from 'react'
 

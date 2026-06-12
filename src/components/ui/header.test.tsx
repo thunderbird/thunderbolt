@@ -27,6 +27,13 @@ import { SidebarProvider } from '@/components/ui/sidebar'
 import { SignInModalProvider } from '@/contexts'
 import { Header } from './header'
 
+const fakeUseWorkspacePermission = (isAllowed: boolean) =>
+  (() => ({
+    requiredRole: 'admin' as const,
+    isAllowed,
+    isResolved: true,
+  })) as unknown as typeof import('@/hooks/use-workspace-permission').useWorkspacePermission
+
 /** happy-dom exposes its control API on `window.happyDOM`, but the global
  *  registrator doesn't augment the DOM lib's `Window`. Declare the one method
  *  this test drives so `tsc --noEmit` stays green. */
@@ -177,5 +184,31 @@ describe('Header', () => {
     render(<Header />, { wrapper: TestWrapper })
 
     expect(screen.getByText(builtInAgent.name)).toBeInTheDocument()
+  })
+
+  describe('permission gating (add_agents)', () => {
+    it('renders the "Add Agent" selector footer when the user has add_agents', async () => {
+      setupWithAgent(builtInAgent)
+
+      render(<Header useWorkspacePermission={fakeUseWorkspacePermission(true)} />, { wrapper: TestWrapper })
+      await flushAgentsQuery()
+      await act(async () => {
+        screen.getByText(builtInAgent.name).click()
+      })
+
+      expect(await screen.findByText('Add Agent')).toBeInTheDocument()
+    })
+
+    it('hides the "Add Agent" selector footer when the user lacks add_agents', async () => {
+      setupWithAgent(builtInAgent)
+
+      render(<Header useWorkspacePermission={fakeUseWorkspacePermission(false)} />, { wrapper: TestWrapper })
+      await flushAgentsQuery()
+      await act(async () => {
+        screen.getByText(builtInAgent.name).click()
+      })
+
+      expect(screen.queryByText('Add Agent')).not.toBeInTheDocument()
+    })
   })
 })

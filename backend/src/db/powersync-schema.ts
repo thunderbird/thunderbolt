@@ -3,6 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import type { PowerSyncTableName } from '@shared/powersync-tables'
+import { workspacePermissionKeys, workspacePermissionRoles } from '@shared/workspaces'
 import {
   type AnyPgColumn,
   type AnyPgTable,
@@ -122,9 +123,9 @@ export const workspacePendingMembershipsTable = powersyncSchema.table(
 )
 
 /**
- * Per-workspace permission policy. v1 ships two keys (`manage_members`, `change_roles`)
- * with values `admin` | `member` (Decision 10). Schema designed so adding a new
- * permission post-v1 is a row insert, not a schema change.
+ * Per-workspace permission policy (Decision 10). The enum lists every
+ * configurable action the workspace exposes; the source of truth lives in
+ * `shared/workspaces.ts` so FE/BE schemas + types stay in lockstep.
  */
 export const workspacePermissionsTable = powersyncSchema.table(
   'workspace_permissions',
@@ -133,8 +134,8 @@ export const workspacePermissionsTable = powersyncSchema.table(
     workspaceId: text('workspace_id')
       .notNull()
       .references(() => workspacesTable.id, { onDelete: 'cascade' }),
-    permissionKey: text('permission_key', { enum: ['manage_members', 'change_roles'] }).notNull(),
-    requiredRole: text('required_role', { enum: ['admin', 'member'] }).notNull(),
+    permissionKey: text('permission_key', { enum: [...workspacePermissionKeys] }).notNull(),
+    requiredRole: text('required_role', { enum: [...workspacePermissionRoles] }).notNull(),
   },
   (table) => [
     uniqueIndex('idx_workspace_permissions_workspace_key').on(table.workspaceId, table.permissionKey),

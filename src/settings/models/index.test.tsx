@@ -18,6 +18,13 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from
 import { v7 as uuidv7 } from 'uuid'
 import ModelsPage from './index'
 
+const fakeUseWorkspacePermission = (isAllowed: boolean) =>
+  (() => ({
+    requiredRole: 'admin' as const,
+    isAllowed,
+    isResolved: true,
+  })) as unknown as typeof import('@/hooks/use-workspace-permission').useWorkspacePermission
+
 describe('ModelsPage reactivity', () => {
   beforeAll(async () => {
     await setupTestDatabase()
@@ -72,5 +79,65 @@ describe('ModelsPage reactivity', () => {
     })
 
     expect(screen.getByText('Second Model')).toBeInTheDocument()
+  })
+})
+
+describe('ModelsPage — permission gating', () => {
+  beforeAll(async () => {
+    await setupTestDatabase()
+  })
+
+  afterAll(async () => {
+    await teardownTestDatabase()
+  })
+
+  beforeEach(async () => {
+    seedTestTrustDomain()
+    await resetTestDatabase()
+  })
+
+  afterEach(() => {
+    resetTestTrustDomain()
+    cleanup()
+  })
+
+  it('renders the header Add button when add_models is allowed', async () => {
+    renderWithReactivity(<ModelsPage useWorkspacePermission={fakeUseWorkspacePermission(true)} />, {
+      tables: ['models'],
+    })
+
+    await waitForElement(() => screen.queryByRole('heading', { name: 'Models' }))
+    // Empty-state CTA ("Add Model") fires here since no models seeded. The
+    // header `+` button has no accessible name; covering it requires the empty
+    // state's labelled button instead.
+    expect(screen.getByRole('button', { name: 'Add Model' })).toBeInTheDocument()
+  })
+
+  it('hides every Add Model affordance when add_models is denied', async () => {
+    renderWithReactivity(<ModelsPage useWorkspacePermission={fakeUseWorkspacePermission(false)} />, {
+      tables: ['models'],
+    })
+
+    await waitForElement(() => screen.queryByRole('heading', { name: 'Models' }))
+    expect(screen.queryByRole('button', { name: 'Add Model' })).not.toBeInTheDocument()
+  })
+
+  it('disables the row Switch + Edit button when add_models is denied', async () => {
+    const db = getDb()
+    await createModel(db, wsId, {
+      id: uuidv7(),
+      provider: 'openai',
+      name: 'Configured Model',
+      model: 'gpt-4',
+      isSystem: 0,
+      enabled: 1,
+    })
+
+    renderWithReactivity(<ModelsPage useWorkspacePermission={fakeUseWorkspacePermission(false)} />, {
+      tables: ['models'],
+    })
+
+    await waitForElement(() => screen.queryByText('Configured Model'))
+    expect(screen.getByRole('switch')).toBeDisabled()
   })
 })

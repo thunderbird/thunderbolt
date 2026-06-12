@@ -356,3 +356,98 @@ describe('SettingsSidebarContent — Workspace > Members entry visibility', () =
     }
   })
 })
+
+describe('SettingsSidebarContent — Workspace > Permissions entry visibility', () => {
+  beforeAll(async () => {
+    await setupTestDatabase()
+  })
+
+  afterAll(async () => {
+    await teardownTestDatabase()
+  })
+
+  beforeEach(async () => {
+    await resetTestDatabase()
+    seedTestTrustDomain()
+  })
+
+  afterEach(() => {
+    resetTestTrustDomain()
+    cleanup()
+  })
+
+  it('shows the Permissions entry for an admin of a shared workspace', async () => {
+    await seedSharedWorkspaceWithMembership('admin')
+
+    renderWithReactivity(
+      <SettingsSidebarContent onBackClick={() => {}} onSettingsNavigate={() => {}} isStandalone={onTauri} />,
+      {
+        route: `/w/${otherWsId}/settings`,
+        routePath: '/*',
+        tables: ['workspaces', 'workspace_memberships', 'workspace_permissions'],
+        wrapper: ReactiveSidebarWrapper,
+      },
+    )
+
+    await waitForElement(() => screen.queryByText('Permissions'))
+    expect(screen.getByText('Permissions')).toBeInTheDocument()
+  })
+
+  it('hides the Permissions entry for a member of a shared workspace', async () => {
+    await seedSharedWorkspaceWithMembership('member')
+
+    renderWithReactivity(
+      <SettingsSidebarContent onBackClick={() => {}} onSettingsNavigate={() => {}} isStandalone={onTauri} />,
+      {
+        route: `/w/${otherWsId}/settings`,
+        routePath: '/*',
+        tables: ['workspaces', 'workspace_memberships', 'workspace_permissions'],
+        wrapper: ReactiveSidebarWrapper,
+      },
+    )
+
+    await waitForElement(() => screen.queryByText('Models'))
+    expect(screen.queryByText('Permissions')).not.toBeInTheDocument()
+  })
+
+  it('hides the Permissions entry in a Personal Workspace (Decision 25)', async () => {
+    await seedPersonalMembership()
+
+    renderWithReactivity(
+      <SettingsSidebarContent onBackClick={() => {}} onSettingsNavigate={() => {}} isStandalone={onTauri} />,
+      {
+        route: '/settings',
+        routePath: '/*',
+        tables: ['workspaces', 'workspace_memberships', 'workspace_permissions'],
+        wrapper: ReactiveSidebarWrapper,
+      },
+    )
+
+    await waitForElement(() => screen.queryByText('General'))
+    expect(screen.queryByText('Permissions')).not.toBeInTheDocument()
+  })
+
+  it('hides the Permissions entry when e2eeEnabled is true (THU-593)', async () => {
+    const { useConfigStore } = await import('@/api/config-store')
+    const previous = useConfigStore.getState().config
+    useConfigStore.getState().updateConfig({ ...previous, e2eeEnabled: true })
+    try {
+      await seedSharedWorkspaceWithMembership('admin')
+
+      renderWithReactivity(
+        <SettingsSidebarContent onBackClick={() => {}} onSettingsNavigate={() => {}} isStandalone={onTauri} />,
+        {
+          route: `/w/${otherWsId}/settings`,
+          routePath: '/*',
+          tables: ['workspaces', 'workspace_memberships', 'workspace_permissions'],
+          wrapper: ReactiveSidebarWrapper,
+        },
+      )
+
+      await waitForElement(() => screen.queryByText('Models'))
+      expect(screen.queryByText('Permissions')).not.toBeInTheDocument()
+    } finally {
+      useConfigStore.getState().updateConfig(previous)
+    }
+  })
+})

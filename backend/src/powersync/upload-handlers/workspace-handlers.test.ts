@@ -3,7 +3,16 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { user } from '@/db/auth-schema'
-import { workspaceMembershipsTable, workspacePendingMembershipsTable, workspacesTable } from '@/db/powersync-schema'
+import {
+  agentsTable,
+  mcpServersTable,
+  modelsTable,
+  skillsTable,
+  workspaceMembershipsTable,
+  workspacePendingMembershipsTable,
+  workspacePermissionsTable,
+  workspacesTable,
+} from '@/db/powersync-schema'
 import { createTestDb } from '@/test-utils/db'
 import { createTestSettings } from '@/test-utils/settings'
 import { computePersonalAdminMembershipId, computePersonalWorkspaceId } from '@shared/workspaces'
@@ -813,6 +822,521 @@ describe('workspace upload handlers', () => {
         expect(result.rejected[0].code).toBe('PERSONAL_WORKSPACE_OWNER_MISMATCH')
         expect(result.rejected[1].code).toBe('PERSONAL_WORKSPACE_ID_NOT_CANONICAL')
       }
+    })
+  })
+
+  describe('agents — workspace permission gating (add_agents / remove_agents)', () => {
+    /**
+     * Sets up a shared workspace with `adminId` as admin and `memberId` as member.
+     * Both users must have already been inserted via `insertUser`. Returns the
+     * workspace id so the test can target it.
+     */
+    const seedSharedWithAdminAndMember = async (adminId: string, memberId: string): Promise<string> => {
+      const workspaceId = uuidv7()
+      await db.insert(workspacesTable).values({ id: workspaceId, isPersonal: false, name: 'Acme' })
+      await db.insert(workspaceMembershipsTable).values({ id: uuidv7(), workspaceId, userId: adminId, role: 'admin' })
+      await db.insert(workspaceMembershipsTable).values({ id: uuidv7(), workspaceId, userId: memberId, role: 'member' })
+      return workspaceId
+    }
+
+    const setRequiredRole = async (
+      workspaceId: string,
+      key: 'add_agents' | 'remove_agents',
+      requiredRole: 'admin' | 'member',
+    ): Promise<void> => {
+      await db.insert(workspacePermissionsTable).values({ id: uuidv7(), workspaceId, permissionKey: key, requiredRole })
+    }
+
+    const agentPut = (workspaceId: string, id = uuidv7()): UploadOp => ({
+      op: 'PUT',
+      type: 'agents',
+      id,
+      data: {
+        workspace_id: workspaceId,
+        name: 'Test agent',
+        type: 'remote-acp',
+        transport: 'websocket',
+        url: 'wss://example.invalid/acp',
+      },
+    })
+
+    it('PUT agent: admin always succeeds (default required_role = admin)', async () => {
+      await insertUser('agAdmin1', 'agadmin1@test.com')
+      await insertUser('agMember1', 'agmember1@test.com')
+      const workspaceId = await seedSharedWithAdminAndMember('agAdmin1', 'agMember1')
+
+      const op = agentPut(workspaceId)
+      const result = await applyUploadBatch(db, [op], ctxFor('agAdmin1'))
+      expect(result.ok).toBe(true)
+      const stored = await db.select().from(agentsTable).where(eq(agentsTable.id, op.id))
+      expect(stored).toHaveLength(1)
+    })
+
+    it('PUT agent: member rejected when add_agents required_role = admin (default)', async () => {
+      await insertUser('agAdmin2', 'agadmin2@test.com')
+      await insertUser('agMember2', 'agmember2@test.com')
+      const workspaceId = await seedSharedWithAdminAndMember('agAdmin2', 'agMember2')
+
+      const op = agentPut(workspaceId)
+      const result = await applyUploadBatch(db, [op], ctxFor('agMember2'))
+      expectPermanentReject(result, 'INSUFFICIENT_PERMISSION')
+      const stored = await db.select().from(agentsTable).where(eq(agentsTable.id, op.id))
+      expect(stored).toHaveLength(0)
+    })
+
+    it('PUT agent: member allowed when add_agents required_role = member', async () => {
+      await insertUser('agAdmin3', 'agadmin3@test.com')
+      await insertUser('agMember3', 'agmember3@test.com')
+      const workspaceId = await seedSharedWithAdminAndMember('agAdmin3', 'agMember3')
+      await setRequiredRole(workspaceId, 'add_agents', 'member')
+
+      const op = agentPut(workspaceId)
+      const result = await applyUploadBatch(db, [op], ctxFor('agMember3'))
+      expect(result.ok).toBe(true)
+      const stored = await db.select().from(agentsTable).where(eq(agentsTable.id, op.id))
+      expect(stored).toHaveLength(1)
+    })
+
+    it('DELETE agent: member rejected when remove_agents required_role = admin (default)', async () => {
+      await insertUser('agAdmin4', 'agadmin4@test.com')
+      await insertUser('agMember4', 'agmember4@test.com')
+      const workspaceId = await seedSharedWithAdminAndMember('agAdmin4', 'agMember4')
+      // Admin seeds the agent so the row exists.
+      const putOp = agentPut(workspaceId)
+      const putResult = await applyUploadBatch(db, [putOp], ctxFor('agAdmin4'))
+      expect(putResult.ok).toBe(true)
+
+      const deleteOp: UploadOp = { op: 'DELETE', type: 'agents', id: putOp.id }
+      const result = await applyUploadBatch(db, [deleteOp], ctxFor('agMember4'))
+      expectPermanentReject(result, 'INSUFFICIENT_PERMISSION')
+      const stored = await db.select().from(agentsTable).where(eq(agentsTable.id, putOp.id))
+      expect(stored).toHaveLength(1)
+    })
+
+    it('DELETE agent: member allowed when remove_agents required_role = member', async () => {
+      await insertUser('agAdmin5', 'agadmin5@test.com')
+      await insertUser('agMember5', 'agmember5@test.com')
+      const workspaceId = await seedSharedWithAdminAndMember('agAdmin5', 'agMember5')
+      const putOp = agentPut(workspaceId)
+      const putResult = await applyUploadBatch(db, [putOp], ctxFor('agAdmin5'))
+      expect(putResult.ok).toBe(true)
+      await setRequiredRole(workspaceId, 'remove_agents', 'member')
+
+      const deleteOp: UploadOp = { op: 'DELETE', type: 'agents', id: putOp.id }
+      const result = await applyUploadBatch(db, [deleteOp], ctxFor('agMember5'))
+      expect(result.ok).toBe(true)
+      const stored = await db.select().from(agentsTable).where(eq(agentsTable.id, putOp.id))
+      expect(stored).toHaveLength(0)
+    })
+
+    it('add_agents = member does not unlock DELETE (remove_agents still defaults to admin)', async () => {
+      await insertUser('agAdmin6', 'agadmin6@test.com')
+      await insertUser('agMember6', 'agmember6@test.com')
+      const workspaceId = await seedSharedWithAdminAndMember('agAdmin6', 'agMember6')
+      const putOp = agentPut(workspaceId)
+      const putResult = await applyUploadBatch(db, [putOp], ctxFor('agAdmin6'))
+      expect(putResult.ok).toBe(true)
+      // Member can add but the remove permission is still admin.
+      await setRequiredRole(workspaceId, 'add_agents', 'member')
+
+      const deleteOp: UploadOp = { op: 'DELETE', type: 'agents', id: putOp.id }
+      const result = await applyUploadBatch(db, [deleteOp], ctxFor('agMember6'))
+      expectPermanentReject(result, 'INSUFFICIENT_PERMISSION')
+    })
+
+    // FE DAL soft-deletes via PATCH(deleted_at = now), not DELETE. The handler
+    // classifies that PATCH as a remove and gates it on `remove_agents`.
+    it('soft-delete via PATCH(deleted_at) gates on remove_agents, not add_agents', async () => {
+      await insertUser('agAdmin7', 'agadmin7@test.com')
+      await insertUser('agMember7', 'agmember7@test.com')
+      const workspaceId = await seedSharedWithAdminAndMember('agAdmin7', 'agMember7')
+      const putOp = agentPut(workspaceId)
+      const putResult = await applyUploadBatch(db, [putOp], ctxFor('agAdmin7'))
+      expect(putResult.ok).toBe(true)
+      // Member can edit (add) but not soft-delete (remove).
+      await setRequiredRole(workspaceId, 'add_agents', 'member')
+
+      const softDeleteOp: UploadOp = {
+        op: 'PATCH',
+        type: 'agents',
+        id: putOp.id,
+        data: { deleted_at: new Date().toISOString() },
+      }
+      const result = await applyUploadBatch(db, [softDeleteOp], ctxFor('agMember7'))
+      expectPermanentReject(result, 'INSUFFICIENT_PERMISSION')
+    })
+
+    it('soft-delete via PATCH(deleted_at) is allowed when remove_agents = member', async () => {
+      await insertUser('agAdmin8', 'agadmin8@test.com')
+      await insertUser('agMember8', 'agmember8@test.com')
+      const workspaceId = await seedSharedWithAdminAndMember('agAdmin8', 'agMember8')
+      const putOp = agentPut(workspaceId)
+      const putResult = await applyUploadBatch(db, [putOp], ctxFor('agAdmin8'))
+      expect(putResult.ok).toBe(true)
+      await setRequiredRole(workspaceId, 'remove_agents', 'member')
+
+      const softDeleteOp: UploadOp = {
+        op: 'PATCH',
+        type: 'agents',
+        id: putOp.id,
+        data: { deleted_at: new Date().toISOString() },
+      }
+      const result = await applyUploadBatch(db, [softDeleteOp], ctxFor('agMember8'))
+      expect(result.ok).toBe(true)
+      const stored = await db.select().from(agentsTable).where(eq(agentsTable.id, putOp.id))
+      expect(stored[0].deletedAt).not.toBeNull()
+    })
+
+    // Edit PATCH (no deleted_at) still gates on add_agents, not remove_agents.
+    it('non-delete PATCH gates on add_agents even when remove_agents = member', async () => {
+      await insertUser('agAdmin9', 'agadmin9@test.com')
+      await insertUser('agMember9', 'agmember9@test.com')
+      const workspaceId = await seedSharedWithAdminAndMember('agAdmin9', 'agMember9')
+      const putOp = agentPut(workspaceId)
+      const putResult = await applyUploadBatch(db, [putOp], ctxFor('agAdmin9'))
+      expect(putResult.ok).toBe(true)
+      // Member has remove but not add; an edit (no deleted_at) should still reject.
+      await setRequiredRole(workspaceId, 'remove_agents', 'member')
+
+      const editOp: UploadOp = {
+        op: 'PATCH',
+        type: 'agents',
+        id: putOp.id,
+        data: { name: 'Renamed by member' },
+      }
+      const result = await applyUploadBatch(db, [editOp], ctxFor('agMember9'))
+      expectPermanentReject(result, 'INSUFFICIENT_PERMISSION')
+    })
+  })
+
+  describe('skills — workspace permission gating (add_skills / remove_skills)', () => {
+    const seedSharedWithAdminAndMember = async (adminId: string, memberId: string): Promise<string> => {
+      const workspaceId = uuidv7()
+      await db.insert(workspacesTable).values({ id: workspaceId, isPersonal: false, name: 'Acme' })
+      await db.insert(workspaceMembershipsTable).values({ id: uuidv7(), workspaceId, userId: adminId, role: 'admin' })
+      await db.insert(workspaceMembershipsTable).values({ id: uuidv7(), workspaceId, userId: memberId, role: 'member' })
+      return workspaceId
+    }
+
+    const setRequiredRole = async (
+      workspaceId: string,
+      key: 'add_skills' | 'remove_skills',
+      requiredRole: 'admin' | 'member',
+    ): Promise<void> => {
+      await db.insert(workspacePermissionsTable).values({ id: uuidv7(), workspaceId, permissionKey: key, requiredRole })
+    }
+
+    const skillPut = (workspaceId: string, id = uuidv7()): UploadOp => ({
+      op: 'PUT',
+      type: 'skills',
+      id,
+      data: {
+        workspace_id: workspaceId,
+        name: 'Test skill',
+        description: 'Test',
+        instruction: 'Do the thing',
+        enabled: 1,
+      },
+    })
+
+    it('PUT skill: member rejected when add_skills required_role = admin (default)', async () => {
+      await insertUser('skAdmin1', 'skadmin1@test.com')
+      await insertUser('skMember1', 'skmember1@test.com')
+      const workspaceId = await seedSharedWithAdminAndMember('skAdmin1', 'skMember1')
+
+      const op = skillPut(workspaceId)
+      const result = await applyUploadBatch(db, [op], ctxFor('skMember1'))
+      expectPermanentReject(result, 'INSUFFICIENT_PERMISSION')
+    })
+
+    it('PUT skill: member allowed when add_skills required_role = member', async () => {
+      await insertUser('skAdmin2', 'skadmin2@test.com')
+      await insertUser('skMember2', 'skmember2@test.com')
+      const workspaceId = await seedSharedWithAdminAndMember('skAdmin2', 'skMember2')
+      await setRequiredRole(workspaceId, 'add_skills', 'member')
+
+      const op = skillPut(workspaceId)
+      const result = await applyUploadBatch(db, [op], ctxFor('skMember2'))
+      expect(result.ok).toBe(true)
+      const stored = await db.select().from(skillsTable).where(eq(skillsTable.id, op.id))
+      expect(stored).toHaveLength(1)
+    })
+
+    it('soft-delete via PATCH(deleted_at) gates on remove_skills, not add_skills', async () => {
+      await insertUser('skAdmin3', 'skadmin3@test.com')
+      await insertUser('skMember3', 'skmember3@test.com')
+      const workspaceId = await seedSharedWithAdminAndMember('skAdmin3', 'skMember3')
+      const putOp = skillPut(workspaceId)
+      expect((await applyUploadBatch(db, [putOp], ctxFor('skAdmin3'))).ok).toBe(true)
+      await setRequiredRole(workspaceId, 'add_skills', 'member')
+
+      const softDeleteOp: UploadOp = {
+        op: 'PATCH',
+        type: 'skills',
+        id: putOp.id,
+        data: { deleted_at: new Date().toISOString() },
+      }
+      const result = await applyUploadBatch(db, [softDeleteOp], ctxFor('skMember3'))
+      expectPermanentReject(result, 'INSUFFICIENT_PERMISSION')
+    })
+
+    it('soft-delete via PATCH(deleted_at) is allowed when remove_skills = member', async () => {
+      await insertUser('skAdmin4', 'skadmin4@test.com')
+      await insertUser('skMember4', 'skmember4@test.com')
+      const workspaceId = await seedSharedWithAdminAndMember('skAdmin4', 'skMember4')
+      const putOp = skillPut(workspaceId)
+      expect((await applyUploadBatch(db, [putOp], ctxFor('skAdmin4'))).ok).toBe(true)
+      await setRequiredRole(workspaceId, 'remove_skills', 'member')
+
+      const softDeleteOp: UploadOp = {
+        op: 'PATCH',
+        type: 'skills',
+        id: putOp.id,
+        data: { deleted_at: new Date().toISOString() },
+      }
+      const result = await applyUploadBatch(db, [softDeleteOp], ctxFor('skMember4'))
+      expect(result.ok).toBe(true)
+      const stored = await db.select().from(skillsTable).where(eq(skillsTable.id, putOp.id))
+      expect(stored[0].deletedAt).not.toBeNull()
+    })
+
+    it('edit PATCH (no deleted_at) gates on add_skills, not remove_skills', async () => {
+      await insertUser('skAdmin5', 'skadmin5@test.com')
+      await insertUser('skMember5', 'skmember5@test.com')
+      const workspaceId = await seedSharedWithAdminAndMember('skAdmin5', 'skMember5')
+      const putOp = skillPut(workspaceId)
+      expect((await applyUploadBatch(db, [putOp], ctxFor('skAdmin5'))).ok).toBe(true)
+      // Member has remove but not add — toggling `enabled` is an edit and must reject.
+      await setRequiredRole(workspaceId, 'remove_skills', 'member')
+
+      const editOp: UploadOp = {
+        op: 'PATCH',
+        type: 'skills',
+        id: putOp.id,
+        data: { enabled: 0 },
+      }
+      const result = await applyUploadBatch(db, [editOp], ctxFor('skMember5'))
+      expectPermanentReject(result, 'INSUFFICIENT_PERMISSION')
+    })
+  })
+
+  describe('models — workspace permission gating (add_models / remove_models)', () => {
+    const seedSharedWithAdminAndMember = async (adminId: string, memberId: string): Promise<string> => {
+      const workspaceId = uuidv7()
+      await db.insert(workspacesTable).values({ id: workspaceId, isPersonal: false, name: 'Acme' })
+      await db.insert(workspaceMembershipsTable).values({ id: uuidv7(), workspaceId, userId: adminId, role: 'admin' })
+      await db.insert(workspaceMembershipsTable).values({ id: uuidv7(), workspaceId, userId: memberId, role: 'member' })
+      return workspaceId
+    }
+
+    const setRequiredRole = async (
+      workspaceId: string,
+      key: 'add_models' | 'remove_models',
+      requiredRole: 'admin' | 'member',
+    ): Promise<void> => {
+      await db.insert(workspacePermissionsTable).values({ id: uuidv7(), workspaceId, permissionKey: key, requiredRole })
+    }
+
+    const modelPut = (workspaceId: string, id = uuidv7()): UploadOp => ({
+      op: 'PUT',
+      type: 'models',
+      id,
+      data: {
+        workspace_id: workspaceId,
+        provider: 'openai',
+        name: 'Test model',
+        model: 'gpt-test',
+        enabled: 1,
+      },
+    })
+
+    it('PUT model: member rejected when add_models required_role = admin (default)', async () => {
+      await insertUser('mdAdmin1', 'mdadmin1@test.com')
+      await insertUser('mdMember1', 'mdmember1@test.com')
+      const workspaceId = await seedSharedWithAdminAndMember('mdAdmin1', 'mdMember1')
+
+      const op = modelPut(workspaceId)
+      const result = await applyUploadBatch(db, [op], ctxFor('mdMember1'))
+      expectPermanentReject(result, 'INSUFFICIENT_PERMISSION')
+    })
+
+    it('PUT model: member allowed when add_models required_role = member', async () => {
+      await insertUser('mdAdmin2', 'mdadmin2@test.com')
+      await insertUser('mdMember2', 'mdmember2@test.com')
+      const workspaceId = await seedSharedWithAdminAndMember('mdAdmin2', 'mdMember2')
+      await setRequiredRole(workspaceId, 'add_models', 'member')
+
+      const op = modelPut(workspaceId)
+      const result = await applyUploadBatch(db, [op], ctxFor('mdMember2'))
+      expect(result.ok).toBe(true)
+      const stored = await db.select().from(modelsTable).where(eq(modelsTable.id, op.id))
+      expect(stored).toHaveLength(1)
+    })
+
+    it('soft-delete via PATCH(deleted_at) gates on remove_models, not add_models', async () => {
+      await insertUser('mdAdmin3', 'mdadmin3@test.com')
+      await insertUser('mdMember3', 'mdmember3@test.com')
+      const workspaceId = await seedSharedWithAdminAndMember('mdAdmin3', 'mdMember3')
+      const putOp = modelPut(workspaceId)
+      expect((await applyUploadBatch(db, [putOp], ctxFor('mdAdmin3'))).ok).toBe(true)
+      await setRequiredRole(workspaceId, 'add_models', 'member')
+
+      const softDeleteOp: UploadOp = {
+        op: 'PATCH',
+        type: 'models',
+        id: putOp.id,
+        data: { deleted_at: new Date().toISOString() },
+      }
+      const result = await applyUploadBatch(db, [softDeleteOp], ctxFor('mdMember3'))
+      expectPermanentReject(result, 'INSUFFICIENT_PERMISSION')
+    })
+
+    it('soft-delete via PATCH(deleted_at) is allowed when remove_models = member', async () => {
+      await insertUser('mdAdmin4', 'mdadmin4@test.com')
+      await insertUser('mdMember4', 'mdmember4@test.com')
+      const workspaceId = await seedSharedWithAdminAndMember('mdAdmin4', 'mdMember4')
+      const putOp = modelPut(workspaceId)
+      expect((await applyUploadBatch(db, [putOp], ctxFor('mdAdmin4'))).ok).toBe(true)
+      await setRequiredRole(workspaceId, 'remove_models', 'member')
+
+      const softDeleteOp: UploadOp = {
+        op: 'PATCH',
+        type: 'models',
+        id: putOp.id,
+        data: { deleted_at: new Date().toISOString() },
+      }
+      const result = await applyUploadBatch(db, [softDeleteOp], ctxFor('mdMember4'))
+      expect(result.ok).toBe(true)
+      const stored = await db.select().from(modelsTable).where(eq(modelsTable.id, putOp.id))
+      expect(stored[0].deletedAt).not.toBeNull()
+    })
+
+    it('edit PATCH (toggle enabled) gates on add_models, not remove_models', async () => {
+      await insertUser('mdAdmin5', 'mdadmin5@test.com')
+      await insertUser('mdMember5', 'mdmember5@test.com')
+      const workspaceId = await seedSharedWithAdminAndMember('mdAdmin5', 'mdMember5')
+      const putOp = modelPut(workspaceId)
+      expect((await applyUploadBatch(db, [putOp], ctxFor('mdAdmin5'))).ok).toBe(true)
+      await setRequiredRole(workspaceId, 'remove_models', 'member')
+
+      const editOp: UploadOp = {
+        op: 'PATCH',
+        type: 'models',
+        id: putOp.id,
+        data: { enabled: 0 },
+      }
+      const result = await applyUploadBatch(db, [editOp], ctxFor('mdMember5'))
+      expectPermanentReject(result, 'INSUFFICIENT_PERMISSION')
+    })
+  })
+
+  describe('mcp_servers — workspace permission gating (add_mcp_servers / remove_mcp_servers)', () => {
+    const seedSharedWithAdminAndMember = async (adminId: string, memberId: string): Promise<string> => {
+      const workspaceId = uuidv7()
+      await db.insert(workspacesTable).values({ id: workspaceId, isPersonal: false, name: 'Acme' })
+      await db.insert(workspaceMembershipsTable).values({ id: uuidv7(), workspaceId, userId: adminId, role: 'admin' })
+      await db.insert(workspaceMembershipsTable).values({ id: uuidv7(), workspaceId, userId: memberId, role: 'member' })
+      return workspaceId
+    }
+
+    const setRequiredRole = async (
+      workspaceId: string,
+      key: 'add_mcp_servers' | 'remove_mcp_servers',
+      requiredRole: 'admin' | 'member',
+    ): Promise<void> => {
+      await db.insert(workspacePermissionsTable).values({ id: uuidv7(), workspaceId, permissionKey: key, requiredRole })
+    }
+
+    const mcpPut = (workspaceId: string, id = uuidv7()): UploadOp => ({
+      op: 'PUT',
+      type: 'mcp_servers',
+      id,
+      data: {
+        workspace_id: workspaceId,
+        name: 'Test MCP',
+        type: 'http',
+        url: 'https://example.invalid/mcp',
+        enabled: 1,
+      },
+    })
+
+    it('PUT mcp_server: member rejected when add_mcp_servers required_role = admin (default)', async () => {
+      await insertUser('mcpAdmin1', 'mcpadmin1@test.com')
+      await insertUser('mcpMember1', 'mcpmember1@test.com')
+      const workspaceId = await seedSharedWithAdminAndMember('mcpAdmin1', 'mcpMember1')
+
+      const op = mcpPut(workspaceId)
+      const result = await applyUploadBatch(db, [op], ctxFor('mcpMember1'))
+      expectPermanentReject(result, 'INSUFFICIENT_PERMISSION')
+    })
+
+    it('PUT mcp_server: member allowed when add_mcp_servers required_role = member', async () => {
+      await insertUser('mcpAdmin2', 'mcpadmin2@test.com')
+      await insertUser('mcpMember2', 'mcpmember2@test.com')
+      const workspaceId = await seedSharedWithAdminAndMember('mcpAdmin2', 'mcpMember2')
+      await setRequiredRole(workspaceId, 'add_mcp_servers', 'member')
+
+      const op = mcpPut(workspaceId)
+      const result = await applyUploadBatch(db, [op], ctxFor('mcpMember2'))
+      expect(result.ok).toBe(true)
+      const stored = await db.select().from(mcpServersTable).where(eq(mcpServersTable.id, op.id))
+      expect(stored).toHaveLength(1)
+    })
+
+    it('soft-delete via PATCH(deleted_at) gates on remove_mcp_servers, not add_mcp_servers', async () => {
+      await insertUser('mcpAdmin3', 'mcpadmin3@test.com')
+      await insertUser('mcpMember3', 'mcpmember3@test.com')
+      const workspaceId = await seedSharedWithAdminAndMember('mcpAdmin3', 'mcpMember3')
+      const putOp = mcpPut(workspaceId)
+      expect((await applyUploadBatch(db, [putOp], ctxFor('mcpAdmin3'))).ok).toBe(true)
+      await setRequiredRole(workspaceId, 'add_mcp_servers', 'member')
+
+      const softDeleteOp: UploadOp = {
+        op: 'PATCH',
+        type: 'mcp_servers',
+        id: putOp.id,
+        data: { deleted_at: new Date().toISOString() },
+      }
+      const result = await applyUploadBatch(db, [softDeleteOp], ctxFor('mcpMember3'))
+      expectPermanentReject(result, 'INSUFFICIENT_PERMISSION')
+    })
+
+    it('soft-delete via PATCH(deleted_at) is allowed when remove_mcp_servers = member', async () => {
+      await insertUser('mcpAdmin4', 'mcpadmin4@test.com')
+      await insertUser('mcpMember4', 'mcpmember4@test.com')
+      const workspaceId = await seedSharedWithAdminAndMember('mcpAdmin4', 'mcpMember4')
+      const putOp = mcpPut(workspaceId)
+      expect((await applyUploadBatch(db, [putOp], ctxFor('mcpAdmin4'))).ok).toBe(true)
+      await setRequiredRole(workspaceId, 'remove_mcp_servers', 'member')
+
+      const softDeleteOp: UploadOp = {
+        op: 'PATCH',
+        type: 'mcp_servers',
+        id: putOp.id,
+        data: { deleted_at: new Date().toISOString() },
+      }
+      const result = await applyUploadBatch(db, [softDeleteOp], ctxFor('mcpMember4'))
+      expect(result.ok).toBe(true)
+      const stored = await db.select().from(mcpServersTable).where(eq(mcpServersTable.id, putOp.id))
+      expect(stored[0].deletedAt).not.toBeNull()
+    })
+
+    it('edit PATCH (toggle enabled) gates on add_mcp_servers, not remove_mcp_servers', async () => {
+      await insertUser('mcpAdmin5', 'mcpadmin5@test.com')
+      await insertUser('mcpMember5', 'mcpmember5@test.com')
+      const workspaceId = await seedSharedWithAdminAndMember('mcpAdmin5', 'mcpMember5')
+      const putOp = mcpPut(workspaceId)
+      expect((await applyUploadBatch(db, [putOp], ctxFor('mcpAdmin5'))).ok).toBe(true)
+      await setRequiredRole(workspaceId, 'remove_mcp_servers', 'member')
+
+      const editOp: UploadOp = {
+        op: 'PATCH',
+        type: 'mcp_servers',
+        id: putOp.id,
+        data: { enabled: 0 },
+      }
+      const result = await applyUploadBatch(db, [editOp], ctxFor('mcpMember5'))
+      expectPermanentReject(result, 'INSUFFICIENT_PERMISSION')
     })
   })
 })

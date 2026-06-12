@@ -7,6 +7,7 @@ import type { UIMessage } from 'ai'
 import type { UIMessageMetadata } from '@/types'
 import { sql } from 'drizzle-orm'
 import { index, integer, real, sqliteTable, text } from 'drizzle-orm/sqlite-core'
+import { workspacePermissionKeys, workspacePermissionRoles } from '../../shared/workspaces'
 
 export const settingsTable = sqliteTable('settings', {
   // Column is named 'id' in DB for PowerSync compatibility, but accessed as 'key' in TypeScript
@@ -390,14 +391,18 @@ export const workspacePendingMembershipsTable = sqliteTable(
   (table) => [index('idx_workspace_pending_memberships_workspace_email').on(table.workspaceId, table.email)],
 )
 
-/** Per-workspace permission policy (Decision 10 — keys: manage_members, change_roles). */
+/**
+ * Per-workspace permission policy (Decision 10). The enum lists every
+ * configurable action exposed by the Permissions page; the source of truth
+ * lives in `shared/workspaces.ts` so FE/BE schemas + types stay in lockstep.
+ */
 export const workspacePermissionsTable = sqliteTable(
   'workspace_permissions',
   {
     id: text('id').primaryKey(),
     workspaceId: text('workspace_id'),
-    permissionKey: text('permission_key', { enum: ['manage_members', 'change_roles'] }).notNull(),
-    requiredRole: text('required_role', { enum: ['admin', 'member'] }).notNull(),
+    permissionKey: text('permission_key', { enum: [...workspacePermissionKeys] }).notNull(),
+    requiredRole: text('required_role', { enum: [...workspacePermissionRoles] }).notNull(),
   },
   (table) => [index('idx_workspace_permissions_workspace_key').on(table.workspaceId, table.permissionKey)],
 )

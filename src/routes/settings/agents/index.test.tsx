@@ -23,7 +23,18 @@ const authedSession = {
 
 const settingsIndexMarker = 'settings-index-marker'
 
-const renderPage = (authClient: AuthClient, isStandalone: () => boolean) => {
+const fakeUseWorkspacePermission = (isAllowed: boolean) =>
+  (() => ({
+    requiredRole: 'admin' as const,
+    isAllowed,
+    isResolved: true,
+  })) as unknown as typeof import('@/hooks/use-workspace-permission').useWorkspacePermission
+
+const renderPage = (
+  authClient: AuthClient,
+  isStandalone: () => boolean,
+  opts: { useWorkspacePermission?: ReturnType<typeof fakeUseWorkspacePermission> } = {},
+) => {
   const TestProvider = createTestProvider({ authClient })
   const Wrapper = ({ children }: { children: ReactNode }) => (
     <TestProvider>
@@ -35,7 +46,10 @@ const renderPage = (authClient: AuthClient, isStandalone: () => boolean) => {
       </MemoryRouter>
     </TestProvider>
   )
-  return render(<AgentsSettingsPage isStandalone={isStandalone} />, { wrapper: Wrapper })
+  return render(
+    <AgentsSettingsPage isStandalone={isStandalone} useWorkspacePermission={opts.useWorkspacePermission} />,
+    { wrapper: Wrapper },
+  )
 }
 
 const onTauri = () => true
@@ -81,7 +95,9 @@ describe('AgentsSettingsPage — hidden state guard', () => {
     renderPage(authClient, onTauri)
 
     expect(screen.queryByTestId(settingsIndexMarker)).not.toBeInTheDocument()
-    expect(screen.getByRole('button', { name: /add custom agent/i })).toBeInTheDocument()
+    // Header is the stable rendered-marker; the Add affordance is workspace
+    // permission-gated and not seeded in these "hidden state guard" tests.
+    expect(screen.getByRole('heading', { name: 'Agents' })).toBeInTheDocument()
   })
 
   it('renders the page for authenticated users behind the proxy (web)', () => {
@@ -89,7 +105,9 @@ describe('AgentsSettingsPage — hidden state guard', () => {
     renderPage(authClient, offTauri)
 
     expect(screen.queryByTestId(settingsIndexMarker)).not.toBeInTheDocument()
-    expect(screen.getByRole('button', { name: /add custom agent/i })).toBeInTheDocument()
+    // Header is the stable rendered-marker; the Add affordance is workspace
+    // permission-gated and not seeded in these "hidden state guard" tests.
+    expect(screen.getByRole('heading', { name: 'Agents' })).toBeInTheDocument()
   })
 
   it('renders the page for authenticated users on Tauri Standalone', () => {
@@ -97,6 +115,43 @@ describe('AgentsSettingsPage — hidden state guard', () => {
     renderPage(authClient, onTauri)
 
     expect(screen.queryByTestId(settingsIndexMarker)).not.toBeInTheDocument()
+    // Header is the stable rendered-marker; the Add affordance is workspace
+    // permission-gated and not seeded in these "hidden state guard" tests.
+    expect(screen.getByRole('heading', { name: 'Agents' })).toBeInTheDocument()
+  })
+})
+
+describe('AgentsSettingsPage — permission gating (add_agents)', () => {
+  beforeAll(async () => {
+    await setupTestDatabase()
+  })
+
+  afterAll(async () => {
+    await teardownTestDatabase()
+  })
+
+  beforeEach(async () => {
+    await resetTestDatabase()
+    localStorage.clear()
+  })
+
+  afterEach(() => {
+    cleanup()
+    localStorage.clear()
+  })
+
+  it('renders the "Add Custom Agent" button when the user has add_agents', () => {
+    const authClient = createMockAuthClient({ session: authedSession })
+    renderPage(authClient, onTauri, { useWorkspacePermission: fakeUseWorkspacePermission(true) })
+
     expect(screen.getByRole('button', { name: /add custom agent/i })).toBeInTheDocument()
+  })
+
+  it('hides the "Add Custom Agent" button when the user lacks add_agents', () => {
+    const authClient = createMockAuthClient({ session: authedSession })
+    renderPage(authClient, onTauri, { useWorkspacePermission: fakeUseWorkspacePermission(false) })
+
+    expect(screen.getByRole('heading', { name: 'Agents' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /add custom agent/i })).not.toBeInTheDocument()
   })
 })

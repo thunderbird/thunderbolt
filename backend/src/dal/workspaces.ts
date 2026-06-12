@@ -141,6 +141,55 @@ export const isWorkspaceAdmin = async (
   return rows.length > 0
 }
 
+/**
+ * Returns the user's `role` ('admin' | 'member') for the workspace, or `null`
+ * if they have no membership row. Used by upload handlers to evaluate
+ * `workspace_permissions.required_role` against the caller's actual role.
+ */
+export const getUserRoleInWorkspace = async (
+  database: typeof DbType,
+  workspaceId: string,
+  userId: string,
+): Promise<Role | null> => {
+  const rows = await database
+    .select({ role: workspaceMembershipsTable.role })
+    .from(workspaceMembershipsTable)
+    .where(and(eq(workspaceMembershipsTable.workspaceId, workspaceId), eq(workspaceMembershipsTable.userId, userId)))
+    .limit(1)
+  const row = rows[0]
+  if (!row) {
+    return null
+  }
+  return row.role as Role
+}
+
+/**
+ * Reads `workspace_permissions.required_role` for `(workspaceId, permissionKey)`.
+ * Returns `null` when no row exists yet; callers default to `'admin'`
+ * (Decision 11 — the safe default for any new key).
+ */
+export const getRequiredRoleForPermission = async (
+  database: typeof DbType,
+  workspaceId: string,
+  permissionKey: WorkspacePermissionKey,
+): Promise<Role | null> => {
+  const rows = await database
+    .select({ requiredRole: workspacePermissionsTable.requiredRole })
+    .from(workspacePermissionsTable)
+    .where(
+      and(
+        eq(workspacePermissionsTable.workspaceId, workspaceId),
+        eq(workspacePermissionsTable.permissionKey, permissionKey),
+      ),
+    )
+    .limit(1)
+  const row = rows[0]
+  if (!row) {
+    return null
+  }
+  return row.requiredRole as Role
+}
+
 /** True when the user is an admin of any workspace (used to gate shared-workspace creation). */
 export const isAdminOfAnyWorkspace = async (database: typeof DbType, userId: string): Promise<boolean> => {
   const rows = await database
@@ -229,8 +278,10 @@ export const getWorkspacePermissionById = async (
   return rows[0] ?? null
 }
 
+import type { WorkspacePermissionKey } from '@shared/workspaces'
+
 export type Role = 'admin' | 'member'
-export type WorkspacePermissionKey = 'manage_members' | 'change_roles'
+export type { WorkspacePermissionKey }
 
 export type UpsertWorkspaceInput = {
   id: string

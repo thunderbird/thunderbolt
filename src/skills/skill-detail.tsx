@@ -29,6 +29,8 @@ export const SkillDetail = ({
   description,
   instruction,
   enabled,
+  canEdit = true,
+  canDelete = true,
   onToggleEnabled,
   onEdit,
   onDelete,
@@ -38,6 +40,10 @@ export const SkillDetail = ({
   description: string
   instruction: string
   enabled: boolean
+  /** Defaults to true. Mirrors `add_skills`; gates the enable toggle + Edit menu item. */
+  canEdit?: boolean
+  /** Defaults to true. Mirrors the workspace `remove_skills` permission. */
+  canDelete?: boolean
   onToggleEnabled: (next: boolean) => void
   onEdit: () => void
   onDelete: () => void
@@ -89,6 +95,7 @@ export const SkillDetail = ({
                   <span className="inline-flex">
                     <Switch
                       checked={enabled}
+                      disabled={!canEdit}
                       onCheckedChange={onToggleEnabled}
                       aria-label={enabled ? 'Disable skill' : 'Enable skill'}
                     />
@@ -111,7 +118,7 @@ export const SkillDetail = ({
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end" className="min-w-56">
-                {isMobile && (
+                {isMobile && canEdit && (
                   <>
                     <DropdownMenuItem
                       onSelect={(e) => {
@@ -126,18 +133,22 @@ export const SkillDetail = ({
                     <DropdownMenuSeparator />
                   </>
                 )}
-                <DropdownMenuItem onClick={onEdit} className="cursor-pointer">
-                  <SquarePen />
-                  Edit
-                </DropdownMenuItem>
+                {canEdit && (
+                  <DropdownMenuItem onClick={onEdit} className="cursor-pointer">
+                    <SquarePen />
+                    Edit
+                  </DropdownMenuItem>
+                )}
                 <DropdownMenuItem onClick={runInChat} className="cursor-pointer">
                   <Plus />
                   Add to chat
                 </DropdownMenuItem>
-                <DropdownMenuItem onClick={onDelete} className="cursor-pointer">
-                  <Trash2 />
-                  Delete
-                </DropdownMenuItem>
+                {canDelete && (
+                  <DropdownMenuItem onClick={onDelete} className="cursor-pointer">
+                    <Trash2 />
+                    Delete
+                  </DropdownMenuItem>
+                )}
               </DropdownMenuContent>
             </DropdownMenu>
           </div>

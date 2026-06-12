@@ -12,6 +12,7 @@ import { Menu, MessageCirclePlus } from 'lucide-react'
 import { useChatStore } from '@/chats/chat-store'
 import type { ChatSession } from '@/chats/chat-store'
 import { selectAllowCustomAgents, useConfigStore } from '@/api/config-store'
+import { useWorkspacePermission as useWorkspacePermission_default } from '@/hooks/use-workspace-permission'
 import { useShallow } from 'zustand/react/shallow'
 import { useLocation } from 'react-router'
 import { stripWorkspacePrefix, useWorkspaceNavigate } from '@/lib/active-workspace'
@@ -57,13 +58,22 @@ const HeaderAgentSelector = ({
  * Reusable page header component with sidebar trigger and agent selector. Model
  * selection lives in the chat composer (next to the mode picker), not here.
  */
-export const Header = () => {
+type HeaderProps = {
+  /** Test seam — defaults to the real hook. Tests inject a fake to assert the
+   *  Agent footer hides when the user lacks `add_agents`. */
+  useWorkspacePermission?: typeof useWorkspacePermission_default
+}
+
+export const Header = ({ useWorkspacePermission = useWorkspacePermission_default }: HeaderProps = {}) => {
   const { toggleSidebar } = useSidebar()
   const { isMobile } = useIsMobile()
   const navigate = useWorkspaceNavigate()
   const location = useLocation()
   const allAgents = useAllAgents()
   const allowCustomAgents = useConfigStore((state) => selectAllowCustomAgents(state.config))
+  // Suppress the "Add Agent" footer when the user can't add — they'd land on
+  // a settings page where the affordance is also hidden.
+  const { isAllowed: canAddAgents } = useWorkspacePermission('add_agents')
 
   const { chatInstance, selectedAgent, setSelectedAgent, chatThreadId } = useChatStore(
     useShallow((state) => {
@@ -111,7 +121,7 @@ export const Header = () => {
       selectedAgent={effectiveAgent}
       agents={allAgents}
       onSelect={handleAgentSelect}
-      onAddAgent={allowCustomAgents ? handleAddAgent : undefined}
+      onAddAgent={allowCustomAgents && canAddAgents ? handleAddAgent : undefined}
     />
   )
 

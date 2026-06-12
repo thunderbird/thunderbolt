@@ -17,6 +17,7 @@ import { useAuth } from '@/contexts'
 import { useActiveWorkspaceId, useWorkspaceUrl } from '@/lib/active-workspace'
 import { selectAllowCustomAgents, useConfigStore } from '@/api/config-store'
 import { useAgentsSettingsHidden } from '@/hooks/use-agents-settings-hidden'
+import { useWorkspacePermission as useWorkspacePermission_default } from '@/hooks/use-workspace-permission'
 import type { Agent } from '@/types/acp'
 
 type AgentsSettingsPageProps = {
@@ -25,6 +26,9 @@ type AgentsSettingsPageProps = {
    *  without mocking the shared `@/lib/platform` module (which would leak
    *  across files — see `docs/development/testing.md`). */
   isStandalone?: () => boolean
+  /** Test seam — defaults to the real hook. Tests inject a fake to drive
+   *  the gated Add Custom Agent / row affordances. */
+  useWorkspacePermission?: typeof useWorkspacePermission_default
 }
 
 /**
@@ -34,7 +38,10 @@ type AgentsSettingsPageProps = {
  * ACP endpoints. The composition lives in `useAllAgents` — this page is just
  * a thin orchestrator wiring DAL writes to UI events.
  */
-export default function AgentsSettingsPage({ isStandalone }: AgentsSettingsPageProps = {}) {
+export default function AgentsSettingsPage({
+  isStandalone,
+  useWorkspacePermission = useWorkspacePermission_default,
+}: AgentsSettingsPageProps = {}) {
   const db = useDatabase()
   const workspaceId = useActiveWorkspaceId()
   const agents = useAllAgents()
@@ -44,6 +51,11 @@ export default function AgentsSettingsPage({ isStandalone }: AgentsSettingsPageP
   const agentsHidden = useAgentsSettingsHidden({ isStandalone })
   const allowCustomAgents = useConfigStore((state) => selectAllowCustomAgents(state.config))
   const settingsUrl = useWorkspaceUrl('/settings')
+  // Workspace `add_agents` / `remove_agents` permissions — BE enforces too, FE
+  // just hides affordances so the user isn't presented with actions that
+  // round-trip-fail.
+  const { isAllowed: canAddAgents } = useWorkspacePermission('add_agents')
+  const { isAllowed: canRemoveAgents } = useWorkspacePermission('remove_agents')
 
   const [dialogOpen, setDialogOpen] = useState(false)
 
@@ -99,7 +111,7 @@ export default function AgentsSettingsPage({ isStandalone }: AgentsSettingsPageP
   return (
     <div className="flex flex-col gap-6 p-4 w-full max-w-[760px] mx-auto">
       <PageHeader title="Agents">
-        {allowCustomAgents && (
+        {allowCustomAgents && canAddAgents && (
           <Button
             variant="outline"
             size="icon"
@@ -113,7 +125,14 @@ export default function AgentsSettingsPage({ isStandalone }: AgentsSettingsPageP
         )}
       </PageHeader>
 
-      <AgentList agents={agents} currentUserId={currentUserId} onToggle={handleToggle} onDelete={handleDelete} />
+      <AgentList
+        agents={agents}
+        currentUserId={currentUserId}
+        canEditAgents={canAddAgents}
+        canRemoveAgents={canRemoveAgents}
+        onToggle={handleToggle}
+        onDelete={handleDelete}
+      />
 
       <AddCustomAgentDialog
         open={dialogOpen}

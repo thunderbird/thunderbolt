@@ -24,7 +24,7 @@ import { cleanup, screen } from '@testing-library/react'
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'bun:test'
 import type { ReactNode } from 'react'
 import { Route, Routes, useLocation } from 'react-router'
-import { RequireWorkspacePermission } from './require-permission'
+import { RequireWorkspaceAdmin, RequireWorkspacePermission } from './require-permission'
 
 const DbWrapper = ({ children }: { children: ReactNode }) => (
   <DatabaseProvider db={getDb()}>{children}</DatabaseProvider>
@@ -248,6 +248,145 @@ describe('RequireWorkspacePermission', () => {
 
     // Neither the child nor the fallback location has rendered.
     expect(screen.queryByTestId('workspace-members')).not.toBeInTheDocument()
+    expect(screen.queryByTestId(`at-/w/${otherWsId}/settings`)).not.toBeInTheDocument()
+  })
+})
+
+const PermissionsChild = () => <span data-testid="workspace-permissions">permissions</span>
+
+describe('RequireWorkspaceAdmin', () => {
+  beforeAll(async () => {
+    await setupTestDatabase()
+  })
+
+  afterAll(async () => {
+    await teardownTestDatabase()
+  })
+
+  beforeEach(async () => {
+    await resetTestDatabase()
+    seedTestTrustDomain()
+  })
+
+  afterEach(() => {
+    resetTestTrustDomain()
+    cleanup()
+  })
+
+  it('redirects out in a Personal Workspace (even though the user is an admin there)', async () => {
+    await seedPersonalMembership()
+
+    renderWithReactivity(
+      <Routes>
+        <Route path="settings/workspace" element={<RequireWorkspaceAdmin />}>
+          <Route path="permissions" element={<PermissionsChild />} />
+        </Route>
+        <Route path="*" element={<LocationProbe />} />
+      </Routes>,
+      {
+        route: '/settings/workspace/permissions',
+        routePath: '/*',
+        tables: ['workspaces', 'workspace_memberships', 'workspace_permissions'],
+        wrapper: DbWrapper,
+      },
+    )
+
+    await waitForElement(() => screen.queryByTestId('at-/settings'))
+    expect(screen.queryByTestId('workspace-permissions')).not.toBeInTheDocument()
+  })
+
+  it('allows access in a shared workspace when the active user is admin', async () => {
+    await seedShared('admin')
+
+    renderWithReactivity(
+      <Routes>
+        <Route path="w/:workspaceId/settings/workspace" element={<RequireWorkspaceAdmin />}>
+          <Route path="permissions" element={<PermissionsChild />} />
+        </Route>
+        <Route path="*" element={<LocationProbe />} />
+      </Routes>,
+      {
+        route: `/w/${otherWsId}/settings/workspace/permissions`,
+        routePath: '/*',
+        tables: ['workspaces', 'workspace_memberships', 'workspace_permissions'],
+        wrapper: DbWrapper,
+      },
+    )
+
+    await waitForElement(() => screen.queryByTestId('workspace-permissions'))
+    expect(screen.getByTestId('workspace-permissions')).toBeInTheDocument()
+  })
+
+  it('redirects out in a shared workspace when the active user is a member', async () => {
+    await seedShared('member')
+
+    renderWithReactivity(
+      <Routes>
+        <Route path="w/:workspaceId/settings/workspace" element={<RequireWorkspaceAdmin />}>
+          <Route path="permissions" element={<PermissionsChild />} />
+        </Route>
+        <Route path="*" element={<LocationProbe />} />
+      </Routes>,
+      {
+        route: `/w/${otherWsId}/settings/workspace/permissions`,
+        routePath: '/*',
+        tables: ['workspaces', 'workspace_memberships', 'workspace_permissions'],
+        wrapper: DbWrapper,
+      },
+    )
+
+    await waitForElement(() => screen.queryByTestId(`at-/w/${otherWsId}/settings`))
+    expect(screen.queryByTestId('workspace-permissions')).not.toBeInTheDocument()
+  })
+
+  it('redirects out when e2eeEnabled is true even for a shared-workspace admin', async () => {
+    const { useConfigStore } = await import('@/api/config-store')
+    const previous = useConfigStore.getState().config
+    useConfigStore.getState().updateConfig({ ...previous, e2eeEnabled: true })
+    try {
+      await seedShared('admin')
+
+      renderWithReactivity(
+        <Routes>
+          <Route path="w/:workspaceId/settings/workspace" element={<RequireWorkspaceAdmin />}>
+            <Route path="permissions" element={<PermissionsChild />} />
+          </Route>
+          <Route path="*" element={<LocationProbe />} />
+        </Routes>,
+        {
+          route: `/w/${otherWsId}/settings/workspace/permissions`,
+          routePath: '/*',
+          tables: ['workspaces', 'workspace_memberships', 'workspace_permissions'],
+          wrapper: DbWrapper,
+        },
+      )
+
+      await waitForElement(() => screen.queryByTestId(`at-/w/${otherWsId}/settings`))
+      expect(screen.queryByTestId('workspace-permissions')).not.toBeInTheDocument()
+    } finally {
+      useConfigStore.getState().updateConfig(previous)
+    }
+  })
+
+  it('renders loading state (no redirect) while membership is still pending', async () => {
+    await seedSharedWithoutMembership()
+
+    renderWithReactivity(
+      <Routes>
+        <Route path="w/:workspaceId/settings/workspace" element={<RequireWorkspaceAdmin />}>
+          <Route path="permissions" element={<PermissionsChild />} />
+        </Route>
+        <Route path="*" element={<LocationProbe />} />
+      </Routes>,
+      {
+        route: `/w/${otherWsId}/settings/workspace/permissions`,
+        routePath: '/*',
+        tables: ['workspaces', 'workspace_memberships', 'workspace_permissions'],
+        wrapper: DbWrapper,
+      },
+    )
+
+    expect(screen.queryByTestId('workspace-permissions')).not.toBeInTheDocument()
     expect(screen.queryByTestId(`at-/w/${otherWsId}/settings`)).not.toBeInTheDocument()
   })
 })

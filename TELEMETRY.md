@@ -78,7 +78,7 @@ Events follow the pattern: `<feature>_<action>`
 
 #### Startup Performance (`app_*`)
 
-Diagnostic events for investigating app initialization time (THU-595). All timing values are whole milliseconds measured from navigation start (`performance.timeOrigin`).
+Diagnostic events for investigating app initialization time. All timing values are whole milliseconds measured from navigation start (`performance.timeOrigin`).
 
 - `app_init_timing` - Fired once per initialization run, after the init pipeline completes. Properties:
   - `bundle_evaluated_ms` - entry bundle downloaded, parsed and evaluated

@@ -12,7 +12,7 @@ import { initializeLinkInterception } from './lib/intercept-links'
 import { handlePostUpdateRedirect } from './lib/post-update-redirect'
 
 // Running here means every static import above (the whole entry bundle) has
-// been downloaded, parsed and evaluated — record that phase for THU-595.
+// been downloaded, parsed and evaluated — record that phase.
 markBundleEvaluated()
 
 // After an update+relaunch, the WebView may restore a stale route (e.g. /waitlist

@@ -3,7 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 /**
- * Startup-timing collector (THU-595).
+ * Startup-timing collector.
  *
  * Dependency-free on purpose: `index.tsx` records marks here at module-eval
  * time without pulling anything extra into the entry path. All marks are

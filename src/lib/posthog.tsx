@@ -220,7 +220,7 @@ export type EventType =
   // Data migrations (THU-547) — drops out once THU-560 deletes the legacy
   // automations subsystem.
   | 'automations_migration_run'
-  // Startup performance (THU-595)
+  // Startup performance
   | 'app_init_timing'
   | 'app_chat_ready'
 

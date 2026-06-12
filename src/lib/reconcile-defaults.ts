@@ -22,7 +22,7 @@ import { nowIso } from './utils'
  * Inserts new defaults and updates unmodified existing ones
  *
  * Fetches all matching rows in a single SELECT (instead of one per item) to
- * minimize serial round-trips to the SQLite worker during boot (THU-595).
+ * minimize serial round-trips to the SQLite worker during boot.
  * @param table - The database table to reconcile
  * @param defaults - Array of default items to reconcile
  * @param hashFn - Function to compute hash of an item

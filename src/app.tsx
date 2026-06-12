@@ -212,7 +212,7 @@ const AppRoutes = ({ initData }: { initData: InitData }) => {
 
 export const App = () => {
   // Lazy initializer = runs exactly once on first render; records the
-  // "React mounted" mark for startup telemetry (THU-595).
+  // "React mounted" mark for startup telemetry.
   useState(markAppMounted)
   const { initData, initError, isInitializing, clearDatabase } = useAppInitialization()
   const { revokedDeviceOpen } = useCredentialEvents()

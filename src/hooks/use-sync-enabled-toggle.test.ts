@@ -12,8 +12,8 @@ const mockTrackEvent = mock(() => {})
 // which powersync-status.test.tsx consumes for real) survives if this registration
 // leaks across files under `--randomize`. Only `setSyncEnabled` is overridden with
 // the local spy this suite asserts on. See docs/development/testing.md §65.
-const realPowersync = await import('@/db/powersync')
-mock.module('@/db/powersync', () => ({
+const realPowersync = await import('@/db/powersync/sync-state')
+mock.module('@/db/powersync/sync-state', () => ({
   ...realPowersync,
   setSyncEnabled: mockSetSyncEnabled,
 }))

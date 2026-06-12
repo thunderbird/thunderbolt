@@ -56,10 +56,11 @@ import type { InitData } from './types'
 import { useSettings } from './hooks/use-settings'
 import { isSsoMode, isWaitlistBypassed } from './lib/auth-mode'
 import { isTauri } from './lib/platform'
-import { getPowerSyncInstance } from './db/powersync'
+import { getPowerSyncInstance } from './db/powersync/sync-state'
 import { refreshSystemAgents } from '@/db/seeding/seed-agents'
 import { useLocalSettingsStore } from '@/stores/local-settings-store'
-import { type ComponentProps, Suspense, lazy, useEffect } from 'react'
+import { type ComponentProps, Suspense, lazy, useEffect, useState } from 'react'
+import { markAppMounted } from '@/lib/init-timing'
 import { LazyMotion } from 'framer-motion'
 
 // Loaded after first paint so framer-motion feature code lives in an
@@ -210,6 +211,9 @@ const AppRoutes = ({ initData }: { initData: InitData }) => {
 }
 
 export const App = () => {
+  // Lazy initializer = runs exactly once on first render; records the
+  // "React mounted" mark for startup telemetry (THU-595).
+  useState(markAppMounted)
   const { initData, initError, isInitializing, clearDatabase } = useAppInitialization()
   const { revokedDeviceOpen } = useCredentialEvents()
 

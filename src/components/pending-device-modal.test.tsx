@@ -23,11 +23,11 @@ const deviceIdKey = 'thunderbolt_device_id'
 const authTokenKey = 'thunderbolt_auth_token'
 const sessionStorageKey = 'pending_device_dismissed_ids'
 
-// Defend against bleed from other test files that fully mock '@/db/powersync'.
+// Defend against bleed from other test files that fully mock '@/db/powersync/sync-state'.
 // `isSyncEnabled` is pinned to the real production source (useLocalSettingsStore),
 // which the suite below seeds directly.
-const realPowersync = await import('@/db/powersync')
-mock.module('@/db/powersync', () => ({
+const realPowersync = await import('@/db/powersync/sync-state')
+mock.module('@/db/powersync/sync-state', () => ({
   ...realPowersync,
   isSyncEnabled: () => useLocalSettingsStore.getState().syncEnabled,
 }))

@@ -3,7 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { disposeAllAdapters } from '@/acp/adapter-cache'
-import { setSyncEnabled } from '@/db/powersync'
+import { setSyncEnabled } from '@/db/powersync/sync-state'
 import { clearAuthToken, clearDeviceId } from '@/lib/auth-token'
 import { resetAppDir } from '@/lib/fs'
 import { handleFullWipe } from '@/services/encryption'

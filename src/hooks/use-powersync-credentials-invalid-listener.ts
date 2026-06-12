@@ -4,7 +4,7 @@
 
 import { useDatabase } from '@/contexts'
 import { getDevice } from '@/dal'
-import { setSyncEnabled } from '@/db/powersync'
+import { setSyncEnabled } from '@/db/powersync/sync-state'
 import { powersyncCredentialsInvalid } from '@/db/powersync/connector'
 import type { CredentialsInvalidReason } from '@/db/powersync/connector'
 import { showRevokedDeviceModalEvent, showSignInModalEvent, signInSuccessEvent } from '@/hooks/use-credential-events'

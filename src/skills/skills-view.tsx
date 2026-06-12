@@ -221,10 +221,12 @@ export const SkillsView = () => {
         Skills are reusable instruction templates you summon in chat with{' '}
         <code className="rounded-sm bg-secondary px-1 font-mono text-xs">/name</code>.
       </p>
-      <Button size="sm" onClick={() => dispatch({ type: 'START_CREATE' })}>
-        <Plus />
-        Create your first skill
-      </Button>
+      {canAddSkills && (
+        <Button size="sm" onClick={() => dispatch({ type: 'START_CREATE' })}>
+          <Plus />
+          Create your first skill
+        </Button>
+      )}
     </section>
   )
 
@@ -255,6 +257,7 @@ export const SkillsView = () => {
         description={active.description}
         instruction={active.instruction}
         enabled={isEnabled(active.id)}
+        canEdit={canAddSkills}
         canDelete={canRemoveSkills}
         onToggleEnabled={(next) => handleToggleEnabled(active.id, next)}
         onEdit={() => onEdit(active.id)}
@@ -286,6 +289,7 @@ export const SkillsView = () => {
         activeSkillId={mode === 'detail' && active ? active.id : null}
         isEnabled={isEnabled}
         canCreate={canAddSkills}
+        canEdit={canAddSkills}
         canDelete={canRemoveSkills}
         onToggleEnabled={handleToggleEnabled}
         onCreate={() => {

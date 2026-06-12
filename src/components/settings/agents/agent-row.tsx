@@ -79,17 +79,29 @@ export const agentToggleDisabled = (agent: Agent): { disabled: boolean; disabled
 type AgentRowProps = {
   agent: Agent
   currentUserId: string | null
+  /** Defaults to true. Mirrors the workspace `add_agents` permission — also
+   *  used for the enable/disable toggle since toggling is a PATCH the BE
+   *  gates on `add_agents`. */
+  canEditAgents?: boolean
   /** Defaults to true. Mirrors the workspace `remove_agents` permission. */
   canRemoveAgents?: boolean
   onToggle: (agent: Agent, enabled: boolean) => void
   onDelete: (agent: Agent) => void
 }
 
-export const AgentRow = ({ agent, currentUserId, canRemoveAgents = true, onToggle, onDelete }: AgentRowProps) => {
+export const AgentRow = ({
+  agent,
+  currentUserId,
+  canEditAgents = true,
+  canRemoveAgents = true,
+  onToggle,
+  onDelete,
+}: AgentRowProps) => {
   const Icon = iconForAgent(agent)
   const badge = badgeForAgent(agent)
   const showDelete = canDeleteAgent(agent, currentUserId, canRemoveAgents)
   const { disabled: toggleDisabled, disabledTooltip } = agentToggleDisabled(agent)
+  const finalToggleDisabled = toggleDisabled || !canEditAgents
   const isEnabled = agent.enabled === 1
   const [deleteOpen, setDeleteOpen] = useState(false)
 
@@ -126,7 +138,7 @@ export const AgentRow = ({ agent, currentUserId, canRemoveAgents = true, onToggl
                   <Switch
                     data-testid={`agent-toggle-${agent.id}`}
                     checked={isEnabled}
-                    disabled={toggleDisabled}
+                    disabled={finalToggleDisabled}
                     onCheckedChange={(checked) => onToggle(agent, checked)}
                   />
                 </div>

@@ -21,7 +21,7 @@ import { Switch } from '@/components/ui/switch'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { createMcpServer, deleteMcpServer, getHttpMcpServers, updateMcpServer } from '@/dal'
 import { useDatabase } from '@/contexts'
-import { useWorkspacePermission } from '@/hooks/use-workspace-permission'
+import { useWorkspacePermission as useWorkspacePermission_default } from '@/hooks/use-workspace-permission'
 import { useMcpSync } from '@/hooks/use-mcp-sync'
 import { useActiveWorkspaceId } from '@/lib/active-workspace'
 import { type McpServer } from '@/types'
@@ -38,7 +38,15 @@ type ServerTools = {
   [serverId: string]: string[]
 }
 
-export default function McpServersPage() {
+type McpServersPageProps = {
+  /** Test seam — defaults to the real hook. Tests inject a fake to drive the
+   *  gated Add Server / row affordances. */
+  useWorkspacePermission?: typeof useWorkspacePermission_default
+}
+
+export default function McpServersPage({
+  useWorkspacePermission = useWorkspacePermission_default,
+}: McpServersPageProps = {}) {
   const db = useDatabase()
   const workspaceId = useActiveWorkspaceId()
   // Workspace `add_mcp_servers` / `remove_mcp_servers` — BE enforces; FE
@@ -467,6 +475,7 @@ export default function McpServersPage() {
                         <div>
                           <Switch
                             checked={isEnabled}
+                            disabled={!canAddMcpServers}
                             onCheckedChange={(checked) =>
                               toggleServerMutation.mutate({ id: server.id, enabled: checked })
                             }
@@ -534,10 +543,12 @@ export default function McpServersPage() {
               <p className="text-sm text-muted-foreground mb-4">
                 Get started by adding your first MCP server connection.
               </p>
-              <Button onClick={() => setIsAddDialogOpen(true)} variant="outline">
-                <Plus className="h-4 w-4 mr-2" />
-                Add Server
-              </Button>
+              {canAddMcpServers && (
+                <Button onClick={() => setIsAddDialogOpen(true)} variant="outline">
+                  <Plus className="h-4 w-4 mr-2" />
+                  Add Server
+                </Button>
+              )}
             </CardContent>
           </Card>
         )}

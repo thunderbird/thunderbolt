@@ -36,7 +36,7 @@ import { Switch } from '@/components/ui/switch'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 import { useDatabase } from '@/contexts'
 import { useActiveWorkspaceId } from '@/lib/active-workspace'
-import { useWorkspacePermission } from '@/hooks/use-workspace-permission'
+import { useWorkspacePermission as useWorkspacePermission_default } from '@/hooks/use-workspace-permission'
 import { createModel as createModelDAL, deleteModel, getAllModels, resetModelToDefault, updateModel } from '@/dal'
 import { defaultModels } from '@/defaults/models'
 import { isModelModified } from '@/defaults/utils'
@@ -345,7 +345,13 @@ const EditModelModal = ({
   </Dialog>
 )
 
-export default function ModelsPage() {
+type ModelsPageProps = {
+  /** Test seam — defaults to the real hook. Tests inject a fake to drive the
+   *  gated Add/Edit/Delete affordances. */
+  useWorkspacePermission?: typeof useWorkspacePermission_default
+}
+
+export default function ModelsPage({ useWorkspacePermission = useWorkspacePermission_default }: ModelsPageProps = {}) {
   const db = useDatabase()
   const workspaceId = useActiveWorkspaceId()
   const getProxyFetch = useProxyFetchGetter()
@@ -1215,7 +1221,7 @@ export default function ModelsPage() {
                           </TooltipProvider>
                         )}
                         <ModificationIndicator
-                          hasModifications={isModelModified(model)}
+                          hasModifications={isModelModified(model) && canAddModels}
                           onReset={() => handleResetModel(model.id)}
                           customMessage="You've customized this model."
                           ariaLabel="Modified model"
@@ -1236,6 +1242,7 @@ export default function ModelsPage() {
                           <div>
                             <Switch
                               checked={isEnabled}
+                              disabled={!canAddModels}
                               onCheckedChange={(checked) =>
                                 toggleModelMutation.mutate({ id: model.id, enabled: checked })
                               }
@@ -1253,7 +1260,7 @@ export default function ModelsPage() {
                       <ButtonGroupItem
                         variant="outline"
                         onClick={() => setEditingModel(model)}
-                        disabled={isSystemModel}
+                        disabled={isSystemModel || !canAddModels}
                       >
                         <Pen className="h-3 w-3" />
                       </ButtonGroupItem>
@@ -1301,10 +1308,12 @@ export default function ModelsPage() {
               <Cpu className="size-10 text-muted-foreground mb-4" />
               <h3 className="font-medium text-foreground mb-1">No models configured</h3>
               <p className="text-sm text-muted-foreground mb-4">Get started by adding your first AI model.</p>
-              <Button onClick={() => handleDialogOpenChange(true)} variant="outline">
-                <Plus className="h-4 w-4 mr-2" />
-                Add Model
-              </Button>
+              {canAddModels && (
+                <Button onClick={() => handleDialogOpenChange(true)} variant="outline">
+                  <Plus className="h-4 w-4 mr-2" />
+                  Add Model
+                </Button>
+              )}
             </CardContent>
           </Card>
         )}

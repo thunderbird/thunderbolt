@@ -17,7 +17,7 @@ import { useAuth } from '@/contexts'
 import { useActiveWorkspaceId, useWorkspaceUrl } from '@/lib/active-workspace'
 import { selectAllowCustomAgents, useConfigStore } from '@/api/config-store'
 import { useAgentsSettingsHidden } from '@/hooks/use-agents-settings-hidden'
-import { useWorkspacePermission } from '@/hooks/use-workspace-permission'
+import { useWorkspacePermission as useWorkspacePermission_default } from '@/hooks/use-workspace-permission'
 import type { Agent } from '@/types/acp'
 
 type AgentsSettingsPageProps = {
@@ -26,6 +26,9 @@ type AgentsSettingsPageProps = {
    *  without mocking the shared `@/lib/platform` module (which would leak
    *  across files — see `docs/development/testing.md`). */
   isStandalone?: () => boolean
+  /** Test seam — defaults to the real hook. Tests inject a fake to drive
+   *  the gated Add Custom Agent / row affordances. */
+  useWorkspacePermission?: typeof useWorkspacePermission_default
 }
 
 /**
@@ -35,7 +38,10 @@ type AgentsSettingsPageProps = {
  * ACP endpoints. The composition lives in `useAllAgents` — this page is just
  * a thin orchestrator wiring DAL writes to UI events.
  */
-export default function AgentsSettingsPage({ isStandalone }: AgentsSettingsPageProps = {}) {
+export default function AgentsSettingsPage({
+  isStandalone,
+  useWorkspacePermission = useWorkspacePermission_default,
+}: AgentsSettingsPageProps = {}) {
   const db = useDatabase()
   const workspaceId = useActiveWorkspaceId()
   const agents = useAllAgents()
@@ -122,6 +128,7 @@ export default function AgentsSettingsPage({ isStandalone }: AgentsSettingsPageP
       <AgentList
         agents={agents}
         currentUserId={currentUserId}
+        canEditAgents={canAddAgents}
         canRemoveAgents={canRemoveAgents}
         onToggle={handleToggle}
         onDelete={handleDelete}

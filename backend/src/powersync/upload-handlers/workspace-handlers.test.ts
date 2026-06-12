@@ -1099,6 +1099,25 @@ describe('workspace upload handlers', () => {
       const stored = await db.select().from(skillsTable).where(eq(skillsTable.id, putOp.id))
       expect(stored[0].deletedAt).not.toBeNull()
     })
+
+    it('edit PATCH (no deleted_at) gates on add_skills, not remove_skills', async () => {
+      await insertUser('skAdmin5', 'skadmin5@test.com')
+      await insertUser('skMember5', 'skmember5@test.com')
+      const workspaceId = await seedSharedWithAdminAndMember('skAdmin5', 'skMember5')
+      const putOp = skillPut(workspaceId)
+      expect((await applyUploadBatch(db, [putOp], ctxFor('skAdmin5'))).ok).toBe(true)
+      // Member has remove but not add — toggling `enabled` is an edit and must reject.
+      await setRequiredRole(workspaceId, 'remove_skills', 'member')
+
+      const editOp: UploadOp = {
+        op: 'PATCH',
+        type: 'skills',
+        id: putOp.id,
+        data: { enabled: 0 },
+      }
+      const result = await applyUploadBatch(db, [editOp], ctxFor('skMember5'))
+      expectPermanentReject(result, 'INSUFFICIENT_PERMISSION')
+    })
   })
 
   describe('models — workspace permission gating (add_models / remove_models)', () => {
@@ -1191,6 +1210,24 @@ describe('workspace upload handlers', () => {
       const stored = await db.select().from(modelsTable).where(eq(modelsTable.id, putOp.id))
       expect(stored[0].deletedAt).not.toBeNull()
     })
+
+    it('edit PATCH (toggle enabled) gates on add_models, not remove_models', async () => {
+      await insertUser('mdAdmin5', 'mdadmin5@test.com')
+      await insertUser('mdMember5', 'mdmember5@test.com')
+      const workspaceId = await seedSharedWithAdminAndMember('mdAdmin5', 'mdMember5')
+      const putOp = modelPut(workspaceId)
+      expect((await applyUploadBatch(db, [putOp], ctxFor('mdAdmin5'))).ok).toBe(true)
+      await setRequiredRole(workspaceId, 'remove_models', 'member')
+
+      const editOp: UploadOp = {
+        op: 'PATCH',
+        type: 'models',
+        id: putOp.id,
+        data: { enabled: 0 },
+      }
+      const result = await applyUploadBatch(db, [editOp], ctxFor('mdMember5'))
+      expectPermanentReject(result, 'INSUFFICIENT_PERMISSION')
+    })
   })
 
   describe('mcp_servers — workspace permission gating (add_mcp_servers / remove_mcp_servers)', () => {
@@ -1282,6 +1319,24 @@ describe('workspace upload handlers', () => {
       expect(result.ok).toBe(true)
       const stored = await db.select().from(mcpServersTable).where(eq(mcpServersTable.id, putOp.id))
       expect(stored[0].deletedAt).not.toBeNull()
+    })
+
+    it('edit PATCH (toggle enabled) gates on add_mcp_servers, not remove_mcp_servers', async () => {
+      await insertUser('mcpAdmin5', 'mcpadmin5@test.com')
+      await insertUser('mcpMember5', 'mcpmember5@test.com')
+      const workspaceId = await seedSharedWithAdminAndMember('mcpAdmin5', 'mcpMember5')
+      const putOp = mcpPut(workspaceId)
+      expect((await applyUploadBatch(db, [putOp], ctxFor('mcpAdmin5'))).ok).toBe(true)
+      await setRequiredRole(workspaceId, 'remove_mcp_servers', 'member')
+
+      const editOp: UploadOp = {
+        op: 'PATCH',
+        type: 'mcp_servers',
+        id: putOp.id,
+        data: { enabled: 0 },
+      }
+      const result = await applyUploadBatch(db, [editOp], ctxFor('mcpMember5'))
+      expectPermanentReject(result, 'INSUFFICIENT_PERMISSION')
     })
   })
 })

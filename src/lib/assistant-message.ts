@@ -2,14 +2,27 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import type { ReasoningUIPart, TextUIPart, ToolUIPart, UIMessage } from 'ai'
-import { splitPartType } from './utils'
+import {
+  type DynamicToolUIPart,
+  isToolOrDynamicToolUIPart,
+  type ReasoningUIPart,
+  type TextUIPart,
+  type ToolUIPart,
+  type UIMessage,
+} from 'ai'
+
+/**
+ * A tool-like UI part. MCP tools use the AI SDK's automatic schemas, so the SDK
+ * emits them as `dynamic-tool` parts rather than typed `tool-<name>` parts; both
+ * shapes are treated uniformly via `isToolOrDynamicToolUIPart` / `getToolName`.
+ */
+export type ToolOrDynamicToolUIPart = ToolUIPart | DynamicToolUIPart
 
 /**
  * Union type of AI message parts that can be processed and potentially grouped.
  * Used as input to `groupToolParts` after filtering with `filterMessageParts`.
  */
-export type GroupableUIPart = ReasoningUIPart | TextUIPart | ToolUIPart
+export type GroupableUIPart = ReasoningUIPart | TextUIPart | ToolOrDynamicToolUIPart
 
 /**
  * A synthetic UI part type that represents multiple consecutive reasoning/tool parts grouped together.
@@ -29,8 +42,6 @@ export type ReasoningGroupUIPart = {
  * Used as output from `groupMessageParts` and input to `mountMessageParts` for rendering.
  */
 export type GroupedUIPart = GroupableUIPart | ReasoningGroupUIPart
-
-const supportedPartTypes = ['reasoning', 'tool', 'text']
 
 /**
  * Groups consecutive reasoning/tool parts into `reasoning_group` nodes for batch rendering.
@@ -76,18 +87,16 @@ export const groupMessageParts = (parts: GroupableUIPart[]): GroupedUIPart[] => 
   let reasoningIdCounter = 0
 
   // Walk through the incoming parts and buffer every consecutive tool call.
+  // Both typed `tool-<name>` parts and MCP `dynamic-tool` parts group as tool items.
   parts.forEach((part) => {
-    const [partType] = splitPartType(part.type)
+    if (isToolOrDynamicToolUIPart(part)) {
+      currentItems.push({ type: 'tool', content: part, id: part.toolCallId })
+      return
+    }
 
-    if (partType === 'tool' || partType === 'reasoning') {
-      if (partType === 'tool') {
-        const toolPart = part as ToolUIPart
-        currentItems.push({ type: 'tool', content: toolPart, id: toolPart.toolCallId })
-      } else {
-        const reasoningPart = part as ReasoningUIPart
-        currentItems.push({ type: 'reasoning', content: reasoningPart, id: `reasoning-${reasoningIdCounter}` })
-        reasoningIdCounter++
-      }
+    if (part.type === 'reasoning') {
+      currentItems.push({ type: 'reasoning', content: part, id: `reasoning-${reasoningIdCounter}` })
+      reasoningIdCounter++
       return
     }
 
@@ -110,7 +119,7 @@ export const groupMessageParts = (parts: GroupableUIPart[]): GroupedUIPart[] => 
  * are supported by our UI. This function acts as a sanitizer before grouping and rendering.
  *
  * **Filtering rules**:
- * - Keeps only `reasoning`, `tool`, and `text` part types
+ * - Keeps `reasoning`, `text`, and any tool-like part (typed `tool-<name>` and MCP `dynamic-tool`)
  * - Removes text parts that are empty or whitespace-only
  * - Removes any unsupported part types (e.g., `source-url`, experimental types)
  *
@@ -120,17 +129,10 @@ export const groupMessageParts = (parts: GroupableUIPart[]): GroupedUIPart[] => 
  * @param parts - Raw message parts from AI streaming response (may include unsupported types)
  * @returns Cleaned array containing only supported, non-empty parts ready for grouping
  */
-export const filterMessageParts = (parts: UIMessage['parts']) =>
-  parts.filter((part) => {
-    const [partType] = splitPartType(part.type)
-
-    if (!supportedPartTypes.includes(partType)) {
-      return false
+export const filterMessageParts = (parts: UIMessage['parts']): GroupableUIPart[] =>
+  parts.filter((part): part is GroupableUIPart => {
+    if (part.type === 'text') {
+      return part.text.trim() !== ''
     }
-
-    if (partType === 'text') {
-      return (part as TextUIPart).text.trim() !== ''
-    }
-
-    return true
+    return part.type === 'reasoning' || isToolOrDynamicToolUIPart(part)
   })

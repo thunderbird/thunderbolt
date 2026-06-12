@@ -16,7 +16,6 @@ const syncedTables = {
   chat_messages: tables.chatMessagesTable,
   tasks: tables.tasksTable,
   models: tables.modelsTable,
-  mcp_servers: tables.mcpServersTable,
   prompts: tables.promptsTable,
   skills: tables.skillsTable,
   triggers: tables.triggersTable,
@@ -34,6 +33,14 @@ const localOnlyTables = {
   } satisfies DrizzleTableWithPowerSyncOptions,
   integrations_secrets: {
     tableDefinition: tables.integrationsSecretsTable,
+    options: { localOnly: true },
+  } satisfies DrizzleTableWithPowerSyncOptions,
+  mcp_servers: {
+    tableDefinition: tables.mcpServersTable,
+    options: { localOnly: true },
+  } satisfies DrizzleTableWithPowerSyncOptions,
+  mcp_secrets: {
+    tableDefinition: tables.mcpSecretsTable,
     options: { localOnly: true },
   } satisfies DrizzleTableWithPowerSyncOptions,
   agents_system: {

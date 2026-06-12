@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { isMcpOAuthCallback } from '@/lib/mcp-auth/mcp-oauth-state'
 import { getOAuthState } from '@/lib/oauth-state'
 import Loading from '@/loading'
 import { useEffect } from 'react'
@@ -15,16 +16,26 @@ export default function OAuthCallback() {
     const params = new URLSearchParams(window.location.search)
     const code = params.get('code')
     const state = params.get('state')
+    // RFC 9207 issuer identifier — forwarded for MCP OAuth callbacks that must
+    // validate it against the discovered authorization server. Harmless for the
+    // integrations flow, which ignores it.
+    const iss = params.get('iss')
     const error = params.get('error')
     const errorDescription = params.get('error_description')
+    // Single error signal — some authorization servers send only
+    // `error_description`. The popup message, the MCP routing claim, and the
+    // navigation payload must all share this one value: claiming on the raw
+    // `error` while the payload coalesces would misroute description-only MCP
+    // errors to the integrations flow, leaving the MCP handshake pending.
+    const oauthError = errorDescription || error
 
     // Send message to parent window if this was opened as a popup
     if (window.opener && !window.opener.closed) {
-      if (error) {
+      if (oauthError) {
         window.opener.postMessage(
           {
             type: 'oauth-callback',
-            error: errorDescription || error,
+            error: oauthError,
           },
           window.location.origin,
         )
@@ -48,27 +59,26 @@ export default function OAuthCallback() {
        * defer OAuth redirect to fix the race condition issue
        */
       const t = setTimeout(async () => {
+        const oauthPayload = { code, state, iss, error: oauthError }
+
+        // An MCP OAuth callback is claimed by handshake ownership (nonce match,
+        // or an otherwise-unattributable error redirect while an MCP handshake is
+        // pending), independent of the shared return-context slot — so a
+        // concurrent integrations flow can't misroute it to the wrong page.
+        if (isMcpOAuthCallback({ code, state, error: oauthError })) {
+          navigate('/settings/mcp-servers', { state: { oauth: oauthPayload } })
+          return
+        }
+
         const oauthState = await getOAuthState()
         const returnContext = oauthState.returnContext
 
         if (returnContext?.startsWith('/') && !returnContext.startsWith('//')) {
-          navigate(returnContext, {
-            state: {
-              oauth: { code, state, error: errorDescription || error },
-            },
-          })
+          navigate(returnContext, { state: { oauth: oauthPayload } })
         } else if (returnContext === 'onboarding') {
-          navigate('/chats/new', {
-            state: {
-              oauth: { code, state, error: errorDescription || error },
-            },
-          })
+          navigate('/chats/new', { state: { oauth: oauthPayload } })
         } else {
-          navigate('/settings/integrations', {
-            state: {
-              oauth: { code, state, error: errorDescription || error },
-            },
-          })
+          navigate('/settings/integrations', { state: { oauth: oauthPayload } })
         }
       }, 500)
 

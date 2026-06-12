@@ -30,6 +30,7 @@ export const createBuiltInAdapter = (agent: Agent, options: BuiltInAdapterOption
       modeSystemPrompt: context.selectedMode.systemPrompt ?? undefined,
       modeName: context.selectedMode.name ?? undefined,
       mcpClients: context.mcpClients,
+      reconnectClient: context.reconnectClient,
       httpClient: context.httpClient,
       getProxyFetch: context.getProxyFetch,
     })

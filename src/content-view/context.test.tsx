@@ -4,9 +4,10 @@
 
 import '@/testing-library'
 import { act, renderHook } from '@testing-library/react'
+import type { DynamicToolUIPart, ToolUIPart } from 'ai'
 import { describe, expect, test } from 'bun:test'
 import { type ReactNode } from 'react'
-import { ContentViewProvider, useContentView, useSideview } from './context'
+import { ContentViewProvider, type ObjectViewContent, useContentView, useObjectView, useSideview } from './context'
 
 const wrapper = ({ children }: { children: ReactNode }) => <ContentViewProvider>{children}</ContentViewProvider>
 
@@ -74,6 +75,45 @@ describe('ContentView sideview mode', () => {
 
     expect(result.current.sv.sideviewType).toBe('document')
     expect(result.current.sv.sideviewId).toBe('file-1:report.pdf:2')
+  })
+
+  test('object-view surfaces errorText for a failed tool call', () => {
+    const { result } = renderHook(() => useObjectView(), { wrapper })
+
+    const failedTool = {
+      type: 'tool-search',
+      toolCallId: 'call-1',
+      state: 'output-error',
+      input: {},
+      errorText: 'Upstream 500',
+    } as unknown as ToolUIPart
+
+    act(() => {
+      result.current.openObjectSidebar(failedTool)
+    })
+
+    expect(result.current.objectContent?.output).toBe('Upstream 500')
+  })
+
+  test('object-view resolves an MCP tool title from the tool map', () => {
+    const { result } = renderHook(() => useObjectView(), { wrapper })
+
+    const mcpTool = {
+      type: 'dynamic-tool',
+      toolName: 'render_list_services',
+      toolCallId: 'call-2',
+      state: 'output-available',
+      input: {},
+      output: { ok: true },
+    } as unknown as DynamicToolUIPart
+
+    act(() => {
+      result.current.openObjectSidebar(mcpTool as ObjectViewContent, {
+        render_list_services: { name: 'Render', url: 'https://render.com', toolName: 'list_services' },
+      })
+    })
+
+    expect(result.current.objectContent?.title).toMatch(/List Services/i)
   })
 
   test('showSideview overrides an active object-view', () => {

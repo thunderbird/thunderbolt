@@ -65,6 +65,7 @@ const baseAdapterContext = (overrides: Partial<AgentAdapterContext> = {}): Agent
   selectedMode: { id: 'm', name: 'Default', systemPrompt: 'sys' } as AgentAdapterContext['selectedMode'],
   selectedModel: { id: 'mod-1' } as AgentAdapterContext['selectedModel'],
   mcpClients: [],
+  reconnectClient: async () => null,
   httpClient,
   getProxyFetch,
   onAcpSessionId: async () => {},

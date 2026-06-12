@@ -2,111 +2,240 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js'
 import { createMCPClient } from '@ai-sdk/mcp'
 import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from 'react'
+import { useDatabase } from '@/contexts'
+import { getMcpServerCredentials, type McpServerCredentials } from '@/dal/mcp-secrets'
+import type { AnyDrizzleDatabase } from '@/db/database-interface'
 import { useLocalSettingsStore } from '@/stores/local-settings-store'
-import { createProxyFetch } from './proxy-fetch'
+import { getAuthToken } from './auth-token'
+import { ensureValidMcpOAuthToken } from './mcp-auth/ensure-valid-token'
+import { isUnauthorizedError } from './mcp-errors'
+import { buildMcpHeaders, createMcpTransport, type MCPTransportType } from './mcp-transport'
+import { computeEffectiveProxyEnabled, createProxyFetch } from './proxy-fetch'
 
 type MCPClient = Awaited<ReturnType<typeof createMCPClient>>
 
-type MCPServerConnection = {
+type MCPServer = {
   id: string
   name: string
   url: string
-  client: MCPClient | null
-  isConnected: boolean
-  error: Error | null
+  type: MCPTransportType
   enabled: boolean
 }
 
+type MCPServerConnection = MCPServer & {
+  client: MCPClient | null
+  isConnected: boolean
+  error: Error | null
+}
+
+/** Reconnect a dropped MCP client at the `tools()` boundary. Looks up the
+ *  server behind `client` and returns a freshly connected client, or null when
+ *  the server is gone/disabled or the reconnect failed. */
+type ReconnectClient = (client: MCPClient) => Promise<MCPClient | null>
+
+/** An enabled, connected client paired with its server identity. `name` is the
+ *  tool-namespacing prefix consumed by `mergeMcpTools` so different servers'
+ *  tools don't collide; `name` and `url` flow through to the assistant message's
+ *  `mcpTools` metadata so chat history can resolve a tool call back to its
+ *  server (name, url, icon). */
+type NamedMCPClient = { id: string; name: string; url: string; client: MCPClient }
+
 type MCPContextType = {
   servers: MCPServerConnection[]
-  getEnabledClients: () => MCPClient[]
-  reconnectServer: (serverId: string) => Promise<void>
-  addServer: (server: { id: string; name: string; url: string; enabled: boolean }) => Promise<void>
+  getEnabledClients: () => NamedMCPClient[]
+  reconnectServer: (serverId: string) => Promise<MCPClient | null>
+  reconnectClient: ReconnectClient
+  addServer: (server: MCPServer) => Promise<void>
   removeServer: (serverId: string) => void
   updateServerStatus: (serverId: string, enabled: boolean) => void
 }
 
 const MCPContext = createContext<MCPContextType | undefined>(undefined)
 
-export const MCPProvider = ({ children }: { children: ReactNode }) => {
+/**
+ * Resolve the bearer token to inject for a server's outbound MCP requests from
+ * its on-device credential blob:
+ *   - `bearer`: the static token verbatim.
+ *   - `oauth`: a *fresh* access token via {@link ensureValidMcpOAuthToken},
+ *     which proactively refreshes near expiry and persists the rotated token —
+ *     auto-applied on the next reconnect since `defaultCreateClient` re-reads
+ *     credentials each connect. Refresh routes through the same proxy fetch the
+ *     transport uses (SSRF-validated by `/v1/proxy` on web).
+ *   - none / no row: `undefined` (unauthenticated server).
+ * `ensureValidMcpOAuthToken` is injectable so the provider can be unit-tested
+ * without the SDK refresh path; production omits it and uses the real one.
+ */
+export const resolveMcpAccessToken = async (
+  db: AnyDrizzleDatabase,
+  serverId: string,
+  credentials: McpServerCredentials | null,
+  cloudUrl: string,
+  ensureValidToken: typeof ensureValidMcpOAuthToken = ensureValidMcpOAuthToken,
+): Promise<string | undefined> => {
+  if (credentials?.type === 'bearer') {
+    return credentials.token
+  }
+  if (credentials?.type === 'oauth') {
+    const fetchFn = createProxyFetch({
+      cloudUrl,
+      getProxyAuthToken: getAuthToken,
+      getProxyEnabled: () => computeEffectiveProxyEnabled(),
+    })
+    return ensureValidToken(db, serverId, fetchFn)
+  }
+  return undefined
+}
+
+/** Connect a single MCP server using its on-device credentials. Extracted as a
+ *  free function so tests can inject a fake via {@link MCPProvider}'s
+ *  `createClient` prop without touching the AI SDK / proxy stack. */
+type CreateClientFn = (serverId: string, url: string, type: MCPTransportType) => Promise<MCPClient>
+
+type MCPProviderProps = {
+  children: ReactNode
+  /** Test-only DI seam. Production builds the real proxy-routed client. */
+  createClient?: CreateClientFn
+}
+
+export const MCPProvider = ({ children, createClient: injectedCreateClient }: MCPProviderProps) => {
   const [servers, setServers] = useState<MCPServerConnection[]>([])
   const clientRefs = useRef<Map<string, MCPClient>>(new Map())
+  const clientToServerId = useRef<Map<MCPClient, string>>(new Map())
+  const reconnectsInFlight = useRef<Map<string, Promise<MCPClient | null>>>(new Map())
+  const connectsInFlight = useRef<Map<string, Promise<void>>>(new Map())
   const serversRef = useRef<MCPServerConnection[]>([])
   const cloudUrl = useLocalSettingsStore((s) => s.cloudUrl)
+  const db = useDatabase()
 
-  serversRef.current = servers
+  /** Update the server list AND `serversRef` in lockstep — this is the SOLE
+   *  writer of `servers`, so the ref stays in sync without a render-phase
+   *  mirror. The ref is the synchronous source of truth: async reconnect logic
+   *  re-checks it after an await to detect a server removed/disabled mid-flight,
+   *  which can't wait for React to flush the render that would otherwise refresh
+   *  the ref. */
+  const commitServers = (next: (prev: MCPServerConnection[]) => MCPServerConnection[]) => {
+    serversRef.current = next(serversRef.current)
+    setServers(serversRef.current)
+  }
 
-  const createClient = async (url: string): Promise<MCPClient> => {
-    const urlObj = new URL(url)
-
-    // Always go through the universal proxy fetch — Hosted mode (web) routes
-    // through /v1/proxy with header rewriting; Standalone mode (Tauri) hits the
-    // upstream directly via Tauri's HTTP plugin. The MCP transport accepts a
-    // custom fetch natively, so the same code path works everywhere.
-    const proxyFetch = createProxyFetch({ cloudUrl })
-
-    const transport = new StreamableHTTPClientTransport(urlObj, {
-      fetch: (url: string | URL, init?: RequestInit) => proxyFetch(url, init),
-      requestInit: {
-        headers: { Accept: 'application/json, text/event-stream' },
-      },
-    })
-
+  const defaultCreateClient: CreateClientFn = async (serverId, url, type) => {
+    // Re-reads credentials from the db, so a refreshed token is picked up on reconnect.
+    const credentials = await getMcpServerCredentials(db, serverId)
+    const token = await resolveMcpAccessToken(db, serverId, credentials, cloudUrl)
+    const headers = buildMcpHeaders(token)
+    const transport = createMcpTransport(url, type, cloudUrl, headers)
     const mcpClient = await createMCPClient({ transport })
     return mcpClient
   }
 
-  const connectServer = async (server: { id: string; name: string; url: string; enabled: boolean }) => {
+  const createClient = injectedCreateClient ?? defaultCreateClient
+
+  /** Cache a freshly connected client and maintain the client→serverId reverse lookup. */
+  const cacheClient = (serverId: string, client: MCPClient) => {
+    clientRefs.current.set(serverId, client)
+    clientToServerId.current.set(client, serverId)
+  }
+
+  const connectServer = (server: MCPServer): Promise<void> => {
     if (!server.enabled) {
-      setServers((prev) =>
+      commitServers((prev) =>
         prev.map((s) =>
           s.id === server.id ? { ...s, client: null, isConnected: false, error: null, enabled: false } : s,
         ),
       )
-      return
+      return Promise.resolve()
     }
 
-    try {
-      // Connecting to MCP server
-      const client = await createClient(server.url)
-
-      clientRefs.current.set(server.id, client)
-
-      setServers((prev) =>
-        prev.map((s) => (s.id === server.id ? { ...s, client, isConnected: true, error: null, enabled: true } : s)),
-      )
-
-      // MCP server connected successfully
-    } catch (err) {
-      console.error('Failed to connect to MCP server:', server.name, err)
-      setServers((prev) =>
-        prev.map((s) =>
-          s.id === server.id
-            ? { ...s, client: null, isConnected: false, error: err as Error, enabled: server.enabled }
-            : s,
-        ),
-      )
+    // Coalesce overlapping connects for the same server into one in-flight
+    // promise. Two sync consumers can re-fire the enable→connect path before
+    // React flushes (the addServer→connect vs updateServerStatus(enable)→connect
+    // race), so without this a second createClient could cacheClient over a live
+    // client without closing it — leaking the first connection.
+    const inFlight = connectsInFlight.current.get(server.id)
+    if (inFlight) {
+      return inFlight
     }
+
+    const promise = (async (): Promise<void> => {
+      try {
+        const client = await createClient(server.id, server.url, server.type)
+
+        // The server may have been removed/disabled while we were connecting —
+        // close the orphan rather than caching/committing (and re-enabling) a
+        // client nothing can reach.
+        const current = serversRef.current.find((s) => s.id === server.id)
+        if (!current || !current.enabled) {
+          closeClient(client)
+          return
+        }
+
+        cacheClient(server.id, client)
+
+        commitServers((prev) =>
+          prev.map((s) => (s.id === server.id ? { ...s, client, isConnected: true, error: null, enabled: true } : s)),
+        )
+      } catch (err) {
+        // A 401 means the server requires authorization and is waiting for a
+        // credential / OAuth — expected, not a failure. Keep other errors as errors.
+        if (isUnauthorizedError(err)) {
+          console.warn('MCP server requires authorization:', server.name)
+        } else {
+          console.error('Failed to connect to MCP server:', server.name, err)
+        }
+        // Skip committing an error onto a server that was removed/disabled
+        // mid-connect — its row is gone or intentionally off.
+        const current = serversRef.current.find((s) => s.id === server.id)
+        if (!current || !current.enabled) {
+          return
+        }
+        commitServers((prev) =>
+          prev.map((s) =>
+            s.id === server.id
+              ? { ...s, client: null, isConnected: false, error: err as Error, enabled: server.enabled }
+              : s,
+          ),
+        )
+      }
+    })()
+
+    connectsInFlight.current.set(server.id, promise)
+    return promise.finally(() => {
+      connectsInFlight.current.delete(server.id)
+    })
   }
 
-  const disconnectServer = (serverId: string) => {
-    const client = clientRefs.current.get(serverId)
-    if (client?.close) {
+  /** Close and forget a client, clearing both lookup directions. */
+  const closeClient = (client: MCPClient) => {
+    if (client.close) {
       try {
         client.close()
       } catch (error) {
         console.error('Error closing MCP client:', error)
       }
     }
+    clientToServerId.current.delete(client)
+  }
+
+  const disconnectServer = (serverId: string) => {
+    const client = clientRefs.current.get(serverId)
+    if (client) {
+      closeClient(client)
+    }
     clientRefs.current.delete(serverId)
   }
 
-  const addServer = async (server: { id: string; name: string; url: string; enabled: boolean }) => {
-    // Add server to state first
-    setServers((prev) => [
+  const addServer = async (server: MCPServer) => {
+    // Idempotency guard against the synchronous source of truth. Two sync
+    // consumers can each observe a stale server list and call addServer for the
+    // same id before React re-renders — skip the duplicate so the server isn't
+    // registered (and connected) twice.
+    if (serversRef.current.some((s) => s.id === server.id)) {
+      return
+    }
+
+    commitServers((prev) => [
       ...prev,
       {
         ...server,
@@ -116,7 +245,6 @@ export const MCPProvider = ({ children }: { children: ReactNode }) => {
       },
     ])
 
-    // Then try to connect if enabled
     if (server.enabled) {
       await connectServer(server)
     }
@@ -124,11 +252,11 @@ export const MCPProvider = ({ children }: { children: ReactNode }) => {
 
   const removeServer = (serverId: string) => {
     disconnectServer(serverId)
-    setServers((prev) => prev.filter((s) => s.id !== serverId))
+    commitServers((prev) => prev.filter((s) => s.id !== serverId))
   }
 
   const updateServerStatus = (serverId: string, enabled: boolean) => {
-    const server = servers.find((s) => s.id === serverId)
+    const server = serversRef.current.find((s) => s.id === serverId)
     if (!server) {
       return
     }
@@ -137,7 +265,7 @@ export const MCPProvider = ({ children }: { children: ReactNode }) => {
       connectServer({ ...server, enabled })
     } else {
       disconnectServer(serverId)
-      setServers((prev) =>
+      commitServers((prev) =>
         prev.map((s) =>
           s.id === serverId ? { ...s, client: null, isConnected: false, error: null, enabled: false } : s,
         ),
@@ -145,29 +273,82 @@ export const MCPProvider = ({ children }: { children: ReactNode }) => {
     }
   }
 
-  const reconnectServer = async (serverId: string) => {
-    const server = servers.find((s) => s.id === serverId)
-    if (!server) {
-      return
+  /** Open a fresh connection for `serverId`, committing it only if the server is
+   *  still enabled by the time the connect resolves; otherwise close the orphan.
+   *  Idempotent + coalesced: concurrent calls for the same server share one
+   *  in-flight promise so a drop can't trigger a reconnect storm. */
+  const reconnectServer = (serverId: string): Promise<MCPClient | null> => {
+    const inFlight = reconnectsInFlight.current.get(serverId)
+    if (inFlight) {
+      return inFlight
     }
 
-    // Reconnecting MCP server
-    disconnectServer(serverId)
-    await connectServer(server)
+    const server = serversRef.current.find((s) => s.id === serverId)
+    if (!server || !server.enabled) {
+      return Promise.resolve(null)
+    }
+
+    const promise = (async (): Promise<MCPClient | null> => {
+      // Tear down the stale connection before opening a new one.
+      disconnectServer(serverId)
+
+      try {
+        const client = await createClient(server.id, server.url, server.type)
+
+        // The server may have been removed/disabled while we were connecting —
+        // close the orphan rather than caching a client nothing can reach.
+        const current = serversRef.current.find((s) => s.id === serverId)
+        if (!current || !current.enabled) {
+          closeClient(client)
+          return null
+        }
+
+        cacheClient(serverId, client)
+        commitServers((prev) =>
+          prev.map((s) => (s.id === serverId ? { ...s, client, isConnected: true, error: null } : s)),
+        )
+        return client
+      } catch (err) {
+        console.error('Failed to reconnect MCP server:', server.name, err)
+        // Skip committing an error onto a server that was removed/disabled
+        // mid-reconnect — its row is gone or intentionally off.
+        const current = serversRef.current.find((s) => s.id === serverId)
+        if (!current || !current.enabled) {
+          return null
+        }
+        commitServers((prev) =>
+          prev.map((s) => (s.id === serverId ? { ...s, client: null, isConnected: false, error: err as Error } : s)),
+        )
+        return null
+      }
+    })()
+
+    reconnectsInFlight.current.set(serverId, promise)
+    return promise.finally(() => {
+      reconnectsInFlight.current.delete(serverId)
+    })
   }
 
-  const getEnabledClients = (): MCPClient[] => {
+  const reconnectClient: ReconnectClient = (client) => {
+    const serverId = clientToServerId.current.get(client)
+    if (!serverId) {
+      return Promise.resolve(null)
+    }
+    return reconnectServer(serverId)
+  }
+
+  const getEnabledClients = (): NamedMCPClient[] => {
     // Use ref to always get current servers, avoiding stale closures
     return serversRef.current
       .filter((server) => server.enabled && server.isConnected && server.client)
-      .map((server) => server.client!)
+      .map((server) => ({ id: server.id, name: server.name, url: server.url, client: server.client! }))
   }
 
   // Cleanup on unmount
   useEffect(() => {
     const clientsRef = clientRefs
+    const reverseRef = clientToServerId
     return () => {
-      // Cleaning up MCP connections
       const clients = clientsRef.current
       clients.forEach((client, serverId) => {
         if (client?.close) {
@@ -179,6 +360,7 @@ export const MCPProvider = ({ children }: { children: ReactNode }) => {
         }
       })
       clients.clear()
+      reverseRef.current.clear()
     }
   }, [])
 
@@ -188,6 +370,7 @@ export const MCPProvider = ({ children }: { children: ReactNode }) => {
         servers,
         getEnabledClients,
         reconnectServer,
+        reconnectClient,
         addServer,
         removeServer,
         updateServerStatus,
@@ -206,5 +389,5 @@ export const useMCP = () => {
   return context
 }
 
-// Export the MCPClient type for use in other files
-export type { MCPClient }
+// Export the MCPClient + ReconnectClient + NamedMCPClient types for use in other files
+export type { MCPClient, NamedMCPClient, ReconnectClient }

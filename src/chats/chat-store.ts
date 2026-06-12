@@ -5,7 +5,7 @@
 import { updateSettings } from '@/dal'
 import { updateChatThread } from '@/dal/chat-threads'
 import { getDb } from '@/db/database'
-import { type MCPClient } from '@/lib/mcp-provider'
+import { type NamedMCPClient, type ReconnectClient } from '@/lib/mcp-provider'
 import { trackEvent } from '@/lib/posthog'
 import type { Agent } from '@/types/acp'
 import type { AutomationRun, ChatThread, Mode, Model, ThunderboltUIMessage } from '@/types'
@@ -45,7 +45,8 @@ export type ChatSession = {
 
 type ChatStoreState = {
   currentSessionId: string | null
-  mcpClients: MCPClient[]
+  getMcpClients: () => NamedMCPClient[]
+  reconnectClient: ReconnectClient
   modes: Mode[]
   models: Model[]
   sessions: Map<string, ChatSession>
@@ -54,7 +55,8 @@ type ChatStoreState = {
 type ChatStoreActions = {
   createSession(session: ChatSession): void
   setCurrentSessionId(id: string): void
-  setMcpClients(mcpClients: MCPClient[]): void
+  setGetMcpClients(getMcpClients: () => NamedMCPClient[]): void
+  setReconnectClient(reconnectClient: ReconnectClient): void
   setModes(modes: Mode[]): void
   setModels(models: Model[]): void
   setPendingPermission(id: string, permission: PendingPermission | null): void
@@ -69,7 +71,15 @@ type ChatStore = ChatStoreState & ChatStoreActions
 
 const initialState: ChatStoreState = {
   currentSessionId: null,
-  mcpClients: [],
+  // Read fresh per send (not snapshotted) so that after a provider reconnect
+  // swaps a server's client, the next send sees the new client instead of a
+  // stale, closed one. Hydration replaces this with the provider's
+  // `getEnabledClients` getter, which reads its live `serversRef`.
+  getMcpClients: () => [],
+  // Replaced by the MCP provider's `reconnectClient` on hydration. The default
+  // no-op (returns null) makes `mergeMcpTools` skip a dropped server rather than
+  // reconnect — correct for the pre-hydration / no-provider case.
+  reconnectClient: async () => null,
   modes: [],
   models: [],
   sessions: new Map(),
@@ -95,8 +105,12 @@ export const useChatStore = create<ChatStore>()((set, get) => ({
     set({ currentSessionId: id })
   },
 
-  setMcpClients: (mcpClients) => {
-    set({ mcpClients })
+  setGetMcpClients: (getMcpClients) => {
+    set({ getMcpClients })
+  },
+
+  setReconnectClient: (reconnectClient) => {
+    set({ reconnectClient })
   },
 
   setModes: (modes) => {

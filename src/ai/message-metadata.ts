@@ -10,6 +10,7 @@ type StreamPart = {
   type: string
   id?: string
   toolCallId?: string
+  toolName?: string
   usage?: LanguageModelV2Usage
 }
 
@@ -19,9 +20,18 @@ type StreamPart = {
  *
  * @param modelId - The model ID to include in metadata
  * @param sourceCollector - Optional shared array populated by tool execution with source metadata
+ * @param mcpTools - Optional map of every available MCP tool's namespaced name →
+ *   owning-server info. Used to attach, per `tool-call`, the entry for the tool
+ *   actually invoked (scoping the persisted metadata to invoked tools only; the
+ *   AI SDK deep-merges these chunks onto the final saved message). Built-in tools
+ *   aren't in the map, so they contribute no MCP metadata.
  * @returns A function that processes stream parts and returns appropriate metadata
  */
-export const createMessageMetadata = (modelId: string, sourceCollector?: SourceMetadata[]) => {
+export const createMessageMetadata = (
+  modelId: string,
+  sourceCollector?: SourceMetadata[],
+  mcpTools?: UIMessageMetadata['mcpTools'],
+) => {
   const startTimes = new Map<string, number>()
   const reasoningStack: string[] = []
   let reasoningIdCounter = 0
@@ -38,7 +48,15 @@ export const createMessageMetadata = (modelId: string, sourceCollector?: SourceM
         const id = part.toolCallId ?? part.id ?? 'unknown'
         const now = Date.now()
         startTimes.set(id, now)
-        return { modelId, reasoningStartTimes: { [id]: now } }
+        const base = { modelId, reasoningStartTimes: { [id]: now } }
+        const { toolName } = part
+        if (!toolName) {
+          return base
+        }
+        // Scope persisted MCP metadata to the tool actually invoked; built-ins
+        // aren't in the map, so they add nothing.
+        const invokedTool = mcpTools?.[toolName]
+        return invokedTool ? { ...base, mcpTools: { [toolName]: invokedTool } } : base
       }
 
       case 'reasoning-start': {

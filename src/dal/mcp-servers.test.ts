@@ -6,7 +6,15 @@ import { getDb } from '@/db/database'
 import { mcpServersTable } from '@/db/tables'
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'bun:test'
 import { v7 as uuidv7 } from 'uuid'
-import { createMcpServer, deleteMcpServer, getAllMcpServers, getHttpMcpServers } from './mcp-servers'
+import {
+  createMcpServer,
+  createMcpServersWithCredentials,
+  createMcpServerWithCredentials,
+  deleteMcpServer,
+  getAllMcpServers,
+  getRemoteMcpServers,
+} from './mcp-servers'
+import { getMcpServerCredentials } from './mcp-secrets'
 import { resetTestDatabase, setupTestDatabase, teardownTestDatabase } from './test-utils'
 
 beforeAll(async () => {
@@ -21,6 +29,92 @@ describe('MCP Servers DAL', () => {
   beforeEach(async () => {
     // Reset database before each test to prevent pollution from randomized test order
     await resetTestDatabase()
+  })
+
+  describe('createMcpServerWithCredentials', () => {
+    it('writes the server row and its credential together', async () => {
+      const db = getDb()
+      const id = uuidv7()
+      await createMcpServerWithCredentials(
+        db,
+        { id, name: 'Auth Server', type: 'http', url: 'https://example.com/mcp', enabled: 1 },
+        { type: 'bearer', token: 'secret-token' },
+      )
+      const servers = await getAllMcpServers(db)
+      expect(servers).toHaveLength(1)
+      expect(servers[0]?.id).toBe(id)
+      expect(await getMcpServerCredentials(db, id)).toEqual({ type: 'bearer', token: 'secret-token' })
+    })
+
+    it('writes the server row with no credential when none is given', async () => {
+      const db = getDb()
+      const id = uuidv7()
+      await createMcpServerWithCredentials(db, {
+        id,
+        name: 'No-Auth Server',
+        type: 'http',
+        url: 'https://example.com/mcp',
+        enabled: 1,
+      })
+      expect(await getAllMcpServers(db)).toHaveLength(1)
+      expect(await getMcpServerCredentials(db, id)).toBeNull()
+    })
+  })
+
+  describe('createMcpServersWithCredentials', () => {
+    it('batch-creates servers with and without credentials in one transaction', async () => {
+      const db = getDb()
+      const withCredId = uuidv7()
+      const noCredId = uuidv7()
+      await createMcpServersWithCredentials(db, [
+        {
+          server: { id: withCredId, name: 'Bearer Server', type: 'http', url: 'https://a.example.com/mcp', enabled: 1 },
+          credential: { type: 'bearer', token: 'secret-token' },
+        },
+        {
+          server: { id: noCredId, name: 'No-Auth Server', type: 'sse', url: 'https://b.example.com/mcp', enabled: 0 },
+        },
+      ])
+
+      const servers = await getAllMcpServers(db)
+      expect(servers).toHaveLength(2)
+      expect(servers.map((s) => s.id)).toContain(withCredId)
+      expect(servers.map((s) => s.id)).toContain(noCredId)
+      expect(await getMcpServerCredentials(db, withCredId)).toEqual({ type: 'bearer', token: 'secret-token' })
+      expect(await getMcpServerCredentials(db, noCredId)).toBeNull()
+    })
+
+    it('rolls back every row and secret when any item fails', async () => {
+      const db = getDb()
+      await db
+        .insert(mcpServersTable)
+        .values({ id: 'dup', name: 'Pre-existing', type: 'http', url: 'https://pre.example.com/mcp', enabled: 1 })
+
+      const goodId = uuidv7()
+      await expect(
+        createMcpServersWithCredentials(db, [
+          {
+            server: { id: goodId, name: 'Good Server', type: 'http', url: 'https://good.example.com/mcp', enabled: 1 },
+            credential: { type: 'bearer', token: 'secret-token' },
+          },
+          {
+            server: {
+              id: 'dup',
+              name: 'Duplicate Server',
+              type: 'http',
+              url: 'https://dup.example.com/mcp',
+              enabled: 1,
+            },
+          },
+        ]),
+      ).rejects.toThrow()
+
+      const servers = await getAllMcpServers(db)
+      expect(servers).toHaveLength(1)
+      expect(servers[0]?.id).toBe('dup')
+      expect(servers.map((s) => s.id)).not.toContain(goodId)
+      expect(await getMcpServerCredentials(db, goodId)).toBeNull()
+    })
   })
 
   describe('getAllMcpServers', () => {
@@ -57,8 +151,8 @@ describe('MCP Servers DAL', () => {
     })
   })
 
-  describe('getHttpMcpServers', () => {
-    it('should return empty array when no HTTP servers exist', async () => {
+  describe('getRemoteMcpServers', () => {
+    it('should return empty array when no remote servers exist', async () => {
       const db = getDb()
       const serverId = uuidv7()
 
@@ -69,44 +163,44 @@ describe('MCP Servers DAL', () => {
         enabled: 1,
       })
 
-      const servers = await getHttpMcpServers(getDb())
+      const servers = await getRemoteMcpServers(getDb())
       expect(servers).toEqual([])
     })
 
-    it('should return only HTTP servers with URLs', async () => {
+    it('should return HTTP and SSE servers with URLs, excluding stdio', async () => {
       const db = getDb()
-      const serverId1 = uuidv7()
-      const serverId2 = uuidv7()
-      const serverId3 = uuidv7()
+      const httpId = uuidv7()
+      const sseId = uuidv7()
+      const stdioId = uuidv7()
 
       await db.insert(mcpServersTable).values([
         {
-          id: serverId1,
-          name: 'HTTP Server 1',
+          id: httpId,
+          name: 'HTTP Server',
           type: 'http',
           url: 'http://example1.com',
           enabled: 1,
         },
         {
-          id: serverId2,
-          name: 'HTTP Server 2',
-          type: 'http',
+          id: sseId,
+          name: 'SSE Server',
+          type: 'sse',
           url: 'http://example2.com',
           enabled: 0,
         },
         {
-          id: serverId3,
+          id: stdioId,
           name: 'STDIO Server',
           type: 'stdio',
           enabled: 1,
         },
       ])
 
-      const servers = await getHttpMcpServers(getDb())
+      const servers = await getRemoteMcpServers(getDb())
       expect(servers).toHaveLength(2)
-      expect(servers.map((s) => s.id)).toContain(serverId1)
-      expect(servers.map((s) => s.id)).toContain(serverId2)
-      expect(servers.map((s) => s.id)).not.toContain(serverId3)
+      expect(servers.map((s) => s.id)).toContain(httpId)
+      expect(servers.map((s) => s.id)).toContain(sseId)
+      expect(servers.map((s) => s.id)).not.toContain(stdioId)
     })
   })
 
@@ -176,7 +270,7 @@ describe('MCP Servers DAL', () => {
       expect(rawServers).toHaveLength(2)
     })
 
-    it('should not return soft-deleted server via getHttpMcpServers', async () => {
+    it('should not return soft-deleted server via getRemoteMcpServers', async () => {
       const db = getDb()
       const serverId = uuidv7()
 
@@ -188,14 +282,14 @@ describe('MCP Servers DAL', () => {
         enabled: 1,
       })
 
-      // Verify server exists in HTTP servers
-      const serversBefore = await getHttpMcpServers(getDb())
+      // Verify server exists in remote servers
+      const serversBefore = await getRemoteMcpServers(getDb())
       expect(serversBefore).toHaveLength(1)
 
       await deleteMcpServer(getDb(), serverId)
 
       // Verify server is not returned after soft deletion
-      const serversAfter = await getHttpMcpServers(getDb())
+      const serversAfter = await getRemoteMcpServers(getDb())
       expect(serversAfter).toHaveLength(0)
     })
 
@@ -239,7 +333,7 @@ describe('MCP Servers DAL', () => {
       expect(servers[0]?.name).toBe('New Server')
     })
 
-    it('should create an HTTP server that appears in getHttpMcpServers', async () => {
+    it('should create an HTTP server that appears in getRemoteMcpServers', async () => {
       const serverId = uuidv7()
 
       await createMcpServer(getDb(), {
@@ -250,12 +344,12 @@ describe('MCP Servers DAL', () => {
         enabled: 1,
       })
 
-      const httpServers = await getHttpMcpServers(getDb())
-      expect(httpServers).toHaveLength(1)
-      expect(httpServers[0]?.id).toBe(serverId)
+      const remoteServers = await getRemoteMcpServers(getDb())
+      expect(remoteServers).toHaveLength(1)
+      expect(remoteServers[0]?.id).toBe(serverId)
     })
 
-    it('should create a stdio server excluded from getHttpMcpServers', async () => {
+    it('should create a stdio server excluded from getRemoteMcpServers', async () => {
       const serverId = uuidv7()
 
       await createMcpServer(getDb(), {
@@ -265,8 +359,8 @@ describe('MCP Servers DAL', () => {
         enabled: 1,
       })
 
-      const httpServers = await getHttpMcpServers(getDb())
-      expect(httpServers).toHaveLength(0)
+      const remoteServers = await getRemoteMcpServers(getDb())
+      expect(remoteServers).toHaveLength(0)
 
       const allServers = await getAllMcpServers(getDb())
       expect(allServers).toHaveLength(1)

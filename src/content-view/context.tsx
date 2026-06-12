@@ -3,12 +3,17 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { useIsMobile } from '@/hooks/use-mobile'
+import { getMcpToolDisplay } from '@/lib/mcp-tool-display'
 import { trackEvent } from '@/lib/posthog'
-import type { ReasoningUIPart, ToolUIPart } from 'ai'
+import { getToolMetadataSync } from '@/lib/tool-metadata'
+import { formatToolOutput } from '@/lib/utils'
+import type { UIMessageMetadata } from '@/types'
+import { getToolName, type DynamicToolUIPart, type ReasoningUIPart, type ToolUIPart } from 'ai'
 import { createContext, type ReactNode, useCallback, useContext, useEffect, useRef, useState } from 'react'
 import type { SidebarWebviewConfig } from './use-sidebar-webview'
-import { getToolMetadataSync } from '@/lib/tool-metadata'
-import { formatToolOutput, splitPartType } from '@/lib/utils'
+
+/** A tool call (built-in or MCP dynamic-tool) or a reasoning part shown in the object view. */
+export type ObjectViewContent = ToolUIPart | DynamicToolUIPart | ReasoningUIPart
 
 export type ObjectViewData = {
   title: string
@@ -28,7 +33,7 @@ type ContentViewState =
 
 type ContentViewContextType = {
   state: ContentViewState
-  showObjectView: (content: ToolUIPart | ReasoningUIPart) => void
+  showObjectView: (content: ObjectViewContent, mcpTools?: UIMessageMetadata['mcpTools']) => void
   showPreview: (url: string) => void
   /** Open a typed sideview (e.g. `'document'`). Passing `null` clears the view. */
   showSideview: (sideviewType: string | null, sideviewId: string | null) => void
@@ -54,29 +59,23 @@ export const ContentViewProvider = ({ children }: { children: ReactNode }) => {
   const { isMobile } = useIsMobile()
   const prevIsMobile = useRef(isMobile)
 
-  const showObjectView = useCallback((content: ToolUIPart | ReasoningUIPart) => {
+  const showObjectView = useCallback((content: ObjectViewContent, mcpTools?: UIMessageMetadata['mcpTools']) => {
     if (content.type === 'reasoning') {
       trackEvent('content_view_open', { view_type: 'object-view', reasoning: true })
-      setState({
-        type: 'object-view',
-        data: {
-          title: 'Reasoning',
-          output: content.text,
-        },
-      })
+      setState({ type: 'object-view', data: { title: 'Reasoning', output: content.text } })
       return
     }
 
-    const [, toolName] = splitPartType(content?.type ?? '')
-    const metadata = getToolMetadataSync(toolName, content?.input)
+    const toolName = getToolName(content)
+    // MCP dynamic-tool parts resolve their title from the tool map; built-ins use curated metadata.
+    const title =
+      content.type === 'dynamic-tool'
+        ? getMcpToolDisplay(toolName, mcpTools, content.title).displayName
+        : getToolMetadataSync(toolName, content.input).displayName
+    // Surface the error text when a tool failed; otherwise show its output.
+    const output = content.state === 'output-error' ? content.errorText : formatToolOutput(content.output)
     trackEvent('content_view_open', { view_type: 'object-view', tool_name: toolName })
-    setState({
-      type: 'object-view',
-      data: {
-        title: metadata.displayName,
-        output: formatToolOutput(content.output),
-      },
-    })
+    setState({ type: 'object-view', data: { title, output } })
   }, [])
 
   const showPreview = useCallback((url: string) => {

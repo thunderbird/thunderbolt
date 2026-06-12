@@ -108,6 +108,21 @@ export type UIMessageMetadata = {
   haystackReferences?: HaystackReferenceMeta[]
   /** Source documents surfaced by the Haystack pipeline. */
   haystackDocuments?: HaystackDocumentMeta[]
+  /**
+   * Maps each MCP tool actually invoked in this message — keyed by its exact
+   * namespaced name (`<prefix>_<tool>`, e.g. `render_list_services`) — to the
+   * owning server's display `name`/`url` plus the bare `toolName` (so the de-
+   * namespaced label can be rendered). Built by `mergeMcpTools` (which knows the
+   * exact name→server ownership) and scoped to invoked tools by
+   * `createMessageMetadata`, so it's absent on messages with no MCP tool calls.
+   *
+   * Exact keys make display attribution unambiguous — no prefix heuristics.
+   * Messages produced before this field existed (including preview-env messages
+   * persisted with the earlier prefix-keyed `mcpServers` shape) simply lack
+   * `mcpTools`, so they render via the graceful fallback (prettified full tool
+   * name + generic icon + no server badge).
+   */
+  mcpTools?: Record<string, { name: string; url: string; toolName: string }>
 }
 
 /**

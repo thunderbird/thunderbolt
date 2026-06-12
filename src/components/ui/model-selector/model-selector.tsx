@@ -127,7 +127,7 @@ export const ModelSelector = ({
         'flex items-center cursor-pointer transition-colors',
         variant === 'bordered'
           ? cn(
-              'gap-1.5 px-2.5 h-[var(--touch-height-sm)] rounded-lg border border-border text-[length:var(--font-size-sm)]',
+              'gap-1.5 px-2 h-[var(--touch-height-control)] rounded-lg border border-border text-[length:var(--font-size-sm)]',
               isOpen ? 'bg-accent' : 'hover:bg-accent/50',
             )
           : cn(

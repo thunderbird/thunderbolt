@@ -106,7 +106,13 @@ export default function Page() {
             <div
               className="flex-1 overflow-auto"
               style={{
-                paddingBottom: 'var(--safe-area-bottom-padding)',
+                // Reserve the home-indicator safe area, but don't double-count it
+                // with the on-screen keyboard: when the keyboard is open (`--kb` > 0)
+                // it already covers that region, so subtract it. Without this, the
+                // safe-area inset stacks on top of `chat-ui`'s `var(--kb)` and shoves
+                // a bottom-anchored input well above the keyboard (THU-586). At rest
+                // (`--kb` = 0) this is just the full safe-area inset, unchanged.
+                paddingBottom: 'max(var(--safe-area-bottom-padding) - var(--kb, 0px), 0px)',
               }}
             >
               <Suspense fallback={<PageFallback />}>

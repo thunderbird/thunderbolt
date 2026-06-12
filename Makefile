@@ -185,22 +185,25 @@ dev-desktop:
 	sleep 2; \
 	bun tauri:dev:desktop
 
-# Tauri iOS dev on simulator. Picks the first booted simulator to avoid Wi-Fi-paired iPhones
-# being auto-selected by `tauri ios dev`.
+# Tauri iOS dev on simulator. Targets the first booted simulator by NAME to avoid
+# Wi-Fi-paired iPhones being auto-selected by `tauri ios dev`. NB: `tauri ios dev`
+# matches devices by name, not UDID — passing a UDID fails to match (logs
+# "Could not find an iOS Simulator matching {t}") and degrades to opening Xcode
+# without hosting the dev options socket, which then breaks the build phase.
 dev-ios:
 	@echo "$(BLUE)→ Starting backend + Tauri iOS simulator dev...$(NC)"
 	@-lsof -ti:8000 | xargs kill -9 2>/dev/null || true
-	@SIM_UDID=$$(xcrun simctl list devices booted 2>/dev/null | grep -oE '\([0-9A-F-]{36}\)' | head -1 | tr -d '()'); \
-	if [ -z "$$SIM_UDID" ]; then \
+	@SIM_NAME=$$(xcrun simctl list devices booted 2>/dev/null | grep -m1 'Booted' | sed -E 's/^ *//; s/ *\(.*//'); \
+	if [ -z "$$SIM_NAME" ]; then \
 		echo "$(YELLOW)⚠ No booted simulator. Boot one first: open -a Simulator$(NC)"; \
 		exit 1; \
 	fi; \
-	echo "$(GREEN)✓ Targeting simulator $$SIM_UDID$(NC)"; \
+	echo "$(GREEN)✓ Targeting simulator $$SIM_NAME$(NC)"; \
 	cd backend && bun run dev & \
 	BACKEND_PID=$$!; \
 	trap "kill $$BACKEND_PID 2>/dev/null" EXIT; \
 	sleep 2; \
-	bun tauri ios dev --config src-tauri/tauri.dev.conf.json "$$SIM_UDID"
+	bun tauri ios dev --config src-tauri/tauri.dev.conf.json "$$SIM_NAME"
 
 # Tauri Android dev. Re-runs init with the dev config first so the package paths match
 # the .dev identifier (the chart's gen/android is committed for the prod identifier).

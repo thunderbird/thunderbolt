@@ -5,7 +5,7 @@
 import type { AnyDrizzleDatabase } from '@/db/database-interface'
 import type { Model, ModelProfile } from '@/types'
 import { createSetting } from '@/dal'
-import { and, eq, isNull } from 'drizzle-orm'
+import { eq, inArray, isNull } from 'drizzle-orm'
 import type { SQLiteTableWithColumns } from 'drizzle-orm/sqlite-core'
 import { v7 as uuidv7 } from 'uuid'
 import { modelProfilesTable, modelsTable, modesTable, settingsTable, skillsTable, tasksTable } from '../db/tables'
@@ -20,6 +20,9 @@ import { nowIso } from './utils'
 /**
  * Generic function to reconcile defaults into a table
  * Inserts new defaults and updates unmodified existing ones
+ *
+ * Fetches all matching rows in a single SELECT (instead of one per item) to
+ * minimize serial round-trips to the SQLite worker during boot (THU-595).
  * @param table - The database table to reconcile
  * @param defaults - Array of default items to reconcile
  * @param hashFn - Function to compute hash of an item
@@ -32,9 +35,17 @@ export const reconcileDefaultsForTable = async <T extends { defaultHash: string 
   hashFn: (item: any) => string,
   keyField: string = 'id',
 ) => {
+  if (defaults.length === 0) {
+    return
+  }
+
+  const keyValues = defaults.map((defaultItem) => (defaultItem as any)[keyField])
+  const existingRows = await db.select().from(table).where(inArray(table[keyField], keyValues))
+  const existingByKey = new Map(existingRows.map((row) => [row[keyField], row] as const))
+
   for (const defaultItem of defaults) {
     const keyValue = (defaultItem as any)[keyField]
-    const existing = await db.select().from(table).where(eq(table[keyField], keyValue)).get()
+    const existing = existingByKey.get(keyValue)
 
     if (!existing) {
       // New default - insert with computed hash
@@ -42,42 +53,48 @@ export const reconcileDefaultsForTable = async <T extends { defaultHash: string 
         ...defaultItem,
         defaultHash: hashFn(defaultItem),
       })
-    } else {
-      // Exists - check if user modified by comparing hashes
-      const currentHash = hashFn(existing)
-      const defaultHashValue = hashFn(defaultItem)
-
-      if (!existing.defaultHash) {
-        // No defaultHash - set it to the default hash to enable modification tracking
-        await db.update(table).set({ defaultHash: defaultHashValue }).where(eq(table[keyField], keyValue))
-      } else if (currentHash === existing.defaultHash) {
-        // Skip update if default hasn't changed (prevents empty PATCH operations)
-        // TODO: needs more testing
-        if (existing.defaultHash === defaultHashValue) {
-          continue
-        }
-
-        // Protect user-set values from being overwritten by null defaults.
-        // This handles localization settings (distance_unit, etc.) where the user explicitly
-        // set a value via recomputeHash, but the code default is null.
-        // For non-settings tables, 'value' is undefined so this check is safely skipped.
-        const wouldOverwriteUserValue = (existing as any).value !== null && (defaultItem as any).value === null
-
-        if (wouldOverwriteUserValue) {
-          continue
-        }
-
-        // Unmodified and default has changed - safe to update to new default
-        await db
-          .update(table)
-          .set({
-            ...defaultItem,
-            defaultHash: defaultHashValue,
-          })
-          .where(eq(table[keyField], keyValue))
-      }
-      // If hashes don't match, user has modified (including soft-delete) - skip update
+      continue
     }
+
+    // Exists - check if user modified by comparing hashes
+    const currentHash = hashFn(existing)
+    const defaultHashValue = hashFn(defaultItem)
+
+    if (!existing.defaultHash) {
+      // No defaultHash - set it to the default hash to enable modification tracking
+      await db.update(table).set({ defaultHash: defaultHashValue }).where(eq(table[keyField], keyValue))
+      continue
+    }
+
+    // If hashes don't match, user has modified (including soft-delete) - skip update
+    if (currentHash !== existing.defaultHash) {
+      continue
+    }
+
+    // Skip update if default hasn't changed (prevents empty PATCH operations)
+    // TODO: needs more testing
+    if (existing.defaultHash === defaultHashValue) {
+      continue
+    }
+
+    // Protect user-set values from being overwritten by null defaults.
+    // This handles localization settings (distance_unit, etc.) where the user explicitly
+    // set a value via recomputeHash, but the code default is null.
+    // For non-settings tables, 'value' is undefined so this check is safely skipped.
+    const wouldOverwriteUserValue = existing.value !== null && (defaultItem as any).value === null
+
+    if (wouldOverwriteUserValue) {
+      continue
+    }
+
+    // Unmodified and default has changed - safe to update to new default
+    await db
+      .update(table)
+      .set({
+        ...defaultItem,
+        defaultHash: defaultHashValue,
+      })
+      .where(eq(table[keyField], keyValue))
   }
 }
 
@@ -90,16 +107,20 @@ export const cleanupRemovedDefaults = async (db: AnyDrizzleDatabase) => {
   const now = nowIso()
   const currentModelIds = new Set(defaultModels.map((m) => m.id))
 
-  const systemModels = (await db
-    .select()
-    .from(modelsTable)
-    .where(and(eq(modelsTable.isSystem, 1), isNull(modelsTable.deletedAt)))) as Model[]
-  for (const row of systemModels) {
-    if (currentModelIds.has(row.id) || !row.defaultHash) {
+  // One SELECT serves both loops: the system-model scan below and the
+  // alive-model set used by the profile loop. Models soft-deleted in the scan
+  // are removed from the set in memory, matching the previous behavior of
+  // querying alive ids after the deletes.
+  const aliveModels = (await db.select().from(modelsTable).where(isNull(modelsTable.deletedAt))) as Model[]
+  const aliveModelIds = new Set(aliveModels.map((m) => m.id))
+
+  for (const row of aliveModels) {
+    if (row.isSystem !== 1 || currentModelIds.has(row.id) || !row.defaultHash) {
       continue
     }
     if (hashModel(row) === row.defaultHash) {
       await db.update(modelsTable).set({ deletedAt: now }).where(eq(modelsTable.id, row.id))
+      aliveModelIds.delete(row.id)
     }
   }
 
@@ -108,14 +129,6 @@ export const cleanupRemovedDefaults = async (db: AnyDrizzleDatabase) => {
   // its parent is no longer alive. Otherwise a user who renamed a retired
   // default model but left the profile at shipped defaults would be left with
   // an orphaned model.
-  const aliveModelIds = new Set(
-    (
-      (await db.select({ id: modelsTable.id }).from(modelsTable).where(isNull(modelsTable.deletedAt))) as {
-        id: string
-      }[]
-    ).map((r) => r.id),
-  )
-
   const profiles = (await db
     .select()
     .from(modelProfilesTable)

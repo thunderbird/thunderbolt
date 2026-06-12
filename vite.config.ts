@@ -33,6 +33,17 @@ export default defineConfig({
     sourcemap,
     rolldownOptions: {
       external: ['bun:sqlite'],
+      treeshake: {
+        moduleSideEffects: [
+          // @powersync/common doesn't declare "sideEffects" in its package.json, so every
+          // module re-exported by its lib/index.js barrel is treated as potentially
+          // side-effectful and eagerly retained in the entry chunk via @powersync/react's
+          // static import. The modules are pure declarations (classes/consts only), so
+          // mark them side-effect-free to let the unused sync-client machinery tree-shake
+          // out of the entry and live only in the lazy PowerSync chunk.
+          { test: /@powersync[\\/]common[\\/]lib/, sideEffects: false },
+        ],
+      },
       output: {
         // Distinct prefix for the entry chunk so size-limit can track the
         // FCP-blocking bytes separately from on-demand route chunks.
@@ -87,6 +98,15 @@ export default defineConfig({
       // Exposes PowerSync internal lib path so our custom SharedWorker can extend
       // SharedSyncImplementation (not in public exports map).
       'powersync-web-internal': path.resolve(__dirname, 'node_modules/@powersync/web/lib/src'),
+      // Resolve @powersync/common to its unbundled per-module build instead of the
+      // single-file dist/bundle.mjs. A single ES module can only live in one chunk,
+      // so the bundled build forces ALL of common retained anywhere in the app into
+      // the entry chunk (entry code imports parseQuery/WatchedQueryListenerEvent via
+      // @powersync/react + @powersync/tanstack-react-query). The per-module build
+      // lets rolldown keep only those helpers in the entry and move the sync client
+      // machinery into the lazy PowerSync chunk. Like powersync-web-internal above,
+      // lib/ is an internal path — verify it still exists when upgrading the package.
+      '@powersync/common': path.resolve(__dirname, 'node_modules/@powersync/common/lib/index.js'),
     },
     conditions: ['browser'],
   },

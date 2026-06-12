@@ -28,14 +28,14 @@ const authToken = 'test-auth-token'
 const mockReplace = mock()
 const mockClearLocalData = mock(() => Promise.resolve())
 
-// Partial mock: spread the REAL module so every other export (AppSchema, drizzleSchema,
-// ThunderboltConnector, getPowerSyncInstance, reconnectSync, syncEnabledChangeEvent, isSyncEnabled)
-// is preserved and can't break dependents if this registration leaks across files under
-// `--randomize`. Only `setSyncEnabled` is overridden with a local spy the suite asserts on.
+// Partial mock: spread the REAL module so every other export (getPowerSyncInstance,
+// reconnectSync, syncEnabledChangeEvent, isSyncEnabled) is preserved and can't break
+// dependents if this registration leaks across files under `--randomize`. Only
+// `setSyncEnabled` is overridden with a local spy the suite asserts on.
 // See docs/development/testing.md §65 and the sibling spread-mocks in use-pending-device-notification.test.tsx.
-const realPowersync = await import('@/db/powersync')
+const realPowersync = await import('@/db/powersync/sync-state')
 const mockSetSyncEnabled = mock(() => Promise.resolve())
-mock.module('@/db/powersync', () => ({
+mock.module('@/db/powersync/sync-state', () => ({
   ...realPowersync,
   setSyncEnabled: mockSetSyncEnabled,
 }))

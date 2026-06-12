@@ -6,7 +6,7 @@ import { useReducer, useEffect, useCallback } from 'react'
 import { check, type Update } from '@tauri-apps/plugin-updater'
 import { relaunch } from '@tauri-apps/plugin-process'
 import { isDesktop } from '@/lib/platform'
-import { getPowerSyncInstance } from '@/db/powersync'
+import { getPowerSyncInstance } from '@/db/powersync/sync-state'
 import { setPostUpdateFlag, clearPostUpdateFlag } from '@/lib/post-update-redirect'
 
 export type UpdateStatus = 'idle' | 'checking' | 'available' | 'downloading' | 'ready' | 'error'

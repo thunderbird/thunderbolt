@@ -4,11 +4,14 @@
 
 export { AppSchema, drizzleSchema } from './schema'
 export { ThunderboltConnector } from './connector'
+export { PowerSyncDatabaseImpl } from './database'
+// Re-exported for convenience inside the lazy-loaded PowerSync graph. Entry-bundle
+// code must import these from './sync-state' directly — importing this barrel pulls
+// the whole SDK into the entry chunk (defeats the dynamic import in src/db/database.ts).
 export {
-  PowerSyncDatabaseImpl,
   getPowerSyncInstance,
   isSyncEnabled,
   reconnectSync,
   setSyncEnabled,
   syncEnabledChangeEvent,
-} from './database'
+} from './sync-state'

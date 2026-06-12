@@ -6,7 +6,7 @@ import { createContext, useContext, useEffect, useRef, useState, type ReactNode 
 
 import { SignInModal } from '@/components/sign-in-modal'
 import { SyncSetupModal } from '@/components/sync-setup/sync-setup-modal'
-import { isSyncEnabled, setSyncEnabled } from '@/db/powersync'
+import { isSyncEnabled, setSyncEnabled } from '@/db/powersync/sync-state'
 import { needsSyncSetupWizard } from '@/db/encryption'
 import { showSignInModalEvent, signInSuccessEvent } from '@/hooks/use-credential-events'
 import { isSsoMode } from '@/lib/auth-mode'

@@ -775,13 +775,17 @@ export default function McpServersPage({ deps = {} }: { deps?: McpServersPageDep
       <div className="grid gap-4">
         {servers.map((server) => {
           const status = getConnectionStatus(server)
-          const tools = serverTools[server.id] || []
           const isEnabled = server.enabled === 1
           const oauthState = getOAuthCardState(server)
           const isAuthorizing = oauthState?.phase === 'authorizing'
           const showAuthorize = oauthState?.phase === 'needs-auth' || oauthState?.phase === 'error'
           const isAuthorized = oauthState?.phase === 'authorized'
           const conn = mcpServers.find((s) => s.id === server.id)
+          // Tools render only for the LIVE connection — after a drop the card
+          // shows its error state, never the previous connection's cached list.
+          // (During an in-place reconnect, e.g. re-authorize, isConnected stays
+          // true so the list doesn't blink.)
+          const tools = conn?.isConnected ? (serverTools[server.id] ?? []) : []
           // A genuine connection failure: enabled, not connected, has an error, and
           // not an OAuth needs-auth case (those get the Authorize affordance instead).
           const connectionError =

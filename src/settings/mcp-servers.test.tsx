@@ -469,6 +469,31 @@ describe('McpServersPage tools refresh after reconnect', () => {
     expect(screen.queryByText('alpha_tool')).not.toBeInTheDocument()
   })
 
+  it('hides cached tools and shows the error state after the connection drops', async () => {
+    const serverId = await addLiveServer(
+      queuedCreateClient([
+        async () => fakeClient(['alpha_tool']),
+        async () => Promise.reject(new Error('connection dropped')),
+      ]),
+    )
+
+    await ensureToolsExpanded()
+    await waitForElement(() => screen.queryByText('alpha_tool'))
+    expect(screen.getByText('alpha_tool')).toBeInTheDocument()
+
+    // Drop the connection: the failed reconnect leaves the server disconnected
+    // with an error — the card must not keep rendering the dead connection's tools.
+    await act(async () => {
+      await getMcp().reconnectServer(serverId)
+      await getClock().runAllAsync()
+    })
+
+    await waitForElement(() => screen.queryByText(/Could not connect to this server/))
+    expect(screen.getByRole('button', { name: 'Retry connection' })).toBeInTheDocument()
+    expect(screen.queryByText('Available Tools')).not.toBeInTheDocument()
+    expect(screen.queryByText('alpha_tool')).not.toBeInTheDocument()
+  })
+
   it('refetches tools after Retry connection restores a dropped server', async () => {
     const serverId = await addLiveServer(
       queuedCreateClient([

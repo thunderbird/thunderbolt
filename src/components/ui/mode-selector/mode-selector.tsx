@@ -54,7 +54,7 @@ export const ModeSelector = ({ modes, selectedMode, onModeChange, iconOnly = fal
     <div
       className={cn(
         'flex items-center rounded-lg cursor-pointer transition-colors text-[length:var(--font-size-sm)] border border-border',
-        iconOnly ? 'size-[var(--touch-height-sm)] justify-center' : 'gap-1.5 px-2.5 h-[var(--touch-height-sm)]',
+        iconOnly ? 'size-[var(--touch-height-control)] justify-center' : 'gap-1.5 px-2 h-[var(--touch-height-control)]',
         isOpen ? 'bg-accent' : 'hover:bg-accent/50',
       )}
     >

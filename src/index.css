@@ -60,6 +60,7 @@
   --touch-height-lg: 3rem; /* 48px mobile */
   --touch-height-default: 2.75rem; /* 44px mobile - primary touch target */
   --touch-height-sm: 2.5rem; /* 40px mobile */
+  --touch-height-control: 2.5rem; /* 40px mobile — prompt-area selectors/buttons; held at --min-touch-height */
 
   /* Icon sizes */
   --icon-size-default: 1.25rem; /* 20px mobile */
@@ -94,6 +95,7 @@
     --touch-height-lg: 2.5rem; /* 40px desktop */
     --touch-height-default: 2.25rem; /* 36px desktop */
     --touch-height-sm: 2rem; /* 32px desktop */
+    --touch-height-control: 1.75rem; /* 28px desktop — tightened prompt-area controls (THU-587) */
 
     /* Icon sizes */
     --icon-size-default: 1rem; /* 16px desktop */

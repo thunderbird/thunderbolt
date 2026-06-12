@@ -139,7 +139,7 @@ const executeInitializationSteps = async (httpClient?: HttpClient): Promise<Hand
 
   // Step 2b: Trivial first query. PowerSync defers its heavy ready gate (WASM
   // compile, OPFS open, schema replace) to the first query — absorb it here so
-  // step4 measures only the reconcile work itself (THU-595).
+  // step4 measures only the reconcile work itself.
   await time('step2b_db_ready', async () => {
     await db.get(sql`select 1`)
   })
@@ -213,9 +213,9 @@ const executeInitializationSteps = async (httpClient?: HttpClient): Promise<Hand
   const initTotalMs = Math.round(performance.now() - totalStartedAt)
   console.info(`[init] complete (total ${initTotalMs}ms)`)
 
-  // Report the full startup timeline to PostHog (THU-595). This must run after
-  // step 8 — the PostHog client only exists from there on; if the user opted out
-  // of data collection, trackEvent no-ops.
+  // Report the full startup timeline to PostHog. This must run after step 8 —
+  // the PostHog client only exists from there on; if the user opted out of data
+  // collection, trackEvent no-ops.
   const initTimingPayload = {
     ...getInitTimingPayload(),
     init_total_ms: initTotalMs,

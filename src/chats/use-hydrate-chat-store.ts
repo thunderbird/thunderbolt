@@ -40,7 +40,7 @@ type UseHydrateChatStoreParams = {
 
 /**
  * Reports the time from navigation start until the first chat is usable
- * (THU-595 startup telemetry). Fires at most once per app session.
+ * (startup telemetry). Fires at most once per app session.
  */
 const trackChatReadyOnce = () => {
   const chatReadyMs = markChatReady()

@@ -256,6 +256,49 @@ describe('connectAcpAdapter — handshake failure modes', () => {
     // The body must close so the AI SDK leaves the streaming state.
     expect(sse).toContain('[CLOSED]')
   })
+
+  it('folds resolved skill instructions into the prompt ahead of the user text', async () => {
+    const { transport } = buildFakeTransport()
+    const { FakeConnection, calls, releasePrompts } = buildFakeConnection()
+
+    const adapter = await connectAcpAdapter(remoteAgent, baseCtx(), {
+      openTransport: async () => transport,
+      ClientSideConnection: FakeConnection as never,
+    })
+
+    const response = await adapter.fetch(
+      promptInit('/tell-a-joke'),
+      threadCtx('t1', { skillInstructions: ['Tell a joke about cats, then give a time and place to tell it.'] }),
+    )
+    await act(async () => {
+      releasePrompts()
+      await getClock().runAllAsync()
+      await readSse(response)
+    })
+
+    const sent = calls.prompt[0]?.prompt?.[0] as { type: string; text: string }
+    expect(sent.text).toBe('Tell a joke about cats, then give a time and place to tell it.\n\n/tell-a-joke')
+  })
+
+  it('sends the user text unchanged when no skill instructions resolved', async () => {
+    const { transport } = buildFakeTransport()
+    const { FakeConnection, calls, releasePrompts } = buildFakeConnection()
+
+    const adapter = await connectAcpAdapter(remoteAgent, baseCtx(), {
+      openTransport: async () => transport,
+      ClientSideConnection: FakeConnection as never,
+    })
+
+    const response = await adapter.fetch(promptInit('just a normal message'), threadCtx('t1'))
+    await act(async () => {
+      releasePrompts()
+      await getClock().runAllAsync()
+      await readSse(response)
+    })
+
+    const sent = calls.prompt[0]?.prompt?.[0] as { type: string; text: string }
+    expect(sent.text).toBe('just a normal message')
+  })
 })
 
 describe('connectAcpAdapter — per-thread session multiplexing over one connection', () => {

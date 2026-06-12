@@ -60,6 +60,12 @@ export type AgentAdapterContext = {
   mcpClients: MCPClient[]
   httpClient: HttpClient
   getProxyFetch: () => FetchFn
+  /** Resolved instruction bodies for any user skills (`/slug`) referenced in
+   *  the prompt. The built-in pipeline injects these as system messages
+   *  (`ai/fetch.ts`); ACP agents only receive prompt text, so the adapter folds
+   *  them into the prompt instead — keeping skills behaving the same across
+   *  agents. Empty/omitted when no skill token resolved. */
+  skillInstructions?: string[]
   /** Called when an ACP adapter created a fresh `sessionId` via `session/new`.
    *  The chat layer persists it on `chatThreads.acpSessionId` so future loads
    *  can call `session/load` when the agent supports it. */

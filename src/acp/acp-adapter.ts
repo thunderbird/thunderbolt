@@ -121,6 +121,14 @@ const extractUserPrompt = (init: RequestInit): string => {
     .join('\n')
 }
 
+/** Fold resolved user-skill instructions into the prompt text. ACP has no
+ *  separate system channel (the prompt is content blocks), so we prepend the
+ *  instructions ahead of the user's message — mirroring how the built-in
+ *  pipeline prepends them as system messages, just over the only channel ACP
+ *  gives us. No instructions → the user text is sent unchanged. */
+const composeAcpPrompt = (skillInstructions: string[] | undefined, userText: string): string =>
+  skillInstructions && skillInstructions.length > 0 ? `${skillInstructions.join('\n\n')}\n\n${userText}` : userText
+
 export type AcpAdapterDeps = {
   /** Override transport opening for tests. Production omits and the factory
    *  builds a WebSocket transport. */
@@ -300,7 +308,7 @@ export const connectAcpAdapter = async (
   }
 
   const fetch = async (init: RequestInit, context: AgentAdapterContext): Promise<Response> => {
-    const promptText = extractUserPrompt(init)
+    const promptText = composeAcpPrompt(context.skillInstructions, extractUserPrompt(init))
     const sessionId = await resolveThreadSession(context)
 
     const { body, translator, close } = createTranslatorStream({

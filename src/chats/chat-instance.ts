@@ -7,6 +7,8 @@ import { getOrConnectAdapter as defaultGetOrConnectAdapter } from '@/acp/adapter
 import type { AcpCommand, SessionSideEffect } from '@/acp/translators/acp-to-ai-sdk'
 import { useAgentCommandsStore } from '@/acp/agent-commands-store'
 import { updateChatThread as defaultUpdateChatThread } from '@/dal/chat-threads'
+import { getAllSkills as defaultGetAllSkills } from '@/dal'
+import { extractLastUserText, resolveSkillTokenInstructions } from '@/skills/resolve-skill-system-messages'
 import { getDb as defaultGetDb } from '@/db/database'
 import { isRateLimitError } from '@/lib/error-utils'
 import type { HttpClient } from '@/lib/http'
@@ -77,6 +79,7 @@ export type CreateChatInstanceDeps = {
   connectToAgent?: typeof defaultConnectToAgent
   updateChatThread?: typeof defaultUpdateChatThread
   getDb?: typeof defaultGetDb
+  getAllSkills?: typeof defaultGetAllSkills
 }
 
 /**
@@ -109,8 +112,30 @@ export const createAgentRoutingFetch = (
   const getOrConnectAdapter = deps.getOrConnectAdapter ?? defaultGetOrConnectAdapter
   const updateChatThread = deps.updateChatThread ?? defaultUpdateChatThread
   const getDb = deps.getDb ?? defaultGetDb
+  const getAllSkills = deps.getAllSkills ?? defaultGetAllSkills
 
   let routedAgentId: string | null = null
+
+  /** Resolve user-skill (`/slug`) instructions from the latest user message, so
+   *  ACP agents can receive them in the prompt (the built-in pipeline injects
+   *  these itself in `ai/fetch.ts`, so this only runs for non-built-in agents).
+   *  Cheap-exits before touching the DB when there's no message or no `/` token. */
+  const resolveAcpSkillInstructions = async (messages: ThunderboltUIMessage[] | undefined): Promise<string[]> => {
+    if (!messages?.length) {
+      return []
+    }
+    const lastUserText = extractLastUserText(messages)
+    if (!lastUserText.includes('/')) {
+      return []
+    }
+    const instructionBySlug = new Map<string, string>()
+    for (const skill of await getAllSkills(getDb())) {
+      if (skill.enabled === 1 && skill.name && skill.instruction) {
+        instructionBySlug.set(skill.name, skill.instruction)
+      }
+    }
+    return resolveSkillTokenInstructions(lastUserText, instructionBySlug)
+  }
 
   return Object.assign(
     async (_requestInfo: RequestInfo | URL, init?: RequestInit) => {
@@ -171,6 +196,11 @@ export const createAgentRoutingFetch = (
         useChatStore.getState().updateSession(id, { connectionStatus: 'ready', connectionError: null })
       }
 
+      // Built-in re-resolves skill instructions itself (ai/fetch.ts); for ACP
+      // agents we resolve here and fold them into the prompt via the adapter.
+      const skillInstructions =
+        selectedAgent.type === 'built-in' ? undefined : await resolveAcpSkillInstructions(requestBody.messages)
+
       return adapter.fetch(init, {
         threadId: id,
         chatThread,
@@ -181,6 +211,7 @@ export const createAgentRoutingFetch = (
         mcpClients,
         httpClient,
         getProxyFetch,
+        skillInstructions,
         onAcpSessionId: persistAcpSessionId,
         requestPermission: (request) => requestPermissionViaStore(id, request),
         onSessionSideEffect: applySessionSideEffect,

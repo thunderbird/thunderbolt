@@ -347,4 +347,47 @@ describe('createAgentRoutingFetch', () => {
 
     expect(updateChatThread).not.toHaveBeenCalled()
   })
+
+  it('resolves user-skill instructions into the fetch context for a remote-acp agent', async () => {
+    resetStore()
+    const { adapter, fetch: adapterFetch } = buildFakeAdapter(remoteAgent)
+    const connectToAgent = mock(async () => adapter)
+    const getAllSkills = mock(async () => [
+      { id: 's1', name: 'tell-a-joke', description: 'd', instruction: 'Tell a cat joke.', enabled: 1 },
+    ])
+    hydrateSessionWith('t-skill', remoteAgent)
+
+    const customFetch = createAgentRoutingFetch('t-skill', saveMessages, httpClient, getProxyFetch, {
+      connectToAgent: connectToAgent as never,
+      getAllSkills: getAllSkills as never,
+      getDb: (() => ({})) as never,
+    })
+
+    const body = JSON.stringify({ messages: [{ role: 'user', parts: [{ type: 'text', text: '/tell-a-joke' }] }] })
+    await customFetch('/chat', { method: 'POST', body })
+
+    const [, ctx] = adapterFetch.mock.calls[0] as unknown as [unknown, { skillInstructions?: string[] }]
+    expect(ctx.skillInstructions).toEqual(['Tell a cat joke.'])
+  })
+
+  it('does not resolve skill instructions for the built-in agent (it injects them itself)', async () => {
+    resetStore()
+    const { adapter, fetch: adapterFetch } = buildFakeAdapter(builtInAgent)
+    const connectToAgent = mock(async () => adapter)
+    const getAllSkills = mock(async () => [])
+    hydrateSessionWith('t-builtin-skill', builtInAgent)
+
+    const customFetch = createAgentRoutingFetch('t-builtin-skill', saveMessages, httpClient, getProxyFetch, {
+      connectToAgent: connectToAgent as never,
+      getAllSkills: getAllSkills as never,
+      getDb: (() => ({})) as never,
+    })
+
+    const body = JSON.stringify({ messages: [{ role: 'user', parts: [{ type: 'text', text: '/tell-a-joke' }] }] })
+    await customFetch('/chat', { method: 'POST', body })
+
+    const [, ctx] = adapterFetch.mock.calls[0] as unknown as [unknown, { skillInstructions?: string[] }]
+    expect(ctx.skillInstructions).toBeUndefined()
+    expect(getAllSkills).not.toHaveBeenCalled()
+  })
 })

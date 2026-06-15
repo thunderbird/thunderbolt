@@ -90,10 +90,14 @@ const WorkspaceActions = ({ workspace }: { workspace: Workspace }) => {
     }
     setBusy(true)
     try {
+      // Append a short random suffix so a second duplicate of the same source
+      // (or any existing `{slug}-copy`) doesn't collide on the server-side
+      // slug unique index — the upload would otherwise reject with
+      // WORKSPACE_SLUG_TAKEN and leave the local row unsynced. (#971 r3391725310)
       const newId = await duplicateWorkspace(db, workspace, {
         creatorUserId: userId,
         name: `${workspace.name} Copy`,
-        slug: workspace.slug ? `${workspace.slug}-copy` : null,
+        slug: workspace.slug ? `${workspace.slug}-copy-${crypto.randomUUID().slice(0, 4)}` : null,
         icon: workspace.icon,
       })
       navigate(`/w/${newId}/`)

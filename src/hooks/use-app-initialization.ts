@@ -46,10 +46,6 @@ const initializeDatabase = async (appDirPath: string): Promise<{ db: AnyDrizzleD
   return { db, database }
 }
 
-const reconcileDefaultSettings = async (db: AnyDrizzleDatabase): Promise<void> => {
-  await reconcileDefaults(db)
-}
-
 type TrayInitResult = { tray: TrayIcon | undefined; window: Window | undefined }
 
 const initializeTray = async (): Promise<TrayInitResult> => {
@@ -152,7 +148,7 @@ const executeInitializationSteps = async (httpClient?: HttpClient): Promise<Hand
 
   // Step 4: Reconcile defaults
   try {
-    await time('step4_reconcile_defaults', () => reconcileDefaultSettings(db))
+    await time('step4_reconcile_defaults', () => reconcileDefaults(db))
   } catch (error) {
     console.error('Failed to reconcile default settings:', error)
     const reconcileError = createHandleError('RECONCILE_DEFAULTS_FAILED', 'Failed to reconcile default settings', error)

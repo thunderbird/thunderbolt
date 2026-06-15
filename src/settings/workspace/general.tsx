@@ -37,7 +37,7 @@ import { useActiveCloudUrl, useTrustDomainRegistry } from '@/stores/trust-domain
 import { zodResolver } from '@hookform/resolvers/zod'
 import dayjs from 'dayjs'
 import { Calendar, User } from 'lucide-react'
-import { useCallback, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { useNavigate } from 'react-router'
 
@@ -151,6 +151,16 @@ const RenameWorkspaceForm = ({ workspace }: { workspace: Workspace }) => {
     defaultValues: { name: workspace.name, slug: initialSlug, icon: workspace.icon },
     mode: 'onChange',
   })
+
+  // Reflect remote updates (another device renamed / changed icon / changed
+  // slug) into the form baseline so a subsequent autosave doesn't clobber
+  // them. `keepDirtyValues: true` preserves any field the user is actively
+  // editing — the user wins, and the next autosave then PATCHes against the
+  // freshest server value. (#971 r3391725307)
+  useEffect(() => {
+    const nextSlug = workspace.slug ?? slugifyWorkspaceName(workspace.name)
+    form.reset({ name: workspace.name, slug: nextSlug, icon: workspace.icon }, { keepDirtyValues: true })
+  }, [workspace.name, workspace.slug, workspace.icon, form])
 
   // Shared save path used by debounced onChange and immediate onBlur. Reads
   // current form state on every call so the timer never fires with stale args.

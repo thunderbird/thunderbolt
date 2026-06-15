@@ -67,6 +67,16 @@ export const CreateWorkspaceModal = ({ open, onOpenChange, onCreated }: CreateWo
     previouslyOpenRef.current = open
   }, [open, form])
 
+  // Tracks `open` synchronously so the submit handler can skip the post-create
+  // callback when the user dismissed the modal during the in-flight transaction.
+  // Otherwise `onCreated` runs against a closed flow, opens the invite modal,
+  // and navigates the user into a workspace they thought they'd cancelled out of.
+  // (#965 r3382104755)
+  const openRef = useRef(open)
+  useEffect(() => {
+    openRef.current = open
+  }, [open])
+
   const userId = session?.user?.id
   const creatorEmail = session?.user?.email ?? undefined
   const slugPrefix = formatWorkspaceSlugPrefix(cloudUrl)
@@ -84,6 +94,12 @@ export const CreateWorkspaceModal = ({ open, onOpenChange, onCreated }: CreateWo
       slug: slugifyWorkspaceName(values.slug) || null,
       icon: values.icon,
     })
+    // The local DB transaction commits regardless — the workspace will show up
+    // in the user's list once they reopen the selector. We just skip the
+    // navigation + invite-modal handoff when they've already moved on.
+    if (!openRef.current) {
+      return
+    }
     onCreated(workspaceId)
   })
 

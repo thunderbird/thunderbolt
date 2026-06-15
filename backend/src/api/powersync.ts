@@ -102,6 +102,9 @@ const issuePowerSyncToken = async (
   const rawDeviceName = request.headers.get('x-device-name')?.trim()
   const deviceName =
     rawDeviceName && rawDeviceName.length > 0 && rawDeviceName.length <= 100 ? rawDeviceName : 'Unknown device'
+  const rawAppVersion = request.headers.get('x-app-version')?.trim()
+  // Cap to a sane length so a malformed/oversized header never bloats the row.
+  const appVersion = rawAppVersion && rawAppVersion.length > 0 && rawAppVersion.length <= 32 ? rawAppVersion : undefined
 
   const now = new Date()
   const upserted = await upsertDevice(database, {
@@ -111,6 +114,7 @@ const issuePowerSyncToken = async (
     lastSeen: now,
     createdAt: now,
     ...(!settings.e2eeEnabled ? { trusted: true } : {}),
+    ...(appVersion ? { appVersion } : {}),
   })
 
   if (upserted.length === 0 || upserted[0].userId !== userId) {

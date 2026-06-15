@@ -76,6 +76,7 @@ const powersyncSettings: Settings = {
   haystackApiKey: '',
   haystackWorkspace: '',
   haystackPipelines: '',
+  minAppVersion: '',
 }
 
 describe('PowerSync API', () => {
@@ -789,6 +790,124 @@ describe('PowerSync API', () => {
       const devices = await db.select().from(devicesTable).where(eq(devicesTable.id, 'device-1-char'))
       expect(devices).toHaveLength(1)
       expect(devices[0]?.name).toBe('X')
+    })
+
+    it('persists app_version when X-App-Version is provided on token request', async () => {
+      const userId = 'user-device-app-version'
+      const now = new Date()
+      const expiresAt = new Date(now.getTime() + 3600 * 1000)
+
+      await db.insert(userTable).values({
+        id: userId,
+        name: 'App Version User',
+        email: 'device-app-version@example.com',
+        emailVerified: true,
+        createdAt: now,
+        updatedAt: now,
+      })
+
+      await db.insert(sessionTable).values({
+        id: 'session-device-app-version',
+        expiresAt,
+        token: 'bearer-device-app-version',
+        createdAt: now,
+        updatedAt: now,
+        userId,
+      })
+      await insertTrustedDevice('device-app-version', userId)
+
+      const response = await app.handle(
+        new Request('http://localhost/powersync/token', {
+          headers: {
+            Authorization: `Bearer ${signToken('bearer-device-app-version')}`,
+            'x-device-id': 'device-app-version',
+            'x-app-version': '0.1.87',
+          },
+        }),
+      )
+      expect(response.status).toBe(200)
+
+      const devices = await db.select().from(devicesTable).where(eq(devicesTable.id, 'device-app-version'))
+      expect(devices).toHaveLength(1)
+      expect(devices[0]?.appVersion).toBe('0.1.87')
+    })
+
+    it('leaves app_version unchanged when X-App-Version is omitted', async () => {
+      const userId = 'user-device-app-version-keep'
+      const now = new Date()
+      const expiresAt = new Date(now.getTime() + 3600 * 1000)
+
+      await db.insert(userTable).values({
+        id: userId,
+        name: 'App Version Keep User',
+        email: 'device-app-version-keep@example.com',
+        emailVerified: true,
+        createdAt: now,
+        updatedAt: now,
+      })
+
+      await db.insert(sessionTable).values({
+        id: 'session-device-app-version-keep',
+        expiresAt,
+        token: 'bearer-device-app-version-keep',
+        createdAt: now,
+        updatedAt: now,
+        userId,
+      })
+      await insertTrustedDevice('device-app-version-keep', userId)
+      await db.update(devicesTable).set({ appVersion: '0.1.80' }).where(eq(devicesTable.id, 'device-app-version-keep'))
+
+      const response = await app.handle(
+        new Request('http://localhost/powersync/token', {
+          headers: {
+            Authorization: `Bearer ${signToken('bearer-device-app-version-keep')}`,
+            'x-device-id': 'device-app-version-keep',
+          },
+        }),
+      )
+      expect(response.status).toBe(200)
+
+      const devices = await db.select().from(devicesTable).where(eq(devicesTable.id, 'device-app-version-keep'))
+      expect(devices[0]?.appVersion).toBe('0.1.80')
+    })
+
+    it('ignores X-App-Version when value exceeds 32 characters', async () => {
+      const userId = 'user-device-app-version-long'
+      const now = new Date()
+      const expiresAt = new Date(now.getTime() + 3600 * 1000)
+
+      await db.insert(userTable).values({
+        id: userId,
+        name: 'App Version Long User',
+        email: 'device-app-version-long@example.com',
+        emailVerified: true,
+        createdAt: now,
+        updatedAt: now,
+      })
+
+      await db.insert(sessionTable).values({
+        id: 'session-device-app-version-long',
+        expiresAt,
+        token: 'bearer-device-app-version-long',
+        createdAt: now,
+        updatedAt: now,
+        userId,
+      })
+      await insertTrustedDevice('device-app-version-long', userId)
+
+      const response = await app.handle(
+        new Request('http://localhost/powersync/token', {
+          headers: {
+            Authorization: `Bearer ${signToken('bearer-device-app-version-long')}`,
+            'x-device-id': 'device-app-version-long',
+            'x-app-version': 'a'.repeat(33),
+          },
+        }),
+      )
+      expect(response.status).toBe(200)
+
+      const devices = await db.select().from(devicesTable).where(eq(devicesTable.id, 'device-app-version-long'))
+      expect(devices[0]?.appVersion).toBeNull()
     })
   })
 

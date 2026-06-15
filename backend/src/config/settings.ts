@@ -94,6 +94,10 @@ const settingsSchema = z
     // E2E encryption — when true, devices must complete the trust flow before syncing
     e2eeEnabled: z.boolean().default(false),
 
+    // Minimum app version clients must run. Empty string disables enforcement.
+    // Surfaced to the frontend via GET /config; clients below this hard-block until they update.
+    minAppVersion: z.string().default(''),
+
     swaggerEnabled: z.boolean().default(false),
 
     // Rate limiting
@@ -192,6 +196,7 @@ const parseSettings = (): Settings => {
       process.env.CORS_EXPOSE_HEADERS ||
       'set-auth-token,X-Proxy-Final-Url,X-Proxy-Passthrough-Content-Type,X-Proxy-Passthrough-Mcp-Session-Id,X-Proxy-Passthrough-Mcp-Protocol-Version,X-Proxy-Passthrough-Location,X-Proxy-Passthrough-Anthropic-Version,WWW-Authenticate',
     e2eeEnabled: process.env.E2EE_ENABLED === 'true',
+    minAppVersion: process.env.MIN_APP_VERSION || '',
     swaggerEnabled: process.env.SWAGGER_ENABLED === 'true',
     rateLimitEnabled: process.env.RATE_LIMIT_ENABLED !== 'false',
     trustedProxy: (process.env.TRUSTED_PROXY || '').toLowerCase(),

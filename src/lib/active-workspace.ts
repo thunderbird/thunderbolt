@@ -173,10 +173,38 @@ export const useActiveWorkspace = (): Workspace | null => {
 }
 
 /**
- * Convenience wrapper for the common case — just the id. Tracks the same URL
- * + personal-fallback rule as `useActiveWorkspace`.
+ * Convenience wrapper for the common case — just the id. URL-derived ids
+ * surface IMMEDIATELY (without waiting for the local `workspaces` row to
+ * materialize), keeping the hook in lockstep with the non-React
+ * `getActiveWorkspaceId` async helper. The full `useActiveWorkspace()` row
+ * is still loaded in the background for consumers that need name/icon/etc.
+ *
+ * For unprefixed paths (personal workspace), the id only resolves once the
+ * row is in the local DB — `WorkspaceGate` is the upstream readiness barrier
+ * so consumers inside it can treat the result as eventually-non-null.
+ * (#961 r3375770853)
  */
-export const useActiveWorkspaceId = (): string | null => useActiveWorkspace()?.id ?? null
+export const useActiveWorkspaceId = (): string | null => {
+  const pathname = useReactivePathname()
+  const fromUrl = matchWorkspaceIdInPath(pathname)
+  const workspace = useActiveWorkspace()
+  return fromUrl ?? workspace?.id ?? null
+}
+
+/**
+ * Subpath to use when navigating BETWEEN workspaces (workspace selector swap
+ * or `WorkspaceMembershipGate` redirect). Strips the `/w/<id>` prefix, then
+ * collapses chat-detail paths to `/chats/new`: chat ids are per-workspace, so
+ * carrying one across would land the user on Not Found in the target.
+ * (#961 r3404612032 + r3404615075)
+ */
+export const crossWorkspaceSubPath = (pathname: string): string => {
+  const subPath = stripWorkspacePrefix(pathname)
+  if (/^\/chats(\/|$)/.test(subPath)) {
+    return '/chats/new'
+  }
+  return subPath
+}
 
 /**
  * Build a URL for `path` in the active workspace. Returns `path` unchanged

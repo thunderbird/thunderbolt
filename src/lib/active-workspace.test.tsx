@@ -14,6 +14,7 @@ import {
   waitForElement,
 } from '@/test-utils/powersync-reactivity-test'
 import {
+  crossWorkspaceSubPath,
   stripWorkspacePrefix,
   toWorkspaceUrl,
   useActiveWorkspace,
@@ -84,6 +85,21 @@ describe('stripWorkspacePrefix', () => {
   })
 })
 
+describe('crossWorkspaceSubPath', () => {
+  it('collapses chat-detail paths to /chats/new across the switch', () => {
+    expect(crossWorkspaceSubPath(`/w/${otherWsId}/chats/abc-123`)).toBe('/chats/new')
+    expect(crossWorkspaceSubPath('/chats/abc-123')).toBe('/chats/new')
+    // The bare /chats route is also collapsed for consistency.
+    expect(crossWorkspaceSubPath(`/w/${otherWsId}/chats`)).toBe('/chats/new')
+  })
+
+  it('passes through non-chat paths', () => {
+    expect(crossWorkspaceSubPath(`/w/${otherWsId}/settings/preferences`)).toBe('/settings/preferences')
+    expect(crossWorkspaceSubPath('/tasks')).toBe('/tasks')
+    expect(crossWorkspaceSubPath(`/w/${otherWsId}/`)).toBe('/')
+  })
+})
+
 describe('useActiveWorkspaceId reactivity', () => {
   beforeAll(async () => {
     await setupTestDatabase()
@@ -122,6 +138,22 @@ describe('useActiveWorkspaceId reactivity', () => {
     })
     await waitForElement(() => screen.queryByTestId(`active-id-${wsId}`))
     expect(screen.getByTestId(`active-id-${wsId}`)).toBeInTheDocument()
+  })
+
+  it('surfaces the URL-encoded id immediately even before the workspace row materializes', async () => {
+    // Regression: the hook previously waited for the local `workspaces` row to
+    // load before exposing an id, while the non-React `getActiveWorkspaceId`
+    // returned the URL segment immediately. The split delayed sidebar queries
+    // / OAuth completion / automations. (#961 r3375770853)
+    renderWithReactivity(<ActiveIdProbe />, {
+      route: `/w/${otherWsId}/chats/new`,
+      routePath: '*',
+      tables: ['workspaces'],
+      wrapper: DbWrapper,
+    })
+    // No row inserted for `otherWsId` — the URL id should still surface.
+    await waitForElement(() => screen.queryByTestId(`active-id-${otherWsId}`))
+    expect(screen.getByTestId(`active-id-${otherWsId}`)).toBeInTheDocument()
   })
 
   it('resolves to the URL-encoded workspace id when /w/<id>/ is present', async () => {

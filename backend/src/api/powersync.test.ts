@@ -1769,6 +1769,53 @@ describe('PowerSync API', () => {
       expect(rows[0]?.userId).toBe(userA)
     })
 
+    it('strips app_version from PATCH on devices (server-managed via X-App-Version)', async () => {
+      const userId = 'user-patch-device-app-version'
+      const now = new Date()
+      const expiresAt = new Date(now.getTime() + 3600 * 1000)
+
+      await db.insert(userTable).values({
+        id: userId,
+        name: 'Patch App Version User',
+        email: 'patch-app-version@example.com',
+        emailVerified: true,
+        createdAt: now,
+        updatedAt: now,
+      })
+      await db.insert(sessionTable).values({
+        id: 'session-patch-device-app-version',
+        expiresAt,
+        token: 'bearer-patch-device-app-version',
+        createdAt: now,
+        updatedAt: now,
+        userId,
+      })
+      await insertTrustedDevice('test-device-id', userId)
+      await db.update(devicesTable).set({ appVersion: '0.1.90' }).where(eq(devicesTable.id, 'test-device-id'))
+
+      const response = await app.handle(
+        new Request('http://localhost/powersync/upload', {
+          method: 'PUT',
+          headers: uploadHeaders('bearer-patch-device-app-version'),
+          body: JSON.stringify({
+            operations: [
+              {
+                op: 'PATCH' as const,
+                type: 'devices',
+                id: 'test-device-id',
+                data: { app_version: '99.9.9', name: 'Renamed Device' },
+              },
+            ],
+          }),
+        }),
+      )
+      expect(response.status).toBe(200)
+
+      const devices = await db.select().from(devicesTable).where(eq(devicesTable.id, 'test-device-id'))
+      expect(devices[0]?.appVersion).toBe('0.1.90')
+      expect(devices[0]?.name).toBe('Renamed Device')
+    })
+
     it('blocks DELETE on devices table (must use dedicated revoke API)', async () => {
       const userId = 'user-delete-device-blocked'
       const deviceId = 'device-to-delete-blocked'

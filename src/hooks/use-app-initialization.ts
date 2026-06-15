@@ -3,9 +3,11 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { fetchConfig } from '@/api/config'
+import { useConfigStore } from '@/api/config-store'
 import type { HttpClient } from '@/contexts'
 import { getSettings } from '@/dal'
 import { getAuthToken } from '@/lib/auth-token'
+import { compareSemver } from '@/lib/compare-semver'
 import { Database, getCurrentDatabase, setDatabase } from '@/db/database'
 import type { AnyDrizzleDatabase } from '@/db/database-interface'
 import { getLocalSetting } from '@/stores/local-settings-store'
@@ -101,6 +103,22 @@ const executeInitializationSteps = async (httpClient?: HttpClient): Promise<Hand
   // reactively from the store later), so it overlaps with the steps below and
   // is only awaited at the end to land its duration in app_init_timing.
   const fetchConfigPromise = time('step0_fetch_config', () => fetchConfig(getLocalSetting('cloudUrl'), httpClient))
+
+  // Step 0b: Enforce minimum app version before touching the DB. If the server
+  // requires a newer client, surface UPGRADE_REQUIRED so the app renders the
+  // hard-block screen and skips DB/sync init entirely. Bypasses when the version
+  // strings are unparseable (compareSemver returns 0 in that case).
+  const minAppVersion = useConfigStore.getState().config.minAppVersion
+  const appVersion = import.meta.env.VITE_APP_VERSION
+  if (minAppVersion && appVersion && compareSemver(appVersion, minAppVersion) < 0) {
+    return {
+      success: false,
+      error: createHandleError(
+        'UPGRADE_REQUIRED',
+        `App version ${appVersion} is below the required minimum ${minAppVersion}`,
+      ),
+    }
+  }
 
   // Step 1: App directory creation
   let appDirPath: string

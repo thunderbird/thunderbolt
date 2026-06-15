@@ -59,6 +59,9 @@ export const getAuthenticatedHeaders = (): Record<string, string> => {
     headers['X-Device-ID'] = deviceId
     headers['X-Device-Name'] = getDeviceDisplayName()
   }
+  if (import.meta.env.VITE_APP_VERSION) {
+    headers['X-App-Version'] = import.meta.env.VITE_APP_VERSION
+  }
   return headers
 }
 

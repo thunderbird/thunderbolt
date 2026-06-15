@@ -13,6 +13,7 @@ export type HandleErrorCode =
   | 'HTTP_CLIENT_INIT_FAILED'
   | 'CANARY_EXTRACTION_FAILED'
   | 'SYNC_ENABLE_FAILED'
+  | 'UPGRADE_REQUIRED'
   | 'UNKNOWN_ERROR'
 
 export type HandleError = {

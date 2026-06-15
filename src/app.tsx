@@ -37,6 +37,8 @@ import { useMcpSync } from '@/hooks/use-mcp-sync'
 import { PostHogProvider } from '@/lib/posthog'
 import { ThemeProvider } from '@/lib/theme-provider'
 import { AppErrorScreen } from './components/app-error-screen'
+import { UpgradeRequired } from './components/upgrade-required'
+import { useConfigStore } from '@/api/config-store'
 import { AuthGate } from './components/auth-gate'
 import { OnboardingDialog } from './components/onboarding/onboarding-dialog'
 import { WelcomeDialog } from './components/welcome-dialog'
@@ -226,7 +228,17 @@ export const App = () => {
     }
   }, [])
 
+  const minAppVersion = useConfigStore((s) => s.config.minAppVersion)
+
   const renderAppContent = () => {
+    if (initError?.code === 'UPGRADE_REQUIRED') {
+      return (
+        <UpgradeRequired
+          currentVersion={import.meta.env.VITE_APP_VERSION ?? 'unknown'}
+          minVersion={minAppVersion ?? 'unknown'}
+        />
+      )
+    }
     if (initError) {
       return <AppErrorScreen error={initError} isClearingDatabase={isInitializing} onClearDatabase={clearDatabase} />
     }

@@ -231,4 +231,42 @@ describe('signOutAndWipe', () => {
 
     expect(onComplete).toHaveBeenCalledTimes(1)
   })
+
+  it('clears credentials AFTER signOut so the server can revoke the session', async () => {
+    // Regression: the previous version cleared the auth token inside
+    // clearLocalData (before signOut), so the /sign-out HTTP call went out
+    // bearer-less and the BE never revoked. Order has to be
+    // wipe → signOut → clearAuthToken/clearDeviceId → onComplete.
+    const signOut = mock(async () => {
+      calls.push('signOut')
+    })
+    const onComplete = mock(() => {
+      calls.push('onComplete')
+    })
+
+    await signOutAndWipe({ signOut, onComplete, ...deps })
+
+    const signOutIdx = calls.indexOf('signOut')
+    const authTokenIdx = calls.indexOf('clearAuthToken')
+    const deviceIdIdx = calls.indexOf('clearDeviceId')
+    const onCompleteIdx = calls.indexOf('onComplete')
+
+    expect(signOutIdx).toBeGreaterThan(-1)
+    expect(authTokenIdx).toBeGreaterThan(signOutIdx)
+    expect(deviceIdIdx).toBeGreaterThan(signOutIdx)
+    expect(onCompleteIdx).toBeGreaterThan(authTokenIdx)
+    expect(onCompleteIdx).toBeGreaterThan(deviceIdIdx)
+  })
+
+  it('still clears credentials on the revoked-device path (no signOut)', async () => {
+    // RevokedDeviceModal doesn't pass `signOut` (the server already
+    // invalidated the session). The deferred-credential clear still has to
+    // run so the local token is wiped.
+    const onComplete = mock(() => {})
+
+    await signOutAndWipe({ onComplete, ...deps })
+
+    expect(clearAuthToken).toHaveBeenCalledTimes(1)
+    expect(clearDeviceId).toHaveBeenCalledTimes(1)
+  })
 })

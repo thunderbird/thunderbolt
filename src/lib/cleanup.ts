@@ -147,14 +147,25 @@ export const signOutAndWipe = async ({
   signOut?: () => Promise<void>
   onComplete: () => void
 } & CleanupDeps): Promise<void> => {
-  // Wipe local data BEFORE calling signOut so that Better Auth's session cache
-  // stays populated during the wipe. If signOut ran first, Better Auth would
-  // immediately set useSession() → null, letting AuthGate redirect to
-  // /sso-redirect (SSO mode) or /waitlist between the awaits inside
-  // clearLocalData — potentially kicking off a new IdP sign-in flow before
-  // onComplete() can navigate away.
+  // Two ordering constraints have to hold together:
+  //   1. The wipe runs BEFORE signOut so Better Auth's session cache stays
+  //      populated during it — otherwise useSession() flips to null mid-wipe
+  //      and AuthGate could redirect to /sso-redirect (SSO) or /waitlist
+  //      between awaits, kicking off a new IdP sign-in before onComplete()
+  //      navigates away.
+  //   2. The auth token has to stay present THROUGH signOut() so the HTTP
+  //      call to /sign-out is authenticated and the server can revoke the
+  //      session row. Clearing it before signOut() (as the previous version
+  //      did, inside clearLocalData) sent the request bearer-less and left
+  //      the session valid server-side until natural expiry.
+  // Resolve below: pass no-op credential-clear callbacks into clearLocalData
+  // so the wipe runs in its normal order WITHOUT touching the token, then
+  // clear credentials ourselves after signOut() has revoked the session.
+  const clearAuthToken = deps.clearAuthToken ?? defaultClearAuthToken
+  const clearDeviceId = deps.clearDeviceId ?? defaultClearDeviceId
+
   try {
-    await clearLocalData(deps)
+    await clearLocalData({ ...deps, clearAuthToken: () => {}, clearDeviceId: () => {} })
   } catch (error) {
     console.error('[signOutAndWipe] clearLocalData failed:', error)
   }
@@ -167,7 +178,14 @@ export const signOutAndWipe = async ({
     }
   }
 
-  // onComplete fires synchronously right after signOut resolves — no await
-  // between them so React cannot schedule a re-render before the hard navigation.
+  // Token is no longer useful: signOut() has revoked the session, or
+  // RevokedDeviceModal is the caller (server already invalidated). Safe to
+  // wipe locally without breaking the revoke call above.
+  clearAuthToken()
+  clearDeviceId()
+
+  // onComplete fires synchronously right after the credential clear — no
+  // await between them so React cannot schedule a re-render before the
+  // hard navigation.
   onComplete()
 }

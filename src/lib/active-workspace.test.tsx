@@ -141,10 +141,6 @@ describe('useActiveWorkspaceId reactivity', () => {
   })
 
   it('surfaces the URL-encoded id immediately even before the workspace row materializes', async () => {
-    // Regression: the hook previously waited for the local `workspaces` row to
-    // load before exposing an id, while the non-React `getActiveWorkspaceId`
-    // returned the URL segment immediately. The split delayed sidebar queries
-    // / OAuth completion / automations. (#961 r3375770853)
     renderWithReactivity(<ActiveIdProbe />, {
       route: `/w/${otherWsId}/chats/new`,
       routePath: '*',

@@ -375,11 +375,7 @@ describe('workspace upload handlers', () => {
       expect(stored[0].slug).toBeNull()
     })
 
-    it('PUT does not clear server-side slug/icon when payload omits them (#971 r3391725303)', async () => {
-      // Regression: an admin's idempotent PUT without slug/icon would write
-      // null into both columns via ON CONFLICT DO UPDATE, clearing values
-      // previously set by a PATCH or earlier PUT. Fix: pass undefined (not
-      // null) to upsertWorkspace when the payload omits the key.
+    it('PUT does not clear server-side slug/icon when payload omits them', async () => {
       await insertUser('keepfields', 'keepfields@test.com')
       const workspaceId = await createSharedAs('keepfields', 'Initial')
 
@@ -607,10 +603,6 @@ describe('workspace upload handlers', () => {
     }
 
     it('allows a member to invite when invite_users is granted to member role', async () => {
-      // Regression: the BE previously hardcoded isWorkspaceAdmin for pending
-      // invites, so the FE Members UI granting `member` the `invite_users`
-      // permission led to silent sync rejections. The BE now reads the same
-      // `workspace_permissions` row. (#974 r3397677057)
       await insertUser('a-perm', 'a-perm@test.com')
       await insertUser('b-perm', 'b-perm@test.com')
       await bootstrapPersonalViaUpload('a-perm')
@@ -772,11 +764,6 @@ describe('workspace upload handlers', () => {
     })
 
     it('deletes the actual pending row on promote-on-insert even after unique-key conflict', async () => {
-      // Regression: when a pending row for (workspace_id, email) already exists
-      // with id=X and a new upload op arrives with op.id=Y, upsertPendingMembership
-      // ON CONFLICT keeps id=X. A delete keyed on op.id=Y wouldn't match,
-      // leaving a stale pending invite for someone who is now a real member.
-      // (#965 r3382104740)
       await insertUser('admin10', 'admin10@test.com')
       await insertUser('invitee3', 'invitee3@test.com')
       await bootstrapPersonalViaUpload('admin10')
@@ -818,10 +805,6 @@ describe('workspace upload handlers', () => {
     })
 
     it('preserves an existing membership role on promote-on-insert (no downgrade)', async () => {
-      // Regression: promote-on-insert previously used upsertMembership, which
-      // overwrote the role on conflict — inviting an existing admin's own
-      // email would downgrade them to whatever role the invite carried.
-      // (#965 r3382145640)
       await insertUser('admin9', 'admin9@test.com')
       await insertUser('coadmin', 'coadmin@test.com')
       await bootstrapPersonalViaUpload('admin9')

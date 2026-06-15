@@ -13,7 +13,7 @@ type AppErrorBoundaryState = {
  * Catches uncaught render-time errors so a failed bootstrap (e.g. the
  * `SessionToWorkspaceBootstrap` throw in `auth-context.tsx`) lands on an
  * actionable error screen instead of a blank page. Mounted just above
- * `BrowserRouter` so the boundary scope covers every route. (#944 r3389077091)
+ * `BrowserRouter` so the boundary scope covers every route.
  */
 export class AppErrorBoundary extends Component<{ children: ReactNode }, AppErrorBoundaryState> {
   state: AppErrorBoundaryState = { error: null }

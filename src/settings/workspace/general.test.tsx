@@ -260,10 +260,6 @@ describe('WorkspaceGeneralPage', () => {
   })
 
   it('reflects remote sync updates into the form when the user has no in-progress edits', async () => {
-    // Regression: defaultValues was initialized once per mount and never
-    // realigned. A remote update via sync would leave the form showing stale
-    // values; the next autosave would then PATCH against the user's typed
-    // baseline and clobber the remote change. (#971 r3391725307)
     await seedSharedWorkspaceWithMembership('admin', 'Original')
 
     const { triggerChange } = renderWithReactivity(<WorkspaceGeneralPage />, {

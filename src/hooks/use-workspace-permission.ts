@@ -62,7 +62,6 @@ export const useWorkspacePermission = (permissionKey: WorkspacePermissionKey): W
   // once — regardless of whether they found rows. Missing membership means
   // `isAllowed=false` (so RequireWorkspacePermission can redirect), NOT
   // `isResolved=false` (which would spin the loading state forever).
-  // (#974 r3397677049)
   const permissionResolved = !!workspaceId && !isPending
   const isResolved = membershipResolved && permissionResolved
 

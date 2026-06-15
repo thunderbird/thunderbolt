@@ -52,9 +52,6 @@ describe('Config Settings', () => {
   })
 
   describe('SERVER_ID validation', () => {
-    // Friendly error messages mirror the BETTER_AUTH_SECRET ergonomics — a raw
-    // `Expected string, received undefined` ZodError doesn't tell a fresh dev
-    // what to do. (#932 r3388801939)
     const savedServerId = process.env.SERVER_ID
 
     afterEach(() => {

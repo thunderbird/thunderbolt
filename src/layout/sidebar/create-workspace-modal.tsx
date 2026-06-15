@@ -71,7 +71,6 @@ export const CreateWorkspaceModal = ({ open, onOpenChange, onCreated }: CreateWo
   // callback when the user dismissed the modal during the in-flight transaction.
   // Otherwise `onCreated` runs against a closed flow, opens the invite modal,
   // and navigates the user into a workspace they thought they'd cancelled out of.
-  // (#965 r3382104755)
   const openRef = useRef(open)
   useEffect(() => {
     openRef.current = open

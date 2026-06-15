@@ -115,7 +115,6 @@ export const workspacesHandler: UploadHandler = {
         // null" so an admin's idempotent PUT that doesn't carry slug/icon
         // doesn't clobber values already on the server. `upsertWorkspace`'s
         // ON CONFLICT only writes columns whose input value is `!== undefined`.
-        // (#971 r3391725303)
         const slug = op.data?.slug === undefined ? undefined : typeof op.data.slug === 'string' ? op.data.slug : null
         const icon = op.data?.icon === undefined ? undefined : typeof op.data.icon === 'string' ? op.data.icon : null
         if (isPersonalPut) {

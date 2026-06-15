@@ -36,7 +36,7 @@ export const workspacePendingMembershipsHandler: UploadHandler = {
 
     // All pending-membership writes (create / edit / cancel an invite) gate on
     // `invite_users` so a workspace that grants `member` the permission can
-    // exercise it on upload. Defaults to admin via Decision 11. (#974 r3397677057)
+    // exercise it on upload. Defaults to admin via Decision 11.
     if (op.op === 'PUT') {
       const targetWorkspaceId = typeof op.data?.workspace_id === 'string' ? op.data.workspace_id : undefined
       if (!targetWorkspaceId) {
@@ -120,7 +120,7 @@ export const workspacePendingMembershipsHandler: UploadHandler = {
           // above hit the `(workspace_id, email)` unique constraint when the
           // pending row already existed, in which case Postgres kept the
           // original id and the upload's `op.id` no longer matches. Keying on
-          // workspace+email always lands on the actual row. (#965 r3382104740)
+          // workspace+email always lands on the actual row.
           await deletePendingMembershipByWorkspaceAndEmail(tx, workspaceId, email)
         }
         return

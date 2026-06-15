@@ -79,10 +79,9 @@ export const clearLocalData = async ({
   // they re-read the persisted registry and now see no active trust domain,
   // so boot resolves to `NO_TRUST_DOMAIN` → ModePicker. Without this they'd
   // boot into the same server entry and race our `resetDatabase` /
-  // `deleteDbFile` by trying to reopen the same SQLite file (cursor flagged
-  // this on #932 r3369942991). Our own tab continues using the local
-  // `trustDomain` capture above, so the rest of the wipe sequence still
-  // targets the right server.
+  // `deleteDbFile` by trying to reopen the same SQLite file. Our own tab
+  // continues using the local `trustDomain` capture above, so the rest of
+  // the wipe sequence still targets the right server.
   if (trustDomain) {
     useTrustDomainRegistry.setState({ activeTrustDomain: undefined })
   }

@@ -154,11 +154,6 @@ describe('clearLocalData', () => {
   })
 
   it('clears activeTrustDomain from the registry before broadcasting db-closing', async () => {
-    // Regression: reloaded tabs that receive `db-closing` read the persisted
-    // registry on boot. If we broadcast first and clear later, those tabs
-    // re-resolve to the same server and race resetDatabase/deleteDbFile by
-    // reopening the SQLite file (#932 r3369942991). The clear has to land
-    // before the broadcast so reloaded tabs see NO_TRUST_DOMAIN → ModePicker.
     let registryAtBroadcast: ReturnType<typeof useTrustDomainRegistry.getState>['activeTrustDomain']
     broadcastDbLifecycle.mockImplementationOnce((event: { kind: string }) => {
       calls.push(`broadcast:${event.kind}`)
@@ -250,10 +245,6 @@ describe('signOutAndWipe', () => {
   })
 
   it('clears credentials AFTER signOut so the server can revoke the session', async () => {
-    // Regression: the previous version cleared the auth token inside
-    // clearLocalData (before signOut), so the /sign-out HTTP call went out
-    // bearer-less and the BE never revoked. Order has to be
-    // wipe → signOut → clearAuthToken/clearDeviceId → onComplete.
     const signOut = mock(async () => {
       calls.push('signOut')
     })
@@ -288,12 +279,6 @@ describe('signOutAndWipe', () => {
   })
 
   it('passes the captured serverId to the credential clearers (registry already cleared)', async () => {
-    // Regression: clearLocalData clears `activeTrustDomain` from the registry
-    // before broadcasting db-closing (#932 r3369942991). The deferred
-    // credential clear would no-op if it read serverId from the registry at
-    // that point — the per-server localStorage keys would survive sign-out
-    // and the next ModePicker → activateServer → boot path would auto-sign-in
-    // off the stale token.
     const onComplete = mock(() => {})
 
     await signOutAndWipe({ onComplete, ...deps })

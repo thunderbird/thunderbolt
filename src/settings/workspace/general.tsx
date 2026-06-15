@@ -93,7 +93,7 @@ const WorkspaceActions = ({ workspace }: { workspace: Workspace }) => {
       // Append a short random suffix so a second duplicate of the same source
       // (or any existing `{slug}-copy`) doesn't collide on the server-side
       // slug unique index — the upload would otherwise reject with
-      // WORKSPACE_SLUG_TAKEN and leave the local row unsynced. (#971 r3391725310)
+      // WORKSPACE_SLUG_TAKEN and leave the local row unsynced.
       const newId = await duplicateWorkspace(db, workspace, {
         creatorUserId: userId,
         name: `${workspace.name} Copy`,
@@ -156,11 +156,10 @@ const RenameWorkspaceForm = ({ workspace }: { workspace: Workspace }) => {
     mode: 'onChange',
   })
 
-  // Reflect remote updates (another device renamed / changed icon / changed
-  // slug) into the form baseline so a subsequent autosave doesn't clobber
-  // them. `keepDirtyValues: true` preserves any field the user is actively
-  // editing — the user wins, and the next autosave then PATCHes against the
-  // freshest server value. (#971 r3391725307)
+  // Reflect remote updates into the form baseline so a subsequent autosave
+  // doesn't clobber them. `keepDirtyValues: true` preserves any field the
+  // user is actively editing — the user wins, and the next autosave PATCHes
+  // against the freshest server value.
   useEffect(() => {
     const nextSlug = workspace.slug ?? slugifyWorkspaceName(workspace.name)
     form.reset({ name: workspace.name, slug: nextSlug, icon: workspace.icon }, { keepDirtyValues: true })

@@ -182,7 +182,6 @@ export const useActiveWorkspace = (): Workspace | null => {
  * For unprefixed paths (personal workspace), the id only resolves once the
  * row is in the local DB — `WorkspaceGate` is the upstream readiness barrier
  * so consumers inside it can treat the result as eventually-non-null.
- * (#961 r3375770853)
  */
 export const useActiveWorkspaceId = (): string | null => {
   const pathname = useReactivePathname()
@@ -196,7 +195,6 @@ export const useActiveWorkspaceId = (): string | null => {
  * or `WorkspaceMembershipGate` redirect). Strips the `/w/<id>` prefix, then
  * collapses chat-detail paths to `/chats/new`: chat ids are per-workspace, so
  * carrying one across would land the user on Not Found in the target.
- * (#961 r3404612032 + r3404615075)
  */
 export const crossWorkspaceSubPath = (pathname: string): string => {
   const subPath = stripWorkspacePrefix(pathname)

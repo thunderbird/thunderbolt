@@ -138,7 +138,6 @@ export const workspaceMembershipsHandler: UploadHandler = {
     // Defaults to admin when the row is absent (Decision 11). Aligned with what
     // the FE Members UI checks via `useWorkspacePermission` so a workspace that
     // grants `member` the permission can actually exercise it on upload.
-    // (#974 r3397677057)
     if (op.op === 'PUT' && !targetWorkspaceId) {
       const existing = await getMembershipById(tx, op.id)
       if (!existing) {

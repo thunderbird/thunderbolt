@@ -62,22 +62,27 @@ export const setAuthToken = (token: string): void => {
   localStorage.setItem(authTokenKeyFor(serverId), token)
 }
 
-/** Clear the auth token for the active server (for sign-out). No-op when no server is active. */
-export const clearAuthToken = (): void => {
-  const serverId = getActiveServerId()
-  if (!serverId) {
+/**
+ * Clear the auth token. Defaults to the active server (registry-resolved), but
+ * the wipe path passes the captured serverId explicitly because cleanup.ts
+ * clears `activeTrustDomain` from the registry before this runs (so the
+ * default would resolve to undefined and no-op).
+ */
+export const clearAuthToken = (serverId?: string): void => {
+  const id = serverId ?? getActiveServerId()
+  if (!id) {
     return
   }
-  localStorage.removeItem(authTokenKeyFor(serverId))
+  localStorage.removeItem(authTokenKeyFor(id))
 }
 
-/** Clear the device ID for the active server (forces a new ID on next login). */
-export const clearDeviceId = (): void => {
-  const serverId = getActiveServerId()
-  if (!serverId) {
+/** Same shape as `clearAuthToken` — explicit serverId for callers running after a registry clear. */
+export const clearDeviceId = (serverId?: string): void => {
+  const id = serverId ?? getActiveServerId()
+  if (!id) {
     return
   }
-  localStorage.removeItem(deviceIdKeyFor(serverId))
+  localStorage.removeItem(deviceIdKeyFor(id))
 }
 
 /**

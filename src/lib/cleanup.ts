@@ -12,12 +12,12 @@ import { deleteDbFile } from '@/lib/fs'
 import { withTimeout } from '@/lib/timeout'
 import { handleFullWipe as defaultHandleFullWipe } from '@/services/encryption'
 import { initialLocalSettings, useLocalSettingsStore } from '@/stores/local-settings-store'
-import { getActiveTrustDomain } from '@/stores/trust-domain-registry'
+import { getActiveTrustDomain, useTrustDomainRegistry } from '@/stores/trust-domain-registry'
 import { resetPostAuthBootstrap } from '@/lib/post-auth-bootstrap'
 
 type CleanupDeps = {
-  clearAuthToken?: () => void
-  clearDeviceId?: () => void
+  clearAuthToken?: (serverId?: string) => void
+  clearDeviceId?: (serverId?: string) => void
   handleFullWipe?: () => Promise<void>
 }
 
@@ -59,6 +59,11 @@ export const clearLocalData = async ({
   resetVolatileStores()
 
   const trustDomain = getActiveTrustDomain()
+  // Capture the serverId BEFORE we empty `activeTrustDomain` from the
+  // registry (below). The credential clearers default to reading serverId
+  // from the registry; once it's cleared they'd no-op and the per-server
+  // localStorage keys would survive the wipe.
+  const serverIdForClear = trustDomain?.kind === 'server' ? trustDomain.serverId : undefined
 
   // Tear down every warm ACP connection first so no agent transport survives
   // across user identities (sign-out, account deletion, device revocation all
@@ -67,6 +72,19 @@ export const clearLocalData = async ({
     await disposeAllAdapters()
   } catch (error) {
     console.error('[clearLocalData] Failed to dispose ACP adapters:', error)
+  }
+
+  // Clear the registry's `activeTrustDomain` BEFORE broadcasting `db-closing`
+  // (step 2 below). Other tabs receive the broadcast and reload; on reload
+  // they re-read the persisted registry and now see no active trust domain,
+  // so boot resolves to `NO_TRUST_DOMAIN` → ModePicker. Without this they'd
+  // boot into the same server entry and race our `resetDatabase` /
+  // `deleteDbFile` by trying to reopen the same SQLite file (cursor flagged
+  // this on #932 r3369942991). Our own tab continues using the local
+  // `trustDomain` capture above, so the rest of the wipe sequence still
+  // targets the right server.
+  if (trustDomain) {
+    useTrustDomainRegistry.setState({ activeTrustDomain: undefined })
   }
 
   // Step 1: flip the persisted `syncEnabled` flag to false and disconnect. The flag
@@ -111,9 +129,11 @@ export const clearLocalData = async ({
   // a logout into the next user's session.
   useLocalSettingsStore.setState(initialLocalSettings)
 
-  // Step 6: clear per-server credentials. No-op in standalone.
-  clearAuthToken()
-  clearDeviceId()
+  // Step 6: clear per-server credentials. No-op in standalone. The
+  // `serverIdForClear` capture above feeds the explicit serverId — the
+  // registry has already been emptied so the default lookup wouldn't find one.
+  clearAuthToken(serverIdForClear)
+  clearDeviceId(serverIdForClear)
 
   // Step 7: clear encryption keys (server-only — `handleFullWipe` throws on standalone
   // via `key-storage.ts`'s active-server guard; we skip it cleanly when there's no server).
@@ -163,6 +183,11 @@ export const signOutAndWipe = async ({
   // clear credentials ourselves after signOut() has revoked the session.
   const clearAuthToken = deps.clearAuthToken ?? defaultClearAuthToken
   const clearDeviceId = deps.clearDeviceId ?? defaultClearDeviceId
+  // Capture serverId BEFORE clearLocalData empties `activeTrustDomain` from
+  // the registry — the deferred clear below would otherwise no-op (the
+  // default reads serverId from the now-empty registry).
+  const trustDomainAtStart = getActiveTrustDomain()
+  const serverIdForClear = trustDomainAtStart?.kind === 'server' ? trustDomainAtStart.serverId : undefined
 
   try {
     await clearLocalData({ ...deps, clearAuthToken: () => {}, clearDeviceId: () => {} })
@@ -181,8 +206,8 @@ export const signOutAndWipe = async ({
   // Token is no longer useful: signOut() has revoked the session, or
   // RevokedDeviceModal is the caller (server already invalidated). Safe to
   // wipe locally without breaking the revoke call above.
-  clearAuthToken()
-  clearDeviceId()
+  clearAuthToken(serverIdForClear)
+  clearDeviceId(serverIdForClear)
 
   // onComplete fires synchronously right after the credential clear — no
   // await between them so React cannot schedule a re-render before the

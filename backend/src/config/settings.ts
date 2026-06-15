@@ -13,7 +13,15 @@ const settingsSchema = z
     // key the trust-domain registry (auth token, device ID, encryption keys, DB filename
     // are all namespaced by this). No default — TS-enforced to prevent ID duplication
     // across deployments. `make doctor` auto-generates one for local dev.
-    serverId: z.string().uuid(),
+    //
+    // Custom messages mirror the BETTER_AUTH_SECRET ergonomics: a raw `Expected
+    // string, received undefined` ZodError doesn't tell a fresh dev what to do.
+    serverId: z
+      .string({
+        error:
+          'SERVER_ID env var must be set to a stable per-deployment UUID. Run `make doctor` to auto-generate one for local dev.',
+      })
+      .uuid({ error: 'SERVER_ID must be a valid UUID.' }),
 
     // API Keys
     fireworksApiKey: z.string().default(''),

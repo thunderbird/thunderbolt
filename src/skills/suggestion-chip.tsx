@@ -107,7 +107,7 @@ export const SuggestionChip = ({
             clearLongPress()
             handleOpenChange(true)
           }}
-          // `h-[var(--touch-height-sm)]` resolves to 40px on mobile, 32px on
+          // `h-[var(--touch-height-control)]` resolves to 40px on mobile, 28px on
           // desktop — keeps the compact desktop look while meeting the
           // 40px-min touch target the rest of the app uses on touch devices.
           //

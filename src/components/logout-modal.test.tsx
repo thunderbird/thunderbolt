@@ -140,6 +140,23 @@ describe('LogoutModal', () => {
     })
   })
 
+  describe('double-click guard', () => {
+    it('only fires signOutAndWipe once when Log out is clicked rapidly', () => {
+      // Regression: handleLogout previously relied solely on the button's
+      // `disabled={isLoggingOut}` to block repeat clicks, but the disabled
+      // attribute only applies after React commits the setState. A second
+      // click in the same tick (or a queued event) could fire a second
+      // signOutAndWipe before then. The ref-guard at handleLogout entry
+      // closes that window.
+      renderModal()
+      const button = screen.getByRole('button', { name: 'Log out' })
+      fireEvent.click(button)
+      fireEvent.click(button)
+      fireEvent.click(button)
+      expect(mockSignOutAndWipe).toHaveBeenCalledTimes(1)
+    })
+  })
+
   describe('cancel behavior', () => {
     it('closes the dialog when cancel is clicked', () => {
       renderModal()

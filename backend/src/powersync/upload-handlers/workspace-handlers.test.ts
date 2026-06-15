@@ -375,6 +375,36 @@ describe('workspace upload handlers', () => {
       expect(stored[0].slug).toBeNull()
     })
 
+    it('PUT does not clear server-side slug/icon when payload omits them (#971 r3391725303)', async () => {
+      // Regression: an admin's idempotent PUT without slug/icon would write
+      // null into both columns via ON CONFLICT DO UPDATE, clearing values
+      // previously set by a PATCH or earlier PUT. Fix: pass undefined (not
+      // null) to upsertWorkspace when the payload omits the key.
+      await insertUser('keepfields', 'keepfields@test.com')
+      const workspaceId = await createSharedAs('keepfields', 'Initial')
+
+      // Set slug + icon via PATCH.
+      const patchResult = await applyUploadBatch(
+        db,
+        [{ op: 'PATCH', type: 'workspaces', id: workspaceId, data: { slug: 'kept-slug', icon: '🎯' } }],
+        ctxFor('keepfields'),
+      )
+      expect(patchResult.ok).toBe(true)
+
+      // Now PUT with only `name` — slug + icon must survive.
+      const putResult = await applyUploadBatch(
+        db,
+        [{ op: 'PUT', type: 'workspaces', id: workspaceId, data: { name: 'Renamed' } }],
+        ctxFor('keepfields'),
+      )
+      expect(putResult.ok).toBe(true)
+
+      const stored = await db.select().from(workspacesTable).where(eq(workspacesTable.id, workspaceId))
+      expect(stored[0].name).toBe('Renamed')
+      expect(stored[0].slug).toBe('kept-slug')
+      expect(stored[0].icon).toBe('🎯')
+    })
+
     it('PUT rejects shared workspace with a slug already taken', async () => {
       await insertUser('first', 'first@test.com')
       await insertUser('second', 'second@test.com')

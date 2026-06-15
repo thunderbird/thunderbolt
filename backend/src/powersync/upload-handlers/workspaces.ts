@@ -111,15 +111,20 @@ export const workspacesHandler: UploadHandler = {
         if (!name) {
           throw new UploadRejection('permanent', 'WORKSPACE_NAME_REQUIRED')
         }
-        const slug = typeof op.data?.slug === 'string' ? op.data.slug : null
-        const icon = typeof op.data?.icon === 'string' ? op.data.icon : null
+        // Distinguish "key omitted from payload" (undefined) from "explicitly
+        // null" so an admin's idempotent PUT that doesn't carry slug/icon
+        // doesn't clobber values already on the server. `upsertWorkspace`'s
+        // ON CONFLICT only writes columns whose input value is `!== undefined`.
+        // (#971 r3391725303)
+        const slug = op.data?.slug === undefined ? undefined : typeof op.data.slug === 'string' ? op.data.slug : null
+        const icon = op.data?.icon === undefined ? undefined : typeof op.data.icon === 'string' ? op.data.icon : null
         if (isPersonalPut) {
           // `DO NOTHING` on conflict — preserves any later changes if a second
           // device's bootstrap PUT lands after the user already mutated the row.
           await insertPersonalWorkspaceIfMissing(tx, {
             id: op.id,
             name,
-            icon,
+            icon: icon ?? null,
             ownerUserId: ctx.userId,
           })
           return

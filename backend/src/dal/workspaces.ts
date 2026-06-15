@@ -410,6 +410,23 @@ export const upsertMembership = async (database: typeof DbType, input: Membershi
 }
 
 /**
+ * Insert a membership row only if no row with the same `(workspace_id, user_id)`
+ * already exists. Used by the promote-on-insert path in the pending-membership
+ * upload handler: an invite for an email that already belongs to a member must
+ * not overwrite that member's existing role (otherwise an invite for an admin's
+ * own email would downgrade them to whatever role the invite carried). Mirrors
+ * the `promotePendingMemberships` DO-NOTHING semantics for the signup path.
+ */
+export const insertMembershipIfMissing = async (database: typeof DbType, input: MembershipInput): Promise<void> => {
+  await database
+    .insert(workspaceMembershipsTable)
+    .values(input)
+    .onConflictDoNothing({
+      target: [workspaceMembershipsTable.workspaceId, workspaceMembershipsTable.userId],
+    })
+}
+
+/**
  * Mirrors a user's current display info onto every one of their membership rows.
  * Called from the Better Auth `update.after` hook so name/email changes propagate
  * to co-members on the next sync round-trip. Idempotent — safe to call on every

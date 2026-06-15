@@ -5,11 +5,11 @@
 import {
   deletePendingMembership,
   getPendingMembershipById,
+  insertMembershipIfMissing,
   isPersonalWorkspace,
   isWorkspaceAdmin,
   type Role,
   updatePendingMembership,
-  upsertMembership,
   upsertPendingMembership,
 } from '@/dal/workspaces'
 import { getUserByEmail } from '@/dal/users'
@@ -97,9 +97,15 @@ export const workspacePendingMembershipsHandler: UploadHandler = {
         // which removes its optimistic local pending row organically. The
         // signup hook (`promotePendingMemberships`) covers the unknown-email
         // path when the invitee later signs up.
+        //
+        // DO-NOTHING semantics: if the user is already a member of this
+        // workspace, the invite must NOT overwrite their current role —
+        // inviting an existing admin's email would otherwise downgrade them
+        // to whatever role the invite carried. Mirrors
+        // `promotePendingMemberships` (the signup-time bulk-promote path).
         const matched = await getUserByEmail(tx, normalizeEmail(email))
         if (matched) {
-          await upsertMembership(tx, {
+          await insertMembershipIfMissing(tx, {
             id: crypto.randomUUID(),
             workspaceId,
             userId: matched.id,

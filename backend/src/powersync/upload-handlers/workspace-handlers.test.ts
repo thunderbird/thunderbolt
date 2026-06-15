@@ -700,6 +700,49 @@ describe('workspace upload handlers', () => {
       expect(invitee?.role).toBe('admin')
     })
 
+    it('preserves an existing membership role on promote-on-insert (no downgrade)', async () => {
+      // Regression: promote-on-insert previously used upsertMembership, which
+      // overwrote the role on conflict — inviting an existing admin's own
+      // email would downgrade them to whatever role the invite carried.
+      // (#965 r3382145640)
+      await insertUser('admin9', 'admin9@test.com')
+      await insertUser('coadmin', 'coadmin@test.com')
+      await bootstrapPersonalViaUpload('admin9')
+      const sharedId = await seedSharedAsAdmin('admin9')
+
+      // Make coadmin an admin of the same workspace directly.
+      await db.insert(workspaceMembershipsTable).values({
+        id: uuidv7(),
+        workspaceId: sharedId,
+        userId: 'coadmin',
+        role: 'admin',
+        userName: 'Test User',
+        userEmail: 'coadmin@test.com',
+      })
+
+      // Invite coadmin's email with role='member' — should NOT downgrade.
+      const op: UploadOp = {
+        op: 'PUT',
+        type: 'workspace_pending_memberships',
+        id: uuidv7(),
+        data: {
+          workspace_id: sharedId,
+          email: 'coadmin@test.com',
+          role: 'member',
+          invited_by_user_id: 'admin9',
+        },
+      }
+      const result = await applyUploadBatch(db, [op], ctxFor('admin9'))
+      expect(result.ok).toBe(true)
+
+      const memberships = await db
+        .select()
+        .from(workspaceMembershipsTable)
+        .where(eq(workspaceMembershipsTable.workspaceId, sharedId))
+      const coadminRow = memberships.find((m) => m.userId === 'coadmin')
+      expect(coadminRow?.role).toBe('admin')
+    })
+
     it('keeps pending row when invited email does not match any user', async () => {
       await insertUser('admin8', 'admin8@test.com')
       await bootstrapPersonalViaUpload('admin8')

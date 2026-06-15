@@ -43,10 +43,6 @@ mock.module('@/hooks/use-approve-device', () => ({
   useApproveDevice: () => ({ mutate: mock(), isPending: false }),
 }))
 
-mock.module('@/hooks/use-revoke-device', () => ({
-  useRevokeDevice: () => ({ mutate: mock(), isPending: false }),
-}))
-
 const { PendingDeviceModal } = await import('./pending-device-modal')
 
 const HttpClientWrapper = ({ children }: { children: ReactNode }) => (

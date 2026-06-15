@@ -64,6 +64,8 @@ const WorkspaceMembersPage = () => {
   const actives = useWorkspaceMembersQuery(workspaceId)
   const pendings = useWorkspacePendingMembershipsQuery(workspaceId)
   const { isAllowed: canChangeRoles } = useWorkspacePermission('change_roles')
+  const { isAllowed: canInviteUsers } = useWorkspacePermission('invite_users')
+  const { isAllowed: canRemoveUsers } = useWorkspacePermission('remove_users')
   const [inviteOpen, setInviteOpen] = useState(false)
   const [search, setSearch] = useState('')
   const normalizedSearch = search.trim().toLowerCase()
@@ -135,10 +137,12 @@ const WorkspaceMembersPage = () => {
           value={search}
           onChange={(event) => setSearch(event.target.value)}
         />
-        <Button variant="outline" size="lg" onClick={() => setInviteOpen(true)} disabled={!workspaceId}>
-          <Plus className="size-4" />
-          Add Member
-        </Button>
+        {canInviteUsers && (
+          <Button variant="outline" size="lg" onClick={() => setInviteOpen(true)} disabled={!workspaceId}>
+            <Plus className="size-4" />
+            Add Member
+          </Button>
+        )}
       </div>
       <Card>
         <CardContent>
@@ -195,7 +199,7 @@ const WorkspaceMembersPage = () => {
                       </TableCell>
                       <TableCell>Joined</TableCell>
                       <TableCell className="text-right">
-                        {!(entry.row.role === 'admin' && adminCount <= 1) && (
+                        {canRemoveUsers && !(entry.row.role === 'admin' && adminCount <= 1) && (
                           <Button
                             variant="ghost"
                             size="sm"
@@ -239,14 +243,16 @@ const WorkspaceMembersPage = () => {
                       </TableCell>
                       <TableCell className="text-muted-foreground">Pending</TableCell>
                       <TableCell className="text-right">
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => setRemoveTarget(entry)}
-                          aria-label={`Remove ${entry.row.email}`}
-                        >
-                          Remove
-                        </Button>
+                        {canRemoveUsers && (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => setRemoveTarget(entry)}
+                            aria-label={`Remove ${entry.row.email}`}
+                          >
+                            Remove
+                          </Button>
+                        )}
                       </TableCell>
                     </TableRow>
                   ),

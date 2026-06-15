@@ -8,14 +8,13 @@ import {
   getPendingMembershipById,
   insertMembershipIfMissing,
   isPersonalWorkspace,
-  isWorkspaceAdmin,
   type Role,
   updatePendingMembership,
   upsertPendingMembership,
 } from '@/dal/workspaces'
 import { getUserByEmail } from '@/dal/users'
 import { normalizeEmail } from '@/lib/email'
-import { allow, reject } from './helpers'
+import { allow, callerSatisfiesPermission, reject } from './helpers'
 import { UploadRejection, type UploadHandler } from './types'
 
 const isRole = (v: unknown): v is Role => v === 'admin' || v === 'member'
@@ -35,6 +34,9 @@ export const workspacePendingMembershipsHandler: UploadHandler = {
       return reject('permanent', 'E2EE_MEMBERSHIPS_DISABLED')
     }
 
+    // All pending-membership writes (create / edit / cancel an invite) gate on
+    // `invite_users` so a workspace that grants `member` the permission can
+    // exercise it on upload. Defaults to admin via Decision 11. (#974 r3397677057)
     if (op.op === 'PUT') {
       const targetWorkspaceId = typeof op.data?.workspace_id === 'string' ? op.data.workspace_id : undefined
       if (!targetWorkspaceId) {
@@ -45,16 +47,16 @@ export const workspacePendingMembershipsHandler: UploadHandler = {
         if (await isPersonalWorkspace(tx, existing.workspaceId)) {
           return reject('permanent', 'PERSONAL_WORKSPACE_IMMUTABLE')
         }
-        if (!(await isWorkspaceAdmin(tx, existing.workspaceId, ctx.userId))) {
-          return reject('permanent', 'NOT_WORKSPACE_ADMIN')
+        if (!(await callerSatisfiesPermission(tx, existing.workspaceId, ctx.userId, 'invite_users'))) {
+          return reject('permanent', 'INSUFFICIENT_PERMISSION')
         }
         return allow()
       }
       if (await isPersonalWorkspace(tx, targetWorkspaceId)) {
         return reject('permanent', 'PERSONAL_WORKSPACE_IMMUTABLE')
       }
-      if (!(await isWorkspaceAdmin(tx, targetWorkspaceId, ctx.userId))) {
-        return reject('permanent', 'NOT_WORKSPACE_ADMIN')
+      if (!(await callerSatisfiesPermission(tx, targetWorkspaceId, ctx.userId, 'invite_users'))) {
+        return reject('permanent', 'INSUFFICIENT_PERMISSION')
       }
       return allow()
     }
@@ -66,8 +68,8 @@ export const workspacePendingMembershipsHandler: UploadHandler = {
     if (await isPersonalWorkspace(tx, existing.workspaceId)) {
       return reject('permanent', 'PERSONAL_WORKSPACE_IMMUTABLE')
     }
-    if (!(await isWorkspaceAdmin(tx, existing.workspaceId, ctx.userId))) {
-      return reject('permanent', 'NOT_WORKSPACE_ADMIN')
+    if (!(await callerSatisfiesPermission(tx, existing.workspaceId, ctx.userId, 'invite_users'))) {
+      return reject('permanent', 'INSUFFICIENT_PERMISSION')
     }
     return allow()
   },

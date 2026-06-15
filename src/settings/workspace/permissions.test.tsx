@@ -60,6 +60,9 @@ const seedPermissionRow = async (key: WorkspacePermissionKey, requiredRole: 'adm
 }
 
 const expectedRows: ReadonlyArray<{ key: string; label: string }> = [
+  { key: 'invite_users', label: 'Invite Users' },
+  { key: 'change_roles', label: 'Change Roles' },
+  { key: 'remove_users', label: 'Remove Users' },
   { key: 'add_agents', label: 'Add Agents' },
   { key: 'remove_agents', label: 'Remove Agents' },
   { key: 'add_skills', label: 'Add Skills' },
@@ -125,10 +128,8 @@ describe('WorkspacePermissionsPage', () => {
       expect(screen.getByTestId(`permission-row-${key}`)).toBeInTheDocument()
       expect(screen.getByText(label)).toBeInTheDocument()
     }
-    // Keys that used to be exposed are no longer surfaced on the page.
+    // Legacy / out-of-scope keys are not surfaced on the page.
     expect(screen.queryByTestId('permission-row-manage_members')).not.toBeInTheDocument()
-    expect(screen.queryByTestId('permission-row-invite_users')).not.toBeInTheDocument()
-    expect(screen.queryByTestId('permission-row-change_roles')).not.toBeInTheDocument()
     expect(screen.queryByTestId('permission-row-delete_workspace')).not.toBeInTheDocument()
   })
 

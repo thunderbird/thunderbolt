@@ -606,6 +606,47 @@ describe('workspace upload handlers', () => {
       return sharedId
     }
 
+    it('allows a member to invite when invite_users is granted to member role', async () => {
+      // Regression: the BE previously hardcoded isWorkspaceAdmin for pending
+      // invites, so the FE Members UI granting `member` the `invite_users`
+      // permission led to silent sync rejections. The BE now reads the same
+      // `workspace_permissions` row. (#974 r3397677057)
+      await insertUser('a-perm', 'a-perm@test.com')
+      await insertUser('b-perm', 'b-perm@test.com')
+      await bootstrapPersonalViaUpload('a-perm')
+      const sharedId = await seedSharedAsAdmin('a-perm')
+
+      // b-perm becomes a member of the shared workspace.
+      await db.insert(workspaceMembershipsTable).values({
+        id: uuidv7(),
+        workspaceId: sharedId,
+        userId: 'b-perm',
+        role: 'member',
+      })
+
+      // Workspace grants `invite_users` to the `member` role.
+      await db.insert(workspacePermissionsTable).values({
+        id: uuidv7(),
+        workspaceId: sharedId,
+        permissionKey: 'invite_users',
+        requiredRole: 'member',
+      })
+
+      // b-perm (member) sends a pending invite — should succeed.
+      const op: UploadOp = {
+        op: 'PUT',
+        type: 'workspace_pending_memberships',
+        id: uuidv7(),
+        data: {
+          workspace_id: sharedId,
+          email: 'newcomer@test.com',
+          role: 'member',
+        },
+      }
+      const result = await applyUploadBatch(db, [op], ctxFor('b-perm'))
+      expect(result.ok).toBe(true)
+    })
+
     it('rejects writes by non-admins of the target workspace', async () => {
       await insertUser('a5', 'a5@test.com')
       await insertUser('b5', 'b5@test.com')
@@ -624,7 +665,7 @@ describe('workspace upload handlers', () => {
         },
       }
       const result = await applyUploadBatch(db, [op], ctxFor('b5'))
-      expectPermanentReject(result, 'NOT_WORKSPACE_ADMIN')
+      expectPermanentReject(result, 'INSUFFICIENT_PERMISSION')
     })
 
     it('normalizes email on insert', async () => {

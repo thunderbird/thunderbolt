@@ -9,14 +9,13 @@ import {
   getMembershipById,
   getWorkspaceById,
   isPersonalWorkspace,
-  isWorkspaceAdmin,
   type Role,
   updateMembership,
   upsertMembership,
 } from '@/dal/workspaces'
 import { getUserById } from '@/dal/users'
 import { computePersonalAdminMembershipId, computePersonalWorkspaceId } from '@shared/workspaces'
-import { allow, reject } from './helpers'
+import { allow, callerSatisfiesPermission, reject } from './helpers'
 import { UploadRejection, type UploadHandler, type UploadTx } from './types'
 
 const isRole = (v: unknown): v is Role => v === 'admin' || v === 'member'
@@ -135,6 +134,11 @@ export const workspaceMembershipsHandler: UploadHandler = {
     const targetWorkspaceId =
       op.op === 'PUT' ? (typeof op.data?.workspace_id === 'string' ? op.data.workspace_id : null) : null
 
+    // Per-op permission keys read from `workspace_permissions.required_role`.
+    // Defaults to admin when the row is absent (Decision 11). Aligned with what
+    // the FE Members UI checks via `useWorkspacePermission` so a workspace that
+    // grants `member` the permission can actually exercise it on upload.
+    // (#974 r3397677057)
     if (op.op === 'PUT' && !targetWorkspaceId) {
       const existing = await getMembershipById(tx, op.id)
       if (!existing) {
@@ -143,8 +147,8 @@ export const workspaceMembershipsHandler: UploadHandler = {
       if (await isPersonalWorkspace(tx, existing.workspaceId)) {
         return reject('permanent', 'PERSONAL_WORKSPACE_IMMUTABLE')
       }
-      if (!(await isWorkspaceAdmin(tx, existing.workspaceId, ctx.userId))) {
-        return reject('permanent', 'NOT_WORKSPACE_ADMIN')
+      if (!(await callerSatisfiesPermission(tx, existing.workspaceId, ctx.userId, 'invite_users'))) {
+        return reject('permanent', 'INSUFFICIENT_PERMISSION')
       }
       return allow()
     }
@@ -154,8 +158,8 @@ export const workspaceMembershipsHandler: UploadHandler = {
       if (await isPersonalWorkspace(tx, targetWorkspaceId!)) {
         return reject('permanent', 'PERSONAL_WORKSPACE_IMMUTABLE')
       }
-      if (!(await isWorkspaceAdmin(tx, targetWorkspaceId!, ctx.userId))) {
-        return reject('permanent', 'NOT_WORKSPACE_ADMIN')
+      if (!(await callerSatisfiesPermission(tx, targetWorkspaceId!, ctx.userId, 'invite_users'))) {
+        return reject('permanent', 'INSUFFICIENT_PERMISSION')
       }
       return allow()
     }
@@ -168,8 +172,9 @@ export const workspaceMembershipsHandler: UploadHandler = {
     if (await isPersonalWorkspace(tx, existing.workspaceId)) {
       return reject('permanent', 'PERSONAL_WORKSPACE_IMMUTABLE')
     }
-    if (!(await isWorkspaceAdmin(tx, existing.workspaceId, ctx.userId))) {
-      return reject('permanent', 'NOT_WORKSPACE_ADMIN')
+    const permissionKey: 'change_roles' | 'remove_users' = op.op === 'PATCH' ? 'change_roles' : 'remove_users'
+    if (!(await callerSatisfiesPermission(tx, existing.workspaceId, ctx.userId, permissionKey))) {
+      return reject('permanent', 'INSUFFICIENT_PERMISSION')
     }
     return allow()
   },

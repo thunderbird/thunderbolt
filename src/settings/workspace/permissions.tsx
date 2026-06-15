@@ -17,16 +17,18 @@ import { useActiveWorkspaceId } from '@/lib/active-workspace'
 
 /**
  * Rows shown on the Permissions page. Each entry maps a `workspace_permissions`
- * key to its human label. Order is stable and intentional: lifecycle (join /
- * invite / change roles / remove) first, then capability scopes (agents, skills),
- * then admin actions (general settings, permissions, delete). The legacy
- * `manage_members` key is intentionally not listed here — see
+ * key to its human label. Order is stable and intentional: lifecycle (invite /
+ * change roles / remove) first, then capability scopes (agents, skills). The
+ * legacy `manage_members` key is intentionally not listed here — see
  * `project_workspace_permissions_validation_pending`.
  */
 const permissionRows: ReadonlyArray<{
   key: WorkspacePermissionKey
   label: string
 }> = [
+  { key: 'invite_users', label: 'Invite Users' },
+  { key: 'change_roles', label: 'Change Roles' },
+  { key: 'remove_users', label: 'Remove Users' },
   { key: 'add_agents', label: 'Add Agents' },
   { key: 'remove_agents', label: 'Remove Agents' },
   { key: 'add_skills', label: 'Add Skills' },

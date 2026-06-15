@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { getRequiredRoleForPermission, getUserRoleInWorkspace, isWorkspaceMember } from '@/dal/workspaces'
+import { isWorkspaceMember } from '@/dal/workspaces'
 import {
   powersyncConflictTarget,
   powersyncDbNameToSchemaKey,
@@ -10,10 +10,10 @@ import {
   powersyncTablesByName,
 } from '@/db/powersync-schema'
 import type { PowerSyncTableName } from '@shared/powersync-tables'
-import { permissionAllows, type WorkspacePermissionKey } from '@shared/workspaces'
+import { type WorkspacePermissionKey } from '@shared/workspaces'
 import { and, eq } from 'drizzle-orm'
 import type { AnyPgColumn, AnyPgTable } from 'drizzle-orm/pg-core'
-import { allow, reject, toSchemaRecord } from './helpers'
+import { allow, callerSatisfiesPermission, reject, toSchemaRecord } from './helpers'
 import { UploadRejection, type UploadHandler, type UploadTx } from './types'
 
 export type WorkspaceScopedConfig = {
@@ -50,23 +50,6 @@ export type WorkspaceScopedConfig = {
    * mcp_servers) whose FE DAL soft-deletes via UPDATE rather than DELETE.
    */
   softDeleteColumn?: string
-}
-
-/**
- * Resolves the caller's role + the configured permission's required role and
- * returns whether the op is allowed. Defaults `required_role` to `'admin'`
- * when no `workspace_permissions` row exists for the key (Decision 11) so an
- * unconfigured workspace stays admin-only.
- */
-const callerSatisfiesPermission = async (
-  tx: UploadTx,
-  workspaceId: string,
-  userId: string,
-  permissionKey: WorkspacePermissionKey,
-): Promise<boolean> => {
-  const required = (await getRequiredRoleForPermission(tx, workspaceId, permissionKey)) ?? 'admin'
-  const userRole = await getUserRoleInWorkspace(tx, workspaceId, userId)
-  return permissionAllows(userRole, required)
 }
 
 const isString = (v: unknown): v is string => typeof v === 'string'

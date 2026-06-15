@@ -36,6 +36,7 @@ import { useViewportLock } from '@/hooks/use-viewport-lock'
 import { useMcpSync } from '@/hooks/use-mcp-sync'
 import { PostHogProvider } from '@/lib/posthog'
 import { ThemeProvider } from '@/lib/theme-provider'
+import { AppErrorBoundary } from './components/app-error-boundary'
 import { AppErrorScreen } from './components/app-error-screen'
 import { ModePicker } from './components/boot/mode-picker'
 import { AuthGate } from './components/auth-gate'
@@ -173,11 +174,13 @@ const AppContent = ({ initData }: { initData: InitData }) => {
   useSafeAreaInset()
 
   return (
-    <BrowserRouter>
-      <AppRoutes initData={initData} />
-      <UpdateNotification />
-      <PendingDeviceModal />
-    </BrowserRouter>
+    <AppErrorBoundary>
+      <BrowserRouter>
+        <AppRoutes initData={initData} />
+        <UpdateNotification />
+        <PendingDeviceModal />
+      </BrowserRouter>
+    </AppErrorBoundary>
   )
 }
 

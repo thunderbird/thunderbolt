@@ -3,21 +3,14 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { ModificationIndicator } from '@/components/modification-indicator'
-import { Input } from '@/components/ui/input'
 import { PageHeader } from '@/components/ui/page-header'
 import { SectionCard } from '@/components/ui/section-card'
 import { Switch } from '@/components/ui/switch'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { initialLocalSettings, useLocalSettingsStore } from '@/stores/local-settings-store'
-import { useActiveCloudUrl, useTrustDomainRegistry } from '@/stores/trust-domain-registry'
 import { getCapabilities, isTauri } from '@/lib/platform'
 import { useQuery } from '@tanstack/react-query'
 import { useShallow } from 'zustand/react/shallow'
-
-// The env-var fallback the boot resolver uses. If it were unset, boot would fail with
-// NO_TRUST_DOMAIN before this page renders, so a hardcoded localhost default would only
-// drift from whatever the rest of the app considers "default."
-const defaultCloudUrl = import.meta.env.VITE_THUNDERBOLT_CLOUD_URL ?? ''
 
 export default function DevSettingsPage() {
   const settings = useLocalSettingsStore(
@@ -28,15 +21,6 @@ export default function DevSettingsPage() {
   )
   const { isNativeFetchEnabled, debugPosthog } = settings
   const setLocalSetting = useLocalSettingsStore((s) => s.setLocalSetting)
-
-  // Cloud URL lives on the active server entry in the trust-domain registry; editing
-  // it here updates the registry directly so runtime consumers (HTTP, PowerSync, etc.)
-  // see the change on next read. Resetting falls back to the env-var default that the
-  // boot resolver also uses. NOTE: changing the URL does NOT update the active server's
-  // `serverId` — pointing at a different backend (different serverId) is post-v1 territory.
-  const cloudUrl = useActiveCloudUrl() ?? defaultCloudUrl
-  const patchActiveServer = useTrustDomainRegistry((s) => s.patchActiveServer)
-  const setCloudUrl = (value: string) => patchActiveServer({ cloudUrl: value || defaultCloudUrl })
 
   const isModified = <K extends keyof typeof settings>(key: K) => settings[key] !== initialLocalSettings[key]
 
@@ -55,28 +39,6 @@ export default function DevSettingsPage() {
 
       <SectionCard title="Network">
         <div className="flex flex-col gap-8">
-          {/* Cloud URL Setting */}
-          <div className="space-y-2">
-            <ModificationIndicator
-              as="label"
-              className="block text-sm font-medium"
-              hasModifications={cloudUrl !== defaultCloudUrl}
-              onReset={() => setCloudUrl(defaultCloudUrl)}
-            >
-              Cloud URL
-            </ModificationIndicator>
-            <Input
-              type="url"
-              value={cloudUrl}
-              onChange={(e) => setCloudUrl(e.target.value)}
-              placeholder="http://localhost:8000"
-            />
-            <p className="text-sm text-muted-foreground">The URL of the Thunderbolt backend</p>
-          </div>
-
-          {/* Divider between settings */}
-          <div className="border-t -mx-6" />
-
           <div className="flex items-center justify-between">
             <div className="flex flex-col gap-1">
               <ModificationIndicator

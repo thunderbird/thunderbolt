@@ -46,7 +46,7 @@ export type WorkspacePermissionState = {
 export const useWorkspacePermission = (permissionKey: WorkspacePermissionKey): WorkspacePermissionState => {
   const db = useDatabase()
   const workspaceId = useActiveWorkspaceId()
-  const { membership } = useActiveWorkspaceMembership()
+  const { membership, isResolved: membershipResolved } = useActiveWorkspaceMembership()
 
   // Live row (if any). Empty result means "no row yet" → default to admin.
   const { data, isPending } = useQuery({
@@ -58,14 +58,19 @@ export const useWorkspacePermission = (permissionKey: WorkspacePermissionKey): W
   const row = (data?.[0] ?? null) as WorkspacePermission | null
   const requiredRole = row?.requiredRole ?? defaultRequiredRole
 
-  // `isResolved` requires both: a membership row and a permission query that
-  // has at least returned once (either a row or an empty result).
+  // `isResolved` flips true once BOTH live queries have returned at least
+  // once — regardless of whether they found rows. Missing membership means
+  // `isAllowed=false` (so RequireWorkspacePermission can redirect), NOT
+  // `isResolved=false` (which would spin the loading state forever).
+  // (#974 r3397677049)
   const permissionResolved = !!workspaceId && !isPending
-  const isResolved = !!membership && permissionResolved
+  const isResolved = membershipResolved && permissionResolved
 
   const userRole = membership?.role
   const isAllowed =
-    isResolved && (requiredRole === 'member' ? userRole === 'admin' || userRole === 'member' : userRole === 'admin')
+    isResolved &&
+    !!membership &&
+    (requiredRole === 'member' ? userRole === 'admin' || userRole === 'member' : userRole === 'admin')
 
   return { requiredRole, isAllowed, isResolved }
 }

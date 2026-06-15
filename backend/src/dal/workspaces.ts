@@ -527,6 +527,32 @@ export const deletePendingMembership = async (database: typeof DbType, id: strin
   return rows.length
 }
 
+/**
+ * Deletes the pending row for `(workspace_id, email)`. Used by the
+ * promote-on-insert path in the upload handler: when `upsertPendingMembership`
+ * conflicts on the `(workspace_id, email)` unique constraint, Postgres keeps
+ * the existing row's id, so a delete keyed on the upload's `op.id` would no-op
+ * and leave a stale pending invite behind for someone who is now a real
+ * member. Email is normalized to match `upsertPendingMembership`'s storage.
+ */
+export const deletePendingMembershipByWorkspaceAndEmail = async (
+  database: typeof DbType,
+  workspaceId: string,
+  email: string,
+): Promise<number> => {
+  const normalizedEmail = normalizeEmail(email)
+  const rows = await database
+    .delete(workspacePendingMembershipsTable)
+    .where(
+      and(
+        eq(workspacePendingMembershipsTable.workspaceId, workspaceId),
+        eq(workspacePendingMembershipsTable.email, normalizedEmail),
+      ),
+    )
+    .returning()
+  return rows.length
+}
+
 export type WorkspacePermissionInput = {
   id: string
   workspaceId: string

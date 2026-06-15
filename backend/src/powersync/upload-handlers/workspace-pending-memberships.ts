@@ -4,6 +4,7 @@
 
 import {
   deletePendingMembership,
+  deletePendingMembershipByWorkspaceAndEmail,
   getPendingMembershipById,
   insertMembershipIfMissing,
   isPersonalWorkspace,
@@ -113,7 +114,12 @@ export const workspacePendingMembershipsHandler: UploadHandler = {
             userName: matched.name,
             userEmail: matched.email,
           })
-          await deletePendingMembership(tx, op.id)
+          // Delete by `(workspace_id, email)` rather than `op.id` — the upsert
+          // above hit the `(workspace_id, email)` unique constraint when the
+          // pending row already existed, in which case Postgres kept the
+          // original id and the upload's `op.id` no longer matches. Keying on
+          // workspace+email always lands on the actual row. (#965 r3382104740)
+          await deletePendingMembershipByWorkspaceAndEmail(tx, workspaceId, email)
         }
         return
       }

@@ -700,6 +700,52 @@ describe('workspace upload handlers', () => {
       expect(invitee?.role).toBe('admin')
     })
 
+    it('deletes the actual pending row on promote-on-insert even after unique-key conflict', async () => {
+      // Regression: when a pending row for (workspace_id, email) already exists
+      // with id=X and a new upload op arrives with op.id=Y, upsertPendingMembership
+      // ON CONFLICT keeps id=X. A delete keyed on op.id=Y wouldn't match,
+      // leaving a stale pending invite for someone who is now a real member.
+      // (#965 r3382104740)
+      await insertUser('admin10', 'admin10@test.com')
+      await insertUser('invitee3', 'invitee3@test.com')
+      await bootstrapPersonalViaUpload('admin10')
+      const sharedId = await seedSharedAsAdmin('admin10')
+
+      // Seed an existing pending row with id=X.
+      const originalPendingId = uuidv7()
+      await db.insert(workspacePendingMembershipsTable).values({
+        id: originalPendingId,
+        workspaceId: sharedId,
+        email: 'invitee3@test.com',
+        role: 'admin',
+        invitedByUserId: 'admin10',
+      })
+
+      // Now upload a NEW pending op (id=Y) for the same workspace+email.
+      const newOpId = uuidv7()
+      const op: UploadOp = {
+        op: 'PUT',
+        type: 'workspace_pending_memberships',
+        id: newOpId,
+        data: {
+          workspace_id: sharedId,
+          email: 'invitee3@test.com',
+          role: 'member',
+          invited_by_user_id: 'admin10',
+        },
+      }
+      const result = await applyUploadBatch(db, [op], ctxFor('admin10'))
+      expect(result.ok).toBe(true)
+
+      // Both the id=X row (the actual one in DB) and the id=Y delete target
+      // must result in zero pending rows for (workspace_id, email).
+      const pending = await db
+        .select()
+        .from(workspacePendingMembershipsTable)
+        .where(eq(workspacePendingMembershipsTable.workspaceId, sharedId))
+      expect(pending).toHaveLength(0)
+    })
+
     it('preserves an existing membership role on promote-on-insert (no downgrade)', async () => {
       // Regression: promote-on-insert previously used upsertMembership, which
       // overwrote the role on conflict — inviting an existing admin's own

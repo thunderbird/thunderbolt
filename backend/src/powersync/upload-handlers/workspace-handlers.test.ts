@@ -843,6 +843,33 @@ describe('workspace upload handlers', () => {
       expect(coadminRow?.role).toBe('admin')
     })
 
+    it('overrides client-supplied invited_by_user_id with ctx.userId', async () => {
+      await insertUser('inviter', 'inviter@test.com')
+      await bootstrapPersonalViaUpload('inviter')
+      const sharedId = await seedSharedAsAdmin('inviter')
+
+      const op: UploadOp = {
+        op: 'PUT',
+        type: 'workspace_pending_memberships',
+        id: uuidv7(),
+        data: {
+          workspace_id: sharedId,
+          email: 'pending@test.com',
+          role: 'member',
+          // Attempt to attribute the invite to someone else.
+          invited_by_user_id: 'someone-else',
+        },
+      }
+      const result = await applyUploadBatch(db, [op], ctxFor('inviter'))
+      expect(result.ok).toBe(true)
+
+      const stored = await db
+        .select()
+        .from(workspacePendingMembershipsTable)
+        .where(eq(workspacePendingMembershipsTable.id, op.id))
+      expect(stored[0]?.invitedByUserId).toBe('inviter')
+    })
+
     it('keeps pending row when invited email does not match any user', async () => {
       await insertUser('admin8', 'admin8@test.com')
       await bootstrapPersonalViaUpload('admin8')

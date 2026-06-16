@@ -80,17 +80,18 @@ export const workspacePendingMembershipsHandler: UploadHandler = {
         const workspaceId = typeof op.data?.workspace_id === 'string' ? op.data.workspace_id : null
         const email = typeof op.data?.email === 'string' ? op.data.email : null
         const role = isRole(op.data?.role) ? op.data.role : null
-        const invitedByUserId =
-          typeof op.data?.invited_by_user_id === 'string' ? op.data.invited_by_user_id : ctx.userId
         if (!workspaceId || !email || !role) {
           throw new UploadRejection('permanent', 'PENDING_FIELDS_REQUIRED')
         }
+        // `invitedByUserId` is server-truth — the caller is the inviter, full
+        // stop. Trusting the payload would let a client attribute the invite
+        // to someone else.
         await upsertPendingMembership(tx, {
           id: op.id,
           workspaceId,
           email,
           role,
-          invitedByUserId,
+          invitedByUserId: ctx.userId,
         })
 
         // Promote-on-insert: if the invited email already belongs to a real
@@ -126,14 +127,16 @@ export const workspacePendingMembershipsHandler: UploadHandler = {
         return
       }
       case 'PATCH': {
+        // `invited_by_user_id` is server-truth and not patchable by the
+        // client — silently drop it from the payload rather than rewriting
+        // it to an attacker-supplied value.
         const email = typeof op.data?.email === 'string' ? op.data.email : undefined
         const role = isRole(op.data?.role) ? op.data.role : undefined
-        const invitedByUserId = typeof op.data?.invited_by_user_id === 'string' ? op.data.invited_by_user_id : undefined
 
-        if (email === undefined && role === undefined && invitedByUserId === undefined) {
+        if (email === undefined && role === undefined) {
           throw new UploadRejection('permanent', 'EMPTY_PAYLOAD')
         }
-        const affected = await updatePendingMembership(tx, op.id, { email, role, invitedByUserId })
+        const affected = await updatePendingMembership(tx, op.id, { email, role })
         if (affected === 0) {
           throw new UploadRejection('permanent', 'ROW_NOT_FOUND')
         }

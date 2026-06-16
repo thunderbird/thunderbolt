@@ -37,6 +37,12 @@ export const workspacePendingMembershipsHandler: UploadHandler = {
     // All pending-membership writes (create / edit / cancel an invite) gate on
     // `invite_users` so a workspace that grants `member` the permission can
     // exercise it on upload. Defaults to admin via Decision 11.
+    //
+    // Inviting (or editing the invite to) `role: 'admin'` additionally requires
+    // `change_roles` — otherwise `invite_users` alone could mint new admins
+    // via the signup-promote path, bypassing the gate that protects existing
+    // members from being promoted by non-role-managers.
+    const targetsAdminRole = op.data?.role === 'admin'
     if (op.op === 'PUT') {
       const targetWorkspaceId = typeof op.data?.workspace_id === 'string' ? op.data.workspace_id : undefined
       if (!targetWorkspaceId) {
@@ -50,12 +56,21 @@ export const workspacePendingMembershipsHandler: UploadHandler = {
         if (!(await callerSatisfiesPermission(tx, existing.workspaceId, ctx.userId, 'invite_users'))) {
           return reject('permanent', 'INSUFFICIENT_PERMISSION')
         }
+        if (
+          targetsAdminRole &&
+          !(await callerSatisfiesPermission(tx, existing.workspaceId, ctx.userId, 'change_roles'))
+        ) {
+          return reject('permanent', 'INSUFFICIENT_PERMISSION')
+        }
         return allow()
       }
       if (await isPersonalWorkspace(tx, targetWorkspaceId)) {
         return reject('permanent', 'PERSONAL_WORKSPACE_IMMUTABLE')
       }
       if (!(await callerSatisfiesPermission(tx, targetWorkspaceId, ctx.userId, 'invite_users'))) {
+        return reject('permanent', 'INSUFFICIENT_PERMISSION')
+      }
+      if (targetsAdminRole && !(await callerSatisfiesPermission(tx, targetWorkspaceId, ctx.userId, 'change_roles'))) {
         return reject('permanent', 'INSUFFICIENT_PERMISSION')
       }
       return allow()
@@ -69,6 +84,19 @@ export const workspacePendingMembershipsHandler: UploadHandler = {
       return reject('permanent', 'PERSONAL_WORKSPACE_IMMUTABLE')
     }
     if (!(await callerSatisfiesPermission(tx, existing.workspaceId, ctx.userId, 'invite_users'))) {
+      return reject('permanent', 'INSUFFICIENT_PERMISSION')
+    }
+    // Guard fires only on promotions (role becoming admin). Demoting an
+    // existing pending admin invite to `member` stays gated on `invite_users`
+    // alone — it's tampering, not escalation, and matching the broader
+    // "any role change requires change_roles" rule from the memberships
+    // handler would cost an extra DB read (load existing pending row) for
+    // a non-security concern.
+    if (
+      op.op === 'PATCH' &&
+      targetsAdminRole &&
+      !(await callerSatisfiesPermission(tx, existing.workspaceId, ctx.userId, 'change_roles'))
+    ) {
       return reject('permanent', 'INSUFFICIENT_PERMISSION')
     }
     return allow()

@@ -462,6 +462,52 @@ describe('workspace upload handlers', () => {
       expect(stored[0].userEmail).toBe('owner5@test.com')
     })
 
+    it('rejects an admin-role membership PUT from invite_users-only caller (escalation guard)', async () => {
+      // Direct `workspace_memberships` PUT with `role: 'admin'` must require
+      // `change_roles` in addition to `invite_users` — same shape as the
+      // pending-membership escalation guard.
+      await insertUser('admin-ws', 'admin-ws@test.com')
+      await bootstrapPersonalViaUpload('admin-ws')
+      const sharedId = uuidv7()
+      await db.insert(workspacesTable).values({
+        id: sharedId,
+        name: 'Shared',
+        isPersonal: false,
+        ownerUserId: null,
+      })
+      await db.insert(workspaceMembershipsTable).values({
+        id: uuidv7(),
+        workspaceId: sharedId,
+        userId: 'admin-ws',
+        role: 'admin',
+      })
+      const memberId = 'ws-member-invite-only'
+      await insertUser(memberId, 'ws-member-invite-only@test.com')
+      await db.insert(workspaceMembershipsTable).values({
+        id: uuidv7(),
+        workspaceId: sharedId,
+        userId: memberId,
+        role: 'member',
+      })
+      await db.insert(workspacePermissionsTable).values({
+        id: uuidv7(),
+        workspaceId: sharedId,
+        permissionKey: 'invite_users',
+        requiredRole: 'member',
+      })
+      const newUserId = 'new-admin-target'
+      await insertUser(newUserId, 'new-admin-target@test.com')
+
+      const op: UploadOp = {
+        op: 'PUT',
+        type: 'workspace_memberships',
+        id: uuidv7(),
+        data: { workspace_id: sharedId, user_id: newUserId, role: 'admin' },
+      }
+      const result = await applyUploadBatch(db, [op], ctxFor(memberId))
+      expectPermanentReject(result, 'INSUFFICIENT_PERMISSION')
+    })
+
     it('rejects a second membership write to a personal workspace (immutable)', async () => {
       await insertUser('owner6', 'owner6@test.com')
       await insertUser('victim', 'victim@test.com')
@@ -530,6 +576,165 @@ describe('workspace upload handlers', () => {
         .from(workspaceMembershipsTable)
         .where(eq(workspaceMembershipsTable.id, a4MembershipId))
       expect(stillThere).toHaveLength(1)
+    })
+
+    it('PATCH role: allowed when caller has change_roles=member', async () => {
+      await insertUser('admin-cr-ok', 'admin-cr-ok@test.com')
+      await insertUser('target-cr-ok', 'target-cr-ok@test.com')
+      const sharedId = uuidv7()
+      await db.insert(workspacesTable).values({ id: sharedId, name: 'Shared', isPersonal: false })
+      await db.insert(workspaceMembershipsTable).values({
+        id: uuidv7(),
+        workspaceId: sharedId,
+        userId: 'admin-cr-ok',
+        role: 'admin',
+      })
+      const memberId = 'member-with-cr'
+      await insertUser(memberId, 'member-with-cr@test.com')
+      await db.insert(workspaceMembershipsTable).values({
+        id: uuidv7(),
+        workspaceId: sharedId,
+        userId: memberId,
+        role: 'member',
+      })
+      const targetMembershipId = uuidv7()
+      await db.insert(workspaceMembershipsTable).values({
+        id: targetMembershipId,
+        workspaceId: sharedId,
+        userId: 'target-cr-ok',
+        role: 'member',
+      })
+      await db.insert(workspacePermissionsTable).values({
+        id: uuidv7(),
+        workspaceId: sharedId,
+        permissionKey: 'change_roles',
+        requiredRole: 'member',
+      })
+
+      const op: UploadOp = {
+        op: 'PATCH',
+        type: 'workspace_memberships',
+        id: targetMembershipId,
+        data: { role: 'admin' },
+      }
+      const result = await applyUploadBatch(db, [op], ctxFor(memberId))
+      expect(result.ok).toBe(true)
+    })
+
+    it('PATCH role: rejected when caller lacks change_roles', async () => {
+      await insertUser('admin-cr-no', 'admin-cr-no@test.com')
+      await insertUser('target-cr-no', 'target-cr-no@test.com')
+      const sharedId = uuidv7()
+      await db.insert(workspacesTable).values({ id: sharedId, name: 'Shared', isPersonal: false })
+      await db.insert(workspaceMembershipsTable).values({
+        id: uuidv7(),
+        workspaceId: sharedId,
+        userId: 'admin-cr-no',
+        role: 'admin',
+      })
+      const memberId = 'member-no-cr'
+      await insertUser(memberId, 'member-no-cr@test.com')
+      await db.insert(workspaceMembershipsTable).values({
+        id: uuidv7(),
+        workspaceId: sharedId,
+        userId: memberId,
+        role: 'member',
+      })
+      const targetMembershipId = uuidv7()
+      await db.insert(workspaceMembershipsTable).values({
+        id: targetMembershipId,
+        workspaceId: sharedId,
+        userId: 'target-cr-no',
+        role: 'member',
+      })
+      // No workspace_permissions row → change_roles defaults to admin.
+
+      const op: UploadOp = {
+        op: 'PATCH',
+        type: 'workspace_memberships',
+        id: targetMembershipId,
+        data: { role: 'admin' },
+      }
+      const result = await applyUploadBatch(db, [op], ctxFor(memberId))
+      expectPermanentReject(result, 'INSUFFICIENT_PERMISSION')
+    })
+
+    it('DELETE: allowed when caller has remove_users=member', async () => {
+      await insertUser('admin-ru-ok', 'admin-ru-ok@test.com')
+      await insertUser('target-ru-ok', 'target-ru-ok@test.com')
+      const sharedId = uuidv7()
+      await db.insert(workspacesTable).values({ id: sharedId, name: 'Shared', isPersonal: false })
+      await db.insert(workspaceMembershipsTable).values({
+        id: uuidv7(),
+        workspaceId: sharedId,
+        userId: 'admin-ru-ok',
+        role: 'admin',
+      })
+      const memberId = 'member-with-ru'
+      await insertUser(memberId, 'member-with-ru@test.com')
+      await db.insert(workspaceMembershipsTable).values({
+        id: uuidv7(),
+        workspaceId: sharedId,
+        userId: memberId,
+        role: 'member',
+      })
+      const targetMembershipId = uuidv7()
+      await db.insert(workspaceMembershipsTable).values({
+        id: targetMembershipId,
+        workspaceId: sharedId,
+        userId: 'target-ru-ok',
+        role: 'member',
+      })
+      await db.insert(workspacePermissionsTable).values({
+        id: uuidv7(),
+        workspaceId: sharedId,
+        permissionKey: 'remove_users',
+        requiredRole: 'member',
+      })
+
+      const op: UploadOp = {
+        op: 'DELETE',
+        type: 'workspace_memberships',
+        id: targetMembershipId,
+      }
+      const result = await applyUploadBatch(db, [op], ctxFor(memberId))
+      expect(result.ok).toBe(true)
+    })
+
+    it('DELETE: rejected when caller lacks remove_users', async () => {
+      await insertUser('admin-ru-no', 'admin-ru-no@test.com')
+      await insertUser('target-ru-no', 'target-ru-no@test.com')
+      const sharedId = uuidv7()
+      await db.insert(workspacesTable).values({ id: sharedId, name: 'Shared', isPersonal: false })
+      await db.insert(workspaceMembershipsTable).values({
+        id: uuidv7(),
+        workspaceId: sharedId,
+        userId: 'admin-ru-no',
+        role: 'admin',
+      })
+      const memberId = 'member-no-ru'
+      await insertUser(memberId, 'member-no-ru@test.com')
+      await db.insert(workspaceMembershipsTable).values({
+        id: uuidv7(),
+        workspaceId: sharedId,
+        userId: memberId,
+        role: 'member',
+      })
+      const targetMembershipId = uuidv7()
+      await db.insert(workspaceMembershipsTable).values({
+        id: targetMembershipId,
+        workspaceId: sharedId,
+        userId: 'target-ru-no',
+        role: 'member',
+      })
+
+      const op: UploadOp = {
+        op: 'DELETE',
+        type: 'workspace_memberships',
+        id: targetMembershipId,
+      }
+      const result = await applyUploadBatch(db, [op], ctxFor(memberId))
+      expectPermanentReject(result, 'INSUFFICIENT_PERMISSION')
     })
 
     it('rejects a PUT adding another user when e2eeEnabled is true (THU-593)', async () => {
@@ -636,6 +841,154 @@ describe('workspace upload handlers', () => {
         },
       }
       const result = await applyUploadBatch(db, [op], ctxFor('b-perm'))
+      expect(result.ok).toBe(true)
+    })
+
+    it('rejects an admin-role pending invite from invite_users-only caller (escalation guard)', async () => {
+      // `invite_users` alone must not be enough to invite `role: 'admin'` —
+      // otherwise the signup-promote path would mint a new admin and bypass
+      // the `change_roles` gate that protects existing-member promotions.
+      await insertUser('inviter-only', 'inviter-only@test.com')
+      await bootstrapPersonalViaUpload('inviter-only')
+      const sharedId = await seedSharedAsAdmin('inviter-only')
+      const memberId = 'member-with-invite-only'
+      await insertUser(memberId, 'member-with-invite-only@test.com')
+      await db.insert(workspaceMembershipsTable).values({
+        id: uuidv7(),
+        workspaceId: sharedId,
+        userId: memberId,
+        role: 'member',
+      })
+      await db.insert(workspacePermissionsTable).values({
+        id: uuidv7(),
+        workspaceId: sharedId,
+        permissionKey: 'invite_users',
+        requiredRole: 'member',
+      })
+
+      const op: UploadOp = {
+        op: 'PUT',
+        type: 'workspace_pending_memberships',
+        id: uuidv7(),
+        data: { workspace_id: sharedId, email: 'pending-admin@test.com', role: 'admin' },
+      }
+      const result = await applyUploadBatch(db, [op], ctxFor(memberId))
+      expectPermanentReject(result, 'INSUFFICIENT_PERMISSION')
+    })
+
+    it('rejects PATCH that promotes a pending invite to admin without change_roles', async () => {
+      // PATCH-to-admin must hit the same escalation guard as PUT-to-admin —
+      // otherwise an inviter could quietly elevate a pending invite they
+      // shouldn't be able to promote.
+      await insertUser('patch-inviter', 'patch-inviter@test.com')
+      await bootstrapPersonalViaUpload('patch-inviter')
+      const sharedId = await seedSharedAsAdmin('patch-inviter')
+      const memberId = 'patch-member-invite-only'
+      await insertUser(memberId, 'patch-member-invite-only@test.com')
+      await db.insert(workspaceMembershipsTable).values({
+        id: uuidv7(),
+        workspaceId: sharedId,
+        userId: memberId,
+        role: 'member',
+      })
+      await db.insert(workspacePermissionsTable).values({
+        id: uuidv7(),
+        workspaceId: sharedId,
+        permissionKey: 'invite_users',
+        requiredRole: 'member',
+      })
+
+      // Seed a pending invite at role=member, then try to PATCH to admin.
+      const pendingId = uuidv7()
+      await db.insert(workspacePendingMembershipsTable).values({
+        id: pendingId,
+        workspaceId: sharedId,
+        email: 'pending-target@test.com',
+        role: 'member',
+        invitedByUserId: 'patch-inviter',
+      })
+
+      const op: UploadOp = {
+        op: 'PATCH',
+        type: 'workspace_pending_memberships',
+        id: pendingId,
+        data: { role: 'admin' },
+      }
+      const result = await applyUploadBatch(db, [op], ctxFor(memberId))
+      expectPermanentReject(result, 'INSUFFICIENT_PERMISSION')
+    })
+
+    it('allows PATCH demoting a pending admin invite to member from invite_users-only caller', async () => {
+      // The escalation guard is intentionally one-way: promotions to admin
+      // require `change_roles`, but demotions stay gated on `invite_users`
+      // alone. Demoting a pending admin invite is tampering, not escalation,
+      // and matching the broader "any role change" rule from the memberships
+      // handler would cost an extra DB read for a non-security concern.
+      await insertUser('demote-inviter', 'demote-inviter@test.com')
+      await bootstrapPersonalViaUpload('demote-inviter')
+      const sharedId = await seedSharedAsAdmin('demote-inviter')
+      const memberId = 'demote-member-invite-only'
+      await insertUser(memberId, 'demote-member-invite-only@test.com')
+      await db.insert(workspaceMembershipsTable).values({
+        id: uuidv7(),
+        workspaceId: sharedId,
+        userId: memberId,
+        role: 'member',
+      })
+      await db.insert(workspacePermissionsTable).values({
+        id: uuidv7(),
+        workspaceId: sharedId,
+        permissionKey: 'invite_users',
+        requiredRole: 'member',
+      })
+
+      const pendingId = uuidv7()
+      await db.insert(workspacePendingMembershipsTable).values({
+        id: pendingId,
+        workspaceId: sharedId,
+        email: 'pending-admin-to-demote@test.com',
+        role: 'admin',
+        invitedByUserId: 'demote-inviter',
+      })
+
+      const op: UploadOp = {
+        op: 'PATCH',
+        type: 'workspace_pending_memberships',
+        id: pendingId,
+        data: { role: 'member' },
+      }
+      const result = await applyUploadBatch(db, [op], ctxFor(memberId))
+      expect(result.ok).toBe(true)
+    })
+
+    it('allows an admin-role pending invite when caller has BOTH invite_users and change_roles', async () => {
+      await insertUser('inviter-both', 'inviter-both@test.com')
+      await bootstrapPersonalViaUpload('inviter-both')
+      const sharedId = await seedSharedAsAdmin('inviter-both')
+      const memberId = 'member-with-both'
+      await insertUser(memberId, 'member-with-both@test.com')
+      await db.insert(workspaceMembershipsTable).values({
+        id: uuidv7(),
+        workspaceId: sharedId,
+        userId: memberId,
+        role: 'member',
+      })
+      for (const key of ['invite_users', 'change_roles'] as const) {
+        await db.insert(workspacePermissionsTable).values({
+          id: uuidv7(),
+          workspaceId: sharedId,
+          permissionKey: key,
+          requiredRole: 'member',
+        })
+      }
+
+      const op: UploadOp = {
+        op: 'PUT',
+        type: 'workspace_pending_memberships',
+        id: uuidv7(),
+        data: { workspace_id: sharedId, email: 'pending-admin-allowed@test.com', role: 'admin' },
+      }
+      const result = await applyUploadBatch(db, [op], ctxFor(memberId))
       expect(result.ok).toBe(true)
     })
 

@@ -71,6 +71,10 @@ const isPersonalAdminBootstrap = async (
  * - Each op gates on a `workspace_permissions` key — `invite_users` for PUT,
  *   `change_roles` for PATCH, `remove_users` for DELETE — defaulting to
  *   admin-only when the permission row is absent (Decision 11).
+ * - Adding a membership with `role: 'admin'` additionally requires
+ *   `change_roles` — `invite_users` alone could otherwise mint new admins
+ *   via either a direct PUT or via the pending-invite signup-promote path,
+ *   bypassing the gate that protects existing-member promotions.
  * - Personal workspaces are immutable past the FE-driven admin bootstrap
  *   (`isPersonalAdminBootstrap`), which lands exactly one admin row for the
  *   owner the first time the workspace appears server-side.
@@ -144,6 +148,11 @@ export const workspaceMembershipsHandler: UploadHandler = {
     // Defaults to admin when the row is absent (Decision 11). Aligned with what
     // the FE Members UI checks via `useWorkspacePermission` so a workspace that
     // grants `member` the permission can actually exercise it on upload.
+    //
+    // Adding a membership with `role: 'admin'` additionally requires
+    // `change_roles` — otherwise `invite_users` alone could mint new admins
+    // and bypass the gate that protects existing-member promotions.
+    const targetsAdminRole = op.data?.role === 'admin'
     if (op.op === 'PUT' && !targetWorkspaceId) {
       const existing = await getMembershipById(tx, op.id)
       if (!existing) {
@@ -155,6 +164,12 @@ export const workspaceMembershipsHandler: UploadHandler = {
       if (!(await callerSatisfiesPermission(tx, existing.workspaceId, ctx.userId, 'invite_users'))) {
         return reject('permanent', 'INSUFFICIENT_PERMISSION')
       }
+      if (
+        targetsAdminRole &&
+        !(await callerSatisfiesPermission(tx, existing.workspaceId, ctx.userId, 'change_roles'))
+      ) {
+        return reject('permanent', 'INSUFFICIENT_PERMISSION')
+      }
       return allow()
     }
 
@@ -164,6 +179,9 @@ export const workspaceMembershipsHandler: UploadHandler = {
         return reject('permanent', 'PERSONAL_WORKSPACE_IMMUTABLE')
       }
       if (!(await callerSatisfiesPermission(tx, targetWorkspaceId!, ctx.userId, 'invite_users'))) {
+        return reject('permanent', 'INSUFFICIENT_PERMISSION')
+      }
+      if (targetsAdminRole && !(await callerSatisfiesPermission(tx, targetWorkspaceId!, ctx.userId, 'change_roles'))) {
         return reject('permanent', 'INSUFFICIENT_PERMISSION')
       }
       return allow()

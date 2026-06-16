@@ -219,7 +219,13 @@ const WorkspaceMembersPage = () => {
                         </span>
                       </TableCell>
                       <TableCell>
-                        {canChangeRoles ? (
+                        {/* Pending rows gate on `invite_users` — the BE treats
+                            the entire pending lifecycle (PUT/PATCH/DELETE) as
+                            one `invite_users`-gated operation, so a user with
+                            `change_roles` or `remove_users` but not
+                            `invite_users` would click and the upload would
+                            revert. */}
+                        {canInviteUsers ? (
                           <Select
                             value={entry.row.role}
                             onValueChange={(value) =>
@@ -243,7 +249,7 @@ const WorkspaceMembersPage = () => {
                       </TableCell>
                       <TableCell className="text-muted-foreground">Pending</TableCell>
                       <TableCell className="text-right">
-                        {canRemoveUsers && (
+                        {canInviteUsers && (
                           <Button
                             variant="ghost"
                             size="sm"

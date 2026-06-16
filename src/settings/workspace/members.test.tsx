@@ -3,14 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { AuthProvider, DatabaseProvider, HttpClientProvider } from '@/contexts'
-import {
-  otherWsId,
-  resetTestDatabase,
-  setupTestDatabase,
-  teardownTestDatabase,
-  testUserId,
-  wsId,
-} from '@/dal/test-utils'
+import { otherWsId, resetTestDatabase, setupTestDatabase, teardownTestDatabase, testUserId } from '@/dal/test-utils'
 import { getDb } from '@/db/database'
 import {
   workspaceMembershipsTable,
@@ -33,7 +26,6 @@ import { eq } from 'drizzle-orm'
 import type { ReactNode } from 'react'
 import { Route, Routes, useLocation } from 'react-router'
 import WorkspaceMembersPage from './members'
-import { RequireWorkspacePermission } from './require-permission'
 
 const pageAuthClient = createMockAuthClient({
   session: { user: { id: testUserId, email: 'a@b.com', name: 'Alice', isAnonymous: false } },
@@ -103,14 +95,38 @@ const seedChangeRolesPermission = async (requiredRole: 'admin' | 'member') => {
     })
 }
 
-/** Convenience: render the Members page with the standard route + providers. */
+const seedInviteUsersPermission = async (requiredRole: 'admin' | 'member') => {
+  await getDb()
+    .insert(workspacePermissionsTable)
+    .values({
+      id: `${otherWsId}-invite_users`,
+      workspaceId: otherWsId,
+      permissionKey: 'invite_users',
+      requiredRole,
+    })
+}
+
+const seedRemoveUsersPermission = async (requiredRole: 'admin' | 'member') => {
+  await getDb()
+    .insert(workspacePermissionsTable)
+    .values({
+      id: `${otherWsId}-remove_users`,
+      workspaceId: otherWsId,
+      permissionKey: 'remove_users',
+      requiredRole,
+    })
+}
+
+/** Convenience: render the Members page with the standard route + providers.
+ *  Mirrors the production route — no `RequireWorkspacePermission` wrapper;
+ *  Members is visible to every member of a shared workspace and individual
+ *  actions gate themselves on the granular permission keys. Nested
+ *  `workspace/members` so the `../permissions` Link inside the page resolves
+ *  to `.../settings/workspace/permissions` as it does in production. */
 const renderMembers = () => {
   renderWithReactivity(
     <Routes>
-      <Route
-        path="w/:workspaceId/settings/workspace"
-        element={<RequireWorkspacePermission permissionKey="manage_members" />}
-      >
+      <Route path="w/:workspaceId/settings/workspace">
         <Route path="members" element={<WorkspaceMembersPage />} />
       </Route>
       <Route path="*" element={<LocationProbe />} />
@@ -122,17 +138,6 @@ const renderMembers = () => {
       wrapper: Providers,
     },
   )
-}
-
-const seedPersonalMembership = async () => {
-  await getDb()
-    .insert(workspaceMembershipsTable)
-    .values({
-      id: `${wsId}-${testUserId}`,
-      workspaceId: wsId,
-      userId: testUserId,
-      role: 'admin',
-    })
 }
 
 describe('WorkspaceMembersPage routing', () => {
@@ -165,7 +170,8 @@ describe('WorkspaceMembersPage routing', () => {
     const permissionsLink = screen.getByRole('link', { name: 'Permissions' })
     // Relative `../permissions` resolves to `/w/<id>/settings/workspace/permissions` from this route.
     expect(permissionsLink.getAttribute('href')).toContain('/settings/workspace/permissions')
-    // Add Member button enabled and clickable now.
+    // Add Member shows up once `invite_users` resolves (admin satisfies default).
+    await waitForElement(() => screen.queryByRole('button', { name: /Add Member/ }))
     expect(screen.getByRole('button', { name: /Add Member/ })).not.toBeDisabled()
   })
 
@@ -183,13 +189,16 @@ describe('WorkspaceMembersPage routing', () => {
     expect(screen.getByLabelText('Emails')).toBeInTheDocument()
   })
 
-  it('redirects a member out under default policy', async () => {
+  it('lets a member view the Members page (per-action gates apply within)', async () => {
+    // Route is no longer wrapped in `RequireWorkspacePermission` — every
+    // workspace member can read the Members list. Individual actions (invite,
+    // role change, remove) gate themselves on the granular permission keys.
     await seedShared('member')
 
     renderMembers()
 
-    await waitForElement(() => screen.queryByTestId(`at-/w/${otherWsId}/settings`))
-    expect(screen.queryByRole('heading', { name: 'Members' })).not.toBeInTheDocument()
+    await waitForElement(() => screen.queryByRole('heading', { name: 'Members' }))
+    expect(screen.getByRole('heading', { name: 'Members' })).toBeInTheDocument()
   })
 
   it('renders active and pending rows with the right status text', async () => {
@@ -264,17 +273,8 @@ describe('WorkspaceMembersPage routing', () => {
 
   it('renders role as plain text when change_roles permission denies the user', async () => {
     // Active user is a member; default change_roles required_role is 'admin'
-    // → no Select for any row. We still need to be on the page, so set
-    // manage_members to 'member' so a member can reach Members.
+    // → no Select for any row.
     await seedShared('member')
-    await getDb()
-      .insert(workspacePermissionsTable)
-      .values({
-        id: `${otherWsId}-manage_members`,
-        workspaceId: otherWsId,
-        permissionKey: 'manage_members',
-        requiredRole: 'member',
-      })
     await seedAdditionalMember('u-charlie', 'Charlie', 'charlie@test.com', 'admin')
 
     renderMembers()
@@ -389,16 +389,8 @@ describe('WorkspaceMembersPage routing', () => {
     // shows the dropdown with the Member option disabled.
     await seedShared('member')
     await seedAdditionalMember('u-charlie', 'Charlie', 'charlie@test.com', 'admin')
-    // Active user is a member, so we need to relax manage_members to reach the page.
-    await getDb()
-      .insert(workspacePermissionsTable)
-      .values({
-        id: `${otherWsId}-manage_members`,
-        workspaceId: otherWsId,
-        permissionKey: 'manage_members',
-        requiredRole: 'member',
-      })
-    // And let members change roles too.
+    // Members can view the page by default; relax change_roles so the
+    // dropdown renders.
     await seedChangeRolesPermission('member')
 
     renderMembers()
@@ -421,25 +413,99 @@ describe('WorkspaceMembersPage routing', () => {
     }
   })
 
-  it('blocks access in a Personal Workspace', async () => {
-    await seedPersonalMembership()
+  // Personal-workspace Members access: the sidebar hides the entry for
+  // personal (covered by settings-sidebar.test.tsx). The route itself no
+  // longer has a permission wrapper — direct URL navigation renders the
+  // (degenerate, single-row) page. Acceptable; the Members concept is
+  // shared-workspace-only by convention, not by route block.
 
-    renderWithReactivity(
-      <Routes>
-        <Route path="settings/workspace" element={<RequireWorkspacePermission permissionKey="manage_members" />}>
-          <Route path="members" element={<WorkspaceMembersPage />} />
-        </Route>
-        <Route path="*" element={<LocationProbe />} />
-      </Routes>,
-      {
-        route: '/settings/workspace/members',
-        routePath: '/*',
-        tables: ['workspaces', 'workspace_memberships', 'workspace_permissions'],
-        wrapper: Providers,
-      },
-    )
+  describe('permission gating', () => {
+    it('hides Add Member when invite_users is denied (default policy for members)', async () => {
+      await seedShared('member')
 
-    await waitForElement(() => screen.queryByTestId('at-/settings'))
-    expect(screen.queryByRole('heading', { name: 'Members' })).not.toBeInTheDocument()
+      renderMembers()
+
+      await waitForElement(() => screen.queryByRole('heading', { name: 'Members' }))
+      expect(screen.queryByRole('button', { name: /Add Member/ })).not.toBeInTheDocument()
+    })
+
+    it('shows Add Member when invite_users is granted to member', async () => {
+      await seedShared('member')
+      await seedInviteUsersPermission('member')
+
+      renderMembers()
+
+      await waitForElement(() => screen.queryByRole('button', { name: /Add Member/ }))
+      expect(screen.getByRole('button', { name: /Add Member/ })).toBeInTheDocument()
+    })
+
+    it('hides the pending-row role dropdown when invite_users is denied (even if change_roles is granted)', async () => {
+      // The BE pending-membership PATCH is gated on `invite_users` — gating
+      // the FE on `change_roles` would round-trip-fail.
+      await seedShared('member')
+      await seedPendingInvite('pending@test.com')
+      await seedChangeRolesPermission('member')
+
+      renderMembers()
+
+      await waitForElement(() => screen.queryByText('pending@test.com'))
+      expect(screen.queryByRole('combobox', { name: /Role for pending@test.com/ })).not.toBeInTheDocument()
+    })
+
+    it('shows the pending-row role dropdown when invite_users is granted', async () => {
+      await seedShared('member')
+      await seedPendingInvite('pending@test.com')
+      await seedInviteUsersPermission('member')
+
+      renderMembers()
+
+      await waitForElement(() => screen.queryByRole('combobox', { name: /Role for pending@test.com/ }))
+      expect(screen.getByRole('combobox', { name: /Role for pending@test.com/ })).toBeInTheDocument()
+    })
+
+    it('hides the pending-row Remove button when invite_users is denied', async () => {
+      // Pending DELETE is gated on `invite_users` on the BE; the FE must
+      // match. (Regression: used to gate on `remove_users` → round-trip-fail
+      // for members with one permission but not the other.)
+      await seedShared('member')
+      await seedPendingInvite('pending@test.com')
+
+      renderMembers()
+
+      await waitForElement(() => screen.queryByText('pending@test.com'))
+      expect(screen.queryByRole('button', { name: /Remove pending@test.com/ })).not.toBeInTheDocument()
+    })
+
+    it('shows the pending-row Remove button when invite_users is granted', async () => {
+      await seedShared('member')
+      await seedPendingInvite('pending@test.com')
+      await seedInviteUsersPermission('member')
+
+      renderMembers()
+
+      await waitForElement(() => screen.queryByRole('button', { name: /Remove pending@test.com/ }))
+      expect(screen.getByRole('button', { name: /Remove pending@test.com/ })).toBeInTheDocument()
+    })
+
+    it('hides the active-row Remove button when remove_users is denied', async () => {
+      await seedShared('member')
+      await seedAdditionalMember('u-charlie', 'Charlie', 'charlie@test.com', 'member')
+
+      renderMembers()
+
+      await waitForElement(() => screen.queryByText('Charlie'))
+      expect(screen.queryByRole('button', { name: 'Remove Charlie' })).not.toBeInTheDocument()
+    })
+
+    it('shows the active-row Remove button when remove_users is granted', async () => {
+      await seedShared('member')
+      await seedAdditionalMember('u-charlie', 'Charlie', 'charlie@test.com', 'member')
+      await seedRemoveUsersPermission('member')
+
+      renderMembers()
+
+      await waitForElement(() => screen.queryByRole('button', { name: 'Remove Charlie' }))
+      expect(screen.getByRole('button', { name: 'Remove Charlie' })).toBeInTheDocument()
+    })
   })
 })

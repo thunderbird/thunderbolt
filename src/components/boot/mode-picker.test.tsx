@@ -223,6 +223,60 @@ describe('ModePicker', () => {
       expect(mockValidate).toHaveBeenCalledWith('http://localhost:8000/v1')
     })
 
+    it('drops a stale blur result when the user edits the field during validation', async () => {
+      // Hold validate() pending so we can interleave a SET_URL between
+      // dispatch(VALIDATE_START) and the result.
+      let resolveValidate: (r: ValidationResult) => void = () => {}
+      mockValidate.mockImplementation(
+        () =>
+          new Promise<ValidationResult>((resolve) => {
+            resolveValidate = resolve
+          }),
+      )
+
+      renderModePicker()
+      fireEvent.click(screen.getByText('Connect to AI server'))
+
+      const input = screen.getByPlaceholderText('app.thunderbolt.io/')
+      fireEvent.change(input, { target: { value: 'http://stale.local' } })
+      fireEvent.blur(input)
+      // No flush yet — validate() is still pending.
+
+      // User edits the field while validate is in flight.
+      fireEvent.change(input, { target: { value: 'http://fresh.local' } })
+
+      // Stale validate finally resolves with success for the OLD URL.
+      resolveValidate(okValidation())
+      await flush()
+
+      // Checkmark must NOT appear — the success was for stale text.
+      expect(input.parentElement?.querySelector('svg')).not.toBeInTheDocument()
+    })
+
+    it('reuses the blur-time validation when Continue submits the same URL', async () => {
+      const serverId = 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee'
+      mockValidate.mockResolvedValue(okValidation({ serverId }))
+
+      renderModePicker()
+      fireEvent.click(screen.getByText('Connect to AI server'))
+
+      const input = screen.getByPlaceholderText('app.thunderbolt.io/')
+      fireEvent.change(input, { target: { value: 'http://localhost:8000' } })
+      fireEvent.blur(input)
+      await flush()
+
+      // Blur fires one validate call.
+      expect(mockValidate).toHaveBeenCalledTimes(1)
+
+      // Continue against the SAME URL must not re-validate.
+      const buttons = screen.getAllByRole('button')
+      fireEvent.click(buttons[buttons.length - 1])
+      await flush()
+
+      expect(mockValidate).toHaveBeenCalledTimes(1)
+      expect(useTrustDomainRegistry.getState().activeTrustDomain).toEqual({ kind: 'server', serverId })
+    })
+
     it('shows inline error and returns to picker on validation failure', async () => {
       mockValidate.mockResolvedValue(errorValidation("Couldn't reach this server"))
 

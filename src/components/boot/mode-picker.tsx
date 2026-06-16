@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { useReducer } from 'react'
+import { useReducer, useRef } from 'react'
 import { ArrowRight, Bot, Check, Server } from 'lucide-react'
 import { AppLogo } from '@/components/app-logo'
 import { Button } from '@/components/ui/button'
@@ -104,6 +104,19 @@ type ModePickerProps = {
 export const ModePicker = ({ validate = validateServerUrl }: ModePickerProps = {}) => {
   const [state, dispatch] = useReducer(reducer, initialState)
 
+  // Mirror of the live `serverUrl` so async validate callbacks can detect that
+  // the user typed something else while the request was in flight, and bail
+  // out of applying a result that no longer matches. Updated on every render
+  // — the ref always reflects the latest committed state.
+  const serverUrlRef = useRef(state.serverUrl)
+  serverUrlRef.current = state.serverUrl
+
+  // Cache of the last validate() resolution by URL. Reused when Continue
+  // submits the same URL the user just blurred, so we don't pay the
+  // /v1/config round-trip twice (and don't visually "re-validate" a URL the
+  // user already saw a checkmark on).
+  const lastValidationRef = useRef<{ url: string; result: ValidationResult } | null>(null)
+
   const isServerMode = state.selection === 'server'
   // Dots: left = initial pick, right = server URL step
   const activeDot = isServerMode ? 1 : 0
@@ -120,8 +133,23 @@ export const ModePicker = ({ validate = validateServerUrl }: ModePickerProps = {
     if (!isServerMode || !state.serverUrl.trim()) {
       return
     }
+    const urlAtCall = state.serverUrl
+    // Skip if we already have a cached result for this exact URL — the second
+    // blur after Continue's pre-validation would otherwise re-fire the network.
+    if (lastValidationRef.current?.url === urlAtCall) {
+      const cached = lastValidationRef.current.result
+      dispatch(cached.ok ? { type: 'VALIDATE_SUCCESS' } : { type: 'VALIDATE_ERROR', message: cached.message })
+      return
+    }
     dispatch({ type: 'VALIDATE_START' })
-    const result = await validate(state.serverUrl)
+    const result = await validate(urlAtCall)
+    // Drop the result if the input has changed since we started — applying it
+    // would either show a checkmark for the new text (when the old URL passed)
+    // or show an error for text the user already replaced.
+    if (urlAtCall !== serverUrlRef.current) {
+      return
+    }
+    lastValidationRef.current = { url: urlAtCall, result }
     dispatch(result.ok ? { type: 'VALIDATE_SUCCESS' } : { type: 'VALIDATE_ERROR', message: result.message })
   }
 
@@ -133,8 +161,27 @@ export const ModePicker = ({ validate = validateServerUrl }: ModePickerProps = {
     }
 
     if (state.selection === 'server') {
+      // Reuse the blur-time result when the URL hasn't changed since — avoids
+      // a second round-trip and the click-while-blur-pending double-tap UX.
+      const cached = lastValidationRef.current
+      if (cached && cached.url === state.serverUrl && cached.result.ok) {
+        dispatch({ type: 'CONNECT' })
+        useTrustDomainRegistry
+          .getState()
+          .activateServer({ serverId: cached.result.serverId, cloudUrl: cached.result.cloudUrl })
+        window.location.reload()
+        return
+      }
+
       dispatch({ type: 'CONNECT' })
-      const result = await validate(state.serverUrl)
+      const urlAtCall = state.serverUrl
+      const result = await validate(urlAtCall)
+      if (urlAtCall !== serverUrlRef.current) {
+        // User edited the field during the network call — bail rather than
+        // surface a result for stale text.
+        return
+      }
+      lastValidationRef.current = { url: urlAtCall, result }
       if (!result.ok) {
         dispatch({ type: 'VALIDATE_ERROR', message: result.message })
         return

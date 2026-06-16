@@ -230,6 +230,17 @@ export const workspaceMembershipsHandler: UploadHandler = {
         if (!workspaceId || !userId || !role) {
           throw new UploadRejection('permanent', 'MEMBERSHIP_FIELDS_REQUIRED')
         }
+        // Last-admin protection mirrors PATCH/DELETE. `upsertMembership` does
+        // ON CONFLICT DO UPDATE SET role on `(workspace_id, user_id)`, so a
+        // PUT demoting the workspace's only admin to member would otherwise
+        // bypass the guard those paths enforce.
+        const existing = await getMembershipByWorkspaceAndUser(tx, workspaceId, userId)
+        if (existing && existing.role === 'admin' && role !== 'admin') {
+          const remainingAdmins = await countWorkspaceAdmins(tx, workspaceId, existing.id)
+          if (remainingAdmins === 0) {
+            throw new UploadRejection('permanent', 'LAST_ADMIN_PROTECTED')
+          }
+        }
         // Enrich the row with the canonical name/email from `auth.user` so the
         // FE Members page has display info without a synced `users` table. The
         // FE never gets to set these fields directly — the BE is the only

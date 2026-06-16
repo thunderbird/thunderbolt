@@ -572,6 +572,67 @@ describe('workspace upload handlers', () => {
       expect(stored[0].role).toBe('admin')
     })
 
+    it('rejects PUT that would demote the last admin (last-admin protection)', async () => {
+      // PUT's apply path upserts via `ON CONFLICT DO UPDATE SET role`. Without
+      // a last-admin guard in apply, a caller satisfying `change_roles` could
+      // demote the workspace's only admin to member by PUT — leaving zero
+      // admins, while PATCH/DELETE would reject with LAST_ADMIN_PROTECTED.
+      await insertUser('lone-admin', 'lone-admin@test.com')
+      await bootstrapPersonalViaUpload('lone-admin')
+      const sharedId = uuidv7()
+      await db.insert(workspacesTable).values({
+        id: sharedId,
+        name: 'Shared',
+        isPersonal: false,
+        ownerUserId: null,
+      })
+      const adminMembershipId = uuidv7()
+      await db.insert(workspaceMembershipsTable).values({
+        id: adminMembershipId,
+        workspaceId: sharedId,
+        userId: 'lone-admin',
+        role: 'admin',
+      })
+      const memberId = 'member-with-cr-demote'
+      await insertUser(memberId, 'member-with-cr-demote@test.com')
+      await db.insert(workspaceMembershipsTable).values({
+        id: uuidv7(),
+        workspaceId: sharedId,
+        userId: memberId,
+        role: 'member',
+      })
+      // Grant both keys so PUT validate passes — the test exercises the apply
+      // layer's last-admin guard.
+      await db.insert(workspacePermissionsTable).values({
+        id: uuidv7(),
+        workspaceId: sharedId,
+        permissionKey: 'invite_users',
+        requiredRole: 'member',
+      })
+      await db.insert(workspacePermissionsTable).values({
+        id: uuidv7(),
+        workspaceId: sharedId,
+        permissionKey: 'change_roles',
+        requiredRole: 'member',
+      })
+
+      const op: UploadOp = {
+        op: 'PUT',
+        type: 'workspace_memberships',
+        id: uuidv7(),
+        data: { workspace_id: sharedId, user_id: 'lone-admin', role: 'member' },
+      }
+      const result = await applyUploadBatch(db, [op], ctxFor(memberId))
+      expectPermanentReject(result, 'LAST_ADMIN_PROTECTED')
+
+      // The admin row is unchanged.
+      const stored = await db
+        .select()
+        .from(workspaceMembershipsTable)
+        .where(eq(workspaceMembershipsTable.id, adminMembershipId))
+      expect(stored[0].role).toBe('admin')
+    })
+
     it('rejects a second membership write to a personal workspace (immutable)', async () => {
       await insertUser('owner6', 'owner6@test.com')
       await insertUser('victim', 'victim@test.com')

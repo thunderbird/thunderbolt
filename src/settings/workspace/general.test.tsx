@@ -259,6 +259,71 @@ describe('WorkspaceGeneralPage', () => {
     expect(rows[0].slug).toBe('engineering-team')
   })
 
+  it('reflects remote sync updates into the form when the user has no in-progress edits', async () => {
+    await seedSharedWorkspaceWithMembership('admin', 'Original')
+
+    const { triggerChange } = renderWithReactivity(<WorkspaceGeneralPage />, {
+      route: `/w/${otherWsId}/settings/workspace/general`,
+      routePath: '/*',
+      tables: ['workspaces'],
+      wrapper: DbWrapper,
+    })
+
+    await waitForElement(() =>
+      (screen.getByLabelText('Workspace name') as HTMLInputElement).value === 'Original'
+        ? screen.getByLabelText('Workspace name')
+        : null,
+    )
+
+    // Simulate a remote sync update — another device renamed the workspace.
+    const db = getDb()
+    await db.update(workspacesTable).set({ name: 'Remote Rename' }).where(eq(workspacesTable.id, otherWsId))
+    await act(async () => {
+      triggerChange(['workspaces'])
+      await getClock().runAllAsync()
+    })
+
+    await waitForElement(() =>
+      (screen.getByLabelText('Workspace name') as HTMLInputElement).value === 'Remote Rename'
+        ? screen.getByLabelText('Workspace name')
+        : null,
+    )
+    expect((screen.getByLabelText('Workspace name') as HTMLInputElement).value).toBe('Remote Rename')
+  })
+
+  it('does not clobber in-progress edits when a remote sync update arrives', async () => {
+    await seedSharedWorkspaceWithMembership('admin', 'Original')
+
+    const { triggerChange } = renderWithReactivity(<WorkspaceGeneralPage />, {
+      route: `/w/${otherWsId}/settings/workspace/general`,
+      routePath: '/*',
+      tables: ['workspaces'],
+      wrapper: DbWrapper,
+    })
+
+    const input = (await waitForElement(() =>
+      (screen.getByLabelText('Workspace name') as HTMLInputElement).value === 'Original'
+        ? screen.getByLabelText('Workspace name')
+        : null,
+    )) as HTMLInputElement
+
+    // User starts typing — form is now dirty.
+    await act(async () => {
+      fireEvent.change(input, { target: { value: 'User typing…' } })
+    })
+
+    // Remote sync update arrives mid-edit.
+    const db = getDb()
+    await db.update(workspacesTable).set({ name: 'Remote Rename' }).where(eq(workspacesTable.id, otherWsId))
+    await act(async () => {
+      triggerChange(['workspaces'])
+      await getClock().runAllAsync()
+    })
+
+    // The user's in-progress edit must survive — they win until they save.
+    expect((screen.getByLabelText('Workspace name') as HTMLInputElement).value).toBe('User typing…')
+  })
+
   it('stops auto-deriving the slug once the user edits it manually', async () => {
     await seedSharedWorkspaceWithMembership('admin', 'Acme')
 

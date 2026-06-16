@@ -2,7 +2,9 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import type { HandlerResult } from './types'
+import { getRequiredRoleForPermission, getUserRoleInWorkspace } from '@/dal/workspaces'
+import { permissionAllows, type WorkspacePermissionKey } from '@shared/workspaces'
+import type { HandlerResult, UploadTx } from './types'
 
 /** Column names Drizzle declares as `timestamp(...)`; JSON sends them as ISO strings. */
 const timestampDbColumns = new Set(['deleted_at', 'last_seen', 'created_at', 'revoked_at', 'updated_at'])
@@ -42,3 +44,22 @@ export const reject = (rejectionClass: 'permanent' | 'transient', code: string):
   class: rejectionClass,
   code,
 })
+
+/**
+ * Resolves the caller's role + the configured permission's required role and
+ * returns whether the op is allowed. Defaults `required_role` to `'admin'`
+ * when no `workspace_permissions` row exists for the key (Decision 11) so an
+ * unconfigured workspace stays admin-only. Shared by every handler that gates
+ * writes on `workspace_permissions` — keep the lookup in one place so the
+ * default-to-admin policy can't drift between tables.
+ */
+export const callerSatisfiesPermission = async (
+  tx: UploadTx,
+  workspaceId: string,
+  userId: string,
+  permissionKey: WorkspacePermissionKey,
+): Promise<boolean> => {
+  const required = (await getRequiredRoleForPermission(tx, workspaceId, permissionKey)) ?? 'admin'
+  const userRole = await getUserRoleInWorkspace(tx, workspaceId, userId)
+  return permissionAllows(userRole, required)
+}

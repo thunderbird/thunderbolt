@@ -47,8 +47,10 @@ export const getPendingByWorkspaceQuery = (db: AnyDrizzleDatabase, workspaceId: 
 
 /**
  * Reactive hook returning every pending invite on `workspaceId`. Returns `[]`
- * until the live query lands rows. Pending rows only sync to admins (see the
- * `workspace_admin_data` bucket), so for non-admins this is always empty.
+ * until the live query lands rows. Pending rows sync to every workspace
+ * member (see the `workspace_data` bucket) so non-admins with
+ * `invite_users` / `change_roles` / `remove_users` can still see and act on
+ * the invite list.
  */
 export const useWorkspacePendingMembershipsQuery = (workspaceId: string | undefined): WorkspacePendingMembership[] => {
   const db = useDatabase()

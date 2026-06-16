@@ -9,7 +9,7 @@ import { useWorkspacesQuery, type Workspace } from '@/dal'
 import { useCanCreateWorkspace } from '@/hooks/use-can-create-workspace'
 import { isDataUrlIcon } from '@/components/workspace/icon-utils'
 import { useIsMobile } from '@/hooks/use-mobile'
-import { stripWorkspacePrefix, toWorkspaceUrl, useActiveWorkspace } from '@/lib/active-workspace'
+import { crossWorkspaceSubPath, toWorkspaceUrl, useActiveWorkspace } from '@/lib/active-workspace'
 import { cn } from '@/lib/utils'
 import { ChevronDown, Plus } from 'lucide-react'
 import { useMemo, useState } from 'react'
@@ -173,7 +173,10 @@ export const WorkspaceSelector = ({ collapsed = false }: WorkspaceSelectorProps)
     if (!target || target.id === active.id) {
       return
     }
-    const subPath = stripWorkspacePrefix(location.pathname)
+    // Chat ids are per-workspace; carrying the current chat id across the
+    // switch would land on Not Found. `crossWorkspaceSubPath` collapses
+    // `/chats/<id>` to `/chats/new` for the target workspace.
+    const subPath = crossWorkspaceSubPath(location.pathname)
     navigate(`${toWorkspaceUrl(target, subPath)}${location.search}`)
   }
 

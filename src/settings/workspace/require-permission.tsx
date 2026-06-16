@@ -80,7 +80,7 @@ export const RequireWorkspacePermission = ({ permissionKey }: RequireWorkspacePe
  */
 export const RequireWorkspaceAdmin = () => {
   const active = useActiveWorkspace()
-  const { membership, isAdmin } = useActiveWorkspaceMembership()
+  const { isAdmin, isResolved } = useActiveWorkspaceMembership()
   // @todo Drop this E2EE redirect once the encryption pipeline supports
   // multi-recipient envelopes and is workspace-aware (see THU-593). Same gate
   // as RequireWorkspacePermission — the two stay in lockstep.
@@ -98,7 +98,9 @@ export const RequireWorkspaceAdmin = () => {
     return <Navigate to=".." replace />
   }
 
-  if (membership === null) {
+  // `isResolved` distinguishes "still loading" from "confirmed non-member" —
+  // without it, a non-member would spin instead of redirecting.
+  if (!isResolved) {
     return <Loading />
   }
 

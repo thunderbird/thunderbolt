@@ -7,16 +7,16 @@ import {
   countWorkspaceMemberships,
   deleteMembership,
   getMembershipById,
+  getMembershipByWorkspaceAndUser,
   getWorkspaceById,
   isPersonalWorkspace,
-  isWorkspaceAdmin,
   type Role,
   updateMembership,
   upsertMembership,
 } from '@/dal/workspaces'
 import { getUserById } from '@/dal/users'
 import { computePersonalAdminMembershipId, computePersonalWorkspaceId } from '@shared/workspaces'
-import { allow, reject } from './helpers'
+import { allow, callerSatisfiesPermission, reject } from './helpers'
 import { UploadRejection, type UploadHandler, type UploadTx } from './types'
 
 const isRole = (v: unknown): v is Role => v === 'admin' || v === 'member'
@@ -69,12 +69,27 @@ const isPersonalAdminBootstrap = async (
 /**
  * Upload handler for `workspace_memberships`. Enforces:
  *
- * - All writes require admin role in the target workspace.
- * - Personal workspaces are immutable — admin membership exists exactly once and
- *   is created by the Better Auth post-create hook (Decision 11 / Decision 12).
- * - DELETE that would leave zero remaining admins in the workspace is permanently
- *   rejected. The count is taken inside the same transaction as the delete so
- *   concurrent revokes can't both pass the check.
+ * - Each op gates on a `workspace_permissions` key — `invite_users` for PUT,
+ *   `change_roles` for PATCH, `remove_users` for DELETE — defaulting to
+ *   admin-only when the permission row is absent (Decision 11).
+ * - PUT that would effectively change an existing membership's role
+ *   additionally requires `change_roles`. PUT applies via `upsertMembership`
+ *   (ON CONFLICT DO UPDATE SET role), so a payload demoting an admin to
+ *   member at the same `(workspace_id, user_id)` would otherwise bypass
+ *   PATCH's `change_roles` gate.
+ * - Adding a brand-new membership with `role: 'admin'` requires
+ *   `change_roles` for the same reason — `invite_users` alone could
+ *   otherwise mint new admins (also via the pending-invite signup-promote
+ *   path).
+ * - Personal workspaces are immutable past the FE-driven admin bootstrap
+ *   (`isPersonalAdminBootstrap`), which lands exactly one admin row for the
+ *   owner the first time the workspace appears server-side.
+ * - The first admin membership for a freshly-created shared workspace is
+ *   allowed by `isSharedWorkspaceAdminBootstrap` (caller is the row's user,
+ *   role is admin, workspace has zero members yet).
+ * - DELETE that would leave zero remaining admins is permanently rejected.
+ *   The count is taken inside the same transaction so concurrent revokes
+ *   can't both pass the check.
  */
 /**
  * Shared workspace creator bootstrap: the FE creates a shared workspace and its
@@ -135,6 +150,12 @@ export const workspaceMembershipsHandler: UploadHandler = {
     const targetWorkspaceId =
       op.op === 'PUT' ? (typeof op.data?.workspace_id === 'string' ? op.data.workspace_id : null) : null
 
+    // Per-op permission keys read from `workspace_permissions.required_role`.
+    // Defaults to admin when the row is absent (Decision 11). Aligned with what
+    // the FE Members UI checks via `useWorkspacePermission` so a workspace that
+    // grants `member` the permission can actually exercise it on upload.
+    const newRole = isRole(op.data?.role) ? op.data.role : null
+    const targetsAdminRole = newRole === 'admin'
     if (op.op === 'PUT' && !targetWorkspaceId) {
       const existing = await getMembershipById(tx, op.id)
       if (!existing) {
@@ -143,8 +164,18 @@ export const workspaceMembershipsHandler: UploadHandler = {
       if (await isPersonalWorkspace(tx, existing.workspaceId)) {
         return reject('permanent', 'PERSONAL_WORKSPACE_IMMUTABLE')
       }
-      if (!(await isWorkspaceAdmin(tx, existing.workspaceId, ctx.userId))) {
-        return reject('permanent', 'NOT_WORKSPACE_ADMIN')
+      if (!(await callerSatisfiesPermission(tx, existing.workspaceId, ctx.userId, 'invite_users'))) {
+        return reject('permanent', 'INSUFFICIENT_PERMISSION')
+      }
+      // Effective role change (either direction) requires `change_roles`.
+      // `upsertMembership` overwrites `role` on conflict, so a PUT that
+      // changes role would otherwise bypass PATCH's gate.
+      const wouldChangeRole = newRole !== null && existing.role !== newRole
+      if (
+        (wouldChangeRole || targetsAdminRole) &&
+        !(await callerSatisfiesPermission(tx, existing.workspaceId, ctx.userId, 'change_roles'))
+      ) {
+        return reject('permanent', 'INSUFFICIENT_PERMISSION')
       }
       return allow()
     }
@@ -154,8 +185,23 @@ export const workspaceMembershipsHandler: UploadHandler = {
       if (await isPersonalWorkspace(tx, targetWorkspaceId!)) {
         return reject('permanent', 'PERSONAL_WORKSPACE_IMMUTABLE')
       }
-      if (!(await isWorkspaceAdmin(tx, targetWorkspaceId!, ctx.userId))) {
-        return reject('permanent', 'NOT_WORKSPACE_ADMIN')
+      if (!(await callerSatisfiesPermission(tx, targetWorkspaceId!, ctx.userId, 'invite_users'))) {
+        return reject('permanent', 'INSUFFICIENT_PERMISSION')
+      }
+      // Resolve the existing row at the conflict target `(workspace_id, user_id)`
+      // — that's what `upsertMembership` updates, not the row at `op.id`.
+      // A PUT changing an existing role (either direction) requires
+      // `change_roles`; a fresh insert with `role: 'admin'` also requires it.
+      const payloadUserId = typeof op.data?.user_id === 'string' ? op.data.user_id : null
+      const existing =
+        payloadUserId !== null ? await getMembershipByWorkspaceAndUser(tx, targetWorkspaceId!, payloadUserId) : null
+      const wouldChangeRole = existing !== null && newRole !== null && existing.role !== newRole
+      const wouldMintNewAdmin = existing === null && targetsAdminRole
+      if (
+        (wouldChangeRole || wouldMintNewAdmin) &&
+        !(await callerSatisfiesPermission(tx, targetWorkspaceId!, ctx.userId, 'change_roles'))
+      ) {
+        return reject('permanent', 'INSUFFICIENT_PERMISSION')
       }
       return allow()
     }
@@ -168,8 +214,9 @@ export const workspaceMembershipsHandler: UploadHandler = {
     if (await isPersonalWorkspace(tx, existing.workspaceId)) {
       return reject('permanent', 'PERSONAL_WORKSPACE_IMMUTABLE')
     }
-    if (!(await isWorkspaceAdmin(tx, existing.workspaceId, ctx.userId))) {
-      return reject('permanent', 'NOT_WORKSPACE_ADMIN')
+    const permissionKey: 'change_roles' | 'remove_users' = op.op === 'PATCH' ? 'change_roles' : 'remove_users'
+    if (!(await callerSatisfiesPermission(tx, existing.workspaceId, ctx.userId, permissionKey))) {
+      return reject('permanent', 'INSUFFICIENT_PERMISSION')
     }
     return allow()
   },
@@ -182,6 +229,17 @@ export const workspaceMembershipsHandler: UploadHandler = {
         const role = isRole(op.data?.role) ? op.data.role : null
         if (!workspaceId || !userId || !role) {
           throw new UploadRejection('permanent', 'MEMBERSHIP_FIELDS_REQUIRED')
+        }
+        // Last-admin protection mirrors PATCH/DELETE. `upsertMembership` does
+        // ON CONFLICT DO UPDATE SET role on `(workspace_id, user_id)`, so a
+        // PUT demoting the workspace's only admin to member would otherwise
+        // bypass the guard those paths enforce.
+        const existing = await getMembershipByWorkspaceAndUser(tx, workspaceId, userId)
+        if (existing && existing.role === 'admin' && role !== 'admin') {
+          const remainingAdmins = await countWorkspaceAdmins(tx, workspaceId, existing.id)
+          if (remainingAdmins === 0) {
+            throw new UploadRejection('permanent', 'LAST_ADMIN_PROTECTED')
+          }
         }
         // Enrich the row with the canonical name/email from `auth.user` so the
         // FE Members page has display info without a synced `users` table. The

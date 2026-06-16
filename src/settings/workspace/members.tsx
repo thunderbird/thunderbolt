@@ -44,10 +44,11 @@ type Row = ActiveRow | PendingRow
 const roleLabel = (role: 'admin' | 'member'): string => (role === 'admin' ? 'Admin' : 'Member')
 
 /**
- * Members management for shared workspaces. The `RequireWorkspacePermission`
- * route wrapper gates entry — non-permitted users never see this page. Personal
- * workspaces are blocked at the gate too (Decision 25 — no member management
- * in v1).
+ * Members management for shared workspaces. The page itself is reachable by
+ * any workspace member; each affordance (Add Member, role select, Remove) is
+ * gated per-control via `useWorkspacePermission`. Personal workspaces never
+ * reach this route (sidebar entry is hidden and the listing is empty by
+ * construction — Decision 25, no member management in v1).
  */
 const WorkspaceMembersPage = () => {
   const db = useDatabase()
@@ -64,6 +65,8 @@ const WorkspaceMembersPage = () => {
   const actives = useWorkspaceMembersQuery(workspaceId)
   const pendings = useWorkspacePendingMembershipsQuery(workspaceId)
   const { isAllowed: canChangeRoles } = useWorkspacePermission('change_roles')
+  const { isAllowed: canInviteUsers } = useWorkspacePermission('invite_users')
+  const { isAllowed: canRemoveUsers } = useWorkspacePermission('remove_users')
   const [inviteOpen, setInviteOpen] = useState(false)
   const [search, setSearch] = useState('')
   const normalizedSearch = search.trim().toLowerCase()
@@ -135,10 +138,12 @@ const WorkspaceMembersPage = () => {
           value={search}
           onChange={(event) => setSearch(event.target.value)}
         />
-        <Button variant="outline" size="lg" onClick={() => setInviteOpen(true)} disabled={!workspaceId}>
-          <Plus className="size-4" />
-          Add Member
-        </Button>
+        {canInviteUsers && (
+          <Button variant="outline" size="lg" onClick={() => setInviteOpen(true)} disabled={!workspaceId}>
+            <Plus className="size-4" />
+            Add Member
+          </Button>
+        )}
       </div>
       <Card>
         <CardContent>
@@ -195,7 +200,7 @@ const WorkspaceMembersPage = () => {
                       </TableCell>
                       <TableCell>Joined</TableCell>
                       <TableCell className="text-right">
-                        {!(entry.row.role === 'admin' && adminCount <= 1) && (
+                        {canRemoveUsers && !(entry.row.role === 'admin' && adminCount <= 1) && (
                           <Button
                             variant="ghost"
                             size="sm"
@@ -215,7 +220,16 @@ const WorkspaceMembersPage = () => {
                         </span>
                       </TableCell>
                       <TableCell>
-                        {canChangeRoles ? (
+                        {/* Pending rows gate on `invite_users` — the BE treats
+                            the entire pending lifecycle (PUT/PATCH/DELETE) as
+                            one `invite_users`-gated operation. Promoting an
+                            invite to admin (PUT or PATCH) layers a
+                            `change_roles` escalation guard on top, so the
+                            Admin option only appears for callers who also
+                            satisfy `change_roles` — except when it's already
+                            the current value (let users keep / demote, never
+                            promote). */}
+                        {canInviteUsers ? (
                           <Select
                             value={entry.row.role}
                             onValueChange={(value) =>
@@ -229,7 +243,9 @@ const WorkspaceMembersPage = () => {
                               <SelectValue />
                             </SelectTrigger>
                             <SelectContent>
-                              <SelectItem value="admin">Admin</SelectItem>
+                              {(canChangeRoles || entry.row.role === 'admin') && (
+                                <SelectItem value="admin">Admin</SelectItem>
+                              )}
                               <SelectItem value="member">Member</SelectItem>
                             </SelectContent>
                           </Select>
@@ -239,14 +255,16 @@ const WorkspaceMembersPage = () => {
                       </TableCell>
                       <TableCell className="text-muted-foreground">Pending</TableCell>
                       <TableCell className="text-right">
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => setRemoveTarget(entry)}
-                          aria-label={`Remove ${entry.row.email}`}
-                        >
-                          Remove
-                        </Button>
+                        {canInviteUsers && (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => setRemoveTarget(entry)}
+                            aria-label={`Remove ${entry.row.email}`}
+                          >
+                            Remove
+                          </Button>
+                        )}
                       </TableCell>
                     </TableRow>
                   ),

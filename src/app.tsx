@@ -36,13 +36,14 @@ import { useViewportLock } from '@/hooks/use-viewport-lock'
 import { useMcpSync } from '@/hooks/use-mcp-sync'
 import { PostHogProvider } from '@/lib/posthog'
 import { ThemeProvider } from '@/lib/theme-provider'
+import { AppErrorBoundary } from './components/app-error-boundary'
 import { AppErrorScreen } from './components/app-error-screen'
 import { ModePicker } from './components/boot/mode-picker'
 import { AuthGate } from './components/auth-gate'
 import { WorkspaceGate } from './components/workspace-gate'
 import { WorkspaceMembershipGate } from './components/workspace-membership-gate'
 import { WorkspaceSettingsGate } from './settings/workspace/gate'
-import { RequireWorkspaceAdmin, RequireWorkspacePermission } from './settings/workspace/require-permission'
+import { RequireWorkspaceAdmin } from './settings/workspace/require-permission'
 import { OnboardingDialog } from './components/onboarding/onboarding-dialog'
 import { WelcomeDialog } from './components/welcome-dialog'
 import { PendingDeviceModal } from './components/pending-device-modal'
@@ -128,9 +129,7 @@ const renderWorkspaceRoutes = ({ experimentalFeatureTasks }: { experimentalFeatu
         <Route element={<WorkspaceSettingsGate />}>
           <Route path="general" element={<WorkspaceGeneralPage />} />
         </Route>
-        <Route element={<RequireWorkspacePermission permissionKey="manage_members" />}>
-          <Route path="members" element={<WorkspaceMembersPage />} />
-        </Route>
+        <Route path="members" element={<WorkspaceMembersPage />} />
         <Route element={<RequireWorkspaceAdmin />}>
           <Route path="permissions" element={<WorkspacePermissionsPage />} />
         </Route>
@@ -175,11 +174,13 @@ const AppContent = ({ initData }: { initData: InitData }) => {
   useSafeAreaInset()
 
   return (
-    <BrowserRouter>
-      <AppRoutes initData={initData} />
-      <UpdateNotification />
-      <PendingDeviceModal />
-    </BrowserRouter>
+    <AppErrorBoundary>
+      <BrowserRouter>
+        <AppRoutes initData={initData} />
+        <UpdateNotification />
+        <PendingDeviceModal />
+      </BrowserRouter>
+    </AppErrorBoundary>
   )
 }
 

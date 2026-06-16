@@ -212,8 +212,10 @@ export const createAuth = (database: typeof DbType, emailDeps: AuthEmailDeps = {
           }),
           // Promote any pending memberships invited by email. The personal workspace
           // itself is FE-created (uploaded via PowerSync with a deterministic id), so
-          // this hook only handles the admin-only pending-membership flow that the FE
-          // can't see. Skipped for anonymous users — anon never receives invites.
+          // this hook only handles the cross-workspace promotion flow — a brand-new
+          // user isn't a member of anything yet, so no FE client can see (let alone
+          // act on) the invite at signup time. Skipped for anonymous users — anon
+          // never receives invites.
           after: async (createdUser) => {
             const isAnonymous = (createdUser as { isAnonymous?: boolean }).isAnonymous === true
             if (isAnonymous) {

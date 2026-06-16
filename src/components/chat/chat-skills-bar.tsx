@@ -122,10 +122,12 @@ export const ChatSkillsBar = ({
       ? 'No more skills to pin'
       : 'Pin a skill'
 
-  // Hide the whole bar only when there's nothing to display *and* nothing
-  // to add. If the user has zero pins but unpinned skills exist, we still
-  // show the `+` button so they can pin one.
-  if (pinned.length === 0 && pinnable.length === 0) {
+  // Hide the whole bar when there's nothing to display *and* nothing the user
+  // can act on. Zero pins + unpinned candidates still warrants the `+` button
+  // — but only when the user can actually pin (`canEditSkills`); otherwise
+  // both the chips row and the trigger are empty and the strip would render
+  // as a thin blank line above the composer.
+  if (pinned.length === 0 && (pinnable.length === 0 || !canEditSkills)) {
     return null
   }
 

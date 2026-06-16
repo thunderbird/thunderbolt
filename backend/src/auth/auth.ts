@@ -4,6 +4,7 @@
 
 import {
   approveWaitlistEntry,
+  promotePendingMemberships,
   getOrCreateOtpChallenge,
   createWaitlistEntry,
   deleteOtpChallengesForEmail,
@@ -11,6 +12,7 @@ import {
   getUserByEmail,
   getWaitlistByEmail,
   markUserNotNew,
+  syncMembershipDisplayInfo,
   validateOtpChallenge,
 } from '@/dal'
 import type { db as DbType } from '@/db/client'
@@ -208,6 +210,28 @@ export const createAuth = (database: typeof DbType, emailDeps: AuthEmailDeps = {
           before: async (userData) => ({
             data: { ...userData, email: normalizeEmail(userData.email) },
           }),
+          // Promote any pending memberships invited by email. The personal workspace
+          // itself is FE-created (uploaded via PowerSync with a deterministic id), so
+          // this hook only handles the cross-workspace promotion flow — a brand-new
+          // user isn't a member of anything yet, so no FE client can see (let alone
+          // act on) the invite at signup time. Skipped for anonymous users — anon
+          // never receives invites.
+          after: async (createdUser) => {
+            const isAnonymous = (createdUser as { isAnonymous?: boolean }).isAnonymous === true
+            if (isAnonymous) {
+              return
+            }
+            await promotePendingMemberships(database, createdUser.id, createdUser.email, createdUser.name)
+          },
+        },
+        // Mirror name/email changes onto every membership row so co-members see
+        // updated display info on the next sync round-trip. The `workspace_memberships`
+        // table denormalizes these fields because PowerSync sync rules can't follow
+        // `user_id` across buckets — without this hook, edits would go stale.
+        update: {
+          after: async (updatedUser) => {
+            await syncMembershipDisplayInfo(database, updatedUser.id, updatedUser.name, updatedUser.email)
+          },
         },
       },
     },

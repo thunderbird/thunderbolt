@@ -7,17 +7,23 @@ import { broadcastDbLifecycle } from '@/db/db-lifecycle-broadcast'
 import { resetDatabase } from '@/db/database'
 import { disposeAllAdapters } from '@/acp/adapter-cache'
 import { setSyncEnabled } from '@/db/powersync'
-import { clearAuthToken as defaultClearAuthToken, clearDeviceId as defaultClearDeviceId } from '@/lib/auth-token'
+import {
+  clearAuthToken as defaultClearAuthToken,
+  clearDeviceId as defaultClearDeviceId,
+  getAuthToken,
+  withCapturedAuthToken,
+} from '@/lib/auth-token'
 import { deleteDbFile } from '@/lib/fs'
 import { withTimeout } from '@/lib/timeout'
 import { handleFullWipe as defaultHandleFullWipe } from '@/services/encryption'
 import { initialLocalSettings, useLocalSettingsStore } from '@/stores/local-settings-store'
-import { getActiveTrustDomain } from '@/stores/trust-domain-registry'
+import { getActiveTrustDomain, useTrustDomainRegistry } from '@/stores/trust-domain-registry'
+import { resetPostAuthBootstrap } from '@/lib/post-auth-bootstrap'
 
 type CleanupDeps = {
-  clearAuthToken?: () => void
-  clearDeviceId?: () => void
-  handleFullWipe?: () => Promise<void>
+  clearAuthToken?: (serverId?: string) => void
+  clearDeviceId?: (serverId?: string) => void
+  handleFullWipe?: (serverId?: string) => Promise<void>
 }
 
 /**
@@ -40,12 +46,29 @@ type CleanupDeps = {
  * The `deps` parameter exists for testing: pass mock functions to observe the call
  * sequence without mocking shared modules globally.
  */
+/**
+ * Reset module-level state that doesn't live in the DB / IDB / localStorage:
+ * the active-workspace store (and, transitively via the bootstrap reset, the
+ * inflight bootstrap promise). Done early so any concurrent observers can't
+ * see a stale workspace id after the wipe begins.
+ */
+const resetVolatileStores = (): void => {
+  resetPostAuthBootstrap()
+}
+
 export const clearLocalData = async ({
   clearAuthToken = defaultClearAuthToken,
   clearDeviceId = defaultClearDeviceId,
   handleFullWipe = defaultHandleFullWipe,
 }: CleanupDeps = {}): Promise<void> => {
+  resetVolatileStores()
+
   const trustDomain = getActiveTrustDomain()
+  // Capture the serverId BEFORE we empty `activeTrustDomain` from the
+  // registry (below). The credential clearers default to reading serverId
+  // from the registry; once it's cleared they'd no-op and the per-server
+  // localStorage keys would survive the wipe.
+  const serverIdForClear = trustDomain?.kind === 'server' ? trustDomain.serverId : undefined
 
   // Tear down every warm ACP connection first so no agent transport survives
   // across user identities (sign-out, account deletion, device revocation all
@@ -54,6 +77,18 @@ export const clearLocalData = async ({
     await disposeAllAdapters()
   } catch (error) {
     console.error('[clearLocalData] Failed to dispose ACP adapters:', error)
+  }
+
+  // Clear the registry's `activeTrustDomain` BEFORE broadcasting `db-closing`
+  // (step 2 below). Other tabs receive the broadcast and reload; on reload
+  // they re-read the persisted registry and now see no active trust domain,
+  // so boot resolves to `NO_TRUST_DOMAIN` → ModePicker. Without this they'd
+  // boot into the same server entry and race our `resetDatabase` /
+  // `deleteDbFile` by trying to reopen the same SQLite file. Our own tab
+  // continues using the local `trustDomain` capture above, so the rest of
+  // the wipe sequence still targets the right server.
+  if (trustDomain) {
+    useTrustDomainRegistry.setState({ activeTrustDomain: undefined })
   }
 
   // Step 1: flip the persisted `syncEnabled` flag to false and disconnect. The flag
@@ -98,15 +133,20 @@ export const clearLocalData = async ({
   // a logout into the next user's session.
   useLocalSettingsStore.setState(initialLocalSettings)
 
-  // Step 6: clear per-server credentials. No-op in standalone.
-  clearAuthToken()
-  clearDeviceId()
+  // Step 6: clear per-server credentials. No-op in standalone. The
+  // `serverIdForClear` capture above feeds the explicit serverId — the
+  // registry has already been emptied so the default lookup wouldn't find one.
+  clearAuthToken(serverIdForClear)
+  clearDeviceId(serverIdForClear)
 
   // Step 7: clear encryption keys (server-only — `handleFullWipe` throws on standalone
   // via `key-storage.ts`'s active-server guard; we skip it cleanly when there's no server).
+  // Pass `serverIdForClear` explicitly because the registry was emptied above —
+  // the default lookup inside `clearAllKeys` would no-op and the per-server
+  // IDB database with all encryption keys would survive the wipe.
   if (trustDomain?.kind === 'server') {
     try {
-      await handleFullWipe()
+      await handleFullWipe(serverIdForClear)
     } catch (error) {
       console.error('[clearLocalData] Failed to clear encryption keys:', error)
     }
@@ -134,27 +174,55 @@ export const signOutAndWipe = async ({
   signOut?: () => Promise<void>
   onComplete: () => void
 } & CleanupDeps): Promise<void> => {
-  // Wipe local data BEFORE calling signOut so that Better Auth's session cache
-  // stays populated during the wipe. If signOut ran first, Better Auth would
-  // immediately set useSession() → null, letting AuthGate redirect to
-  // /sso-redirect (SSO mode) or /waitlist between the awaits inside
-  // clearLocalData — potentially kicking off a new IdP sign-in flow before
-  // onComplete() can navigate away.
+  // Two ordering constraints have to hold together:
+  //   1. The wipe runs BEFORE signOut so Better Auth's session cache stays
+  //      populated during it — otherwise useSession() flips to null mid-wipe
+  //      and AuthGate could redirect to /sso-redirect (SSO) or /waitlist
+  //      between awaits, kicking off a new IdP sign-in before onComplete()
+  //      navigates away.
+  //   2. The auth token has to stay present THROUGH signOut() so the HTTP
+  //      call to /sign-out is authenticated and the server can revoke the
+  //      session row. Clearing it before signOut() (as the previous version
+  //      did, inside clearLocalData) sent the request bearer-less and left
+  //      the session valid server-side until natural expiry.
+  // Resolve below: pass no-op credential-clear callbacks into clearLocalData
+  // so the wipe runs in its normal order WITHOUT touching the token, capture
+  // the token before the registry is emptied, and replay it via
+  // `withCapturedAuthToken` so Better Auth's `auth.token` callback returns it
+  // when signOut runs. Then clear credentials ourselves.
+  const clearAuthToken = deps.clearAuthToken ?? defaultClearAuthToken
+  const clearDeviceId = deps.clearDeviceId ?? defaultClearDeviceId
+  // Capture serverId + token BEFORE clearLocalData empties `activeTrustDomain`
+  // from the registry. Both are registry-derived: the deferred credential
+  // clear below would otherwise no-op, and `getAuthToken()` inside
+  // Better Auth's signOut fetch would return null, sending the request
+  // bearer-less.
+  const trustDomainAtStart = getActiveTrustDomain()
+  const serverIdForClear = trustDomainAtStart?.kind === 'server' ? trustDomainAtStart.serverId : undefined
+  const tokenAtStart = getAuthToken()
+
   try {
-    await clearLocalData(deps)
+    await clearLocalData({ ...deps, clearAuthToken: () => {}, clearDeviceId: () => {} })
   } catch (error) {
     console.error('[signOutAndWipe] clearLocalData failed:', error)
   }
 
   if (signOut) {
     try {
-      await signOut()
+      await withCapturedAuthToken(tokenAtStart, signOut)
     } catch (error) {
       console.error('[signOutAndWipe] signOut failed:', error)
     }
   }
 
-  // onComplete fires synchronously right after signOut resolves — no await
-  // between them so React cannot schedule a re-render before the hard navigation.
+  // Token is no longer useful: signOut() has revoked the session, or
+  // RevokedDeviceModal is the caller (server already invalidated). Safe to
+  // wipe locally without breaking the revoke call above.
+  clearAuthToken(serverIdForClear)
+  clearDeviceId(serverIdForClear)
+
+  // onComplete fires synchronously right after the credential clear — no
+  // await between them so React cannot schedule a re-render before the
+  // hard navigation.
   onComplete()
 }

@@ -8,7 +8,42 @@ import type { ReactElement, ReactNode } from 'react'
 import { getClock } from '@/testing-library'
 import type { FetchFn } from '@/lib/proxy-fetch'
 import { ProxyFetchProvider } from '@/lib/proxy-fetch-context'
+import { useTrustDomainRegistry } from '@/stores/trust-domain-registry'
+import { testUserId, wsId } from '@/dal/test-utils'
 import { PowerSyncReactivityTestProvider } from './powersync-mock'
+
+/**
+ * Opt-in helper that seeds the trust-domain registry with a deterministic
+ * standalone user id so `useActiveWorkspaceId` resolves a workspace in
+ * component tests. Call from `beforeEach` in tests that render components
+ * which read the active workspace.
+ *
+ * The id mirrors `wsId` exported from `src/dal/test-utils.ts` so seeded
+ * workspace rows line up automatically.
+ *
+ * Not invoked automatically by `renderWithReactivity` because the registry
+ * is a process-global singleton — auto-seeding would leak state into other
+ * test files that depend on a fresh registry (e.g. `useFetch` proxy tests).
+ */
+export const seedTestTrustDomain = () => {
+  useTrustDomainRegistry.setState({
+    activeTrustDomain: { kind: 'standalone' },
+    localUserId: testUserId,
+    servers: useTrustDomainRegistry.getState().servers,
+  })
+}
+
+/** Reset the trust-domain registry to its initial state. Pair with `seedTestTrustDomain` in `afterEach`. */
+export const resetTestTrustDomain = () => {
+  useTrustDomainRegistry.setState({
+    activeTrustDomain: undefined,
+    localUserId: undefined,
+    servers: {},
+  })
+}
+
+/** The personal workspace id `useActiveWorkspaceId` resolves to after `seedTestTrustDomain()`. */
+export const testActiveWorkspaceId = wsId
 
 const mockProxyFetch = (async () => new Response()) as unknown as FetchFn
 

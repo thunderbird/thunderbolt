@@ -34,7 +34,7 @@ import { automationsToSkills } from './automations-to-skills'
 export type DataMigration = {
   /** Stable identifier — appears in logs and telemetry, never reused. */
   id: string
-  run: (db: AnyDrizzleDatabase) => Promise<void>
+  run: (db: AnyDrizzleDatabase, workspaceId: string) => Promise<void>
 }
 
 const migrations: readonly DataMigration[] = [automationsToSkills] as const
@@ -44,10 +44,10 @@ const migrations: readonly DataMigration[] = [automationsToSkills] as const
  * is reported but does NOT block subsequent migrations — each runs again
  * on the next launch.
  */
-export const runDataMigrations = async (db: AnyDrizzleDatabase): Promise<void> => {
+export const runDataMigrations = async (db: AnyDrizzleDatabase, workspaceId: string): Promise<void> => {
   for (const migration of migrations) {
     try {
-      await migration.run(db)
+      await migration.run(db, workspaceId)
     } catch (error) {
       console.error(`Data migration "${migration.id}" failed:`, error)
     }

@@ -116,4 +116,23 @@ describe('encodeForUpload', () => {
     expect((result.data?.parts as string).startsWith('__enc:')).toBe(true)
     expect(result.data?.chat_thread_id).toBe('thread-1')
   })
+
+  it('encrypts workspaces.name but leaves other workspace columns plaintext', async () => {
+    const op = {
+      op: 'PUT' as const,
+      type: 'workspaces',
+      id: 'ws-1',
+      data: {
+        name: 'Personal',
+        is_personal: true,
+        owner_user_id: 'user-1',
+      },
+    }
+
+    const result = await encodeForUpload(op)
+
+    expect((result.data?.name as string).startsWith('__enc:')).toBe(true)
+    expect(result.data?.is_personal).toBe(true)
+    expect(result.data?.owner_user_id).toBe('user-1')
+  })
 })

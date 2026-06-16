@@ -5,11 +5,20 @@
 import type { Settings } from '@/config/settings'
 import { createBetterAuthPlugin } from '@/auth/elysia-plugin'
 import { session as sessionTable, user as userTable } from '@/db/auth-schema'
-import { devicesTable, mcpServersTable, modelsTable, promptsTable, settingsTable } from '@/db/schema'
+import {
+  devicesTable,
+  mcpServersTable,
+  modelsTable,
+  promptsTable,
+  settingsTable,
+  workspaceMembershipsTable,
+  workspacesTable,
+} from '@/db/schema'
 import { createTestDb } from '@/test-utils/db'
 import { createHmac } from 'crypto'
 import { eq } from 'drizzle-orm'
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'bun:test'
+import { v7 as uuidv7 } from 'uuid'
 import { clearSettingsCache } from '@/config/settings'
 import { Elysia } from 'elysia'
 import { createPowerSyncRoutes } from './powersync'
@@ -85,8 +94,13 @@ describe('PowerSync API', () => {
   let app: Elysia
   let db: Awaited<ReturnType<typeof createTestDb>>['db']
   let cleanup: () => Promise<void>
+  // Unique per test: the new upload handler uses database.transaction() which
+  // commits the outer BEGIN/ROLLBACK test transaction in PGlite, so we can't
+  // rely on rollback isolation. Unique device IDs prevent key collisions.
+  let testDeviceId: string
 
   beforeEach(async () => {
+    testDeviceId = uuidv7()
     const testEnv = await createTestDb()
     db = testEnv.db
     cleanup = testEnv.cleanup
@@ -100,7 +114,7 @@ describe('PowerSync API', () => {
     }
   })
 
-  const uploadHeaders = (bearer: string, deviceId = 'test-device-id') => ({
+  const uploadHeaders = (bearer: string, deviceId = testDeviceId) => ({
     'Content-Type': 'application/json',
     Authorization: `Bearer ${signToken(bearer)}`,
     'X-Device-ID': deviceId,
@@ -953,7 +967,7 @@ describe('PowerSync API', () => {
         updatedAt: now,
         userId,
       })
-      await insertTrustedDevice('test-device-id', userId)
+      await insertTrustedDevice(testDeviceId, userId)
 
       const response = await app.handle(
         new Request('http://localhost/powersync/upload', {
@@ -987,7 +1001,7 @@ describe('PowerSync API', () => {
         updatedAt: now,
         userId,
       })
-      await insertTrustedDevice('test-device-id', userId)
+      await insertTrustedDevice(testDeviceId, userId)
 
       const response = await app.handle(
         new Request('http://localhost/powersync/upload', {
@@ -1036,7 +1050,7 @@ describe('PowerSync API', () => {
         updatedAt: now,
         userId,
       })
-      await insertTrustedDevice('test-device-id', userId)
+      await insertTrustedDevice(testDeviceId, userId)
 
       const response = await app.handle(
         new Request('http://localhost/powersync/upload', {
@@ -1135,7 +1149,7 @@ describe('PowerSync API', () => {
         updatedAt: now,
         userId,
       })
-      await insertTrustedDevice('test-device-id', userId)
+      await insertTrustedDevice(testDeviceId, userId)
 
       await db.insert(settingsTable).values({
         key: 'patch_setting',
@@ -1187,7 +1201,7 @@ describe('PowerSync API', () => {
         updatedAt: now,
         userId,
       })
-      await insertTrustedDevice('test-device-id', userId)
+      await insertTrustedDevice(testDeviceId, userId)
       await db.insert(settingsTable).values({
         key: 'empty_patch_setting',
         value: 'unchanged',
@@ -1243,7 +1257,7 @@ describe('PowerSync API', () => {
         updatedAt: now,
         userId,
       })
-      await insertTrustedDevice('test-device-id', userId)
+      await insertTrustedDevice(testDeviceId, userId)
       await db.insert(settingsTable).values({
         key: 'stripped_patch_setting',
         value: 'unchanged',
@@ -1295,7 +1309,7 @@ describe('PowerSync API', () => {
         updatedAt: now,
         userId,
       })
-      await insertTrustedDevice('test-device-id', userId)
+      await insertTrustedDevice(testDeviceId, userId)
       // No settings row exists for 'nonexistent_key'
 
       const response = await app.handle(
@@ -1314,12 +1328,13 @@ describe('PowerSync API', () => {
           }),
         }),
       )
-      expect(response.status).toBe(400)
-      const body = (await response.json()) as { code: string }
-      expect(body.code).toBe('UPLOAD_OPERATION_FAILED')
+      expect(response.status).toBe(200)
+      const body = (await response.json()) as { rejected: Array<{ code: string }> }
+      expect(body.rejected).toHaveLength(1)
+      expect(body.rejected[0]?.code).toBe('ROW_NOT_FOUND')
     })
 
-    it('returns 400 when PATCH targets record belonging to another user', async () => {
+    it('returns 200 with ROW_NOT_FOUND rejection when PATCH targets record belonging to another user', async () => {
       const userA = 'user-patch-owner'
       const userB = 'user-patch-attacker'
       const now = new Date()
@@ -1384,9 +1399,10 @@ describe('PowerSync API', () => {
           }),
         }),
       )
-      expect(response.status).toBe(400)
-      const body = (await response.json()) as { code: string }
-      expect(body.code).toBe('UPLOAD_OPERATION_FAILED')
+      expect(response.status).toBe(200)
+      const body = (await response.json()) as { rejected: Array<{ code: string }> }
+      expect(body.rejected).toHaveLength(1)
+      expect(body.rejected[0]?.code).toBe('ROW_NOT_FOUND')
 
       const rows = await db.select().from(settingsTable).where(eq(settingsTable.key, 'owner_only_setting'))
       expect(rows).toHaveLength(1)
@@ -1415,7 +1431,7 @@ describe('PowerSync API', () => {
         updatedAt: now,
         userId,
       })
-      await insertTrustedDevice('test-device-id', userId)
+      await insertTrustedDevice(testDeviceId, userId)
       await db.insert(settingsTable).values({
         key: 'patch_owned',
         value: 'initial',
@@ -1467,13 +1483,27 @@ describe('PowerSync API', () => {
         updatedAt: now,
         userId,
       })
-      await insertTrustedDevice('test-device-id', userId)
+      await insertTrustedDevice(testDeviceId, userId)
+      // Workspace + membership required by migration 0020 FK + workspace-scoped handler.
+      await db.insert(workspacesTable).values({
+        id: '00000000-0000-0000-0000-000000000000',
+        name: 'test-workspace',
+        isPersonal: false,
+        ownerUserId: userId,
+      })
+      await db.insert(workspaceMembershipsTable).values({
+        id: 'membership-patch-deleted-at',
+        workspaceId: '00000000-0000-0000-0000-000000000000',
+        userId,
+        role: 'admin',
+      })
       await db.insert(promptsTable).values({
         id: 'prompt-to-soft-delete',
         title: 'My Prompt',
         prompt: 'Hello',
         modelId: 'gpt-4',
         userId,
+        workspaceId: '00000000-0000-0000-0000-000000000000',
       })
 
       const deletedAtIso = '2026-02-18T16:41:12.428Z'
@@ -1525,7 +1555,7 @@ describe('PowerSync API', () => {
         updatedAt: now,
         userId,
       })
-      await insertTrustedDevice('test-device-id', userId)
+      await insertTrustedDevice(testDeviceId, userId)
 
       await db.insert(settingsTable).values({
         key: 'to_delete',
@@ -1548,7 +1578,7 @@ describe('PowerSync API', () => {
       expect(rows).toHaveLength(0)
     })
 
-    it('returns 400 when DELETE targets non-existent record', async () => {
+    it('returns 200 with ROW_NOT_FOUND rejection when DELETE targets non-existent record', async () => {
       const userId = 'user-delete-nonexistent'
       const now = new Date()
       const expiresAt = new Date(now.getTime() + 3600 * 1000)
@@ -1569,7 +1599,7 @@ describe('PowerSync API', () => {
         updatedAt: now,
         userId,
       })
-      await insertTrustedDevice('test-device-id', userId)
+      await insertTrustedDevice(testDeviceId, userId)
       // No settings row exists for 'nonexistent_to_delete'
 
       const response = await app.handle(
@@ -1581,12 +1611,13 @@ describe('PowerSync API', () => {
           }),
         }),
       )
-      expect(response.status).toBe(400)
-      const body = (await response.json()) as { code: string }
-      expect(body.code).toBe('UPLOAD_OPERATION_FAILED')
+      expect(response.status).toBe(200)
+      const body = (await response.json()) as { rejected: Array<{ code: string }> }
+      expect(body.rejected).toHaveLength(1)
+      expect(body.rejected[0]?.code).toBe('ROW_NOT_FOUND')
     })
 
-    it('returns 400 when DELETE targets record belonging to another user', async () => {
+    it('returns 200 with ROW_NOT_FOUND rejection when DELETE targets record belonging to another user', async () => {
       const userA = 'user-delete-owner'
       const userB = 'user-delete-attacker'
       const now = new Date()
@@ -1644,9 +1675,10 @@ describe('PowerSync API', () => {
           }),
         }),
       )
-      expect(response.status).toBe(400)
-      const body = (await response.json()) as { code: string }
-      expect(body.code).toBe('UPLOAD_OPERATION_FAILED')
+      expect(response.status).toBe(200)
+      const body = (await response.json()) as { rejected: Array<{ code: string }> }
+      expect(body.rejected).toHaveLength(1)
+      expect(body.rejected[0]?.code).toBe('ROW_NOT_FOUND')
 
       const rows = await db.select().from(settingsTable).where(eq(settingsTable.key, 'owner_only_to_delete'))
       expect(rows).toHaveLength(1)
@@ -1675,7 +1707,7 @@ describe('PowerSync API', () => {
         updatedAt: now,
         userId,
       })
-      await insertTrustedDevice('test-device-id', userId)
+      await insertTrustedDevice(testDeviceId, userId)
 
       // Insert a second device that the attacker will try to delete via PowerSync
       await db.insert(devicesTable).values({
@@ -1696,9 +1728,10 @@ describe('PowerSync API', () => {
           }),
         }),
       )
-      expect(response.status).toBe(400)
-      const body = (await response.json()) as { code: string }
-      expect(body.code).toBe('UPLOAD_OPERATION_FAILED')
+      expect(response.status).toBe(200)
+      const body = (await response.json()) as { rejected: Array<{ code: string }> }
+      expect(body.rejected).toHaveLength(1)
+      expect(body.rejected[0]?.code).toBe('DELETE_NOT_ALLOWED')
 
       // Device must still exist
       const devices = await db.select().from(devicesTable).where(eq(devicesTable.id, deviceId))
@@ -1728,7 +1761,7 @@ describe('PowerSync API', () => {
         updatedAt: now,
         userId,
       })
-      await insertTrustedDevice('test-device-id', userId)
+      await insertTrustedDevice(testDeviceId, userId)
 
       const response = await app.handle(
         new Request('http://localhost/powersync/upload', {
@@ -1923,7 +1956,7 @@ describe('PowerSync API', () => {
       expect(themeRows.find((r) => r.userId === userB)?.value).toBe('system')
     })
 
-    it('returns 400 when an operation fails (invalid table, empty payload, etc.)', async () => {
+    it('returns 200 with UNKNOWN_TABLE rejection for an unrecognised table name', async () => {
       const userId = 'user-upload-fail'
       const now = new Date()
       const expiresAt = new Date(now.getTime() + 3600 * 1000)
@@ -1945,7 +1978,7 @@ describe('PowerSync API', () => {
         updatedAt: now,
         userId,
       })
-      await insertTrustedDevice('test-device-id', userId)
+      await insertTrustedDevice(testDeviceId, userId)
 
       const response = await app.handle(
         new Request('http://localhost/powersync/upload', {
@@ -1963,13 +1996,15 @@ describe('PowerSync API', () => {
           }),
         }),
       )
-      expect(response.status).toBe(400)
-      const data = (await response.json()) as { error: string; code: string; table: string; id: string; op: string }
-      expect(data.error).toBe('Upload operation failed')
-      expect(data.code).toBe('UPLOAD_OPERATION_FAILED')
-      expect(data.table).toBe('nonexistent_table')
-      expect(data.id).toBe('some_id')
-      expect(data.op).toBe('PUT')
+      expect(response.status).toBe(200)
+      const data = (await response.json()) as {
+        rejected: Array<{ code: string; table: string; id: string; op: string }>
+      }
+      expect(data.rejected).toHaveLength(1)
+      expect(data.rejected[0]?.code).toBe('UNKNOWN_TABLE')
+      expect(data.rejected[0]?.table).toBe('nonexistent_table')
+      expect(data.rejected[0]?.id).toBe('some_id')
+      expect(data.rejected[0]?.op).toBe('PUT')
     })
 
     it('returns 200 with empty operations array', async () => {
@@ -1994,7 +2029,7 @@ describe('PowerSync API', () => {
         updatedAt: now,
         userId,
       })
-      await insertTrustedDevice('test-device-id', userId)
+      await insertTrustedDevice(testDeviceId, userId)
 
       const response = await app.handle(
         new Request('http://localhost/powersync/upload', {
@@ -2763,7 +2798,9 @@ describe('PowerSync API — anonymous sync guard', () => {
     )
     expect(response.status).toBe(200)
     const data = await response.json()
-    expect(data).toEqual({ success: true })
+    // Response now includes `rejected: []` alongside `success`; use toMatchObject
+    // so adding fields to the response shape doesn't break this regression guard.
+    expect(data).toMatchObject({ success: true })
   })
 })
 

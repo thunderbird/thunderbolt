@@ -8,6 +8,7 @@
  */
 import { aiFetchStreamingResponse } from '@/ai/fetch'
 import { setupTestDatabase, teardownTestDatabase } from '@/dal/test-utils'
+import { seedTestTrustDomain } from '@/test-utils/powersync-reactivity-test'
 import { defaultModelGptOss120b } from '@/defaults/models'
 import { defaultModeChat } from '@/defaults/modes'
 import { isSsoMode } from '@/lib/auth-mode'
@@ -23,6 +24,7 @@ const run = async () => {
 
   console.log('[1/5] Setting up database...')
   await setupTestDatabase()
+  seedTestTrustDomain()
   console.log('[1/5] Database ready.\n')
 
   const modelId = defaultModelGptOss120b.id

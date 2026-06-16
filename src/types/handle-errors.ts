@@ -16,6 +16,8 @@ export type HandleErrorCode =
   | 'NO_TRUST_DOMAIN'
   | 'CONFIG_FETCH_FAILED'
   | 'STANDALONE_NOT_SUPPORTED'
+  | 'NO_ACTIVE_USER'
+  | 'PERSONAL_WORKSPACE_UNAVAILABLE'
   | 'UNKNOWN_ERROR'
 
 export type HandleError = {

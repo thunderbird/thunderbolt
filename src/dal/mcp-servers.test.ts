@@ -7,7 +7,7 @@ import { mcpServersTable } from '@/db/tables'
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'bun:test'
 import { v7 as uuidv7 } from 'uuid'
 import { createMcpServer, deleteMcpServer, getAllMcpServers, getHttpMcpServers } from './mcp-servers'
-import { resetTestDatabase, setupTestDatabase, teardownTestDatabase } from './test-utils'
+import { otherWsId, resetTestDatabase, setupTestDatabase, teardownTestDatabase, wsId } from './test-utils'
 
 beforeAll(async () => {
   await setupTestDatabase()
@@ -25,11 +25,11 @@ describe('MCP Servers DAL', () => {
 
   describe('getAllMcpServers', () => {
     it('should return empty array when no MCP servers exist', async () => {
-      const servers = await getAllMcpServers(getDb())
+      const servers = await getAllMcpServers(getDb(), wsId)
       expect(servers).toEqual([])
     })
 
-    it('should return all MCP servers', async () => {
+    it('should return all MCP servers in the workspace', async () => {
       const db = getDb()
       const serverId1 = uuidv7()
       const serverId2 = uuidv7()
@@ -40,6 +40,7 @@ describe('MCP Servers DAL', () => {
           name: 'Server 1',
           type: 'stdio',
           enabled: 1,
+          workspaceId: wsId,
         },
         {
           id: serverId2,
@@ -47,13 +48,29 @@ describe('MCP Servers DAL', () => {
           type: 'http',
           url: 'http://example.com',
           enabled: 0,
+          workspaceId: wsId,
         },
       ])
 
-      const servers = await getAllMcpServers(getDb())
+      const servers = await getAllMcpServers(getDb(), wsId)
       expect(servers).toHaveLength(2)
       expect(servers.map((s) => s.id)).toContain(serverId1)
       expect(servers.map((s) => s.id)).toContain(serverId2)
+    })
+
+    it('should not return MCP servers from other workspaces', async () => {
+      const db = getDb()
+      const ownId = uuidv7()
+      const otherId = uuidv7()
+
+      await db.insert(mcpServersTable).values([
+        { id: ownId, name: 'Own', type: 'http', url: 'http://a', enabled: 1, workspaceId: wsId },
+        { id: otherId, name: 'Other', type: 'http', url: 'http://b', enabled: 1, workspaceId: otherWsId },
+      ])
+
+      const servers = await getAllMcpServers(getDb(), wsId)
+      expect(servers).toHaveLength(1)
+      expect(servers[0]?.id).toBe(ownId)
     })
   })
 
@@ -67,13 +84,14 @@ describe('MCP Servers DAL', () => {
         name: 'STDIO Server',
         type: 'stdio',
         enabled: 1,
+        workspaceId: wsId,
       })
 
-      const servers = await getHttpMcpServers(getDb())
+      const servers = await getHttpMcpServers(getDb(), wsId)
       expect(servers).toEqual([])
     })
 
-    it('should return only HTTP servers with URLs', async () => {
+    it('should return only HTTP servers with URLs in the workspace', async () => {
       const db = getDb()
       const serverId1 = uuidv7()
       const serverId2 = uuidv7()
@@ -86,6 +104,7 @@ describe('MCP Servers DAL', () => {
           type: 'http',
           url: 'http://example1.com',
           enabled: 1,
+          workspaceId: wsId,
         },
         {
           id: serverId2,
@@ -93,20 +112,37 @@ describe('MCP Servers DAL', () => {
           type: 'http',
           url: 'http://example2.com',
           enabled: 0,
+          workspaceId: wsId,
         },
         {
           id: serverId3,
           name: 'STDIO Server',
           type: 'stdio',
           enabled: 1,
+          workspaceId: wsId,
         },
       ])
 
-      const servers = await getHttpMcpServers(getDb())
+      const servers = await getHttpMcpServers(getDb(), wsId)
       expect(servers).toHaveLength(2)
       expect(servers.map((s) => s.id)).toContain(serverId1)
       expect(servers.map((s) => s.id)).toContain(serverId2)
       expect(servers.map((s) => s.id)).not.toContain(serverId3)
+    })
+
+    it('should not return HTTP MCP servers from other workspaces', async () => {
+      const db = getDb()
+      const ownId = uuidv7()
+      const otherId = uuidv7()
+
+      await db.insert(mcpServersTable).values([
+        { id: ownId, name: 'Own', type: 'http', url: 'http://a', enabled: 1, workspaceId: wsId },
+        { id: otherId, name: 'Other', type: 'http', url: 'http://b', enabled: 1, workspaceId: otherWsId },
+      ])
+
+      const servers = await getHttpMcpServers(getDb(), wsId)
+      expect(servers).toHaveLength(1)
+      expect(servers[0]?.id).toBe(ownId)
     })
   })
 
@@ -121,16 +157,17 @@ describe('MCP Servers DAL', () => {
         type: 'http',
         url: 'http://example.com',
         enabled: 1,
+        workspaceId: wsId,
       })
 
       // Verify server exists
-      const serversBefore = await getAllMcpServers(getDb())
+      const serversBefore = await getAllMcpServers(getDb(), wsId)
       expect(serversBefore).toHaveLength(1)
 
-      await deleteMcpServer(getDb(), serverId)
+      await deleteMcpServer(getDb(), wsId, serverId)
 
       // Verify server is soft deleted (not in getAllMcpServers)
-      const serversAfter = await getAllMcpServers(getDb())
+      const serversAfter = await getAllMcpServers(getDb(), wsId)
       expect(serversAfter).toHaveLength(0)
 
       // But should still exist in database with deletedAt set
@@ -140,7 +177,7 @@ describe('MCP Servers DAL', () => {
     })
 
     it('should not throw when deleting non-existent server', async () => {
-      await expect(deleteMcpServer(getDb(), 'non-existent-id')).resolves.toBeUndefined()
+      await expect(deleteMcpServer(getDb(), wsId, 'non-existent-id')).resolves.toBeUndefined()
     })
 
     it('should only soft delete the specified server', async () => {
@@ -155,25 +192,48 @@ describe('MCP Servers DAL', () => {
           type: 'http',
           url: 'http://example1.com',
           enabled: 1,
+          workspaceId: wsId,
         },
         {
           id: serverId2,
           name: 'Server 2',
           type: 'stdio',
           enabled: 1,
+          workspaceId: wsId,
         },
       ])
 
-      await deleteMcpServer(getDb(), serverId1)
+      await deleteMcpServer(getDb(), wsId, serverId1)
 
       // Verify only server 1 is soft deleted (not visible)
-      const servers = await getAllMcpServers(getDb())
+      const servers = await getAllMcpServers(getDb(), wsId)
       expect(servers).toHaveLength(1)
       expect(servers[0]?.id).toBe(serverId2)
 
       // Both should still exist in database
       const rawServers = await db.select().from(mcpServersTable)
       expect(rawServers).toHaveLength(2)
+    })
+
+    it('should not delete an MCP server from another workspace', async () => {
+      const db = getDb()
+      const otherId = uuidv7()
+
+      await db.insert(mcpServersTable).values({
+        id: otherId,
+        name: 'Other',
+        type: 'http',
+        url: 'http://a',
+        enabled: 1,
+        workspaceId: otherWsId,
+      })
+
+      // Attempt to delete from the active workspace — should be a no-op.
+      await deleteMcpServer(getDb(), wsId, otherId)
+
+      const rawServers = await db.select().from(mcpServersTable)
+      expect(rawServers).toHaveLength(1)
+      expect(rawServers[0]?.deletedAt).toBeNull()
     })
 
     it('should not return soft-deleted server via getHttpMcpServers', async () => {
@@ -186,16 +246,17 @@ describe('MCP Servers DAL', () => {
         type: 'http',
         url: 'http://example.com',
         enabled: 1,
+        workspaceId: wsId,
       })
 
       // Verify server exists in HTTP servers
-      const serversBefore = await getHttpMcpServers(getDb())
+      const serversBefore = await getHttpMcpServers(getDb(), wsId)
       expect(serversBefore).toHaveLength(1)
 
-      await deleteMcpServer(getDb(), serverId)
+      await deleteMcpServer(getDb(), wsId, serverId)
 
       // Verify server is not returned after soft deletion
-      const serversAfter = await getHttpMcpServers(getDb())
+      const serversAfter = await getHttpMcpServers(getDb(), wsId)
       expect(serversAfter).toHaveLength(0)
     })
 
@@ -211,10 +272,11 @@ describe('MCP Servers DAL', () => {
         url: 'http://example.com',
         enabled: 1,
         deletedAt: originalDeletedAt,
+        workspaceId: wsId,
       })
 
       // Call delete again on already-deleted server
-      await deleteMcpServer(getDb(), serverId)
+      await deleteMcpServer(getDb(), wsId, serverId)
 
       // Verify original deletedAt is preserved
       const rawServer = await db.select().from(mcpServersTable).get()
@@ -223,26 +285,27 @@ describe('MCP Servers DAL', () => {
   })
 
   describe('createMcpServer', () => {
-    it('should create a new MCP server', async () => {
+    it('should create a new MCP server in the given workspace', async () => {
       const serverId = uuidv7()
 
-      await createMcpServer(getDb(), {
+      await createMcpServer(getDb(), wsId, {
         id: serverId,
         name: 'New Server',
         url: 'http://example.com',
         enabled: 1,
       })
 
-      const servers = await getAllMcpServers(getDb())
+      const servers = await getAllMcpServers(getDb(), wsId)
       expect(servers).toHaveLength(1)
       expect(servers[0]?.id).toBe(serverId)
       expect(servers[0]?.name).toBe('New Server')
+      expect(servers[0]?.workspaceId).toBe(wsId)
     })
 
     it('should create an HTTP server that appears in getHttpMcpServers', async () => {
       const serverId = uuidv7()
 
-      await createMcpServer(getDb(), {
+      await createMcpServer(getDb(), wsId, {
         id: serverId,
         name: 'HTTP Server',
         type: 'http',
@@ -250,7 +313,7 @@ describe('MCP Servers DAL', () => {
         enabled: 1,
       })
 
-      const httpServers = await getHttpMcpServers(getDb())
+      const httpServers = await getHttpMcpServers(getDb(), wsId)
       expect(httpServers).toHaveLength(1)
       expect(httpServers[0]?.id).toBe(serverId)
     })
@@ -258,17 +321,17 @@ describe('MCP Servers DAL', () => {
     it('should create a stdio server excluded from getHttpMcpServers', async () => {
       const serverId = uuidv7()
 
-      await createMcpServer(getDb(), {
+      await createMcpServer(getDb(), wsId, {
         id: serverId,
         name: 'STDIO Server',
         type: 'stdio',
         enabled: 1,
       })
 
-      const httpServers = await getHttpMcpServers(getDb())
+      const httpServers = await getHttpMcpServers(getDb(), wsId)
       expect(httpServers).toHaveLength(0)
 
-      const allServers = await getAllMcpServers(getDb())
+      const allServers = await getAllMcpServers(getDb(), wsId)
       expect(allServers).toHaveLength(1)
     })
   })

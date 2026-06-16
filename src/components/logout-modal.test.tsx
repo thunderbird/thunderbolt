@@ -21,6 +21,7 @@ const mockReplace = mock()
 Object.defineProperty(window, 'location', {
   value: { replace: mockReplace },
   writable: true,
+  configurable: true,
 })
 
 describe('LogoutModal', () => {
@@ -124,6 +125,7 @@ describe('LogoutModal', () => {
       Object.defineProperty(window, 'location', {
         value: { replace: mockReplace, reload: mockReload },
         writable: true,
+        configurable: true,
       })
 
       renderModal()
@@ -135,6 +137,17 @@ describe('LogoutModal', () => {
 
       expect(mockReload).toHaveBeenCalled()
       expect(mockReplace).not.toHaveBeenCalled()
+    })
+  })
+
+  describe('double-click guard', () => {
+    it('only fires signOutAndWipe once when Log out is clicked rapidly', () => {
+      renderModal()
+      const button = screen.getByRole('button', { name: 'Log out' })
+      fireEvent.click(button)
+      fireEvent.click(button)
+      fireEvent.click(button)
+      expect(mockSignOutAndWipe).toHaveBeenCalledTimes(1)
     })
   })
 

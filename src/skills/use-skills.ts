@@ -15,6 +15,7 @@ import {
   type CreateSkillInput,
   type UpdateSkillInput,
 } from '@/dal'
+import { useActiveWorkspaceId } from '@/lib/active-workspace'
 import type { Skill } from '@/types'
 import { toCompilableQuery } from '@powersync/drizzle-driver'
 import { useQuery } from '@powersync/tanstack-react-query'
@@ -28,19 +29,28 @@ import { useMemo } from 'react'
 // `throttleTrailing` (`DEFAULT_WATCH_THROTTLE_MS` in `@powersync/common`),
 // so the row a mutation just wrote can miss the very next render. Explicit
 // invalidation on mutation success cuts that to zero latency.
-const skillsQueryKey = ['skills']
+const skillsQueryKey = (workspaceId: string | null) => ['skills', workspaceId] as const
+
+const requireWs = (workspaceId: string | null): string => {
+  if (!workspaceId) {
+    throw new Error('No active workspace')
+  }
+  return workspaceId
+}
 
 /**
- * Read-only subscription to all non-deleted skills. Shared by
- * {@link useLibrarySkills} and {@link useEnabledSkills} so co-located callers
- * don't register duplicate `useMutation`s for create/update/remove they won't
- * use — React Query already deduplicates the underlying query by key.
+ * Read-only subscription to all non-deleted skills in the active workspace.
+ * Shared by {@link useLibrarySkills} and {@link useEnabledSkills} so co-located
+ * callers don't register duplicate `useMutation`s for create/update/remove they
+ * won't use — React Query already deduplicates the underlying query by key.
  */
 const useSkillsQuery = () => {
   const db = useDatabase()
+  const workspaceId = useActiveWorkspaceId()
   const { data: skills = [], isLoading } = useQuery({
-    queryKey: skillsQueryKey,
-    query: toCompilableQuery(getAllSkills(db)),
+    queryKey: skillsQueryKey(workspaceId),
+    query: toCompilableQuery(getAllSkills(db, workspaceId ?? '')),
+    enabled: !!workspaceId,
   })
   return { skills: skills as Skill[], isLoading }
 }
@@ -50,20 +60,22 @@ const useSkillsQuery = () => {
  */
 export const useLibrarySkills = () => {
   const db = useDatabase()
+  const workspaceId = useActiveWorkspaceId()
   const queryClient = useQueryClient()
-  const invalidate = () => queryClient.invalidateQueries({ queryKey: skillsQueryKey })
+  const invalidate = () => queryClient.invalidateQueries({ queryKey: skillsQueryKey(workspaceId) })
   const { skills, isLoading } = useSkillsQuery()
 
   const create = useMutation({
-    mutationFn: (input: CreateSkillInput) => createSkill(db, input),
+    mutationFn: (input: CreateSkillInput) => createSkill(db, requireWs(workspaceId), input),
     onSuccess: invalidate,
   })
   const update = useMutation({
-    mutationFn: ({ id, patch }: { id: string; patch: UpdateSkillInput }) => updateSkill(db, id, patch),
+    mutationFn: ({ id, patch }: { id: string; patch: UpdateSkillInput }) =>
+      updateSkill(db, requireWs(workspaceId), id, patch),
     onSuccess: invalidate,
   })
   const remove = useMutation({
-    mutationFn: (id: string) => softDeleteSkill(db, id),
+    mutationFn: (id: string) => softDeleteSkill(db, requireWs(workspaceId), id),
     onSuccess: invalidate,
   })
 
@@ -83,23 +95,26 @@ export const useLibrarySkills = () => {
  */
 export const usePinnedSkills = () => {
   const db = useDatabase()
+  const workspaceId = useActiveWorkspaceId()
   const queryClient = useQueryClient()
-  const invalidate = () => queryClient.invalidateQueries({ queryKey: skillsQueryKey })
+  const invalidate = () => queryClient.invalidateQueries({ queryKey: skillsQueryKey(workspaceId) })
 
   const { data: pinned = [] } = useQuery({
-    queryKey: [...skillsQueryKey, 'pinned'],
-    query: toCompilableQuery(getPinnedSkills(db)),
+    queryKey: [...skillsQueryKey(workspaceId), 'pinned'] as const,
+    query: toCompilableQuery(getPinnedSkills(db, workspaceId ?? '')),
+    enabled: !!workspaceId,
   })
   const pinnedSkills = pinned as Skill[]
 
   const pinnedSet = useMemo(() => new Set(pinnedSkills.map((s) => s.id)), [pinnedSkills])
 
   const pin = useMutation({
-    mutationFn: ({ id, order }: { id: string; order: number | null }) => setSkillPinned(db, id, order),
+    mutationFn: ({ id, order }: { id: string; order: number | null }) =>
+      setSkillPinned(db, requireWs(workspaceId), id, order),
     onSuccess: invalidate,
   })
   const reorder = useMutation({
-    mutationFn: (ids: string[]) => reorderPins(db, ids),
+    mutationFn: (ids: string[]) => reorderPins(db, requireWs(workspaceId), ids),
     onSuccess: invalidate,
   })
 
@@ -131,8 +146,9 @@ export const usePinnedSkills = () => {
  */
 export const useEnabledSkills = () => {
   const db = useDatabase()
+  const workspaceId = useActiveWorkspaceId()
   const queryClient = useQueryClient()
-  const invalidate = () => queryClient.invalidateQueries({ queryKey: skillsQueryKey })
+  const invalidate = () => queryClient.invalidateQueries({ queryKey: skillsQueryKey(workspaceId) })
   const { skills } = useSkillsQuery()
 
   const enabledById = useMemo(() => {
@@ -144,7 +160,7 @@ export const useEnabledSkills = () => {
   }, [skills])
 
   const set = useMutation({
-    mutationFn: ({ id, next }: { id: string; next: boolean }) => setSkillEnabled(db, id, next),
+    mutationFn: ({ id, next }: { id: string; next: boolean }) => setSkillEnabled(db, requireWs(workspaceId), id, next),
     onSuccess: invalidate,
   })
 

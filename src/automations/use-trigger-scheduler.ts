@@ -5,9 +5,11 @@
 import { getDb } from '@/db/database'
 import { useSettings } from '@/hooks/use-settings'
 import { getAllEnabledTriggers, runAutomation } from '@/dal'
+import { useActiveWorkspaceId } from '@/lib/active-workspace'
 import { useEffect, useRef } from 'react'
 
 export const useTriggerScheduler = () => {
+  const workspaceId = useActiveWorkspaceId()
   const { isTriggersEnabled } = useSettings({
     is_triggers_enabled: false,
   })
@@ -15,7 +17,7 @@ export const useTriggerScheduler = () => {
 
   useEffect(() => {
     const plan = async () => {
-      if (!isTriggersEnabled.value) {
+      if (!isTriggersEnabled.value || !workspaceId) {
         return
       }
 
@@ -23,7 +25,7 @@ export const useTriggerScheduler = () => {
       timers.current = []
 
       const db = getDb()
-      const triggers = await getAllEnabledTriggers(db)
+      const triggers = await getAllEnabledTriggers(db, workspaceId)
 
       triggers.forEach((t) => {
         if (t.triggerTime) {
@@ -35,13 +37,16 @@ export const useTriggerScheduler = () => {
           }
           const delay = next.getTime() - Date.now()
           timers.current.push(
-            setTimeout(() => runAutomation(getDb(), t.promptId).catch(console.error), delay) as unknown as number,
+            setTimeout(
+              () => runAutomation(getDb(), workspaceId, t.promptId).catch(console.error),
+              delay,
+            ) as unknown as number,
           )
         }
       })
     }
 
-    if (!isTriggersEnabled.value) {
+    if (!isTriggersEnabled.value || !workspaceId) {
       return
     }
 
@@ -53,5 +58,5 @@ export const useTriggerScheduler = () => {
       clearInterval(id)
       timers.current.forEach(clearTimeout)
     }
-  }, [isTriggersEnabled.value])
+  }, [isTriggersEnabled.value, workspaceId])
 }

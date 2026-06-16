@@ -4,6 +4,7 @@
 
 import { NavLink } from '@/components/ui/nav-link'
 import { SidebarMenuButton, SidebarMenuItem } from '@/components/ui/sidebar'
+import { stripWorkspacePrefix, useWorkspaceUrl } from '@/lib/active-workspace'
 import { CheckSquare, MessageCirclePlus, Settings } from 'lucide-react'
 
 type NavigationMenuProps = {
@@ -21,6 +22,11 @@ export const NavigationMenu = ({
   onCreateNewChat,
   onSettingsClick,
 }: NavigationMenuProps) => {
+  // `isActive` highlighting reads the sub-path so the same matching rules work
+  // for both personal (`/tasks`) and shared (`/w/<id>/tasks`) URLs.
+  const subPath = stripWorkspacePrefix(currentPath)
+  const tasksUrl = useWorkspaceUrl('/tasks')
+  const settingsUrl = useWorkspaceUrl('/settings/preferences')
   return (
     <>
       <SidebarMenuItem>
@@ -28,7 +34,7 @@ export const NavigationMenu = ({
           onClick={onCreateNewChat}
           tooltip="New Chat"
           className="cursor-pointer"
-          isActive={currentPath === '/chats/new'}
+          isActive={subPath === '/chats/new'}
         >
           <MessageCirclePlus className="size-[var(--icon-size-default)]" />
           <span>New Chat</span>
@@ -36,8 +42,8 @@ export const NavigationMenu = ({
       </SidebarMenuItem>
       {showTasks && (
         <SidebarMenuItem>
-          <SidebarMenuButton asChild tooltip="Tasks" isActive={currentPath.startsWith('/tasks')}>
-            <NavLink to="/tasks">
+          <SidebarMenuButton asChild tooltip="Tasks" isActive={subPath.startsWith('/tasks')}>
+            <NavLink to={tasksUrl}>
               <CheckSquare className="size-[var(--icon-size-default)]" />
               <span>Tasks</span>
             </NavLink>
@@ -48,15 +54,15 @@ export const NavigationMenu = ({
         {isMobile ? (
           <SidebarMenuButton
             onClick={onSettingsClick}
-            isActive={currentPath.startsWith('/settings')}
+            isActive={subPath.startsWith('/settings')}
             className="cursor-pointer"
           >
             <Settings className="size-[var(--icon-size-default)]" />
             <span>Settings</span>
           </SidebarMenuButton>
         ) : (
-          <SidebarMenuButton asChild tooltip="Settings" isActive={currentPath.startsWith('/settings')}>
-            <NavLink to="/settings/preferences">
+          <SidebarMenuButton asChild tooltip="Settings" isActive={subPath.startsWith('/settings')}>
+            <NavLink to={settingsUrl}>
               <Settings className="size-[var(--icon-size-default)]" />
               <span>Settings</span>
             </NavLink>

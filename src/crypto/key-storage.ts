@@ -2,9 +2,15 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { serverIdFromWorkerName } from '@/db/sync-worker-name'
+import { getActiveServerId } from '@/stores/trust-domain-registry'
 import { StorageError } from './errors'
 
-const dbName = 'thunderbolt-keys'
+// IndexedDB DB name is namespaced by the active server's `serverId` so multiple
+// servers' encryption keys can coexist without leaking across trust domains.
+// E2E encryption only applies in server trust domains — callers MUST resolve an
+// active server before invoking any helper here.
+const dbNamePrefix = 'thunderbolt-keys__'
 const storeName = 'keys'
 const dbVersion = 1
 
@@ -14,13 +20,38 @@ const mlkemPublicKeyId = 'thunderbolt_mlkem_public_key'
 const mlkemSecretKeyId = 'thunderbolt_mlkem_secret_key'
 const ckId = 'thunderbolt_ck'
 
+/**
+ * Resolve the active server's `serverId` for key storage. Main thread reads from the
+ * trust-domain registry (Zustand + localStorage). The PowerSync SharedWorker — where
+ * the encryption codec also runs to decrypt incoming buckets — has no `localStorage`
+ * access, so the registry hydrates to its initial empty state in that context. We
+ * recover the `serverId` from `self.name` via the shared `sync-worker-name` helper,
+ * which is the same helper the producer (`getPowerSyncOptions`) uses to construct it.
+ */
+const resolveServerId = (): string | undefined => {
+  if (typeof window !== 'undefined') {
+    return getActiveServerId()
+  }
+  const workerName = typeof self !== 'undefined' ? (self as unknown as { name?: string }).name : undefined
+  return serverIdFromWorkerName(workerName)
+}
+
+/** Resolve the IDB DB name for the active server. Throws when there is no active server. */
+const resolveDbName = (): string => {
+  const serverId = resolveServerId()
+  if (!serverId) {
+    throw new StorageError('Cannot access encryption-key storage without an active server trust domain')
+  }
+  return `${dbNamePrefix}${serverId}`
+}
+
 // =============================================================================
 // IndexedDB helpers
 // =============================================================================
 
 const openDB = (): Promise<IDBDatabase> =>
   new Promise((resolve, reject) => {
-    const request = indexedDB.open(dbName, dbVersion)
+    const request = indexedDB.open(resolveDbName(), dbVersion)
     request.onupgradeneeded = () => {
       const db = request.result
       if (!db.objectStoreNames.contains(storeName)) {
@@ -117,25 +148,6 @@ const putEntries = async (entries: Array<{ id: string; value: StorableValue }>):
   })
 }
 
-const deleteKeys = async (ids: string[]): Promise<void> => {
-  const db = await openDB()
-  return new Promise((resolve, reject) => {
-    const tx = db.transaction(storeName, 'readwrite')
-    const store = tx.objectStore(storeName)
-    for (const id of ids) {
-      store.delete(id)
-    }
-    tx.oncomplete = () => {
-      db.close()
-      resolve()
-    }
-    tx.onerror = () => {
-      db.close()
-      reject(new StorageError('Failed to delete keys', { cause: tx.error }))
-    }
-  })
-}
-
 // =============================================================================
 // Key pair (ECDH P-256 + ML-KEM-768)
 // =============================================================================
@@ -197,6 +209,67 @@ export const clearCK = async (): Promise<void> => deleteKey(ckId)
 // Full wipe
 // =============================================================================
 
-/** Clear all keys from IndexedDB (single atomic transaction for full data wipe / revocation). */
-export const clearAllKeys = async (): Promise<void> =>
-  deleteKeys([privateKeyId, publicKeyId, mlkemPublicKeyId, mlkemSecretKeyId, ckId])
+/**
+ * Clear all keys and delete the IDB database for the given server (full data
+ * wipe / revocation). The `serverId` defaults to the active server in the
+ * trust-domain registry, but callers running after the registry has been
+ * cleared (the cleanup pipeline does this early to keep reloaded tabs out of
+ * the wiping server) must pass it explicitly — otherwise the wipe would no-op
+ * and leave the per-server IDB database on disk.
+ */
+export const clearAllKeys = async (serverId?: string): Promise<void> => {
+  const resolvedServerId = serverId ?? resolveServerId()
+  if (!resolvedServerId) {
+    throw new StorageError('Cannot clear encryption keys without an active server trust domain')
+  }
+  const dbName = `${dbNamePrefix}${resolvedServerId}`
+  // Best-effort per-key delete first so a blocked `deleteDatabase` (open
+  // connection in another tab) still leaves no key material behind.
+  try {
+    await deleteKeysInDB(dbName, [privateKeyId, publicKeyId, mlkemPublicKeyId, mlkemSecretKeyId, ckId])
+  } catch (err) {
+    console.warn(`[clearAllKeys] per-key delete failed for ${dbName}; relying on deleteDatabase`, err)
+  }
+  await new Promise<void>((resolve) => {
+    const request = indexedDB.deleteDatabase(dbName)
+    request.onsuccess = () => resolve()
+    request.onerror = () => {
+      console.error(`[clearAllKeys] Failed to delete IDB database ${dbName}:`, request.error)
+      resolve()
+    }
+    request.onblocked = () => {
+      console.warn(`[clearAllKeys] IDB delete blocked for ${dbName} — open connections still alive`)
+      resolve()
+    }
+  })
+}
+
+/** Internal: open the IDB DB by explicit name and delete the listed keys. Mirrors `deleteKeys` but doesn't go through `resolveDbName`. */
+const deleteKeysInDB = async (dbName: string, ids: string[]): Promise<void> => {
+  const db = await new Promise<IDBDatabase>((resolve, reject) => {
+    const request = indexedDB.open(dbName, dbVersion)
+    request.onupgradeneeded = () => {
+      const upgradeDb = request.result
+      if (!upgradeDb.objectStoreNames.contains(storeName)) {
+        upgradeDb.createObjectStore(storeName)
+      }
+    }
+    request.onsuccess = () => resolve(request.result)
+    request.onerror = () => reject(new StorageError('Failed to open IndexedDB', { cause: request.error }))
+  })
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(storeName, 'readwrite')
+    const store = tx.objectStore(storeName)
+    for (const id of ids) {
+      store.delete(id)
+    }
+    tx.oncomplete = () => {
+      db.close()
+      resolve()
+    }
+    tx.onerror = () => {
+      db.close()
+      reject(new StorageError('Failed to delete keys', { cause: tx.error }))
+    }
+  })
+}

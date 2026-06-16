@@ -3,6 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { setupTestDatabase, teardownTestDatabase } from '@/dal/test-utils'
+import { seedTestTrustDomain } from '@/test-utils/powersync-reactivity-test'
 import { generateReport } from './report'
 import { runPool } from './runner'
 import { getScenarios } from './scenarios'
@@ -27,6 +28,9 @@ const main = async () => {
 
   // Set up a single shared database for all scenarios (read-only for evals)
   await setupTestDatabase()
+  // Seed the trust-domain registry so requireActiveWorkspaceId can resolve
+  // the personal workspace from the test DB (getActiveUserId() reads from here).
+  seedTestTrustDomain()
 
   // Suppress noisy console output from fetch.ts unless --verbose
   if (!verbose) {

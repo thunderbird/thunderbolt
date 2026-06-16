@@ -4,11 +4,12 @@
 
 import { setupTestDatabase, teardownTestDatabase } from '@/dal/test-utils'
 import { getInitTimingPayload, resetInitTiming } from '@/lib/init-timing'
+import { useTrustDomainRegistry } from '@/stores/trust-domain-registry'
 import { createMockHttpClient } from '@/test-utils/http-client'
 import { createTestProvider } from '@/test-utils/test-provider'
 import { getClock } from '@/testing-library'
 import { act, renderHook } from '@testing-library/react'
-import { afterAll, beforeAll, describe, expect, it, mock } from 'bun:test'
+import { afterAll, beforeAll, beforeEach, describe, expect, it, mock } from 'bun:test'
 import { useAppInitialization } from './use-app-initialization'
 
 mock.module('@tauri-apps/api/core', () => ({
@@ -24,6 +25,8 @@ const mockPostHogConfig = {
   public_posthog_api_key: null, // Disable PostHog in tests
 }
 
+const testServerId = '00000000-0000-0000-0000-000000000abc'
+
 describe('useAppInitialization', () => {
   beforeAll(async () => {
     await setupTestDatabase()
@@ -31,6 +34,16 @@ describe('useAppInitialization', () => {
 
   afterAll(async () => {
     await teardownTestDatabase()
+  })
+
+  beforeEach(() => {
+    // Seed the trust-domain registry so boot resolves without hitting /v1/config.
+    // The shared mock HTTP client returns the PostHog payload for every GET — including
+    // the config endpoint — so first-boot resolution would otherwise fail.
+    useTrustDomainRegistry.setState({
+      servers: { [testServerId]: { serverId: testServerId, cloudUrl: 'http://test-api.local' } },
+      activeTrustDomain: { kind: 'server', serverId: testServerId },
+    })
   })
 
   it('provides correct hook interface', async () => {

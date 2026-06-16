@@ -36,8 +36,17 @@ const badgeForAgent = (agent: Agent): string => {
 /** Predicate for the delete action's visibility. Customs the current user owns
  *  can be soft-deleted; built-in and system agents are managed externally and
  *  must not be removable from the UI. Exported for unit testing without
- *  rendering the full row tree. */
-export const canDeleteAgent = (agent: Agent, currentUserId: string | null): boolean => {
+ *  rendering the full row tree.
+ *
+ *  `canRemoveAgents` reflects the workspace `remove_agents` permission — when
+ *  false, no row is removable regardless of ownership. Defaults to true so
+ *  existing callers keep working.
+ */
+export const canDeleteAgent = (
+  agent: Agent,
+  currentUserId: string | null,
+  canRemoveAgents: boolean = true,
+): boolean => {
   if (agent.type === 'built-in') {
     return false
   }
@@ -45,6 +54,9 @@ export const canDeleteAgent = (agent: Agent, currentUserId: string | null): bool
     return false
   }
   if (!currentUserId) {
+    return false
+  }
+  if (!canRemoveAgents) {
     return false
   }
   return agent.userId === currentUserId
@@ -73,17 +85,32 @@ export const agentToggleDisabled = (agent: Agent): { disabled: boolean; disabled
 type AgentRowProps = {
   agent: Agent
   currentUserId: string | null
+  /** Defaults to true. Mirrors the workspace `add_agents` permission — also
+   *  used for the enable/disable toggle since toggling is a PATCH the BE
+   *  gates on `add_agents`. */
+  canEditAgents?: boolean
+  /** Defaults to true. Mirrors the workspace `remove_agents` permission. */
+  canRemoveAgents?: boolean
   onToggle: (agent: Agent, enabled: boolean) => void
   onEdit: (agent: Agent) => void
   onDelete: (agent: Agent) => void
 }
 
-export const AgentRow = ({ agent, currentUserId, onToggle, onEdit, onDelete }: AgentRowProps) => {
+export const AgentRow = ({
+  agent,
+  currentUserId,
+  canEditAgents = true,
+  canRemoveAgents = true,
+  onToggle,
+  onEdit,
+  onDelete,
+}: AgentRowProps) => {
   const Icon = iconForAgent(agent)
   const badge = badgeForAgent(agent)
   const showEdit = canEditAgent(agent, currentUserId)
-  const showDelete = canDeleteAgent(agent, currentUserId)
+  const showDelete = canDeleteAgent(agent, currentUserId, canRemoveAgents)
   const { disabled: toggleDisabled, disabledTooltip } = agentToggleDisabled(agent)
+  const finalToggleDisabled = toggleDisabled || !canEditAgents
   const isEnabled = agent.enabled === 1
   const [deleteOpen, setDeleteOpen] = useState(false)
 
@@ -120,7 +147,7 @@ export const AgentRow = ({ agent, currentUserId, onToggle, onEdit, onDelete }: A
                   <Switch
                     data-testid={`agent-toggle-${agent.id}`}
                     checked={isEnabled}
-                    disabled={toggleDisabled}
+                    disabled={finalToggleDisabled}
                     onCheckedChange={(checked) => onToggle(agent, checked)}
                   />
                 </div>

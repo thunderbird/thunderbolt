@@ -18,6 +18,7 @@ import { useIsMobile } from '@/hooks/use-mobile'
 export const SuggestionChip = ({
   label,
   dimmed,
+  canEdit = true,
   onClick,
   onOpenChange,
   onAddInstruction,
@@ -27,6 +28,9 @@ export const SuggestionChip = ({
   /** Display label — the bare slug; the leading `/` is added at render time. */
   label: string
   dimmed: boolean
+  /** Defaults to true. Mirrors `add_skills`; when false the Reorder + Unpin
+   *  items are hidden because both round-trip through a PATCH the BE gates. */
+  canEdit?: boolean
   onClick: () => void
   onOpenChange?: (open: boolean) => void
   onAddInstruction: () => void
@@ -162,32 +166,36 @@ export const SuggestionChip = ({
           <File />
           Add instructions to chat
         </DropdownMenuItem>
-        <DropdownMenuItem
-          onSelect={() => {
-            // Close before triggering reorder mode — the parent unmounts the
-            // chip when entering reorder, so Radix's automatic
-            // `onOpenChange(false)` may not reach `setOpenChipId(null)` and
-            // would leave sibling chips visually dimmed.
-            handleOpenChange(false)
-            onReorder()
-          }}
-          className="min-h-[var(--min-touch-height)] cursor-pointer rounded-xl"
-        >
-          <ListOrdered />
-          Reorder
-        </DropdownMenuItem>
-        <DropdownMenuItem
-          onSelect={() => {
-            // Same reasoning as Reorder: unpinning unmounts the chip, so we
-            // close the menu first to guarantee the dim-state callback fires.
-            handleOpenChange(false)
-            onUnpin()
-          }}
-          className="min-h-[var(--min-touch-height)] cursor-pointer rounded-xl"
-        >
-          <Pin />
-          Unpin
-        </DropdownMenuItem>
+        {canEdit && (
+          <>
+            <DropdownMenuItem
+              onSelect={() => {
+                // Close before triggering reorder mode — the parent unmounts the
+                // chip when entering reorder, so Radix's automatic
+                // `onOpenChange(false)` may not reach `setOpenChipId(null)` and
+                // would leave sibling chips visually dimmed.
+                handleOpenChange(false)
+                onReorder()
+              }}
+              className="min-h-[var(--min-touch-height)] cursor-pointer rounded-xl"
+            >
+              <ListOrdered />
+              Reorder
+            </DropdownMenuItem>
+            <DropdownMenuItem
+              onSelect={() => {
+                // Same reasoning as Reorder: unpinning unmounts the chip, so we
+                // close the menu first to guarantee the dim-state callback fires.
+                handleOpenChange(false)
+                onUnpin()
+              }}
+              className="min-h-[var(--min-touch-height)] cursor-pointer rounded-xl"
+            >
+              <Pin />
+              Unpin
+            </DropdownMenuItem>
+          </>
+        )}
       </DropdownMenuContent>
     </DropdownMenu>
   )

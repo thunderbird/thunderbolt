@@ -4,7 +4,7 @@
 
 import { getSettings } from '@/dal'
 import { createChatThread, getChatThread } from '@/dal/chat-threads'
-import { setupTestDatabase, teardownTestDatabase, resetTestDatabase } from '@/dal/test-utils'
+import { setupTestDatabase, teardownTestDatabase, resetTestDatabase, wsId } from '@/dal/test-utils'
 import { getDb } from '@/db/database'
 import { builtInAgent } from '@/defaults/agents'
 import type { Mode } from '@/types'
@@ -119,6 +119,7 @@ describe('chat-store', () => {
               connectionStatus: 'idle' as const,
               connectionError: null,
               id: 'test-id',
+              workspaceId: wsId,
               pendingPermission: null,
               selectedAgent: builtInAgent,
               selectedMode: null as unknown as Mode,
@@ -367,6 +368,7 @@ describe('chat-store', () => {
 
       await createChatThread(
         getDb(),
+        wsId,
         { id: chatThread.id, title: 'x', contextSize: null, triggeredBy: null, wasTriggeredByAutomation: 0 },
         model,
       )
@@ -383,7 +385,7 @@ describe('chat-store', () => {
 
       await useChatStore.getState().setSelectedAgent(chatThread.id, customAgent)
 
-      const stored = await getChatThread(getDb(), chatThread.id)
+      const stored = await getChatThread(getDb(), wsId, chatThread.id)
       expect(stored?.agentId).toBe(customAgent.id)
     })
 
@@ -410,7 +412,7 @@ describe('chat-store', () => {
       expect(session?.selectedAgent.id).toBe(customAgent.id)
 
       // Verify no row was created behind the scenes.
-      const stored = await getChatThread(getDb(), 'thread-no-row')
+      const stored = await getChatThread(getDb(), wsId, 'thread-no-row')
       expect(stored).toBeNull()
     })
 

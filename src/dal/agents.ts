@@ -12,6 +12,7 @@ import type { AnyDrizzleDatabase } from '../db/database-interface'
 import { agentsSecretsTable, agentsSystemTable, agentsTable } from '../db/tables'
 import { builtInAgent } from '../defaults/agents'
 import { nowIso } from '../lib/utils'
+import { useActiveWorkspaceId } from '../lib/active-workspace'
 import type { Agent } from '@/types/acp'
 
 /** Shape persisted in the local-only `agents_secrets` table. */
@@ -56,20 +57,26 @@ const systemRowToAgent = (row: AgentSystemRow): Agent => ({
   userId: null,
 })
 
-/** Query for all non-deleted custom agents (synced via PowerSync), alpha by name. */
-export const getAllAgents = (db: AnyDrizzleDatabase) =>
-  db.select().from(agentsTable).where(isNull(agentsTable.deletedAt)).orderBy(asc(agentsTable.name))
+/** Query for all non-deleted custom agents in the given workspace (synced via PowerSync), alpha by name. */
+export const getAllAgents = (db: AnyDrizzleDatabase, workspaceId: string) =>
+  db
+    .select()
+    .from(agentsTable)
+    .where(and(eq(agentsTable.workspaceId, workspaceId), isNull(agentsTable.deletedAt)))
+    .orderBy(asc(agentsTable.name))
 
-/** Query for all local-only system agents, alpha by name. */
+/** Query for all local-only system agents, alpha by name. Not workspace-scoped — `agents_system` is device-local. */
 export const getAllSystemAgents = (db: AnyDrizzleDatabase) =>
   db.select().from(agentsSystemTable).orderBy(asc(agentsSystemTable.name))
 
-/** Live hook for custom (synced) agents. Returns `Agent[]` in visual order. */
+/** Live hook for custom (synced) agents in the active workspace. Returns `Agent[]` in visual order. */
 export const useAgents = (): Agent[] => {
   const db = useDatabase()
+  const workspaceId = useActiveWorkspaceId()
   const { data = [] } = useQuery({
-    queryKey: ['agents'],
-    query: toCompilableQuery(getAllAgents(db)),
+    queryKey: ['agents', workspaceId],
+    query: toCompilableQuery(getAllAgents(db, workspaceId ?? '')),
+    enabled: !!workspaceId,
   })
   return data.map(customRowToAgent)
 }
@@ -118,9 +125,13 @@ export type CreateAgentInput = {
   userId: string
 }
 
-/** Insert a new custom agent into the synced table.
+/** Insert a new custom agent into the synced table in the given workspace.
  *  `userId` is required — synced tables must carry it from the caller's session. */
-export const createAgent = async (db: AnyDrizzleDatabase, data: CreateAgentInput): Promise<void> => {
+export const createAgent = async (
+  db: AnyDrizzleDatabase,
+  workspaceId: string,
+  data: CreateAgentInput,
+): Promise<void> => {
   await db.insert(agentsTable).values({
     id: data.id,
     name: data.name,
@@ -131,6 +142,7 @@ export const createAgent = async (db: AnyDrizzleDatabase, data: CreateAgentInput
     icon: data.icon ?? null,
     enabled: data.enabled ?? 1,
     userId: data.userId,
+    workspaceId,
   })
 }
 
@@ -151,7 +163,12 @@ const connectionInvalidatingFields: ReadonlyArray<keyof UpdateAgentPatch> = ['ur
  *
  *  Editing the wire identity (url/transport/type) disposes the agent's warm ACP
  *  connection so the next chat reconnects against the new endpoint. */
-export const updateAgent = async (db: AnyDrizzleDatabase, id: string, patch: UpdateAgentPatch): Promise<void> => {
+export const updateAgent = async (
+  db: AnyDrizzleDatabase,
+  workspaceId: string,
+  id: string,
+  patch: UpdateAgentPatch,
+): Promise<void> => {
   if (id === builtInAgent.id) {
     throw new Error(`updateAgent: refusing to edit built-in agent "${id}"`)
   }
@@ -161,31 +178,30 @@ export const updateAgent = async (db: AnyDrizzleDatabase, id: string, patch: Upd
   await db
     .update(agentsTable)
     .set(patch)
-    .where(and(eq(agentsTable.id, id), isNull(agentsTable.deletedAt)))
+    .where(and(eq(agentsTable.id, id), eq(agentsTable.workspaceId, workspaceId), isNull(agentsTable.deletedAt)))
 
   if (connectionInvalidatingFields.some((field) => field in patch)) {
     await disposeAdapter(id)
   }
 }
 
-/** Soft delete a custom agent. Never hard-delete — sets `deletedAt` and lets
- *  PowerSync replicate the tombstone. Built-ins/system rows are not in this
- *  table and cannot be removed. Disposes the agent's warm ACP connection so a
- *  deleted agent leaves no live transport behind. */
-export const deleteAgent = async (db: AnyDrizzleDatabase, id: string): Promise<void> => {
+/** Soft delete a custom agent in the given workspace. Never hard-delete — sets
+ *  `deletedAt` and lets PowerSync replicate the tombstone. Built-ins/system rows
+ *  are not in this table and cannot be removed. */
+export const deleteAgent = async (db: AnyDrizzleDatabase, workspaceId: string, id: string): Promise<void> => {
   if (id === builtInAgent.id) {
     throw new Error(`deleteAgent: refusing to delete built-in agent "${id}"`)
   }
   await db
     .update(agentsTable)
     .set({ deletedAt: nowIso() })
-    .where(and(eq(agentsTable.id, id), isNull(agentsTable.deletedAt)))
+    .where(and(eq(agentsTable.id, id), eq(agentsTable.workspaceId, workspaceId), isNull(agentsTable.deletedAt)))
 
   await disposeAdapter(id)
 }
 
 /** Read credentials for an agent from the local-only secrets table.
- *  Returns `null` when no row exists for `id`. */
+ *  Returns `null` when no row exists for `id`. Not workspace-scoped — `agents_secrets` is device-local. */
 export const getAgentSecrets = async (db: AnyDrizzleDatabase, id: string): Promise<AgentSecrets | null> => {
   const row = await db.select().from(agentsSecretsTable).where(eq(agentsSecretsTable.agentId, id)).get()
   if (!row) {
@@ -194,7 +210,7 @@ export const getAgentSecrets = async (db: AnyDrizzleDatabase, id: string): Promi
   return { apiKey: row.apiKey, authMethod: row.authMethod }
 }
 
-/** Upsert credentials for an agent.
+/** Upsert credentials for an agent into the local-only secrets table.
  *
  *  PowerSync exposes local-only tables as SQLite views, which don't support
  *  `INSERT ... ON CONFLICT DO UPDATE`. Emulate UPSERT with SELECT-then-INSERT/UPDATE,

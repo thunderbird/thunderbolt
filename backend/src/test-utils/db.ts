@@ -3,7 +3,6 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { PGlite } from '@electric-sql/pglite'
-import { sql } from 'drizzle-orm'
 import { drizzle } from 'drizzle-orm/pglite'
 import { migrate } from 'drizzle-orm/pglite/migrator'
 import { resolve } from 'path'
@@ -42,22 +41,57 @@ class TestDbManager {
   }
 
   /**
-   * Create a test database instance with transaction isolation
+   * Create a test database instance with transaction isolation.
+   *
+   * Opens a Drizzle transaction and exposes the Transaction object as `db`.
+   * Why a Drizzle transaction (not raw `BEGIN`/`ROLLBACK` SQL): production
+   * upload handlers wrap operations in `db.transaction(...)`. When that runs
+   * against a Drizzle Database/Session, PGlite issues raw `BEGIN`/`COMMIT`
+   * SQL — a nested `BEGIN` is a no-op (Postgres warning), but the matching
+   * `COMMIT` ends the outer test transaction, breaking isolation.
+   *
+   * Against a Drizzle Transaction, `db.transaction(...)` uses `SAVEPOINT`
+   * instead, which nests cleanly and rolls back with the outer test
+   * transaction on cleanup.
+   *
+   * The outer transaction is opened via a deferred promise so we can hand
+   * the Transaction object to the caller and hold it open until cleanup.
+   * Throwing a sentinel from inside the transaction callback triggers
+   * Drizzle's `ROLLBACK`; the catch outside swallows the sentinel.
    */
   async createTestDb() {
     if (!this.initialized) {
       await this.initialize()
     }
 
-    // Start a transaction using Drizzle's API
-    await this.db!.execute(sql`BEGIN`)
+    const rollbackSentinel = new Error('__test_cleanup_rollback__')
+
+    let resolveTx!: (tx: typeof DbType) => void
+    let signalRollback!: () => void
+
+    const txReady = new Promise<typeof DbType>((resolve) => {
+      resolveTx = resolve
+    })
+
+    const txDone = this.db!.transaction(async (tx) => {
+      resolveTx(tx as unknown as typeof DbType)
+      await new Promise<void>((_, reject) => {
+        signalRollback = () => reject(rollbackSentinel)
+      })
+    }).catch((err) => {
+      if (err !== rollbackSentinel) {
+        throw err
+      }
+    })
+
+    const tx = await txReady
 
     return {
       client: this.client!,
-      db: this.db!,
-      // Cleanup function to roll back the transaction
+      db: tx,
       cleanup: async () => {
-        await this.db!.execute(sql`ROLLBACK`)
+        signalRollback()
+        await txDone
       },
     }
   }

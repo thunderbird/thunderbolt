@@ -7,7 +7,7 @@ import { createContext, useContext, useEffect, useRef, useState, type ReactNode 
 import { useDatabase } from '@/contexts'
 import { getMcpServerCredentials, type McpServerCredentials } from '@/dal/mcp-secrets'
 import type { AnyDrizzleDatabase } from '@/db/database-interface'
-import { useLocalSettingsStore } from '@/stores/local-settings-store'
+import { useActiveCloudUrl } from '@/stores/trust-domain-registry'
 import { getAuthToken } from './auth-token'
 import { ensureValidMcpOAuthToken } from './mcp-auth/ensure-valid-token'
 import { isUnauthorizedError } from './mcp-errors'
@@ -106,7 +106,7 @@ export const MCPProvider = ({ children, createClient: injectedCreateClient }: MC
   const reconnectsInFlight = useRef<Map<string, Promise<MCPClient | null>>>(new Map())
   const connectsInFlight = useRef<Map<string, Promise<void>>>(new Map())
   const serversRef = useRef<MCPServerConnection[]>([])
-  const cloudUrl = useLocalSettingsStore((s) => s.cloudUrl)
+  const cloudUrl = useActiveCloudUrl() ?? ''
   const db = useDatabase()
 
   /** Update the server list AND `serversRef` in lockstep — this is the SOLE

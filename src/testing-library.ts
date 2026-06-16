@@ -5,10 +5,13 @@
 import { clearAuthToken, clearDeviceId } from '@/lib/auth-token'
 import { clearMemoizeCache } from '@/lib/memoize'
 import { installFakeTimers } from '@/test-utils/fake-timers'
+import { useTrustDomainRegistry } from '@/stores/trust-domain-registry'
 import type { Clock } from '@sinonjs/fake-timers'
 import * as matchers from '@testing-library/jest-dom/matchers'
 import { cleanup, configure } from '@testing-library/react'
 import { afterEach, beforeEach, expect, mock } from 'bun:test'
+
+export const testServerId = 'test-server'
 
 // Mock web-haptics/react globally — no vibration API in test environment
 mock.module('web-haptics/react', () => ({
@@ -108,6 +111,10 @@ const existingJest = (globalThis as any).jest || {}
 }
 
 beforeEach(() => {
+  useTrustDomainRegistry.setState({
+    servers: { [testServerId]: { serverId: testServerId, cloudUrl: 'http://localhost' } },
+    activeTrustDomain: { kind: 'server', serverId: testServerId },
+  })
   globalClock = installFakeTimers()
   // Ensure console is suppressed for each test
   suppressConsole()

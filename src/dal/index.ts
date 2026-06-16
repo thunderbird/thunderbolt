@@ -173,8 +173,11 @@ export {
 } from './workspace-pending-memberships'
 export {
   getPermissionsByWorkspace,
+  getPermissionsByWorkspaceQuery,
   getRequiredRoleForPermission,
   getRequiredRoleForPermissionQuery,
+  setWorkspacePermissionRequiredRole,
+  useWorkspacePermissionsQuery,
   type WorkspacePermission,
   type WorkspacePermissionKey,
   type WorkspacePermissionRole,

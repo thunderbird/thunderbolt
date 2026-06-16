@@ -20,8 +20,9 @@ import { v7 as uuidv7 } from 'uuid'
  * Called from the Better Auth post-user-create hook. The personal workspace
  * itself is FE-created (uploaded via PowerSync with a deterministic id from
  * `shared/workspaces.ts`) — the BE no longer creates one here. Pending
- * promotion stays server-side because pending rows live in an admin-only
- * sync bucket and FE can't see other users' invites until they're memberships.
+ * promotion stays server-side because a brand-new user isn't a member of any
+ * workspace yet, so no FE client can see (or act on) the pending invite at
+ * signup time.
  *
  * Skipped for anonymous users — anon never receives pending invites.
  */
@@ -141,6 +142,55 @@ export const isWorkspaceAdmin = async (
   return rows.length > 0
 }
 
+/**
+ * Returns the user's `role` ('admin' | 'member') for the workspace, or `null`
+ * if they have no membership row. Used by upload handlers to evaluate
+ * `workspace_permissions.required_role` against the caller's actual role.
+ */
+export const getUserRoleInWorkspace = async (
+  database: typeof DbType,
+  workspaceId: string,
+  userId: string,
+): Promise<Role | null> => {
+  const rows = await database
+    .select({ role: workspaceMembershipsTable.role })
+    .from(workspaceMembershipsTable)
+    .where(and(eq(workspaceMembershipsTable.workspaceId, workspaceId), eq(workspaceMembershipsTable.userId, userId)))
+    .limit(1)
+  const row = rows[0]
+  if (!row) {
+    return null
+  }
+  return row.role as Role
+}
+
+/**
+ * Reads `workspace_permissions.required_role` for `(workspaceId, permissionKey)`.
+ * Returns `null` when no row exists yet; callers default to `'admin'`
+ * (Decision 11 — the safe default for any new key).
+ */
+export const getRequiredRoleForPermission = async (
+  database: typeof DbType,
+  workspaceId: string,
+  permissionKey: WorkspacePermissionKey,
+): Promise<Role | null> => {
+  const rows = await database
+    .select({ requiredRole: workspacePermissionsTable.requiredRole })
+    .from(workspacePermissionsTable)
+    .where(
+      and(
+        eq(workspacePermissionsTable.workspaceId, workspaceId),
+        eq(workspacePermissionsTable.permissionKey, permissionKey),
+      ),
+    )
+    .limit(1)
+  const row = rows[0]
+  if (!row) {
+    return null
+  }
+  return row.requiredRole as Role
+}
+
 /** True when the user is an admin of any workspace (used to gate shared-workspace creation). */
 export const isAdminOfAnyWorkspace = async (database: typeof DbType, userId: string): Promise<boolean> => {
   const rows = await database
@@ -202,6 +252,30 @@ export const getMembershipById = async (
   return rows[0] ?? null
 }
 
+/**
+ * Look up a membership by `(workspace_id, user_id)` — the unique constraint
+ * that `upsertMembership` collides on. Upload-handler validation uses this to
+ * detect when a PUT would effectively change an existing role (treated as a
+ * PATCH for auth purposes).
+ */
+export const getMembershipByWorkspaceAndUser = async (
+  database: typeof DbType,
+  workspaceId: string,
+  userId: string,
+): Promise<MembershipRow | null> => {
+  const rows = await database
+    .select({
+      id: workspaceMembershipsTable.id,
+      workspaceId: workspaceMembershipsTable.workspaceId,
+      userId: workspaceMembershipsTable.userId,
+      role: workspaceMembershipsTable.role,
+    })
+    .from(workspaceMembershipsTable)
+    .where(and(eq(workspaceMembershipsTable.workspaceId, workspaceId), eq(workspaceMembershipsTable.userId, userId)))
+    .limit(1)
+  return rows[0] ?? null
+}
+
 export const getPendingMembershipById = async (database: typeof DbType, id: string): Promise<PendingRow | null> => {
   const rows = await database
     .select({
@@ -229,8 +303,10 @@ export const getWorkspacePermissionById = async (
   return rows[0] ?? null
 }
 
+import type { WorkspacePermissionKey } from '@shared/workspaces'
+
 export type Role = 'admin' | 'member'
-export type WorkspacePermissionKey = 'manage_members' | 'change_roles'
+export type { WorkspacePermissionKey }
 
 export type UpsertWorkspaceInput = {
   id: string
@@ -359,6 +435,23 @@ export const upsertMembership = async (database: typeof DbType, input: Membershi
 }
 
 /**
+ * Insert a membership row only if no row with the same `(workspace_id, user_id)`
+ * already exists. Used by the promote-on-insert path in the pending-membership
+ * upload handler: an invite for an email that already belongs to a member must
+ * not overwrite that member's existing role (otherwise an invite for an admin's
+ * own email would downgrade them to whatever role the invite carried). Mirrors
+ * the `promotePendingMemberships` DO-NOTHING semantics for the signup path.
+ */
+export const insertMembershipIfMissing = async (database: typeof DbType, input: MembershipInput): Promise<void> => {
+  await database
+    .insert(workspaceMembershipsTable)
+    .values(input)
+    .onConflictDoNothing({
+      target: [workspaceMembershipsTable.workspaceId, workspaceMembershipsTable.userId],
+    })
+}
+
+/**
  * Mirrors a user's current display info onto every one of their membership rows.
  * Called from the Better Auth `update.after` hook so name/email changes propagate
  * to co-members on the next sync round-trip. Idempotent — safe to call on every
@@ -455,6 +548,32 @@ export const deletePendingMembership = async (database: typeof DbType, id: strin
   const rows = await database
     .delete(workspacePendingMembershipsTable)
     .where(eq(workspacePendingMembershipsTable.id, id))
+    .returning()
+  return rows.length
+}
+
+/**
+ * Deletes the pending row for `(workspace_id, email)`. Used by the
+ * promote-on-insert path in the upload handler: when `upsertPendingMembership`
+ * conflicts on the `(workspace_id, email)` unique constraint, Postgres keeps
+ * the existing row's id, so a delete keyed on the upload's `op.id` would no-op
+ * and leave a stale pending invite behind for someone who is now a real
+ * member. Email is normalized to match `upsertPendingMembership`'s storage.
+ */
+export const deletePendingMembershipByWorkspaceAndEmail = async (
+  database: typeof DbType,
+  workspaceId: string,
+  email: string,
+): Promise<number> => {
+  const normalizedEmail = normalizeEmail(email)
+  const rows = await database
+    .delete(workspacePendingMembershipsTable)
+    .where(
+      and(
+        eq(workspacePendingMembershipsTable.workspaceId, workspaceId),
+        eq(workspacePendingMembershipsTable.email, normalizedEmail),
+      ),
+    )
     .returning()
   return rows.length
 }

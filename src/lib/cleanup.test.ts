@@ -152,6 +152,18 @@ describe('clearLocalData', () => {
     expect(calls).toContain('clearAuthToken')
     expect(calls).toContain('clearDeviceId')
   })
+
+  it('clears activeTrustDomain from the registry before broadcasting db-closing', async () => {
+    let registryAtBroadcast: ReturnType<typeof useTrustDomainRegistry.getState>['activeTrustDomain']
+    broadcastDbLifecycle.mockImplementationOnce((event: { kind: string }) => {
+      calls.push(`broadcast:${event.kind}`)
+      registryAtBroadcast = useTrustDomainRegistry.getState().activeTrustDomain
+    })
+
+    await clearLocalData(deps)
+
+    expect(registryAtBroadcast).toBeUndefined()
+  })
 })
 
 describe('signOutAndWipe', () => {
@@ -230,5 +242,84 @@ describe('signOutAndWipe', () => {
     await signOutAndWipe({ onComplete, ...deps })
 
     expect(onComplete).toHaveBeenCalledTimes(1)
+  })
+
+  it('clears credentials AFTER signOut so the server can revoke the session', async () => {
+    const signOut = mock(async () => {
+      calls.push('signOut')
+    })
+    const onComplete = mock(() => {
+      calls.push('onComplete')
+    })
+
+    await signOutAndWipe({ signOut, onComplete, ...deps })
+
+    const signOutIdx = calls.indexOf('signOut')
+    const authTokenIdx = calls.indexOf('clearAuthToken')
+    const deviceIdIdx = calls.indexOf('clearDeviceId')
+    const onCompleteIdx = calls.indexOf('onComplete')
+
+    expect(signOutIdx).toBeGreaterThan(-1)
+    expect(authTokenIdx).toBeGreaterThan(signOutIdx)
+    expect(deviceIdIdx).toBeGreaterThan(signOutIdx)
+    expect(onCompleteIdx).toBeGreaterThan(authTokenIdx)
+    expect(onCompleteIdx).toBeGreaterThan(deviceIdIdx)
+  })
+
+  it('still clears credentials on the revoked-device path (no signOut)', async () => {
+    // RevokedDeviceModal doesn't pass `signOut` (the server already
+    // invalidated the session). The deferred-credential clear still has to
+    // run so the local token is wiped.
+    const onComplete = mock(() => {})
+
+    await signOutAndWipe({ onComplete, ...deps })
+
+    expect(clearAuthToken).toHaveBeenCalledTimes(1)
+    expect(clearDeviceId).toHaveBeenCalledTimes(1)
+  })
+
+  it('passes the captured serverId to the credential clearers (registry already cleared)', async () => {
+    const onComplete = mock(() => {})
+
+    await signOutAndWipe({ onComplete, ...deps })
+
+    expect(clearAuthToken).toHaveBeenCalledWith(serverId)
+    expect(clearDeviceId).toHaveBeenCalledWith(serverId)
+  })
+
+  it('passes the captured serverId to handleFullWipe (registry already cleared)', async () => {
+    const onComplete = mock(() => {})
+
+    await signOutAndWipe({ onComplete, ...deps })
+
+    expect(handleFullWipe).toHaveBeenCalledWith(serverId)
+  })
+
+  it('keeps getAuthToken() resolvable during signOut even though the registry was cleared', async () => {
+    // clearLocalData empties `activeTrustDomain` before signOut runs, so the
+    // registry-derived lookup inside `getAuthToken()` would return null and
+    // Better Auth's `auth.token` callback would send the sign-out request
+    // bearer-less. `withCapturedAuthToken` (used inside `signOutAndWipe`)
+    // must replay the pre-wipe token for the duration of the signOut call.
+    const { getAuthToken } = await import('@/lib/auth-token')
+    const tokenKey = `thunderbolt_auth_token__${serverId}`
+    const tokenValue = 'sentinel-token-value'
+    localStorage.setItem(tokenKey, tokenValue)
+
+    const observed: { token: string | null } = { token: null }
+    const signOut = mock(async () => {
+      observed.token = getAuthToken()
+    })
+    const onComplete = mock(() => {})
+
+    try {
+      await signOutAndWipe({ signOut, onComplete, ...deps })
+    } finally {
+      localStorage.removeItem(tokenKey)
+    }
+
+    expect(observed.token).toBe(tokenValue)
+    // And after signOut returns, the override is dropped — no leakage.
+    expect(getAuthToken()).toBeNull()
   })
 })

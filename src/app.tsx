@@ -36,13 +36,14 @@ import { useViewportLock } from '@/hooks/use-viewport-lock'
 import { useMcpSync } from '@/hooks/use-mcp-sync'
 import { PostHogProvider } from '@/lib/posthog'
 import { ThemeProvider } from '@/lib/theme-provider'
+import { AppErrorBoundary } from './components/app-error-boundary'
 import { AppErrorScreen } from './components/app-error-screen'
 import { ModePicker } from './components/boot/mode-picker'
 import { AuthGate } from './components/auth-gate'
 import { WorkspaceGate } from './components/workspace-gate'
 import { WorkspaceMembershipGate } from './components/workspace-membership-gate'
 import { WorkspaceSettingsGate } from './settings/workspace/gate'
-import { RequireWorkspacePermission } from './settings/workspace/require-permission'
+import { RequireWorkspaceAdmin } from './settings/workspace/require-permission'
 import { OnboardingDialog } from './components/onboarding/onboarding-dialog'
 import { WelcomeDialog } from './components/welcome-dialog'
 import { PendingDeviceModal } from './components/pending-device-modal'
@@ -85,6 +86,7 @@ const AgentsSettingsPage = lazy(() => import('@/routes/settings/agents'))
 const IntegrationsPage = lazy(() => import('@/settings/integrations'))
 const WorkspaceGeneralPage = lazy(() => import('@/settings/workspace/general'))
 const WorkspaceMembersPage = lazy(() => import('@/settings/workspace/members'))
+const WorkspacePermissionsPage = lazy(() => import('@/settings/workspace/permissions'))
 
 // Lazily import SSO components so non-enterprise deployments don't pay
 // for the extra bundle size and attack surface.
@@ -127,8 +129,9 @@ const renderWorkspaceRoutes = ({ experimentalFeatureTasks }: { experimentalFeatu
         <Route element={<WorkspaceSettingsGate />}>
           <Route path="general" element={<WorkspaceGeneralPage />} />
         </Route>
-        <Route element={<RequireWorkspacePermission permissionKey="manage_members" />}>
-          <Route path="members" element={<WorkspaceMembersPage />} />
+        <Route path="members" element={<WorkspaceMembersPage />} />
+        <Route element={<RequireWorkspaceAdmin />}>
+          <Route path="permissions" element={<WorkspacePermissionsPage />} />
         </Route>
       </Route>
       {import.meta.env.DEV && <Route path="dev-settings" element={<DevSettingsPage />} />}
@@ -171,11 +174,13 @@ const AppContent = ({ initData }: { initData: InitData }) => {
   useSafeAreaInset()
 
   return (
-    <BrowserRouter>
-      <AppRoutes initData={initData} />
-      <UpdateNotification />
-      <PendingDeviceModal />
-    </BrowserRouter>
+    <AppErrorBoundary>
+      <BrowserRouter>
+        <AppRoutes initData={initData} />
+        <UpdateNotification />
+        <PendingDeviceModal />
+      </BrowserRouter>
+    </AppErrorBoundary>
   )
 }
 

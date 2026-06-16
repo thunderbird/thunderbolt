@@ -20,7 +20,7 @@ import { Navigate, Outlet } from 'react-router'
  */
 export const WorkspaceSettingsGate = () => {
   const active = useActiveWorkspace()
-  const { membership, isAdmin } = useActiveWorkspaceMembership()
+  const { isAdmin, isResolved } = useActiveWorkspaceMembership()
 
   if (!active) {
     return <Loading />
@@ -30,9 +30,9 @@ export const WorkspaceSettingsGate = () => {
     return <Outlet />
   }
 
-  // Wait for the membership query to resolve before deciding — a freshly-synced
-  // membership row should flip the gate without a redirect bounce.
-  if (!membership) {
+  // `isResolved` distinguishes "still loading" from "confirmed non-member" —
+  // without it, a non-member would spin instead of redirecting.
+  if (!isResolved) {
     return <Loading />
   }
 

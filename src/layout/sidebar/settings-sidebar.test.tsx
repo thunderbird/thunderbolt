@@ -14,7 +14,7 @@ import {
   wsId,
 } from '@/dal/test-utils'
 import { getDb } from '@/db/database'
-import { workspaceMembershipsTable, workspacePermissionsTable, workspacesTable } from '@/db/tables'
+import { workspaceMembershipsTable, workspacesTable } from '@/db/tables'
 import { createMockAuthClient } from '@/test-utils/auth-client'
 import { createMockHttpClient } from '@/test-utils/http-client'
 import {
@@ -230,17 +230,6 @@ describe('SettingsSidebarContent — Workspace > General entry visibility', () =
   })
 })
 
-const seedManageMembersPermission = async (requiredRole: 'admin' | 'member') => {
-  await getDb()
-    .insert(workspacePermissionsTable)
-    .values({
-      id: `${otherWsId}-manage_members`,
-      workspaceId: otherWsId,
-      permissionKey: 'manage_members',
-      requiredRole,
-    })
-}
-
 describe('SettingsSidebarContent — Workspace > Members entry visibility', () => {
   beforeAll(async () => {
     await setupTestDatabase()
@@ -277,27 +266,12 @@ describe('SettingsSidebarContent — Workspace > Members entry visibility', () =
     expect(screen.getByText('Members')).toBeInTheDocument()
   })
 
-  it('hides the Members entry for a member of a shared workspace (default policy)', async () => {
+  it('shows the Members entry for a member of a shared workspace (read-friendly, per-action gates apply within)', async () => {
+    // Decision: Members is visible to every member of a shared workspace. The
+    // page is read-friendly without action permissions; individual actions
+    // (invite / change role / remove) gate themselves on the granular
+    // permission keys (invite_users / change_roles / remove_users).
     await seedSharedWorkspaceWithMembership('member')
-
-    renderWithReactivity(
-      <SettingsSidebarContent onBackClick={() => {}} onSettingsNavigate={() => {}} isStandalone={onTauri} />,
-      {
-        route: `/w/${otherWsId}/settings`,
-        routePath: '/*',
-        tables: ['workspaces', 'workspace_memberships', 'workspace_permissions'],
-        wrapper: ReactiveSidebarWrapper,
-      },
-    )
-
-    // Wait for another Workspace-group item so the active workspace has resolved.
-    await waitForElement(() => screen.queryByText('Models'))
-    expect(screen.queryByText('Members')).not.toBeInTheDocument()
-  })
-
-  it('shows the Members entry for a member when explicit manage_members.required_role=member', async () => {
-    await seedSharedWorkspaceWithMembership('member')
-    await seedManageMembersPermission('member')
 
     renderWithReactivity(
       <SettingsSidebarContent onBackClick={() => {}} onSettingsNavigate={() => {}} isStandalone={onTauri} />,
@@ -351,6 +325,101 @@ describe('SettingsSidebarContent — Workspace > Members entry visibility', () =
       // Wait for an unrelated Workspace-group item so the active workspace has resolved.
       await waitForElement(() => screen.queryByText('Models'))
       expect(screen.queryByText('Members')).not.toBeInTheDocument()
+    } finally {
+      useConfigStore.getState().updateConfig(previous)
+    }
+  })
+})
+
+describe('SettingsSidebarContent — Workspace > Permissions entry visibility', () => {
+  beforeAll(async () => {
+    await setupTestDatabase()
+  })
+
+  afterAll(async () => {
+    await teardownTestDatabase()
+  })
+
+  beforeEach(async () => {
+    await resetTestDatabase()
+    seedTestTrustDomain()
+  })
+
+  afterEach(() => {
+    resetTestTrustDomain()
+    cleanup()
+  })
+
+  it('shows the Permissions entry for an admin of a shared workspace', async () => {
+    await seedSharedWorkspaceWithMembership('admin')
+
+    renderWithReactivity(
+      <SettingsSidebarContent onBackClick={() => {}} onSettingsNavigate={() => {}} isStandalone={onTauri} />,
+      {
+        route: `/w/${otherWsId}/settings`,
+        routePath: '/*',
+        tables: ['workspaces', 'workspace_memberships', 'workspace_permissions'],
+        wrapper: ReactiveSidebarWrapper,
+      },
+    )
+
+    await waitForElement(() => screen.queryByText('Permissions'))
+    expect(screen.getByText('Permissions')).toBeInTheDocument()
+  })
+
+  it('hides the Permissions entry for a member of a shared workspace', async () => {
+    await seedSharedWorkspaceWithMembership('member')
+
+    renderWithReactivity(
+      <SettingsSidebarContent onBackClick={() => {}} onSettingsNavigate={() => {}} isStandalone={onTauri} />,
+      {
+        route: `/w/${otherWsId}/settings`,
+        routePath: '/*',
+        tables: ['workspaces', 'workspace_memberships', 'workspace_permissions'],
+        wrapper: ReactiveSidebarWrapper,
+      },
+    )
+
+    await waitForElement(() => screen.queryByText('Models'))
+    expect(screen.queryByText('Permissions')).not.toBeInTheDocument()
+  })
+
+  it('hides the Permissions entry in a Personal Workspace (Decision 25)', async () => {
+    await seedPersonalMembership()
+
+    renderWithReactivity(
+      <SettingsSidebarContent onBackClick={() => {}} onSettingsNavigate={() => {}} isStandalone={onTauri} />,
+      {
+        route: '/settings',
+        routePath: '/*',
+        tables: ['workspaces', 'workspace_memberships', 'workspace_permissions'],
+        wrapper: ReactiveSidebarWrapper,
+      },
+    )
+
+    await waitForElement(() => screen.queryByText('General'))
+    expect(screen.queryByText('Permissions')).not.toBeInTheDocument()
+  })
+
+  it('hides the Permissions entry when e2eeEnabled is true (THU-593)', async () => {
+    const { useConfigStore } = await import('@/api/config-store')
+    const previous = useConfigStore.getState().config
+    useConfigStore.getState().updateConfig({ ...previous, e2eeEnabled: true })
+    try {
+      await seedSharedWorkspaceWithMembership('admin')
+
+      renderWithReactivity(
+        <SettingsSidebarContent onBackClick={() => {}} onSettingsNavigate={() => {}} isStandalone={onTauri} />,
+        {
+          route: `/w/${otherWsId}/settings`,
+          routePath: '/*',
+          tables: ['workspaces', 'workspace_memberships', 'workspace_permissions'],
+          wrapper: ReactiveSidebarWrapper,
+        },
+      )
+
+      await waitForElement(() => screen.queryByText('Models'))
+      expect(screen.queryByText('Permissions')).not.toBeInTheDocument()
     } finally {
       useConfigStore.getState().updateConfig(previous)
     }

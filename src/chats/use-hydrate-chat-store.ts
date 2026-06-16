@@ -133,6 +133,11 @@ export const useHydrateChatStore = ({ id, isNew }: UseHydrateChatStoreParams) =>
     const existingSession = sessions.get(id)
     if (existingSession) {
       if (existingSession.workspaceId !== workspaceId) {
+        // Drop `isReady` before we evict so consumers don't render against a
+        // session we've just removed during the async rebuild below — they'd
+        // see `isReady=true` with no matching session entry and throw
+        // missing-session errors.
+        setIsReady(false)
         const nextSessions = new Map(sessions)
         nextSessions.delete(id)
         useChatStore.setState({ sessions: nextSessions })

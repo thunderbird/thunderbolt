@@ -3,12 +3,14 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import '@/testing-library'
-import { setupTestDatabase, teardownTestDatabase } from '@/dal/test-utils'
+import { resetTestDatabase, setupTestDatabase, teardownTestDatabase, wsId } from '@/dal/test-utils'
 import { ExternalLinkDialogProvider } from '@/components/chat/markdown-utils'
 import { ContentViewProvider } from '@/content-view/context'
+import { resetTestTrustDomain, seedTestTrustDomain } from '@/test-utils/powersync-reactivity-test'
 import type { SourceMetadata } from '@/types/source'
 import { render } from '@testing-library/react'
-import { afterAll, beforeAll, describe, expect, it } from 'bun:test'
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'bun:test'
+import { MemoryRouter } from 'react-router'
 import { createTestProvider } from '@/test-utils/test-provider'
 import { LinkPreviewWidget } from './widget'
 import type { ReactElement } from 'react'
@@ -21,14 +23,32 @@ afterAll(async () => {
   await teardownTestDatabase()
 })
 
+// `useMessageCache` (called by FetchLinkPreview) is gated on `useActiveWorkspaceId`.
+// Without a seeded trust domain the query is disabled, the widget skips the
+// loading branch, and skeleton assertions fail.
+beforeEach(async () => {
+  await resetTestDatabase()
+  seedTestTrustDomain()
+})
+
+afterEach(() => {
+  resetTestTrustDomain()
+})
+
 const renderWithProviders = (ui: ReactElement) => {
   const TestProvider = createTestProvider()
+  // MemoryRouter at a workspace-prefixed URL so `useActiveWorkspaceId` (consumed
+  // by `useMessageCache` inside the fallback path) resolves synchronously off
+  // the URL on the first render instead of waiting for the live workspace
+  // query to land.
   return render(ui, {
     wrapper: ({ children }) => (
       <TestProvider>
-        <ContentViewProvider>
-          <ExternalLinkDialogProvider>{children}</ExternalLinkDialogProvider>
-        </ContentViewProvider>
+        <MemoryRouter initialEntries={[`/w/${wsId}/chats/new`]}>
+          <ContentViewProvider>
+            <ExternalLinkDialogProvider>{children}</ExternalLinkDialogProvider>
+          </ContentViewProvider>
+        </MemoryRouter>
       </TestProvider>
     ),
   })

@@ -68,12 +68,18 @@ const isPersonalAdminBootstrap = async (
 /**
  * Upload handler for `workspace_memberships`. Enforces:
  *
- * - All writes require admin role in the target workspace.
- * - Personal workspaces are immutable — admin membership exists exactly once and
- *   is created by the Better Auth post-create hook (Decision 11 / Decision 12).
- * - DELETE that would leave zero remaining admins in the workspace is permanently
- *   rejected. The count is taken inside the same transaction as the delete so
- *   concurrent revokes can't both pass the check.
+ * - Each op gates on a `workspace_permissions` key — `invite_users` for PUT,
+ *   `change_roles` for PATCH, `remove_users` for DELETE — defaulting to
+ *   admin-only when the permission row is absent (Decision 11).
+ * - Personal workspaces are immutable past the FE-driven admin bootstrap
+ *   (`isPersonalAdminBootstrap`), which lands exactly one admin row for the
+ *   owner the first time the workspace appears server-side.
+ * - The first admin membership for a freshly-created shared workspace is
+ *   allowed by `isSharedWorkspaceAdminBootstrap` (caller is the row's user,
+ *   role is admin, workspace has zero members yet).
+ * - DELETE that would leave zero remaining admins is permanently rejected.
+ *   The count is taken inside the same transaction so concurrent revokes
+ *   can't both pass the check.
  */
 /**
  * Shared workspace creator bootstrap: the FE creates a shared workspace and its

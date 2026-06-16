@@ -20,8 +20,10 @@ import { UploadRejection, type UploadHandler } from './types'
 const isRole = (v: unknown): v is Role => v === 'admin' || v === 'member'
 
 /**
- * Upload handler for `workspace_pending_memberships`. All operations require admin
- * role in the target workspace; personal workspaces cannot have pending memberships.
+ * Upload handler for `workspace_pending_memberships`. Every write gates on the
+ * `invite_users` permission (admin by default, Decision 11). Promoting/editing
+ * a pending invite to `role: 'admin'` additionally requires `change_roles` —
+ * see the inline guard. Personal workspaces cannot have pending memberships.
  * Email is normalized server-side by the DAL to match the Better Auth `before` hook.
  */
 export const workspacePendingMembershipsHandler: UploadHandler = {

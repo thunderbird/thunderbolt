@@ -20,8 +20,9 @@ import { v7 as uuidv7 } from 'uuid'
  * Called from the Better Auth post-user-create hook. The personal workspace
  * itself is FE-created (uploaded via PowerSync with a deterministic id from
  * `shared/workspaces.ts`) — the BE no longer creates one here. Pending
- * promotion stays server-side because pending rows live in an admin-only
- * sync bucket and FE can't see other users' invites until they're memberships.
+ * promotion stays server-side because a brand-new user isn't a member of any
+ * workspace yet, so no FE client can see (or act on) the pending invite at
+ * signup time.
  *
  * Skipped for anonymous users — anon never receives pending invites.
  */

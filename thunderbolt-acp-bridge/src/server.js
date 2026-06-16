@@ -302,9 +302,9 @@ export const startBridge = async (cfg, deps) => {
         if (shuttingDown) return
         if (child.exitCode !== null || child.signalCode !== null) return // exit handler already fired
         ready = true
-        // IPv6 literals (the only host form containing a colon) must be bracketed
-        // in a URL per RFC 3986: ws://::1:PORT is malformed; ws://[::1]:PORT is valid.
-        const hostForUrl = host.includes(':') ? `[${host}]` : host
+        // Bracket an IPv6 literal host (the only host form with a colon) per RFC 3986,
+        // unless the user already passed it bracketed — avoid ws://[[::1]]:PORT.
+        const hostForUrl = host.includes(':') && !host.startsWith('[') ? `[${host}]` : host
         onBanner?.(`ws://${hostForUrl}:${resolvedPort}`)
         resolve({ stop })
       }, GRACE_MS)

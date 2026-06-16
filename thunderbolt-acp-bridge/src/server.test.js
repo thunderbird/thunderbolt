@@ -168,6 +168,10 @@ describe('startBridge lifecycle', () => {
 
     const ipv4 = await startReady({ port: 54321, cfg: { host: '127.0.0.1' } })
     expect(ipv4.getBanner()).toBe('ws://127.0.0.1:54321') // no brackets, regression guard
+
+    // An already-bracketed IPv6 literal must NOT be wrapped again (no ws://[[::1]]:PORT).
+    const bracketed = await startReady({ port: 54321, cfg: { host: '[::1]' } })
+    expect(bracketed.getBanner()).toBe('ws://[::1]:54321')
   })
 
   it('relays agent stdout lines to the connected socket', async () => {

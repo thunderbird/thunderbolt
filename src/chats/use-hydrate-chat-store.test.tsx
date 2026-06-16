@@ -237,6 +237,29 @@ describe('useHydrateChatStore', () => {
       expect(session?.triggerData).toBeDefined()
     })
 
+    it('handles concurrent hydration calls for the same id without throwing', async () => {
+      // Regression: when `[id, workspaceId]` flips twice in quick succession
+      // (e.g. landing on `/w/<newId>/chats/new` right after workspace creation),
+      // two `hydrateChatStore()` calls race past the early dedup and both reach
+      // `createSession`. The store's `createSession` throws on duplicate id, so
+      // the second invocation used to crash with "Session already exists".
+      const systemModelId = await createSystemModel()
+      const threadId = await createTestThread(systemModelId)
+
+      const { result } = renderHook(() => useHydrateChatStore({ id: threadId, isNew: false }), {
+        wrapper: TestWrapper,
+      })
+
+      // Kick off two concurrent calls; both must resolve without throwing.
+      await act(async () => {
+        await Promise.all([result.current.hydrateChatStore(), result.current.hydrateChatStore()])
+      })
+
+      const storeState = useChatStore.getState()
+      expect(storeState.sessions.has(threadId)).toBe(true)
+      expect(storeState.currentSessionId).toBe(threadId)
+    })
+
     it('should reset store before hydrating', async () => {
       const systemModelId = await createSystemModel()
       const threadId1 = await createTestThread(systemModelId, 'Thread 1')

@@ -20,8 +20,9 @@ import { v7 as uuidv7 } from 'uuid'
  * Called from the Better Auth post-user-create hook. The personal workspace
  * itself is FE-created (uploaded via PowerSync with a deterministic id from
  * `shared/workspaces.ts`) — the BE no longer creates one here. Pending
- * promotion stays server-side because pending rows live in an admin-only
- * sync bucket and FE can't see other users' invites until they're memberships.
+ * promotion stays server-side because a brand-new user isn't a member of any
+ * workspace yet, so no FE client can see (or act on) the pending invite at
+ * signup time.
  *
  * Skipped for anonymous users — anon never receives pending invites.
  */
@@ -29,6 +30,7 @@ export const promotePendingMemberships = async (
   database: typeof DbType,
   userId: string,
   email: string,
+  name: string,
 ): Promise<void> => {
   const normalizedEmail = normalizeEmail(email)
 
@@ -52,6 +54,8 @@ export const promotePendingMemberships = async (
           workspaceId: row.workspaceId,
           userId,
           role: row.role,
+          userName: name,
+          userEmail: normalizedEmail,
         })),
       )
       .onConflictDoNothing({
@@ -138,6 +142,55 @@ export const isWorkspaceAdmin = async (
   return rows.length > 0
 }
 
+/**
+ * Returns the user's `role` ('admin' | 'member') for the workspace, or `null`
+ * if they have no membership row. Used by upload handlers to evaluate
+ * `workspace_permissions.required_role` against the caller's actual role.
+ */
+export const getUserRoleInWorkspace = async (
+  database: typeof DbType,
+  workspaceId: string,
+  userId: string,
+): Promise<Role | null> => {
+  const rows = await database
+    .select({ role: workspaceMembershipsTable.role })
+    .from(workspaceMembershipsTable)
+    .where(and(eq(workspaceMembershipsTable.workspaceId, workspaceId), eq(workspaceMembershipsTable.userId, userId)))
+    .limit(1)
+  const row = rows[0]
+  if (!row) {
+    return null
+  }
+  return row.role as Role
+}
+
+/**
+ * Reads `workspace_permissions.required_role` for `(workspaceId, permissionKey)`.
+ * Returns `null` when no row exists yet; callers default to `'admin'`
+ * (Decision 11 — the safe default for any new key).
+ */
+export const getRequiredRoleForPermission = async (
+  database: typeof DbType,
+  workspaceId: string,
+  permissionKey: WorkspacePermissionKey,
+): Promise<Role | null> => {
+  const rows = await database
+    .select({ requiredRole: workspacePermissionsTable.requiredRole })
+    .from(workspacePermissionsTable)
+    .where(
+      and(
+        eq(workspacePermissionsTable.workspaceId, workspaceId),
+        eq(workspacePermissionsTable.permissionKey, permissionKey),
+      ),
+    )
+    .limit(1)
+  const row = rows[0]
+  if (!row) {
+    return null
+  }
+  return row.requiredRole as Role
+}
+
 /** True when the user is an admin of any workspace (used to gate shared-workspace creation). */
 export const isAdminOfAnyWorkspace = async (database: typeof DbType, userId: string): Promise<boolean> => {
   const rows = await database
@@ -199,6 +252,30 @@ export const getMembershipById = async (
   return rows[0] ?? null
 }
 
+/**
+ * Look up a membership by `(workspace_id, user_id)` — the unique constraint
+ * that `upsertMembership` collides on. Upload-handler validation uses this to
+ * detect when a PUT would effectively change an existing role (treated as a
+ * PATCH for auth purposes).
+ */
+export const getMembershipByWorkspaceAndUser = async (
+  database: typeof DbType,
+  workspaceId: string,
+  userId: string,
+): Promise<MembershipRow | null> => {
+  const rows = await database
+    .select({
+      id: workspaceMembershipsTable.id,
+      workspaceId: workspaceMembershipsTable.workspaceId,
+      userId: workspaceMembershipsTable.userId,
+      role: workspaceMembershipsTable.role,
+    })
+    .from(workspaceMembershipsTable)
+    .where(and(eq(workspaceMembershipsTable.workspaceId, workspaceId), eq(workspaceMembershipsTable.userId, userId)))
+    .limit(1)
+  return rows[0] ?? null
+}
+
 export const getPendingMembershipById = async (database: typeof DbType, id: string): Promise<PendingRow | null> => {
   const rows = await database
     .select({
@@ -226,8 +303,10 @@ export const getWorkspacePermissionById = async (
   return rows[0] ?? null
 }
 
+import type { WorkspacePermissionKey } from '@shared/workspaces'
+
 export type Role = 'admin' | 'member'
-export type WorkspacePermissionKey = 'manage_members' | 'change_roles'
+export type { WorkspacePermissionKey }
 
 export type UpsertWorkspaceInput = {
   id: string
@@ -235,16 +314,20 @@ export type UpsertWorkspaceInput = {
   isPersonal: boolean
   /** Required when `isPersonal` is `true`; null/omitted for shared. */
   ownerUserId?: string | null
+  /** Optional slug. Shared-only; personal workspaces never carry one. */
+  slug?: string | null
+  /** Optional icon (emoji or base64 image). Either workspace kind may set it. */
+  icon?: string | null
 }
 
 /**
- * Upserts a workspace row. Used for both personal and shared paths — the
- * handler does the policy checks (id canonicality / ownership / creation flag),
- * this just persists what arrived. Conflict target is the PK; on conflict the
- * `name` is refreshed and `updated_at` bumped.
+ * Upserts a shared workspace row. Conflict target is the PK; on conflict the
+ * mutable fields are refreshed and `updated_at` bumped — covers the admin-
+ * rename-via-PUT path even though FE renames now flow through PATCH.
  *
- * Idempotent for multi-device personal-workspace uploads: both devices compute
- * the same canonical id and the same fields, so the second upload is a no-op.
+ * Use `insertPersonalWorkspaceIfMissing` for personal workspaces instead — the
+ * "do nothing on conflict" semantics avoid clobbering a user rename when a
+ * second device runs its idempotent bootstrap PUT.
  */
 export const upsertWorkspace = async (database: typeof DbType, input: UpsertWorkspaceInput): Promise<void> => {
   await database
@@ -252,37 +335,70 @@ export const upsertWorkspace = async (database: typeof DbType, input: UpsertWork
     .values({
       id: input.id,
       name: input.name,
+      slug: input.slug ?? null,
+      icon: input.icon ?? null,
       isPersonal: input.isPersonal,
       ownerUserId: input.ownerUserId ?? null,
     })
     .onConflictDoUpdate({
       target: workspacesTable.id,
-      set: { name: input.name, updatedAt: new Date() },
+      set: {
+        name: input.name,
+        ...(input.slug !== undefined ? { slug: input.slug } : {}),
+        ...(input.icon !== undefined ? { icon: input.icon } : {}),
+        updatedAt: new Date(),
+      },
     })
 }
 
 /**
- * Updates a shared workspace's mutable fields. The `is_personal = false` filter is
- * defense in depth — the upload handler already rejects personal-workspace patches
- * during validation, but the constraint here guarantees the row will not change
- * if a personal workspace ever reaches this path.
+ * Insert a personal workspace row if no row with this id exists. Multi-device
+ * safe: device A creates and renames the workspace; device B running its own
+ * `ensurePersonalWorkspace` bootstrap re-uploads the canonical PUT with the
+ * default name. `ON CONFLICT DO NOTHING` preserves the renamed name on the BE.
+ *
+ * `slug` is intentionally absent — personal workspaces don't appear in URLs
+ * (see THU-551 URL deviation) so the column stays null. `icon` is optional and
+ * persisted on first insert only.
+ */
+export const insertPersonalWorkspaceIfMissing = async (
+  database: typeof DbType,
+  input: { id: string; name: string; ownerUserId: string; icon?: string | null },
+): Promise<void> => {
+  await database
+    .insert(workspacesTable)
+    .values({
+      id: input.id,
+      name: input.name,
+      icon: input.icon ?? null,
+      isPersonal: true,
+      ownerUserId: input.ownerUserId,
+    })
+    .onConflictDoNothing({ target: workspacesTable.id })
+}
+
+/**
+ * Updates a workspace's mutable fields. The upload handler is the only caller
+ * and gates writes on admin-of-the-workspace — this just persists the patch.
  *
  * Returns the affected row count so callers can map 0 → ROW_NOT_FOUND.
  */
-export const updateSharedWorkspace = async (
+export const updateWorkspace = async (
   database: typeof DbType,
   id: string,
-  patch: { name?: string },
+  patch: { name?: string; slug?: string | null; icon?: string | null },
 ): Promise<number> => {
   const setClause: Record<string, unknown> = { updatedAt: new Date() }
   if (patch.name !== undefined) {
     setClause.name = patch.name
   }
-  const rows = await database
-    .update(workspacesTable)
-    .set(setClause)
-    .where(and(eq(workspacesTable.id, id), eq(workspacesTable.isPersonal, false)))
-    .returning()
+  if (patch.slug !== undefined) {
+    setClause.slug = patch.slug
+  }
+  if (patch.icon !== undefined) {
+    setClause.icon = patch.icon
+  }
+  const rows = await database.update(workspacesTable).set(setClause).where(eq(workspacesTable.id, id)).returning()
   return rows.length
 }
 
@@ -291,11 +407,18 @@ export type MembershipInput = {
   workspaceId: string
   userId: string
   role: Role
+  /** Denormalized from `auth.user`. Synced down so the Members page can render
+   *  display info without a `users` projection table (PowerSync sync rules
+   *  can't follow `user_id` across buckets). */
+  userName?: string | null
+  userEmail?: string | null
 }
 
 /**
  * Upserts a workspace membership. Conflict target is the natural key
- * `(workspace_id, user_id)`; on conflict the role is refreshed.
+ * `(workspace_id, user_id)`; on conflict the role is refreshed. Display info
+ * (`user_name`, `user_email`) is refreshed too so a stale denormalized row
+ * heals the next time the upload handler runs against it.
  */
 export const upsertMembership = async (database: typeof DbType, input: MembershipInput): Promise<void> => {
   await database
@@ -303,8 +426,47 @@ export const upsertMembership = async (database: typeof DbType, input: Membershi
     .values(input)
     .onConflictDoUpdate({
       target: [workspaceMembershipsTable.workspaceId, workspaceMembershipsTable.userId],
-      set: { role: input.role },
+      set: {
+        role: input.role,
+        ...(input.userName !== undefined ? { userName: input.userName } : {}),
+        ...(input.userEmail !== undefined ? { userEmail: input.userEmail } : {}),
+      },
     })
+}
+
+/**
+ * Insert a membership row only if no row with the same `(workspace_id, user_id)`
+ * already exists. Used by the promote-on-insert path in the pending-membership
+ * upload handler: an invite for an email that already belongs to a member must
+ * not overwrite that member's existing role (otherwise an invite for an admin's
+ * own email would downgrade them to whatever role the invite carried). Mirrors
+ * the `promotePendingMemberships` DO-NOTHING semantics for the signup path.
+ */
+export const insertMembershipIfMissing = async (database: typeof DbType, input: MembershipInput): Promise<void> => {
+  await database
+    .insert(workspaceMembershipsTable)
+    .values(input)
+    .onConflictDoNothing({
+      target: [workspaceMembershipsTable.workspaceId, workspaceMembershipsTable.userId],
+    })
+}
+
+/**
+ * Mirrors a user's current display info onto every one of their membership rows.
+ * Called from the Better Auth `update.after` hook so name/email changes propagate
+ * to co-members on the next sync round-trip. Idempotent — safe to call on every
+ * user update regardless of whether name/email actually changed.
+ */
+export const syncMembershipDisplayInfo = async (
+  database: typeof DbType,
+  userId: string,
+  name: string,
+  email: string,
+): Promise<void> => {
+  await database
+    .update(workspaceMembershipsTable)
+    .set({ userName: name, userEmail: email })
+    .where(eq(workspaceMembershipsTable.userId, userId))
 }
 
 export const updateMembership = async (
@@ -386,6 +548,32 @@ export const deletePendingMembership = async (database: typeof DbType, id: strin
   const rows = await database
     .delete(workspacePendingMembershipsTable)
     .where(eq(workspacePendingMembershipsTable.id, id))
+    .returning()
+  return rows.length
+}
+
+/**
+ * Deletes the pending row for `(workspace_id, email)`. Used by the
+ * promote-on-insert path in the upload handler: when `upsertPendingMembership`
+ * conflicts on the `(workspace_id, email)` unique constraint, Postgres keeps
+ * the existing row's id, so a delete keyed on the upload's `op.id` would no-op
+ * and leave a stale pending invite behind for someone who is now a real
+ * member. Email is normalized to match `upsertPendingMembership`'s storage.
+ */
+export const deletePendingMembershipByWorkspaceAndEmail = async (
+  database: typeof DbType,
+  workspaceId: string,
+  email: string,
+): Promise<number> => {
+  const normalizedEmail = normalizeEmail(email)
+  const rows = await database
+    .delete(workspacePendingMembershipsTable)
+    .where(
+      and(
+        eq(workspacePendingMembershipsTable.workspaceId, workspaceId),
+        eq(workspacePendingMembershipsTable.email, normalizedEmail),
+      ),
+    )
     .returning()
   return rows.length
 }

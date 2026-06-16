@@ -295,7 +295,7 @@ export const recoverWithKey = async (httpClient: HttpClient, recoveryPhrase: str
 // Flow G — Full wipe (clear all keys)
 // =============================================================================
 
-export const handleFullWipe = async (): Promise<void> => {
-  await clearAllKeys()
+export const handleFullWipe = async (serverId?: string): Promise<void> => {
+  await clearAllKeys(serverId)
   resetCodecState()
 }

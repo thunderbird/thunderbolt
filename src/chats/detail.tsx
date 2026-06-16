@@ -18,7 +18,7 @@ type ChatHydrateHandlerProps = PropsWithChildren<{
 const ChatHydrateHandler = ({ children, id, isNew }: ChatHydrateHandlerProps) => {
   const { hydrateChatStore, isReady, saveMessages, workspaceId } = useHydrateChatStore({ id, isNew })
 
-  useHandleIntegrationCompletion({ saveMessages })
+  useHandleIntegrationCompletion({ saveMessages, workspaceId })
 
   useEffect(() => {
     void hydrateChatStore()

@@ -12,7 +12,7 @@ import { MemoryRouter } from 'react-router'
 
 import { SidebarProvider } from '@/components/ui/sidebar'
 import { createSkill, getSkill, getSkillByName, setSkillPinned } from '@/dal'
-import { wsId } from '@/dal/test-utils'
+import { seedTestPersonalAdminMembership, wsId } from '@/dal/test-utils'
 // Import for side effect: registers the framer-motion `mock.module` so the
 // `m.li layoutId` rows from `library-row.tsx` render to plain `<li>` and the
 // `LazyMotion` wrapper below is the no-op passthrough.
@@ -40,6 +40,10 @@ afterAll(async () => {
 beforeEach(async () => {
   seedTestTrustDomain()
   await resetTestDatabase()
+  // SkillsView uses `useWorkspacePermission('add_skills' / 'remove_skills')`
+  // to gate the Create + Delete affordances. Seed the personal-admin
+  // membership so the test user resolves as admin and the buttons render.
+  await seedTestPersonalAdminMembership()
 })
 
 afterEach(() => {

@@ -41,6 +41,13 @@ export const LogoutModal = ({ open, onOpenChange, signOutAndWipe = defaultSignOu
   // per-trust-domain SQLite files — leftover data without a matching auth token has no
   // path back to the user.
   const handleLogout = () => {
+    // Ref-guard at entry: the button's `disabled={isLoggingOut}` only applies
+    // after React commits the setState below. A rapid double-click (or a
+    // queued click event firing in the same tick as the first) would
+    // otherwise launch a second signOutAndWipe concurrent with the first.
+    if (isLoggingOutRef.current) {
+      return
+    }
     isLoggingOutRef.current = true
     setIsLoggingOut(true)
     // SSO lands on `/signed-out` because IdP-bounce-back would silently re-auth the

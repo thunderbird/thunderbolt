@@ -72,9 +72,7 @@ export const CreateWorkspaceModal = ({ open, onOpenChange, onCreated }: CreateWo
   // Otherwise `onCreated` runs against a closed flow, opens the invite modal,
   // and navigates the user into a workspace they thought they'd cancelled out of.
   const openRef = useRef(open)
-  useEffect(() => {
-    openRef.current = open
-  }, [open])
+  openRef.current = open
 
   const userId = session?.user?.id
   const creatorEmail = session?.user?.email ?? undefined

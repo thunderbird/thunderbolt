@@ -2,9 +2,15 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { seedTestTrustDomain } from '@/test-utils/powersync-reactivity-test'
+
 import { act, renderHook } from '@testing-library/react'
 import { afterAll, beforeAll, beforeEach, afterEach, describe, expect, it, mock, spyOn } from 'bun:test'
-import { setupTestDatabase, teardownTestDatabase, resetTestDatabase } from '@/dal/test-utils'
+import { setupTestDatabase, teardownTestDatabase, resetTestDatabase, wsId } from '@/dal/test-utils'
+
+// Workspace id is injected via the `workspaceId` param now (DI pattern from THU-553);
+// no `mock.module('@/lib/active-workspace')` shim — that pattern leaked across files
+// and made every consumer of `useActiveWorkspaceId` in other test files see the stub.
 import { createMockChatInstance, hydrateStore, resetStore } from '@/test-utils/chat-store-mocks'
 import { createQueryTestWrapper } from '@/test-utils/react-query'
 import { useHandleIntegrationCompletion } from './use-handle-integration-completion'
@@ -38,6 +44,7 @@ afterAll(async () => {
 
 describe('useHandleIntegrationCompletion', () => {
   beforeEach(() => {
+    seedTestTrustDomain()
     resetStore()
     sessionStorage.clear()
   })
@@ -64,6 +71,7 @@ describe('useHandleIntegrationCompletion', () => {
       id: threadId,
       title: 'Test Thread',
       isEncrypted: 0,
+      workspaceId: wsId,
     })
 
     return threadId
@@ -73,7 +81,7 @@ describe('useHandleIntegrationCompletion', () => {
    * Saves test messages to a thread in the database
    */
   const createTestMessages = async (threadId: string, messages: ThunderboltUIMessage[]) => {
-    await saveMessagesWithContextUpdate(getDb(), threadId, messages)
+    await saveMessagesWithContextUpdate(getDb(), wsId, threadId, messages)
     return messages
   }
 
@@ -96,7 +104,7 @@ describe('useHandleIntegrationCompletion', () => {
     const addEventListenerSpy = spyOn(window, 'addEventListener')
 
     try {
-      renderHook(() => useHandleIntegrationCompletion({ saveMessages: mockSaveMessages }), {
+      renderHook(() => useHandleIntegrationCompletion({ saveMessages: mockSaveMessages, workspaceId: wsId }), {
         wrapper: createQueryTestWrapper(),
       })
 
@@ -125,9 +133,12 @@ describe('useHandleIntegrationCompletion', () => {
     const removeEventListenerSpy = spyOn(window, 'removeEventListener')
 
     try {
-      const { unmount } = renderHook(() => useHandleIntegrationCompletion({ saveMessages: mockSaveMessages }), {
-        wrapper: createQueryTestWrapper(),
-      })
+      const { unmount } = renderHook(
+        () => useHandleIntegrationCompletion({ saveMessages: mockSaveMessages, workspaceId: wsId }),
+        {
+          wrapper: createQueryTestWrapper(),
+        },
+      )
 
       unmount()
 
@@ -154,7 +165,7 @@ describe('useHandleIntegrationCompletion', () => {
 
     // No integration credentials — local-only table is empty by default
 
-    renderHook(() => useHandleIntegrationCompletion({ saveMessages: mockSaveMessages }), {
+    renderHook(() => useHandleIntegrationCompletion({ saveMessages: mockSaveMessages, workspaceId: wsId }), {
       wrapper: createQueryTestWrapper(),
     })
 
@@ -175,7 +186,7 @@ describe('useHandleIntegrationCompletion', () => {
 
     // No integration credentials — local-only table is empty by default
 
-    renderHook(() => useHandleIntegrationCompletion({ saveMessages: mockSaveMessages }), {
+    renderHook(() => useHandleIntegrationCompletion({ saveMessages: mockSaveMessages, workspaceId: wsId }), {
       wrapper: createQueryTestWrapper(),
     })
 
@@ -228,7 +239,7 @@ describe('useHandleIntegrationCompletion', () => {
 
     await saveIntegrationCredentials(getDb(), 'google', { access_token: 'test_token' }, true)
 
-    renderHook(() => useHandleIntegrationCompletion({ saveMessages: mockSaveMessages }), {
+    renderHook(() => useHandleIntegrationCompletion({ saveMessages: mockSaveMessages, workspaceId: wsId }), {
       wrapper: createQueryTestWrapper({
         defaultOptions: {
           queries: {
@@ -257,7 +268,7 @@ describe('useHandleIntegrationCompletion', () => {
     expect(savedMessage?.metadata?.oauthRetry).toBe(true)
     expect(savedMessage?.parts[0]?.type === 'text' && savedMessage.parts[0].text).toContain('Send me an email')
 
-    const updatedWidgetMessage = await getMessage(getDb(), widgetMessageId)
+    const updatedWidgetMessage = await getMessage(getDb(), wsId, widgetMessageId)
     expect(updatedWidgetMessage).toBeDefined()
     expect(updatedWidgetMessage?.cache).toBeDefined()
     const cacheEntry = updatedWidgetMessage?.cache?.['connectIntegrationWidget']
@@ -308,7 +319,7 @@ describe('useHandleIntegrationCompletion', () => {
 
     await saveIntegrationCredentials(getDb(), 'google', { access_token: 'test_token' }, true)
 
-    renderHook(() => useHandleIntegrationCompletion({ saveMessages: mockSaveMessages }), {
+    renderHook(() => useHandleIntegrationCompletion({ saveMessages: mockSaveMessages, workspaceId: wsId }), {
       wrapper: createQueryTestWrapper({
         defaultOptions: {
           queries: {
@@ -377,7 +388,7 @@ describe('useHandleIntegrationCompletion', () => {
     // Start with no credentials
     // No integration credentials — local-only table is empty by default
 
-    renderHook(() => useHandleIntegrationCompletion({ saveMessages: mockSaveMessages }), {
+    renderHook(() => useHandleIntegrationCompletion({ saveMessages: mockSaveMessages, workspaceId: wsId }), {
       wrapper: createQueryTestWrapper({
         defaultOptions: {
           queries: {
@@ -433,7 +444,7 @@ describe('useHandleIntegrationCompletion', () => {
     const consoleWarnSpy = mock(() => {})
     console.warn = consoleWarnSpy
 
-    renderHook(() => useHandleIntegrationCompletion({ saveMessages: mockSaveMessages }), {
+    renderHook(() => useHandleIntegrationCompletion({ saveMessages: mockSaveMessages, workspaceId: wsId }), {
       wrapper: createQueryTestWrapper({
         defaultOptions: {
           queries: {
@@ -491,7 +502,7 @@ describe('useHandleIntegrationCompletion', () => {
     const consoleWarnSpy = mock(() => {})
     console.warn = consoleWarnSpy
 
-    renderHook(() => useHandleIntegrationCompletion({ saveMessages: mockSaveMessages }), {
+    renderHook(() => useHandleIntegrationCompletion({ saveMessages: mockSaveMessages, workspaceId: wsId }), {
       wrapper: createQueryTestWrapper({
         defaultOptions: {
           queries: {
@@ -558,7 +569,7 @@ describe('useHandleIntegrationCompletion', () => {
 
       await saveIntegrationCredentials(getDb(), 'google', { access_token: 'test_token' }, true)
 
-      renderHook(() => useHandleIntegrationCompletion({ saveMessages: mockSaveMessages }), {
+      renderHook(() => useHandleIntegrationCompletion({ saveMessages: mockSaveMessages, workspaceId: wsId }), {
         wrapper: createQueryTestWrapper({
           defaultOptions: {
             queries: {

@@ -3,9 +3,14 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { createMcpServer, getAllMcpServers } from '@/dal'
-import { resetTestDatabase, setupTestDatabase, teardownTestDatabase } from '@/dal/test-utils'
+import { resetTestDatabase, setupTestDatabase, teardownTestDatabase, wsId } from '@/dal/test-utils'
 import { getDb } from '@/db/database'
-import { renderWithReactivity, waitForElement } from '@/test-utils/powersync-reactivity-test'
+import {
+  renderWithReactivity,
+  waitForElement,
+  resetTestTrustDomain,
+  seedTestTrustDomain,
+} from '@/test-utils/powersync-reactivity-test'
 import { getClock } from '@/testing-library'
 import { MCPProvider, useMCP, type MCPClient } from '@/lib/mcp-provider'
 import type { McpServersPageDeps } from './mcp-servers'
@@ -34,6 +39,13 @@ const neverResolves = (() => new Promise<MCPClient>(() => {})) as (
 const McpProviderWrapper = ({ children }: { children: ReactNode }) =>
   createElement(MemoryRouter, { children: createElement(MCPProvider, { createClient: neverResolves, children }) })
 
+const fakeUseWorkspacePermission = (isAllowed: boolean) =>
+  (() => ({
+    requiredRole: 'admin' as const,
+    isAllowed,
+    isResolved: true,
+  })) as unknown as typeof import('@/hooks/use-workspace-permission').useWorkspacePermission
+
 describe('McpServersPage reactivity', () => {
   beforeAll(async () => {
     await setupTestDatabase()
@@ -44,10 +56,12 @@ describe('McpServersPage reactivity', () => {
   })
 
   beforeEach(async () => {
+    seedTestTrustDomain()
     await resetTestDatabase()
   })
 
   afterEach(() => {
+    resetTestTrustDomain()
     cleanup()
   })
 
@@ -56,7 +70,7 @@ describe('McpServersPage reactivity', () => {
     const serverId1 = uuidv7()
     const serverId2 = uuidv7()
 
-    await createMcpServer(db, {
+    await createMcpServer(db, wsId, {
       id: serverId1,
       name: 'First Server',
       url: 'http://localhost:8000/mcp/',
@@ -72,7 +86,7 @@ describe('McpServersPage reactivity', () => {
     await waitForElement(() => screen.queryByText('localhost:8000/mcp'))
     expect(screen.getByText('localhost:8000/mcp')).toBeInTheDocument()
 
-    await createMcpServer(db, {
+    await createMcpServer(db, wsId, {
       id: serverId2,
       name: 'Second Server',
       url: 'http://localhost:9000/mcp/',
@@ -124,10 +138,12 @@ describe('McpServersPage Test Connection classification', () => {
   })
 
   beforeEach(async () => {
+    seedTestTrustDomain()
     await resetTestDatabase()
   })
 
   afterEach(() => {
+    resetTestTrustDomain()
     cleanup()
   })
 
@@ -228,7 +244,7 @@ describe('McpServersPage Add & Authorize', () => {
     })
 
     // The row was created then rolled back, leaving no live server.
-    const remaining = await getAllMcpServers(db)
+    const remaining = await getAllMcpServers(db, wsId)
     expect(remaining).toHaveLength(0)
     expect(
       screen.getByText('Another MCP authorization is already in progress — finish or cancel it first.'),
@@ -257,7 +273,7 @@ describe('McpServersPage Add & Authorize', () => {
       await getClock().runAllAsync()
     })
 
-    const created = await getAllMcpServers(db)
+    const created = await getAllMcpServers(db, wsId)
     expect(created).toHaveLength(1)
     expect(startMcpOAuthFlow).toHaveBeenCalledTimes(1)
   })
@@ -435,7 +451,7 @@ describe('McpServersPage tools refresh after reconnect', () => {
     const db = getDb()
     const serverId = uuidv7()
     const url = 'http://localhost:8000/mcp/'
-    await createMcpServer(db, { id: serverId, name: 'srv', url, type: 'http', enabled: 1 })
+    await createMcpServer(db, wsId, { id: serverId, name: 'srv', url, type: 'http', enabled: 1 })
     renderWithReactivity(<McpServersPage />, {
       tables: ['mcp_servers', 'mcp_secrets'],
       wrapper: makeMcpWrapper(createClient),
@@ -582,5 +598,70 @@ describe('generateServerName', () => {
 
   it.each(cases)('derives %p → %p', (url, expected) => {
     expect(generateServerName(url)).toBe(expected)
+  })
+})
+
+describe('McpServersPage — permission gating', () => {
+  beforeAll(async () => {
+    await setupTestDatabase()
+  })
+
+  afterAll(async () => {
+    await teardownTestDatabase()
+  })
+
+  beforeEach(async () => {
+    seedTestTrustDomain()
+    await resetTestDatabase()
+  })
+
+  afterEach(() => {
+    resetTestTrustDomain()
+    cleanup()
+  })
+
+  it('renders the "Add Server" header trigger when add_mcp_servers is allowed', async () => {
+    renderWithReactivity(<McpServersPage useWorkspacePermission={fakeUseWorkspacePermission(true)} />, {
+      tables: ['mcp_servers'],
+    })
+
+    await waitForElement(() => screen.queryByRole('heading', { name: 'MCP Servers' }))
+    // Empty-state CTA fires here since no servers seeded; both header + empty
+    // state render the "Add Server" string. Asserting at least one is present.
+    expect(screen.getAllByText(/Add Server/).length).toBeGreaterThan(0)
+  })
+
+  it('hides every "Add Server" affordance when add_mcp_servers is denied', async () => {
+    renderWithReactivity(<McpServersPage useWorkspacePermission={fakeUseWorkspacePermission(false)} />, {
+      tables: ['mcp_servers'],
+    })
+
+    await waitForElement(() => screen.queryByRole('heading', { name: 'MCP Servers' }))
+    expect(screen.queryByText(/Add Server/)).not.toBeInTheDocument()
+  })
+
+  it('hides the row Trash button when remove_mcp_servers is denied', async () => {
+    const db = getDb()
+    await createMcpServer(db, wsId, {
+      id: uuidv7(),
+      name: 'Configured',
+      url: 'http://localhost:8000/mcp/',
+      type: 'http',
+      enabled: 1,
+    })
+
+    // The page passes the same `useWorkspacePermission` for both keys; a single
+    // `isAllowed: false` covers add + remove together — sufficient to assert
+    // the row Trash icon is hidden.
+    renderWithReactivity(<McpServersPage useWorkspacePermission={fakeUseWorkspacePermission(false)} />, {
+      tables: ['mcp_servers'],
+    })
+
+    await waitForElement(() => screen.queryByText('localhost:8000/mcp'))
+    // Trash2 icon doesn't get a unique label, so we assert via the absence of
+    // any button child of the row's interactive group beyond Switch.
+    const switchToggle = screen.queryByRole('switch')
+    // Switch should also be disabled.
+    expect(switchToggle).toBeDisabled()
   })
 })

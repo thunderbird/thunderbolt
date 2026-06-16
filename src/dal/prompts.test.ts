@@ -12,7 +12,7 @@ import { defaultModels, hashModel } from '../defaults/models'
 import { reconcileDefaultsForTable } from '../lib/reconcile-defaults'
 import { nowIso } from '@/lib/utils'
 import { createAutomation, getAllPrompts, getTriggerPromptForThread, resetAutomationToDefault } from './prompts'
-import { resetTestDatabase, setupTestDatabase, teardownTestDatabase } from './test-utils'
+import { resetTestDatabase, setupTestDatabase, teardownTestDatabase, wsId } from './test-utils'
 import { type Prompt } from '@/types'
 
 beforeAll(async () => {
@@ -31,7 +31,7 @@ describe('Prompts DAL', () => {
 
   describe('getAllPrompts', () => {
     it('should return empty array when no prompts exist', async () => {
-      const prompts = await getAllPrompts(getDb())
+      const prompts = await getAllPrompts(getDb(), wsId)
       expect(prompts).toEqual([])
     })
 
@@ -48,6 +48,7 @@ describe('Prompts DAL', () => {
         model: 'gpt-4',
         isSystem: 0,
         enabled: 1,
+        workspaceId: wsId,
       })
 
       await db.insert(promptsTable).values([
@@ -55,15 +56,17 @@ describe('Prompts DAL', () => {
           id: promptId1,
           prompt: 'First prompt',
           modelId: modelId,
+          workspaceId: wsId,
         },
         {
           id: promptId2,
           prompt: 'Second prompt',
           modelId: modelId,
+          workspaceId: wsId,
         },
       ])
 
-      const prompts = await getAllPrompts(getDb())
+      const prompts = await getAllPrompts(getDb(), wsId)
       expect(prompts).toHaveLength(2)
       expect(prompts.map((p) => p.id)).toContain(promptId1)
       expect(prompts.map((p) => p.id)).toContain(promptId2)
@@ -82,6 +85,7 @@ describe('Prompts DAL', () => {
         model: 'gpt-4',
         isSystem: 0,
         enabled: 1,
+        workspaceId: wsId,
       })
 
       await db.insert(promptsTable).values([
@@ -89,15 +93,17 @@ describe('Prompts DAL', () => {
           id: promptId1,
           prompt: 'Write a story about cats',
           modelId: modelId,
+          workspaceId: wsId,
         },
         {
           id: promptId2,
           prompt: 'Write a story about dogs',
           modelId: modelId,
+          workspaceId: wsId,
         },
       ])
 
-      const prompts = await getAllPrompts(getDb(), 'cats')
+      const prompts = await getAllPrompts(getDb(), wsId, 'cats')
       expect(prompts).toHaveLength(1)
       expect(prompts[0]?.id).toBe(promptId1)
     })
@@ -114,15 +120,17 @@ describe('Prompts DAL', () => {
         model: 'gpt-4',
         isSystem: 0,
         enabled: 1,
+        workspaceId: wsId,
       })
 
       await db.insert(promptsTable).values({
         id: promptId,
         prompt: 'Write a story about cats',
         modelId: modelId,
+        workspaceId: wsId,
       })
 
-      const prompts = await getAllPrompts(getDb(), 'dogs')
+      const prompts = await getAllPrompts(getDb(), wsId, 'dogs')
       expect(prompts).toEqual([])
     })
   })
@@ -130,7 +138,7 @@ describe('Prompts DAL', () => {
   describe('getTriggerPromptForThread', () => {
     it('should return null when thread does not exist', async () => {
       const threadId = uuidv7()
-      const result = await getTriggerPromptForThread(getDb(), threadId)
+      const result = await getTriggerPromptForThread(getDb(), wsId, threadId)
       expect(result).toBe(null)
     })
 
@@ -143,9 +151,10 @@ describe('Prompts DAL', () => {
         title: 'Test Thread',
         isEncrypted: 0,
         wasTriggeredByAutomation: 0,
+        workspaceId: wsId,
       })
 
-      const result = await getTriggerPromptForThread(getDb(), threadId)
+      const result = await getTriggerPromptForThread(getDb(), wsId, threadId)
       expect(result).not.toBe(null)
       expect(result?.wasTriggeredByAutomation).toBe(false)
       expect(result?.isAutomationDeleted).toBe(false)
@@ -165,12 +174,14 @@ describe('Prompts DAL', () => {
         model: 'gpt-4',
         isSystem: 0,
         enabled: 1,
+        workspaceId: wsId,
       })
 
       await db.insert(promptsTable).values({
         id: promptId,
         prompt: 'Test automation prompt',
         modelId: modelId,
+        workspaceId: wsId,
       })
 
       await db.insert(chatThreadsTable).values({
@@ -179,9 +190,10 @@ describe('Prompts DAL', () => {
         isEncrypted: 0,
         wasTriggeredByAutomation: 1,
         triggeredBy: promptId,
+        workspaceId: wsId,
       })
 
-      const result = await getTriggerPromptForThread(getDb(), threadId)
+      const result = await getTriggerPromptForThread(getDb(), wsId, threadId)
       expect(result).not.toBe(null)
       expect(result?.wasTriggeredByAutomation).toBe(true)
       expect(result?.isAutomationDeleted).toBe(false)
@@ -197,10 +209,11 @@ describe('Prompts DAL', () => {
         title: 'Test Thread',
         isEncrypted: 0,
         wasTriggeredByAutomation: 1,
-        triggeredBy: null, // No prompt exists
+        triggeredBy: null, // No prompt exists,
+        workspaceId: wsId,
       })
 
-      const result = await getTriggerPromptForThread(getDb(), threadId)
+      const result = await getTriggerPromptForThread(getDb(), wsId, threadId)
       expect(result).not.toBe(null)
       expect(result?.wasTriggeredByAutomation).toBe(true)
       expect(result?.isAutomationDeleted).toBe(true)
@@ -220,6 +233,7 @@ describe('Prompts DAL', () => {
         model: 'gpt-4',
         isSystem: 0,
         enabled: 1,
+        workspaceId: wsId,
       })
 
       // Create prompt and soft-delete it
@@ -228,6 +242,7 @@ describe('Prompts DAL', () => {
         prompt: 'Test automation prompt',
         modelId: modelId,
         deletedAt: nowIso(),
+        workspaceId: wsId,
       })
 
       await db.insert(chatThreadsTable).values({
@@ -235,10 +250,11 @@ describe('Prompts DAL', () => {
         title: 'Test Thread',
         isEncrypted: 0,
         wasTriggeredByAutomation: 1,
-        triggeredBy: promptId, // References the soft-deleted prompt
+        triggeredBy: promptId, // References the soft-deleted prompt,
+        workspaceId: wsId,
       })
 
-      const result = await getTriggerPromptForThread(getDb(), threadId)
+      const result = await getTriggerPromptForThread(getDb(), wsId, threadId)
       expect(result).not.toBe(null)
       expect(result?.wasTriggeredByAutomation).toBe(true)
       expect(result?.isAutomationDeleted).toBe(true)
@@ -251,8 +267,8 @@ describe('Prompts DAL', () => {
       const db = getDb()
       await db.delete(modelsTable)
       await db.delete(promptsTable)
-      await reconcileDefaultsForTable(db, modelsTable, defaultModels, hashModel)
-      await reconcileDefaultsForTable(db, promptsTable, defaultAutomations, hashPrompt)
+      await reconcileDefaultsForTable(db, modelsTable, defaultModels, hashModel, { workspaceId: wsId })
+      await reconcileDefaultsForTable(db, promptsTable, defaultAutomations, hashPrompt, { workspaceId: wsId })
     })
 
     it('resets modified automation to default state', async () => {
@@ -275,7 +291,7 @@ describe('Prompts DAL', () => {
       expect(automation?.prompt).toBe('Modified content')
 
       // Reset to default
-      await resetAutomationToDefault(getDb(), defaultAutomation.id, defaultAutomation)
+      await resetAutomationToDefault(getDb(), wsId, defaultAutomation.id, defaultAutomation)
 
       // Verify it's reset
       automation = (await db
@@ -316,7 +332,7 @@ describe('Prompts DAL', () => {
       }
 
       // Reset
-      await resetAutomationToDefault(getDb(), defaultAutomation.id, defaultAutomation)
+      await resetAutomationToDefault(getDb(), wsId, defaultAutomation.id, defaultAutomation)
 
       // Verify no longer detected as modified
       automation = (await db
@@ -343,7 +359,7 @@ describe('Prompts DAL', () => {
         .set({ defaultHash: 'stale-from-an-older-era' })
         .where(eq(promptsTable.id, defaultAutomation.id))
 
-      await resetAutomationToDefault(getDb(), defaultAutomation.id, defaultAutomation)
+      await resetAutomationToDefault(getDb(), wsId, defaultAutomation.id, defaultAutomation)
 
       const automation = (await db
         .select()
@@ -363,7 +379,7 @@ describe('Prompts DAL', () => {
       // `{ user_id: null }` PATCH that the upload handler rejects.
       await db.update(promptsTable).set({ userId: 'real-user-id' }).where(eq(promptsTable.id, defaultAutomation.id))
 
-      await resetAutomationToDefault(getDb(), defaultAutomation.id, defaultAutomation)
+      await resetAutomationToDefault(getDb(), wsId, defaultAutomation.id, defaultAutomation)
 
       const automation = (await db
         .select()
@@ -387,16 +403,17 @@ describe('Prompts DAL', () => {
         model: 'gpt-4',
         isSystem: 0,
         enabled: 1,
+        workspaceId: wsId,
       })
 
-      await createAutomation(getDb(), {
+      await createAutomation(getDb(), wsId, {
         id: promptId,
         title: 'Test Automation',
         prompt: 'Test prompt content',
         modelId: modelId,
       })
 
-      const prompts = await getAllPrompts(getDb())
+      const prompts = await getAllPrompts(getDb(), wsId)
       expect(prompts.map((p) => p.id)).toContain(promptId)
     })
 
@@ -413,12 +430,13 @@ describe('Prompts DAL', () => {
         model: 'gpt-4',
         isSystem: 0,
         enabled: 1,
+        workspaceId: wsId,
       })
 
-      await createAutomation(getDb(), { id: promptId1, prompt: 'Prompt 1', modelId: modelId })
-      await createAutomation(getDb(), { id: promptId2, prompt: 'Prompt 2', modelId: modelId })
+      await createAutomation(getDb(), wsId, { id: promptId1, prompt: 'Prompt 1', modelId: modelId })
+      await createAutomation(getDb(), wsId, { id: promptId2, prompt: 'Prompt 2', modelId: modelId })
 
-      const prompts = await getAllPrompts(getDb())
+      const prompts = await getAllPrompts(getDb(), wsId)
       expect(prompts).toHaveLength(2)
     })
   })

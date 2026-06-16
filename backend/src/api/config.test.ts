@@ -15,12 +15,37 @@ const fetchConfig = async (settings: Parameters<typeof createConfigRoutes>[0]) =
 
 describe('Config Routes', () => {
   describe('GET /config', () => {
+    it('returns the configured serverId', async () => {
+      const serverId = '11111111-2222-3333-4444-555555555555'
+      const { body } = await fetchConfig(createTestSettings({ serverId }))
+      expect(body.serverId).toBe(serverId)
+    })
+
     it('reflects e2eeEnabled', async () => {
       const disabled = await fetchConfig(createTestSettings({ e2eeEnabled: false }))
       expect(disabled.body.e2eeEnabled).toBe(false)
 
       const enabled = await fetchConfig(createTestSettings({ e2eeEnabled: true }))
       expect(enabled.body.e2eeEnabled).toBe(true)
+    })
+
+    it('exposes allowAnonUsers from the authAllowAnonymous setting', async () => {
+      const off = await fetchConfig(createTestSettings({ authAllowAnonymous: false }))
+      expect(off.body.allowAnonUsers).toBe(false)
+
+      const on = await fetchConfig(createTestSettings({ authAllowAnonymous: true }))
+      expect(on.body.allowAnonUsers).toBe(true)
+    })
+
+    it('exposes workspace creation policy flags', async () => {
+      const { body } = await fetchConfig(
+        createTestSettings({
+          allowWorkspaceCreationByAnon: true,
+          allowWorkspaceCreationByMembers: true,
+        }),
+      )
+      expect(body.allowWorkspaceCreationByAnon).toBe(true)
+      expect(body.allowWorkspaceCreationByMembers).toBe(true)
     })
 
     it('exposes builtInAgentEnabled: true by default and false when disabled', async () => {

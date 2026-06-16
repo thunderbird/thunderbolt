@@ -45,8 +45,8 @@ const hashAutomationRow = (row: typeof promptsTable.$inferSelect): string =>
  */
 export const automationsToSkills: DataMigration = {
   id: 'automations-to-skills',
-  run: async (db) => {
-    const result = await runOnce(db)
+  run: async (db, workspaceId) => {
+    const result = await runOnce(db, workspaceId)
     // Fire-and-forget telemetry on every run, even when both counts are 0 —
     // the all-zero events are how we know the population has converged
     // before THU-560 deletes the legacy code. `stranded` covers automations
@@ -67,8 +67,11 @@ type Outcome =
 
 type RunResult = { migrated: number; stranded: number }
 
-const runOnce = async (db: AnyDrizzleDatabase): Promise<RunResult> => {
-  const automations = await db.select().from(promptsTable).where(isNull(promptsTable.deletedAt))
+const runOnce = async (db: AnyDrizzleDatabase, workspaceId: string): Promise<RunResult> => {
+  const automations = await db
+    .select()
+    .from(promptsTable)
+    .where(and(eq(promptsTable.workspaceId, workspaceId), isNull(promptsTable.deletedAt)))
   if (automations.length === 0) {
     return { migrated: 0, stranded: 0 }
   }
@@ -84,7 +87,9 @@ const runOnce = async (db: AnyDrizzleDatabase): Promise<RunResult> => {
   const existingPinned = await db
     .select({ pinnedOrder: skillsTable.pinnedOrder })
     .from(skillsTable)
-    .where(and(isNull(skillsTable.deletedAt), isNotNull(skillsTable.pinnedOrder)))
+    .where(
+      and(eq(skillsTable.workspaceId, workspaceId), isNull(skillsTable.deletedAt), isNotNull(skillsTable.pinnedOrder)),
+    )
   let nextPinnedOrder = existingPinned.reduce((m, p) => Math.max(m, p.pinnedOrder ?? -1), -1) + 1
   let pinnedCount = existingPinned.length
 
@@ -99,7 +104,7 @@ const runOnce = async (db: AnyDrizzleDatabase): Promise<RunResult> => {
   for (const automation of sortedAutomations) {
     const pinSlot = pinnedCount < maxPinnedSkills ? nextPinnedOrder : null
     try {
-      const outcome = await migrateOne(db, automation, pinSlot)
+      const outcome = await migrateOne(db, workspaceId, automation, pinSlot)
       if (outcome === 'migrated') {
         migrated++
         if (pinSlot !== null) {
@@ -122,6 +127,7 @@ const runOnce = async (db: AnyDrizzleDatabase): Promise<RunResult> => {
 
 const migrateOne = async (
   db: AnyDrizzleDatabase,
+  workspaceId: string,
   automation: typeof promptsTable.$inferSelect,
   pinSlot: number | null,
 ): Promise<Outcome> => {
@@ -132,7 +138,7 @@ const migrateOne = async (
     // this branch covers a row that somehow lost its content without
     // being soft-deleted.)
     await db.transaction(async (tx) => {
-      await softDeleteSourceAutomation(tx, automation.id)
+      await softDeleteSourceAutomation(tx, workspaceId, automation.id)
     })
     return 'skipped'
   }
@@ -158,25 +164,25 @@ const migrateOne = async (
   // (skip + log), which is an acceptable trade-off for a tiny edge case.
   if (automation.defaultHash !== null && hashAutomationRow(automation) === automation.defaultHash) {
     await db.transaction(async (tx) => {
-      await softDeleteSourceAutomation(tx, automation.id)
+      await softDeleteSourceAutomation(tx, workspaceId, automation.id)
     })
     return 'skipped'
   }
 
   const skillId = await deriveSkillIdFromAutomationId(automation.id)
 
-  // Idempotency: if a skill at the derived id already exists, this
-  // automation has already been migrated (either on a previous launch or
-  // on another device that synced to us first). Soft-delete the source
-  // and skip the insert.
+  // Idempotency: if a skill at the derived id already exists in this workspace,
+  // this automation has already been migrated (either on a previous launch or
+  // on another device that synced to us first). Soft-delete the source and
+  // skip the insert.
   const alreadyMigrated = await db
     .select({ id: skillsTable.id })
     .from(skillsTable)
-    .where(eq(skillsTable.id, skillId))
+    .where(and(eq(skillsTable.workspaceId, workspaceId), eq(skillsTable.id, skillId)))
     .get()
   if (alreadyMigrated) {
     await db.transaction(async (tx) => {
-      await softDeleteSourceAutomation(tx, automation.id)
+      await softDeleteSourceAutomation(tx, workspaceId, automation.id)
     })
     return 'skipped'
   }
@@ -198,7 +204,7 @@ const migrateOne = async (
   const slugTaken = await db
     .select({ id: skillsTable.id })
     .from(skillsTable)
-    .where(and(eq(skillsTable.name, slug), isNull(skillsTable.deletedAt)))
+    .where(and(eq(skillsTable.workspaceId, workspaceId), eq(skillsTable.name, slug), isNull(skillsTable.deletedAt)))
     .get()
   if (slugTaken) {
     console.warn(
@@ -218,8 +224,9 @@ const migrateOne = async (
       deletedAt: null,
       defaultHash: null,
       userId: automation.userId,
+      workspaceId,
     })
-    await softDeleteSourceAutomation(tx, automation.id)
+    await softDeleteSourceAutomation(tx, workspaceId, automation.id)
   })
   return 'migrated'
 }
@@ -230,10 +237,16 @@ const migrateOne = async (
  * DAL's `deleteAutomation` — reuse `clearNullableColumns` and `deleteTriggersForPrompt`
  * rather than hand-listing columns that could drift.
  */
-const softDeleteSourceAutomation = async (db: AnyDrizzleDatabase, automationId: string): Promise<void> => {
-  await deleteTriggersForPrompt(db, automationId)
+const softDeleteSourceAutomation = async (
+  db: AnyDrizzleDatabase,
+  workspaceId: string,
+  automationId: string,
+): Promise<void> => {
+  await deleteTriggersForPrompt(db, workspaceId, automationId)
   await db
     .update(promptsTable)
     .set({ ...clearNullableColumns(promptsTable), deletedAt: nowIso() })
-    .where(and(eq(promptsTable.id, automationId), isNull(promptsTable.deletedAt)))
+    .where(
+      and(eq(promptsTable.workspaceId, workspaceId), eq(promptsTable.id, automationId), isNull(promptsTable.deletedAt)),
+    )
 }

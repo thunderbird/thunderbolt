@@ -9,6 +9,7 @@ import { HttpError, type HttpClient } from '@/lib/http'
 import { getOtpErrorMessage } from '@/lib/otp-error-messages'
 import { updateSettings } from '@/dal'
 import { getDb, getDatabaseInstance } from '@/db/database'
+import { runPostAuthBootstrap } from '@/lib/post-auth-bootstrap'
 import { isValidEmailFormat } from '@/lib/utils'
 import { useReducer, type FormEvent } from 'react'
 
@@ -236,6 +237,24 @@ export const useSignInFormState = ({
       await onSignInSuccess(isNewUser, wasAnonymous)
       if (result.data?.user?.id) {
         analytics.onPromotionSuccess(result.data.user.id)
+      }
+
+      // Post-auth pipeline: connect sync, await the personal workspace, reconcile
+      // defaults. Fires here so the success step doesn't appear until the user can
+      // actually use the app. The dedupe in `runPostAuthBootstrap` keeps this
+      // safe even if `SessionToWorkspaceBootstrap` is firing in parallel.
+      if (result.data?.user?.id) {
+        try {
+          await runPostAuthBootstrap({
+            kind: 'server',
+            userId: result.data.user.id,
+            isAnonymous: result.data.user.isAnonymous === true,
+          })
+        } catch (bootstrapError) {
+          console.error('Post-auth bootstrap failed:', bootstrapError)
+          dispatch({ type: 'VERIFY_ERROR', payload: 'Could not sync your account. Please retry.' })
+          return
+        }
       }
 
       // Sign-in successful - show success state

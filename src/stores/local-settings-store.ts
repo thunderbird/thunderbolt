@@ -5,8 +5,10 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 
+// Note: `cloudUrl` lives on the active server entry in the trust-domain registry
+// (THU-549, commit 6) — runtime consumers read via `getActiveCloudUrl` /
+// `useActiveCloudUrl`. `VITE_THUNDERBOLT_CLOUD_URL` is only the bootstrap default.
 type LocalSettingsState = {
-  cloudUrl: string
   debugPosthog: boolean
   isNativeFetchEnabled: boolean
   hapticsEnabled: boolean
@@ -21,7 +23,6 @@ type LocalSettingsActions = {
 type LocalSettingsStore = LocalSettingsState & LocalSettingsActions
 
 export const initialLocalSettings: LocalSettingsState = {
-  cloudUrl: import.meta.env.VITE_THUNDERBOLT_CLOUD_URL || 'http://localhost:8000/v1',
   debugPosthog: false,
   isNativeFetchEnabled: false,
   hapticsEnabled: true,
@@ -41,7 +42,6 @@ export const useLocalSettingsStore = create<LocalSettingsStore>()(
       // LocalSettingsState field is added without persisting it, and so no
       // future store action can silently leak into localStorage.
       partialize: (s): LocalSettingsState => ({
-        cloudUrl: s.cloudUrl,
         debugPosthog: s.debugPosthog,
         isNativeFetchEnabled: s.isNativeFetchEnabled,
         hapticsEnabled: s.hapticsEnabled,
@@ -54,7 +54,7 @@ export const useLocalSettingsStore = create<LocalSettingsStore>()(
 
 /**
  * Type-safe synchronous read for non-React consumers.
- * Return type narrows per key (e.g. `getLocalSetting('cloudUrl')` → `string`).
+ * Return type narrows per key (e.g. `getLocalSetting('debugPosthog')` → `boolean`).
  */
 export const getLocalSetting = <K extends keyof LocalSettingsState>(key: K): LocalSettingsState[K] =>
   useLocalSettingsStore.getState()[key]

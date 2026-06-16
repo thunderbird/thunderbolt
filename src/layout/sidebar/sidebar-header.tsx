@@ -14,7 +14,7 @@ import { PowerSyncStatus } from '@/components/powersync-status'
 import { useIsMobile } from '@/hooks/use-mobile'
 import { PanelLeft } from 'lucide-react'
 import { useState } from 'react'
-import { AppLogo } from '@/components/app-logo'
+import { WorkspaceSelector } from './workspace-selector'
 
 type SidebarHeaderProps = {
   onToggle: () => void
@@ -29,9 +29,9 @@ export const SidebarHeader = ({ onToggle }: SidebarHeaderProps) => {
   const isExpanded = isMobile || state === 'expanded'
 
   return (
-    <div className="h-[var(--touch-height-xl)] border-b border-border flex items-center justify-between px-2 flex-shrink-0">
+    <div className="h-[var(--touch-height-xl)] border-b border-border flex items-center px-2 gap-8 flex-shrink-0">
       <div
-        className="flex items-center gap-3 h-8 px-2 relative flex-1"
+        className="flex items-center h-8 relative flex-1 min-w-0"
         onMouseEnter={() => !isMobile && !isExpanded && setShowExpandButton(true)}
         onMouseLeave={() => !isMobile && !isExpanded && setShowExpandButton(false)}
       >
@@ -49,10 +49,7 @@ export const SidebarHeader = ({ onToggle }: SidebarHeaderProps) => {
             </SidebarGroupContent>
           </SidebarGroup>
         ) : (
-          <>
-            <AppLogo />
-            {isExpanded && <span className="text-[length:var(--font-size-body)] truncate">Thunderbolt</span>}
-          </>
+          <WorkspaceSelector collapsed={!isExpanded} />
         )}
       </div>
       {isExpanded && (

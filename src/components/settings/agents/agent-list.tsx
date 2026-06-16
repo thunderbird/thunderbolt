@@ -8,6 +8,11 @@ import type { Agent } from '@/types/acp'
 type AgentListProps = {
   agents: Agent[]
   currentUserId: string | null
+  /** Defaults to true. Mirrors `add_agents`; gates the row enable/disable toggle. */
+  canEditAgents?: boolean
+  /** Defaults to true — when false the Remove affordance is hidden on every row.
+   *  Mirrors the workspace `remove_agents` permission; the BE is authoritative. */
+  canRemoveAgents?: boolean
   onToggle: (agent: Agent, enabled: boolean) => void
   onEdit: (agent: Agent) => void
   onDelete: (agent: Agent) => void
@@ -16,13 +21,23 @@ type AgentListProps = {
 /** Renders the unified agent list returned by `useAllAgents` (built-in first,
  *  then system, then user customs). Composition lives in the DAL — this
  *  component is purely visual + event-dispatching so it stays trivial to test. */
-export const AgentList = ({ agents, currentUserId, onToggle, onEdit, onDelete }: AgentListProps) => (
+export const AgentList = ({
+  agents,
+  currentUserId,
+  canEditAgents = true,
+  canRemoveAgents = true,
+  onToggle,
+  onEdit,
+  onDelete,
+}: AgentListProps) => (
   <div className="grid gap-3" data-testid="agent-list">
     {agents.map((agent) => (
       <AgentRow
         key={agent.id}
         agent={agent}
         currentUserId={currentUserId}
+        canEditAgents={canEditAgents}
+        canRemoveAgents={canRemoveAgents}
         onToggle={onToggle}
         onEdit={onEdit}
         onDelete={onDelete}

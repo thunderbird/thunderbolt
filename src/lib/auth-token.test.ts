@@ -3,6 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { afterEach, beforeAll, beforeEach, describe, expect, it, mock } from 'bun:test'
+import { useTrustDomainRegistry } from '@/stores/trust-domain-registry'
 import {
   clearAuthToken,
   clearDeviceId,
@@ -13,7 +14,8 @@ import {
   setAuthToken,
 } from './auth-token'
 
-const authTokenKey = 'thunderbolt_auth_token'
+const testServerId = '11111111-1111-1111-1111-111111111111'
+const authTokenKey = `thunderbolt_auth_token__${testServerId}`
 
 const fireStorageEvent = (newValue: string | null, oldValue: string | null, key = authTokenKey) => {
   window.dispatchEvent(
@@ -45,6 +47,12 @@ beforeAll(() => {
 })
 
 beforeEach(() => {
+  // Default fixture: a single server is active. Tests that need standalone / no-active
+  // override this themselves.
+  useTrustDomainRegistry.setState({
+    servers: { [testServerId]: { serverId: testServerId, cloudUrl: 'http://test.local' } },
+    activeTrustDomain: { kind: 'server', serverId: testServerId },
+  })
   clearAuthToken()
   clearDeviceId()
 })
@@ -66,11 +74,22 @@ describe('auth-token', () => {
       setAuthToken('test-token-123')
       expect(getAuthToken()).toBe('test-token-123')
     })
+
+    it('returns null when no server is active', () => {
+      useTrustDomainRegistry.setState({ activeTrustDomain: undefined })
+      expect(getAuthToken()).toBeNull()
+    })
+
+    it('returns null in standalone trust domains', () => {
+      useTrustDomainRegistry.setState({ activeTrustDomain: { kind: 'standalone' } })
+      expect(getAuthToken()).toBeNull()
+    })
   })
 
   describe('setAuthToken', () => {
-    it('stores token in localStorage', () => {
+    it('stores token under the active server namespace', () => {
       setAuthToken('cached-token')
+      expect(localStorage.getItem(authTokenKey)).toBe('cached-token')
       expect(getAuthToken()).toBe('cached-token')
     })
 
@@ -79,6 +98,37 @@ describe('auth-token', () => {
       expect(getAuthToken()).toBe('persisted-token')
       clearAuthToken()
       expect(getAuthToken()).toBeNull()
+    })
+
+    it('is a no-op when no server is active', () => {
+      useTrustDomainRegistry.setState({ activeTrustDomain: undefined })
+      setAuthToken('orphan')
+      expect(localStorage.getItem('thunderbolt_auth_token__undefined')).toBeNull()
+      expect(getAuthToken()).toBeNull()
+    })
+
+    it('namespacing isolates tokens across servers', () => {
+      const serverA = '22222222-2222-2222-2222-222222222222'
+      const serverB = '33333333-3333-3333-3333-333333333333'
+
+      useTrustDomainRegistry.setState({
+        servers: {
+          [serverA]: { serverId: serverA, cloudUrl: 'http://a.local' },
+          [serverB]: { serverId: serverB, cloudUrl: 'http://b.local' },
+        },
+        activeTrustDomain: { kind: 'server', serverId: serverA },
+      })
+      setAuthToken('token-A')
+
+      useTrustDomainRegistry.setState({ activeTrustDomain: { kind: 'server', serverId: serverB } })
+      expect(getAuthToken()).toBeNull()
+      setAuthToken('token-B')
+
+      useTrustDomainRegistry.setState({ activeTrustDomain: { kind: 'server', serverId: serverA } })
+      expect(getAuthToken()).toBe('token-A')
+
+      useTrustDomainRegistry.setState({ activeTrustDomain: { kind: 'server', serverId: serverB } })
+      expect(getAuthToken()).toBe('token-B')
     })
   })
 
@@ -96,6 +146,40 @@ describe('auth-token', () => {
       expect(getAuthToken()).toBeNull()
       setAuthToken('other')
       expect(getAuthToken()).toBe('other')
+    })
+  })
+
+  describe('getDeviceId', () => {
+    it('lazy-creates a device id under the active server namespace', () => {
+      const id = getDeviceId()
+      expect(id).toBeTruthy()
+      expect(localStorage.getItem(`thunderbolt_device_id__${testServerId}`)).toBe(id)
+    })
+
+    it('returns an empty string when no server is active', () => {
+      useTrustDomainRegistry.setState({ activeTrustDomain: undefined })
+      expect(getDeviceId()).toBe('')
+    })
+
+    it('namespacing isolates device ids across servers', () => {
+      const serverA = '44444444-4444-4444-4444-444444444444'
+      const serverB = '55555555-5555-5555-5555-555555555555'
+
+      useTrustDomainRegistry.setState({
+        servers: {
+          [serverA]: { serverId: serverA, cloudUrl: 'http://a.local' },
+          [serverB]: { serverId: serverB, cloudUrl: 'http://b.local' },
+        },
+        activeTrustDomain: { kind: 'server', serverId: serverA },
+      })
+      const idA = getDeviceId()
+
+      useTrustDomainRegistry.setState({ activeTrustDomain: { kind: 'server', serverId: serverB } })
+      const idB = getDeviceId()
+
+      expect(idA).not.toBe(idB)
+      expect(localStorage.getItem(`thunderbolt_device_id__${serverA}`)).toBe(idA)
+      expect(localStorage.getItem(`thunderbolt_device_id__${serverB}`)).toBe(idB)
     })
   })
 
@@ -121,6 +205,11 @@ describe('auth-token', () => {
       expect(headers['X-Device-Name']).toBeTruthy()
     })
 
+    it('returns no headers when no server is active', () => {
+      useTrustDomainRegistry.setState({ activeTrustDomain: undefined })
+      expect(getAuthenticatedHeaders()).toEqual({})
+    })
+
     it('returns consistent device ID across calls', () => {
       const headers1 = getAuthenticatedHeaders()
       const headers2 = getAuthenticatedHeaders()
@@ -131,7 +220,7 @@ describe('auth-token', () => {
 })
 
 describe('onAuthTokenChangedInOtherTab', () => {
-  it('fires listener when token rotates', () => {
+  it('fires listener when the active server token rotates', () => {
     const listener = mock(() => {})
     const unsub = onAuthTokenChangedInOtherTab(listener)
 
@@ -158,6 +247,16 @@ describe('onAuthTokenChangedInOtherTab', () => {
     const unsub = onAuthTokenChangedInOtherTab(listener)
 
     fireStorageEvent('some-value', null, 'other_key')
+
+    expect(listener).not.toHaveBeenCalled()
+    unsub()
+  })
+
+  it('does not fire for a different server’s auth token key', () => {
+    const listener = mock(() => {})
+    const unsub = onAuthTokenChangedInOtherTab(listener)
+
+    fireStorageEvent('new-token', 'old-token', 'thunderbolt_auth_token__99999999-9999-9999-9999-999999999999')
 
     expect(listener).not.toHaveBeenCalled()
     unsub()

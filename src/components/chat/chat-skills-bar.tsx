@@ -11,6 +11,7 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { maxPinnedSkills } from '@/dal'
 import { useIsMobile } from '@/hooks/use-mobile'
+import { useWorkspacePermission as useWorkspacePermission_default } from '@/hooks/use-workspace-permission'
 import { ReorderPanel } from '@/skills/reorder-panel'
 import { SuggestionChip } from '@/skills/suggestion-chip'
 import { useSkillTelemetry } from '@/skills/telemetry'
@@ -35,6 +36,7 @@ type ChatSkillsBarProps = {
   usePinnedSkills?: typeof usePinnedSkills_default
   useLibrarySkills?: typeof useLibrarySkills_default
   useEnabledSkills?: typeof useEnabledSkills_default
+  useWorkspacePermission?: typeof useWorkspacePermission_default
 }
 
 /**
@@ -54,12 +56,17 @@ export const ChatSkillsBar = ({
   usePinnedSkills = usePinnedSkills_default,
   useLibrarySkills = useLibrarySkills_default,
   useEnabledSkills = useEnabledSkills_default,
+  useWorkspacePermission = useWorkspacePermission_default,
 }: ChatSkillsBarProps) => {
   const { pinned, pinnedSet, reorderPins, togglePin } = usePinnedSkills()
   const { skills: library } = useLibrarySkills()
   const { isEnabled } = useEnabledSkills()
   const { isMobile } = useIsMobile()
   const trackSkillEvent = useSkillTelemetry()
+  // Pin / unpin / reorder all PATCH the `skills` row — the BE gates them
+  // on `add_skills`. Hide the affordances when the user can't satisfy that
+  // permission so we don't surface actions that round-trip-fail.
+  const { isAllowed: canEditSkills } = useWorkspacePermission('add_skills')
 
   const [openChipId, setOpenChipId] = useState<string | null>(null)
   const [reorderMode, setReorderMode] = useState(false)
@@ -115,10 +122,12 @@ export const ChatSkillsBar = ({
       ? 'No more skills to pin'
       : 'Pin a skill'
 
-  // Hide the whole bar only when there's nothing to display *and* nothing
-  // to add. If the user has zero pins but unpinned skills exist, we still
-  // show the `+` button so they can pin one.
-  if (pinned.length === 0 && pinnable.length === 0) {
+  // Hide the whole bar when there's nothing to display *and* nothing the user
+  // can act on. Zero pins + unpinned candidates still warrants the `+` button
+  // — but only when the user can actually pin (`canEditSkills`); otherwise
+  // both the chips row and the trigger are empty and the strip would render
+  // as a thin blank line above the composer.
+  if (pinned.length === 0 && (pinnable.length === 0 || !canEditSkills)) {
     return null
   }
 
@@ -131,6 +140,7 @@ export const ChatSkillsBar = ({
             key={skill.id}
             label={skill.name}
             dimmed={openChipId !== null && openChipId !== skill.id}
+            canEdit={canEditSkills}
             onClick={() => onAddToChat(skill.name)}
             onOpenChange={(open) => setOpenChipId(open ? skill.id : null)}
             onAddInstruction={() => onAddInstruction(skill.instruction)}
@@ -147,26 +157,27 @@ export const ChatSkillsBar = ({
             }}
           />
         ))}
-        <Popover open={addOpen} onOpenChange={setAddOpen}>
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <PopoverTrigger asChild>
-                <Button
-                  variant="outline"
-                  size="icon-sm"
-                  aria-label="Pin a skill"
-                  disabled={addDisabled}
-                  className={`shrink-0 cursor-pointer rounded-full bg-card transition-opacity disabled:cursor-not-allowed disabled:opacity-40 ${
+        {canEditSkills && (
+          <Popover open={addOpen} onOpenChange={setAddOpen}>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <PopoverTrigger asChild>
+                  <Button
+                    variant="outline"
+                    size="icon-sm"
+                    aria-label="Pin a skill"
+                    disabled={addDisabled}
+                    className={`shrink-0 cursor-pointer rounded-full bg-card transition-opacity disabled:cursor-not-allowed disabled:opacity-40 ${
                     openChipId ? 'opacity-40' : ''
                   }`}
-                >
-                  <Plus />
-                </Button>
-              </PopoverTrigger>
-            </TooltipTrigger>
-            <TooltipContent>{addTooltip}</TooltipContent>
-          </Tooltip>
-          {/*
+                  >
+                    <Plus />
+                  </Button>
+                </PopoverTrigger>
+              </TooltipTrigger>
+              <TooltipContent>{addTooltip}</TooltipContent>
+            </Tooltip>
+            {/*
             `collisionPadding={16}` keeps the popover 16px off the viewport
             edges. On mobile the content is sized to `calc(100vw-2rem)` (32px
             narrower than the viewport), so collision avoidance pins it to a
@@ -175,49 +186,52 @@ export const ChatSkillsBar = ({
             leaves room, so the padding never shifts the `align="start"`
             anchor off the `+` button.
           */}
-          <PopoverContent
-            side="top"
-            align="start"
-            sideOffset={6}
-            collisionPadding={16}
-            className={isMobile ? 'w-[calc(100vw-2rem)] p-1' : 'w-72 max-w-[calc(100vw-2rem)] p-1'}
-          >
-            <ul className="max-h-64 overflow-y-auto">
-              {pinnable.map((skill) => (
-                <li key={skill.id}>
-                  <button
-                    type="button"
-                    onClick={async () => {
-                      // Close the popover synchronously so it doesn't sit open
-                      // while the mutation lands. Telemetry fires after the
-                      // mutation settles so we never report a phantom pin if
-                      // togglePin races past the cap guard.
-                      setAddOpen(false)
-                      try {
-                        await togglePin(skill.id)
-                        trackSkillEvent('skill_pinned', skill.id, {})
-                      } catch (error) {
-                        console.warn('togglePin failed:', error)
-                      }
-                    }}
-                    // `rounded-xl` (not `rounded-md`) so the hover highlight
-                    // sits concentrically inside the `rounded-2xl` container's
-                    // `p-1` padding — outer radius minus 4px padding. Matches
-                    // the slash autocomplete popover.
-                    className="flex w-full cursor-pointer flex-col gap-0.5 rounded-xl px-2 py-1.5 text-left transition-colors hover:bg-accent"
-                  >
-                    <span className="truncate text-[length:var(--font-size-body)] text-foreground">/{skill.name}</span>
-                    {skill.description && (
-                      <span className="line-clamp-1 text-[length:var(--font-size-sm)] text-muted-foreground">
-                        {skill.description}
+            <PopoverContent
+              side="top"
+              align="start"
+              sideOffset={6}
+              collisionPadding={16}
+              className={isMobile ? 'w-[calc(100vw-2rem)] p-1' : 'w-72 max-w-[calc(100vw-2rem)] p-1'}
+            >
+              <ul className="max-h-64 overflow-y-auto">
+                {pinnable.map((skill) => (
+                  <li key={skill.id}>
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        // Close the popover synchronously so it doesn't sit open
+                        // while the mutation lands. Telemetry fires after the
+                        // mutation settles so we never report a phantom pin if
+                        // togglePin races past the cap guard.
+                        setAddOpen(false)
+                        try {
+                          await togglePin(skill.id)
+                          trackSkillEvent('skill_pinned', skill.id, {})
+                        } catch (error) {
+                          console.warn('togglePin failed:', error)
+                        }
+                      }}
+                      // `rounded-xl` (not `rounded-md`) so the hover highlight
+                      // sits concentrically inside the `rounded-2xl` container's
+                      // `p-1` padding — outer radius minus 4px padding. Matches
+                      // the slash autocomplete popover.
+                      className="flex w-full cursor-pointer flex-col gap-0.5 rounded-xl px-2 py-1.5 text-left transition-colors hover:bg-accent"
+                    >
+                      <span className="truncate text-[length:var(--font-size-body)] text-foreground">
+                        /{skill.name}
                       </span>
-                    )}
-                  </button>
-                </li>
-              ))}
-            </ul>
-          </PopoverContent>
-        </Popover>
+                      {skill.description && (
+                        <span className="line-clamp-1 text-[length:var(--font-size-sm)] text-muted-foreground">
+                          {skill.description}
+                        </span>
+                      )}
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            </PopoverContent>
+          </Popover>
+        )}
       </div>
     </>
   )

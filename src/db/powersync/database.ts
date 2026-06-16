@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { getLocalSetting } from '@/stores/local-settings-store'
+import { getActiveCloudUrl } from '@/stores/trust-domain-registry'
 import type { AbstractPowerSyncDatabase } from '@powersync/common'
 import { SyncStreamConnectionMethod, WASQLiteOpenFactory, WASQLiteVFS } from '@powersync/web'
 import type { PowerSyncDatabase, WebPowerSyncDatabaseOptions } from '@powersync/web'
@@ -14,6 +14,7 @@ import { ThunderboltConnector } from './connector'
 import { getPlatform, getWebBrowser } from '@/lib/platform'
 import { ThunderboltPowerSyncDatabase } from './ThunderboltPowerSyncDatabase'
 import { encryptionMiddleware } from './middleware/EncryptionMiddleware'
+import { workerNameFor } from '../sync-worker-name'
 import {
   getMsSinceLastDownload,
   sanitizeErrorForTracking,
@@ -73,7 +74,7 @@ export const getPowerSyncOptions = (path: string, config: PowerSyncDatabaseConfi
         worker: () =>
           new SharedWorker(new URL('./worker/ThunderboltSharedSyncImplementation.worker.ts', import.meta.url), {
             type: 'module',
-            name: `shared-sync-${dbFilename}`,
+            name: workerNameFor(dbFilename),
           }),
       },
     }
@@ -201,7 +202,13 @@ export class PowerSyncDatabaseImpl implements DatabaseInterface {
     })
 
     try {
-      const cloudUrl = getLocalSetting('cloudUrl')
+      const cloudUrl = getActiveCloudUrl()
+      if (!cloudUrl) {
+        // Standalone trust domain has no server to sync with; bail out cleanly so the
+        // caller treats sync as effectively disabled rather than blowing up on undefined.
+        console.info('[PowerSync] no active server — skipping connect (standalone trust domain)')
+        return
+      }
       const connector = new ThunderboltConnector(cloudUrl)
       // Use HTTP streaming to avoid WebSocket "invalid opcode 7" with self-hosted service (ws library).
       const connectInnerStartedAt = performance.now()

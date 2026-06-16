@@ -125,6 +125,7 @@ export const SearchableMenu = <T,>({
   open: controlledOpen,
   onOpenChange: controlledOnOpenChange,
   contentClassName,
+  triggerClassName,
   align = 'start',
   side,
   maxHeight = 300,
@@ -199,7 +200,10 @@ export const SearchableMenu = <T,>({
   return (
     <Popover open={open} onOpenChange={setOpen} modal={isMobile}>
       <PopoverTrigger asChild>
-        <button type="button" className={cn('flex items-center focus:outline-none', showBlur && 'relative z-50')}>
+        <button
+          type="button"
+          className={cn('flex items-center focus:outline-none', showBlur && 'relative z-50', triggerClassName)}
+        >
           {triggerContent}
         </button>
       </PopoverTrigger>

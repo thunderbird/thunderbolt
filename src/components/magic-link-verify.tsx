@@ -12,6 +12,7 @@ import { challengeTokenHeader } from '@/lib/constants'
 import { useAuth } from '@/contexts'
 import { getOtpErrorMessage } from '@/lib/otp-error-messages'
 import { useSettings } from '@/hooks/use-settings'
+import { runPostAuthBootstrap } from '@/lib/post-auth-bootstrap'
 
 type VerifyState = { status: 'verifying' } | { status: 'success' } | { status: 'error'; message: string }
 
@@ -71,6 +72,22 @@ export const MagicLinkVerify = () => {
         // Refetch session to update the auth client cache
         // This ensures the sidebar and other components see the new session immediately
         await refetchSession()
+
+        // Post-auth pipeline: connect sync, resolve personal workspace, reconcile.
+        // Idempotent + deduped vs. the AuthProvider observer.
+        if (result.data?.user?.id) {
+          try {
+            await runPostAuthBootstrap({
+              kind: 'server',
+              userId: result.data.user.id,
+              isAnonymous: result.data.user.isAnonymous === true,
+            })
+          } catch (bootstrapError) {
+            console.error('Post-auth bootstrap failed:', bootstrapError)
+            setState({ status: 'error', message: 'Could not sync your account. Please retry.' })
+            return
+          }
+        }
 
         setState({ status: 'success' })
       } catch {

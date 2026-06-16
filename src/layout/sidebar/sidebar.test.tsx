@@ -6,11 +6,16 @@ import { AuthProvider, DatabaseProvider, HttpClientProvider, SignInModalProvider
 import { getDb } from '@/db/database'
 import { chatThreadsTable } from '@/db/tables'
 import { deleteChatThread } from '@/dal'
-import { resetTestDatabase, setupTestDatabase, teardownTestDatabase } from '@/dal/test-utils'
+import { resetTestDatabase, setupTestDatabase, teardownTestDatabase, wsId } from '@/dal/test-utils'
 import { SidebarProvider } from '@/components/ui/sidebar'
 import { createMockAuthClient } from '@/test-utils/auth-client'
 import { createMockHttpClient } from '@/test-utils/http-client'
-import { renderWithReactivity, waitForElement } from '@/test-utils/powersync-reactivity-test'
+import {
+  renderWithReactivity,
+  waitForElement,
+  resetTestTrustDomain,
+  seedTestTrustDomain,
+} from '@/test-utils/powersync-reactivity-test'
 import { getClock } from '@/testing-library'
 import '@testing-library/jest-dom'
 import { act, cleanup, screen } from '@testing-library/react'
@@ -30,10 +35,12 @@ describe('Sidebar reactivity', () => {
   })
 
   beforeEach(async () => {
+    seedTestTrustDomain()
     await resetTestDatabase()
   })
 
   afterEach(() => {
+    resetTestTrustDomain()
     cleanup()
   })
 
@@ -43,8 +50,8 @@ describe('Sidebar reactivity', () => {
     const db = getDb()
 
     await db.insert(chatThreadsTable).values([
-      { id: threadId1, title: 'First Chat', isEncrypted: 0 },
-      { id: threadId2, title: 'Second Chat', isEncrypted: 0 },
+      { id: threadId1, title: 'First Chat', isEncrypted: 0, workspaceId: wsId },
+      { id: threadId2, title: 'Second Chat', isEncrypted: 0, workspaceId: wsId },
     ])
 
     const wrapper = ({ children }: { children: ReactNode }) => (
@@ -74,7 +81,7 @@ describe('Sidebar reactivity', () => {
     expect(screen.getByText('First Chat')).toBeInTheDocument()
     expect(screen.getByText('Second Chat')).toBeInTheDocument()
 
-    await deleteChatThread(db, threadId2)
+    await deleteChatThread(db, wsId, threadId2)
     triggerChange(['chat_threads'])
 
     await act(async () => {

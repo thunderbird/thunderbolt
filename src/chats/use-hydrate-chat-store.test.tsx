@@ -2,8 +2,9 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { setupTestDatabase, teardownTestDatabase, resetTestDatabase } from '@/dal/test-utils'
+import { setupTestDatabase, teardownTestDatabase, resetTestDatabase, wsId } from '@/dal/test-utils'
 import { getCurrentSession, resetStore } from '@/test-utils/chat-store-mocks'
+import { resetTestTrustDomain, seedTestTrustDomain } from '@/test-utils/powersync-reactivity-test'
 import { createQueryTestWrapper } from '@/test-utils/react-query'
 import { act, cleanup, renderHook } from '@testing-library/react'
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'bun:test'
@@ -38,6 +39,7 @@ const createDefaultMode = async () => {
     order: 0,
     deletedAt: null,
     defaultHash: null,
+    workspaceId: wsId,
   })
 
   return 'mode-chat'
@@ -64,6 +66,7 @@ const createSystemModel = async () => {
     deletedAt: null,
     url: null,
     defaultHash: null,
+    workspaceId: wsId,
   })
 
   return modelId
@@ -90,6 +93,7 @@ const createTestModel = async () => {
     deletedAt: null,
     url: null,
     defaultHash: null,
+    workspaceId: wsId,
   })
 
   return modelId
@@ -99,13 +103,14 @@ const createTestModel = async () => {
  * Helper function to create a test thread
  */
 const createTestThread = async (modelId: string, title: string = 'Test Thread') => {
-  const model = await getModel(getDb(), modelId)
+  const model = await getModel(getDb(), wsId, modelId)
   if (!model) {
     throw new Error('Test setup failed')
   }
   const threadId = uuidv7()
   await createChatThread(
     getDb(),
+    wsId,
     {
       id: threadId,
       title,
@@ -150,6 +155,10 @@ describe('useHydrateChatStore', () => {
   })
 
   beforeEach(async () => {
+    // Seed the trust-domain registry with a standalone user so `useActiveWorkspaceId`
+    // resolves to `wsId` (the personal workspace seeded by setupTestDatabase). The
+    // hook early-returns null without this, so hydrateChatStore would no-op.
+    seedTestTrustDomain()
     // Reset store state before each test
     resetStore()
     await resetTestDatabase()
@@ -163,6 +172,7 @@ describe('useHydrateChatStore', () => {
     cleanup()
     // Reset store state after each test
     resetStore()
+    resetTestTrustDomain()
     await resetTestDatabase()
   })
 
@@ -227,6 +237,29 @@ describe('useHydrateChatStore', () => {
       expect(session?.triggerData).toBeDefined()
     })
 
+    it('handles concurrent hydration calls for the same id without throwing', async () => {
+      // Regression: when `[id, workspaceId]` flips twice in quick succession
+      // (e.g. landing on `/w/<newId>/chats/new` right after workspace creation),
+      // two `hydrateChatStore()` calls race past the early dedup and both reach
+      // `createSession`. The store's `createSession` throws on duplicate id, so
+      // the second invocation used to crash with "Session already exists".
+      const systemModelId = await createSystemModel()
+      const threadId = await createTestThread(systemModelId)
+
+      const { result } = renderHook(() => useHydrateChatStore({ id: threadId, isNew: false }), {
+        wrapper: TestWrapper,
+      })
+
+      // Kick off two concurrent calls; both must resolve without throwing.
+      await act(async () => {
+        await Promise.all([result.current.hydrateChatStore(), result.current.hydrateChatStore()])
+      })
+
+      const storeState = useChatStore.getState()
+      expect(storeState.sessions.has(threadId)).toBe(true)
+      expect(storeState.currentSessionId).toBe(threadId)
+    })
+
     it('should reset store before hydrating', async () => {
       const systemModelId = await createSystemModel()
       const threadId1 = await createTestThread(systemModelId, 'Thread 1')
@@ -269,7 +302,7 @@ describe('useHydrateChatStore', () => {
         createTestMessage({ role: 'assistant', parts: [{ type: 'text', text: 'Hi there' }] }),
       ]
 
-      await saveMessagesWithContextUpdate(getDb(), threadId, messages)
+      await saveMessagesWithContextUpdate(getDb(), wsId, threadId, messages)
 
       const { result } = renderHook(() => useHydrateChatStore({ id: threadId, isNew: false }), {
         wrapper: TestWrapper,
@@ -307,7 +340,7 @@ describe('useHydrateChatStore', () => {
       // A new chat has no `chat_threads` row, so the agent resolves from the
       // global `selected_agent` setting (the user's last pick). It must win over
       // `allAgents[0]`, which is always the built-in.
-      await createAgent(getDb(), {
+      await createAgent(getDb(), wsId, {
         id: 'custom-last-used',
         name: 'Last Used Agent',
         type: 'remote-acp',
@@ -429,7 +462,7 @@ describe('useHydrateChatStore', () => {
       })
 
       // The newly-created thread row should carry the agent the user picked.
-      const stored = await getThread(getDb(), threadId)
+      const stored = await getThread(getDb(), wsId, threadId)
       expect(stored?.agentId).toBe('haystack-rag')
     })
 

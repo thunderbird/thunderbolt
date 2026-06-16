@@ -8,7 +8,8 @@ import { getSettings } from '@/dal'
 import { getAuthToken } from '@/lib/auth-token'
 import { Database, getCurrentDatabase, setDatabase } from '@/db/database'
 import type { AnyDrizzleDatabase } from '@/db/database-interface'
-import { getLocalSetting } from '@/stores/local-settings-store'
+import { setupDbLifecycleReloadOnRemoteClose } from '@/db/db-lifecycle-broadcast'
+import { getActiveCloudUrl, getActiveTrustDomain, useTrustDomainRegistry } from '@/stores/trust-domain-registry'
 import { createHandleError } from '@/lib/error-utils'
 import { createAppDir, resetAppDir } from '@/lib/fs'
 import { isSsoMode } from '@/lib/auth-mode'
@@ -16,15 +17,14 @@ import { createAuthenticatedClient } from '@/lib/http'
 import { beginInitRun, getInitTimingPayload, recordInitStep } from '@/lib/init-timing'
 import { getDatabasePath, getDatabaseType, getPlatform, isIndexedDbAvailable } from '@/lib/platform'
 import { initPosthog, trackError, trackEvent } from '@/lib/posthog'
-import { runDataMigrations } from '@/lib/data-migrations'
-import { reconcileDefaults } from '@/lib/reconcile-defaults'
+import { resolveBootTrustDomain } from '@/lib/resolve-boot-trust-domain'
 import { TrayManager } from '@/lib/tray'
 import type { InitData } from '@/types'
 import type { HandleError, HandleResult } from '@/types/handle-errors'
 import type { TrayIcon } from '@tauri-apps/api/tray'
 import type { Window } from '@tauri-apps/api/window'
 import type { PostHog } from 'posthog-js'
-import { sql } from 'drizzle-orm'
+import { getLocalSetting } from '@/stores/local-settings-store'
 import { useCallback, useEffect, useState } from 'react'
 
 const createAppDirectory = async (): Promise<string> => {
@@ -95,13 +95,78 @@ const executeInitializationSteps = async (httpClient?: HttpClient): Promise<Hand
   const totalStartedAt = performance.now()
   console.info('[init] start')
 
-  // Step 0: Fetch backend config and hydrate store (only on success).
-  // When fetch fails (offline/error), the store retains its persisted localStorage value.
-  // Not awaited here: nothing in this pipeline consumes the config (it is read
-  // reactively from the store later), so it overlaps with the steps below
-  // (including the storage probe) and is only awaited at the end to land its
-  // duration in app_init_timing.
-  const fetchConfigPromise = time('step0_fetch_config', () => fetchConfig(getLocalSetting('cloudUrl'), httpClient))
+  // Multi-tab DB lifecycle listener — idempotent, mounted once per page lifetime so the
+  // app reloads when another tab wipes the active server's DB (logout / promotion).
+  setupDbLifecycleReloadOnRemoteClose()
+
+  // Step 0: Resolve the active trust domain.
+  //
+  // First boot (server mode) blocks on /v1/config to learn `serverId` — without it we have no
+  // namespace for the auth token, device id, DB filename, and encryption keys. Returning boots
+  // (registry has an active domain) skip the fetch here and refresh /v1/config in the
+  // background below; that keeps standalone offline-boots and offline server-refresh paths
+  // working as before. Mode-picker UI ships in PR 5 — until then, the "both flags off" branch
+  // surfaces as a fatal error so v1 production deployments fail loudly on misconfiguration.
+  //
+  // `fetchConfig` writes through to `useConfigStore`, so reactive consumers (e.g. the
+  // upgrade-required gate that reads `minAppVersion`) get hydrated as soon as either the
+  // first-boot fetch inside the resolver or the returning-boot background refresh resolves.
+  const isReturningBoot = !!getActiveTrustDomain()
+  const resolution = await time('step0_resolve_trust_domain', () =>
+    resolveBootTrustDomain({
+      env: {
+        standaloneModeEnabled: import.meta.env.VITE_STANDALONE_MODE_ENABLED === 'true',
+        defaultServerUrl: import.meta.env.VITE_THUNDERBOLT_CLOUD_URL ?? '',
+      },
+      fetchConfig: (url) => fetchConfig(url, httpClient),
+    }),
+  )
+  if (resolution.kind === 'no-trust-domain') {
+    const error = createHandleError(
+      'NO_TRUST_DOMAIN',
+      'No trust domain configured (standalone disabled and no default server URL set)',
+      undefined,
+    )
+    trackError(error, { initialization_step: 'trust_domain' })
+    return { success: false, error }
+  }
+  if (resolution.kind === 'fetch-failed') {
+    const error = createHandleError(
+      'CONFIG_FETCH_FAILED',
+      `Failed to fetch /v1/config from ${resolution.cloudUrl}`,
+      undefined,
+    )
+    trackError(error, { initialization_step: 'trust_domain' })
+    return { success: false, error }
+  }
+  // Standalone end-to-end is deferred post-v1 (addendum §1 + §6): the DB lifecycle, the
+  // local-user surface, and the first-run workspace creation paths aren't wired yet.
+  // The flag and the resolver branch ship now so the mode picker (PR 5) can exercise the
+  // plumbing in dev — but we refuse the boot until the downstream wiring lands rather than
+  // let it silently degrade into scattered no-auth / no-encryption failures.
+  if (resolution.trustDomain.kind === 'standalone') {
+    const error = createHandleError(
+      'STANDALONE_NOT_SUPPORTED',
+      'Standalone mode is not implemented yet — disable VITE_STANDALONE_MODE_ENABLED',
+      undefined,
+    )
+    trackError(error, { initialization_step: 'trust_domain' })
+    return { success: false, error }
+  }
+  // Standalone is short-circuited above; only server-kind resolutions reach this point.
+  // The resolver's contract guarantees a `serverEntry` whenever the trust domain is server.
+  if (resolution.trustDomain.kind !== 'server' || !resolution.serverEntry) {
+    throw new Error('resolveBootTrustDomain returned a server domain without a server entry')
+  }
+  useTrustDomainRegistry.getState().activateServer(resolution.serverEntry)
+
+  // Background refresh of /v1/config for returning server-mode boots — keeps cached UI flags
+  // (e2eeEnabled, allowAnonUsers, minAppVersion, etc.) current. First-boot already fetched
+  // inside the resolver, so we skip the duplicate call. Non-blocking by design: offline keeps
+  // working because the config store retains its persisted value when fetch fails.
+  if (isReturningBoot && resolution.trustDomain.kind === 'server' && resolution.serverEntry) {
+    void fetchConfig(resolution.serverEntry.cloudUrl, httpClient)
+  }
 
   // Step 0.5: Storage pre-flight. IndexedDB is required by both the local
   // PowerSync VFS (web) and the E2EE key store (all platforms). iOS Lockdown
@@ -131,11 +196,9 @@ const executeInitializationSteps = async (httpClient?: HttpClient): Promise<Hand
 
   // Step 2: Database initialization
   let db: AnyDrizzleDatabase
-  let database: Database
   try {
     const result = await time('step2_initialize_database', () => initializeDatabase(appDirPath))
     db = result.db
-    database = result.database
   } catch (error) {
     console.error('Failed to initialize database:', error)
     const dbError = createHandleError('DATABASE_INIT_FAILED', 'Failed to initialize database', error)
@@ -146,41 +209,27 @@ const executeInitializationSteps = async (httpClient?: HttpClient): Promise<Hand
     }
   }
 
-  // Step 2b: Trivial first query. PowerSync defers its heavy ready gate (WASM
-  // compile, OPFS open, schema replace) to the first query — absorb it here so
-  // step4 measures only the reconcile work itself.
-  await time('step2b_db_ready', async () => {
-    await db.get(sql`select 1`)
-  })
+  // Sync, personal-workspace resolution, default reconciliation, and data
+  // migrations are post-auth concerns — they require either an authenticated
+  // session (server modes) or a local user id (standalone, post-v1). Running
+  // them here would crash for users sitting at the waitlist / login screen.
+  // They live in `runPostAuthBootstrap`, fired from each sign-in entry point
+  // and from a session-change observer in `AuthProvider`.
 
-  // Step 3: Wait for PowerSync initial sync before reconciling defaults.
-  // This ensures synced data from the cloud is available before we check for missing
-  // defaults. The implementation never rejects (best-effort with internal timeout);
-  // the outcome is reported in the app_init_timing event below.
-  const initialSyncOutcome = await time('step3_wait_for_initial_sync', () => database.waitForInitialSync())
-
-  // Step 4: Reconcile defaults
-  try {
-    await time('step4_reconcile_defaults', () => reconcileDefaults(db))
-  } catch (error) {
-    console.error('Failed to reconcile default settings:', error)
-    const reconcileError = createHandleError('RECONCILE_DEFAULTS_FAILED', 'Failed to reconcile default settings', error)
-    trackError(reconcileError, { initialization_step: 'reconcile_defaults' })
-    return {
-      success: false,
-      error: reconcileError,
-    }
+  // Step 5: Resolve runtime cloud URL (from the active server entry, set by Step 0) and
+  // pull experimental feature tasks. The trust-domain registry is the source of truth;
+  // we throw here if it's somehow not set, since downstream consumers (HTTP client,
+  // AuthProvider, AI provider baseURL) all need a non-null URL in server trust domains.
+  const cloudUrl = getActiveCloudUrl()
+  if (!cloudUrl) {
+    const error = createHandleError(
+      'NO_TRUST_DOMAIN',
+      'Active server has no cloud URL (registry inconsistency after boot)',
+      undefined,
+    )
+    trackError(error, { initialization_step: 'trust_domain' })
+    return { success: false, error }
   }
-
-  // Step 4b: Run data migrations. Sits *after* reconcileDefaults so any
-  // newly-seeded defaults (e.g. the daily-brief skill) are present when a
-  // migration checks for slug collisions. The runner swallows per-migration
-  // failures itself (logging each one), so it never throws and never blocks
-  // initialization — each migration retries on the next launch.
-  await time('step4b_run_data_migrations', () => runDataMigrations(db))
-
-  // Step 5: Get cloud url and experimental feature tasks
-  const cloudUrl = getLocalSetting('cloudUrl')
   const { experimentalFeatureTasks } = await time('step5_get_settings', () =>
     getSettings(db, {
       experimental_feature_tasks: false,
@@ -214,10 +263,6 @@ const executeInitializationSteps = async (httpClient?: HttpClient): Promise<Hand
   // of each other) — run in parallel; each wrapper swallows its own failure.
   const [tray, posthogClient] = await Promise.all([initializeTraySafely(), initializePostHogSafely(client)])
 
-  // Settle step 0 so its duration lands in the timing payload. fetchConfig
-  // never rejects (catch block + 5s timeout) and has typically resolved by now.
-  await fetchConfigPromise
-
   const initTotalMs = Math.round(performance.now() - totalStartedAt)
   console.info(`[init] complete (total ${initTotalMs}ms)`)
 
@@ -227,7 +272,6 @@ const executeInitializationSteps = async (httpClient?: HttpClient): Promise<Hand
   const initTimingPayload = {
     ...getInitTimingPayload(),
     init_total_ms: initTotalMs,
-    initial_sync_outcome: initialSyncOutcome,
     sync_enabled: getLocalSetting('syncEnabled'),
     platform: getPlatform(),
   }

@@ -9,9 +9,10 @@ import { createMockAuthClient } from '@/test-utils/auth-client'
 import { createTestProvider } from '@/test-utils/test-provider'
 import { cleanup, render } from '@testing-library/react'
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, mock } from 'bun:test'
+import { testServerId } from '@/testing-library'
 import { buildFetchOptions } from './auth-context'
 
-const authTokenKey = 'thunderbolt_auth_token'
+const authTokenKey = `thunderbolt_auth_token__${testServerId}`
 
 const fireStorageEvent = (newValue: string | null, oldValue: string | null) => {
   window.dispatchEvent(

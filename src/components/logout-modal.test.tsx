@@ -13,16 +13,15 @@ import { act, fireEvent, render, screen } from '@testing-library/react'
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, mock } from 'bun:test'
 import { LogoutModal } from './logout-modal'
 
-const mockClearLocalData = mock(() => Promise.resolve())
+const mockSignOutAndWipe = mock(async ({ onComplete }: { signOut?: () => Promise<void>; onComplete: () => void }) => {
+  onComplete()
+})
 
-const env = import.meta.env as Record<string, string | undefined>
-
-// Mock window.location
-const mockReload = mock()
 const mockReplace = mock()
 Object.defineProperty(window, 'location', {
-  value: { reload: mockReload, replace: mockReplace },
+  value: { replace: mockReplace },
   writable: true,
+  configurable: true,
 })
 
 describe('LogoutModal', () => {
@@ -44,14 +43,12 @@ describe('LogoutModal', () => {
     await resetTestDatabase()
     mockOnOpenChange = mock()
     mockSignOut = mock(() => Promise.resolve())
-    mockClearLocalData.mockClear()
-    mockReload.mockClear()
+    mockSignOutAndWipe.mockClear()
     mockReplace.mockClear()
   })
 
   afterEach(() => {
     mockOnOpenChange.mockClear()
-    delete env.VITE_AUTH_MODE
   })
 
   const renderModal = (props: Partial<{ open: boolean; onOpenChange: (open: boolean) => void }> = {}) => {
@@ -59,7 +56,7 @@ describe('LogoutModal', () => {
       signOut: mockSignOut,
     })
     return render(
-      <LogoutModal open={true} onOpenChange={mockOnOpenChange} clearLocalData={mockClearLocalData} {...props} />,
+      <LogoutModal open={true} onOpenChange={mockOnOpenChange} signOutAndWipe={mockSignOutAndWipe} {...props} />,
       {
         wrapper: createTestProvider({ authClient }),
       },
@@ -67,10 +64,12 @@ describe('LogoutModal', () => {
   }
 
   describe('rendering', () => {
-    it('renders when open', () => {
+    it('renders title and wipe-warning description when open', () => {
       renderModal({ open: true })
-      // Check for the dialog title specifically
       expect(screen.getByRole('heading', { name: 'Log out' })).toBeInTheDocument()
+      expect(
+        screen.getByText('Signing out will remove all chats, settings, and cached data from this device.'),
+      ).toBeInTheDocument()
     })
 
     it('does not render content when closed', () => {
@@ -78,305 +77,85 @@ describe('LogoutModal', () => {
       expect(screen.queryByText('Log out')).not.toBeInTheDocument()
     })
 
-    it('displays description text', () => {
-      renderModal()
-      expect(screen.getByText('What would you like to do with your local data?')).toBeInTheDocument()
-    })
-
-    it('displays both data options', () => {
-      renderModal()
-      expect(screen.getByText('Leave data on device')).toBeInTheDocument()
-      expect(screen.getByText('Delete data from device')).toBeInTheDocument()
-    })
-
     it('displays cancel and logout buttons', () => {
       renderModal()
       expect(screen.getByRole('button', { name: 'Cancel' })).toBeInTheDocument()
       expect(screen.getByRole('button', { name: 'Log out' })).toBeInTheDocument()
     })
-  })
 
-  describe('option selection', () => {
-    it('has "keep" option selected by default', () => {
+    it('does not offer a "keep my data" affordance', () => {
       renderModal()
-      const keepOption = screen.getByText('Leave data on device').closest('button')
-      // Check the radio indicator is styled as selected (has the inner dot)
-      expect(keepOption?.querySelector('.bg-primary')).toBeInTheDocument()
+      expect(screen.queryByText(/keep data/i)).not.toBeInTheDocument()
+      expect(screen.queryByText(/leave data/i)).not.toBeInTheDocument()
     })
 
-    it('selects "delete" option when clicked', () => {
+    it('styles the logout button as destructive', () => {
       renderModal()
-      const deleteOption = screen.getByText('Delete data from device').closest('button')!
-
-      fireEvent.click(deleteOption)
-
-      // Check the delete option is now selected
-      expect(deleteOption.querySelector('.bg-destructive')).toBeInTheDocument()
-    })
-
-    it('allows switching between options', () => {
-      renderModal()
-      const keepOption = screen.getByText('Leave data on device').closest('button')!
-      const deleteOption = screen.getByText('Delete data from device').closest('button')!
-
-      // Select delete
-      fireEvent.click(deleteOption)
-      expect(deleteOption.querySelector('.bg-destructive')).toBeInTheDocument()
-
-      // Switch back to keep
-      fireEvent.click(keepOption)
-      expect(keepOption.querySelector('.bg-primary')).toBeInTheDocument()
+      expect(screen.getByRole('button', { name: 'Log out' }).className).toContain('destructive')
     })
   })
 
-  describe('logout flow with keep data', () => {
-    it('calls signOut and reloads when logging out with keep option', async () => {
-      renderModal()
-      const logoutButton = screen.getByRole('button', { name: 'Log out' })
-
-      fireEvent.click(logoutButton)
-
-      await act(async () => {
-        await getClock().runAllAsync()
-      })
-
-      expect(mockSignOut).toHaveBeenCalled()
-      expect(mockClearLocalData).toHaveBeenCalledWith({ clearDatabase: false })
-      expect(mockReload).toHaveBeenCalled()
-    })
-
-    it('shows loading state during logout', async () => {
-      let resolveSignOut: (value?: unknown) => void
-      mockSignOut.mockReturnValue(
-        new Promise((resolve) => {
-          resolveSignOut = resolve
-        }),
-      )
-
-      renderModal()
-      const logoutButton = screen.getByRole('button', { name: 'Log out' })
-
-      fireEvent.click(logoutButton)
-
-      await act(async () => {
-        await getClock().tickAsync(0)
-      })
-
-      expect(screen.getByText('Logging out...')).toBeInTheDocument()
-
-      // Clean up
-      resolveSignOut!()
-      await act(async () => {
-        await getClock().runAllAsync()
-      })
-    })
-  })
-
-  describe('logout flow with delete data', () => {
-    it('calls signOut, clearLocalData with clearDatabase, and reloads when deleting data', async () => {
-      renderModal()
-      const deleteOption = screen.getByText('Delete data from device').closest('button')!
-      const logoutButton = screen.getByRole('button', { name: 'Log out' })
-
-      fireEvent.click(deleteOption)
-      fireEvent.click(logoutButton)
-
-      await act(async () => {
-        await getClock().runAllAsync()
-      })
-
-      expect(mockSignOut).toHaveBeenCalled()
-      expect(mockClearLocalData).toHaveBeenCalledWith({ clearDatabase: true })
-      expect(mockReload).toHaveBeenCalled()
-    })
-
-    it('shows delete-specific loading text', async () => {
-      let resolveSignOut: (value?: unknown) => void
-      mockSignOut.mockReturnValue(
-        new Promise((resolve) => {
-          resolveSignOut = resolve
-        }),
-      )
-
-      renderModal()
-      const deleteOption = screen.getByText('Delete data from device').closest('button')!
-      const logoutButton = screen.getByRole('button', { name: 'Log out' })
-
-      fireEvent.click(deleteOption)
-      fireEvent.click(logoutButton)
-
-      await act(async () => {
-        await getClock().tickAsync(0)
-      })
-
-      expect(screen.getByText('Deleting...')).toBeInTheDocument()
-
-      // Clean up
-      resolveSignOut!()
-      await act(async () => {
-        await getClock().runAllAsync()
-      })
-    })
-
-    it('uses destructive button variant when delete is selected', () => {
-      renderModal()
-      const deleteOption = screen.getByText('Delete data from device').closest('button')!
-      const logoutButton = screen.getByRole('button', { name: 'Log out' })
-
-      fireEvent.click(deleteOption)
-
-      // Check for destructive variant class
-      expect(logoutButton.className).toContain('destructive')
-    })
-  })
-
-  describe('error handling', () => {
-    it('continues to reload even if signOut fails', async () => {
-      mockSignOut.mockRejectedValue(new Error('Network error'))
-
-      renderModal()
-      const logoutButton = screen.getByRole('button', { name: 'Log out' })
-
-      fireEvent.click(logoutButton)
-
-      await act(async () => {
-        await getClock().runAllAsync()
-      })
-
-      expect(mockReload).toHaveBeenCalled()
-    })
-
-    it('continues to reload even if clearLocalData fails', async () => {
-      mockClearLocalData.mockRejectedValueOnce(new Error('Cleanup error'))
-
-      renderModal()
-      const deleteOption = screen.getByText('Delete data from device').closest('button')!
-      const logoutButton = screen.getByRole('button', { name: 'Log out' })
-
-      fireEvent.click(deleteOption)
-      fireEvent.click(logoutButton)
-
-      await act(async () => {
-        await getClock().runAllAsync()
-      })
-
-      expect(mockReload).toHaveBeenCalled()
-    })
-  })
-
-  describe('SSO mode logout', () => {
-    beforeEach(() => {
+  describe('logout flow', () => {
+    it('passes the Better Auth signOut callback and an SSO-aware onComplete to signOutAndWipe', async () => {
+      const env = import.meta.env as Record<string, string | undefined>
       env.VITE_AUTH_MODE = 'sso'
+      try {
+        renderModal()
+        fireEvent.click(screen.getByRole('button', { name: 'Log out' }))
+
+        await act(async () => {
+          await getClock().runAllAsync()
+        })
+
+        expect(mockSignOutAndWipe).toHaveBeenCalledTimes(1)
+        const arg = mockSignOutAndWipe.mock.calls[0][0]
+        expect(typeof arg.signOut).toBe('function')
+        await arg.signOut?.()
+        expect(mockSignOut).toHaveBeenCalled()
+        // SSO mode → onComplete lands on /signed-out via replace().
+        expect(mockReplace).toHaveBeenCalledWith('/signed-out')
+      } finally {
+        delete env.VITE_AUTH_MODE
+      }
     })
 
-    it('navigates to /signed-out instead of reloading in SSO mode', async () => {
-      renderModal()
-      const logoutButton = screen.getByRole('button', { name: 'Log out' })
+    it('reloads instead of redirecting in consumer mode', async () => {
+      // Default test env has no VITE_AUTH_MODE set → isSsoMode() === false.
+      const mockReload = mock()
+      Object.defineProperty(window, 'location', {
+        value: { replace: mockReplace, reload: mockReload },
+        writable: true,
+        configurable: true,
+      })
 
-      fireEvent.click(logoutButton)
+      renderModal()
+      fireEvent.click(screen.getByRole('button', { name: 'Log out' }))
 
       await act(async () => {
         await getClock().runAllAsync()
       })
 
-      expect(mockReplace).toHaveBeenCalledWith('/signed-out')
-      expect(mockReload).not.toHaveBeenCalled()
-    })
-
-    it('navigates to /signed-out even if signOut fails', async () => {
-      mockSignOut.mockRejectedValue(new Error('Network error'))
-
-      renderModal()
-      const logoutButton = screen.getByRole('button', { name: 'Log out' })
-
-      fireEvent.click(logoutButton)
-
-      await act(async () => {
-        await getClock().runAllAsync()
-      })
-
-      expect(mockReplace).toHaveBeenCalledWith('/signed-out')
-      expect(mockReload).not.toHaveBeenCalled()
+      expect(mockReload).toHaveBeenCalled()
+      expect(mockReplace).not.toHaveBeenCalled()
     })
   })
 
-  describe('modal behavior during logout', () => {
-    it('prevents closing while logging out', async () => {
-      let resolveSignOut: (value?: unknown) => void
-      mockSignOut.mockReturnValue(
-        new Promise((resolve) => {
-          resolveSignOut = resolve
-        }),
-      )
-
+  describe('double-click guard', () => {
+    it('only fires signOutAndWipe once when Log out is clicked rapidly', () => {
       renderModal()
-      const logoutButton = screen.getByRole('button', { name: 'Log out' })
-
-      fireEvent.click(logoutButton)
-
-      await act(async () => {
-        await getClock().tickAsync(0)
-      })
-
-      // Try to cancel - should be disabled
-      const cancelButton = screen.getByRole('button', { name: 'Cancel' })
-      expect(cancelButton).toBeDisabled()
-
-      // Clean up
-      resolveSignOut!()
-      await act(async () => {
-        await getClock().runAllAsync()
-      })
-    })
-
-    it('disables logout button while logging out', async () => {
-      let resolveSignOut: (value?: unknown) => void
-      mockSignOut.mockReturnValue(
-        new Promise((resolve) => {
-          resolveSignOut = resolve
-        }),
-      )
-
-      renderModal()
-      const logoutButton = screen.getByRole('button', { name: 'Log out' })
-
-      fireEvent.click(logoutButton)
-
-      await act(async () => {
-        await getClock().tickAsync(0)
-      })
-
-      // The button text changes and becomes disabled
-      expect(screen.getByRole('button', { name: /Logging out|Deleting/i })).toBeDisabled()
-
-      // Clean up
-      resolveSignOut!()
-      await act(async () => {
-        await getClock().runAllAsync()
-      })
+      const button = screen.getByRole('button', { name: 'Log out' })
+      fireEvent.click(button)
+      fireEvent.click(button)
+      fireEvent.click(button)
+      expect(mockSignOutAndWipe).toHaveBeenCalledTimes(1)
     })
   })
 
   describe('cancel behavior', () => {
-    it('calls onOpenChange(false) when cancel is clicked', () => {
+    it('closes the dialog when cancel is clicked', () => {
       renderModal()
-      const cancelButton = screen.getByRole('button', { name: 'Cancel' })
-
-      fireEvent.click(cancelButton)
-
+      fireEvent.click(screen.getByRole('button', { name: 'Cancel' }))
       expect(mockOnOpenChange).toHaveBeenCalledWith(false)
-    })
-
-    it('resets option selection when modal is closed', () => {
-      renderModal()
-      const deleteOption = screen.getByText('Delete data from device').closest('button')!
-
-      // Select delete option
-      fireEvent.click(deleteOption)
-
-      // Close and reopen - selection should reset via onOpenChange handler
-      // The component resets selectedOption to 'keep' when newOpen is false
-      expect(mockOnOpenChange).not.toHaveBeenCalled()
     })
   })
 })

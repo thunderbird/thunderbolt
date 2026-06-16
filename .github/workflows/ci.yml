@@ -222,6 +222,13 @@ jobs:
           cd backend
           bun install --frozen-lockfile
 
+      # `shared/workspaces.ts` imports `uuid`. TS bundler-mode resolution from
+      # shared/ walks up to root `node_modules/` (never reaches backend/), so
+      # the backend type-check fails with "Cannot find module 'uuid'" unless
+      # the root deps are installed too.
+      - name: Install root dependencies (needed for shared/ type-check)
+        run: bun install --frozen-lockfile
+
       - name: Type check backend
         run: |
           cd backend

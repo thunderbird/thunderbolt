@@ -9,6 +9,20 @@ import { z } from 'zod'
  */
 const settingsSchema = z
   .object({
+    // Stable per-deployment UUID. Returned by GET /v1/config and used by the frontend to
+    // key the trust-domain registry (auth token, device ID, encryption keys, DB filename
+    // are all namespaced by this). No default — TS-enforced to prevent ID duplication
+    // across deployments. `make doctor` auto-generates one for local dev.
+    //
+    // Custom messages mirror the BETTER_AUTH_SECRET ergonomics: a raw `Expected
+    // string, received undefined` ZodError doesn't tell a fresh dev what to do.
+    serverId: z
+      .string({
+        error:
+          'SERVER_ID env var must be set to a stable per-deployment UUID. Run `make doctor` to auto-generate one for local dev.',
+      })
+      .uuid({ error: 'SERVER_ID must be a valid UUID.' }),
+
     // API Keys
     fireworksApiKey: z.string().default(''),
     mistralApiKey: z.string().default(''),
@@ -33,7 +47,13 @@ const settingsSchema = z
     // Anonymous-session overlay — opt-in. When false, the anonymous() Better Auth plugin
     // is NOT registered so /v1/api/auth/sign-in/anonymous returns 404. Defense-in-depth
     // against a malicious client bypassing the frontend gate via direct curl.
+    // Surfaced to the UI via GET /config as `allowAnonUsers`.
     authAllowAnonymous: z.boolean().default(false),
+    // Workspace creation policy flags. Surfaced via GET /config; enforced by the
+    // PowerSync upload-handler factory (workspaces table). Both default to false to
+    // match v1 production posture (central-admin only); relax per deployment.
+    allowWorkspaceCreationByAnon: z.boolean().default(false),
+    allowWorkspaceCreationByMembers: z.boolean().default(false),
     oidcClientId: z.string().default(''),
     oidcClientSecret: z.string().default(''),
     oidcIssuer: z.string().default(''),
@@ -154,6 +174,7 @@ export type Settings = z.infer<typeof settingsSchema>
 const parseSettings = (): Settings => {
   const isDevelopment = process.env.NODE_ENV === 'development'
   const env = {
+    serverId: process.env.SERVER_ID,
     fireworksApiKey: process.env.FIREWORKS_API_KEY || '',
     mistralApiKey: process.env.MISTRAL_API_KEY || '',
     anthropicApiKey: process.env.ANTHROPIC_API_KEY || '',
@@ -167,6 +188,8 @@ const parseSettings = (): Settings => {
     microsoftClientSecret: process.env.MICROSOFT_CLIENT_SECRET || '',
     authMode: (process.env.AUTH_MODE || 'consumer').toLowerCase(),
     authAllowAnonymous: process.env.AUTH_ALLOW_ANONYMOUS === 'true',
+    allowWorkspaceCreationByAnon: process.env.ALLOW_WORKSPACE_CREATION_BY_ANON === 'true',
+    allowWorkspaceCreationByMembers: process.env.ALLOW_WORKSPACE_CREATION_BY_MEMBERS === 'true',
     oidcClientId: process.env.OIDC_CLIENT_ID || '',
     oidcClientSecret: process.env.OIDC_CLIENT_SECRET || '',
     oidcIssuer: process.env.OIDC_ISSUER || '',

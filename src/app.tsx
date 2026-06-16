@@ -37,11 +37,17 @@ import { useViewportLock } from '@/hooks/use-viewport-lock'
 import { useMcpSync } from '@/hooks/use-mcp-sync'
 import { PostHogProvider } from '@/lib/posthog'
 import { ThemeProvider } from '@/lib/theme-provider'
+import { AppErrorBoundary } from './components/app-error-boundary'
 import { AppErrorScreen } from './components/app-error-screen'
+import { ModePicker } from './components/boot/mode-picker'
 import { UpgradeRequired } from './components/upgrade-required'
 import { useConfigStore } from '@/api/config-store'
 import { compareSemver } from '@/lib/compare-semver'
 import { AuthGate } from './components/auth-gate'
+import { WorkspaceGate } from './components/workspace-gate'
+import { WorkspaceMembershipGate } from './components/workspace-membership-gate'
+import { WorkspaceSettingsGate } from './settings/workspace/gate'
+import { RequireWorkspaceAdmin } from './settings/workspace/require-permission'
 import { OnboardingDialog } from './components/onboarding/onboarding-dialog'
 import { WelcomeDialog } from './components/welcome-dialog'
 import { PendingDeviceModal } from './components/pending-device-modal'
@@ -62,7 +68,7 @@ import { isSsoMode, isWaitlistBypassed } from './lib/auth-mode'
 import { isTauri } from './lib/platform'
 import { getPowerSyncInstance } from './db/powersync/sync-state'
 import { refreshSystemAgents } from '@/db/seeding/seed-agents'
-import { useLocalSettingsStore } from '@/stores/local-settings-store'
+import { useActiveCloudUrl } from '@/stores/trust-domain-registry'
 import { type ComponentProps, Suspense, lazy, useEffect, useState } from 'react'
 import { markAppMounted } from '@/lib/init-timing'
 import { LazyMotion } from 'framer-motion'
@@ -83,6 +89,9 @@ const McpServersPage = lazy(() => import('@/settings/mcp-servers'))
 const SkillsPage = lazy(() => import('@/settings/skills'))
 const AgentsSettingsPage = lazy(() => import('@/routes/settings/agents'))
 const IntegrationsPage = lazy(() => import('@/settings/integrations'))
+const WorkspaceGeneralPage = lazy(() => import('@/settings/workspace/general'))
+const WorkspaceMembersPage = lazy(() => import('@/settings/workspace/members'))
+const WorkspacePermissionsPage = lazy(() => import('@/settings/workspace/permissions'))
 
 // Lazily import SSO components so non-enterprise deployments don't pay
 // for the extra bundle size and attack surface.
@@ -94,6 +103,46 @@ const DevSettingsPage = import.meta.env.DEV ? lazy(() => import('@/settings/dev-
 const MessageSimulatorPage = import.meta.env.DEV ? lazy(() => import('./devtools/message-simulator')) : () => null
 
 const queryClient = new QueryClient()
+
+/**
+ * Shared route sub-tree mounted under both the personal workspace (unprefixed)
+ * and `/w/:workspaceId` (shared, membership-gated). Paths are relative so each
+ * mount resolves them against its parent — `chats/new` becomes either
+ * `/chats/new` or `/w/<id>/chats/new`.
+ */
+const renderWorkspaceRoutes = ({ experimentalFeatureTasks }: { experimentalFeatureTasks: boolean }) => (
+  <>
+    {/* Home routes with HomeLayout */}
+    <Route element={<ChatLayout />}>
+      <Route index element={<Navigate to="chats/new" replace relative="route" />} />
+      <Route path="chats/:chatThreadId" element={<ChatDetailPage />} />
+      {experimentalFeatureTasks && <Route path="tasks" element={<TasksPage />} />}
+      {import.meta.env.DEV && <Route path="message-simulator" element={<MessageSimulatorPage />} />}
+    </Route>
+
+    {/* Settings routes with SettingsLayout */}
+    <Route path="settings" element={<SettingsLayout />}>
+      <Route index element={<Settings />} />
+      <Route path="preferences" element={<PreferencesSettingsPage />} />
+      <Route path="models" element={<ModelsPage />} />
+      <Route path="devices" element={<DevicesSettingsPage />} />
+      <Route path="mcp-servers" element={<McpServersPage />} />
+      <Route path="skills" element={<SkillsPage />} />
+      <Route path="agents" element={<AgentsSettingsPage />} />
+      <Route path="integrations" element={<IntegrationsPage />} />
+      <Route path="workspace">
+        <Route element={<WorkspaceSettingsGate />}>
+          <Route path="general" element={<WorkspaceGeneralPage />} />
+        </Route>
+        <Route path="members" element={<WorkspaceMembersPage />} />
+        <Route element={<RequireWorkspaceAdmin />}>
+          <Route path="permissions" element={<WorkspacePermissionsPage />} />
+        </Route>
+      </Route>
+      {import.meta.env.DEV && <Route path="dev-settings" element={<DevSettingsPage />} />}
+    </Route>
+  </>
+)
 
 /**
  * Hydrate the local-only `agents_system` table from the backend's `/agents`
@@ -110,7 +159,7 @@ const useBootstrapSystemAgents = () => {
   const httpClient = useHttpClient()
   const authClient = useAuth()
   const { data: session } = authClient.useSession()
-  const cloudUrl = useLocalSettingsStore((s) => s.cloudUrl)
+  const cloudUrl = useActiveCloudUrl()
 
   const isRealUser = !!session?.user && session.user.isAnonymous !== true
 
@@ -130,11 +179,13 @@ const AppContent = ({ initData }: { initData: InitData }) => {
   useSafeAreaInset()
 
   return (
-    <BrowserRouter>
-      <AppRoutes initData={initData} />
-      <UpdateNotification />
-      <PendingDeviceModal />
-    </BrowserRouter>
+    <AppErrorBoundary>
+      <BrowserRouter>
+        <AppRoutes initData={initData} />
+        <UpdateNotification />
+        <PendingDeviceModal />
+      </BrowserRouter>
+    </AppErrorBoundary>
   )
 }
 
@@ -169,37 +220,45 @@ const AppRoutes = ({ initData }: { initData: InitData }) => {
         )}
 
         {/* Main app routes - authenticated only. The gate decides redirect
-            targets internally from VITE_AUTH_MODE + VITE_AUTH_ENABLE_ANONYMOUS. */}
+            targets internally from VITE_AUTH_MODE + VITE_AUTH_ENABLE_ANONYMOUS.
+            `WorkspaceGate` then holds the routes until `runPostAuthBootstrap`
+            has resolved the active workspace — keeps DAL inserts from firing
+            with a null workspace id between authentication and sync landing.
+
+            The shared sub-tree (chat / settings / dev surfaces) is mounted
+            twice: unprefixed for the personal workspace (canonical) and under
+            `/w/:workspaceId/` for shared workspaces (membership-gated). Index
+            and child paths are relative so the same JSX resolves to either
+            `/chats/new` or `/w/:workspaceId/chats/new` based on its parent. */}
         <Route element={<AuthGate require="authenticated" />}>
-          <Route
-            path="/"
-            element={
-              <>
-                <Layout />
-                <OnboardingDialog />
-                <WelcomeDialog />
-              </>
-            }
-          >
-            {/* Home routes with HomeLayout */}
-            <Route element={<ChatLayout />}>
-              <Route index element={<Navigate to="/chats/new" replace />} />
-              <Route path="chats/:chatThreadId" element={<ChatDetailPage />} />
-              {experimentalFeatureTasks.value && <Route path="tasks" element={<TasksPage />} />}
-              {import.meta.env.DEV && <Route path="message-simulator" element={<MessageSimulatorPage />} />}
+          <Route element={<WorkspaceGate />}>
+            {/* Personal workspace — unprefixed canonical URLs. */}
+            <Route
+              path="/"
+              element={
+                <>
+                  <Layout />
+                  <OnboardingDialog />
+                  <WelcomeDialog />
+                </>
+              }
+            >
+              {renderWorkspaceRoutes({ experimentalFeatureTasks: experimentalFeatureTasks.value })}
             </Route>
 
-            {/* Settings routes with SettingsLayout */}
-            <Route path="settings" element={<SettingsLayout />}>
-              <Route index element={<Settings />} />
-              <Route path="preferences" element={<PreferencesSettingsPage />} />
-              <Route path="models" element={<ModelsPage />} />
-              <Route path="devices" element={<DevicesSettingsPage />} />
-              <Route path="mcp-servers" element={<McpServersPage />} />
-              <Route path="skills" element={<SkillsPage />} />
-              <Route path="agents" element={<AgentsSettingsPage />} />
-              <Route path="integrations" element={<IntegrationsPage />} />
-              {import.meta.env.DEV && <Route path="dev-settings" element={<DevSettingsPage />} />}
+            {/* Shared workspaces — `/w/:workspaceId/...`, membership-gated. */}
+            <Route path="/w/:workspaceId" element={<WorkspaceMembershipGate />}>
+              <Route
+                element={
+                  <>
+                    <Layout />
+                    <OnboardingDialog />
+                    <WelcomeDialog />
+                  </>
+                }
+              >
+                {renderWorkspaceRoutes({ experimentalFeatureTasks: experimentalFeatureTasks.value })}
+              </Route>
             </Route>
           </Route>
         </Route>
@@ -239,6 +298,10 @@ export const App = () => {
   const renderAppContent = () => {
     if (upgradeRequired) {
       return <UpgradeRequired currentVersion={appVersion ?? 'unknown'} minVersion={minAppVersion ?? 'unknown'} />
+    }
+
+    if (initError?.code === 'NO_TRUST_DOMAIN') {
+      return <ModePicker />
     }
     if (initError) {
       if (initError.code === 'STORAGE_UNAVAILABLE') {

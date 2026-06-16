@@ -3,6 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import type { PowerSyncTableName } from '@shared/powersync-tables'
+import { workspacePermissionKeys, workspacePermissionRoles } from '@shared/workspaces'
 import {
   type AnyPgColumn,
   type AnyPgTable,
@@ -14,8 +15,9 @@ import {
   real,
   text,
   timestamp,
+  uniqueIndex,
 } from 'drizzle-orm/pg-core'
-import { getTableColumns } from 'drizzle-orm'
+import { getTableColumns, sql } from 'drizzle-orm'
 import { user } from './auth-schema'
 
 /**
@@ -24,6 +26,122 @@ import { user } from './auth-schema'
  */
 
 const powersyncSchema = pgSchema('powersync')
+
+/**
+ * Workspace entity. Every real user gets one personal workspace (`is_personal = true`)
+ * created by the Better Auth post-create hook; shared workspaces are created later via
+ * PowerSync upload from the FE (gated by `allowWorkspaceCreationBy*` flags).
+ *
+ * `owner_user_id` defines who a personal workspace belongs to (NOT an access-control
+ * "owner" role — roles live in `workspace_memberships`). The partial unique index
+ * enforces "one personal workspace per user".
+ */
+export const workspacesTable = powersyncSchema.table(
+  'workspaces',
+  {
+    id: text('id').primaryKey(),
+    name: text('name').notNull(),
+    slug: text('slug'),
+    icon: text('icon'),
+    isPersonal: boolean('is_personal').notNull().default(false),
+    ownerUserId: text('owner_user_id').references(() => user.id, { onDelete: 'cascade' }),
+    createdAt: timestamp('created_at').notNull().defaultNow(),
+    updatedAt: timestamp('updated_at').notNull().defaultNow(),
+  },
+  (table) => [
+    uniqueIndex('idx_workspaces_personal_per_owner')
+      .on(table.ownerUserId)
+      .where(sql`${table.isPersonal} = true`),
+    index('idx_workspaces_owner_user_id').on(table.ownerUserId),
+    uniqueIndex('idx_workspaces_slug')
+      .on(table.slug)
+      .where(sql`${table.slug} IS NOT NULL`),
+  ],
+)
+
+/**
+ * Workspace membership and role assignment. The natural key per spec §3.7 is
+ * `(workspace_id, user_id)`; PowerSync requires a single `id` column for row tracking,
+ * so the natural key is enforced as a unique constraint instead of a composite PK.
+ *
+ * Roles are `admin` | `member` only (Decision 9 — no `owner`). Last-admin protection
+ * lives in the upload handler factory.
+ *
+ * `user_name` / `user_email` are denormalized from `auth.user` so the Members
+ * page can render display info without a synced `users` table — PowerSync sync
+ * rules can't follow a `user_id` foreign key across buckets. The upload handler
+ * fills them at insert time; the Better Auth `after('updateUser')` hook keeps
+ * them in step when a user later edits their name or email.
+ */
+export const workspaceMembershipsTable = powersyncSchema.table(
+  'workspace_memberships',
+  {
+    id: text('id').primaryKey(),
+    workspaceId: text('workspace_id')
+      .notNull()
+      .references(() => workspacesTable.id, { onDelete: 'cascade' }),
+    userId: text('user_id')
+      .notNull()
+      .references(() => user.id, { onDelete: 'cascade' }),
+    role: text('role', { enum: ['admin', 'member'] }).notNull(),
+    userName: text('user_name'),
+    userEmail: text('user_email'),
+    createdAt: timestamp('created_at').notNull().defaultNow(),
+  },
+  (table) => [
+    uniqueIndex('idx_workspace_memberships_workspace_user').on(table.workspaceId, table.userId),
+    index('idx_workspace_memberships_user').on(table.userId),
+    index('idx_workspace_memberships_workspace').on(table.workspaceId),
+  ],
+)
+
+/**
+ * Pending memberships: admin invites an email that doesn't yet have an account.
+ * On signup, the Better Auth post-create hook promotes any matching rows into
+ * `workspace_memberships` and deletes them here. Emails are stored normalized
+ * (lower-cased + trimmed) to match the `before` hook's normalization of `user.email`.
+ */
+export const workspacePendingMembershipsTable = powersyncSchema.table(
+  'workspace_pending_memberships',
+  {
+    id: text('id').primaryKey(),
+    workspaceId: text('workspace_id')
+      .notNull()
+      .references(() => workspacesTable.id, { onDelete: 'cascade' }),
+    email: text('email').notNull(),
+    role: text('role', { enum: ['admin', 'member'] }).notNull(),
+    invitedByUserId: text('invited_by_user_id')
+      .notNull()
+      .references(() => user.id, { onDelete: 'cascade' }),
+    createdAt: timestamp('created_at').notNull().defaultNow(),
+  },
+  (table) => [
+    uniqueIndex('idx_workspace_pending_memberships_workspace_email').on(table.workspaceId, table.email),
+    index('idx_workspace_pending_memberships_email').on(table.email),
+    index('idx_workspace_pending_memberships_workspace').on(table.workspaceId),
+  ],
+)
+
+/**
+ * Per-workspace permission policy (Decision 10). The enum lists every
+ * configurable action the workspace exposes; the source of truth lives in
+ * `shared/workspaces.ts` so FE/BE schemas + types stay in lockstep.
+ */
+export const workspacePermissionsTable = powersyncSchema.table(
+  'workspace_permissions',
+  {
+    id: text('id').primaryKey(),
+    workspaceId: text('workspace_id')
+      .notNull()
+      .references(() => workspacesTable.id, { onDelete: 'cascade' }),
+    permissionKey: text('permission_key', { enum: [...workspacePermissionKeys] }).notNull(),
+    requiredRole: text('required_role', { enum: [...workspacePermissionRoles] }).notNull(),
+  },
+  (table) => [
+    uniqueIndex('idx_workspace_permissions_workspace_key').on(table.workspaceId, table.permissionKey),
+    index('idx_workspace_permissions_workspace').on(table.workspaceId),
+  ],
+)
 
 export const settingsTable = powersyncSchema.table(
   'settings',
@@ -53,11 +171,19 @@ export const chatThreadsTable = powersyncSchema.table(
     acpSessionId: text('acp_session_id'),
     agentId: text('agent_id'),
     deletedAt: timestamp('deleted_at'),
+    // User-private within a workspace — the row's author is the only valid reader,
+    // so deleting the user cascades the row away (no other member can ever see it).
     userId: text('user_id')
       .notNull()
       .references(() => user.id, { onDelete: 'cascade' }),
+    workspaceId: text('workspace_id')
+      .notNull()
+      .references(() => workspacesTable.id, { onDelete: 'cascade' }),
   },
-  (table) => [index('idx_chat_threads_user_id').on(table.userId)],
+  (table) => [
+    index('idx_chat_threads_user_id').on(table.userId),
+    index('idx_chat_threads_workspace_id').on(table.workspaceId),
+  ],
 )
 
 export const chatMessagesTable = powersyncSchema.table(
@@ -76,8 +202,14 @@ export const chatMessagesTable = powersyncSchema.table(
     userId: text('user_id')
       .notNull()
       .references(() => user.id, { onDelete: 'cascade' }),
+    workspaceId: text('workspace_id')
+      .notNull()
+      .references(() => workspacesTable.id, { onDelete: 'cascade' }),
   },
-  (table) => [index('idx_chat_messages_user_id').on(table.userId)],
+  (table) => [
+    index('idx_chat_messages_user_id').on(table.userId),
+    index('idx_chat_messages_workspace_id').on(table.workspaceId),
+  ],
 )
 
 export const tasksTable = powersyncSchema.table(
@@ -92,8 +224,16 @@ export const tasksTable = powersyncSchema.table(
     userId: text('user_id')
       .notNull()
       .references(() => user.id, { onDelete: 'cascade' }),
+    workspaceId: text('workspace_id')
+      .notNull()
+      .references(() => workspacesTable.id, { onDelete: 'cascade' }),
   },
-  (table) => [primaryKey({ columns: [table.id, table.userId] }), index('idx_tasks_user_id').on(table.userId)],
+  (table) => [
+    // Composite PK on (id, workspace_id) lets default-data rows repeat across workspaces.
+    primaryKey({ columns: [table.id, table.workspaceId] }),
+    index('idx_tasks_user_id').on(table.userId),
+    index('idx_tasks_workspace_id').on(table.workspaceId),
+  ],
 )
 
 export const modelsTable = powersyncSchema.table(
@@ -117,11 +257,16 @@ export const modelsTable = powersyncSchema.table(
     defaultHash: text('default_hash'),
     vendor: text('vendor'),
     description: text('description'),
-    userId: text('user_id')
+    userId: text('user_id').references(() => user.id, { onDelete: 'set null' }),
+    workspaceId: text('workspace_id')
       .notNull()
-      .references(() => user.id, { onDelete: 'cascade' }),
+      .references(() => workspacesTable.id, { onDelete: 'cascade' }),
   },
-  (table) => [primaryKey({ columns: [table.id, table.userId] }), index('idx_models_user_id').on(table.userId)],
+  (table) => [
+    primaryKey({ columns: [table.id, table.workspaceId] }),
+    index('idx_models_user_id').on(table.userId),
+    index('idx_models_workspace_id').on(table.workspaceId),
+  ],
 )
 
 export const promptsTable = powersyncSchema.table(
@@ -133,11 +278,16 @@ export const promptsTable = powersyncSchema.table(
     modelId: text('model_id'),
     deletedAt: timestamp('deleted_at'),
     defaultHash: text('default_hash'),
-    userId: text('user_id')
+    userId: text('user_id').references(() => user.id, { onDelete: 'set null' }),
+    workspaceId: text('workspace_id')
       .notNull()
-      .references(() => user.id, { onDelete: 'cascade' }),
+      .references(() => workspacesTable.id, { onDelete: 'cascade' }),
   },
-  (table) => [primaryKey({ columns: [table.id, table.userId] }), index('idx_prompts_user_id').on(table.userId)],
+  (table) => [
+    primaryKey({ columns: [table.id, table.workspaceId] }),
+    index('idx_prompts_user_id').on(table.userId),
+    index('idx_prompts_workspace_id').on(table.workspaceId),
+  ],
 )
 
 export const skillsTable = powersyncSchema.table(
@@ -151,11 +301,16 @@ export const skillsTable = powersyncSchema.table(
     pinnedOrder: integer('pinned_order'),
     deletedAt: timestamp('deleted_at'),
     defaultHash: text('default_hash'),
-    userId: text('user_id')
+    userId: text('user_id').references(() => user.id, { onDelete: 'set null' }),
+    workspaceId: text('workspace_id')
       .notNull()
-      .references(() => user.id, { onDelete: 'cascade' }),
+      .references(() => workspacesTable.id, { onDelete: 'cascade' }),
   },
-  (table) => [primaryKey({ columns: [table.id, table.userId] }), index('idx_skills_user_id').on(table.userId)],
+  (table) => [
+    primaryKey({ columns: [table.id, table.workspaceId] }),
+    index('idx_skills_user_id').on(table.userId),
+    index('idx_skills_workspace_id').on(table.workspaceId),
+  ],
 )
 
 export const triggersTable = powersyncSchema.table(
@@ -167,11 +322,12 @@ export const triggersTable = powersyncSchema.table(
     promptId: text('prompt_id'),
     isEnabled: integer('is_enabled').default(1),
     deletedAt: timestamp('deleted_at'),
-    userId: text('user_id')
+    userId: text('user_id').references(() => user.id, { onDelete: 'set null' }),
+    workspaceId: text('workspace_id')
       .notNull()
-      .references(() => user.id, { onDelete: 'cascade' }),
+      .references(() => workspacesTable.id, { onDelete: 'cascade' }),
   },
-  (table) => [index('idx_triggers_user_id').on(table.userId)],
+  (table) => [index('idx_triggers_user_id').on(table.userId), index('idx_triggers_workspace_id').on(table.workspaceId)],
 )
 
 export const modesTable = powersyncSchema.table(
@@ -186,11 +342,16 @@ export const modesTable = powersyncSchema.table(
     order: integer('order').default(0),
     defaultHash: text('default_hash'),
     deletedAt: timestamp('deleted_at'),
-    userId: text('user_id')
+    userId: text('user_id').references(() => user.id, { onDelete: 'set null' }),
+    workspaceId: text('workspace_id')
       .notNull()
-      .references(() => user.id, { onDelete: 'cascade' }),
+      .references(() => workspacesTable.id, { onDelete: 'cascade' }),
   },
-  (table) => [primaryKey({ columns: [table.id, table.userId] }), index('idx_modes_user_id').on(table.userId)],
+  (table) => [
+    primaryKey({ columns: [table.id, table.workspaceId] }),
+    index('idx_modes_user_id').on(table.userId),
+    index('idx_modes_workspace_id').on(table.workspaceId),
+  ],
 )
 
 export const modelProfilesTable = powersyncSchema.table(
@@ -218,11 +379,16 @@ export const modelProfilesTable = powersyncSchema.table(
     providerOptions: text('provider_options'),
     defaultHash: text('default_hash'),
     deletedAt: timestamp('deleted_at'),
-    userId: text('user_id')
+    userId: text('user_id').references(() => user.id, { onDelete: 'set null' }),
+    workspaceId: text('workspace_id')
       .notNull()
-      .references(() => user.id, { onDelete: 'cascade' }),
+      .references(() => workspacesTable.id, { onDelete: 'cascade' }),
   },
-  (table) => [primaryKey({ columns: [table.id, table.userId] }), index('idx_model_profiles_user_id').on(table.userId)],
+  (table) => [
+    primaryKey({ columns: [table.id, table.workspaceId] }),
+    index('idx_model_profiles_user_id').on(table.userId),
+    index('idx_model_profiles_workspace_id').on(table.workspaceId),
+  ],
 )
 
 /** Synced via PowerSync. Device list, status, and public key for encryption. */
@@ -246,14 +412,20 @@ export const devicesTable = powersyncSchema.table(
   (table) => [index('idx_devices_user_id').on(table.userId)],
 )
 
-/** Synced via PowerSync. User-created ACP agents only. System agents are not rows. */
+/**
+ * Synced via PowerSync. User-created ACP agents only. System agents are not rows.
+ * Workspace-scoped, shared with all members — same shape as `mcp_servers`. The
+ * addendum predates this table being added in THU-547, but the conceptual model
+ * (external service connection configs) belongs to a workspace, not a single user.
+ */
 export const agentsTable = powersyncSchema.table(
   'agents',
   {
     id: text('id').notNull(),
-    userId: text('user_id')
+    userId: text('user_id').references(() => user.id, { onDelete: 'set null' }),
+    workspaceId: text('workspace_id')
       .notNull()
-      .references(() => user.id, { onDelete: 'cascade' }),
+      .references(() => workspacesTable.id, { onDelete: 'cascade' }),
     name: text('name').notNull(),
     type: text('type', { enum: ['remote-acp', 'managed-acp'] }).notNull(),
     transport: text('transport', { enum: ['websocket'] }).notNull(),
@@ -263,7 +435,11 @@ export const agentsTable = powersyncSchema.table(
     enabled: integer('enabled').default(1).notNull(),
     deletedAt: timestamp('deleted_at'),
   },
-  (table) => [primaryKey({ columns: [table.id, table.userId] }), index('idx_agents_user_id').on(table.userId)],
+  (table) => [
+    primaryKey({ columns: [table.id, table.workspaceId] }),
+    index('idx_agents_user_id').on(table.userId),
+    index('idx_agents_workspace_id').on(table.workspaceId),
+  ],
 )
 
 /**
@@ -283,6 +459,10 @@ export const powersyncTablesByName = {
   model_profiles: modelProfilesTable,
   devices: devicesTable,
   agents: agentsTable,
+  workspaces: workspacesTable,
+  workspace_memberships: workspaceMembershipsTable,
+  workspace_pending_memberships: workspacePendingMembershipsTable,
+  workspace_permissions: workspacePermissionsTable,
 } satisfies Record<PowerSyncTableName, AnyPgTable>
 
 /**
@@ -312,6 +492,10 @@ export const powersyncPkColumn: Record<PowerSyncTableName, AnyPgColumn> = {
   model_profiles: modelProfilesTable.id,
   devices: devicesTable.id,
   agents: agentsTable.id,
+  workspaces: workspacesTable.id,
+  workspace_memberships: workspaceMembershipsTable.id,
+  workspace_pending_memberships: workspacePendingMembershipsTable.id,
+  workspace_permissions: workspacePermissionsTable.id,
 }
 
 /**
@@ -323,13 +507,17 @@ export const powersyncConflictTarget: Record<PowerSyncTableName, AnyPgColumn[]> 
   settings: [settingsTable.key, settingsTable.userId],
   chat_threads: [chatThreadsTable.id],
   chat_messages: [chatMessagesTable.id],
-  tasks: [tasksTable.id, tasksTable.userId],
-  models: [modelsTable.id, modelsTable.userId],
-  prompts: [promptsTable.id, promptsTable.userId],
-  skills: [skillsTable.id, skillsTable.userId],
+  tasks: [tasksTable.id, tasksTable.workspaceId],
+  models: [modelsTable.id, modelsTable.workspaceId],
+  prompts: [promptsTable.id, promptsTable.workspaceId],
+  skills: [skillsTable.id, skillsTable.workspaceId],
   triggers: [triggersTable.id],
-  modes: [modesTable.id, modesTable.userId],
-  model_profiles: [modelProfilesTable.id, modelProfilesTable.userId],
+  modes: [modesTable.id, modesTable.workspaceId],
+  model_profiles: [modelProfilesTable.id, modelProfilesTable.workspaceId],
   devices: [devicesTable.id],
-  agents: [agentsTable.id, agentsTable.userId],
+  agents: [agentsTable.id, agentsTable.workspaceId],
+  workspaces: [workspacesTable.id],
+  workspace_memberships: [workspaceMembershipsTable.id],
+  workspace_pending_memberships: [workspacePendingMembershipsTable.id],
+  workspace_permissions: [workspacePermissionsTable.id],
 }

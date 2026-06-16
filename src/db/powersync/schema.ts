@@ -23,6 +23,10 @@ export const syncedTables = {
   model_profiles: tables.modelProfilesTable,
   devices: tables.devicesTable,
   agents: tables.agentsTable,
+  workspaces: tables.workspacesTable,
+  workspace_memberships: tables.workspaceMembershipsTable,
+  workspace_pending_memberships: tables.workspacePendingMembershipsTable,
+  workspace_permissions: tables.workspacePermissionsTable,
 } satisfies Record<PowerSyncTableName, unknown>
 
 /** Local-only tables — created in SQLite but never synced via PowerSync. */

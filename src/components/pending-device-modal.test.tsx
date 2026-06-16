@@ -13,14 +13,15 @@ import { getClock } from '@/testing-library'
 import '@testing-library/jest-dom'
 import { act, cleanup, fireEvent, screen } from '@testing-library/react'
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, mock } from 'bun:test'
+import { testServerId } from '@/testing-library'
 import { v7 as uuidv7 } from 'uuid'
 import type { ReactNode } from 'react'
 
 const currentDeviceId = uuidv7()
 const pendingDeviceId1 = uuidv7()
 
-const deviceIdKey = 'thunderbolt_device_id'
-const authTokenKey = 'thunderbolt_auth_token'
+const deviceIdKey = `thunderbolt_device_id__${testServerId}`
+const authTokenKey = `thunderbolt_auth_token__${testServerId}`
 const sessionStorageKey = 'pending_device_dismissed_ids'
 
 // Defend against bleed from other test files that fully mock '@/db/powersync/sync-state'.

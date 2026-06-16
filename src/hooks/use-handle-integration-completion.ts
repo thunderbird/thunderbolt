@@ -15,6 +15,13 @@ import { updateMessageCache } from '@/dal/chat-messages'
 
 type UseHandleIntegrationCompletionParams = {
   saveMessages: SaveMessagesFunction
+  /**
+   * Active workspace id, injected by the caller. Passed in (rather than
+   * resolved internally via `useActiveWorkspaceId`) so tests can mount this
+   * hook outside a Router without needing a `mock.module` shim that would
+   * leak across files (per the DI pattern established by THU-553).
+   */
+  workspaceId: string | null
 }
 
 /**
@@ -130,7 +137,10 @@ const waitForMessageInChat = async (
  * When an integration is connected, it automatically retries the user's original request
  * by sending a new message with the original text and triggering a response.
  */
-export const useHandleIntegrationCompletion = ({ saveMessages }: UseHandleIntegrationCompletionParams): void => {
+export const useHandleIntegrationCompletion = ({
+  saveMessages,
+  workspaceId,
+}: UseHandleIntegrationCompletionParams): void => {
   const db = useDatabase()
   const oauthRetryHandledRef = useRef<Set<string>>(new Set())
 
@@ -197,9 +207,12 @@ export const useHandleIntegrationCompletion = ({ saveMessages }: UseHandleIntegr
       })
 
       try {
-        await updateMessageCache(db, widgetMessageId, 'connectIntegrationWidget', { isHidden: true })
+        if (!workspaceId) {
+          throw new Error('No active workspace')
+        }
+        await updateMessageCache(db, workspaceId, widgetMessageId, 'connectIntegrationWidget', { isHidden: true })
         queryClient.invalidateQueries({
-          queryKey: ['messageCache', widgetMessageId, 'connectIntegrationWidget'],
+          queryKey: ['messageCache', workspaceId, widgetMessageId, 'connectIntegrationWidget'],
         })
       } catch (err) {
         console.warn('Failed to mark widget as hidden:', err)

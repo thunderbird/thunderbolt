@@ -138,8 +138,29 @@
     {
       "idx": 19,
       "version": "7",
-      "when": 1781029599779,
-      "tag": "0019_handy_masque",
+      "when": 1780411203148,
+      "tag": "0019_workspaces",
+      "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "7",
+      "when": 1780433554841,
+      "tag": "0020_workspace_id_on_scoped_tables",
+      "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "7",
+      "when": 1781094472865,
+      "tag": "0021_workspaces_slug_icon",
+      "breakpoints": true
+    },
+    {
+      "idx": 22,
+      "version": "7",
+      "when": 1781128111482,
+      "tag": "0022_workspace_memberships_user_display",
       "breakpoints": true
     },
     {

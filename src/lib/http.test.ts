@@ -3,6 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
+import { testServerId } from '@/testing-library'
 import { createAuthenticatedClient, createClient, HttpError } from './http'
 
 type FetchFn = (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>
@@ -147,7 +148,7 @@ describe('createAuthenticatedClient', () => {
   })
 
   describe('device identity headers', () => {
-    const deviceIdKey = 'thunderbolt_device_id'
+    const deviceIdKey = `thunderbolt_device_id__${testServerId}`
 
     beforeEach(() => {
       localStorage.setItem(deviceIdKey, 'test-device-id')

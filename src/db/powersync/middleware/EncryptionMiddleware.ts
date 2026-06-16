@@ -42,6 +42,10 @@ const decryptEntry = async (entry: SyncEntry, codec: EncryptionCodec) => {
 }
 
 /**
+ * Creates an encryption middleware using the given codec.
+ * Production code uses the `encryptionMiddleware` singleton; tests pass a fake codec
+ * directly instead of mocking the module.
+ *
  * Decrypts encrypted columns in sync data before it reaches SQLite.
  * Data-driven: scans all string values for the __enc: prefix rather than consulting
  * encryptedColumnsMap, so stale desktop bundles handle newly-encrypted columns correctly.

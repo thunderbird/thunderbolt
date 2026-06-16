@@ -34,7 +34,7 @@ import {
 import { getAllPrompts, getPrompt } from './prompts'
 import { updateSettings } from './settings'
 import { nowIso } from '@/lib/utils'
-import { resetTestDatabase, setupTestDatabase, teardownTestDatabase } from './test-utils'
+import { resetTestDatabase, setupTestDatabase, teardownTestDatabase, wsId } from './test-utils'
 import { getAllEnabledTriggers } from './triggers'
 
 beforeAll(async () => {
@@ -53,12 +53,12 @@ describe('Models DAL', () => {
 
   describe('getModel', () => {
     it('should return null when model does not exist', async () => {
-      const model = await getModel(getDb(), 'nonexistent-model-id')
+      const model = await getModel(getDb(), wsId, 'nonexistent-model-id')
       expect(model).toBe(null)
     })
 
     it('should return null when model ID is empty string', async () => {
-      const model = await getModel(getDb(), '')
+      const model = await getModel(getDb(), wsId, '')
       expect(model).toBe(null)
     })
 
@@ -73,9 +73,10 @@ describe('Models DAL', () => {
         model: 'gpt-4',
         isSystem: 0,
         enabled: 1,
+        workspaceId: wsId,
       })
 
-      const model = await getModel(getDb(), modelId)
+      const model = await getModel(getDb(), wsId, modelId)
       expect(model).not.toBe(null)
       expect(model?.id).toBe(modelId)
       expect(model?.name).toBe('Test Model')
@@ -107,9 +108,10 @@ describe('Models DAL', () => {
         model: 'gpt-oss-120b',
         isSystem: 1,
         enabled: 1,
+        workspaceId: wsId,
       })
 
-      const model = await getSelectedModel(getDb())
+      const model = await getSelectedModel(getDb(), wsId)
       expect(model.id).toBe(systemModelId)
       expect(model.name).toBe('System Model')
       expect(model.isSystem).toBe(1)
@@ -127,6 +129,7 @@ describe('Models DAL', () => {
         model: 'gpt-oss-120b',
         isSystem: 1,
         enabled: 1,
+        workspaceId: wsId,
       })
 
       // Create a non-system model
@@ -138,12 +141,13 @@ describe('Models DAL', () => {
         model: 'gpt-4',
         isSystem: 0,
         enabled: 1,
+        workspaceId: wsId,
       })
 
       // Set the selected model
       await updateSettings(getDb(), { selected_model: selectedModelId })
 
-      const model = await getSelectedModel(getDb())
+      const model = await getSelectedModel(getDb(), wsId)
       expect(model.id).toBe(selectedModelId)
       expect(model.name).toBe('Selected Model')
     })
@@ -160,6 +164,7 @@ describe('Models DAL', () => {
         model: 'gpt-oss-120b',
         isSystem: 1,
         enabled: 1,
+        workspaceId: wsId,
       })
 
       // Create a disabled model
@@ -171,13 +176,14 @@ describe('Models DAL', () => {
         model: 'mistral-large-3',
         isSystem: 0,
         enabled: 0,
+        workspaceId: wsId,
       })
 
       // Set the disabled model as selected
       await updateSettings(getDb(), { selected_model: disabledModelId })
 
       // Should fall back to system model since selected model is disabled
-      const model = await getSelectedModel(getDb())
+      const model = await getSelectedModel(getDb(), wsId)
       expect(model.id).toBe(systemModelId)
       expect(model.name).toBe('System Model')
       expect(model.isSystem).toBe(1)
@@ -196,6 +202,7 @@ describe('Models DAL', () => {
         model: 'gpt-oss-120b',
         isSystem: 1,
         enabled: 1,
+        workspaceId: wsId,
       })
 
       const selectedModelId = uuidv7()
@@ -206,12 +213,13 @@ describe('Models DAL', () => {
         model: 'gpt-4',
         isSystem: 0,
         enabled: 1,
+        workspaceId: wsId,
       })
 
       await updateSettings(getDb(), { selected_model: selectedModelId })
 
-      const asyncResult = await getSelectedModel(getDb())
-      const queryResult = await getSelectedModelQuery(getDb()).all()
+      const asyncResult = await getSelectedModel(getDb(), wsId)
+      const queryResult = await getSelectedModelQuery(getDb(), wsId).all()
       const queryModel = queryResult[0] ? (queryResult[0] as Model) : undefined
 
       expect(queryModel?.id).toBe(asyncResult.id)
@@ -229,6 +237,7 @@ describe('Models DAL', () => {
         model: 'gpt-oss-120b',
         isSystem: 1,
         enabled: 1,
+        workspaceId: wsId,
       })
 
       const disabledModelId = uuidv7()
@@ -239,11 +248,12 @@ describe('Models DAL', () => {
         model: 'mistral-large-3',
         isSystem: 0,
         enabled: 0,
+        workspaceId: wsId,
       })
 
       await updateSettings(getDb(), { selected_model: disabledModelId })
 
-      const queryResult = await getSelectedModelQuery(getDb()).all()
+      const queryResult = await getSelectedModelQuery(getDb(), wsId).all()
       const queryModel = queryResult[0] ? (queryResult[0] as Model) : undefined
 
       expect(queryModel?.id).toBe(systemModelId)
@@ -253,7 +263,7 @@ describe('Models DAL', () => {
 
   describe('getAllModels', () => {
     it('should return empty array when no models exist', async () => {
-      const models = await getAllModels(getDb())
+      const models = await getAllModels(getDb(), wsId)
       expect(models).toEqual([])
     })
 
@@ -270,6 +280,7 @@ describe('Models DAL', () => {
           model: 'gpt-4',
           isSystem: 0,
           enabled: 1,
+          workspaceId: wsId,
         },
         {
           id: modelId2,
@@ -278,10 +289,11 @@ describe('Models DAL', () => {
           model: 'gpt-oss-120b',
           isSystem: 1,
           enabled: 0,
+          workspaceId: wsId,
         },
       ])
 
-      const models = await getAllModels(getDb())
+      const models = await getAllModels(getDb(), wsId)
       expect(models).toHaveLength(2)
       expect(models.map((m) => m.id)).toContain(modelId1)
       expect(models.map((m) => m.id)).toContain(modelId2)
@@ -300,9 +312,10 @@ describe('Models DAL', () => {
         model: 'gpt-4',
         isSystem: 0,
         enabled: 0,
+        workspaceId: wsId,
       })
 
-      const models = await getAvailableModels(getDb())
+      const models = await getAvailableModels(getDb(), wsId)
       expect(models).toEqual([])
     })
 
@@ -319,6 +332,7 @@ describe('Models DAL', () => {
           model: 'gpt-4',
           isSystem: 0,
           enabled: 1,
+          workspaceId: wsId,
         },
         {
           id: disabledModelId,
@@ -327,10 +341,11 @@ describe('Models DAL', () => {
           model: 'claude-3-5-sonnet-20241022',
           isSystem: 1,
           enabled: 0,
+          workspaceId: wsId,
         },
       ])
 
-      const models = await getAvailableModels(getDb())
+      const models = await getAvailableModels(getDb(), wsId)
       expect(models).toHaveLength(1)
       expect(models[0]?.id).toBe(enabledModelId)
     })
@@ -348,9 +363,10 @@ describe('Models DAL', () => {
         model: 'gpt-4',
         isSystem: 0,
         enabled: 1,
+        workspaceId: wsId,
       })
 
-      const systemModel = await getSystemModel(getDb())
+      const systemModel = await getSystemModel(getDb(), wsId)
       expect(systemModel).toBe(null)
     })
 
@@ -365,9 +381,10 @@ describe('Models DAL', () => {
         model: 'gpt-oss-120b',
         isSystem: 1,
         enabled: 1,
+        workspaceId: wsId,
       })
 
-      const systemModel = await getSystemModel(getDb())
+      const systemModel = await getSystemModel(getDb(), wsId)
       expect(systemModel).not.toBe(null)
       expect(systemModel?.id).toBe(systemModelId)
       expect(systemModel?.isSystem).toBe(1)
@@ -387,6 +404,7 @@ describe('Models DAL', () => {
         model: 'gpt-oss-120b',
         isSystem: 1,
         enabled: 1,
+        workspaceId: wsId,
       })
 
       // Create an empty thread
@@ -395,9 +413,10 @@ describe('Models DAL', () => {
         id: threadId,
         title: 'Test Thread',
         isEncrypted: 0,
+        workspaceId: wsId,
       })
 
-      const model = await getDefaultModelForThread(getDb(), threadId)
+      const model = await getDefaultModelForThread(getDb(), wsId, threadId)
       expect(model.id).toBe(systemModelId)
     })
 
@@ -413,6 +432,7 @@ describe('Models DAL', () => {
         model: 'gpt-oss-120b',
         isSystem: 1,
         enabled: 1,
+        workspaceId: wsId,
       })
 
       const lastUsedModelId = uuidv7()
@@ -423,6 +443,7 @@ describe('Models DAL', () => {
         model: 'gpt-4',
         isSystem: 0,
         enabled: 1,
+        workspaceId: wsId,
       })
 
       // Create thread with message
@@ -431,6 +452,7 @@ describe('Models DAL', () => {
         id: threadId,
         title: 'Test Thread',
         isEncrypted: 0,
+        workspaceId: wsId,
       })
 
       await db.insert(chatMessagesTable).values({
@@ -439,9 +461,10 @@ describe('Models DAL', () => {
         role: 'assistant',
         content: 'Hello',
         modelId: lastUsedModelId,
+        workspaceId: wsId,
       })
 
-      const model = await getDefaultModelForThread(getDb(), threadId)
+      const model = await getDefaultModelForThread(getDb(), wsId, threadId)
       expect(model.id).toBe(lastUsedModelId)
     })
 
@@ -457,6 +480,7 @@ describe('Models DAL', () => {
         model: 'gpt-oss-120b',
         isSystem: 1,
         enabled: 1,
+        workspaceId: wsId,
       })
 
       // Create a temporary model that will be "deleted"
@@ -468,6 +492,7 @@ describe('Models DAL', () => {
         model: 'gpt-4',
         isSystem: 0,
         enabled: 1,
+        workspaceId: wsId,
       })
 
       // Create thread with message
@@ -476,6 +501,7 @@ describe('Models DAL', () => {
         id: threadId,
         title: 'Test Thread',
         isEncrypted: 0,
+        workspaceId: wsId,
       })
 
       await db.insert(chatMessagesTable).values({
@@ -484,6 +510,7 @@ describe('Models DAL', () => {
         role: 'assistant',
         content: 'Hello',
         modelId: deletedModelId,
+        workspaceId: wsId,
       })
 
       // Delete the model (simulating a model that no longer exists)
@@ -491,7 +518,7 @@ describe('Models DAL', () => {
       await db.delete(modelsTable).where(eq(modelsTable.id, deletedModelId))
 
       // Should fall back to system model when the last message's model doesn't exist
-      const model = await getDefaultModelForThread(getDb(), threadId)
+      const model = await getDefaultModelForThread(getDb(), wsId, threadId)
       expect(model.id).toBe(systemModelId)
     })
   })
@@ -508,16 +535,17 @@ describe('Models DAL', () => {
         model: 'gpt-4',
         isSystem: 0,
         enabled: 1,
+        workspaceId: wsId,
       })
 
       // Verify model exists
-      const modelBefore = await getModel(getDb(), modelId)
+      const modelBefore = await getModel(getDb(), wsId, modelId)
       expect(modelBefore).not.toBe(null)
 
-      await deleteModel(getDb(), modelId)
+      await deleteModel(getDb(), wsId, modelId)
 
       // Verify model is soft deleted (not returned by getModel)
-      const modelAfter = await getModel(getDb(), modelId)
+      const modelAfter = await getModel(getDb(), wsId, modelId)
       expect(modelAfter).toBe(null)
 
       // But should still exist in database with deletedAt set
@@ -527,7 +555,7 @@ describe('Models DAL', () => {
     })
 
     it('should not throw when deleting non-existent model', async () => {
-      await expect(deleteModel(getDb(), 'non-existent-id')).resolves.toBeUndefined()
+      await expect(deleteModel(getDb(), wsId, 'non-existent-id')).resolves.toBeUndefined()
     })
 
     it('should only soft delete the specified model', async () => {
@@ -543,6 +571,7 @@ describe('Models DAL', () => {
           model: 'gpt-4',
           isSystem: 0,
           enabled: 1,
+          workspaceId: wsId,
         },
         {
           id: modelId2,
@@ -551,14 +580,15 @@ describe('Models DAL', () => {
           model: 'claude-3',
           isSystem: 0,
           enabled: 1,
+          workspaceId: wsId,
         },
       ])
 
-      await deleteModel(getDb(), modelId1)
+      await deleteModel(getDb(), wsId, modelId1)
 
       // Verify only model 1 is soft deleted
-      const model1 = await getModel(getDb(), modelId1)
-      const model2 = await getModel(getDb(), modelId2)
+      const model1 = await getModel(getDb(), wsId, modelId1)
+      const model2 = await getModel(getDb(), wsId, modelId2)
       expect(model1).toBe(null)
       expect(model2).not.toBe(null)
 
@@ -578,16 +608,17 @@ describe('Models DAL', () => {
         model: 'gpt-4',
         isSystem: 0,
         enabled: 1,
+        workspaceId: wsId,
       })
 
       // Verify model exists
-      const modelsBefore = await getAllModels(getDb())
+      const modelsBefore = await getAllModels(getDb(), wsId)
       expect(modelsBefore).toHaveLength(1)
 
-      await deleteModel(getDb(), modelId)
+      await deleteModel(getDb(), wsId, modelId)
 
       // Verify model is not returned by getAllModels
-      const modelsAfter = await getAllModels(getDb())
+      const modelsAfter = await getAllModels(getDb(), wsId)
       expect(modelsAfter).toHaveLength(0)
     })
 
@@ -602,16 +633,17 @@ describe('Models DAL', () => {
         model: 'gpt-4',
         isSystem: 0,
         enabled: 1,
+        workspaceId: wsId,
       })
 
       // Verify model exists
-      const modelsBefore = await getAvailableModels(getDb())
+      const modelsBefore = await getAvailableModels(getDb(), wsId)
       expect(modelsBefore).toHaveLength(1)
 
-      await deleteModel(getDb(), modelId)
+      await deleteModel(getDb(), wsId, modelId)
 
       // Verify model is not returned by getAvailableModels
-      const modelsAfter = await getAvailableModels(getDb())
+      const modelsAfter = await getAvailableModels(getDb(), wsId)
       expect(modelsAfter).toHaveLength(0)
     })
 
@@ -628,10 +660,11 @@ describe('Models DAL', () => {
         isSystem: 0,
         enabled: 1,
         deletedAt: originalDeletedAt,
+        workspaceId: wsId,
       })
 
       // Call delete again on already-deleted model
-      await deleteModel(getDb(), modelId)
+      await deleteModel(getDb(), wsId, modelId)
 
       // Verify original deletedAt is preserved
       const rawModel = await db.select().from(modelsTable).where(eq(modelsTable.id, modelId)).get()
@@ -651,6 +684,7 @@ describe('Models DAL', () => {
         model: 'gpt-4',
         isSystem: 0,
         enabled: 1,
+        workspaceId: wsId,
       })
 
       // Create prompt referencing this model
@@ -658,17 +692,18 @@ describe('Models DAL', () => {
         id: promptId,
         prompt: 'Test prompt',
         modelId: modelId,
+        workspaceId: wsId,
       })
 
       // Verify prompt exists
-      const promptBefore = await getPrompt(getDb(), promptId)
+      const promptBefore = await getPrompt(getDb(), wsId, promptId)
       expect(promptBefore).not.toBe(null)
 
       // Delete the model
-      await deleteModel(getDb(), modelId)
+      await deleteModel(getDb(), wsId, modelId)
 
       // Verify prompt is soft-deleted (not returned by getPrompt)
-      const promptAfter = await getPrompt(getDb(), promptId)
+      const promptAfter = await getPrompt(getDb(), wsId, promptId)
       expect(promptAfter).toBe(null)
 
       // But prompt should still exist in database with deletedAt set
@@ -691,6 +726,7 @@ describe('Models DAL', () => {
         model: 'gpt-4',
         isSystem: 0,
         enabled: 1,
+        workspaceId: wsId,
       })
 
       // Create prompt referencing this model
@@ -698,6 +734,7 @@ describe('Models DAL', () => {
         id: promptId,
         prompt: 'Test prompt',
         modelId: modelId,
+        workspaceId: wsId,
       })
 
       // Create trigger for this prompt
@@ -707,17 +744,18 @@ describe('Models DAL', () => {
         triggerTime: '09:00',
         promptId: promptId,
         isEnabled: 1,
+        workspaceId: wsId,
       })
 
       // Verify trigger exists and is enabled
-      const triggersBefore = await getAllEnabledTriggers(getDb())
+      const triggersBefore = await getAllEnabledTriggers(getDb(), wsId)
       expect(triggersBefore).toHaveLength(1)
 
       // Delete the model
-      await deleteModel(getDb(), modelId)
+      await deleteModel(getDb(), wsId, modelId)
 
       // Verify trigger is soft-deleted (not returned by getAllEnabledTriggers)
-      const triggersAfter = await getAllEnabledTriggers(getDb())
+      const triggersAfter = await getAllEnabledTriggers(getDb(), wsId)
       expect(triggersAfter).toHaveLength(0)
 
       // But trigger should still exist in database with deletedAt set
@@ -735,22 +773,38 @@ describe('Models DAL', () => {
 
       // Create two models
       await db.insert(modelsTable).values([
-        { id: modelId1, provider: 'openai', name: 'Model 1', model: 'gpt-4', isSystem: 0, enabled: 1 },
-        { id: modelId2, provider: 'anthropic', name: 'Model 2', model: 'claude-3', isSystem: 0, enabled: 1 },
+        {
+          id: modelId1,
+          provider: 'openai',
+          name: 'Model 1',
+          model: 'gpt-4',
+          isSystem: 0,
+          enabled: 1,
+          workspaceId: wsId,
+        },
+        {
+          id: modelId2,
+          provider: 'anthropic',
+          name: 'Model 2',
+          model: 'claude-3',
+          isSystem: 0,
+          enabled: 1,
+          workspaceId: wsId,
+        },
       ])
 
       // Create prompts referencing different models
       await db.insert(promptsTable).values([
-        { id: promptId1, prompt: 'Prompt for model 1', modelId: modelId1 },
-        { id: promptId2, prompt: 'Prompt for model 2', modelId: modelId2 },
+        { id: promptId1, prompt: 'Prompt for model 1', modelId: modelId1, workspaceId: wsId },
+        { id: promptId2, prompt: 'Prompt for model 2', modelId: modelId2, workspaceId: wsId },
       ])
 
       // Delete only model 1
-      await deleteModel(getDb(), modelId1)
+      await deleteModel(getDb(), wsId, modelId1)
 
       // Verify only prompt 1 is soft-deleted
-      const prompt1 = await getPrompt(getDb(), promptId1)
-      const prompt2 = await getPrompt(getDb(), promptId2)
+      const prompt1 = await getPrompt(getDb(), wsId, promptId1)
+      const prompt2 = await getPrompt(getDb(), wsId, promptId2)
       expect(prompt1).toBe(null)
       expect(prompt2).not.toBe(null)
     })
@@ -772,36 +826,58 @@ describe('Models DAL', () => {
         model: 'gpt-4',
         isSystem: 0,
         enabled: 1,
+        workspaceId: wsId,
       })
 
       // Create two prompts referencing this model
       await db.insert(promptsTable).values([
-        { id: promptId1, prompt: 'Prompt 1', modelId: modelId },
-        { id: promptId2, prompt: 'Prompt 2', modelId: modelId },
+        { id: promptId1, prompt: 'Prompt 1', modelId: modelId, workspaceId: wsId },
+        { id: promptId2, prompt: 'Prompt 2', modelId: modelId, workspaceId: wsId },
       ])
 
       // Create multiple triggers for these prompts
       await db.insert(triggersTable).values([
-        { id: triggerId1, triggerType: 'time', triggerTime: '09:00', promptId: promptId1, isEnabled: 1 },
-        { id: triggerId2, triggerType: 'time', triggerTime: '12:00', promptId: promptId1, isEnabled: 1 },
-        { id: triggerId3, triggerType: 'time', triggerTime: '18:00', promptId: promptId2, isEnabled: 1 },
+        {
+          id: triggerId1,
+          triggerType: 'time',
+          triggerTime: '09:00',
+          promptId: promptId1,
+          isEnabled: 1,
+          workspaceId: wsId,
+        },
+        {
+          id: triggerId2,
+          triggerType: 'time',
+          triggerTime: '12:00',
+          promptId: promptId1,
+          isEnabled: 1,
+          workspaceId: wsId,
+        },
+        {
+          id: triggerId3,
+          triggerType: 'time',
+          triggerTime: '18:00',
+          promptId: promptId2,
+          isEnabled: 1,
+          workspaceId: wsId,
+        },
       ])
 
       // Verify all entities exist
-      const promptsBefore = await getAllPrompts(getDb())
-      const triggersBefore = await getAllEnabledTriggers(getDb())
+      const promptsBefore = await getAllPrompts(getDb(), wsId)
+      const triggersBefore = await getAllEnabledTriggers(getDb(), wsId)
       expect(promptsBefore).toHaveLength(2)
       expect(triggersBefore).toHaveLength(3)
 
       // Delete the model
-      await deleteModel(getDb(), modelId)
+      await deleteModel(getDb(), wsId, modelId)
 
       // Verify all prompts are soft-deleted
-      const promptsAfter = await getAllPrompts(getDb())
+      const promptsAfter = await getAllPrompts(getDb(), wsId)
       expect(promptsAfter).toHaveLength(0)
 
       // Verify all triggers are soft-deleted
-      const triggersAfter = await getAllEnabledTriggers(getDb())
+      const triggersAfter = await getAllEnabledTriggers(getDb(), wsId)
       expect(triggersAfter).toHaveLength(0)
 
       // Verify all records still exist in database with deletedAt set
@@ -826,11 +902,12 @@ describe('Models DAL', () => {
         model: 'gpt-4',
         isSystem: 0,
         enabled: 1,
+        workspaceId: wsId,
       })
 
-      await updateModel(getDb(), modelId, { name: 'Updated Name' })
+      await updateModel(getDb(), wsId, modelId, { name: 'Updated Name' })
 
-      const model = await getModel(getDb(), modelId)
+      const model = await getModel(getDb(), wsId, modelId)
       expect(model?.name).toBe('Updated Name')
     })
 
@@ -845,12 +922,13 @@ describe('Models DAL', () => {
         model: 'gpt-4',
         isSystem: 0,
         enabled: 1,
+        workspaceId: wsId,
       })
 
-      await updateModel(getDb(), modelId, { enabled: 0 })
+      await updateModel(getDb(), wsId, modelId, { enabled: 0 })
 
       // Model should no longer appear in available models
-      const availableModels = await getAvailableModels(getDb())
+      const availableModels = await getAvailableModels(getDb(), wsId)
       expect(availableModels.map((m) => m.id)).not.toContain(modelId)
     })
 
@@ -865,12 +943,13 @@ describe('Models DAL', () => {
         model: 'gpt-4',
         isSystem: 0,
         enabled: 1,
+        workspaceId: wsId,
       })
 
-      await updateModel(getDb(), modelId, { deletedAt: nowIso() })
+      await updateModel(getDb(), wsId, modelId, { deletedAt: nowIso() })
 
       // Model should no longer be returned by getModel
-      const model = await getModel(getDb(), modelId)
+      const model = await getModel(getDb(), wsId, modelId)
       expect(model).toBe(null)
 
       // Model should still exist in database
@@ -890,18 +969,19 @@ describe('Models DAL', () => {
         model: 'gpt-4',
         isSystem: 0,
         enabled: 1,
+        workspaceId: wsId,
       })
 
-      await updateModel(getDb(), modelId, { name: 'Updated', provider: 'anthropic', model: 'claude-3' })
+      await updateModel(getDb(), wsId, modelId, { name: 'Updated', provider: 'anthropic', model: 'claude-3' })
 
-      const model = await getModel(getDb(), modelId)
+      const model = await getModel(getDb(), wsId, modelId)
       expect(model?.name).toBe('Updated')
       expect(model?.provider).toBe('anthropic')
       expect(model?.model).toBe('claude-3')
     })
 
     it('should not throw when updating non-existent model', async () => {
-      await expect(updateModel(getDb(), 'non-existent-id', { name: 'test' })).resolves.toBeUndefined()
+      await expect(updateModel(getDb(), wsId, 'non-existent-id', { name: 'test' })).resolves.toBeUndefined()
     })
 
     it('should not update defaultHash field', async () => {
@@ -916,12 +996,13 @@ describe('Models DAL', () => {
         isSystem: 0,
         enabled: 1,
         defaultHash: 'original-hash',
+        workspaceId: wsId,
       })
 
       // Try to update defaultHash (should be ignored)
-      await updateModel(getDb(), modelId, { name: 'Updated', defaultHash: 'new-hash' } as Parameters<
+      await updateModel(getDb(), wsId, modelId, { name: 'Updated', defaultHash: 'new-hash' } as Parameters<
         typeof updateModel
-      >[2])
+      >[3])
 
       // Verify defaultHash was not changed
       const rawModel = await db.select().from(modelsTable).where(eq(modelsTable.id, modelId)).get()
@@ -937,6 +1018,7 @@ describe('Models DAL', () => {
 
       await db.insert(modelsTable).values({
         ...defaultModel,
+        workspaceId: wsId,
         name: 'User Edited Name',
         enabled: 0,
         defaultHash: 'stale-from-an-older-era',
@@ -945,7 +1027,7 @@ describe('Models DAL', () => {
       const before = (await db.select().from(modelsTable).where(eq(modelsTable.id, defaultModel.id)).get()) as Model
       expect(isModelModified(before)).toBe(true)
 
-      await resetModelToDefault(getDb(), defaultModel.id, defaultModel)
+      await resetModelToDefault(getDb(), wsId, defaultModel.id, defaultModel)
 
       const after = (await db.select().from(modelsTable).where(eq(modelsTable.id, defaultModel.id)).get()) as Model
       expect(after.name).toBe(defaultModel.name)
@@ -958,10 +1040,10 @@ describe('Models DAL', () => {
       const db = getDb()
       const defaultModel = defaultModelOpus48
 
-      await db.insert(modelsTable).values({ ...defaultModel })
+      await db.insert(modelsTable).values({ ...defaultModel, workspaceId: wsId })
       await db.insert(modelsSecretsTable).values({ modelId: defaultModel.id, apiKey: 'sk-user-supplied' })
 
-      await resetModelToDefault(getDb(), defaultModel.id, defaultModel)
+      await resetModelToDefault(getDb(), wsId, defaultModel.id, defaultModel)
 
       const secret = await db
         .select()
@@ -979,9 +1061,9 @@ describe('Models DAL', () => {
       // been synced has a real user_id — reset must not overwrite it, otherwise
       // PowerSync queues a `{ user_id: null }` PATCH that the upload handler
       // rejects (it strips user_id, leaving an empty payload → 400).
-      await db.insert(modelsTable).values({ ...defaultModel, userId: 'real-user-id' })
+      await db.insert(modelsTable).values({ ...defaultModel, workspaceId: wsId, userId: 'real-user-id' })
 
-      await resetModelToDefault(getDb(), defaultModel.id, defaultModel)
+      await resetModelToDefault(getDb(), wsId, defaultModel.id, defaultModel)
 
       const after = (await db.select().from(modelsTable).where(eq(modelsTable.id, defaultModel.id)).get()) as Model
       expect(after.userId).toBe('real-user-id')
@@ -992,7 +1074,7 @@ describe('Models DAL', () => {
     it('should create a new model', async () => {
       const modelId = uuidv7()
 
-      await createModel(getDb(), {
+      await createModel(getDb(), wsId, {
         id: modelId,
         provider: 'openai',
         name: 'New Model',
@@ -1000,7 +1082,7 @@ describe('Models DAL', () => {
         enabled: 1,
       })
 
-      const model = await getModel(getDb(), modelId)
+      const model = await getModel(getDb(), wsId, modelId)
       expect(model).not.toBe(null)
       expect(model?.name).toBe('New Model')
       expect(model?.provider).toBe('openai')
@@ -1009,7 +1091,7 @@ describe('Models DAL', () => {
     it('should create a disabled model excluded from getAvailableModels', async () => {
       const modelId = uuidv7()
 
-      await createModel(getDb(), {
+      await createModel(getDb(), wsId, {
         id: modelId,
         provider: 'anthropic',
         name: 'Disabled Model',
@@ -1017,10 +1099,10 @@ describe('Models DAL', () => {
         enabled: 0,
       })
 
-      const availableModels = await getAvailableModels(getDb())
+      const availableModels = await getAvailableModels(getDb(), wsId)
       expect(availableModels.map((m) => m.id)).not.toContain(modelId)
 
-      const allModels = await getAllModels(getDb())
+      const allModels = await getAllModels(getDb(), wsId)
       expect(allModels.map((m) => m.id)).toContain(modelId)
     })
 
@@ -1028,8 +1110,14 @@ describe('Models DAL', () => {
       const modelId1 = uuidv7()
       const modelId2 = uuidv7()
 
-      await createModel(getDb(), { id: modelId1, provider: 'openai', name: 'Model 1', model: 'gpt-4', enabled: 1 })
-      await createModel(getDb(), {
+      await createModel(getDb(), wsId, {
+        id: modelId1,
+        provider: 'openai',
+        name: 'Model 1',
+        model: 'gpt-4',
+        enabled: 1,
+      })
+      await createModel(getDb(), wsId, {
         id: modelId2,
         provider: 'anthropic',
         name: 'Model 2',
@@ -1037,7 +1125,7 @@ describe('Models DAL', () => {
         enabled: 1,
       })
 
-      const models = await getAllModels(getDb())
+      const models = await getAllModels(getDb(), wsId)
       expect(models).toHaveLength(2)
     })
   })
@@ -1046,8 +1134,8 @@ describe('Models DAL', () => {
     it('should auto-create a default profile for a known seeded model', async () => {
       const db = getDb()
 
-      // Create a model with the same ID as a seeded default (Opus 4.8)
-      await createModel(getDb(), {
+      // Create a model with the same ID as a seeded default (GPT-OSS)
+      await createModel(getDb(), wsId, {
         id: defaultModelOpus48.id,
         provider: 'thunderbolt',
         name: 'Opus 4.8',
@@ -1068,7 +1156,7 @@ describe('Models DAL', () => {
       const db = getDb()
       const modelId = uuidv7()
 
-      await createModel(getDb(), {
+      await createModel(getDb(), wsId, {
         id: modelId,
         provider: 'openai',
         name: 'Unknown Model',
@@ -1085,7 +1173,7 @@ describe('Models DAL', () => {
       const db = getDb()
       const modelId = uuidv7()
 
-      await createModel(db, {
+      await createModel(db, wsId, {
         id: modelId,
         provider: 'openai',
         name: 'Model with key',
@@ -1107,7 +1195,7 @@ describe('Models DAL', () => {
       const db = getDb()
       const modelId = uuidv7()
 
-      await createModel(db, {
+      await createModel(db, wsId, {
         id: modelId,
         provider: 'thunderbolt',
         name: 'System Model',
@@ -1123,7 +1211,7 @@ describe('Models DAL', () => {
       const db = getDb()
       const modelId = uuidv7()
 
-      await createModel(db, {
+      await createModel(db, wsId, {
         id: modelId,
         provider: 'openai',
         name: 'Model with key',
@@ -1131,7 +1219,7 @@ describe('Models DAL', () => {
         apiKey: 'sk-joined-key',
       })
 
-      const model = await getModel(db, modelId)
+      const model = await getModel(db, wsId, modelId)
       expect(model?.apiKey).toBe('sk-joined-key')
     })
 
@@ -1139,14 +1227,14 @@ describe('Models DAL', () => {
       const db = getDb()
       const modelId = uuidv7()
 
-      await createModel(db, {
+      await createModel(db, wsId, {
         id: modelId,
         provider: 'thunderbolt',
         name: 'No key model',
         model: 'gpt-oss-120b',
       })
 
-      const model = await getModel(db, modelId)
+      const model = await getModel(db, wsId, modelId)
       expect(model?.apiKey).toBeNull()
     })
 
@@ -1154,14 +1242,14 @@ describe('Models DAL', () => {
       const db = getDb()
       const modelId = uuidv7()
 
-      await createModel(db, {
+      await createModel(db, wsId, {
         id: modelId,
         provider: 'openai',
         name: 'No key model',
         model: 'gpt-4',
       })
 
-      await updateModel(db, modelId, { apiKey: null })
+      await updateModel(db, wsId, modelId, { apiKey: null })
 
       const secret = await db.select().from(modelsSecretsTable).where(eq(modelsSecretsTable.modelId, modelId)).get()
       expect(secret).toBeUndefined()
@@ -1171,7 +1259,7 @@ describe('Models DAL', () => {
       const db = getDb()
       const modelId = uuidv7()
 
-      await createModel(db, {
+      await createModel(db, wsId, {
         id: modelId,
         provider: 'openai',
         name: 'Test Model',
@@ -1179,13 +1267,13 @@ describe('Models DAL', () => {
       })
 
       // First update creates the secret
-      await updateModel(db, modelId, { apiKey: 'sk-first' })
-      let model = await getModel(db, modelId)
+      await updateModel(db, wsId, modelId, { apiKey: 'sk-first' })
+      let model = await getModel(db, wsId, modelId)
       expect(model?.apiKey).toBe('sk-first')
 
       // Second update replaces it
-      await updateModel(db, modelId, { apiKey: 'sk-second' })
-      model = await getModel(db, modelId)
+      await updateModel(db, wsId, modelId, { apiKey: 'sk-second' })
+      model = await getModel(db, wsId, modelId)
       expect(model?.apiKey).toBe('sk-second')
     })
 
@@ -1193,7 +1281,7 @@ describe('Models DAL', () => {
       const db = getDb()
       const modelId = uuidv7()
 
-      await createModel(db, {
+      await createModel(db, wsId, {
         id: modelId,
         provider: 'openai',
         name: 'Model to delete',
@@ -1205,7 +1293,7 @@ describe('Models DAL', () => {
       let secret = await db.select().from(modelsSecretsTable).where(eq(modelsSecretsTable.modelId, modelId)).get()
       expect(secret?.apiKey).toBe('sk-to-delete')
 
-      await deleteModel(db, modelId)
+      await deleteModel(db, wsId, modelId)
 
       // Secret should be gone (hard-deleted)
       secret = await db.select().from(modelsSecretsTable).where(eq(modelsSecretsTable.modelId, modelId)).get()
@@ -1226,10 +1314,12 @@ describe('Models DAL', () => {
         model: 'gpt-4',
         isSystem: 0,
         enabled: 1,
+        workspaceId: wsId,
       })
       await db.insert(modelProfilesTable).values({
         modelId,
         temperature: 0.5,
+        workspaceId: wsId,
       })
 
       // Verify profile exists
@@ -1241,7 +1331,7 @@ describe('Models DAL', () => {
       expect(profileBefore?.deletedAt).toBeNull()
 
       // Delete the model
-      await deleteModel(getDb(), modelId)
+      await deleteModel(getDb(), wsId, modelId)
 
       // Verify profile is soft-deleted
       const profileAfter = await db

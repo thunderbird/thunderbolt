@@ -6,6 +6,7 @@ import { type HttpClient } from '@/contexts'
 import { getSettings } from '@/dal'
 import { getDb } from '@/db/database'
 import { getLocalSetting } from '@/stores/local-settings-store'
+import { getActiveCloudUrl } from '@/stores/trust-domain-registry'
 import { createHandleError } from '@/lib/error-utils'
 import { createClient } from '@/lib/http'
 import type { HandleError, HandleResult } from '@/types/handle-errors'
@@ -54,7 +55,12 @@ export const sanitizeUrl = (url: string): string => {
  */
 export const initPosthog = async (httpClient?: HttpClient): Promise<HandleResult<PostHog | null>> => {
   try {
-    const cloudUrl = getLocalSetting('cloudUrl')
+    const cloudUrl = getActiveCloudUrl()
+    if (!cloudUrl) {
+      // Standalone trust domain (no backend) — PostHog goes through the cloud proxy, so
+      // skip init entirely. Returns null which the caller treats as "analytics disabled."
+      return { success: true, data: null }
+    }
     const debugPosthog = getLocalSetting('debugPosthog')
     const db = getDb()
     const { dataCollection } = await getSettings(db, {

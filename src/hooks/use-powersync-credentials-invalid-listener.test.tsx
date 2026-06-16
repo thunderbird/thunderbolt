@@ -8,7 +8,9 @@ import { powersyncCredentialsInvalid } from '@/db/powersync/connector'
 import { devicesTable } from '@/db/tables'
 import { getAuthToken, setAuthToken } from '@/lib/auth-token'
 import { createTestProvider } from '@/test-utils/test-provider'
-import { getClock } from '@/testing-library'
+import { getClock, testServerId } from '@/testing-library'
+import { useTrustDomainRegistry } from '@/stores/trust-domain-registry'
+
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { eq } from 'drizzle-orm'
 import { type ReactNode } from 'react'
@@ -49,25 +51,37 @@ describe('usePowerSyncCredentialsInvalidListener', () => {
     await teardownTestDatabase()
   })
 
+  const originalLocation = window.location
+
   beforeEach(async () => {
     await resetTestDatabase()
     mockReplace.mockClear()
     mockClearLocalData.mockClear()
     Object.defineProperty(window, 'location', {
-      value: { replace: mockReplace },
+      value: { ...originalLocation, replace: mockReplace },
       writable: true,
+      configurable: true,
     })
     localStorage.clear()
+    // Re-seed after localStorage.clear() — clearing localStorage can cause Zustand's
+    // persist middleware to rehydrate with empty state, losing the active server.
+    useTrustDomainRegistry.setState({
+      servers: { [testServerId]: { serverId: testServerId, cloudUrl: 'http://localhost' } },
+      activeTrustDomain: { kind: 'server', serverId: testServerId },
+    })
   })
 
-  // Mirror the beforeEach cleanup so the last test's auth token can't leak into
-  // the next test file (AuthProvider's mount effect fires get-session on any token).
   afterEach(() => {
     localStorage.clear()
+    Object.defineProperty(window, 'location', {
+      value: originalLocation,
+      writable: true,
+      configurable: true,
+    })
   })
 
   const setupAuthAndDevice = async (deviceOverrides?: { revokedAt?: string | null }) => {
-    localStorage.setItem('thunderbolt_device_id', deviceId)
+    localStorage.setItem(`thunderbolt_device_id__${testServerId}`, deviceId)
     setAuthToken(authToken)
 
     const db = getDb()

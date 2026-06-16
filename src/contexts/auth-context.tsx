@@ -8,10 +8,12 @@ import { usePowerSyncCredentialsInvalidListener } from '@/hooks/use-powersync-cr
 import { isSsoMode } from '@/lib/auth-mode'
 import { clearAuthToken, getAuthToken, onAuthTokenChangedInOtherTab, setAuthToken } from '@/lib/auth-token'
 import { getPlatform } from '@/lib/platform'
+import { runPostAuthBootstrap } from '@/lib/post-auth-bootstrap'
+import { useTrustDomainRegistry } from '@/stores/trust-domain-registry'
 import { anonymousClient, emailOTPClient } from 'better-auth/client/plugins'
 import { createAuthClient } from 'better-auth/react'
 import { consumePendingSsoAnonAlias } from '@/lib/analytics/anonymous-promotion-sso-bridge'
-import { createContext, useContext, useEffect, useMemo, useRef, type ReactNode } from 'react'
+import { createContext, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 
 /**
  * Create an auth client instance with the given base URL
@@ -157,7 +159,88 @@ export const AuthProvider = ({ children, cloudUrl, authClient: overrideClient }:
     return null
   }
 
-  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>
+  return (
+    <AuthContext.Provider value={value}>
+      <SessionToRegistryMirror />
+      <SessionToWorkspaceBootstrap />
+      {children}
+    </AuthContext.Provider>
+  )
+}
+
+/**
+ * Mirrors Better Auth's session into the active server entry's `userId` + `isAnonymous`.
+ * The active server entry is the persistent record of "the current session on this
+ * server" — so each known server keeps its own session across boots (multi-server-ready),
+ * and `getActiveUserId()` resolves synchronously for non-React consumers.
+ *
+ * Lives as a child of `AuthContext.Provider` so `useAuth()` always resolves and the
+ * `useSession` subscription is only active while an auth client is mounted.
+ *
+ * On sign-out the session goes to `null` and the effect skips; the previous values
+ * linger on the server entry until the next sign-in overwrites them or the entry
+ * itself is cleared (server wipe / removal).
+ */
+const SessionToRegistryMirror = () => {
+  const authClient = useAuth()
+  const { data: session } = authClient.useSession()
+  const userId = session?.user?.id
+  const isAnonymous = session?.user?.isAnonymous
+
+  useEffect(() => {
+    if (!userId) {
+      return
+    }
+    useTrustDomainRegistry.getState().patchActiveServer({
+      userId,
+      isAnonymous: !!isAnonymous,
+    })
+  }, [userId, isAnonymous])
+
+  return null
+}
+
+/**
+ * Fires the post-auth bootstrap pipeline (connect sync → await personal
+ * workspace → reconcile defaults) on the leading edge of a non-null session.
+ *
+ * Sign-in handlers (OTP form, waitlist OTP, magic-link verify) also invoke
+ * `runPostAuthBootstrap` explicitly so their UI only finishes once the app is
+ * usable. This observer covers the cases without a click handler to hang the
+ * await off: SSO redirect completion, cached-token returning users, anon
+ * sign-in (post-v1). The function is in-flight-deduped so concurrent triggers
+ * share a single run.
+ */
+const SessionToWorkspaceBootstrap = () => {
+  const authClient = useAuth()
+  const { data: session } = authClient.useSession()
+  const userId = session?.user?.id
+  const isAnonymous = session?.user?.isAnonymous === true
+  const lastBootstrappedForRef = useRef<string | null>(null)
+  const [bootstrapError, setBootstrapError] = useState<Error | null>(null)
+
+  // Throw during render so the nearest error boundary (or React Router's route
+  // error handler) surfaces an actionable error instead of an infinite splash.
+  if (bootstrapError) {
+    throw bootstrapError
+  }
+
+  useEffect(() => {
+    if (!userId) {
+      return
+    }
+    if (lastBootstrappedForRef.current === userId) {
+      return
+    }
+    lastBootstrappedForRef.current = userId
+    void runPostAuthBootstrap({ kind: 'server', userId, isAnonymous }).catch((error) => {
+      console.error('SessionToWorkspaceBootstrap failed:', error)
+      lastBootstrappedForRef.current = null
+      setBootstrapError(error instanceof Error ? error : new Error(String(error)))
+    })
+  }, [userId, isAnonymous])
+
+  return null
 }
 
 export const useAuth = () => {

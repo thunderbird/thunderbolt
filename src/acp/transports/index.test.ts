@@ -23,7 +23,7 @@ import '@/testing-library'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import { wsTargetPrefix } from '@shared/proxy-protocol'
 import { encodeWsBearer } from '@shared/ws-bearer'
-import { useLocalSettingsStore } from '@/stores/local-settings-store'
+import { useTrustDomainRegistry } from '@/stores/trust-domain-registry'
 import { openTransport } from './index'
 import { type WebSocketEventMap } from './websocket'
 
@@ -73,7 +73,11 @@ beforeEach(() => {
   // Cast through unknown — FakeBrowserSocket only implements the surface the
   // transport uses, not the full DOM `WebSocket` interface.
   globalThis.WebSocket = FakeBrowserSocket as unknown as typeof WebSocket
-  useLocalSettingsStore.setState({ cloudUrl: 'http://cloud.test/v1' })
+  const fixtureServerId = '00000000-0000-0000-0000-0000000000ac'
+  useTrustDomainRegistry.setState({
+    servers: { [fixtureServerId]: { serverId: fixtureServerId, cloudUrl: 'http://cloud.test/v1' } },
+    activeTrustDomain: { kind: 'server', serverId: fixtureServerId },
+  })
 })
 
 afterEach(() => {

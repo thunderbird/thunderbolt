@@ -5,6 +5,8 @@
 import { invoke, isTauri as isTauriCore } from '@tauri-apps/api/core'
 import { platform, type Platform } from '@tauri-apps/plugin-os'
 import type { DatabaseType } from '../db/database'
+import { getDbFilenameFor } from '../db/database-path'
+import { getActiveTrustDomain } from '../stores/trust-domain-registry'
 import { memoize } from './memoize'
 
 /** Matches Render PR preview hostnames: thunderbolt-pr-{number}.onrender.com */
@@ -254,22 +256,28 @@ export const getDatabaseType = async (): Promise<DatabaseType> => {
 }
 
 /**
- * Determines the appropriate database path based on platform and OPFS availability
+ * Determines the appropriate database path based on platform and OPFS availability.
+ * The filename is scoped by the active trust domain (per addendum §3.1) so multiple
+ * trust domains coexist on the same device.
  * @param databaseType - The type of database being used
  * @param appDataDirPath - The application data directory path
  * @returns The database path to use
  */
 export const getDatabasePath = async (databaseType: DatabaseType, appDataDirPath: string): Promise<string> => {
+  const domain = getActiveTrustDomain()
+  if (!domain) {
+    throw new Error('Cannot resolve database path: no active trust domain (boot decision tree must run first)')
+  }
+  const filename = getDbFilenameFor(domain)
+
   // For native databases (bun-sqlite), use file path directly
   if (databaseType === 'bun-sqlite') {
-    return `${appDataDirPath}/thunderbolt.db`
+    return `${appDataDirPath}/${filename}`
   }
 
   // For wa-sqlite and powersync, check OPFS availability
   const opfsAvailable = await isOpfsAvailable()
   if (opfsAvailable) {
-    // Use different filename for PowerSync to avoid conflicts during migration
-    const filename = databaseType === 'powersync' ? 'thunderbolt-sync.db' : 'thunderbolt.db'
     return `${appDataDirPath}/${filename}`
   }
 

@@ -6,7 +6,21 @@ import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 
 export type AppConfig = {
+  /** Stable per-deployment UUID. Returned by `GET /v1/config`; required in
+   *  server trust domains (the FE uses it to namespace auth token / device ID /
+   *  encryption keys / DB filename). Optional on this type because an offline
+   *  boot may have no cached config yet — boot code MUST treat its absence as
+   *  "no server reachable", never as "any server is fine". */
+  serverId?: string
   e2eeEnabled?: boolean
+  /** Server-side anonymous-sessions flag. When false, the BE rejects
+   *  `/sign-in/anonymous`. Mirrors the BE `AUTH_ALLOW_ANONYMOUS`. */
+  allowAnonUsers?: boolean
+  /** Workspace creation policy. Enforced by the BE upload-handler factory; UI
+   *  hides the "Create workspace" affordance when both gates evaluate to false
+   *  for the active user. */
+  allowWorkspaceCreationByAnon?: boolean
+  allowWorkspaceCreationByMembers?: boolean
   /** Deployment-level UI capability flags from `GET /config`. Optional so an
    *  empty/offline config (standalone mode) reads as "default behavior":
    *  built-in agent shown, custom agents allowed. */

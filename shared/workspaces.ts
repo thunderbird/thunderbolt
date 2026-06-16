@@ -42,9 +42,10 @@ export const computePersonalAdminMembershipId = (userId: string): string =>
  * `workspace_permissions.permission_key` column. Order matches the rendering
  * order of the Permissions settings page (lifecycle → capabilities → admin).
  *
- * `manage_members` is a legacy key kept for the existing Members route guard
- * until per-operation enforcement lands — new code should prefer the more
- * granular keys (see `project_workspace_permissions_validation_pending`).
+ * `manage_members` is a legacy key superseded by per-operation gates
+ * (`invite_users`/`change_roles`/`remove_users`). Kept in the union so older
+ * `workspace_permissions` rows still type-check; not surfaced on the
+ * Permissions page and not consulted by any route guard or upload handler.
  *
  * Add a new key here, then the FE/BE schemas, the FE/BE types, and the upload
  * handler's runtime check all stay in sync via this constant.

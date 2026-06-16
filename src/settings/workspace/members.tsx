@@ -44,10 +44,11 @@ type Row = ActiveRow | PendingRow
 const roleLabel = (role: 'admin' | 'member'): string => (role === 'admin' ? 'Admin' : 'Member')
 
 /**
- * Members management for shared workspaces. The `RequireWorkspacePermission`
- * route wrapper gates entry — non-permitted users never see this page. Personal
- * workspaces are blocked at the gate too (Decision 25 — no member management
- * in v1).
+ * Members management for shared workspaces. The page itself is reachable by
+ * any workspace member; each affordance (Add Member, role select, Remove) is
+ * gated per-control via `useWorkspacePermission`. Personal workspaces never
+ * reach this route (sidebar entry is hidden and the listing is empty by
+ * construction — Decision 25, no member management in v1).
  */
 const WorkspaceMembersPage = () => {
   const db = useDatabase()

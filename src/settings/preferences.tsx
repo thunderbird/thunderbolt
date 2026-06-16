@@ -2,8 +2,10 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { useAuth } from '@/contexts'
+import { useAuth, useDatabase } from '@/contexts'
 import { useSignInModal } from '@/contexts/sign-in-modal-context'
+import { exportUserData } from '@/dal'
+import { downloadJson, exportFilenameFor } from '@/lib/export-download'
 import { useCountryUnits } from '@/hooks/use-country-units'
 import { useLocalStorage } from '@/hooks/use-local-storage'
 import type { LocationData } from '@/hooks/use-location-search'
@@ -52,6 +54,7 @@ import { useSyncEnabledToggle } from '@/hooks/use-sync-enabled-toggle'
 type PreferencesState = {
   isResetting: boolean
   isDeletingAccount: boolean
+  isExporting: boolean
   localizationDialogOpen: boolean
   pendingCountryUnits: CountryUnitsData | null
 }
@@ -59,6 +62,7 @@ type PreferencesState = {
 type PreferencesAction =
   | { type: 'SET_IS_RESETTING'; payload: boolean }
   | { type: 'SET_IS_DELETING_ACCOUNT'; payload: boolean }
+  | { type: 'SET_IS_EXPORTING'; payload: boolean }
   | { type: 'RESET_STATE' }
   | { type: 'OPEN_LOCALIZATION_DIALOG'; payload: CountryUnitsData }
   | { type: 'CLOSE_LOCALIZATION_DIALOG' }
@@ -66,6 +70,7 @@ type PreferencesAction =
 const initialState: PreferencesState = {
   isResetting: false,
   isDeletingAccount: false,
+  isExporting: false,
   localizationDialogOpen: false,
   pendingCountryUnits: null,
 }
@@ -76,6 +81,8 @@ const preferencesReducer = (state: PreferencesState, action: PreferencesAction):
       return { ...state, isResetting: action.payload }
     case 'SET_IS_DELETING_ACCOUNT':
       return { ...state, isDeletingAccount: action.payload }
+    case 'SET_IS_EXPORTING':
+      return { ...state, isExporting: action.payload }
     case 'RESET_STATE':
       return initialState
     case 'OPEN_LOCALIZATION_DIALOG':
@@ -89,8 +96,9 @@ const preferencesReducer = (state: PreferencesState, action: PreferencesAction):
 
 export default function PreferencesSettingsPage() {
   const [state, dispatch] = useReducer(preferencesReducer, initialState)
-  const { isResetting, isDeletingAccount, localizationDialogOpen, pendingCountryUnits } = state
+  const { isResetting, isDeletingAccount, isExporting, localizationDialogOpen, pendingCountryUnits } = state
   const authClient = useAuth()
+  const db = useDatabase()
   const { data: session } = authClient.useSession()
   const isAuthenticated = !!session?.user
   const isAnonymous = session?.user?.isAnonymous === true
@@ -284,6 +292,29 @@ export default function PreferencesSettingsPage() {
   }
 
   const [deleteAccountError, setDeleteAccountError] = useState<string | null>(null)
+  const [exportError, setExportError] = useState<string | null>(null)
+
+  const handleExportData = async () => {
+    const userId = session?.user?.id
+    if (!userId) {
+      return
+    }
+    setExportError(null)
+    dispatch({ type: 'SET_IS_EXPORTING', payload: true })
+    try {
+      const payload = await exportUserData(db, {
+        id: userId,
+        email: session.user.email ?? null,
+      })
+      downloadJson(exportFilenameFor(new Date()), payload)
+      trackEvent('settings_data_export')
+    } catch (error) {
+      console.error('Failed to export data:', error)
+      setExportError(error instanceof Error ? error.message : 'Failed to export data.')
+    } finally {
+      dispatch({ type: 'SET_IS_EXPORTING', payload: false })
+    }
+  }
 
   const handleResetDatabase = async () => {
     dispatch({ type: 'SET_IS_RESETTING', payload: true })
@@ -737,6 +768,38 @@ export default function PreferencesSettingsPage() {
             </div>
           )}
 
+          {isAuthenticated && (
+            <>
+              <div className="h-px bg-border -mx-6" />
+
+              <div className="flex flex-col gap-2">
+                <label htmlFor="export-data-button" className="text-sm font-medium">
+                  Export Your Data
+                </label>
+                <p id="export-data-description" className="text-sm text-muted-foreground">
+                  Download a JSON snapshot of your chats, tasks, models, and the API keys you've entered. Treat the file
+                  like a password backup — anyone who can read it can spend your model credits. Google and Microsoft
+                  sign-ins aren't included; you'll reconnect those after importing.
+                </p>
+                {exportError && (
+                  <p id="export-data-error" className="text-sm text-destructive" role="alert">
+                    {exportError}
+                  </p>
+                )}
+                <Button
+                  id="export-data-button"
+                  variant="secondary"
+                  disabled={isExporting}
+                  aria-busy={isExporting}
+                  aria-describedby={exportError ? 'export-data-error' : 'export-data-description'}
+                  onClick={handleExportData}
+                >
+                  {isExporting ? 'Exporting...' : 'Export My Data'}
+                </Button>
+              </div>
+            </>
+          )}
+
           {isAnonymous && (
             <>
               <div className="h-px bg-border -mx-6" />
@@ -777,6 +840,7 @@ export default function PreferencesSettingsPage() {
               <div className="h-px bg-border -mx-6" />
 
               <div className="flex flex-col gap-2">
+                <label className="text-sm font-medium">Delete Your Account</label>
                 <p className="text-sm text-muted-foreground">
                   Permanently delete your account and all data on our servers and this device.
                 </p>

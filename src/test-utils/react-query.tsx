@@ -26,6 +26,9 @@ export const createQueryTestWrapper = (options?: {
       staleTime?: number
     }
   }
+  /** Override the proxy fetch so hooks that fetch through the universal proxy
+   *  can assert on a mocked response. Defaults to a no-op empty `Response`. */
+  proxyFetch?: FetchFn
 }) => {
   const queryClient = new QueryClient({
     defaultOptions: {
@@ -39,13 +42,14 @@ export const createQueryTestWrapper = (options?: {
   })
 
   const mockHttpClient = createMockHttpClient()
+  const proxyFetch = options?.proxyFetch ?? mockProxyFetch
 
-  return ({ children }: { children: ReactNode }) => {
+  const Wrapper = ({ children }: { children: ReactNode }) => {
     const inner = (
       <HttpClientProvider httpClient={mockHttpClient}>
         <PowerSyncMockProvider>
           <QueryClientProvider client={queryClient}>
-            <ProxyFetchProvider proxyFetch={mockProxyFetch}>{children}</ProxyFetchProvider>
+            <ProxyFetchProvider proxyFetch={proxyFetch}>{children}</ProxyFetchProvider>
           </QueryClientProvider>
         </PowerSyncMockProvider>
       </HttpClientProvider>
@@ -55,6 +59,9 @@ export const createQueryTestWrapper = (options?: {
     }
     return inner
   }
+  // Expose the client so tests can drive explicit refetch/invalidation when the
+  // global fake-timer setup makes automatic refetch-on-mount timing unreliable.
+  return Object.assign(Wrapper, { queryClient })
 }
 
 /**

@@ -44,13 +44,39 @@ export const getDeviceId = (): string => {
   return id
 }
 
+// Scoped override consulted before the registry-derived lookup. The sign-out
+// wipe sequence empties `activeTrustDomain` before calling Better Auth's
+// `signOut()`, so the normal `getActiveServerId()` resolution would return
+// `null` and the sign-out request would go out bearer-less. `withCapturedAuthToken`
+// replays the pre-wipe token for the duration of that call.
+let capturedAuthToken: string | null = null
+
 /** Get the active server's auth token, or null if there is no active server / not signed in. */
 export const getAuthToken = (): string | null => {
+  if (capturedAuthToken !== null) {
+    return capturedAuthToken
+  }
   const serverId = getActiveServerId()
   if (!serverId) {
     return null
   }
   return localStorage.getItem(authTokenKeyFor(serverId))
+}
+
+/**
+ * Run `fn` with `getAuthToken()` short-circuited to return `token`. Used by
+ * `signOutAndWipe` so the sign-out HTTP call stays authenticated even though
+ * `clearLocalData` has already cleared `activeTrustDomain` from the registry
+ * by the time signOut runs.
+ */
+export const withCapturedAuthToken = async <T>(token: string | null, fn: () => Promise<T>): Promise<T> => {
+  const prev = capturedAuthToken
+  capturedAuthToken = token
+  try {
+    return await fn()
+  } finally {
+    capturedAuthToken = prev
+  }
 }
 
 /** Store the auth token under the active server's namespace. No-op when no server is active. */

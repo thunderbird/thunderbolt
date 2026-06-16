@@ -294,4 +294,32 @@ describe('signOutAndWipe', () => {
 
     expect(handleFullWipe).toHaveBeenCalledWith(serverId)
   })
+
+  it('keeps getAuthToken() resolvable during signOut even though the registry was cleared', async () => {
+    // clearLocalData empties `activeTrustDomain` before signOut runs, so the
+    // registry-derived lookup inside `getAuthToken()` would return null and
+    // Better Auth's `auth.token` callback would send the sign-out request
+    // bearer-less. `withCapturedAuthToken` (used inside `signOutAndWipe`)
+    // must replay the pre-wipe token for the duration of the signOut call.
+    const { getAuthToken } = await import('@/lib/auth-token')
+    const tokenKey = `thunderbolt_auth_token__${serverId}`
+    const tokenValue = 'sentinel-token-value'
+    localStorage.setItem(tokenKey, tokenValue)
+
+    const observed: { token: string | null } = { token: null }
+    const signOut = mock(async () => {
+      observed.token = getAuthToken()
+    })
+    const onComplete = mock(() => {})
+
+    try {
+      await signOutAndWipe({ signOut, onComplete, ...deps })
+    } finally {
+      localStorage.removeItem(tokenKey)
+    }
+
+    expect(observed.token).toBe(tokenValue)
+    // And after signOut returns, the override is dropped — no leakage.
+    expect(getAuthToken()).toBeNull()
+  })
 })

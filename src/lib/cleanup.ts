@@ -7,7 +7,12 @@ import { broadcastDbLifecycle } from '@/db/db-lifecycle-broadcast'
 import { resetDatabase } from '@/db/database'
 import { disposeAllAdapters } from '@/acp/adapter-cache'
 import { setSyncEnabled } from '@/db/powersync'
-import { clearAuthToken as defaultClearAuthToken, clearDeviceId as defaultClearDeviceId } from '@/lib/auth-token'
+import {
+  clearAuthToken as defaultClearAuthToken,
+  clearDeviceId as defaultClearDeviceId,
+  getAuthToken,
+  withCapturedAuthToken,
+} from '@/lib/auth-token'
 import { deleteDbFile } from '@/lib/fs'
 import { withTimeout } from '@/lib/timeout'
 import { handleFullWipe as defaultHandleFullWipe } from '@/services/encryption'
@@ -181,15 +186,20 @@ export const signOutAndWipe = async ({
   //      did, inside clearLocalData) sent the request bearer-less and left
   //      the session valid server-side until natural expiry.
   // Resolve below: pass no-op credential-clear callbacks into clearLocalData
-  // so the wipe runs in its normal order WITHOUT touching the token, then
-  // clear credentials ourselves after signOut() has revoked the session.
+  // so the wipe runs in its normal order WITHOUT touching the token, capture
+  // the token before the registry is emptied, and replay it via
+  // `withCapturedAuthToken` so Better Auth's `auth.token` callback returns it
+  // when signOut runs. Then clear credentials ourselves.
   const clearAuthToken = deps.clearAuthToken ?? defaultClearAuthToken
   const clearDeviceId = deps.clearDeviceId ?? defaultClearDeviceId
-  // Capture serverId BEFORE clearLocalData empties `activeTrustDomain` from
-  // the registry — the deferred clear below would otherwise no-op (the
-  // default reads serverId from the now-empty registry).
+  // Capture serverId + token BEFORE clearLocalData empties `activeTrustDomain`
+  // from the registry. Both are registry-derived: the deferred credential
+  // clear below would otherwise no-op, and `getAuthToken()` inside
+  // Better Auth's signOut fetch would return null, sending the request
+  // bearer-less.
   const trustDomainAtStart = getActiveTrustDomain()
   const serverIdForClear = trustDomainAtStart?.kind === 'server' ? trustDomainAtStart.serverId : undefined
+  const tokenAtStart = getAuthToken()
 
   try {
     await clearLocalData({ ...deps, clearAuthToken: () => {}, clearDeviceId: () => {} })
@@ -199,7 +209,7 @@ export const signOutAndWipe = async ({
 
   if (signOut) {
     try {
-      await signOut()
+      await withCapturedAuthToken(tokenAtStart, signOut)
     } catch (error) {
       console.error('[signOutAndWipe] signOut failed:', error)
     }

@@ -97,7 +97,7 @@ const WorkspaceActions = ({ workspace }: { workspace: Workspace }) => {
       const newId = await duplicateWorkspace(db, workspace, {
         creatorUserId: userId,
         name: `${workspace.name} Copy`,
-        slug: workspace.slug ? `${workspace.slug}-copy-${crypto.randomUUID().slice(0, 4)}` : null,
+        slug: workspace.slug ? `${workspace.slug}-copy-${crypto.randomUUID().slice(0, 8)}` : null,
         icon: workspace.icon,
       })
       navigate(`/w/${newId}/`)

@@ -45,7 +45,11 @@ const reducer = (state: State, action: Action): State => {
     case 'SELECT':
       return { ...state, selection: action.mode, serverUrlError: null, isUrlValidated: false }
     case 'SET_URL':
-      return { ...state, serverUrl: action.url, serverUrlError: null, isUrlValidated: false }
+      // Reset `isValidating` too: if a blur kicked off `validate()` and the
+      // user then edits the field, the in-flight result is stale and gets
+      // dropped without dispatching success/error — without this reset the
+      // flag would stick at true and the Continue button would never enable.
+      return { ...state, serverUrl: action.url, serverUrlError: null, isUrlValidated: false, isValidating: false }
     case 'VALIDATE_START':
       return { ...state, isValidating: true, serverUrlError: null }
     case 'VALIDATE_SUCCESS':

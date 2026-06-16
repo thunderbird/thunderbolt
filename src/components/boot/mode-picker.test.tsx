@@ -223,6 +223,32 @@ describe('ModePicker', () => {
       expect(mockValidate).toHaveBeenCalledWith('http://localhost:8000/v1')
     })
 
+    it('does not leave Continue stuck disabled after a stale blur + edit', async () => {
+      let resolveValidate: (r: ValidationResult) => void = () => {}
+      mockValidate.mockImplementation(
+        () =>
+          new Promise<ValidationResult>((resolve) => {
+            resolveValidate = resolve
+          }),
+      )
+
+      renderModePicker()
+      fireEvent.click(screen.getByText('Connect to AI server'))
+
+      const input = screen.getByPlaceholderText('app.thunderbolt.io/')
+      fireEvent.change(input, { target: { value: 'http://stale.local' } })
+      fireEvent.blur(input)
+      // Edit before validate() resolves — isValidating must clear so Continue
+      // enables once a non-empty URL is in the field.
+      fireEvent.change(input, { target: { value: 'http://fresh.local' } })
+
+      resolveValidate(okValidation())
+      await flush()
+
+      const buttons = screen.getAllByRole('button')
+      expect((buttons[buttons.length - 1] as HTMLButtonElement).disabled).toBe(false)
+    })
+
     it('drops a stale blur result when the user edits the field during validation', async () => {
       // Hold validate() pending so we can interleave a SET_URL between
       // dispatch(VALIDATE_START) and the result.

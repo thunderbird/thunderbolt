@@ -8,16 +8,9 @@ import { act, renderHook } from '@testing-library/react'
 import { afterAll, beforeAll, beforeEach, afterEach, describe, expect, it, mock, spyOn } from 'bun:test'
 import { setupTestDatabase, teardownTestDatabase, resetTestDatabase, wsId } from '@/dal/test-utils'
 
-// `useActiveWorkspaceId` uses `@powersync/tanstack-react-query`'s live `useQuery`, which
-// the test-only `PowerSyncMockProvider` cannot back with real reactive data — its query
-// for the personal workspace would return empty even though the row exists in the
-// bun-sqlite test DB. Stub the hook to return the canonical test workspace id so the
-// retry handler can call `updateMessageCache` with a stable workspace context.
-mock.module('@/lib/active-workspace', () => ({
-  useActiveWorkspaceId: () => wsId,
-  getActiveWorkspaceId: async () => wsId,
-  requireActiveWorkspaceId: async () => wsId,
-}))
+// Workspace id is injected via the `workspaceId` param now (DI pattern from THU-553);
+// no `mock.module('@/lib/active-workspace')` shim — that pattern leaked across files
+// and made every consumer of `useActiveWorkspaceId` in other test files see the stub.
 import { createMockChatInstance, hydrateStore, resetStore } from '@/test-utils/chat-store-mocks'
 import { createQueryTestWrapper } from '@/test-utils/react-query'
 import { useHandleIntegrationCompletion } from './use-handle-integration-completion'
@@ -111,7 +104,7 @@ describe('useHandleIntegrationCompletion', () => {
     const addEventListenerSpy = spyOn(window, 'addEventListener')
 
     try {
-      renderHook(() => useHandleIntegrationCompletion({ saveMessages: mockSaveMessages }), {
+      renderHook(() => useHandleIntegrationCompletion({ saveMessages: mockSaveMessages, workspaceId: wsId }), {
         wrapper: createQueryTestWrapper(),
       })
 
@@ -140,9 +133,12 @@ describe('useHandleIntegrationCompletion', () => {
     const removeEventListenerSpy = spyOn(window, 'removeEventListener')
 
     try {
-      const { unmount } = renderHook(() => useHandleIntegrationCompletion({ saveMessages: mockSaveMessages }), {
-        wrapper: createQueryTestWrapper(),
-      })
+      const { unmount } = renderHook(
+        () => useHandleIntegrationCompletion({ saveMessages: mockSaveMessages, workspaceId: wsId }),
+        {
+          wrapper: createQueryTestWrapper(),
+        },
+      )
 
       unmount()
 
@@ -169,7 +165,7 @@ describe('useHandleIntegrationCompletion', () => {
 
     // No integration credentials — local-only table is empty by default
 
-    renderHook(() => useHandleIntegrationCompletion({ saveMessages: mockSaveMessages }), {
+    renderHook(() => useHandleIntegrationCompletion({ saveMessages: mockSaveMessages, workspaceId: wsId }), {
       wrapper: createQueryTestWrapper(),
     })
 
@@ -190,7 +186,7 @@ describe('useHandleIntegrationCompletion', () => {
 
     // No integration credentials — local-only table is empty by default
 
-    renderHook(() => useHandleIntegrationCompletion({ saveMessages: mockSaveMessages }), {
+    renderHook(() => useHandleIntegrationCompletion({ saveMessages: mockSaveMessages, workspaceId: wsId }), {
       wrapper: createQueryTestWrapper(),
     })
 
@@ -243,7 +239,7 @@ describe('useHandleIntegrationCompletion', () => {
 
     await saveIntegrationCredentials(getDb(), 'google', { access_token: 'test_token' }, true)
 
-    renderHook(() => useHandleIntegrationCompletion({ saveMessages: mockSaveMessages }), {
+    renderHook(() => useHandleIntegrationCompletion({ saveMessages: mockSaveMessages, workspaceId: wsId }), {
       wrapper: createQueryTestWrapper({
         defaultOptions: {
           queries: {
@@ -323,7 +319,7 @@ describe('useHandleIntegrationCompletion', () => {
 
     await saveIntegrationCredentials(getDb(), 'google', { access_token: 'test_token' }, true)
 
-    renderHook(() => useHandleIntegrationCompletion({ saveMessages: mockSaveMessages }), {
+    renderHook(() => useHandleIntegrationCompletion({ saveMessages: mockSaveMessages, workspaceId: wsId }), {
       wrapper: createQueryTestWrapper({
         defaultOptions: {
           queries: {
@@ -392,7 +388,7 @@ describe('useHandleIntegrationCompletion', () => {
     // Start with no credentials
     // No integration credentials — local-only table is empty by default
 
-    renderHook(() => useHandleIntegrationCompletion({ saveMessages: mockSaveMessages }), {
+    renderHook(() => useHandleIntegrationCompletion({ saveMessages: mockSaveMessages, workspaceId: wsId }), {
       wrapper: createQueryTestWrapper({
         defaultOptions: {
           queries: {
@@ -448,7 +444,7 @@ describe('useHandleIntegrationCompletion', () => {
     const consoleWarnSpy = mock(() => {})
     console.warn = consoleWarnSpy
 
-    renderHook(() => useHandleIntegrationCompletion({ saveMessages: mockSaveMessages }), {
+    renderHook(() => useHandleIntegrationCompletion({ saveMessages: mockSaveMessages, workspaceId: wsId }), {
       wrapper: createQueryTestWrapper({
         defaultOptions: {
           queries: {
@@ -506,7 +502,7 @@ describe('useHandleIntegrationCompletion', () => {
     const consoleWarnSpy = mock(() => {})
     console.warn = consoleWarnSpy
 
-    renderHook(() => useHandleIntegrationCompletion({ saveMessages: mockSaveMessages }), {
+    renderHook(() => useHandleIntegrationCompletion({ saveMessages: mockSaveMessages, workspaceId: wsId }), {
       wrapper: createQueryTestWrapper({
         defaultOptions: {
           queries: {
@@ -573,7 +569,7 @@ describe('useHandleIntegrationCompletion', () => {
 
       await saveIntegrationCredentials(getDb(), 'google', { access_token: 'test_token' }, true)
 
-      renderHook(() => useHandleIntegrationCompletion({ saveMessages: mockSaveMessages }), {
+      renderHook(() => useHandleIntegrationCompletion({ saveMessages: mockSaveMessages, workspaceId: wsId }), {
         wrapper: createQueryTestWrapper({
           defaultOptions: {
             queries: {

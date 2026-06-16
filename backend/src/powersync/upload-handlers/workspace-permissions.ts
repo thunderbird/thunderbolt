@@ -10,13 +10,12 @@ import {
   type Role,
   updateWorkspacePermission,
   upsertWorkspacePermission,
-  type WorkspacePermissionKey,
 } from '@/dal/workspaces'
+import { isWorkspacePermissionKey } from '@shared/workspaces'
 import { allow, reject } from './helpers'
 import { UploadRejection, type UploadHandler } from './types'
 
 const isRole = (v: unknown): v is Role => v === 'admin' || v === 'member'
-const isPermissionKey = (v: unknown): v is WorkspacePermissionKey => v === 'manage_members' || v === 'change_roles'
 
 /**
  * Upload handler for `workspace_permissions`. All operations require admin role
@@ -66,7 +65,7 @@ export const workspacePermissionsHandler: UploadHandler = {
     switch (op.op) {
       case 'PUT': {
         const workspaceId = typeof op.data?.workspace_id === 'string' ? op.data.workspace_id : null
-        const permissionKey = isPermissionKey(op.data?.permission_key) ? op.data.permission_key : null
+        const permissionKey = isWorkspacePermissionKey(op.data?.permission_key) ? op.data.permission_key : null
         const requiredRole = isRole(op.data?.required_role) ? op.data.required_role : null
         if (!workspaceId || !permissionKey || !requiredRole) {
           throw new UploadRejection('permanent', 'PERMISSION_FIELDS_REQUIRED')

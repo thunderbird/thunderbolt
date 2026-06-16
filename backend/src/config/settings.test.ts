@@ -51,6 +51,33 @@ describe('Config Settings', () => {
     })
   })
 
+  describe('SERVER_ID validation', () => {
+    const savedServerId = process.env.SERVER_ID
+
+    afterEach(() => {
+      if (savedServerId !== undefined) {
+        process.env.SERVER_ID = savedServerId
+      } else {
+        delete process.env.SERVER_ID
+      }
+      clearSettingsCache()
+    })
+
+    it('surfaces a setup-pointing error when SERVER_ID is unset', () => {
+      delete process.env.SERVER_ID
+      clearSettingsCache()
+
+      expect(() => getSettings()).toThrow(/SERVER_ID env var must be set.*make doctor/)
+    })
+
+    it('surfaces a UUID-format error when SERVER_ID is set but not a UUID', () => {
+      process.env.SERVER_ID = 'not-a-uuid'
+      clearSettingsCache()
+
+      expect(() => getSettings()).toThrow(/SERVER_ID must be a valid UUID/)
+    })
+  })
+
   describe('CORS default security', () => {
     const corsEnvKeys = ['CORS_ORIGINS'] as const
 

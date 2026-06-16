@@ -21,6 +21,13 @@ import { MemoryRouter } from 'react-router'
 import type { ReactNode } from 'react'
 import { ChatModelPicker } from './chat-model-picker'
 
+const fakeUseWorkspacePermission = (isAllowed: boolean) =>
+  (() => ({
+    requiredRole: 'admin' as const,
+    isAllowed,
+    isResolved: true,
+  })) as unknown as typeof import('@/hooks/use-workspace-permission').useWorkspacePermission
+
 const remoteAcpAgent: Agent = {
   id: 'remote-1',
   name: 'Remote Agent',
@@ -129,6 +136,32 @@ describe('ChatModelPicker', () => {
     const { container } = render(<ChatModelPicker />, { wrapper: TestWrapper })
 
     expect(container.firstChild).toBeNull()
+  })
+
+  it('renders the "Add Models" footer when the user has add_models permission', async () => {
+    setupWithAgent(builtInAgent)
+
+    render(<ChatModelPicker useWorkspacePermission={fakeUseWorkspacePermission(true)} />, { wrapper: TestWrapper })
+
+    await act(async () => {
+      fireEvent.click(screen.getByText('GPT-4'))
+    })
+
+    expect(await screen.findByText('Add Models')).toBeInTheDocument()
+  })
+
+  it('hides the "Add Models" footer when the user lacks add_models permission', async () => {
+    setupWithAgent(builtInAgent)
+
+    render(<ChatModelPicker useWorkspacePermission={fakeUseWorkspacePermission(false)} />, { wrapper: TestWrapper })
+
+    await act(async () => {
+      fireEvent.click(screen.getByText('GPT-4'))
+    })
+
+    // Wait for the dropdown to settle, then assert the footer is absent.
+    await screen.findByText('GPT-5')
+    expect(screen.queryByText('Add Models')).not.toBeInTheDocument()
   })
 
   it('changes the selected model in the store on click', async () => {

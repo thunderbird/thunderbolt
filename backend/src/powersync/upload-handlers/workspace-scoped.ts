@@ -10,9 +10,10 @@ import {
   powersyncTablesByName,
 } from '@/db/powersync-schema'
 import type { PowerSyncTableName } from '@shared/powersync-tables'
+import { type WorkspacePermissionKey } from '@shared/workspaces'
 import { and, eq } from 'drizzle-orm'
 import type { AnyPgColumn, AnyPgTable } from 'drizzle-orm/pg-core'
-import { allow, reject, toSchemaRecord } from './helpers'
+import { allow, callerSatisfiesPermission, reject, toSchemaRecord } from './helpers'
 import { UploadRejection, type UploadHandler, type UploadTx } from './types'
 
 export type WorkspaceScopedConfig = {
@@ -26,6 +27,29 @@ export type WorkspaceScopedConfig = {
   userPrivate: boolean
   /** Columns the client may not set; stripped from PUT/PATCH payloads. */
   denyColumns?: readonly string[]
+  /**
+   * Permission key gating PUT and "edit" PATCHes. When set, the handler reads
+   * `workspace_permissions.required_role` for this key and rejects the op
+   * unless the caller's role satisfies it. Default (no key) keeps the "any
+   * workspace member may write" behaviour.
+   */
+  addPermissionKey?: WorkspacePermissionKey
+  /**
+   * Permission key gating DELETE and "soft-delete" PATCHes (see
+   * `softDeleteColumn`). Same lookup semantics as `addPermissionKey`.
+   */
+  removePermissionKey?: WorkspacePermissionKey
+  /**
+   * Column name (in PowerSync upload's snake_case form) used by the table for
+   * soft-delete tombstones. When set, a PATCH that writes this column to a
+   * non-null value is treated as a remove and gates on `removePermissionKey`
+   * instead of `addPermissionKey`. PATCHes that don't touch the column — or
+   * that set it back to null (restore) — continue to gate as adds.
+   *
+   * Required for the four resource tables (agents, skills, models,
+   * mcp_servers) whose FE DAL soft-deletes via UPDATE rather than DELETE.
+   */
+  softDeleteColumn?: string
 }
 
 const isString = (v: unknown): v is string => typeof v === 'string'
@@ -79,7 +103,28 @@ const fetchRowScope = async (
  *   moved between workspaces via upload.
  */
 export const createWorkspaceScopedHandler = (cfg: WorkspaceScopedConfig): UploadHandler => {
-  const { tableName, userPrivate, denyColumns = [] } = cfg
+  const { tableName, userPrivate, denyColumns = [], addPermissionKey, removePermissionKey, softDeleteColumn } = cfg
+
+  /**
+   * Classifies the op as 'add' (PUT, PATCH-edit, PATCH-restore) or 'remove'
+   * (DELETE, PATCH that sets `softDeleteColumn` to a truthy value). Drives
+   * which permission key gates the write.
+   */
+  const opIntent = (op: { op: 'PUT' | 'PATCH' | 'DELETE'; data?: Record<string, unknown> }): 'add' | 'remove' => {
+    if (op.op === 'DELETE') {
+      return 'remove'
+    }
+    if (
+      op.op === 'PATCH' &&
+      softDeleteColumn !== undefined &&
+      op.data &&
+      Object.prototype.hasOwnProperty.call(op.data, softDeleteColumn) &&
+      op.data[softDeleteColumn] != null
+    ) {
+      return 'remove'
+    }
+    return 'add'
+  }
 
   return {
     validate: async (op, ctx, tx) => {
@@ -94,6 +139,12 @@ export const createWorkspaceScopedHandler = (cfg: WorkspaceScopedConfig): Upload
         if (!(await isWorkspaceMember(tx, resolvedWorkspaceId, ctx.userId))) {
           return reject('permanent', 'NOT_WORKSPACE_MEMBER')
         }
+        if (
+          addPermissionKey &&
+          !(await callerSatisfiesPermission(tx, resolvedWorkspaceId, ctx.userId, addPermissionKey))
+        ) {
+          return reject('permanent', 'INSUFFICIENT_PERMISSION')
+        }
         return allow()
       }
 
@@ -106,6 +157,13 @@ export const createWorkspaceScopedHandler = (cfg: WorkspaceScopedConfig): Upload
       }
       if (userPrivate && scope.userId !== ctx.userId) {
         return reject('permanent', 'NOT_ROW_OWNER')
+      }
+      const requiredPermissionKey = opIntent(op) === 'remove' ? removePermissionKey : addPermissionKey
+      if (
+        requiredPermissionKey &&
+        !(await callerSatisfiesPermission(tx, scope.workspaceId, ctx.userId, requiredPermissionKey))
+      ) {
+        return reject('permanent', 'INSUFFICIENT_PERMISSION')
       }
       return allow()
     },

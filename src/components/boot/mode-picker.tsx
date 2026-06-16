@@ -111,7 +111,10 @@ export const ModePicker = ({ validate = validateServerUrl }: ModePickerProps = {
   // Mirror of the live `serverUrl` so async validate callbacks can detect that
   // the user typed something else while the request was in flight, and bail
   // out of applying a result that no longer matches. Updated on every render
-  // — the ref always reflects the latest committed state.
+  // AND synchronously in the input's `onChange` — the render-time write alone
+  // races with a validate Promise that resolves before React commits the
+  // SET_URL re-render, since the closure's `urlAtCall` and the (stale) ref
+  // both still equal the previous value at that moment.
   const serverUrlRef = useRef(state.serverUrl)
   serverUrlRef.current = state.serverUrl
 
@@ -266,7 +269,13 @@ export const ModePicker = ({ validate = validateServerUrl }: ModePickerProps = {
                 type="url"
                 placeholder="app.thunderbolt.io/"
                 value={state.serverUrl}
-                onChange={(e) => dispatch({ type: 'SET_URL', url: e.target.value })}
+                onChange={(e) => {
+                  // Close the in-flight-validate race window — keep the ref
+                  // in lockstep with user input so a Promise resolving before
+                  // the SET_URL render commit can still detect the mismatch.
+                  serverUrlRef.current = e.target.value
+                  dispatch({ type: 'SET_URL', url: e.target.value })
+                }}
                 onBlur={handleBlur}
                 state={state.serverUrlError ? 'error' : 'default'}
                 disabled={state.isValidating}

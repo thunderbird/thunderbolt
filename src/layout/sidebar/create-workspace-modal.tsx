@@ -3,8 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
+import { Form } from '@/components/ui/form'
 import {
   ResponsiveModal,
   ResponsiveModalContent,
@@ -13,9 +12,19 @@ import {
   ResponsiveModalHeader,
   ResponsiveModalTitle,
 } from '@/components/ui/responsive-modal'
+import {
+  formatWorkspaceSlugPrefix,
+  slugifyWorkspaceName,
+  WorkspaceFormFields,
+  workspaceFormSchema,
+  type WorkspaceFormValues,
+} from '@/components/workspace/workspace-form-fields'
 import { useAuth, useDatabase } from '@/contexts'
 import { createSharedWorkspace } from '@/dal/workspaces'
-import { useEffect, useRef, useState } from 'react'
+import { useActiveCloudUrl } from '@/stores/trust-domain-registry'
+import { zodResolver } from '@hookform/resolvers/zod'
+import { useEffect, useRef } from 'react'
+import { useForm, useWatch } from 'react-hook-form'
 
 type CreateWorkspaceModalProps = {
   open: boolean
@@ -25,53 +34,71 @@ type CreateWorkspaceModalProps = {
   onCreated: (workspaceId: string) => void
 }
 
+const emptyValues: WorkspaceFormValues = { name: '', slug: '', icon: null }
+
 /**
- * Single-step "Create a Workspace" modal. Captures the workspace name; on
- * submit, writes the workspace + creator admin membership + seeded defaults
- * into a single local transaction (PowerSync uploads the batch).
+ * "Create a Workspace" modal. Captures name + slug + icon via the shared
+ * `WorkspaceFormFields` (same component used by the settings page); on submit,
+ * writes the workspace + creator admin membership + seeded defaults into a
+ * single local transaction (PowerSync uploads the batch).
  *
  * After the local writes commit, control hands off to `onCreated` — the
  * parent (sidebar selector) opens the invite modal and handles navigation
  * once that closes.
  */
 export const CreateWorkspaceModal = ({ open, onOpenChange, onCreated }: CreateWorkspaceModalProps) => {
-  const [name, setName] = useState('')
-  const [submitting, setSubmitting] = useState(false)
   const db = useDatabase()
+  const cloudUrl = useActiveCloudUrl()
   const authClient = useAuth()
   const { data: session } = authClient.useSession()
+
+  const form = useForm<WorkspaceFormValues>({
+    resolver: zodResolver(workspaceFormSchema),
+    defaultValues: emptyValues,
+    mode: 'onChange',
+  })
 
   // Reset on close so the next open starts fresh.
   const previouslyOpenRef = useRef(open)
   useEffect(() => {
     if (previouslyOpenRef.current && !open) {
-      setName('')
-      setSubmitting(false)
+      form.reset(emptyValues)
     }
     previouslyOpenRef.current = open
-  }, [open])
+  }, [open, form])
+
+  // Tracks `open` synchronously so the submit handler can skip the post-create
+  // callback when the user dismissed the modal during the in-flight transaction.
+  // Otherwise `onCreated` runs against a closed flow, opens the invite modal,
+  // and navigates the user into a workspace they thought they'd cancelled out of.
+  const openRef = useRef(open)
+  openRef.current = open
 
   const userId = session?.user?.id
   const creatorEmail = session?.user?.email ?? undefined
-  const trimmed = name.trim()
-  const canSubmit = trimmed.length > 0 && !submitting && !!userId
+  const slugPrefix = formatWorkspaceSlugPrefix(cloudUrl)
+  const watchedName = useWatch({ control: form.control, name: 'name' })
+  const canSubmit = !!userId && watchedName.trim().length > 0
 
-  const submit = async () => {
-    if (!canSubmit || !userId) {
+  const submit = form.handleSubmit(async (values) => {
+    if (!userId) {
       return
     }
-    setSubmitting(true)
-    try {
-      const workspaceId = await createSharedWorkspace(db, {
-        creatorUserId: userId,
-        creatorEmail,
-        name: trimmed,
-      })
-      onCreated(workspaceId)
-    } finally {
-      setSubmitting(false)
+    const workspaceId = await createSharedWorkspace(db, {
+      creatorUserId: userId,
+      creatorEmail,
+      name: values.name,
+      slug: slugifyWorkspaceName(values.slug) || null,
+      icon: values.icon,
+    })
+    // The local DB transaction commits regardless — the workspace will show up
+    // in the user's list once they reopen the selector. We just skip the
+    // navigation + invite-modal handoff when they've already moved on.
+    if (!openRef.current) {
+      return
     }
-  }
+    onCreated(workspaceId)
+  })
 
   return (
     <ResponsiveModal open={open} onOpenChange={onOpenChange} className="sm:min-h-fit">
@@ -84,33 +111,21 @@ export const CreateWorkspaceModal = ({ open, onOpenChange, onCreated }: CreateWo
         </ResponsiveModalDescription>
       </ResponsiveModalHeader>
 
-      <ResponsiveModalContent>
-        <div className="flex flex-col gap-2">
-          <Label htmlFor="create-workspace-name" className="text-[length:var(--font-size-body)] leading-7 font-normal">
-            Workspace name
-          </Label>
-          <Input
-            id="create-workspace-name"
-            inputSize="lg"
-            autoFocus
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter' && canSubmit) {
-                e.preventDefault()
-                void submit()
-              }
-            }}
-            placeholder="e.g. Engineering"
-          />
-        </div>
-      </ResponsiveModalContent>
+      <Form {...form}>
+        <form onSubmit={submit}>
+          <ResponsiveModalContent>
+            <div className="flex flex-col gap-4">
+              <WorkspaceFormFields form={form} slugPrefix={slugPrefix} />
+            </div>
+          </ResponsiveModalContent>
 
-      <ResponsiveModalFooter className="mt-8 flex-col sm:flex-col">
-        <Button size="lg" className="w-full" onClick={submit} disabled={!canSubmit}>
-          {submitting ? 'Creating…' : 'Create'}
-        </Button>
-      </ResponsiveModalFooter>
+          <ResponsiveModalFooter className="mt-8 flex-col sm:flex-col">
+            <Button type="submit" size="lg" className="w-full" disabled={!canSubmit}>
+              Create
+            </Button>
+          </ResponsiveModalFooter>
+        </form>
+      </Form>
     </ResponsiveModal>
   )
 }

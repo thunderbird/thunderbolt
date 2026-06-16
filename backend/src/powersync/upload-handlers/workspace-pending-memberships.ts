@@ -13,7 +13,7 @@ import {
   upsertPendingMembership,
 } from '@/dal/workspaces'
 import { getUserByEmail } from '@/dal/users'
-import { normalizeEmail } from '@/lib/email'
+import { isValidEmailFormat, normalizeEmail } from '@/lib/email'
 import { allow, callerSatisfiesPermission, reject } from './helpers'
 import { UploadRejection, type UploadHandler } from './types'
 
@@ -83,6 +83,9 @@ export const workspacePendingMembershipsHandler: UploadHandler = {
         if (!workspaceId || !email || !role) {
           throw new UploadRejection('permanent', 'PENDING_FIELDS_REQUIRED')
         }
+        if (!isValidEmailFormat(email)) {
+          throw new UploadRejection('permanent', 'INVALID_EMAIL')
+        }
         // `invitedByUserId` is server-truth — the caller is the inviter, full
         // stop. Trusting the payload would let a client attribute the invite
         // to someone else.
@@ -135,6 +138,9 @@ export const workspacePendingMembershipsHandler: UploadHandler = {
 
         if (email === undefined && role === undefined) {
           throw new UploadRejection('permanent', 'EMPTY_PAYLOAD')
+        }
+        if (email !== undefined && !isValidEmailFormat(email)) {
+          throw new UploadRejection('permanent', 'INVALID_EMAIL')
         }
         const affected = await updatePendingMembership(tx, op.id, { email, role })
         if (affected === 0) {

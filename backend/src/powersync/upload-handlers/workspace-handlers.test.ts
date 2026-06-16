@@ -843,6 +843,21 @@ describe('workspace upload handlers', () => {
       expect(coadminRow?.role).toBe('admin')
     })
 
+    it('rejects malformed email on pending PUT with INVALID_EMAIL', async () => {
+      await insertUser('admin-email', 'admin-email@test.com')
+      await bootstrapPersonalViaUpload('admin-email')
+      const sharedId = await seedSharedAsAdmin('admin-email')
+
+      const op: UploadOp = {
+        op: 'PUT',
+        type: 'workspace_pending_memberships',
+        id: uuidv7(),
+        data: { workspace_id: sharedId, email: 'not-an-email', role: 'member' },
+      }
+      const result = await applyUploadBatch(db, [op], ctxFor('admin-email'))
+      expectPermanentReject(result, 'INVALID_EMAIL')
+    })
+
     it('overrides client-supplied invited_by_user_id with ctx.userId', async () => {
       await insertUser('inviter', 'inviter@test.com')
       await bootstrapPersonalViaUpload('inviter')

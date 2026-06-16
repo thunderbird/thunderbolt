@@ -147,6 +147,17 @@ describe('ChatSkillsBar', () => {
       expect(screen.queryByLabelText('Pin a skill')).not.toBeInTheDocument()
     })
 
+    it('renders nothing when the user lacks add_skills and has no pinned chips, regardless of candidates', () => {
+      const a = skill('a', 'daily-brief')
+      const { container } = renderBar({
+        usePinnedSkills: fakeUsePinnedSkills({ pinned: [] }),
+        useLibrarySkills: fakeUseLibrarySkills([a]),
+        useEnabledSkills: fakeUseEnabledSkills(new Set(['a'])),
+        useWorkspacePermission: fakeUseWorkspacePermission(false),
+      })
+      expect(container.firstChild).toBeNull()
+    })
+
     it('still renders pinned chips when the user lacks add_skills (read-only chips)', () => {
       const a = skill('a', 'daily-brief')
       renderBar({

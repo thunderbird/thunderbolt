@@ -13,9 +13,10 @@ import {
   shouldRetry,
 } from '@/ai/step-logic'
 import { getAllSkills, getIntegrationStatus, getModel, getModelProfile, getSettings } from '@/dal'
+import { requireActiveWorkspaceId } from '@/lib/active-workspace'
 import { extractLastUserText, resolveSkillTokenInstructions } from '@/skills/resolve-skill-system-messages'
 import { getDb } from '@/db/database'
-import { getLocalSetting } from '@/stores/local-settings-store'
+import { getActiveCloudUrl } from '@/stores/trust-domain-registry'
 import { isSsoMode } from '@/lib/auth-mode'
 import { getAuthToken } from '@/lib/auth-token'
 import { fetch as baseFetch } from '@/lib/fetch'
@@ -76,7 +77,11 @@ let userTinfoilClient: SecureClient | null = null
 
 export const getSystemTinfoilClient = async (): Promise<SecureClient> => {
   // cloudUrl already ends in /v1 (shared with the OpenAI chat baseURL).
-  const cloudUrl = getLocalSetting('cloudUrl').replace(/\/$/, '')
+  const activeCloudUrl = getActiveCloudUrl()
+  if (!activeCloudUrl) {
+    throw new Error('Cannot use the system Tinfoil client without an active server trust domain')
+  }
+  const cloudUrl = activeCloudUrl.replace(/\/$/, '')
   let client = systemTinfoilClients.get(cloudUrl)
   if (!client) {
     const { SecureClient } = await import('tinfoil')
@@ -116,7 +121,10 @@ export const createModel = async (modelConfig: Model, getProxyFetch: () => Fetch
   // (e.g. cloudUrl, proxy_enabled toggle) is picked up.
   switch (modelConfig.provider) {
     case 'thunderbolt': {
-      const cloudUrl = getLocalSetting('cloudUrl')
+      const cloudUrl = getActiveCloudUrl()
+      if (!cloudUrl) {
+        throw new Error('Cannot use the thunderbolt provider without an active server trust domain')
+      }
       const token = getAuthToken() || 'thunderbolt'
       // SSO web flow authenticates via session cookies — the SSO callback is a
       // browser redirect, not an XHR, so `set-auth-token` never reaches the
@@ -270,6 +278,7 @@ export const aiFetchStreamingResponse = async ({
   // reach this function the user turn is already persisted.
 
   const db = getDb()
+  const workspaceId = await requireActiveWorkspaceId(db)
 
   // Fetch all settings in a single query (returns camelCase by default)
   const settings = await getSettings(db, {
@@ -287,13 +296,13 @@ export const aiFetchStreamingResponse = async ({
 
   const integrationStatus = await getIntegrationStatus(db)
 
-  const model = await getModel(db, modelId)
+  const model = await getModel(db, workspaceId, modelId)
 
   if (!model) {
     throw new Error('Model not found')
   }
 
-  const profile = await getModelProfile(db, modelId)
+  const profile = await getModelProfile(db, workspaceId, modelId)
 
   const supportsTools = model.toolUsage !== 0
 
@@ -487,7 +496,7 @@ export const aiFetchStreamingResponse = async ({
     // the context-overflow estimate so the budget and the actual prepend
     // stay in lockstep.
     const lastUserText = extractLastUserText(messages)
-    const allSkills = await getAllSkills(db)
+    const allSkills = await getAllSkills(db, workspaceId)
     const instructionBySlug = new Map<string, string>()
     for (const skill of allSkills) {
       if (skill.enabled === 1 && skill.name && skill.instruction) {

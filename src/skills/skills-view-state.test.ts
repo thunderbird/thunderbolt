@@ -21,6 +21,7 @@ const skill = (id: string, name: string): Skill => ({
   deletedAt: null,
   defaultHash: null,
   userId: null,
+  workspaceId: null,
 })
 
 /** Apply a sequence of actions to the initial state. Useful for "in mode X, when Y, expect Z" tests. */

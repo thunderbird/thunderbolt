@@ -39,4 +39,5 @@ CITATION CHECK: Before finishing your response, count your [N] citations. If you
   deletedAt: null,
   defaultHash: null,
   userId: null,
+  workspaceId: null,
 }

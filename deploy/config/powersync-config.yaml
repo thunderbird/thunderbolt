@@ -14,27 +14,60 @@ port: 8080
 sync_rules:
   content: |
     bucket_definitions:
-      user_essentials:
+      # Account-level data — one bucket per user. Device list and user-scoped
+      # settings. Workspaces and permissions are joined via the workspace bucket
+      # below (PowerSync sync rules don't support IN (SELECT ...) subqueries).
+      user_account:
         priority: 1
         parameters: SELECT request.user_id() as user_id
         data:
           - SELECT * FROM powersync.settings WHERE user_id = bucket.user_id
-          - SELECT * FROM powersync.models WHERE user_id = bucket.user_id
-          - SELECT * FROM powersync.modes WHERE user_id = bucket.user_id
-          - SELECT * FROM powersync.model_profiles WHERE user_id = bucket.user_id
           - SELECT * FROM powersync.devices WHERE user_id = bucket.user_id
-          - SELECT * FROM powersync.chat_threads WHERE user_id = bucket.user_id
-      user_data:
-        priority: 2
+
+      # User-private workspace-scoped tables — parameterized by user_id so we can
+      # filter without referencing request.user_id() inside the data query (which
+      # PowerSync rejects). Rows for every workspace the user is a member of land
+      # in the local DB; the FE narrows to the active workspace at query time.
+      user_private:
+        priority: 1
         parameters: SELECT request.user_id() as user_id
         data:
+          - SELECT * FROM powersync.chat_threads WHERE user_id = bucket.user_id
           - SELECT * FROM powersync.chat_messages WHERE user_id = bucket.user_id
           - SELECT * FROM powersync.tasks WHERE user_id = bucket.user_id
-          - SELECT * FROM powersync.mcp_servers WHERE user_id = bucket.user_id
-          - SELECT * FROM powersync.prompts WHERE user_id = bucket.user_id
-          - SELECT * FROM powersync.skills WHERE user_id = bucket.user_id
-          - SELECT * FROM powersync.triggers WHERE user_id = bucket.user_id
-          - SELECT * FROM powersync.agents WHERE user_id = bucket.user_id
+
+      # Workspace essentials — one bucket per workspace the user is a member of.
+      # Carries the workspace row itself and the permission policy. Promoted to
+      # priority 1 so the workspace selector / sidebar and permission-gated UI
+      # render on first paint without waiting for the heavier shared config.
+      workspace_essentials:
+        priority: 1
+        parameters: SELECT workspace_id FROM powersync.workspace_memberships WHERE user_id = request.user_id()
+        data:
+          - SELECT * FROM powersync.workspaces WHERE id = bucket.workspace_id
+          - SELECT * FROM powersync.workspace_permissions WHERE workspace_id = bucket.workspace_id
+
+      # Workspace shared data — full member list, pending invites, and shared
+      # workspace-scoped config. Pending memberships sync to every member (not
+      # just admins) because `invite_users`/`change_roles`/`remove_users` are
+      # per-key permissions that can be granted to `member` role; without the
+      # row syncing down, a permitted non-admin would see an empty pending list.
+      # Write authorization is enforced by the upload handlers, not by the
+      # sync rule.
+      workspace_data:
+        priority: 2
+        parameters: SELECT workspace_id FROM powersync.workspace_memberships WHERE user_id = request.user_id()
+        data:
+          - SELECT * FROM powersync.workspace_memberships WHERE workspace_id = bucket.workspace_id
+          - SELECT * FROM powersync.workspace_pending_memberships WHERE workspace_id = bucket.workspace_id
+          - SELECT * FROM powersync.models WHERE workspace_id = bucket.workspace_id
+          - SELECT * FROM powersync.mcp_servers WHERE workspace_id = bucket.workspace_id
+          - SELECT * FROM powersync.prompts WHERE workspace_id = bucket.workspace_id
+          - SELECT * FROM powersync.skills WHERE workspace_id = bucket.workspace_id
+          - SELECT * FROM powersync.triggers WHERE workspace_id = bucket.workspace_id
+          - SELECT * FROM powersync.modes WHERE workspace_id = bucket.workspace_id
+          - SELECT * FROM powersync.model_profiles WHERE workspace_id = bucket.workspace_id
+          - SELECT * FROM powersync.agents WHERE workspace_id = bucket.workspace_id
 
 client_auth:
   supabase: false

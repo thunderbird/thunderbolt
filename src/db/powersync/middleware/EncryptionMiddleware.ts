@@ -3,19 +3,11 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import type { DataTransformMiddleware, SyncDataBucket } from '../TransformableBucketStorage'
-import { codec } from '@/db/encryption/codec'
+import { codec as defaultCodec, type EncryptionCodec } from '@/db/encryption/codec'
 
 type SyncEntry = SyncDataBucket['data'][number]
 
-/**
- * Decrypt all __enc:-prefixed values in a single sync entry. Mutates entry.data in place.
- *
- * Intentionally data-driven rather than map-driven: any string value starting with __enc:
- * is decrypted regardless of whether its column appears in encryptedColumnsMap. This means
- * a stale desktop client (whose bundled map predates a new encrypted column) still decrypts
- * correctly — the __enc: prefix is the authoritative signal, not the config.
- */
-const decryptEntry = async (entry: SyncEntry) => {
+const makeDecryptEntry = (codec: EncryptionCodec) => async (entry: SyncEntry) => {
   if (!entry.data) {
     return
   }
@@ -42,6 +34,10 @@ const decryptEntry = async (entry: SyncEntry) => {
 }
 
 /**
+ * Creates an encryption middleware using the given codec.
+ * Production code uses the `encryptionMiddleware` singleton; tests pass a fake codec
+ * directly instead of mocking the module.
+ *
  * Decrypts encrypted columns in sync data before it reaches SQLite.
  * Data-driven: scans all string values for the __enc: prefix rather than consulting
  * encryptedColumnsMap, so stale desktop bundles handle newly-encrypted columns correctly.
@@ -50,9 +46,14 @@ const decryptEntry = async (entry: SyncEntry) => {
  * No isEncryptionEnabled() gate: this middleware runs in the SharedWorker where
  * localStorage is unavailable. The codec safely handles both encrypted and plaintext data.
  */
-export const encryptionMiddleware: DataTransformMiddleware = {
-  async transform(bucket) {
-    await Promise.all(bucket.data.map(decryptEntry))
-    return bucket
-  },
+export const createEncryptionMiddleware = (codec: EncryptionCodec): DataTransformMiddleware => {
+  const decryptEntry = makeDecryptEntry(codec)
+  return {
+    async transform(bucket) {
+      await Promise.all(bucket.data.map(decryptEntry))
+      return bucket
+    },
+  }
 }
+
+export const encryptionMiddleware = createEncryptionMiddleware(defaultCodec)

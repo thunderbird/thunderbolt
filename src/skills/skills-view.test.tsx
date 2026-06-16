@@ -12,6 +12,7 @@ import { MemoryRouter } from 'react-router'
 
 import { SidebarProvider } from '@/components/ui/sidebar'
 import { createSkill, getSkill, getSkillByName, setSkillPinned } from '@/dal'
+import { seedTestPersonalAdminMembership, wsId } from '@/dal/test-utils'
 // Import for side effect: registers the framer-motion `mock.module` so the
 // `m.li layoutId` rows from `library-row.tsx` render to plain `<li>` and the
 // `LazyMotion` wrapper below is the no-op passthrough.
@@ -19,7 +20,12 @@ import '@/test-utils/framer-motion-mock'
 import { resetTestDatabase, setupTestDatabase, teardownTestDatabase } from '@/dal/test-utils'
 import { getDb } from '@/db/database'
 import { skillsTable } from '@/db/tables'
-import { renderWithReactivity, waitForElement } from '@/test-utils/powersync-reactivity-test'
+import {
+  renderWithReactivity,
+  waitForElement,
+  resetTestTrustDomain,
+  seedTestTrustDomain,
+} from '@/test-utils/powersync-reactivity-test'
 import { getClock } from '@/testing-library'
 import { SkillsView } from './skills-view'
 
@@ -32,10 +38,16 @@ afterAll(async () => {
 })
 
 beforeEach(async () => {
+  seedTestTrustDomain()
   await resetTestDatabase()
+  // SkillsView uses `useWorkspacePermission('add_skills' / 'remove_skills')`
+  // to gate the Create + Delete affordances. Seed the personal-admin
+  // membership so the test user resolves as admin and the buttons render.
+  await seedTestPersonalAdminMembership()
 })
 
 afterEach(() => {
+  resetTestTrustDomain()
   cleanup()
 })
 
@@ -59,12 +71,12 @@ const flush = async () => {
 describe('SkillsView state machine', () => {
   describe('handleToggleEnabled — auto-unpin on disable', () => {
     it('unpins a pinned skill when its row switch is turned off', async () => {
-      const skill = await createSkill(getDb(), {
+      const skill = await createSkill(getDb(), wsId, {
         name: 'meeting-notes',
         description: 'desc',
         instruction: 'do stuff',
       })
-      await setSkillPinned(getDb(), skill.id, 0)
+      await setSkillPinned(getDb(), wsId, skill.id, 0)
 
       const { triggerChange } = renderWithReactivity(<SkillsView />, {
         tables: ['skills'],
@@ -77,13 +89,13 @@ describe('SkillsView state machine', () => {
       triggerChange(['skills'])
       await flush()
 
-      const after = await getSkill(getDb(), skill.id)
+      const after = await getSkill(getDb(), wsId, skill.id)
       expect(after?.enabled).toBe(0)
       expect(after?.pinnedOrder).toBeNull()
     })
 
     it('does not auto-repin when toggling enabled back on', async () => {
-      const skill = await createSkill(getDb(), {
+      const skill = await createSkill(getDb(), wsId, {
         name: 'weekly-review',
         description: 'desc',
         instruction: 'plan',
@@ -97,7 +109,7 @@ describe('SkillsView state machine', () => {
       fireEvent.click(switchEl)
       await flush()
 
-      const after = await getSkill(getDb(), skill.id)
+      const after = await getSkill(getDb(), wsId, skill.id)
       expect(after?.enabled).toBe(1)
       expect(after?.pinnedOrder).toBeNull()
     })
@@ -107,8 +119,8 @@ describe('SkillsView state machine', () => {
     it('blocks a direct disable when other skills reference the target', async () => {
       // /a is referenced by /b. Disabling /a should open the dependents-aware
       // confirm dialog instead of immediately setting enabled=0.
-      await createSkill(getDb(), { name: 'a', description: 'desc a', instruction: 'standalone' })
-      await createSkill(getDb(), { name: 'b', description: 'desc b', instruction: 'then run /a' })
+      await createSkill(getDb(), wsId, { name: 'a', description: 'desc a', instruction: 'standalone' })
+      await createSkill(getDb(), wsId, { name: 'b', description: 'desc b', instruction: 'then run /a' })
 
       renderWithReactivity(<SkillsView />, { tables: ['skills'], wrapper: Wrapper })
 
@@ -125,7 +137,7 @@ describe('SkillsView state machine', () => {
       expect(within(dialog).getByRole('button', { name: 'Cancel' })).toBeInTheDocument()
 
       // /a is still enabled — the user hasn't confirmed.
-      const aRecord = await getSkillByName(getDb(), 'a')
+      const aRecord = await getSkillByName(getDb(), wsId, 'a')
       expect(aRecord?.enabled).toBe(1)
     })
   })
@@ -133,7 +145,7 @@ describe('SkillsView state machine', () => {
   describe('form validation', () => {
     it('shows the spec violation inline as the user types', async () => {
       // Seed a skill so we're not in the empty-state branch when opening Create.
-      await createSkill(getDb(), { name: 'seed', description: 'desc', instruction: 'i' })
+      await createSkill(getDb(), wsId, { name: 'seed', description: 'desc', instruction: 'i' })
 
       renderWithReactivity(<SkillsView />, { tables: ['skills'], wrapper: Wrapper })
 
@@ -151,8 +163,8 @@ describe('SkillsView state machine', () => {
     })
 
     it('surfaces SkillNameTakenError inline when submitting a duplicate name', async () => {
-      await createSkill(getDb(), { name: 'meeting-notes', description: 'd', instruction: 'i' })
-      await createSkill(getDb(), { name: 'other', description: 'd', instruction: 'i' })
+      await createSkill(getDb(), wsId, { name: 'meeting-notes', description: 'd', instruction: 'i' })
+      await createSkill(getDb(), wsId, { name: 'other', description: 'd', instruction: 'i' })
 
       renderWithReactivity(<SkillsView />, { tables: ['skills'], wrapper: Wrapper })
 

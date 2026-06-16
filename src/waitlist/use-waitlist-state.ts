@@ -9,6 +9,7 @@ import { useHttpClient } from '@/contexts'
 import { challengeTokenHeader, otpLength } from '@/lib/constants'
 import { useAnonymousPromotionAnalytics } from '@/lib/analytics/use-anonymous-promotion-analytics'
 import { getOtpErrorMessage } from '@/lib/otp-error-messages'
+import { runPostAuthBootstrap } from '@/lib/post-auth-bootstrap'
 import { isValidEmailFormat } from '@/lib/utils'
 import { useReducer, type FormEvent } from 'react'
 
@@ -135,6 +136,21 @@ export const useWaitlistState = ({ authClient, onVerified }: UseWaitlistStateOpt
       const isNewUser = isNewAuthUser(result.data.user)
       await onSignInSuccess(isNewUser, wasAnonymous)
       analytics.onPromotionSuccess(result.data.user.id)
+
+      // Post-auth pipeline: connect sync + resolve personal workspace + reconcile.
+      // Idempotent + deduped, so the `SessionToWorkspaceBootstrap` observer firing
+      // in parallel won't double-run.
+      try {
+        await runPostAuthBootstrap({
+          kind: 'server',
+          userId: result.data.user.id,
+          isAnonymous: result.data.user.isAnonymous === true,
+        })
+      } catch (bootstrapError) {
+        console.error('Post-auth bootstrap failed:', bootstrapError)
+        dispatch({ type: 'VERIFY_ERROR', payload: 'Could not sync your account. Please retry.' })
+        return
+      }
 
       if (!isNewUser) {
         useWelcomeStore.getState().trigger()

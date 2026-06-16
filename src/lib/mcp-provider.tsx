@@ -5,7 +5,7 @@
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js'
 import { createMCPClient } from '@ai-sdk/mcp'
 import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from 'react'
-import { useLocalSettingsStore } from '@/stores/local-settings-store'
+import { useActiveCloudUrl } from '@/stores/trust-domain-registry'
 import { createProxyFetch } from './proxy-fetch'
 
 type MCPClient = Awaited<ReturnType<typeof createMCPClient>>
@@ -35,7 +35,7 @@ export const MCPProvider = ({ children }: { children: ReactNode }) => {
   const [servers, setServers] = useState<MCPServerConnection[]>([])
   const clientRefs = useRef<Map<string, MCPClient>>(new Map())
   const serversRef = useRef<MCPServerConnection[]>([])
-  const cloudUrl = useLocalSettingsStore((s) => s.cloudUrl)
+  const cloudUrl = useActiveCloudUrl() ?? ''
 
   serversRef.current = servers
 

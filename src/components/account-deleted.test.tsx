@@ -12,6 +12,7 @@ const mockReplace = mock()
 Object.defineProperty(window, 'location', {
   value: { replace: mockReplace },
   writable: true,
+  configurable: true,
 })
 
 describe('AccountDeleted', () => {

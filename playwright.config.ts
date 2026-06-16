@@ -92,6 +92,11 @@ export default defineConfig({
       timeout: 120_000,
       env: {
         PORT: String(oidcBackendPort),
+        // Stable per-deployment UUID — required by the settings schema (no default). Locally,
+        // `backend/.env` supplies one via `make doctor`, but CI inherits no such file, so we
+        // pin a deterministic fixture here. Distinct from the SAML backend's id so the two
+        // e2e backends model independent trust domains.
+        SERVER_ID: 'e2e0e2e0-e2e0-4e2e-8e2e-e2e0e2e00001',
         AUTH_MODE: 'oidc',
         OIDC_CLIENT_ID: 'thunderbolt-app',
         OIDC_CLIENT_SECRET: 'thunderbolt-dev-secret',
@@ -127,6 +132,8 @@ export default defineConfig({
       timeout: 120_000,
       env: {
         PORT: String(samlBackendPort),
+        // Distinct from the OIDC backend's id — see comment there for why we pin a fixture.
+        SERVER_ID: 'e2e0e2e0-e2e0-4e2e-8e2e-e2e0e2e00002',
         AUTH_MODE: 'saml',
         SAML_ENTRY_POINT: `http://localhost:${mockSamlPort}/saml/sso`,
         SAML_ENTITY_ID: 'e2e-saml-sp',

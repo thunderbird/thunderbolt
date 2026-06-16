@@ -14,7 +14,7 @@ import {
   getLastMessage,
   saveMessagesWithContextUpdate,
 } from './chat-messages'
-import { resetTestDatabase, setupTestDatabase, teardownTestDatabase } from './test-utils'
+import { resetTestDatabase, setupTestDatabase, teardownTestDatabase, wsId } from './test-utils'
 
 beforeAll(async () => {
   await setupTestDatabase()
@@ -39,9 +39,10 @@ describe('Chat Messages DAL', () => {
         id: threadId,
         title: 'Test Thread',
         isEncrypted: 0,
+        workspaceId: wsId,
       })
 
-      const messages = await getChatMessages(getDb(), threadId)
+      const messages = await getChatMessages(getDb(), wsId, threadId)
       expect(messages).toEqual([])
     })
 
@@ -53,6 +54,7 @@ describe('Chat Messages DAL', () => {
         id: threadId,
         title: 'Test Thread',
         isEncrypted: 0,
+        workspaceId: wsId,
       })
 
       const messageId1 = uuidv7()
@@ -64,16 +66,18 @@ describe('Chat Messages DAL', () => {
           chatThreadId: threadId,
           role: 'user',
           content: 'Hello',
+          workspaceId: wsId,
         },
         {
           id: messageId2,
           chatThreadId: threadId,
           role: 'assistant',
           content: 'Hi there!',
+          workspaceId: wsId,
         },
       ])
 
-      const messages = await getChatMessages(getDb(), threadId)
+      const messages = await getChatMessages(getDb(), wsId, threadId)
       expect(messages).toHaveLength(2)
       expect(messages.map((m) => m.id)).toContain(messageId1)
       expect(messages.map((m) => m.id)).toContain(messageId2)
@@ -87,6 +91,7 @@ describe('Chat Messages DAL', () => {
         id: threadId,
         title: 'Test Thread',
         isEncrypted: 0,
+        workspaceId: wsId,
       })
 
       const messageId1 = uuidv7()
@@ -99,16 +104,18 @@ describe('Chat Messages DAL', () => {
           chatThreadId: threadId,
           role: 'assistant',
           content: 'Second message',
+          workspaceId: wsId,
         },
         {
           id: messageId1,
           chatThreadId: threadId,
           role: 'user',
           content: 'First message',
+          workspaceId: wsId,
         },
       ])
 
-      const messages = await getChatMessages(getDb(), threadId)
+      const messages = await getChatMessages(getDb(), wsId, threadId)
       expect(messages).toHaveLength(2)
       expect(messages[0]?.id).toBe(messageId1)
       expect(messages[1]?.id).toBe(messageId2)
@@ -124,9 +131,10 @@ describe('Chat Messages DAL', () => {
         id: threadId,
         title: 'Test Thread',
         isEncrypted: 0,
+        workspaceId: wsId,
       })
 
-      const lastMessage = await getLastMessage(getDb(), threadId)
+      const lastMessage = await getLastMessage(getDb(), wsId, threadId)
       expect(lastMessage).toBeNull()
     })
 
@@ -138,6 +146,7 @@ describe('Chat Messages DAL', () => {
         id: threadId,
         title: 'Test Thread',
         isEncrypted: 0,
+        workspaceId: wsId,
       })
 
       const messageId1 = uuidv7()
@@ -152,6 +161,7 @@ describe('Chat Messages DAL', () => {
         model: 'gpt-4',
         isSystem: 0,
         enabled: 1,
+        workspaceId: wsId,
       })
 
       await db.insert(chatMessagesTable).values([
@@ -160,6 +170,7 @@ describe('Chat Messages DAL', () => {
           chatThreadId: threadId,
           role: 'user',
           content: 'First message',
+          workspaceId: wsId,
         },
         {
           id: messageId2,
@@ -167,10 +178,11 @@ describe('Chat Messages DAL', () => {
           role: 'assistant',
           content: 'Last message',
           modelId: modelId,
+          workspaceId: wsId,
         },
       ])
 
-      const lastMessage = await getLastMessage(getDb(), threadId)
+      const lastMessage = await getLastMessage(getDb(), wsId, threadId)
       expect(lastMessage).not.toBeUndefined()
       expect(lastMessage?.id).toBe(messageId2)
       expect(lastMessage?.modelId).toBe(modelId)
@@ -187,6 +199,7 @@ describe('Chat Messages DAL', () => {
         id: threadId,
         title: 'Test Thread',
         isEncrypted: 0,
+        workspaceId: wsId,
       })
 
       const messages: ThunderboltUIMessage[] = [
@@ -197,7 +210,7 @@ describe('Chat Messages DAL', () => {
         },
       ]
 
-      await saveMessagesWithContextUpdate(getDb(), threadId, messages)
+      await saveMessagesWithContextUpdate(getDb(), wsId, threadId, messages)
 
       const savedMessages = await db.select().from(chatMessagesTable).where(eq(chatMessagesTable.id, messageId))
       expect(savedMessages).toHaveLength(1)
@@ -214,6 +227,7 @@ describe('Chat Messages DAL', () => {
         id: threadId,
         title: 'Test Thread',
         isEncrypted: 0,
+        workspaceId: wsId,
       })
 
       await db.insert(chatMessagesTable).values({
@@ -222,6 +236,7 @@ describe('Chat Messages DAL', () => {
         role: 'user',
         content: 'First message',
         parentId: null,
+        workspaceId: wsId,
       })
 
       const messages: ThunderboltUIMessage[] = [
@@ -232,7 +247,7 @@ describe('Chat Messages DAL', () => {
         },
       ]
 
-      await saveMessagesWithContextUpdate(getDb(), threadId, messages)
+      await saveMessagesWithContextUpdate(getDb(), wsId, threadId, messages)
 
       const savedMessages = await db.select().from(chatMessagesTable).where(eq(chatMessagesTable.id, messageId2))
       expect(savedMessages).toHaveLength(1)
@@ -251,6 +266,7 @@ describe('Chat Messages DAL', () => {
         id: threadId,
         title: 'Test Thread',
         isEncrypted: 0,
+        workspaceId: wsId,
       })
 
       // Insert existing message
@@ -260,6 +276,7 @@ describe('Chat Messages DAL', () => {
         role: 'user',
         content: 'Existing message',
         parentId: null,
+        workspaceId: wsId,
       })
 
       const messages: ThunderboltUIMessage[] = [
@@ -280,7 +297,7 @@ describe('Chat Messages DAL', () => {
         },
       ]
 
-      await saveMessagesWithContextUpdate(getDb(), threadId, messages)
+      await saveMessagesWithContextUpdate(getDb(), wsId, threadId, messages)
 
       const allMessages = await db
         .select()
@@ -312,6 +329,7 @@ describe('Chat Messages DAL', () => {
         id: threadId,
         title: 'Test Thread',
         isEncrypted: 0,
+        workspaceId: wsId,
       })
 
       // Insert message directly to simulate race: another caller already saved it
@@ -321,6 +339,7 @@ describe('Chat Messages DAL', () => {
         role: 'user',
         content: 'Original content',
         parentId: null,
+        workspaceId: wsId,
       })
 
       // saveMessagesWithContextUpdate tries insert first, gets PRIMARY KEY constraint, falls back to update
@@ -332,7 +351,7 @@ describe('Chat Messages DAL', () => {
         },
       ]
 
-      await saveMessagesWithContextUpdate(getDb(), threadId, messages)
+      await saveMessagesWithContextUpdate(getDb(), wsId, threadId, messages)
 
       const saved = await db.select().from(chatMessagesTable).where(eq(chatMessagesTable.id, messageId)).get()
       expect(saved?.content).toBe('Updated content')
@@ -348,6 +367,7 @@ describe('Chat Messages DAL', () => {
         id: threadId,
         title: 'Test Thread',
         isEncrypted: 0,
+        workspaceId: wsId,
       })
 
       const messages: ThunderboltUIMessage[] = [
@@ -365,7 +385,7 @@ describe('Chat Messages DAL', () => {
         },
       ]
 
-      await saveMessagesWithContextUpdate(getDb(), threadId, messages)
+      await saveMessagesWithContextUpdate(getDb(), wsId, threadId, messages)
 
       const thread = await db.select().from(chatThreadsTable).where(eq(chatThreadsTable.id, threadId)).get()
       expect(thread?.contextSize).toBe(300)
@@ -383,6 +403,7 @@ describe('Chat Messages DAL', () => {
         id: threadId,
         title: 'Test Thread',
         isEncrypted: 0,
+        workspaceId: wsId,
       })
 
       await db.insert(chatMessagesTable).values([
@@ -392,6 +413,7 @@ describe('Chat Messages DAL', () => {
           role: 'user',
           content: 'Parent message',
           parentId: null,
+          workspaceId: wsId,
         },
         {
           id: childMessageId,
@@ -399,14 +421,15 @@ describe('Chat Messages DAL', () => {
           role: 'assistant',
           content: 'Child message',
           parentId: parentMessageId,
+          workspaceId: wsId,
         },
       ])
 
       // Soft delete parent message and descendants (DAL cascade)
-      await deleteChatMessageAndDescendants(getDb(), parentMessageId)
+      await deleteChatMessageAndDescendants(getDb(), wsId, parentMessageId)
 
       // No messages visible (soft-deleted)
-      const messages = await getChatMessages(getDb(), threadId)
+      const messages = await getChatMessages(getDb(), wsId, threadId)
       expect(messages).toHaveLength(0)
     })
 
@@ -422,6 +445,7 @@ describe('Chat Messages DAL', () => {
         id: threadId,
         title: 'Test Thread',
         isEncrypted: 0,
+        workspaceId: wsId,
       })
 
       // Create a chain: msg1 -> msg2 -> msg3 -> msg4
@@ -432,6 +456,7 @@ describe('Chat Messages DAL', () => {
           role: 'user',
           content: 'Message 1',
           parentId: null,
+          workspaceId: wsId,
         },
         {
           id: msg2Id,
@@ -439,6 +464,7 @@ describe('Chat Messages DAL', () => {
           role: 'assistant',
           content: 'Message 2',
           parentId: msg1Id,
+          workspaceId: wsId,
         },
         {
           id: msg3Id,
@@ -446,6 +472,7 @@ describe('Chat Messages DAL', () => {
           role: 'user',
           content: 'Message 3',
           parentId: msg2Id,
+          workspaceId: wsId,
         },
         {
           id: msg4Id,
@@ -453,14 +480,15 @@ describe('Chat Messages DAL', () => {
           role: 'assistant',
           content: 'Message 4',
           parentId: msg3Id,
+          workspaceId: wsId,
         },
       ])
 
       // Soft delete root message and descendants (DAL cascade)
-      await deleteChatMessageAndDescendants(getDb(), msg1Id)
+      await deleteChatMessageAndDescendants(getDb(), wsId, msg1Id)
 
       // No messages visible (soft-deleted)
-      const messages = await getChatMessages(getDb(), threadId)
+      const messages = await getChatMessages(getDb(), wsId, threadId)
       expect(messages).toHaveLength(0)
     })
 
@@ -475,6 +503,7 @@ describe('Chat Messages DAL', () => {
         id: threadId,
         title: 'Test Thread',
         isEncrypted: 0,
+        workspaceId: wsId,
       })
 
       // Create chain: msg1 -> msg2 -> msg3
@@ -485,6 +514,7 @@ describe('Chat Messages DAL', () => {
           role: 'user',
           content: 'Message 1',
           parentId: null,
+          workspaceId: wsId,
         },
         {
           id: msg2Id,
@@ -492,6 +522,7 @@ describe('Chat Messages DAL', () => {
           role: 'assistant',
           content: 'Message 2',
           parentId: msg1Id,
+          workspaceId: wsId,
         },
         {
           id: msg3Id,
@@ -499,14 +530,15 @@ describe('Chat Messages DAL', () => {
           role: 'user',
           content: 'Message 3',
           parentId: msg2Id,
+          workspaceId: wsId,
         },
       ])
 
       // Soft delete middle message and its descendants (DAL cascade)
-      await deleteChatMessageAndDescendants(getDb(), msg2Id)
+      await deleteChatMessageAndDescendants(getDb(), wsId, msg2Id)
 
       // Only msg1 visible (msg2 and msg3 soft-deleted)
-      const messages = await getChatMessages(getDb(), threadId)
+      const messages = await getChatMessages(getDb(), wsId, threadId)
       expect(messages).toHaveLength(1)
       expect(messages[0]?.id).toBe(msg1Id)
     })

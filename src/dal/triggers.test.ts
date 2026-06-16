@@ -14,7 +14,7 @@ import {
   getAllEnabledTriggers,
   getAllTriggersForPrompt,
 } from './triggers'
-import { resetTestDatabase, setupTestDatabase, teardownTestDatabase } from './test-utils'
+import { otherWsId, resetTestDatabase, setupTestDatabase, teardownTestDatabase, wsId } from './test-utils'
 
 beforeAll(async () => {
   await setupTestDatabase()
@@ -31,7 +31,7 @@ describe('Triggers DAL', () => {
 
   describe('getAllTriggersForPrompt', () => {
     it('should return empty array when no triggers exist for prompt', async () => {
-      const triggers = await getAllTriggersForPrompt(getDb(), 'non-existent-prompt-id')
+      const triggers = await getAllTriggersForPrompt(getDb(), wsId, 'non-existent-prompt-id')
       expect(triggers).toHaveLength(0)
     })
 
@@ -49,20 +49,22 @@ describe('Triggers DAL', () => {
         model: 'gpt-4',
         isSystem: 0,
         enabled: 1,
+        workspaceId: wsId,
       })
 
       await db.insert(promptsTable).values({
         id: promptId,
         prompt: 'Test prompt',
         modelId: modelId,
+        workspaceId: wsId,
       })
 
       await db.insert(triggersTable).values([
-        { id: triggerId1, promptId, triggerType: 'time', triggerTime: '09:00', isEnabled: 1 },
-        { id: triggerId2, promptId, triggerType: 'time', triggerTime: '18:00', isEnabled: 0 },
+        { id: triggerId1, promptId, triggerType: 'time', triggerTime: '09:00', isEnabled: 1, workspaceId: wsId },
+        { id: triggerId2, promptId, triggerType: 'time', triggerTime: '18:00', isEnabled: 0, workspaceId: wsId },
       ])
 
-      const triggers = await getAllTriggersForPrompt(getDb(), promptId)
+      const triggers = await getAllTriggersForPrompt(getDb(), wsId, promptId)
       expect(triggers).toHaveLength(2)
       expect(triggers.map((t) => t.id).sort()).toEqual([triggerId1, triggerId2].sort())
     })
@@ -80,21 +82,43 @@ describe('Triggers DAL', () => {
         model: 'gpt-4',
         isSystem: 0,
         enabled: 1,
+        workspaceId: wsId,
       })
 
       await db.insert(promptsTable).values([
-        { id: promptId1, prompt: 'Prompt 1', modelId: modelId },
-        { id: promptId2, prompt: 'Prompt 2', modelId: modelId },
+        { id: promptId1, prompt: 'Prompt 1', modelId: modelId, workspaceId: wsId },
+        { id: promptId2, prompt: 'Prompt 2', modelId: modelId, workspaceId: wsId },
       ])
 
       await db.insert(triggersTable).values([
-        { id: uuidv7(), promptId: promptId1, triggerType: 'time', triggerTime: '09:00', isEnabled: 1 },
-        { id: uuidv7(), promptId: promptId1, triggerType: 'time', triggerTime: '10:00', isEnabled: 1 },
-        { id: uuidv7(), promptId: promptId2, triggerType: 'time', triggerTime: '11:00', isEnabled: 1 },
+        {
+          id: uuidv7(),
+          promptId: promptId1,
+          triggerType: 'time',
+          triggerTime: '09:00',
+          isEnabled: 1,
+          workspaceId: wsId,
+        },
+        {
+          id: uuidv7(),
+          promptId: promptId1,
+          triggerType: 'time',
+          triggerTime: '10:00',
+          isEnabled: 1,
+          workspaceId: wsId,
+        },
+        {
+          id: uuidv7(),
+          promptId: promptId2,
+          triggerType: 'time',
+          triggerTime: '11:00',
+          isEnabled: 1,
+          workspaceId: wsId,
+        },
       ])
 
-      const triggersForPrompt1 = await getAllTriggersForPrompt(getDb(), promptId1)
-      const triggersForPrompt2 = await getAllTriggersForPrompt(getDb(), promptId2)
+      const triggersForPrompt1 = await getAllTriggersForPrompt(getDb(), wsId, promptId1)
+      const triggersForPrompt2 = await getAllTriggersForPrompt(getDb(), wsId, promptId2)
 
       expect(triggersForPrompt1).toHaveLength(2)
       expect(triggersForPrompt2).toHaveLength(1)
@@ -103,7 +127,7 @@ describe('Triggers DAL', () => {
 
   describe('getAllEnabledTriggers', () => {
     it('should return empty array when no triggers exist', async () => {
-      const triggers = await getAllEnabledTriggers(getDb())
+      const triggers = await getAllEnabledTriggers(getDb(), wsId)
       expect(triggers).toHaveLength(0)
     })
 
@@ -121,20 +145,22 @@ describe('Triggers DAL', () => {
         model: 'gpt-4',
         isSystem: 0,
         enabled: 1,
+        workspaceId: wsId,
       })
 
       await db.insert(promptsTable).values({
         id: promptId,
         prompt: 'Test prompt',
         modelId: modelId,
+        workspaceId: wsId,
       })
 
       await db.insert(triggersTable).values([
-        { id: enabledTriggerId, promptId, triggerType: 'time', triggerTime: '09:00', isEnabled: 1 },
-        { id: disabledTriggerId, promptId, triggerType: 'time', triggerTime: '18:00', isEnabled: 0 },
+        { id: enabledTriggerId, promptId, triggerType: 'time', triggerTime: '09:00', isEnabled: 1, workspaceId: wsId },
+        { id: disabledTriggerId, promptId, triggerType: 'time', triggerTime: '18:00', isEnabled: 0, workspaceId: wsId },
       ])
 
-      const triggers = await getAllEnabledTriggers(getDb())
+      const triggers = await getAllEnabledTriggers(getDb(), wsId)
       expect(triggers).toHaveLength(1)
       expect(triggers[0]?.id).toBe(enabledTriggerId)
     })
@@ -152,21 +178,50 @@ describe('Triggers DAL', () => {
         model: 'gpt-4',
         isSystem: 0,
         enabled: 1,
+        workspaceId: wsId,
       })
 
       await db.insert(promptsTable).values([
-        { id: promptId1, prompt: 'Prompt 1', modelId: modelId },
-        { id: promptId2, prompt: 'Prompt 2', modelId: modelId },
+        { id: promptId1, prompt: 'Prompt 1', modelId: modelId, workspaceId: wsId },
+        { id: promptId2, prompt: 'Prompt 2', modelId: modelId, workspaceId: wsId },
       ])
 
       await db.insert(triggersTable).values([
-        { id: uuidv7(), promptId: promptId1, triggerType: 'time', triggerTime: '09:00', isEnabled: 1 },
-        { id: uuidv7(), promptId: promptId1, triggerType: 'time', triggerTime: '10:00', isEnabled: 0 },
-        { id: uuidv7(), promptId: promptId2, triggerType: 'time', triggerTime: '11:00', isEnabled: 1 },
-        { id: uuidv7(), promptId: promptId2, triggerType: 'time', triggerTime: '12:00', isEnabled: 1 },
+        {
+          id: uuidv7(),
+          promptId: promptId1,
+          triggerType: 'time',
+          triggerTime: '09:00',
+          isEnabled: 1,
+          workspaceId: wsId,
+        },
+        {
+          id: uuidv7(),
+          promptId: promptId1,
+          triggerType: 'time',
+          triggerTime: '10:00',
+          isEnabled: 0,
+          workspaceId: wsId,
+        },
+        {
+          id: uuidv7(),
+          promptId: promptId2,
+          triggerType: 'time',
+          triggerTime: '11:00',
+          isEnabled: 1,
+          workspaceId: wsId,
+        },
+        {
+          id: uuidv7(),
+          promptId: promptId2,
+          triggerType: 'time',
+          triggerTime: '12:00',
+          isEnabled: 1,
+          workspaceId: wsId,
+        },
       ])
 
-      const triggers = await getAllEnabledTriggers(getDb())
+      const triggers = await getAllEnabledTriggers(getDb(), wsId)
       expect(triggers).toHaveLength(3)
       expect(triggers.every((t) => t.isEnabled === 1)).toBe(true)
     })
@@ -183,20 +238,22 @@ describe('Triggers DAL', () => {
         model: 'gpt-4',
         isSystem: 0,
         enabled: 1,
+        workspaceId: wsId,
       })
 
       await db.insert(promptsTable).values({
         id: promptId,
         prompt: 'Test prompt',
         modelId: modelId,
+        workspaceId: wsId,
       })
 
       await db.insert(triggersTable).values([
-        { id: uuidv7(), promptId, triggerType: 'time', triggerTime: '09:00', isEnabled: 0 },
-        { id: uuidv7(), promptId, triggerType: 'time', triggerTime: '18:00', isEnabled: 0 },
+        { id: uuidv7(), promptId, triggerType: 'time', triggerTime: '09:00', isEnabled: 0, workspaceId: wsId },
+        { id: uuidv7(), promptId, triggerType: 'time', triggerTime: '18:00', isEnabled: 0, workspaceId: wsId },
       ])
 
-      const triggers = await getAllEnabledTriggers(getDb())
+      const triggers = await getAllEnabledTriggers(getDb(), wsId)
       expect(triggers).toHaveLength(0)
     })
   })
@@ -217,12 +274,14 @@ describe('Triggers DAL', () => {
         model: 'gpt-4',
         isSystem: 0,
         enabled: 1,
+        workspaceId: wsId,
       })
 
       await db.insert(promptsTable).values({
         id: promptId,
         prompt: 'Test prompt',
         modelId: modelId,
+        workspaceId: wsId,
       })
 
       // Create triggers for the prompt
@@ -233,6 +292,7 @@ describe('Triggers DAL', () => {
           triggerType: 'time',
           triggerTime: '09:00',
           isEnabled: 1,
+          workspaceId: wsId,
         },
         {
           id: triggerId2,
@@ -240,17 +300,18 @@ describe('Triggers DAL', () => {
           triggerType: 'time',
           triggerTime: '18:00',
           isEnabled: 1,
+          workspaceId: wsId,
         },
       ])
 
       // Verify triggers exist via DAL method
-      const triggersBefore = await getAllTriggersForPrompt(getDb(), promptId)
+      const triggersBefore = await getAllTriggersForPrompt(getDb(), wsId, promptId)
       expect(triggersBefore).toHaveLength(2)
 
-      await deleteTriggersForPrompt(getDb(), promptId)
+      await deleteTriggersForPrompt(getDb(), wsId, promptId)
 
       // Verify triggers are soft deleted (not returned by DAL)
-      const triggersAfter = await getAllTriggersForPrompt(getDb(), promptId)
+      const triggersAfter = await getAllTriggersForPrompt(getDb(), wsId, promptId)
       expect(triggersAfter).toHaveLength(0)
 
       // Should still exist in database with deletedAt set (select by id; promptId is cleared by soft delete)
@@ -278,11 +339,12 @@ describe('Triggers DAL', () => {
         model: 'gpt-4',
         isSystem: 0,
         enabled: 1,
+        workspaceId: wsId,
       })
 
       await db.insert(promptsTable).values([
-        { id: promptId1, prompt: 'Prompt 1', modelId: modelId },
-        { id: promptId2, prompt: 'Prompt 2', modelId: modelId },
+        { id: promptId1, prompt: 'Prompt 1', modelId: modelId, workspaceId: wsId },
+        { id: promptId2, prompt: 'Prompt 2', modelId: modelId, workspaceId: wsId },
       ])
 
       // Create triggers for different prompts
@@ -293,6 +355,7 @@ describe('Triggers DAL', () => {
           triggerType: 'time',
           triggerTime: '09:00',
           isEnabled: 1,
+          workspaceId: wsId,
         },
         {
           id: triggerId2,
@@ -300,14 +363,15 @@ describe('Triggers DAL', () => {
           triggerType: 'time',
           triggerTime: '18:00',
           isEnabled: 1,
+          workspaceId: wsId,
         },
       ])
 
-      await deleteTriggersForPrompt(getDb(), promptId1)
+      await deleteTriggersForPrompt(getDb(), wsId, promptId1)
 
       // Verify only triggers for promptId1 are soft deleted
-      const triggersForPrompt1 = await getAllTriggersForPrompt(getDb(), promptId1)
-      const triggersForPrompt2 = await getAllTriggersForPrompt(getDb(), promptId2)
+      const triggersForPrompt1 = await getAllTriggersForPrompt(getDb(), wsId, promptId1)
+      const triggersForPrompt2 = await getAllTriggersForPrompt(getDb(), wsId, promptId2)
 
       expect(triggersForPrompt1).toHaveLength(0)
       expect(triggersForPrompt2).toHaveLength(1)
@@ -319,7 +383,7 @@ describe('Triggers DAL', () => {
     })
 
     it('should not throw when no triggers exist for prompt', async () => {
-      await expect(deleteTriggersForPrompt(getDb(), 'non-existent-prompt-id')).resolves.toBeUndefined()
+      await expect(deleteTriggersForPrompt(getDb(), wsId, 'non-existent-prompt-id')).resolves.toBeUndefined()
     })
 
     it('should handle prompt with no triggers', async () => {
@@ -335,16 +399,18 @@ describe('Triggers DAL', () => {
         model: 'gpt-4',
         isSystem: 0,
         enabled: 1,
+        workspaceId: wsId,
       })
 
       await db.insert(promptsTable).values({
         id: promptId,
         prompt: 'Test prompt',
         modelId: modelId,
+        workspaceId: wsId,
       })
 
       // Should not throw
-      await expect(deleteTriggersForPrompt(getDb(), promptId)).resolves.toBeUndefined()
+      await expect(deleteTriggersForPrompt(getDb(), wsId, promptId)).resolves.toBeUndefined()
     })
 
     it('should not return soft-deleted triggers via getAllEnabledTriggers', async () => {
@@ -360,12 +426,14 @@ describe('Triggers DAL', () => {
         model: 'gpt-4',
         isSystem: 0,
         enabled: 1,
+        workspaceId: wsId,
       })
 
       await db.insert(promptsTable).values({
         id: promptId,
         prompt: 'Test prompt',
         modelId: modelId,
+        workspaceId: wsId,
       })
 
       await db.insert(triggersTable).values({
@@ -374,16 +442,17 @@ describe('Triggers DAL', () => {
         triggerType: 'time',
         triggerTime: '09:00',
         isEnabled: 1,
+        workspaceId: wsId,
       })
 
       // Verify trigger exists in enabled triggers
-      const enabledBefore = await getAllEnabledTriggers(getDb())
+      const enabledBefore = await getAllEnabledTriggers(getDb(), wsId)
       expect(enabledBefore).toHaveLength(1)
 
-      await deleteTriggersForPrompt(getDb(), promptId)
+      await deleteTriggersForPrompt(getDb(), wsId, promptId)
 
       // Verify trigger is not returned after soft deletion
-      const enabledAfter = await getAllEnabledTriggers(getDb())
+      const enabledAfter = await getAllEnabledTriggers(getDb(), wsId)
       expect(enabledAfter).toHaveLength(0)
     })
 
@@ -402,12 +471,14 @@ describe('Triggers DAL', () => {
         model: 'gpt-4',
         isSystem: 0,
         enabled: 1,
+        workspaceId: wsId,
       })
 
       await db.insert(promptsTable).values({
         id: promptId,
         prompt: 'Test prompt',
         modelId: modelId,
+        workspaceId: wsId,
       })
 
       // Create one already-deleted trigger and one active trigger
@@ -419,6 +490,7 @@ describe('Triggers DAL', () => {
           triggerTime: '09:00',
           isEnabled: 1,
           deletedAt: originalDeletedAt, // Already deleted
+          workspaceId: wsId,
         },
         {
           id: triggerId2,
@@ -427,10 +499,11 @@ describe('Triggers DAL', () => {
           triggerTime: '18:00',
           isEnabled: 1,
           deletedAt: null, // Active
+          workspaceId: wsId,
         },
       ])
 
-      await deleteTriggersForPrompt(getDb(), promptId)
+      await deleteTriggersForPrompt(getDb(), wsId, promptId)
 
       // Verify original deletedAt is preserved for already-deleted trigger
       const rawTriggers = await db.select().from(triggersTable).where(eq(triggersTable.promptId, promptId))
@@ -458,28 +531,57 @@ describe('Triggers DAL', () => {
         model: 'gpt-4',
         isSystem: 0,
         enabled: 1,
+        workspaceId: wsId,
       })
 
       await db.insert(promptsTable).values([
-        { id: promptId1, prompt: 'Prompt 1', modelId: modelId },
-        { id: promptId2, prompt: 'Prompt 2', modelId: modelId },
-        { id: promptId3, prompt: 'Prompt 3', modelId: modelId },
+        { id: promptId1, prompt: 'Prompt 1', modelId: modelId, workspaceId: wsId },
+        { id: promptId2, prompt: 'Prompt 2', modelId: modelId, workspaceId: wsId },
+        { id: promptId3, prompt: 'Prompt 3', modelId: modelId, workspaceId: wsId },
       ])
 
       await db.insert(triggersTable).values([
-        { id: uuidv7(), promptId: promptId1, triggerType: 'time', triggerTime: '09:00', isEnabled: 1 },
-        { id: uuidv7(), promptId: promptId1, triggerType: 'time', triggerTime: '10:00', isEnabled: 1 },
-        { id: uuidv7(), promptId: promptId2, triggerType: 'time', triggerTime: '11:00', isEnabled: 1 },
-        { id: uuidv7(), promptId: promptId3, triggerType: 'time', triggerTime: '12:00', isEnabled: 1 },
+        {
+          id: uuidv7(),
+          promptId: promptId1,
+          triggerType: 'time',
+          triggerTime: '09:00',
+          isEnabled: 1,
+          workspaceId: wsId,
+        },
+        {
+          id: uuidv7(),
+          promptId: promptId1,
+          triggerType: 'time',
+          triggerTime: '10:00',
+          isEnabled: 1,
+          workspaceId: wsId,
+        },
+        {
+          id: uuidv7(),
+          promptId: promptId2,
+          triggerType: 'time',
+          triggerTime: '11:00',
+          isEnabled: 1,
+          workspaceId: wsId,
+        },
+        {
+          id: uuidv7(),
+          promptId: promptId3,
+          triggerType: 'time',
+          triggerTime: '12:00',
+          isEnabled: 1,
+          workspaceId: wsId,
+        },
       ])
 
       // Delete triggers for prompts 1 and 2 only
-      await deleteTriggersForPrompts(getDb(), [promptId1, promptId2])
+      await deleteTriggersForPrompts(getDb(), wsId, [promptId1, promptId2])
 
       // Verify triggers for prompts 1 and 2 are soft-deleted
-      const triggersForPrompt1 = await getAllTriggersForPrompt(getDb(), promptId1)
-      const triggersForPrompt2 = await getAllTriggersForPrompt(getDb(), promptId2)
-      const triggersForPrompt3 = await getAllTriggersForPrompt(getDb(), promptId3)
+      const triggersForPrompt1 = await getAllTriggersForPrompt(getDb(), wsId, promptId1)
+      const triggersForPrompt2 = await getAllTriggersForPrompt(getDb(), wsId, promptId2)
+      const triggersForPrompt3 = await getAllTriggersForPrompt(getDb(), wsId, promptId3)
 
       expect(triggersForPrompt1).toHaveLength(0)
       expect(triggersForPrompt2).toHaveLength(0)
@@ -495,11 +597,13 @@ describe('Triggers DAL', () => {
     })
 
     it('should handle empty array without errors', async () => {
-      await expect(deleteTriggersForPrompts(getDb(), [])).resolves.toBeUndefined()
+      await expect(deleteTriggersForPrompts(getDb(), wsId, [])).resolves.toBeUndefined()
     })
 
     it('should handle non-existent prompt IDs without errors', async () => {
-      await expect(deleteTriggersForPrompts(getDb(), ['non-existent-1', 'non-existent-2'])).resolves.toBeUndefined()
+      await expect(
+        deleteTriggersForPrompts(getDb(), wsId, ['non-existent-1', 'non-existent-2']),
+      ).resolves.toBeUndefined()
     })
 
     it('should preserve original deletedAt datetimes for already-deleted triggers', async () => {
@@ -518,11 +622,12 @@ describe('Triggers DAL', () => {
         model: 'gpt-4',
         isSystem: 0,
         enabled: 1,
+        workspaceId: wsId,
       })
 
       await db.insert(promptsTable).values([
-        { id: promptId1, prompt: 'Prompt 1', modelId: modelId },
-        { id: promptId2, prompt: 'Prompt 2', modelId: modelId },
+        { id: promptId1, prompt: 'Prompt 1', modelId: modelId, workspaceId: wsId },
+        { id: promptId2, prompt: 'Prompt 2', modelId: modelId, workspaceId: wsId },
       ])
 
       await db.insert(triggersTable).values([
@@ -533,6 +638,7 @@ describe('Triggers DAL', () => {
           triggerTime: '09:00',
           isEnabled: 1,
           deletedAt: originalDeletedAt, // Already deleted
+          workspaceId: wsId,
         },
         {
           id: triggerId2,
@@ -541,10 +647,11 @@ describe('Triggers DAL', () => {
           triggerTime: '10:00',
           isEnabled: 1,
           deletedAt: null, // Active
+          workspaceId: wsId,
         },
       ])
 
-      await deleteTriggersForPrompts(getDb(), [promptId1, promptId2])
+      await deleteTriggersForPrompts(getDb(), wsId, [promptId1, promptId2])
 
       // Verify original deletedAt is preserved for already-deleted trigger
       const rawTriggers = await db.select().from(triggersTable)
@@ -571,15 +678,17 @@ describe('Triggers DAL', () => {
         model: 'gpt-4',
         isSystem: 0,
         enabled: 1,
+        workspaceId: wsId,
       })
 
       await db.insert(promptsTable).values({
         id: promptId,
         prompt: 'Test prompt',
         modelId: modelId,
+        workspaceId: wsId,
       })
 
-      await createTrigger(getDb(), {
+      await createTrigger(getDb(), wsId, {
         id: triggerId,
         triggerType: 'time',
         triggerTime: '09:00',
@@ -605,22 +714,24 @@ describe('Triggers DAL', () => {
         model: 'gpt-4',
         isSystem: 0,
         enabled: 1,
+        workspaceId: wsId,
       })
 
       await db.insert(promptsTable).values({
         id: promptId,
         prompt: 'Test prompt',
         modelId: modelId,
+        workspaceId: wsId,
       })
 
-      await createTrigger(getDb(), {
+      await createTrigger(getDb(), wsId, {
         id: uuidv7(),
         triggerType: 'time',
         triggerTime: '08:00',
         promptId: promptId,
         isEnabled: 1,
       })
-      await createTrigger(getDb(), {
+      await createTrigger(getDb(), wsId, {
         id: uuidv7(),
         triggerType: 'time',
         triggerTime: '18:00',
@@ -645,15 +756,17 @@ describe('Triggers DAL', () => {
         model: 'gpt-4',
         isSystem: 0,
         enabled: 1,
+        workspaceId: wsId,
       })
 
       await db.insert(promptsTable).values({
         id: promptId,
         prompt: 'Test prompt',
         modelId: modelId,
+        workspaceId: wsId,
       })
 
-      await createTrigger(getDb(), {
+      await createTrigger(getDb(), wsId, {
         id: triggerId,
         triggerType: 'time',
         triggerTime: '10:00',
@@ -663,6 +776,64 @@ describe('Triggers DAL', () => {
 
       const trigger = await db.select().from(triggersTable).get()
       expect(trigger?.isEnabled).toBe(0)
+    })
+  })
+
+  describe('workspace isolation', () => {
+    it('should not return triggers from other workspaces', async () => {
+      const db = getDb()
+      const ownPromptId = uuidv7()
+      const otherPromptId = uuidv7()
+      const ownTriggerId = uuidv7()
+      const otherTriggerId = uuidv7()
+
+      await db.insert(triggersTable).values([
+        {
+          id: ownTriggerId,
+          promptId: ownPromptId,
+          triggerType: 'time',
+          triggerTime: '09:00',
+          isEnabled: 1,
+          workspaceId: wsId,
+        },
+        {
+          id: otherTriggerId,
+          promptId: otherPromptId,
+          triggerType: 'time',
+          triggerTime: '10:00',
+          isEnabled: 1,
+          workspaceId: otherWsId,
+        },
+      ])
+
+      const own = await getAllEnabledTriggers(getDb(), wsId)
+      expect(own).toHaveLength(1)
+      expect(own[0]?.id).toBe(ownTriggerId)
+
+      const ownForPrompt = await getAllTriggersForPrompt(getDb(), wsId, otherPromptId)
+      expect(ownForPrompt).toHaveLength(0)
+    })
+
+    it('should not delete triggers from other workspaces', async () => {
+      const db = getDb()
+      const otherPromptId = uuidv7()
+      const otherTriggerId = uuidv7()
+
+      await db.insert(triggersTable).values({
+        id: otherTriggerId,
+        promptId: otherPromptId,
+        triggerType: 'time',
+        triggerTime: '09:00',
+        isEnabled: 1,
+        workspaceId: otherWsId,
+      })
+
+      // Attempt to delete from the active workspace — should be a no-op.
+      await deleteTriggersForPrompt(getDb(), wsId, otherPromptId)
+
+      const rawTriggers = await db.select().from(triggersTable)
+      expect(rawTriggers).toHaveLength(1)
+      expect(rawTriggers[0]?.deletedAt).toBeNull()
     })
   })
 })

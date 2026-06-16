@@ -9,7 +9,7 @@ import { v7 as uuidv7 } from 'uuid'
 import { nowIso } from '@/lib/utils'
 import { getAllModes, getDefaultMode, getMode, getSelectedMode } from './modes'
 import { updateSettings } from './settings'
-import { resetTestDatabase, setupTestDatabase, teardownTestDatabase } from './test-utils'
+import { otherWsId, resetTestDatabase, setupTestDatabase, teardownTestDatabase, wsId } from './test-utils'
 
 beforeAll(async () => {
   await setupTestDatabase()
@@ -26,11 +26,11 @@ describe('Modes DAL', () => {
 
   describe('getMode', () => {
     it('should return null when mode does not exist', async () => {
-      const mode = await getMode(getDb(), 'nonexistent-mode-id')
+      const mode = await getMode(getDb(), wsId, 'nonexistent-mode-id')
       expect(mode).toBe(null)
     })
 
-    it('should return mode when it exists', async () => {
+    it('should return mode when it exists in the workspace', async () => {
       const db = getDb()
       const modeId = uuidv7()
 
@@ -41,9 +41,10 @@ describe('Modes DAL', () => {
         icon: 'message-square',
         isDefault: 0,
         order: 0,
+        workspaceId: wsId,
       })
 
-      const mode = await getMode(getDb(), modeId)
+      const mode = await getMode(getDb(), wsId, modeId)
       expect(mode).not.toBe(null)
       expect(mode?.id).toBe(modeId)
       expect(mode?.label).toBe('Test Mode')
@@ -61,20 +62,39 @@ describe('Modes DAL', () => {
         isDefault: 0,
         order: 0,
         deletedAt: nowIso(),
+        workspaceId: wsId,
       })
 
-      const mode = await getMode(getDb(), modeId)
+      const mode = await getMode(getDb(), wsId, modeId)
+      expect(mode).toBe(null)
+    })
+
+    it('should not return a mode from another workspace', async () => {
+      const db = getDb()
+      const modeId = uuidv7()
+
+      await db.insert(modesTable).values({
+        id: modeId,
+        name: 'other',
+        label: 'Other',
+        icon: 'globe',
+        isDefault: 0,
+        order: 0,
+        workspaceId: otherWsId,
+      })
+
+      const mode = await getMode(getDb(), wsId, modeId)
       expect(mode).toBe(null)
     })
   })
 
   describe('getDefaultMode', () => {
     it('should return null when no default mode exists', async () => {
-      const mode = await getDefaultMode(getDb())
+      const mode = await getDefaultMode(getDb(), wsId)
       expect(mode).toBe(null)
     })
 
-    it('should return the default mode when it exists', async () => {
+    it('should return the default mode when it exists in the workspace', async () => {
       const db = getDb()
       const modeId = uuidv7()
 
@@ -85,9 +105,10 @@ describe('Modes DAL', () => {
         icon: 'message-square',
         isDefault: 1,
         order: 0,
+        workspaceId: wsId,
       })
 
-      const mode = await getDefaultMode(getDb())
+      const mode = await getDefaultMode(getDb(), wsId)
       expect(mode).not.toBe(null)
       expect(mode?.id).toBe(modeId)
       expect(mode?.isDefault).toBe(1)
@@ -104,29 +125,63 @@ describe('Modes DAL', () => {
         isDefault: 1,
         order: 0,
         deletedAt: nowIso(),
+        workspaceId: wsId,
       })
 
-      const mode = await getDefaultMode(getDb())
+      const mode = await getDefaultMode(getDb(), wsId)
+      expect(mode).toBe(null)
+    })
+
+    it('should ignore the default mode of another workspace', async () => {
+      const db = getDb()
+
+      await db.insert(modesTable).values({
+        id: uuidv7(),
+        name: 'chat',
+        label: 'Chat',
+        icon: 'message-square',
+        isDefault: 1,
+        order: 0,
+        workspaceId: otherWsId,
+      })
+
+      const mode = await getDefaultMode(getDb(), wsId)
       expect(mode).toBe(null)
     })
   })
 
   describe('getAllModes', () => {
     it('should return empty array when no modes exist', async () => {
-      const modes = await getAllModes(getDb())
+      const modes = await getAllModes(getDb(), wsId)
       expect(modes).toEqual([])
     })
 
-    it('should return all modes sorted by order', async () => {
+    it('should return all modes in the workspace sorted by order', async () => {
       const db = getDb()
 
       await db.insert(modesTable).values([
-        { id: uuidv7(), name: 'research', label: 'Research', icon: 'microscope', isDefault: 0, order: 2 },
-        { id: uuidv7(), name: 'chat', label: 'Chat', icon: 'message-square', isDefault: 1, order: 0 },
-        { id: uuidv7(), name: 'search', label: 'Search', icon: 'globe', isDefault: 0, order: 1 },
+        {
+          id: uuidv7(),
+          name: 'research',
+          label: 'Research',
+          icon: 'microscope',
+          isDefault: 0,
+          order: 2,
+          workspaceId: wsId,
+        },
+        {
+          id: uuidv7(),
+          name: 'chat',
+          label: 'Chat',
+          icon: 'message-square',
+          isDefault: 1,
+          order: 0,
+          workspaceId: wsId,
+        },
+        { id: uuidv7(), name: 'search', label: 'Search', icon: 'globe', isDefault: 0, order: 1, workspaceId: wsId },
       ])
 
-      const modes = await getAllModes(getDb())
+      const modes = await getAllModes(getDb(), wsId)
       expect(modes.length).toBe(3)
       expect(modes[0].name).toBe('chat')
       expect(modes[1].name).toBe('search')
@@ -137,7 +192,15 @@ describe('Modes DAL', () => {
       const db = getDb()
 
       await db.insert(modesTable).values([
-        { id: uuidv7(), name: 'chat', label: 'Chat', icon: 'message-square', isDefault: 1, order: 0 },
+        {
+          id: uuidv7(),
+          name: 'chat',
+          label: 'Chat',
+          icon: 'message-square',
+          isDefault: 1,
+          order: 0,
+          workspaceId: wsId,
+        },
         {
           id: uuidv7(),
           name: 'deleted',
@@ -146,12 +209,42 @@ describe('Modes DAL', () => {
           isDefault: 0,
           order: 1,
           deletedAt: nowIso(),
+          workspaceId: wsId,
         },
       ])
 
-      const modes = await getAllModes(getDb())
+      const modes = await getAllModes(getDb(), wsId)
       expect(modes.length).toBe(1)
       expect(modes[0].name).toBe('chat')
+    })
+
+    it('should not return modes from other workspaces', async () => {
+      const db = getDb()
+
+      await db.insert(modesTable).values([
+        {
+          id: uuidv7(),
+          name: 'own',
+          label: 'Own',
+          icon: 'message-square',
+          isDefault: 0,
+          order: 0,
+          workspaceId: wsId,
+        },
+        {
+          id: uuidv7(),
+          name: 'other',
+          label: 'Other',
+          icon: 'globe',
+          isDefault: 0,
+          order: 1,
+          workspaceId: otherWsId,
+        },
+      ])
+
+      const modes = await getAllModes(getDb(), wsId)
+      expect(modes.length).toBe(1)
+      expect(modes[0].name).toBe('own')
     })
   })
 
@@ -167,9 +260,10 @@ describe('Modes DAL', () => {
         icon: 'message-square',
         isDefault: 1,
         order: 0,
+        workspaceId: wsId,
       })
 
-      const mode = await getSelectedMode(getDb())
+      const mode = await getSelectedMode(getDb(), wsId)
       expect(mode.id).toBe(modeId)
       expect(mode.isDefault).toBe(1)
     })
@@ -181,13 +275,29 @@ describe('Modes DAL', () => {
       const selectedModeId = uuidv7()
 
       await db.insert(modesTable).values([
-        { id: defaultModeId, name: 'chat', label: 'Chat', icon: 'message-square', isDefault: 1, order: 0 },
-        { id: selectedModeId, name: 'search', label: 'Search', icon: 'globe', isDefault: 0, order: 1 },
+        {
+          id: defaultModeId,
+          name: 'chat',
+          label: 'Chat',
+          icon: 'message-square',
+          isDefault: 1,
+          order: 0,
+          workspaceId: wsId,
+        },
+        {
+          id: selectedModeId,
+          name: 'search',
+          label: 'Search',
+          icon: 'globe',
+          isDefault: 0,
+          order: 1,
+          workspaceId: wsId,
+        },
       ])
 
       await updateSettings(getDb(), { selected_mode: selectedModeId })
 
-      const mode = await getSelectedMode(getDb())
+      const mode = await getSelectedMode(getDb(), wsId)
       expect(mode.id).toBe(selectedModeId)
       expect(mode.name).toBe('search')
     })
@@ -203,16 +313,50 @@ describe('Modes DAL', () => {
         icon: 'message-square',
         isDefault: 1,
         order: 0,
+        workspaceId: wsId,
       })
 
       await updateSettings(getDb(), { selected_mode: 'nonexistent-mode-id' })
 
-      const mode = await getSelectedMode(getDb())
+      const mode = await getSelectedMode(getDb(), wsId)
       expect(mode.id).toBe(defaultModeId)
     })
 
     it('should throw error when no default mode exists', async () => {
-      expect(getSelectedMode(getDb())).rejects.toThrow('No default mode found')
+      expect(getSelectedMode(getDb(), wsId)).rejects.toThrow('No default mode found')
+    })
+
+    it('should fall back to default mode when selected mode lives in another workspace', async () => {
+      const db = getDb()
+      const defaultModeId = uuidv7()
+      const otherModeId = uuidv7()
+
+      await db.insert(modesTable).values([
+        {
+          id: defaultModeId,
+          name: 'chat',
+          label: 'Chat',
+          icon: 'message-square',
+          isDefault: 1,
+          order: 0,
+          workspaceId: wsId,
+        },
+        {
+          id: otherModeId,
+          name: 'other',
+          label: 'Other',
+          icon: 'globe',
+          isDefault: 0,
+          order: 1,
+          workspaceId: otherWsId,
+        },
+      ])
+
+      // selected_mode points at a mode in another workspace — should fall back to the active default
+      await updateSettings(getDb(), { selected_mode: otherModeId })
+
+      const mode = await getSelectedMode(getDb(), wsId)
+      expect(mode.id).toBe(defaultModeId)
     })
   })
 })

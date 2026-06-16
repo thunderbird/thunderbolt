@@ -4,10 +4,10 @@
 
 import { m } from 'framer-motion'
 import { MoreHorizontal, Plus, SquarePen, Trash2 } from 'lucide-react'
-import { useNavigate } from 'react-router'
 
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 import { Switch } from '@/components/ui/switch'
+import { useWorkspaceNavigate } from '@/lib/active-workspace'
 import type { Skill } from '@/types'
 
 /**
@@ -35,6 +35,8 @@ export const LibraryRow = ({
   skill,
   enabled,
   isActive,
+  canEdit = true,
+  canDelete = true,
   onSelect,
   onToggleEnabled,
   onEdit,
@@ -43,12 +45,16 @@ export const LibraryRow = ({
   skill: Skill
   enabled: boolean
   isActive: boolean
+  /** Defaults to true. Mirrors `add_skills`; gates the enable toggle + Edit menu item. */
+  canEdit?: boolean
+  /** Defaults to true. Mirrors the workspace `remove_skills` permission. */
+  canDelete?: boolean
   onSelect: (id: string) => void
   onToggleEnabled: (id: string, next: boolean) => void
   onEdit: (id: string) => void
   onDelete: (id: string) => void
 }) => {
-  const navigate = useNavigate()
+  const navigate = useWorkspaceNavigate()
 
   return (
     <m.li layout layoutId={skill.id} transition={skillRowTransition}>
@@ -77,6 +83,7 @@ export const LibraryRow = ({
           >
             <Switch
               checked={enabled}
+              disabled={!canEdit}
               onCheckedChange={(next) => onToggleEnabled(skill.id, next)}
               aria-label={enabled ? `Disable /${skill.name}` : `Enable /${skill.name}`}
             />
@@ -95,16 +102,18 @@ export const LibraryRow = ({
             </button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" className="min-w-56">
-            <DropdownMenuItem
-              onClick={(e) => {
-                e.stopPropagation()
-                onEdit(skill.id)
-              }}
-              className="cursor-pointer"
-            >
-              <SquarePen />
-              Edit
-            </DropdownMenuItem>
+            {canEdit && (
+              <DropdownMenuItem
+                onClick={(e) => {
+                  e.stopPropagation()
+                  onEdit(skill.id)
+                }}
+                className="cursor-pointer"
+              >
+                <SquarePen />
+                Edit
+              </DropdownMenuItem>
+            )}
             <DropdownMenuItem
               onClick={(e) => {
                 e.stopPropagation()
@@ -118,16 +127,18 @@ export const LibraryRow = ({
               <Plus />
               Add to chat
             </DropdownMenuItem>
-            <DropdownMenuItem
-              onClick={(e) => {
-                e.stopPropagation()
-                onDelete(skill.id)
-              }}
-              className="cursor-pointer"
-            >
-              <Trash2 />
-              Delete
-            </DropdownMenuItem>
+            {canDelete && (
+              <DropdownMenuItem
+                onClick={(e) => {
+                  e.stopPropagation()
+                  onDelete(skill.id)
+                }}
+                className="cursor-pointer"
+              >
+                <Trash2 />
+                Delete
+              </DropdownMenuItem>
+            )}
           </DropdownMenuContent>
         </DropdownMenu>
       </div>

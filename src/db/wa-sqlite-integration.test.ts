@@ -2,6 +2,8 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { wsId } from '@/dal/test-utils'
+
 import { deleteModel, getModel } from '@/dal/models'
 import { applySchema } from '@/db/apply-schema'
 import { Database, getDb, resetDatabase, setDatabase } from '@/db/database'
@@ -46,6 +48,7 @@ describe('wa-sqlite integration', () => {
         name: 'Test Model',
         model: 'gpt-4',
         contextWindow: 128000,
+        workspaceId: wsId,
       })
 
       const model = await db.select().from(modelsTable).where(eq(modelsTable.id, modelId)).get()
@@ -65,6 +68,7 @@ describe('wa-sqlite integration', () => {
         name: 'Original Name',
         model: 'gpt-4',
         contextWindow: 128000,
+        workspaceId: wsId,
       })
 
       await db.update(modelsTable).set({ name: 'Updated Name' }).where(eq(modelsTable.id, modelId))
@@ -83,11 +87,12 @@ describe('wa-sqlite integration', () => {
         name: 'To Delete',
         model: 'gpt-4',
         contextWindow: 128000,
+        workspaceId: wsId,
       })
 
-      await deleteModel(getDb(), modelId)
+      await deleteModel(getDb(), wsId, modelId)
 
-      expect(await getModel(getDb(), modelId)).toBeNull()
+      expect(await getModel(getDb(), wsId, modelId)).toBeNull()
       const raw = await db.select().from(modelsTable).where(eq(modelsTable.id, modelId)).get()
       expect(raw?.deletedAt).toBeDefined()
     })
@@ -131,6 +136,7 @@ describe('wa-sqlite integration', () => {
         name: 'Existing Model',
         model: 'gpt-4',
         contextWindow: 128000,
+        workspaceId: wsId,
       })
 
       const result = await db.select().from(modelsTable).where(eq(modelsTable.id, modelId)).get()
@@ -184,6 +190,7 @@ describe('wa-sqlite integration', () => {
         name: 'Model 1',
         model: 'gpt-4',
         contextWindow: 128000,
+        workspaceId: wsId,
       })
 
       // Fire concurrent operations
@@ -235,6 +242,7 @@ describe('wa-sqlite integration', () => {
         name: 'Join Test Model',
         model: 'gpt-4',
         contextWindow: 128000,
+        workspaceId: wsId,
       })
 
       // Just verify complex queries work (actual JOIN test would need related tables)
@@ -285,6 +293,7 @@ describe('wa-sqlite integration', () => {
           name: 'Transaction Model',
           model: 'gpt-4',
           contextWindow: 128000,
+          workspaceId: wsId,
         })
       })
 

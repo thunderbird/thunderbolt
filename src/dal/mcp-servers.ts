@@ -10,42 +10,73 @@ import { type McpServer } from '@/types'
 import type { DrizzleQueryWithPromise } from '@/types'
 
 /**
- * Gets all MCP servers from the database (excluding soft-deleted)
+ * Gets all MCP servers in the given workspace (excluding soft-deleted)
  */
-export const getAllMcpServers = (db: AnyDrizzleDatabase) => {
-  const query = db.select().from(mcpServersTable).where(isNull(mcpServersTable.deletedAt))
-  return query as typeof query & DrizzleQueryWithPromise<McpServer>
-}
-
-/**
- * Gets all HTTP MCP servers with non-null URLs from the database (excluding soft-deleted)
- */
-export const getHttpMcpServers = (db: AnyDrizzleDatabase) => {
+export const getAllMcpServers = (db: AnyDrizzleDatabase, workspaceId: string) => {
   const query = db
     .select()
     .from(mcpServersTable)
-    .where(and(eq(mcpServersTable.type, 'http'), isNotNull(mcpServersTable.url), isNull(mcpServersTable.deletedAt)))
+    .where(and(eq(mcpServersTable.workspaceId, workspaceId), isNull(mcpServersTable.deletedAt)))
   return query as typeof query & DrizzleQueryWithPromise<McpServer>
 }
 
 /**
- * Soft deletes an MCP server by ID (sets deletedAt datetime)
- * Scrubs all non-enum data for privacy
- * Only updates records that haven't been deleted yet to preserve original deletion datetimes
+ * Gets all HTTP MCP servers in the given workspace with non-null URLs (excluding soft-deleted)
  */
-export const deleteMcpServer = async (db: AnyDrizzleDatabase, id: string): Promise<void> => {
-  await db
-    .update(mcpServersTable)
-    .set({ ...clearNullableColumns(mcpServersTable), deletedAt: nowIso() })
-    .where(and(eq(mcpServersTable.id, id), isNull(mcpServersTable.deletedAt)))
+export const getHttpMcpServers = (db: AnyDrizzleDatabase, workspaceId: string) => {
+  const query = db
+    .select()
+    .from(mcpServersTable)
+    .where(
+      and(
+        eq(mcpServersTable.workspaceId, workspaceId),
+        eq(mcpServersTable.type, 'http'),
+        isNotNull(mcpServersTable.url),
+        isNull(mcpServersTable.deletedAt),
+      ),
+    )
+  return query as typeof query & DrizzleQueryWithPromise<McpServer>
 }
 
 /**
- * Creates a new MCP server
+ * Update an MCP server in the given workspace. Strips `workspaceId` from the
+ * payload so callers can't reassign a row across workspaces — the row stays
+ * in the workspace it was filtered to.
+ */
+export const updateMcpServer = async (
+  db: AnyDrizzleDatabase,
+  workspaceId: string,
+  id: string,
+  updates: Partial<McpServer>,
+): Promise<void> => {
+  const { workspaceId: _workspaceId, ...updateFields } = updates
+  await db
+    .update(mcpServersTable)
+    .set(updateFields)
+    .where(and(eq(mcpServersTable.id, id), eq(mcpServersTable.workspaceId, workspaceId)))
+}
+
+/**
+ * Soft deletes an MCP server in the given workspace by ID (sets deletedAt datetime).
+ * Scrubs all non-enum data for privacy. Only updates records that haven't been
+ * deleted yet to preserve original deletion datetimes.
+ */
+export const deleteMcpServer = async (db: AnyDrizzleDatabase, workspaceId: string, id: string): Promise<void> => {
+  await db
+    .update(mcpServersTable)
+    .set({ ...clearNullableColumns(mcpServersTable), deletedAt: nowIso() })
+    .where(
+      and(eq(mcpServersTable.id, id), eq(mcpServersTable.workspaceId, workspaceId), isNull(mcpServersTable.deletedAt)),
+    )
+}
+
+/**
+ * Creates a new MCP server in the given workspace
  */
 export const createMcpServer = async (
   db: AnyDrizzleDatabase,
+  workspaceId: string,
   data: Partial<McpServer> & Pick<McpServer, 'id' | 'name'>,
 ): Promise<void> => {
-  await db.insert(mcpServersTable).values(data)
+  await db.insert(mcpServersTable).values({ ...data, workspaceId })
 }

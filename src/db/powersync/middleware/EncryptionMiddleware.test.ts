@@ -2,7 +2,9 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { afterEach, describe, expect, it, mock } from 'bun:test'
+import { afterEach, describe, expect, it } from 'bun:test'
+import type { EncryptionCodec } from '@/db/encryption/codec'
+import { createEncryptionMiddleware } from './EncryptionMiddleware'
 import type { SyncDataBucket } from '../TransformableBucketStorage'
 
 type SyncEntry = SyncDataBucket['data'][number]
@@ -12,23 +14,20 @@ const makeEntry = (object_type: string, data: Record<string, unknown>): SyncEntr
 
 const makeBucket = (...entries: SyncEntry[]): SyncDataBucket => ({ data: entries }) as SyncDataBucket
 
-// Controllable passthrough flag so individual tests can simulate a missing CK
-// without re-calling mock.module (which would bleed into subsequent tests).
+// Controllable passthrough flag so individual tests can simulate a missing CK.
 let ckAvailable = true
 
-mock.module('@/db/encryption/codec', () => ({
-  codec: {
-    decode: async (val: string) => {
-      if (!ckAvailable || !val.startsWith('__enc:')) {
-        return val
-      }
-      return `decrypted(${val})`
-    },
-    encode: async (val: string) => `__enc:${val}`,
+const fakeCodec: EncryptionCodec = {
+  decode: async (val: string) => {
+    if (!ckAvailable || !val.startsWith('__enc:')) {
+      return val
+    }
+    return `decrypted(${val})`
   },
-}))
+  encode: async (val: string) => `__enc:${val}`,
+}
 
-const { encryptionMiddleware } = await import('./EncryptionMiddleware')
+const encryptionMiddleware = createEncryptionMiddleware(fakeCodec)
 
 afterEach(() => {
   ckAvailable = true

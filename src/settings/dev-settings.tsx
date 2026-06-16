@@ -3,7 +3,6 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { ModificationIndicator } from '@/components/modification-indicator'
-import { Input } from '@/components/ui/input'
 import { PageHeader } from '@/components/ui/page-header'
 import { SectionCard } from '@/components/ui/section-card'
 import { Switch } from '@/components/ui/switch'
@@ -16,12 +15,11 @@ import { useShallow } from 'zustand/react/shallow'
 export default function DevSettingsPage() {
   const settings = useLocalSettingsStore(
     useShallow((s) => ({
-      cloudUrl: s.cloudUrl,
       isNativeFetchEnabled: s.isNativeFetchEnabled,
       debugPosthog: s.debugPosthog,
     })),
   )
-  const { cloudUrl, isNativeFetchEnabled, debugPosthog } = settings
+  const { isNativeFetchEnabled, debugPosthog } = settings
   const setLocalSetting = useLocalSettingsStore((s) => s.setLocalSetting)
 
   const isModified = <K extends keyof typeof settings>(key: K) => settings[key] !== initialLocalSettings[key]
@@ -41,28 +39,6 @@ export default function DevSettingsPage() {
 
       <SectionCard title="Network">
         <div className="flex flex-col gap-8">
-          {/* Cloud URL Setting */}
-          <div className="space-y-2">
-            <ModificationIndicator
-              as="label"
-              className="block text-sm font-medium"
-              hasModifications={isModified('cloudUrl')}
-              onReset={() => resetSetting('cloudUrl')}
-            >
-              Cloud URL
-            </ModificationIndicator>
-            <Input
-              type="url"
-              value={cloudUrl}
-              onChange={(e) => setLocalSetting('cloudUrl', e.target.value || initialLocalSettings.cloudUrl)}
-              placeholder="http://localhost:8000"
-            />
-            <p className="text-sm text-muted-foreground">The URL of the Thunderbolt backend</p>
-          </div>
-
-          {/* Divider between settings */}
-          <div className="border-t -mx-6" />
-
           <div className="flex items-center justify-between">
             <div className="flex flex-col gap-1">
               <ModificationIndicator

@@ -14,10 +14,11 @@ import {
   SidebarSeparator,
   useSidebar,
 } from '@/components/ui/sidebar'
+import { useConfigStore } from '@/api/config-store'
 import { useActiveWorkspaceMembership } from '@/hooks/use-active-workspace-membership'
 import { useAgentsSettingsHidden } from '@/hooks/use-agents-settings-hidden'
 import { stripWorkspacePrefix, useActiveWorkspace } from '@/lib/active-workspace'
-import { ArrowLeft, Bot, Building2, Cpu, Plug, Server, SlidersHorizontal, Smartphone, Zap } from 'lucide-react'
+import { ArrowLeft, Bot, Cpu, Globe, Lock, Plug, Server, SlidersHorizontal, Smartphone, Users, Zap } from 'lucide-react'
 import { useLocation } from 'react-router'
 import { SidebarHeader } from './sidebar-header'
 
@@ -41,10 +42,23 @@ export const SettingsSidebarContent = ({
   const agentsHidden = useAgentsSettingsHidden({ isStandalone })
   const activeWorkspace = useActiveWorkspace()
   const { isAdmin } = useActiveWorkspaceMembership()
-  // Workspace-admin items (General — and later Members, Permissions) are hidden
-  // for shared-workspace members per Decision 25 (hide-not-disable). Personal
-  // is treated as admin-equivalent for nav purposes; the page renders read-only.
+  // General — and later Permissions — are hidden for shared-workspace members
+  // per Decision 25 (hide-not-disable). Personal is treated as admin-equivalent
+  // for nav purposes; the page renders read-only.
   const workspaceAdminItemsVisible = activeWorkspace?.isPersonal === 1 || isAdmin
+  // Members is visible to every member of a shared workspace — the page is
+  // read-friendly without action permissions, and individual actions (invite /
+  // change role / remove) gate themselves on the granular permission keys.
+  // Always hidden in Personal Workspaces (Decision 25 — no members to manage).
+  // @todo Drop the e2eeEnabled gate once the encryption pipeline supports
+  // multi-recipient envelopes and is workspace-aware (see THU-593). Until then
+  // an E2EE-enabled server is effectively single-user and there's nothing to
+  // show here.
+  const e2eeEnabled = useConfigStore((state) => state.config.e2eeEnabled === true)
+  const membersItemVisible = activeWorkspace?.isPersonal !== 1 && !e2eeEnabled
+  // Permissions is implicitly admin-only — there is no configurable
+  // meta-permission for editing the permissions grid itself.
+  const permissionsItemVisible = activeWorkspace?.isPersonal !== 1 && isAdmin && !e2eeEnabled
   // `isActive` highlighting reads the sub-path so the same matching rules work
   // for both personal (`/settings/...`) and shared (`/w/<id>/settings/...`) URLs.
   const subPath = stripWorkspacePrefix(location.pathname)
@@ -121,8 +135,34 @@ export const SettingsSidebarContent = ({
                   className="cursor-pointer"
                   isActive={subPath === '/settings/workspace/general'}
                 >
-                  <Building2 className="size-4" />
+                  <Globe className="size-4" />
                   <span>General</span>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+            )}
+            {membersItemVisible && (
+              <SidebarMenuItem>
+                <SidebarMenuButton
+                  onClick={() => onSettingsNavigate('/settings/workspace/members')}
+                  tooltip="Members"
+                  className="cursor-pointer"
+                  isActive={subPath === '/settings/workspace/members'}
+                >
+                  <Users className="size-4" />
+                  <span>Members</span>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+            )}
+            {permissionsItemVisible && (
+              <SidebarMenuItem>
+                <SidebarMenuButton
+                  onClick={() => onSettingsNavigate('/settings/workspace/permissions')}
+                  tooltip="Permissions"
+                  className="cursor-pointer"
+                  isActive={subPath === '/settings/workspace/permissions'}
+                >
+                  <Lock className="size-4" />
+                  <span>Permissions</span>
                 </SidebarMenuButton>
               </SidebarMenuItem>
             )}

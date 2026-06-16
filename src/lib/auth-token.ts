@@ -44,13 +44,39 @@ export const getDeviceId = (): string => {
   return id
 }
 
+// Scoped override consulted before the registry-derived lookup. The sign-out
+// wipe sequence empties `activeTrustDomain` before calling Better Auth's
+// `signOut()`, so the normal `getActiveServerId()` resolution would return
+// `null` and the sign-out request would go out bearer-less. `withCapturedAuthToken`
+// replays the pre-wipe token for the duration of that call.
+let capturedAuthToken: string | null = null
+
 /** Get the active server's auth token, or null if there is no active server / not signed in. */
 export const getAuthToken = (): string | null => {
+  if (capturedAuthToken !== null) {
+    return capturedAuthToken
+  }
   const serverId = getActiveServerId()
   if (!serverId) {
     return null
   }
   return localStorage.getItem(authTokenKeyFor(serverId))
+}
+
+/**
+ * Run `fn` with `getAuthToken()` short-circuited to return `token`. Used by
+ * `signOutAndWipe` so the sign-out HTTP call stays authenticated even though
+ * `clearLocalData` has already cleared `activeTrustDomain` from the registry
+ * by the time signOut runs.
+ */
+export const withCapturedAuthToken = async <T>(token: string | null, fn: () => Promise<T>): Promise<T> => {
+  const prev = capturedAuthToken
+  capturedAuthToken = token
+  try {
+    return await fn()
+  } finally {
+    capturedAuthToken = prev
+  }
 }
 
 /** Store the auth token under the active server's namespace. No-op when no server is active. */
@@ -62,22 +88,27 @@ export const setAuthToken = (token: string): void => {
   localStorage.setItem(authTokenKeyFor(serverId), token)
 }
 
-/** Clear the auth token for the active server (for sign-out). No-op when no server is active. */
-export const clearAuthToken = (): void => {
-  const serverId = getActiveServerId()
-  if (!serverId) {
+/**
+ * Clear the auth token. Defaults to the active server (registry-resolved), but
+ * the wipe path passes the captured serverId explicitly because cleanup.ts
+ * clears `activeTrustDomain` from the registry before this runs (so the
+ * default would resolve to undefined and no-op).
+ */
+export const clearAuthToken = (serverId?: string): void => {
+  const id = serverId ?? getActiveServerId()
+  if (!id) {
     return
   }
-  localStorage.removeItem(authTokenKeyFor(serverId))
+  localStorage.removeItem(authTokenKeyFor(id))
 }
 
-/** Clear the device ID for the active server (forces a new ID on next login). */
-export const clearDeviceId = (): void => {
-  const serverId = getActiveServerId()
-  if (!serverId) {
+/** Same shape as `clearAuthToken` — explicit serverId for callers running after a registry clear. */
+export const clearDeviceId = (serverId?: string): void => {
+  const id = serverId ?? getActiveServerId()
+  if (!id) {
     return
   }
-  localStorage.removeItem(deviceIdKeyFor(serverId))
+  localStorage.removeItem(deviceIdKeyFor(id))
 }
 
 /**

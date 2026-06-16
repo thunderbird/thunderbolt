@@ -32,8 +32,12 @@ export const needsSyncSetupWizard = async (): Promise<boolean> => {
  * - `workspaces.is_personal` / `owner_user_id` — the BE handler branches on
  *   these to gate personal vs shared writes; encrypting them would break the
  *   policy logic.
- * - `workspace_memberships.role` — the sync rules use `role = 'admin'` to scope
- *   the admin-only bucket.
+ * - `workspace_memberships.role` — the BE upload handlers read it to resolve
+ *   per-key permissions (admin satisfies every key by default, Decision 11)
+ *   and to enforce the admin-escalation guard on membership/pending writes.
+ * - `workspace_memberships.user_name` / `user_email` — written by the BE upload
+ *   handler from `auth.user`, so they're inherently server-known. Encrypting
+ *   them would also block the Members page from rendering display info.
  * - `workspace_pending_memberships.email` — the Better Auth post-create hook
  *   matches this against the new user's email to promote pending invites into
  *   real memberships. Plaintext is functionally required here.

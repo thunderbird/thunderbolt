@@ -133,6 +133,11 @@ export const useHydrateChatStore = ({ id, isNew }: UseHydrateChatStoreParams) =>
     const existingSession = sessions.get(id)
     if (existingSession) {
       if (existingSession.workspaceId !== workspaceId) {
+        // Drop `isReady` before we evict so consumers don't render against a
+        // session we've just removed during the async rebuild below — they'd
+        // see `isReady=true` with no matching session entry and throw
+        // missing-session errors.
+        setIsReady(false)
         const nextSessions = new Map(sessions)
         nextSessions.delete(id)
         useChatStore.setState({ sessions: nextSessions })
@@ -230,6 +235,22 @@ export const useHydrateChatStore = ({ id, isNew }: UseHydrateChatStoreParams) =>
     // If chat doesn't exist and this isn't a new chat, redirect to 404
     if (!chatThread && !isNew) {
       navigate('/not-found', { replace: true })
+      return
+    }
+
+    // Re-read the session map immediately before the write. The top-of-function
+    // existing-session check (above) is separated from `createSession` by the
+    // big Promise.all, so two concurrent hydrations for the same `id` can both
+    // pass the early dedup and race to `createSession` — which throws when
+    // both reach it. Surfaces when `[id, workspaceId]` flips twice in quick
+    // succession (e.g. landing on `/w/<newId>/chats/new` right after workspace
+    // creation, where `useActiveWorkspaceId()` is briefly null then resolves).
+    if (useChatStore.getState().sessions.has(id)) {
+      setCurrentSessionId(id)
+      setMcpClients(mcpClients)
+      setModes(modes)
+      setModels(models)
+      setIsReady(true)
       return
     }
 

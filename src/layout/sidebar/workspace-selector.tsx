@@ -2,13 +2,14 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { useConfigStore } from '@/api/config-store'
 import { AppLogo } from '@/components/app-logo'
 import { SearchableMenu, type SearchableMenuGroup, type SearchableMenuItem } from '@/components/ui/searchable-menu'
 import { useWorkspacesQuery, type Workspace } from '@/dal'
 import { useCanCreateWorkspace } from '@/hooks/use-can-create-workspace'
 import { isDataUrlIcon } from '@/components/workspace/icon-utils'
 import { useIsMobile } from '@/hooks/use-mobile'
-import { stripWorkspacePrefix, toWorkspaceUrl, useActiveWorkspace } from '@/lib/active-workspace'
+import { crossWorkspaceSubPath, toWorkspaceUrl, useActiveWorkspace } from '@/lib/active-workspace'
 import { cn } from '@/lib/utils'
 import { ChevronDown, Plus } from 'lucide-react'
 import { useMemo, useState } from 'react'
@@ -121,6 +122,7 @@ export const WorkspaceSelector = ({ collapsed = false }: WorkspaceSelectorProps)
   const navigate = useNavigate()
   const location = useLocation()
   const canCreate = useCanCreateWorkspace()
+  const e2eeEnabled = useConfigStore((state) => state.config.e2eeEnabled === true)
   const [createOpen, setCreateOpen] = useState(false)
   // After create-modal commits, hold the new workspace id so the invite modal
   // can target it; clearing this also closes the invite modal.
@@ -128,6 +130,14 @@ export const WorkspaceSelector = ({ collapsed = false }: WorkspaceSelectorProps)
 
   const handleCreated = (workspaceId: string) => {
     setCreateOpen(false)
+    // @todo Drop this E2EE branch once the encryption pipeline supports
+    // multi-recipient envelopes and is workspace-aware (see THU-593). Until
+    // then there's no point opening the invite step — the BE rejects pending
+    // membership inserts under E2EE.
+    if (e2eeEnabled) {
+      navigate(`/w/${workspaceId}/`)
+      return
+    }
     setInviteWorkspaceId(workspaceId)
   }
 
@@ -163,7 +173,10 @@ export const WorkspaceSelector = ({ collapsed = false }: WorkspaceSelectorProps)
     if (!target || target.id === active.id) {
       return
     }
-    const subPath = stripWorkspacePrefix(location.pathname)
+    // Chat ids are per-workspace; carrying the current chat id across the
+    // switch would land on Not Found. `crossWorkspaceSubPath` collapses
+    // `/chats/<id>` to `/chats/new` for the target workspace.
+    const subPath = crossWorkspaceSubPath(location.pathname)
     navigate(`${toWorkspaceUrl(target, subPath)}${location.search}`)
   }
 

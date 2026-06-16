@@ -182,7 +182,9 @@ export const ModePicker = ({ validate = validateServerUrl }: ModePickerProps = {
       const result = await validate(urlAtCall)
       if (urlAtCall !== serverUrlRef.current) {
         // User edited the field during the network call — bail rather than
-        // surface a result for stale text.
+        // surface a result for stale text. Reset the stage so we don't strand
+        // the user on the "Connecting to Server" screen with no recovery path.
+        dispatch({ type: 'VALIDATE_ERROR', message: '' })
         return
       }
       lastValidationRef.current = { url: urlAtCall, result }

@@ -175,7 +175,7 @@ export const sanitizeOrigin = (origin) => {
  * + the hardcoded prod web origin in isOAuthRedirectUriAllowed):
  *   - https://app.thunderbolt.io  — production web app
  *   - tauri://localhost / http://tauri.localhost — Tauri desktop/mobile webview
- *   - http://localhost:1420       — Vite dev server (web + Tauri dev)
+ *   - http://localhost:1420 (+ http://127.0.0.1:1420, http://[::1]:1420) — Vite dev server (web + Tauri dev)
  * A missing/empty Origin is allowed separately (native/Tauri webviews often send
  * none); see isOriginAllowed.
  */
@@ -183,7 +183,11 @@ export const defaultAllowedOrigins = Object.freeze([
   'https://app.thunderbolt.io',
   'tauri://localhost',
   'http://tauri.localhost',
+  // Vite dev server (web + Tauri dev). It binds loopback and is reachable by
+  // every loopback spelling, so accept all three — same local origin.
   'http://localhost:1420',
+  'http://127.0.0.1:1420',
+  'http://[::1]:1420',
 ])
 
 /**

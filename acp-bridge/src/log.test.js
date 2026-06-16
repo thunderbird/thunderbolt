@@ -168,6 +168,17 @@ describe('isOriginAllowed', () => {
     }
   })
 
+  it('accepts every loopback spelling of the Vite dev origin (same local origin)', () => {
+    // The dev server binds loopback and is reachable as localhost, 127.0.0.1,
+    // and [::1] — all the same origin, so all three must be allowed.
+    expect(isOriginAllowed('http://localhost:1420', defaultAllowedOrigins)).toBe(true)
+    expect(isOriginAllowed('http://127.0.0.1:1420', defaultAllowedOrigins)).toBe(true)
+    expect(isOriginAllowed('http://[::1]:1420', defaultAllowedOrigins)).toBe(true)
+    // It's the dev origin specifically, not blanket-loopback: a different port
+    // on the same loopback host is still rejected.
+    expect(isOriginAllowed('http://127.0.0.1:9999', defaultAllowedOrigins)).toBe(false)
+  })
+
   it('allows a missing/empty origin (native + Tauri webviews send none)', () => {
     expect(isOriginAllowed(undefined, defaultAllowedOrigins)).toBe(true)
     expect(isOriginAllowed('', defaultAllowedOrigins)).toBe(true)

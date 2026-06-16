@@ -5,6 +5,7 @@
 import { deleteTasks as deleteTasksDal, getAllTasks } from '@/dal'
 import { getDb } from '@/db/database'
 import { tasksTable } from '@/db/tables'
+import { requireActiveWorkspaceId } from '@/lib/active-workspace'
 import { v7 as uuidv7 } from 'uuid'
 import { z } from 'zod'
 
@@ -17,6 +18,7 @@ export const addTasks = {
   }),
   execute: async (params: { tasks: string[] }) => {
     const db = getDb()
+    const workspaceId = await requireActiveWorkspaceId(db)
     const tasks = await db
       .insert(tasksTable)
       .values(
@@ -25,6 +27,7 @@ export const addTasks = {
           item: task,
           order: 0,
           isComplete: 0,
+          workspaceId,
         })),
       )
       .returning()
@@ -39,7 +42,8 @@ export const getTasks = {
   parameters: z.object({}),
   execute: async () => {
     const db = getDb()
-    const tasks = await getAllTasks(db)
+    const workspaceId = await requireActiveWorkspaceId(db)
+    const tasks = await getAllTasks(db, workspaceId)
     return tasks
   },
 }
@@ -53,7 +57,8 @@ export const deleteTasks = {
   }),
   execute: async (params: { taskIds: string[] }) => {
     const db = getDb()
-    await deleteTasksDal(db, params.taskIds)
+    const workspaceId = await requireActiveWorkspaceId(db)
+    await deleteTasksDal(db, workspaceId, params.taskIds)
     return {
       success: true,
     }

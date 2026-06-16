@@ -148,25 +148,6 @@ const putEntries = async (entries: Array<{ id: string; value: StorableValue }>):
   })
 }
 
-const deleteKeys = async (ids: string[]): Promise<void> => {
-  const db = await openDB()
-  return new Promise((resolve, reject) => {
-    const tx = db.transaction(storeName, 'readwrite')
-    const store = tx.objectStore(storeName)
-    for (const id of ids) {
-      store.delete(id)
-    }
-    tx.oncomplete = () => {
-      db.close()
-      resolve()
-    }
-    tx.onerror = () => {
-      db.close()
-      reject(new StorageError('Failed to delete keys', { cause: tx.error }))
-    }
-  })
-}
-
 // =============================================================================
 // Key pair (ECDH P-256 + ML-KEM-768)
 // =============================================================================
@@ -228,10 +209,27 @@ export const clearCK = async (): Promise<void> => deleteKey(ckId)
 // Full wipe
 // =============================================================================
 
-/** Clear all keys and delete the IDB database for the active server (full data wipe / revocation). */
-export const clearAllKeys = async (): Promise<void> => {
-  await deleteKeys([privateKeyId, publicKeyId, mlkemPublicKeyId, mlkemSecretKeyId, ckId])
-  const dbName = resolveDbName()
+/**
+ * Clear all keys and delete the IDB database for the given server (full data
+ * wipe / revocation). The `serverId` defaults to the active server in the
+ * trust-domain registry, but callers running after the registry has been
+ * cleared (the cleanup pipeline does this early to keep reloaded tabs out of
+ * the wiping server) must pass it explicitly — otherwise the wipe would no-op
+ * and leave the per-server IDB database on disk.
+ */
+export const clearAllKeys = async (serverId?: string): Promise<void> => {
+  const resolvedServerId = serverId ?? resolveServerId()
+  if (!resolvedServerId) {
+    throw new StorageError('Cannot clear encryption keys without an active server trust domain')
+  }
+  const dbName = `${dbNamePrefix}${resolvedServerId}`
+  // Best-effort per-key delete first so a blocked `deleteDatabase` (open
+  // connection in another tab) still leaves no key material behind.
+  try {
+    await deleteKeysInDB(dbName, [privateKeyId, publicKeyId, mlkemPublicKeyId, mlkemSecretKeyId, ckId])
+  } catch (err) {
+    console.warn(`[clearAllKeys] per-key delete failed for ${dbName}; relying on deleteDatabase`, err)
+  }
   await new Promise<void>((resolve) => {
     const request = indexedDB.deleteDatabase(dbName)
     request.onsuccess = () => resolve()
@@ -242,6 +240,36 @@ export const clearAllKeys = async (): Promise<void> => {
     request.onblocked = () => {
       console.warn(`[clearAllKeys] IDB delete blocked for ${dbName} — open connections still alive`)
       resolve()
+    }
+  })
+}
+
+/** Internal: open the IDB DB by explicit name and delete the listed keys. Mirrors `deleteKeys` but doesn't go through `resolveDbName`. */
+const deleteKeysInDB = async (dbName: string, ids: string[]): Promise<void> => {
+  const db = await new Promise<IDBDatabase>((resolve, reject) => {
+    const request = indexedDB.open(dbName, dbVersion)
+    request.onupgradeneeded = () => {
+      const upgradeDb = request.result
+      if (!upgradeDb.objectStoreNames.contains(storeName)) {
+        upgradeDb.createObjectStore(storeName)
+      }
+    }
+    request.onsuccess = () => resolve(request.result)
+    request.onerror = () => reject(new StorageError('Failed to open IndexedDB', { cause: request.error }))
+  })
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(storeName, 'readwrite')
+    const store = tx.objectStore(storeName)
+    for (const id of ids) {
+      store.delete(id)
+    }
+    tx.oncomplete = () => {
+      db.close()
+      resolve()
+    }
+    tx.onerror = () => {
+      db.close()
+      reject(new StorageError('Failed to delete keys', { cause: tx.error }))
     }
   })
 }

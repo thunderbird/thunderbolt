@@ -3,11 +3,10 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { useAuth, useDatabase } from '@/contexts'
-import { workspacesTable } from '@/db/tables'
+import { getPersonalWorkspaceByOwnerQuery } from '@/dal'
 import Loading from '@/loading'
 import { toCompilableQuery } from '@powersync/drizzle-driver'
 import { useQuery } from '@powersync/tanstack-react-query'
-import { and, eq } from 'drizzle-orm'
 import { Outlet } from 'react-router'
 
 /**
@@ -36,13 +35,7 @@ export const WorkspaceGate = () => {
   // anyway to avoid hardcoding the assumption.
   const { data } = useQuery({
     queryKey: ['workspaces', 'personal', userId],
-    query: toCompilableQuery(
-      db
-        .select()
-        .from(workspacesTable)
-        .where(and(eq(workspacesTable.ownerUserId, userId ?? ''), eq(workspacesTable.isPersonal, 1)))
-        .limit(1),
-    ),
+    query: toCompilableQuery(getPersonalWorkspaceByOwnerQuery(db, userId ?? '')),
     enabled: !!userId,
   })
 

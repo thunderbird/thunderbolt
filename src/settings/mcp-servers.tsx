@@ -19,14 +19,14 @@ import {
 } from '@/components/ui/responsive-modal'
 import { Switch } from '@/components/ui/switch'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
-import { createMcpServer, deleteMcpServer, getHttpMcpServers } from '@/dal'
+import { createMcpServer, deleteMcpServer, getHttpMcpServers, updateMcpServer } from '@/dal'
 import { useDatabase } from '@/contexts'
-import { mcpServersTable } from '@/db/tables'
+import { useWorkspacePermission as useWorkspacePermission_default } from '@/hooks/use-workspace-permission'
 import { useMcpSync } from '@/hooks/use-mcp-sync'
+import { useActiveWorkspaceId } from '@/lib/active-workspace'
 import { type McpServer } from '@/types'
 import { useMutation } from '@tanstack/react-query'
 import { useQuery } from '@powersync/tanstack-react-query'
-import { eq } from 'drizzle-orm'
 import { Check, Copy, Globe, Plus, Server, Trash2, X } from 'lucide-react'
 import { useEffect, useRef, useState, type KeyboardEvent } from 'react'
 import { v7 as uuidv7 } from 'uuid'
@@ -38,8 +38,22 @@ type ServerTools = {
   [serverId: string]: string[]
 }
 
-export default function McpServersPage() {
+type McpServersPageProps = {
+  /** Test seam — defaults to the real hook. Tests inject a fake to drive the
+   *  gated Add Server / row affordances. */
+  useWorkspacePermission?: typeof useWorkspacePermission_default
+}
+
+export default function McpServersPage({
+  useWorkspacePermission = useWorkspacePermission_default,
+}: McpServersPageProps = {}) {
   const db = useDatabase()
+  const workspaceId = useActiveWorkspaceId()
+  // Workspace `add_mcp_servers` / `remove_mcp_servers` — BE enforces; FE
+  // hides affordances so the user isn't presented with actions that
+  // round-trip-fail.
+  const { isAllowed: canAddMcpServers } = useWorkspacePermission('add_mcp_servers')
+  const { isAllowed: canRemoveMcpServers } = useWorkspacePermission('remove_mcp_servers')
   const { servers: mcpServers } = useMcpSync()
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false)
   const [newServerUrl, setNewServerUrl] = useState('')
@@ -55,8 +69,9 @@ export default function McpServersPage() {
 
   // TODO: Add support for stdio servers
   const { data: servers = [] } = useQuery({
-    queryKey: ['mcp-servers'],
-    query: toCompilableQuery(getHttpMcpServers(db)),
+    queryKey: ['mcp-servers', 'http', workspaceId],
+    query: toCompilableQuery(getHttpMcpServers(db, workspaceId ?? '')),
+    enabled: !!workspaceId,
   })
 
   // Fetch tools for connected servers
@@ -104,16 +119,22 @@ export default function McpServersPage() {
 
   const toggleServerMutation = useMutation({
     mutationFn: async ({ id, enabled }: { id: string; enabled: boolean }) => {
-      await db
-        .update(mcpServersTable)
-        .set({ enabled: enabled ? 1 : 0, updatedAt: new Date().toISOString() })
-        .where(eq(mcpServersTable.id, id))
+      if (!workspaceId) {
+        throw new Error('No active workspace')
+      }
+      await updateMcpServer(db, workspaceId, id, {
+        enabled: enabled ? 1 : 0,
+        updatedAt: new Date().toISOString(),
+      })
     },
   })
 
   const addServerMutation = useMutation({
     mutationFn: async ({ name, url }: { name: string; url: string }) => {
-      await createMcpServer(db, {
+      if (!workspaceId) {
+        throw new Error('No active workspace')
+      }
+      await createMcpServer(db, workspaceId, {
         id: uuidv7(),
         name,
         url,
@@ -129,7 +150,12 @@ export default function McpServersPage() {
   })
 
   const deleteServerMutation = useMutation({
-    mutationFn: (id: string) => deleteMcpServer(db, id),
+    mutationFn: (id: string) => {
+      if (!workspaceId) {
+        throw new Error('No active workspace')
+      }
+      return deleteMcpServer(db, workspaceId, id)
+    },
     onSuccess: () => {
       setDeleteConfirmOpen(null)
     },
@@ -300,11 +326,13 @@ export default function McpServersPage() {
     <div className="flex flex-col gap-6 p-4 w-full max-w-[760px] mx-auto">
       <PageHeader title="MCP Servers">
         <Dialog open={isAddDialogOpen} onOpenChange={setIsAddDialogOpen}>
-          <DialogTrigger asChild>
-            <Button variant="outline" size="icon" className="rounded-lg">
-              <Plus />
-            </Button>
-          </DialogTrigger>
+          {canAddMcpServers && (
+            <DialogTrigger asChild>
+              <Button variant="outline" size="icon" className="rounded-lg">
+                <Plus />
+              </Button>
+            </DialogTrigger>
+          )}
           <ResponsiveModalContentComposable className="sm:max-w-[500px]">
             <ResponsiveModalHeader>
               <ResponsiveModalTitle>Add MCP Server</ResponsiveModalTitle>
@@ -447,6 +475,7 @@ export default function McpServersPage() {
                         <div>
                           <Switch
                             checked={isEnabled}
+                            disabled={!canAddMcpServers}
                             onCheckedChange={(checked) =>
                               toggleServerMutation.mutate({ id: server.id, enabled: checked })
                             }
@@ -462,11 +491,13 @@ export default function McpServersPage() {
                       open={deleteConfirmOpen === server.id}
                       onOpenChange={(open) => setDeleteConfirmOpen(open ? server.id : null)}
                     >
-                      <PopoverTrigger asChild>
-                        <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
-                      </PopoverTrigger>
+                      {canRemoveMcpServers && (
+                        <PopoverTrigger asChild>
+                          <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        </PopoverTrigger>
+                      )}
                       <PopoverContent className="w-80" side="bottom" align="end">
                         <div className="space-y-3">
                           <div>
@@ -512,10 +543,12 @@ export default function McpServersPage() {
               <p className="text-sm text-muted-foreground mb-4">
                 Get started by adding your first MCP server connection.
               </p>
-              <Button onClick={() => setIsAddDialogOpen(true)} variant="outline">
-                <Plus className="h-4 w-4 mr-2" />
-                Add Server
-              </Button>
+              {canAddMcpServers && (
+                <Button onClick={() => setIsAddDialogOpen(true)} variant="outline">
+                  <Plus className="h-4 w-4 mr-2" />
+                  Add Server
+                </Button>
+              )}
             </CardContent>
           </Card>
         )}

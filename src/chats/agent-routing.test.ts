@@ -2,6 +2,8 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { wsId } from '@/dal/test-utils'
+
 /**
  * `createAgentRoutingFetch` dispatch tests. Verifies the `customFetch` the AI
  * SDK consumes correctly routes each `chat.sendMessage(...)` to the cached
@@ -94,6 +96,7 @@ const hydrateSessionWith = (id: string, agent: Agent, chatThread: ChatThread | n
     connectionStatus: 'idle',
     connectionError: null,
     id,
+    workspaceId: wsId,
     pendingPermission: null,
     retryCount: 0,
     retriesExhausted: false,
@@ -118,7 +121,7 @@ describe('createAgentRoutingFetch', () => {
     const connectToAgent = mock(async (_agent: Agent) => adapter)
     hydrateSessionWith('t-built-in', builtInAgent)
 
-    const customFetch = createAgentRoutingFetch('t-built-in', saveMessages, httpClient, getProxyFetch, {
+    const customFetch = createAgentRoutingFetch('t-built-in', wsId, saveMessages, httpClient, getProxyFetch, {
       connectToAgent: connectToAgent as never,
     })
 
@@ -137,7 +140,7 @@ describe('createAgentRoutingFetch', () => {
     const connectToAgent = mock(async (_agent: Agent) => adapter)
     hydrateSessionWith('t-remote', remoteAgent)
 
-    const customFetch = createAgentRoutingFetch('t-remote', saveMessages, httpClient, getProxyFetch, {
+    const customFetch = createAgentRoutingFetch('t-remote', wsId, saveMessages, httpClient, getProxyFetch, {
       connectToAgent: connectToAgent as never,
     })
 
@@ -154,7 +157,7 @@ describe('createAgentRoutingFetch', () => {
     const connectToAgent = mock(async (_agent: Agent) => adapter)
     hydrateSessionWith('t-cache', remoteAgent)
 
-    const customFetch = createAgentRoutingFetch('t-cache', saveMessages, httpClient, getProxyFetch, {
+    const customFetch = createAgentRoutingFetch('t-cache', wsId, saveMessages, httpClient, getProxyFetch, {
       connectToAgent: connectToAgent as never,
     })
 
@@ -175,7 +178,7 @@ describe('createAgentRoutingFetch', () => {
 
     hydrateSessionWith('t-switch', remoteAgent)
 
-    const customFetch = createAgentRoutingFetch('t-switch', saveMessages, httpClient, getProxyFetch, {
+    const customFetch = createAgentRoutingFetch('t-switch', wsId, saveMessages, httpClient, getProxyFetch, {
       connectToAgent: connectToAgent as never,
     })
 
@@ -223,7 +226,7 @@ describe('createAgentRoutingFetch', () => {
 
     hydrateSessionWith('thread-77', remoteAgent, chatThread)
 
-    const customFetch = createAgentRoutingFetch('thread-77', saveMessages, httpClient, getProxyFetch, {
+    const customFetch = createAgentRoutingFetch('thread-77', wsId, saveMessages, httpClient, getProxyFetch, {
       connectToAgent: connectToAgent as never,
       updateChatThread: updateChatThread as never,
       getDb: (() => fakeDb) as never,
@@ -237,10 +240,11 @@ describe('createAgentRoutingFetch', () => {
     await capturedOnAcpSessionId!('acp-sess-xyz')
 
     expect(updateChatThread).toHaveBeenCalledTimes(1)
-    const call = updateChatThread.mock.calls[0] as unknown as [unknown, string, { acpSessionId: string }]
+    const call = updateChatThread.mock.calls[0] as unknown as [unknown, string, string, { acpSessionId: string }]
     expect(call[0]).toBe(fakeDb)
-    expect(call[1]).toBe('thread-77')
-    expect(call[2]).toMatchObject({ acpSessionId: 'acp-sess-xyz' })
+    expect(call[1]).toBe(wsId)
+    expect(call[2]).toBe('thread-77')
+    expect(call[3]).toMatchObject({ acpSessionId: 'acp-sess-xyz' })
   })
 
   it('saves the user message before invoking the adapter (built-in agent)', async () => {
@@ -268,7 +272,7 @@ describe('createAgentRoutingFetch', () => {
       parts: [{ type: 'text', text: 'Hello world' }],
     }
 
-    const customFetch = createAgentRoutingFetch('t-save-builtin', saveMessagesSpy, httpClient, getProxyFetch, {
+    const customFetch = createAgentRoutingFetch('t-save-builtin', wsId, saveMessagesSpy, httpClient, getProxyFetch, {
       connectToAgent: connectToAgent as never,
     })
 
@@ -295,7 +299,7 @@ describe('createAgentRoutingFetch', () => {
       parts: [{ type: 'text', text: 'ACP question' }],
     }
 
-    const customFetch = createAgentRoutingFetch('t-save-remote', saveMessagesSpy, httpClient, getProxyFetch, {
+    const customFetch = createAgentRoutingFetch('t-save-remote', wsId, saveMessagesSpy, httpClient, getProxyFetch, {
       connectToAgent: connectToAgent as never,
     })
 
@@ -332,7 +336,7 @@ describe('createAgentRoutingFetch', () => {
 
     hydrateSessionWith('t-no-thread', remoteAgent, null)
 
-    const customFetch = createAgentRoutingFetch('t-no-thread', saveMessages, httpClient, getProxyFetch, {
+    const customFetch = createAgentRoutingFetch('t-no-thread', wsId, saveMessages, httpClient, getProxyFetch, {
       connectToAgent: connectToAgent as never,
       updateChatThread: updateChatThread as never,
       getDb: (() => fakeDb) as never,

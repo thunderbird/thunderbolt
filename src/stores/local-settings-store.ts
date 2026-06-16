@@ -12,6 +12,10 @@ type LocalSettingsState = {
   hapticsEnabled: boolean
   syncEnabled: boolean
   theme: 'light' | 'dark' | 'system'
+  // Opt-in: permit connecting to a custom ACP agent over insecure cleartext
+  // `ws://` (e.g. a local agent binary on 127.0.0.1). Off by default — the
+  // add-custom-agent dialog requires `wss://` unless this is enabled.
+  allowInsecureAcp: boolean
 }
 
 type LocalSettingsActions = {
@@ -27,6 +31,7 @@ export const initialLocalSettings: LocalSettingsState = {
   hapticsEnabled: true,
   syncEnabled: false,
   theme: 'system',
+  allowInsecureAcp: false,
 }
 
 export const useLocalSettingsStore = create<LocalSettingsStore>()(
@@ -47,6 +52,7 @@ export const useLocalSettingsStore = create<LocalSettingsStore>()(
         hapticsEnabled: s.hapticsEnabled,
         syncEnabled: s.syncEnabled,
         theme: s.theme,
+        allowInsecureAcp: s.allowInsecureAcp,
       }),
     },
   ),

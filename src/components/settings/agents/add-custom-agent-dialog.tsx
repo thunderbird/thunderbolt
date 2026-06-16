@@ -16,6 +16,7 @@ import {
 import { Dialog } from '@/components/ui/dialog'
 import { StatusCard } from '@/components/ui/status-card'
 import { getPlatform, isTauri } from '@/lib/platform'
+import { useLocalSettingsStore } from '@/stores/local-settings-store'
 import { testAcpConnection as defaultTestAcpConnection } from '@/acp'
 
 /** Maps a user-entered URL to the ACP transport flavor we support, or `null`
@@ -40,17 +41,29 @@ const defaultIsTauriIOS = (): boolean => isTauri() && getPlatform() === 'ios'
 
 /** Pure validation of `url` against the platform's transport rules. Returns
  *  the inferred transport on success, or a user-facing error string. Extracted
- *  so the test suite can exercise it without rendering the dialog. */
+ *  so the test suite can exercise it without rendering the dialog.
+ *
+ *  Cleartext `ws://` is rejected by default — secure `wss://` is required unless
+ *  the user opts in via `allowInsecure` (the "Allow insecure local agents"
+ *  Developer Setting), which exists for connecting to a local agent binary on
+ *  127.0.0.1. iOS rejects `ws://` regardless (Apple ATS blocks cleartext). */
 export const validateAgentUrl = (
   url: string,
-  isIos: () => boolean = defaultIsTauriIOS,
+  { isIos = defaultIsTauriIOS, allowInsecure = false }: { isIos?: () => boolean; allowInsecure?: boolean } = {},
 ): { transport: 'websocket' } | { error: string } => {
   const transport = inferTransport(url)
   if (!transport) {
-    return { error: 'Only WebSocket endpoints are supported (wss:// or ws://)' }
+    return { error: 'Only WebSocket endpoints are supported (wss://, or ws:// for local agents when enabled)' }
   }
-  if (isIos() && new URL(url).protocol === 'ws:') {
+  const isCleartext = new URL(url).protocol === 'ws:'
+  if (isCleartext && isIos()) {
     return { error: 'iOS requires a secure URL (wss://)' }
+  }
+  if (isCleartext && !allowInsecure) {
+    return {
+      error:
+        'Insecure ws:// is disabled. Enable “Allow insecure local agents” in Developer Settings to use a local agent.',
+    }
   }
   return { transport }
 }
@@ -144,11 +157,13 @@ export const AddCustomAgentDialog = ({
   testAcpConnection = defaultTestAcpConnection,
 }: AddCustomAgentDialogProps) => {
   const [state, dispatch] = useReducer(agentDialogReducer, initialState)
+  // Opt-in gate: only permit cleartext ws:// when the user has enabled it.
+  const allowInsecure = useLocalSettingsStore((s) => s.allowInsecureAcp)
 
   const trimmedName = state.name.trim()
   const trimmedUrl = state.url.trim()
   const trimmedDescription = state.description.trim()
-  const validation = validateAgentUrl(trimmedUrl, isIos)
+  const validation = validateAgentUrl(trimmedUrl, { isIos, allowInsecure })
   // Surface an invalid-URL error at render time (once the field is non-empty)
   // so the user sees why Test Connection is unavailable and Add stays gated.
   const urlError = trimmedUrl.length > 0 && 'error' in validation ? validation.error : null

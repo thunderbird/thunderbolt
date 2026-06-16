@@ -19,9 +19,10 @@ export default function DevSettingsPage() {
       cloudUrl: s.cloudUrl,
       isNativeFetchEnabled: s.isNativeFetchEnabled,
       debugPosthog: s.debugPosthog,
+      allowInsecureAcp: s.allowInsecureAcp,
     })),
   )
-  const { cloudUrl, isNativeFetchEnabled, debugPosthog } = settings
+  const { cloudUrl, isNativeFetchEnabled, debugPosthog, allowInsecureAcp } = settings
   const setLocalSetting = useLocalSettingsStore((s) => s.setLocalSetting)
 
   const isModified = <K extends keyof typeof settings>(key: K) => settings[key] !== initialLocalSettings[key]
@@ -111,6 +112,26 @@ export default function DevSettingsPage() {
             </div>
             <Switch checked={debugPosthog} onCheckedChange={(value) => setLocalSetting('debugPosthog', value)} />
           </div>
+        </div>
+      </SectionCard>
+
+      <SectionCard title="Agents">
+        <div className="flex items-center justify-between">
+          <div className="flex flex-col gap-1">
+            <ModificationIndicator
+              as="label"
+              className="text-sm font-medium"
+              hasModifications={isModified('allowInsecureAcp')}
+              onReset={() => resetSetting('allowInsecureAcp')}
+            >
+              Allow insecure local agents
+            </ModificationIndicator>
+            <p className="text-sm text-muted-foreground">
+              Permit connecting to a custom ACP agent over cleartext <code>ws://</code> (e.g. a local agent binary on
+              127.0.0.1). Off by default — secure <code>wss://</code> is required otherwise.
+            </p>
+          </div>
+          <Switch checked={allowInsecureAcp} onCheckedChange={(value) => setLocalSetting('allowInsecureAcp', value)} />
         </div>
       </SectionCard>
     </div>

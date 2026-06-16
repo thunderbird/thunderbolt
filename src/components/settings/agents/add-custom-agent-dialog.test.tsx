@@ -49,35 +49,42 @@ describe('validateAgentUrl', () => {
   const isIos = () => true
 
   it('accepts wss:// on non-iOS platforms', () => {
-    expect(validateAgentUrl('wss://example.com', notIos)).toEqual({ transport: 'websocket' })
+    expect(validateAgentUrl('wss://example.com', { isIos: notIos })).toEqual({ transport: 'websocket' })
   })
 
-  it('accepts ws:// on non-iOS platforms (LAN/dev use)', () => {
-    expect(validateAgentUrl('ws://localhost:8080/ws', notIos)).toEqual({ transport: 'websocket' })
+  it('rejects ws:// by default (insecure opt-in off)', () => {
+    const result = validateAgentUrl('ws://localhost:8080/ws', { isIos: notIos })
+    expect('error' in result && result.error).toMatch(/insecure|Developer Settings/i)
+  })
+
+  it('accepts ws:// when allowInsecure is opted in (local agent)', () => {
+    expect(validateAgentUrl('ws://localhost:8080/ws', { isIos: notIos, allowInsecure: true })).toEqual({
+      transport: 'websocket',
+    })
   })
 
   it('rejects http:// with a clear "WebSocket only" message', () => {
-    const result = validateAgentUrl('http://example.com/acp', notIos)
+    const result = validateAgentUrl('http://example.com/acp', { isIos: notIos })
     expect('error' in result && result.error).toMatch(/WebSocket|wss:\/\/|ws:\/\//i)
   })
 
   it('rejects https:// with a clear "WebSocket only" message', () => {
-    const result = validateAgentUrl('https://example.com/acp', notIos)
+    const result = validateAgentUrl('https://example.com/acp', { isIos: notIos })
     expect('error' in result && result.error).toMatch(/WebSocket|wss:\/\/|ws:\/\//i)
   })
 
   it('rejects unsupported schemes with a user-facing message', () => {
-    const result = validateAgentUrl('ftp://example.com', notIos)
+    const result = validateAgentUrl('ftp://example.com', { isIos: notIos })
     expect('error' in result && result.error).toMatch(/WebSocket|wss:\/\/|ws:\/\//i)
   })
 
-  it('rejects ws:// on Tauri iOS (ATS forbids cleartext)', () => {
-    const result = validateAgentUrl('ws://example.com', isIos)
+  it('rejects ws:// on Tauri iOS even when opted in (ATS forbids cleartext)', () => {
+    const result = validateAgentUrl('ws://example.com', { isIos, allowInsecure: true })
     expect('error' in result && result.error).toMatch(/iOS.*secure/i)
   })
 
   it('still accepts wss:// on Tauri iOS', () => {
-    expect(validateAgentUrl('wss://example.com', isIos)).toEqual({ transport: 'websocket' })
+    expect(validateAgentUrl('wss://example.com', { isIos })).toEqual({ transport: 'websocket' })
   })
 })
 

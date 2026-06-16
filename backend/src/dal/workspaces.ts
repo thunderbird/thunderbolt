@@ -252,6 +252,30 @@ export const getMembershipById = async (
   return rows[0] ?? null
 }
 
+/**
+ * Look up a membership by `(workspace_id, user_id)` — the unique constraint
+ * that `upsertMembership` collides on. Upload-handler validation uses this to
+ * detect when a PUT would effectively change an existing role (treated as a
+ * PATCH for auth purposes).
+ */
+export const getMembershipByWorkspaceAndUser = async (
+  database: typeof DbType,
+  workspaceId: string,
+  userId: string,
+): Promise<MembershipRow | null> => {
+  const rows = await database
+    .select({
+      id: workspaceMembershipsTable.id,
+      workspaceId: workspaceMembershipsTable.workspaceId,
+      userId: workspaceMembershipsTable.userId,
+      role: workspaceMembershipsTable.role,
+    })
+    .from(workspaceMembershipsTable)
+    .where(and(eq(workspaceMembershipsTable.workspaceId, workspaceId), eq(workspaceMembershipsTable.userId, userId)))
+    .limit(1)
+  return rows[0] ?? null
+}
+
 export const getPendingMembershipById = async (database: typeof DbType, id: string): Promise<PendingRow | null> => {
   const rows = await database
     .select({

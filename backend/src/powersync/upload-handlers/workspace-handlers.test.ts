@@ -508,6 +508,70 @@ describe('workspace upload handlers', () => {
       expectPermanentReject(result, 'INSUFFICIENT_PERMISSION')
     })
 
+    it('rejects PUT that demotes an existing admin without change_roles', async () => {
+      // `upsertMembership` does ON CONFLICT DO UPDATE SET role on
+      // `(workspace_id, user_id)`. A caller with `invite_users` alone could
+      // otherwise PUT `role: 'member'` at an existing admin's pair and
+      // demote them without `change_roles` — same effective action as a
+      // PATCH demote, which DOES require `change_roles`.
+      await insertUser('demote-admin', 'demote-admin@test.com')
+      await bootstrapPersonalViaUpload('demote-admin')
+      const sharedId = uuidv7()
+      await db.insert(workspacesTable).values({
+        id: sharedId,
+        name: 'Shared',
+        isPersonal: false,
+        ownerUserId: null,
+      })
+      await db.insert(workspaceMembershipsTable).values({
+        id: uuidv7(),
+        workspaceId: sharedId,
+        userId: 'demote-admin',
+        role: 'admin',
+      })
+      const targetAdminId = 'demote-target-admin'
+      await insertUser(targetAdminId, 'demote-target-admin@test.com')
+      const targetMembershipId = uuidv7()
+      await db.insert(workspaceMembershipsTable).values({
+        id: targetMembershipId,
+        workspaceId: sharedId,
+        userId: targetAdminId,
+        role: 'admin',
+      })
+      const memberId = 'demote-actor-invite-only'
+      await insertUser(memberId, 'demote-actor-invite-only@test.com')
+      await db.insert(workspaceMembershipsTable).values({
+        id: uuidv7(),
+        workspaceId: sharedId,
+        userId: memberId,
+        role: 'member',
+      })
+      await db.insert(workspacePermissionsTable).values({
+        id: uuidv7(),
+        workspaceId: sharedId,
+        permissionKey: 'invite_users',
+        requiredRole: 'member',
+      })
+
+      // PUT with a fresh op.id (so the lookup must hit by `(workspace_id, user_id)`)
+      // and the demoted role on the existing admin's pair.
+      const op: UploadOp = {
+        op: 'PUT',
+        type: 'workspace_memberships',
+        id: uuidv7(),
+        data: { workspace_id: sharedId, user_id: targetAdminId, role: 'member' },
+      }
+      const result = await applyUploadBatch(db, [op], ctxFor(memberId))
+      expectPermanentReject(result, 'INSUFFICIENT_PERMISSION')
+
+      // Existing admin row is untouched.
+      const stored = await db
+        .select()
+        .from(workspaceMembershipsTable)
+        .where(eq(workspaceMembershipsTable.id, targetMembershipId))
+      expect(stored[0].role).toBe('admin')
+    })
+
     it('rejects a second membership write to a personal workspace (immutable)', async () => {
       await insertUser('owner6', 'owner6@test.com')
       await insertUser('victim', 'victim@test.com')

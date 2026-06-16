@@ -7,6 +7,7 @@ import {
   countWorkspaceMemberships,
   deleteMembership,
   getMembershipById,
+  getMembershipByWorkspaceAndUser,
   getWorkspaceById,
   isPersonalWorkspace,
   type Role,
@@ -71,10 +72,15 @@ const isPersonalAdminBootstrap = async (
  * - Each op gates on a `workspace_permissions` key — `invite_users` for PUT,
  *   `change_roles` for PATCH, `remove_users` for DELETE — defaulting to
  *   admin-only when the permission row is absent (Decision 11).
- * - Adding a membership with `role: 'admin'` additionally requires
- *   `change_roles` — `invite_users` alone could otherwise mint new admins
- *   via either a direct PUT or via the pending-invite signup-promote path,
- *   bypassing the gate that protects existing-member promotions.
+ * - PUT that would effectively change an existing membership's role
+ *   additionally requires `change_roles`. PUT applies via `upsertMembership`
+ *   (ON CONFLICT DO UPDATE SET role), so a payload demoting an admin to
+ *   member at the same `(workspace_id, user_id)` would otherwise bypass
+ *   PATCH's `change_roles` gate.
+ * - Adding a brand-new membership with `role: 'admin'` requires
+ *   `change_roles` for the same reason — `invite_users` alone could
+ *   otherwise mint new admins (also via the pending-invite signup-promote
+ *   path).
  * - Personal workspaces are immutable past the FE-driven admin bootstrap
  *   (`isPersonalAdminBootstrap`), which lands exactly one admin row for the
  *   owner the first time the workspace appears server-side.
@@ -148,11 +154,8 @@ export const workspaceMembershipsHandler: UploadHandler = {
     // Defaults to admin when the row is absent (Decision 11). Aligned with what
     // the FE Members UI checks via `useWorkspacePermission` so a workspace that
     // grants `member` the permission can actually exercise it on upload.
-    //
-    // Adding a membership with `role: 'admin'` additionally requires
-    // `change_roles` — otherwise `invite_users` alone could mint new admins
-    // and bypass the gate that protects existing-member promotions.
-    const targetsAdminRole = op.data?.role === 'admin'
+    const newRole = isRole(op.data?.role) ? op.data.role : null
+    const targetsAdminRole = newRole === 'admin'
     if (op.op === 'PUT' && !targetWorkspaceId) {
       const existing = await getMembershipById(tx, op.id)
       if (!existing) {
@@ -164,8 +167,12 @@ export const workspaceMembershipsHandler: UploadHandler = {
       if (!(await callerSatisfiesPermission(tx, existing.workspaceId, ctx.userId, 'invite_users'))) {
         return reject('permanent', 'INSUFFICIENT_PERMISSION')
       }
+      // Effective role change (either direction) requires `change_roles`.
+      // `upsertMembership` overwrites `role` on conflict, so a PUT that
+      // changes role would otherwise bypass PATCH's gate.
+      const wouldChangeRole = newRole !== null && existing.role !== newRole
       if (
-        targetsAdminRole &&
+        (wouldChangeRole || targetsAdminRole) &&
         !(await callerSatisfiesPermission(tx, existing.workspaceId, ctx.userId, 'change_roles'))
       ) {
         return reject('permanent', 'INSUFFICIENT_PERMISSION')
@@ -181,7 +188,19 @@ export const workspaceMembershipsHandler: UploadHandler = {
       if (!(await callerSatisfiesPermission(tx, targetWorkspaceId!, ctx.userId, 'invite_users'))) {
         return reject('permanent', 'INSUFFICIENT_PERMISSION')
       }
-      if (targetsAdminRole && !(await callerSatisfiesPermission(tx, targetWorkspaceId!, ctx.userId, 'change_roles'))) {
+      // Resolve the existing row at the conflict target `(workspace_id, user_id)`
+      // — that's what `upsertMembership` updates, not the row at `op.id`.
+      // A PUT changing an existing role (either direction) requires
+      // `change_roles`; a fresh insert with `role: 'admin'` also requires it.
+      const payloadUserId = typeof op.data?.user_id === 'string' ? op.data.user_id : null
+      const existing =
+        payloadUserId !== null ? await getMembershipByWorkspaceAndUser(tx, targetWorkspaceId!, payloadUserId) : null
+      const wouldChangeRole = existing !== null && newRole !== null && existing.role !== newRole
+      const wouldMintNewAdmin = existing === null && targetsAdminRole
+      if (
+        (wouldChangeRole || wouldMintNewAdmin) &&
+        !(await callerSatisfiesPermission(tx, targetWorkspaceId!, ctx.userId, 'change_roles'))
+      ) {
         return reject('permanent', 'INSUFFICIENT_PERMISSION')
       }
       return allow()

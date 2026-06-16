@@ -11,12 +11,14 @@ import { AgentCatalogCard } from './agent-catalog-card'
 type AgentCatalogViewProps = {
   /** The agents to render. Always non-empty in production (the snapshot seeds it). */
   entries: ReadonlyArray<RegistryEntry>
+  /** Forwarded to each card's bridge dialog to open the Add Custom Agent flow. */
+  onAddCustomAgent: () => void
 }
 
-/** Presentational catalogue: search + grid of read-only agent cards. Takes its
- *  entries as a prop and owns no data fetching, so it renders purely from inputs
- *  and is unit-testable without react-query. */
-export const AgentCatalogView = ({ entries }: AgentCatalogViewProps) => {
+/** Presentational catalogue: search + grid of agent cards. Takes its entries as
+ *  a prop and owns no data fetching, so it renders purely from inputs and is
+ *  unit-testable without react-query. */
+export const AgentCatalogView = ({ entries, onAddCustomAgent }: AgentCatalogViewProps) => {
   const { query, setQuery, results, isEmpty } = useAgentRegistrySearch(entries)
   const showEmptyState = isEmpty && query.trim().length > 0
   const searchRef = useRef<HTMLInputElement>(null)
@@ -36,7 +38,7 @@ export const AgentCatalogView = ({ entries }: AgentCatalogViewProps) => {
       ) : (
         <div className="grid gap-3 sm:grid-cols-2">
           {results.map((entry) => (
-            <AgentCatalogCard key={entry.id} entry={entry} />
+            <AgentCatalogCard key={entry.id} entry={entry} onAddCustomAgent={onAddCustomAgent} />
           ))}
         </div>
       )}

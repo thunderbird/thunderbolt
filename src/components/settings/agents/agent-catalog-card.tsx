@@ -2,22 +2,27 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { Code2, ExternalLink, Terminal } from 'lucide-react'
+import { Code2, ExternalLink, Plug, Terminal } from 'lucide-react'
 import { useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader } from '@/components/ui/card'
 import { distributionLabel, primaryDistributionKind } from '@/lib/agent-registry-filter'
 import type { RegistryEntry } from '@/types/registry'
+import { BridgeConnectDialog } from './bridge-connect-dialog'
 
 type AgentCatalogCardProps = {
   entry: RegistryEntry
+  /** Hands off to the existing Add Custom Agent flow from the bridge dialog. */
+  onAddCustomAgent: () => void
 }
 
-/** A read-only catalogue card for a "bridge" agent: shows the agent's identity
- *  and metadata and links out to its website and source. There's no install
- *  action — these CLIs run on the user's own machine, not inside Thunderbolt. */
-export const AgentCatalogCard = ({ entry }: AgentCatalogCardProps) => {
+/** A catalogue card for a "bridge" agent: shows the agent's identity and
+ *  metadata, links out to its website and source, and offers a "Connect via
+ *  bridge" action that walks the user through running the CLI locally and
+ *  bridging it into Thunderbolt over a localhost WebSocket. */
+export const AgentCatalogCard = ({ entry, onAddCustomAgent }: AgentCatalogCardProps) => {
   const [iconFailed, setIconFailed] = useState(false)
+  const [bridgeOpen, setBridgeOpen] = useState(false)
 
   const distributionKind = primaryDistributionKind(entry)
   const websiteUrl = entry.website ?? entry.repository
@@ -56,6 +61,10 @@ export const AgentCatalogCard = ({ entry }: AgentCatalogCardProps) => {
         <p className="text-[length:var(--font-size-sm)] text-muted-foreground">{entry.description}</p>
         <p className="text-[length:var(--font-size-xs)] text-muted-foreground">{metadata}</p>
         <div className="flex flex-wrap gap-2">
+          <Button variant="outline" size="sm" onClick={() => setBridgeOpen(true)}>
+            <Plug />
+            Connect via bridge
+          </Button>
           {websiteUrl && (
             <Button asChild variant="outline" size="sm">
               <a href={websiteUrl} target="_blank" rel="noopener noreferrer">
@@ -74,6 +83,12 @@ export const AgentCatalogCard = ({ entry }: AgentCatalogCardProps) => {
           )}
         </div>
       </CardContent>
+      <BridgeConnectDialog
+        entry={entry}
+        open={bridgeOpen}
+        onOpenChange={setBridgeOpen}
+        onAddCustomAgent={onAddCustomAgent}
+      />
     </Card>
   )
 }

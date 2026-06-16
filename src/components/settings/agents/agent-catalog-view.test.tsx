@@ -4,7 +4,7 @@
 
 import '@testing-library/jest-dom'
 import { cleanup, fireEvent, render, screen } from '@testing-library/react'
-import { afterEach, describe, expect, it } from 'bun:test'
+import { afterEach, describe, expect, it, mock } from 'bun:test'
 import type { RegistryEntry } from '@/types/registry'
 import { AgentCatalogView } from './agent-catalog-view'
 
@@ -24,8 +24,8 @@ const fixtures: ReadonlyArray<RegistryEntry> = [
   entry({ id: 'gemini', name: 'Gemini CLI', description: 'Google terminal agent' }),
 ]
 
-const renderCatalog = (entries: ReadonlyArray<RegistryEntry> = fixtures) =>
-  render(<AgentCatalogView entries={entries} />)
+const renderCatalog = (entries: ReadonlyArray<RegistryEntry> = fixtures, onAddCustomAgent: () => void = () => {}) =>
+  render(<AgentCatalogView entries={entries} onAddCustomAgent={onAddCustomAgent} />)
 
 describe('AgentCatalogView', () => {
   afterEach(cleanup)
@@ -127,13 +127,30 @@ describe('AgentCatalogView', () => {
     expect(header?.querySelector('svg')).toBeInTheDocument()
   })
 
-  it('exposes only link-out actions per card, never an install action', () => {
+  it('exposes link-outs and a Connect via bridge action, never an install/submit action', () => {
     renderCatalog([entry({ id: 'goose', name: 'goose' })])
     const card = screen.getByTestId('agent-catalog-card-goose')
 
     expect(card.querySelectorAll('a').length).toBeGreaterThan(0)
-    expect(card.querySelector('button')).not.toBeInTheDocument()
     expect(card.querySelector('button[type="submit"]')).not.toBeInTheDocument()
+    // The only action button is "Connect via bridge" — these CLIs run on the
+    // user's own machine, so there's no in-app install action.
+    const buttons = Array.from(card.querySelectorAll('button'))
+    expect(buttons).toHaveLength(1)
+    expect(buttons[0]).toHaveTextContent(/connect via bridge/i)
+  })
+
+  it('opens the bridge dialog and hands off Add the agent to the host flow', () => {
+    const onAddCustomAgent = mock(() => {})
+    renderCatalog([entry({ id: 'goose', name: 'goose' })], onAddCustomAgent)
+
+    fireEvent.click(screen.getByRole('button', { name: /connect via bridge/i }))
+
+    // The bridge command is composed from the npx distribution and shown copyable.
+    expect(screen.getByText('npx acp-bridge -- npx goose@1.2.3')).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: /add the agent/i }))
+    expect(onAddCustomAgent).toHaveBeenCalledTimes(1)
   })
 
   it('keeps all cards visible for a whitespace-only query', () => {

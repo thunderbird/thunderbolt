@@ -107,7 +107,7 @@ export default function AgentsSettingsPage({ isStandalone }: AgentsSettingsPageP
 
       <AgentList agents={agents} currentUserId={currentUserId} onToggle={handleToggle} onDelete={handleDelete} />
 
-      <AgentCatalog />
+      <AgentCatalog onAddCustomAgent={() => setDialogOpen(true)} />
 
       <AddCustomAgentDialog
         open={dialogOpen}

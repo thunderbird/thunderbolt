@@ -5,7 +5,7 @@
 import { useDatabase } from '@/contexts'
 import { getMembershipQuery } from '@/dal'
 import Loading from '@/loading'
-import { stripWorkspacePrefix } from '@/lib/active-workspace'
+import { crossWorkspaceSubPath } from '@/lib/active-workspace'
 import { useTrustDomainRegistry } from '@/stores/trust-domain-registry'
 import { toCompilableQuery } from '@powersync/drizzle-driver'
 import { useQuery } from '@powersync/tanstack-react-query'
@@ -81,9 +81,11 @@ export const WorkspaceMembershipGate = () => {
     return <Loading />
   }
 
-  // Drop the `/w/<id>` segment and forward to the personal workspace, which is
-  // the unprefixed canonical URL. Preserves search params (e.g. OAuth callback
+  // Drop the `/w/<id>` segment and forward to the personal workspace (the
+  // unprefixed canonical URL). Chat ids are per-workspace, so a chat-detail
+  // path is collapsed to `/chats/new` rather than landing on Not Found in
+  // the personal workspace. Preserves search params (e.g. OAuth callback
   // context) so the user lands on the right place if they had one.
-  const target = `${stripWorkspacePrefix(location.pathname)}${location.search}`
+  const target = `${crossWorkspaceSubPath(location.pathname)}${location.search}`
   return <Navigate to={target} replace />
 }

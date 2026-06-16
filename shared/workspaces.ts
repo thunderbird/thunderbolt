@@ -36,3 +36,70 @@ export const computePersonalWorkspaceId = (userId: string): string =>
  */
 export const computePersonalAdminMembershipId = (userId: string): string =>
   uuidv5(`personal-admin:${userId}`, PERSONAL_WORKSPACE_NAMESPACE)
+
+/**
+ * Single source of truth for the keys that may appear in the
+ * `workspace_permissions.permission_key` column. Order matches the rendering
+ * order of the Permissions settings page (lifecycle → capabilities → admin).
+ *
+ * `manage_members` is a legacy key superseded by per-operation gates
+ * (`invite_users`/`change_roles`/`remove_users`). Kept in the union so older
+ * `workspace_permissions` rows still type-check; not surfaced on the
+ * Permissions page and not consulted by any route guard or upload handler.
+ *
+ * Add a new key here, then the FE/BE schemas, the FE/BE types, and the upload
+ * handler's runtime check all stay in sync via this constant.
+ */
+export const workspacePermissionKeys = [
+  'manage_members',
+  'join_workspace',
+  'invite_users',
+  'change_roles',
+  'remove_users',
+  'add_agents',
+  'remove_agents',
+  'add_skills',
+  'remove_skills',
+  'add_models',
+  'remove_models',
+  'add_mcp_servers',
+  'remove_mcp_servers',
+  'change_general_settings',
+  'change_permissions',
+  'delete_workspace',
+] as const
+
+export type WorkspacePermissionKey = (typeof workspacePermissionKeys)[number]
+
+/** The two role buckets used by both `workspace_memberships.role` and `workspace_permissions.required_role`. */
+export const workspacePermissionRoles = ['admin', 'member'] as const
+
+export type WorkspacePermissionRole = (typeof workspacePermissionRoles)[number]
+
+/** Runtime narrowing for upload-handler payloads — checks `v` against `workspacePermissionKeys`. */
+export const isWorkspacePermissionKey = (v: unknown): v is WorkspacePermissionKey =>
+  typeof v === 'string' && (workspacePermissionKeys as readonly string[]).includes(v)
+
+/** Runtime narrowing for upload-handler payloads — checks `v` against `workspacePermissionRoles`. */
+export const isWorkspacePermissionRole = (v: unknown): v is WorkspacePermissionRole =>
+  typeof v === 'string' && (workspacePermissionRoles as readonly string[]).includes(v)
+
+/**
+ * Whether `userRole` satisfies a `requiredRole` policy. Admins always satisfy;
+ * a `member` requirement is satisfied by both admins and members.
+ *
+ * Shared between FE (`useWorkspacePermission`) and BE (upload handler authz)
+ * so the same predicate gates UI affordances and write enforcement.
+ */
+export const permissionAllows = (
+  userRole: WorkspacePermissionRole | null | undefined,
+  requiredRole: WorkspacePermissionRole,
+): boolean => {
+  if (!userRole) {
+    return false
+  }
+  if (userRole === 'admin') {
+    return true
+  }
+  return requiredRole === 'member'
+}

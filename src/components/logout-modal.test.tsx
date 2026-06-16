@@ -140,6 +140,17 @@ describe('LogoutModal', () => {
     })
   })
 
+  describe('double-click guard', () => {
+    it('only fires signOutAndWipe once when Log out is clicked rapidly', () => {
+      renderModal()
+      const button = screen.getByRole('button', { name: 'Log out' })
+      fireEvent.click(button)
+      fireEvent.click(button)
+      fireEvent.click(button)
+      expect(mockSignOutAndWipe).toHaveBeenCalledTimes(1)
+    })
+  })
+
   describe('cancel behavior', () => {
     it('closes the dialog when cancel is clicked', () => {
       renderModal()

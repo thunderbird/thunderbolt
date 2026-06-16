@@ -10,6 +10,7 @@ import { useLocation, useNavigate } from 'react-router'
 import { Button } from '@/components/ui/button'
 import { SkillNameInvalidError, SkillNameTakenError } from '@/dal'
 import { useIsMobile } from '@/hooks/use-mobile'
+import { useWorkspacePermission } from '@/hooks/use-workspace-permission'
 import { DeleteSkillDialog } from './delete-skill-dialog'
 import { DependentsDialog } from './dependents-dialog'
 import { DiscardCreateDialog } from './discard-create-dialog'
@@ -31,6 +32,10 @@ export const SkillsView = () => {
   const { pinnedSet, togglePin } = usePinnedSkills()
   const { isEnabled, setEnabled } = useEnabledSkills()
   const trackSkillEvent = useSkillTelemetry()
+  // Workspace `add_skills` / `remove_skills` — BE enforces; FE hides
+  // affordances so the user isn't presented with actions that round-trip-fail.
+  const { isAllowed: canAddSkills } = useWorkspacePermission('add_skills')
+  const { isAllowed: canRemoveSkills } = useWorkspacePermission('remove_skills')
 
   const [state, dispatch] = useReducer(skillsViewReducer, initialSkillsViewState)
   const {
@@ -216,10 +221,12 @@ export const SkillsView = () => {
         Skills are reusable instruction templates you summon in chat with{' '}
         <code className="rounded-sm bg-secondary px-1 font-mono text-xs">/name</code>.
       </p>
-      <Button size="sm" onClick={() => dispatch({ type: 'START_CREATE' })}>
-        <Plus />
-        Create your first skill
-      </Button>
+      {canAddSkills && (
+        <Button size="sm" onClick={() => dispatch({ type: 'START_CREATE' })}>
+          <Plus />
+          Create your first skill
+        </Button>
+      )}
     </section>
   )
 
@@ -250,6 +257,8 @@ export const SkillsView = () => {
         description={active.description}
         instruction={active.instruction}
         enabled={isEnabled(active.id)}
+        canEdit={canAddSkills}
+        canDelete={canRemoveSkills}
         onToggleEnabled={(next) => handleToggleEnabled(active.id, next)}
         onEdit={() => onEdit(active.id)}
         onDelete={() => onDelete(active.id)}
@@ -279,6 +288,9 @@ export const SkillsView = () => {
         skills={skills}
         activeSkillId={mode === 'detail' && active ? active.id : null}
         isEnabled={isEnabled}
+        canCreate={canAddSkills}
+        canEdit={canAddSkills}
+        canDelete={canRemoveSkills}
         onToggleEnabled={handleToggleEnabled}
         onCreate={() => {
           if ((mode === 'create' || mode === 'edit') && isDirty) {

@@ -136,13 +136,17 @@ export {
 
 // Workspaces
 export {
+  duplicateWorkspace,
   ensurePersonalWorkspace,
   getPersonalWorkspaceByOwner,
   getPersonalWorkspaceByOwnerQuery,
   getWorkspaceById,
   getWorkspaceByIdQuery,
   getWorkspacesForUserQuery,
+  updateWorkspace,
   useWorkspacesQuery,
+  type DuplicateWorkspaceInput,
+  type UpdateWorkspacePatch,
   type Workspace,
 } from './workspaces'
 export {
@@ -150,13 +154,30 @@ export {
   getMembershipQuery,
   getMembershipsByUser,
   getMembershipsByWorkspace,
+  getMembershipsByWorkspaceQuery,
   isWorkspaceAdmin,
+  removeMembership,
+  updateMembershipRole,
+  useWorkspaceMembersQuery,
   type WorkspaceMembership,
 } from './workspace-memberships'
-export { getPendingByWorkspace, type WorkspacePendingMembership } from './workspace-pending-memberships'
+export {
+  addPendingMembership,
+  getPendingByWorkspace,
+  getPendingByWorkspaceQuery,
+  removePendingMembership,
+  updatePendingMembershipRole,
+  useWorkspacePendingMembershipsQuery,
+  type AddPendingMembershipInput,
+  type WorkspacePendingMembership,
+} from './workspace-pending-memberships'
 export {
   getPermissionsByWorkspace,
+  getPermissionsByWorkspaceQuery,
   getRequiredRoleForPermission,
+  getRequiredRoleForPermissionQuery,
+  setWorkspacePermissionRequiredRole,
+  useWorkspacePermissionsQuery,
   type WorkspacePermission,
   type WorkspacePermissionKey,
   type WorkspacePermissionRole,

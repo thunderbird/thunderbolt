@@ -157,8 +157,12 @@ export const useChatStore = create<ChatStore>()((set, get) => ({
 
     const db = getDb()
 
-    if (session.chatThread?.workspaceId) {
-      await updateChatThread(db, session.chatThread.workspaceId, session.chatThread.id, { agentId: agent.id })
+    // `session.workspaceId` is the source of truth — the in-memory thread row
+    // may have been hydrated before the workspace_id column was added or from
+    // a partial row, but the session carries the workspaceId as a required
+    // field. The thread is the gate (need its id to PATCH).
+    if (session.chatThread) {
+      await updateChatThread(db, session.workspaceId, session.chatThread.id, { agentId: agent.id })
     }
 
     // Persist the global last-used agent so new chats default to it (mirrors

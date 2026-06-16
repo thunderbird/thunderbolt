@@ -286,4 +286,12 @@ describe('signOutAndWipe', () => {
     expect(clearAuthToken).toHaveBeenCalledWith(serverId)
     expect(clearDeviceId).toHaveBeenCalledWith(serverId)
   })
+
+  it('passes the captured serverId to handleFullWipe (registry already cleared)', async () => {
+    const onComplete = mock(() => {})
+
+    await signOutAndWipe({ onComplete, ...deps })
+
+    expect(handleFullWipe).toHaveBeenCalledWith(serverId)
+  })
 })

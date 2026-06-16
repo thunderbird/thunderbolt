@@ -18,7 +18,7 @@ import { resetPostAuthBootstrap } from '@/lib/post-auth-bootstrap'
 type CleanupDeps = {
   clearAuthToken?: (serverId?: string) => void
   clearDeviceId?: (serverId?: string) => void
-  handleFullWipe?: () => Promise<void>
+  handleFullWipe?: (serverId?: string) => Promise<void>
 }
 
 /**
@@ -136,9 +136,12 @@ export const clearLocalData = async ({
 
   // Step 7: clear encryption keys (server-only — `handleFullWipe` throws on standalone
   // via `key-storage.ts`'s active-server guard; we skip it cleanly when there's no server).
+  // Pass `serverIdForClear` explicitly because the registry was emptied above —
+  // the default lookup inside `clearAllKeys` would no-op and the per-server
+  // IDB database with all encryption keys would survive the wipe.
   if (trustDomain?.kind === 'server') {
     try {
-      await handleFullWipe()
+      await handleFullWipe(serverIdForClear)
     } catch (error) {
       console.error('[clearLocalData] Failed to clear encryption keys:', error)
     }

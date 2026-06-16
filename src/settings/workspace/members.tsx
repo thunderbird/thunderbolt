@@ -222,10 +222,13 @@ const WorkspaceMembersPage = () => {
                       <TableCell>
                         {/* Pending rows gate on `invite_users` — the BE treats
                             the entire pending lifecycle (PUT/PATCH/DELETE) as
-                            one `invite_users`-gated operation, so a user with
-                            `change_roles` or `remove_users` but not
-                            `invite_users` would click and the upload would
-                            revert. */}
+                            one `invite_users`-gated operation. Promoting an
+                            invite to admin (PUT or PATCH) layers a
+                            `change_roles` escalation guard on top, so the
+                            Admin option only appears for callers who also
+                            satisfy `change_roles` — except when it's already
+                            the current value (let users keep / demote, never
+                            promote). */}
                         {canInviteUsers ? (
                           <Select
                             value={entry.row.role}
@@ -240,7 +243,9 @@ const WorkspaceMembersPage = () => {
                               <SelectValue />
                             </SelectTrigger>
                             <SelectContent>
-                              <SelectItem value="admin">Admin</SelectItem>
+                              {(canChangeRoles || entry.row.role === 'admin') && (
+                                <SelectItem value="admin">Admin</SelectItem>
+                              )}
                               <SelectItem value="member">Member</SelectItem>
                             </SelectContent>
                           </Select>

@@ -463,6 +463,57 @@ describe('WorkspaceMembersPage routing', () => {
       expect(screen.getByRole('combobox', { name: /Role for pending@test.com/ })).toBeInTheDocument()
     })
 
+    it('omits the Admin option in pending-row dropdown when change_roles is denied', async () => {
+      // Promoting an invite to admin (PUT/PATCH) layers a `change_roles`
+      // escalation guard on top of `invite_users` on the BE — without it the
+      // user would pick "Admin" and watch sync revert. The current value
+      // here is `member`, so the option doesn't need to render as a keep-state.
+      await seedShared('member')
+      await seedPendingInvite('pending@test.com') // defaults to role='member'
+      await seedInviteUsersPermission('member')
+
+      renderMembers()
+
+      const trigger = await waitForElement(() => screen.queryByRole('combobox', { name: /Role for pending@test.com/ }))
+      act(() => {
+        fireEvent.click(trigger!)
+      })
+      await waitForElement(() => screen.queryByRole('option', { name: 'Member' }))
+      expect(screen.queryByRole('option', { name: 'Admin' })).not.toBeInTheDocument()
+      expect(screen.getByRole('option', { name: 'Member' })).toBeInTheDocument()
+    })
+
+    it('keeps the Admin option visible on an admin pending row even without change_roles', async () => {
+      // Demoting an existing pending admin invite to `member` stays gated on
+      // `invite_users` alone (BE comment: "tampering, not escalation"). The
+      // Admin option needs to render so the Select trigger can display the
+      // current value — otherwise the dropdown would visually drop its own
+      // current selection.
+      await seedShared('member')
+      await getDb()
+        .insert(workspacePendingMembershipsTable)
+        .values({
+          id: `${otherWsId}-admin-pending`,
+          workspaceId: otherWsId,
+          email: 'admin-pending@test.com',
+          role: 'admin',
+          invitedByUserId: testUserId,
+        })
+      await seedInviteUsersPermission('member')
+
+      renderMembers()
+
+      const trigger = await waitForElement(() =>
+        screen.queryByRole('combobox', { name: /Role for admin-pending@test.com/ }),
+      )
+      act(() => {
+        fireEvent.click(trigger!)
+      })
+      await waitForElement(() => screen.queryByRole('option', { name: 'Member' }))
+      expect(screen.getByRole('option', { name: 'Admin' })).toBeInTheDocument()
+      expect(screen.getByRole('option', { name: 'Member' })).toBeInTheDocument()
+    })
+
     it('hides the pending-row Remove button when invite_users is denied', async () => {
       // Pending DELETE is gated on `invite_users` on the BE; the FE must
       // match. (Regression: used to gate on `remove_users` → round-trip-fail

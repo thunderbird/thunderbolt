@@ -257,15 +257,34 @@ describe('Rate Limiting', () => {
       expect(allowedResponse.status).toBe(200)
     })
 
-    it('should skip rate limiting when IP is unknown (no proxy header, no socket)', async () => {
+    it('should fail CLOSED when IP is unknown — throttle via a shared bucket instead of skipping', async () => {
       const app = createIpTestApp(database, ipSettings)
 
       // Request without cf-connecting-ip header — extractClientIp returns the socket IP fallback.
-      // In test (no real server), socket IP is 'unknown', so rate limiting is skipped.
-      for (let i = 0; i < 15; i++) {
+      // In test (no real server), socket IP is 'unknown'. Unidentifiable traffic must NOT bypass
+      // the limit: it shares a single `ip:unknown` bucket and gets a 429 past the threshold.
+      for (let i = 0; i < 10; i++) {
         const response = await app.handle(new Request('http://localhost/v1/test'))
         expect(response.status).toBe(200)
       }
+
+      const blocked = await app.handle(new Request('http://localhost/v1/test'))
+      expect(blocked.status).toBe(429)
+      const body = await blocked.json()
+      expect(body.error).toBe('Too many requests. Please try again later.')
+    })
+
+    it('should isolate the shared unknown bucket from identifiable IPs (no funnelling of real clients)', async () => {
+      const app = createIpTestApp(database, ipSettings)
+
+      // Exhaust the shared `ip:unknown` bucket with unidentifiable requests.
+      for (let i = 0; i < 10; i++) {
+        await app.handle(new Request('http://localhost/v1/test'))
+      }
+      expect((await app.handle(new Request('http://localhost/v1/test'))).status).toBe(429)
+
+      // A request with a resolvable IP keeps its own bucket and is unaffected.
+      expect((await app.handle(requestWithIp('10.2.0.1'))).status).toBe(200)
     })
 
     it('should track independently from user-based tiers', async () => {

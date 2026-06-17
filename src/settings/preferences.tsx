@@ -100,6 +100,26 @@ const preferencesReducer = (state: PreferencesState, action: PreferencesAction):
   }
 }
 
+/** Total row count across every array-valued bucket inside an export's `tables` object. */
+const countTablesRows = (tables: unknown): number => {
+  if (!tables || typeof tables !== 'object' || Array.isArray(tables)) {
+    return 0
+  }
+  return Object.values(tables as Record<string, unknown>).reduce<number>(
+    (sum, value) => sum + (Array.isArray(value) ? value.length : 0),
+    0,
+  )
+}
+
+/** Locale-formatted date for an export's `exportedAt`, or null if it's missing / not a valid date. */
+const formatExportedAt = (value: unknown): string | null => {
+  if (typeof value !== 'string') {
+    return null
+  }
+  const parsed = new Date(value)
+  return Number.isNaN(parsed.getTime()) ? null : parsed.toLocaleDateString()
+}
+
 export default function PreferencesSettingsPage() {
   const [state, dispatch] = useReducer(preferencesReducer, initialState)
   const { isResetting, isDeletingAccount, isExporting, isImporting, localizationDialogOpen, pendingCountryUnits } =
@@ -304,7 +324,7 @@ export default function PreferencesSettingsPage() {
   const [importSuccess, setImportSuccess] = useState<string | null>(null)
   const [pendingImport, setPendingImport] = useState<{
     payload: unknown
-    exportedAt: string | null
+    exportedAtLabel: string | null
     sourceEmail: string | null
     totalRows: number
   } | null>(null)
@@ -336,16 +356,8 @@ export default function PreferencesSettingsPage() {
       if (obj.format !== 'thunderbolt-export') {
         throw new ImportFormatError("This file doesn't look like a Thunderbolt export.")
       }
-      const tables = obj.tables
-      let totalRows = 0
-      if (tables && typeof tables === 'object' && !Array.isArray(tables)) {
-        for (const value of Object.values(tables as Record<string, unknown>)) {
-          if (Array.isArray(value)) {
-            totalRows += value.length
-          }
-        }
-      }
-      const exportedAt = typeof obj.exportedAt === 'string' ? obj.exportedAt : null
+      const totalRows = countTablesRows(obj.tables)
+      const exportedAtLabel = formatExportedAt(obj.exportedAt)
       const user = obj.user
       const sourceEmail =
         user &&
@@ -354,7 +366,7 @@ export default function PreferencesSettingsPage() {
         typeof (user as Record<string, unknown>).email === 'string'
           ? ((user as Record<string, unknown>).email as string)
           : null
-      setPendingImport({ payload, exportedAt, sourceEmail, totalRows })
+      setPendingImport({ payload, exportedAtLabel, sourceEmail, totalRows })
     } catch (error) {
       console.error('Failed to read import file:', error)
       setImportError(error instanceof Error ? error.message : 'Could not read the import file.')
@@ -1034,15 +1046,25 @@ export default function PreferencesSettingsPage() {
                 <>
                   This file contains {pendingImport.totalRows.toLocaleString()} rows
                   {pendingImport.sourceEmail ? ` exported by ${pendingImport.sourceEmail}` : ''}
-                  {pendingImport.exportedAt ? ` on ${new Date(pendingImport.exportedAt).toLocaleDateString()}` : ''}.
-                  Rows with an ID that matches something on this device will be overwritten. This can't be undone.
+                  {pendingImport.exportedAtLabel ? ` on ${pendingImport.exportedAtLabel}` : ''}. Rows with an ID that
+                  matches something on this device will be overwritten. This can't be undone.
                 </>
               )}
             </AlertDialogDescription>
           </AlertDialogHeader>
+          {importError && (
+            <p className="text-sm text-destructive" role="alert">
+              {importError}
+            </p>
+          )}
           <AlertDialogFooter>
             <AlertDialogCancel disabled={isImporting}>Cancel</AlertDialogCancel>
-            <AlertDialogAction onClick={handleConfirmImport} disabled={isImporting}>
+            <AlertDialogAction
+              onClick={handleConfirmImport}
+              disabled={isImporting}
+              aria-busy={isImporting}
+              className="bg-destructive text-white hover:bg-destructive/90"
+            >
               {isImporting ? 'Importing...' : 'Import'}
             </AlertDialogAction>
           </AlertDialogFooter>

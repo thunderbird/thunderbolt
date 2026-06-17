@@ -13,9 +13,10 @@ import {
   tasksTable,
 } from '@/db/tables'
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'bun:test'
-import { eq } from 'drizzle-orm'
+import { eq, sql } from 'drizzle-orm'
+import { sqliteTable, text } from 'drizzle-orm/sqlite-core'
 import { exportFormat, exportSchemaVersion } from './export'
-import { ImportFormatError, importUserData } from './import'
+import { derivePkSpec, ImportFormatError, importUserData } from './import'
 import { resetTestDatabase, setupTestDatabase, teardownTestDatabase } from './test-utils'
 
 beforeAll(async () => {
@@ -213,6 +214,21 @@ describe('Import DAL', () => {
       expect(threads).toHaveLength(1)
     })
 
+    it('routes deliberately-excluded tables (devices / integrations_secrets / agents_system) into ignoredTableNames', async () => {
+      // Tampered or hand-crafted files might contain these even though our
+      // exporter never produces them — they must be skipped, not written.
+      const result = await importUserData(
+        getDb(),
+        envelope({
+          devices: [{ id: 'd-1', userId: 'user-1' }],
+          integrations_secrets: [{ provider: 'google', credentials: '{}' }],
+          agents_system: [{ id: 'sys-1', name: 'X' }],
+        }),
+      )
+
+      expect(result.ignoredTableNames.sort()).toEqual(['agents_system', 'devices', 'integrations_secrets'])
+    })
+
     it('skips empty table arrays without counting them', async () => {
       const result = await importUserData(
         getDb(),
@@ -260,6 +276,46 @@ describe('Import DAL', () => {
           }),
         ),
       ).rejects.toBeInstanceOf(ImportFormatError)
+    })
+  })
+
+  describe('derivePkSpec', () => {
+    // Suppress drizzle's "no PK" warning in stderr; we expect the throw.
+    const silenceConsoleWarn = (fn: () => void) => {
+      const original = console.warn
+      console.warn = () => undefined
+      try {
+        fn()
+      } finally {
+        console.warn = original
+      }
+    }
+
+    it('throws when a table has no primary-key column', () => {
+      const noPk = sqliteTable('no_pk', { a: text('a'), b: text('b') })
+      silenceConsoleWarn(() => {
+        expect(() => derivePkSpec('no_pk', noPk)).toThrow(/exactly one/)
+      })
+    })
+
+    it('throws when a table has multiple primary-key columns', () => {
+      const multiPk = sqliteTable('multi_pk', {
+        a: text('a').primaryKey(),
+        b: text('b').primaryKey(),
+      })
+      silenceConsoleWarn(() => {
+        expect(() => derivePkSpec('multi_pk', multiPk)).toThrow(/exactly one/)
+      })
+    })
+
+    it('recovers the JS field name even when it differs from the SQL column name', () => {
+      const aliased = sqliteTable('aliased', {
+        externalId: text('id').primaryKey(),
+        payload: text('payload').default(sql`''`),
+      })
+      const spec = derivePkSpec('aliased', aliased)
+      expect(spec.field).toBe('externalId')
+      expect(spec.column).toBe(aliased.externalId)
     })
   })
 })

@@ -19,8 +19,11 @@ type PkSpec = {
  * that exposes it. Throws if the table doesn't have exactly one PK column —
  * every table in {@link includedTables} satisfies that today, and a future
  * composite-PK table would need bespoke import logic anyway.
+ *
+ * Exported for unit-test coverage of the failure branches; not part of the
+ * public DAL API.
  */
-const derivePkSpec = (tableName: string, table: SQLiteTable): PkSpec => {
+export const derivePkSpec = (tableName: string, table: SQLiteTable): PkSpec => {
   const config = getTableConfig(table)
   const pkColumns = config.columns.filter((c) => c.primary)
   if (pkColumns.length !== 1) {
@@ -32,7 +35,9 @@ const derivePkSpec = (tableName: string, table: SQLiteTable): PkSpec => {
   // Drizzle exposes each column as an enumerable string-keyed property on the
   // table; match by reference to recover the JS field name (which can differ
   // from the SQL column name — e.g. `settingsTable.key` maps to SQL `id`).
-  const entry = Object.entries(table as unknown as Record<string, unknown>).find(([, value]) => value === column)
+  // Skip Drizzle's internal `_` config bag so it never collides with a column ref.
+  const candidates = Object.entries(table as unknown as Record<string, unknown>).filter(([key]) => key !== '_')
+  const entry = candidates.find(([, value]) => value === column)
   if (!entry) {
     throw new Error(`Could not derive JS field name for the primary key of "${tableName}".`)
   }

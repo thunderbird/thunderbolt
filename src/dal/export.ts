@@ -28,7 +28,7 @@ const excludedFromExport = [
   'agents_system',
 ] as const satisfies readonly AllTableName[]
 type ExcludedTableName = (typeof excludedFromExport)[number]
-type IncludedTableName = Exclude<AllTableName, ExcludedTableName>
+export type IncludedTableName = Exclude<AllTableName, ExcludedTableName>
 
 const isExcluded = (name: string): name is ExcludedTableName => (excludedFromExport as readonly string[]).includes(name)
 
@@ -37,8 +37,11 @@ const isExcluded = (name: string): name is ExcludedTableName => (excludedFromExp
  * the same source of truth PowerSync uses, so adding a new table in
  * `src/db/powersync/schema.ts` automatically picks it up here — it'll appear
  * in exports unless added to {@link excludedFromExport}.
+ *
+ * Exported so the importer ({@link src/dal/import.ts}) can iterate the same
+ * set without redefining it.
  */
-const includedTables = Object.fromEntries(
+export const includedTables = Object.fromEntries(
   Object.entries({
     ...syncedTables,
     ...Object.fromEntries(Object.entries(localOnlyTables).map(([name, def]) => [name, def.tableDefinition])),

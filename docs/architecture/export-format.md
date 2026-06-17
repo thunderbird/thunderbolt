@@ -75,6 +75,28 @@ By design — these are either operational state, third-party credentials, or ba
 
 When E2E encryption is enabled, columns that ride the sync layer arrive in local SQLite **already decrypted** by the sync middleware (see [`powersync-sync-middleware.md`](./powersync-sync-middleware.md)). The export reads the local DB, so `chat_messages.content` / `chat_messages.parts` and other encrypted columns appear in plaintext in the export.
 
+## Import behavior
+
+The companion importer (`src/dal/import.ts`, surfaced as **Settings → Preferences → Data → Import Data**) consumes the same envelope.
+
+- **Validation.** The importer rejects anything where `format !== "thunderbolt-export"` or `schemaVersion !== 1` with a `ImportFormatError`. No DB writes happen until validation passes.
+- **Upsert semantics — imported file wins.** Each row is written by checking for an existing PK row first and then either `UPDATE`ing (imported file wins) or `INSERT`ing. Local rows whose PK is *not* in the file are left untouched. We deliberately avoid `INSERT ... ON CONFLICT DO UPDATE`: PowerSync exposes synced tables as SQLite *views*, and SQLite forbids upserts against a view ("cannot UPSERT a view"). The SELECT + UPDATE/INSERT split works on both real tables and PowerSync views. This matches the "restore my backup" intent the user selected; the confirmation dialog spells the destructiveness out.
+- **Soft-deleted rows preserved.** `deletedAt` rides through verbatim — a row in the trash in the file remains in the trash after import.
+- **Atomic.** The whole import runs inside a single `db.transaction`. A single row-level failure (e.g. a constraint violation) rolls back every preceding write in the call.
+- **Forward-compatible.** Table keys in the file that the importer doesn't recognize (e.g. tables added in a future `schemaVersion`) are surfaced in `ignoredTableNames` and otherwise skipped silently. Unknown columns within a recognized table are dropped by SQLite if they don't match the schema.
+- **No cross-table consistency check.** There are no real FK constraints in the synced schema (per `multi-device-sync.md`), so the importer doesn't enforce an insertion order. A `chat_messages` row that references a missing `chat_threads.id` will be inserted as an orphan.
+
+### Post-Workspaces follow-up
+
+Once Workspaces v1 lands and every user-content table carries a `workspaceId` column, the importer's workspace handling becomes **deterministic, no UI**:
+
+- **v1 files (no `workspaceId` on rows)** — rows are stamped with the default workspace's id on insert (the user's Default / Personal Workspace). No selector, no prompt.
+- **Future v2+ files (rows carry `workspaceId`)** — the row's existing `workspaceId` is preserved verbatim. If the workspace doesn't exist locally yet, the importer creates it (or skips the row — TBD when v2 ships). The importing user never picks a target.
+
+This keeps the UX identical to v1 (one button, one confirm dialog, no extra picker) and lets backups round-trip across devices without losing workspace structure.
+
+When v2 ships, a `schemaVersion: 2` will be defined for exports produced on the workspaces-v1 build. v1 files (no `workspaceId`) stay importable under the rule above.
+
 ## Known limitations (v1)
 
 - **In-memory payload.** The whole export is built in memory before download. Heavy users (~tens of thousands of messages) will see slower exports; a streaming / chunked variant is a follow-up if the file ever crosses ~100 MB in practice.

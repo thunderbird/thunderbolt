@@ -1,0 +1,265 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+
+import { getDb } from '@/db/database'
+import {
+  agentsTable,
+  chatMessagesTable,
+  chatThreadsTable,
+  modelsSecretsTable,
+  modelsTable,
+  settingsTable,
+  tasksTable,
+} from '@/db/tables'
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'bun:test'
+import { eq } from 'drizzle-orm'
+import { exportFormat, exportSchemaVersion } from './export'
+import { ImportFormatError, importUserData } from './import'
+import { resetTestDatabase, setupTestDatabase, teardownTestDatabase } from './test-utils'
+
+beforeAll(async () => {
+  await setupTestDatabase()
+})
+
+afterAll(async () => {
+  await teardownTestDatabase()
+})
+
+const envelope = (tables: Record<string, unknown[]>): unknown => ({
+  format: exportFormat,
+  schemaVersion: exportSchemaVersion,
+  exportedAt: '2026-06-16T00:00:00.000Z',
+  user: { id: 'user-1', email: 'u1@example.com' },
+  tables,
+})
+
+describe('Import DAL', () => {
+  beforeEach(async () => {
+    await resetTestDatabase()
+  })
+
+  describe('envelope validation', () => {
+    it('rejects non-object payloads', async () => {
+      await expect(importUserData(getDb(), null)).rejects.toBeInstanceOf(ImportFormatError)
+      await expect(importUserData(getDb(), 'not-json')).rejects.toBeInstanceOf(ImportFormatError)
+      await expect(importUserData(getDb(), [])).rejects.toBeInstanceOf(ImportFormatError)
+    })
+
+    it('rejects unrecognized format strings', async () => {
+      await expect(
+        importUserData(getDb(), { format: 'something-else', schemaVersion: 1, tables: {} }),
+      ).rejects.toBeInstanceOf(ImportFormatError)
+    })
+
+    it('rejects unsupported schemaVersion', async () => {
+      await expect(
+        importUserData(getDb(), { format: exportFormat, schemaVersion: 99, tables: {} }),
+      ).rejects.toBeInstanceOf(ImportFormatError)
+    })
+
+    it('rejects when `tables` is missing or not an object', async () => {
+      await expect(importUserData(getDb(), { format: exportFormat, schemaVersion: 1 })).rejects.toBeInstanceOf(
+        ImportFormatError,
+      )
+      await expect(
+        importUserData(getDb(), { format: exportFormat, schemaVersion: 1, tables: 'nope' }),
+      ).rejects.toBeInstanceOf(ImportFormatError)
+    })
+  })
+
+  describe('upsert semantics', () => {
+    it('inserts rows from a fresh DB', async () => {
+      const result = await importUserData(
+        getDb(),
+        envelope({
+          chat_threads: [
+            { id: 'thread-1', title: 'One' },
+            { id: 'thread-2', title: 'Two' },
+          ],
+          tasks: [{ id: 'task-1', item: 'do this' }],
+        }),
+      )
+
+      expect(result.schemaVersion).toBe(1)
+      expect(result.tables.chat_threads).toEqual({ upserted: 2 })
+      expect(result.tables.tasks).toEqual({ upserted: 1 })
+      expect(result.ignoredTableNames).toEqual([])
+
+      const threads = await getDb().select().from(chatThreadsTable)
+      expect(threads).toHaveLength(2)
+      expect(threads.find((t) => t.id === 'thread-1')?.title).toBe('One')
+    })
+
+    it('imported row wins on PK collision (replace mode)', async () => {
+      const db = getDb()
+      await db.insert(chatThreadsTable).values({ id: 'thread-1', title: 'Local value' })
+
+      await importUserData(
+        db,
+        envelope({
+          chat_threads: [{ id: 'thread-1', title: 'Imported value' }],
+        }),
+      )
+
+      const row = await db.select().from(chatThreadsTable).where(eq(chatThreadsTable.id, 'thread-1')).get()
+      expect(row?.title).toBe('Imported value')
+    })
+
+    it('leaves local rows whose PK is not in the file untouched', async () => {
+      const db = getDb()
+      await db.insert(chatThreadsTable).values([
+        { id: 'thread-keep', title: 'Local only' },
+        { id: 'thread-collide', title: 'Local value' },
+      ])
+
+      await importUserData(
+        db,
+        envelope({
+          chat_threads: [{ id: 'thread-collide', title: 'Imported value' }],
+        }),
+      )
+
+      const rows = await db.select().from(chatThreadsTable)
+      expect(rows).toHaveLength(2)
+      expect(rows.find((r) => r.id === 'thread-keep')?.title).toBe('Local only')
+      expect(rows.find((r) => r.id === 'thread-collide')?.title).toBe('Imported value')
+    })
+
+    it('preserves soft-deleted rows verbatim (deletedAt written through)', async () => {
+      const db = getDb()
+      await importUserData(
+        db,
+        envelope({
+          chat_threads: [
+            { id: 'thread-active', title: 'Active' },
+            { id: 'thread-trash', title: 'Trash', deletedAt: '2026-06-01T00:00:00.000Z' },
+          ],
+        }),
+      )
+
+      const trash = await db.select().from(chatThreadsTable).where(eq(chatThreadsTable.id, 'thread-trash')).get()
+      expect(trash?.deletedAt).toBe('2026-06-01T00:00:00.000Z')
+    })
+
+    it('round-trips chat_messages JSON columns (parts / metadata) without losing structure', async () => {
+      const db = getDb()
+      const parts = [{ type: 'text', text: 'hello' }]
+      const metadata = { modelId: 'model-x' }
+      await importUserData(
+        db,
+        envelope({
+          chat_threads: [{ id: 'thread-1', title: 't' }],
+          chat_messages: [{ id: 'msg-1', chatThreadId: 'thread-1', role: 'user', parts, metadata, cache: {} }],
+        }),
+      )
+
+      const row = (await db.select().from(chatMessagesTable).where(eq(chatMessagesTable.id, 'msg-1')).get()) as
+        | { parts: unknown; metadata: unknown }
+        | undefined
+      expect(row?.parts).toEqual(parts)
+      expect(row?.metadata).toEqual(metadata)
+    })
+
+    it('upserts settings by their `key` PK', async () => {
+      const db = getDb()
+      await db.insert(settingsTable).values({ key: 'theme', value: 'light' })
+
+      await importUserData(
+        db,
+        envelope({
+          settings: [
+            { key: 'theme', value: 'dark' },
+            { key: 'preferred_name', value: 'Alice' },
+          ],
+        }),
+      )
+
+      const all = await db.select().from(settingsTable)
+      expect(all.find((s) => s.key === 'theme')?.value).toBe('dark')
+      expect(all.find((s) => s.key === 'preferred_name')?.value).toBe('Alice')
+    })
+
+    it('upserts secrets via the parent table id (models_secrets)', async () => {
+      const db = getDb()
+      await db.insert(modelsTable).values({ id: 'model-1', provider: 'custom', name: 'Mine' })
+      await db.insert(modelsSecretsTable).values({ modelId: 'model-1', apiKey: 'sk-local' })
+
+      await importUserData(
+        db,
+        envelope({
+          models_secrets: [{ modelId: 'model-1', apiKey: 'sk-imported' }],
+        }),
+      )
+
+      const row = await db.select().from(modelsSecretsTable).where(eq(modelsSecretsTable.modelId, 'model-1')).get()
+      expect(row?.apiKey).toBe('sk-imported')
+    })
+  })
+
+  describe('forward-compat & robustness', () => {
+    it('silently skips table keys the importer does not recognize', async () => {
+      const result = await importUserData(
+        getDb(),
+        envelope({
+          chat_threads: [{ id: 'thread-1', title: 'One' }],
+          future_table_v2: [{ id: 'x' }],
+          another_unknown: [],
+        }),
+      )
+
+      expect(result.ignoredTableNames.sort()).toEqual(['another_unknown', 'future_table_v2'])
+      const threads = await getDb().select().from(chatThreadsTable)
+      expect(threads).toHaveLength(1)
+    })
+
+    it('skips empty table arrays without counting them', async () => {
+      const result = await importUserData(
+        getDb(),
+        envelope({
+          chat_threads: [],
+          tasks: [{ id: 'task-1', item: 'go' }],
+        }),
+      )
+      expect(result.tables.chat_threads).toBeUndefined()
+      expect(result.tables.tasks).toEqual({ upserted: 1 })
+    })
+
+    it('rolls the whole transaction back when any row fails', async () => {
+      const db = getDb()
+      // Seed something we can verify survives a rolled-back import.
+      await db.insert(chatThreadsTable).values({ id: 'thread-prior', title: 'Was here first' })
+
+      // Two threads succeed; agent row violates NOT NULL on userId → throws inside the tx.
+      const payload = envelope({
+        chat_threads: [
+          { id: 'thread-good-1', title: 'Good 1' },
+          { id: 'thread-good-2', title: 'Good 2' },
+        ],
+        agents: [{ id: 'agent-broken', name: 'No user', type: 'remote-acp', transport: 'websocket', url: 'wss://x' }],
+        tasks: [{ id: 'task-after-bad', item: 'should not exist' }],
+      })
+
+      await expect(importUserData(db, payload)).rejects.toBeDefined()
+
+      // The two 'thread-good' inserts must have been rolled back.
+      const threads = await db.select().from(chatThreadsTable)
+      expect(threads.map((t) => t.id).sort()).toEqual(['thread-prior'])
+      const tasks = await db.select().from(tasksTable)
+      expect(tasks).toEqual([])
+      const agents = await db.select().from(agentsTable)
+      expect(agents).toEqual([])
+    })
+
+    it('throws ImportFormatError when a row inside an included table is not an object', async () => {
+      await expect(
+        importUserData(
+          getDb(),
+          envelope({
+            chat_threads: ['not an object'],
+          }),
+        ),
+      ).rejects.toBeInstanceOf(ImportFormatError)
+    })
+  })
+})

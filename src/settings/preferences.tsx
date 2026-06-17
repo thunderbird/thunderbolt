@@ -4,8 +4,9 @@
 
 import { useAuth, useDatabase } from '@/contexts'
 import { useSignInModal } from '@/contexts/sign-in-modal-context'
-import { exportUserData } from '@/dal'
+import { ImportFormatError, exportUserData, importUserData } from '@/dal'
 import { downloadJson, exportFilenameFor } from '@/lib/export-download'
+import { readJsonFile } from '@/lib/import-upload'
 import { useCountryUnits } from '@/hooks/use-country-units'
 import { useLocalStorage } from '@/hooks/use-local-storage'
 import type { LocationData } from '@/hooks/use-location-search'
@@ -20,7 +21,7 @@ import { computeEffectiveProxyEnabled } from '@/lib/proxy-fetch'
 import { trackEvent, useTelemetryAvailable } from '@/lib/posthog'
 import type { CountryUnitsData } from '@/types'
 import { useHttpClient } from '@/contexts'
-import { useEffect, useMemo, useReducer, useRef, useState } from 'react'
+import { useEffect, useMemo, useReducer, useRef, useState, type ChangeEvent } from 'react'
 
 import { LocationSearchCombobox } from '@/components/location-search-combobox'
 import { ModificationIndicator } from '@/components/modification-indicator'
@@ -55,6 +56,7 @@ type PreferencesState = {
   isResetting: boolean
   isDeletingAccount: boolean
   isExporting: boolean
+  isImporting: boolean
   localizationDialogOpen: boolean
   pendingCountryUnits: CountryUnitsData | null
 }
@@ -63,6 +65,7 @@ type PreferencesAction =
   | { type: 'SET_IS_RESETTING'; payload: boolean }
   | { type: 'SET_IS_DELETING_ACCOUNT'; payload: boolean }
   | { type: 'SET_IS_EXPORTING'; payload: boolean }
+  | { type: 'SET_IS_IMPORTING'; payload: boolean }
   | { type: 'RESET_STATE' }
   | { type: 'OPEN_LOCALIZATION_DIALOG'; payload: CountryUnitsData }
   | { type: 'CLOSE_LOCALIZATION_DIALOG' }
@@ -71,6 +74,7 @@ const initialState: PreferencesState = {
   isResetting: false,
   isDeletingAccount: false,
   isExporting: false,
+  isImporting: false,
   localizationDialogOpen: false,
   pendingCountryUnits: null,
 }
@@ -83,6 +87,8 @@ const preferencesReducer = (state: PreferencesState, action: PreferencesAction):
       return { ...state, isDeletingAccount: action.payload }
     case 'SET_IS_EXPORTING':
       return { ...state, isExporting: action.payload }
+    case 'SET_IS_IMPORTING':
+      return { ...state, isImporting: action.payload }
     case 'RESET_STATE':
       return initialState
     case 'OPEN_LOCALIZATION_DIALOG':
@@ -96,7 +102,8 @@ const preferencesReducer = (state: PreferencesState, action: PreferencesAction):
 
 export default function PreferencesSettingsPage() {
   const [state, dispatch] = useReducer(preferencesReducer, initialState)
-  const { isResetting, isDeletingAccount, isExporting, localizationDialogOpen, pendingCountryUnits } = state
+  const { isResetting, isDeletingAccount, isExporting, isImporting, localizationDialogOpen, pendingCountryUnits } =
+    state
   const authClient = useAuth()
   const db = useDatabase()
   const { data: session } = authClient.useSession()
@@ -293,6 +300,93 @@ export default function PreferencesSettingsPage() {
 
   const [deleteAccountError, setDeleteAccountError] = useState<string | null>(null)
   const [exportError, setExportError] = useState<string | null>(null)
+  const [importError, setImportError] = useState<string | null>(null)
+  const [importSuccess, setImportSuccess] = useState<string | null>(null)
+  const [pendingImport, setPendingImport] = useState<{
+    payload: unknown
+    exportedAt: string | null
+    sourceEmail: string | null
+    totalRows: number
+  } | null>(null)
+  const importFileInputRef = useRef<HTMLInputElement>(null)
+
+  const handleImportClick = () => {
+    setImportError(null)
+    setImportSuccess(null)
+    importFileInputRef.current?.click()
+  }
+
+  const handleImportFileSelected = async (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0]
+    // Reset the input value so re-picking the same file fires `change` again.
+    event.target.value = ''
+    if (!file) {
+      return
+    }
+    setImportError(null)
+    setImportSuccess(null)
+    try {
+      const payload = await readJsonFile(file)
+      // Light envelope shape check so we can show source attribution + counts
+      // in the confirmation dialog. Full validation runs inside `importUserData`.
+      if (!payload || typeof payload !== 'object' || Array.isArray(payload)) {
+        throw new ImportFormatError("This file doesn't look like a Thunderbolt export.")
+      }
+      const obj = payload as Record<string, unknown>
+      if (obj.format !== 'thunderbolt-export') {
+        throw new ImportFormatError("This file doesn't look like a Thunderbolt export.")
+      }
+      const tables = obj.tables
+      let totalRows = 0
+      if (tables && typeof tables === 'object' && !Array.isArray(tables)) {
+        for (const value of Object.values(tables as Record<string, unknown>)) {
+          if (Array.isArray(value)) {
+            totalRows += value.length
+          }
+        }
+      }
+      const exportedAt = typeof obj.exportedAt === 'string' ? obj.exportedAt : null
+      const user = obj.user
+      const sourceEmail =
+        user &&
+        typeof user === 'object' &&
+        !Array.isArray(user) &&
+        typeof (user as Record<string, unknown>).email === 'string'
+          ? ((user as Record<string, unknown>).email as string)
+          : null
+      setPendingImport({ payload, exportedAt, sourceEmail, totalRows })
+    } catch (error) {
+      console.error('Failed to read import file:', error)
+      setImportError(error instanceof Error ? error.message : 'Could not read the import file.')
+    }
+  }
+
+  const handleConfirmImport = async () => {
+    if (!pendingImport) {
+      return
+    }
+    dispatch({ type: 'SET_IS_IMPORTING', payload: true })
+    setImportError(null)
+    try {
+      const result = await importUserData(db, pendingImport.payload)
+      const total = Object.values(result.tables).reduce((sum, t) => sum + (t?.upserted ?? 0), 0)
+      setImportSuccess(`Imported ${total.toLocaleString()} rows. The app may take a moment to reflect new chats.`)
+      trackEvent('settings_data_import')
+      setPendingImport(null)
+    } catch (error) {
+      console.error('Failed to import data:', error)
+      setImportError(error instanceof Error ? error.message : 'Failed to import data.')
+    } finally {
+      dispatch({ type: 'SET_IS_IMPORTING', payload: false })
+    }
+  }
+
+  const handleCancelImport = () => {
+    if (isImporting) {
+      return
+    }
+    setPendingImport(null)
+  }
 
   const handleExportData = async () => {
     const userId = session?.user?.id
@@ -797,6 +891,51 @@ export default function PreferencesSettingsPage() {
                   {isExporting ? 'Exporting...' : 'Export My Data'}
                 </Button>
               </div>
+
+              <div className="h-px bg-border -mx-6" />
+
+              <div className="flex flex-col gap-2">
+                <label htmlFor="import-data-button" className="text-sm font-medium">
+                  Import Your Data
+                </label>
+                <p id="import-data-description" className="text-sm text-muted-foreground">
+                  Restore from a Thunderbolt export file. Rows that share an ID with something on this device will be
+                  overwritten with the imported version; anything else on this device is left alone.
+                </p>
+                {importError && (
+                  <p id="import-data-error" className="text-sm text-destructive" role="alert">
+                    {importError}
+                  </p>
+                )}
+                {importSuccess && (
+                  <p id="import-data-success" className="text-sm text-muted-foreground" role="status">
+                    {importSuccess}
+                  </p>
+                )}
+                <input
+                  ref={importFileInputRef}
+                  type="file"
+                  accept="application/json,.json"
+                  className="hidden"
+                  onChange={handleImportFileSelected}
+                />
+                <Button
+                  id="import-data-button"
+                  variant="secondary"
+                  disabled={isImporting}
+                  aria-busy={isImporting}
+                  aria-describedby={
+                    importError
+                      ? 'import-data-error'
+                      : importSuccess
+                        ? 'import-data-success'
+                        : 'import-data-description'
+                  }
+                  onClick={handleImportClick}
+                >
+                  {isImporting ? 'Importing...' : 'Import Data'}
+                </Button>
+              </div>
             </>
           )}
 
@@ -885,6 +1024,30 @@ export default function PreferencesSettingsPage() {
       <TelemetryRequiredModal ref={telemetryRequiredModalRef} onEnableTelemetry={handleEnableTelemetry} />
 
       <TelemetryWarningModal ref={telemetryWarningModalRef} onDisableTelemetry={handleDisableTelemetry} />
+
+      <AlertDialog open={pendingImport !== null} onOpenChange={(open) => !open && handleCancelImport()}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Import this backup?</AlertDialogTitle>
+            <AlertDialogDescription>
+              {pendingImport && (
+                <>
+                  This file contains {pendingImport.totalRows.toLocaleString()} rows
+                  {pendingImport.sourceEmail ? ` exported by ${pendingImport.sourceEmail}` : ''}
+                  {pendingImport.exportedAt ? ` on ${new Date(pendingImport.exportedAt).toLocaleDateString()}` : ''}.
+                  Rows with an ID that matches something on this device will be overwritten. This can't be undone.
+                </>
+              )}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={isImporting}>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={handleConfirmImport} disabled={isImporting}>
+              {isImporting ? 'Importing...' : 'Import'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       <AlertDialog open={localizationDialogOpen} onOpenChange={(open) => !open && handleDeclineLocalizationSettings()}>
         <AlertDialogContent>

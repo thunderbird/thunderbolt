@@ -167,3 +167,6 @@ export { refreshSystemAgents, type RefreshSystemAgentsResult } from '../db/seedi
 
 // Export (user-data backup)
 export { exportFormat, exportSchemaVersion, exportUserData, exportedTableNames, type UserDataExport } from './export'
+
+// Import (restore exported data)
+export { ImportFormatError, importUserData, type ImportResult } from './import'

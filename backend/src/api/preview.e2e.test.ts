@@ -126,4 +126,62 @@ describe('GET /v1/preview — e2e', () => {
     )
     expect(res.status).toBe(401)
   })
+
+  // --- SSRF advisory regression (thunderbolt_SSRF.md) ---
+  // The advisory claims a path-style `GET /link-preview/[target_url]` endpoint
+  // with no validation. That route does not exist, and the real `POST /v1/preview`
+  // blocks every claimed vector. These tests pin that down at the endpoint level.
+
+  it('does not expose the advisory path-style /link-preview endpoint (404)', async () => {
+    handle = await createTestApp({})
+    const res = await handle.app.handle(
+      new Request('http://localhost/link-preview/http%3A%2F%2F127.0.0.1%3A8000%2Fv1%2Fhealth', {
+        headers: authHeaders(handle.bearerToken),
+      }),
+    )
+    expect(res.status).toBe(404)
+  })
+
+  it('rejects the advisory PoC loopback target with 400', async () => {
+    handle = await createTestApp({})
+    const res = await handle.app.handle(
+      new Request(`http://localhost/v1/preview`, {
+        method: 'POST',
+        headers: { ...authHeaders(handle.bearerToken), 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url: 'http://127.0.0.1:8000/v1/health' }),
+      }),
+    )
+    expect(res.status).toBe(400)
+  })
+
+  it('rejects a decimal-encoded loopback target (http://2130706433/) with 400', async () => {
+    handle = await createTestApp({})
+    const res = await handle.app.handle(
+      new Request(`http://localhost/v1/preview`, {
+        method: 'POST',
+        headers: { ...authHeaders(handle.bearerToken), 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url: 'http://2130706433/' }),
+      }),
+    )
+    expect(res.status).toBe(400)
+  })
+
+  it('blocks a hostname that resolves to a private address (DNS rebinding) without leaking', async () => {
+    // The default e2e resolver maps `private.test` → 192.168.1.1, so the
+    // hostname passes the literal pre-check but is blocked at DNS-pin time.
+    handle = await createTestApp({})
+    const res = await handle.app.handle(
+      new Request(`http://localhost/v1/preview`, {
+        method: 'POST',
+        headers: { ...authHeaders(handle.bearerToken), 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url: 'https://private.test/latest/meta-data/' }),
+      }),
+    )
+    // Blocked safe-fetch surfaces as the empty fallback, never cached.
+    expect(res.status).toBe(200)
+    expect(res.headers.get('cache-control')).not.toBe('private, max-age=600')
+    const data = (await res.json()) as Record<string, string | null>
+    expect(data.title).toBeNull()
+    expect(data.previewImageUrl).toBeNull()
+  })
 })

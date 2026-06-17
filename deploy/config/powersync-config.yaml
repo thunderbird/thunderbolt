@@ -54,20 +54,42 @@ sync_rules:
       # row syncing down, a permitted non-admin would see an empty pending list.
       # Write authorization is enforced by the upload handlers, not by the
       # sync rule.
+      #
+      # Resource rows filter `scope = 'workspace'` so user-private rows
+      # (`scope = 'user'`) sync via `user_scope_resources` below instead.
       workspace_data:
         priority: 2
         parameters: SELECT workspace_id FROM powersync.workspace_memberships WHERE user_id = request.user_id()
         data:
           - SELECT * FROM powersync.workspace_memberships WHERE workspace_id = bucket.workspace_id
           - SELECT * FROM powersync.workspace_pending_memberships WHERE workspace_id = bucket.workspace_id
-          - SELECT * FROM powersync.models WHERE workspace_id = bucket.workspace_id
-          - SELECT * FROM powersync.mcp_servers WHERE workspace_id = bucket.workspace_id
-          - SELECT * FROM powersync.prompts WHERE workspace_id = bucket.workspace_id
-          - SELECT * FROM powersync.skills WHERE workspace_id = bucket.workspace_id
-          - SELECT * FROM powersync.triggers WHERE workspace_id = bucket.workspace_id
-          - SELECT * FROM powersync.modes WHERE workspace_id = bucket.workspace_id
-          - SELECT * FROM powersync.model_profiles WHERE workspace_id = bucket.workspace_id
-          - SELECT * FROM powersync.agents WHERE workspace_id = bucket.workspace_id
+          - SELECT * FROM powersync.models WHERE workspace_id = bucket.workspace_id AND scope = 'workspace'
+          - SELECT * FROM powersync.mcp_servers WHERE workspace_id = bucket.workspace_id AND scope = 'workspace'
+          - SELECT * FROM powersync.prompts WHERE workspace_id = bucket.workspace_id AND scope = 'workspace'
+          - SELECT * FROM powersync.skills WHERE workspace_id = bucket.workspace_id AND scope = 'workspace'
+          - SELECT * FROM powersync.triggers WHERE workspace_id = bucket.workspace_id AND scope = 'workspace'
+          - SELECT * FROM powersync.modes WHERE workspace_id = bucket.workspace_id AND scope = 'workspace'
+          - SELECT * FROM powersync.model_profiles WHERE workspace_id = bucket.workspace_id AND scope = 'workspace'
+          - SELECT * FROM powersync.agents WHERE workspace_id = bucket.workspace_id AND scope = 'workspace'
+
+      # User-private workspace resources — same 8 resource tables, but the row
+      # is only visible to its author. Bucket fans out one entry per
+      # (workspace_id, user_id) the caller is a member of (always the same
+      # user_id, but the membership join still parameterizes by workspace).
+      # Write authorization (row owner == caller) is enforced by the upload
+      # handler; this bucket is the read-side complement.
+      user_scope_resources:
+        priority: 2
+        parameters: SELECT workspace_id, request.user_id() as user_id FROM powersync.workspace_memberships WHERE user_id = request.user_id()
+        data:
+          - SELECT * FROM powersync.models WHERE workspace_id = bucket.workspace_id AND user_id = bucket.user_id AND scope = 'user'
+          - SELECT * FROM powersync.mcp_servers WHERE workspace_id = bucket.workspace_id AND user_id = bucket.user_id AND scope = 'user'
+          - SELECT * FROM powersync.prompts WHERE workspace_id = bucket.workspace_id AND user_id = bucket.user_id AND scope = 'user'
+          - SELECT * FROM powersync.skills WHERE workspace_id = bucket.workspace_id AND user_id = bucket.user_id AND scope = 'user'
+          - SELECT * FROM powersync.triggers WHERE workspace_id = bucket.workspace_id AND user_id = bucket.user_id AND scope = 'user'
+          - SELECT * FROM powersync.modes WHERE workspace_id = bucket.workspace_id AND user_id = bucket.user_id AND scope = 'user'
+          - SELECT * FROM powersync.model_profiles WHERE workspace_id = bucket.workspace_id AND user_id = bucket.user_id AND scope = 'user'
+          - SELECT * FROM powersync.agents WHERE workspace_id = bucket.workspace_id AND user_id = bucket.user_id AND scope = 'user'
 
 client_auth:
   supabase: false

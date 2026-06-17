@@ -17,9 +17,9 @@
     "email": "email dev --dir src/emails --port 3000"
   },
   "dependencies": {
-    "@agentclientprotocol/sdk": "^0.22.1",
+    "@agentclientprotocol/sdk": "^0.25.0",
     "@better-auth/sso": "^1.6.9",
-    "@electric-sql/pglite": "^0.4.4",
+    "@electric-sql/pglite": "^0.5.1",
     "@elysiajs/cors": "^1.4.0",
     "@elysiajs/jwt": "^1.4.0",
     "@elysiajs/opentelemetry": "^1.4.0",
@@ -48,9 +48,9 @@
     "zod": "^4.3.6"
   },
   "devDependencies": {
-    "@electric-sql/pglite-socket": "^0.1.4",
+    "@electric-sql/pglite-socket": "^0.2.1",
     "@eslint/js": "^10.0.1",
-    "@react-email/ui": "6.1.5",
+    "@react-email/ui": "6.6.0",
     "@types/react": "^19.1.10",
     "@typescript-eslint/eslint-plugin": "^8.59.1",
     "@typescript-eslint/parser": "^8.59.1",

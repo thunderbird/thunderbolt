@@ -30,4 +30,5 @@ export const defaultModelProfileDeepseekV4Pro: ModelProfile = {
   defaultHash: null,
   userId: null,
   workspaceId: null,
+  scope: 'workspace',
 }

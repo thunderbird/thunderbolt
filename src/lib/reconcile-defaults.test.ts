@@ -41,6 +41,7 @@ const buildRetiredModel = (overrides: Partial<Model> = {}): Model => {
     description: 'Retired',
     userId: null,
     workspaceId: wsId,
+    scope: null,
     ...overrides,
   }
   return { ...base, defaultHash: hashModel(base) }
@@ -73,6 +74,7 @@ const buildRetiredProfile = (overrides: Partial<ModelProfile> = {}): ModelProfil
     defaultHash: null,
     userId: null,
     workspaceId: wsId,
+    scope: null,
     ...overrides,
   }
   return { ...base, defaultHash: hashModelProfile(base) }

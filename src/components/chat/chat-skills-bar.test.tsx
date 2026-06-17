@@ -21,6 +21,7 @@ const skill = (id: string, name: string): Skill => ({
   defaultHash: null,
   userId: null,
   workspaceId: null,
+  scope: null,
 })
 
 const fakeUsePinnedSkills = (overrides?: {

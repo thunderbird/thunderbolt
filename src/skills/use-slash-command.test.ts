@@ -20,6 +20,7 @@ const fakeSkill = (name: string): Skill => ({
   defaultHash: null,
   userId: null,
   workspaceId: null,
+  scope: null,
 })
 
 /** Build a partial KeyboardEvent that's just enough to satisfy the hook. */

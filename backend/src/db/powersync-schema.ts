@@ -261,6 +261,9 @@ export const modelsTable = powersyncSchema.table(
     workspaceId: text('workspace_id')
       .notNull()
       .references(() => workspacesTable.id, { onDelete: 'cascade' }),
+    scope: text('scope', { enum: ['workspace', 'user'] })
+      .notNull()
+      .default('workspace'),
   },
   (table) => [
     primaryKey({ columns: [table.id, table.workspaceId] }),
@@ -286,6 +289,9 @@ export const mcpServersTable = powersyncSchema.table(
     workspaceId: text('workspace_id')
       .notNull()
       .references(() => workspacesTable.id, { onDelete: 'cascade' }),
+    scope: text('scope', { enum: ['workspace', 'user'] })
+      .notNull()
+      .default('workspace'),
   },
   (table) => [
     index('idx_mcp_servers_user_id').on(table.userId),
@@ -306,6 +312,9 @@ export const promptsTable = powersyncSchema.table(
     workspaceId: text('workspace_id')
       .notNull()
       .references(() => workspacesTable.id, { onDelete: 'cascade' }),
+    scope: text('scope', { enum: ['workspace', 'user'] })
+      .notNull()
+      .default('workspace'),
   },
   (table) => [
     primaryKey({ columns: [table.id, table.workspaceId] }),
@@ -329,6 +338,9 @@ export const skillsTable = powersyncSchema.table(
     workspaceId: text('workspace_id')
       .notNull()
       .references(() => workspacesTable.id, { onDelete: 'cascade' }),
+    scope: text('scope', { enum: ['workspace', 'user'] })
+      .notNull()
+      .default('workspace'),
   },
   (table) => [
     primaryKey({ columns: [table.id, table.workspaceId] }),
@@ -350,6 +362,9 @@ export const triggersTable = powersyncSchema.table(
     workspaceId: text('workspace_id')
       .notNull()
       .references(() => workspacesTable.id, { onDelete: 'cascade' }),
+    scope: text('scope', { enum: ['workspace', 'user'] })
+      .notNull()
+      .default('workspace'),
   },
   (table) => [index('idx_triggers_user_id').on(table.userId), index('idx_triggers_workspace_id').on(table.workspaceId)],
 )
@@ -370,6 +385,9 @@ export const modesTable = powersyncSchema.table(
     workspaceId: text('workspace_id')
       .notNull()
       .references(() => workspacesTable.id, { onDelete: 'cascade' }),
+    scope: text('scope', { enum: ['workspace', 'user'] })
+      .notNull()
+      .default('workspace'),
   },
   (table) => [
     primaryKey({ columns: [table.id, table.workspaceId] }),
@@ -407,6 +425,9 @@ export const modelProfilesTable = powersyncSchema.table(
     workspaceId: text('workspace_id')
       .notNull()
       .references(() => workspacesTable.id, { onDelete: 'cascade' }),
+    scope: text('scope', { enum: ['workspace', 'user'] })
+      .notNull()
+      .default('workspace'),
   },
   (table) => [
     primaryKey({ columns: [table.id, table.workspaceId] }),
@@ -457,6 +478,9 @@ export const agentsTable = powersyncSchema.table(
     icon: text('icon'),
     enabled: integer('enabled').default(1).notNull(),
     deletedAt: timestamp('deleted_at'),
+    scope: text('scope', { enum: ['workspace', 'user'] })
+      .notNull()
+      .default('workspace'),
   },
   (table) => [
     primaryKey({ columns: [table.id, table.workspaceId] }),

@@ -25,6 +25,7 @@ const skill: Skill = {
   defaultHash: null,
   userId: null,
   workspaceId: null,
+  scope: null,
 }
 
 const renderRow = (props: { canEdit?: boolean; canDelete?: boolean } = {}) => {

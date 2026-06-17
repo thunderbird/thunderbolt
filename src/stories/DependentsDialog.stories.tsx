@@ -18,6 +18,7 @@ const dep = (id: string, name: string): Skill => ({
   defaultHash: null,
   userId: null,
   workspaceId: null,
+  scope: null,
 })
 
 const meta = {

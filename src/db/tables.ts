@@ -109,6 +109,7 @@ export const modelsTable = sqliteTable(
     description: text('description'),
     userId: text('user_id'),
     workspaceId: text('workspace_id'),
+    scope: text('scope', { enum: ['workspace', 'user'] }).default('workspace'),
   },
   (table) => [
     index('idx_models_active')
@@ -146,6 +147,7 @@ export const mcpServersTable = sqliteTable(
     deletedAt: text('deleted_at'),
     userId: text('user_id'),
     workspaceId: text('workspace_id'),
+    scope: text('scope', { enum: ['workspace', 'user'] }).default('workspace'),
   },
   (table) => [
     index('idx_mcp_servers_active')
@@ -166,6 +168,7 @@ export const promptsTable = sqliteTable(
     defaultHash: text('default_hash'),
     userId: text('user_id'),
     workspaceId: text('workspace_id'),
+    scope: text('scope', { enum: ['workspace', 'user'] }).default('workspace'),
   },
   (table) => [
     index('idx_prompts_active')
@@ -188,6 +191,7 @@ export const skillsTable = sqliteTable(
     defaultHash: text('default_hash'),
     userId: text('user_id'),
     workspaceId: text('workspace_id'),
+    scope: text('scope', { enum: ['workspace', 'user'] }).default('workspace'),
   },
   (table) => [
     index('idx_skills_active')
@@ -208,6 +212,7 @@ export const triggersTable = sqliteTable(
     deletedAt: text('deleted_at'),
     userId: text('user_id'),
     workspaceId: text('workspace_id'),
+    scope: text('scope', { enum: ['workspace', 'user'] }).default('workspace'),
   },
   (table) => [
     index('idx_triggers_active')
@@ -246,6 +251,7 @@ export const modelProfilesTable = sqliteTable(
     deletedAt: text('deleted_at'),
     userId: text('user_id'),
     workspaceId: text('workspace_id'),
+    scope: text('scope', { enum: ['workspace', 'user'] }).default('workspace'),
   },
   (table) => [
     index('idx_model_profiles_active')
@@ -269,6 +275,7 @@ export const modesTable = sqliteTable(
     deletedAt: text('deleted_at'),
     userId: text('user_id'),
     workspaceId: text('workspace_id'),
+    scope: text('scope', { enum: ['workspace', 'user'] }).default('workspace'),
   },
   (table) => [
     index('idx_modes_active')
@@ -307,6 +314,7 @@ export const agentsTable = sqliteTable(
     deletedAt: text('deleted_at'),
     userId: text('user_id'),
     workspaceId: text('workspace_id'),
+    scope: text('scope', { enum: ['workspace', 'user'] }).default('workspace'),
   },
   (table) => [
     index('idx_agents_active')

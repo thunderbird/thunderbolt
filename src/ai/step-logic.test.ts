@@ -41,6 +41,7 @@ const createStubProfile = (overrides: Partial<ModelProfile> = {}): ModelProfile 
   deletedAt: null,
   userId: null,
   workspaceId: null,
+  scope: null,
   ...overrides,
 })
 

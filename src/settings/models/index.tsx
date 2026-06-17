@@ -527,6 +527,7 @@ export default function ModelsPage({ useWorkspacePermission = useWorkspacePermis
         description: null,
         userId: null,
         workspaceId: null,
+        scope: 'workspace' as const,
       }
       const model = await createModel(modelConfigWithDefaults, getProxyFetch)
 

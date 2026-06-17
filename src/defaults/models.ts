@@ -52,6 +52,7 @@ export const defaultModelGptOss120b: Model = {
   description: 'Fast',
   userId: null,
   workspaceId: null,
+  scope: 'workspace',
 }
 
 /**
@@ -78,6 +79,7 @@ export const defaultModelOpus48: Model = {
   description: 'Top-tier Anthropic reasoning',
   userId: null,
   workspaceId: null,
+  scope: 'workspace',
 }
 
 export const defaultModelDeepseekV4Pro: Model = {
@@ -100,6 +102,7 @@ export const defaultModelDeepseekV4Pro: Model = {
   description: 'Confidential reasoning via Tinfoil',
   userId: null,
   workspaceId: null,
+  scope: 'workspace',
 }
 
 export const defaultModelKimiK26: Model = {
@@ -122,6 +125,7 @@ export const defaultModelKimiK26: Model = {
   description: 'Confidential chat via Tinfoil',
   userId: null,
   workspaceId: null,
+  scope: 'workspace',
 }
 
 export const defaultModelGlm51: Model = {
@@ -144,6 +148,7 @@ export const defaultModelGlm51: Model = {
   description: 'Confidential chat via Tinfoil',
   userId: null,
   workspaceId: null,
+  scope: 'workspace',
 }
 
 /**

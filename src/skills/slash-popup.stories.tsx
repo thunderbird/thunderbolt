@@ -49,6 +49,7 @@ const sampleSkills: Skill[] = [
     defaultHash: null,
     userId: null,
     workspaceId: null,
+    scope: null,
   },
   {
     id: '2',
@@ -61,6 +62,7 @@ const sampleSkills: Skill[] = [
     defaultHash: null,
     userId: null,
     workspaceId: null,
+    scope: null,
   },
 ]
 

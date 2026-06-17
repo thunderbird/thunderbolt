@@ -188,6 +188,7 @@ export const createSkill = async (
     defaultHash: null,
     userId: null,
     workspaceId,
+    scope: 'workspace',
   }
   await db.insert(skillsTable).values(row)
   return row

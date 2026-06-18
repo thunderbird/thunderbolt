@@ -6,12 +6,36 @@ import { marked } from 'marked'
 import { type CSSProperties, memo, useMemo } from 'react'
 import type { Components } from 'react-markdown'
 import ReactMarkdown from 'react-markdown'
+import rehypeKatex from 'rehype-katex'
 import remarkGfm from 'remark-gfm'
+import remarkMath from 'remark-math'
 
 import { markdownComponents } from './markdown-utils'
 
+// KaTeX styles for LaTeX math rendered by remark-math + rehype-katex. Imported
+// here so the stylesheet ships with the markdown renderer (chat critical path).
+import 'katex/dist/katex.min.css'
+
+// remark-math parses `$…$` / `$$…$$` into math nodes; rehype-katex renders them
+// to KaTeX HTML. Shared across every markdown block so inline and display math
+// render consistently. GFM stays first so its tokenizer runs before math.
+const remarkPlugins = [remarkGfm, remarkMath]
+const rehypePlugins = [rehypeKatex]
+
+// remark-math only renders `$$…$$` as centered *display* math when the fences
+// sit on their own lines; a single-line `$$…$$` falls back to inline. Models
+// routinely emit standalone equations on a single line, so rewrite any line
+// that is wholly a `$$…$$` equation into the fenced form.
+// Inline `$…$` and mid-sentence `$$…$$` are left untouched (the `$` anchors and
+// single-line `.` keep the match to a whole line), and already-fenced blocks
+// don't match (their `$$` fences are alone on their lines).
+const displayMathLine = /^([ \t]*)\$\$[ \t]*(.+?)[ \t]*\$\$[ \t]*$/gm
+
+const normalizeDisplayMath = (markdown: string): string =>
+  markdown.replace(displayMathLine, (_match, indent: string, body: string) => `${indent}$$\n${body}\n$$`)
+
 const parseMarkdownIntoBlocks = (markdown: string): string[] => {
-  const tokens = marked.lexer(markdown)
+  const tokens = marked.lexer(normalizeDisplayMath(markdown))
   return tokens.map((token) => token.raw)
 }
 
@@ -19,7 +43,7 @@ const MemoizedMarkdownBlock = memo(
   ({ content, components }: { content: string; components: Components }) => {
     return (
       <div className="overflow-x-scroll">
-        <ReactMarkdown remarkPlugins={[remarkGfm]} components={components}>
+        <ReactMarkdown remarkPlugins={remarkPlugins} rehypePlugins={rehypePlugins} components={components}>
           {content}
         </ReactMarkdown>
       </div>

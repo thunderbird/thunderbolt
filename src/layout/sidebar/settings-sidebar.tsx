@@ -99,6 +99,36 @@ export const SettingsSidebarContent = ({
             </SidebarMenuItem>
             <SidebarMenuItem>
               <SidebarMenuButton
+                onClick={() => onSettingsNavigate('/settings/devices')}
+                tooltip="Devices"
+                className="cursor-pointer"
+                isActive={subPath === '/settings/devices'}
+              >
+                <Smartphone className="size-4" />
+                <span>Devices</span>
+              </SidebarMenuButton>
+            </SidebarMenuItem>
+          </SidebarMenu>
+        </SidebarGroupContent>
+      </SidebarGroup>
+
+      <SidebarGroup>
+        <SidebarGroupLabel>Extensions</SidebarGroupLabel>
+        <SidebarGroupContent>
+          <SidebarMenu>
+            <SidebarMenuItem>
+              <SidebarMenuButton
+                onClick={() => onSettingsNavigate('/settings/skills')}
+                tooltip="Skills"
+                className="cursor-pointer"
+                isActive={subPath === '/settings/skills'}
+              >
+                <Zap className="size-4" />
+                <span>Skills</span>
+              </SidebarMenuButton>
+            </SidebarMenuItem>
+            <SidebarMenuItem>
+              <SidebarMenuButton
                 onClick={() => onSettingsNavigate('/settings/integrations')}
                 tooltip="Integrations"
                 className="cursor-pointer"
@@ -110,15 +140,39 @@ export const SettingsSidebarContent = ({
             </SidebarMenuItem>
             <SidebarMenuItem>
               <SidebarMenuButton
-                onClick={() => onSettingsNavigate('/settings/devices')}
-                tooltip="Devices"
+                onClick={() => onSettingsNavigate('/settings/models')}
+                tooltip="Models"
                 className="cursor-pointer"
-                isActive={subPath === '/settings/devices'}
+                isActive={subPath.startsWith('/settings/models')}
               >
-                <Smartphone className="size-4" />
-                <span>Devices</span>
+                <Cpu className="size-4" />
+                <span>Models</span>
               </SidebarMenuButton>
             </SidebarMenuItem>
+            <SidebarMenuItem>
+              <SidebarMenuButton
+                onClick={() => onSettingsNavigate('/settings/mcp-servers')}
+                tooltip="MCP Servers"
+                className="cursor-pointer"
+                isActive={subPath === '/settings/mcp-servers'}
+              >
+                <Server className="size-4" />
+                <span>MCP Servers</span>
+              </SidebarMenuButton>
+            </SidebarMenuItem>
+            {!agentsHidden && (
+              <SidebarMenuItem>
+                <SidebarMenuButton
+                  onClick={() => onSettingsNavigate('/settings/agents')}
+                  tooltip="Agents"
+                  className="cursor-pointer"
+                  isActive={subPath === '/settings/agents'}
+                >
+                  <Bot className="size-4" />
+                  <span>Agents</span>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+            )}
           </SidebarMenu>
         </SidebarGroupContent>
       </SidebarGroup>
@@ -166,52 +220,6 @@ export const SettingsSidebarContent = ({
                 </SidebarMenuButton>
               </SidebarMenuItem>
             )}
-            <SidebarMenuItem>
-              <SidebarMenuButton
-                onClick={() => onSettingsNavigate('/settings/models')}
-                tooltip="Models"
-                className="cursor-pointer"
-                isActive={subPath.startsWith('/settings/models')}
-              >
-                <Cpu className="size-4" />
-                <span>Models</span>
-              </SidebarMenuButton>
-            </SidebarMenuItem>
-            <SidebarMenuItem>
-              <SidebarMenuButton
-                onClick={() => onSettingsNavigate('/settings/mcp-servers')}
-                tooltip="MCP Servers"
-                className="cursor-pointer"
-                isActive={subPath === '/settings/mcp-servers'}
-              >
-                <Server className="size-4" />
-                <span>MCP Servers</span>
-              </SidebarMenuButton>
-            </SidebarMenuItem>
-            {!agentsHidden && (
-              <SidebarMenuItem>
-                <SidebarMenuButton
-                  onClick={() => onSettingsNavigate('/settings/agents')}
-                  tooltip="Agents"
-                  className="cursor-pointer"
-                  isActive={subPath === '/settings/agents'}
-                >
-                  <Bot className="size-4" />
-                  <span>Agents</span>
-                </SidebarMenuButton>
-              </SidebarMenuItem>
-            )}
-            <SidebarMenuItem>
-              <SidebarMenuButton
-                onClick={() => onSettingsNavigate('/settings/skills')}
-                tooltip="Skills"
-                className="cursor-pointer"
-                isActive={subPath === '/settings/skills'}
-              >
-                <Zap className="size-4" />
-                <span>Skills</span>
-              </SidebarMenuButton>
-            </SidebarMenuItem>
           </SidebarMenu>
         </SidebarGroupContent>
       </SidebarGroup>

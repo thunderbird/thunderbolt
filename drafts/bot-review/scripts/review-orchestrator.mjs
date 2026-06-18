@@ -27,10 +27,11 @@
 // ZERO npm DEPENDENCIES: Node >=18 built-in global `fetch` only. No Octokit.
 //
 // ───────────────────────────────────────────────────────────────────────────
-// PLACEHOLDERS A HUMAN MUST RESOLVE BEFORE WIRING (marked `TODO (team)`):
-//   - THUNDER_BOT_LOGIN: the GitHub App bot login this script posts as (used to
-//     match/resolve our OWN review threads). The team creates the App.
-//   - Confirm the model-findings JSON file path/contract with the action step.
+// IDENTITY: the orchestrator posts via the default GITHUB_TOKEN, so its review
+//   comments are authored as `github-actions[bot]` — THUNDER_BOT_LOGIN resolves
+//   to that (set in thunder-deep-review.yml). No separate GitHub App is needed.
+//   The model-findings JSON path/contract is fixed via the THUNDER_*_FILE env
+//   vars set in the workflow (see below).
 // RESOLVED: EXPECTED_BOTS Cursor Bugbot app.id (1210556).
 // =============================================================================
 
@@ -65,18 +66,17 @@ const EXPECTED_BOTS = [
 
 // Identity of OUR OWN review comments, so we can dedup against / resolve only
 // our own threads (never touch Bugbot's or a human's). The orchestrator runs
-// under a token whose author login is one of these. Set BOT_LOGIN to the exact
-// login the GITHUB_TOKEN posts as (e.g. "github-actions[bot]", or a dedicated
-// app's "<slug>[bot]"). We also stamp every comment body with a hidden marker
-// as a defensive secondary signal.
+// under the default GITHUB_TOKEN, so the author login is github-actions[bot]
+// (THUNDER_BOT_LOGIN, see env below). We also stamp every comment body with a
+// hidden marker (SELF_COMMENT_MARKER) as the robust secondary signal.
 const SELF_COMMENT_MARKER = '<!-- thunder-deep-review-finding -->';
 
 // Severity enum the model output is validated against. Anything else is dropped.
 const SEVERITY_ENUM = ['blocking', 'convention', 'nit'];
 
 // Deterministic deep-mode gate. Diff bigger than this => deep mode.
-const DEEP_MODE_CHANGED_LINES = 600; // TODO: tune for the team's PRs.
-const DEEP_MODE_FILE_COUNT = 40; // TODO: tune.
+const DEEP_MODE_CHANGED_LINES = 600; // tunable for the team's PR sizes.
+const DEEP_MODE_FILE_COUNT = 40; // tunable for the team's PR sizes.
 // Hard GitHub cliffs: /commits/{sha}/check-runs caps at 1000 check-suites,
 // PR files list caps at 3000 files. Past the file cap we switch to bounded mode.
 const PR_FILES_TRUNCATION_CAP = 3000;
@@ -93,7 +93,7 @@ const DISCOVERY_TIMEOUT_MS = 60_000; // ~60s: "never appeared" => treat bot as d
 const COMPLETION_TIMEOUT_MS = 5 * 60_000; // ~5min: "exists but not completed yet"
 
 // File handoff between the two phases / the model step.
-// TODO: confirm these paths match what the workflow's model step reads/writes.
+// Paths come from the THUNDER_*_FILE env vars set in thunder-deep-review.yml.
 const SKIPLIST_FILE = process.env.THUNDER_SKIPLIST_FILE ?? '/tmp/thunder-skiplist.json';
 const DIFF_FILE = process.env.THUNDER_DIFF_FILE ?? '/tmp/thunder-diff.patch';
 const FINDINGS_FILE = process.env.THUNDER_FINDINGS_FILE ?? '/tmp/thunder-findings.json';
@@ -113,9 +113,9 @@ const env = {
   eventAction: process.env.PR_ACTION ?? '',
   apiBase: process.env.GITHUB_API_URL ?? 'https://api.github.com',
   graphqlBase: process.env.GITHUB_GRAPHQL_URL ?? 'https://api.github.com/graphql',
-  // Login OUR review comments are authored as (the token's identity).
-  // TODO (team): set to the GitHub App's bot login, e.g. 'thunder-deep-review[bot]'
-  // — the team creates that App. Falls back to the Actions bot until then.
+  // Login OUR review comments are authored as. The orchestrator posts via the
+  // default GITHUB_TOKEN, so the author login is github-actions[bot]. The hidden
+  // marker (SELF_COMMENT_MARKER) is the robust secondary match.
   selfLogin: process.env.THUNDER_BOT_LOGIN ?? 'github-actions[bot]',
   // Allow a `review:deep` label to force deep mode in addition to the size gate.
   hasDeepLabel: (process.env.PR_LABELS ?? '').split(',').map((s) => s.trim()).includes('review:deep'),
@@ -161,10 +161,13 @@ const githubFetch = async (url, init = {}) => {
   const retryAfterMs = computeRetryAfterMs(res);
   const linkHeader = res.headers.get('link') ?? '';
 
-  // Rate-limited: surface as retryable regardless of 403/429 framing.
+  // Rate-limited: surface as retryable regardless of 403/429 framing. GitHub's
+  // SECONDARY rate limit returns 403 with a `retry-after` header and a
+  // remaining quota > 0 — treat that as retryable too, not a permanent 4xx.
   const remaining = res.headers.get('x-ratelimit-remaining');
   const isRateLimited =
-    res.status === 429 || (res.status === 403 && remaining === '0');
+    res.status === 429 ||
+    (res.status === 403 && (remaining === '0' || res.headers.get('retry-after') !== null));
 
   if (res.status >= 500 || isRateLimited) {
     return { ok: false, retryable: true, status: res.status, json: null, linkHeader, retryAfterMs };
@@ -211,19 +214,20 @@ const nextLink = (linkHeader) => {
 const paginateAll = async (firstUrl, { cap = Infinity } = {}) => {
   const out = [];
   let url = firstUrl;
-  let attempt = 0;
   let truncated = false;
   while (url) {
-    const r = await githubFetch(url);
+    // Retry budget is PER PAGE, not shared across the whole pagination —
+    // otherwise a few flaky early pages exhaust the budget for all later ones.
+    let attempt = 0;
+    let r = await githubFetch(url);
+    while (!r.ok && r.retryable && attempt < 5) {
+      attempt += 1;
+      await sleep(Math.max(r.retryAfterMs, jitter(Math.min(POLL_BASE_MS * 2 ** attempt, POLL_CAP_MS))));
+      r = await githubFetch(url);
+    }
     if (!r.ok) {
-      if (r.retryable && attempt < 5) {
-        attempt += 1;
-        await sleep(Math.max(r.retryAfterMs, jitter(Math.min(POLL_BASE_MS * 2 ** attempt, POLL_CAP_MS))));
-        continue;
-      }
       throw new Error(`GET ${url} -> ${r.status} ${r.body ?? ''}`);
     }
-    attempt = 0;
     const page = Array.isArray(r.json) ? r.json : (r.json?.check_runs ?? []);
     out.push(...page);
     if (out.length >= cap) {
@@ -254,10 +258,12 @@ const graphqlFetch = async (query, variables) => {
       },
       body: JSON.stringify({ query, variables }),
     });
-    if (res.status >= 500 || res.status === 429) {
+    // Retry 5xx, 429, and GitHub's secondary rate limit (403 + retry-after).
+    const secondaryLimited = res.status === 403 && res.headers.get('retry-after') !== null;
+    if (res.status >= 500 || res.status === 429 || secondaryLimited) {
       if (attempt < 5) {
         attempt += 1;
-        await sleep(jitter(Math.min(POLL_BASE_MS * 2 ** attempt, POLL_CAP_MS)));
+        await sleep(Math.max(computeRetryAfterMs(res), jitter(Math.min(POLL_BASE_MS * 2 ** attempt, POLL_CAP_MS))));
         continue;
       }
       return { ok: false, data: null, errors: [{ message: `graphql ${res.status}` }] };
@@ -324,6 +330,9 @@ const pollForBots = async () => {
       backoff = Math.min(backoff * 2, POLL_CAP_MS);
       continue;
     }
+    // Successful list: reset the backoff so a few transient errors don't leave
+    // us polling at the 60s cap for the rest of the discovery window.
+    backoff = POLL_BASE_MS;
 
     for (const run of runs) {
       const appId = run.app?.id;
@@ -517,7 +526,9 @@ const readModelFindings = async () => {
     valid.push({
       severity,
       file: typeof f.file === 'string' ? f.file : null,
-      line: Number.isFinite(f.line) ? f.line : null,
+      // Valid diff lines are 1-based; reject <= 0 so a bad value falls back to
+      // a file-level / summary placement rather than a never-matching line.
+      line: Number.isFinite(f.line) && f.line >= 1 ? f.line : null,
       side,
       title: String(f.title ?? '').slice(0, 300),
       body: String(f.body ?? '').slice(0, 4000),
@@ -557,7 +568,9 @@ const parseUnifiedDiff = (patch) => {
   let leftLine = 0;
   let hunk = null;
 
-  const lines = patch.split('\n');
+  // Split on CRLF or LF — a trailing \r would otherwise get baked into the
+  // hunk anchor text and destabilize the finding hash across pushes.
+  const lines = patch.split(/\r?\n/);
   for (const raw of lines) {
     if (raw.startsWith('diff --git ')) {
       current = null;
@@ -626,19 +639,24 @@ const loadDiffIndex = async () => {
  * Find the hunk in `fileEntry` that contains (side, line). Used to derive a
  * stable code anchor for the finding hash so convergence survives line drift.
  */
+const stripHunkHeader = (text) => text.replace(/^@@.*@@.*/, '').trim().slice(0, 200);
+
 const hunkAnchorFor = (fileEntry, line, side) => {
   if (!fileEntry) return '';
+  // Pick the LAST hunk whose start is at/before the target line — that's the
+  // one actually containing it. Picking the first (any start ≤ line) would
+  // anchor a late-file finding to an early hunk and weaken cross-push
+  // convergence. Coarse (first ~200 chars) on purpose — stability over exactness.
+  let containing = null;
   for (const h of fileEntry.hunks) {
     const start = side === 'LEFT' ? h.leftStart : h.rightStart;
-    // Cheap containment: the hunk's text spans from `start`; if the target line
-    // is at/after start and the hunk mentions it, this is the anchor. We keep it
-    // coarse (first ~200 chars) on purpose — exactness isn't required, stability is.
-    if (line >= start) {
-      const anchor = h.text.replace(/^@@.*@@.*/, '').trim().slice(0, 200);
-      if (anchor) return anchor;
-    }
+    if (line >= start) containing = h;
   }
-  return (fileEntry.hunks[0]?.text ?? '').slice(0, 200);
+  if (containing) {
+    const anchor = stripHunkHeader(containing.text);
+    if (anchor) return anchor;
+  }
+  return stripHunkHeader(fileEntry.hunks[0]?.text ?? '');
 };
 
 /**
@@ -712,7 +730,8 @@ const fetchOwnThreads = async () => {
 
   const out = [];
   let cursor = null;
-  for (;;) {
+  // Hard page cap (~1000 threads) so a stuck/looping endCursor can't spin forever.
+  for (let page = 0; page < 10; page += 1) {
     const r = await graphqlFetch(query, {
       owner,
       repo,
@@ -785,7 +804,7 @@ const renderCommentBody = (f) => {
  * `comments[]`; summary-only findings (and inline overflow past the cap) roll
  * into the review `body`.
  */
-const buildReviewPayload = ({ toPost, deepInfo, skipCount, summaryExtra }) => {
+const buildReviewPayload = ({ toPost, deepInfo, skipCount }) => {
   const comments = [];
   const overflow = [];
 
@@ -804,7 +823,7 @@ const buildReviewPayload = ({ toPost, deepInfo, skipCount, summaryExtra }) => {
   }
 
   const summaryLines = [];
-  for (const f of [...summaryExtra, ...overflow]) {
+  for (const f of overflow) {
     const loc = f.file ? `\`${f.file}${f.line ? `:${f.line}` : ''}\`` : '';
     summaryLines.push(`- **${SEVERITY_LABEL[f.severity]}** ${loc} — ${f.title}`);
   }
@@ -886,10 +905,10 @@ const runPost = async () => {
   const openHashes = new Set(ownThreads.filter((t) => !t.isResolved && t.hash).map((t) => t.hash));
 
   // 3) Dedup: post only findings NOT already present as an OPEN own-thread.
+  //    Summary-placement findings ride along in `toPost` and are routed to the
+  //    review body by buildReviewPayload (they have no thread to dedup on, but
+  //    we still filter them by hash above for consistency).
   const toPost = findings.filter((f) => !openHashes.has(f.hash));
-  // Summary-placement findings still surface (they have no thread to dedup on),
-  // but we already filtered them by hash above for consistency.
-  const summaryExtra = [];
 
   // 4) Convergence: resolve our OWN open threads whose finding is gone now.
   //    Suppressed on `reopened` (the prior threads may be from another base).
@@ -905,7 +924,7 @@ const runPost = async () => {
   }
 
   // 5) Post the new findings as one inline review.
-  const payload = buildReviewPayload({ toPost, deepInfo, skipCount, summaryExtra });
+  const payload = buildReviewPayload({ toPost, deepInfo, skipCount });
   await postReview(payload);
 };
 

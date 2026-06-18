@@ -5,18 +5,19 @@
 #
 # ⚠️ VERIFY-BEFORE-WIRING: ⚠️
 #   - The `anthropics/claude-code-action` input names below were verified
-#     against the live @v1 `action.yml` (2026-06): `prompt`, `use_bedrock`,
+#     against the live @v1 `action.yml` (2026-06): `prompt`, `anthropic_api_key`,
 #     `claude_args`, and `use_sticky_comment` all EXIST. `model:` /
 #     `allowed_tools:` / `review_event:` do NOT exist in @v1 — do NOT
-#     reintroduce them. Re-confirm only if the action major version changes.
-#   - Action commit SHAs are PINNED below (checkout / claude-code-action /
-#     configure-aws-credentials). The remaining placeholders are team-infra
-#     only: role ARN, Bedrock model ARNs, model id, AWS region, runner
-#     strategy. See README.md "Verify before wiring".
+#     reintroduce them (pass --model/--allowedTools via `claude_args`).
+#     Re-confirm only if the action major version changes.
+#   - Action commit SHAs are PINNED below (checkout / claude-code-action).
+#   - The only value the team sets later is the ANTHROPIC_API_KEY repo secret.
+#   - When wiring, CODEOWNERS-protect this workflow + scripts/review-orchestrator.mjs
+#     (they hold the review logic + the API-key reference).
 #
 # Orchestration is deterministic CODE, not model tool-calls: scripts/
 # review-orchestrator.mjs does ALL GitHub I/O (poll A's bots, build the
-# skip-list, upsert the single comment). The model step ONLY emits structured
+# skip-list, post the inline PR review). The model step ONLY emits structured
 # JSON findings to a file.
 # =============================================================================
 
@@ -37,7 +38,6 @@ permissions:
   contents: read # read the diff/files
   pull-requests: write # post/patch the single consolidated ISSUE comment
   checks: read # poll A's bot check-runs (without this the poller 403s)
-  id-token: write # OIDC token to assume the Bedrock role (no static keys)
 
 concurrency:
   # Only review the latest push. cancel-in-progress during the debounce
@@ -49,24 +49,19 @@ concurrency:
 jobs:
   review:
     # Hard-gate on same-repo PRs only (no forks), skip Dependabot, skip
-    # drafts. This is the primary defense — a self-hosted runner must never
-    # execute untrusted fork code.
+    # drafts. This is the primary defense — fork code must never run with
+    # access to repo secrets.
     if: >-
       github.event.pull_request.head.repo.full_name == github.repository &&
       github.actor != 'dependabot[bot]' &&
       github.event.pull_request.draft == false
 
-    # PREFER AN EPHEMERAL RUNNER. A persistent self-hosted runner is a
-    # standing foothold that untrusted PR code (or a compromised pinned action)
-    # could persistently compromise. Recommended order:
-    #   1. GitHub-hosted runner (clean VM per job) if Bedrock egress is allowed.
-    #   2. JIT / ephemeral self-hosted (clean VM per job, no Docker socket, no
-    #      cloud-metadata access, strict egress allowlist).
-    #   3. Persistent self-hosted ONLY as a last resort, with per-job cleanup.
-    # TODO (team infra): pick a strategy and set the right runner label/group below.
-    runs-on: ${{ '<PLACEHOLDER-RUNNER>' }} # TODO (team infra): e.g. ubuntu-latest OR [self-hosted, ephemeral, linux]
+    # GitHub-hosted ephemeral runner: a clean VM per job. Safe now that the
+    # job only runs on same-repo PRs (fork `if:` gate above) and uses the
+    # public Anthropic API (no cloud creds on the runner).
+    runs-on: ubuntu-latest
 
-    # Cap total runner time so a hung model/Bedrock call can't hold the
+    # Cap total runner time so a hung model API call can't hold the
     # runner indefinitely.
     timeout-minutes: 20
 
@@ -79,6 +74,10 @@ jobs:
       PR_ACTION: ${{ github.event.action }}
       PR_LABELS: ${{ join(github.event.pull_request.labels.*.name, ',') }}
       GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      # The orchestrator posts the review under the default GITHUB_TOKEN, so the
+      # author login is github-actions[bot]. The script matches/resolves its own
+      # threads by this login (+ a hidden marker). No separate GitHub App.
+      THUNDER_BOT_LOGIN: github-actions[bot]
       # File handoff between steps (must match scripts/review-orchestrator.mjs).
       THUNDER_DIFF_FILE: ${{ github.workspace }}/thunder-diff.patch
       THUNDER_SKIPLIST_FILE: ${{ github.workspace }}/thunder-skiplist.json
@@ -88,7 +87,7 @@ jobs:
     steps:
       # ─────────────────────────────────────────────────────────────────────
       # DEBOUNCE. Rapid pushes (rebases/typo fixes) cancel during this
-      # sleep at zero model cost. Only survivors proceed to spend on Bedrock.
+      # sleep at zero model cost. Only survivors proceed to spend on the model.
       # ─────────────────────────────────────────────────────────────────────
       - name: Debounce rapid pushes
         run: sleep 60
@@ -129,32 +128,12 @@ jobs:
       # ─────────────────────────────────────────────────────────────────────
       # (PRE phase): poll A's bots, build the skip-list, compute the
       # deterministic deep-mode flag. ALL GitHub I/O is in this script.
-      # No cloud creds are present yet (configured after) — this step touches
-      # untrusted PR metadata but holds no AWS credentials.
+      # This step touches untrusted PR metadata but holds no model credentials.
       # ─────────────────────────────────────────────────────────────────────
       - name: Orchestrator — poll bots + build skip-list (pre)
         run: node scripts/review-orchestrator.mjs pre
-        # TODO: when wiring, ensure scripts/review-orchestrator.mjs is checked
-        # in at .github/scripts/ (or wherever) and CODEOWNERS-protected.
-
-      # ─────────────────────────────────────────────────────────────────────
-      # OIDC -> Bedrock. NO static AWS_ACCESS_KEY_ID/SECRET anywhere.
-      # The assumed role is scoped to bedrock:InvokeModel on SPECIFIC model ARNs.
-      # Placed immediately before the model step so creds live for the shortest
-      # window and are not present during the untrusted-metadata pre-step.
-      # SHA pinned to v6.2.0.
-      # ─────────────────────────────────────────────────────────────────────
-      - name: Configure AWS credentials via OIDC
-        uses: aws-actions/configure-aws-credentials@e7f100cf4c008499ea8adda475de1042d6975c7b # v6.2.0
-        with:
-          # TODO (team infra): a role whose trust policy restricts to this repo + this
-          # workflow, with an inline policy of ONLY bedrock:InvokeModel on the model ARNs below.
-          role-to-assume: <PLACEHOLDER-BEDROCK-OIDC-ROLE-ARN> # TODO (team infra): arn:aws:iam::<acct>:role/thunder-deep-review-bedrock
-          aws-region: <PLACEHOLDER-AWS-REGION> # TODO (team infra): a region where the pinned Opus model is available
-          role-duration-seconds: 1800
-          # TODO (team infra, IAM not YAML): scope the role policy to
-          #   bedrock:InvokeModel on arn:aws:bedrock:<region>::foundation-model/<model-id>
-          #   AND any inference-profile ARN the model id resolves to.
+        # NOTE: scripts/review-orchestrator.mjs must be checked in at the
+        # workflow-relative path and CODEOWNERS-protected before activation.
 
       # ─────────────────────────────────────────────────────────────────────
       # The MODEL step. Emits STRUCTURED JSON findings ONLY to a file.
@@ -162,7 +141,8 @@ jobs:
       #
       # Input names below were verified against the live @v1 `action.yml`
       # (2026-06); re-confirm only if the action major version changes:
-      #      - use Bedrock via `use_bedrock: "true"` (NOT CLAUDE_CODE_USE_BEDROCK env alone).
+      #      - auth via `anthropic_api_key` (the Anthropic public API directly;
+      #        NOT Bedrock/Vertex). The only secret the team provisions.
       #      - sticky/consolidated comment via `use_sticky_comment`. We render+post
       #        the inline review ourselves in the post step, so it stays "false"
       #        here — the post step is the single owner of the comment.
@@ -176,16 +156,15 @@ jobs:
       - name: thunder-deep-review (model — structured findings only)
         uses: anthropics/claude-code-action@806af32823ef69c8ef357086c573a902af641307 # v1
         with:
-          use_bedrock: "true"
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
           use_sticky_comment: "false" # we own the comment via the post step
-          # Model id pinned LITERALLY (mutable vars.* would change review behavior
-          # with no PR/audit trail).
-          # TODO (team infra): set the real Bedrock model id. region/availability
-          # varies — EXAMPLE: us.anthropic.claude-opus-4-...  (an inference-profile id).
+          # Model id pinned LITERALLY (a mutable vars.* would change review
+          # behavior with no PR/audit trail). claude-opus-4-8 is a pinned
+          # snapshot id (the 4.6+ generation uses a dateless-but-pinned format).
           # --allowedTools is intentionally Read,Grep,Glob only (no Bash, no writes).
           # --max-turns caps the agent loop.
           claude_args: >-
-            --model <PLACEHOLDER-BEDROCK-OPUS-MODEL-ID>
+            --model claude-opus-4-8
             --allowedTools Read,Grep,Glob
             --max-turns 20
           prompt: |
@@ -210,8 +189,8 @@ jobs:
       # ─────────────────────────────────────────────────────────────────────
       # (POST phase): read+validate the model's JSON, compute the
       # resolved-diff structurally, render markdown deterministically, and upsert
-      # the SINGLE consolidated ISSUE comment with an optimistic lock. Cloud
-      # creds are NOT needed here; this is pure GitHub I/O.
+      # the SINGLE consolidated ISSUE comment with an optimistic lock. No model
+      # creds are needed here; this is pure GitHub I/O.
       # `if: always()` so a non-zero model step still lets us post (or skip
       # fail-soft) — but the script itself exits 0 on any error.
       # ─────────────────────────────────────────────────────────────────────

@@ -76,17 +76,28 @@ type RowScope = {
 
 /**
  * Looks up the existing row's `workspace_id` (and `user_id`, plus `scope` for
- * scope-aware tables) by primary key. Used by PATCH/DELETE validation to
- * discover the workspace the operation targets — composite-PK tables have
- * `(id, workspace_id)` so a bare id match must fan out across whatever rows
- * share the id, but in practice rows are uuid-keyed and globally unique, so
- * the first match is the row.
+ * scope-aware tables) by primary key.
+ *
+ * Composite-PK tables have `(id, workspace_id)` so the same id can repeat across
+ * workspaces — most synced rows use uuidv7 ids that are globally unique, but
+ * default-data rows (`defaults/tasks`, `defaults/models`, …) ship with fixed
+ * ids that `reconcileDefaults` re-inserts into every user's personal workspace.
+ * A bare-id lookup against those defaults returns whichever user happened to
+ * sync first, so a second user's upsert is mis-routed to the wrong workspace
+ * and rejected as `NOT_ROW_OWNER` / `NOT_WORKSPACE_MEMBER`.
+ *
+ * `hint` disambiguates: pass `workspaceId` on PUT (the payload carries it) for
+ * an exact composite-key lookup; pass `userId` on PATCH/DELETE (the payload
+ * doesn't carry workspace_id) to prefer the row authored by the caller. Both
+ * fall back to bare-id if no row matches the hint, so non-default rows keep
+ * working unchanged.
  */
 const fetchRowScope = async (
   tx: UploadTx,
   tableName: PowerSyncTableName,
   rowId: string,
   scopeAware: boolean,
+  hint: { workspaceId?: string; userId?: string } = {},
 ): Promise<RowScope | null> => {
   const table = powersyncTablesByName[tableName] as AnyPgTable & {
     workspaceId: AnyPgColumn
@@ -100,18 +111,40 @@ const fetchRowScope = async (
     select.scope = table.scope
   }
 
-  const rows = await tx.select(select).from(table).where(eq(pkColumn, rowId)).limit(1)
+  const toScope = (row: Record<string, unknown>): RowScope => {
+    const rawScope = row.scope
+    return {
+      workspaceId: row.workspaceId as string,
+      userId: (row.userId as string | null) ?? null,
+      scope: rawScope === 'user' || rawScope === 'workspace' ? rawScope : null,
+    }
+  }
 
-  const row = rows[0]
-  if (!row) {
-    return null
+  const runQuery = async (where: ReturnType<typeof eq>): Promise<RowScope | null> => {
+    const rows = await tx.select(select).from(table).where(where).limit(1)
+    return rows[0] ? toScope(rows[0] as Record<string, unknown>) : null
   }
-  const rawScope = (row as { scope?: unknown }).scope
-  return {
-    workspaceId: row.workspaceId as string,
-    userId: (row.userId as string | null) ?? null,
-    scope: rawScope === 'user' || rawScope === 'workspace' ? rawScope : null,
+
+  // `workspaceId` hint is authoritative: when the caller knows the target
+  // workspace (PUT carries it in the payload), the (id, workspace_id) composite
+  // is the exact PK. No match means "no existing row in that workspace" — fall
+  // through to the bare-id lookup would re-introduce the cross-workspace bleed
+  // this whole helper exists to prevent.
+  if (hint.workspaceId) {
+    return runQuery(and(eq(pkColumn, rowId), eq(table.workspaceId, hint.workspaceId))!)
   }
+  // PATCH/DELETE don't carry workspace_id. Prefer the row authored by the
+  // caller (covers user-private tables and the default-data case where each
+  // user's personal workspace owns its own copy under the same id). Fall back
+  // to bare-id so shared-workspace rows authored by another member still
+  // resolve — downstream membership / userPrivate checks gate the actual write.
+  if (hint.userId) {
+    const owned = await runQuery(and(eq(pkColumn, rowId), eq(table.userId, hint.userId))!)
+    if (owned) {
+      return owned
+    }
+  }
+  return runQuery(eq(pkColumn, rowId))
 }
 
 /**
@@ -176,8 +209,12 @@ export const createWorkspaceScopedHandler = (cfg: WorkspaceScopedConfig): Upload
         }
         const targetWorkspaceId = isString(op.data?.workspace_id) ? op.data.workspace_id : null
         // For an upsert against an existing row, fall back to the row's workspace
-        // if the payload doesn't carry one.
-        const existing = await fetchRowScope(tx, tableName, op.id, scopeAware)
+        // if the payload doesn't carry one. The `workspaceId` hint disambiguates
+        // default-data rows that repeat the same id across users' workspaces.
+        const existing = await fetchRowScope(tx, tableName, op.id, scopeAware, {
+          workspaceId: targetWorkspaceId ?? undefined,
+          userId: ctx.userId,
+        })
         const resolvedWorkspaceId = targetWorkspaceId ?? existing?.workspaceId
         if (!resolvedWorkspaceId) {
           return reject('permanent', 'WORKSPACE_ID_REQUIRED')
@@ -201,7 +238,7 @@ export const createWorkspaceScopedHandler = (cfg: WorkspaceScopedConfig): Upload
         return allow()
       }
 
-      const scope = await fetchRowScope(tx, tableName, op.id, scopeAware)
+      const scope = await fetchRowScope(tx, tableName, op.id, scopeAware, { userId: ctx.userId })
       if (!scope) {
         return reject('permanent', 'ROW_NOT_FOUND')
       }
@@ -235,7 +272,8 @@ export const createWorkspaceScopedHandler = (cfg: WorkspaceScopedConfig): Upload
         case 'PUT': {
           const targetWorkspaceId = isString(op.data?.workspace_id) ? op.data.workspace_id : null
           const resolvedWorkspaceId =
-            targetWorkspaceId ?? (await fetchRowScope(tx, tableName, op.id, scopeAware))?.workspaceId
+            targetWorkspaceId ??
+            (await fetchRowScope(tx, tableName, op.id, scopeAware, { userId: ctx.userId }))?.workspaceId
           if (!resolvedWorkspaceId) {
             throw new UploadRejection('permanent', 'WORKSPACE_ID_REQUIRED')
           }
@@ -299,7 +337,7 @@ export const createWorkspaceScopedHandler = (cfg: WorkspaceScopedConfig): Upload
             // hijack a shared row into their personal bucket. Falls back to
             // "drop" when the row has no owner — defensive; in practice every
             // synced row carries a user_id from create-time.
-            const ownerScope = await fetchRowScope(tx, tableName, op.id, true)
+            const ownerScope = await fetchRowScope(tx, tableName, op.id, true, { userId: ctx.userId })
             if (!ownerScope || ownerScope.userId !== ctx.userId) {
               delete patchPayload.scope
             } else if (patchPayload.scope !== 'workspace' && patchPayload.scope !== 'user') {
@@ -318,7 +356,7 @@ export const createWorkspaceScopedHandler = (cfg: WorkspaceScopedConfig): Upload
 
           // Re-fetch scope to pin workspace_id in the WHERE clause. Composite PK
           // (id, workspace_id) means WHERE id alone could touch rows across workspaces.
-          const patchScope = await fetchRowScope(tx, tableName, op.id, scopeAware)
+          const patchScope = await fetchRowScope(tx, tableName, op.id, scopeAware, { userId: ctx.userId })
           if (!patchScope) {
             throw new UploadRejection('permanent', 'ROW_NOT_FOUND')
           }
@@ -335,7 +373,7 @@ export const createWorkspaceScopedHandler = (cfg: WorkspaceScopedConfig): Upload
           return
         }
         case 'DELETE': {
-          const deleteScope = await fetchRowScope(tx, tableName, op.id, scopeAware)
+          const deleteScope = await fetchRowScope(tx, tableName, op.id, scopeAware, { userId: ctx.userId })
           if (!deleteScope) {
             throw new UploadRejection('permanent', 'ROW_NOT_FOUND')
           }

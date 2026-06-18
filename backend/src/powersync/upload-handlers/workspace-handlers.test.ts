@@ -8,6 +8,7 @@ import {
   mcpServersTable,
   modelsTable,
   skillsTable,
+  tasksTable,
   workspaceMembershipsTable,
   workspacePendingMembershipsTable,
   workspacePermissionsTable,
@@ -2312,6 +2313,161 @@ describe('workspace upload handlers', () => {
 
       const stored = await db.select().from(agentsTable).where(eq(agentsTable.id, agentId))
       expect(stored[0].name).toBe('Private')
+    })
+  })
+
+  describe('default-data id collisions across personal workspaces', () => {
+    // `defaults/tasks` (and other default tables) ship with fixed UUIDs that
+    // `reconcileDefaults` re-inserts into every user's personal workspace. The
+    // composite PK `(id, workspace_id)` permits the row to repeat per workspace
+    // — fetchRowScope must honor that, or the second user to sync sees their
+    // PUT mis-routed to the first user's row (NOT_ROW_OWNER / NOT_WORKSPACE_MEMBER).
+    const sharedTaskId = '0198ecc5-cc2b-735b-b478-93f8db7202ce'
+
+    it('accepts the same task id from two users (one per personal workspace)', async () => {
+      await insertUser('collideA', 'a@test.com')
+      await insertUser('collideB', 'b@test.com')
+      const wsA = await bootstrapPersonalViaUpload('collideA')
+      const wsB = await bootstrapPersonalViaUpload('collideB')
+
+      const putFor = (workspaceId: string): UploadOp => ({
+        op: 'PUT',
+        type: 'tasks',
+        id: sharedTaskId,
+        data: { workspace_id: workspaceId, item: 'Connect your email', order: 100, is_complete: 0 },
+      })
+
+      expect((await applyUploadBatch(db, [putFor(wsA)], ctxFor('collideA'))).ok).toBe(true)
+      expect((await applyUploadBatch(db, [putFor(wsB)], ctxFor('collideB'))).ok).toBe(true)
+
+      const rows = await db.select().from(tasksTable).where(eq(tasksTable.id, sharedTaskId))
+      expect(rows).toHaveLength(2)
+      const byWorkspace = Object.fromEntries(rows.map((r) => [r.workspaceId, r.userId]))
+      expect(byWorkspace[wsA]).toBe('collideA')
+      expect(byWorkspace[wsB]).toBe('collideB')
+    })
+
+    it('PATCH on a shared-id task resolves to the caller-owned row', async () => {
+      await insertUser('patchA', 'pa@test.com')
+      await insertUser('patchB', 'pb@test.com')
+      const wsA = await bootstrapPersonalViaUpload('patchA')
+      const wsB = await bootstrapPersonalViaUpload('patchB')
+
+      await applyUploadBatch(
+        db,
+        [
+          {
+            op: 'PUT',
+            type: 'tasks',
+            id: sharedTaskId,
+            data: { workspace_id: wsA, item: 'A original', order: 100, is_complete: 0 },
+          },
+        ],
+        ctxFor('patchA'),
+      )
+      await applyUploadBatch(
+        db,
+        [
+          {
+            op: 'PUT',
+            type: 'tasks',
+            id: sharedTaskId,
+            data: { workspace_id: wsB, item: 'B original', order: 100, is_complete: 0 },
+          },
+        ],
+        ctxFor('patchB'),
+      )
+
+      // Patch from B should land on B's row, not A's. With the pre-fix bare-id
+      // lookup, validate() would resolve to A's row and reject as NOT_ROW_OWNER.
+      const patchResult = await applyUploadBatch(
+        db,
+        [{ op: 'PATCH', type: 'tasks', id: sharedTaskId, data: { item: 'B edited' } }],
+        ctxFor('patchB'),
+      )
+      expect(patchResult.ok).toBe(true)
+      if (patchResult.ok) {
+        expect(patchResult.rejected).toHaveLength(0)
+      }
+
+      const aRow = (await db.select().from(tasksTable).where(eq(tasksTable.workspaceId, wsA)))[0]
+      const bRow = (await db.select().from(tasksTable).where(eq(tasksTable.workspaceId, wsB)))[0]
+      expect(aRow.item).toBe('A original')
+      expect(bRow.item).toBe('B edited')
+    })
+
+    // Same collision shape on a non-userPrivate, scopeAware table. PUT didn't
+    // fail loud pre-fix (the NOT_ROW_OWNER branch only fires for userPrivate or
+    // scope='user' rows), but PATCH/DELETE on a personal-workspace default
+    // would resolve to the other user's row and reject as NOT_WORKSPACE_MEMBER.
+    const sharedModelId = 'd045a4c0-3f93-4f30-a608-24e07856e11d'
+
+    it('accepts the same model id from two users (one per personal workspace)', async () => {
+      await insertUser('mdlA', 'mdla@test.com')
+      await insertUser('mdlB', 'mdlb@test.com')
+      const wsA = await bootstrapPersonalViaUpload('mdlA')
+      const wsB = await bootstrapPersonalViaUpload('mdlB')
+
+      const putFor = (workspaceId: string): UploadOp => ({
+        op: 'PUT',
+        type: 'models',
+        id: sharedModelId,
+        data: {
+          workspace_id: workspaceId,
+          provider: 'openai',
+          name: 'Default model',
+          model: 'gpt-test',
+          enabled: 1,
+          scope: 'workspace',
+        },
+      })
+
+      expect((await applyUploadBatch(db, [putFor(wsA)], ctxFor('mdlA'))).ok).toBe(true)
+      expect((await applyUploadBatch(db, [putFor(wsB)], ctxFor('mdlB'))).ok).toBe(true)
+
+      const rows = await db.select().from(modelsTable).where(eq(modelsTable.id, sharedModelId))
+      expect(rows).toHaveLength(2)
+      const byWorkspace = Object.fromEntries(rows.map((r) => [r.workspaceId, r.userId]))
+      expect(byWorkspace[wsA]).toBe('mdlA')
+      expect(byWorkspace[wsB]).toBe('mdlB')
+    })
+
+    it('PATCH on a shared-id model resolves to the caller-owned row', async () => {
+      await insertUser('mdlPA', 'mdlpa@test.com')
+      await insertUser('mdlPB', 'mdlpb@test.com')
+      const wsA = await bootstrapPersonalViaUpload('mdlPA')
+      const wsB = await bootstrapPersonalViaUpload('mdlPB')
+
+      const seed = (workspaceId: string, name: string): UploadOp => ({
+        op: 'PUT',
+        type: 'models',
+        id: sharedModelId,
+        data: {
+          workspace_id: workspaceId,
+          provider: 'openai',
+          name,
+          model: 'gpt-test',
+          enabled: 1,
+          scope: 'workspace',
+        },
+      })
+      await applyUploadBatch(db, [seed(wsA, 'A original')], ctxFor('mdlPA'))
+      await applyUploadBatch(db, [seed(wsB, 'B original')], ctxFor('mdlPB'))
+
+      const patchResult = await applyUploadBatch(
+        db,
+        [{ op: 'PATCH', type: 'models', id: sharedModelId, data: { name: 'B edited' } }],
+        ctxFor('mdlPB'),
+      )
+      expect(patchResult.ok).toBe(true)
+      if (patchResult.ok) {
+        expect(patchResult.rejected).toHaveLength(0)
+      }
+
+      const aRow = (await db.select().from(modelsTable).where(eq(modelsTable.workspaceId, wsA)))[0]
+      const bRow = (await db.select().from(modelsTable).where(eq(modelsTable.workspaceId, wsB)))[0]
+      expect(aRow.name).toBe('A original')
+      expect(bRow.name).toBe('B edited')
     })
   })
 })

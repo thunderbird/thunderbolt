@@ -27,6 +27,7 @@ import {
   createMcpServerWithCredentials,
   deleteMcpServer,
   getRemoteMcpServers,
+  updateMcpServerWithCredentials,
 } from '@/dal'
 import type { McpServerCredentials } from '@/dal/mcp-secrets'
 import { useDatabase } from '@/contexts'
@@ -36,7 +37,7 @@ import { type McpServer } from '@/types'
 import { useMutation } from '@tanstack/react-query'
 import { useQuery } from '@powersync/tanstack-react-query'
 import { eq } from 'drizzle-orm'
-import { Check, Copy, Globe, LockKeyhole, Plus, RefreshCw, Server, Trash2, X } from 'lucide-react'
+import { Check, Copy, Globe, LockKeyhole, Pencil, Plus, RefreshCw, Server, Trash2, X } from 'lucide-react'
 import { useEffect, useRef, useState, type KeyboardEvent, type ReactNode } from 'react'
 import { useLocation, useNavigate } from 'react-router'
 import { v7 as uuidv7 } from 'uuid'
@@ -281,6 +282,19 @@ export default function McpServersPage({ deps = {} }: { deps?: McpServersPageDep
     return acc
   }, {})
 
+  // Prefill source for Edit: the on-device bearer token (if the stored credential
+  // is bearer). OAuth credentials are intentionally not surfaced — the token UI
+  // only accepts bearer values, and OAuth is managed via the Authorize buttons.
+  const bearerTokenById = mcpSecrets.reduce<Record<string, string>>((acc, row) => {
+    if (row.credentials) {
+      const cred = JSON.parse(row.credentials) as McpServerCredentials
+      if (cred.type === 'bearer') {
+        acc[row.id] = cred.token
+      }
+    }
+    return acc
+  }, {})
+
   // Tools for connected servers. The query keys on each CONNECTION's identity
   // (`id:generation`, where the generation changes whenever the provider swaps in
   // a fresh client instance) — keying on the id set alone would serve the dead
@@ -332,6 +346,36 @@ export default function McpServersPage({ deps = {} }: { deps?: McpServersPageDep
     },
   })
 
+  const updateServerMutation = useMutation({
+    mutationFn: async ({
+      id,
+      name,
+      url,
+      transport,
+      token,
+      originalCredentialType,
+    }: {
+      id: string
+      name: string
+      url: string
+      transport: MCPTransportType
+      token: string
+      originalCredentialType: StoredCredentialType
+    }) => {
+      // Credential semantics on edit:
+      //   - token filled → store as bearer (replaces any prior credential, OAuth included)
+      //   - token blank + originally bearer → delete the credential (user cleared the field)
+      //   - token blank + originally oauth/none → leave the credential alone, so a rename
+      //     of an OAuth-authorized server doesn't wipe its tokens
+      const credentials = token
+        ? ({ type: 'bearer', token } as const)
+        : originalCredentialType === 'bearer'
+          ? null
+          : undefined
+      await updateMcpServerWithCredentials(db, id, { name, url, type: transport }, credentials)
+    },
+  })
+
   const importServersMutation = useMutation({
     mutationFn: async (parsed: ParsedMcpServer[]): Promise<void> => {
       await createMcpServersWithCredentials(
@@ -372,6 +416,26 @@ export default function McpServersPage({ deps = {} }: { deps?: McpServersPageDep
     await addServerMutation.mutateAsync({ id: uuidv7(), name: resolveServerName(), url: newServerUrl })
     form.resetAddDialog()
     resetLocalDialogState()
+  }
+
+  const handleUpdateServer = async () => {
+    if (!form.editingServerId || !newServerUrl || !isUrlValid) {
+      return
+    }
+    await updateServerMutation.mutateAsync({
+      id: form.editingServerId,
+      name: resolveServerName(),
+      url: newServerUrl,
+      transport: newServerTransport,
+      token: newServerToken,
+      originalCredentialType: credentialTypeById[form.editingServerId] ?? 'none',
+    })
+    form.resetAddDialog()
+    resetLocalDialogState()
+  }
+
+  const handleEditClick = (server: McpServer) => {
+    form.openEditDialog(server, bearerTokenById[server.id] ?? null)
   }
 
   /**
@@ -431,8 +495,8 @@ export default function McpServersPage({ deps = {} }: { deps?: McpServersPageDep
       if (testResult.kind === 'idle' && newServerUrl && isUrlValid) {
         testConnection()
       } else if (testResult.kind === 'success') {
-        handleAddServer()
-      } else if (testResult.kind === 'needs-oauth') {
+        form.editingServerId ? handleUpdateServer() : handleAddServer()
+      } else if (testResult.kind === 'needs-oauth' && !form.editingServerId) {
         handleAddAndAuthorize()
       }
     }
@@ -586,30 +650,35 @@ export default function McpServersPage({ deps = {} }: { deps?: McpServersPageDep
           </DialogTrigger>
           <ResponsiveModalContentComposable className="sm:max-w-[500px] max-h-[85vh]">
             <ResponsiveModalHeader>
-              <ResponsiveModalTitle>Add MCP Server</ResponsiveModalTitle>
-              <ResponsiveModalDescription className="sr-only">Add a new MCP server</ResponsiveModalDescription>
+              <ResponsiveModalTitle>{form.editingServerId ? 'Edit MCP Server' : 'Add MCP Server'}</ResponsiveModalTitle>
+              <ResponsiveModalDescription className="sr-only">
+                {form.editingServerId ? 'Edit MCP server' : 'Add a new MCP server'}
+              </ResponsiveModalDescription>
             </ResponsiveModalHeader>
 
-            <ToggleGroup
-              type="single"
-              variant="outline"
-              value={mode}
-              onValueChange={(value) => {
-                if (value !== 'simple' && value !== 'advanced') {
-                  return
-                }
-                // Each mode owns a different error source (JSON import vs OAuth
-                // authorization). Clear both on switch so a stale message from the
-                // mode you're leaving can't surface under the new mode's UI.
-                setImportError(null)
-                clearDialogError()
-                setMode(value)
-              }}
-              className="w-full flex-shrink-0"
-            >
-              <ToggleGroupItem value="simple">Simple</ToggleGroupItem>
-              <ToggleGroupItem value="advanced">Advanced (JSON)</ToggleGroupItem>
-            </ToggleGroup>
+            {/* Advanced (JSON) is bulk-import only — irrelevant when editing a single server. */}
+            {!form.editingServerId && (
+              <ToggleGroup
+                type="single"
+                variant="outline"
+                value={mode}
+                onValueChange={(value) => {
+                  if (value !== 'simple' && value !== 'advanced') {
+                    return
+                  }
+                  // Each mode owns a different error source (JSON import vs OAuth
+                  // authorization). Clear both on switch so a stale message from the
+                  // mode you're leaving can't surface under the new mode's UI.
+                  setImportError(null)
+                  clearDialogError()
+                  setMode(value)
+                }}
+                className="w-full flex-shrink-0"
+              >
+                <ToggleGroupItem value="simple">Simple</ToggleGroupItem>
+                <ToggleGroupItem value="advanced">Advanced (JSON)</ToggleGroupItem>
+              </ToggleGroup>
+            )}
 
             <div className="flex-1 overflow-y-auto px-1 -mx-1">
               {mode === 'simple' ? (
@@ -747,7 +816,16 @@ export default function McpServersPage({ deps = {} }: { deps?: McpServersPageDep
               >
                 Cancel
               </Button>
-              {mode === 'advanced' ? (
+              {form.editingServerId ? (
+                <Button
+                  onClick={handleUpdateServer}
+                  disabled={
+                    !newServerUrl || !isUrlValid || testResult.kind !== 'success' || updateServerMutation.isPending
+                  }
+                >
+                  Save Changes
+                </Button>
+              ) : mode === 'advanced' ? (
                 <Button onClick={handleImportConfig} disabled={!jsonText.trim() || importServersMutation.isPending}>
                   Import Servers
                 </Button>
@@ -906,6 +984,22 @@ export default function McpServersPage({ deps = {} }: { deps?: McpServersPageDep
                       </TooltipTrigger>
                       <TooltipContent side="bottom">
                         <p>{isEnabled ? 'Disable server' : 'Enable server'}</p>
+                      </TooltipContent>
+                    </Tooltip>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Button
+                          aria-label="Edit server"
+                          variant="ghost"
+                          size="sm"
+                          className="h-8 w-8 p-0"
+                          onClick={() => handleEditClick(server)}
+                        >
+                          <Pencil className="h-4 w-4" />
+                        </Button>
+                      </TooltipTrigger>
+                      <TooltipContent side="bottom">
+                        <p>Edit server</p>
                       </TooltipContent>
                     </Tooltip>
                     <Popover

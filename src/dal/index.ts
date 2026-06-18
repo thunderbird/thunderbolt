@@ -72,6 +72,8 @@ export {
   deleteMcpServer,
   getAllMcpServers,
   getRemoteMcpServers,
+  updateMcpServer,
+  updateMcpServerWithCredentials,
   type McpServerWithCredential,
 } from './mcp-servers'
 

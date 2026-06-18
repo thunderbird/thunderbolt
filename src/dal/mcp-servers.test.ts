@@ -13,6 +13,7 @@ import {
   deleteMcpServer,
   getAllMcpServers,
   getRemoteMcpServers,
+  updateMcpServerWithCredentials,
 } from './mcp-servers'
 import { getMcpServerCredentials } from './mcp-secrets'
 import { resetTestDatabase, setupTestDatabase, teardownTestDatabase } from './test-utils'
@@ -313,6 +314,69 @@ describe('MCP Servers DAL', () => {
       // Verify original deletedAt is preserved
       const rawServer = await db.select().from(mcpServersTable).get()
       expect(rawServer?.deletedAt).toBe(originalDeletedAt)
+    })
+  })
+
+  describe('updateMcpServerWithCredentials', () => {
+    it('patches mutable fields and leaves credentials alone when none given', async () => {
+      const db = getDb()
+      const id = uuidv7()
+      await createMcpServerWithCredentials(
+        db,
+        { id, name: 'Original', type: 'http', url: 'https://example.com/mcp', enabled: 1 },
+        { type: 'bearer', token: 'original-token' },
+      )
+
+      await updateMcpServerWithCredentials(db, id, { name: 'Renamed', url: 'https://new.example.com/mcp' })
+
+      const servers = await getAllMcpServers(db)
+      expect(servers[0]?.name).toBe('Renamed')
+      expect(servers[0]?.url).toBe('https://new.example.com/mcp')
+      expect(await getMcpServerCredentials(db, id)).toEqual({ type: 'bearer', token: 'original-token' })
+    })
+
+    it('replaces the credential when an object is given', async () => {
+      const db = getDb()
+      const id = uuidv7()
+      await createMcpServerWithCredentials(
+        db,
+        { id, name: 'Server', type: 'http', url: 'https://example.com/mcp', enabled: 1 },
+        { type: 'bearer', token: 'old-token' },
+      )
+
+      await updateMcpServerWithCredentials(db, id, { name: 'Server' }, { type: 'bearer', token: 'new-token' })
+
+      expect(await getMcpServerCredentials(db, id)).toEqual({ type: 'bearer', token: 'new-token' })
+    })
+
+    it('deletes the credential when null is given', async () => {
+      const db = getDb()
+      const id = uuidv7()
+      await createMcpServerWithCredentials(
+        db,
+        { id, name: 'Server', type: 'http', url: 'https://example.com/mcp', enabled: 1 },
+        { type: 'bearer', token: 'doomed' },
+      )
+
+      await updateMcpServerWithCredentials(db, id, { name: 'Server' }, null)
+
+      expect(await getMcpServerCredentials(db, id)).toBeNull()
+    })
+
+    it('adds a credential to a previously-uncredentialed server', async () => {
+      const db = getDb()
+      const id = uuidv7()
+      await createMcpServerWithCredentials(db, {
+        id,
+        name: 'Open Server',
+        type: 'http',
+        url: 'https://example.com/mcp',
+        enabled: 1,
+      })
+
+      await updateMcpServerWithCredentials(db, id, {}, { type: 'bearer', token: 'fresh' })
+
+      expect(await getMcpServerCredentials(db, id)).toEqual({ type: 'bearer', token: 'fresh' })
     })
   })
 

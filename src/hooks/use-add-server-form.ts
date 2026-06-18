@@ -9,6 +9,7 @@ import type { probeMcpServerTools } from '@/lib/mcp-connection-test'
 import { buildMcpHeaders, createMcpTransport, type MCPTransportType } from '@/lib/mcp-transport'
 import { validateMcpServerUrl } from '@/lib/mcp-url-validation'
 import type { FetchFn } from '@/lib/proxy-fetch'
+import type { McpServer } from '@/types'
 import { useEffect, useReducer, useRef } from 'react'
 
 /**
@@ -44,6 +45,8 @@ export const generateServerName = (url: string): string => {
 
 type AddServerFormState = {
   isAddDialogOpen: boolean
+  /** Non-null when the dialog is editing an existing server (id) instead of adding one. */
+  editingServerId: string | null
   name: string
   /** True once the user edits the name field, so the URL stops re-deriving it. */
   nameManuallyEdited: boolean
@@ -56,6 +59,7 @@ type AddServerFormState = {
 
 type AddServerFormAction =
   | { type: 'open-dialog' }
+  | { type: 'open-edit-dialog'; server: McpServer; bearerToken: string | null }
   | { type: 'reset' }
   | { type: 'set-name'; value: string }
   | { type: 'set-url'; value: string; derivedName: string | null }
@@ -68,6 +72,7 @@ type AddServerFormAction =
 
 const initialState: AddServerFormState = {
   isAddDialogOpen: false,
+  editingServerId: null,
   name: '',
   nameManuallyEdited: false,
   url: '',
@@ -81,6 +86,19 @@ const addServerFormReducer = (state: AddServerFormState, action: AddServerFormAc
   switch (action.type) {
     case 'open-dialog':
       return { ...state, isAddDialogOpen: true }
+    case 'open-edit-dialog':
+      // Edit prefills every field from the existing row. `nameManuallyEdited`
+      // is set so a URL change during edit doesn't clobber the existing name.
+      return {
+        ...initialState,
+        isAddDialogOpen: true,
+        editingServerId: action.server.id,
+        name: action.server.name ?? '',
+        nameManuallyEdited: true,
+        url: action.server.url ?? '',
+        transport: action.server.type === 'sse' ? 'sse' : 'http',
+        token: action.bearerToken ?? '',
+      }
     case 'reset':
       return initialState
     case 'set-name':
@@ -119,7 +137,11 @@ export type AddServerFormDeps = {
 
 export type UseAddServerFormResult = {
   isAddDialogOpen: boolean
+  /** Id of the server being edited, or null when the dialog is in Add mode. */
+  editingServerId: string | null
   openDialog: () => void
+  /** Opens the dialog in Edit mode with all fields prefilled from the existing server. */
+  openEditDialog: (server: McpServer, bearerToken: string | null) => void
   /** Closes the dialog and clears all add-form state (Cancel / Escape / overlay). */
   resetAddDialog: () => void
   name: string
@@ -170,6 +192,17 @@ export const useAddServerForm = ({
   const lastAutoTestedUrlRef = useRef<string | null>(null)
 
   const openDialog = () => dispatch({ type: 'open-dialog' })
+
+  // Open the dialog with every field prefilled from an existing server row +
+  // its on-device bearer token (null for OAuth or no-cred). The auto-detect
+  // effect will probe the prefilled URL after the standard 700ms debounce, so
+  // the user must still pass Test Connection before saving — same gate as Add.
+  const openEditDialog = (server: McpServer, bearerToken: string | null) => {
+    probeIdRef.current += 1
+    lastAutoTestedUrlRef.current = null
+    onClearDialogError()
+    dispatch({ type: 'open-edit-dialog', server, bearerToken })
+  }
 
   // Closes the Add dialog and clears all add-form state. Bumps the probe id so an
   // in-flight connection probe can't land its result after the dialog is gone.
@@ -302,7 +335,9 @@ export const useAddServerForm = ({
 
   return {
     isAddDialogOpen: state.isAddDialogOpen,
+    editingServerId: state.editingServerId,
     openDialog,
+    openEditDialog,
     resetAddDialog,
     name: state.name,
     url: state.url,

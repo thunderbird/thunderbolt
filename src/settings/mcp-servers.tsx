@@ -820,7 +820,13 @@ export default function McpServersPage({ deps = {} }: { deps?: McpServersPageDep
                 <Button
                   onClick={handleUpdateServer}
                   disabled={
-                    !newServerUrl || !isUrlValid || testResult.kind !== 'success' || updateServerMutation.isPending
+                    !newServerUrl ||
+                    !isUrlValid ||
+                    // Connection-affecting fields untouched ⇒ existing credential
+                    // (including OAuth) is presumed valid; otherwise require a
+                    // fresh successful probe.
+                    (form.hasConnectionEdits && testResult.kind !== 'success') ||
+                    updateServerMutation.isPending
                   }
                 >
                   Save Changes

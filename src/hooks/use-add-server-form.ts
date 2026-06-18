@@ -55,6 +55,11 @@ type AddServerFormState = {
   token: string
   isTestingConnection: boolean
   testResult: TestConnectionResult | { kind: 'idle' }
+  /** Snapshot of url/transport/token at edit-open. Used to detect whether the
+   *  user changed a connection-affecting field, so the Save gate can skip the
+   *  fresh-probe requirement on a metadata-only edit (e.g. rename) where the
+   *  existing credential — including OAuth — is presumed valid. Null in Add mode. */
+  originalConnection: { url: string; transport: MCPTransportType; token: string } | null
 }
 
 type AddServerFormAction =
@@ -80,25 +85,31 @@ const initialState: AddServerFormState = {
   token: '',
   isTestingConnection: false,
   testResult: { kind: 'idle' },
+  originalConnection: null,
 }
 
 const addServerFormReducer = (state: AddServerFormState, action: AddServerFormAction): AddServerFormState => {
   switch (action.type) {
     case 'open-dialog':
       return { ...state, isAddDialogOpen: true }
-    case 'open-edit-dialog':
+    case 'open-edit-dialog': {
       // Edit prefills every field from the existing row. `nameManuallyEdited`
       // is set so a URL change during edit doesn't clobber the existing name.
+      const url = action.server.url ?? ''
+      const transport: MCPTransportType = action.server.type === 'sse' ? 'sse' : 'http'
+      const token = action.bearerToken ?? ''
       return {
         ...initialState,
         isAddDialogOpen: true,
         editingServerId: action.server.id,
         name: action.server.name ?? '',
         nameManuallyEdited: true,
-        url: action.server.url ?? '',
-        transport: action.server.type === 'sse' ? 'sse' : 'http',
-        token: action.bearerToken ?? '',
+        url,
+        transport,
+        token,
+        originalConnection: { url, transport, token },
       }
+    }
     case 'reset':
       return initialState
     case 'set-name':
@@ -156,6 +167,12 @@ export type UseAddServerFormResult = {
   testResult: TestConnectionResult | { kind: 'idle' }
   isTestingConnection: boolean
   serverCapabilities: string[]
+  /** True when a connection-affecting field (url/transport/token) differs from
+   *  the value loaded at edit-open. Always true in Add mode (no original
+   *  snapshot). Callers gate the Save-Changes test-success requirement on this
+   *  so a metadata-only edit can save without re-probing — important for OAuth
+   *  servers, whose empty-token probe would classify as `needs-oauth`. */
+  hasConnectionEdits: boolean
   testConnection: () => Promise<void>
   /** Leaving the URL field probes immediately (unless the debounce already did). */
   handleUrlBlur: () => void
@@ -314,7 +331,9 @@ export const useAddServerForm = ({
   }
 
   const changeName = (value: string) => {
-    resetConnectionTest()
+    // Name doesn't participate in the probe (only url/transport/token do), so a
+    // rename must not invalidate a passing test — otherwise Save Changes gets
+    // stuck disabled until the user re-edits a connection field or retests.
     dispatch({ type: 'set-name', value })
   }
 
@@ -351,6 +370,11 @@ export const useAddServerForm = ({
     isTestingConnection: state.isTestingConnection,
     // Derived: the discovered tools live on a successful result — no separate state to keep in sync.
     serverCapabilities: state.testResult.kind === 'success' ? state.testResult.tools : [],
+    hasConnectionEdits:
+      !state.originalConnection ||
+      state.url !== state.originalConnection.url ||
+      state.transport !== state.originalConnection.transport ||
+      state.token !== state.originalConnection.token,
     testConnection,
     handleUrlBlur,
     resolveServerName,

@@ -206,6 +206,50 @@ describe('useAddServerForm', () => {
     expect(result.current.testResult.kind).toBe('needs-oauth')
   })
 
+  it('keeps a passing test result when only the name is edited', async () => {
+    const { result } = renderForm(makeDeps())
+
+    act(() => result.current.openDialog())
+    act(() => result.current.changeUrl('https://tools.example.com/mcp'))
+    await act(async () => {
+      getClock().tick(700)
+      await getClock().runAllAsync()
+    })
+    expect(result.current.testResult.kind).toBe('success')
+
+    // Renaming doesn't change what the probe verifies, so the success must survive —
+    // otherwise Save Changes gets stuck disabled with no obvious recovery.
+    act(() => result.current.changeName('My Server'))
+    expect(result.current.testResult.kind).toBe('success')
+  })
+
+  it('reports hasConnectionEdits only for connection-affecting fields in edit mode', () => {
+    const { result } = renderForm(makeDeps())
+
+    act(() =>
+      result.current.openEditDialog(
+        { id: 's1', name: 'GitHub', url: 'https://api.github.com/mcp', type: 'http', enabled: 1 } as never,
+        'tok-1',
+      ),
+    )
+    expect(result.current.hasConnectionEdits).toBe(false)
+
+    // Name is metadata, not part of the probe — must not flip the flag.
+    act(() => result.current.changeName('Renamed'))
+    expect(result.current.hasConnectionEdits).toBe(false)
+
+    act(() => result.current.changeUrl('https://api.github.com/mcp/v2'))
+    expect(result.current.hasConnectionEdits).toBe(true)
+  })
+
+  it('hasConnectionEdits is true in Add mode (no original snapshot)', () => {
+    const { result } = renderForm(makeDeps())
+
+    act(() => result.current.openDialog())
+    // No original to diff against — Add must keep the existing test-success Save gate.
+    expect(result.current.hasConnectionEdits).toBe(true)
+  })
+
   it('resets all form state on resetAddDialog', async () => {
     const { result } = renderForm(makeDeps())
 

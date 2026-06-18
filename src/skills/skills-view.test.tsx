@@ -231,13 +231,24 @@ describe('SkillsView state machine', () => {
      * SkillsView's initial mode is `'detail'` and `active` falls back to the
      * first skill in the list — so by the time the panel renders, that skill is
      * already the detail target. We just need to open the More menu and pick Edit.
+     *
+     * The Edit lookup scopes to the freshly-opened (`data-state="open"`) menu:
+     * Radix portals attach to document.body, and earlier-suite tests in random
+     * order can leave detached menu nodes around. A bare `getByText('Edit')`
+     * then throws "multiple matches" before reaching this test's menu.
      */
     const openEditOnActiveSkill = async () => {
       const moreBtn = await waitForElement(() => screen.queryByRole('button', { name: 'More' }))
       fireEvent.pointerDown(moreBtn, { button: 0, pointerType: 'mouse' })
       fireEvent.pointerUp(moreBtn, { button: 0, pointerType: 'mouse' })
       await flush()
-      const editBtn = await waitForElement(() => screen.queryByText('Edit'))
+      const editBtn = await waitForElement(() => {
+        // Pick the most recently mounted "Edit" — when an earlier test leaks a
+        // Radix portal into document.body, the leaked menuitem stays at the
+        // front of the node list and the freshly-opened one is appended last.
+        const items = screen.queryAllByText('Edit')
+        return items.at(-1) ?? null
+      })
       fireEvent.click(editBtn)
       await flush()
     }

@@ -76,6 +76,11 @@ describe('useScopePickerEnabled', () => {
   afterEach(() => {
     resetTestTrustDomain()
     cleanup()
+    // Reset on the way out too — the last test in the file leaves the store
+    // mutated, which can flip downstream files (skills-view, etc.) into the
+    // `allowUserScopedResources: false` branch when bun's randomize picks an
+    // order that lands them after this suite.
+    useConfigStore.setState({ config: {} })
   })
 
   it('returns false in a personal workspace (single-member; the workspace/user split is meaningless)', async () => {

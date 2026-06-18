@@ -10,6 +10,7 @@ import { domMax, LazyMotion } from 'framer-motion'
 import type { ReactNode } from 'react'
 import { MemoryRouter } from 'react-router'
 
+import { useConfigStore } from '@/api/config-store'
 import { SidebarProvider } from '@/components/ui/sidebar'
 import { createSkill, getSkill, getSkillByName, setSkillPinned } from '@/dal'
 import { otherWsId, seedTestPersonalAdminMembership, testUserId, wsId } from '@/dal/test-utils'
@@ -44,6 +45,10 @@ beforeEach(async () => {
   // to gate the Create + Delete affordances. Seed the personal-admin
   // membership so the test user resolves as admin and the buttons render.
   await seedTestPersonalAdminMembership()
+  // Defensive — `useConfigStore` is a process-wide Zustand store; other
+  // suites that mutate `allowUserScopedResources` and don't clean up would
+  // otherwise flip `useScopePickerEnabled` off here and hide the ScopePicker.
+  useConfigStore.setState({ config: {} })
 })
 
 afterEach(() => {

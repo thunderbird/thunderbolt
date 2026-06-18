@@ -292,10 +292,21 @@ export const createWorkspaceScopedHandler = (cfg: WorkspaceScopedConfig): Upload
           delete patchPayload.id
           delete patchPayload.user_id
           delete patchPayload.workspace_id
-          if (scopeAware) {
-            // `scope` is immutable after create — silently drop, mirroring the
-            // existing workspace_id / user_id behaviour.
-            delete patchPayload.scope
+          if (scopeAware && patchPayload.scope !== undefined) {
+            // Scope changes are gated on row ownership: the author may flip
+            // their own row (share a private skill, or hide a shared one), but
+            // a co-member's scope change is silently dropped so they can't
+            // hijack a shared row into their personal bucket. Falls back to
+            // "drop" when the row has no owner — defensive; in practice every
+            // synced row carries a user_id from create-time.
+            const ownerScope = await fetchRowScope(tx, tableName, op.id, true)
+            if (!ownerScope || ownerScope.userId !== ctx.userId) {
+              delete patchPayload.scope
+            } else if (patchPayload.scope !== 'workspace' && patchPayload.scope !== 'user') {
+              // Reject obviously-malformed values rather than letting Postgres
+              // throw a check-constraint error later.
+              throw new UploadRejection('permanent', 'INVALID_SCOPE')
+            }
           }
           for (const col of denyColumns) {
             delete patchPayload[col]

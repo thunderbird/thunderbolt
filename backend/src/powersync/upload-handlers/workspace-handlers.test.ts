@@ -2125,7 +2125,7 @@ describe('workspace upload handlers', () => {
       expect(result.ok).toBe(true)
     })
 
-    it('PATCH cannot flip scope (silently dropped)', async () => {
+    it("PATCH lets the row owner flip scope from 'workspace' to 'user'", async () => {
       await insertUser('scOwner8', 'scowner8@test.com')
       await insertUser('scOther8', 'scother8@test.com')
       const workspaceId = await seedShared('scOwner8', 'scOther8')
@@ -2136,13 +2136,75 @@ describe('workspace upload handlers', () => {
         op: 'PATCH',
         type: 'skills',
         id: putOp.id,
-        data: { scope: 'user', description: 'changed' },
+        data: { scope: 'user', description: 'now private' },
       }
       const result = await applyUploadBatch(db, [editOp], ctxFor('scOwner8'))
       expect(result.ok).toBe(true)
       const stored = await db.select().from(skillsTable).where(eq(skillsTable.id, putOp.id))
+      expect(stored[0].scope).toBe('user')
+      expect(stored[0].description).toBe('now private')
+    })
+
+    it("PATCH lets the row owner flip scope from 'user' to 'workspace'", async () => {
+      await insertUser('scOwnerB', 'scownerB@test.com')
+      await insertUser('scOtherB', 'scotherB@test.com')
+      const workspaceId = await seedShared('scOwnerB', 'scOtherB')
+      const putOp = skillPut(workspaceId, 'user')
+      expect((await applyUploadBatch(db, [putOp], ctxFor('scOwnerB'))).ok).toBe(true)
+
+      const editOp: UploadOp = {
+        op: 'PATCH',
+        type: 'skills',
+        id: putOp.id,
+        data: { scope: 'workspace' },
+      }
+      const result = await applyUploadBatch(db, [editOp], ctxFor('scOwnerB'))
+      expect(result.ok).toBe(true)
+      const stored = await db.select().from(skillsTable).where(eq(skillsTable.id, putOp.id))
       expect(stored[0].scope).toBe('workspace')
-      expect(stored[0].description).toBe('changed')
+    })
+
+    it('PATCH scope by a non-owner is silently dropped (other fields still apply)', async () => {
+      await insertUser('scOwnerC', 'scownerC@test.com')
+      await insertUser('scOtherC', 'scotherC@test.com')
+      const workspaceId = await seedShared('scOwnerC', 'scOtherC')
+      // Grant the non-owner add_skills so PATCH reaches the apply path; without
+      // it the op would be rejected on permission grounds and we'd never see
+      // the silent-drop behaviour.
+      await db
+        .insert(workspacePermissionsTable)
+        .values({ id: uuidv7(), workspaceId, permissionKey: 'add_skills', requiredRole: 'member' })
+      const putOp = skillPut(workspaceId, 'workspace')
+      expect((await applyUploadBatch(db, [putOp], ctxFor('scOwnerC'))).ok).toBe(true)
+
+      const editOp: UploadOp = {
+        op: 'PATCH',
+        type: 'skills',
+        id: putOp.id,
+        data: { scope: 'user', description: 'snuck through' },
+      }
+      const result = await applyUploadBatch(db, [editOp], ctxFor('scOtherC'))
+      expect(result.ok).toBe(true)
+      const stored = await db.select().from(skillsTable).where(eq(skillsTable.id, putOp.id))
+      expect(stored[0].scope).toBe('workspace')
+      expect(stored[0].description).toBe('snuck through')
+    })
+
+    it('PATCH rejects an obviously-malformed scope value with INVALID_SCOPE', async () => {
+      await insertUser('scOwnerD', 'scownerD@test.com')
+      await insertUser('scOtherD', 'scotherD@test.com')
+      const workspaceId = await seedShared('scOwnerD', 'scOtherD')
+      const putOp = skillPut(workspaceId, 'workspace')
+      expect((await applyUploadBatch(db, [putOp], ctxFor('scOwnerD'))).ok).toBe(true)
+
+      const editOp: UploadOp = {
+        op: 'PATCH',
+        type: 'skills',
+        id: putOp.id,
+        data: { scope: 'global' },
+      }
+      const result = await applyUploadBatch(db, [editOp], ctxFor('scOwnerD'))
+      expectPermanentReject(result, 'INVALID_SCOPE')
     })
 
     it('PUT upsert by the owner preserves existing scope (cannot promote/demote)', async () => {

@@ -28,6 +28,7 @@ export const createTestSettings = (overrides: Partial<Settings> = {}): Settings 
   authAllowAnonymous: false,
   allowWorkspaceCreationByAnon: false,
   allowWorkspaceCreationByMembers: false,
+  allowUserScopedResources: true,
   oidcClientId: '',
   oidcClientSecret: '',
   oidcIssuer: '',

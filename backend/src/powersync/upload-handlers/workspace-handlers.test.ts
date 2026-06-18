@@ -2002,4 +2002,254 @@ describe('workspace upload handlers', () => {
       expectPermanentReject(result, 'INSUFFICIENT_PERMISSION')
     })
   })
+
+  describe('scope-aware resources (THU-603)', () => {
+    const seedShared = async (adminId: string, memberId: string): Promise<string> => {
+      const workspaceId = uuidv7()
+      await db.insert(workspacesTable).values({ id: workspaceId, isPersonal: false, name: 'Acme' })
+      await db.insert(workspaceMembershipsTable).values({ id: uuidv7(), workspaceId, userId: adminId, role: 'admin' })
+      await db.insert(workspaceMembershipsTable).values({ id: uuidv7(), workspaceId, userId: memberId, role: 'member' })
+      return workspaceId
+    }
+
+    const skillPut = (workspaceId: string, scope: 'workspace' | 'user' | undefined, id = uuidv7()): UploadOp => ({
+      op: 'PUT',
+      type: 'skills',
+      id,
+      data: {
+        workspace_id: workspaceId,
+        name: 'Test skill',
+        description: 'Test',
+        instruction: 'Do the thing',
+        enabled: 1,
+        ...(scope !== undefined ? { scope } : {}),
+      },
+    })
+
+    it('PUT defaults scope to workspace when payload omits it', async () => {
+      await insertUser('scOwner1', 'scowner1@test.com')
+      await insertUser('scOther1', 'scother1@test.com')
+      const workspaceId = await seedShared('scOwner1', 'scOther1')
+
+      const op = skillPut(workspaceId, undefined)
+      const result = await applyUploadBatch(db, [op], ctxFor('scOwner1'))
+      expect(result.ok).toBe(true)
+      const stored = await db.select().from(skillsTable).where(eq(skillsTable.id, op.id))
+      expect(stored[0].scope).toBe('workspace')
+    })
+
+    it('PUT accepts scope=user from the row owner', async () => {
+      await insertUser('scOwner2', 'scowner2@test.com')
+      await insertUser('scOther2', 'scother2@test.com')
+      const workspaceId = await seedShared('scOwner2', 'scOther2')
+
+      const op = skillPut(workspaceId, 'user')
+      const result = await applyUploadBatch(db, [op], ctxFor('scOwner2'))
+      expect(result.ok).toBe(true)
+      const stored = await db.select().from(skillsTable).where(eq(skillsTable.id, op.id))
+      expect(stored[0].scope).toBe('user')
+      expect(stored[0].userId).toBe('scOwner2')
+    })
+
+    it('PUT scope=user is rejected when allowUserScopedResources is false', async () => {
+      await insertUser('scOwner3', 'scowner3@test.com')
+      await insertUser('scOther3', 'scother3@test.com')
+      const workspaceId = await seedShared('scOwner3', 'scOther3')
+
+      const op = skillPut(workspaceId, 'user')
+      const result = await applyUploadBatch(
+        db,
+        [op],
+        ctxFor('scOwner3', { settings: createTestSettings({ allowUserScopedResources: false }) }),
+      )
+      expectPermanentReject(result, 'USER_SCOPE_DISABLED')
+    })
+
+    it('PUT scope=workspace is allowed even when allowUserScopedResources is false', async () => {
+      await insertUser('scOwner4', 'scowner4@test.com')
+      await insertUser('scOther4', 'scother4@test.com')
+      const workspaceId = await seedShared('scOwner4', 'scOther4')
+
+      const op = skillPut(workspaceId, 'workspace')
+      const result = await applyUploadBatch(
+        db,
+        [op],
+        ctxFor('scOwner4', { settings: createTestSettings({ allowUserScopedResources: false }) }),
+      )
+      expect(result.ok).toBe(true)
+    })
+
+    it('PATCH on a scope=user row by a non-owner is rejected with NOT_ROW_OWNER', async () => {
+      await insertUser('scOwner5', 'scowner5@test.com')
+      await insertUser('scOther5', 'scother5@test.com')
+      const workspaceId = await seedShared('scOwner5', 'scOther5')
+      const putOp = skillPut(workspaceId, 'user')
+      expect((await applyUploadBatch(db, [putOp], ctxFor('scOwner5'))).ok).toBe(true)
+
+      const editOp: UploadOp = {
+        op: 'PATCH',
+        type: 'skills',
+        id: putOp.id,
+        data: { description: 'Stolen' },
+      }
+      const result = await applyUploadBatch(db, [editOp], ctxFor('scOther5'))
+      expectPermanentReject(result, 'NOT_ROW_OWNER')
+    })
+
+    it('DELETE on a scope=user row by a non-owner is rejected with NOT_ROW_OWNER', async () => {
+      await insertUser('scOwner6', 'scowner6@test.com')
+      await insertUser('scOther6', 'scother6@test.com')
+      const workspaceId = await seedShared('scOwner6', 'scOther6')
+      const putOp = skillPut(workspaceId, 'user')
+      expect((await applyUploadBatch(db, [putOp], ctxFor('scOwner6'))).ok).toBe(true)
+
+      const deleteOp: UploadOp = { op: 'DELETE', type: 'skills', id: putOp.id }
+      const result = await applyUploadBatch(db, [deleteOp], ctxFor('scOther6'))
+      expectPermanentReject(result, 'NOT_ROW_OWNER')
+    })
+
+    it('PATCH on a scope=user row by the owner is allowed', async () => {
+      await insertUser('scOwner7', 'scowner7@test.com')
+      await insertUser('scOther7', 'scother7@test.com')
+      const workspaceId = await seedShared('scOwner7', 'scOther7')
+      const putOp = skillPut(workspaceId, 'user')
+      expect((await applyUploadBatch(db, [putOp], ctxFor('scOwner7'))).ok).toBe(true)
+
+      const editOp: UploadOp = {
+        op: 'PATCH',
+        type: 'skills',
+        id: putOp.id,
+        data: { description: 'Updated by owner' },
+      }
+      const result = await applyUploadBatch(db, [editOp], ctxFor('scOwner7'))
+      expect(result.ok).toBe(true)
+    })
+
+    it('PATCH cannot flip scope (silently dropped)', async () => {
+      await insertUser('scOwner8', 'scowner8@test.com')
+      await insertUser('scOther8', 'scother8@test.com')
+      const workspaceId = await seedShared('scOwner8', 'scOther8')
+      const putOp = skillPut(workspaceId, 'workspace')
+      expect((await applyUploadBatch(db, [putOp], ctxFor('scOwner8'))).ok).toBe(true)
+
+      const editOp: UploadOp = {
+        op: 'PATCH',
+        type: 'skills',
+        id: putOp.id,
+        data: { scope: 'user', description: 'changed' },
+      }
+      const result = await applyUploadBatch(db, [editOp], ctxFor('scOwner8'))
+      expect(result.ok).toBe(true)
+      const stored = await db.select().from(skillsTable).where(eq(skillsTable.id, putOp.id))
+      expect(stored[0].scope).toBe('workspace')
+      expect(stored[0].description).toBe('changed')
+    })
+
+    it('PUT upsert by the owner preserves existing scope (cannot promote/demote)', async () => {
+      await insertUser('scOwner9', 'scowner9@test.com')
+      await insertUser('scOther9', 'scother9@test.com')
+      const workspaceId = await seedShared('scOwner9', 'scOther9')
+      const putOp = skillPut(workspaceId, 'user')
+      expect((await applyUploadBatch(db, [putOp], ctxFor('scOwner9'))).ok).toBe(true)
+
+      const upsert: UploadOp = {
+        op: 'PUT',
+        type: 'skills',
+        id: putOp.id,
+        data: {
+          workspace_id: workspaceId,
+          scope: 'workspace',
+          name: 'Renamed',
+          description: 'Test',
+          instruction: 'Do the thing',
+          enabled: 1,
+        },
+      }
+      const result = await applyUploadBatch(db, [upsert], ctxFor('scOwner9'))
+      expect(result.ok).toBe(true)
+      const stored = await db.select().from(skillsTable).where(eq(skillsTable.id, putOp.id))
+      expect(stored[0].scope).toBe('user')
+      expect(stored[0].name).toBe('Renamed')
+    })
+
+    it('PUT upsert against an existing scope=user row by a non-owner is rejected', async () => {
+      await insertUser('scOwnerA', 'scownerA@test.com')
+      await insertUser('scOtherA', 'scotherA@test.com')
+      const workspaceId = await seedShared('scOwnerA', 'scOtherA')
+      const putOp = skillPut(workspaceId, 'user')
+      expect((await applyUploadBatch(db, [putOp], ctxFor('scOwnerA'))).ok).toBe(true)
+
+      const upsert: UploadOp = {
+        op: 'PUT',
+        type: 'skills',
+        id: putOp.id,
+        data: {
+          workspace_id: workspaceId,
+          scope: 'workspace',
+          name: 'Hijacked',
+          description: 'Test',
+          instruction: 'Do the thing',
+          enabled: 1,
+        },
+      }
+      const result = await applyUploadBatch(db, [upsert], ctxFor('scOtherA'))
+      expectPermanentReject(result, 'NOT_ROW_OWNER')
+    })
+
+    it('PUT scope=user on agents is rejected when settings flag is off', async () => {
+      await insertUser('scAgentOwner', 'scagentowner@test.com')
+      await insertUser('scAgentOther', 'scagentother@test.com')
+      const workspaceId = await seedShared('scAgentOwner', 'scAgentOther')
+
+      const op: UploadOp = {
+        op: 'PUT',
+        type: 'agents',
+        id: uuidv7(),
+        data: {
+          workspace_id: workspaceId,
+          name: 'My private agent',
+          type: 'remote-acp',
+          transport: 'websocket',
+          url: 'wss://example.com/agent',
+          enabled: 1,
+          scope: 'user',
+        },
+      }
+      const result = await applyUploadBatch(
+        db,
+        [op],
+        ctxFor('scAgentOwner', { settings: createTestSettings({ allowUserScopedResources: false }) }),
+      )
+      expectPermanentReject(result, 'USER_SCOPE_DISABLED')
+    })
+
+    it('scope=user agents accept PATCH/DELETE only from the owner', async () => {
+      await insertUser('scAgentOwner2', 'scagentowner2@test.com')
+      await insertUser('scAgentOther2', 'scagentother2@test.com')
+      const workspaceId = await seedShared('scAgentOwner2', 'scAgentOther2')
+      const agentId = uuidv7()
+
+      const putOp: UploadOp = {
+        op: 'PUT',
+        type: 'agents',
+        id: agentId,
+        data: {
+          workspace_id: workspaceId,
+          name: 'Private',
+          type: 'remote-acp',
+          transport: 'websocket',
+          url: 'wss://example.com/a',
+          enabled: 1,
+          scope: 'user',
+        },
+      }
+      expect((await applyUploadBatch(db, [putOp], ctxFor('scAgentOwner2'))).ok).toBe(true)
+
+      const editByOther: UploadOp = { op: 'PATCH', type: 'agents', id: agentId, data: { name: 'Stolen' } }
+      expectPermanentReject(await applyUploadBatch(db, [editByOther], ctxFor('scAgentOther2')), 'NOT_ROW_OWNER')
+
+      const stored = await db.select().from(agentsTable).where(eq(agentsTable.id, agentId))
+      expect(stored[0].name).toBe('Private')
+    })
+  })
 })

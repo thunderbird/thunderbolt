@@ -48,7 +48,7 @@ import { toCompilableQuery } from '@powersync/drizzle-driver'
 import { generateText } from 'ai'
 import { http } from '@/lib/http'
 import { AlertTriangle, Check, Cpu, Loader2, Lock, Pen, Plus, Trash2, X } from 'lucide-react'
-import { useEffect, useMemo, useReducer, useRef, useState, type KeyboardEvent } from 'react'
+import { useCallback, useEffect, useMemo, useReducer, useRef, useState, type KeyboardEvent } from 'react'
 import { useForm } from 'react-hook-form'
 import { v7 as uuidv7 } from 'uuid'
 import { z } from 'zod'
@@ -65,9 +65,6 @@ type AvailableModel = {
 type ModelState = {
   isAddDialogOpen: boolean
   deleteConfirmOpen: string | null
-  isTestingConnection: boolean
-  connectionStatus: 'idle' | 'success' | 'error'
-  connectionError: string | null
   isLoadingModels: boolean
   selectedModelId: string
   allAvailableModels: AvailableModel[]
@@ -77,9 +74,6 @@ type ModelState = {
 type ModelAction =
   | { type: 'OPEN_DIALOG' }
   | { type: 'CLOSE_DIALOG' }
-  | { type: 'START_CONNECTION_TEST' }
-  | { type: 'CONNECTION_TEST_SUCCESS' }
-  | { type: 'CONNECTION_TEST_FAILURE'; error: string }
   | { type: 'FETCH_MODELS_START' }
   | { type: 'FETCH_MODELS_SUCCESS'; models: AvailableModel[] }
   | { type: 'FETCH_MODELS_FAILURE'; error: string }
@@ -91,9 +85,6 @@ type ModelAction =
 const initialState: ModelState = {
   isAddDialogOpen: false,
   deleteConfirmOpen: null,
-  isTestingConnection: false,
-  connectionStatus: 'idle',
-  connectionError: null,
   isLoadingModels: false,
   selectedModelId: '',
   allAvailableModels: [],
@@ -107,13 +98,6 @@ const modelReducer = (state: ModelState, action: ModelAction): ModelState => {
       return { ...initialState, isAddDialogOpen: true }
     case 'CLOSE_DIALOG':
       return { ...initialState, isAddDialogOpen: false }
-
-    case 'START_CONNECTION_TEST':
-      return { ...state, isTestingConnection: true, connectionStatus: 'idle', connectionError: null }
-    case 'CONNECTION_TEST_SUCCESS':
-      return { ...state, isTestingConnection: false, connectionStatus: 'success' }
-    case 'CONNECTION_TEST_FAILURE':
-      return { ...state, isTestingConnection: false, connectionStatus: 'error', connectionError: action.error }
 
     case 'FETCH_MODELS_START':
       return {
@@ -146,9 +130,6 @@ const modelReducer = (state: ModelState, action: ModelAction): ModelState => {
         allAvailableModels: [],
         modelLoadError: null,
         isLoadingModels: false,
-        connectionStatus: 'idle',
-        connectionError: null,
-        isTestingConnection: false,
       }
 
     case 'OPEN_DELETE_CONFIRM':
@@ -159,6 +140,93 @@ const modelReducer = (state: ModelState, action: ModelAction): ModelState => {
     default:
       return state
   }
+}
+
+type ConnectionTestConfig = {
+  provider: Model['provider']
+  model: string
+  name?: string
+  url?: string | null
+  apiKey?: string | null
+}
+
+const useModelConnectionTest = () => {
+  const getProxyFetch = useProxyFetchGetter()
+  const [isTesting, setIsTesting] = useState(false)
+  const [status, setStatus] = useState<'idle' | 'success' | 'error'>('idle')
+  const [error, setError] = useState<string | null>(null)
+
+  const test = useCallback(
+    async (config: ConnectionTestConfig) => {
+      if (!config.provider || !config.model) {
+        return
+      }
+
+      setIsTesting(true)
+      setStatus('idle')
+      setError(null)
+
+      const timeoutPromise = new Promise<never>((_, reject) => {
+        setTimeout(() => reject(new Error('Connection test timed out after 10 seconds')), 10000)
+      })
+
+      try {
+        const modelConfig = {
+          id: 'test',
+          name: config.name || 'Test Model',
+          provider: config.provider,
+          model: config.model,
+          url: config.url || null,
+          apiKey: config.apiKey || null,
+          isSystem: 0,
+          enabled: 1,
+          toolUsage: 1,
+          isConfidential: 0,
+          startWithReasoning: 0,
+          supportsParallelToolCalls: 1,
+          contextWindow: null,
+          tokenizer: null,
+          deletedAt: null,
+          defaultHash: null,
+          vendor: null,
+          description: null,
+          userId: null,
+        }
+        const aiModel = await createModel(modelConfig, getProxyFetch)
+        const { text } = await Promise.race([
+          generateText({ model: aiModel, prompt: 'Say "test successful" if you can read this.', maxRetries: 0 }),
+          timeoutPromise,
+        ])
+        console.log('Model test response:', text)
+        setStatus('success')
+      } catch (err) {
+        console.error('Connection test error:', err)
+        setStatus('error')
+        setError(err instanceof Error ? err.message : 'Failed to connect to model')
+      } finally {
+        setIsTesting(false)
+      }
+    },
+    [getProxyFetch],
+  )
+
+  const reset = useCallback(() => {
+    setStatus('idle')
+    setError(null)
+    setIsTesting(false)
+  }, [])
+
+  return { isTesting, status, error, test, reset }
+}
+
+const canTestModelConnection = (provider: Model['provider'], model?: string, apiKey?: string | null) => {
+  if (!model) {
+    return false
+  }
+  if (['anthropic', 'tinfoil'].includes(provider)) {
+    return !!apiKey
+  }
+  return true
 }
 
 const formSchema = z
@@ -233,9 +301,34 @@ const EditModelForm = ({
     },
   })
 
+  const connectionTest = useModelConnectionTest()
+  const { isTesting, status: connectionStatus, error: connectionError, test, reset } = connectionTest
+
+  const watchedModel = form.watch('model')
+  const watchedUrl = form.watch('url')
+  const watchedApiKey = form.watch('apiKey')
+
+  // Any change to credentials/model invalidates a prior successful test.
+  useEffect(() => {
+    reset()
+  }, [watchedModel, watchedUrl, watchedApiKey, reset])
+
   const handleSubmit = (values: z.infer<typeof editFormSchema>) => {
     onSubmit({ ...values, id: model.id })
   }
+
+  const handleTest = () => {
+    const values = form.getValues()
+    test({
+      provider: model.provider,
+      model: values.model,
+      name: values.name,
+      url: values.url,
+      apiKey: values.apiKey,
+    })
+  }
+
+  const canTest = canTestModelConnection(model.provider, watchedModel, watchedApiKey)
 
   return (
     <Form {...form}>
@@ -300,11 +393,50 @@ const EditModelForm = ({
           />
         )}
 
+        {canTest && (
+          <Button type="button" onClick={handleTest} disabled={isTesting} variant="outline" className="w-full">
+            {isTesting ? (
+              <>
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                Testing Model...
+              </>
+            ) : (
+              'Test Model'
+            )}
+          </Button>
+        )}
+
+        {connectionStatus === 'success' && (
+          <StatusCard
+            title={
+              <>
+                <Check className="h-5 w-5 text-green-600" />
+                Test successful!
+              </>
+            }
+            description="Successfully got a response from the model."
+            className="border-green-200/50 dark:border-green-500/20"
+          />
+        )}
+
+        {connectionStatus === 'error' && (
+          <StatusCard
+            title={
+              <>
+                <X className="h-5 w-5 text-red-600" />
+                Test failed
+              </>
+            }
+            description={connectionError || 'Received an error while testing the model.'}
+            className="bg-red-50/50 dark:bg-red-500/10 border-red-200/50 dark:border-red-500/20"
+          />
+        )}
+
         <div className="flex justify-end gap-3 pt-2">
           <Button type="button" variant="ghost" onClick={onCancel}>
             Cancel
           </Button>
-          <Button type="submit" disabled={isPending || !form.formState.isDirty}>
+          <Button type="submit" disabled={isPending || !form.formState.isDirty || connectionStatus !== 'success'}>
             Save
           </Button>
         </div>
@@ -345,20 +477,18 @@ const EditModelModal = ({
 
 export default function ModelsPage() {
   const db = useDatabase()
-  const getProxyFetch = useProxyFetchGetter()
   const [state, dispatch] = useReducer(modelReducer, initialState)
   const [editingModel, setEditingModel] = useState<Model | null>(null)
+  const { isAddDialogOpen, deleteConfirmOpen, isLoadingModels, selectedModelId, allAvailableModels, modelLoadError } =
+    state
+  const connectionTest = useModelConnectionTest()
   const {
-    isAddDialogOpen,
-    deleteConfirmOpen,
-    isTestingConnection,
-    connectionStatus,
-    connectionError,
-    isLoadingModels,
-    selectedModelId,
-    allAvailableModels,
-    modelLoadError,
-  } = state
+    isTesting: isTestingConnection,
+    status: connectionStatus,
+    error: connectionError,
+    test: runConnectionTest,
+    reset: resetConnectionTest,
+  } = connectionTest
 
   const { data: models = [] } = useQuery({
     queryKey: ['models'],
@@ -457,77 +587,22 @@ export default function ModelsPage() {
     })
   }
 
-  const testConnection = async () => {
+  const testConnection = () => {
     const values = form.getValues()
     const modelId = selectedModelId === 'custom' && values.customModel ? values.customModel : values.model
-
-    if (!values.provider || !modelId) {
-      return
-    }
-
-    dispatch({ type: 'START_CONNECTION_TEST' })
-
-    // Create a timeout promise
-    const timeoutPromise = new Promise<never>((_, reject) => {
-      setTimeout(() => {
-        reject(new Error('Connection test timed out after 10 seconds'))
-      }, 10000)
+    runConnectionTest({
+      provider: values.provider,
+      model: modelId,
+      name: values.name,
+      url: values.url,
+      apiKey: values.apiKey,
     })
-
-    try {
-      // Create a temporary model configuration
-      const modelConfig = {
-        id: 'test',
-        name: values.name || 'Test Model',
-        provider: values.provider,
-        model: modelId,
-        url: values.url || null,
-        apiKey: values.apiKey || null,
-        isSystem: 0,
-        enabled: 1,
-      }
-
-      // Use the same createModel function as the chat
-      const modelConfigWithDefaults = {
-        ...modelConfig,
-        toolUsage: 1,
-        isConfidential: 0,
-        startWithReasoning: 0,
-        supportsParallelToolCalls: 1,
-        contextWindow: null,
-        tokenizer: null,
-        deletedAt: null,
-        defaultHash: null, // User-created, not based on a default
-        vendor: null,
-        description: null,
-        userId: null,
-      }
-      const model = await createModel(modelConfigWithDefaults, getProxyFetch)
-
-      // Test with a minimal prompt - race against timeout
-      const { text } = await Promise.race([
-        generateText({
-          model,
-          prompt: 'Say "test successful" if you can read this.',
-          maxRetries: 0,
-        }),
-        timeoutPromise,
-      ])
-
-      console.log('Model test response:', text)
-      dispatch({ type: 'CONNECTION_TEST_SUCCESS' })
-    } catch (error) {
-      console.error('Connection test error:', error)
-      dispatch({
-        type: 'CONNECTION_TEST_FAILURE',
-        error: error instanceof Error ? error.message : 'Failed to connect to model',
-      })
-    }
   }
 
   const handleDialogOpenChange = (open: boolean) => {
     if (open) {
       dispatch({ type: 'OPEN_DIALOG' })
+      resetConnectionTest()
 
       if (form.getValues('provider') === 'thunderbolt' && allAvailableModels.length === 0) {
         fetchAvailableModels('thunderbolt')
@@ -536,6 +611,7 @@ export default function ModelsPage() {
       form.reset()
       form.clearErrors()
       dispatch({ type: 'CLOSE_DIALOG' })
+      resetConnectionTest()
     }
   }
 
@@ -879,13 +955,15 @@ export default function ModelsPage() {
 
   const watchedModel = form.watch('model')
 
-  const canTestConnection = useMemo(() => {
-    if (['anthropic', 'tinfoil'].includes(watchedProvider)) {
-      return !!watchedModel && watchedApiKey
-    }
+  const canTestConnection = useMemo(
+    () => canTestModelConnection(watchedProvider, watchedModel, watchedApiKey),
+    [watchedApiKey, watchedModel, watchedProvider],
+  )
 
-    return !!watchedModel
-  }, [watchedApiKey, watchedModel, watchedProvider])
+  // Any change to credentials/model invalidates a prior successful test.
+  useEffect(() => {
+    resetConnectionTest()
+  }, [watchedProvider, watchedModel, watchedUrl, watchedApiKey, resetConnectionTest])
 
   return (
     <div className="flex flex-col gap-6 p-4 pb-12 w-full max-w-[760px] mx-auto">
@@ -1143,7 +1221,7 @@ export default function ModelsPage() {
                   <Button type="button" variant="ghost" onClick={() => handleDialogOpenChange(false)}>
                     Cancel
                   </Button>
-                  <Button type="submit" disabled={addModelMutation.isPending}>
+                  <Button type="submit" disabled={addModelMutation.isPending || connectionStatus !== 'success'}>
                     {addModelMutation.isPending ? 'Adding...' : 'Add Model'}
                   </Button>
                 </div>

@@ -109,18 +109,24 @@ const createUserRateLimitMiddleware = (limiter: RateLimiterDrizzle) =>
  * Uses `extractClientIp` to resolve the real client IP behind a trusted proxy,
  * falling back to the Bun socket IP when no proxy is configured.
  *
- * Skips rate limiting when the IP cannot be determined (returns 'unknown'),
- * to avoid funnelling all unidentifiable traffic into a single bucket.
+ * Fails CLOSED when the client IP cannot be resolved: unidentifiable traffic
+ * shares a single `ip:unknown` bucket rather than skipping the limit, so this
+ * control guarding abuse-prone unauthenticated endpoints (OTP send, waitlist
+ * join) can never silently disable itself. Identifiable clients are unaffected —
+ * each keeps its own `ip:<addr>` bucket, so real traffic is never funnelled into
+ * the shared one. In practice 'unknown' never occurs under TCP-listening Bun
+ * (`server.requestIP()` always returns the peer address); it would only arise on
+ * a non-TCP transport (e.g. a Unix-domain socket), where collectively capping
+ * unattributable traffic is the safe default.
  */
 const createIpRateLimitMiddleware = (limiter: RateLimiterDrizzle, trustedProxy: IpRateLimitSettings['trustedProxy']) =>
   new Elysia()
     .onBeforeHandle(async (ctx) => {
       const { set } = ctx
-      const socketIp = ctx.server?.requestIP(ctx.request)?.address ?? 'unknown'
+      // `|| 'unknown'` (not `??`): a degenerate empty-string address folds into the
+      // same shared fail-closed bucket as a missing one, never a stray `ip:` key.
+      const socketIp = ctx.server?.requestIP(ctx.request)?.address || 'unknown'
       const clientIp = extractClientIp(ctx.request.headers, socketIp, trustedProxy)
-      if (clientIp === 'unknown') {
-        return
-      }
       return consumeOrReject(limiter, `ip:${clientIp}`, set)
     })
     .as('scoped')

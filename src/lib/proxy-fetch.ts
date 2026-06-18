@@ -27,7 +27,7 @@ import {
 } from '@shared/proxy-protocol'
 import { encodeWsBearer, wsBearerSubprotocolPrefix, wsCarrierSubprotocol } from '@shared/ws-bearer'
 import { getAuthToken } from './auth-token'
-import { isTauri } from './platform'
+import { getCapabilities, isTauri } from './platform'
 
 const defaultIsStandalone = isTauri
 const defaultReadProxyEnabled = (): string | null =>
@@ -157,16 +157,30 @@ export type ProxyFetchOptions = {
    *  in `src/ai/fetch.ts`) pass a getter that reads the `proxy_enabled` localStorage
    *  key + derives the effective value per platform. */
   getProxyEnabled?: () => boolean
+  /** Whether `tauri-plugin-http` is registered in the current build. Defaults
+   *  to `getCapabilities()` (memoised) — tests inject a stub. When false, the
+   *  Tauri-direct path is unreachable (the plugin's JS shim would throw
+   *  "plugin http not found"), so we fall through to the hosted proxy even on
+   *  Tauri with `proxy_enabled=false`. Universal Proxy (THU-467) is the
+   *  intended path; this guard makes the toggle a no-op in builds that ship
+   *  without the native fetch capability. */
+  getNativeFetchCapability?: () => Promise<boolean>
 }
 
 /** Build a fetch implementation that hides Hosted/Standalone mode from callers. */
 export const createProxyFetch = (options: ProxyFetchOptions): FetchFn => {
   const proxyUrl = `${options.cloudUrl.replace(/\/$/, '')}/proxy`
+  const readNativeFetchCapability =
+    options.getNativeFetchCapability ?? (() => getCapabilities().then((c) => c.native_fetch))
   const proxyFetch = async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
     const standalone = (options.isStandalone ?? isTauri)()
     const proxyEnabled = options.getProxyEnabled?.() ?? true
-    if (standalone && !proxyEnabled) {
-      // Standalone + toggle off: hit the upstream directly through Tauri's HTTP plugin.
+    if (standalone && !proxyEnabled && (await readNativeFetchCapability())) {
+      // Standalone + toggle off + plugin compiled in: hit the upstream directly
+      // through Tauri's HTTP plugin. Builds without `--features native_fetch`
+      // fall through to the hosted proxy (THU-467 Universal Proxy is the
+      // canonical path; the Tauri-direct branch is opt-in for builds that
+      // want to keep the user's IP off our backend).
       const tFetch = options.tauriFetch ?? (tauriFetch as unknown as typeof fetch)
       return tFetch(input as RequestInfo, init ?? {}) as unknown as Response
     }

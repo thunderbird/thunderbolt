@@ -160,6 +160,13 @@ export type CreateSkillInput = {
   name: string
   description: string
   instruction: string
+  /** Per-row visibility. Defaults to `'workspace'` — shared with every member.
+   *  `'user'` keeps the row private to its author within the workspace (THU-603). */
+  scope?: 'workspace' | 'user'
+  /** Owner of the row. Required for `scope: 'user'` so the BE handler / sync
+   *  rules can resolve the per-user bucket; pass the active user's id from the
+   *  caller's session. Optional for `scope: 'workspace'` (any member may write). */
+  userId?: string | null
 }
 
 /**
@@ -186,9 +193,9 @@ export const createSkill = async (
     pinnedOrder: null,
     deletedAt: null,
     defaultHash: null,
-    userId: null,
+    userId: input.userId ?? null,
     workspaceId,
-    scope: 'workspace',
+    scope: input.scope ?? 'workspace',
   }
   await db.insert(skillsTable).values(row)
   return row

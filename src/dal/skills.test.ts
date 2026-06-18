@@ -118,6 +118,28 @@ describe('skills DAL', () => {
       await expect(seed({ name: '-leading-hyphen' })).rejects.toBeInstanceOf(SkillNameInvalidError)
       await expect(seed({ name: 'double--hyphen' })).rejects.toBeInstanceOf(SkillNameInvalidError)
     })
+
+    it("defaults scope to 'workspace' when input omits it (THU-603)", async () => {
+      const skill = await seed({ name: 'default-scope' })
+      expect(skill.scope).toBe('workspace')
+      const fetched = await getSkill(getDb(), wsId, skill.id)
+      expect(fetched?.scope).toBe('workspace')
+    })
+
+    it("persists scope='user' with userId on the row (THU-603)", async () => {
+      const skill = await createSkill(getDb(), wsId, {
+        name: 'private-skill',
+        description: 'Only me',
+        instruction: 'do it',
+        scope: 'user',
+        userId: 'user-1',
+      })
+      expect(skill.scope).toBe('user')
+      expect(skill.userId).toBe('user-1')
+      const fetched = await getSkill(getDb(), wsId, skill.id)
+      expect(fetched?.scope).toBe('user')
+      expect(fetched?.userId).toBe('user-1')
+    })
   })
 
   describe('updateSkill', () => {

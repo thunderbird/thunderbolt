@@ -58,11 +58,14 @@ export const upsertModelProfile = async (
     })
 }
 
-/** Create default profile for a model in the given workspace using seed data */
+/** Create default profile for a model in the given workspace using seed data.
+ *  `scope` mirrors the parent model's scope so a user-private model's profile
+ *  stays in the same per-user bucket (THU-603). */
 export const createDefaultModelProfile = async (
   db: AnyDrizzleDatabase,
   workspaceId: string,
   modelId: string,
+  scope: 'workspace' | 'user' = 'workspace',
 ): Promise<void> => {
   const defaultProfile = defaultModelProfiles.find((p) => p.modelId === modelId)
   if (!defaultProfile) {
@@ -75,6 +78,7 @@ export const createDefaultModelProfile = async (
       ...defaultProfile,
       defaultHash: hashModelProfile(defaultProfile),
       workspaceId,
+      scope,
     })
     .onConflictDoNothing()
 }

@@ -234,19 +234,21 @@ export const deleteModel = async (db: AnyDrizzleDatabase, workspaceId: string, i
 }
 
 /**
- * Creates a new model in the given workspace
+ * Creates a new model in the given workspace. Defaults `scope` to `'workspace'`
+ * when the caller doesn't set it explicitly; pass `scope: 'user'` with a
+ * matching `userId` to make the row private to its author (THU-603).
  */
 export const createModel = async (
   db: AnyDrizzleDatabase,
   workspaceId: string,
   data: Partial<Model> & Pick<Model, 'id' | 'provider' | 'name' | 'model'>,
 ): Promise<void> => {
-  const { apiKey, ...modelData } = data
+  const { apiKey, scope, ...modelData } = data
   await db.transaction(async (tx) => {
-    await tx.insert(modelsTable).values({ ...modelData, workspaceId })
+    await tx.insert(modelsTable).values({ ...modelData, workspaceId, scope: scope ?? 'workspace' })
     if (apiKey != null) {
       await tx.insert(modelsSecretsTable).values({ modelId: data.id, apiKey })
     }
-    await createDefaultModelProfile(tx, workspaceId, data.id)
+    await createDefaultModelProfile(tx, workspaceId, data.id, scope ?? 'workspace')
   })
 }

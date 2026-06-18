@@ -3,7 +3,9 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { AvailableTools } from '@/components/available-tools'
+import { ScopePicker, type ResourceScope } from '@/components/scope-picker'
 import { StatusIndicator } from '@/components/status-indicator'
+import { useScopePickerEnabled } from '@/hooks/use-scope-picker-enabled'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Dialog, DialogTrigger } from '@/components/ui/dialog'
@@ -21,6 +23,7 @@ import { Switch } from '@/components/ui/switch'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { createMcpServer, deleteMcpServer, getHttpMcpServers, updateMcpServer } from '@/dal'
 import { useDatabase } from '@/contexts'
+import { useTrustDomainRegistry } from '@/stores/trust-domain-registry'
 import { useWorkspacePermission as useWorkspacePermission_default } from '@/hooks/use-workspace-permission'
 import { useMcpSync } from '@/hooks/use-mcp-sync'
 import { useActiveWorkspaceId } from '@/lib/active-workspace'
@@ -49,6 +52,16 @@ export default function McpServersPage({
 }: McpServersPageProps = {}) {
   const db = useDatabase()
   const workspaceId = useActiveWorkspaceId()
+  const currentUserId = useTrustDomainRegistry((state) => {
+    if (state.activeTrustDomain?.kind === 'standalone') {
+      return state.localUserId
+    }
+    if (state.activeTrustDomain?.kind === 'server') {
+      return state.servers[state.activeTrustDomain.serverId]?.userId
+    }
+    return undefined
+  })
+  const scopePickerEnabled = useScopePickerEnabled()
   // Workspace `add_mcp_servers` / `remove_mcp_servers` — BE enforces; FE
   // hides affordances so the user isn't presented with actions that
   // round-trip-fail.
@@ -57,6 +70,7 @@ export default function McpServersPage({
   const { servers: mcpServers } = useMcpSync()
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false)
   const [newServerUrl, setNewServerUrl] = useState('')
+  const [newServerScope, setNewServerScope] = useState<ResourceScope>('workspace')
   const [isTestingConnection, setIsTestingConnection] = useState(false)
   const [connectionStatus, setConnectionStatus] = useState<'idle' | 'success' | 'error'>('idle')
   const [serverCapabilities, setServerCapabilities] = useState<string[]>([])
@@ -130,7 +144,7 @@ export default function McpServersPage({
   })
 
   const addServerMutation = useMutation({
-    mutationFn: async ({ name, url }: { name: string; url: string }) => {
+    mutationFn: async ({ name, url, scope }: { name: string; url: string; scope: ResourceScope }) => {
       if (!workspaceId) {
         throw new Error('No active workspace')
       }
@@ -139,11 +153,16 @@ export default function McpServersPage({
         name,
         url,
         enabled: 1,
+        scope,
+        // userId is required for scope='user' to land in the per-user sync
+        // bucket. For 'workspace' rows it's informational (any member writes).
+        userId: currentUserId ?? null,
       })
     },
     onSuccess: () => {
       setIsAddDialogOpen(false)
       setNewServerUrl('')
+      setNewServerScope('workspace')
       setConnectionStatus('idle')
       setServerCapabilities([])
     },
@@ -228,7 +247,13 @@ export default function McpServersPage({
     const url = new URL(newServerUrl)
     const name = `${url.hostname}${url.port ? `:${url.port}` : ''} MCP Server`
 
-    addServerMutation.mutate({ name, url: newServerUrl })
+    addServerMutation.mutate({
+      name,
+      url: newServerUrl,
+      // When the picker is hidden (deployment off, or personal workspace) we
+      // fall back to workspace scope to match historical behavior.
+      scope: scopePickerEnabled ? newServerScope : 'workspace',
+    })
   }
 
   const handleUrlKeyDown = (e: KeyboardEvent) => {
@@ -339,6 +364,10 @@ export default function McpServersPage({
               <ResponsiveModalDescription className="sr-only">Add a new MCP server</ResponsiveModalDescription>
             </ResponsiveModalHeader>
             <div className="grid gap-4 pt-4 pb-2">
+              {scopePickerEnabled && (
+                <ScopePicker id="mcp-server-scope" value={newServerScope} onChange={setNewServerScope} />
+              )}
+
               <div className="grid gap-2">
                 <Label htmlFor="url">Server URL</Label>
                 <Input

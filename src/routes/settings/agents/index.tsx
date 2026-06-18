@@ -17,6 +17,7 @@ import { useAuth } from '@/contexts'
 import { useActiveWorkspaceId, useWorkspaceUrl } from '@/lib/active-workspace'
 import { selectAllowCustomAgents, useConfigStore } from '@/api/config-store'
 import { useAgentsSettingsHidden } from '@/hooks/use-agents-settings-hidden'
+import { useScopePickerEnabled } from '@/hooks/use-scope-picker-enabled'
 import { useWorkspacePermission as useWorkspacePermission_default } from '@/hooks/use-workspace-permission'
 import type { Agent } from '@/types/acp'
 
@@ -50,6 +51,7 @@ export default function AgentsSettingsPage({
   const currentUserId = session?.user?.id ?? null
   const agentsHidden = useAgentsSettingsHidden({ isStandalone })
   const allowCustomAgents = useConfigStore((state) => selectAllowCustomAgents(state.config))
+  const scopePickerEnabled = useScopePickerEnabled()
   const settingsUrl = useWorkspaceUrl('/settings')
   // Workspace `add_agents` / `remove_agents` permissions — BE enforces too, FE
   // just hides affordances so the user isn't presented with actions that
@@ -105,6 +107,7 @@ export default function AgentsSettingsPage({
       description: payload.description,
       enabled: 1,
       userId: currentUserId,
+      scope: payload.scope,
     })
   }
 
@@ -139,6 +142,7 @@ export default function AgentsSettingsPage({
         onOpenChange={setDialogOpen}
         onSubmit={handleSubmit}
         testAcpConnection={testAcpConnection}
+        showScopePicker={scopePickerEnabled}
       />
     </div>
   )

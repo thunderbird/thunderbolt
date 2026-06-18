@@ -201,7 +201,7 @@ export const createSkill = async (
   return row
 }
 
-export type UpdateSkillInput = Partial<Pick<Skill, 'name' | 'description' | 'instruction'>>
+export type UpdateSkillInput = Partial<Pick<Skill, 'name' | 'description' | 'instruction' | 'scope'>>
 
 /**
  * Patch an existing skill in the given workspace. Throws {@link SkillNameInvalidError}

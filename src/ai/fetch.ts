@@ -259,7 +259,7 @@ export const createModel = async (modelConfig: Model, getProxyFetch: () => Fetch
       }
       ssoFetch.preconnect = fetch.preconnect
       const providerFetch: typeof fetch = sso && !hasRealToken ? ssoFetch : fetch
-      // GPT OSS (vendor: 'openai') uses createOpenAI with .chat() to force Chat Completions API
+      // OpenAI-vendor thunderbolt models use createOpenAI with .chat() to force Chat Completions API
       // (AI SDK 5 defaults createOpenAI to Responses API which our backend doesn't support)
       if (modelConfig.vendor === 'openai') {
         const provider = createOpenAI({ baseURL: cloudUrl, apiKey: token, fetch: providerFetch })

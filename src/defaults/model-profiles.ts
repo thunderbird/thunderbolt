@@ -5,7 +5,6 @@
 export {
   defaultModelProfileDeepseekV4Pro,
   defaultModelProfileGlm51,
-  defaultModelProfileGptOss120b,
   defaultModelProfileKimiK26,
   defaultModelProfileOpus48,
   defaultModelProfiles,

@@ -77,8 +77,8 @@ describe('hashModelProfile', () => {
 })
 
 describe('defaultModelProfiles', () => {
-  test('contains five profiles', () => {
-    expect(defaultModelProfiles).toHaveLength(5)
+  test('contains four profiles', () => {
+    expect(defaultModelProfiles).toHaveLength(4)
   })
 
   test('each profile has a non-null modelId', () => {

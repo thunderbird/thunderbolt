@@ -7,7 +7,7 @@ import { getPostHogClient, isPostHogConfigured } from '@/posthog/client'
 import { OpenAI as PostHogOpenAI } from '@posthog/ai'
 import OpenAI from 'openai'
 
-export type InferenceProvider = 'fireworks' | 'thunderbolt' | 'mistral' | 'anthropic'
+export type InferenceProvider = 'fireworks' | 'mistral' | 'anthropic'
 
 type InferenceClient = {
   client: OpenAI | PostHogOpenAI
@@ -18,11 +18,6 @@ type InferenceClient = {
  * Lazily initialized Fireworks client
  */
 let fireworksClient: OpenAI | PostHogOpenAI | null = null
-
-/**
- * Lazily initialized Thunderbolt client
- */
-let thunderboltClient: OpenAI | PostHogOpenAI | null = null
 
 /**
  * Lazily initialized Mistral client
@@ -65,42 +60,6 @@ const getFireworksClient = (fetchFn?: typeof fetch): OpenAI | PostHogOpenAI => {
   // Only cache if no custom fetchFn was provided
   if (!fetchFn) {
     fireworksClient = client
-  }
-
-  return client
-}
-
-/**
- * Get the Thunderbolt inference client for gpt-oss
- */
-const getThunderboltClient = (fetchFn?: typeof fetch): OpenAI | PostHogOpenAI => {
-  // Don't use cache when fetchFn is provided (primarily for testing)
-  if (thunderboltClient && !fetchFn) {
-    return thunderboltClient
-  }
-
-  const settings = getSettings()
-
-  if (!settings.thunderboltInferenceUrl || !settings.thunderboltInferenceApiKey) {
-    throw new Error('Thunderbolt inference URL or API key not configured')
-  }
-
-  const params = {
-    apiKey: settings.thunderboltInferenceApiKey,
-    baseURL: settings.thunderboltInferenceUrl,
-    ...(fetchFn && { fetch: fetchFn }),
-  }
-
-  const client = isPostHogConfigured()
-    ? new PostHogOpenAI({
-        ...params,
-        posthog: getPostHogClient(fetchFn),
-      })
-    : new OpenAI(params)
-
-  // Only cache if no custom fetchFn was provided
-  if (!fetchFn) {
-    thunderboltClient = client
   }
 
   return client
@@ -180,7 +139,6 @@ const getAnthropicClient = (fetchFn?: typeof fetch): OpenAI | PostHogOpenAI => {
  */
 export const getInferenceClient = (provider: InferenceProvider, fetchFn?: typeof fetch): InferenceClient => {
   const clientMap: Record<InferenceProvider, () => OpenAI | PostHogOpenAI> = {
-    thunderbolt: () => getThunderboltClient(fetchFn),
     mistral: () => getMistralClient(fetchFn),
     anthropic: () => getAnthropicClient(fetchFn),
     fireworks: () => getFireworksClient(fetchFn),
@@ -200,7 +158,6 @@ export const getInferenceClient = (provider: InferenceProvider, fetchFn?: typeof
  */
 export const clearInferenceClientCache = () => {
   fireworksClient = null
-  thunderboltClient = null
   mistralClient = null
   anthropicClient = null
 }

@@ -27,10 +27,6 @@ type ModelConfig = {
 }
 
 export const supportedModels: Record<string, ModelConfig> = {
-  'gpt-oss-120b': {
-    provider: 'thunderbolt',
-    internalName: 'openai/gpt-oss-120b',
-  },
   'mistral-medium-3.1': {
     provider: 'mistral',
     internalName: 'mistral-medium-2508',

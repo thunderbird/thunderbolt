@@ -1,0 +1,262 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AI PR Review — como a estrutura funciona</title>
+<style>
+  :root{
+    --ink:#1a1d24; --muted:#5b6472; --line:#e3e7ee; --bg:#fbfcfe;
+    --blue:#2563eb; --blue-bg:#eef4ff; --green:#0f9d58; --green-bg:#e9f8ef;
+    --amber:#b8730a; --amber-bg:#fdf3e2; --gray:#6b7280; --gray-bg:#f1f3f7;
+    --red:#d23b3b; --purple:#7c3aed; --purple-bg:#f3eefe;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);
+    font:15px/1.6 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    -webkit-font-smoothing:antialiased}
+  .wrap{max-width:1000px;margin:0 auto;padding:2.2rem 1.4rem 4rem}
+  header h1{font-size:1.9rem;margin:0 0 .3rem;letter-spacing:-.02em}
+  header .sub{color:var(--muted);font-size:1.05rem;margin:0 0 1rem}
+  .badges{display:flex;flex-wrap:wrap;gap:.5rem;margin:.4rem 0 0}
+  .badge{font-size:.78rem;font-weight:600;padding:.28rem .6rem;border-radius:999px;border:1px solid var(--line)}
+  .b-green{background:var(--green-bg);color:var(--green);border-color:#bfe6cd}
+  .b-amber{background:var(--amber-bg);color:var(--amber);border-color:#f0d9ad}
+  .b-gray{background:var(--gray-bg);color:var(--gray)}
+  h2{font-size:1.2rem;margin:2.6rem 0 .2rem;letter-spacing:-.01em}
+  h2 .n{color:var(--blue);font-variant-numeric:tabular-nums;margin-right:.5rem}
+  .lead{color:var(--muted);margin:.1rem 0 1rem}
+  .card{background:#fff;border:1px solid var(--line);border-radius:14px;padding:1.1rem 1.2rem;box-shadow:0 1px 2px rgba(20,30,50,.04)}
+  /* lineup table */
+  table{border-collapse:collapse;width:100%;font-size:13.5px;margin:.4rem 0}
+  th,td{border:1px solid var(--line);padding:.55rem .65rem;text-align:left;vertical-align:top}
+  th{background:#f4f7fb;font-weight:600}
+  tr:nth-child(even) td{background:#fcfdff}
+  .pill{display:inline-block;font-size:.72rem;font-weight:700;padding:.12rem .5rem;border-radius:6px}
+  .p-bug{background:var(--blue-bg);color:var(--blue)}
+  .p-sec{background:#fdecec;color:var(--red)}
+  .p-arch{background:var(--green-bg);color:var(--green)}
+  .p-human{background:var(--amber-bg);color:var(--amber)}
+  .no{color:var(--green);font-weight:700}.yes{color:var(--red);font-weight:700}
+  /* flow diagram */
+  .flow{display:flex;flex-direction:column;align-items:center;gap:0;margin:.4rem 0}
+  .node{border:1.5px solid var(--line);border-radius:12px;padding:.7rem 1rem;background:#fff;max-width:680px;width:100%}
+  .node .t{font-weight:700;font-size:.95rem;margin:0 0 .15rem}
+  .node .d{color:var(--muted);font-size:.82rem;margin:0}
+  .n-trigger{border-color:#cbd5e1;background:var(--gray-bg);text-align:center;max-width:360px}
+  .n-blue{border-color:#bcd0fb;background:var(--blue-bg)}
+  .n-green{border-color:#bfe6cd;background:var(--green-bg)}
+  .n-amber{border-color:#f0d9ad;background:var(--amber-bg);text-align:center;max-width:420px}
+  .arrow{width:2px;height:20px;background:#c4ccd8}
+  .split{display:flex;gap:1rem;width:100%;max-width:680px;justify-content:center;align-items:stretch}
+  .split .node{flex:1}
+  .branch-label{font-size:.72rem;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin:.5rem 0 .2rem;font-weight:700}
+  ol.steps{margin:.3rem 0 0;padding-left:1.1rem;font-size:.82rem;color:var(--ink)}
+  ol.steps li{margin:.12rem 0}
+  .legend{display:flex;flex-wrap:wrap;gap:.8rem;font-size:.78rem;color:var(--muted);margin:.6rem 0 0}
+  .legend span{display:inline-flex;align-items:center;gap:.35rem}
+  .sw{width:12px;height:12px;border-radius:3px;display:inline-block;border:1px solid rgba(0,0,0,.08)}
+  /* two-col */
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:1rem}
+  @media(max-width:720px){.grid2{grid-template-columns:1fr}.split{flex-direction:column}}
+  .mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:.82rem}
+  code{background:#f1f3f7;padding:.08rem .35rem;border-radius:5px;font-size:.85em;font-family:ui-monospace,Menlo,monospace}
+  .auto-human{display:grid;grid-template-columns:1fr 1fr;gap:0;border:1px solid var(--line);border-radius:12px;overflow:hidden}
+  .auto-human>div{padding:1rem 1.1rem}
+  .ah-auto{background:var(--green-bg)}.ah-human{background:var(--amber-bg)}
+  .auto-human h3{margin:.1rem 0 .5rem;font-size:.95rem}
+  .auto-human ul{margin:.2rem 0;padding-left:1.1rem;font-size:.86rem}.auto-human li{margin:.18rem 0}
+  .note{font-size:.82rem;color:var(--muted);margin-top:.5rem}
+  .kpi{display:flex;gap:1rem;flex-wrap:wrap;margin:.4rem 0}
+  .kpi .k{flex:1;min-width:130px;border:1px solid var(--line);border-radius:12px;padding:.7rem .9rem;background:#fff}
+  .kpi .v{font-size:1.5rem;font-weight:800;letter-spacing:-.02em}
+  .kpi .l{font-size:.76rem;color:var(--muted)}
+  .footer{margin-top:2.6rem;padding-top:1rem;border-top:1px solid var(--line);font-size:.82rem;color:var(--muted)}
+  .stack{display:flex;flex-direction:column;gap:.5rem}
+  .lane{display:flex;gap:.6rem;align-items:flex-start;font-size:.86rem}
+  .lane .tag{flex:0 0 auto;font-size:.7rem;font-weight:700;padding:.15rem .45rem;border-radius:6px;background:var(--purple-bg);color:var(--purple);margin-top:.1rem}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header>
+  <h1>AI PR Review — como a estrutura funciona</h1>
+  <p class="sub">Quatro revisores de IA em camadas que <strong>não se sobrepõem</strong> + um único comentário consolidado. <strong>Aviso, não portão:</strong> o humano continua dono da aprovação e do merge.</p>
+  <div class="badges">
+    <span class="badge b-green">✓ Advisory — nunca aprova, nunca mergeia</span>
+    <span class="badge b-green">✓ ZDR / self-host (Mozilla)</span>
+    <span class="badge b-amber">⚑ DRAFT — local, não conectado</span>
+    <span class="badge b-gray">branch <span class="mono">deep-review-tooling</span></span>
+  </div>
+</header>
+
+<h2><span class="n">1</span>A lineup — quem pega o quê</h2>
+<p class="lead">Um teste independente de 146 PRs mostrou que revisores de IA <strong>complementam em vez de duplicar</strong> — achados em grande parte únicos a um só revisor. Não é redundância — são eixos diferentes. Cada camada tem o seu trabalho.</p>
+<table>
+  <tr><th>Camada</th><th>Ferramenta</th><th>Pega</th><th>Roda onde</th><th>Bloqueia?</th></tr>
+  <tr><td><span class="pill p-bug">BUGS</span></td><td><strong>Cursor Bugbot</strong></td><td>Erros de correção: race, null, permissão, refs velhas</td><td>SaaS Cursor</td><td class="no">não</td></tr>
+  <tr><td><span class="pill p-sec">SAST</span></td><td><strong>GitHub Advanced Security</strong> (CodeQL + Semgrep)</td><td>Vulnerabilidades, injeção, segredos</td><td>GitHub</td><td class="no">não*</td></tr>
+  <tr><td><span class="pill p-arch">DESIGN</span></td><td><strong>thunder-deep-review</strong> <em>(nosso)</em></td><td>Arquitetura, convenção da casa, intenção/docs, readability — o que os bots de bug não veem</td><td>Nosso CI (Bedrock/ZDR)</td><td class="no">não</td></tr>
+  <tr><td><span class="pill p-human">DONO</span></td><td><strong>Humano</strong></td><td>Decisões de design subjetivas + a decisão final</td><td>—</td><td class="yes">SIM</td></tr>
+</table>
+<p class="note">* GHAS pode ser configurado pra bloquear em <em>critical</em> via branch protection — independente desta estrutura. CodeRabbit ficou <strong>fora de escopo por enquanto</strong> (fácil de re-adicionar depois).</p>
+
+<h2><span class="n">2</span>O fluxo de ponta a ponta</h2>
+<p class="lead">Numa PR (abertura ou push), A e B rodam. B só roda <strong>depois</strong> de A e só reporta o que A <strong>não</strong> pegou. No fim, o humano vê tudo e decide.</p>
+<div class="card">
+  <div class="flow">
+    <div class="node n-trigger"><p class="t">PR aberta / novo push</p></div>
+    <div class="arrow"></div>
+    <div class="branch-label">rodam em paralelo</div>
+    <div class="split">
+      <div class="node n-blue">
+        <p class="t">Job A — bots externos (SaaS)</p>
+        <p class="d">Cursor Bugbot · GHAS. Rodam na infra deles, postam os <strong>próprios</strong> comentários/checks. Não orquestramos.</p>
+      </div>
+      <div class="node n-green">
+        <p class="t">Job B — thunder-deep-review (nosso CI)</p>
+        <ol class="steps">
+          <li><strong>Debounce 60s</strong> — pushes rápidos cancelam de graça</li>
+          <li><strong>Espera A</strong> — poll dos checks até terminarem (ou timeout)</li>
+          <li><strong>Skip-list</strong> — lê os achados de A pra não repetir</li>
+          <li><strong>Revisa</strong> o diff — só o que A deixou passar</li>
+          <li><strong>Posta review inline</strong> por linha (estilo Bugbot)</li>
+        </ol>
+      </div>
+    </div>
+    <div class="arrow"></div>
+    <div class="node n-amber">
+      <p class="t">👤 Humano revisa tudo → aprova + mergeia</p>
+      <p class="d">Branch protection intocada. Nenhum bot aprova ou mergeia.</p>
+    </div>
+  </div>
+  <div class="legend">
+    <span><i class="sw" style="background:var(--blue-bg);border-color:#bcd0fb"></i> bots externos (SaaS)</span>
+    <span><i class="sw" style="background:var(--green-bg);border-color:#bfe6cd"></i> nosso (CI / ZDR)</span>
+    <span><i class="sw" style="background:var(--amber-bg);border-color:#f0d9ad"></i> humano</span>
+    <span><i class="sw" style="background:var(--gray-bg)"></i> gatilho</span>
+  </div>
+</div>
+
+<h2><span class="n">3</span>Por que B "espera" A — sem <span class="mono">needs:</span></h2>
+<div class="grid2">
+  <div class="card">
+    <p style="margin:.1rem 0 .5rem;font-weight:700">O problema</p>
+    <p style="margin:0;font-size:.9rem">O Bugbot <strong>não é job do nosso workflow</strong> — é app externo. <code>needs:</code> só encadeia jobs internos. Não dá pra declarar dependência dele.</p>
+  </div>
+  <div class="card">
+    <p style="margin:.1rem 0 .5rem;font-weight:700">A solução</p>
+    <p style="margin:0;font-size:.9rem">B faz <strong>polling da Checks API</strong> até os checks de A ficarem <code>completed</code> (qualquer resultado) ou bater o <strong>timeout</strong>. Se A falhar, B roda mesmo assim. Identifica os bots por <code>app.id</code> numérico (não por nome, que muda).</p>
+  </div>
+</div>
+<p class="lead" style="margin-top:1rem">A orquestração é <strong>código determinístico</strong> (<span class="mono">scripts/review-orchestrator.mjs</span>), não tool-call do modelo. O modelo só emite achados em JSON; todo I/O do GitHub é no código:</p>
+<div class="card">
+  <table>
+    <tr><th>Passo</th><th>O quê</th><th>Toca cred?</th></tr>
+    <tr><td class="mono">pre</td><td>poll dos bots → monta skip-list → calcula deep-mode</td><td class="no">não (sem AWS)</td></tr>
+    <tr><td class="mono">diff</td><td><code>git diff base..head</code> → arquivo (sem <code>Bash</code> no modelo)</td><td class="no">não</td></tr>
+    <tr><td class="mono">model</td><td>lê diff + skip-list → emite <strong>findings JSON</strong> (read-only)</td><td>OIDC→Bedrock</td></tr>
+    <tr><td class="mono">post</td><td>valida JSON → dedup vs threads abertos → resolve corrigidos → posta <strong>review inline</strong></td><td class="no">não</td></tr>
+  </table>
+</div>
+
+<h2><span class="n">4</span>O review — inline, por linha (estilo Bugbot)</h2>
+<p class="lead">B <strong>não</strong> posta um comentário solto. Posta um <strong>review na PR com comentários ancorados em <code>file:line</code></strong> — igual ao Bugbot. Cada achado fica na linha exata, com severidade e fix. <code>event=COMMENT</code> (nunca approve/request-changes → não bloqueia).</p>
+<div class="grid2">
+  <div class="card">
+    <p style="margin:.1rem 0 .5rem;font-weight:700">O que ele posta</p>
+    <ul style="margin:.2rem 0;padding-left:1.1rem;font-size:.88rem">
+      <li>1 <strong>review</strong> com N <strong>comentários inline</strong> (<code>path</code> + <code>line</code>)</li>
+      <li>cada um: severidade (blocking/convention/nit) + fix + regra citada</li>
+      <li>ancorado ao <code>commit_id</code> = head SHA revisado</li>
+      <li>nits agrupados/capados pra não poluir</li>
+    </ul>
+  </div>
+  <div class="card">
+    <p style="margin:.1rem 0 .5rem;font-weight:700">No novo push (convergência)</p>
+    <ul style="margin:.2rem 0;padding-left:1.1rem;font-size:.88rem">
+      <li>re-revisa contra o head novo</li>
+      <li>posta só os achados <strong>novos</strong> (dedup vs threads próprios abertos)</li>
+      <li>achado <strong>corrigido</strong> → <strong>resolve o próprio thread</strong> (outdated)</li>
+      <li>não re-posta o que já está aberto</li>
+    </ul>
+  </div>
+</div>
+<p class="note">Estado <strong>por thread</strong>, não um post editável: B gerencia <strong>os próprios threads</strong> (resolve quando o código corrige), igual ao Bugbot. Resolve só os achados de B; o Bugbot cuida dos dele. Dedup é <strong>best-effort</strong> (semântico) — pode ocasionalmente repetir; aceito, não prometido como "zero overlap".</p>
+
+<h2><span class="n">5</span>Dentro do thunder-deep-review</h2>
+<p class="lead">Skill read-only que reproduz "a régua da casa". Pra recall alto, roda como <strong>fan-out</strong> de revisores especialistas + um merge.</p>
+<div class="kpi">
+  <div class="k"><div class="v">~63%</div><div class="l">recall vs revisor humano exigente (deep mode)</div></div>
+  <div class="k"><div class="v">75% / 65%</div><div class="l">docs-intent / correctness (onde mais importa)</div></div>
+  <div class="k"><div class="v">0</div><div class="l">referências a pessoas (é a régua, não a pessoa)</div></div>
+</div>
+<div class="grid2" style="margin-top:.8rem">
+  <div class="card">
+    <p style="margin:.1rem 0 .5rem;font-weight:700">7 lanes amplas</p>
+    <div class="stack">
+      <div class="lane"><span class="tag">arch</span>arquitetura / abstração / coupling</div>
+      <div class="lane"><span class="tag">conv</span>convenções + React (CLAUDE.md)</div>
+      <div class="lane"><span class="tag">corr</span>correctness / lógica</div>
+      <div class="lane"><span class="tag">err</span>error-handling + testes</div>
+      <div class="lane"><span class="tag">docs</span>docs-intent / completude</div>
+      <div class="lane"><span class="tag">sec</span>security / privacy / perf</div>
+      <div class="lane"><span class="tag">read</span>readability / simplificação</div>
+    </div>
+  </div>
+  <div class="card">
+    <p style="margin:.1rem 0 .5rem;font-weight:700">6 micro-especialistas (deep mode)</p>
+    <div class="stack">
+      <div class="lane"><span class="tag">μ</span>dead-code / guards mortos</div>
+      <div class="lane"><span class="tag">μ</span>async-hygiene (.then, fire-and-forget)</div>
+      <div class="lane"><span class="tag">μ</span>naming / casing</div>
+      <div class="lane"><span class="tag">μ</span>typos / JSDoc</div>
+      <div class="lane"><span class="tag">μ</span>simplify / restructure</div>
+      <div class="lane"><span class="tag">μ</span>module-surface / DRY</div>
+    </div>
+    <p class="note" style="margin-top:.6rem">+ dispatcha o subagent <strong>powersync-sync-reviewer</strong> quando o diff toca tabela synced (pega o caso "uma tabela synced, a irmã não").</p>
+  </div>
+</div>
+
+<h2><span class="n">6</span>Automático vs humano</h2>
+<div class="auto-human">
+  <div class="ah-auto">
+    <h3>🤖 Automático</h3>
+    <ul>
+      <li>Achar bugs, vulns, problemas de design/convenção/docs</li>
+      <li>Consolidar tudo num comentário</li>
+      <li>Re-rodar + resolver no push</li>
+      <li>Não-bloqueante (advisory)</li>
+    </ul>
+  </div>
+  <div class="ah-human">
+    <h3>👤 Humano (inalterado)</h3>
+    <ul>
+      <li>Ler os achados</li>
+      <li><strong>Aprovar</strong> a PR</li>
+      <li><strong>Mergear</strong></li>
+      <li>Decisões de design subjetivas</li>
+    </ul>
+  </div>
+</div>
+<p class="note">Decisão consciente: descartamos auto-merge/auto-aprovação (sem rede de segurança + superfície de ataque). O bot <strong>adiciona sinal</strong>; quem decide é gente.</p>
+
+<h2><span class="n">7</span>Segurança & privacidade</h2>
+<div class="card">
+  <ul style="margin:.2rem 0;padding-left:1.1rem;font-size:.9rem">
+    <li><strong>Advisory only</strong> — <code>event=COMMENT</code>, nunca approve/request-changes/merge. Branch protection intocada.</li>
+    <li><strong>Sem fork</strong> — job gateado em PR do mesmo repo; runner nunca executa código não-confiável. Sem <code>pull_request_target</code>.</li>
+    <li><strong>ZDR</strong> — Claude via Bedrock/Vertex em infra Mozilla (OIDC, sem chaves estáticas). Código não sai.</li>
+    <li><strong>Read-only</strong> — modelo só <code>Read/Grep/Glob</code>, sem <code>Bash</code>; diff pré-computado (fecha prompt-injection).</li>
+    <li><strong>Endurecido</strong> — least-privilege, actions pinadas em SHA, <code>timeout-minutes</code>, runner efêmero.</li>
+  </ul>
+</div>
+
+<div class="footer">
+  <strong>Status:</strong> rascunho revisado por 3 modelos (GLM-5.2 + MiMo + codex). Tudo local em <span class="mono">drafts/bot-review/</span> na worktree <span class="mono">deep-review-tooling</span> — <strong>nada conectado, nada commitado</strong>. Antes de ligar, há 8 verificações (input names da action, SHAs, <code>app.id</code> dos bots, OIDC role, model id, runner, diff fetch, CODEOWNERS) listadas no <span class="mono">README.md</span>.
+</div>
+
+</div>
+</body>
+</html>

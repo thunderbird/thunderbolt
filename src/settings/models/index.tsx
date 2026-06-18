@@ -155,12 +155,18 @@ const useModelConnectionTest = () => {
   const [isTesting, setIsTesting] = useState(false)
   const [status, setStatus] = useState<'idle' | 'success' | 'error'>('idle')
   const [error, setError] = useState<string | null>(null)
+  // Tracks the latest run so completions from superseded tests (started before
+  // a credential change or a newer test) can't flip status back to success/error.
+  const runIdRef = useRef(0)
 
   const test = useCallback(
     async (config: ConnectionTestConfig) => {
       if (!config.provider || !config.model) {
         return
       }
+
+      const runId = ++runIdRef.current
+      const isCurrent = () => runIdRef.current === runId
 
       setIsTesting(true)
       setStatus('idle')
@@ -197,20 +203,29 @@ const useModelConnectionTest = () => {
           generateText({ model: aiModel, prompt: 'Say "test successful" if you can read this.', maxRetries: 0 }),
           timeoutPromise,
         ])
+        if (!isCurrent()) {
+          return
+        }
         console.log('Model test response:', text)
         setStatus('success')
       } catch (err) {
+        if (!isCurrent()) {
+          return
+        }
         console.error('Connection test error:', err)
         setStatus('error')
         setError(err instanceof Error ? err.message : 'Failed to connect to model')
       } finally {
-        setIsTesting(false)
+        if (isCurrent()) {
+          setIsTesting(false)
+        }
       }
     },
     [getProxyFetch],
   )
 
   const reset = useCallback(() => {
+    runIdRef.current += 1
     setStatus('idle')
     setError(null)
     setIsTesting(false)

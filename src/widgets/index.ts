@@ -22,6 +22,7 @@ import * as citation from './citation'
 import * as connectIntegration from './connect-integration'
 import * as documentResult from './document-result'
 import * as linkPreview from './link-preview'
+import * as map from './map'
 import * as weatherForecast from './weather-forecast'
 
 // Re-export components for easy importing
@@ -29,6 +30,7 @@ export { CitationBadge } from './citation'
 export { ConnectIntegrationWidget } from './connect-integration'
 export { DocumentResultWidget } from './document-result'
 export { LinkPreview, LinkPreviewSkeleton, LinkPreviewWidget } from './link-preview'
+export { MapWidget } from './map'
 export { WeatherForecastWidget } from './weather-forecast'
 
 /**
@@ -55,6 +57,10 @@ export const widgetRegistry = [
   {
     name: 'link-preview' as const,
     module: linkPreview,
+  },
+  {
+    name: 'map' as const,
+    module: map,
   },
 ] as const
 

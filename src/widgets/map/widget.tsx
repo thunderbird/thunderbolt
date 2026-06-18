@@ -1,0 +1,254 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+
+import { Skeleton } from '@/components/ui/skeleton'
+import type { Map as MaplibreMap, MapLayerMouseEvent, StyleSpecification } from 'maplibre-gl'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { featureBounds, featureLabel, parseFeatureCollection } from './geojson'
+
+type MapWidgetProps = {
+  /** GeoJSON FeatureCollection as a JSON string (validated by the schema). */
+  data: string
+  title?: string
+}
+
+/**
+ * CARTO "Positron" — the same clean light look as raster image tiles, no key.
+ */
+const cartoPositron: StyleSpecification = {
+  version: 8,
+  sources: {
+    carto: {
+      type: 'raster',
+      tiles: [
+        'https://a.basemaps.cartocdn.com/light_all/{z}/{x}/{y}.png',
+        'https://b.basemaps.cartocdn.com/light_all/{z}/{x}/{y}.png',
+        'https://c.basemaps.cartocdn.com/light_all/{z}/{x}/{y}.png',
+        'https://d.basemaps.cartocdn.com/light_all/{z}/{x}/{y}.png',
+      ],
+      tileSize: 256,
+      attribution: '© OpenStreetMap contributors © CARTO',
+    },
+  },
+  layers: [{ id: 'carto', type: 'raster', source: 'carto' }],
+}
+
+/**
+ * Basemaps to choose from — both no API key. `positron` is OpenFreeMap's clean
+ * light *vector* style (sharper at all zooms, restylable); `carto` is the
+ * equivalent look as plain raster tiles. Flip `basemap` below to switch.
+ *
+ * NOTE: heavy production use of either should move to a keyed provider
+ * (MapTiler / Stadia) or self-hosted tiles rather than the public endpoints.
+ */
+const basemaps = {
+  positron: 'https://tiles.openfreemap.org/styles/positron',
+  carto: cartoPositron,
+}
+
+/** Active basemap — start with the OpenFreeMap vector Positron; swap to
+ *  `basemaps.carto` to compare the raster version. */
+const basemap: string | StyleSpecification = basemaps.positron
+
+/** Layers a click/hover popup can originate from. */
+const interactiveLayers = ['points', 'lines', 'polygons-fill'] as const
+
+/** Fallback feature color when a feature carries no simplestyle override. */
+const defaultColor = '#3b82f6'
+
+/** Pulsing placeholder shown while MapLibre's chunk + tiles load. Mirrors the
+ *  WeatherForecast / LinkPreview skeleton pattern. */
+export const MapSkeleton = () => <Skeleton className="absolute inset-0 rounded-none" />
+
+/**
+ * Generic GeoJSON map widget: renders a FeatureCollection (points / lines /
+ * polygons) on an interactive map, fits the view to the data, and shows a
+ * popup with each feature's neutral display fields (`label` / `description`)
+ * on click. Domain-specific properties are never surfaced.
+ *
+ * MapLibre (a heavy dependency) and its stylesheet are lazy-imported on mount
+ * so they stay out of the entry/chat bundle until a map actually renders.
+ */
+export const MapWidget = ({ data, title }: MapWidgetProps) => {
+  const containerRef = useRef<HTMLDivElement>(null)
+  const [error, setError] = useState<string | null>(null)
+  const [ready, setReady] = useState(false)
+  const collection = useMemo(() => parseFeatureCollection(data), [data])
+
+  useEffect(() => {
+    const container = containerRef.current
+    if (!collection || !container) {
+      return
+    }
+    // Reset to the skeleton whenever the data changes and we re-init the map.
+    setReady(false)
+    let map: MaplibreMap | null = null
+    let cancelled = false
+
+    // Keep the canvas sized to its container. Without this, MapLibre renders a
+    // blank/white map if it initialized before layout settled or while briefly
+    // hidden (e.g. switching away and back to a chat) and is never told to
+    // resize. The observer fires on the size change and re-renders at size.
+    const resizeObserver = new ResizeObserver(() => map?.resize())
+    resizeObserver.observe(container)
+
+    const init = async () => {
+      const { Map: MapLib, Popup, NavigationControl } = await import('maplibre-gl')
+      await import('maplibre-gl/dist/maplibre-gl.css')
+      if (cancelled) {
+        return
+      }
+      map = new MapLib({ container, style: basemap })
+      map.addControl(new NavigationControl({ showCompass: false }), 'top-right')
+
+      map.on('load', () => {
+        if (!map) {
+          return
+        }
+        map.addSource('features', { type: 'geojson', data: collection })
+        // Per-feature styling follows the simplestyle-spec (marker-color,
+        // marker-size, stroke, fill, …) read generically via `['get', …]` with
+        // fallbacks to the defaults. These are standard display keys — the
+        // widget reads no domain-specific properties.
+        map.addLayer({
+          id: 'polygons-fill',
+          type: 'fill',
+          source: 'features',
+          filter: ['==', ['geometry-type'], 'Polygon'],
+          paint: {
+            'fill-color': ['coalesce', ['get', 'fill'], defaultColor],
+            'fill-opacity': ['coalesce', ['get', 'fill-opacity'], 0.2],
+          },
+        })
+        map.addLayer({
+          id: 'lines',
+          type: 'line',
+          source: 'features',
+          filter: ['in', ['geometry-type'], ['literal', ['LineString', 'Polygon']]],
+          paint: {
+            'line-color': ['coalesce', ['get', 'stroke'], defaultColor],
+            'line-width': ['coalesce', ['get', 'stroke-width'], 2],
+            'line-opacity': ['coalesce', ['get', 'stroke-opacity'], 1],
+          },
+        })
+        map.addLayer({
+          id: 'points',
+          type: 'circle',
+          source: 'features',
+          filter: ['==', ['geometry-type'], 'Point'],
+          paint: {
+            'circle-radius': ['match', ['get', 'marker-size'], 'small', 4, 'large', 9, 6],
+            'circle-color': ['coalesce', ['get', 'marker-color'], defaultColor],
+            'circle-stroke-color': '#ffffff',
+            'circle-stroke-width': 2,
+          },
+        })
+
+        const bounds = featureBounds(collection)
+        if (bounds) {
+          map.fitBounds(bounds, { padding: 48, maxZoom: 14, duration: 0 })
+        }
+
+        const showPopup = (event: MapLayerMouseEvent) => {
+          const feature = event.features?.[0]
+          if (!feature || !map) {
+            return
+          }
+          const props = feature.properties as Record<string, unknown> | null
+          const label = featureLabel(props)
+          const description = typeof props?.description === 'string' ? props.description : null
+          if (!label && !description) {
+            return
+          }
+          // The card uses our design tokens (the same `--popover` tokens the
+          // app's Popover/Card use). Built via textContent — never innerHTML —
+          // so untrusted GeoJSON content (from a model/pipeline) can't inject
+          // markup.
+          const node = document.createElement('div')
+          node.className =
+            'rounded-lg border border-border bg-popover px-3.5 py-2.5 text-[length:var(--font-size-sm)] text-popover-foreground shadow-md'
+          if (label) {
+            const labelNode = document.createElement('div')
+            labelNode.className = 'font-semibold text-[length:var(--font-size-body)]'
+            labelNode.textContent = label
+            node.appendChild(labelNode)
+          }
+          if (description) {
+            const descriptionNode = document.createElement('div')
+            descriptionNode.className = 'mt-1 text-muted-foreground'
+            descriptionNode.textContent = description
+            node.appendChild(descriptionNode)
+          }
+
+          // Drop MapLibre's default chrome (white box, shadow, tip, and the
+          // unstyled close "×") and let our own card be the whole popup. Closes
+          // on map click (MapLibre's default closeOnClick).
+          const popup = new Popup({ closeButton: false, maxWidth: '300px' })
+            .setLngLat(event.lngLat)
+            .setDOMContent(node)
+            .addTo(map)
+          const popupEl = popup.getElement()
+          const content = popupEl?.querySelector<HTMLElement>('.maplibregl-popup-content')
+          if (content) {
+            content.style.padding = '0'
+            content.style.background = 'transparent'
+            content.style.boxShadow = 'none'
+            content.style.borderRadius = '0'
+          }
+          popupEl?.querySelector<HTMLElement>('.maplibregl-popup-tip')?.style.setProperty('display', 'none')
+        }
+
+        for (const layer of interactiveLayers) {
+          map.on('click', layer, showPopup)
+          map.on('mouseenter', layer, () => {
+            if (map) {
+              map.getCanvas().style.cursor = 'pointer'
+            }
+          })
+          map.on('mouseleave', layer, () => {
+            if (map) {
+              map.getCanvas().style.cursor = ''
+            }
+          })
+        }
+
+        // Style + first layers are in — swap the skeleton for the map.
+        if (!cancelled) {
+          setReady(true)
+        }
+      })
+    }
+
+    init().catch((err) => {
+      if (!cancelled) {
+        setError(err instanceof Error ? err.message : 'Failed to load map')
+      }
+    })
+
+    return () => {
+      cancelled = true
+      resizeObserver.disconnect()
+      map?.remove()
+    }
+  }, [collection])
+
+  if (!collection) {
+    return null
+  }
+
+  return (
+    <div className="my-4">
+      {title && <div className="mb-1.5 px-1 font-medium text-[length:var(--font-size-sm)]">{title}</div>}
+      <div className="relative h-80 w-full overflow-hidden rounded-lg border border-border">
+        <div ref={containerRef} className="h-full w-full" />
+        {!ready && !error && <MapSkeleton />}
+      </div>
+      {error && (
+        <p className="mt-1 px-1 text-[length:var(--font-size-xs)] text-muted-foreground">
+          Couldn’t load the map: {error}
+        </p>
+      )}
+    </div>
+  )
+}

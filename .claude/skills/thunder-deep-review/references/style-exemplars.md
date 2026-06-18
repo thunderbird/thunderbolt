@@ -23,6 +23,12 @@ Few-shot exemplars distilled from real held-out reviews, paraphrased and de-iden
 7. **Signal:** a test leans on `mock.module(...)` of an internal collaborator.
    **Finding:** "I'd love to avoid mocking our own modules here — it's usually a sign the code wants dependency injection. Could we inject the dependency instead, or at least note why the mock is unavoidable?" → *Testability (R-NOMOCK).*
 
+7a. **Signal:** a new test file does `mock.module('@/hooks/use-settings', () => ({ useSettings: () => ({ … }) }))` (a shared module).
+    **Finding:** "This is a blocker — `mock.module()` on a shared module like `@/hooks/use-settings` leaks globally to every test file in the worker. It'll pass alone and then fail in CI when run together (`undefined is not an object`, `Export named 'X' not found`) — the #1 CI-flake here. Don't mock it better; drop the mock and use the real hook with a test DB/provider (`setupTestDatabase` + `createTestProvider`)." → *Testability (R-NOMOCKSHARED, block).*
+
+7b. **Signal:** a test mocks `@/components/ui/dialog` but lists only `Dialog`/`DialogContent`, omitting `DialogFooter`.
+    **Finding:** "If we truly must mock a shared module, it has to include EVERY export — a missing `DialogFooter` here will crash the next test file that imports it (`Export named 'DialogFooter' not found`). Better: don't mock the shared UI module at all." → *Testability (R-NOMOCKSHARED, block).*
+
 8. **Signal:** a one-off `useAnonymousSessionGuard` hook gates auth alongside the existing `AuthGate`.
    **Finding:** "This feels like a footgun — anonymous auth is just another auth type, so I'd fold it into `AuthGate` rather than a separate guard/hook. If someone later removed the other gate they might not realize this silently creates users. Could we do it imperatively in the auth logic?" → *Architecture / footgun (block).*
 

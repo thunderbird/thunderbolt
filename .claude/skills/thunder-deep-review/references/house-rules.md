@@ -41,5 +41,9 @@ Cite the `R-*` id when surfacing a finding. Source of truth is `CLAUDE.md` (syml
 - **R-MIGRATION** — generate Drizzle migrations with `bun db generate`, never hand-write SQL. Always verify `backend/drizzle/meta/_journal.json` includes the new entry (else it never runs). Never `bun db push` against prod.
 - **R-SYNCNULL** — new synced PowerSync columns must be nullable; adding a synced table is a two-PR deploy (backend schema + `config.yaml` sync rule + dashboard rules FIRST, frontend SECOND).
 - **R-CORS** — a new custom request header needs no CORS change (echo-back), but a browser-readable response header must be added to `corsExposeHeaders`.
-- **R-BUN** — use `bun` (not npm); `bun test` (not vitest); tests as `<file>.test.ts` next to source; install latest (`bun add <pkg>@latest`).
+- **R-BUN** — use `bun` (not npm); `bun test` (not vitest); install latest (`bun add <pkg>@latest`).
 - **R-SIMPLE** — bias to tasteful simplicity; avoid over-engineering, premature optimization, and defensive patterns that obscure intent. Question and recommend alternatives.
+
+## Tests (summary — full standard in `references/testing-rules.md`)
+- **R-TEST** — tests live as `<file>.test.ts` next to source and use `bun:test`; never `.spec` files, never `vitest`.
+- **R-NOMOCK** — `mock.module()` of an internal/shared module is a modularity smell → prefer dependency injection (inject `httpClient`/`fetch`/`database`). Mocking is OK only for truly-external boundaries: external/auth/third-party APIs, browser APIs absent in the test env, and React Router hooks. Its stronger sibling is **`R-NOMOCKSHARED`** (a `mock.module` of a *shared* module is a blocker-tier CI-flake leak) — see `references/testing-rules.md`.

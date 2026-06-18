@@ -8,10 +8,14 @@ Apply these in **Pass A (Scan)**. Two parts: (1) a fast diff-signal → comment 
 |---|---|---|
 | `const ALL_CAPS =` / `FOO_BAR:` keys in TS/frontend (incl. `*.config.ts`, `scripts/`, `e2e/`, `*.test.ts`) | "camelCase even for constants" | R-CAMEL |
 | `let x` then reassignment; `let isX=false; if(...) isX=true` | "avoid `let` — early-return + `const`" | R-NOLET |
-| `if (cond) doThing();` without braces | "braces `{ }` on all ifs" | R-BRACES |
 | `import … from '../../types'` (deep relative) | "use `@/types`" | R-IMPORT |
 | `.spec.ts` file; `from 'vitest'` | "use `.test` + `bun:test`" | R-TEST |
-| `mock.module(`/`vi.mock`/`jest.mock` of internal modules | "mocking smell → DI; or justify" | R-NOMOCK |
+| `mock.module(`/`vi.mock`/`jest.mock` of a SHARED module (`@/hooks/*`, `@/components/ui/*`, any app module other tests import) | "global mock leaks across files → #1 CI flake — DON'T mock shared modules; use real impls + test DB/provider" | R-NOMOCKSHARED (blocker) |
+| `mock.module(`/`vi.mock`/`jest.mock` of an internal collaborator | "mocking smell → DI; or justify" | R-NOMOCK |
+| partial `mock.module` of a shared module (missing exports) | "include EVERY export or it breaks the next test file" | R-NOMOCKSHARED |
+| real wait in a test (`await sleep`, real `setTimeout`, `vi.useFakeTimers()`) | "fake timers are global — advance via `getClock()` in `act()`" | R-FAKETIMERS |
+| `spyOn(console,'error')` in a test that triggers an expected error | OK — prescribed pattern, NOT error-swallowing (do not flag) | R-SUPPRESSCONSOLE |
+| backend route test that module-mocks the db/`fetch` instead of `createApp({ database, fetchFn })` + `createTestDb()` | "inject via DI; roll back in `afterEach` `cleanup()`" | R-DITEST |
 | Component with 3+ `useState(` | "switch to `useReducer`" | R-REDUCER |
 | useState + useEffect that syncs/derives from props/state | "derive during render, don't effect" | R-EFFECT |
 | `useEffect(` with no adjacent justifying comment | "justify the effect or remove" | R-EFFECT |
@@ -69,10 +73,15 @@ Apply these in **Pass A (Scan)**. Two parts: (1) a fast diff-signal → comment 
 - IF a race/ordering/flicker bug is "fixed" with `setTimeout`/`rAF`/extra state THEN reject as masking the real branching bug.
 - IF code is defensive against an impossible condition on trusted data THEN call it overly defensive; prefer loud failure, fix upstream.
 
-### Testability
-- IF a test relies on heavy mocking (esp. `mock.module` of internal collaborators) THEN modularity smell → DI, or at minimum a comment why the mock is unavoidable. (Mocking OK only at plugin/external-SDK boundaries.)
+### Testability — full standard in `references/testing-rules.md`
+- IF a test `mock.module()`s a **SHARED** module (`@/hooks/*`, `@/components/ui/*`, or any app module other tests import) THEN it is a **blocker** (`R-NOMOCKSHARED`): the mock leaks globally across every test file in the worker — the #1 cause of CI failures that pass alone but fail together (`Export named 'X' not found`, `undefined is not an object`). Don't tell them to mock it better — tell them to **stop mocking shared modules** and use real impls + a test DB/provider. This is NOT just a DI taste nit; press it as a CI-flake blocker.
+- IF a test partial-mocks a shared module (omits some exports) THEN flag it (`R-NOMOCKSHARED`): a missing export breaks the next test file — include EVERY export if a shared-module mock is truly unavoidable.
+- IF a test relies on heavy mocking (esp. `mock.module` of internal collaborators) THEN modularity smell → DI (`R-NOMOCK`/`R-DITEST`), or at minimum a comment why the mock is unavoidable. Mocking is OK only for truly-external things: external/auth/third-party APIs, browser APIs absent in the test env, and React Router hooks — do NOT flag those.
+- IF a backend route test module-mocks the db or `fetch` THEN redirect to DI (`R-DITEST`): inject via `createApp({ database, fetchFn })` + `createTestDb()`, and roll back in `afterEach` via `cleanup()`.
+- IF a test uses a real wait (`await sleep`, real `setTimeout`) or re-installs timers (`vi.useFakeTimers()`) THEN flag (`R-FAKETIMERS`): fake timers are installed globally — advance time via `getClock()` (`tickAsync`/`runAllAsync`) inside `act()`.
+- IF a test intentionally triggers an error THEN it should `spyOn(console,'error').mockImplementation(() => {})` in `beforeAll` (`R-SUPPRESSCONSOLE`). **Do NOT flag this as error-swallowing** — it is the OPPOSITE of the production `R-ERRSWALLOW` rule; in a test it is the prescribed pattern, not a smell.
 - IF branchy logic (parsers, `prepareStep`, reconciliation, `getOrCreate`) lacks unit tests THEN request tests; suggest extracting a pure function.
-- IF a test uses `.spec`/`vitest` or `as any`/`as unknown as` THEN flag.
+- IF a test uses `.spec`/`vitest` or `as any`/`as unknown as` THEN flag (`R-TEST`/`R-NOANY`).
 
 ### Correctness
 - IF you find a genuine bug (nullable-sync, error-before-first-assistant-message, off-by-one branch) THEN label it explicitly "real bug" and distinguish from nits.

@@ -204,6 +204,11 @@ export const createWorkspaceScopedHandler = (cfg: WorkspaceScopedConfig): Upload
     validate: async (op, ctx, tx) => {
       if (op.op === 'PUT') {
         const payloadScope = scopeAware && isString(op.data?.scope) ? op.data.scope : null
+        if (scopeAware && payloadScope !== null && payloadScope !== 'workspace' && payloadScope !== 'user') {
+          // Mirror PATCH's INVALID_SCOPE guard — reject malformed values here
+          // rather than letting Postgres throw a check-constraint error later.
+          return reject('permanent', 'INVALID_SCOPE')
+        }
         if (scopeAware && payloadScope === 'user' && !ctx.settings.allowUserScopedResources) {
           return reject('permanent', 'USER_SCOPE_DISABLED')
         }
@@ -244,6 +249,21 @@ export const createWorkspaceScopedHandler = (cfg: WorkspaceScopedConfig): Upload
       }
       if (!(await isWorkspaceMember(tx, scope.workspaceId, ctx.userId))) {
         return reject('permanent', 'NOT_WORKSPACE_MEMBER')
+      }
+      // PATCH must respect the same deployment kill-switch as PUT — without
+      // this an owner can flip an existing workspace-scoped row to user-scoped
+      // while `allowUserScopedResources` is off, sneaking around the flag. Only
+      // gates the *change* to `'user'`; flipping back to `'workspace'` while
+      // the flag is off is always allowed because it removes the user-scoped
+      // state rather than creating it.
+      if (
+        op.op === 'PATCH' &&
+        scopeAware &&
+        isString(op.data?.scope) &&
+        op.data.scope === 'user' &&
+        !ctx.settings.allowUserScopedResources
+      ) {
+        return reject('permanent', 'USER_SCOPE_DISABLED')
       }
       if (isRowOwnerOnly(scope) && scope.userId !== ctx.userId) {
         return reject('permanent', 'NOT_ROW_OWNER')

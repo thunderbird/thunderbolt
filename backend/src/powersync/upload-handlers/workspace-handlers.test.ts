@@ -7,6 +7,7 @@ import {
   agentsTable,
   mcpServersTable,
   modelsTable,
+  modesTable,
   skillsTable,
   tasksTable,
   workspaceMembershipsTable,
@@ -2313,6 +2314,102 @@ describe('workspace upload handlers', () => {
 
       const stored = await db.select().from(agentsTable).where(eq(agentsTable.id, agentId))
       expect(stored[0].name).toBe('Private')
+    })
+
+    it('PUT with a malformed scope is rejected with INVALID_SCOPE', async () => {
+      await insertUser('scInvalid1', 'scinvalid1@test.com')
+      await insertUser('scInvalid1Member', 'scinvalid1m@test.com')
+      const workspaceId = await seedShared('scInvalid1', 'scInvalid1Member')
+
+      // `skillPut` only emits valid scopes — hand-roll the op with a bogus value.
+      const op: UploadOp = {
+        op: 'PUT',
+        type: 'skills',
+        id: uuidv7(),
+        data: {
+          workspace_id: workspaceId,
+          name: 'Bogus',
+          description: 'Bogus',
+          instruction: 'Do the thing',
+          enabled: 1,
+          scope: 'totally-not-a-real-scope',
+        },
+      }
+      const result = await applyUploadBatch(db, [op], ctxFor('scInvalid1'))
+      expectPermanentReject(result, 'INVALID_SCOPE')
+    })
+
+    it('PATCH flipping scope to user is rejected when allowUserScopedResources is false', async () => {
+      await insertUser('scFlip1', 'scflip1@test.com')
+      await insertUser('scFlip1Member', 'scflip1m@test.com')
+      const workspaceId = await seedShared('scFlip1', 'scFlip1Member')
+      // Seed a workspace-scoped row with the flag on so the create itself isn't blocked.
+      const putOp = skillPut(workspaceId, 'workspace')
+      expect((await applyUploadBatch(db, [putOp], ctxFor('scFlip1'))).ok).toBe(true)
+
+      const flipOp: UploadOp = { op: 'PATCH', type: 'skills', id: putOp.id, data: { scope: 'user' } }
+      const result = await applyUploadBatch(
+        db,
+        [flipOp],
+        ctxFor('scFlip1', { settings: createTestSettings({ allowUserScopedResources: false }) }),
+      )
+      expectPermanentReject(result, 'USER_SCOPE_DISABLED')
+
+      const stored = await db.select().from(skillsTable).where(eq(skillsTable.id, putOp.id))
+      expect(stored[0].scope).toBe('workspace')
+    })
+
+    it('PATCH flipping scope back to workspace is allowed even when allowUserScopedResources is false', async () => {
+      await insertUser('scFlip2', 'scflip2@test.com')
+      await insertUser('scFlip2Member', 'scflip2m@test.com')
+      const workspaceId = await seedShared('scFlip2', 'scFlip2Member')
+      const putOp = skillPut(workspaceId, 'user')
+      expect((await applyUploadBatch(db, [putOp], ctxFor('scFlip2'))).ok).toBe(true)
+
+      // The flag is a kill switch for *new* user-scoping. Unwinding an existing
+      // user-scoped row back to workspace stays allowed so deployments that
+      // toggle the flag off don't strand rows in the private bucket.
+      const flipOp: UploadOp = { op: 'PATCH', type: 'skills', id: putOp.id, data: { scope: 'workspace' } }
+      const result = await applyUploadBatch(
+        db,
+        [flipOp],
+        ctxFor('scFlip2', { settings: createTestSettings({ allowUserScopedResources: false }) }),
+      )
+      expect(result.ok).toBe(true)
+
+      const stored = await db.select().from(skillsTable).where(eq(skillsTable.id, putOp.id))
+      expect(stored[0].scope).toBe('workspace')
+    })
+
+    it('PATCH on a workspace-scoped row by a co-member updates non-scope fields', async () => {
+      // Uses `modes` rather than `skills` because skills carries an
+      // `add_skills` permission gate (defaults to admin-only) — we want to
+      // exercise the post-fix `fetchRowScope({ userId })` resolution under a
+      // co-member PATCH, not the permission denial path that comes before it.
+      await insertUser('scShare1', 'scshare1@test.com')
+      await insertUser('scShare1Co', 'scshare1co@test.com')
+      const workspaceId = await seedShared('scShare1', 'scShare1Co')
+      const modeId = uuidv7()
+      const putOp: UploadOp = {
+        op: 'PUT',
+        type: 'modes',
+        id: modeId,
+        data: { workspace_id: workspaceId, name: 'chat', label: 'Chat', scope: 'workspace' },
+      }
+      expect((await applyUploadBatch(db, [putOp], ctxFor('scShare1'))).ok).toBe(true)
+
+      const editOp: UploadOp = { op: 'PATCH', type: 'modes', id: modeId, data: { label: 'Co-member edit' } }
+      const result = await applyUploadBatch(db, [editOp], ctxFor('scShare1Co'))
+      expect(result.ok).toBe(true)
+      if (result.ok) {
+        expect(result.rejected).toHaveLength(0)
+      }
+
+      const stored = await db.select().from(modesTable).where(eq(modesTable.id, modeId))
+      expect(stored[0].label).toBe('Co-member edit')
+      // Authorship is preserved on a co-member edit — the row's `user_id`
+      // stays as the original author, not the patcher.
+      expect(stored[0].userId).toBe('scShare1')
     })
   })
 

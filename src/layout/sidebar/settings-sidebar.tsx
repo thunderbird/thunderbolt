@@ -42,10 +42,8 @@ export const SettingsSidebarContent = ({
   const agentsHidden = useAgentsSettingsHidden({ isStandalone })
   const activeWorkspace = useActiveWorkspace()
   const { isAdmin } = useActiveWorkspaceMembership()
-  // General — and later Permissions — are hidden for shared-workspace members
-  // per Decision 25 (hide-not-disable). Personal is treated as admin-equivalent
-  // for nav purposes; the page renders read-only.
-  const workspaceAdminItemsVisible = activeWorkspace?.isPersonal === 1 || isAdmin
+  // General is open to every member of a shared workspace; the page itself
+  // disables form fields for non-admins. Personal workspaces always show it.
   // Members is visible to every member of a shared workspace — the page is
   // read-friendly without action permissions, and individual actions (invite /
   // change role / remove) gate themselves on the granular permission keys.
@@ -181,19 +179,17 @@ export const SettingsSidebarContent = ({
         <SidebarGroupLabel>Workspace</SidebarGroupLabel>
         <SidebarGroupContent>
           <SidebarMenu>
-            {workspaceAdminItemsVisible && (
-              <SidebarMenuItem>
-                <SidebarMenuButton
-                  onClick={() => onSettingsNavigate('/settings/workspace/general')}
-                  tooltip="General"
-                  className="cursor-pointer"
-                  isActive={subPath === '/settings/workspace/general'}
-                >
-                  <Globe className="size-4" />
-                  <span>General</span>
-                </SidebarMenuButton>
-              </SidebarMenuItem>
-            )}
+            <SidebarMenuItem>
+              <SidebarMenuButton
+                onClick={() => onSettingsNavigate('/settings/workspace/general')}
+                tooltip="General"
+                className="cursor-pointer"
+                isActive={subPath === '/settings/workspace/general'}
+              >
+                <Globe className="size-4" />
+                <span>General</span>
+              </SidebarMenuButton>
+            </SidebarMenuItem>
             {membersItemVisible && (
               <SidebarMenuItem>
                 <SidebarMenuButton

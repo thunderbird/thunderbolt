@@ -80,9 +80,14 @@ const WorkspaceMeta = ({ workspace }: { workspace: Workspace }) => {
 const WorkspaceActions = ({ workspace }: { workspace: Workspace }) => {
   const db = useDatabase()
   const canCreate = useCanCreateWorkspace()
+  const { isAdmin } = useActiveWorkspaceMembership()
   const navigate = useNavigate()
   const userId = useActiveUserId()
   const [busy, setBusy] = useState(false)
+  // Duplicate copies the current workspace's resources, so members without
+  // admin/owner rights aren't allowed to clone it — only the personal owner
+  // or a shared-workspace admin can.
+  const canDuplicate = canCreate && (workspace.isPersonal === 1 || isAdmin)
 
   const handleDuplicate = async () => {
     if (!userId || busy) {
@@ -106,7 +111,7 @@ const WorkspaceActions = ({ workspace }: { workspace: Workspace }) => {
     }
   }
 
-  if (!canCreate) {
+  if (!canDuplicate) {
     return null
   }
 
@@ -143,7 +148,13 @@ const renameDebounceMs = 600
 const RenameWorkspaceForm = ({ workspace }: { workspace: Workspace }) => {
   const db = useDatabase()
   const cloudUrl = useActiveCloudUrl()
+  const { isAdmin } = useActiveWorkspaceMembership()
   const isPersonal = workspace.isPersonal === 1
+  // Non-admin members of a shared workspace can view the form but not edit —
+  // the upload handler would reject any PATCH anyway, so we disable the inputs
+  // and skip wiring the autosave callbacks rather than letting a failed save
+  // round-trip surface as a phantom error.
+  const canEdit = isPersonal || isAdmin
   const slugPrefix = formatWorkspaceSlugPrefix(cloudUrl)
 
   const initialSlug = workspace.slug ?? slugifyWorkspaceName(workspace.name)
@@ -212,8 +223,9 @@ const RenameWorkspaceForm = ({ workspace }: { workspace: Workspace }) => {
           showSlug={!isPersonal}
           iconPlaceholder={workspace.name.trim()[0]?.toUpperCase()}
           initialSlugLocked={initialSlugLocked}
-          onDebouncedChange={debouncedSave}
-          onCommit={() => void save()}
+          onDebouncedChange={canEdit ? debouncedSave : undefined}
+          onCommit={canEdit ? () => void save() : undefined}
+          disabled={!canEdit}
         />
         {submitError && (
           <p className="text-sm text-destructive" role="alert">

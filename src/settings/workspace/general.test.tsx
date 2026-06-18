@@ -103,6 +103,24 @@ describe('WorkspaceGeneralPage', () => {
     expect(input.disabled).toBe(false)
   })
 
+  it('disables the name input for a non-admin member of a shared workspace', async () => {
+    await seedSharedWorkspaceWithMembership('member', 'Acme')
+
+    renderWithReactivity(<WorkspaceGeneralPage />, {
+      route: `/w/${otherWsId}/settings/workspace/general`,
+      routePath: '/*',
+      tables: ['workspaces', 'workspace_memberships'],
+      wrapper: DbWrapper,
+    })
+
+    const input = (await waitForElement(() =>
+      (screen.getByLabelText('Workspace name') as HTMLInputElement).value === 'Acme'
+        ? screen.getByLabelText('Workspace name')
+        : null,
+    )) as HTMLInputElement
+    expect(input.disabled).toBe(true)
+  })
+
   it('autosaves a renamed shared workspace after the debounce window', async () => {
     await seedSharedWorkspaceWithMembership('admin', 'Old')
 

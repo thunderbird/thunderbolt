@@ -520,11 +520,17 @@ const computeDeepMode = async () => {
 /**
  * Stable per-finding hash, used to match a finding to an EXISTING open thread
  * across pushes (convergence). Anchored on file + normalized diff context + rule
- * — NOT raw line numbers (they drift on force-push). The model does not emit a
- * hunk, so we derive a coarse code anchor from the diff (see anchorFromDiff).
+ * + title — NOT raw line numbers (they drift on force-push). The `title` is what
+ * separates two DISTINCT findings that share the same file, hunk, rule, and
+ * severity; without it they collapse to one hash, so the second finding gets
+ * dropped as "already open" and its feedback silently disappears. The model does
+ * not emit a hunk, so we derive a coarse code anchor from the diff (see
+ * hunkAnchorFor).
  */
 const findingHash = (f) =>
-  normalizeKey([f.file ?? '', f.rule ?? '', (f.anchor ?? '').trim().slice(0, 200), f.severity].join(' '));
+  normalizeKey(
+    [f.file ?? '', f.rule ?? '', (f.anchor ?? '').trim().slice(0, 200), f.severity, (f.title ?? '').trim()].join(' '),
+  );
 
 const readModelFindings = async () => {
   const raw = await readFile(FINDINGS_FILE, 'utf8');

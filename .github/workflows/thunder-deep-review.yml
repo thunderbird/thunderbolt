@@ -230,9 +230,20 @@ jobs:
                   { "severity": "blocking" | "convention" | "nit",
                     "file": "<path>", "line": <int|null>,
                     "side": "RIGHT" | "LEFT",
-                    "title": "<short>", "body": "<detail>",
-                    "rule": "<invariant-id|null>" } ] }
-            Emit NO markdown, NO severity trailer, NO PR comment — the
+                    "title": "<short, plain-language summary>",
+                    "body": "<the explanation + suggested fix, in warm human prose>",
+                    "rule": "<the rule/invariant id, e.g. R-NOANY or INV-01, or null>" } ] }
+            VOICE — write `title` and `body` for a TEAMMATE, not a linter: warm,
+            collaborative, curious. Lead with a question or first-person framing
+            where it fits ("I wonder if…", "Could we…?", "Heads up —"). Be specific
+            and kind; never robotic, terse, or scolding.
+            HUMAN-FACING TEXT — `title` and `body` are shown verbatim to a person,
+            so write ONLY plain prose + the concrete fix. Do NOT put rule/invariant
+            ids, section refs, or internal scaffolding in them — NO "R-REDUCER",
+            NO "INV-01", NO "(review-heuristics §2)", NO "H mass-assignment …".
+            Put the id ONLY in the `rule` field; it is internal grounding and is
+            NEVER shown to the human.
+            Emit NO markdown headers, NO severity trailer, NO PR comment — the
             orchestrator renders and posts. If nothing to add, return {"findings":[]}.
 
       # ─────────────────────────────────────────────────────────────────────

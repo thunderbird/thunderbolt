@@ -796,8 +796,10 @@ const SEVERITY_LABEL = { blocking: '🚫 Blocking', convention: '📐 Convention
 
 /** Render one finding into an inline-comment markdown body (with hidden hash). */
 const renderCommentBody = (f) => {
-  const rule = f.rule ? ` _(rule: ${f.rule})_` : '';
-  const head = `**${SEVERITY_LABEL[f.severity]} — ${f.title}**${rule}`;
+  // Rule/invariant ids (f.rule) are INTERNAL grounding only — used for the
+  // dedup hash and the model's self-validation. They're meaningless to a human
+  // in a PR comment, so they are never rendered into the comment body.
+  const head = `**${SEVERITY_LABEL[f.severity]} — ${f.title}**`;
   const stamp = `\n\n${SELF_COMMENT_MARKER}<!-- thunder-finding-hash:${f.hash} -->`;
   const body = `${head}\n\n${f.body}${stamp}`;
   return body.length > MAX_COMMENT_BODY ? `${body.slice(0, MAX_COMMENT_BODY - stamp.length - 16)}\n…${stamp}` : body;

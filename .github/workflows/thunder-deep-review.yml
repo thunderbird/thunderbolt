@@ -1,0 +1,238 @@
+# =============================================================================
+# Advisory, comment-only AI review. Never approves, never requests changes,
+# never merges. Human approval + merge stay exactly as today.
+#
+# Notes:
+#   - The `anthropics/claude-code-action` input names below were verified
+#     against the live @v1 `action.yml` (2026-06): `prompt`, `anthropic_api_key`,
+#     `claude_args`, and `use_sticky_comment` all EXIST. `model:` /
+#     `allowed_tools:` / `review_event:` do NOT exist in @v1 — do NOT
+#     reintroduce them (pass --model/--allowedTools via `claude_args`).
+#     Re-confirm only if the action major version changes.
+#   - Action commit SHAs are PINNED below (checkout / claude-code-action).
+#   - The only secret the team sets is the ANTHROPIC_API_KEY repo secret.
+#   - Recommended: CODEOWNERS-protect this workflow + .github/scripts/review-orchestrator.mjs
+#     (they hold the review logic + the API-key reference).
+#
+# Orchestration is deterministic CODE, not model tool-calls: .github/scripts/
+# review-orchestrator.mjs does ALL GitHub I/O (poll A's bots, build the
+# skip-list, post the inline PR review). The model step ONLY emits structured
+# JSON findings to a file.
+# =============================================================================
+
+name: thunder-deep-review
+
+on:
+  pull_request:
+    # Include ready_for_review so un-drafting triggers a review; drafts
+    # are skipped by the job `if:` below.
+    types: [opened, synchronize, reopened, ready_for_review]
+    # NOTE: fork PRs are GATED OFF entirely by the job `if:` — do NOT switch
+    # to `pull_request_target` + checkout of fork head (the key-exposure
+    # pwn-request). Fork coverage, if ever wanted, is a separate `workflow_run`
+    # job that reads metadata only and never executes fork code.
+
+# Least privilege + the two scopes the mechanism actually needs.
+permissions:
+  contents: read # read the diff/files
+  pull-requests: write # post/patch the single consolidated ISSUE comment
+  checks: read # poll A's bot check-runs (without this the poller 403s)
+
+concurrency:
+  # Only review the latest push. cancel-in-progress during the debounce
+  # `sleep` (below) is free; the orchestrator's optimistic lock handles any
+  # TOCTOU if a run is cancelled mid-PATCH.
+  group: thunder-deep-review-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  review:
+    # Hard-gate on same-repo PRs only (no forks), skip Dependabot, skip
+    # drafts. This is the primary defense — fork code must never run with
+    # access to repo secrets.
+    if: >-
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      github.actor != 'dependabot[bot]' &&
+      github.event.pull_request.draft == false
+
+    # GitHub-hosted ephemeral runner: a clean VM per job. Safe now that the
+    # job only runs on same-repo PRs (fork `if:` gate above) and uses the
+    # public Anthropic API (no cloud creds on the runner).
+    runs-on: ubuntu-latest
+
+    # Cap total runner time so a hung model API call can't hold the
+    # runner indefinitely.
+    timeout-minutes: 20
+
+    env:
+      # Reconcile EVERYTHING to the PR HEAD sha, never the synthetic merge ref.
+      # Both the poller and the diff must describe the same code.
+      PR_NUMBER: ${{ github.event.pull_request.number }}
+      PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+      PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+      PR_ACTION: ${{ github.event.action }}
+      PR_LABELS: ${{ join(github.event.pull_request.labels.*.name, ',') }}
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      # The orchestrator posts the review under the default GITHUB_TOKEN, so the
+      # author login is github-actions[bot]. The script matches/resolves its own
+      # threads by this login (+ a hidden marker). No separate GitHub App.
+      THUNDER_BOT_LOGIN: github-actions[bot]
+      # File handoff between steps (must match .github/scripts/review-orchestrator.mjs).
+      THUNDER_DIFF_FILE: ${{ github.workspace }}/thunder-diff.patch
+      THUNDER_SKIPLIST_FILE: ${{ github.workspace }}/thunder-skiplist.json
+      THUNDER_DEEPMODE_FILE: ${{ github.workspace }}/thunder-deepmode.json
+      THUNDER_FINDINGS_FILE: ${{ github.workspace }}/thunder-findings.json
+
+    steps:
+      # ─────────────────────────────────────────────────────────────────────
+      # DEBOUNCE. Rapid pushes (rebases/typo fixes) cancel during this
+      # sleep at zero model cost. Only survivors proceed to spend on the model.
+      # ─────────────────────────────────────────────────────────────────────
+      - name: Debounce rapid pushes
+        run: sleep 60
+
+      # ─────────────────────────────────────────────────────────────────────
+      # Checkout. persist-credentials:false (don't leave a usable token on disk
+      # for the model step), check out the HEAD sha shallow, then do a TARGETED
+      # base/head fetch in the next step — NOT fetch-depth:0 (wasteful + pulls
+      # full history of untrusted code). SHA pinned to v7.0.0.
+      # ─────────────────────────────────────────────────────────────────────
+      - name: Checkout (head, shallow)
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
+          ref: ${{ github.event.pull_request.head.sha }} # review the head sha
+          fetch-depth: 1 # shallow; the next step fetches exactly base+head for the diff
+
+      # ─────────────────────────────────────────────────────────────────────
+      # Targeted fetch of ONLY the base + head commits (no tags, no full
+      # history). This is the deliberate alternative to fetch-depth:0 — it
+      # makes base..head resolvable for the diff step while pulling the minimum
+      # objects from untrusted code.
+      # ─────────────────────────────────────────────────────────────────────
+      - name: Fetch base + head commits only
+        run: git fetch --no-tags --depth 1 origin "$PR_BASE_SHA" "$PR_HEAD_SHA"
+
+      # ─────────────────────────────────────────────────────────────────────
+      # Pre-compute the diff DETERMINISTICALLY (no model, no Bash tool in
+      # the model step). The model reads this file via `Read`. This closes the
+      # prompt-injection-over-diff token-exfil surface and removes the
+      # GH_TOKEN dependency of `gh pr diff`.
+      # ─────────────────────────────────────────────────────────────────────
+      - name: Compute diff to a bounded file
+        run: |
+          git diff "$PR_BASE_SHA".."$PR_HEAD_SHA" > "$THUNDER_DIFF_FILE" || true
+          echo "diff bytes: $(wc -c < "$THUNDER_DIFF_FILE")"
+
+      # ─────────────────────────────────────────────────────────────────────
+      # (PRE phase): poll A's bots, build the skip-list, compute the
+      # deterministic deep-mode flag. ALL GitHub I/O is in this script.
+      # This step touches untrusted PR metadata but holds no model credentials.
+      # ─────────────────────────────────────────────────────────────────────
+      - name: Orchestrator — poll bots + build skip-list (pre)
+        run: node .github/scripts/review-orchestrator.mjs pre
+        # NOTE: .github/scripts/review-orchestrator.mjs is checked in at the
+        # repo-relative path; CODEOWNERS-protect it (recommended).
+
+      # ─────────────────────────────────────────────────────────────────────
+      # The MODEL step. Emits STRUCTURED JSON findings via the action's
+      # --json-schema structured-output channel (NOT a file the model writes —
+      # the model is read-only and has NO Write tool, so a "write the findings
+      # file yourself" contract silently produced nothing and the post step
+      # no-op'd green). The model returns its findings as its FINAL result; the
+      # action constrains that result to the schema and exposes it on the
+      # `structured_output` step output. A separate non-model step (below)
+      # materializes it to THUNDER_FINDINGS_FILE for the orchestrator.
+      # It does NO GitHub I/O and has NO Bash/Write tool.
+      #
+      # Input names below were verified against the live @v1 `action.yml`
+      # (2026-06); re-confirm only if the action major version changes:
+      #      - auth via `anthropic_api_key` (the Anthropic public API directly;
+      #        NOT Bedrock/Vertex). The only secret the team provisions.
+      #      - sticky/consolidated comment via `use_sticky_comment`. We render+post
+      #        the inline review ourselves in the post step, so it stays "false"
+      #        here — the post step is the single owner of the comment.
+      #      - pass model + tools through `claude_args`, NOT `model:`/`allowed_tools:`.
+      #      - typed output via `--json-schema` in `claude_args`; the action then
+      #        sets `structured_output` (a JSON string of the schema object) and
+      #        ITSELF fails the step if the model returns no structured output.
+      #      - there is NO `review_event:` input in @v1.
+      #      - allowedTools = Read,Grep,Glob ONLY. NO Bash(...). NO write tools.
+      # SHA pinned to v1.
+      # PIN the model id LITERALLY here — do NOT source from vars.* (a
+      #         mutable repo/org var changes review behavior with no PR/audit trail).
+      # ─────────────────────────────────────────────────────────────────────
+      - name: thunder-deep-review (model — structured findings only)
+        id: model
+        uses: anthropics/claude-code-action@806af32823ef69c8ef357086c573a902af641307 # v1
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          use_sticky_comment: "false" # we own the comment via the post step
+          # Model id pinned LITERALLY (a mutable vars.* would change review
+          # behavior with no PR/audit trail). claude-opus-4-8 is a pinned
+          # snapshot id (the 4.6+ generation uses a dateless-but-pinned format).
+          # --allowedTools is intentionally Read,Grep,Glob only (no Bash, no writes).
+          # --max-turns caps the agent loop.
+          # --json-schema constrains the FINAL result to the findings contract
+          # and surfaces it on steps.model.outputs.structured_output (parsed +
+          # materialized by the next step). Schema is inline single-line JSON.
+          claude_args: >-
+            --model claude-opus-4-8
+            --allowedTools Read,Grep,Glob
+            --max-turns 20
+            --json-schema '{"type":"object","additionalProperties":false,"required":["findings"],"properties":{"findings":{"type":"array","items":{"type":"object","additionalProperties":false,"required":["severity","file","title","body"],"properties":{"severity":{"type":"string","enum":["blocking","convention","nit"]},"file":{"type":"string"},"line":{"type":["integer","null"]},"title":{"type":"string"},"body":{"type":"string"},"rule":{"type":["string","null"]}}}}}}'
+          prompt: |
+            Use the thunder-deep-review skill to review this pull request.
+            The unified diff to review is in the file: ${{ env.THUNDER_DIFF_FILE }} (read it with Read).
+            A skip-list of issues ALREADY reported by other bots is in:
+              ${{ env.THUNDER_SKIPLIST_FILE }}
+            Do NOT repeat anything on the skip-list. Surface ONLY what the other
+            bots missed (architecture, conventions, docs-intent, readability).
+            Deep-mode / bounded-mode flags are in: ${{ env.THUNDER_DEEPMODE_FILE }} —
+            honor them; do NOT decide spend yourself.
+
+            OUTPUT CONTRACT: return your findings as the structured output
+            matching the provided JSON schema — an object with a `findings`
+            array of { severity: "blocking"|"convention"|"nit", file, line
+            (int or null), title, body, rule (string or null) }. Do NOT write
+            any file, emit NO markdown, NO severity trailer, NO PR comment — the
+            orchestrator renders and posts. If nothing to add, return
+            {"findings":[]}.
+
+      # ─────────────────────────────────────────────────────────────────────
+      # Materialize the model's structured output to THUNDER_FINDINGS_FILE for
+      # the orchestrator. This is a NON-MODEL shell step (no creds, no tools) —
+      # it bridges the action's `structured_output` channel to the file the post
+      # phase reads.
+      #
+      # FAIL-LOUD on a broken model step: a missing/empty/whitespace
+      # structured_output means the model produced nothing (auth failure, hit
+      # --max-turns, schema-validation reject, etc.) — that must be a RED check,
+      # NOT a silent green no-op. We exit non-zero here so the failure is
+      # visible. A GENUINE empty review is `{"findings":[]}` — non-empty JSON —
+      # which passes this gate and the post step then no-ops cleanly.
+      # Runs only if the model step succeeded (no `if: always()`): if the action
+      # itself already failed, its own red check is the signal.
+      # ─────────────────────────────────────────────────────────────────────
+      - name: Materialize structured findings
+        env:
+          STRUCTURED_OUTPUT: ${{ steps.model.outputs.structured_output }}
+        run: |
+          if [ -z "${STRUCTURED_OUTPUT//[[:space:]]/}" ]; then
+            echo "::error::model step returned empty structured_output — broken review, failing loudly (not a silent no-op)."
+            exit 1
+          fi
+          printf '%s' "$STRUCTURED_OUTPUT" > "$THUNDER_FINDINGS_FILE"
+          echo "findings bytes: $(wc -c < "$THUNDER_FINDINGS_FILE")"
+
+      # ─────────────────────────────────────────────────────────────────────
+      # (POST phase): read+validate the model's JSON, compute the
+      # resolved-diff structurally, render markdown deterministically, and upsert
+      # the SINGLE consolidated ISSUE comment with an optimistic lock. No model
+      # creds are needed here; this is pure GitHub I/O.
+      # `if: always()` so a non-zero model step still lets us post (or skip
+      # fail-soft) — but the script itself exits 0 on any error.
+      # ─────────────────────────────────────────────────────────────────────
+      - name: Orchestrator — render + upsert comment (post)
+        if: always()
+        run: node .github/scripts/review-orchestrator.mjs post

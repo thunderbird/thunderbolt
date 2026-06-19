@@ -170,18 +170,22 @@ jobs:
       #        here — the post step is the single owner of the inline review.
       #      - pass model + tools through `claude_args`, NOT `model:`/`allowed_tools:`.
       #      - there is NO `review_event:` input in @v1.
-      #      - allowedTools = Read,Grep,Glob,Skill,Task. NO Bash(...). NO write tools.
-      #        `Skill` and `Task` REQUIRE permission (per the tools reference);
-      #        the action runs the Agent SDK in DEFAULT permission mode with NO
-      #        canUseTool callback (headless CI), so any permission-required tool
-      #        that is NOT pre-approved by an allow rule is denied with no prompt.
+      #      - allowedTools = Read,Grep,Glob,Skill,Task,Agent. NO Bash(...). NO write tools.
+      #        `Skill` and the subagent-spawn tool REQUIRE permission (per the tools
+      #        reference); the action runs the Agent SDK in DEFAULT permission mode
+      #        with NO canUseTool callback (headless CI), so any permission-required
+      #        tool that is NOT pre-approved by an allow rule is denied with no prompt.
       #        The whole review is invoked via the `Skill` tool ("Use the
       #        thunder-deep-review skill"), and the skill fans out to read-only
-      #        sub-reviewers via the `Task` tool — both MUST be allow-listed here
-      #        or the model step silently no-ops. Read/Grep/Glob need no permission
-      #        but are listed for clarity. The skill + its subagents under
-      #        `.claude/{skills,agents}/` are auto-discovered because the SDK loads
-      #        the `project` setting source by default.
+      #        sub-reviewers via the subagent-spawn tool — that tool is named `Task`
+      #        in some SDK versions and `Agent` in others, so BOTH are allow-listed
+      #        for forward/backward compatibility (the unused name is harmless). If
+      #        only the wrong name were listed, every spawn (the per-lens sub-
+      #        reviewers + the dispatched powersync-sync/react-effect reviewers)
+      #        would be silently denied, collapsing the fan-out to a single pass.
+      #        Read/Grep/Glob need no permission but are listed for clarity. The
+      #        skill + its subagents under `.claude/{skills,agents}/` are auto-
+      #        discovered because the SDK loads the `project` setting source by default.
       # SHA pinned to v1.
       # PIN the model id LITERALLY here — do NOT source from vars.* (a
       #         mutable repo/org var changes review behavior with no PR/audit trail).
@@ -202,8 +206,10 @@ jobs:
           # snapshot id (the 4.6+ generation uses a dateless-but-pinned format).
           # --allowedTools: Skill (invokes the review skill — permission-required,
           # so it MUST be allow-listed or the headless run denies it and no-ops),
-          # Task (the skill's read-only sub-reviewer fan-out — also permission-
-          # required), and Read,Grep,Glob (read-only working-tree access). NO Bash,
+          # Task AND Agent (the skill's read-only sub-reviewer fan-out — also
+          # permission-required; the subagent-spawn tool is `Task` in some SDK
+          # versions and `Agent` in others, so both names are listed), and
+          # Read,Grep,Glob (read-only working-tree access). NO Bash,
           # NO write tools — the model is fully READ-ONLY and CANNOT write a file.
           # --max-turns caps the agent loop.
           # --json-schema: the model is read-only, so it can't write the findings
@@ -217,7 +223,7 @@ jobs:
           #   (optional, defaults RIGHT); title; body; rule (string|null).
           claude_args: >-
             --model claude-opus-4-8
-            --allowedTools Read,Grep,Glob,Skill,Task
+            --allowedTools Read,Grep,Glob,Skill,Task,Agent
             --max-turns 20
             --json-schema '{"type":"object","additionalProperties":false,"required":["findings"],"properties":{"findings":{"type":"array","items":{"type":"object","additionalProperties":false,"required":["severity","file","line","title","body","rule"],"properties":{"severity":{"type":"string","enum":["blocking","convention","nit"]},"file":{"type":["string","null"]},"line":{"type":["integer","null"],"minimum":1},"side":{"type":"string","enum":["RIGHT","LEFT"]},"title":{"type":"string"},"body":{"type":"string"},"rule":{"type":["string","null"]}}}}}}'
           prompt: |

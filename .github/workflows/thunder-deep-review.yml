@@ -1,9 +1,8 @@
 # =============================================================================
-# DRAFT — NOT WIRED. Advisory, comment-only AI review. Never approves, never
+# thunder-deep-review — advisory, comment-only AI review. Never approves, never
 # requests changes, never merges. Human approval + merge stay exactly as today.
-# To activate later (only with explicit approval): move to .github/workflows/.
 #
-# ⚠️ VERIFY-BEFORE-WIRING: ⚠️
+# Input-name verification:
 #   - The `anthropics/claude-code-action` input names below were verified
 #     against the live @v1 `action.yml` (2026-06): `prompt`, `anthropic_api_key`,
 #     `claude_args`, and `use_sticky_comment` all EXIST. `model:` /
@@ -11,11 +10,11 @@
 #     reintroduce them (pass --model/--allowedTools via `claude_args`).
 #     Re-confirm only if the action major version changes.
 #   - Action commit SHAs are PINNED below (checkout / claude-code-action).
-#   - The only value the team sets later is the ANTHROPIC_API_KEY repo secret.
-#   - When wiring, CODEOWNERS-protect this workflow + scripts/review-orchestrator.mjs
+#   - The only secret the team sets is the ANTHROPIC_API_KEY repo secret.
+#   - Recommended: CODEOWNERS-protect this workflow + .github/scripts/review-orchestrator.mjs
 #     (they hold the review logic + the API-key reference).
 #
-# Orchestration is deterministic CODE, not model tool-calls: scripts/
+# Orchestration is deterministic CODE, not model tool-calls: .github/scripts/
 # review-orchestrator.mjs does ALL GitHub I/O (poll A's bots, build the
 # skip-list, post the inline PR review). The model step ONLY emits structured
 # JSON findings to a file.
@@ -78,7 +77,7 @@ jobs:
       # author login is github-actions[bot]. The script matches/resolves its own
       # threads by this login (+ a hidden marker). No separate GitHub App.
       THUNDER_BOT_LOGIN: github-actions[bot]
-      # File handoff between steps (must match scripts/review-orchestrator.mjs).
+      # File handoff between steps (must match .github/scripts/review-orchestrator.mjs).
       THUNDER_DIFF_FILE: ${{ github.workspace }}/thunder-diff.patch
       THUNDER_SKIPLIST_FILE: ${{ github.workspace }}/thunder-skiplist.json
       THUNDER_DEEPMODE_FILE: ${{ github.workspace }}/thunder-deepmode.json
@@ -131,9 +130,9 @@ jobs:
       # This step touches untrusted PR metadata but holds no model credentials.
       # ─────────────────────────────────────────────────────────────────────
       - name: Orchestrator — poll bots + build skip-list (pre)
-        run: node scripts/review-orchestrator.mjs pre
-        # NOTE: scripts/review-orchestrator.mjs must be checked in at the
-        # workflow-relative path and CODEOWNERS-protected before activation.
+        run: node .github/scripts/review-orchestrator.mjs pre
+        # NOTE: .github/scripts/review-orchestrator.mjs is checked in at the
+        # repo-relative path; recommend CODEOWNERS-protecting it.
 
       # ─────────────────────────────────────────────────────────────────────
       # The MODEL step. Emits STRUCTURED JSON findings ONLY to a file.
@@ -148,7 +147,18 @@ jobs:
       #        here — the post step is the single owner of the comment.
       #      - pass model + tools through `claude_args`, NOT `model:`/`allowed_tools:`.
       #      - there is NO `review_event:` input in @v1.
-      #      - allowedTools = Read,Grep,Glob ONLY. NO Bash(...). NO write tools.
+      #      - allowedTools = Read,Grep,Glob,Skill,Task. NO Bash(...). NO write tools.
+      #        `Skill` and `Task` REQUIRE permission (per the tools reference);
+      #        the action runs the Agent SDK in DEFAULT permission mode with NO
+      #        canUseTool callback (headless CI), so any permission-required tool
+      #        that is NOT pre-approved by an allow rule is denied with no prompt.
+      #        The whole review is invoked via the `Skill` tool ("Use the
+      #        thunder-deep-review skill"), and the skill fans out to read-only
+      #        sub-reviewers via the `Task` tool — both MUST be allow-listed here
+      #        or the model step silently no-ops. Read/Grep/Glob need no permission
+      #        but are listed for clarity. The skill + its subagents under
+      #        `.claude/{skills,agents}/` are auto-discovered because the SDK loads
+      #        the `project` setting source by default.
       # SHA pinned to v1.
       # PIN the model id LITERALLY here — do NOT source from vars.* (a
       #         mutable repo/org var changes review behavior with no PR/audit trail).
@@ -161,11 +171,14 @@ jobs:
           # Model id pinned LITERALLY (a mutable vars.* would change review
           # behavior with no PR/audit trail). claude-opus-4-8 is a pinned
           # snapshot id (the 4.6+ generation uses a dateless-but-pinned format).
-          # --allowedTools is intentionally Read,Grep,Glob only (no Bash, no writes).
-          # --max-turns caps the agent loop.
+          # --allowedTools: Skill (invokes the review skill — permission-required,
+          # so it MUST be allow-listed or the headless run denies it and no-ops),
+          # Task (the skill's read-only sub-reviewer fan-out — also permission-
+          # required), and Read,Grep,Glob (read-only working-tree access). NO Bash,
+          # NO write tools. --max-turns caps the agent loop.
           claude_args: >-
             --model claude-opus-4-8
-            --allowedTools Read,Grep,Glob
+            --allowedTools Read,Grep,Glob,Skill,Task
             --max-turns 20
           prompt: |
             Use the thunder-deep-review skill to review this pull request.
@@ -196,4 +209,4 @@ jobs:
       # ─────────────────────────────────────────────────────────────────────
       - name: Orchestrator — render + upsert comment (post)
         if: always()
-        run: node scripts/review-orchestrator.mjs post
+        run: node .github/scripts/review-orchestrator.mjs post

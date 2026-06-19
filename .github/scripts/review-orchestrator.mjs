@@ -159,6 +159,10 @@ const githubFetch = async (url, init = {}) => {
       Accept: 'application/vnd.github+json',
       'X-GitHub-Api-Version': '2022-11-28',
       'User-Agent': 'thunder-deep-review-orchestrator',
+      // Declare the JSON body explicitly (matches graphqlFetch). Harmless on the
+      // bodyless GETs; required so POSTs that send JSON.stringify(...) — the
+      // create-review call — are parsed as JSON rather than mis-sniffed.
+      'Content-Type': 'application/json',
       ...(init.headers ?? {}),
     },
   });

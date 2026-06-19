@@ -779,13 +779,17 @@ const hashFromOwnBody = (body) => {
 const hashesFromBody = (body) => [...(body ?? '').matchAll(/<!-- thunder-finding-hash:([0-9a-f]{8,}) -->/g)].map((m) => m[1]);
 
 /**
- * Did WE author this review/comment? GraphQL returns a Bot author's login
- * WITHOUT the "[bot]" suffix ("github-actions"), while the REST-derived
- * selfLogin carries it ("github-actions[bot]") — normalize both before
- * comparing. The hidden SELF_COMMENT_MARKER is the canonical fallback.
+ * Is this login OURS? GraphQL returns a Bot login WITHOUT the "[bot]" suffix
+ * ("github-actions"), while the REST-derived selfLogin carries it
+ * ("github-actions[bot]") — normalize both before comparing.
  */
-const isOwnAuthor = (login, body) =>
-  login.replace(/\[bot\]$/, '') === env.selfLogin.replace(/\[bot\]$/, '') || (body ?? '').includes(SELF_COMMENT_MARKER);
+const isSelfLogin = (login) => login.replace(/\[bot\]$/, '') === env.selfLogin.replace(/\[bot\]$/, '');
+
+/**
+ * Did WE author this review/comment? Login match, with the hidden
+ * SELF_COMMENT_MARKER as the canonical fallback.
+ */
+const isOwnAuthor = (login, body) => isSelfLogin(login) || (body ?? '').includes(SELF_COMMENT_MARKER);
 
 /**
  * Fetch the finding-hashes we already SUMMARIZED in our own prior review bodies.
@@ -830,8 +834,10 @@ const fetchOwnSummarizedHashes = async () => {
 
 /**
  * Fetch OUR OWN review threads on this PR via GraphQL, paginated.
- * Returns [{ threadId, isResolved, hash }] where hash is the stamped finding
- * hash on the FIRST (root) comment of a thread we authored.
+ * Returns [{ threadId, isResolved, resolvedByLogin, hash }] where hash is the
+ * stamped finding hash on the FIRST (root) comment of a thread we authored.
+ * `resolvedByLogin` is the login that resolved the thread (null if open), used
+ * to tell a human resolution apart from the bot's own auto-resolution.
  */
 const fetchOwnThreads = async () => {
   const query = `
@@ -844,6 +850,7 @@ const fetchOwnThreads = async () => {
               id
               isResolved
               isOutdated
+              resolvedBy { login }
               comments(first:1) {
                 nodes { body author { login } }
               }
@@ -875,6 +882,7 @@ const fetchOwnThreads = async () => {
       out.push({
         threadId: node.id,
         isResolved: Boolean(node.isResolved),
+        resolvedByLogin: node.resolvedBy?.login ?? null,
         hash: hashFromOwnBody(root.body),
       });
     }
@@ -1097,11 +1105,23 @@ const runPost = async () => {
   //    have no thread, so without the latter each push reposts the same notes.
   const [ownThreads, summarizedHashes] = await Promise.all([fetchOwnThreads(), fetchOwnSummarizedHashes()]);
   const openHashes = new Set(ownThreads.filter((t) => !t.isResolved && t.hash).map((t) => t.hash));
+  // Threads a HUMAN resolved (decided the finding is intentional). We must NOT
+  // re-post these even though the underlying code is unchanged, or the bot would
+  // fight the human's resolve on every push. We scope to human resolutions only:
+  // a thread WE auto-resolved (step 4) is resolved precisely because its code was
+  // fixed, so if that code regresses the finding genuinely reappears and SHOULD
+  // re-post — hence bot-self-resolved hashes are deliberately left out.
+  const humanResolvedHashes = new Set(
+    ownThreads.filter((t) => t.isResolved && t.hash && t.resolvedByLogin && !isSelfLogin(t.resolvedByLogin)).map((t) => t.hash),
+  );
 
-  // 3) Dedup: post only findings NOT already present as an OPEN own-thread, and
-  //    — for summary-placement findings, which have no thread — not already
-  //    listed in a prior review's "Additional notes" body.
-  const toPost = findings.filter((f) => !openHashes.has(f.hash) && !summarizedHashes.has(f.hash));
+  // 3) Dedup: post only findings NOT already present as an OPEN own-thread, NOT
+  //    human-resolved (respect the human's decision), and — for summary-placement
+  //    findings, which have no thread — not already listed in a prior review's
+  //    "Additional notes" body.
+  const toPost = findings.filter(
+    (f) => !openHashes.has(f.hash) && !humanResolvedHashes.has(f.hash) && !summarizedHashes.has(f.hash),
+  );
 
   // 4) Convergence: resolve our OWN open threads whose finding is gone now.
   //    Suppressed on `reopened` (the prior threads may be from another base).

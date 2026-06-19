@@ -752,7 +752,12 @@ const fetchOwnThreads = async () => {
       const root = node.comments?.nodes?.[0];
       if (!root) continue;
       const login = root.author?.login ?? '';
-      const mine = login === env.selfLogin || (root.body ?? '').includes(SELF_COMMENT_MARKER);
+      // GraphQL returns a Bot author's login WITHOUT the "[bot]" suffix
+      // ("github-actions"), while the REST-derived selfLogin carries it
+      // ("github-actions[bot]"). Normalize both before comparing so the login
+      // hint actually works; the hidden marker remains the canonical fallback.
+      const stripBot = (l) => l.replace(/\[bot\]$/, '');
+      const mine = stripBot(login) === stripBot(env.selfLogin) || (root.body ?? '').includes(SELF_COMMENT_MARKER);
       if (!mine) continue;
       out.push({
         threadId: node.id,
@@ -806,17 +811,39 @@ const renderCommentBody = (f) => {
 };
 
 /**
+ * Is this finding actually anchorable as an inline/file comment in the diff we
+ * parsed? This is the SAME test GitHub applies server-side when it validates
+ * `comments[]` on `POST /pulls/{n}/reviews`, so mirroring it here lets us demote
+ * anything unanchorable to the summary body instead of risking a 422 that drops
+ * the whole review.
+ */
+const isAnchorable = (f, diffIndex) => {
+  const fileEntry = f.file ? diffIndex.get(f.file) : null;
+  if (!fileEntry) return false; // file not in the real PR diff at all
+  if (f.placement === 'file') return true; // file is in the diff → file-level ok
+  const lineSet = f.side === 'LEFT' ? fileEntry.leftLines : fileEntry.rightLines;
+  return f.line != null && Boolean(lineSet?.has(f.line));
+};
+
+/**
  * Build the review payload from the findings we decided to POST (already
  * deduped against open own-threads). Inline + file-level findings become
  * `comments[]`; summary-only findings (and inline overflow past the cap) roll
  * into the review `body`.
+ *
+ * RESILIENCE: an inline/file comment is added to `comments[]` ONLY if its
+ * (path, line, side) is actually anchorable in the diff we parsed — re-verified
+ * here against `diffIndex`, not just trusting the `placement` tag — so a stray
+ * path/line can never reach GitHub as an inline comment and 422 the review.
  */
-const buildReviewPayload = ({ toPost, deepInfo, skipCount }) => {
+const buildReviewPayload = ({ toPost, diffIndex, deepInfo, skipCount }) => {
   const comments = [];
   const overflow = [];
 
   for (const f of toPost) {
-    if (f.placement === 'summary') {
+    // Summary placements and anything not anchorable in the REAL diff roll into
+    // the body so the POST can never 422 ("Path could not be resolved").
+    if (f.placement === 'summary' || !isAnchorable(f, diffIndex)) {
       overflow.push(f);
       continue;
     }
@@ -865,8 +892,30 @@ const postReview = async (payload) => {
     method: 'POST',
     body: JSON.stringify(payload),
   });
-  if (!r.ok) throw new Error(`create review failed: ${r.status} ${r.body ?? ''}`);
-  log(`posted inline review: ${payload.comments.length} inline comment(s), event=COMMENT.`);
+  if (r.ok) {
+    log(`posted inline review: ${payload.comments.length} inline comment(s), event=COMMENT.`);
+    return;
+  }
+  // Last-resort resilience: GitHub rejects the WHOLE review if ANY inline
+  // comment can't be anchored ("Path could not be resolved"). Rather than lose
+  // every good finding, retry ONCE with all inline comments dropped, folding
+  // their locations into the summary body so the findings still reach the human.
+  if (r.status === 422 && payload.comments.length > 0) {
+    log(`post: 422 on inline anchors (${r.body ?? ''}) — retrying comment-free with findings in the body.`);
+    const demoted = payload.comments.map((c) => {
+      const lineRef = c.line ? `:${c.line}` : '';
+      return `- \`${c.path}${lineRef}\` — ${c.body.split('\n')[0].replace(/\*\*/g, '')}`;
+    });
+    const fallbackBody = `${payload.body}\n### Additional notes (couldn't anchor to a diff line)\n${demoted.join('\n')}\n`;
+    const retry = await githubFetch(apiUrl(`/pulls/${env.prNumber}/reviews`), {
+      method: 'POST',
+      body: JSON.stringify({ event: 'COMMENT', commit_id: env.headSha, body: fallbackBody, comments: [] }),
+    });
+    if (!retry.ok) throw new Error(`create review retry failed: ${retry.status} ${retry.body ?? ''}`);
+    log(`posted comment-free fallback review: ${demoted.length} finding(s) in body, event=COMMENT.`);
+    return;
+  }
+  throw new Error(`create review failed: ${r.status} ${r.body ?? ''}`);
 };
 
 // =============================================================================
@@ -881,8 +930,9 @@ const runPre = async () => {
   await writeFile(DEEPMODE_FILE, JSON.stringify(deepInfo, null, 2));
   log(`pre: wrote ${skipList.length} skip-list entries; deepMode=${deepInfo.deepMode} (${deepInfo.reason}).`);
   // NOTE: the DIFF_FILE is produced by a separate deterministic workflow step
-  // (git diff base..head) — NOT here and NOT by the model. This script
-  // never shells out to git; it only does GitHub REST I/O.
+  // (the GitHub API's PR diff, Accept: v3.diff — the exact merge-base..head set
+  // GitHub validates review anchors against) — NOT here and NOT by the model.
+  // This script never shells out to git; it only does GitHub REST I/O.
 };
 
 /**
@@ -931,7 +981,7 @@ const runPost = async () => {
   }
 
   // 5) Post the new findings as one inline review.
-  const payload = buildReviewPayload({ toPost, deepInfo, skipCount });
+  const payload = buildReviewPayload({ toPost, diffIndex, deepInfo, skipCount });
   await postReview(payload);
 };
 

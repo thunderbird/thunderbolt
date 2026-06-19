@@ -70,7 +70,6 @@ jobs:
       # Both the poller and the diff must describe the same code.
       PR_NUMBER: ${{ github.event.pull_request.number }}
       PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
-      PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
       PR_ACTION: ${{ github.event.action }}
       PR_LABELS: ${{ join(github.event.pull_request.labels.*.name, ',') }}
       GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -94,35 +93,42 @@ jobs:
 
       # ─────────────────────────────────────────────────────────────────────
       # Checkout. persist-credentials:false (don't leave a usable token on disk
-      # for the model step), check out the HEAD sha shallow, then do a TARGETED
-      # base/head fetch in the next step — NOT fetch-depth:0 (wasteful + pulls
-      # full history of untrusted code). SHA pinned to v7.0.0.
+      # for the model step), check out the HEAD sha shallow. The diff itself is
+      # fetched from the GitHub API (next step), so we need NO base/head fetch
+      # and NOT fetch-depth:0 — the working tree is only here for the model's
+      # Read/Grep/Glob tools and the .claude symlink-prune step. SHA pinned to
+      # v7.0.0.
       # ─────────────────────────────────────────────────────────────────────
       - name: Checkout (head, shallow)
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
           persist-credentials: false
           ref: ${{ github.event.pull_request.head.sha }} # review the head sha
-          fetch-depth: 1 # shallow; the next step fetches exactly base+head for the diff
-
-      # ─────────────────────────────────────────────────────────────────────
-      # Targeted fetch of ONLY the base + head commits (no tags, no full
-      # history). This is the deliberate alternative to fetch-depth:0 — it
-      # makes base..head resolvable for the diff step while pulling the minimum
-      # objects from untrusted code.
-      # ─────────────────────────────────────────────────────────────────────
-      - name: Fetch base + head commits only
-        run: git fetch --no-tags --depth 1 origin "$PR_BASE_SHA" "$PR_HEAD_SHA"
+          fetch-depth: 1 # shallow; the diff comes from the API, not local git
 
       # ─────────────────────────────────────────────────────────────────────
       # Pre-compute the diff DETERMINISTICALLY (no model, no Bash tool in
-      # the model step). The model reads this file via `Read`. This closes the
-      # prompt-injection-over-diff token-exfil surface and removes the
-      # GH_TOKEN dependency of `gh pr diff`.
+      # the model step). The model reads this file via `Read`.
+      #
+      # It MUST equal GitHub's REAL PR diff — the same merge-base..head ("Files
+      # changed") set that `POST /pulls/{n}/reviews` validates inline `comments[]`
+      # against — so we fetch it straight from the API (Accept: v3.diff) instead
+      # of a local `git diff`. A local TWO-DOT `git diff base..head` is WRONG:
+      # base.sha is the CURRENT tip of the base branch, not the merge-base, so
+      # when the PR branch is behind base it injects base-only commits as REVERSE
+      # diffs. The model then anchors findings to files NOT in the real PR diff,
+      # and `POST /pulls/{n}/reviews` 422s ("Path could not be resolved"),
+      # dropping the whole review.
+      #
+      # GITHUB_TOKEN is in the job env; this is NOT the read-only model step, so
+      # using it here is fine. `set -o pipefail` so an API error fails loudly
+      # instead of writing a truncated/empty diff that silently reviews nothing.
       # ─────────────────────────────────────────────────────────────────────
       - name: Compute diff to a bounded file
         run: |
-          git diff "$PR_BASE_SHA".."$PR_HEAD_SHA" > "$THUNDER_DIFF_FILE" || true
+          set -o pipefail
+          gh api "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}" \
+            -H "Accept: application/vnd.github.v3.diff" > "$THUNDER_DIFF_FILE"
           echo "diff bytes: $(wc -c < "$THUNDER_DIFF_FILE")"
 
       # ─────────────────────────────────────────────────────────────────────

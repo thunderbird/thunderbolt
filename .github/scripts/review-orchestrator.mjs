@@ -912,6 +912,11 @@ const resolveThread = async (threadId) => {
 
 const SEVERITY_LABEL = { blocking: '🚫 Blocking', convention: '📐 Convention', nit: '🔧 Nit' };
 
+// Heading for body-summarized findings (summary placements + inline overflow +
+// the 422 fallback). Single source so the skip-post check and the fallback's
+// dedup-guard match the heading we actually emit.
+const SUMMARY_HEADING = `### Additional notes (couldn't anchor to a diff line)`;
+
 /** Render one finding into an inline-comment markdown body (with hidden hash). */
 const renderCommentBody = (f) => {
   // Rule/invariant ids (f.rule) are INTERNAL grounding only — used for the
@@ -989,9 +994,7 @@ const buildReviewPayload = ({ toPost, diffIndex, deepInfo, skipCount }) => {
     `deferred ${skipCount} item(s) already reported by other bots (best-effort dedup)</sub>\n`;
 
   const summaryBlock =
-    summaryLines.length === 0
-      ? ''
-      : `\n### Additional notes (couldn't anchor to a diff line)\n${summaryLines.join('\n')}\n`;
+    summaryLines.length === 0 ? '' : `\n${SUMMARY_HEADING}\n${summaryLines.join('\n')}\n`;
 
   const body = `${header}${summaryBlock}`;
   return { event: 'COMMENT', commit_id: env.headSha, body, comments };
@@ -999,10 +1002,10 @@ const buildReviewPayload = ({ toPost, diffIndex, deepInfo, skipCount }) => {
 
 /** POST the review. event=COMMENT only — NEVER approve/request-changes. */
 const postReview = async (payload) => {
-  if (payload.comments.length === 0 && !payload.body.includes('Additional notes')) {
-    // Nothing new to anchor and nothing to summarize beyond the header: still
-    // post a thin review so absence-of-output isn't ambiguous, but only if we
-    // actually have findings to show. With zero new findings we skip posting.
+  if (payload.comments.length === 0 && !payload.body.includes(SUMMARY_HEADING)) {
+    // Nothing to anchor inline and nothing to summarize beyond the header —
+    // i.e. zero new findings. Skip posting entirely rather than leave a
+    // contentless review on the PR.
     log('post: no new inline comments and no summary items — skipping review post.');
     return;
   }
@@ -1030,7 +1033,13 @@ const postReview = async (payload) => {
       const stamp = hash ? ` <!-- thunder-finding-hash:${hash} -->` : '';
       return `- \`${c.path}${lineRef}\` — ${c.body.split('\n')[0].replace(/\*\*/g, '')}${stamp}`;
     });
-    const fallbackBody = `${payload.body}\n### Additional notes (couldn't anchor to a diff line)\n${demoted.join('\n')}\n`;
+    // payload.body may ALREADY carry a SUMMARY_HEADING block (mixed-placement
+    // reviews with summary findings) — append the demoted bullets under it
+    // rather than emitting a duplicate header.
+    const demotedBlock = demoted.join('\n');
+    const fallbackBody = payload.body.includes(SUMMARY_HEADING)
+      ? `${payload.body}${demotedBlock}\n`
+      : `${payload.body}\n${SUMMARY_HEADING}\n${demotedBlock}\n`;
     const retry = await githubFetch(apiUrl(`/pulls/${env.prNumber}/reviews`), {
       method: 'POST',
       body: JSON.stringify({ event: 'COMMENT', commit_id: env.headSha, body: fallbackBody, comments: [] }),

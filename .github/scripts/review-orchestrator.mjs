@@ -85,6 +85,10 @@ const DEEP_MODE_FILE_COUNT = 40; // tunable for the team's PR sizes.
 // Hard GitHub cliffs: /commits/{sha}/check-runs caps at 1000 check-suites,
 // PR files list caps at 3000 files. Past the file cap we switch to bounded mode.
 const PR_FILES_TRUNCATION_CAP = 3000;
+// In bounded mode (PR exceeds the file cap) we deterministically clip the diff
+// handed to the model to the first N per-file sections so "honor bounded mode"
+// is a REAL scope limit, not just an unenforced prompt hint.
+const BOUNDED_MODE_FILE_LIMIT = 200;
 
 // Per-comment body length cap so a single inline comment never balloons.
 const MAX_COMMENT_BODY = 60_000; // GitHub hard limit is 65536; leave headroom.
@@ -665,6 +669,45 @@ const loadDiffIndex = async () => {
 };
 
 /**
+ * Deterministically clip a unified diff to its first `limit` per-file sections.
+ * Each file section starts at a `diff --git ` line, so cutting on that boundary
+ * always yields a still-valid patch (no half-file/half-hunk). Returns the
+ * original patch unchanged when it has `limit` files or fewer.
+ */
+const clipDiffToFileLimit = (patch, limit) => {
+  const lines = patch.split('\n');
+  let fileCount = 0;
+  const kept = [];
+  for (const line of lines) {
+    if (line.startsWith('diff --git ')) {
+      fileCount += 1;
+      if (fileCount > limit) break;
+    }
+    kept.push(line);
+  }
+  return { clipped: fileCount > limit, fileCount: Math.min(fileCount, limit), text: kept.join('\n') };
+};
+
+/**
+ * In bounded mode, rewrite DIFF_FILE in place to its first
+ * BOUNDED_MODE_FILE_LIMIT file sections so the model gets a REAL, deterministic
+ * scope — not just a prompt asking it to self-limit. No-op when not bounded or
+ * the diff already fits. Best-effort: a read/write failure leaves the full diff.
+ */
+const enforceBoundedDiff = async (boundedMode) => {
+  if (!boundedMode) return;
+  try {
+    const patch = await readFile(DIFF_FILE, 'utf8');
+    const { clipped, fileCount, text } = clipDiffToFileLimit(patch, BOUNDED_MODE_FILE_LIMIT);
+    if (!clipped) return;
+    await writeFile(DIFF_FILE, text);
+    log(`pre: bounded mode — clipped diff to first ${fileCount} files (${BOUNDED_MODE_FILE_LIMIT} cap).`);
+  } catch (err) {
+    log('pre: bounded-diff clip failed (continuing with full diff):', err.message);
+  }
+};
+
+/**
  * Find the hunk in `fileEntry` that contains (side, line). Used to derive a
  * stable code anchor for the finding hash so convergence survives line drift.
  */
@@ -954,11 +997,13 @@ const runPre = async () => {
   const [skipList, deepInfo] = await Promise.all([buildSkipList(), computeDeepMode()]);
   await writeFile(SKIPLIST_FILE, JSON.stringify({ headSha: env.headSha, skipList }, null, 2));
   await writeFile(DEEPMODE_FILE, JSON.stringify(deepInfo, null, 2));
-  log(`pre: wrote ${skipList.length} skip-list entries; deepMode=${deepInfo.deepMode} (${deepInfo.reason}).`);
-  // NOTE: the DIFF_FILE is produced by a separate deterministic workflow step
+  // The DIFF_FILE itself is produced by a separate deterministic workflow step
   // (the GitHub API's PR diff, Accept: v3.diff — the exact merge-base..head set
-  // GitHub validates review anchors against) — NOT here and NOT by the model.
-  // This script never shells out to git; it only does GitHub REST I/O.
+  // GitHub validates review anchors against). This script never shells out to
+  // git; it only does GitHub REST I/O. But when the PR overran the file cap we
+  // clip that diff here so bounded mode is an ENFORCED scope, not a prompt hint.
+  await enforceBoundedDiff(deepInfo.boundedMode);
+  log(`pre: wrote ${skipList.length} skip-list entries; deepMode=${deepInfo.deepMode} (${deepInfo.reason}).`);
 };
 
 /**

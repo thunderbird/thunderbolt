@@ -633,15 +633,22 @@ const parseUnifiedDiff = (patch) => {
       current.leftLines.add(leftLine);
       if (hunk) hunk.text += `\n${raw}`;
       leftLine += 1;
-    } else if (tag === '\\') {
-      // "\ No newline at end of file" — not a content line.
-      continue;
-    } else {
-      // context line (' ' or empty) advances both sides.
+    } else if (tag === ' ') {
+      // Context line (leading space): unchanged, but it IS part of the hunk and
+      // GitHub accepts review comments on it ("unchanged lines shown for
+      // context"). Record it on BOTH sides so a finding on a context line still
+      // anchors inline instead of being needlessly demoted to a file comment.
+      // ONLY a leading-space line counts — an empty token (the trailing split
+      // artifact, or stray text outside a hunk) must NOT advance the counters or
+      // be marked commentable, or it would falsely anchor a non-diff line.
+      current.rightLines.add(rightLine);
+      current.leftLines.add(leftLine);
       if (hunk) hunk.text += `\n${raw}`;
       rightLine += 1;
       leftLine += 1;
     }
+    // tag === '\\' ("\ No newline at end of file") and empty/other tokens are
+    // not content lines — skip without touching the line counters.
   }
   return files;
 };

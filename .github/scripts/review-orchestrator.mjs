@@ -402,12 +402,19 @@ const dedupKeyFromReviewComment = (c) => {
 
 const normalizeKey = (s) => createHash('sha1').update(s).digest('hex').slice(0, 16);
 
-/** Are these review comments from one of our expected bots? (login best-effort.) */
+/**
+ * Is this review comment from one of our expected Job-A bots (Cursor Bugbot
+ * et al.)? The skip-list MUST stay scoped to those external reviewers: pulling
+ * in unrelated bots — especially THIS workflow's own `github-actions[bot]`
+ * comments — would nudge the model to suppress its own prior findings, which
+ * then trips the "missing hash ⇒ resolve thread" convergence on the next run.
+ * Match an expected bot by its (drift-prone, best-effort) loginHint, and NEVER
+ * count our own comments (selfLogin or the self marker).
+ */
 const isBotComment = (c) => {
   const login = c.user?.login ?? '';
-  if (EXPECTED_BOTS.some((b) => b.loginHint && b.loginHint === login)) return true;
-  // GitHub Apps post as "<slug>[bot]" with user.type === "Bot".
-  return c.user?.type === 'Bot';
+  if (login === env.selfLogin || (c.body ?? '').includes(SELF_COMMENT_MARKER)) return false;
+  return EXPECTED_BOTS.some((b) => b.loginHint && b.loginHint === login);
 };
 
 const buildSkipList = async () => {

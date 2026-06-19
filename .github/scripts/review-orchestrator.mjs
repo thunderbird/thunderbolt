@@ -775,6 +775,59 @@ const hashFromOwnBody = (body) => {
   return m ? m[1] : null;
 };
 
+/** Pull EVERY stamped finding-hash out of a body (a review body lists many). */
+const hashesFromBody = (body) => [...(body ?? '').matchAll(/<!-- thunder-finding-hash:([0-9a-f]{8,}) -->/g)].map((m) => m[1]);
+
+/**
+ * Did WE author this review/comment? GraphQL returns a Bot author's login
+ * WITHOUT the "[bot]" suffix ("github-actions"), while the REST-derived
+ * selfLogin carries it ("github-actions[bot]") — normalize both before
+ * comparing. The hidden SELF_COMMENT_MARKER is the canonical fallback.
+ */
+const isOwnAuthor = (login, body) =>
+  login.replace(/\[bot\]$/, '') === env.selfLogin.replace(/\[bot\]$/, '') || (body ?? '').includes(SELF_COMMENT_MARKER);
+
+/**
+ * Fetch the finding-hashes we already SUMMARIZED in our own prior review bodies.
+ * Summary/overflow findings never become review THREADS (they're body bullets,
+ * not inline comments), so reviewThreads can't dedup them — without this each
+ * push reposts the same "Additional notes". We stamp every summary bullet with a
+ * hidden hash (see buildReviewPayload) and read them back here. Best-effort: a
+ * GraphQL failure just means we may repost a summary line, never a crash.
+ */
+const fetchOwnSummarizedHashes = async () => {
+  const query = `
+    query($owner:String!, $repo:String!, $pr:Int!, $cursor:String) {
+      repository(owner:$owner, name:$repo) {
+        pullRequest(number:$pr) {
+          reviews(first:100, after:$cursor) {
+            pageInfo { hasNextPage endCursor }
+            nodes { body author { login } }
+          }
+        }
+      }
+    }`;
+
+  const out = new Set();
+  let cursor = null;
+  for (let page = 0; page < 10; page += 1) {
+    // eslint-disable-next-line no-await-in-loop -- sequential cursor pagination
+    const r = await graphqlFetch(query, { owner, repo, pr: Number(env.prNumber), cursor });
+    if (!r.ok || !r.data) {
+      log('own-reviews: GraphQL fetch failed (summary dedup best-effort):', r.errors?.[0]?.message ?? '');
+      return out;
+    }
+    const conn = r.data.repository?.pullRequest?.reviews;
+    for (const node of conn?.nodes ?? []) {
+      if (!isOwnAuthor(node.author?.login ?? '', node.body)) continue;
+      for (const h of hashesFromBody(node.body)) out.add(h);
+    }
+    if (!conn?.pageInfo?.hasNextPage) break;
+    cursor = conn.pageInfo.endCursor;
+  }
+  return out;
+};
+
 /**
  * Fetch OUR OWN review threads on this PR via GraphQL, paginated.
  * Returns [{ threadId, isResolved, hash }] where hash is the stamped finding
@@ -818,14 +871,7 @@ const fetchOwnThreads = async () => {
     for (const node of conn?.nodes ?? []) {
       const root = node.comments?.nodes?.[0];
       if (!root) continue;
-      const login = root.author?.login ?? '';
-      // GraphQL returns a Bot author's login WITHOUT the "[bot]" suffix
-      // ("github-actions"), while the REST-derived selfLogin carries it
-      // ("github-actions[bot]"). Normalize both before comparing so the login
-      // hint actually works; the hidden marker remains the canonical fallback.
-      const stripBot = (l) => l.replace(/\[bot\]$/, '');
-      const mine = stripBot(login) === stripBot(env.selfLogin) || (root.body ?? '').includes(SELF_COMMENT_MARKER);
-      if (!mine) continue;
+      if (!isOwnAuthor(root.author?.login ?? '', root.body)) continue;
       out.push({
         threadId: node.id,
         isResolved: Boolean(node.isResolved),
@@ -928,7 +974,10 @@ const buildReviewPayload = ({ toPost, diffIndex, deepInfo, skipCount }) => {
   const summaryLines = [];
   for (const f of overflow) {
     const loc = f.file ? `\`${f.file}${f.line ? `:${f.line}` : ''}\`` : '';
-    summaryLines.push(`- **${SEVERITY_LABEL[f.severity]}** ${loc} — ${f.title}`);
+    // Trailing hidden hash so the NEXT run can see this summary finding was
+    // already reported (summary findings have no thread, so reviewThreads can't
+    // dedup them — fetchOwnSummarizedHashes reads these markers back).
+    summaryLines.push(`- **${SEVERITY_LABEL[f.severity]}** ${loc} — ${f.title} <!-- thunder-finding-hash:${f.hash} -->`);
   }
 
   const header =
@@ -973,7 +1022,13 @@ const postReview = async (payload) => {
     log(`post: 422 on inline anchors (${r.body ?? ''}) — retrying comment-free with findings in the body.`);
     const demoted = payload.comments.map((c) => {
       const lineRef = c.line ? `:${c.line}` : '';
-      return `- \`${c.path}${lineRef}\` — ${c.body.split('\n')[0].replace(/\*\*/g, '')}`;
+      // Carry the hidden finding-hash from the inline body onto the demoted
+      // bullet so the next run's summary-dedup (fetchOwnSummarizedHashes) sees
+      // it and does not repost — otherwise this fallback path reintroduces the
+      // "summary findings never dedupe" bug it is rescuing.
+      const hash = hashFromOwnBody(c.body);
+      const stamp = hash ? ` <!-- thunder-finding-hash:${hash} -->` : '';
+      return `- \`${c.path}${lineRef}\` — ${c.body.split('\n')[0].replace(/\*\*/g, '')}${stamp}`;
     });
     const fallbackBody = `${payload.body}\n### Additional notes (couldn't anchor to a diff line)\n${demoted.join('\n')}\n`;
     const retry = await githubFetch(apiUrl(`/pulls/${env.prNumber}/reviews`), {
@@ -1028,15 +1083,16 @@ const runPost = async () => {
   const findings = classifyFindings(rawFindings, diffIndex);
   const currentHashes = new Set(findings.map((f) => f.hash));
 
-  // 2) Fetch our own existing review threads (hash + resolution state).
-  const ownThreads = await fetchOwnThreads();
+  // 2) Fetch our own prior state: open inline THREADS (hash + resolution) and
+  //    the hashes we already SUMMARIZED in prior review bodies. Summary findings
+  //    have no thread, so without the latter each push reposts the same notes.
+  const [ownThreads, summarizedHashes] = await Promise.all([fetchOwnThreads(), fetchOwnSummarizedHashes()]);
   const openHashes = new Set(ownThreads.filter((t) => !t.isResolved && t.hash).map((t) => t.hash));
 
-  // 3) Dedup: post only findings NOT already present as an OPEN own-thread.
-  //    Summary-placement findings ride along in `toPost` and are routed to the
-  //    review body by buildReviewPayload (they have no thread to dedup on, but
-  //    we still filter them by hash above for consistency).
-  const toPost = findings.filter((f) => !openHashes.has(f.hash));
+  // 3) Dedup: post only findings NOT already present as an OPEN own-thread, and
+  //    — for summary-placement findings, which have no thread — not already
+  //    listed in a prior review's "Additional notes" body.
+  const toPost = findings.filter((f) => !openHashes.has(f.hash) && !summarizedHashes.has(f.hash));
 
   // 4) Convergence: resolve our OWN open threads whose finding is gone now.
   //    Suppressed on `reopened` (the prior threads may be from another base).

@@ -33,16 +33,17 @@ on:
     # pwn-request). Fork coverage, if ever wanted, is a separate `workflow_run`
     # job that reads metadata only and never executes fork code.
 
-# Least privilege + the two scopes the mechanism actually needs.
+# Least privilege + the three scopes the mechanism actually needs.
 permissions:
   contents: read # read the diff/files
-  pull-requests: write # post/patch the single consolidated ISSUE comment
+  pull-requests: write # post the inline PR review (POST /pulls/{n}/reviews)
   checks: read # poll A's bot check-runs (without this the poller 403s)
 
 concurrency:
   # Only review the latest push. cancel-in-progress during the debounce
-  # `sleep` (below) is free; the orchestrator's optimistic lock handles any
-  # TOCTOU if a run is cancelled mid-PATCH.
+  # `sleep` (below) is free. No cross-run lock: a run posts a review only when it
+  # has new findings (it skips otherwise) and converges via open-thread hash dedup
+  # (the post phase resolves/skips the threads it already owns), so a cancelled run is safe.
   group: thunder-deep-review-${{ github.event.pull_request.number }}
   cancel-in-progress: true
 
@@ -166,7 +167,7 @@ jobs:
       #        NOT Bedrock/Vertex). The only secret the team provisions.
       #      - sticky/consolidated comment via `use_sticky_comment`. We render+post
       #        the inline review ourselves in the post step, so it stays "false"
-      #        here — the post step is the single owner of the comment.
+      #        here — the post step is the single owner of the inline review.
       #      - pass model + tools through `claude_args`, NOT `model:`/`allowed_tools:`.
       #      - there is NO `review_event:` input in @v1.
       #      - allowedTools = Read,Grep,Glob,Skill,Task. NO Bash(...). NO write tools.
@@ -195,7 +196,7 @@ jobs:
           # `id-token: write` (we keep least-privilege without it). The action's
           # OIDC path only runs when github_token is empty; providing it skips OIDC.
           github_token: ${{ secrets.GITHUB_TOKEN }}
-          use_sticky_comment: "false" # we own the comment via the post step
+          use_sticky_comment: "false" # we own the inline review via the post step
           # Model id pinned LITERALLY (a mutable vars.* would change review
           # behavior with no PR/audit trail). claude-opus-4-8 is a pinned
           # snapshot id (the 4.6+ generation uses a dateless-but-pinned format).
@@ -300,12 +301,13 @@ jobs:
 
       # ─────────────────────────────────────────────────────────────────────
       # (POST phase): read+validate the model's JSON, compute the
-      # resolved-diff structurally, render markdown deterministically, and upsert
-      # the SINGLE consolidated ISSUE comment with an optimistic lock. No model
-      # creds are needed here; this is pure GitHub I/O.
+      # resolved-diff structurally, render markdown deterministically, and post
+      # ONE PR review (POST /pulls/{n}/reviews, event=COMMENT) with anchored inline
+      # comments — no issue comment, no PATCH/upsert, no lock. No model creds here;
+      # pure GitHub I/O.
       # `if: always()` so a non-zero model step still lets us post (or skip
       # fail-soft) — but the script itself exits 0 on any error.
       # ─────────────────────────────────────────────────────────────────────
-      - name: Orchestrator — render + upsert comment (post)
+      - name: Orchestrator — render + post inline review (post)
         if: always()
         run: node .github/scripts/review-orchestrator.mjs post

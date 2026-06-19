@@ -16,8 +16,9 @@
 #
 # Orchestration is deterministic CODE, not model tool-calls: .github/scripts/
 # review-orchestrator.mjs does ALL GitHub I/O (poll A's bots, build the
-# skip-list, post the inline PR review). The model step ONLY emits structured
-# JSON findings to a file.
+# skip-list, post the inline PR review). The model step is READ-ONLY and ONLY
+# emits structured JSON findings as the action's structured_output (via
+# --json-schema); a separate non-model step materializes that to a file.
 # =============================================================================
 
 name: thunder-deep-review
@@ -148,8 +149,10 @@ jobs:
         # repo-relative path; recommend CODEOWNERS-protecting it.
 
       # ─────────────────────────────────────────────────────────────────────
-      # The MODEL step. Emits STRUCTURED JSON findings ONLY to a file.
-      # It does NO GitHub I/O and has NO Bash tool.
+      # The MODEL step. READ-ONLY: emits STRUCTURED JSON findings ONLY as the
+      # action's structured_output (via --json-schema), NOT to a file (it has no
+      # Write/Edit/Bash tool). The next step materializes that output to the
+      # findings file. It does NO GitHub I/O.
       #
       # Input names below were verified against the live @v1 `action.yml`
       # (2026-06); re-confirm only if the action major version changes:
@@ -177,6 +180,7 @@ jobs:
       #         mutable repo/org var changes review behavior with no PR/audit trail).
       # ─────────────────────────────────────────────────────────────────────
       - name: thunder-deep-review (model — structured findings only)
+        id: review_model
         uses: anthropics/claude-code-action@806af32823ef69c8ef357086c573a902af641307 # v1
         with:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
@@ -193,11 +197,22 @@ jobs:
           # so it MUST be allow-listed or the headless run denies it and no-ops),
           # Task (the skill's read-only sub-reviewer fan-out — also permission-
           # required), and Read,Grep,Glob (read-only working-tree access). NO Bash,
-          # NO write tools. --max-turns caps the agent loop.
+          # NO write tools — the model is fully READ-ONLY and CANNOT write a file.
+          # --max-turns caps the agent loop.
+          # --json-schema: the model is read-only, so it can't write the findings
+          # file directly. Instead it returns findings as the action's STRUCTURED
+          # OUTPUT (action.yml `outputs.structured_output`, populated only when a
+          # --json-schema is provided in claude_args). The next step materializes
+          # that output into ${THUNDER_FINDINGS_FILE}. The schema MUST stay aligned
+          # with the orchestrator's readModelFindings parser:
+          #   findings[].severity ∈ {blocking,convention,nit}; file (string|null);
+          #   line (integer|null, parser keeps only >= 1); side ∈ {RIGHT,LEFT}
+          #   (optional, defaults RIGHT); title; body; rule (string|null).
           claude_args: >-
             --model claude-opus-4-8
             --allowedTools Read,Grep,Glob,Skill,Task
             --max-turns 20
+            --json-schema '{"type":"object","additionalProperties":false,"required":["findings"],"properties":{"findings":{"type":"array","items":{"type":"object","additionalProperties":false,"required":["severity","file","line","title","body","rule"],"properties":{"severity":{"type":"string","enum":["blocking","convention","nit"]},"file":{"type":["string","null"]},"line":{"type":["integer","null"],"minimum":1},"side":{"type":"string","enum":["RIGHT","LEFT"]},"title":{"type":"string"},"body":{"type":"string"},"rule":{"type":["string","null"]}}}}}}'
           prompt: |
             Use the thunder-deep-review skill to review this pull request.
             The unified diff to review is in the file: ${{ env.THUNDER_DIFF_FILE }} (read it with Read).
@@ -208,14 +223,63 @@ jobs:
             Deep-mode / bounded-mode flags are in: ${{ env.THUNDER_DEEPMODE_FILE }} —
             honor them; do NOT decide spend yourself.
 
-            OUTPUT CONTRACT: write ONLY valid JSON to ${{ env.THUNDER_FINDINGS_FILE }}:
+            OUTPUT CONTRACT: you are READ-ONLY — do NOT attempt to write any file.
+            Return your findings as STRUCTURED OUTPUT matching the provided JSON
+            schema — a single object:
               { "findings": [
                   { "severity": "blocking" | "convention" | "nit",
                     "file": "<path>", "line": <int|null>,
+                    "side": "RIGHT" | "LEFT",
                     "title": "<short>", "body": "<detail>",
                     "rule": "<invariant-id|null>" } ] }
             Emit NO markdown, NO severity trailer, NO PR comment — the
-            orchestrator renders and posts. If nothing to add, write {"findings":[]}.
+            orchestrator renders and posts. If nothing to add, return {"findings":[]}.
+
+      # ─────────────────────────────────────────────────────────────────────
+      # Persist the model's STRUCTURED OUTPUT to the findings file the post phase
+      # reads. The model step is READ-ONLY (no Write/Edit/Bash tool), so it cannot
+      # create ${THUNDER_FINDINGS_FILE} itself — the action's structured_output
+      # (populated by the --json-schema above) is the handoff channel. This step
+      # has legitimate shell access and materializes the file.
+      #
+      # Security: structured_output is model-derived and can contain quotes, shell
+      # metacharacters, or hostile PR content. We pass it via `env:` (NEVER inlined
+      # into the run: body) and read it with Node from process.env, so there is no
+      # script-generation injection surface (GitHub's recommended pattern for
+      # untrusted expression values).
+      #
+      # Fail posture: an EMPTY structured_output (model step skipped/cancelled/
+      # errored — this step is `if: always()`) falls back to an empty findings set
+      # so the post phase stays a clean no-op instead of crashing on ENOENT. A
+      # NON-empty but malformed payload throws here, surfacing a real schema
+      # regression instead of silently posting nothing.
+      # ─────────────────────────────────────────────────────────────────────
+      - name: Persist structured findings to file
+        if: always()
+        env:
+          STRUCTURED_OUTPUT: ${{ steps.review_model.outputs.structured_output }}
+        run: |
+          node <<'NODE'
+          const fs = require('node:fs');
+          const file = process.env.THUNDER_FINDINGS_FILE;
+          if (!file) throw new Error('THUNDER_FINDINGS_FILE is unset');
+          const raw = process.env.STRUCTURED_OUTPUT;
+          if (!raw) {
+            // Empty structured_output means the model step produced NOTHING
+            // (skipped/cancelled/errored) — distinct from a genuine empty result,
+            // which arrives as the non-empty string '{"findings":[]}'. Fail loudly
+            // so a broken model step is a red check, never a silent green no-op
+            // (codex second opinion).
+            console.error('::error::model step produced no structured_output — review did not run');
+            process.exit(1);
+          }
+          const parsed = JSON.parse(raw); // throws on malformed -> surfaces a real regression
+          if (!parsed || !Array.isArray(parsed.findings)) {
+            throw new Error('structured_output must be an object with a findings[] array');
+          }
+          fs.writeFileSync(file, `${JSON.stringify(parsed)}\n`, 'utf8');
+          console.log(`wrote ${parsed.findings.length} finding(s); bytes: ${fs.statSync(file).size}`);
+          NODE
 
       # ─────────────────────────────────────────────────────────────────────
       # (POST phase): read+validate the model's JSON, compute the

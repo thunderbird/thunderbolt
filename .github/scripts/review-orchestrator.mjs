@@ -61,8 +61,8 @@ import { createHash } from 'node:crypto';
  * `loginHint` is ONLY used as a secondary, best-effort filter for review
  * COMMENTS (the comment author is a login, not an app id — see buildSkipList).
  *
- * Scope (Job A): Cursor Bugbot + GitHub Advanced Security only. CodeRabbit is
- * intentionally OUT of scope; add it back later by registering its app.id.
+ * Scope (Job A): Cursor Bugbot only. GitHub Advanced Security and CodeRabbit
+ * are out of scope; add either later by registering its app.id below.
  */
 const EXPECTED_BOTS = [
   // Cursor Bugbot — real numeric GitHub App id (slug "cursor", name "Cursor Bugbot").

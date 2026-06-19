@@ -807,6 +807,8 @@ const renderCommentBody = (f) => {
   const head = `**${SEVERITY_LABEL[f.severity]} — ${f.title}**`;
   const stamp = `\n\n${SELF_COMMENT_MARKER}<!-- thunder-finding-hash:${f.hash} -->`;
   const body = `${head}\n\n${f.body}${stamp}`;
+  // Unreachable while readModelFindings caps title@300 + body@4000 (well under
+  // MAX_COMMENT_BODY); kept intentionally in case those caps rise — not dead code.
   return body.length > MAX_COMMENT_BODY ? `${body.slice(0, MAX_COMMENT_BODY - stamp.length - 16)}\n…${stamp}` : body;
 };
 

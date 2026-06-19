@@ -44,18 +44,27 @@ export const derivePkSpec = (tableName: string, table: SQLiteTable): PkSpec => {
   return { column, field: entry[0] }
 }
 
+type TableImportSpec = {
+  pk: PkSpec
+  /** True when the table has a `user_id` column (every synced table; secret tables omit it). */
+  hasUserId: boolean
+}
+
 /**
- * Per-table primary-key spec, derived once at module load from the same
+ * Per-table import spec, derived once at module load from the same
  * `includedTables` map the exporter walks. New tables in
  * `src/db/powersync/schema.ts` automatically pick up an import spec — no
  * duplicate hardcoded list to keep in sync.
  */
-const tablePks = Object.fromEntries(
+const tableImportSpecs = Object.fromEntries(
   (Object.entries(includedTables) as Array<[IncludedTableName, SQLiteTable]>).map(([name, table]) => [
     name,
-    derivePkSpec(name, table),
+    {
+      pk: derivePkSpec(name, table),
+      hasUserId: getTableConfig(table).columns.some((c) => c.name === 'user_id'),
+    },
   ]),
-) as Record<IncludedTableName, PkSpec>
+) as Record<IncludedTableName, TableImportSpec>
 
 export type ImportResult = {
   schemaVersion: typeof exportSchemaVersion
@@ -79,6 +88,25 @@ const isIncludedTableName = (name: string): name is IncludedTableName =>
   (exportedTableNames as readonly string[]).includes(name)
 
 /**
+ * Drop the file's `userId` and either re-stamp it from the current session
+ * (tables with a `user_id` column) or omit it entirely (secret tables, which
+ * have no such column). The file's value is never trusted: backups carry the
+ * source user's id, but a tampered or cross-account file would otherwise
+ * plant a foreign id in the local DB until backend reconciliation.
+ *
+ * The backend's PowerSync upload route enforces the same invariant from the
+ * JWT (see `backend/src/dal/powersync.ts`).
+ */
+const sanitizeRowForImport = (
+  row: Record<string, unknown>,
+  hasUserId: boolean,
+  currentUserId: string,
+): Record<string, unknown> => {
+  const { userId: _ignored, ...rest } = row
+  return hasUserId ? { ...rest, userId: currentUserId } : rest
+}
+
+/**
  * Restore a previously-exported envelope into the local DB.
  *
  * Semantics:
@@ -89,6 +117,10 @@ const isIncludedTableName = (name: string): name is IncludedTableName =>
  *   and SQLite forbids `INSERT ... ON CONFLICT DO UPDATE` on a view ("cannot
  *   UPSERT a view"). The SELECT + UPDATE/INSERT split works on both real
  *   tables and PowerSync views.
+ * - **`userId` re-stamped.** Tables with a `user_id` column have their
+ *   row's `userId` overwritten with `currentUser.id`; the value in the file
+ *   is never trusted. Tables without `user_id` (the secret tables) are
+ *   unaffected.
  * - **Soft-deleted rows preserved.** `deletedAt` is written verbatim, so a
  *   row exported in the trash stays in the trash after import.
  * - **Atomic.** Wrapped in a single `db.transaction`; any per-row failure
@@ -101,7 +133,11 @@ const isIncludedTableName = (name: string): name is IncludedTableName =>
  * unsupported schemaVersion, missing `tables`, missing/non-string primary
  * key on a row). Any other thrown error propagates as-is after rollback.
  */
-export const importUserData = async (db: AnyDrizzleDatabase, payload: unknown): Promise<ImportResult> => {
+export const importUserData = async (
+  db: AnyDrizzleDatabase,
+  payload: unknown,
+  currentUser: { id: string },
+): Promise<ImportResult> => {
   if (!isRecord(payload)) {
     throw new ImportFormatError('Import file is not a JSON object.')
   }
@@ -134,7 +170,8 @@ export const importUserData = async (db: AnyDrizzleDatabase, payload: unknown): 
       }
 
       const table = includedTables[tableName]
-      const { column: pkColumn, field: pkField } = tablePks[tableName]
+      const { pk, hasUserId } = tableImportSpecs[tableName]
+      const { column: pkColumn, field: pkField } = pk
 
       for (const row of rows) {
         if (!isRecord(row)) {
@@ -144,11 +181,12 @@ export const importUserData = async (db: AnyDrizzleDatabase, payload: unknown): 
         if (typeof pkValue !== 'string') {
           throw new ImportFormatError(`Row in "${tableName}" is missing string primary key "${pkField}".`)
         }
+        const sanitized = sanitizeRowForImport(row, hasUserId, currentUser.id)
         const existing = await tx.select({ pk: pkColumn }).from(table).where(eq(pkColumn, pkValue)).get()
         if (existing) {
-          await tx.update(table).set(row).where(eq(pkColumn, pkValue))
+          await tx.update(table).set(sanitized).where(eq(pkColumn, pkValue))
         } else {
-          await tx.insert(table).values(row)
+          await tx.insert(table).values(sanitized)
         }
       }
 

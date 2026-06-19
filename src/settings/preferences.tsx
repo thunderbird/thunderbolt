@@ -377,10 +377,15 @@ export default function PreferencesSettingsPage() {
     if (!pendingImport) {
       return
     }
+    const userId = session?.user?.id
+    if (!userId) {
+      setImportError('You must be signed in to import data.')
+      return
+    }
     dispatch({ type: 'SET_IS_IMPORTING', payload: true })
     setImportError(null)
     try {
-      const result = await importUserData(db, pendingImport.payload)
+      const result = await importUserData(db, pendingImport.payload, { id: userId })
       const total = Object.values(result.tables).reduce((sum, t) => sum + (t?.upserted ?? 0), 0)
       setImportSuccess(`Imported ${total.toLocaleString()} rows. The app may take a moment to reflect new chats.`)
       trackEvent('settings_data_import')

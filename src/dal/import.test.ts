@@ -35,6 +35,8 @@ const envelope = (tables: Record<string, unknown[]>): unknown => ({
   tables,
 })
 
+const currentUser = { id: 'current-user' }
+
 describe('Import DAL', () => {
   beforeEach(async () => {
     await resetTestDatabase()
@@ -42,29 +44,29 @@ describe('Import DAL', () => {
 
   describe('envelope validation', () => {
     it('rejects non-object payloads', async () => {
-      await expect(importUserData(getDb(), null)).rejects.toBeInstanceOf(ImportFormatError)
-      await expect(importUserData(getDb(), 'not-json')).rejects.toBeInstanceOf(ImportFormatError)
-      await expect(importUserData(getDb(), [])).rejects.toBeInstanceOf(ImportFormatError)
+      await expect(importUserData(getDb(), null, currentUser)).rejects.toBeInstanceOf(ImportFormatError)
+      await expect(importUserData(getDb(), 'not-json', currentUser)).rejects.toBeInstanceOf(ImportFormatError)
+      await expect(importUserData(getDb(), [], currentUser)).rejects.toBeInstanceOf(ImportFormatError)
     })
 
     it('rejects unrecognized format strings', async () => {
       await expect(
-        importUserData(getDb(), { format: 'something-else', schemaVersion: 1, tables: {} }),
+        importUserData(getDb(), { format: 'something-else', schemaVersion: 1, tables: {} }, currentUser),
       ).rejects.toBeInstanceOf(ImportFormatError)
     })
 
     it('rejects unsupported schemaVersion', async () => {
       await expect(
-        importUserData(getDb(), { format: exportFormat, schemaVersion: 99, tables: {} }),
+        importUserData(getDb(), { format: exportFormat, schemaVersion: 99, tables: {} }, currentUser),
       ).rejects.toBeInstanceOf(ImportFormatError)
     })
 
     it('rejects when `tables` is missing or not an object', async () => {
-      await expect(importUserData(getDb(), { format: exportFormat, schemaVersion: 1 })).rejects.toBeInstanceOf(
-        ImportFormatError,
-      )
       await expect(
-        importUserData(getDb(), { format: exportFormat, schemaVersion: 1, tables: 'nope' }),
+        importUserData(getDb(), { format: exportFormat, schemaVersion: 1 }, currentUser),
+      ).rejects.toBeInstanceOf(ImportFormatError)
+      await expect(
+        importUserData(getDb(), { format: exportFormat, schemaVersion: 1, tables: 'nope' }, currentUser),
       ).rejects.toBeInstanceOf(ImportFormatError)
     })
   })
@@ -80,6 +82,7 @@ describe('Import DAL', () => {
           ],
           tasks: [{ id: 'task-1', item: 'do this' }],
         }),
+        currentUser,
       )
 
       expect(result.schemaVersion).toBe(1)
@@ -101,6 +104,7 @@ describe('Import DAL', () => {
         envelope({
           chat_threads: [{ id: 'thread-1', title: 'Imported value' }],
         }),
+        currentUser,
       )
 
       const row = await db.select().from(chatThreadsTable).where(eq(chatThreadsTable.id, 'thread-1')).get()
@@ -119,6 +123,7 @@ describe('Import DAL', () => {
         envelope({
           chat_threads: [{ id: 'thread-collide', title: 'Imported value' }],
         }),
+        currentUser,
       )
 
       const rows = await db.select().from(chatThreadsTable)
@@ -137,6 +142,7 @@ describe('Import DAL', () => {
             { id: 'thread-trash', title: 'Trash', deletedAt: '2026-06-01T00:00:00.000Z' },
           ],
         }),
+        currentUser,
       )
 
       const trash = await db.select().from(chatThreadsTable).where(eq(chatThreadsTable.id, 'thread-trash')).get()
@@ -153,6 +159,7 @@ describe('Import DAL', () => {
           chat_threads: [{ id: 'thread-1', title: 't' }],
           chat_messages: [{ id: 'msg-1', chatThreadId: 'thread-1', role: 'user', parts, metadata, cache: {} }],
         }),
+        currentUser,
       )
 
       const row = (await db.select().from(chatMessagesTable).where(eq(chatMessagesTable.id, 'msg-1')).get()) as
@@ -174,6 +181,7 @@ describe('Import DAL', () => {
             { key: 'preferred_name', value: 'Alice' },
           ],
         }),
+        currentUser,
       )
 
       const all = await db.select().from(settingsTable)
@@ -191,6 +199,7 @@ describe('Import DAL', () => {
         envelope({
           models_secrets: [{ modelId: 'model-1', apiKey: 'sk-imported' }],
         }),
+        currentUser,
       )
 
       const row = await db.select().from(modelsSecretsTable).where(eq(modelsSecretsTable.modelId, 'model-1')).get()
@@ -207,6 +216,7 @@ describe('Import DAL', () => {
           future_table_v2: [{ id: 'x' }],
           another_unknown: [],
         }),
+        currentUser,
       )
 
       expect(result.ignoredTableNames.sort()).toEqual(['another_unknown', 'future_table_v2'])
@@ -224,6 +234,7 @@ describe('Import DAL', () => {
           integrations_secrets: [{ provider: 'google', credentials: '{}' }],
           agents_system: [{ id: 'sys-1', name: 'X' }],
         }),
+        currentUser,
       )
 
       expect(result.ignoredTableNames.sort()).toEqual(['agents_system', 'devices', 'integrations_secrets'])
@@ -236,6 +247,7 @@ describe('Import DAL', () => {
           chat_threads: [],
           tasks: [{ id: 'task-1', item: 'go' }],
         }),
+        currentUser,
       )
       expect(result.tables.chat_threads).toBeUndefined()
       expect(result.tables.tasks).toEqual({ upserted: 1 })
@@ -246,17 +258,18 @@ describe('Import DAL', () => {
       // Seed something we can verify survives a rolled-back import.
       await db.insert(chatThreadsTable).values({ id: 'thread-prior', title: 'Was here first' })
 
-      // Two threads succeed; agent row violates NOT NULL on userId → throws inside the tx.
+      // Two threads succeed; agent row violates NOT NULL on `name` → throws inside the tx.
+      // (`userId` is no longer a candidate — the importer stamps it from the session.)
       const payload = envelope({
         chat_threads: [
           { id: 'thread-good-1', title: 'Good 1' },
           { id: 'thread-good-2', title: 'Good 2' },
         ],
-        agents: [{ id: 'agent-broken', name: 'No user', type: 'remote-acp', transport: 'websocket', url: 'wss://x' }],
+        agents: [{ id: 'agent-broken', type: 'remote-acp', transport: 'websocket', url: 'wss://x' }],
         tasks: [{ id: 'task-after-bad', item: 'should not exist' }],
       })
 
-      await expect(importUserData(db, payload)).rejects.toBeDefined()
+      await expect(importUserData(db, payload, currentUser)).rejects.toBeDefined()
 
       // The two 'thread-good' inserts must have been rolled back.
       const threads = await db.select().from(chatThreadsTable)
@@ -274,8 +287,72 @@ describe('Import DAL', () => {
           envelope({
             chat_threads: ['not an object'],
           }),
+          currentUser,
         ),
       ).rejects.toBeInstanceOf(ImportFormatError)
+    })
+  })
+
+  describe('userId re-stamping', () => {
+    it('overwrites the file-provided userId with the current session user on synced tables', async () => {
+      const db = getDb()
+      await importUserData(
+        db,
+        envelope({
+          chat_threads: [{ id: 'thread-1', title: 'T', userId: 'attacker-user' }],
+        }),
+        currentUser,
+      )
+
+      const row = await db.select().from(chatThreadsTable).where(eq(chatThreadsTable.id, 'thread-1')).get()
+      expect(row?.userId).toBe(currentUser.id)
+    })
+
+    it('stamps userId even when the imported row omits it', async () => {
+      const db = getDb()
+      await importUserData(
+        db,
+        envelope({
+          chat_threads: [{ id: 'thread-1', title: 'T' }],
+        }),
+        currentUser,
+      )
+
+      const row = await db.select().from(chatThreadsTable).where(eq(chatThreadsTable.id, 'thread-1')).get()
+      expect(row?.userId).toBe(currentUser.id)
+    })
+
+    it('does not add a userId column to tables that lack one (e.g. models_secrets)', async () => {
+      const db = getDb()
+      await db.insert(modelsTable).values({ id: 'model-1', provider: 'custom', name: 'Mine' })
+
+      await importUserData(
+        db,
+        envelope({
+          models_secrets: [{ modelId: 'model-1', apiKey: 'sk-imported' }],
+        }),
+        currentUser,
+      )
+
+      const row = await db.select().from(modelsSecretsTable).where(eq(modelsSecretsTable.modelId, 'model-1')).get()
+      expect(row?.apiKey).toBe('sk-imported')
+    })
+
+    it('re-stamps userId on the UPDATE path too (PK collision)', async () => {
+      const db = getDb()
+      await db.insert(chatThreadsTable).values({ id: 'thread-1', title: 'Local', userId: currentUser.id })
+
+      await importUserData(
+        db,
+        envelope({
+          chat_threads: [{ id: 'thread-1', title: 'Imported', userId: 'attacker-user' }],
+        }),
+        currentUser,
+      )
+
+      const row = await db.select().from(chatThreadsTable).where(eq(chatThreadsTable.id, 'thread-1')).get()
+      expect(row?.title).toBe('Imported')
+      expect(row?.userId).toBe(currentUser.id)
     })
   })
 

@@ -125,6 +125,19 @@ jobs:
           echo "diff bytes: $(wc -c < "$THUNDER_DIFF_FILE")"
 
       # ─────────────────────────────────────────────────────────────────────
+      # The repo commits `.claude/{commands,agents}/thunderbot*` as symlinks into
+      # a local-only `.thunderbot/` dir that is NOT checked out in CI, so they are
+      # dangling links here. The Claude SDK scans `.claude/` (the project setting
+      # source) and crashes (`ENOENT ... statx`) on a dangling link. Remove ONLY
+      # broken symlinks; the real skill/agent files are left untouched.
+      # ─────────────────────────────────────────────────────────────────────
+      - name: Prune dangling .claude symlinks (local-only tooling)
+        run: |
+          find .claude -type l | while read -r l; do
+            [ -e "$l" ] || { echo "pruning dangling symlink: $l"; rm -f "$l"; }
+          done
+
+      # ─────────────────────────────────────────────────────────────────────
       # (PRE phase): poll A's bots, build the skip-list, compute the
       # deterministic deep-mode flag. ALL GitHub I/O is in this script.
       # This step touches untrusted PR metadata but holds no model credentials.

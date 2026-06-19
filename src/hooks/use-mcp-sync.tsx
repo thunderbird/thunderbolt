@@ -11,7 +11,7 @@ import { useEffect } from 'react'
 
 export const useMcpSync = () => {
   const db = useDatabase()
-  const { servers, addServer, removeServer, updateServerStatus } = useMCP()
+  const { servers, addServer, removeServer, updateServer } = useMCP()
 
   const { data: dbServers = [] } = useQuery({
     queryKey: ['mcp-servers'],
@@ -45,17 +45,35 @@ export const useMcpSync = () => {
         }
       }
 
-      // Update server status for existing servers
+      // Patch any row whose name/url/type/enabled diverged from the in-memory
+      // entry. `updateServer` redials when enabled so a URL or transport change
+      // actually takes effect (the previous sync only handled enable toggles,
+      // leaving editors connected to the old endpoint).
       for (const dbServer of dbServers) {
         const providerServer = servers.find((s) => s.id === dbServer.id)
-        if (providerServer && providerServer.enabled !== (dbServer.enabled === 1)) {
-          updateServerStatus(dbServer.id, dbServer.enabled === 1)
+        if (!providerServer) {
+          continue
+        }
+        const next = {
+          id: dbServer.id,
+          name: dbServer.name ?? '',
+          url: dbServer.url || '',
+          type: dbServer.type === 'sse' ? ('sse' as const) : ('http' as const),
+          enabled: dbServer.enabled === 1,
+        }
+        if (
+          providerServer.name !== next.name ||
+          providerServer.url !== next.url ||
+          providerServer.type !== next.type ||
+          providerServer.enabled !== next.enabled
+        ) {
+          updateServer(next)
         }
       }
     }
 
     syncServers()
-  }, [dbServers, servers, addServer, removeServer, updateServerStatus])
+  }, [dbServers, servers, addServer, removeServer, updateServer])
 
   return { servers, dbServers }
 }

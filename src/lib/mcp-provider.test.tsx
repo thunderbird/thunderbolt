@@ -207,7 +207,7 @@ describe('MCPProvider reconnect', () => {
     await act(async () => {
       const pending = result.current.addServer(server)
       // Disable the server while the initial connect's createClient is in flight.
-      result.current.updateServerStatus(server.id, false)
+      result.current.updateServer({ ...server, enabled: false })
       gate.resolve()
       await pending
     })
@@ -217,9 +217,9 @@ describe('MCPProvider reconnect', () => {
     expect(result.current.getEnabledClients()).toHaveLength(0)
   })
 
-  // UNIT 1 (#2): the addServer→connect vs updateServerStatus(enable)→connect
-  // race. Without coalescing the second connect would cacheClient over the
-  // first live client without closing it, leaking the first connection.
+  // UNIT 1 (#2): the addServer→connect vs updateServer(enable)→connect race.
+  // Without coalescing the second connect would cacheClient over the first
+  // live client without closing it, leaking the first connection.
   it('coalesces overlapping connects for the same server (no leaked client)', async () => {
     const created: Array<ReturnType<typeof fakeClient>> = []
     const gate = deferred<void>()
@@ -233,9 +233,9 @@ describe('MCPProvider reconnect', () => {
     const { result } = renderProvider(createClient)
 
     await act(async () => {
-      // addServer fires the first connect; a concurrent enable re-fires it.
+      // addServer fires the first connect; a concurrent enable patch re-fires it.
       const a = result.current.addServer(server)
-      result.current.updateServerStatus(server.id, true)
+      result.current.updateServer({ ...server, enabled: true })
       gate.resolve()
       await a
     })
@@ -276,7 +276,7 @@ describe('MCPProvider reconnect', () => {
     await act(async () => {
       const pending = result.current.reconnectServer(server.id)
       // Disable the server while the reconnect's createClient is still pending.
-      result.current.updateServerStatus(server.id, false)
+      result.current.updateServer({ ...server, enabled: false })
       gate.resolve()
       await pending
     })
@@ -319,6 +319,81 @@ describe('MCPProvider reconnect', () => {
     const after = useChatStore.getState().getMcpClients()
     expect(after[0].client).toBe(reconnected as unknown as ProviderMCPClient)
     expect(after[0].client).not.toBe(initial as unknown as ProviderMCPClient)
+  })
+
+  // Settings can edit a server in-place (rename, new url/transport, new bearer
+  // token). The provider had no patch path, so the live client kept dialing the
+  // old endpoint while the UI showed the new config — `updateServer` closes the
+  // stale client, patches state, and redials so a save actually takes effect.
+  it('patches url+name and reconnects the live client on updateServer', async () => {
+    const initial = fakeClient()
+    const refreshed = fakeClient()
+    let calls = 0
+    const seenArgs: Array<{ url: string }> = []
+    const createClient = async (_id: string, url: string): Promise<MCPClient> => {
+      calls++
+      seenArgs.push({ url })
+      return calls === 1 ? initial : refreshed
+    }
+
+    const { result } = renderProvider(createClient)
+
+    await act(async () => {
+      await result.current.addServer(server)
+    })
+    expect(seenArgs[0].url).toBe(server.url)
+
+    await act(async () => {
+      result.current.updateServer({ ...server, name: 'Renamed', url: 'https://new.test/mcp' })
+      // Reconnect kicks off synchronously; await its in-flight promise via a
+      // follow-up reconnectServer call (coalesces into the same promise).
+      await result.current.reconnectServer(server.id)
+    })
+
+    // Stale client closed, fresh one cached with the new URL fed to createClient.
+    expect(initial.closeCount()).toBe(1)
+    expect(seenArgs[1].url).toBe('https://new.test/mcp')
+    const after = result.current.servers.find((s) => s.id === server.id)
+    expect(after?.name).toBe('Renamed')
+    expect(after?.url).toBe('https://new.test/mcp')
+    expect(after?.client).toBe(refreshed as unknown as ProviderMCPClient)
+  })
+
+  it('disconnects without redialing when updateServer flips enabled to false', async () => {
+    const initial = fakeClient()
+    let calls = 0
+    const createClient = async (): Promise<MCPClient> => {
+      calls++
+      return initial
+    }
+
+    const { result } = renderProvider(createClient)
+
+    await act(async () => {
+      await result.current.addServer(server)
+    })
+    expect(calls).toBe(1)
+
+    await act(async () => {
+      result.current.updateServer({ ...server, enabled: false })
+    })
+
+    // No second createClient (no reconnect on a disabled patch) and the old client closed.
+    expect(calls).toBe(1)
+    expect(initial.closeCount()).toBe(1)
+    const after = result.current.servers.find((s) => s.id === server.id)
+    expect(after?.enabled).toBe(false)
+    expect(after?.client).toBeNull()
+    expect(after?.isConnected).toBe(false)
+  })
+
+  it('is a no-op when updateServer targets an unknown id', () => {
+    const createClient = async (): Promise<MCPClient> => fakeClient()
+    const { result } = renderProvider(createClient)
+
+    // No throw, no spurious entry inserted.
+    act(() => result.current.updateServer({ ...server, id: 'unknown' }))
+    expect(result.current.servers.some((s) => s.id === 'unknown')).toBe(false)
   })
 })
 

@@ -49,7 +49,14 @@ type MCPContextType = {
   reconnectClient: ReconnectClient
   addServer: (server: MCPServer) => Promise<void>
   removeServer: (serverId: string) => void
-  updateServerStatus: (serverId: string, enabled: boolean) => void
+  /** Apply a row patch (rename / url / type / enabled) and reconcile the
+   *  connection: disabled → disconnect; disabled→enabled → connect (coalesces
+   *  with any in-flight initial connect); already-enabled → reconnect (closes
+   *  the stale client, redials with the new url/type and live credentials).
+   *  Credentials (bearer or OAuth) live in `mcp_secrets`; `defaultCreateClient`
+   *  re-reads them on every connect, so the redial picks up the new value too.
+   *  No-op when the id isn't tracked yet. */
+  updateServer: (server: MCPServer) => void
 }
 
 const MCPContext = createContext<MCPContextType | undefined>(undefined)
@@ -150,7 +157,7 @@ export const MCPProvider = ({ children, createClient: injectedCreateClient }: MC
 
     // Coalesce overlapping connects for the same server into one in-flight
     // promise. Two sync consumers can re-fire the enable→connect path before
-    // React flushes (the addServer→connect vs updateServerStatus(enable)→connect
+    // React flushes (the addServer→connect vs updateServer(enable)→connect
     // race), so without this a second createClient could cacheClient over a live
     // client without closing it — leaking the first connection.
     const inFlight = connectsInFlight.current.get(server.id)
@@ -255,22 +262,46 @@ export const MCPProvider = ({ children, createClient: injectedCreateClient }: MC
     commitServers((prev) => prev.filter((s) => s.id !== serverId))
   }
 
-  const updateServerStatus = (serverId: string, enabled: boolean) => {
-    const server = serversRef.current.find((s) => s.id === serverId)
-    if (!server) {
+  /** Apply a row patch from settings or PowerSync sync and reconcile the live
+   *  connection. Disabled → disconnect; disabled→enabled → connectServer (so
+   *  it coalesces with an in-flight initial connect via `connectsInFlight`);
+   *  already-enabled → reconnectServer, which closes the stale client and
+   *  redials with the new url/type plus freshly-read credentials (mcp_secrets
+   *  changes don't touch the row, so we always redial here even when fields
+   *  are unchanged). The in-flight-with-matching-url guard suppresses a second
+   *  createClient when an initial connect for the same target is already
+   *  underway. */
+  const updateServer = (server: MCPServer) => {
+    const existing = serversRef.current.find((s) => s.id === server.id)
+    if (!existing) {
       return
     }
 
-    if (enabled) {
-      connectServer({ ...server, enabled })
-    } else {
-      disconnectServer(serverId)
+    commitServers((prev) =>
+      prev.map((s) =>
+        s.id === server.id
+          ? { ...s, name: server.name, url: server.url, type: server.type, enabled: server.enabled }
+          : s,
+      ),
+    )
+
+    if (!server.enabled) {
+      disconnectServer(server.id)
       commitServers((prev) =>
-        prev.map((s) =>
-          s.id === serverId ? { ...s, client: null, isConnected: false, error: null, enabled: false } : s,
-        ),
+        prev.map((s) => (s.id === server.id ? { ...s, client: null, isConnected: false, error: null } : s)),
       )
+      return
     }
+
+    if (!existing.enabled) {
+      void connectServer(server)
+      return
+    }
+
+    if (connectsInFlight.current.has(server.id) && existing.url === server.url && existing.type === server.type) {
+      return
+    }
+    void reconnectServer(server.id)
   }
 
   /** Open a fresh connection for `serverId`, committing it only if the server is
@@ -373,7 +404,7 @@ export const MCPProvider = ({ children, createClient: injectedCreateClient }: MC
         reconnectClient,
         addServer,
         removeServer,
-        updateServerStatus,
+        updateServer,
       }}
     >
       {children}

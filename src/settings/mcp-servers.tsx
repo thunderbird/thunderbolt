@@ -192,7 +192,7 @@ export default function McpServersPage({ deps = {} }: { deps?: McpServersPageDep
   // Read provider connection state read-only for status display. Sync ownership
   // lives in the single global useMcpSync() in AppContent — running it here too
   // would re-run the reconciliation effect and double-register servers.
-  const { servers: mcpServers, reconnectServer } = useMCP()
+  const { servers: mcpServers, reconnectServer, updateServer } = useMCP()
   const location = useLocation()
   const navigate = useNavigate()
   const [mode, setMode] = useState<AddServerMode>('simple')
@@ -422,14 +422,27 @@ export default function McpServersPage({ deps = {} }: { deps?: McpServersPageDep
     if (!form.editingServerId || !newServerUrl || !isUrlValid) {
       return
     }
+    const id = form.editingServerId
+    const name = resolveServerName()
+    const transport = newServerTransport
+    // Carry the current enabled flag through. The row's enabled bit isn't part
+    // of this dialog, so we mirror the in-memory state to avoid an inadvertent
+    // toggle. Falls back to enabled=true for a defensively-missing entry.
+    const existing = mcpServers.find((s) => s.id === id)
+    const enabled = existing?.enabled ?? true
     await updateServerMutation.mutateAsync({
-      id: form.editingServerId,
-      name: resolveServerName(),
+      id,
+      name,
       url: newServerUrl,
-      transport: newServerTransport,
+      transport,
       token: newServerToken,
-      originalCredentialType: credentialTypeById[form.editingServerId] ?? 'none',
+      originalCredentialType: credentialTypeById[id] ?? 'none',
     })
+    // Push the patch into the MCP provider so the live client redials with the
+    // new url/type/credentials. useMcpSync would catch row changes eventually
+    // via PowerSync, but credential-only edits don't touch the row at all —
+    // updateServer's reconnect re-reads `mcp_secrets` so both paths converge.
+    updateServer({ id, name, url: newServerUrl, type: transport, enabled })
     form.resetAddDialog()
     resetLocalDialogState()
   }
@@ -490,15 +503,24 @@ export default function McpServersPage({ deps = {} }: { deps?: McpServersPageDep
   }
 
   const handleUrlKeyDown = (e: KeyboardEvent) => {
-    if (e.key === 'Enter') {
-      e.preventDefault()
-      if (testResult.kind === 'idle' && newServerUrl && isUrlValid) {
-        testConnection()
-      } else if (testResult.kind === 'success') {
-        form.editingServerId ? handleUpdateServer() : handleAddServer()
-      } else if (testResult.kind === 'needs-oauth' && !form.editingServerId) {
-        handleAddAndAuthorize()
-      }
+    if (e.key !== 'Enter') {
+      return
+    }
+    e.preventDefault()
+    // Metadata-only edit (rename / no connection change): Save Changes is the
+    // button's enabled state regardless of testResult, so Enter must mirror it
+    // — otherwise pressing Enter after a rename does nothing while the button
+    // would have saved.
+    if (form.editingServerId && !form.hasConnectionEdits && newServerUrl && isUrlValid) {
+      handleUpdateServer()
+      return
+    }
+    if (testResult.kind === 'idle' && newServerUrl && isUrlValid) {
+      testConnection()
+    } else if (testResult.kind === 'success') {
+      form.editingServerId ? handleUpdateServer() : handleAddServer()
+    } else if (testResult.kind === 'needs-oauth' && !form.editingServerId) {
+      handleAddAndAuthorize()
     }
   }
 

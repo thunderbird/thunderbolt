@@ -916,8 +916,8 @@ export default function PreferencesSettingsPage() {
                   Import Your Data
                 </label>
                 <p id="import-data-description" className="text-sm text-muted-foreground">
-                  Restore from a Thunderbolt export file. Rows that share an ID with something on this device will be
-                  overwritten with the imported version; anything else on this device is left alone.
+                  Restore from a Thunderbolt export file. Rows that share an ID with existing data are overwritten with
+                  the imported version and synced to your other devices. Everything else is left alone.
                 </p>
                 {importError && (
                   <p id="import-data-error" className="text-sm text-destructive" role="alert">
@@ -1051,8 +1051,9 @@ export default function PreferencesSettingsPage() {
                 <>
                   This file contains {pendingImport.totalRows.toLocaleString()} rows
                   {pendingImport.sourceEmail ? ` exported by ${pendingImport.sourceEmail}` : ''}
-                  {pendingImport.exportedAtLabel ? ` on ${pendingImport.exportedAtLabel}` : ''}. Rows with an ID that
-                  matches something on this device will be overwritten. This can't be undone.
+                  {pendingImport.exportedAtLabel ? ` on ${pendingImport.exportedAtLabel}` : ''}. Rows that share an ID
+                  with existing data will be overwritten with the file's version and synced to your other devices. This
+                  can't be undone.
                 </>
               )}
             </AlertDialogDescription>

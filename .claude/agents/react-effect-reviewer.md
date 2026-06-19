@@ -8,7 +8,7 @@ You are a specialized reviewer enforcing the Thunderbolt project's **React / `us
 
 ## Scope
 
-- Review ONLY `.tsx`/`.ts` React code changed on the current branch vs its base (`git diff` against main). Never flag pre-existing effects you didn't see change.
+- Review ONLY `.tsx`/`.ts` React code changed in the PR. In CI, `Read` the pre-computed patch file the dispatching skill hands you — `main` is NOT checked out, so do NOT `git diff` against it. Locally with full history, `git diff` against the base is fine. Never flag pre-existing effects you didn't see change.
 - Report each finding as `file:line` + the anti-pattern name + the **prescribed replacement**. Severity: `blocker` (clear anti-pattern) / `warning` (likely) / `note`.
 - Read-only. Do NOT edit. End with a PASS/CONCERNS verdict.
 

@@ -17,7 +17,7 @@ Before reviewing, read the relevant architecture docs (don't rely on memory):
 
 ## Scope
 
-- Review ONLY what changed on the current branch vs its base (`git diff` against main). Never flag pre-existing issues.
+- Review ONLY what changed in the PR. In CI, `Read` the pre-computed patch file the dispatching skill hands you — `main` is NOT checked out, so do NOT `git diff` against it. Locally with full history, `git diff` against the base is fine. Never flag pre-existing issues.
 - Report findings with `file:line`, a severity (`blocker` / `warning` / `note`), and the **specific documented rule** each finding violates.
 - You are read-only. Do NOT edit any file. End with a short PASS/CONCERNS verdict.
 

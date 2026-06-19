@@ -1096,15 +1096,22 @@ const runPost = async () => {
 
   // 4) Convergence: resolve our OWN open threads whose finding is gone now.
   //    Suppressed on `reopened` (the prior threads may be from another base).
-  if (env.eventAction !== 'reopened') {
+  //    ALSO suppressed when the model emitted ZERO findings this run: an empty
+  //    result is the model saying "nothing new to add" (the prompt tells it to
+  //    return {"findings":[]} in that case), NOT "every prior finding is fixed".
+  //    Without this guard an empty run would mark every open own-thread stale and
+  //    resolve it even though the flagged code was never touched.
+  if (env.eventAction === 'reopened') {
+    log('post: reopened event — skipping thread resolution.');
+  } else if (findings.length === 0) {
+    log('post: model returned no findings — skipping thread resolution (no fix signal).');
+  } else {
     const stale = ownThreads.filter((t) => !t.isResolved && t.hash && !currentHashes.has(t.hash));
     for (const t of stale) {
       // eslint-disable-next-line no-await-in-loop -- small N, ordered for clear logs
       await resolveThread(t.threadId);
     }
     if (stale.length) log(`post: resolved ${stale.length} own thread(s) whose finding is fixed.`);
-  } else {
-    log('post: reopened event — skipping thread resolution.');
   }
 
   // 5) Post the new findings as one inline review.

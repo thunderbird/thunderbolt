@@ -3,9 +3,17 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { describe, expect, it } from 'bun:test'
+import { ImportFormatError } from '@/dal'
 import { readJsonFile } from './import-upload'
 
 const fileOf = (name: string, content: string): File => new File([content], name, { type: 'application/json' })
+
+/** Build a File whose `.size` reports `bytes` without actually allocating that much memory. */
+const oversizedFile = (name: string, bytes: number): File => {
+  const file = new File(['{}'], name, { type: 'application/json' })
+  Object.defineProperty(file, 'size', { value: bytes })
+  return file
+}
 
 describe('readJsonFile', () => {
   it('parses well-formed JSON', async () => {
@@ -26,5 +34,12 @@ describe('readJsonFile', () => {
     const file = fileOf('bad.json', '{ not: valid }')
     await expect(readJsonFile(file)).rejects.toBeInstanceOf(SyntaxError)
     await expect(readJsonFile(file)).rejects.toThrow(/bad\.json/)
+  })
+
+  it('rejects oversized files with ImportFormatError before reading them into memory', async () => {
+    const file = oversizedFile('huge.json', 300 * 1024 * 1024)
+    await expect(readJsonFile(file)).rejects.toBeInstanceOf(ImportFormatError)
+    await expect(readJsonFile(file)).rejects.toThrow(/huge\.json/)
+    await expect(readJsonFile(file)).rejects.toThrow(/too large/i)
   })
 })

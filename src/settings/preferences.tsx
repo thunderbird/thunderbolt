@@ -4,7 +4,7 @@
 
 import { useAuth, useDatabase } from '@/contexts'
 import { useSignInModal } from '@/contexts/sign-in-modal-context'
-import { ImportFormatError, exportUserData, importUserData, summarizeExportEnvelope } from '@/dal'
+import { ImportFormatError, exportUserData, importUserData, summarizeExportEnvelope, type ExportSummary } from '@/dal'
 import { downloadJson, exportFilenameFor } from '@/lib/export-download'
 import { readJsonFile } from '@/lib/import-upload'
 import { useCountryUnits } from '@/hooks/use-country-units'
@@ -52,11 +52,17 @@ import { usePostHog } from 'posthog-js/react'
 import { usePowerSyncStatus } from '@/hooks/use-powersync-status'
 import { useSyncEnabledToggle } from '@/hooks/use-sync-enabled-toggle'
 
+type PendingImport = { payload: unknown } & ExportSummary
+
 type PreferencesState = {
   isResetting: boolean
   isDeletingAccount: boolean
   isExporting: boolean
   isImporting: boolean
+  exportError: string | null
+  importError: string | null
+  importSuccess: string | null
+  pendingImport: PendingImport | null
   localizationDialogOpen: boolean
   pendingCountryUnits: CountryUnitsData | null
 }
@@ -66,6 +72,11 @@ type PreferencesAction =
   | { type: 'SET_IS_DELETING_ACCOUNT'; payload: boolean }
   | { type: 'SET_IS_EXPORTING'; payload: boolean }
   | { type: 'SET_IS_IMPORTING'; payload: boolean }
+  | { type: 'SET_EXPORT_ERROR'; payload: string | null }
+  | { type: 'SET_IMPORT_ERROR'; payload: string | null }
+  | { type: 'SET_IMPORT_SUCCESS'; payload: string | null }
+  | { type: 'SET_PENDING_IMPORT'; payload: PendingImport | null }
+  | { type: 'CLEAR_IMPORT_FEEDBACK' }
   | { type: 'RESET_STATE' }
   | { type: 'OPEN_LOCALIZATION_DIALOG'; payload: CountryUnitsData }
   | { type: 'CLOSE_LOCALIZATION_DIALOG' }
@@ -75,6 +86,10 @@ const initialState: PreferencesState = {
   isDeletingAccount: false,
   isExporting: false,
   isImporting: false,
+  exportError: null,
+  importError: null,
+  importSuccess: null,
+  pendingImport: null,
   localizationDialogOpen: false,
   pendingCountryUnits: null,
 }
@@ -89,6 +104,16 @@ const preferencesReducer = (state: PreferencesState, action: PreferencesAction):
       return { ...state, isExporting: action.payload }
     case 'SET_IS_IMPORTING':
       return { ...state, isImporting: action.payload }
+    case 'SET_EXPORT_ERROR':
+      return { ...state, exportError: action.payload }
+    case 'SET_IMPORT_ERROR':
+      return { ...state, importError: action.payload }
+    case 'SET_IMPORT_SUCCESS':
+      return { ...state, importSuccess: action.payload }
+    case 'SET_PENDING_IMPORT':
+      return { ...state, pendingImport: action.payload }
+    case 'CLEAR_IMPORT_FEEDBACK':
+      return { ...state, importError: null, importSuccess: null }
     case 'RESET_STATE':
       return initialState
     case 'OPEN_LOCALIZATION_DIALOG':
@@ -102,8 +127,18 @@ const preferencesReducer = (state: PreferencesState, action: PreferencesAction):
 
 export default function PreferencesSettingsPage() {
   const [state, dispatch] = useReducer(preferencesReducer, initialState)
-  const { isResetting, isDeletingAccount, isExporting, isImporting, localizationDialogOpen, pendingCountryUnits } =
-    state
+  const {
+    isResetting,
+    isDeletingAccount,
+    isExporting,
+    isImporting,
+    exportError,
+    importError,
+    importSuccess,
+    pendingImport,
+    localizationDialogOpen,
+    pendingCountryUnits,
+  } = state
   const authClient = useAuth()
   const db = useDatabase()
   const { data: session } = authClient.useSession()
@@ -299,20 +334,10 @@ export default function PreferencesSettingsPage() {
   }
 
   const [deleteAccountError, setDeleteAccountError] = useState<string | null>(null)
-  const [exportError, setExportError] = useState<string | null>(null)
-  const [importError, setImportError] = useState<string | null>(null)
-  const [importSuccess, setImportSuccess] = useState<string | null>(null)
-  const [pendingImport, setPendingImport] = useState<{
-    payload: unknown
-    exportedAtLabel: string | null
-    sourceEmail: string | null
-    totalRows: number
-  } | null>(null)
   const importFileInputRef = useRef<HTMLInputElement>(null)
 
   const handleImportClick = () => {
-    setImportError(null)
-    setImportSuccess(null)
+    dispatch({ type: 'CLEAR_IMPORT_FEEDBACK' })
     importFileInputRef.current?.click()
   }
 
@@ -323,18 +348,20 @@ export default function PreferencesSettingsPage() {
     if (!file) {
       return
     }
-    setImportError(null)
-    setImportSuccess(null)
+    dispatch({ type: 'CLEAR_IMPORT_FEEDBACK' })
     try {
       const payload = await readJsonFile(file)
       const summary = summarizeExportEnvelope(payload)
       if (!summary) {
         throw new ImportFormatError("This file doesn't look like a Thunderbolt export.")
       }
-      setPendingImport({ payload, ...summary })
+      dispatch({ type: 'SET_PENDING_IMPORT', payload: { payload, ...summary } })
     } catch (error) {
       console.error('Failed to read import file:', error)
-      setImportError(error instanceof Error ? error.message : 'Could not read the import file.')
+      dispatch({
+        type: 'SET_IMPORT_ERROR',
+        payload: error instanceof Error ? error.message : 'Could not read the import file.',
+      })
     }
   }
 
@@ -344,20 +371,26 @@ export default function PreferencesSettingsPage() {
     }
     const userId = session?.user?.id
     if (!userId) {
-      setImportError('You must be signed in to import data.')
+      dispatch({ type: 'SET_IMPORT_ERROR', payload: 'You must be signed in to import data.' })
       return
     }
     dispatch({ type: 'SET_IS_IMPORTING', payload: true })
-    setImportError(null)
+    dispatch({ type: 'SET_IMPORT_ERROR', payload: null })
     try {
       const result = await importUserData(db, pendingImport.payload, { id: userId })
       const total = Object.values(result.tables).reduce((sum, t) => sum + (t?.upserted ?? 0), 0)
-      setImportSuccess(`Imported ${total.toLocaleString()} rows. The app may take a moment to reflect new chats.`)
+      dispatch({
+        type: 'SET_IMPORT_SUCCESS',
+        payload: `Imported ${total.toLocaleString()} rows. The app may take a moment to reflect new chats.`,
+      })
       trackEvent('settings_data_import')
-      setPendingImport(null)
+      dispatch({ type: 'SET_PENDING_IMPORT', payload: null })
     } catch (error) {
       console.error('Failed to import data:', error)
-      setImportError(error instanceof Error ? error.message : 'Failed to import data.')
+      dispatch({
+        type: 'SET_IMPORT_ERROR',
+        payload: error instanceof Error ? error.message : 'Failed to import data.',
+      })
     } finally {
       dispatch({ type: 'SET_IS_IMPORTING', payload: false })
     }
@@ -367,7 +400,7 @@ export default function PreferencesSettingsPage() {
     if (isImporting) {
       return
     }
-    setPendingImport(null)
+    dispatch({ type: 'SET_PENDING_IMPORT', payload: null })
   }
 
   const handleExportData = async () => {
@@ -375,7 +408,7 @@ export default function PreferencesSettingsPage() {
     if (!userId) {
       return
     }
-    setExportError(null)
+    dispatch({ type: 'SET_EXPORT_ERROR', payload: null })
     dispatch({ type: 'SET_IS_EXPORTING', payload: true })
     try {
       const payload = await exportUserData(db, {
@@ -386,7 +419,10 @@ export default function PreferencesSettingsPage() {
       trackEvent('settings_data_export')
     } catch (error) {
       console.error('Failed to export data:', error)
-      setExportError(error instanceof Error ? error.message : 'Failed to export data.')
+      dispatch({
+        type: 'SET_EXPORT_ERROR',
+        payload: error instanceof Error ? error.message : 'Failed to export data.',
+      })
     } finally {
       dispatch({ type: 'SET_IS_EXPORTING', payload: false })
     }

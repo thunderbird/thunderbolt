@@ -87,6 +87,52 @@ const isRecord = (value: unknown): value is Record<string, unknown> =>
 const isIncludedTableName = (name: string): name is IncludedTableName =>
   (exportedTableNames as readonly string[]).includes(name)
 
+export type ExportSummary = {
+  /** Total row count across every array-valued bucket in `tables`. */
+  totalRows: number
+  /** Locale-formatted `exportedAt`, or null if it's missing / unparseable. */
+  exportedAtLabel: string | null
+  /** Email of the exporting user, or null if it's missing / not a string. */
+  sourceEmail: string | null
+}
+
+/**
+ * Read-only preview of an import envelope for the confirmation dialog.
+ *
+ * Returns `null` when the payload doesn't look like a valid v1 Thunderbolt
+ * export (wrong shape, wrong format slug, wrong/unsupported `schemaVersion`,
+ * or missing `tables`). The UI uses that to refuse the preview without
+ * having to re-implement envelope checks; the full
+ * {@link importUserData} validator covers the same ground at write time.
+ */
+export const summarizeExportEnvelope = (payload: unknown): ExportSummary | null => {
+  if (!isRecord(payload)) {
+    return null
+  }
+  if (payload.format !== exportFormat) {
+    return null
+  }
+  if (payload.schemaVersion !== exportSchemaVersion) {
+    return null
+  }
+  if (!isRecord(payload.tables)) {
+    return null
+  }
+  const totalRows = Object.values(payload.tables).reduce<number>(
+    (sum, value) => sum + (Array.isArray(value) ? value.length : 0),
+    0,
+  )
+  const exportedAtLabel =
+    typeof payload.exportedAt === 'string'
+      ? (() => {
+          const parsed = new Date(payload.exportedAt)
+          return Number.isNaN(parsed.getTime()) ? null : parsed.toLocaleDateString()
+        })()
+      : null
+  const sourceEmail = isRecord(payload.user) && typeof payload.user.email === 'string' ? payload.user.email : null
+  return { totalRows, exportedAtLabel, sourceEmail }
+}
+
 /**
  * Drop the file's `userId` and either re-stamp it from the current session
  * (tables with a `user_id` column) or omit it entirely (secret tables, which

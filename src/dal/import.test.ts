@@ -16,7 +16,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'bun:test'
 import { eq, sql } from 'drizzle-orm'
 import { sqliteTable, text } from 'drizzle-orm/sqlite-core'
 import { exportFormat, exportSchemaVersion } from './export'
-import { derivePkSpec, ImportFormatError, importUserData } from './import'
+import { derivePkSpec, ImportFormatError, importUserData, summarizeExportEnvelope } from './import'
 import { resetTestDatabase, setupTestDatabase, teardownTestDatabase } from './test-utils'
 
 beforeAll(async () => {
@@ -353,6 +353,74 @@ describe('Import DAL', () => {
       const row = await db.select().from(chatThreadsTable).where(eq(chatThreadsTable.id, 'thread-1')).get()
       expect(row?.title).toBe('Imported')
       expect(row?.userId).toBe(currentUser.id)
+    })
+  })
+
+  describe('summarizeExportEnvelope', () => {
+    it('returns null for non-envelope payloads', () => {
+      expect(summarizeExportEnvelope(null)).toBeNull()
+      expect(summarizeExportEnvelope('not-json')).toBeNull()
+      expect(summarizeExportEnvelope([])).toBeNull()
+      expect(summarizeExportEnvelope({})).toBeNull()
+    })
+
+    it('returns null when the format slug is wrong', () => {
+      expect(summarizeExportEnvelope({ format: 'something-else', schemaVersion: 1, tables: {} })).toBeNull()
+    })
+
+    it('returns null on unsupported schemaVersion (matching importUserData)', () => {
+      expect(summarizeExportEnvelope({ format: exportFormat, schemaVersion: 99, tables: {} })).toBeNull()
+    })
+
+    it('returns null when `tables` is missing or not an object', () => {
+      expect(summarizeExportEnvelope({ format: exportFormat, schemaVersion: exportSchemaVersion })).toBeNull()
+      expect(
+        summarizeExportEnvelope({ format: exportFormat, schemaVersion: exportSchemaVersion, tables: 'nope' }),
+      ).toBeNull()
+    })
+
+    it('counts every array-valued bucket and ignores non-array values', () => {
+      const summary = summarizeExportEnvelope(
+        envelope({
+          chat_threads: [{ id: 'a' }, { id: 'b' }],
+          tasks: [{ id: 'c' }],
+          settings: [],
+          // @ts-expect-error – deliberately a non-array bucket
+          junk: 'not an array',
+        }),
+      )
+      expect(summary?.totalRows).toBe(3)
+    })
+
+    it('extracts the source email when present', () => {
+      const summary = summarizeExportEnvelope(envelope({}))
+      expect(summary?.sourceEmail).toBe('u1@example.com')
+    })
+
+    it('returns sourceEmail = null when user / email are missing or not strings', () => {
+      const payload = {
+        format: exportFormat,
+        schemaVersion: exportSchemaVersion,
+        exportedAt: '2026-06-16T00:00:00.000Z',
+        user: { id: 'user-1', email: null },
+        tables: {},
+      }
+      expect(summarizeExportEnvelope(payload)?.sourceEmail).toBeNull()
+      expect(summarizeExportEnvelope({ ...payload, user: undefined })?.sourceEmail).toBeNull()
+    })
+
+    it('formats exportedAt to a locale date and returns null on garbage', () => {
+      const summary = summarizeExportEnvelope(envelope({}))
+      expect(summary?.exportedAtLabel).toBe(new Date('2026-06-16T00:00:00.000Z').toLocaleDateString())
+
+      const bad = summarizeExportEnvelope({
+        format: exportFormat,
+        schemaVersion: exportSchemaVersion,
+        exportedAt: 'not-a-date',
+        user: { id: 'user-1', email: 'u1@example.com' },
+        tables: {},
+      })
+      expect(bad?.exportedAtLabel).toBeNull()
     })
   })
 

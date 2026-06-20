@@ -4,7 +4,7 @@
 
 import { useAuth, useDatabase } from '@/contexts'
 import { useSignInModal } from '@/contexts/sign-in-modal-context'
-import { ImportFormatError, exportUserData, importUserData } from '@/dal'
+import { ImportFormatError, exportUserData, importUserData, summarizeExportEnvelope } from '@/dal'
 import { downloadJson, exportFilenameFor } from '@/lib/export-download'
 import { readJsonFile } from '@/lib/import-upload'
 import { useCountryUnits } from '@/hooks/use-country-units'
@@ -98,26 +98,6 @@ const preferencesReducer = (state: PreferencesState, action: PreferencesAction):
     default:
       return state
   }
-}
-
-/** Total row count across every array-valued bucket inside an export's `tables` object. */
-const countTablesRows = (tables: unknown): number => {
-  if (!tables || typeof tables !== 'object' || Array.isArray(tables)) {
-    return 0
-  }
-  return Object.values(tables as Record<string, unknown>).reduce<number>(
-    (sum, value) => sum + (Array.isArray(value) ? value.length : 0),
-    0,
-  )
-}
-
-/** Locale-formatted date for an export's `exportedAt`, or null if it's missing / not a valid date. */
-const formatExportedAt = (value: unknown): string | null => {
-  if (typeof value !== 'string') {
-    return null
-  }
-  const parsed = new Date(value)
-  return Number.isNaN(parsed.getTime()) ? null : parsed.toLocaleDateString()
 }
 
 export default function PreferencesSettingsPage() {
@@ -347,26 +327,11 @@ export default function PreferencesSettingsPage() {
     setImportSuccess(null)
     try {
       const payload = await readJsonFile(file)
-      // Light envelope shape check so we can show source attribution + counts
-      // in the confirmation dialog. Full validation runs inside `importUserData`.
-      if (!payload || typeof payload !== 'object' || Array.isArray(payload)) {
+      const summary = summarizeExportEnvelope(payload)
+      if (!summary) {
         throw new ImportFormatError("This file doesn't look like a Thunderbolt export.")
       }
-      const obj = payload as Record<string, unknown>
-      if (obj.format !== 'thunderbolt-export') {
-        throw new ImportFormatError("This file doesn't look like a Thunderbolt export.")
-      }
-      const totalRows = countTablesRows(obj.tables)
-      const exportedAtLabel = formatExportedAt(obj.exportedAt)
-      const user = obj.user
-      const sourceEmail =
-        user &&
-        typeof user === 'object' &&
-        !Array.isArray(user) &&
-        typeof (user as Record<string, unknown>).email === 'string'
-          ? ((user as Record<string, unknown>).email as string)
-          : null
-      setPendingImport({ payload, exportedAtLabel, sourceEmail, totalRows })
+      setPendingImport({ payload, ...summary })
     } catch (error) {
       console.error('Failed to read import file:', error)
       setImportError(error instanceof Error ? error.message : 'Could not read the import file.')

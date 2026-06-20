@@ -46,6 +46,9 @@ export const includedTables = Object.fromEntries(
     ...syncedTables,
     ...Object.fromEntries(Object.entries(localOnlyTables).map(([name, def]) => [name, def.tableDefinition])),
   }).filter(([name]) => !isExcluded(name)),
+  // `Object.fromEntries` returns `{ [k: string]: SQLiteTable }`, which TS won't directly cast to
+  // `Record<IncludedTableName, SQLiteTable>` (finite key union — TS can't prove each named key is
+  // present from a string-indexed source). Hence the `unknown` hop, per TS's own recovery hint.
 ) as unknown as Record<IncludedTableName, SQLiteTable>
 
 /**

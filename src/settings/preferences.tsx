@@ -351,7 +351,7 @@ export default function PreferencesSettingsPage() {
     dispatch({ type: 'CLEAR_IMPORT_FEEDBACK' })
     try {
       const payload = await readJsonFile(file)
-      const summary = summarizeExportEnvelope(payload)
+      const summary = summarizeExportEnvelope(payload, session?.user?.email ?? null)
       if (!summary) {
         throw new ImportFormatError("This file doesn't look like a Thunderbolt export.")
       }
@@ -1060,6 +1060,12 @@ export default function PreferencesSettingsPage() {
               )}
             </AlertDialogDescription>
           </AlertDialogHeader>
+          {pendingImport?.accountMismatch && (
+            <p className="text-sm text-destructive font-medium" role="alert">
+              ⚠ This export was made by a different account ({pendingImport.sourceEmail}). Importing it here will mix
+              that data into your account — confirm only if you intend to.
+            </p>
+          )}
           {importError && (
             <p className="text-sm text-destructive" role="alert">
               {importError}

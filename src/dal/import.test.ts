@@ -422,6 +422,32 @@ describe('Import DAL', () => {
       })
       expect(bad?.exportedAtLabel).toBeNull()
     })
+
+    describe('accountMismatch', () => {
+      it('is false when no currentUserEmail is provided', () => {
+        expect(summarizeExportEnvelope(envelope({}))?.accountMismatch).toBe(false)
+      })
+
+      it('is false when the envelope has no sourceEmail (legacy export)', () => {
+        const payload = {
+          format: exportFormat,
+          schemaVersion: exportSchemaVersion,
+          exportedAt: '2026-06-16T00:00:00.000Z',
+          user: { id: 'user-1', email: null },
+          tables: {},
+        }
+        expect(summarizeExportEnvelope(payload, 'someone@example.com')?.accountMismatch).toBe(false)
+      })
+
+      it('is false when the emails match (case-insensitively)', () => {
+        expect(summarizeExportEnvelope(envelope({}), 'u1@example.com')?.accountMismatch).toBe(false)
+        expect(summarizeExportEnvelope(envelope({}), 'U1@Example.COM')?.accountMismatch).toBe(false)
+      })
+
+      it('is true when both emails are present and differ', () => {
+        expect(summarizeExportEnvelope(envelope({}), 'someone-else@example.com')?.accountMismatch).toBe(true)
+      })
+    })
   })
 
   describe('derivePkSpec', () => {

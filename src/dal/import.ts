@@ -94,6 +94,13 @@ export type ExportSummary = {
   exportedAtLabel: string | null
   /** Email of the exporting user, or null if it's missing / not a string. */
   sourceEmail: string | null
+  /**
+   * `true` when both `sourceEmail` and `currentUserEmail` are present and
+   * differ (case-insensitively). The UI uses this to flag a cross-account
+   * import in the confirm dialog. Stays `false` when either side is missing
+   * — better to under-warn than to false-positive on legacy exports.
+   */
+  accountMismatch: boolean
 }
 
 /**
@@ -104,8 +111,17 @@ export type ExportSummary = {
  * or missing `tables`). The UI uses that to refuse the preview without
  * having to re-implement envelope checks; the full
  * {@link importUserData} validator covers the same ground at write time.
+ *
+ * Pass `currentUserEmail` to enable cross-account detection — the returned
+ * `accountMismatch` flag is set when the envelope's email and the session
+ * email both exist and differ. Email (not `user.id`) is the comparison
+ * field: better-auth assigns a new id when an account is deleted and
+ * recreated, but the same human's email stays stable.
  */
-export const summarizeExportEnvelope = (payload: unknown): ExportSummary | null => {
+export const summarizeExportEnvelope = (
+  payload: unknown,
+  currentUserEmail: string | null = null,
+): ExportSummary | null => {
   if (!isRecord(payload)) {
     return null
   }
@@ -130,7 +146,9 @@ export const summarizeExportEnvelope = (payload: unknown): ExportSummary | null 
         })()
       : null
   const sourceEmail = isRecord(payload.user) && typeof payload.user.email === 'string' ? payload.user.email : null
-  return { totalRows, exportedAtLabel, sourceEmail }
+  const accountMismatch =
+    sourceEmail !== null && currentUserEmail !== null && sourceEmail.toLowerCase() !== currentUserEmail.toLowerCase()
+  return { totalRows, exportedAtLabel, sourceEmail, accountMismatch }
 }
 
 /**

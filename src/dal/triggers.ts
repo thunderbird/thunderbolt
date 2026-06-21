@@ -90,12 +90,14 @@ export const deleteTriggersForPrompts = async (
 }
 
 /**
- * Creates a new trigger in the given workspace
+ * Creates a new trigger in the given workspace. Defaults `scope` to `'workspace'`
+ * — triggers typically belong to a shared prompt, but the column is plumbed
+ * through for parity with the other resource tables (THU-603).
  */
 export const createTrigger = async (
   db: AnyDrizzleDatabase,
   workspaceId: string,
   data: Partial<Trigger> & Pick<Trigger, 'id' | 'promptId' | 'isEnabled' | 'triggerType' | 'triggerTime'>,
 ): Promise<void> => {
-  await db.insert(triggersTable).values({ ...data, workspaceId })
+  await db.insert(triggersTable).values({ ...data, workspaceId, scope: data.scope ?? 'workspace' })
 }

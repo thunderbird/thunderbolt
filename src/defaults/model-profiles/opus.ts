@@ -30,4 +30,5 @@ export const defaultModelProfileOpus48: ModelProfile = {
   defaultHash: null,
   userId: null,
   workspaceId: null,
+  scope: 'workspace',
 }

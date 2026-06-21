@@ -37,6 +37,7 @@ export const Edit: Story = {
         'Use this skill when the user shares raw meeting notes, a transcript, or bullets from a recent call and wants them cleaned up, summarized, or turned into action items.',
       instruction:
         "Pull three things out of the notes, in this order. Do not skip any of them.\n\n1. DECISIONS — what was actually decided.\n2. ACTION ITEMS — who does what by when.\n3. OPEN QUESTIONS — anything that came up but didn't resolve.",
+      scope: 'workspace',
     },
   },
 }

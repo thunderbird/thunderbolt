@@ -10,7 +10,9 @@ import { useLocation, useNavigate } from 'react-router'
 import { Button } from '@/components/ui/button'
 import { SkillNameInvalidError, SkillNameTakenError } from '@/dal'
 import { useIsMobile } from '@/hooks/use-mobile'
+import { useScopePickerEnabled } from '@/hooks/use-scope-picker-enabled'
 import { useWorkspacePermission } from '@/hooks/use-workspace-permission'
+import { useTrustDomainRegistry } from '@/stores/trust-domain-registry'
 import { DeleteSkillDialog } from './delete-skill-dialog'
 import { DependentsDialog } from './dependents-dialog'
 import { DiscardCreateDialog } from './discard-create-dialog'
@@ -25,6 +27,19 @@ import { useEnabledSkills, useLibrarySkills, usePinnedSkills } from './use-skill
 export const SkillsView = () => {
   const { isMobile } = useIsMobile()
   const { skills, createSkill, updateSkill, softDeleteSkill } = useLibrarySkills()
+  // Pull the active user id from the trust-domain registry — keeps the
+  // component independent of `AuthProvider` so existing skills-view tests
+  // that don't mount Better Auth still render.
+  const currentUserId = useTrustDomainRegistry((state) => {
+    if (state.activeTrustDomain?.kind === 'standalone') {
+      return state.localUserId
+    }
+    if (state.activeTrustDomain?.kind === 'server') {
+      return state.servers[state.activeTrustDomain.serverId]?.userId
+    }
+    return undefined
+  })
+  const scopePickerEnabled = useScopePickerEnabled()
   // Pinning is managed entirely from the chat composer; we only read
   // `pinnedSet` here to auto-unpin on disable (a disabled skill can't be
   // summoned from the chat pinned bar, so keeping its slot would waste
@@ -191,7 +206,17 @@ export const SkillsView = () => {
   const handleSubmit = async (values: SkillFormValues) => {
     try {
       if (mode === 'create') {
-        const created = await createSkill(values)
+        // Stamp `userId` from the active session so a `scope: 'user'` row lands
+        // in the right per-user bucket on sync. For `scope: 'workspace'` rows
+        // userId is informational (any member can edit) but we still record it
+        // for attribution.
+        const created = await createSkill({
+          name: values.name,
+          description: values.description,
+          instruction: values.instruction,
+          scope: values.scope,
+          userId: currentUserId ?? null,
+        })
         trackSkillEvent('skill_created', created.id, { instruction_length: values.instruction.length })
         dispatch({ type: 'SUBMIT_SUCCESS', activeId: created.id })
       } else if (active) {
@@ -236,13 +261,18 @@ export const SkillsView = () => {
       // user clicks "Create it" for a different slug back-to-back.
       key={createInitialName ? `create:${createInitialName}` : 'create'}
       mode="create"
-      initialValues={createInitialName ? { name: createInitialName, description: '', instruction: '' } : undefined}
+      initialValues={
+        createInitialName
+          ? { name: createInitialName, description: '', instruction: '', scope: 'workspace' }
+          : undefined
+      }
       onCancel={() => requestLeave({ type: 'cancel' })}
       onSubmit={handleSubmit}
       onDirtyChange={(dirty) => dispatch({ type: 'SET_DIRTY', dirty })}
       onNameChange={() => dispatch({ type: 'CLEAR_NAME_ERROR' })}
       resetSignal={resetSignal}
       nameError={nameError}
+      showScopePicker={scopePickerEnabled}
     />
   )
 
@@ -257,6 +287,8 @@ export const SkillsView = () => {
         description={active.description}
         instruction={active.instruction}
         enabled={isEnabled(active.id)}
+        scope={active.scope ?? 'workspace'}
+        showScope={scopePickerEnabled}
         canEdit={canAddSkills}
         canDelete={canRemoveSkills}
         onToggleEnabled={(next) => handleToggleEnabled(active.id, next)}
@@ -272,6 +304,7 @@ export const SkillsView = () => {
           name: active.name,
           description: active.description,
           instruction: active.instruction,
+          scope: active.scope ?? 'workspace',
         }}
         onCancel={() => requestLeave({ type: 'cancel' })}
         onSubmit={handleSubmit}
@@ -279,6 +312,10 @@ export const SkillsView = () => {
         onNameChange={() => dispatch({ type: 'CLEAR_NAME_ERROR' })}
         resetSignal={resetSignal}
         nameError={nameError}
+        // Only the row's author can flip scope (BE drops the change otherwise).
+        // Anonymous skills with no recorded author also lock the picker — there's
+        // no owner to authorize a change against.
+        showScopePicker={scopePickerEnabled && active.userId != null && active.userId === currentUserId}
       />
     )
 
@@ -286,7 +323,9 @@ export const SkillsView = () => {
     <div className="relative flex h-full">
       <SkillsList
         skills={skills}
-        activeSkillId={mode === 'detail' && active ? active.id : null}
+        // Keep the sidebar row highlighted while editing — `create` has no
+        // active skill, so it stays null there.
+        activeSkillId={(mode === 'detail' || mode === 'edit') && active ? active.id : null}
         isEnabled={isEnabled}
         canCreate={canAddSkills}
         canEdit={canAddSkills}

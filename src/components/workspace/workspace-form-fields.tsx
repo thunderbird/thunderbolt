@@ -59,6 +59,9 @@ type WorkspaceFormFieldsProps = {
   onDebouncedChange?: () => void
   /** Fires on name/slug blur and on icon select/remove. Wire to immediate save. */
   onCommit?: () => void
+  /** When true, all inputs render disabled — read-only view for callers who
+   *  lack edit permission (e.g. non-admin members on the General settings page). */
+  disabled?: boolean
 }
 
 /**
@@ -77,6 +80,7 @@ export const WorkspaceFormFields = ({
   initialSlugLocked = false,
   onDebouncedChange,
   onCommit,
+  disabled = false,
 }: WorkspaceFormFieldsProps) => {
   const [slugLocked, setSlugLocked] = useState(initialSlugLocked)
 
@@ -93,6 +97,7 @@ export const WorkspaceFormFields = ({
                 inputSize="lg"
                 placeholder="e.g. Engineering"
                 {...field}
+                disabled={disabled}
                 onChange={(e) => {
                   field.onChange(e)
                   if (!slugLocked && showSlug) {
@@ -118,7 +123,7 @@ export const WorkspaceFormFields = ({
           render={({ field }) => (
             <FormItem>
               <FormLabel className="text-sm font-medium">Workspace URL</FormLabel>
-              <div className="flex h-[var(--touch-height-lg)] w-full rounded-lg border border-input bg-transparent overflow-hidden focus-within:border-ring focus-within:ring-ring/50 focus-within:ring-[3px]">
+              <div className="flex h-[var(--touch-height-lg)] w-full rounded-lg border border-input bg-transparent overflow-hidden focus-within:border-ring focus-within:ring-ring/50 focus-within:ring-[3px] aria-disabled:cursor-not-allowed aria-disabled:opacity-50">
                 <span className="flex items-center px-4 text-[length:var(--font-size-body)] text-muted-foreground bg-muted whitespace-nowrap select-none">
                   {slugPrefix}
                 </span>
@@ -126,8 +131,9 @@ export const WorkspaceFormFields = ({
                   <input
                     type="text"
                     placeholder="engineering"
-                    className="flex-1 min-w-0 px-4 py-2 bg-transparent outline-none text-[length:var(--font-size-body)]"
+                    className="flex-1 min-w-0 px-4 py-2 bg-transparent outline-none text-[length:var(--font-size-body)] disabled:cursor-not-allowed disabled:opacity-50"
                     {...field}
+                    disabled={disabled}
                     onChange={(e) => {
                       const cleaned = sanitizeWorkspaceSlugInput(e.target.value)
                       field.onChange(cleaned)
@@ -164,6 +170,7 @@ export const WorkspaceFormFields = ({
                   onCommit?.()
                 }}
                 placeholder={iconPlaceholder}
+                disabled={disabled}
               />
             </FormControl>
             <FormMessage />

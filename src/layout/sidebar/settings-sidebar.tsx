@@ -42,10 +42,8 @@ export const SettingsSidebarContent = ({
   const agentsHidden = useAgentsSettingsHidden({ isStandalone })
   const activeWorkspace = useActiveWorkspace()
   const { isAdmin } = useActiveWorkspaceMembership()
-  // General — and later Permissions — are hidden for shared-workspace members
-  // per Decision 25 (hide-not-disable). Personal is treated as admin-equivalent
-  // for nav purposes; the page renders read-only.
-  const workspaceAdminItemsVisible = activeWorkspace?.isPersonal === 1 || isAdmin
+  // General is open to every member of a shared workspace; the page itself
+  // disables form fields for non-admins. Personal workspaces always show it.
   // Members is visible to every member of a shared workspace — the page is
   // read-friendly without action permissions, and individual actions (invite /
   // change role / remove) gate themselves on the granular permission keys.
@@ -99,17 +97,6 @@ export const SettingsSidebarContent = ({
             </SidebarMenuItem>
             <SidebarMenuItem>
               <SidebarMenuButton
-                onClick={() => onSettingsNavigate('/settings/integrations')}
-                tooltip="Integrations"
-                className="cursor-pointer"
-                isActive={subPath === '/settings/integrations'}
-              >
-                <Plug className="size-4" />
-                <span>Integrations</span>
-              </SidebarMenuButton>
-            </SidebarMenuItem>
-            <SidebarMenuItem>
-              <SidebarMenuButton
                 onClick={() => onSettingsNavigate('/settings/devices')}
                 tooltip="Devices"
                 className="cursor-pointer"
@@ -123,49 +110,32 @@ export const SettingsSidebarContent = ({
         </SidebarGroupContent>
       </SidebarGroup>
 
-      <SidebarGroup className="flex-1">
-        <SidebarGroupLabel>Workspace</SidebarGroupLabel>
+      <SidebarGroup>
+        <SidebarGroupLabel>Extensions</SidebarGroupLabel>
         <SidebarGroupContent>
           <SidebarMenu>
-            {workspaceAdminItemsVisible && (
-              <SidebarMenuItem>
-                <SidebarMenuButton
-                  onClick={() => onSettingsNavigate('/settings/workspace/general')}
-                  tooltip="General"
-                  className="cursor-pointer"
-                  isActive={subPath === '/settings/workspace/general'}
-                >
-                  <Globe className="size-4" />
-                  <span>General</span>
-                </SidebarMenuButton>
-              </SidebarMenuItem>
-            )}
-            {membersItemVisible && (
-              <SidebarMenuItem>
-                <SidebarMenuButton
-                  onClick={() => onSettingsNavigate('/settings/workspace/members')}
-                  tooltip="Members"
-                  className="cursor-pointer"
-                  isActive={subPath === '/settings/workspace/members'}
-                >
-                  <Users className="size-4" />
-                  <span>Members</span>
-                </SidebarMenuButton>
-              </SidebarMenuItem>
-            )}
-            {permissionsItemVisible && (
-              <SidebarMenuItem>
-                <SidebarMenuButton
-                  onClick={() => onSettingsNavigate('/settings/workspace/permissions')}
-                  tooltip="Permissions"
-                  className="cursor-pointer"
-                  isActive={subPath === '/settings/workspace/permissions'}
-                >
-                  <Lock className="size-4" />
-                  <span>Permissions</span>
-                </SidebarMenuButton>
-              </SidebarMenuItem>
-            )}
+            <SidebarMenuItem>
+              <SidebarMenuButton
+                onClick={() => onSettingsNavigate('/settings/skills')}
+                tooltip="Skills"
+                className="cursor-pointer"
+                isActive={subPath === '/settings/skills'}
+              >
+                <Zap className="size-4" />
+                <span>Skills</span>
+              </SidebarMenuButton>
+            </SidebarMenuItem>
+            <SidebarMenuItem>
+              <SidebarMenuButton
+                onClick={() => onSettingsNavigate('/settings/integrations')}
+                tooltip="Integrations"
+                className="cursor-pointer"
+                isActive={subPath === '/settings/integrations'}
+              >
+                <Plug className="size-4" />
+                <span>Integrations</span>
+              </SidebarMenuButton>
+            </SidebarMenuItem>
             <SidebarMenuItem>
               <SidebarMenuButton
                 onClick={() => onSettingsNavigate('/settings/models')}
@@ -201,17 +171,51 @@ export const SettingsSidebarContent = ({
                 </SidebarMenuButton>
               </SidebarMenuItem>
             )}
+          </SidebarMenu>
+        </SidebarGroupContent>
+      </SidebarGroup>
+
+      <SidebarGroup className="flex-1">
+        <SidebarGroupLabel>Workspace</SidebarGroupLabel>
+        <SidebarGroupContent>
+          <SidebarMenu>
             <SidebarMenuItem>
               <SidebarMenuButton
-                onClick={() => onSettingsNavigate('/settings/skills')}
-                tooltip="Skills"
+                onClick={() => onSettingsNavigate('/settings/workspace/general')}
+                tooltip="General"
                 className="cursor-pointer"
-                isActive={subPath === '/settings/skills'}
+                isActive={subPath === '/settings/workspace/general'}
               >
-                <Zap className="size-4" />
-                <span>Skills</span>
+                <Globe className="size-4" />
+                <span>General</span>
               </SidebarMenuButton>
             </SidebarMenuItem>
+            {membersItemVisible && (
+              <SidebarMenuItem>
+                <SidebarMenuButton
+                  onClick={() => onSettingsNavigate('/settings/workspace/members')}
+                  tooltip="Members"
+                  className="cursor-pointer"
+                  isActive={subPath === '/settings/workspace/members'}
+                >
+                  <Users className="size-4" />
+                  <span>Members</span>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+            )}
+            {permissionsItemVisible && (
+              <SidebarMenuItem>
+                <SidebarMenuButton
+                  onClick={() => onSettingsNavigate('/settings/workspace/permissions')}
+                  tooltip="Permissions"
+                  className="cursor-pointer"
+                  isActive={subPath === '/settings/workspace/permissions'}
+                >
+                  <Lock className="size-4" />
+                  <span>Permissions</span>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+            )}
           </SidebarMenu>
         </SidebarGroupContent>
       </SidebarGroup>

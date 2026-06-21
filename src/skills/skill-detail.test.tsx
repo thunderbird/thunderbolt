@@ -10,7 +10,14 @@ import { SkillDetail } from './skill-detail'
 
 afterEach(cleanup)
 
-const renderDetail = (props: { canEdit?: boolean; canDelete?: boolean } = {}) => {
+const renderDetail = (
+  props: {
+    canEdit?: boolean
+    canDelete?: boolean
+    scope?: 'workspace' | 'user'
+    showScope?: boolean
+  } = {},
+) => {
   render(
     <MemoryRouter>
       <SkillDetail
@@ -20,6 +27,8 @@ const renderDetail = (props: { canEdit?: boolean; canDelete?: boolean } = {}) =>
         enabled
         canEdit={props.canEdit}
         canDelete={props.canDelete}
+        scope={props.scope}
+        showScope={props.showScope}
         onToggleEnabled={mock(() => {})}
         onEdit={mock(() => {})}
         onDelete={mock(() => {})}
@@ -62,5 +71,34 @@ describe('SkillDetail — permission gating', () => {
 
     expect(screen.getByText('Edit')).toBeInTheDocument()
     expect(screen.getByText('Delete')).toBeInTheDocument()
+  })
+})
+
+describe('SkillDetail — read-only scope picker (THU-603)', () => {
+  it('does not render the scope picker when showScope is false', () => {
+    renderDetail({ scope: 'workspace', showScope: false })
+    expect(screen.queryByRole('radio', { name: /shared with the workspace/i })).not.toBeInTheDocument()
+  })
+
+  it("reflects scope='workspace' as the selected option, read-only", () => {
+    renderDetail({ scope: 'workspace', showScope: true })
+    const workspaceItem = screen.getByRole('radio', { name: /shared with the workspace/i })
+    expect(workspaceItem).toHaveAttribute('data-state', 'on')
+    // Read-only must not dim the items (no disabled attribute) — the picker is
+    // informational, not an "unavailable" control.
+    expect(workspaceItem).not.toBeDisabled()
+    expect(screen.getByText(/shared with everyone/i)).toBeInTheDocument()
+  })
+
+  it("reflects scope='user' as the selected option with the private hint", () => {
+    renderDetail({ scope: 'user', showScope: true })
+    const privateItem = screen.getByRole('radio', { name: /private to you/i })
+    expect(privateItem).toHaveAttribute('data-state', 'on')
+    expect(screen.getByText(/only you can see/i)).toBeInTheDocument()
+  })
+
+  it('does not render the picker when scope is undefined (defensive)', () => {
+    renderDetail({ scope: undefined, showScope: true })
+    expect(screen.queryByRole('radio', { name: /shared with the workspace/i })).not.toBeInTheDocument()
   })
 })

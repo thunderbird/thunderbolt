@@ -15,6 +15,7 @@ const skill = (overrides: Partial<Skill> & { id: string; name: string }): Skill 
   defaultHash: null,
   userId: null,
   workspaceId: null,
+  scope: null,
   ...overrides,
 })
 

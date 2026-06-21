@@ -64,6 +64,14 @@ describe('Config Routes', () => {
       expect(forbidden.body.allowCustomAgents).toBe(false)
     })
 
+    it('exposes allowUserScopedResources', async () => {
+      const on = await fetchConfig(createTestSettings({ allowUserScopedResources: true }))
+      expect(on.body.allowUserScopedResources).toBe(true)
+
+      const off = await fetchConfig(createTestSettings({ allowUserScopedResources: false }))
+      expect(off.body.allowUserScopedResources).toBe(false)
+    })
+
     it('does not require authentication', async () => {
       const { status } = await fetchConfig(createTestSettings())
       expect(status).toBe(200)

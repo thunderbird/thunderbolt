@@ -217,9 +217,10 @@ export const reconcileDefaults = async (db: AnyDrizzleDatabase, workspaceId: str
 }
 
 /**
- * Seeds the five workspace-scoped default tables (models / model_profiles /
- * modes / tasks / skills) into a freshly-created workspace, generating new
- * per-workspace ids for every row.
+ * Seeds the four workspace-scoped default tables (models / model_profiles /
+ * modes / skills) into a freshly-created workspace, generating new
+ * per-workspace ids for every row. Tasks are intentionally excluded — the
+ * shipped defaults are user-onboarding nudges, not workspace-scoped resources.
  *
  * Why fresh ids: the FE schema uses a single-column `id` primary key on each
  * synced table (see docs/architecture/composite-primary-keys-and-default-data.md).
@@ -275,15 +276,6 @@ export const seedFreshWorkspaceDefaultsInTx = async (tx: AnyDrizzleDatabase, wor
       id: uuidv7(),
       workspaceId,
       defaultHash: hashMode(mode as Parameters<typeof hashMode>[0]),
-    })
-  }
-
-  for (const task of defaultTasks) {
-    await tx.insert(tasksTable).values({
-      ...task,
-      id: uuidv7(),
-      workspaceId,
-      defaultHash: hashTask(task as Parameters<typeof hashTask>[0]),
     })
   }
 

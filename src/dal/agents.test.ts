@@ -107,6 +107,34 @@ describe('agents DAL', () => {
       const row = await getDb().select().from(agentsTable).get()
       expect(row?.enabled).toBe(1)
     })
+
+    it("defaults scope to 'workspace' when input omits it (THU-603)", async () => {
+      await createAgent(getDb(), wsId, {
+        id: 'agent-scope-default',
+        name: 'Defaults',
+        type: 'remote-acp',
+        transport: 'websocket',
+        url: 'wss://x',
+        userId: 'u1',
+      })
+      const row = await getDb().select().from(agentsTable).get()
+      expect(row?.scope).toBe('workspace')
+    })
+
+    it("persists scope='user' for user-private agents (THU-603)", async () => {
+      await createAgent(getDb(), wsId, {
+        id: 'agent-private',
+        name: 'Private',
+        type: 'remote-acp',
+        transport: 'websocket',
+        url: 'wss://x',
+        userId: 'u1',
+        scope: 'user',
+      })
+      const row = await getDb().select().from(agentsTable).get()
+      expect(row?.scope).toBe('user')
+      expect(row?.userId).toBe('u1')
+    })
   })
 
   describe('updateAgent', () => {

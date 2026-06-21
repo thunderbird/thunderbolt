@@ -30,4 +30,5 @@ export const defaultModelProfileGlm52: ModelProfile = {
   defaultHash: null,
   userId: null,
   workspaceId: null,
+  scope: 'workspace',
 }

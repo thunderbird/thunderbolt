@@ -193,7 +193,7 @@ describe('SettingsSidebarContent — Workspace > General entry visibility', () =
     expect(screen.getByText('General')).toBeInTheDocument()
   })
 
-  it('hides the General entry for a member of a shared workspace', async () => {
+  it('shows the General entry for a member of a shared workspace (read-only on the page)', async () => {
     await seedSharedWorkspaceWithMembership('member')
 
     renderWithReactivity(
@@ -206,10 +206,8 @@ describe('SettingsSidebarContent — Workspace > General entry visibility', () =
       },
     )
 
-    // Wait for an unrelated Workspace-group item to render so the active
-    // workspace has resolved before we assert absence.
-    await waitForElement(() => screen.queryByText('Models'))
-    expect(screen.queryByText('General')).not.toBeInTheDocument()
+    await waitForElement(() => screen.queryByText('General'))
+    expect(screen.getByText('General')).toBeInTheDocument()
   })
 
   it('shows the General entry in a Personal Workspace (rendered read-only by the page)', async () => {
@@ -300,8 +298,11 @@ describe('SettingsSidebarContent — Workspace > Members entry visibility', () =
       },
     )
 
-    // Wait for General to render so the personal workspace has resolved.
-    await waitForElement(() => screen.queryByText('General'))
+    // Wait for the workspace to resolve as personal. Before resolution,
+    // `activeWorkspace?.isPersonal !== 1` is undefined-coerced to true, so
+    // Members briefly renders; the General item now renders unconditionally
+    // so it can't be used as a "workspace loaded" sentinel.
+    await waitForElement(() => (screen.queryByText('Members') ? null : screen.queryByText('General')))
     expect(screen.queryByText('Members')).not.toBeInTheDocument()
   })
 

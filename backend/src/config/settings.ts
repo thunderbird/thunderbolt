@@ -54,6 +54,11 @@ const settingsSchema = z
     // match v1 production posture (central-admin only); relax per deployment.
     allowWorkspaceCreationByAnon: z.boolean().default(false),
     allowWorkspaceCreationByMembers: z.boolean().default(false),
+    // THU-603: per-row scope on the 8 workspace-shared resource tables. When false,
+    // PowerSync upload handlers reject `scope = 'user'` PUTs (USER_SCOPE_DISABLED)
+    // and the UI hides the scope picker. Defaults true so the feature is opt-out:
+    // deployments that want strict workspace-shared semantics set this to false.
+    allowUserScopedResources: z.boolean().default(true),
     oidcClientId: z.string().default(''),
     oidcClientSecret: z.string().default(''),
     oidcIssuer: z.string().default(''),
@@ -190,6 +195,7 @@ const parseSettings = (): Settings => {
     authAllowAnonymous: process.env.AUTH_ALLOW_ANONYMOUS === 'true',
     allowWorkspaceCreationByAnon: process.env.ALLOW_WORKSPACE_CREATION_BY_ANON === 'true',
     allowWorkspaceCreationByMembers: process.env.ALLOW_WORKSPACE_CREATION_BY_MEMBERS === 'true',
+    allowUserScopedResources: process.env.ALLOW_USER_SCOPED_RESOURCES !== 'false',
     oidcClientId: process.env.OIDC_CLIENT_ID || '',
     oidcClientSecret: process.env.OIDC_CLIENT_SECRET || '',
     oidcIssuer: process.env.OIDC_ISSUER || '',

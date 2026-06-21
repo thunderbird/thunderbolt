@@ -7,7 +7,9 @@ import {
   agentsTable,
   mcpServersTable,
   modelsTable,
+  modesTable,
   skillsTable,
+  tasksTable,
   workspaceMembershipsTable,
   workspacePendingMembershipsTable,
   workspacePermissionsTable,
@@ -2000,6 +2002,569 @@ describe('workspace upload handlers', () => {
       }
       const result = await applyUploadBatch(db, [editOp], ctxFor('mcpMember5'))
       expectPermanentReject(result, 'INSUFFICIENT_PERMISSION')
+    })
+  })
+
+  describe('scope-aware resources (THU-603)', () => {
+    const seedShared = async (adminId: string, memberId: string): Promise<string> => {
+      const workspaceId = uuidv7()
+      await db.insert(workspacesTable).values({ id: workspaceId, isPersonal: false, name: 'Acme' })
+      await db.insert(workspaceMembershipsTable).values({ id: uuidv7(), workspaceId, userId: adminId, role: 'admin' })
+      await db.insert(workspaceMembershipsTable).values({ id: uuidv7(), workspaceId, userId: memberId, role: 'member' })
+      return workspaceId
+    }
+
+    const skillPut = (workspaceId: string, scope: 'workspace' | 'user' | undefined, id = uuidv7()): UploadOp => ({
+      op: 'PUT',
+      type: 'skills',
+      id,
+      data: {
+        workspace_id: workspaceId,
+        name: 'Test skill',
+        description: 'Test',
+        instruction: 'Do the thing',
+        enabled: 1,
+        ...(scope !== undefined ? { scope } : {}),
+      },
+    })
+
+    it('PUT defaults scope to workspace when payload omits it', async () => {
+      await insertUser('scOwner1', 'scowner1@test.com')
+      await insertUser('scOther1', 'scother1@test.com')
+      const workspaceId = await seedShared('scOwner1', 'scOther1')
+
+      const op = skillPut(workspaceId, undefined)
+      const result = await applyUploadBatch(db, [op], ctxFor('scOwner1'))
+      expect(result.ok).toBe(true)
+      const stored = await db.select().from(skillsTable).where(eq(skillsTable.id, op.id))
+      expect(stored[0].scope).toBe('workspace')
+    })
+
+    it('PUT accepts scope=user from the row owner', async () => {
+      await insertUser('scOwner2', 'scowner2@test.com')
+      await insertUser('scOther2', 'scother2@test.com')
+      const workspaceId = await seedShared('scOwner2', 'scOther2')
+
+      const op = skillPut(workspaceId, 'user')
+      const result = await applyUploadBatch(db, [op], ctxFor('scOwner2'))
+      expect(result.ok).toBe(true)
+      const stored = await db.select().from(skillsTable).where(eq(skillsTable.id, op.id))
+      expect(stored[0].scope).toBe('user')
+      expect(stored[0].userId).toBe('scOwner2')
+    })
+
+    it('PUT scope=user is rejected when allowUserScopedResources is false', async () => {
+      await insertUser('scOwner3', 'scowner3@test.com')
+      await insertUser('scOther3', 'scother3@test.com')
+      const workspaceId = await seedShared('scOwner3', 'scOther3')
+
+      const op = skillPut(workspaceId, 'user')
+      const result = await applyUploadBatch(
+        db,
+        [op],
+        ctxFor('scOwner3', { settings: createTestSettings({ allowUserScopedResources: false }) }),
+      )
+      expectPermanentReject(result, 'USER_SCOPE_DISABLED')
+    })
+
+    it('PUT scope=workspace is allowed even when allowUserScopedResources is false', async () => {
+      await insertUser('scOwner4', 'scowner4@test.com')
+      await insertUser('scOther4', 'scother4@test.com')
+      const workspaceId = await seedShared('scOwner4', 'scOther4')
+
+      const op = skillPut(workspaceId, 'workspace')
+      const result = await applyUploadBatch(
+        db,
+        [op],
+        ctxFor('scOwner4', { settings: createTestSettings({ allowUserScopedResources: false }) }),
+      )
+      expect(result.ok).toBe(true)
+    })
+
+    it('PATCH on a scope=user row by a non-owner is rejected with NOT_ROW_OWNER', async () => {
+      await insertUser('scOwner5', 'scowner5@test.com')
+      await insertUser('scOther5', 'scother5@test.com')
+      const workspaceId = await seedShared('scOwner5', 'scOther5')
+      const putOp = skillPut(workspaceId, 'user')
+      expect((await applyUploadBatch(db, [putOp], ctxFor('scOwner5'))).ok).toBe(true)
+
+      const editOp: UploadOp = {
+        op: 'PATCH',
+        type: 'skills',
+        id: putOp.id,
+        data: { description: 'Stolen' },
+      }
+      const result = await applyUploadBatch(db, [editOp], ctxFor('scOther5'))
+      expectPermanentReject(result, 'NOT_ROW_OWNER')
+    })
+
+    it('DELETE on a scope=user row by a non-owner is rejected with NOT_ROW_OWNER', async () => {
+      await insertUser('scOwner6', 'scowner6@test.com')
+      await insertUser('scOther6', 'scother6@test.com')
+      const workspaceId = await seedShared('scOwner6', 'scOther6')
+      const putOp = skillPut(workspaceId, 'user')
+      expect((await applyUploadBatch(db, [putOp], ctxFor('scOwner6'))).ok).toBe(true)
+
+      const deleteOp: UploadOp = { op: 'DELETE', type: 'skills', id: putOp.id }
+      const result = await applyUploadBatch(db, [deleteOp], ctxFor('scOther6'))
+      expectPermanentReject(result, 'NOT_ROW_OWNER')
+    })
+
+    it('PATCH on a scope=user row by the owner is allowed', async () => {
+      await insertUser('scOwner7', 'scowner7@test.com')
+      await insertUser('scOther7', 'scother7@test.com')
+      const workspaceId = await seedShared('scOwner7', 'scOther7')
+      const putOp = skillPut(workspaceId, 'user')
+      expect((await applyUploadBatch(db, [putOp], ctxFor('scOwner7'))).ok).toBe(true)
+
+      const editOp: UploadOp = {
+        op: 'PATCH',
+        type: 'skills',
+        id: putOp.id,
+        data: { description: 'Updated by owner' },
+      }
+      const result = await applyUploadBatch(db, [editOp], ctxFor('scOwner7'))
+      expect(result.ok).toBe(true)
+    })
+
+    it("PATCH lets the row owner flip scope from 'workspace' to 'user'", async () => {
+      await insertUser('scOwner8', 'scowner8@test.com')
+      await insertUser('scOther8', 'scother8@test.com')
+      const workspaceId = await seedShared('scOwner8', 'scOther8')
+      const putOp = skillPut(workspaceId, 'workspace')
+      expect((await applyUploadBatch(db, [putOp], ctxFor('scOwner8'))).ok).toBe(true)
+
+      const editOp: UploadOp = {
+        op: 'PATCH',
+        type: 'skills',
+        id: putOp.id,
+        data: { scope: 'user', description: 'now private' },
+      }
+      const result = await applyUploadBatch(db, [editOp], ctxFor('scOwner8'))
+      expect(result.ok).toBe(true)
+      const stored = await db.select().from(skillsTable).where(eq(skillsTable.id, putOp.id))
+      expect(stored[0].scope).toBe('user')
+      expect(stored[0].description).toBe('now private')
+    })
+
+    it("PATCH lets the row owner flip scope from 'user' to 'workspace'", async () => {
+      await insertUser('scOwnerB', 'scownerB@test.com')
+      await insertUser('scOtherB', 'scotherB@test.com')
+      const workspaceId = await seedShared('scOwnerB', 'scOtherB')
+      const putOp = skillPut(workspaceId, 'user')
+      expect((await applyUploadBatch(db, [putOp], ctxFor('scOwnerB'))).ok).toBe(true)
+
+      const editOp: UploadOp = {
+        op: 'PATCH',
+        type: 'skills',
+        id: putOp.id,
+        data: { scope: 'workspace' },
+      }
+      const result = await applyUploadBatch(db, [editOp], ctxFor('scOwnerB'))
+      expect(result.ok).toBe(true)
+      const stored = await db.select().from(skillsTable).where(eq(skillsTable.id, putOp.id))
+      expect(stored[0].scope).toBe('workspace')
+    })
+
+    it('PATCH scope by a non-owner is silently dropped (other fields still apply)', async () => {
+      await insertUser('scOwnerC', 'scownerC@test.com')
+      await insertUser('scOtherC', 'scotherC@test.com')
+      const workspaceId = await seedShared('scOwnerC', 'scOtherC')
+      // Grant the non-owner add_skills so PATCH reaches the apply path; without
+      // it the op would be rejected on permission grounds and we'd never see
+      // the silent-drop behaviour.
+      await db
+        .insert(workspacePermissionsTable)
+        .values({ id: uuidv7(), workspaceId, permissionKey: 'add_skills', requiredRole: 'member' })
+      const putOp = skillPut(workspaceId, 'workspace')
+      expect((await applyUploadBatch(db, [putOp], ctxFor('scOwnerC'))).ok).toBe(true)
+
+      const editOp: UploadOp = {
+        op: 'PATCH',
+        type: 'skills',
+        id: putOp.id,
+        data: { scope: 'user', description: 'snuck through' },
+      }
+      const result = await applyUploadBatch(db, [editOp], ctxFor('scOtherC'))
+      expect(result.ok).toBe(true)
+      const stored = await db.select().from(skillsTable).where(eq(skillsTable.id, putOp.id))
+      expect(stored[0].scope).toBe('workspace')
+      expect(stored[0].description).toBe('snuck through')
+    })
+
+    it('PATCH rejects an obviously-malformed scope value with INVALID_SCOPE', async () => {
+      await insertUser('scOwnerD', 'scownerD@test.com')
+      await insertUser('scOtherD', 'scotherD@test.com')
+      const workspaceId = await seedShared('scOwnerD', 'scOtherD')
+      const putOp = skillPut(workspaceId, 'workspace')
+      expect((await applyUploadBatch(db, [putOp], ctxFor('scOwnerD'))).ok).toBe(true)
+
+      const editOp: UploadOp = {
+        op: 'PATCH',
+        type: 'skills',
+        id: putOp.id,
+        data: { scope: 'global' },
+      }
+      const result = await applyUploadBatch(db, [editOp], ctxFor('scOwnerD'))
+      expectPermanentReject(result, 'INVALID_SCOPE')
+    })
+
+    it('PUT upsert by the owner preserves existing scope (cannot promote/demote)', async () => {
+      await insertUser('scOwner9', 'scowner9@test.com')
+      await insertUser('scOther9', 'scother9@test.com')
+      const workspaceId = await seedShared('scOwner9', 'scOther9')
+      const putOp = skillPut(workspaceId, 'user')
+      expect((await applyUploadBatch(db, [putOp], ctxFor('scOwner9'))).ok).toBe(true)
+
+      const upsert: UploadOp = {
+        op: 'PUT',
+        type: 'skills',
+        id: putOp.id,
+        data: {
+          workspace_id: workspaceId,
+          scope: 'workspace',
+          name: 'Renamed',
+          description: 'Test',
+          instruction: 'Do the thing',
+          enabled: 1,
+        },
+      }
+      const result = await applyUploadBatch(db, [upsert], ctxFor('scOwner9'))
+      expect(result.ok).toBe(true)
+      const stored = await db.select().from(skillsTable).where(eq(skillsTable.id, putOp.id))
+      expect(stored[0].scope).toBe('user')
+      expect(stored[0].name).toBe('Renamed')
+    })
+
+    it('PUT upsert against an existing scope=user row by a non-owner is rejected', async () => {
+      await insertUser('scOwnerA', 'scownerA@test.com')
+      await insertUser('scOtherA', 'scotherA@test.com')
+      const workspaceId = await seedShared('scOwnerA', 'scOtherA')
+      const putOp = skillPut(workspaceId, 'user')
+      expect((await applyUploadBatch(db, [putOp], ctxFor('scOwnerA'))).ok).toBe(true)
+
+      const upsert: UploadOp = {
+        op: 'PUT',
+        type: 'skills',
+        id: putOp.id,
+        data: {
+          workspace_id: workspaceId,
+          scope: 'workspace',
+          name: 'Hijacked',
+          description: 'Test',
+          instruction: 'Do the thing',
+          enabled: 1,
+        },
+      }
+      const result = await applyUploadBatch(db, [upsert], ctxFor('scOtherA'))
+      expectPermanentReject(result, 'NOT_ROW_OWNER')
+    })
+
+    it('PUT scope=user on agents is rejected when settings flag is off', async () => {
+      await insertUser('scAgentOwner', 'scagentowner@test.com')
+      await insertUser('scAgentOther', 'scagentother@test.com')
+      const workspaceId = await seedShared('scAgentOwner', 'scAgentOther')
+
+      const op: UploadOp = {
+        op: 'PUT',
+        type: 'agents',
+        id: uuidv7(),
+        data: {
+          workspace_id: workspaceId,
+          name: 'My private agent',
+          type: 'remote-acp',
+          transport: 'websocket',
+          url: 'wss://example.com/agent',
+          enabled: 1,
+          scope: 'user',
+        },
+      }
+      const result = await applyUploadBatch(
+        db,
+        [op],
+        ctxFor('scAgentOwner', { settings: createTestSettings({ allowUserScopedResources: false }) }),
+      )
+      expectPermanentReject(result, 'USER_SCOPE_DISABLED')
+    })
+
+    it('scope=user agents accept PATCH/DELETE only from the owner', async () => {
+      await insertUser('scAgentOwner2', 'scagentowner2@test.com')
+      await insertUser('scAgentOther2', 'scagentother2@test.com')
+      const workspaceId = await seedShared('scAgentOwner2', 'scAgentOther2')
+      const agentId = uuidv7()
+
+      const putOp: UploadOp = {
+        op: 'PUT',
+        type: 'agents',
+        id: agentId,
+        data: {
+          workspace_id: workspaceId,
+          name: 'Private',
+          type: 'remote-acp',
+          transport: 'websocket',
+          url: 'wss://example.com/a',
+          enabled: 1,
+          scope: 'user',
+        },
+      }
+      expect((await applyUploadBatch(db, [putOp], ctxFor('scAgentOwner2'))).ok).toBe(true)
+
+      const editByOther: UploadOp = { op: 'PATCH', type: 'agents', id: agentId, data: { name: 'Stolen' } }
+      expectPermanentReject(await applyUploadBatch(db, [editByOther], ctxFor('scAgentOther2')), 'NOT_ROW_OWNER')
+
+      const stored = await db.select().from(agentsTable).where(eq(agentsTable.id, agentId))
+      expect(stored[0].name).toBe('Private')
+    })
+
+    it('PUT with a malformed scope is rejected with INVALID_SCOPE', async () => {
+      await insertUser('scInvalid1', 'scinvalid1@test.com')
+      await insertUser('scInvalid1Member', 'scinvalid1m@test.com')
+      const workspaceId = await seedShared('scInvalid1', 'scInvalid1Member')
+
+      // `skillPut` only emits valid scopes — hand-roll the op with a bogus value.
+      const op: UploadOp = {
+        op: 'PUT',
+        type: 'skills',
+        id: uuidv7(),
+        data: {
+          workspace_id: workspaceId,
+          name: 'Bogus',
+          description: 'Bogus',
+          instruction: 'Do the thing',
+          enabled: 1,
+          scope: 'totally-not-a-real-scope',
+        },
+      }
+      const result = await applyUploadBatch(db, [op], ctxFor('scInvalid1'))
+      expectPermanentReject(result, 'INVALID_SCOPE')
+    })
+
+    it('PATCH flipping scope to user is rejected when allowUserScopedResources is false', async () => {
+      await insertUser('scFlip1', 'scflip1@test.com')
+      await insertUser('scFlip1Member', 'scflip1m@test.com')
+      const workspaceId = await seedShared('scFlip1', 'scFlip1Member')
+      // Seed a workspace-scoped row with the flag on so the create itself isn't blocked.
+      const putOp = skillPut(workspaceId, 'workspace')
+      expect((await applyUploadBatch(db, [putOp], ctxFor('scFlip1'))).ok).toBe(true)
+
+      const flipOp: UploadOp = { op: 'PATCH', type: 'skills', id: putOp.id, data: { scope: 'user' } }
+      const result = await applyUploadBatch(
+        db,
+        [flipOp],
+        ctxFor('scFlip1', { settings: createTestSettings({ allowUserScopedResources: false }) }),
+      )
+      expectPermanentReject(result, 'USER_SCOPE_DISABLED')
+
+      const stored = await db.select().from(skillsTable).where(eq(skillsTable.id, putOp.id))
+      expect(stored[0].scope).toBe('workspace')
+    })
+
+    it('PATCH flipping scope back to workspace is allowed even when allowUserScopedResources is false', async () => {
+      await insertUser('scFlip2', 'scflip2@test.com')
+      await insertUser('scFlip2Member', 'scflip2m@test.com')
+      const workspaceId = await seedShared('scFlip2', 'scFlip2Member')
+      const putOp = skillPut(workspaceId, 'user')
+      expect((await applyUploadBatch(db, [putOp], ctxFor('scFlip2'))).ok).toBe(true)
+
+      // The flag is a kill switch for *new* user-scoping. Unwinding an existing
+      // user-scoped row back to workspace stays allowed so deployments that
+      // toggle the flag off don't strand rows in the private bucket.
+      const flipOp: UploadOp = { op: 'PATCH', type: 'skills', id: putOp.id, data: { scope: 'workspace' } }
+      const result = await applyUploadBatch(
+        db,
+        [flipOp],
+        ctxFor('scFlip2', { settings: createTestSettings({ allowUserScopedResources: false }) }),
+      )
+      expect(result.ok).toBe(true)
+
+      const stored = await db.select().from(skillsTable).where(eq(skillsTable.id, putOp.id))
+      expect(stored[0].scope).toBe('workspace')
+    })
+
+    it('PATCH on a workspace-scoped row by a co-member updates non-scope fields', async () => {
+      // Uses `modes` rather than `skills` because skills carries an
+      // `add_skills` permission gate (defaults to admin-only) — we want to
+      // exercise the post-fix `fetchRowScope({ userId })` resolution under a
+      // co-member PATCH, not the permission denial path that comes before it.
+      await insertUser('scShare1', 'scshare1@test.com')
+      await insertUser('scShare1Co', 'scshare1co@test.com')
+      const workspaceId = await seedShared('scShare1', 'scShare1Co')
+      const modeId = uuidv7()
+      const putOp: UploadOp = {
+        op: 'PUT',
+        type: 'modes',
+        id: modeId,
+        data: { workspace_id: workspaceId, name: 'chat', label: 'Chat', scope: 'workspace' },
+      }
+      expect((await applyUploadBatch(db, [putOp], ctxFor('scShare1'))).ok).toBe(true)
+
+      const editOp: UploadOp = { op: 'PATCH', type: 'modes', id: modeId, data: { label: 'Co-member edit' } }
+      const result = await applyUploadBatch(db, [editOp], ctxFor('scShare1Co'))
+      expect(result.ok).toBe(true)
+      if (result.ok) {
+        expect(result.rejected).toHaveLength(0)
+      }
+
+      const stored = await db.select().from(modesTable).where(eq(modesTable.id, modeId))
+      expect(stored[0].label).toBe('Co-member edit')
+      // Authorship is preserved on a co-member edit — the row's `user_id`
+      // stays as the original author, not the patcher.
+      expect(stored[0].userId).toBe('scShare1')
+    })
+  })
+
+  describe('default-data id collisions across personal workspaces', () => {
+    // `defaults/tasks` (and other default tables) ship with fixed UUIDs that
+    // `reconcileDefaults` re-inserts into every user's personal workspace. The
+    // composite PK `(id, workspace_id)` permits the row to repeat per workspace
+    // — fetchRowScope must honor that, or the second user to sync sees their
+    // PUT mis-routed to the first user's row (NOT_ROW_OWNER / NOT_WORKSPACE_MEMBER).
+    const sharedTaskId = '0198ecc5-cc2b-735b-b478-93f8db7202ce'
+
+    it('accepts the same task id from two users (one per personal workspace)', async () => {
+      await insertUser('collideA', 'a@test.com')
+      await insertUser('collideB', 'b@test.com')
+      const wsA = await bootstrapPersonalViaUpload('collideA')
+      const wsB = await bootstrapPersonalViaUpload('collideB')
+
+      const putFor = (workspaceId: string): UploadOp => ({
+        op: 'PUT',
+        type: 'tasks',
+        id: sharedTaskId,
+        data: { workspace_id: workspaceId, item: 'Connect your email', order: 100, is_complete: 0 },
+      })
+
+      expect((await applyUploadBatch(db, [putFor(wsA)], ctxFor('collideA'))).ok).toBe(true)
+      expect((await applyUploadBatch(db, [putFor(wsB)], ctxFor('collideB'))).ok).toBe(true)
+
+      const rows = await db.select().from(tasksTable).where(eq(tasksTable.id, sharedTaskId))
+      expect(rows).toHaveLength(2)
+      const byWorkspace = Object.fromEntries(rows.map((r) => [r.workspaceId, r.userId]))
+      expect(byWorkspace[wsA]).toBe('collideA')
+      expect(byWorkspace[wsB]).toBe('collideB')
+    })
+
+    it('PATCH on a shared-id task resolves to the caller-owned row', async () => {
+      await insertUser('patchA', 'pa@test.com')
+      await insertUser('patchB', 'pb@test.com')
+      const wsA = await bootstrapPersonalViaUpload('patchA')
+      const wsB = await bootstrapPersonalViaUpload('patchB')
+
+      await applyUploadBatch(
+        db,
+        [
+          {
+            op: 'PUT',
+            type: 'tasks',
+            id: sharedTaskId,
+            data: { workspace_id: wsA, item: 'A original', order: 100, is_complete: 0 },
+          },
+        ],
+        ctxFor('patchA'),
+      )
+      await applyUploadBatch(
+        db,
+        [
+          {
+            op: 'PUT',
+            type: 'tasks',
+            id: sharedTaskId,
+            data: { workspace_id: wsB, item: 'B original', order: 100, is_complete: 0 },
+          },
+        ],
+        ctxFor('patchB'),
+      )
+
+      // Patch from B should land on B's row, not A's. With the pre-fix bare-id
+      // lookup, validate() would resolve to A's row and reject as NOT_ROW_OWNER.
+      const patchResult = await applyUploadBatch(
+        db,
+        [{ op: 'PATCH', type: 'tasks', id: sharedTaskId, data: { item: 'B edited' } }],
+        ctxFor('patchB'),
+      )
+      expect(patchResult.ok).toBe(true)
+      if (patchResult.ok) {
+        expect(patchResult.rejected).toHaveLength(0)
+      }
+
+      const aRow = (await db.select().from(tasksTable).where(eq(tasksTable.workspaceId, wsA)))[0]
+      const bRow = (await db.select().from(tasksTable).where(eq(tasksTable.workspaceId, wsB)))[0]
+      expect(aRow.item).toBe('A original')
+      expect(bRow.item).toBe('B edited')
+    })
+
+    // Same collision shape on a non-userPrivate, scopeAware table. PUT didn't
+    // fail loud pre-fix (the NOT_ROW_OWNER branch only fires for userPrivate or
+    // scope='user' rows), but PATCH/DELETE on a personal-workspace default
+    // would resolve to the other user's row and reject as NOT_WORKSPACE_MEMBER.
+    const sharedModelId = 'd045a4c0-3f93-4f30-a608-24e07856e11d'
+
+    it('accepts the same model id from two users (one per personal workspace)', async () => {
+      await insertUser('mdlA', 'mdla@test.com')
+      await insertUser('mdlB', 'mdlb@test.com')
+      const wsA = await bootstrapPersonalViaUpload('mdlA')
+      const wsB = await bootstrapPersonalViaUpload('mdlB')
+
+      const putFor = (workspaceId: string): UploadOp => ({
+        op: 'PUT',
+        type: 'models',
+        id: sharedModelId,
+        data: {
+          workspace_id: workspaceId,
+          provider: 'openai',
+          name: 'Default model',
+          model: 'gpt-test',
+          enabled: 1,
+          scope: 'workspace',
+        },
+      })
+
+      expect((await applyUploadBatch(db, [putFor(wsA)], ctxFor('mdlA'))).ok).toBe(true)
+      expect((await applyUploadBatch(db, [putFor(wsB)], ctxFor('mdlB'))).ok).toBe(true)
+
+      const rows = await db.select().from(modelsTable).where(eq(modelsTable.id, sharedModelId))
+      expect(rows).toHaveLength(2)
+      const byWorkspace = Object.fromEntries(rows.map((r) => [r.workspaceId, r.userId]))
+      expect(byWorkspace[wsA]).toBe('mdlA')
+      expect(byWorkspace[wsB]).toBe('mdlB')
+    })
+
+    it('PATCH on a shared-id model resolves to the caller-owned row', async () => {
+      await insertUser('mdlPA', 'mdlpa@test.com')
+      await insertUser('mdlPB', 'mdlpb@test.com')
+      const wsA = await bootstrapPersonalViaUpload('mdlPA')
+      const wsB = await bootstrapPersonalViaUpload('mdlPB')
+
+      const seed = (workspaceId: string, name: string): UploadOp => ({
+        op: 'PUT',
+        type: 'models',
+        id: sharedModelId,
+        data: {
+          workspace_id: workspaceId,
+          provider: 'openai',
+          name,
+          model: 'gpt-test',
+          enabled: 1,
+          scope: 'workspace',
+        },
+      })
+      await applyUploadBatch(db, [seed(wsA, 'A original')], ctxFor('mdlPA'))
+      await applyUploadBatch(db, [seed(wsB, 'B original')], ctxFor('mdlPB'))
+
+      const patchResult = await applyUploadBatch(
+        db,
+        [{ op: 'PATCH', type: 'models', id: sharedModelId, data: { name: 'B edited' } }],
+        ctxFor('mdlPB'),
+      )
+      expect(patchResult.ok).toBe(true)
+      if (patchResult.ok) {
+        expect(patchResult.rejected).toHaveLength(0)
+      }
+
+      const aRow = (await db.select().from(modelsTable).where(eq(modelsTable.workspaceId, wsA)))[0]
+      const bRow = (await db.select().from(modelsTable).where(eq(modelsTable.workspaceId, wsB)))[0]
+      expect(aRow.name).toBe('A original')
+      expect(bRow.name).toBe('B edited')
     })
   })
 })

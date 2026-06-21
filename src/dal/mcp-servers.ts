@@ -76,14 +76,16 @@ export const deleteMcpServer = async (db: AnyDrizzleDatabase, workspaceId: strin
 }
 
 /**
- * Creates a new MCP server in the given workspace
+ * Creates a new MCP server in the given workspace. Defaults `scope` to
+ * `'workspace'`; pass `scope: 'user'` (with a matching `userId`) to make the
+ * row private to its author (THU-603).
  */
 export const createMcpServer = async (
   db: AnyDrizzleDatabase,
   workspaceId: string,
   data: Partial<McpServer> & Pick<McpServer, 'id' | 'name'>,
 ): Promise<void> => {
-  await db.insert(mcpServersTable).values({ ...data, workspaceId })
+  await db.insert(mcpServersTable).values({ ...data, workspaceId, scope: data.scope ?? 'workspace' })
 }
 
 /**

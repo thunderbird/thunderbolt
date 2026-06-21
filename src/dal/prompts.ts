@@ -193,14 +193,16 @@ export const getPrompt = async (db: AnyDrizzleDatabase, workspaceId: string, id:
 }
 
 /**
- * Creates a new prompt/automation in the given workspace.
+ * Creates a new prompt/automation in the given workspace. Defaults `scope` to
+ * `'workspace'`; pass `scope: 'user'` with a matching `userId` to make the row
+ * private to its author (THU-603).
  */
 export const createAutomation = async (
   db: AnyDrizzleDatabase,
   workspaceId: string,
   data: Partial<Prompt> & Pick<Prompt, 'id' | 'prompt' | 'modelId'>,
 ): Promise<void> => {
-  await db.insert(promptsTable).values({ ...data, workspaceId })
+  await db.insert(promptsTable).values({ ...data, workspaceId, scope: data.scope ?? 'workspace' })
 }
 
 /**

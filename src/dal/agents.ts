@@ -123,6 +123,9 @@ export type CreateAgentInput = {
   icon?: string | null
   enabled?: 0 | 1
   userId: string
+  /** Per-row visibility (THU-603). `'workspace'` (default) shares with all
+   *  members; `'user'` keeps the agent private to its author. */
+  scope?: 'workspace' | 'user'
 }
 
 /** Insert a new custom agent into the synced table in the given workspace.
@@ -143,6 +146,7 @@ export const createAgent = async (
     enabled: data.enabled ?? 1,
     userId: data.userId,
     workspaceId,
+    scope: data.scope ?? 'workspace',
   })
 }
 

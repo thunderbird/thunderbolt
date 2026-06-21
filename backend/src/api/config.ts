@@ -18,6 +18,7 @@ export const createConfigRoutes = (settings: Settings) =>
     allowAnonUsers: settings.authAllowAnonymous,
     allowWorkspaceCreationByAnon: settings.allowWorkspaceCreationByAnon,
     allowWorkspaceCreationByMembers: settings.allowWorkspaceCreationByMembers,
+    allowUserScopedResources: settings.allowUserScopedResources,
     // Inverted so the env reads as an opt-in switch ("disable") while the wire
     // contract reads as a positive capability ("enabled").
     builtInAgentEnabled: !settings.disableBuiltInAgent,

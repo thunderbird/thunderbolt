@@ -18,8 +18,13 @@ const mockSignOutAndWipe = mock(async ({ onComplete }: { signOut?: () => Promise
 })
 
 const mockReplace = mock()
+const mockReload = mock()
+// `reload` must be on the top-level stub so the consumer-mode signOut path
+// (which calls `window.location.reload()` from `onComplete`) doesn't blow up
+// in tests that don't install their own reload mock. Earlier the consumer-mode
+// test below added it ad-hoc, which made other tests order-dependent.
 Object.defineProperty(window, 'location', {
-  value: { replace: mockReplace },
+  value: { replace: mockReplace, reload: mockReload },
   writable: true,
   configurable: true,
 })
@@ -45,6 +50,7 @@ describe('LogoutModal', () => {
     mockSignOut = mock(() => Promise.resolve())
     mockSignOutAndWipe.mockClear()
     mockReplace.mockClear()
+    mockReload.mockClear()
   })
 
   afterEach(() => {
@@ -121,13 +127,7 @@ describe('LogoutModal', () => {
 
     it('reloads instead of redirecting in consumer mode', async () => {
       // Default test env has no VITE_AUTH_MODE set → isSsoMode() === false.
-      const mockReload = mock()
-      Object.defineProperty(window, 'location', {
-        value: { replace: mockReplace, reload: mockReload },
-        writable: true,
-        configurable: true,
-      })
-
+      // `mockReload` is installed at module top-level so this test inherits it.
       renderModal()
       fireEvent.click(screen.getByRole('button', { name: 'Log out' }))
 

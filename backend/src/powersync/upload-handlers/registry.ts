@@ -37,10 +37,14 @@ export const handlers: Record<PowerSyncTableName, UploadHandler> = {
   chat_messages: createWorkspaceScopedHandler({ tableName: 'chat_messages', userPrivate: true }),
   tasks: createWorkspaceScopedHandler({ tableName: 'tasks', userPrivate: true }),
 
-  // Workspace-scoped, shared (any member of the workspace may read/write).
+  // Workspace-scoped, shared by default. `scopeAware: true` opts the table into
+  // THU-603's per-row visibility: `scope = 'workspace'` rows behave as today,
+  // `scope = 'user'` rows are user-private within the workspace (only the row
+  // owner may read or write).
   models: createWorkspaceScopedHandler({
     tableName: 'models',
     userPrivate: false,
+    scopeAware: true,
     addPermissionKey: 'add_models',
     removePermissionKey: 'remove_models',
     softDeleteColumn: 'deleted_at',
@@ -48,24 +52,27 @@ export const handlers: Record<PowerSyncTableName, UploadHandler> = {
   mcp_servers: createWorkspaceScopedHandler({
     tableName: 'mcp_servers',
     userPrivate: false,
+    scopeAware: true,
     addPermissionKey: 'add_mcp_servers',
     removePermissionKey: 'remove_mcp_servers',
     softDeleteColumn: 'deleted_at',
   }),
-  prompts: createWorkspaceScopedHandler({ tableName: 'prompts', userPrivate: false }),
+  prompts: createWorkspaceScopedHandler({ tableName: 'prompts', userPrivate: false, scopeAware: true }),
   skills: createWorkspaceScopedHandler({
     tableName: 'skills',
     userPrivate: false,
+    scopeAware: true,
     addPermissionKey: 'add_skills',
     removePermissionKey: 'remove_skills',
     softDeleteColumn: 'deleted_at',
   }),
-  triggers: createWorkspaceScopedHandler({ tableName: 'triggers', userPrivate: false }),
-  modes: createWorkspaceScopedHandler({ tableName: 'modes', userPrivate: false }),
-  model_profiles: createWorkspaceScopedHandler({ tableName: 'model_profiles', userPrivate: false }),
+  triggers: createWorkspaceScopedHandler({ tableName: 'triggers', userPrivate: false, scopeAware: true }),
+  modes: createWorkspaceScopedHandler({ tableName: 'modes', userPrivate: false, scopeAware: true }),
+  model_profiles: createWorkspaceScopedHandler({ tableName: 'model_profiles', userPrivate: false, scopeAware: true }),
   agents: createWorkspaceScopedHandler({
     tableName: 'agents',
     userPrivate: false,
+    scopeAware: true,
     addPermissionKey: 'add_agents',
     removePermissionKey: 'remove_agents',
     softDeleteColumn: 'deleted_at',

@@ -30,6 +30,7 @@ export const defaultModeChat: Mode = {
   defaultHash: null,
   userId: null,
   workspaceId: null,
+  scope: 'workspace',
 }
 
 export const defaultModeSearch: Mode = {
@@ -44,6 +45,7 @@ export const defaultModeSearch: Mode = {
   defaultHash: null,
   userId: null,
   workspaceId: null,
+  scope: 'workspace',
 }
 
 export const defaultModeResearch: Mode = {
@@ -58,6 +60,7 @@ export const defaultModeResearch: Mode = {
   defaultHash: null,
   userId: null,
   workspaceId: null,
+  scope: 'workspace',
 }
 
 /**

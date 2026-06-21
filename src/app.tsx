@@ -46,7 +46,6 @@ import { compareSemver } from '@/lib/compare-semver'
 import { AuthGate } from './components/auth-gate'
 import { WorkspaceGate } from './components/workspace-gate'
 import { WorkspaceMembershipGate } from './components/workspace-membership-gate'
-import { WorkspaceSettingsGate } from './settings/workspace/gate'
 import { RequireWorkspaceAdmin } from './settings/workspace/require-permission'
 import { OnboardingDialog } from './components/onboarding/onboarding-dialog'
 import { WelcomeDialog } from './components/welcome-dialog'
@@ -131,9 +130,7 @@ const renderWorkspaceRoutes = ({ experimentalFeatureTasks }: { experimentalFeatu
       <Route path="agents" element={<AgentsSettingsPage />} />
       <Route path="integrations" element={<IntegrationsPage />} />
       <Route path="workspace">
-        <Route element={<WorkspaceSettingsGate />}>
-          <Route path="general" element={<WorkspaceGeneralPage />} />
-        </Route>
+        <Route path="general" element={<WorkspaceGeneralPage />} />
         <Route path="members" element={<WorkspaceMembersPage />} />
         <Route element={<RequireWorkspaceAdmin />}>
           <Route path="permissions" element={<WorkspacePermissionsPage />} />

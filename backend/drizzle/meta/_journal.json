@@ -169,6 +169,13 @@
       "when": 1781546434494,
       "tag": "0020_conscious_silverclaw",
       "breakpoints": true
+    },
+    {
+      "idx": 23,
+      "version": "7",
+      "when": 1781731977793,
+      "tag": "0023_user_scope_resources",
+      "breakpoints": true
     }
   ]
 }

@@ -29,6 +29,11 @@ export type AppConfig = {
   /** Minimum semver string the server allows. Clients below this are hard-blocked
    *  until they upgrade. Absent/empty = no enforcement. */
   minAppVersion?: string
+  /** Per-row scope on the 8 workspace-shared resource tables (THU-603). When
+   *  false the UI hides the scope picker and the BE upload handler rejects
+   *  `scope = 'user'` PUTs. Absent (offline/standalone) reads as allowed —
+   *  same opt-out posture as the server-side default. */
+  allowUserScopedResources?: boolean
 }
 
 type ConfigStore = {
@@ -55,3 +60,7 @@ export const selectBuiltInAgentEnabled = (config: AppConfig): boolean => config.
 
 /** Whether the UI offers adding custom agents. Absent config defaults to allowed. */
 export const selectAllowCustomAgents = (config: AppConfig): boolean => config.allowCustomAgents !== false
+
+/** Whether the UI offers per-row scope (workspace vs private) on the 8 shared
+ *  resource tables. Absent config defaults to allowed, mirroring the BE default. */
+export const selectAllowUserScopedResources = (config: AppConfig): boolean => config.allowUserScopedResources !== false

@@ -18,11 +18,13 @@ type IconPickerProps = {
   /** Placeholder rendered inside the square when no icon is set. */
   placeholder?: string
   className?: string
+  /** When true, the edit trigger is disabled — the icon renders read-only. */
+  disabled?: boolean
 }
 
 type PickerView = 'menu' | 'emoji'
 
-export const IconPicker = ({ value, onChange, placeholder, className }: IconPickerProps) => {
+export const IconPicker = ({ value, onChange, placeholder, className, disabled = false }: IconPickerProps) => {
   const [open, setOpen] = useState(false)
   const [view, setView] = useState<PickerView>('menu')
   const [uploadError, setUploadError] = useState<string | null>(null)
@@ -93,6 +95,7 @@ export const IconPicker = ({ value, onChange, placeholder, className }: IconPick
             variant="secondary"
             className="absolute -bottom-2 -right-2 size-8 rounded-full shadow-md"
             aria-label="Edit icon"
+            disabled={disabled}
           >
             <Pencil className="size-4" />
           </Button>

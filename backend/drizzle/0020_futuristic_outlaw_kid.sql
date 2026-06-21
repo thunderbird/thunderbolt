@@ -2,20 +2,43 @@
 -- License, v. 2.0. If a copy of the MPL was not distributed with this
 -- file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
--- Pre-release reset (per THU-550 addendum): existing rows on workspace-scoped tables
--- are wiped so the NOT NULL `workspace_id` column can be added without a backfill.
--- New rows are created against the user's personal workspace once the FE deploys.
-DELETE FROM "powersync"."chat_messages";--> statement-breakpoint
-DELETE FROM "powersync"."chat_threads";--> statement-breakpoint
-DELETE FROM "powersync"."tasks";--> statement-breakpoint
-DELETE FROM "powersync"."models";--> statement-breakpoint
-DELETE FROM "powersync"."mcp_servers";--> statement-breakpoint
-DELETE FROM "powersync"."prompts";--> statement-breakpoint
-DELETE FROM "powersync"."skills";--> statement-breakpoint
-DELETE FROM "powersync"."triggers";--> statement-breakpoint
-DELETE FROM "powersync"."modes";--> statement-breakpoint
-DELETE FROM "powersync"."model_profiles";--> statement-breakpoint
-DELETE FROM "powersync"."agents";--> statement-breakpoint
+CREATE TABLE "powersync"."workspace_memberships" (
+	"id" text PRIMARY KEY NOT NULL,
+	"workspace_id" text NOT NULL,
+	"user_id" text NOT NULL,
+	"role" text NOT NULL,
+	"user_name" text,
+	"user_email" text,
+	"created_at" timestamp DEFAULT now() NOT NULL
+);
+--> statement-breakpoint
+CREATE TABLE "powersync"."workspace_pending_memberships" (
+	"id" text PRIMARY KEY NOT NULL,
+	"workspace_id" text NOT NULL,
+	"email" text NOT NULL,
+	"role" text NOT NULL,
+	"invited_by_user_id" text NOT NULL,
+	"created_at" timestamp DEFAULT now() NOT NULL
+);
+--> statement-breakpoint
+CREATE TABLE "powersync"."workspace_permissions" (
+	"id" text PRIMARY KEY NOT NULL,
+	"workspace_id" text NOT NULL,
+	"permission_key" text NOT NULL,
+	"required_role" text NOT NULL
+);
+--> statement-breakpoint
+CREATE TABLE "powersync"."workspaces" (
+	"id" text PRIMARY KEY NOT NULL,
+	"name" text NOT NULL,
+	"slug" text,
+	"icon" text,
+	"is_personal" boolean DEFAULT false NOT NULL,
+	"owner_user_id" text,
+	"created_at" timestamp DEFAULT now() NOT NULL,
+	"updated_at" timestamp DEFAULT now() NOT NULL
+);
+--> statement-breakpoint
 ALTER TABLE "powersync"."agents" DROP CONSTRAINT "agents_user_id_user_id_fk";
 --> statement-breakpoint
 ALTER TABLE "powersync"."mcp_servers" DROP CONSTRAINT "mcp_servers_user_id_user_id_fk";
@@ -47,17 +70,6 @@ ALTER TABLE "powersync"."modes" ALTER COLUMN "user_id" DROP NOT NULL;--> stateme
 ALTER TABLE "powersync"."prompts" ALTER COLUMN "user_id" DROP NOT NULL;--> statement-breakpoint
 ALTER TABLE "powersync"."skills" ALTER COLUMN "user_id" DROP NOT NULL;--> statement-breakpoint
 ALTER TABLE "powersync"."triggers" ALTER COLUMN "user_id" DROP NOT NULL;--> statement-breakpoint
-ALTER TABLE "powersync"."agents" ADD COLUMN "workspace_id" text NOT NULL;--> statement-breakpoint
-ALTER TABLE "powersync"."chat_messages" ADD COLUMN "workspace_id" text NOT NULL;--> statement-breakpoint
-ALTER TABLE "powersync"."chat_threads" ADD COLUMN "workspace_id" text NOT NULL;--> statement-breakpoint
-ALTER TABLE "powersync"."mcp_servers" ADD COLUMN "workspace_id" text NOT NULL;--> statement-breakpoint
-ALTER TABLE "powersync"."model_profiles" ADD COLUMN "workspace_id" text NOT NULL;--> statement-breakpoint
-ALTER TABLE "powersync"."models" ADD COLUMN "workspace_id" text NOT NULL;--> statement-breakpoint
-ALTER TABLE "powersync"."modes" ADD COLUMN "workspace_id" text NOT NULL;--> statement-breakpoint
-ALTER TABLE "powersync"."prompts" ADD COLUMN "workspace_id" text NOT NULL;--> statement-breakpoint
-ALTER TABLE "powersync"."skills" ADD COLUMN "workspace_id" text NOT NULL;--> statement-breakpoint
-ALTER TABLE "powersync"."tasks" ADD COLUMN "workspace_id" text NOT NULL;--> statement-breakpoint
-ALTER TABLE "powersync"."triggers" ADD COLUMN "workspace_id" text NOT NULL;--> statement-breakpoint
 ALTER TABLE "powersync"."agents" ADD CONSTRAINT "agents_id_workspace_id_pk" PRIMARY KEY("id","workspace_id");--> statement-breakpoint
 ALTER TABLE "powersync"."model_profiles" ADD CONSTRAINT "model_profiles_id_workspace_id_pk" PRIMARY KEY("id","workspace_id");--> statement-breakpoint
 ALTER TABLE "powersync"."models" ADD CONSTRAINT "models_id_workspace_id_pk" PRIMARY KEY("id","workspace_id");--> statement-breakpoint
@@ -65,6 +77,42 @@ ALTER TABLE "powersync"."modes" ADD CONSTRAINT "modes_id_workspace_id_pk" PRIMAR
 ALTER TABLE "powersync"."prompts" ADD CONSTRAINT "prompts_id_workspace_id_pk" PRIMARY KEY("id","workspace_id");--> statement-breakpoint
 ALTER TABLE "powersync"."skills" ADD CONSTRAINT "skills_id_workspace_id_pk" PRIMARY KEY("id","workspace_id");--> statement-breakpoint
 ALTER TABLE "powersync"."tasks" ADD CONSTRAINT "tasks_id_workspace_id_pk" PRIMARY KEY("id","workspace_id");--> statement-breakpoint
+ALTER TABLE "powersync"."agents" ADD COLUMN "workspace_id" text NOT NULL;--> statement-breakpoint
+ALTER TABLE "powersync"."agents" ADD COLUMN "scope" text DEFAULT 'workspace' NOT NULL;--> statement-breakpoint
+ALTER TABLE "powersync"."chat_messages" ADD COLUMN "workspace_id" text NOT NULL;--> statement-breakpoint
+ALTER TABLE "powersync"."chat_threads" ADD COLUMN "workspace_id" text NOT NULL;--> statement-breakpoint
+ALTER TABLE "powersync"."mcp_servers" ADD COLUMN "workspace_id" text NOT NULL;--> statement-breakpoint
+ALTER TABLE "powersync"."mcp_servers" ADD COLUMN "scope" text DEFAULT 'workspace' NOT NULL;--> statement-breakpoint
+ALTER TABLE "powersync"."model_profiles" ADD COLUMN "workspace_id" text NOT NULL;--> statement-breakpoint
+ALTER TABLE "powersync"."model_profiles" ADD COLUMN "scope" text DEFAULT 'workspace' NOT NULL;--> statement-breakpoint
+ALTER TABLE "powersync"."models" ADD COLUMN "workspace_id" text NOT NULL;--> statement-breakpoint
+ALTER TABLE "powersync"."models" ADD COLUMN "scope" text DEFAULT 'workspace' NOT NULL;--> statement-breakpoint
+ALTER TABLE "powersync"."modes" ADD COLUMN "workspace_id" text NOT NULL;--> statement-breakpoint
+ALTER TABLE "powersync"."modes" ADD COLUMN "scope" text DEFAULT 'workspace' NOT NULL;--> statement-breakpoint
+ALTER TABLE "powersync"."prompts" ADD COLUMN "workspace_id" text NOT NULL;--> statement-breakpoint
+ALTER TABLE "powersync"."prompts" ADD COLUMN "scope" text DEFAULT 'workspace' NOT NULL;--> statement-breakpoint
+ALTER TABLE "powersync"."skills" ADD COLUMN "workspace_id" text NOT NULL;--> statement-breakpoint
+ALTER TABLE "powersync"."skills" ADD COLUMN "scope" text DEFAULT 'workspace' NOT NULL;--> statement-breakpoint
+ALTER TABLE "powersync"."tasks" ADD COLUMN "workspace_id" text NOT NULL;--> statement-breakpoint
+ALTER TABLE "powersync"."triggers" ADD COLUMN "workspace_id" text NOT NULL;--> statement-breakpoint
+ALTER TABLE "powersync"."triggers" ADD COLUMN "scope" text DEFAULT 'workspace' NOT NULL;--> statement-breakpoint
+ALTER TABLE "powersync"."workspace_memberships" ADD CONSTRAINT "workspace_memberships_workspace_id_workspaces_id_fk" FOREIGN KEY ("workspace_id") REFERENCES "powersync"."workspaces"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "powersync"."workspace_memberships" ADD CONSTRAINT "workspace_memberships_user_id_user_id_fk" FOREIGN KEY ("user_id") REFERENCES "public"."user"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "powersync"."workspace_pending_memberships" ADD CONSTRAINT "workspace_pending_memberships_workspace_id_workspaces_id_fk" FOREIGN KEY ("workspace_id") REFERENCES "powersync"."workspaces"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "powersync"."workspace_pending_memberships" ADD CONSTRAINT "workspace_pending_memberships_invited_by_user_id_user_id_fk" FOREIGN KEY ("invited_by_user_id") REFERENCES "public"."user"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "powersync"."workspace_permissions" ADD CONSTRAINT "workspace_permissions_workspace_id_workspaces_id_fk" FOREIGN KEY ("workspace_id") REFERENCES "powersync"."workspaces"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "powersync"."workspaces" ADD CONSTRAINT "workspaces_owner_user_id_user_id_fk" FOREIGN KEY ("owner_user_id") REFERENCES "public"."user"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+CREATE UNIQUE INDEX "idx_workspace_memberships_workspace_user" ON "powersync"."workspace_memberships" USING btree ("workspace_id","user_id");--> statement-breakpoint
+CREATE INDEX "idx_workspace_memberships_user" ON "powersync"."workspace_memberships" USING btree ("user_id");--> statement-breakpoint
+CREATE INDEX "idx_workspace_memberships_workspace" ON "powersync"."workspace_memberships" USING btree ("workspace_id");--> statement-breakpoint
+CREATE UNIQUE INDEX "idx_workspace_pending_memberships_workspace_email" ON "powersync"."workspace_pending_memberships" USING btree ("workspace_id","email");--> statement-breakpoint
+CREATE INDEX "idx_workspace_pending_memberships_email" ON "powersync"."workspace_pending_memberships" USING btree ("email");--> statement-breakpoint
+CREATE INDEX "idx_workspace_pending_memberships_workspace" ON "powersync"."workspace_pending_memberships" USING btree ("workspace_id");--> statement-breakpoint
+CREATE UNIQUE INDEX "idx_workspace_permissions_workspace_key" ON "powersync"."workspace_permissions" USING btree ("workspace_id","permission_key");--> statement-breakpoint
+CREATE INDEX "idx_workspace_permissions_workspace" ON "powersync"."workspace_permissions" USING btree ("workspace_id");--> statement-breakpoint
+CREATE UNIQUE INDEX "idx_workspaces_personal_per_owner" ON "powersync"."workspaces" USING btree ("owner_user_id") WHERE "powersync"."workspaces"."is_personal" = true;--> statement-breakpoint
+CREATE INDEX "idx_workspaces_owner_user_id" ON "powersync"."workspaces" USING btree ("owner_user_id");--> statement-breakpoint
+CREATE UNIQUE INDEX "idx_workspaces_slug" ON "powersync"."workspaces" USING btree ("slug") WHERE "powersync"."workspaces"."slug" IS NOT NULL;--> statement-breakpoint
 ALTER TABLE "powersync"."agents" ADD CONSTRAINT "agents_workspace_id_workspaces_id_fk" FOREIGN KEY ("workspace_id") REFERENCES "powersync"."workspaces"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "powersync"."agents" ADD CONSTRAINT "agents_user_id_user_id_fk" FOREIGN KEY ("user_id") REFERENCES "public"."user"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "powersync"."chat_messages" ADD CONSTRAINT "chat_messages_workspace_id_workspaces_id_fk" FOREIGN KEY ("workspace_id") REFERENCES "powersync"."workspaces"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint

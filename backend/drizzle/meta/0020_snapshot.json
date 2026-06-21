@@ -1,6 +1,6 @@
 {
-  "id": "49d7f86d-dbe9-4cae-a488-23192b63e683",
-  "prevId": "25c87907-8d17-492c-a070-cb10106898c6",
+  "id": "d5aa46af-5a71-406e-ac81-dd999d018767",
+  "prevId": "88d65b98-3f2a-4df6-9286-b0add722418e",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -644,6 +644,13 @@
           "type": "timestamp",
           "primaryKey": false,
           "notNull": false
+        },
+        "scope": {
+          "name": "scope",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'workspace'"
         }
       },
       "indexes": {
@@ -1197,6 +1204,13 @@
           "type": "text",
           "primaryKey": false,
           "notNull": true
+        },
+        "scope": {
+          "name": "scope",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'workspace'"
         }
       },
       "indexes": {
@@ -1415,6 +1429,13 @@
           "type": "text",
           "primaryKey": false,
           "notNull": true
+        },
+        "scope": {
+          "name": "scope",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'workspace'"
         }
       },
       "indexes": {
@@ -1609,6 +1630,13 @@
           "type": "text",
           "primaryKey": false,
           "notNull": true
+        },
+        "scope": {
+          "name": "scope",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'workspace'"
         }
       },
       "indexes": {
@@ -1757,6 +1785,13 @@
           "type": "text",
           "primaryKey": false,
           "notNull": true
+        },
+        "scope": {
+          "name": "scope",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'workspace'"
         }
       },
       "indexes": {
@@ -1885,6 +1920,13 @@
           "type": "text",
           "primaryKey": false,
           "notNull": true
+        },
+        "scope": {
+          "name": "scope",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'workspace'"
         }
       },
       "indexes": {
@@ -2108,6 +2150,13 @@
           "type": "text",
           "primaryKey": false,
           "notNull": true
+        },
+        "scope": {
+          "name": "scope",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'workspace'"
         }
       },
       "indexes": {
@@ -2367,6 +2416,13 @@
           "type": "text",
           "primaryKey": false,
           "notNull": true
+        },
+        "scope": {
+          "name": "scope",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'workspace'"
         }
       },
       "indexes": {
@@ -2463,6 +2519,18 @@
           "type": "text",
           "primaryKey": false,
           "notNull": true
+        },
+        "user_name": {
+          "name": "user_name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "user_email": {
+          "name": "user_email",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
         },
         "created_at": {
           "name": "created_at",
@@ -2795,6 +2863,18 @@
           "primaryKey": false,
           "notNull": true
         },
+        "slug": {
+          "name": "slug",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "icon": {
+          "name": "icon",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
         "is_personal": {
           "name": "is_personal",
           "type": "boolean",
@@ -2851,6 +2931,22 @@
             }
           ],
           "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "idx_workspaces_slug": {
+          "name": "idx_workspaces_slug",
+          "columns": [
+            {
+              "expression": "slug",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "where": "\"powersync\".\"workspaces\".\"slug\" IS NOT NULL",
           "concurrently": false,
           "method": "btree",
           "with": {}

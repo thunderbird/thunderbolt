@@ -136,34 +136,6 @@
       "breakpoints": true
     },
     {
-      "idx": 19,
-      "version": "7",
-      "when": 1780411203148,
-      "tag": "0019_workspaces",
-      "breakpoints": true
-    },
-    {
-      "idx": 20,
-      "version": "7",
-      "when": 1780433554841,
-      "tag": "0020_workspace_id_on_scoped_tables",
-      "breakpoints": true
-    },
-    {
-      "idx": 21,
-      "version": "7",
-      "when": 1781094472865,
-      "tag": "0021_workspaces_slug_icon",
-      "breakpoints": true
-    },
-    {
-      "idx": 22,
-      "version": "7",
-      "when": 1781128111482,
-      "tag": "0022_workspace_memberships_user_display",
-      "breakpoints": true
-    },
-    {
       "idx": 20,
       "version": "7",
       "when": 1781546434494,
@@ -171,10 +143,10 @@
       "breakpoints": true
     },
     {
-      "idx": 23,
+      "idx": 20,
       "version": "7",
-      "when": 1781731977793,
-      "tag": "0023_user_scope_resources",
+      "when": 1782057121835,
+      "tag": "0020_futuristic_outlaw_kid",
       "breakpoints": true
     }
   ]

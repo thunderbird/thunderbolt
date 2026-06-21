@@ -889,9 +889,10 @@ export default function PreferencesSettingsPage() {
                   Export Your Data
                 </label>
                 <p id="export-data-description" className="text-sm text-muted-foreground">
-                  Download a JSON snapshot of your chats, tasks, models, and the API keys you've entered. Treat the file
-                  like a password backup — anyone who can read it can spend your model credits. Google and Microsoft
-                  sign-ins aren't included; you'll reconnect those after importing.
+                  Download a JSON snapshot of your chats, tasks, models, and the credentials you've entered (model API
+                  keys, MCP server tokens, agent keys). Treat the file like a password vault — anyone who can read it
+                  can use any of those credentials. Google and Microsoft sign-ins aren't included; you'll reconnect
+                  those after importing.
                 </p>
                 {exportError && (
                   <p id="export-data-error" className="text-sm text-destructive" role="alert">

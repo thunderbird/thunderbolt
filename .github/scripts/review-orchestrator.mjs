@@ -604,13 +604,14 @@ const readModelFindings = async () => {
 /**
  * parseUnifiedDiff — minimal unified-diff parser.
  * Returns Map<path, { rightLines:Set<number>, leftLines:Set<number>,
- *                     rightText:Map<number,string>, leftText:Map<number,string> }>.
- * `rightText`/`leftText` map each commentable line number to its TRIMMED code
- * content (tag stripped) — the stable per-line discriminator the finding hash
- * and the diff-evidence resolution sweep both key on (see findingHash and the
- * liveness check in runPost). Membership Sets answer "is this line commentable?";
- * the text maps answer "what code is on it?". We do NOT need GitHub's legacy
- * `position` integer (line+side is the modern, drift-resilient anchor).
+ *                     rightSeq:[{line,text}], leftSeq:[{line,text}] }>.
+ * Membership Sets answer "is this (side, line) commentable?". `rightSeq`/`leftSeq`
+ * carry each commentable line's TRIMMED code (tag stripped) in HUNK ORDER — the
+ * per-line discriminator the finding hash and the diff-evidence resolution sweep
+ * key on, and the ordering a short/common line (`}`, `return;`) walks to extend
+ * its liveness key into a distinctive multi-line window (see livenessWindowFor,
+ * findingHash, shouldResolveThread). We do NOT need GitHub's legacy `position`
+ * integer (line+side is the modern anchor).
  */
 const parseUnifiedDiff = (patch) => {
   const files = new Map();
@@ -638,8 +639,8 @@ const parseUnifiedDiff = (patch) => {
       current = {
         rightLines: new Set(),
         leftLines: new Set(),
-        rightText: new Map(),
-        leftText: new Map(),
+        rightSeq: [],
+        leftSeq: [],
       };
       files.set(p, current);
       continue;
@@ -662,11 +663,11 @@ const parseUnifiedDiff = (patch) => {
     const content = raw.slice(1).trim();
     if (tag === '+') {
       current.rightLines.add(rightLine);
-      current.rightText.set(rightLine, content);
+      current.rightSeq.push({ line: rightLine, text: content });
       rightLine += 1;
     } else if (tag === '-') {
       current.leftLines.add(leftLine);
-      current.leftText.set(leftLine, content);
+      current.leftSeq.push({ line: leftLine, text: content });
       leftLine += 1;
     } else if (tag === ' ') {
       // Context line (leading space): unchanged, but it IS part of the hunk and
@@ -678,8 +679,8 @@ const parseUnifiedDiff = (patch) => {
       // be marked commentable, or it would falsely anchor a non-diff line.
       current.rightLines.add(rightLine);
       current.leftLines.add(leftLine);
-      current.rightText.set(rightLine, content);
-      current.leftText.set(leftLine, content);
+      current.rightSeq.push({ line: rightLine, text: content });
+      current.leftSeq.push({ line: leftLine, text: content });
       rightLine += 1;
       leftLine += 1;
     }
@@ -689,16 +690,96 @@ const parseUnifiedDiff = (patch) => {
   return files;
 };
 
+// Minimum count of DISTINCTIVE characters a liveness key must carry before it can
+// stand alone. Below this a key is a short/common token (`}`, `});`, `return;`,
+// `} else {`, `]`, `),`) whose bare substring matches almost ANY diff — the
+// coarse-match never-resolve bug. Such a key is extended into a multi-line window.
+// 12 ≈ two ordinary identifiers' worth of payload; empirically the floor below
+// which a bare line substring-matches unrelated diffs. Monotone-safe to tune:
+// lower → some short lines stand alone (risking the never-resolve bug); higher →
+// larger windows (more coupling to neighbouring lines). Resolution is unaffected.
+const MIN_DISTINCTIVE_CHARS = 12;
+
 /**
- * Load + parse the pre-computed diff. Returns BOTH the parsed index (for anchor
- * classification) and the raw patch text (for the diff-evidence resolution
- * sweep, which substring-matches a thread's stamped liveness key against it).
+ * Distinctiveness score of a candidate liveness key: the count of characters left
+ * after stripping structural punctuation, whitespace, and ubiquitous keywords
+ * (`return`/`else`/`const`/…). A line that reduces to almost nothing (`}`, `});`,
+ * `} else {`) scores low and is too common to anchor a thread on its own; a line
+ * with real identifiers scores high. Pure + deterministic so the post-time stamp
+ * and any later re-flag derive the SAME window.
+ */
+const distinctiveness = (text) =>
+  (text ?? '')
+    .replace(/\b(?:return|else|const|let|var|await|async|function|if|for|while|case|break|continue)\b/g, '')
+    .replace(/[\s{}()[\];,.:=>&|?!<>+\-*/]/g, '')
+    .length;
+
+/**
+ * Normalize a diff into the ground-truth text the resolution sweep substring-tests
+ * a stamped liveness key against. Per file we emit the file PATH followed by every
+ * content line (tag-stripped + trimmed), all joined by `\n`. So BOTH liveness key
+ * shapes are a literal, contiguous substring of this text:
+ *   - inline → a single line OR a multi-line window (livenessWindowFor) → matches
+ *     against the emitted content lines (the raw patch's `+`/`-`/` ` tags and
+ *     indentation are stripped so a `\n`-joined window matches by `includes`).
+ *   - file  → the file path → matches the emitted path row (present iff the file
+ *     is still in the diff; the resolution sweep keys file-level findings on this).
+ * Including the path is what keeps file-level findings (and the degenerate-window
+ * fallback) resolving on the file leaving the diff rather than false-resolving.
+ */
+const normalizeDiffText = (diffIndex) =>
+  [...diffIndex.entries()]
+    .flatMap(([path, entry]) => [path, ...[...entry.rightSeq, ...entry.leftSeq].map((s) => s.text)])
+    .join('\n');
+
+/**
+ * The liveness key for an inline finding: the offending line's trimmed code when
+ * that line is already DISTINCTIVE, else a multi-line WINDOW (the offending line
+ * plus following — or, at a hunk's end, preceding — sibling lines on the same
+ * side, joined by `\n`) extended until it clears MIN_DISTINCTIVE_CHARS. The window
+ * is a contiguous substring of normalizeDiffText, so the sweep's `includes` test
+ * resolves it precisely: a short/common line like `}` no longer matches every diff
+ * (closes the never-resolve bug) yet a still-present issue keeps its window in the
+ * diff (no false-resolve). Forward-first/back-fill ordering is deterministic, so
+ * the post-time stamp and any later re-flag produce the identical key + hash.
+ *
+ * Returns '' (→ caller falls back to the distinctive file-path key) when there's
+ * no distinctive evidence to anchor on: a blank offending line, or a hunk so
+ * trivial (e.g. a lone `+}`) that even the FULL window can't clear the bar. Both
+ * would otherwise produce a bare/`\n`-only key that re-opens the never-resolve bug
+ * — the file-path key resolves cleanly instead (it leaves the diff with the file).
+ */
+const livenessWindowFor = (seq, line) => {
+  const idx = seq.findIndex((e) => e.line === line);
+  if (idx === -1 || !seq[idx].text) return '';
+  // Grow a [lo, hi] window outward — forward first (toward the rest of the hunk),
+  // then backward at a hunk's end — until it's distinctive enough or the lines are
+  // exhausted. The window is joined in SOURCE order (seq.slice), so it stays a
+  // contiguous substring of normalizeDiffText regardless of which way it grew.
+  let lo = idx;
+  let hi = idx;
+  const windowText = () => seq.slice(lo, hi + 1).map((e) => e.text).join('\n');
+  while (distinctiveness(windowText()) < MIN_DISTINCTIVE_CHARS && (hi + 1 < seq.length || lo > 0)) {
+    if (hi + 1 < seq.length) hi += 1;
+    else lo -= 1;
+  }
+  // The whole available window is still non-distinctive → no trustworthy anchor;
+  // fall back to the file-path key rather than pin the thread on a common token.
+  return distinctiveness(windowText()) < MIN_DISTINCTIVE_CHARS ? '' : windowText();
+};
+
+/**
+ * Load + parse the pre-computed diff. Returns the parsed index (for anchor
+ * classification) and a NORMALIZED diff text (tag-stripped, one trimmed content
+ * line per row) — the ground truth the diff-evidence resolution sweep substring-
+ * matches a thread's stamped liveness key (single line OR window) against.
  * Best-effort: missing diff => empty index + empty text.
  */
 const loadDiffIndex = async () => {
   try {
     const patch = await readFile(DIFF_FILE, 'utf8');
-    return { index: parseUnifiedDiff(patch), text: patch };
+    const index = parseUnifiedDiff(patch);
+    return { index, text: normalizeDiffText(index) };
   } catch (err) {
     log('diff: could not read/parse DIFF_FILE (all findings fall back to summary):', err.message);
     return { index: new Map(), text: '' };
@@ -745,27 +826,20 @@ const enforceBoundedDiff = async (boundedMode) => {
 };
 
 /**
- * The TRIMMED code content of the diff line a finding points at (its (side,
- * line) in `fileEntry`), or '' if the finding has no in-diff line. Empty content
- * (a blank added line) reads as no-line-text so the finding falls back to its
- * file/summary key rather than a key that matches everything.
- */
-const lineTextFor = (fileEntry, line, side) => {
-  if (!fileEntry || line == null) return '';
-  const textMap = side === 'LEFT' ? fileEntry.leftText : fileEntry.rightText;
-  // The parser already trimmed each stored line, so no re-trim is needed here.
-  return textMap?.get(line) ?? '';
-};
-
-/**
  * Classify each finding against the diff index and attach its convergence keys:
  *  - `inline`  : (side, line) is commentable → real anchored inline comment.
  *  - `file`    : file is in the diff but the line isn't → file-level comment.
  *  - `summary` : file not in the diff at all → rolled into the review body.
  *
  * `livenessKey` is the DIFF-EVIDENCE string the resolve sweep substring-tests
- * against the current diff — so it MUST be a literal diff substring:
- *  - inline  → the offending line's trimmed code (present iff that code is).
+ * against the NORMALIZED diff (loadDiffIndex) — so it MUST be a literal substring
+ * of that text:
+ *  - inline  → a distinctiveness-checked WINDOW around the offending line
+ *              (livenessWindowFor): the trimmed line alone when it's distinctive,
+ *              else that line plus neighbouring sibling lines until the window is
+ *              distinctive enough. This stops a short/common line (`}`, `return;`)
+ *              from matching every diff (never-resolve bug) while a still-present
+ *              issue keeps its window in the diff (no false-resolve).
  *  - file    → the file path (present iff the file is still in the diff). This
  *              gives file-level findings real diff evidence instead of leaning on
  *              the model re-flagging them, so they resolve when the file leaves
@@ -780,7 +854,6 @@ const classifyFindings = (findings, diffIndex) =>
   findings.map((f) => {
     const fileEntry = f.file ? diffIndex.get(f.file) : null;
     const lineSet = f.side === 'LEFT' ? fileEntry?.leftLines : fileEntry?.rightLines;
-    const lineText = lineTextFor(fileEntry, f.line, f.side);
 
     const place = (placement, livenessKey, discriminator) => ({
       ...f,
@@ -790,11 +863,14 @@ const classifyFindings = (findings, diffIndex) =>
     });
 
     // Inline iff the (side, line) is commentable. Its liveness key is the
-    // offending code when present; an inline finding on a blank/empty line has
-    // no code to anchor, so it falls back to the file path like a file-level one.
+    // distinctiveness-checked window around the offending code when present; an
+    // inline finding on a blank/empty line has no code to anchor, so it falls back
+    // to the file path like a file-level one.
     if (f.file && fileEntry && f.line != null && lineSet?.has(f.line)) {
-      return lineText
-        ? place('inline', lineText, `code:${lineText}`)
+      const seq = f.side === 'LEFT' ? fileEntry.leftSeq : fileEntry.rightSeq;
+      const window = livenessWindowFor(seq, f.line);
+      return window
+        ? place('inline', window, `code:${window}`)
         : place('inline', f.file, `file:${f.file}`);
     }
     if (f.file && fileEntry) {
@@ -844,13 +920,20 @@ const livenessStamp = (livenessKey) => {
  * Decode the stamped liveness key from one of our comment bodies, or null if
  * absent (legacy comments predating this stamp). The resolve sweep substring-
  * matches this against the current diff: still present => keep the thread open;
- * gone => resolve it. A stamp that decodes to empty (a corrupted/manually-edited
- * marker) is treated as absent so it can never match-everything against the diff.
+ * gone => resolve it. A stamp that decodes to empty OR to control-character noise
+ * (a corrupted/manually-edited marker — note `AAAA` is valid base64 that decodes
+ * to NUL bytes) is treated as absent: such a key would never be a substring of a
+ * real diff, so without this guard a corrupted stamp would FALSE-RESOLVE its
+ * thread. Falling back to null routes it to the safe legacy (never-resolve) path.
  */
 const livenessKeyFromBody = (body) => {
   const m = (body ?? '').match(/<!-- thunder-liveness:([A-Za-z0-9+/=]+) -->/);
   if (!m) return null;
-  return Buffer.from(m[1], 'base64').toString('utf8').trim() || null;
+  const decoded = Buffer.from(m[1], 'base64').toString('utf8').trim();
+  // A real liveness key is printable source code; a key with no printable
+  // (non-control) content is corruption, not evidence — treat it as absent.
+  // eslint-disable-next-line no-control-regex -- intentionally matching control bytes
+  return /[^\x00-\x1f\x7f]/.test(decoded) ? decoded : null;
 };
 
 /**
@@ -1002,29 +1085,33 @@ const fetchOwnThreads = async () => {
  * Already-resolved or hash-less threads are never touched.
  *
  * NEW-FORMAT threads (a base64 liveness key was stamped on the root comment):
- * resolve IFF that key — the offending line's code, or the file path for a
- * file-level finding — is NO LONGER a substring of the current diff. Evidence
- * still in diff => keep open (so a finding the model merely MISSED this run is
- * never false-resolved); evidence gone => resolve (so an all-clean/empty run
- * still converges). This is the uniform, diff-evidence rule, and it now covers
- * BOTH inline and file-level findings (file-level keys on the file path).
+ * resolve IFF that key — a distinctiveness-checked WINDOW around the offending
+ * line, or the file path for a file-level finding — is NO LONGER a substring of
+ * the NORMALIZED diff. Evidence still in diff => keep open (so a finding the model
+ * merely MISSED this run is never false-resolved); evidence gone => resolve (so an
+ * all-clean/empty run still converges). The window (not the bare trimmed line) is
+ * what makes this precise for a short/common offending line (`}`, `return;`):
+ * a bare token is a substring of almost every diff and would pin the thread open
+ * forever, whereas its window leaves the diff with the surrounding code.
  *
- * NO-KEY threads fall back to the OLD heuristic — resolve IFF the hash is absent
- * from THIS run's findings AND the run was non-empty. After this change EVERY new
- * thread (inline or file-level) carries a key, so this branch is reached ONLY by
- * LEGACY threads posted before the stamp existed — a transient, one-time case
- * (see MIGRATION). Its non-empty guard preserves the prior no-false-resolve
- * behaviour for those legacy threads until they churn over.
+ * NO-KEY (LEGACY) threads — posted before the stamp existed — are NEVER
+ * auto-resolved here. "The model didn't re-flag it this run" is a RECALL signal,
+ * not evidence the code was fixed, so resolving on it false-resolves a still-open
+ * issue (Bugbot r3454463237). A legacy thread instead persists until it re-keys:
+ * if the issue is still real the model re-flags it, the finding is re-posted under
+ * the new windowed hash+stamp (its old hash differs, so dedup doesn't suppress
+ * it), and from then on it's diff-evidence driven. A genuinely fixed legacy thread
+ * is left for the human (it carries no diff anchor we can trust). A missing stamp
+ * never throws.
  *
- * MIGRATION: on the FIRST run after this change, every pre-existing thread is
- * keyless; if its evidence is still flagged it re-keys under the new hash and
- * re-posts once with the new stamp (a one-time, per-PR churn). Subsequent runs
- * are fully diff-evidence driven. A missing stamp never throws.
+ * MIGRATION: on the FIRST runs after this change every pre-existing thread is
+ * keyless; each persists at most one extra cycle until it re-keys (re-flag) or a
+ * human resolves it. Subsequent runs are fully diff-evidence driven.
  */
-const shouldResolveThread = (thread, diffText, currentHashes, findingCount) => {
+const shouldResolveThread = (thread, diffText) => {
   if (thread.isResolved || !thread.hash) return false;
-  if (thread.livenessKey != null) return !diffText.includes(thread.livenessKey);
-  return findingCount > 0 && !currentHashes.has(thread.hash);
+  if (thread.livenessKey == null) return false; // legacy: never recall-miss resolve
+  return !diffText.includes(thread.livenessKey);
 };
 
 /** Mark one of OUR threads resolved. Fail-soft per call. */
@@ -1314,11 +1401,11 @@ const runPost = async () => {
   }
 
   // 1) Map findings to diff positions (inline / file / summary) + stable hash.
-  //    `diffText` (the raw patch) is the ground truth for thread resolution: a
-  //    finding's flagged code is "still live" iff its line text is in this diff.
+  //    `diffText` (the NORMALIZED diff) is the ground truth for thread resolution:
+  //    a finding's flagged code is "still live" iff its liveness key (line window
+  //    or file path) is still a substring of this text.
   const { index: diffIndex, text: diffText } = await loadDiffIndex();
   const findings = classifyFindings(rawFindings, diffIndex);
-  const currentHashes = new Set(findings.map((f) => f.hash));
 
   // 2) Fetch our own prior state: open inline THREADS (hash + resolution) and
   //    our own prior review BODIES — the latter gives us both the hashes we
@@ -1356,7 +1443,7 @@ const runPost = async () => {
   if (env.eventAction === 'reopened') {
     log('post: reopened event — skipping thread resolution.');
   } else {
-    const stale = ownThreads.filter((t) => shouldResolveThread(t, diffText, currentHashes, findings.length));
+    const stale = ownThreads.filter((t) => shouldResolveThread(t, diffText));
     for (const t of stale) {
       // eslint-disable-next-line no-await-in-loop -- small N, ordered for clear logs
       await resolveThread(t.threadId);
@@ -1432,6 +1519,7 @@ if (argv[1] && fileURLToPath(import.meta.url) === argv[1]) main();
 // convergence + precision-gate terminal logic lives here — keep it covered.
 export {
   parseUnifiedDiff,
+  normalizeDiffText,
   findingHash,
   classifyFindings,
   livenessStamp,

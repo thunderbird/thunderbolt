@@ -2,18 +2,18 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-export { Quiz } from './display'
+export { Ask } from './display'
 export { instructions } from './instructions'
 export {
-  collectQuizEntriesFromCache,
-  formatQuizResultsNote,
-  gradeQuiz,
+  collectAskEntriesFromCache,
+  evaluateAnswer,
+  formatAskResponsesNote,
   optionLetter,
-  type QuizCacheEntry,
-  type QuizData,
-  type QuizMode,
-  type QuizOption,
+  type AskCacheEntry,
+  type AskData,
+  type AskMode,
+  type AskOption,
 } from './lib'
 export { parse, schema } from './schema'
-export type { CacheData, QuizWidget } from './schema'
-export { QuizWidget as Component } from './widget'
+export type { AskWidget, CacheData } from './schema'
+export { AskWidget as Component } from './widget'

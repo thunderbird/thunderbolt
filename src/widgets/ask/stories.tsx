@@ -3,12 +3,12 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import type { Meta, StoryObj } from '@storybook/react-vite'
-import { Quiz } from './display'
-import type { QuizData } from './lib'
+import { Ask } from './display'
+import type { AskData } from './lib'
 
 const meta = {
-  title: 'widgets/quiz',
-  component: Quiz,
+  title: 'widgets/ask',
+  component: Ask,
   parameters: {
     layout: 'centered',
     viewport: { defaultViewport: 'responsive' },
@@ -20,12 +20,12 @@ const meta = {
       </div>
     ),
   ],
-} satisfies Meta<typeof Quiz>
+} satisfies Meta<typeof Ask>
 
 export default meta
 type Story = StoryObj<typeof meta>
 
-const singleAnswer: QuizData = {
+const singleAnswer: AskData = {
   mode: 'single',
   prompt: 'Which protocol does Thunderbird use to send outgoing mail?',
   explanation: 'SMTP (Simple Mail Transfer Protocol) handles sending. IMAP and POP3 are for retrieving mail.',
@@ -37,7 +37,7 @@ const singleAnswer: QuizData = {
   ],
 }
 
-const multipleAnswers: QuizData = {
+const multipleAnswers: AskData = {
   mode: 'multiple',
   prompt: 'Which of these are end-to-end encryption standards supported for email?',
   explanation: 'Both OpenPGP and S/MIME provide end-to-end encryption. TLS only secures transport.',
@@ -49,7 +49,7 @@ const multipleAnswers: QuizData = {
   ],
 }
 
-const noCorrectAnswer: QuizData = {
+const noDesignatedAnswer: AskData = {
   mode: 'choice',
   prompt: 'What would you like to do next?',
   options: [
@@ -60,11 +60,21 @@ const noCorrectAnswer: QuizData = {
   ],
 }
 
-/** One correct answer — radio-style, graded on "Check answer". */
-export const SingleCorrectAnswer: Story = { args: singleAnswer }
+const freeResponse: AskData = {
+  mode: 'free',
+  prompt: 'In your own words, why is end-to-end encryption important for email?',
+  explanation: 'Only the sender and intended recipient can read the message — not the mail server or any intermediary.',
+  options: [],
+}
 
-/** Multiple correct answers — checkbox-style, all-or-nothing grading. */
-export const MultipleCorrectAnswers: Story = { args: multipleAnswers }
+/** One designated answer — radio-style, revealed on submit. */
+export const SingleAnswer: Story = { args: singleAnswer }
 
-/** No correct answer — an open prompt where the choice itself is the action. */
-export const NoCorrectAnswer: Story = { args: noCorrectAnswer }
+/** Multiple designated answers — checkbox-style, all-or-nothing match. */
+export const MultipleAnswers: Story = { args: multipleAnswers }
+
+/** No designated answer — an open prompt where the choice itself is the action. */
+export const NoDesignatedAnswer: Story = { args: noDesignatedAnswer }
+
+/** Open free-text response — the user types an answer; an optional sample answer is shown after. */
+export const FreeResponse: Story = { args: freeResponse }

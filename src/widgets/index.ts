@@ -18,19 +18,19 @@
  */
 
 import { type ComponentType } from 'react'
+import * as ask from './ask'
 import * as citation from './citation'
 import * as connectIntegration from './connect-integration'
 import * as documentResult from './document-result'
 import * as linkPreview from './link-preview'
-import * as quiz from './quiz'
 import * as weatherForecast from './weather-forecast'
 
 // Re-export components for easy importing
+export { Ask } from './ask'
 export { CitationBadge } from './citation'
 export { ConnectIntegrationWidget } from './connect-integration'
 export { DocumentResultWidget } from './document-result'
 export { LinkPreview, LinkPreviewSkeleton, LinkPreviewWidget } from './link-preview'
-export { Quiz } from './quiz'
 export { WeatherForecastWidget } from './weather-forecast'
 
 /**
@@ -59,8 +59,8 @@ export const widgetRegistry = [
     module: linkPreview,
   },
   {
-    name: 'quiz' as const,
-    module: quiz,
+    name: 'ask' as const,
+    module: ask,
   },
 ] as const
 
@@ -111,4 +111,4 @@ export type WidgetCacheData =
   | linkPreview.CacheData
   | weatherForecast.CacheData
   | citation.CacheData
-  | quiz.CacheData
+  | ask.CacheData

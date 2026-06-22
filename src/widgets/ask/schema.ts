@@ -4,7 +4,7 @@
 
 import { createParser } from '@/lib/create-parser'
 import { z } from 'zod'
-import type { QuizCacheEntry } from './lib'
+import type { AskCacheEntry } from './lib'
 
 const optionShape = z.object({
   id: z.string().min(1),
@@ -29,18 +29,23 @@ const optionsAttr = z
   .pipe(z.array(optionShape).min(2))
 
 export const schema = z.object({
-  widget: z.literal('quiz'),
+  widget: z.literal('ask'),
   args: z.object({
     prompt: z.string().min(1),
-    mode: z.enum(['single', 'multiple', 'choice']),
-    options: optionsAttr,
+    mode: z.enum(['single', 'multiple', 'choice', 'free']),
+    // Optional: `free` (open text-response) prompts carry no options. The other
+    // modes still emit them; `optionsAttr` enforces min-2 when present. (A
+    // cross-field "non-free ⇒ options required" rule can't live here without
+    // wrapping args in `.refine()`, which would break `createParser`'s reliance
+    // on `args.shape`.)
+    options: optionsAttr.optional(),
     explanation: z.string().optional(),
   }),
 })
 
-export type QuizWidget = z.infer<typeof schema>
+export type AskWidget = z.infer<typeof schema>
 
-/** The user's persisted answer to a single quiz, stored in the message cache. */
-export type CacheData = QuizCacheEntry
+/** The user's persisted response to a single ask, stored in the message cache. */
+export type CacheData = AskCacheEntry
 
 export const parse = createParser(schema)

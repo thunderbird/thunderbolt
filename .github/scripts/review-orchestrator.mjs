@@ -42,6 +42,8 @@
 
 import { readFile, writeFile } from 'node:fs/promises';
 import { createHash } from 'node:crypto';
+import { argv } from 'node:process';
+import { fileURLToPath } from 'node:url';
 
 // -----------------------------------------------------------------------------
 // CONFIG / CONSTANTS
@@ -523,18 +525,31 @@ const computeDeepMode = async () => {
 
 /**
  * Stable per-finding hash, used to match a finding to an EXISTING open thread
- * across pushes (convergence). Anchored on file + normalized diff context + rule
- * + title — NOT raw line numbers (they drift on force-push). The `title` is what
- * separates two DISTINCT findings that share the same file, hunk, rule, and
- * severity; without it they collapse to one hash, so the second finding gets
- * dropped as "already open" and its feedback silently disappears. The model does
- * not emit a hunk, so we derive a coarse code anchor from the diff (see
- * hunkAnchorFor).
+ * across pushes (convergence). The discriminator is the finding's LIVENESS KEY
+ * (`f.livenessKey`, computed in classifyFindings) — the same diff-evidence string
+ * the resolve sweep tests — NOT the model-generated title or a coarse hunk slice:
+ *   - inline finding → the OFFENDING LINE'S trimmed code (`code:<text>`). Stable
+ *     even when the model rephrases its prose or a neighbouring hunk line changes
+ *     (closes the hash-drift → duplicate gap), and per-line specific.
+ *   - file-level finding (line-null but file IS in the diff) → `file:<path>`.
+ *     Stable across prose drift; the thread lives while the file is in the diff.
+ *   - summary finding (file not in the diff, never becomes a thread) → a
+ *     `text:<title-or-body slice>` fallback. These dedup via the review-body
+ *     hash markers, so a prose rephrase can re-key one — low-harm (a body bullet,
+ *     not a thread) and the only case with no diff anchor to key on.
+ *
+ * The placement tag distinguishes the three key spaces (`code:`/`file:`/`text:`),
+ * so an inline finding can never collide with a file-level one.
+ *
+ * RESIDUAL COLLISION: findings that share a namespaced key collapse to one hash
+ * and the second is dropped — two inline findings on byte-identical trimmed code,
+ * or two file-level findings on the same file, each with the same rule+severity.
+ * Rare and the safe failure mode (under-report, never a false-resolve); the
+ * alternative — folding the model's drift-prone title back in — would reopen the
+ * duplicate gap this design exists to close, so we accept it.
  */
 const findingHash = (f) =>
-  normalizeKey(
-    [f.file ?? '', f.rule ?? '', (f.anchor ?? '').trim().slice(0, 200), f.severity, (f.title ?? '').trim()].join(' '),
-  );
+  normalizeKey([f.file ?? '', f.rule ?? '', f.severity, f.livenessKey ?? ''].join(' '));
 
 const readModelFindings = async () => {
   const raw = await readFile(FINDINGS_FILE, 'utf8');
@@ -582,25 +597,28 @@ const readModelFindings = async () => {
 /**
  * parseUnifiedDiff — minimal unified-diff parser.
  * Returns Map<path, { rightLines:Set<number>, leftLines:Set<number>,
- *                     hunks: [{ rightStart, leftStart, text }] }>.
- * We only need membership ("is this line commentable?") and a per-hunk text
- * anchor; we do NOT need GitHub's legacy `position` integer (line+side is the
- * modern, drift-resilient anchor).
+ *                     rightText:Map<number,string>, leftText:Map<number,string> }>.
+ * `rightText`/`leftText` map each commentable line number to its TRIMMED code
+ * content (tag stripped) — the stable per-line discriminator the finding hash
+ * and the diff-evidence resolution sweep both key on (see findingHash and the
+ * liveness check in runPost). Membership Sets answer "is this line commentable?";
+ * the text maps answer "what code is on it?". We do NOT need GitHub's legacy
+ * `position` integer (line+side is the modern, drift-resilient anchor).
  */
 const parseUnifiedDiff = (patch) => {
   const files = new Map();
   let current = null;
   let rightLine = 0;
   let leftLine = 0;
-  let hunk = null;
+  let inHunk = false;
 
   // Split on CRLF or LF — a trailing \r would otherwise get baked into the
-  // hunk anchor text and destabilize the finding hash across pushes.
+  // line text and destabilize the finding hash / liveness key across pushes.
   const lines = patch.split(/\r?\n/);
   for (const raw of lines) {
     if (raw.startsWith('diff --git ')) {
       current = null;
-      hunk = null;
+      inHunk = false;
       continue;
     }
     if (raw.startsWith('+++ ')) {
@@ -610,7 +628,12 @@ const parseUnifiedDiff = (patch) => {
         current = null;
         continue;
       }
-      current = { rightLines: new Set(), leftLines: new Set(), hunks: [] };
+      current = {
+        rightLines: new Set(),
+        leftLines: new Set(),
+        rightText: new Map(),
+        leftText: new Map(),
+      };
       files.set(p, current);
       continue;
     }
@@ -618,24 +641,25 @@ const parseUnifiedDiff = (patch) => {
       // @@ -l,s +l,s @@ optional section heading
       const m = raw.match(/@@ -(\d+)(?:,\d+)? \+(\d+)(?:,\d+)? @@/);
       if (!m || !current) {
-        hunk = null;
+        inHunk = false;
         continue;
       }
       leftLine = Number(m[1]);
       rightLine = Number(m[2]);
-      hunk = { rightStart: rightLine, leftStart: leftLine, text: raw };
-      current.hunks.push(hunk);
+      inHunk = true;
       continue;
     }
-    if (!current) continue;
+    if (!current || !inHunk) continue;
     const tag = raw[0];
+    // Trimmed code content (tag stripped) — the per-line discriminator.
+    const content = raw.slice(1).trim();
     if (tag === '+') {
       current.rightLines.add(rightLine);
-      if (hunk) hunk.text += `\n${raw}`;
+      current.rightText.set(rightLine, content);
       rightLine += 1;
     } else if (tag === '-') {
       current.leftLines.add(leftLine);
-      if (hunk) hunk.text += `\n${raw}`;
+      current.leftText.set(leftLine, content);
       leftLine += 1;
     } else if (tag === ' ') {
       // Context line (leading space): unchanged, but it IS part of the hunk and
@@ -647,7 +671,8 @@ const parseUnifiedDiff = (patch) => {
       // be marked commentable, or it would falsely anchor a non-diff line.
       current.rightLines.add(rightLine);
       current.leftLines.add(leftLine);
-      if (hunk) hunk.text += `\n${raw}`;
+      current.rightText.set(rightLine, content);
+      current.leftText.set(leftLine, content);
       rightLine += 1;
       leftLine += 1;
     }
@@ -657,14 +682,19 @@ const parseUnifiedDiff = (patch) => {
   return files;
 };
 
-/** Load + parse the pre-computed diff. Best-effort: missing diff => empty map. */
+/**
+ * Load + parse the pre-computed diff. Returns BOTH the parsed index (for anchor
+ * classification) and the raw patch text (for the diff-evidence resolution
+ * sweep, which substring-matches a thread's stamped liveness key against it).
+ * Best-effort: missing diff => empty index + empty text.
+ */
 const loadDiffIndex = async () => {
   try {
     const patch = await readFile(DIFF_FILE, 'utf8');
-    return parseUnifiedDiff(patch);
+    return { index: parseUnifiedDiff(patch), text: patch };
   } catch (err) {
     log('diff: could not read/parse DIFF_FILE (all findings fall back to summary):', err.message);
-    return new Map();
+    return { index: new Map(), text: '' };
   }
 };
 
@@ -708,51 +738,62 @@ const enforceBoundedDiff = async (boundedMode) => {
 };
 
 /**
- * Find the hunk in `fileEntry` that contains (side, line). Used to derive a
- * stable code anchor for the finding hash so convergence survives line drift.
+ * The TRIMMED code content of the diff line a finding points at (its (side,
+ * line) in `fileEntry`), or '' if the finding has no in-diff line. Empty content
+ * (a blank added line) reads as no-line-text so the finding falls back to its
+ * file/summary key rather than a key that matches everything.
  */
-const stripHunkHeader = (text) => text.replace(/^@@.*@@.*/, '').trim().slice(0, 200);
-
-const hunkAnchorFor = (fileEntry, line, side) => {
-  if (!fileEntry) return '';
-  // Pick the LAST hunk whose start is at/before the target line — that's the
-  // one actually containing it. Picking the first (any start ≤ line) would
-  // anchor a late-file finding to an early hunk and weaken cross-push
-  // convergence. Coarse (first ~200 chars) on purpose — stability over exactness.
-  let containing = null;
-  for (const h of fileEntry.hunks) {
-    const start = side === 'LEFT' ? h.leftStart : h.rightStart;
-    if (line >= start) containing = h;
-  }
-  if (containing) {
-    const anchor = stripHunkHeader(containing.text);
-    if (anchor) return anchor;
-  }
-  return stripHunkHeader(fileEntry.hunks[0]?.text ?? '');
+const lineTextFor = (fileEntry, line, side) => {
+  if (!fileEntry || line == null) return '';
+  const textMap = side === 'LEFT' ? fileEntry.leftText : fileEntry.rightText;
+  // The parser already trimmed each stored line, so no re-trim is needed here.
+  return textMap?.get(line) ?? '';
 };
 
 /**
- * Classify each finding against the diff index:
+ * Classify each finding against the diff index and attach its convergence keys:
  *  - `inline`  : (side, line) is commentable → real anchored inline comment.
  *  - `file`    : file is in the diff but the line isn't → file-level comment.
  *  - `summary` : file not in the diff at all → rolled into the review body.
- * Also attaches a stable `anchor` (+ `hash`) for cross-push convergence.
+ *
+ * `livenessKey` is the DIFF-EVIDENCE string the resolve sweep substring-tests
+ * against the current diff — so it MUST be a literal diff substring:
+ *  - inline  → the offending line's trimmed code (present iff that code is).
+ *  - file    → the file path (present iff the file is still in the diff). This
+ *              gives file-level findings real diff evidence instead of leaning on
+ *              the model re-flagging them, so they resolve when the file leaves
+ *              the diff and never false-resolve on a recall miss.
+ *  - summary → '' (these never become threads — they live in the review body and
+ *              dedup via the body hash markers — so liveness is never swept).
+ * `findingHash` namespaces this key per placement so the three key spaces can't
+ * collide; summary findings additionally fold in a title/body slice since the
+ * file alone isn't in the diff to anchor on.
  */
 const classifyFindings = (findings, diffIndex) =>
   findings.map((f) => {
     const fileEntry = f.file ? diffIndex.get(f.file) : null;
     const lineSet = f.side === 'LEFT' ? fileEntry?.leftLines : fileEntry?.rightLines;
-    const anchor = hunkAnchorFor(fileEntry, f.line ?? 0, f.side);
-    const withAnchor = { ...f, anchor };
-    const hash = findingHash(withAnchor);
+    const lineText = lineTextFor(fileEntry, f.line, f.side);
 
+    const place = (placement, livenessKey, discriminator) => ({
+      ...f,
+      placement,
+      livenessKey,
+      hash: findingHash({ ...f, livenessKey: discriminator }),
+    });
+
+    // Inline iff the (side, line) is commentable. Its liveness key is the
+    // offending code when present; an inline finding on a blank/empty line has
+    // no code to anchor, so it falls back to the file path like a file-level one.
     if (f.file && fileEntry && f.line != null && lineSet?.has(f.line)) {
-      return { ...withAnchor, hash, placement: 'inline' };
+      return lineText
+        ? place('inline', lineText, `code:${lineText}`)
+        : place('inline', f.file, `file:${f.file}`);
     }
     if (f.file && fileEntry) {
-      return { ...withAnchor, hash, placement: 'file' };
+      return place('file', f.file, `file:${f.file}`);
     }
-    return { ...withAnchor, hash, placement: 'summary' };
+    return place('summary', '', `text:${(f.title || f.body || '').trim().slice(0, 200)}`);
   });
 
 // =============================================================================
@@ -777,6 +818,33 @@ const hashFromOwnBody = (body) => {
 
 /** Pull EVERY stamped finding-hash out of a body (a review body lists many). */
 const hashesFromBody = (body) => [...(body ?? '').matchAll(/<!-- thunder-finding-hash:([0-9a-f]{8,}) -->/g)].map((m) => m[1]);
+
+/**
+ * Render a finding's liveness key (its offending-line code, or the file path for
+ * a file-level finding) as a hidden, base64-encoded stamp. base64 keeps arbitrary
+ * source — including `-->`, angle brackets, or newlines — HTML-comment-safe so it
+ * can never break out of the marker or corrupt the surrounding markdown. Empty
+ * key => no stamp (a summary finding has no diff anchor; it never becomes a
+ * thread, so it's never swept).
+ */
+const livenessStamp = (livenessKey) => {
+  const key = (livenessKey ?? '').trim();
+  if (!key) return '';
+  return `<!-- thunder-liveness:${Buffer.from(key, 'utf8').toString('base64')} -->`;
+};
+
+/**
+ * Decode the stamped liveness key from one of our comment bodies, or null if
+ * absent (legacy comments predating this stamp). The resolve sweep substring-
+ * matches this against the current diff: still present => keep the thread open;
+ * gone => resolve it. A stamp that decodes to empty (a corrupted/manually-edited
+ * marker) is treated as absent so it can never match-everything against the diff.
+ */
+const livenessKeyFromBody = (body) => {
+  const m = (body ?? '').match(/<!-- thunder-liveness:([A-Za-z0-9+/=]+) -->/);
+  if (!m) return null;
+  return Buffer.from(m[1], 'base64').toString('utf8').trim() || null;
+};
 
 /**
  * Is this login OURS? GraphQL returns a Bot login WITHOUT the "[bot]" suffix
@@ -834,10 +902,13 @@ const fetchOwnSummarizedHashes = async () => {
 
 /**
  * Fetch OUR OWN review threads on this PR via GraphQL, paginated.
- * Returns [{ threadId, isResolved, resolvedByLogin, hash }] where hash is the
- * stamped finding hash on the FIRST (root) comment of a thread we authored.
- * `resolvedByLogin` is the login that resolved the thread (null if open), used
- * to tell a human resolution apart from the bot's own auto-resolution.
+ * Returns [{ threadId, isResolved, resolvedByLogin, hash, livenessKey }] where
+ * `hash`/`livenessKey` are stamped on the FIRST (root) comment of a thread we
+ * authored. `livenessKey` is the offending line's code (the resolve sweep keeps
+ * the thread open while that code is still in the diff); it is null for legacy
+ * threads (predating the stamp) and line-null findings. `resolvedByLogin` is the
+ * login that resolved the thread (null if open), used to tell a human resolution
+ * apart from the bot's own auto-resolution.
  */
 const fetchOwnThreads = async () => {
   const query = `
@@ -884,12 +955,43 @@ const fetchOwnThreads = async () => {
         isResolved: Boolean(node.isResolved),
         resolvedByLogin: node.resolvedBy?.login ?? null,
         hash: hashFromOwnBody(root.body),
+        livenessKey: livenessKeyFromBody(root.body),
       });
     }
     if (!conn?.pageInfo?.hasNextPage) break;
     cursor = conn.pageInfo.endCursor;
   }
   return out;
+};
+
+/**
+ * Decide whether one of OUR open threads should be auto-resolved this run.
+ * Already-resolved or hash-less threads are never touched.
+ *
+ * NEW-FORMAT threads (a base64 liveness key was stamped on the root comment):
+ * resolve IFF that key — the offending line's code, or the file path for a
+ * file-level finding — is NO LONGER a substring of the current diff. Evidence
+ * still in diff => keep open (so a finding the model merely MISSED this run is
+ * never false-resolved); evidence gone => resolve (so an all-clean/empty run
+ * still converges). This is the uniform, diff-evidence rule, and it now covers
+ * BOTH inline and file-level findings (file-level keys on the file path).
+ *
+ * NO-KEY threads fall back to the OLD heuristic — resolve IFF the hash is absent
+ * from THIS run's findings AND the run was non-empty. After this change EVERY new
+ * thread (inline or file-level) carries a key, so this branch is reached ONLY by
+ * LEGACY threads posted before the stamp existed — a transient, one-time case
+ * (see MIGRATION). Its non-empty guard preserves the prior no-false-resolve
+ * behaviour for those legacy threads until they churn over.
+ *
+ * MIGRATION: on the FIRST run after this change, every pre-existing thread is
+ * keyless; if its evidence is still flagged it re-keys under the new hash and
+ * re-posts once with the new stamp (a one-time, per-PR churn). Subsequent runs
+ * are fully diff-evidence driven. A missing stamp never throws.
+ */
+const shouldResolveThread = (thread, diffText, currentHashes, findingCount) => {
+  if (thread.isResolved || !thread.hash) return false;
+  if (thread.livenessKey != null) return !diffText.includes(thread.livenessKey);
+  return findingCount > 0 && !currentHashes.has(thread.hash);
 };
 
 /** Mark one of OUR threads resolved. Fail-soft per call. */
@@ -931,7 +1033,11 @@ const renderCommentBody = (f) => {
   // dedup hash and the model's self-validation. They're meaningless to a human
   // in a PR comment, so they are never rendered into the comment body.
   const head = `**${SEVERITY_LABEL[f.severity]} — ${f.title}**`;
-  const stamp = `\n\n${SELF_COMMENT_MARKER}<!-- thunder-finding-hash:${f.hash} -->`;
+  // Hidden stamps: the finding hash (dedup) + the base64 liveness key (the
+  // offending-line code, or the file path for file-level findings — so the next
+  // run can tell whether this finding's evidence is still in the diff and resolve
+  // the thread once it's gone).
+  const stamp = `\n\n${SELF_COMMENT_MARKER}<!-- thunder-finding-hash:${f.hash} -->${livenessStamp(f.livenessKey)}`;
   const body = `${head}\n\n${f.body}${stamp}`;
   // Unreachable while readModelFindings caps title@300 + body@4000 (well under
   // MAX_COMMENT_BODY); kept intentionally in case those caps rise — not dead code.
@@ -1096,7 +1202,9 @@ const runPost = async () => {
   }
 
   // 1) Map findings to diff positions (inline / file / summary) + stable hash.
-  const diffIndex = await loadDiffIndex();
+  //    `diffText` (the raw patch) is the ground truth for thread resolution: a
+  //    finding's flagged code is "still live" iff its line text is in this diff.
+  const { index: diffIndex, text: diffText } = await loadDiffIndex();
   const findings = classifyFindings(rawFindings, diffIndex);
   const currentHashes = new Set(findings.map((f) => f.hash));
 
@@ -1123,24 +1231,23 @@ const runPost = async () => {
     (f) => !openHashes.has(f.hash) && !humanResolvedHashes.has(f.hash) && !summarizedHashes.has(f.hash),
   );
 
-  // 4) Convergence: resolve our OWN open threads whose finding is gone now.
-  //    Suppressed on `reopened` (the prior threads may be from another base).
-  //    ALSO suppressed when the model emitted ZERO findings this run: an empty
-  //    result is the model saying "nothing new to add" (the prompt tells it to
-  //    return {"findings":[]} in that case), NOT "every prior finding is fixed".
-  //    Without this guard an empty run would mark every open own-thread stale and
-  //    resolve it even though the flagged code was never touched.
+  // 4) Convergence (DIFF-EVIDENCE resolution): resolve our OWN open threads whose
+  //    flagged code is no longer in the diff. The DIFF — not the model's findings
+  //    list — is ground truth, so this is uniform whether the model returned many
+  //    findings or zero: an all-clean PR yields {"findings":[]}, every fixed
+  //    line leaves the diff, and the threads resolve (no empty-run special case).
+  //    A still-present issue the model merely MISSED keeps its code in the diff,
+  //    so its thread stays open (never a false-resolve on a recall miss).
+  //    Suppressed only on `reopened` (prior threads may be from another base).
   if (env.eventAction === 'reopened') {
     log('post: reopened event — skipping thread resolution.');
-  } else if (findings.length === 0) {
-    log('post: model returned no findings — skipping thread resolution (no fix signal).');
   } else {
-    const stale = ownThreads.filter((t) => !t.isResolved && t.hash && !currentHashes.has(t.hash));
+    const stale = ownThreads.filter((t) => shouldResolveThread(t, diffText, currentHashes, findings.length));
     for (const t of stale) {
       // eslint-disable-next-line no-await-in-loop -- small N, ordered for clear logs
       await resolveThread(t.threadId);
     }
-    if (stale.length) log(`post: resolved ${stale.length} own thread(s) whose finding is fixed.`);
+    if (stale.length) log(`post: resolved ${stale.length} own thread(s) whose flagged code is gone.`);
   }
 
   // 5) Post the new findings as one inline review.
@@ -1153,7 +1260,7 @@ const runPost = async () => {
 // =============================================================================
 
 const main = async () => {
-  const phase = process.argv[2];
+  const phase = argv[2];
   if (!['pre', 'post'].includes(phase)) failSoft(`usage: review-orchestrator.mjs <pre|post> (got "${phase}")`);
   if (!env.token) failSoft('missing GITHUB_TOKEN/GH_TOKEN');
   if (!owner || !repo) failSoft(`missing/invalid GITHUB_REPOSITORY: "${env.repoFull}"`);
@@ -1168,4 +1275,17 @@ const main = async () => {
   }
 };
 
-main();
+// Run only when executed directly (node review-orchestrator.mjs <pre|post>),
+// not when imported by a test harness that exercises the pure helpers below.
+if (argv[1] && fileURLToPath(import.meta.url) === argv[1]) main();
+
+// Pure helpers exported for unit testing (no network/fs). The convergence logic
+// lives here — keep it covered.
+export {
+  parseUnifiedDiff,
+  findingHash,
+  classifyFindings,
+  livenessStamp,
+  livenessKeyFromBody,
+  shouldResolveThread,
+};

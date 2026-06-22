@@ -8,6 +8,7 @@ import { type PropsWithChildren, useEffect, useMemo } from 'react'
 import { SavePartialAssistantMessagesHandler } from './save-partial-assistant-messages-handler'
 import { useParams } from 'react-router'
 import { v7 as uuidv7 } from 'uuid'
+import { useContentView } from '@/content-view/context'
 import { useHandleIntegrationCompletion } from '@/hooks/use-handle-integration-completion'
 
 type ChatHydrateHandlerProps = PropsWithChildren<{
@@ -36,10 +37,19 @@ const ChatHydrateHandler = ({ children, id, isNew }: ChatHydrateHandlerProps) =>
 
 export default function ChatDetailPage() {
   const params = useParams()
+  const { close } = useContentView()
 
   const isNew = params.chatThreadId === 'new'
 
   const id = useMemo(() => (isNew ? uuidv7() : params.chatThreadId || null), [params.chatThreadId])
+
+  // Close any open content view (citations, document viewer, link preview, tool
+  // output) when the active chat changes — its content is scoped to the chat the
+  // user just left, so carrying it into a different chat shows stale sources.
+  useEffect(() => {
+    close()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [id])
 
   if (!id) {
     return null

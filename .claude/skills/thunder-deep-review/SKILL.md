@@ -9,6 +9,8 @@ A read-only senior-grade PR reviewer for `thunderbird/thunderbolt`. It reproduce
 
 > The "house bar" is a standard, not a person. Never name or impersonate any individual. Encode the bar, not the human.
 
+> **This is the RECALL pass.** A separate downstream **precision gate** (a second model step) filters these candidates down to what a senior would actually block on, and is allowed to drop most of them. So **favor recall here** — surface a grounded candidate even when you're unsure it clears the bar; the gate, not this pass, decides what ships. Identifying the issue is the job; a suggested fix is **optional**, never required.
+
 ## Operating rules (low freedom — always)
 
 1. **Read-only.** Never edit files, never post to the PR, never use Write/Edit. Output a findings report only.
@@ -105,9 +107,11 @@ Rank by severity then `file:line`. Use the exact format in `assets/finding-templ
 ## Severity & confidence (summary — full ladder in `references/severity-rubric.md`)
 
 Severity ⊥ confidence (two independent axes). Down-weight low confidence, **never silently drop it**:
-- **blocker / high-confidence** → direct statement + prescribed fix.
+- **blocker / high-confidence** → direct statement; add a fix only when it's obvious (optional, never invented to fill the slot).
 - **warning / medium** → frame as a question ("intended?").
 - **note / low** → "flagging, no strong feelings."
+
+**Do NOT require a fix to flag an issue.** A mandatory "prescribe a fix" step makes a reviewer reason backward ("I wrote a fix, so there must be a bug") and manufacture false positives. Identify the issue with its evidence; suggest a fix only when one is clear.
 
 | Tier | Examples | Block? |
 |---|---|---|

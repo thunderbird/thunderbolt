@@ -78,6 +78,13 @@ const EXPECTED_BOTS = [
 // hidden marker (SELF_COMMENT_MARKER) as the robust secondary signal.
 const SELF_COMMENT_MARKER = '<!-- thunder-deep-review-finding -->';
 
+// Hidden marker on the affirmative "Reviewed — no issues found" review body. It
+// lets the next run recognize that our LATEST own review is already the
+// no-issues note and skip re-posting an identical one every push (so a clean PR
+// converges to a single affirmative review, not a treadmill of duplicates). It
+// also carries SELF_COMMENT_MARKER so isOwnAuthor still recognizes it as ours.
+const NO_ISSUES_MARKER = '<!-- thunder-deep-review-no-issues -->';
+
 // Severity enum the model output is validated against. Anything else is dropped.
 const SEVERITY_ENUM = ['blocking', 'convention', 'nit'];
 
@@ -860,14 +867,33 @@ const isSelfLogin = (login) => login.replace(/\[bot\]$/, '') === env.selfLogin.r
 const isOwnAuthor = (login, body) => isSelfLogin(login) || (body ?? '').includes(SELF_COMMENT_MARKER);
 
 /**
- * Fetch the finding-hashes we already SUMMARIZED in our own prior review bodies.
- * Summary/overflow findings never become review THREADS (they're body bullets,
- * not inline comments), so reviewThreads can't dedup them — without this each
- * push reposts the same "Additional notes". We stamp every summary bullet with a
- * hidden hash (see buildReviewPayload) and read them back here. Best-effort: a
- * GraphQL failure just means we may repost a summary line, never a crash.
+ * Does the LATEST of our own reviews say "no issues"? `bodies` is the list of
+ * our own review bodies in chronological order (oldest→newest, the GraphQL
+ * `reviews` connection default). We avoid re-posting an identical affirmative
+ * note only when the most recent own review is ALREADY the no-issues note —
+ * NOT merely when any prior one was (a real finding review since then means the
+ * PR is no longer in a clean-and-acknowledged state, so a fresh "no issues" is
+ * warranted once it's clean again). No own reviews yet => false (post the first
+ * affirmative note). Pure for unit testing.
  */
-const fetchOwnSummarizedHashes = async () => {
+const latestOwnReviewIsNoIssues = (bodies) => {
+  const last = bodies.at(-1);
+  return last != null && last.includes(NO_ISSUES_MARKER);
+};
+
+/**
+ * Fetch our own prior REVIEW bodies in chronological order. Two consumers derive
+ * from this without a second round-trip:
+ *   - the set of finding-hashes we already SUMMARIZED (summary/overflow findings
+ *     never become review THREADS, so reviewThreads can't dedup them — without
+ *     this each push reposts the same "Additional notes"; we stamp every summary
+ *     bullet with a hidden hash in buildReviewPayload and read them back here), and
+ *   - whether our LATEST own review is the affirmative "no issues" note (so a
+ *     clean PR doesn't re-post an identical note every push).
+ * Best-effort: a GraphQL failure yields an empty list (we may repost a summary
+ * line or the affirmative note, never a crash).
+ */
+const fetchOwnReviewBodies = async () => {
   const query = `
     query($owner:String!, $repo:String!, $pr:Int!, $cursor:String) {
       repository(owner:$owner, name:$repo) {
@@ -880,23 +906,30 @@ const fetchOwnSummarizedHashes = async () => {
       }
     }`;
 
-  const out = new Set();
+  const bodies = [];
   let cursor = null;
   for (let page = 0; page < 10; page += 1) {
     // eslint-disable-next-line no-await-in-loop -- sequential cursor pagination
     const r = await graphqlFetch(query, { owner, repo, pr: Number(env.prNumber), cursor });
     if (!r.ok || !r.data) {
-      log('own-reviews: GraphQL fetch failed (summary dedup best-effort):', r.errors?.[0]?.message ?? '');
-      return out;
+      log('own-reviews: GraphQL fetch failed (summary dedup + no-issues best-effort):', r.errors?.[0]?.message ?? '');
+      return bodies;
     }
     const conn = r.data.repository?.pullRequest?.reviews;
     for (const node of conn?.nodes ?? []) {
       if (!isOwnAuthor(node.author?.login ?? '', node.body)) continue;
-      for (const h of hashesFromBody(node.body)) out.add(h);
+      bodies.push(node.body ?? '');
     }
     if (!conn?.pageInfo?.hasNextPage) break;
     cursor = conn.pageInfo.endCursor;
   }
+  return bodies;
+};
+
+/** Finding-hashes we already SUMMARIZED across our own prior review bodies. */
+const summarizedHashesFromBodies = (bodies) => {
+  const out = new Set();
+  for (const body of bodies) for (const h of hashesFromBody(body)) out.add(h);
   return out;
 };
 
@@ -1027,6 +1060,21 @@ const SEVERITY_LABEL = { blocking: '🚫 Blocking', convention: '📐 Convention
 // dedup-guard match the heading we actually emit.
 const SUMMARY_HEADING = `### Additional notes (couldn't anchor to a diff line)`;
 
+/**
+ * The shared review-body header used by BOTH the findings review and the
+ * affirmative no-issues note: the title, a `tagline` line that differs per
+ * review type, the advisory disclaimer, and the `<sub>` run-metadata footer
+ * (head sha · mode · deferred count). Single source so the metadata format can
+ * never drift between the two builders.
+ */
+const reviewHeader = ({ tagline, deepInfo, skipCount }) =>
+  `## 🔭 thunder-deep-review (advisory)\n` +
+  `${tagline} ` +
+  `Never approves, never requests changes, never gates merge.\n` +
+  `<sub>head: \`${env.headSha.slice(0, 12)}\` · mode: ${deepInfo.deepMode ? 'deep' : 'single'}` +
+  `${deepInfo.boundedMode ? ' (bounded: diff exceeded file cap)' : ''} · ` +
+  `deferred ${skipCount} item(s) already reported by other bots (best-effort dedup)</sub>\n`;
+
 /** Render one finding into an inline-comment markdown body (with hidden hash). */
 const renderCommentBody = (f) => {
   // Rule/invariant ids (f.rule) are INTERNAL grounding only — used for the
@@ -1095,23 +1143,36 @@ const buildReviewPayload = ({ toPost, diffIndex, deepInfo, skipCount }) => {
     const loc = f.file ? `\`${f.file}${f.line ? `:${f.line}` : ''}\`` : '';
     // Trailing hidden hash so the NEXT run can see this summary finding was
     // already reported (summary findings have no thread, so reviewThreads can't
-    // dedup them — fetchOwnSummarizedHashes reads these markers back).
+    // dedup them — summarizedHashesFromBodies reads these markers back).
     summaryLines.push(`- **${SEVERITY_LABEL[f.severity]}** ${loc} — ${f.title} <!-- thunder-finding-hash:${f.hash} -->`);
   }
 
-  const header =
-    `## 🔭 thunder-deep-review (advisory)\n` +
-    `Complements the other bots — surfaces only what they did not flag. ` +
-    `Never approves, never requests changes, never gates merge.\n` +
-    `<sub>head: \`${env.headSha.slice(0, 12)}\` · mode: ${deepInfo.deepMode ? 'deep' : 'single'}` +
-    `${deepInfo.boundedMode ? ' (bounded: diff exceeded file cap)' : ''} · ` +
-    `deferred ${skipCount} item(s) already reported by other bots (best-effort dedup)</sub>\n`;
+  const header = reviewHeader({
+    tagline: 'Complements the other bots — surfaces only what they did not flag.',
+    deepInfo,
+    skipCount,
+  });
 
   const summaryBlock =
     summaryLines.length === 0 ? '' : `\n${SUMMARY_HEADING}\n${summaryLines.join('\n')}\n`;
 
   const body = `${header}${summaryBlock}`;
   return { event: 'COMMENT', commit_id: env.headSha, body, comments };
+};
+
+/**
+ * Build the affirmative "Reviewed — no issues found" review payload (Korbit-
+ * style), posted when the precision gate returned a genuinely empty result so
+ * silence reads as a completed review rather than a broken bot. event=COMMENT
+ * with zero inline comments. It carries BOTH the SELF_COMMENT_MARKER (so the
+ * ownership recognition in isOwnAuthor treats it identically to a findings
+ * comment, surviving any login mismatch) and the NO_ISSUES_MARKER (so the next
+ * run recognizes this as the latest state and won't re-post an identical note).
+ */
+const buildNoIssuesPayload = ({ deepInfo, skipCount }) => {
+  const header = reviewHeader({ tagline: 'Reviewed the diff — no issues to report. ✅', deepInfo, skipCount });
+  const body = `${header}\n${SELF_COMMENT_MARKER}${NO_ISSUES_MARKER}`;
+  return { event: 'COMMENT', commit_id: env.headSha, body, comments: [] };
 };
 
 /** POST the review. event=COMMENT only — NEVER approve/request-changes. */
@@ -1140,7 +1201,7 @@ const postReview = async (payload) => {
     const demoted = payload.comments.map((c) => {
       const lineRef = c.line ? `:${c.line}` : '';
       // Carry the hidden finding-hash from the inline body onto the demoted
-      // bullet so the next run's summary-dedup (fetchOwnSummarizedHashes) sees
+      // bullet so the next run's summary-dedup (summarizedHashesFromBodies) sees
       // it and does not repost — otherwise this fallback path reintroduces the
       // "summary findings never dedupe" bug it is rescuing.
       const hash = hashFromOwnBody(c.body);
@@ -1163,6 +1224,57 @@ const postReview = async (payload) => {
     return;
   }
   throw new Error(`create review failed: ${r.status} ${r.body ?? ''}`);
+};
+
+/**
+ * POST the affirmative no-issues review. event=COMMENT, zero comments — bypasses
+ * postReview's "nothing to say → skip" guard because an INTENTIONAL no-issues
+ * note is exactly the content we want to leave when the gate cleared the diff.
+ */
+const postNoIssuesReview = async (payload) => {
+  const r = await githubFetch(apiUrl(`/pulls/${env.prNumber}/reviews`), {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  });
+  if (!r.ok) throw new Error(`create no-issues review failed: ${r.status} ${r.body ?? ''}`);
+  log('post: gate returned no findings — posted affirmative "no issues found" review.');
+};
+
+/**
+ * Dedup the classified findings down to the subset worth POSTING this run: drop
+ * any whose hash is already an OPEN own-thread, was human-resolved (respect the
+ * decision), or was already summarized in a prior review body. Pure so the
+ * gate-keeps-subset path is unit-testable end to end. The gate runs FIRST
+ * (precision), so `findings` is already the kept subset; this is the convergence
+ * dedup layered on top.
+ */
+const selectFindingsToPost = (findings, { openHashes, humanResolvedHashes, summarizedHashes }) =>
+  findings.filter(
+    (f) => !openHashes.has(f.hash) && !humanResolvedHashes.has(f.hash) && !summarizedHashes.has(f.hash),
+  );
+
+/**
+ * Decide the terminal action for the post phase, given the gate's kept findings,
+ * prior own-review bodies, whether any of our threads stay open, and the event.
+ * Pure (no I/O) so both the gate-empty (affirmative no-issues) and
+ * gate-keeps-subset (post inline) branches are unit-testable. Returns one of:
+ *   - { action: 'no-issues' }            → post the affirmative note
+ *   - { action: 'skip', reason }         → post nothing (already converged)
+ *   - { action: 'post-findings' }        → post `toPost` as an inline review
+ * The no-issues note is suppressed when a prior thread is still OPEN (the PR
+ * isn't actually clean — posting "no issues" would contradict that thread),
+ * when the latest own review is ALREADY that note, or on `reopened`.
+ * runPost calls this (rather than inlining the branch) so logic and tests share
+ * one source and can't drift.
+ */
+const decideTerminalAction = ({ findingCount, eventAction, ownReviewBodies, openThreadsRemain }) => {
+  if (findingCount === 0) {
+    if (eventAction === 'reopened') return { action: 'skip', reason: 'reopened-no-findings' };
+    if (openThreadsRemain) return { action: 'skip', reason: 'open-threads-remain' };
+    if (latestOwnReviewIsNoIssues(ownReviewBodies)) return { action: 'skip', reason: 'already-no-issues' };
+    return { action: 'no-issues' };
+  }
+  return { action: 'post-findings' };
 };
 
 // =============================================================================
@@ -1209,9 +1321,12 @@ const runPost = async () => {
   const currentHashes = new Set(findings.map((f) => f.hash));
 
   // 2) Fetch our own prior state: open inline THREADS (hash + resolution) and
-  //    the hashes we already SUMMARIZED in prior review bodies. Summary findings
-  //    have no thread, so without the latter each push reposts the same notes.
-  const [ownThreads, summarizedHashes] = await Promise.all([fetchOwnThreads(), fetchOwnSummarizedHashes()]);
+  //    our own prior review BODIES — the latter gives us both the hashes we
+  //    already SUMMARIZED (summary findings have no thread, so without this each
+  //    push reposts the same notes) and whether our latest review is already the
+  //    affirmative "no issues" note (so a clean PR doesn't re-post it every push).
+  const [ownThreads, ownReviewBodies] = await Promise.all([fetchOwnThreads(), fetchOwnReviewBodies()]);
+  const summarizedHashes = summarizedHashesFromBodies(ownReviewBodies);
   const openHashes = new Set(ownThreads.filter((t) => !t.isResolved && t.hash).map((t) => t.hash));
   // Threads a HUMAN resolved (decided the finding is intentional). We must NOT
   // re-post these even though the underlying code is unchanged, or the bot would
@@ -1227,9 +1342,7 @@ const runPost = async () => {
   //    human-resolved (respect the human's decision), and — for summary-placement
   //    findings, which have no thread — not already listed in a prior review's
   //    "Additional notes" body.
-  const toPost = findings.filter(
-    (f) => !openHashes.has(f.hash) && !humanResolvedHashes.has(f.hash) && !summarizedHashes.has(f.hash),
-  );
+  const toPost = selectFindingsToPost(findings, { openHashes, humanResolvedHashes, summarizedHashes });
 
   // 4) Convergence (DIFF-EVIDENCE resolution): resolve our OWN open threads whose
   //    flagged code is no longer in the diff. The DIFF — not the model's findings
@@ -1239,6 +1352,7 @@ const runPost = async () => {
   //    A still-present issue the model merely MISSED keeps its code in the diff,
   //    so its thread stays open (never a false-resolve on a recall miss).
   //    Suppressed only on `reopened` (prior threads may be from another base).
+  const resolvedThreadIds = new Set();
   if (env.eventAction === 'reopened') {
     log('post: reopened event — skipping thread resolution.');
   } else {
@@ -1246,11 +1360,46 @@ const runPost = async () => {
     for (const t of stale) {
       // eslint-disable-next-line no-await-in-loop -- small N, ordered for clear logs
       await resolveThread(t.threadId);
+      resolvedThreadIds.add(t.threadId);
     }
     if (stale.length) log(`post: resolved ${stale.length} own thread(s) whose flagged code is gone.`);
   }
 
-  // 5) Post the new findings as one inline review.
+  // Do any of OUR threads remain open after this run's resolution? A still-open
+  // thread is a prior finding whose flagged code is still in the diff — a real
+  // open issue. We must NOT post a "no issues found" note while one stands, or
+  // the affirmative note would contradict an open thread on the same PR.
+  const openThreadsRemain = ownThreads.some(
+    (t) => !t.isResolved && !resolvedThreadIds.has(t.threadId),
+  );
+
+  // 5) Terminal action (computed by decideTerminalAction so logic ⇄ tests can't drift):
+  //    - 'no-issues'     : gate cleared the diff AND no prior thread stays open →
+  //                        post a Korbit-style "no issues found" note so silence
+  //                        reads as a completed review. Threads for now-fixed code
+  //                        were already resolved in step 4. Suppressed when the
+  //                        latest own review is ALREADY that note (a clean PR
+  //                        converges to a single affirmative review), when a prior
+  //                        thread is still open (the PR isn't actually clean), or
+  //                        on `reopened` (ambiguous vs the prior base).
+  //    - 'skip'          : already converged → post nothing.
+  //    - 'post-findings' : post the NEW findings as one inline review (itself a
+  //                        no-op inside postReview when dedup left nothing new).
+  const decision = decideTerminalAction({
+    findingCount: findings.length,
+    eventAction: env.eventAction,
+    ownReviewBodies,
+    openThreadsRemain,
+  });
+  if (decision.action === 'no-issues') {
+    await postNoIssuesReview(buildNoIssuesPayload({ deepInfo, skipCount }));
+    return;
+  }
+  if (decision.action === 'skip') {
+    log(`post: gate returned no findings — skipping (${decision.reason}).`);
+    return;
+  }
+
   const payload = buildReviewPayload({ toPost, diffIndex, deepInfo, skipCount });
   await postReview(payload);
 };
@@ -1279,8 +1428,8 @@ const main = async () => {
 // not when imported by a test harness that exercises the pure helpers below.
 if (argv[1] && fileURLToPath(import.meta.url) === argv[1]) main();
 
-// Pure helpers exported for unit testing (no network/fs). The convergence logic
-// lives here — keep it covered.
+// Pure helpers + constants exported for unit testing (no network/fs). The
+// convergence + precision-gate terminal logic lives here — keep it covered.
 export {
   parseUnifiedDiff,
   findingHash,
@@ -1288,4 +1437,12 @@ export {
   livenessStamp,
   livenessKeyFromBody,
   shouldResolveThread,
+  selectFindingsToPost,
+  decideTerminalAction,
+  latestOwnReviewIsNoIssues,
+  summarizedHashesFromBodies,
+  buildReviewPayload,
+  buildNoIssuesPayload,
+  NO_ISSUES_MARKER,
+  SUMMARY_HEADING,
 };

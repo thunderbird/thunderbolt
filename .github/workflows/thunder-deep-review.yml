@@ -351,6 +351,21 @@ jobs:
       # clean result, so gate-persist exits non-zero there instead of faking one — a
       # broken recall never launders into a green "no issues".
       # ─────────────────────────────────────────────────────────────────────
+
+      # STEP 1's claude-code-action restores the committed dangling `.claude`
+      # symlinks (via its own internal git checkout), so by now they're back and
+      # the gate's SDK scan would crash on them again (`ENOENT ... statx`). Re-run
+      # the same prune right before STEP 2. Same `if:` as the gate so it only runs
+      # when the gate does.
+      - name: Prune dangling .claude symlinks (before gate)
+        if: >-
+          steps.persist_candidates.outputs.count != '' &&
+          steps.persist_candidates.outputs.count != '0'
+        run: |
+          find .claude -type l | while read -r l; do
+            [ -e "$l" ] || { echo "pruning dangling symlink: $l"; rm -f "$l"; }
+          done
+
       - name: thunder-deep-review (step 2 — precision gate)
         id: gate
         if: >-

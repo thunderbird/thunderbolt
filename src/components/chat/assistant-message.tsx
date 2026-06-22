@@ -161,7 +161,9 @@ export const AssistantMessage = memo(
 
     const hasWidgets = useMemo(
       () =>
-        message.parts.some((part) => part.type === 'text' && /<widget:(weather-forecast|link-preview)/.test(part.text)),
+        message.parts.some(
+          (part) => part.type === 'text' && /<widget:(weather-forecast|link-preview|map)/.test(part.text),
+        ),
       [message.parts],
     )
 

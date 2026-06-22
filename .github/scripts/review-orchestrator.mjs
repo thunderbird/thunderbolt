@@ -711,7 +711,7 @@ const MIN_DISTINCTIVE_CHARS = 12;
 const distinctiveness = (text) =>
   (text ?? '')
     .replace(/\b(?:return|else|const|let|var|await|async|function|if|for|while|case|break|continue)\b/g, '')
-    .replace(/[\s{}()[\];,.:=>&|?!<>+\-*/]/g, '')
+    .replace(/[\s{}()[\];,.:=>&|?!<+\-*/]/g, '')
     .length;
 
 /**

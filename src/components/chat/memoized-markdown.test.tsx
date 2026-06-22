@@ -50,4 +50,24 @@ describe('MemoizedMarkdown — LaTeX', () => {
     expect(container.querySelector('.katex')).toBeNull()
     expect(container.textContent).toContain('$5 to enter.')
   })
+
+  it('renders LaTeX `\\(…\\)` inline delimiters as KaTeX', () => {
+    const { container } = renderMarkdown('The variable \\(a^3\\) matters.')
+    expect(container.querySelector('.katex')).not.toBeNull()
+    expect(container.textContent).not.toContain('\\(')
+  })
+
+  it('renders LaTeX `\\[…\\]` display delimiters as a KaTeX display block', () => {
+    const { container } = renderMarkdown('\\[ x = \\frac{-b \\pm \\sqrt{b^2 - 4ac}}{2a} \\]')
+    expect(container.querySelector('.katex-display')).not.toBeNull()
+    expect(container.textContent).not.toContain('\\[')
+  })
+
+  it('renders a multi-line `\\[…\\]` display block', () => {
+    const content = 'Solve:\n\n\\[\nx = \\frac{-b \\pm \\sqrt{b^2 - 4ac}}{2a}\n\\]\n\nand done.'
+    const { container } = renderMarkdown(content)
+    expect(container.querySelector('.katex-display')).not.toBeNull()
+    expect(container.textContent).toContain('Solve:')
+    expect(container.textContent).toContain('and done.')
+  })
 })

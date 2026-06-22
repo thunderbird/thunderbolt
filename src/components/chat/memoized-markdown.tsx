@@ -22,6 +22,15 @@ import 'katex/dist/katex.min.css'
 const remarkPlugins = [remarkGfm, remarkMath]
 const rehypePlugins = [rehypeKatex]
 
+// Models often emit LaTeX's native delimiters — `\[…\]` for display, `\(…\)`
+// for inline — instead of the `$$…$$` / `$…$` that remark-math understands.
+// Rewrite the paired delimiters into their `$`-equivalents so math renders no
+// matter which convention the model picked. Matching *paired* delimiters (not a
+// lone `\[`/`\(`) avoids clobbering markdown-escaped brackets/parens, and the
+// display pattern spans lines so multi-line equations survive.
+const displayMathDelimiters = /\\\[([\s\S]+?)\\\]/g
+const inlineMathDelimiters = /\\\((.+?)\\\)/g
+
 // remark-math only renders `$$…$$` as centered *display* math when the fences
 // sit on their own lines; a single-line `$$…$$` falls back to inline. Models
 // routinely emit standalone equations on a single line, so rewrite any line
@@ -32,7 +41,10 @@ const rehypePlugins = [rehypeKatex]
 const displayMathLine = /^([ \t]*)\$\$[ \t]*(.+?)[ \t]*\$\$[ \t]*$/gm
 
 const normalizeDisplayMath = (markdown: string): string =>
-  markdown.replace(displayMathLine, (_match, indent: string, body: string) => `${indent}$$\n${body}\n$$`)
+  markdown
+    .replace(displayMathDelimiters, (_match, body: string) => `$$\n${body.trim()}\n$$`)
+    .replace(inlineMathDelimiters, (_match, body: string) => `$${body.trim()}$`)
+    .replace(displayMathLine, (_match, indent: string, body: string) => `${indent}$$\n${body}\n$$`)
 
 const parseMarkdownIntoBlocks = (markdown: string): string[] => {
   const tokens = marked.lexer(normalizeDisplayMath(markdown))

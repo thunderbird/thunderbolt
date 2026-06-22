@@ -153,7 +153,6 @@ export const mcpServersTable = sqliteTable(
     deletedAt: text('deleted_at'),
     userId: text('user_id'),
     workspaceId: text('workspace_id'),
-    scope: text('scope', { enum: ['workspace', 'user'] }).default('workspace'),
   },
   (table) => [
     index('idx_mcp_servers_active')

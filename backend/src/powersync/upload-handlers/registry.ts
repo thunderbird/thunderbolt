@@ -49,14 +49,6 @@ export const handlers: Record<PowerSyncTableName, UploadHandler> = {
     removePermissionKey: 'remove_models',
     softDeleteColumn: 'deleted_at',
   }),
-  mcp_servers: createWorkspaceScopedHandler({
-    tableName: 'mcp_servers',
-    userPrivate: false,
-    scopeAware: true,
-    addPermissionKey: 'add_mcp_servers',
-    removePermissionKey: 'remove_mcp_servers',
-    softDeleteColumn: 'deleted_at',
-  }),
   prompts: createWorkspaceScopedHandler({ tableName: 'prompts', userPrivate: false, scopeAware: true }),
   skills: createWorkspaceScopedHandler({
     tableName: 'skills',

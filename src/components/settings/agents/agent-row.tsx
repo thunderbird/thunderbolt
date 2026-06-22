@@ -3,6 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { Card, CardHeader } from '@/components/ui/card'
+import { ScopeBadge } from '@/components/scope-badge'
 import { Switch } from '@/components/ui/switch'
 import { Button } from '@/components/ui/button'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
@@ -91,6 +92,10 @@ type AgentRowProps = {
   canEditAgents?: boolean
   /** Defaults to true. Mirrors the workspace `remove_agents` permission. */
   canRemoveAgents?: boolean
+  /** When true, the scope badge (Private / Shared) shows on `remote-acp` rows.
+   *  Resolved once at the page level via `useScopePickerEnabled()` and threaded
+   *  down — keeps the row purely visual + provider-free for tests. */
+  scopePickerEnabled?: boolean
   onToggle: (agent: Agent, enabled: boolean) => void
   onEdit: (agent: Agent) => void
   onDelete: (agent: Agent) => void
@@ -101,6 +106,7 @@ export const AgentRow = ({
   currentUserId,
   canEditAgents = true,
   canRemoveAgents = true,
+  scopePickerEnabled = false,
   onToggle,
   onEdit,
   onDelete,
@@ -137,6 +143,9 @@ export const AgentRow = ({
               </div>
               {agent.description && (
                 <p className="text-[length:var(--font-size-sm)] text-muted-foreground truncate">{agent.description}</p>
+              )}
+              {agent.type === 'remote-acp' && (
+                <ScopeBadge scope={agent.scope} show={scopePickerEnabled} className="mt-1" />
               )}
             </div>
           </div>

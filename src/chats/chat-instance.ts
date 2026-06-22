@@ -130,7 +130,7 @@ export const createAgentRoutingFetch = (
       return []
     }
     const instructionBySlug = new Map<string, string>()
-    for (const skill of await getAllSkills(getDb())) {
+    for (const skill of await getAllSkills(getDb(), workspaceId)) {
       if (skill.enabled === 1 && skill.name && skill.instruction) {
         instructionBySlug.set(skill.name, skill.instruction)
       }

@@ -36,6 +36,7 @@ import { Switch } from '@/components/ui/switch'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 import { useDatabase } from '@/contexts'
 import { ScopePicker } from '@/components/scope-picker'
+import { ScopeBadge } from '@/components/scope-badge'
 import { useScopePickerEnabled } from '@/hooks/use-scope-picker-enabled'
 import { useTrustDomainRegistry } from '@/stores/trust-domain-registry'
 import { useActiveWorkspaceId } from '@/lib/active-workspace'
@@ -1251,8 +1252,8 @@ export default function ModelsPage({ useWorkspacePermission = useWorkspacePermis
             <Card key={model.id} className="border border-border">
               <CardHeader className="py-0">
                 <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-3 min-w-0 flex-1">
-                    <div className="flex items-center justify-center bg-primary text-primary-foreground size-8 rounded-md font-medium flex-shrink-0">
+                  <div className="flex items-start gap-3 min-w-0 flex-1">
+                    <div className="flex items-center justify-center bg-primary text-primary-foreground size-8 rounded-md font-medium flex-shrink-0 mt-1.5">
                       {getModelInitial(model)}
                     </div>
                     <div className="min-w-0 flex-1">
@@ -1294,6 +1295,7 @@ export default function ModelsPage({ useWorkspacePermission = useWorkspacePermis
                       <p className="text-sm text-muted-foreground">
                         {getProviderDisplay(model.provider)} - {model.model}
                       </p>
+                      <ScopeBadge scope={model.scope} show={scopePickerEnabled} className="mt-1" />
                     </div>
                   </div>
                   <div className="flex items-center gap-3 flex-shrink-0">

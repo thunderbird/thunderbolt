@@ -22,7 +22,7 @@ export type WorkspaceScopedConfig = {
    * When true, the row's `user_id` column must equal the caller. Applied to
    * chat_threads / chat_messages / tasks per spec §3.7: those rows are user-private
    * within a shared workspace. When false (models, modes, prompts, skills, triggers,
-   * mcp_servers, model_profiles) any workspace member may write the row.
+   * model_profiles) any workspace member may write the row.
    */
   userPrivate: boolean
   /** Columns the client may not set; stripped from PUT/PATCH payloads. */
@@ -46,8 +46,8 @@ export type WorkspaceScopedConfig = {
    * instead of `addPermissionKey`. PATCHes that don't touch the column — or
    * that set it back to null (restore) — continue to gate as adds.
    *
-   * Required for the four resource tables (agents, skills, models,
-   * mcp_servers) whose FE DAL soft-deletes via UPDATE rather than DELETE.
+   * Required for the resource tables (agents, skills, models) whose FE DAL
+   * soft-deletes via UPDATE rather than DELETE.
    */
   softDeleteColumn?: string
   /**

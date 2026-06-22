@@ -361,7 +361,7 @@ describe('createAgentRoutingFetch', () => {
     ])
     hydrateSessionWith('t-skill', remoteAgent)
 
-    const customFetch = createAgentRoutingFetch('t-skill', saveMessages, httpClient, getProxyFetch, {
+    const customFetch = createAgentRoutingFetch('t-skill', wsId, saveMessages, httpClient, getProxyFetch, {
       connectToAgent: connectToAgent as never,
       getAllSkills: getAllSkills as never,
       getDb: (() => ({})) as never,
@@ -381,7 +381,7 @@ describe('createAgentRoutingFetch', () => {
     const getAllSkills = mock(async () => [])
     hydrateSessionWith('t-builtin-skill', builtInAgent)
 
-    const customFetch = createAgentRoutingFetch('t-builtin-skill', saveMessages, httpClient, getProxyFetch, {
+    const customFetch = createAgentRoutingFetch('t-builtin-skill', wsId, saveMessages, httpClient, getProxyFetch, {
       connectToAgent: connectToAgent as never,
       getAllSkills: getAllSkills as never,
       getDb: (() => ({})) as never,

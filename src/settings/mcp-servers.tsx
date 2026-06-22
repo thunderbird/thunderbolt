@@ -32,7 +32,6 @@ import {
 import type { McpServerCredentials } from '@/dal/mcp-secrets'
 import { useDatabase } from '@/contexts'
 import { mcpSecretsTable } from '@/db/tables'
-import { useWorkspacePermission as useWorkspacePermission_default } from '@/hooks/use-workspace-permission'
 import { useActiveWorkspaceId } from '@/lib/active-workspace'
 import { useMCP, type MCPClient } from '@/lib/mcp-provider'
 import { type McpServer } from '@/types'
@@ -185,25 +184,12 @@ const testResultPanels: Record<
   },
 }
 
-export default function McpServersPage({
-  deps = {},
-  useWorkspacePermission = useWorkspacePermission_default,
-}: {
-  deps?: McpServersPageDeps
-  /** Test seam — defaults to the real hook. Tests inject a fake to drive the
-   *  gated Add Server / row affordances. */
-  useWorkspacePermission?: typeof useWorkspacePermission_default
-} = {}) {
+export default function McpServersPage({ deps = {} }: { deps?: McpServersPageDeps } = {}) {
   const probeTools = deps.probeMcpServerTools ?? probeMcpServerTools
   const classifyAuth = deps.classifyMcpServerAuth ?? classifyMcpServerAuth
   const db = useDatabase()
   const cloudUrl = useActiveCloudUrl() ?? ''
   const workspaceId = useActiveWorkspaceId()
-  // Workspace `add_mcp_servers` / `remove_mcp_servers` — FE-only advisory gate
-  // (the table is local-only, so there's no BE handler to enforce); matches the
-  // rest of the workspace resources so members don't see Add/Remove affordances.
-  const { isAllowed: canAddMcpServers } = useWorkspacePermission('add_mcp_servers')
-  const { isAllowed: canRemoveMcpServers } = useWorkspacePermission('remove_mcp_servers')
   // Read provider connection state read-only for status display. Sync ownership
   // lives in the single global useMcpSync() in AppContent — running it here too
   // would re-run the reconciliation effect and double-register servers.
@@ -238,6 +224,7 @@ export default function McpServersPage({
     processCallback,
   } = useMcpServerOAuth({
     db,
+    workspaceId,
     buildOAuthFetch,
     reconnectServer,
     clearNavState: () => navigate('.', { replace: true, state: null }),
@@ -612,13 +599,11 @@ export default function McpServersPage({
             resetLocalDialogState()
           }}
         >
-          {canAddMcpServers && (
-            <DialogTrigger asChild>
-              <Button variant="outline" size="icon" className="rounded-lg">
-                <Plus />
-              </Button>
-            </DialogTrigger>
-          )}
+          <DialogTrigger asChild>
+            <Button variant="outline" size="icon" className="rounded-lg">
+              <Plus />
+            </Button>
+          </DialogTrigger>
           <ResponsiveModalContentComposable className="sm:max-w-[500px] max-h-[85vh]">
             <ResponsiveModalHeader>
               <ResponsiveModalTitle>Add MCP Server</ResponsiveModalTitle>
@@ -932,7 +917,6 @@ export default function McpServersPage({
                         <div>
                           <Switch
                             checked={isEnabled}
-                            disabled={!canAddMcpServers}
                             onCheckedChange={(checked) =>
                               toggleServerMutation.mutate({ id: server.id, enabled: checked })
                             }
@@ -948,13 +932,11 @@ export default function McpServersPage({
                       open={deleteConfirmOpen === server.id}
                       onOpenChange={(open) => setDeleteConfirmOpen(open ? server.id : null)}
                     >
-                      {canRemoveMcpServers && (
-                        <PopoverTrigger asChild>
-                          <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
-                            <Trash2 className="h-4 w-4" />
-                          </Button>
-                        </PopoverTrigger>
-                      )}
+                      <PopoverTrigger asChild>
+                        <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      </PopoverTrigger>
                       <PopoverContent className="w-80" side="bottom" align="end">
                         <div className="space-y-3">
                           <div>
@@ -1026,12 +1008,10 @@ export default function McpServersPage({
               <p className="text-sm text-muted-foreground mb-4">
                 Get started by adding your first MCP server connection.
               </p>
-              {canAddMcpServers && (
-                <Button onClick={form.openDialog} variant="outline">
-                  <Plus className="h-4 w-4 mr-2" />
-                  Add Server
-                </Button>
-              )}
+              <Button onClick={form.openDialog} variant="outline">
+                <Plus className="h-4 w-4 mr-2" />
+                Add Server
+              </Button>
             </CardContent>
           </Card>
         )}

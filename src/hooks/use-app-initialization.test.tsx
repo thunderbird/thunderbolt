@@ -165,13 +165,9 @@ describe('useAppInitialization', () => {
 
     const payload = getInitTimingPayload()
     const expectedStepKeys = [
-      'step0_fetch_config_ms',
+      'step0_resolve_trust_domain_ms',
       'step1_create_app_dir_ms',
       'step2_initialize_database_ms',
-      'step2b_db_ready_ms',
-      'step3_wait_for_initial_sync_ms',
-      'step4_reconcile_defaults_ms',
-      'step4b_run_data_migrations_ms',
       'step5_get_settings_ms',
       'step7_initialize_tray_ms',
       'step8_initialize_posthog_ms',

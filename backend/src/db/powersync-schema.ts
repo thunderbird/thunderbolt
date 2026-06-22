@@ -432,9 +432,9 @@ export const devicesTable = powersyncSchema.table(
 
 /**
  * Synced via PowerSync. User-created ACP agents only. System agents are not rows.
- * Workspace-scoped, shared with all members — same shape as `mcp_servers`. The
- * addendum predates this table being added in THU-547, but the conceptual model
- * (external service connection configs) belongs to a workspace, not a single user.
+ * Workspace-scoped, shared with all members. External service connection
+ * configs belong to a workspace, not a single user — the addendum predates
+ * this table being added in THU-547.
  */
 export const agentsTable = powersyncSchema.table(
   'agents',

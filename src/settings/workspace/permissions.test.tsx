@@ -69,8 +69,6 @@ const expectedRows: ReadonlyArray<{ key: string; label: string }> = [
   { key: 'remove_skills', label: 'Remove Skills' },
   { key: 'add_models', label: 'Add Models' },
   { key: 'remove_models', label: 'Remove Models' },
-  { key: 'add_mcp_servers', label: 'Add MCPs' },
-  { key: 'remove_mcp_servers', label: 'Remove MCPs' },
 ]
 
 const renderPage = () => {

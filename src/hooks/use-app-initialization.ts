@@ -14,7 +14,7 @@ import { createAppDir, resetAppDir } from '@/lib/fs'
 import { isSsoMode } from '@/lib/auth-mode'
 import { createAuthenticatedClient } from '@/lib/http'
 import { beginInitRun, getInitTimingPayload, recordInitStep } from '@/lib/init-timing'
-import { getDatabasePath, getDatabaseType, getPlatform } from '@/lib/platform'
+import { getDatabasePath, getDatabaseType, getPlatform, isIndexedDbAvailable } from '@/lib/platform'
 import { initPosthog, trackError, trackEvent } from '@/lib/posthog'
 import { runDataMigrations } from '@/lib/data-migrations'
 import { reconcileDefaults } from '@/lib/reconcile-defaults'
@@ -95,7 +95,18 @@ const executeInitializationSteps = async (httpClient?: HttpClient): Promise<Hand
   const totalStartedAt = performance.now()
   console.info('[init] start')
 
-  // Step 0: Fetch backend config and hydrate store (only on success).
+  // Step 0: Storage pre-flight. IndexedDB is required by both the local
+  // PowerSync VFS (web) and the E2EE key store (all platforms). iOS Lockdown
+  // Mode disables it, which would otherwise hang the app on the loading
+  // spinner — detect this before any other work and surface a friendly screen.
+  const storageAvailable = await time('step0_5_storage_check', () => isIndexedDbAvailable())
+  if (!storageAvailable) {
+    const storageError = createHandleError('STORAGE_UNAVAILABLE', 'Storage (IndexedDB) is unavailable')
+    trackError(storageError, { initialization_step: 'storage_check' })
+    return { success: false, error: storageError }
+  }
+
+  // Step 0b: Fetch backend config and hydrate store (only on success).
   // When fetch fails (offline/error), the store retains its persisted localStorage value.
   // Not awaited here: nothing in this pipeline consumes the config (it is read
   // reactively from the store later), so it overlaps with the steps below and
@@ -254,6 +265,11 @@ export const useAppInitialization = (httpClient?: HttpClient) => {
       } else {
         setInitError(result.error)
       }
+    } catch (error) {
+      // Any unhandled rejection from an unguarded init step (e.g. PowerSync's
+      // deferred storage open) must surface as an error screen rather than
+      // leaving the app stuck on the loading spinner forever.
+      setInitError(createHandleError('UNKNOWN_ERROR', 'Failed to initialize app', error))
     } finally {
       setIsInitializing(false)
     }

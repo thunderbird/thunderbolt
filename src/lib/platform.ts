@@ -166,6 +166,47 @@ export const isOpfsAvailable = async (): Promise<boolean> => {
   }
 }
 
+/**
+ * Checks whether IndexedDB is available and openable.
+ * iOS Lockdown Mode ("Configure Web Browsing") and some private/enterprise
+ * configs leave the `indexedDB` global present but make open() throw or error,
+ * so we attempt an actual open rather than a type check.
+ * @param idb - injectable factory for testing; defaults to the global.
+ */
+export const isIndexedDbAvailable = async (
+  idb: IDBFactory | null | undefined = globalThis.indexedDB,
+): Promise<boolean> => {
+  if (!idb) {
+    return false
+  }
+  const probeName = 'thunderbolt-idb-probe'
+  try {
+    return await new Promise<boolean>((resolve) => {
+      // A probe that never settles would reintroduce the boot hang this check
+      // exists to prevent, so fall back to "unavailable" after a short timeout.
+      const timeout = setTimeout(() => resolve(false), 3000)
+      const settle = (available: boolean) => {
+        clearTimeout(timeout)
+        resolve(available)
+      }
+      const request = idb.open(probeName)
+      // Opening a fresh probe db triggers a version-change upgrade; we only
+      // care that the open succeeds, so the upgrade itself is a no-op.
+      request.onupgradeneeded = () => {}
+      request.onsuccess = () => {
+        request.result.close()
+        idb.deleteDatabase(probeName)
+        settle(true)
+      }
+      request.onerror = () => settle(false)
+      request.onblocked = () => settle(false)
+    })
+  } catch (error) {
+    console.warn('IndexedDB is not available:', error)
+    return false
+  }
+}
+
 // -----------------------------------------------------------------------------
 // Capabilities
 // -----------------------------------------------------------------------------

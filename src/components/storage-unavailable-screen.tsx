@@ -4,9 +4,7 @@
 
 import { AppLogo } from '@/components/app-logo'
 import { Button } from '@/components/ui/button'
-import { getPlatform, getWebOsPlatform, isTauri } from '@/lib/platform'
-
-const isIosPlatform = (): boolean => (isTauri() && getPlatform() === 'ios') || getWebOsPlatform() === 'ios'
+import { isIosPlatform } from '@/lib/platform'
 
 export const StorageUnavailableScreen = () => {
   const lockdownHint = isIosPlatform()

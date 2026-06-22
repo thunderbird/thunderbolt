@@ -65,7 +65,7 @@ type FakeRequest = {
  * close() and deleteDatabase() calls the probe makes on success. The 'never'
  * outcome leaves the request unsettled so the probe's timeout guard can fire.
  */
-const createFakeIdb = (outcome: 'success' | 'error' | 'throw' | 'never') => {
+const createFakeIdb = (outcome: 'success' | 'error' | 'throw' | 'never' | 'blocked') => {
   const calls = { close: 0, deleteDatabase: 0 }
   const idb = {
     open: (): FakeRequest => {
@@ -86,6 +86,8 @@ const createFakeIdb = (outcome: 'success' | 'error' | 'throw' | 'never') => {
         queueMicrotask(() => {
           if (outcome === 'success') {
             request.onsuccess?.()
+          } else if (outcome === 'blocked') {
+            request.onblocked?.()
           } else {
             request.onerror?.()
           }
@@ -113,6 +115,11 @@ describe('isIndexedDbAvailable', () => {
     expect(await isIndexedDbAvailable(idb)).toBe(false)
   })
 
+  it('resolves false when open() is blocked', async () => {
+    const { idb } = createFakeIdb('blocked')
+    expect(await isIndexedDbAvailable(idb)).toBe(false)
+  })
+
   it('resolves false when open() throws synchronously', async () => {
     const warnSpy = spyOn(console, 'warn').mockImplementation(() => {})
     const { idb } = createFakeIdb('throw')
@@ -128,7 +135,7 @@ describe('isIndexedDbAvailable', () => {
   it('resolves false when open() never settles (timeout guard)', async () => {
     const { idb } = createFakeIdb('never')
     const promise = isIndexedDbAvailable(idb)
-    await getClock().tickAsync(3000)
+    await getClock().tickAsync(5000)
     expect(await promise).toBe(false)
   })
 })

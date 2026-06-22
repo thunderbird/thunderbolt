@@ -442,7 +442,11 @@ export default function McpServersPage({ deps = {} }: { deps?: McpServersPageDep
     // new url/type/credentials. useMcpSync would catch row changes eventually
     // via PowerSync, but credential-only edits don't touch the row at all —
     // updateServer's reconnect re-reads `mcp_secrets` so both paths converge.
-    updateServer({ id, name, url: newServerUrl, type: transport, enabled })
+    // forceRedial: the dialog may have just written new credentials. When the
+    // initial connect for this server is still in-flight, that connect read
+    // credentials at its start and would otherwise leave the new value
+    // stranded; the flag chains a reconnect onto it.
+    updateServer({ id, name, url: newServerUrl, type: transport, enabled }, { forceRedial: true })
     form.resetAddDialog()
     resetLocalDialogState()
   }

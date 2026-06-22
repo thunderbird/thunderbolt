@@ -387,6 +387,70 @@ describe('MCPProvider reconnect', () => {
     expect(after?.isConnected).toBe(false)
   })
 
+  // Credential-only edits (same url + transport) saved while the initial
+  // connect is still in-flight must redial after that connect settles —
+  // otherwise the live client keeps using credentials captured at the start
+  // of the original connect, and the new bearer/OAuth value sits unused in
+  // `mcp_secrets`. The settings save path opts in via `forceRedial`; without
+  // it (the useMcpSync row-diff path) the in-flight guard still suppresses
+  // redundant connects.
+  it('redials after the in-flight connect settles when updateServer is called with forceRedial', async () => {
+    const initial = fakeClient()
+    const refreshed = fakeClient()
+    let calls = 0
+    const gate = deferred<void>()
+    const createClient = async (): Promise<MCPClient> => {
+      calls++
+      if (calls === 1) {
+        await gate.promise
+        return initial
+      }
+      return refreshed
+    }
+
+    const { result } = renderProvider(createClient)
+
+    await act(async () => {
+      const pending = result.current.addServer(server)
+      // Same url + type, simulating a credential-only edit during the connect window.
+      const reconciled = result.current.updateServer({ ...server }, { forceRedial: true })
+      gate.resolve()
+      await pending
+      await reconciled
+    })
+
+    expect(calls).toBe(2)
+    expect(initial.closeCount()).toBe(1)
+    const after = result.current.servers.find((s) => s.id === server.id)
+    expect(after?.client).toBe(refreshed as unknown as ProviderMCPClient)
+  })
+
+  // Without `forceRedial`, the in-flight guard keeps its original contract:
+  // a redundant updateServer during the connect window collapses to one
+  // createClient call (useMcpSync's row-diff path relies on this).
+  it('skips redial without forceRedial when url/type match an in-flight connect', async () => {
+    const created: Array<ReturnType<typeof fakeClient>> = []
+    const gate = deferred<void>()
+    const createClient = async (): Promise<MCPClient> => {
+      await gate.promise
+      const c = fakeClient()
+      created.push(c)
+      return c
+    }
+
+    const { result } = renderProvider(createClient)
+
+    await act(async () => {
+      const pending = result.current.addServer(server)
+      // No forceRedial → in-flight guard returns early.
+      result.current.updateServer({ ...server })
+      gate.resolve()
+      await pending
+    })
+
+    expect(created).toHaveLength(1)
+  })
+
   it('is a no-op when updateServer targets an unknown id', () => {
     const createClient = async (): Promise<MCPClient> => fakeClient()
     const { result } = renderProvider(createClient)

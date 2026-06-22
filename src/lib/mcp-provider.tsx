@@ -55,8 +55,13 @@ type MCPContextType = {
    *  the stale client, redials with the new url/type and live credentials).
    *  Credentials (bearer or OAuth) live in `mcp_secrets`; `defaultCreateClient`
    *  re-reads them on every connect, so the redial picks up the new value too.
+   *  Set `forceRedial` when the caller just wrote credentials: the redial then
+   *  also chains onto any in-flight initial connect so the new credentials
+   *  aren't stranded behind a connect that read the old ones at its start.
+   *  Returns a promise that resolves once the reconcile (connect / reconnect /
+   *  chained reconnect) has settled — callers that don't care can ignore it.
    *  No-op when the id isn't tracked yet. */
-  updateServer: (server: MCPServer) => void
+  updateServer: (server: MCPServer, options?: { forceRedial?: boolean }) => Promise<void>
 }
 
 const MCPContext = createContext<MCPContextType | undefined>(undefined)
@@ -270,8 +275,10 @@ export const MCPProvider = ({ children, createClient: injectedCreateClient }: MC
    *  changes don't touch the row, so we always redial here even when fields
    *  are unchanged). The in-flight-with-matching-url guard suppresses a second
    *  createClient when an initial connect for the same target is already
-   *  underway. */
-  const updateServer = (server: MCPServer) => {
+   *  underway — unless `forceRedial` is set, in which case we chain a
+   *  reconnect onto the in-flight connect so a credential update written by
+   *  the caller before this call lands on the live client. */
+  const updateServer = async (server: MCPServer, options?: { forceRedial?: boolean }): Promise<void> => {
     const existing = serversRef.current.find((s) => s.id === server.id)
     if (!existing) {
       return
@@ -294,14 +301,19 @@ export const MCPProvider = ({ children, createClient: injectedCreateClient }: MC
     }
 
     if (!existing.enabled) {
-      void connectServer(server)
+      await connectServer(server)
       return
     }
 
-    if (connectsInFlight.current.has(server.id) && existing.url === server.url && existing.type === server.type) {
+    const inFlightConnect = connectsInFlight.current.get(server.id)
+    if (inFlightConnect && existing.url === server.url && existing.type === server.type) {
+      if (options?.forceRedial) {
+        await inFlightConnect
+        await reconnectServer(server.id)
+      }
       return
     }
-    void reconnectServer(server.id)
+    await reconnectServer(server.id)
   }
 
   /** Open a fresh connection for `serverId`, committing it only if the server is

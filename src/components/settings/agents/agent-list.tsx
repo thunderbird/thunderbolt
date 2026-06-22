@@ -13,6 +13,10 @@ type AgentListProps = {
   /** Defaults to true — when false the Remove affordance is hidden on every row.
    *  Mirrors the workspace `remove_agents` permission; the BE is authoritative. */
   canRemoveAgents?: boolean
+  /** Mount the scope badge on `remote-acp` rows. Resolved once at the page
+   *  level via `useScopePickerEnabled()`; defaults to false so component-level
+   *  tests don't need to wire the provider chain. */
+  scopePickerEnabled?: boolean
   onToggle: (agent: Agent, enabled: boolean) => void
   onEdit: (agent: Agent) => void
   onDelete: (agent: Agent) => void
@@ -26,6 +30,7 @@ export const AgentList = ({
   currentUserId,
   canEditAgents = true,
   canRemoveAgents = true,
+  scopePickerEnabled = false,
   onToggle,
   onEdit,
   onDelete,
@@ -38,6 +43,7 @@ export const AgentList = ({
         currentUserId={currentUserId}
         canEditAgents={canEditAgents}
         canRemoveAgents={canRemoveAgents}
+        scopePickerEnabled={scopePickerEnabled}
         onToggle={onToggle}
         onEdit={onEdit}
         onDelete={onDelete}

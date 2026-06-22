@@ -40,6 +40,7 @@ const customRowToAgent = (row: AgentCustomRow): Agent => ({
   enabled: row.enabled === 1 ? 1 : 0,
   deletedAt: row.deletedAt,
   userId: row.userId,
+  scope: row.scope,
 })
 
 /** Lift a local-only system row into the unified `Agent` shape. */

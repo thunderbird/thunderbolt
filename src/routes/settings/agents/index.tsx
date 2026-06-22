@@ -163,6 +163,7 @@ export default function AgentsSettingsPage({
         currentUserId={currentUserId}
         canEditAgents={canAddAgents}
         canRemoveAgents={canRemoveAgents}
+        scopePickerEnabled={scopePickerEnabled}
         onToggle={handleToggle}
         onEdit={handleEdit}
         onDelete={handleDelete}

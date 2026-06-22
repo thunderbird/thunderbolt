@@ -1,0 +1,23 @@
+-- This Source Code Form is subject to the terms of the Mozilla Public
+-- License, v. 2.0. If a copy of the MPL was not distributed with this
+-- file, You can obtain one at http://mozilla.org/MPL/2.0/.
+
+-- Wipe every user account and all per-user data ahead of the workspaces
+-- foundation migration. The next migration adds `workspace_id text NOT NULL`
+-- (no default) to existing rows, which Postgres rejects on populated tables;
+-- truncating users + CASCADE clears every FK-dependent table in one shot.
+--
+-- TRUNCATE ... CASCADE follows FK declarations regardless of ON DELETE rule,
+-- so this also wipes `powersync.*` resource tables whose FK to `user` is
+-- ON DELETE SET NULL.
+--
+-- Survivors (no FK to user):
+--   - waitlist (email-keyed)
+--   - rate_limits (IP-keyed)
+--   - drizzle.__drizzle_migrations
+--
+-- otp_challenge and verification are email-keyed (no FK), so we truncate them
+-- explicitly alongside `user`.
+--
+-- No-op on a fresh DB.
+TRUNCATE public."user", public.otp_challenge, public.verification RESTART IDENTITY CASCADE;

@@ -5,7 +5,6 @@
 import { user } from '@/db/auth-schema'
 import {
   agentsTable,
-  mcpServersTable,
   modelsTable,
   modesTable,
   skillsTable,
@@ -1891,116 +1890,6 @@ describe('workspace upload handlers', () => {
         data: { enabled: 0 },
       }
       const result = await applyUploadBatch(db, [editOp], ctxFor('mdMember5'))
-      expectPermanentReject(result, 'INSUFFICIENT_PERMISSION')
-    })
-  })
-
-  describe('mcp_servers — workspace permission gating (add_mcp_servers / remove_mcp_servers)', () => {
-    const seedSharedWithAdminAndMember = async (adminId: string, memberId: string): Promise<string> => {
-      const workspaceId = uuidv7()
-      await db.insert(workspacesTable).values({ id: workspaceId, isPersonal: false, name: 'Acme' })
-      await db.insert(workspaceMembershipsTable).values({ id: uuidv7(), workspaceId, userId: adminId, role: 'admin' })
-      await db.insert(workspaceMembershipsTable).values({ id: uuidv7(), workspaceId, userId: memberId, role: 'member' })
-      return workspaceId
-    }
-
-    const setRequiredRole = async (
-      workspaceId: string,
-      key: 'add_mcp_servers' | 'remove_mcp_servers',
-      requiredRole: 'admin' | 'member',
-    ): Promise<void> => {
-      await db.insert(workspacePermissionsTable).values({ id: uuidv7(), workspaceId, permissionKey: key, requiredRole })
-    }
-
-    const mcpPut = (workspaceId: string, id = uuidv7()): UploadOp => ({
-      op: 'PUT',
-      type: 'mcp_servers',
-      id,
-      data: {
-        workspace_id: workspaceId,
-        name: 'Test MCP',
-        type: 'http',
-        url: 'https://example.invalid/mcp',
-        enabled: 1,
-      },
-    })
-
-    it('PUT mcp_server: member rejected when add_mcp_servers required_role = admin (default)', async () => {
-      await insertUser('mcpAdmin1', 'mcpadmin1@test.com')
-      await insertUser('mcpMember1', 'mcpmember1@test.com')
-      const workspaceId = await seedSharedWithAdminAndMember('mcpAdmin1', 'mcpMember1')
-
-      const op = mcpPut(workspaceId)
-      const result = await applyUploadBatch(db, [op], ctxFor('mcpMember1'))
-      expectPermanentReject(result, 'INSUFFICIENT_PERMISSION')
-    })
-
-    it('PUT mcp_server: member allowed when add_mcp_servers required_role = member', async () => {
-      await insertUser('mcpAdmin2', 'mcpadmin2@test.com')
-      await insertUser('mcpMember2', 'mcpmember2@test.com')
-      const workspaceId = await seedSharedWithAdminAndMember('mcpAdmin2', 'mcpMember2')
-      await setRequiredRole(workspaceId, 'add_mcp_servers', 'member')
-
-      const op = mcpPut(workspaceId)
-      const result = await applyUploadBatch(db, [op], ctxFor('mcpMember2'))
-      expect(result.ok).toBe(true)
-      const stored = await db.select().from(mcpServersTable).where(eq(mcpServersTable.id, op.id))
-      expect(stored).toHaveLength(1)
-    })
-
-    it('soft-delete via PATCH(deleted_at) gates on remove_mcp_servers, not add_mcp_servers', async () => {
-      await insertUser('mcpAdmin3', 'mcpadmin3@test.com')
-      await insertUser('mcpMember3', 'mcpmember3@test.com')
-      const workspaceId = await seedSharedWithAdminAndMember('mcpAdmin3', 'mcpMember3')
-      const putOp = mcpPut(workspaceId)
-      expect((await applyUploadBatch(db, [putOp], ctxFor('mcpAdmin3'))).ok).toBe(true)
-      await setRequiredRole(workspaceId, 'add_mcp_servers', 'member')
-
-      const softDeleteOp: UploadOp = {
-        op: 'PATCH',
-        type: 'mcp_servers',
-        id: putOp.id,
-        data: { deleted_at: new Date().toISOString() },
-      }
-      const result = await applyUploadBatch(db, [softDeleteOp], ctxFor('mcpMember3'))
-      expectPermanentReject(result, 'INSUFFICIENT_PERMISSION')
-    })
-
-    it('soft-delete via PATCH(deleted_at) is allowed when remove_mcp_servers = member', async () => {
-      await insertUser('mcpAdmin4', 'mcpadmin4@test.com')
-      await insertUser('mcpMember4', 'mcpmember4@test.com')
-      const workspaceId = await seedSharedWithAdminAndMember('mcpAdmin4', 'mcpMember4')
-      const putOp = mcpPut(workspaceId)
-      expect((await applyUploadBatch(db, [putOp], ctxFor('mcpAdmin4'))).ok).toBe(true)
-      await setRequiredRole(workspaceId, 'remove_mcp_servers', 'member')
-
-      const softDeleteOp: UploadOp = {
-        op: 'PATCH',
-        type: 'mcp_servers',
-        id: putOp.id,
-        data: { deleted_at: new Date().toISOString() },
-      }
-      const result = await applyUploadBatch(db, [softDeleteOp], ctxFor('mcpMember4'))
-      expect(result.ok).toBe(true)
-      const stored = await db.select().from(mcpServersTable).where(eq(mcpServersTable.id, putOp.id))
-      expect(stored[0].deletedAt).not.toBeNull()
-    })
-
-    it('edit PATCH (toggle enabled) gates on add_mcp_servers, not remove_mcp_servers', async () => {
-      await insertUser('mcpAdmin5', 'mcpadmin5@test.com')
-      await insertUser('mcpMember5', 'mcpmember5@test.com')
-      const workspaceId = await seedSharedWithAdminAndMember('mcpAdmin5', 'mcpMember5')
-      const putOp = mcpPut(workspaceId)
-      expect((await applyUploadBatch(db, [putOp], ctxFor('mcpAdmin5'))).ok).toBe(true)
-      await setRequiredRole(workspaceId, 'remove_mcp_servers', 'member')
-
-      const editOp: UploadOp = {
-        op: 'PATCH',
-        type: 'mcp_servers',
-        id: putOp.id,
-        data: { enabled: 0 },
-      }
-      const result = await applyUploadBatch(db, [editOp], ctxFor('mcpMember5'))
       expectPermanentReject(result, 'INSUFFICIENT_PERMISSION')
     })
   })

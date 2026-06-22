@@ -538,7 +538,7 @@ describe('reconcileDefaultsForTable', () => {
 
   test('no-op when defaults array is empty', async () => {
     const db = getDb()
-    await reconcileDefaultsForTable(db, settingsTable, [], hashSetting, 'key')
+    await reconcileDefaultsForTable(db, settingsTable, [], hashSetting, { keyField: 'key' })
 
     const settings = await db.select().from(settingsTable)
     expect(settings.length).toBe(0)

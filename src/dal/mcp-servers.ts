@@ -70,22 +70,26 @@ export const deleteMcpServer = async (db: AnyDrizzleDatabase, workspaceId: strin
       .update(mcpServersTable)
       .set({ ...clearNullableColumns(mcpServersTable), deletedAt: nowIso() })
       .where(
-        and(eq(mcpServersTable.id, id), eq(mcpServersTable.workspaceId, workspaceId), isNull(mcpServersTable.deletedAt)),
+        and(
+          eq(mcpServersTable.id, id),
+          eq(mcpServersTable.workspaceId, workspaceId),
+          isNull(mcpServersTable.deletedAt),
+        ),
       )
   })
 }
 
 /**
- * Creates a new MCP server in the given workspace. Defaults `scope` to
- * `'workspace'`; pass `scope: 'user'` (with a matching `userId`) to make the
- * row private to its author (THU-603).
+ * Creates a new MCP server in the given workspace. MCPs are local-only
+ * (per-device), so no `scope` / sync-bucket considerations apply — the
+ * `workspaceId` filter alone defines what shows up after a workspace switch.
  */
 export const createMcpServer = async (
   db: AnyDrizzleDatabase,
   workspaceId: string,
   data: Partial<McpServer> & Pick<McpServer, 'id' | 'name'>,
 ): Promise<void> => {
-  await db.insert(mcpServersTable).values({ ...data, workspaceId, scope: data.scope ?? 'workspace' })
+  await db.insert(mcpServersTable).values({ ...data, workspaceId })
 }
 
 /**

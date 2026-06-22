@@ -62,8 +62,6 @@ export const workspacePermissionKeys = [
   'remove_skills',
   'add_models',
   'remove_models',
-  'add_mcp_servers',
-  'remove_mcp_servers',
   'change_general_settings',
   'change_permissions',
   'delete_workspace',

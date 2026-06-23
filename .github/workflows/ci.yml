@@ -150,6 +150,12 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-cargo-registry-
 
+      # Security tripwire: fail if the unsound glib::VariantStrIter path
+      # (GHSA-wrw7-89jp-8q8g) ever gains a caller in our code or any dependency.
+      # Cheap (cargo metadata + grep, no build), so it runs before the build.
+      - name: Guard glib VariantStrIter unsoundness (RUSTSEC-2024-0429)
+        run: ./scripts/check-glib-variantstriter.sh
+
       - name: Cache cargo build
         uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
         with:

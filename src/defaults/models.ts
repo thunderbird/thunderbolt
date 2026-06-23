@@ -100,11 +100,11 @@ export const defaultModelKimiK26: Model = {
   userId: null,
 }
 
-export const defaultModelGlm51: Model = {
+export const defaultModelGlm52: Model = {
   id: '019e7580-2b0e-719c-a43f-d2b56e7f31b4',
-  name: 'GLM 5.1',
+  name: 'GLM 5.2',
   provider: 'tinfoil',
-  model: 'glm-5-1',
+  model: 'glm-5-2',
   isSystem: 1,
   enabled: 1,
   isConfidential: 1,
@@ -129,5 +129,5 @@ export const defaultModels: ReadonlyArray<Model> = [
   defaultModelOpus48,
   defaultModelDeepseekV4Pro,
   defaultModelKimiK26,
-  defaultModelGlm51,
+  defaultModelGlm52,
 ] as const

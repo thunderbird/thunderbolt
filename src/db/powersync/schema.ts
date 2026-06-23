@@ -10,7 +10,7 @@ import * as tables from '../tables'
  * Synced tables — type-checked against PowerSyncTableName.
  * Keys are snake_case (table names). The driver uses the table's config name, not our keys.
  */
-const syncedTables = {
+export const syncedTables = {
   settings: tables.settingsTable,
   chat_threads: tables.chatThreadsTable,
   chat_messages: tables.chatMessagesTable,
@@ -26,7 +26,7 @@ const syncedTables = {
 } satisfies Record<PowerSyncTableName, unknown>
 
 /** Local-only tables — created in SQLite but never synced via PowerSync. */
-const localOnlyTables = {
+export const localOnlyTables = {
   models_secrets: {
     tableDefinition: tables.modelsSecretsTable,
     options: { localOnly: true },

@@ -25,9 +25,44 @@ const blockedRanges = new Set([
   'broadcast', // 255.255.255.255
 ])
 
+type IpAddr = ReturnType<typeof ipaddr.process>
+
+/**
+ * Extracts the IPv4 address embedded in an IPv6 transition/translation address,
+ * or null if none is embedded. A host with the matching connectivity (NAT64/DNS64,
+ * 6to4, Teredo) routes these to the embedded IPv4 — so the embedded address, including
+ * a private/internal one, must be re-validated. Blocking the whole range would be wrong:
+ * on a DNS64 deployment, legitimate public IPv4 sites resolve to `64:ff9b::<public-ip>`.
+ * (`::ffff:x.x.x.x` is already normalized to IPv4 by `ipaddr.process`, so it's not here.)
+ *
+ * The `case` labels are coupled to ipaddr.js's range taxonomy — if an upgrade renames
+ * or reclassifies these ranges, the `default` branch silently reverts to pre-fix behavior
+ * (the embedded IPv4 stops being checked). Re-verify these labels when bumping ipaddr.js.
+ * Operator-configured NAT64 prefixes (RFC 6052 §2.2 non-`/96` variants) are not detectable
+ * here — only the well-known `64:ff9b::/96` is classified `rfc6052`.
+ */
+const embeddedIpv4 = (addr: IpAddr): string | null => {
+  const bytes = addr.toByteArray()
+  switch (addr.range()) {
+    case 'rfc6052': // NAT64 64:ff9b::/96 — IPv4 in the low 32 bits
+    case 'rfc6145': // stateless IPv4/IPv6 translation — IPv4 in the low 32 bits
+      return bytes.slice(12, 16).join('.')
+    case '6to4': // 2002::/16 — IPv4 in bytes 2..5
+      return bytes.slice(2, 6).join('.')
+    case 'teredo': // 2001::/32 — client IPv4 in the low 32 bits, one's-complement obfuscated
+      return bytes
+        .slice(12, 16)
+        .map((b) => b ^ 0xff)
+        .join('.')
+    default:
+      return null
+  }
+}
+
 /**
  * Returns true if the IP address falls within a private/internal/reserved range.
- * Handles IPv4, IPv6, IPv4-mapped IPv6 (::ffff:x.x.x.x), and bracketed notation ([::1]).
+ * Handles IPv4, IPv6, IPv4-mapped IPv6 (::ffff:x.x.x.x), bracketed notation ([::1]),
+ * and IPv6 transition addresses (NAT64/6to4/Teredo) that embed a private IPv4.
  */
 export const isPrivateAddress = (rawHostname: string): boolean => {
   const hostname = rawHostname.startsWith('[') && rawHostname.endsWith(']') ? rawHostname.slice(1, -1) : rawHostname
@@ -38,7 +73,11 @@ export const isPrivateAddress = (rawHostname: string): boolean => {
 
   // process() normalizes IPv4-mapped IPv6 (::ffff:127.0.0.1 / ::ffff:7f00:1) to IPv4
   const addr = ipaddr.process(hostname)
-  return blockedRanges.has(addr.range())
+  if (blockedRanges.has(addr.range())) {
+    return true
+  }
+  const embedded = embeddedIpv4(addr)
+  return embedded !== null && isPrivateAddress(embedded)
 }
 
 /** Returns true if the hostname is a loopback address (127.0.0.0/8, ::1, or localhost). */

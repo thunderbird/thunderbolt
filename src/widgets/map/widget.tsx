@@ -3,7 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { Skeleton } from '@/components/ui/skeleton'
-import type { Map as MaplibreMap, MapLayerMouseEvent, StyleSpecification } from 'maplibre-gl'
+import type { Map as MaplibreMap, MapLayerMouseEvent, Popup as MaplibrePopup, StyleSpecification } from 'maplibre-gl'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { featureBounds, featureLabel, parseFeatureCollection } from './geojson'
 
@@ -81,10 +81,16 @@ export const MapWidget = ({ data, title }: MapWidgetProps) => {
     if (!collection || !container) {
       return
     }
-    // Reset to the skeleton whenever the data changes and we re-init the map.
+    // Reset to the skeleton (and clear any prior error) whenever the data
+    // changes and we re-init the map, so a recovered load doesn't keep showing
+    // a stale "Couldn't load the map" message.
     setReady(false)
+    setError(null)
     let map: MaplibreMap | null = null
     let cancelled = false
+    // Whether the map reached `load`, so the `error` handler can tell a fatal
+    // init/style failure (surface it) from a post-load tile hiccup (ignore it).
+    let loaded = false
 
     // Keep the canvas sized to its container. Without this, MapLibre renders a
     // blank/white map if it initialized before layout settled or while briefly
@@ -102,10 +108,28 @@ export const MapWidget = ({ data, title }: MapWidgetProps) => {
       map = new MapLib({ container, style: basemap })
       map.addControl(new NavigationControl({ showCompass: false }), 'top-right')
 
-      map.on('load', () => {
-        if (!map) {
+      // If the basemap style/tiles fail (network, 404, CORS), `load` may never
+      // fire — surface the failure instead of an endless skeleton. Errors after
+      // a successful load (e.g. a single tile) are ignored so a working map
+      // isn't replaced by an error message.
+      map.on('error', (event) => {
+        if (cancelled || loaded) {
           return
         }
+        setError(event.error?.message ?? 'Failed to load map')
+      })
+
+      // The currently-open popup, so clicking marker after marker replaces it
+      // instead of stacking popups.
+      let activePopup: MaplibrePopup | null = null
+
+      map.on('load', () => {
+        // Bail if the effect was torn down before `load` fired — otherwise we'd
+        // touch a removed map or set state on a stale instance.
+        if (cancelled || !map) {
+          return
+        }
+        loaded = true
         map.addSource('features', { type: 'geojson', data: collection })
         // Per-feature styling follows the simplestyle-spec (marker-color,
         // marker-size, stroke, fill, …) read generically via `['get', …]` with
@@ -115,7 +139,7 @@ export const MapWidget = ({ data, title }: MapWidgetProps) => {
           id: 'polygons-fill',
           type: 'fill',
           source: 'features',
-          filter: ['==', ['geometry-type'], 'Polygon'],
+          filter: ['in', ['geometry-type'], ['literal', ['Polygon', 'MultiPolygon']]],
           paint: {
             'fill-color': ['coalesce', ['get', 'fill'], defaultColor],
             'fill-opacity': ['coalesce', ['get', 'fill-opacity'], 0.2],
@@ -125,7 +149,7 @@ export const MapWidget = ({ data, title }: MapWidgetProps) => {
           id: 'lines',
           type: 'line',
           source: 'features',
-          filter: ['in', ['geometry-type'], ['literal', ['LineString', 'Polygon']]],
+          filter: ['in', ['geometry-type'], ['literal', ['LineString', 'MultiLineString', 'Polygon', 'MultiPolygon']]],
           paint: {
             'line-color': ['coalesce', ['get', 'stroke'], defaultColor],
             'line-width': ['coalesce', ['get', 'stroke-width'], 2],
@@ -136,7 +160,7 @@ export const MapWidget = ({ data, title }: MapWidgetProps) => {
           id: 'points',
           type: 'circle',
           source: 'features',
-          filter: ['==', ['geometry-type'], 'Point'],
+          filter: ['in', ['geometry-type'], ['literal', ['Point', 'MultiPoint']]],
           paint: {
             'circle-radius': ['match', ['get', 'marker-size'], 'small', 4, 'large', 9, 6],
             'circle-color': ['coalesce', ['get', 'marker-color'], defaultColor],
@@ -184,11 +208,15 @@ export const MapWidget = ({ data, title }: MapWidgetProps) => {
           // Drop MapLibre's default chrome (white box, shadow, tip, and the
           // unstyled close "×") and let our own card be the whole popup. Closes
           // on map click (MapLibre's default closeOnClick).
-          const popup = new Popup({ closeButton: false, maxWidth: '300px' })
+          // Replace any open popup so clicking marker after marker swaps the
+          // card instead of stacking popups (closeOnClick only fires on a
+          // bare-map click, not when clicking another feature).
+          activePopup?.remove()
+          activePopup = new Popup({ closeButton: false, maxWidth: '300px' })
             .setLngLat(event.lngLat)
             .setDOMContent(node)
             .addTo(map)
-          const popupEl = popup.getElement()
+          const popupEl = activePopup.getElement()
           const content = popupEl?.querySelector<HTMLElement>('.maplibregl-popup-content')
           if (content) {
             content.style.padding = '0'

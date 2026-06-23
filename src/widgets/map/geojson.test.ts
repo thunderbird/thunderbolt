@@ -54,6 +54,59 @@ describe('parseFeatureCollection', () => {
     expect(parsed?.features.map((f) => f.geometry.type)).toEqual(['LineString', 'Polygon'])
   })
 
+  test('parses Multi* geometries (MultiPoint / MultiLineString / MultiPolygon)', () => {
+    const parsed = parseFeatureCollection(
+      collection([
+        {
+          type: 'Feature',
+          geometry: {
+            type: 'MultiPoint',
+            coordinates: [
+              [0, 0],
+              [1, 1],
+            ],
+          },
+          properties: null,
+        },
+        {
+          type: 'Feature',
+          geometry: {
+            type: 'MultiLineString',
+            coordinates: [
+              [
+                [0, 0],
+                [1, 1],
+              ],
+              [
+                [2, 2],
+                [3, 3],
+              ],
+            ],
+          },
+          properties: null,
+        },
+        {
+          type: 'Feature',
+          geometry: {
+            type: 'MultiPolygon',
+            coordinates: [
+              [
+                [
+                  [0, 0],
+                  [1, 0],
+                  [1, 1],
+                  [0, 0],
+                ],
+              ],
+            ],
+          },
+          properties: null,
+        },
+      ]),
+    )
+    expect(parsed?.features.map((f) => f.geometry.type)).toEqual(['MultiPoint', 'MultiLineString', 'MultiPolygon'])
+  })
+
   test('keeps unknown (domain-specific) properties via passthrough', () => {
     const parsed = parseFeatureCollection(collection([point(8.68, 50.11, { label: 'X', target_priority: 'high' })]))
     expect(parsed).not.toBeNull()
@@ -100,6 +153,45 @@ describe('featureBounds', () => {
     expect(featureBounds(parsed!)).toEqual([
       [-122, 47],
       [8, 50],
+    ])
+  })
+
+  test('walks Multi* nested coordinates for fit-bounds', () => {
+    const parsed = parseFeatureCollection(
+      collection([
+        {
+          type: 'Feature',
+          geometry: {
+            type: 'MultiPolygon',
+            coordinates: [
+              [
+                [
+                  [0, 0],
+                  [4, 0],
+                  [4, 3],
+                  [0, 0],
+                ],
+              ],
+            ],
+          },
+          properties: null,
+        },
+        {
+          type: 'Feature',
+          geometry: {
+            type: 'MultiPoint',
+            coordinates: [
+              [-2, -1],
+              [6, 5],
+            ],
+          },
+          properties: null,
+        },
+      ]),
+    )
+    expect(featureBounds(parsed!)).toEqual([
+      [-2, -1],
+      [6, 5],
     ])
   })
 

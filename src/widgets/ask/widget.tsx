@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { useCurrentChatSession } from '@/chats/chat-store'
 import { useDatabase } from '@/contexts'
 import { getMessage, updateMessageCache } from '@/dal/chat-messages'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
@@ -23,6 +24,7 @@ type AskWidgetProps = Omit<AskData, 'options'> & {
 export const AskWidget = ({ prompt, mode, options = [], explanation, messageId }: AskWidgetProps) => {
   const db = useDatabase()
   const queryClient = useQueryClient()
+  const { chatInstance } = useCurrentChatSession()
   const storageKey = askStorageKey({ prompt, mode, options })
   const queryKey = ['askState', messageId, storageKey]
 
@@ -41,17 +43,29 @@ export const AskWidget = ({ prompt, mode, options = [], explanation, messageId }
     // `free` mode carries a typed answer; option modes map ids back to their texts.
     const chosen = text !== undefined ? [text] : selectedIds.map((id) => options.find((o) => o.id === id)?.text ?? id)
     const entry: AskCacheEntry = { prompt, mode, selectedIds, chosen, matched, text }
-    // Persist the response so the widget restores answered on reload. We
-    // intentionally do NOT dispatch a follow-up turn: the widget reveals any
-    // designated answer client-side, so a prompt stands on its own, and the
-    // persisted entry is surfaced to the model on later turns via
-    // formatAskResponsesNote. Sending a turn per response would also goad
-    // single-prompt-at-a-time backends into endlessly asking the next one.
+    // Persist first so the response is recorded (and restores on reload)
+    // regardless of what follows.
     await updateMessageCache(db, messageId, storageKey, entry)
-    // Keep the (infinitely-cached) query in sync with what we just persisted, so
-    // an unmount/remount in the same session restores the answer instead of
-    // re-reading the now-stale initial `null`.
+    // Keep the (infinitely-cached) query in sync so an unmount/remount in the
+    // same session restores the answer instead of re-reading the stale `null`.
     queryClient.setQueryData(queryKey, entry)
+
+    // `choice` (an action pick) and `free` (a typed answer) are conversational
+    // responses, so dispatch the answer as a normal user turn for the model to
+    // act on / reply to. Graded `single`/`multiple` reveal the answer
+    // client-side and are NOT auto-sent — doing so would goad
+    // single-prompt-at-a-time backends into endlessly asking the next question.
+    // (Persisted entries still reach the model via formatAskResponsesNote.)
+    if (mode === 'choice' || mode === 'free') {
+      const answer = (text ?? chosen[0] ?? '').trim()
+      if (answer) {
+        // Best-effort: the answer is already persisted, so a failed send (e.g.
+        // no model selected) loses nothing — surface it without breaking the UI.
+        await chatInstance.sendMessage({ text: answer }).catch((error) => {
+          console.error('Ask widget failed to dispatch answer turn', error)
+        })
+      }
+    }
   }
 
   // Wait for the cached response before seeding the (lazy) initial state, so a

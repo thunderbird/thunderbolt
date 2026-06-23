@@ -415,7 +415,7 @@ export default function PreferencesSettingsPage() {
         id: userId,
         email: session.user.email ?? null,
       })
-      downloadJson(exportFilenameFor(new Date()), payload)
+      await downloadJson(exportFilenameFor(new Date()), payload)
       trackEvent('settings_data_export')
     } catch (error) {
       console.error('Failed to export data:', error)
@@ -934,7 +934,8 @@ export default function PreferencesSettingsPage() {
                 <input
                   ref={importFileInputRef}
                   type="file"
-                  accept="application/json,.json"
+                  // `.gz` is listed separately because some file dialogs only honor a single trailing extension.
+                  accept="application/gzip,application/json,.json.gz,.gz,.json"
                   className="hidden"
                   onChange={handleImportFileSelected}
                 />

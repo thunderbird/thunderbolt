@@ -4,6 +4,12 @@ Versioned, table-keyed JSON snapshot produced by **Settings → Preferences → 
 
 The companion import flow (THU-597) consumes the same format and reads `schemaVersion` to branch its restore logic.
 
+## File format
+
+The download is **gzipped JSON** — `thunderbolt-export-YYYY-MM-DD.json.gz`, `Content-Type: application/gzip`. The envelope inside the archive is the JSON described below. Chat-message JSON compresses to ~10-15% of its original size, which keeps even heavy-user backups well under the importer's 200 MB on-disk cap. To inspect: `gunzip -c thunderbolt-export-…json.gz | jq .`.
+
+The importer detects gzip by magic bytes (`1f 8b`, RFC 1952), so a hand-decompressed `.json` from the same envelope still imports cleanly — the `.gz` is a transport detail, not part of the schema version.
+
 ## Envelope
 
 ```jsonc

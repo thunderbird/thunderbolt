@@ -53,6 +53,12 @@ const displayMathLine = /^([ \t]*)\$\$[ \t]*(.+?)[ \t]*\$\$[ \t]*$/gm
 // Rewrite the math delimiters in a span of prose. Never called on code — see
 // `normalizeDisplayMath` (skips inline code spans) and `parseMarkdownIntoBlocks`
 // (skips fenced/indented code blocks).
+//
+// Scope note: the `\(…\)` → `$…$` pass runs across the whole span, so a `\(…\)`
+// nested *inside* display math (`\[…\]` / `$$…$$`) is also rewritten. That input
+// is malformed LaTeX to begin with (math modes don't nest), so we don't
+// special-case it — only already-invalid equations are affected, never
+// well-formed ones.
 const rewriteMath = (text: string): string =>
   text
     .replace(displayMathDelimiters, (_match, body: string) => `$$\n${body.trim()}\n$$`)

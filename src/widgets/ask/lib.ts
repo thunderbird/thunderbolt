@@ -53,8 +53,28 @@ export const optionLetter = (index: number): string => String.fromCharCode(65 + 
 /** Namespace prefix for ask entries stored in a message's cache blob. */
 export const askCachePrefix = 'ask'
 
-/** Cache key for a single ask instance within a message (one tag = one prompt). */
-export const askStorageKey = (prompt: string): string => `${askCachePrefix}/${prompt}`
+/**
+ * Stable djb2 hash of an ask's discriminating shape (`mode` + `options`),
+ * base36-encoded. Deterministic across reloads since it's derived only from the
+ * parsed widget args, so the restored cache key always matches.
+ */
+const hashAskShape = (data: Pick<AskData, 'mode' | 'options'>): string => {
+  const input = JSON.stringify({ mode: data.mode, options: data.options })
+  let hash = 5381
+  for (let i = 0; i < input.length; i++) {
+    hash = ((hash << 5) + hash + input.charCodeAt(i)) | 0
+  }
+  return (hash >>> 0).toString(36)
+}
+
+/**
+ * Cache key for a single ask instance within a message. Keyed by prompt **plus**
+ * a hash of `mode`+`options` so two widgets that share a prompt but differ in
+ * their options don't collide on `ask/<prompt>` and overwrite each other's
+ * answer. (Two byte-identical widgets still share a key, which is harmless.)
+ */
+export const askStorageKey = (data: Pick<AskData, 'prompt' | 'mode' | 'options'>): string =>
+  `${askCachePrefix}/${data.prompt}#${hashAskShape(data)}`
 
 /**
  * Persisted record of how the user responded to one ask. Stored under

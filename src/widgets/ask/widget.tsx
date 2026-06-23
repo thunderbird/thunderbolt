@@ -23,7 +23,7 @@ type AskWidgetProps = Omit<AskData, 'options'> & {
 export const AskWidget = ({ prompt, mode, options = [], explanation, messageId }: AskWidgetProps) => {
   const db = useDatabase()
   const queryClient = useQueryClient()
-  const storageKey = askStorageKey(prompt)
+  const storageKey = askStorageKey({ prompt, mode, options })
   const queryKey = ['askState', messageId, storageKey]
 
   const { data: saved, isPending } = useQuery({

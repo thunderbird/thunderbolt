@@ -4,6 +4,7 @@
 
 import { describe, expect, test } from 'bun:test'
 import {
+  askStorageKey,
   collectAskEntriesFromCache,
   evaluateAnswer,
   formatAskResponsesNote,
@@ -56,6 +57,37 @@ describe('optionLetter', () => {
   test('maps index to letter', () => {
     expect(optionLetter(0)).toBe('A')
     expect(optionLetter(2)).toBe('C')
+  })
+})
+
+describe('askStorageKey', () => {
+  const base: Pick<AskData, 'prompt' | 'mode' | 'options'> = {
+    prompt: 'Pick one',
+    mode: 'single',
+    options: [
+      { id: 'a', text: 'A', isCorrect: true },
+      { id: 'b', text: 'B' },
+    ],
+  }
+
+  test('is namespaced and deterministic for identical shapes', () => {
+    expect(askStorageKey(base)).toStartWith('ask/Pick one#')
+    expect(askStorageKey(base)).toBe(askStorageKey({ ...base, options: [...base.options] }))
+  })
+
+  test('same prompt but different options yields a different key (no collision)', () => {
+    const other = {
+      ...base,
+      options: [
+        { id: 'a', text: 'A' },
+        { id: 'c', text: 'C', isCorrect: true },
+      ],
+    }
+    expect(askStorageKey(other)).not.toBe(askStorageKey(base))
+  })
+
+  test('same prompt but different mode yields a different key', () => {
+    expect(askStorageKey({ ...base, mode: 'multiple' })).not.toBe(askStorageKey(base))
   })
 })
 

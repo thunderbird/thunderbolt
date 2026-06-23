@@ -28,8 +28,6 @@ const powersyncSettings: Settings = {
   mistralApiKey: '',
   anthropicApiKey: '',
   exaApiKey: '',
-  thunderboltInferenceUrl: '',
-  thunderboltInferenceApiKey: '',
   tinfoilApiKey: '',
   tinfoilEnclaveUrl: 'https://inference.tinfoil.sh/v1',
   monitoringToken: '',

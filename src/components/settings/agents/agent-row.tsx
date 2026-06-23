@@ -8,7 +8,7 @@ import { Button } from '@/components/ui/button'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { useState } from 'react'
-import { Globe, Server, Trash2, Zap } from 'lucide-react'
+import { Globe, Pencil, Server, Trash2, Zap } from 'lucide-react'
 import type { Agent } from '@/types/acp'
 
 /** Visual order: built-in (zap) → managed/system (server) → remote (globe). */
@@ -50,6 +50,12 @@ export const canDeleteAgent = (agent: Agent, currentUserId: string | null): bool
   return agent.userId === currentUserId
 }
 
+/** Predicate for the edit action's visibility. Mirrors `canDeleteAgent`:
+ *  built-in is in-code, system agents are managed via env vars, and customs
+ *  belong to the user who created them. */
+export const canEditAgent = (agent: Agent, currentUserId: string | null): boolean =>
+  canDeleteAgent(agent, currentUserId)
+
 /** Computes the toggle's disabled state and the corresponding "always available"
  *  tooltip text. Built-in is an in-code constant; system agents are configured
  *  on the backend via env vars — neither can be toggled by the user. Exported
@@ -68,12 +74,14 @@ type AgentRowProps = {
   agent: Agent
   currentUserId: string | null
   onToggle: (agent: Agent, enabled: boolean) => void
+  onEdit: (agent: Agent) => void
   onDelete: (agent: Agent) => void
 }
 
-export const AgentRow = ({ agent, currentUserId, onToggle, onDelete }: AgentRowProps) => {
+export const AgentRow = ({ agent, currentUserId, onToggle, onEdit, onDelete }: AgentRowProps) => {
   const Icon = iconForAgent(agent)
   const badge = badgeForAgent(agent)
+  const showEdit = canEditAgent(agent, currentUserId)
   const showDelete = canDeleteAgent(agent, currentUserId)
   const { disabled: toggleDisabled, disabledTooltip } = agentToggleDisabled(agent)
   const isEnabled = agent.enabled === 1
@@ -121,6 +129,25 @@ export const AgentRow = ({ agent, currentUserId, onToggle, onDelete }: AgentRowP
                 <p>{disabledTooltip ?? (isEnabled ? 'Disable agent' : 'Enable agent')}</p>
               </TooltipContent>
             </Tooltip>
+            {showEdit && (
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="size-8 p-0"
+                    aria-label={`Edit ${agent.name}`}
+                    data-testid={`agent-edit-${agent.id}`}
+                    onClick={() => onEdit(agent)}
+                  >
+                    <Pencil className="size-4" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent side="bottom">
+                  <p>Edit agent</p>
+                </TooltipContent>
+              </Tooltip>
+            )}
             {showDelete && (
               <Popover open={deleteOpen} onOpenChange={setDeleteOpen}>
                 <PopoverTrigger asChild>

@@ -24,13 +24,12 @@ const sanitizeMessageRoles = (messages: Message[]): Message[] =>
 type ModelConfig = {
   provider: InferenceProvider
   internalName: string
+  /** Newer reasoning-tuned models (e.g. Claude Opus 4.8) reject `temperature`
+   *  with a 400. Set true to drop the field from the upstream payload. */
+  omitTemperature?: boolean
 }
 
 export const supportedModels: Record<string, ModelConfig> = {
-  'gpt-oss-120b': {
-    provider: 'thunderbolt',
-    internalName: 'openai/gpt-oss-120b',
-  },
   'mistral-medium-3.1': {
     provider: 'mistral',
     internalName: 'mistral-medium-2508',
@@ -46,6 +45,7 @@ export const supportedModels: Record<string, ModelConfig> = {
   'opus-4.8': {
     provider: 'anthropic',
     internalName: 'claude-opus-4-8',
+    omitTemperature: true,
   },
 }
 
@@ -74,7 +74,7 @@ export const createInferenceRoutes = (auth: Auth, rateLimit?: AnyElysia) => {
         throw new Error('Model not found')
       }
 
-      const { provider, internalName } = modelConfig
+      const { provider, internalName, omitTemperature } = modelConfig
 
       const { client } = getInferenceClient(provider)
 
@@ -84,7 +84,7 @@ export const createInferenceRoutes = (auth: Auth, rateLimit?: AnyElysia) => {
         const completion = await (client as PostHogOpenAI).chat.completions.create({
           model: internalName,
           messages: sanitizeMessageRoles(body.messages) as ChatCompletionMessageParam[],
-          temperature: body.temperature,
+          ...(omitTemperature ? {} : { temperature: body.temperature }),
           tools: body.tools,
           tool_choice: body.tool_choice,
           stream: true,

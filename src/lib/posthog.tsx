@@ -163,6 +163,8 @@ export type EventType =
   | 'settings_localization_update'
   | 'settings_localization_reset'
   | 'settings_database_reset'
+  | 'settings_data_export'
+  | 'settings_data_import'
   | 'settings_data_collection_enabled'
   | 'settings_data_collection_disabled'
   | `settings_experimental_feature_tasks_enabled`

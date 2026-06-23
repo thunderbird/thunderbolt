@@ -84,4 +84,22 @@ describe('MemoizedMarkdown — LaTeX', () => {
     expect(container.querySelector('.katex')).toBeNull()
     expect(container.querySelector('code')?.textContent).toBe('\\(x\\)')
   })
+
+  it('treats two currency amounts in one sentence as literal text, not math', () => {
+    const { container } = renderMarkdown('It costs $5 and $10 total.')
+    expect(container.querySelector('.katex')).toBeNull()
+    expect(container.textContent).toContain('$5 and $10')
+  })
+
+  it('keeps currency literal while still rendering real math in the same sentence', () => {
+    const { container } = renderMarkdown('It costs $5 but $x^2$ is math.')
+    expect(container.querySelector('.katex')).not.toBeNull()
+    expect(container.textContent).toContain('$5')
+  })
+
+  it('converts a multi-line `\\(…\\)` inline expression to KaTeX', () => {
+    const { container } = renderMarkdown('Here \\(a +\nb\\) inline.')
+    expect(container.querySelector('.katex')).not.toBeNull()
+    expect(container.textContent).not.toContain('\\(')
+  })
 })

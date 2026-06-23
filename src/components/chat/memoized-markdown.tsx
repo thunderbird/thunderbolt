@@ -29,7 +29,17 @@ const rehypePlugins = [rehypeKatex]
 // lone `\[`/`\(`) avoids clobbering markdown-escaped brackets/parens, and the
 // display pattern spans lines so multi-line equations survive.
 const displayMathDelimiters = /\\\[([\s\S]+?)\\\]/g
-const inlineMathDelimiters = /\\\((.+?)\\\)/g
+// `[\s\S]+?` (not `.+?`) so a `\(…\)` split across lines is still converted,
+// matching the display pattern. Lazy, so it stops at the first `\)`.
+const inlineMathDelimiters = /\\\(([\s\S]+?)\\\)/g
+
+// A `$` that begins a currency amount — start-of-string or after whitespace/`(`,
+// immediately followed by a digit. remark-math otherwise pairs the `$` before
+// two amounts in one sentence ("$5 and $10") and renders the span between them
+// as math. Escaping it to `\$` makes remark-math treat it as a literal dollar.
+// `$$` display fences are never matched (a `$` followed by `$`, not a digit), and
+// math that legitimately opens on a bare digit (`$5x$`) is rare in assistant prose.
+const currencyDollar = /(^|[\s(])\$(?=\d)/g
 
 // remark-math only renders `$$…$$` as centered *display* math when the fences
 // sit on their own lines; a single-line `$$…$$` falls back to inline. Models
@@ -46,8 +56,11 @@ const displayMathLine = /^([ \t]*)\$\$[ \t]*(.+?)[ \t]*\$\$[ \t]*$/gm
 const rewriteMath = (text: string): string =>
   text
     .replace(displayMathDelimiters, (_match, body: string) => `$$\n${body.trim()}\n$$`)
-    .replace(inlineMathDelimiters, (_match, body: string) => `$${body.trim()}$`)
+    // Inline math is single-line by nature, so collapse any internal whitespace
+    // (including the newline a multi-line `\(…\)` carried) to a single space.
+    .replace(inlineMathDelimiters, (_match, body: string) => `$${body.trim().replace(/\s+/g, ' ')}$`)
     .replace(displayMathLine, (_match, indent: string, body: string) => `${indent}$$\n${body}\n$$`)
+    .replace(currencyDollar, (_match, lead: string) => `${lead}\\$`)
 
 // An inline code span (`` `…` ``, `` ``…`` ``, …). Left verbatim so a message
 // that shows `$$…$$` / `\(…\)` *as inline code* keeps its literal text.

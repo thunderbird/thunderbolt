@@ -3,7 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { Check, Lightbulb, Sparkles, X } from 'lucide-react'
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 
 import { AutosizeTextarea } from '@/components/ui/autosize-textarea'
 import { Button } from '@/components/ui/button'
@@ -86,12 +86,20 @@ export const Ask = ({
   const [selected, setSelected] = useState<Set<string>>(() => new Set(initialSelectedIds))
   const [text, setText] = useState(initialText ?? '')
   const [submitted, setSubmitted] = useState(initialSubmitted ?? false)
+  // Synchronous re-entry guard: `submitted` state lags a render behind, so a
+  // rapid double-click would otherwise fire `onSubmit` (and the user turn it
+  // dispatches) twice before React updates the disabled UI.
+  const committedRef = useRef(initialSubmitted ?? false)
 
   const isFree = mode === 'free'
   const isGraded = mode === 'single' || mode === 'multiple'
   const isMultiple = mode === 'multiple'
 
   const commit = (ids: Set<string>) => {
+    if (committedRef.current) {
+      return
+    }
+    committedRef.current = true
     setSubmitted(true)
     onSubmit?.({
       selectedIds: [...ids],
@@ -101,9 +109,10 @@ export const Ask = ({
 
   const commitFree = () => {
     const answer = text.trim()
-    if (submitted || answer.length === 0) {
+    if (committedRef.current || answer.length === 0) {
       return
     }
+    committedRef.current = true
     setSubmitted(true)
     onSubmit?.({ selectedIds: [], matched: null, text: answer })
   }

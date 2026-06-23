@@ -95,6 +95,31 @@ describe('Ask — display', () => {
     expect(onSubmit.mock.calls[0][0]).toMatchObject({ selectedIds: ['draft'], matched: null })
   })
 
+  it('choice mode: rapid double-click commits only once', () => {
+    const onSubmit = mock((_: AskSubmission) => {})
+    render(
+      <Ask prompt="What next?" mode="choice" options={[{ id: 'draft', text: 'Draft a reply' }]} onSubmit={onSubmit} />,
+    )
+
+    const option = screen.getByText('Draft a reply')
+    fireEvent.click(option)
+    fireEvent.click(option)
+
+    expect(onSubmit).toHaveBeenCalledTimes(1)
+  })
+
+  it('free mode: rapid double-click on Submit commits only once', () => {
+    const onSubmit = mock((_: AskSubmission) => {})
+    render(<Ask prompt="Q" mode="free" options={[]} onSubmit={onSubmit} />)
+
+    fireEvent.change(screen.getByPlaceholderText('Type your answer…'), { target: { value: 'answer' } })
+    const submit = screen.getByRole('button', { name: 'Submit' })
+    fireEvent.click(submit)
+    fireEvent.click(submit)
+
+    expect(onSubmit).toHaveBeenCalledTimes(1)
+  })
+
   it('restores a previously-submitted response', () => {
     render(<Ask {...single} initialSelectedIds={['smtp']} initialSubmitted />)
     // Already submitted → no Submit button, explanation shown.

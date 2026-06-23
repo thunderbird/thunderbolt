@@ -5,6 +5,7 @@
 import '@testing-library/jest-dom'
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, describe, expect, it, mock } from 'bun:test'
+import type { Agent } from '@/types/acp'
 import {
   AddCustomAgentDialog,
   inferTransport,
@@ -293,5 +294,118 @@ describe('AddCustomAgentDialog — connection status', () => {
 
     fireEvent.change(screen.getByLabelText(/url/i), { target: { value: 'wss://other.com/ws' } })
     expect(screen.queryByText(/connection successful/i)).not.toBeInTheDocument()
+  })
+})
+
+describe('AddCustomAgentDialog — edit mode', () => {
+  const notIos = () => false
+
+  const existingAgent: Agent = {
+    id: 'custom-1',
+    name: 'Existing Agent',
+    type: 'remote-acp',
+    transport: 'websocket',
+    url: 'wss://existing.example/ws',
+    description: 'Existing description',
+    icon: null,
+    isSystem: 0,
+    enabled: 1,
+    deletedAt: null,
+    userId: 'user-42',
+  }
+
+  it('renders the Edit title and Save Changes button when editingAgent is set', () => {
+    const onSubmit = mock(async () => {})
+    render(
+      <AddCustomAgentDialog
+        open={true}
+        onOpenChange={() => {}}
+        onSubmit={onSubmit}
+        editingAgent={existingAgent}
+        isIos={notIos}
+        testAcpConnection={async () => ({ success: true })}
+      />,
+    )
+
+    expect(screen.getByText(/edit custom agent/i)).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /save changes/i })).toBeInTheDocument()
+    // Add Agent label must not appear in edit mode.
+    expect(screen.queryByRole('button', { name: /^add agent$/i })).not.toBeInTheDocument()
+  })
+
+  it('seeds the form with the existing agent values', () => {
+    render(
+      <AddCustomAgentDialog
+        open={true}
+        onOpenChange={() => {}}
+        onSubmit={async () => {}}
+        editingAgent={existingAgent}
+        isIos={notIos}
+        testAcpConnection={async () => ({ success: true })}
+      />,
+    )
+
+    expect(screen.getByLabelText(/name/i)).toHaveValue('Existing Agent')
+    expect(screen.getByLabelText(/url/i)).toHaveValue('wss://existing.example/ws')
+    expect(screen.getByLabelText(/description/i)).toHaveValue('Existing description')
+  })
+
+  it('keeps Save Changes gated until the seeded URL is re-tested', async () => {
+    render(
+      <AddCustomAgentDialog
+        open={true}
+        onOpenChange={() => {}}
+        onSubmit={async () => {}}
+        editingAgent={existingAgent}
+        isIos={notIos}
+        testAcpConnection={async () => ({ success: true })}
+      />,
+    )
+
+    const save = screen.getByRole('button', { name: /save changes/i })
+    // Form is prefilled but connection has not been re-verified yet.
+    expect(save).toBeDisabled()
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: /test connection/i }))
+    })
+
+    expect(save).not.toBeDisabled()
+  })
+
+  it('invokes onSubmit with the edited values after a successful test', async () => {
+    const onSubmit = mock(async (_: AddCustomAgentPayload) => {})
+    const onOpenChange = mock(() => {})
+    render(
+      <AddCustomAgentDialog
+        open={true}
+        onOpenChange={onOpenChange}
+        onSubmit={onSubmit}
+        editingAgent={existingAgent}
+        isIos={notIos}
+        testAcpConnection={async () => ({ success: true })}
+      />,
+    )
+
+    fireEvent.change(screen.getByLabelText(/name/i), { target: { value: 'Renamed Agent' } })
+    fireEvent.change(screen.getByLabelText(/url/i), { target: { value: 'wss://new.example/ws' } })
+    fireEvent.change(screen.getByLabelText(/description/i), { target: { value: '' } })
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: /test connection/i }))
+    })
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: /save changes/i }))
+    })
+
+    expect(onSubmit).toHaveBeenCalledTimes(1)
+    expect(onSubmit).toHaveBeenCalledWith({
+      name: 'Renamed Agent',
+      url: 'wss://new.example/ws',
+      // Empty description is normalized to null, matching the create path.
+      description: null,
+      transport: 'websocket',
+    })
+    expect(onOpenChange).toHaveBeenCalledWith(false)
   })
 })

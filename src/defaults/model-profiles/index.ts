@@ -5,14 +5,12 @@
 import { hashValues } from '@/lib/utils'
 import type { ModelProfile } from '@/types'
 import { defaultModelProfileDeepseekV4Pro } from './deepseek'
-import { defaultModelProfileGlm51 } from './glm'
-import { defaultModelProfileGptOss120b } from './gpt-oss'
+import { defaultModelProfileGlm52 } from './glm'
 import { defaultModelProfileKimiK26 } from './kimi'
 import { defaultModelProfileOpus48 } from './opus'
 
 export { defaultModelProfileDeepseekV4Pro } from './deepseek'
-export { defaultModelProfileGlm51 } from './glm'
-export { defaultModelProfileGptOss120b } from './gpt-oss'
+export { defaultModelProfileGlm52 } from './glm'
 export { defaultModelProfileKimiK26 } from './kimi'
 export { defaultModelProfileOpus48 } from './opus'
 
@@ -47,9 +45,8 @@ export const hashModelProfile = (profile: ModelProfile): string =>
 
 /** All default model profiles for iteration */
 export const defaultModelProfiles: ReadonlyArray<ModelProfile> = [
-  defaultModelProfileGptOss120b,
   defaultModelProfileOpus48,
   defaultModelProfileDeepseekV4Pro,
   defaultModelProfileKimiK26,
-  defaultModelProfileGlm51,
+  defaultModelProfileGlm52,
 ] as const

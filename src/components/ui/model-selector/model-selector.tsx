@@ -96,14 +96,24 @@ export const categorizeModels = (
   if (custom.length > 0) {
     groups.push({ id: 'custom', label: 'Custom Models', items: custom })
   }
-  // Models disabled by an encryption mismatch are shown greyed out with no
-  // group heading or explanation (only one of these buckets is ever non-empty
-  // for a given chat, since the mismatch is one-directional).
+  // A chat is locked to its confidentiality mode, so the opposite-mode models
+  // are shown greyed out with a header explaining why. Only one of these
+  // buckets is ever non-empty for a given chat.
   if (disabledStandard.length > 0) {
-    groups.push({ id: 'standard-disabled', items: disabledStandard })
+    groups.push({
+      id: 'standard-disabled',
+      label: 'Standard Models',
+      subtitle: 'Not available in confidential chats.',
+      items: disabledStandard,
+    })
   }
   if (disabledConfidential.length > 0) {
-    groups.push({ id: 'confidential-disabled', items: disabledConfidential })
+    groups.push({
+      id: 'confidential-disabled',
+      label: 'Confidential Models',
+      subtitle: 'Available only in confidential chats.',
+      items: disabledConfidential,
+    })
   }
 
   return groups

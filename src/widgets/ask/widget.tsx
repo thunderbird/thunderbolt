@@ -4,7 +4,7 @@
 
 import { useDatabase } from '@/contexts'
 import { getMessage, updateMessageCache } from '@/dal/chat-messages'
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 
 import { Ask, type AskSubmission } from './display'
 import { type AskCacheEntry, type AskData, type AskOption, askStorageKey } from './lib'
@@ -22,10 +22,12 @@ type AskWidgetProps = Omit<AskData, 'options'> & {
  */
 export const AskWidget = ({ prompt, mode, options = [], explanation, messageId }: AskWidgetProps) => {
   const db = useDatabase()
+  const queryClient = useQueryClient()
   const storageKey = askStorageKey(prompt)
+  const queryKey = ['askState', messageId, storageKey]
 
   const { data: saved, isPending } = useQuery({
-    queryKey: ['askState', messageId, storageKey],
+    queryKey,
     queryFn: async () => {
       const message = await getMessage(db, messageId)
       const cache = message?.cache as Record<string, unknown> | null | undefined
@@ -46,6 +48,10 @@ export const AskWidget = ({ prompt, mode, options = [], explanation, messageId }
     // formatAskResponsesNote. Sending a turn per response would also goad
     // single-prompt-at-a-time backends into endlessly asking the next one.
     await updateMessageCache(db, messageId, storageKey, entry)
+    // Keep the (infinitely-cached) query in sync with what we just persisted, so
+    // an unmount/remount in the same session restores the answer instead of
+    // re-reading the now-stale initial `null`.
+    queryClient.setQueryData(queryKey, entry)
   }
 
   // Wait for the cached response before seeding the (lazy) initial state, so a

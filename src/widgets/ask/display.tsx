@@ -45,9 +45,15 @@ const getOptionStatus = ({
   if (!submitted || !isGraded) {
     return isSelected ? 'selected' : 'idle'
   }
-  if (option.isCorrect && isSelected) return 'correct'
-  if (option.isCorrect && !isSelected) return 'missed'
-  if (!option.isCorrect && isSelected) return 'incorrect'
+  if (option.isCorrect && isSelected) {
+    return 'correct'
+  }
+  if (option.isCorrect && !isSelected) {
+    return 'missed'
+  }
+  if (!option.isCorrect && isSelected) {
+    return 'incorrect'
+  }
   return 'idle'
 }
 
@@ -103,7 +109,9 @@ export const Ask = ({
   }
 
   const toggleOption = (id: string) => {
-    if (submitted) return
+    if (submitted) {
+      return
+    }
 
     if (!isGraded) {
       // `choice` mode: selecting an option commits the choice immediately.

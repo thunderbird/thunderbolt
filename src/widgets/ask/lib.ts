@@ -51,10 +51,10 @@ export const evaluateAnswer = (data: AskData, selectedIds: Set<string>): boolean
 export const optionLetter = (index: number): string => String.fromCharCode(65 + index)
 
 /** Namespace prefix for ask entries stored in a message's cache blob. */
-export const ASK_CACHE_PREFIX = 'ask'
+export const askCachePrefix = 'ask'
 
 /** Cache key for a single ask instance within a message (one tag = one prompt). */
-export const askStorageKey = (prompt: string): string => `${ASK_CACHE_PREFIX}/${prompt}`
+export const askStorageKey = (prompt: string): string => `${askCachePrefix}/${prompt}`
 
 /**
  * Persisted record of how the user responded to one ask. Stored under
@@ -84,7 +84,7 @@ const isAskCacheEntry = (value: unknown): value is AskCacheEntry =>
 /** Pulls ask response records out of a message's flat cache blob. */
 export const collectAskEntriesFromCache = (cache: Record<string, unknown>): AskCacheEntry[] =>
   Object.entries(cache)
-    .filter(([key]) => key.startsWith(`${ASK_CACHE_PREFIX}/`))
+    .filter(([key]) => key.startsWith(`${askCachePrefix}/`))
     .map(([, value]) => value)
     .filter(isAskCacheEntry)
 

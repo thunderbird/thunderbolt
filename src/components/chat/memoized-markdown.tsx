@@ -82,6 +82,16 @@ const parseMarkdownIntoBlocks = (markdown: string): string[] => {
   // indented code) so a message that shows `$$…$$` as source keeps its literal
   // text. Re-lex the rewritten string so a promoted single-line `$$…$$` still
   // splits into its own display-math block.
+  //
+  // Known limitation: only *top-level* code blocks are skipped here. A fenced or
+  // indented code block nested inside a blockquote/list lives in the parent
+  // token's `raw` (marked strips its container prefixes, so it can't be matched
+  // back to the source), and `rewriteMath` still runs on it — a message that
+  // shows `$$…$$`/`\(…\)` as code *inside a blockquote or list* may have that
+  // text rewritten. Inline code spans (`` `…` ``) are protected at any depth via
+  // `normalizeDisplayMath`. This nested-block case is rare in chat; a fully
+  // code-aware pass would need AST-level handling and is deliberately out of
+  // scope here.
   const normalized = marked
     .lexer(markdown)
     .map((token) => (token.type === 'code' ? token.raw : normalizeDisplayMath(token.raw)))

@@ -408,6 +408,7 @@ describe('AddCustomAgentDialog — edit mode', () => {
       // Empty description is normalized to null, matching the create path.
       description: null,
       transport: 'websocket',
+      scope: 'workspace',
     })
     expect(onOpenChange).toHaveBeenCalledWith(false)
   })

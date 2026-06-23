@@ -112,7 +112,11 @@ export const getSystemTinfoilClient = async (): Promise<SecureClient> => {
  *  inside the SDK's own reset+retry — the cached client's transport is wedged
  *  and only a brand-new instance breaks the cycle. */
 const evictSystemTinfoilClient = (): void => {
-  const cloudUrl = getLocalSetting('cloudUrl').replace(/\/$/, '')
+  const activeCloudUrl = getActiveCloudUrl()
+  if (!activeCloudUrl) {
+    return
+  }
+  const cloudUrl = activeCloudUrl.replace(/\/$/, '')
   systemTinfoilClients.delete(cloudUrl)
 }
 

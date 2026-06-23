@@ -101,10 +101,16 @@ export default function AgentsSettingsPage({
   }
 
   const handleSubmit = async (payload: AddCustomAgentPayload) => {
+    if (!workspaceId) {
+      // Workspace scopes every write — updates and inserts both filter by it.
+      // The dialog trigger is hidden when there's no active workspace; the
+      // guard keeps the write safe if it's reached anyway.
+      return
+    }
     if (editingAgent) {
       // Only customs are editable; system / built-in rows never reach this
       // path (the row hides the Edit affordance).
-      await updateAgent(db, editingAgent.id, {
+      await updateAgent(db, workspaceId, editingAgent.id, {
         name: payload.name,
         transport: payload.transport,
         url: payload.url,
@@ -112,7 +118,7 @@ export default function AgentsSettingsPage({
       })
       return
     }
-    if (!currentUserId || !workspaceId) {
+    if (!currentUserId) {
       // Anonymous sessions can't sync custom agents — the page hides the
       // dialog trigger in that case, but the guard keeps the write safe.
       return

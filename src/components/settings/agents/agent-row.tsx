@@ -65,9 +65,14 @@ export const canDeleteAgent = (
 
 /** Predicate for the edit action's visibility. Mirrors `canDeleteAgent`:
  *  built-in is in-code, system agents are managed via env vars, and customs
- *  belong to the user who created them. */
-export const canEditAgent = (agent: Agent, currentUserId: string | null): boolean =>
-  canDeleteAgent(agent, currentUserId)
+ *  belong to the user who created them.
+ *
+ *  `canEditAgents` reflects the workspace `add_agents` permission — when
+ *  false, no row's Edit affordance is shown regardless of ownership. Defaults
+ *  to true so existing callers keep working.
+ */
+export const canEditAgent = (agent: Agent, currentUserId: string | null, canEditAgents: boolean = true): boolean =>
+  canDeleteAgent(agent, currentUserId, canEditAgents)
 
 /** Computes the toggle's disabled state and the corresponding "always available"
  *  tooltip text. Built-in is an in-code constant; system agents are configured
@@ -113,7 +118,7 @@ export const AgentRow = ({
 }: AgentRowProps) => {
   const Icon = iconForAgent(agent)
   const badge = badgeForAgent(agent)
-  const showEdit = canEditAgent(agent, currentUserId)
+  const showEdit = canEditAgent(agent, currentUserId, canEditAgents)
   const showDelete = canDeleteAgent(agent, currentUserId, canRemoveAgents)
   const { disabled: toggleDisabled, disabledTooltip } = agentToggleDisabled(agent)
   const finalToggleDisabled = toggleDisabled || !canEditAgents

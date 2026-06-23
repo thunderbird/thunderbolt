@@ -70,4 +70,18 @@ describe('MemoizedMarkdown — LaTeX', () => {
     expect(container.textContent).toContain('Solve:')
     expect(container.textContent).toContain('and done.')
   })
+
+  it('leaves a `$$…$$` line inside a fenced code block as literal source', () => {
+    const { container } = renderMarkdown('```\n$$E = mc^2$$\n```')
+    // Not rendered as math, and the source text is preserved verbatim (not
+    // rewritten with extra newlines).
+    expect(container.querySelector('.katex')).toBeNull()
+    expect(container.querySelector('code')?.textContent).toContain('$$E = mc^2$$')
+  })
+
+  it('leaves LaTeX delimiters inside an inline code span as literal source', () => {
+    const { container } = renderMarkdown('Write inline math as `\\(x\\)` in LaTeX.')
+    expect(container.querySelector('.katex')).toBeNull()
+    expect(container.querySelector('code')?.textContent).toBe('\\(x\\)')
+  })
 })

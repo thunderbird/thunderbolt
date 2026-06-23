@@ -40,15 +40,40 @@ const inlineMathDelimiters = /\\\((.+?)\\\)/g
 // don't match (their `$$` fences are alone on their lines).
 const displayMathLine = /^([ \t]*)\$\$[ \t]*(.+?)[ \t]*\$\$[ \t]*$/gm
 
-const normalizeDisplayMath = (markdown: string): string =>
-  markdown
+// Rewrite the math delimiters in a span of prose. Never called on code — see
+// `normalizeDisplayMath` (skips inline code spans) and `parseMarkdownIntoBlocks`
+// (skips fenced/indented code blocks).
+const rewriteMath = (text: string): string =>
+  text
     .replace(displayMathDelimiters, (_match, body: string) => `$$\n${body.trim()}\n$$`)
     .replace(inlineMathDelimiters, (_match, body: string) => `$${body.trim()}$`)
     .replace(displayMathLine, (_match, indent: string, body: string) => `${indent}$$\n${body}\n$$`)
 
+// An inline code span (`` `…` ``, `` ``…`` ``, …). Left verbatim so a message
+// that shows `$$…$$` / `\(…\)` *as inline code* keeps its literal text.
+const inlineCodeSpan = /(`+)[^`]*?\1/g
+
+// Rewrite math everywhere except inside inline code spans.
+const normalizeDisplayMath = (markdown: string): string => {
+  let result = ''
+  let lastIndex = 0
+  for (const match of markdown.matchAll(inlineCodeSpan)) {
+    result += rewriteMath(markdown.slice(lastIndex, match.index)) + match[0]
+    lastIndex = match.index + match[0].length
+  }
+  return result + rewriteMath(markdown.slice(lastIndex))
+}
+
 const parseMarkdownIntoBlocks = (markdown: string): string[] => {
-  const tokens = marked.lexer(normalizeDisplayMath(markdown))
-  return tokens.map((token) => token.raw)
+  // Rewrite math per top-level token, skipping `code` tokens (fenced *and*
+  // indented code) so a message that shows `$$…$$` as source keeps its literal
+  // text. Re-lex the rewritten string so a promoted single-line `$$…$$` still
+  // splits into its own display-math block.
+  const normalized = marked
+    .lexer(markdown)
+    .map((token) => (token.type === 'code' ? token.raw : normalizeDisplayMath(token.raw)))
+    .join('')
+  return marked.lexer(normalized).map((token) => token.raw)
 }
 
 const MemoizedMarkdownBlock = memo(

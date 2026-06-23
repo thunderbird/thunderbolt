@@ -11,6 +11,10 @@ import {
   modelsTable,
   settingsTable,
   tasksTable,
+  workspaceMembershipsTable,
+  workspacePendingMembershipsTable,
+  workspacePermissionsTable,
+  workspacesTable,
 } from '@/db/tables'
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'bun:test'
 import { eq, sql } from 'drizzle-orm'
@@ -35,7 +39,7 @@ const envelope = (tables: Record<string, unknown[]>): unknown => ({
   tables,
 })
 
-const currentUser = { id: 'current-user' }
+const currentUser = { id: 'current-user', personalWorkspaceId: 'ws-personal' }
 
 describe('Import DAL', () => {
   beforeEach(async () => {
@@ -353,6 +357,139 @@ describe('Import DAL', () => {
       const row = await db.select().from(chatThreadsTable).where(eq(chatThreadsTable.id, 'thread-1')).get()
       expect(row?.title).toBe('Imported')
       expect(row?.userId).toBe(currentUser.id)
+    })
+
+    it('re-stamps ownerUserId on workspaces with the current session user', async () => {
+      const db = getDb()
+      await importUserData(
+        db,
+        envelope({
+          workspaces: [{ id: 'ws-1', name: 'Imported', isPersonal: 0, ownerUserId: 'attacker-user' }],
+        }),
+        currentUser,
+      )
+
+      const row = await db.select().from(workspacesTable).where(eq(workspacesTable.id, 'ws-1')).get()
+      expect(row?.ownerUserId).toBe(currentUser.id)
+    })
+
+    it('re-stamps invitedByUserId on workspace_pending_memberships', async () => {
+      const db = getDb()
+      await importUserData(
+        db,
+        envelope({
+          workspaces: [{ id: 'ws-1', name: 'WS', isPersonal: 0 }],
+          workspace_pending_memberships: [
+            {
+              id: 'pend-1',
+              workspaceId: 'ws-1',
+              email: 'alice@example.com',
+              role: 'member',
+              invitedByUserId: 'attacker-user',
+            },
+          ],
+        }),
+        currentUser,
+      )
+
+      const row = await db
+        .select()
+        .from(workspacePendingMembershipsTable)
+        .where(eq(workspacePendingMembershipsTable.id, 'pend-1'))
+        .get()
+      expect(row?.invitedByUserId).toBe(currentUser.id)
+    })
+  })
+
+  describe('workspace tables', () => {
+    it('round-trips a workspace + its membership + its permission rows', async () => {
+      const db = getDb()
+      const result = await importUserData(
+        db,
+        envelope({
+          workspaces: [{ id: 'ws-1', name: 'Imported', isPersonal: 0, ownerUserId: 'someone' }],
+          workspace_memberships: [{ id: 'mem-1', workspaceId: 'ws-1', userId: 'someone', role: 'admin' }],
+          workspace_permissions: [
+            { id: 'perm-1', workspaceId: 'ws-1', permissionKey: 'add_agents', requiredRole: 'admin' },
+          ],
+        }),
+        currentUser,
+      )
+
+      expect(result.tables.workspaces).toEqual({ upserted: 1 })
+      expect(result.tables.workspace_memberships).toEqual({ upserted: 1 })
+      expect(result.tables.workspace_permissions).toEqual({ upserted: 1 })
+
+      const ws = await db.select().from(workspacesTable).where(eq(workspacesTable.id, 'ws-1')).get()
+      expect(ws?.name).toBe('Imported')
+      // ownerUserId is re-stamped — see the dedicated test in `userId re-stamping`.
+      expect(ws?.ownerUserId).toBe(currentUser.id)
+
+      const mem = await db
+        .select()
+        .from(workspaceMembershipsTable)
+        .where(eq(workspaceMembershipsTable.id, 'mem-1'))
+        .get()
+      // user_id on memberships is re-stamped so the importing user becomes the
+      // member of every imported workspace.
+      expect(mem?.userId).toBe(currentUser.id)
+      expect(mem?.role).toBe('admin')
+
+      const perm = await db
+        .select()
+        .from(workspacePermissionsTable)
+        .where(eq(workspacePermissionsTable.id, 'perm-1'))
+        .get()
+      expect(perm?.permissionKey).toBe('add_agents')
+      expect(perm?.requiredRole).toBe('admin')
+    })
+
+    it('attaches pre-workspaces-v1 rows (no workspaceId in file) to the importing user`s personal workspace', async () => {
+      const db = getDb()
+      // Pre-v1 envelope: synced tables had no `workspace_id` column when the
+      // backup was taken, so the rows arrive without one.
+      await importUserData(
+        db,
+        envelope({
+          chat_threads: [
+            { id: 'thread-legacy-1', title: 'Legacy 1' },
+            { id: 'thread-legacy-2', title: 'Legacy 2' },
+          ],
+          tasks: [{ id: 'task-legacy', item: 'Pre-v1 task' }],
+        }),
+        currentUser,
+      )
+
+      const threads = await db.select().from(chatThreadsTable)
+      expect(threads.map((t) => t.workspaceId).sort()).toEqual([
+        currentUser.personalWorkspaceId,
+        currentUser.personalWorkspaceId,
+      ])
+      const tasks = await db.select().from(tasksTable)
+      expect(tasks[0]?.workspaceId).toBe(currentUser.personalWorkspaceId)
+    })
+
+    it('preserves the file`s workspaceId on modern multi-workspace backups (no override)', async () => {
+      const db = getDb()
+      await importUserData(
+        db,
+        envelope({
+          workspaces: [
+            { id: 'ws-a', name: 'A', isPersonal: 0 },
+            { id: 'ws-b', name: 'B', isPersonal: 0 },
+          ],
+          chat_threads: [
+            { id: 'thread-a', title: 'In A', workspaceId: 'ws-a' },
+            { id: 'thread-b', title: 'In B', workspaceId: 'ws-b' },
+          ],
+        }),
+        currentUser,
+      )
+
+      const threadA = await db.select().from(chatThreadsTable).where(eq(chatThreadsTable.id, 'thread-a')).get()
+      const threadB = await db.select().from(chatThreadsTable).where(eq(chatThreadsTable.id, 'thread-b')).get()
+      expect(threadA?.workspaceId).toBe('ws-a')
+      expect(threadB?.workspaceId).toBe('ws-b')
     })
   })
 

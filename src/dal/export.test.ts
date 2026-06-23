@@ -17,6 +17,9 @@ import {
   modelsTable,
   settingsTable,
   tasksTable,
+  workspaceMembershipsTable,
+  workspacePermissionsTable,
+  workspacesTable,
 } from '@/db/tables'
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'bun:test'
 import { exportFormat, exportSchemaVersion, exportUserData, exportedTableNames } from './export'
@@ -60,6 +63,13 @@ describe('Export DAL', () => {
       'skills',
       'tasks',
       'triggers',
+      // Workspace identity travels with the backup so a restore reinstates
+      // every workspace (and the rows that point at them) without depending
+      // on PowerSync's down-sync to repopulate the local cache first.
+      'workspace_memberships',
+      'workspace_pending_memberships',
+      'workspace_permissions',
+      'workspaces',
     ]
     const actualKeys = Object.keys(exported.tables).sort() as string[]
     expect(actualKeys).toEqual(expectedKeys.sort())
@@ -163,9 +173,45 @@ describe('Export DAL', () => {
   })
 
   it('returns empty arrays for tables when the local DB is empty', async () => {
+    // `resetTestDatabase` seeds a Personal workspace so component tests can
+    // resolve `useActiveWorkspaceId`. Strip it here so every bucket — including
+    // `workspaces` — starts truly empty for the assertion.
+    await getDb().delete(workspacesTable)
     const exported = await exportUserData(getDb(), { id: 'user-1', email: null })
     for (const rows of Object.values(exported.tables)) {
       expect(rows).toEqual([])
     }
+  })
+
+  it('exports workspace identity rows alongside per-workspace user content', async () => {
+    const db = getDb()
+    // Seed an extra workspace + a membership + a permission so we can verify
+    // the export carries the full workspace graph, not just the one the
+    // active-workspace hook resolves.
+    await db.insert(workspacesTable).values({
+      id: 'ws-extra',
+      name: 'Extra',
+      isPersonal: 0,
+      ownerUserId: 'user-1',
+    })
+    await db.insert(workspaceMembershipsTable).values({
+      id: 'ws-extra-user-1',
+      workspaceId: 'ws-extra',
+      userId: 'user-1',
+      role: 'admin',
+    })
+    await db.insert(workspacePermissionsTable).values({
+      id: 'ws-extra-add_agents',
+      workspaceId: 'ws-extra',
+      permissionKey: 'add_agents',
+      requiredRole: 'admin',
+    })
+
+    const exported = await exportUserData(db, { id: 'user-1', email: null })
+
+    const workspaceIds = (exported.tables.workspaces as Array<{ id: string }>).map((row) => row.id).sort()
+    expect(workspaceIds).toContain('ws-extra')
+    expect(exported.tables.workspace_memberships).toHaveLength(1)
+    expect(exported.tables.workspace_permissions).toHaveLength(1)
   })
 })

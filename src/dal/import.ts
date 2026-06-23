@@ -46,8 +46,45 @@ export const derivePkSpec = (tableName: string, table: SQLiteTable): PkSpec => {
 
 type TableImportSpec = {
   pk: PkSpec
-  /** True when the table has a `user_id` column (every synced table; secret tables omit it). */
-  hasUserId: boolean
+  /** JS field names on the row whose value identifies a user (e.g. `userId`,
+   *  `ownerUserId`, `invitedByUserId`). On import these are stripped from the
+   *  file row and rewritten with the current session user — the file value is
+   *  never trusted. Empty for tables (e.g. secrets) that have no such columns. */
+  userIdFields: string[]
+  /** True when the table has a `workspace_id` column. Pre-workspaces-v1
+   *  backups have no `workspaceId` on their rows; on import we fall back to the
+   *  importing user's personal workspace so the data is visible in the UI
+   *  instead of orphaned with `workspace_id = NULL`. */
+  hasWorkspaceId: boolean
+}
+
+/** SQL column-name predicate: matches `user_id`, `owner_user_id`,
+ *  `invited_by_user_id`, etc. Used to flag every user-FK column for re-stamping
+ *  so a workspaces / pending-membership row can't plant a foreign user id. */
+const isUserIdColumnName = (name: string): boolean => name === 'user_id' || name.endsWith('_user_id')
+
+/** Resolve the JS field name on a Drizzle table whose value === `column`.
+ *  Drizzle exposes each column as an enumerable property on the table;
+ *  matching by reference recovers the field name even when it differs from
+ *  the SQL column name. Skip the internal `_` config bag. */
+const findJsFieldName = (table: SQLiteTable, column: SQLiteColumn): string | null => {
+  const candidates = Object.entries(table as unknown as Record<string, unknown>).filter(([key]) => key !== '_')
+  return candidates.find(([, value]) => value === column)?.[0] ?? null
+}
+
+const deriveUserIdFields = (tableName: string, table: SQLiteTable): string[] => {
+  const fields: string[] = []
+  for (const column of getTableConfig(table).columns) {
+    if (!isUserIdColumnName(column.name)) {
+      continue
+    }
+    const field = findJsFieldName(table, column as SQLiteColumn)
+    if (!field) {
+      throw new Error(`Could not derive JS field name for user-id column "${column.name}" on "${tableName}".`)
+    }
+    fields.push(field)
+  }
+  return fields
 }
 
 /**
@@ -61,7 +98,8 @@ const tableImportSpecs = Object.fromEntries(
     name,
     {
       pk: derivePkSpec(name, table),
-      hasUserId: getTableConfig(table).columns.some((c) => c.name === 'user_id'),
+      userIdFields: deriveUserIdFields(name, table),
+      hasWorkspaceId: getTableConfig(table).columns.some((c) => c.name === 'workspace_id'),
     },
   ]),
 ) as Record<IncludedTableName, TableImportSpec>
@@ -151,23 +189,53 @@ export const summarizeExportEnvelope = (
   return { totalRows, exportedAtLabel, sourceEmail, accountMismatch }
 }
 
+/** JS-side counterpart to {@link isUserIdColumnName}: matches `userId`,
+ *  `ownerUserId`, `invitedByUserId`, etc. Used to strip every user-FK field
+ *  off a file row before re-stamping the columns the target table actually
+ *  has. Drops blindly so a rogue file value never survives even on a table
+ *  that has no user column at all (e.g. the secret tables). */
+const isUserIdFieldName = (name: string): boolean => name === 'userId' || name.endsWith('UserId')
+
 /**
- * Drop the file's `userId` and either re-stamp it from the current session
- * (tables with a `user_id` column) or omit it entirely (secret tables, which
- * have no such column). The file's value is never trusted: backups carry the
- * source user's id, but a tampered or cross-account file would otherwise
- * plant a foreign id in the local DB until backend reconciliation.
+ * Strip every user-id field from the file row, re-stamp the columns the
+ * target table actually has with the current session user, and back-fill
+ * `workspaceId` with the importing user's personal workspace when the file
+ * row is missing one (pre-workspaces-v1 backups).
  *
- * The backend's PowerSync upload route enforces the same invariant from the
- * JWT (see `backend/src/dal/powersync.ts`).
+ * User-id re-stamping covers `user_id`, `owner_user_id`, `invited_by_user_id`,
+ * and any future user-FK column — detection is column-name based, not
+ * table-name based. Backups carry the source user's id, but a tampered or
+ * cross-account file would otherwise plant a foreign id in the local DB
+ * until backend reconciliation. The backend's PowerSync upload route
+ * enforces the same invariant from the JWT (see
+ * `backend/src/dal/powersync.ts`).
+ *
+ * The `workspaceId` rule is fallback-only: a modern multi-workspace backup
+ * carries `workspaceId` on every per-user row, and we preserve those values
+ * so a restore reinstates the source's workspace structure. Only rows that
+ * arrive without one (legacy v1 backups) get attached to the personal
+ * workspace so they're visible to the UI instead of orphaned at NULL.
  */
 const sanitizeRowForImport = (
   row: Record<string, unknown>,
-  hasUserId: boolean,
+  userIdFields: string[],
+  hasWorkspaceId: boolean,
   currentUserId: string,
+  personalWorkspaceId: string,
 ): Record<string, unknown> => {
-  const { userId: _ignored, ...rest } = row
-  return hasUserId ? { ...rest, userId: currentUserId } : rest
+  const sanitized: Record<string, unknown> = {}
+  for (const [key, value] of Object.entries(row)) {
+    if (!isUserIdFieldName(key)) {
+      sanitized[key] = value
+    }
+  }
+  for (const field of userIdFields) {
+    sanitized[field] = currentUserId
+  }
+  if (hasWorkspaceId && (sanitized.workspaceId === undefined || sanitized.workspaceId === null)) {
+    sanitized.workspaceId = personalWorkspaceId
+  }
+  return sanitized
 }
 
 /**
@@ -181,10 +249,17 @@ const sanitizeRowForImport = (
  *   and SQLite forbids `INSERT ... ON CONFLICT DO UPDATE` on a view ("cannot
  *   UPSERT a view"). The SELECT + UPDATE/INSERT split works on both real
  *   tables and PowerSync views.
- * - **`userId` re-stamped.** Tables with a `user_id` column have their
- *   row's `userId` overwritten with `currentUser.id`; the value in the file
- *   is never trusted. Tables without `user_id` (the secret tables) are
- *   unaffected.
+ * - **User-id columns re-stamped.** Every column whose SQL name matches
+ *   `user_id` / `*_user_id` (e.g. `user_id`, `owner_user_id`,
+ *   `invited_by_user_id`) is overwritten with `currentUser.id`; the value in
+ *   the file is never trusted. Tables without any user-id column (e.g. the
+ *   secret tables) are unaffected.
+ * - **`workspaceId` back-filled.** Rows from a pre-workspaces-v1 backup
+ *   arrive without `workspaceId`; on tables that have a `workspace_id`
+ *   column, the missing value is stamped with `currentUser.personalWorkspaceId`
+ *   so the data lands in the user's personal workspace instead of orphaned at
+ *   NULL. Rows that arrive *with* a `workspaceId` are preserved verbatim —
+ *   modern multi-workspace backups keep their workspace structure on restore.
  * - **Soft-deleted rows preserved.** `deletedAt` is written verbatim, so a
  *   row exported in the trash stays in the trash after import.
  * - **Atomic.** Wrapped in a single `db.transaction`; any per-row failure
@@ -200,7 +275,7 @@ const sanitizeRowForImport = (
 export const importUserData = async (
   db: AnyDrizzleDatabase,
   payload: unknown,
-  currentUser: { id: string },
+  currentUser: { id: string; personalWorkspaceId: string },
 ): Promise<ImportResult> => {
   if (!isRecord(payload)) {
     throw new ImportFormatError('Import file is not a JSON object.')
@@ -234,7 +309,7 @@ export const importUserData = async (
       }
 
       const table = includedTables[tableName]
-      const { pk, hasUserId } = tableImportSpecs[tableName]
+      const { pk, userIdFields, hasWorkspaceId } = tableImportSpecs[tableName]
       const { column: pkColumn, field: pkField } = pk
 
       for (const row of rows) {
@@ -245,7 +320,13 @@ export const importUserData = async (
         if (typeof pkValue !== 'string') {
           throw new ImportFormatError(`Row in "${tableName}" is missing string primary key "${pkField}".`)
         }
-        const sanitized = sanitizeRowForImport(row, hasUserId, currentUser.id)
+        const sanitized = sanitizeRowForImport(
+          row,
+          userIdFields,
+          hasWorkspaceId,
+          currentUser.id,
+          currentUser.personalWorkspaceId,
+        )
         const existing = await tx.select({ pk: pkColumn }).from(table).where(eq(pkColumn, pkValue)).get()
         if (existing) {
           await tx.update(table).set(sanitized).where(eq(pkColumn, pkValue))

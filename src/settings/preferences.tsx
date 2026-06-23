@@ -4,7 +4,14 @@
 
 import { useAuth, useDatabase } from '@/contexts'
 import { useSignInModal } from '@/contexts/sign-in-modal-context'
-import { ImportFormatError, exportUserData, importUserData, summarizeExportEnvelope, type ExportSummary } from '@/dal'
+import {
+  ImportFormatError,
+  exportUserData,
+  getPersonalWorkspaceByOwner,
+  importUserData,
+  summarizeExportEnvelope,
+  type ExportSummary,
+} from '@/dal'
 import { downloadJson, exportFilenameFor } from '@/lib/export-download'
 import { readJsonFile } from '@/lib/import-upload'
 import { useCountryUnits } from '@/hooks/use-country-units'
@@ -377,7 +384,19 @@ export default function PreferencesSettingsPage() {
     dispatch({ type: 'SET_IS_IMPORTING', payload: true })
     dispatch({ type: 'SET_IMPORT_ERROR', payload: null })
     try {
-      const result = await importUserData(db, pendingImport.payload, { id: userId })
+      // Pre-workspaces-v1 backups have no workspaceId on their rows; the
+      // importer back-fills with the user's personal workspace so the data
+      // lands somewhere visible. The post-login bootstrap awaits this row,
+      // so by the time the user reaches Preferences it's always present.
+      const personalWorkspace = await getPersonalWorkspaceByOwner(db, userId)
+      if (!personalWorkspace) {
+        dispatch({ type: 'SET_IMPORT_ERROR', payload: 'Personal workspace not ready yet. Try again in a moment.' })
+        return
+      }
+      const result = await importUserData(db, pendingImport.payload, {
+        id: userId,
+        personalWorkspaceId: personalWorkspace.id,
+      })
       const total = Object.values(result.tables).reduce((sum, t) => sum + (t?.upserted ?? 0), 0)
       dispatch({
         type: 'SET_IMPORT_SUCCESS',

@@ -43,6 +43,9 @@ export default function AgentsSettingsPage({ isStandalone }: AgentsSettingsPageP
   const allowCustomAgents = useConfigStore((state) => selectAllowCustomAgents(state.config))
 
   const [dialogOpen, setDialogOpen] = useState(false)
+  // `null` ⇒ Add mode; an Agent ⇒ Edit mode. The dialog receives a `key`
+  // derived from the agent id so its reducer remounts when switching targets.
+  const [editingAgent, setEditingAgent] = useState<Agent | null>(null)
 
   // Defence against direct URL / bookmark when the entry is hidden in the
   // sidebar. Anonymous users behind the proxy can't reach managed agents, so
@@ -69,7 +72,23 @@ export default function AgentsSettingsPage({ isStandalone }: AgentsSettingsPageP
     await deleteAgent(db, agent.id)
   }
 
+  const handleEdit = (agent: Agent) => {
+    setEditingAgent(agent)
+    setDialogOpen(true)
+  }
+
   const handleSubmit = async (payload: AddCustomAgentPayload) => {
+    if (editingAgent) {
+      // Only customs are editable; system / built-in rows never reach this
+      // path (the row hides the Edit affordance).
+      await updateAgent(db, editingAgent.id, {
+        name: payload.name,
+        transport: payload.transport,
+        url: payload.url,
+        description: payload.description,
+      })
+      return
+    }
     if (!currentUserId) {
       // Anonymous sessions can't sync custom agents — the page hides the
       // dialog trigger in that case, but the guard keeps the write safe.
@@ -87,6 +106,14 @@ export default function AgentsSettingsPage({ isStandalone }: AgentsSettingsPageP
     })
   }
 
+  const handleDialogOpenChange = (next: boolean) => {
+    setDialogOpen(next)
+    if (!next) {
+      // Drop the edit target so a follow-up "+" opens a fresh Add dialog.
+      setEditingAgent(null)
+    }
+  }
+
   return (
     <div className="flex flex-col gap-6 p-4 w-full max-w-[760px] mx-auto">
       <PageHeader title="Agents">
@@ -96,7 +123,10 @@ export default function AgentsSettingsPage({ isStandalone }: AgentsSettingsPageP
             size="icon"
             className="rounded-lg"
             aria-label="Add Custom Agent"
-            onClick={() => setDialogOpen(true)}
+            onClick={() => {
+              setEditingAgent(null)
+              setDialogOpen(true)
+            }}
             disabled={!currentUserId}
           >
             <Plus />
@@ -104,12 +134,20 @@ export default function AgentsSettingsPage({ isStandalone }: AgentsSettingsPageP
         )}
       </PageHeader>
 
-      <AgentList agents={agents} currentUserId={currentUserId} onToggle={handleToggle} onDelete={handleDelete} />
+      <AgentList
+        agents={agents}
+        currentUserId={currentUserId}
+        onToggle={handleToggle}
+        onEdit={handleEdit}
+        onDelete={handleDelete}
+      />
 
       <AddCustomAgentDialog
+        key={editingAgent?.id ?? 'new'}
         open={dialogOpen}
-        onOpenChange={setDialogOpen}
+        onOpenChange={handleDialogOpenChange}
         onSubmit={handleSubmit}
+        editingAgent={editingAgent}
         testAcpConnection={testAcpConnection}
       />
     </div>

@@ -8,7 +8,7 @@ import { afterEach, describe, expect, it, mock } from 'bun:test'
 import { builtInAgent } from '@/defaults/agents'
 import type { Agent } from '@/types/acp'
 import { AgentList } from './agent-list'
-import { agentToggleDisabled, canDeleteAgent } from './agent-row'
+import { agentToggleDisabled, canDeleteAgent, canEditAgent } from './agent-row'
 
 afterEach(() => {
   cleanup()
@@ -42,6 +42,8 @@ const customAgent: Agent = {
   userId: 'user-42',
 }
 
+const noop = () => {}
+
 describe('canDeleteAgent', () => {
   it('returns false for the built-in agent', () => {
     expect(canDeleteAgent(builtInAgent, 'user-42')).toBe(false)
@@ -64,17 +66,25 @@ describe('canDeleteAgent', () => {
   })
 })
 
+describe('canEditAgent', () => {
+  it('mirrors canDeleteAgent — built-in and system are non-editable, customs are owned by the user', () => {
+    expect(canEditAgent(builtInAgent, 'user-42')).toBe(false)
+    expect(canEditAgent(systemAgent, 'user-42')).toBe(false)
+    expect(canEditAgent(customAgent, 'user-42')).toBe(true)
+    expect(canEditAgent(customAgent, 'someone-else')).toBe(false)
+    expect(canEditAgent(customAgent, null)).toBe(false)
+  })
+})
+
 describe('AgentList', () => {
   it('renders rows for built-in, system, and custom agents in the given order', () => {
-    const onToggle = mock(() => {})
-    const onDelete = mock(() => {})
-
     render(
       <AgentList
         agents={[builtInAgent, systemAgent, customAgent]}
         currentUserId="user-42"
-        onToggle={onToggle}
-        onDelete={onDelete}
+        onToggle={noop}
+        onEdit={noop}
+        onDelete={noop}
       />,
     )
 
@@ -88,15 +98,13 @@ describe('AgentList', () => {
   })
 
   it('only renders the delete button on custom agents owned by the user', () => {
-    const onToggle = mock(() => {})
-    const onDelete = mock(() => {})
-
     render(
       <AgentList
         agents={[builtInAgent, systemAgent, customAgent]}
         currentUserId="user-42"
-        onToggle={onToggle}
-        onDelete={onDelete}
+        onToggle={noop}
+        onEdit={noop}
+        onDelete={noop}
       />,
     )
 
@@ -105,11 +113,39 @@ describe('AgentList', () => {
     expect(screen.getByTestId(`agent-delete-${customAgent.id}`)).toBeInTheDocument()
   })
 
+  it('only renders the edit button on custom agents owned by the user', () => {
+    render(
+      <AgentList
+        agents={[builtInAgent, systemAgent, customAgent]}
+        currentUserId="user-42"
+        onToggle={noop}
+        onEdit={noop}
+        onDelete={noop}
+      />,
+    )
+
+    expect(screen.queryByTestId(`agent-edit-${builtInAgent.id}`)).not.toBeInTheDocument()
+    expect(screen.queryByTestId(`agent-edit-${systemAgent.id}`)).not.toBeInTheDocument()
+    expect(screen.getByTestId(`agent-edit-${customAgent.id}`)).toBeInTheDocument()
+  })
+
+  it('calls onEdit with the agent when the edit button is clicked', () => {
+    const onEdit = mock<(agent: Agent) => void>(() => {})
+
+    render(<AgentList agents={[customAgent]} currentUserId="user-42" onToggle={noop} onEdit={onEdit} onDelete={noop} />)
+
+    fireEvent.click(screen.getByTestId(`agent-edit-${customAgent.id}`))
+
+    expect(onEdit).toHaveBeenCalledTimes(1)
+    expect(onEdit.mock.calls[0][0].id).toBe(customAgent.id)
+  })
+
   it('calls onToggle with the new enabled value when a custom agent toggle flips', () => {
     const onToggle = mock<(agent: Agent, enabled: boolean) => void>(() => {})
-    const onDelete = mock<(agent: Agent) => void>(() => {})
 
-    render(<AgentList agents={[customAgent]} currentUserId="user-42" onToggle={onToggle} onDelete={onDelete} />)
+    render(
+      <AgentList agents={[customAgent]} currentUserId="user-42" onToggle={onToggle} onEdit={noop} onDelete={noop} />,
+    )
 
     const toggle = screen.getByTestId(`agent-toggle-${customAgent.id}`)
     fireEvent.click(toggle)
@@ -121,28 +157,19 @@ describe('AgentList', () => {
   })
 
   it('disables the toggle for the built-in agent', () => {
-    const onToggle = mock(() => {})
-    const onDelete = mock(() => {})
-
-    render(<AgentList agents={[builtInAgent]} currentUserId="user-42" onToggle={onToggle} onDelete={onDelete} />)
+    render(<AgentList agents={[builtInAgent]} currentUserId="user-42" onToggle={noop} onEdit={noop} onDelete={noop} />)
 
     expect(screen.getByTestId(`agent-toggle-${builtInAgent.id}`)).toBeDisabled()
   })
 
   it('disables the toggle for system agents', () => {
-    const onToggle = mock(() => {})
-    const onDelete = mock(() => {})
-
-    render(<AgentList agents={[systemAgent]} currentUserId="user-42" onToggle={onToggle} onDelete={onDelete} />)
+    render(<AgentList agents={[systemAgent]} currentUserId="user-42" onToggle={noop} onEdit={noop} onDelete={noop} />)
 
     expect(screen.getByTestId(`agent-toggle-${systemAgent.id}`)).toBeDisabled()
   })
 
   it('keeps the toggle enabled for custom agents', () => {
-    const onToggle = mock(() => {})
-    const onDelete = mock(() => {})
-
-    render(<AgentList agents={[customAgent]} currentUserId="user-42" onToggle={onToggle} onDelete={onDelete} />)
+    render(<AgentList agents={[customAgent]} currentUserId="user-42" onToggle={noop} onEdit={noop} onDelete={noop} />)
 
     expect(screen.getByTestId(`agent-toggle-${customAgent.id}`)).not.toBeDisabled()
   })

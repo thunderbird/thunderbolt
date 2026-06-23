@@ -2,8 +2,11 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { useAuth } from '@/contexts'
+import { useAuth, useDatabase } from '@/contexts'
 import { useSignInModal } from '@/contexts/sign-in-modal-context'
+import { ImportFormatError, exportUserData, importUserData, summarizeExportEnvelope, type ExportSummary } from '@/dal'
+import { downloadJson, exportFilenameFor } from '@/lib/export-download'
+import { readJsonFile } from '@/lib/import-upload'
 import { useCountryUnits } from '@/hooks/use-country-units'
 import { useLocalStorage } from '@/hooks/use-local-storage'
 import type { LocationData } from '@/hooks/use-location-search'
@@ -18,7 +21,7 @@ import { computeEffectiveProxyEnabled } from '@/lib/proxy-fetch'
 import { trackEvent, useTelemetryAvailable } from '@/lib/posthog'
 import type { CountryUnitsData } from '@/types'
 import { useHttpClient } from '@/contexts'
-import { useEffect, useMemo, useReducer, useRef, useState } from 'react'
+import { useEffect, useMemo, useReducer, useRef, useState, type ChangeEvent } from 'react'
 
 import { LocationSearchCombobox } from '@/components/location-search-combobox'
 import { ModificationIndicator } from '@/components/modification-indicator'
@@ -49,9 +52,17 @@ import { usePostHog } from 'posthog-js/react'
 import { usePowerSyncStatus } from '@/hooks/use-powersync-status'
 import { useSyncEnabledToggle } from '@/hooks/use-sync-enabled-toggle'
 
+type PendingImport = { payload: unknown } & ExportSummary
+
 type PreferencesState = {
   isResetting: boolean
   isDeletingAccount: boolean
+  isExporting: boolean
+  isImporting: boolean
+  exportError: string | null
+  importError: string | null
+  importSuccess: string | null
+  pendingImport: PendingImport | null
   localizationDialogOpen: boolean
   pendingCountryUnits: CountryUnitsData | null
 }
@@ -59,6 +70,13 @@ type PreferencesState = {
 type PreferencesAction =
   | { type: 'SET_IS_RESETTING'; payload: boolean }
   | { type: 'SET_IS_DELETING_ACCOUNT'; payload: boolean }
+  | { type: 'SET_IS_EXPORTING'; payload: boolean }
+  | { type: 'SET_IS_IMPORTING'; payload: boolean }
+  | { type: 'SET_EXPORT_ERROR'; payload: string | null }
+  | { type: 'SET_IMPORT_ERROR'; payload: string | null }
+  | { type: 'SET_IMPORT_SUCCESS'; payload: string | null }
+  | { type: 'SET_PENDING_IMPORT'; payload: PendingImport | null }
+  | { type: 'CLEAR_IMPORT_FEEDBACK' }
   | { type: 'RESET_STATE' }
   | { type: 'OPEN_LOCALIZATION_DIALOG'; payload: CountryUnitsData }
   | { type: 'CLOSE_LOCALIZATION_DIALOG' }
@@ -66,6 +84,12 @@ type PreferencesAction =
 const initialState: PreferencesState = {
   isResetting: false,
   isDeletingAccount: false,
+  isExporting: false,
+  isImporting: false,
+  exportError: null,
+  importError: null,
+  importSuccess: null,
+  pendingImport: null,
   localizationDialogOpen: false,
   pendingCountryUnits: null,
 }
@@ -76,6 +100,20 @@ const preferencesReducer = (state: PreferencesState, action: PreferencesAction):
       return { ...state, isResetting: action.payload }
     case 'SET_IS_DELETING_ACCOUNT':
       return { ...state, isDeletingAccount: action.payload }
+    case 'SET_IS_EXPORTING':
+      return { ...state, isExporting: action.payload }
+    case 'SET_IS_IMPORTING':
+      return { ...state, isImporting: action.payload }
+    case 'SET_EXPORT_ERROR':
+      return { ...state, exportError: action.payload }
+    case 'SET_IMPORT_ERROR':
+      return { ...state, importError: action.payload }
+    case 'SET_IMPORT_SUCCESS':
+      return { ...state, importSuccess: action.payload }
+    case 'SET_PENDING_IMPORT':
+      return { ...state, pendingImport: action.payload }
+    case 'CLEAR_IMPORT_FEEDBACK':
+      return { ...state, importError: null, importSuccess: null }
     case 'RESET_STATE':
       return initialState
     case 'OPEN_LOCALIZATION_DIALOG':
@@ -89,8 +127,20 @@ const preferencesReducer = (state: PreferencesState, action: PreferencesAction):
 
 export default function PreferencesSettingsPage() {
   const [state, dispatch] = useReducer(preferencesReducer, initialState)
-  const { isResetting, isDeletingAccount, localizationDialogOpen, pendingCountryUnits } = state
+  const {
+    isResetting,
+    isDeletingAccount,
+    isExporting,
+    isImporting,
+    exportError,
+    importError,
+    importSuccess,
+    pendingImport,
+    localizationDialogOpen,
+    pendingCountryUnits,
+  } = state
   const authClient = useAuth()
+  const db = useDatabase()
   const { data: session } = authClient.useSession()
   const isAuthenticated = !!session?.user
   const isAnonymous = session?.user?.isAnonymous === true
@@ -284,6 +334,99 @@ export default function PreferencesSettingsPage() {
   }
 
   const [deleteAccountError, setDeleteAccountError] = useState<string | null>(null)
+  const importFileInputRef = useRef<HTMLInputElement>(null)
+
+  const handleImportClick = () => {
+    dispatch({ type: 'CLEAR_IMPORT_FEEDBACK' })
+    importFileInputRef.current?.click()
+  }
+
+  const handleImportFileSelected = async (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0]
+    // Reset the input value so re-picking the same file fires `change` again.
+    event.target.value = ''
+    if (!file) {
+      return
+    }
+    dispatch({ type: 'CLEAR_IMPORT_FEEDBACK' })
+    try {
+      const payload = await readJsonFile(file)
+      const summary = summarizeExportEnvelope(payload, session?.user?.email ?? null)
+      if (!summary) {
+        throw new ImportFormatError("This file doesn't look like a Thunderbolt export.")
+      }
+      dispatch({ type: 'SET_PENDING_IMPORT', payload: { payload, ...summary } })
+    } catch (error) {
+      console.error('Failed to read import file:', error)
+      dispatch({
+        type: 'SET_IMPORT_ERROR',
+        payload: error instanceof Error ? error.message : 'Could not read the import file.',
+      })
+    }
+  }
+
+  const handleConfirmImport = async () => {
+    if (!pendingImport) {
+      return
+    }
+    const userId = session?.user?.id
+    if (!userId) {
+      dispatch({ type: 'SET_IMPORT_ERROR', payload: 'You must be signed in to import data.' })
+      return
+    }
+    dispatch({ type: 'SET_IS_IMPORTING', payload: true })
+    dispatch({ type: 'SET_IMPORT_ERROR', payload: null })
+    try {
+      const result = await importUserData(db, pendingImport.payload, { id: userId })
+      const total = Object.values(result.tables).reduce((sum, t) => sum + (t?.upserted ?? 0), 0)
+      dispatch({
+        type: 'SET_IMPORT_SUCCESS',
+        payload: `Imported ${total.toLocaleString()} rows. The app may take a moment to reflect new chats.`,
+      })
+      trackEvent('settings_data_import')
+      dispatch({ type: 'SET_PENDING_IMPORT', payload: null })
+    } catch (error) {
+      console.error('Failed to import data:', error)
+      dispatch({
+        type: 'SET_IMPORT_ERROR',
+        payload: error instanceof Error ? error.message : 'Failed to import data.',
+      })
+    } finally {
+      dispatch({ type: 'SET_IS_IMPORTING', payload: false })
+    }
+  }
+
+  const handleCancelImport = () => {
+    if (isImporting) {
+      return
+    }
+    dispatch({ type: 'SET_PENDING_IMPORT', payload: null })
+  }
+
+  const handleExportData = async () => {
+    const userId = session?.user?.id
+    if (!userId) {
+      return
+    }
+    dispatch({ type: 'SET_EXPORT_ERROR', payload: null })
+    dispatch({ type: 'SET_IS_EXPORTING', payload: true })
+    try {
+      const payload = await exportUserData(db, {
+        id: userId,
+        email: session.user.email ?? null,
+      })
+      await downloadJson(exportFilenameFor(new Date()), payload)
+      trackEvent('settings_data_export')
+    } catch (error) {
+      console.error('Failed to export data:', error)
+      dispatch({
+        type: 'SET_EXPORT_ERROR',
+        payload: error instanceof Error ? error.message : 'Failed to export data.',
+      })
+    } finally {
+      dispatch({ type: 'SET_IS_EXPORTING', payload: false })
+    }
+  }
 
   const handleResetDatabase = async () => {
     dispatch({ type: 'SET_IS_RESETTING', payload: true })
@@ -737,6 +880,85 @@ export default function PreferencesSettingsPage() {
             </div>
           )}
 
+          {isAuthenticated && (
+            <>
+              <div className="h-px bg-border -mx-6" />
+
+              <div className="flex flex-col gap-2">
+                <label htmlFor="export-data-button" className="text-sm font-medium">
+                  Export Your Data
+                </label>
+                <p id="export-data-description" className="text-sm text-muted-foreground">
+                  Download a JSON snapshot of your chats, tasks, models, and the credentials you've entered (model API
+                  keys, MCP server tokens, agent keys). Treat the file like a password vault — anyone who can read it
+                  can use any of those credentials. Google and Microsoft sign-ins aren't included; you'll reconnect
+                  those after importing.
+                </p>
+                {exportError && (
+                  <p id="export-data-error" className="text-sm text-destructive" role="alert">
+                    {exportError}
+                  </p>
+                )}
+                <Button
+                  id="export-data-button"
+                  variant="secondary"
+                  disabled={isExporting}
+                  aria-busy={isExporting}
+                  aria-describedby={exportError ? 'export-data-error' : 'export-data-description'}
+                  onClick={handleExportData}
+                >
+                  {isExporting ? 'Exporting...' : 'Export My Data'}
+                </Button>
+              </div>
+
+              <div className="h-px bg-border -mx-6" />
+
+              <div className="flex flex-col gap-2">
+                <label htmlFor="import-data-button" className="text-sm font-medium">
+                  Import Your Data
+                </label>
+                <p id="import-data-description" className="text-sm text-muted-foreground">
+                  Restore from a Thunderbolt export file. Rows that share an ID with existing data are overwritten with
+                  the imported version and synced to your other devices. Everything else is left alone.
+                </p>
+                {importError && (
+                  <p id="import-data-error" className="text-sm text-destructive" role="alert">
+                    {importError}
+                  </p>
+                )}
+                {importSuccess && (
+                  <p id="import-data-success" className="text-sm text-muted-foreground" role="status">
+                    {importSuccess}
+                  </p>
+                )}
+                <input
+                  ref={importFileInputRef}
+                  type="file"
+                  // `.gz` is listed separately because some file dialogs only honor a single trailing extension.
+                  accept="application/gzip,application/json,.json.gz,.gz,.json"
+                  className="hidden"
+                  onChange={handleImportFileSelected}
+                />
+                <Button
+                  id="import-data-button"
+                  variant="secondary"
+                  disabled={isImporting}
+                  aria-busy={isImporting}
+                  aria-describedby={
+                    importError
+                      ? 'import-data-error'
+                      : importSuccess
+                        ? 'import-data-success'
+                        : 'import-data-description'
+                  }
+                  onClick={handleImportClick}
+                >
+                  {isImporting ? 'Importing...' : 'Import Data'}
+                </Button>
+              </div>
+            </>
+          )}
+
           {isAnonymous && (
             <>
               <div className="h-px bg-border -mx-6" />
@@ -777,6 +999,7 @@ export default function PreferencesSettingsPage() {
               <div className="h-px bg-border -mx-6" />
 
               <div className="flex flex-col gap-2">
+                <label className="text-sm font-medium">Delete Your Account</label>
                 <p className="text-sm text-muted-foreground">
                   Permanently delete your account and all data on our servers and this device.
                 </p>
@@ -821,6 +1044,47 @@ export default function PreferencesSettingsPage() {
       <TelemetryRequiredModal ref={telemetryRequiredModalRef} onEnableTelemetry={handleEnableTelemetry} />
 
       <TelemetryWarningModal ref={telemetryWarningModalRef} onDisableTelemetry={handleDisableTelemetry} />
+
+      <AlertDialog open={pendingImport !== null} onOpenChange={(open) => !open && handleCancelImport()}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Import this backup?</AlertDialogTitle>
+            <AlertDialogDescription>
+              {pendingImport && (
+                <>
+                  This file contains {pendingImport.totalRows.toLocaleString()} rows
+                  {pendingImport.sourceEmail ? ` exported by ${pendingImport.sourceEmail}` : ''}
+                  {pendingImport.exportedAtLabel ? ` on ${pendingImport.exportedAtLabel}` : ''}. Rows that share an ID
+                  with existing data will be overwritten with the file's version and synced to your other devices. This
+                  can't be undone.
+                </>
+              )}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          {pendingImport?.accountMismatch && (
+            <p className="text-sm text-destructive font-medium" role="alert">
+              ⚠ This export was made by a different account ({pendingImport.sourceEmail}). Importing it here will mix
+              that data into your account — confirm only if you intend to.
+            </p>
+          )}
+          {importError && (
+            <p className="text-sm text-destructive" role="alert">
+              {importError}
+            </p>
+          )}
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={isImporting}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleConfirmImport}
+              disabled={isImporting}
+              aria-busy={isImporting}
+              className="bg-destructive text-white hover:bg-destructive/90"
+            >
+              {isImporting ? 'Importing...' : 'Import'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       <AlertDialog open={localizationDialogOpen} onOpenChange={(open) => !open && handleDeclineLocalizationSettings()}>
         <AlertDialogContent>

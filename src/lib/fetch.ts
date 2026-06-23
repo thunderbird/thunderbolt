@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { isTauri } from '@/lib/platform'
+import { getCapabilities, isTauri } from '@/lib/platform'
 import { getLocalSetting } from '@/stores/local-settings-store'
 
 /**
@@ -17,8 +17,15 @@ export const fetch = async (input: RequestInfo | URL, init?: RequestInit): Promi
   }
 
   if (getLocalSetting('isNativeFetchEnabled')) {
-    const { fetch: tauriFetch } = await import('@tauri-apps/plugin-http')
-    return tauriFetch(input, init)
+    // The "Use Native Fetch" dev setting can only be toggled on in builds
+    // compiled with `--features native_fetch`; guard against stale `true`
+    // values from prior builds so we don't invoke an unregistered plugin
+    // ("plugin http not found").
+    const { native_fetch: nativeFetchAvailable } = await getCapabilities()
+    if (nativeFetchAvailable) {
+      const { fetch: tauriFetch } = await import('@tauri-apps/plugin-http')
+      return tauriFetch(input, init)
+    }
   }
 
   return globalThis.fetch(input, init)

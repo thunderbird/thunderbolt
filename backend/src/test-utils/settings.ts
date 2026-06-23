@@ -14,8 +14,6 @@ export const createTestSettings = (overrides: Partial<Settings> = {}): Settings 
   mistralApiKey: '',
   anthropicApiKey: '',
   exaApiKey: '',
-  thunderboltInferenceUrl: '',
-  thunderboltInferenceApiKey: '',
   tinfoilApiKey: '',
   tinfoilEnclaveUrl: 'https://inference.tinfoil.sh/v1',
   monitoringToken: '',

@@ -102,6 +102,15 @@ export const getSystemTinfoilClient = async (): Promise<SecureClient> => {
   return client
 }
 
+/** Drop the cached `SecureClient` so the next send constructs a fresh one with
+ *  a new attestation context. Use when a key-config error keeps repeating
+ *  inside the SDK's own reset+retry — the cached client's transport is wedged
+ *  and only a brand-new instance breaks the cycle. */
+const evictSystemTinfoilClient = (): void => {
+  const cloudUrl = getLocalSetting('cloudUrl').replace(/\/$/, '')
+  systemTinfoilClients.delete(cloudUrl)
+}
+
 export const getTinfoilClient = async (): Promise<SecureClient> => {
   if (!userTinfoilClient) {
     const { SecureClient } = await import('tinfoil')
@@ -110,6 +119,16 @@ export const getTinfoilClient = async (): Promise<SecureClient> => {
   await userTinfoilClient.ready()
   return userTinfoilClient
 }
+
+const evictUserTinfoilClient = (): void => {
+  userTinfoilClient = null
+}
+
+/** A KeyConfigMismatchError that survives the SDK's internal reset+retry means
+ *  our cached `SecureClient` has a wedged transport. Evict it so the next call
+ *  builds a fresh instance with a brand-new attestation context. */
+const isKeyConfigMismatchError = (err: unknown): boolean =>
+  err instanceof Error && err.name === 'KeyConfigMismatchError'
 
 /** Reconnect a dropped MCP client; returns a fresh client or null. Supplied by
  *  the MCP provider via the chat store. See `src/lib/mcp-provider.tsx`. */
@@ -259,7 +278,7 @@ export const createModel = async (modelConfig: Model, getProxyFetch: () => Fetch
       }
       ssoFetch.preconnect = fetch.preconnect
       const providerFetch: typeof fetch = sso && !hasRealToken ? ssoFetch : fetch
-      // GPT OSS (vendor: 'openai') uses createOpenAI with .chat() to force Chat Completions API
+      // OpenAI-vendor thunderbolt models use createOpenAI with .chat() to force Chat Completions API
       // (AI SDK 5 defaults createOpenAI to Responses API which our backend doesn't support)
       if (modelConfig.vendor === 'openai') {
         const provider = createOpenAI({ baseURL: cloudUrl, apiKey: token, fetch: providerFetch })
@@ -334,7 +353,7 @@ export const createModel = async (modelConfig: Model, getProxyFetch: () => Fetch
         const sso = isSsoMode()
         const token = getAuthToken()
         const wrappedFetch: typeof fetch = Object.assign(
-          (input: RequestInfo | URL, init?: RequestInit) => {
+          async (input: RequestInfo | URL, init?: RequestInit) => {
             const headers = new Headers(init?.headers)
             const upstreamInit: RequestInit = { ...init, headers }
             if (sso && !token) {
@@ -343,7 +362,14 @@ export const createModel = async (modelConfig: Model, getProxyFetch: () => Fetch
             } else if (token) {
               headers.set('Authorization', `Bearer ${token}`)
             }
-            return client.fetch(input, upstreamInit)
+            try {
+              return await client.fetch(input, upstreamInit)
+            } catch (err) {
+              if (isKeyConfigMismatchError(err)) {
+                evictSystemTinfoilClient()
+              }
+              throw err
+            }
           },
           { preconnect: fetch.preconnect },
         )
@@ -359,11 +385,24 @@ export const createModel = async (modelConfig: Model, getProxyFetch: () => Fetch
         throw new Error('No API key provided')
       }
       const client = await getTinfoilClient()
+      const evictingFetch: typeof fetch = Object.assign(
+        async (input: RequestInfo | URL, init?: RequestInit) => {
+          try {
+            return await client.fetch(input, init)
+          } catch (err) {
+            if (isKeyConfigMismatchError(err)) {
+              evictUserTinfoilClient()
+            }
+            throw err
+          }
+        },
+        { preconnect: fetch.preconnect },
+      )
       const tinfoil = createOpenAICompatible({
         name: 'tinfoil',
         baseURL: client.getBaseURL()!,
         apiKey: modelConfig.apiKey,
-        fetch: client.fetch,
+        fetch: evictingFetch,
       })
       return tinfoil(modelConfig.model)
     }

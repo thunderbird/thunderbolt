@@ -97,6 +97,19 @@ describe('MemoizedMarkdown — LaTeX', () => {
     expect(container.textContent).toContain('$5')
   })
 
+  it('renders inline math that starts with a digit (e.g. a physical constant)', () => {
+    const { container } = renderMarkdown('G = $6.674 \\times 10^{-11}$ N·m²/kg².')
+    expect(container.querySelector('.katex')).not.toBeNull()
+    // The literal `$…$` delimiters are consumed by KaTeX, not shown as text.
+    expect(container.textContent).not.toContain('$6.674')
+  })
+
+  it('renders a bare-decimal inline expression as math', () => {
+    const { container } = renderMarkdown('Pi is about $3.14159$ in value.')
+    expect(container.querySelector('.katex')).not.toBeNull()
+    expect(container.textContent).not.toContain('$3.14159$')
+  })
+
   it('converts a multi-line `\\(…\\)` inline expression to KaTeX', () => {
     const { container } = renderMarkdown('Here \\(a +\nb\\) inline.')
     expect(container.querySelector('.katex')).not.toBeNull()

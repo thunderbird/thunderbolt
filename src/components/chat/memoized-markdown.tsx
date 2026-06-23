@@ -33,14 +33,6 @@ const displayMathDelimiters = /\\\[([\s\S]+?)\\\]/g
 // matching the display pattern. Lazy, so it stops at the first `\)`.
 const inlineMathDelimiters = /\\\(([\s\S]+?)\\\)/g
 
-// A `$` that begins a currency amount — start-of-string or after whitespace/`(`,
-// immediately followed by a digit. remark-math otherwise pairs the `$` before
-// two amounts in one sentence ("$5 and $10") and renders the span between them
-// as math. Escaping it to `\$` makes remark-math treat it as a literal dollar.
-// `$$` display fences are never matched (a `$` followed by `$`, not a digit), and
-// math that legitimately opens on a bare digit (`$5x$`) is rare in assistant prose.
-const currencyDollar = /(^|[\s(])\$(?=\d)/g
-
 // remark-math only renders `$$…$$` as centered *display* math when the fences
 // sit on their own lines; a single-line `$$…$$` falls back to inline. Models
 // routinely emit standalone equations on a single line, so rewrite any line
@@ -49,6 +41,29 @@ const currencyDollar = /(^|[\s(])\$(?=\d)/g
 // single-line `.` keep the match to a whole line), and already-fenced blocks
 // don't match (their `$$` fences are alone on their lines).
 const displayMathLine = /^([ \t]*)\$\$[ \t]*(.+?)[ \t]*\$\$[ \t]*$/gm
+
+// Recognize math spans with the pandoc/KaTeX delimiter rules so currency dollars
+// aren't mistaken for math. Display `$$…$$` is taken verbatim. An inline `$…$`
+// span needs a non-space, non-`$` immediately after the opening `$`, and a
+// non-space before the closing `$` that is NOT followed by a digit — so
+// "$6.674 \times 10^{-11}$" pairs as math, while "$5 and $10" does not (its
+// candidate close sits after a space and before a digit).
+const displayMathSpan = /\$\$[\s\S]*?\$\$/g
+const inlineMathSpan = /\$(?![\s$])[^$\n]*?(?<!\s)\$(?!\d)/g
+
+// Escape each `$` that precedes a digit *unless* it sits inside a recognized math
+// span — neutralizing currency ("$5", "$10 total") so remark-math renders it as a
+// literal dollar, while leaving digit-leading inline math ("$3.14$") to render.
+const escapeCurrencyDollars = (text: string): string => {
+  const spans: Array<[number, number]> = []
+  for (const regex of [displayMathSpan, inlineMathSpan]) {
+    for (const match of text.matchAll(regex)) {
+      spans.push([match.index, match.index + match[0].length])
+    }
+  }
+  const insideMath = (index: number): boolean => spans.some(([start, end]) => index >= start && index < end)
+  return text.replace(/\$(?=\d)/g, (dollar, index: number) => (insideMath(index) ? dollar : '\\$'))
+}
 
 // Rewrite the math delimiters in a span of prose. Never called on code — see
 // `normalizeDisplayMath` (skips inline code spans) and `parseMarkdownIntoBlocks`
@@ -60,13 +75,16 @@ const displayMathLine = /^([ \t]*)\$\$[ \t]*(.+?)[ \t]*\$\$[ \t]*$/gm
 // special-case it — only already-invalid equations are affected, never
 // well-formed ones.
 const rewriteMath = (text: string): string =>
-  text
-    .replace(displayMathDelimiters, (_match, body: string) => `$$\n${body.trim()}\n$$`)
-    // Inline math is single-line by nature, so collapse any internal whitespace
-    // (including the newline a multi-line `\(…\)` carried) to a single space.
-    .replace(inlineMathDelimiters, (_match, body: string) => `$${body.trim().replace(/\s+/g, ' ')}$`)
-    .replace(displayMathLine, (_match, indent: string, body: string) => `${indent}$$\n${body}\n$$`)
-    .replace(currencyDollar, (_match, lead: string) => `${lead}\\$`)
+  // Currency escaping runs last, on the fully-normalized text, so it sees every
+  // `$$…$$` / `$…$` span — including those just converted from `\[…\]` / `\(…\)`.
+  escapeCurrencyDollars(
+    text
+      .replace(displayMathDelimiters, (_match, body: string) => `$$\n${body.trim()}\n$$`)
+      // Inline math is single-line by nature, so collapse internal whitespace
+      // (including the newline a multi-line `\(…\)` carried) to a single space.
+      .replace(inlineMathDelimiters, (_match, body: string) => `$${body.trim().replace(/\s+/g, ' ')}$`)
+      .replace(displayMathLine, (_match, indent: string, body: string) => `${indent}$$\n${body}\n$$`),
+  )
 
 // An inline code span (`` `…` ``, `` ``…`` ``, …). Left verbatim so a message
 // that shows `$$…$$` / `\(…\)` *as inline code* keeps its literal text.

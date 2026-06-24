@@ -78,6 +78,21 @@ describe('Import DAL', () => {
         importUserData(getDb(), { format: exportFormat, schemaVersion: 1, tables: 'nope' }, currentUser),
       ).rejects.toBeInstanceOf(ImportFormatError)
     })
+
+    it('rejects when `user.id` is missing or not a string (cross-account detection signal)', async () => {
+      // Refuse rather than guess: without `user.id` we can't tell a same-
+      // account restore (preserve ids) from a cross-account import (mint
+      // new ids and remap shared workspaces).
+      await expect(
+        importUserData(getDb(), { format: exportFormat, schemaVersion: 1, tables: {} }, currentUser),
+      ).rejects.toBeInstanceOf(ImportFormatError)
+      await expect(
+        importUserData(getDb(), { format: exportFormat, schemaVersion: 1, tables: {}, user: {} }, currentUser),
+      ).rejects.toBeInstanceOf(ImportFormatError)
+      await expect(
+        importUserData(getDb(), { format: exportFormat, schemaVersion: 1, tables: {}, user: { id: 42 } }, currentUser),
+      ).rejects.toBeInstanceOf(ImportFormatError)
+    })
   })
 
   describe('upsert semantics', () => {

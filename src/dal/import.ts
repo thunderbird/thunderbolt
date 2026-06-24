@@ -353,6 +353,14 @@ export const importUserData = async (
   if (!isRecord(payload.tables)) {
     throw new ImportFormatError('Import file is missing the `tables` object.')
   }
+  // `user.id` is the cross-account signal — required by the export type and
+  // load-bearing for every cross-account guard below (id mint, workspace
+  // remap, orphan force-to-personal). Without it we can't tell a same-account
+  // restore (which should preserve workspace structure and ids) from a
+  // cross-account import (which must mint), so refuse to guess.
+  if (!isRecord(payload.user) || typeof payload.user.id !== 'string') {
+    throw new ImportFormatError('Import file is missing or has invalid `user.id`.')
+  }
 
   const fileTables = payload.tables
   const ignoredTableNames: string[] = []
@@ -386,8 +394,8 @@ export const importUserData = async (
   // 3. Same-account shared: no remap. Source ids already exist on the BE
   //    with this user as admin; upload upserts are in-place no-ops and
   //    everything round-trips.
-  const sourceUserId = isRecord(payload.user) && typeof payload.user.id === 'string' ? payload.user.id : null
-  const isCrossAccount = sourceUserId === null || sourceUserId !== currentUser.id
+  const sourceUserId = payload.user.id
+  const isCrossAccount = sourceUserId !== currentUser.id
   const workspaceRemap = new Map<string, string>()
   const fileWorkspaces = fileTables.workspaces
   if (Array.isArray(fileWorkspaces)) {

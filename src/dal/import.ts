@@ -274,6 +274,14 @@ const sanitizeRowForImport = (
  *   for other people; the BE is authoritative. Rows arriving in the file
  *   (e.g. legacy or hand-crafted) are silently routed to
  *   {@link ImportResult.ignoredTableNames}.
+ * - **Foreign personal workspaces merged into the local personal.** Each
+ *   user gets exactly one `isPersonal: 1` workspace (BE enforces this via
+ *   a partial unique index). A cross-account import would otherwise leave
+ *   two personals owned by the importing user. We skip the foreign personal
+ *   from the workspaces upsert and rewrite every per-workspace data row
+ *   that referenced it to `currentUser.personalWorkspaceId` — the source
+ *   user's chats / models / tasks land in the importing user's existing
+ *   personal workspace, where they're immediately visible.
  * - **Soft-deleted rows preserved.** `deletedAt` is written verbatim, so a
  *   row exported in the trash stays in the trash after import.
  * - **Atomic.** Wrapped in a single `db.transaction`; any per-row failure
@@ -317,6 +325,29 @@ export const importUserData = async (
   // comment on `importUserData` and `excludedFromExport` in ./export.ts.
   const importedWorkspaceIds = new Set<string>()
 
+  // Pre-pass: build a remap from foreign personal-workspace ids → the
+  // importing user's local personal workspace. Re-stamping a foreign
+  // `isPersonal: 1` row's ownerUserId to the importing user would leave
+  // two personal workspaces with the same owner — non-deterministic local
+  // lookup + a guaranteed BE conflict (the `idx_workspaces_personal_per_owner`
+  // partial unique index is one-personal-per-owner). Instead, we skip the
+  // foreign row from the workspaces upsert entirely and re-attribute every
+  // per-workspace data row that pointed at it to the local personal.
+  const personalRemap = new Map<string, string>()
+  const fileWorkspaces = fileTables.workspaces
+  if (Array.isArray(fileWorkspaces)) {
+    for (const row of fileWorkspaces) {
+      if (
+        isRecord(row) &&
+        row.isPersonal === 1 &&
+        typeof row.id === 'string' &&
+        row.id !== currentUser.personalWorkspaceId
+      ) {
+        personalRemap.set(row.id, currentUser.personalWorkspaceId)
+      }
+    }
+  }
+
   await db.transaction(async (tx) => {
     for (const [tableName, rows] of Object.entries(fileTables)) {
       if (!isIncludedTableName(tableName)) {
@@ -330,6 +361,7 @@ export const importUserData = async (
       const table = includedTables[tableName]
       const { pk, userIdFields, hasWorkspaceId } = tableImportSpecs[tableName]
       const { column: pkColumn, field: pkField } = pk
+      let upsertedCount = 0
 
       for (const row of rows) {
         if (!isRecord(row)) {
@@ -339,6 +371,12 @@ export const importUserData = async (
         if (typeof pkValue !== 'string') {
           throw new ImportFormatError(`Row in "${tableName}" is missing string primary key "${pkField}".`)
         }
+        // Foreign personal workspaces don't land as separate rows — their
+        // resources are merged into the importing user's personal workspace
+        // (see `personalRemap` above).
+        if (tableName === 'workspaces' && personalRemap.has(pkValue)) {
+          continue
+        }
         const sanitized = sanitizeRowForImport(
           row,
           userIdFields,
@@ -346,18 +384,28 @@ export const importUserData = async (
           currentUser.id,
           currentUser.personalWorkspaceId,
         )
+        // Re-attribute any reference to a foreign personal workspace.
+        if (hasWorkspaceId && typeof sanitized.workspaceId === 'string') {
+          const remapped = personalRemap.get(sanitized.workspaceId)
+          if (remapped) {
+            sanitized.workspaceId = remapped
+          }
+        }
         const existing = await tx.select({ pk: pkColumn }).from(table).where(eq(pkColumn, pkValue)).get()
         if (existing) {
           await tx.update(table).set(sanitized).where(eq(pkColumn, pkValue))
         } else {
           await tx.insert(table).values(sanitized)
         }
+        upsertedCount += 1
         if (tableName === 'workspaces') {
           importedWorkspaceIds.add(pkValue)
         }
       }
 
-      tableCounts[tableName] = { upserted: rows.length }
+      if (upsertedCount > 0) {
+        tableCounts[tableName] = { upserted: upsertedCount }
+      }
     }
 
     // Synthesize membership rows so the importing user can access every

@@ -215,6 +215,31 @@ describe('Export DAL', () => {
     expect(exported.tables.workspace_permissions).toHaveLength(1)
   })
 
+  it('drops per-workspace rows whose workspaceId belongs to a member-only (non-admin) workspace', async () => {
+    const db = getDb()
+    await db.insert(workspacesTable).values([
+      { id: 'ws-mine', name: 'Mine', isPersonal: 0 },
+      { id: 'ws-theirs', name: 'Theirs', isPersonal: 0 },
+    ])
+    await db.insert(workspaceMembershipsTable).values([
+      { id: 'mem-self-mine', workspaceId: 'ws-mine', userId: 'user-1', role: 'admin' },
+      { id: 'mem-self-theirs', workspaceId: 'ws-theirs', userId: 'user-1', role: 'member' },
+    ])
+    // A chat in each workspace, plus a "pre-v1" chat with no workspaceId.
+    // The admin one ships; the member-only one is dropped; the workspaceless
+    // one is preserved so the importer can back-fill it to personal.
+    await db.insert(chatThreadsTable).values([
+      { id: 'thread-mine', title: 'Mine', workspaceId: 'ws-mine' },
+      { id: 'thread-theirs', title: 'Theirs', workspaceId: 'ws-theirs' },
+      { id: 'thread-legacy', title: 'Legacy' },
+    ])
+
+    const exported = await exportUserData(db, { id: 'user-1', email: null })
+
+    const threadIds = (exported.tables.chat_threads as Array<{ id: string }>).map((row) => row.id).sort()
+    expect(threadIds).toEqual(['thread-legacy', 'thread-mine'])
+  })
+
   it('omits workspaces the user only has a `member` (non-admin) membership for', async () => {
     const db = getDb()
     // Two shared workspaces — one the user admins, one they joined as a

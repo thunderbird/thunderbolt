@@ -429,6 +429,40 @@ describe('Import DAL', () => {
       expect(perm?.requiredRole).toBe('admin')
     })
 
+    it('merges a foreign personal workspace into the importing user`s local personal — does not create a second isPersonal row', async () => {
+      const db = getDb()
+      const foreignPersonalId = 'foreign-personal-ws'
+      const result = await importUserData(
+        db,
+        envelope({
+          workspaces: [
+            // Source user's personal workspace — different canonical id than the
+            // importing user's. Must not land as a separate row (would conflict
+            // with the BE's one-personal-per-owner unique index after re-stamp).
+            { id: foreignPersonalId, name: 'Alice`s Default', isPersonal: 1, ownerUserId: 'user-1' },
+          ],
+          chat_threads: [
+            { id: 'thread-foreign-personal', title: 'In foreign personal', workspaceId: foreignPersonalId },
+          ],
+        }),
+        currentUser,
+      )
+
+      // The foreign personal workspace row is skipped, not inserted.
+      const personalRows = await db.select().from(workspacesTable).where(eq(workspacesTable.id, foreignPersonalId))
+      expect(personalRows).toEqual([])
+      // workspaces.upserted reflects the skip — zero rows upserted, so the bucket is absent.
+      expect(result.tables.workspaces).toBeUndefined()
+
+      // Its resources land in the importing user's personal workspace.
+      const thread = await db
+        .select()
+        .from(chatThreadsTable)
+        .where(eq(chatThreadsTable.id, 'thread-foreign-personal'))
+        .get()
+      expect(thread?.workspaceId).toBe(currentUser.personalWorkspaceId)
+    })
+
     it('skips membership synthesis when the importing user is already a member of the imported workspace', async () => {
       const db = getDb()
       // Pre-existing local membership (e.g. PowerSync down-sync prior to import).

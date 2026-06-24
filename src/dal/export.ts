@@ -6,7 +6,7 @@ import type { AnyDrizzleDatabase } from '@/db/database-interface'
 import { localOnlyTables, syncedTables } from '@/db/powersync/schema'
 import { workspaceMembershipsTable } from '@/db/tables'
 import { and, eq } from 'drizzle-orm'
-import type { SQLiteTable } from 'drizzle-orm/sqlite-core'
+import { getTableConfig, type SQLiteTable } from 'drizzle-orm/sqlite-core'
 
 export const exportFormat = 'thunderbolt-export'
 export const exportSchemaVersion = 1
@@ -94,18 +94,26 @@ export const exportedTableNames: readonly IncludedTableName[] = Object.freeze(
  * Soft-deleted rows are included — restore logic decides what to do with
  * them.
  *
- * Two cross-cutting filters apply:
+ * Three cross-cutting filters apply, all driven by the set of workspaces
+ * the user has an `admin` membership for:
  * - `workspace_memberships` and `workspace_pending_memberships` are dropped
  *   entirely (BE-authoritative; co-member leakage). See
  *   {@link excludedFromExport}.
- * - `workspaces` is filtered to rows where the user has an `admin`
- *   membership. Personal workspaces (seeded with an admin membership at
- *   bootstrap) and shared workspaces the user created or was promoted to
- *   admin in are included; shared workspaces the user joined as a member
- *   are dropped — they're BE-managed and re-sync on first login. (The
- *   schema deliberately reserves `workspaces.owner_user_id` for the
- *   personal-workspace anchor — it is **not** an access-control role —
- *   which is why admin membership, not ownership, is the right signal.)
+ * - `workspaces` is filtered to rows in the admin set. Personal workspaces
+ *   (seeded with an admin membership at bootstrap) and shared workspaces
+ *   the user created or was promoted to admin in are included; shared
+ *   workspaces the user joined as a member are dropped — they're BE-managed
+ *   and re-sync on first login. (The schema deliberately reserves
+ *   `workspaces.owner_user_id` for the personal-workspace anchor — it is
+ *   **not** an access-control role — which is why admin membership, not
+ *   ownership, is the right signal.)
+ * - Every per-workspace data table (any synced table with a `workspace_id`
+ *   column — chat threads, models, prompts, …) is filtered to rows whose
+ *   `workspaceId` is in the admin set. Rows with `workspaceId = NULL` are
+ *   kept — those are pre-v1 leftovers that the importer back-fills to the
+ *   importing user's personal workspace. Without this filter the backup
+ *   would carry stranded rows referencing workspaces the importer can't
+ *   reach until PowerSync re-syncs.
  *
  * `attributedTo` is stamped into the envelope's `user` field as metadata,
  * and drives the workspaces filter above.
@@ -129,6 +137,16 @@ export const exportUserData = async (
       if (name === 'workspaces') {
         const adminOnly = rows.filter((row) => adminWorkspaceIds.has((row as { id: string }).id))
         return [name, adminOnly] as const
+      }
+      const hasWorkspaceId = getTableConfig(table).columns.some((c) => c.name === 'workspace_id')
+      if (hasWorkspaceId) {
+        const adminScoped = rows.filter((row) => {
+          const wsId = (row as { workspaceId?: string | null }).workspaceId
+          // Pre-v1 rows have no workspaceId yet — keep them so the importer's
+          // back-fill can attach them to the importing user's personal.
+          return wsId === null || wsId === undefined || adminWorkspaceIds.has(wsId)
+        })
+        return [name, adminScoped] as const
       }
       return [name, rows] as const
     }),

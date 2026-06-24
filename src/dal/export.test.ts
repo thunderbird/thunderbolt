@@ -63,11 +63,10 @@ describe('Export DAL', () => {
       'skills',
       'tasks',
       'triggers',
-      // Workspace identity travels with the backup so a restore reinstates
-      // every workspace (and the rows that point at them) without depending
-      // on PowerSync's down-sync to repopulate the local cache first.
-      'workspace_memberships',
-      'workspace_pending_memberships',
+      // Workspaces and their permissions travel with the backup so a
+      // restore reinstates them offline. `workspace_memberships` and
+      // `workspace_pending_memberships` are BE-authoritative and excluded
+      // — see `excludedFromExport` in `./export.ts` for the rationale.
       'workspace_permissions',
       'workspaces',
     ]
@@ -149,6 +148,8 @@ describe('Export DAL', () => {
     expect(tableKeys).not.toContain('devices')
     expect(tableKeys).not.toContain('integrations_secrets')
     expect(tableKeys).not.toContain('agents_system')
+    expect(tableKeys).not.toContain('workspace_memberships')
+    expect(tableKeys).not.toContain('workspace_pending_memberships')
   })
 
   it('preserves chat message JSON columns (parts / metadata / cache) as parsed objects', async () => {
@@ -183,19 +184,19 @@ describe('Export DAL', () => {
     }
   })
 
-  it('exports workspace identity rows alongside per-workspace user content', async () => {
+  it('exports workspaces (admin-only) and their permissions', async () => {
     const db = getDb()
-    // Seed an extra workspace + a membership + a permission so we can verify
-    // the export carries the full workspace graph, not just the one the
-    // active-workspace hook resolves.
+    // Seed an extra workspace + the corresponding admin membership +
+    // a permission so we can verify the export carries the full workspace
+    // graph the user admins. Memberships are excluded from the envelope —
+    // see `excludedFromExport`.
     await db.insert(workspacesTable).values({
       id: 'ws-extra',
       name: 'Extra',
       isPersonal: 0,
-      ownerUserId: 'user-1',
     })
     await db.insert(workspaceMembershipsTable).values({
-      id: 'ws-extra-user-1',
+      id: 'mem-self-extra',
       workspaceId: 'ws-extra',
       userId: 'user-1',
       role: 'admin',
@@ -211,7 +212,53 @@ describe('Export DAL', () => {
 
     const workspaceIds = (exported.tables.workspaces as Array<{ id: string }>).map((row) => row.id).sort()
     expect(workspaceIds).toContain('ws-extra')
-    expect(exported.tables.workspace_memberships).toHaveLength(1)
     expect(exported.tables.workspace_permissions).toHaveLength(1)
+  })
+
+  it('omits workspaces the user only has a `member` (non-admin) membership for', async () => {
+    const db = getDb()
+    // Two shared workspaces — one the user admins, one they joined as a
+    // member. Only the admin'd one ends up in the envelope.
+    await db.insert(workspacesTable).values([
+      { id: 'ws-mine', name: 'Mine', isPersonal: 0 },
+      { id: 'ws-theirs', name: 'Theirs', isPersonal: 0 },
+    ])
+    await db.insert(workspaceMembershipsTable).values([
+      { id: 'mem-self-mine', workspaceId: 'ws-mine', userId: 'user-1', role: 'admin' },
+      { id: 'mem-self-theirs', workspaceId: 'ws-theirs', userId: 'user-1', role: 'member' },
+    ])
+
+    const exported = await exportUserData(db, { id: 'user-1', email: null })
+
+    const ids = (exported.tables.workspaces as Array<{ id: string }>).map((row) => row.id).sort()
+    expect(ids).toContain('ws-mine')
+    expect(ids).not.toContain('ws-theirs')
+  })
+
+  it('omits workspace_memberships from the envelope even when local rows exist', async () => {
+    const db = getDb()
+    await db.insert(workspacesTable).values({
+      id: 'ws-shared',
+      name: 'Shared',
+      isPersonal: 0,
+    })
+    await db.insert(workspaceMembershipsTable).values([
+      { id: 'mem-self', workspaceId: 'ws-shared', userId: 'user-1', role: 'admin' },
+      // Co-member's row synced down via `workspace_data` — its userName /
+      // userEmail must not leak into the backup.
+      {
+        id: 'mem-bob',
+        workspaceId: 'ws-shared',
+        userId: 'user-2',
+        userName: 'Bob',
+        userEmail: 'bob@example.com',
+        role: 'member',
+      },
+    ])
+
+    const exported = await exportUserData(db, { id: 'user-1', email: null })
+
+    const tableKeys = Object.keys(exported.tables) as Array<keyof typeof exported.tables>
+    expect(tableKeys).not.toContain('workspace_memberships')
   })
 })

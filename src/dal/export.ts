@@ -4,6 +4,8 @@
 
 import type { AnyDrizzleDatabase } from '@/db/database-interface'
 import { localOnlyTables, syncedTables } from '@/db/powersync/schema'
+import { workspaceMembershipsTable } from '@/db/tables'
+import { and, eq } from 'drizzle-orm'
 import type { SQLiteTable } from 'drizzle-orm/sqlite-core'
 
 export const exportFormat = 'thunderbolt-export'
@@ -18,6 +20,14 @@ type AllTableName = keyof typeof syncedTables | keyof typeof localOnlyTables
  * - `integrations_secrets`: third-party OAuth tokens (Google / Microsoft).
  *   The importing user re-authenticates instead.
  * - `agents_system`: backend-hydrated catalog, not user content.
+ * - `workspace_memberships` / `workspace_pending_memberships`: BE-authoritative
+ *   membership graph. The local DB carries every member's row for every
+ *   workspace the user belongs to (sync rule isn't filtered by `user_id`),
+ *   so blindly carrying them through would either leak co-members'
+ *   names/emails into the backup or — on cross-account import — collapse
+ *   them into duplicate self-rows. PowerSync repopulates on first sync; on
+ *   import we synthesize a single admin row for the importing user per
+ *   imported workspace so the UI works offline (see `importUserData`).
  *
  * Typed against {@link AllTableName} so a future schema rename/removal trips
  * the compiler. Anything not in this list is included.
@@ -26,6 +36,8 @@ const excludedFromExport = [
   'devices',
   'integrations_secrets',
   'agents_system',
+  'workspace_memberships',
+  'workspace_pending_memberships',
 ] as const satisfies readonly AllTableName[]
 type ExcludedTableName = (typeof excludedFromExport)[number]
 export type IncludedTableName = Exclude<AllTableName, ExcludedTableName>
@@ -82,20 +94,44 @@ export const exportedTableNames: readonly IncludedTableName[] = Object.freeze(
  * Soft-deleted rows are included — restore logic decides what to do with
  * them.
  *
- * No `userId` filter is applied: the local SQLite file already contains
- * exactly one user's data (PowerSync only syncs down rows the JWT is allowed
- * to see, and anonymous / standalone DBs never see other users at all).
+ * Two cross-cutting filters apply:
+ * - `workspace_memberships` and `workspace_pending_memberships` are dropped
+ *   entirely (BE-authoritative; co-member leakage). See
+ *   {@link excludedFromExport}.
+ * - `workspaces` is filtered to rows where the user has an `admin`
+ *   membership. Personal workspaces (seeded with an admin membership at
+ *   bootstrap) and shared workspaces the user created or was promoted to
+ *   admin in are included; shared workspaces the user joined as a member
+ *   are dropped — they're BE-managed and re-sync on first login. (The
+ *   schema deliberately reserves `workspaces.owner_user_id` for the
+ *   personal-workspace anchor — it is **not** an access-control role —
+ *   which is why admin membership, not ownership, is the right signal.)
  *
- * `attributedTo` is stamped into the envelope's `user` field as metadata —
- * it does not scope the query in any way.
+ * `attributedTo` is stamped into the envelope's `user` field as metadata,
+ * and drives the workspaces filter above.
  */
 export const exportUserData = async (
   db: AnyDrizzleDatabase,
   attributedTo: { id: string; email: string | null },
 ): Promise<UserDataExport> => {
+  const adminWorkspaceRows = await db
+    .select({ workspaceId: workspaceMembershipsTable.workspaceId })
+    .from(workspaceMembershipsTable)
+    .where(and(eq(workspaceMembershipsTable.userId, attributedTo.id), eq(workspaceMembershipsTable.role, 'admin')))
+  const adminWorkspaceIds = new Set(
+    adminWorkspaceRows.map((row) => row.workspaceId).filter((id): id is string => id !== null),
+  )
+
   const entries = Object.entries(includedTables) as Array<[IncludedTableName, SQLiteTable]>
   const results = await Promise.all(
-    entries.map(async ([name, table]) => [name, await db.select().from(table)] as const),
+    entries.map(async ([name, table]) => {
+      const rows = await db.select().from(table)
+      if (name === 'workspaces') {
+        const adminOnly = rows.filter((row) => adminWorkspaceIds.has((row as { id: string }).id))
+        return [name, adminOnly] as const
+      }
+      return [name, rows] as const
+    }),
   )
 
   return {

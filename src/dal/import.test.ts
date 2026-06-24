@@ -12,7 +12,6 @@ import {
   settingsTable,
   tasksTable,
   workspaceMembershipsTable,
-  workspacePendingMembershipsTable,
   workspacePermissionsTable,
   workspacesTable,
 } from '@/db/tables'
@@ -228,7 +227,7 @@ describe('Import DAL', () => {
       expect(threads).toHaveLength(1)
     })
 
-    it('routes deliberately-excluded tables (devices / integrations_secrets / agents_system) into ignoredTableNames', async () => {
+    it('routes deliberately-excluded tables into ignoredTableNames', async () => {
       // Tampered or hand-crafted files might contain these even though our
       // exporter never produces them — they must be skipped, not written.
       const result = await importUserData(
@@ -237,11 +236,27 @@ describe('Import DAL', () => {
           devices: [{ id: 'd-1', userId: 'user-1' }],
           integrations_secrets: [{ provider: 'google', credentials: '{}' }],
           agents_system: [{ id: 'sys-1', name: 'X' }],
+          workspace_memberships: [{ id: 'mem-1', workspaceId: 'ws-1', userId: 'user-1', role: 'admin' }],
+          workspace_pending_memberships: [
+            {
+              id: 'pend-1',
+              workspaceId: 'ws-1',
+              email: 'alice@example.com',
+              role: 'member',
+              invitedByUserId: 'someone',
+            },
+          ],
         }),
         currentUser,
       )
 
-      expect(result.ignoredTableNames.sort()).toEqual(['agents_system', 'devices', 'integrations_secrets'])
+      expect(result.ignoredTableNames.sort()).toEqual([
+        'agents_system',
+        'devices',
+        'integrations_secrets',
+        'workspace_memberships',
+        'workspace_pending_memberships',
+      ])
     })
 
     it('skips empty table arrays without counting them', async () => {
@@ -372,43 +387,15 @@ describe('Import DAL', () => {
       const row = await db.select().from(workspacesTable).where(eq(workspacesTable.id, 'ws-1')).get()
       expect(row?.ownerUserId).toBe(currentUser.id)
     })
-
-    it('re-stamps invitedByUserId on workspace_pending_memberships', async () => {
-      const db = getDb()
-      await importUserData(
-        db,
-        envelope({
-          workspaces: [{ id: 'ws-1', name: 'WS', isPersonal: 0 }],
-          workspace_pending_memberships: [
-            {
-              id: 'pend-1',
-              workspaceId: 'ws-1',
-              email: 'alice@example.com',
-              role: 'member',
-              invitedByUserId: 'attacker-user',
-            },
-          ],
-        }),
-        currentUser,
-      )
-
-      const row = await db
-        .select()
-        .from(workspacePendingMembershipsTable)
-        .where(eq(workspacePendingMembershipsTable.id, 'pend-1'))
-        .get()
-      expect(row?.invitedByUserId).toBe(currentUser.id)
-    })
   })
 
   describe('workspace tables', () => {
-    it('round-trips a workspace + its membership + its permission rows', async () => {
+    it('round-trips a workspace + its permission rows; synthesizes an admin membership for the importing user', async () => {
       const db = getDb()
       const result = await importUserData(
         db,
         envelope({
           workspaces: [{ id: 'ws-1', name: 'Imported', isPersonal: 0, ownerUserId: 'someone' }],
-          workspace_memberships: [{ id: 'mem-1', workspaceId: 'ws-1', userId: 'someone', role: 'admin' }],
           workspace_permissions: [
             { id: 'perm-1', workspaceId: 'ws-1', permissionKey: 'add_agents', requiredRole: 'admin' },
           ],
@@ -417,7 +404,6 @@ describe('Import DAL', () => {
       )
 
       expect(result.tables.workspaces).toEqual({ upserted: 1 })
-      expect(result.tables.workspace_memberships).toEqual({ upserted: 1 })
       expect(result.tables.workspace_permissions).toEqual({ upserted: 1 })
 
       const ws = await db.select().from(workspacesTable).where(eq(workspacesTable.id, 'ws-1')).get()
@@ -425,15 +411,14 @@ describe('Import DAL', () => {
       // ownerUserId is re-stamped — see the dedicated test in `userId re-stamping`.
       expect(ws?.ownerUserId).toBe(currentUser.id)
 
-      const mem = await db
+      // Synthesized membership: not in the envelope, created by the importer.
+      const memberships = await db
         .select()
         .from(workspaceMembershipsTable)
-        .where(eq(workspaceMembershipsTable.id, 'mem-1'))
-        .get()
-      // user_id on memberships is re-stamped so the importing user becomes the
-      // member of every imported workspace.
-      expect(mem?.userId).toBe(currentUser.id)
-      expect(mem?.role).toBe('admin')
+        .where(eq(workspaceMembershipsTable.workspaceId, 'ws-1'))
+      expect(memberships).toHaveLength(1)
+      expect(memberships[0]?.userId).toBe(currentUser.id)
+      expect(memberships[0]?.role).toBe('admin')
 
       const perm = await db
         .select()
@@ -442,6 +427,35 @@ describe('Import DAL', () => {
         .get()
       expect(perm?.permissionKey).toBe('add_agents')
       expect(perm?.requiredRole).toBe('admin')
+    })
+
+    it('skips membership synthesis when the importing user is already a member of the imported workspace', async () => {
+      const db = getDb()
+      // Pre-existing local membership (e.g. PowerSync down-sync prior to import).
+      await db.insert(workspacesTable).values({ id: 'ws-existing', name: 'Existing', isPersonal: 0 })
+      await db.insert(workspaceMembershipsTable).values({
+        id: 'mem-existing',
+        workspaceId: 'ws-existing',
+        userId: currentUser.id,
+        role: 'member',
+      })
+
+      await importUserData(
+        db,
+        envelope({
+          workspaces: [{ id: 'ws-existing', name: 'Renamed', isPersonal: 0 }],
+        }),
+        currentUser,
+      )
+
+      const memberships = await db
+        .select()
+        .from(workspaceMembershipsTable)
+        .where(eq(workspaceMembershipsTable.workspaceId, 'ws-existing'))
+      // Exactly one row — the pre-existing membership; role unchanged.
+      expect(memberships).toHaveLength(1)
+      expect(memberships[0]?.id).toBe('mem-existing')
+      expect(memberships[0]?.role).toBe('member')
     })
 
     it('attaches pre-workspaces-v1 rows (no workspaceId in file) to the importing user`s personal workspace', async () => {

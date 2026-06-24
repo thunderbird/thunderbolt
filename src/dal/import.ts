@@ -3,8 +3,10 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import type { AnyDrizzleDatabase } from '@/db/database-interface'
+import { workspaceMembershipsTable } from '@/db/tables'
 import { eq } from 'drizzle-orm'
 import { getTableConfig, type SQLiteColumn, type SQLiteTable } from 'drizzle-orm/sqlite-core'
+import { v7 as uuidv7 } from 'uuid'
 import { exportFormat, exportSchemaVersion, exportedTableNames, includedTables, type IncludedTableName } from './export'
 
 type PkSpec = {
@@ -260,6 +262,18 @@ const sanitizeRowForImport = (
  *   so the data lands in the user's personal workspace instead of orphaned at
  *   NULL. Rows that arrive *with* a `workspaceId` are preserved verbatim —
  *   modern multi-workspace backups keep their workspace structure on restore.
+ * - **`workspace_memberships` synthesized, not imported.** The envelope
+ *   doesn't carry membership rows (see {@link excludedFromExport} —
+ *   blindly carrying co-members' rows would either leak their
+ *   `userName`/`userEmail` or produce duplicate self-rows on cross-account
+ *   import). Instead, after every workspace row is upserted, this importer
+ *   synthesizes one admin membership row for the importing user per
+ *   imported workspace they don't already belong to locally. PowerSync
+ *   reconciles with the BE on next sync.
+ * - **`workspace_pending_memberships` ignored.** Admin-only invite metadata
+ *   for other people; the BE is authoritative. Rows arriving in the file
+ *   (e.g. legacy or hand-crafted) are silently routed to
+ *   {@link ImportResult.ignoredTableNames}.
  * - **Soft-deleted rows preserved.** `deletedAt` is written verbatim, so a
  *   row exported in the trash stays in the trash after import.
  * - **Atomic.** Wrapped in a single `db.transaction`; any per-row failure
@@ -297,6 +311,11 @@ export const importUserData = async (
   const fileTables = payload.tables
   const ignoredTableNames: string[] = []
   const tableCounts: Partial<Record<IncludedTableName, { upserted: number }>> = {}
+  // Workspace ids upserted from the envelope. After the file loop we walk
+  // this set and synthesize an admin membership row for the importing user
+  // on every workspace they don't already belong to locally — see the doc
+  // comment on `importUserData` and `excludedFromExport` in ./export.ts.
+  const importedWorkspaceIds = new Set<string>()
 
   await db.transaction(async (tx) => {
     for (const [tableName, rows] of Object.entries(fileTables)) {
@@ -333,9 +352,40 @@ export const importUserData = async (
         } else {
           await tx.insert(table).values(sanitized)
         }
+        if (tableName === 'workspaces') {
+          importedWorkspaceIds.add(pkValue)
+        }
       }
 
       tableCounts[tableName] = { upserted: rows.length }
+    }
+
+    // Synthesize membership rows so the importing user can access every
+    // imported workspace immediately. Skip workspaces they're already a
+    // member of locally (re-import, or a pre-existing membership from
+    // PowerSync down-sync). Role is `admin` — consistent with
+    // `ownerUserId` being re-stamped to the importing user; the BE
+    // reconciles on next sync if the upload disagrees with the truth.
+    if (importedWorkspaceIds.size > 0) {
+      const existingMemberships = await tx
+        .select({ workspaceId: workspaceMembershipsTable.workspaceId })
+        .from(workspaceMembershipsTable)
+        .where(eq(workspaceMembershipsTable.userId, currentUser.id))
+      const alreadyMember = new Set(
+        existingMemberships.map((m) => m.workspaceId).filter((id): id is string => id !== null),
+      )
+
+      for (const workspaceId of importedWorkspaceIds) {
+        if (alreadyMember.has(workspaceId)) {
+          continue
+        }
+        await tx.insert(workspaceMembershipsTable).values({
+          id: uuidv7(),
+          workspaceId,
+          userId: currentUser.id,
+          role: 'admin',
+        })
+      }
     }
   })
 

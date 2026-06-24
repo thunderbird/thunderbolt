@@ -6,6 +6,7 @@ import type { HttpClient } from '@/contexts'
 import { getIntegrationStatus, getSettings } from '@/dal'
 import { getDb } from '@/db/database'
 import * as tasksTools from '@/extensions/tasks/tools'
+import { createConfigs as createCodingAgentConfigs } from '@/integrations/coding-agent/tools'
 import { createConfigs as createGoogleConfigs } from '@/integrations/google/tools'
 import { createConfigs as createMicrosoftConfigs } from '@/integrations/microsoft/tools'
 import { createConfigs as createProConfigs } from '@/integrations/thunderbolt-pro/tools'
@@ -28,6 +29,11 @@ export const getAvailableTools = async (
   const integrationStatus = await getIntegrationStatus(db)
 
   const baseTools: ToolConfig[] = experimentalFeatureTasks ? [...Object.values(tasksTools)] : []
+
+  // Coding-agent GitHub connect/status. Always offered: the backend reports
+  // `configured: false` cleanly when the broker isn't wired, so the assistant can
+  // tell the user it's unavailable rather than the tool simply not existing.
+  baseTools.push(...createCodingAgentConfigs(httpClient))
 
   const shouldIncludeProTools = proEnabled && integrationsProIsEnabled
 

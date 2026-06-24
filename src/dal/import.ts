@@ -518,11 +518,19 @@ export const importUserData = async (
           currentUser.id,
           currentUser.personalWorkspaceId,
         )
-        // Re-attribute any reference to a remapped foreign workspace.
+        // Re-attribute references to remapped foreign workspaces. In
+        // cross-account mode any `workspaceId` that *isn't* in the remap
+        // is also a foreign id (the envelope just didn't carry the
+        // corresponding `workspaces` row — hand-crafted / tampered / a
+        // partial export); force it to local personal too rather than let
+        // the row sync up under an id the BE will reject (which would then
+        // wipe it on down-sync).
         if (hasWorkspaceId && typeof sanitized.workspaceId === 'string') {
           const remapped = workspaceRemap.get(sanitized.workspaceId)
           if (remapped) {
             sanitized.workspaceId = remapped
+          } else if (isCrossAccount && sanitized.workspaceId !== currentUser.personalWorkspaceId) {
+            sanitized.workspaceId = currentUser.personalWorkspaceId
           }
         }
         // Cross-account id remap for chat_threads / chat_messages — see the

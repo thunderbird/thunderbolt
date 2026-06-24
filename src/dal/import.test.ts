@@ -494,6 +494,31 @@ describe('Import DAL', () => {
       expect(permissions[0]?.requiredRole).toBe('member')
     })
 
+    it('cross-account import forces orphan workspaceIds (not in the envelope`s workspaces bucket) into local personal', async () => {
+      const db = getDb()
+      // Hand-crafted / partial envelope: chat_threads + tasks reference a
+      // workspace that the file doesn't include in its `workspaces` array.
+      // Without the defensive fallback those rows would sync up under the
+      // foreign id, BE would reject, and down-sync would wipe them.
+      await importUserData(
+        db,
+        envelope({
+          // No `workspaces` bucket at all.
+          chat_threads: [{ id: 'orphan-thread', title: 'T', workspaceId: 'foreign-orphan-ws' }],
+          tasks: [{ id: 'orphan-task', item: 'task', workspaceId: 'foreign-orphan-ws' }],
+        }),
+        crossAccountUser,
+      )
+
+      const threads = await db.select().from(chatThreadsTable)
+      expect(threads).toHaveLength(1)
+      expect(threads[0]?.workspaceId).toBe(crossAccountUser.personalWorkspaceId)
+
+      const tasks = await db.select().from(tasksTable)
+      expect(tasks).toHaveLength(1)
+      expect(tasks[0]?.workspaceId).toBe(crossAccountUser.personalWorkspaceId)
+    })
+
     it('cross-account import mints a fresh id for triggers and rewrites chat_threads.triggeredBy', async () => {
       const db = getDb()
       // `triggers` share `chat_threads`/`chat_messages`'s id-only BE

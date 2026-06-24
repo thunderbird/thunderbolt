@@ -98,17 +98,14 @@ const executeInitializationSteps = async (httpClient?: HttpClient): Promise<Hand
   console.info('[init] start')
 
   // Step 0: Fetch backend config and hydrate store (only on success).
-  // When fetch fails (offline/error), the store retains its persisted localStorage value.
-  // Not awaited here: nothing in this pipeline consumes the config (it is read
-  // reactively from the store later), so it overlaps with the steps below and
-  // is only awaited at the end to land its duration in app_init_timing.
+  // On failure the store retains its persisted localStorage value. Awaited in step 0b.
   const fetchConfigPromise = time('step0_fetch_config', () => fetchConfig(getLocalSetting('cloudUrl'), httpClient))
 
-  // Step 0b: Enforce minimum app version before touching the DB. If the server
-  // requires a newer client, surface UPGRADE_REQUIRED so the app renders the
-  // hard-block screen and skips DB/sync init entirely. Bypasses when the version
-  // strings are unparseable (compareSemver returns 0 in that case).
-  const minAppVersion = useConfigStore.getState().config.minAppVersion
+  // Step 0b: Enforce minimum app version. Await the fetch so the gate doesn't
+  // race zustand-persist hydration on first launch. Persisted store is the
+  // offline fallback.
+  const freshConfig = await fetchConfigPromise
+  const minAppVersion = freshConfig?.minAppVersion ?? useConfigStore.getState().config.minAppVersion
   const appVersion = import.meta.env.VITE_APP_VERSION
   if (minAppVersion && appVersion && compareSemver(appVersion, minAppVersion) < 0) {
     return {
@@ -218,11 +215,6 @@ const executeInitializationSteps = async (httpClient?: HttpClient): Promise<Hand
   // Steps 7 + 8: Tray and PostHog initialization (non-critical, independent
   // of each other) — run in parallel; each wrapper swallows its own failure.
   const [tray, posthogClient] = await Promise.all([initializeTraySafely(), initializePostHogSafely(client)])
-
-  // Settle step0 so its duration is in the timing payload. fetchConfig never
-  // rejects (internal 5s timeout, errors caught) and in practice has long
-  // resolved while the steps above ran.
-  await fetchConfigPromise
 
   const initTotalMs = Math.round(performance.now() - totalStartedAt)
   console.info(`[init] complete (total ${initTotalMs}ms)`)

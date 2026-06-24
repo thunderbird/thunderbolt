@@ -36,6 +36,7 @@ import type {
   Agent as AcpSdkAgent,
   ClientSideConnection,
   Client,
+  ContentBlock,
   InitializeResponse,
   RequestPermissionRequest,
   RequestPermissionResponse,
@@ -44,6 +45,7 @@ import type {
 import { ClientSideConnection as ClientSideConnectionImpl } from '@agentclientprotocol/sdk'
 import type { Agent, AgentAdapter, AgentAdapterContext, AgentCapabilities, EnsureSessionContext } from '@/types/acp'
 import type { ThunderboltUIMessage } from '@/types'
+import { getAttachments, hydrateAttachmentsAsBase64 } from '@/lib/attachments'
 import { openTransport } from './transports'
 import type { AcpTransport } from './types'
 import { createTranslatorStream, toAcpCommands, type AcpCommand } from './translators/acp-to-ai-sdk'
@@ -102,11 +104,22 @@ export const adaptCapabilities = (response: InitializeResponse): AgentCapabiliti
   }
 }
 
-/** Extract the trailing user-message text from the AI SDK request body. The
- *  built-in transport posts `{ messages: ThunderboltUIMessage[], id }`; we
- *  forward only the last user message's concatenated text parts to ACP.
- *  Non-text parts are dropped — the MVP `promptCapabilities` are all false. */
-const extractUserPrompt = (init: RequestInit): string => {
+/**
+ * Build the ACP prompt content blocks from the AI SDK request body. The
+ * built-in transport posts `{ messages: ThunderboltUIMessage[], id }`; we
+ * forward the last user message's text parts as a `text` block.
+ *
+ * When the agent advertises `embeddedContext`, attachment references are
+ * hydrated from IndexedDB and appended as embedded `resource` blocks (base64
+ * bytes) — the backend forwards these to the pipeline via `temporary_files`.
+ * Agents without `embeddedContext` get text only; attachments are dropped
+ * rather than sent to an agent that can't accept them.
+ */
+const buildPromptBlocks = async (
+  init: RequestInit,
+  skillInstructions: string[] | undefined,
+  embeddedContext: boolean,
+): Promise<ContentBlock[]> => {
   if (typeof init.body !== 'string') {
     throw new Error('ACP adapter expects string body on init')
   }
@@ -115,10 +128,30 @@ const extractUserPrompt = (init: RequestInit): string => {
   if (!lastUser) {
     throw new Error('ACP adapter: no user message in request body')
   }
-  return lastUser.parts
+  const userText = lastUser.parts
     .filter((p): p is { type: 'text'; text: string } => p.type === 'text')
     .map((p) => p.text)
     .join('\n')
+  // Skill instructions ride the text block (ACP has no system channel) — see composeAcpPrompt.
+  const text = composeAcpPrompt(skillInstructions, userText)
+
+  if (!embeddedContext) {
+    return [{ type: 'text', text }]
+  }
+
+  const hydrated = await hydrateAttachmentsAsBase64(getAttachments(lastUser))
+  const resourceBlocks = hydrated.map(
+    (attachment): ContentBlock => ({
+      type: 'resource',
+      resource: {
+        // The backend derives the filename from the URI's last path segment.
+        uri: `attachment://${attachment.localFileId}/${attachment.filename}`,
+        mimeType: attachment.mimeType,
+        blob: attachment.base64,
+      },
+    }),
+  )
+  return [{ type: 'text', text }, ...resourceBlocks]
 }
 
 /** Fold resolved user-skill instructions into the prompt text. ACP has no
@@ -308,7 +341,11 @@ export const connectAcpAdapter = async (
   }
 
   const fetch = async (init: RequestInit, context: AgentAdapterContext): Promise<Response> => {
-    const promptText = composeAcpPrompt(context.skillInstructions, extractUserPrompt(init))
+    const prompt = await buildPromptBlocks(
+      init,
+      context.skillInstructions,
+      capabilities.promptCapabilities.embeddedContext,
+    )
     const sessionId = await resolveThreadSession(context)
 
     const { body, translator, close } = createTranslatorStream({
@@ -329,7 +366,7 @@ export const connectAcpAdapter = async (
       try {
         const response = await connection.prompt({
           sessionId,
-          prompt: [{ type: 'text', text: promptText }],
+          prompt,
         })
         // The Haystack adapter mirrors citation metadata on the terminal
         // `agent_message_chunk` AND on the `PromptResponse._meta`. Ingesting

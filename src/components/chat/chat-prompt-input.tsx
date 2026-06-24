@@ -21,10 +21,10 @@ import {
   useEnabledSkills as useEnabledSkills_default,
   useLibrarySkills as useLibrarySkills_default,
 } from '@/skills/use-skills'
-import { type Model } from '@/types'
+import { type AttachmentData, type Model } from '@/types'
 import { useChat as useChat_default } from '@ai-sdk/react'
 import { useDraftInput } from '@/hooks/use-draft-input'
-import { AlertCircle, Loader2 } from 'lucide-react'
+import { AlertCircle, Loader2, Paperclip } from 'lucide-react'
 import { forwardRef, useCallback, useImperativeHandle, useMemo, useRef, useState } from 'react'
 import { useLocation as useLocation_default, useNavigate as useNavigate_default } from 'react-router'
 import { ChatSkillsBar } from './chat-skills-bar'
@@ -33,6 +33,13 @@ import { ContextUsageIndicator } from '../context-usage-indicator'
 import { PromptInput } from '../ui/prompt-input'
 import { ChatModePicker } from './chat-mode-picker'
 import { ChatModelPicker } from './chat-model-picker'
+import { buildAttachmentPart } from '@/lib/attachments'
+import { deleteAttachment, putAttachment } from '@/lib/file-blob-storage'
+import { cn } from '@/lib/utils'
+import { FileChip } from './file-chip'
+
+/** Max size for a chat attachment (PDF) stored locally and sent to the agent. */
+const maxAttachmentBytes = 25 * 1024 * 1024
 
 /**
  * Extract a human-readable display string from a connection error.
@@ -156,6 +163,10 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
     const [showOverflowModal, setShowOverflowModal] = useState(false)
     const isNewChat = !chatThread
     const [input, setInput, clearDraft] = useDraftInput(draftKey, { persist: !isNewChat })
+    const [attachments, setAttachments] = useState<AttachmentData[]>([])
+    const [attachError, setAttachError] = useState<string | null>(null)
+    const [isDragging, setIsDragging] = useState(false)
+    const fileInputRef = useRef<HTMLInputElement>(null)
     // Latest-input ref so deferred callers (e.g. the `runSkill` microtask
     // below) read the current value at execution time rather than the value
     // captured when the callback was created. Without this, a draft restore
@@ -300,11 +311,42 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
       onOverflow: () => handleShowOverflowModal(selectedModel, input.trim().length, messages.length + 1),
     })
 
+    // Store dropped/picked PDFs locally (IndexedDB) and add reference-only
+    // attachments. Bytes never enter a message part — only the localFileId ref.
+    const addFiles = useCallback(async (files: File[]) => {
+      setAttachError(null)
+      for (const file of files) {
+        if (file.type !== 'application/pdf') {
+          setAttachError('Only PDF files are supported right now.')
+          continue
+        }
+        if (file.size > maxAttachmentBytes) {
+          setAttachError(`"${file.name}" is too large (max ${maxAttachmentBytes / 1024 / 1024}MB).`)
+          continue
+        }
+        const localFileId = crypto.randomUUID()
+        await putAttachment({
+          id: localFileId,
+          filename: file.name,
+          mimeType: file.type,
+          size: file.size,
+          createdAt: Date.now(),
+          blob: file,
+        })
+        setAttachments((prev) => [...prev, { localFileId, filename: file.name, mimeType: file.type }])
+      }
+    }, [])
+
+    const removeAttachment = useCallback((localFileId: string) => {
+      setAttachments((prev) => prev.filter((a) => a.localFileId !== localFileId))
+      deleteAttachment(localFileId).catch((error) => console.error('Failed to delete local attachment:', error))
+    }, [])
+
     const handleSubmit = async () => {
       try {
-        // Prevent submitting while streaming or if input is empty
+        // Prevent submitting while streaming, or with neither text nor attachments
         const textToSend = input.trim()
-        if (isStreaming || !textToSend) {
+        if (isStreaming || (!textToSend && attachments.length === 0)) {
           return
         }
 
@@ -313,10 +355,18 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
           return
         }
 
-        // Clear input and persisted draft immediately for responsive UX
-        clearDraft()
+        // Reference-only attachment parts — bytes stay in IndexedDB and are
+        // hydrated per-agent at send time (see the file transports).
+        const attachmentParts = attachments.map(buildAttachmentPart)
 
-        await sendMessage({ text: textToSend })
+        // Clear input, draft, and pending attachments immediately for responsive UX
+        clearDraft()
+        setAttachments([])
+        setAttachError(null)
+
+        await sendMessage({
+          parts: [...(textToSend ? [{ type: 'text' as const, text: textToSend }] : []), ...attachmentParts],
+        })
       } catch (error) {
         console.error('Error submitting message:', error)
       }
@@ -351,6 +401,15 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
 
     const footerStartElements = (
       <div className="flex items-center gap-2">
+        <button
+          type="button"
+          onClick={() => fileInputRef.current?.click()}
+          aria-label="Attach a PDF"
+          title="Attach a PDF"
+          className="flex size-[var(--touch-height-sm)] shrink-0 cursor-pointer items-center justify-center rounded-lg text-muted-foreground hover:bg-accent hover:text-foreground"
+        >
+          <Paperclip className="size-[var(--icon-size-default)]" />
+        </button>
         {isConnecting ? (
           <div
             role="status"
@@ -417,7 +476,30 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
 
     return (
       <>
-        <div className="flex w-full flex-col gap-3">
+        <div
+          className={cn('flex w-full flex-col gap-3 rounded-2xl', isDragging && 'ring-2 ring-ring ring-offset-2')}
+          onDragOver={(e) => {
+            e.preventDefault()
+            setIsDragging(true)
+          }}
+          onDragLeave={() => setIsDragging(false)}
+          onDrop={(e) => {
+            e.preventDefault()
+            setIsDragging(false)
+            void addFiles(Array.from(e.dataTransfer.files))
+          }}
+        >
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="application/pdf"
+            multiple
+            hidden
+            onChange={(e) => {
+              void addFiles(Array.from(e.target.files ?? []))
+              e.target.value = ''
+            }}
+          />
           <ChatSkillsBar
             onAddToChat={handleAddChipFromBar}
             onAddInstruction={insertInstructionText}
@@ -425,6 +507,18 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
             // has any message, hide the bar so chips don't compete for space.
             hidden={messages.length > 0}
           />
+          {(attachments.length > 0 || attachError) && (
+            <div className="flex flex-wrap items-center gap-2">
+              {attachments.map((attachment) => (
+                <FileChip
+                  key={attachment.localFileId}
+                  filename={attachment.filename}
+                  onRemove={() => removeAttachment(attachment.localFileId)}
+                />
+              ))}
+              {attachError && <span className="text-[length:var(--font-size-xs)] text-destructive">{attachError}</span>}
+            </div>
+          )}
           <PromptInput
             ref={formRef}
             value={input}

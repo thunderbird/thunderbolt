@@ -68,6 +68,7 @@ const buildServer = (opts: {
   sessionIds?: string[]
   pipelineId?: string
   pipelineName?: string
+  supportsFiles?: boolean
   settings?: Partial<Settings>
   persistentSearchSessions?: Map<string, string>
 }) => {
@@ -92,7 +93,9 @@ const buildServer = (opts: {
     captures.push({
       method: init?.method,
       url: input.toString(),
-      body: init?.body ? JSON.parse(String(init.body)) : undefined,
+      // JSON bodies are parsed for easy assertions; multipart (FormData)
+      // uploads are kept as-is so the harness doesn't choke on a non-JSON body.
+      body: typeof init?.body === 'string' ? JSON.parse(init.body) : init?.body,
       headers: headerRecord,
       signal: init?.signal ?? undefined,
     })
@@ -104,6 +107,7 @@ const buildServer = (opts: {
     send: (payload) => sent.push(payload),
     pipelineId: opts.pipelineId ?? 'pipe-uuid-1',
     pipelineName: opts.pipelineName ?? 'pipe-slug-1',
+    supportsFiles: opts.supportsFiles,
     settings: buildSettings(opts.settings),
     deps: {
       fetchFn: wrappedFetch,
@@ -635,5 +639,105 @@ describe('HaystackAcpServer', () => {
     expect(persistentMap.size).toBe(cap)
     expect(persistentMap.has('stale-0')).toBe(false)
     expect(persistentMap.get('ses-fresh')).toBe('sess-fresh')
+  })
+
+  it('advertises embeddedContext on initialize when the pipeline supports files', async () => {
+    const { server, sent } = buildServer({
+      upstream: () => Promise.resolve(sseResponse(['[DONE]'])),
+      supportsFiles: true,
+    })
+    await server.handleMessage(JSON.stringify({ jsonrpc: '2.0', id: 1, method: AGENT_METHODS.initialize }))
+    expect(findResponse(sent, 1).result.agentCapabilities.promptCapabilities).toEqual({
+      image: false,
+      audio: false,
+      embeddedContext: true,
+    })
+  })
+
+  it('runs a file-capable pipeline via temporary_files upload + search-stream (no search_session)', async () => {
+    const upstream: Upstream = (input, init) => {
+      const url = input.toString()
+      if (url.endsWith('/temporary_files')) {
+        expect(init?.body).toBeInstanceOf(FormData)
+        return Promise.resolve(jsonResponse(200, { file_id: 'tmp-file-1' }))
+      }
+      expect(url).toContain('/search-stream')
+      return Promise.resolve(sseResponse([{ type: 'delta', delta: { text: 'mapped' } }, '[DONE]']))
+    }
+    const { server, sent, captures } = buildServer({
+      upstream,
+      sessionIds: ['ses-file'],
+      supportsFiles: true,
+      pipelineName: 'map-pipeline',
+    })
+
+    await server.handleMessage(JSON.stringify({ jsonrpc: '2.0', id: 1, method: AGENT_METHODS.session_new }))
+    await server.handleMessage(
+      JSON.stringify({
+        jsonrpc: '2.0',
+        id: 2,
+        method: AGENT_METHODS.session_prompt,
+        params: {
+          sessionId: 'ses-file',
+          prompt: [
+            { type: 'text', text: 'extract coords' },
+            // base64 of "hello"
+            {
+              type: 'resource',
+              resource: { uri: 'file:///mission.pdf', mimeType: 'application/pdf', blob: 'aGVsbG8=' },
+            },
+          ],
+        },
+      }),
+    )
+
+    // Generative pipelines skip the chat-session bootstrap entirely.
+    expect(captures.some((c) => c.url?.endsWith('/search_sessions'))).toBe(false)
+
+    // The PDF is uploaded as an ephemeral temporary file (auth header set, but
+    // no content-type — fetch derives the multipart boundary from the FormData).
+    const upload = captures.find((c) => c.url?.endsWith('/temporary_files'))
+    expect(upload?.method).toBe('POST')
+    expect(upload?.url).toBe('https://haystack.test/api/v1/workspaces/ws-test/temporary_files')
+    expect(upload?.headers?.authorization).toBe('Bearer test-key')
+    expect(upload?.headers?.['content-type']).toBeUndefined()
+
+    // The run passes the returned file id under `files`.
+    const run = captures.find((c) => c.url?.includes('/search-stream'))
+    expect(run?.url).toBe('https://haystack.test/api/v1/workspaces/ws-test/pipelines/map-pipeline/search-stream')
+    expect(run?.body).toEqual({ query: 'extract coords', files: ['tmp-file-1'], include_result: true })
+    expect(run?.headers?.accept).toBe('text/event-stream')
+
+    expect(sessionUpdates(sent).map((u) => u.update.content.text)).toEqual(['mapped'])
+    expect(findResponse(sent, 2).result.stopReason).toBe('end_turn')
+  })
+
+  it('runs a file-capable pipeline with no attachment via search-stream with empty files', async () => {
+    const upstream: Upstream = (input) => {
+      const url = input.toString()
+      expect(url).toContain('/search-stream')
+      return Promise.resolve(sseResponse([{ type: 'delta', delta: { text: 'ok' } }, '[DONE]']))
+    }
+    const { server, sent, captures } = buildServer({
+      upstream,
+      sessionIds: ['ses-nofile'],
+      supportsFiles: true,
+      pipelineName: 'map-pipeline',
+    })
+
+    await server.handleMessage(JSON.stringify({ jsonrpc: '2.0', id: 1, method: AGENT_METHODS.session_new }))
+    await server.handleMessage(
+      JSON.stringify({
+        jsonrpc: '2.0',
+        id: 2,
+        method: AGENT_METHODS.session_prompt,
+        params: { sessionId: 'ses-nofile', prompt: [{ type: 'text', text: 'hi' }] },
+      }),
+    )
+
+    expect(captures.some((c) => c.url?.endsWith('/temporary_files'))).toBe(false)
+    const run = captures.find((c) => c.url?.includes('/search-stream'))
+    expect(run?.body).toEqual({ query: 'hi', files: [], include_result: true })
+    expect(findResponse(sent, 2).result.stopReason).toBe('end_turn')
   })
 })

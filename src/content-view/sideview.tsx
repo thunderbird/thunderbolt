@@ -14,6 +14,10 @@ const PdfSidebarViewer = lazy(() =>
   import('@/widgets/document-result/pdf-sidebar-viewer').then((m) => ({ default: m.PdfSidebarViewer })),
 )
 
+const LocalPdfSidebarViewer = lazy(() =>
+  import('@/widgets/document-result/pdf-sidebar-viewer').then((m) => ({ default: m.LocalPdfSidebarViewer })),
+)
+
 const loadingFallback = (
   <div className="flex h-full items-center justify-center">
     <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
@@ -32,6 +36,16 @@ export const Sideview = () => {
     return (
       <Suspense fallback={loadingFallback}>
         <PdfSidebarViewer fileId={fileId} fileName={fileName} initialPage={pageNumber} />
+      </Suspense>
+    )
+  }
+
+  // Locally-uploaded attachment — the `fileId` slot carries the IndexedDB localFileId.
+  if (sideviewType === 'local-file' && sideviewId) {
+    const { fileId, fileName, pageNumber } = parseDocumentSideviewId(sideviewId)
+    return (
+      <Suspense fallback={loadingFallback}>
+        <LocalPdfSidebarViewer localFileId={fileId} fileName={fileName} initialPage={pageNumber} />
       </Suspense>
     )
   }

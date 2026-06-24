@@ -16,6 +16,7 @@ import { getAllSkills, getIntegrationStatus, getModel, getModelProfile, getSetti
 import { extractLastUserText, resolveSkillTokenInstructions } from '@/skills/resolve-skill-system-messages'
 import { getDb } from '@/db/database'
 import { getLocalSetting } from '@/stores/local-settings-store'
+import { hydrateAttachmentsAsFileParts } from '@/lib/attachments'
 import { isSsoMode } from '@/lib/auth-mode'
 import { getAuthToken } from '@/lib/auth-token'
 import { fetch as baseFetch } from '@/lib/fetch'
@@ -656,7 +657,10 @@ export const aiFetchStreamingResponse = async ({
     const stream = createUIMessageStream({
       generateId: uuidv7,
       execute: async ({ writer }) => {
-        const baseMessages = await convertToModelMessages(messages)
+        // Hydrate reference-only PDF attachments into AI SDK file parts (bytes
+        // read from IndexedDB) so the model receives them. Only the reference is
+        // persisted/synced; the bytes are inlined here, in-flight to the model.
+        const baseMessages = await convertToModelMessages(await hydrateAttachmentsAsFileParts(messages))
         let currentMessages: typeof baseMessages = [
           ...skillSystemMessages.map((content) => ({ role: 'system' as const, content })),
           ...baseMessages,

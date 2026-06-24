@@ -25,7 +25,22 @@ import { z } from 'zod'
  *  - `description` — optional one-line description shown in the picker.
  *  - `icon`        — optional Phosphor icon name; defaults applied by the
  *                    provider when omitted.
+ *  - `supportedContent` — which prompt content the pipeline accepts. `files:
+ *                    true` is load-bearing: it both advertises ACP
+ *                    `promptCapabilities.embeddedContext` to the client AND
+ *                    switches the run path to `temporary_files` upload +
+ *                    `search-stream` (generative pipelines), instead of the
+ *                    `search_sessions` + `chat-stream` path used by chat
+ *                    pipelines. Absent → `{ text: true, files: false }`, so
+ *                    existing chat configs need no change.
  */
+const supportedContentSchema = z
+  .object({
+    text: z.boolean().default(true),
+    files: z.boolean().default(false),
+  })
+  .default({ text: true, files: false })
+
 export const haystackPipelineDescriptorSchema = z.object({
   id: z.string().min(1),
   name: z.string().min(1),
@@ -33,6 +48,7 @@ export const haystackPipelineDescriptorSchema = z.object({
   pipelineId: z.string().min(1),
   description: z.string().optional(),
   icon: z.string().optional(),
+  supportedContent: supportedContentSchema,
 })
 
 export type HaystackPipelineDescriptor = z.infer<typeof haystackPipelineDescriptorSchema>

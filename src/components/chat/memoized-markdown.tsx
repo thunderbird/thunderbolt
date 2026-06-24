@@ -27,8 +27,10 @@ const rehypePlugins = [rehypeKatex]
 // Rewrite the paired delimiters into their `$`-equivalents so math renders no
 // matter which convention the model picked. Matching *paired* delimiters (not a
 // lone `\[`/`\(`) avoids clobbering markdown-escaped brackets/parens, and the
-// display pattern spans lines so multi-line equations survive.
-const displayMathDelimiters = /\\\[([\s\S]+?)\\\]/g
+// display pattern spans lines so multi-line equations survive. The optional
+// leading-indent capture preserves a list/blockquote-indented `\[…\]` (see
+// `indentedFence`).
+const displayMathDelimiters = /(^[ \t]*)?\\\[([\s\S]+?)\\\]/gm
 // `[\s\S]+?` (not `.+?`) so a `\(…\)` split across lines is still converted,
 // matching the display pattern. Lazy, so it stops at the first `\)`.
 const inlineMathDelimiters = /\\\(([\s\S]+?)\\\)/g
@@ -41,6 +43,19 @@ const inlineMathDelimiters = /\\\(([\s\S]+?)\\\)/g
 // single-line `.` keep the match to a whole line), and already-fenced blocks
 // don't match (their `$$` fences are alone on their lines).
 const displayMathLine = /^([ \t]*)\$\$[ \t]*(.+?)[ \t]*\$\$[ \t]*$/gm
+
+// Build a fenced `$$ … $$` display block, prefixing every line with `indent` so
+// a promoted equation keeps its list/blockquote indentation instead of
+// dedenting onto column 0 — which would end the enclosing list item early and
+// break the surrounding bullets (the fences land outside the item).
+const indentedFence = (indent: string, body: string): string => {
+  const inner = body
+    .trim()
+    .split('\n')
+    .map((line) => `${indent}${line}`)
+    .join('\n')
+  return `${indent}$$\n${inner}\n${indent}$$`
+}
 
 // Recognize math spans with the pandoc/KaTeX delimiter rules so currency dollars
 // aren't mistaken for math. Display `$$…$$` is taken verbatim. An inline `$…$`
@@ -79,11 +94,13 @@ const rewriteMath = (text: string): string =>
   // `$$…$$` / `$…$` span — including those just converted from `\[…\]` / `\(…\)`.
   escapeCurrencyDollars(
     text
-      .replace(displayMathDelimiters, (_match, body: string) => `$$\n${body.trim()}\n$$`)
+      .replace(displayMathDelimiters, (_match, indent: string | undefined, body: string) =>
+        indentedFence(indent ?? '', body),
+      )
       // Inline math is single-line by nature, so collapse internal whitespace
       // (including the newline a multi-line `\(…\)` carried) to a single space.
       .replace(inlineMathDelimiters, (_match, body: string) => `$${body.trim().replace(/\s+/g, ' ')}$`)
-      .replace(displayMathLine, (_match, indent: string, body: string) => `${indent}$$\n${body}\n$$`),
+      .replace(displayMathLine, (_match, indent: string, body: string) => indentedFence(indent, body)),
   )
 
 // An inline code span (`` `…` ``, `` ``…`` ``, …). Left verbatim so a message

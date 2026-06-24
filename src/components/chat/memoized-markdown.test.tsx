@@ -115,4 +115,19 @@ describe('MemoizedMarkdown — LaTeX', () => {
     expect(container.querySelector('.katex')).not.toBeNull()
     expect(container.textContent).not.toContain('\\(')
   })
+
+  it('keeps a promoted `$$…$$` equation inside its list item (preserves indent)', () => {
+    const { container } = renderMarkdown('1. First step\n\n   $$E = mc^2$$\n\n2. Second step')
+    expect(container.querySelector('.katex-display')).not.toBeNull()
+    // The equation stays a continuation of item 1 — the list isn't ended early.
+    expect(container.querySelectorAll('li').length).toBe(2)
+    expect(container.textContent).toContain('First step')
+    expect(container.textContent).toContain('Second step')
+  })
+
+  it('keeps a promoted `\\[…\\]` equation inside its list item', () => {
+    const { container } = renderMarkdown('1. First\n\n   \\[ a^2 + b^2 = c^2 \\]\n\n2. Second')
+    expect(container.querySelector('.katex-display')).not.toBeNull()
+    expect(container.querySelectorAll('li').length).toBe(2)
+  })
 })

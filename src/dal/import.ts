@@ -274,14 +274,33 @@ const sanitizeRowForImport = (
  *   for other people; the BE is authoritative. Rows arriving in the file
  *   (e.g. legacy or hand-crafted) are silently routed to
  *   {@link ImportResult.ignoredTableNames}.
- * - **Foreign personal workspaces merged into the local personal.** Each
- *   user gets exactly one `isPersonal: 1` workspace (BE enforces this via
- *   a partial unique index). A cross-account import would otherwise leave
- *   two personals owned by the importing user. We skip the foreign personal
- *   from the workspaces upsert and rewrite every per-workspace data row
- *   that referenced it to `currentUser.personalWorkspaceId` — the source
- *   user's chats / models / tasks land in the importing user's existing
- *   personal workspace, where they're immediately visible.
+ * - **Fresh ids minted for `chat_threads` / `chat_messages` on cross-account
+ *   import.** BE conflict target for these two tables is `(id)` alone (other
+ *   per-workspace tables use composite `(id, workspace_id)`). Re-uploading
+ *   a source row's id under the importing user's workspace silently no-ops
+ *   on the BE (`ON CONFLICT (id) DO UPDATE WHERE workspace_id = …` doesn't
+ *   match the existing row's `workspace_id`), then the `user_private`
+ *   down-sync — filtered by `user_id = caller` — wipes the local rows. The
+ *   import mints a fresh `uuidv7()` per row, rewriting `id`, plus
+ *   `chat_messages.chatThreadId` and `chat_messages.parentId` to the new
+ *   ids so threads + messages + reply-graphs stay internally consistent.
+ *   Same-account re-import doesn't mint — the existing BE row's
+ *   `workspace_id` already matches the upload, so the upsert updates in
+ *   place.
+ * - **Foreign workspaces merged into the local personal.** Cross-account
+ *   import (`payload.user.id !== currentUser.id`, including the malformed-
+ *   envelope case) collapses *every* foreign workspace — personal and shared
+ *   — into the importing user's personal workspace: their workspace rows
+ *   are skipped from the upsert, every per-workspace row that referenced
+ *   one is rewritten to `currentUser.personalWorkspaceId`. Reason: the BE
+ *   won't accept uploads referencing workspaces the importing user isn't a
+ *   member of, so preserving the foreign structure locally would silently
+ *   wipe every per-workspace row on first sync (uploads permanent-reject,
+ *   then the down-sync removes the now-orphaned local rows). Same-account
+ *   import (`user.id` match) preserves shared workspaces — they already
+ *   exist on the BE with this user as admin — and only remaps a foreign-id
+ *   personal row (defensive; happens after account-recreate when Better
+ *   Auth re-issues `user.id` and the canonical personal id shifts).
  * - **Soft-deleted rows preserved.** `deletedAt` is written verbatim, so a
  *   row exported in the trash stays in the trash after import.
  * - **Atomic.** Wrapped in a single `db.transaction`; any per-row failure
@@ -325,25 +344,71 @@ export const importUserData = async (
   // comment on `importUserData` and `excludedFromExport` in ./export.ts.
   const importedWorkspaceIds = new Set<string>()
 
-  // Pre-pass: build a remap from foreign personal-workspace ids → the
-  // importing user's local personal workspace. Re-stamping a foreign
-  // `isPersonal: 1` row's ownerUserId to the importing user would leave
-  // two personal workspaces with the same owner — non-deterministic local
-  // lookup + a guaranteed BE conflict (the `idx_workspaces_personal_per_owner`
-  // partial unique index is one-personal-per-owner). Instead, we skip the
-  // foreign row from the workspaces upsert entirely and re-attribute every
-  // per-workspace data row that pointed at it to the local personal.
-  const personalRemap = new Map<string, string>()
+  // Build a remap from foreign workspace ids → the importing user's local
+  // personal workspace. Two cases land here, both for the same underlying
+  // reason: the BE won't accept uploads referencing workspaces the importing
+  // user isn't a member of, so preserving the foreign workspace structure
+  // locally would silently lose every per-workspace row on first sync (the
+  // uploads permanent-reject, then the `user_private` bucket's down-sync
+  // removes the now-orphaned local rows).
+  //
+  // 1. Cross-account import (`payload.user.id !== currentUser.id`, including
+  //    the malformed-envelope case where `user.id` is missing): collapse
+  //    *every* foreign workspace — personal and shared — into local personal.
+  //    The user gets a snapshot of the source's data in their own workspace,
+  //    nothing tries to sync up under a foreign workspace id.
+  // 2. Same-account import: only `isPersonal: 1` rows whose id doesn't match
+  //    `currentUser.personalWorkspaceId` need remapping (defensive — happens
+  //    only after an account-recreate where Better Auth re-issues `user.id`
+  //    and the canonical personal id shifts). Shared workspaces preserve
+  //    structure; they already exist on the BE under the same id with this
+  //    user as admin, so upload upserts are no-ops.
+  const sourceUserId = isRecord(payload.user) && typeof payload.user.id === 'string' ? payload.user.id : null
+  const isCrossAccount = sourceUserId === null || sourceUserId !== currentUser.id
+  const workspaceRemap = new Map<string, string>()
   const fileWorkspaces = fileTables.workspaces
   if (Array.isArray(fileWorkspaces)) {
     for (const row of fileWorkspaces) {
-      if (
-        isRecord(row) &&
-        row.isPersonal === 1 &&
-        typeof row.id === 'string' &&
-        row.id !== currentUser.personalWorkspaceId
-      ) {
-        personalRemap.set(row.id, currentUser.personalWorkspaceId)
+      if (!isRecord(row) || typeof row.id !== 'string') {
+        continue
+      }
+      if (row.id === currentUser.personalWorkspaceId) {
+        continue
+      }
+      if (isCrossAccount || row.isPersonal === 1) {
+        workspaceRemap.set(row.id, currentUser.personalWorkspaceId)
+      }
+    }
+  }
+
+  // Cross-account: mint fresh ids for `chat_threads` and `chat_messages`.
+  // The BE's `INSERT ... ON CONFLICT (id) DO UPDATE WHERE workspace_id = ...`
+  // on these two tables uses `id` alone as the conflict target (the other
+  // workspace-scoped tables use composite `(id, workspace_id)`). Re-uploading
+  // the source's row id under the importing user's workspace silently no-ops:
+  // the conflict fires on the source's existing BE row but the setWhere
+  // clause doesn't match its `workspace_id`, so nothing is written. PowerSync
+  // acks the upload as success, then the `user_private` down-sync (filtered
+  // by `user_id = caller`) returns nothing and removes the local rows. Fresh
+  // ids sidestep the collision entirely. Same-account re-import is fine —
+  // the existing BE row's `workspace_id` matches, the upsert updates in place.
+  const chatThreadIdRemap = new Map<string, string>()
+  const chatMessageIdRemap = new Map<string, string>()
+  if (isCrossAccount) {
+    const fileChatThreads = fileTables.chat_threads
+    if (Array.isArray(fileChatThreads)) {
+      for (const row of fileChatThreads) {
+        if (isRecord(row) && typeof row.id === 'string') {
+          chatThreadIdRemap.set(row.id, uuidv7())
+        }
+      }
+    }
+    const fileChatMessages = fileTables.chat_messages
+    if (Array.isArray(fileChatMessages)) {
+      for (const row of fileChatMessages) {
+        if (isRecord(row) && typeof row.id === 'string') {
+          chatMessageIdRemap.set(row.id, uuidv7())
+        }
       }
     }
   }
@@ -367,14 +432,14 @@ export const importUserData = async (
         if (!isRecord(row)) {
           throw new ImportFormatError(`Row in table "${tableName}" is not an object.`)
         }
-        const pkValue = row[pkField]
-        if (typeof pkValue !== 'string') {
+        const filePkValue = row[pkField]
+        if (typeof filePkValue !== 'string') {
           throw new ImportFormatError(`Row in "${tableName}" is missing string primary key "${pkField}".`)
         }
-        // Foreign personal workspaces don't land as separate rows — their
+        // Foreign workspaces in the remap don't land as separate rows — their
         // resources are merged into the importing user's personal workspace
-        // (see `personalRemap` above).
-        if (tableName === 'workspaces' && personalRemap.has(pkValue)) {
+        // (see `workspaceRemap` above).
+        if (tableName === 'workspaces' && workspaceRemap.has(filePkValue)) {
           continue
         }
         const sanitized = sanitizeRowForImport(
@@ -384,11 +449,39 @@ export const importUserData = async (
           currentUser.id,
           currentUser.personalWorkspaceId,
         )
-        // Re-attribute any reference to a foreign personal workspace.
+        // Re-attribute any reference to a remapped foreign workspace.
         if (hasWorkspaceId && typeof sanitized.workspaceId === 'string') {
-          const remapped = personalRemap.get(sanitized.workspaceId)
+          const remapped = workspaceRemap.get(sanitized.workspaceId)
           if (remapped) {
             sanitized.workspaceId = remapped
+          }
+        }
+        // Cross-account id remap for chat_threads / chat_messages — see the
+        // doc on `chatThreadIdRemap` for why this is required.
+        let pkValue = filePkValue
+        if (tableName === 'chat_threads') {
+          const newId = chatThreadIdRemap.get(filePkValue)
+          if (newId) {
+            pkValue = newId
+            sanitized.id = newId
+          }
+        } else if (tableName === 'chat_messages') {
+          const newId = chatMessageIdRemap.get(filePkValue)
+          if (newId) {
+            pkValue = newId
+            sanitized.id = newId
+          }
+          if (typeof sanitized.chatThreadId === 'string') {
+            const remappedThread = chatThreadIdRemap.get(sanitized.chatThreadId)
+            if (remappedThread) {
+              sanitized.chatThreadId = remappedThread
+            }
+          }
+          if (typeof sanitized.parentId === 'string') {
+            const remappedParent = chatMessageIdRemap.get(sanitized.parentId)
+            if (remappedParent) {
+              sanitized.parentId = remappedParent
+            }
           }
         }
         const existing = await tx.select({ pk: pkColumn }).from(table).where(eq(pkColumn, pkValue)).get()

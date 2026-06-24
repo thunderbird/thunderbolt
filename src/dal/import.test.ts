@@ -38,7 +38,12 @@ const envelope = (tables: Record<string, unknown[]>): unknown => ({
   tables,
 })
 
-const currentUser = { id: 'current-user', personalWorkspaceId: 'ws-personal' }
+// Same-account fixture: `id` matches `envelope.user.id` so tests exercise
+// the preserve-structure path (re-import of the user's own backup) without
+// triggering the cross-account remap / id mint. Use `crossAccountUser`
+// below when a test specifically wants to exercise the cross-account flow.
+const currentUser = { id: 'user-1', personalWorkspaceId: 'ws-personal' }
+const crossAccountUser = { id: 'current-user', personalWorkspaceId: 'ws-personal' }
 
 describe('Import DAL', () => {
   beforeEach(async () => {
@@ -374,7 +379,7 @@ describe('Import DAL', () => {
       expect(row?.userId).toBe(currentUser.id)
     })
 
-    it('re-stamps ownerUserId on workspaces with the current session user', async () => {
+    it('re-stamps ownerUserId on workspaces with the current session user (same-account re-import)', async () => {
       const db = getDb()
       await importUserData(
         db,
@@ -390,7 +395,7 @@ describe('Import DAL', () => {
   })
 
   describe('workspace tables', () => {
-    it('round-trips a workspace + its permission rows; synthesizes an admin membership for the importing user', async () => {
+    it('same-account re-import preserves shared workspaces + permissions and synthesizes an admin membership', async () => {
       const db = getDb()
       const result = await importUserData(
         db,
@@ -429,6 +434,96 @@ describe('Import DAL', () => {
       expect(perm?.requiredRole).toBe('admin')
     })
 
+    it('cross-account import mints fresh ids for chat_threads / chat_messages and rewrites chatThreadId + parentId', async () => {
+      const db = getDb()
+      // The BE conflict target on these two tables is `(id)` alone, so a
+      // re-uploaded source id would silently no-op against the existing BE
+      // row (`ON CONFLICT (id) DO UPDATE WHERE workspace_id = …` doesn't
+      // match the existing row's workspace_id) and the next down-sync would
+      // wipe the local rows. Cross-account mints fresh ids and rewires the
+      // internal thread→message and message→message reply graph.
+      await importUserData(
+        db,
+        envelope({
+          chat_threads: [{ id: 'src-thread', title: 'T' }],
+          chat_messages: [
+            { id: 'src-msg-parent', chatThreadId: 'src-thread', role: 'user', parts: [{ type: 'text', text: 'a' }] },
+            {
+              id: 'src-msg-child',
+              chatThreadId: 'src-thread',
+              parentId: 'src-msg-parent',
+              role: 'assistant',
+              parts: [{ type: 'text', text: 'b' }],
+            },
+          ],
+        }),
+        crossAccountUser,
+      )
+
+      const threads = await db.select().from(chatThreadsTable)
+      expect(threads).toHaveLength(1)
+      const newThreadId = threads[0]!.id
+      expect(newThreadId).not.toBe('src-thread')
+
+      const messages = await db.select().from(chatMessagesTable)
+      expect(messages).toHaveLength(2)
+      for (const m of messages) {
+        expect(m.id).not.toBe('src-msg-parent')
+        expect(m.id).not.toBe('src-msg-child')
+        // chatThreadId rewritten to the new thread id.
+        expect(m.chatThreadId).toBe(newThreadId)
+      }
+
+      // parentId rewritten to the new parent message id (not the source one).
+      const child = messages.find((m) => m.role === 'assistant')
+      const parent = messages.find((m) => m.role === 'user')
+      expect(child?.parentId).toBe(parent?.id)
+      expect(child?.parentId).not.toBe('src-msg-parent')
+    })
+
+    it('cross-account import collapses every foreign workspace (personal + shared) into local personal', async () => {
+      const db = getDb()
+      // Cross-account: `envelope.user.id` ('user-1') !== `crossAccountUser.id`.
+      // Both the foreign personal and the foreign shared workspace must be
+      // skipped from the workspaces upsert, and every per-workspace row
+      // remapped to `crossAccountUser.personalWorkspaceId` — otherwise BE
+      // upload would permanent-reject and sync down would wipe the imported rows.
+      const result = await importUserData(
+        db,
+        envelope({
+          workspaces: [
+            { id: 'foreign-personal', name: 'Source personal', isPersonal: 1, ownerUserId: 'user-1' },
+            { id: 'foreign-shared', name: 'Source shared', isPersonal: 0 },
+          ],
+          chat_threads: [
+            { id: 'thread-in-personal', title: 'P', workspaceId: 'foreign-personal' },
+            { id: 'thread-in-shared', title: 'S', workspaceId: 'foreign-shared' },
+          ],
+        }),
+        crossAccountUser,
+      )
+
+      // Neither foreign workspace row lands locally.
+      expect(result.tables.workspaces).toBeUndefined()
+      const localWorkspaces = await db.select().from(workspacesTable)
+      expect(localWorkspaces.map((w) => w.id)).not.toContain('foreign-personal')
+      expect(localWorkspaces.map((w) => w.id)).not.toContain('foreign-shared')
+
+      // Both threads land in the importing user's personal workspace. IDs are
+      // freshly minted on cross-account import (the BE conflict target on
+      // chat_threads is id-only — re-using source ids silently no-ops the
+      // upload), so look the threads up by title instead.
+      const threads = await db.select().from(chatThreadsTable)
+      expect(threads).toHaveLength(2)
+      const titleP = threads.find((t) => t.title === 'P')
+      const titleS = threads.find((t) => t.title === 'S')
+      expect(titleP?.workspaceId).toBe(crossAccountUser.personalWorkspaceId)
+      expect(titleS?.workspaceId).toBe(crossAccountUser.personalWorkspaceId)
+      // Fresh ids — not the source values.
+      expect(titleP?.id).not.toBe('thread-in-personal')
+      expect(titleS?.id).not.toBe('thread-in-shared')
+    })
+
     it('merges a foreign personal workspace into the importing user`s local personal — does not create a second isPersonal row', async () => {
       const db = getDb()
       const foreignPersonalId = 'foreign-personal-ws'
@@ -445,7 +540,7 @@ describe('Import DAL', () => {
             { id: 'thread-foreign-personal', title: 'In foreign personal', workspaceId: foreignPersonalId },
           ],
         }),
-        currentUser,
+        crossAccountUser,
       )
 
       // The foreign personal workspace row is skipped, not inserted.
@@ -454,16 +549,16 @@ describe('Import DAL', () => {
       // workspaces.upserted reflects the skip — zero rows upserted, so the bucket is absent.
       expect(result.tables.workspaces).toBeUndefined()
 
-      // Its resources land in the importing user's personal workspace.
-      const thread = await db
-        .select()
-        .from(chatThreadsTable)
-        .where(eq(chatThreadsTable.id, 'thread-foreign-personal'))
-        .get()
-      expect(thread?.workspaceId).toBe(currentUser.personalWorkspaceId)
+      // Its resources land in the importing user's personal workspace. The
+      // chat_threads id is freshly minted on cross-account import — look up
+      // by title since the source id no longer exists locally.
+      const threads = await db.select().from(chatThreadsTable)
+      expect(threads).toHaveLength(1)
+      expect(threads[0]?.title).toBe('In foreign personal')
+      expect(threads[0]?.workspaceId).toBe(crossAccountUser.personalWorkspaceId)
     })
 
-    it('skips membership synthesis when the importing user is already a member of the imported workspace', async () => {
+    it('skips membership synthesis when the importing user is already a member of the imported workspace (same-account)', async () => {
       const db = getDb()
       // Pre-existing local membership (e.g. PowerSync down-sync prior to import).
       await db.insert(workspacesTable).values({ id: 'ws-existing', name: 'Existing', isPersonal: 0 })
@@ -517,7 +612,7 @@ describe('Import DAL', () => {
       expect(tasks[0]?.workspaceId).toBe(currentUser.personalWorkspaceId)
     })
 
-    it('preserves the file`s workspaceId on modern multi-workspace backups (no override)', async () => {
+    it('same-account re-import preserves the file`s workspaceId on modern multi-workspace backups', async () => {
       const db = getDb()
       await importUserData(
         db,

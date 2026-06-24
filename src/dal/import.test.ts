@@ -11,6 +11,7 @@ import {
   modelsTable,
   settingsTable,
   tasksTable,
+  triggersTable,
   workspaceMembershipsTable,
   workspacePermissionsTable,
   workspacesTable,
@@ -434,6 +435,92 @@ describe('Import DAL', () => {
       expect(perm?.requiredRole).toBe('admin')
     })
 
+    it('cross-account import drops workspace_permissions for foreign personal (avoids BE unique-index conflict on local personal)', async () => {
+      const db = getDb()
+      // A foreign personal collapses into local personal — its permissions
+      // would land at the local personal's workspace_id, and stacked with
+      // any future foreign personal's permissions would collide on the BE's
+      // unique `(workspace_id, permission_key)` index. Drop them; BE
+      // applies the admin-only default (Decision 11).
+      await importUserData(
+        db,
+        envelope({
+          workspaces: [{ id: 'foreign-personal', name: 'P', isPersonal: 1, ownerUserId: 'user-1' }],
+          workspace_permissions: [
+            {
+              id: 'perm-foreign-personal',
+              workspaceId: 'foreign-personal',
+              permissionKey: 'add_agents',
+              requiredRole: 'admin',
+            },
+          ],
+        }),
+        crossAccountUser,
+      )
+
+      const permissions = await db.select().from(workspacePermissionsTable)
+      expect(permissions).toEqual([])
+    })
+
+    it('cross-account import preserves workspace_permissions for foreign shared workspaces under fresh ids', async () => {
+      const db = getDb()
+      await importUserData(
+        db,
+        envelope({
+          workspaces: [{ id: 'foreign-shared', name: 'S', isPersonal: 0 }],
+          workspace_permissions: [
+            {
+              id: 'perm-foreign-shared',
+              workspaceId: 'foreign-shared',
+              permissionKey: 'add_agents',
+              requiredRole: 'member',
+            },
+          ],
+        }),
+        crossAccountUser,
+      )
+
+      const permissions = await db.select().from(workspacePermissionsTable)
+      expect(permissions).toHaveLength(1)
+      // Id is freshly minted (BE conflict target on this table is id-only).
+      expect(permissions[0]?.id).not.toBe('perm-foreign-shared')
+      // workspaceId points to the workspace's new id, not the source's.
+      expect(permissions[0]?.workspaceId).not.toBe('foreign-shared')
+      const workspaces = await db.select().from(workspacesTable).where(eq(workspacesTable.isPersonal, 0))
+      expect(workspaces).toHaveLength(1)
+      expect(permissions[0]?.workspaceId).toBe(workspaces[0]?.id)
+      // Policy value survives the transit verbatim.
+      expect(permissions[0]?.permissionKey).toBe('add_agents')
+      expect(permissions[0]?.requiredRole).toBe('member')
+    })
+
+    it('cross-account import mints a fresh id for triggers and rewrites chat_threads.triggeredBy', async () => {
+      const db = getDb()
+      // `triggers` share `chat_threads`/`chat_messages`'s id-only BE
+      // conflict target — same wipe risk on cross-account if we kept the
+      // source id. `chat_threads.triggeredBy` references the trigger id
+      // and must follow the remap.
+      await importUserData(
+        db,
+        envelope({
+          triggers: [{ id: 'src-trigger', workspaceId: 'foreign-shared' }],
+          chat_threads: [{ id: 'src-thread', title: 'T', triggeredBy: 'src-trigger', workspaceId: 'foreign-shared' }],
+          workspaces: [{ id: 'foreign-shared', name: 'S', isPersonal: 0 }],
+        }),
+        crossAccountUser,
+      )
+
+      const triggers = await db.select().from(triggersTable)
+      expect(triggers).toHaveLength(1)
+      const newTriggerId = triggers[0]!.id
+      expect(newTriggerId).not.toBe('src-trigger')
+
+      const threads = await db.select().from(chatThreadsTable)
+      expect(threads).toHaveLength(1)
+      // triggeredBy rewritten to the new trigger id.
+      expect(threads[0]?.triggeredBy).toBe(newTriggerId)
+    })
+
     it('cross-account import mints fresh ids for chat_threads / chat_messages and rewrites chatThreadId + parentId', async () => {
       const db = getDb()
       // The BE conflict target on these two tables is `(id)` alone, so a
@@ -481,19 +568,17 @@ describe('Import DAL', () => {
       expect(child?.parentId).not.toBe('src-msg-parent')
     })
 
-    it('cross-account import collapses every foreign workspace (personal + shared) into local personal', async () => {
+    it('cross-account import preserves foreign-shared workspaces under fresh ids; folds foreign personal into local personal', async () => {
       const db = getDb()
-      // Cross-account: `envelope.user.id` ('user-1') !== `crossAccountUser.id`.
-      // Both the foreign personal and the foreign shared workspace must be
-      // skipped from the workspaces upsert, and every per-workspace row
-      // remapped to `crossAccountUser.personalWorkspaceId` — otherwise BE
-      // upload would permanent-reject and sync down would wipe the imported rows.
-      const result = await importUserData(
+      // Personal collapses (single-personal-per-owner BE constraint); shared
+      // is preserved but under a new id (the source's id exists on the BE
+      // already, would no-op the upload).
+      await importUserData(
         db,
         envelope({
           workspaces: [
-            { id: 'foreign-personal', name: 'Source personal', isPersonal: 1, ownerUserId: 'user-1' },
-            { id: 'foreign-shared', name: 'Source shared', isPersonal: 0 },
+            { id: 'foreign-personal', name: 'Source personal', isPersonal: 1, ownerUserId: 'user-1', slug: null },
+            { id: 'foreign-shared', name: 'Source shared', isPersonal: 0, slug: 'engineering' },
           ],
           chat_threads: [
             { id: 'thread-in-personal', title: 'P', workspaceId: 'foreign-personal' },
@@ -503,25 +588,38 @@ describe('Import DAL', () => {
         crossAccountUser,
       )
 
-      // Neither foreign workspace row lands locally.
-      expect(result.tables.workspaces).toBeUndefined()
+      // Foreign personal: skipped (collapses into local personal).
+      // Foreign shared: inserted under a fresh id.
       const localWorkspaces = await db.select().from(workspacesTable)
       expect(localWorkspaces.map((w) => w.id)).not.toContain('foreign-personal')
       expect(localWorkspaces.map((w) => w.id)).not.toContain('foreign-shared')
+      const sharedLocally = localWorkspaces.find((w) => w.isPersonal === 0)
+      expect(sharedLocally).toBeDefined()
+      expect(sharedLocally?.name).toBe('Source shared')
+      // `slug` stripped on insert (BE has a global unique index on `slug`).
+      expect(sharedLocally?.slug).toBeNull()
 
-      // Both threads land in the importing user's personal workspace. IDs are
-      // freshly minted on cross-account import (the BE conflict target on
-      // chat_threads is id-only — re-using source ids silently no-ops the
-      // upload), so look the threads up by title instead.
+      // Threads land where they belong: foreign-personal data → local personal,
+      // foreign-shared data → the freshly-minted shared workspace.
       const threads = await db.select().from(chatThreadsTable)
       expect(threads).toHaveLength(2)
       const titleP = threads.find((t) => t.title === 'P')
       const titleS = threads.find((t) => t.title === 'S')
       expect(titleP?.workspaceId).toBe(crossAccountUser.personalWorkspaceId)
-      expect(titleS?.workspaceId).toBe(crossAccountUser.personalWorkspaceId)
-      // Fresh ids — not the source values.
+      expect(titleS?.workspaceId).toBe(sharedLocally?.id)
+      // chat_threads ids are freshly minted on cross-account.
       expect(titleP?.id).not.toBe('thread-in-personal')
       expect(titleS?.id).not.toBe('thread-in-shared')
+
+      // Synthesized membership: importing user becomes admin of the new
+      // shared workspace (and re-uses the existing membership for personal).
+      const memberships = await db
+        .select()
+        .from(workspaceMembershipsTable)
+        .where(eq(workspaceMembershipsTable.workspaceId, sharedLocally!.id))
+      expect(memberships).toHaveLength(1)
+      expect(memberships[0]?.userId).toBe(crossAccountUser.id)
+      expect(memberships[0]?.role).toBe('admin')
     })
 
     it('merges a foreign personal workspace into the importing user`s local personal — does not create a second isPersonal row', async () => {

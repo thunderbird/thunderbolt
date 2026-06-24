@@ -274,33 +274,52 @@ const sanitizeRowForImport = (
  *   for other people; the BE is authoritative. Rows arriving in the file
  *   (e.g. legacy or hand-crafted) are silently routed to
  *   {@link ImportResult.ignoredTableNames}.
- * - **Fresh ids minted for `chat_threads` / `chat_messages` on cross-account
- *   import.** BE conflict target for these two tables is `(id)` alone (other
- *   per-workspace tables use composite `(id, workspace_id)`). Re-uploading
- *   a source row's id under the importing user's workspace silently no-ops
- *   on the BE (`ON CONFLICT (id) DO UPDATE WHERE workspace_id = …` doesn't
- *   match the existing row's `workspace_id`), then the `user_private`
- *   down-sync — filtered by `user_id = caller` — wipes the local rows. The
- *   import mints a fresh `uuidv7()` per row, rewriting `id`, plus
- *   `chat_messages.chatThreadId` and `chat_messages.parentId` to the new
- *   ids so threads + messages + reply-graphs stay internally consistent.
- *   Same-account re-import doesn't mint — the existing BE row's
- *   `workspace_id` already matches the upload, so the upsert updates in
- *   place.
- * - **Foreign workspaces merged into the local personal.** Cross-account
- *   import (`payload.user.id !== currentUser.id`, including the malformed-
- *   envelope case) collapses *every* foreign workspace — personal and shared
- *   — into the importing user's personal workspace: their workspace rows
- *   are skipped from the upsert, every per-workspace row that referenced
- *   one is rewritten to `currentUser.personalWorkspaceId`. Reason: the BE
- *   won't accept uploads referencing workspaces the importing user isn't a
- *   member of, so preserving the foreign structure locally would silently
- *   wipe every per-workspace row on first sync (uploads permanent-reject,
- *   then the down-sync removes the now-orphaned local rows). Same-account
- *   import (`user.id` match) preserves shared workspaces — they already
- *   exist on the BE with this user as admin — and only remaps a foreign-id
- *   personal row (defensive; happens after account-recreate when Better
- *   Auth re-issues `user.id` and the canonical personal id shifts).
+ * - **`workspace_permissions` dropped for remapped workspaces.** When
+ *   multiple foreign workspaces collapse to local personal (cross-account
+ *   import), keeping their permission rows would produce duplicates on
+ *   `(workspace_id, permission_key)` — locally permitted by the non-unique
+ *   index but rejected on BE upload (BE has a unique index). The BE
+ *   applies the admin-only default (Decision 11) when a key has no row, so
+ *   dropping is harmless. Same-account import (no remap) preserves the
+ *   rows.
+ * - **Fresh ids minted for id-only-conflict tables on cross-account
+ *   import.** `chat_threads`, `chat_messages`, and `triggers` use `(id)`
+ *   alone as the BE conflict target (other per-workspace tables use
+ *   composite `(id, workspace_id)`). Re-uploading a source row's id under
+ *   the importing user's workspace silently no-ops on the BE (`ON CONFLICT
+ *   (id) DO UPDATE WHERE workspace_id = …` doesn't match the existing
+ *   row's `workspace_id`), and the down-sync then wipes the local rows.
+ *   The import mints a fresh `uuidv7()` per row and rewires every cross-
+ *   reference that points at one: `chat_messages.chatThreadId` /
+ *   `chat_messages.parentId` to the new chat ids, `chat_threads.triggeredBy`
+ *   to the new trigger id. Same-account re-import doesn't mint — the
+ *   existing BE row's `workspace_id` already matches the upload, so the
+ *   upsert updates in place.
+ * - **Foreign personal workspaces merge into local personal; foreign
+ *   shared workspaces are preserved under fresh ids (cross-account).** Each
+ *   user gets exactly one personal workspace on the BE (partial unique
+ *   index `(ownerUserId, isPersonal=true)`), so an imported personal
+ *   collapses into `currentUser.personalWorkspaceId` — every per-workspace
+ *   row referencing it is rewritten. Foreign shared workspaces in
+ *   cross-account mode (`payload.user.id !== currentUser.id`) are kept
+ *   but inserted under a freshly-minted `uuidv7()`; the source's id would
+ *   collide with the existing BE row and the upsert would silently no-op,
+ *   then `workspace_essentials` down-sync (gated on membership) would wipe
+ *   the local row. `slug` is stripped on insert (BE has a global unique
+ *   index on `slug`). The synthesized admin membership added after the
+ *   file loop lets `isSharedWorkspaceAdminBootstrap` accept the first
+ *   write on the BE. Same-account import preserves shared workspaces
+ *   under their original ids — they already exist on the BE with this
+ *   user as admin, so upserts no-op in place.
+ * - **`workspace_permissions` follow the workspace remap.** Rows whose
+ *   source workspace collapses into local personal are dropped: N foreign
+ *   workspaces' policies sharing one `workspace_id` would all collide on
+ *   the BE's unique `(workspace_id, permission_key)` index, and the BE
+ *   applies the admin-only default (Decision 11) when a key has no row.
+ *   Rows for preserved foreign-shared workspaces are kept under a fresh
+ *   `uuidv7()` id (the BE conflict target on this table is `[id]` alone,
+ *   so re-using the source's id would silently no-op against its existing
+ *   BE row).
  * - **Soft-deleted rows preserved.** `deletedAt` is written verbatim, so a
  *   row exported in the trash stays in the trash after import.
  * - **Atomic.** Wrapped in a single `db.transaction`; any per-row failure
@@ -344,25 +363,29 @@ export const importUserData = async (
   // comment on `importUserData` and `excludedFromExport` in ./export.ts.
   const importedWorkspaceIds = new Set<string>()
 
-  // Build a remap from foreign workspace ids → the importing user's local
-  // personal workspace. Two cases land here, both for the same underlying
-  // reason: the BE won't accept uploads referencing workspaces the importing
-  // user isn't a member of, so preserving the foreign workspace structure
-  // locally would silently lose every per-workspace row on first sync (the
-  // uploads permanent-reject, then the `user_private` bucket's down-sync
-  // removes the now-orphaned local rows).
+  // Build a remap from foreign workspace ids → their local target. Three
+  // cases drive entries here, all because the BE won't accept uploads
+  // referencing workspaces the importing user isn't a member of on the
+  // server (the workspace handler short-circuits on `isWorkspaceAdmin` /
+  // `isWorkspaceMember` and the upserts silently no-op or permanent-reject;
+  // the next down-sync then wipes the orphaned local rows).
   //
-  // 1. Cross-account import (`payload.user.id !== currentUser.id`, including
-  //    the malformed-envelope case where `user.id` is missing): collapse
-  //    *every* foreign workspace — personal and shared — into local personal.
-  //    The user gets a snapshot of the source's data in their own workspace,
-  //    nothing tries to sync up under a foreign workspace id.
-  // 2. Same-account import: only `isPersonal: 1` rows whose id doesn't match
-  //    `currentUser.personalWorkspaceId` need remapping (defensive — happens
-  //    only after an account-recreate where Better Auth re-issues `user.id`
-  //    and the canonical personal id shifts). Shared workspaces preserve
-  //    structure; they already exist on the BE under the same id with this
-  //    user as admin, so upload upserts are no-ops.
+  // 1. Foreign personal (`isPersonal: 1`, `id !== currentUser.personalWorkspaceId`):
+  //    collapse into local personal. Each user gets exactly one personal
+  //    workspace (BE partial unique index on `(ownerUserId, isPersonal=true)`),
+  //    so we never insert a second one. The remap target is the importing
+  //    user's existing personal id; per-workspace data is rewritten to it.
+  // 2. Foreign shared, cross-account (`isPersonal: 0` AND
+  //    `payload.user.id !== currentUser.id`): mint a fresh `uuidv7()` so
+  //    the workspace lands on the BE as a brand-new row (no `(id)` PK
+  //    conflict against the source's row). The importing user authors it
+  //    locally; `isSharedWorkspaceAdminBootstrap` on the BE accepts the
+  //    synthesized admin membership the importer adds after the file loop.
+  //    `slug` is stripped at insert time — the BE has a global unique index
+  //    on `slug` and we don't want to collide with the source's row.
+  // 3. Same-account shared: no remap. Source ids already exist on the BE
+  //    with this user as admin; upload upserts are in-place no-ops and
+  //    everything round-trips.
   const sourceUserId = isRecord(payload.user) && typeof payload.user.id === 'string' ? payload.user.id : null
   const isCrossAccount = sourceUserId === null || sourceUserId !== currentUser.id
   const workspaceRemap = new Map<string, string>()
@@ -375,8 +398,30 @@ export const importUserData = async (
       if (row.id === currentUser.personalWorkspaceId) {
         continue
       }
-      if (isCrossAccount || row.isPersonal === 1) {
+      if (row.isPersonal === 1) {
         workspaceRemap.set(row.id, currentUser.personalWorkspaceId)
+      } else if (isCrossAccount) {
+        workspaceRemap.set(row.id, uuidv7())
+      }
+    }
+  }
+
+  // Cross-account permissions for *preserved* foreign-shared workspaces
+  // need fresh ids too — BE conflict target on `workspace_permissions` is
+  // `[id]` alone (same id-only-collision problem we hit on chat_threads),
+  // so re-uploading the source's permission id under the new workspace id
+  // would no-op the upsert. Permissions for workspaces that collapse to
+  // local personal aren't kept at all (handled in the row loop below).
+  const workspacePermissionIdRemap = new Map<string, string>()
+  const filePermissions = fileTables.workspace_permissions
+  if (Array.isArray(filePermissions)) {
+    for (const row of filePermissions) {
+      if (!isRecord(row) || typeof row.id !== 'string' || typeof row.workspaceId !== 'string') {
+        continue
+      }
+      const remapped = workspaceRemap.get(row.workspaceId)
+      if (remapped && remapped !== currentUser.personalWorkspaceId) {
+        workspacePermissionIdRemap.set(row.id, uuidv7())
       }
     }
   }
@@ -394,6 +439,7 @@ export const importUserData = async (
   // the existing BE row's `workspace_id` matches, the upsert updates in place.
   const chatThreadIdRemap = new Map<string, string>()
   const chatMessageIdRemap = new Map<string, string>()
+  const triggerIdRemap = new Map<string, string>()
   if (isCrossAccount) {
     const fileChatThreads = fileTables.chat_threads
     if (Array.isArray(fileChatThreads)) {
@@ -411,18 +457,22 @@ export const importUserData = async (
         }
       }
     }
+    // Triggers share the same id-only BE conflict target as chat_threads /
+    // chat_messages — re-uploading the source's id would silently no-op.
+    // `chat_threads.triggeredBy` references trigger ids, so the remap is
+    // also applied when chat_threads rows are written below.
+    const fileTriggers = fileTables.triggers
+    if (Array.isArray(fileTriggers)) {
+      for (const row of fileTriggers) {
+        if (isRecord(row) && typeof row.id === 'string') {
+          triggerIdRemap.set(row.id, uuidv7())
+        }
+      }
+    }
   }
 
   await db.transaction(async (tx) => {
-    for (const [tableName, rows] of Object.entries(fileTables)) {
-      if (!isIncludedTableName(tableName)) {
-        ignoredTableNames.push(tableName)
-        continue
-      }
-      if (!Array.isArray(rows) || rows.length === 0) {
-        continue
-      }
-
+    const processTable = async (tableName: IncludedTableName, rows: unknown[]): Promise<void> => {
       const table = includedTables[tableName]
       const { pk, userIdFields, hasWorkspaceId } = tableImportSpecs[tableName]
       const { column: pkColumn, field: pkField } = pk
@@ -436,11 +486,30 @@ export const importUserData = async (
         if (typeof filePkValue !== 'string') {
           throw new ImportFormatError(`Row in "${tableName}" is missing string primary key "${pkField}".`)
         }
-        // Foreign workspaces in the remap don't land as separate rows — their
-        // resources are merged into the importing user's personal workspace
-        // (see `workspaceRemap` above).
-        if (tableName === 'workspaces' && workspaceRemap.has(filePkValue)) {
-          continue
+        // Foreign workspaces that merged into local personal don't land as
+        // separate rows; foreign-shared workspaces (cross-account) DO land,
+        // but under the freshly-minted id from `workspaceRemap`.
+        if (tableName === 'workspaces') {
+          const target = workspaceRemap.get(filePkValue)
+          if (target === currentUser.personalWorkspaceId) {
+            continue
+          }
+        }
+        // Workspace policy rows for workspaces that collapse to local personal
+        // are dropped: collapsing N foreign workspaces would otherwise produce
+        // N rows sharing `(workspace_id, permission_key)`, which the BE
+        // rejects on upload (unique index `idx_workspace_permissions_workspace_key`).
+        // The BE applies Decision-11 admin-default when no row is present.
+        // Rows for preserved foreign-shared workspaces are kept and follow
+        // the new workspace id via the per-workspace remap below.
+        if (tableName === 'workspace_permissions') {
+          const rowWorkspaceId = row.workspaceId
+          if (
+            typeof rowWorkspaceId === 'string' &&
+            workspaceRemap.get(rowWorkspaceId) === currentUser.personalWorkspaceId
+          ) {
+            continue
+          }
         }
         const sanitized = sanitizeRowForImport(
           row,
@@ -465,6 +534,20 @@ export const importUserData = async (
             pkValue = newId
             sanitized.id = newId
           }
+          // `triggeredBy` references a trigger row's id; remap to the new
+          // id minted in the triggers pre-pass.
+          if (typeof sanitized.triggeredBy === 'string') {
+            const remappedTrigger = triggerIdRemap.get(sanitized.triggeredBy)
+            if (remappedTrigger) {
+              sanitized.triggeredBy = remappedTrigger
+            }
+          }
+        } else if (tableName === 'triggers') {
+          const newId = triggerIdRemap.get(filePkValue)
+          if (newId) {
+            pkValue = newId
+            sanitized.id = newId
+          }
         } else if (tableName === 'chat_messages') {
           const newId = chatMessageIdRemap.get(filePkValue)
           if (newId) {
@@ -482,6 +565,25 @@ export const importUserData = async (
             if (remappedParent) {
               sanitized.parentId = remappedParent
             }
+          }
+        } else if (tableName === 'workspaces') {
+          // Preserved foreign-shared workspace: insert under the freshly-
+          // minted id from `workspaceRemap`, slug stripped (the BE has a
+          // global unique index on `slug`).
+          const newId = workspaceRemap.get(filePkValue)
+          if (newId) {
+            pkValue = newId
+            sanitized.id = newId
+            sanitized.slug = null
+          }
+        } else if (tableName === 'workspace_permissions') {
+          // Preserved foreign-shared permissions: mint a fresh id so the
+          // BE's id-only `ON CONFLICT` doesn't silently no-op against the
+          // source's existing row.
+          const newId = workspacePermissionIdRemap.get(filePkValue)
+          if (newId) {
+            pkValue = newId
+            sanitized.id = newId
           }
         }
         const existing = await tx.select({ pk: pkColumn }).from(table).where(eq(pkColumn, pkValue)).get()
@@ -501,12 +603,29 @@ export const importUserData = async (
       }
     }
 
+    // CRUD-queue order matters for PowerSync: a foreign-shared workspace
+    // lands on the BE as a brand-new row, so its synthesized admin
+    // membership must precede any per-workspace upload (chat_threads etc.
+    // are validated by `isWorkspaceMember`, which the BE evaluates against
+    // the cumulative state of earlier ops in the same batch). Our own
+    // export emits `workspaces` LAST in the envelope; processing in the
+    // file's own order would queue chat_messages → ... → workspaces →
+    // memberships and the BE would reject mid-batch. So:
+    //   1. `workspaces` first (insert new rows, skip merged personals)
+    //   2. synthesize memberships for any imported workspace the user
+    //      doesn't already belong to locally
+    //   3. everything else (per-workspace data, settings, secrets, …)
+    if (Array.isArray(fileTables.workspaces) && fileTables.workspaces.length > 0) {
+      await processTable('workspaces', fileTables.workspaces)
+    }
+
     // Synthesize membership rows so the importing user can access every
     // imported workspace immediately. Skip workspaces they're already a
     // member of locally (re-import, or a pre-existing membership from
-    // PowerSync down-sync). Role is `admin` — consistent with
-    // `ownerUserId` being re-stamped to the importing user; the BE
-    // reconciles on next sync if the upload disagrees with the truth.
+    // PowerSync down-sync). Role is `admin` — consistent with the
+    // `ownerUserId` re-stamp and with the importing user being the only
+    // local actor; on cross-account, foreign-shared workspaces have zero
+    // BE members and `isSharedWorkspaceAdminBootstrap` accepts the row.
     if (importedWorkspaceIds.size > 0) {
       const existingMemberships = await tx
         .select({ workspaceId: workspaceMembershipsTable.workspaceId })
@@ -527,6 +646,20 @@ export const importUserData = async (
           role: 'admin',
         })
       }
+    }
+
+    for (const [tableName, rows] of Object.entries(fileTables)) {
+      if (tableName === 'workspaces') {
+        continue
+      }
+      if (!isIncludedTableName(tableName)) {
+        ignoredTableNames.push(tableName)
+        continue
+      }
+      if (!Array.isArray(rows) || rows.length === 0) {
+        continue
+      }
+      await processTable(tableName, rows)
     }
   })
 

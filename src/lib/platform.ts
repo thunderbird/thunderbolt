@@ -107,6 +107,13 @@ export const isWebDesktopPlatform = (): boolean => {
   return p === 'macos' || p === 'windows' || p === 'linux'
 }
 
+/**
+ * Returns true when running on iOS — whether the Tauri iOS app (WKWebView) or a
+ * web browser on iOS/iPadOS. Combines the Tauri-native and web-UA detection
+ * paths, which no single existing predicate covers on its own.
+ */
+export const isIosPlatform = (): boolean => (isTauri() && getPlatform() === 'ios') || getWebOsPlatform() === 'ios'
+
 type WebBrowser = 'safari' | 'chrome' | 'firefox' | 'edge' | 'unknown'
 
 /**
@@ -162,6 +169,50 @@ export const isOpfsAvailable = async (): Promise<boolean> => {
     return true
   } catch (error) {
     console.warn('OPFS is not available:', error)
+    return false
+  }
+}
+
+/**
+ * Checks whether IndexedDB is available and openable.
+ * iOS Lockdown Mode ("Configure Web Browsing") and some private/enterprise
+ * configs leave the `indexedDB` global present but make open() throw or error,
+ * so we attempt an actual open rather than a type check.
+ * @param idb - injectable factory for testing; defaults to the global.
+ */
+export const isIndexedDbAvailable = async (idb?: IDBFactory | null): Promise<boolean> => {
+  const probeName = 'thunderbolt-idb-probe'
+  try {
+    // Resolve the factory inside the try: in hardened environments even reading
+    // the `indexedDB` global (not just calling open()) can throw. A no-arg call
+    // falls back to the global; an explicit null factory is treated as missing.
+    const factory = idb === undefined ? globalThis.indexedDB : idb
+    if (!factory) {
+      return false
+    }
+    return await new Promise<boolean>((resolve) => {
+      // A probe that never settles would reintroduce the boot hang this check
+      // exists to prevent, so fall back to "unavailable" after a short timeout.
+      // Generous enough to avoid a false negative on a slow first open.
+      const timeout = setTimeout(() => resolve(false), 5000)
+      const settle = (available: boolean) => {
+        clearTimeout(timeout)
+        resolve(available)
+      }
+      const request = factory.open(probeName)
+      // Opening a fresh probe db triggers a version-change upgrade; we only
+      // care that the open succeeds, so the upgrade itself is a no-op.
+      request.onupgradeneeded = () => {}
+      request.onsuccess = () => {
+        request.result.close()
+        factory.deleteDatabase(probeName)
+        settle(true)
+      }
+      request.onerror = () => settle(false)
+      request.onblocked = () => settle(false)
+    })
+  } catch (error) {
+    console.warn('IndexedDB is not available:', error)
     return false
   }
 }

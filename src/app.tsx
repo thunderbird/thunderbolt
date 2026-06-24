@@ -12,6 +12,7 @@ import MagicLinkVerify from '@/components/magic-link-verify'
 import OAuthCallback from '@/components/oauth-callback'
 import { AccountDeleted } from '@/components/account-deleted'
 import { SignedOut } from '@/components/signed-out'
+import { StorageUnavailableScreen } from '@/components/storage-unavailable-screen'
 import NotFound from '@/components/not-found'
 import { RevokedDeviceModal } from '@/components/revoked-device-modal'
 import ChatLayout from '@/layout/main-layout'
@@ -228,6 +229,9 @@ export const App = () => {
 
   const renderAppContent = () => {
     if (initError) {
+      if (initError.code === 'STORAGE_UNAVAILABLE') {
+        return <StorageUnavailableScreen />
+      }
       return <AppErrorScreen error={initError} isClearingDatabase={isInitializing} onClearDatabase={clearDatabase} />
     }
 

@@ -12,24 +12,33 @@ const mockTrackEvent = mock(() => {})
 // which powersync-status.test.tsx consumes for real) survives if this registration
 // leaks across files under `--randomize`. Only `setSyncEnabled` is overridden with
 // the local spy this suite asserts on. See docs/development/testing.md §65.
-const realPowersync = await import('@/db/powersync')
-mock.module('@/db/powersync', () => ({
+const realPowersync = await import('@/db/powersync/sync-state')
+mock.module('@/db/powersync/sync-state', () => ({
   ...realPowersync,
   setSyncEnabled: mockSetSyncEnabled,
 }))
 
+// Spread the REAL modules so every untouched export survives if these
+// registrations leak across files under `--randomize`; only the symbols this
+// suite drives are overridden. See docs/development/testing.md §65.
+const realPosthog = await import('@/lib/posthog')
 mock.module('@/lib/posthog', () => ({
+  ...realPosthog,
   trackEvent: mockTrackEvent,
 }))
 
 const mockGetCK = mock(() => Promise.resolve(null))
 
+const realEncryption = await import('@/db/encryption')
 mock.module('@/db/encryption', () => ({
+  ...realEncryption,
   isEncryptionEnabled: () => true,
   needsSyncSetupWizard: async () => !(await mockGetCK()),
 }))
 
+const realKeyStorage = await import('@/crypto/key-storage')
 mock.module('@/crypto/key-storage', () => ({
+  ...realKeyStorage,
   getCK: mockGetCK,
 }))
 

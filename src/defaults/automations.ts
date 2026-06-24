@@ -4,7 +4,7 @@
 
 import { hashValues } from '@/lib/utils'
 import type { Prompt } from '@/types'
-import { defaultModelGptOss120b } from './models'
+import { defaultModelOpus48 } from './models'
 
 /**
  * Compute hash of user-editable fields for a prompt
@@ -24,7 +24,7 @@ export const defaultAutomationDailyBrief: Prompt = {
   deletedAt: null,
   defaultHash: null,
   userId: null,
-  modelId: defaultModelGptOss120b.id,
+  modelId: defaultModelOpus48.id,
   prompt: `Create a daily brief with the following sections. Do not ask me for any missing information - just skip sections for which you are missing information or tools.
 
 1. If you know my location, show me the 7-day forecast. If not, skip this section.
@@ -68,7 +68,7 @@ export const defaultAutomationImportantEmails: Prompt = {
   deletedAt: null,
   defaultHash: null,
   userId: null,
-  modelId: defaultModelGptOss120b.id,
+  modelId: defaultModelOpus48.id,
   prompt: `Review my inbox and summarize the 5 most important emails that need my attention today. Include sender, subject, and why each is important.`,
 }
 

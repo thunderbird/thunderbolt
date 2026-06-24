@@ -52,8 +52,8 @@ describe('categorizeModels', () => {
 
     const disabled = groups.find((g) => g.id === 'standard-disabled')
     expect(disabled).toBeDefined()
-    expect(disabled!.label).toBeUndefined()
-    expect(disabled!.subtitle).toBeUndefined()
+    expect(disabled!.label).toBe('Standard Models')
+    expect(disabled!.subtitle).toBe('Not available in confidential chats.')
     expect(disabled!.items).toHaveLength(1)
     expect(disabled!.items[0].id).toBe('std-1')
     expect(disabled!.items[0].disabled).toBe(true)
@@ -69,8 +69,8 @@ describe('categorizeModels', () => {
 
     const disabled = groups.find((g) => g.id === 'confidential-disabled')
     expect(disabled).toBeDefined()
-    expect(disabled!.label).toBeUndefined()
-    expect(disabled!.subtitle).toBeUndefined()
+    expect(disabled!.label).toBe('Confidential Models')
+    expect(disabled!.subtitle).toBe('Available only in confidential chats.')
     expect(disabled!.items).toHaveLength(1)
     expect(disabled!.items[0].id).toBe('conf-1')
     expect(disabled!.items[0].disabled).toBe(true)

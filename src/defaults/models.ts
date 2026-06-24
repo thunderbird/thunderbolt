@@ -32,26 +32,6 @@ export const hashModel = (model: Model): string => {
  *
  * Each model is exported individually so it can be referenced by automations
  */
-export const defaultModelGptOss120b: Model = {
-  id: 'd045a4c0-3f93-4f30-a608-24e07856e11d',
-  name: 'GPT OSS',
-  provider: 'thunderbolt',
-  model: 'gpt-oss-120b',
-  isSystem: 1,
-  enabled: 1,
-  isConfidential: 1,
-  contextWindow: 131072,
-  toolUsage: 1,
-  startWithReasoning: 0,
-  supportsParallelToolCalls: 1,
-  deletedAt: null,
-  apiKey: null,
-  url: null,
-  defaultHash: null,
-  vendor: 'openai',
-  description: 'Fast',
-  userId: null,
-}
 
 /**
  * Opus 4.8 reuses the row id originally assigned to Sonnet 4.5 (and inherited by 4.7).
@@ -120,11 +100,11 @@ export const defaultModelKimiK26: Model = {
   userId: null,
 }
 
-export const defaultModelGlm51: Model = {
+export const defaultModelGlm52: Model = {
   id: '019e7580-2b0e-719c-a43f-d2b56e7f31b4',
-  name: 'GLM 5.1',
+  name: 'GLM 5.2',
   provider: 'tinfoil',
-  model: 'glm-5-1',
+  model: 'glm-5-2',
   isSystem: 1,
   enabled: 1,
   isConfidential: 1,
@@ -146,9 +126,8 @@ export const defaultModelGlm51: Model = {
  * "Provided" group of the model picker. Reorder freely.
  */
 export const defaultModels: ReadonlyArray<Model> = [
-  defaultModelGptOss120b,
   defaultModelOpus48,
   defaultModelDeepseekV4Pro,
   defaultModelKimiK26,
-  defaultModelGlm51,
+  defaultModelGlm52,
 ] as const

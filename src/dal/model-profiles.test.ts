@@ -4,7 +4,7 @@
 
 import { getDb } from '@/db/database'
 import { modelProfilesTable, modelsTable } from '@/db/tables'
-import { defaultModelGptOss120b } from '@/defaults/models'
+import { defaultModelOpus48 } from '@/defaults/models'
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'bun:test'
 import { eq } from 'drizzle-orm'
 import { v7 as uuidv7 } from 'uuid'
@@ -207,35 +207,35 @@ describe('Model Profiles DAL', () => {
   describe('resetModelProfileToDefault', () => {
     it('should restore default values for a known model', async () => {
       const db = getDb()
-      const { defaultModelProfileGptOss120b } = await import('@/defaults/model-profiles')
+      const { defaultModelProfileOpus48 } = await import('@/defaults/model-profiles')
 
       // Insert the actual default model first to satisfy FK constraint
       await db.insert(modelsTable).values({
-        id: defaultModelGptOss120b.id,
-        provider: defaultModelGptOss120b.provider,
-        name: defaultModelGptOss120b.name,
-        model: defaultModelGptOss120b.model,
-        isSystem: defaultModelGptOss120b.isSystem,
-        enabled: defaultModelGptOss120b.enabled,
+        id: defaultModelOpus48.id,
+        provider: defaultModelOpus48.provider,
+        name: defaultModelOpus48.name,
+        model: defaultModelOpus48.model,
+        isSystem: defaultModelOpus48.isSystem,
+        enabled: defaultModelOpus48.enabled,
       })
 
       // Insert a profile with modified values
       await db.insert(modelProfilesTable).values({
-        modelId: defaultModelGptOss120b.id,
+        modelId: defaultModelOpus48.id,
         temperature: 0.99,
         maxSteps: 1,
         deletedAt: new Date().toISOString(),
       })
 
       // Reset to defaults
-      await resetModelProfileToDefault(getDb(), defaultModelGptOss120b.id)
+      await resetModelProfileToDefault(getDb(), defaultModelOpus48.id)
 
-      const profile = await getModelProfile(getDb(), defaultModelGptOss120b.id)
+      const profile = await getModelProfile(getDb(), defaultModelOpus48.id)
       expect(profile).not.toBe(null)
-      expect(profile?.temperature).toBe(defaultModelProfileGptOss120b.temperature)
-      expect(profile?.maxSteps).toBe(defaultModelProfileGptOss120b.maxSteps)
-      expect(profile?.maxAttempts).toBe(defaultModelProfileGptOss120b.maxAttempts)
-      expect(profile?.nudgeThreshold).toBe(defaultModelProfileGptOss120b.nudgeThreshold)
+      expect(profile?.temperature).toBe(defaultModelProfileOpus48.temperature)
+      expect(profile?.maxSteps).toBe(defaultModelProfileOpus48.maxSteps)
+      expect(profile?.maxAttempts).toBe(defaultModelProfileOpus48.maxAttempts)
+      expect(profile?.nudgeThreshold).toBe(defaultModelProfileOpus48.nudgeThreshold)
       expect(profile?.deletedAt).toBe(null)
     })
 
@@ -268,31 +268,31 @@ describe('Model Profiles DAL', () => {
   describe('createDefaultModelProfile', () => {
     it('should create a profile for a known default model', async () => {
       const db = getDb()
-      const { defaultModelProfileGptOss120b, hashModelProfile } = await import('@/defaults/model-profiles')
+      const { defaultModelProfileOpus48, hashModelProfile } = await import('@/defaults/model-profiles')
 
       await db.insert(modelsTable).values({
-        id: defaultModelGptOss120b.id,
-        provider: defaultModelGptOss120b.provider,
-        name: defaultModelGptOss120b.name,
-        model: defaultModelGptOss120b.model,
-        isSystem: defaultModelGptOss120b.isSystem,
-        enabled: defaultModelGptOss120b.enabled,
+        id: defaultModelOpus48.id,
+        provider: defaultModelOpus48.provider,
+        name: defaultModelOpus48.name,
+        model: defaultModelOpus48.model,
+        isSystem: defaultModelOpus48.isSystem,
+        enabled: defaultModelOpus48.enabled,
       })
 
-      await createDefaultModelProfile(getDb(), defaultModelGptOss120b.id)
+      await createDefaultModelProfile(getDb(), defaultModelOpus48.id)
 
-      const profile = await getModelProfile(getDb(), defaultModelGptOss120b.id)
+      const profile = await getModelProfile(getDb(), defaultModelOpus48.id)
       expect(profile).not.toBe(null)
-      expect(profile?.modelId).toBe(defaultModelGptOss120b.id)
-      expect(profile?.temperature).toBe(defaultModelProfileGptOss120b.temperature)
+      expect(profile?.modelId).toBe(defaultModelOpus48.id)
+      expect(profile?.temperature).toBe(defaultModelProfileOpus48.temperature)
 
       // Should store the defaultHash
       const rawProfile = await db
         .select()
         .from(modelProfilesTable)
-        .where(eq(modelProfilesTable.modelId, defaultModelGptOss120b.id))
+        .where(eq(modelProfilesTable.modelId, defaultModelOpus48.id))
         .get()
-      expect(rawProfile?.defaultHash).toBe(hashModelProfile(defaultModelProfileGptOss120b))
+      expect(rawProfile?.defaultHash).toBe(hashModelProfile(defaultModelProfileOpus48))
     })
 
     it('should do nothing for a model without seed data', async () => {
@@ -318,24 +318,24 @@ describe('Model Profiles DAL', () => {
       const db = getDb()
 
       await db.insert(modelsTable).values({
-        id: defaultModelGptOss120b.id,
-        provider: defaultModelGptOss120b.provider,
-        name: defaultModelGptOss120b.name,
-        model: defaultModelGptOss120b.model,
-        isSystem: defaultModelGptOss120b.isSystem,
-        enabled: defaultModelGptOss120b.enabled,
+        id: defaultModelOpus48.id,
+        provider: defaultModelOpus48.provider,
+        name: defaultModelOpus48.name,
+        model: defaultModelOpus48.model,
+        isSystem: defaultModelOpus48.isSystem,
+        enabled: defaultModelOpus48.enabled,
       })
 
       // Insert a custom profile first
       await db.insert(modelProfilesTable).values({
-        modelId: defaultModelGptOss120b.id,
+        modelId: defaultModelOpus48.id,
         temperature: 0.99,
       })
 
       // Calling createDefaultModelProfile should not overwrite
-      await createDefaultModelProfile(getDb(), defaultModelGptOss120b.id)
+      await createDefaultModelProfile(getDb(), defaultModelOpus48.id)
 
-      const profile = await getModelProfile(getDb(), defaultModelGptOss120b.id)
+      const profile = await getModelProfile(getDb(), defaultModelOpus48.id)
       expect(profile?.temperature).toBe(0.99)
     })
   })

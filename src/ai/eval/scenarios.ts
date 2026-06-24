@@ -2,13 +2,10 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { defaultModelGptOss120b, defaultModelOpus48 } from '@/defaults/models'
+import { defaultModelOpus48 } from '@/defaults/models'
 import type { EvalCriteria, EvalScenario } from './types'
 
-const models = [
-  { name: 'gpt-oss', id: defaultModelGptOss120b.id },
-  { name: 'opus', id: defaultModelOpus48.id },
-] as const
+const models = [{ name: 'opus', id: defaultModelOpus48.id }] as const
 
 /** Default criteria applied to all Chat mode scenarios */
 const chatCriteria: EvalCriteria = {

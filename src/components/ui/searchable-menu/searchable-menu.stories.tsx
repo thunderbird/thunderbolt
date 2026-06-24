@@ -62,7 +62,7 @@ const groupedItems: SearchableMenuGroup[] = [
     id: 'provided',
     label: 'Provided Models',
     items: [
-      { id: 'gpt-oss', label: 'GPT-OSS 120B', description: 'Fast' },
+      { id: 'opus-4.8', label: 'Opus 4.8', description: 'Top-tier reasoning' },
       { id: 'qwen3', label: 'Qwen3 Instruct', description: 'Balance between privacy and power' },
     ],
   },
@@ -109,7 +109,7 @@ export const WithIcons: Story = {
 export const GroupedItems: Story = {
   args: {
     items: groupedItems,
-    value: 'gpt-oss',
+    value: 'opus-4.8',
     onValueChange: (id) => console.log('Selected:', id),
   },
   parameters: {
@@ -216,7 +216,7 @@ export const Interactive: Story = {
 }
 
 const InteractiveGroupedTemplate = () => {
-  const [value, setValue] = useState('gpt-oss')
+  const [value, setValue] = useState('opus-4.8')
   return (
     <SearchableMenu
       items={groupedItems}

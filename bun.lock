@@ -128,6 +128,8 @@
         "oauth2-mock-server": "^8.2.2",
         "playwright": "^1.58.2",
         "prettier": "^3.6.2",
+        "rsocket-core": "1.0.0-alpha.3",
+        "rsocket-websocket-client": "1.0.0-alpha.3",
         "samlify": "^2.12.0",
         "size-limit": "^12.0.1",
         "storybook": "^10.3.5",
@@ -1912,6 +1914,10 @@
     "rou3": ["rou3@0.7.12", "", {}, "sha512-iFE4hLDuloSWcD7mjdCDhx2bKcIsYbtOTpfH5MHHLSKMOUyjqQXTeZVa289uuwEGEKFoE/BAPbhaU4B774nceg=="],
 
     "router": ["router@2.2.0", "", { "dependencies": { "debug": "^4.4.0", "depd": "^2.0.0", "is-promise": "^4.0.0", "parseurl": "^1.3.3", "path-to-regexp": "^8.0.0" } }, "sha512-nLTrUKm2UyiL7rlhapu/Zl45FwNgkZGaCpZbIHajDYgwlJCOzLSk+cIPAnsEqV955GjILJnKbdQC1nVPz+gAYQ=="],
+
+    "rsocket-core": ["rsocket-core@1.0.0-alpha.3", "", {}, "sha512-BzIe2w8dFJlUS5N9fGUNRkxL19kd64bxbXsT11wj7isLfKkPZeNXisB2p/LWvSjFzWStnpOiScZ0g3/8ROE0pw=="],
+
+    "rsocket-websocket-client": ["rsocket-websocket-client@1.0.0-alpha.3", "", { "dependencies": { "rsocket-core": "^1.0.0-alpha.3" } }, "sha512-CwTwTNMGa8BKvrWde/kM3q8IHuzO8RCIfzuj25BsVe9y8eehDQHt4fXk0g1i/wpsxTm+RY6DxE6Vr5snozKVOg=="],
 
     "run-applescript": ["run-applescript@7.1.0", "", {}, "sha512-DPe5pVFaAsinSaV6QjQ6gdiedWDcRCbUuiQfQa2wmWV7+xC9bGulGI8+TdRmoFkAPaBXk8CrAbnlY2ISniJ47Q=="],
 

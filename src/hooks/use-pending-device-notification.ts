@@ -5,7 +5,7 @@
 import { useDatabase } from '@/contexts'
 import { getDevice, getPendingDevices, type Device } from '@/dal'
 import { isEncryptionEnabled } from '@/db/encryption'
-import { isSyncEnabled } from '@/db/powersync'
+import { isSyncEnabled } from '@/db/powersync/sync-state'
 import { getDeviceId } from '@/lib/auth-token'
 import { toCompilableQuery } from '@powersync/drizzle-driver'
 import { useQuery } from '@powersync/tanstack-react-query'

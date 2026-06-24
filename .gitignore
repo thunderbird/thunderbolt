@@ -54,6 +54,9 @@ mise.toml
 !.claude/agents/**
 !.claude/rules/
 !.claude/rules/**
+!.claude/skills/
+!.claude/skills/thunder-deep-review/
+!.claude/skills/thunder-deep-review/**
 .zed/**
 .zedscratches/**
 .mcp.json

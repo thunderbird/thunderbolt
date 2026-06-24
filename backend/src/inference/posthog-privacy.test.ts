@@ -42,8 +42,6 @@ describe('Inference Routes - PostHog Privacy Integration', () => {
       POSTHOG_API_KEY: process.env.POSTHOG_API_KEY,
       POSTHOG_HOST: process.env.POSTHOG_HOST,
       FIREWORKS_API_KEY: process.env.FIREWORKS_API_KEY,
-      THUNDERBOLT_INFERENCE_URL: process.env.THUNDERBOLT_INFERENCE_URL,
-      THUNDERBOLT_INFERENCE_API_KEY: process.env.THUNDERBOLT_INFERENCE_API_KEY,
     }
 
     capturedFetches = []

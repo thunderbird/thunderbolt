@@ -121,37 +121,6 @@ describe('Inference Routes', () => {
       expect(createSSEStreamSpy).toHaveBeenCalledWith(mockCompletion)
     })
 
-    it('should route gpt-oss-120b model to thunderbolt provider', async () => {
-      getInferenceClientSpy.mockReturnValue({
-        client: mockOpenAIClient as unknown as OpenAI,
-        provider: 'thunderbolt',
-      })
-
-      const mockCompletion = createMockStream()
-      mockCreateCompletion.mockImplementation(() => Promise.resolve(mockCompletion))
-
-      const gptOssRequest = {
-        ...validRequestBody,
-        model: 'gpt-oss-120b',
-      }
-
-      const response = await app.handle(
-        new Request('http://localhost/chat/completions', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(gptOssRequest),
-        }),
-      )
-
-      expect(response.status).toBe(200)
-      expect(getInferenceClientSpy).toHaveBeenCalledWith('thunderbolt')
-      expect(mockCreateCompletion).toHaveBeenCalledWith(
-        expect.objectContaining({
-          model: 'openai/gpt-oss-120b',
-        }),
-      )
-    })
-
     it('should route mistral models to mistral provider', async () => {
       const mockCompletion = createMockStream()
       mockCreateCompletion.mockImplementation(() => Promise.resolve(mockCompletion))
@@ -229,42 +198,6 @@ describe('Inference Routes', () => {
       isPostHogConfiguredSpy.mockReturnValue(false)
     })
 
-    it('should include correct provider in PostHog properties for gpt-oss-120b', async () => {
-      isPostHogConfiguredSpy.mockReturnValue(true)
-      getInferenceClientSpy.mockReturnValue({
-        client: mockOpenAIClient as unknown as OpenAI,
-        provider: 'thunderbolt',
-      })
-
-      const mockCompletion = createMockStream()
-      mockCreateCompletion.mockImplementation(() => Promise.resolve(mockCompletion))
-
-      const gptOssRequest = {
-        ...validRequestBody,
-        model: 'gpt-oss-120b',
-      }
-
-      const response = await app.handle(
-        new Request('http://localhost/chat/completions', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(gptOssRequest),
-        }),
-      )
-
-      expect(response.status).toBe(200)
-      expect(mockCreateCompletion).toHaveBeenCalledWith(
-        expect.objectContaining({
-          posthogProperties: expect.objectContaining({
-            model_provider: 'thunderbolt',
-          }),
-        }),
-      )
-
-      // Reset for other tests
-      isPostHogConfiguredSpy.mockReturnValue(false)
-    })
-
     it('should reject non-streaming requests', async () => {
       const nonStreamingRequest = {
         ...validRequestBody,
@@ -330,7 +263,7 @@ describe('Inference Routes', () => {
     })
 
     it('should validate all supported models', () => {
-      const expectedModels = ['gpt-oss-120b', 'mistral-medium-3.1', 'mistral-large-3', 'sonnet-4.5', 'opus-4.8']
+      const expectedModels = ['mistral-medium-3.1', 'mistral-large-3', 'sonnet-4.5', 'opus-4.8']
       expect(Object.keys(supportedModels)).toEqual(expectedModels)
     })
 

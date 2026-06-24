@@ -163,6 +163,8 @@ export type EventType =
   | 'settings_localization_update'
   | 'settings_localization_reset'
   | 'settings_database_reset'
+  | 'settings_data_export'
+  | 'settings_data_import'
   | 'settings_data_collection_enabled'
   | 'settings_data_collection_disabled'
   | `settings_experimental_feature_tasks_enabled`
@@ -220,6 +222,9 @@ export type EventType =
   // Data migrations (THU-547) — drops out once THU-560 deletes the legacy
   // automations subsystem.
   | 'automations_migration_run'
+  // Startup performance
+  | 'app_init_timing'
+  | 'app_chat_ready'
 
 export const trackEvent = (eventName: EventType, properties?: Record<string, unknown>) => {
   try {

@@ -28,8 +28,8 @@ const rehypePlugins = [rehypeKatex]
 // matter which convention the model picked. Matching *paired* delimiters (not a
 // lone `\[`/`\(`) avoids clobbering markdown-escaped brackets/parens, and the
 // display pattern spans lines so multi-line equations survive. The optional
-// leading-indent capture preserves a list/blockquote-indented `\[…\]` (see
-// `indentedFence`).
+// leading-indent capture preserves a list-indented `\[…\]` (see `indentedFence`;
+// blockquote `>` prefixes are a documented limitation there).
 const displayMathDelimiters = /(^[ \t]*)?\\\[([\s\S]+?)\\\]/gm
 // `[\s\S]+?` (not `.+?`) so a `\(…\)` split across lines is still converted,
 // matching the display pattern. Lazy, so it stops at the first `\)`.
@@ -44,10 +44,18 @@ const inlineMathDelimiters = /\\\(([\s\S]+?)\\\)/g
 // don't match (their `$$` fences are alone on their lines).
 const displayMathLine = /^([ \t]*)\$\$[ \t]*(.+?)[ \t]*\$\$[ \t]*$/gm
 
-// Build a fenced `$$ … $$` display block, prefixing every line with `indent` so
-// a promoted equation keeps its list/blockquote indentation instead of
-// dedenting onto column 0 — which would end the enclosing list item early and
-// break the surrounding bullets (the fences land outside the item).
+// Build a fenced `$$ … $$` display block, prefixing every line with `indent`
+// (leading whitespace only) so a promoted equation keeps its list-continuation
+// indentation instead of dedenting onto column 0 — which would end the enclosing
+// list item early and break the surrounding bullets (the fences land outside it).
+//
+// Known limitation: only whitespace indentation is preserved. A blockquote keeps
+// a `>` prefix on each line (not whitespace), so display math written *inside* a
+// blockquote isn't promoted/converted — the line-anchored patterns don't match
+// the `>`. Same container-context class as the nested-code note in
+// `parseMarkdownIntoBlocks`; rare in chat, and a fully container-safe fix would
+// mean moving delimiter handling to a remark AST plugin. Inline `\(…\)` still
+// works in blockquotes (it isn't line-anchored).
 const indentedFence = (indent: string, body: string): string => {
   const inner = body
     .trim()

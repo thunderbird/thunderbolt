@@ -24,8 +24,9 @@
  * the columns both schemas share.
  */
 
-import { sql } from 'drizzle-orm'
+import { and, eq, isNull, sql } from 'drizzle-orm'
 import type { AnyDrizzleDatabase } from '@/db/database-interface'
+import { modelsTable } from '@/db/tables'
 import { isCompletionFlagSet, setCompletionFlag } from './completion-flag'
 import { allLegacyTables, type LegacyTable } from './table-list'
 
@@ -144,25 +145,36 @@ const emptyResult = (durationMs: number): RunLocalDbMigrationResult => ({
  *
  * No-op when the legacy DB never had the secrets table (very old builds, or
  * a user who never set an api key).
+ *
+ * Each row is updated through Drizzle (`db.update()`) one at a time rather
+ * than as a single UPDATE-with-correlated-subquery. The synced `models` table
+ * is exposed by PowerSync as a SQLite view backed by `INSTEAD OF UPDATE`
+ * triggers; per-row Drizzle updates are the path the rest of the FE DAL uses
+ * and the one that reliably registers the change in `ps_oplog` for upload.
+ * The raw correlated-subquery form did the local UPDATE but skipped the
+ * upload, so on first sync the BE-side NULL would clobber the local value
+ * (THU-622 rollout observation).
  */
 const stampModelApiKeysFromLegacy = async (db: AnyDrizzleDatabase, personalWorkspaceId: string): Promise<number> => {
   const legacyCols = await fetchColumnNames(db, 'models_secrets', 'legacy')
   if (legacyCols.length === 0) {
     return 0
   }
-  const query = `UPDATE ${quoteId('models')} SET ${quoteId('api_key')} = (
-    SELECT ${quoteId('api_key')} FROM legacy.${quoteId('models_secrets')}
-    WHERE legacy.${quoteId('models_secrets')}.${quoteId('id')} = ${quoteId('models')}.${quoteId('id')}
-  )
-  WHERE ${quoteId('id')} IN (
-    SELECT ${quoteId('id')} FROM legacy.${quoteId('models_secrets')}
-    WHERE ${quoteId('api_key')} IS NOT NULL
-  )
-    AND ${quoteId('workspace_id')} = ${quoteLiteral(personalWorkspaceId)}
-    AND ${quoteId('api_key')} IS NULL
-  RETURNING ${quoteId('id')}`
-  const result = (await db.all(sql.raw(query))) as readonly unknown[][]
-  return result.length
+  const selectQuery = `SELECT ${quoteId('id')}, ${quoteId('api_key')} FROM legacy.${quoteId('models_secrets')} WHERE ${quoteId('api_key')} IS NOT NULL`
+  const rows = (await db.all(sql.raw(selectQuery))) as readonly unknown[][]
+
+  let updated = 0
+  for (const row of rows) {
+    const id = row[0] as string
+    const apiKey = row[1] as string
+    const result = await db
+      .update(modelsTable)
+      .set({ apiKey })
+      .where(and(eq(modelsTable.id, id), eq(modelsTable.workspaceId, personalWorkspaceId), isNull(modelsTable.apiKey)))
+      .returning({ id: modelsTable.id })
+    updated += result.length
+  }
+  return updated
 }
 
 export const runLocalDbMigration = async ({

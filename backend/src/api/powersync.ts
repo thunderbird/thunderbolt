@@ -104,7 +104,9 @@ const issuePowerSyncToken = async (
     rawDeviceName && rawDeviceName.length > 0 && rawDeviceName.length <= 100 ? rawDeviceName : 'Unknown device'
   const rawAppVersion = request.headers.get('x-app-version')?.trim()
   // Cap to a sane length so a malformed/oversized header never bloats the row.
-  const appVersion = rawAppVersion && rawAppVersion.length > 0 && rawAppVersion.length <= 32 ? rawAppVersion : undefined
+  // 64 leaves headroom for full semver with prerelease + build metadata
+  // (e.g. `1.234.567-rc.1+build.2024.01.01`).
+  const appVersion = rawAppVersion && rawAppVersion.length > 0 && rawAppVersion.length <= 64 ? rawAppVersion : undefined
 
   const now = new Date()
   const upserted = await upsertDevice(database, {

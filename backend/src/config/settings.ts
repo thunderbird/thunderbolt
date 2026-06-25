@@ -94,7 +94,15 @@ const settingsSchema = z
 
     // Minimum app version clients must run. Empty string disables enforcement.
     // Surfaced to the frontend via GET /config; clients below this hard-block until they update.
-    minAppVersion: z.string().default(''),
+    // Trimmed + semver-validated at startup so typos (`banana`, `0,2,0`) fail fast
+    // instead of reaching every client and breaking the version comparison.
+    minAppVersion: z
+      .string()
+      .trim()
+      .default('')
+      .refine((v) => v === '' || /^\d+\.\d+\.\d+(?:-[\w.-]+)?(?:\+[\w.-]+)?$/.test(v), {
+        message: 'MIN_APP_VERSION must be empty or a semver string (e.g. "0.2.0")',
+      }),
 
     swaggerEnabled: z.boolean().default(false),
 

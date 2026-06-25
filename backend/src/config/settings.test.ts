@@ -441,6 +441,59 @@ describe('Config Settings', () => {
     })
   })
 
+  describe('minAppVersion settings', () => {
+    let savedEnv: string | undefined
+
+    beforeEach(() => {
+      clearSettingsCache()
+      savedEnv = process.env.MIN_APP_VERSION
+    })
+
+    afterEach(() => {
+      if (savedEnv !== undefined) {
+        process.env.MIN_APP_VERSION = savedEnv
+      } else {
+        delete process.env.MIN_APP_VERSION
+      }
+      clearSettingsCache()
+    })
+
+    it('defaults to empty when MIN_APP_VERSION is unset', () => {
+      delete process.env.MIN_APP_VERSION
+      expect(getSettings().minAppVersion).toBe('')
+    })
+
+    it('accepts a plain semver string', () => {
+      process.env.MIN_APP_VERSION = '0.2.0'
+      expect(getSettings().minAppVersion).toBe('0.2.0')
+    })
+
+    it('accepts semver with prerelease and build metadata', () => {
+      process.env.MIN_APP_VERSION = '1.234.567-rc.1+build.2024.01.01'
+      expect(getSettings().minAppVersion).toBe('1.234.567-rc.1+build.2024.01.01')
+    })
+
+    it('trims whitespace so " 0.2.0 " parses as "0.2.0"', () => {
+      process.env.MIN_APP_VERSION = ' 0.2.0 '
+      expect(getSettings().minAppVersion).toBe('0.2.0')
+    })
+
+    it('treats whitespace-only as empty (no enforcement)', () => {
+      process.env.MIN_APP_VERSION = '   '
+      expect(getSettings().minAppVersion).toBe('')
+    })
+
+    it('rejects non-semver values at startup', () => {
+      process.env.MIN_APP_VERSION = 'banana'
+      expect(() => getSettings()).toThrow(/MIN_APP_VERSION must be empty or a semver string/)
+    })
+
+    it('rejects malformed numeric values like "0,2,0"', () => {
+      process.env.MIN_APP_VERSION = '0,2,0'
+      expect(() => getSettings()).toThrow(/MIN_APP_VERSION must be empty or a semver string/)
+    })
+  })
+
   describe('PowerSync settings', () => {
     const powersyncEnvKeys = [
       'POWERSYNC_URL',

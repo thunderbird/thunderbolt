@@ -869,7 +869,7 @@ describe('PowerSync API', () => {
       expect(devices[0]?.appVersion).toBe('0.1.80')
     })
 
-    it('ignores X-App-Version when value exceeds 32 characters', async () => {
+    it('ignores X-App-Version when value exceeds 64 characters', async () => {
       const userId = 'user-device-app-version-long'
       const now = new Date()
       const expiresAt = new Date(now.getTime() + 3600 * 1000)
@@ -898,7 +898,7 @@ describe('PowerSync API', () => {
           headers: {
             Authorization: `Bearer ${signToken('bearer-device-app-version-long')}`,
             'x-device-id': 'device-app-version-long',
-            'x-app-version': 'a'.repeat(33),
+            'x-app-version': 'a'.repeat(65),
           },
         }),
       )

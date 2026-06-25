@@ -130,4 +130,10 @@ describe('MemoizedMarkdown — LaTeX', () => {
     expect(container.querySelector('.katex-display')).not.toBeNull()
     expect(container.querySelectorAll('li').length).toBe(2)
   })
+  it('leaves an empty `\\( \\)` as text instead of emitting a bare $$', () => {
+    const { container } = renderMarkdown('It is \\( \\) and more text follows.')
+    expect(container.querySelector('.katex-display')).toBeNull()
+    expect(container.querySelector('.katex')).toBeNull()
+    expect(container.textContent).toContain('and more text follows.')
+  })
 })

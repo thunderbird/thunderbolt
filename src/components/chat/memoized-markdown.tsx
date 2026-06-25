@@ -105,12 +105,19 @@ const rewriteMath = (text: string): string =>
   // `$$…$$` / `$…$` span — including those just converted from `\[…\]` / `\(…\)`.
   escapeCurrencyDollars(
     text
-      .replace(displayMathDelimiters, (_match, indent: string | undefined, body: string) =>
-        indentedFence(indent ?? '', body),
+      // Leave an empty `\[ \]` as-is rather than emit an empty `$$…$$` block.
+      .replace(displayMathDelimiters, (match, indent: string | undefined, body: string) =>
+        body.trim() ? indentedFence(indent ?? '', body) : match,
       )
       // Inline math is single-line by nature, so collapse internal whitespace
       // (including the newline a multi-line `\(…\)` carried) to a single space.
-      .replace(inlineMathDelimiters, (_match, body: string) => `$${body.trim().replace(/\s+/g, ' ')}$`)
+      // An empty `\( \)` is left untouched: converting it would yield a bare
+      // `$$`, which remark-math reads as a display-fence opener and could swallow
+      // the following prose.
+      .replace(inlineMathDelimiters, (match, body: string) => {
+        const inner = body.trim().replace(/\s+/g, ' ')
+        return inner ? `$${inner}$` : match
+      })
       .replace(displayMathLine, (_match, indent: string, body: string) => indentedFence(indent, body)),
   )
 

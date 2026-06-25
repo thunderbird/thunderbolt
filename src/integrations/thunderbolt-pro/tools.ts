@@ -7,32 +7,18 @@ import { http } from '@/lib/http'
 import { deriveSiteName } from '@/lib/source-utils'
 import type { ToolConfig } from '@/types'
 import type { SourceMetadata } from '@/types/source'
-import { fetchContent, fetchLinkPreview, getCurrentWeather, getWeatherForecast, search, searchLocations } from './api'
+import { fetchContent, fetchLinkPreview, search } from './api'
 import {
   fetchContentSchema,
-  searchLocationSchema,
   searchSchema,
-  weatherSchema,
   type FetchContentParams,
-  type SearchLocationParams,
   type SearchParams,
   type SearchResultData,
-  type WeatherParams,
 } from './schemas'
 
 // Re-export everything from api for backward compatibility
-export {
-  fetchContent,
-  fetchContentSchema,
-  getCurrentWeather,
-  getWeatherForecast,
-  search,
-  searchLocations,
-  searchLocationSchema,
-  searchSchema,
-  weatherSchema,
-}
-export type { FetchContentParams, SearchLocationParams, SearchParams, SearchResultData, WeatherParams }
+export { fetchContent, fetchContentSchema, search, searchSchema }
+export type { FetchContentParams, SearchParams, SearchResultData }
 
 const sourceRegistryCap = 200
 

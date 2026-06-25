@@ -38,36 +38,9 @@ export const linkPreviewSchema = z
   })
   .strict()
 
-/**
- * Schema for location search requests
- */
-export const searchLocationSchema = z
-  .object({
-    query: z.string().describe('The location name to search for'),
-    region: z.string().describe("The location's state or region."),
-    country: z.string().describe("The location's country."),
-  })
-  .strict()
-
-/**
- * Schema for weather requests
- */
-export const weatherSchema = z
-  .object({
-    location: z
-      .string()
-      .describe('The location name to get weather for. Only include the city name, not the state or country.'),
-    region: z.string().describe("The location's state or region."),
-    country: z.string().describe("The location's country."),
-    days: z.number().describe('Number of days to forecast (1-16)'),
-  })
-  .strict()
-
 export type SearchParams = z.infer<typeof searchSchema>
 export type FetchContentParams = z.infer<typeof fetchContentSchema>
 export type LinkPreviewParams = z.infer<typeof linkPreviewSchema>
-export type WeatherParams = z.infer<typeof weatherSchema>
-export type SearchLocationParams = z.infer<typeof searchLocationSchema>
 
 /**
  * Data type for search results returned by the universal search API. Shape

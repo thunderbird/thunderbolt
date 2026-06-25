@@ -74,6 +74,10 @@ export const createPrompt = ({
     .filter(Boolean)
     .join('\n')
 
+  // Output Format asks models to format math as `$…$` / `$$…$$` only (never
+  // `\(…\)` / `\[…\]`). The chat renderer (src/components/chat/memoized-markdown.tsx)
+  // still normalizes `\(…\)` / `\[…\]` defensively because models drift — the two
+  // are complementary, not redundant; don't drop either side.
   return `You are an executive assistant using the **${modelName}** model. You ALWAYS cite sources with [N] — place each [N] once after the final sentence using that source, with a space before the bracket.
 Reasoning: low
 

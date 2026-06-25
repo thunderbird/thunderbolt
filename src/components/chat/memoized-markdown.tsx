@@ -24,6 +24,9 @@ const rehypePlugins = [rehypeKatex]
 
 // Models often emit LaTeX's native delimiters — `\[…\]` for display, `\(…\)`
 // for inline — instead of the `$$…$$` / `$…$` that remark-math understands.
+// (The system prompt in `src/ai/prompt.ts` asks for `$`-delimiters only, but
+// models drift, so this defensive normalization stays — the two are
+// complementary, not redundant.)
 // Rewrite the paired delimiters into their `$`-equivalents so math renders no
 // matter which convention the model picked. Matching *paired* delimiters (not a
 // lone `\[`/`\(`) avoids clobbering markdown-escaped brackets/parens, and the

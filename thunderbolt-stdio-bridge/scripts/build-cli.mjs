@@ -30,7 +30,9 @@ await build({
   // them external so the bundle never hard-requires a compiled addon.
   external: ['bufferutil', 'utf-8-validate'],
   define: { __BRIDGE_VERSION__: JSON.stringify(pkg.version) },
-  banner: { js: '#!/usr/bin/env node' },
+  // No shebang banner: esbuild preserves the entry's own `#!/usr/bin/env node`
+  // (bin/cli.js line 1) atop the bundle. Adding a banner shebang too yields a
+  // duplicate second `#!` line, which Node rejects as a syntax error.
 })
 
 await chmod(outfile, 0o755)

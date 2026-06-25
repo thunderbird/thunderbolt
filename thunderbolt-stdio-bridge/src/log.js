@@ -159,10 +159,37 @@ const classifyId = (frame) => {
   return 'absent'
 }
 
+/**
+ * PII-safe classification of a parsed (or null) frame into the `{ method, id }`
+ * shape both faces log. A null/non-object frame yields the inert
+ * `{ method: 'unknown', id: 'absent' }` fallback (exactly what classifyMethod /
+ * classifyId already return for null). Never returns params/result/payload.
+ * @param {unknown} frame
+ * @returns {{ method: string, id: 'request'|'response'|'notification'|'absent' }}
+ */
+const classifyFrame = (frame) => ({ method: classifyMethod(frame), id: classifyId(frame) })
+
+/**
+ * Parse-then-classify a raw NDJSON string into the PII-safe `{ method, id }`
+ * shape; a parse failure yields the inert `{ method: 'unknown', id: 'absent' }`
+ * fallback. Never throws and never returns the raw body.
+ * @param {string} raw
+ * @returns {{ method: string, id: 'request'|'response'|'notification'|'absent' }}
+ */
+const safeClassifyFrame = (raw) => {
+  try {
+    return classifyFrame(JSON.parse(raw))
+  } catch {
+    return classifyFrame(null)
+  }
+}
+
 module.exports = {
   makeLogger,
   buildOriginAllowlist,
   classifyMethod,
   classifyId,
+  classifyFrame,
+  safeClassifyFrame,
   normalizeOrigin,
 }

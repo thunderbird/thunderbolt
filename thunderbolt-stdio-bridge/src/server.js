@@ -11,10 +11,10 @@
 'use strict'
 
 const { UnavailableError } = require('./errors')
-const { buildOriginAllowlist, classifyMethod, classifyId } = require('./log')
+const { buildOriginAllowlist, safeClassifyFrame } = require('./log')
 const { createNdjsonReader, frameToWs, wsToFrame } = require('./relay')
 const { superviseChild: defaultSuperviseChild } = require('./child')
-const { formatHostForUrl } = require('./util')
+const { formatHostForUrl, makeCloseLatch } = require('./util')
 
 /** Pause child stdout once a socket buffers more than this many bytes. */
 const HIGH_WATER = 1 << 20 // 1 MiB
@@ -22,16 +22,6 @@ const HIGH_WATER = 1 << 20 // 1 MiB
 const LOW_WATER = 1 << 18 // 256 KiB
 /** Normal WS close code for a superseded/torn-down client. */
 const CLOSE_NORMAL = 1000
-
-/** PII-safe classification of a raw frame; never throws and never returns body. */
-const safeClassify = (raw) => {
-  try {
-    const frame = JSON.parse(raw)
-    return { method: classifyMethod(frame), id: classifyId(frame) }
-  } catch {
-    return { method: 'unknown', id: 'absent' }
-  }
-}
 
 /**
  * Start the ACP WebSocket face: bind, spawn the child, and bridge NDJSON stdio
@@ -65,7 +55,7 @@ const startBridge = ({
   const isOriginAllowed = buildOriginAllowlist({ allowOrigins, allowAnyOrigin })
 
   return new Promise((resolve, reject) => {
-    const closers = { resolveClose: null, settled: false }
+    const latch = makeCloseLatch()
     let client = null
     let supervisor = null
     let paused = false
@@ -92,7 +82,7 @@ const startBridge = ({
       try {
         sendToClient(line)
       } catch {
-        logger.warn('drop-child-frame', safeClassify(line))
+        logger.warn('drop-child-frame', safeClassifyFrame(line))
       }
     })
 
@@ -104,11 +94,7 @@ const startBridge = ({
       verifyClient: ({ origin }) => isOriginAllowed(origin),
     })
 
-    const finishClose = () => {
-      if (closers.settled) return
-      closers.settled = true
-      if (closers.resolveClose) closers.resolveClose()
-    }
+    const finishClose = latch.finishClose
 
     supervisor = superviseChild({
       launch,
@@ -124,7 +110,7 @@ const startBridge = ({
       onSpawnError: (err) => {
         // Spawn ENOENT etc. — tear the server down and surface as unavailable.
         wss.close()
-        if (!closers.settled) reject(new UnavailableError({ code: err.code }))
+        if (!latch.settled()) reject(new UnavailableError({ code: err.code }))
       },
     })
 
@@ -159,7 +145,7 @@ const startBridge = ({
           }
         })()
         if (frame === null) {
-          logger.warn('drop-ws-frame', safeClassify(raw))
+          logger.warn('drop-ws-frame', safeClassifyFrame(raw))
           return
         }
 
@@ -187,12 +173,12 @@ const startBridge = ({
         close: () =>
           new Promise((resolveOuter) => {
             // Already torn down (e.g. child exited first): resolve immediately.
-            if (closers.settled) {
+            if (latch.settled()) {
               supervisor.stop() // idempotent no-op once the child is gone
               resolveOuter()
               return
             }
-            closers.resolveClose = resolveOuter
+            latch.setResolver(resolveOuter)
             if (client) client.close(CLOSE_NORMAL)
             supervisor.stop() // grace -> SIGKILL, never-orphan
             wss.close(finishClose)

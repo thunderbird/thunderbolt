@@ -67,7 +67,7 @@ const run = async ({
   const onSignal = deps.on ?? process.on.bind(process)
   const offSignal = deps.removeListener ?? process.removeListener.bind(process)
 
-  // 1) Parse argv. Help/version short-circuit to stdout (no child, no framing).
+  // Parse argv. Help/version short-circuit to stdout (no child, no framing).
   const parsed = (() => {
     try {
       return parseArgs(argv)
@@ -91,7 +91,7 @@ const run = async ({
 
   const logger = _makeLogger({ json: parsed.json, verbose: parsed.verbose, sink: stderr })
 
-  // 3) Emit insecure-flag warnings before binding anything.
+  // Emit insecure-flag warnings before binding anything.
   for (const line of insecureFlagWarnings({
     host: parsed.host,
     allowAnyOrigin: parsed.allowAnyOrigin,
@@ -117,7 +117,7 @@ const run = async ({
     exit(childExitToCode(info))
   }
 
-  // 6) One-shot signal handlers -> graceful stop -> derived exit code.
+  // One-shot signal handlers -> graceful stop -> derived exit code.
   const handleSignal = (signal) => async () => {
     offSignal('SIGINT', sigintHandler)
     offSignal('SIGTERM', sigtermHandler)
@@ -193,7 +193,7 @@ const run = async ({
   }
 }
 
-module.exports = { run, childExitToCode }
+module.exports = { run }
 
 // Module side-effect entry: run when invoked as the program (not when required
 // by a test). Bundled or executed directly, this is the program entrypoint.

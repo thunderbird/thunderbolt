@@ -50,6 +50,30 @@ const isLoopbackHost = (host) => {
 }
 
 /**
+ * A resolve-once close latch shared by both faces. `settle` runs the bound
+ * resolver exactly once (later calls are no-ops); `close()` first sets the
+ * resolver then triggers teardown, so the resolver fires when teardown
+ * completes. Centralizes the never-orphan teardown semantics so the two faces
+ * can't drift.
+ * @returns {{ finishClose: () => void, setResolver: (fn: () => void) => void, settled: () => boolean }}
+ */
+const makeCloseLatch = () => {
+  let settled = false
+  let resolveClose = null
+  return {
+    finishClose: () => {
+      if (settled) return
+      settled = true
+      if (resolveClose) resolveClose()
+    },
+    setResolver: (fn) => {
+      resolveClose = fn
+    },
+    settled: () => settled,
+  }
+}
+
+/**
  * Build the list of loud warning lines to emit before binding. Empty array when
  * the config is safe. Builds messages only — printing is the caller's job, so
  * this stays pure and testable.
@@ -76,4 +100,5 @@ module.exports = {
   formatHostForUrl,
   isLoopbackHost,
   insecureFlagWarnings,
+  makeCloseLatch,
 }

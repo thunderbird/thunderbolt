@@ -76,8 +76,7 @@ export type McpFetch = (input: string | URL, init?: RequestInit) => Promise<Resp
  */
 export const resolveMcpFetch = (url: string, cloudUrl: string, nativeFetch?: typeof fetch): McpFetch => {
   if (isLoopbackUrl(url)) {
-    const native = nativeFetch ?? globalThis.fetch
-    return (input, init) => native(input, init)
+    return nativeFetch ?? globalThis.fetch
   }
   // Authenticate the proxy hop with the Thunderbolt session bearer (the same getter the
   // app-wide ProxyFetchProvider uses) — without it `/v1/proxy` returns 401. The upstream
@@ -89,7 +88,7 @@ export const resolveMcpFetch = (url: string, cloudUrl: string, nativeFetch?: typ
     getProxyAuthToken: getAuthToken,
     getProxyEnabled: () => computeEffectiveProxyEnabled(),
   })
-  return (input, init) => proxyFetch(input, init)
+  return proxyFetch
 }
 
 /**

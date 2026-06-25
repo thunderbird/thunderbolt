@@ -20,10 +20,10 @@ const {
   StreamableHTTPServerTransport: DefaultStreamableHTTPServerTransport,
 } = require('@modelcontextprotocol/sdk/server/streamableHttp.js')
 const { UnavailableError } = require('./errors')
-const { buildOriginAllowlist, classifyMethod, classifyId } = require('./log')
+const { buildOriginAllowlist, classifyFrame, safeClassifyFrame } = require('./log')
 const { createNdjsonReader, wsToFrame } = require('./relay')
 const { superviseChild: defaultSuperviseChild } = require('./child')
-const { formatHostForUrl } = require('./util')
+const { formatHostForUrl, makeCloseLatch } = require('./util')
 
 /** Default request body cap: 4 MiB. Larger POST bodies are rejected with 413. */
 const DEFAULT_BODY_CAP_BYTES = 4 << 20
@@ -32,19 +32,22 @@ const MCP_PATH = '/mcp'
 /** Methods the transport handles on /mcp. Everything else is 404. */
 const MCP_METHODS = new Set(['POST', 'GET', 'DELETE'])
 
+/** SHA-256 digest a string to a fixed 32-byte buffer. */
+const sha256 = (value) => createHash('sha256').update(value).digest()
+
 /**
- * Constant-time bearer comparison that never leaks length. Both tokens are
- * SHA-256 digested to fixed 32-byte buffers before timingSafeEqual, so unequal
- * input lengths can never throw or short-circuit.
+ * Constant-time bearer comparison that never leaks length. The provided token is
+ * SHA-256 digested to a fixed 32-byte buffer and compared against the expected
+ * token's pre-computed digest (also 32 bytes), so unequal input lengths can
+ * never throw or short-circuit. The expected digest is hashed once per process
+ * (the bearer is fixed) rather than per request.
  * @param {string|undefined} provided
- * @param {string} expected
+ * @param {Buffer} expectedDigest - sha256(expectedBearer)
  * @returns {boolean}
  */
-const bearerMatches = (provided, expected) => {
+const bearerMatches = (provided, expectedDigest) => {
   if (typeof provided !== 'string') return false
-  const a = createHash('sha256').update(provided).digest()
-  const b = createHash('sha256').update(expected).digest()
-  return timingSafeEqual(a, b)
+  return timingSafeEqual(sha256(provided), expectedDigest)
 }
 
 /** Extract the `Bearer <token>` value from an Authorization header, or undefined. */
@@ -165,8 +168,12 @@ const startMcpFace = ({
   const superviseChild = deps.superviseChild ?? defaultSuperviseChild
   const isOriginAllowed = buildOriginAllowlist({ allowOrigins, allowAnyOrigin })
 
+  // The bearer is fixed for the process, so digest the expected value once here
+  // rather than per request; each request only digests the provided token.
+  const expectedDigest = bearer !== undefined ? sha256(bearer) : undefined
+
   return new Promise((resolve, reject) => {
-    const closers = { settled: false, resolveClose: null }
+    const latch = makeCloseLatch()
     const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: () => randomUUID() })
 
     // HTTP -> child: every JSON-RPC message the transport surfaces is written to
@@ -176,7 +183,7 @@ const startMcpFace = ({
       try {
         supervisor.writeStdin(wsToFrame(JSON.stringify(message)))
       } catch {
-        logger.warn('drop-http-frame', { method: classifyMethod(message), id: classifyId(message) })
+        logger.warn('drop-http-frame', classifyFrame(message))
       }
     }
 
@@ -187,7 +194,7 @@ const startMcpFace = ({
         try {
           return JSON.parse(line)
         } catch {
-          logger.warn('drop-child-frame', { method: 'unknown', id: 'absent' })
+          logger.warn('drop-child-frame', safeClassifyFrame(line))
           return null
         }
       })()
@@ -196,10 +203,16 @@ const startMcpFace = ({
 
     const server = createServer()
 
-    const finishClose = () => {
-      if (closers.settled) return
-      closers.settled = true
-      if (closers.resolveClose) closers.resolveClose()
+    const finishClose = latch.finishClose
+
+    // Close the transport then the http server, settling the close latch once the
+    // server's callback fires. Lingering keep-alive/stalled sockets are force-closed
+    // so finishClose fires promptly (server.close otherwise waits indefinitely).
+    // Shared by child-exit teardown and the resolved close().
+    const shutdownHttp = () => {
+      transport.close()
+      server.close(finishClose)
+      if (typeof server.closeAllConnections === 'function') server.closeAllConnections()
     }
 
     const supervisor = superviseChild({
@@ -209,19 +222,21 @@ const startMcpFace = ({
       onStdout: (chunk) => reader.push(chunk),
       onExit: (info) => {
         reader.flush()
-        transport.close()
-        server.close(finishClose)
-        // Force lingering keep-alive sockets closed so finishClose fires promptly.
-        if (typeof server.closeAllConnections === 'function') server.closeAllConnections()
+        shutdownHttp()
         if (onChildExit) onChildExit(info)
       },
       onSpawnError: (err) => {
         server.close()
-        if (!closers.settled) reject(new UnavailableError({ code: err.code }))
+        if (!latch.settled()) reject(new UnavailableError({ code: err.code }))
       },
     })
 
     const applyCors = (req, res) => {
+      // Origin asymmetry vs the ACP face: ACP hard-rejects a disallowed Origin at
+      // the WebSocket upgrade (verifyClient), but a non-browser MCP client
+      // legitimately sends no Origin, so this face relies on browser-enforced CORS
+      // — it withholds the ACAO header for a disallowed Origin rather than
+      // rejecting the request server-side.
       const origin = req.headers.origin
       if (allowAnyOrigin) {
         res.setHeader('Access-Control-Allow-Origin', '*')
@@ -236,7 +251,7 @@ const startMcpFace = ({
 
     server.on('request', async (req, res) => {
       // BEARER-BEFORE-ROUTE: the very first check, before CORS/routing/parsing.
-      if (bearer !== undefined && !bearerMatches(readBearer(req), bearer)) {
+      if (expectedDigest !== undefined && !bearerMatches(readBearer(req), expectedDigest)) {
         replyStatus(res, 401)
         return
       }
@@ -289,13 +304,9 @@ const startMcpFace = ({
         kill: () => supervisor.kill(), // immediate SIGKILL — never-orphan backstop
         close: () =>
           new Promise((resolveOuter) => {
-            closers.resolveClose = resolveOuter
-            transport.close()
+            latch.setResolver(resolveOuter)
             supervisor.stop() // grace -> SIGKILL, never-orphan
-            server.close(finishClose)
-            // Force lingering keep-alive/stalled sockets closed so finishClose
-            // fires promptly (server.close otherwise waits for them indefinitely).
-            if (typeof server.closeAllConnections === 'function') server.closeAllConnections()
+            shutdownHttp()
           }),
       })
     })

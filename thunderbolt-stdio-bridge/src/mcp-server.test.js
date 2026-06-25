@@ -6,7 +6,11 @@
 
 const { test, expect, mock } = require('bun:test')
 const { EventEmitter } = require('node:events')
+const { createHash } = require('node:crypto')
 const { startMcpFace, bearerMatches, BODY_ABORTED } = require('./mcp-server')
+
+/** SHA-256 digest a string to a 32-byte buffer, matching the expected-bearer digest. */
+const digest = (value) => createHash('sha256').update(value).digest()
 
 /** A silent PII-safe logger spy. */
 const makeLogger = () => ({
@@ -195,10 +199,10 @@ test('bearer set: a correct bearer passes and is dispatched', async () => {
 })
 
 test('bearerMatches: unequal-length inputs fail without throwing', () => {
-  expect(() => bearerMatches('a', 'abcdef')).not.toThrow()
-  expect(bearerMatches('a', 'abcdef')).toBe(false)
-  expect(bearerMatches(undefined, 'abc')).toBe(false)
-  expect(bearerMatches('abc', 'abc')).toBe(true)
+  expect(() => bearerMatches('a', digest('abcdef'))).not.toThrow()
+  expect(bearerMatches('a', digest('abcdef'))).toBe(false)
+  expect(bearerMatches(undefined, digest('abc'))).toBe(false)
+  expect(bearerMatches('abc', digest('abc'))).toBe(true)
 })
 
 test('CORS preflight (OPTIONS) returns 204 and allow-origin per allowlist', async () => {

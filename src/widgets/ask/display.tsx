@@ -3,7 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { Check, Lightbulb, Sparkles, X } from 'lucide-react'
-import { useRef, useState } from 'react'
+import { useReducer, useRef } from 'react'
 
 import { AutosizeTextarea } from '@/components/ui/autosize-textarea'
 import { Button } from '@/components/ui/button'
@@ -73,6 +73,33 @@ const badgeStyles: Record<OptionStatus, string> = {
   missed: 'border-emerald-500 text-emerald-600 dark:text-emerald-400',
 }
 
+type AskUiState = { selected: Set<string>; text: string; submitted: boolean }
+
+type AskUiAction =
+  | { type: 'toggleOption'; id: string; multiple: boolean }
+  | { type: 'setText'; text: string }
+  | { type: 'submit'; selected?: Set<string> }
+
+/** Consolidates the chip's interaction state (selection, free-text, submitted)
+ *  into one reducer per the 3+-useState rule. The one-time side effect (firing
+ *  `onSubmit`) stays in the handlers, guarded by `committedRef` — see there. */
+const askUiReducer = (state: AskUiState, action: AskUiAction): AskUiState => {
+  switch (action.type) {
+    case 'toggleOption': {
+      if (!action.multiple) {
+        return { ...state, selected: new Set([action.id]) }
+      }
+      const selected = new Set(state.selected)
+      selected.has(action.id) ? selected.delete(action.id) : selected.add(action.id)
+      return { ...state, selected }
+    }
+    case 'setText':
+      return { ...state, text: action.text }
+    case 'submit':
+      return { ...state, submitted: true, selected: action.selected ?? state.selected }
+  }
+}
+
 export const Ask = ({
   prompt,
   mode,
@@ -83,12 +110,15 @@ export const Ask = ({
   initialSubmitted,
   onSubmit,
 }: AskProps) => {
-  const [selected, setSelected] = useState<Set<string>>(() => new Set(initialSelectedIds))
-  const [text, setText] = useState(initialText ?? '')
-  const [submitted, setSubmitted] = useState(initialSubmitted ?? false)
-  // Synchronous re-entry guard: `submitted` state lags a render behind, so a
-  // rapid double-click would otherwise fire `onSubmit` (and the user turn it
-  // dispatches) twice before React updates the disabled UI.
+  const [state, dispatch] = useReducer(askUiReducer, undefined, () => ({
+    selected: new Set(initialSelectedIds),
+    text: initialText ?? '',
+    submitted: initialSubmitted ?? false,
+  }))
+  // Synchronous re-entry guard for the `onSubmit` side effect: `state.submitted`
+  // lags a render behind, so a rapid double-click would otherwise fire `onSubmit`
+  // (and the user turn it dispatches) twice before React updates the disabled UI.
+  // This is a side-effect latch, not UI state, so it lives outside the reducer.
   const committedRef = useRef(initialSubmitted ?? false)
 
   const isFree = mode === 'free'
@@ -100,7 +130,7 @@ export const Ask = ({
       return
     }
     committedRef.current = true
-    setSubmitted(true)
+    dispatch({ type: 'submit', selected: ids })
     onSubmit?.({
       selectedIds: [...ids],
       matched: evaluateAnswer({ prompt, mode, options }, ids),
@@ -108,36 +138,25 @@ export const Ask = ({
   }
 
   const commitFree = () => {
-    const answer = text.trim()
+    const answer = state.text.trim()
     if (committedRef.current || answer.length === 0) {
       return
     }
     committedRef.current = true
-    setSubmitted(true)
+    dispatch({ type: 'submit' })
     onSubmit?.({ selectedIds: [], matched: null, text: answer })
   }
 
   const toggleOption = (id: string) => {
-    if (submitted) {
+    if (state.submitted) {
       return
     }
-
     if (!isGraded) {
       // `choice` mode: selecting an option commits the choice immediately.
-      const next = new Set([id])
-      setSelected(next)
-      commit(next)
+      commit(new Set([id]))
       return
     }
-
-    setSelected((prev) => {
-      if (isMultiple) {
-        const next = new Set(prev)
-        next.has(id) ? next.delete(id) : next.add(id)
-        return next
-      }
-      return new Set([id])
-    })
+    dispatch({ type: 'toggleOption', id, multiple: isMultiple })
   }
 
   const label = isFree ? 'Your answer' : isGraded ? (isMultiple ? 'Select all that apply' : 'Choose one') : 'Your call'
@@ -157,25 +176,25 @@ export const Ask = ({
           {isFree ? (
             <div className="flex flex-col gap-3">
               <AutosizeTextarea
-                value={text}
-                onChange={(event) => setText(event.target.value)}
-                disabled={submitted}
+                value={state.text}
+                onChange={(event) => dispatch({ type: 'setText', text: event.target.value })}
+                disabled={state.submitted}
                 minHeight={72}
                 maxHeight={240}
                 placeholder="Type your answer…"
                 className="rounded-xl text-[length:var(--font-size-sm)] leading-snug disabled:opacity-80"
               />
-              {!submitted && (
+              {!state.submitted && (
                 <Button
                   size="default"
-                  disabled={text.trim().length === 0}
+                  disabled={state.text.trim().length === 0}
                   onClick={commitFree}
                   className="w-full md:w-auto md:self-end"
                 >
                   Submit
                 </Button>
               )}
-              {submitted && (
+              {state.submitted && (
                 <div className="flex items-start gap-2.5 rounded-xl border border-border bg-muted/40 p-3 text-[length:var(--font-size-sm)]">
                   <Lightbulb className="mt-0.5 size-[var(--icon-size-sm)] shrink-0 text-muted-foreground" />
                   <div className="flex flex-col gap-1">
@@ -188,8 +207,8 @@ export const Ask = ({
           ) : (
             <div className="flex flex-col gap-2">
               {options.map((option, index) => {
-                const isSelected = selected.has(option.id)
-                const status = getOptionStatus({ option, isSelected, submitted, isGraded })
+                const isSelected = state.selected.has(option.id)
+                const status = getOptionStatus({ option, isSelected, submitted: state.submitted, isGraded })
                 const showCorrect = status === 'correct' || status === 'missed'
                 const showIncorrect = status === 'incorrect'
 
@@ -197,13 +216,13 @@ export const Ask = ({
                   <button
                     key={option.id}
                     type="button"
-                    disabled={submitted}
+                    disabled={state.submitted}
                     onClick={() => toggleOption(option.id)}
                     className={cn(
                       'group flex w-full items-center gap-3 rounded-xl border px-3.5 text-left transition-all',
                       'min-h-[var(--touch-height-lg)] py-2.5',
                       'disabled:cursor-default focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50',
-                      !submitted && 'cursor-pointer active:scale-[0.99]',
+                      !state.submitted && 'cursor-pointer active:scale-[0.99]',
                       statusStyles[status],
                     )}
                   >
@@ -231,18 +250,18 @@ export const Ask = ({
             </div>
           )}
 
-          {isGraded && !submitted && (
+          {isGraded && !state.submitted && (
             <Button
               size="default"
-              disabled={selected.size === 0}
-              onClick={() => commit(selected)}
+              disabled={state.selected.size === 0}
+              onClick={() => commit(state.selected)}
               className="w-full md:w-auto md:self-end"
             >
               Submit
             </Button>
           )}
 
-          {submitted && isGraded && explanation && (
+          {state.submitted && isGraded && explanation && (
             <div className="flex items-start gap-2.5 rounded-xl border border-border bg-muted/40 p-3 text-[length:var(--font-size-sm)]">
               <Lightbulb className="mt-0.5 size-[var(--icon-size-sm)] shrink-0 text-muted-foreground" />
               <div className="flex flex-col gap-1">
@@ -252,7 +271,7 @@ export const Ask = ({
             </div>
           )}
 
-          {submitted && mode === 'choice' && (
+          {state.submitted && mode === 'choice' && (
             <div className="flex items-center gap-2 text-[length:var(--font-size-sm)] text-muted-foreground">
               <Lightbulb className="size-[var(--icon-size-sm)] shrink-0" />
               <span>Got it — working on that next.</span>

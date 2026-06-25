@@ -9,6 +9,7 @@ import {
   evaluateAnswer,
   formatAskResponsesNote,
   optionLetter,
+  turnTextForAnswer,
   type AskCacheEntry,
   type AskData,
 } from './lib'
@@ -156,5 +157,25 @@ describe('formatAskResponsesNote', () => {
       { prompt: 'Define X', mode: 'free', selectedIds: [], chosen: [], matched: null },
     ])
     expect(note).toContain('"Define X" — answered (no response)')
+  })
+})
+
+describe('turnTextForAnswer', () => {
+  test('choice dispatches the chosen option text', () => {
+    expect(turnTextForAnswer('choice', ['Draft a reply'])).toBe('Draft a reply')
+  })
+
+  test('free dispatches the typed text (takes precedence over chosen)', () => {
+    expect(turnTextForAnswer('free', ['ignored'], 'In my own words…')).toBe('In my own words…')
+  })
+
+  test('graded modes never dispatch a turn (no quiz loop)', () => {
+    expect(turnTextForAnswer('single', ['Paris'])).toBeNull()
+    expect(turnTextForAnswer('multiple', ['OpenPGP', 'S/MIME'])).toBeNull()
+  })
+
+  test('empty / whitespace-only answers dispatch nothing', () => {
+    expect(turnTextForAnswer('choice', [])).toBeNull()
+    expect(turnTextForAnswer('free', [], '   ')).toBeNull()
   })
 })

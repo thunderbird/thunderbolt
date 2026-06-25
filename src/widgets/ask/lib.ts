@@ -131,7 +131,21 @@ export const formatAskResponsesNote = (entries: AskCacheEntry[]): string | null 
     '## User responses',
     'The user responded to interactive prompts in this conversation. Use these if they refer back to their responses — do not ask them to re-enter their choices.',
     ...lines,
-  ]
-    .join('\n')
-    .trim()
+  ].join('\n')
+}
+
+/**
+ * The user-turn text to dispatch when an ask is submitted, or `null` if none
+ * should be sent. `choice` (an action pick) and `free` (a typed answer) are
+ * conversational responses the model should act on / reply to, so they produce a
+ * turn; graded `single`/`multiple` reveal the answer client-side and produce none
+ * (auto-sending them would goad single-prompt backends into endlessly asking the
+ * next question). Empty input produces `null`.
+ */
+export const turnTextForAnswer = (mode: AskMode, chosen: string[], text?: string): string | null => {
+  if (mode !== 'choice' && mode !== 'free') {
+    return null
+  }
+  const answer = (text ?? chosen[0] ?? '').trim()
+  return answer || null
 }

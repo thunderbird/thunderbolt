@@ -8,7 +8,7 @@ import { getMessage, updateMessageCache } from '@/dal/chat-messages'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 
 import { Ask, type AskSubmission } from './display'
-import { type AskCacheEntry, type AskData, type AskOption, askStorageKey } from './lib'
+import { type AskCacheEntry, type AskData, type AskOption, askStorageKey, turnTextForAnswer } from './lib'
 
 type AskWidgetProps = Omit<AskData, 'options'> & {
   /** Absent for `free` (text-response) prompts; defaults to an empty list. */
@@ -50,20 +50,16 @@ export const AskWidget = ({ prompt, mode, options = [], explanation, messageId }
     // same session restores the answer instead of re-reading the stale `null`.
     queryClient.setQueryData(queryKey, entry)
 
-    // `choice` (an action pick) and `free` (a typed answer) are conversational
-    // responses, so dispatch the answer as a normal user turn for the model to
-    // act on / reply to. Graded `single`/`multiple` reveal the answer
-    // client-side and are NOT auto-sent — doing so would goad
-    // single-prompt-at-a-time backends into endlessly asking the next question.
-    // (Persisted entries still reach the model via formatAskResponsesNote.)
-    if (mode === 'choice' || mode === 'free') {
-      const answer = (text ?? chosen[0] ?? '').trim()
-      if (answer) {
+    // For `choice`/`free`, dispatch the answer as a normal user turn so the model
+    // acts on / replies to it; graded modes return null (see `turnTextForAnswer`).
+    const turnText = turnTextForAnswer(mode, chosen, text)
+    if (turnText) {
+      try {
+        await chatInstance.sendMessage({ text: turnText })
+      } catch (error) {
         // Best-effort: the answer is already persisted, so a failed send (e.g.
         // no model selected) loses nothing — surface it without breaking the UI.
-        await chatInstance.sendMessage({ text: answer }).catch((error) => {
-          console.error('Ask widget failed to dispatch answer turn', error)
-        })
+        console.error('Ask widget failed to dispatch answer turn', error)
       }
     }
   }

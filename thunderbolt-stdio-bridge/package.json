@@ -1,0 +1,36 @@
+{
+  "name": "thunderbolt-stdio-bridge",
+  "version": "0.1.0",
+  "description": "Bridges a local stdio ACP/MCP server to a loopback WebSocket (ACP) or Streamable HTTP (MCP) face so a browser app can reach it.",
+  "license": "MPL-2.0",
+  "type": "commonjs",
+  "bin": {
+    "thunderbolt-stdio-bridge": "bin/cli.js"
+  },
+  "files": [
+    "bin",
+    "src",
+    "dist",
+    "install.sh",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "node scripts/build-cli.mjs",
+    "test": "bun test"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.0.0",
+    "ws": "^8.18.0"
+  },
+  "devDependencies": {
+    "@modelcontextprotocol/server-everything": "^2026.1.26",
+    "esbuild": "^0.24.0"
+  },
+  "optionalDependencies": {
+    "bufferutil": "^4.0.8",
+    "utf-8-validate": "^6.0.4"
+  }
+}

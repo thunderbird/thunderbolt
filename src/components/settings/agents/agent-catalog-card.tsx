@@ -2,12 +2,13 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { Code2, ExternalLink, Terminal } from 'lucide-react'
+import { Code2, ExternalLink, Plug, Terminal } from 'lucide-react'
 import { useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader } from '@/components/ui/card'
 import { distributionLabel, primaryDistributionKind } from '@/lib/agent-registry-filter'
 import type { RegistryEntry } from '@/types/registry'
+import { BridgeConnectDialog } from './bridge-connect-dialog'
 
 type AgentCatalogCardProps = {
   entry: RegistryEntry
@@ -18,6 +19,7 @@ type AgentCatalogCardProps = {
  *  action — these CLIs run on the user's own machine, not inside Thunderbolt. */
 export const AgentCatalogCard = ({ entry }: AgentCatalogCardProps) => {
   const [iconFailed, setIconFailed] = useState(false)
+  const [bridgeOpen, setBridgeOpen] = useState(false)
 
   const distributionKind = primaryDistributionKind(entry)
   const websiteUrl = entry.website ?? entry.repository
@@ -56,6 +58,16 @@ export const AgentCatalogCard = ({ entry }: AgentCatalogCardProps) => {
         <p className="text-[length:var(--font-size-sm)] text-muted-foreground">{entry.description}</p>
         <p className="text-[length:var(--font-size-xs)] text-muted-foreground">{metadata}</p>
         <div className="flex flex-wrap gap-2">
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={() => setBridgeOpen(true)}
+            data-testid={`agent-catalog-connect-${entry.id}`}
+          >
+            <Plug />
+            Connect via bridge
+          </Button>
           {websiteUrl && (
             <Button asChild variant="outline" size="sm">
               <a href={websiteUrl} target="_blank" rel="noopener noreferrer">
@@ -74,6 +86,7 @@ export const AgentCatalogCard = ({ entry }: AgentCatalogCardProps) => {
           )}
         </div>
       </CardContent>
+      <BridgeConnectDialog entry={entry} open={bridgeOpen} onOpenChange={setBridgeOpen} />
     </Card>
   )
 }

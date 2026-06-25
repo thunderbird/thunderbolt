@@ -127,12 +127,15 @@ describe('AgentCatalogView', () => {
     expect(header?.querySelector('svg')).toBeInTheDocument()
   })
 
-  it('exposes only link-out actions per card, never an install action', () => {
+  it('exposes link-outs plus a connect-via-bridge action, never an install action', () => {
     renderCatalog([entry({ id: 'goose', name: 'goose' })])
     const card = screen.getByTestId('agent-catalog-card-goose')
 
+    // Link-outs to the agent's site/repo remain.
     expect(card.querySelectorAll('a').length).toBeGreaterThan(0)
-    expect(card.querySelector('button')).not.toBeInTheDocument()
+    // The only button on the card opens the bridge connect dialog — agents run on
+    // the user's machine, so there is still no install action and no form submit.
+    expect(card.querySelector('[data-testid="agent-catalog-connect-goose"]')).toBeInTheDocument()
     expect(card.querySelector('button[type="submit"]')).not.toBeInTheDocument()
   })
 

@@ -2,10 +2,10 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { describe, expect, it } from 'bun:test'
+import { describe, expect, it, mock } from 'bun:test'
 import { SSEClientTransport } from '@modelcontextprotocol/sdk/client/sse.js'
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js'
-import { buildMcpHeaders, createMcpTransport } from './mcp-transport'
+import { buildMcpHeaders, createMcpTransport, resolveMcpFetch } from './mcp-transport'
 
 const url = 'https://mcp.example.com/server'
 const cloudUrl = 'https://cloud.example.com'
@@ -50,6 +50,54 @@ describe('createMcpTransport', () => {
       transport.protocolVersion = '2025-06-18'
     }).not.toThrow()
     expect(transport.protocolVersion).toBe('2025-06-18')
+  })
+})
+
+describe('resolveMcpFetch', () => {
+  const bridgeUrl = 'http://127.0.0.1:9000/mcp'
+
+  it('uses the native fetch directly for a loopback bridge URL (no proxy rewrite)', async () => {
+    const native = mock(async () => new Response('ok'))
+    const fetchFn = resolveMcpFetch(bridgeUrl, cloudUrl, native as unknown as typeof fetch)
+
+    await fetchFn(bridgeUrl, { method: 'POST' })
+
+    expect(native).toHaveBeenCalledTimes(1)
+    // The bridge URL is passed through untouched — not rewritten to `${cloudUrl}/v1/proxy`.
+    expect(native).toHaveBeenCalledWith(bridgeUrl, { method: 'POST' })
+  })
+
+  it('classifies an IPv6 loopback bridge URL as native', async () => {
+    const native = mock(async () => new Response('ok'))
+    const fetchFn = resolveMcpFetch('http://[::1]:9000/mcp', cloudUrl, native as unknown as typeof fetch)
+
+    await fetchFn('http://[::1]:9000/mcp')
+
+    expect(native).toHaveBeenCalledTimes(1)
+  })
+
+  it('routes a remote URL through the universal proxy (rewrites target to /proxy)', async () => {
+    // The native seam must NOT be called for a remote target — the proxy fetch
+    // owns that hop. We assert via globalThis.fetch capturing the rewritten request.
+    const captured: Request[] = []
+    const originalFetch = globalThis.fetch
+    globalThis.fetch = mock(async (input: RequestInfo | URL) => {
+      captured.push(input as Request)
+      return new Response('ok')
+    }) as unknown as typeof fetch
+    const native = mock(async () => new Response('native'))
+
+    try {
+      const fetchFn = resolveMcpFetch(url, cloudUrl, native as unknown as typeof fetch)
+      await fetchFn(url, { method: 'POST' })
+    } finally {
+      globalThis.fetch = originalFetch
+    }
+
+    expect(native).not.toHaveBeenCalled()
+    expect(captured).toHaveLength(1)
+    // createProxyFetch appends `/proxy` to the cloud base it's handed.
+    expect(captured[0].url).toBe(`${cloudUrl}/proxy`)
   })
 })
 

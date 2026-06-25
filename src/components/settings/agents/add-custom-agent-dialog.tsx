@@ -16,6 +16,7 @@ import {
 import { Dialog } from '@/components/ui/dialog'
 import { StatusCard } from '@/components/ui/status-card'
 import { getPlatform, isTauri } from '@/lib/platform'
+import { isLoopbackUrl } from '@/acp/transports/is-loopback'
 import { testAcpConnection as defaultTestAcpConnection } from '@/acp'
 import type { Agent } from '@/types/acp'
 
@@ -173,6 +174,9 @@ export const AddCustomAgentDialog = ({
   const trimmedUrl = state.url.trim()
   const trimmedDescription = state.description.trim()
   const validation = validateAgentUrl(trimmedUrl, isIos)
+  // A loopback URL is a local stdio-bridge endpoint — reassure the user it
+  // connects directly (no cloud proxy). Derived during render from the field.
+  const isLoopbackTarget = trimmedUrl.length > 0 && isLoopbackUrl(trimmedUrl)
   // Surface an invalid-URL error at render time (once the field is non-empty)
   // so the user sees why Test Connection is unavailable and submit stays gated.
   const urlError = trimmedUrl.length > 0 && 'error' in validation ? validation.error : null
@@ -254,6 +258,19 @@ export const AddCustomAgentDialog = ({
             <p className="text-[length:var(--font-size-xs)] text-muted-foreground">
               WebSocket endpoint for the remote ACP agent
             </p>
+            {isLoopbackTarget ? (
+              <p
+                className="text-[length:var(--font-size-xs)] text-muted-foreground"
+                data-testid="agent-url-loopback-hint"
+              >
+                Local bridge address — connects directly on this machine (no proxy).
+              </p>
+            ) : (
+              <p className="text-[length:var(--font-size-xs)] text-muted-foreground">
+                Running an agent locally? Use the <code className="font-mono">thunderbolt-stdio-bridge</code> and paste
+                its <code className="font-mono">ws://127.0.0.1:PORT</code> address.
+              </p>
+            )}
           </div>
           <div className="grid gap-2">
             <Label htmlFor="agent-description">Description</Label>

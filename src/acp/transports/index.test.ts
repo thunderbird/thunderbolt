@@ -223,4 +223,50 @@ describe('openTransport — agent-type routing', () => {
 
     transport.close()
   })
+
+  it('remote-acp to a loopback bridge URL on Web connects natively (no proxy tunnel)', async () => {
+    // The stdio-bridge prints `ws://127.0.0.1:PORT`. Even on Web (where the proxy
+    // toggle would normally force the universal-proxy path) a loopback target must
+    // connect directly — the proxy hard-rejects loopback/private hosts (4003).
+    const transport = await openTransport({
+      url: 'ws://127.0.0.1:8080',
+      transport: 'websocket',
+      agentType: 'remote-acp',
+      signal: new AbortController().signal,
+      isStandalone: () => false,
+      readProxyEnabled: () => null,
+      backoffMs: () => 1,
+      httpClient: stubHttpClient,
+      getAuthToken: () => 'should-not-be-used',
+    })
+
+    expect(FakeBrowserSocket.instances).toHaveLength(1)
+    const socket = FakeBrowserSocket.instances[0]
+    // Connects to the loopback URL itself, not the cloud `/proxy/ws` endpoint.
+    expect(socket.url).toBe('ws://127.0.0.1:8080')
+    // No carrier / bearer / target subprotocols — a bare native connect.
+    expect(socket.protocols).toHaveLength(0)
+
+    transport.close()
+  })
+
+  it('remote-acp to an IPv6 loopback bridge URL connects natively', async () => {
+    const transport = await openTransport({
+      url: 'ws://[::1]:8080',
+      transport: 'websocket',
+      agentType: 'remote-acp',
+      signal: new AbortController().signal,
+      isStandalone: () => false,
+      readProxyEnabled: () => null,
+      backoffMs: () => 1,
+      httpClient: stubHttpClient,
+    })
+
+    expect(FakeBrowserSocket.instances).toHaveLength(1)
+    const socket = FakeBrowserSocket.instances[0]
+    expect(socket.url).toBe('ws://[::1]:8080')
+    expect(socket.protocols).toHaveLength(0)
+
+    transport.close()
+  })
 })

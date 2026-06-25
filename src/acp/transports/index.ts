@@ -36,6 +36,7 @@ import { useLocalSettingsStore } from '@/stores/local-settings-store'
 import type { AgentType } from '@shared/acp-types'
 import { encodeWsBearer, wsBearerSubprotocolPrefix, wsCarrierSubprotocol } from '@shared/ws-bearer'
 import type { AcpTransport } from '../types'
+import { isLoopbackUrl } from './is-loopback'
 import { openWebSocketTransport, type WebSocketFactory, type WebSocketLike } from './websocket'
 
 export type OpenTransportInputs = {
@@ -107,6 +108,15 @@ export const openTransport = async (inputs: OpenTransportInputs): Promise<AcpTra
 const resolveWebSocketFactory = (inputs: OpenTransportInputs): WebSocketFactory => {
   if (inputs.agentType === 'managed-acp') {
     return resolveManagedAcpFactory(inputs)
+  }
+  // A loopback target is the local stdio-bridge (it prints `ws://127.0.0.1:PORT`).
+  // Connect with a plain native WebSocket regardless of platform or proxy toggle:
+  // the universal proxy hard-rejects loopback/private hosts (4003), and the bridge
+  // is a trusted same-machine process needing no bearer. This carve-out precedes
+  // the standalone/proxy decision so it applies on Web too (where the toggle would
+  // otherwise force the proxy path).
+  if (isLoopbackUrl(inputs.url)) {
+    return nativeWebSocketFactory
   }
   if (isStandaloneTransport(inputs.isStandalone, inputs.readProxyEnabled)) {
     return nativeWebSocketFactory

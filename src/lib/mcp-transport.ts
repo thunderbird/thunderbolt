@@ -8,8 +8,9 @@
 import { SSEClientTransport } from '@modelcontextprotocol/sdk/client/sse.js'
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js'
 import type { Transport } from '@modelcontextprotocol/sdk/shared/transport.js'
+import { isLoopbackUrl } from '@/acp/transports/is-loopback'
 import { getAuthToken } from './auth-token'
-import { computeEffectiveProxyEnabled, createProxyFetch } from './proxy-fetch'
+import { computeEffectiveProxyEnabled, createProxyFetch, type FetchFn } from './proxy-fetch'
 
 /** Remote transport kind. stdio (local) servers are connected by THU-575, not here. */
 export type MCPTransportType = 'http' | 'sse'
@@ -59,12 +60,45 @@ export const buildMcpHeaders = (token?: string): Record<string, string> => {
   return headers
 }
 
+/** Fetch shape the MCP SDK transports accept for `options.fetch`. */
+export type McpFetch = (input: string | URL, init?: RequestInit) => Promise<Response>
+
 /**
- * Builds an MCP client transport that routes through the universal proxy fetch.
- * Hosted mode (web) goes through `${cloudUrl}/v1/proxy` with header rewriting;
- * Standalone mode (Tauri) hits the upstream directly. Picks SSE for `sse`,
- * otherwise Streamable HTTP — both accept the identical `{ fetch, requestInit }`
- * shape. Keeps the provider and the settings test-connection on one code path.
+ * Picks the fetch implementation for an MCP `url`. A loopback target is the
+ * local stdio-bridge (it serves `http://127.0.0.1:PORT/mcp`): connect with the
+ * native `fetch` directly, bypassing the universal proxy — the proxy forbids
+ * loopback/private hosts, and a same-machine bridge needs no proxy hop. Remote
+ * targets route through `createProxyFetch` (Hosted: `${cloudUrl}/v1/proxy` with
+ * header rewriting; Standalone Tauri: upstream-direct).
+ *
+ * `nativeFetch` is a test seam — production omits it and the native path uses
+ * `globalThis.fetch`.
+ */
+export const resolveMcpFetch = (url: string, cloudUrl: string, nativeFetch?: typeof fetch): McpFetch => {
+  if (isLoopbackUrl(url)) {
+    const native = nativeFetch ?? globalThis.fetch
+    return (input, init) => native(input, init)
+  }
+  // Authenticate the proxy hop with the Thunderbolt session bearer (the same getter the
+  // app-wide ProxyFetchProvider uses) — without it `/v1/proxy` returns 401. The upstream
+  // MCP credential rides separately as `X-Proxy-Passthrough-Authorization` (createProxyFetch
+  // promotes the plain `Authorization` we set in buildMcpHeaders). `getProxyEnabled` honours
+  // the Tauri standalone toggle; web always proxies (CORS forces it).
+  const proxyFetch: FetchFn = createProxyFetch({
+    cloudUrl,
+    getProxyAuthToken: getAuthToken,
+    getProxyEnabled: () => computeEffectiveProxyEnabled(),
+  })
+  return (input, init) => proxyFetch(input, init)
+}
+
+/**
+ * Builds an MCP client transport. Remote servers route through the universal
+ * proxy fetch (Hosted web → `${cloudUrl}/v1/proxy` with header rewriting;
+ * Standalone Tauri → upstream-direct); a loopback stdio-bridge URL connects
+ * natively (see `resolveMcpFetch`). Picks SSE for `sse`, otherwise Streamable
+ * HTTP — both accept the identical `{ fetch, requestInit }` shape. Keeps the
+ * provider and the settings test-connection on one code path.
  */
 export const createMcpTransport = (
   url: string,
@@ -73,18 +107,8 @@ export const createMcpTransport = (
   headers: Record<string, string>,
 ) => {
   const urlObj = new URL(url)
-  // Authenticate the proxy hop with the Thunderbolt session bearer (the same getter the
-  // app-wide ProxyFetchProvider uses) — without it `/v1/proxy` returns 401. The upstream
-  // MCP credential rides separately as `X-Proxy-Passthrough-Authorization` (createProxyFetch
-  // promotes the plain `Authorization` we set in buildMcpHeaders). `getProxyEnabled` honours
-  // the Tauri standalone toggle; web always proxies (CORS forces it).
-  const proxyFetch = createProxyFetch({
-    cloudUrl,
-    getProxyAuthToken: getAuthToken,
-    getProxyEnabled: () => computeEffectiveProxyEnabled(),
-  })
   const options = {
-    fetch: (input: string | URL, init?: RequestInit) => proxyFetch(input, init),
+    fetch: resolveMcpFetch(url, cloudUrl),
     requestInit: { headers },
   }
   const transport =

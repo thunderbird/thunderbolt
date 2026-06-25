@@ -41,4 +41,43 @@ test.describe('Agents catalog', () => {
     // the snapshot fallback covers it.
     expect(errors).toEqual([])
   })
+
+  test('connect-via-bridge opens the bridge dialog with the run command for an npx agent', async ({ page }) => {
+    const errors = collectPageErrors(page)
+    await loginViaOidc(page)
+    await page.goto('/settings/agents')
+
+    await expect(page.getByTestId('agent-catalog-card-gemini')).toBeVisible({ timeout: 10_000 })
+
+    // Open the bridge dialog from the gemini card (npx distribution).
+    await page.getByTestId('agent-catalog-connect-gemini').click()
+    await expect(page.getByTestId('bridge-connect-dialog')).toBeVisible()
+
+    // The composed bridge run command is shown for the user to copy.
+    await expect(page.getByText('npx thunderbolt-stdio-bridge --mode acp --', { exact: false })).toBeVisible()
+    // The install one-liner is present too.
+    await expect(page.getByText('curl -fsSL', { exact: false })).toBeVisible()
+
+    // Close the dialog.
+    await page.getByRole('button', { name: /done/i }).click()
+    await expect(page.getByTestId('bridge-connect-dialog')).toHaveCount(0)
+
+    expect(errors).toEqual([])
+  })
+
+  test('connect-via-bridge shows the binary fallback for a binary-only agent', async ({ page }) => {
+    const errors = collectPageErrors(page)
+    await loginViaOidc(page)
+    await page.goto('/settings/agents')
+
+    await expect(page.getByTestId('agent-catalog-card-goose')).toBeVisible({ timeout: 10_000 })
+
+    // Goose ships as a platform binary — the dialog renders the fallback, no run command.
+    await page.getByTestId('agent-catalog-connect-goose').click()
+    await expect(page.getByTestId('bridge-connect-dialog')).toBeVisible()
+    await expect(page.getByText(/ships as a platform binary/i)).toBeVisible()
+    await expect(page.getByText('npx thunderbolt-stdio-bridge --mode acp --', { exact: false })).toHaveCount(0)
+
+    expect(errors).toEqual([])
+  })
 })

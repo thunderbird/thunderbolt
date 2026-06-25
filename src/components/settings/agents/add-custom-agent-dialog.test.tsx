@@ -297,6 +297,51 @@ describe('AddCustomAgentDialog — connection status', () => {
   })
 })
 
+describe('AddCustomAgentDialog — local bridge hint', () => {
+  const notIos = () => false
+
+  const renderDialog = () =>
+    render(
+      <AddCustomAgentDialog
+        open={true}
+        onOpenChange={() => {}}
+        onSubmit={async () => {}}
+        isIos={notIos}
+        testAcpConnection={async () => ({ success: true })}
+      />,
+    )
+
+  it('shows the stdio-bridge hint by default (no URL entered)', () => {
+    renderDialog()
+    expect(screen.getByText(/thunderbolt-stdio-bridge/i)).toBeInTheDocument()
+    expect(screen.queryByTestId('agent-url-loopback-hint')).not.toBeInTheDocument()
+  })
+
+  it('switches to the loopback "connects directly" hint for a 127.0.0.1 URL', () => {
+    renderDialog()
+    fireEvent.change(screen.getByLabelText(/url/i), { target: { value: 'ws://127.0.0.1:8080' } })
+    expect(screen.getByTestId('agent-url-loopback-hint')).toHaveTextContent(/connects directly/i)
+    // The generic bridge suggestion is replaced once a loopback URL is present.
+    expect(screen.queryByText(/Running an agent locally/i)).not.toBeInTheDocument()
+  })
+
+  it('treats localhost and ::1 as loopback targets', () => {
+    renderDialog()
+    fireEvent.change(screen.getByLabelText(/url/i), { target: { value: 'ws://localhost:9000' } })
+    expect(screen.getByTestId('agent-url-loopback-hint')).toBeInTheDocument()
+
+    fireEvent.change(screen.getByLabelText(/url/i), { target: { value: 'ws://[::1]:9000' } })
+    expect(screen.getByTestId('agent-url-loopback-hint')).toBeInTheDocument()
+  })
+
+  it('keeps the generic hint for a non-loopback wss:// URL', () => {
+    renderDialog()
+    fireEvent.change(screen.getByLabelText(/url/i), { target: { value: 'wss://agent.example.com/ws' } })
+    expect(screen.queryByTestId('agent-url-loopback-hint')).not.toBeInTheDocument()
+    expect(screen.getByText(/Running an agent locally/i)).toBeInTheDocument()
+  })
+})
+
 describe('AddCustomAgentDialog — edit mode', () => {
   const notIos = () => false
 

@@ -16,6 +16,7 @@ import { isSsoMode } from '@/lib/auth-mode'
 import { createAuthenticatedClient } from '@/lib/http'
 import { beginInitRun, getInitTimingPayload, recordInitStep } from '@/lib/init-timing'
 import { getDatabasePath, getDatabaseType, getPlatform, isIndexedDbAvailable } from '@/lib/platform'
+import { migrateEncryptionKeysIfNeeded, migrateLocalStorageIfNeeded } from '@/migrations/pre-workspaces-attach'
 import { initPosthog, trackError, trackEvent } from '@/lib/posthog'
 import { resolveBootTrustDomain } from '@/lib/resolve-boot-trust-domain'
 import { TrayManager } from '@/lib/tray'
@@ -159,6 +160,36 @@ const executeInitializationSteps = async (httpClient?: HttpClient): Promise<Hand
     throw new Error('resolveBootTrustDomain returned a server domain without a server entry')
   }
   useTrustDomainRegistry.getState().activateServer(resolution.serverEntry)
+
+  // Pre-Workspaces v1 data migration — steps 1 + 2. Bring legacy un-namespaced
+  // localStorage and IndexedDB key-store state into the per-server namespaced
+  // layout the new build expects, BEFORE any code reads from them. Step 3 (the
+  // SQLite ATTACH) needs an authenticated session and runs in `runPostAuthBootstrap`.
+  // Step 1 (sync) — auth token + device id must be in the namespaced key by the
+  // time HTTP client / Better Auth read them. Telemetry is best-effort; PostHog
+  // is initialized later in the boot flow but `trackEvent` no-ops gracefully.
+  const migrationServerId = resolution.serverEntry.serverId
+  const storageMigration = migrateLocalStorageIfNeeded(migrationServerId)
+  trackEvent('migration_storage_completed', {
+    migrated_token: storageMigration.migratedToken,
+    migrated_device_id: storageMigration.migratedDeviceId,
+  })
+  // Step 2 (async) — encryption keys. Wrapped in try/catch so a failure here
+  // never blocks app boot; users hit re-enrolment via the standard E2EE setup
+  // flow if their keys can't be migrated, which is preferable to a hard error
+  // screen during the rollout window.
+  try {
+    const keyMigration = await migrateEncryptionKeysIfNeeded(migrationServerId)
+    trackEvent('migration_keys_completed', {
+      migrated: keyMigration.migrated,
+      entry_count: keyMigration.entryCount,
+    })
+  } catch (error) {
+    console.error('Failed to migrate pre-Workspaces encryption keys:', error)
+    trackError(createHandleError('PRE_WORKSPACES_IDB_MIGRATION_FAILED', 'Failed to migrate encryption keys', error), {
+      migration_step: 'indexeddb',
+    })
+  }
 
   // Background refresh of /v1/config for returning server-mode boots — keeps cached UI flags
   // (e2eeEnabled, allowAnonUsers, minAppVersion, etc.) current. First-boot already fetched

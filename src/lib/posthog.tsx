@@ -228,6 +228,12 @@ export type EventType =
   // Data migrations (THU-547) — drops out once THU-560 deletes the legacy
   // automations subsystem.
   | 'automations_migration_run'
+  // Pre-Workspaces v1 one-shot data migration (THU-622) — drops out once
+  // every active install has migrated and `src/migrations/pre-workspaces-attach`
+  // is deleted.
+  | 'migration_storage_completed'
+  | 'migration_keys_completed'
+  | 'migration_db_completed'
   // Startup performance
   | 'app_init_timing'
   | 'app_chat_ready'

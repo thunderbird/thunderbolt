@@ -6,8 +6,12 @@ import { ensurePersonalWorkspace } from '@/dal'
 import { getCurrentDatabase } from '@/db/database'
 import type { AnyDrizzleDatabase } from '@/db/database-interface'
 import { runDataMigrations } from '@/lib/data-migrations'
+import { createHandleError } from '@/lib/error-utils'
+import { trackError, trackEvent } from '@/lib/posthog'
 import { reconcileDefaults } from '@/lib/reconcile-defaults'
+import { findLegacyDbFilename, runLocalDbMigration } from '@/migrations/pre-workspaces-attach'
 import { getActiveTrustDomain } from '@/stores/trust-domain-registry'
+import { computePersonalWorkspaceId } from '@shared/workspaces'
 
 /**
  * Trigger context for the post-auth bootstrap. Either the user's id and
@@ -71,17 +75,66 @@ const runBootstrapInternal = async (ctx: BootstrapContext): Promise<void> => {
     throw new Error('NOT_IMPLEMENTED: standalone post-auth bootstrap (post-v1)')
   }
 
+  // Pre-Workspaces v1 data migration — step 3. ATTACH the legacy
+  // `thunderbolt-sync.db` onto the new `server-<id>.db` and copy rows into the
+  // workspace_id-stamped schema.
+  //
+  // ORDER IS LOAD-BEARING: this runs BEFORE `ensurePersonalWorkspace` because
+  // `<WorkspaceGate>` lives-queries the personal workspace row's existence as
+  // the bootstrap-complete signal. If we inserted the workspace row first,
+  // routes would render against an empty DB before the migration backfilled
+  // it — chat URLs would `navigate('/not-found')` from `use-hydrate-chat-store`
+  // and `OnboardingDialog` would fire on the default `user_has_completed_onboarding=false`.
+  // The FE schema has no FK from data tables → workspaces, so stamping rows
+  // with a workspace_id whose row doesn't exist yet is fine; `ensurePersonalWorkspace`
+  // below inserts it before any consumer looks for the workspace itself.
+  //
+  // BE-side state is already correct for the migration cohort: 0020 created
+  // the workspace + admin membership for every existing user at deploy time,
+  // so PowerSync's FIFO upload of the data rows (queued before the workspace
+  // row) passes `isWorkspaceMember` regardless of upload order.
+  //
+  // Server-only — the standalone branch threw above.
+  const personalWorkspaceId = computePersonalWorkspaceId(ctx.userId)
+
+  if (trustDomain.kind === 'server') {
+    try {
+      const legacyDbAttachPath = await findLegacyDbFilename()
+      const dbMigration = await runLocalDbMigration({
+        newDb: db,
+        serverId: trustDomain.serverId,
+        personalWorkspaceId,
+        legacyDbAttachPath,
+      })
+      if (dbMigration.ranAttach) {
+        trackEvent('migration_db_completed', {
+          duration_ms: Math.round(dbMigration.durationMs),
+          rows_inserted: dbMigration.rowsInsertedByTable,
+        })
+      }
+    } catch (error) {
+      // Failure here leaves the completion flag unset → next boot retries.
+      // Don't abort bootstrap: the user can still operate against the new
+      // (empty) DB while we surface telemetry, and a retry has a good shot.
+      console.error('Failed to run pre-Workspaces local DB migration:', error)
+      trackError(
+        createHandleError('PRE_WORKSPACES_LOCAL_DB_MIGRATION_FAILED', 'Failed to migrate local SQLite', error),
+        { migration_step: 'local_db' },
+      )
+    }
+  }
+
   // Personal workspace is FE-created with a deterministic id (shared/workspaces.ts).
-  // No sync dependency — the workspace exists locally the moment we resolve a
-  // session. Multi-device safety comes from the deterministic id: every device
-  // computes the same id, so concurrent uploads are upserts rather than racing
-  // for a partial-unique-index slot. Anonymous users follow the same path
-  // (post-v1) — anon never syncs, so the local workspace is the only one.
+  // Multi-device safety comes from the deterministic id: every device computes
+  // the same id, so concurrent uploads are upserts rather than racing for a
+  // partial-unique-index slot. Anonymous users follow the same path (post-v1) —
+  // anon never syncs, so the local workspace is the only one.
   //
   // No store update: the workspace row's existence in the local DB IS the
   // readiness signal — `<WorkspaceGate>` lives-queries it, DAL inserts derive
   // the active workspace id from URL or personal-lookup.
   const workspace = await ensurePersonalWorkspace(db, ctx.userId)
+
   await reconcileDefaults(db, workspace.id)
 
   // Data migrations sit AFTER reconcileDefaults so any newly-seeded defaults

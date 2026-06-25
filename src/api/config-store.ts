@@ -41,3 +41,17 @@ export const selectBuiltInAgentEnabled = (config: AppConfig): boolean => config.
 
 /** Whether the UI offers adding custom agents. Absent config defaults to allowed. */
 export const selectAllowCustomAgents = (config: AppConfig): boolean => config.allowCustomAgents !== false
+
+/** Resolves once zustand-persist has restored the store, so callers reading
+ *  state during init don't see the empty initial value on cold start. */
+export const waitForConfigHydration = (): Promise<void> => {
+  if (useConfigStore.persist.hasHydrated()) {
+    return Promise.resolve()
+  }
+  return new Promise<void>((resolve) => {
+    const unsub = useConfigStore.persist.onFinishHydration(() => {
+      unsub()
+      resolve()
+    })
+  })
+}

@@ -39,6 +39,7 @@ import { ThemeProvider } from '@/lib/theme-provider'
 import { AppErrorScreen } from './components/app-error-screen'
 import { UpgradeRequired } from './components/upgrade-required'
 import { useConfigStore } from '@/api/config-store'
+import { compareSemver } from '@/lib/compare-semver'
 import { AuthGate } from './components/auth-gate'
 import { OnboardingDialog } from './components/onboarding/onboarding-dialog'
 import { WelcomeDialog } from './components/welcome-dialog'
@@ -228,16 +229,14 @@ export const App = () => {
     }
   }, [])
 
+  // Reactive gate: blocks if a fresh fetch raises the minimum after init completes.
   const minAppVersion = useConfigStore((s) => s.config.minAppVersion)
+  const appVersion = import.meta.env.VITE_APP_VERSION
+  const upgradeRequiredRuntime = !!minAppVersion && !!appVersion && compareSemver(appVersion, minAppVersion) < 0
 
   const renderAppContent = () => {
-    if (initError?.code === 'UPGRADE_REQUIRED') {
-      return (
-        <UpgradeRequired
-          currentVersion={import.meta.env.VITE_APP_VERSION ?? 'unknown'}
-          minVersion={minAppVersion ?? 'unknown'}
-        />
-      )
+    if (initError?.code === 'UPGRADE_REQUIRED' || upgradeRequiredRuntime) {
+      return <UpgradeRequired currentVersion={appVersion ?? 'unknown'} minVersion={minAppVersion ?? 'unknown'} />
     }
     if (initError) {
       return <AppErrorScreen error={initError} isClearingDatabase={isInitializing} onClearDatabase={clearDatabase} />

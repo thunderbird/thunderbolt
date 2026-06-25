@@ -3,7 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { fetchConfig } from '@/api/config'
-import { useConfigStore } from '@/api/config-store'
+import { useConfigStore, waitForConfigHydration } from '@/api/config-store'
 import type { HttpClient } from '@/contexts'
 import { getSettings } from '@/dal'
 import { getAuthToken } from '@/lib/auth-token'
@@ -98,21 +98,23 @@ const executeInitializationSteps = async (httpClient?: HttpClient): Promise<Hand
   console.info('[init] start')
 
   // Step 0: Fetch backend config and hydrate store (only on success).
-  // On failure the store retains its persisted localStorage value. Awaited in step 0b.
+  // On failure the store retains its persisted localStorage value.
+  // Fire-and-forget so the request overlaps with steps 1–8; settled at the end.
   const fetchConfigPromise = time('step0_fetch_config', () => fetchConfig(getLocalSetting('cloudUrl'), httpClient))
 
-  // Step 0b: Enforce minimum app version. Await the fetch so the gate doesn't
-  // race zustand-persist hydration on first launch. Persisted store is the
-  // offline fallback.
-  const freshConfig = await fetchConfigPromise
-  const minAppVersion = freshConfig?.minAppVersion ?? useConfigStore.getState().config.minAppVersion
+  // Step 0b: Enforce minimum app version against the persisted config (fast, local).
+  // Wait for persist rehydration first so an unhydrated store doesn't silently skip
+  // the gate on cold start. The fresh fetch runs in parallel; if it later reveals
+  // enforcement, the reactive gate in App picks it up before any user interaction.
+  await waitForConfigHydration()
+  const persistedMin = useConfigStore.getState().config.minAppVersion
   const appVersion = import.meta.env.VITE_APP_VERSION
-  if (minAppVersion && appVersion && compareSemver(appVersion, minAppVersion) < 0) {
+  if (persistedMin && appVersion && compareSemver(appVersion, persistedMin) < 0) {
     return {
       success: false,
       error: createHandleError(
         'UPGRADE_REQUIRED',
-        `App version ${appVersion} is below the required minimum ${minAppVersion}`,
+        `App version ${appVersion} is below the required minimum ${persistedMin}`,
       ),
     }
   }
@@ -215,6 +217,10 @@ const executeInitializationSteps = async (httpClient?: HttpClient): Promise<Hand
   // Steps 7 + 8: Tray and PostHog initialization (non-critical, independent
   // of each other) — run in parallel; each wrapper swallows its own failure.
   const [tray, posthogClient] = await Promise.all([initializeTraySafely(), initializePostHogSafely(client)])
+
+  // Settle step 0 so its duration lands in the timing payload. fetchConfig
+  // never rejects (catch block + 5s timeout) and has typically resolved by now.
+  await fetchConfigPromise
 
   const initTotalMs = Math.round(performance.now() - totalStartedAt)
   console.info(`[init] complete (total ${initTotalMs}ms)`)

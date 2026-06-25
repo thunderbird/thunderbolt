@@ -136,8 +136,12 @@ fn map_install_output(output: std::process::Output) -> Result<String, String> {
 pub async fn install_bridge() -> Result<String, String> {
     let output = tauri::async_runtime::spawn_blocking(|| {
         let shell = std::env::var("SHELL").unwrap_or_else(|_| "/bin/bash".to_string());
+        // `set -o pipefail` so a failed `curl` (404 / no network) fails the whole
+        // pipeline instead of `bash` succeeding on empty stdin — otherwise a broken
+        // download reports a false "installed".
         std::process::Command::new(shell)
-            .args(["-lc", ZEUS_INSTALL_CMD])
+            .arg("-lc")
+            .arg(format!("set -o pipefail; {ZEUS_INSTALL_CMD}"))
             .output()
     })
     .await

@@ -110,7 +110,27 @@ const runBootstrapInternal = async (ctx: BootstrapContext): Promise<void> => {
         trackEvent('migration_db_completed', {
           duration_ms: Math.round(dbMigration.durationMs),
           rows_inserted: dbMigration.rowsInsertedByTable,
+          model_api_keys_copied: dbMigration.modelApiKeysCopied,
         })
+        // Redirect to "/" so the route tree, Zustand stores, React Query cache,
+        // and PowerSync sync state all start fresh against a fully-populated
+        // DB. Using `replace('/')` instead of `reload()` is intentional:
+        //
+        //   - Lands on a known-good route. The pre-Workspaces build's URL
+        //     might not exist as a chat in the new schema (e.g., the user
+        //     was on `/chats/new` or an ad-hoc dev path); home is always
+        //     reachable post-migration.
+        //   - `replace` drops the current history entry, so the back button
+        //     doesn't take the user to a pre-migration URL that no longer
+        //     matches local state.
+        //
+        // Subsequent bootstraps short-circuit on the completion flag, so this
+        // branch only runs once per device per server.
+        console.warn('[post-auth-bootstrap] pre-Workspaces migration complete — redirecting to /')
+        if (typeof window !== 'undefined') {
+          window.location.replace('/')
+        }
+        return
       }
     } catch (error) {
       // Failure here leaves the completion flag unset → next boot retries.

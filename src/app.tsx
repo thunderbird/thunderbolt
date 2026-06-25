@@ -229,13 +229,14 @@ export const App = () => {
     }
   }, [])
 
-  // Reactive gate: blocks if a fresh fetch raises the minimum after init completes.
+  // Reactive gate: re-evaluates whenever the config store updates, so the
+  // upgrade screen tracks the current server-enforced minimum.
   const minAppVersion = useConfigStore((s) => s.config.minAppVersion)
   const appVersion = import.meta.env.VITE_APP_VERSION
-  const upgradeRequiredRuntime = !!minAppVersion && !!appVersion && compareSemver(appVersion, minAppVersion) < 0
+  const upgradeRequired = !!minAppVersion && !!appVersion && compareSemver(appVersion, minAppVersion) < 0
 
   const renderAppContent = () => {
-    if (initError?.code === 'UPGRADE_REQUIRED' || upgradeRequiredRuntime) {
+    if (upgradeRequired) {
       return <UpgradeRequired currentVersion={appVersion ?? 'unknown'} minVersion={minAppVersion ?? 'unknown'} />
     }
     if (initError) {

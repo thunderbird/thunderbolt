@@ -3,11 +3,9 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { fetchConfig } from '@/api/config'
-import { useConfigStore, waitForConfigHydration } from '@/api/config-store'
 import type { HttpClient } from '@/contexts'
 import { getSettings } from '@/dal'
 import { getAuthToken } from '@/lib/auth-token'
-import { compareSemver } from '@/lib/compare-semver'
 import { Database, getCurrentDatabase, setDatabase } from '@/db/database'
 import type { AnyDrizzleDatabase } from '@/db/database-interface'
 import { getLocalSetting } from '@/stores/local-settings-store'
@@ -100,24 +98,10 @@ const executeInitializationSteps = async (httpClient?: HttpClient): Promise<Hand
   // Step 0: Fetch backend config and hydrate store (only on success).
   // On failure the store retains its persisted localStorage value.
   // Fire-and-forget so the request overlaps with steps 1–8; settled at the end.
+  // Min-app-version enforcement lives in App as a reactive gate over the store —
+  // halting init here on a stale persisted value can wedge the upgrade screen on
+  // when the fresh fetch later shows the gate should clear.
   const fetchConfigPromise = time('step0_fetch_config', () => fetchConfig(getLocalSetting('cloudUrl'), httpClient))
-
-  // Step 0b: Enforce minimum app version against the persisted config (fast, local).
-  // Wait for persist rehydration first so an unhydrated store doesn't silently skip
-  // the gate on cold start. The fresh fetch runs in parallel; if it later reveals
-  // enforcement, the reactive gate in App picks it up before any user interaction.
-  await waitForConfigHydration()
-  const persistedMin = useConfigStore.getState().config.minAppVersion
-  const appVersion = import.meta.env.VITE_APP_VERSION
-  if (persistedMin && appVersion && compareSemver(appVersion, persistedMin) < 0) {
-    return {
-      success: false,
-      error: createHandleError(
-        'UPGRADE_REQUIRED',
-        `App version ${appVersion} is below the required minimum ${persistedMin}`,
-      ),
-    }
-  }
 
   // Step 1: App directory creation
   let appDirPath: string

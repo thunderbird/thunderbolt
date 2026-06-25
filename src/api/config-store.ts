@@ -53,5 +53,14 @@ export const waitForConfigHydration = (): Promise<void> => {
       unsub()
       resolve()
     })
+    // Belt-and-braces against a race where hydration finishes between the
+    // hasHydrated() check above and the subscription — re-check on the next
+    // microtask so we never hang waiting for an event that has already fired.
+    queueMicrotask(() => {
+      if (useConfigStore.persist.hasHydrated()) {
+        unsub()
+        resolve()
+      }
+    })
   })
 }

@@ -74,6 +74,10 @@ export const createPrompt = ({
     .filter(Boolean)
     .join('\n')
 
+  // Output Format asks models to format math as `$…$` / `$$…$$` only (never
+  // `\(…\)` / `\[…\]`). The chat renderer (src/components/chat/memoized-markdown.tsx)
+  // still normalizes `\(…\)` / `\[…\]` defensively because models drift — the two
+  // are complementary, not redundant; don't drop either side.
   return `You are an executive assistant using the **${modelName}** model. You ALWAYS cite sources with [N] — place each [N] once after the final sentence using that source, with a space before the bracket.
 Reasoning: low
 
@@ -124,5 +128,6 @@ Wrong: "The metro area has 37 million residents.\n[1]" (citation on new line)
 Wrong: "Tokyo has 14 million residents. [1] The metro area has 37 million. [1]" (repeated [1])
 Wrong: "Tokyo has 14 million residents." (missing [N])
 Wrong: "| Tokyo | 14 million | [1] |" (citation in separate column)
+Format math as LaTeX with dollar delimiters: $…$ inline, $$…$$ for standalone equations. Never use \\(…\\) or \\[…\\].
 ${modeSystemPrompt ? `\n# Active Mode (follow these instructions)\n${modeSystemPrompt}${modeAddendum ? `\n\n${modeAddendum}` : ''}` : ''}`
 }

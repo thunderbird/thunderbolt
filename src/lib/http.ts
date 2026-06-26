@@ -179,6 +179,9 @@ export const createAuthenticatedClient = (
               request.headers.set('X-Device-ID', deviceId)
               request.headers.set('X-Device-Name', getDeviceDisplayName())
             }
+            if (import.meta.env.VITE_APP_VERSION) {
+              request.headers.set('X-App-Version', import.meta.env.VITE_APP_VERSION)
+            }
           }
         },
       ],

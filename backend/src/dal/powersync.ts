@@ -17,7 +17,7 @@ const validTables = new Set<string>(powersyncTableNames)
 
 /** DB column names that clients cannot set via PowerSync upload (server-managed fields). */
 const uploadDenyColumns: Partial<Record<PowerSyncTableName, string[]>> = {
-  devices: ['revoked_at', 'trusted', 'public_key', 'mlkem_public_key', 'approval_pending'],
+  devices: ['revoked_at', 'trusted', 'public_key', 'mlkem_public_key', 'approval_pending', 'app_version'],
 }
 
 /** Tables that cannot be deleted via PowerSync upload — must use dedicated API endpoints. */

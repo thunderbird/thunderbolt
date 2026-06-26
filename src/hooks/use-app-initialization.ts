@@ -14,7 +14,7 @@ import { createAppDir, resetAppDir } from '@/lib/fs'
 import { isSsoMode } from '@/lib/auth-mode'
 import { createAuthenticatedClient } from '@/lib/http'
 import { beginInitRun, getInitTimingPayload, recordInitStep } from '@/lib/init-timing'
-import { getDatabasePath, getDatabaseType, getPlatform } from '@/lib/platform'
+import { getDatabasePath, getDatabaseType, getPlatform, isIndexedDbAvailable } from '@/lib/platform'
 import { initPosthog, trackError, trackEvent } from '@/lib/posthog'
 import { runDataMigrations } from '@/lib/data-migrations'
 import { reconcileDefaults } from '@/lib/reconcile-defaults'
@@ -98,9 +98,22 @@ const executeInitializationSteps = async (httpClient?: HttpClient): Promise<Hand
   // Step 0: Fetch backend config and hydrate store (only on success).
   // When fetch fails (offline/error), the store retains its persisted localStorage value.
   // Not awaited here: nothing in this pipeline consumes the config (it is read
-  // reactively from the store later), so it overlaps with the steps below and
-  // is only awaited at the end to land its duration in app_init_timing.
+  // reactively from the store later), so it overlaps with the steps below
+  // (including the storage probe) and is only awaited at the end to land its
+  // duration in app_init_timing.
   const fetchConfigPromise = time('step0_fetch_config', () => fetchConfig(getLocalSetting('cloudUrl'), httpClient))
+
+  // Step 0.5: Storage pre-flight. IndexedDB is required by both the local
+  // PowerSync VFS (web) and the E2EE key store (all platforms). iOS Lockdown
+  // Mode disables it, which would otherwise hang the app on the loading spinner
+  // — detect it before the DB steps and surface a friendly screen. Kicked off
+  // after the config fetch so the network request overlaps the probe.
+  const storageAvailable = await time('step0_5_storage_check', () => isIndexedDbAvailable())
+  if (!storageAvailable) {
+    const storageError = createHandleError('STORAGE_UNAVAILABLE', 'Storage (IndexedDB) is unavailable')
+    trackError(storageError, { initialization_step: 'storage_check' })
+    return { success: false, error: storageError }
+  }
 
   // Step 1: App directory creation
   let appDirPath: string
@@ -201,9 +214,8 @@ const executeInitializationSteps = async (httpClient?: HttpClient): Promise<Hand
   // of each other) — run in parallel; each wrapper swallows its own failure.
   const [tray, posthogClient] = await Promise.all([initializeTraySafely(), initializePostHogSafely(client)])
 
-  // Settle step0 so its duration is in the timing payload. fetchConfig never
-  // rejects (internal 5s timeout, errors caught) and in practice has long
-  // resolved while the steps above ran.
+  // Settle step 0 so its duration lands in the timing payload. fetchConfig
+  // never rejects (catch block + 5s timeout) and has typically resolved by now.
   await fetchConfigPromise
 
   const initTotalMs = Math.round(performance.now() - totalStartedAt)
@@ -254,6 +266,14 @@ export const useAppInitialization = (httpClient?: HttpClient) => {
       } else {
         setInitError(result.error)
       }
+    } catch (error) {
+      // Any unhandled rejection from an unguarded init step (e.g. PowerSync's
+      // deferred storage open) must surface as an error screen rather than
+      // leaving the app stuck on the loading spinner forever. Tracked like the
+      // per-step failures so an unexpected throw stays observable.
+      const unknownError = createHandleError('UNKNOWN_ERROR', 'Failed to initialize app', error)
+      trackError(unknownError, { initialization_step: 'uncaught' })
+      setInitError(unknownError)
     } finally {
       setIsInitializing(false)
     }

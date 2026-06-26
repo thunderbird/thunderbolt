@@ -387,18 +387,27 @@ The `TextPart` component renders each part:
 Each widget component receives its props and handles data fetching:
 
 ```typescript
+import { fetchWeatherForecast } from './fetch-forecast'
+
 export const WeatherForecastWidget = ({ location, region, country, messageId }) => {
-  const { data, isLoading, error } = useMessageCache({
+  const { temperatureUnit } = useSettings({ temperature_unit: 'f' })
+  const { data, error } = useMessageCache({
     messageId,
-    cacheKey: ['weatherForecast', location, region, country],
-    fetchFn: async () => getWeatherForecast({ location, region, country, days: 7 })
+    // include the resolved unit so a unit change refetches; gate until settings load
+    cacheKey: ['weatherForecast', location, region, country, temperatureUnit.value],
+    enabled: !temperatureUnit.isLoading,
+    fetchFn: async () =>
+      fetchWeatherForecast({ location, region, country, days: 6, temperatureUnit: temperatureUnit.value }),
   })
 
-  if (isLoading) return <Skeleton />
   if (error) return <ErrorState />
+  if (!data) return <Skeleton />
   return <WeatherForecast {...data} />
 }
 ```
+
+`fetchWeatherForecast` (`src/widgets/weather-forecast/fetch-forecast.ts`) is the canonical example of a
+widget that fetches an external API directly from the frontend — see the proxy exception below.
 
 ## Message Cache System
 
@@ -472,7 +481,9 @@ const { data, isLoading, error } = useMessageCache<MyDataType>({
 
 ## Privacy & Security Via Proxy
 
-**Critical:** All external network requests MUST go through the backend proxy. Never fetch directly from the frontend.
+**Rule:** External network requests go through the backend proxy by default. The proxy is required for any non-CORS, sensitive, or credentialed request (it hides the user IP, sanitizes payloads, controls the User-Agent, and adds CORS headers).
+
+**Exception:** Keyless, CORS-enabled, non-sensitive APIs (e.g. Open-Meteo) may be fetched directly from the widget via the external `http` client. This is preferred for the weather widget: routing every user through the backend's single IP got Open-Meteo's free tier rate-limited (429s), whereas client-direct fetches spread requests across user IPs and avoid coupling the UI to a dedicated backend endpoint. See `src/widgets/weather-forecast/fetch-forecast.ts` for the canonical pattern.
 
 ### Why Use the Proxy?
 

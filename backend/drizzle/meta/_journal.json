@@ -141,6 +141,13 @@
       "when": 1781029599779,
       "tag": "0019_handy_masque",
       "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "7",
+      "when": 1781546434494,
+      "tag": "0020_conscious_silverclaw",
+      "breakpoints": true
     }
   ]
 }

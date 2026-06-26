@@ -18,6 +18,7 @@
  */
 
 import { type ComponentType } from 'react'
+import * as ask from './ask'
 import * as citation from './citation'
 import * as connectIntegration from './connect-integration'
 import * as documentResult from './document-result'
@@ -26,6 +27,7 @@ import * as map from './map'
 import * as weatherForecast from './weather-forecast'
 
 // Re-export components for easy importing
+export { Ask } from './ask'
 export { CitationBadge } from './citation'
 export { ConnectIntegrationWidget } from './connect-integration'
 export { DocumentResultWidget } from './document-result'
@@ -61,6 +63,10 @@ export const widgetRegistry = [
   {
     name: 'map' as const,
     module: map,
+  },
+  {
+    name: 'ask' as const,
+    module: ask,
   },
 ] as const
 
@@ -122,3 +128,4 @@ export type WidgetCacheData =
   | linkPreview.CacheData
   | weatherForecast.CacheData
   | citation.CacheData
+  | ask.CacheData

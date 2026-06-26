@@ -13,7 +13,9 @@ import {
   shouldRetry,
 } from '@/ai/step-logic'
 import { getAllSkills, getIntegrationStatus, getModel, getModelProfile, getSettings } from '@/dal'
+import { getMessage } from '@/dal/chat-messages'
 import { extractLastUserText, resolveSkillTokenInstructions } from '@/skills/resolve-skill-system-messages'
+import { collectAskEntriesFromCache, formatAskResponsesNote } from '@/widgets/ask/lib'
 import { getDb } from '@/db/database'
 import { getLocalSetting } from '@/stores/local-settings-store'
 import { isSsoMode } from '@/lib/auth-mode'
@@ -653,12 +655,38 @@ export const aiFetchStreamingResponse = async ({
     }
     const skillSystemMessages = resolveSkillTokenInstructions(lastUserText, instructionBySlug)
 
+    // Surface the user's persisted ask-widget responses (stored in each
+    // assistant message's cache) so the model can refer back to what the user
+    // chose or wrote without asking them to re-enter it. Reading every
+    // assistant message's cache only pays off when an ask widget was actually
+    // rendered, so guard on the tag — conversations without one (the common
+    // case) skip the per-message DB reads entirely.
+    const conversationHasAsk = messages.some(
+      (message) =>
+        message.role === 'assistant' &&
+        message.parts.some((part) => part.type === 'text' && part.text.includes('<widget:ask')),
+    )
+    const askEntries = conversationHasAsk
+      ? (
+          await Promise.all(
+            messages
+              .filter((message) => message.role === 'assistant')
+              .map(async (message) => {
+                const stored = await getMessage(db, message.id)
+                return stored?.cache ? collectAskEntriesFromCache(stored.cache as Record<string, unknown>) : []
+              }),
+          )
+        ).flat()
+      : []
+    const askResponsesNote = formatAskResponsesNote(askEntries)
+    const systemNotes = [...skillSystemMessages, ...(askResponsesNote ? [askResponsesNote] : [])]
+
     const stream = createUIMessageStream({
       generateId: uuidv7,
       execute: async ({ writer }) => {
         const baseMessages = await convertToModelMessages(messages)
         let currentMessages: typeof baseMessages = [
-          ...skillSystemMessages.map((content) => ({ role: 'system' as const, content })),
+          ...systemNotes.map((content) => ({ role: 'system' as const, content })),
           ...baseMessages,
         ]
         let attemptNumber = 1

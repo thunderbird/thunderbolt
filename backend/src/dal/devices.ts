@@ -22,10 +22,20 @@ export const getDeviceById = async (database: typeof DbType, deviceId: string) =
     .then((rows) => rows[0] ?? null)
 
 /** Upsert a device: insert new or update lastSeen/name for existing. Only updates if userId matches.
- * When `trusted` is passed (E2EE disabled), new devices are inserted as trusted and existing devices are upgraded. */
+ * When `trusted` is passed (E2EE disabled), new devices are inserted as trusted and existing devices are upgraded.
+ * `appVersion`, when provided, is persisted on insert and refreshed on update so operators can see
+ * which client version each device is running. */
 export const upsertDevice = async (
   database: typeof DbType,
-  device: { id: string; userId: string; name: string; lastSeen: Date; createdAt: Date; trusted?: boolean },
+  device: {
+    id: string
+    userId: string
+    name: string
+    lastSeen: Date
+    createdAt: Date
+    trusted?: boolean
+    appVersion?: string
+  },
 ) =>
   database
     .insert(devicesTable)
@@ -36,6 +46,7 @@ export const upsertDevice = async (
         lastSeen: device.lastSeen,
         name: device.name,
         ...(device.trusted ? { trusted: true, approvalPending: false } : {}),
+        ...(device.appVersion ? { appVersion: device.appVersion } : {}),
       },
       setWhere: eq(devicesTable.userId, device.userId),
     })

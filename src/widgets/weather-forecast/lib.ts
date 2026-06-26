@@ -9,12 +9,6 @@ const WeatherDaySchema = z.object({
   date: z.string(),
   weather_code: z.number(),
   temperature_max: z.number(),
-  temperature_min: z.number(),
-  apparent_temperature_max: z.number(),
-  apparent_temperature_min: z.number(),
-  precipitation_sum: z.number(),
-  precipitation_probability_max: z.number(),
-  wind_speed_10m_max: z.number(),
 })
 
 export const WeatherForecastDataSchema = z.object({

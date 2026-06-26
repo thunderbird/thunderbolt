@@ -249,8 +249,11 @@ const startMcpFace = ({
       if (allowAnyOrigin) {
         res.setHeader('Access-Control-Allow-Origin', '*')
       } else if (typeof origin === 'string' && isOriginAllowed(origin)) {
-        // nosemgrep: javascript.express.security.cors-misconfiguration.cors-misconfiguration -- origin reflected only after isOriginAllowed() allowlist check; arbitrary origins get no ACAO header
-        res.setHeader('Access-Control-Allow-Origin', origin)
+        // Reflect the request Origin ONLY after the isOriginAllowed() allowlist gate
+        // (loopback + explicit --allow-origin); an arbitrary origin gets no ACAO header —
+        // the correct credentialed-CORS pattern. The trailing nosemgrep sits on the matched
+        // setHeader line so the scanner honors the suppression (a preceding-line comment did not).
+        res.setHeader('Access-Control-Allow-Origin', origin) // nosemgrep: javascript.express.security.cors-misconfiguration.cors-misconfiguration
         res.setHeader('Vary', 'Origin')
       }
       res.setHeader('Access-Control-Allow-Methods', 'GET, POST, DELETE, OPTIONS')

@@ -359,6 +359,23 @@ describe('parseContentParts', () => {
       expect(result).toEqual([])
     })
 
+    it('emits a loading placeholder for a streaming skeleton-capable widget (map)', () => {
+      const text = `Here you go! <widget:map data='{"type":"FeatureColl`
+      const result = parseContentParts(text)
+
+      expect(result).toEqual([
+        { type: 'text', content: 'Here you go!' },
+        { type: 'widget-loading', name: 'map' },
+      ])
+    })
+
+    it('does not emit a loading placeholder until the widget name is complete', () => {
+      const text = 'Here you go! <widget:ma'
+      const result = parseContentParts(text)
+
+      expect(result).toEqual([{ type: 'text', content: 'Here you go!' }])
+    })
+
     it('preserves complete visuals before incomplete tag', () => {
       const text = '<widget:weather-forecast location="Seattle" region="WA" country="USA" /> Some text <widget:link'
       const result = parseContentParts(text)

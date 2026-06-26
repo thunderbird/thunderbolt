@@ -62,6 +62,20 @@ const defaultColor = '#3b82f6'
 export const MapSkeleton = () => <Skeleton className="absolute inset-0 rounded-none" />
 
 /**
+ * Self-contained map skeleton card — the same outer chrome `MapWidget` renders,
+ * so the streaming placeholder (shown the moment the `<widget:map>` tag opens,
+ * while its GeoJSON payload is still being generated) hands off seamlessly to
+ * the real widget once the data arrives. Registered as the widget's `Skeleton`.
+ */
+export const MapWidgetSkeleton = () => (
+  <div className="my-4">
+    <div className="relative h-80 w-full overflow-hidden rounded-lg border border-border">
+      <MapSkeleton />
+    </div>
+  </div>
+)
+
+/**
  * Generic GeoJSON map widget: renders a FeatureCollection (points / lines /
  * polygons) on an interactive map, fits the view to the data, and shows a
  * popup with each feature's neutral display fields (`label` / `description`)

@@ -102,6 +102,17 @@ export const widgetComponents = Object.fromEntries(
 ) as Record<WidgetName, ComponentType<any>>
 
 /**
+ * Skeleton registry — widgets that export a `Skeleton` get a streaming
+ * placeholder rendered the moment their opening tag appears (before the full
+ * payload has streamed). Widgets without one simply render nothing until ready.
+ */
+export const widgetSkeletons = Object.fromEntries(
+  widgetRegistry
+    .map((widget) => [widget.name, (widget.module as { Skeleton?: ComponentType }).Skeleton] as const)
+    .filter((entry): entry is readonly [WidgetName, ComponentType] => Boolean(entry[1])),
+) as Partial<Record<WidgetName, ComponentType>>
+
+/**
  * Union type of all widget cache data - auto-generated from registry
  * This is used for the chat message cache field
  */

@@ -9,10 +9,16 @@
  * To add a new widget parser, update src/widgets/index.ts
  */
 
-import { widgetParsers } from '@/widgets'
+import { widgetParsers, widgetSkeletons } from '@/widgets'
 import type { Widget } from './widget-types'
 
-export type ContentPart = { type: 'text'; content: string } | { type: 'widget'; widget: Widget }
+export type ContentPart =
+  | { type: 'text'; content: string }
+  | { type: 'widget'; widget: Widget }
+  | { type: 'widget-loading'; name: string }
+
+/** Widget names that ship a streaming skeleton (so a placeholder is worth emitting). */
+const skeletonWidgetNames = new Set(Object.keys(widgetSkeletons))
 
 /**
  * Defines how to parse and validate a specific widget type
@@ -169,12 +175,26 @@ export const parseContentParts = (rawText: string): ContentPart[] => {
     const incompleteWidgetTagMatch = textAfter.match(
       /<(?:widget:[a-z0-9-]*(?:\s+[^>]*)?|w(?:i(?:d(?:g(?:e(?:t)?)?)?)?)?)?$/i,
     )
+
+    // If the partial tag already names a known skeleton-capable widget (its name
+    // is fully typed, followed by whitespace = into its attributes), emit a
+    // loading placeholder so the widget's skeleton shows while its payload is
+    // still streaming — instead of nothing until the closing `/>` arrives.
+    let loadingName: string | null = null
     if (incompleteWidgetTagMatch) {
+      const incompleteTag = textAfter.slice(incompleteWidgetTagMatch.index)
       textAfter = textAfter.slice(0, incompleteWidgetTagMatch.index).trim()
+      const name = incompleteTag.match(/^<widget:([a-z][a-z0-9-]*)\s/i)?.[1]?.toLowerCase()
+      if (name && skeletonWidgetNames.has(name)) {
+        loadingName = name
+      }
     }
 
     if (textAfter) {
       parts.push({ type: 'text', content: textAfter })
+    }
+    if (loadingName) {
+      parts.push({ type: 'widget-loading', name: loadingName })
     }
   }
 

@@ -12,4 +12,4 @@ export {
 } from './geojson'
 export { instructions } from './instructions'
 export { parse, schema, type MapWidget as MapWidgetType } from './schema'
-export { MapSkeleton, MapWidget, MapWidget as Component } from './widget'
+export { MapSkeleton, MapWidget, MapWidget as Component, MapWidgetSkeleton as Skeleton } from './widget'

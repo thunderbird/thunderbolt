@@ -42,6 +42,8 @@ const superviseChild: SuperviseChild = ({
   }
 
   child.on('error', (err) => {
+    if (state.exited) return
+    state.exited = true
     state.alive = false
     clearGrace()
     onSpawnError(err)

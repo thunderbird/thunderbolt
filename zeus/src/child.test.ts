@@ -104,6 +104,42 @@ test('a spawn error (ENOENT) calls onSpawnError and never onExit-as-success', ()
   expect(s.alive()).toBe(false)
 })
 
+test('a failed spawn that fires error THEN exit tears down exactly once (no double reject)', () => {
+  const child = makeFakeChild()
+  const onSpawnError = mock((..._args: unknown[]) => {})
+  const onExit = mock((..._args: unknown[]) => {})
+  const s = superviseChild(
+    baseOpts(child, {
+      onSpawnError: onSpawnError as unknown as SuperviseChildOptions['onSpawnError'],
+      onExit: onExit as unknown as SuperviseChildOptions['onExit'],
+    }),
+  )
+  const err = Object.assign(new Error('not found'), { code: 'ENOENT' })
+  // Node can emit 'exit' for the same failed spawn after 'error'; only one path may proceed.
+  child.emit('error', err)
+  child.emit('exit', null, 'SIGTERM')
+  expect(onSpawnError).toHaveBeenCalledTimes(1)
+  expect(onExit).not.toHaveBeenCalled()
+  expect(s.alive()).toBe(false)
+})
+
+test('a failed spawn that fires exit THEN error reports exit once and skips spawn-error', () => {
+  const child = makeFakeChild()
+  const onSpawnError = mock((..._args: unknown[]) => {})
+  const onExit = mock((..._args: unknown[]) => {})
+  const s = superviseChild(
+    baseOpts(child, {
+      onSpawnError: onSpawnError as unknown as SuperviseChildOptions['onSpawnError'],
+      onExit: onExit as unknown as SuperviseChildOptions['onExit'],
+    }),
+  )
+  child.emit('exit', 1, null)
+  child.emit('error', Object.assign(new Error('not found'), { code: 'ENOENT' }))
+  expect(onExit).toHaveBeenCalledTimes(1)
+  expect(onSpawnError).not.toHaveBeenCalled()
+  expect(s.alive()).toBe(false)
+})
+
 test('writeStdin returns the underlying write boolean (false signals backpressure)', () => {
   const child = makeFakeChild()
   child.stdin.write = mock(() => false)

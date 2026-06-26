@@ -20,7 +20,7 @@
     "type-check": "tsc --noEmit"
   },
   "engines": {
-    "node": ">=18"
+    "node": ">=18.17"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.0.0",

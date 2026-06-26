@@ -97,11 +97,14 @@ const makeLogger = ({ json, verbose, sink }: LoggerOptions): Logger => {
  * slash), or null if it can't be parsed.
  */
 const normalizeOrigin = (origin: string): string | null => {
-  const parsed = URL.canParse(origin) ? new URL(origin) : null
-  if (!parsed) return null
-  return parsed.port
-    ? `${parsed.protocol}//${parsed.hostname}:${parsed.port}`
-    : `${parsed.protocol}//${parsed.hostname}`
+  try {
+    const parsed = new URL(origin)
+    return parsed.port
+      ? `${parsed.protocol}//${parsed.hostname}:${parsed.port}`
+      : `${parsed.protocol}//${parsed.hostname}`
+  } catch {
+    return null
+  }
 }
 
 /**

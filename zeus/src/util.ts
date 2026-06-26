@@ -78,11 +78,18 @@ const makeCloseLatch = (): CloseLatch => {
  */
 const insecureFlagWarnings = ({ host, allowAnyOrigin, tunnel }: InsecureFlagOptions): string[] => {
   const warnings: string[] = []
-  if (allowAnyOrigin && !isLoopbackHost(host)) {
+  if (!isLoopbackHost(host)) {
+    // --tunnel mints a mandatory bearer (cli.ts) that is enforced bearer-before-route
+    // on the bound face, so a non-loopback bind under --tunnel IS authenticated; only
+    // the bearerless local mode is reachable unauthenticated.
+    const authClause = tunnel
+      ? ', though the mandatory --tunnel bearer still gates every request'
+      : ' and local mode has no bearer, so the server is reachable unauthenticated'
     warnings.push(
-      `DANGER: --allow-any-origin on non-loopback host "${host}" disables the Origin gate and exposes the face to the network — any site can drive your local server.`,
+      `DANGER: binding to non-loopback host "${host}" exposes the face to your network — clients without an Origin header (curl, local tools) bypass the Origin gate${authClause}.`,
     )
-  } else if (allowAnyOrigin) {
+  }
+  if (allowAnyOrigin) {
     warnings.push('WARNING: --allow-any-origin disables the Origin gate — any browser Origin may connect.')
   }
   if (tunnel) {

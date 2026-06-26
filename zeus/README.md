@@ -73,8 +73,14 @@ orphans the process it spawned, and it never restarts it.
 
 - **Origin gate is default-ON.** Browser WS upgrades / HTTP requests are checked
   against an allowlist (loopback origins plus any explicit `--allow-origin`).
-  `--allow-any-origin` disables the gate and warns; combining it with a
-  non-loopback `--host` warns even louder.
+  `--allow-any-origin` disables the gate and warns.
+- **Non-loopback binds always warn loudly.** Any `--host` that isn't loopback
+  emits a `DANGER` warning on its own — independent of `--allow-any-origin` —
+  because clients without an `Origin` header (curl, local tools) bypass the
+  Origin gate, and without `--tunnel` local mode mints no bearer, so a public
+  bind is reachable from the LAN unauthenticated (with `--tunnel` the mandatory
+  bearer still gates every request). Adding `--allow-any-origin` stacks its own
+  warning on top.
 - **`--tunnel` mints a mandatory bearer.** The bearer is high-entropy, printed
   to **stderr only**, never embedded in the public URL or any query string, and
   checked in constant time before any routing.

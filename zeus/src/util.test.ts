@@ -57,11 +57,27 @@ test('insecureFlagWarnings has one line for allowAnyOrigin on a loopback host', 
   expect(warnings[0]).toContain('--allow-any-origin')
 })
 
-test('insecureFlagWarnings has an EXTRA loud DANGER line for allowAnyOrigin + non-loopback host', () => {
-  const warnings = insecureFlagWarnings({ host: '0.0.0.0', allowAnyOrigin: true, tunnel: false })
+test('insecureFlagWarnings fires a loud DANGER line for a non-loopback host alone (no --allow-any-origin)', () => {
+  const warnings = insecureFlagWarnings({ host: '0.0.0.0', allowAnyOrigin: false, tunnel: false })
   expect(warnings).toHaveLength(1)
   expect(warnings[0]).toContain('DANGER')
   expect(warnings[0]).toContain('0.0.0.0')
+})
+
+test('insecureFlagWarnings has BOTH the DANGER non-loopback line and the allow-any-origin line for allowAnyOrigin + non-loopback host', () => {
+  const warnings = insecureFlagWarnings({ host: '0.0.0.0', allowAnyOrigin: true, tunnel: false })
+  expect(warnings).toHaveLength(2)
+  expect(warnings[0]).toContain('DANGER')
+  expect(warnings[0]).toContain('0.0.0.0')
+  expect(warnings[1]).toContain('--allow-any-origin')
+})
+
+test('insecureFlagWarnings DANGER line drops the unauthenticated claim when tunnel:true (bearer gates the bind)', () => {
+  const warnings = insecureFlagWarnings({ host: '0.0.0.0', allowAnyOrigin: false, tunnel: true })
+  const danger = warnings.find((w) => w.includes('DANGER'))
+  expect(danger).toContain('0.0.0.0')
+  expect(danger).not.toContain('unauthenticated')
+  expect(danger).toContain('bearer')
 })
 
 test('insecureFlagWarnings notes public exposure when tunnel:true', () => {
@@ -72,6 +88,6 @@ test('insecureFlagWarnings notes public exposure when tunnel:true', () => {
 
 test('insecureFlagWarnings returns strings and performs no I/O', () => {
   const warnings = insecureFlagWarnings({ host: '0.0.0.0', allowAnyOrigin: true, tunnel: true })
-  expect(warnings).toHaveLength(2)
+  expect(warnings).toHaveLength(3)
   expect(warnings.every((w) => typeof w === 'string')).toBe(true)
 })

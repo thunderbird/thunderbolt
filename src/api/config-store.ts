@@ -41,26 +41,3 @@ export const selectBuiltInAgentEnabled = (config: AppConfig): boolean => config.
 
 /** Whether the UI offers adding custom agents. Absent config defaults to allowed. */
 export const selectAllowCustomAgents = (config: AppConfig): boolean => config.allowCustomAgents !== false
-
-/** Resolves once zustand-persist has restored the store, so callers reading
- *  state during init don't see the empty initial value on cold start. */
-export const waitForConfigHydration = (): Promise<void> => {
-  if (useConfigStore.persist.hasHydrated()) {
-    return Promise.resolve()
-  }
-  return new Promise<void>((resolve) => {
-    const unsub = useConfigStore.persist.onFinishHydration(() => {
-      unsub()
-      resolve()
-    })
-    // Belt-and-braces against a race where hydration finishes between the
-    // hasHydrated() check above and the subscription — re-check on the next
-    // microtask so we never hang waiting for an event that has already fired.
-    queueMicrotask(() => {
-      if (useConfigStore.persist.hasHydrated()) {
-        unsub()
-        resolve()
-      }
-    })
-  })
-}

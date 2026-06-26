@@ -658,6 +658,25 @@ test('a spawn ENOENT rejects with an unavailable error and only closes the serve
   expect(calls.killed).toBe(0)
 })
 
+test('a spawn error that lands AFTER the face resolved (listen won the race) reaps the child instead of leaving a zombie face', async () => {
+  const logger = makeLogger()
+  const { server, hooks, calls, deps } = makeHarness()
+  const onChildExit = mock(() => {})
+  // listen wins the race: the start promise resolves a live face first...
+  const face = await startMcpFace(baseOpts(logger, deps, { onChildExit }))
+  expect(typeof face.url).toBe('string')
+  // ...then the child's spawn error lands late. The resolved face must NOT be left
+  // pointing at a dead child: the http server is torn down and the caller is told
+  // via onChildExit, exactly as a self-exit would. Without the once-guard the late
+  // onSpawnError would server.close() under the live face and skip onChildExit.
+  hooks.onSpawnError!(Object.assign(new Error('enoent'), { code: 'ENOENT' }))
+  expect(server.close).toHaveBeenCalled()
+  expect(onChildExit).toHaveBeenCalledTimes(1)
+  expect(onChildExit).toHaveBeenCalledWith({ code: null, signal: null })
+  // Reaping a failed spawn must not SIGKILL (there is no live child to kill).
+  expect(calls.killed).toBe(0)
+})
+
 test('a bind failure rejects with an unavailable error and SIGKILLs the child first', async () => {
   const logger = makeLogger()
   // Server whose listen never fires success but emits an error.

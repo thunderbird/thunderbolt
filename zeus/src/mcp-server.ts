@@ -36,7 +36,7 @@ import { createNdjsonReader } from './relay'
 import { createMultiplexer } from './mcp-multiplexer'
 import { superviseChild as defaultSuperviseChild } from './child'
 import { formatHostForUrl, makeCloseLatch } from './util'
-import type { JsonRpcMessage, McpTransport, McpTransportClass, StartMcpFace } from './types'
+import type { ChildExit, JsonRpcMessage, McpTransport, McpTransportClass, StartMcpFace } from './types'
 
 /** Default request body cap: 4 MiB. Larger POST bodies are rejected with 413. */
 const DEFAULT_BODY_CAP_BYTES = 4 << 20
@@ -171,6 +171,15 @@ const startMcpFace: StartMcpFace = ({
   return new Promise((resolve, reject) => {
     const latch = makeCloseLatch()
 
+    // The start promise settles exactly once. `listen` success resolves a live
+    // face; a spawn/bind error rejects. This once-guard makes whichever fires
+    // first win so the loser is a no-op — `latch.settled()` only tracks the CLOSE
+    // lifecycle, so without it a spawn error that lands just AFTER the listen
+    // callback resolved would tear the http server down under an already-resolved
+    // face (and silently skip onChildExit), leaving the caller holding a live
+    // handle pointing at a dead child. See reapChild + onSpawnError below.
+    let startSettled = false
+
     // The bridge-owned multiplexer: owns the single child's initialize cache, the
     // global request-id remap, and the live-transport registry. `writeChild`
     // reads `supervisor` lazily — it's declared below but always assigned before
@@ -211,19 +220,33 @@ const startMcpFace: StartMcpFace = ({
       if (typeof server.closeAllConnections === 'function') server.closeAllConnections()
     }
 
+    // Flush the child's stdout, tear the http server down, and notify the caller.
+    // Shared by a normal self-exit and by a spawn error that lands AFTER the face
+    // already resolved, so a resolved face never silently points at a dead child.
+    const reapChild = (info: ChildExit): void => {
+      reader.flush()
+      shutdownHttp()
+      if (onChildExit) onChildExit(info)
+    }
+
     const supervisor = superviseChild({
       launch,
       spawn: deps.spawn,
       logger,
       onStdout: (chunk) => reader.push(chunk),
-      onExit: (info) => {
-        reader.flush()
-        shutdownHttp()
-        if (onChildExit) onChildExit(info)
-      },
+      onExit: reapChild,
       onSpawnError: (err) => {
+        // A spawn failure (ENOENT/EACCES): the child never produced a usable face.
+        // If listen already won the race and resolved the start promise, reap like
+        // a self-exit so the caller learns the child is dead and nothing is
+        // orphaned; otherwise this is the first settle, so reject.
+        if (startSettled) {
+          reapChild({ code: null, signal: null })
+          return
+        }
+        startSettled = true
         server.close()
-        if (!latch.settled()) reject(new UnavailableError({ code: err.code }))
+        reject(new UnavailableError({ code: err.code }))
       },
     })
 
@@ -329,6 +352,11 @@ const startMcpFace: StartMcpFace = ({
     })
 
     server.listen(port, host, () => {
+      // If a spawn/bind error already rejected (won the race), the http server is
+      // being torn down — resolving now would hand back a dead face (and print a
+      // spurious banner), so this callback is a no-op once the start has settled.
+      if (startSettled) return
+      startSettled = true
       const actualPort = (server.address() as AddressInfo).port
       const url = `http://${formatHostForUrl(host)}:${actualPort}${MCP_PATH}`
       logger.banner(url)

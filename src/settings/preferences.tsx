@@ -39,6 +39,7 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from '@/components/ui/alert-dialog'
+import { AppVersionSection } from './app-version-section'
 import { SyncSetupModal } from '@/components/sync-setup/sync-setup-modal'
 import { Button } from '@/components/ui/button'
 import { Combobox } from '@/components/ui/combobox'
@@ -1033,6 +1034,10 @@ export default function PreferencesSettingsPage() {
           )}
         </div>
       </SectionCard>
+
+      <div className="h-6" />
+
+      <AppVersionSection />
 
       <SyncSetupModal open={syncSetupOpen} onOpenChange={setSyncSetupOpen} onComplete={handleSyncSetupComplete} />
 

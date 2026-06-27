@@ -2,7 +2,8 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { useReducer, useEffect, useCallback } from 'react'
+import { useEffect, useCallback } from 'react'
+import { create } from 'zustand'
 import { check, type Update } from '@tauri-apps/plugin-updater'
 import { relaunch } from '@tauri-apps/plugin-process'
 import { isDesktop } from '@/lib/platform'
@@ -54,24 +55,59 @@ export const updateReducer = (state: UpdateState, action: UpdateAction): UpdateS
   }
 }
 
+const extractErrorMessage = (err: unknown, fallback: string): string => {
+  if (err instanceof Error) {
+    return err.message
+  }
+  if (typeof err === 'string') {
+    return err
+  }
+  if (err && typeof err === 'object' && 'message' in err && typeof err.message === 'string') {
+    return err.message
+  }
+  try {
+    const serialized = JSON.stringify(err)
+    return serialized && serialized !== '{}' ? serialized : fallback
+  } catch {
+    return fallback
+  }
+}
+
+type UpdateStore = UpdateState & {
+  dispatch: (action: UpdateAction) => void
+}
+
+const useUpdateStore = create<UpdateStore>((set) => ({
+  ...initialUpdateState,
+  dispatch: (action) => set((state) => updateReducer(state, action)),
+}))
+
 export type DesktopUpdateState = UpdateState & {
   checkForUpdates: () => Promise<void>
   downloadAndInstall: () => Promise<void>
   restartApp: () => Promise<void>
 }
 
+let didAutoCheck = false
+
 /**
  * Hook to manage desktop application updates using Tauri's updater plugin.
  * Only active on desktop platforms (macOS, Windows, Linux).
+ * State lives in a shared zustand store so multiple call sites (toast,
+ * Settings page) stay in sync.
  */
 export const useDesktopUpdate = (): DesktopUpdateState => {
-  const [state, dispatch] = useReducer(updateReducer, initialUpdateState)
+  const status = useUpdateStore((s) => s.status)
+  const update = useUpdateStore((s) => s.update)
+  const error = useUpdateStore((s) => s.error)
+  const downloadProgress = useUpdateStore((s) => s.downloadProgress)
 
   const checkForUpdates = useCallback(async () => {
     if (!isDesktop()) {
       return
     }
 
+    const { dispatch } = useUpdateStore.getState()
     dispatch({ type: 'CHECK_START' })
 
     try {
@@ -79,22 +115,26 @@ export const useDesktopUpdate = (): DesktopUpdateState => {
       dispatch({ type: 'CHECK_SUCCESS', update: availableUpdate })
     } catch (err) {
       console.error('Failed to check for updates:', err)
-      dispatch({ type: 'ERROR', error: err instanceof Error ? err.message : 'Failed to check for updates' })
+      useUpdateStore
+        .getState()
+        .dispatch({ type: 'ERROR', error: extractErrorMessage(err, 'Failed to check for updates') })
     }
   }, [])
 
   const downloadAndInstall = useCallback(async () => {
-    if (!state.update) {
+    const current = useUpdateStore.getState().update
+    if (!current) {
       return
     }
 
+    const { dispatch } = useUpdateStore.getState()
     dispatch({ type: 'DOWNLOAD_START' })
 
     let contentLength = 0
     let bytesDownloaded = 0
 
     try {
-      await state.update.downloadAndInstall((event) => {
+      await current.downloadAndInstall((event) => {
         if (event.event === 'Started' && event.data.contentLength) {
           contentLength = event.data.contentLength
           bytesDownloaded = 0
@@ -102,19 +142,21 @@ export const useDesktopUpdate = (): DesktopUpdateState => {
           bytesDownloaded += event.data.chunkLength
           if (contentLength > 0) {
             const percentage = Math.round((bytesDownloaded / contentLength) * 100)
-            dispatch({ type: 'DOWNLOAD_PROGRESS', progress: Math.min(percentage, 100) })
+            useUpdateStore.getState().dispatch({ type: 'DOWNLOAD_PROGRESS', progress: Math.min(percentage, 100) })
           }
         } else if (event.event === 'Finished') {
-          dispatch({ type: 'DOWNLOAD_PROGRESS', progress: 100 })
+          useUpdateStore.getState().dispatch({ type: 'DOWNLOAD_PROGRESS', progress: 100 })
         }
       })
 
-      dispatch({ type: 'DOWNLOAD_SUCCESS' })
+      useUpdateStore.getState().dispatch({ type: 'DOWNLOAD_SUCCESS' })
     } catch (err) {
       console.error('Failed to download update:', err)
-      dispatch({ type: 'ERROR', error: err instanceof Error ? err.message : 'Failed to download update' })
+      useUpdateStore
+        .getState()
+        .dispatch({ type: 'ERROR', error: extractErrorMessage(err, 'Failed to download update') })
     }
-  }, [state.update])
+  }, [])
 
   const restartApp = useCallback(async () => {
     try {
@@ -131,17 +173,18 @@ export const useDesktopUpdate = (): DesktopUpdateState => {
       // Clear the flag so a stale flag doesn't force-redirect on next manual launch
       clearPostUpdateFlag()
       console.error('Failed to restart app:', err)
-      dispatch({ type: 'ERROR', error: err instanceof Error ? err.message : 'Failed to restart app' })
+      useUpdateStore.getState().dispatch({ type: 'ERROR', error: extractErrorMessage(err, 'Failed to restart app') })
     }
   }, [])
 
-  // Check for updates on mount (desktop only)
+  // Auto-check once per session on desktop. Guarded so mounting the hook in
+  // multiple places (toast + Settings) doesn't fire repeat checks.
   useEffect(() => {
-    if (!isDesktop()) {
+    if (!isDesktop() || didAutoCheck) {
       return
     }
+    didAutoCheck = true
 
-    // Delay initial check to not block app startup
     const timeout = setTimeout(() => {
       checkForUpdates()
     }, 5000)
@@ -150,7 +193,10 @@ export const useDesktopUpdate = (): DesktopUpdateState => {
   }, [checkForUpdates])
 
   return {
-    ...state,
+    status,
+    update,
+    error,
+    downloadProgress,
     checkForUpdates,
     downloadAndInstall,
     restartApp,

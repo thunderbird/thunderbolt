@@ -10,18 +10,11 @@ interface Window {
   }
 }
 
-// Wa-sqlite ships some entry points without .d.ts coverage. OPFSCoopSyncVFS
-// is imported statically by the wa-sqlite worker (src/db/wa-sqlite-worker.ts);
-// the legacy-reader (src/migrations/pre-workspaces-attach/legacy-reader.ts)
-// loads `wa-sqlite-async-dynamic-main.mjs` via dynamic `import()` so Vite
-// doesn't rewrite the URL away from the WASM sibling — TypeScript still
-// needs a declaration for the path to resolve.
+// Wa-sqlite ships `OPFSCoopSyncVFS` without .d.ts coverage. Imported
+// statically by `src/db/wa-sqlite-worker.ts` and by
+// `src/migrations/pre-workspaces-attach/legacy-reader.worker.ts`.
 declare module '@journeyapps/wa-sqlite/src/examples/OPFSCoopSyncVFS.js' {
   export class OPFSCoopSyncVFS {
     static create(name: string, module: unknown, options?: unknown): Promise<OPFSCoopSyncVFS>
   }
-}
-declare module '@journeyapps/wa-sqlite/dist/wa-sqlite-async-dynamic-main.mjs' {
-  const factory: () => Promise<unknown>
-  export default factory
 }

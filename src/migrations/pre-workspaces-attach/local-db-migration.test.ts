@@ -17,7 +17,7 @@ import { afterAll, afterEach, beforeAll, describe, expect, it } from 'bun:test'
 import { and, eq, sql } from 'drizzle-orm'
 import type { LegacyBackend, LegacyReader } from './legacy-reader'
 import { runLocalDbMigration } from './local-db-migration'
-import { setCompletionFlag } from './completion-flag'
+import { isDataCompletionFlagSet, setCompletionFlag, setDataCompletionFlag } from './completion-flag'
 
 const serverId = '00000000-0000-0000-0000-000000000aaa'
 const otherServerId = '00000000-0000-0000-0000-000000000bbb'
@@ -448,6 +448,99 @@ describe('runLocalDbMigration', () => {
     })
     expect(opened).not.toBeNull()
     expect(opened!.closed).toBe(true)
+  })
+
+  it('sets the data-completion flag and leaves the overall flag unset when the api-key stamp throws', async () => {
+    // First boot: data copy + ps_crud replacement succeed, but the api-key
+    // stamp blows up. The data flag must land so the next boot's retry
+    // doesn't re-run the destructive queue replacement and clobber any
+    // interim user writes.
+    const db = getDb()
+    await db.run(sql.raw(`CREATE TABLE ps_crud (id INTEGER PRIMARY KEY, tx_id INTEGER, data TEXT)`))
+    await db.run(sql.raw(`CREATE TABLE ps_tx (id INTEGER PRIMARY KEY, next_tx INTEGER)`))
+    await db.run(sql.raw(`INSERT INTO ps_tx (id, next_tx) VALUES (1, 0)`))
+
+    const base = makeFakeReader(fullLegacySeed())
+    const erroringReader: LegacyReader = {
+      hasTable: (name) => {
+        // Make the api-key stamp's models_secrets lookup throw — every earlier
+        // step (table copies + ps_crud replacement) goes through this same
+        // hasTable hook on the names below.
+        if (name === 'models_secrets') {
+          throw new Error('boom')
+        }
+        return base.hasTable(name)
+      },
+      columnNames: base.columnNames,
+      selectAll: base.selectAll,
+      close: base.close,
+    }
+
+    await expect(
+      runLocalDbMigration({
+        newDb: db,
+        serverId,
+        personalWorkspaceId,
+        legacyDb: legacyDbHandle,
+        openReader: async () => erroringReader,
+      }),
+    ).rejects.toThrow('boom')
+
+    expect(isDataCompletionFlagSet(serverId)).toBe(true)
+    expect(localStorage.getItem(`pre_workspaces_attach_completed__${serverId}`)).toBeNull()
+  })
+
+  it('skips data copy and ps_crud replacement on retry when the data-completion flag is set', async () => {
+    // Simulates the second-boot half of the partial-failure scenario above.
+    // Pre-set the data flag, pre-seed a "user-authored after the failed boot"
+    // ps_crud row, then run the migration: the destructive steps must be
+    // skipped (the interim row stays, ps_crud isn't re-replaced) and the
+    // api-key stamp still runs to completion.
+    const db = getDb()
+    await db.run(sql.raw(`CREATE TABLE ps_crud (id INTEGER PRIMARY KEY, tx_id INTEGER, data TEXT)`))
+    await db.run(sql.raw(`CREATE TABLE ps_tx (id INTEGER PRIMARY KEY, next_tx INTEGER)`))
+    await db.run(sql.raw(`INSERT INTO ps_tx (id, next_tx) VALUES (1, 0)`))
+    await db.run(sql.raw(`INSERT INTO ps_crud (id, tx_id, data) VALUES (42, 10, '{"interim":"user-write"}')`))
+    // Seed a personal-workspace model row so the api-key stamp has somewhere
+    // to land — the data-copy step is skipped this run.
+    await db.insert(modelsTable).values({
+      id: 'mdl1',
+      provider: 'openai',
+      name: 'GPT-4',
+      model: 'gpt-4',
+      enabled: 1,
+      workspaceId: personalWorkspaceId,
+    })
+
+    setDataCompletionFlag(serverId)
+
+    const seed = fullLegacySeed()
+    seed.ps_crud = {
+      columns: ['id', 'tx_id', 'data'],
+      rows: [[1, 7, '{"op":"PUT"}']],
+    }
+
+    const result = await runLocalDbMigration({
+      newDb: db,
+      serverId,
+      personalWorkspaceId,
+      legacyDb: legacyDbHandle,
+      openReader: openReaderFor(seed),
+    })
+
+    expect(result.ranAttach).toBe(true)
+    // Destructive steps skipped → no per-table counts and no ps_crud import.
+    expect(result.rowsInsertedByTable).toEqual({})
+    expect(result.legacyPsCrudCopied).toBe(0)
+    // Interim user-authored ps_crud row must still be there.
+    const remaining = (await db.all(sql.raw(`SELECT id FROM ps_crud ORDER BY id`))) as readonly unknown[]
+    expect(remaining).toHaveLength(1)
+    // The api-key stamp still runs — independently idempotent — and lands on
+    // the seeded personal-workspace row.
+    expect(result.modelApiKeysCopied).toBe(1)
+    const model = await db.select().from(modelsTable).where(eq(modelsTable.id, 'mdl1'))
+    expect(model[0]?.apiKey).toBe('sk-legacy')
+    expect(localStorage.getItem(`pre_workspaces_attach_completed__${serverId}`)).toBe('1')
   })
 
   it('closes the legacy reader even if a copy step throws', async () => {

@@ -3,7 +3,12 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { afterEach, describe, expect, it } from 'bun:test'
-import { isCompletionFlagSet, setCompletionFlag } from './completion-flag'
+import {
+  isCompletionFlagSet,
+  isDataCompletionFlagSet,
+  setCompletionFlag,
+  setDataCompletionFlag,
+} from './completion-flag'
 
 const serverA = '00000000-0000-0000-0000-00000000000a'
 const serverB = '00000000-0000-0000-0000-00000000000b'
@@ -44,6 +49,35 @@ describe('pre-workspaces-attach completion flag', () => {
     // Defensive: a corrupted/legacy value other than the literal '1' must not be
     // mistaken for completion. Without this the migration could silently skip.
     localStorage.setItem(`pre_workspaces_attach_completed__${serverA}`, 'true')
+    expect(isCompletionFlagSet(serverA)).toBe(false)
+  })
+})
+
+describe('pre-workspaces-attach data-completion flag', () => {
+  afterEach(() => {
+    localStorage.clear()
+  })
+
+  it('returns false when the data flag is unset for the given server', () => {
+    expect(isDataCompletionFlagSet(serverA)).toBe(false)
+  })
+
+  it('returns true after setDataCompletionFlag is called for the same server', () => {
+    setDataCompletionFlag(serverA)
+    expect(isDataCompletionFlagSet(serverA)).toBe(true)
+  })
+
+  it('writes the literal localStorage key under the data namespace', () => {
+    setDataCompletionFlag(serverA)
+    expect(localStorage.getItem(`pre_workspaces_attach_data_completed__${serverA}`)).toBe('1')
+  })
+
+  it('is independent of the overall completion flag', () => {
+    // The destructive part of the migration sets the data flag without
+    // necessarily setting the overall completion flag — that combination
+    // signals "queue replacement done, api-key stamp still pending".
+    setDataCompletionFlag(serverA)
+    expect(isDataCompletionFlagSet(serverA)).toBe(true)
     expect(isCompletionFlagSet(serverA)).toBe(false)
   })
 })

@@ -25,7 +25,12 @@ export { findLegacyDbFilename, legacyDbFilenames } from './legacy-db-path'
 export type { LegacyDbFilename, LegacyDbProbeDeps, LegacyDbProbeResult } from './legacy-db-path'
 export { openLegacyReader } from './legacy-reader'
 export type { LegacyBackend, LegacyReader } from './legacy-reader'
-export { isCompletionFlagSet, setCompletionFlag } from './completion-flag'
+export {
+  isCompletionFlagSet,
+  isDataCompletionFlagSet,
+  setCompletionFlag,
+  setDataCompletionFlag,
+} from './completion-flag'
 export { migrateLocalStorageIfNeeded } from './local-storage-migration'
 export type { LocalStorageMigrationResult } from './local-storage-migration'
 export { migrateEncryptionKeysIfNeeded } from './indexeddb-migration'

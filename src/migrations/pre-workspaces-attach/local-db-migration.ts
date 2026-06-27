@@ -34,7 +34,12 @@
 import { and, eq, isNull, sql } from 'drizzle-orm'
 import type { AnyDrizzleDatabase } from '@/db/database-interface'
 import { modelsTable } from '@/db/tables'
-import { isCompletionFlagSet, setCompletionFlag } from './completion-flag'
+import {
+  isCompletionFlagSet,
+  isDataCompletionFlagSet,
+  setCompletionFlag,
+  setDataCompletionFlag,
+} from './completion-flag'
 import type { LegacyBackend, LegacyReader } from './legacy-reader'
 import { openLegacyReader as defaultOpenLegacyReader } from './legacy-reader'
 import { allLegacyTables, type LegacyTable } from './table-list'
@@ -374,6 +379,7 @@ export const runLocalDbMigration = async ({
 
   if (!legacyDb) {
     // No legacy file on disk — flag complete so we don't re-probe every boot.
+    setDataCompletionFlag(serverId)
     setCompletionFlag(serverId)
     return emptyResult(performance.now() - startedAt)
   }
@@ -384,21 +390,33 @@ export const runLocalDbMigration = async ({
   // path that reaches the return below is the one where the assignment
   // executed. TypeScript's flow analysis can't model finally-rethrow.
   let modelApiKeysCopied!: number
-  let legacyPsCrudCopied!: number
+  let legacyPsCrudCopied = 0
   try {
-    for (const table of allLegacyTables) {
-      rowsInsertedByTable[table.name] = await copyTableViaReader(reader, newDb, table, personalWorkspaceId)
+    // Destructive steps (table copy + ps_crud replacement) run at most once.
+    // Gated on `data_completion` so a partial-failure retry — where the api-key
+    // stamp below threw on the previous boot — doesn't re-run the queue wipe
+    // and clobber rows the user authored in the failed-state interim.
+    if (!isDataCompletionFlagSet(serverId)) {
+      for (const table of allLegacyTables) {
+        rowsInsertedByTable[table.name] = await copyTableViaReader(reader, newDb, table, personalWorkspaceId)
+      }
+      // Replace the new DB's `ps_crud` with the legacy queue. Drops the entries
+      // our data-copy step just generated (already on the BE for sync-enabled
+      // users) and carries forward only what legacy had legitimately pending.
+      // Must run BEFORE the api-key stamp — that stamp's UPDATEs queue new
+      // `ps_crud` entries that *do* need to upload, and any wipe afterward
+      // would lose them.
+      legacyPsCrudCopied = await replacePsCrudFromLegacy(reader, newDb)
+      // Pin the data-completion flag the instant the destructive part lands so
+      // any later throw in this run still leaves the next boot skipping the
+      // queue replacement.
+      setDataCompletionFlag(serverId)
     }
-    // Replace the new DB's `ps_crud` with the legacy queue. Drops the entries
-    // our data-copy step just generated (already on the BE for sync-enabled
-    // users) and carries forward only what legacy had legitimately pending.
-    // Must run BEFORE the api-key stamp — that stamp's UPDATEs queue new
-    // `ps_crud` entries that *do* need to upload, and any wipe afterward
-    // would lose them.
-    legacyPsCrudCopied = await replacePsCrudFromLegacy(reader, newDb)
     // Must run AFTER `models` has been copied (PK lookup on new `models`
     // rows) and AFTER the ps_crud replacement (otherwise its writes would
-    // be wiped).
+    // be wiped). Independently idempotent (`isNull(modelsTable.apiKey)` guard),
+    // so retrying after a failed boot is safe even though the data steps above
+    // are now skipped.
     modelApiKeysCopied = await stampModelApiKeysFromLegacyReader(reader, newDb, personalWorkspaceId)
   } finally {
     await reader.close()

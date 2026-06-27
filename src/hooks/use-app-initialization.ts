@@ -166,29 +166,22 @@ const executeInitializationSteps = async (httpClient?: HttpClient): Promise<Hand
   // layout the new build expects, BEFORE any code reads from them. Step 3 (the
   // SQLite ATTACH) needs an authenticated session and runs in `runPostAuthBootstrap`.
   // Step 1 (sync) — auth token + device id must be in the namespaced key by the
-  // time HTTP client / Better Auth read them. Telemetry is best-effort; PostHog
-  // is initialized later in the boot flow but `trackEvent` no-ops gracefully.
+  // time HTTP client / Better Auth read them. Telemetry is deferred to after the
+  // PostHog init below — `trackEvent` no-ops before the client exists, and this
+  // is exactly the cohort we most want telemetry from.
   const migrationServerId = resolution.serverEntry.serverId
   const storageMigration = migrateLocalStorageIfNeeded(migrationServerId)
-  trackEvent('migration_storage_completed', {
-    migrated_token: storageMigration.migratedToken,
-    migrated_device_id: storageMigration.migratedDeviceId,
-  })
   // Step 2 (async) — encryption keys. Wrapped in try/catch so a failure here
   // never blocks app boot; users hit re-enrolment via the standard E2EE setup
   // flow if their keys can't be migrated, which is preferable to a hard error
   // screen during the rollout window.
+  let keyMigration: { migrated: boolean; entryCount: number } | null = null
+  let keyMigrationError: unknown = null
   try {
-    const keyMigration = await migrateEncryptionKeysIfNeeded(migrationServerId)
-    trackEvent('migration_keys_completed', {
-      migrated: keyMigration.migrated,
-      entry_count: keyMigration.entryCount,
-    })
+    keyMigration = await migrateEncryptionKeysIfNeeded(migrationServerId)
   } catch (error) {
     console.error('Failed to migrate pre-Workspaces encryption keys:', error)
-    trackError(createHandleError('PRE_WORKSPACES_IDB_MIGRATION_FAILED', 'Failed to migrate encryption keys', error), {
-      migration_step: 'indexeddb',
-    })
+    keyMigrationError = error
   }
 
   // Background refresh of /v1/config for returning server-mode boots — keeps cached UI flags
@@ -307,6 +300,26 @@ const executeInitializationSteps = async (httpClient?: HttpClient): Promise<Hand
     platform: getPlatform(),
   }
   trackEvent('app_init_timing', initTimingPayload)
+
+  // Pre-Workspaces v1 migration telemetry. Fired here (not at the call sites
+  // above) so the events reach PostHog: the migrations run BEFORE step 8 initialises
+  // the client, and trackEvent / trackError silently drop while it's null — losing
+  // exactly the cohort we most want visibility into.
+  trackEvent('migration_storage_completed', {
+    migrated_token: storageMigration.migratedToken,
+    migrated_device_id: storageMigration.migratedDeviceId,
+  })
+  if (keyMigration) {
+    trackEvent('migration_keys_completed', {
+      migrated: keyMigration.migrated,
+      entry_count: keyMigration.entryCount,
+    })
+  } else if (keyMigrationError) {
+    trackError(
+      createHandleError('PRE_WORKSPACES_IDB_MIGRATION_FAILED', 'Failed to migrate encryption keys', keyMigrationError),
+      { migration_step: 'indexeddb' },
+    )
+  }
 
   return {
     success: true,

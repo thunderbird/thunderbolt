@@ -1,4 +1,4 @@
-# pre-workspaces-attach
+# Pre-Workspaces Attach Migration
 
 One-shot data migration that bridges the pre-Workspaces v1 local state (an
 un-namespaced auth token, an un-namespaced IndexedDB key store, and a
@@ -11,6 +11,8 @@ steps fire from `useAppInitialization` right after `activateServer()`; the
 SQLite step fires from `runPostAuthBootstrap` between
 `ensurePersonalWorkspace` and `reconcileDefaults`.
 
+Implementation lives in `src/migrations/pre-workspaces-attach/`.
+
 ## Files
 
 - `table-list.ts` — canonical list of legacy SQLite tables
@@ -18,10 +20,13 @@ SQLite step fires from `runPostAuthBootstrap` between
   `needsWorkspaceId` / `needsScope` stamping flags.
 - `legacy-db-path.ts` — locates `thunderbolt-sync.db` (fallback
   `thunderbolt.db`) in OPFS, the only filesystem wa-sqlite reads from.
-- `completion-flag.ts` — per-device, per-server localStorage flag
-  (`pre_workspaces_attach_completed__<serverId>`). Marked done once the SQLite
-  migration finishes; later boots short-circuit on the flag. localStorage
-  rather than the synced `settings` table so the flag stays device-local and
+- `completion-flag.ts` — per-device, per-server localStorage flags.
+  `pre_workspaces_attach_data_completed__<serverId>` lands the instant the
+  destructive table-copy + `ps_crud` replacement succeed, so a partial-failure
+  retry doesn't re-run the queue wipe and clobber interim writes.
+  `pre_workspaces_attach_completed__<serverId>` lands after every step
+  (including the api-key stamp); later boots short-circuit on it. localStorage
+  rather than the synced `settings` table so the flags stay device-local and
   can't race a second device's first-time migration.
 
 ## Removal (once every active install has migrated)
@@ -33,7 +38,8 @@ SQLite step fires from `runPostAuthBootstrap` between
    - `backend/src/powersync/upload-handlers/workspace-scoped.ts` — the
      `computePersonalWorkspaceId(ctx.userId)` fallback in `validate()`/`apply()`
      for PUTs with no `workspace_id`.
-2. Delete this folder.
-3. Optional housekeeping: delete the localStorage flag and the legacy
+2. Delete `src/migrations/pre-workspaces-attach/`.
+3. Delete this doc.
+4. Optional housekeeping: delete the localStorage flags and the legacy
    `thunderbolt-sync.db` files via a one-off boot-time cleanup. Not required —
    both are harmless once the migration code is gone.

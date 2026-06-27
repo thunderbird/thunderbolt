@@ -1829,7 +1829,7 @@ describe('PowerSync API', () => {
       const response = await app.handle(
         new Request('http://localhost/powersync/upload', {
           method: 'PUT',
-          headers: uploadHeaders('bearer-patch-device-app-version'),
+          headers: uploadHeaders('bearer-patch-device-app-version', 'test-device-id'),
           body: JSON.stringify({
             operations: [
               {

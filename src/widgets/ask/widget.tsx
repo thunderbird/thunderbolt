@@ -5,6 +5,7 @@
 import { useCurrentChatSession } from '@/chats/chat-store'
 import { useDatabase } from '@/contexts'
 import { getMessage, updateMessageCache } from '@/dal/chat-messages'
+import { useActiveWorkspaceId } from '@/lib/active-workspace'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 
 import { Ask, type AskSubmission } from './display'
@@ -25,13 +26,14 @@ export const AskWidget = ({ prompt, mode, options = [], explanation, messageId }
   const db = useDatabase()
   const queryClient = useQueryClient()
   const { chatInstance } = useCurrentChatSession()
+  const workspaceId = useActiveWorkspaceId() ?? ''
   const storageKey = askStorageKey({ prompt, mode, options })
-  const queryKey = ['askState', messageId, storageKey]
+  const queryKey = ['askState', workspaceId, messageId, storageKey]
 
   const { data: saved, isPending } = useQuery({
     queryKey,
     queryFn: async () => {
-      const message = await getMessage(db, messageId)
+      const message = await getMessage(db, workspaceId, messageId)
       const cache = message?.cache as Record<string, unknown> | null | undefined
       return (cache?.[storageKey] as AskCacheEntry | undefined) ?? null
     },
@@ -45,7 +47,7 @@ export const AskWidget = ({ prompt, mode, options = [], explanation, messageId }
     const entry: AskCacheEntry = { prompt, mode, selectedIds, chosen, matched, text }
     // Persist first so the response is recorded (and restores on reload)
     // regardless of what follows.
-    await updateMessageCache(db, messageId, storageKey, entry)
+    await updateMessageCache(db, workspaceId, messageId, storageKey, entry)
     // Keep the (infinitely-cached) query in sync so an unmount/remount in the
     // same session restores the answer instead of re-reading the stale `null`.
     queryClient.setQueryData(queryKey, entry)

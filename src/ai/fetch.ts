@@ -685,7 +685,7 @@ export const aiFetchStreamingResponse = async ({
             messages
               .filter((message) => message.role === 'assistant')
               .map(async (message) => {
-                const stored = await getMessage(db, message.id)
+                const stored = await getMessage(db, workspaceId, message.id)
                 return stored?.cache ? collectAskEntriesFromCache(stored.cache as Record<string, unknown>) : []
               }),
           )

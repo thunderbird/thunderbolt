@@ -58,6 +58,10 @@ describe('Export DAL', () => {
       'skills',
       'tasks',
       'triggers',
+      'workspace_memberships',
+      'workspace_pending_memberships',
+      'workspace_permissions',
+      'workspaces',
     ]
     const actualKeys = Object.keys(exported.tables).sort() as string[]
     expect(actualKeys).toEqual(expectedKeys.sort())
@@ -161,7 +165,13 @@ describe('Export DAL', () => {
 
   it('returns empty arrays for tables when the local DB is empty', async () => {
     const exported = await exportUserData(getDb(), { id: 'user-1', email: null })
-    for (const rows of Object.values(exported.tables)) {
+    // `workspaces` is seeded by the test harness (`seedPersonalWorkspace` in
+    // `resetTestDatabase`) so the active-workspace hooks resolve; every other
+    // table is genuinely empty.
+    for (const [name, rows] of Object.entries(exported.tables)) {
+      if (name === 'workspaces') {
+        continue
+      }
       expect(rows).toEqual([])
     }
   })

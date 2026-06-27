@@ -10,45 +10,53 @@
 @variant dark (&:where(.dark, .dark *));
 
 @theme {
-  --color-background: oklch(1 0 0);
-  --color-foreground: oklch(0.145 0 0);
-  --color-card: oklch(1 0 0);
-  --color-card-foreground: oklch(0.145 0 0);
-  --color-popover: oklch(1 0 0);
-  --color-popover-foreground: oklch(0.145 0 0);
-  --color-primary: #191919;
-  --color-primary-foreground: #ffffff;
-  --color-secondary: #f7f7f8;
-  --color-secondary-foreground: #000000;
-  --color-tertiary: #808080;
-  --color-muted: oklch(0.97 0 0);
-  --color-muted-foreground: oklch(0.556 0 0);
-  --color-accent: oklch(0.97 0 0);
-  --color-accent-foreground: oklch(0.205 0 0);
-  --color-destructive: oklch(0.577 0.245 27.325);
-  --color-destructive-foreground: oklch(0.577 0.245 27.325);
+  /* Typography — self-hosted via @fontsource (imported in src/index.tsx).
+     --font-sans powers the default body/UI font; --font-mono powers code;
+     --font-heading is applied to headings in the base layer below. */
+  --font-sans:
+    'Mona Sans Variable', 'DM Sans Variable', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --font-heading: 'Mozilla Text Variable', ui-sans-serif, system-ui, sans-serif;
+  --font-mono: 'Space Mono', ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+
+  --color-background: #f5f5f5;
+  --color-foreground: #211d1d;
+  --color-card: #fafafa;
+  --color-card-foreground: #211d1d;
+  --color-popover: #fafafa;
+  --color-popover-foreground: #211d1d;
+  --color-primary: #383838;
+  --color-primary-foreground: #fafafa;
+  --color-secondary: #f2f2f2;
+  --color-secondary-foreground: #211d1d;
+  --color-tertiary: #797979;
+  --color-muted: #f2f2f2;
+  --color-muted-foreground: #797979;
+  --color-accent: #e7e7e7;
+  --color-accent-foreground: #211d1d;
+  --color-destructive: #ff5f5f;
+  --color-destructive-foreground: #211d1d;
   --color-success: oklch(0.627 0.17 149.214);
   --color-success-foreground: oklch(0.985 0 0);
   --color-warning: oklch(0.769 0.171 70.67);
   --color-warning-foreground: oklch(0.205 0 0);
-  --color-border: oklch(0.922 0 0);
-  --color-input: oklch(0.922 0 0);
-  --color-ring: oklch(0.708 0 0);
+  --color-border: #e7e7e7;
+  --color-input: #e7e7e7;
+  --color-ring: #383838;
   --color-chart-1: oklch(0.646 0.222 41.116);
   --color-chart-2: oklch(0.6 0.118 184.704);
   --color-chart-3: oklch(0.398 0.07 227.392);
   --color-chart-4: oklch(0.828 0.189 84.429);
   --color-chart-5: oklch(0.769 0.188 70.08);
   --radius: 0.625rem;
-  --color-sidebar: oklch(0.985 0 0);
-  --color-sidebar-foreground: oklch(0.145 0 0);
-  --color-sidebar-primary: oklch(0.205 0 0);
-  --color-sidebar-primary-foreground: oklch(0.985 0 0);
-  --color-sidebar-accent: oklch(0.97 0 0);
-  --color-sidebar-accent-foreground: oklch(0.205 0 0);
-  --color-sidebar-border: oklch(0.922 0 0);
-  --color-sidebar-ring: oklch(0.708 0 0);
-  --color-card-border: #dee8df;
+  --color-sidebar: #fafafa;
+  --color-sidebar-foreground: #211d1d;
+  --color-sidebar-primary: #383838;
+  --color-sidebar-primary-foreground: #fafafa;
+  --color-sidebar-accent: #e7e7e7;
+  --color-sidebar-accent-foreground: #211d1d;
+  --color-sidebar-border: #e7e7e7;
+  --color-sidebar-ring: #383838;
+  --color-card-border: #e7e7e7;
 }
 
 /* ===========================
@@ -125,42 +133,44 @@
 }
 
 .dark {
-  --color-background: oklch(0.145 0 0);
-  --color-foreground: oklch(0.985 0 0);
-  --color-card: oklch(0.145 0 0);
-  --color-card-foreground: oklch(0.985 0 0);
-  --color-popover: oklch(0.145 0 0);
-  --color-popover-foreground: oklch(0.985 0 0);
-  --color-primary: oklch(0.985 0 0);
-  --color-primary-foreground: oklch(0.205 0 0);
-  --color-secondary: oklch(0.269 0 0);
-  --color-secondary-foreground: oklch(0.985 0 0);
-  --color-muted: oklch(0.269 0 0);
-  --color-muted-foreground: oklch(0.708 0 0);
-  --color-accent: oklch(0.269 0 0);
-  --color-accent-foreground: oklch(0.985 0 0);
-  --color-destructive: oklch(0.396 0.141 25.723);
-  --color-destructive-foreground: oklch(0.637 0.237 25.331);
+  --color-background: #1a2329;
+  --color-foreground: #f2f7fc;
+  --color-card: #263035;
+  --color-card-foreground: #f2f7fc;
+  --color-popover: #263035;
+  --color-popover-foreground: #f2f7fc;
+  --color-primary: #fafafa;
+  --color-primary-foreground: #211d1d;
+  --color-secondary: #2f3a40;
+  --color-secondary-foreground: #f2f7fc;
+  --color-tertiary: #9a9a9a;
+  --color-muted: #2f3a40;
+  --color-muted-foreground: #9a9a9a;
+  --color-accent: #323e44;
+  --color-accent-foreground: #f2f7fc;
+  --color-destructive: #ff5f5f;
+  --color-destructive-foreground: #211d1d;
   --color-success: oklch(0.696 0.17 162.48);
   --color-success-foreground: oklch(0.985 0 0);
   --color-warning: oklch(0.828 0.189 84.429);
   --color-warning-foreground: oklch(0.205 0 0);
-  --color-border: oklch(0.269 0 0);
-  --color-input: oklch(0.269 0 0);
-  --color-ring: oklch(0.439 0 0);
+  --color-border: #3c4a55;
+  --color-input: #263035;
+  --color-ring: #45555e;
   --color-chart-1: oklch(0.488 0.243 264.376);
   --color-chart-2: oklch(0.696 0.17 162.48);
   --color-chart-3: oklch(0.769 0.188 70.08);
   --color-chart-4: oklch(0.627 0.265 303.9);
   --color-chart-5: oklch(0.645 0.246 16.439);
-  --color-sidebar: oklch(0.205 0 0);
-  --color-sidebar-foreground: oklch(0.985 0 0);
-  --color-sidebar-primary: oklch(0.488 0.243 264.376);
-  --color-sidebar-primary-foreground: oklch(0.985 0 0);
-  --color-sidebar-accent: oklch(0.269 0 0);
-  --color-sidebar-accent-foreground: oklch(0.985 0 0);
-  --color-sidebar-border: oklch(0.269 0 0);
-  --color-sidebar-ring: oklch(0.439 0 0);
+  --color-sidebar: #263035;
+  --color-sidebar-foreground: #f2f7fc;
+  --color-sidebar-primary: #fafafa;
+  --color-sidebar-primary-foreground: #211d1d;
+  --color-sidebar-accent: #323e44;
+  --color-sidebar-accent-foreground: #f2f7fc;
+  --color-sidebar-border: #3c4a55;
+  --color-sidebar-ring: #45555e;
+  --color-card-border: #3c4a55;
 }
 
 @keyframes accordion-down {
@@ -217,6 +227,18 @@
   body {
     background-color: var(--color-background);
     color: var(--color-foreground);
+  }
+  h1,
+  h2,
+  h3,
+  h4,
+  h5,
+  h6,
+  [data-slot='card-title'],
+  [data-slot='dialog-title'],
+  [data-slot='alert-dialog-title'],
+  [data-slot='sheet-title'] {
+    font-family: var(--font-heading);
   }
 }
 

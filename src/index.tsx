@@ -6,6 +6,13 @@ import ReactDOM from 'react-dom/client'
 import { App } from './app'
 import './polyfills'
 
+// Self-hosted fonts (offline-capable). Variable fonts ship all weights in one file.
+import '@fontsource-variable/mona-sans'
+import '@fontsource-variable/dm-sans'
+import '@fontsource-variable/mozilla-text'
+import '@fontsource/space-mono/400.css'
+import '@fontsource/space-mono/700.css'
+
 import './index.css'
 import { markBundleEvaluated } from './lib/init-timing'
 import { initializeLinkInterception } from './lib/intercept-links'

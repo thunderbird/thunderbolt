@@ -128,7 +128,7 @@ export const SidebarFooter = ({ className }: SidebarFooterProps) => {
 
   return (
     <Popover open={menuOpen} onOpenChange={setMenuOpen} modal={isMobile}>
-      <ShadcnSidebarFooter className={cn('border-t border-border !p-0 !gap-0', className)}>
+      <ShadcnSidebarFooter className={cn('!p-0 !gap-0', className)}>
         <SidebarMenu>
           <SidebarMenuItem>
             {isPending ? (

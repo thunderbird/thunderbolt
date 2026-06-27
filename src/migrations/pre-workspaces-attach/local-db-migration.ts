@@ -164,9 +164,12 @@ const copyTableViaReader = async (
       )
       try {
         await tx.run(sql`INSERT OR IGNORE INTO ${sql.identifier(table.name)} (${colListSql}) VALUES (${placeholders})`)
-      } catch {
-        // Swallow per-row failures; the count delta below reports how many
-        // actually persisted, and the next-boot retry can have another go.
+      } catch (err) {
+        // Surface the drop so a buggy migration doesn't silently lose rows in
+        // production with no signal beyond a count mismatch. The catch itself
+        // is intentional (see block comment above): one malformed row must
+        // not kill the rest of the table's progress.
+        console.warn(`[pre-workspaces-attach] dropping row from "${table.name}":`, err)
       }
     }
   })

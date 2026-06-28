@@ -228,17 +228,17 @@ export const clearAllKeys = async (serverId?: string): Promise<void> => {
   try {
     await deleteKeysInDB(dbName, [privateKeyId, publicKeyId, mlkemPublicKeyId, mlkemSecretKeyId, ckId])
   } catch (err) {
-    console.warn(`[clearAllKeys] per-key delete failed for ${dbName}; relying on deleteDatabase`, err)
+    console.warn('[clearAllKeys] per-key delete failed for %s; relying on deleteDatabase', dbName, err)
   }
   await new Promise<void>((resolve) => {
     const request = indexedDB.deleteDatabase(dbName)
     request.onsuccess = () => resolve()
     request.onerror = () => {
-      console.error(`[clearAllKeys] Failed to delete IDB database ${dbName}:`, request.error)
+      console.error('[clearAllKeys] Failed to delete IDB database %s:', dbName, request.error)
       resolve()
     }
     request.onblocked = () => {
-      console.warn(`[clearAllKeys] IDB delete blocked for ${dbName} — open connections still alive`)
+      console.warn('[clearAllKeys] IDB delete blocked for %s — open connections still alive', dbName)
       resolve()
     }
   })

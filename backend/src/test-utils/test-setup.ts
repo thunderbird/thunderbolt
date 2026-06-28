@@ -16,14 +16,6 @@ import { closeSharedIsolatedTestDb, testDbManager } from './db'
 // throw at module load when DATABASE_URL is not set (e.g. swagger.test.ts and
 // other tests that transitively import createApp from @/index).
 process.env.DATABASE_DRIVER = 'pglite'
-// `.env` sets DATABASE_URL to a `postgresql://` connection string for the
-// dev Docker stack. When db/client.ts sees DRIVER=pglite + DATABASE_URL set,
-// it `mkdir`s the URL as a path and constructs `new PGlite(url)` — PGlite
-// then treats the URL as a data-directory and bootstraps a full Postgres
-// data dir inside `backend/postgresql:/postgres:postgres@localhost:5433/...`.
-// Clear DATABASE_URL here so PGlite runs in-memory (the test default per
-// `.env.example`).
-delete process.env.DATABASE_URL
 
 // Disable rate limiting in tests: RateLimiterDrizzle uses its own internal
 // queries that bypass PGlite transaction isolation, which breaks test cleanup

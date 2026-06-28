@@ -3,17 +3,17 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { getDbFilenameFor } from '@/db/database-path'
-import { broadcastDbLifecycle } from '@/db/db-lifecycle-broadcast'
-import { resetDatabase } from '@/db/database'
+import { broadcastDbLifecycle as defaultBroadcastDbLifecycle } from '@/db/db-lifecycle-broadcast'
+import { resetDatabase as defaultResetDatabase } from '@/db/database'
 import { disposeAllAdapters } from '@/acp/adapter-cache'
-import { setSyncEnabled } from '@/db/powersync'
+import { setSyncEnabled as defaultSetSyncEnabled } from '@/db/powersync'
 import {
   clearAuthToken as defaultClearAuthToken,
   clearDeviceId as defaultClearDeviceId,
   getAuthToken,
   withCapturedAuthToken,
 } from '@/lib/auth-token'
-import { deleteDbFile } from '@/lib/fs'
+import { deleteDbFile as defaultDeleteDbFile } from '@/lib/fs'
 import { withTimeout } from '@/lib/timeout'
 import { handleFullWipe as defaultHandleFullWipe } from '@/services/encryption'
 import { initialLocalSettings, useLocalSettingsStore } from '@/stores/local-settings-store'
@@ -24,6 +24,10 @@ type CleanupDeps = {
   clearAuthToken?: (serverId?: string) => void
   clearDeviceId?: (serverId?: string) => void
   handleFullWipe?: (serverId?: string) => Promise<void>
+  broadcastDbLifecycle?: typeof defaultBroadcastDbLifecycle
+  setSyncEnabled?: typeof defaultSetSyncEnabled
+  resetDatabase?: typeof defaultResetDatabase
+  deleteDbFile?: typeof defaultDeleteDbFile
 }
 
 /**
@@ -60,6 +64,10 @@ export const clearLocalData = async ({
   clearAuthToken = defaultClearAuthToken,
   clearDeviceId = defaultClearDeviceId,
   handleFullWipe = defaultHandleFullWipe,
+  broadcastDbLifecycle = defaultBroadcastDbLifecycle,
+  setSyncEnabled = defaultSetSyncEnabled,
+  resetDatabase = defaultResetDatabase,
+  deleteDbFile = defaultDeleteDbFile,
 }: CleanupDeps = {}): Promise<void> => {
   resetVolatileStores()
 

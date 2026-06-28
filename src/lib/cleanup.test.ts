@@ -3,61 +3,26 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
+import { clearLocalData, signOutAndWipe } from './cleanup'
 import { initialLocalSettings, useLocalSettingsStore } from '@/stores/local-settings-store'
 import { useTrustDomainRegistry } from '@/stores/trust-domain-registry'
 
 const calls: string[] = []
 
+// Injected deps — passed directly to clearLocalData/signOutAndWipe rather than
+// mocking shared modules globally, per the testing docs DI guideline.
 const broadcastDbLifecycle = mock((event: { kind: string }) => {
   calls.push(`broadcast:${event.kind}`)
 })
-
 const setSyncEnabled = mock(async (enabled: boolean) => {
   calls.push(`setSyncEnabled:${enabled}`)
 })
-
 const resetDatabase = mock(async () => {
   calls.push('resetDatabase')
 })
-
 const deleteDbFile = mock(async (filename: string) => {
   calls.push(`deleteDbFile:${filename}`)
 })
-
-// Include the full surface so these mock.module calls don't shadow real exports for other
-// test files that load after this one (docs/development/testing.md §65).
-const realDbLifecycleBroadcast = await import('@/db/db-lifecycle-broadcast')
-mock.module('@/db/db-lifecycle-broadcast', () => ({
-  ...realDbLifecycleBroadcast,
-  broadcastDbLifecycle,
-  setupDbLifecycleReloadOnRemoteClose: () => {},
-}))
-
-const realDatabase = await import('@/db/database')
-mock.module('@/db/database', () => ({
-  ...realDatabase,
-  resetDatabase,
-}))
-
-const realPowersync = await import('@/db/powersync')
-mock.module('@/db/powersync', () => ({
-  ...realPowersync,
-  setSyncEnabled,
-}))
-
-const realFs = await import('@/lib/fs')
-mock.module('@/lib/fs', () => ({
-  ...realFs,
-  deleteDbFile,
-}))
-
-// Import after module mocks so the SUT picks them up.
-const { clearLocalData, signOutAndWipe } = await import('./cleanup')
-
-const serverId = '00000000-0000-0000-0000-0000000000aa'
-
-// Injected deps — passed directly to clearLocalData/signOutAndWipe rather than
-// mocking shared modules globally, per the testing docs DI guideline.
 const clearAuthToken = mock(() => {
   calls.push('clearAuthToken')
 })
@@ -68,7 +33,17 @@ const handleFullWipe = mock(async () => {
   calls.push('handleFullWipe')
 })
 
-const deps = { clearAuthToken, clearDeviceId, handleFullWipe }
+const serverId = '00000000-0000-0000-0000-0000000000aa'
+
+const deps = {
+  broadcastDbLifecycle,
+  setSyncEnabled,
+  resetDatabase,
+  deleteDbFile,
+  clearAuthToken,
+  clearDeviceId,
+  handleFullWipe,
+}
 
 describe('clearLocalData', () => {
   beforeEach(() => {

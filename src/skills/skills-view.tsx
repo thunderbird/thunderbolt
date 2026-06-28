@@ -12,7 +12,7 @@ import { SkillNameInvalidError, SkillNameTakenError } from '@/dal'
 import { useIsMobile } from '@/hooks/use-mobile'
 import { useScopePickerEnabled } from '@/hooks/use-scope-picker-enabled'
 import { useWorkspacePermission } from '@/hooks/use-workspace-permission'
-import { useTrustDomainRegistry } from '@/stores/trust-domain-registry'
+import { useActiveUserId } from '@/stores/trust-domain-registry'
 import { DeleteSkillDialog } from './delete-skill-dialog'
 import { DependentsDialog } from './dependents-dialog'
 import { DiscardCreateDialog } from './discard-create-dialog'
@@ -30,15 +30,7 @@ export const SkillsView = () => {
   // Pull the active user id from the trust-domain registry — keeps the
   // component independent of `AuthProvider` so existing skills-view tests
   // that don't mount Better Auth still render.
-  const currentUserId = useTrustDomainRegistry((state) => {
-    if (state.activeTrustDomain?.kind === 'standalone') {
-      return state.localUserId
-    }
-    if (state.activeTrustDomain?.kind === 'server') {
-      return state.servers[state.activeTrustDomain.serverId]?.userId
-    }
-    return undefined
-  })
+  const currentUserId = useActiveUserId()
   const scopePickerEnabled = useScopePickerEnabled()
   // Pinning is managed entirely from the chat composer; we only read
   // `pinnedSet` here to auto-unpin on disable (a disabled skill can't be

@@ -8,7 +8,7 @@ import { useQuery } from '@powersync/tanstack-react-query'
 import { v7 as uuidv7 } from 'uuid'
 import { useDatabase } from '@/contexts'
 import { seedFreshWorkspaceDefaultsInTx } from '@/lib/reconcile-defaults'
-import { useTrustDomainRegistry } from '@/stores/trust-domain-registry'
+import { useActiveUserId } from '@/stores/trust-domain-registry'
 import type { AnyDrizzleDatabase } from '../db/database-interface'
 import {
   agentsTable,
@@ -120,15 +120,7 @@ export const getWorkspacesForUserQuery = (db: AnyDrizzleDatabase, userId: string
  */
 export const useWorkspacesQuery = (): Workspace[] => {
   const db = useDatabase()
-  const userId = useTrustDomainRegistry((state) => {
-    if (state.activeTrustDomain?.kind === 'standalone') {
-      return state.localUserId
-    }
-    if (state.activeTrustDomain?.kind === 'server') {
-      return state.servers[state.activeTrustDomain.serverId]?.userId
-    }
-    return undefined
-  })
+  const userId = useActiveUserId()
   const { data = [] } = useQuery({
     queryKey: ['workspaces', 'for-user', userId],
     query: toCompilableQuery(getWorkspacesForUserQuery(db, userId ?? '')),

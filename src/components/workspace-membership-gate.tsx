@@ -6,7 +6,7 @@ import { useDatabase } from '@/contexts'
 import { getMembershipQuery } from '@/dal'
 import Loading from '@/loading'
 import { crossWorkspaceSubPath } from '@/lib/active-workspace'
-import { useTrustDomainRegistry } from '@/stores/trust-domain-registry'
+import { useActiveUserId } from '@/stores/trust-domain-registry'
 import { toCompilableQuery } from '@powersync/drizzle-driver'
 import { useQuery } from '@powersync/tanstack-react-query'
 import { useEffect, useState } from 'react'
@@ -38,15 +38,7 @@ export const WorkspaceMembershipGate = () => {
   const db = useDatabase()
   const { workspaceId } = useParams<{ workspaceId: string }>()
   const location = useLocation()
-  const userId = useTrustDomainRegistry((state) => {
-    if (state.activeTrustDomain?.kind === 'standalone') {
-      return state.localUserId
-    }
-    if (state.activeTrustDomain?.kind === 'server') {
-      return state.servers[state.activeTrustDomain.serverId]?.userId
-    }
-    return undefined
-  })
+  const userId = useActiveUserId()
 
   // Subscribe live: a membership row showing up via sync after the gate first
   // rendered should flip us to the member branch instantly.

@@ -5,7 +5,7 @@
 import { useDatabase } from '@/contexts'
 import { getMembershipQuery, type WorkspaceMembership } from '@/dal'
 import { useActiveWorkspaceId } from '@/lib/active-workspace'
-import { useTrustDomainRegistry } from '@/stores/trust-domain-registry'
+import { useActiveUserId } from '@/stores/trust-domain-registry'
 import { toCompilableQuery } from '@powersync/drizzle-driver'
 import { useQuery } from '@powersync/tanstack-react-query'
 
@@ -34,15 +34,7 @@ export type ActiveWorkspaceMembership = {
 export const useActiveWorkspaceMembership = (): ActiveWorkspaceMembership => {
   const db = useDatabase()
   const workspaceId = useActiveWorkspaceId()
-  const userId = useTrustDomainRegistry((state) => {
-    if (state.activeTrustDomain?.kind === 'standalone') {
-      return state.localUserId
-    }
-    if (state.activeTrustDomain?.kind === 'server') {
-      return state.servers[state.activeTrustDomain.serverId]?.userId
-    }
-    return undefined
-  })
+  const userId = useActiveUserId()
 
   const enabled = !!workspaceId && !!userId
   const { data, isPending } = useQuery({

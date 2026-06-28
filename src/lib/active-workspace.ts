@@ -10,7 +10,7 @@ import {
 } from '@/dal'
 import { useDatabase } from '@/contexts'
 import type { AnyDrizzleDatabase } from '@/db/database-interface'
-import { getActiveUserId, useTrustDomainRegistry } from '@/stores/trust-domain-registry'
+import { getActiveUserId, useActiveUserId } from '@/stores/trust-domain-registry'
 import { toCompilableQuery } from '@powersync/drizzle-driver'
 import { useQuery } from '@powersync/tanstack-react-query'
 import { useCallback } from 'react'
@@ -138,15 +138,7 @@ const useReactivePathname = (): string => {
 export const useActiveWorkspace = (): Workspace | null => {
   const db = useDatabase()
   const pathname = useReactivePathname()
-  const userId = useTrustDomainRegistry((state) => {
-    if (state.activeTrustDomain?.kind === 'standalone') {
-      return state.localUserId
-    }
-    if (state.activeTrustDomain?.kind === 'server') {
-      return state.servers[state.activeTrustDomain.serverId]?.userId
-    }
-    return undefined
-  })
+  const userId = useActiveUserId()
 
   const fromUrl = matchWorkspaceIdInPath(pathname)
   // Single live query that switches target — keying on the lookup descriptor

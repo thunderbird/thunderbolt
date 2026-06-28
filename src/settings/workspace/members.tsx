@@ -31,7 +31,7 @@ import {
 import { useDatabase } from '@/contexts'
 import { useWorkspacePermission } from '@/hooks/use-workspace-permission'
 import { useActiveWorkspaceId } from '@/lib/active-workspace'
-import { useTrustDomainRegistry } from '@/stores/trust-domain-registry'
+import { useActiveUserId } from '@/stores/trust-domain-registry'
 import { InviteMembersModal } from '@/layout/sidebar/invite-members-modal'
 import { Plus } from 'lucide-react'
 import { useState } from 'react'
@@ -53,15 +53,7 @@ const roleLabel = (role: 'admin' | 'member'): string => (role === 'admin' ? 'Adm
 const WorkspaceMembersPage = () => {
   const db = useDatabase()
   const workspaceId = useActiveWorkspaceId() ?? undefined
-  const activeUserId = useTrustDomainRegistry((state) => {
-    if (state.activeTrustDomain?.kind === 'standalone') {
-      return state.localUserId
-    }
-    if (state.activeTrustDomain?.kind === 'server') {
-      return state.servers[state.activeTrustDomain.serverId]?.userId
-    }
-    return undefined
-  })
+  const activeUserId = useActiveUserId()
   const actives = useWorkspaceMembersQuery(workspaceId)
   const pendings = useWorkspacePendingMembershipsQuery(workspaceId)
   const { isAllowed: canChangeRoles } = useWorkspacePermission('change_roles')

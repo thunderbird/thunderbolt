@@ -33,24 +33,13 @@ import { useActiveWorkspace } from '@/lib/active-workspace'
 import { CreateWorkspaceModal } from '@/layout/sidebar/create-workspace-modal'
 import { InviteMembersModal } from '@/layout/sidebar/invite-members-modal'
 import { useConfigStore } from '@/api/config-store'
-import { useActiveCloudUrl, useTrustDomainRegistry } from '@/stores/trust-domain-registry'
+import { useActiveCloudUrl, useActiveUserId } from '@/stores/trust-domain-registry'
 import { zodResolver } from '@hookform/resolvers/zod'
 import dayjs from 'dayjs'
 import { Calendar, User } from 'lucide-react'
 import { useCallback, useEffect, useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { useNavigate } from 'react-router'
-
-const useActiveUserId = (): string | undefined =>
-  useTrustDomainRegistry((state) => {
-    if (state.activeTrustDomain?.kind === 'standalone') {
-      return state.localUserId
-    }
-    if (state.activeTrustDomain?.kind === 'server') {
-      return state.servers[state.activeTrustDomain.serverId]?.userId
-    }
-    return undefined
-  })
 
 const WorkspaceMeta = ({ workspace }: { workspace: Workspace }) => {
   const activeUserId = useActiveUserId()

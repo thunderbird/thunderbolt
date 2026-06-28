@@ -189,3 +189,15 @@ export const getActiveUserId = (): string | undefined => {
   }
   return getActiveServerEntry()?.userId
 }
+
+/** React-subscribing variant — re-renders consumers when the active user id changes. */
+export const useActiveUserId = (): string | undefined =>
+  useTrustDomainRegistry((state) => {
+    if (state.activeTrustDomain?.kind === 'standalone') {
+      return state.localUserId
+    }
+    if (state.activeTrustDomain?.kind === 'server') {
+      return state.servers[state.activeTrustDomain.serverId]?.userId
+    }
+    return undefined
+  })

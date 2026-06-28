@@ -38,7 +38,7 @@ import { useDatabase } from '@/contexts'
 import { ScopePicker } from '@/components/scope-picker'
 import { ScopeBadge } from '@/components/scope-badge'
 import { useScopePickerEnabled } from '@/hooks/use-scope-picker-enabled'
-import { useTrustDomainRegistry } from '@/stores/trust-domain-registry'
+import { useActiveUserId } from '@/stores/trust-domain-registry'
 import { useActiveWorkspaceId } from '@/lib/active-workspace'
 import { useWorkspacePermission as useWorkspacePermission_default } from '@/hooks/use-workspace-permission'
 import { createModel as createModelDAL, deleteModel, getAllModels, resetModelToDefault, updateModel } from '@/dal'
@@ -384,15 +384,7 @@ type ModelsPageProps = {
 export default function ModelsPage({ useWorkspacePermission = useWorkspacePermission_default }: ModelsPageProps = {}) {
   const db = useDatabase()
   const workspaceId = useActiveWorkspaceId()
-  const currentUserId = useTrustDomainRegistry((state) => {
-    if (state.activeTrustDomain?.kind === 'standalone') {
-      return state.localUserId
-    }
-    if (state.activeTrustDomain?.kind === 'server') {
-      return state.servers[state.activeTrustDomain.serverId]?.userId
-    }
-    return undefined
-  })
+  const currentUserId = useActiveUserId()
   const scopePickerEnabled = useScopePickerEnabled()
   const getProxyFetch = useProxyFetchGetter()
   const [state, dispatch] = useReducer(modelReducer, initialState)

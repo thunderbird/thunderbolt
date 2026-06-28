@@ -72,7 +72,6 @@ data:
               - SELECT * FROM powersync.workspace_memberships WHERE workspace_id = bucket.workspace_id
               - SELECT * FROM powersync.workspace_pending_memberships WHERE workspace_id = bucket.workspace_id
               - SELECT * FROM powersync.models WHERE workspace_id = bucket.workspace_id AND scope = 'workspace'
-              - SELECT * FROM powersync.mcp_servers WHERE workspace_id = bucket.workspace_id AND scope = 'workspace'
               - SELECT * FROM powersync.prompts WHERE workspace_id = bucket.workspace_id AND scope = 'workspace'
               - SELECT * FROM powersync.skills WHERE workspace_id = bucket.workspace_id AND scope = 'workspace'
               - SELECT * FROM powersync.triggers WHERE workspace_id = bucket.workspace_id AND scope = 'workspace'
@@ -91,7 +90,6 @@ data:
             parameters: SELECT workspace_id, request.user_id() as user_id FROM powersync.workspace_memberships WHERE user_id = request.user_id()
             data:
               - SELECT * FROM powersync.models WHERE workspace_id = bucket.workspace_id AND user_id = bucket.user_id AND scope = 'user'
-              - SELECT * FROM powersync.mcp_servers WHERE workspace_id = bucket.workspace_id AND user_id = bucket.user_id AND scope = 'user'
               - SELECT * FROM powersync.prompts WHERE workspace_id = bucket.workspace_id AND user_id = bucket.user_id AND scope = 'user'
               - SELECT * FROM powersync.skills WHERE workspace_id = bucket.workspace_id AND user_id = bucket.user_id AND scope = 'user'
               - SELECT * FROM powersync.triggers WHERE workspace_id = bucket.workspace_id AND user_id = bucket.user_id AND scope = 'user'

@@ -23,7 +23,7 @@ import { useAuth, useDatabase } from '@/contexts'
 import { createSharedWorkspace } from '@/dal/workspaces'
 import { useActiveCloudUrl } from '@/stores/trust-domain-registry'
 import { zodResolver } from '@hookform/resolvers/zod'
-import { useEffect, useRef } from 'react'
+import { useRef } from 'react'
 import { useForm, useWatch } from 'react-hook-form'
 
 type CreateWorkspaceModalProps = {
@@ -45,8 +45,23 @@ const emptyValues: WorkspaceFormValues = { name: '', slug: '', icon: null }
  * After the local writes commit, control hands off to `onCreated` — the
  * parent (sidebar selector) opens the invite modal and handles navigation
  * once that closes.
+ *
+ * Form state lives in the inner `CreateWorkspaceForm`, which Radix unmounts
+ * when `open` flips to `false` — so the next open starts fresh without an
+ * explicit reset effect.
  */
-export const CreateWorkspaceModal = ({ open, onOpenChange, onCreated }: CreateWorkspaceModalProps) => {
+export const CreateWorkspaceModal = ({ open, onOpenChange, onCreated }: CreateWorkspaceModalProps) => (
+  <ResponsiveModal open={open} onOpenChange={onOpenChange} className="sm:min-h-fit">
+    <CreateWorkspaceForm open={open} onCreated={onCreated} />
+  </ResponsiveModal>
+)
+
+type CreateWorkspaceFormProps = {
+  open: boolean
+  onCreated: (workspaceId: string) => void
+}
+
+const CreateWorkspaceForm = ({ open, onCreated }: CreateWorkspaceFormProps) => {
   const db = useDatabase()
   const cloudUrl = useActiveCloudUrl()
   const authClient = useAuth()
@@ -57,15 +72,6 @@ export const CreateWorkspaceModal = ({ open, onOpenChange, onCreated }: CreateWo
     defaultValues: emptyValues,
     mode: 'onChange',
   })
-
-  // Reset on close so the next open starts fresh.
-  const previouslyOpenRef = useRef(open)
-  useEffect(() => {
-    if (previouslyOpenRef.current && !open) {
-      form.reset(emptyValues)
-    }
-    previouslyOpenRef.current = open
-  }, [open, form])
 
   // Tracks `open` synchronously so the submit handler can skip the post-create
   // callback when the user dismissed the modal during the in-flight transaction.
@@ -101,7 +107,7 @@ export const CreateWorkspaceModal = ({ open, onOpenChange, onCreated }: CreateWo
   })
 
   return (
-    <ResponsiveModal open={open} onOpenChange={onOpenChange} className="sm:min-h-fit">
+    <>
       <ResponsiveModalHeader className="mt-6">
         <ResponsiveModalTitle className="text-xl leading-7 font-normal text-center">
           Create a Workspace
@@ -126,6 +132,6 @@ export const CreateWorkspaceModal = ({ open, onOpenChange, onCreated }: CreateWo
           </ResponsiveModalFooter>
         </form>
       </Form>
-    </ResponsiveModal>
+    </>
   )
 }

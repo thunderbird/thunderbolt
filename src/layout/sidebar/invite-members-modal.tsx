@@ -15,7 +15,7 @@ import { Textarea } from '@/components/ui/textarea'
 import { useAuth, useDatabase } from '@/contexts'
 import { addPendingMemberships } from '@/dal/workspaces'
 import { isValidEmailFormat } from '@/lib/utils'
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useMemo, useState } from 'react'
 
 const separatorRegex = /[\s,;]+/
 
@@ -59,23 +59,36 @@ type InviteMembersModalProps = {
  *
  * Both "Skip for now" and "Send invites" close the modal; the parent handles
  * navigation once the modal closes.
+ *
+ * Local state lives in the inner `InviteMembersForm`, which Radix unmounts
+ * when `open` flips to `false` — so the next open starts fresh without an
+ * explicit reset effect.
  */
-export const InviteMembersModal = ({ open, workspaceId, onClose }: InviteMembersModalProps) => {
+export const InviteMembersModal = ({ open, workspaceId, onClose }: InviteMembersModalProps) => (
+  <ResponsiveModal
+    open={open}
+    onOpenChange={(next) => {
+      if (!next) {
+        onClose()
+      }
+    }}
+    className="sm:min-h-fit"
+  >
+    <InviteMembersForm workspaceId={workspaceId} onClose={onClose} />
+  </ResponsiveModal>
+)
+
+type InviteMembersFormProps = {
+  workspaceId: string | null
+  onClose: () => void
+}
+
+const InviteMembersForm = ({ workspaceId, onClose }: InviteMembersFormProps) => {
   const [text, setText] = useState('')
   const [submitting, setSubmitting] = useState(false)
   const db = useDatabase()
   const authClient = useAuth()
   const { data: session } = authClient.useSession()
-
-  // Reset on close so the next open starts fresh.
-  const previouslyOpenRef = useRef(open)
-  useEffect(() => {
-    if (previouslyOpenRef.current && !open) {
-      setText('')
-      setSubmitting(false)
-    }
-    previouslyOpenRef.current = open
-  }, [open])
 
   const parsed = useMemo(() => parseEmails(text), [text])
   const hasText = text.trim().length > 0
@@ -111,15 +124,7 @@ export const InviteMembersModal = ({ open, workspaceId, onClose }: InviteMembers
   }
 
   return (
-    <ResponsiveModal
-      open={open}
-      onOpenChange={(next) => {
-        if (!next) {
-          onClose()
-        }
-      }}
-      className="sm:min-h-fit"
-    >
+    <>
       <ResponsiveModalHeader className="mt-6">
         <ResponsiveModalTitle className="text-xl leading-7 font-normal text-center">
           Invite team members
@@ -157,6 +162,6 @@ export const InviteMembersModal = ({ open, workspaceId, onClose }: InviteMembers
           {submitting ? 'Sending…' : 'Send invites'}
         </Button>
       </ResponsiveModalFooter>
-    </ResponsiveModal>
+    </>
   )
 }

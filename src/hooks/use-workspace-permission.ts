@@ -13,6 +13,7 @@ import { useActiveWorkspaceId } from '@/lib/active-workspace'
 import { useActiveWorkspaceMembership } from '@/hooks/use-active-workspace-membership'
 import { toCompilableQuery } from '@powersync/drizzle-driver'
 import { useQuery } from '@powersync/tanstack-react-query'
+import { permissionAllows } from '@shared/workspaces'
 
 /**
  * Default required role per Decision 11 — applied when no `workspace_permissions`
@@ -65,11 +66,7 @@ export const useWorkspacePermission = (permissionKey: WorkspacePermissionKey): W
   const permissionResolved = !!workspaceId && !isPending
   const isResolved = membershipResolved && permissionResolved
 
-  const userRole = membership?.role
-  const isAllowed =
-    isResolved &&
-    !!membership &&
-    (requiredRole === 'member' ? userRole === 'admin' || userRole === 'member' : userRole === 'admin')
+  const isAllowed = isResolved && permissionAllows(membership?.role, requiredRole)
 
   return { requiredRole, isAllowed, isResolved }
 }

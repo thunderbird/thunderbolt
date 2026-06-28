@@ -351,7 +351,11 @@ describe('SettingsSidebarContent — Workspace > Permissions entry visibility', 
     cleanup()
   })
 
-  it('shows the Permissions entry for an admin of a shared workspace', async () => {
+  it('hides the Permissions entry even for an admin of a shared workspace (temporarily disabled)', async () => {
+    // The Permissions menu entry is commented out in `settings-sidebar.tsx`
+    // until the feature is ready for users. When the JSX is uncommented, flip
+    // this assertion back to `getByText(...).toBeInTheDocument()` (paired with
+    // the comment in `settings-sidebar.tsx`).
     await seedSharedWorkspaceWithMembership('admin')
 
     renderWithReactivity(
@@ -364,8 +368,8 @@ describe('SettingsSidebarContent — Workspace > Permissions entry visibility', 
       },
     )
 
-    await waitForElement(() => screen.queryByText('Permissions'))
-    expect(screen.getByText('Permissions')).toBeInTheDocument()
+    await waitForElement(() => screen.queryByText('Models'))
+    expect(screen.queryByText('Permissions')).not.toBeInTheDocument()
   })
 
   it('hides the Permissions entry for a member of a shared workspace', async () => {

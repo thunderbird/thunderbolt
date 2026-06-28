@@ -18,7 +18,10 @@ import { useConfigStore } from '@/api/config-store'
 import { useActiveWorkspaceMembership } from '@/hooks/use-active-workspace-membership'
 import { useAgentsSettingsHidden } from '@/hooks/use-agents-settings-hidden'
 import { stripWorkspacePrefix, useActiveWorkspace } from '@/lib/active-workspace'
-import { ArrowLeft, Bot, Cpu, Globe, Lock, Plug, Server, SlidersHorizontal, Smartphone, Users, Zap } from 'lucide-react'
+// `Lock` is paired with the temporarily-hidden Permissions entry below — keep
+// the import commented so re-enabling the menu is a one-spot uncomment.
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+import { ArrowLeft, Bot, Cpu, Globe, Plug, Server, SlidersHorizontal, Smartphone, Users, Zap } from 'lucide-react'
 import { useLocation } from 'react-router'
 import { SidebarHeader } from './sidebar-header'
 
@@ -41,7 +44,10 @@ export const SettingsSidebarContent = ({
   const location = useLocation()
   const agentsHidden = useAgentsSettingsHidden({ isStandalone })
   const activeWorkspace = useActiveWorkspace()
-  const { isAdmin } = useActiveWorkspaceMembership()
+  // `isAdmin` is currently only used by the commented-out Permissions entry
+  // below — keep the call so re-enabling is a single comment-flip.
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const { isAdmin: _isAdmin } = useActiveWorkspaceMembership()
   // General is open to every member of a shared workspace; the page itself
   // disables form fields for non-admins. Personal workspaces always show it.
   // Members is visible to every member of a shared workspace — the page is
@@ -56,7 +62,9 @@ export const SettingsSidebarContent = ({
   const membersItemVisible = activeWorkspace?.isPersonal !== 1 && !e2eeEnabled
   // Permissions is implicitly admin-only — there is no configurable
   // meta-permission for editing the permissions grid itself.
-  const permissionsItemVisible = activeWorkspace?.isPersonal !== 1 && isAdmin && !e2eeEnabled
+  // Hidden for now (see commented JSX block below); kept here so re-enabling
+  // is a one-spot revert.
+  // const permissionsItemVisible = activeWorkspace?.isPersonal !== 1 && isAdmin && !e2eeEnabled
   // `isActive` highlighting reads the sub-path so the same matching rules work
   // for both personal (`/settings/...`) and shared (`/w/<id>/settings/...`) URLs.
   const subPath = stripWorkspacePrefix(location.pathname)
@@ -79,36 +87,6 @@ export const SettingsSidebarContent = ({
       </SidebarGroup>
 
       <SidebarSeparator className="m-0" />
-
-      <SidebarGroup>
-        <SidebarGroupLabel>Account Settings</SidebarGroupLabel>
-        <SidebarGroupContent>
-          <SidebarMenu>
-            <SidebarMenuItem>
-              <SidebarMenuButton
-                onClick={() => onSettingsNavigate('/settings/preferences')}
-                tooltip="Preferences"
-                className="cursor-pointer"
-                isActive={subPath === '/settings/preferences'}
-              >
-                <SlidersHorizontal className="size-4" />
-                <span>Preferences</span>
-              </SidebarMenuButton>
-            </SidebarMenuItem>
-            <SidebarMenuItem>
-              <SidebarMenuButton
-                onClick={() => onSettingsNavigate('/settings/devices')}
-                tooltip="Devices"
-                className="cursor-pointer"
-                isActive={subPath === '/settings/devices'}
-              >
-                <Smartphone className="size-4" />
-                <span>Devices</span>
-              </SidebarMenuButton>
-            </SidebarMenuItem>
-          </SidebarMenu>
-        </SidebarGroupContent>
-      </SidebarGroup>
 
       <SidebarGroup>
         <SidebarGroupLabel>Extensions</SidebarGroupLabel>
@@ -175,6 +153,36 @@ export const SettingsSidebarContent = ({
         </SidebarGroupContent>
       </SidebarGroup>
 
+      <SidebarGroup>
+        <SidebarGroupLabel>Account Settings</SidebarGroupLabel>
+        <SidebarGroupContent>
+          <SidebarMenu>
+            <SidebarMenuItem>
+              <SidebarMenuButton
+                onClick={() => onSettingsNavigate('/settings/preferences')}
+                tooltip="Preferences"
+                className="cursor-pointer"
+                isActive={subPath === '/settings/preferences'}
+              >
+                <SlidersHorizontal className="size-4" />
+                <span>Preferences</span>
+              </SidebarMenuButton>
+            </SidebarMenuItem>
+            <SidebarMenuItem>
+              <SidebarMenuButton
+                onClick={() => onSettingsNavigate('/settings/devices')}
+                tooltip="Devices"
+                className="cursor-pointer"
+                isActive={subPath === '/settings/devices'}
+              >
+                <Smartphone className="size-4" />
+                <span>Devices</span>
+              </SidebarMenuButton>
+            </SidebarMenuItem>
+          </SidebarMenu>
+        </SidebarGroupContent>
+      </SidebarGroup>
+
       <SidebarGroup className="flex-1">
         <SidebarGroupLabel>Workspace</SidebarGroupLabel>
         <SidebarGroupContent>
@@ -203,6 +211,9 @@ export const SettingsSidebarContent = ({
                 </SidebarMenuButton>
               </SidebarMenuItem>
             )}
+            {/* Permissions entry hidden — feature isn't ready for users yet.
+                Underlying page + permissions DAL/handlers stay intact for the
+                internal eng team via direct URL nav.
             {permissionsItemVisible && (
               <SidebarMenuItem>
                 <SidebarMenuButton
@@ -216,6 +227,7 @@ export const SettingsSidebarContent = ({
                 </SidebarMenuButton>
               </SidebarMenuItem>
             )}
+            */}
           </SidebarMenu>
         </SidebarGroupContent>
       </SidebarGroup>

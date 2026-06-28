@@ -73,18 +73,25 @@ export const ScopePicker = ({ value, onChange, id, label = 'Visibility', disable
         aria-describedby={hintId}
         aria-readonly={readOnly || undefined}
         disabled={disabled}
+        // `rounded-lg` overrides the toggle-group default `rounded-md` to match
+        // the surrounding form chrome (Inputs / Selects in the model + skill
+        // editors all use `rounded-lg`); without this the picker looks visibly
+        // sharper than the controls above and below it.
         // `pointer-events-none` blocks the click without applying the
         // disabled-state opacity dim — read-only should look "informational",
         // not "unavailable."
-        className={readOnly ? 'pointer-events-none' : undefined}
+        className={`rounded-lg ${readOnly ? 'pointer-events-none' : ''}`.trim()}
       >
         {/* Items override the group's default `flex-1` so each option sizes to
             its content with comfortable horizontal padding — keeps "Workspace"
-            from looking cramped against the icon. */}
+            from looking cramped against the icon. The first/last `rounded-l-lg`
+            / `rounded-r-lg` overrides match the parent group's larger radius
+            (the default item rounding is `first:rounded-l-md last:rounded-r-md`,
+            which leaves a visible step against the group's `rounded-lg`). */}
         <ToggleGroupItem
           value="workspace"
           aria-label="Shared with the workspace"
-          className="flex-none px-3"
+          className="flex-none px-3 first:rounded-l-lg last:rounded-r-lg"
           tabIndex={readOnly ? -1 : undefined}
         >
           <Users className="mr-2 h-4 w-4" />
@@ -93,7 +100,7 @@ export const ScopePicker = ({ value, onChange, id, label = 'Visibility', disable
         <ToggleGroupItem
           value="user"
           aria-label="Private to you"
-          className="flex-none px-3"
+          className="flex-none px-3 first:rounded-l-lg last:rounded-r-lg"
           tabIndex={readOnly ? -1 : undefined}
         >
           <Lock className="mr-2 h-4 w-4" />

@@ -155,7 +155,6 @@ const WorkspaceMembersPage = () => {
                 <TableRow>
                   <TableHead>User</TableHead>
                   <TableHead className="pl-5">Role</TableHead>
-                  <TableHead>Status</TableHead>
                   <TableHead aria-label="Actions" />
                 </TableRow>
               </TableHeader>
@@ -198,7 +197,6 @@ const WorkspaceMembersPage = () => {
                           <span className="ml-3">{roleLabel(entry.row.role)}</span>
                         )}
                       </TableCell>
-                      <TableCell>Joined</TableCell>
                       <TableCell className="text-right">
                         {canRemoveUsers && !(entry.row.role === 'admin' && adminCount <= 1) && (
                           <Button
@@ -215,9 +213,14 @@ const WorkspaceMembersPage = () => {
                   ) : (
                     <TableRow key={`pending-${entry.row.id}`} data-testid={`pending-row-${entry.row.email}`}>
                       <TableCell>
-                        <span className="font-normal text-[length:var(--font-size-sm)] leading-4 text-muted-foreground">
-                          {entry.row.email}
-                        </span>
+                        <div className="flex items-center gap-2">
+                          <span className="font-normal text-[length:var(--font-size-sm)] leading-4 text-muted-foreground">
+                            {entry.row.email}
+                          </span>
+                          <span className="shrink-0 rounded-full bg-muted px-2 py-1 text-[length:var(--font-size-xs)] text-muted-foreground">
+                            Pending
+                          </span>
+                        </div>
                       </TableCell>
                       <TableCell>
                         {/* Pending rows gate on `invite_users` — the BE treats
@@ -253,7 +256,6 @@ const WorkspaceMembersPage = () => {
                           <span className="ml-3">{roleLabel(entry.row.role)}</span>
                         )}
                       </TableCell>
-                      <TableCell className="text-muted-foreground">Pending</TableCell>
                       <TableCell className="text-right">
                         {canInviteUsers && (
                           <Button

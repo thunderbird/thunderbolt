@@ -201,7 +201,7 @@ describe('WorkspaceMembersPage routing', () => {
     expect(screen.getByRole('heading', { name: 'Members' })).toBeInTheDocument()
   })
 
-  it('renders active and pending rows with the right status text', async () => {
+  it('renders active rows without a status badge and pending rows with a "Pending" badge', async () => {
     await seedShared('admin')
     await seedAdditionalMember('u-charlie', 'Charlie', 'charlie@test.com', 'member')
     await seedPendingInvite('pending@test.com')
@@ -213,8 +213,10 @@ describe('WorkspaceMembersPage routing', () => {
     expect(screen.getByText('alice@test.com')).toBeInTheDocument()
     expect(screen.getByText('Charlie')).toBeInTheDocument()
     expect(screen.getByTestId('pending-row-pending@test.com')).toBeInTheDocument()
-    // Status column shows Joined for actives, Pending for pendings.
-    expect(screen.getAllByText('Joined')).toHaveLength(2)
+    // Joined is the default state — no badge clutter for active members. The
+    // only badge in the table is the "Pending" pill alongside the pending
+    // invite's email.
+    expect(screen.queryByText('Joined')).not.toBeInTheDocument()
     expect(screen.getByText('Pending')).toBeInTheDocument()
   })
 

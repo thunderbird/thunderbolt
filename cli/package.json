@@ -1,0 +1,31 @@
+{
+  "name": "@thunderbolt/cli",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "license": "MPL-2.0",
+  "description": "thunderbolt — a portable, single-binary terminal coding agent (bash/read/write/edit) built on the Pi harness.",
+  "bin": {
+    "thunderbolt": "./src/index.ts"
+  },
+  "scripts": {
+    "dev": "bun run src/index.ts",
+    "start": "bun run src/index.ts",
+    "typecheck": "tsc --noEmit",
+    "build": "bun build --compile --minify --sourcemap src/index.ts --outfile dist/thunderbolt",
+    "build:darwin-arm64": "bun build --compile --minify --target=bun-darwin-arm64 src/index.ts --outfile dist/thunderbolt-darwin-arm64",
+    "build:darwin-x64": "bun build --compile --minify --target=bun-darwin-x64 src/index.ts --outfile dist/thunderbolt-darwin-x64",
+    "build:linux-x64": "bun build --compile --minify --target=bun-linux-x64 src/index.ts --outfile dist/thunderbolt-linux-x64",
+    "build:linux-arm64": "bun build --compile --minify --target=bun-linux-arm64 src/index.ts --outfile dist/thunderbolt-linux-arm64",
+    "build:all": "bun run build:darwin-arm64 && bun run build:darwin-x64 && bun run build:linux-x64 && bun run build:linux-arm64"
+  },
+  "dependencies": {
+    "@earendil-works/pi-agent-core": "0.80.2",
+    "@earendil-works/pi-ai": "0.80.2",
+    "@earendil-works/pi-coding-agent": "0.80.2"
+  },
+  "devDependencies": {
+    "@types/bun": "^1.2.20",
+    "typescript": "^6.0.3"
+  }
+}

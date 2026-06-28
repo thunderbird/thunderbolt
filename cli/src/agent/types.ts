@@ -1,0 +1,104 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+
+/**
+ * Shared module contracts for the thunderbolt CLI.
+ *
+ * These types are the stable seam between the CLI's modules (arg parsing,
+ * harness assembly, the streaming renderer, and the permission gate) so each
+ * can be built and reasoned about independently. Pi types (e.g. `AgentHarness`)
+ * are imported directly from `@earendil-works/pi-agent-core` where needed.
+ */
+
+import type { AgentHarness } from '@earendil-works/pi-agent-core'
+
+/**
+ * A constructed harness paired with a teardown function. `buildHarness`
+ * returns this so callers release the underlying execution environment
+ * (temp dirs, shell) without reaching into Pi internals.
+ */
+export type HarnessBundle = {
+  readonly harness: AgentHarness
+  readonly dispose: () => Promise<void>
+}
+
+/** Reasoning depth passed to the Pi harness (`thinkingLevel`). */
+export type ThinkingLevel = 'off' | 'minimal' | 'low' | 'medium' | 'high' | 'xhigh'
+
+/** Wire protocol whose local stdio process the bridge exposes over the network.
+ *  Drives only logging — the stdio↔WebSocket pump is byte-identical for both. */
+export type BridgeProtocol = 'acp' | 'mcp'
+
+/**
+ * Fully-resolved configuration for an `acp`/`mcp` bridge invocation, produced by
+ * {@link parseArgs} and consumed by the bridge runner.
+ */
+export type BridgeConfig = {
+  /** Which protocol's stdio process is being bridged. */
+  readonly protocol: BridgeProtocol
+  /** Network transport exposing the process. Only `wss` exists today. */
+  readonly transport: 'wss'
+  /** TCP port the WebSocket server listens on (`0` lets the OS assign one). */
+  readonly port: number
+  /** The spawned stdio agent command: `command[0]` is the executable. */
+  readonly command: readonly string[]
+}
+
+/** Settings common to every run, independent of oneshot vs REPL mode. */
+type RunConfigBase = {
+  /** Anthropic model id (defaults to `claude-opus-4-8`). */
+  readonly model: string
+  /** Working directory the agent's bash/fs tools are bound to. */
+  readonly cwd: string
+  /** When true, auto-approve every tool call (no interactive gate). */
+  readonly yolo: boolean
+  /** Reasoning depth for the harness. */
+  readonly thinking: ThinkingLevel
+}
+
+/**
+ * Fully-resolved configuration for a single CLI invocation, produced by
+ * {@link parseArgs} and consumed by the agent runner. The discriminated `mode`
+ * makes `prompt` present exactly when (and only when) it's a oneshot run.
+ */
+export type RunConfig =
+  (RunConfigBase & { readonly mode: 'oneshot'; readonly prompt: string }) | (RunConfigBase & { readonly mode: 'repl' })
+
+/** Result of parsing argv: a run, a bridge, or a terminal info action. */
+export type ParsedArgs =
+  | { readonly kind: 'run'; readonly config: RunConfig }
+  | { readonly kind: 'bridge'; readonly config: BridgeConfig }
+  | { readonly kind: 'help' }
+  | { readonly kind: 'version' }
+  | { readonly kind: 'error'; readonly message: string }
+
+/** User's answer when asked to approve a tool call. */
+export type PermissionDecision = 'allow-once' | 'allow-session' | 'deny'
+
+/** A request surfaced to the user before a gated tool call runs. */
+export type PermissionRequest = {
+  /** Tool being invoked, e.g. `bash`, `write`, `edit`. */
+  readonly toolName: string
+  /** One-line human summary, e.g. the bash command or target path. */
+  readonly summary: string
+  /** Optional multi-line detail (diff, full command, etc.). */
+  readonly detail?: string
+}
+
+/** Asks the user to approve a gated tool call. Injected into the gate. */
+export type PermissionPrompt = (request: PermissionRequest) => Promise<PermissionDecision>
+
+/**
+ * Interactive terminal I/O over a single shared readline interface — used both
+ * for the REPL input loop and for permission prompts so they don't fight over
+ * stdin.
+ */
+export type TerminalIO = {
+  /** Read one line of input for the given prompt label; `null` at EOF (Ctrl-D). */
+  readonly readLine: (prompt: string) => Promise<string | null>
+  /** Ask the user to approve a tool call. */
+  readonly ask: PermissionPrompt
+  /** Tear down the readline interface. */
+  readonly close: () => void
+}

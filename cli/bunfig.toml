@@ -1,0 +1,7 @@
+# The repo root pins `minimumReleaseAge = 604800` (a 7-day quarantine on new
+# dependency versions). The Pi harness packages this CLI depends on are
+# actively released and would be blocked by that quarantine, so the cli/
+# sub-project opts out. (Bun reads the bunfig.toml from the current working
+# directory, so running install/build from cli/ uses this file, not the root's.)
+[install]
+minimumReleaseAge = 0

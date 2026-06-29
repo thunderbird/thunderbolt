@@ -365,8 +365,11 @@ jobs:
 
       - name: Warn on CrabNebula upload failure
         if: ${{ !inputs.nightly && steps.cn_upload.outcome == 'failure' }}
+        env:
+          BUILD_NAME: ${{ matrix.build_name }}
+          VERSION: ${{ inputs.version }}
         run: |
-          echo "::warning title=CrabNebula upload failed::Failed to upload ${{ matrix.build_name }} asset to CrabNebula for v${{ inputs.version }}. Auto-updater on this platform will miss this version. See THU-643."
+          echo "::warning title=CrabNebula upload failed::Failed to upload $BUILD_NAME asset to CrabNebula for v$VERSION. Auto-updater on this platform will miss this version. See THU-643."
 
   publish:
     name: Publish Release

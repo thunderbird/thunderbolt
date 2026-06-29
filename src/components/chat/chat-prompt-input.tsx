@@ -53,6 +53,7 @@ const acceptedAttachmentMimeTypes = new Set([
   'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
   'text/markdown',
   'text/plain',
+  'text/csv',
 ])
 
 /** Extension fallback for when the browser reports an empty/odd mime type
@@ -68,6 +69,7 @@ const acceptedAttachmentExtensions = [
   '.md',
   '.markdown',
   '.txt',
+  '.csv',
 ]
 
 /** `accept` attribute string for the file picker. */

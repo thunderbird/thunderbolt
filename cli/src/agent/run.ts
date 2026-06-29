@@ -39,7 +39,9 @@ const runRepl = async (harness: AgentHarness, io: TerminalIO): Promise<void> => 
  * @param config - the resolved configuration from `parseArgs`
  */
 export const runAgent = async (config: RunConfig): Promise<void> => {
-  if (!process.env.ANTHROPIC_API_KEY) {
+  // Anthropic resolves its key from the environment; openai-compat carries its
+  // own (validated in `resolveModel`), so it must not demand ANTHROPIC_API_KEY.
+  if ((config.provider ?? 'anthropic') === 'anthropic' && !process.env.ANTHROPIC_API_KEY) {
     throw new Error('set ANTHROPIC_API_KEY to run the agent (https://console.anthropic.com).')
   }
 

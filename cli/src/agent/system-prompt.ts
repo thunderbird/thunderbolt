@@ -8,10 +8,12 @@
  * take autonomy on small reversible decisions, and avoid over-engineering.
  *
  * @param params.cwd - the working directory the agent operates in
+ * @param params.modelId - when set, names the underlying model so an exposed ACP
+ *   agent can self-identify; omitted for the standalone CLI
  * @returns the system prompt string
  */
-export const buildSystemPrompt = ({ cwd }: { cwd: string }): string => `\
-You are thunderbolt, a terminal coding agent. You operate directly in the user's \
+export const buildSystemPrompt = ({ cwd, modelId }: { cwd: string; modelId?: string }): string => `\
+You are thunderbolt, a terminal coding agent${modelId ? `, powered by ${modelId}` : ''}. You operate directly in the user's \
 working directory and complete software tasks end-to-end.
 
 Working directory: ${cwd}

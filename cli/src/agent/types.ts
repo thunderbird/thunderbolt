@@ -26,6 +26,10 @@ export type HarnessBundle = {
 /** Reasoning depth passed to the Pi harness (`thinkingLevel`). */
 export type ThinkingLevel = 'off' | 'minimal' | 'low' | 'medium' | 'high' | 'xhigh'
 
+/** Which model backend the harness talks to: Anthropic's built-in catalog, or
+ *  any OpenAI-compatible endpoint at a custom base URL (e.g. Xiaomi MiMo). */
+export type ModelProvider = 'anthropic' | 'openai-compat'
+
 /** Wire protocol whose local stdio process the bridge exposes over the network.
  *  Drives only logging — the stdio↔transport pump is byte-identical for both. */
 export type BridgeProtocol = 'acp' | 'mcp'
@@ -76,7 +80,9 @@ export type IrohAdminAction =
  * consumes exactly this; the run/serve configs extend it with their own fields.
  */
 export type HarnessConfig = {
-  /** Anthropic model id (defaults to `claude-opus-4-8`). */
+  /** Model id: an Anthropic catalog id (e.g. `claude-opus-4-8`) for the
+   *  `anthropic` provider, or the upstream id (e.g. `mimo-v2.5-pro`) for
+   *  `openai-compat`. */
   readonly model: string
   /** Working directory the agent's bash/fs tools are bound to. */
   readonly cwd: string
@@ -84,6 +90,17 @@ export type HarnessConfig = {
   readonly yolo: boolean
   /** Reasoning depth for the harness. */
   readonly thinking: ThinkingLevel
+  /** Model backend to use (defaults to `anthropic`). */
+  readonly provider?: ModelProvider
+  /** OpenAI-compatible base URL — required when `provider` is `openai-compat`. */
+  readonly baseUrl?: string
+  /** Bearer api key for `openai-compat` (flows in only via flag/env at runtime,
+   *  never persisted). Ignored by the `anthropic` provider, which reads
+   *  `ANTHROPIC_API_KEY` from the environment. */
+  readonly apiKey?: string
+  /** When true, the system prompt names the underlying model so an exposed ACP
+   *  agent can self-identify. The standalone CLI leaves this off. */
+  readonly announceModel?: boolean
 }
 
 /**

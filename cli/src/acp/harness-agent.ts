@@ -238,6 +238,10 @@ export const createHarnessAgent = (
       cwd: params.cwd,
       yolo: config.yolo,
       thinking: config.thinking,
+      provider: config.provider,
+      baseUrl: config.baseUrl,
+      apiKey: config.apiKey,
+      announceModel: true,
     })
 
     // If the client vanished while the harness was being built, the cleanup

@@ -12,6 +12,7 @@ import type {
   BridgeConfig,
   BridgeProtocol,
   BridgeTransport,
+  ModelProvider,
   ParsedArgs,
   RunConfig,
   ServeConfig,
@@ -23,6 +24,12 @@ export const VERSION = '0.1.0'
 
 /** Default Anthropic model when `--model` is omitted. */
 const DEFAULT_MODEL = 'claude-opus-4-8'
+
+/** Default model backend when `--provider` is omitted. */
+const DEFAULT_PROVIDER: ModelProvider = 'anthropic'
+
+/** All valid `--provider` values. */
+const MODEL_PROVIDERS: readonly ModelProvider[] = ['anthropic', 'openai-compat']
 
 /** All valid `--thinking` levels, in increasing depth. */
 const THINKING_LEVELS: readonly ThinkingLevel[] = ['off', 'minimal', 'low', 'medium', 'high', 'xhigh']
@@ -66,7 +73,11 @@ TOOLS
   edit    replace a span within a file
 
 OPTIONS
-  -m, --model <id>      Anthropic model id (default: ${DEFAULT_MODEL})
+  -m, --model <id>      model id (default: ${DEFAULT_MODEL})
+      --provider <p>    model backend: ${MODEL_PROVIDERS.join(' | ')} (default: ${DEFAULT_PROVIDER})
+      --base-url <url>  OpenAI-compatible base URL (required for openai-compat)
+      --api-key <key>   bearer key for openai-compat (or set
+                        THUNDERBOLT_OPENAI_COMPAT_KEY; the flag wins)
       --thinking <lvl>  reasoning depth: ${THINKING_LEVELS.join(' | ')} (default: medium)
   -y, --yolo            auto-approve every tool call (alias:
                         --dangerously-skip-permissions)
@@ -90,6 +101,7 @@ EXAMPLES
   thunderbolt --thinking high "refactor the auth module"
   thunderbolt --yolo "run the test suite and fix what breaks"
   thunderbolt
+  THUNDERBOLT_OPENAI_COMPAT_KEY=sk-… thunderbolt --provider openai-compat --base-url https://host/v1 --model my-model "hello"
   thunderbolt acp --transport wss -- npx @zed-industries/claude-code-acp
   thunderbolt mcp --transport wss --port 9001 -- uvx mcp-server-fetch
   thunderbolt acp --transport iroh -- thunderbolt acp serve   # share THIS agent
@@ -97,17 +109,25 @@ EXAMPLES
   thunderbolt iroh id
   thunderbolt acp connect endpoint1abc…   # dial a remote iroh bridge
 
-Requires ANTHROPIC_API_KEY (https://console.anthropic.com).`
+Requires ANTHROPIC_API_KEY (https://console.anthropic.com) for the default
+anthropic provider; openai-compat instead uses --api-key /
+THUNDERBOLT_OPENAI_COMPAT_KEY.`
 
 /** Type guard: is `value` one of the supported {@link ThinkingLevel}s? */
 const isThinkingLevel = (value: string): value is ThinkingLevel =>
   (THINKING_LEVELS as readonly string[]).includes(value)
+
+/** Type guard: is `value` one of the supported {@link ModelProvider}s? */
+const isProvider = (value: string): value is ModelProvider => (MODEL_PROVIDERS as readonly string[]).includes(value)
 
 /** Flag/positional state accumulated while scanning argv. */
 type Flags = {
   readonly model: string
   readonly yolo: boolean
   readonly thinking: ThinkingLevel
+  readonly provider: ModelProvider
+  readonly baseUrl?: string
+  readonly apiKey?: string
   readonly positionals: readonly string[]
 }
 
@@ -115,6 +135,7 @@ const DEFAULT_FLAGS: Flags = {
   model: DEFAULT_MODEL,
   yolo: false,
   thinking: 'medium',
+  provider: DEFAULT_PROVIDER,
   positionals: [],
 }
 
@@ -134,6 +155,27 @@ const scanTokens = (tokens: readonly string[], index: number, flags: Flags): Sca
   if (token === '--model' || token === '-m') {
     if (next === undefined) return { ok: false, message: 'thunderbolt: --model requires a value' }
     return scanTokens(tokens, index + 2, { ...flags, model: next })
+  }
+
+  if (token === '--provider') {
+    if (next === undefined) return { ok: false, message: 'thunderbolt: --provider requires a value' }
+    if (!isProvider(next)) {
+      return {
+        ok: false,
+        message: `thunderbolt: invalid --provider '${next}' (expected one of: ${MODEL_PROVIDERS.join(', ')})`,
+      }
+    }
+    return scanTokens(tokens, index + 2, { ...flags, provider: next })
+  }
+
+  if (token === '--base-url') {
+    if (next === undefined) return { ok: false, message: 'thunderbolt: --base-url requires a value' }
+    return scanTokens(tokens, index + 2, { ...flags, baseUrl: next })
+  }
+
+  if (token === '--api-key') {
+    if (next === undefined) return { ok: false, message: 'thunderbolt: --api-key requires a value' }
+    return scanTokens(tokens, index + 2, { ...flags, apiKey: next })
   }
 
   if (token === '--thinking') {
@@ -253,10 +295,29 @@ const parseConnectArgs = (protocol: BridgeProtocol, rest: string[]): ParsedArgs 
 }
 
 /**
+ * Resolves the openai-compat bearer key: the explicit `--api-key` flag wins,
+ * else the dedicated `THUNDERBOLT_OPENAI_COMPAT_KEY` env var. Returns `undefined`
+ * when neither is set (the anthropic provider ignores it; `resolveModel` rejects
+ * openai-compat).
+ *
+ * Deliberately scoped to a dedicated var rather than falling back to a standard
+ * key like `OPENAI_API_KEY`: openai-compat sends this key to an arbitrary
+ * `--base-url`, so auto-forwarding a real OpenAI key to a third-party host would
+ * leak credentials. `THUNDERBOLT_OPENAI_COMPAT_KEY` is the explicit opt-in for
+ * "this key is meant for whatever host I point at".
+ *
+ * @param flagApiKey - the value passed via `--api-key`, if any
+ * @returns the resolved api key, or `undefined`
+ */
+const resolveApiKey = (flagApiKey?: string): string | undefined =>
+  flagApiKey ?? process.env.THUNDERBOLT_OPENAI_COMPAT_KEY
+
+/**
  * Parses an `acp serve` invocation: run the built-in agent as a stdio ACP
- * server. Reuses the run-flag scanner (`--model`/`--thinking`/`--yolo`); the
- * per-session working directory comes from each ACP `session/new`, so `cwd`
- * here is just the process default. No positional prompt is accepted.
+ * server. Reuses the run-flag scanner (`--model`/`--provider`/`--base-url`/
+ * `--api-key`/`--thinking`/`--yolo`); the per-session working directory comes
+ * from each ACP `session/new`, so `cwd` here is just the process default. No
+ * positional prompt is accepted.
  */
 const parseServeArgs = (rest: string[]): ParsedArgs => {
   if (rest.includes('--help') || rest.includes('-h')) return { kind: 'help' }
@@ -272,6 +333,9 @@ const parseServeArgs = (rest: string[]): ParsedArgs => {
     cwd: process.cwd(),
     yolo: scan.flags.yolo,
     thinking: scan.flags.thinking,
+    provider: scan.flags.provider,
+    baseUrl: scan.flags.baseUrl,
+    apiKey: resolveApiKey(scan.flags.apiKey),
   }
   return { kind: 'acp-serve', config }
 }
@@ -326,6 +390,9 @@ export const parseArgs = (argv: string[]): ParsedArgs => {
     cwd: process.cwd(),
     yolo: scan.flags.yolo,
     thinking: scan.flags.thinking,
+    provider: scan.flags.provider,
+    baseUrl: scan.flags.baseUrl,
+    apiKey: resolveApiKey(scan.flags.apiKey),
   }
   const config: RunConfig = prompt.length > 0 ? { ...base, mode: 'oneshot', prompt } : { ...base, mode: 'repl' }
   return { kind: 'run', config }

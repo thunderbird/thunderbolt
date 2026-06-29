@@ -27,7 +27,12 @@ import type { HarnessBundle, HarnessConfig } from './types.ts'
 export const buildHarness = async (config: HarnessConfig): Promise<HarnessBundle> => {
   const env = new NodeExecutionEnv({ cwd: config.cwd })
   const session = await new InMemorySessionRepo().create({})
-  const { models, model } = resolveModel(config.model)
+  const { models, model } = resolveModel({
+    model: config.model,
+    provider: config.provider,
+    baseUrl: config.baseUrl,
+    apiKey: config.apiKey,
+  })
   const tools = [
     createBashTool(config.cwd),
     createReadTool(config.cwd),
@@ -43,7 +48,7 @@ export const buildHarness = async (config: HarnessConfig): Promise<HarnessBundle
     tools,
     activeToolNames: tools.map((tool) => tool.name),
     thinkingLevel: config.thinking,
-    systemPrompt: buildSystemPrompt({ cwd: config.cwd }),
+    systemPrompt: buildSystemPrompt({ cwd: config.cwd, modelId: config.announceModel ? config.model : undefined }),
   })
 
   return {

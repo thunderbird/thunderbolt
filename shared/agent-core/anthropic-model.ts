@@ -78,6 +78,20 @@ export type BuildAnthropicModelOptions = {
 }
 
 /**
+ * Whether Pi's built-in Anthropic catalog can resolve `modelId` as an
+ * anthropic-messages model. The adapter's routing gate calls this so a model id
+ * Pi doesn't know (e.g. a brand-new claude the catalog lacks) falls back to the
+ * legacy pipeline instead of crashing the chat. Cheap — the catalog is in-memory.
+ *
+ * @param modelId - the Anthropic model id to probe, e.g. `claude-opus-4-8`
+ * @returns true if the catalog has an anthropic-messages model with that id
+ */
+export const isKnownAnthropicModel = (modelId: string): boolean => {
+  const resolved = builtinModels().getModel(PROVIDER, modelId)
+  return Boolean(resolved && hasApi(resolved, API))
+}
+
+/**
  * Narrows a dispatched `Model<Api>` to the anthropic-messages model this
  * provider exclusively serves, surfacing misuse loudly rather than guessing.
  */

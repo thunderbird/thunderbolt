@@ -40,20 +40,30 @@ import * as fsp from '@zenfs/core/promises'
 import { dirname, join, resolve } from '@zenfs/core/path'
 import { Bash } from 'just-bash'
 import { abortedResult, fileInfoFrom, splitLines, toFileError } from './fs-helpers.ts'
+import { isWithinWorkspace } from './workspace-jail.ts'
 import { ZenBashFileSystem } from './zen-bash-fs.ts'
 
-/** Mount-relative root under which {@link BrowserExecutionEnv.createTempDir} carves unique directories. */
-const TEMP_ROOT = '/tmp'
+/** Per-env subdirectory (relative to the env's root) under which
+ *  {@link BrowserExecutionEnv.createTempDir} carves unique directories. Kept
+ *  INSIDE the env root so temp files stay within the workspace jail (readable by
+ *  the jailed coding tools, e.g. bash's "Full output" file) and are torn down
+ *  with the workspace instead of leaking into a shared `/tmp`. */
+const TEMP_SUBDIR = '.tmp'
 
 export class BrowserExecutionEnv implements ExecutionEnv {
   cwd: string
   private readonly env: Record<string, string>
   private readonly bashFs: ZenBashFileSystem
+  /** Absolute temp root for this env, inside its (jailed) workspace root. */
+  private readonly tempRoot: string
 
   constructor(options: { cwd: string; env?: Record<string, string> }) {
     this.cwd = options.cwd
     this.env = options.env ?? {}
-    this.bashFs = new ZenBashFileSystem()
+    this.tempRoot = join(options.cwd, TEMP_SUBDIR)
+    // The shell is jailed to the env's root (the thread's workspace) so bash
+    // commands can't read or write a sibling thread's files on the shared mount.
+    this.bashFs = new ZenBashFileSystem(options.cwd)
   }
 
   async absolutePath(path: string): Promise<Result<string, FileError>> {
@@ -71,6 +81,9 @@ export class BrowserExecutionEnv implements ExecutionEnv {
     if (options?.abortSignal?.aborted) return err(new ExecutionError('aborted', 'aborted'))
 
     const cwd = options?.cwd ? resolve(this.cwd, options.cwd) : this.cwd
+    if (!isWithinWorkspace(this.cwd, cwd)) {
+      return err(new ExecutionError('unknown', `cwd escapes workspace: ${options?.cwd}`))
+    }
     const env = { ...this.env, ...options?.env }
     const controller = new AbortController()
     const state = { timedOut: false }
@@ -247,12 +260,12 @@ export class BrowserExecutionEnv implements ExecutionEnv {
       // `crypto.randomUUID()` is generated inside the try: outside a secure
       // context the browser leaves it undefined, so calling it throws — which
       // would break the never-throw contract if it ran before the try.
-      const dir = join(TEMP_ROOT, `${prefix}${crypto.randomUUID()}`)
-      await fsp.mkdir(TEMP_ROOT, { recursive: true })
+      const dir = join(this.tempRoot, `${prefix}${crypto.randomUUID()}`)
+      await fsp.mkdir(this.tempRoot, { recursive: true })
       await fsp.mkdir(dir)
       return ok(dir)
     } catch (error) {
-      return err(toFileError(error, TEMP_ROOT))
+      return err(toFileError(error, this.tempRoot))
     }
   }
 

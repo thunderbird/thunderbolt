@@ -13,8 +13,19 @@
 // browser throws `ReferenceError: process is not defined`. See ./browser-stubs/install-process.ts.
 import './browser-stubs/install-process.ts'
 
-export { buildAnthropicModel, type AgentFetch, type BuildAnthropicModelOptions } from './anthropic-model.ts'
-export { buildAppHarness, type BuildAppHarnessOptions } from './build-app-harness.ts'
+export {
+  buildAnthropicModel,
+  isKnownAnthropicModel,
+  type AgentFetch,
+  type BuildAnthropicModelOptions,
+} from './anthropic-model.ts'
+export { buildOpenAiCompatModel, type BuildOpenAiCompatModelOptions } from './openai-compat-model.ts'
+export {
+  buildAppHarness,
+  workspaceDirFor,
+  type BuildAppHarnessOptions,
+  type PiModelDescriptor,
+} from './build-app-harness.ts'
 export { ensureBufferPolyfill } from './ensure-buffer.ts'
 export { toPiAgentTools } from './mcp-tools.ts'
 export type { SeedTurn } from './seed-history.ts'

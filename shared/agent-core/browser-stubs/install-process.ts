@@ -6,14 +6,15 @@
  * Installs the Node globals (`process`, `global`) the lazily-loaded Pi engine
  * expects but the browser lacks.
  *
- * Why this exists: Pi is a Node CLI. Several of its modules read the bare
- * `process` global — `config.js` (`process.versions.bun`), `timings.js`
- * (`process.env.PI_TIMING`), the clipboard helper (`process.execPath`,
- * `process.platform`, `process.env`) — and others reference the bare `global`
- * object, so loading Pi throws `ReferenceError: process is not defined` /
- * `global is not defined` in the browser. Because these are bare globals (not
- * `import … from 'process'`), a module alias can't reach them; the globals must
- * exist when Pi evaluates.
+ * Why this exists: Pi's runtime (`@earendil-works/pi-ai`) and the Anthropic SDK
+ * still read the bare `process` global to detect their environment —
+ * `process.versions?.node`/`process.env.*` in provider/auth helpers — and some
+ * dependency code references the bare `global` object, so loading them throws
+ * `ReferenceError: process is not defined` / `global is not defined` in the
+ * browser. Because these are bare globals (not `import … from 'process'`), a
+ * module alias can't reach them; the globals must exist when those modules
+ * evaluate. (The pi-coding-agent CLI modules that previously needed this — its
+ * `config.js`/`timings.js`/clipboard helper — are no longer on the app path.)
  *
  * Why a side-effecting import rather than a runtime shim: ES module imports are
  * hoisted and evaluated in source order, so a `globalThis.process = …` assignment

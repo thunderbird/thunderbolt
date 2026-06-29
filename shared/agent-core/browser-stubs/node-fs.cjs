@@ -6,20 +6,17 @@
  * Browser shim for Node's `fs` / `node:fs`, aliased in `vite.config.ts` for the
  * in-browser Pi harness path.
  *
- * Why this exists: Pi's package/config detection probes the disk with sync `fs`
- * calls (`existsSync`, `readFileSync`, …). Vite's default `browser-external:fs`
- * leaves them undefined, throwing on call. The harness does its REAL file I/O
- * through the ZenFS-backed operation adapters (see `coding-tool-operations.ts`),
- * never through these — so this shim presents an *empty* filesystem: `existsSync`
- * returns false (Pi falls back to its defaults), reads throw `ENOENT`, and writes
- * are inert no-ops.
+ * Why this exists: `@earendil-works/pi-ai`'s `utils/provider-env.js` does a
+ * `require("node:fs")` for a Bun-sandbox `/proc/self/environ` fallback. The call
+ * is guarded by `process.versions?.bun` (always falsy in the browser) so it never
+ * runs here, but rolldown still resolves the specifier statically — without this
+ * alias it falls back to `browser-external:fs`, a build warning whose members
+ * throw on access. This shim resolves it cleanly to an *empty* filesystem:
+ * `existsSync` returns false, reads throw `ENOENT`, writes are inert no-ops. (The
+ * harness's REAL file I/O goes through the ZenFS adapters, never through these.)
  *
- * Why CommonJS (not the ESM `.ts` used by the sibling shims): `graceful-fs`
- * monkey-patches the `fs` module in place (`fs.closeSync = …`). ES module named
- * exports are read-only bindings, so an ESM shim throws
- * "Cannot set property closeSync … which has only a getter". A CJS `module.exports`
- * object is plain and mutable, so the (harmless, browser-irrelevant) patching
- * succeeds and the harness loads.
+ * Why CommonJS: the sole consumer reaches it via `require("node:fs")`, so a plain
+ * `module.exports` object is the natural, interop-free target.
  */
 
 /** Build a Node-style ENOENT error so Pi's error handling reads it as "missing". */

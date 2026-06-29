@@ -6,42 +6,31 @@
  * Browser shim for Node's `module` / `node:module`, aliased in `vite.config.ts`
  * for the in-browser Pi harness path.
  *
- * Why this exists: Pi builds a CommonJS `require` via `createRequire(import.meta.url)`
- * — at module scope (its clipboard probe) and lazily at runtime (some modules
- * `require('fs')` rather than import it). Vite's `browser-external:module` leaves
- * `createRequire` undefined, throwing on import.
+ * Why this exists: `just-bash`'s browser bundle evaluates
+ * `createRequire(import.meta.url)` at MODULE SCOPE. Vite's `browser-external:module`
+ * leaves `createRequire` undefined, so that top-level call throws on import (the
+ * production build tree-shakes the unused `require`, but the dev server does not).
  *
- * The returned `require` resolves the Node builtins Pi reaches for to the same
- * browser shims the static `vite.config.ts` aliases use, so a dynamic
- * `require('fs')` behaves identically to `import … from 'fs'`. Anything else
- * (e.g. an optional native addon) throws — the only such caller wraps the lookup
- * in try/catch and falls back to `null`, so the harness still loads cleanly.
+ * The returned `require` resolves the handful of Node builtins still aliased on
+ * this path (`crypto`/`fs/promises`/`path`) to their browser shims, so a lazy
+ * `require('crypto')` behaves like the static `import`. Anything else throws —
+ * loudly, since a real native `require` cannot be satisfied in the browser.
  */
 
-// All imported via their bare builtin specifiers: typed by @types/node for the
-// type-checker, redirected to the browser shims by vite.config.ts's resolve.alias
-// at build time (so a dynamic `require('fs')` matches the static `import` path).
+// Imported via bare builtin specifiers: typed by @types/node for the type-checker,
+// redirected to the browser shims by vite.config.ts's resolve.alias at build time.
 import nodeCrypto from 'node:crypto'
-import nodeFs from 'node:fs'
 import nodeFsPromises from 'node:fs/promises'
-import nodeOs from 'node:os'
-import nodeUrl from 'node:url'
 import nodePath from 'node:path'
 
-/** Node builtins Pi may `require()` at runtime, mapped to their browser shims. */
+/** Node builtins that may be `require()`-d lazily, mapped to their browser shims. */
 const browserBuiltins: Record<string, unknown> = {
-  fs: nodeFs,
-  'node:fs': nodeFs,
-  'fs/promises': nodeFsPromises,
-  'node:fs/promises': nodeFsPromises,
-  os: nodeOs,
-  'node:os': nodeOs,
   crypto: nodeCrypto,
   'node:crypto': nodeCrypto,
+  'fs/promises': nodeFsPromises,
+  'node:fs/promises': nodeFsPromises,
   path: nodePath,
   'node:path': nodePath,
-  url: nodeUrl,
-  'node:url': nodeUrl,
 }
 
 /** A CommonJS `require` over the browser shims; unknown ids fail loudly. */

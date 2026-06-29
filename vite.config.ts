@@ -113,61 +113,34 @@ export default defineConfig({
       // machinery into the lazy PowerSync chunk. Like powersync-web-internal above,
       // lib/ is an internal path — verify it still exists when upgrading the package.
       '@powersync/common': path.resolve(__dirname, 'node_modules/@powersync/common/lib/index.js'),
-      // The in-browser Pi harness (lazy `@shared/agent-core` chunk) pulls Pi's Node
-      // child-process helper, which imports `cross-spawn` (and, transitively, `which`).
-      // Both evaluate `process.platform` at module scope, throwing
-      // `ReferenceError: process is not defined` on import in the browser — before any
-      // LLM call. The harness never resolves OS executables (bash runs through
-      // BrowserExecutionEnv / just-bash over ZenFS), so these modules are dead weight
-      // on the browser path; alias them to throw-on-call stubs (they load fine; only a
-      // real call throws). A bare-specifier alias catches every copy regardless of
-      // nesting and is honored by both the dev dep optimizer and the production build
-      // (both Rolldown-based in Vite 8).
-      'cross-spawn': path.resolve(__dirname, './shared/agent-core/browser-stubs/cross-spawn.ts'),
-      which: path.resolve(__dirname, './shared/agent-core/browser-stubs/which.ts'),
-      // Pi is a Node CLI: a few of its modules import these builtins at module scope
-      // (`config.js` → url+path, the clipboard helper → url+module+path). Vite's
-      // default `browser-external:*` leaves the named exports undefined, so importing
-      // Pi throws (e.g. "fileURLToPath is not a function"). Map them to browser shims:
-      // `path` to the battle-tested `path-browserify` (its functions also run at
-      // browser runtime when the read/write/edit tools resolve paths), and `url`/
-      // `module` to tiny stubs that satisfy the module-scope reads. (The bare
-      // `process` global is handled separately in shared/agent-core/index.ts.)
-      url: path.resolve(__dirname, './shared/agent-core/browser-stubs/node-url.ts'),
-      'node:url': path.resolve(__dirname, './shared/agent-core/browser-stubs/node-url.ts'),
+      // ---- In-browser Pi harness (lazy `@shared/agent-core` chunk) Node shims ----
+      // The harness runs `@earendil-works/pi-agent-core` + `pi-ai` + `just-bash` +
+      // ZenFS in the browser. The four coding tools are now plain `AgentTool`s over
+      // BrowserExecutionEnv (see `shared/agent-core/coding-tools`), so the
+      // `@earendil-works/pi-coding-agent` CLI — and its cross-spawn / which / undici /
+      // graceful-fs / pi-tui cascade — is no longer imported. Only a small residual of
+      // Node-builtin shims remains, for code still on the app path:
+      //
+      // `just-bash`'s browser bundle evaluates `createRequire(import.meta.url)` at
+      // module scope, so `module` must resolve to a shim that exposes `createRequire`.
       module: path.resolve(__dirname, './shared/agent-core/browser-stubs/node-module.ts'),
       'node:module': path.resolve(__dirname, './shared/agent-core/browser-stubs/node-module.ts'),
+      // `path` runs at browser runtime; use the battle-tested polyfill.
       path: 'path-browserify',
       'node:path': 'path-browserify',
-      // Pi also touches `fs`/`os` (config/package detection) and `crypto`
-      // (runtime id generation) — Vite's `browser-external:*` leaves these
-      // undefined. `crypto` delegates to the browser's native Web Crypto (real
-      // `randomUUID`/`randomBytes`); `fs`/`os` present an empty filesystem so Pi
-      // falls back to defaults (the harness's real I/O goes through ZenFS, never
-      // these). No app code imports these in the browser — only Pi does.
-      // NOTE: `fs/promises` MUST precede `fs` — a string alias matches `find` and
-      // `find/*`, so `fs` would otherwise swallow `fs/promises` → `node-fs.ts/promises`.
+      // `crypto` delegates to the browser's native Web Crypto (real `randomUUID` /
+      // `randomBytes`); `fs`/`fs/promises` present an empty filesystem (the harness's
+      // real I/O goes through ZenFS). All are reached only lazily — via the
+      // `createRequire` shim above, pi-ai's `process.versions.bun`-guarded
+      // `require("node:fs")` fallback, or optional SDK code paths — never at module
+      // scope. NOTE: `fs/promises` MUST precede `fs` — a string alias also matches the
+      // `fs/promises` subpath, so `fs` would otherwise swallow it.
       'fs/promises': path.resolve(__dirname, './shared/agent-core/browser-stubs/node-fs-promises.ts'),
       'node:fs/promises': path.resolve(__dirname, './shared/agent-core/browser-stubs/node-fs-promises.ts'),
-      // node-fs is CommonJS (not ESM) so `graceful-fs` can monkey-patch it in place.
       fs: path.resolve(__dirname, './shared/agent-core/browser-stubs/node-fs.cjs'),
       'node:fs': path.resolve(__dirname, './shared/agent-core/browser-stubs/node-fs.cjs'),
-      // `graceful-fs` calls `require('constants').hasOwnProperty(...)`; the
-      // browser-external proxy's `hasOwnProperty` isn't callable, so give it a real object.
-      constants: path.resolve(__dirname, './shared/agent-core/browser-stubs/node-constants.cjs'),
-      'node:constants': path.resolve(__dirname, './shared/agent-core/browser-stubs/node-constants.cjs'),
-      os: path.resolve(__dirname, './shared/agent-core/browser-stubs/node-os.ts'),
-      'node:os': path.resolve(__dirname, './shared/agent-core/browser-stubs/node-os.ts'),
       crypto: path.resolve(__dirname, './shared/agent-core/browser-stubs/node-crypto.ts'),
       'node:crypto': path.resolve(__dirname, './shared/agent-core/browser-stubs/node-crypto.ts'),
-      // pi-tui extends `EventEmitter`; map `events` to its browser polyfill (explicit
-      // file path so the alias can't resolve back to the externalized Node builtin).
-      events: path.resolve(__dirname, './node_modules/events/events.js'),
-      'node:events': path.resolve(__dirname, './node_modules/events/events.js'),
-      // `undici` (Pi's Node HTTP dispatcher) extends Node stream/net/tls classes at
-      // module scope and is never used in the browser (model calls go through the
-      // injected proxy fetch). Stub it so its Node-only graph stays out of the bundle.
-      undici: path.resolve(__dirname, './shared/agent-core/browser-stubs/undici.ts'),
     },
     conditions: ['browser'],
   },

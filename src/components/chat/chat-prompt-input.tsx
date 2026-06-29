@@ -36,7 +36,7 @@ import { ChatModelPicker } from './chat-model-picker'
 import { buildAttachmentPart } from '@/lib/attachments'
 import { deleteAttachment, putAttachment } from '@/lib/file-blob-storage'
 import { cn } from '@/lib/utils'
-import { FileChip } from './file-chip'
+import { AttachmentCard } from './attachment-card'
 
 /** Max size for a chat attachment (PDF) stored locally and sent to the agent. */
 const maxAttachmentBytes = 25 * 1024 * 1024
@@ -558,9 +558,10 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
           {(attachments.length > 0 || attachError) && (
             <div className="flex flex-wrap items-center gap-2">
               {attachments.map((attachment) => (
-                <FileChip
+                <AttachmentCard
                   key={attachment.localFileId}
                   filename={attachment.filename}
+                  mimeType={attachment.mimeType}
                   onRemove={() => removeAttachment(attachment.localFileId)}
                 />
               ))}

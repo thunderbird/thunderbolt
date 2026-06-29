@@ -8,7 +8,14 @@
  * No I/O happens here — the caller decides what to do with the result.
  */
 
-import type { BridgeConfig, BridgeProtocol, ParsedArgs, RunConfig, ThinkingLevel } from './agent/types.ts'
+import type {
+  BridgeConfig,
+  BridgeProtocol,
+  BridgeTransport,
+  ParsedArgs,
+  RunConfig,
+  ThinkingLevel,
+} from './agent/types.ts'
 
 /** Released version of the CLI, surfaced by `--version` and the banner. */
 export const VERSION = '0.1.0'
@@ -19,8 +26,11 @@ const DEFAULT_MODEL = 'claude-opus-4-8'
 /** All valid `--thinking` levels, in increasing depth. */
 const THINKING_LEVELS: readonly ThinkingLevel[] = ['off', 'minimal', 'low', 'medium', 'high', 'xhigh']
 
-/** The only `--transport` value supported today. `iroh` (P2P) is planned. */
-const SUPPORTED_TRANSPORT = 'wss'
+/** Default `--transport` when omitted (loopback WebSocket). */
+const DEFAULT_TRANSPORT: BridgeTransport = 'wss'
+
+/** All supported `--transport` values: `wss` (loopback) and `iroh` (P2P/E2E). */
+const TRANSPORTS: readonly BridgeTransport[] = ['wss', 'iroh']
 
 /** Default `--port` per bridge protocol — distinct so `acp` and `mcp` bridges
  *  can run side by side without colliding on their defaults. */
@@ -32,16 +42,19 @@ export const HELP_TEXT = `⚡ thunderbolt v${VERSION} — a single-binary termin
 USAGE
   thunderbolt [options] [prompt]
   thunderbolt agent [options] [prompt]
-  thunderbolt acp --transport ${SUPPORTED_TRANSPORT} [--port N] -- <agent-cmd...>
-  thunderbolt mcp --transport ${SUPPORTED_TRANSPORT} [--port N] -- <server-cmd...>
+  thunderbolt acp --transport <wss|iroh> [--port N] -- <agent-cmd...>
+  thunderbolt mcp --transport <wss|iroh> [--port N] -- <server-cmd...>
+  thunderbolt acp connect <ticket|nodeid> [-- <local-client-cmd...>]
+  thunderbolt iroh <id | pair | allow <nodeid>>
 
   With a prompt, runs it once and exits. With no prompt, starts an
   interactive REPL. Built on the Pi harness; talks to Claude.
 
 SUBCOMMANDS
   agent   run the coding agent (default when omitted)
-  acp     bridge a local stdio ACP agent onto a WebSocket the app can reach
-  mcp     bridge a local stdio MCP server onto a WebSocket the app can reach
+  acp     bridge a local stdio ACP agent over the network the app can reach
+  mcp     bridge a local stdio MCP server over the network the app can reach
+  iroh    manage the P2P identity / pairing ticket / peer allowlist
 
 TOOLS
   bash    run shell commands
@@ -58,17 +71,27 @@ OPTIONS
   -v, --version         print the version and exit
 
 BRIDGE OPTIONS (acp / mcp)
-      --transport <t>   network transport: ${SUPPORTED_TRANSPORT} (default: ${SUPPORTED_TRANSPORT})
-      --port <n>        listen port (default: acp ${DEFAULT_BRIDGE_PORT.acp}, mcp ${DEFAULT_BRIDGE_PORT.mcp})
+      --transport <t>   network transport: ${TRANSPORTS.join(' | ')} (default: ${DEFAULT_TRANSPORT})
+      --port <n>        listen port, wss only (default: acp ${DEFAULT_BRIDGE_PORT.acp}, mcp ${DEFAULT_BRIDGE_PORT.mcp})
       --                everything after this is the stdio command to spawn
+
+IROH TRANSPORT (P2P, end-to-end encrypted)
+  thunderbolt iroh id                print this node's NodeId + connection ticket
+  thunderbolt iroh pair              print a ticket to share out-of-band
+  thunderbolt iroh allow <nodeid>    trust a peer (the allowlist is the auth gate)
+  Only allowlisted peers may drive an iroh bridge; the NodeId is an ed25519 key,
+  so the QUIC handshake authenticates and end-to-end encrypts every session.
 
 EXAMPLES
   thunderbolt "fix the failing test in utils.ts"
   thunderbolt --thinking high "refactor the auth module"
   thunderbolt --yolo "run the test suite and fix what breaks"
   thunderbolt
-  thunderbolt acp --transport ${SUPPORTED_TRANSPORT} -- npx @zed-industries/claude-code-acp
-  thunderbolt mcp --transport ${SUPPORTED_TRANSPORT} --port 9001 -- uvx mcp-server-fetch
+  thunderbolt acp --transport wss -- npx @zed-industries/claude-code-acp
+  thunderbolt mcp --transport wss --port 9001 -- uvx mcp-server-fetch
+  thunderbolt acp --transport iroh -- npx @zed-industries/claude-code-acp
+  thunderbolt iroh id
+  thunderbolt acp connect endpoint1abc…   # dial a remote iroh bridge
 
 Requires ANTHROPIC_API_KEY (https://console.anthropic.com).`
 
@@ -128,11 +151,14 @@ const scanTokens = (tokens: readonly string[], index: number, flags: Flags): Sca
 }
 
 /** Bridge flag state accumulated while scanning the tokens before `--`. */
-type BridgeFlags = { readonly transport: 'wss'; readonly port: number }
+type BridgeFlags = { readonly transport: BridgeTransport; readonly port: number }
 
 type BridgeScanResult =
   | { readonly ok: true; readonly flags: BridgeFlags }
   | { readonly ok: false; readonly message: string }
+
+/** Type guard: is `value` a supported {@link BridgeTransport}? */
+const isTransport = (value: string): value is BridgeTransport => (TRANSPORTS as readonly string[]).includes(value)
 
 /**
  * Folds the bridge flag tokens (everything before the `--` separator) into
@@ -147,13 +173,13 @@ const scanBridgeFlags = (tokens: readonly string[], index: number, flags: Bridge
 
   if (token === '--transport') {
     if (next === undefined) return { ok: false, message: 'thunderbolt: --transport requires a value' }
-    if (next === 'iroh') {
-      return { ok: false, message: "thunderbolt: --transport 'iroh' is not available yet (P2P transport is planned); use 'wss'" }
+    if (!isTransport(next)) {
+      return {
+        ok: false,
+        message: `thunderbolt: invalid --transport '${next}' (expected one of: ${TRANSPORTS.join(', ')})`,
+      }
     }
-    if (next !== SUPPORTED_TRANSPORT) {
-      return { ok: false, message: `thunderbolt: invalid --transport '${next}' (only '${SUPPORTED_TRANSPORT}' is supported)` }
-    }
-    return scanBridgeFlags(tokens, index + 2, { ...flags, transport: SUPPORTED_TRANSPORT })
+    return scanBridgeFlags(tokens, index + 2, { ...flags, transport: next })
   }
 
   if (token === '--port') {
@@ -165,7 +191,10 @@ const scanBridgeFlags = (tokens: readonly string[], index: number, flags: Bridge
     return scanBridgeFlags(tokens, index + 2, { ...flags, port: Number(next) })
   }
 
-  return { ok: false, message: `thunderbolt: unrecognized bridge option '${token}' (did you forget '--' before the command?)` }
+  return {
+    ok: false,
+    message: `thunderbolt: unrecognized bridge option '${token}' (did you forget '--' before the command?)`,
+  }
 }
 
 /**
@@ -179,18 +208,64 @@ const parseBridgeArgs = (protocol: BridgeProtocol, rest: string[]): ParsedArgs =
 
   if (flagTokens.includes('--help') || flagTokens.includes('-h')) return { kind: 'help' }
 
-  const scan = scanBridgeFlags(flagTokens, 0, { transport: SUPPORTED_TRANSPORT, port: DEFAULT_BRIDGE_PORT[protocol] })
+  const scan = scanBridgeFlags(flagTokens, 0, { transport: DEFAULT_TRANSPORT, port: DEFAULT_BRIDGE_PORT[protocol] })
   if (!scan.ok) return { kind: 'error', message: scan.message }
 
   if (command.length === 0) {
     return {
       kind: 'error',
-      message: `thunderbolt ${protocol}: missing agent command (e.g. thunderbolt ${protocol} --transport ${SUPPORTED_TRANSPORT} -- <command...>)`,
+      message: `thunderbolt ${protocol}: missing agent command (e.g. thunderbolt ${protocol} --transport ${DEFAULT_TRANSPORT} -- <command...>)`,
     }
   }
 
   const config: BridgeConfig = { protocol, transport: scan.flags.transport, port: scan.flags.port, command }
   return { kind: 'bridge', config }
+}
+
+/**
+ * Parses an `acp`/`mcp connect` invocation: dial a remote iroh bridge by ticket
+ * or NodeId, optionally spawning a local client after `--`. The first token is
+ * the dial target; everything after `--` is the local stdio command.
+ */
+const parseConnectArgs = (protocol: BridgeProtocol, rest: string[]): ParsedArgs => {
+  if (rest.includes('--help') || rest.includes('-h')) return { kind: 'help' }
+
+  const separator = rest.indexOf('--')
+  const before = separator === -1 ? rest : rest.slice(0, separator)
+  const command = separator === -1 ? [] : rest.slice(separator + 1)
+
+  const target = before[0]
+  if (target === undefined) {
+    return { kind: 'error', message: `thunderbolt ${protocol} connect: missing <ticket|nodeid> to dial` }
+  }
+  if (before.length > 1) {
+    return {
+      kind: 'error',
+      message: `thunderbolt ${protocol} connect: unexpected argument '${before[1]}' (did you forget '--' before the command?)`,
+    }
+  }
+
+  return { kind: 'connect', config: { protocol, target, command } }
+}
+
+/**
+ * Parses a `thunderbolt iroh` admin invocation into its sub-action
+ * (`id` | `pair` | `allow <nodeid>`).
+ */
+const parseIrohAdminArgs = (rest: string[]): ParsedArgs => {
+  const action = rest[0]
+  if (action === undefined || action === '--help' || action === '-h') return { kind: 'help' }
+  if (action === 'id') return { kind: 'iroh-admin', action: { kind: 'id' } }
+  if (action === 'pair') return { kind: 'iroh-admin', action: { kind: 'pair' } }
+  if (action === 'allow') {
+    const nodeId = rest[1]
+    if (nodeId === undefined) return { kind: 'error', message: 'thunderbolt iroh allow: missing <nodeid>' }
+    return { kind: 'iroh-admin', action: { kind: 'allow', nodeId } }
+  }
+  return {
+    kind: 'error',
+    message: `thunderbolt iroh: unknown action '${action}' (expected: id | pair | allow <nodeid>)`,
+  }
 }
 
 /**
@@ -203,7 +278,11 @@ const parseBridgeArgs = (protocol: BridgeProtocol, rest: string[]): ParsedArgs =
  */
 export const parseArgs = (argv: string[]): ParsedArgs => {
   const subcommand = argv[0]
-  if (subcommand === 'acp' || subcommand === 'mcp') return parseBridgeArgs(subcommand, argv.slice(1))
+  if (subcommand === 'iroh') return parseIrohAdminArgs(argv.slice(1))
+  if (subcommand === 'acp' || subcommand === 'mcp') {
+    if (argv[1] === 'connect') return parseConnectArgs(subcommand, argv.slice(2))
+    return parseBridgeArgs(subcommand, argv.slice(1))
+  }
 
   if (argv.includes('--help') || argv.includes('-h')) return { kind: 'help' }
   if (argv.includes('--version') || argv.includes('-v')) return { kind: 'version' }

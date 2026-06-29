@@ -1,0 +1,93 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+
+/**
+ * Client side of the iroh transport: dial a remote bridge and pump a local
+ * stdio ACP/MCP client into it. The mirror image of {@link runIrohBridge} —
+ * the same ndjson byte pump, just sourced from this side's stdio (or a spawned
+ * local client) instead of a server-spawned agent.
+ *
+ * With `-- <cmd>` it spawns that local client and bridges its stdio; without a
+ * command it bridges this process's own stdin/stdout, so a JSON-RPC line can be
+ * piped straight through to prove the round-trip. A bidi stream erroring as the
+ * connection closes is the normal end-of-pipe, so the pumps settle rather than
+ * throw; the caller decides success from whether any bytes came back.
+ */
+
+import type { Connection } from '@number0/iroh'
+import type { ConnectConfig } from '../agent/types.ts'
+import { spawnAgent } from '../commands/bridge.ts'
+import { dial } from './endpoint.ts'
+import { forwardFromRecv, forwardToSend } from './pump.ts'
+
+/** Wait until the pumps settle *or* the connection closes — whichever first —
+ *  so a peer that refuses us mid-pump is observed (and its close reason is
+ *  populated) rather than leaving us blocked on a half that will never end. */
+const settleOrClose = (connection: Connection, pumps: Promise<unknown>[]): Promise<unknown> =>
+  Promise.race([Promise.allSettled(pumps), connection.closed()])
+
+/** Pump a spawned local client's stdio over the connection's bidi stream,
+ *  returning the number of bytes received back from the remote agent. */
+const bridgeLocalCommand = async (connection: Connection, command: readonly string[]): Promise<number> => {
+  const proc = spawnAgent(command)
+  if (!proc) throw new Error(`failed to spawn local client '${command[0]}'`)
+  void connection.closed().then(() => proc.kill())
+
+  let received = 0
+  const bi = await connection.openBi()
+  const toRemote = forwardToSend(proc.stdout, bi.send)
+  // `.finally` so the local client always gets stdin EOF, even on a torn stream.
+  const fromRemote = forwardFromRecv(bi.recv, (chunk) => {
+    received += chunk.length
+    proc.stdin.write(chunk)
+    proc.stdin.flush()
+  }).finally(() => proc.stdin.end())
+  await settleOrClose(connection, [toRemote, fromRemote])
+  return received
+}
+
+/** Pump this process's own stdin/stdout over the connection's bidi stream,
+ *  returning the number of bytes received back from the remote agent. */
+const bridgeProcessStdio = async (connection: Connection): Promise<number> => {
+  let received = 0
+  const bi = await connection.openBi()
+  const toRemote = forwardToSend(Bun.stdin.stream(), bi.send)
+  const fromRemote = forwardFromRecv(bi.recv, (chunk) => {
+    received += chunk.length
+    process.stdout.write(chunk)
+  })
+  await settleOrClose(connection, [toRemote, fromRemote])
+  return received
+}
+
+/**
+ * Dial the remote bridge identified by `config.target` and bridge a local
+ * client to it. If the remote rejects this node (not allowlisted) it closes the
+ * connection before any data flows; with no bytes received and a peer-supplied
+ * close reason, that surfaces here as a clear, non-zero-exit error.
+ */
+export const runIrohConnect = async (config: ConnectConfig): Promise<void> => {
+  const { endpoint, connection } = await dial(config.target, config.protocol)
+
+  let received = 0
+  let failure: unknown = null
+  try {
+    received =
+      config.command.length > 0
+        ? await bridgeLocalCommand(connection, config.command)
+        : await bridgeProcessStdio(connection)
+  } catch (err) {
+    failure = err
+  }
+
+  // Capture the peer's close reason before tearing down our endpoint, which
+  // would otherwise overwrite it with our own local close.
+  const reason = connection.closeReason()
+  await endpoint.close()
+
+  if (received === 0 && (failure !== null || reason !== null)) {
+    const detail = reason ?? (failure instanceof Error ? failure.message : String(failure))
+    throw new Error(`iroh connect: refused or no response from remote (${detail})`)
+  }
+}

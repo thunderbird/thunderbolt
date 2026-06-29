@@ -12,6 +12,9 @@
 import { HELP_TEXT, VERSION, parseArgs } from './cli.ts'
 import { runAgent } from './agent/run.ts'
 import { runBridge } from './commands/bridge.ts'
+import { runIrohBridge } from './iroh/bridge.ts'
+import { runIrohConnect } from './iroh/connect.ts'
+import { runIrohAdmin } from './iroh/admin.ts'
 
 const parsed = parseArgs(Bun.argv.slice(2))
 
@@ -36,7 +39,24 @@ switch (parsed.kind) {
     break
   case 'bridge':
     try {
-      await runBridge(parsed.config)
+      if (parsed.config.transport === 'iroh') await runIrohBridge(parsed.config)
+      else await runBridge(parsed.config)
+    } catch (err) {
+      process.stderr.write(`thunderbolt: ${err instanceof Error ? err.message : String(err)}\n`)
+      process.exitCode = 1
+    }
+    break
+  case 'connect':
+    try {
+      await runIrohConnect(parsed.config)
+    } catch (err) {
+      process.stderr.write(`thunderbolt: ${err instanceof Error ? err.message : String(err)}\n`)
+      process.exitCode = 1
+    }
+    break
+  case 'iroh-admin':
+    try {
+      await runIrohAdmin(parsed.action)
     } catch (err) {
       process.stderr.write(`thunderbolt: ${err instanceof Error ? err.message : String(err)}\n`)
       process.exitCode = 1

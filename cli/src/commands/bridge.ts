@@ -30,7 +30,10 @@ type BridgeSocketData = {
 }
 
 type BridgeSocket = ServerWebSocket<BridgeSocketData>
-type BridgeProc = Subprocess<'pipe', 'pipe', 'inherit'>
+
+/** A bridged stdio subprocess: piped stdin/stdout, inherited stderr. Shared by
+ *  the WebSocket and iroh transports, which pump it identically. */
+export type BridgeProc = Subprocess<'pipe', 'pipe', 'inherit'>
 
 /** One-shot decoder for the rare binary inbound frame. Safe to share: it's only
  *  ever called without `{ stream: true }`, so it holds no cross-call state. The
@@ -70,11 +73,13 @@ const pumpStdoutToSocket = async (proc: BridgeProc, ws: BridgeSocket): Promise<v
  *  on ENOENT — catching it at this connection boundary keeps one bad command
  *  from killing the whole server, and surfaces the reason on the operator's
  *  stderr so the failure is loud rather than silent. */
-const spawnAgent = (command: readonly string[]): BridgeProc | null => {
+export const spawnAgent = (command: readonly string[]): BridgeProc | null => {
   try {
     return Bun.spawn({ cmd: [...command], stdin: 'pipe', stdout: 'pipe', stderr: 'inherit' })
   } catch (err) {
-    process.stderr.write(`thunderbolt bridge: failed to spawn '${command[0]}': ${err instanceof Error ? err.message : String(err)}\n`)
+    process.stderr.write(
+      `thunderbolt bridge: failed to spawn '${command[0]}': ${err instanceof Error ? err.message : String(err)}\n`,
+    )
     return null
   }
 }
@@ -108,7 +113,9 @@ export const runBridge = async (config: BridgeConfig): Promise<void> => {
           try {
             await pumpStdoutToSocket(proc, ws)
           } catch (err) {
-            process.stderr.write(`thunderbolt bridge: stdout pump error: ${err instanceof Error ? err.message : String(err)}\n`)
+            process.stderr.write(
+              `thunderbolt bridge: stdout pump error: ${err instanceof Error ? err.message : String(err)}\n`,
+            )
           }
         })()
         void (async () => {

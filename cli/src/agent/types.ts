@@ -27,8 +27,12 @@ export type HarnessBundle = {
 export type ThinkingLevel = 'off' | 'minimal' | 'low' | 'medium' | 'high' | 'xhigh'
 
 /** Wire protocol whose local stdio process the bridge exposes over the network.
- *  Drives only logging — the stdio↔WebSocket pump is byte-identical for both. */
+ *  Drives only logging — the stdio↔transport pump is byte-identical for both. */
 export type BridgeProtocol = 'acp' | 'mcp'
+
+/** Network transport a bridge exposes its stdio process over. `wss` is a
+ *  loopback-only WebSocket; `iroh` is the authenticated P2P/E2E transport. */
+export type BridgeTransport = 'wss' | 'iroh'
 
 /**
  * Fully-resolved configuration for an `acp`/`mcp` bridge invocation, produced by
@@ -37,13 +41,34 @@ export type BridgeProtocol = 'acp' | 'mcp'
 export type BridgeConfig = {
   /** Which protocol's stdio process is being bridged. */
   readonly protocol: BridgeProtocol
-  /** Network transport exposing the process. Only `wss` exists today. */
-  readonly transport: 'wss'
-  /** TCP port the WebSocket server listens on (`0` lets the OS assign one). */
+  /** Network transport exposing the process. */
+  readonly transport: BridgeTransport
+  /** TCP port the WebSocket server listens on (`wss` only; ignored by `iroh`). */
   readonly port: number
   /** The spawned stdio agent command: `command[0]` is the executable. */
   readonly command: readonly string[]
 }
+
+/**
+ * Configuration for an `acp`/`mcp connect` invocation: dial a remote iroh bridge
+ * and pump a local client into it.
+ */
+export type ConnectConfig = {
+  /** Which protocol the local client speaks (drives only logging). */
+  readonly protocol: BridgeProtocol
+  /** The remote bridge to dial: a connection ticket or a bare NodeId. */
+  readonly target: string
+  /** Optional local stdio client to spawn; empty means bridge this process's
+   *  own stdin/stdout (so a JSON-RPC line can be piped through). */
+  readonly command: readonly string[]
+}
+
+/** A `thunderbolt iroh` admin action: inspect identity, mint a pairing ticket,
+ *  or extend the peer allowlist. */
+export type IrohAdminAction =
+  | { readonly kind: 'id' }
+  | { readonly kind: 'pair' }
+  | { readonly kind: 'allow'; readonly nodeId: string }
 
 /** Settings common to every run, independent of oneshot vs REPL mode. */
 type RunConfigBase = {
@@ -63,12 +88,16 @@ type RunConfigBase = {
  * makes `prompt` present exactly when (and only when) it's a oneshot run.
  */
 export type RunConfig =
-  (RunConfigBase & { readonly mode: 'oneshot'; readonly prompt: string }) | (RunConfigBase & { readonly mode: 'repl' })
+  | (RunConfigBase & { readonly mode: 'oneshot'; readonly prompt: string })
+  | (RunConfigBase & { readonly mode: 'repl' })
 
-/** Result of parsing argv: a run, a bridge, or a terminal info action. */
+/** Result of parsing argv: a run, a bridge, a connect, an iroh admin action,
+ *  or a terminal info action. */
 export type ParsedArgs =
   | { readonly kind: 'run'; readonly config: RunConfig }
   | { readonly kind: 'bridge'; readonly config: BridgeConfig }
+  | { readonly kind: 'connect'; readonly config: ConnectConfig }
+  | { readonly kind: 'iroh-admin'; readonly action: IrohAdminAction }
   | { readonly kind: 'help' }
   | { readonly kind: 'version' }
   | { readonly kind: 'error'; readonly message: string }

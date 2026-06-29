@@ -560,3 +560,77 @@ test('close() closes sockets, closes the server, and stops the child (grace->SIG
   expect(sup.stop).toHaveBeenCalledTimes(1)
   expect(wssRef.closed).toBe(true)
 })
+
+test('a spawn error that lands AFTER the face resolved (listen won the race) reaps the child instead of leaving a zombie face', async () => {
+  let wssRef!: FakeWssInstance
+  const { FakeWss } = makeFakeWss()
+  class Capture extends FakeWss {
+    constructor(o: WssOpts) {
+      super(o)
+      wssRef = this
+    }
+  }
+  const { sup, factory } = makeFakeSupervisor()
+  const onChildExit = mock(() => {})
+  const logger = { error: () => {}, info: () => {}, warn: mock(() => {}), banner: mock(() => {}) }
+  const p = startBridge({
+    launch: ['x'],
+    host: '127.0.0.1',
+    port: 0,
+    allowOrigins: [],
+    allowAnyOrigin: false,
+    logger,
+    onChildExit,
+    deps: makeDeps(Capture, factory),
+  })
+  // listen wins the race: the start promise resolves a live face first...
+  wssRef.emit('listening')
+  const face = await p
+  expect(typeof face.url).toBe('string')
+  // ...then the child's spawn error lands late. The resolved face must NOT be left
+  // pointing at a dead child: the server is torn down and the caller is told via
+  // onChildExit, exactly as a self-exit would. Without the once-guard the late
+  // onSpawnError would wss.close() under the live face and skip onChildExit.
+  sup.onSpawnError!(Object.assign(new Error('enoent'), { code: 'ENOENT' }))
+  expect(wssRef.closed).toBe(true)
+  expect(onChildExit).toHaveBeenCalledTimes(1)
+  expect(onChildExit).toHaveBeenCalledWith({ code: null, signal: null })
+  // Reaping a failed spawn must not SIGKILL — there is no live child to kill.
+  expect(sup.kill).not.toHaveBeenCalled()
+  // The single legitimate banner came from the winning listen; the late reap adds none.
+  expect(logger.banner).toHaveBeenCalledTimes(1)
+})
+
+test('a spawn error BEFORE listening rejects, and a later listening prints no banner and does not double-settle', async () => {
+  let wssRef!: FakeWssInstance
+  const { FakeWss } = makeFakeWss()
+  class Capture extends FakeWss {
+    constructor(o: WssOpts) {
+      super(o)
+      wssRef = this
+    }
+  }
+  const { sup, factory } = makeFakeSupervisor()
+  const onChildExit = mock(() => {})
+  const logger = { error: () => {}, info: () => {}, warn: mock(() => {}), banner: mock(() => {}) }
+  const p = startBridge({
+    launch: ['x'],
+    host: '127.0.0.1',
+    port: 0,
+    allowOrigins: [],
+    allowAnyOrigin: false,
+    logger,
+    onChildExit,
+    deps: makeDeps(Capture, factory),
+  })
+  // Spawn fails before the socket is listening: the start promise rejects. A spawn
+  // failure has no live child, so it must not SIGKILL.
+  sup.onSpawnError!(Object.assign(new Error('enoent'), { code: 'ENOENT' }))
+  await expect(p).rejects.toMatchObject({ name: 'UnavailableError', code: 'ENOENT' })
+  expect(sup.kill).not.toHaveBeenCalled()
+  // A 'listening' that fires after the reject is a no-op: no ws:// banner, and the
+  // already-rejected start is not re-settled into a live face (no reap, no onChildExit).
+  wssRef.emit('listening')
+  expect(logger.banner).not.toHaveBeenCalled()
+  expect(onChildExit).not.toHaveBeenCalled()
+})

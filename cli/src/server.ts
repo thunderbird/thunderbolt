@@ -15,7 +15,7 @@ import { buildOriginAllowlist, safeClassifyFrame } from './log'
 import { createNdjsonReader, frameToWs, wsToFrame } from './relay'
 import { superviseChild as defaultSuperviseChild } from './child'
 import { formatHostForUrl, makeCloseLatch } from './util'
-import type { StartBridge, WebSocketServerClass } from './types'
+import type { ChildExit, StartBridge, WebSocketServerClass } from './types'
 
 /** Pause child stdout once a socket buffers more than this many bytes. */
 const HIGH_WATER = 1 << 20 // 1 MiB
@@ -46,6 +46,17 @@ const startBridge: StartBridge = ({
 
   return new Promise((resolve, reject) => {
     const latch = makeCloseLatch()
+
+    // The start promise settles exactly once. A successful 'listening' resolves a
+    // live face; a spawn/bind error rejects. This once-guard makes whichever fires
+    // first win so the loser is a no-op — `latch.settled()` only tracks the CLOSE
+    // lifecycle, so without it a spawn error landing just AFTER 'listening' resolved
+    // would tear the server down under an already-resolved face (and silently skip
+    // onChildExit), leaving the caller holding a live handle to a dead child; and,
+    // symmetrically, a 'listening' that fires after a spawn error rejected would
+    // print a spurious ws:// banner. See reapChild + onSpawnError below.
+    let startSettled = false
+
     let client: WebSocket | null = null
     let paused = false
 
@@ -85,26 +96,42 @@ const startBridge: StartBridge = ({
 
     const finishClose = latch.finishClose
 
+    // Flush the child's stdout, close the client + server, and notify the caller.
+    // Shared by a normal self-exit and by a spawn error that lands AFTER the face
+    // already resolved, so a resolved face never silently points at a dead child.
+    const reapChild = (info: ChildExit): void => {
+      reader.flush()
+      if (client) client.close(CLOSE_NORMAL)
+      wss.close(finishClose)
+      if (onChildExit) onChildExit(info)
+    }
+
     const supervisor = superviseChild({
       launch,
       spawn: deps.spawn,
       logger,
       onStdout: (chunk) => reader.push(chunk),
-      onExit: (info) => {
-        reader.flush()
-        if (client) client.close(CLOSE_NORMAL)
-        wss.close(finishClose)
-        if (onChildExit) onChildExit(info)
-      },
+      onExit: reapChild,
       onSpawnError: (err) => {
-        // Spawn ENOENT etc. — tear the server down and surface as unavailable.
+        // A spawn failure (ENOENT/EACCES): the child never produced a usable face.
+        // If 'listening' already won the race and resolved the start promise, reap
+        // like a self-exit so the caller learns the child is dead and nothing is
+        // orphaned; otherwise this is the first settle, so reject.
+        if (startSettled) {
+          reapChild({ code: null, signal: null })
+          return
+        }
+        startSettled = true
         wss.close()
-        if (!latch.settled()) reject(new UnavailableError({ code: err.code }))
+        reject(new UnavailableError({ code: err.code }))
       },
     })
 
     wss.on('error', (err: NodeJS.ErrnoException) => {
-      // Bind failures (EADDRINUSE/EACCES) arrive here before 'listening'.
+      // Bind failures (EADDRINUSE/EACCES) arrive here before 'listening'. If a spawn
+      // error already won the start race this is a no-op (never double-kill/reject);
+      // a failed bind never emits 'listening', so the two stay mutually exclusive.
+      if (startSettled) return
       supervisor.kill() // never-orphan
       wss.close()
       reject(new UnavailableError({ code: err.code }))
@@ -152,6 +179,11 @@ const startBridge: StartBridge = ({
     })
 
     wss.on('listening', () => {
+      // If a spawn error already rejected (won the race), the server is being torn
+      // down — resolving now would hand back a dead face and print a spurious ws://
+      // banner, so this callback is a no-op once the start has settled.
+      if (startSettled) return
+      startSettled = true
       const actualPort = (wss.address() as AddressInfo).port
       const url = `ws://${formatHostForUrl(host)}:${actualPort}`
       logger.banner(url)

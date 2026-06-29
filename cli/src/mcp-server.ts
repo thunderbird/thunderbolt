@@ -345,7 +345,10 @@ const startMcpFace: StartMcpFace = ({
     })
 
     server.on('error', (err: NodeJS.ErrnoException) => {
-      // Bind failures (EADDRINUSE/EACCES) arrive here before 'listening'.
+      // Bind failures (EADDRINUSE/EACCES) arrive here before 'listening'. If a spawn
+      // error already won the start race this is a no-op (never double-kill/reject);
+      // a failed bind never emits 'listening', so the two stay mutually exclusive.
+      if (startSettled) return
       supervisor.kill() // never-orphan
       server.close()
       reject(new UnavailableError({ code: err.code }))

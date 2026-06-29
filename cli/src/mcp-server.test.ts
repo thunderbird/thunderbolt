@@ -677,6 +677,23 @@ test('a spawn error that lands AFTER the face resolved (listen won the race) rea
   expect(calls.killed).toBe(0)
 })
 
+test('a server error AFTER the face resolved (post-bind) is a no-op: the live child is not killed and the face is not torn down', async () => {
+  const logger = makeLogger()
+  const { server, calls, deps } = makeHarness()
+  const onChildExit = mock(() => {})
+  // listen wins the race: the start promise resolves a live face (startSettled=true)...
+  const face = await startMcpFace(baseOpts(logger, deps, { onChildExit }))
+  expect(typeof face.url).toBe('string')
+  // ...then the http server emits a late 'error'. The pre-listen handler SIGKILLs the
+  // child and rejects; once start has settled that path must be a no-op so the resolved
+  // face keeps its live child intact (mirrors the ACP face's guarded wss 'error'). Without
+  // the startSettled guard this would SIGKILL the child under an already-resolved face.
+  server.emit('error', Object.assign(new Error('late'), { code: 'ECONNRESET' }))
+  expect(calls.killed).toBe(0)
+  expect(server.close).not.toHaveBeenCalled()
+  expect(onChildExit).not.toHaveBeenCalled()
+})
+
 test('a bind failure rejects with an unavailable error and SIGKILLs the child first', async () => {
   const logger = makeLogger()
   // Server whose listen never fires success but emits an error.

@@ -10,6 +10,7 @@ import type { Logger, SpawnFn, SuperviseChildOptions } from './types'
 /** Minimal fake ChildProcess: EventEmitter with controllable stdin/stdout. */
 type FakeChild = EventEmitter & {
   killed: boolean
+  pid?: number
   lastSignal?: NodeJS.Signals
   kill: Mock<(signal?: NodeJS.Signals) => boolean>
   stdin: {
@@ -23,9 +24,13 @@ type FakeChild = EventEmitter & {
   }
 }
 
+// A successful spawn yields a numeric pid. Tests that need the pidless window
+// (a failing spawn that is still `alive` before its async 'error' fires) unset
+// `child.pid` explicitly after construction.
 const makeFakeChild = (): FakeChild => {
   const child = new EventEmitter() as FakeChild
   child.killed = false
+  child.pid = 4242
   child.kill = mock((signal?: NodeJS.Signals) => {
     child.killed = true
     child.lastSignal = signal
@@ -213,4 +218,39 @@ test('stop()/kill() after exit are no-ops', () => {
   s.stop()
   s.kill()
   expect(child.kill.mock.calls.length).toBe(before)
+})
+
+test('kill() on a pidless-but-alive child never signals (no pid-0 group kill)', () => {
+  // A failing spawn is `alive` until its async 'error' fires; in that window
+  // pid is undefined and child.kill('SIGKILL') would hit pid 0 (our own group).
+  const child = makeFakeChild()
+  child.pid = undefined
+  const s = superviseChild(baseOpts(child))
+  expect(s.alive()).toBe(true)
+  s.kill()
+  expect(child.kill).not.toHaveBeenCalled()
+})
+
+test('stop() on a pidless-but-alive child never signals and arms no grace timer', async () => {
+  const child = makeFakeChild()
+  child.pid = undefined
+  const s = superviseChild(baseOpts(child, { graceMs: 10 }))
+  expect(s.alive()).toBe(true)
+  s.stop()
+  // No initial signal, and no grace-timer SIGKILL once the window elapses.
+  await new Promise((r) => setTimeout(r, 25))
+  expect(child.kill).not.toHaveBeenCalled()
+})
+
+test('grace-timer SIGKILL is skipped if the child became pidless after stop()', async () => {
+  // stop() fires on a real pid (initial SIGTERM lands), but if the child loses
+  // its pid before the grace window elapses the forced SIGKILL must not hit pid 0.
+  const child = makeFakeChild()
+  const s = superviseChild(baseOpts(child, { graceMs: 10 }))
+  s.stop()
+  expect(child.kill).toHaveBeenLastCalledWith('SIGTERM')
+  child.pid = undefined
+  await new Promise((r) => setTimeout(r, 25))
+  const sigkills = child.kill.mock.calls.filter((c) => c[0] === 'SIGKILL')
+  expect(sigkills.length).toBe(0)
 })

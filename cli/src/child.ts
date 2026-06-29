@@ -76,12 +76,16 @@ const superviseChild: SuperviseChild = ({
     },
 
     stop(signal = 'SIGTERM') {
-      if (!state.alive) return
+      // A pidless child means the spawn never produced an OS process (the
+      // error event just hasn't flipped `alive` yet) — there's nothing to
+      // signal, and `child.kill()` on pid 0 would broadcast to our own process
+      // group. Skip it: no live process means nothing to orphan.
+      if (!state.alive || child.pid == null) return
       child.kill(signal)
       clearGrace()
       graceTimer = setTimeout(() => {
         // Never-orphan: if the child ignored the signal, force it down.
-        if (state.alive) {
+        if (state.alive && child.pid != null) {
           logger.error('child-grace-timeout', { code: 'SIGKILL' })
           child.kill('SIGKILL')
         }
@@ -92,7 +96,10 @@ const superviseChild: SuperviseChild = ({
 
     kill() {
       clearGrace()
-      if (state.alive) child.kill('SIGKILL')
+      // Guard on pid too: SIGKILL on a pidless child (pid 0) is a process-group
+      // kill — it would take the bridge itself down. Spawn failed, so there's
+      // no OS process to orphan.
+      if (state.alive && child.pid != null) child.kill('SIGKILL')
     },
 
     alive() {

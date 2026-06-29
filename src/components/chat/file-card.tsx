@@ -4,6 +4,7 @@
 
 import { FileText, X } from 'lucide-react'
 import { lazy, Suspense } from 'react'
+import { ImageThumbnail } from './image-thumbnail'
 
 // react-pdf is heavy — load it only when an attachment card actually renders.
 const PdfThumbnail = lazy(() => import('./pdf-thumbnail'))
@@ -38,10 +39,11 @@ const typeBadge = (filename: string, mimeType: string): string => {
  */
 export const FileCard = ({ localFileId, filename, mimeType, onOpen, onRemove }: FileCardProps) => {
   const isPdf = mimeType === 'application/pdf'
+  const isImage = mimeType.startsWith('image/')
 
   const preview = (
     <div className="relative flex h-44 w-40 items-center justify-center overflow-hidden rounded-xl border bg-muted">
-      {/* Placeholder shown until (and unless) the page thumbnail renders. */}
+      {/* Placeholder shown until (and unless) a real preview renders on top. */}
       <FileText className="size-8 text-muted-foreground" aria-hidden="true" />
       {isPdf && (
         <Suspense fallback={null}>
@@ -50,6 +52,7 @@ export const FileCard = ({ localFileId, filename, mimeType, onOpen, onRemove }: 
           </div>
         </Suspense>
       )}
+      {isImage && <ImageThumbnail localFileId={localFileId} alt={filename} />}
       <div className="absolute inset-x-0 bottom-0 flex items-center gap-1.5 bg-gradient-to-t from-black/65 to-transparent px-2 pb-1.5 pt-5">
         <span className="shrink-0 rounded bg-white/90 px-1 py-px text-[length:var(--font-size-xs)] font-semibold text-black">
           {typeBadge(filename, mimeType)}

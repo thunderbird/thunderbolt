@@ -27,7 +27,8 @@ export const DocxThumbnail = ({ localFileId, title }: DocxThumbnailProps) => {
         sandbox=""
         srcDoc={state.docxHtml}
         scrolling="no"
-        className="h-[528px] w-[480px] origin-top-left scale-[0.3333] border-0"
+        className="h-[528px] w-[480px] origin-top-left border-0"
+        style={{ transform: 'scale(var(--thumb-scale, 0.3))' }}
       />
     </div>
   )

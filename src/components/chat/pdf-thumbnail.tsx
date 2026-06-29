@@ -8,29 +8,40 @@ import { Document, Page, pdfjs } from 'react-pdf'
 // Same pdfjs worker config as the sideview viewer (idempotent if both run).
 pdfjs.GlobalWorkerOptions.workerSrc = new URL('pdfjs-dist/build/pdf.worker.min.mjs', import.meta.url).toString()
 
+/** Base render width (px); the card scales it down via `--thumb-scale`. Rendering
+ *  larger than displayed keeps the thumbnail crisp. */
+const baseWidthPx = 480
+
 type PdfThumbnailProps = {
   localFileId: string
-  /** Render width in CSS px; the page keeps its aspect ratio. */
-  width: number
 }
 
 /**
- * First-page PDF thumbnail rendered from a locally-stored attachment. Default
- * export so {@link FileCard} can `React.lazy` it — that keeps react-pdf / pdfjs
- * out of the main chat bundle until an attachment card actually mounts.
- *
- * Returns null until the blob resolves; the card shows its own placeholder
- * underneath, so the page simply fades in on top once rendered.
+ * First-page PDF thumbnail rendered from a locally-stored attachment, sized via
+ * the card's responsive `--thumb-scale` CSS variable. Default export so
+ * {@link FileCard} can `React.lazy` it — that keeps react-pdf / pdfjs out of the
+ * main chat bundle until an attachment card actually mounts. Returns null until
+ * the blob resolves; the card's placeholder shows underneath until then.
  */
-const PdfThumbnail = ({ localFileId, width }: PdfThumbnailProps) => {
+const PdfThumbnail = ({ localFileId }: PdfThumbnailProps) => {
   const state = useLocalDocumentBlob(localFileId, 'pdf')
   if (state.status !== 'ready') {
     return null
   }
   return (
-    <Document file={state.blobUrl} loading={null} error={null}>
-      <Page pageNumber={1} width={width} renderTextLayer={false} renderAnnotationLayer={false} loading={null} />
-    </Document>
+    <div className="pointer-events-none absolute inset-0 overflow-hidden bg-white">
+      <div className="origin-top-left" style={{ transform: 'scale(var(--thumb-scale, 0.3))' }}>
+        <Document file={state.blobUrl} loading={null} error={null}>
+          <Page
+            pageNumber={1}
+            width={baseWidthPx}
+            renderTextLayer={false}
+            renderAnnotationLayer={false}
+            loading={null}
+          />
+        </Document>
+      </div>
+    </div>
   )
 }
 

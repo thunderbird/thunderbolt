@@ -22,7 +22,10 @@ export const MarkdownThumbnail = ({ localFileId }: MarkdownThumbnailProps) => {
   }
   return (
     <div className="pointer-events-none absolute inset-0 overflow-hidden bg-card">
-      <div className="prose prose-sm dark:prose-invert w-[480px] origin-top-left scale-[0.3333] p-4 text-foreground">
+      <div
+        className="prose prose-sm dark:prose-invert w-[480px] origin-top-left p-4 text-foreground"
+        style={{ transform: 'scale(var(--thumb-scale, 0.3))' }}
+      >
         <ReactMarkdown remarkPlugins={[remarkGfm]}>{text}</ReactMarkdown>
       </div>
     </div>

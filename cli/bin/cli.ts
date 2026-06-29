@@ -155,8 +155,19 @@ const runBridge = async (parsed: ParsedArgs, { stderr, exit, deps }: RunBridgeIo
     if (live.tunnel) await live.tunnel.close().catch(() => {})
   }
 
-  // The child exiting on its own drives the bridge's own exit code.
+  // Exactly one path decides the exit code. A signal/fatal/startup teardown stops the
+  // child itself (face.close -> SIGTERM, or face.kill -> SIGKILL), so the child exit it
+  // triggers must not override the intended code: whichever path runs first claims the
+  // exit and the others become no-ops. Set synchronously before any `await`, so the
+  // child's exit (a later event-loop turn) always sees the claim.
+  let exiting = false
+
+  // The child exiting on its own drives the bridge's own exit code — unless a signal,
+  // fatal, or startup teardown already claimed it (then the child death is a consequence
+  // of our deliberate stop and must not override the intended code).
   const onChildExit = async (info: ChildExit): Promise<void> => {
+    if (exiting) return
+    exiting = true
     offSignal('SIGINT', sigintHandler)
     offSignal('SIGTERM', sigtermHandler)
     if (live.tunnel) await live.tunnel.close().catch(() => {})
@@ -165,6 +176,8 @@ const runBridge = async (parsed: ParsedArgs, { stderr, exit, deps }: RunBridgeIo
 
   // One-shot signal handlers -> graceful stop -> derived exit code.
   const handleSignal = (signal: NodeJS.Signals) => async (): Promise<void> => {
+    if (exiting) return
+    exiting = true
     offSignal('SIGINT', sigintHandler)
     offSignal('SIGTERM', sigtermHandler)
     await reap()
@@ -178,6 +191,11 @@ const runBridge = async (parsed: ParsedArgs, { stderr, exit, deps }: RunBridgeIo
   // Never-orphan backstop for truly uncaught errors: SIGKILL the child
   // synchronously (no async grace — the process is about to die) then exit 70.
   const onFatal = (err: unknown): void => {
+    // The never-orphan backstop for truly uncaught errors stays authoritative: it must
+    // force the child down and exit even if a graceful teardown is already in progress
+    // (and might be wedged), so it does NOT yield to `exiting`. It still CLAIMS it, so a
+    // child reaped by its SIGKILL can't override EX.SOFTWARE via onChildExit.
+    exiting = true
     offSignal('SIGINT', sigintHandler)
     offSignal('SIGTERM', sigtermHandler)
     if (live.face) live.face.kill() // immediate SIGKILL — never-orphan backstop
@@ -228,6 +246,8 @@ const runBridge = async (parsed: ParsedArgs, { stderr, exit, deps }: RunBridgeIo
     }
     return
   } catch (err) {
+    if (exiting) return // a signal/child teardown already claimed the exit code
+    exiting = true
     await reap() // never-orphan before exiting on any fatal path
     logger.error('fatal', { code: err instanceof UnavailableError ? err.code : 'INTERNAL' })
     stderr.write(`${toMessage(err)}\n`)

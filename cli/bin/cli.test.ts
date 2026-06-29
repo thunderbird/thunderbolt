@@ -4,7 +4,16 @@
 
 import { test, expect, mock } from 'bun:test'
 import { run } from './cli'
-import type { BridgeOptions, GenerateBearer, MakeLogger, StartBridge, StartMcpFace, StartTunnel } from '../src/types'
+import { UnavailableError } from '../src/errors'
+import type {
+  BridgeOptions,
+  GenerateBearer,
+  MakeLogger,
+  McpFaceOptions,
+  StartBridge,
+  StartMcpFace,
+  StartTunnel,
+} from '../src/types'
 
 /** A captured process-event listener (mirrors the CLI's injectable `on`). */
 type SignalListener = (...args: unknown[]) => unknown
@@ -212,6 +221,106 @@ test('SIGTERM handler closes the face then exits 0', async () => {
   expect(h.exit).toHaveBeenLastCalledWith(0)
 })
 
+test('SIGINT during shutdown: the child dying from the graceful stop must not override exit 130', async () => {
+  const h = makeHarness()
+  let captured: BridgeOptions | undefined
+  // Model the real face: stopping it (face.close) SIGTERMs the child, whose exit fires
+  // onChildExit with signal 'SIGTERM' (childExitToCode -> 70). That deliberate-stop child
+  // death must NOT beat the signal handler's intended 130 — exactly one exit, code 130.
+  const startBridge = mock(async (args: BridgeOptions) => {
+    captured = args
+    h.face.close = mock(async () => {
+      await captured!.onChildExit!({ code: null, signal: 'SIGTERM' })
+    })
+    return h.face
+  })
+  h.deps.startBridge = startBridge
+  await run({
+    argv: ['bridge', '--mode', 'acp', '--', 'x'],
+    stdout: h.stdout,
+    stderr: h.stderr,
+    exit: h.exit,
+    deps: h.deps,
+  })
+  await h.signals.SIGINT()
+  expect(h.exit).toHaveBeenCalledTimes(1)
+  expect(h.exit).toHaveBeenCalledWith(130)
+})
+
+test('SIGTERM during shutdown: the child dying from the graceful stop must not override exit 0', async () => {
+  const h = makeHarness()
+  let captured: BridgeOptions | undefined
+  const startBridge = mock(async (args: BridgeOptions) => {
+    captured = args
+    h.face.close = mock(async () => {
+      await captured!.onChildExit!({ code: null, signal: 'SIGTERM' })
+    })
+    return h.face
+  })
+  h.deps.startBridge = startBridge
+  await run({
+    argv: ['bridge', '--mode', 'acp', '--', 'x'],
+    stdout: h.stdout,
+    stderr: h.stderr,
+    exit: h.exit,
+    deps: h.deps,
+  })
+  await h.signals.SIGTERM()
+  expect(h.exit).toHaveBeenCalledTimes(1)
+  expect(h.exit).toHaveBeenCalledWith(0)
+})
+
+test('a startup teardown (tunnel failure) keeps its own exit code (69); the reaped child does not override it', async () => {
+  const h = makeHarness()
+  let captured: McpFaceOptions | undefined
+  // The MCP face bound (child live), then the tunnel start throws. The catch reaps the
+  // face, SIGTERMing the child -> onChildExit(70). The startup error's code (69) must win.
+  const startMcpFace = mock(async (args: McpFaceOptions) => {
+    captured = args
+    h.mcpFace.close = mock(async () => {
+      await captured!.onChildExit!({ code: null, signal: 'SIGTERM' })
+    })
+    return h.mcpFace
+  })
+  const startTunnel = mock(async () => {
+    throw new UnavailableError({ code: 'ECONNREFUSED' })
+  })
+  h.deps.startMcpFace = startMcpFace
+  h.deps.startTunnel = startTunnel
+  await run({
+    argv: ['bridge', '--mode', 'mcp', '--tunnel', '--', 'x'],
+    stdout: h.stdout,
+    stderr: h.stderr,
+    exit: h.exit,
+    deps: h.deps,
+  })
+  expect(h.exit).toHaveBeenCalledTimes(1)
+  expect(h.exit).toHaveBeenCalledWith(69)
+})
+
+test('a fatal error during a wedged shutdown still forces SIGKILL + exit 70 (never-orphan backstop stays authoritative)', async () => {
+  const h = makeHarness()
+  // The graceful stop wedges: face.close never resolves, so the signal teardown is
+  // stuck mid-reap with the exit unclaimed-by-completion. A truly uncaught error must
+  // still force the child down and exit 70 — onFatal does NOT yield to the in-progress
+  // shutdown (unlike onChildExit, which must).
+  h.face.close = mock(() => new Promise<void>(() => {}))
+  const startBridge = mock(async () => h.face)
+  h.deps.startBridge = startBridge
+  await run({
+    argv: ['bridge', '--mode', 'acp', '--', 'x'],
+    stdout: h.stdout,
+    stderr: h.stderr,
+    exit: h.exit,
+    deps: h.deps,
+  })
+  void h.signals.SIGINT() // claims `exiting`, then hangs in reap (face.close never resolves)
+  await Promise.resolve()
+  h.signals.uncaughtException(new Error('boom'))
+  expect(h.face.kill).toHaveBeenCalledTimes(1)
+  expect(h.exit).toHaveBeenCalledWith(70)
+})
+
 test('a bind failure from the face (UnavailableError EADDRINUSE) maps to exit 69 and reaps', async () => {
   const err = Object.assign(new Error('addr'), { name: 'UnavailableError', code: 'EADDRINUSE' })
   const startBridge = mock(async () => {
@@ -313,6 +422,48 @@ test('a nonzero child exit derives exit 70', async () => {
   })
   await captured!.onChildExit!({ code: 1, signal: null })
   expect(h.exit).toHaveBeenLastCalledWith(70)
+})
+
+test('a natural child exit on a signal (signal:SIGTERM, the bridge got no OS signal) derives exit 70', async () => {
+  const h = makeHarness()
+  let captured: BridgeOptions | undefined
+  const startBridge = mock(async (args: BridgeOptions) => {
+    captured = args
+    return h.face
+  })
+  h.deps.startBridge = startBridge
+  await run({
+    argv: ['bridge', '--mode', 'acp', '--', 'x'],
+    stdout: h.stdout,
+    stderr: h.stderr,
+    exit: h.exit,
+    deps: h.deps,
+  })
+  await captured!.onChildExit!({ code: null, signal: 'SIGTERM' })
+  expect(h.exit).toHaveBeenCalledTimes(1)
+  expect(h.exit).toHaveBeenCalledWith(70)
+})
+
+test('a natural child exit then a SIGINT exits exactly once with the child-derived code (no double exit)', async () => {
+  const h = makeHarness()
+  let captured: BridgeOptions | undefined
+  const startBridge = mock(async (args: BridgeOptions) => {
+    captured = args
+    return h.face
+  })
+  h.deps.startBridge = startBridge
+  await run({
+    argv: ['bridge', '--mode', 'acp', '--', 'x'],
+    stdout: h.stdout,
+    stderr: h.stderr,
+    exit: h.exit,
+    deps: h.deps,
+  })
+  await captured!.onChildExit!({ code: 0, signal: null })
+  // A signal arriving after the child already claimed the exit must be a no-op.
+  await h.signals.SIGINT()
+  expect(h.exit).toHaveBeenCalledTimes(1)
+  expect(h.exit).toHaveBeenCalledWith(0)
 })
 
 test('uncaughtException SIGKILLs the live child (face.kill) and exits 70 (never-orphan)', async () => {

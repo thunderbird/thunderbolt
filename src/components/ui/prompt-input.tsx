@@ -51,6 +51,9 @@ type PromptInputProps = {
    * input.
    */
   popoverSlot?: ReactNode
+  /** Optional slot rendered at the top of the composer box, above the textarea
+   *  (e.g. pending attachment preview cards). */
+  headerSlot?: ReactNode
   /** Receives every keydown so callers can intercept ↑↓/Enter/Esc for autocomplete. */
   onTextareaKeyDown?: (e: KeyboardEvent<HTMLTextAreaElement>) => void
   /** Fires on selection change so callers can track the caret position. */
@@ -85,6 +88,7 @@ export const PromptInput = forwardRef<HTMLFormElement, PromptInputProps>(
       onModelChange,
       renderOverlay,
       popoverSlot,
+      headerSlot,
       onTextareaKeyDown,
       onTextareaSelect,
       onTextareaScroll,
@@ -148,6 +152,7 @@ export const PromptInput = forwardRef<HTMLFormElement, PromptInputProps>(
 
     const content = (
       <>
+        {headerSlot}
         <div className="relative w-full">
           {popoverSlot}
           {renderOverlay && (

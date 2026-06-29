@@ -53,7 +53,7 @@ export const ChatMessages = ({ useChat = useChat_default }: ChatMessagesProps) =
 
   // Re-deliver a failed turn's attachments as text/images (auto on a detected
   // content-rejection, or via the buttons below). Gate auto-fire on a settled error.
-  const { onRetryAsText, onRetryAsImages } = useAttachmentRemediation({
+  const { suppressError, onRetryAsText, onRetryAsImages } = useAttachmentRemediation({
     messages,
     setMessages,
     regenerate,
@@ -98,10 +98,12 @@ export const ChatMessages = ({ useChat = useChat_default }: ChatMessagesProps) =
         return null
       })}
 
-      {showSubmittedLoading && <SyntheticLoadingPart isStreaming />}
+      {/* Keep a loading indicator up while remediation re-delivers + retries, so
+          the suppressed error doesn't leave a blank gap. */}
+      {(showSubmittedLoading || suppressError) && <SyntheticLoadingPart isStreaming />}
 
-      {/* Show error message if there's an error */}
-      {hasError && (
+      {/* Show error message if there's an error and remediation isn't taking over */}
+      {hasError && !suppressError && (
         <ErrorMessage
           retryCount={retryCount}
           retriesExhausted={retriesExhausted}

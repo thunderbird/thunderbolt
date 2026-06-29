@@ -7,7 +7,7 @@ import { getAttachments, isAttachmentPart } from '@/lib/attachments'
 import { isNonRetryableClientError } from '@/lib/error-utils'
 import { getAttachment } from '@/lib/file-blob-storage'
 import type { AttachmentData, ThunderboltUIMessage } from '@/types'
-import { useCallback, useEffect, useMemo, useRef } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 type DeliverAs = 'text' | 'images'
 
@@ -59,6 +59,28 @@ const pickTarget = async (attachment: AttachmentData): Promise<DeliverAs | null>
   return nextRemediationTarget(attachment.deliverAs, { canText, canImages, hasUsableText })
 }
 
+/**
+ * Synchronous, byte-free check of whether an attachment can still advance a rung
+ * (text from native; images from native/text). Mirrors {@link nextRemediationTarget}
+ * minus the scan inspection, so the UI can decide *during render* whether an
+ * auto-remediation is coming — and suppress the error flash before it paints.
+ */
+const canAdvance = (attachment: AttachmentData): boolean => {
+  if (attachment.deliverAs === 'images') {
+    return false
+  }
+  if (attachment.deliverAs === 'text') {
+    return hasTransformer(attachment.mimeType, 'images')
+  }
+  return hasTransformer(attachment.mimeType, 'text') || hasTransformer(attachment.mimeType, 'images')
+}
+
+/** Identity of a turn's delivery state — changes each time an attachment advances a rung. */
+const signatureOf = (message: ThunderboltUIMessage): string =>
+  `${message.id}:${getAttachments(message)
+    .map((a) => a.deliverAs ?? 'native')
+    .join(',')}`
+
 type SetMessages = (
   messages: ThunderboltUIMessage[] | ((prev: ThunderboltUIMessage[]) => ThunderboltUIMessage[]),
 ) => void
@@ -73,6 +95,12 @@ type UseAttachmentRemediationParams = {
 }
 
 type AttachmentRemediation = {
+  /**
+   * True while an auto-remediation is imminent or in flight — the caller should
+   * hide the error UI (and show a loading state) so the brief error frame before
+   * the automatic retry never paints.
+   */
+  suppressError: boolean
   /** Manual "convert to text & retry" handler, present only when it would change something. */
   onRetryAsText?: () => void
   /** Manual "send as images & retry" handler, present only when it would change something. */
@@ -128,19 +156,37 @@ export const useAttachmentRemediation = ({
   // `images` state, the chain is finite. Reacts to an external (chat SDK) error
   // event, hence an effect.
   const attemptedSignatures = useRef(new Set<string>())
+  const [remediating, setRemediating] = useState(false)
+
+  // Whether an auto-remediation is *about* to fire — computed synchronously so
+  // the error UI can be suppressed on the very first error frame, before the
+  // effect below runs. Mirrors the effect's gate (minus the async scan check).
+  const willAutoRemediate =
+    active &&
+    isNonRetryableClientError(error) &&
+    !!lastUserMessage &&
+    getAttachments(lastUserMessage).some(canAdvance) &&
+    !attemptedSignatures.current.has(signatureOf(lastUserMessage))
+
   useEffect(() => {
-    if (!active || !isNonRetryableClientError(error) || !lastUserMessage) {
+    // Error cleared (e.g. the retry started streaming) — end the suppression window.
+    if (!active) {
+      setRemediating(false)
+      return
+    }
+    if (!isNonRetryableClientError(error) || !lastUserMessage) {
       return
     }
     const attachments = getAttachments(lastUserMessage)
-    if (attachments.length === 0) {
+    if (!attachments.some(canAdvance)) {
       return
     }
-    const signature = `${lastUserMessage.id}:${attachments.map((a) => a.deliverAs ?? 'native').join(',')}`
+    const signature = signatureOf(lastUserMessage)
     if (attemptedSignatures.current.has(signature)) {
       return
     }
     attemptedSignatures.current.add(signature)
+    setRemediating(true)
 
     void (async () => {
       const decisions = new Map<string, DeliverAs>()
@@ -154,6 +200,9 @@ export const useAttachmentRemediation = ({
       )
       if (decisions.size > 0) {
         applyTargets(lastUserMessage.id, (attachment) => decisions.get(attachment.localFileId) ?? null)
+      } else {
+        // Nothing to send (e.g. the file vanished) — surface the error after all.
+        setRemediating(false)
       }
     })()
   }, [active, error, lastUserMessage, applyTargets])
@@ -172,6 +221,7 @@ export const useAttachmentRemediation = ({
   }
 
   return {
+    suppressError: willAutoRemediate || remediating,
     onRetryAsText: manualRetryAs('text'),
     onRetryAsImages: manualRetryAs('images'),
   }

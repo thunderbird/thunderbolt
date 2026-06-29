@@ -3,7 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { mock } from 'bun:test'
-import { createElement, type ReactNode } from 'react'
+import { createElement, useRef, type ReactNode } from 'react'
 
 /**
  * Process-global stub for `framer-motion`. Bun's `mock.module` persists
@@ -42,6 +42,39 @@ const motionTagProxy = new Proxy(
   },
 )
 
+/**
+ * Minimal stand-in for a framer-motion `MotionValue`. Holds a value and exposes the
+ * surface our components touch (`get`/`set`); subscriptions and teardown are no-ops since
+ * the mock never drives a real animation loop.
+ */
+type MockMotionValue = {
+  get: () => unknown
+  set: (value: unknown) => void
+  on: () => () => void
+  destroy: () => void
+}
+
+const createMotionValue = (initial: unknown): MockMotionValue => {
+  let current = initial
+  return {
+    get: () => current,
+    set: (value) => {
+      current = value
+    },
+    on: () => () => {},
+    destroy: () => {},
+  }
+}
+
+/** Stable `MotionValue` per component instance (mirrors framer's ref-backed hooks). */
+const useStableMotionValue = (initial: unknown): MockMotionValue => {
+  const ref = useRef<MockMotionValue | null>(null)
+  if (ref.current === null) {
+    ref.current = createMotionValue(initial)
+  }
+  return ref.current
+}
+
 mock.module('framer-motion', () => ({
   AnimatePresence: ({ children }: { children: ReactNode }) => children,
   LayoutGroup: ({ children }: { children: ReactNode }) => children,
@@ -50,4 +83,11 @@ mock.module('framer-motion', () => ({
   domMax: {},
   m: motionTagProxy,
   motion: motionTagProxy,
+  // Resolve synchronously to the target so awaited `animate()` end-states are deterministic.
+  animate: (value: MockMotionValue, target: unknown) => {
+    value.set(target)
+    return Promise.resolve()
+  },
+  useMotionValue: (initial: unknown) => useStableMotionValue(initial),
+  useTransform: () => useStableMotionValue(0),
 }))

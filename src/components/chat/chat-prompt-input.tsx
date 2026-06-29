@@ -24,7 +24,7 @@ import {
 import { type AttachmentData, type Model } from '@/types'
 import { useChat as useChat_default } from '@ai-sdk/react'
 import { useDraftInput } from '@/hooks/use-draft-input'
-import { AlertCircle, Loader2, Paperclip } from 'lucide-react'
+import { AlertCircle, Loader2, Paperclip, X } from 'lucide-react'
 import { forwardRef, useCallback, useImperativeHandle, useMemo, useRef, useState } from 'react'
 import { useLocation as useLocation_default, useNavigate as useNavigate_default } from 'react-router'
 import { ChatSkillsBar } from './chat-skills-bar'
@@ -35,7 +35,6 @@ import { ChatModePicker } from './chat-mode-picker'
 import { ChatModelPicker } from './chat-model-picker'
 import { buildAttachmentPart } from '@/lib/attachments'
 import { deleteAttachment, putAttachment } from '@/lib/file-blob-storage'
-import { cn } from '@/lib/utils'
 import { FileCard } from './file-card'
 
 /** Max size for a chat attachment (PDF) stored locally and sent to the agent. */
@@ -477,7 +476,7 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
     return (
       <>
         <div
-          className={cn('flex w-full flex-col gap-3 rounded-2xl', isDragging && 'ring-2 ring-ring ring-offset-2')}
+          className="relative flex w-full flex-col gap-3 rounded-2xl"
           onDragOver={(e) => {
             e.preventDefault()
             setIsDragging(true)
@@ -489,6 +488,13 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
             void addFiles(Array.from(e.dataTransfer.files))
           }}
         >
+          {isDragging && (
+            <div className="pointer-events-none absolute inset-0 z-20 flex items-center justify-center rounded-2xl border-2 border-dashed border-ring bg-muted/80 backdrop-blur-sm">
+              <span className="text-[length:var(--font-size-sm)] font-medium text-muted-foreground">
+                Drop file to attach
+              </span>
+            </div>
+          )}
           <input
             ref={fileInputRef}
             type="file"
@@ -522,9 +528,18 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
                     />
                   ))}
                   {attachError && (
-                    <span className="self-center text-[length:var(--font-size-xs)] text-destructive">
-                      {attachError}
-                    </span>
+                    <div className="flex w-full items-center gap-1.5 rounded-lg bg-destructive/10 px-2.5 py-1.5 text-[length:var(--font-size-xs)] text-destructive">
+                      <AlertCircle className="size-3.5 shrink-0" aria-hidden="true" />
+                      <span className="min-w-0 flex-1">{attachError}</span>
+                      <button
+                        type="button"
+                        onClick={() => setAttachError(null)}
+                        aria-label="Dismiss"
+                        className="shrink-0 cursor-pointer rounded p-0.5 hover:bg-destructive/15"
+                      >
+                        <X className="size-3.5" />
+                      </button>
+                    </div>
                   )}
                 </div>
               ) : undefined

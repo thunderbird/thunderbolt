@@ -456,7 +456,7 @@ export const createEncryptionRoutes = (auth: Auth, database: typeof DbType) =>
       {
         auth: true,
         body: t.Object({
-          nodeId: t.String({ minLength: 1, maxLength: 512 }),
+          nodeId: t.String({ minLength: 1, maxLength: 2048 }),
           canarySecret: t.String({ maxLength: 500 }),
         }),
       },

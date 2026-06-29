@@ -66,10 +66,12 @@ export default function DevicesSettingsPage() {
 
   const dialogDevice = devices.find((d) => d.id === pairing.dialogFor) ?? null
 
-  const confirmSetNodeId = (nodeId: string) => {
-    if (pairing.dialogFor) {
-      setNodeIdMutation.mutate({ deviceId: pairing.dialogFor, nodeId }, { onSuccess: () => pairing.closeDialog() })
+  const confirmSetNodeId = async (nodeId: string) => {
+    if (!pairing.dialogFor) {
+      return
     }
+    await setNodeIdMutation.mutateAsync({ deviceId: pairing.dialogFor, nodeId })
+    pairing.closeDialog()
   }
 
   const confirmRevoke = () => {

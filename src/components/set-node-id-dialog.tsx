@@ -21,7 +21,7 @@ type SetNodeIdDialogProps = {
   open: boolean
   onOpenChange: (open: boolean) => void
   deviceName: string
-  onConfirm: (nodeId: string) => void
+  onConfirm: (nodeId: string) => Promise<void>
   isPending: boolean
 }
 
@@ -53,10 +53,14 @@ export default function SetNodeIdDialog({
     }
   }
 
-  const handleSave = () => {
+  const handleSave = async () => {
     try {
       const { nodeId } = decodePairingTicket(text)
-      onConfirm(nodeId)
+      try {
+        await onConfirm(nodeId)
+      } catch (err) {
+        setStatus({ kind: 'error', message: err instanceof Error ? err.message : 'Could not bind the pairing code' })
+      }
     } catch (err) {
       setStatus({ kind: 'error', message: err instanceof Error ? err.message : 'Invalid pairing code' })
     }
@@ -118,7 +122,7 @@ export default function SetNodeIdDialog({
           <Button variant="ghost" onClick={() => onOpenChange(false)} disabled={isPending}>
             Cancel
           </Button>
-          <Button onClick={handleSave} disabled={isPending || scanning || text.trim().length === 0}>
+          <Button onClick={() => void handleSave()} disabled={isPending || scanning || text.trim().length === 0}>
             {isPending ? <Loader2 className="size-4 mr-1 animate-spin" /> : null}
             Save
           </Button>

@@ -24,3 +24,10 @@ export const builtInAgent: Agent = {
   deletedAt: null,
   userId: null,
 }
+
+/**
+ * Whether an agent is the in-process built-in Thunderbolt agent (vs. an ACP
+ * agent). Built-in-only chat affordances — the mode picker and the mode-aware
+ * loading label — gate on this; ACP agents own their conversation mode upstream.
+ */
+export const isBuiltInAgent = (agent: Agent): boolean => agent.type === 'built-in'

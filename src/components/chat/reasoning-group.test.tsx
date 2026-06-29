@@ -138,6 +138,43 @@ describe('ReasoningGroup', () => {
       const loader = container.querySelector('.animate-spin')
       expect(loader).toBeInTheDocument()
     })
+
+    it('should expose the active tool status (window #2) while streaming', () => {
+      const toolPart = createMockToolPart('search', 'input-streaming')
+      const parts: ReasoningGroupItem[] = [{ type: 'tool', content: toolPart, id: toolPart.toolCallId }]
+      render(
+        <ReasoningGroup
+          parts={parts}
+          isStreaming={true}
+          isLastPartInMessage={true}
+          hasTextPart={false}
+          reasoningTime={testReasoningTime}
+        />,
+        { wrapper: TestWrapper },
+      )
+
+      // The tool-derived status span carries the harness testid and a non-empty verb.
+      const status = screen.getByTestId('tool-status')
+      expect(status).toBeInTheDocument()
+      expect(status.textContent?.trim().length ?? 0).toBeGreaterThan(0)
+    })
+
+    it('should not expose the active tool status once streaming completes', () => {
+      const toolPart = createMockToolPart('search')
+      const parts: ReasoningGroupItem[] = [{ type: 'tool', content: toolPart, id: toolPart.toolCallId }]
+      render(
+        <ReasoningGroup
+          parts={parts}
+          isStreaming={false}
+          isLastPartInMessage={true}
+          hasTextPart={false}
+          reasoningTime={testReasoningTime}
+        />,
+        { wrapper: TestWrapper },
+      )
+
+      expect(screen.queryByTestId('tool-status')).not.toBeInTheDocument()
+    })
   })
 
   describe('isGroupReasoning logic', () => {

@@ -11,16 +11,25 @@ import { useCurrentChatSession } from '@/chats/chat-store'
 import { useChat as useChat_default } from '@ai-sdk/react'
 import { shouldUseViewportPositioning } from '@/chats/use-chat-scroll-handler'
 import { useHaptics } from '@/hooks/use-haptics'
+import { getLoadingLabel } from '@/lib/loading-labels'
+import { isBuiltInAgent } from '@/defaults/agents'
 
 type ChatMessagesProps = {
   useChat?: typeof useChat_default
 }
 
 export const ChatMessages = ({ useChat = useChat_default }: ChatMessagesProps) => {
-  const { chatInstance, retryCount, retriesExhausted } = useCurrentChatSession()
+  const { chatInstance, retryCount, retriesExhausted, selectedAgent, selectedMode } = useCurrentChatSession()
 
   const { error: chatError, status, messages, regenerate } = useChat({ chat: chatInstance })
   const { triggerNotification } = useHaptics()
+
+  // Mode-aware status shown in the loading window before the first token. Pure
+  // render-time derive — search/research get a specific label, chat keeps the
+  // plain spinner (undefined). ACP agents own their conversation mode upstream
+  // and ignore `selectedMode` (mirroring ChatModePicker), so a stale built-in
+  // mode must not leak a false "Searching the web…" label onto an ACP chat.
+  const loadingMessage = isBuiltInAgent(selectedAgent) ? getLoadingLabel(selectedMode.name) : undefined
 
   const isStreaming = status === 'streaming'
   const wasStreaming = useRef(false)
@@ -77,6 +86,7 @@ export const ChatMessages = ({ useChat = useChat_default }: ChatMessagesProps) =
               isStreaming={isStreaming && isLast}
               isLastMessage={shouldApplyViewport}
               isLastAssistantMessage={message === lastAssistantMessage}
+              loadingMessage={loadingMessage}
             />
           )
         }
@@ -87,7 +97,7 @@ export const ChatMessages = ({ useChat = useChat_default }: ChatMessagesProps) =
         return null
       })}
 
-      {showSubmittedLoading && <SyntheticLoadingPart isStreaming />}
+      {showSubmittedLoading && <SyntheticLoadingPart isStreaming message={loadingMessage} />}
 
       {/* Show error message if there's an error */}
       {hasError && (

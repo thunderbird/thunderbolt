@@ -50,7 +50,10 @@ export const ReasoningGroupTitle = ({ totalDuration, isGroupReasoning, tools, mc
               transition={{ duration: 0.3, ease: [0.4, 0, 0.2, 1] }}
               className="w-full"
             >
-              <span className="text-xs text-muted-foreground italic animate-pulse truncate min-w-0">
+              <span
+                data-testid="tool-status"
+                className="text-xs text-muted-foreground italic animate-pulse truncate min-w-0"
+              >
                 {loadingLabel}
               </span>
             </m.div>

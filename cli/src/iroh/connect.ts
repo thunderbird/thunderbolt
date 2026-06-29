@@ -19,7 +19,24 @@ import type { Connection } from '@number0/iroh'
 import type { ConnectConfig } from '../agent/types.ts'
 import { spawnAgent } from '../commands/bridge.ts'
 import { dial } from './endpoint.ts'
-import { forwardFromRecv, forwardToSend } from './pump.ts'
+import { forwardFromRecv, forwardToSend, writeToStdin } from './pump.ts'
+
+/** Write received bytes to this process's stdout, awaiting a `drain` when the
+ *  kernel buffer is full so the iroh read loop respects stdout backpressure. An
+ *  `EPIPE` (the downstream of a pipe like `| head` closed early) is logged
+ *  loudly and rethrown so the pump stops rather than swallowing the failure. */
+const writeToStdout = (chunk: Uint8Array): Promise<void> =>
+  new Promise<void>((resolve, reject) => {
+    const onError = (err: Error): void => {
+      process.stderr.write(`⚡ iroh connect: stdout write failed: ${err.message}\n`)
+      reject(err)
+    }
+    if (process.stdout.write(chunk, (err) => err && onError(err))) {
+      resolve()
+    } else {
+      process.stdout.once('drain', resolve)
+    }
+  })
 
 /** Wait until the pumps settle *or* the connection closes — whichever first —
  *  so a peer that refuses us mid-pump is observed (and its close reason is
@@ -40,8 +57,7 @@ const bridgeLocalCommand = async (connection: Connection, command: readonly stri
   // `.finally` so the local client always gets stdin EOF, even on a torn stream.
   const fromRemote = forwardFromRecv(bi.recv, (chunk) => {
     received += chunk.length
-    proc.stdin.write(chunk)
-    proc.stdin.flush()
+    return writeToStdin(proc.stdin, chunk, 'connect')
   }).finally(() => proc.stdin.end())
   await settleOrClose(connection, [toRemote, fromRemote])
   return received
@@ -55,7 +71,7 @@ const bridgeProcessStdio = async (connection: Connection): Promise<number> => {
   const toRemote = forwardToSend(Bun.stdin.stream(), bi.send)
   const fromRemote = forwardFromRecv(bi.recv, (chunk) => {
     received += chunk.length
-    process.stdout.write(chunk)
+    return writeToStdout(chunk)
   })
   await settleOrClose(connection, [toRemote, fromRemote])
   return received

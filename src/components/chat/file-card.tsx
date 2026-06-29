@@ -4,8 +4,10 @@
 
 import { FileText, X } from 'lucide-react'
 import { lazy, Suspense } from 'react'
+import { DocxThumbnail } from './docx-thumbnail'
 import { ImageThumbnail } from './image-thumbnail'
-import { isTextualAttachment, TextSnippet } from './text-snippet'
+import { MarkdownThumbnail } from './markdown-thumbnail'
+import { docxMimeType, isTextualAttachment, TextSnippet } from './text-snippet'
 
 // react-pdf is heavy — load it only when an attachment card actually renders.
 const PdfThumbnail = lazy(() => import('./pdf-thumbnail'))
@@ -39,9 +41,13 @@ const typeBadge = (filename: string, mimeType: string): string => {
  * thumbnail renderer is lazy-loaded (see {@link PdfThumbnail}).
  */
 export const FileCard = ({ localFileId, filename, mimeType, onOpen, onRemove }: FileCardProps) => {
+  const ext = filename.split('.').pop()?.toLowerCase()
   const isPdf = mimeType === 'application/pdf'
   const isImage = mimeType.startsWith('image/')
-  const isTextual = !isPdf && isTextualAttachment(filename, mimeType)
+  const isMarkdown = mimeType === 'text/markdown' || ext === 'md' || ext === 'markdown'
+  const isDocx = mimeType === docxMimeType
+  // Plain text (txt / csv / …) gets the raw mini-page; md and docx get formatted thumbnails.
+  const isPlainText = !isPdf && !isImage && !isMarkdown && !isDocx && isTextualAttachment(filename, mimeType)
 
   const preview = (
     <div className="relative flex h-44 w-40 items-center justify-center overflow-hidden rounded-xl border bg-muted">
@@ -55,7 +61,9 @@ export const FileCard = ({ localFileId, filename, mimeType, onOpen, onRemove }: 
         </Suspense>
       )}
       {isImage && <ImageThumbnail localFileId={localFileId} alt={filename} />}
-      {isTextual && <TextSnippet localFileId={localFileId} mimeType={mimeType} />}
+      {isMarkdown && <MarkdownThumbnail localFileId={localFileId} />}
+      {isDocx && <DocxThumbnail localFileId={localFileId} title={filename} />}
+      {isPlainText && <TextSnippet localFileId={localFileId} mimeType={mimeType} />}
       <div className="absolute inset-x-0 bottom-0 flex items-center gap-1.5 bg-gradient-to-t from-black/65 to-transparent px-2 pb-1.5 pt-5">
         <span className="shrink-0 rounded bg-white/90 px-1 py-px text-[length:var(--font-size-xs)] font-semibold text-black">
           {typeBadge(filename, mimeType)}

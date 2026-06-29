@@ -12,9 +12,6 @@ import { docxMimeType, isTextualAttachment, TextSnippet } from './text-snippet'
 // react-pdf is heavy — load it only when an attachment card actually renders.
 const PdfThumbnail = lazy(() => import('./pdf-thumbnail'))
 
-/** Thumbnail render width (px). Matches the card width below. */
-const cardWidthPx = 160
-
 type FileCardProps = {
   localFileId: string
   filename: string
@@ -50,14 +47,12 @@ export const FileCard = ({ localFileId, filename, mimeType, onOpen, onRemove }: 
   const isPlainText = !isPdf && !isImage && !isMarkdown && !isDocx && isTextualAttachment(filename, mimeType)
 
   const preview = (
-    <div className="relative flex h-44 w-40 items-center justify-center overflow-hidden rounded-xl border bg-muted">
+    <div className="relative flex h-36 w-28 items-center justify-center overflow-hidden rounded-xl border bg-muted [--thumb-scale:0.2333] sm:h-44 sm:w-36 sm:[--thumb-scale:0.3]">
       {/* Placeholder shown until (and unless) a real preview renders on top. */}
-      <FileText className="size-8 text-muted-foreground" aria-hidden="true" />
+      <FileText className="size-7 text-muted-foreground sm:size-8" aria-hidden="true" />
       {isPdf && (
         <Suspense fallback={null}>
-          <div className="absolute inset-x-0 top-0 flex justify-center">
-            <PdfThumbnail localFileId={localFileId} width={cardWidthPx} />
-          </div>
+          <PdfThumbnail localFileId={localFileId} />
         </Suspense>
       )}
       {isImage && <ImageThumbnail localFileId={localFileId} alt={filename} />}

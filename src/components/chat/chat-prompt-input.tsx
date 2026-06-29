@@ -36,7 +36,7 @@ import { ChatModelPicker } from './chat-model-picker'
 import { buildAttachmentPart } from '@/lib/attachments'
 import { deleteAttachment, putAttachment } from '@/lib/file-blob-storage'
 import { cn } from '@/lib/utils'
-import { AttachmentCard } from './attachment-card'
+import { FileCard } from './file-card'
 
 /** Max size for a chat attachment (PDF) stored locally and sent to the agent. */
 const maxAttachmentBytes = 25 * 1024 * 1024
@@ -507,21 +507,28 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
             // has any message, hide the bar so chips don't compete for space.
             hidden={messages.length > 0}
           />
-          {(attachments.length > 0 || attachError) && (
-            <div className="flex flex-wrap items-center gap-2">
-              {attachments.map((attachment) => (
-                <AttachmentCard
-                  key={attachment.localFileId}
-                  filename={attachment.filename}
-                  mimeType={attachment.mimeType}
-                  onRemove={() => removeAttachment(attachment.localFileId)}
-                />
-              ))}
-              {attachError && <span className="text-[length:var(--font-size-xs)] text-destructive">{attachError}</span>}
-            </div>
-          )}
           <PromptInput
             ref={formRef}
+            headerSlot={
+              attachments.length > 0 || attachError ? (
+                <div className="flex flex-wrap items-start gap-2 pb-2">
+                  {attachments.map((attachment) => (
+                    <FileCard
+                      key={attachment.localFileId}
+                      localFileId={attachment.localFileId}
+                      filename={attachment.filename}
+                      mimeType={attachment.mimeType}
+                      onRemove={() => removeAttachment(attachment.localFileId)}
+                    />
+                  ))}
+                  {attachError && (
+                    <span className="self-center text-[length:var(--font-size-xs)] text-destructive">
+                      {attachError}
+                    </span>
+                  )}
+                </div>
+              ) : undefined
+            }
             value={input}
             onChange={(value: string) => setInput(value)}
             placeholder="Ask me anything..."

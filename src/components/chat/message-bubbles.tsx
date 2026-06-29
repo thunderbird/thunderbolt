@@ -7,7 +7,7 @@ import { getAttachments } from '@/lib/attachments'
 import type { ThunderboltUIMessage } from '@/types'
 import { buildDocumentSideviewId } from '@/types/citation'
 import type { UIMessage } from 'ai'
-import { AttachmentCard } from './attachment-card'
+import { FileCard } from './file-card'
 import { MemoizedMarkdown } from './memoized-markdown'
 
 type MessageBubblesProps = {
@@ -23,8 +23,9 @@ export const MessageBubbles = ({ message }: MessageBubblesProps) => {
       {attachments.length > 0 && (
         <div className="ml-auto mt-6 flex max-w-3/4 flex-wrap justify-end gap-2">
           {attachments.map((attachment) => (
-            <AttachmentCard
+            <FileCard
               key={attachment.localFileId}
+              localFileId={attachment.localFileId}
               filename={attachment.filename}
               mimeType={attachment.mimeType}
               onOpen={

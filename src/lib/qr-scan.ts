@@ -2,29 +2,53 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+/** Reject an image larger than this before decoding. A self-uploaded but huge or
+ *  dense raster would otherwise freeze the main thread in getImageData + jsQR. */
+const maxImageBytes = 15 * 1024 * 1024
+/** Cap the scanned raster's longest edge. QR codes survive downscaling, and this
+ *  bounds the getImageData + jsQR cost regardless of the source resolution. */
+const maxScanEdge = 2048
+
 /**
  * Decode the first QR code found in an image file and return its raw text payload.
  * `jsqr` is imported dynamically so it stays out of the entry bundle until a scan happens.
- * Throws if the canvas is unavailable or no QR code is detected.
+ * The image is rejected unless it is a bounded raster, and downscaled to {@link maxScanEdge}
+ * before decoding so a large upload can't freeze the main thread.
+ * Throws if the file isn't a valid image, the canvas is unavailable, or no QR code is detected.
  */
 export const decodeQrFromFile = async (file: File): Promise<string> => {
+  if (!file.type.startsWith('image/')) {
+    throw new Error('File is not an image')
+  }
+  if (file.size > maxImageBytes) {
+    throw new Error('Image is too large to scan')
+  }
+
   const { default: jsQR } = await import('jsqr')
   const bitmap = await createImageBitmap(file)
-  const canvas = document.createElement('canvas')
-  canvas.width = bitmap.width
-  canvas.height = bitmap.height
+  try {
+    const scale = Math.min(1, maxScanEdge / Math.max(bitmap.width, bitmap.height))
+    const width = Math.max(1, Math.round(bitmap.width * scale))
+    const height = Math.max(1, Math.round(bitmap.height * scale))
 
-  const ctx = canvas.getContext('2d')
-  if (!ctx) {
-    throw new Error('Canvas 2D context is unavailable')
+    const canvas = document.createElement('canvas')
+    canvas.width = width
+    canvas.height = height
+
+    const ctx = canvas.getContext('2d')
+    if (!ctx) {
+      throw new Error('Canvas 2D context is unavailable')
+    }
+
+    ctx.drawImage(bitmap, 0, 0, width, height)
+    const imageData = ctx.getImageData(0, 0, width, height)
+    const result = jsQR(imageData.data, imageData.width, imageData.height)
+    if (!result) {
+      throw new Error('No QR code found in the image')
+    }
+
+    return result.data
+  } finally {
+    bitmap.close()
   }
-
-  ctx.drawImage(bitmap, 0, 0)
-  const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height)
-  const result = jsQR(imageData.data, imageData.width, imageData.height)
-  if (!result) {
-    throw new Error('No QR code found in the image')
-  }
-
-  return result.data
 }

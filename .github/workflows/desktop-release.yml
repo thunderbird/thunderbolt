@@ -347,13 +347,26 @@ jobs:
             src-tauri/target/x86_64-apple-darwin/release/bundle/macos/*.app.tar.gz
             src-tauri/target/x86_64-apple-darwin/release/bundle/macos/*.app.tar.gz.sig
 
-      # Skip CrabNebula for nightly builds
+      # Skip CrabNebula for nightly builds.
+      # A late-running matrix job (e.g. macOS Apple Silicon queued behind other
+      # runners) can hit the CrabNebula release after it has flipped to published,
+      # which makes `cn release upload` fail with "release was already published".
+      # We tolerate that race — the GitHub Release already has the asset, the
+      # CrabNebula auto-updater for this platform just misses this version — and
+      # surface a loud warning so any other failure mode stays visible. See THU-643.
       - name: Upload to CrabNebula Cloud
         if: ${{ !inputs.nightly }}
+        id: cn_upload
+        continue-on-error: true
         uses: crabnebula-dev/cloud-release@1a8803698ba41de6b23e42abc5dcc3721308233c # v0.2.6
         with:
           command: release upload thunderbird/thunderbolt ${{ inputs.version }} --framework tauri
           api-key: ${{ secrets.CRABNEBULA_CLOUD_API_KEY }}
+
+      - name: Warn on CrabNebula upload failure
+        if: ${{ !inputs.nightly && steps.cn_upload.outcome == 'failure' }}
+        run: |
+          echo "::warning title=CrabNebula upload failed::Failed to upload ${{ matrix.build_name }} asset to CrabNebula for v${{ inputs.version }}. Auto-updater on this platform will miss this version. See THU-643."
 
   publish:
     name: Publish Release

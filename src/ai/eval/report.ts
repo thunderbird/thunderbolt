@@ -151,11 +151,11 @@ export const writeMarkdownReport = (
     '',
     '## Results',
     '',
-    '| | Scenario | Citations | Widgets | Links | Steps | Chars | Time |',
-    '|---|----------|:---:|:---:|:---:|:---:|:---:|---:|',
+    '| | Scenario | Citations | Widgets | Links | Tools | Dups | Chars | Time |',
+    '|---|----------|:---:|:---:|:---:|:---:|:---:|:---:|---:|',
     ...results.map((r) => {
       const icon = r.passed ? '✅' : '❌'
-      return `| ${icon} | ${r.scenario.id} | ${r.citations.length} | ${r.widgets.length} | ${r.linkPreviewUrls.length} | ${r.toolCallCount} | ${r.responseLength} | ${(r.durationMs / 1000).toFixed(1)}s |`
+      return `| ${icon} | ${r.scenario.id} | ${r.citations.length} | ${r.widgets.length} | ${r.linkPreviewUrls.length} | ${r.toolCallCount} | ${r.duplicateToolCallCount} | ${r.responseLength} | ${(r.durationMs / 1000).toFixed(1)}s |`
     }),
     '',
   ]

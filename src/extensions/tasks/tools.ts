@@ -32,6 +32,8 @@ export const addTasks = {
   },
 }
 
+// Intentionally NOT `cacheable`: addTasks/deleteTasks mutate the same task list
+// within a single request, so a cached read could go stale after a write.
 export const getTasks = {
   name: 'getTasks',
   description: "Get the user's task (to do) list.",

@@ -90,27 +90,46 @@ export const hydrateAttachmentsAsFileParts = async (
       if (!message.parts.some(isAttachmentPart)) {
         return message
       }
-      const parts = await Promise.all(
+      // Each attachment maps to one or more parts (images yield one part per
+      // page), so build arrays and flatten.
+      const nested = await Promise.all(
         message.parts.map(async (part) => {
           if (!isAttachmentPart(part)) {
-            return part
+            return [part]
           }
           const file = await getAttachment(part.data.localFileId)
           if (!file) {
-            return part
+            return [part]
           }
           if (part.data.deliverAs === 'text') {
             const transformer = await getTransformer(part.data.mimeType, 'text')
             if (transformer) {
-              const { text } = await transformer(file)
-              return { type: 'text' as const, text: `[Attachment: ${part.data.filename}]\n\n${text}` }
+              const output = await transformer(file)
+              if ('text' in output) {
+                return [{ type: 'text' as const, text: `[Attachment: ${part.data.filename}]\n\n${output.text}` }]
+              }
             }
-            // No transformer for this type — fall through to native bytes.
+            // No text transformer — fall through to native bytes.
+          }
+          if (part.data.deliverAs === 'images') {
+            const transformer = await getTransformer(part.data.mimeType, 'images')
+            if (transformer) {
+              const output = await transformer(file)
+              if ('images' in output) {
+                return output.images.map((image) => ({
+                  type: 'file' as const,
+                  mediaType: image.mimeType,
+                  filename: part.data.filename,
+                  url: image.dataUrl,
+                }))
+              }
+            }
+            // No images transformer — fall through to native bytes.
           }
           const url = await blobToDataUrl(file.blob)
-          return { type: 'file' as const, mediaType: part.data.mimeType, filename: part.data.filename, url }
+          return [{ type: 'file' as const, mediaType: part.data.mimeType, filename: part.data.filename, url }]
         }),
       )
-      return { ...message, parts }
+      return { ...message, parts: nested.flat() }
     }),
   )

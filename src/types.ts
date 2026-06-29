@@ -48,12 +48,13 @@ export type AttachmentData = {
   mimeType: string
   /**
    * How this attachment should be delivered to the model. Defaults to native
-   * (raw bytes as a file part). Set to `'text'` by the "convert to text & retry"
-   * remediation when a model couldn't read the native file — hydration then runs
-   * the client-side transformer and sends extracted text instead. Persisted on
-   * the reference so it survives `regenerate()` and reload.
+   * (raw bytes as a file part). The remediation sets this when a model couldn't
+   * read the native file: `'text'` runs the client-side transformer and sends
+   * extracted text; `'images'` rasterizes the pages (scans) and sends them as
+   * image parts. Hydration honors it. Persisted on the reference so it survives
+   * `regenerate()` and reload.
    */
-  deliverAs?: 'text'
+  deliverAs?: 'text' | 'images'
 }
 
 /** Custom `data-*` parts on Thunderbolt messages (`data-attachment` → {@link AttachmentData}). */

@@ -15,13 +15,16 @@ import type { StoredFile } from '@/lib/file-blob-storage'
  * actually needs converting.
  */
 
-/** What a transformer produces. Image output (pdf→images, OCR) lands in THU-630. */
-export type TransformOutput = { text: string }
+/** A rendered image (page) produced by an image transformer, as a data URL. */
+export type TransformImage = { mimeType: string; dataUrl: string }
+
+/** What a transformer produces — extracted text, or rendered page images. */
+export type TransformOutput = { text: string } | { images: TransformImage[] }
 
 export type Transformer = (file: StoredFile) => Promise<TransformOutput>
 
-/** Conversion target. `'images'` is added alongside the image transformers in THU-630. */
-export type TransformTarget = 'text'
+/** Conversion target. */
+export type TransformTarget = 'text' | 'images'
 
 export type TransformerKey = `${string}->${TransformTarget}`
 
@@ -36,6 +39,7 @@ export const docxMime = 'application/vnd.openxmlformats-officedocument.wordproce
 const loaders: Partial<Record<TransformerKey, () => Promise<Transformer>>> = {
   'application/pdf->text': async () => (await import('./pdf-to-text')).pdfToText,
   [`${docxMime}->text`]: async () => (await import('./docx-to-text')).docxToText,
+  'application/pdf->images': async () => (await import('./pdf-to-images')).pdfToImages,
 }
 
 /** True if a transformer exists for this source MIME → target. Sync, for routing decisions. */

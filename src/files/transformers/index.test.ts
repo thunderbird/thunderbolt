@@ -7,15 +7,18 @@ import { describe, expect, test } from 'bun:test'
 import { docxMime, getTransformer, hasTransformer } from './index'
 
 describe('transformer registry', () => {
-  test('hasTransformer reports registered source→text pairs', () => {
+  test('hasTransformer reports registered source→target pairs', () => {
     expect(hasTransformer('application/pdf', 'text')).toBe(true)
     expect(hasTransformer(docxMime, 'text')).toBe(true)
+    expect(hasTransformer('application/pdf', 'images')).toBe(true)
   })
 
-  test('hasTransformer is false for unregistered MIME types', () => {
+  test('hasTransformer is false for unregistered pairs', () => {
     expect(hasTransformer('image/png', 'text')).toBe(false)
     expect(hasTransformer('text/plain', 'text')).toBe(false)
     expect(hasTransformer('', 'text')).toBe(false)
+    // docx has a text transformer but not an images one.
+    expect(hasTransformer(docxMime, 'images')).toBe(false)
   })
 
   test('getTransformer lazy-loads a callable transformer for a known type', async () => {

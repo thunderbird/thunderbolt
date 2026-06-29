@@ -14,18 +14,35 @@ import type { ToolConfig } from '@/types'
 import type { SourceMetadata } from '@/types/source'
 import { tool, type Tool } from 'ai'
 
-export const getAvailableTools = async (
-  httpClient: HttpClient,
-  sourceCollector?: SourceMetadata[],
-): Promise<ToolConfig[]> => {
-  // Check Thunderbolt Pro access and integration enabled state
+/** Settings + integration status that gate which tools are exposed. */
+export type ToolAvailabilityContext = {
+  settings: { experimentalFeatureTasks: boolean; integrationsProIsEnabled: boolean }
+  integrationStatus: Awaited<ReturnType<typeof getIntegrationStatus>>
+}
+
+/** Read the settings + integration status that gate tool availability. The hot
+ *  send path (`aiFetchStreamingResponse`) already fetches both, so it injects
+ *  them to avoid duplicate DB round-trips; other callers let this self-fetch. */
+const loadToolAvailabilityContext = async (): Promise<ToolAvailabilityContext> => {
   const db = getDb()
-  const proEnabled = await hasProAccess()
-  const { experimentalFeatureTasks, integrationsProIsEnabled } = await getSettings(db, {
+  const settings = await getSettings(db, {
     experimental_feature_tasks: false,
     integrations_pro_is_enabled: false,
   })
   const integrationStatus = await getIntegrationStatus(db)
+  return { settings, integrationStatus }
+}
+
+export const getAvailableTools = async (
+  httpClient: HttpClient,
+  sourceCollector?: SourceMetadata[],
+  context?: ToolAvailabilityContext,
+): Promise<ToolConfig[]> => {
+  const proEnabled = await hasProAccess()
+  const {
+    settings: { experimentalFeatureTasks, integrationsProIsEnabled },
+    integrationStatus,
+  } = context ?? (await loadToolAvailabilityContext())
 
   const baseTools: ToolConfig[] = experimentalFeatureTasks ? [...Object.values(tasksTools)] : []
 

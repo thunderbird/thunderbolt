@@ -88,20 +88,58 @@ export const ollama = createOpenAI({
 //
 // System cache is keyed by cloudUrl so a dev-tools URL switch hits the new
 // backend on the next call.
-const systemTinfoilClients = new Map<string, SecureClient>()
+const systemTinfoilClients = new Map<string, Promise<SecureClient>>()
 let userTinfoilClient: SecureClient | null = null
+
+/**
+ * Build a fresh system `SecureClient` promise and cache it synchronously
+ * (before the dynamic `import('tinfoil')` resolves) so a prewarm and an
+ * immediate first send share one client and attest once instead of racing into
+ * two attestations. On construction failure we drop the entry so the next call
+ * retries the import rather than inheriting a sticky rejection.
+ */
+const createSystemTinfoilClient = (cloudUrl: string): Promise<SecureClient> => {
+  const clientPromise = import('tinfoil').then(
+    ({ SecureClient }) => new SecureClient({ baseURL: `${cloudUrl}/tinfoil` }),
+  )
+  void clientPromise.catch(() => systemTinfoilClients.delete(cloudUrl))
+  systemTinfoilClients.set(cloudUrl, clientPromise)
+  return clientPromise
+}
 
 export const getSystemTinfoilClient = async (): Promise<SecureClient> => {
   // cloudUrl already ends in /v1 (shared with the OpenAI chat baseURL).
   const cloudUrl = getLocalSetting('cloudUrl').replace(/\/$/, '')
-  let client = systemTinfoilClients.get(cloudUrl)
-  if (!client) {
-    const { SecureClient } = await import('tinfoil')
-    client = new SecureClient({ baseURL: `${cloudUrl}/tinfoil` })
-    systemTinfoilClients.set(cloudUrl, client)
-  }
+  // Reuse the cached construction promise across concurrent callers; `ready()`
+  // is awaited per call below (idempotent once attested).
+  const client = await (systemTinfoilClients.get(cloudUrl) ?? createSystemTinfoilClient(cloudUrl))
   await client.ready()
   return client
+}
+
+/**
+ * Best-effort warm-up of the Tinfoil system enclave so the first chat send
+ * doesn't pay the attestation handshake on the critical path. Fired (fire-and-
+ * forget) from the chat-ready path for the built-in agent only — see
+ * {@link useHydrateChatStore}; ACP agents route over the wire and never reach
+ * {@link createModel}. No-op unless `model` is a Tinfoil *system* model (the
+ * only path that attests via {@link getSystemTinfoilClient}); BYO/other
+ * providers never attest here.
+ *
+ * Idempotent: `getSystemTinfoilClient` memoizes per cloudUrl, so repeated warm-
+ * ups and a concurrent real send share the same in-flight client. Errors are
+ * swallowed ONLY here because this is a speculative cache fill — the real send
+ * still surfaces attestation failures loudly through {@link createModel}.
+ */
+export const prewarmSystemModel = async (model: Pick<Model, 'provider' | 'isSystem'> | null | undefined) => {
+  if (!model || model.provider !== 'tinfoil' || !model.isSystem) {
+    return
+  }
+  try {
+    await getSystemTinfoilClient()
+  } catch (error) {
+    console.warn('prewarmSystemModel: warm-up skipped', error)
+  }
 }
 
 /** Drop the cached `SecureClient` so the next send constructs a fresh one with
@@ -446,6 +484,10 @@ export const aiFetchStreamingResponse = async ({
     time_format: '12h',
     currency: 'USD',
     integrations_do_not_ask_again: false,
+    // Also fetch the tool-availability gates here so `getAvailableTools` can
+    // reuse them (via ToolAvailabilityContext) instead of re-reading settings.
+    experimental_feature_tasks: false,
+    integrations_pro_is_enabled: false,
   })
 
   const integrationStatus = await getIntegrationStatus(db)
@@ -466,7 +508,7 @@ export const aiFetchStreamingResponse = async ({
   let mcpServersSummary: string | undefined
   let mcpToolsMetadata: UIMessageMetadata['mcpTools']
   if (supportsTools) {
-    const availableTools = await getAvailableTools(httpClient, sourceCollector)
+    const availableTools = await getAvailableTools(httpClient, sourceCollector, { settings, integrationStatus })
     toolset = { ...createToolset(availableTools) }
 
     const merged = await mergeMcpTools(toolset, mcpClients ?? [], reconnectClient ?? (async () => null))

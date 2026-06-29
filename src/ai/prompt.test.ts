@@ -127,4 +127,29 @@ describe('createPrompt', () => {
     const result = createPrompt(baseParams)
     expect(result).not.toContain('# Active Mode')
   })
+
+  test('keeps the per-turn timestamp in the suffix (prefix-cache friendly)', () => {
+    const result = createPrompt(baseParams)
+    // The timestamp is the only per-turn-volatile field, so it comes after the
+    // whole static instruction block to leave a stable cacheable prefix.
+    expect(result.indexOf('Current date/time')).toBeGreaterThan(result.indexOf('# Output Format'))
+    expect(result.indexOf('Current date/time')).toBeGreaterThan(result.indexOf('# Tools'))
+  })
+
+  test('keeps the stable # Context block (user profile + integration status) in the prefix', () => {
+    const result = createPrompt(baseParams)
+    expect(result.indexOf('# Context')).toBeLessThan(result.indexOf('# Tools'))
+    expect(result.indexOf('Integration status:')).toBeLessThan(result.indexOf('# Tools'))
+  })
+
+  test('keeps user-controlled fields out of the trailing suffix (no injection-by-recency)', () => {
+    const result = createPrompt(baseParams)
+    expect(result.indexOf('User name:')).toBeLessThan(result.indexOf('Current date/time'))
+    expect(result.indexOf('User location:')).toBeLessThan(result.indexOf('Current date/time'))
+  })
+
+  test('appends the timestamp after the Active Mode block so it stays last', () => {
+    const result = createPrompt({ ...baseParams, modeSystemPrompt: 'Mode instructions' })
+    expect(result.indexOf('# Active Mode')).toBeLessThan(result.indexOf('Current date/time'))
+  })
 })

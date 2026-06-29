@@ -6,6 +6,9 @@ import { getAuthenticatedHeaders, getAuthToken } from '@/lib/auth-token'
 import { isSsoMode } from '@/lib/auth-mode'
 import type { AbstractPowerSyncDatabase, PowerSyncBackendConnector, PowerSyncCredentials } from '@powersync/web'
 import { encodeForUpload } from '@/db/encryption'
+import { getPersonalWorkspaceByOwner } from '@/dal/workspaces'
+import { getDb } from '@/db/database'
+import { getActiveUserId } from '@/stores/trust-domain-registry'
 import { sanitizeErrorForTracking, trackSyncEvent } from './sync-tracker'
 
 /**
@@ -165,15 +168,28 @@ export class ThunderboltConnector implements PowerSyncBackendConnector {
     }
 
     try {
+      // @todo Drop this lookup once E2EE supports workspace-scoped envelopes
+      // (THU-593). For now `encodeForUpload` encrypts only rows in the personal
+      // workspace; shared-workspace rows go over the wire as plaintext. `null`
+      // before the user resolves / personal workspace is seeded is fine — the
+      // encoder treats it as "no workspace-scoped encryption available yet".
+      const activeUserId = getActiveUserId()
+      const personalWorkspaceId = activeUserId
+        ? ((await getPersonalWorkspaceByOwner(getDb(), activeUserId))?.id ?? null)
+        : null
+
       // Convert CRUD operations to our API format (encrypt encrypted columns)
       const operations = await Promise.all(
         transaction.crud.map((op) =>
-          encodeForUpload({
-            op: op.op.toUpperCase() as 'PUT' | 'PATCH' | 'DELETE',
-            type: op.table,
-            id: op.id,
-            data: op.opData,
-          }),
+          encodeForUpload(
+            {
+              op: op.op.toUpperCase() as 'PUT' | 'PATCH' | 'DELETE',
+              type: op.table,
+              id: op.id,
+              data: op.opData,
+            },
+            personalWorkspaceId,
+          ),
         ),
       )
 

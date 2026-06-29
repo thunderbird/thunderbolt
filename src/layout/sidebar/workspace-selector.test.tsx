@@ -165,11 +165,14 @@ describe('WorkspaceSelector', () => {
       fireEvent.click(trigger)
     })
 
-    // "Personal" appears both as the workspace label and as the inline badge;
-    // grab the button that wraps the item rather than the bare text.
-    const personalItem = await waitForElement(() =>
-      screen.queryByRole('button', { name: (accessibleName) => accessibleName.includes('Personal') }),
-    )
+    // "Personal" appears both as the workspace label and inside the per-row
+    // gear's aria-label, so role-based queries match two buttons. Climb from
+    // the label text to the wrapping <button> for the row.
+    const personalLabel = await waitForElement(() => screen.queryByText('Personal'))
+    const personalItem = personalLabel?.closest('button')
+    if (!personalItem) {
+      throw new Error('Personal workspace row button not found')
+    }
     await act(async () => {
       fireEvent.click(personalItem)
     })

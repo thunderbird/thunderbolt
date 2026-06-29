@@ -44,6 +44,20 @@ export const needsSyncSetupWizard = async (): Promise<boolean> => {
  * - `workspace_permissions.permission_key` / `required_role` — config policy
  *   the BE handler reads.
  */
+/**
+ * @todo Temporary scope classification — until E2EE supports workspace-scoped
+ * envelopes (THU-593), shared-workspace resources must travel as plaintext so
+ * other members can read them. The tables in `alwaysEncryptedTables` are
+ * per-user even inside a shared workspace (rows are filtered by `user_id`), so
+ * their values are only ever decrypted by the writing user's own CK — safe to
+ * keep encrypting regardless of workspace scope. Every other table in
+ * `encryptedColumnsMap` is gated per-row by `upload-encoder.ts`: encrypt iff
+ * the row belongs to the user's personal workspace. When workspace-aware E2EE
+ * lands this distinction goes away — every encrypted-column table encrypts
+ * unconditionally again.
+ */
+export const alwaysEncryptedTables: ReadonlySet<string> = new Set(['chat_threads', 'chat_messages', 'tasks'])
+
 export const encryptedColumnsMap: Readonly<Record<string, readonly string[]>> = {
   settings: ['value'],
   workspaces: ['name'],

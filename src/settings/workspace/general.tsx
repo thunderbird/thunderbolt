@@ -31,7 +31,6 @@ import { useDebouncedCallback } from '@/hooks/use-debounce'
 import { useActiveWorkspace } from '@/lib/active-workspace'
 import { CreateWorkspaceModal } from '@/layout/sidebar/create-workspace-modal'
 import { InviteMembersModal } from '@/layout/sidebar/invite-members-modal'
-import { useConfigStore } from '@/api/config-store'
 import { useActiveUserId } from '@/stores/trust-domain-registry'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { Plus } from 'lucide-react'
@@ -200,7 +199,6 @@ const WorkspaceGeneralPage = () => {
   const active = useActiveWorkspace()
   const canCreate = useCanCreateWorkspace()
   const navigate = useNavigate()
-  const e2eeEnabled = useConfigStore((state) => state.config.e2eeEnabled === true)
   const [createOpen, setCreateOpen] = useState(false)
   // After the create modal commits, hold the new workspace id so the invite
   // modal can target it; clearing this also closes the invite modal.
@@ -208,14 +206,6 @@ const WorkspaceGeneralPage = () => {
 
   const handleCreated = (workspaceId: string) => {
     setCreateOpen(false)
-    // @todo Drop this E2EE branch once the encryption pipeline supports
-    // multi-recipient envelopes and is workspace-aware (see THU-593). The
-    // BE rejects pending memberships under E2EE, so opening the invite step
-    // would only show an empty form that always errors on submit.
-    if (e2eeEnabled) {
-      navigate(`/w/${workspaceId}/`)
-      return
-    }
     setInviteWorkspaceId(workspaceId)
   }
 

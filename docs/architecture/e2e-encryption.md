@@ -86,9 +86,23 @@ The download and upload middleware both read from `encryptedColumnsMap` in [src/
 | **Sign out**          | All local keys cleared → next sign-in is treated as a new device.                                                                  |
 | **Revoke device**     | Envelope deleted server-side, `revoked_at` set → device can no longer decrypt or sync.                                             |
 
+## Scope (temporary — pending THU-593)
+
+E2EE is currently scoped per-row, not per-account. Until the encryption pipeline supports multi-recipient envelopes per workspace (THU-593), shared-workspace collaborative resources must travel as plaintext so other members can read them. Classification:
+
+| Group | Tables | Behaviour |
+|-------|--------|-----------|
+| Per-account | `settings`, `devices` | Always encrypted — no workspace dimension. |
+| Per-user inside a workspace (`alwaysEncryptedTables`) | `chat_threads`, `chat_messages`, `tasks` | Always encrypted — rows are user-scoped (filtered by `user_id`), so only the writing user's own CK ever decrypts them. Safe in both personal and shared workspaces. |
+| Workspace-scoped collaborative resources | `models`, `prompts`, `skills`, `modes`, `model_profiles`, `triggers`, `workspaces.name` | Encrypted only when the row belongs to the active user's personal workspace; in shared workspaces these columns ride plaintext on the wire (TLS + at-rest only). |
+
+The scope check lives in [`src/db/encryption/upload-encoder.ts`](../src/db/encryption/upload-encoder.ts) and runs once per upload batch (one local PK-lookup for the personal-workspace id). Download decryption is unchanged — `EncryptionMiddleware` is prefix-driven (`__enc:`), so mixed ciphertext + plaintext in the same table decodes correctly.
+
+When workspace-aware E2EE lands, the per-row scope check goes away and every encrypted-column table encrypts unconditionally again.
+
 ## Adding a New Encrypted Column
 
-To encrypt a new column, add the table and column name to `encryptedColumnsMap` in [src/db/encryption/config.ts](../src/db/encryption/config.ts). The existing `encryptionMiddleware` handles every column in the map automatically — both download decryption and upload encryption.
+To encrypt a new column, add the table and column name to `encryptedColumnsMap` in [src/db/encryption/config.ts](../src/db/encryption/config.ts). If the table is per-user (filtered by `user_id`) and should remain encrypted in shared workspaces, also add it to `alwaysEncryptedTables` in the same file. The existing `encryptionMiddleware` handles every column in the map automatically — both download decryption and upload encryption.
 
 ## Key Files
 

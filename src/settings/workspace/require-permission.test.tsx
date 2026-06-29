@@ -191,7 +191,11 @@ describe('RequireWorkspacePermission', () => {
     expect(screen.getByTestId('workspace-members')).toBeInTheDocument()
   })
 
-  it('redirects out when e2eeEnabled is true even for a shared-workspace admin (THU-593)', async () => {
+  it('renders for a shared-workspace admin even when e2eeEnabled is true', async () => {
+    // E2EE no longer redirects out of Members: shared-workspace collaborative
+    // resources travel plaintext under the temporary per-workspace scope. See
+    // `src/db/encryption/upload-encoder.ts`. When workspace-aware E2EE lands
+    // (THU-593), reinstate the redirect.
     const { useConfigStore } = await import('@/api/config-store')
     const previous = useConfigStore.getState().config
     useConfigStore.getState().updateConfig({ ...previous, e2eeEnabled: true })
@@ -216,8 +220,8 @@ describe('RequireWorkspacePermission', () => {
         },
       )
 
-      await waitForElement(() => screen.queryByTestId(`at-/w/${otherWsId}/settings`))
-      expect(screen.queryByTestId('workspace-members')).not.toBeInTheDocument()
+      await waitForElement(() => screen.queryByTestId('workspace-members'))
+      expect(screen.getByTestId('workspace-members')).toBeInTheDocument()
     } finally {
       useConfigStore.getState().updateConfig(previous)
     }
@@ -339,7 +343,11 @@ describe('RequireWorkspaceAdmin', () => {
     expect(screen.queryByTestId('workspace-permissions')).not.toBeInTheDocument()
   })
 
-  it('redirects out when e2eeEnabled is true even for a shared-workspace admin', async () => {
+  it('renders for a shared-workspace admin even when e2eeEnabled is true', async () => {
+    // E2EE no longer redirects admins out of Permissions: shared-workspace
+    // collaborative resources travel plaintext under the temporary
+    // per-workspace scope. See `src/db/encryption/upload-encoder.ts`. When
+    // workspace-aware E2EE lands (THU-593), reinstate the redirect.
     const { useConfigStore } = await import('@/api/config-store')
     const previous = useConfigStore.getState().config
     useConfigStore.getState().updateConfig({ ...previous, e2eeEnabled: true })
@@ -361,8 +369,8 @@ describe('RequireWorkspaceAdmin', () => {
         },
       )
 
-      await waitForElement(() => screen.queryByTestId(`at-/w/${otherWsId}/settings`))
-      expect(screen.queryByTestId('workspace-permissions')).not.toBeInTheDocument()
+      await waitForElement(() => screen.queryByTestId('workspace-permissions'))
+      expect(screen.getByTestId('workspace-permissions')).toBeInTheDocument()
     } finally {
       useConfigStore.getState().updateConfig(previous)
     }

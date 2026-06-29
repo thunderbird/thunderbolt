@@ -97,6 +97,27 @@ export const getMembershipsByUser = async (db: AnyDrizzleDatabase, userId: strin
   return rows as WorkspaceMembership[]
 }
 
+/** Live Drizzle query for every membership belonging to a given user. */
+export const getMembershipsByUserQuery = (db: AnyDrizzleDatabase, userId: string) => {
+  const query = db.select().from(workspaceMembershipsTable).where(eq(workspaceMembershipsTable.userId, userId))
+  return query as typeof query & DrizzleQueryWithPromise<WorkspaceMembership>
+}
+
+/**
+ * Reactive hook returning every membership for `userId`. Used by the workspace
+ * picker to learn each row's role in one query instead of N per-workspace
+ * lookups. Returns `[]` while loading or when `userId` is undefined.
+ */
+export const useUserMembershipsQuery = (userId: string | undefined): WorkspaceMembership[] => {
+  const db = useDatabase()
+  const { data = [] } = useQuery({
+    queryKey: ['workspace-memberships', 'by-user', userId],
+    query: toCompilableQuery(getMembershipsByUserQuery(db, userId ?? '')),
+    enabled: !!userId,
+  })
+  return data
+}
+
 export const isWorkspaceAdmin = async (
   db: AnyDrizzleDatabase,
   workspaceId: string,

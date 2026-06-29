@@ -198,7 +198,7 @@ const seedPersonalMembership = async () => {
   })
 }
 
-describe('SettingsSidebarContent — Workspace > General entry visibility', () => {
+describe('SettingsSidebarContent — Workspace section visibility', () => {
   beforeAll(async () => {
     await setupTestDatabase()
   })
@@ -217,7 +217,9 @@ describe('SettingsSidebarContent — Workspace > General entry visibility', () =
     cleanup()
   })
 
-  it('shows the General entry for an admin of a shared workspace', async () => {
+  it('does not render a General entry in the Workspace section', async () => {
+    // General settings is now reachable only via the per-workspace gear in the
+    // workspace selector. The sidebar no longer carries the entry.
     await seedSharedWorkspaceWithMembership('admin')
 
     renderWithReactivity(
@@ -230,28 +232,14 @@ describe('SettingsSidebarContent — Workspace > General entry visibility', () =
       },
     )
 
-    await waitForElement(() => screen.queryByText('General'))
-    expect(screen.getByText('General')).toBeInTheDocument()
+    // Wait for the workspace to resolve via Members rendering.
+    await waitForElement(() => screen.queryByText('Members'))
+    expect(screen.queryByText('General')).not.toBeInTheDocument()
   })
 
-  it('shows the General entry for a member of a shared workspace (read-only on the page)', async () => {
-    await seedSharedWorkspaceWithMembership('member')
-
-    renderWithReactivity(
-      <SettingsSidebarContent onBackClick={() => {}} onSettingsNavigate={() => {}} isStandalone={onTauri} />,
-      {
-        route: `/w/${otherWsId}/settings`,
-        routePath: '/*',
-        tables: ['workspaces', 'workspace_memberships'],
-        wrapper: ReactiveSidebarWrapper,
-      },
-    )
-
-    await waitForElement(() => screen.queryByText('General'))
-    expect(screen.getByText('General')).toBeInTheDocument()
-  })
-
-  it('shows the General entry in a Personal Workspace (rendered read-only by the page)', async () => {
+  it('hides the Workspace section entirely on a Personal Workspace', async () => {
+    // With General gone the only remaining item was Members, which is already
+    // hidden on Personal Workspaces, so the whole section collapses.
     await seedPersonalMembership()
 
     renderWithReactivity(
@@ -264,8 +252,11 @@ describe('SettingsSidebarContent — Workspace > General entry visibility', () =
       },
     )
 
-    await waitForElement(() => screen.queryByText('General'))
-    expect(screen.getByText('General')).toBeInTheDocument()
+    // Before the active workspace resolves, `membersItemVisible` (driven by
+    // `activeWorkspace?.isPersonal !== 1`) is briefly true, so the Workspace
+    // section flashes in. Wait for it to disappear before asserting absence.
+    await waitForElement(() => (screen.queryByText('Members') ? null : screen.queryByText('Preferences')))
+    expect(screen.queryByText('Members')).not.toBeInTheDocument()
   })
 })
 
@@ -341,13 +332,17 @@ describe('SettingsSidebarContent — Workspace > Members entry visibility', () =
 
     // Wait for the workspace to resolve as personal. Before resolution,
     // `activeWorkspace?.isPersonal !== 1` is undefined-coerced to true, so
-    // Members briefly renders; the General item now renders unconditionally
-    // so it can't be used as a "workspace loaded" sentinel.
-    await waitForElement(() => (screen.queryByText('Members') ? null : screen.queryByText('General')))
+    // Members briefly renders; use `Preferences` (Account Settings group,
+    // always rendered) as the "workspace loaded" sentinel.
+    await waitForElement(() => (screen.queryByText('Members') ? null : screen.queryByText('Preferences')))
     expect(screen.queryByText('Members')).not.toBeInTheDocument()
   })
 
-  it('hides the Members entry when e2eeEnabled is true (THU-593)', async () => {
+  it('shows the Members entry on a shared workspace even when e2eeEnabled is true', async () => {
+    // E2EE no longer hides Members: shared-workspace collaborative resources
+    // travel plaintext under the temporary per-workspace scope. See
+    // `src/db/encryption/upload-encoder.ts`. When workspace-aware E2EE lands
+    // (THU-593), flip this back to "hides Members under E2EE".
     const { useConfigStore } = await import('@/api/config-store')
     const previous = useConfigStore.getState().config
     useConfigStore.getState().updateConfig({ ...previous, e2eeEnabled: true })
@@ -364,9 +359,8 @@ describe('SettingsSidebarContent — Workspace > Members entry visibility', () =
         },
       )
 
-      // Wait for an unrelated Workspace-group item so the active workspace has resolved.
-      await waitForElement(() => screen.queryByText('Models'))
-      expect(screen.queryByText('Members')).not.toBeInTheDocument()
+      await waitForElement(() => screen.queryByText('Members'))
+      expect(screen.getByText('Members')).toBeInTheDocument()
     } finally {
       useConfigStore.getState().updateConfig(previous)
     }
@@ -443,11 +437,11 @@ describe('SettingsSidebarContent — Workspace > Permissions entry visibility', 
       },
     )
 
-    await waitForElement(() => screen.queryByText('General'))
+    await waitForElement(() => screen.queryByText('Preferences'))
     expect(screen.queryByText('Permissions')).not.toBeInTheDocument()
   })
 
-  it('hides the Permissions entry when e2eeEnabled is true (THU-593)', async () => {
+  it('hides the Permissions entry when e2eeEnabled is true (entry is currently commented out regardless)', async () => {
     const { useConfigStore } = await import('@/api/config-store')
     const previous = useConfigStore.getState().config
     useConfigStore.getState().updateConfig({ ...previous, e2eeEnabled: true })

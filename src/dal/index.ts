@@ -165,11 +165,13 @@ export {
   getMembership,
   getMembershipQuery,
   getMembershipsByUser,
+  getMembershipsByUserQuery,
   getMembershipsByWorkspace,
   getMembershipsByWorkspaceQuery,
   isWorkspaceAdmin,
   removeMembership,
   updateMembershipRole,
+  useUserMembershipsQuery,
   useWorkspaceMembersQuery,
   type WorkspaceMembership,
 } from './workspace-memberships'

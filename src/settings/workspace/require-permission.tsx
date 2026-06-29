@@ -2,7 +2,6 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { useConfigStore } from '@/api/config-store'
 import type { WorkspacePermissionKey } from '@/dal'
 import { useActiveWorkspaceMembership } from '@/hooks/use-active-workspace-membership'
 import { useWorkspacePermission } from '@/hooks/use-workspace-permission'
@@ -31,21 +30,12 @@ type RequireWorkspacePermissionProps = {
 export const RequireWorkspacePermission = ({ permissionKey }: RequireWorkspacePermissionProps) => {
   const active = useActiveWorkspace()
   const { isAllowed, isResolved } = useWorkspacePermission(permissionKey)
-  // @todo Drop this E2EE redirect once the encryption pipeline supports
-  // multi-recipient envelopes and is workspace-aware (see THU-593). Today an
-  // E2EE-enabled server is effectively single-user — member management would
-  // produce data the invitee can't decrypt, so we hide the affordance entirely.
-  const e2eeEnabled = useConfigStore((state) => state.config.e2eeEnabled === true)
 
   if (!active) {
     return <Loading />
   }
 
   if (active.isPersonal === 1) {
-    return <Navigate to=".." replace />
-  }
-
-  if (e2eeEnabled) {
     return <Navigate to=".." replace />
   }
 
@@ -67,8 +57,6 @@ export const RequireWorkspacePermission = ({ permissionKey }: RequireWorkspacePe
  *     Workspaces have no configurable permissions in v1. Personal users are
  *     admins of their own workspace, so the personal check must run before the
  *     admin check.
- *   - E2EE enabled → redirect. Configuring member-management permissions is
- *     meaningless when there's nothing to manage (THU-593).
  *   - Membership still resolving → render `<Loading />` so the page doesn't
  *     flash on a transient `isAdmin === false`.
  *   - Not admin → redirect to settings root.
@@ -81,20 +69,12 @@ export const RequireWorkspacePermission = ({ permissionKey }: RequireWorkspacePe
 export const RequireWorkspaceAdmin = () => {
   const active = useActiveWorkspace()
   const { isAdmin, isResolved } = useActiveWorkspaceMembership()
-  // @todo Drop this E2EE redirect once the encryption pipeline supports
-  // multi-recipient envelopes and is workspace-aware (see THU-593). Same gate
-  // as RequireWorkspacePermission — the two stay in lockstep.
-  const e2eeEnabled = useConfigStore((state) => state.config.e2eeEnabled === true)
 
   if (!active) {
     return <Loading />
   }
 
   if (active.isPersonal === 1) {
-    return <Navigate to=".." replace />
-  }
-
-  if (e2eeEnabled) {
     return <Navigate to=".." replace />
   }
 

@@ -918,7 +918,11 @@ describe('workspace upload handlers', () => {
       expectPermanentReject(result, 'INSUFFICIENT_PERMISSION')
     })
 
-    it('rejects a PUT adding another user when e2eeEnabled is true (THU-593)', async () => {
+    it('allows a PUT adding another user when e2eeEnabled is true', async () => {
+      // Shared-workspace collaborative resources travel plaintext under the
+      // temporary per-workspace E2EE scope, so cross-user memberships are no
+      // longer rejected on E2EE-enabled servers. When workspace-aware E2EE
+      // lands (THU-593), reinstate a rejection.
       await insertUser('admin-e1', 'admin-e1@test.com')
       await insertUser('invitee-e1', 'invitee-e1@test.com')
       const sharedId = uuidv7()
@@ -941,7 +945,7 @@ describe('workspace upload handlers', () => {
         [op],
         ctxFor('admin-e1', { settings: createTestSettings({ e2eeEnabled: true }) }),
       )
-      expectPermanentReject(result, 'E2EE_MEMBERSHIPS_DISABLED')
+      expect(result.ok).toBe(true)
     })
 
     it('still allows the self-bootstrap PUT when e2eeEnabled is true', async () => {
@@ -1453,7 +1457,11 @@ describe('workspace upload handlers', () => {
       expect(memberships).toHaveLength(1)
     })
 
-    it('rejects a pending PUT when e2eeEnabled is true (THU-593)', async () => {
+    it('allows a pending PUT when e2eeEnabled is true', async () => {
+      // Pending memberships are no longer rejected under E2EE — shared-workspace
+      // collaborative resources travel plaintext under the temporary
+      // per-workspace E2EE scope. When workspace-aware E2EE lands (THU-593),
+      // reinstate a rejection until envelopes can reach invitees.
       await insertUser('admin-e2', 'admin-e2@test.com')
       const sharedId = await seedSharedAsAdmin('admin-e2')
 
@@ -1473,7 +1481,7 @@ describe('workspace upload handlers', () => {
         [op],
         ctxFor('admin-e2', { settings: createTestSettings({ e2eeEnabled: true }) }),
       )
-      expectPermanentReject(result, 'E2EE_MEMBERSHIPS_DISABLED')
+      expect(result.ok).toBe(true)
     })
   })
 

@@ -2,16 +2,16 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { useConfigStore } from '@/api/config-store'
 import { AppLogo } from '@/components/app-logo'
 import { SearchableMenu, type SearchableMenuGroup, type SearchableMenuItem } from '@/components/ui/searchable-menu'
-import { useWorkspacesQuery, type Workspace } from '@/dal'
+import { useUserMembershipsQuery, useWorkspacesQuery, type Workspace } from '@/dal'
 import { useCanCreateWorkspace } from '@/hooks/use-can-create-workspace'
 import { isDataUrlIcon } from '@/components/workspace/icon-utils'
 import { useIsMobile } from '@/hooks/use-mobile'
 import { crossWorkspaceSubPath, toWorkspaceUrl, useActiveWorkspace } from '@/lib/active-workspace'
 import { cn } from '@/lib/utils'
-import { ChevronDown, Plus } from 'lucide-react'
+import { useActiveUserId } from '@/stores/trust-domain-registry'
+import { ChevronDown, Plus, Settings } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router'
 import { CreateWorkspaceModal } from './create-workspace-modal'
@@ -122,22 +122,24 @@ export const WorkspaceSelector = ({ collapsed = false }: WorkspaceSelectorProps)
   const navigate = useNavigate()
   const location = useLocation()
   const canCreate = useCanCreateWorkspace()
-  const e2eeEnabled = useConfigStore((state) => state.config.e2eeEnabled === true)
+  // Settings-gear visibility: shown for personal workspaces (the user is always
+  // their own personal admin) and shared workspaces where the user is admin.
+  const activeUserId = useActiveUserId()
+  const memberships = useUserMembershipsQuery(activeUserId)
+  const adminWorkspaceIds = useMemo(
+    () => new Set(memberships.filter((m) => m.role === 'admin').map((m) => m.workspaceId)),
+    [memberships],
+  )
   const [createOpen, setCreateOpen] = useState(false)
+  // Controlled menu open state so the per-row gear icon can close the picker
+  // before navigating away (clicking outside still closes via Radix).
+  const [menuOpen, setMenuOpen] = useState(false)
   // After create-modal commits, hold the new workspace id so the invite modal
   // can target it; clearing this also closes the invite modal.
   const [inviteWorkspaceId, setInviteWorkspaceId] = useState<string | null>(null)
 
   const handleCreated = (workspaceId: string) => {
     setCreateOpen(false)
-    // @todo Drop this E2EE branch once the encryption pipeline supports
-    // multi-recipient envelopes and is workspace-aware (see THU-593). Until
-    // then there's no point opening the invite step — the BE rejects pending
-    // membership inserts under E2EE.
-    if (e2eeEnabled) {
-      navigate(`/w/${workspaceId}/`)
-      return
-    }
     setInviteWorkspaceId(workspaceId)
   }
 
@@ -203,8 +205,14 @@ export const WorkspaceSelector = ({ collapsed = false }: WorkspaceSelectorProps)
     </div>
   )
 
+  const openWorkspaceSettings = (workspace: Workspace) => {
+    setMenuOpen(false)
+    navigate(toWorkspaceUrl(workspace, '/settings/workspace/general'))
+  }
+
   const renderItem = (item: SearchableMenuItem<WorkspaceItemData>, isSelected: boolean) => {
-    const isPersonal = item.data?.workspace.isPersonal === 1
+    const workspace = item.data?.workspace
+    const canOpenSettings = !!workspace && (workspace.isPersonal === 1 || adminWorkspaceIds.has(workspace.id))
     return (
       <div
         className={cn(
@@ -214,9 +222,28 @@ export const WorkspaceSelector = ({ collapsed = false }: WorkspaceSelectorProps)
       >
         {item.icon}
         <span className="flex-1 truncate">{item.label}</span>
-        {isPersonal && (
-          <span className="text-muted-foreground text-[length:var(--font-size-xs)] uppercase tracking-wide">
-            My Workspace
+        {canOpenSettings && workspace && (
+          // `role="button"` rather than a real <button> — the row is already
+          // wrapped in a button by `SearchableMenu`, and nested interactive
+          // content is invalid HTML.
+          <span
+            role="button"
+            tabIndex={0}
+            aria-label={`Open ${item.label} settings`}
+            className="flex items-center justify-center size-7 rounded-md text-muted-foreground hover:bg-accent hover:text-foreground"
+            onClick={(e) => {
+              e.stopPropagation()
+              openWorkspaceSettings(workspace)
+            }}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault()
+                e.stopPropagation()
+                openWorkspaceSettings(workspace)
+              }
+            }}
+          >
+            <Settings className="size-4" />
           </span>
         )}
       </div>
@@ -243,6 +270,8 @@ export const WorkspaceSelector = ({ collapsed = false }: WorkspaceSelectorProps)
         items={groupedItems}
         value={active.id}
         onValueChange={handleChange}
+        open={menuOpen}
+        onOpenChange={setMenuOpen}
         searchable={false}
         blurBackdrop
         side={isMobile ? 'top' : 'bottom'}

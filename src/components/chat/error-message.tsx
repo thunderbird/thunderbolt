@@ -15,10 +15,13 @@ type ErrorMessageProps = {
   /** Present when the failed turn has attachment(s) we can re-deliver as extracted
    *  text — renders a "Convert to text & retry" remediation alongside Retry. */
   onRetryAsText?: () => void
+  /** Present when the failed turn has attachment(s) we can re-deliver as page
+   *  images (e.g. a scanned PDF) — renders a "Send as images & retry" remediation. */
+  onRetryAsImages?: () => void
 }
 
 export const ErrorMessage = memo(
-  ({ retryCount, retriesExhausted, error, onRetry, onRetryAsText }: ErrorMessageProps) => {
+  ({ retryCount, retriesExhausted, error, onRetry, onRetryAsText, onRetryAsImages }: ErrorMessageProps) => {
     const rateLimited = isRateLimitError(error)
 
     // Show rate limit message immediately — don't auto-retry since the server told us to slow down
@@ -62,6 +65,15 @@ export const ErrorMessage = memo(
                 className="cursor-pointer text-[length:var(--font-size-body)] font-medium text-destructive/90 bg-destructive/10 hover:bg-destructive/15 px-3 py-1 rounded-xl"
               >
                 Convert to text & retry
+              </button>
+            )}
+            {onRetryAsImages && (
+              <button
+                type="button"
+                onClick={onRetryAsImages}
+                className="cursor-pointer text-[length:var(--font-size-body)] font-medium text-destructive/90 bg-destructive/10 hover:bg-destructive/15 px-3 py-1 rounded-xl"
+              >
+                Send as images & retry
               </button>
             )}
             {onRetry && (

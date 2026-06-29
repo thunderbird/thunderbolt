@@ -20,6 +20,14 @@ type FileCardProps = {
   onOpen?: () => void
   /** When set, shows a remove affordance (pending composer attachment). */
   onRemove?: () => void
+  /** Non-native delivery mode applied by remediation — shown as a small badge for transparency. */
+  deliverAs?: 'text' | 'images'
+}
+
+/** Human label for a non-native delivery mode. */
+const deliverAsLabel: Record<'text' | 'images', string> = {
+  text: 'Sent as text',
+  images: 'Sent as images',
 }
 
 /** Short type badge from the file extension, falling back to the mime type. */
@@ -37,7 +45,7 @@ const typeBadge = (filename: string, mimeType: string): string => {
  * attachments (`onRemove`) and for sent attachments in chat (`onOpen`). The
  * thumbnail renderer is lazy-loaded (see {@link PdfThumbnail}).
  */
-export const FileCard = ({ localFileId, filename, mimeType, onOpen, onRemove }: FileCardProps) => {
+export const FileCard = ({ localFileId, filename, mimeType, onOpen, onRemove, deliverAs }: FileCardProps) => {
   const ext = filename.split('.').pop()?.toLowerCase()
   const isPdf = mimeType === 'application/pdf'
   const isImage = mimeType.startsWith('image/')
@@ -59,6 +67,11 @@ export const FileCard = ({ localFileId, filename, mimeType, onOpen, onRemove }: 
       {isMarkdown && <MarkdownThumbnail localFileId={localFileId} />}
       {isDocx && <DocxThumbnail localFileId={localFileId} title={filename} />}
       {isPlainText && <TextSnippet localFileId={localFileId} mimeType={mimeType} />}
+      {deliverAs && (
+        <span className="absolute left-1.5 top-1.5 rounded bg-black/65 px-1.5 py-px text-[length:var(--font-size-xs)] font-medium text-white">
+          {deliverAsLabel[deliverAs]}
+        </span>
+      )}
       <div className="absolute inset-x-0 bottom-0 flex items-center gap-1.5 bg-gradient-to-t from-black/65 to-transparent px-2 pb-1.5 pt-5">
         <span className="shrink-0 rounded bg-white/90 px-1 py-px text-[length:var(--font-size-xs)] font-semibold text-black">
           {typeBadge(filename, mimeType)}

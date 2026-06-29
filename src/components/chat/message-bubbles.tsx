@@ -28,6 +28,7 @@ export const MessageBubbles = ({ message }: MessageBubblesProps) => {
               localFileId={attachment.localFileId}
               filename={attachment.filename}
               mimeType={attachment.mimeType}
+              deliverAs={attachment.deliverAs}
               onOpen={
                 showSideview
                   ? () =>

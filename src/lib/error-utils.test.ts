@@ -3,7 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { describe, expect, it } from 'bun:test'
-import { createHandleError, isRateLimitError } from './error-utils'
+import { createHandleError, isContentRejectionError, isRateLimitError } from './error-utils'
 import type { HandleErrorCode } from '@/types/handle-errors'
 
 describe('isRateLimitError', () => {
@@ -34,6 +34,11 @@ describe('isRateLimitError', () => {
 
   it('returns false for unrelated errors', () => {
     expect(isRateLimitError(new Error('Network timeout'))).toBe(false)
+  })
+
+  it('content rejection is not a rate limit', () => {
+    const error = new Error(JSON.stringify({ error: 'content.str: Input should be a valid string', status: 400 }))
+    expect(isRateLimitError(error)).toBe(false)
   })
 
   it('returns false for null', () => {
@@ -196,5 +201,42 @@ describe('createHandleError', () => {
 
     expect(error.message).toBe(longMessage)
     expect(error.message.length).toBe(1000)
+  })
+})
+
+describe('isContentRejectionError', () => {
+  it('detects the OpenAI-compat file-part rejection (content.str, 400)', () => {
+    const error = new Error(
+      JSON.stringify({ error: 'messages.1.user.content.str: Input should be a valid string', status: 400 }),
+    )
+    expect(isContentRejectionError(error)).toBe(true)
+  })
+
+  it('detects an image_url rejection', () => {
+    const error = new Error(JSON.stringify({ error: "Invalid value for 'image_url'", statusCode: 422 }))
+    expect(isContentRejectionError(error)).toBe(true)
+  })
+
+  it('matches a marker even without a status code', () => {
+    expect(isContentRejectionError(new Error('Could not process image attachment'))).toBe(true)
+  })
+
+  it('ignores non-content 4xx (auth/forbidden)', () => {
+    const error = new Error(JSON.stringify({ error: 'Unauthorized', status: 401 }))
+    expect(isContentRejectionError(error)).toBe(false)
+  })
+
+  it('ignores a 400 with no content-shape marker', () => {
+    const error = new Error(JSON.stringify({ error: 'Bad request: missing model', status: 400 }))
+    expect(isContentRejectionError(error)).toBe(false)
+  })
+
+  it('does not treat a rate limit as content rejection', () => {
+    const error = new Error(JSON.stringify({ error: 'Too many requests', status: 429 }))
+    expect(isContentRejectionError(error)).toBe(false)
+  })
+
+  it('returns false for null', () => {
+    expect(isContentRejectionError(null)).toBe(false)
   })
 })

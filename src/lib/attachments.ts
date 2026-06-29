@@ -81,6 +81,9 @@ export const hydrateAttachmentsAsBase64 = async (attachments: AttachmentData[]):
  *   - `'text'` → run the client-side transformer and emit a `text` part instead
  *     (the "convert to text & retry" remediation for models that can't read the
  *     native file). Falls back to the file part if no transformer is registered.
+ *   - `'images'` → rasterize the document (e.g. a scanned PDF) and emit one
+ *     image `file` part per page for a vision model. Falls back to native bytes
+ *     if no images transformer is registered.
  */
 export const hydrateAttachmentsAsFileParts = async (
   messages: ThunderboltUIMessage[],

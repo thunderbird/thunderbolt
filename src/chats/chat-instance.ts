@@ -10,7 +10,7 @@ import { updateChatThread as defaultUpdateChatThread } from '@/dal/chat-threads'
 import { getAllSkills as defaultGetAllSkills } from '@/dal'
 import { extractLastUserText, resolveSkillTokenInstructions } from '@/skills/resolve-skill-system-messages'
 import { getDb as defaultGetDb } from '@/db/database'
-import { isRateLimitError } from '@/lib/error-utils'
+import { isContentRejectionError, isRateLimitError } from '@/lib/error-utils'
 import type { HttpClient } from '@/lib/http'
 import { trackEvent } from '@/lib/posthog'
 import type { FetchFn } from '@/lib/proxy-fetch'
@@ -290,6 +290,14 @@ export const createChatInstance = (
       // Don't auto-retry rate limit errors — retrying immediately makes it worse
       if (isRateLimitError(lastError)) {
         lastError = null
+        useChatStore.getState().updateSession(id, { retriesExhausted: true })
+        return
+      }
+
+      // Don't burn retries on content-rejection (e.g. a file part the endpoint
+      // can't carry) — the same bytes will fail again. Settle the error so the
+      // attachment-remediation layer can re-deliver as text/images instead.
+      if (isContentRejectionError(lastError)) {
         useChatStore.getState().updateSession(id, { retriesExhausted: true })
         return
       }

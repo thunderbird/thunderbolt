@@ -37,7 +37,7 @@ describe('McpBridgeConnectDialog', () => {
     })
 
     expect(
-      screen.getByText('zeus bridge --mode mcp -- npx @modelcontextprotocol/server-everything stdio'),
+      screen.getByText('thunderbolt bridge --mode mcp -- npx @modelcontextprotocol/server-everything stdio'),
     ).toBeInTheDocument()
   })
 
@@ -51,7 +51,7 @@ describe('McpBridgeConnectDialog', () => {
       fireEvent.click(screen.getByTestId('copyable-command-copy-run'))
     })
 
-    expect(writeTextMock).toHaveBeenCalledWith('zeus bridge --mode mcp -- uvx mcp-server')
+    expect(writeTextMock).toHaveBeenCalledWith('thunderbolt bridge --mode mcp -- uvx mcp-server')
   })
 
   it('invokes onOpenChange(false) when Done is clicked', () => {

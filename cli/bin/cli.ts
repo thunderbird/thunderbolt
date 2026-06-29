@@ -67,23 +67,23 @@ type RunBridgeIo = {
   deps: RunDeps
 }
 
-const ROOT_HELP_TEXT = `zeus — Thunderbolt's local stdio bridge toolkit.
+const ROOT_HELP_TEXT = `thunderbolt — Thunderbolt's local stdio bridge toolkit.
 
 Usage:
-  zeus <command> [options]
+  thunderbolt <command> [options]
 
 Commands:
   bridge   bridge a local stdio ACP/MCP server to a loopback face
 
-Run \`zeus bridge --help\` for the bridge options.
+Run \`thunderbolt bridge --help\` for the bridge options.
 
   -h, --help      print this help and exit
   -V, --version   print the version and exit`
 
-const BRIDGE_HELP_TEXT = `zeus bridge — bridge a local stdio ACP/MCP server to a loopback face.
+const BRIDGE_HELP_TEXT = `thunderbolt bridge — bridge a local stdio ACP/MCP server to a loopback face.
 
 Usage:
-  zeus bridge --mode <acp|mcp> [options] -- <launch>...
+  thunderbolt bridge --mode <acp|mcp> [options] -- <launch>...
 
 Everything after \`--\` is the child launch argv, passed verbatim to spawn.
 
@@ -269,14 +269,14 @@ const run = async ({
   }
 
   // Dispatch the resolved subcommand. The parser rejects unknown commands, so
-  // `parsed.command` is always a known case here; a future `zeus <next>` is a new
-  // `case` + a `run<Next>` — the bridge path stays untouched.
+  // `parsed.command` is always a known case here; a future `thunderbolt <next>` is
+  // a new `case` + a `run<Next>` — the bridge path stays untouched.
   switch (parsed.command) {
     case 'bridge':
       return runBridge(parsed, { stderr, exit, deps })
     default:
       // Unreachable today (the parser only resolves known commands), but guards a
-      // future `zeus <next>` wired into the parser yet not here from silently
+      // future `thunderbolt <next>` wired into the parser yet not here from silently
       // hanging — run() returning without ever calling exit().
       throw new Error(`unhandled command: ${parsed.command}`)
   }

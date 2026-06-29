@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-// Single source of truth for the cross-module boundary types of the zeus
+// Single source of truth for the cross-module boundary types of the thunderbolt
 // bridge. Every type here describes a shape that flows BETWEEN modules (an
 // options bag, a returned handle/controller, a callback signature, or a parsed
 // frame) — never a module-private implementation detail. This file is purely

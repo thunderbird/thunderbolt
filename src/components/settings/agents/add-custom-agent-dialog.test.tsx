@@ -311,9 +311,9 @@ describe('AddCustomAgentDialog — local bridge hint', () => {
       />,
     )
 
-  it('shows the zeus bridge hint by default (no URL entered)', () => {
+  it('shows the thunderbolt bridge hint by default (no URL entered)', () => {
     renderDialog()
-    expect(screen.getByText(/zeus bridge/i)).toBeInTheDocument()
+    expect(screen.getByText(/thunderbolt bridge/i)).toBeInTheDocument()
     expect(screen.queryByTestId('agent-url-loopback-hint')).not.toBeInTheDocument()
   })
 

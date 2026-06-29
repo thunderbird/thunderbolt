@@ -26,7 +26,7 @@ describe('BridgeInstallStep', () => {
   })
 
   it('runs the installer and shows "Installed" on success', async () => {
-    const installFn = mock(() => Promise.resolve('installed to /usr/local/bin/zeus'))
+    const installFn = mock(() => Promise.resolve('installed to /usr/local/bin/thunderbolt'))
     render(<BridgeInstallStep autoInstallable={true} installFn={installFn} />)
 
     await act(async () => {

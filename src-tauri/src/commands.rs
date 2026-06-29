@@ -94,16 +94,16 @@ pub fn capabilities() -> Capabilities {
     }
 }
 
-// === Zeus bridge installer ===================================================================
+// === Thunderbolt bridge installer ============================================================
 
-/// The inner `curl … | bash` pipe that installs the `zeus` bridge onto the user's
-/// PATH. This is the raw pipeline only — the `install_bridge` call site below wraps
-/// it in `bash -c 'set -o pipefail; …'`. That wrapped form is what the connect
+/// The inner `curl … | bash` pipe that installs the `thunderbolt` bridge onto the
+/// user's PATH. This is the raw pipeline only — the `install_bridge` call site below
+/// wraps it in `bash -c 'set -o pipefail; …'`. That wrapped form is what the connect
 /// dialog shows for manual install (`installCommand` in
 /// `src/lib/agent-bridge-command.ts`); keep this pipe in sync with the pipe inside
 /// that command.
-const ZEUS_INSTALL_CMD: &str =
-    "curl -fsSL https://raw.githubusercontent.com/thunderbird/thunderbolt/main/zeus/install.sh | bash";
+const THUNDERBOLT_INSTALL_CMD: &str =
+    "curl -fsSL https://raw.githubusercontent.com/thunderbird/thunderbolt/main/cli/install.sh | bash";
 
 /// Maps a finished installer process to the renderer-facing result: trimmed stdout
 /// on a clean exit, otherwise a message built from stderr (falling back to stdout)
@@ -127,7 +127,7 @@ fn map_install_output(output: std::process::Output) -> Result<String, String> {
     ))
 }
 
-/// Runs the `zeus` bridge installer from the desktop connect dialog so the user can
+/// Runs the `thunderbolt` bridge installer from the desktop connect dialog so the user can
 /// install without a terminal. install.sh needs `node`/`npm`/`curl`, so we run it
 /// through the user's login shell (`$SHELL -lc`, falling back to `bash`) to pick up
 /// their PATH (nvm/brew node), off the async runtime so the UI stays responsive.
@@ -147,11 +147,13 @@ pub async fn install_bridge() -> Result<String, String> {
         //     login shell can exec, and the inner bash inherits the login PATH.
         // pipefail makes a failed `curl` (404 / no network) fail the whole pipeline
         // instead of `bash` succeeding on empty stdin — otherwise a broken download
-        // reports a false "installed". ZEUS_INSTALL_CMD has no single quotes, so the
+        // reports a false "installed". THUNDERBOLT_INSTALL_CMD has no single quotes, so the
         // single-quoted nesting stays clean.
         std::process::Command::new(shell)
             .arg("-lc")
-            .arg(format!("bash -c 'set -o pipefail; {ZEUS_INSTALL_CMD}'"))
+            .arg(format!(
+                "bash -c 'set -o pipefail; {THUNDERBOLT_INSTALL_CMD}'"
+            ))
             .output()
     })
     .await

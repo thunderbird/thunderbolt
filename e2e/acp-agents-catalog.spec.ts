@@ -54,7 +54,7 @@ test.describe('Agents catalog', () => {
     await expect(page.getByTestId('bridge-connect-dialog')).toBeVisible()
 
     // The composed bridge run command is shown for the user to copy.
-    await expect(page.getByText('zeus bridge --mode acp --', { exact: false })).toBeVisible()
+    await expect(page.getByText('thunderbolt bridge --mode acp --', { exact: false })).toBeVisible()
     // The install one-liner is present too.
     await expect(page.getByText('curl -fsSL', { exact: false })).toBeVisible()
 
@@ -76,7 +76,7 @@ test.describe('Agents catalog', () => {
     await page.getByTestId('agent-catalog-connect-goose').click()
     await expect(page.getByTestId('bridge-connect-dialog')).toBeVisible()
     await expect(page.getByText(/ships as a platform binary/i)).toBeVisible()
-    await expect(page.getByText('zeus bridge --mode acp --', { exact: false })).toHaveCount(0)
+    await expect(page.getByText('thunderbolt bridge --mode acp --', { exact: false })).toHaveCount(0)
 
     expect(errors).toEqual([])
   })

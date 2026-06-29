@@ -49,7 +49,7 @@ const BinaryFallback = ({ entry }: { entry: RegistryEntry }) => {
 }
 
 /**
- * Walks the user through connecting a catalogue agent via the local `zeus
+ * Walks the user through connecting a catalogue agent via the local `thunderbolt
  * bridge`: install the binary, run the bridge wrapping the agent's CLI, then add
  * the loopback URL it prints as a custom agent. Binary-only agents have no
  * composable launch, so the dialog renders a fallback that points at the agent's

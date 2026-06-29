@@ -68,11 +68,11 @@ test('--mode acp -- node agent.js → mode acp, launch=[node, agent.js]', () => 
   expect(parsed.launch).toEqual(['node', 'agent.js'])
 })
 
-test('--help/--version AFTER `--` belong to the child, not zeus', () => {
-  // The delimiter ends zeus's flags; a `--help` in the launch argv must pass
+test('--help/--version AFTER `--` belong to the child, not thunderbolt', () => {
+  // The delimiter ends thunderbolt's flags; a `--help` in the launch argv must pass
   // through to the child verbatim, not short-circuit to bridge help. parseOk
   // asserts a resolved-opts result (never a help/version intent), so it doubles
-  // as the "not consumed as a zeus flag" check.
+  // as the "not consumed as a thunderbolt flag" check.
   const parsed = parseOk(['--mode', 'acp', '--', 'node', 'agent.js', '--help'])
   expect(parsed.launch).toEqual(['node', 'agent.js', '--help'])
   expect(parseOk(['--mode', 'mcp', '--', 'srv', '--version']).launch).toContain('--version')

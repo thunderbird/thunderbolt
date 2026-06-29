@@ -269,7 +269,7 @@ export const AddCustomAgentDialog = ({
               </p>
             ) : (
               <p className="text-[length:var(--font-size-xs)] text-muted-foreground">
-                Running an agent locally? Use <code className="font-mono">zeus bridge</code> and paste its{' '}
+                Running an agent locally? Use <code className="font-mono">thunderbolt bridge</code> and paste its{' '}
                 <code className="font-mono">ws://127.0.0.1:PORT</code> address.
               </p>
             )}

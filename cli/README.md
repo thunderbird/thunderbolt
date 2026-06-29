@@ -2,9 +2,9 @@
    - License, v. 2.0. If a copy of the MPL was not distributed with this
    - file, You can obtain one at http://mozilla.org/MPL/2.0/. -->
 
-# zeus
+# thunderbolt
 
-`zeus` is Thunderbolt's local stdio bridge toolkit. Its `bridge` subcommand
+`thunderbolt` is Thunderbolt's local stdio bridge toolkit. Its `bridge` subcommand
 bridges a local **stdio** ACP or MCP server to a **loopback** network face so a
 browser app can talk to it:
 
@@ -21,8 +21,8 @@ that treats the bridge as a stdio child can never have its framing corrupted.
 ## Usage
 
 ```
-zeus <command> [options]
-zeus bridge --mode <acp|mcp> [options] -- <launch> [args...]
+thunderbolt <command> [options]
+thunderbolt bridge --mode <acp|mcp> [options] -- <launch> [args...]
 ```
 
 Everything after the first bare `--` is the child launch argv, passed verbatim
@@ -30,18 +30,18 @@ to `spawn`.
 
 ```sh
 # ACP: bridge a local stdio ACP agent to a loopback WebSocket
-zeus bridge --mode acp -- node my-acp-agent.js
+thunderbolt bridge --mode acp -- node my-acp-agent.js
 # stderr: ws://127.0.0.1:54123
 
 # MCP: bridge a local stdio MCP server to a loopback HTTP face
-zeus bridge --mode mcp -- npx @modelcontextprotocol/server-everything
+thunderbolt bridge --mode mcp -- npx @modelcontextprotocol/server-everything
 # stderr: http://127.0.0.1:54124/mcp
 
 # MCP behind a public cloudflared quick tunnel (mints a mandatory bearer)
-zeus bridge --mode mcp --tunnel -- npx some-mcp-server
+thunderbolt bridge --mode mcp --tunnel -- npx some-mcp-server
 ```
 
-### `zeus bridge` options
+### `thunderbolt bridge` options
 
 | Flag                 | Default     | Meaning                                                           |
 | -------------------- | ----------- | ----------------------------------------------------------------- |
@@ -90,22 +90,22 @@ orphans the process it spawned, and it never restarts it.
 
 ## Installation
 
-`zeus` ships as a single self-contained `zeus.cjs` attached to a GitHub
-release — there is **no npm publish**. `install.sh` downloads that artifact and
-links it onto your `PATH` as `zeus`:
+`thunderbolt` ships as a single self-contained `thunderbolt.cjs` attached to a
+GitHub release — there is **no npm publish**. `install.sh` downloads that artifact
+and links it onto your `PATH` as `thunderbolt`:
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/thunderbird/thunderbolt/main/zeus/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/thunderbird/thunderbolt/main/cli/install.sh | bash
 ```
 
-The app invokes the published binary as `zeus bridge ...`.
+The app invokes the published binary as `thunderbolt bridge ...`.
 
 ## Building
 
 `bun run build` runs `scripts/build-cli.mjs`, which bundles the CLI with esbuild
-into `dist/zeus.cjs` (Node 18 target, `bufferutil`/`utf-8-validate` left
+into `dist/thunderbolt.cjs` (Node 18 target, `bufferutil`/`utf-8-validate` left
 external, the version inlined from `package.json`, shebang prepended) and emits a
-companion Windows `dist/zeus.cmd` launcher.
+companion Windows `dist/thunderbolt.cmd` launcher.
 
 ## Development
 
@@ -116,6 +116,6 @@ bun test          # run the unit + offline-tolerant integration suite
 Every external effect (spawn, the WebSocket server, `http.createServer`, the MCP
 transport, the line reader, `process.exit`) is dependency-injected, so the unit
 tests fake them with **zero real sockets**. The one integration test
-(`src/mcp-server.integration.test.js`) drives the real
+(`src/mcp-server.integration.test.ts`) drives the real
 `@modelcontextprotocol/server-everything` through the official MCP client and
 **skips gracefully** when the dependency or network is unavailable.

@@ -26,8 +26,8 @@ const parseBridgeArgs = (argv: string[]): ParseBridgeResult => {
   const flagArgs = delimiterIndex === -1 ? argv : argv.slice(0, delimiterIndex)
   const launch = delimiterIndex === -1 ? [] : argv.slice(delimiterIndex + 1)
 
-  // Help/version only count as zeus flags BEFORE `--`; a `--help`/`--version` in
-  // the child launch argv (after `--`) is the child's, passed through verbatim.
+  // Help/version only count as thunderbolt flags BEFORE `--`; a `--help`/`--version`
+  // in the child launch argv (after `--`) is the child's, passed through verbatim.
   if (flagArgs.includes('--help') || flagArgs.includes('-h')) return { help: 'bridge' }
   if (flagArgs.includes('--version') || flagArgs.includes('-V')) return { version: true }
 

@@ -59,27 +59,27 @@ describe('composeBridgeCommand', () => {
   it('wraps an npx launch in the bridge command (--mode acp), invoking the bare on-PATH binary', () => {
     const entry = entryWith({ npx: { package: '@google/gemini-cli@0.46.0', args: ['--acp'] } })
     const command = composeBridgeCommand(entry)
-    expect(command).toBe('zeus bridge --mode acp -- npx @google/gemini-cli@0.46.0 --acp')
-    expect(command?.startsWith('zeus bridge ')).toBe(true)
+    expect(command).toBe('thunderbolt bridge --mode acp -- npx @google/gemini-cli@0.46.0 --acp')
+    expect(command?.startsWith('thunderbolt bridge ')).toBe(true)
     expect(command?.startsWith('npx')).toBe(false)
   })
 
   it('wraps a uvx launch in the bridge command', () => {
     const entry = entryWith({ uvx: { package: 'fast-agent', args: ['acp'] } })
-    expect(composeBridgeCommand(entry)).toBe('zeus bridge --mode acp -- uvx fast-agent acp')
+    expect(composeBridgeCommand(entry)).toBe('thunderbolt bridge --mode acp -- uvx fast-agent acp')
   })
 
   it('adds --allow-origin for a non-loopback app origin (production web)', () => {
     const entry = entryWith({ npx: { package: '@google/gemini-cli@0.46.0', args: ['--acp'] } })
     expect(composeBridgeCommand(entry, 'https://app.thunderbird.net')).toBe(
-      "zeus bridge --mode acp --allow-origin 'https://app.thunderbird.net' -- npx @google/gemini-cli@0.46.0 --acp",
+      "thunderbolt bridge --mode acp --allow-origin 'https://app.thunderbird.net' -- npx @google/gemini-cli@0.46.0 --acp",
     )
   })
 
   it('omits --allow-origin for a loopback app origin (default allowlist already accepts it)', () => {
     const entry = entryWith({ npx: { package: '@google/gemini-cli@0.46.0', args: ['--acp'] } })
     const command = composeBridgeCommand(entry, 'http://localhost:1421')
-    expect(command).toBe('zeus bridge --mode acp -- npx @google/gemini-cli@0.46.0 --acp')
+    expect(command).toBe('thunderbolt bridge --mode acp -- npx @google/gemini-cli@0.46.0 --acp')
     expect(command).not.toContain('--allow-origin')
   })
 
@@ -98,12 +98,12 @@ describe('composeBridgeCommand', () => {
 describe('composeMcpBridgeCommand', () => {
   it('wraps a stdio command in the bridge command (--mode mcp)', () => {
     const command = composeMcpBridgeCommand('npx @modelcontextprotocol/server-everything stdio')
-    expect(command).toBe('zeus bridge --mode mcp -- npx @modelcontextprotocol/server-everything stdio')
-    expect(command?.startsWith('zeus bridge --mode mcp')).toBe(true)
+    expect(command).toBe('thunderbolt bridge --mode mcp -- npx @modelcontextprotocol/server-everything stdio')
+    expect(command?.startsWith('thunderbolt bridge --mode mcp')).toBe(true)
   })
 
   it('trims surrounding whitespace from the command', () => {
-    expect(composeMcpBridgeCommand('  uvx mcp-server  ')).toBe('zeus bridge --mode mcp -- uvx mcp-server')
+    expect(composeMcpBridgeCommand('  uvx mcp-server  ')).toBe('thunderbolt bridge --mode mcp -- uvx mcp-server')
   })
 
   it('returns null for a blank command', () => {
@@ -113,7 +113,7 @@ describe('composeMcpBridgeCommand', () => {
 
   it('adds --allow-origin for a non-loopback app origin (production web)', () => {
     expect(composeMcpBridgeCommand('npx srv', 'https://app.thunderbird.net')).toBe(
-      "zeus bridge --mode mcp --allow-origin 'https://app.thunderbird.net' -- npx srv",
+      "thunderbolt bridge --mode mcp --allow-origin 'https://app.thunderbird.net' -- npx srv",
     )
   })
 
@@ -127,7 +127,7 @@ describe('composeInstallCommand', () => {
     // Pin the exact string: a chopped closing quote would break the pasted command, and the
     // bash -c 'set -o pipefail; …' wrapper is the contract that propagates a failed curl.
     expect(composeInstallCommand()).toBe(
-      "bash -c 'set -o pipefail; curl -fsSL https://raw.githubusercontent.com/thunderbird/thunderbolt/main/zeus/install.sh | bash'",
+      "bash -c 'set -o pipefail; curl -fsSL https://raw.githubusercontent.com/thunderbird/thunderbolt/main/cli/install.sh | bash'",
     )
   })
 })

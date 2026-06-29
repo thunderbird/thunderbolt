@@ -6,7 +6,7 @@
  * Shell-command composers for the bridge connect flow.
  *
  * A catalogue agent is a local CLI (npx / uvx / binary). To reach it from the
- * app the user runs `zeus bridge`, which spawns the agent's CLI and exposes it
+ * app the user runs `thunderbolt bridge`, which spawns the agent's CLI and exposes it
  * over a loopback WebSocket (`ws://127.0.0.1:PORT`). These helpers build the
  * three copyable commands the connect dialog walks the user through:
  *
@@ -23,18 +23,18 @@ import { isLoopbackUrl } from '@/acp/transports/is-loopback'
 import type { RegistryEntry } from '@/types/registry'
 
 /** The command name the app's `install.sh` installs onto PATH. The bridge is a
- *  subcommand of this binary (`zeus bridge …`). */
-const bridgeBin = 'zeus'
+ *  subcommand of this binary (`thunderbolt bridge …`). */
+const bridgeBin = 'thunderbolt'
 
 /** Canonical one-line installer, wrapped in `bash -c 'set -o pipefail; …'` so a
  *  failed `curl` (404 / network) fails the whole pipeline instead of leaving the
  *  exit status at 0 — without pipefail a broken download looks like a successful
  *  install. The `bash -c` wrapper also makes the pasted command shell-agnostic
  *  (bash/zsh/fish all just exec it). This is the exact effective auto-install
- *  command the desktop runs via `ZEUS_INSTALL_CMD` in `src-tauri/src/commands.rs`
+ *  command the desktop runs via `THUNDERBOLT_INSTALL_CMD` in `src-tauri/src/commands.rs`
  *  (which wraps the same script in `bash -c 'set -o pipefail; …'`); keep in sync. */
 const installCommand =
-  "bash -c 'set -o pipefail; curl -fsSL https://raw.githubusercontent.com/thunderbird/thunderbolt/main/zeus/install.sh | bash'"
+  "bash -c 'set -o pipefail; curl -fsSL https://raw.githubusercontent.com/thunderbird/thunderbolt/main/cli/install.sh | bash'"
 
 /**
  * The shell fragment that launches the agent's own CLI, e.g.
@@ -76,8 +76,8 @@ const needsAllowOrigin = (origin: string | undefined): origin is string => {
 }
 
 /**
- * Build a `zeus bridge --mode <mode> -- <launch>` command for an already-resolved
- * launch fragment, or `null` when there's nothing to wrap. `zeus` is the bare
+ * Build a `thunderbolt bridge --mode <mode> -- <launch>` command for an already-resolved
+ * launch fragment, or `null` when there's nothing to wrap. `thunderbolt` is the bare
  * binary `install.sh` drops on PATH — invoked directly (no `npx`, which would hit
  * the registry since the binary is never published to npm).
  *
@@ -95,7 +95,7 @@ const composeBridge = (mode: 'acp' | 'mcp', launch: string | null, origin?: stri
 }
 
 /**
- * The full ACP bridge command for a catalogue agent: `zeus bridge --mode acp --
+ * The full ACP bridge command for a catalogue agent: `thunderbolt bridge --mode acp --
  * <launch>`. Returns `null` when the agent only ships a binary distribution (no
  * composable launch fragment), so the dialog can render its binary fallback. The
  * catalogue is ACP-only, so `--mode acp` is always correct here.
@@ -104,7 +104,7 @@ export const composeBridgeCommand = (entry: RegistryEntry, origin?: string): str
   composeBridge('acp', composeLaunchCommand(entry), origin)
 
 /**
- * The full bridge command for a local stdio MCP server: `zeus bridge --mode mcp
+ * The full bridge command for a local stdio MCP server: `thunderbolt bridge --mode mcp
  * -- <command>`. Returns `null` for a blank command. The bridge serves the
  * wrapped server over a loopback `http://127.0.0.1:PORT/mcp` endpoint the user
  * then adds as a remote MCP server (the loopback carve-out lets the app reach

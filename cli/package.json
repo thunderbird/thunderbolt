@@ -1,11 +1,11 @@
 {
-  "name": "zeus",
+  "name": "thunderbolt",
   "version": "0.1.0",
   "description": "Bridges a local stdio ACP/MCP server to a loopback WebSocket (ACP) or Streamable HTTP (MCP) face so a browser app can reach it.",
   "license": "MPL-2.0",
   "type": "commonjs",
   "bin": {
-    "zeus": "dist/zeus.cjs"
+    "thunderbolt": "dist/thunderbolt.cjs"
   },
   "files": [
     "bin",

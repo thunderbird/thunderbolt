@@ -24,7 +24,7 @@ type McpBridgeConnectDialogProps = {
 }
 
 /**
- * Walks the user through exposing a local stdio MCP server through the `zeus
+ * Walks the user through exposing a local stdio MCP server through the `thunderbolt
  * bridge`: install the binary, run the bridge wrapping the server's launch
  * command, then add the loopback `http://127.0.0.1:PORT/mcp` URL it prints as a
  * remote server. Unlike the ACP agent catalogue there's no preset entry, so the

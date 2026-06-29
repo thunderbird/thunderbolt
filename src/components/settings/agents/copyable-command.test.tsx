@@ -20,8 +20,8 @@ afterEach(() => {
 
 describe('CopyableCommand', () => {
   it('renders the command text', () => {
-    render(<CopyableCommand command="zeus bridge --help" />)
-    expect(screen.getByText('zeus bridge --help')).toBeInTheDocument()
+    render(<CopyableCommand command="thunderbolt bridge --help" />)
+    expect(screen.getByText('thunderbolt bridge --help')).toBeInTheDocument()
   })
 
   it('copies the command and flips the button label to Copied', async () => {

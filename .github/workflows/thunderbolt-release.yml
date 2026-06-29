@@ -2,23 +2,23 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
-# Build, smoke-test, and (on a tag) publish the zeus CLI.
+# Build, smoke-test, and (on a tag) publish the thunderbolt CLI.
 #
-# On every push/PR touching zeus/** we bundle zeus.cjs and prove all three
+# On every push/PR touching cli/** we bundle thunderbolt.cjs and prove all three
 # entry points work: --help exits 0, the ACP face prints its `listening`
-# banner, the MCP face prints its `mcp-listening` banner. On a `zeus-v*` tag we
-# additionally attach zeus.cjs to the tag's GitHub Release, which install.sh
-# fetches via releases/download/zeus-v<v>/.
+# banner, the MCP face prints its `mcp-listening` banner. On a `thunderbolt-v*`
+# tag we additionally attach thunderbolt.cjs to the tag's GitHub Release, which
+# install.sh fetches via releases/download/thunderbolt-v<v>/.
 
-name: zeus release
+name: thunderbolt release
 
 on:
   push:
     branches: [main]
-    paths: ['zeus/**']
-    tags: ['zeus-v*']
+    paths: ['cli/**']
+    tags: ['thunderbolt-v*']
   pull_request:
-    paths: ['zeus/**']
+    paths: ['cli/**']
   workflow_dispatch:
 
 concurrency:
@@ -30,16 +30,16 @@ permissions:
 
 defaults:
   run:
-    working-directory: zeus
+    working-directory: cli
 
 jobs:
   build:
-    name: Build & smoke-test zeus.cjs
+    name: Build & smoke-test thunderbolt.cjs
     runs-on: ubuntu-24.04
     # `contents: write` is required by the tag-publish step (gh release create/upload).
     # GitHub Actions forbids ${{ }} expressions in `permissions`, so this is a static
     # literal. Safe: the publish step is gated by `if: startsWith(github.ref,
-    # 'refs/tags/zeus-v')`, so non-tag runs never write, and fork-PR tokens are
+    # 'refs/tags/thunderbolt-v')`, so non-tag runs never write, and fork-PR tokens are
     # read-only regardless of this setting.
     permissions:
       contents: write
@@ -57,18 +57,18 @@ jobs:
       - run: bun install --frozen-lockfile
       - run: bun run build
 
-      # zeus.cjs parses and --help exits 0 (no child, no framing at risk).
+      # thunderbolt.cjs parses and --help exits 0 (no child, no framing at risk).
       - name: Smoke --help
         run: |
-          node dist/zeus.cjs bridge --help | grep -q "zeus"
-          node dist/zeus.cjs --version
+          node dist/thunderbolt.cjs bridge --help | grep -q "thunderbolt"
+          node dist/thunderbolt.cjs --version
 
       # ACP face: bind the WS face over a trivial `cat` child and confirm the
       # readiness banner reaches stderr (token: `listening`). Capture stderr to a
       # file, poll until the banner lands, then kill the still-running bridge.
       - name: Smoke ACP (listening)
         run: |
-          node dist/zeus.cjs bridge --mode acp --json -- cat 2>acp.log &
+          node dist/thunderbolt.cjs bridge --mode acp --json -- cat 2>acp.log &
           pid=$!
           for _ in $(seq 1 50); do
             grep -q '"event":"listening"' acp.log && break
@@ -82,7 +82,7 @@ jobs:
       # the readiness banner reaches stderr (token: `mcp-listening`).
       - name: Smoke MCP (mcp-listening)
         run: |
-          node dist/zeus.cjs bridge --mode mcp --json -- \
+          node dist/thunderbolt.cjs bridge --mode mcp --json -- \
             node node_modules/@modelcontextprotocol/server-everything/dist/index.js stdio 2>mcp.log &
           pid=$!
           for _ in $(seq 1 50); do
@@ -93,20 +93,20 @@ jobs:
           grep -q '"event":"mcp-listening"' mcp.log
           grep -q 'http://127.0.0.1:' mcp.log
 
-      - name: Publish zeus.cjs (+ sha256) to the tag's GitHub Release
-        if: startsWith(github.ref, 'refs/tags/zeus-v')
+      - name: Publish thunderbolt.cjs (+ sha256) to the tag's GitHub Release
+        if: startsWith(github.ref, 'refs/tags/thunderbolt-v')
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        # Emit the checksum with a bare `zeus.cjs` basename (cd into dist) so the
-        # published .sha256 is in plain `shasum -a 256 -c` format; install.sh
+        # Emit the checksum with a bare `thunderbolt.cjs` basename (cd into dist) so
+        # the published .sha256 is in plain `shasum -a 256 -c` format; install.sh
         # verifies the downloaded bundle against it before installing.
         run: |
-          ( cd dist && shasum -a 256 zeus.cjs > zeus.cjs.sha256 )
+          ( cd dist && shasum -a 256 thunderbolt.cjs > thunderbolt.cjs.sha256 )
           if gh release view "${GITHUB_REF_NAME}" >/dev/null 2>&1; then
             gh release upload "${GITHUB_REF_NAME}" \
-              dist/zeus.cjs dist/zeus.cjs.sha256 --clobber
+              dist/thunderbolt.cjs dist/thunderbolt.cjs.sha256 --clobber
           else
             gh release create "${GITHUB_REF_NAME}" \
-              dist/zeus.cjs dist/zeus.cjs.sha256 \
+              dist/thunderbolt.cjs dist/thunderbolt.cjs.sha256 \
               --title "${GITHUB_REF_NAME}" --generate-notes
           fi

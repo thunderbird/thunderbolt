@@ -78,7 +78,7 @@ test('root --help prints root usage (lists the bridge command) to stdout and exi
   const h = makeHarness()
   await run({ argv: ['--help'], stdout: h.stdout, stderr: h.stderr, exit: h.exit, deps: h.deps })
   expect(h.stdout.text()).toContain('Usage:')
-  expect(h.stdout.text()).toContain('zeus <command>')
+  expect(h.stdout.text()).toContain('thunderbolt <command>')
   expect(h.stdout.text()).toContain('bridge')
   expect(h.exit).toHaveBeenCalledWith(0)
   expect(h.startBridge).not.toHaveBeenCalled()
@@ -87,7 +87,7 @@ test('root --help prints root usage (lists the bridge command) to stdout and exi
 test('no args prints root usage and exits 0', async () => {
   const h = makeHarness()
   await run({ argv: [], stdout: h.stdout, stderr: h.stderr, exit: h.exit, deps: h.deps })
-  expect(h.stdout.text()).toContain('zeus <command>')
+  expect(h.stdout.text()).toContain('thunderbolt <command>')
   expect(h.exit).toHaveBeenCalledWith(0)
   expect(h.startBridge).not.toHaveBeenCalled()
 })
@@ -95,7 +95,7 @@ test('no args prints root usage and exits 0', async () => {
 test('bridge --help prints the bridge usage to stdout and exits 0 (no child spawned)', async () => {
   const h = makeHarness()
   await run({ argv: ['bridge', '--help'], stdout: h.stdout, stderr: h.stderr, exit: h.exit, deps: h.deps })
-  expect(h.stdout.text()).toContain('zeus bridge --mode <acp|mcp>')
+  expect(h.stdout.text()).toContain('thunderbolt bridge --mode <acp|mcp>')
   expect(h.exit).toHaveBeenCalledWith(0)
   expect(h.startBridge).not.toHaveBeenCalled()
 })

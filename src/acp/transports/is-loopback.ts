@@ -19,7 +19,7 @@
  *  `::1`. The entire `127.0.0.0/8` IPv4 block is loopback but checked
  *  separately (see `isIpv4Loopback`). `0.0.0.0` is deliberately excluded: it is
  *  an all-interfaces *bind* address, not a valid *connect* target, and excluding
- *  it matches the bridge's own classifier (`zeus/src/util.js`, which accepts
+ *  it matches the bridge's own classifier (`cli/src/util.ts`, which accepts
  *  127.0.0.0/8, ::1, localhost). */
 const loopbackHosts = new Set(['::1', 'localhost'])
 

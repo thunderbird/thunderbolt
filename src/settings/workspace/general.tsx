@@ -18,7 +18,6 @@ import { Card, CardContent } from '@/components/ui/card'
 import { Form } from '@/components/ui/form'
 import { PageHeader } from '@/components/ui/page-header'
 import {
-  formatWorkspaceSlugPrefix,
   slugifyWorkspaceName,
   WorkspaceFormFields,
   workspaceFormSchema,
@@ -33,38 +32,12 @@ import { useActiveWorkspace } from '@/lib/active-workspace'
 import { CreateWorkspaceModal } from '@/layout/sidebar/create-workspace-modal'
 import { InviteMembersModal } from '@/layout/sidebar/invite-members-modal'
 import { useConfigStore } from '@/api/config-store'
-import { useActiveCloudUrl, useActiveUserId } from '@/stores/trust-domain-registry'
+import { useActiveUserId } from '@/stores/trust-domain-registry'
 import { zodResolver } from '@hookform/resolvers/zod'
-import dayjs from 'dayjs'
-import { Calendar, User } from 'lucide-react'
+import { Plus } from 'lucide-react'
 import { useCallback, useEffect, useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { useNavigate } from 'react-router'
-
-const WorkspaceMeta = ({ workspace }: { workspace: Workspace }) => {
-  const activeUserId = useActiveUserId()
-  const { isAdmin } = useActiveWorkspaceMembership()
-  const isOwner = !!workspace.ownerUserId && workspace.ownerUserId === activeUserId
-  const roleLabel = isOwner ? 'Owner' : isAdmin ? 'Admin' : null
-  const created = workspace.createdAt ? dayjs(workspace.createdAt).format('MM.DD.YYYY') : null
-
-  return (
-    <div className="flex flex-wrap items-center gap-4 text-[12px] font-normal leading-[1.2] text-muted-foreground">
-      {roleLabel && (
-        <span className="inline-flex items-center gap-1.5">
-          <User className="size-3" />
-          {roleLabel}
-        </span>
-      )}
-      {created && (
-        <span className="inline-flex items-center gap-1.5">
-          <Calendar className="size-3" />
-          Created {created}
-        </span>
-      )}
-    </div>
-  )
-}
 
 const WorkspaceActions = ({ workspace }: { workspace: Workspace }) => {
   const db = useDatabase()
@@ -136,7 +109,6 @@ const renameDebounceMs = 600
 
 const RenameWorkspaceForm = ({ workspace }: { workspace: Workspace }) => {
   const db = useDatabase()
-  const cloudUrl = useActiveCloudUrl()
   const { isAdmin } = useActiveWorkspaceMembership()
   const isPersonal = workspace.isPersonal === 1
   // Non-admin members of a shared workspace can view the form but not edit —
@@ -144,15 +116,11 @@ const RenameWorkspaceForm = ({ workspace }: { workspace: Workspace }) => {
   // and skip wiring the autosave callbacks rather than letting a failed save
   // round-trip surface as a phantom error.
   const canEdit = isPersonal || isAdmin
-  const slugPrefix = formatWorkspaceSlugPrefix(cloudUrl)
-
-  const initialSlug = workspace.slug ?? slugifyWorkspaceName(workspace.name)
-  const initialSlugLocked = workspace.slug !== null && workspace.slug !== slugifyWorkspaceName(workspace.name)
   const [submitError, setSubmitError] = useState<string | null>(null)
 
   const form = useForm<WorkspaceFormValues>({
     resolver: zodResolver(workspaceFormSchema),
-    defaultValues: { name: workspace.name, slug: initialSlug, icon: workspace.icon },
+    defaultValues: { workspaceName: workspace.name, icon: workspace.icon },
     mode: 'onChange',
   })
 
@@ -161,23 +129,30 @@ const RenameWorkspaceForm = ({ workspace }: { workspace: Workspace }) => {
   // user is actively editing — the user wins, and the next autosave PATCHes
   // against the freshest server value.
   useEffect(() => {
-    const nextSlug = workspace.slug ?? slugifyWorkspaceName(workspace.name)
-    form.reset({ name: workspace.name, slug: nextSlug, icon: workspace.icon }, { keepDirtyValues: true })
-  }, [workspace.name, workspace.slug, workspace.icon, form])
+    form.reset({ workspaceName: workspace.name, icon: workspace.icon }, { keepDirtyValues: true })
+  }, [workspace.name, workspace.icon, form])
 
   // Shared save path used by debounced onChange and immediate onBlur. Reads
   // current form state on every call so the timer never fires with stale args.
   const save = useCallback(async () => {
-    const { name, slug, icon } = form.getValues()
+    const { workspaceName, icon } = form.getValues()
     const patch: UpdateWorkspacePatch = {}
-    const trimmedName = name.trim()
+    const trimmedName = workspaceName.trim()
     if (trimmedName && trimmedName !== workspace.name) {
       patch.name = trimmedName
     }
-    if (!isPersonal) {
-      const finalSlug = slugifyWorkspaceName(slug) || null
-      if (finalSlug !== (workspace.slug ?? null)) {
-        patch.slug = finalSlug
+    // Shared workspaces: slug auto-derives from the (saved) name unless the user
+    // had previously customised it. The customisation heuristic mirrors the old
+    // URL-input lock — slug ≠ slugify(old name) means it was hand-edited and we
+    // leave it alone.
+    if (!isPersonal && trimmedName) {
+      const prevAutoSlug = slugifyWorkspaceName(workspace.name)
+      const slugIsCustomised = workspace.slug !== null && workspace.slug !== prevAutoSlug
+      if (!slugIsCustomised) {
+        const finalSlug = slugifyWorkspaceName(trimmedName) || null
+        if (finalSlug !== (workspace.slug ?? null)) {
+          patch.slug = finalSlug
+        }
       }
     }
     if (icon !== (workspace.icon ?? null)) {
@@ -189,11 +164,9 @@ const RenameWorkspaceForm = ({ workspace }: { workspace: Workspace }) => {
     setSubmitError(null)
     try {
       await updateWorkspace(db, workspace.id, patch)
-      // Reset baseline so future debounces compare against the just-saved
-      // values. Display the canonicalised slug we actually wrote.
+      // Reset baseline so future debounces compare against the just-saved values.
       form.reset({
-        name: patch.name ?? name,
-        slug: patch.slug !== undefined ? (patch.slug ?? '') : slug,
+        workspaceName: patch.name ?? workspaceName,
         icon: patch.icon !== undefined ? patch.icon : icon,
       })
     } catch (e) {
@@ -208,10 +181,7 @@ const RenameWorkspaceForm = ({ workspace }: { workspace: Workspace }) => {
       <form className="flex flex-col gap-4">
         <WorkspaceFormFields
           form={form}
-          slugPrefix={slugPrefix}
-          showSlug={!isPersonal}
           iconPlaceholder={workspace.name.trim()[0]?.toUpperCase()}
-          initialSlugLocked={initialSlugLocked}
           onDebouncedChange={canEdit ? debouncedSave : undefined}
           onCommit={canEdit ? () => void save() : undefined}
           disabled={!canEdit}
@@ -259,29 +229,30 @@ const WorkspaceGeneralPage = () => {
 
   return (
     <div className="flex flex-col p-4 pb-12 w-full max-w-[760px] mx-auto">
-      <PageHeader title="Workspace Settings">
+      <PageHeader title="Workspaces">
         {canCreate && (
-          <Button variant="outline" size="lg" onClick={() => setCreateOpen(true)}>
-            Create New
+          <Button
+            variant="outline"
+            size="icon"
+            className="rounded-lg"
+            onClick={() => setCreateOpen(true)}
+            aria-label="Create workspace"
+          >
+            <Plus />
           </Button>
         )}
       </PageHeader>
       {active && (
-        <>
-          <div className="mt-3 mb-6">
-            <WorkspaceMeta workspace={active} />
-          </div>
-          <Card>
-            <CardContent>
-              {/* Re-key by workspace id so switching workspaces fully remounts the
-               *  form — defaultValues read from the new active.name, isDirty resets. */}
-              <RenameWorkspaceForm key={active.id} workspace={active} />
-              <div className="mt-6">
-                <WorkspaceActions workspace={active} />
-              </div>
-            </CardContent>
-          </Card>
-        </>
+        <Card className="mt-6">
+          <CardContent>
+            {/* Re-key by workspace id so switching workspaces fully remounts the
+             *  form — defaultValues read from the new active.name, isDirty resets. */}
+            <RenameWorkspaceForm key={active.id} workspace={active} />
+            <div className="mt-6">
+              <WorkspaceActions workspace={active} />
+            </div>
+          </CardContent>
+        </Card>
       )}
 
       <CreateWorkspaceModal open={createOpen} onOpenChange={setCreateOpen} onCreated={handleCreated} />

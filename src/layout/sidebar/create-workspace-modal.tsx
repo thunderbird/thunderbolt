@@ -13,7 +13,6 @@ import {
   ResponsiveModalTitle,
 } from '@/components/ui/responsive-modal'
 import {
-  formatWorkspaceSlugPrefix,
   slugifyWorkspaceName,
   WorkspaceFormFields,
   workspaceFormSchema,
@@ -21,7 +20,6 @@ import {
 } from '@/components/workspace/workspace-form-fields'
 import { useAuth, useDatabase } from '@/contexts'
 import { createSharedWorkspace } from '@/dal/workspaces'
-import { useActiveCloudUrl } from '@/stores/trust-domain-registry'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { useRef } from 'react'
 import { useForm, useWatch } from 'react-hook-form'
@@ -34,7 +32,7 @@ type CreateWorkspaceModalProps = {
   onCreated: (workspaceId: string) => void
 }
 
-const emptyValues: WorkspaceFormValues = { name: '', slug: '', icon: null }
+const emptyValues: WorkspaceFormValues = { workspaceName: '', icon: null }
 
 /**
  * "Create a Workspace" modal. Captures name + slug + icon via the shared
@@ -63,7 +61,6 @@ type CreateWorkspaceFormProps = {
 
 const CreateWorkspaceForm = ({ open, onCreated }: CreateWorkspaceFormProps) => {
   const db = useDatabase()
-  const cloudUrl = useActiveCloudUrl()
   const authClient = useAuth()
   const { data: session } = authClient.useSession()
 
@@ -82,8 +79,7 @@ const CreateWorkspaceForm = ({ open, onCreated }: CreateWorkspaceFormProps) => {
 
   const userId = session?.user?.id
   const creatorEmail = session?.user?.email ?? undefined
-  const slugPrefix = formatWorkspaceSlugPrefix(cloudUrl)
-  const watchedName = useWatch({ control: form.control, name: 'name' })
+  const watchedName = useWatch({ control: form.control, name: 'workspaceName' })
   const canSubmit = !!userId && watchedName.trim().length > 0
 
   const submit = form.handleSubmit(async (values) => {
@@ -93,8 +89,8 @@ const CreateWorkspaceForm = ({ open, onCreated }: CreateWorkspaceFormProps) => {
     const workspaceId = await createSharedWorkspace(db, {
       creatorUserId: userId,
       creatorEmail,
-      name: values.name,
-      slug: slugifyWorkspaceName(values.slug) || null,
+      name: values.workspaceName,
+      slug: slugifyWorkspaceName(values.workspaceName) || null,
       icon: values.icon,
     })
     // The local DB transaction commits regardless — the workspace will show up
@@ -121,7 +117,7 @@ const CreateWorkspaceForm = ({ open, onCreated }: CreateWorkspaceFormProps) => {
         <form onSubmit={submit}>
           <ResponsiveModalContent>
             <div className="flex flex-col gap-4">
-              <WorkspaceFormFields form={form} slugPrefix={slugPrefix} />
+              <WorkspaceFormFields form={form} />
             </div>
           </ResponsiveModalContent>
 

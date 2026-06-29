@@ -116,6 +116,47 @@ describe('SettingsSidebarContent — Agents entry visibility', () => {
   })
 })
 
+describe('SettingsSidebarContent — Devices entry visibility', () => {
+  beforeAll(async () => {
+    await setupTestDatabase()
+  })
+
+  afterAll(async () => {
+    await teardownTestDatabase()
+  })
+
+  beforeEach(async () => {
+    await resetTestDatabase()
+    localStorage.clear()
+  })
+
+  afterEach(() => {
+    cleanup()
+    localStorage.clear()
+  })
+
+  it('shows the Devices entry for an authenticated user', () => {
+    const authClient = createMockAuthClient({ session: authedSession })
+    renderSidebar(authClient, offTauri)
+
+    expect(screen.getByText('Devices')).toBeInTheDocument()
+  })
+
+  it('hides the Devices entry for an anonymous user', () => {
+    const authClient = createMockAuthClient({ session: anonSession })
+    renderSidebar(authClient, offTauri)
+
+    expect(screen.queryByText('Devices')).not.toBeInTheDocument()
+  })
+
+  it('hides the Devices entry when there is no session', () => {
+    const authClient = createMockAuthClient({ session: null })
+    renderSidebar(authClient, offTauri)
+
+    expect(screen.queryByText('Devices')).not.toBeInTheDocument()
+  })
+})
+
 const reactiveSidebarAuthClient = createMockAuthClient({ session: authedSession })
 const reactiveSidebarHttpClient = createMockHttpClient()
 

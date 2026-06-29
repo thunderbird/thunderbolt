@@ -233,9 +233,11 @@ describe('WorkspaceGeneralPage', () => {
     expect(rows[0].name).toBe('Home base')
   })
 
-  it('hides the Workspace URL field on a Personal Workspace', async () => {
+  it('does not render a Workspace URL input', async () => {
+    await seedSharedWorkspaceWithMembership('admin', 'Acme')
+
     renderWithReactivity(<WorkspaceGeneralPage />, {
-      route: '/settings/workspace/general',
+      route: `/w/${otherWsId}/settings/workspace/general`,
       routePath: '/*',
       tables: ['workspaces'],
       wrapper: DbWrapper,
@@ -260,14 +262,10 @@ describe('WorkspaceGeneralPage', () => {
         ? screen.getByLabelText('Workspace name')
         : null,
     )) as HTMLInputElement
-    const slugInput = screen.getByLabelText('Workspace URL') as HTMLInputElement
-    // Initial slug derived from name (workspace.slug is null on seed).
-    expect(slugInput.value).toBe('acme')
 
     await act(async () => {
       fireEvent.change(nameInput, { target: { value: 'Engineering Team' } })
     })
-    expect(slugInput.value).toBe('engineering-team')
 
     await flushAutosave()
 
@@ -342,8 +340,23 @@ describe('WorkspaceGeneralPage', () => {
     expect((screen.getByLabelText('Workspace name') as HTMLInputElement).value).toBe('User typing…')
   })
 
-  it('stops auto-deriving the slug once the user edits it manually', async () => {
-    await seedSharedWorkspaceWithMembership('admin', 'Acme')
+  it('preserves a pre-existing customised slug when the name is changed', async () => {
+    // Seed a shared workspace whose slug doesn't match slugify(name) — i.e. a
+    // hand-customised slug from before the URL input was removed.
+    const db = getDb()
+    await db.insert(workspacesTable).values({
+      id: otherWsId,
+      name: 'Acme',
+      slug: 'custom-slug',
+      isPersonal: 0,
+      ownerUserId: null,
+    })
+    await db.insert(workspaceMembershipsTable).values({
+      id: `${otherWsId}-${testUserId}`,
+      workspaceId: otherWsId,
+      userId: testUserId,
+      role: 'admin',
+    })
 
     renderWithReactivity(<WorkspaceGeneralPage />, {
       route: `/w/${otherWsId}/settings/workspace/general`,
@@ -357,18 +370,15 @@ describe('WorkspaceGeneralPage', () => {
         ? screen.getByLabelText('Workspace name')
         : null,
     )) as HTMLInputElement
-    const slugInput = screen.getByLabelText('Workspace URL') as HTMLInputElement
 
-    // User customises slug → lock auto-derivation.
-    await act(async () => {
-      fireEvent.change(slugInput, { target: { value: 'custom-slug' } })
-    })
-    expect(slugInput.value).toBe('custom-slug')
-
-    // Now change name — slug should NOT auto-update.
     await act(async () => {
       fireEvent.change(nameInput, { target: { value: 'Different Name' } })
     })
-    expect(slugInput.value).toBe('custom-slug')
+
+    await flushAutosave()
+
+    const rows = await db.select().from(workspacesTable).where(eq(workspacesTable.id, otherWsId))
+    expect(rows[0].name).toBe('Different Name')
+    expect(rows[0].slug).toBe('custom-slug')
   })
 })

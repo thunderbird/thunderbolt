@@ -29,7 +29,7 @@ export const SidebarHeader = ({ onToggle }: SidebarHeaderProps) => {
   const isExpanded = isMobile || state === 'expanded'
 
   return (
-    <div className="h-[var(--touch-height-xl)] border-b border-border flex items-center px-2 gap-8 flex-shrink-0">
+    <div className="h-[var(--touch-height-xl)] border-b border-border flex items-center px-2 flex-shrink-0">
       <div
         className="flex items-center h-8 relative flex-1 min-w-0"
         onMouseEnter={() => !isMobile && !isExpanded && setShowExpandButton(true)}

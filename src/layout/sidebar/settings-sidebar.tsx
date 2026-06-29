@@ -15,6 +15,7 @@ import {
   useSidebar,
 } from '@/components/ui/sidebar'
 import { useConfigStore } from '@/api/config-store'
+import { useAuth } from '@/contexts'
 import { useActiveWorkspaceMembership } from '@/hooks/use-active-workspace-membership'
 import { useAgentsSettingsHidden } from '@/hooks/use-agents-settings-hidden'
 import { stripWorkspacePrefix, useActiveWorkspace } from '@/lib/active-workspace'
@@ -43,6 +44,10 @@ export const SettingsSidebarContent = ({
   const { toggleSidebar } = useSidebar()
   const location = useLocation()
   const agentsHidden = useAgentsSettingsHidden({ isStandalone })
+  // Devices is a per-account, cross-device management surface — anonymous
+  // sessions and unauthenticated boots have nothing meaningful to manage there.
+  const { data: session } = useAuth().useSession()
+  const isLoggedIn = !!session?.user && session.user.isAnonymous !== true
   const activeWorkspace = useActiveWorkspace()
   // `isAdmin` is currently only used by the commented-out Permissions entry
   // below — keep the call so re-enabling is a single comment-flip.
@@ -168,17 +173,19 @@ export const SettingsSidebarContent = ({
                 <span>Preferences</span>
               </SidebarMenuButton>
             </SidebarMenuItem>
-            <SidebarMenuItem>
-              <SidebarMenuButton
-                onClick={() => onSettingsNavigate('/settings/devices')}
-                tooltip="Devices"
-                className="cursor-pointer"
-                isActive={subPath === '/settings/devices'}
-              >
-                <Smartphone className="size-4" />
-                <span>Devices</span>
-              </SidebarMenuButton>
-            </SidebarMenuItem>
+            {isLoggedIn && (
+              <SidebarMenuItem>
+                <SidebarMenuButton
+                  onClick={() => onSettingsNavigate('/settings/devices')}
+                  tooltip="Devices"
+                  className="cursor-pointer"
+                  isActive={subPath === '/settings/devices'}
+                >
+                  <Smartphone className="size-4" />
+                  <span>Devices</span>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+            )}
           </SidebarMenu>
         </SidebarGroupContent>
       </SidebarGroup>

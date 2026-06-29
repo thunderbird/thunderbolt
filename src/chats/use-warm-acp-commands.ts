@@ -90,8 +90,8 @@ export const useWarmAcpCommands = (
           threadId: id,
           acpSessionId: chatThread?.acpSessionId ?? null,
           onAcpSessionId: async (sessionId) => {
-            if (chatThread) {
-              await updateChatThread(getDb(), chatThread.id, { acpSessionId: sessionId })
+            if (chatThread?.workspaceId) {
+              await updateChatThread(getDb(), chatThread.workspaceId, chatThread.id, { acpSessionId: sessionId })
             }
           },
         })

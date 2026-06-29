@@ -11,35 +11,65 @@ import { clearNullableColumns, convertUIMessageToDbChatMessage, nowIso } from '.
 import { getChatThread, updateChatThread } from './chat-threads'
 
 /**
- * Gets a single chat message by ID (excluding soft-deleted)
+ * Gets a single chat message by ID in the given workspace (excluding soft-deleted)
  */
-export const getMessage = async (db: AnyDrizzleDatabase, messageId: string): Promise<ChatMessage | undefined> => {
+export const getMessage = async (
+  db: AnyDrizzleDatabase,
+  workspaceId: string,
+  messageId: string,
+): Promise<ChatMessage | undefined> => {
   return (await db
     .select()
     .from(chatMessagesTable)
-    .where(and(eq(chatMessagesTable.id, messageId), isNull(chatMessagesTable.deletedAt)))
+    .where(
+      and(
+        eq(chatMessagesTable.id, messageId),
+        eq(chatMessagesTable.workspaceId, workspaceId),
+        isNull(chatMessagesTable.deletedAt),
+      ),
+    )
     .get()) as ChatMessage | undefined
 }
 
 /**
- * Gets all chat messages for a specific thread (excluding soft-deleted)
+ * Gets all chat messages for a specific thread in the given workspace (excluding soft-deleted)
  */
-export const getChatMessages = async (db: AnyDrizzleDatabase, threadId: string): Promise<ChatMessage[]> => {
+export const getChatMessages = async (
+  db: AnyDrizzleDatabase,
+  workspaceId: string,
+  threadId: string,
+): Promise<ChatMessage[]> => {
   return (await db
     .select()
     .from(chatMessagesTable)
-    .where(and(eq(chatMessagesTable.chatThreadId, threadId), isNull(chatMessagesTable.deletedAt)))
+    .where(
+      and(
+        eq(chatMessagesTable.workspaceId, workspaceId),
+        eq(chatMessagesTable.chatThreadId, threadId),
+        isNull(chatMessagesTable.deletedAt),
+      ),
+    )
     .orderBy(chatMessagesTable.id)) as ChatMessage[]
 }
 
 /**
- * Gets the last message in a thread (excluding soft-deleted)
+ * Gets the last message in a thread in the given workspace (excluding soft-deleted)
  */
-export const getLastMessage = async (db: AnyDrizzleDatabase, threadId: string): Promise<ChatMessage | null> => {
+export const getLastMessage = async (
+  db: AnyDrizzleDatabase,
+  workspaceId: string,
+  threadId: string,
+): Promise<ChatMessage | null> => {
   const lastMessage = await db
     .select()
     .from(chatMessagesTable)
-    .where(and(eq(chatMessagesTable.chatThreadId, threadId), isNull(chatMessagesTable.deletedAt)))
+    .where(
+      and(
+        eq(chatMessagesTable.workspaceId, workspaceId),
+        eq(chatMessagesTable.chatThreadId, threadId),
+        isNull(chatMessagesTable.deletedAt),
+      ),
+    )
     .orderBy(desc(chatMessagesTable.id))
     .limit(1)
     .get()
@@ -48,25 +78,24 @@ export const getLastMessage = async (db: AnyDrizzleDatabase, threadId: string): 
 }
 
 /**
- * Saves messages to a chat thread and updates context size if available
- * @param threadId - The ID of the chat thread
- * @param messages - Array of UI messages to save
+ * Saves messages to a chat thread in the given workspace and updates context size if available.
  * @returns The saved database messages
  * @throws Error if thread is not found
  */
 export const saveMessagesWithContextUpdate = async (
   db: AnyDrizzleDatabase,
+  workspaceId: string,
   threadId: string,
   messages: ThunderboltUIMessage[],
 ): Promise<ChatMessage[]> => {
   // Verify thread exists
-  const thread = await getChatThread(db, threadId)
+  const thread = await getChatThread(db, workspaceId, threadId)
   if (!thread) {
     throw new Error('Thread not found')
   }
 
   // Get the last message in the thread to use as parent for new messages
-  const lastMessage = await getLastMessage(db, threadId)
+  const lastMessage = await getLastMessage(db, workspaceId, threadId)
   const parentId = lastMessage?.id ?? null
 
   // Convert UI messages to DB messages with parent relationship
@@ -84,7 +113,7 @@ export const saveMessagesWithContextUpdate = async (
     // when multiple components save messages simultaneously.
     for (const msg of dbChatMessages) {
       try {
-        await tx.insert(chatMessagesTable).values(msg)
+        await tx.insert(chatMessagesTable).values({ ...msg, workspaceId })
       } catch (err) {
         if (!isInsertConflictError(err)) {
           throw err
@@ -98,7 +127,7 @@ export const saveMessagesWithContextUpdate = async (
             parentId: msg.parentId,
             metadata: msg.metadata,
           })
-          .where(eq(chatMessagesTable.id, msg.id))
+          .where(and(eq(chatMessagesTable.id, msg.id), eq(chatMessagesTable.workspaceId, workspaceId)))
       }
     }
 
@@ -107,7 +136,7 @@ export const saveMessagesWithContextUpdate = async (
     const metadata = latestMessage?.metadata as UIMessageMetadata | undefined
 
     if (metadata?.usage?.totalTokens) {
-      await updateChatThread(tx, threadId, { contextSize: metadata.usage.totalTokens })
+      await updateChatThread(tx, workspaceId, threadId, { contextSize: metadata.usage.totalTokens })
     }
   })
 
@@ -115,17 +144,18 @@ export const saveMessagesWithContextUpdate = async (
 }
 
 /**
- * Updates a specific cache field for a message
- * Uses flat key-value storage with camelCase namespace (e.g., "linkPreview/https://example.com")
+ * Updates a specific cache field for a message in the given workspace.
+ * Uses flat key-value storage with camelCase namespace (e.g., "linkPreview/https://example.com").
  */
 export const updateMessageCache = async (
   db: AnyDrizzleDatabase,
+  workspaceId: string,
   messageId: string,
   cacheKey: string,
   value: unknown,
 ): Promise<void> => {
   // Fetch current message
-  const message = await getMessage(db, messageId)
+  const message = await getMessage(db, workspaceId, messageId)
 
   if (!message) {
     throw new Error('Message not found')
@@ -133,22 +163,36 @@ export const updateMessageCache = async (
 
   // Simple flat key-value storage
   const updatedCache = { ...(message.cache || {}), [cacheKey]: value } as typeof message.cache
-  await db.update(chatMessagesTable).set({ cache: updatedCache }).where(eq(chatMessagesTable.id, messageId))
+  await db
+    .update(chatMessagesTable)
+    .set({ cache: updatedCache })
+    .where(and(eq(chatMessagesTable.id, messageId), eq(chatMessagesTable.workspaceId, workspaceId)))
 }
 
 export const updateMessage = async (
   db: AnyDrizzleDatabase,
+  workspaceId: string,
   messageId: string,
   message: Partial<ChatMessage>,
 ): Promise<void> => {
-  await db.update(chatMessagesTable).set(message).where(eq(chatMessagesTable.id, messageId))
+  // Strip `workspaceId` from the update payload — the row stays in the workspace
+  // it was filtered to; callers can't reassign by passing a different value.
+  const { workspaceId: _workspaceId, ...updateFields } = message
+  await db
+    .update(chatMessagesTable)
+    .set(updateFields)
+    .where(and(eq(chatMessagesTable.id, messageId), eq(chatMessagesTable.workspaceId, workspaceId)))
 }
 
 /**
  * Collect message id and all descendant ids (children, grandchildren, etc.) that are not yet soft-deleted.
  * Uses iterative BFS to avoid stack overflow and N+1 query issues with deep message trees.
  */
-const getMessageAndDescendantIds = async (db: AnyDrizzleDatabase, messageId: string): Promise<string[]> => {
+const getMessageAndDescendantIds = async (
+  db: AnyDrizzleDatabase,
+  workspaceId: string,
+  messageId: string,
+): Promise<string[]> => {
   const allIds: string[] = []
   let parentIds: string[] = [messageId]
 
@@ -157,9 +201,13 @@ const getMessageAndDescendantIds = async (db: AnyDrizzleDatabase, messageId: str
     const children = (await db
       .select({ id: chatMessagesTable.id })
       .from(chatMessagesTable)
-      .where(and(inArray(chatMessagesTable.parentId, parentIds), isNull(chatMessagesTable.deletedAt)))) as {
-      id: string
-    }[]
+      .where(
+        and(
+          eq(chatMessagesTable.workspaceId, workspaceId),
+          inArray(chatMessagesTable.parentId, parentIds),
+          isNull(chatMessagesTable.deletedAt),
+        ),
+      )) as { id: string }[]
 
     parentIds = children.map((c) => c.id)
   }
@@ -168,12 +216,17 @@ const getMessageAndDescendantIds = async (db: AnyDrizzleDatabase, messageId: str
 }
 
 /**
- * Soft deletes a chat message and all its descendants (children, grandchildren, etc.).
- * Sets deletedAt and clears nullable columns. Only updates records not already soft-deleted.
- * Cascade is handled in the DAL; parent_id is a logical reference only.
+ * Soft deletes a chat message and all its descendants in the given workspace
+ * (children, grandchildren, etc.). Sets deletedAt and clears nullable columns.
+ * Only updates records not already soft-deleted. Cascade is handled in the DAL;
+ * parent_id is a logical reference only.
  */
-export const deleteChatMessageAndDescendants = async (db: AnyDrizzleDatabase, messageId: string): Promise<void> => {
-  const idsToSoftDelete = await getMessageAndDescendantIds(db, messageId)
+export const deleteChatMessageAndDescendants = async (
+  db: AnyDrizzleDatabase,
+  workspaceId: string,
+  messageId: string,
+): Promise<void> => {
+  const idsToSoftDelete = await getMessageAndDescendantIds(db, workspaceId, messageId)
   if (idsToSoftDelete.length === 0) {
     return
   }
@@ -182,5 +235,11 @@ export const deleteChatMessageAndDescendants = async (db: AnyDrizzleDatabase, me
   await db
     .update(chatMessagesTable)
     .set({ ...clearNullableColumns(chatMessagesTable), deletedAt })
-    .where(and(inArray(chatMessagesTable.id, idsToSoftDelete), isNull(chatMessagesTable.deletedAt)))
+    .where(
+      and(
+        inArray(chatMessagesTable.id, idsToSoftDelete),
+        eq(chatMessagesTable.workspaceId, workspaceId),
+        isNull(chatMessagesTable.deletedAt),
+      ),
+    )
 }

@@ -5,6 +5,7 @@
 import { estimateTokensForText } from '@/ai/tokenizers'
 import { useDatabase } from '@/contexts'
 import { getContextSizeForThread } from '@/dal'
+import { useActiveWorkspaceId } from '@/lib/active-workspace'
 import type { Model } from '@/types'
 import { useQuery } from '@powersync/tanstack-react-query'
 import { toCompilableQuery } from '@powersync/drizzle-driver'
@@ -42,15 +43,16 @@ export const useContextTracking = ({
   additionalInputTokens = 0,
 }: UseContextTrackingProps): UseContextTrackingReturn => {
   const db = useDatabase()
+  const workspaceId = useActiveWorkspaceId()
 
   // Derive context window information from model
   const maxTokens = model.contextWindow
 
   // Fetch context size from chat thread using React Query
   const { data = [], isLoading } = useQuery({
-    queryKey: ['contextSize', chatThreadId],
-    query: toCompilableQuery(getContextSizeForThread(db, chatThreadId ?? '')),
-    enabled: Boolean(chatThreadId),
+    queryKey: ['contextSize', workspaceId, chatThreadId],
+    query: toCompilableQuery(getContextSizeForThread(db, workspaceId ?? '', chatThreadId ?? '')),
+    enabled: Boolean(chatThreadId) && !!workspaceId,
   })
 
   const contextSize = data[0]?.contextSize ?? null

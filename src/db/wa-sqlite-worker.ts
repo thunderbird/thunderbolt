@@ -16,7 +16,6 @@ if (typeof process !== 'undefined' && process.env.NODE_ENV === 'test') {
 
 import * as SQLite from '@journeyapps/wa-sqlite'
 import SQLiteESMFactory from '@journeyapps/wa-sqlite/dist/wa-sqlite.mjs'
-// @ts-expect-error - OPFSCoopSyncVFS exists but TypeScript definitions are incomplete
 import { OPFSCoopSyncVFS } from '@journeyapps/wa-sqlite/src/examples/OPFSCoopSyncVFS.js'
 
 type WorkerRequest = {

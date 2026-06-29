@@ -72,6 +72,7 @@ export {
   deleteMcpServer,
   getAllMcpServers,
   getRemoteMcpServers,
+  updateMcpServer,
   type McpServerWithCredential,
 } from './mcp-servers'
 
@@ -144,6 +145,55 @@ export {
   type CreateSkillInput,
   type UpdateSkillInput,
 } from './skills'
+
+// Workspaces
+export {
+  duplicateWorkspace,
+  ensurePersonalWorkspace,
+  getPersonalWorkspaceByOwner,
+  getPersonalWorkspaceByOwnerQuery,
+  getWorkspaceById,
+  getWorkspaceByIdQuery,
+  getWorkspacesForUserQuery,
+  updateWorkspace,
+  useWorkspacesQuery,
+  type DuplicateWorkspaceInput,
+  type UpdateWorkspacePatch,
+  type Workspace,
+} from './workspaces'
+export {
+  getMembership,
+  getMembershipQuery,
+  getMembershipsByUser,
+  getMembershipsByWorkspace,
+  getMembershipsByWorkspaceQuery,
+  isWorkspaceAdmin,
+  removeMembership,
+  updateMembershipRole,
+  useWorkspaceMembersQuery,
+  type WorkspaceMembership,
+} from './workspace-memberships'
+export {
+  addPendingMembership,
+  getPendingByWorkspace,
+  getPendingByWorkspaceQuery,
+  removePendingMembership,
+  updatePendingMembershipRole,
+  useWorkspacePendingMembershipsQuery,
+  type AddPendingMembershipInput,
+  type WorkspacePendingMembership,
+} from './workspace-pending-memberships'
+export {
+  getPermissionsByWorkspace,
+  getPermissionsByWorkspaceQuery,
+  getRequiredRoleForPermission,
+  getRequiredRoleForPermissionQuery,
+  setWorkspacePermissionRequiredRole,
+  useWorkspacePermissionsQuery,
+  type WorkspacePermission,
+  type WorkspacePermissionKey,
+  type WorkspacePermissionRole,
+} from './workspace-permissions'
 
 // Agents (ACP)
 export {

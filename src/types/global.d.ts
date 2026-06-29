@@ -9,3 +9,12 @@ interface Window {
     invoke: (cmd: string, args: any) => Promise<any>
   }
 }
+
+// Wa-sqlite ships `OPFSCoopSyncVFS` without .d.ts coverage. Imported
+// statically by `src/db/wa-sqlite-worker.ts` and by
+// `src/migrations/pre-workspaces-attach/legacy-reader.worker.ts`.
+declare module '@journeyapps/wa-sqlite/src/examples/OPFSCoopSyncVFS.js' {
+  export class OPFSCoopSyncVFS {
+    static create(name: string, module: unknown, options?: unknown): Promise<OPFSCoopSyncVFS>
+  }
+}

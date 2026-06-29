@@ -76,7 +76,7 @@ const remote: Agent = {
   isSystem: 0,
 }
 
-const thread: ChatThread = { id: 'thread-1', acpSessionId: null } as ChatThread
+const thread: ChatThread = { id: 'thread-1', workspaceId: 'ws-1', acpSessionId: null } as ChatThread
 
 const wrapper = ({ children }: { children: ReactNode }) => (
   <HttpClientProvider httpClient={httpClient}>
@@ -144,8 +144,9 @@ describe('useWarmAcpCommands', () => {
 
     await flush()
     expect(updateChatThread).toHaveBeenCalledTimes(1)
-    expect(updateChatThread.mock.calls[0]?.[1]).toBe('thread-1')
-    expect(updateChatThread.mock.calls[0]?.[2]).toEqual({ acpSessionId: 'sess-new' })
+    expect(updateChatThread.mock.calls[0]?.[1]).toBe('ws-1')
+    expect(updateChatThread.mock.calls[0]?.[2]).toBe('thread-1')
+    expect(updateChatThread.mock.calls[0]?.[3]).toEqual({ acpSessionId: 'sess-new' })
   })
 
   it('releases the guard on a failed connect so a later effect run retries', async () => {

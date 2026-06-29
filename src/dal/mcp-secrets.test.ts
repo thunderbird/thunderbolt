@@ -9,7 +9,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'bun:test'
 import { v7 as uuidv7 } from 'uuid'
 import { deleteMcpServer } from './mcp-servers'
 import { getMcpServerCredentials, setMcpServerCredentials } from './mcp-secrets'
-import { resetTestDatabase, setupTestDatabase, teardownTestDatabase } from './test-utils'
+import { resetTestDatabase, setupTestDatabase, teardownTestDatabase, wsId } from './test-utils'
 
 beforeAll(async () => {
   await setupTestDatabase()
@@ -84,10 +84,11 @@ describe('MCP Secrets DAL', () => {
         type: 'http',
         url: 'http://example.com',
         enabled: 1,
+        workspaceId: wsId,
       })
       await setMcpServerCredentials(db, id, { type: 'bearer', token: 'secret-token' })
 
-      await deleteMcpServer(db, id)
+      await deleteMcpServer(db, wsId, id)
 
       const secrets = await db.select().from(mcpSecretsTable)
       expect(secrets).toHaveLength(0)

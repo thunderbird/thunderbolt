@@ -3,9 +3,14 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { createMcpServer, getAllMcpServers } from '@/dal'
-import { resetTestDatabase, setupTestDatabase, teardownTestDatabase } from '@/dal/test-utils'
+import { resetTestDatabase, setupTestDatabase, teardownTestDatabase, wsId } from '@/dal/test-utils'
 import { getDb } from '@/db/database'
-import { renderWithReactivity, waitForElement } from '@/test-utils/powersync-reactivity-test'
+import {
+  renderWithReactivity,
+  waitForElement,
+  resetTestTrustDomain,
+  seedTestTrustDomain,
+} from '@/test-utils/powersync-reactivity-test'
 import { getClock } from '@/testing-library'
 import { MCPProvider, useMCP, type MCPClient } from '@/lib/mcp-provider'
 import type { McpServersPageDeps } from './mcp-servers'
@@ -44,10 +49,12 @@ describe('McpServersPage reactivity', () => {
   })
 
   beforeEach(async () => {
+    seedTestTrustDomain()
     await resetTestDatabase()
   })
 
   afterEach(() => {
+    resetTestTrustDomain()
     cleanup()
   })
 
@@ -56,7 +63,7 @@ describe('McpServersPage reactivity', () => {
     const serverId1 = uuidv7()
     const serverId2 = uuidv7()
 
-    await createMcpServer(db, {
+    await createMcpServer(db, wsId, {
       id: serverId1,
       name: 'First Server',
       url: 'http://localhost:8000/mcp/',
@@ -72,7 +79,7 @@ describe('McpServersPage reactivity', () => {
     await waitForElement(() => screen.queryByText('localhost:8000/mcp'))
     expect(screen.getByText('localhost:8000/mcp')).toBeInTheDocument()
 
-    await createMcpServer(db, {
+    await createMcpServer(db, wsId, {
       id: serverId2,
       name: 'Second Server',
       url: 'http://localhost:9000/mcp/',
@@ -124,10 +131,12 @@ describe('McpServersPage Test Connection classification', () => {
   })
 
   beforeEach(async () => {
+    seedTestTrustDomain()
     await resetTestDatabase()
   })
 
   afterEach(() => {
+    resetTestTrustDomain()
     cleanup()
   })
 
@@ -200,10 +209,12 @@ describe('McpServersPage Add & Authorize', () => {
   })
 
   beforeEach(async () => {
+    seedTestTrustDomain()
     await resetTestDatabase()
   })
 
   afterEach(() => {
+    resetTestTrustDomain()
     cleanup()
   })
 
@@ -228,7 +239,7 @@ describe('McpServersPage Add & Authorize', () => {
     })
 
     // The row was created then rolled back, leaving no live server.
-    const remaining = await getAllMcpServers(db)
+    const remaining = await getAllMcpServers(db, wsId)
     expect(remaining).toHaveLength(0)
     expect(
       screen.getByText('Another MCP authorization is already in progress — finish or cancel it first.'),
@@ -257,7 +268,7 @@ describe('McpServersPage Add & Authorize', () => {
       await getClock().runAllAsync()
     })
 
-    const created = await getAllMcpServers(db)
+    const created = await getAllMcpServers(db, wsId)
     expect(created).toHaveLength(1)
     expect(startMcpOAuthFlow).toHaveBeenCalledTimes(1)
   })
@@ -294,10 +305,12 @@ describe('McpServersPage probe lifecycle', () => {
   })
 
   beforeEach(async () => {
+    seedTestTrustDomain()
     await resetTestDatabase()
   })
 
   afterEach(() => {
+    resetTestTrustDomain()
     cleanup()
   })
 
@@ -421,11 +434,13 @@ describe('McpServersPage tools refresh after reconnect', () => {
   })
 
   beforeEach(async () => {
+    seedTestTrustDomain()
     await resetTestDatabase()
     mcpContextRef.current = null
   })
 
   afterEach(() => {
+    resetTestTrustDomain()
     cleanup()
   })
 
@@ -435,7 +450,7 @@ describe('McpServersPage tools refresh after reconnect', () => {
     const db = getDb()
     const serverId = uuidv7()
     const url = 'http://localhost:8000/mcp/'
-    await createMcpServer(db, { id: serverId, name: 'srv', url, type: 'http', enabled: 1 })
+    await createMcpServer(db, wsId, { id: serverId, name: 'srv', url, type: 'http', enabled: 1 })
     renderWithReactivity(<McpServersPage />, {
       tables: ['mcp_servers', 'mcp_secrets'],
       wrapper: makeMcpWrapper(createClient),
@@ -532,10 +547,12 @@ describe('McpServersPage add-dialog error labeling', () => {
   })
 
   beforeEach(async () => {
+    seedTestTrustDomain()
     await resetTestDatabase()
   })
 
   afterEach(() => {
+    resetTestTrustDomain()
     cleanup()
   })
 

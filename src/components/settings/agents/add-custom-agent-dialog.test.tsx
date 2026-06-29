@@ -148,6 +148,9 @@ describe('AddCustomAgentDialog', () => {
       url: 'wss://example.com/ws',
       description: 'Demo',
       transport: 'websocket',
+      // Personal workspace by default in tests → picker hidden → falls back
+      // to workspace scope to match historical behavior.
+      scope: 'workspace',
     })
     // Closes dialog on success.
     expect(onOpenChange).toHaveBeenCalledWith(false)
@@ -405,6 +408,7 @@ describe('AddCustomAgentDialog — edit mode', () => {
       // Empty description is normalized to null, matching the create path.
       description: null,
       transport: 'websocket',
+      scope: 'workspace',
     })
     expect(onOpenChange).toHaveBeenCalledWith(false)
   })

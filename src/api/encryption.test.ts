@@ -3,13 +3,14 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { describe, expect, it, beforeEach, afterEach } from 'bun:test'
+import { testServerId } from '@/testing-library'
 import { type HttpClient } from '@/contexts'
 import { getAuthToken } from '@/lib/auth-token'
 import { createAuthenticatedClient } from '@/lib/http'
 import { registerDevice, storeEnvelope, fetchMyEnvelope, fetchCanary } from './encryption'
 
-const deviceIdKey = 'thunderbolt_device_id'
-const authTokenKey = 'thunderbolt_auth_token'
+const deviceIdKey = `thunderbolt_device_id__${testServerId}`
+const authTokenKey = `thunderbolt_auth_token__${testServerId}`
 
 type CapturedRequest = { url: string; method: string; body: Record<string, unknown> | null; headers: Headers }
 

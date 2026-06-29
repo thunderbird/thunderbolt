@@ -14,8 +14,15 @@ import {
   SidebarSeparator,
   useSidebar,
 } from '@/components/ui/sidebar'
+import { useConfigStore } from '@/api/config-store'
+import { useAuth } from '@/contexts'
+import { useActiveWorkspaceMembership } from '@/hooks/use-active-workspace-membership'
 import { useAgentsSettingsHidden } from '@/hooks/use-agents-settings-hidden'
-import { ArrowLeft, Bot, Cpu, Plug, Server, SlidersHorizontal, Smartphone, Zap } from 'lucide-react'
+import { stripWorkspacePrefix, useActiveWorkspace } from '@/lib/active-workspace'
+// `Lock` is paired with the temporarily-hidden Permissions entry below — keep
+// the import commented so re-enabling the menu is a one-spot uncomment.
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+import { ArrowLeft, Bot, Cpu, Globe, Plug, Server, SlidersHorizontal, Smartphone, Users, Zap } from 'lucide-react'
 import { useLocation } from 'react-router'
 import { SidebarHeader } from './sidebar-header'
 
@@ -37,6 +44,35 @@ export const SettingsSidebarContent = ({
   const { toggleSidebar } = useSidebar()
   const location = useLocation()
   const agentsHidden = useAgentsSettingsHidden({ isStandalone })
+  // Devices is a per-account, cross-device management surface — anonymous
+  // sessions and unauthenticated boots have nothing meaningful to manage there.
+  const { data: session } = useAuth().useSession()
+  const isLoggedIn = !!session?.user && session.user.isAnonymous !== true
+  const activeWorkspace = useActiveWorkspace()
+  // `isAdmin` is currently only used by the commented-out Permissions entry
+  // below — keep the call so re-enabling is a single comment-flip.
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const { isAdmin: _isAdmin } = useActiveWorkspaceMembership()
+  // General is open to every member of a shared workspace; the page itself
+  // disables form fields for non-admins. Personal workspaces always show it.
+  // Members is visible to every member of a shared workspace — the page is
+  // read-friendly without action permissions, and individual actions (invite /
+  // change role / remove) gate themselves on the granular permission keys.
+  // Always hidden in Personal Workspaces (Decision 25 — no members to manage).
+  // @todo Drop the e2eeEnabled gate once the encryption pipeline supports
+  // multi-recipient envelopes and is workspace-aware (see THU-593). Until then
+  // an E2EE-enabled server is effectively single-user and there's nothing to
+  // show here.
+  const e2eeEnabled = useConfigStore((state) => state.config.e2eeEnabled === true)
+  const membersItemVisible = activeWorkspace?.isPersonal !== 1 && !e2eeEnabled
+  // Permissions is implicitly admin-only — there is no configurable
+  // meta-permission for editing the permissions grid itself.
+  // Hidden for now (see commented JSX block below); kept here so re-enabling
+  // is a one-spot revert.
+  // const permissionsItemVisible = activeWorkspace?.isPersonal !== 1 && isAdmin && !e2eeEnabled
+  // `isActive` highlighting reads the sub-path so the same matching rules work
+  // for both personal (`/settings/...`) and shared (`/w/<id>/settings/...`) URLs.
+  const subPath = stripWorkspacePrefix(location.pathname)
 
   return (
     <SidebarContent className="flex flex-col h-full">
@@ -57,19 +93,19 @@ export const SettingsSidebarContent = ({
 
       <SidebarSeparator className="m-0" />
 
-      <SidebarGroup className="flex-1">
-        <SidebarGroupLabel>Settings</SidebarGroupLabel>
+      <SidebarGroup>
+        <SidebarGroupLabel>Extensions</SidebarGroupLabel>
         <SidebarGroupContent>
           <SidebarMenu>
             <SidebarMenuItem>
               <SidebarMenuButton
-                onClick={() => onSettingsNavigate('/settings/preferences')}
-                tooltip="Preferences"
+                onClick={() => onSettingsNavigate('/settings/skills')}
+                tooltip="Skills"
                 className="cursor-pointer"
-                isActive={location.pathname === '/settings/preferences'}
+                isActive={subPath === '/settings/skills'}
               >
-                <SlidersHorizontal className="size-4" />
-                <span>Preferences</span>
+                <Zap className="size-4" />
+                <span>Skills</span>
               </SidebarMenuButton>
             </SidebarMenuItem>
             <SidebarMenuItem>
@@ -77,7 +113,7 @@ export const SettingsSidebarContent = ({
                 onClick={() => onSettingsNavigate('/settings/integrations')}
                 tooltip="Integrations"
                 className="cursor-pointer"
-                isActive={location.pathname === '/settings/integrations'}
+                isActive={subPath === '/settings/integrations'}
               >
                 <Plug className="size-4" />
                 <span>Integrations</span>
@@ -85,21 +121,10 @@ export const SettingsSidebarContent = ({
             </SidebarMenuItem>
             <SidebarMenuItem>
               <SidebarMenuButton
-                onClick={() => onSettingsNavigate('/settings/devices')}
-                tooltip="Devices"
-                className="cursor-pointer"
-                isActive={location.pathname === '/settings/devices'}
-              >
-                <Smartphone className="size-4" />
-                <span>Devices</span>
-              </SidebarMenuButton>
-            </SidebarMenuItem>
-            <SidebarMenuItem>
-              <SidebarMenuButton
                 onClick={() => onSettingsNavigate('/settings/models')}
                 tooltip="Models"
                 className="cursor-pointer"
-                isActive={location.pathname.startsWith('/settings/models')}
+                isActive={subPath.startsWith('/settings/models')}
               >
                 <Cpu className="size-4" />
                 <span>Models</span>
@@ -110,21 +135,10 @@ export const SettingsSidebarContent = ({
                 onClick={() => onSettingsNavigate('/settings/mcp-servers')}
                 tooltip="MCP Servers"
                 className="cursor-pointer"
-                isActive={location.pathname === '/settings/mcp-servers'}
+                isActive={subPath === '/settings/mcp-servers'}
               >
                 <Server className="size-4" />
                 <span>MCP Servers</span>
-              </SidebarMenuButton>
-            </SidebarMenuItem>
-            <SidebarMenuItem>
-              <SidebarMenuButton
-                onClick={() => onSettingsNavigate('/settings/skills')}
-                tooltip="Skills"
-                className="cursor-pointer"
-                isActive={location.pathname === '/settings/skills'}
-              >
-                <Zap className="size-4" />
-                <span>Skills</span>
               </SidebarMenuButton>
             </SidebarMenuItem>
             {!agentsHidden && (
@@ -133,13 +147,94 @@ export const SettingsSidebarContent = ({
                   onClick={() => onSettingsNavigate('/settings/agents')}
                   tooltip="Agents"
                   className="cursor-pointer"
-                  isActive={location.pathname === '/settings/agents'}
+                  isActive={subPath === '/settings/agents'}
                 >
                   <Bot className="size-4" />
                   <span>Agents</span>
                 </SidebarMenuButton>
               </SidebarMenuItem>
             )}
+          </SidebarMenu>
+        </SidebarGroupContent>
+      </SidebarGroup>
+
+      <SidebarGroup>
+        <SidebarGroupLabel>Account Settings</SidebarGroupLabel>
+        <SidebarGroupContent>
+          <SidebarMenu>
+            <SidebarMenuItem>
+              <SidebarMenuButton
+                onClick={() => onSettingsNavigate('/settings/preferences')}
+                tooltip="Preferences"
+                className="cursor-pointer"
+                isActive={subPath === '/settings/preferences'}
+              >
+                <SlidersHorizontal className="size-4" />
+                <span>Preferences</span>
+              </SidebarMenuButton>
+            </SidebarMenuItem>
+            {isLoggedIn && (
+              <SidebarMenuItem>
+                <SidebarMenuButton
+                  onClick={() => onSettingsNavigate('/settings/devices')}
+                  tooltip="Devices"
+                  className="cursor-pointer"
+                  isActive={subPath === '/settings/devices'}
+                >
+                  <Smartphone className="size-4" />
+                  <span>Devices</span>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+            )}
+          </SidebarMenu>
+        </SidebarGroupContent>
+      </SidebarGroup>
+
+      <SidebarGroup className="flex-1">
+        <SidebarGroupLabel>Workspace</SidebarGroupLabel>
+        <SidebarGroupContent>
+          <SidebarMenu>
+            <SidebarMenuItem>
+              <SidebarMenuButton
+                onClick={() => onSettingsNavigate('/settings/workspace/general')}
+                tooltip="General"
+                className="cursor-pointer"
+                isActive={subPath === '/settings/workspace/general'}
+              >
+                <Globe className="size-4" />
+                <span>General</span>
+              </SidebarMenuButton>
+            </SidebarMenuItem>
+            {membersItemVisible && (
+              <SidebarMenuItem>
+                <SidebarMenuButton
+                  onClick={() => onSettingsNavigate('/settings/workspace/members')}
+                  tooltip="Members"
+                  className="cursor-pointer"
+                  isActive={subPath === '/settings/workspace/members'}
+                >
+                  <Users className="size-4" />
+                  <span>Members</span>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+            )}
+            {/* Permissions entry hidden — feature isn't ready for users yet.
+                Underlying page + permissions DAL/handlers stay intact for the
+                internal eng team via direct URL nav.
+            {permissionsItemVisible && (
+              <SidebarMenuItem>
+                <SidebarMenuButton
+                  onClick={() => onSettingsNavigate('/settings/workspace/permissions')}
+                  tooltip="Permissions"
+                  className="cursor-pointer"
+                  isActive={subPath === '/settings/workspace/permissions'}
+                >
+                  <Lock className="size-4" />
+                  <span>Permissions</span>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+            )}
+            */}
           </SidebarMenu>
         </SidebarGroupContent>
       </SidebarGroup>

@@ -64,6 +64,14 @@ describe('canDeleteAgent', () => {
   it('returns false when no user is signed in', () => {
     expect(canDeleteAgent(customAgent, null)).toBe(false)
   })
+
+  it('returns false when the workspace `remove_agents` permission denies the user', () => {
+    expect(canDeleteAgent(customAgent, 'user-42', false)).toBe(false)
+  })
+
+  it('returns true when canRemoveAgents defaults (omitted), preserving prior behaviour', () => {
+    expect(canDeleteAgent(customAgent, 'user-42')).toBe(true)
+  })
 })
 
 describe('canEditAgent', () => {
@@ -73,6 +81,14 @@ describe('canEditAgent', () => {
     expect(canEditAgent(customAgent, 'user-42')).toBe(true)
     expect(canEditAgent(customAgent, 'someone-else')).toBe(false)
     expect(canEditAgent(customAgent, null)).toBe(false)
+  })
+
+  it('returns false when the workspace `add_agents` permission denies the user', () => {
+    expect(canEditAgent(customAgent, 'user-42', false)).toBe(false)
+  })
+
+  it('returns true when canEditAgents defaults (omitted), preserving prior behaviour', () => {
+    expect(canEditAgent(customAgent, 'user-42')).toBe(true)
   })
 })
 
@@ -172,6 +188,60 @@ describe('AgentList', () => {
     render(<AgentList agents={[customAgent]} currentUserId="user-42" onToggle={noop} onEdit={noop} onDelete={noop} />)
 
     expect(screen.getByTestId(`agent-toggle-${customAgent.id}`)).not.toBeDisabled()
+  })
+
+  it('hides the Remove affordance on every row when canRemoveAgents is false', () => {
+    const onToggle = mock(() => {})
+    const onDelete = mock(() => {})
+
+    render(
+      <AgentList
+        agents={[customAgent]}
+        currentUserId="user-42"
+        canRemoveAgents={false}
+        onToggle={onToggle}
+        onEdit={noop}
+        onDelete={onDelete}
+      />,
+    )
+
+    expect(screen.queryByTestId(`agent-delete-${customAgent.id}`)).not.toBeInTheDocument()
+  })
+
+  it('disables the row toggle when canEditAgents is false (even for an owned custom)', () => {
+    const onToggle = mock(() => {})
+    const onDelete = mock(() => {})
+
+    render(
+      <AgentList
+        agents={[customAgent]}
+        currentUserId="user-42"
+        canEditAgents={false}
+        onToggle={onToggle}
+        onEdit={noop}
+        onDelete={onDelete}
+      />,
+    )
+
+    expect(screen.getByTestId(`agent-toggle-${customAgent.id}`)).toBeDisabled()
+  })
+
+  it('hides the Edit affordance on every row when canEditAgents is false', () => {
+    const onToggle = mock(() => {})
+    const onDelete = mock(() => {})
+
+    render(
+      <AgentList
+        agents={[customAgent]}
+        currentUserId="user-42"
+        canEditAgents={false}
+        onToggle={onToggle}
+        onEdit={noop}
+        onDelete={onDelete}
+      />,
+    )
+
+    expect(screen.queryByTestId(`agent-edit-${customAgent.id}`)).not.toBeInTheDocument()
   })
 })
 

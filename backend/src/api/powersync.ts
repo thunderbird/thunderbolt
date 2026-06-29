@@ -5,7 +5,8 @@
 import type { Auth } from '@/auth/elysia-plugin'
 import type { Settings } from '@/config/settings'
 import { isOriginAllowed } from '@/config/settings'
-import { applyOperation, getActiveSessionByToken, getDeviceById, getUserById, upsertDevice } from '@/dal'
+import { getActiveSessionByToken, getDeviceById, getUserById, upsertDevice } from '@/dal'
+import { applyUploadBatch, type UploadOp } from '@/powersync/upload-handlers'
 import type { db as DbType } from '@/db/client'
 import { verifySignedBearerToken } from '@/auth/bearer-token'
 import type { User } from '@shared/types/auth'
@@ -260,26 +261,39 @@ export const createPowerSyncRoutes = (auth: Auth, settings: Settings, database: 
           return validation.body
         }
 
-        const operations = body.operations
+        // Dispatch the batch through the per-table upload handler factory. Each op
+        // runs in its own savepoint inside one outer transaction (see
+        // `applyUploadBatch`). Permanent rejections accumulate and return 200 so
+        // PowerSync clears the queue; any transient failure rolls back the whole
+        // batch and returns 503 so PowerSync retries.
+        // Elysia validates `type` as a string at the protocol boundary; the dispatcher
+        // narrows it via the handlers registry (returns `UNKNOWN_TABLE` permanent reject
+        // for names not in `PowerSyncTableName`).
+        const result = await applyUploadBatch(database, body.operations as UploadOp[], {
+          userId: user.id,
+          settings,
+        })
 
-        // Process operations sequentially to maintain order.
-        // If any operation fails, return 4xx so the client does not call transaction.complete()
-        // and PowerSync will retry the batch.
-        for (const op of operations) {
-          const ok = await applyOperation(database, op, user.id)
-          if (!ok) {
-            set.status = 400
-            return {
-              error: 'Upload operation failed',
-              code: 'UPLOAD_OPERATION_FAILED',
-              table: op.type,
-              id: op.id,
-              op: op.op,
-            }
+        if (!result.ok) {
+          set.status = 503
+          return {
+            error: 'Upload batch transient failure',
+            code: result.code,
+            table: result.op?.type,
+            id: result.op?.id,
+            op: result.op?.op,
           }
         }
 
-        return { success: true }
+        return {
+          success: true,
+          rejected: result.rejected.map(({ op, code }) => ({
+            table: op.type,
+            id: op.id,
+            op: op.op,
+            code,
+          })),
+        }
       },
       {
         body: t.Object({

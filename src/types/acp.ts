@@ -44,6 +44,10 @@ export type Agent = {
   enabled: 0 | 1
   deletedAt: string | null
   userId: string | null
+  /** Workspace visibility for user-custom (`remote-acp`) agents. Synced
+   *  workspace-scoped tables carry this column (THU-603); built-in / system
+   *  agents leave it absent since the distinction doesn't apply. */
+  scope?: 'workspace' | 'user' | null
 }
 
 /** Per-request context handed to `AgentAdapter.fetch`. Carries everything the

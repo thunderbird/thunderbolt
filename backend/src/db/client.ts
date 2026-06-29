@@ -3,6 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { PGlite } from '@electric-sql/pglite'
+import { uuid_ossp } from '@electric-sql/pglite/contrib/uuid_ossp'
 import { drizzle as drizzlePglite } from 'drizzle-orm/pglite'
 import { migrate as migratePglite } from 'drizzle-orm/pglite/migrator'
 import { drizzle as drizzlePostgres } from 'drizzle-orm/postgres-js'
@@ -26,11 +27,38 @@ const postgresUrl = isPglite
   ? null
   : process.env.DATABASE_URL || (isDevelopment ? 'postgresql://postgres:postgres@localhost:5433/postgres' : '')
 
-if (isPglite && process.env.DATABASE_URL) {
-  mkdirSync(resolve(process.env.DATABASE_URL), { recursive: true })
+// When DRIVER=pglite, `DATABASE_URL` is treated as a *data-directory path*
+// (`.env.example` documents `.pglite/data`). The default dev / e2e `.env`
+// ships `postgresql://...` for the postgres driver, though, and inherits
+// into pglite-mode runs (bun test, playwright web-server, manual `bun run
+// src/index.ts` with mixed env). `new PGlite('postgresql://...')` then
+// treats the connection string as a path and bootstraps a real Postgres
+// data dir into `backend/postgresql:/postgres:postgres@localhost:.../...`.
+// Detect the schema and treat connection-string values as "no path given"
+// (i.e. in-memory PGlite).
+const isPostgresConnectionUrl = (url: string | undefined): boolean =>
+  typeof url === 'string' && /^(?:postgres|postgresql):\/\//.test(url)
+
+const pgliteDataDir =
+  isPglite && process.env.DATABASE_URL && !isPostgresConnectionUrl(process.env.DATABASE_URL)
+    ? process.env.DATABASE_URL
+    : undefined
+
+if (pgliteDataDir) {
+  mkdirSync(resolve(pgliteDataDir), { recursive: true })
 }
 
-const pgliteClient = isPglite ? new PGlite(process.env.DATABASE_URL) : null // undefined = in-memory
+// `uuid_ossp` is bundled with PGlite as an opt-in contrib extension but isn't
+// auto-loaded — the workspaces foundation migration uses `uuid_generate_v5`
+// for deterministic personal-workspace ids and would otherwise fail with
+// `extension "uuid-ossp" is not available`. The bun-test path (test-utils/
+// db.ts) registers the same extension; this keeps prod / e2e parity.
+const pgliteOptions = { extensions: { uuid_ossp } } as const
+const pgliteClient = isPglite
+  ? pgliteDataDir
+    ? new PGlite(pgliteDataDir, pgliteOptions)
+    : new PGlite(pgliteOptions) // no dataDir → in-memory
+  : null
 
 const pgliteDb = pgliteClient ? drizzlePglite({ client: pgliteClient, schema }) : null
 

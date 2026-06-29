@@ -15,7 +15,7 @@ import {
   resetModelProfileToDefault,
   upsertModelProfile,
 } from './model-profiles'
-import { resetTestDatabase, setupTestDatabase, teardownTestDatabase } from './test-utils'
+import { otherWsId, resetTestDatabase, setupTestDatabase, teardownTestDatabase, wsId } from './test-utils'
 
 beforeAll(async () => {
   await setupTestDatabase()
@@ -32,7 +32,7 @@ describe('Model Profiles DAL', () => {
 
   describe('getModelProfile', () => {
     it('should return null for non-existent model', async () => {
-      const profile = await getModelProfile(getDb(), 'nonexistent-model-id')
+      const profile = await getModelProfile(getDb(), wsId, 'nonexistent-model-id')
       expect(profile).toBe(null)
     })
 
@@ -47,15 +47,17 @@ describe('Model Profiles DAL', () => {
         model: 'gpt-4',
         isSystem: 0,
         enabled: 1,
+        workspaceId: wsId,
       })
 
       await db.insert(modelProfilesTable).values({
         modelId,
         temperature: 0.5,
         maxSteps: 10,
+        workspaceId: wsId,
       })
 
-      const profile = await getModelProfile(getDb(), modelId)
+      const profile = await getModelProfile(getDb(), wsId, modelId)
       expect(profile).not.toBe(null)
       expect(profile?.modelId).toBe(modelId)
       expect(profile?.temperature).toBe(0.5)
@@ -73,15 +75,17 @@ describe('Model Profiles DAL', () => {
         model: 'gpt-4',
         isSystem: 0,
         enabled: 1,
+        workspaceId: wsId,
       })
 
       await db.insert(modelProfilesTable).values({
         modelId,
         temperature: 0.5,
         deletedAt: new Date().toISOString(),
+        workspaceId: wsId,
       })
 
-      const profile = await getModelProfile(getDb(), modelId)
+      const profile = await getModelProfile(getDb(), wsId, modelId)
       expect(profile).toBe(null)
     })
   })
@@ -98,11 +102,12 @@ describe('Model Profiles DAL', () => {
         model: 'gpt-4',
         isSystem: 0,
         enabled: 1,
+        workspaceId: wsId,
       })
 
-      await upsertModelProfile(getDb(), { modelId, temperature: 0.7, maxSteps: 15 })
+      await upsertModelProfile(getDb(), wsId, { modelId, temperature: 0.7, maxSteps: 15 })
 
-      const profile = await getModelProfile(getDb(), modelId)
+      const profile = await getModelProfile(getDb(), wsId, modelId)
       expect(profile).not.toBe(null)
       expect(profile?.modelId).toBe(modelId)
       expect(profile?.temperature).toBe(0.7)
@@ -120,17 +125,19 @@ describe('Model Profiles DAL', () => {
         model: 'gpt-4',
         isSystem: 0,
         enabled: 1,
+        workspaceId: wsId,
       })
 
       await db.insert(modelProfilesTable).values({
         modelId,
         temperature: 0.2,
         maxSteps: 5,
+        workspaceId: wsId,
       })
 
-      await upsertModelProfile(getDb(), { modelId, temperature: 0.9, maxSteps: 20 })
+      await upsertModelProfile(getDb(), wsId, { modelId, temperature: 0.9, maxSteps: 20 })
 
-      const profile = await getModelProfile(getDb(), modelId)
+      const profile = await getModelProfile(getDb(), wsId, modelId)
       expect(profile?.temperature).toBe(0.9)
       expect(profile?.maxSteps).toBe(20)
 
@@ -152,21 +159,23 @@ describe('Model Profiles DAL', () => {
         model: 'gpt-4',
         isSystem: 0,
         enabled: 1,
+        workspaceId: wsId,
       })
 
       await db.insert(modelProfilesTable).values({
         modelId,
         temperature: 0.3,
+        workspaceId: wsId,
       })
 
       // Verify profile exists before deletion
-      const profileBefore = await getModelProfile(getDb(), modelId)
+      const profileBefore = await getModelProfile(getDb(), wsId, modelId)
       expect(profileBefore).not.toBe(null)
 
-      await deleteModelProfileForModel(getDb(), modelId)
+      await deleteModelProfileForModel(getDb(), wsId, modelId)
 
       // Profile should not be returned by getModelProfile
-      const profileAfter = await getModelProfile(getDb(), modelId)
+      const profileAfter = await getModelProfile(getDb(), wsId, modelId)
       expect(profileAfter).toBe(null)
 
       // But record should still exist in database with deletedAt set
@@ -187,16 +196,18 @@ describe('Model Profiles DAL', () => {
         model: 'gpt-4',
         isSystem: 0,
         enabled: 1,
+        workspaceId: wsId,
       })
 
       await db.insert(modelProfilesTable).values({
         modelId,
         temperature: 0.3,
         deletedAt: originalDeletedAt,
+        workspaceId: wsId,
       })
 
       // Call delete again on already-deleted profile
-      await deleteModelProfileForModel(getDb(), modelId)
+      await deleteModelProfileForModel(getDb(), wsId, modelId)
 
       // Verify original deletedAt is preserved
       const rawProfile = await db.select().from(modelProfilesTable).where(eq(modelProfilesTable.modelId, modelId)).get()
@@ -217,6 +228,7 @@ describe('Model Profiles DAL', () => {
         model: defaultModelOpus48.model,
         isSystem: defaultModelOpus48.isSystem,
         enabled: defaultModelOpus48.enabled,
+        workspaceId: wsId,
       })
 
       // Insert a profile with modified values
@@ -225,12 +237,13 @@ describe('Model Profiles DAL', () => {
         temperature: 0.99,
         maxSteps: 1,
         deletedAt: new Date().toISOString(),
+        workspaceId: wsId,
       })
 
       // Reset to defaults
-      await resetModelProfileToDefault(getDb(), defaultModelOpus48.id)
+      await resetModelProfileToDefault(getDb(), wsId, defaultModelOpus48.id)
 
-      const profile = await getModelProfile(getDb(), defaultModelOpus48.id)
+      const profile = await getModelProfile(getDb(), wsId, defaultModelOpus48.id)
       expect(profile).not.toBe(null)
       expect(profile?.temperature).toBe(defaultModelProfileOpus48.temperature)
       expect(profile?.maxSteps).toBe(defaultModelProfileOpus48.maxSteps)
@@ -250,17 +263,19 @@ describe('Model Profiles DAL', () => {
         model: 'custom-model',
         isSystem: 0,
         enabled: 1,
+        workspaceId: wsId,
       })
 
       await db.insert(modelProfilesTable).values({
         modelId,
         temperature: 0.5,
+        workspaceId: wsId,
       })
 
       // Should not throw, and should not modify the profile
-      await resetModelProfileToDefault(getDb(), modelId)
+      await resetModelProfileToDefault(getDb(), wsId, modelId)
 
-      const profile = await getModelProfile(getDb(), modelId)
+      const profile = await getModelProfile(getDb(), wsId, modelId)
       expect(profile?.temperature).toBe(0.5)
     })
   })
@@ -277,11 +292,12 @@ describe('Model Profiles DAL', () => {
         model: defaultModelOpus48.model,
         isSystem: defaultModelOpus48.isSystem,
         enabled: defaultModelOpus48.enabled,
+        workspaceId: wsId,
       })
 
-      await createDefaultModelProfile(getDb(), defaultModelOpus48.id)
+      await createDefaultModelProfile(getDb(), wsId, defaultModelOpus48.id)
 
-      const profile = await getModelProfile(getDb(), defaultModelOpus48.id)
+      const profile = await getModelProfile(getDb(), wsId, defaultModelOpus48.id)
       expect(profile).not.toBe(null)
       expect(profile?.modelId).toBe(defaultModelOpus48.id)
       expect(profile?.temperature).toBe(defaultModelProfileOpus48.temperature)
@@ -306,11 +322,12 @@ describe('Model Profiles DAL', () => {
         model: 'custom-model',
         isSystem: 0,
         enabled: 1,
+        workspaceId: wsId,
       })
 
-      await createDefaultModelProfile(getDb(), modelId)
+      await createDefaultModelProfile(getDb(), wsId, modelId)
 
-      const profile = await getModelProfile(getDb(), modelId)
+      const profile = await getModelProfile(getDb(), wsId, modelId)
       expect(profile).toBe(null)
     })
 
@@ -324,19 +341,47 @@ describe('Model Profiles DAL', () => {
         model: defaultModelOpus48.model,
         isSystem: defaultModelOpus48.isSystem,
         enabled: defaultModelOpus48.enabled,
+        workspaceId: wsId,
       })
 
       // Insert a custom profile first
       await db.insert(modelProfilesTable).values({
         modelId: defaultModelOpus48.id,
         temperature: 0.99,
+        workspaceId: wsId,
       })
 
       // Calling createDefaultModelProfile should not overwrite
-      await createDefaultModelProfile(getDb(), defaultModelOpus48.id)
+      await createDefaultModelProfile(getDb(), wsId, defaultModelOpus48.id)
 
-      const profile = await getModelProfile(getDb(), defaultModelOpus48.id)
+      const profile = await getModelProfile(getDb(), wsId, defaultModelOpus48.id)
       expect(profile?.temperature).toBe(0.99)
+    })
+  })
+
+  describe('workspace isolation', () => {
+    it('should not return a profile from another workspace', async () => {
+      const db = getDb()
+      const modelId = uuidv7()
+
+      await db.insert(modelsTable).values({
+        id: modelId,
+        provider: 'openai',
+        name: 'Other Model',
+        model: 'gpt-4',
+        isSystem: 0,
+        enabled: 1,
+        workspaceId: otherWsId,
+      })
+
+      await db.insert(modelProfilesTable).values({
+        modelId,
+        temperature: 0.5,
+        workspaceId: otherWsId,
+      })
+
+      const profile = await getModelProfile(getDb(), wsId, modelId)
+      expect(profile).toBe(null)
     })
   })
 })

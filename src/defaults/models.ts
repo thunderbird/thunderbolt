@@ -56,6 +56,8 @@ export const defaultModelOpus48: Model = {
   vendor: 'anthropic',
   description: 'Top-tier Anthropic reasoning',
   userId: null,
+  workspaceId: null,
+  scope: 'workspace',
 }
 
 export const defaultModelDeepseekV4Pro: Model = {
@@ -77,6 +79,8 @@ export const defaultModelDeepseekV4Pro: Model = {
   vendor: 'deepseek',
   description: 'Confidential reasoning via Tinfoil',
   userId: null,
+  workspaceId: null,
+  scope: 'workspace',
 }
 
 export const defaultModelKimiK26: Model = {
@@ -98,6 +102,8 @@ export const defaultModelKimiK26: Model = {
   vendor: 'moonshot',
   description: 'Confidential chat via Tinfoil',
   userId: null,
+  workspaceId: null,
+  scope: 'workspace',
 }
 
 export const defaultModelGlm52: Model = {
@@ -119,6 +125,8 @@ export const defaultModelGlm52: Model = {
   vendor: 'zhipu',
   description: 'Confidential chat via Tinfoil',
   userId: null,
+  workspaceId: null,
+  scope: 'workspace',
 }
 
 /**

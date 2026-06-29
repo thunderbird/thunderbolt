@@ -90,6 +90,8 @@ describe('defaults-hash', () => {
       vendor: model.vendor,
       description: model.description,
       userId: model.userId,
+      workspaceId: model.workspaceId,
+      scope: model.scope,
     }
     expect(hashModel(model)).toBe(hashModel(reorderedModel))
   })

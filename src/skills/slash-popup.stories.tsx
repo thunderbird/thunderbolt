@@ -53,6 +53,8 @@ const skillItem = (id: string, name: string, description: string): SlashItem => 
     deletedAt: null,
     defaultHash: null,
     userId: null,
+    workspaceId: null,
+    scope: null,
   } as Skill,
 })
 

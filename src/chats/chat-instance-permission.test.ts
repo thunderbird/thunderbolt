@@ -2,6 +2,8 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { wsId } from '@/dal/test-utils'
+
 /**
  * Tests that the routing fetch's permission bridge stashes pending requests
  * on the store and that `resolvePendingPermission` completes the adapter's
@@ -62,7 +64,7 @@ describe('requestPermission bridge', () => {
 
     const connectToAgent = mock(async () => adapter)
 
-    const fetch = createAgentRoutingFetch(sessionId, async () => {}, httpClient, getProxyFetch, {
+    const fetch = createAgentRoutingFetch(sessionId, wsId, async () => {}, httpClient, getProxyFetch, {
       connectToAgent: connectToAgent as never,
       updateChatThread: (async () => {}) as never,
       getDb: (() => ({})) as never,

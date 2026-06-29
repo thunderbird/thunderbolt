@@ -8,3 +8,13 @@
  * - Trims whitespace
  */
 export const normalizeEmail = (email: string) => email.toLowerCase().trim()
+
+/**
+ * Format check (same regex as the FE's `isValidEmailFormat`) — guards
+ * upload-handler inserts against junk strings before they hit the DB. Run
+ * against the normalized form so case/whitespace don't sneak past.
+ */
+const emailRegex =
+  /^[a-zA-Z0-9.!#$%&'*+/=?^_`{|}~-]+@[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(?:\.[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)+$/
+
+export const isValidEmailFormat = (email: string): boolean => emailRegex.test(normalizeEmail(email))

@@ -2,6 +2,8 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { wsId } from '@/dal/test-utils'
+
 import { getDb } from '@/db/database'
 import { promptsTable, skillsTable, triggersTable } from '@/db/tables'
 import { resetTestDatabase, setupTestDatabase, teardownTestDatabase } from '@/dal/test-utils'
@@ -46,6 +48,7 @@ const seedAutomation = async (input: { id: string; title: string; prompt: string
       deletedAt: null,
       defaultHash: null,
       userId: input.userId ?? 'user-1',
+      workspaceId: wsId,
     })
 }
 
@@ -58,6 +61,7 @@ const seedTrigger = async (input: { id: string; promptId: string }) => {
     isEnabled: 1,
     deletedAt: null,
     userId: 'user-1',
+    workspaceId: wsId,
   })
 }
 
@@ -66,11 +70,11 @@ describe('automationsToSkills', () => {
     // `resetTestDatabase` skips default reconciliation, so reconcile here to
     // give the assertion something real to check — without seeded defaults,
     // the table is empty and `every` would pass vacuously.
-    await reconcileDefaults(getDb())
+    await reconcileDefaults(getDb(), '00000000-0000-0000-0000-000000000001')
     const before = await getDb().select().from(skillsTable).where(isNull(skillsTable.deletedAt))
     expect(before.length).toBeGreaterThan(0)
 
-    await automationsToSkills.run(getDb())
+    await automationsToSkills.run(getDb(), wsId)
 
     const after = await getDb().select().from(skillsTable).where(isNull(skillsTable.deletedAt))
     // No new skills added, and every surviving skill is still a default.
@@ -80,7 +84,7 @@ describe('automationsToSkills', () => {
 
   it('migrates an automation into a skill, soft-deletes the source, and pins it', async () => {
     await seedAutomation({ id: 'aut-1', title: 'Daily Review', prompt: 'Summarize my day.' })
-    await automationsToSkills.run(getDb())
+    await automationsToSkills.run(getDb(), wsId)
 
     const expectedId = await deriveSkillIdFromAutomationId('aut-1')
     const skill = await getDb().select().from(skillsTable).where(eq(skillsTable.id, expectedId)).get()
@@ -103,7 +107,7 @@ describe('automationsToSkills', () => {
     await seedAutomation({ id: 'aut-1', title: 'Daily Review', prompt: 'Summarize my day.' })
     await seedTrigger({ id: 'trg-1', promptId: 'aut-1' })
 
-    await automationsToSkills.run(getDb())
+    await automationsToSkills.run(getDb(), wsId)
 
     const trigger = await getDb().select().from(triggersTable).where(eq(triggersTable.id, 'trg-1')).get()
     expect(trigger?.deletedAt).not.toBeNull()
@@ -121,10 +125,11 @@ describe('automationsToSkills', () => {
       deletedAt: null,
       defaultHash: null,
       userId: 'user-1',
+      workspaceId: wsId,
     })
     await seedAutomation({ id: 'aut-1', title: 'Daily Review', prompt: 'Summarize my day.' })
 
-    await automationsToSkills.run(getDb())
+    await automationsToSkills.run(getDb(), wsId)
 
     // Source automation is *not* soft-deleted — collision strands it for
     // the user to resolve.
@@ -141,8 +146,8 @@ describe('automationsToSkills', () => {
   it('is idempotent when run twice', async () => {
     await seedAutomation({ id: 'aut-1', title: 'Daily Review', prompt: 'Summarize my day.' })
 
-    await automationsToSkills.run(getDb())
-    await automationsToSkills.run(getDb())
+    await automationsToSkills.run(getDb(), wsId)
+    await automationsToSkills.run(getDb(), wsId)
 
     const expectedId = await deriveSkillIdFromAutomationId('aut-1')
     const skills = await getDb().select().from(skillsTable).where(eq(skillsTable.id, expectedId))
@@ -157,7 +162,7 @@ describe('automationsToSkills', () => {
       await seedAutomation({ id, title: `Automation ${i}`, prompt: `prompt ${i}` })
     }
 
-    await automationsToSkills.run(getDb())
+    await automationsToSkills.run(getDb(), wsId)
 
     const pinnedSkills = await getDb()
       .select()
@@ -194,11 +199,12 @@ describe('automationsToSkills', () => {
           deletedAt: null,
           defaultHash: null,
           userId: 'user-1',
+          workspaceId: wsId,
         })
     }
     await seedAutomation({ id: 'aut-1', title: 'Daily Review', prompt: 'Summarize my day.' })
 
-    await automationsToSkills.run(getDb())
+    await automationsToSkills.run(getDb(), wsId)
 
     // Migrated skill should land at slot 6 (max(0,1,5) + 1), not 3.
     const expectedId = await deriveSkillIdFromAutomationId('aut-1')
@@ -227,9 +233,10 @@ describe('automationsToSkills', () => {
       deletedAt: null,
       defaultHash: null,
       userId: 'user-1',
+      workspaceId: wsId,
     })
 
-    await automationsToSkills.run(getDb())
+    await automationsToSkills.run(getDb(), wsId)
 
     const source = await getDb().select().from(promptsTable).where(eq(promptsTable.id, 'aut-title-cleared')).get()
     expect(source?.deletedAt).toBeNull()
@@ -251,9 +258,10 @@ describe('automationsToSkills', () => {
       deletedAt: null,
       defaultHash: null,
       userId: 'user-1',
+      workspaceId: wsId,
     })
 
-    await automationsToSkills.run(getDb())
+    await automationsToSkills.run(getDb(), wsId)
 
     const source = await getDb().select().from(promptsTable).where(eq(promptsTable.id, 'aut-prompt-cleared')).get()
     expect(source?.deletedAt).toBeNull()
@@ -267,7 +275,7 @@ describe('automationsToSkills', () => {
     // `stranded` for the telemetry counter rather than soft-deleting.
     await seedAutomation({ id: 'aut-junk', title: '!!!', prompt: 'do something' })
 
-    await automationsToSkills.run(getDb())
+    await automationsToSkills.run(getDb(), wsId)
 
     const source = await getDb().select().from(promptsTable).where(eq(promptsTable.id, 'aut-junk')).get()
     expect(source?.deletedAt).toBeNull()
@@ -289,11 +297,12 @@ describe('automationsToSkills', () => {
       deletedAt: null,
       defaultHash: null as string | null,
       userId: 'user-1',
+      workspaceId: wsId,
     }
     defaultRow.defaultHash = hashAutomationRow(defaultRow)
     await getDb().insert(promptsTable).values(defaultRow)
 
-    await automationsToSkills.run(getDb())
+    await automationsToSkills.run(getDb(), wsId)
 
     // No new skill at the derived id (we skipped the migration).
     const expectedId = await deriveSkillIdFromAutomationId('aut-default-1')
@@ -319,6 +328,7 @@ describe('automationsToSkills', () => {
       deletedAt: null,
       defaultHash: null as string | null,
       userId: 'user-1',
+      workspaceId: wsId,
     }
     original.defaultHash = hashAutomationRow(original)
     // Mutate the prompt — defaultHash now refers to the original content,
@@ -326,7 +336,7 @@ describe('automationsToSkills', () => {
     const customized = { ...original, prompt: 'User has edited this prompt.' }
     await getDb().insert(promptsTable).values(customized)
 
-    await automationsToSkills.run(getDb())
+    await automationsToSkills.run(getDb(), wsId)
 
     const expectedId = await deriveSkillIdFromAutomationId('aut-customized-1')
     const skill = await getDb().select().from(skillsTable).where(eq(skillsTable.id, expectedId)).get()
@@ -346,10 +356,11 @@ describe('automationsToSkills', () => {
       deletedAt: null,
       defaultHash: null,
       userId: 'user-1',
+      workspaceId: wsId,
     })
     await seedTrigger({ id: 'trg-husk', promptId: 'aut-husk' })
 
-    await automationsToSkills.run(getDb())
+    await automationsToSkills.run(getDb(), wsId)
 
     const source = await getDb().select().from(promptsTable).where(eq(promptsTable.id, 'aut-husk')).get()
     expect(source?.deletedAt).not.toBeNull()
@@ -367,9 +378,10 @@ describe('automationsToSkills', () => {
       deletedAt: '2025-01-01T00:00:00.000Z',
       defaultHash: null,
       userId: 'user-1',
+      workspaceId: wsId,
     })
 
-    await automationsToSkills.run(getDb())
+    await automationsToSkills.run(getDb(), wsId)
 
     const expectedId = await deriveSkillIdFromAutomationId('aut-deleted')
     const skill = await getDb().select().from(skillsTable).where(eq(skillsTable.id, expectedId)).get()

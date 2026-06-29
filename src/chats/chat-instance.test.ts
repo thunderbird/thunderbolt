@@ -2,6 +2,8 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { wsId } from '@/dal/test-utils'
+
 /**
  * `createAgentRoutingFetch` connection-status tests. Verifies the customFetch
  * factory writes `connectionStatus` transitions into the chat-store around
@@ -58,7 +60,7 @@ describe('createAgentRoutingFetch — connection status', () => {
       return makeAdapter(agent)
     })
 
-    const fetch = createAgentRoutingFetch(sessionId, async () => {}, httpClient, getProxyFetch, {
+    const fetch = createAgentRoutingFetch(sessionId, wsId, async () => {}, httpClient, getProxyFetch, {
       connectToAgent: connectToAgent as never,
       updateChatThread: (async () => {}) as never,
       getDb: (() => ({})) as never,
@@ -76,7 +78,7 @@ describe('createAgentRoutingFetch — connection status', () => {
       throw new Error('boom')
     })
 
-    const fetch = createAgentRoutingFetch(sessionId, async () => {}, httpClient, getProxyFetch, {
+    const fetch = createAgentRoutingFetch(sessionId, wsId, async () => {}, httpClient, getProxyFetch, {
       connectToAgent: connectToAgent as never,
       updateChatThread: (async () => {}) as never,
       getDb: (() => ({})) as never,
@@ -92,7 +94,7 @@ describe('createAgentRoutingFetch — connection status', () => {
   it('only re-connects when the agent identity changes (cache hit stays ready)', async () => {
     const connectToAgent = mock(async (agent: Agent) => makeAdapter(agent))
 
-    const fetch = createAgentRoutingFetch(sessionId, async () => {}, httpClient, getProxyFetch, {
+    const fetch = createAgentRoutingFetch(sessionId, wsId, async () => {}, httpClient, getProxyFetch, {
       connectToAgent: connectToAgent as never,
       updateChatThread: (async () => {}) as never,
       getDb: (() => ({})) as never,
@@ -109,7 +111,7 @@ describe('createAgentRoutingFetch — connection status', () => {
     const altAgent: Agent = { ...builtInAgent, id: 'alt' }
     const connectToAgent = mock(async (agent: Agent) => makeAdapter(agent))
 
-    const fetch = createAgentRoutingFetch(sessionId, async () => {}, httpClient, getProxyFetch, {
+    const fetch = createAgentRoutingFetch(sessionId, wsId, async () => {}, httpClient, getProxyFetch, {
       connectToAgent: connectToAgent as never,
       updateChatThread: (async () => {}) as never,
       getDb: (() => ({})) as never,

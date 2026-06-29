@@ -32,7 +32,7 @@ import { getAuthToken } from '@/lib/auth-token'
 import type { HttpClient } from '@/lib/http'
 import { isTauri } from '@/lib/platform'
 import { computeEffectiveProxyEnabled, createProxyWebSocket } from '@/lib/proxy-fetch'
-import { useLocalSettingsStore } from '@/stores/local-settings-store'
+import { getActiveCloudUrl } from '@/stores/trust-domain-registry'
 import type { AgentType } from '@shared/acp-types'
 import { encodeWsBearer, wsBearerSubprotocolPrefix, wsCarrierSubprotocol } from '@shared/ws-bearer'
 import type { AcpTransport } from '../types'
@@ -62,7 +62,7 @@ export type OpenTransportInputs = {
   getAuthToken?: () => string | null
 }
 
-const cloudWsUrl = (): string => useLocalSettingsStore.getState().cloudUrl
+const cloudWsUrl = (): string => getActiveCloudUrl() ?? ''
 
 /** Decide if the transport should use the native (Standalone) path or the
  *  cloud-proxy path. Mirrors `computeEffectiveProxyEnabled` exactly — when the

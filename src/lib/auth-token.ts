@@ -3,45 +3,112 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 /**
- * Auth token storage for bearer authentication.
+ * Auth token + device id storage. Both are localStorage-backed so reads are sync
+ * (Better Auth, PowerSync connector, HTTP client all need sync access).
  *
- * Token is stored in localStorage so getAuthToken() is sync (required by Better Auth).
- * device_id is also in localStorage to identify this device (e.g. for PowerSync / devices list).
+ * Keys are namespaced by the active server's `serverId` — so multiple servers can
+ * coexist on the same device without leaking credentials across trust domains.
+ * In standalone mode (or before the boot decision tree resolves), there is no
+ * active server and these helpers are no-ops / return empty.
  *
  * TODO: once we have a proper encryption middleware, we should store the auth token in the settings database.
  */
 
+import { v7 as uuidv7 } from 'uuid'
+import { getActiveServerId } from '@/stores/trust-domain-registry'
 import { getDeviceDisplayName } from '@/lib/platform'
 
-const deviceIdKey = 'thunderbolt_device_id'
-const authTokenKey = 'thunderbolt_auth_token'
+const authTokenPrefix = 'thunderbolt_auth_token__'
+const deviceIdPrefix = 'thunderbolt_device_id__'
 
-/** Get or create device_id (from localStorage). */
+const authTokenKeyFor = (serverId: string): string => `${authTokenPrefix}${serverId}`
+const deviceIdKeyFor = (serverId: string): string => `${deviceIdPrefix}${serverId}`
+
+/**
+ * Get or create a device_id for the active server. Returns an empty string when no
+ * server is active — callers that filter falsy values (e.g. header builders) skip
+ * the device headers cleanly in that case.
+ */
 export const getDeviceId = (): string => {
-  let id = localStorage.getItem(deviceIdKey)
-  if (!id) {
-    id = crypto.randomUUID()
-    localStorage.setItem(deviceIdKey, id)
+  const serverId = getActiveServerId()
+  if (!serverId) {
+    return ''
   }
+  const key = deviceIdKeyFor(serverId)
+  const existing = localStorage.getItem(key)
+  if (existing) {
+    return existing
+  }
+  const id = uuidv7()
+  localStorage.setItem(key, id)
   return id
 }
 
-/** Get the current auth token (sync, from localStorage). */
-export const getAuthToken = (): string | null => localStorage.getItem(authTokenKey)
+// Scoped override consulted before the registry-derived lookup. The sign-out
+// wipe sequence empties `activeTrustDomain` before calling Better Auth's
+// `signOut()`, so the normal `getActiveServerId()` resolution would return
+// `null` and the sign-out request would go out bearer-less. `withCapturedAuthToken`
+// replays the pre-wipe token for the duration of that call.
+let capturedAuthToken: string | null = null
 
-/** Store the auth token in localStorage. Use clearAuthToken() to remove. */
+/** Get the active server's auth token, or null if there is no active server / not signed in. */
+export const getAuthToken = (): string | null => {
+  if (capturedAuthToken !== null) {
+    return capturedAuthToken
+  }
+  const serverId = getActiveServerId()
+  if (!serverId) {
+    return null
+  }
+  return localStorage.getItem(authTokenKeyFor(serverId))
+}
+
+/**
+ * Run `fn` with `getAuthToken()` short-circuited to return `token`. Used by
+ * `signOutAndWipe` so the sign-out HTTP call stays authenticated even though
+ * `clearLocalData` has already cleared `activeTrustDomain` from the registry
+ * by the time signOut runs.
+ */
+export const withCapturedAuthToken = async <T>(token: string | null, fn: () => Promise<T>): Promise<T> => {
+  const prev = capturedAuthToken
+  capturedAuthToken = token
+  try {
+    return await fn()
+  } finally {
+    capturedAuthToken = prev
+  }
+}
+
+/** Store the auth token under the active server's namespace. No-op when no server is active. */
 export const setAuthToken = (token: string): void => {
-  localStorage.setItem(authTokenKey, token)
+  const serverId = getActiveServerId()
+  if (!serverId) {
+    return
+  }
+  localStorage.setItem(authTokenKeyFor(serverId), token)
 }
 
-/** Clear the auth token (for sign-out). */
-export const clearAuthToken = (): void => {
-  localStorage.removeItem(authTokenKey)
+/**
+ * Clear the auth token. Defaults to the active server (registry-resolved), but
+ * the wipe path passes the captured serverId explicitly because cleanup.ts
+ * clears `activeTrustDomain` from the registry before this runs (so the
+ * default would resolve to undefined and no-op).
+ */
+export const clearAuthToken = (serverId?: string): void => {
+  const id = serverId ?? getActiveServerId()
+  if (!id) {
+    return
+  }
+  localStorage.removeItem(authTokenKeyFor(id))
 }
 
-/** Clear the device ID (for revoked devices — forces a new ID on next login). */
-export const clearDeviceId = (): void => {
-  localStorage.removeItem(deviceIdKey)
+/** Same shape as `clearAuthToken` — explicit serverId for callers running after a registry clear. */
+export const clearDeviceId = (serverId?: string): void => {
+  const id = serverId ?? getActiveServerId()
+  if (!id) {
+    return
+  }
+  localStorage.removeItem(deviceIdKeyFor(id))
 }
 
 /**
@@ -66,10 +133,11 @@ export const getAuthenticatedHeaders = (): Record<string, string> => {
 }
 
 /**
- * Subscribe to auth token changes originating in a different browser tab.
+ * Subscribe to auth token changes originating in a different browser tab for the active server.
  *
  * The `storage` event only fires in tabs OTHER than the one that wrote the value, making
- * it the correct mechanism for cross-tab coordination.
+ * it the correct mechanism for cross-tab coordination. The active server is re-resolved
+ * on every event so a server switch (post-v1) doesn't leave dangling listeners.
  *
  * @returns Unsubscribe function — call on component unmount.
  */
@@ -77,7 +145,11 @@ export const onAuthTokenChangedInOtherTab = (
   listener: (next: string | null, prev: string | null) => void,
 ): (() => void) => {
   const handler = (event: StorageEvent) => {
-    if (event.storageArea !== localStorage || event.key !== authTokenKey) {
+    if (event.storageArea !== localStorage) {
+      return
+    }
+    const serverId = getActiveServerId()
+    if (!serverId || event.key !== authTokenKeyFor(serverId)) {
       return
     }
 

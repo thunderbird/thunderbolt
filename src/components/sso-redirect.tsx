@@ -8,7 +8,7 @@ import { setAuthToken } from '@/lib/auth-token'
 import { isSafeUrl } from '@/lib/url-utils'
 import { isTauri } from '@/lib/platform'
 import { startSsoFlowLoopback } from '@/lib/sso-loopback'
-import { useLocalSettingsStore } from '@/stores/local-settings-store'
+import { useActiveCloudUrl } from '@/stores/trust-domain-registry'
 import { useAnonymousPromotionAnalytics } from '@/lib/analytics/use-anonymous-promotion-analytics'
 import { useAuth } from '@/contexts'
 import Loading from '@/loading'
@@ -21,7 +21,7 @@ import Loading from '@/loading'
  * of navigating the webview (WKWebView drops cookies during cross-origin redirects).
  */
 const SsoRedirect = () => {
-  const cloudUrl = useLocalSettingsStore((s) => s.cloudUrl)
+  const cloudUrl = useActiveCloudUrl() ?? ''
   const authClient = useAuth()
   const analytics = useAnonymousPromotionAnalytics()
   const [error, setError] = useState(false)

@@ -12,16 +12,13 @@ type ErrorMessageProps = {
   retriesExhausted: boolean
   error?: Error | null
   onRetry?: () => void
-  /** Present when the failed turn has attachment(s) we can re-deliver as extracted
-   *  text — renders a "Convert to text & retry" remediation alongside Retry. */
-  onRetryAsText?: () => void
-  /** Present when the failed turn has attachment(s) we can re-deliver as page
-   *  images (e.g. a scanned PDF) — renders a "Send as images & retry" remediation. */
-  onRetryAsImages?: () => void
+  /** True when the turn failed on an unreadable attachment with no delivery mode
+   *  left to try — shows file-specific guidance instead of the generic message. */
+  deliveryExhausted?: boolean
 }
 
 export const ErrorMessage = memo(
-  ({ retryCount, retriesExhausted, error, onRetry, onRetryAsText, onRetryAsImages }: ErrorMessageProps) => {
+  ({ retryCount, retriesExhausted, error, onRetry, deliveryExhausted }: ErrorMessageProps) => {
     const rateLimited = isRateLimitError(error)
 
     // Show rate limit message immediately — don't auto-retry since the server told us to slow down
@@ -55,27 +52,11 @@ export const ErrorMessage = memo(
       <div className="px-4 py-3 rounded-2xl bg-destructive/10 border border-destructive/20 mr-auto w-full mt-2">
         <div className="flex items-center justify-between gap-2 min-h-[var(--touch-height-sm)]">
           <p className="text-destructive/80 text-[length:var(--font-size-body)]">
-            Something went wrong. Please try again.
+            {deliveryExhausted
+              ? "This model couldn't read the attached file. Try a different model, or use the resend options on the file."
+              : 'Something went wrong. Please try again.'}
           </p>
           <div className="flex shrink-0 items-center gap-2">
-            {onRetryAsText && (
-              <button
-                type="button"
-                onClick={onRetryAsText}
-                className="cursor-pointer text-[length:var(--font-size-body)] font-medium text-destructive/90 bg-destructive/10 hover:bg-destructive/15 px-3 py-1 rounded-xl"
-              >
-                Convert to text & retry
-              </button>
-            )}
-            {onRetryAsImages && (
-              <button
-                type="button"
-                onClick={onRetryAsImages}
-                className="cursor-pointer text-[length:var(--font-size-body)] font-medium text-destructive/90 bg-destructive/10 hover:bg-destructive/15 px-3 py-1 rounded-xl"
-              >
-                Send as images & retry
-              </button>
-            )}
             {onRetry && (
               <button
                 type="button"

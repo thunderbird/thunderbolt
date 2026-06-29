@@ -101,10 +101,12 @@ type AttachmentRemediation = {
    * the automatic retry never paints.
    */
   suppressError: boolean
-  /** Manual "convert to text & retry" handler, present only when it would change something. */
-  onRetryAsText?: () => void
-  /** Manual "send as images & retry" handler, present only when it would change something. */
-  onRetryAsImages?: () => void
+  /**
+   * True when the failed turn carried an attachment the model couldn't read and
+   * the delivery ladder is exhausted (no rung left to try). Lets the error UI
+   * show file-specific guidance instead of the generic message.
+   */
+  deliveryExhausted: boolean
 }
 
 /**
@@ -207,22 +209,17 @@ export const useAttachmentRemediation = ({
     })()
   }, [active, error, lastUserMessage, applyTargets])
 
-  const manualRetryAs = (target: DeliverAs) => {
-    if (
-      !lastUserMessage ||
-      !getAttachments(lastUserMessage).some((a) => a.deliverAs !== target && hasTransformer(a.mimeType, target))
-    ) {
-      return undefined
-    }
-    return () =>
-      applyTargets(lastUserMessage.id, (attachment) =>
-        hasTransformer(attachment.mimeType, target) && attachment.deliverAs !== target ? target : null,
-      )
-  }
+  // The turn failed with a file the model couldn't read and there's no rung left
+  // to try automatically — surface file-specific guidance rather than a retry.
+  const deliveryExhausted =
+    active &&
+    isNonRetryableClientError(error) &&
+    !!lastUserMessage &&
+    getAttachments(lastUserMessage).length > 0 &&
+    !getAttachments(lastUserMessage).some(canAdvance)
 
   return {
     suppressError: willAutoRemediate || remediating,
-    onRetryAsText: manualRetryAs('text'),
-    onRetryAsImages: manualRetryAs('images'),
+    deliveryExhausted,
   }
 }

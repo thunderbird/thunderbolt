@@ -6,10 +6,11 @@ import { AssistantMessage } from './assistant-message'
 import { SyntheticLoadingPart } from './synthetic-loading-part'
 import { UserMessage } from './user-message'
 import { ErrorMessage } from './error-message'
-import { useEffect, useMemo, useRef } from 'react'
+import { useCallback, useEffect, useMemo, useRef } from 'react'
 import { useCurrentChatSession } from '@/chats/chat-store'
 import { useChat as useChat_default } from '@ai-sdk/react'
 import { shouldUseViewportPositioning } from '@/chats/use-chat-scroll-handler'
+import { isAttachmentPart } from '@/lib/attachments'
 import { useHaptics } from '@/hooks/use-haptics'
 import { useAttachmentRemediation } from './use-attachment-remediation'
 
@@ -53,13 +54,39 @@ export const ChatMessages = ({ useChat = useChat_default }: ChatMessagesProps) =
 
   // Re-deliver a failed turn's attachments as text/images (auto on a detected
   // content-rejection, or via the buttons below). Gate auto-fire on a settled error.
-  const { suppressError, onRetryAsText, onRetryAsImages } = useAttachmentRemediation({
+  const { suppressError, deliveryExhausted } = useAttachmentRemediation({
     messages,
     setMessages,
     regenerate,
     error: chatError,
     active: hasError && !isStreaming,
   })
+
+  // Manual override for the latest turn's attachments: re-deliver a single file
+  // as text/images and re-run (for when auto-remediation delivered something but
+  // the answer was poor). Scoped to the last user message so older bubbles stay
+  // presentational and don't re-render while streaming.
+  const lastUserMessageId = useMemo(() => messages.findLast((m) => m.role === 'user')?.id, [messages])
+  const resendAttachment = useCallback(
+    (messageId: string, localFileId: string, target: 'text' | 'images') => {
+      setMessages((prev) =>
+        prev.map((message) =>
+          message.id === messageId
+            ? {
+                ...message,
+                parts: message.parts.map((part) =>
+                  isAttachmentPart(part) && part.data.localFileId === localFileId
+                    ? { ...part, data: { ...part.data, deliverAs: target } }
+                    : part,
+                ),
+              }
+            : message,
+        ),
+      )
+      regenerate()
+    },
+    [setMessages, regenerate],
+  )
 
   return (
     <div>
@@ -92,7 +119,17 @@ export const ChatMessages = ({ useChat = useChat_default }: ChatMessagesProps) =
           )
         }
         if (message.role === 'user') {
-          return <UserMessage key={message.id} message={message} />
+          return (
+            <UserMessage
+              key={message.id}
+              message={message}
+              onResendAttachment={
+                message.id === lastUserMessageId
+                  ? (localFileId, target) => resendAttachment(message.id, localFileId, target)
+                  : undefined
+              }
+            />
+          )
         }
 
         return null
@@ -109,8 +146,7 @@ export const ChatMessages = ({ useChat = useChat_default }: ChatMessagesProps) =
           retriesExhausted={retriesExhausted}
           error={chatError}
           onRetry={() => regenerate()}
-          onRetryAsText={onRetryAsText}
-          onRetryAsImages={onRetryAsImages}
+          deliveryExhausted={deliveryExhausted}
         />
       )}
     </div>

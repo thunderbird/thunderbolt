@@ -22,12 +22,22 @@ type FileCardProps = {
   onRemove?: () => void
   /** Non-native delivery mode applied by remediation — shown as a small badge for transparency. */
   deliverAs?: 'text' | 'images'
+  /** Alternative delivery modes this file can be resent as (renders a resend control). */
+  resendTargets?: readonly ('text' | 'images')[]
+  /** Re-deliver this file as the chosen mode and re-run the turn. */
+  onResend?: (target: 'text' | 'images') => void
 }
 
 /** Human label for a non-native delivery mode. */
 const deliverAsLabel: Record<'text' | 'images', string> = {
   text: 'Sent as text',
   images: 'Sent as images',
+}
+
+/** Verb label for a resend control option. */
+const resendLabel: Record<'text' | 'images', string> = {
+  text: 'text',
+  images: 'images',
 }
 
 /** Short type badge from the file extension, falling back to the mime type. */
@@ -45,7 +55,16 @@ const typeBadge = (filename: string, mimeType: string): string => {
  * attachments (`onRemove`) and for sent attachments in chat (`onOpen`). The
  * thumbnail renderer is lazy-loaded (see {@link PdfThumbnail}).
  */
-export const FileCard = ({ localFileId, filename, mimeType, onOpen, onRemove, deliverAs }: FileCardProps) => {
+export const FileCard = ({
+  localFileId,
+  filename,
+  mimeType,
+  onOpen,
+  onRemove,
+  deliverAs,
+  resendTargets,
+  onResend,
+}: FileCardProps) => {
   const ext = filename.split('.').pop()?.toLowerCase()
   const isPdf = mimeType === 'application/pdf'
   const isImage = mimeType.startsWith('image/')
@@ -104,6 +123,20 @@ export const FileCard = ({ localFileId, filename, mimeType, onOpen, onRemove, de
         >
           <X className="size-3.5" />
         </button>
+      )}
+      {onResend && resendTargets && resendTargets.length > 0 && (
+        <div className="mt-1 flex flex-wrap items-center justify-end gap-1">
+          {resendTargets.map((target) => (
+            <button
+              key={target}
+              type="button"
+              onClick={() => onResend(target)}
+              className="cursor-pointer rounded-md px-1.5 py-0.5 text-[length:var(--font-size-xs)] text-muted-foreground hover:bg-muted hover:text-foreground"
+            >
+              Resend as {resendLabel[target]}
+            </button>
+          ))}
+        </div>
       )}
     </div>
   )

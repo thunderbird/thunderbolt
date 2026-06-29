@@ -3,7 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { describe, expect, it } from 'bun:test'
-import { createHandleError, isContentRejectionError, isRateLimitError } from './error-utils'
+import { createHandleError, getErrorStatusCode, isNonRetryableClientError, isRateLimitError } from './error-utils'
 import type { HandleErrorCode } from '@/types/handle-errors'
 
 describe('isRateLimitError', () => {
@@ -204,39 +204,53 @@ describe('createHandleError', () => {
   })
 })
 
-describe('isContentRejectionError', () => {
-  it('detects the OpenAI-compat file-part rejection (content.str, 400)', () => {
-    const error = new Error(
-      JSON.stringify({ error: 'messages.1.user.content.str: Input should be a valid string', status: 400 }),
+describe('getErrorStatusCode', () => {
+  it('reads `status` from a serialized stream error', () => {
+    expect(getErrorStatusCode(new Error(JSON.stringify({ error: 'Bad Request', status: 400 })))).toBe(400)
+  })
+
+  it('reads `statusCode` (DefaultChatTransport path)', () => {
+    expect(getErrorStatusCode(new Error(JSON.stringify({ error: 'x', statusCode: 422 })))).toBe(422)
+  })
+
+  it('is undefined for a non-JSON message (e.g. a bare "Bad Request")', () => {
+    expect(getErrorStatusCode(new Error('Bad Request'))).toBeUndefined()
+  })
+
+  it('is undefined for null', () => {
+    expect(getErrorStatusCode(null)).toBeUndefined()
+  })
+})
+
+describe('isNonRetryableClientError', () => {
+  it('detects the file-part rejection 400 (now carrying a status)', () => {
+    const error = new Error(JSON.stringify({ error: 'Bad Request', status: 400 }))
+    expect(isNonRetryableClientError(error)).toBe(true)
+  })
+
+  it('detects a 422', () => {
+    expect(isNonRetryableClientError(new Error(JSON.stringify({ error: 'x', statusCode: 422 })))).toBe(true)
+  })
+
+  it('treats auth/forbidden 4xx as non-retryable', () => {
+    expect(isNonRetryableClientError(new Error(JSON.stringify({ error: 'Unauthorized', status: 401 })))).toBe(true)
+  })
+
+  it('does not flag transient 5xx (retryable)', () => {
+    expect(isNonRetryableClientError(new Error(JSON.stringify({ error: 'Server error', status: 500 })))).toBe(false)
+  })
+
+  it('does not flag a rate limit (429 is handled separately)', () => {
+    expect(isNonRetryableClientError(new Error(JSON.stringify({ error: 'Too many requests', status: 429 })))).toBe(
+      false,
     )
-    expect(isContentRejectionError(error)).toBe(true)
   })
 
-  it('detects an image_url rejection', () => {
-    const error = new Error(JSON.stringify({ error: "Invalid value for 'image_url'", statusCode: 422 }))
-    expect(isContentRejectionError(error)).toBe(true)
-  })
-
-  it('matches a marker even without a status code', () => {
-    expect(isContentRejectionError(new Error('Could not process image attachment'))).toBe(true)
-  })
-
-  it('ignores non-content 4xx (auth/forbidden)', () => {
-    const error = new Error(JSON.stringify({ error: 'Unauthorized', status: 401 }))
-    expect(isContentRejectionError(error)).toBe(false)
-  })
-
-  it('ignores a 400 with no content-shape marker', () => {
-    const error = new Error(JSON.stringify({ error: 'Bad request: missing model', status: 400 }))
-    expect(isContentRejectionError(error)).toBe(false)
-  })
-
-  it('does not treat a rate limit as content rejection', () => {
-    const error = new Error(JSON.stringify({ error: 'Too many requests', status: 429 }))
-    expect(isContentRejectionError(error)).toBe(false)
+  it('does not flag an error with no status (transient/unknown)', () => {
+    expect(isNonRetryableClientError(new Error('Network timeout'))).toBe(false)
   })
 
   it('returns false for null', () => {
-    expect(isContentRejectionError(null)).toBe(false)
+    expect(isNonRetryableClientError(null)).toBe(false)
   })
 })

@@ -37,6 +37,7 @@ import { v7 as uuidv7 } from 'uuid'
 // import { createOpenRouter } from '@openrouter/ai-sdk-provider'
 
 import {
+  APICallError,
   convertToModelMessages,
   createUIMessageStream,
   InvalidToolInputError,
@@ -654,8 +655,26 @@ export const aiFetchStreamingResponse = async ({
     }
     const skillSystemMessages = resolveSkillTokenInstructions(lastUserText, instructionBySlug)
 
+    // Preserve the upstream status (and detail) when surfacing an API error to
+    // the client. The SDK otherwise flattens an APICallError to a bare "Bad
+    // Request", hiding the status code the retry and attachment-remediation
+    // layers need to classify it. Serialized as JSON so the client can parse it
+    // back out (see `getErrorStatusCode`). Applied to every stream that can
+    // surface the error — both `toUIMessageStream` calls and the outer stream.
+    const serializeStreamError = (error: unknown): string => {
+      if (APICallError.isInstance(error)) {
+        return JSON.stringify({
+          error: error.responseBody ?? error.message,
+          status: error.statusCode,
+          isRetryable: error.isRetryable,
+        })
+      }
+      return error instanceof Error ? error.message : String(error)
+    }
+
     const stream = createUIMessageStream({
       generateId: uuidv7,
+      onError: serializeStreamError,
       execute: async ({ writer }) => {
         // Hydrate reference-only PDF attachments into AI SDK file parts (bytes
         // read from IndexedDB) so the model receives them. Only the reference is
@@ -683,6 +702,7 @@ export const aiFetchStreamingResponse = async ({
                 sendReasoning: true,
                 messageMetadata,
                 sendFinish: false,
+                onError: serializeStreamError,
               }),
             )
 
@@ -729,6 +749,7 @@ export const aiFetchStreamingResponse = async ({
               sendReasoning: true,
               messageMetadata,
               ...(isRetry && { sendStart: false }),
+              onError: serializeStreamError,
             }),
           )
           return

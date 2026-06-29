@@ -29,48 +29,38 @@ export const isRateLimitError = (error?: Error | null): boolean => {
 }
 
 /**
- * Markers that identify an endpoint rejecting the *shape* of a message's content
- * — typically a file/image part a text-only (OpenAI-compat) gateway can't carry.
- * Distinct from auth/rate-limit/server errors, which retrying the same bytes
- * can't fix. Kept conservative so generic 4xx errors fall through to the manual
- * retry path rather than triggering automatic attachment remediation.
+ * Extract an HTTP status code from a serialized stream/transport error, if one
+ * is present. The frontend serializes API errors as `{"error":...,"status":N}`
+ * (see `aiFetchStreamingResponse`), which is the only place the upstream status
+ * survives — the AI SDK otherwise flattens it to a bare "Bad Request".
  */
-const contentRejectionMarkers = [
-  'content.str',
-  'should be a valid string',
-  'invalid content',
-  'image_url',
-  'could not process image',
-  'unsupported file',
-  'unsupported document',
-  'unsupported media type',
-  'unable to process',
-]
+export const getErrorStatusCode = (error?: Error | null): number | undefined => {
+  if (!error?.message) {
+    return undefined
+  }
+  const parsed = parseJson(error.message)
+  if (typeof parsed?.status === 'number') {
+    return parsed.status
+  }
+  if (typeof parsed?.statusCode === 'number') {
+    return parsed.statusCode
+  }
+  return undefined
+}
 
 /**
- * Check whether an error represents the endpoint rejecting an attachment's
- * native content (so it should be re-delivered as text/images), as opposed to a
- * transient or auth failure. Drives automatic attachment remediation.
+ * True for a 4xx client error (excluding 429, handled as a rate limit). Such an
+ * error won't succeed by retrying identical input — unlike a transient 5xx or
+ * network failure. Drives two things: skipping the generic auto-retry loop, and
+ * triggering attachment remediation (a 4xx on a turn carrying a file is the file
+ * being rejected — the caller pairs this with an attachment check).
  */
-export const isContentRejectionError = (error?: Error | null): boolean => {
-  if (!error?.message) {
+export const isNonRetryableClientError = (error?: Error | null): boolean => {
+  if (isRateLimitError(error)) {
     return false
   }
-
-  const parsed = parseJson(error.message)
-  const status =
-    typeof parsed?.status === 'number'
-      ? parsed.status
-      : typeof parsed?.statusCode === 'number'
-        ? parsed.statusCode
-        : undefined
-  // A status that's present and not a content-shape 4xx rules out remediation.
-  if (status !== undefined && status !== 400 && status !== 422) {
-    return false
-  }
-
-  const message = (typeof parsed?.error === 'string' ? parsed.error : error.message).toLowerCase()
-  return contentRejectionMarkers.some((marker) => message.includes(marker))
+  const status = getErrorStatusCode(error)
+  return status !== undefined && status >= 400 && status < 500
 }
 
 /**

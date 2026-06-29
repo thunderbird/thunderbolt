@@ -4,7 +4,7 @@
 
 import { getTransformer, hasTransformer } from '@/files/transformers'
 import { getAttachments, isAttachmentPart } from '@/lib/attachments'
-import { isContentRejectionError } from '@/lib/error-utils'
+import { isNonRetryableClientError } from '@/lib/error-utils'
 import { getAttachment } from '@/lib/file-blob-storage'
 import type { AttachmentData, ThunderboltUIMessage } from '@/types'
 import { useCallback, useEffect, useMemo, useRef } from 'react'
@@ -120,14 +120,16 @@ export const useAttachmentRemediation = ({
     [setMessages, regenerate],
   )
 
-  // Auto-remediation: when a content-rejection settles, advance each attachment
-  // one rung and retry. The signature (message id + each attachment's current
-  // delivery mode) is recorded so a given state is auto-attempted at most once;
-  // since each retry advances toward the terminal `images` state, the chain is
-  // finite. Reacts to an external (chat SDK) error event, hence an effect.
+  // Auto-remediation: when a non-retryable 4xx settles on a turn carrying
+  // attachments, advance each one a rung and retry — a client error on a request
+  // with a file is the file being rejected. The signature (message id + each
+  // attachment's current delivery mode) is recorded so a given state is
+  // auto-attempted at most once; since each retry advances toward the terminal
+  // `images` state, the chain is finite. Reacts to an external (chat SDK) error
+  // event, hence an effect.
   const attemptedSignatures = useRef(new Set<string>())
   useEffect(() => {
-    if (!active || !isContentRejectionError(error) || !lastUserMessage) {
+    if (!active || !isNonRetryableClientError(error) || !lastUserMessage) {
       return
     }
     const attachments = getAttachments(lastUserMessage)

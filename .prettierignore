@@ -10,3 +10,6 @@ thunderbird-mcp-native
 package-lock.json
 bun.lock
 *.lock
+# Generated wasm-bindgen glue for the iroh ACP client (build artifact).
+src/acp/iroh/pkg
+crates/*/target

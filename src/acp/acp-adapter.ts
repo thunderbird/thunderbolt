@@ -193,7 +193,7 @@ export const connectAcpAdapter = async (
   if (!agent.url) {
     throw new Error(`ACP agent ${agent.id} has no url`)
   }
-  if (agent.transport !== 'websocket') {
+  if (agent.transport !== 'websocket' && agent.transport !== 'iroh') {
     throw new Error(`ACP agent ${agent.id} has unsupported transport ${agent.transport}`)
   }
 

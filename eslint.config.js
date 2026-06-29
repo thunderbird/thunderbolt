@@ -15,6 +15,9 @@ import globals from 'globals'
 import { sharedParserOptions, sharedRules } from './shared/eslint/base.js'
 
 export default [
+  // Global ignores (object with only `ignores` applies repo-wide). The generated
+  // wasm-bindgen glue is a build artifact — never lint it.
+  { ignores: ['src/acp/iroh/pkg/**', 'crates/**'] },
   js.configs.recommended,
   prettier,
   {

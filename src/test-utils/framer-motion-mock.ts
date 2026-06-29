@@ -75,6 +75,24 @@ const useStableMotionValue = (initial: unknown): MockMotionValue => {
   return ref.current
 }
 
+/**
+ * Spy standing in for framer-motion's `animate`. Resolves synchronously to the target so
+ * awaited `animate()` end-states are deterministic; exposed as a spy so tests can assert the
+ * transition argument (e.g. the instant `prefers-reduced-motion` transition). Call
+ * `animateSpy.mockClear()` in a `beforeEach` to isolate per-test call history.
+ */
+export const animateSpy = mock((value: MockMotionValue, target: unknown, _transition?: unknown) => {
+  value.set(target)
+  return Promise.resolve()
+})
+
+let reducedMotion = false
+
+/** Test hook: force `useReducedMotion()` to report (un)reduced motion. Reset per test. */
+export const setMockReducedMotion = (value: boolean) => {
+  reducedMotion = value
+}
+
 mock.module('framer-motion', () => ({
   AnimatePresence: ({ children }: { children: ReactNode }) => children,
   LayoutGroup: ({ children }: { children: ReactNode }) => children,
@@ -83,11 +101,8 @@ mock.module('framer-motion', () => ({
   domMax: {},
   m: motionTagProxy,
   motion: motionTagProxy,
-  // Resolve synchronously to the target so awaited `animate()` end-states are deterministic.
-  animate: (value: MockMotionValue, target: unknown) => {
-    value.set(target)
-    return Promise.resolve()
-  },
+  animate: animateSpy,
   useMotionValue: (initial: unknown) => useStableMotionValue(initial),
+  useReducedMotion: () => reducedMotion,
   useTransform: () => useStableMotionValue(0),
 }))

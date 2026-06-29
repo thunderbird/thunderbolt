@@ -2,20 +2,34 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-// Import for side effect: registers the framer-motion `mock.module` so `animate` resolves
-// synchronously and `useMotionValue`/`useTransform` return inert values in jsdom.
-import '@/test-utils/framer-motion-mock'
+// Registers the framer-motion `mock.module` (side effect) so `animate` resolves synchronously
+// and `useMotionValue`/`useTransform`/`useReducedMotion` return inert values in jsdom. The named
+// imports also let us drive the reduced-motion flag and inspect the transition passed to `animate`.
+import { animateSpy, setMockReducedMotion } from '@/test-utils/framer-motion-mock'
 
 import { act, cleanup, fireEvent, render } from '@testing-library/react'
-import { afterEach, describe, expect, it, mock } from 'bun:test'
+import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
 import type { PanInfo } from 'framer-motion'
 import { useState } from 'react'
 
 import { getClock } from '@/testing-library'
-import { MobileSidebar, shouldCloseOnDragEnd } from './mobile-sidebar'
+
+// Import the component dynamically — after the framer-motion mock above has registered — so the
+// shared `mock.module('framer-motion')` actually intercepts its `animate`/`useReducedMotion`
+// imports. A top-level static import links the real framer-motion before the mock applies, which
+// would leave `animateSpy` empty and run the suite against the real animation runtime.
+const { MobileSidebar, shouldCloseOnDragEnd } = await import('./mobile-sidebar')
+
+beforeEach(() => {
+  animateSpy.mockClear()
+  setMockReducedMotion(false)
+})
 
 afterEach(() => {
   cleanup()
+  // Reset here too (not just beforeEach): the framer-motion mock's flag persists across files, so
+  // a reduced-motion test running last under --randomize must not leak `true` to the next file.
+  setMockReducedMotion(false)
 })
 
 const makeDragInfo = (offsetX: number, velocityX: number): PanInfo => ({
@@ -84,6 +98,21 @@ describe('MobileSidebar', () => {
     await flushAnimations()
 
     expect(onOpenChange).toHaveBeenCalledWith(false)
+    // Default (motion allowed): the close rides the spring.
+    expect(animateSpy.mock.calls.at(-1)?.[2]).toMatchObject({ type: 'spring' })
+  })
+
+  it('closes instantly (no spring) under prefers-reduced-motion, still firing onOpenChange', async () => {
+    setMockReducedMotion(true)
+    const onOpenChange = mock()
+    render(<Harness onOpenChange={onOpenChange} />)
+
+    fireEvent.click(getOverlay())
+    await flushAnimations()
+
+    expect(onOpenChange).toHaveBeenCalledWith(false)
+    // Reduced motion: the close uses an instant transition instead of the spring.
+    expect(animateSpy.mock.calls.at(-1)?.[2]).toEqual({ duration: 0 })
   })
 
   it('ignores a second overlay tap while the close is already running (isAnimating guard)', async () => {

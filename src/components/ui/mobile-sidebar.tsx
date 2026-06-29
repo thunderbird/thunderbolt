@@ -6,7 +6,7 @@ import { useHaptics } from '@/hooks/use-haptics'
 import { mobileSidebarWidthRatio } from '@/lib/constants'
 import { cn } from '@/lib/utils'
 import * as DialogPrimitive from '@radix-ui/react-dialog'
-import { animate, m, useMotionValue, useTransform, type PanInfo } from 'framer-motion'
+import { animate, m, useMotionValue, useReducedMotion, useTransform, type PanInfo } from 'framer-motion'
 import { useEffect, useState, useSyncExternalStore, type CSSProperties, type ReactNode } from 'react'
 
 type MobileSidebarProps = {
@@ -24,6 +24,9 @@ type MobileSidebarProps = {
  * overshoot and stays interruptible for the drag-to-close gesture.
  */
 const drawerSpring = { type: 'spring', damping: 35, stiffness: 400, mass: 0.8 } as const
+
+/** Instant transition used under `prefers-reduced-motion`: jumps to the target with no spring travel. */
+const instantTransition = { duration: 0 } as const
 
 /** Slide distance for the drawer (its rendered width, 80vw), or a sane fallback off-DOM. */
 const readSidebarWidth = () => (typeof window !== 'undefined' ? window.innerWidth * mobileSidebarWidthRatio : 300)
@@ -54,6 +57,12 @@ export const MobileSidebar = ({
   const x = useMotionValue(0)
   const { triggerImpact } = useHaptics()
 
+  // Honor prefers-reduced-motion: drive every open/close/snap-back with an instant transition
+  // (no spring travel) while keeping drag-to-dismiss and the overlay dim intact. Derived during
+  // render — both branches are stable module constants, so this stays referentially safe in deps.
+  const reducedMotion = useReducedMotion()
+  const transition = reducedMotion ? instantTransition : drawerSpring
+
   // The drawer renders at w-[80vw]; track that slide distance live so the off-screen
   // animation target and drag constraints stay correct across viewport resizes/rotations.
   // useSyncExternalStore reads window.innerWidth once per render (vs the old 3x) plus on
@@ -77,20 +86,20 @@ export const MobileSidebar = ({
 
       // Animate to position after render
       const animateOpen = async () => {
-        await animate(x, 0, drawerSpring)
+        await animate(x, 0, transition)
       }
       animateOpen()
     } else if (!open && internalOpen && !isAnimating) {
       // Closing: animate first, then close
       const animateClose = async () => {
         setIsAnimating(true)
-        await animate(x, side === 'left' ? -sidebarWidth : sidebarWidth, drawerSpring)
+        await animate(x, side === 'left' ? -sidebarWidth : sidebarWidth, transition)
         setIsAnimating(false)
         setInternalOpen(false)
       }
       animateClose()
     }
-  }, [open, internalOpen, isAnimating, x, side, sidebarWidth])
+  }, [open, internalOpen, isAnimating, x, side, sidebarWidth, transition])
 
   const handleClose = async () => {
     if (isAnimating) {
@@ -99,7 +108,7 @@ export const MobileSidebar = ({
 
     triggerImpact('light')
     setIsAnimating(true)
-    await animate(x, side === 'left' ? -sidebarWidth : sidebarWidth, drawerSpring)
+    await animate(x, side === 'left' ? -sidebarWidth : sidebarWidth, transition)
     setIsAnimating(false)
     setInternalOpen(false)
     onOpenChange(false)
@@ -110,7 +119,7 @@ export const MobileSidebar = ({
       await handleClose()
     } else {
       // Snap back to the open position
-      await animate(x, 0, drawerSpring)
+      await animate(x, 0, transition)
     }
   }
 

@@ -11,6 +11,7 @@
 
 import { HELP_TEXT, VERSION, parseArgs } from './cli.ts'
 import { runAgent } from './agent/run.ts'
+import { runAcpServe } from './acp/serve.ts'
 import { runBridge } from './commands/bridge.ts'
 import { runIrohBridge } from './iroh/bridge.ts'
 import { runIrohConnect } from './iroh/connect.ts'
@@ -49,6 +50,14 @@ switch (parsed.kind) {
   case 'connect':
     try {
       await runIrohConnect(parsed.config)
+    } catch (err) {
+      process.stderr.write(`thunderbolt: ${err instanceof Error ? err.message : String(err)}\n`)
+      process.exitCode = 1
+    }
+    break
+  case 'acp-serve':
+    try {
+      await runAcpServe(parsed.config)
     } catch (err) {
       process.stderr.write(`thunderbolt: ${err instanceof Error ? err.message : String(err)}\n`)
       process.exitCode = 1

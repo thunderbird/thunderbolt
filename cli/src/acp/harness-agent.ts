@@ -1,0 +1,285 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+
+/**
+ * The built-in Pi coding agent, exposed as an ACP {@link Agent}.
+ *
+ * This is the server half of `thunderbolt acp serve`: it implements the ACP
+ * `Agent` interface on top of {@link buildHarness}, so the iroh/wss bridge can
+ * expose OUR coding agent to a remote ACP client (the bridge otherwise only
+ * proxies external stdio ACP agents). Each `session/new` builds its own harness
+ * bound to the requested cwd; harness run events stream back as ACP
+ * `session/update` notifications via {@link createHarnessToAcpTranslator}, and
+ * tool-permission requests round-trip to the client over `session/request_permission`.
+ *
+ * Sessions are in-memory and per-connection: `loadSession` is unsupported
+ * (advertised `loadSession: false`) because a fresh process per connection has
+ * no cross-reconnect persistence yet.
+ */
+
+import { PROTOCOL_VERSION, RequestError } from '@agentclientprotocol/sdk'
+import type {
+  Agent,
+  AgentSideConnection,
+  AuthenticateResponse,
+  CancelNotification,
+  ContentBlock,
+  InitializeRequest,
+  InitializeResponse,
+  NewSessionRequest,
+  NewSessionResponse,
+  PermissionOption,
+  PromptRequest,
+  PromptResponse,
+  RequestPermissionOutcome,
+  SessionId,
+} from '@agentclientprotocol/sdk'
+import type { AgentHarnessEvent, ToolCallEvent, ToolCallResult } from '@earendil-works/pi-agent-core'
+import type { AssistantMessage } from '@earendil-works/pi-ai'
+import { VERSION } from '../cli.ts'
+import { buildHarness } from '../agent/harness.ts'
+import type { HarnessConfig, ServeConfig } from '../agent/types.ts'
+import { createHarnessToAcpTranslator, toAcpStopReason, toToolKind } from './harness-to-acp.ts'
+
+/**
+ * The slice of the Pi {@link AgentHarness} the ACP agent drives. A hand-written
+ * surface (rather than the full harness) keeps it tiny and lets a test supply a
+ * fake without reconstructing the harness's generic `on`/`subscribe` shapes — so
+ * the round-trip can be exercised with no API key.
+ */
+export type ServeHarness = {
+  /** Subscribe to run events; returns an unsubscribe function. */
+  subscribe: (listener: (event: AgentHarnessEvent) => void) => () => void
+  /** Register the pre-execution permission gate for tool calls. */
+  registerToolCallGate: (handler: (event: ToolCallEvent) => Promise<ToolCallResult | undefined>) => void
+  /** Run one prompt turn, resolving with the final assistant message. */
+  prompt: (text: string) => Promise<AssistantMessage>
+  /** Resolve once the harness has settled after a prompt. */
+  waitForIdle: () => Promise<void>
+  /** Abort the in-flight turn (drives the ACP `cancelled` stop reason). */
+  abort: () => Promise<void>
+}
+
+/** Builds a {@link ServeHarness} for one session, paired with its teardown.
+ *  Injectable so tests can swap in a fake. */
+export type BuildServeHarness = (
+  config: HarnessConfig,
+) => Promise<{ harness: ServeHarness; dispose: () => Promise<void> }>
+
+/** Production builder: adapts the real {@link buildHarness} to the narrow
+ *  {@link ServeHarness} surface the agent needs. */
+const defaultBuildServeHarness: BuildServeHarness = async (config) => {
+  const { harness, dispose } = await buildHarness(config)
+  return {
+    harness: {
+      subscribe: (listener) => harness.subscribe(listener),
+      registerToolCallGate: (handler) => {
+        harness.on('tool_call', handler)
+      },
+      prompt: (text) => harness.prompt(text),
+      waitForIdle: () => harness.waitForIdle(),
+      abort: async () => {
+        await harness.abort()
+      },
+    },
+    dispose,
+  }
+}
+
+/** A live ACP session: its harness, the run-event subscription feeding the ACP
+ *  client, and a teardown that releases the harness's execution environment. */
+type Session = {
+  readonly harness: ServeHarness
+  readonly unsubscribe: () => void
+  readonly dispose: () => Promise<void>
+}
+
+/** Tools that run unguarded — pure reads with no side effects. Mirrors the
+ *  interactive CLI's gate (`agent/permissions.ts`). */
+const READ_ONLY_TOOLS = new Set(['read'])
+
+/** The permission choices offered to the ACP client for a gated tool call.
+ *  `allow-always` allows that tool for the rest of the session; the others are
+ *  one-shot. Mirrors the interactive gate's allow-once/allow-session/deny. */
+const PERMISSION_OPTIONS: PermissionOption[] = [
+  { optionId: 'allow-once', name: 'Allow', kind: 'allow_once' },
+  { optionId: 'allow-always', name: 'Always allow', kind: 'allow_always' },
+  { optionId: 'reject-once', name: 'Reject', kind: 'reject_once' },
+]
+
+/** Flatten an ACP prompt's content blocks into the plain text the harness takes.
+ *  Only text blocks are kept — image/audio/resource blocks are not advertised in
+ *  `promptCapabilities`, so a spec-respecting client never sends them. */
+const promptText = (blocks: ContentBlock[]): string =>
+  blocks
+    .filter((block): block is ContentBlock & { type: 'text'; text: string } => block.type === 'text')
+    .map((block) => block.text)
+    .join('\n')
+
+/**
+ * Map the client's permission decision to a Pi {@link ToolCallResult}.
+ * `undefined` lets the tool run; a blocking result stops it with a reason the
+ * model sees. `allow-always` additionally remembers the tool for the session.
+ *
+ * @param outcome - the client's `session/request_permission` outcome
+ * @param toolName - the tool being decided on
+ * @param sessionAllowed - the per-session set of tools allowed without re-asking
+ */
+const toToolCallResult = (
+  outcome: RequestPermissionOutcome,
+  toolName: string,
+  sessionAllowed: Set<string>,
+): ToolCallResult | undefined => {
+  if (outcome.outcome === 'cancelled') return { block: true, reason: 'permission request cancelled' }
+  if (outcome.optionId === 'allow-always') {
+    sessionAllowed.add(toolName)
+    return undefined
+  }
+  if (outcome.optionId === 'allow-once') return undefined
+  return { block: true, reason: `user rejected ${toolName}` }
+}
+
+/**
+ * Register the tool-permission gate on a session's harness. In `yolo` mode no
+ * hook is attached and every tool runs unguarded; otherwise read-only tools and
+ * session-allowed tools pass through, and any other tool round-trips to the ACP
+ * client via `session/request_permission` before it runs.
+ */
+const attachAcpPermissionGate = (
+  harness: ServeHarness,
+  conn: AgentSideConnection,
+  sessionId: SessionId,
+  yolo: boolean,
+): void => {
+  if (yolo) return
+
+  const sessionAllowed = new Set<string>()
+
+  harness.registerToolCallGate(async ({ toolCallId, toolName, input }) => {
+    if (READ_ONLY_TOOLS.has(toolName) || sessionAllowed.has(toolName)) return undefined
+
+    const { outcome } = await conn.requestPermission({
+      sessionId,
+      options: PERMISSION_OPTIONS,
+      toolCall: { toolCallId, title: toolName, kind: toToolKind(toolName), rawInput: input, status: 'pending' },
+    })
+    return toToolCallResult(outcome, toolName, sessionAllowed)
+  })
+}
+
+/**
+ * Build the ACP {@link Agent} that fronts the built-in Pi harness for one
+ * connection. All sessions for the connection share `config` (model, thinking,
+ * yolo) and the connection's lifetime; each session gets its own harness bound
+ * to the cwd from `session/new`. Sessions are disposed when the connection closes.
+ *
+ * @param conn - the agent-side ACP connection (used to push updates + ask permission)
+ * @param config - the resolved serve configuration
+ * @param buildServeHarness - harness builder; injected by tests, defaults to the real one
+ */
+export const createHarnessAgent = (
+  conn: AgentSideConnection,
+  config: ServeConfig,
+  buildServeHarness: BuildServeHarness = defaultBuildServeHarness,
+): Agent => {
+  const sessions = new Map<SessionId, Session>()
+
+  // Release every session's execution environment when the connection ends, so
+  // a dropped client never leaks the harness's temp dirs / shell. Deferred a
+  // microtask because `AgentSideConnection` invokes this factory *before* it
+  // wires up `conn.closed`, which would otherwise throw when read here. Disposes
+  // independently (one failure can't strand the rest) and logs any failure.
+  queueMicrotask(() => {
+    void conn.closed
+      .then(async () => {
+        const open = [...sessions.values()]
+        sessions.clear()
+        const outcomes = await Promise.allSettled(
+          open.map(async (session) => {
+            session.unsubscribe()
+            await session.dispose()
+          }),
+        )
+        for (const outcome of outcomes) {
+          if (outcome.status === 'rejected') {
+            process.stderr.write(`⚡ acp serve: session dispose failed: ${String(outcome.reason)}\n`)
+          }
+        }
+      })
+      .catch((err) => {
+        process.stderr.write(`⚡ acp serve: connection cleanup error: ${err instanceof Error ? err.message : String(err)}\n`)
+      })
+  })
+
+  const requireSession = (sessionId: SessionId): Session => {
+    const session = sessions.get(sessionId)
+    if (!session) throw RequestError.invalidParams(undefined, `unknown session '${sessionId}'`)
+    return session
+  }
+
+  const initialize = async (_params: InitializeRequest): Promise<InitializeResponse> => ({
+    // We implement exactly one protocol version, so we always answer with it —
+    // the only version we could honestly negotiate. A client that can't speak it
+    // disconnects (per ACP initialization).
+    protocolVersion: PROTOCOL_VERSION,
+    agentInfo: { name: 'thunderbolt', version: VERSION },
+    agentCapabilities: {
+      loadSession: false,
+      promptCapabilities: { image: false, audio: false, embeddedContext: false },
+    },
+    authMethods: [],
+  })
+
+  const newSession = async (params: NewSessionRequest): Promise<NewSessionResponse> => {
+    const sessionId = crypto.randomUUID()
+    const { harness, dispose } = await buildServeHarness({
+      model: config.model,
+      cwd: params.cwd,
+      yolo: config.yolo,
+      thinking: config.thinking,
+    })
+
+    // If the client vanished while the harness was being built, the cleanup
+    // microtask already ran against a map without this session — dispose now so
+    // the freshly-built harness can't leak its temp dirs / shell.
+    if (conn.signal.aborted) {
+      await dispose()
+      throw RequestError.internalError(undefined, 'connection closed during session/new')
+    }
+
+    const translator = createHarnessToAcpTranslator((update) => {
+      // Fire-and-forget: the SDK serializes writes on one queue, so updates
+      // emitted in order arrive in order. A rejection means the client went away
+      // mid-turn (the stream closed) — benign teardown, not an error to surface —
+      // so swallow it to avoid an unhandled rejection; the connection close is the
+      // real signal that ends the run.
+      void conn.sessionUpdate({ sessionId, update }).catch(() => {})
+    })
+    const unsubscribe = harness.subscribe((event) => translator.handle(event))
+    attachAcpPermissionGate(harness, conn, sessionId, config.yolo)
+
+    sessions.set(sessionId, { harness, unsubscribe, dispose })
+    return { sessionId }
+  }
+
+  const prompt = async (params: PromptRequest): Promise<PromptResponse> => {
+    const { harness } = requireSession(params.sessionId)
+    const result = await harness.prompt(promptText(params.prompt))
+    await harness.waitForIdle()
+    // A failed turn resolves (it doesn't throw) with `stopReason: 'error'`, which
+    // has no ACP equivalent — surface it loudly as a JSON-RPC error instead.
+    if (result.stopReason === 'error') throw new Error(result.errorMessage ?? 'the model request failed')
+    return { stopReason: toAcpStopReason(result.stopReason) }
+  }
+
+  const cancel = async (params: CancelNotification): Promise<void> => {
+    await sessions.get(params.sessionId)?.harness.abort()
+  }
+
+  // No authentication: the transport (loopback wss / allowlisted iroh) is the
+  // trust boundary, so `authenticate` is a no-op the client should never need.
+  const authenticate = async (): Promise<AuthenticateResponse> => ({})
+
+  return { initialize, newSession, prompt, cancel, authenticate }
+}

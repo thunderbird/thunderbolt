@@ -14,6 +14,7 @@ import type {
   BridgeTransport,
   ParsedArgs,
   RunConfig,
+  ServeConfig,
   ThinkingLevel,
 } from './agent/types.ts'
 
@@ -42,6 +43,7 @@ export const HELP_TEXT = `⚡ thunderbolt v${VERSION} — a single-binary termin
 USAGE
   thunderbolt [options] [prompt]
   thunderbolt agent [options] [prompt]
+  thunderbolt acp serve [options]
   thunderbolt acp --transport <wss|iroh> [--port N] -- <agent-cmd...>
   thunderbolt mcp --transport <wss|iroh> [--port N] -- <server-cmd...>
   thunderbolt acp connect <ticket|nodeid> [-- <local-client-cmd...>]
@@ -51,10 +53,11 @@ USAGE
   interactive REPL. Built on the Pi harness; talks to Claude.
 
 SUBCOMMANDS
-  agent   run the coding agent (default when omitted)
-  acp     bridge a local stdio ACP agent over the network the app can reach
-  mcp     bridge a local stdio MCP server over the network the app can reach
-  iroh    manage the P2P identity / pairing ticket / peer allowlist
+  agent       run the coding agent (default when omitted)
+  acp serve   expose THIS coding agent as a stdio ACP server (for bridging)
+  acp         bridge a local stdio ACP agent over the network the app can reach
+  mcp         bridge a local stdio MCP server over the network the app can reach
+  iroh        manage the P2P identity / pairing ticket / peer allowlist
 
 TOOLS
   bash    run shell commands
@@ -89,6 +92,7 @@ EXAMPLES
   thunderbolt
   thunderbolt acp --transport wss -- npx @zed-industries/claude-code-acp
   thunderbolt mcp --transport wss --port 9001 -- uvx mcp-server-fetch
+  thunderbolt acp --transport iroh -- thunderbolt acp serve   # share THIS agent
   thunderbolt acp --transport iroh -- npx @zed-industries/claude-code-acp
   thunderbolt iroh id
   thunderbolt acp connect endpoint1abc…   # dial a remote iroh bridge
@@ -249,6 +253,30 @@ const parseConnectArgs = (protocol: BridgeProtocol, rest: string[]): ParsedArgs 
 }
 
 /**
+ * Parses an `acp serve` invocation: run the built-in agent as a stdio ACP
+ * server. Reuses the run-flag scanner (`--model`/`--thinking`/`--yolo`); the
+ * per-session working directory comes from each ACP `session/new`, so `cwd`
+ * here is just the process default. No positional prompt is accepted.
+ */
+const parseServeArgs = (rest: string[]): ParsedArgs => {
+  if (rest.includes('--help') || rest.includes('-h')) return { kind: 'help' }
+
+  const scan = scanTokens(rest, 0, DEFAULT_FLAGS)
+  if (!scan.ok) return { kind: 'error', message: scan.message }
+  if (scan.flags.positionals.length > 0) {
+    return { kind: 'error', message: `thunderbolt acp serve: unexpected argument '${scan.flags.positionals[0]}'` }
+  }
+
+  const config: ServeConfig = {
+    model: scan.flags.model,
+    cwd: process.cwd(),
+    yolo: scan.flags.yolo,
+    thinking: scan.flags.thinking,
+  }
+  return { kind: 'acp-serve', config }
+}
+
+/**
  * Parses a `thunderbolt iroh` admin invocation into its sub-action
  * (`id` | `pair` | `allow <nodeid>`).
  */
@@ -280,6 +308,7 @@ export const parseArgs = (argv: string[]): ParsedArgs => {
   const subcommand = argv[0]
   if (subcommand === 'iroh') return parseIrohAdminArgs(argv.slice(1))
   if (subcommand === 'acp' || subcommand === 'mcp') {
+    if (subcommand === 'acp' && argv[1] === 'serve') return parseServeArgs(argv.slice(2))
     if (argv[1] === 'connect') return parseConnectArgs(subcommand, argv.slice(2))
     return parseBridgeArgs(subcommand, argv.slice(1))
   }

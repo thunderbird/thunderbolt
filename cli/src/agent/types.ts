@@ -70,8 +70,12 @@ export type IrohAdminAction =
   | { readonly kind: 'pair' }
   | { readonly kind: 'allow'; readonly nodeId: string }
 
-/** Settings common to every run, independent of oneshot vs REPL mode. */
-type RunConfigBase = {
+/**
+ * Settings a single harness needs to be assembled, shared by every entry point
+ * (oneshot run, REPL, and the ACP server's per-session harness). `buildHarness`
+ * consumes exactly this; the run/serve configs extend it with their own fields.
+ */
+export type HarnessConfig = {
   /** Anthropic model id (defaults to `claude-opus-4-8`). */
   readonly model: string
   /** Working directory the agent's bash/fs tools are bound to. */
@@ -83,20 +87,28 @@ type RunConfigBase = {
 }
 
 /**
+ * Configuration for an `acp serve` invocation: run THIS coding agent as a stdio
+ * ACP JSON-RPC server. `cwd` is the process default; each ACP `session/new`
+ * supplies its own working directory, which overrides it per session.
+ */
+export type ServeConfig = HarnessConfig
+
+/**
  * Fully-resolved configuration for a single CLI invocation, produced by
  * {@link parseArgs} and consumed by the agent runner. The discriminated `mode`
  * makes `prompt` present exactly when (and only when) it's a oneshot run.
  */
 export type RunConfig =
-  | (RunConfigBase & { readonly mode: 'oneshot'; readonly prompt: string })
-  | (RunConfigBase & { readonly mode: 'repl' })
+  | (HarnessConfig & { readonly mode: 'oneshot'; readonly prompt: string })
+  | (HarnessConfig & { readonly mode: 'repl' })
 
-/** Result of parsing argv: a run, a bridge, a connect, an iroh admin action,
- *  or a terminal info action. */
+/** Result of parsing argv: a run, a bridge, a connect, an ACP server, an iroh
+ *  admin action, or a terminal info action. */
 export type ParsedArgs =
   | { readonly kind: 'run'; readonly config: RunConfig }
   | { readonly kind: 'bridge'; readonly config: BridgeConfig }
   | { readonly kind: 'connect'; readonly config: ConnectConfig }
+  | { readonly kind: 'acp-serve'; readonly config: ServeConfig }
   | { readonly kind: 'iroh-admin'; readonly action: IrohAdminAction }
   | { readonly kind: 'help' }
   | { readonly kind: 'version' }

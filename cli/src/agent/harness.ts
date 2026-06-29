@@ -14,17 +14,17 @@ import { NodeExecutionEnv } from '@earendil-works/pi-agent-core/node'
 import { createBashTool, createEditTool, createReadTool, createWriteTool } from '@earendil-works/pi-coding-agent'
 import { resolveModel } from './model.ts'
 import { buildSystemPrompt } from './system-prompt.ts'
-import type { HarnessBundle, RunConfig } from './types.ts'
+import type { HarnessBundle, HarnessConfig } from './types.ts'
 
 /**
  * Builds a ready-to-run harness for a single CLI invocation, paired with a
  * `dispose` that releases the execution environment. Renderer and permission
  * hooks are attached by the caller, not here.
  *
- * @param config - the resolved run configuration
+ * @param config - the resolved harness configuration
  * @returns the constructed harness and its teardown function
  */
-export const buildHarness = async (config: RunConfig): Promise<HarnessBundle> => {
+export const buildHarness = async (config: HarnessConfig): Promise<HarnessBundle> => {
   const env = new NodeExecutionEnv({ cwd: config.cwd })
   const session = await new InMemorySessionRepo().create({})
   const { models, model } = resolveModel(config.model)

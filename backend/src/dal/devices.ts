@@ -102,6 +102,18 @@ export const denyDevice = async (database: typeof DbType, deviceId: string, user
     .returning()
 
 /**
+ * Bind a device to an iroh P2P endpoint identity (node_id) and stamp the attestation time.
+ * Only matches non-revoked devices owned by the user, so a revoked device cannot be re-bound.
+ * Returns updated rows so callers can detect the 0-row (not found / revoked) case.
+ */
+export const setDeviceNodeId = async (database: typeof DbType, deviceId: string, userId: string, nodeId: string) =>
+  database
+    .update(devicesTable)
+    .set({ nodeId, nodeIdAttestedAt: new Date() })
+    .where(and(eq(devicesTable.id, deviceId), eq(devicesTable.userId, userId), isNull(devicesTable.revokedAt)))
+    .returning()
+
+/**
  * Register a device with a public key for encryption.
  * Used during the encryption setup flow when the FE sends POST /devices.
  * Inserts as untrusted (default); on conflict updates publicKey and lastSeen.

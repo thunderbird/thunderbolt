@@ -1358,4 +1358,116 @@ describe('Encryption API', () => {
       expect(response.status).toBe(204)
     })
   })
+
+  // ─── PATCH /devices/:deviceId/node-id ───────────────────────────────
+
+  describe('PATCH /devices/:deviceId/node-id', () => {
+    const nodeId = 'k51qzi5uqu5dh-test-endpoint-id'
+
+    const patchNodeId = (token: string, callerDeviceId: string, targetDeviceId: string, body: object) =>
+      app.handle(
+        new Request(`${baseUrl}/devices/${targetDeviceId}/node-id`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${signToken(token)}`,
+            'X-Device-ID': callerDeviceId,
+          },
+          body: JSON.stringify(body),
+        }),
+      )
+
+    it('rejects without canarySecret (body validation)', async () => {
+      await createUserAndSession(p('u-nid-nobody'), p('tok-nid-nobody'))
+      await insertDevice(p('d-nid-nobody-caller'), p('u-nid-nobody'), { trusted: true })
+      await insertDevice(p('d-nid-nobody-target'), p('u-nid-nobody'), { trusted: true })
+
+      const response = await patchNodeId(p('tok-nid-nobody'), p('d-nid-nobody-caller'), p('d-nid-nobody-target'), {
+        nodeId,
+      })
+
+      expect(response.status).toBe(422)
+    })
+
+    it('rejects with wrong canarySecret', async () => {
+      await createUserAndSession(p('u-nid-bad'), p('tok-nid-bad'))
+      await insertDevice(p('d-nid-bad-caller'), p('u-nid-bad'), { trusted: true })
+      await insertDevice(p('d-nid-bad-target'), p('u-nid-bad'), { trusted: true })
+      await insertCanaryWithSecret(p('u-nid-bad'))
+
+      const response = await patchNodeId(p('tok-nid-bad'), p('d-nid-bad-caller'), p('d-nid-bad-target'), {
+        nodeId,
+        canarySecret: 'wrong-secret',
+      })
+
+      expect(response.status).toBe(403)
+      expect((await response.json()).error).toBe('Invalid canary secret')
+    })
+
+    it('rejects when caller device is not trusted', async () => {
+      await createUserAndSession(p('u-nid-untrusted'), p('tok-nid-untrusted'))
+      await insertDevice(p('d-nid-untrusted-caller'), p('u-nid-untrusted')) // pending, not trusted
+      await insertDevice(p('d-nid-untrusted-target'), p('u-nid-untrusted'), { trusted: true })
+      await insertCanaryWithSecret(p('u-nid-untrusted'))
+
+      const response = await patchNodeId(
+        p('tok-nid-untrusted'),
+        p('d-nid-untrusted-caller'),
+        p('d-nid-untrusted-target'),
+        { nodeId, canarySecret: testCanarySecret },
+      )
+
+      expect(response.status).toBe(403)
+      expect((await response.json()).error).toBe('Only trusted devices can set a device node ID')
+    })
+
+    it('returns 404 when target device does not exist', async () => {
+      await createUserAndSession(p('u-nid-missing'), p('tok-nid-missing'))
+      await insertDevice(p('d-nid-missing-caller'), p('u-nid-missing'), { trusted: true })
+      await insertCanaryWithSecret(p('u-nid-missing'))
+
+      const response = await patchNodeId(p('tok-nid-missing'), p('d-nid-missing-caller'), p('d-nid-missing-absent'), {
+        nodeId,
+        canarySecret: testCanarySecret,
+      })
+
+      expect(response.status).toBe(404)
+    })
+
+    it('rejects binding a node ID to a revoked target', async () => {
+      await createUserAndSession(p('u-nid-revoked'), p('tok-nid-revoked'))
+      await insertDevice(p('d-nid-revoked-caller'), p('u-nid-revoked'), { trusted: true })
+      await insertDevice(p('d-nid-revoked-target'), p('u-nid-revoked'), { trusted: true, revokedAt: now })
+      await insertCanaryWithSecret(p('u-nid-revoked'))
+
+      const response = await patchNodeId(p('tok-nid-revoked'), p('d-nid-revoked-caller'), p('d-nid-revoked-target'), {
+        nodeId,
+        canarySecret: testCanarySecret,
+      })
+
+      expect(response.status).toBe(404)
+    })
+
+    it('sets node_id with a valid canarySecret from a trusted device', async () => {
+      await createUserAndSession(p('u-nid-ok'), p('tok-nid-ok'))
+      await insertDevice(p('d-nid-ok-caller'), p('u-nid-ok'), { trusted: true })
+      await insertDevice(p('d-nid-ok-target'), p('u-nid-ok'), { trusted: true })
+      await insertCanaryWithSecret(p('u-nid-ok'))
+
+      const response = await patchNodeId(p('tok-nid-ok'), p('d-nid-ok-caller'), p('d-nid-ok-target'), {
+        nodeId,
+        canarySecret: testCanarySecret,
+      })
+
+      expect(response.status).toBe(200)
+      expect((await response.json()).nodeId).toBe(nodeId)
+
+      const [row] = await db
+        .select()
+        .from(devicesTable)
+        .where(eq(devicesTable.id, p('d-nid-ok-target')))
+      expect(row.nodeId).toBe(nodeId)
+      expect(row.nodeIdAttestedAt).not.toBeNull()
+    })
+  })
 })

@@ -12,13 +12,19 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import dayjs from 'dayjs'
 import { SectionCard } from '@/components/ui/section-card'
-import { CheckCircle2, Loader2, Smartphone, Trash2 } from 'lucide-react'
-import { useState } from 'react'
+import { CheckCircle2, Link2, Loader2, QrCode, Smartphone, Trash2 } from 'lucide-react'
+import { lazy, Suspense, useState } from 'react'
 import { useQuery } from '@powersync/tanstack-react-query'
 import { toCompilableQuery } from '@powersync/drizzle-driver'
 import { useApproveDevice } from '@/hooks/use-approve-device'
 import { useDenyDevice } from '@/hooks/use-deny-device'
 import { useRevokeDevice } from '@/hooks/use-revoke-device'
+import { useSetDeviceNodeId } from '@/hooks/use-set-device-node-id'
+import { useDevicePairing } from '@/hooks/use-device-pairing'
+import { encodePairingTicket } from '@/lib/pairing-ticket'
+
+const DeviceQrCode = lazy(() => import('@/components/device-qr-code'))
+const SetNodeIdDialog = lazy(() => import('@/components/set-node-id-dialog'))
 
 const formatLastSeen = (ts: string | null): string => {
   if (ts == null) {
@@ -55,6 +61,16 @@ export default function DevicesSettingsPage() {
   const revokeMutation = useRevokeDevice()
   const denyMutation = useDenyDevice()
   const approveMutation = useApproveDevice(pendingDevices)
+  const setNodeIdMutation = useSetDeviceNodeId()
+  const pairing = useDevicePairing()
+
+  const dialogDevice = devices.find((d) => d.id === pairing.dialogFor) ?? null
+
+  const confirmSetNodeId = (nodeId: string) => {
+    if (pairing.dialogFor) {
+      setNodeIdMutation.mutate({ deviceId: pairing.dialogFor, nodeId }, { onSuccess: () => pairing.closeDialog() })
+    }
+  }
 
   const confirmRevoke = () => {
     if (revokeTarget) {
@@ -182,6 +198,39 @@ export default function DevicesSettingsPage() {
                       </Button>
                     )}
                   </div>
+
+                  {!isRevoked && (
+                    <div className="mt-3 flex flex-col gap-2 border-t pt-3">
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="flex min-w-0 items-center gap-2">
+                          <Link2 className="size-4 shrink-0 text-muted-foreground" />
+                          <span className="truncate font-mono text-[length:var(--font-size-xs)] text-muted-foreground">
+                            {device.nodeId ? device.nodeId : 'No pairing identity'}
+                          </span>
+                        </div>
+                        <div className="flex shrink-0 items-center gap-1">
+                          {device.nodeId && (
+                            <Button variant="ghost" size="sm" onClick={() => pairing.toggleQr(device.id)}>
+                              <QrCode className="size-4 mr-1" />
+                              {pairing.qrFor === device.id ? 'Hide' : 'Show'}
+                            </Button>
+                          )}
+                          <Button variant="ghost" size="sm" onClick={() => pairing.openDialog(device.id)}>
+                            {device.nodeId ? 'Update' : 'Set node ID'}
+                          </Button>
+                        </div>
+                      </div>
+                      {device.nodeId && pairing.qrFor === device.id && (
+                        <Suspense
+                          fallback={
+                            <p className="text-[length:var(--font-size-xs)] text-muted-foreground">Loading code…</p>
+                          }
+                        >
+                          <DeviceQrCode value={encodePairingTicket({ nodeId: device.nodeId, name: device.name })} />
+                        </Suspense>
+                      )}
+                    </div>
+                  )}
                 </CardContent>
               </Card>
             )
@@ -211,6 +260,19 @@ export default function DevicesSettingsPage() {
         isPending={denyMutation.isPending}
         variant="pending"
       />
+
+      {dialogDevice && (
+        <Suspense fallback={null}>
+          <SetNodeIdDialog
+            key={dialogDevice.id}
+            open
+            onOpenChange={(open) => !open && pairing.closeDialog()}
+            deviceName={dialogDevice.name}
+            onConfirm={confirmSetNodeId}
+            isPending={setNodeIdMutation.isPending}
+          />
+        </Suspense>
+      )}
     </div>
   )
 }

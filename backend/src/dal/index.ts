@@ -10,6 +10,7 @@ export {
   denyDevice,
   markDeviceTrusted,
   registerDevice,
+  setDeviceNodeId,
   countActiveDevices,
 } from './devices'
 

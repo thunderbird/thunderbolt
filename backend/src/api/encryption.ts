@@ -11,6 +11,7 @@ import {
   registerDevice,
   denyDevice,
   markDeviceTrusted,
+  setDeviceNodeId,
   getEnvelopeByDeviceId,
   hasEnvelopesForUser,
   upsertEnvelope,
@@ -413,6 +414,49 @@ export const createEncryptionRoutes = (auth: Auth, database: typeof DbType) =>
       {
         auth: true,
         body: t.Object({
+          canarySecret: t.String({ maxLength: 500 }),
+        }),
+      },
+    )
+    .post(
+      '/devices/:deviceId/node-id',
+      async ({ params, body, request, set, user: sessionUser }) => {
+        const userId = sessionUser!.id
+        const callerDeviceId = request.headers.get('x-device-id')?.trim()
+
+        if (!callerDeviceId) {
+          set.status = 400
+          return { error: 'X-Device-ID header is required' }
+        }
+
+        // Proof-of-CK-possession prevents X-Device-ID spoofing: only a device that holds the
+        // Content Key can decrypt the canary and produce this secret. Mirrors the deny route.
+        const validProof = await verifyCanaryProof(database, userId, body.canarySecret)
+        if (!validProof) {
+          set.status = 403
+          return { error: 'Invalid canary secret' }
+        }
+
+        // Caller must be a trusted device (defense-in-depth — Option B1: only a trusted app
+        // device may attest another device's P2P identity).
+        const callerDevice = await getDeviceById(database, callerDeviceId)
+        if (!callerDevice || callerDevice.userId !== userId || !callerDevice.trusted) {
+          set.status = 403
+          return { error: 'Only trusted devices can set a device node ID' }
+        }
+
+        const updated = await setDeviceNodeId(database, params.deviceId, userId, body.nodeId)
+        if (updated.length === 0) {
+          set.status = 404
+          return { error: 'Device not found' }
+        }
+
+        return { nodeId: body.nodeId }
+      },
+      {
+        auth: true,
+        body: t.Object({
+          nodeId: t.String({ minLength: 1, maxLength: 512 }),
           canarySecret: t.String({ maxLength: 500 }),
         }),
       },

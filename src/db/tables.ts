@@ -275,6 +275,9 @@ export const devicesTable = sqliteTable('devices', {
   lastSeen: text('last_seen'),
   createdAt: text('created_at'),
   revokedAt: text('revoked_at'),
+  // iroh P2P endpoint identity. Set only via the canary-gated backend route, then synced down.
+  nodeId: text('node_id'),
+  nodeIdAttestedAt: text('node_id_attested_at'),
 })
 
 /** Synced via PowerSync. User-created ACP agents only. `isSystem` is always 0; built-ins and system agents are not rows. */

@@ -34,19 +34,10 @@ const extractPreviewText = async (blob: Blob, mimeType: string): Promise<string>
   return blob.slice(0, 8192).text()
 }
 
-type TextSnippetProps = {
-  localFileId: string
-  mimeType: string
-}
-
-/**
- * Fills an attachment card with a faded mini-page of the document's text —
- * the "Quick Look" style preview for txt / md / csv / docx. Returns null until
- * the text resolves, so the card's placeholder icon shows underneath.
- */
-export const TextSnippet = ({ localFileId, mimeType }: TextSnippetProps) => {
+/** Loads a short head of an attachment's text content (docx via mammoth, else
+ *  raw). Returns null until it resolves; best-effort (null on failure). */
+export const useAttachmentText = (localFileId: string, mimeType: string): string | null => {
   const [text, setText] = useState<string | null>(null)
-
   useEffect(() => {
     let cancelled = false
     getAttachment(localFileId)
@@ -60,18 +51,32 @@ export const TextSnippet = ({ localFileId, mimeType }: TextSnippetProps) => {
         }
       })
       .catch(() => {
-        // Preview is best-effort; leave the placeholder icon on failure.
+        // Preview is best-effort; leave the placeholder on failure.
       })
     return () => {
       cancelled = true
     }
   }, [localFileId, mimeType])
+  return text
+}
 
+type TextSnippetProps = {
+  localFileId: string
+  mimeType: string
+}
+
+/**
+ * Fills an attachment card with a faded mini-page of the document's raw text —
+ * the "Quick Look" preview for plain formats (txt / csv). Markdown and docx get
+ * their own *formatted* thumbnails; see MarkdownThumbnail / DocxThumbnail.
+ */
+export const TextSnippet = ({ localFileId, mimeType }: TextSnippetProps) => {
+  const text = useAttachmentText(localFileId, mimeType)
   if (!text) {
     return null
   }
   return (
-    <div className="absolute inset-0 overflow-hidden bg-card px-2.5 pt-2.5">
+    <div className="pointer-events-none absolute inset-0 overflow-hidden bg-card px-2.5 pt-2.5">
       <p className="whitespace-pre-wrap break-words font-mono text-[9px] leading-[1.35] text-muted-foreground">
         {text}
       </p>

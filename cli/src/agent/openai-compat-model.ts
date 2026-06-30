@@ -64,6 +64,16 @@ export type BuildOpenAiCompatModelOptions = {
 /** Pi provider id for every CLI openai-compatible endpoint. */
 const PROVIDER = 'openai-compat'
 
+/** The raw Pi stream entry points this provider wraps. Injectable so the bearer
+ *  key injection can be verified without a live OpenAI endpoint; defaults to the
+ *  real `openai-completions` functions in production. */
+export type OpenAiStreamFns = {
+  readonly stream: typeof openaiStream
+  readonly streamSimple: typeof openaiStreamSimple
+}
+
+const DEFAULT_STREAM_FNS: OpenAiStreamFns = { stream: openaiStream, streamSimple: openaiStreamSimple }
+
 /**
  * Narrows a dispatched `Model<Api>` to the openai-completions model this
  * provider exclusively serves, surfacing misuse loudly rather than guessing.
@@ -102,18 +112,22 @@ const synthesizeModel = (opts: BuildOpenAiCompatModelOptions): Model<typeof API>
  * consumes.
  *
  * @param opts - model id, base URL, and bearer api key
+ * @param streamFns - the raw Pi stream functions to wrap (injectable for tests)
  * @returns the wired provider collection and the synthetic model
  */
-export const buildOpenAiCompatModel = (opts: BuildOpenAiCompatModelOptions): { models: Models; model: Model<Api> } => {
+export const buildOpenAiCompatModel = (
+  opts: BuildOpenAiCompatModelOptions,
+  streamFns: OpenAiStreamFns = DEFAULT_STREAM_FNS,
+): { models: Models; model: Model<Api> } => {
   const model = synthesizeModel(opts)
 
   // Inject the api key on every call (Pi's openai client reads `options.apiKey`);
   // the SDK resolves the base URL from `model.baseUrl` and adds the bearer header.
   const api: ProviderStreams = {
     stream: (resolved, context, options) =>
-      openaiStream(requireOpenAiCompletions(resolved), context, { ...options, apiKey: opts.apiKey }),
+      streamFns.stream(requireOpenAiCompletions(resolved), context, { ...options, apiKey: opts.apiKey }),
     streamSimple: (resolved, context, options) =>
-      openaiStreamSimple(requireOpenAiCompletions(resolved), context, { ...options, apiKey: opts.apiKey }),
+      streamFns.streamSimple(requireOpenAiCompletions(resolved), context, { ...options, apiKey: opts.apiKey }),
   }
 
   const models = createModels()

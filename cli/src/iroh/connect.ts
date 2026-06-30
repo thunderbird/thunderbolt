@@ -78,6 +78,24 @@ const bridgeProcessStdio = async (connection: Connection): Promise<number> => {
 }
 
 /**
+ * Decide whether a finished connect attempt was a refusal / dead end. The remote
+ * rejects a non-allowlisted peer by closing before any data flows, so "zero bytes
+ * back *and* an explicit signal (a local pump failure or a peer close reason)" is
+ * the refusal fingerprint. The peer's close `reason` is preferred over our local
+ * failure message because it names *why* the remote hung up. Zero bytes with no
+ * signal at all is not treated as an error (a clean, empty round-trip).
+ *
+ * @param received - bytes received back from the remote
+ * @param failure - a local pump error, or `null` if the pumps settled cleanly
+ * @param reason - the peer-supplied close reason, or `null` if none
+ */
+export const refusalError = (received: number, failure: unknown, reason: string | null): Error | null => {
+  if (received !== 0 || (failure === null && reason === null)) return null
+  const detail = reason ?? (failure instanceof Error ? failure.message : String(failure))
+  return new Error(`iroh connect: refused or no response from remote (${detail})`)
+}
+
+/**
  * Dial the remote bridge identified by `config.target` and bridge a local
  * client to it. If the remote rejects this node (not allowlisted) it closes the
  * connection before any data flows; with no bytes received and a peer-supplied
@@ -102,8 +120,6 @@ export const runIrohConnect = async (config: ConnectConfig): Promise<void> => {
   const reason = connection.closeReason()
   await endpoint.close()
 
-  if (received === 0 && (failure !== null || reason !== null)) {
-    const detail = reason ?? (failure instanceof Error ? failure.message : String(failure))
-    throw new Error(`iroh connect: refused or no response from remote (${detail})`)
-  }
+  const refusal = refusalError(received, failure, reason)
+  if (refusal) throw refusal
 }

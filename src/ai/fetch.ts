@@ -48,6 +48,7 @@ import {
   extractReasoningMiddleware,
   stepCountIs,
   streamText,
+  UnsupportedFunctionalityError,
   wrapLanguageModel,
   type Tool,
   type ToolSet,
@@ -712,6 +713,14 @@ export const aiFetchStreamingResponse = async ({
           status: error.statusCode,
           isRetryable: error.isRetryable,
         })
+      }
+      // A provider that can't serialize a content part (e.g. a docx file part on
+      // an OpenAI-compat transport) throws this client-side, before any HTTP
+      // call — so there's no status to read. Tag it as a non-retryable content
+      // rejection (422) so the attachment-remediation layer converts and retries
+      // instead of burning generic retries on an error that can't self-resolve.
+      if (UnsupportedFunctionalityError.isInstance(error)) {
+        return JSON.stringify({ error: error.message, status: 422, isRetryable: false })
       }
       return error instanceof Error ? error.message : String(error)
     }

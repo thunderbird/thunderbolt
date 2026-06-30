@@ -64,6 +64,35 @@ export const isNonRetryableClientError = (error?: Error | null): boolean => {
 }
 
 /**
+ * Markers for "the request exceeds the model's context window" — emitted by every
+ * provider, usually as a 400 that carries the token counts (e.g. Anthropic's
+ * "prompt is too long: N tokens > M maximum", OpenAI's `context_length_exceeded`).
+ * This is a distinct failure from a content rejection: the file *can* be read,
+ * it's just too big — so it should NOT trigger attachment remediation (converting
+ * native→text/images won't shrink it enough) and warrants its own guidance.
+ */
+const contextOverflowMarkers = [
+  'context_length_exceeded',
+  'context length',
+  'maximum context',
+  'prompt is too long',
+  'exceeds the context window',
+  'reduce the length of the messages',
+  'too many tokens',
+  'maximum number of tokens',
+]
+
+/** Check whether an error represents a context-window overflow (request too large). */
+export const isContextOverflowError = (error?: Error | null): boolean => {
+  if (!error?.message) {
+    return false
+  }
+  const parsed = parseJson(error.message)
+  const message = (typeof parsed?.error === 'string' ? parsed.error : error.message).toLowerCase()
+  return contextOverflowMarkers.some((marker) => message.includes(marker))
+}
+
+/**
  * Creates a HandleError with optional stack trace if available
  */
 export const createHandleError = (code: HandleErrorCode, message: string, originalError?: unknown): HandleError => {

@@ -599,6 +599,8 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
             placeholder="Ask me anything..."
             showSubmitButton
             onSubmit={handleSubmit}
+            // Allow sending an attachment even with no typed text (matches the Enter behavior).
+            canSubmit={input.trim().length > 0 || attachments.length > 0}
             isLoading={isStreaming || isConnecting}
             isStreaming={isStreaming}
             onStop={stop}

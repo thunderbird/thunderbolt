@@ -4,7 +4,7 @@
 
 import { getTransformer, hasTransformer } from '@/files/transformers'
 import { getAttachments, isAttachmentPart } from '@/lib/attachments'
-import { isNonRetryableClientError } from '@/lib/error-utils'
+import { isContextOverflowError, isNonRetryableClientError } from '@/lib/error-utils'
 import { getAttachment } from '@/lib/file-blob-storage'
 import type { AttachmentData, ThunderboltUIMessage } from '@/types'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
@@ -160,12 +160,18 @@ export const useAttachmentRemediation = ({
   const attemptedSignatures = useRef(new Set<string>())
   const [remediating, setRemediating] = useState(false)
 
+  // A 4xx that's worth remediating: the content was rejected, NOT the request
+  // being too big. A context-window overflow is also a 4xx, but converting
+  // native→text/images won't shrink it enough — so exclude it (it gets its own
+  // guidance via the error UI instead).
+  const isRemediableError = isNonRetryableClientError(error) && !isContextOverflowError(error)
+
   // Whether an auto-remediation is *about* to fire — computed synchronously so
   // the error UI can be suppressed on the very first error frame, before the
   // effect below runs. Mirrors the effect's gate (minus the async scan check).
   const willAutoRemediate =
     active &&
-    isNonRetryableClientError(error) &&
+    isRemediableError &&
     !!lastUserMessage &&
     getAttachments(lastUserMessage).some(canAdvance) &&
     !attemptedSignatures.current.has(signatureOf(lastUserMessage))
@@ -176,7 +182,7 @@ export const useAttachmentRemediation = ({
       setRemediating(false)
       return
     }
-    if (!isNonRetryableClientError(error) || !lastUserMessage) {
+    if (!isRemediableError || !lastUserMessage) {
       return
     }
     const attachments = getAttachments(lastUserMessage)
@@ -207,13 +213,14 @@ export const useAttachmentRemediation = ({
         setRemediating(false)
       }
     })()
-  }, [active, error, lastUserMessage, applyTargets])
+  }, [active, error, isRemediableError, lastUserMessage, applyTargets])
 
   // The turn failed with a file the model couldn't read and there's no rung left
   // to try automatically — surface file-specific guidance rather than a retry.
+  // (Excludes context-overflow, which has its own message.)
   const deliveryExhausted =
     active &&
-    isNonRetryableClientError(error) &&
+    isRemediableError &&
     !!lastUserMessage &&
     getAttachments(lastUserMessage).length > 0 &&
     !getAttachments(lastUserMessage).some(canAdvance)

@@ -3,7 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { maxRetries } from '@/chats/chat-instance'
-import { isRateLimitError } from '@/lib/error-utils'
+import { isContextOverflowError, isRateLimitError } from '@/lib/error-utils'
 import { Loader2 } from 'lucide-react'
 import { memo } from 'react'
 
@@ -27,6 +27,19 @@ export const ErrorMessage = memo(
         <div className="px-4 py-3 rounded-2xl bg-amber-500/10 border border-amber-500/20 mr-auto w-full mt-2">
           <p className="text-amber-500/80 text-[length:var(--font-size-body)]">
             Too many requests. Please try again in a moment.
+          </p>
+        </div>
+      )
+    }
+
+    // Context-window overflow — retrying won't help; guide the user to shrink the
+    // request rather than show a generic error.
+    if (isContextOverflowError(error)) {
+      return (
+        <div className="px-4 py-3 rounded-2xl bg-amber-500/10 border border-amber-500/20 mr-auto w-full mt-2">
+          <p className="text-amber-500/80 text-[length:var(--font-size-body)]">
+            This conversation is too large for the model&apos;s context window. Start a new chat, remove some
+            attachments, or switch to a model with a larger context window.
           </p>
         </div>
       )

@@ -26,6 +26,10 @@ type PromptInputProps = {
   placeholder?: string
   showSubmitButton?: boolean
   onSubmit?: () => void
+  /** Overrides the default "enabled only when there's text" rule for the submit
+   *  button and Enter — e.g. to allow sending an attachment with no typed text.
+   *  Defaults to "there is non-whitespace text". */
+  canSubmit?: boolean
   isLoading?: boolean
   autoFocus?: boolean
   className?: string
@@ -74,6 +78,7 @@ export const PromptInput = forwardRef<HTMLFormElement, PromptInputProps>(
       placeholder = 'Say something...',
       showSubmitButton = true,
       onSubmit,
+      canSubmit,
       isLoading = false,
       autoFocus = false,
       className = 'flex flex-col w-full gap-0 p-2',
@@ -106,12 +111,17 @@ export const PromptInput = forwardRef<HTMLFormElement, PromptInputProps>(
 
     const handleTextareaChange = (e: ChangeEvent<HTMLTextAreaElement>) => onChange(e.target.value)
 
+    // Whether a send is allowed right now — defaults to "there's text", but a
+    // caller can widen it (e.g. an attachment with no text). Keeps the submit
+    // button and the Enter key in agreement.
+    const submittable = canSubmit ?? value.trim().length > 0
+
     const handleKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
       onTextareaKeyDown?.(e)
       if (e.defaultPrevented) {
         return
       }
-      if (!isStreaming && submitOnEnter && e.key === 'Enter' && !e.shiftKey) {
+      if (!isStreaming && submitOnEnter && e.key === 'Enter' && !e.shiftKey && submittable) {
         e.preventDefault()
         onSubmit?.()
       }
@@ -144,7 +154,7 @@ export const PromptInput = forwardRef<HTMLFormElement, PromptInputProps>(
           type="submit"
           variant="default"
           className="size-[var(--touch-height-control)] rounded-lg flex items-center justify-center flex-shrink-0"
-          disabled={isLoading || !value.trim()}
+          disabled={isLoading || !submittable}
         >
           <ArrowUp className="size-[var(--icon-size-default)]" />
         </Button>

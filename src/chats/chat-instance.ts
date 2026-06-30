@@ -10,7 +10,7 @@ import { updateChatThread as defaultUpdateChatThread } from '@/dal/chat-threads'
 import { getAllSkills as defaultGetAllSkills } from '@/dal'
 import { extractLastUserText, resolveSkillTokenInstructions } from '@/skills/resolve-skill-system-messages'
 import { getDb as defaultGetDb } from '@/db/database'
-import { isNonRetryableClientError, isRateLimitError } from '@/lib/error-utils'
+import { isContextOverflowError, isNonRetryableClientError, isRateLimitError } from '@/lib/error-utils'
 import type { HttpClient } from '@/lib/http'
 import { trackEvent } from '@/lib/posthog'
 import type { FetchFn } from '@/lib/proxy-fetch'
@@ -297,7 +297,9 @@ export const createChatInstance = (
       // Don't burn retries on non-retryable 4xx errors — identical input fails
       // again (and the "Retrying…" UI would be a lie). Settle the error instead;
       // when it's a file rejection, the attachment-remediation layer re-delivers.
-      if (isNonRetryableClientError(lastError)) {
+      // Context-window overflow is included explicitly (it's deterministic even
+      // when no status survives to classify it as 4xx).
+      if (isNonRetryableClientError(lastError) || isContextOverflowError(lastError)) {
         useChatStore.getState().updateSession(id, { retriesExhausted: true })
         return
       }

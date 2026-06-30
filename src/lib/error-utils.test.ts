@@ -3,7 +3,13 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { describe, expect, it } from 'bun:test'
-import { createHandleError, getErrorStatusCode, isNonRetryableClientError, isRateLimitError } from './error-utils'
+import {
+  createHandleError,
+  getErrorStatusCode,
+  isContextOverflowError,
+  isNonRetryableClientError,
+  isRateLimitError,
+} from './error-utils'
 import type { HandleErrorCode } from '@/types/handle-errors'
 
 describe('isRateLimitError', () => {
@@ -252,5 +258,36 @@ describe('isNonRetryableClientError', () => {
 
   it('returns false for null', () => {
     expect(isNonRetryableClientError(null)).toBe(false)
+  })
+})
+
+describe('isContextOverflowError', () => {
+  it("detects Anthropic's 'prompt is too long' overflow", () => {
+    const error = new Error(
+      JSON.stringify({ error: 'prompt is too long: 250000 tokens > 200000 maximum', status: 400 }),
+    )
+    expect(isContextOverflowError(error)).toBe(true)
+  })
+
+  it("detects OpenAI's context_length_exceeded", () => {
+    const error = new Error(JSON.stringify({ error: 'context_length_exceeded', statusCode: 400 }))
+    expect(isContextOverflowError(error)).toBe(true)
+  })
+
+  it("detects 'maximum context length' phrasing", () => {
+    expect(isContextOverflowError(new Error("This model's maximum context length is 128000 tokens"))).toBe(true)
+  })
+
+  it('does not match a content rejection', () => {
+    const error = new Error(JSON.stringify({ error: 'content.str: Input should be a valid string', status: 400 }))
+    expect(isContextOverflowError(error)).toBe(false)
+  })
+
+  it('does not match a rate limit', () => {
+    expect(isContextOverflowError(new Error('Too many requests'))).toBe(false)
+  })
+
+  it('returns false for null', () => {
+    expect(isContextOverflowError(null)).toBe(false)
   })
 })

@@ -53,7 +53,7 @@ export const ErrorMessage = memo(
         <div className="flex items-center justify-between gap-2 min-h-[var(--touch-height-sm)]">
           <p className="text-destructive/80 text-[length:var(--font-size-body)]">
             {deliveryExhausted
-              ? "This model couldn't read the attached file. Try a different model, or use the resend options on the file."
+              ? "This model couldn't read the attached file. Try a different model."
               : 'Something went wrong. Please try again.'}
           </p>
           <div className="flex shrink-0 items-center gap-2">

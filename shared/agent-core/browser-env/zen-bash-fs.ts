@@ -28,7 +28,7 @@
  */
 
 import * as fsp from '@zenfs/core/promises'
-import { dirname, resolve } from '@zenfs/core/path'
+import { resolve } from '@zenfs/core/path'
 import type { BufferEncoding, CpOptions, FileContent, FsStat, IFileSystem, MkdirOptions, RmOptions } from 'just-bash'
 import type { ZenStats } from './fs-helpers.ts'
 import { isWithinWorkspace, resolveInWorkspace } from './workspace-jail.ts'
@@ -144,12 +144,16 @@ export class ZenBashFileSystem implements IFileSystem {
     await fsp.chmod(this.jailed(path), mode)
   }
 
-  async symlink(target: string, linkPath: string): Promise<void> {
-    const resolvedLink = this.jailed(linkPath)
-    // The target must also stay inside the workspace: ZenFS follows links when
-    // reading, so an escaping target would leak through an in-jail link.
-    resolveInWorkspace(this.jailRoot, resolve(dirname(resolvedLink), target))
-    await fsp.symlink(target, resolvedLink)
+  async symlink(_target: string, _linkPath: string): Promise<void> {
+    // Symlinks are disallowed outright. Validating a link's target only at
+    // creation is a lexical check: it resolves the *stored relative* target
+    // against the link's current directory, so a later `mv`/`cp` that relocates
+    // the link to a shallower dir leaves that same relative target pointing
+    // outside the jail — a cross-thread read/write on the shared OPFS mount.
+    // Re-validating on every relocation is brittle; the coding agent never needs
+    // `ln -s`, so refuse it and remove the escape class entirely. just-bash maps
+    // this throw to a non-zero exit for `ln -s`.
+    throw new Error('symlinks are not allowed in the workspace jail')
   }
 
   async link(existingPath: string, newPath: string): Promise<void> {

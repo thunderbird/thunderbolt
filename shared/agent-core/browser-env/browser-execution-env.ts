@@ -28,10 +28,10 @@
 import {
   err,
   ExecutionError,
+  FileError,
   ok,
   toError,
   type ExecutionEnv,
-  type FileError,
   type FileInfo,
   type Result,
   type ShellExecOptions,
@@ -40,7 +40,7 @@ import * as fsp from '@zenfs/core/promises'
 import { dirname, join, resolve } from '@zenfs/core/path'
 import { Bash } from 'just-bash'
 import { abortedResult, fileInfoFrom, splitLines, toFileError } from './fs-helpers.ts'
-import { isWithinWorkspace } from './workspace-jail.ts'
+import { isWithinWorkspace, resolveInWorkspace } from './workspace-jail.ts'
 import { ZenBashFileSystem } from './zen-bash-fs.ts'
 
 /** Per-env subdirectory (relative to the env's root) under which
@@ -66,7 +66,34 @@ export class BrowserExecutionEnv implements ExecutionEnv {
     this.bashFs = new ZenBashFileSystem(options.cwd)
   }
 
+  /**
+   * Resolve `path` against this env's workspace root and assert it stays inside
+   * the jail, returning a `permission_denied` {@link FileError} on escape so the
+   * never-throw contract holds. This is the same invariant {@link exec} and
+   * {@link ZenBashFileSystem} enforce; centralising it here means every
+   * path-accepting filesystem method is jailed by construction rather than by
+   * each call site remembering to re-check.
+   *
+   * This check is purely lexical (it does not follow symlinks). That is sound
+   * because the shared mount can never hold a symlink whose physical target
+   * escapes the jail: {@link ZenBashFileSystem.symlink} refuses creation, and the
+   * {@link ExecutionEnv} surface exposes no symlink primitive — so there is no
+   * agent-reachable path to plant one. {@link canonicalPath} additionally
+   * re-validates the resolved real path as defense-in-depth.
+   */
+  private jailed(path: string): Result<string, FileError> {
+    try {
+      return ok(resolveInWorkspace(this.cwd, path))
+    } catch (error) {
+      return err(new FileError('permission_denied', toError(error).message, path))
+    }
+  }
+
   async absolutePath(path: string): Promise<Result<string, FileError>> {
+    // Pure path computation, deliberately un-jailed (mirrors ZenBashFileSystem's
+    // `resolvePath`): it grants no filesystem access — every method that does
+    // touch the mount routes through `jailed()` — and Pi's tools rely on it to
+    // compute ancestor paths during traversal.
     return ok(resolve(this.cwd, path))
   }
 
@@ -123,13 +150,14 @@ export class BrowserExecutionEnv implements ExecutionEnv {
   }
 
   async readTextFile(path: string, abortSignal?: AbortSignal): Promise<Result<string, FileError>> {
-    const resolved = resolve(this.cwd, path)
-    const aborted = abortedResult(abortSignal, resolved)
+    const resolved = this.jailed(path)
+    if (!resolved.ok) return resolved
+    const aborted = abortedResult(abortSignal, resolved.value)
     if (aborted) return aborted
     try {
-      return ok(await fsp.readFile(resolved, { encoding: 'utf8' }))
+      return ok(await fsp.readFile(resolved.value, { encoding: 'utf8' }))
     } catch (error) {
-      return err(toFileError(error, resolved))
+      return err(toFileError(error, resolved.value))
     }
   }
 
@@ -137,26 +165,28 @@ export class BrowserExecutionEnv implements ExecutionEnv {
     path: string,
     options?: { maxLines?: number; abortSignal?: AbortSignal },
   ): Promise<Result<string[], FileError>> {
-    const resolved = resolve(this.cwd, path)
-    const aborted = abortedResult(options?.abortSignal, resolved)
+    const resolved = this.jailed(path)
+    if (!resolved.ok) return resolved
+    const aborted = abortedResult(options?.abortSignal, resolved.value)
     if (aborted) return aborted
     if (options?.maxLines !== undefined && options.maxLines <= 0) return ok([])
     try {
-      const lines = splitLines(await fsp.readFile(resolved, { encoding: 'utf8' }))
+      const lines = splitLines(await fsp.readFile(resolved.value, { encoding: 'utf8' }))
       return ok(options?.maxLines !== undefined ? lines.slice(0, options.maxLines) : lines)
     } catch (error) {
-      return err(toFileError(error, resolved))
+      return err(toFileError(error, resolved.value))
     }
   }
 
   async readBinaryFile(path: string, abortSignal?: AbortSignal): Promise<Result<Uint8Array, FileError>> {
-    const resolved = resolve(this.cwd, path)
-    const aborted = abortedResult(abortSignal, resolved)
+    const resolved = this.jailed(path)
+    if (!resolved.ok) return resolved
+    const aborted = abortedResult(abortSignal, resolved.value)
     if (aborted) return aborted
     try {
-      return ok(new Uint8Array(await fsp.readFile(resolved)))
+      return ok(new Uint8Array(await fsp.readFile(resolved.value)))
     } catch (error) {
-      return err(toFileError(error, resolved))
+      return err(toFileError(error, resolved.value))
     }
   }
 
@@ -165,66 +195,79 @@ export class BrowserExecutionEnv implements ExecutionEnv {
     content: string | Uint8Array,
     abortSignal?: AbortSignal,
   ): Promise<Result<void, FileError>> {
-    const resolved = resolve(this.cwd, path)
-    const aborted = abortedResult(abortSignal, resolved)
+    const resolved = this.jailed(path)
+    if (!resolved.ok) return resolved
+    const aborted = abortedResult(abortSignal, resolved.value)
     if (aborted) return aborted
     try {
-      await fsp.mkdir(dirname(resolved), { recursive: true })
-      const afterMkdir = abortedResult(abortSignal, resolved)
+      await fsp.mkdir(dirname(resolved.value), { recursive: true })
+      const afterMkdir = abortedResult(abortSignal, resolved.value)
       if (afterMkdir) return afterMkdir
-      await fsp.writeFile(resolved, content)
+      await fsp.writeFile(resolved.value, content)
       return ok(undefined)
     } catch (error) {
-      return err(toFileError(error, resolved))
+      return err(toFileError(error, resolved.value))
     }
   }
 
   async appendFile(path: string, content: string | Uint8Array): Promise<Result<void, FileError>> {
-    const resolved = resolve(this.cwd, path)
+    const resolved = this.jailed(path)
+    if (!resolved.ok) return resolved
     try {
-      await fsp.mkdir(dirname(resolved), { recursive: true })
-      await fsp.appendFile(resolved, content)
+      await fsp.mkdir(dirname(resolved.value), { recursive: true })
+      await fsp.appendFile(resolved.value, content)
       return ok(undefined)
     } catch (error) {
-      return err(toFileError(error, resolved))
+      return err(toFileError(error, resolved.value))
     }
   }
 
   async fileInfo(path: string): Promise<Result<FileInfo, FileError>> {
-    const resolved = resolve(this.cwd, path)
+    const resolved = this.jailed(path)
+    if (!resolved.ok) return resolved
     try {
-      return fileInfoFrom(resolved, await fsp.lstat(resolved))
+      return fileInfoFrom(resolved.value, await fsp.lstat(resolved.value))
     } catch (error) {
-      return err(toFileError(error, resolved))
+      return err(toFileError(error, resolved.value))
     }
   }
 
   async listDir(path: string, abortSignal?: AbortSignal): Promise<Result<FileInfo[], FileError>> {
-    const resolved = resolve(this.cwd, path)
-    const aborted = abortedResult(abortSignal, resolved)
+    const resolved = this.jailed(path)
+    if (!resolved.ok) return resolved
+    const aborted = abortedResult(abortSignal, resolved.value)
     if (aborted) return aborted
     try {
-      const entries = await fsp.readdir(resolved, { withFileTypes: true })
+      const entries = await fsp.readdir(resolved.value, { withFileTypes: true })
       const infos: FileInfo[] = []
       for (const entry of entries) {
-        const loopAborted = abortedResult(abortSignal, resolved)
+        const loopAborted = abortedResult(abortSignal, resolved.value)
         if (loopAborted) return loopAborted
-        const childPath = join(resolved, entry.name)
+        const childPath = join(resolved.value, entry.name)
         const info = fileInfoFrom(childPath, await fsp.lstat(childPath))
         if (info.ok) infos.push(info.value)
       }
       return ok(infos)
     } catch (error) {
-      return err(toFileError(error, resolved))
+      return err(toFileError(error, resolved.value))
     }
   }
 
   async canonicalPath(path: string): Promise<Result<string, FileError>> {
-    const resolved = resolve(this.cwd, path)
+    const resolved = this.jailed(path)
+    if (!resolved.ok) return resolved
     try {
-      return ok(await fsp.realpath(resolved))
+      const real = await fsp.realpath(resolved.value)
+      // Defense-in-depth: `realpath` is the one method that follows symlinks, so
+      // re-assert the canonical target stays in the jail. With symlink creation
+      // refused this never fires, but it keeps the boundary from resting solely
+      // on that invariant.
+      if (!isWithinWorkspace(this.cwd, real)) {
+        return err(new FileError('permission_denied', `path escapes workspace: ${path}`, path))
+      }
+      return ok(real)
     } catch (error) {
-      return err(toFileError(error, resolved))
+      return err(toFileError(error, resolved.value))
     }
   }
 
@@ -236,22 +279,24 @@ export class BrowserExecutionEnv implements ExecutionEnv {
   }
 
   async createDir(path: string, options?: { recursive?: boolean }): Promise<Result<void, FileError>> {
-    const resolved = resolve(this.cwd, path)
+    const resolved = this.jailed(path)
+    if (!resolved.ok) return resolved
     try {
-      await fsp.mkdir(resolved, { recursive: options?.recursive ?? true })
+      await fsp.mkdir(resolved.value, { recursive: options?.recursive ?? true })
       return ok(undefined)
     } catch (error) {
-      return err(toFileError(error, resolved))
+      return err(toFileError(error, resolved.value))
     }
   }
 
   async remove(path: string, options?: { recursive?: boolean; force?: boolean }): Promise<Result<void, FileError>> {
-    const resolved = resolve(this.cwd, path)
+    const resolved = this.jailed(path)
+    if (!resolved.ok) return resolved
     try {
-      await fsp.rm(resolved, { recursive: options?.recursive ?? false, force: options?.force ?? false })
+      await fsp.rm(resolved.value, { recursive: options?.recursive ?? false, force: options?.force ?? false })
       return ok(undefined)
     } catch (error) {
-      return err(toFileError(error, resolved))
+      return err(toFileError(error, resolved.value))
     }
   }
 

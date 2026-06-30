@@ -10,6 +10,7 @@
 
 import { beforeAll, describe, expect, it } from 'bun:test'
 import * as fsp from '@zenfs/core/promises'
+import { Bash } from 'just-bash'
 import { mountInMemoryFs } from './mount.ts'
 import { ZenBashFileSystem } from './zen-bash-fs.ts'
 
@@ -67,8 +68,32 @@ describe('ZenBashFileSystem jail', () => {
     await expect(fs.mv('/workspace/t2/secret.txt', 'stolen.txt')).rejects.toThrow('path escapes workspace')
   })
 
-  it('blocks creating a symlink whose target escapes', async () => {
-    await expect(fs.symlink('/workspace/t2/secret.txt', '/workspace/t1/link')).rejects.toThrow('path escapes workspace')
+  it('disallows symlink creation outright (no `ln -s`)', async () => {
+    // Symlinks are refused even when the target lexically resolves inside the
+    // jail: validating only at creation is bypassable by relocating the link
+    // later (see the relocation-escape regression below).
+    await expect(fs.symlink('../t2/secret.txt', '/workspace/t1/link')).rejects.toThrow(
+      'symlinks are not allowed in the workspace jail',
+    )
+    await expect(fs.symlink('inside.txt', '/workspace/t1/link')).rejects.toThrow(
+      'symlinks are not allowed in the workspace jail',
+    )
+  })
+
+  it('blocks the symlink-relocation jail escape: `ln -s ../sibling deep/x && mv deep/x x && cat x/secret`', async () => {
+    // The classic lexical-validation bypass: `../sibling` resolves INSIDE the
+    // jail from `deep/x` (-> /workspace/t1/sibling), but once the link is moved
+    // up to `x` the same stored relative target escapes to /workspace/sibling.
+    // Disallowing symlink creation kills the chain at `ln -s`.
+    await fsp.mkdir('/workspace/sibling', { recursive: true })
+    await fsp.writeFile('/workspace/sibling/secret', 'TOPSECRET')
+    await fsp.mkdir('/workspace/t1/deep', { recursive: true })
+
+    const bash = new Bash({ fs, cwd: JAIL, defenseInDepth: false })
+    const result = await bash.exec('ln -s ../sibling deep/x && mv deep/x x && cat x/secret', {})
+
+    expect(result.stdout).not.toContain('TOPSECRET')
+    expect(result.exitCode).not.toBe(0)
   })
 
   it('exists() returns false for out-of-jail paths instead of throwing', async () => {

@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { getTransformer } from '@/files/transformers'
+import { defaultDeliveryMode, getTransformer } from '@/files/transformers'
 import type { AttachmentData, ThunderboltUIMessage } from '@/types'
 import { getAttachment } from './file-blob-storage'
 
@@ -104,7 +104,11 @@ export const hydrateAttachmentsAsFileParts = async (
           if (!file) {
             return [part]
           }
-          if (part.data.deliverAs === 'text') {
+          // Explicit remediation override wins; otherwise plain-text files default
+          // to text delivery (lossless, universally accepted) and everything else
+          // to native bytes.
+          const mode = part.data.deliverAs ?? defaultDeliveryMode(part.data.mimeType)
+          if (mode === 'text') {
             const transformer = await getTransformer(part.data.mimeType, 'text')
             if (transformer) {
               const output = await transformer(file)
@@ -114,7 +118,7 @@ export const hydrateAttachmentsAsFileParts = async (
             }
             // No text transformer — fall through to native bytes.
           }
-          if (part.data.deliverAs === 'images') {
+          if (mode === 'images') {
             const transformer = await getTransformer(part.data.mimeType, 'images')
             if (transformer) {
               const output = await transformer(file)

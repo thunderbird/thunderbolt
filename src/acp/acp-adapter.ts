@@ -125,10 +125,19 @@ export const adaptCapabilities = (response: InitializeResponse): AgentCapabiliti
  * remediation chain — we never rasterize for ACP (a harness wants the real
  * bytes, not our lossy page images).
  */
+/** Injectable file deps for {@link buildPromptBlocks} — overridden in tests to avoid IndexedDB/pdfjs. */
+export type PromptBlockDeps = {
+  getTransformer: typeof getTransformer
+  getAttachment: typeof getAttachment
+}
+
+const defaultPromptBlockDeps: PromptBlockDeps = { getTransformer, getAttachment }
+
 export const buildPromptBlocks = async (
   init: RequestInit,
   skillInstructions: string[] | undefined,
   embeddedContext: boolean,
+  deps: PromptBlockDeps = defaultPromptBlockDeps,
 ): Promise<ContentBlock[]> => {
   if (typeof init.body !== 'string') {
     throw new Error('ACP adapter expects string body on init')
@@ -167,7 +176,7 @@ export const buildPromptBlocks = async (
   }
 
   // No embedded context: deliver text-extractable files as text blocks; flag the rest.
-  const resolved = await Promise.all(attachments.map(resolveTextDelivery))
+  const resolved = await Promise.all(attachments.map((attachment) => resolveTextDelivery(attachment, deps)))
   const textBlocks = resolved.flatMap((r) => (r.kind === 'text' ? [{ type: 'text' as const, text: r.text }] : []))
   const undeliverable = resolved.flatMap((r) => (r.kind === 'undeliverable' ? [r.filename] : []))
   const note =
@@ -180,9 +189,10 @@ export const buildPromptBlocks = async (
 /** Resolve one attachment to an extracted-text block, or mark it undeliverable (no text transformer). */
 const resolveTextDelivery = async (
   attachment: ReturnType<typeof getAttachments>[number],
+  deps: PromptBlockDeps,
 ): Promise<{ kind: 'text'; text: string } | { kind: 'undeliverable'; filename: string }> => {
-  const transformer = await getTransformer(attachment.mimeType, 'text')
-  const file = transformer ? await getAttachment(attachment.localFileId) : null
+  const transformer = await deps.getTransformer(attachment.mimeType, 'text')
+  const file = transformer ? await deps.getAttachment(attachment.localFileId) : null
   if (transformer && file) {
     const output = await transformer(file)
     if ('text' in output) {

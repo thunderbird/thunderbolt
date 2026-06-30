@@ -32,6 +32,24 @@ export type TransformerKey = `${string}->${TransformTarget}`
 export const docxMime = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
 
 /**
+ * True for files that are already text (CSV, plain text, Markdown, JSON, logs…).
+ * These get a passthrough text transformer (so any `text/*` type works without
+ * enumerating it) and are delivered as text by default — see
+ * {@link defaultDeliveryMode}. Excludes rich binary formats like PDF/docx, which
+ * have their own extractors and a richer native representation.
+ */
+export const isPlainTextMime = (mime: string): boolean => mime.startsWith('text/') || mime === 'application/json'
+
+/**
+ * Default delivery mode for an attachment given its MIME type, when no explicit
+ * {@link import('@/types').AttachmentData.deliverAs} override is set. Plain-text
+ * files go out as text (lossless and universally accepted); everything else
+ * defaults to native bytes (`undefined`).
+ */
+export const defaultDeliveryMode = (mime: string): TransformTarget | undefined =>
+  isPlainTextMime(mime) ? 'text' : undefined
+
+/**
  * Lazy loaders keyed by `"<source-mime>-><target>"`. Adding a transformer is a
  * one-line entry here plus its module — nothing else in the pipeline needs to
  * know the concrete type.
@@ -44,10 +62,17 @@ const loaders: Partial<Record<TransformerKey, () => Promise<Transformer>>> = {
 
 /** True if a transformer exists for this source MIME → target. Sync, for routing decisions. */
 export const hasTransformer = (sourceMime: string, target: TransformTarget): boolean =>
-  `${sourceMime}->${target}` in loaders
+  `${sourceMime}->${target}` in loaders || (target === 'text' && isPlainTextMime(sourceMime))
 
 /** Lazy-load the matching transformer, or `null` if none is registered. */
 export const getTransformer = async (sourceMime: string, target: TransformTarget): Promise<Transformer | null> => {
   const loader = loaders[`${sourceMime}->${target}` as TransformerKey]
-  return loader ? loader() : null
+  if (loader) {
+    return loader()
+  }
+  // Any text-ish type maps to the passthrough text transformer without an explicit entry.
+  if (target === 'text' && isPlainTextMime(sourceMime)) {
+    return (await import('./text-passthrough')).textPassthrough
+  }
+  return null
 }

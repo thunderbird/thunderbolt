@@ -6,29 +6,25 @@
  * `buildPromptBlocks` attachment delivery (THU-628). Focuses on the no-
  * `embeddedContext` graceful-degradation branch: a text-extractable file is sent
  * as a `text` block; anything else gets a visible "could not be delivered" note
- * rather than being silently dropped. The text transformer and on-device blob
- * store are mocked, so this needs neither pdfjs nor IndexedDB.
+ * rather than being silently dropped.
  *
- * Mocks are registered before the dynamic import below — bun applies
- * `mock.module` at call time to subsequent imports (not hoisted), so the module
- * under test must be imported after.
+ * File deps (`getTransformer`/`getAttachment`) are injected rather than mocked at
+ * the module level — a `mock.module` here would leak across test files in bun's
+ * shared process.
  */
 
-import { describe, expect, it, mock } from 'bun:test'
+import { describe, expect, it } from 'bun:test'
+import type { StoredFile } from '@/lib/file-blob-storage'
+import { buildAttachmentPart } from '@/lib/attachments'
+import { buildPromptBlocks, type PromptBlockDeps } from './acp-adapter'
 
-// PDF has a text transformer; everything else (e.g. images) has none.
-mock.module('@/files/transformers', () => ({
-  getTransformer: async (mime: string, target: string) =>
+// PDF has a text transformer; everything else (e.g. images) has none. The
+// transformer ignores the file bytes, so any non-null StoredFile will do.
+const deps: PromptBlockDeps = {
+  getTransformer: async (mime, target) =>
     mime === 'application/pdf' && target === 'text' ? async () => ({ text: 'EXTRACTED PDF TEXT' }) : null,
-}))
-
-// Any non-null stored file; the mocked transformer ignores the bytes.
-mock.module('@/lib/file-blob-storage', () => ({
-  getAttachment: async () => ({ blob: new Blob(['x']) }),
-}))
-
-const { buildPromptBlocks } = await import('./acp-adapter')
-const { buildAttachmentPart } = await import('@/lib/attachments')
+  getAttachment: async () => ({ blob: new Blob(['x']) }) as StoredFile,
+}
 
 type Block = { type: string; text?: string }
 
@@ -42,7 +38,7 @@ const textPart = (text: string) => ({ type: 'text', text })
 
 describe('buildPromptBlocks — no embeddedContext', () => {
   it('sends a text-extractable file as an extracted text block', async () => {
-    const blocks = (await buildPromptBlocks(initWith([textPart('hi'), pdf()]), undefined, false)) as Block[]
+    const blocks = (await buildPromptBlocks(initWith([textPart('hi'), pdf()]), undefined, false, deps)) as Block[]
 
     expect(blocks).toHaveLength(2)
     expect(blocks[0]).toEqual({ type: 'text', text: 'hi' })
@@ -51,7 +47,7 @@ describe('buildPromptBlocks — no embeddedContext', () => {
   })
 
   it('flags a non-text file as undeliverable instead of dropping it silently', async () => {
-    const blocks = (await buildPromptBlocks(initWith([textPart('hi'), png()]), undefined, false)) as Block[]
+    const blocks = (await buildPromptBlocks(initWith([textPart('hi'), png()]), undefined, false, deps)) as Block[]
 
     expect(blocks).toHaveLength(1)
     expect(blocks[0]?.text).toContain('hi')
@@ -59,7 +55,12 @@ describe('buildPromptBlocks — no embeddedContext', () => {
   })
 
   it('mixes both: text block for the PDF, note for the image', async () => {
-    const blocks = (await buildPromptBlocks(initWith([textPart('hi'), pdf(), png()]), undefined, false)) as Block[]
+    const blocks = (await buildPromptBlocks(
+      initWith([textPart('hi'), pdf(), png()]),
+      undefined,
+      false,
+      deps,
+    )) as Block[]
 
     expect(blocks).toHaveLength(2)
     expect(blocks[0]?.text).toContain('[Attachment "pic.png" could not be delivered to this agent]')
@@ -68,7 +69,7 @@ describe('buildPromptBlocks — no embeddedContext', () => {
   })
 
   it('with no attachments, returns a single text block (no note)', async () => {
-    const blocks = (await buildPromptBlocks(initWith([textPart('just text')]), undefined, false)) as Block[]
+    const blocks = (await buildPromptBlocks(initWith([textPart('just text')]), undefined, false, deps)) as Block[]
 
     expect(blocks).toHaveLength(1)
     expect(blocks[0]).toEqual({ type: 'text', text: 'just text' })

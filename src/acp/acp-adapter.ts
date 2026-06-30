@@ -46,6 +46,8 @@ import { ClientSideConnection as ClientSideConnectionImpl } from '@agentclientpr
 import type { Agent, AgentAdapter, AgentAdapterContext, AgentCapabilities, EnsureSessionContext } from '@/types/acp'
 import type { ThunderboltUIMessage } from '@/types'
 import { getAttachments, hydrateAttachmentsAsBase64 } from '@/lib/attachments'
+import { getTransformer } from '@/files/transformers'
+import { getAttachment } from '@/lib/file-blob-storage'
 import { openTransport } from './transports'
 import type { AcpTransport } from './types'
 import { createTranslatorStream, toAcpCommands, type AcpCommand } from './translators/acp-to-ai-sdk'
@@ -109,13 +111,21 @@ export const adaptCapabilities = (response: InitializeResponse): AgentCapabiliti
  * built-in transport posts `{ messages: ThunderboltUIMessage[], id }`; we
  * forward the last user message's text parts as a `text` block.
  *
- * When the agent advertises `embeddedContext`, attachment references are
- * hydrated from IndexedDB and appended as embedded `resource` blocks (base64
- * bytes) — the backend forwards these to the pipeline via `temporary_files`.
- * Agents without `embeddedContext` get text only; attachments are dropped
- * rather than sent to an agent that can't accept them.
+ * An ACP agent is itself a harness (it does its own file reading/parsing), so
+ * the right default is native bytes: when the agent advertises `embeddedContext`
+ * each attachment is hydrated from IndexedDB and sent as an embedded `resource`
+ * block (base64) — the backend forwards these to the pipeline via
+ * `temporary_files`.
+ *
+ * Without `embeddedContext` (the ACP baseline — only `Text`/`ResourceLink` are
+ * guaranteed) the agent can't take embedded bytes, so rather than silently
+ * dropping the file we degrade: a text-extractable file (PDF/docx) is sent as
+ * an extracted `text` block, and anything else gets a visible "could not be
+ * delivered" note in the prompt. This is graceful degradation, NOT the
+ * remediation chain — we never rasterize for ACP (a harness wants the real
+ * bytes, not our lossy page images).
  */
-const buildPromptBlocks = async (
+export const buildPromptBlocks = async (
   init: RequestInit,
   skillInstructions: string[] | undefined,
   embeddedContext: boolean,
@@ -135,23 +145,51 @@ const buildPromptBlocks = async (
   // Skill instructions ride the text block (ACP has no system channel) — see composeAcpPrompt.
   const text = composeAcpPrompt(skillInstructions, userText)
 
-  if (!embeddedContext) {
+  const attachments = getAttachments(lastUser)
+  if (attachments.length === 0) {
     return [{ type: 'text', text }]
   }
 
-  const hydrated = await hydrateAttachmentsAsBase64(getAttachments(lastUser))
-  const resourceBlocks = hydrated.map(
-    (attachment): ContentBlock => ({
-      type: 'resource',
-      resource: {
-        // The backend derives the filename from the URI's last path segment.
-        uri: `attachment://${attachment.localFileId}/${attachment.filename}`,
-        mimeType: attachment.mimeType,
-        blob: attachment.base64,
-      },
-    }),
-  )
-  return [{ type: 'text', text }, ...resourceBlocks]
+  if (embeddedContext) {
+    const hydrated = await hydrateAttachmentsAsBase64(attachments)
+    const resourceBlocks = hydrated.map(
+      (attachment): ContentBlock => ({
+        type: 'resource',
+        resource: {
+          // The backend derives the filename from the URI's last path segment.
+          uri: `attachment://${attachment.localFileId}/${attachment.filename}`,
+          mimeType: attachment.mimeType,
+          blob: attachment.base64,
+        },
+      }),
+    )
+    return [{ type: 'text', text }, ...resourceBlocks]
+  }
+
+  // No embedded context: deliver text-extractable files as text blocks; flag the rest.
+  const resolved = await Promise.all(attachments.map(resolveTextDelivery))
+  const textBlocks = resolved.flatMap((r) => (r.kind === 'text' ? [{ type: 'text' as const, text: r.text }] : []))
+  const undeliverable = resolved.flatMap((r) => (r.kind === 'undeliverable' ? [r.filename] : []))
+  const note =
+    undeliverable.length > 0
+      ? `\n\n${undeliverable.map((name) => `[Attachment "${name}" could not be delivered to this agent]`).join('\n')}`
+      : ''
+  return [{ type: 'text', text: text + note }, ...textBlocks]
+}
+
+/** Resolve one attachment to an extracted-text block, or mark it undeliverable (no text transformer). */
+const resolveTextDelivery = async (
+  attachment: ReturnType<typeof getAttachments>[number],
+): Promise<{ kind: 'text'; text: string } | { kind: 'undeliverable'; filename: string }> => {
+  const transformer = await getTransformer(attachment.mimeType, 'text')
+  const file = transformer ? await getAttachment(attachment.localFileId) : null
+  if (transformer && file) {
+    const output = await transformer(file)
+    if ('text' in output) {
+      return { kind: 'text', text: `[Attachment: ${attachment.filename}]\n\n${output.text}` }
+    }
+  }
+  return { kind: 'undeliverable', filename: attachment.filename }
 }
 
 /** Fold resolved user-skill instructions into the prompt text. ACP has no

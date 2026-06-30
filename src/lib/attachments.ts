@@ -4,7 +4,7 @@
 
 import { defaultDeliveryMode, getTransformer } from '@/files/transformers'
 import type { AttachmentData, ThunderboltUIMessage } from '@/types'
-import { getAttachment } from './file-blob-storage'
+import { getAttachment, type StoredFile } from './file-blob-storage'
 
 /**
  * The AI SDK `data-*` part type for a chat attachment reference. The part holds
@@ -68,31 +68,107 @@ export const hydrateAttachmentsAsBase64 = async (attachments: AttachmentData[]):
   return hydrated.filter((entry): entry is HydratedAttachment => entry !== null)
 }
 
+/** Injectable IO for {@link hydrateAttachmentsAsFileParts} — overridden in tests to avoid IndexedDB/transformers. */
+export type HydrationDeps = {
+  getAttachment: typeof getAttachment
+  getTransformer: typeof getTransformer
+}
+
+const defaultHydrationDeps: HydrationDeps = { getAttachment, getTransformer }
+
+/** A `text` part carrying an attachment's extracted text, or just its name when there's no text to send. */
+const attachmentTextPart = (filename: string, text?: string) => ({
+  type: 'text' as const,
+  text: text ? `[Attachment: ${filename}]\n\n${text}` : `[Attachment: ${filename}]`,
+})
+
 /**
- * Built-in (AI SDK) transport hydration: replace reference-only attachment
- * parts with the bytes (or extracted text) so `convertToModelMessages` forwards
- * them to the model. Bytes are read from IndexedDB at send time — the persisted
- * message keeps only the reference. Attachments missing on this device are left
- * as the reference part (which `convertToModelMessages` drops from model input).
+ * Deliver a *current-turn* attachment in full (see {@link AttachmentData.deliverAs}):
+ *   - default → AI SDK `file` part, bytes inlined as a data URL (e.g. an Anthropic
+ *     PDF document block) — the native-first path. Plain-text files default to text.
+ *   - `'text'` → run the text transformer and emit a `text` part instead (the
+ *     convert-to-text remediation). Falls back to native bytes if no transformer.
+ *   - `'images'` → rasterize (e.g. a scanned PDF) into one image `file` part per
+ *     page for a vision model. Falls back to native bytes if no transformer.
+ */
+const hydrateCurrentAttachment = async (data: AttachmentData, file: StoredFile, deps: HydrationDeps) => {
+  const mode = data.deliverAs ?? defaultDeliveryMode(data.mimeType)
+  if (mode === 'text') {
+    const transformer = await deps.getTransformer(data.mimeType, 'text')
+    if (transformer) {
+      const output = await transformer(file)
+      if ('text' in output) {
+        return [attachmentTextPart(data.filename, output.text)]
+      }
+    }
+    // No text transformer — fall through to native bytes.
+  }
+  if (mode === 'images') {
+    const transformer = await deps.getTransformer(data.mimeType, 'images')
+    if (transformer) {
+      const output = await transformer(file)
+      if ('images' in output) {
+        return output.images.map((image) => ({
+          type: 'file' as const,
+          mediaType: image.mimeType,
+          filename: data.filename,
+          url: image.dataUrl,
+        }))
+      }
+    }
+    // No images transformer — fall through to native bytes.
+  }
+  const url = await blobToDataUrl(file.blob)
+  return [{ type: 'file' as const, mediaType: data.mimeType, filename: data.filename, url }]
+}
+
+/**
+ * Reduce a *historical* attachment (from an earlier turn) to its extracted text,
+ * or a bare `[Attachment: name]` reference when no text can be extracted (e.g. an
+ * image). Historical attachments are NEVER re-sent as native bytes — see
+ * {@link hydrateAttachmentsAsFileParts}.
+ */
+const hydrateHistoricalAttachment = async (data: AttachmentData, file: StoredFile, deps: HydrationDeps) => {
+  const transformer = await deps.getTransformer(data.mimeType, 'text')
+  if (transformer) {
+    const output = await transformer(file)
+    if ('text' in output) {
+      return [attachmentTextPart(data.filename, output.text)]
+    }
+  }
+  return [attachmentTextPart(data.filename)]
+}
+
+/**
+ * Built-in (AI SDK) transport hydration: replace reference-only attachment parts
+ * with their content so `convertToModelMessages` forwards them to the model.
+ * Bytes are read from IndexedDB at send time — the persisted message keeps only
+ * the reference. Attachments missing on this device are left as the reference
+ * part (which `convertToModelMessages` drops from model input).
  *
- * Delivery per attachment (see {@link AttachmentData.deliverAs}):
- *   - default → AI SDK `file` part, bytes inlined as a data URL (e.g. an
- *     Anthropic PDF document block) — the native-first path.
- *   - `'text'` → run the client-side transformer and emit a `text` part instead
- *     (the "convert to text & retry" remediation for models that can't read the
- *     native file). Falls back to the file part if no transformer is registered.
- *   - `'images'` → rasterize the document (e.g. a scanned PDF) and emit one
- *     image `file` part per page for a vision model. Falls back to native bytes
- *     if no images transformer is registered.
+ * Only the **latest user turn** delivers its attachments in full (native bytes /
+ * images / extracted text). Attachments from **earlier** turns are reduced to
+ * extracted text (or a `[Attachment: name]` reference) and are NEVER re-sent as
+ * native bytes. Stateless chat resends the whole history every turn, so re-inlining
+ * historical bytes both bloats each request and — critically — poisons the *entire
+ * thread* if any one historical attachment is undeliverable (e.g. an image a model
+ * rejects, which has no remediation path): the bad part replays forever and every
+ * subsequent send fails. Reducing history to text removes the native bytes (so
+ * nothing replays that can fail), keeps follow-up questions answerable, and shrinks
+ * the payload. The current turn still gets full fidelity, and remediation still
+ * operates on it.
  */
 export const hydrateAttachmentsAsFileParts = async (
   messages: ThunderboltUIMessage[],
-): Promise<ThunderboltUIMessage[]> =>
-  Promise.all(
-    messages.map(async (message) => {
+  deps: HydrationDeps = defaultHydrationDeps,
+): Promise<ThunderboltUIMessage[]> => {
+  const currentTurnIndex = messages.findLastIndex((message) => message.role === 'user')
+  return Promise.all(
+    messages.map(async (message, index) => {
       if (!message.parts.some(isAttachmentPart)) {
         return message
       }
+      const isCurrentTurn = index === currentTurnIndex
       // Each attachment maps to one or more parts (images yield one part per
       // page), so build arrays and flatten.
       const nested = await Promise.all(
@@ -100,43 +176,16 @@ export const hydrateAttachmentsAsFileParts = async (
           if (!isAttachmentPart(part)) {
             return [part]
           }
-          const file = await getAttachment(part.data.localFileId)
+          const file = await deps.getAttachment(part.data.localFileId)
           if (!file) {
             return [part]
           }
-          // Explicit remediation override wins; otherwise plain-text files default
-          // to text delivery (lossless, universally accepted) and everything else
-          // to native bytes.
-          const mode = part.data.deliverAs ?? defaultDeliveryMode(part.data.mimeType)
-          if (mode === 'text') {
-            const transformer = await getTransformer(part.data.mimeType, 'text')
-            if (transformer) {
-              const output = await transformer(file)
-              if ('text' in output) {
-                return [{ type: 'text' as const, text: `[Attachment: ${part.data.filename}]\n\n${output.text}` }]
-              }
-            }
-            // No text transformer — fall through to native bytes.
-          }
-          if (mode === 'images') {
-            const transformer = await getTransformer(part.data.mimeType, 'images')
-            if (transformer) {
-              const output = await transformer(file)
-              if ('images' in output) {
-                return output.images.map((image) => ({
-                  type: 'file' as const,
-                  mediaType: image.mimeType,
-                  filename: part.data.filename,
-                  url: image.dataUrl,
-                }))
-              }
-            }
-            // No images transformer — fall through to native bytes.
-          }
-          const url = await blobToDataUrl(file.blob)
-          return [{ type: 'file' as const, mediaType: part.data.mimeType, filename: part.data.filename, url }]
+          return isCurrentTurn
+            ? hydrateCurrentAttachment(part.data, file, deps)
+            : hydrateHistoricalAttachment(part.data, file, deps)
         }),
       )
       return { ...message, parts: nested.flat() }
     }),
   )
+}

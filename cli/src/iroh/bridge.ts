@@ -44,6 +44,13 @@ const RATE_MAX_KEYS = 4096
  *  connection, but a global cap bounds concurrent handshake cost regardless of
  *  identity. Generous enough that legitimate concurrent clients never hit it. */
 const MAX_CONCURRENT_HANDSHAKES = 16
+/** Hard ceiling on a single QUIC/TLS handshake. A peer that grabs a guard slot
+ *  then stalls accept()/connect() would otherwise pin that slot forever; with
+ *  {@link MAX_CONCURRENT_HANDSHAKES} such stalls every slot is held and legit
+ *  clients are locked out at the guard. Past this deadline we abandon the
+ *  handshake, releasing the slot. Generous enough that no real relay-routed
+ *  handshake hits it. */
+const HANDSHAKE_TIMEOUT_MS = 10_000
 
 /**
  * A lightweight per-key sliding-window rate limiter. `allow(key)` records the
@@ -111,13 +118,45 @@ const remoteKey = async (incoming: Incoming): Promise<string> => {
 
 /**
  * Complete the QUIC/TLS handshake for an incoming connection, releasing the
- * handshake guard slot the instant the handshake settles (success or failure) so
- * the slot covers only the CPU-bound handshake window, never the whole session.
+ * handshake guard slot the instant the handshake settles (success, failure, or
+ * timeout) so the slot covers only the bounded handshake window, never the whole
+ * session and never an indefinite stall.
+ *
+ * The handshake races a {@link HANDSHAKE_TIMEOUT_MS} deadline: a peer that takes a
+ * guard slot then stalls accept()/connect() can't pin the slot — past the deadline
+ * we abandon the wait and free the slot. The underlying handshake may still settle
+ * afterwards; if it resolves late we close the orphaned connection so it can't leak.
  */
 const handshake = async (incoming: Incoming, guard: { release: () => void }): Promise<Connection> => {
+  let timedOut = false
+  const connecting = (async () => (await incoming.accept()).connect())()
+  // Side-channel the late settle: if the deadline already won the race, close a
+  // connection that completes afterwards. The single trailing `.catch` covers both
+  // a late rejection (already surfaced by the race) and a throw from `close()`
+  // itself (the NAPI binding can throw), so the void-discarded chain can never leak
+  // an unhandled rejection. A peer that stalls *before* `accept()` yields a
+  // Connection has no JS-visible handle to abort (the binding exposes only
+  // `Connection.close()`); iroh's own QUIC transport timeout reaps that future, so
+  // it's bounded, not an unbounded leak — and the guard slot is already freed below.
+  void connecting
+    .then((connection) => {
+      if (timedOut) connection.close(CLOSE_REFUSED, reasonBytes('handshake timed out'))
+    })
+    .catch(() => undefined)
+
+  let timer: ReturnType<typeof setTimeout> | undefined
+  const deadline = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => {
+      timedOut = true
+      reject(new Error(`handshake exceeded ${HANDSHAKE_TIMEOUT_MS}ms`))
+    }, HANDSHAKE_TIMEOUT_MS)
+  })
+
   try {
-    return await (await incoming.accept()).connect()
+    return await Promise.race([connecting, deadline])
   } finally {
+    // Clears the timer on the win path so the deadline never rejects unhandled.
+    clearTimeout(timer)
     guard.release()
   }
 }

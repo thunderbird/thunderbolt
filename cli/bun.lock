@@ -9,7 +9,7 @@
         "@earendil-works/pi-agent-core": "0.80.2",
         "@earendil-works/pi-ai": "0.80.2",
         "@earendil-works/pi-coding-agent": "0.80.2",
-        "@number0/iroh": "^1.0.0",
+        "@number0/iroh": "1.0.0",
       },
       "devDependencies": {
         "@types/bun": "^1.2.20",

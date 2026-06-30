@@ -20,6 +20,7 @@
  * ACP and MCP share this exact pump (both speak ndjson JSON-RPC over stdio).
  */
 
+import { randomBytes, timingSafeEqual } from 'node:crypto'
 import type { ServerWebSocket, Subprocess } from 'bun'
 import type { BridgeConfig } from '../agent/types.ts'
 
@@ -84,12 +85,83 @@ export const spawnAgent = (command: readonly string[]): BridgeProc | null => {
   }
 }
 
+/** Origins the Thunderbolt app's webview presents as `Origin` on the WebSocket
+ *  handshake: the Vite dev server plus the native Tauri webview origins (which
+ *  vary by OS). A drive-by page the user visits in a normal browser cannot forge
+ *  any of these. A self-hosted/cloud build adds its own origin(s) via the
+ *  comma-separated `THUNDERBOLT_APP_ORIGIN`. */
+const DEFAULT_APP_ORIGINS = ['http://localhost:1420', 'tauri://localhost', 'http://tauri.localhost'] as const
+
+/**
+ * The set of `Origin` header values allowed to upgrade the loopback bridge: the
+ * built-in app origins plus any configured via `THUNDERBOLT_APP_ORIGIN`.
+ */
+export const bridgeAllowedOrigins = (): ReadonlySet<string> => {
+  const configured = (process.env.THUNDERBOLT_APP_ORIGIN ?? '')
+    .split(',')
+    .map((origin) => origin.trim())
+    .filter((origin) => origin.length > 0)
+  return new Set([...DEFAULT_APP_ORIGINS, ...configured])
+}
+
+/** Mint the per-run bridge secret: 256 bits of CSPRNG entropy, hex-encoded. It is
+ *  printed once as the `token` query param of the listen URL and required on every
+ *  upgrade, so only a client the user explicitly handed that URL to can connect. */
+export const generateBridgeToken = (): string => randomBytes(32).toString('hex')
+
+/** Constant-time token comparison. A length mismatch short-circuits to `false`
+ *  (`timingSafeEqual` throws on unequal lengths); the token length is fixed and
+ *  non-secret, so the early return leaks nothing exploitable. */
+const tokensMatch = (presented: string, expected: string): boolean => {
+  const a = Buffer.from(presented)
+  const b = Buffer.from(expected)
+  return a.length === b.length && timingSafeEqual(a, b)
+}
+
+/** Accept an upgrade, or reject it with an HTTP status + operator-facing reason. */
+export type UpgradeDecision = { readonly ok: true } | { readonly ok: false; readonly status: number; readonly reason: string }
+
+/**
+ * Authorize a WebSocket upgrade for the loopback bridge. Three independent gates,
+ * all required: the request path must be exactly `/`, the `Origin` header must be
+ * an allowlisted Thunderbolt app origin, and the `token` query param must equal
+ * the per-run secret (constant-time compared).
+ *
+ * This closes the drive-by host-RCE vector. The bridge spawns the host coding
+ * agent (bash) per connection, and WebSocket upgrades bypass CORS — so without
+ * these checks any site the user visits while the bridge runs could connect to
+ * `ws://127.0.0.1:<port>` and drive arbitrary host execution (the ACP permission
+ * gate is useless against a malicious client that auto-approves). A drive-by page
+ * can neither guess the token nor forge an allowlisted `Origin`, so it never
+ * reaches `srv.upgrade`.
+ */
+export const authorizeUpgrade = (
+  req: Request,
+  token: string,
+  allowedOrigins: ReadonlySet<string>,
+): UpgradeDecision => {
+  const url = new URL(req.url)
+  if (url.pathname !== '/') return { ok: false, status: 404, reason: 'unknown path (only / is bridged)' }
+
+  const origin = req.headers.get('origin')
+  if (!origin || !allowedOrigins.has(origin)) {
+    return { ok: false, status: 403, reason: `forbidden origin '${origin ?? '(none)'}'` }
+  }
+
+  const presented = url.searchParams.get('token')
+  if (!presented || !tokensMatch(presented, token)) return { ok: false, status: 401, reason: 'missing or invalid token' }
+
+  return { ok: true }
+}
+
 /**
  * Start the bridge server: listen for WebSocket connections and pump each one
  * to its own freshly-spawned `config.command` process. Returns once the server
  * is listening; the live server keeps the process alive until interrupted.
  */
 export const runBridge = async (config: BridgeConfig): Promise<void> => {
+  const token = generateBridgeToken()
+  const allowedOrigins = bridgeAllowedOrigins()
   const server = Bun.serve<BridgeSocketData>({
     // Loopback-only: this transport is unauthenticated, so it must not be
     // reachable from the LAN (Bun's default binds every interface). The G3
@@ -98,6 +170,11 @@ export const runBridge = async (config: BridgeConfig): Promise<void> => {
     hostname: '127.0.0.1',
     port: config.port,
     fetch(req, srv) {
+      // Loopback alone is not a security boundary: WebSocket upgrades bypass CORS,
+      // so any page the user visits can reach this port. Gate every upgrade on an
+      // allowlisted Origin + the unguessable per-run token before spawning bash.
+      const decision = authorizeUpgrade(req, token, allowedOrigins)
+      if (!decision.ok) return new Response(`thunderbolt bridge: ${decision.reason}\n`, { status: decision.status })
       if (srv.upgrade(req, { data: { proc: null } })) return undefined
       return new Response('thunderbolt bridge: WebSocket endpoint only\n', { status: 426 })
     },
@@ -149,11 +226,12 @@ export const runBridge = async (config: BridgeConfig): Promise<void> => {
   process.on('SIGTERM', shutdown)
 
   // Advertise the exact bound address (not `localhost`, which can resolve to
-  // the IPv6 `::1` and miss this IPv4-only loopback bind).
-  const url = `ws://127.0.0.1:${server.port}`
+  // the IPv6 `::1` and miss this IPv4-only loopback bind). The token rides in the
+  // URL, so pasting it whole into the app authenticates with no client change.
+  const url = `ws://127.0.0.1:${server.port}/?token=${token}`
   process.stdout.write(
-    `⚡ thunderbolt ${config.protocol} bridge (${config.transport}) listening on ${url}\n` +
+    `⚡ thunderbolt ${config.protocol} bridge (${config.transport}) listening on ws://127.0.0.1:${server.port}\n` +
       `   spawning per connection: ${config.command.join(' ')}\n` +
-      `   set this as the agent URL in the app: ${url}\n`,
+      `   set this as the agent URL in the app (includes the access token): ${url}\n`,
   )
 }

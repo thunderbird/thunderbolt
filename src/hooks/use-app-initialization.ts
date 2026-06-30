@@ -214,9 +214,8 @@ const executeInitializationSteps = async (httpClient?: HttpClient): Promise<Hand
   // of each other) — run in parallel; each wrapper swallows its own failure.
   const [tray, posthogClient] = await Promise.all([initializeTraySafely(), initializePostHogSafely(client)])
 
-  // Settle step0 so its duration is in the timing payload. fetchConfig never
-  // rejects (internal 5s timeout, errors caught) and in practice has long
-  // resolved while the steps above ran.
+  // Settle step 0 so its duration lands in the timing payload. fetchConfig
+  // never rejects (catch block + 5s timeout) and has typically resolved by now.
   await fetchConfigPromise
 
   const initTotalMs = Math.round(performance.now() - totalStartedAt)

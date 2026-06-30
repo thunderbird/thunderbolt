@@ -164,9 +164,11 @@ jobs:
           security unlock-keychain -p "build" build.keychain
           security list-keychains -d user -s build.keychain login.keychain
 
-          # Convert certificate to macOS-compatible format (using older encryption algorithms)
-          openssl pkcs12 -in certificate.p12 -out temp_cert.pem -clcerts -nokeys -passin pass:"$APPLE_DEVELOPER_CERTIFICATE_PASSWORD"
-          openssl pkcs12 -in certificate.p12 -out temp_key.pem -nocerts -nodes -passin pass:"$APPLE_DEVELOPER_CERTIFICATE_PASSWORD"
+          # Convert certificate to macOS-compatible format (using older encryption algorithms).
+          # -legacy loads OpenSSL 3's legacy provider so we can read p12s that Apple Developer
+          # exports with RC2-40-CBC; safe for modern p12s too (both providers stay available).
+          openssl pkcs12 -in certificate.p12 -out temp_cert.pem -clcerts -nokeys -legacy -passin pass:"$APPLE_DEVELOPER_CERTIFICATE_PASSWORD"
+          openssl pkcs12 -in certificate.p12 -out temp_key.pem -nocerts -nodes -legacy -passin pass:"$APPLE_DEVELOPER_CERTIFICATE_PASSWORD"
           openssl pkcs12 -export -out macos_certificate.p12 -inkey temp_key.pem -in temp_cert.pem -passout pass:"$APPLE_DEVELOPER_CERTIFICATE_PASSWORD" -keypbe PBE-SHA1-3DES -certpbe PBE-SHA1-3DES -macalg sha1
 
           # Import the converted certificate
@@ -347,13 +349,29 @@ jobs:
             src-tauri/target/x86_64-apple-darwin/release/bundle/macos/*.app.tar.gz
             src-tauri/target/x86_64-apple-darwin/release/bundle/macos/*.app.tar.gz.sig
 
-      # Skip CrabNebula for nightly builds
+      # Skip CrabNebula for nightly builds.
+      # A late-running matrix job (e.g. macOS Apple Silicon queued behind other
+      # runners) can hit the CrabNebula release after it has flipped to published,
+      # which makes `cn release upload` fail with "release was already published".
+      # We tolerate that race — the GitHub Release already has the asset, the
+      # CrabNebula auto-updater for this platform just misses this version — and
+      # surface a loud warning so any other failure mode stays visible. See THU-643.
       - name: Upload to CrabNebula Cloud
         if: ${{ !inputs.nightly }}
+        id: cn_upload
+        continue-on-error: true
         uses: crabnebula-dev/cloud-release@1a8803698ba41de6b23e42abc5dcc3721308233c # v0.2.6
         with:
           command: release upload thunderbird/thunderbolt ${{ inputs.version }} --framework tauri
           api-key: ${{ secrets.CRABNEBULA_CLOUD_API_KEY }}
+
+      - name: Warn on CrabNebula upload failure
+        if: ${{ !inputs.nightly && steps.cn_upload.outcome == 'failure' }}
+        env:
+          BUILD_NAME: ${{ matrix.build_name }}
+          VERSION: ${{ inputs.version }}
+        run: |
+          echo "::warning title=CrabNebula upload failed::Failed to upload $BUILD_NAME asset to CrabNebula for v$VERSION. Auto-updater on this platform will miss this version. See THU-643."
 
   publish:
     name: Publish Release

@@ -12,6 +12,9 @@ export type AppConfig = {
    *  built-in agent shown, custom agents allowed. */
   builtInAgentEnabled?: boolean
   allowCustomAgents?: boolean
+  /** Minimum semver string the server allows. Clients below this are hard-blocked
+   *  until they upgrade. Absent/empty = no enforcement. */
+  minAppVersion?: string
 }
 
 type ConfigStore = {

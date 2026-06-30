@@ -92,6 +92,18 @@ const settingsSchema = z
     // E2E encryption — when true, devices must complete the trust flow before syncing
     e2eeEnabled: z.boolean().default(false),
 
+    // Minimum app version clients must run. Empty string disables enforcement.
+    // Surfaced to the frontend via GET /config; clients below this hard-block until they update.
+    // Trimmed + semver-validated at startup so typos (`banana`, `0,2,0`) fail fast
+    // instead of reaching every client and breaking the version comparison.
+    minAppVersion: z
+      .string()
+      .trim()
+      .default('')
+      .refine((v) => v === '' || /^\d+\.\d+\.\d+(?:-[\w.-]+)?(?:\+[\w.-]+)?$/.test(v), {
+        message: 'MIN_APP_VERSION must be empty or a semver string (e.g. "0.2.0")',
+      }),
+
     swaggerEnabled: z.boolean().default(false),
 
     // Rate limiting
@@ -188,6 +200,7 @@ const parseSettings = (): Settings => {
       process.env.CORS_EXPOSE_HEADERS ||
       'set-auth-token,X-Proxy-Final-Url,X-Proxy-Passthrough-Content-Type,X-Proxy-Passthrough-Mcp-Session-Id,X-Proxy-Passthrough-Mcp-Protocol-Version,X-Proxy-Passthrough-Location,X-Proxy-Passthrough-Anthropic-Version,WWW-Authenticate',
     e2eeEnabled: process.env.E2EE_ENABLED === 'true',
+    minAppVersion: process.env.MIN_APP_VERSION || '',
     swaggerEnabled: process.env.SWAGGER_ENABLED === 'true',
     rateLimitEnabled: process.env.RATE_LIMIT_ENABLED !== 'false',
     trustedProxy: (process.env.TRUSTED_PROXY || '').toLowerCase(),

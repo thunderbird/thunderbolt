@@ -18,17 +18,21 @@
  */
 
 import { type ComponentType } from 'react'
+import * as ask from './ask'
 import * as citation from './citation'
 import * as connectIntegration from './connect-integration'
 import * as documentResult from './document-result'
 import * as linkPreview from './link-preview'
+import * as map from './map'
 import * as weatherForecast from './weather-forecast'
 
 // Re-export components for easy importing
+export { Ask } from './ask'
 export { CitationBadge } from './citation'
 export { ConnectIntegrationWidget } from './connect-integration'
 export { DocumentResultWidget } from './document-result'
 export { LinkPreview, LinkPreviewSkeleton, LinkPreviewWidget } from './link-preview'
+export { MapWidget } from './map'
 export { WeatherForecastWidget } from './weather-forecast'
 
 /**
@@ -55,6 +59,14 @@ export const widgetRegistry = [
   {
     name: 'link-preview' as const,
     module: linkPreview,
+  },
+  {
+    name: 'map' as const,
+    module: map,
+  },
+  {
+    name: 'ask' as const,
+    module: ask,
   },
 ] as const
 
@@ -96,6 +108,17 @@ export const widgetComponents = Object.fromEntries(
 ) as Record<WidgetName, ComponentType<any>>
 
 /**
+ * Skeleton registry — widgets that export a `Skeleton` get a streaming
+ * placeholder rendered the moment their opening tag appears (before the full
+ * payload has streamed). Widgets without one simply render nothing until ready.
+ */
+export const widgetSkeletons = Object.fromEntries(
+  widgetRegistry
+    .map((widget) => [widget.name, (widget.module as { Skeleton?: ComponentType }).Skeleton] as const)
+    .filter((entry): entry is readonly [WidgetName, ComponentType] => Boolean(entry[1])),
+) as Partial<Record<WidgetName, ComponentType>>
+
+/**
  * Union type of all widget cache data - auto-generated from registry
  * This is used for the chat message cache field
  */
@@ -105,3 +128,4 @@ export type WidgetCacheData =
   | linkPreview.CacheData
   | weatherForecast.CacheData
   | citation.CacheData
+  | ask.CacheData

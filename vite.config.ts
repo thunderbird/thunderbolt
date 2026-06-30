@@ -11,6 +11,7 @@ import { fileURLToPath } from 'node:url'
 import path from 'path'
 import { defineConfig } from 'vite'
 import { analyzer } from 'vite-bundle-analyzer'
+import pkg from './package.json' with { type: 'json' }
 const dirname = typeof __dirname !== 'undefined' ? __dirname : path.dirname(fileURLToPath(import.meta.url))
 
 // More info at: https://storybook.js.org/docs/next/writing-tests/integrations/vitest-addon
@@ -29,6 +30,11 @@ const sourcemap = process.env.ENABLE_SOURCEMAP?.toLowerCase() === 'true' ? 'hidd
 
 // https://vitejs.dev/config/
 export default defineConfig({
+  define: {
+    // Inject the package.json version so the client can send it as X-App-Version
+    // and compare against the server-enforced minAppVersion.
+    'import.meta.env.VITE_APP_VERSION': JSON.stringify(pkg.version),
+  },
   build: {
     sourcemap,
     rolldownOptions: {

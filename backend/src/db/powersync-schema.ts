@@ -241,6 +241,7 @@ export const devicesTable = powersyncSchema.table(
     lastSeen: timestamp('last_seen').defaultNow(),
     createdAt: timestamp('created_at').defaultNow(),
     revokedAt: timestamp('revoked_at'),
+    appVersion: text('app_version'),
   },
   (table) => [index('idx_devices_user_id').on(table.userId)],
 )

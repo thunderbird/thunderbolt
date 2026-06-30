@@ -39,6 +39,16 @@ describe('Config Routes', () => {
       expect(forbidden.body.allowCustomAgents).toBe(false)
     })
 
+    it('omits minAppVersion when MIN_APP_VERSION is unset', async () => {
+      const { body } = await fetchConfig(createTestSettings())
+      expect(body.minAppVersion).toBeUndefined()
+    })
+
+    it('exposes minAppVersion when set', async () => {
+      const { body } = await fetchConfig(createTestSettings({ minAppVersion: '0.2.0' }))
+      expect(body.minAppVersion).toBe('0.2.0')
+    })
+
     it('does not require authentication', async () => {
       const { status } = await fetchConfig(createTestSettings())
       expect(status).toBe(200)

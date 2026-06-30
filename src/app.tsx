@@ -38,6 +38,9 @@ import { useMcpSync } from '@/hooks/use-mcp-sync'
 import { PostHogProvider } from '@/lib/posthog'
 import { ThemeProvider } from '@/lib/theme-provider'
 import { AppErrorScreen } from './components/app-error-screen'
+import { UpgradeRequired } from './components/upgrade-required'
+import { useConfigStore } from '@/api/config-store'
+import { compareSemver } from '@/lib/compare-semver'
 import { AuthGate } from './components/auth-gate'
 import { OnboardingDialog } from './components/onboarding/onboarding-dialog'
 import { WelcomeDialog } from './components/welcome-dialog'
@@ -227,7 +230,16 @@ export const App = () => {
     }
   }, [])
 
+  // Reactive gate: re-evaluates whenever the config store updates, so the
+  // upgrade screen tracks the current server-enforced minimum.
+  const minAppVersion = useConfigStore((s) => s.config.minAppVersion)
+  const appVersion = import.meta.env.VITE_APP_VERSION
+  const upgradeRequired = !!minAppVersion && !!appVersion && compareSemver(appVersion, minAppVersion) < 0
+
   const renderAppContent = () => {
+    if (upgradeRequired) {
+      return <UpgradeRequired currentVersion={appVersion ?? 'unknown'} minVersion={minAppVersion ?? 'unknown'} />
+    }
     if (initError) {
       if (initError.code === 'STORAGE_UNAVAILABLE') {
         return <StorageUnavailableScreen />

@@ -39,6 +39,7 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from '@/components/ui/alert-dialog'
+import { AppVersionSection } from './app-version-section'
 import { SyncSetupModal } from '@/components/sync-setup/sync-setup-modal'
 import { Button } from '@/components/ui/button'
 import { Combobox } from '@/components/ui/combobox'
@@ -415,7 +416,7 @@ export default function PreferencesSettingsPage() {
         id: userId,
         email: session.user.email ?? null,
       })
-      await downloadJson(exportFilenameFor(new Date()), payload)
+      downloadJson(exportFilenameFor(new Date()), payload)
       trackEvent('settings_data_export')
     } catch (error) {
       console.error('Failed to export data:', error)
@@ -889,10 +890,7 @@ export default function PreferencesSettingsPage() {
                   Export Your Data
                 </label>
                 <p id="export-data-description" className="text-sm text-muted-foreground">
-                  Download a JSON snapshot of your chats, tasks, models, and the credentials you've entered (model API
-                  keys, MCP server tokens, agent keys). Treat the file like a password vault — anyone who can read it
-                  can use any of those credentials. Google and Microsoft sign-ins aren't included; you'll reconnect
-                  those after importing.
+                  Export all of your data as JSON.
                 </p>
                 {exportError && (
                   <p id="export-data-error" className="text-sm text-destructive" role="alert">
@@ -918,8 +916,7 @@ export default function PreferencesSettingsPage() {
                   Import Your Data
                 </label>
                 <p id="import-data-description" className="text-sm text-muted-foreground">
-                  Restore from a Thunderbolt export file. Rows that share an ID with existing data are overwritten with
-                  the imported version and synced to your other devices. Everything else is left alone.
+                  Import your data from previously exported JSON.
                 </p>
                 {importError && (
                   <p id="import-data-error" className="text-sm text-destructive" role="alert">
@@ -934,8 +931,7 @@ export default function PreferencesSettingsPage() {
                 <input
                   ref={importFileInputRef}
                   type="file"
-                  // `.gz` is listed separately because some file dialogs only honor a single trailing extension.
-                  accept="application/gzip,application/json,.json.gz,.gz,.json"
+                  accept="application/json,.json"
                   className="hidden"
                   onChange={handleImportFileSelected}
                 />
@@ -1038,6 +1034,10 @@ export default function PreferencesSettingsPage() {
           )}
         </div>
       </SectionCard>
+
+      <div className="h-6" />
+
+      <AppVersionSection />
 
       <SyncSetupModal open={syncSetupOpen} onOpenChange={setSyncSetupOpen} onComplete={handleSyncSetupComplete} />
 

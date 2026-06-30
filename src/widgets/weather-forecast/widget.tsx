@@ -2,10 +2,10 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { useHttpClient } from '@/contexts'
 import { useMessageCache } from '@/hooks/use-message-cache'
-import { getWeatherForecast } from '@/integrations/thunderbolt-pro/api'
+import { useSettings } from '@/hooks/use-settings'
 import { WeatherForecast, WeatherForecastSkeleton } from './display'
+import { fetchWeatherForecast } from './fetch-forecast'
 import type { WeatherForecastData } from './lib'
 
 type WeatherForecastWidgetProps = {
@@ -20,13 +20,19 @@ type WeatherForecastWidgetProps = {
  * Fetches 6 days of weather data (today + 5 forecast days)
  */
 export const WeatherForecastWidget = ({ location, region, country, messageId }: WeatherForecastWidgetProps) => {
-  const httpClient = useHttpClient()
-  const { data, isLoading, error } = useMessageCache<WeatherForecastData>({
+  const { temperatureUnit } = useSettings({ temperature_unit: 'f' })
+  const { data, error } = useMessageCache<WeatherForecastData>({
     messageId,
-    cacheKey: ['weatherForecast', location, region, country],
-    fetchFn: async () => {
-      return getWeatherForecast({ location, region, country, days: 6 }, httpClient)
-    },
+    cacheKey: ['weatherForecast', location, region, country, temperatureUnit.value],
+    enabled: !temperatureUnit.isLoading,
+    fetchFn: async () =>
+      fetchWeatherForecast({
+        location,
+        region,
+        country,
+        days: 6,
+        temperatureUnit: temperatureUnit.value === 'f' ? 'f' : 'c',
+      }),
   })
 
   if (error) {
@@ -39,12 +45,9 @@ export const WeatherForecastWidget = ({ location, region, country, messageId }: 
     )
   }
 
-  if (isLoading) {
-    return <WeatherForecastSkeleton />
-  }
-
+  // No data while the settings gate is closed or the fetch is in flight — the skeleton covers both.
   if (!data) {
-    return null
+    return <WeatherForecastSkeleton />
   }
 
   return <WeatherForecast {...data} />

@@ -12,6 +12,7 @@ import {
 } from '@/types/citation'
 import type { HaystackReferenceMeta } from '@/types'
 import type { SourceMetadata } from '@/types/source'
+import { widgetSkeletons, type WidgetName } from '@/widgets'
 import { type TextUIPart } from 'ai'
 import { memo, useMemo } from 'react'
 import { CitationPopoverProvider } from './citation-popover'
@@ -43,6 +44,13 @@ const normalizeUrl = (url: string): string => {
   } catch {
     return url.toLowerCase().replace(/\/$/, '')
   }
+}
+
+/** Streaming placeholder for a widget whose opening tag has appeared but whose
+ *  payload is still generating — renders that widget's registered skeleton. */
+const WidgetLoading = ({ name }: { name: string }) => {
+  const Skeleton = widgetSkeletons[name as WidgetName]
+  return Skeleton ? <Skeleton /> : null
 }
 
 /** Filter out duplicate link-preview widgets, keeping first occurrence */
@@ -228,6 +236,16 @@ export const TextPart = memo(({ part, messageId, sources, haystackReferences }: 
                 </div>
               )
             }
+            if (part.type === 'widget-loading') {
+              return (
+                <div
+                  key={`widget-${index}`}
+                  className="animate-in slide-in-from-bottom-2 fade-in duration-300 ease-out"
+                >
+                  <WidgetLoading name={part.name} />
+                </div>
+              )
+            }
             return (
               <div
                 key={
@@ -252,6 +270,13 @@ export const TextPart = memo(({ part, messageId, sources, haystackReferences }: 
           return (
             <div key={`text-${index}`} className="p-4 my-2">
               <MemoizedMarkdown key={`${messageId}-text`} id={messageId} content={contentPart.content} />
+            </div>
+          )
+        }
+        if (contentPart.type === 'widget-loading') {
+          return (
+            <div key={`widget-${index}`} className="animate-in slide-in-from-bottom-2 fade-in duration-300 ease-out">
+              <WidgetLoading name={contentPart.name} />
             </div>
           )
         }

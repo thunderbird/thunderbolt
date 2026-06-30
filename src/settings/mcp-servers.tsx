@@ -633,8 +633,8 @@ export default function McpServersPage({ deps = {} }: { deps?: McpServersPageDep
 
             <div className="flex-1 overflow-y-auto px-1 -mx-1">
               {mode === 'simple' ? (
-                <div className="grid gap-4 pt-4 pb-2">
-                  <div className="grid gap-2">
+                <div className="grid grid-cols-1 gap-4 pt-4 pb-2">
+                  <div className="grid grid-cols-1 gap-2">
                     <Label htmlFor="name">Name</Label>
                     <Input
                       id="name"
@@ -644,7 +644,7 @@ export default function McpServersPage({ deps = {} }: { deps?: McpServersPageDep
                     />
                   </div>
 
-                  <div className="grid gap-2">
+                  <div className="grid grid-cols-1 gap-2">
                     <Label htmlFor="url">Server URL</Label>
                     <Input
                       id="url"
@@ -662,7 +662,8 @@ export default function McpServersPage({ deps = {} }: { deps?: McpServersPageDep
                       <p className="text-[length:var(--font-size-xs)] text-destructive">{urlValidation.reason}</p>
                     )}
                     <p className="text-[length:var(--font-size-xs)] text-muted-foreground">
-                      A URL, or an iroh NodeId/ticket for a peer-to-peer bridge
+                      A URL, or paste an iroh ticket from your bridge for a peer-to-peer connection (a bare NodeId works
+                      only if the peer is discoverable).
                     </p>
                   </div>
 
@@ -673,7 +674,7 @@ export default function McpServersPage({ deps = {} }: { deps?: McpServersPageDep
                     <IrohPairingPanel appNodeId={appNodeId} copy={copyAllowCommand} isCopied={allowCommandCopied} />
                   ) : (
                     <>
-                      <div className="grid gap-2">
+                      <div className="grid grid-cols-1 gap-2">
                         <Label htmlFor="transport">Transport</Label>
                         <Select
                           value={newServerTransport}
@@ -689,7 +690,7 @@ export default function McpServersPage({ deps = {} }: { deps?: McpServersPageDep
                         </Select>
                       </div>
 
-                      <div className="grid gap-2">
+                      <div className="grid grid-cols-1 gap-2">
                         <Label htmlFor="token">Credential (optional)</Label>
                         <Input
                           id="token"
@@ -743,8 +744,8 @@ export default function McpServersPage({ deps = {} }: { deps?: McpServersPageDep
                   )}
                 </div>
               ) : (
-                <div className="grid gap-4 pt-4 pb-2">
-                  <div className="grid gap-2">
+                <div className="grid grid-cols-1 gap-4 pt-4 pb-2">
+                  <div className="grid grid-cols-1 gap-2">
                     <Label htmlFor="json-config">Servers JSON</Label>
                     <Textarea
                       id="json-config"

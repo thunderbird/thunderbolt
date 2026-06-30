@@ -56,7 +56,7 @@ export const validateAgentUrl = (
 ): { transport: CustomAgentTransport } | { error: string } => {
   const transport = inferTransport(url)
   if (!transport) {
-    return { error: 'Enter a wss:// URL or an iroh NodeId/ticket' }
+    return { error: 'Enter a wss:// URL or an iroh ticket' }
   }
   // iroh dials QUIC over an encrypted relay (no cleartext) and its target isn't a
   // URL, so the iOS ATS guard only applies to a `ws://` WebSocket endpoint.
@@ -258,8 +258,8 @@ export const AddCustomAgentDialog = ({
               : 'Connect a remote agent that speaks the Agent Client Protocol.'}
           </ResponsiveModalDescription>
         </ResponsiveModalHeader>
-        <div className="grid gap-4 pt-4 pb-2">
-          <div className="grid gap-2">
+        <div className="grid grid-cols-1 gap-4 pt-4 pb-2">
+          <div className="grid grid-cols-1 gap-2">
             <Label htmlFor="agent-name">Name</Label>
             <Input
               id="agent-name"
@@ -269,11 +269,11 @@ export const AddCustomAgentDialog = ({
               autoComplete="off"
             />
           </div>
-          <div className="grid gap-2">
+          <div className="grid grid-cols-1 gap-2">
             <Label htmlFor="agent-url">URL</Label>
             <Input
               id="agent-url"
-              placeholder="wss://example.com/ws or iroh NodeId/ticket"
+              placeholder="wss://example.com/ws or paste an iroh ticket"
               value={state.url}
               onChange={(e) => dispatch({ type: 'SET_URL', value: e.target.value })}
               autoComplete="off"
@@ -282,11 +282,12 @@ export const AddCustomAgentDialog = ({
               spellCheck={false}
             />
             <p className="text-[length:var(--font-size-xs)] text-muted-foreground">
-              WebSocket endpoint, or an iroh NodeId/ticket for a peer-to-peer bridge
+              A WebSocket endpoint, or paste an iroh ticket from your bridge for a peer-to-peer connection (a bare
+              NodeId works only if the peer is discoverable).
             </p>
           </div>
           {isIroh && <IrohPairingPanel appNodeId={appNodeId} copy={copy} isCopied={isCopied} />}
-          <div className="grid gap-2">
+          <div className="grid grid-cols-1 gap-2">
             <Label htmlFor="agent-description">Description</Label>
             <Input
               id="agent-description"

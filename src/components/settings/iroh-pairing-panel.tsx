@@ -74,7 +74,7 @@ export const IrohPairingPanel = ({
   copy: (text: string) => Promise<void>
   isCopied: boolean
 }) => (
-  <div className="grid gap-2 rounded-lg border border-border p-3" data-testid="iroh-pairing-panel">
+  <div className="grid grid-cols-1 gap-2 rounded-lg border border-border p-3" data-testid="iroh-pairing-panel">
     <p className="text-[length:var(--font-size-sm)] font-medium">Authorize this app on your bridge</p>
     <p className="text-[length:var(--font-size-xs)] text-muted-foreground">
       Run this on the machine hosting the bridge, then add it — the connection is verified on first use.

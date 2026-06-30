@@ -27,11 +27,13 @@ import { useMCP } from '@/lib/mcp-provider'
 import { trackEvent } from '@/lib/posthog'
 import { generateTitle } from '@/lib/title-generator'
 import { convertDbChatMessageToUIMessage } from '@/lib/utils'
-import type { SaveMessagesFunction, ThunderboltUIMessage } from '@/types'
+import type { Model, SaveMessagesFunction, ThunderboltUIMessage } from '@/types'
+import type { Agent } from '@/types/acp'
 import { useState } from 'react'
 import { useNavigate } from 'react-router'
 import { useChatStore } from './chat-store'
 import { createChatInstance } from './chat-instance'
+import { prewarmSystemModel } from '@/ai/fetch'
 
 type UseHydrateChatStoreParams = {
   id: string
@@ -46,6 +48,19 @@ const trackChatReadyOnce = () => {
   const chatReadyMs = markChatReady()
   if (chatReadyMs !== null) {
     trackEvent('app_chat_ready', { chat_ready_ms: Math.round(chatReadyMs) })
+  }
+}
+
+/**
+ * Warm the Tinfoil system enclave off the critical path so the first send skips
+ * the attestation handshake. Built-in agent only — ACP agents route over the
+ * wire and never touch the local model pipeline, so it's a no-op for them (and
+ * {@link prewarmSystemModel} further no-ops unless `model` is a Tinfoil *system*
+ * model). Fire-and-forget.
+ */
+const maybePrewarmBuiltInAgent = (agent: Agent, model: Model) => {
+  if (agent.type === 'built-in') {
+    void prewarmSystemModel(model)
   }
 }
 
@@ -133,6 +148,9 @@ export const useHydrateChatStore = ({ id, isNew }: UseHydrateChatStoreParams) =>
 
       setIsReady(true)
       trackChatReadyOnce()
+      // `sessions.has(id)` above guarantees the session is present.
+      const existingSession = sessions.get(id)!
+      maybePrewarmBuiltInAgent(existingSession.selectedAgent, existingSession.selectedModel)
 
       return
     }
@@ -249,6 +267,7 @@ export const useHydrateChatStore = ({ id, isNew }: UseHydrateChatStoreParams) =>
 
     setIsReady(true)
     trackChatReadyOnce()
+    maybePrewarmBuiltInAgent(selectedAgent, defaultModel)
   }
 
   return { hydrateChatStore, isReady, saveMessages }

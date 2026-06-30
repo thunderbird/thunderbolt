@@ -87,10 +87,11 @@ describe('updateReducer', () => {
     it('should set status to error with message', () => {
       const state: UpdateState = { ...initialUpdateState, status: 'downloading' }
 
-      const result = updateReducer(state, { type: 'ERROR', error: 'Download failed' })
+      const result = updateReducer(state, { type: 'ERROR', error: 'Download failed', phase: 'download' })
 
       expect(result.status).toBe('error')
       expect(result.error).toBe('Download failed')
+      expect(result.errorPhase).toBe('download')
     })
 
     it('should preserve other state when erroring', () => {
@@ -102,7 +103,7 @@ describe('updateReducer', () => {
         downloadProgress: 50,
       }
 
-      const result = updateReducer(state, { type: 'ERROR', error: 'Network error' })
+      const result = updateReducer(state, { type: 'ERROR', error: 'Network error', phase: 'download' })
 
       expect(result.update).toBe(mockUpdate)
       expect(result.downloadProgress).toBe(50)
@@ -114,7 +115,7 @@ describe('updateReducer', () => {
       const mockUpdate = { version: '2.0.0' } as UpdateState['update']
 
       let state = initialUpdateState
-      expect(state.status).toBe('idle')
+      expect(state.status).toBe('initial')
 
       state = updateReducer(state, { type: 'CHECK_START' })
       expect(state.status).toBe('checking')
@@ -136,12 +137,14 @@ describe('updateReducer', () => {
 
     it('should handle error recovery flow', () => {
       let state = updateReducer(initialUpdateState, { type: 'CHECK_START' })
-      state = updateReducer(state, { type: 'ERROR', error: 'Network error' })
+      state = updateReducer(state, { type: 'ERROR', error: 'Network error', phase: 'check' })
       expect(state.status).toBe('error')
+      expect(state.errorPhase).toBe('check')
 
       state = updateReducer(state, { type: 'CHECK_START' })
       expect(state.status).toBe('checking')
       expect(state.error).toBeNull()
+      expect(state.errorPhase).toBeNull()
     })
   })
 })

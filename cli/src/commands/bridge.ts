@@ -85,6 +85,35 @@ export const spawnAgent = (command: readonly string[]): BridgeProc | null => {
   }
 }
 
+/** Bearer-style flags whose *following* argv element is a secret to hide. */
+const SECRET_FLAGS = new Set(['--api-key', '--token'])
+/** An env-style `NAME=value` token whose NAME looks like a credential (ends in
+ *  `KEY`, e.g. `OPENAI_API_KEY=sk-…`). Uppercase-only so benign words like
+ *  `monkey=foo` are left alone. */
+const KEY_ASSIGNMENT = /^[A-Z][A-Z0-9_]*KEY=/
+
+/** Redact the value of an env-style credential assignment, leaving its name. */
+const redactKeyAssignment = (arg: string): string => (KEY_ASSIGNMENT.test(arg) ? arg.replace(/=.*/s, '=***') : arg)
+
+/**
+ * Render an argv as a single space-joined string with credentials redacted, for
+ * logging the bridged command without leaking secrets to stdout/scrollback/CI.
+ * Everything after `--` can carry a bearer token (e.g. an openai-compat agent's
+ * `--api-key sk-…`); this hides the value following `--api-key`/`--token` and any
+ * `*_KEY`-looking env assignment, replacing it with `***`. Pure and total — a
+ * trailing secret flag with no following value is simply left as-is.
+ */
+export const redactArgv = (argv: readonly string[]): string =>
+  argv
+    .reduce<{ out: string[]; hide: boolean }>(
+      (acc, arg) =>
+        acc.hide
+          ? { out: [...acc.out, '***'], hide: false }
+          : { out: [...acc.out, redactKeyAssignment(arg)], hide: SECRET_FLAGS.has(arg) },
+      { out: [], hide: false },
+    )
+    .out.join(' ')
+
 /** Origins the Thunderbolt app's webview presents as `Origin` on the WebSocket
  *  handshake: the Vite dev server plus the native Tauri webview origins (which
  *  vary by OS). A drive-by page the user visits in a normal browser cannot forge
@@ -231,7 +260,7 @@ export const runBridge = async (config: BridgeConfig): Promise<void> => {
   const url = `ws://127.0.0.1:${server.port}/?token=${token}`
   process.stdout.write(
     `⚡ thunderbolt ${config.protocol} bridge (${config.transport}) listening on ws://127.0.0.1:${server.port}\n` +
-      `   spawning per connection: ${config.command.join(' ')}\n` +
+      `   spawning per connection: ${redactArgv(config.command)}\n` +
       `   set this as the agent URL in the app (includes the access token): ${url}\n`,
   )
 }

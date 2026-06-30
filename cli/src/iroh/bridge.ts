@@ -17,7 +17,7 @@
 
 import type { Connection, Incoming } from '@number0/iroh'
 import type { BridgeConfig } from '../agent/types.ts'
-import { spawnAgent, type BridgeProc } from '../commands/bridge.ts'
+import { redactArgv, spawnAgent, type BridgeProc } from '../commands/bridge.ts'
 import { isAllowed } from './allowlist.ts'
 import { bindServer } from './endpoint.ts'
 import { forwardFromRecv, forwardToSend, writeToStdin } from './pump.ts'
@@ -25,10 +25,10 @@ import { forwardFromRecv, forwardToSend, writeToStdin } from './pump.ts'
 /** QUIC application close code for a connection we actively reject (allowlist
  *  miss or spawn failure). Normal end-of-session is signalled by finishing the
  *  stream and letting the client close, never by an active server-side close. */
-const CLOSE_REFUSED = 1n
+export const CLOSE_REFUSED = 1n
 
 /** Encode a human-readable connection-close reason as the byte array iroh wants. */
-const reasonBytes = (reason: string): number[] => Array.from(Buffer.from(reason, 'utf8'))
+export const reasonBytes = (reason: string): number[] => Array.from(Buffer.from(reason, 'utf8'))
 
 /** Per-remote handshake budget: how many connections one peer may open within
  *  {@link RATE_WINDOW_MS} before we drop the excess *before* the TLS handshake.
@@ -51,6 +51,14 @@ const MAX_CONCURRENT_HANDSHAKES = 16
  *  handshake, releasing the slot. Generous enough that no real relay-routed
  *  handshake hits it. */
 const HANDSHAKE_TIMEOUT_MS = 10_000
+/** Hard ceiling on how long an allowlisted peer may take to open its bidi data
+ *  stream after the handshake. The handshake guard slot is already released by
+ *  this point, so this is not a handshake-DoS — but an allowlisted-but-idle peer
+ *  that never opens the stream would pin the {@link Connection} indefinitely
+ *  (QUIC's idle timeout is defeated by keepalives). Past this deadline we close
+ *  the connection so it can't be held open for free. Generous enough that a real
+ *  client opening its stream right after connecting never hits it. */
+const ACCEPT_TIMEOUT_MS = 10_000
 
 /**
  * A lightweight per-key sliding-window rate limiter. `allow(key)` records the
@@ -61,14 +69,23 @@ const HANDSHAKE_TIMEOUT_MS = 10_000
  *
  * @param max - calls allowed per window
  * @param windowMs - the window length in milliseconds
+ * @param clock - current-time source (ms); injectable so the sliding window can
+ *   be exercised deterministically without real waits
+ * @param maxKeys - hard ceiling on distinct keys before least-recently-seen
+ *   eviction; injectable so the bound can be tested cheaply
  */
-const createRateLimiter = (max: number, windowMs: number): { allow: (key: string) => boolean } => {
+export const createRateLimiter = (
+  max: number,
+  windowMs: number,
+  clock: () => number = Date.now,
+  maxKeys: number = RATE_MAX_KEYS,
+): { allow: (key: string) => boolean } => {
   const hits = new Map<string, number[]>()
 
   const allow = (key: string): boolean => {
-    const now = Date.now()
+    const now = clock()
     // Map iterates in insertion order, so the first key is the oldest-touched.
-    while (hits.size > RATE_MAX_KEYS) {
+    while (hits.size > maxKeys) {
       const oldest = hits.keys().next().value
       if (oldest === undefined) break
       hits.delete(oldest)
@@ -94,7 +111,7 @@ const createRateLimiter = (max: number, windowMs: number): { allow: (key: string
  *
  * @param max - the number of slots
  */
-const createHandshakeGuard = (max: number): { tryAcquire: () => boolean; release: () => void } => {
+export const createHandshakeGuard = (max: number): { tryAcquire: () => boolean; release: () => void } => {
   let inFlight = 0
   return {
     tryAcquire: () => {
@@ -111,7 +128,7 @@ const createHandshakeGuard = (max: number): { tryAcquire: () => boolean; release
 /** Derive a pre-handshake rate-limit key for an incoming connection. Relay-routed
  *  peers (our P2P model) expose their EndpointId before the handshake; direct IP
  *  peers expose `ip:port`. Falls back to the transport kind so a key always exists. */
-const remoteKey = async (incoming: Incoming): Promise<string> => {
+export const remoteKey = async (incoming: Incoming): Promise<string> => {
   const addr = await incoming.remoteAddr()
   return addr.endpointId ?? addr.addr ?? addr.kind
 }
@@ -127,7 +144,11 @@ const remoteKey = async (incoming: Incoming): Promise<string> => {
  * we abandon the wait and free the slot. The underlying handshake may still settle
  * afterwards; if it resolves late we close the orphaned connection so it can't leak.
  */
-const handshake = async (incoming: Incoming, guard: { release: () => void }): Promise<Connection> => {
+export const handshake = async (
+  incoming: Incoming,
+  guard: { release: () => void },
+  timeoutMs: number = HANDSHAKE_TIMEOUT_MS,
+): Promise<Connection> => {
   let timedOut = false
   const connecting = (async () => (await incoming.accept()).connect())()
   // Side-channel the late settle: if the deadline already won the race, close a
@@ -148,8 +169,8 @@ const handshake = async (incoming: Incoming, guard: { release: () => void }): Pr
   const deadline = new Promise<never>((_, reject) => {
     timer = setTimeout(() => {
       timedOut = true
-      reject(new Error(`handshake exceeded ${HANDSHAKE_TIMEOUT_MS}ms`))
-    }, HANDSHAKE_TIMEOUT_MS)
+      reject(new Error(`handshake exceeded ${timeoutMs}ms`))
+    }, timeoutMs)
   })
 
   try {
@@ -161,17 +182,49 @@ const handshake = async (incoming: Incoming, guard: { release: () => void }): Pr
   }
 }
 
+/** Type of the bidi stream pair iroh hands back from {@link Connection.acceptBi}. */
+type BiStream = Awaited<ReturnType<Connection['acceptBi']>>
+
+/**
+ * Wait for the client to open its bidi data stream, bounded by a deadline. An
+ * allowlisted-but-idle peer that never opens the stream would otherwise leave us
+ * awaiting `acceptBi()` forever and pin the {@link Connection} (QUIC's idle timeout
+ * is defeated by keepalives). Past the deadline we close the connection
+ * ({@link CLOSE_REFUSED}) and resolve `null`. The discarded `acceptBi` promise is
+ * pre-`.catch`'d so a late rejection (the close tears the stream down) can't leak
+ * as an unhandled rejection.
+ */
+const acceptBidiStream = async (connection: Connection, timeoutMs: number): Promise<BiStream | null> => {
+  const accepting = connection.acceptBi()
+  void accepting.catch(() => undefined)
+
+  let timer: ReturnType<typeof setTimeout> | undefined
+  const deadline = new Promise<null>((resolve) => {
+    timer = setTimeout(() => {
+      connection.close(CLOSE_REFUSED, reasonBytes('idle: no data stream opened'))
+      resolve(null)
+    }, timeoutMs)
+  })
+
+  try {
+    return await Promise.race([accepting, deadline])
+  } finally {
+    clearTimeout(timer)
+  }
+}
+
 /**
  * Handle a single incoming connection (its handshake guard slot already taken):
  * complete the handshake to learn the authenticated remote NodeId, enforce the
- * allowlist, wait for the client to open the data stream, and only then bridge a
- * freshly-spawned agent over it.
+ * allowlist, wait (bounded) for the client to open the data stream, and only then
+ * bridge a freshly-spawned agent over it.
  */
-const handleConnection = async (
+export const handleConnection = async (
   incoming: Incoming,
   config: BridgeConfig,
   activeProcs: Set<BridgeProc>,
   guard: { release: () => void },
+  acceptTimeoutMs: number = ACCEPT_TIMEOUT_MS,
 ): Promise<void> => {
   const connection = await handshake(incoming, guard)
   const remoteId = connection.remoteId().toString()
@@ -184,8 +237,14 @@ const handleConnection = async (
 
   // Commit a subprocess only once the client actually opens the data stream, so
   // an allowlisted-but-idle peer can't pin a spawned agent, and the agent never
-  // runs before its data plane exists.
-  const bi = await connection.acceptBi()
+  // runs before its data plane exists. The wait is bounded: a peer that completes
+  // the handshake (and passes the allowlist) but never opens the stream is closed
+  // rather than left to pin the connection forever.
+  const bi = await acceptBidiStream(connection, acceptTimeoutMs)
+  if (!bi) {
+    process.stderr.write(`⚡ iroh bridge: closed ${remoteId} (idle: no data stream)\n`)
+    return
+  }
 
   const proc = spawnAgent(config.command)
   if (!proc) {
@@ -199,7 +258,7 @@ const handleConnection = async (
   // so the final JSON-RPC response can't be truncated mid-flight; the client
   // tears the connection down once it has drained that stream.
   void connection.closed().then(() => proc.kill())
-  process.stdout.write(`⚡ iroh bridge: accepted ${remoteId} → spawned ${config.command.join(' ')}\n`)
+  process.stdout.write(`⚡ iroh bridge: accepted ${remoteId} → spawned ${redactArgv(config.command)}\n`)
 
   // `.finally` (not `.then`) so the agent always gets stdin EOF, even if the
   // recv pump errors as the connection tears down. `writeToStdin` awaits the
@@ -234,7 +293,7 @@ export const runIrohBridge = async (config: BridgeConfig): Promise<void> => {
     `⚡ thunderbolt ${config.protocol} bridge (iroh) ready\n` +
       `   node id: ${nodeId}\n` +
       `   ticket:  ${ticket}\n` +
-      `   spawning per connection: ${config.command.join(' ')}\n` +
+      `   spawning per connection: ${redactArgv(config.command)}\n` +
       `   allow a peer with: thunderbolt iroh allow <their-node-id>\n`,
   )
 
@@ -262,7 +321,7 @@ export const runIrohBridge = async (config: BridgeConfig): Promise<void> => {
  * burn CPU; an admitted one proceeds to {@link handleConnection}, which owns the
  * acquired slot and releases it once the handshake settles.
  */
-const admitConnection = async (
+export const admitConnection = async (
   incoming: Incoming,
   config: BridgeConfig,
   activeProcs: Set<BridgeProc>,

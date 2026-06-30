@@ -50,6 +50,13 @@ thunderbolt
 Requires **`ANTHROPIC_API_KEY`** in your environment
 (https://console.anthropic.com).
 
+### Environment
+
+| Variable                      | Description                                                                 |
+| ----------------------------- | --------------------------------------------------------------------------- |
+| `ANTHROPIC_API_KEY`           | Anthropic API key (required).                                               |
+| `THUNDERBOLT_IROH_RELAY_URL`  | iroh relay for the `bridge` transport. Unset = the n0 public relays (default); set to a self-hosted iroh-relay wss URL to override. n0 DNS discovery + crypto are kept — only the relay hop changes. Read at runtime (no rebuild). |
+
 ## How it maps to the proposal
 
 Part 1 — the Pi harness is the engine that runs the agent loop and the four

@@ -9,10 +9,12 @@
  */
 
 import type { AnyMessage } from '@agentclientprotocol/sdk'
-import { afterEach, describe, expect, it } from 'bun:test'
+import { afterEach, describe, expect, it, spyOn } from 'bun:test'
 import {
   bindAndPersistForTests,
+  bindIrohClient,
   clearIrohClientSecret,
+  irohRelayUrl,
   resetSharedIrohClientForTests,
   acpIrohAlpn,
   openIrohTransport,
@@ -26,6 +28,7 @@ type FakeConnection = {
   errorReceive: (err: Error) => void
   sent: () => Uint8Array[]
   closed: () => boolean
+  closeCount: () => number
 }
 
 const makeFakeConnection = (): FakeConnection => {
@@ -36,7 +39,7 @@ const makeFakeConnection = (): FakeConnection => {
     },
   })
   const sent: Uint8Array[] = []
-  let isClosed = false
+  let closeCalls = 0
   return {
     connection: {
       send: async (data) => {
@@ -44,14 +47,15 @@ const makeFakeConnection = (): FakeConnection => {
       },
       readable: () => readable,
       close: () => {
-        isClosed = true
+        closeCalls += 1
       },
     },
     pushBytes: (bytes) => controller?.enqueue(bytes),
     endReceive: () => controller?.close(),
     errorReceive: (err) => controller?.error(err),
     sent: () => sent,
-    closed: () => isClosed,
+    closed: () => closeCalls > 0,
+    closeCount: () => closeCalls,
   }
 }
 
@@ -144,6 +148,26 @@ describe('openIrohTransport', () => {
     })
     fake.errorReceive(new Error('relay dropped'))
     await expect(transport.closed).rejects.toThrow('relay dropped')
+  })
+
+  it('routes teardown through close() on a receive error: closes the connection and detaches the abort listener', async () => {
+    const fake = makeFakeConnection()
+    const controller = new AbortController()
+    const removeSpy = spyOn(controller.signal, 'removeEventListener')
+    const transport = await openIrohTransport({
+      target: 't',
+      signal: controller.signal,
+      loadClient: async () => makeFakeClient(fake.connection, []),
+    })
+    fake.errorReceive(new Error('recv blew up'))
+    await expect(transport.closed).rejects.toThrow('recv blew up')
+    // The error path must close the QUIC connection (no leaked connection)...
+    expect(fake.closeCount()).toBe(1)
+    // ...and detach the abort listener from the long-lived signal (no pinned leak).
+    expect(removeSpy).toHaveBeenCalledWith('abort', expect.any(Function))
+    // A later abort is now a no-op — the detached listener can't re-close.
+    controller.abort()
+    expect(fake.closeCount()).toBe(1)
   })
 
   it('closes the readable on close() and ignores inbound bytes that arrive after', async () => {
@@ -339,5 +363,66 @@ describe('clearIrohClientSecret', () => {
     resolveBind({ client, secretHex: 'resurrected-secret' })
     await bindPending
     expect(localStorage.getItem(secretStorageKey)).toBeNull()
+  })
+})
+
+// `irohRelayUrl` reads `import.meta.env` on every call, so tests mutate the env
+// directly (the same pattern auth-mode tests use) and clear it afterwards.
+const viteEnv = import.meta.env as Record<string, string | undefined>
+
+describe('irohRelayUrl', () => {
+  afterEach(() => {
+    delete viteEnv.VITE_IROH_RELAY_URL
+  })
+
+  it('is undefined when VITE_IROH_RELAY_URL is unset', () => {
+    delete viteEnv.VITE_IROH_RELAY_URL
+    expect(irohRelayUrl()).toBeUndefined()
+  })
+
+  it('is undefined when VITE_IROH_RELAY_URL is empty or whitespace', () => {
+    viteEnv.VITE_IROH_RELAY_URL = '   '
+    expect(irohRelayUrl()).toBeUndefined()
+  })
+
+  it('returns the trimmed url when VITE_IROH_RELAY_URL is set', () => {
+    viteEnv.VITE_IROH_RELAY_URL = '  wss://relay.example  '
+    expect(irohRelayUrl()).toBe('wss://relay.example')
+  })
+})
+
+describe('bindIrohClient', () => {
+  afterEach(() => {
+    delete viteEnv.VITE_IROH_RELAY_URL
+  })
+
+  it('forwards VITE_IROH_RELAY_URL into create and surfaces the bound secret', async () => {
+    viteEnv.VITE_IROH_RELAY_URL = 'wss://relay.example'
+    const relays: Array<string | undefined> = []
+    const { client, secretHex } = await bindIrohClient(async (relay) => {
+      relays.push(relay)
+      return {
+        nodeId: () => 'node',
+        connect: async () => makeFakeConnection().connection,
+        secretKeyHex: () => 'bound-secret',
+      }
+    })
+    expect(relays).toEqual(['wss://relay.example'])
+    expect(secretHex).toBe('bound-secret')
+    expect(client.nodeId()).toBe('node')
+  })
+
+  it('passes undefined relay (n0 default) when VITE_IROH_RELAY_URL is unset', async () => {
+    delete viteEnv.VITE_IROH_RELAY_URL
+    const relays: Array<string | undefined> = []
+    await bindIrohClient(async (relay) => {
+      relays.push(relay)
+      return {
+        nodeId: () => 'node',
+        connect: async () => makeFakeConnection().connection,
+        secretKeyHex: () => 'bound-secret',
+      }
+    })
+    expect(relays).toEqual([undefined])
   })
 })

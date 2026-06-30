@@ -68,8 +68,14 @@ export class IrohClient {
      * operator runs `thunderbolt iroh allow <node-id>` only once); pass `null`
      * to generate a fresh identity, then read it back via
      * [`IrohClient::secret_key_hex`] to persist for next session.
+     *
+     * `relay_url` overrides the relay: `None`/empty keeps the n0 preset's public
+     * relays (today's behavior); a self-hosted iroh-relay URL swaps ONLY the
+     * relay, leaving the n0 DNS discovery + crypto from `presets::N0` intact so a
+     * bare NodeId still resolves and tickets still dial. The web app threads
+     * `VITE_IROH_RELAY_URL` through here.
      */
-    static create(secret_key_hex?: string | null): Promise<IrohClient>;
+    static create(secret_key_hex?: string | null, relay_url?: string | null): Promise<IrohClient>;
     /**
      * This client's NodeId (base32). The bridge operator allowlists it with
      * `thunderbolt iroh allow <node-id>`.
@@ -120,7 +126,7 @@ export interface InitOutput {
     readonly __wbg_irohclient_free: (a: number, b: number) => void;
     readonly __wbg_irohconnection_free: (a: number, b: number) => void;
     readonly irohclient_connect: (a: number, b: number, c: number, d: number, e: number) => number;
-    readonly irohclient_create: (a: number, b: number) => number;
+    readonly irohclient_create: (a: number, b: number, c: number, d: number) => number;
     readonly irohclient_nodeId: (a: number, b: number) => void;
     readonly irohclient_secretKeyHex: (a: number, b: number) => void;
     readonly irohconnection_close: (a: number) => void;
@@ -141,15 +147,15 @@ export interface InitOutput {
     readonly intounderlyingbytesource_start: (a: number, b: number) => void;
     readonly intounderlyingbytesource_type: (a: number) => number;
     readonly ring_core_0_17_14__bn_mul_mont: (a: number, b: number, c: number, d: number, e: number, f: number) => void;
-    readonly __wasm_bindgen_func_elem_16108: (a: number, b: number, c: number, d: number) => void;
-    readonly __wasm_bindgen_func_elem_16092: (a: number, b: number, c: number, d: number) => void;
-    readonly __wasm_bindgen_func_elem_5272: (a: number, b: number, c: number) => void;
-    readonly __wasm_bindgen_func_elem_2949: (a: number, b: number, c: number) => void;
-    readonly __wasm_bindgen_func_elem_7132: (a: number, b: number, c: number) => void;
-    readonly __wasm_bindgen_func_elem_5103: (a: number, b: number) => void;
-    readonly __wasm_bindgen_func_elem_6256: (a: number, b: number) => void;
-    readonly __wasm_bindgen_func_elem_6390: (a: number, b: number) => void;
-    readonly __wasm_bindgen_func_elem_14776: (a: number, b: number) => void;
+    readonly __wasm_bindgen_func_elem_16140: (a: number, b: number, c: number, d: number) => void;
+    readonly __wasm_bindgen_func_elem_16124: (a: number, b: number, c: number, d: number) => void;
+    readonly __wasm_bindgen_func_elem_5304: (a: number, b: number, c: number) => void;
+    readonly __wasm_bindgen_func_elem_2981: (a: number, b: number, c: number) => void;
+    readonly __wasm_bindgen_func_elem_7164: (a: number, b: number, c: number) => void;
+    readonly __wasm_bindgen_func_elem_5135: (a: number, b: number) => void;
+    readonly __wasm_bindgen_func_elem_6288: (a: number, b: number) => void;
+    readonly __wasm_bindgen_func_elem_6422: (a: number, b: number) => void;
+    readonly __wasm_bindgen_func_elem_14808: (a: number, b: number) => void;
     readonly __wbindgen_export: (a: number, b: number) => number;
     readonly __wbindgen_export2: (a: number, b: number, c: number, d: number) => number;
     readonly __wbindgen_export3: (a: number) => void;

@@ -13,7 +13,8 @@
 //! Surface (consumed by `src/acp/transports/iroh.ts`):
 //!   * [`IrohClient::create`] — bind ONE long-lived endpoint (optionally pinned
 //!     to a persisted secret key so the bridge operator allowlists a stable
-//!     NodeId once).
+//!     NodeId once, and optionally pointed at a self-hosted relay instead of the
+//!     n0 public ones).
 //!   * [`IrohClient::connect`] — dial a ticket or bare NodeId over an ALPN and
 //!     open ONE bidirectional stream, returning an [`IrohConnection`].
 //!   * [`IrohConnection::send`] / [`IrohConnection::readable`] — write bytes into
@@ -32,7 +33,7 @@ use std::cell::RefCell;
 
 use async_channel::{Receiver, Sender};
 use iroh::endpoint::{Connection, RecvStream, SendStream, presets};
-use iroh::{Endpoint, EndpointAddr, EndpointId, SecretKey};
+use iroh::{Endpoint, EndpointAddr, EndpointId, RelayMode, RelayUrl, SecretKey};
 use iroh_tickets::endpoint::EndpointTicket;
 use js_sys::{Promise, Uint8Array};
 use wasm_bindgen::prelude::*;
@@ -79,18 +80,28 @@ impl IrohClient {
     /// operator runs `thunderbolt iroh allow <node-id>` only once); pass `null`
     /// to generate a fresh identity, then read it back via
     /// [`IrohClient::secret_key_hex`] to persist for next session.
+    ///
+    /// `relay_url` overrides the relay: `None`/empty keeps the n0 preset's public
+    /// relays (today's behavior); a self-hosted iroh-relay URL swaps ONLY the
+    /// relay, leaving the n0 DNS discovery + crypto from `presets::N0` intact so a
+    /// bare NodeId still resolves and tickets still dial. The web app threads
+    /// `VITE_IROH_RELAY_URL` through here.
     #[wasm_bindgen(js_name = create)]
-    pub async fn create(secret_key_hex: Option<String>) -> Result<IrohClient, JsError> {
+    pub async fn create(
+        secret_key_hex: Option<String>,
+        relay_url: Option<String>,
+    ) -> Result<IrohClient, JsError> {
         let secret = match secret_key_hex.as_deref() {
             Some(hex) if !hex.trim().is_empty() => parse_secret(hex)?,
             _ => SecretKey::generate(),
         };
         let stored_hex = hex::encode(secret.to_bytes());
-        let endpoint = Endpoint::builder(presets::N0)
-            .secret_key(secret)
-            .bind()
-            .await
-            .map_err(to_js)?;
+        let mut builder = Endpoint::builder(presets::N0).secret_key(secret);
+        if let Some(url) = relay_url.as_deref().map(str::trim).filter(|u| !u.is_empty()) {
+            let relay: RelayUrl = url.parse().map_err(to_js)?;
+            builder = builder.relay_mode(RelayMode::custom([relay]));
+        }
+        let endpoint = builder.bind().await.map_err(to_js)?;
         Ok(IrohClient {
             endpoint,
             secret_key_hex: stored_hex,

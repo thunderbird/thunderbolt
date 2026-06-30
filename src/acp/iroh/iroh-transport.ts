@@ -5,8 +5,8 @@
 /**
  * iroh transport for ACP — the relay-only, peer-to-peer counterpart to the
  * WebSocket transport. Dials a `thunderbolt acp --transport iroh` CLI bridge by
- * its NodeId/ticket (carried in `agent.url`) over an n0 relay, end-to-end
- * encrypted to the bridge.
+ * its NodeId/ticket (carried in `agent.url`) over an n0 relay (or a self-hosted
+ * one via `VITE_IROH_RELAY_URL`), end-to-end encrypted to the bridge.
  *
  * The dial happens in a Rust→wasm client (`crates/thunderbolt-acp-client`) that
  * the browser can't replace with JS — iroh has no browser TS SDK. The wasm chunk
@@ -97,16 +97,49 @@ const bindAndPersist = async (
   return client
 }
 
-/** Lazy-load + bind the wasm iroh client, pinning a persisted identity. The
- *  dynamic import is the route-split point — the multi-MB wasm chunk never lands
- *  in the entry bundle. */
+/** Build-time relay override (`VITE_IROH_RELAY_URL`). Unset/empty → `undefined`,
+ *  so the wasm client keeps `presets::N0` (the n0 public relays — today's
+ *  behavior); set it to a self-hosted iroh-relay wss URL to route every dial
+ *  through it (n0 DNS discovery + crypto are kept, only the relay hop changes).
+ *  Vite inlines this at build time, so switching relays is an env change + redeploy
+ *  — no code edit. */
+export const irohRelayUrl = (): string | undefined => {
+  const url = import.meta.env.VITE_IROH_RELAY_URL?.trim()
+  return url ? url : undefined
+}
+
+/** The wasm `IrohClient.create` factory, narrowed to the build-time relay
+ *  override; the persisted secret is read INSIDE the factory (after wasm init) so
+ *  its wipe-race timing is unchanged. Returns a client that also exposes its
+ *  secret as hex. */
+type IrohClientFactory = (relayUrl: string | undefined) => Promise<IrohClientLike & { secretKeyHex: () => string }>
+
+/** Bind the wasm client, threading the build-time relay override into `create`.
+ *  Split from {@link defaultLoadClient} so a fake `create` can assert the relay
+ *  URL is forwarded without loading the multi-MB wasm chunk. The relay URL is a
+ *  static build-time value (no wipe race), so reading it here — unlike the secret —
+ *  is safe. */
+export const bindIrohClient = async (
+  create: IrohClientFactory,
+): Promise<{ client: IrohClientLike; secretHex: string }> => {
+  const client = await create(irohRelayUrl())
+  return { client, secretHex: client.secretKeyHex() }
+}
+
+/** Lazy-load + bind the wasm iroh client, pinning a persisted identity and an
+ *  optional self-hosted relay. The dynamic import is the route-split point — the
+ *  multi-MB wasm chunk never lands in the entry bundle. `readPersistedSecret()`
+ *  stays AFTER `wasm.default()` so the sign-out/wipe race window is byte-for-byte
+ *  the pre-relay behavior. */
 const defaultLoadClient: IrohClientLoader = () =>
-  bindAndPersist(async () => {
-    const wasm = await import('./pkg/thunderbolt_acp_client.js')
-    await wasm.default()
-    const client = await wasm.IrohClient.create(readPersistedSecret())
-    return { client: client as unknown as IrohClientLike, secretHex: client.secretKeyHex() }
-  })
+  bindAndPersist(() =>
+    bindIrohClient(async (relayUrl) => {
+      const wasm = await import('./pkg/thunderbolt_acp_client.js')
+      await wasm.default()
+      const client = await wasm.IrohClient.create(readPersistedSecret(), relayUrl)
+      return client as unknown as IrohClientLike & { secretKeyHex: () => string }
+    }),
+  )
 
 /** Get (binding once) the shared iroh client. A failed bind clears the cache so
  *  a later attempt can retry rather than replaying a rejected promise forever.
@@ -311,7 +344,14 @@ export const openIrohTransport = async (options: OpenIrohTransportOptions): Prom
         readableClosed = true
         readableController?.error(error)
       }
+      // Settle `closed` with the error FIRST (so `close()`'s `settleClosedOnce(null)`
+      // no-ops), then route the rest of teardown through the same `close()` the
+      // normal path uses — detaching the abort listener from the adapter's
+      // long-lived signal and closing the QUIC connection. Without this, a recv
+      // read error (or an oversized ndjson frame) would leak both. All of
+      // `close()`'s steps are idempotent, so the double-call is safe.
       settleClosedOnce(error)
+      close()
     }
   }
   void pumpReceive()

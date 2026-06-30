@@ -7,16 +7,64 @@
  * both pinned to this machine's persistent identity and speaking one ALPN.
  *
  * Transport shape (verified against the n0 relays):
- *   builder → presetN0 (relays + discovery + crypto) → secretKey (stable NodeId)
- *   → [server only] alpns → bind → online (home relay ready).
+ *   builder → configureTransport (n0 preset: relays + discovery + crypto, with
+ *   the relay optionally overridden via THUNDERBOLT_IROH_RELAY_URL) → secretKey
+ *   (stable NodeId) → [server only] alpns → bind → online (home relay ready).
  * A connection ticket embeds the NodeId + home-relay URL, so it is the natural
  * out-of-band pairing primitive; a bare NodeId also dials via n0 DNS discovery.
  */
 
-import { Endpoint, EndpointAddr, EndpointId, EndpointTicket, presetN0 } from '@number0/iroh'
-import type { Connection } from '@number0/iroh'
+import { Endpoint, EndpointAddr, EndpointId, EndpointTicket, RelayMode, presetN0 } from '@number0/iroh'
+import type { Connection, EndpointBuilder } from '@number0/iroh'
 import type { BridgeProtocol } from '../agent/types.ts'
 import { loadOrCreateIdentity } from './identity.ts'
+
+/** Env var that overrides the iroh relay. Unset/empty keeps the n0 public relays
+ *  (today's behavior); set it to a self-hosted iroh-relay wss URL to switch with
+ *  no code change. Read at runtime, so the CLI binary needs no rebuild. */
+const RELAY_URL_ENV = 'THUNDERBOLT_IROH_RELAY_URL'
+
+/** The self-hosted relay override from {@link RELAY_URL_ENV}, or `undefined` to
+ *  keep the n0 public relays. Whitespace-only is treated as unset, so an exported
+ *  but blank var is byte-for-byte the default. */
+export const relayUrlOverride = (env: NodeJS.ProcessEnv = process.env): string | undefined => {
+  const url = env[RELAY_URL_ENV]?.trim()
+  return url ? url : undefined
+}
+
+/** The two @number0/iroh calls {@link configureTransport} makes, behind a seam so
+ *  a test can pass a fake builder and assert the relay override is threaded
+ *  through without binding a native endpoint. Defaults to the real SDK. */
+export type TransportConfigurator = {
+  readonly applyPreset: (builder: EndpointBuilder) => void
+  readonly customRelayMode: (urls: string[]) => RelayMode
+}
+
+const defaultConfigurator: TransportConfigurator = {
+  applyPreset: presetN0,
+  customRelayMode: (urls) => RelayMode.customFromUrls(urls),
+}
+
+/**
+ * Apply the n0 transport preset (relays + n0 DNS discovery + crypto), then — only
+ * when {@link RELAY_URL_ENV} is set — swap ONLY the relay for that self-hosted
+ * URL. n0 DNS discovery + crypto stay intact, so a bare NodeId still resolves and
+ * tickets still dial; only the relay hop changes. Unset/empty env leaves the n0
+ * default untouched (zero regression to the proven flows).
+ *
+ * @param builder - the endpoint builder to configure in place
+ * @param configurator - test seam; production uses the real @number0/iroh SDK
+ */
+export const configureTransport = (
+  builder: EndpointBuilder,
+  configurator: TransportConfigurator = defaultConfigurator,
+): void => {
+  configurator.applyPreset(builder)
+  const relayUrl = relayUrlOverride()
+  if (relayUrl) {
+    builder.relayMode(configurator.customRelayMode([relayUrl]))
+  }
+}
 
 /** Per-protocol ALPN: one string per protocol version. Both peers must match or
  *  the handshake is refused — so an ACP client can't drive an MCP bridge (or
@@ -50,7 +98,7 @@ export type DialedEndpoint = {
 export const bindServer = async (protocol: BridgeProtocol): Promise<ServerEndpoint> => {
   const { secretKeyBytes } = await loadOrCreateIdentity()
   const builder = Endpoint.builder()
-  presetN0(builder)
+  configureTransport(builder)
   builder.secretKey([...secretKeyBytes])
   builder.alpns([alpnFor(protocol)])
   const endpoint = await builder.bind()
@@ -61,7 +109,7 @@ export const bindServer = async (protocol: BridgeProtocol): Promise<ServerEndpoi
 
 /** Resolve a `--connect` argument (ticket *or* bare NodeId) to an address. A
  *  ticket carries the home-relay URL; a bare NodeId relies on n0 discovery. */
-const resolveTarget = (target: string): EndpointAddr => {
+export const resolveTarget = (target: string): EndpointAddr => {
   try {
     return EndpointTicket.fromString(target).endpointAddr()
   } catch {
@@ -80,7 +128,7 @@ export const dial = async (target: string, protocol: BridgeProtocol): Promise<Di
   const addr = resolveTarget(target)
   const { secretKeyBytes } = await loadOrCreateIdentity()
   const builder = Endpoint.builder()
-  presetN0(builder)
+  configureTransport(builder)
   builder.secretKey([...secretKeyBytes])
   const endpoint = await builder.bind()
   await endpoint.online()

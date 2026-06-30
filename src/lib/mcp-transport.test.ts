@@ -51,6 +51,19 @@ describe('createMcpTransport', () => {
     }).not.toThrow()
     expect(transport.protocolVersion).toBe('2025-06-18')
   })
+
+  it('returns an iroh transport for the "iroh" type without parsing the target as a URL', () => {
+    // A bare NodeId is not a URL — the iroh branch must not run `new URL(...)`.
+    const nodeId = 'a'.repeat(52)
+    const transport = createMcpTransport(nodeId, 'iroh', cloudUrl, {})
+    expect(typeof transport.start).toBe('function')
+    expect(typeof transport.send).toBe('function')
+    expect(typeof transport.close).toBe('function')
+  })
+
+  it('does not throw building an iroh transport (no relay dial happens until start())', () => {
+    expect(() => createMcpTransport('b'.repeat(52), 'iroh', cloudUrl, {})).not.toThrow()
+  })
 })
 
 describe('buildMcpHeaders', () => {

@@ -6,6 +6,7 @@ import { decideTestConnectionResult, type TestConnectionResult } from '@/lib/mcp
 import type { classifyMcpServerAuth } from '@/lib/mcp-auth/web-oauth-flow'
 import { isUnauthorizedError } from '@/lib/mcp-errors'
 import type { probeMcpServerTools } from '@/lib/mcp-connection-test'
+import { isIrohTarget } from '@/lib/iroh-target'
 import { buildMcpHeaders, createMcpTransport, type MCPTransportType } from '@/lib/mcp-transport'
 import { validateMcpServerUrl } from '@/lib/mcp-url-validation'
 import type { FetchFn } from '@/lib/proxy-fetch'
@@ -124,7 +125,12 @@ export type UseAddServerFormResult = {
   resetAddDialog: () => void
   name: string
   url: string
+  /** Effective transport: `iroh` when the URL is a NodeId/ticket, else the
+   *  user-selected http/sse. Drives both the UI branch and the stored row. */
   transport: MCPTransportType
+  /** True when the URL is an iroh NodeId/ticket — the form shows the pairing
+   *  panel and gates Add on a valid target + name (no http probe). */
+  isIroh: boolean
   token: string
   /** Field-change handlers: each first invalidates a stale test result. */
   changeName: (value: string) => void
@@ -268,6 +274,12 @@ export const useAddServerForm = ({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [state.url, state.token, state.transport, state.isAddDialogOpen])
 
+  // An iroh NodeId/ticket isn't a URL — route it to the peer-to-peer transport
+  // and skip the http/sse probe + credential flow (the bridge is allowlist-gated,
+  // verified on first use). When set, this overrides the http/sse Select.
+  const isIroh = isIrohTarget(state.url.trim())
+  const transport: MCPTransportType = isIroh ? 'iroh' : state.transport
+
   // Name prefixes the server's tools in the prompt. Use the user's name when
   // set, otherwise fall back to the value derived from the URL.
   const resolveServerName = () => state.name.trim() || generateServerName(state.url)
@@ -306,7 +318,8 @@ export const useAddServerForm = ({
     resetAddDialog,
     name: state.name,
     url: state.url,
-    transport: state.transport,
+    transport,
+    isIroh,
     token: state.token,
     changeName,
     changeUrl,

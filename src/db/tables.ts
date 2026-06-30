@@ -133,7 +133,7 @@ export const mcpServersTable = sqliteTable(
   {
     id: text('id').primaryKey(),
     name: text('name'),
-    type: text('type', { enum: ['http', 'sse', 'stdio'] }).default('http'),
+    type: text('type', { enum: ['http', 'sse', 'stdio', 'iroh'] }).default('http'),
     url: text('url'),
     command: text('command'),
     args: text('args'),
@@ -287,7 +287,11 @@ export const agentsTable = sqliteTable(
     id: text('id').primaryKey(),
     name: text('name').notNull(),
     type: text('type', { enum: ['remote-acp', 'managed-acp'] }).notNull(),
-    transport: text('transport', { enum: ['websocket'] }).notNull(),
+    // `iroh` dials a peer bridge by NodeId/ticket (carried in `url`); `websocket`
+    // is a `ws(s)://` endpoint. Enum is TypeScript-only on a TEXT column — no SQL
+    // CHECK — so adding a value needs no migration, and the `SELECT *` sync rule
+    // already replicates it.
+    transport: text('transport', { enum: ['websocket', 'iroh'] }).notNull(),
     url: text('url').notNull(),
     description: text('description'),
     icon: text('icon'),
@@ -307,7 +311,7 @@ export const agentsSystemTable = sqliteTable('agents_system', {
   id: text('id').primaryKey(),
   name: text('name').notNull(),
   type: text('type', { enum: ['managed-acp'] }).notNull(),
-  transport: text('transport', { enum: ['websocket'] }).notNull(),
+  transport: text('transport', { enum: ['websocket', 'iroh'] }).notNull(),
   url: text('url').notNull(),
   description: text('description'),
   icon: text('icon'),

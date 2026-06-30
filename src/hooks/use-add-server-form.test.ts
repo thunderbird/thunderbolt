@@ -206,6 +206,44 @@ describe('useAddServerForm', () => {
     expect(result.current.testResult.kind).toBe('needs-oauth')
   })
 
+  it('detects an iroh NodeId/ticket and derives transport: iroh', () => {
+    const { result } = renderForm(makeDeps())
+
+    expect(result.current.isIroh).toBe(false)
+    expect(result.current.transport).toBe('http')
+
+    act(() => result.current.changeUrl('a'.repeat(52)))
+    expect(result.current.isIroh).toBe(true)
+    expect(result.current.transport).toBe('iroh')
+  })
+
+  it('reverts to the selected http/sse transport when the iroh target is cleared', () => {
+    const { result } = renderForm(makeDeps())
+
+    act(() => result.current.changeTransport('sse'))
+    act(() => result.current.changeUrl('a'.repeat(52)))
+    expect(result.current.transport).toBe('iroh')
+
+    act(() => result.current.changeUrl(''))
+    expect(result.current.isIroh).toBe(false)
+    expect(result.current.transport).toBe('sse')
+  })
+
+  it('does not auto-probe an iroh target (it is not a URL)', async () => {
+    const probeMcpServerTools = mock(async () => ['tool']) as unknown as AddServerFormDeps['probeMcpServerTools']
+    const { result } = renderForm(makeDeps({ probeMcpServerTools }))
+
+    act(() => result.current.openDialog())
+    act(() => result.current.changeUrl('a'.repeat(52)))
+    act(() => result.current.handleUrlBlur())
+    await act(async () => {
+      getClock().tick(700)
+      await getClock().runAllAsync()
+    })
+
+    expect(probeMcpServerTools).not.toHaveBeenCalled()
+  })
+
   it('resets all form state on resetAddDialog', async () => {
     const { result } = renderForm(makeDeps())
 

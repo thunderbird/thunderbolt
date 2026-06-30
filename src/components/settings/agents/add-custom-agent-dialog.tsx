@@ -17,12 +17,20 @@ import { Dialog } from '@/components/ui/dialog'
 import { StatusCard } from '@/components/ui/status-card'
 import { getPlatform, isTauri } from '@/lib/platform'
 import { testAcpConnection as defaultTestAcpConnection } from '@/acp'
+import { irohClientNodeId } from '@/acp/iroh/iroh-transport'
+import { IrohPairingPanel, useAppNodeId } from '@/components/settings/iroh-pairing-panel'
+import { isIrohTarget } from '@/lib/iroh-target'
+import { useCopyToClipboard } from '@/hooks/use-copy-to-clipboard'
 import type { Agent } from '@/types/acp'
+import type { CustomAgentTransport } from '@/dal/agents'
 
-/** Maps a user-entered URL to the ACP transport flavor we support, or `null`
- *  when the scheme is unsupported (or the URL is malformed). WebSocket is the
- *  only supported remote transport — HTTP/HTTPS endpoints are rejected. */
-export const inferTransport = (url: string): 'websocket' | null => {
+/** Maps a user-entered endpoint to the ACP transport flavor we support, or `null`
+ *  when it is neither a `ws(s)://` URL nor an iroh NodeId/ticket. HTTP/HTTPS and
+ *  other schemes are rejected. */
+export const inferTransport = (url: string): CustomAgentTransport | null => {
+  if (isIrohTarget(url)) {
+    return 'iroh'
+  }
   try {
     const u = new URL(url)
     if (u.protocol === 'ws:' || u.protocol === 'wss:') {
@@ -45,12 +53,14 @@ const defaultIsTauriIOS = (): boolean => isTauri() && getPlatform() === 'ios'
 export const validateAgentUrl = (
   url: string,
   isIos: () => boolean = defaultIsTauriIOS,
-): { transport: 'websocket' } | { error: string } => {
+): { transport: CustomAgentTransport } | { error: string } => {
   const transport = inferTransport(url)
   if (!transport) {
-    return { error: 'Only WebSocket endpoints are supported (wss:// or ws://)' }
+    return { error: 'Enter a wss:// URL or an iroh NodeId/ticket' }
   }
-  if (isIos() && new URL(url).protocol === 'ws:') {
+  // iroh dials QUIC over an encrypted relay (no cleartext) and its target isn't a
+  // URL, so the iOS ATS guard only applies to a `ws://` WebSocket endpoint.
+  if (transport === 'websocket' && isIos() && new URL(url).protocol === 'ws:') {
     return { error: 'iOS requires a secure URL (wss://)' }
   }
   return { transport }
@@ -60,7 +70,7 @@ export type AddCustomAgentPayload = {
   name: string
   url: string
   description: string | null
-  transport: 'websocket'
+  transport: CustomAgentTransport
 }
 
 /** Async probe signature the dialog uses to test a remote agent endpoint.
@@ -82,6 +92,10 @@ type AddCustomAgentDialogProps = {
   isIos?: () => boolean
   /** Test/DI override for the connection probe. Production callers omit this. */
   testAcpConnection?: TestAcpConnectionFn
+  /** Test/DI override for reading this app's iroh client NodeId — the value a
+   *  bridge operator allowlists. Production omits and lazy-loads the wasm client
+   *  (only when the user enters an iroh target, so the wasm chunk stays lazy). */
+  loadAppNodeId?: () => Promise<string>
 }
 
 type AgentDialogState = {
@@ -162,26 +176,38 @@ export const AddCustomAgentDialog = ({
   editingAgent,
   isIos,
   testAcpConnection = defaultTestAcpConnection,
+  loadAppNodeId = irohClientNodeId,
 }: AddCustomAgentDialogProps) => {
   const isEditing = !!editingAgent
   // Lazy init seeds the form from the agent on first mount. The parent varies
   // the React `key` on agent id to remount when switching between editing
   // targets, so this initializer fires fresh each time.
   const [state, dispatch] = useReducer(agentDialogReducer, editingAgent ?? null, buildInitialState)
+  const { copy, isCopied } = useCopyToClipboard()
 
   const trimmedName = state.name.trim()
   const trimmedUrl = state.url.trim()
   const trimmedDescription = state.description.trim()
   const validation = validateAgentUrl(trimmedUrl, isIos)
-  // Surface an invalid-URL error at render time (once the field is non-empty)
-  // so the user sees why Test Connection is unavailable and submit stays gated.
+  // Surface an invalid-target error at render time (once the field is non-empty)
+  // so the user sees why submit stays gated.
   const urlError = trimmedUrl.length > 0 && 'error' in validation ? validation.error : null
-  // Submit is gated behind a successful Test Connection — a valid name, URL,
-  // and a confirmed connection are all required before saving.
-  const canSubmit =
-    trimmedName.length > 0 && trimmedUrl.length > 0 && state.connectionStatus === 'success' && !state.submitting
-  // The probe is only meaningful once the URL is a valid WebSocket endpoint.
-  const canTestConnection = trimmedUrl.length > 0 && !urlError
+  const transport = 'error' in validation ? null : validation.transport
+  const isIroh = transport === 'iroh'
+  // A WebSocket endpoint is probed before save. An iroh bridge must first
+  // allowlist THIS app's NodeId out-of-band (`thunderbolt iroh allow <id>`), so a
+  // pre-allowlist probe would always fail — iroh is gated on a valid target alone
+  // and verified on the first chat instead.
+  const requiresConnectionTest = transport === 'websocket'
+  const connectionReady = requiresConnectionTest ? state.connectionStatus === 'success' : isIroh
+  const canSubmit = trimmedName.length > 0 && connectionReady && !state.submitting
+  // The probe is only meaningful for a valid WebSocket endpoint.
+  const canTestConnection = requiresConnectionTest && trimmedUrl.length > 0 && !urlError
+
+  // Load this app's iroh NodeId once the user targets an iroh bridge, so it can be
+  // shown for allowlisting. The shared hook keeps the wasm chunk lazy (loads only
+  // while an iroh target is selected) and re-arms when the target is re-entered.
+  const appNodeId = useAppNodeId(isIroh, loadAppNodeId)
 
   const handleOpenChange = (next: boolean) => {
     if (!next) {
@@ -203,8 +229,9 @@ export const AddCustomAgentDialog = ({
   }
 
   const handleSubmit = async () => {
-    // `canSubmit` already requires a successful connection test, which is only
-    // reachable for a valid WebSocket URL — so `validation` carries a transport.
+    // `canSubmit` is only true once `validation` resolves to a transport (a tested
+    // WebSocket endpoint or a valid iroh target), so this guard is belt-and-braces
+    // and also narrows the union for `validation.transport` below.
     if (!canSubmit || 'error' in validation) {
       return
     }
@@ -246,15 +273,19 @@ export const AddCustomAgentDialog = ({
             <Label htmlFor="agent-url">URL</Label>
             <Input
               id="agent-url"
-              placeholder="wss://example.com/ws"
+              placeholder="wss://example.com/ws or iroh NodeId/ticket"
               value={state.url}
               onChange={(e) => dispatch({ type: 'SET_URL', value: e.target.value })}
               autoComplete="off"
+              autoCapitalize="none"
+              autoCorrect="off"
+              spellCheck={false}
             />
             <p className="text-[length:var(--font-size-xs)] text-muted-foreground">
-              WebSocket endpoint for the remote ACP agent
+              WebSocket endpoint, or an iroh NodeId/ticket for a peer-to-peer bridge
             </p>
           </div>
+          {isIroh && <IrohPairingPanel appNodeId={appNodeId} copy={copy} isCopied={isCopied} />}
           <div className="grid gap-2">
             <Label htmlFor="agent-description">Description</Label>
             <Input

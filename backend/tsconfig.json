@@ -13,6 +13,17 @@
     },
     "types": ["bun-types"]
   },
-  "include": ["src/**/*.ts", "src/**/*.tsx", "src/**/*.d.ts", "test/**/*.ts", "../shared/**/*.ts"],
+  "include": [
+    "src/**/*.ts",
+    "src/**/*.tsx",
+    "src/**/*.d.ts",
+    "test/**/*.ts",
+    "../shared/acp-types.ts",
+    "../shared/powersync-tables.ts",
+    "../shared/proxy-protocol.ts",
+    "../shared/url.ts",
+    "../shared/ws-bearer.ts",
+    "../shared/types/auth.ts"
+  ],
   "exclude": ["node_modules", "dist"]
 }

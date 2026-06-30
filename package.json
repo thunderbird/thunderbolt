@@ -106,7 +106,7 @@
     "@tauri-apps/plugin-updater": "^2.10.1",
     "ai": "^6.0.37",
     "better-auth": "^1.6.9",
-    "bson": "^6.10.4",
+    "bson": "^7.2.0",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "cmdk": "^1.1.1",

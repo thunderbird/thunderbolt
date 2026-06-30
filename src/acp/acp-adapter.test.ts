@@ -25,11 +25,14 @@ import '@/testing-library'
 import { act } from '@testing-library/react'
 import type {
   Agent as AcpSdkAgent,
+  CancelNotification,
   Client,
   InitializeRequest,
   LoadSessionRequest,
   NewSessionRequest,
   PromptRequest,
+  RequestPermissionRequest,
+  RequestPermissionResponse,
   SessionNotification,
 } from '@agentclientprotocol/sdk'
 import { describe, expect, it } from 'bun:test'
@@ -103,6 +106,7 @@ const buildFakeConnection = (opts: { hangInitialize?: boolean; loadSession?: boo
     newSession: [] as NewSessionRequest[],
     loadSession: [] as LoadSessionRequest[],
     prompt: [] as PromptRequest[],
+    cancel: [] as CancelNotification[],
   }
   let client: Client | null = null
   let newSessionCount = 0
@@ -137,12 +141,21 @@ const buildFakeConnection = (opts: { hangInitialize?: boolean; loadSession?: boo
       await promptGatePromise
       return { stopReason: 'end_turn' as const }
     }
+    cancel = (req: CancelNotification) => {
+      calls.cancel.push(req)
+      return Promise.resolve()
+    }
   }
 
   return {
     FakeConnection,
     calls,
     pushUpdate: (n: SessionNotification) => client?.sessionUpdate(n),
+    // Route a permission request through the same client the adapter registers,
+    // so a test can observe whether a thread's handler is still wired (its own
+    // outcome) or has been torn down (the adapter's `cancelled` fallback).
+    pushPermission: (req: RequestPermissionRequest): Promise<RequestPermissionResponse> | undefined =>
+      client?.requestPermission(req),
     releasePrompts: () => promptGate.release(),
   }
 }
@@ -172,9 +185,10 @@ const readSse = async (response: Response, max = 50): Promise<string[]> => {
   return chunks
 }
 
-const promptInit = (text: string): RequestInit => ({
+const promptInit = (text: string, signal?: AbortSignal): RequestInit => ({
   method: 'POST',
   body: JSON.stringify({ id: 't', messages: [{ role: 'user', parts: [{ type: 'text', text }] }] }),
+  signal,
 })
 
 describe('connectAcpAdapter — handshake failure modes', () => {
@@ -454,5 +468,113 @@ describe('connectAcpAdapter — agent-level command capture', () => {
     await adapter.ensureSession(threadCtx('thread-1'))
     await adapter.ensureSession(threadCtx('thread-1'))
     expect(calls.newSession).toHaveLength(1)
+  })
+})
+
+describe('connectAcpAdapter — Stop cancels the remote ACP turn', () => {
+  /** A minimal permission request for the given session. The adapter only keys
+   *  off `sessionId` when routing, so the rest is filler. */
+  const permissionReq = (sessionId: string): RequestPermissionRequest =>
+    ({
+      sessionId,
+      toolCall: { toolCallId: 'tc-1' },
+      options: [{ optionId: 'allow', name: 'Allow', kind: 'allow_once' }],
+    }) as RequestPermissionRequest
+
+  it('aborting mid-stream sends session/cancel once and tears down the thread handlers', async () => {
+    const { transport } = buildFakeTransport()
+    const { FakeConnection, calls, pushPermission, releasePrompts } = buildFakeConnection()
+
+    const adapter = await connectAcpAdapter(remoteAgent, baseCtx(), {
+      openTransport: async () => transport,
+      ClientSideConnection: FakeConnection as never,
+    })
+
+    const controller = new AbortController()
+    // A thread-owned permission handler that would auto-allow while connected.
+    const requestPermission = async (): Promise<RequestPermissionResponse> => ({
+      outcome: { outcome: 'selected', optionId: 'allow' },
+    })
+    const response = await adapter.fetch(
+      promptInit('do something long', controller.signal),
+      threadCtx('thread-A', { requestPermission }),
+    )
+
+    // The prompt is in flight (gated open); nothing cancelled yet.
+    expect(calls.prompt).toHaveLength(1)
+    expect(calls.cancel).toHaveLength(0)
+
+    let sse: string[] = []
+    await act(async () => {
+      controller.abort()
+      // Even though the agent later finishes the (now-cancelled) turn, cancel
+      // must have fired exactly once — driven by the abort, not the resolution.
+      releasePrompts()
+      await getClock().runAllAsync()
+      sse = await readSse(response)
+    })
+
+    expect(calls.cancel).toHaveLength(1)
+    expect(calls.cancel[0]?.sessionId).toBe('sess-1')
+
+    // Teardown ran: the body closed with a terminal finish + [DONE]...
+    const joined = sse.join('')
+    expect(joined).toContain('"type":"finish"')
+    expect(joined).toContain('[DONE]')
+    expect(sse).toContain('[CLOSED]')
+
+    // ...and the thread's permission handler was unregistered, so a late
+    // permission prompt for that session now hits the `cancelled` fallback.
+    const outcome = await pushPermission(permissionReq('sess-1'))
+    expect(outcome?.outcome.outcome).toBe('cancelled')
+  })
+
+  it('a signal already aborted at fetch time cancels immediately', async () => {
+    const { transport } = buildFakeTransport()
+    const { FakeConnection, calls, releasePrompts } = buildFakeConnection()
+
+    const adapter = await connectAcpAdapter(remoteAgent, baseCtx(), {
+      openTransport: async () => transport,
+      ClientSideConnection: FakeConnection as never,
+    })
+
+    const response = await adapter.fetch(promptInit('hi', AbortSignal.abort()), threadCtx('thread-A'))
+
+    // The turn was issued (can't un-send) but immediately cancelled — once.
+    expect(calls.prompt).toHaveLength(1)
+    expect(calls.cancel).toHaveLength(1)
+    expect(calls.cancel[0]?.sessionId).toBe('sess-1')
+
+    await act(async () => {
+      releasePrompts()
+      await getClock().runAllAsync()
+      await readSse(response)
+    })
+
+    // The agent resolving the cancelled turn does not double-cancel.
+    expect(calls.cancel).toHaveLength(1)
+  })
+
+  it('a normal completion never sends session/cancel', async () => {
+    const { transport } = buildFakeTransport()
+    const { FakeConnection, calls, releasePrompts } = buildFakeConnection()
+
+    const adapter = await connectAcpAdapter(remoteAgent, baseCtx(), {
+      openTransport: async () => transport,
+      ClientSideConnection: FakeConnection as never,
+    })
+
+    const controller = new AbortController()
+    const response = await adapter.fetch(promptInit('hi', controller.signal), threadCtx('thread-A'))
+
+    let sse: string[] = []
+    await act(async () => {
+      releasePrompts()
+      await getClock().runAllAsync()
+      sse = await readSse(response)
+    })
+
+    expect(sse.join('')).toContain('"type":"finish"')
+    expect(calls.cancel).toHaveLength(0)
   })
 })

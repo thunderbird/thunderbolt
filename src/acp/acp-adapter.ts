@@ -323,6 +323,33 @@ export const connectAcpAdapter = async (
 
     translator.start()
 
+    // One idempotent teardown shared by every exit path — the prompt
+    // resolving, the prompt erroring, and the user hitting Stop (signal abort).
+    // It drops this turn's routing handlers, closes the translator stream, and
+    // detaches the abort listener so nothing leaks.
+    const { signal } = init
+    let tornDown = false
+    const teardown = (): void => {
+      if (tornDown) {
+        return
+      }
+      tornDown = true
+      signal?.removeEventListener('abort', onAbort)
+      sessionUpdateSinks.delete(sessionId)
+      permissionHandlers.delete(sessionId)
+      translator.finish()
+      close()
+    }
+
+    // Stop: the AI SDK aborts the *local* stream, but the remote ACP turn keeps
+    // running (burning tokens, still executing tool calls) until we tell the
+    // agent. Send `session/cancel` — fire-and-forget, since teardown must not
+    // block on the wire — then run the same teardown.
+    const onAbort = (): void => {
+      void connection.cancel({ sessionId })
+      teardown()
+    }
+
     // Drive the prompt off the request thread — the response stream is the
     // synchronous return value so the AI SDK can attach immediately.
     void (async () => {
@@ -338,12 +365,16 @@ export const connectAcpAdapter = async (
       } catch (err) {
         translator.error(err instanceof Error ? err.message : String(err))
       } finally {
-        sessionUpdateSinks.delete(sessionId)
-        permissionHandlers.delete(sessionId)
-        translator.finish()
-        close()
+        teardown()
       }
     })()
+
+    // A signal already aborted before we attached the listener still cancels.
+    if (signal?.aborted) {
+      onAbort()
+    } else {
+      signal?.addEventListener('abort', onAbort, { once: true })
+    }
 
     return new Response(body, {
       status: 200,

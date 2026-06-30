@@ -200,6 +200,15 @@ export const useAttachmentRemediation = ({
     if (!isRemediableError || !lastUserMessage) {
       return
     }
+    // A remediation we initiated is still in flight: applyTargets has bumped an
+    // attachment's deliverAs (changing the turn signature) and called regenerate(),
+    // but the retry hasn't started streaming yet so `active` is still true. Without
+    // this guard the effect would re-fire on the new signature and advance another
+    // rung (native→text→images) in one go, skipping the intermediate text retry.
+    // It clears when the retry streams (`!active` branch) or the attempt finds nothing.
+    if (remediating) {
+      return
+    }
     const attachments = getAttachments(lastUserMessage)
     if (!attachments.some(canAdvance)) {
       return
@@ -237,7 +246,7 @@ export const useAttachmentRemediation = ({
         setRemediating(false)
       }
     })()
-  }, [active, error, isRemediableError, lastUserMessage, applyTargets])
+  }, [active, error, isRemediableError, lastUserMessage, applyTargets, remediating])
 
   // The turn failed with a file the model couldn't read and there's no rung left
   // to try automatically — surface file-specific guidance rather than a retry.

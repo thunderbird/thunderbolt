@@ -603,6 +603,45 @@ describe('HaystackAcpServer', () => {
     expect(reply.error.message).toContain('does-not-exist')
   })
 
+  it('resumes a file-capable pipeline via session/load even though it has no persisted search session', async () => {
+    // Generative (file) pipelines never bootstrap a search_session_id, so they're
+    // absent from the persistent map. session/load must still succeed (the next
+    // turn re-uploads files), not resourceNotFound into a retry loop.
+    const upstream: Upstream = (input) => {
+      const url = input.toString()
+      expect(url).toContain('/search-stream')
+      return Promise.resolve(sseResponse([{ type: 'delta', delta: { text: 'resumed' } }, '[DONE]']))
+    }
+    const { server, sent } = buildServer({
+      upstream,
+      supportsFiles: true,
+      pipelineName: 'map-pipeline',
+      persistentSearchSessions: new Map<string, string>(),
+    })
+
+    await server.handleMessage(
+      JSON.stringify({
+        jsonrpc: '2.0',
+        id: 1,
+        method: AGENT_METHODS.session_load,
+        params: { sessionId: 'persisted-file-ses', cwd: '/x', mcpServers: [] },
+      }),
+    )
+    expect(findResponse(sent, 1).error).toBeUndefined()
+    expect(findResponse(sent, 1).result).toEqual({})
+
+    // The resumed session can immediately serve a prompt.
+    await server.handleMessage(
+      JSON.stringify({
+        jsonrpc: '2.0',
+        id: 2,
+        method: AGENT_METHODS.session_prompt,
+        params: { sessionId: 'persisted-file-ses', prompt: [{ type: 'text', text: 'go' }] },
+      }),
+    )
+    expect(findResponse(sent, 2).result.stopReason).toBe('end_turn')
+  })
+
   it('evicts the oldest entry once the persistent map exceeds its cap', async () => {
     // Pre-fill the map up to the 1000-entry cap. A test seam keeps the loop
     // cheap and the assertion focused on eviction order rather than absolute

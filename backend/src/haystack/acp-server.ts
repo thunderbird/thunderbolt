@@ -330,6 +330,18 @@ export class HaystackAcpServer {
       this.sendError(req.id, rpcErrors.invalidRequest, 'session/load requires sessionId')
       return
     }
+    // File-capable (generative) pipelines never bootstrap a Deepset
+    // `search_session_id` — each turn re-uploads its files to `temporary_files`
+    // and runs `search-stream` statelessly — so they're absent from the
+    // persistent map. They're still resumable: restore with a null search
+    // session and the next prompt proceeds normally. Without this, a persisted
+    // file-pipeline session would `resourceNotFound` on every `session/load`
+    // and the client would keep retrying a doomed restore.
+    if (this.supportsFiles) {
+      this.registerSession(params.sessionId, null)
+      this.sendResult(req.id, {} satisfies LoadSessionResponse)
+      return
+    }
     const searchSessionId = this.persistentSearchSessions.get(params.sessionId)
     if (!searchSessionId) {
       this.sendError(req.id, rpcErrors.resourceNotFound, `unknown session: ${params.sessionId}`)

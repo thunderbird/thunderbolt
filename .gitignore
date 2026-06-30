@@ -80,6 +80,3 @@ Pulumi.*.yaml
 
 # Astro
 .astro/
-.playwright-mcp/
-.env.*
-!.env.example

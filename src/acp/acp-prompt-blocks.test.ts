@@ -13,7 +13,7 @@
  * shared process.
  */
 
-import { describe, expect, it } from 'bun:test'
+import { describe, expect, test } from 'bun:test'
 import type { StoredFile } from '@/lib/file-blob-storage'
 import { buildAttachmentPart } from '@/lib/attachments'
 import { buildPromptBlocks, type PromptBlockDeps } from './acp-adapter'
@@ -37,7 +37,7 @@ const png = () => buildAttachmentPart({ localFileId: 'f2', filename: 'pic.png', 
 const textPart = (text: string) => ({ type: 'text', text })
 
 describe('buildPromptBlocks — no embeddedContext', () => {
-  it('sends a text-extractable file as an extracted text block', async () => {
+  test('sends a text-extractable file as an extracted text block', async () => {
     const blocks = (await buildPromptBlocks(initWith([textPart('hi'), pdf()]), undefined, false, deps)) as Block[]
 
     expect(blocks).toHaveLength(2)
@@ -46,7 +46,7 @@ describe('buildPromptBlocks — no embeddedContext', () => {
     expect(blocks[1]?.text).toBe('[Attachment: doc.pdf]\n\nEXTRACTED PDF TEXT')
   })
 
-  it('flags a non-text file as undeliverable instead of dropping it silently', async () => {
+  test('flags a non-text file as undeliverable instead of dropping it silently', async () => {
     const blocks = (await buildPromptBlocks(initWith([textPart('hi'), png()]), undefined, false, deps)) as Block[]
 
     expect(blocks).toHaveLength(1)
@@ -54,7 +54,7 @@ describe('buildPromptBlocks — no embeddedContext', () => {
     expect(blocks[0]?.text).toContain('[Attachment "pic.png" could not be delivered to this agent]')
   })
 
-  it('mixes both: text block for the PDF, note for the image', async () => {
+  test('mixes both: text block for the PDF, note for the image', async () => {
     const blocks = (await buildPromptBlocks(
       initWith([textPart('hi'), pdf(), png()]),
       undefined,
@@ -68,7 +68,7 @@ describe('buildPromptBlocks — no embeddedContext', () => {
     expect(blocks[1]?.text).toBe('[Attachment: doc.pdf]\n\nEXTRACTED PDF TEXT')
   })
 
-  it('with no attachments, returns a single text block (no note)', async () => {
+  test('with no attachments, returns a single text block (no note)', async () => {
     const blocks = (await buildPromptBlocks(initWith([textPart('just text')]), undefined, false, deps)) as Block[]
 
     expect(blocks).toHaveLength(1)

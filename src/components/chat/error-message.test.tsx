@@ -100,6 +100,42 @@ describe('ErrorMessage', () => {
     })
   })
 
+  describe('context overflow', () => {
+    it('shows the context-window guidance and no retry/spinner', () => {
+      const error = new Error(
+        JSON.stringify({ error: 'prompt is too long: 250000 tokens > 200000 maximum', status: 400 }),
+      )
+      const onRetry = mock(() => {})
+      render(<ErrorMessage retryCount={0} retriesExhausted={true} error={error} onRetry={onRetry} />)
+
+      expect(screen.getByText(/too large for the model's context window/i)).toBeTruthy()
+      expect(screen.queryByText('Retry')).toBeNull()
+      expect(screen.queryByText(/Retrying/)).toBeNull()
+    })
+  })
+
+  describe('delivery exhausted', () => {
+    it('shows the unreadable-file guidance', () => {
+      render(<ErrorMessage retryCount={0} retriesExhausted={true} deliveryExhausted={true} />)
+
+      expect(screen.getByText("This model couldn't read the attached file. Try a different model.")).toBeTruthy()
+    })
+
+    it('hides the Retry button even when onRetry is provided (re-running fails identically)', () => {
+      const onRetry = mock(() => {})
+      render(<ErrorMessage retryCount={0} retriesExhausted={true} deliveryExhausted={true} onRetry={onRetry} />)
+
+      expect(screen.queryByText('Retry')).toBeNull()
+    })
+
+    it('still shows Retry for a generic (non-exhausted) error', () => {
+      const onRetry = mock(() => {})
+      render(<ErrorMessage retryCount={0} retriesExhausted={true} deliveryExhausted={false} onRetry={onRetry} />)
+
+      expect(screen.getByText('Retry')).toBeTruthy()
+    })
+  })
+
   describe('edge cases', () => {
     it('should handle null error without crashing', () => {
       render(<ErrorMessage retryCount={0} retriesExhausted={false} error={null} />)

@@ -54,6 +54,7 @@ const acceptedAttachmentMimeTypes = new Set([
   'text/markdown',
   'text/plain',
   'text/csv',
+  'application/json',
 ])
 
 /** Extension fallback for when the browser reports an empty/odd mime type
@@ -70,6 +71,7 @@ const acceptedAttachmentExtensions = [
   '.markdown',
   '.txt',
   '.csv',
+  '.json',
 ]
 
 /** `accept` attribute string for the file picker. */

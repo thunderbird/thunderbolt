@@ -4,7 +4,7 @@
 
 import { getTransformer, hasTransformer } from '@/files/transformers'
 import { getAttachments, isAttachmentPart } from '@/lib/attachments'
-import { isContextOverflowError, isNonRetryableClientError } from '@/lib/error-utils'
+import { isContentRejectionError } from '@/lib/error-utils'
 import { getAttachment } from '@/lib/file-blob-storage'
 import type { AttachmentData, ThunderboltUIMessage } from '@/types'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
@@ -160,11 +160,12 @@ export const useAttachmentRemediation = ({
   const attemptedSignatures = useRef(new Set<string>())
   const [remediating, setRemediating] = useState(false)
 
-  // A 4xx that's worth remediating: the content was rejected, NOT the request
-  // being too big. A context-window overflow is also a 4xx, but converting
-  // native→text/images won't shrink it enough — so exclude it (it gets its own
-  // guidance via the error UI instead).
-  const isRemediableError = isNonRetryableClientError(error) && !isContextOverflowError(error)
+  // Only a genuine content rejection (the endpoint couldn't carry the file's
+  // form — a 400/422) is worth remediating. Auth (401/403), not-found, timeouts,
+  // rate limits, and context overflow are all excluded by isContentRejectionError
+  // — converting native→text/images can't fix those, and churning the ladder
+  // would end in a misleading "couldn't read the file" message.
+  const isRemediableError = isContentRejectionError(error)
 
   // Whether an auto-remediation is *about* to fire — computed synchronously so
   // the error UI can be suppressed on the very first error frame, before the

@@ -49,18 +49,20 @@ export const getErrorStatusCode = (error?: Error | null): number | undefined => 
 }
 
 /**
- * True for a 4xx client error (excluding 429, handled as a rate limit). Such an
- * error won't succeed by retrying identical input — unlike a transient 5xx or
- * network failure. Drives two things: skipping the generic auto-retry loop, and
- * triggering attachment remediation (a 4xx on a turn carrying a file is the file
- * being rejected — the caller pairs this with an attachment check).
+ * The provider/SDK's own retry verdict, if it survived serialization
+ * (`serializeStreamError` includes `isRetryable` for `APICallError` and the
+ * client-side `UnsupportedFunctionalityError`). `false` means identical input
+ * will fail again (4xx, unsupported content); `true` / `undefined` means it may
+ * be transient (408/409/5xx/network) and is worth the normal retry loop. This is
+ * a more precise retry signal than "is it a 4xx", which wrongly buckets transient
+ * 408s with deterministic 400s.
  */
-export const isNonRetryableClientError = (error?: Error | null): boolean => {
-  if (isRateLimitError(error)) {
-    return false
+export const getErrorRetryable = (error?: Error | null): boolean | undefined => {
+  if (!error?.message) {
+    return undefined
   }
-  const status = getErrorStatusCode(error)
-  return status !== undefined && status >= 400 && status < 500
+  const parsed = parseJson(error.message)
+  return typeof parsed?.isRetryable === 'boolean' ? parsed.isRetryable : undefined
 }
 
 /**
@@ -90,6 +92,23 @@ export const isContextOverflowError = (error?: Error | null): boolean => {
   const parsed = parseJson(error.message)
   const message = (typeof parsed?.error === 'string' ? parsed.error : error.message).toLowerCase()
   return contextOverflowMarkers.some((marker) => message.includes(marker))
+}
+
+/**
+ * A content rejection: the endpoint rejected the *form* of the request body —
+ * a file part it can't carry — surfaced as a 400 (e.g. the OpenAI-compat
+ * `content.str` error) or the 422 `serializeStreamError` mints for a file-part
+ * `UnsupportedFunctionalityError`. Deliberately narrow: it excludes auth
+ * (401/403), not-found (404), timeouts (408), rate limits (429), and context
+ * overflow — none of which attachment remediation can fix by re-delivering as
+ * text/images. This is the ONLY signal that should trigger remediation.
+ */
+export const isContentRejectionError = (error?: Error | null): boolean => {
+  if (isRateLimitError(error) || isContextOverflowError(error)) {
+    return false
+  }
+  const status = getErrorStatusCode(error)
+  return status === 400 || status === 422
 }
 
 /**

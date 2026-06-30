@@ -714,13 +714,15 @@ export const aiFetchStreamingResponse = async ({
           isRetryable: error.isRetryable,
         })
       }
-      // A provider that can't serialize a content part (e.g. a docx file part on
-      // an OpenAI-compat transport) throws this client-side, before any HTTP
-      // call — so there's no status to read. Tag it as a non-retryable content
-      // rejection (422) so the attachment-remediation layer converts and retries
-      // instead of burning generic retries on an error that can't self-resolve.
+      // A provider that can't serialize a part throws this client-side, before
+      // any HTTP call — so there's no status to read. It's only a *content*
+      // rejection (and only then worth attachment remediation) when the
+      // unsupported functionality is a file part / media type; other unsupported
+      // features (tools, structured output, reasoning) are just non-retryable and
+      // must NOT be tagged 422, or they'd masquerade as a fixable attachment.
       if (UnsupportedFunctionalityError.isInstance(error)) {
-        return JSON.stringify({ error: error.message, status: 422, isRetryable: false })
+        const isFilePart = /file part|media type/i.test(`${error.functionality} ${error.message}`)
+        return JSON.stringify({ error: error.message, status: isFilePart ? 422 : undefined, isRetryable: false })
       }
       return error instanceof Error ? error.message : String(error)
     }

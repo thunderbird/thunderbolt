@@ -5,9 +5,10 @@
 import { describe, expect, it } from 'bun:test'
 import {
   createHandleError,
+  getErrorRetryable,
   getErrorStatusCode,
+  isContentRejectionError,
   isContextOverflowError,
-  isNonRetryableClientError,
   isRateLimitError,
 } from './error-utils'
 import type { HandleErrorCode } from '@/types/handle-errors'
@@ -228,36 +229,47 @@ describe('getErrorStatusCode', () => {
   })
 })
 
-describe('isNonRetryableClientError', () => {
-  it('detects the file-part rejection 400 (now carrying a status)', () => {
-    const error = new Error(JSON.stringify({ error: 'Bad Request', status: 400 }))
-    expect(isNonRetryableClientError(error)).toBe(true)
+describe('isContentRejectionError', () => {
+  it('detects the file-part rejection 400 (e.g. content.str)', () => {
+    expect(isContentRejectionError(new Error(JSON.stringify({ error: 'Bad Request', status: 400 })))).toBe(true)
   })
 
-  it('detects a 422', () => {
-    expect(isNonRetryableClientError(new Error(JSON.stringify({ error: 'x', statusCode: 422 })))).toBe(true)
+  it('detects a 422 (the tag minted for a file-part UnsupportedFunctionalityError)', () => {
+    expect(isContentRejectionError(new Error(JSON.stringify({ error: 'x', statusCode: 422 })))).toBe(true)
   })
 
-  it('treats auth/forbidden 4xx as non-retryable', () => {
-    expect(isNonRetryableClientError(new Error(JSON.stringify({ error: 'Unauthorized', status: 401 })))).toBe(true)
+  it('does NOT treat auth (401/403) as a content rejection', () => {
+    expect(isContentRejectionError(new Error(JSON.stringify({ error: 'Unauthorized', status: 401 })))).toBe(false)
+    expect(isContentRejectionError(new Error(JSON.stringify({ error: 'Forbidden', status: 403 })))).toBe(false)
   })
 
-  it('does not flag transient 5xx (retryable)', () => {
-    expect(isNonRetryableClientError(new Error(JSON.stringify({ error: 'Server error', status: 500 })))).toBe(false)
+  it('does NOT treat a timeout (408) or not-found (404) as a content rejection', () => {
+    expect(isContentRejectionError(new Error(JSON.stringify({ error: 'Request Timeout', status: 408 })))).toBe(false)
+    expect(isContentRejectionError(new Error(JSON.stringify({ error: 'Not Found', status: 404 })))).toBe(false)
   })
 
-  it('does not flag a rate limit (429 is handled separately)', () => {
-    expect(isNonRetryableClientError(new Error(JSON.stringify({ error: 'Too many requests', status: 429 })))).toBe(
-      false,
-    )
+  it('does NOT treat a 5xx, rate limit, or context overflow as a content rejection', () => {
+    expect(isContentRejectionError(new Error(JSON.stringify({ error: 'Server error', status: 500 })))).toBe(false)
+    expect(isContentRejectionError(new Error(JSON.stringify({ error: 'Too many requests', status: 429 })))).toBe(false)
+    expect(isContentRejectionError(new Error(JSON.stringify({ error: 'prompt is too long', status: 400 })))).toBe(false)
   })
 
-  it('does not flag an error with no status (transient/unknown)', () => {
-    expect(isNonRetryableClientError(new Error('Network timeout'))).toBe(false)
+  it('returns false for null / no status', () => {
+    expect(isContentRejectionError(null)).toBe(false)
+    expect(isContentRejectionError(new Error('Network timeout'))).toBe(false)
+  })
+})
+
+describe('getErrorRetryable', () => {
+  it('reads the SDK isRetryable verdict from the serialized envelope', () => {
+    expect(getErrorRetryable(new Error(JSON.stringify({ error: 'x', status: 400, isRetryable: false })))).toBe(false)
+    expect(getErrorRetryable(new Error(JSON.stringify({ error: 'x', status: 408, isRetryable: true })))).toBe(true)
   })
 
-  it('returns false for null', () => {
-    expect(isNonRetryableClientError(null)).toBe(false)
+  it('is undefined when no isRetryable field is present', () => {
+    expect(getErrorRetryable(new Error(JSON.stringify({ error: 'x', status: 500 })))).toBeUndefined()
+    expect(getErrorRetryable(new Error('Network timeout'))).toBeUndefined()
+    expect(getErrorRetryable(null)).toBeUndefined()
   })
 })
 

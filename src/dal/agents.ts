@@ -152,9 +152,11 @@ export const createAgent = async (
 }
 
 /** Fields patchable via `updateAgent`. `id`/`userId`/`deletedAt` are managed
- *  internally — callers cannot rewrite them through this entry point. */
+ *  internally — callers cannot rewrite them through this entry point. `scope`
+ *  is patchable; flipping to `'user'` transfers row ownership to the caller
+ *  on the BE (see `backend/.../workspace-scoped.ts`). */
 export type UpdateAgentPatch = Partial<
-  Pick<CreateAgentInput, 'name' | 'type' | 'transport' | 'url' | 'description' | 'icon' | 'enabled'>
+  Pick<CreateAgentInput, 'name' | 'type' | 'transport' | 'url' | 'description' | 'icon' | 'enabled' | 'scope'>
 >
 
 /** Patch fields whose change invalidates a warm ACP connection — the wire

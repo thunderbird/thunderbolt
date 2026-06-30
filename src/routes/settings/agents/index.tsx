@@ -110,12 +110,15 @@ export default function AgentsSettingsPage({
     }
     if (editingAgent) {
       // Only customs are editable; system / built-in rows never reach this
-      // path (the row hides the Edit affordance).
+      // path (the row hides the Edit affordance). `scope` is included so
+      // flipping workspace↔user actually round-trips; the BE handler
+      // transfers ownership to the caller when scope becomes 'user'.
       await updateAgent(db, workspaceId, editingAgent.id, {
         name: payload.name,
         transport: payload.transport,
         url: payload.url,
         description: payload.description,
+        scope: payload.scope,
       })
       return
     }

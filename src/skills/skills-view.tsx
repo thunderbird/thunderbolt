@@ -304,10 +304,9 @@ export const SkillsView = () => {
         onNameChange={() => dispatch({ type: 'CLEAR_NAME_ERROR' })}
         resetSignal={resetSignal}
         nameError={nameError}
-        // Only the row's author can flip scope (BE drops the change otherwise).
-        // Anonymous skills with no recorded author also lock the picker — there's
-        // no owner to authorize a change against.
-        showScopePicker={scopePickerEnabled && active.userId != null && active.userId === currentUserId}
+        // Any member with `add_skills` permission can flip scope; the BE
+        // transfers ownership to the caller when scope becomes `'user'`.
+        showScopePicker={scopePickerEnabled && canAddSkills}
       />
     )
 

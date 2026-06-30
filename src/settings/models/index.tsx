@@ -232,9 +232,9 @@ const EditModelForm = ({
   onSubmit: (values: z.infer<typeof editFormSchema> & { id: string }) => void
   isPending: boolean
   /** Mount the scope picker (THU-603). Parent computes this as
-   *  `scopePickerEnabled && active.userId === currentUserId` — i.e. only the
-   *  row's author sees it in edit mode. Same pattern as `SkillForm` so the
-   *  ownership rule looks identical across resources. */
+   *  `scopePickerEnabled && canAddModels` — any member with add permission can
+   *  flip scope; the BE transfers ownership to the caller when scope becomes
+   *  `'user'`. Same pattern as `SkillForm`. */
   showScopePicker?: boolean
 }) => {
   const form = useForm<z.infer<typeof editFormSchema>>({
@@ -465,8 +465,9 @@ export default function ModelsPage({ useWorkspacePermission = useWorkspacePermis
         throw new Error('No active workspace')
       }
       const { id, ...fields } = values
-      // `scope` flows through to updateModel — BE handler applies it for the
-      // row's owner and silently drops it for non-owners.
+      // `scope` flows through to updateModel — any member with `add_models`
+      // permission may flip it; the BE handler transfers ownership to the
+      // caller when scope becomes `'user'`.
       await updateModel(db, workspaceId, id, {
         ...fields,
         apiKey: fields.apiKey || null,
@@ -1380,10 +1381,9 @@ export default function ModelsPage({ useWorkspacePermission = useWorkspacePermis
         onOpenChange={(open) => !open && setEditingModel(null)}
         onSubmit={(values) => editModelMutation.mutate(values)}
         isPending={editModelMutation.isPending}
-        // Only the row's author sees the picker in edit mode — matches the
-        // SkillForm pattern and the BE handler's owner-only scope flip rule.
-        // Defensive null check covers pre-THU-603 rows without a recorded owner.
-        showScopePicker={scopePickerEnabled && editingModel?.userId != null && editingModel.userId === currentUserId}
+        // Any member with `add_models` permission can flip scope; the BE
+        // transfers ownership to the caller when scope becomes `'user'`.
+        showScopePicker={scopePickerEnabled && canAddModels}
       />
 
       {/* Delete Confirmation */}

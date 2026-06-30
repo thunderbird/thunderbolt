@@ -57,10 +57,16 @@ export type WorkspaceScopedConfig = {
    * upsert-style PUT against an existing row — is rejected for callers other
    * than the row owner, in addition to the workspace-membership checks.
    *
-   * `scope` is set at create-time only — subsequent PATCHes silently drop it
-   * and a PUT-as-update preserves the existing row's scope. PUTs that attempt
-   * to set `scope = 'user'` are rejected when `settings.allowUserScopedResources`
-   * is false (deployment-level kill switch).
+   * Scope changes are accepted on PATCH from any caller with the relevant
+   * add permission — flipping a shared row to user-private transfers ownership
+   * to the caller (their `user_id` is stamped as the new owner). Flipping a
+   * user-private row back to shared is implicitly owner-only because the
+   * broader `isRowOwnerOnly` check blocks any PATCH from non-owners on
+   * user-scoped rows. PUT-as-update still preserves the existing row's scope
+   * (the upsert path is for inserts; edits go through PATCH).
+   *
+   * PUTs and PATCHes that attempt to set `scope = 'user'` are rejected when
+   * `settings.allowUserScopedResources` is false (deployment-level kill switch).
    */
   scopeAware?: boolean
 }
@@ -349,19 +355,17 @@ export const createWorkspaceScopedHandler = (cfg: WorkspaceScopedConfig): Upload
           delete patchPayload.user_id
           delete patchPayload.workspace_id
           if (scopeAware && patchPayload.scope !== undefined) {
-            // Scope changes are gated on row ownership: the author may flip
-            // their own row (share a private skill, or hide a shared one), but
-            // a co-member's scope change is silently dropped so they can't
-            // hijack a shared row into their personal bucket. Falls back to
-            // "drop" when the row has no owner — defensive; in practice every
-            // synced row carries a user_id from create-time.
-            const ownerScope = await fetchRowScope(tx, tableName, op.id, true, { userId: ctx.userId })
-            if (!ownerScope || ownerScope.userId !== ctx.userId) {
-              delete patchPayload.scope
-            } else if (patchPayload.scope !== 'workspace' && patchPayload.scope !== 'user') {
+            if (patchPayload.scope !== 'workspace' && patchPayload.scope !== 'user') {
               // Reject obviously-malformed values rather than letting Postgres
               // throw a check-constraint error later.
               throw new UploadRejection('permanent', 'INVALID_SCOPE')
+            }
+            // Flipping to user-private transfers ownership to the caller —
+            // they're explicitly taking the row private, so they become the new
+            // owner. The earlier `delete patchPayload.user_id` ran before this
+            // block, so the assignment here is the final word.
+            if (patchPayload.scope === 'user') {
+              patchPayload.user_id = ctx.userId
             }
           }
           for (const col of denyColumns) {

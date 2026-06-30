@@ -34,14 +34,13 @@ const badgeForAgent = (agent: Agent): string => {
   return 'Remote'
 }
 
-/** Predicate for the delete action's visibility. Customs the current user owns
- *  can be soft-deleted; built-in and system agents are managed externally and
- *  must not be removable from the UI. Exported for unit testing without
- *  rendering the full row tree.
+/** Predicate for the delete action's visibility. Built-in and system agents
+ *  are managed externally and must not be removable from the UI. For custom
+ *  agents the rule depends on the row's scope:
+ *  - `scope='user'`: owner-only (the BE rejects non-owner PATCH/DELETE).
+ *  - `scope='workspace'`: any member with `remove_agents` permission.
  *
- *  `canRemoveAgents` reflects the workspace `remove_agents` permission — when
- *  false, no row is removable regardless of ownership. Defaults to true so
- *  existing callers keep working.
+ *  Exported for unit testing without rendering the full row tree.
  */
 export const canDeleteAgent = (
   agent: Agent,
@@ -60,12 +59,16 @@ export const canDeleteAgent = (
   if (!canRemoveAgents) {
     return false
   }
-  return agent.userId === currentUserId
+  if (agent.scope === 'user') {
+    return agent.userId === currentUserId
+  }
+  return true
 }
 
 /** Predicate for the edit action's visibility. Mirrors `canDeleteAgent`:
  *  built-in is in-code, system agents are managed via env vars, and customs
- *  belong to the user who created them.
+ *  follow the scope rule (owner-only for `scope='user'`, any add-permitted
+ *  member for `scope='workspace'`).
  *
  *  `canEditAgents` reflects the workspace `add_agents` permission — when
  *  false, no row's Edit affordance is shown regardless of ownership. Defaults

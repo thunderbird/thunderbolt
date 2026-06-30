@@ -2118,13 +2118,15 @@ describe('workspace upload handlers', () => {
       expect(stored[0].scope).toBe('workspace')
     })
 
-    it('PATCH scope by a non-owner is silently dropped (other fields still apply)', async () => {
+    it('PATCH lets any add-permitted member flip a shared row to user-private, transferring ownership', async () => {
+      // The hijack risk is acceptable per product decision: anyone with
+      // `add_*` permission on the resource can take a workspace-shared row
+      // private. Flipping to `'user'` stamps the caller as the new owner so
+      // the row is theirs going forward.
       await insertUser('scOwnerC', 'scownerC@test.com')
       await insertUser('scOtherC', 'scotherC@test.com')
       const workspaceId = await seedShared('scOwnerC', 'scOtherC')
-      // Grant the non-owner add_skills so PATCH reaches the apply path; without
-      // it the op would be rejected on permission grounds and we'd never see
-      // the silent-drop behaviour.
+      // Grant the non-owner add_skills so the PATCH reaches the apply path.
       await db
         .insert(workspacePermissionsTable)
         .values({ id: uuidv7(), workspaceId, permissionKey: 'add_skills', requiredRole: 'member' })
@@ -2135,13 +2137,14 @@ describe('workspace upload handlers', () => {
         op: 'PATCH',
         type: 'skills',
         id: putOp.id,
-        data: { scope: 'user', description: 'snuck through' },
+        data: { scope: 'user', description: 'taken private' },
       }
       const result = await applyUploadBatch(db, [editOp], ctxFor('scOtherC'))
       expect(result.ok).toBe(true)
       const stored = await db.select().from(skillsTable).where(eq(skillsTable.id, putOp.id))
-      expect(stored[0].scope).toBe('workspace')
-      expect(stored[0].description).toBe('snuck through')
+      expect(stored[0].scope).toBe('user')
+      expect(stored[0].description).toBe('taken private')
+      expect(stored[0].userId).toBe('scOtherC')
     })
 
     it('PATCH rejects an obviously-malformed scope value with INVALID_SCOPE', async () => {

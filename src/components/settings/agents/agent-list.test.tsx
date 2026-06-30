@@ -40,6 +40,13 @@ const customAgent: Agent = {
   enabled: 1,
   deletedAt: null,
   userId: 'user-42',
+  scope: 'workspace',
+}
+
+const privateAgent: Agent = {
+  ...customAgent,
+  id: 'custom-private',
+  scope: 'user',
 }
 
 const noop = () => {}
@@ -53,12 +60,20 @@ describe('canDeleteAgent', () => {
     expect(canDeleteAgent(systemAgent, 'user-42')).toBe(false)
   })
 
-  it('returns true for customs owned by the current user', () => {
+  it('returns true for workspace-scoped customs owned by the current user', () => {
     expect(canDeleteAgent(customAgent, 'user-42')).toBe(true)
   })
 
-  it('returns false for customs owned by a different user', () => {
-    expect(canDeleteAgent(customAgent, 'someone-else')).toBe(false)
+  it('returns true for workspace-scoped customs owned by a different user (any add-permitted member may delete)', () => {
+    expect(canDeleteAgent(customAgent, 'someone-else')).toBe(true)
+  })
+
+  it('returns true for user-scoped customs owned by the current user', () => {
+    expect(canDeleteAgent(privateAgent, 'user-42')).toBe(true)
+  })
+
+  it('returns false for user-scoped customs owned by a different user (BE rejects non-owner)', () => {
+    expect(canDeleteAgent(privateAgent, 'someone-else')).toBe(false)
   })
 
   it('returns false when no user is signed in', () => {
@@ -75,11 +90,16 @@ describe('canDeleteAgent', () => {
 })
 
 describe('canEditAgent', () => {
-  it('mirrors canDeleteAgent — built-in and system are non-editable, customs are owned by the user', () => {
+  it('mirrors canDeleteAgent — built-in / system are non-editable, customs follow the scope rule', () => {
     expect(canEditAgent(builtInAgent, 'user-42')).toBe(false)
     expect(canEditAgent(systemAgent, 'user-42')).toBe(false)
+    // Workspace-scoped custom: any add-permitted member can edit.
     expect(canEditAgent(customAgent, 'user-42')).toBe(true)
-    expect(canEditAgent(customAgent, 'someone-else')).toBe(false)
+    expect(canEditAgent(customAgent, 'someone-else')).toBe(true)
+    // User-scoped custom: owner only.
+    expect(canEditAgent(privateAgent, 'user-42')).toBe(true)
+    expect(canEditAgent(privateAgent, 'someone-else')).toBe(false)
+    // No session: never.
     expect(canEditAgent(customAgent, null)).toBe(false)
   })
 

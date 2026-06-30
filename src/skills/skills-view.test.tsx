@@ -276,7 +276,7 @@ describe('SkillsView state machine', () => {
       expect(screen.getByRole('radio', { name: /private to you/i })).toBeInTheDocument()
     })
 
-    it('hides the scope picker in edit mode when the current user is not the row owner', async () => {
+    it('shows the scope picker in edit mode for any member with add_skills, even if not the row owner', async () => {
       await seedSharedAdminWorkspace()
       await createSkill(getDb(), otherWsId, {
         name: 'theirs',
@@ -288,12 +288,11 @@ describe('SkillsView state machine', () => {
       renderInSharedWs()
       await openEditOnActiveSkill()
 
-      // BE silently drops a non-owner's scope change — FE matches by hiding
-      // the control entirely so the user doesn't think they can edit it.
-      expect(screen.queryByRole('radio', { name: /shared with the workspace/i })).not.toBeInTheDocument()
-      // Other fields are still editable — non-owners with add_skills can still
-      // patch name / description / instruction.
-      expect(screen.getByRole('textbox', { name: /Skill name/ })).toBeInTheDocument()
+      // Any member with `add_skills` can flip scope; the BE transfers ownership
+      // to the caller when scope becomes `'user'`. FE no longer hides the
+      // picker from non-owners.
+      expect(screen.getByRole('radio', { name: /shared with the workspace/i })).toBeInTheDocument()
+      expect(screen.getByRole('radio', { name: /private to you/i })).toBeInTheDocument()
     })
 
     it('shows the read-only scope picker on the detail page', async () => {

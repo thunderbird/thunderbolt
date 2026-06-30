@@ -139,6 +139,7 @@ const buildInitialState = (agent: Agent | null): AgentDialogState =>
         name: agent.name,
         url: agent.url ?? '',
         description: agent.description ?? '',
+        scope: agent.scope ?? 'workspace',
       }
     : emptyState
 

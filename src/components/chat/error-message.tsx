@@ -70,7 +70,9 @@ export const ErrorMessage = memo(
               : 'Something went wrong. Please try again.'}
           </p>
           <div className="flex shrink-0 items-center gap-2">
-            {onRetry && (
+            {/* No Retry when delivery is exhausted — re-running identical input fails
+                identically; the message directs the user to switch models instead. */}
+            {onRetry && !deliveryExhausted && (
               <button
                 type="button"
                 onClick={onRetry}

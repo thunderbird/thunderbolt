@@ -167,6 +167,20 @@ export const useAttachmentRemediation = ({
   // would end in a misleading "couldn't read the file" message.
   const isRemediableError = isContentRejectionError(error)
 
+  // If a content-rejection error is already present on the FIRST render, it's a
+  // stale failure from a reopened/remounted thread, not a fresh send — record its
+  // signature synchronously so we neither auto-remediate (re-running a turn the
+  // user already saw fail) nor leave its error hidden. Only errors that appear
+  // *after* mount are treated as new. (Synchronous ref init in render body, per
+  // the React ref-assignment pattern.)
+  const seeded = useRef(false)
+  if (!seeded.current) {
+    seeded.current = true
+    if (active && isRemediableError && lastUserMessage) {
+      attemptedSignatures.current.add(signatureOf(lastUserMessage))
+    }
+  }
+
   // Whether an auto-remediation is *about* to fire — computed synchronously so
   // the error UI can be suppressed on the very first error frame, before the
   // effect below runs. Mirrors the effect's gate (minus the async scan check).

@@ -7,7 +7,15 @@ import { devicesTable } from '@/db/schema'
 import { createTestDb } from '@/test-utils/db'
 import { eq } from 'drizzle-orm'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
-import { countActiveDevices, denyDevice, getDeviceById, markDeviceTrusted, revokeDevice, upsertDevice } from './devices'
+import {
+  countActiveDevices,
+  denyDevice,
+  getDeviceById,
+  markDeviceTrusted,
+  registerDevice,
+  revokeDevice,
+  upsertDevice,
+} from './devices'
 
 describe('devices DAL', () => {
   let db: Awaited<ReturnType<typeof createTestDb>>['db']
@@ -175,6 +183,24 @@ describe('devices DAL', () => {
       expect(row!.revokedAt).toBeNull()
     })
 
+    it('clears the stale iroh node binding on deny, mirroring revoke', async () => {
+      const now = new Date()
+      await db.insert(devicesTable).values({
+        id: 'd-deny-node',
+        userId,
+        name: 'Pending Bound',
+        approvalPending: true,
+        nodeId: 'stale-deny-node',
+        nodeIdAttestedAt: now,
+        lastSeen: now,
+        createdAt: now,
+      })
+      const rows = await denyDevice(db, 'd-deny-node', userId)
+      expect(rows[0].approvalPending).toBe(false)
+      expect(rows[0].nodeId).toBeNull()
+      expect(rows[0].nodeIdAttestedAt).toBeNull()
+    })
+
     it('is a no-op on a trusted device (TOCTOU race guard)', async () => {
       const now = new Date()
       await db.insert(devicesTable).values({
@@ -226,6 +252,37 @@ describe('devices DAL', () => {
       const row = await getDeviceById(db, 'd-race')
       expect(row!.trusted).toBe(true)
       expect(row!.revokedAt).toBeNull()
+    })
+  })
+
+  describe('registerDevice', () => {
+    it('clears the stale iroh node binding on re-registration, mirroring revoke', async () => {
+      const now = new Date()
+      await db.insert(devicesTable).values({
+        id: 'd-reg-rebind',
+        userId,
+        name: 'Old Bound',
+        trusted: true,
+        approvalPending: false,
+        publicKey: 'old-pk',
+        mlkemPublicKey: 'old-mlkem',
+        nodeId: 'stale-node-id',
+        nodeIdAttestedAt: now,
+        lastSeen: now,
+        createdAt: now,
+      })
+      const rows = await registerDevice(db, {
+        id: 'd-reg-rebind',
+        userId,
+        name: 'Old Bound',
+        publicKey: 'new-pk',
+        mlkemPublicKey: 'new-mlkem',
+      })
+      expect(rows[0].trusted).toBe(false)
+      expect(rows[0].approvalPending).toBe(true)
+      expect(rows[0].publicKey).toBe('new-pk')
+      expect(rows[0].nodeId).toBeNull()
+      expect(rows[0].nodeIdAttestedAt).toBeNull()
     })
   })
 

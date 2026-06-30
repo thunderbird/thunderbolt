@@ -94,12 +94,14 @@ export const countActiveDevices = async (database: typeof DbType, userId: string
   return rows[0]?.count ?? 0
 }
 
-/** Deny a pending device by clearing approval_pending. The trusted=false guard prevents
- * a TOCTOU race from revoking a concurrently-approved device. */
+/** Deny a pending device by clearing approval_pending, and clear its iroh P2P binding
+ * (node_id/node_id_attested_at) so a denied device stops being dialable — mirroring
+ * revokeDevice. The trusted=false guard prevents a TOCTOU race from revoking a
+ * concurrently-approved device. */
 export const denyDevice = async (database: typeof DbType, deviceId: string, userId: string) =>
   database
     .update(devicesTable)
-    .set({ approvalPending: false })
+    .set({ approvalPending: false, nodeId: null, nodeIdAttestedAt: null })
     .where(and(eq(devicesTable.id, deviceId), eq(devicesTable.userId, userId), eq(devicesTable.trusted, false)))
     .returning()
 
@@ -139,7 +141,8 @@ export const registerDevice = async (
     // On conflict: update public keys, reset trusted to false and mark as pending approval
     // (device must go through approval flow again), and update lastSeen. This handles both
     // concurrent re-registration races and pre-encryption devices that were backfilled as
-    // trusted without an envelope.
+    // trusted without an envelope. Also clear the iroh P2P binding (node_id/node_id_attested_at)
+    // so the old endpoint identity stops syncing while keys/trust reset — mirroring revokeDevice.
     .onConflictDoUpdate({
       target: devicesTable.id,
       set: {
@@ -147,6 +150,8 @@ export const registerDevice = async (
         mlkemPublicKey: device.mlkemPublicKey,
         trusted: false,
         approvalPending: true,
+        nodeId: null,
+        nodeIdAttestedAt: null,
         lastSeen: new Date(),
       },
       setWhere: eq(devicesTable.userId, device.userId),

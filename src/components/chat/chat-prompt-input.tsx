@@ -418,6 +418,9 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
         })
       } catch (error) {
         console.error('Error submitting message:', error)
+        // Send failed — the chips were cleared optimistically but the blobs are
+        // still in IndexedDB, so restore them rather than orphaning the bytes.
+        setAttachments(attachments)
       }
     }
 

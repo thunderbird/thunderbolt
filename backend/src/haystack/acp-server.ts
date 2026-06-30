@@ -494,14 +494,18 @@ export class HaystackAcpServer {
   /** Upload one resource as an ephemeral Deepset temporary file, return its id. */
   private async uploadTemporaryFile(resource: PromptResource, signal: AbortSignal): Promise<string> {
     const url = `${this.workspaceBaseUrl()}/temporary_files`
-    const form = new FormData()
-    form.append('file', new Blob([resource.bytes], { type: resource.mimeType }), resource.filename)
-    const response = await this.fetchWithPipelineRetry(url, {
-      method: 'POST',
-      // No content-type: fetch sets the multipart boundary from the FormData.
-      headers: this.authHeaders(),
-      body: form,
-      signal,
+    // A FormData body is single-use, so build a fresh one per attempt — a cold-
+    // pipeline retry on a consumed multipart stream would otherwise upload nothing.
+    const response = await this.fetchWithPipelineRetry(url, () => {
+      const form = new FormData()
+      form.append('file', new Blob([resource.bytes], { type: resource.mimeType }), resource.filename)
+      return {
+        method: 'POST',
+        // No content-type: fetch sets the multipart boundary from the FormData.
+        headers: this.authHeaders(),
+        body: form,
+        signal,
+      }
     })
     const data = (await response.json()) as unknown
     return temporaryFileResponseSchema.parse(data).file_id
@@ -540,22 +544,29 @@ export class HaystackAcpServer {
    * Retry a fetch while a cold Deepset pipeline wakes from idle, then surface
    * a structured error on anything else.
    *
+   * `init` may be a factory rather than a static object: a `FormData` (multipart)
+   * body is single-use — fetch consumes its stream — so reusing one `init` across
+   * retries would resend an empty body. Callers with such bodies pass a thunk that
+   * builds a fresh `RequestInit` (and a fresh `FormData`) per attempt; JSON-string
+   * callers can keep passing a plain object since strings are freely re-sendable.
+   *
    * The body is read exactly once per non-OK response because the retry
    * decision depends on it (see {@link isTransientPipelineWake}) — status
    * alone is insufficient. Reading it to completion also drains and releases
    * the underlying socket, so a discarded retry response leaks nothing. When
    * we DON'T retry, the already-read text is reused in the thrown error.
    */
-  private async fetchWithPipelineRetry(url: string, init: RequestInit): Promise<Response> {
+  private async fetchWithPipelineRetry(url: string, init: RequestInit | (() => RequestInit)): Promise<Response> {
     for (let attempt = 0; attempt < maxRetryAttempts; attempt++) {
-      const response = await this.fetchFn(url, init)
+      const requestInit = typeof init === 'function' ? init() : init
+      const response = await this.fetchFn(url, requestInit)
       if (response.ok) {
         return response
       }
       const bodyText = await response.text().catch(() => '')
       const isLastAttempt = attempt === maxRetryAttempts - 1
       if (!isLastAttempt && isTransientPipelineWake(response.status, bodyText)) {
-        await this.abortableSleep(this.backoffDelayMs(attempt, response), init.signal ?? null)
+        await this.abortableSleep(this.backoffDelayMs(attempt, response), requestInit.signal ?? null)
         continue
       }
       throw new Error(
@@ -755,7 +766,17 @@ const extractResources = (params: PromptRequest): PromptResource[] => {
 /** Derive a filename from a resource URI, falling back to a generic name. */
 const filenameFromUri = (uri: string): string => {
   const lastSegment = uri.split('?')[0].split('/').pop()
-  return lastSegment && lastSegment.length > 0 ? decodeURIComponent(lastSegment) : 'attachment'
+  if (!lastSegment || lastSegment.length === 0) {
+    return 'attachment'
+  }
+  // A user-chosen name with a bare `%` (e.g. `Q1%.pdf`) is not valid percent-
+  // encoding and makes decodeURIComponent throw — fall back to the raw segment
+  // rather than aborting the whole prompt turn.
+  try {
+    return decodeURIComponent(lastSegment)
+  } catch {
+    return lastSegment
+  }
 }
 
 const isAbortError = (err: unknown): boolean => {

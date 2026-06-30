@@ -36,6 +36,8 @@ const pdf = () => buildAttachmentPart({ localFileId: 'f1', filename: 'doc.pdf', 
 const png = () => buildAttachmentPart({ localFileId: 'f2', filename: 'pic.png', mimeType: 'image/png' })
 const textPart = (text: string) => ({ type: 'text', text })
 
+type ResourceBlock = { type: string; text?: string; resource?: { uri: string; mimeType: string; blob: string } }
+
 describe('buildPromptBlocks — no embeddedContext', () => {
   test('sends a text-extractable file as an extracted text block', async () => {
     const blocks = (await buildPromptBlocks(initWith([textPart('hi'), pdf()]), undefined, false, deps)) as Block[]
@@ -73,5 +75,47 @@ describe('buildPromptBlocks — no embeddedContext', () => {
 
     expect(blocks).toHaveLength(1)
     expect(blocks[0]).toEqual({ type: 'text', text: 'just text' })
+  })
+})
+
+describe('buildPromptBlocks — embeddedContext', () => {
+  test('sends native bytes as an embedded resource by default', async () => {
+    const blocks = (await buildPromptBlocks(
+      initWith([textPart('hi'), pdf()]),
+      undefined,
+      true,
+      deps,
+    )) as ResourceBlock[]
+
+    expect(blocks).toHaveLength(2)
+    expect(blocks[0]).toEqual({ type: 'text', text: 'hi' })
+    expect(blocks[1]?.type).toBe('resource')
+    expect(blocks[1]?.resource?.uri).toBe('attachment://f1/doc.pdf')
+    expect(blocks[1]?.resource?.mimeType).toBe('application/pdf')
+    expect(typeof blocks[1]?.resource?.blob).toBe('string')
+  })
+
+  test('honors deliverAs: text from remediation — sends extracted text, not native bytes', async () => {
+    const remediated = buildAttachmentPart({
+      localFileId: 'f1',
+      filename: 'doc.pdf',
+      mimeType: 'application/pdf',
+      deliverAs: 'text',
+    })
+    const blocks = (await buildPromptBlocks(initWith([textPart('hi'), remediated]), undefined, true, deps)) as Block[]
+
+    expect(blocks).toHaveLength(2)
+    expect(blocks[0]).toEqual({ type: 'text', text: 'hi' })
+    expect(blocks[1]?.type).toBe('text')
+    expect(blocks[1]?.text).toBe('[Attachment: doc.pdf]\n\nEXTRACTED PDF TEXT')
+  })
+
+  test('flags a file missing from IndexedDB as undeliverable instead of dropping it silently', async () => {
+    const missingDeps: PromptBlockDeps = { ...deps, getAttachment: async () => null }
+    const blocks = (await buildPromptBlocks(initWith([textPart('hi'), pdf()]), undefined, true, missingDeps)) as Block[]
+
+    expect(blocks).toHaveLength(1)
+    expect(blocks[0]?.text).toContain('hi')
+    expect(blocks[0]?.text).toContain('[Attachment "doc.pdf" could not be delivered to this agent]')
   })
 })

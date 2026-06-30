@@ -45,7 +45,7 @@ import type {
 import { ClientSideConnection as ClientSideConnectionImpl } from '@agentclientprotocol/sdk'
 import type { Agent, AgentAdapter, AgentAdapterContext, AgentCapabilities, EnsureSessionContext } from '@/types/acp'
 import type { ThunderboltUIMessage } from '@/types'
-import { getAttachments, hydrateAttachmentsAsBase64 } from '@/lib/attachments'
+import { blobToBase64, getAttachments, type HydratedAttachment } from '@/lib/attachments'
 import { getTransformer } from '@/files/transformers'
 import { getAttachment } from '@/lib/file-blob-storage'
 import { openTransport } from './transports'
@@ -160,30 +160,68 @@ export const buildPromptBlocks = async (
   }
 
   if (embeddedContext) {
-    const hydrated = await hydrateAttachmentsAsBase64(attachments)
-    const resourceBlocks = hydrated.map(
-      (attachment): ContentBlock => ({
-        type: 'resource',
-        resource: {
-          // The backend derives the filename from the URI's last path segment.
-          uri: `attachment://${attachment.localFileId}/${attachment.filename}`,
-          mimeType: attachment.mimeType,
-          blob: attachment.base64,
-        },
-      }),
-    )
-    return [{ type: 'text', text }, ...resourceBlocks]
+    // Native-first: send raw bytes as embedded resources. But remediation may have
+    // set deliverAs: 'text' on an attachment (the model couldn't read the native
+    // form) — honor that by sending extracted text instead. We never rasterize for
+    // ACP (deliverAs: 'images'), so that case also falls back to text extraction.
+    // Files missing from IndexedDB get a visible note rather than vanishing.
+    const resolved = await Promise.all(attachments.map((attachment) => resolveEmbeddedDelivery(attachment, deps)))
+    const blocks = resolved.flatMap((r): ContentBlock[] => {
+      if (r.kind === 'resource') {
+        return [
+          {
+            type: 'resource',
+            resource: {
+              // The backend derives the filename from the URI's last path segment.
+              uri: `attachment://${r.attachment.localFileId}/${r.attachment.filename}`,
+              mimeType: r.attachment.mimeType,
+              blob: r.attachment.base64,
+            },
+          },
+        ]
+      }
+      return r.kind === 'text' ? [{ type: 'text', text: r.text }] : []
+    })
+    const undeliverable = resolved.flatMap((r) => (r.kind === 'undeliverable' ? [r.filename] : []))
+    return [{ type: 'text', text: text + undeliverableNote(undeliverable) }, ...blocks]
   }
 
   // No embedded context: deliver text-extractable files as text blocks; flag the rest.
   const resolved = await Promise.all(attachments.map((attachment) => resolveTextDelivery(attachment, deps)))
   const textBlocks = resolved.flatMap((r) => (r.kind === 'text' ? [{ type: 'text' as const, text: r.text }] : []))
   const undeliverable = resolved.flatMap((r) => (r.kind === 'undeliverable' ? [r.filename] : []))
-  const note =
-    undeliverable.length > 0
-      ? `\n\n${undeliverable.map((name) => `[Attachment "${name}" could not be delivered to this agent]`).join('\n')}`
-      : ''
-  return [{ type: 'text', text: text + note }, ...textBlocks]
+  return [{ type: 'text', text: text + undeliverableNote(undeliverable) }, ...textBlocks]
+}
+
+/** A trailing prompt note listing files that couldn't be delivered, or '' when none. */
+const undeliverableNote = (filenames: string[]): string =>
+  filenames.length > 0
+    ? `\n\n${filenames.map((name) => `[Attachment "${name}" could not be delivered to this agent]`).join('\n')}`
+    : ''
+
+/**
+ * Resolve one attachment for the embedded-context path: native bytes as a
+ * `resource` by default, extracted text when remediation set `deliverAs` away
+ * from native (text/images — ACP never rasterizes, so images degrades to text),
+ * or `undeliverable` when the file is missing from IndexedDB or has no text layer
+ * to fall back to.
+ */
+const resolveEmbeddedDelivery = async (
+  attachment: ReturnType<typeof getAttachments>[number],
+  deps: PromptBlockDeps,
+): Promise<
+  | { kind: 'resource'; attachment: HydratedAttachment }
+  | { kind: 'text'; text: string }
+  | { kind: 'undeliverable'; filename: string }
+> => {
+  if (attachment.deliverAs === undefined) {
+    const file = await deps.getAttachment(attachment.localFileId)
+    if (!file) {
+      return { kind: 'undeliverable', filename: attachment.filename }
+    }
+    return { kind: 'resource', attachment: { ...attachment, base64: await blobToBase64(file.blob) } }
+  }
+  return resolveTextDelivery(attachment, deps)
 }
 
 /** Resolve one attachment to an extracted-text block, or mark it undeliverable (no text transformer). */

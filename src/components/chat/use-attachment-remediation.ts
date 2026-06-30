@@ -213,14 +213,23 @@ export const useAttachmentRemediation = ({
 
     void (async () => {
       const decisions = new Map<string, DeliverAs>()
-      await Promise.all(
-        attachments.map(async (attachment) => {
-          const target = await pickTarget(attachment)
-          if (target) {
-            decisions.set(attachment.localFileId, target)
-          }
-        }),
-      )
+      try {
+        await Promise.all(
+          attachments.map(async (attachment) => {
+            const target = await pickTarget(attachment)
+            if (target) {
+              decisions.set(attachment.localFileId, target)
+            }
+          }),
+        )
+      } catch (err) {
+        // A transformer (PDF text inspection, rasterization) threw — abandon the
+        // auto-attempt and surface the original error rather than hang on a
+        // permanent loading state with no retry.
+        console.error('Attachment remediation failed:', err)
+        setRemediating(false)
+        return
+      }
       if (decisions.size > 0) {
         applyTargets(lastUserMessage.id, (attachment) => decisions.get(attachment.localFileId) ?? null)
       } else {

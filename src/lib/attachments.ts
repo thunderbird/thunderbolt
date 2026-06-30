@@ -44,29 +44,13 @@ const blobToDataUrl = (blob: Blob): Promise<string> =>
   })
 
 /** Read a Blob as raw base64 (no `data:<mime>;base64,` prefix). */
-const blobToBase64 = async (blob: Blob): Promise<string> => {
+export const blobToBase64 = async (blob: Blob): Promise<string> => {
   const dataUrl = await blobToDataUrl(blob)
   return dataUrl.slice(dataUrl.indexOf(',') + 1)
 }
 
 /** An attachment reference paired with its base64-encoded bytes. */
 export type HydratedAttachment = AttachmentData & { base64: string }
-
-/**
- * Read each attachment's bytes from IndexedDB as raw base64, dropping any not
- * present on this device. Transport-agnostic: callers that inline file bytes
- * (e.g. the ACP embedded-`resource` transport) assemble their own wire shape
- * from the result.
- */
-export const hydrateAttachmentsAsBase64 = async (attachments: AttachmentData[]): Promise<HydratedAttachment[]> => {
-  const hydrated = await Promise.all(
-    attachments.map(async (attachment) => {
-      const file = await getAttachment(attachment.localFileId)
-      return file ? { ...attachment, base64: await blobToBase64(file.blob) } : null
-    }),
-  )
-  return hydrated.filter((entry): entry is HydratedAttachment => entry !== null)
-}
 
 /** Injectable IO for {@link hydrateAttachmentsAsFileParts} — overridden in tests to avoid IndexedDB/transformers. */
 export type HydrationDeps = {

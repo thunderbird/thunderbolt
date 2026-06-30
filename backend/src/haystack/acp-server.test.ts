@@ -712,6 +712,101 @@ describe('HaystackAcpServer', () => {
     expect(findResponse(sent, 2).result.stopReason).toBe('end_turn')
   })
 
+  it('rebuilds FormData on a cold-pipeline retry so the upload resends real bytes', async () => {
+    // A FormData stream is single-use: reusing one init across retries would
+    // resend an empty body. The upload must build a fresh FormData per attempt.
+    const uploadBodies: FormData[] = []
+    let uploadAttempts = 0
+    const upstream: Upstream = async (input, init) => {
+      const url = input.toString()
+      if (url.endsWith('/temporary_files')) {
+        uploadAttempts++
+        expect(init?.body).toBeInstanceOf(FormData)
+        uploadBodies.push(init?.body as FormData)
+        if (uploadAttempts === 1) {
+          return new Response('The pipeline is temporarily unavailable. Try again in a few moments.', { status: 503 })
+        }
+        return jsonResponse(200, { file_id: 'tmp-file-1' })
+      }
+      return sseResponse([{ type: 'delta', delta: { text: 'mapped' } }, '[DONE]'])
+    }
+    const { server, sent } = buildServer({
+      upstream,
+      sessionIds: ['ses-file-retry'],
+      supportsFiles: true,
+      pipelineName: 'map-pipeline',
+    })
+
+    await server.handleMessage(JSON.stringify({ jsonrpc: '2.0', id: 1, method: AGENT_METHODS.session_new }))
+    await server.handleMessage(
+      JSON.stringify({
+        jsonrpc: '2.0',
+        id: 2,
+        method: AGENT_METHODS.session_prompt,
+        params: {
+          sessionId: 'ses-file-retry',
+          prompt: [
+            { type: 'text', text: 'extract coords' },
+            {
+              type: 'resource',
+              resource: { uri: 'file:///mission.pdf', mimeType: 'application/pdf', blob: 'aGVsbG8=' },
+            },
+          ],
+        },
+      }),
+    )
+
+    expect(uploadAttempts).toBe(2)
+    // Each attempt got a distinct FormData instance whose file part still carries the bytes.
+    expect(uploadBodies[0]).not.toBe(uploadBodies[1])
+    const retried = uploadBodies[1].get('file')
+    expect(retried).toBeInstanceOf(Blob)
+    expect(await (retried as Blob).text()).toBe('hello')
+    expect(findResponse(sent, 2).result.stopReason).toBe('end_turn')
+  })
+
+  it('does not abort the prompt on a filename with a bare percent sign', async () => {
+    // `Q1%.pdf` is not valid percent-encoding — decodeURIComponent would throw a
+    // URIError and abort the whole turn. The filename must degrade gracefully.
+    let uploadFilename: string | undefined
+    const upstream: Upstream = async (input, init) => {
+      const url = input.toString()
+      if (url.endsWith('/temporary_files')) {
+        const file = (init?.body as FormData).get('file')
+        uploadFilename = file instanceof File ? file.name : undefined
+        return jsonResponse(200, { file_id: 'tmp-file-1' })
+      }
+      return sseResponse([{ type: 'delta', delta: { text: 'ok' } }, '[DONE]'])
+    }
+    const { server, sent } = buildServer({
+      upstream,
+      sessionIds: ['ses-pct'],
+      supportsFiles: true,
+      pipelineName: 'map-pipeline',
+    })
+
+    await server.handleMessage(JSON.stringify({ jsonrpc: '2.0', id: 1, method: AGENT_METHODS.session_new }))
+    await server.handleMessage(
+      JSON.stringify({
+        jsonrpc: '2.0',
+        id: 2,
+        method: AGENT_METHODS.session_prompt,
+        params: {
+          sessionId: 'ses-pct',
+          prompt: [
+            {
+              type: 'resource',
+              resource: { uri: 'attachment://f1/Q1%.pdf', mimeType: 'application/pdf', blob: 'aGVsbG8=' },
+            },
+          ],
+        },
+      }),
+    )
+
+    expect(uploadFilename).toBe('Q1%.pdf')
+    expect(findResponse(sent, 2).result.stopReason).toBe('end_turn')
+  })
+
   it('runs a file-capable pipeline with no attachment via search-stream with empty files', async () => {
     const upstream: Upstream = (input) => {
       const url = input.toString()

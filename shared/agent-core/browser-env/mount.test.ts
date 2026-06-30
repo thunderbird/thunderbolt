@@ -18,11 +18,19 @@
  * scenario would observe the cached promise, not a fresh evaluation.
  */
 
-import { afterEach, describe, expect, it } from 'bun:test'
+import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import * as fsp from '@zenfs/core/promises'
-import { mountAgentFs, mountInMemoryFs } from './mount.ts'
+import { mountAgentFs, mountInMemoryFs, resetAgentFsMountForTests } from './mount.ts'
 
 const originalNavigator = Object.getOwnPropertyDescriptor(globalThis, 'navigator')
+
+// `agentFsMount` is a process-global memo. Under `bun test --rerun-each` (the CI
+// 5x stability gate) the module is reused across runs, so without this reset the
+// first run would settle the memo and every subsequent run would observe the
+// cached promise instead of a fresh OPFS attempt.
+beforeEach(() => {
+  resetAgentFsMountForTests()
+})
 
 afterEach(() => {
   if (originalNavigator) Object.defineProperty(globalThis, 'navigator', originalNavigator)

@@ -75,3 +75,15 @@ export const mountAgentFs = (): Promise<MountedBackend> => {
   agentFsMount ??= doMountAgentFs()
   return agentFsMount
 }
+
+/**
+ * Test-only: clear the memoised mount so the next `mountAgentFs()` re-evaluates
+ * from scratch. Production never resets — the mount is a one-time per-process
+ * effect — but the memo is process-global, so a test runner reusing the module
+ * across reruns (e.g. `bun test --rerun-each`) would otherwise observe a stale
+ * settled promise instead of a fresh OPFS attempt. Not re-exported from the
+ * package entry point; tests import it directly from this module.
+ */
+export const resetAgentFsMountForTests = (): void => {
+  agentFsMount = undefined
+}

@@ -164,9 +164,11 @@ jobs:
           security unlock-keychain -p "build" build.keychain
           security list-keychains -d user -s build.keychain login.keychain
 
-          # Convert certificate to macOS-compatible format (using older encryption algorithms)
-          openssl pkcs12 -in certificate.p12 -out temp_cert.pem -clcerts -nokeys -passin pass:"$APPLE_DEVELOPER_CERTIFICATE_PASSWORD"
-          openssl pkcs12 -in certificate.p12 -out temp_key.pem -nocerts -nodes -passin pass:"$APPLE_DEVELOPER_CERTIFICATE_PASSWORD"
+          # Convert certificate to macOS-compatible format (using older encryption algorithms).
+          # -legacy loads OpenSSL 3's legacy provider so we can read p12s that Apple Developer
+          # exports with RC2-40-CBC; safe for modern p12s too (both providers stay available).
+          openssl pkcs12 -in certificate.p12 -out temp_cert.pem -clcerts -nokeys -legacy -passin pass:"$APPLE_DEVELOPER_CERTIFICATE_PASSWORD"
+          openssl pkcs12 -in certificate.p12 -out temp_key.pem -nocerts -nodes -legacy -passin pass:"$APPLE_DEVELOPER_CERTIFICATE_PASSWORD"
           openssl pkcs12 -export -out macos_certificate.p12 -inkey temp_key.pem -in temp_cert.pem -passout pass:"$APPLE_DEVELOPER_CERTIFICATE_PASSWORD" -keypbe PBE-SHA1-3DES -certpbe PBE-SHA1-3DES -macalg sha1
 
           # Import the converted certificate

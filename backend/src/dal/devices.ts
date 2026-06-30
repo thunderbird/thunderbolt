@@ -4,7 +4,7 @@
 
 import type { db as DbType } from '@/db/client'
 import { devicesTable } from '@/db/schema'
-import { and, count, eq, isNull } from 'drizzle-orm'
+import { and, count, eq, isNull, or } from 'drizzle-orm'
 
 /** Get a device by ID. Returns userId, trusted, approvalPending, publicKey, and revokedAt, or null if not found. */
 export const getDeviceById = async (database: typeof DbType, deviceId: string) =>
@@ -107,14 +107,23 @@ export const denyDevice = async (database: typeof DbType, deviceId: string, user
 
 /**
  * Bind a device to an iroh P2P endpoint identity (node_id) and stamp the attestation time.
- * Only matches non-revoked devices owned by the user, so a revoked device cannot be re-bound.
- * Returns updated rows so callers can detect the 0-row (not found / revoked) case.
+ * Only matches non-revoked devices that are trusted or still pending approval — a DENIED device
+ * (trusted=false, approval_pending=false) is excluded so a denied peer cannot be re-bound after
+ * denyDevice cleared its node_id, and a revoked device cannot be re-bound either.
+ * Returns updated rows so callers can detect the 0-row (not found / revoked / denied) case.
  */
 export const setDeviceNodeId = async (database: typeof DbType, deviceId: string, userId: string, nodeId: string) =>
   database
     .update(devicesTable)
     .set({ nodeId, nodeIdAttestedAt: new Date() })
-    .where(and(eq(devicesTable.id, deviceId), eq(devicesTable.userId, userId), isNull(devicesTable.revokedAt)))
+    .where(
+      and(
+        eq(devicesTable.id, deviceId),
+        eq(devicesTable.userId, userId),
+        isNull(devicesTable.revokedAt),
+        or(eq(devicesTable.trusted, true), eq(devicesTable.approvalPending, true)),
+      ),
+    )
     .returning()
 
 /**

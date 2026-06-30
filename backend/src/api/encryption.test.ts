@@ -1448,6 +1448,21 @@ describe('Encryption API', () => {
       expect(response.status).toBe(404)
     })
 
+    it('rejects binding a node ID to a denied target, so a denied peer cannot restore its P2P binding', async () => {
+      await createUserAndSession(p('u-nid-denied'), p('tok-nid-denied'))
+      await insertDevice(p('d-nid-denied-caller'), p('u-nid-denied'), { trusted: true })
+      // Denied state denyDevice leaves: trusted=false, approvalPending=false, revokedAt=null.
+      await insertDevice(p('d-nid-denied-target'), p('u-nid-denied'), { trusted: false, approvalPending: false })
+      await insertCanaryWithSecret(p('u-nid-denied'))
+
+      const response = await patchNodeId(p('tok-nid-denied'), p('d-nid-denied-caller'), p('d-nid-denied-target'), {
+        nodeId,
+        canarySecret: testCanarySecret,
+      })
+
+      expect(response.status).toBe(404)
+    })
+
     it('sets node_id with a valid canarySecret from a trusted device', async () => {
       await createUserAndSession(p('u-nid-ok'), p('tok-nid-ok'))
       await insertDevice(p('d-nid-ok-caller'), p('u-nid-ok'), { trusted: true })

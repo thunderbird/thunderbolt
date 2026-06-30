@@ -14,6 +14,7 @@ import {
   markDeviceTrusted,
   registerDevice,
   revokeDevice,
+  setDeviceNodeId,
   upsertDevice,
 } from './devices'
 
@@ -252,6 +253,39 @@ describe('devices DAL', () => {
       const row = await getDeviceById(db, 'd-race')
       expect(row!.trusted).toBe(true)
       expect(row!.revokedAt).toBeNull()
+    })
+  })
+
+  describe('setDeviceNodeId', () => {
+    const seedDevice = (over: Record<string, unknown>) =>
+      db
+        .insert(devicesTable)
+        .values({ id: 'd-bind', userId, name: 'Bind', lastSeen: new Date(), createdAt: new Date(), ...over })
+
+    it('binds a node_id on a trusted device', async () => {
+      await seedDevice({ trusted: true, approvalPending: false })
+      const rows = await setDeviceNodeId(db, 'd-bind', userId, 'node-trusted')
+      expect(rows[0].nodeId).toBe('node-trusted')
+      expect(rows[0].nodeIdAttestedAt).not.toBeNull()
+    })
+
+    it('binds a node_id on a pending device (attestation during pairing)', async () => {
+      await seedDevice({ trusted: false, approvalPending: true })
+      const rows = await setDeviceNodeId(db, 'd-bind', userId, 'node-pending')
+      expect(rows[0].nodeId).toBe('node-pending')
+    })
+
+    it('refuses to (re-)bind a DENIED device so a denied peer cannot restore its P2P binding', async () => {
+      // The state denyDevice leaves: trusted=false, approvalPending=false, revokedAt=null.
+      await seedDevice({ trusted: false, approvalPending: false })
+      const rows = await setDeviceNodeId(db, 'd-bind', userId, 'node-denied')
+      expect(rows).toHaveLength(0)
+    })
+
+    it('refuses to bind a revoked device', async () => {
+      await seedDevice({ trusted: true, approvalPending: false, revokedAt: new Date() })
+      const rows = await setDeviceNodeId(db, 'd-bind', userId, 'node-revoked')
+      expect(rows).toHaveLength(0)
     })
   })
 

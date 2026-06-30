@@ -10,7 +10,13 @@
 
 import type { AnyMessage } from '@agentclientprotocol/sdk'
 import { afterEach, describe, expect, it } from 'bun:test'
-import { resetSharedIrohClientForTests, acpIrohAlpn, openIrohTransport } from './iroh-transport'
+import {
+  bindAndPersistForTests,
+  clearIrohClientSecret,
+  resetSharedIrohClientForTests,
+  acpIrohAlpn,
+  openIrohTransport,
+} from './iroh-transport'
 import type { IrohClientLike, IrohConnectionLike } from './types'
 
 type FakeConnection = {
@@ -179,18 +185,96 @@ describe('openIrohTransport', () => {
     expect(fake.closed()).toBe(true)
   })
 
-  it('rejects with AbortError and closes the connection if aborted during the dial', async () => {
+  it('rejects with AbortError without dialing when the signal is already aborted', async () => {
     const fake = makeFakeConnection()
+    const captured: CapturedConnect[] = []
     const controller = new AbortController()
     controller.abort()
     await expect(
       openIrohTransport({
         target: 't',
         signal: controller.signal,
-        loadClient: async () => makeFakeClient(fake.connection, []),
+        loadClient: async () => makeFakeClient(fake.connection, captured),
       }),
     ).rejects.toThrow(/abort/i)
+    // A pre-aborted dial never reaches the wire — nothing to dial or close.
+    expect(captured).toEqual([])
+    expect(fake.closed()).toBe(false)
+  })
+
+  it('closes a connection that resolves after an abort during the dial', async () => {
+    const fake = makeFakeConnection()
+    const controller = new AbortController()
+    let resolveConnect: (connection: IrohConnectionLike) => void = () => {}
+    let signalDialing: () => void = () => {}
+    const dialing = new Promise<void>((resolve) => {
+      signalDialing = resolve
+    })
+    const slowClient: IrohClientLike = {
+      nodeId: () => 'slow',
+      connect: () => {
+        signalDialing()
+        return new Promise<IrohConnectionLike>((resolve) => {
+          resolveConnect = resolve
+        })
+      },
+    }
+    const open = openIrohTransport({ target: 't', signal: controller.signal, loadClient: async () => slowClient })
+    // Wait until the dial is actually in flight (the never-resolving connect was
+    // called), then abort — no fake-timer dependency.
+    await dialing
+    controller.abort()
+    await expect(open).rejects.toThrow(/abort/i)
+    // The dial wins the race a tick too late; the orphaned connection must close.
+    resolveConnect(fake.connection)
+    await Promise.resolve()
+    await Promise.resolve()
     expect(fake.closed()).toBe(true)
+  })
+
+  it('evicts the shared client when the bind fails so a later dial rebinds', async () => {
+    let binds = 0
+    const loadClient = async (): Promise<IrohClientLike> => {
+      binds += 1
+      if (binds === 1) {
+        throw new Error('bind failed')
+      }
+      return makeFakeClient(makeFakeConnection().connection, [])
+    }
+    await expect(openIrohTransport({ target: 'a', signal: new AbortController().signal, loadClient })).rejects.toThrow(
+      'bind failed',
+    )
+    // The failed bind was evicted, so this rebinds instead of replaying the rejection.
+    const transport = await openIrohTransport({ target: 'b', signal: new AbortController().signal, loadClient })
+    expect(binds).toBe(2)
+    expect(transport.stream).toBeDefined()
+  })
+
+  it('evicts the shared client when aborted during the bind so a later dial rebinds', async () => {
+    let binds = 0
+    let resolveBind: (client: IrohClientLike) => void = () => {}
+    const loadClient = (): Promise<IrohClientLike> => {
+      binds += 1
+      if (binds === 1) {
+        return new Promise<IrohClientLike>((resolve) => {
+          resolveBind = resolve
+        })
+      }
+      return Promise.resolve(makeFakeClient(makeFakeConnection().connection, []))
+    }
+    const controller = new AbortController()
+    // `load()` runs synchronously inside the call and `raceAbort` attaches its
+    // abort listener before suspending, so aborting right away lands during the
+    // in-flight bind.
+    const open = openIrohTransport({ target: 'a', signal: controller.signal, loadClient })
+    controller.abort()
+    await expect(open).rejects.toThrow(/abort/i)
+    // The hung bind was evicted; a later dial rebinds rather than awaiting it.
+    const transport = await openIrohTransport({ target: 'b', signal: new AbortController().signal, loadClient })
+    expect(binds).toBe(2)
+    expect(transport.stream).toBeDefined()
+    // Let the orphaned first bind settle so it leaves no dangling pending promise.
+    resolveBind(makeFakeClient(makeFakeConnection().connection, []))
   })
 
   it('binds ONE shared client across transports, opening a connection each', async () => {
@@ -211,5 +295,49 @@ describe('openIrohTransport', () => {
     await openIrohTransport({ target: 'b', signal: new AbortController().signal, loadClient })
     expect(binds).toBe(1)
     expect(connects).toBe(2)
+  })
+})
+
+describe('clearIrohClientSecret', () => {
+  const secretStorageKey = 'iroh_acp_client_secret'
+
+  it('removes the persisted client secret from localStorage', () => {
+    localStorage.setItem(secretStorageKey, 'deadbeef')
+    clearIrohClientSecret()
+    expect(localStorage.getItem(secretStorageKey)).toBeNull()
+  })
+
+  it('drops the in-memory shared client so the next dial re-binds a fresh identity', async () => {
+    let binds = 0
+    const loadClient = async (): Promise<IrohClientLike> => {
+      binds += 1
+      return { nodeId: () => 'shared', connect: async () => makeFakeConnection().connection }
+    }
+    await openIrohTransport({ target: 'a', signal: new AbortController().signal, loadClient })
+    expect(binds).toBe(1)
+    // A wiped credential must not leave the old identity bound in memory to re-persist.
+    clearIrohClientSecret()
+    await openIrohTransport({ target: 'b', signal: new AbortController().signal, loadClient })
+    expect(binds).toBe(2)
+  })
+
+  it('persists the bound secret when no wipe races the bind', async () => {
+    localStorage.removeItem(secretStorageKey)
+    const client: IrohClientLike = { nodeId: () => 'n', connect: async () => makeFakeConnection().connection }
+    await bindAndPersistForTests(async () => ({ client, secretHex: 'fresh-secret' }))
+    expect(localStorage.getItem(secretStorageKey)).toBe('fresh-secret')
+  })
+
+  it('does NOT re-persist a secret when a wipe (sign-out) races the in-flight bind', async () => {
+    localStorage.removeItem(secretStorageKey)
+    const client: IrohClientLike = { nodeId: () => 'n', connect: async () => makeFakeConnection().connection }
+    let resolveBind: (value: { client: IrohClientLike; secretHex: string }) => void = () => {}
+    const bindPending = bindAndPersistForTests(() => new Promise((resolve) => (resolveBind = resolve)))
+    // Sign-out wipes the secret while the wasm bind is still in flight.
+    clearIrohClientSecret()
+    // The bind now resolves with the freshly generated secret — it must not be written back.
+    resolveBind({ client, secretHex: 'resurrected-secret' })
+    await bindPending
+    expect(localStorage.getItem(secretStorageKey)).toBeNull()
   })
 })

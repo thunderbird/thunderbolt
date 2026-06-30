@@ -21,7 +21,7 @@
 import type { AnyMessage, Stream } from '@agentclientprotocol/sdk'
 import type { AcpTransport } from '../types'
 import { createNdjsonDecoder, encodeNdjsonFrame } from './ndjson'
-import type { IrohClientLike, IrohClientLoader } from './types'
+import type { IrohClientLike, IrohClientLoader, IrohConnectionLike } from './types'
 
 /** ALPN of the CLI ACP bridge (`cli/src/iroh/endpoint.ts`,
  *  `thunderbolt/${protocol}/0`). Must match byte-for-byte or the QUIC handshake
@@ -37,6 +37,12 @@ const secretStorageKey = 'iroh_acp_client_secret'
 // open their own connection on it.
 let sharedClient: Promise<IrohClientLike> | null = null
 
+// Bumped by every wipe (sign-out / account-deletion / device-revocation). A bind
+// samples this before its async work and only persists if it still matches, so a
+// wipe that races an in-flight bind can't be silently undone by the bind re-writing
+// the just-cleared secret.
+let secretGeneration = 0
+
 const readPersistedSecret = (): string | undefined => {
   if (typeof localStorage === 'undefined') {
     return undefined
@@ -51,27 +57,115 @@ const persistSecret = (hex: string): void => {
   localStorage.setItem(secretStorageKey, hex)
 }
 
+/**
+ * Wipe the persisted iroh client secret and drop the in-memory binding.
+ *
+ * The secret IS the bridge access credential — it pins this app's NodeId, which a
+ * bridge operator allowlists once. It currently lives in plaintext localStorage
+ * (XSS-exfiltratable, and it outlives any patched XSS), so sign-out and account
+ * deletion must clear it alongside the auth token and device id — `clearLocalData`
+ * funnels all three teardowns (sign-out, account deletion, device revocation) here.
+ * Resetting the shared client drops the in-memory identity, and bumping the
+ * generation fences any bind that is still in flight so it can't re-persist the
+ * wiped secret — the next dial re-binds a fresh NodeId instead.
+ *
+ * TODO: store the secret behind the encryption middleware so it never sits in
+ * plaintext — see docs/architecture/e2e-encryption.md (same path the auth-token
+ * TODO tracks).
+ */
+export const clearIrohClientSecret = (): void => {
+  secretGeneration += 1
+  sharedClient = null
+  if (typeof localStorage === 'undefined') {
+    return
+  }
+  localStorage.removeItem(secretStorageKey)
+}
+
+/** Bind via `bind`, then persist the resulting secret — but only if no wipe raced
+ *  the bind. Sampling the generation before the async work and re-checking it after
+ *  closes the sign-out TOCTOU: an in-flight bind that resolves after
+ *  `clearIrohClientSecret` must not resurrect the cleared credential. */
+const bindAndPersist = async (
+  bind: () => Promise<{ client: IrohClientLike; secretHex: string }>,
+): Promise<IrohClientLike> => {
+  const boundAtGeneration = secretGeneration
+  const { client, secretHex } = await bind()
+  if (boundAtGeneration === secretGeneration) {
+    persistSecret(secretHex)
+  }
+  return client
+}
+
 /** Lazy-load + bind the wasm iroh client, pinning a persisted identity. The
  *  dynamic import is the route-split point — the multi-MB wasm chunk never lands
  *  in the entry bundle. */
-const defaultLoadClient: IrohClientLoader = async () => {
-  const wasm = await import('./pkg/thunderbolt_acp_client.js')
-  await wasm.default()
-  const client = await wasm.IrohClient.create(readPersistedSecret())
-  persistSecret(client.secretKeyHex())
-  return client as unknown as IrohClientLike
-}
+const defaultLoadClient: IrohClientLoader = () =>
+  bindAndPersist(async () => {
+    const wasm = await import('./pkg/thunderbolt_acp_client.js')
+    await wasm.default()
+    const client = await wasm.IrohClient.create(readPersistedSecret())
+    return { client: client as unknown as IrohClientLike, secretHex: client.secretKeyHex() }
+  })
 
 /** Get (binding once) the shared iroh client. A failed bind clears the cache so
- *  a later attempt can retry rather than replaying a rejected promise forever. */
+ *  a later attempt can retry rather than replaying a rejected promise forever.
+ *  The eviction is identity-guarded: it clears the cache only if this exact bind
+ *  is still the cached one, so a concurrent rebind (e.g. after an aborted dial
+ *  already evicted this entry) is never clobbered by the old bind's late
+ *  rejection. */
 const getSharedClient = (load: IrohClientLoader): Promise<IrohClientLike> => {
   if (!sharedClient) {
-    sharedClient = load().catch((err: unknown) => {
-      sharedClient = null
+    const pending: Promise<IrohClientLike> = load().catch((err: unknown) => {
+      if (sharedClient === pending) {
+        sharedClient = null
+      }
       throw err
     })
+    sharedClient = pending
   }
   return sharedClient
+}
+
+/** Evict the shared client iff `pending` is still the cached bind. Called when a
+ *  dial is aborted while the shared bind is still in flight, so the next dial
+ *  rebinds rather than awaiting a possibly-stuck endpoint. Never evicts a newer
+ *  bind that has already replaced this one. */
+const clearSharedClientIfPending = (pending: Promise<IrohClientLike>): void => {
+  if (sharedClient === pending) {
+    sharedClient = null
+  }
+}
+
+/** Settle with `promise`, but reject with an `AbortError` the instant `signal`
+ *  aborts — so a slow bind/dial over an offline or captive relay can't hang the
+ *  caller (the wasm client warms the relay lazily on the first dial, so this is
+ *  the only place that bounds it). `onAbort` runs only when the abort wins the
+ *  race — to evict a stuck bind, or to close a connection that resolves too late
+ *  to be used. The listener is detached as soon as `promise` settles, so it never
+ *  leaks onto the adapter's long-lived signal. */
+const raceAbort = <T>(promise: Promise<T>, signal: AbortSignal, onAbort?: () => void): Promise<T> => {
+  if (signal.aborted) {
+    onAbort?.()
+    return Promise.reject(new DOMException('aborted', 'AbortError'))
+  }
+  return new Promise<T>((resolve, reject) => {
+    const abortListener = (): void => {
+      onAbort?.()
+      reject(new DOMException('aborted', 'AbortError'))
+    }
+    signal.addEventListener('abort', abortListener, { once: true })
+    promise.then(
+      (value) => {
+        signal.removeEventListener('abort', abortListener)
+        resolve(value)
+      },
+      (error: unknown) => {
+        signal.removeEventListener('abort', abortListener)
+        reject(error)
+      },
+    )
+  })
 }
 
 /** This app's iroh NodeId — what a bridge operator runs
@@ -79,6 +173,51 @@ const getSharedClient = (load: IrohClientLoader): Promise<IrohClientLike> => {
  *  call. Surfaced for the agent-settings UI (wired in a later slice). */
 export const irohClientNodeId = async (load: IrohClientLoader = defaultLoadClient): Promise<string> =>
   (await getSharedClient(load)).nodeId()
+
+export type DialIrohBridgeOptions = {
+  /** EndpointTicket or bare NodeId printed by the CLI bridge. */
+  target: string
+  /** ALPN of the bridge protocol — must match the CLI byte-for-byte or the QUIC
+   *  handshake is refused (e.g. {@link acpIrohAlpn} vs the MCP bridge's ALPN). */
+  alpn: string
+  /** Aborting cancels an in-flight bind/dial (and closes a connection that
+   *  resolves too late to be used). */
+  signal: AbortSignal
+  /** Test seam — production omits and lazy-loads the wasm client. */
+  loadClient?: IrohClientLoader
+}
+
+/**
+ * Dial an iroh bridge `target` over the shared relay endpoint, opening one bidi
+ * byte stream under `alpn`. The protocol-agnostic core both the ACP transport
+ * (this file) and the MCP transport (`src/lib/mcp-iroh-transport.ts`) build their
+ * framing on — one place owns the bind/dial abort-race handling.
+ *
+ * Races the bind AND the dial against the signal: the wasm client warms the relay
+ * lazily on the first dial, so on an offline/captive network either step can take
+ * a while — without racing, an abort would be a no-op until a listener is attached
+ * downstream, hanging the caller. An abort during the bind evicts the shared
+ * client so the next dial rebinds rather than awaiting a possibly-stuck endpoint;
+ * an abort during the dial closes a connection that resolves too late, so a dial
+ * that wins the race a tick after the abort can't leak a live QUIC stream nothing
+ * will read or close.
+ */
+export const dialIrohBridge = async (options: DialIrohBridgeOptions): Promise<IrohConnectionLike> => {
+  const { signal } = options
+  // Bail before binding when already aborted, matching the WebSocket path (which
+  // rejects with `AbortError`).
+  if (signal.aborted) {
+    throw new DOMException('aborted', 'AbortError')
+  }
+
+  const clientPromise = getSharedClient(options.loadClient ?? defaultLoadClient)
+  const client = await raceAbort(clientPromise, signal, () => clearSharedClientIfPending(clientPromise))
+
+  const connectPromise = client.connect(options.target, options.alpn)
+  return raceAbort(connectPromise, signal, () => {
+    void connectPromise.then((conn) => conn.close()).catch(() => {})
+  })
+}
 
 export type OpenIrohTransportOptions = {
   /** EndpointTicket or bare NodeId printed by the CLI bridge (held in
@@ -95,17 +234,12 @@ export type OpenIrohTransportOptions = {
 /** Open an ACP transport against an iroh bridge `target`. Dials over the shared
  *  relay endpoint, opens one bidi stream, and frames ACP JSON-RPC as ndjson. */
 export const openIrohTransport = async (options: OpenIrohTransportOptions): Promise<AcpTransport> => {
-  const client = await getSharedClient(options.loadClient ?? defaultLoadClient)
-  const connection = await client.connect(options.target, options.alpn ?? acpIrohAlpn)
-
-  // If the caller aborted while we were binding/dialing, don't hand back a live
-  // connection — close it and surface the abort, matching the WebSocket path
-  // (which rejects with `AbortError`). No await follows until the listener is
-  // attached, so there's no further abort window to miss.
-  if (options.signal.aborted) {
-    connection.close()
-    throw new DOMException('aborted', 'AbortError')
-  }
+  const connection = await dialIrohBridge({
+    target: options.target,
+    alpn: options.alpn ?? acpIrohAlpn,
+    signal: options.signal,
+    loadClient: options.loadClient,
+  })
 
   // `closed` rejects on a transport-level read error and resolves on clean EOF /
   // caller close, so the adapter's handshake can race it and fail loudly instead
@@ -201,8 +335,13 @@ export const openIrohTransport = async (options: OpenIrohTransportOptions): Prom
   return { stream, close, closed }
 }
 
-/** Reset the shared client — tests only, so module state doesn't leak between
- *  cases. */
+/** Reset the shared client and secret generation — tests only, so module state
+ *  doesn't leak between cases. */
 export const resetSharedIrohClientForTests = (): void => {
   sharedClient = null
+  secretGeneration = 0
 }
+
+/** Test seam — drives {@link bindAndPersist}'s wipe-race guard with a fake bind,
+ *  so the sign-out TOCTOU is covered without instantiating the real wasm client. */
+export const bindAndPersistForTests = bindAndPersist

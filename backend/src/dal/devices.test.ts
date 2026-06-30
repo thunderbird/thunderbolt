@@ -88,6 +88,25 @@ describe('devices DAL', () => {
       const rows = await db.select().from(devicesTable).where(eq(devicesTable.id, 'd5'))
       expect(rows[0].revokedAt).toBeNull()
     })
+
+    it('clears the iroh node binding so a revoked endpoint stops syncing', async () => {
+      const now = new Date()
+      await db.insert(devicesTable).values({
+        id: 'd6',
+        userId,
+        name: 'Bound Laptop',
+        lastSeen: now,
+        createdAt: now,
+        trusted: true,
+        nodeId: 'node-abc',
+        nodeIdAttestedAt: now,
+      })
+      await revokeDevice(db, 'd6', userId)
+      const rows = await db.select().from(devicesTable).where(eq(devicesTable.id, 'd6'))
+      expect(rows[0].revokedAt).not.toBeNull()
+      expect(rows[0].nodeId).toBeNull()
+      expect(rows[0].nodeIdAttestedAt).toBeNull()
+    })
   })
 
   describe('countActiveDevices', () => {

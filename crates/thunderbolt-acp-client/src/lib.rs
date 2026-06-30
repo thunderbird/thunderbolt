@@ -65,7 +65,15 @@ pub struct IrohClient {
 
 #[wasm_bindgen]
 impl IrohClient {
-    /// Bind the relay-only endpoint and wait until a home relay is usable.
+    /// Bind the relay-only endpoint. Returns as soon as the endpoint is bound;
+    /// the home relay is warmed lazily by the first [`IrohClient::connect`].
+    ///
+    /// We deliberately do NOT pre-warm the relay here (no `endpoint.online()`):
+    /// that call has no timeout, so on an offline or captive network it pends
+    /// forever, and the JS side caches this future in an app-wide singleton — a
+    /// never-resolving bind would poison every later dial. `connect()` resolves
+    /// the relay path on demand instead, and the JS transport bounds that dial
+    /// with its `AbortSignal`. `bind()` itself does not block on connectivity.
     ///
     /// Pass a 32-byte hex secret key to pin a stable NodeId (so the bridge
     /// operator runs `thunderbolt iroh allow <node-id>` only once); pass `null`
@@ -83,8 +91,6 @@ impl IrohClient {
             .bind()
             .await
             .map_err(to_js)?;
-        // Wait for a home relay so the first dial can traverse it immediately.
-        endpoint.online().await;
         Ok(IrohClient {
             endpoint,
             secret_key_hex: stored_hex,

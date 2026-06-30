@@ -53,11 +53,13 @@ export const upsertDevice = async (
     .returning()
 
 /** Revoke a device for a specific user. Sets revokedAt timestamp and clears approval state.
+ * Also clears the iroh P2P binding (node_id/node_id_attested_at) so the revoked endpoint
+ * identity stops syncing and a bridge operator's allowlist entry for it goes stale.
  * Only matches non-revoked devices so re-revoking is a no-op. */
 export const revokeDevice = async (database: typeof DbType, deviceId: string, userId: string) =>
   database
     .update(devicesTable)
-    .set({ revokedAt: new Date(), trusted: false, approvalPending: false })
+    .set({ revokedAt: new Date(), trusted: false, approvalPending: false, nodeId: null, nodeIdAttestedAt: null })
     .where(and(eq(devicesTable.id, deviceId), eq(devicesTable.userId, userId), isNull(devicesTable.revokedAt)))
     .returning()
 

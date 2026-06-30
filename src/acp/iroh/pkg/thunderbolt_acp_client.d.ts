@@ -54,7 +54,15 @@ export class IrohClient {
      */
     connect(target: string, alpn: string): Promise<any>;
     /**
-     * Bind the relay-only endpoint and wait until a home relay is usable.
+     * Bind the relay-only endpoint. Returns as soon as the endpoint is bound;
+     * the home relay is warmed lazily by the first [`IrohClient::connect`].
+     *
+     * We deliberately do NOT pre-warm the relay here (no `endpoint.online()`):
+     * that call has no timeout, so on an offline or captive network it pends
+     * forever, and the JS side caches this future in an app-wide singleton — a
+     * never-resolving bind would poison every later dial. `connect()` resolves
+     * the relay path on demand instead, and the JS transport bounds that dial
+     * with its `AbortSignal`. `bind()` itself does not block on connectivity.
      *
      * Pass a 32-byte hex secret key to pin a stable NodeId (so the bridge
      * operator runs `thunderbolt iroh allow <node-id>` only once); pass `null`
@@ -133,15 +141,15 @@ export interface InitOutput {
     readonly intounderlyingbytesource_start: (a: number, b: number) => void;
     readonly intounderlyingbytesource_type: (a: number) => number;
     readonly ring_core_0_17_14__bn_mul_mont: (a: number, b: number, c: number, d: number, e: number, f: number) => void;
-    readonly __wasm_bindgen_func_elem_16128: (a: number, b: number, c: number, d: number) => void;
-    readonly __wasm_bindgen_func_elem_16112: (a: number, b: number, c: number, d: number) => void;
-    readonly __wasm_bindgen_func_elem_5292: (a: number, b: number, c: number) => void;
-    readonly __wasm_bindgen_func_elem_2968: (a: number, b: number, c: number) => void;
-    readonly __wasm_bindgen_func_elem_7152: (a: number, b: number, c: number) => void;
-    readonly __wasm_bindgen_func_elem_5123: (a: number, b: number) => void;
-    readonly __wasm_bindgen_func_elem_6276: (a: number, b: number) => void;
-    readonly __wasm_bindgen_func_elem_6410: (a: number, b: number) => void;
-    readonly __wasm_bindgen_func_elem_14796: (a: number, b: number) => void;
+    readonly __wasm_bindgen_func_elem_16108: (a: number, b: number, c: number, d: number) => void;
+    readonly __wasm_bindgen_func_elem_16092: (a: number, b: number, c: number, d: number) => void;
+    readonly __wasm_bindgen_func_elem_5272: (a: number, b: number, c: number) => void;
+    readonly __wasm_bindgen_func_elem_2949: (a: number, b: number, c: number) => void;
+    readonly __wasm_bindgen_func_elem_7132: (a: number, b: number, c: number) => void;
+    readonly __wasm_bindgen_func_elem_5103: (a: number, b: number) => void;
+    readonly __wasm_bindgen_func_elem_6256: (a: number, b: number) => void;
+    readonly __wasm_bindgen_func_elem_6390: (a: number, b: number) => void;
+    readonly __wasm_bindgen_func_elem_14776: (a: number, b: number) => void;
     readonly __wbindgen_export: (a: number, b: number) => number;
     readonly __wbindgen_export2: (a: number, b: number, c: number, d: number) => number;
     readonly __wbindgen_export3: (a: number) => void;

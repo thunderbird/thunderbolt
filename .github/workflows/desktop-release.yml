@@ -165,10 +165,15 @@ jobs:
           security list-keychains -d user -s build.keychain login.keychain
 
           # Convert certificate to macOS-compatible format (using older encryption algorithms).
-          # -legacy loads OpenSSL 3's legacy provider so we can read p12s that Apple Developer
-          # exports with RC2-40-CBC; safe for modern p12s too (both providers stay available).
-          openssl pkcs12 -in certificate.p12 -out temp_cert.pem -clcerts -nokeys -legacy -passin pass:"$APPLE_DEVELOPER_CERTIFICATE_PASSWORD"
-          openssl pkcs12 -in certificate.p12 -out temp_key.pem -nocerts -nodes -legacy -passin pass:"$APPLE_DEVELOPER_CERTIFICATE_PASSWORD"
+          # OpenSSL 3 needs -legacy to read Apple Developer p12 exports (RC2-40-CBC); LibreSSL
+          # still supports these ciphers by default and rejects -legacy as an unknown flag.
+          # Detect at runtime — macos-latest runners may ship either.
+          LEGACY_FLAG=""
+          if openssl version 2>/dev/null | grep -q '^OpenSSL 3'; then
+            LEGACY_FLAG="-legacy"
+          fi
+          openssl pkcs12 -in certificate.p12 -out temp_cert.pem -clcerts -nokeys $LEGACY_FLAG -passin pass:"$APPLE_DEVELOPER_CERTIFICATE_PASSWORD"
+          openssl pkcs12 -in certificate.p12 -out temp_key.pem -nocerts -nodes $LEGACY_FLAG -passin pass:"$APPLE_DEVELOPER_CERTIFICATE_PASSWORD"
           openssl pkcs12 -export -out macos_certificate.p12 -inkey temp_key.pem -in temp_cert.pem -passout pass:"$APPLE_DEVELOPER_CERTIFICATE_PASSWORD" -keypbe PBE-SHA1-3DES -certpbe PBE-SHA1-3DES -macalg sha1
 
           # Import the converted certificate

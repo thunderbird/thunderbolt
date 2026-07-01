@@ -101,44 +101,35 @@ jobs:
 
       # ─────────────────────────────────────────────────────────────────────
       # Checkout. persist-credentials:false (don't leave a usable token on disk
-      # for the model step), check out the HEAD sha shallow. The diff itself is
-      # fetched from the GitHub API (next step), so we need NO base/head fetch
-      # and NOT fetch-depth:0 — the working tree is only here for the model's
-      # Read/Grep/Glob tools and the .claude symlink-prune step. SHA pinned to
-      # v7.0.0.
+      # for the model step), check out the HEAD sha shallow. The diff is
+      # reconstructed from the GitHub API by the orchestrator `pre` phase, so we
+      # need NO base/head fetch and NOT fetch-depth:0 — the working tree is only
+      # here for the model's Read/Grep/Glob tools and the .claude symlink-prune
+      # step. SHA pinned to v7.0.0.
       # ─────────────────────────────────────────────────────────────────────
       - name: Checkout (head, shallow)
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
           persist-credentials: false
           ref: ${{ github.event.pull_request.head.sha }} # review the head sha
-          fetch-depth: 1 # shallow; the diff comes from the API, not local git
+          fetch-depth: 1 # shallow; the diff is rebuilt from the API, not local git
 
       # ─────────────────────────────────────────────────────────────────────
-      # Pre-compute the diff DETERMINISTICALLY (no model, no Bash tool in
-      # the model step). The model reads this file via `Read`.
+      # The unified diff is pre-computed DETERMINISTICALLY (no model, no Bash tool
+      # in the model step) by the orchestrator's `pre` phase below, which writes
+      # ${THUNDER_DIFF_FILE} for the model to `Read`.
       #
-      # It MUST equal GitHub's REAL PR diff — the same merge-base..head ("Files
-      # changed") set that `POST /pulls/{n}/reviews` validates inline `comments[]`
-      # against — so we fetch it straight from the API (Accept: v3.diff) instead
-      # of a local `git diff`. A local TWO-DOT `git diff base..head` is WRONG:
-      # base.sha is the CURRENT tip of the base branch, not the merge-base, so
-      # when the PR branch is behind base it injects base-only commits as REVERSE
-      # diffs. The model then anchors findings to files NOT in the real PR diff,
-      # and `POST /pulls/{n}/reviews` 422s ("Path could not be resolved"),
-      # dropping the whole review.
-      #
-      # GITHUB_TOKEN is in the job env; this is NOT the read-only model step, so
-      # using it here is fine. `set -o pipefail` so an API error fails loudly
-      # instead of writing a truncated/empty diff that silently reviews nothing.
-      # ─────────────────────────────────────────────────────────────────────
-      - name: Compute diff to a bounded file
-        run: |
-          set -o pipefail
-          gh api "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}" \
-            -H "Accept: application/vnd.github.v3.diff" > "$THUNDER_DIFF_FILE"
-          echo "diff bytes: $(wc -c < "$THUNDER_DIFF_FILE")"
-
+      # We do NOT fetch the `Accept: v3.diff` media type: it caps at 20,000 lines /
+      # 1 MB and returns HTTP 406 on large PRs, which hard-failed this whole job
+      # (e.g. PR #1032 at ~24k changed lines). Instead the orchestrator
+      # reconstructs the diff from the List-pull-request-files API — GitHub's
+      # recommended large-PR path — which paginates and has no per-diff line cap.
+      # That endpoint returns the SAME merge-base..head ("Files changed") set
+      # `POST /pulls/{n}/reviews` validates inline `comments[]` against (it is in
+      # fact the view the reviews API cross-references), so the reconstructed diff
+      # anchors findings exactly. A local `git diff` is deliberately avoided: a
+      # two-dot `base..head` uses base's CURRENT tip, not the merge-base, injecting
+      # base-only commits as reverse diffs that 422 the review.
       # ─────────────────────────────────────────────────────────────────────
       # The repo commits `.claude/{commands,agents}/thunderbot*` as symlinks into
       # a local-only `.thunderbot/` dir that is NOT checked out in CI, so they are
@@ -153,7 +144,8 @@ jobs:
           done
 
       # ─────────────────────────────────────────────────────────────────────
-      # (PRE phase): poll A's bots, build the skip-list, compute the
+      # (PRE phase): poll A's bots, build the skip-list, reconstruct the unified
+      # diff from the Files API (writing ${THUNDER_DIFF_FILE}), and compute the
       # deterministic deep-mode flag. ALL GitHub I/O is in this script.
       # This step touches untrusted PR metadata but holds no model credentials.
       # ─────────────────────────────────────────────────────────────────────

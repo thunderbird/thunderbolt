@@ -53,17 +53,19 @@ export const createPrompt = ({
         : modeName === 'research'
           ? profile.researchModeAddendum
           : undefined
+  // The date/time changes every send; it goes in the suffix (see the ordering
+  // note on the returned template), while the stable context stays in the prefix.
+  const currentDateTime = `Current date/time: ${new Date().toLocaleString('en-US', {
+    weekday: 'long',
+    year: 'numeric',
+    month: 'long',
+    day: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+    second: '2-digit',
+    timeZoneName: 'short',
+  })}`
   const contextSection = [
-    `Current date/time: ${new Date().toLocaleString('en-US', {
-      weekday: 'long',
-      year: 'numeric',
-      month: 'long',
-      day: 'numeric',
-      hour: 'numeric',
-      minute: '2-digit',
-      second: '2-digit',
-      timeZoneName: 'short',
-    })}`,
     preferredName ? `User name: ${preferredName}` : '',
     location.name
       ? `User location: ${location.name}${location.lat && location.lng ? ` (${location.lat}, ${location.lng})` : ''}`
@@ -78,6 +80,15 @@ export const createPrompt = ({
   // `\(…\)` / `\[…\]`). The chat renderer (src/components/chat/memoized-markdown.tsx)
   // still normalizes `\(…\)` / `\[…\]` defensively because models drift — the two
   // are complementary, not redundant; don't drop either side.
+  //
+  // Ordering is prefix-cache-friendly: the per-turn-volatile timestamp is the
+  // ONLY part that changes every send, so it alone is appended LAST (the
+  // suffix). Everything before it — the static instruction block plus the
+  // stable `# Context` (user profile + integration status) — forms a prefix
+  // that prefix-caching backends (vLLM/Tinfoil, OpenAI) reuse across turns.
+  // Keeping the timestamp at the front would invalidate the cache on every
+  // send. User-controlled fields stay in `# Context` (not the trailing suffix)
+  // so settings text can't read as the most-recent instruction.
   return `You are an executive assistant using the **${modelName}** model. You ALWAYS cite sources with [N] — place each [N] once after the final sentence using that source, with a space before the bracket.
 Reasoning: low
 
@@ -129,5 +140,7 @@ Wrong: "Tokyo has 14 million residents. [1] The metro area has 37 million. [1]" 
 Wrong: "Tokyo has 14 million residents." (missing [N])
 Wrong: "| Tokyo | 14 million | [1] |" (citation in separate column)
 Format math as LaTeX with dollar delimiters: $…$ inline, $$…$$ for standalone equations. Never use \\(…\\) or \\[…\\].
-${modeSystemPrompt ? `\n# Active Mode (follow these instructions)\n${modeSystemPrompt}${modeAddendum ? `\n\n${modeAddendum}` : ''}` : ''}`
+${modeSystemPrompt ? `\n# Active Mode (follow these instructions)\n${modeSystemPrompt}${modeAddendum ? `\n\n${modeAddendum}` : ''}` : ''}
+
+${currentDateTime}`
 }

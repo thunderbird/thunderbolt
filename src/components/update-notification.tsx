@@ -10,6 +10,7 @@ import { Button } from '@/components/ui/button'
 import { isDesktop } from '@/lib/platform'
 
 const statusConfig: Record<UpdateStatus, { icon: typeof Download; message: string; showActions: boolean }> = {
+  initial: { icon: CheckCircle, message: '', showActions: false },
   idle: { icon: CheckCircle, message: '', showActions: false },
   checking: { icon: Loader2, message: 'Checking for updates...', showActions: false },
   available: { icon: Download, message: 'A new version is available!', showActions: true },
@@ -27,7 +28,7 @@ export const UpdateNotification = () => {
     return null
   }
 
-  const isVisible = !dismissed && status !== 'idle' && status !== 'checking'
+  const isVisible = !dismissed && status !== 'initial' && status !== 'idle' && status !== 'checking'
   const config = statusConfig[status]
   const Icon = config.icon
 

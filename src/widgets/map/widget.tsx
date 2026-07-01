@@ -75,6 +75,28 @@ export const MapWidgetSkeleton = () => (
   </div>
 )
 
+/** Friendly message shown when the browser can't give MapLibre a WebGL context. */
+const webglUnavailableMessage = 'Maps can’t be displayed here — WebGL is disabled or unavailable in this browser.'
+
+/** Generic message for any other map load failure (style/tiles/network). */
+const mapLoadFailedMessage = 'The map couldn’t be loaded.'
+
+/**
+ * Cheap synchronous probe: can this browser create a WebGL context at all?
+ * MapLibre requires one, and when WebGL is off (Firefox with hardware accel /
+ * `resistFingerprinting` disabled, a blocklisted GPU, headless, etc.) it throws
+ * a verbose `webglcontextcreationerror`. We detect up front and show a clean
+ * message instead of dumping MapLibre's raw error JSON at the user.
+ */
+const isWebglAvailable = (): boolean => {
+  try {
+    const canvas = document.createElement('canvas')
+    return Boolean(canvas.getContext('webgl2') || canvas.getContext('webgl'))
+  } catch {
+    return false
+  }
+}
+
 /**
  * Generic GeoJSON map widget: renders a FeatureCollection (points / lines /
  * polygons) on an interactive map, fits the view to the data, and shows a
@@ -100,6 +122,12 @@ export const MapWidget = ({ data, title }: MapWidgetProps) => {
     // a stale "Couldn't load the map" message.
     setReady(false)
     setError(null)
+    // MapLibre needs WebGL; probe before loading it so a WebGL-disabled browser
+    // gets a clean message instead of MapLibre's raw context-creation error.
+    if (!isWebglAvailable()) {
+      setError(webglUnavailableMessage)
+      return
+    }
     let map: MaplibreMap | null = null
     let cancelled = false
     // Whether the map reached `load`, so the `error` handler can tell a fatal
@@ -130,7 +158,10 @@ export const MapWidget = ({ data, title }: MapWidgetProps) => {
         if (cancelled || loaded) {
           return
         }
-        setError(event.error?.message ?? 'Failed to load map')
+        // Log the raw MapLibre detail (e.g. the verbose webglcontextcreationerror
+        // object) for debugging, but show the user a clean message.
+        console.warn('MapLibre failed to load:', event.error)
+        setError(mapLoadFailedMessage)
       })
 
       // The currently-open popup, so clicking marker after marker replaces it
@@ -264,7 +295,8 @@ export const MapWidget = ({ data, title }: MapWidgetProps) => {
 
     init().catch((err) => {
       if (!cancelled) {
-        setError(err instanceof Error ? err.message : 'Failed to load map')
+        console.warn('MapLibre failed to load:', err)
+        setError(mapLoadFailedMessage)
       }
     })
 
@@ -285,12 +317,12 @@ export const MapWidget = ({ data, title }: MapWidgetProps) => {
       <div className="relative h-80 w-full overflow-hidden rounded-lg border border-border">
         <div ref={containerRef} className="h-full w-full" />
         {!ready && !error && <MapSkeleton />}
+        {error && (
+          <div className="absolute inset-0 flex items-center justify-center p-6 text-center">
+            <p className="text-[length:var(--font-size-sm)] text-muted-foreground">{error}</p>
+          </div>
+        )}
       </div>
-      {error && (
-        <p className="mt-1 px-1 text-[length:var(--font-size-xs)] text-muted-foreground">
-          Couldn’t load the map: {error}
-        </p>
-      )}
     </div>
   )
 }

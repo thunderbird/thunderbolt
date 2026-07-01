@@ -27,6 +27,7 @@ jobs:
       rust: ${{ steps.filter.outputs.rust }}
       agent-core: ${{ steps.filter.outputs.agent-core }}
       cli: ${{ steps.filter.outputs.cli }}
+      wasm-artifact: ${{ steps.filter.outputs.wasm-artifact }}
     steps:
       - name: Checkout code
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
@@ -48,6 +49,8 @@ jobs:
               - 'shared/agent-core/**'
             cli:
               - 'cli/**'
+            wasm-artifact:
+              - 'src/acp/iroh/pkg/**'
 
   typescript:
     runs-on: ubuntu-latest
@@ -206,6 +209,24 @@ jobs:
 
       - name: Run cli tests (5x)
         run: cd cli && bun run test:5x
+
+  # The iroh ACP client (P2P/QUIC crypto core) ships as a prebuilt wasm artifact at
+  # src/acp/iroh/pkg so the web app imports it without a wasm toolchain in CI. The
+  # build is byte-for-byte reproducible only on a matching machine (the artifact
+  # embeds absolute ~/.cargo paths), so CI can't rebuild-and-compare across the
+  # Linux/macOS boundary. This job is tamper-evidence: it fails if the committed
+  # artifact drifts from its checksums manifest. Rebuild + reproduce locally with
+  # `crates/thunderbolt-acp-client/build.sh --verify` (see that crate's README).
+  wasm-artifact:
+    needs: detect-changes
+    if: needs.detect-changes.outputs.wasm-artifact == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+
+      - name: Verify committed wasm artifacts match checksums manifest
+        run: cd src/acp/iroh/pkg && shasum -a 256 -c CHECKSUMS.txt
 
   rust:
     needs: detect-changes

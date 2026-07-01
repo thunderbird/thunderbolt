@@ -26,6 +26,27 @@ CRATE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$CRATE_DIR/../.." && pwd)"
 OUT_DIR="${OUT_DIR:-$REPO_ROOT/src/acp/iroh/pkg}"
 
+# The committed artifacts, checksummed into CHECKSUMS.txt for tamper-evidence
+# (CI verifies the tree against it) and reproducibility (`--verify` below).
+ARTIFACTS=(
+  thunderbolt_acp_client_bg.wasm
+  thunderbolt_acp_client_bg.wasm.d.ts
+  thunderbolt_acp_client.d.ts
+  thunderbolt_acp_client.js
+  package.json
+)
+
+# `--verify` rebuilds into a throwaway dir and fails if the result drifts from the
+# committed CHECKSUMS.txt, instead of overwriting src/acp/iroh/pkg. The build is
+# byte-for-byte reproducible only on the pinned toolchain and OS (see README.md).
+VERIFY=0
+if [[ "${1:-}" == "--verify" ]]; then
+  VERIFY=1
+  COMMITTED_DIR="$OUT_DIR"
+  OUT_DIR="$(mktemp -d)"
+  trap 'rm -rf "$OUT_DIR"' EXIT
+fi
+
 if [[ "$(uname)" == "Darwin" ]]; then
   LLVM_PREFIX="${LLVM_PREFIX:-/opt/homebrew/opt/llvm}"
   if [[ ! -x "$LLVM_PREFIX/bin/clang" ]]; then
@@ -61,6 +82,20 @@ fi
 # wasm-pack writes a '*' .gitignore into the out-dir; drop it so the build
 # artifact can be committed (the app imports it without a wasm toolchain in CI).
 rm -f "$OUT_DIR/.gitignore"
+
+# Manifest of the committed artifacts (bare filenames, so it's path-independent
+# and CI can `shasum -a 256 -c` it from the pkg dir without a wasm toolchain).
+( cd "$OUT_DIR" && shasum -a 256 "${ARTIFACTS[@]}" > CHECKSUMS.txt )
+
+if [[ "$VERIFY" == 1 ]]; then
+  if diff -u "$COMMITTED_DIR/CHECKSUMS.txt" "$OUT_DIR/CHECKSUMS.txt"; then
+    echo "verify: rebuilt artifacts match committed CHECKSUMS.txt"
+  else
+    echo "verify: DRIFT — rebuilt artifacts differ from committed CHECKSUMS.txt" >&2
+    exit 1
+  fi
+  exit 0
+fi
 
 echo "done. artifact:"
 ls -lh "$WASM"

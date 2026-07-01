@@ -768,7 +768,8 @@ const extractResources = (params: PromptRequest): PromptResource[] => {
     }
     resources.push({
       filename: filenameFromUri(block.resource.uri),
-      mimeType: block.resource.mimeType ?? 'application/octet-stream',
+      // `||` not `??`: an empty-string mimeType should fall back too, not just null/undefined.
+      mimeType: block.resource.mimeType || 'application/octet-stream',
       bytes: Uint8Array.from(Buffer.from(block.resource.blob, 'base64')),
     })
   }

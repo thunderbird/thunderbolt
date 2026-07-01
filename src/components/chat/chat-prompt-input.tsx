@@ -37,13 +37,13 @@ import { buildAttachmentPart } from '@/lib/attachments'
 import { deleteAttachment, putAttachment } from '@/lib/file-blob-storage'
 import { FileCard } from './file-card'
 
-/** Max size for a chat attachment (PDF) stored locally and sent to the agent. */
+/** Max size for a chat attachment stored locally and sent to the agent. */
 const maxAttachmentBytes = 25 * 1024 * 1024
 const maxAttachmentCount = 10
 
 /** Mime types accepted as attachments. PDFs and images deliver natively to
- *  capable models; docx / markdown / text are accepted too and fall back to a
- *  user-triggered "convert to text" when a model can't read them natively. */
+ *  capable models; plain-text types (txt / md / csv / json) deliver as text;
+ *  docx (and a native file a model rejects) auto-remediate to text/images. */
 const acceptedAttachmentMimeTypes = new Set([
   'application/pdf',
   'image/png',
@@ -458,8 +458,8 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
         <button
           type="button"
           onClick={() => fileInputRef.current?.click()}
-          aria-label="Attach a PDF"
-          title="Attach a PDF"
+          aria-label="Attach a file"
+          title="Attach a file"
           className="flex size-[var(--touch-height-sm)] shrink-0 cursor-pointer items-center justify-center rounded-lg text-muted-foreground hover:bg-accent hover:text-foreground"
         >
           <Paperclip className="size-[var(--icon-size-default)]" />

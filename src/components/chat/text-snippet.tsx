@@ -40,8 +40,9 @@ export const useAttachmentText = (localFileId: string, mimeType: string): string
   const [text, setText] = useState<string | null>(null)
   useEffect(() => {
     let cancelled = false
-    getAttachment(localFileId)
-      .then(async (file) => {
+    const load = async () => {
+      try {
+        const file = await getAttachment(localFileId)
         if (!file || cancelled) {
           return
         }
@@ -49,10 +50,11 @@ export const useAttachmentText = (localFileId: string, mimeType: string): string
         if (!cancelled) {
           setText(extracted.slice(0, maxPreviewChars))
         }
-      })
-      .catch(() => {
+      } catch {
         // Preview is best-effort; leave the placeholder on failure.
-      })
+      }
+    }
+    void load()
     return () => {
       cancelled = true
     }

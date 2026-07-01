@@ -11,7 +11,6 @@ import {
   SidebarMenu,
   SidebarMenuButton,
   SidebarMenuItem,
-  SidebarSeparator,
   useSidebar,
 } from '@/components/ui/sidebar'
 import { useAgentsSettingsHidden } from '@/hooks/use-agents-settings-hidden'
@@ -54,8 +53,6 @@ export const SettingsSidebarContent = ({
           </SidebarMenu>
         </SidebarGroupContent>
       </SidebarGroup>
-
-      <SidebarSeparator className="m-0" />
 
       <SidebarGroup className="flex-1">
         <SidebarGroupLabel>Settings</SidebarGroupLabel>

@@ -154,7 +154,7 @@ export const PromptInput = forwardRef<HTMLFormElement, PromptInputProps>(
             <div
               ref={overlayRef}
               aria-hidden="true"
-              className="pointer-events-none absolute inset-0 z-10 overflow-hidden whitespace-pre-wrap break-words px-1 py-2 text-base leading-5 text-foreground"
+              className="pointer-events-none absolute inset-0 z-10 overflow-hidden whitespace-pre-wrap break-words px-1 py-2 text-[length:var(--font-size-body)] leading-5 text-foreground"
             >
               {renderOverlay(value)}
             </div>
@@ -170,7 +170,7 @@ export const PromptInput = forwardRef<HTMLFormElement, PromptInputProps>(
             maxHeight={240}
             autoFocus={autoFocus}
             className={cn(
-              'w-full border-none bg-transparent focus-visible:ring-0 focus-visible:ring-offset-0 resize-none px-1 py-2 text-base leading-5',
+              'w-full border-none bg-transparent focus-visible:ring-0 focus-visible:ring-offset-0 resize-none px-1 py-2 text-[length:var(--font-size-body)] leading-5',
               renderOverlay && 'text-transparent caret-foreground',
             )}
           />

@@ -43,6 +43,7 @@ jobs:
               - 'src-tauri/build.rs'
               - 'src-tauri/rust-toolchain.toml'
               - 'src-tauri/.cargo/**'
+              - 'crates/**'
             agent-core:
               - 'shared/agent-core/**'
             cli:
@@ -265,6 +266,21 @@ jobs:
           RUSTC_WRAPPER: ''
         run: |
           cd src-tauri
+          cargo build --all-targets
+          cargo clippy --all-targets -- -D warnings
+          cargo test
+
+      # crates/ holds the standalone thunderbolt-acp-client crate (own Cargo.toml
+      # and Cargo.lock, not a src-tauri workspace member), so the src-tauri build
+      # above never compiles it. Its wasm cdylib is the deployed artifact; the rlib
+      # target lets these host-target checks run without a wasm toolchain — the
+      # .cargo/config.toml rustflags are scoped to wasm32, so no --target override.
+      - name: Build and check ACP client crate
+        env:
+          CARGO_INCREMENTAL: 0
+          RUSTC_WRAPPER: ''
+        run: |
+          cd crates/thunderbolt-acp-client
           cargo build --all-targets
           cargo clippy --all-targets -- -D warnings
           cargo test

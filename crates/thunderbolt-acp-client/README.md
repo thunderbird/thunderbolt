@@ -12,13 +12,22 @@ and CI — can import it without a wasm toolchain (`ring` compiles C crypto to
 deliberate binary-in-tree decision for a P2P/QUIC security core, so its provenance
 is anchored below and enforced by CI.
 
-Because the artifact is prebuilt, it is verified two ways:
+Because the artifact is prebuilt, it is verified three ways:
 
+- **Staleness gate (CI):** the `wasm-artifact` job also triggers when the crate source
+  changes (`src/`, `Cargo.toml`, `Cargo.lock`, `rust-toolchain.toml`, `.cargo/`,
+  `build.sh`). If the crate changed without a matching `src/acp/iroh/pkg/` regeneration
+  in the same PR, the job fails — so editing the crate can't silently leave the
+  committed wasm stale. No toolchain needed.
 - **Tamper-evidence (CI):** `src/acp/iroh/pkg/CHECKSUMS.txt` lists the sha256 of each
   committed file. The `wasm-artifact` CI job runs `shasum -a 256 -c CHECKSUMS.txt`
   and fails if any committed artifact drifts from the manifest. No toolchain needed.
-- **Reproducibility (local):** `./build.sh --verify` rebuilds into a throwaway dir on
-  the pinned toolchain and fails if the result drifts from `CHECKSUMS.txt`.
+- **Reproducibility (local, macOS-pinned):** `./build.sh --verify` rebuilds into a
+  throwaway dir on the pinned toolchain and fails if the result drifts from
+  `CHECKSUMS.txt`. This is manual/local only: the binary embeds ~750 absolute
+  `~/.cargo` build paths, so a rebuild-and-compare on a CI runner (`/home/runner/…` on
+  Linux, `/Users/runner/…` on macOS) can never match the committed hash — CI covers
+  tamper-evidence and staleness, not byte-reproducibility.
 
 ## Rebuilding
 

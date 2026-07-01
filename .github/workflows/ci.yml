@@ -28,6 +28,7 @@ jobs:
       agent-core: ${{ steps.filter.outputs.agent-core }}
       cli: ${{ steps.filter.outputs.cli }}
       wasm-artifact: ${{ steps.filter.outputs.wasm-artifact }}
+      crate-src: ${{ steps.filter.outputs.crate-src }}
     steps:
       - name: Checkout code
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
@@ -51,6 +52,16 @@ jobs:
               - 'cli/**'
             wasm-artifact:
               - 'src/acp/iroh/pkg/**'
+            # Inputs that change the compiled wasm (README.md excluded — it doesn't).
+            # Pairs with the wasm-artifact staleness gate: touching any of these MUST
+            # ship a regenerated src/acp/iroh/pkg in the same PR.
+            crate-src:
+              - 'crates/thunderbolt-acp-client/src/**'
+              - 'crates/thunderbolt-acp-client/Cargo.toml'
+              - 'crates/thunderbolt-acp-client/Cargo.lock'
+              - 'crates/thunderbolt-acp-client/rust-toolchain.toml'
+              - 'crates/thunderbolt-acp-client/.cargo/**'
+              - 'crates/thunderbolt-acp-client/build.sh'
 
   typescript:
     runs-on: ubuntu-latest
@@ -212,20 +223,35 @@ jobs:
 
   # The iroh ACP client (P2P/QUIC crypto core) ships as a prebuilt wasm artifact at
   # src/acp/iroh/pkg so the web app imports it without a wasm toolchain in CI. The
-  # build is byte-for-byte reproducible only on a matching machine (the artifact
-  # embeds absolute ~/.cargo paths), so CI can't rebuild-and-compare across the
-  # Linux/macOS boundary. This job is tamper-evidence: it fails if the committed
-  # artifact drifts from its checksums manifest. Rebuild + reproduce locally with
+  # committed binary embeds ~750 absolute ~/.cargo build paths, so it is byte-for-byte
+  # reproducible only on the machine that built it — a Linux/macOS CI rebuild can never
+  # match hash-for-hash (see the crate README's provenance note). CI therefore enforces
+  # provenance two ways, neither needing a wasm toolchain:
+  #   1. Staleness gate — a change to the crate source MUST ship a regenerated pkg/ in
+  #      the same PR, so editing the crate can't silently leave the committed wasm stale
+  #      (the `rust` job host-compiles the crate but never touches the binary).
+  #   2. Tamper-evidence — the committed pkg/ must match its CHECKSUMS.txt manifest.
+  # Reproduce a bit-identical artifact locally on the pinned toolchain with
   # `crates/thunderbolt-acp-client/build.sh --verify` (see that crate's README).
   wasm-artifact:
     needs: detect-changes
-    if: needs.detect-changes.outputs.wasm-artifact == 'true'
+    if: needs.detect-changes.outputs.wasm-artifact == 'true' || needs.detect-changes.outputs.crate-src == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
 
+      # Crate source changed but the committed pkg/ didn't — the wasm wasn't rebuilt,
+      # so it's now stale relative to its source. Fail with the fix instruction.
+      - name: Guard against stale wasm artifact
+        if: needs.detect-changes.outputs.crate-src == 'true' && needs.detect-changes.outputs.wasm-artifact != 'true'
+        run: |
+          echo "::error::crates/thunderbolt-acp-client changed but src/acp/iroh/pkg was not regenerated — the committed wasm is stale."
+          echo "Rebuild and commit the artifact in the same change: crates/thunderbolt-acp-client/build.sh (then commit src/acp/iroh/pkg)."
+          exit 1
+
       - name: Verify committed wasm artifacts match checksums manifest
+        if: needs.detect-changes.outputs.wasm-artifact == 'true'
         run: cd src/acp/iroh/pkg && shasum -a 256 -c CHECKSUMS.txt
 
   rust:

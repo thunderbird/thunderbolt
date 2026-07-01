@@ -1055,7 +1055,13 @@ export default function ModelsPage() {
                     <FormItem>
                       <FormLabel>Provider</FormLabel>
                       <FormControl>
-                        <Select onValueChange={field.onChange} value={field.value}>
+                        <Select
+                          onValueChange={(value) => {
+                            field.onChange(value)
+                            resetConnectionTest()
+                          }}
+                          value={field.value}
+                        >
                           <SelectTrigger className="w-full rounded-lg">
                             <SelectValue placeholder="Select provider" />
                           </SelectTrigger>

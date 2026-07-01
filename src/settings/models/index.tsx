@@ -295,7 +295,7 @@ const buildEditFormSchema = (provider: Model['provider']) =>
     path: ['url'],
   })
 
-const EditModelForm = ({
+export const EditModelForm = ({
   model,
   onCancel,
   onSubmit,
@@ -344,6 +344,9 @@ const EditModelForm = ({
   }
 
   const canTest = canTestModelConnection(model.provider, watchedModel, watchedApiKey)
+  const credentialsDirty =
+    watchedModel !== (model.model || '') || watchedUrl !== (model.url || '') || watchedApiKey !== (model.apiKey || '')
+  const requiresPassingTest = credentialsDirty && connectionStatus !== 'success'
 
   return (
     <Form {...form}>
@@ -421,6 +424,12 @@ const EditModelForm = ({
           </Button>
         )}
 
+        {!canTest && credentialsDirty && (
+          <p className="text-sm text-muted-foreground text-center">
+            Enter an API key to test the connection before saving.
+          </p>
+        )}
+
         {connectionStatus === 'success' && (
           <StatusCard
             title={
@@ -451,7 +460,7 @@ const EditModelForm = ({
           <Button type="button" variant="ghost" onClick={onCancel}>
             Cancel
           </Button>
-          <Button type="submit" disabled={isPending || !form.formState.isDirty || connectionStatus !== 'success'}>
+          <Button type="submit" disabled={isPending || !form.formState.isDirty || requiresPassingTest}>
             Save
           </Button>
         </div>
@@ -1200,6 +1209,15 @@ export default function ModelsPage() {
                     )}
                   </Button>
                 )}
+
+                {!canTestConnection &&
+                  !!watchedModel &&
+                  ['anthropic', 'tinfoil'].includes(watchedProvider) &&
+                  !watchedApiKey && (
+                    <p className="text-sm text-muted-foreground text-center">
+                      Enter an API key to test the connection before saving.
+                    </p>
+                  )}
 
                 {/* Connection Status Messages */}
                 {connectionStatus === 'success' && (

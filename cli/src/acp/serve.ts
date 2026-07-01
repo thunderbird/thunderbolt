@@ -19,6 +19,7 @@
 import { AgentSideConnection, ndJsonStream } from '@agentclientprotocol/sdk'
 import type { ServeConfig } from '../agent/types.ts'
 import { createHarnessAgent } from './harness-agent.ts'
+import { createSessionStore, defaultSessionsDir } from './session-store.ts'
 
 /** Adapt this process's stdout to the `WritableStream<Uint8Array>` the ACP
  *  `ndJsonStream` writes encoded messages into, honoring write backpressure via
@@ -39,7 +40,11 @@ const stdoutWritable = (): WritableStream<Uint8Array> =>
  * @param config - the resolved serve configuration (model, thinking, yolo)
  */
 export const runAcpServe = async (config: ServeConfig): Promise<void> => {
+  // One process serves one connection, but the store's fs must outlive every
+  // per-session harness (it captures the fs for each turn's appends), so build it
+  // once here rather than per session.
+  const store = createSessionStore(defaultSessionsDir())
   const stream = ndJsonStream(stdoutWritable(), Bun.stdin.stream())
-  const connection = new AgentSideConnection((conn) => createHarnessAgent(conn, config), stream)
+  const connection = new AgentSideConnection((conn) => createHarnessAgent(conn, config, store), stream)
   await connection.closed
 }

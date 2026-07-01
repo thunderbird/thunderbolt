@@ -13,9 +13,13 @@
  * `session/update` notifications via {@link createHarnessToAcpTranslator}, and
  * tool-permission requests round-trip to the client over `session/request_permission`.
  *
- * Sessions are in-memory and per-connection: `loadSession` is unsupported
- * (advertised `loadSession: false`) because a fresh process per connection has
- * no cross-reconnect persistence yet.
+ * Sessions persist to disk on the bridge machine (via {@link SessionStore}), so a
+ * reconnect can rebuild the agent's execution context with `session/resume`
+ * (advertised `sessionCapabilities.resume`). We use `resume` — which explicitly
+ * does NOT replay history — rather than `loadSession`, because our app renders
+ * the transcript from PowerSync and must not receive a replay; `loadSession`
+ * stays unadvertised (`loadSession: false`). The live `Map<SessionId, Session>`
+ * below remains the per-connection registry, now hydrated from disk on resume.
  */
 
 import { PROTOCOL_VERSION, RequestError } from '@agentclientprotocol/sdk'
@@ -33,14 +37,17 @@ import type {
   PromptRequest,
   PromptResponse,
   RequestPermissionOutcome,
+  ResumeSessionRequest,
+  ResumeSessionResponse,
   SessionId,
 } from '@agentclientprotocol/sdk'
-import type { AgentHarnessEvent, ToolCallEvent, ToolCallResult } from '@earendil-works/pi-agent-core'
+import type { AgentHarnessEvent, Session as PiSession, ToolCallEvent, ToolCallResult } from '@earendil-works/pi-agent-core'
 import type { AssistantMessage } from '@earendil-works/pi-ai'
 import { VERSION } from '../cli.ts'
 import { buildHarness } from '../agent/harness.ts'
 import type { HarnessConfig, ServeConfig } from '../agent/types.ts'
 import { createHarnessToAcpTranslator, toAcpStopReason, toToolKind } from './harness-to-acp.ts'
+import type { SessionStore } from './session-store.ts'
 
 /**
  * The slice of the Pi {@link AgentHarness} the ACP agent drives. A hand-written
@@ -62,15 +69,17 @@ export type ServeHarness = {
 }
 
 /** Builds a {@link ServeHarness} for one session, paired with its teardown.
+ *  `session` is the disk-backed Pi session to run on (new or resumed).
  *  Injectable so tests can swap in a fake. */
 export type BuildServeHarness = (
   config: HarnessConfig,
+  session: PiSession,
 ) => Promise<{ harness: ServeHarness; dispose: () => Promise<void> }>
 
 /** Production builder: adapts the real {@link buildHarness} to the narrow
  *  {@link ServeHarness} surface the agent needs. */
-const defaultBuildServeHarness: BuildServeHarness = async (config) => {
-  const { harness, dispose } = await buildHarness(config)
+const defaultBuildServeHarness: BuildServeHarness = async (config, session) => {
+  const { harness, dispose } = await buildHarness(config, session)
   return {
     harness: {
       subscribe: (listener) => harness.subscribe(listener),
@@ -176,11 +185,13 @@ const attachAcpPermissionGate = (
  *
  * @param conn - the agent-side ACP connection (used to push updates + ask permission)
  * @param config - the resolved serve configuration
+ * @param store - disk-backed session store keyed by ACP `sessionId` (new + resume)
  * @param buildServeHarness - harness builder; injected by tests, defaults to the real one
  */
 export const createHarnessAgent = (
   conn: AgentSideConnection,
   config: ServeConfig,
+  store: SessionStore,
   buildServeHarness: BuildServeHarness = defaultBuildServeHarness,
 ): Agent => {
   const sessions = new Map<SessionId, Session>()
@@ -225,31 +236,39 @@ export const createHarnessAgent = (
     protocolVersion: PROTOCOL_VERSION,
     agentInfo: { name: 'thunderbolt', version: VERSION },
     agentCapabilities: {
+      // We do not replay history (the app renders from PowerSync), so we
+      // advertise `resume` — no-replay context restore — not `loadSession`.
       loadSession: false,
+      sessionCapabilities: { resume: {} },
       promptCapabilities: { image: false, audio: false, embeddedContext: false },
     },
     authMethods: [],
   })
 
-  const newSession = async (params: NewSessionRequest): Promise<NewSessionResponse> => {
-    const sessionId = crypto.randomUUID()
-    const { harness, dispose } = await buildServeHarness({
-      model: config.model,
-      cwd: params.cwd,
-      yolo: config.yolo,
-      thinking: config.thinking,
-      provider: config.provider,
-      baseUrl: config.baseUrl,
-      apiKey: config.apiKey,
-      announceModel: true,
-    })
+  /** Per-session harness config: connection-wide settings + the request's cwd. */
+  const harnessConfigFor = (cwd: string): HarnessConfig => ({
+    model: config.model,
+    cwd,
+    yolo: config.yolo,
+    thinking: config.thinking,
+    provider: config.provider,
+    baseUrl: config.baseUrl,
+    apiKey: config.apiKey,
+    announceModel: true,
+  })
+
+  /** Build the harness on `session`, wire its run events + permission gate to the
+   *  ACP connection, and register it live. Shared by new and resume — the only
+   *  difference between them is which {@link PiSession} is handed in. */
+  const activate = async (sessionId: SessionId, cwd: string, session: PiSession, phase: string): Promise<void> => {
+    const { harness, dispose } = await buildServeHarness(harnessConfigFor(cwd), session)
 
     // If the client vanished while the harness was being built, the cleanup
     // microtask already ran against a map without this session — dispose now so
     // the freshly-built harness can't leak its temp dirs / shell.
     if (conn.signal.aborted) {
       await dispose()
-      throw RequestError.internalError(undefined, 'connection closed during session/new')
+      throw RequestError.internalError(undefined, `connection closed during ${phase}`)
     }
 
     const translator = createHarnessToAcpTranslator((update) => {
@@ -263,8 +282,33 @@ export const createHarnessAgent = (
     const unsubscribe = harness.subscribe((event) => translator.handle(event))
     attachAcpPermissionGate(harness, conn, sessionId, config.yolo)
 
+    // Re-activating a live id (e.g. a repeated session/resume on one connection)
+    // replaces the entry — tear down the prior harness + subscription first so it
+    // can't leak its execution env or double-append the shared disk log.
+    const previous = sessions.get(sessionId)
     sessions.set(sessionId, { harness, unsubscribe, dispose })
+    if (previous) {
+      previous.unsubscribe()
+      await previous.dispose()
+    }
+  }
+
+  const newSession = async (params: NewSessionRequest): Promise<NewSessionResponse> => {
+    const sessionId = crypto.randomUUID()
+    const session = await store.createSession(sessionId, params.cwd)
+    await activate(sessionId, params.cwd, session, 'session/new')
     return { sessionId }
+  }
+
+  // Resume a prior thread on a fresh process: rehydrate the agent's execution
+  // context from the on-disk log keyed by the client-supplied sessionId. No
+  // history is replayed to the client (the app already rendered it from
+  // PowerSync); we only re-seed the harness. An unknown id self-heals to a fresh
+  // session inside the store (migration / cache-clear), so this never rejects.
+  const resumeSession = async (params: ResumeSessionRequest): Promise<ResumeSessionResponse> => {
+    const session = await store.openOrCreate(params.sessionId, params.cwd)
+    await activate(params.sessionId, params.cwd, session, 'session/resume')
+    return {}
   }
 
   const prompt = async (params: PromptRequest): Promise<PromptResponse> => {
@@ -285,5 +329,5 @@ export const createHarnessAgent = (
   // trust boundary, so `authenticate` is a no-op the client should never need.
   const authenticate = async (): Promise<AuthenticateResponse> => ({})
 
-  return { initialize, newSession, prompt, cancel, authenticate }
+  return { initialize, newSession, resumeSession, prompt, cancel, authenticate }
 }

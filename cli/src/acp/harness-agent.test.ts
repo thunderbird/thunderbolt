@@ -25,12 +25,43 @@ import type {
   Stream,
 } from '@agentclientprotocol/sdk'
 import type { StopReason as PiStopReason, AssistantMessage } from '@earendil-works/pi-ai'
-import type { AgentHarnessEvent, ToolCallEvent, ToolCallResult } from '@earendil-works/pi-agent-core'
+import { InMemorySessionRepo } from '@earendil-works/pi-agent-core'
+import type { AgentHarnessEvent, Session as PiSession, ToolCallEvent, ToolCallResult } from '@earendil-works/pi-agent-core'
 import { createHarnessAgent } from './harness-agent.ts'
 import type { BuildServeHarness } from './harness-agent.ts'
+import type { SessionStore } from './session-store.ts'
 import type { ServeConfig } from '../agent/types.ts'
 
 const config: ServeConfig = { model: 'fake', cwd: process.cwd(), yolo: false, thinking: 'medium' }
+
+/** A fake {@link SessionStore} backed by Pi's real in-memory repo (no disk, no
+ *  mocks): each id maps to one session, and it records the new/resume calls so a
+ *  test can assert the agent routed to the right one. */
+const fakeStore = (): SessionStore & { created: string[]; resumed: Array<{ id: string; cwd: string }> } => {
+  const repo = new InMemorySessionRepo()
+  const byId = new Map<string, Promise<PiSession>>()
+  const created: string[] = []
+  const resumed: Array<{ id: string; cwd: string }> = []
+  const get = (id: string): Promise<PiSession> => {
+    const existing = byId.get(id)
+    if (existing) return existing
+    const fresh = repo.create({ id })
+    byId.set(id, fresh)
+    return fresh
+  }
+  return {
+    created,
+    resumed,
+    createSession: (id) => {
+      created.push(id)
+      return get(id)
+    },
+    openOrCreate: (id, cwd) => {
+      resumed.push({ id, cwd })
+      return get(id)
+    },
+  }
+}
 
 /** A minimal-but-valid Pi assistant message; the translator only reads the
  *  streamed deltas and the final `stopReason`, but the event types require a
@@ -57,6 +88,7 @@ const assistantMessage = (stopReason: PiStopReason): AssistantMessage => ({
  *  pair, returning the client connection plus the buffers the client records. */
 const connectPair = (
   buildServeHarness: BuildServeHarness,
+  store: SessionStore = fakeStore(),
 ): {
   client: ClientSideConnection
   updates: SessionNotification[]
@@ -67,7 +99,7 @@ const connectPair = (
   const agentStream: Stream = ndJsonStream(agentToClient.writable, clientToAgent.readable)
   const clientStream: Stream = ndJsonStream(clientToAgent.writable, agentToClient.readable)
 
-  new AgentSideConnection((conn) => createHarnessAgent(conn, config, buildServeHarness), agentStream)
+  new AgentSideConnection((conn) => createHarnessAgent(conn, config, store, buildServeHarness), agentStream)
 
   const updates: SessionNotification[] = []
   const permissions: RequestPermissionRequest[] = []
@@ -127,12 +159,76 @@ const streamingBuilder: BuildServeHarness = async () => {
 }
 
 describe('createHarnessAgent (ACP server)', () => {
-  test('initialize advertises no loadSession and negotiates the protocol version', async () => {
+  test('initialize advertises resume (not loadSession) and negotiates the protocol version', async () => {
     const { client } = connectPair(streamingBuilder)
     const init = await client.initialize({ protocolVersion: PROTOCOL_VERSION, clientCapabilities: {} })
     expect(init.protocolVersion).toBe(PROTOCOL_VERSION)
     expect(init.agentCapabilities?.loadSession).toBe(false)
+    expect(init.agentCapabilities?.sessionCapabilities?.resume).toBeDefined()
     expect(init.agentInfo?.name).toBe('thunderbolt')
+  })
+
+  test('session/resume opens the stored session by id and injects it into the harness (no replay)', async () => {
+    const store = fakeStore()
+    const injected: PiSession[] = []
+    const capturingBuilder: BuildServeHarness = async (_config, session) => {
+      injected.push(session)
+      return {
+        harness: {
+          subscribe: () => () => {},
+          registerToolCallGate: () => {},
+          prompt: async () => assistantMessage('stop'),
+          waitForIdle: async () => {},
+          abort: async () => {},
+        },
+        dispose: async () => {},
+      }
+    }
+
+    const { client, updates } = connectPair(capturingBuilder, store)
+    await client.initialize({ protocolVersion: PROTOCOL_VERSION, clientCapabilities: {} })
+    const response = await client.resumeSession({ sessionId: 'thread-1', cwd: process.cwd(), mcpServers: [] })
+
+    // Resume returns an empty response and replays nothing to the client.
+    expect(response).toEqual({})
+    expect(updates).toHaveLength(0)
+    // It routed through the store by the client-supplied id + cwd...
+    expect(store.resumed).toEqual([{ id: 'thread-1', cwd: process.cwd() }])
+    // ...and handed that exact session to the harness builder.
+    expect(injected).toHaveLength(1)
+    expect((await injected[0].getMetadata()).id).toBe('thread-1')
+
+    // A resumed session is live: a prompt against it succeeds.
+    const prompt = await client.prompt({ sessionId: 'thread-1', prompt: [{ type: 'text', text: 'hi' }] })
+    expect(prompt.stopReason).toBe('end_turn')
+  })
+
+  test('re-resuming a live session id disposes the prior harness (no leak)', async () => {
+    const disposed: number[] = []
+    let n = 0
+    const trackingBuilder: BuildServeHarness = async () => {
+      const id = n++
+      return {
+        harness: {
+          subscribe: () => () => {},
+          registerToolCallGate: () => {},
+          prompt: async () => assistantMessage('stop'),
+          waitForIdle: async () => {},
+          abort: async () => {},
+        },
+        dispose: async () => {
+          disposed.push(id)
+        },
+      }
+    }
+
+    const { client } = connectPair(trackingBuilder)
+    await client.initialize({ protocolVersion: PROTOCOL_VERSION, clientCapabilities: {} })
+    await client.resumeSession({ sessionId: 'thread-x', cwd: process.cwd(), mcpServers: [] })
+    await client.resumeSession({ sessionId: 'thread-x', cwd: process.cwd(), mcpServers: [] })
+
+    // The first harness (id 0) was torn down when the second replaced it.
+    expect(disposed).toEqual([0])
   })
 
   test('a prompt streams text + tool-call updates and round-trips a permission request', async () => {
@@ -167,7 +263,7 @@ describe('createHarnessAgent (ACP server)', () => {
     const agentToClient = new TransformStream<Uint8Array, Uint8Array>()
     const clientToAgent = new TransformStream<Uint8Array, Uint8Array>()
     new AgentSideConnection(
-      (conn) => createHarnessAgent(conn, config, streamingBuilder),
+      (conn) => createHarnessAgent(conn, config, fakeStore(), streamingBuilder),
       ndJsonStream(agentToClient.writable, clientToAgent.readable),
     )
     const updates: SessionNotification[] = []

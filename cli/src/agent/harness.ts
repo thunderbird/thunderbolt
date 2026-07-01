@@ -10,6 +10,7 @@
  */
 
 import { AgentHarness, InMemorySessionRepo } from '@earendil-works/pi-agent-core'
+import type { Session } from '@earendil-works/pi-agent-core'
 import { NodeExecutionEnv } from '@earendil-works/pi-agent-core/node'
 import { createBashTool, createEditTool, createReadTool, createWriteTool } from '@earendil-works/pi-coding-agent'
 import { resolveModel } from './model.ts'
@@ -21,12 +22,21 @@ import type { HarnessBundle, HarnessConfig } from './types.ts'
  * `dispose` that releases the execution environment. Renderer and permission
  * hooks are attached by the caller, not here.
  *
+ * When `session` is supplied (the ACP server's new/resume paths), the harness
+ * folds its persisted entry log into every turn via `session.buildContext()`, so
+ * a disk-opened session rehydrates the full prior conversation with no other
+ * change here. Omitting it (the one-shot / REPL CLI) keeps the ephemeral
+ * in-memory session. Note the harness's model/thinking/active-tools come from
+ * `config`, not the recorded session — a resumed thread runs under the
+ * connection's current config, which the app keeps consistent per thread.
+ *
  * @param config - the resolved harness configuration
+ * @param session - an existing session to resume; defaults to a fresh in-memory one
  * @returns the constructed harness and its teardown function
  */
-export const buildHarness = async (config: HarnessConfig): Promise<HarnessBundle> => {
+export const buildHarness = async (config: HarnessConfig, session?: Session): Promise<HarnessBundle> => {
   const env = new NodeExecutionEnv({ cwd: config.cwd })
-  const session = await new InMemorySessionRepo().create({})
+  const activeSession = session ?? (await new InMemorySessionRepo().create({}))
   const { models, model } = resolveModel({
     model: config.model,
     provider: config.provider,
@@ -42,7 +52,7 @@ export const buildHarness = async (config: HarnessConfig): Promise<HarnessBundle
 
   const harness = new AgentHarness({
     env,
-    session,
+    session: activeSession,
     models,
     model,
     tools,

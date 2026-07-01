@@ -195,8 +195,8 @@ const useModelConnectionTest = (current: CurrentModelConfig) => {
       const testedConfig: TestedConfig = {
         provider: config.provider,
         model: config.model,
-        url: config.url ?? null,
-        apiKey: config.apiKey ?? null,
+        url: config.url || null,
+        apiKey: config.apiKey || null,
       }
 
       try {
@@ -265,8 +265,8 @@ const useModelConnectionTest = (current: CurrentModelConfig) => {
     tested !== null &&
     tested.provider === current.provider &&
     tested.model === current.model &&
-    tested.url === (current.url ?? null) &&
-    tested.apiKey === (current.apiKey ?? null)
+    tested.url === (current.url || null) &&
+    tested.apiKey === (current.apiKey || null)
 
   const status: 'idle' | 'success' | 'error' = matchesCurrent ? rawStatus : 'idle'
 

@@ -311,7 +311,7 @@ describe('createAgentRoutingFetch', () => {
     expect(saveMessagesSpy.mock.calls[0]?.[0]).toEqual({ id: 't-save-remote', messages: [userMessage] })
   })
 
-  it('does NOT persist acpSessionId when the session has no chatThread (new chat)', async () => {
+  it('persists acpSessionId by thread id even on a new chat whose in-memory chatThread snapshot is null', async () => {
     resetStore()
     const disconnect = mock(() => {})
     const fakeDb = { __id: 'fake-db' } as never
@@ -334,6 +334,9 @@ describe('createAgentRoutingFetch', () => {
 
     const updateChatThread = mock(async () => {})
 
+    // A brand-new chat: the store's `chatThread` snapshot is still null, but
+    // `saveMessages` creates the row, so the fresh ACP id must still persist —
+    // otherwise resume/load could never fire on the next reconnect.
     hydrateSessionWith('t-no-thread', remoteAgent, null)
 
     const customFetch = createAgentRoutingFetch('t-no-thread', saveMessages, httpClient, getProxyFetch, {
@@ -345,7 +348,8 @@ describe('createAgentRoutingFetch', () => {
     await customFetch('/chat', { method: 'POST', body: '{}' })
     await capturedOnAcpSessionId!('any-sess')
 
-    expect(updateChatThread).not.toHaveBeenCalled()
+    expect(updateChatThread).toHaveBeenCalledTimes(1)
+    expect(updateChatThread).toHaveBeenCalledWith(fakeDb, 't-no-thread', { acpSessionId: 'any-sess' })
   })
 
   it('resolves user-skill instructions into the fetch context for a remote-acp agent', async () => {

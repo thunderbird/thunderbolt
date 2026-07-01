@@ -20,6 +20,7 @@ import type {
   NewSessionRequest,
   LoadSessionRequest,
   PromptRequest,
+  ResumeSessionRequest,
 } from '@agentclientprotocol/sdk'
 import type { Agent, AgentAdapterContext } from '@/types/acp'
 import type { HttpClient } from '@/lib/http'
@@ -109,11 +110,15 @@ type ConnCalls = {
   initialize: InitializeRequest[]
   newSession: NewSessionRequest[]
   loadSession: LoadSessionRequest[]
+  resumeSession: ResumeSessionRequest[]
   prompt: PromptRequest[]
 }
 
-const buildFakeAcpDeps = (opts: { capabilities?: { loadSession?: boolean }; newSessionId?: string }) => {
-  const calls: ConnCalls = { initialize: [], newSession: [], loadSession: [], prompt: [] }
+const buildFakeAcpDeps = (opts: {
+  capabilities?: { loadSession?: boolean; resume?: boolean }
+  newSessionId?: string
+}) => {
+  const calls: ConnCalls = { initialize: [], newSession: [], loadSession: [], resumeSession: [], prompt: [] }
   const newId = opts.newSessionId ?? 'sess-new-1'
 
   class FakeConnection {
@@ -125,7 +130,10 @@ const buildFakeAcpDeps = (opts: { capabilities?: { loadSession?: boolean }; newS
       calls.initialize.push(req)
       return {
         protocolVersion: 1,
-        agentCapabilities: { loadSession: opts.capabilities?.loadSession ?? false },
+        agentCapabilities: {
+          loadSession: opts.capabilities?.loadSession ?? false,
+          sessionCapabilities: opts.capabilities?.resume ? { resume: {} } : {},
+        },
       }
     }
     newSession = async (req: NewSessionRequest) => {
@@ -134,6 +142,10 @@ const buildFakeAcpDeps = (opts: { capabilities?: { loadSession?: boolean }; newS
     }
     loadSession = async (req: LoadSessionRequest) => {
       calls.loadSession.push(req)
+      return {}
+    }
+    resumeSession = async (req: ResumeSessionRequest) => {
+      calls.resumeSession.push(req)
       return {}
     }
     prompt = async (req: PromptRequest) => {
@@ -200,6 +212,29 @@ describe('connectToAgent — remote-acp dispatch', () => {
     expect(calls.loadSession[0]).toMatchObject({ sessionId: 'existing-sess' })
   })
 
+  it('sends resumeSession on fetch when acpSessionId present AND capabilities.resume is advertised', async () => {
+    const { calls, FakeConnection, openTransport } = buildFakeAcpDeps({
+      capabilities: { resume: true },
+    })
+    const onAcpSessionId = mock(async (_id: string) => {})
+
+    const adapter = await connectToAgent(
+      remoteAgent,
+      { httpClient, getProxyFetch },
+      { openTransport, ClientSideConnection: FakeConnection as never },
+    )
+    expect(adapter.capabilities).toMatchObject({ resume: true })
+
+    await adapter.fetch(promptInit('hi'), baseAdapterContext({ acpSessionId: 'existing-sess', onAcpSessionId }))
+
+    expect(calls.resumeSession).toHaveLength(1)
+    expect(calls.resumeSession[0]).toMatchObject({ sessionId: 'existing-sess' })
+    expect(calls.newSession).toHaveLength(0)
+    expect(calls.loadSession).toHaveLength(0)
+    // resume reuses the existing id — nothing fresh to persist.
+    expect(onAcpSessionId).not.toHaveBeenCalled()
+  })
+
   it('falls back to newSession + onAcpSessionId callback when loadSession capability is false even if acpSessionId is set', async () => {
     const { calls, FakeConnection, openTransport } = buildFakeAcpDeps({
       capabilities: { loadSession: false },
@@ -220,7 +255,7 @@ describe('connectToAgent — remote-acp dispatch', () => {
     expect(onAcpSessionId).toHaveBeenCalledWith('fresh-1')
   })
 
-  it('fetch posts session/prompt with the last user-message text and returns a streaming Response', async () => {
+  it('fetch on a fresh session carrying prior history seeds the transcript ahead of the last user message', async () => {
     const { calls, FakeConnection, openTransport } = buildFakeAcpDeps({})
 
     const adapter = await connectToAgent(
@@ -240,6 +275,8 @@ describe('connectToAgent — remote-acp dispatch', () => {
         id: 't1',
       }),
     }
+    // acpSessionId is null → tier-3 newSession. The prior turns are seeded once so
+    // the fresh agent isn't blind; the live prompt is still the last user message.
     const ctx = baseAdapterContext()
     const response = await adapter.fetch(init, ctx)
 
@@ -250,9 +287,11 @@ describe('connectToAgent — remote-acp dispatch', () => {
       await getClock().runAllAsync()
     })
     expect(calls.prompt).toHaveLength(1)
-    expect(calls.prompt[0]).toMatchObject({
-      sessionId: 'sess-new-1',
-      prompt: [{ type: 'text', text: 'newest question' }],
-    })
+    expect(calls.prompt[0]?.sessionId).toBe('sess-new-1')
+    const sent = (calls.prompt[0]?.prompt?.[0] as { type: string; text: string }).text
+    expect(sent).toContain('Conversation so far:')
+    expect(sent).toContain('user: older')
+    expect(sent).toContain('assistant: reply')
+    expect(sent.endsWith('newest question')).toBe(true)
   })
 })

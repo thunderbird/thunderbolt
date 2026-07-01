@@ -22,6 +22,12 @@ import type { ChatThread, Mode, Model, SaveMessagesFunction } from '@/types'
  *  prompt-capability flags surface to the composer. */
 export type AgentCapabilities = {
   loadSession: boolean
+  /** Agent advertises `sessionCapabilities.resume` (`session/resume`): it can
+   *  restore a prior session's private execution state from its own store
+   *  WITHOUT replaying the transcript (unlike `loadSession`). Lets the app hand
+   *  back a stored `acpSessionId` and continue a thread without re-seeding
+   *  context. Experimental in `@agentclientprotocol/sdk` — version-pinned. */
+  resume: boolean
   promptCapabilities: {
     image: boolean
     audio: boolean

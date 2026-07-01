@@ -64,6 +64,7 @@ describe('testAcpConnection', () => {
       success: true,
       capabilities: {
         loadSession: true,
+        resume: false,
         promptCapabilities: { image: true, audio: false, embeddedContext: true },
       },
     })
@@ -84,9 +85,24 @@ describe('testAcpConnection', () => {
       success: true,
       capabilities: {
         loadSession: false,
+        resume: false,
         promptCapabilities: { image: false, audio: false, embeddedContext: false },
       },
     })
+  })
+
+  it('maps sessionCapabilities.resume presence to resume: true', async () => {
+    const { openTransport, FakeConnection } = buildFakeDeps({
+      capabilities: { loadSession: false, sessionCapabilities: { resume: {} } },
+    })
+
+    const result = await testAcpConnection({
+      url: 'wss://example.test/ws',
+      openTransport: openTransport as never,
+      ClientSideConnection: FakeConnection as never,
+    })
+
+    expect(result).toMatchObject({ success: true, capabilities: { resume: true, loadSession: false } })
   })
 
   it('returns the error message when initialize rejects', async () => {

@@ -18,12 +18,15 @@
  *      permanently-failed or silent transport rejects loudly instead of hanging
  *      the chat's fetch forever. NO per-thread session is resolved here.
  *   2. Each `adapter.fetch(init, ctx)` resolves the calling thread's ACP
- *      session lazily and once: if `ctx.acpSessionId` is set AND the agent
- *      advertises `loadSession` it calls `loadSession`, otherwise it calls
- *      `newSession`, captures the fresh id, and persists it via
- *      `ctx.onAcpSessionId`. The resolved id is cached per thread so repeated
- *      sends on the same thread never re-resolve. Both calls go through the
- *      same handshake guard as `initialize`.
+ *      session lazily and once. With a stored `ctx.acpSessionId` it tries, by
+ *      advertised capability, `session/resume` → `session/load` (each degrading
+ *      to the next on a runtime rejection); otherwise — or if both fall through
+ *      — it mints `session/new`. A fresh session's id is persisted via
+ *      `ctx.onAcpSessionId` on the FIRST real send (not at resolution), and for
+ *      a non-resumable agent that first send also seeds the prior transcript as
+ *      context so the fresh agent isn't blind. The resolved id is cached per
+ *      thread so repeated sends never re-resolve. All calls go through the same
+ *      handshake guard as `initialize`.
  *   3. `session/update` notifications are routed by their `sessionId` to the
  *      owning thread's translator via a `Map<sessionId, sink>`, so two threads
  *      streaming at once never bleed into each other.
@@ -94,6 +97,10 @@ export const adaptCapabilities = (response: InitializeResponse): AgentCapabiliti
   const caps = response.agentCapabilities
   return {
     loadSession: caps?.loadSession ?? false,
+    // `sessionCapabilities.resume` is an empty `SessionResumeCapabilities`
+    // object (`{}`) when supported, `null`/absent otherwise — so presence, not
+    // truthiness, is the signal.
+    resume: caps?.sessionCapabilities?.resume != null,
     promptCapabilities: {
       image: caps?.promptCapabilities?.image ?? false,
       audio: caps?.promptCapabilities?.audio ?? false,
@@ -102,32 +109,71 @@ export const adaptCapabilities = (response: InitializeResponse): AgentCapabiliti
   }
 }
 
-/** Extract the trailing user-message text from the AI SDK request body. The
- *  built-in transport posts `{ messages: ThunderboltUIMessage[], id }`; we
- *  forward only the last user message's concatenated text parts to ACP.
- *  Non-text parts are dropped — the MVP `promptCapabilities` are all false. */
-const extractUserPrompt = (init: RequestInit): string => {
+/** Parse the AI SDK request body `{ messages: ThunderboltUIMessage[], id }`. */
+const parseRequestMessages = (init: RequestInit): ThunderboltUIMessage[] => {
   if (typeof init.body !== 'string') {
     throw new Error('ACP adapter expects string body on init')
   }
-  const parsed = JSON.parse(init.body) as { messages: ThunderboltUIMessage[] }
-  const lastUser = [...parsed.messages].reverse().find((m) => m.role === 'user')
-  if (!lastUser) {
-    throw new Error('ACP adapter: no user message in request body')
-  }
-  return lastUser.parts
+  return (JSON.parse(init.body) as { messages: ThunderboltUIMessage[] }).messages
+}
+
+/** Concatenate a UI message's text parts. Non-text parts are dropped — the MVP
+ *  `promptCapabilities` are all false, so images/files/tool parts never travel. */
+const messageText = (message: ThunderboltUIMessage): string =>
+  message.parts
     .filter((p): p is { type: 'text'; text: string } => p.type === 'text')
     .map((p) => p.text)
     .join('\n')
+
+/** Extract the trailing user-message text from the AI SDK request body. We
+ *  forward only the last user message's concatenated text parts to ACP. */
+const extractUserPrompt = (init: RequestInit): string => {
+  const lastUser = [...parseRequestMessages(init)].reverse().find((m) => m.role === 'user')
+  if (!lastUser) {
+    throw new Error('ACP adapter: no user message in request body')
+  }
+  return messageText(lastUser)
 }
 
-/** Fold resolved user-skill instructions into the prompt text. ACP has no
- *  separate system channel (the prompt is content blocks), so we prepend the
- *  instructions ahead of the user's message — mirroring how the built-in
- *  pipeline prepends them as system messages, just over the only channel ACP
- *  gives us. No instructions → the user text is sent unchanged. */
-const composeAcpPrompt = (skillInstructions: string[] | undefined, userText: string): string =>
-  skillInstructions && skillInstructions.length > 0 ? `${skillInstructions.join('\n\n')}\n\n${userText}` : userText
+/** Render the conversation *before* the trailing user turn as a plain-text
+ *  context block (mirroring the built-in adapter's transcript shape). Used ONLY
+ *  on a fallback `session/new` for an existing thread — i.e. an agent that
+ *  advertises neither `resume` nor `loadSession`, whose fresh session would
+ *  otherwise start blind. This restores conversation CONTEXT only (what was
+ *  said), NOT execution state (tool calls/results, file edits, failed attempts,
+ *  compaction summaries) — that is recovered solely for our own agent via
+ *  `resume`. No prior text turns → `undefined` (nothing to seed). */
+const extractPriorTranscript = (init: RequestInit): string | undefined => {
+  const messages = parseRequestMessages(init)
+  const lastUserIndex = messages.findLastIndex((m) => m.role === 'user')
+  const transcript = messages
+    .slice(0, Math.max(lastUserIndex, 0))
+    .filter((m) => m.role === 'user' || m.role === 'assistant')
+    .map((m) => ({ role: m.role, text: messageText(m) }))
+    .filter((turn) => turn.text.length > 0)
+    .map((turn) => `${turn.role}: ${turn.text}`)
+    .join('\n\n')
+  return transcript.length > 0 ? transcript : undefined
+}
+
+/** Fold resolved user-skill instructions + (fallback) prior transcript into the
+ *  single prompt-text channel ACP gives us. Order: skill instructions first
+ *  (behavioral, system-like), the prior-conversation context block next, the
+ *  live user text last — mirroring how the built-in pipeline layers system →
+ *  history → prompt. Absent blocks are omitted; with none, the user text is
+ *  sent unchanged. */
+const composeAcpPrompt = (
+  skillInstructions: string[] | undefined,
+  userText: string,
+  priorTranscript?: string,
+): string =>
+  [
+    skillInstructions && skillInstructions.length > 0 ? skillInstructions.join('\n\n') : undefined,
+    priorTranscript ? `Conversation so far:\n\n${priorTranscript}` : undefined,
+    userText,
+  ]
+    .filter((block): block is string => block !== undefined)
+    .join('\n\n')
 
 export type AcpAdapterDeps = {
   /** Override transport opening for tests. Production omits and the factory
@@ -272,33 +318,66 @@ export const connectAcpAdapter = async (
 
   // Resolved ACP session id per chat thread. `null` while a thread's first
   // resolution is in flight is impossible — we store the in-flight promise so
-  // concurrent sends on the same thread dedupe to one load/new call.
+  // concurrent sends on the same thread dedupe to one resume/load/new call.
   const sessionByThread = new Map<string, Promise<string>>()
+  // Threads whose current session was freshly minted via `session/new`. Drained
+  // exactly once by the first real `fetch` (via `Set.delete`) to BOTH persist
+  // the id and seed the prior transcript — deferring both out of resolution so a
+  // warm-then-reload before any prompt never persists an empty session id, and
+  // a resume/load-capable agent never resumes an empty session it thinks is warm.
+  const freshPending = new Set<string>()
+
+  const guardHandshake = <T>(step: Promise<T>): Promise<T> =>
+    withHandshakeGuard(step, transport.closed, handshakeTimeoutMs)
 
   /** Resolve (and cache) the ACP session id for the calling thread. First send
-   *  on a thread runs `loadSession` (when supported + a prior id exists) or
-   *  `newSession`; subsequent sends reuse the cached id. */
+   *  on a thread with a stored id + a capable agent tries, in order,
+   *  `session/resume` → `session/load`; a runtime rejection from either (the
+   *  session was evicted on the agent, wire still alive) degrades to the next
+   *  tier. With no stored id, no capability, or both tiers falling through, it
+   *  mints a fresh `session/new` (tier-3, app-side transcript replay in `fetch`).
+   *  A genuinely dead transport is not silently downgraded: `resolveNew`'s own
+   *  guarded handshake rejects there too, surfacing loudly. Subsequent sends
+   *  reuse the cached id. */
   const resolveThreadSession = (context: EnsureSessionContext): Promise<string> => {
     const existing = sessionByThread.get(context.threadId)
     if (existing) {
       return existing
     }
-    const resolve = (async (): Promise<string> => {
-      if (context.acpSessionId && capabilities.loadSession) {
-        await withHandshakeGuard(
-          connection.loadSession({ sessionId: context.acpSessionId, cwd: sessionCwd, mcpServers: [] }),
-          transport.closed,
-          handshakeTimeoutMs,
-        )
-        return context.acpSessionId
-      }
-      const newSession = await withHandshakeGuard(
-        connection.newSession({ cwd: sessionCwd, mcpServers: [] }),
-        transport.closed,
-        handshakeTimeoutMs,
-      )
-      await context.onAcpSessionId(newSession.sessionId)
+    const resolveNew = async (): Promise<string> => {
+      const newSession = await guardHandshake(connection.newSession({ cwd: sessionCwd, mcpServers: [] }))
+      // Defer persistence + transcript seeding to the first real send.
+      freshPending.add(context.threadId)
       return newSession.sessionId
+    }
+    // Try a stored-session restore, swallowing a runtime rejection (session
+    // evicted on the agent, wire still alive) into `false` so the caller degrades
+    // to the next tier. A genuinely dead transport also lands here as `false`,
+    // then surfaces loudly at `resolveNew`'s own guarded handshake.
+    const tryRestore = (restore: Promise<unknown>): Promise<boolean> =>
+      guardHandshake(restore).then(
+        () => true,
+        () => false,
+      )
+    const resolve = (async (): Promise<string> => {
+      const stored = context.acpSessionId
+      // `resume` restores execution state with no replay; `load` has the agent
+      // replay its own transcript over `session/update`. Resume is tried first.
+      if (
+        stored &&
+        capabilities.resume &&
+        (await tryRestore(connection.resumeSession({ sessionId: stored, cwd: sessionCwd, mcpServers: [] })))
+      ) {
+        return stored
+      }
+      if (
+        stored &&
+        capabilities.loadSession &&
+        (await tryRestore(connection.loadSession({ sessionId: stored, cwd: sessionCwd, mcpServers: [] })))
+      ) {
+        return stored
+      }
+      return resolveNew()
     })()
     // Evict on failure so a transient handshake error doesn't poison the thread
     // — the next send retries a fresh resolution.
@@ -308,8 +387,20 @@ export const connectAcpAdapter = async (
   }
 
   const fetch = async (init: RequestInit, context: AgentAdapterContext): Promise<Response> => {
-    const promptText = composeAcpPrompt(context.skillInstructions, extractUserPrompt(init))
     const sessionId = await resolveThreadSession(context)
+
+    // First real send of a freshly-minted session: persist the id we actually
+    // used, and (tier-3 only) seed the prior transcript as context. `Set.delete`
+    // returns true iff the entry existed and removes it synchronously — a
+    // race-free consume-once, and keyed on "fresh session's first prompt" (not
+    // "we prepended a transcript") so a brand-new thread's second prompt never
+    // re-injects its first exchange.
+    const isFirstSendOfFreshSession = freshPending.delete(context.threadId)
+    if (isFirstSendOfFreshSession) {
+      await context.onAcpSessionId(sessionId)
+    }
+    const priorTranscript = isFirstSendOfFreshSession ? extractPriorTranscript(init) : undefined
+    const promptText = composeAcpPrompt(context.skillInstructions, extractUserPrompt(init), priorTranscript)
 
     const { body, translator, close } = createTranslatorStream({
       textDeltaThrottleMs: deps.textDeltaThrottleMs,
@@ -385,7 +476,10 @@ export const connectAcpAdapter = async (
   // Warm the thread's session ahead of the first prompt so the agent emits its
   // `available_commands_update` (captured by `routeSessionUpdate`) before the
   // user sends anything. The session is cached per thread, so the subsequent
-  // first `fetch` reuses it — no extra `session/new`.
+  // first `fetch` reuses it — no extra `session/new`. Warming deliberately does
+  // NOT persist a freshly-minted id (that is deferred to the first real send):
+  // a reload after warming but before any prompt must leave the thread on its
+  // old/`null` id so it re-resolves correctly instead of resuming an empty one.
   const ensureSession = async (context: EnsureSessionContext): Promise<void> => {
     await resolveThreadSession(context)
   }

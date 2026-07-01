@@ -79,27 +79,6 @@ export const defaultModelDeepseekV4Pro: Model = {
   userId: null,
 }
 
-export const defaultModelKimiK26: Model = {
-  id: '019e7580-2b0c-77d6-8b99-16a99abe4591',
-  name: 'Kimi K2.6',
-  provider: 'tinfoil',
-  model: 'kimi-k2-6',
-  isSystem: 1,
-  enabled: 1,
-  isConfidential: 1,
-  contextWindow: 131072,
-  toolUsage: 1,
-  startWithReasoning: 0,
-  supportsParallelToolCalls: 0,
-  deletedAt: null,
-  apiKey: null,
-  url: null,
-  defaultHash: null,
-  vendor: 'moonshot',
-  description: 'Confidential chat via Tinfoil',
-  userId: null,
-}
-
 export const defaultModelGlm52: Model = {
   id: '019e7580-2b0e-719c-a43f-d2b56e7f31b4',
   name: 'GLM 5.2',
@@ -128,6 +107,5 @@ export const defaultModelGlm52: Model = {
 export const defaultModels: ReadonlyArray<Model> = [
   defaultModelOpus48,
   defaultModelDeepseekV4Pro,
-  defaultModelKimiK26,
   defaultModelGlm52,
 ] as const

@@ -6,12 +6,10 @@ import { hashValues } from '@/lib/utils'
 import type { ModelProfile } from '@/types'
 import { defaultModelProfileDeepseekV4Pro } from './deepseek'
 import { defaultModelProfileGlm52 } from './glm'
-import { defaultModelProfileKimiK26 } from './kimi'
 import { defaultModelProfileOpus48 } from './opus'
 
 export { defaultModelProfileDeepseekV4Pro } from './deepseek'
 export { defaultModelProfileGlm52 } from './glm'
-export { defaultModelProfileKimiK26 } from './kimi'
 export { defaultModelProfileOpus48 } from './opus'
 
 /**
@@ -47,6 +45,5 @@ export const hashModelProfile = (profile: ModelProfile): string =>
 export const defaultModelProfiles: ReadonlyArray<ModelProfile> = [
   defaultModelProfileOpus48,
   defaultModelProfileDeepseekV4Pro,
-  defaultModelProfileKimiK26,
   defaultModelProfileGlm52,
 ] as const

@@ -150,11 +150,26 @@ type ConnectionTestConfig = {
   apiKey?: string | null
 }
 
-const useModelConnectionTest = () => {
+type TestedConfig = {
+  provider: Model['provider']
+  model: string
+  url: string | null
+  apiKey: string | null
+}
+
+type CurrentModelConfig = {
+  provider: Model['provider']
+  model: string
+  url?: string | null
+  apiKey?: string | null
+}
+
+const useModelConnectionTest = (current: CurrentModelConfig) => {
   const getProxyFetch = useProxyFetchGetter()
   const [isTesting, setIsTesting] = useState(false)
-  const [status, setStatus] = useState<'idle' | 'success' | 'error'>('idle')
+  const [rawStatus, setRawStatus] = useState<'idle' | 'success' | 'error'>('idle')
   const [error, setError] = useState<string | null>(null)
+  const [tested, setTested] = useState<TestedConfig | null>(null)
   // Tracks the latest run so completions from superseded tests (started before
   // a credential change or a newer test) can't flip status back to success/error.
   const runIdRef = useRef(0)
@@ -169,12 +184,20 @@ const useModelConnectionTest = () => {
       const isCurrent = () => runIdRef.current === runId
 
       setIsTesting(true)
-      setStatus('idle')
+      setRawStatus('idle')
       setError(null)
+      setTested(null)
 
       const timeoutPromise = new Promise<never>((_, reject) => {
         setTimeout(() => reject(new Error('Connection test timed out after 10 seconds')), 10000)
       })
+
+      const testedConfig: TestedConfig = {
+        provider: config.provider,
+        model: config.model,
+        url: config.url ?? null,
+        apiKey: config.apiKey ?? null,
+      }
 
       try {
         const modelConfig = {
@@ -207,14 +230,16 @@ const useModelConnectionTest = () => {
           return
         }
         console.log('Model test response:', text)
-        setStatus('success')
+        setRawStatus('success')
+        setTested(testedConfig)
       } catch (err) {
         if (!isCurrent()) {
           return
         }
         console.error('Connection test error:', err)
-        setStatus('error')
+        setRawStatus('error')
         setError(err instanceof Error ? err.message : 'Failed to connect to model')
+        setTested(testedConfig)
       } finally {
         if (isCurrent()) {
           setIsTesting(false)
@@ -226,10 +251,24 @@ const useModelConnectionTest = () => {
 
   const reset = useCallback(() => {
     runIdRef.current += 1
-    setStatus('idle')
+    setRawStatus('idle')
     setError(null)
     setIsTesting(false)
+    setTested(null)
   }, [])
+
+  // Derive the exposed status from the tested config vs. the current one: a
+  // test result is only meaningful for the credentials it ran against. Any
+  // divergence collapses status to 'idle' during the same render — no
+  // useEffect-based invalidation, no window where a stale 'success' leaks.
+  const matchesCurrent =
+    tested !== null &&
+    tested.provider === current.provider &&
+    tested.model === current.model &&
+    tested.url === (current.url ?? null) &&
+    tested.apiKey === (current.apiKey ?? null)
+
+  const status: 'idle' | 'success' | 'error' = matchesCurrent ? rawStatus : 'idle'
 
   return { isTesting, status, error, test, reset }
 }
@@ -316,17 +355,21 @@ export const EditModelForm = ({
     },
   })
 
-  const connectionTest = useModelConnectionTest()
-  const { isTesting, status: connectionStatus, error: connectionError, test, reset } = connectionTest
-
   const watchedModel = form.watch('model')
   const watchedUrl = form.watch('url')
   const watchedApiKey = form.watch('apiKey')
 
-  // Any change to credentials/model invalidates a prior successful test.
-  useEffect(() => {
-    reset()
-  }, [watchedModel, watchedUrl, watchedApiKey, reset])
+  const {
+    isTesting,
+    status: connectionStatus,
+    error: connectionError,
+    test,
+  } = useModelConnectionTest({
+    provider: model.provider,
+    model: watchedModel,
+    url: watchedUrl || null,
+    apiKey: watchedApiKey || null,
+  })
 
   const handleSubmit = (values: z.infer<typeof editFormSchema>) => {
     onSubmit({ ...values, id: model.id })
@@ -505,14 +548,6 @@ export default function ModelsPage() {
   const [editingModel, setEditingModel] = useState<Model | null>(null)
   const { isAddDialogOpen, deleteConfirmOpen, isLoadingModels, selectedModelId, allAvailableModels, modelLoadError } =
     state
-  const connectionTest = useModelConnectionTest()
-  const {
-    isTesting: isTestingConnection,
-    status: connectionStatus,
-    error: connectionError,
-    test: runConnectionTest,
-    reset: resetConnectionTest,
-  } = connectionTest
 
   const { data: models = [] } = useQuery({
     queryKey: ['models'],
@@ -984,10 +1019,18 @@ export default function ModelsPage() {
     [watchedApiKey, watchedModel, watchedProvider],
   )
 
-  // Any change to credentials/model invalidates a prior successful test.
-  useEffect(() => {
-    resetConnectionTest()
-  }, [watchedProvider, watchedModel, watchedUrl, watchedApiKey, resetConnectionTest])
+  const {
+    isTesting: isTestingConnection,
+    status: connectionStatus,
+    error: connectionError,
+    test: runConnectionTest,
+    reset: resetConnectionTest,
+  } = useModelConnectionTest({
+    provider: watchedProvider,
+    model: watchedModel,
+    url: watchedUrl || null,
+    apiKey: watchedApiKey || null,
+  })
 
   return (
     <div className="flex flex-col gap-6 p-4 pb-12 w-full max-w-[760px] mx-auto">

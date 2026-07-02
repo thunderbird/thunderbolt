@@ -166,7 +166,10 @@ export const SkillForm = ({
         </div>
 
         <div className="flex flex-col gap-2">
-          <label htmlFor="skill-description" className="flex items-center gap-1.5 text-base text-foreground">
+          <label
+            htmlFor="skill-description"
+            className="flex items-center gap-1.5 text-[length:var(--font-size-body)] text-[#393333] dark:text-[#f5f5f5]"
+          >
             Description
             <Tooltip>
               <TooltipTrigger asChild>
@@ -193,7 +196,10 @@ export const SkillForm = ({
         </div>
 
         <div className="flex min-h-0 flex-1 flex-col gap-2">
-          <label htmlFor="skill-instruction" className="text-base text-foreground">
+          <label
+            htmlFor="skill-instruction"
+            className="text-[length:var(--font-size-body)] text-[#393333] dark:text-[#f5f5f5]"
+          >
             Instructions
           </label>
           <Textarea

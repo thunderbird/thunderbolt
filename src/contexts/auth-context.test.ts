@@ -5,6 +5,7 @@
 import { setupTestDatabase, teardownTestDatabase } from '@/dal/test-utils'
 import { powersyncCredentialsInvalid } from '@/db/powersync/connector'
 import { clearAuthToken, getAuthToken, setAuthToken } from '@/lib/auth-token'
+import { clearCachedSession, getCachedSession, setCachedSession } from '@/lib/session-cache'
 import { createMockAuthClient } from '@/test-utils/auth-client'
 import { createTestProvider } from '@/test-utils/test-provider'
 import { cleanup, render } from '@testing-library/react'
@@ -12,6 +13,7 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, mock 
 import { buildFetchOptions } from './auth-context'
 
 const authTokenKey = 'thunderbolt_auth_token'
+const sessionCacheKey = 'thunderbolt_session_cache'
 
 const fireStorageEvent = (newValue: string | null, oldValue: string | null) => {
   window.dispatchEvent(
@@ -33,11 +35,13 @@ describe('buildFetchOptions onError', () => {
     dispatchSpy = mock(() => true)
     window.dispatchEvent = dispatchSpy as unknown as typeof window.dispatchEvent
     clearAuthToken()
+    clearCachedSession()
   })
 
   afterEach(() => {
     window.dispatchEvent = originalDispatch
     clearAuthToken()
+    clearCachedSession()
   })
 
   const trigger401 = () => {
@@ -73,6 +77,24 @@ describe('buildFetchOptions onError', () => {
 
     expect(getAuthToken()).toBe('valid-token')
     expect(dispatchSpy).not.toHaveBeenCalled()
+  })
+
+  it('clears the cached session on 401 so a future offline boot does not show stale data', () => {
+    setAuthToken('stale-token')
+    setCachedSession({ user: { id: '1' }, session: { id: 's1' } })
+
+    trigger401()
+
+    expect(localStorage.getItem(sessionCacheKey)).toBeNull()
+    expect(getCachedSession()).toBeNull()
+  })
+
+  it('clears the cached session on 401 even when no token was stored', () => {
+    setCachedSession({ user: { id: '1' } })
+
+    trigger401()
+
+    expect(getCachedSession()).toBeNull()
   })
 })
 

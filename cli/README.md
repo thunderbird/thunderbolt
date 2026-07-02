@@ -17,11 +17,28 @@ bun run build      # compiles dist/thunderbolt
 ./install.sh       # copies it to ~/.local/bin
 ```
 
-**One-liner** (placeholder — same self-contained binary, no Bun required):
+**Prebuilt binary** (self-contained, no Bun required). Each release attaches one
+binary per target plus a `SHA256SUMS` manifest. Pick your target
+(`darwin-arm64`, `linux-x64`, or `linux-arm64` — Intel macs aren't built yet,
+see below) and verify the checksum before running:
 
 ```sh
-curl -fsSL https://thunderbolt.dev/install.sh | sh
+TARGET=darwin-arm64
+BASE=https://github.com/thunderbird/thunderbolt/releases/latest/download
+
+curl -fsSLO "$BASE/thunderbolt-$TARGET"
+curl -fsSLO "$BASE/SHA256SUMS"
+grep " thunderbolt-$TARGET\$" SHA256SUMS | shasum -a 256 -c -
+
+chmod +x "thunderbolt-$TARGET"
+# macOS only: clear the download quarantine so Gatekeeper allows the unsigned binary
+xattr -d com.apple.quarantine "thunderbolt-$TARGET" 2>/dev/null || true
+mv "thunderbolt-$TARGET" ~/.local/bin/thunderbolt
 ```
+
+> Intel macOS (`darwin-x64`) has no binary: the CLI's `@number0/iroh` P2P addon
+> ships no `x86_64-apple-darwin` build, so an Intel-mac binary can't load it.
+> Build from source above until iroh adds that target.
 
 ## Usage
 

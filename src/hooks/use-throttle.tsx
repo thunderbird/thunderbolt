@@ -49,16 +49,20 @@ export const useThrottle = <T,>(value: T, interval: number): T => {
  * Hook that returns a throttled callback.
  * @param callback - The callback to throttle
  * @param interval - The minimum time in milliseconds between calls
- * @returns The throttled callback, augmented with `cancel()` to drop a pending
- *   trailing call (e.g. when the source of the calls has ended and a later save
- *   would clobber fresher state).
+ * @returns The throttled callback, augmented with:
+ *   - `cancel()` — drop a pending trailing call (e.g. when the source has ended
+ *     and a later call would clobber fresher state).
+ *   - `flush()` — run the pending trailing call *now* with its latest args and
+ *     clear the timer; no-op when nothing is pending. Use when a trailing call
+ *     must land deterministically instead of waiting out the throttle window.
  */
 export const useThrottledCallback = <T extends (...args: any[]) => any>(
   callback: T,
   interval: number,
-): ((...args: Parameters<T>) => void) & { cancel: () => void } => {
+): ((...args: Parameters<T>) => void) & { cancel: () => void; flush: () => void } => {
   const lastCallTime = useRef<number>(0)
   const timeoutRef = useRef<NodeJS.Timeout | undefined>(undefined)
+  const pendingArgsRef = useRef<Parameters<T> | undefined>(undefined)
   const callbackRef = useRef(callback)
   callbackRef.current = callback
 
@@ -81,13 +85,15 @@ export const useThrottledCallback = <T extends (...args: any[]) => any>(
         lastCallTime.current = now
         callbackRef.current(...args)
       } else {
-        // Not enough time has passed, schedule a call
+        // Not enough time has passed, schedule a trailing call with the latest args
+        pendingArgsRef.current = args
         if (timeoutRef.current) {
           clearTimeout(timeoutRef.current)
         }
 
         timeoutRef.current = setTimeout(() => {
           timeoutRef.current = undefined
+          pendingArgsRef.current = undefined
           lastCallTime.current = Date.now()
           callbackRef.current(...args)
         }, interval - timeSinceLastCall)
@@ -98,6 +104,21 @@ export const useThrottledCallback = <T extends (...args: any[]) => any>(
       if (timeoutRef.current) {
         clearTimeout(timeoutRef.current)
         timeoutRef.current = undefined
+      }
+      pendingArgsRef.current = undefined
+    }
+
+    throttled.flush = () => {
+      if (!timeoutRef.current) {
+        return
+      }
+      clearTimeout(timeoutRef.current)
+      timeoutRef.current = undefined
+      const args = pendingArgsRef.current
+      pendingArgsRef.current = undefined
+      lastCallTime.current = Date.now()
+      if (args) {
+        callbackRef.current(...args)
       }
     }
 

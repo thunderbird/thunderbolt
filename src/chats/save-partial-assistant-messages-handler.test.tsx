@@ -427,10 +427,11 @@ describe('SavePartialAssistantMessagesHandler', () => {
     expect(mockSaveStreamingMessage).toHaveBeenCalledTimes(1)
   })
 
-  it('should keep the pending trailing save when the stream ends with an error', async () => {
+  it('should flush the pending trailing save immediately when the stream ends with an error', async () => {
     // onFinish does NOT persist on an error terminal (see chat-instance.ts), so
     // the pending trailing partial is the only record of what streamed before the
-    // error — it must still fire rather than be cancelled.
+    // error — it must fire deterministically (flushed on the error transition)
+    // rather than be cancelled or left to the trailing timer.
     const mockSaveStreamingMessage = mock((_params: StreamingSaveParams) => Promise.resolve())
     const mockChatInstance = createMockChatInstance(
       [
@@ -485,15 +486,19 @@ describe('SavePartialAssistantMessagesHandler', () => {
       )
     })
 
-    // The trailing save fires (was NOT cancelled), persisting the error partial.
-    await act(async () => {
-      await getClock().tickAsync(1000)
-    })
-
+    // The pending save is flushed synchronously on the error transition (no timer
+    // wait), persisting the error partial before a fast remediation retry could
+    // pre-empt it.
     expect(mockSaveStreamingMessage).toHaveBeenCalledTimes(2)
     expect(mockSaveStreamingMessage.mock.calls[1]?.[0]).toMatchObject({
       message: { parts: [{ text: 'partial-more' }] },
     })
+
+    // No further save when the (already-drained) timer would have fired.
+    await act(async () => {
+      await getClock().tickAsync(1000)
+    })
+    expect(mockSaveStreamingMessage).toHaveBeenCalledTimes(2)
   })
 
   it('should work with dependency injection for useChat', async () => {

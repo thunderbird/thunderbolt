@@ -57,11 +57,14 @@ export const SavePartialAssistantMessagesHandler = ({
       // performs the authoritative final save (see chat-instance.ts), so drop any
       // pending trailing partial to stop it firing *after* onFinish and clobbering
       // it with a stale, mid-stream snapshot. On an *error* terminal onFinish does
-      // NOT persist, so the pending trailing save is the only record of what
-      // streamed before the error — let it fire. A later auto-retry re-arms this
-      // same throttled callback (clearing the pending timer), so the error partial
-      // can never land after and clobber the retry's good save.
-      if (status !== 'error') {
+      // NOT persist, so the pending trailing partial is the only record of what
+      // streamed before the error — flush it *now* so the save is deterministic
+      // rather than left to the ≤500ms trailing timer (which a fast remediation
+      // regenerate could pre-empt by leaving 'error' before it fires, dropping the
+      // sole record). Flushing is a no-op when nothing is pending.
+      if (status === 'error') {
+        throttledSave.flush()
+      } else {
         throttledSave.cancel()
       }
       return

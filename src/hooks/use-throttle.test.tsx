@@ -83,4 +83,75 @@ describe('useThrottledCallback', () => {
 
     expect(callback).toHaveBeenCalledWith('arg1', 'arg2', 'arg3')
   })
+
+  it('should drop the pending trailing call when cancelled', async () => {
+    const callback = mock((..._args: string[]) => {})
+    const { result } = renderHook(() => useThrottledCallback(callback, 100))
+
+    act(() => {
+      result.current('first') // immediate
+      result.current('second') // schedules trailing
+    })
+    expect(callback).toHaveBeenCalledTimes(1)
+
+    act(() => {
+      result.current.cancel()
+    })
+
+    await act(async () => {
+      await getClock().tickAsync(150)
+    })
+
+    // Trailing call never fired.
+    expect(callback).toHaveBeenCalledTimes(1)
+  })
+
+  it('should flush the pending trailing call immediately with the latest args', async () => {
+    const callback = mock((..._args: string[]) => {})
+    const { result } = renderHook(() => useThrottledCallback(callback, 100))
+
+    act(() => {
+      result.current('first') // immediate
+      result.current('second') // schedules trailing
+      result.current('third') // reschedules trailing with latest args
+    })
+    expect(callback).toHaveBeenCalledTimes(1)
+
+    // Flush runs the pending call NOW, before the throttle window elapses.
+    act(() => {
+      result.current.flush()
+    })
+    expect(callback).toHaveBeenCalledTimes(2)
+    expect(callback.mock.calls[1]?.[0]).toBe('third')
+
+    // The drained timer must not fire a second trailing call.
+    await act(async () => {
+      await getClock().tickAsync(150)
+    })
+    expect(callback).toHaveBeenCalledTimes(2)
+  })
+
+  it('should be a no-op to flush when nothing is pending', async () => {
+    const callback = mock((..._args: string[]) => {})
+    const { result } = renderHook(() => useThrottledCallback(callback, 100))
+
+    // Nothing scheduled yet.
+    act(() => {
+      result.current.flush()
+    })
+    expect(callback).not.toHaveBeenCalled()
+
+    // A single leading-edge call leaves no trailing timer, so flush stays a no-op.
+    act(() => {
+      result.current('only') // immediate, no trailing pending
+      result.current.flush()
+    })
+    expect(callback).toHaveBeenCalledTimes(1)
+    expect(callback).toHaveBeenCalledWith('only')
+
+    await act(async () => {
+      await getClock().tickAsync(150)
+    })
+    expect(callback).toHaveBeenCalledTimes(1)
+  })
 })

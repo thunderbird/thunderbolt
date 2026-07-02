@@ -21,11 +21,10 @@ import {
   useEnabledSkills as useEnabledSkills_default,
   useLibrarySkills as useLibrarySkills_default,
 } from '@/skills/use-skills'
-import { type AttachmentData, type Model } from '@/types'
+import { type Model } from '@/types'
 import { useChat as useChat_default } from '@ai-sdk/react'
 import { useDraftInput } from '@/hooks/use-draft-input'
-import { AnimatePresence, m } from 'framer-motion'
-import { AlertCircle, Loader2, Paperclip, X } from 'lucide-react'
+import { AlertCircle, Loader2 } from 'lucide-react'
 import { forwardRef, useCallback, useImperativeHandle, useMemo, useRef, useState } from 'react'
 import { useLocation as useLocation_default, useNavigate as useNavigate_default } from 'react-router'
 import { ChatSkillsBar } from './chat-skills-bar'
@@ -34,53 +33,6 @@ import { ContextUsageIndicator } from '../context-usage-indicator'
 import { PromptInput } from '../ui/prompt-input'
 import { ChatModePicker } from './chat-mode-picker'
 import { ChatModelPicker } from './chat-model-picker'
-import { buildAttachmentPart } from '@/lib/attachments'
-import { deleteAttachment, putAttachment } from '@/lib/file-blob-storage'
-import { FileCard } from './file-card'
-
-/** Max size for a chat attachment stored locally and sent to the agent. */
-const maxAttachmentBytes = 25 * 1024 * 1024
-const maxAttachmentCount = 10
-
-/** Mime types accepted as attachments. PDFs and images deliver natively to
- *  capable models; plain-text types (txt / md / csv / json) deliver as text;
- *  docx (and a native file a model rejects) auto-remediate to text/images. */
-const acceptedAttachmentMimeTypes = new Set([
-  'application/pdf',
-  'image/png',
-  'image/jpeg',
-  'image/webp',
-  'image/gif',
-  'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-  'text/markdown',
-  'text/plain',
-  'text/csv',
-  'application/json',
-])
-
-/** Extension fallback for when the browser reports an empty/odd mime type
- *  (common for .md). */
-const acceptedAttachmentExtensions = [
-  '.pdf',
-  '.png',
-  '.jpg',
-  '.jpeg',
-  '.webp',
-  '.gif',
-  '.docx',
-  '.md',
-  '.markdown',
-  '.txt',
-  '.csv',
-  '.json',
-]
-
-/** `accept` attribute string for the file picker. */
-const attachmentAcceptAttr = [...acceptedAttachmentMimeTypes, ...acceptedAttachmentExtensions].join(',')
-
-const isAcceptedAttachment = (file: File): boolean =>
-  acceptedAttachmentMimeTypes.has(file.type) ||
-  acceptedAttachmentExtensions.some((ext) => file.name.toLowerCase().endsWith(ext))
 
 /**
  * Extract a human-readable display string from a connection error.
@@ -204,10 +156,6 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
     const [showOverflowModal, setShowOverflowModal] = useState(false)
     const isNewChat = !chatThread
     const [input, setInput, clearDraft] = useDraftInput(draftKey, { persist: !isNewChat })
-    const [attachments, setAttachments] = useState<AttachmentData[]>([])
-    const [attachError, setAttachError] = useState<string | null>(null)
-    const [isDragging, setIsDragging] = useState(false)
-    const fileInputRef = useRef<HTMLInputElement>(null)
     // Latest-input ref so deferred callers (e.g. the `runSkill` microtask
     // below) read the current value at execution time rather than the value
     // captured when the callback was created. Without this, a draft restore
@@ -352,63 +300,11 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
       onOverflow: () => handleShowOverflowModal(selectedModel, input.trim().length, messages.length + 1),
     })
 
-    // Store dropped/picked PDFs locally (IndexedDB) and add reference-only
-    // attachments. Bytes never enter a message part — only the localFileId ref.
-    const addFiles = useCallback(
-      async (files: File[]) => {
-        setAttachError(null)
-        // `count` tracks the running total as we add through the loop, since
-        // `setAttachments` won't have flushed mid-iteration.
-        let count = attachments.length
-        for (const file of files) {
-          if (count >= maxAttachmentCount) {
-            setAttachError(`You can attach up to ${maxAttachmentCount} files.`)
-            break
-          }
-          if (!isAcceptedAttachment(file)) {
-            setAttachError(`"${file.name}" isn't a supported file type.`)
-            continue
-          }
-          if (file.size > maxAttachmentBytes) {
-            setAttachError(`"${file.name}" is too large (max ${maxAttachmentBytes / 1024 / 1024}MB).`)
-            continue
-          }
-          const localFileId = crypto.randomUUID()
-          try {
-            await putAttachment({
-              id: localFileId,
-              filename: file.name,
-              mimeType: file.type,
-              size: file.size,
-              createdAt: Date.now(),
-              blob: file,
-            })
-          } catch (error) {
-            // IndexedDB can reject when its storage quota is exceeded or it's
-            // unavailable. Surface it instead of letting the `void`-called
-            // promise reject silently — otherwise no chip appears and no banner
-            // shows. Stop here: subsequent writes would hit the same failure.
-            console.error('Failed to store attachment locally:', error)
-            setAttachError(`Couldn't attach "${file.name}" — your browser's storage is full or unavailable.`)
-            break
-          }
-          setAttachments((prev) => [...prev, { localFileId, filename: file.name, mimeType: file.type }])
-          count++
-        }
-      },
-      [attachments.length],
-    )
-
-    const removeAttachment = useCallback((localFileId: string) => {
-      setAttachments((prev) => prev.filter((a) => a.localFileId !== localFileId))
-      deleteAttachment(localFileId).catch((error) => console.error('Failed to delete local attachment:', error))
-    }, [])
-
     const handleSubmit = async () => {
       try {
-        // Prevent submitting while streaming, or with neither text nor attachments
+        // Prevent submitting while streaming or if input is empty
         const textToSend = input.trim()
-        if (isStreaming || (!textToSend && attachments.length === 0)) {
+        if (isStreaming || !textToSend) {
           return
         }
 
@@ -417,23 +313,12 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
           return
         }
 
-        // Reference-only attachment parts — bytes stay in IndexedDB and are
-        // hydrated per-agent at send time (see the file transports).
-        const attachmentParts = attachments.map(buildAttachmentPart)
-
-        // Clear input, draft, and pending attachments immediately for responsive UX
+        // Clear input and persisted draft immediately for responsive UX
         clearDraft()
-        setAttachments([])
-        setAttachError(null)
 
-        await sendMessage({
-          parts: [...(textToSend ? [{ type: 'text' as const, text: textToSend }] : []), ...attachmentParts],
-        })
+        await sendMessage({ text: textToSend })
       } catch (error) {
         console.error('Error submitting message:', error)
-        // Send failed — the chips were cleared optimistically but the blobs are
-        // still in IndexedDB, so restore them rather than orphaning the bytes.
-        setAttachments(attachments)
       }
     }
 
@@ -466,15 +351,6 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
 
     const footerStartElements = (
       <div className="flex items-center gap-2">
-        <button
-          type="button"
-          onClick={() => fileInputRef.current?.click()}
-          aria-label="Attach a file"
-          title="Attach a file"
-          className="flex size-[var(--touch-height-sm)] shrink-0 cursor-pointer items-center justify-center rounded-lg text-muted-foreground hover:bg-accent hover:text-foreground"
-        >
-          <Paperclip className="size-[var(--icon-size-default)]" />
-        </button>
         {isConnecting ? (
           <div
             role="status"
@@ -541,116 +417,27 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
 
     return (
       <>
-        <div
-          className="relative flex w-full flex-col rounded-2xl"
-          onDragOver={(e) => {
-            e.preventDefault()
-            setIsDragging(true)
-          }}
-          onDragLeave={() => setIsDragging(false)}
-          onDrop={(e) => {
-            e.preventDefault()
-            setIsDragging(false)
-            void addFiles(Array.from(e.dataTransfer.files))
-          }}
-        >
-          {isDragging && (
-            <div className="pointer-events-none absolute inset-0 z-20 flex items-center justify-center rounded-2xl border-2 border-dashed border-ring bg-muted/80 backdrop-blur-sm">
-              <span className="text-[length:var(--font-size-sm)] font-medium text-muted-foreground">
-                Drop file to attach
-              </span>
-            </div>
-          )}
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept={attachmentAcceptAttr}
-            multiple
-            hidden
-            onChange={(e) => {
-              void addFiles(Array.from(e.target.files ?? []))
-              e.target.value = ''
-            }}
+        <div className="flex w-full flex-col gap-3">
+          <ChatSkillsBar
+            onAddToChat={handleAddChipFromBar}
+            onAddInstruction={insertInstructionText}
+            // Pinning is a "starting a new chat" affordance — once the thread
+            // has any message, hide the bar so chips don't compete for space.
+            hidden={messages.length > 0}
           />
-          {/* Chips + error banner ride in an overlay anchored to the composer's TOP
-              edge, so the composer is a fixed anchor: the overlay is out of flow
-              (only `bottom` pinned → content-height, grows UPWARD), so the composer's
-              box never reacts to the banner — it stays put in every state (empty,
-              mid-chat, after a send). `pb-2` gives the chips their normal resting gap
-              above the composer; when the banner grows in it pushes the chips up, and
-              they slide back down on dismiss. pointer-events gated so the empty
-              overlay area doesn't eat clicks behind it. */}
-          <div className="pointer-events-none absolute inset-x-0 bottom-full flex flex-col">
-            {/* Chips keep their normal resting gap above the composer (pb-2). */}
-            <div className="pointer-events-auto pb-2">
-              <ChatSkillsBar
-                onAddToChat={handleAddChipFromBar}
-                onAddInstruction={insertInstructionText}
-                // Pinning is a "starting a new chat" affordance — once the thread
-                // has any message, hide the bar so chips don't compete for space.
-                hidden={messages.length > 0}
-              />
-            </div>
-            <AnimatePresence initial={false}>
-              {attachError && (
-                <m.div
-                  key="attach-error"
-                  // marginBottom pulls the banner's bottom -12px below the composer's
-                  // top edge so it's hidden behind the composer's opaque z-10 body
-                  // (the "emerges from behind" look). Animated in lockstep with height
-                  // so dismiss collapses cleanly without over-pulling the chips.
-                  initial={{ height: 0, opacity: 0, marginBottom: 0 }}
-                  animate={{ height: 'auto', opacity: 1, marginBottom: -12 }}
-                  exit={{ height: 0, opacity: 0, marginBottom: 0 }}
-                  transition={{ type: 'tween', ease: [0.2, 0.9, 0.1, 1], duration: 0.25 }}
-                  className="pointer-events-auto overflow-hidden"
-                >
-                  <div className="flex items-center gap-1.5 rounded-t-2xl bg-destructive/10 px-3 pb-4 pt-2 text-[length:var(--font-size-xs)] text-destructive">
-                    <AlertCircle className="size-3.5 shrink-0" aria-hidden="true" />
-                    <span className="min-w-0 flex-1">{attachError}</span>
-                    <button
-                      type="button"
-                      onClick={() => setAttachError(null)}
-                      aria-label="Dismiss"
-                      className="shrink-0 cursor-pointer rounded p-0.5 hover:bg-destructive/15"
-                    >
-                      <X className="size-3.5" />
-                    </button>
-                  </div>
-                </m.div>
-              )}
-            </AnimatePresence>
-          </div>
           <PromptInput
             ref={formRef}
-            headerSlot={
-              attachments.length > 0 ? (
-                <div className="flex flex-wrap items-start gap-2 pb-2">
-                  {attachments.map((attachment) => (
-                    <FileCard
-                      key={attachment.localFileId}
-                      localFileId={attachment.localFileId}
-                      filename={attachment.filename}
-                      mimeType={attachment.mimeType}
-                      onRemove={() => removeAttachment(attachment.localFileId)}
-                    />
-                  ))}
-                </div>
-              ) : undefined
-            }
             value={input}
             onChange={(value: string) => setInput(value)}
             placeholder="Ask me anything..."
             showSubmitButton
             onSubmit={handleSubmit}
-            // Allow sending an attachment even with no typed text (matches the Enter behavior).
-            canSubmit={input.trim().length > 0 || attachments.length > 0}
             isLoading={isStreaming || isConnecting}
             isStreaming={isStreaming}
             onStop={stop}
             autoFocus={!isMobile}
             submitOnEnter={!isStreaming && !shouldInsertNewlineOnEnter}
-            className="relative z-10 flex flex-col w-full gap-0 rounded-2xl border bg-card p-2 dark:border-input dark:bg-[oklch(0.182_0_0)]"
+            className="flex flex-col w-full gap-0 rounded-2xl border bg-card p-2 dark:border-input dark:bg-[oklch(0.182_0_0)]"
             footerStartElements={footerStartElements}
             renderOverlay={(value) => renderHighlightedSkillTokens(value, classifySkill)}
             popoverSlot={

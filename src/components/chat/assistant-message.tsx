@@ -24,7 +24,6 @@ type AssistantMessageProps = {
   isStreaming: boolean
   isLastMessage?: boolean
   isLastAssistantMessage?: boolean
-  loadingMessage?: string
 }
 
 // Viewport positioning constant - ensures enough space for scrolling user message to top
@@ -47,13 +46,12 @@ export const mountMessageParts = (
   sources?: SourceMetadata[],
   haystackReferences?: HaystackReferenceMeta[],
   mcpTools?: UIMessageMetadata['mcpTools'],
-  loadingMessage?: string,
 ) => {
   const partElements: ReactNode[] = []
 
   if (groupedParts.length === 0 && isStreaming) {
     // isStreaming should always be true because the next part will *replace* this one
-    partElements.push(<SyntheticLoadingPart isStreaming message={loadingMessage} />)
+    partElements.push(<SyntheticLoadingPart isStreaming />)
   }
 
   const hasTextPart = groupedParts.some((part) => {
@@ -98,13 +96,7 @@ export const mountMessageParts = (
 }
 
 export const AssistantMessage = memo(
-  ({
-    message,
-    isStreaming,
-    isLastMessage = false,
-    isLastAssistantMessage = false,
-    loadingMessage,
-  }: AssistantMessageProps) => {
+  ({ message, isStreaming, isLastMessage = false, isLastAssistantMessage = false }: AssistantMessageProps) => {
     // Memoize filtering and grouping to avoid recomputing on every render
     const groupedParts = useMemo(() => groupMessageParts(filterMessageParts(message.parts)), [message.parts])
 
@@ -152,7 +144,6 @@ export const AssistantMessage = memo(
           sources,
           haystackReferences,
           mcpTools,
-          loadingMessage,
         ),
       [
         groupedParts,
@@ -163,7 +154,6 @@ export const AssistantMessage = memo(
         sources,
         haystackReferences,
         mcpTools,
-        loadingMessage,
       ],
     )
 
@@ -219,8 +209,7 @@ export const AssistantMessage = memo(
       prevProps.message.metadata === nextProps.message.metadata &&
       prevProps.isStreaming === nextProps.isStreaming &&
       prevProps.isLastMessage === nextProps.isLastMessage &&
-      prevProps.isLastAssistantMessage === nextProps.isLastAssistantMessage &&
-      prevProps.loadingMessage === nextProps.loadingMessage
+      prevProps.isLastAssistantMessage === nextProps.isLastAssistantMessage
     )
   },
 )

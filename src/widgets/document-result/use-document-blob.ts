@@ -3,13 +3,11 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import type { HttpClient } from '@/contexts'
-import { docxToHtml } from '@/files/transformers/docx-to-html'
-import { getAttachment } from '@/lib/file-blob-storage'
-import { useEffect, useReducer, useRef } from 'react'
+import { useEffect, useReducer } from 'react'
 
 export type FileType = 'pdf' | 'docx' | 'unsupported'
 
-/** Load lifecycle of a previewable document, modelled as a state machine
+/** Load lifecycle of a Haystack-managed document, modelled as a state machine
  *  so impossible combinations (e.g. "done but no url and no error") can't exist. */
 export type DocumentBlobState =
   | { status: 'loading' }
@@ -32,21 +30,30 @@ const reducer = (_state: DocumentBlobState, action: DocumentBlobAction): Documen
   }
 }
 
-/** Renders DOCX previews to HTML via the shared {@link docxToHtml} transformer.
- *  PDFs and other types skip conversion and return null. */
-const convertDocxIfNeeded = async (blob: Blob, fileType: FileType): Promise<string | null> =>
-  fileType === 'docx' ? docxToHtml(blob) : null
+/** Converts a DOCX blob to HTML via a lazily-imported mammoth. PDFs and other
+ *  types skip conversion and return null. mammoth stays out of the main bundle
+ *  because the import only runs on the DOCX path. */
+const convertDocxIfNeeded = async (blob: Blob, fileType: FileType): Promise<string | null> => {
+  if (fileType !== 'docx') {
+    return null
+  }
+  const mammoth = await import('mammoth')
+  const arrayBuffer = await blob.arrayBuffer()
+  const result = await mammoth.convertToHtml({ arrayBuffer })
+  return result.value
+}
 
 /**
- * Shared blob-preview loader: resolves a Blob via `loadBlob`, exposes the load
- * lifecycle as a state machine, converts DOCX→HTML, and revokes the object URL
- * on cleanup. `cacheKey` drives reloads; `loadBlob` is read through a ref so its
- * identity changing on every render doesn't retrigger the effect.
+ * Fetches a Haystack-managed document as a blob and exposes its load lifecycle
+ * as a discriminated-union state machine. DOCX files are converted to HTML;
+ * PDFs and unsupported types expose only the object URL (for react-pdf rendering
+ * and downloads respectively).
+ *
+ * The created object URL is revoked on unmount and whenever `fileId`/`fileType`
+ * changes, so callers never manage blob cleanup themselves.
  */
-const useBlobDocument = (cacheKey: string, fileType: FileType, loadBlob: () => Promise<Blob>): DocumentBlobState => {
+export const useDocumentBlob = (fileId: string, fileType: FileType, httpClient: HttpClient): DocumentBlobState => {
   const [state, dispatch] = useReducer(reducer, { status: 'loading' })
-  const loadBlobRef = useRef(loadBlob)
-  loadBlobRef.current = loadBlob
 
   useEffect(() => {
     let cancelled = false
@@ -54,7 +61,8 @@ const useBlobDocument = (cacheKey: string, fileType: FileType, loadBlob: () => P
     dispatch({ type: 'reset' })
 
     const load = async () => {
-      const blob = await loadBlobRef.current()
+      const response = await httpClient.get(`haystack/files/${fileId}`)
+      const blob = await response.blob()
       if (cancelled) {
         return
       }
@@ -69,9 +77,10 @@ const useBlobDocument = (cacheKey: string, fileType: FileType, loadBlob: () => P
     }
 
     load().catch((err) => {
-      if (!cancelled) {
-        dispatch({ type: 'failed', message: err instanceof Error ? err.message : 'Failed to load document' })
+      if (cancelled) {
+        return
       }
+      dispatch({ type: 'failed', message: err instanceof Error ? err.message : 'Failed to load document' })
     })
 
     return () => {
@@ -80,25 +89,7 @@ const useBlobDocument = (cacheKey: string, fileType: FileType, loadBlob: () => P
         URL.revokeObjectURL(objectUrl)
       }
     }
-    // loadBlob is read via ref; cacheKey + fileType drive reloads.
-  }, [cacheKey, fileType])
+  }, [fileId, fileType, httpClient])
 
   return state
 }
-
-/** Fetch a Haystack-managed document (by file id) as a previewable blob via the backend. */
-export const useDocumentBlob = (fileId: string, fileType: FileType, httpClient: HttpClient): DocumentBlobState =>
-  useBlobDocument(`haystack:${fileId}`, fileType, async () => {
-    const response = await httpClient.get(`haystack/files/${fileId}`)
-    return response.blob()
-  })
-
-/** Load a locally-uploaded attachment (by local id) from IndexedDB as a previewable blob. */
-export const useLocalDocumentBlob = (localFileId: string, fileType: FileType): DocumentBlobState =>
-  useBlobDocument(`local:${localFileId}`, fileType, async () => {
-    const file = await getAttachment(localFileId)
-    if (!file) {
-      throw new Error('This attachment isn’t available on this device.')
-    }
-    return file.blob
-  })

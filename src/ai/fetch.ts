@@ -18,7 +18,6 @@ import { extractLastUserText, resolveSkillTokenInstructions } from '@/skills/res
 import { collectAskEntriesFromCache, formatAskResponsesNote } from '@/widgets/ask/lib'
 import { getDb } from '@/db/database'
 import { getLocalSetting } from '@/stores/local-settings-store'
-import { hydrateAttachmentsAsFileParts } from '@/lib/attachments'
 import { isSsoMode } from '@/lib/auth-mode'
 import { getAuthToken } from '@/lib/auth-token'
 import { fetch as baseFetch } from '@/lib/fetch'
@@ -39,7 +38,6 @@ import { v7 as uuidv7 } from 'uuid'
 // import { createOpenRouter } from '@openrouter/ai-sdk-provider'
 
 import {
-  APICallError,
   convertToModelMessages,
   createUIMessageStream,
   InvalidToolInputError,
@@ -48,7 +46,6 @@ import {
   extractReasoningMiddleware,
   stepCountIs,
   streamText,
-  UnsupportedFunctionalityError,
   wrapLanguageModel,
   type Tool,
   type ToolSet,
@@ -700,33 +697,6 @@ export const aiFetchStreamingResponse = async ({
     }
     const skillSystemMessages = resolveSkillTokenInstructions(lastUserText, instructionBySlug)
 
-    // Preserve the upstream status (and detail) when surfacing an API error to
-    // the client. The SDK otherwise flattens an APICallError to a bare "Bad
-    // Request", hiding the status code the retry and attachment-remediation
-    // layers need to classify it. Serialized as JSON so the client can parse it
-    // back out (see `getErrorStatusCode`). Applied to every stream that can
-    // surface the error — both `toUIMessageStream` calls and the outer stream.
-    const serializeStreamError = (error: unknown): string => {
-      if (APICallError.isInstance(error)) {
-        return JSON.stringify({
-          error: error.responseBody ?? error.message,
-          status: error.statusCode,
-          isRetryable: error.isRetryable,
-        })
-      }
-      // A provider that can't serialize a part throws this client-side, before
-      // any HTTP call — so there's no status to read. It's only a *content*
-      // rejection (and only then worth attachment remediation) when the
-      // unsupported functionality is a file part / media type; other unsupported
-      // features (tools, structured output, reasoning) are just non-retryable and
-      // must NOT be tagged 422, or they'd masquerade as a fixable attachment.
-      if (UnsupportedFunctionalityError.isInstance(error)) {
-        const isFilePart = /file part|media type/i.test(`${error.functionality} ${error.message}`)
-        return JSON.stringify({ error: error.message, status: isFilePart ? 422 : undefined, isRetryable: false })
-      }
-      return error instanceof Error ? error.message : String(error)
-    }
-
     // Surface the user's persisted ask-widget responses (stored in each
     // assistant message's cache) so the model can refer back to what the user
     // chose or wrote without asking them to re-enter it. Reading every
@@ -755,12 +725,8 @@ export const aiFetchStreamingResponse = async ({
 
     const stream = createUIMessageStream({
       generateId: uuidv7,
-      onError: serializeStreamError,
       execute: async ({ writer }) => {
-        // Hydrate reference-only PDF attachments into AI SDK file parts (bytes
-        // read from IndexedDB) so the model receives them. Only the reference is
-        // persisted/synced; the bytes are inlined here, in-flight to the model.
-        const baseMessages = await convertToModelMessages(await hydrateAttachmentsAsFileParts(messages))
+        const baseMessages = await convertToModelMessages(messages)
         let currentMessages: typeof baseMessages = [
           ...systemNotes.map((content) => ({ role: 'system' as const, content })),
           ...baseMessages,
@@ -783,7 +749,6 @@ export const aiFetchStreamingResponse = async ({
                 sendReasoning: true,
                 messageMetadata,
                 sendFinish: false,
-                onError: serializeStreamError,
               }),
             )
 
@@ -830,7 +795,6 @@ export const aiFetchStreamingResponse = async ({
               sendReasoning: true,
               messageMetadata,
               ...(isRetry && { sendStart: false }),
-              onError: serializeStreamError,
             }),
           )
           return

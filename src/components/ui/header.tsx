@@ -15,6 +15,7 @@ import { selectAllowCustomAgents, useConfigStore } from '@/api/config-store'
 import { useShallow } from 'zustand/react/shallow'
 import { useNavigate, useLocation } from 'react-router'
 import { useChat } from '@ai-sdk/react'
+import { statusOnlyThrottleMs } from '@/chats/chat-throttle'
 import type { Agent } from '@/types/acp'
 import { PowerSyncStatus } from '@/components/powersync-status'
 
@@ -38,7 +39,7 @@ const HeaderAgentSelector = ({
   onSelect,
   onAddAgent,
 }: HeaderAgentSelectorProps) => {
-  const { status } = useChat({ chat: chatInstance })
+  const { status } = useChat({ chat: chatInstance, experimental_throttle: statusOnlyThrottleMs })
   const disabled = status === 'streaming' || status === 'submitted'
 
   return (

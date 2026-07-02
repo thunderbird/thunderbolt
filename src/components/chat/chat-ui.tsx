@@ -12,6 +12,7 @@ import { ChatPromptInput } from './chat-prompt-input'
 import { PermissionDialogHost } from './permission-dialog-host'
 import { useCurrentChatSession } from '@/chats/chat-store'
 import { useChat } from '@ai-sdk/react'
+import { statusOnlyThrottleMs } from '@/chats/chat-throttle'
 import { useChatAutomation } from '@/chats/use-chat-automation'
 import { ScrollToBottomButton } from './scroll-to-bottom-button'
 import { AppLogo } from '../app-logo'
@@ -19,7 +20,13 @@ import { AppLogo } from '../app-logo'
 export default function ChatUI() {
   const { chatInstance } = useCurrentChatSession()
 
-  const { messages } = useChat({ chat: chatInstance })
+  // ChatUI only needs the structural "are there any messages" signal (to switch
+  // between the empty-state logo and the message list), not per-token content —
+  // the message list is rendered by the memoized `ChatMessages`, which owns its
+  // own render-throttled messages subscription. Subscribing here at the coarse
+  // status-only cadence keeps ChatUI (and its framer-motion `layout` divs) from
+  // re-rendering on every streamed token.
+  const { messages } = useChat({ chat: chatInstance, experimental_throttle: statusOnlyThrottleMs })
 
   useChatAutomation()
 

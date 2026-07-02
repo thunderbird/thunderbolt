@@ -5,6 +5,7 @@
 import { useEffect, useRef } from 'react'
 import { useCurrentChatSession } from './chat-store'
 import { useChat as useChat_default } from '@ai-sdk/react'
+import { messageBookkeepingThrottleMs } from './chat-throttle'
 
 type UseChatAutomationProps = {
   useChat?: typeof useChat_default
@@ -13,7 +14,7 @@ type UseChatAutomationProps = {
 export const useChatAutomation = ({ useChat = useChat_default }: UseChatAutomationProps = {}) => {
   const { chatInstance } = useCurrentChatSession()
 
-  const { messages } = useChat({ chat: chatInstance })
+  const { messages } = useChat({ chat: chatInstance, experimental_throttle: messageBookkeepingThrottleMs })
 
   const hasMessages = messages.length
 

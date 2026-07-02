@@ -6,9 +6,10 @@ import { AssistantMessage } from './assistant-message'
 import { SyntheticLoadingPart } from './synthetic-loading-part'
 import { UserMessage } from './user-message'
 import { ErrorMessage } from './error-message'
-import { useCallback, useEffect, useMemo, useRef } from 'react'
+import { memo, useCallback, useEffect, useMemo, useRef } from 'react'
 import { useCurrentChatSession } from '@/chats/chat-store'
 import { useChat as useChat_default } from '@ai-sdk/react'
+import { messageRenderThrottleMs } from '@/chats/chat-throttle'
 import { shouldUseViewportPositioning } from '@/chats/use-chat-scroll-handler'
 import { isAttachmentPart } from '@/lib/attachments'
 import { useHaptics } from '@/hooks/use-haptics'
@@ -20,10 +21,27 @@ type ChatMessagesProps = {
   useChat?: typeof useChat_default
 }
 
-export const ChatMessages = ({ useChat = useChat_default }: ChatMessagesProps) => {
+// Memoized so it re-renders only on its own throttled `useChat` messages
+// subscription (and chat-store changes), not every time the parent `ChatUI`
+// re-renders. ChatUI re-renders at the union of several subscription timers
+// (its own messages hook plus `useChatAutomation` / `useChatScrollHandler`), and
+// without this, each of those forced this markdown/katex subtree to re-read the
+// live message and re-render, multiplying per-token render work well past the
+// intended throttle cadence. It takes no props that change (`useChat` defaults
+// to the real hook), so the shallow prop compare holds across parent renders.
+export const ChatMessages = memo(({ useChat = useChat_default }: ChatMessagesProps) => {
   const { chatInstance, retryCount, retriesExhausted, selectedAgent, selectedMode } = useCurrentChatSession()
 
-  const { error: chatError, status, messages, regenerate, setMessages } = useChat({ chat: chatInstance })
+  const {
+    error: chatError,
+    status,
+    messages,
+    regenerate,
+    setMessages,
+  } = useChat({
+    chat: chatInstance,
+    experimental_throttle: messageRenderThrottleMs,
+  })
   const { triggerNotification } = useHaptics()
 
   // Mode-aware status shown in the loading window before the first token. Pure
@@ -161,4 +179,6 @@ export const ChatMessages = ({ useChat = useChat_default }: ChatMessagesProps) =
       )}
     </div>
   )
-}
+})
+
+ChatMessages.displayName = 'ChatMessages'

@@ -10,9 +10,16 @@ import { memo, useState } from 'react'
 import type { ChatListItemProps } from './types'
 import { useChatStore } from '@/chats/chat-store'
 import { useShallow } from 'zustand/react/shallow'
-import { useChat } from '@ai-sdk/react'
+import { useChat as useChat_default } from '@ai-sdk/react'
+import { statusOnlyThrottleMs } from '@/chats/chat-throttle'
 import { AnimatePresence, m } from 'framer-motion'
 import { RenameChatDialog } from './rename-chat-dialog'
+
+/** `useChat` is injectable so tests exercise the real component without a global
+ *  `mock.module('@ai-sdk/react')` (which leaks across files under `--randomize`). */
+type ChatListItemComponentProps = ChatListItemProps & {
+  useChat?: typeof useChat_default
+}
 
 export const ChatListItem = memo(
   ({
@@ -25,7 +32,8 @@ export const ChatListItem = memo(
     deleteChatDialogRef,
     onChatClick,
     onRename,
-  }: ChatListItemProps) => {
+    useChat = useChat_default,
+  }: ChatListItemComponentProps) => {
     const { chatInstance } = useChatStore(
       useShallow((state) => {
         const session = state.sessions.get(thread.id)
@@ -36,7 +44,9 @@ export const ChatListItem = memo(
       }),
     )
 
-    const { status } = useChat(chatInstance ? { chat: chatInstance } : undefined)
+    const { status } = useChat(
+      chatInstance ? { chat: chatInstance, experimental_throttle: statusOnlyThrottleMs } : undefined,
+    )
     const [renameDialogOpen, setRenameDialogOpen] = useState(false)
     const [optimisticTitle, setOptimisticTitle] = useState<string | null>(null)
     const [prevTitle, setPrevTitle] = useState(thread.title)

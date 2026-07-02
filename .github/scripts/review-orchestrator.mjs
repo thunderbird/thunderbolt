@@ -88,6 +88,11 @@ const NO_ISSUES_MARKER = '<!-- thunder-deep-review-no-issues -->';
 // Severity enum the model output is validated against. Anything else is dropped.
 const SEVERITY_ENUM = ['blocking', 'convention', 'nit'];
 
+// Confidence enum for the model's INTERNAL precision-gate grounding field. An
+// out-of-enum value normalizes to null — it never drops the finding (unlike an
+// out-of-enum severity, which does).
+const CONFIDENCE_ENUM = ['high', 'medium', 'low'];
+
 // Deterministic deep-mode gate. Diff bigger than this => deep mode.
 const DEEP_MODE_CHANGED_LINES = 600; // tunable for the team's PR sizes.
 const DEEP_MODE_FILE_COUNT = 40; // tunable for the team's PR sizes.
@@ -536,9 +541,14 @@ const computeDeepMode = (files, truncated) => {
 // Expected JSON shape (the action step's prompt must enforce this):
 //   { "findings": [ { "severity": "blocking"|"convention"|"nit",
 //                     "file": "src/x.ts", "line": 42, "side": "RIGHT"|"LEFT",
-//                     "title": "…", "body": "…", "rule": "optional-invariant-id" } ] }
+//                     "title": "…", "body": "…", "rule": "optional-invariant-id",
+//                     "confidence": "high"|"medium"|"low",
+//                     "evidence": "quoted offending source line"|null } ] }
 // `side` is optional and defaults to RIGHT (the added/changed side). A finding
 // whose line is not in the diff falls back to a file-level / summary comment.
+// `confidence` and `evidence` are INTERNAL-ONLY grounding for the precision
+// gate: they are validated + carried through, but NEVER rendered into any
+// human-facing comment body or summary bullet.
 // =============================================================================
 
 /**
@@ -559,21 +569,40 @@ const computeDeepMode = (files, truncated) => {
  * The placement tag distinguishes the three key spaces (`code:`/`file:`/`text:`),
  * so an inline finding can never collide with a file-level one.
  *
+ * SEVERITY-INVARIANT: severity is deliberately NOT hashed. The precision gate
+ * is allowed to DEMOTE a finding's severity (blocking→convention,
+ * convention→nit) between runs, and the recall model can re-classify the same
+ * issue across runs — either would re-key the thread and post a duplicate
+ * comment for an issue that already has one. Confidence/evidence are likewise
+ * excluded (internal grounding, drift-prone across runs). The residual-collision
+ * trade-off below still applies: the same file+rule+liveness key at DIFFERENT
+ * severities is the same issue collapsing to one hash, and the safe failure
+ * mode is under-report.
+ *
+ * MIGRATION: threads stamped before this change carry old-format (severity-
+ * bearing) hashes and re-key exactly once when re-flagged — the same accepted
+ * one-time re-post path as the legacy liveness-key migration.
+ *
  * RESIDUAL COLLISION: findings that share a namespaced key collapse to one hash
  * and the second is dropped — two inline findings on byte-identical trimmed code,
- * or two file-level findings on the same file, each with the same rule+severity.
+ * or two file-level findings on the same file, each with the same rule.
  * Rare and the safe failure mode (under-report, never a false-resolve); the
  * alternative — folding the model's drift-prone title back in — would reopen the
  * duplicate gap this design exists to close, so we accept it.
  */
 const findingHash = (f) =>
-  normalizeKey([f.file ?? '', f.rule ?? '', f.severity, f.livenessKey ?? ''].join(' '));
+  normalizeKey([f.file ?? '', f.rule ?? '', f.livenessKey ?? ''].join(' '));
 
-const readModelFindings = async () => {
-  const raw = await readFile(FINDINGS_FILE, 'utf8');
-  const parsed = JSON.parse(raw); // throws on malformed => fail-soft upstream.
+/**
+ * normalizeFindings — validate + normalize the already-JSON.parsed model output
+ * into the array of usable findings. Extracted from readModelFindings as a PURE
+ * function (no fs/env) so the trust-boundary validation — the model's output is
+ * untrusted input — is unit-testable in isolation. Drops anything with an
+ * out-of-enum severity; every other bad field degrades to a safe default
+ * instead of dropping the finding.
+ */
+const normalizeFindings = (parsed) => {
   const list = Array.isArray(parsed?.findings) ? parsed.findings : [];
-  // Validate + normalize. Drop anything with an out-of-enum severity.
   const valid = [];
   for (const f of list) {
     const severity = String(f.severity ?? '').toLowerCase();
@@ -582,6 +611,10 @@ const readModelFindings = async () => {
       continue;
     }
     const side = String(f.side ?? 'RIGHT').toUpperCase() === 'LEFT' ? 'LEFT' : 'RIGHT';
+    // Internal-only precision-gate fields. A bad value normalizes to null but
+    // NEVER drops the finding — precision grounding is advisory, not identity.
+    const confidence = String(f.confidence ?? '').toLowerCase();
+    const evidence = typeof f.evidence === 'string' && f.evidence.trim() ? f.evidence.slice(0, 1000) : null;
     valid.push({
       severity,
       file: typeof f.file === 'string' ? f.file : null,
@@ -592,9 +625,17 @@ const readModelFindings = async () => {
       title: String(f.title ?? '').slice(0, 300),
       body: String(f.body ?? '').slice(0, 4000),
       rule: f.rule ? String(f.rule).slice(0, 80) : null,
+      confidence: CONFIDENCE_ENUM.includes(confidence) ? confidence : null,
+      evidence,
     });
   }
   return valid;
+};
+
+const readModelFindings = async () => {
+  const raw = await readFile(FINDINGS_FILE, 'utf8');
+  const parsed = JSON.parse(raw); // throws on malformed => fail-soft upstream.
+  return normalizeFindings(parsed);
 };
 
 // =============================================================================
@@ -1178,6 +1219,8 @@ const renderCommentBody = (f) => {
   // Rule/invariant ids (f.rule) are INTERNAL grounding only — used for the
   // dedup hash and the model's self-validation. They're meaningless to a human
   // in a PR comment, so they are never rendered into the comment body.
+  // `confidence` and `evidence` are likewise internal-only (precision-gate
+  // grounding) and intentionally not rendered.
   const head = `**${SEVERITY_LABEL[f.severity]} — ${f.title}**`;
   // Hidden stamps: the finding hash (dedup) + the base64 liveness key (the
   // offending-line code, or the file path for file-level findings — so the next
@@ -1550,6 +1593,7 @@ export {
   buildUnifiedDiff,
   computeDeepMode,
   normalizeDiffText,
+  normalizeFindings,
   findingHash,
   classifyFindings,
   livenessStamp,

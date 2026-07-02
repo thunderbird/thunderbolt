@@ -21,6 +21,7 @@ import {
   buildUnifiedDiff,
   computeDeepMode,
   normalizeDiffText,
+  normalizeFindings,
   classifyFindings,
   selectFindingsToPost,
   decideTerminalAction,
@@ -32,6 +33,7 @@ import {
   livenessKeyFromBody,
   livenessStamp,
   NO_ISSUES_MARKER,
+  SUMMARY_HEADING,
 } from './review-orchestrator.mjs';
 
 // The diff-evidence sweep substring-tests a thread's liveness key against the
@@ -532,5 +534,127 @@ describe('decideTerminalAction: never affirms no-issues without a diff', () => {
 
   test('a diff-unavailable run with findings still posts them (does not silently drop)', () => {
     expect(decideTerminalAction({ ...clean, findingCount: 2, diffAvailable: false }).action).toBe('post-findings');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// SCENARIO 9 — normalizeFindings: the model-output trust boundary, now covering
+// the internal precision-gate fields (confidence/evidence) alongside the
+// pre-existing severity/line rules that moved into the extracted function.
+// ---------------------------------------------------------------------------
+
+describe('normalizeFindings: confidence + evidence normalization', () => {
+  // Wrap a single finding through the parsed-JSON shape the model emits.
+  const normalizeOne = (over) => normalizeFindings({ findings: [{ ...blockerCandidate, ...over }] });
+
+  test("confidence 'HIGH' lowercases to 'high' and the finding survives", () => {
+    const [f] = normalizeOne({ confidence: 'HIGH' });
+    expect(f.confidence).toBe('high');
+    expect(f.title).toBe('Unsafe call');
+  });
+
+  test('out-of-enum or missing confidence → null WITHOUT dropping the finding', () => {
+    const [certain] = normalizeOne({ confidence: 'certain' });
+    expect(certain.confidence).toBeNull();
+    const [missing] = normalizeOne({});
+    expect(missing.confidence).toBeNull();
+    expect(missing.title).toBe('Unsafe call'); // the finding itself survives
+  });
+
+  test('evidence round-trips as a string and is capped at 1000 chars', () => {
+    const [f] = normalizeOne({ evidence: 'const x = 1;' });
+    expect(f.evidence).toBe('const x = 1;');
+    const [long] = normalizeOne({ evidence: 'e'.repeat(2000) });
+    expect(long.evidence).toBe('e'.repeat(1000));
+  });
+
+  test('empty or non-string evidence → null', () => {
+    expect(normalizeOne({ evidence: '' })[0].evidence).toBeNull();
+    expect(normalizeOne({ evidence: '   ' })[0].evidence).toBeNull(); // whitespace-only = empty after trim
+    expect(normalizeOne({ evidence: 42 })[0].evidence).toBeNull();
+    expect(normalizeOne({})[0].evidence).toBeNull();
+  });
+
+  test('existing behaviors hold through the extraction: out-of-enum severity drops; line 0 → null', () => {
+    expect(normalizeFindings({ findings: [{ ...blockerCandidate, severity: 'catastrophic' }] })).toEqual([]);
+    const [f] = normalizeOne({ line: 0 });
+    expect(f.line).toBeNull();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// SCENARIO 10 — severity-invariant identity: the precision gate may DEMOTE a
+// finding's severity (blocking→convention, convention→nit) and the recall model
+// can drift it across runs. Identity must not re-key on either, or a demotion
+// would post a duplicate comment for an issue that already has an open thread.
+// ---------------------------------------------------------------------------
+
+describe('severity-invariant identity: demotion never re-keys the thread', () => {
+  const diffIndex = parseUnifiedDiff(DIFF);
+  const classifyOne = (over) => classifyFindings([{ ...blockerCandidate, ...over }], diffIndex)[0];
+
+  test('the SAME finding at blocking vs convention severity hashes identically', () => {
+    const blocking = classifyOne({ severity: 'blocking' });
+    const demoted = classifyOne({ severity: 'convention' });
+    expect(demoted.hash).toBe(blocking.hash);
+  });
+
+  test('run 2 emitting the DEMOTED variant of an open thread posts nothing', () => {
+    // Run 1 posted the blocking variant → its hash is an open own-thread.
+    const blocking = classifyOne({ severity: 'blocking' });
+    const openHashes = new Set([blocking.hash]);
+    // Run 2: the gate demoted the same finding to convention. Same hash → deduped.
+    const demoted = classifyOne({ severity: 'convention' });
+    const toPost = selectFindingsToPost([demoted], { ...noPrior, openHashes });
+    expect(toPost).toEqual([]); // no duplicate post after demotion
+  });
+
+  test('confidence/evidence differences never affect the hash', () => {
+    const a = classifyOne({ confidence: 'high', evidence: 'const danger = useUnsafe();' });
+    const b = classifyOne({ confidence: 'low', evidence: 'a totally different quote' });
+    const c = classifyOne({}); // no internal fields at all
+    expect(a.hash).toBe(b.hash);
+    expect(a.hash).toBe(c.hash);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// SCENARIO 11 — internal fields never reach human-facing output: confidence and
+// evidence are precision-gate grounding only, so neither an inline comment body
+// nor a summary bullet may leak them.
+// ---------------------------------------------------------------------------
+
+describe('internal fields never reach human-facing output', () => {
+  // Distinctive marker that appears NOWHERE in the DIFF fixture — the liveness
+  // key derives from the DIFF's code, not from evidence, so this string can only
+  // reach the payload if evidence itself leaked into the rendering.
+  const SECRET = 'const SECRET_EVIDENCE_MARKER = 42;';
+
+  const payloadFor = (over) => {
+    const diffIndex = parseUnifiedDiff(DIFF);
+    const kept = classifyFindings(
+      normalizeFindings({ findings: [{ ...blockerCandidate, confidence: 'low', evidence: SECRET, ...over }] }),
+      diffIndex,
+    );
+    return { kept, payload: buildReviewPayload({ toPost: selectFindingsToPost(kept, noPrior), diffIndex, deepInfo: {}, skipCount: 0 }) };
+  };
+
+  test('inline comment body contains neither the evidence string nor "confidence"', () => {
+    const { payload } = payloadFor({});
+    expect(payload.comments.length).toBe(1);
+    expect(payload.comments[0].body).toContain('Unsafe call'); // the human-facing part is intact
+    expect(payload.comments[0].body).not.toContain(SECRET);
+    expect(payload.comments[0].body).not.toContain('confidence');
+    expect(payload.body).not.toContain(SECRET); // nor the surrounding review body
+  });
+
+  test('summary-placement bullet in payload.body leaks neither field', () => {
+    // File NOT in the diff → summary placement → rolled into the review body.
+    const { kept, payload } = payloadFor({ file: 'src/not-in-diff.ts' });
+    expect(kept[0].placement).toBe('summary');
+    expect(payload.body).toContain(SUMMARY_HEADING); // the bullet actually rendered
+    expect(payload.body).toContain('Unsafe call');
+    expect(payload.body).not.toContain(SECRET);
+    expect(payload.body).not.toContain('confidence');
   });
 });

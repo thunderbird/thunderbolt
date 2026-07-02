@@ -2,7 +2,7 @@
 
 Emit findings in this shape. Never post to the PR; return the report or write it to a review file only.
 
-> **Recall pass — fix is optional.** This output feeds a downstream precision gate that filters candidates, so favor recall. Each finding must identify the issue with its evidence; a suggested fix is **optional**, included only when one is obvious. Never invent a fix just to fill the slot — a mandatory-fix step manufactures false positives.
+> **This is the LOCAL (ungated) output contract** — used when a developer invokes the skill directly and no downstream gate exists (in CI the skill returns structured JSON per the workflow prompt instead of this report). A suggested fix is **optional**, included only when one is obvious. Never invent a fix just to fill the slot — a mandatory-fix step manufactures false positives.
 
 **Voice:** write every finding for a **teammate**, not a linter — warm, collaborative, curious. Lead with a question or first-person framing where it fits ("I wonder if…", "Could we…?", "Heads up —"). Be specific and kind; never robotic, terse, or scolding.
 

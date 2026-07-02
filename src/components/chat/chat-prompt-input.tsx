@@ -384,12 +384,12 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
               blob: file,
             })
           } catch (error) {
-            // IndexedDB can reject when storage is full or unavailable (e.g. a
-            // private window). Surface it instead of letting the `void`-called
+            // IndexedDB can reject when its storage quota is exceeded or it's
+            // unavailable. Surface it instead of letting the `void`-called
             // promise reject silently — otherwise no chip appears and no banner
             // shows. Stop here: subsequent writes would hit the same failure.
             console.error('Failed to store attachment locally:', error)
-            setAttachError(`Couldn't attach "${file.name}" — your browser may be out of storage or in private mode.`)
+            setAttachError(`Couldn't attach "${file.name}" — your browser's storage is full or unavailable.`)
             break
           }
           setAttachments((prev) => [...prev, { localFileId, filename: file.name, mimeType: file.type }])

@@ -15,6 +15,8 @@ import { closeSharedIsolatedTestDb, testDbManager } from './db'
 // pglite to postgres; preload the test driver explicitly so db/client.ts doesn't
 // throw at module load when DATABASE_URL is not set (e.g. swagger.test.ts and
 // other tests that transitively import createApp from @/index).
+// db/client.ts itself now guards against `DATABASE_URL=postgresql://...` when
+// DRIVER=pglite (falls back to in-memory), so no need to `delete` it here.
 process.env.DATABASE_DRIVER = 'pglite'
 
 // Disable rate limiting in tests: RateLimiterDrizzle uses its own internal

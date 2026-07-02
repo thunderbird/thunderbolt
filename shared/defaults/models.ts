@@ -2,14 +2,49 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { hashValues } from '@/lib/utils'
-import type { Model } from '@/types'
+/**
+ * Shape of a shipped model default. Structurally compatible with the
+ * frontend `Model` type (`src/types.ts`) so consumers can pass these values
+ * anywhere a `Model` is expected. Kept self-contained so this file has no
+ * dependency on frontend code and can be imported by backend and shared code.
+ */
+export type SharedModel = {
+  id: string
+  provider: 'openai' | 'custom' | 'openrouter' | 'thunderbolt' | 'anthropic' | 'tinfoil'
+  name: string
+  model: string
+  url: string | null
+  isSystem: number | null
+  enabled: number
+  toolUsage: number
+  isConfidential: number
+  startWithReasoning: number
+  supportsParallelToolCalls: number
+  contextWindow: number | null
+  deletedAt: string | null
+  defaultHash: string | null
+  vendor: string | null
+  description: string | null
+  userId: string | null
+  apiKey: string | null
+}
+
+const hashValues = (values: (string | number | null | undefined)[]): string => {
+  const str = values.join('|')
+  let hash = 0
+  for (let i = 0; i < str.length; i++) {
+    const char = str.charCodeAt(i)
+    hash = (hash << 5) - hash + char
+    hash = hash & hash
+  }
+  return hash.toString(36)
+}
 
 /**
- * Compute hash of user-editable fields for a model
- * Includes deletedAt to treat soft-delete as a user configuration choice
+ * Compute hash of user-editable fields for a model.
+ * Includes deletedAt to treat soft-delete as a user configuration choice.
  */
-export const hashModel = (model: Model): string => {
+export const hashModel = (model: SharedModel): string => {
   return hashValues([
     model.name,
     model.provider,
@@ -27,17 +62,16 @@ export const hashModel = (model: Model): string => {
 }
 
 /**
- * Default system models shipped with the application
- * These are upserted on app start and serve as the baseline for diff comparisons
- *
- * Each model is exported individually so it can be referenced by automations
+ * Default system models shipped with the application.
+ * These are upserted on app start and serve as the baseline for diff comparisons.
+ * Each model is exported individually so it can be referenced by automations.
  */
 
 /**
  * Opus 4.8 reuses the row id originally assigned to Sonnet 4.5 (and inherited by 4.7).
  * Reconciliation upgrades unmodified rows in place; edited rows survive.
  */
-export const defaultModelOpus48: Model = {
+export const defaultModelOpus48: SharedModel = {
   id: '019af08a-c27b-7074-8aac-95315d1ef3fd',
   name: 'Opus 4.8',
   provider: 'thunderbolt',
@@ -58,7 +92,7 @@ export const defaultModelOpus48: Model = {
   userId: null,
 }
 
-export const defaultModelDeepseekV4Pro: Model = {
+export const defaultModelDeepseekV4Pro: SharedModel = {
   id: '019e70af-e5b2-76d0-9ede-f22d8265bb14',
   name: 'DeepSeek V4 Pro',
   provider: 'tinfoil',
@@ -79,7 +113,7 @@ export const defaultModelDeepseekV4Pro: Model = {
   userId: null,
 }
 
-export const defaultModelKimiK26: Model = {
+export const defaultModelKimiK26: SharedModel = {
   id: '019e7580-2b0c-77d6-8b99-16a99abe4591',
   name: 'Kimi K2.6',
   provider: 'tinfoil',
@@ -100,7 +134,7 @@ export const defaultModelKimiK26: Model = {
   userId: null,
 }
 
-export const defaultModelGlm52: Model = {
+export const defaultModelGlm52: SharedModel = {
   id: '019e7580-2b0e-719c-a43f-d2b56e7f31b4',
   name: 'GLM 5.2',
   provider: 'tinfoil',
@@ -123,11 +157,24 @@ export const defaultModelGlm52: Model = {
 
 /**
  * Array of all default models for iteration. Order = display order in the
- * "Provided" group of the model picker. Reorder freely.
+ * "Provided" group of the model picker. Reorder freely — but bump
+ * `defaultModelsVersion` when you do.
  */
-export const defaultModels: ReadonlyArray<Model> = [
+export const defaultModels: ReadonlyArray<SharedModel> = [
   defaultModelOpus48,
   defaultModelDeepseekV4Pro,
   defaultModelKimiK26,
   defaultModelGlm52,
 ] as const
+
+/**
+ * Monotonic version of the shipped defaults. Bump every time `defaultModels`
+ * changes in any way. The reconciler uses this as the ordering signal to
+ * decide which device's defaults win in a multi-device sync group (THU-637):
+ * a device only overwrites existing rows when its picked defaults version is
+ * strictly newer than the highest ever applied on this account.
+ *
+ * The paired snapshot test in `models.test.ts` fails on any change to this
+ * file's defaults without a matching version bump.
+ */
+export const defaultModelsVersion = 1

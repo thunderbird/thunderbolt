@@ -3,7 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import type { ModelProfile } from '@/types'
-import { defaultModelDeepseekV4Pro } from '@/defaults/models'
+import { defaultModelDeepseekV4Pro } from '@shared/defaults/models'
 
 export const defaultModelProfileDeepseekV4Pro: ModelProfile = {
   modelId: defaultModelDeepseekV4Pro.id,

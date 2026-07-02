@@ -5,7 +5,7 @@
 import { and, desc, eq, getTableColumns, isNotNull, isNull, or, sql } from 'drizzle-orm'
 import type { AnyDrizzleDatabase } from '../db/database-interface'
 import { modelsSecretsTable, modelsTable, settingsTable } from '../db/tables'
-import { hashModel } from '../defaults/models'
+import { hashModel } from '@shared/defaults/models'
 import { clearNullableColumns, nowIso } from '../lib/utils'
 import type { DrizzleQueryWithPromise, Model } from '@/types'
 import { getLastMessage } from './chat-messages'

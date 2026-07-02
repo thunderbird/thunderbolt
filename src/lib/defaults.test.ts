@@ -5,7 +5,7 @@
 import type { Model } from '@/types'
 import { describe, expect, test } from 'bun:test'
 import { defaultAutomations, hashPrompt } from '../defaults/automations'
-import { defaultModels, hashModel } from '../defaults/models'
+import { defaultModels, hashModel } from '@shared/defaults/models'
 import { defaultSettings, hashSetting } from '../defaults/settings'
 
 describe('defaults', () => {

@@ -3,6 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import type { GroupedUIPart, ReasoningGroupUIPart } from '@/lib/assistant-message'
+import { render, screen } from '@testing-library/react'
 import type { ReasoningUIPart, TextUIPart, ToolUIPart } from 'ai'
 import { describe, expect, it } from 'bun:test'
 import { mountMessageParts } from './assistant-message'
@@ -50,6 +51,23 @@ describe('mountMessageParts', () => {
       expect(result).toHaveLength(1)
       // Check that it's the synthetic loading component by checking the result structure
       expect(result[0]).toBeDefined()
+    })
+
+    it('threads the mode-aware loading message into the synthetic loading part', () => {
+      const result = mountMessageParts(
+        [],
+        true,
+        testMessageId,
+        testReasoningTime,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        'Searching the web…',
+      )
+
+      render(<>{result[0]}</>)
+      expect(screen.getByTestId('loading-status')).toHaveTextContent('Searching the web…')
     })
   })
 

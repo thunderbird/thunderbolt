@@ -18,7 +18,10 @@ import { describe, test, expect } from 'bun:test';
 
 import {
   parseUnifiedDiff,
+  buildUnifiedDiff,
+  computeDeepMode,
   normalizeDiffText,
+  normalizeFindings,
   classifyFindings,
   selectFindingsToPost,
   decideTerminalAction,
@@ -30,6 +33,7 @@ import {
   livenessKeyFromBody,
   livenessStamp,
   NO_ISSUES_MARKER,
+  SUMMARY_HEADING,
 } from './review-orchestrator.mjs';
 
 // The diff-evidence sweep substring-tests a thread's liveness key against the
@@ -414,5 +418,243 @@ describe('file-level + degenerate-window findings key on the file path', () => {
     // open; the file-path key resolves because the file is gone.
     const unrelated = normalizedDiff(['diff --git a/src/z.ts b/src/z.ts', '+++ b/src/z.ts', '@@ -1,1 +1,2 @@', ' const z = 1;', '+if (z) { go(); }'].join('\n'));
     expect(shouldResolveThread(threadFromFinding(f), unrelated)).toBe(true);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// SCENARIO 6 — diff reconstruction from the List-pull-request-files API. The
+// `.diff` media type 406s past 20k lines, so the orchestrator rebuilds the diff
+// from per-file `patch` bodies. These prove the rebuilt diff round-trips through
+// parseUnifiedDiff into the SAME (path, line, side) anchors a real v3.diff yields.
+// ---------------------------------------------------------------------------
+
+// A files-API `patch` is the HUNK BODY ONLY — no `diff --git`/`---`/`+++` headers.
+const MODIFIED_PATCH = ['@@ -1,1 +1,2 @@', ' const a = 1;', '+const danger = useUnsafe();'].join('\n');
+
+describe('buildUnifiedDiff: reconstruct a git diff from /pulls/{n}/files entries', () => {
+  test('a modified file gets the git headers so its added line is commentable', () => {
+    const patch = buildUnifiedDiff([{ filename: 'src/a.ts', status: 'modified', patch: MODIFIED_PATCH, additions: 1, deletions: 0 }]);
+    expect(patch).toContain('diff --git a/src/a.ts b/src/a.ts');
+    expect(patch).toContain('--- a/src/a.ts');
+    expect(patch).toContain('+++ b/src/a.ts');
+    // Round-trip: the added line (right line 2) must be anchorable inline.
+    const f = classifyFindings([inlineFinding({ file: 'src/a.ts', line: 2 })], parseUnifiedDiff(patch))[0];
+    expect(f.placement).toBe('inline');
+  });
+
+  test('an added file uses --- /dev/null as the from-side', () => {
+    const patch = buildUnifiedDiff([{ filename: 'src/new.ts', status: 'added', patch: ['@@ -0,0 +1,1 @@', '+const x = born();'].join('\n'), additions: 1, deletions: 0 }]);
+    expect(patch).toContain('diff --git a/src/new.ts b/src/new.ts');
+    expect(patch).toContain('--- /dev/null');
+    expect(patch).toContain('+++ b/src/new.ts');
+    expect(classifyFindings([inlineFinding({ file: 'src/new.ts', line: 1 })], parseUnifiedDiff(patch))[0].placement).toBe('inline');
+  });
+
+  test('a removed file uses +++ /dev/null and is NOT anchorable at head', () => {
+    const patch = buildUnifiedDiff([{ filename: 'src/gone.ts', status: 'removed', patch: ['@@ -1,1 +0,0 @@', '-const x = dead();'].join('\n'), additions: 0, deletions: 1 }]);
+    expect(patch).toContain('--- a/src/gone.ts');
+    expect(patch).toContain('+++ /dev/null');
+    // parseUnifiedDiff drops a /dev/null head side → the file has no RIGHT-side
+    // commentable lines, so a finding on it demotes to a summary (parity with v3.diff).
+    expect(parseUnifiedDiff(patch).has('src/gone.ts')).toBe(false);
+  });
+
+  test('a renamed file anchors the old path on the from-side', () => {
+    const patch = buildUnifiedDiff([{ filename: 'src/new-name.ts', previous_filename: 'src/old-name.ts', status: 'renamed', patch: MODIFIED_PATCH, additions: 1, deletions: 0 }]);
+    expect(patch).toContain('diff --git a/src/old-name.ts b/src/new-name.ts');
+    expect(patch).toContain('--- a/src/old-name.ts');
+    expect(patch).toContain('+++ b/src/new-name.ts');
+  });
+
+  test('a file with no patch (binary / large lockfile) is a header-only section', () => {
+    const patch = buildUnifiedDiff([{ filename: 'bun.lock', status: 'modified', patch: undefined, additions: 422, deletions: 5 }]);
+    expect(patch).toContain('diff --git a/bun.lock b/bun.lock');
+    expect(patch).not.toContain('@@'); // no hunks → nothing to anchor
+    expect(parseUnifiedDiff(patch).has('bun.lock')).toBe(false);
+  });
+
+  test('multiple files concatenate into one parseable diff', () => {
+    const patch = buildUnifiedDiff([
+      { filename: 'src/a.ts', status: 'modified', patch: MODIFIED_PATCH, additions: 1, deletions: 0 },
+      { filename: 'bin.wasm', status: 'added', patch: undefined, additions: 0, deletions: 0 },
+      { filename: 'src/b.ts', status: 'added', patch: ['@@ -0,0 +1,1 @@', '+const b = make();'].join('\n'), additions: 1, deletions: 0 },
+    ]);
+    const index = parseUnifiedDiff(patch);
+    expect([...index.keys()]).toEqual(['src/a.ts', 'src/b.ts']); // the binary contributes no hunk
+  });
+});
+
+// ---------------------------------------------------------------------------
+// SCENARIO 7 — the deterministic deep-mode gate over the fetched file list.
+// ---------------------------------------------------------------------------
+
+describe('computeDeepMode: size gate + bounded-mode flag', () => {
+  const file = (additions) => ({ additions, deletions: 0 });
+
+  test('a small diff stays single-pass', () => {
+    const info = computeDeepMode([file(10), file(20)], false);
+    expect(info.deepMode).toBe(false);
+    expect(info.changedLines).toBe(30);
+    expect(info.boundedMode).toBe(false);
+    expect(info.reason).toBe('default single fan-out');
+  });
+
+  test('crossing the changed-line threshold triggers deep mode', () => {
+    const info = computeDeepMode([file(700)], false);
+    expect(info.deepMode).toBe(true);
+    expect(info.reason).toBe('size gate');
+  });
+
+  test('the 3000-file truncation flag flips bounded mode independently of the size gate', () => {
+    const info = computeDeepMode([file(1)], true);
+    expect(info.boundedMode).toBe(true); // driven by the truncation flag…
+    expect(info.deepMode).toBe(false); // …not coupled to deep mode (a real truncation also trips the file-count gate)
+  });
+});
+
+// ---------------------------------------------------------------------------
+// SCENARIO 8 — diff-availability guard: a failed Files API fetch (empty diff)
+// must NOT launder into a false affirmative "no issues" review.
+// ---------------------------------------------------------------------------
+
+describe('decideTerminalAction: never affirms no-issues without a diff', () => {
+  const clean = { findingCount: 0, eventAction: 'synchronize', ownReviewBodies: [], openThreadsRemain: false };
+
+  test('skips with reason diff-unavailable when no diff was fetched', () => {
+    expect(decideTerminalAction({ ...clean, diffAvailable: false })).toEqual({ action: 'skip', reason: 'diff-unavailable' });
+  });
+
+  test('still affirms no-issues on a real (available) clean diff', () => {
+    expect(decideTerminalAction({ ...clean, diffAvailable: true }).action).toBe('no-issues');
+  });
+
+  test('defaults to available (no behavior change for callers that omit it)', () => {
+    expect(decideTerminalAction(clean).action).toBe('no-issues');
+  });
+
+  test('a diff-unavailable run with findings still posts them (does not silently drop)', () => {
+    expect(decideTerminalAction({ ...clean, findingCount: 2, diffAvailable: false }).action).toBe('post-findings');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// SCENARIO 9 — normalizeFindings: the model-output trust boundary, now covering
+// the internal precision-gate fields (confidence/evidence) alongside the
+// pre-existing severity/line rules that moved into the extracted function.
+// ---------------------------------------------------------------------------
+
+describe('normalizeFindings: confidence + evidence normalization', () => {
+  // Wrap a single finding through the parsed-JSON shape the model emits.
+  const normalizeOne = (over) => normalizeFindings({ findings: [{ ...blockerCandidate, ...over }] });
+
+  test("confidence 'HIGH' lowercases to 'high' and the finding survives", () => {
+    const [f] = normalizeOne({ confidence: 'HIGH' });
+    expect(f.confidence).toBe('high');
+    expect(f.title).toBe('Unsafe call');
+  });
+
+  test('out-of-enum or missing confidence → null WITHOUT dropping the finding', () => {
+    const [certain] = normalizeOne({ confidence: 'certain' });
+    expect(certain.confidence).toBeNull();
+    const [missing] = normalizeOne({});
+    expect(missing.confidence).toBeNull();
+    expect(missing.title).toBe('Unsafe call'); // the finding itself survives
+  });
+
+  test('evidence round-trips as a string and is capped at 1000 chars', () => {
+    const [f] = normalizeOne({ evidence: 'const x = 1;' });
+    expect(f.evidence).toBe('const x = 1;');
+    const [long] = normalizeOne({ evidence: 'e'.repeat(2000) });
+    expect(long.evidence).toBe('e'.repeat(1000));
+  });
+
+  test('empty or non-string evidence → null', () => {
+    expect(normalizeOne({ evidence: '' })[0].evidence).toBeNull();
+    expect(normalizeOne({ evidence: '   ' })[0].evidence).toBeNull(); // whitespace-only = empty after trim
+    expect(normalizeOne({ evidence: 42 })[0].evidence).toBeNull();
+    expect(normalizeOne({})[0].evidence).toBeNull();
+  });
+
+  test('existing behaviors hold through the extraction: out-of-enum severity drops; line 0 → null', () => {
+    expect(normalizeFindings({ findings: [{ ...blockerCandidate, severity: 'catastrophic' }] })).toEqual([]);
+    const [f] = normalizeOne({ line: 0 });
+    expect(f.line).toBeNull();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// SCENARIO 10 — severity-invariant identity: the precision gate may DEMOTE a
+// finding's severity (blocking→convention, convention→nit) and the recall model
+// can drift it across runs. Identity must not re-key on either, or a demotion
+// would post a duplicate comment for an issue that already has an open thread.
+// ---------------------------------------------------------------------------
+
+describe('severity-invariant identity: demotion never re-keys the thread', () => {
+  const diffIndex = parseUnifiedDiff(DIFF);
+  const classifyOne = (over) => classifyFindings([{ ...blockerCandidate, ...over }], diffIndex)[0];
+
+  test('the SAME finding at blocking vs convention severity hashes identically', () => {
+    const blocking = classifyOne({ severity: 'blocking' });
+    const demoted = classifyOne({ severity: 'convention' });
+    expect(demoted.hash).toBe(blocking.hash);
+  });
+
+  test('run 2 emitting the DEMOTED variant of an open thread posts nothing', () => {
+    // Run 1 posted the blocking variant → its hash is an open own-thread.
+    const blocking = classifyOne({ severity: 'blocking' });
+    const openHashes = new Set([blocking.hash]);
+    // Run 2: the gate demoted the same finding to convention. Same hash → deduped.
+    const demoted = classifyOne({ severity: 'convention' });
+    const toPost = selectFindingsToPost([demoted], { ...noPrior, openHashes });
+    expect(toPost).toEqual([]); // no duplicate post after demotion
+  });
+
+  test('confidence/evidence differences never affect the hash', () => {
+    const a = classifyOne({ confidence: 'high', evidence: 'const danger = useUnsafe();' });
+    const b = classifyOne({ confidence: 'low', evidence: 'a totally different quote' });
+    const c = classifyOne({}); // no internal fields at all
+    expect(a.hash).toBe(b.hash);
+    expect(a.hash).toBe(c.hash);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// SCENARIO 11 — internal fields never reach human-facing output: confidence and
+// evidence are precision-gate grounding only, so neither an inline comment body
+// nor a summary bullet may leak them.
+// ---------------------------------------------------------------------------
+
+describe('internal fields never reach human-facing output', () => {
+  // Distinctive marker that appears NOWHERE in the DIFF fixture — the liveness
+  // key derives from the DIFF's code, not from evidence, so this string can only
+  // reach the payload if evidence itself leaked into the rendering.
+  const SECRET = 'const SECRET_EVIDENCE_MARKER = 42;';
+
+  const payloadFor = (over) => {
+    const diffIndex = parseUnifiedDiff(DIFF);
+    const kept = classifyFindings(
+      normalizeFindings({ findings: [{ ...blockerCandidate, confidence: 'low', evidence: SECRET, ...over }] }),
+      diffIndex,
+    );
+    return { kept, payload: buildReviewPayload({ toPost: selectFindingsToPost(kept, noPrior), diffIndex, deepInfo: {}, skipCount: 0 }) };
+  };
+
+  test('inline comment body contains neither the evidence string nor "confidence"', () => {
+    const { payload } = payloadFor({});
+    expect(payload.comments.length).toBe(1);
+    expect(payload.comments[0].body).toContain('Unsafe call'); // the human-facing part is intact
+    expect(payload.comments[0].body).not.toContain(SECRET);
+    expect(payload.comments[0].body).not.toContain('confidence');
+    expect(payload.body).not.toContain(SECRET); // nor the surrounding review body
+  });
+
+  test('summary-placement bullet in payload.body leaks neither field', () => {
+    // File NOT in the diff → summary placement → rolled into the review body.
+    const { kept, payload } = payloadFor({ file: 'src/not-in-diff.ts' });
+    expect(kept[0].placement).toBe('summary');
+    expect(payload.body).toContain(SUMMARY_HEADING); // the bullet actually rendered
+    expect(payload.body).toContain('Unsafe call');
+    expect(payload.body).not.toContain(SECRET);
+    expect(payload.body).not.toContain('confidence');
   });
 });

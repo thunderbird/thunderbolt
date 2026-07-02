@@ -6,21 +6,32 @@ import { AssistantMessage } from './assistant-message'
 import { SyntheticLoadingPart } from './synthetic-loading-part'
 import { UserMessage } from './user-message'
 import { ErrorMessage } from './error-message'
-import { useEffect, useMemo, useRef } from 'react'
+import { useCallback, useEffect, useMemo, useRef } from 'react'
 import { useCurrentChatSession } from '@/chats/chat-store'
 import { useChat as useChat_default } from '@ai-sdk/react'
 import { shouldUseViewportPositioning } from '@/chats/use-chat-scroll-handler'
+import { isAttachmentPart } from '@/lib/attachments'
 import { useHaptics } from '@/hooks/use-haptics'
+import { useAttachmentRemediation } from './use-attachment-remediation'
+import { getLoadingLabel } from '@/lib/loading-labels'
+import { isBuiltInAgent } from '@/defaults/agents'
 
 type ChatMessagesProps = {
   useChat?: typeof useChat_default
 }
 
 export const ChatMessages = ({ useChat = useChat_default }: ChatMessagesProps) => {
-  const { chatInstance, retryCount, retriesExhausted } = useCurrentChatSession()
+  const { chatInstance, retryCount, retriesExhausted, selectedAgent, selectedMode } = useCurrentChatSession()
 
-  const { error: chatError, status, messages, regenerate } = useChat({ chat: chatInstance })
+  const { error: chatError, status, messages, regenerate, setMessages } = useChat({ chat: chatInstance })
   const { triggerNotification } = useHaptics()
+
+  // Mode-aware status shown in the loading window before the first token. Pure
+  // render-time derive — search/research get a specific label, chat keeps the
+  // plain spinner (undefined). ACP agents own their conversation mode upstream
+  // and ignore `selectedMode` (mirroring ChatModePicker), so a stale built-in
+  // mode must not leak a false "Searching the web…" label onto an ACP chat.
+  const loadingMessage = isBuiltInAgent(selectedAgent) ? getLoadingLabel(selectedMode.name) : undefined
 
   const isStreaming = status === 'streaming'
   const wasStreaming = useRef(false)
@@ -50,6 +61,42 @@ export const ChatMessages = ({ useChat = useChat_default }: ChatMessagesProps) =
     return lastMessage?.role === 'assistant' && !lastMessage.parts?.length && !isStreaming
   }, [chatError, lastMessage, isStreaming])
 
+  // Re-deliver a failed turn's attachments as text/images (auto on a detected
+  // content-rejection, or via the buttons below). Gate auto-fire on a settled error.
+  const { suppressError, deliveryExhausted } = useAttachmentRemediation({
+    messages,
+    setMessages,
+    regenerate,
+    error: chatError,
+    active: hasError && !isStreaming,
+  })
+
+  // Manual override for the latest turn's attachments: re-deliver a single file
+  // as text/images and re-run (for when auto-remediation delivered something but
+  // the answer was poor). Scoped to the last user message so older bubbles stay
+  // presentational and don't re-render while streaming.
+  const lastUserMessageId = useMemo(() => messages.findLast((m) => m.role === 'user')?.id, [messages])
+  const resendAttachment = useCallback(
+    (messageId: string, localFileId: string, target: 'text' | 'images') => {
+      setMessages((prev) =>
+        prev.map((message) =>
+          message.id === messageId
+            ? {
+                ...message,
+                parts: message.parts.map((part) =>
+                  isAttachmentPart(part) && part.data.localFileId === localFileId
+                    ? { ...part, data: { ...part.data, deliverAs: target } }
+                    : part,
+                ),
+              }
+            : message,
+        ),
+      )
+      regenerate()
+    },
+    [setMessages, regenerate],
+  )
+
   return (
     <div>
       {messages.map((message) => {
@@ -77,25 +124,39 @@ export const ChatMessages = ({ useChat = useChat_default }: ChatMessagesProps) =
               isStreaming={isStreaming && isLast}
               isLastMessage={shouldApplyViewport}
               isLastAssistantMessage={message === lastAssistantMessage}
+              loadingMessage={loadingMessage}
             />
           )
         }
         if (message.role === 'user') {
-          return <UserMessage key={message.id} message={message} />
+          return (
+            <UserMessage
+              key={message.id}
+              message={message}
+              onResendAttachment={
+                message.id === lastUserMessageId
+                  ? (localFileId, target) => resendAttachment(message.id, localFileId, target)
+                  : undefined
+              }
+            />
+          )
         }
 
         return null
       })}
 
-      {showSubmittedLoading && <SyntheticLoadingPart isStreaming />}
+      {/* Keep a loading indicator up while remediation re-delivers + retries, so
+          the suppressed error doesn't leave a blank gap. */}
+      {(showSubmittedLoading || suppressError) && <SyntheticLoadingPart isStreaming message={loadingMessage} />}
 
-      {/* Show error message if there's an error */}
-      {hasError && (
+      {/* Show error message if there's an error and remediation isn't taking over */}
+      {hasError && !suppressError && (
         <ErrorMessage
           retryCount={retryCount}
           retriesExhausted={retriesExhausted}
           error={chatError}
           onRetry={() => regenerate()}
+          deliveryExhausted={deliveryExhausted}
         />
       )}
     </div>

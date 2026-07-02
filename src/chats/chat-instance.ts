@@ -10,7 +10,7 @@ import { updateChatThread as defaultUpdateChatThread } from '@/dal/chat-threads'
 import { getAllSkills as defaultGetAllSkills } from '@/dal'
 import { extractLastUserText, resolveSkillTokenInstructions } from '@/skills/resolve-skill-system-messages'
 import { getDb as defaultGetDb } from '@/db/database'
-import { isRateLimitError } from '@/lib/error-utils'
+import { getErrorRetryable, isContentRejectionError, isContextOverflowError, isRateLimitError } from '@/lib/error-utils'
 import type { HttpClient } from '@/lib/http'
 import { trackEvent } from '@/lib/posthog'
 import type { FetchFn } from '@/lib/proxy-fetch'
@@ -290,6 +290,27 @@ export const createChatInstance = (
       // Don't auto-retry rate limit errors — retrying immediately makes it worse
       if (isRateLimitError(lastError)) {
         lastError = null
+        useChatStore.getState().updateSession(id, { retriesExhausted: true })
+        return
+      }
+
+      // Don't burn retries on errors that won't succeed on identical input:
+      // context overflow, or anything the provider marks non-retryable (4xx
+      // content/auth errors, unsupported content). Transient errors — 408/409,
+      // 5xx, network — keep `isRetryable !== false` and fall through to the retry
+      // loop. (The "Retrying…" UI on a deterministic error would be a lie.)
+      //
+      // Content rejections (400/422) are excluded too, even when the provider
+      // leaves `isRetryable` undefined: they're owned by the attachment-remediation
+      // layer, which re-delivers (native→text→images) on its own. Retrying the
+      // identical payload here would overlap remediation's regenerate() and can't
+      // succeed anyway. Remediation surfaces the error itself once the ladder is
+      // exhausted, so bailing here doesn't swallow it.
+      if (
+        isContextOverflowError(lastError) ||
+        isContentRejectionError(lastError) ||
+        getErrorRetryable(lastError) === false
+      ) {
         useChatStore.getState().updateSession(id, { retriesExhausted: true })
         return
       }

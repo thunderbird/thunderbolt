@@ -10,10 +10,10 @@ import { eq } from 'drizzle-orm'
 import { modelProfilesTable, modelsTable, promptsTable, settingsTable } from '../db/tables'
 import { defaultAutomations, hashPrompt } from '../defaults/automations'
 import { hashModelProfile } from '../defaults/model-profiles'
-import { defaultModels, hashModel } from '@shared/defaults/models'
+import { defaultModels, defaultModelsVersion, hashModel } from '@shared/defaults/models'
 import { defaultSettings, hashSetting } from '../defaults/settings'
 import { nowIso } from './utils'
-import { cleanupRemovedDefaults, reconcileDefaultsForTable } from './reconcile-defaults'
+import { cleanupRemovedDefaults, reconcileDefaults, reconcileDefaultsForTable } from './reconcile-defaults'
 import type { Model, ModelProfile, Prompt } from '@/types'
 
 /** A model id no current default uses — stands in for any retired default. */
@@ -520,6 +520,24 @@ describe('reconcileDefaultsForTable', () => {
     expect(settings.length).toBe(0)
   })
 
+  test('canOverwrite=false skips overwrites of unedited existing rows', async () => {
+    const db = getDb()
+
+    // Row authored by a newer bundle (same id as a current default, but
+    // different content, with an authoring hash that matches its content —
+    // i.e., it looks "unedited from a newer version's perspective").
+    const bundleRow = defaultModels[0]
+    const newer: Model = { ...bundleRow, name: 'Newer Bundle Name' }
+    await db.insert(modelsTable).values({ ...newer, defaultHash: hashModel(newer) })
+
+    // With canOverwrite=false the older bundle must not touch it.
+    await reconcileDefaultsForTable(db, modelsTable, defaultModels, hashModel, 'id', false)
+
+    const row = await db.select().from(modelsTable).where(eq(modelsTable.id, bundleRow.id)).get()
+    expect(row?.name).toBe('Newer Bundle Name')
+    expect(row?.defaultHash).toBe(hashModel(newer))
+  })
+
   test('still updates when both existing and default values are null', async () => {
     const db = getDb()
 
@@ -552,5 +570,121 @@ describe('reconcileDefaultsForTable', () => {
     // Value should still be null (no change, but update was allowed)
     const afterReconcile = await db.select().from(settingsTable).where(eq(settingsTable.key, 'optional_setting')).get()
     expect(afterReconcile?.value).toBeNull()
+  })
+})
+
+/**
+ * Regression tests for THU-637 ("Models are janky"): older-bundle devices used
+ * to overwrite rows authored by newer-bundle devices via sync, causing every
+ * launch to flap between old/new models. The version gate stops this.
+ */
+describe('reconcileDefaults version gate (THU-637)', () => {
+  const modelsVersionKey = 'defaults_version.models'
+
+  const readStoredModelsVersion = async () => {
+    const db = getDb()
+    const row = await db.select().from(settingsTable).where(eq(settingsTable.key, modelsVersionKey)).get()
+    return row?.value == null ? null : Number(row.value)
+  }
+
+  test('fresh install applies bundle defaults and stamps the applied version', async () => {
+    const db = getDb()
+    await reconcileDefaults(db)
+
+    const models = await db.select().from(modelsTable)
+    for (const bundle of defaultModels) {
+      expect(models.find((m) => m.id === bundle.id)).toBeDefined()
+    }
+
+    expect(await readStoredModelsVersion()).toBe(defaultModelsVersion)
+  })
+
+  test('older bundle does not downgrade rows authored by a newer version', async () => {
+    const db = getDb()
+
+    // Prior application by a newer-version device: rows carry the newer
+    // content + matching authoring hash, and stored version is bumped past ours.
+    const [bundleRow, ...restBundle] = defaultModels
+    const newerRow: Model = { ...bundleRow, name: 'Newer Bundle Name', description: 'from newer' }
+    await db.insert(modelsTable).values({ ...newerRow, defaultHash: hashModel(newerRow) })
+    for (const other of restBundle) {
+      await db.insert(modelsTable).values({ ...other, defaultHash: hashModel(other) })
+    }
+    await db.insert(settingsTable).values({
+      key: modelsVersionKey,
+      value: String(defaultModelsVersion + 1),
+    })
+
+    await reconcileDefaults(db)
+
+    const preserved = await db.select().from(modelsTable).where(eq(modelsTable.id, bundleRow.id)).get()
+    expect(preserved?.name).toBe('Newer Bundle Name')
+    expect(preserved?.description).toBe('from newer')
+    expect(preserved?.defaultHash).toBe(hashModel(newerRow))
+
+    // Older bundle must not regress the applied version.
+    expect(await readStoredModelsVersion()).toBe(defaultModelsVersion + 1)
+  })
+
+  test('older bundle does not soft-delete future defaults it does not recognize', async () => {
+    const db = getDb()
+
+    // Newer version added a system model our bundle does not know about.
+    // It synced in with a matching authoring hash. Cleanup would normally
+    // remove it (id not in defaultModels, hash matches) — the gate must skip.
+    const futureRow = buildRetiredModel()
+    await db.insert(modelsTable).values(futureRow)
+    await db.insert(settingsTable).values({
+      key: modelsVersionKey,
+      value: String(defaultModelsVersion + 1),
+    })
+
+    await reconcileDefaults(db)
+
+    const alive = await db.select().from(modelsTable).where(eq(modelsTable.id, futureRow.id)).get()
+    expect(alive?.deletedAt).toBeNull()
+  })
+
+  test('newer bundle upgrades in place and advances the stored version', async () => {
+    const db = getDb()
+
+    // Prime with the current bundle, then rewind to look like a prior version.
+    await reconcileDefaults(db)
+    const targetId = defaultModels[0].id
+    const staleRow = { ...defaultModels[0], name: 'stale name' }
+    await db
+      .update(modelsTable)
+      .set({ name: 'stale name', defaultHash: hashModel(staleRow) })
+      .where(eq(modelsTable.id, targetId))
+    await db
+      .update(settingsTable)
+      .set({ value: String(defaultModelsVersion - 1) })
+      .where(eq(settingsTable.key, modelsVersionKey))
+
+    await reconcileDefaults(db)
+
+    const upgraded = await db.select().from(modelsTable).where(eq(modelsTable.id, targetId)).get()
+    expect(upgraded?.name).toBe(defaultModels[0].name)
+    expect(upgraded?.defaultHash).toBe(hashModel(defaultModels[0]))
+    expect(await readStoredModelsVersion()).toBe(defaultModelsVersion)
+  })
+
+  test('user edits survive under both older and newer bundle passes', async () => {
+    const db = getDb()
+    await reconcileDefaults(db)
+
+    // User renames a row after the first apply.
+    const editedId = defaultModels[0].id
+    await db.update(modelsTable).set({ name: 'user-picked name' }).where(eq(modelsTable.id, editedId))
+
+    // Older-bundle pass: rewind stored version — user edit must still survive.
+    await db
+      .update(settingsTable)
+      .set({ value: String(defaultModelsVersion + 1) })
+      .where(eq(settingsTable.key, modelsVersionKey))
+    await reconcileDefaults(db)
+
+    const stillEdited = await db.select().from(modelsTable).where(eq(modelsTable.id, editedId)).get()
+    expect(stillEdited?.name).toBe('user-picked name')
   })
 })

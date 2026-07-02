@@ -13,16 +13,25 @@ import { shouldUseViewportPositioning } from '@/chats/use-chat-scroll-handler'
 import { isAttachmentPart } from '@/lib/attachments'
 import { useHaptics } from '@/hooks/use-haptics'
 import { useAttachmentRemediation } from './use-attachment-remediation'
+import { getLoadingLabel } from '@/lib/loading-labels'
+import { isBuiltInAgent } from '@/defaults/agents'
 
 type ChatMessagesProps = {
   useChat?: typeof useChat_default
 }
 
 export const ChatMessages = ({ useChat = useChat_default }: ChatMessagesProps) => {
-  const { chatInstance, retryCount, retriesExhausted } = useCurrentChatSession()
+  const { chatInstance, retryCount, retriesExhausted, selectedAgent, selectedMode } = useCurrentChatSession()
 
   const { error: chatError, status, messages, regenerate, setMessages } = useChat({ chat: chatInstance })
   const { triggerNotification } = useHaptics()
+
+  // Mode-aware status shown in the loading window before the first token. Pure
+  // render-time derive — search/research get a specific label, chat keeps the
+  // plain spinner (undefined). ACP agents own their conversation mode upstream
+  // and ignore `selectedMode` (mirroring ChatModePicker), so a stale built-in
+  // mode must not leak a false "Searching the web…" label onto an ACP chat.
+  const loadingMessage = isBuiltInAgent(selectedAgent) ? getLoadingLabel(selectedMode.name) : undefined
 
   const isStreaming = status === 'streaming'
   const wasStreaming = useRef(false)
@@ -115,6 +124,7 @@ export const ChatMessages = ({ useChat = useChat_default }: ChatMessagesProps) =
               isStreaming={isStreaming && isLast}
               isLastMessage={shouldApplyViewport}
               isLastAssistantMessage={message === lastAssistantMessage}
+              loadingMessage={loadingMessage}
             />
           )
         }
@@ -137,7 +147,7 @@ export const ChatMessages = ({ useChat = useChat_default }: ChatMessagesProps) =
 
       {/* Keep a loading indicator up while remediation re-delivers + retries, so
           the suppressed error doesn't leave a blank gap. */}
-      {(showSubmittedLoading || suppressError) && <SyntheticLoadingPart isStreaming />}
+      {(showSubmittedLoading || suppressError) && <SyntheticLoadingPart isStreaming message={loadingMessage} />}
 
       {/* Show error message if there's an error and remediation isn't taking over */}
       {hasError && !suppressError && (

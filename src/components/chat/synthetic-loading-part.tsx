@@ -17,7 +17,11 @@ export const SyntheticLoadingPart = ({ message = '', isStreaming }: SyntheticLoa
 
   const displayMessage = message && message.trim().length > 0 ? message : '\u00A0'
 
-  const titleNode = <span className="text-sm text-secondary-foreground">{displayMessage}</span>
+  const titleNode = (
+    <span data-testid="loading-status" className="text-sm text-secondary-foreground">
+      {displayMessage}
+    </span>
+  )
 
   return (
     <Expandable

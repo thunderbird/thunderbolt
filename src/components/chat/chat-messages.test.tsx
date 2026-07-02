@@ -6,6 +6,7 @@ import { setupTestDatabase, teardownTestDatabase, resetTestDatabase } from '@/da
 import {
   createMockChatInstance,
   createMockChatThread,
+  createMockMode,
   createMockUseChat,
   hydrateStore,
   resetStore,
@@ -18,6 +19,8 @@ import { useChatStore } from '@/chats/chat-store'
 import { ChatMessages } from './chat-messages'
 import { ExternalLinkDialogProvider } from './markdown-utils'
 import type { ThunderboltUIMessage } from '@/types'
+import type { Agent } from '@/types/acp'
+import { builtInAgent } from '@/defaults/agents'
 import { type ReactNode } from 'react'
 
 const createTestWrapper = () => {
@@ -411,6 +414,64 @@ describe('ChatMessages', () => {
       ]
       const { container } = setup('submitted', messages)
       expect(container.querySelector('.animate-spin')).toBeNull()
+    })
+  })
+
+  describe('mode-aware loading label', () => {
+    const setupWithMode = (modeName: string, agent?: Agent) => {
+      const messages: ThunderboltUIMessage[] = [
+        createTestMessage({ role: 'user', parts: [{ type: 'text', text: 'Hello' }] }),
+      ]
+      const mockChatInstance = createMockChatInstance(messages, 'submitted')
+      const mockUseChat = createMockUseChat(mockChatInstance)
+      hydrateStore({
+        chatInstance: mockChatInstance,
+        chatThread: createMockChatThread(),
+        id: 'thread-1',
+        mcpClients: [],
+        models: [],
+        selectedMode: createMockMode({ name: modeName }),
+        selectedModel: null,
+        triggerData: null,
+      })
+      // `hydrateStore` always assigns the built-in agent; patch the session for
+      // tests that need a non-built-in (ACP) agent.
+      if (agent) {
+        useChatStore.setState((state) => {
+          const session = state.sessions.get('thread-1')
+          if (!session) {
+            return state
+          }
+          const nextSessions = new Map(state.sessions)
+          nextSessions.set('thread-1', { ...session, selectedAgent: agent })
+          return { sessions: nextSessions }
+        })
+      }
+      return render(<ChatMessages useChat={mockUseChat} />, { wrapper: createTestWrapper() })
+    }
+
+    it('shows a specific label in search mode', () => {
+      setupWithMode('search')
+      expect(screen.getByTestId('loading-status')).toHaveTextContent('Searching the web…')
+    })
+
+    it('shows a specific label in research mode', () => {
+      setupWithMode('research')
+      expect(screen.getByTestId('loading-status')).toHaveTextContent('Researching…')
+    })
+
+    it('keeps a plain spinner (no specific label) in chat mode', () => {
+      const { container } = setupWithMode('chat')
+      // The plain spinner still renders, but with no specific status text.
+      expect(container.querySelector('.animate-spin')).not.toBeNull()
+      expect(screen.getByTestId('loading-status').textContent?.trim()).toBe('')
+    })
+
+    it('keeps a plain spinner for ACP agents even when a search mode is stale-selected', () => {
+      const acpAgent: Agent = { ...builtInAgent, id: 'acp-1', name: 'Some ACP', type: 'remote-acp' }
+      setupWithMode('search', acpAgent)
+      // ACP agents own their mode upstream — never leak a false "Searching…" label.
+      expect(screen.getByTestId('loading-status').textContent?.trim()).toBe('')
     })
   })
 })

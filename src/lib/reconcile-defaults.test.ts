@@ -687,4 +687,55 @@ describe('reconcileDefaults version gate (THU-637)', () => {
     const stillEdited = await db.select().from(modelsTable).where(eq(modelsTable.id, editedId)).get()
     expect(stillEdited?.name).toBe('user-picked name')
   })
+
+  test('non-numeric stored version routes to UPDATE, not INSERT (no PK conflict)', async () => {
+    const db = getDb()
+
+    // Simulate a corrupted / previous-schema value in the version row.
+    await db.insert(settingsTable).values({ key: modelsVersionKey, value: 'not-a-number' })
+
+    // readAppliedVersion treats non-numeric as null-version-but-exists → gate opens,
+    // upsert must UPDATE the row. If it wrongly INSERTs, this throws on PK conflict.
+    await reconcileDefaults(db)
+
+    expect(await readStoredModelsVersion()).toBe(defaultModelsVersion)
+  })
+
+  test('older bundle does not overwrite profiles authored by a newer version', async () => {
+    const db = getDb()
+
+    // Seed at the current bundle so profiles get their defaultHash.
+    await reconcileDefaults(db)
+
+    // Simulate a newer-version device having tweaked a profile field
+    // (temperature) — content matches its authoring hash, so it looks
+    // "unedited from the newer bundle's perspective".
+    const profileModelId = defaultModels[0].id
+    const original = await db
+      .select()
+      .from(modelProfilesTable)
+      .where(eq(modelProfilesTable.modelId, profileModelId))
+      .get()
+    expect(original).toBeDefined()
+    const newer = { ...original!, temperature: 0.77 }
+    await db
+      .update(modelProfilesTable)
+      .set({ temperature: 0.77, defaultHash: hashModelProfile(newer) })
+      .where(eq(modelProfilesTable.modelId, profileModelId))
+
+    // Rewind stored models version so canOverwriteModels goes false on next pass.
+    await db
+      .update(settingsTable)
+      .set({ value: String(defaultModelsVersion + 1) })
+      .where(eq(settingsTable.key, modelsVersionKey))
+
+    await reconcileDefaults(db)
+
+    const preserved = await db
+      .select()
+      .from(modelProfilesTable)
+      .where(eq(modelProfilesTable.modelId, profileModelId))
+      .get()
+    expect(preserved?.temperature).toBe(0.77)
+  })
 })

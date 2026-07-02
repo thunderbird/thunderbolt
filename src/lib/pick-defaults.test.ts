@@ -36,4 +36,22 @@ describe('pickModelsDefaults', () => {
     expect(picked.version).toBe(defaultModelsVersion)
     expect(picked.data).toBe(defaultModels)
   })
+
+  test('bundle wins when server ships a bumped version with empty data (malformed payload)', () => {
+    // Otherwise cleanupRemovedDefaults would soft-delete every unedited system
+    // model against an empty currentModelIds set.
+    const picked = pickModelsDefaults({ version: defaultModelsVersion + 5, data: [] })
+    expect(picked.version).toBe(defaultModelsVersion)
+    expect(picked.data).toBe(defaultModels)
+  })
+
+  test('bundle wins when server ships a bumped version with a non-array data value', () => {
+    // Runtime defense against a malformed JSON response the type system can't catch.
+    const picked = pickModelsDefaults({
+      version: defaultModelsVersion + 5,
+      data: null as unknown as (typeof defaultModels)[number][],
+    })
+    expect(picked.version).toBe(defaultModelsVersion)
+    expect(picked.data).toBe(defaultModels)
+  })
 })

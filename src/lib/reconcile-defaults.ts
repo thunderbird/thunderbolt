@@ -29,17 +29,25 @@ const modelsVersionKey = 'defaults_version.models'
 
 /**
  * Read a previously-recorded defaults version from `settingsTable`. Returns
- * null when no version has been recorded yet (fresh install / pre-versioning)
- * or when the stored value is not a finite number (treat as "safe to apply").
+ * `exists` separately from `version` so callers can tell "row absent" from
+ * "row present with garbage value" — the two need to branch to insert vs.
+ * update on write-back. `version` is null when the row is absent OR its value
+ * is not a finite number (treat as "safe to apply" for the gate comparison).
  */
-const readAppliedVersion = async (db: AnyDrizzleDatabase, key: string): Promise<number | null> => {
+const readAppliedVersion = async (
+  db: AnyDrizzleDatabase,
+  key: string,
+): Promise<{ exists: boolean; version: number | null }> => {
   const rows = await db.select().from(settingsTable).where(eq(settingsTable.key, key))
-  const raw = rows[0]?.value
-  if (raw == null) {
-    return null
+  const row = rows[0]
+  if (!row) {
+    return { exists: false, version: null }
   }
-  const parsed = Number(raw)
-  return Number.isFinite(parsed) ? parsed : null
+  if (row.value == null) {
+    return { exists: true, version: null }
+  }
+  const parsed = Number(row.value)
+  return { exists: true, version: Number.isFinite(parsed) ? parsed : null }
 }
 
 /**
@@ -204,8 +212,8 @@ export const reconcileDefaults = async (db: AnyDrizzleDatabase, overrides?: Reco
     // Version gate for models: only overwrite rows when our defaults source
     // is strictly newer than the highest version ever applied on this account.
     // Prevents older-bundle devices from downgrading newer synced rows (THU-637).
-    const storedModelsVersion = await readAppliedVersion(tx, modelsVersionKey)
-    const canOverwriteModels = modelsSource.version > (storedModelsVersion ?? Number.NEGATIVE_INFINITY)
+    const stored = await readAppliedVersion(tx, modelsVersionKey)
+    const canOverwriteModels = modelsSource.version > (stored.version ?? Number.NEGATIVE_INFINITY)
 
     // Soft-delete removed system defaults before reconciling current ones.
     await cleanupRemovedDefaults(tx, canOverwriteModels, modelsSource.data)
@@ -213,8 +221,20 @@ export const reconcileDefaults = async (db: AnyDrizzleDatabase, overrides?: Reco
     // AI models
     await reconcileDefaultsForTable(tx, modelsTable, modelsSource.data, hashModel, 'id', canOverwriteModels)
 
-    // Model profiles (after models, because they reference model IDs)
-    await reconcileDefaultsForTable(tx, modelProfilesTable, defaultModelProfiles, hashModelProfile, 'modelId')
+    // Model profiles ship 1:1 with models and mutate together in practice, so
+    // they ride the same gate — otherwise an older-bundle device would revert
+    // profile settings (temperature, tools, addenda) that a newer bundle just
+    // shipped alongside its model changes, reintroducing THU-637 on the profile
+    // side. Insert-of-missing still runs regardless, so orphaned profiles are
+    // impossible even when overwrites are skipped.
+    await reconcileDefaultsForTable(
+      tx,
+      modelProfilesTable,
+      defaultModelProfiles,
+      hashModelProfile,
+      'modelId',
+      canOverwriteModels,
+    )
 
     // Modes
     await reconcileDefaultsForTable(tx, modesTable, defaultModes, hashMode)
@@ -231,10 +251,12 @@ export const reconcileDefaults = async (db: AnyDrizzleDatabase, overrides?: Reco
 
     if (canOverwriteModels) {
       // Inline upsert: `updateSettings` wraps its writes in its own transaction
-      // and PowerSync's drizzle driver forbids nested transactions. We already
-      // know from `readAppliedVersion` whether the row exists, so branch here.
+      // and PowerSync's drizzle driver forbids nested transactions. Branch on
+      // row existence — not on parsed version — so a pre-existing row with a
+      // non-numeric value (data corruption, older schema) still routes to
+      // UPDATE instead of hitting a primary-key conflict on INSERT.
       const versionValue = String(modelsSource.version)
-      if (storedModelsVersion === null) {
+      if (!stored.exists) {
         await tx.insert(settingsTable).values({ key: modelsVersionKey, value: versionValue })
       } else {
         await tx.update(settingsTable).set({ value: versionValue }).where(eq(settingsTable.key, modelsVersionKey))

@@ -1,5 +1,8 @@
 # getrandom 0.3 needs an explicit backend cfg for wasm32 — without it the wasm
 # build fails to link a randomness source. Pairs with the `wasm_js` feature in
 # Cargo.toml so iroh's key generation / TLS use the browser's crypto.getRandomValues.
+#
+# build.sh composes CARGO_ENCODED_RUSTFLAGS (adding --remap-path-prefix) which fully
+# REPLACES these rustflags, so it repeats this same cfg. Mirror any change there too.
 [target.wasm32-unknown-unknown]
 rustflags = ['--cfg', 'getrandom_backend="wasm_js"']

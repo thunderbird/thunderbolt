@@ -60,6 +60,25 @@ if [[ "$(uname)" == "Darwin" ]]; then
   export CFLAGS_wasm32_unknown_unknown="-I$LLVM_PREFIX/lib/clang/$CLANG_VER/include"
 fi
 
+# Remap the builder's absolute paths out of the artifact. rustc bakes ~750 dependency
+# panic-location paths (`~/.cargo/registry/.../ring-*/src/...`, tokio, rustls, …) into
+# the wasm; left as-is they leak the builder's username and pin byte-reproducibility to
+# one machine's layout. --remap-path-prefix rewrites $CARGO_HOME→/cargo and the repo
+# root→/build (std is already remapped to /rustc/<hash>/ by the rust dist).
+#
+# CARGO_ENCODED_RUSTFLAGS fully REPLACES .cargo/config.toml's [target.wasm32] rustflags,
+# so the getrandom backend cfg is repeated here — without it the wasm has no RNG source
+# and fails to link (a loud failure, not a silent one). Keep this cfg in sync with
+# .cargo/config.toml. Encoded (0x1f-separated) form tolerates spaces in the paths.
+CARGO_HOME_DIR="${CARGO_HOME:-$HOME/.cargo}"
+rustflags=(
+  --cfg 'getrandom_backend="wasm_js"'
+  "--remap-path-prefix=$CARGO_HOME_DIR=/cargo"
+  "--remap-path-prefix=$REPO_ROOT=/build"
+)
+encoded="$(printf '%s\x1f' "${rustflags[@]}")"
+export CARGO_ENCODED_RUSTFLAGS="${encoded%$'\x1f'}"
+
 cd "$CRATE_DIR"
 echo "building wasm → $OUT_DIR"
 wasm-pack build --target web --release --out-dir "$OUT_DIR"
@@ -79,9 +98,10 @@ else
   echo "warning: wasm-opt not found — shipping the unoptimized artifact. 'brew install binaryen' to shrink it." >&2
 fi
 
-# wasm-pack writes a '*' .gitignore into the out-dir; drop it so the build
-# artifact can be committed (the app imports it without a wasm toolchain in CI).
-rm -f "$OUT_DIR/.gitignore"
+# wasm-pack writes a '*' .gitignore into the out-dir (drop it so the artifact can
+# be committed) and copies the crate README (drop it — redundant, unchecksummed, and
+# would otherwise show up untracked after every build).
+rm -f "$OUT_DIR/.gitignore" "$OUT_DIR/README.md"
 
 # Manifest of the committed artifacts (bare filenames, so it's path-independent
 # and CI can `shasum -a 256 -c` it from the pkg dir without a wasm toolchain).

@@ -22,12 +22,12 @@ Because the artifact is prebuilt, it is verified three ways:
 - **Tamper-evidence (CI):** `src/acp/iroh/pkg/CHECKSUMS.txt` lists the sha256 of each
   committed file. The `wasm-artifact` CI job runs `shasum -a 256 -c CHECKSUMS.txt`
   and fails if any committed artifact drifts from the manifest. No toolchain needed.
-- **Reproducibility (local, macOS-pinned):** `./build.sh --verify` rebuilds into a
-  throwaway dir on the pinned toolchain and fails if the result drifts from
-  `CHECKSUMS.txt`. This is manual/local only: the binary embeds ~750 absolute
-  `~/.cargo` build paths, so a rebuild-and-compare on a CI runner (`/home/runner/…` on
-  Linux, `/Users/runner/…` on macOS) can never match the committed hash — CI covers
-  tamper-evidence and staleness, not byte-reproducibility.
+- **Reproducibility (local, pinned toolchain):** `./build.sh --verify` rebuilds into a
+  throwaway dir and fails if the result drifts from `CHECKSUMS.txt`. Two clean builds on
+  the pinned toolchain are bit-identical (see "Determinism test"). CI still verifies the
+  committed artifact against `CHECKSUMS.txt` (tamper-evidence + staleness) rather than
+  rebuilding — a cross-machine rebuild-verify is now plausible (absolute builder paths
+  are remapped out, see below) but not yet wired up.
 
 ## Rebuilding
 
@@ -61,15 +61,17 @@ Two clean builds (`cargo clean` between) on the pinned toolchain produce a
 bit-identical `thunderbolt_acp_client_bg.wasm` (and identical `.js`/`.d.ts`):
 
 ```
-b4aeee5fc3b67f2b1d22696a77e2ba6038b6f8150a0ff68077896f33c1398d5c  (build 1)
-b4aeee5fc3b67f2b1d22696a77e2ba6038b6f8150a0ff68077896f33c1398d5c  (build 2)
+0265ecaa38125fbe56a0bd52021db77f1a4f1593bf653607c989062841ae5005  (build 1)
+0265ecaa38125fbe56a0bd52021db77f1a4f1593bf653607c989062841ae5005  (build 2)
 ```
 
-wasm-opt is deterministic here, so it is **not** a source of drift. What the build
-does **not** survive is a change of machine: the artifact embeds absolute
-`~/.cargo/registry/...` paths in dependency panic-location strings, so a Linux CI
-rebuild cannot match a macOS build hash-for-hash. That is why CI verifies the
-committed artifact against `CHECKSUMS.txt` (tamper-evidence) rather than rebuilding
-and comparing — a rebuild-and-compare gate would be red by construction across the
-CI/dev OS boundary. Reproduce a bit-identical artifact locally on the pinned
-toolchain with `./build.sh --verify`.
+wasm-opt is deterministic here, so it is **not** a source of drift. The build no longer
+embeds absolute builder paths: `build.sh` passes `--remap-path-prefix` to rewrite
+`$CARGO_HOME`→`/cargo` and the repo root→`/build` (std is already `/rustc/<hash>/`), so
+the ~750 dependency panic-location strings that used to leak the builder's username are
+now machine-independent. That was the one hard blocker to cross-machine reproducibility,
+so a Linux-CI rebuild matching this macOS hash is now **plausible** — though still
+unproven across the OS/wasm-opt boundary (codegen and wasm-opt output can differ by
+platform). Wiring a CI rebuild-verify on the pinned toolchain is possible future work;
+today CI verifies the committed artifact against `CHECKSUMS.txt` (tamper-evidence +
+staleness) and `./build.sh --verify` reproduces it locally.

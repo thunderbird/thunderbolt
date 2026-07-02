@@ -59,13 +59,15 @@ export const defaultModelOpus48: Model = {
 }
 
 /**
- * DeepSeek V4 Flash reuses the row id originally assigned to V4 Pro (Tinfoil).
- * Tinfoil is dropping V4 Pro, so unmodified rows are upgraded in place to the
- * Fireworks-backed Flash variant routed through the Thunderbolt backend.
- * Fireworks doesn't provide TEE isolation, so isConfidential is 0.
+ * Flash ships under a fresh id — not the retired V4 Pro id. Reusing Pro's id
+ * would flip isConfidential 1→0 on threads that were created encrypted
+ * (isEncrypted mirrors the model's isConfidential at creation), stranding them
+ * because the model picker and send guard both enforce isEncrypted === isConfidential.
+ * cleanupRemovedDefaults soft-deletes the Pro row instead, so those threads
+ * surface as "model retired" rather than broken.
  */
 export const defaultModelDeepseekV4Flash: Model = {
-  id: '019e70af-e5b2-76d0-9ede-f22d8265bb14',
+  id: '019f227e-d640-727d-ba12-d51bd7d0a3d6',
   name: 'DeepSeek V4 Flash',
   provider: 'thunderbolt',
   model: 'deepseek-v4-flash',

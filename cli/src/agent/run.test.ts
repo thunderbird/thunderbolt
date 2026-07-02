@@ -11,7 +11,7 @@
  */
 
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
-import { runAgent } from './run.ts'
+import { runAgent, shouldUseTui } from './run.ts'
 import type { RunConfig } from './types.ts'
 
 const KEY = 'ANTHROPIC_API_KEY'
@@ -28,7 +28,26 @@ afterEach(() => {
 })
 
 const oneshot = (overrides: Partial<RunConfig> = {}): RunConfig =>
-  ({ model: 'claude-opus-4-8', cwd: process.cwd(), yolo: false, thinking: 'medium', mode: 'oneshot', prompt: 'hi', ...overrides } as RunConfig)
+  ({
+    model: 'claude-opus-4-8',
+    cwd: process.cwd(),
+    yolo: false,
+    thinking: 'medium',
+    mode: 'oneshot',
+    prompt: 'hi',
+    ...overrides,
+  }) as RunConfig
+
+const repl = (overrides: Partial<RunConfig> = {}): RunConfig =>
+  ({
+    model: 'claude-opus-4-8',
+    cwd: process.cwd(),
+    yolo: false,
+    thinking: 'medium',
+    mode: 'repl',
+    noTui: false,
+    ...overrides,
+  }) as RunConfig
 
 describe('runAgent — ANTHROPIC_API_KEY guard', () => {
   test('throws a friendly error for the explicit anthropic provider with no key', async () => {
@@ -47,5 +66,27 @@ describe('runAgent — ANTHROPIC_API_KEY guard', () => {
     await expect(
       runAgent(oneshot({ provider: 'openai-compat', baseUrl: undefined, apiKey: undefined })),
     ).rejects.toThrow(/base-url/)
+  })
+})
+
+describe('shouldUseTui — REPL mode selection', () => {
+  test('a REPL on a TTY with no opt-out uses the TUI', () => {
+    expect(shouldUseTui(repl(), { isTty: true, noTuiEnv: false })).toBe(true)
+  })
+
+  test('a piped (non-TTY) REPL falls back to the plain loop', () => {
+    expect(shouldUseTui(repl(), { isTty: false, noTuiEnv: false })).toBe(false)
+  })
+
+  test('THUNDERBOLT_NO_TUI forces the plain loop even on a TTY', () => {
+    expect(shouldUseTui(repl(), { isTty: true, noTuiEnv: true })).toBe(false)
+  })
+
+  test('the --no-tui flag forces the plain loop even on a TTY', () => {
+    expect(shouldUseTui(repl({ noTui: true }), { isTty: true, noTuiEnv: false })).toBe(false)
+  })
+
+  test('oneshot runs never use the TUI, even on a TTY', () => {
+    expect(shouldUseTui(oneshot(), { isTty: true, noTuiEnv: false })).toBe(false)
   })
 })

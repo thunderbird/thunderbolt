@@ -34,6 +34,16 @@ export const green = style('\x1b[32m')
 export const red = style('\x1b[31m')
 /** Colors text gray — used for secondary detail and result previews. */
 export const gray = style('\x1b[90m')
+/** Colors text yellow — used for inline code in the TUI markdown theme. */
+export const yellow = style('\x1b[33m')
+/** Bolds text — used for markdown headings and strong emphasis. */
+export const bold = style('\x1b[1m')
+/** Italicizes text — used for markdown emphasis and thinking traces. */
+export const italic = style('\x1b[3m')
+/** Underlines text — used for markdown links. */
+export const underline = style('\x1b[4m')
+/** Strikes through text — used for markdown deletions. */
+export const strikethrough = style('\x1b[9m')
 
 /** Glyphs marking tool activity in the streamed output. */
 export const symbols = {

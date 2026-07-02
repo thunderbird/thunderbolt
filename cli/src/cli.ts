@@ -81,6 +81,8 @@ OPTIONS
       --thinking <lvl>  reasoning depth: ${THINKING_LEVELS.join(' | ')} (default: medium)
   -y, --yolo            auto-approve every tool call (alias:
                         --dangerously-skip-permissions)
+      --no-tui          use the plain readline REPL, not the interactive TUI
+                        (the TUI is the default when stdout is a terminal)
   -h, --help            show this help and exit
   -v, --version         print the version and exit
 
@@ -126,6 +128,7 @@ const isProvider = (value: string): value is ModelProvider => (MODEL_PROVIDERS a
 type Flags = {
   readonly model: string
   readonly yolo: boolean
+  readonly noTui: boolean
   readonly thinking: ThinkingLevel
   readonly provider: ModelProvider
   readonly baseUrl?: string
@@ -136,6 +139,7 @@ type Flags = {
 const DEFAULT_FLAGS: Flags = {
   model: DEFAULT_MODEL,
   yolo: false,
+  noTui: false,
   thinking: 'medium',
   provider: DEFAULT_PROVIDER,
   positionals: [],
@@ -193,6 +197,10 @@ const scanTokens = (tokens: readonly string[], index: number, flags: Flags): Sca
 
   if (token === '--yolo' || token === '-y' || token === '--dangerously-skip-permissions') {
     return scanTokens(tokens, index + 1, { ...flags, yolo: true })
+  }
+
+  if (token === '--no-tui') {
+    return scanTokens(tokens, index + 1, { ...flags, noTui: true })
   }
 
   return scanTokens(tokens, index + 1, { ...flags, positionals: [...flags.positionals, token] })
@@ -396,6 +404,7 @@ export const parseArgs = (argv: string[]): ParsedArgs => {
     baseUrl: scan.flags.baseUrl,
     apiKey: resolveApiKey(scan.flags.apiKey),
   }
-  const config: RunConfig = prompt.length > 0 ? { ...base, mode: 'oneshot', prompt } : { ...base, mode: 'repl' }
+  const config: RunConfig =
+    prompt.length > 0 ? { ...base, mode: 'oneshot', prompt } : { ...base, mode: 'repl', noTui: scan.flags.noTui }
   return { kind: 'run', config }
 }

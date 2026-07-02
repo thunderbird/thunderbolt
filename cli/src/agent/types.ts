@@ -117,7 +117,12 @@ export type ServeConfig = HarnessConfig
  */
 export type RunConfig =
   | (HarnessConfig & { readonly mode: 'oneshot'; readonly prompt: string })
-  | (HarnessConfig & { readonly mode: 'repl' })
+  | (HarnessConfig & {
+      readonly mode: 'repl'
+      /** Force the plain readline REPL, never the interactive TUI (`--no-tui`).
+       *  The TUI is otherwise the default when stdout is a TTY. */
+      readonly noTui: boolean
+    })
 
 /** Result of parsing argv: a run, a bridge, a connect, an ACP server, an iroh
  *  admin action, or a terminal info action. */

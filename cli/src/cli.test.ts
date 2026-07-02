@@ -33,7 +33,15 @@ describe('parseArgs — resolveApiKey precedence (security)', () => {
 
   test('--api-key flag wins over the env var', () => {
     process.env[ENV_KEY] = 'env-key'
-    const config = runConfig(['--provider', 'openai-compat', '--base-url', 'https://h/v1', '--api-key', 'flag-key', 'hi'])
+    const config = runConfig([
+      '--provider',
+      'openai-compat',
+      '--base-url',
+      'https://h/v1',
+      '--api-key',
+      'flag-key',
+      'hi',
+    ])
     expect(config.apiKey).toBe('flag-key')
   })
 
@@ -143,6 +151,15 @@ describe('parseArgs — run mode + yolo aliases', () => {
     expect(runConfig(['p']).yolo).toBe(false)
   })
 
+  test('--no-tui sets noTui on a repl config; it defaults to false', () => {
+    const off = runConfig(['--no-tui'])
+    if (off.mode !== 'repl') throw new Error('expected repl')
+    expect(off.noTui).toBe(true)
+    const on = runConfig([])
+    if (on.mode !== 'repl') throw new Error('expected repl')
+    expect(on.noTui).toBe(false)
+  })
+
   test('--help / --version short-circuit over a run', () => {
     expect(parseArgs(['--help', 'ignored']).kind).toBe('help')
     expect(parseArgs(['-h']).kind).toBe('help')
@@ -203,7 +220,16 @@ describe('parseArgs — acp serve', () => {
 
   test('resolves the same flag set as a run, including api-key precedence', () => {
     process.env[ENV_KEY] = 'env-key'
-    const parsed = parseArgs(['acp', 'serve', '--provider', 'openai-compat', '--base-url', 'https://h/v1', '--api-key', 'flag-key'])
+    const parsed = parseArgs([
+      'acp',
+      'serve',
+      '--provider',
+      'openai-compat',
+      '--base-url',
+      'https://h/v1',
+      '--api-key',
+      'flag-key',
+    ])
     if (parsed.kind !== 'acp-serve') throw new Error(`expected acp-serve, got ${parsed.kind}`)
     expect(parsed.config.apiKey).toBe('flag-key')
     expect(parsed.config.provider).toBe('openai-compat')
@@ -243,7 +269,10 @@ describe('parseArgs — connect + iroh admin', () => {
   test('iroh allow requires a nodeid; id/pair route to admin actions', () => {
     expect(parseArgs(['iroh', 'id'])).toEqual({ kind: 'iroh-admin', action: { kind: 'id' } })
     expect(parseArgs(['iroh', 'pair'])).toEqual({ kind: 'iroh-admin', action: { kind: 'pair' } })
-    expect(parseArgs(['iroh', 'allow', 'node-xyz'])).toEqual({ kind: 'iroh-admin', action: { kind: 'allow', nodeId: 'node-xyz' } })
+    expect(parseArgs(['iroh', 'allow', 'node-xyz'])).toEqual({
+      kind: 'iroh-admin',
+      action: { kind: 'allow', nodeId: 'node-xyz' },
+    })
     expect(parseArgs(['iroh', 'allow']).kind).toBe('error')
     expect(parseArgs(['iroh', 'bogus']).kind).toBe('error')
   })

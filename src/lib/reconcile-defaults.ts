@@ -11,11 +11,14 @@ import { v7 as uuidv7 } from 'uuid'
 import { modelProfilesTable, modelsTable, modesTable, settingsTable, skillsTable, tasksTable } from '../db/tables'
 import { defaultModelProfiles, hashModelProfile } from '../defaults/model-profiles'
 import { defaultModes, hashMode } from '../defaults/modes'
-import { defaultModels, defaultModelsVersion, hashModel } from '@shared/defaults/models'
+import { defaultModels, defaultModelsVersion, hashModel, type SharedModel } from '@shared/defaults/models'
 import { defaultSettings, hashSetting } from '../defaults/settings'
 import { defaultSkills, hashSkill } from '../defaults/skills'
 import { defaultTasks, hashTask } from '../defaults/tasks'
+import type { ModelsDefaults } from './pick-defaults'
 import { nowIso } from './utils'
+
+const bundledModelsDefaults: ModelsDefaults = { version: defaultModelsVersion, data: defaultModels }
 
 /**
  * Settings key holding the highest defaults version ever applied to this
@@ -142,9 +145,13 @@ export const reconcileDefaultsForTable = async <T extends { defaultHash: string 
  * The profiles scan still runs but is a natural no-op in this case — no models
  * were soft-deleted, so every profile's parent stays alive.
  */
-export const cleanupRemovedDefaults = async (db: AnyDrizzleDatabase, canOverwriteModels: boolean = true) => {
+export const cleanupRemovedDefaults = async (
+  db: AnyDrizzleDatabase,
+  canOverwriteModels: boolean = true,
+  models: readonly SharedModel[] = defaultModels,
+) => {
   const now = nowIso()
-  const currentModelIds = new Set(defaultModels.map((m) => m.id))
+  const currentModelIds = new Set(models.map((m) => m.id))
 
   // One SELECT serves both loops: the system-model scan below and the
   // alive-model set used by the profile loop. Models soft-deleted in the scan
@@ -184,19 +191,27 @@ export const cleanupRemovedDefaults = async (db: AnyDrizzleDatabase, canOverwrit
   }
 }
 
-export const reconcileDefaults = async (db: AnyDrizzleDatabase) => {
+export type ReconcileDefaultsOverrides = {
+  /** Models defaults source (server OTA payload or bundled). Falls back to
+   *  the shipped `defaultModels` + `defaultModelsVersion` when omitted. */
+  models?: ModelsDefaults
+}
+
+export const reconcileDefaults = async (db: AnyDrizzleDatabase, overrides?: ReconcileDefaultsOverrides) => {
+  const modelsSource = overrides?.models ?? bundledModelsDefaults
+
   await db.transaction(async (tx) => {
     // Version gate for models: only overwrite rows when our defaults source
     // is strictly newer than the highest version ever applied on this account.
     // Prevents older-bundle devices from downgrading newer synced rows (THU-637).
     const storedModelsVersion = await readAppliedVersion(tx, modelsVersionKey)
-    const canOverwriteModels = defaultModelsVersion > (storedModelsVersion ?? Number.NEGATIVE_INFINITY)
+    const canOverwriteModels = modelsSource.version > (storedModelsVersion ?? Number.NEGATIVE_INFINITY)
 
     // Soft-delete removed system defaults before reconciling current ones.
-    await cleanupRemovedDefaults(tx, canOverwriteModels)
+    await cleanupRemovedDefaults(tx, canOverwriteModels, modelsSource.data)
 
     // AI models
-    await reconcileDefaultsForTable(tx, modelsTable, defaultModels, hashModel, 'id', canOverwriteModels)
+    await reconcileDefaultsForTable(tx, modelsTable, modelsSource.data, hashModel, 'id', canOverwriteModels)
 
     // Model profiles (after models, because they reference model IDs)
     await reconcileDefaultsForTable(tx, modelProfilesTable, defaultModelProfiles, hashModelProfile, 'modelId')
@@ -215,7 +230,7 @@ export const reconcileDefaults = async (db: AnyDrizzleDatabase) => {
     await reconcileDefaultsForTable(tx, settingsTable, defaultSettings, hashSetting, 'key')
 
     if (canOverwriteModels) {
-      await updateSettings(tx, { [modelsVersionKey]: defaultModelsVersion })
+      await updateSettings(tx, { [modelsVersionKey]: modelsSource.version })
     }
 
     // Initialize anonymous ID for analytics (unique per user)

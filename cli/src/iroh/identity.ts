@@ -9,11 +9,13 @@
  * identity *is* the cryptographic peer credential: persisting the secret key
  * keeps this machine's NodeId stable across runs, which is what makes a peer
  * allowlist (and, later, device-binding into the E2E key hierarchy) meaningful.
- * The secret is stored hex-encoded at `~/.thunderbolt/iroh/identity` with 0600
- * permissions.
+ * Each bridge protocol gets its own identity file (see {@link identityPath}), so
+ * the acp and mcp bridges publish distinct NodeIds. The secret is stored
+ * hex-encoded under `~/.thunderbolt/iroh/` with 0600 permissions.
  */
 
 import { SecretKey } from '@number0/iroh'
+import type { BridgeProtocol } from '../agent/types.ts'
 import { irohDir, identityPath } from './paths.ts'
 import { enforceSecureFile, readFileOrNull, writeSecureFile } from './storage.ts'
 
@@ -33,14 +35,17 @@ const nodeIdOf = (secretKeyBytes: readonly number[]): string =>
     .toString()
 
 /**
- * Load this machine's persisted node identity, generating and saving a fresh
- * one on first use. The secret is stored hex-encoded; its file is forced to
- * `0600` on every load so a key restored with lax permissions self-heals.
+ * Load this machine's persisted node identity for a bridge protocol, generating
+ * and saving a fresh one on first use. Each protocol has its own file so the acp
+ * and mcp bridges publish distinct NodeIds. The secret is stored hex-encoded;
+ * its file is forced to `0600` on every load so a key restored with lax
+ * permissions self-heals.
  *
+ * @param protocol - the bridge protocol whose identity to load
  * @returns the secret-key bytes and the derived NodeId
  */
-export const loadOrCreateIdentity = async (): Promise<IrohIdentity> => {
-  const path = identityPath()
+export const loadOrCreateIdentity = async (protocol: BridgeProtocol): Promise<IrohIdentity> => {
+  const path = identityPath(protocol)
   const existing = await readFileOrNull(path)
   if (existing !== null) {
     await enforceSecureFile(path)

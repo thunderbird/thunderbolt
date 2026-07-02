@@ -17,8 +17,10 @@ import { add } from './allowlist.ts'
 import { bindServer } from './endpoint.ts'
 
 /** Bind briefly to mint a current ticket (needs a live home relay), print it
- *  alongside the NodeId, then release the endpoint. The ticket is just an
- *  address, so the bind protocol is immaterial here. */
+ *  alongside the NodeId, then release the endpoint. Binds the `acp` identity, so
+ *  `iroh id|pair` print the ACP bridge's NodeId/ticket only — MCP now has a
+ *  distinct NodeId, and MCP users copy the NodeId/ticket that
+ *  `thunderbolt mcp --transport iroh` prints on startup. */
 const printIdentity = async (headline: string): Promise<void> => {
   const { endpoint, nodeId, ticket } = await bindServer('acp')
   process.stdout.write(`${headline}\n  node id: ${nodeId}\n  ticket:  ${ticket}\n`)

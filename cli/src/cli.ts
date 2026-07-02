@@ -90,11 +90,13 @@ BRIDGE OPTIONS (acp / mcp)
       --                everything after this is the stdio command to spawn
 
 IROH TRANSPORT (P2P, end-to-end encrypted)
-  thunderbolt iroh id                print this node's NodeId + connection ticket
-  thunderbolt iroh pair              print a ticket to share out-of-band
+  thunderbolt iroh id                print the ACP bridge NodeId + connection ticket
+  thunderbolt iroh pair              print an ACP ticket to share out-of-band
   thunderbolt iroh allow <nodeid>    trust a peer (the allowlist is the auth gate)
   Only allowlisted peers may drive an iroh bridge; the NodeId is an ed25519 key,
   so the QUIC handshake authenticates and end-to-end encrypts every session.
+  iroh id|pair are ACP-only — the MCP bridge has its own NodeId, printed by
+  thunderbolt mcp --transport iroh on startup.
 
 EXAMPLES
   thunderbolt "fix the failing test in utils.ts"

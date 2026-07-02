@@ -12,6 +12,7 @@
 
 import { homedir } from 'node:os'
 import { join } from 'node:path'
+import type { BridgeProtocol } from '../agent/types.ts'
 
 /** Root for all thunderbolt CLI state. `THUNDERBOLT_HOME` overrides the default
  *  `~/.thunderbolt`, enabling isolated identities for testing/multi-account. */
@@ -20,8 +21,13 @@ const baseDir = (): string => process.env.THUNDERBOLT_HOME ?? join(homedir(), '.
 /** Directory holding the iroh identity and allowlist. */
 export const irohDir = (): string => join(baseDir(), 'iroh')
 
-/** Path to the persisted 32-byte node secret key (hex-encoded, mode 0600). */
-export const identityPath = (): string => join(irohDir(), 'identity')
+/** Path to a protocol's persisted 32-byte node secret key (hex-encoded, mode
+ *  0600). Each bridge protocol gets a distinct NodeId by loading a distinct
+ *  file, so an ACP ticket can never authenticate the MCP bridge (or vice-versa)
+ *  when a stale address resolves the wrong process. `acp` keeps the legacy
+ *  `identity` filename so every existing ACP pairing survives untouched. */
+export const identityPath = (protocol: BridgeProtocol): string =>
+  join(irohDir(), protocol === 'acp' ? 'identity' : `identity-${protocol}`)
 
 /** Path to the newline-delimited list of allowed peer NodeIds. */
 export const allowlistPath = (): string => join(irohDir(), 'allowlist')

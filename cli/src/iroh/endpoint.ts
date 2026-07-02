@@ -68,7 +68,9 @@ export const configureTransport = (
 
 /** Per-protocol ALPN: one string per protocol version. Both peers must match or
  *  the handshake is refused — so an ACP client can't drive an MCP bridge (or
- *  vice-versa) even though both bind on the same identity. */
+ *  vice-versa). Each bridge protocol also binds a distinct identity (distinct
+ *  NodeId), so the separation holds even when a stale address resolves the
+ *  wrong-protocol process, not just at the ALPN check. */
 const alpnStringFor = (protocol: BridgeProtocol): string => `thunderbolt/${protocol}/0`
 
 /** The protocol's ALPN as the byte array the iroh API expects. */
@@ -89,14 +91,15 @@ export type DialedEndpoint = {
 }
 
 /**
- * Bind a server endpoint on this machine's persistent identity, advertising the
+ * Bind a server endpoint on this protocol's persistent identity, advertising the
  * protocol's ALPN, and wait until a home relay is usable so the returned ticket
- * is dialable.
+ * is dialable. Each protocol loads a distinct identity, so the acp and mcp
+ * bridges publish distinct NodeIds and a ticket can only reach its own bridge.
  *
- * @param protocol - the protocol whose ALPN to advertise
+ * @param protocol - the protocol whose identity to pin and ALPN to advertise
  */
 export const bindServer = async (protocol: BridgeProtocol): Promise<ServerEndpoint> => {
-  const { secretKeyBytes } = await loadOrCreateIdentity()
+  const { secretKeyBytes } = await loadOrCreateIdentity(protocol)
   const builder = Endpoint.builder()
   configureTransport(builder)
   builder.secretKey([...secretKeyBytes])
@@ -119,14 +122,17 @@ export const resolveTarget = (target: string): EndpointAddr => {
 
 /**
  * Dial a peer by ticket or NodeId over the protocol's ALPN, using this machine's
- * persistent identity so the remote can recognize (and allowlist) us.
+ * stable client identity so the remote can recognize (and allowlist) us. The
+ * dialer NodeId stays on the legacy `acp` identity regardless of the dialed
+ * protocol — it is the single client NodeId a remote bridge allowlists, so it
+ * must not fork per-protocol (only the bridge accept-side is per-protocol).
  *
  * @param target - a connection ticket or a bare NodeId
  * @param protocol - the protocol whose ALPN to request
  */
 export const dial = async (target: string, protocol: BridgeProtocol): Promise<DialedEndpoint> => {
   const addr = resolveTarget(target)
-  const { secretKeyBytes } = await loadOrCreateIdentity()
+  const { secretKeyBytes } = await loadOrCreateIdentity('acp')
   const builder = Endpoint.builder()
   configureTransport(builder)
   builder.secretKey([...secretKeyBytes])

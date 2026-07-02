@@ -6,7 +6,7 @@
  * iroh transport for the ACP/MCP bridge — the authenticated, P2P counterpart to
  * the loopback-only WebSocket bridge.
  *
- * Binds a server endpoint on this machine's persistent identity and accepts
+ * Binds a server endpoint on the protocol's persistent identity and accepts
  * incoming connections from the n0 relays. The QUIC handshake authenticates the
  * peer's NodeId (an ed25519 key) for free; the allowlist is the authorization
  * gate on top of it. For each *allowed* connection the bridge spawns its own

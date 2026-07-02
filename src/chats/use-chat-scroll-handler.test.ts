@@ -2,9 +2,58 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import type { ThunderboltUIMessage } from '@/types'
 import { act, cleanup, renderHook } from '@testing-library/react'
 import { afterEach, describe, expect, it, mock } from 'bun:test'
-import { useChatScrollHandler } from './use-chat-scroll-handler'
+import { lastMessageContentSignal, useChatScrollHandler } from './use-chat-scroll-handler'
+
+type MessagePart = ThunderboltUIMessage['parts'][number]
+
+const makeMessage = (id: string, role: 'user' | 'assistant', parts: MessagePart[]): ThunderboltUIMessage =>
+  ({ id, role, parts }) as unknown as ThunderboltUIMessage
+
+const textPart = (text: string): MessagePart => ({ type: 'text', text }) as MessagePart
+const toolPart = (state: string): MessagePart => ({ type: 'tool-search', state, toolCallId: 't1' }) as MessagePart
+
+describe('lastMessageContentSignal', () => {
+  it('returns the message count when there is no last message', () => {
+    expect(lastMessageContentSignal([])).toBe('0')
+  })
+
+  it('is stable when message content does not change', () => {
+    const messages = [makeMessage('m1', 'assistant', [textPart('hello')])]
+    expect(lastMessageContentSignal(messages)).toBe(lastMessageContentSignal(messages))
+  })
+
+  it('changes when the last text part grows (streamed token)', () => {
+    const before = lastMessageContentSignal([makeMessage('m1', 'assistant', [textPart('hi')])])
+    const after = lastMessageContentSignal([makeMessage('m1', 'assistant', [textPart('hi there')])])
+    expect(after).not.toBe(before)
+  })
+
+  it('changes when a new part is added', () => {
+    const before = lastMessageContentSignal([makeMessage('m1', 'assistant', [textPart('hi')])])
+    const after = lastMessageContentSignal([
+      makeMessage('m1', 'assistant', [textPart('hi'), toolPart('input-streaming')]),
+    ])
+    expect(after).not.toBe(before)
+  })
+
+  it('changes when a tool part advances state without changing text', () => {
+    const before = lastMessageContentSignal([makeMessage('m1', 'assistant', [toolPart('input-streaming')])])
+    const after = lastMessageContentSignal([makeMessage('m1', 'assistant', [toolPart('output-available')])])
+    expect(after).not.toBe(before)
+  })
+
+  it('changes when a new message is appended', () => {
+    const before = lastMessageContentSignal([makeMessage('m1', 'user', [textPart('q')])])
+    const after = lastMessageContentSignal([
+      makeMessage('m1', 'user', [textPart('q')]),
+      makeMessage('m2', 'assistant', [textPart('a')]),
+    ])
+    expect(after).not.toBe(before)
+  })
+})
 
 // Create mock useCurrentChatSession via dependency injection (not mock.module to prevent test pollution)
 const createMockUseCurrentChatSession = (): any =>

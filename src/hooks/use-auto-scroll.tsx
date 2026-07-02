@@ -58,6 +58,9 @@ export const useAutoScroll = ({
   const animationFrameRef = useRef<number | null>(null)
   const isProgrammaticScrollRef = useRef(false)
   const timeoutRef = useRef<number | null>(null)
+  // Separate frame handle for the coalesced auto-scroll scheduler (distinct from the
+  // smooth-scroll animation frame above so the two never clobber each other).
+  const pendingScrollFrameRef = useRef<number | null>(null)
 
   // Callback refs that trigger state updates
   const scrollContainerRef = useCallback((el: HTMLDivElement | null) => setScrollContainer(el), [])
@@ -218,7 +221,10 @@ export const useAutoScroll = ({
     observer.observe(scrollTarget)
 
     return () => observer.disconnect()
-  }, [scrollContainer, scrollTarget, rootMargin, ...dependencies])
+    // The observer only tracks whether the bottom anchor is visible; that job does not
+    // depend on the streamed message content, so it is created once per container/target
+    // lifecycle instead of being torn down and rebuilt on every token.
+  }, [scrollContainer, scrollTarget, rootMargin])
 
   const onAutoScroll = useEffectEvent(() => {
     if (!userHasScrolledRef.current && scrollContainer) {
@@ -226,17 +232,33 @@ export const useAutoScroll = ({
     }
   })
 
-  // Scroll when dependencies change (if auto-scroll is enabled)
+  // Schedule a coalesced scroll when dependencies change (if auto-scroll is enabled).
+  // Coalesces to at most one layout read + write per animation frame: many streamed
+  // tokens that land within a single frame collapse into the one already-pending frame,
+  // so the forced synchronous layout runs once per frame (after React commits) rather
+  // than once per token. The pending frame is only cancelled on unmount (below), never on
+  // dependency change — cancelling per token would perpetually reschedule and starve the
+  // scroll during rapid streaming.
   useEffect(() => {
-    onAutoScroll()
+    if (pendingScrollFrameRef.current !== null) {
+      return
+    }
+    pendingScrollFrameRef.current = requestAnimationFrame(() => {
+      pendingScrollFrameRef.current = null
+      onAutoScroll()
+    })
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [scrollContainer, ...dependencies])
 
-  // Cleanup animation frame and timeout on unmount
+  // Cleanup animation frames and timeout on unmount
   useEffect(() => {
     return () => {
       if (animationFrameRef.current !== null) {
         cancelAnimationFrame(animationFrameRef.current)
+      }
+      if (pendingScrollFrameRef.current !== null) {
+        cancelAnimationFrame(pendingScrollFrameRef.current)
+        pendingScrollFrameRef.current = null
       }
       if (timeoutRef.current !== null) {
         clearTimeout(timeoutRef.current)

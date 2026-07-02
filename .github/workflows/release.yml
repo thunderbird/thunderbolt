@@ -90,7 +90,6 @@ jobs:
     needs: version_bump
     if: needs.version_bump.result == 'success' && (inputs.platform == 'all' || github.event_name == 'schedule')
     uses: ./.github/workflows/cli-release.yml
-    secrets: inherit
     with:
       version: ${{ needs.version_bump.outputs.new_version }}
       nightly: ${{ github.event_name == 'schedule' }}

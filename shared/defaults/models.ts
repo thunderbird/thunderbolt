@@ -157,7 +157,8 @@ export const defaultModelGlm52: SharedModel = {
 
 /**
  * Array of all default models for iteration. Order = display order in the
- * "Provided" group of the model picker. Reorder freely.
+ * "Provided" group of the model picker. Reorder freely — but bump
+ * `defaultModelsVersion` when you do.
  */
 export const defaultModels: ReadonlyArray<SharedModel> = [
   defaultModelOpus48,
@@ -165,3 +166,15 @@ export const defaultModels: ReadonlyArray<SharedModel> = [
   defaultModelKimiK26,
   defaultModelGlm52,
 ] as const
+
+/**
+ * Monotonic version of the shipped defaults. Bump every time `defaultModels`
+ * changes in any way. The reconciler uses this as the ordering signal to
+ * decide which device's defaults win in a multi-device sync group (THU-637):
+ * a device only overwrites existing rows when its picked defaults version is
+ * strictly newer than the highest ever applied on this account.
+ *
+ * The paired snapshot test in `models.test.ts` fails on any change to this
+ * file's defaults without a matching version bump.
+ */
+export const defaultModelsVersion = 1

@@ -271,6 +271,28 @@ describe('redactArgv — secret redaction in command logs', () => {
   it('handles a secret flag at the very end with no following value', () => {
     expect(redactArgv(['agent', '--api-key'])).toBe('agent --api-key')
   })
+
+  it('redacts the tail of a joined --api-key=value', () => {
+    expect(redactArgv(['openai-agent', '--api-key=sk-live-secret', '--model', 'gpt-4'])).toBe(
+      'openai-agent --api-key=*** --model gpt-4',
+    )
+  })
+
+  it('redacts the tail of a joined --token=value', () => {
+    expect(redactArgv(['agent', '--token=ghp_secret'])).toBe('agent --token=***')
+  })
+
+  it('splits a joined secret on the first = only (hides = inside the value)', () => {
+    expect(redactArgv(['agent', '--api-key=abc=def'])).toBe('agent --api-key=***')
+  })
+
+  it('redacts a joined secret flag with an empty value', () => {
+    expect(redactArgv(['agent', '--api-key='])).toBe('agent --api-key=***')
+  })
+
+  it('leaves a non-secret joined flag intact', () => {
+    expect(redactArgv(['agent', '--foo=bar'])).toBe('agent --foo=bar')
+  })
 })
 
 describe('admitConnection — pre-handshake DoS gates', () => {

@@ -95,13 +95,25 @@ const KEY_ASSIGNMENT = /^[A-Z][A-Z0-9_]*KEY=/
 /** Redact the value of an env-style credential assignment, leaving its name. */
 const redactKeyAssignment = (arg: string): string => (KEY_ASSIGNMENT.test(arg) ? arg.replace(/=.*/s, '=***') : arg)
 
+/** Redact a joined `--flag=value` secret (e.g. `--api-key=sk-…` / `--token=ghp_…`),
+ *  keeping the flag name and hiding everything after the first `=`. Returns `null`
+ *  when the prefix isn't a secret flag, so callers can fall through. */
+const redactJoinedFlag = (arg: string): string | null => {
+  const eq = arg.indexOf('=')
+  return eq !== -1 && SECRET_FLAGS.has(arg.slice(0, eq)) ? `${arg.slice(0, eq)}=***` : null
+}
+
+/** Redact a single argv element in place: joined secret flag, else env assignment. */
+const redactArg = (arg: string): string => redactJoinedFlag(arg) ?? redactKeyAssignment(arg)
+
 /**
  * Render an argv as a single space-joined string with credentials redacted, for
  * logging the bridged command without leaking secrets to stdout/scrollback/CI.
  * Everything after `--` can carry a bearer token (e.g. an openai-compat agent's
- * `--api-key sk-…`); this hides the value following `--api-key`/`--token` and any
- * `*_KEY`-looking env assignment, replacing it with `***`. Pure and total — a
- * trailing secret flag with no following value is simply left as-is.
+ * `--api-key sk-…`); this hides the value following a bare `--api-key`/`--token`,
+ * the tail of a joined `--api-key=sk-…`/`--token=…`, and any `*_KEY`-looking env
+ * assignment, replacing it with `***`. Pure and total — a trailing bare secret
+ * flag with no following value is simply left as-is.
  */
 export const redactArgv = (argv: readonly string[]): string =>
   argv
@@ -109,7 +121,7 @@ export const redactArgv = (argv: readonly string[]): string =>
       (acc, arg) =>
         acc.hide
           ? { out: [...acc.out, '***'], hide: false }
-          : { out: [...acc.out, redactKeyAssignment(arg)], hide: SECRET_FLAGS.has(arg) },
+          : { out: [...acc.out, redactArg(arg)], hide: SECRET_FLAGS.has(arg) },
       { out: [], hide: false },
     )
     .out.join(' ')

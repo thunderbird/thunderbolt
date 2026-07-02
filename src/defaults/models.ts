@@ -58,14 +58,20 @@ export const defaultModelOpus48: Model = {
   userId: null,
 }
 
-export const defaultModelDeepseekV4Pro: Model = {
+/**
+ * DeepSeek V4 Flash reuses the row id originally assigned to V4 Pro (Tinfoil).
+ * Tinfoil is dropping V4 Pro, so unmodified rows are upgraded in place to the
+ * Fireworks-backed Flash variant routed through the Thunderbolt backend.
+ * Fireworks doesn't provide TEE isolation, so isConfidential is 0.
+ */
+export const defaultModelDeepseekV4Flash: Model = {
   id: '019e70af-e5b2-76d0-9ede-f22d8265bb14',
-  name: 'DeepSeek V4 Pro',
-  provider: 'tinfoil',
-  model: 'deepseek-v4-pro',
+  name: 'DeepSeek V4 Flash',
+  provider: 'thunderbolt',
+  model: 'deepseek-v4-flash',
   isSystem: 1,
   enabled: 1,
-  isConfidential: 1,
+  isConfidential: 0,
   contextWindow: 131072,
   toolUsage: 1,
   startWithReasoning: 0,
@@ -75,7 +81,7 @@ export const defaultModelDeepseekV4Pro: Model = {
   url: null,
   defaultHash: null,
   vendor: 'deepseek',
-  description: 'Confidential reasoning via Tinfoil',
+  description: 'Fast DeepSeek reasoning',
   userId: null,
 }
 
@@ -106,6 +112,6 @@ export const defaultModelGlm52: Model = {
  */
 export const defaultModels: ReadonlyArray<Model> = [
   defaultModelOpus48,
-  defaultModelDeepseekV4Pro,
+  defaultModelDeepseekV4Flash,
   defaultModelGlm52,
 ] as const

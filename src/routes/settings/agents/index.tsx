@@ -10,6 +10,7 @@ import { Button } from '@/components/ui/button'
 import { PageHeader } from '@/components/ui/page-header'
 import { AgentList } from '@/components/settings/agents/agent-list'
 import { AgentCatalog } from '@/components/settings/agents/agent-catalog'
+import { ThunderboltCliInstallCard } from '@/components/settings/agents/thunderbolt-cli-install-card'
 import { AddCustomAgentDialog, type AddCustomAgentPayload } from '@/components/settings/agents/add-custom-agent-dialog'
 import { testAcpConnection } from '@/acp'
 import { createAgent, deleteAgent, updateAgent, useAllAgents } from '@/dal'
@@ -142,6 +143,8 @@ export default function AgentsSettingsPage({ isStandalone }: AgentsSettingsPageP
         onEdit={handleEdit}
         onDelete={handleDelete}
       />
+
+      <ThunderboltCliInstallCard />
 
       <AgentCatalog />
 

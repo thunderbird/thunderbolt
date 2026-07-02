@@ -4,18 +4,40 @@
 
 import type { AnyDrizzleDatabase } from '@/db/database-interface'
 import type { Model, ModelProfile } from '@/types'
-import { createSetting } from '@/dal'
+import { createSetting, updateSettings } from '@/dal'
 import { eq, inArray, isNull } from 'drizzle-orm'
 import type { SQLiteTableWithColumns } from 'drizzle-orm/sqlite-core'
 import { v7 as uuidv7 } from 'uuid'
 import { modelProfilesTable, modelsTable, modesTable, settingsTable, skillsTable, tasksTable } from '../db/tables'
 import { defaultModelProfiles, hashModelProfile } from '../defaults/model-profiles'
 import { defaultModes, hashMode } from '../defaults/modes'
-import { defaultModels, hashModel } from '@shared/defaults/models'
+import { defaultModels, defaultModelsVersion, hashModel } from '@shared/defaults/models'
 import { defaultSettings, hashSetting } from '../defaults/settings'
 import { defaultSkills, hashSkill } from '../defaults/skills'
 import { defaultTasks, hashTask } from '../defaults/tasks'
 import { nowIso } from './utils'
+
+/**
+ * Settings key holding the highest defaults version ever applied to this
+ * account's models table. See "Reconciled defaults and version bumps" in
+ * AGENTS.md and the THU-637 rationale for the version-gate design.
+ */
+const modelsVersionKey = 'defaults_version.models'
+
+/**
+ * Read a previously-recorded defaults version from `settingsTable`. Returns
+ * null when no version has been recorded yet (fresh install / pre-versioning)
+ * or when the stored value is not a finite number (treat as "safe to apply").
+ */
+const readAppliedVersion = async (db: AnyDrizzleDatabase, key: string): Promise<number | null> => {
+  const rows = await db.select().from(settingsTable).where(eq(settingsTable.key, key))
+  const raw = rows[0]?.value
+  if (raw == null) {
+    return null
+  }
+  const parsed = Number(raw)
+  return Number.isFinite(parsed) ? parsed : null
+}
 
 /**
  * Generic function to reconcile defaults into a table
@@ -27,6 +49,10 @@ import { nowIso } from './utils'
  * @param defaults - Array of default items to reconcile
  * @param hashFn - Function to compute hash of an item
  * @param keyField - Name of the primary key field (defaults to 'id')
+ * @param canOverwrite - When false, skip in-place updates of existing rows
+ *   (still inserts missing rows and stamps defaultHash on legacy null rows).
+ *   Set to false when the caller's defaults version is older than what has
+ *   already been applied on this account (see THU-637 / AGENTS.md).
  */
 export const reconcileDefaultsForTable = async <T extends { defaultHash: string | null }>(
   db: AnyDrizzleDatabase,
@@ -34,6 +60,7 @@ export const reconcileDefaultsForTable = async <T extends { defaultHash: string 
   defaults: readonly T[],
   hashFn: (item: any) => string,
   keyField: string = 'id',
+  canOverwrite: boolean = true,
 ) => {
   if (defaults.length === 0) {
     return
@@ -87,6 +114,12 @@ export const reconcileDefaultsForTable = async <T extends { defaultHash: string 
       continue
     }
 
+    // Version gate: our defaults source is older than what another device
+    // has already applied for this table. Leave the row alone.
+    if (!canOverwrite) {
+      continue
+    }
+
     // Unmodified and default has changed - safe to update to new default
     await db
       .update(table)
@@ -102,8 +135,14 @@ export const reconcileDefaultsForTable = async <T extends { defaultHash: string 
  * Soft-delete any unedited system default row whose id is no longer in the
  * current defaults arrays. The hash-match guard ensures edited rows survive.
  * Skips rows without a `defaultHash` (user-created).
+ *
+ * When `canOverwriteModels` is false, the models scan is skipped: our defaults
+ * are older than what another device already applied, so we don't know which
+ * "unrecognized" rows are legitimate additions vs. genuinely-removed defaults.
+ * The profiles scan still runs but is a natural no-op in this case — no models
+ * were soft-deleted, so every profile's parent stays alive.
  */
-export const cleanupRemovedDefaults = async (db: AnyDrizzleDatabase) => {
+export const cleanupRemovedDefaults = async (db: AnyDrizzleDatabase, canOverwriteModels: boolean = true) => {
   const now = nowIso()
   const currentModelIds = new Set(defaultModels.map((m) => m.id))
 
@@ -114,13 +153,15 @@ export const cleanupRemovedDefaults = async (db: AnyDrizzleDatabase) => {
   const aliveModels = (await db.select().from(modelsTable).where(isNull(modelsTable.deletedAt))) as Model[]
   const aliveModelIds = new Set(aliveModels.map((m) => m.id))
 
-  for (const row of aliveModels) {
-    if (row.isSystem !== 1 || currentModelIds.has(row.id) || !row.defaultHash) {
-      continue
-    }
-    if (hashModel(row) === row.defaultHash) {
-      await db.update(modelsTable).set({ deletedAt: now }).where(eq(modelsTable.id, row.id))
-      aliveModelIds.delete(row.id)
+  if (canOverwriteModels) {
+    for (const row of aliveModels) {
+      if (row.isSystem !== 1 || currentModelIds.has(row.id) || !row.defaultHash) {
+        continue
+      }
+      if (hashModel(row) === row.defaultHash) {
+        await db.update(modelsTable).set({ deletedAt: now }).where(eq(modelsTable.id, row.id))
+        aliveModelIds.delete(row.id)
+      }
     }
   }
 
@@ -145,11 +186,17 @@ export const cleanupRemovedDefaults = async (db: AnyDrizzleDatabase) => {
 
 export const reconcileDefaults = async (db: AnyDrizzleDatabase) => {
   await db.transaction(async (tx) => {
+    // Version gate for models: only overwrite rows when our defaults source
+    // is strictly newer than the highest version ever applied on this account.
+    // Prevents older-bundle devices from downgrading newer synced rows (THU-637).
+    const storedModelsVersion = await readAppliedVersion(tx, modelsVersionKey)
+    const canOverwriteModels = defaultModelsVersion > (storedModelsVersion ?? Number.NEGATIVE_INFINITY)
+
     // Soft-delete removed system defaults before reconciling current ones.
-    await cleanupRemovedDefaults(tx)
+    await cleanupRemovedDefaults(tx, canOverwriteModels)
 
     // AI models
-    await reconcileDefaultsForTable(tx, modelsTable, defaultModels, hashModel)
+    await reconcileDefaultsForTable(tx, modelsTable, defaultModels, hashModel, 'id', canOverwriteModels)
 
     // Model profiles (after models, because they reference model IDs)
     await reconcileDefaultsForTable(tx, modelProfilesTable, defaultModelProfiles, hashModelProfile, 'modelId')
@@ -166,6 +213,10 @@ export const reconcileDefaults = async (db: AnyDrizzleDatabase) => {
 
     // Settings
     await reconcileDefaultsForTable(tx, settingsTable, defaultSettings, hashSetting, 'key')
+
+    if (canOverwriteModels) {
+      await updateSettings(tx, { [modelsVersionKey]: defaultModelsVersion })
+    }
 
     // Initialize anonymous ID for analytics (unique per user)
     await createSetting(tx, 'anonymous_id', uuidv7())

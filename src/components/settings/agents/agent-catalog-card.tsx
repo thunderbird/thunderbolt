@@ -2,22 +2,25 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { Code2, ExternalLink, Terminal } from 'lucide-react'
+import { Code2, ExternalLink, Terminal, Wrench } from 'lucide-react'
 import { useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader } from '@/components/ui/card'
+import { agentInstallMetadata } from '@/defaults/agent-install-metadata'
 import { distributionLabel, primaryDistributionKind } from '@/lib/agent-registry-filter'
 import type { RegistryEntry } from '@/types/registry'
+import { AgentInstallDialog } from './agent-install-dialog'
 
 type AgentCatalogCardProps = {
   entry: RegistryEntry
 }
 
-/** A read-only catalogue card for a "bridge" agent: shows the agent's identity
- *  and metadata and links out to its website and source. There's no install
- *  action — these CLIs run on the user's own machine, not inside Thunderbolt. */
+/** A catalogue card for a "bridge" agent: shows the agent's identity and metadata,
+ *  a "Set up" action opening run/setup instructions, and link-outs to its website
+ *  and source. These CLIs run on the user's own machine, not inside Thunderbolt. */
 export const AgentCatalogCard = ({ entry }: AgentCatalogCardProps) => {
   const [iconFailed, setIconFailed] = useState(false)
+  const [installOpen, setInstallOpen] = useState(false)
 
   const distributionKind = primaryDistributionKind(entry)
   const websiteUrl = entry.website ?? entry.repository
@@ -56,6 +59,12 @@ export const AgentCatalogCard = ({ entry }: AgentCatalogCardProps) => {
         <p className="text-[length:var(--font-size-sm)] text-muted-foreground">{entry.description}</p>
         <p className="text-[length:var(--font-size-xs)] text-muted-foreground">{metadata}</p>
         <div className="flex flex-wrap gap-2">
+          {distributionKind && (
+            <Button variant="outline" size="sm" onClick={() => setInstallOpen(true)}>
+              <Wrench />
+              Set up
+            </Button>
+          )}
           {websiteUrl && (
             <Button asChild variant="outline" size="sm">
               <a href={websiteUrl} target="_blank" rel="noopener noreferrer">
@@ -74,6 +83,12 @@ export const AgentCatalogCard = ({ entry }: AgentCatalogCardProps) => {
           )}
         </div>
       </CardContent>
+      <AgentInstallDialog
+        entry={entry}
+        meta={agentInstallMetadata[entry.id]}
+        open={installOpen}
+        onOpenChange={setInstallOpen}
+      />
     </Card>
   )
 }

@@ -3,7 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import '@testing-library/jest-dom'
-import { cleanup, fireEvent, render, screen } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, within } from '@testing-library/react'
 import { afterEach, describe, expect, it } from 'bun:test'
 import type { RegistryEntry } from '@/types/registry'
 import { AgentCatalogView } from './agent-catalog-view'
@@ -127,13 +127,23 @@ describe('AgentCatalogView', () => {
     expect(header?.querySelector('svg')).toBeInTheDocument()
   })
 
-  it('exposes only link-out actions per card, never an install action', () => {
+  it('exposes a Set up action plus link-outs per card', () => {
     renderCatalog([entry({ id: 'goose', name: 'goose' })])
     const card = screen.getByTestId('agent-catalog-card-goose')
 
     expect(card.querySelectorAll('a').length).toBeGreaterThan(0)
-    expect(card.querySelector('button')).not.toBeInTheDocument()
-    expect(card.querySelector('button[type="submit"]')).not.toBeInTheDocument()
+    expect(within(card).getByRole('button', { name: /set up/i })).toBeInTheDocument()
+  })
+
+  it('opens the setup dialog with the run command when Set up is clicked', () => {
+    renderCatalog([entry({ id: 'goose', name: 'goose', distribution: { npx: { package: 'goose@1.2.3' } } })])
+    const card = screen.getByTestId('agent-catalog-card-goose')
+
+    expect(screen.queryByText(/run this command/i)).not.toBeInTheDocument()
+    fireEvent.click(within(card).getByRole('button', { name: /set up/i }))
+
+    expect(screen.getByText(/run this command/i)).toBeInTheDocument()
+    expect(screen.getByText('npx -y goose@1.2.3')).toBeInTheDocument()
   })
 
   it('keeps all cards visible for a whitespace-only query', () => {

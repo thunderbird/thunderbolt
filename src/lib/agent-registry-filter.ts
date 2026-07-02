@@ -7,10 +7,12 @@ import type { RegistryDistribution, RegistryEntry } from '@/types/registry'
 /** A distribution kind we surface as a badge. `binary` covers any platform map. */
 export type DistributionKind = 'npx' | 'uvx' | 'binary'
 
-const isRecord = (value: unknown): value is Record<string, unknown> =>
+/** Narrows `unknown` to a plain object, excluding arrays and null. */
+export const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null && !Array.isArray(value)
 
-const asStringArray = (value: unknown): ReadonlyArray<string> =>
+/** Keeps only the string members of an unknown value, or `[]` when it isn't an array. */
+export const asStringArray = (value: unknown): ReadonlyArray<string> =>
   Array.isArray(value) ? value.filter((item): item is string => typeof item === 'string') : []
 
 /** Accepts a value only when it's an `http(s)` URL, dropping anything else to

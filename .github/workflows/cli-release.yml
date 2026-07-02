@@ -1,0 +1,147 @@
+name: CLI Release
+run-name: CLI release for v${{ inputs.version }}
+
+# Builds the standalone `thunderbolt` CLI binaries and attaches them, plus a
+# SHA256SUMS manifest, to the shared `v{version}` GitHub Release. The desktop
+# app derives download URLs from its own version:
+#
+#   https://github.com/thunderbird/thunderbolt/releases/download/v{APP_VERSION}/thunderbolt-{target}
+#   https://github.com/thunderbird/thunderbolt/releases/download/v{APP_VERSION}/SHA256SUMS
+#
+# where {target} is one of: darwin-arm64 | linux-x64 | linux-arm64.
+#
+# Native-runner matrix (no cross-compile): the CLI depends on @number0/iroh, a
+# NAPI addon that ships a per-platform prebuilt `.node`. `bun build --compile`
+# embeds only the `.node` that is installed on the build machine, so each target
+# MUST build on a runner of its own architecture — `bun install` there pulls the
+# matching optional iroh dependency automatically.
+#
+# darwin-x64 is intentionally absent: iroh 1.0.0 publishes no x86_64-apple-darwin
+# addon (`@number0/iroh-darwin-x64` does not exist on npm), so an Intel-macOS CLI
+# binary cannot load iroh and is not shipped. Intel-Mac desktop users therefore
+# have no one-click CLI install until iroh gains that target upstream.
+#
+# Publishing (flipping the draft release to public) is owned by the desktop
+# release workflow, which shares the `v{version}` tag. This workflow only uploads
+# assets via `gh release upload`, which never mutates the release's draft state —
+# so it cannot race the desktop publish flip back into draft.
+
+on:
+  workflow_call:
+    inputs:
+      version:
+        description: 'Version to release (e.g., 1.2.3 without v prefix)'
+        required: true
+        type: string
+      nightly:
+        description: 'Is this a nightly build?'
+        required: false
+        default: false
+        type: boolean
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to release (e.g., 1.2.3 without v prefix)'
+        required: true
+        type: string
+      nightly:
+        description: 'Is this a nightly build?'
+        required: false
+        default: false
+        type: boolean
+
+concurrency:
+  group: cli-release-${{ inputs.version }}
+  cancel-in-progress: true
+
+permissions:
+  contents: write
+
+jobs:
+  ensure-release:
+    name: Ensure Draft Release
+    runs-on: ubuntu-24.04
+    steps:
+      # For a regular release the draft already exists (version-bump created it).
+      # For a nightly it is created by the desktop workflow's draft job, which
+      # runs in parallel — create it here if we win the race, confirm it if we
+      # lose. Either way the build matrix can upload afterwards.
+      - name: Ensure the shared draft release exists
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          VERSION: ${{ inputs.version }}
+          NIGHTLY: ${{ inputs.nightly }}
+        run: |
+          if gh release view "v${VERSION}" --repo "$REPO" >/dev/null 2>&1; then
+            exit 0
+          fi
+          FLAGS="--draft"
+          [ "$NIGHTLY" = "true" ] && FLAGS="$FLAGS --prerelease"
+          gh release create "v${VERSION}" --repo "$REPO" $FLAGS \
+            --title "Release v${VERSION}" \
+            --notes "Release assets are uploaded by CI." \
+            || gh release view "v${VERSION}" --repo "$REPO"
+
+  build:
+    name: Build ${{ matrix.target }}
+    needs: ensure-release
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-latest
+            target: darwin-arm64
+          - os: ubuntu-24.04
+            target: linux-x64
+          - os: ubuntu-24.04-arm
+            target: linux-arm64
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          ref: v${{ inputs.version }}
+
+      - name: Install Bun
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with:
+          bun-version: 1.3.14
+
+      - name: Cache Bun dependencies (cli)
+        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
+        with:
+          path: |
+            ~/.bun/install/cache
+            cli/node_modules
+          key: cli-bun-${{ matrix.os }}-${{ hashFiles('cli/bun.lock') }}
+          restore-keys: |
+            cli-bun-${{ matrix.os }}-
+
+      - name: Build CLI binary
+        run: cd cli && bun install --frozen-lockfile && bun run build:${{ matrix.target }}
+
+      - name: Upload CLI binary to GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          VERSION: ${{ inputs.version }}
+          TARGET: ${{ matrix.target }}
+        run: gh release upload "v${VERSION}" "cli/dist/thunderbolt-${TARGET}" --clobber --repo "$REPO"
+
+  checksums:
+    name: Publish SHA256SUMS
+    needs: build
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Generate and upload SHA256SUMS
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          VERSION: ${{ inputs.version }}
+        run: |
+          mkdir -p dist && cd dist
+          gh release download "v${VERSION}" --repo "$REPO" \
+            -p 'thunderbolt-darwin-*' -p 'thunderbolt-linux-*'
+          sha256sum thunderbolt-* > SHA256SUMS
+          gh release upload "v${VERSION}" SHA256SUMS --clobber --repo "$REPO"

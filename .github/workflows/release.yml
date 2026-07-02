@@ -79,3 +79,18 @@ jobs:
     with:
       version: ${{ needs.version_bump.outputs.new_version }}
       nightly: ${{ github.event_name == 'schedule' }}
+
+  # The CLI rides the unified `v{version}` release tag: its binaries attach to the
+  # same GitHub Release, and the desktop workflow's publish job flips that shared
+  # tag to public. It therefore builds only for `all` and nightly runs — not for
+  # single-platform (ios/android/desktop) dispatches, which produce RC tags the
+  # CLI would not belong to.
+  cli:
+    name: CLI Release
+    needs: version_bump
+    if: needs.version_bump.result == 'success' && (inputs.platform == 'all' || github.event_name == 'schedule')
+    uses: ./.github/workflows/cli-release.yml
+    secrets: inherit
+    with:
+      version: ${{ needs.version_bump.outputs.new_version }}
+      nightly: ${{ github.event_name == 'schedule' }}

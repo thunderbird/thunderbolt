@@ -15,7 +15,7 @@ import {
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'bun:test'
 import { eq } from 'drizzle-orm'
 import { v7 as uuidv7 } from 'uuid'
-import { defaultModelOpus48, hashModel } from '@/defaults/models'
+import { defaultModelOpus48, hashModel } from '@shared/defaults/models'
 import { isModelModified } from '@/defaults/utils'
 import type { Model } from '@/types'
 import {

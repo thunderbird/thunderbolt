@@ -36,6 +36,13 @@ xattr -d com.apple.quarantine "thunderbolt-$TARGET" 2>/dev/null || true
 mv "thunderbolt-$TARGET" ~/.local/bin/thunderbolt
 ```
 
+> **What the checksum covers.** `SHA256SUMS` and the binary come from the same
+> release over the same TLS connection, so the checksum catches a corrupted or
+> truncated download but *not* a compromised release host — whoever could swap the
+> binary could swap its digest too. The binaries are unsigned and the quarantine
+> strip bypasses macOS Gatekeeper. Signature verification (minisign) over the
+> manifest against a pinned key is the planned follow-up hardening.
+
 > Intel macOS (`darwin-x64`) has no binary: the CLI's `@number0/iroh` P2P addon
 > ships no `x86_64-apple-darwin` build, so an Intel-mac binary can't load it.
 > Build from source above until iroh adds that target.

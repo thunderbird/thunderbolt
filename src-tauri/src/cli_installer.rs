@@ -12,12 +12,21 @@
 //! https://github.com/thunderbird/thunderbolt/releases/download/v{version}/SHA256SUMS
 //! ```
 //!
-//! It downloads the binary and the `SHA256SUMS` manifest, verifies the checksum
-//! before touching the filesystem (hard-fail on mismatch), then installs the
-//! verified binary into `~/.local/bin/thunderbolt` via an atomic rename. Every
-//! failure is a typed [`CliInstallError`] the UI renders honestly — in particular
-//! a release predating the CLI pipeline yields [`CliInstallError::NotPublished`],
-//! never a silent fallback.
+//! It downloads the binary and the `SHA256SUMS` manifest, checks the binary's
+//! digest against the manifest before touching the filesystem (hard-fail on
+//! mismatch), then installs it into `~/.local/bin/thunderbolt` via an atomic
+//! rename. Every failure is a typed [`CliInstallError`] the UI renders honestly —
+//! in particular a release predating the CLI pipeline yields
+//! [`CliInstallError::NotPublished`], never a silent fallback.
+//!
+//! **What the checksum does and does not guarantee.** The binary and `SHA256SUMS`
+//! are fetched from the same release host over the same TLS channel, so the digest
+//! check only catches transport corruption and tampering *within* the manifest — it
+//! adds no integrity against a compromised release host, since whoever can swap the
+//! binary can swap its recorded digest too. There is no code signature, and on macOS
+//! [`strip_quarantine`] removes the download quarantine so Gatekeeper never assesses
+//! the (unsigned) binary. A detached signature (minisign) over the manifest, verified
+//! against a pinned public key, is the known follow-up hardening.
 
 use serde::Serialize;
 use std::path::PathBuf;

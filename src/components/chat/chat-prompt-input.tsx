@@ -374,14 +374,24 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
             continue
           }
           const localFileId = crypto.randomUUID()
-          await putAttachment({
-            id: localFileId,
-            filename: file.name,
-            mimeType: file.type,
-            size: file.size,
-            createdAt: Date.now(),
-            blob: file,
-          })
+          try {
+            await putAttachment({
+              id: localFileId,
+              filename: file.name,
+              mimeType: file.type,
+              size: file.size,
+              createdAt: Date.now(),
+              blob: file,
+            })
+          } catch (error) {
+            // IndexedDB can reject when storage is full or unavailable (e.g. a
+            // private window). Surface it instead of letting the `void`-called
+            // promise reject silently — otherwise no chip appears and no banner
+            // shows. Stop here: subsequent writes would hit the same failure.
+            console.error('Failed to store attachment locally:', error)
+            setAttachError(`Couldn't attach "${file.name}" — your browser may be out of storage or in private mode.`)
+            break
+          }
           setAttachments((prev) => [...prev, { localFileId, filename: file.name, mimeType: file.type }])
           count++
         }

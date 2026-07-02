@@ -25,11 +25,15 @@ import '@/testing-library'
 import { act } from '@testing-library/react'
 import type {
   Agent as AcpSdkAgent,
+  CancelNotification,
   Client,
   InitializeRequest,
   LoadSessionRequest,
   NewSessionRequest,
   PromptRequest,
+  RequestPermissionRequest,
+  RequestPermissionResponse,
+  ResumeSessionRequest,
   SessionNotification,
 } from '@agentclientprotocol/sdk'
 import { describe, expect, it } from 'bun:test'
@@ -97,12 +101,23 @@ const buildFakeTransport = (): {
  *  or hang). `newSession` hands out distinct ids per call. The `toClient`
  *  factory is captured so a test can push `session/update` notifications through
  *  the real routing path the adapter wires up. */
-const buildFakeConnection = (opts: { hangInitialize?: boolean; loadSession?: boolean } = {}) => {
+const buildFakeConnection = (
+  opts: {
+    hangInitialize?: boolean
+    loadSession?: boolean
+    resume?: boolean
+    /** Reject the resume/load call so a test exercises the tier fallthrough. */
+    rejectResume?: boolean
+    rejectLoad?: boolean
+  } = {},
+) => {
   const calls = {
     initialize: [] as InitializeRequest[],
     newSession: [] as NewSessionRequest[],
     loadSession: [] as LoadSessionRequest[],
+    resumeSession: [] as ResumeSessionRequest[],
     prompt: [] as PromptRequest[],
+    cancel: [] as CancelNotification[],
   }
   let client: Client | null = null
   let newSessionCount = 0
@@ -121,7 +136,13 @@ const buildFakeConnection = (opts: { hangInitialize?: boolean; loadSession?: boo
       if (opts.hangInitialize) {
         return new Promise<never>(() => {})
       }
-      return Promise.resolve({ protocolVersion: 1, agentCapabilities: { loadSession: opts.loadSession ?? false } })
+      return Promise.resolve({
+        protocolVersion: 1,
+        agentCapabilities: {
+          loadSession: opts.loadSession ?? false,
+          sessionCapabilities: opts.resume ? { resume: {} } : {},
+        },
+      })
     }
     newSession = (req: NewSessionRequest) => {
       calls.newSession.push(req)
@@ -130,12 +151,20 @@ const buildFakeConnection = (opts: { hangInitialize?: boolean; loadSession?: boo
     }
     loadSession = (req: LoadSessionRequest) => {
       calls.loadSession.push(req)
-      return Promise.resolve({})
+      return opts.rejectLoad ? Promise.reject(new Error('session unloadable')) : Promise.resolve({})
+    }
+    resumeSession = (req: ResumeSessionRequest) => {
+      calls.resumeSession.push(req)
+      return opts.rejectResume ? Promise.reject(new Error('session evicted')) : Promise.resolve({})
     }
     prompt = async (req: PromptRequest) => {
       calls.prompt.push(req)
       await promptGatePromise
       return { stopReason: 'end_turn' as const }
+    }
+    cancel = (req: CancelNotification) => {
+      calls.cancel.push(req)
+      return Promise.resolve()
     }
   }
 
@@ -143,6 +172,11 @@ const buildFakeConnection = (opts: { hangInitialize?: boolean; loadSession?: boo
     FakeConnection,
     calls,
     pushUpdate: (n: SessionNotification) => client?.sessionUpdate(n),
+    // Route a permission request through the same client the adapter registers,
+    // so a test can observe whether a thread's handler is still wired (its own
+    // outcome) or has been torn down (the adapter's `cancelled` fallback).
+    pushPermission: (req: RequestPermissionRequest): Promise<RequestPermissionResponse> | undefined =>
+      client?.requestPermission(req),
     releasePrompts: () => promptGate.release(),
   }
 }
@@ -172,10 +206,25 @@ const readSse = async (response: Response, max = 50): Promise<string[]> => {
   return chunks
 }
 
-const promptInit = (text: string): RequestInit => ({
+const promptInit = (text: string, signal?: AbortSignal): RequestInit => ({
   method: 'POST',
   body: JSON.stringify({ id: 't', messages: [{ role: 'user', parts: [{ type: 'text', text }] }] }),
+  signal,
 })
+
+/** Build a request body from an explicit turn list so a test can supply prior
+ *  history (everything before the trailing user turn) for the fallback replay. */
+const conversationInit = (turns: { role: 'user' | 'assistant'; text: string }[]): RequestInit => ({
+  method: 'POST',
+  body: JSON.stringify({
+    id: 't',
+    messages: turns.map((t) => ({ role: t.role, parts: [{ type: 'text', text: t.text }] })),
+  }),
+})
+
+/** Read the text of the single text block the adapter posted on `session/prompt`. */
+const sentPromptText = (calls: { prompt: PromptRequest[] }, index = 0): string =>
+  (calls.prompt[index]?.prompt?.[0] as { type: string; text: string }).text
 
 describe('connectAcpAdapter — handshake failure modes', () => {
   it('rejects after handshakeTimeoutMs when initialize never resolves and tears down the transport', async () => {
@@ -454,5 +503,353 @@ describe('connectAcpAdapter — agent-level command capture', () => {
     await adapter.ensureSession(threadCtx('thread-1'))
     await adapter.ensureSession(threadCtx('thread-1'))
     expect(calls.newSession).toHaveLength(1)
+  })
+})
+
+describe('connectAcpAdapter — capability-aware continuity (resume / load / new+replay)', () => {
+  const drive = async (
+    adapter: Awaited<ReturnType<typeof connectAcpAdapter>>,
+    init: RequestInit,
+    ctx: AgentAdapterContext,
+    releasePrompts: () => void,
+  ) => {
+    const response = await adapter.fetch(init, ctx)
+    await act(async () => {
+      releasePrompts()
+      await getClock().runAllAsync()
+      await readSse(response)
+    })
+  }
+
+  it('tier 1: resume-capable agent with a stored id resumes it — no newSession, no re-persist, no replay', async () => {
+    const { transport } = buildFakeTransport()
+    const { FakeConnection, calls, releasePrompts } = buildFakeConnection({ resume: true })
+
+    const adapter = await connectAcpAdapter(remoteAgent, baseCtx(), {
+      openTransport: async () => transport,
+      ClientSideConnection: FakeConnection as never,
+    })
+    expect(adapter.capabilities).toMatchObject({ resume: true })
+
+    const persisted: string[] = []
+    await drive(
+      adapter,
+      conversationInit([
+        { role: 'user', text: 'earlier q' },
+        { role: 'assistant', text: 'earlier a' },
+        { role: 'user', text: 'now' },
+      ]),
+      threadCtx('t-resume', { acpSessionId: 'stored-1', onAcpSessionId: async (s) => void persisted.push(s) }),
+      releasePrompts,
+    )
+
+    expect(calls.resumeSession).toHaveLength(1)
+    expect(calls.resumeSession[0]?.sessionId).toBe('stored-1')
+    expect(calls.newSession).toHaveLength(0)
+    expect(persisted).toEqual([]) // reused id, nothing fresh to persist
+    // No app-side replay: the live prompt carries only the current user text.
+    expect(sentPromptText(calls)).toBe('now')
+  })
+
+  it('tier 1→3: resume rejects (session evicted) → newSession + persist + transcript replay', async () => {
+    const { transport } = buildFakeTransport()
+    const { FakeConnection, calls, releasePrompts } = buildFakeConnection({ resume: true, rejectResume: true })
+
+    const adapter = await connectAcpAdapter(remoteAgent, baseCtx(), {
+      openTransport: async () => transport,
+      ClientSideConnection: FakeConnection as never,
+    })
+
+    const persisted: string[] = []
+    await drive(
+      adapter,
+      conversationInit([
+        { role: 'user', text: 'earlier q' },
+        { role: 'assistant', text: 'earlier a' },
+        { role: 'user', text: 'now' },
+      ]),
+      threadCtx('t-evicted', { acpSessionId: 'gone-1', onAcpSessionId: async (s) => void persisted.push(s) }),
+      releasePrompts,
+    )
+
+    expect(calls.resumeSession).toHaveLength(1)
+    expect(calls.newSession).toHaveLength(1)
+    expect(persisted).toEqual(['sess-1'])
+    const text = sentPromptText(calls)
+    expect(text).toContain('Conversation so far:')
+    expect(text).toContain('user: earlier q')
+    expect(text).toContain('assistant: earlier a')
+    expect(text.endsWith('now')).toBe(true)
+  })
+
+  it('degrade order: agent advertising BOTH resume and loadSession tries resume first (never loadSession)', async () => {
+    const { transport } = buildFakeTransport()
+    const { FakeConnection, calls, releasePrompts } = buildFakeConnection({ resume: true, loadSession: true })
+
+    const adapter = await connectAcpAdapter(remoteAgent, baseCtx(), {
+      openTransport: async () => transport,
+      ClientSideConnection: FakeConnection as never,
+    })
+
+    await drive(adapter, promptInit('hi'), threadCtx('t-both', { acpSessionId: 'stored-9' }), releasePrompts)
+
+    expect(calls.resumeSession).toHaveLength(1)
+    expect(calls.loadSession).toHaveLength(0)
+    expect(calls.newSession).toHaveLength(0)
+  })
+
+  it('tier 1→2: resume rejects but loadSession succeeds → loadSession, no newSession, no replay', async () => {
+    const { transport } = buildFakeTransport()
+    const { FakeConnection, calls, releasePrompts } = buildFakeConnection({
+      resume: true,
+      rejectResume: true,
+      loadSession: true,
+    })
+
+    const adapter = await connectAcpAdapter(remoteAgent, baseCtx(), {
+      openTransport: async () => transport,
+      ClientSideConnection: FakeConnection as never,
+    })
+
+    await drive(
+      adapter,
+      conversationInit([
+        { role: 'user', text: 'earlier' },
+        { role: 'assistant', text: 'reply' },
+        { role: 'user', text: 'now' },
+      ]),
+      threadCtx('t-load', { acpSessionId: 'stored-2' }),
+      releasePrompts,
+    )
+
+    expect(calls.resumeSession).toHaveLength(1)
+    expect(calls.loadSession).toHaveLength(1)
+    expect(calls.newSession).toHaveLength(0)
+    expect(sentPromptText(calls)).toBe('now') // agent replays its own history
+  })
+
+  it('tier 2→3: loadSession rejects → newSession + transcript replay', async () => {
+    const { transport } = buildFakeTransport()
+    const { FakeConnection, calls, releasePrompts } = buildFakeConnection({ loadSession: true, rejectLoad: true })
+
+    const adapter = await connectAcpAdapter(remoteAgent, baseCtx(), {
+      openTransport: async () => transport,
+      ClientSideConnection: FakeConnection as never,
+    })
+
+    await drive(
+      adapter,
+      conversationInit([
+        { role: 'user', text: 'earlier' },
+        { role: 'assistant', text: 'reply' },
+        { role: 'user', text: 'now' },
+      ]),
+      threadCtx('t-loadfail', { acpSessionId: 'stored-3' }),
+      releasePrompts,
+    )
+
+    expect(calls.loadSession).toHaveLength(1)
+    expect(calls.newSession).toHaveLength(1)
+    expect(sentPromptText(calls)).toContain('Conversation so far:')
+  })
+
+  it('tier 3 consume-once: existing thread seeds the transcript on the first prompt but NOT the second', async () => {
+    const { transport } = buildFakeTransport()
+    const { FakeConnection, calls, releasePrompts } = buildFakeConnection() // no resume/load
+
+    const adapter = await connectAcpAdapter(remoteAgent, baseCtx(), {
+      openTransport: async () => transport,
+      ClientSideConnection: FakeConnection as never,
+    })
+
+    const persisted: string[] = []
+    const ctx = () => threadCtx('t-3', { acpSessionId: 'stale-x', onAcpSessionId: async (s) => void persisted.push(s) })
+
+    await drive(
+      adapter,
+      conversationInit([
+        { role: 'user', text: 'q1' },
+        { role: 'assistant', text: 'a1' },
+        { role: 'user', text: 'q2' },
+      ]),
+      ctx(),
+      releasePrompts,
+    )
+    // Second send: the live session now already contains q1/a1/q2, so re-seeding
+    // would double-inject. Guard is keyed on the fresh session's first send only.
+    await drive(
+      adapter,
+      conversationInit([
+        { role: 'user', text: 'q1' },
+        { role: 'assistant', text: 'a1' },
+        { role: 'user', text: 'q2' },
+        { role: 'assistant', text: 'a2' },
+        { role: 'user', text: 'q3' },
+      ]),
+      ctx(),
+      releasePrompts,
+    )
+
+    expect(calls.newSession).toHaveLength(1) // one fresh session, cached
+    expect(persisted).toEqual(['sess-1']) // persisted exactly once
+    expect(sentPromptText(calls, 0)).toContain('Conversation so far:')
+    expect(sentPromptText(calls, 1)).toBe('q3') // no re-seed on the second send
+  })
+
+  it('brand-new thread (no prior turns) never seeds a transcript on either send', async () => {
+    const { transport } = buildFakeTransport()
+    const { FakeConnection, calls, releasePrompts } = buildFakeConnection()
+
+    const adapter = await connectAcpAdapter(remoteAgent, baseCtx(), {
+      openTransport: async () => transport,
+      ClientSideConnection: FakeConnection as never,
+    })
+
+    // First ever prompt on a brand-new thread — no stored id, no prior turns.
+    await drive(adapter, conversationInit([{ role: 'user', text: 'hello' }]), threadCtx('t-new'), releasePrompts)
+    // Second prompt now carries [hello, hi-back] as "prior", but the live session
+    // already has them, so nothing must be seeded.
+    await drive(
+      adapter,
+      conversationInit([
+        { role: 'user', text: 'hello' },
+        { role: 'assistant', text: 'hi back' },
+        { role: 'user', text: 'again' },
+      ]),
+      threadCtx('t-new'),
+      releasePrompts,
+    )
+
+    expect(sentPromptText(calls, 0)).toBe('hello')
+    expect(sentPromptText(calls, 1)).toBe('again')
+  })
+
+  it('defers persistence: ensureSession warms a fresh session but does NOT persist until the first real send', async () => {
+    const { transport } = buildFakeTransport()
+    const { FakeConnection, calls, releasePrompts } = buildFakeConnection()
+
+    const adapter = await connectAcpAdapter(remoteAgent, baseCtx(), {
+      openTransport: async () => transport,
+      ClientSideConnection: FakeConnection as never,
+    })
+
+    const persisted: string[] = []
+    const onAcpSessionId = async (s: string) => void persisted.push(s)
+
+    await adapter.ensureSession(threadCtx('t-warm', { onAcpSessionId }))
+    expect(calls.newSession).toHaveLength(1)
+    expect(persisted).toEqual([]) // warming must not persist an empty session id
+
+    await drive(adapter, promptInit('first'), threadCtx('t-warm', { onAcpSessionId }), releasePrompts)
+    expect(calls.newSession).toHaveLength(1) // reused the warmed session
+    expect(persisted).toEqual(['sess-1']) // persisted only on the real send
+  })
+})
+
+describe('connectAcpAdapter — Stop cancels the remote ACP turn', () => {
+  /** A minimal permission request for the given session. The adapter only keys
+   *  off `sessionId` when routing, so the rest is filler. */
+  const permissionReq = (sessionId: string): RequestPermissionRequest =>
+    ({
+      sessionId,
+      toolCall: { toolCallId: 'tc-1' },
+      options: [{ optionId: 'allow', name: 'Allow', kind: 'allow_once' }],
+    }) as RequestPermissionRequest
+
+  it('aborting mid-stream sends session/cancel once and tears down the thread handlers', async () => {
+    const { transport } = buildFakeTransport()
+    const { FakeConnection, calls, pushPermission, releasePrompts } = buildFakeConnection()
+
+    const adapter = await connectAcpAdapter(remoteAgent, baseCtx(), {
+      openTransport: async () => transport,
+      ClientSideConnection: FakeConnection as never,
+    })
+
+    const controller = new AbortController()
+    // A thread-owned permission handler that would auto-allow while connected.
+    const requestPermission = async (): Promise<RequestPermissionResponse> => ({
+      outcome: { outcome: 'selected', optionId: 'allow' },
+    })
+    const response = await adapter.fetch(
+      promptInit('do something long', controller.signal),
+      threadCtx('thread-A', { requestPermission }),
+    )
+
+    // The prompt is in flight (gated open); nothing cancelled yet.
+    expect(calls.prompt).toHaveLength(1)
+    expect(calls.cancel).toHaveLength(0)
+
+    let sse: string[] = []
+    await act(async () => {
+      controller.abort()
+      // Even though the agent later finishes the (now-cancelled) turn, cancel
+      // must have fired exactly once — driven by the abort, not the resolution.
+      releasePrompts()
+      await getClock().runAllAsync()
+      sse = await readSse(response)
+    })
+
+    expect(calls.cancel).toHaveLength(1)
+    expect(calls.cancel[0]?.sessionId).toBe('sess-1')
+
+    // Teardown ran: the body closed with a terminal finish + [DONE]...
+    const joined = sse.join('')
+    expect(joined).toContain('"type":"finish"')
+    expect(joined).toContain('[DONE]')
+    expect(sse).toContain('[CLOSED]')
+
+    // ...and the thread's permission handler was unregistered, so a late
+    // permission prompt for that session now hits the `cancelled` fallback.
+    const outcome = await pushPermission(permissionReq('sess-1'))
+    expect(outcome?.outcome.outcome).toBe('cancelled')
+  })
+
+  it('a signal already aborted at fetch time cancels immediately', async () => {
+    const { transport } = buildFakeTransport()
+    const { FakeConnection, calls, releasePrompts } = buildFakeConnection()
+
+    const adapter = await connectAcpAdapter(remoteAgent, baseCtx(), {
+      openTransport: async () => transport,
+      ClientSideConnection: FakeConnection as never,
+    })
+
+    const response = await adapter.fetch(promptInit('hi', AbortSignal.abort()), threadCtx('thread-A'))
+
+    // The turn was issued (can't un-send) but immediately cancelled — once.
+    expect(calls.prompt).toHaveLength(1)
+    expect(calls.cancel).toHaveLength(1)
+    expect(calls.cancel[0]?.sessionId).toBe('sess-1')
+
+    await act(async () => {
+      releasePrompts()
+      await getClock().runAllAsync()
+      await readSse(response)
+    })
+
+    // The agent resolving the cancelled turn does not double-cancel.
+    expect(calls.cancel).toHaveLength(1)
+  })
+
+  it('a normal completion never sends session/cancel', async () => {
+    const { transport } = buildFakeTransport()
+    const { FakeConnection, calls, releasePrompts } = buildFakeConnection()
+
+    const adapter = await connectAcpAdapter(remoteAgent, baseCtx(), {
+      openTransport: async () => transport,
+      ClientSideConnection: FakeConnection as never,
+    })
+
+    const controller = new AbortController()
+    const response = await adapter.fetch(promptInit('hi', controller.signal), threadCtx('thread-A'))
+
+    let sse: string[] = []
+    await act(async () => {
+      releasePrompts()
+      await getClock().runAllAsync()
+      sse = await readSse(response)
+    })
+
+    expect(sse.join('')).toContain('"type":"finish"')
+    expect(calls.cancel).toHaveLength(0)
   })
 })

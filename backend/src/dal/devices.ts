@@ -4,7 +4,7 @@
 
 import type { db as DbType } from '@/db/client'
 import { devicesTable } from '@/db/schema'
-import { and, count, eq, isNull } from 'drizzle-orm'
+import { and, count, eq, isNull, or } from 'drizzle-orm'
 
 /** Get a device by ID. Returns userId, trusted, approvalPending, publicKey, and revokedAt, or null if not found. */
 export const getDeviceById = async (database: typeof DbType, deviceId: string) =>
@@ -53,11 +53,13 @@ export const upsertDevice = async (
     .returning()
 
 /** Revoke a device for a specific user. Sets revokedAt timestamp and clears approval state.
+ * Also clears the iroh P2P binding (node_id/node_id_attested_at) so the revoked endpoint
+ * identity stops syncing and a bridge operator's allowlist entry for it goes stale.
  * Only matches non-revoked devices so re-revoking is a no-op. */
 export const revokeDevice = async (database: typeof DbType, deviceId: string, userId: string) =>
   database
     .update(devicesTable)
-    .set({ revokedAt: new Date(), trusted: false, approvalPending: false })
+    .set({ revokedAt: new Date(), trusted: false, approvalPending: false, nodeId: null, nodeIdAttestedAt: null })
     .where(and(eq(devicesTable.id, deviceId), eq(devicesTable.userId, userId), isNull(devicesTable.revokedAt)))
     .returning()
 
@@ -92,13 +94,36 @@ export const countActiveDevices = async (database: typeof DbType, userId: string
   return rows[0]?.count ?? 0
 }
 
-/** Deny a pending device by clearing approval_pending. The trusted=false guard prevents
- * a TOCTOU race from revoking a concurrently-approved device. */
+/** Deny a pending device by clearing approval_pending, and clear its iroh P2P binding
+ * (node_id/node_id_attested_at) so a denied device stops being dialable — mirroring
+ * revokeDevice. The trusted=false guard prevents a TOCTOU race from revoking a
+ * concurrently-approved device. */
 export const denyDevice = async (database: typeof DbType, deviceId: string, userId: string) =>
   database
     .update(devicesTable)
-    .set({ approvalPending: false })
+    .set({ approvalPending: false, nodeId: null, nodeIdAttestedAt: null })
     .where(and(eq(devicesTable.id, deviceId), eq(devicesTable.userId, userId), eq(devicesTable.trusted, false)))
+    .returning()
+
+/**
+ * Bind a device to an iroh P2P endpoint identity (node_id) and stamp the attestation time.
+ * Only matches non-revoked devices that are trusted or still pending approval — a DENIED device
+ * (trusted=false, approval_pending=false) is excluded so a denied peer cannot be re-bound after
+ * denyDevice cleared its node_id, and a revoked device cannot be re-bound either.
+ * Returns updated rows so callers can detect the 0-row (not found / revoked / denied) case.
+ */
+export const setDeviceNodeId = async (database: typeof DbType, deviceId: string, userId: string, nodeId: string) =>
+  database
+    .update(devicesTable)
+    .set({ nodeId, nodeIdAttestedAt: new Date() })
+    .where(
+      and(
+        eq(devicesTable.id, deviceId),
+        eq(devicesTable.userId, userId),
+        isNull(devicesTable.revokedAt),
+        or(eq(devicesTable.trusted, true), eq(devicesTable.approvalPending, true)),
+      ),
+    )
     .returning()
 
 /**
@@ -125,7 +150,8 @@ export const registerDevice = async (
     // On conflict: update public keys, reset trusted to false and mark as pending approval
     // (device must go through approval flow again), and update lastSeen. This handles both
     // concurrent re-registration races and pre-encryption devices that were backfilled as
-    // trusted without an envelope.
+    // trusted without an envelope. Also clear the iroh P2P binding (node_id/node_id_attested_at)
+    // so the old endpoint identity stops syncing while keys/trust reset — mirroring revokeDevice.
     .onConflictDoUpdate({
       target: devicesTable.id,
       set: {
@@ -133,6 +159,8 @@ export const registerDevice = async (
         mlkemPublicKey: device.mlkemPublicKey,
         trusted: false,
         approvalPending: true,
+        nodeId: null,
+        nodeIdAttestedAt: null,
         lastSeen: new Date(),
       },
       setWhere: eq(devicesTable.userId, device.userId),

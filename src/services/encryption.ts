@@ -39,6 +39,7 @@ import {
   fetchCanary,
   denyDevice as denyDeviceApi,
   revokeDevice as revokeDeviceApi,
+  setDeviceNodeId as setDeviceNodeIdApi,
   type RegisterDeviceResponse,
 } from '@/api/encryption'
 import { invalidateCKCache, resetCodecState } from '@/db/encryption'
@@ -197,6 +198,20 @@ export const approveDevice = async (
 export const denyDeviceWithProof = async (httpClient: HttpClient, deviceId: string): Promise<void> => {
   const canarySecret = await extractCanarySecret(httpClient)
   await denyDeviceApi(httpClient, deviceId, canarySecret)
+}
+
+/**
+ * Bind a device to an iroh P2P endpoint identity (node_id) with proof-of-CK-possession.
+ * The canary secret proves this (trusted) device holds the Content Key before the backend
+ * writes the node_id; it then syncs down to every device via PowerSync.
+ */
+export const setDeviceNodeIdWithProof = async (
+  httpClient: HttpClient,
+  deviceId: string,
+  nodeId: string,
+): Promise<void> => {
+  const canarySecret = await extractCanarySecret(httpClient)
+  await setDeviceNodeIdApi(httpClient, deviceId, nodeId, canarySecret)
 }
 
 /**

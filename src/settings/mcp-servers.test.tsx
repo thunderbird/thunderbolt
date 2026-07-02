@@ -8,6 +8,7 @@ import { getDb } from '@/db/database'
 import { renderWithReactivity, waitForElement } from '@/test-utils/powersync-reactivity-test'
 import { getClock } from '@/testing-library'
 import { MCPProvider, useMCP, type MCPClient } from '@/lib/mcp-provider'
+import type { MCPTransportType } from '@/lib/mcp-transport'
 import type { McpServersPageDeps } from './mcp-servers'
 import '@testing-library/jest-dom'
 import { act, cleanup, fireEvent, screen } from '@testing-library/react'
@@ -28,7 +29,7 @@ const unauthorized = () => Object.assign(new Error('Unauthorized'), { code: 401 
 const neverResolves = (() => new Promise<MCPClient>(() => {})) as (
   id: string,
   url: string,
-  type: 'http' | 'sse',
+  type: MCPTransportType,
 ) => Promise<MCPClient>
 
 const McpProviderWrapper = ({ children }: { children: ReactNode }) =>
@@ -284,6 +285,67 @@ describe('McpServersPage Add & Authorize', () => {
   })
 })
 
+describe('McpServersPage iroh add flow', () => {
+  const irohTarget = 'a'.repeat(52)
+  const appNodeId = 'b'.repeat(52)
+
+  beforeAll(async () => {
+    await setupTestDatabase()
+  })
+
+  afterAll(async () => {
+    await teardownTestDatabase()
+  })
+
+  beforeEach(async () => {
+    await resetTestDatabase()
+  })
+
+  afterEach(() => {
+    cleanup()
+  })
+
+  const openIrohDialog = async () => {
+    const result = renderWithReactivity(<McpServersPage deps={{ loadAppNodeId: async () => appNodeId }} />, {
+      tables: ['mcp_servers', 'mcp_secrets'],
+      wrapper: McpProviderWrapper,
+    })
+    const openButton = await waitForElement(() => screen.queryByRole('button', { name: 'Add Server' }))
+    fireEvent.click(openButton)
+    const urlInput = await waitForElement(() => screen.queryByPlaceholderText('http://localhost:8000/mcp/'))
+    fireEvent.change(screen.getByPlaceholderText('Server name (used to prefix tools)'), {
+      target: { value: 'Laptop Bridge' },
+    })
+    fireEvent.change(urlInput, { target: { value: irohTarget } })
+    return result
+  }
+
+  it('shows the pairing panel with this app allow command for an iroh target', async () => {
+    await openIrohDialog()
+    const panel = await waitForElement(() => screen.queryByTestId('iroh-pairing-panel'))
+    await waitForElement(() => (panel.textContent?.includes(`thunderbolt iroh allow ${appNodeId}`) ? panel : null))
+    // The http/sse-only controls are hidden for iroh.
+    expect(screen.queryByRole('button', { name: /Test Connection/ })).not.toBeInTheDocument()
+    expect(screen.queryByPlaceholderText('Bearer token or API key')).not.toBeInTheDocument()
+  })
+
+  it('stores the server with type="iroh" and the NodeId as url', async () => {
+    const db = getDb()
+    await openIrohDialog()
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Add Server' }))
+      await getClock().runAllAsync()
+    })
+
+    const created = await getAllMcpServers(db)
+    expect(created).toHaveLength(1)
+    expect(created[0]?.type).toBe('iroh')
+    expect(created[0]?.url).toBe(irohTarget)
+    expect(created[0]?.name).toBe('Laptop Bridge')
+  })
+})
+
 describe('McpServersPage probe lifecycle', () => {
   beforeAll(async () => {
     await setupTestDatabase()
@@ -350,7 +412,7 @@ describe('McpServersPage probe lifecycle', () => {
   })
 })
 
-type CreateClientFn = (serverId: string, url: string, type: 'http' | 'sse') => Promise<MCPClient>
+type CreateClientFn = (serverId: string, url: string, type: MCPTransportType) => Promise<MCPClient>
 
 /** A connected-client stand-in whose tools() reports the given names. */
 const fakeClient = (toolNames: string[]): MCPClient =>

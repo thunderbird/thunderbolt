@@ -133,7 +133,7 @@ export const mcpServersTable = sqliteTable(
   {
     id: text('id').primaryKey(),
     name: text('name'),
-    type: text('type', { enum: ['http', 'sse', 'stdio'] }).default('http'),
+    type: text('type', { enum: ['http', 'sse', 'stdio', 'iroh'] }).default('http'),
     url: text('url'),
     command: text('command'),
     args: text('args'),
@@ -275,6 +275,12 @@ export const devicesTable = sqliteTable('devices', {
   lastSeen: text('last_seen'),
   createdAt: text('created_at'),
   revokedAt: text('revoked_at'),
+  // iroh P2P endpoint identity. Set only via the canary-gated backend route, then synced down.
+  // Deploy ordering: these ship in the same PR as backend migration 0021, but the `SELECT *`
+  // devices sync rule only replicates them once that migration deploys and PowerSync Cloud rules
+  // are refreshed. Until then nodeId stays null cross-device — pairing is inert, never errors.
+  nodeId: text('node_id'),
+  nodeIdAttestedAt: text('node_id_attested_at'),
 })
 
 /** Synced via PowerSync. User-created ACP agents only. `isSystem` is always 0; built-ins and system agents are not rows. */
@@ -284,7 +290,11 @@ export const agentsTable = sqliteTable(
     id: text('id').primaryKey(),
     name: text('name').notNull(),
     type: text('type', { enum: ['remote-acp', 'managed-acp'] }).notNull(),
-    transport: text('transport', { enum: ['websocket'] }).notNull(),
+    // `iroh` dials a peer bridge by NodeId/ticket (carried in `url`); `websocket`
+    // is a `ws(s)://` endpoint. Enum is TypeScript-only on a TEXT column — no SQL
+    // CHECK — so adding a value needs no migration, and the `SELECT *` sync rule
+    // already replicates it.
+    transport: text('transport', { enum: ['websocket', 'iroh'] }).notNull(),
     url: text('url').notNull(),
     description: text('description'),
     icon: text('icon'),
@@ -304,7 +314,7 @@ export const agentsSystemTable = sqliteTable('agents_system', {
   id: text('id').primaryKey(),
   name: text('name').notNull(),
   type: text('type', { enum: ['managed-acp'] }).notNull(),
-  transport: text('transport', { enum: ['websocket'] }).notNull(),
+  transport: text('transport', { enum: ['websocket', 'iroh'] }).notNull(),
   url: text('url').notNull(),
   description: text('description'),
   icon: text('icon'),

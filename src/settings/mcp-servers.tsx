@@ -58,6 +58,8 @@ import { parseMcpServersConfig, type ParsedMcpServer } from '@/lib/mcp-config-im
 import { validateMcpServerUrl } from '@/lib/mcp-url-validation'
 import { useMcpServerOAuth, type McpOAuthCallback, type OAuthCardState } from '@/hooks/use-mcp-server-oauth'
 import { generateServerName, useAddServerForm } from '@/hooks/use-add-server-form'
+import { IrohPairingPanel, useAppNodeId } from '@/components/settings/iroh-pairing-panel'
+import { useCopyToClipboard } from '@/hooks/use-copy-to-clipboard'
 
 export { generateServerName }
 
@@ -105,6 +107,10 @@ export type McpServersPageDeps = {
   classifyMcpServerAuth?: typeof classifyMcpServerAuth
   startMcpOAuthFlow?: typeof startMcpOAuthFlow
   completeMcpOAuthFlow?: typeof completeMcpOAuthFlow
+  /** Test/DI override for reading this app's iroh NodeId (the pairing identity).
+   *  Production omits and lazy-loads the wasm client only when an iroh target is
+   *  entered, keeping the wasm chunk off the entry bundle. */
+  loadAppNodeId?: () => Promise<string>
 }
 
 type StatusTone = 'success' | 'warning' | 'destructive'
@@ -239,6 +245,7 @@ export default function McpServersPage({ deps = {} }: { deps?: McpServersPageDep
     name: newServerName,
     url: newServerUrl,
     transport: newServerTransport,
+    isIroh,
     token: newServerToken,
     testResult,
     isTestingConnection,
@@ -248,8 +255,16 @@ export default function McpServersPage({ deps = {} }: { deps?: McpServersPageDep
     handleUrlBlur,
   } = form
   // In simple mode the URL gates auto-detect / Add; advanced mode imports raw JSON.
-  const urlValidation = newServerUrl ? validateMcpServerUrl(newServerUrl) : null
+  // An iroh NodeId isn't a URL, so skip the http/sse URL validation for it — its
+  // readiness is a valid target (already detected) plus a name (no derivable
+  // fallback exists for a NodeId, unlike a hostname).
+  const urlValidation = !isIroh && newServerUrl ? validateMcpServerUrl(newServerUrl) : null
   const isUrlValid = urlValidation?.ok === true
+  const irohReady = isIroh && resolveServerName().length > 0
+  // Load this app's iroh NodeId only while an iroh target is entered — keeps the
+  // wasm chunk lazy and off the entry bundle (and the http/sse flow).
+  const appNodeId = useAppNodeId(isIroh, deps.loadAppNodeId)
+  const { copy: copyAllowCommand, isCopied: allowCommandCopied } = useCopyToClipboard()
 
   // The add-dialog surfaces at most one error: a JSON import failure (advanced) or
   // an OAuth authorization failure (simple). The title is derived from the error
@@ -366,10 +381,13 @@ export default function McpServersPage({ deps = {} }: { deps?: McpServersPageDep
   }
 
   const handleAddServer = async () => {
-    if (!newServerUrl || !isUrlValid) {
+    // iroh stores the trimmed NodeId/ticket as `url` (type='iroh' rides through
+    // `form.transport`); http/sse require a valid URL + a successful probe.
+    if (isIroh ? !irohReady : !newServerUrl || !isUrlValid) {
       return
     }
-    await addServerMutation.mutateAsync({ id: uuidv7(), name: resolveServerName(), url: newServerUrl })
+    const url = isIroh ? newServerUrl.trim() : newServerUrl
+    await addServerMutation.mutateAsync({ id: uuidv7(), name: resolveServerName(), url })
     form.resetAddDialog()
     resetLocalDialogState()
   }
@@ -428,7 +446,9 @@ export default function McpServersPage({ deps = {} }: { deps?: McpServersPageDep
   const handleUrlKeyDown = (e: KeyboardEvent) => {
     if (e.key === 'Enter') {
       e.preventDefault()
-      if (testResult.kind === 'idle' && newServerUrl && isUrlValid) {
+      if (isIroh) {
+        handleAddServer()
+      } else if (testResult.kind === 'idle' && newServerUrl && isUrlValid) {
         testConnection()
       } else if (testResult.kind === 'success') {
         handleAddServer()
@@ -613,8 +633,8 @@ export default function McpServersPage({ deps = {} }: { deps?: McpServersPageDep
 
             <div className="flex-1 overflow-y-auto px-1 -mx-1">
               {mode === 'simple' ? (
-                <div className="grid gap-4 pt-4 pb-2">
-                  <div className="grid gap-2">
+                <div className="grid grid-cols-1 gap-4 pt-4 pb-2">
+                  <div className="grid grid-cols-1 gap-2">
                     <Label htmlFor="name">Name</Label>
                     <Input
                       id="name"
@@ -624,7 +644,7 @@ export default function McpServersPage({ deps = {} }: { deps?: McpServersPageDep
                     />
                   </div>
 
-                  <div className="grid gap-2">
+                  <div className="grid grid-cols-1 gap-2">
                     <Label htmlFor="url">Server URL</Label>
                     <Input
                       id="url"
@@ -634,82 +654,98 @@ export default function McpServersPage({ deps = {} }: { deps?: McpServersPageDep
                       onBlur={handleUrlBlur}
                       onKeyDown={handleUrlKeyDown}
                       aria-invalid={urlValidation?.ok === false}
+                      autoCapitalize="none"
+                      autoCorrect="off"
+                      spellCheck={false}
                     />
                     {urlValidation?.ok === false && (
                       <p className="text-[length:var(--font-size-xs)] text-destructive">{urlValidation.reason}</p>
                     )}
+                    <p className="text-[length:var(--font-size-xs)] text-muted-foreground">
+                      A URL, or paste an iroh ticket from your bridge for a peer-to-peer connection (a bare NodeId works
+                      only if the peer is discoverable).
+                    </p>
                   </div>
 
-                  <div className="grid gap-2">
-                    <Label htmlFor="transport">Transport</Label>
-                    <Select
-                      value={newServerTransport}
-                      onValueChange={(value) => form.changeTransport(value as MCPTransportType)}
-                    >
-                      <SelectTrigger id="transport" className="w-full rounded-lg">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="http">HTTP</SelectItem>
-                        <SelectItem value="sse">SSE</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
+                  {/* iroh dials a peer bridge by NodeId/ticket — no transport
+                      Select, credential, or probe (the link is encrypted and
+                      allowlist-gated, verified on first use). */}
+                  {isIroh ? (
+                    <IrohPairingPanel appNodeId={appNodeId} copy={copyAllowCommand} isCopied={allowCommandCopied} />
+                  ) : (
+                    <>
+                      <div className="grid grid-cols-1 gap-2">
+                        <Label htmlFor="transport">Transport</Label>
+                        <Select
+                          value={newServerTransport}
+                          onValueChange={(value) => form.changeTransport(value as MCPTransportType)}
+                        >
+                          <SelectTrigger id="transport" className="w-full rounded-lg">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="http">HTTP</SelectItem>
+                            <SelectItem value="sse">SSE</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
 
-                  <div className="grid gap-2">
-                    <Label htmlFor="token">Credential (optional)</Label>
-                    <Input
-                      id="token"
-                      type="password"
-                      placeholder="Bearer token or API key"
-                      value={newServerToken}
-                      onChange={(e) => form.changeToken(e.target.value)}
-                    />
-                  </div>
+                      <div className="grid grid-cols-1 gap-2">
+                        <Label htmlFor="token">Credential (optional)</Label>
+                        <Input
+                          id="token"
+                          type="password"
+                          placeholder="Bearer token or API key"
+                          value={newServerToken}
+                          onChange={(e) => form.changeToken(e.target.value)}
+                        />
+                      </div>
 
-                  {newServerUrl && isUrlValid && (
-                    <Button
-                      onClick={testConnection}
-                      disabled={isTestingConnection}
-                      variant="outline"
-                      className="w-full"
-                    >
-                      {isTestingConnection ? 'Testing Connection...' : 'Test Connection'}
-                    </Button>
-                  )}
-
-                  {testResult.kind === 'success' && (
-                    <StatusPanel tone="success" icon={<Check className="h-4 w-4" />} title="Connection successful!">
-                      {serverCapabilities.length > 0 && (
-                        <div className="mt-3">
-                          <p className="text-sm text-success font-medium">Available tools:</p>
-                          <ul className="text-sm text-success/90 mt-1 space-y-1 max-h-40 overflow-y-auto">
-                            {serverCapabilities.map((capability, index) => (
-                              <li key={index} className="flex items-center gap-2">
-                                <div className="w-1 h-1 bg-success rounded-full" />
-                                {capability}
-                              </li>
-                            ))}
-                          </ul>
-                        </div>
+                      {newServerUrl && isUrlValid && (
+                        <Button
+                          onClick={testConnection}
+                          disabled={isTestingConnection}
+                          variant="outline"
+                          className="w-full"
+                        >
+                          {isTestingConnection ? 'Testing Connection...' : 'Test Connection'}
+                        </Button>
                       )}
-                    </StatusPanel>
-                  )}
 
-                  {testResult.kind !== 'success' &&
-                    testResult.kind !== 'idle' &&
-                    (() => {
-                      const panel = testResultPanels[testResult.kind]
-                      return (
-                        <StatusPanel tone={panel.tone} icon={panel.icon} title={panel.title}>
-                          <p className={`text-sm mt-1 ${toneClasses[panel.tone].body}`}>{panel.body}</p>
+                      {testResult.kind === 'success' && (
+                        <StatusPanel tone="success" icon={<Check className="h-4 w-4" />} title="Connection successful!">
+                          {serverCapabilities.length > 0 && (
+                            <div className="mt-3">
+                              <p className="text-sm text-success font-medium">Available tools:</p>
+                              <ul className="text-sm text-success/90 mt-1 space-y-1 max-h-40 overflow-y-auto">
+                                {serverCapabilities.map((capability, index) => (
+                                  <li key={index} className="flex items-center gap-2">
+                                    <div className="w-1 h-1 bg-success rounded-full" />
+                                    {capability}
+                                  </li>
+                                ))}
+                              </ul>
+                            </div>
+                          )}
                         </StatusPanel>
-                      )
-                    })()}
+                      )}
+
+                      {testResult.kind !== 'success' &&
+                        testResult.kind !== 'idle' &&
+                        (() => {
+                          const panel = testResultPanels[testResult.kind]
+                          return (
+                            <StatusPanel tone={panel.tone} icon={panel.icon} title={panel.title}>
+                              <p className={`text-sm mt-1 ${toneClasses[panel.tone].body}`}>{panel.body}</p>
+                            </StatusPanel>
+                          )
+                        })()}
+                    </>
+                  )}
                 </div>
               ) : (
-                <div className="grid gap-4 pt-4 pb-2">
-                  <div className="grid gap-2">
+                <div className="grid grid-cols-1 gap-4 pt-4 pb-2">
+                  <div className="grid grid-cols-1 gap-2">
                     <Label htmlFor="json-config">Servers JSON</Label>
                     <Textarea
                       id="json-config"
@@ -751,7 +787,7 @@ export default function McpServersPage({ deps = {} }: { deps?: McpServersPageDep
                 <Button onClick={handleImportConfig} disabled={!jsonText.trim() || importServersMutation.isPending}>
                   Import Servers
                 </Button>
-              ) : testResult.kind === 'needs-oauth' ? (
+              ) : !isIroh && testResult.kind === 'needs-oauth' ? (
                 <Button
                   onClick={handleAddAndAuthorize}
                   disabled={!newServerUrl || !isUrlValid || isAddAuthorizePending}
@@ -762,7 +798,7 @@ export default function McpServersPage({ deps = {} }: { deps?: McpServersPageDep
               ) : (
                 <Button
                   onClick={handleAddServer}
-                  disabled={!newServerUrl || !isUrlValid || testResult.kind !== 'success'}
+                  disabled={isIroh ? !irohReady : !newServerUrl || !isUrlValid || testResult.kind !== 'success'}
                 >
                   Add Server
                 </Button>

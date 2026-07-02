@@ -9,10 +9,13 @@ import { SSEClientTransport } from '@modelcontextprotocol/sdk/client/sse.js'
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js'
 import type { Transport } from '@modelcontextprotocol/sdk/shared/transport.js'
 import { getAuthToken } from './auth-token'
+import { createMcpIrohTransport } from './mcp-iroh-transport'
 import { computeEffectiveProxyEnabled, createProxyFetch } from './proxy-fetch'
 
-/** Remote transport kind. stdio (local) servers are connected by THU-575, not here. */
-export type MCPTransportType = 'http' | 'sse'
+/** Remote transport kind. `iroh` dials a peer-to-peer CLI bridge by NodeId/ticket;
+ *  http/sse hit a URL through the universal proxy. stdio (local) servers are
+ *  connected by THU-575, not here. */
+export type MCPTransportType = 'http' | 'sse' | 'iroh'
 
 /**
  * Reconciles a version mismatch between `@ai-sdk/mcp` and `@modelcontextprotocol/sdk` at our
@@ -72,6 +75,12 @@ export const createMcpTransport = (
   cloudUrl: string,
   headers: Record<string, string>,
 ) => {
+  // iroh dials a peer bridge by NodeId/ticket over an encrypted relay — no URL,
+  // proxy, or bearer applies (the link is e2e-encrypted and allowlist-gated), so
+  // `cloudUrl`/`headers` are unused. `url` carries the NodeId/ticket.
+  if (type === 'iroh') {
+    return createMcpIrohTransport({ target: url })
+  }
   const urlObj = new URL(url)
   // Authenticate the proxy hop with the Thunderbolt session bearer (the same getter the
   // app-wide ProxyFetchProvider uses) — without it `/v1/proxy` returns 401. The upstream

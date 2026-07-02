@@ -57,6 +57,19 @@ export const revokeDevice = async (httpClient: HttpClient, deviceId: string, can
   })
 }
 
+/**
+ * Bind a device row to an iroh P2P endpoint identity (node_id). Requires canary
+ * proof-of-CK-possession — only a trusted device holding the Content Key may attest it.
+ */
+export const setDeviceNodeId = async (
+  httpClient: HttpClient,
+  deviceId: string,
+  nodeId: string,
+  canarySecret: string,
+): Promise<void> => {
+  await httpClient.post(`devices/${encodeURIComponent(deviceId)}/node-id`, { json: { nodeId, canarySecret } })
+}
+
 /** Cancel this device's pending approval state (called by the pending device itself). */
 export const cancelPending = async (httpClient: HttpClient): Promise<void> => {
   await httpClient.post('devices/me/cancel-pending')

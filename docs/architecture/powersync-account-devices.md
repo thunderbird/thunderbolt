@@ -70,6 +70,10 @@ Split the work into two PRs to avoid sync rule mismatches:
    - Frontend: table in `src/db/tables.ts`, `src/db/powersync/schema.ts`, and any UI/feature code.
    - Merge after PR 1 is deployed and PowerSync rules are updated.
 
+### Adding Columns to an Existing Synced Table
+
+A new column on a `SELECT *` table (all current sync rules) carries the same silent-failure risk as a new table: the backend migration must deploy **and** the PowerSync Cloud sync rules must be refreshed before the column replicates. If the frontend schema ships first, the column stays null across devices while local tests pass. When backend and frontend land in the same PR (e.g. `devices.node_id` / `node_id_attested_at`, migration `0021`), splitting is unnecessary if the feature tolerates a null value, but the deployer must still run the migration and refresh the dashboard rules before relying on the column cross-device.
+
 ---
 
 ## 3. Local Development (PowerSync Docker)

@@ -408,6 +408,13 @@ export const createTranslatorStream = (
     start(c) {
       controller = c
     },
+    // The consumer (AI SDK) stopped reading — e.g. the user hit Stop. Mark the
+    // stream closed so any in-flight translator emit or a late `close()` becomes
+    // a safe no-op regardless of teardown ordering. The adapter wires the actual
+    // remote `session/cancel` off the request's abort signal.
+    cancel() {
+      closed = true
+    },
   })
 
   const emit = (chunk: AiSdkChunk): void => {

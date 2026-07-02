@@ -105,12 +105,16 @@ export const useAllAgents = (): Agent[] => {
   return composeAllAgents(useSystemAgents(), useAgents(), { includeBuiltIn })
 }
 
+/** Wire transports a user-creatable custom agent can use: a `ws(s)://` endpoint,
+ *  or an iroh P2P bridge dialed by the NodeId/ticket held in `url`. */
+export type CustomAgentTransport = 'websocket' | 'iroh'
+
 /** Fields accepted by `createAgent`. `id` is caller-generated (uuid). */
 export type CreateAgentInput = {
   id: string
   name: string
   type: 'remote-acp' | 'managed-acp'
-  transport: 'websocket'
+  transport: CustomAgentTransport
   url: string
   description?: string | null
   icon?: string | null

@@ -25,6 +25,10 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       rust: ${{ steps.filter.outputs.rust }}
+      agent-core: ${{ steps.filter.outputs.agent-core }}
+      cli: ${{ steps.filter.outputs.cli }}
+      wasm-artifact: ${{ steps.filter.outputs.wasm-artifact }}
+      crate-src: ${{ steps.filter.outputs.crate-src }}
     steps:
       - name: Checkout code
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
@@ -41,6 +45,23 @@ jobs:
               - 'src-tauri/build.rs'
               - 'src-tauri/rust-toolchain.toml'
               - 'src-tauri/.cargo/**'
+              - 'crates/**'
+            agent-core:
+              - 'shared/agent-core/**'
+            cli:
+              - 'cli/**'
+            wasm-artifact:
+              - 'src/acp/iroh/pkg/**'
+            # Inputs that change the compiled wasm (README.md excluded — it doesn't).
+            # Pairs with the wasm-artifact staleness gate: touching any of these MUST
+            # ship a regenerated src/acp/iroh/pkg in the same PR.
+            crate-src:
+              - 'crates/thunderbolt-acp-client/src/**'
+              - 'crates/thunderbolt-acp-client/Cargo.toml'
+              - 'crates/thunderbolt-acp-client/Cargo.lock'
+              - 'crates/thunderbolt-acp-client/rust-toolchain.toml'
+              - 'crates/thunderbolt-acp-client/.cargo/**'
+              - 'crates/thunderbolt-acp-client/build.sh'
 
   typescript:
     runs-on: ubuntu-latest
@@ -126,6 +147,113 @@ jobs:
           path: .metrics-baseline
           key: pr-metrics-main-${{ github.sha }}
 
+  # shared/agent-core is an isolated module (also consumed by cli/). Its unit tests
+  # are NOT part of the default `bun run test` — they only need to run when the
+  # module itself changes, so gate them on the agent-core path filter. Mirrors the
+  # `rust` job's detect-changes pattern and the `typescript` job's Bun setup.
+  agent-core:
+    needs: detect-changes
+    if: needs.detect-changes.outputs.agent-core == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+
+      - name: Setup Node.js
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+        with:
+          node-version: '20'
+
+      - name: Install Bun
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with:
+          bun-version: 1.3.14
+
+      - name: Cache Bun dependencies
+        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
+        with:
+          path: |
+            ~/.bun/install/cache
+            node_modules
+          key: bun-${{ hashFiles('bun.lock') }}
+          restore-keys: |
+            bun-
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Run agent-core tests (5x)
+        run: bun run test:agent-core:5x
+
+  # cli/ is a self-contained package (own bun.lock, no imports from src/ or shared/),
+  # so its tests and typecheck aren't reached by the `typescript` job. Gate on the
+  # `cli/**` path filter — same detect-changes mechanism as the `rust` and
+  # `agent-core` jobs — so it runs only when cli/ changes.
+  cli:
+    needs: detect-changes
+    if: needs.detect-changes.outputs.cli == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+
+      - name: Install Bun
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with:
+          bun-version: 1.3.14
+
+      - name: Cache Bun dependencies (cli)
+        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
+        with:
+          path: |
+            ~/.bun/install/cache
+            cli/node_modules
+          key: cli-bun-${{ hashFiles('cli/bun.lock') }}
+          restore-keys: |
+            cli-bun-
+
+      - name: Install cli dependencies
+        run: cd cli && bun install --frozen-lockfile
+
+      - name: Type check cli
+        run: cd cli && bun run typecheck
+
+      - name: Run cli tests (5x)
+        run: cd cli && bun run test:5x
+
+  # The iroh ACP client (P2P/QUIC crypto core) ships as a prebuilt wasm artifact at
+  # src/acp/iroh/pkg so the web app imports it without a wasm toolchain in CI. The
+  # committed binary embeds ~750 absolute ~/.cargo build paths, so it is byte-for-byte
+  # reproducible only on the machine that built it — a Linux/macOS CI rebuild can never
+  # match hash-for-hash (see the crate README's provenance note). CI therefore enforces
+  # provenance two ways, neither needing a wasm toolchain:
+  #   1. Staleness gate — a change to the crate source MUST ship a regenerated pkg/ in
+  #      the same PR, so editing the crate can't silently leave the committed wasm stale
+  #      (the `rust` job host-compiles the crate but never touches the binary).
+  #   2. Tamper-evidence — the committed pkg/ must match its CHECKSUMS.txt manifest.
+  # Reproduce a bit-identical artifact locally on the pinned toolchain with
+  # `crates/thunderbolt-acp-client/build.sh --verify` (see that crate's README).
+  wasm-artifact:
+    needs: detect-changes
+    if: needs.detect-changes.outputs.wasm-artifact == 'true' || needs.detect-changes.outputs.crate-src == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+
+      # Crate source changed but the committed pkg/ didn't — the wasm wasn't rebuilt,
+      # so it's now stale relative to its source. Fail with the fix instruction.
+      - name: Guard against stale wasm artifact
+        if: needs.detect-changes.outputs.crate-src == 'true' && needs.detect-changes.outputs.wasm-artifact != 'true'
+        run: |
+          echo "::error::crates/thunderbolt-acp-client changed but src/acp/iroh/pkg was not regenerated — the committed wasm is stale."
+          echo "Rebuild and commit the artifact in the same change: crates/thunderbolt-acp-client/build.sh (then commit src/acp/iroh/pkg)."
+          exit 1
+
+      - name: Verify committed wasm artifacts match checksums manifest
+        if: needs.detect-changes.outputs.wasm-artifact == 'true'
+        run: cd src/acp/iroh/pkg && shasum -a 256 -c CHECKSUMS.txt
+
   rust:
     needs: detect-changes
     if: needs.detect-changes.outputs.rust == 'true'
@@ -185,6 +313,21 @@ jobs:
           RUSTC_WRAPPER: ''
         run: |
           cd src-tauri
+          cargo build --all-targets
+          cargo clippy --all-targets -- -D warnings
+          cargo test
+
+      # crates/ holds the standalone thunderbolt-acp-client crate (own Cargo.toml
+      # and Cargo.lock, not a src-tauri workspace member), so the src-tauri build
+      # above never compiles it. Its wasm cdylib is the deployed artifact; the rlib
+      # target lets these host-target checks run without a wasm toolchain — the
+      # .cargo/config.toml rustflags are scoped to wasm32, so no --target override.
+      - name: Build and check ACP client crate
+        env:
+          CARGO_INCREMENTAL: 0
+          RUSTC_WRAPPER: ''
+        run: |
+          cd crates/thunderbolt-acp-client
           cargo build --all-targets
           cargo clippy --all-targets -- -D warnings
           cargo test

@@ -7,6 +7,7 @@ import { setMcpServerCredentials } from '@/dal/mcp-secrets'
 import { setupTestDatabase, teardownTestDatabase } from '@/dal/test-utils'
 import { getDb } from '@/db/database'
 import { createQueryTestWrapper } from '@/test-utils/react-query'
+import type { MCPTransportType } from '@/lib/mcp-transport'
 import type { MCPClient } from '@ai-sdk/mcp'
 import type { FetchLike } from '@modelcontextprotocol/sdk/shared/transport.js'
 import { act, cleanup, renderHook } from '@testing-library/react'
@@ -40,7 +41,7 @@ const fakeClient = (): MCPClient & { closeCount: () => number } => {
 
 const server = { id: 's1', name: 'Server 1', url: 'https://example.test/mcp', type: 'http' as const, enabled: true }
 
-const renderProvider = (createClient: (id: string, url: string, type: 'http' | 'sse') => Promise<MCPClient>) => {
+const renderProvider = (createClient: (id: string, url: string, type: MCPTransportType) => Promise<MCPClient>) => {
   const queryWrapper = createQueryTestWrapper()
   const wrapper = ({ children }: { children: ReactNode }) =>
     createElement(queryWrapper, null, createElement(MCPProvider, { createClient, children }))

@@ -1,0 +1,8 @@
+# Pinned so the committed wasm artifact (src/acp/iroh/pkg) is byte-for-byte
+# reproducible: rustc embeds its sysroot commit hash and absolute panic-location
+# paths into the binary, so a different rustc yields a different hash. Bump this
+# and regenerate the artifact + CHECKSUMS.txt (./build.sh) in the same commit.
+[toolchain]
+channel = "1.94.0"
+components = ["rustfmt", "clippy"]
+targets = ["wasm32-unknown-unknown"]

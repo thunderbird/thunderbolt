@@ -5,9 +5,14 @@
 import { useDatabase } from '@/contexts'
 import { getRemoteMcpServers } from '@/dal'
 import { useMCP } from '@/lib/mcp-provider'
+import type { MCPTransportType } from '@/lib/mcp-transport'
 import { toCompilableQuery } from '@powersync/drizzle-driver'
 import { useQuery } from '@powersync/tanstack-react-query'
 import { useEffect } from 'react'
+
+/** Map a stored MCP server `type` to the remote transport the provider connects.
+ *  `getRemoteMcpServers` filters to http/sse/iroh, so anything else defaults to http. */
+const toTransportType = (type: string | null): MCPTransportType => (type === 'sse' || type === 'iroh' ? type : 'http')
 
 export const useMcpSync = () => {
   const db = useDatabase()
@@ -31,7 +36,7 @@ export const useMcpSync = () => {
             id: dbServer.id,
             name: dbServer.name ?? '',
             url: dbServer.url || '',
-            type: dbServer.type === 'sse' ? 'sse' : 'http',
+            type: toTransportType(dbServer.type),
             enabled: dbServer.enabled === 1,
           })
         }

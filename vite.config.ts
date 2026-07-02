@@ -113,6 +113,34 @@ export default defineConfig({
       // machinery into the lazy PowerSync chunk. Like powersync-web-internal above,
       // lib/ is an internal path — verify it still exists when upgrading the package.
       '@powersync/common': path.resolve(__dirname, 'node_modules/@powersync/common/lib/index.js'),
+      // ---- In-browser Pi harness (lazy `@shared/agent-core` chunk) Node shims ----
+      // The harness runs `@earendil-works/pi-agent-core` + `pi-ai` + `just-bash` +
+      // ZenFS in the browser. The four coding tools are now plain `AgentTool`s over
+      // BrowserExecutionEnv (see `shared/agent-core/coding-tools`), so the
+      // `@earendil-works/pi-coding-agent` CLI — and its cross-spawn / which / undici /
+      // graceful-fs / pi-tui cascade — is no longer imported. Only a small residual of
+      // Node-builtin shims remains, for code still on the app path:
+      //
+      // `just-bash`'s browser bundle evaluates `createRequire(import.meta.url)` at
+      // module scope, so `module` must resolve to a shim that exposes `createRequire`.
+      module: path.resolve(__dirname, './shared/agent-core/browser-stubs/node-module.ts'),
+      'node:module': path.resolve(__dirname, './shared/agent-core/browser-stubs/node-module.ts'),
+      // `path` runs at browser runtime; use the battle-tested polyfill.
+      path: 'path-browserify',
+      'node:path': 'path-browserify',
+      // `crypto` delegates to the browser's native Web Crypto (real `randomUUID` /
+      // `randomBytes`); `fs`/`fs/promises` present an empty filesystem (the harness's
+      // real I/O goes through ZenFS). All are reached only lazily — via the
+      // `createRequire` shim above, pi-ai's `process.versions.bun`-guarded
+      // `require("node:fs")` fallback, or optional SDK code paths — never at module
+      // scope. NOTE: `fs/promises` MUST precede `fs` — a string alias also matches the
+      // `fs/promises` subpath, so `fs` would otherwise swallow it.
+      'fs/promises': path.resolve(__dirname, './shared/agent-core/browser-stubs/node-fs-promises.ts'),
+      'node:fs/promises': path.resolve(__dirname, './shared/agent-core/browser-stubs/node-fs-promises.ts'),
+      fs: path.resolve(__dirname, './shared/agent-core/browser-stubs/node-fs.cjs'),
+      'node:fs': path.resolve(__dirname, './shared/agent-core/browser-stubs/node-fs.cjs'),
+      crypto: path.resolve(__dirname, './shared/agent-core/browser-stubs/node-crypto.ts'),
+      'node:crypto': path.resolve(__dirname, './shared/agent-core/browser-stubs/node-crypto.ts'),
     },
     conditions: ['browser'],
   },

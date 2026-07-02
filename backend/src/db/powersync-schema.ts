@@ -242,6 +242,10 @@ export const devicesTable = powersyncSchema.table(
     createdAt: timestamp('created_at').defaultNow(),
     revokedAt: timestamp('revoked_at'),
     appVersion: text('app_version'),
+    // iroh P2P endpoint identity for this device. Nullable: only set once a trusted device
+    // attests it via the canary-gated POST /devices/:id/node-id route (proof-of-CK-possession).
+    nodeId: text('node_id'),
+    nodeIdAttestedAt: timestamp('node_id_attested_at'),
   },
   (table) => [index('idx_devices_user_id').on(table.userId)],
 )

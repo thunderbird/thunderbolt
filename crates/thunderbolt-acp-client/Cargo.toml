@@ -1,0 +1,49 @@
+[package]
+name = "thunderbolt-acp-client"
+version = "0.1.0"
+edition = "2024"
+license = "MPL-2.0"
+description = "Relay-only iroh client (wasm) that dials a Thunderbolt CLI ACP/MCP bridge over an n0 relay."
+
+[lib]
+# cdylib => the wasm artifact the web app imports; rlib => lets a native Tauri
+# build (deferred) reuse the same client, and lets `cargo check` run on the host.
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+# Browser/relay-only iroh. `default-features = false` drops `metrics` (required
+# for wasm). `tls-ring` is the wasm-compatible TLS backend (ring compiles its C
+# crypto to wasm — see build.sh for the macOS clang requirement).
+iroh = { version = "1", default-features = false, features = ["tls-ring"] }
+# Ticket parsing: the CLI bridge prints an `EndpointTicket` (NodeId + relay URL).
+iroh-tickets = "1"
+
+wasm-bindgen = "0.2"
+wasm-bindgen-futures = "0.4"
+js-sys = "0.3"
+# ReadableStream bridge for the receive half (Uint8Array chunks → JS stream).
+wasm-streams = "0.5"
+# `stream! { ... }` generator that turns the iroh recv half into a Stream.
+async-stream = "0.3"
+# The `Stream` trait named in `recv_byte_stream`'s return type.
+futures-core = { version = "0.3", default-features = false }
+# Outbound byte queue decoupling `send()` from the QUIC write task, so the
+# wasm-bindgen object is never borrowed across an await.
+async-channel = "2"
+# wasm RNG backend — paired with the rustflags cfg in .cargo/config.toml.
+getrandom = { version = "0.3", features = ["wasm_js"] }
+# Stable-identity persistence: serialize the secret key as hex for localStorage.
+hex = "0.4"
+console_error_panic_hook = "0.1"
+
+# Disable wasm-pack's BUNDLED wasm-opt — it's too old to validate the bulk-memory
+# ops rustc emits. build.sh runs a current Homebrew `wasm-opt -Oz` instead, which
+# reads the target-features section and needs no manual feature flags.
+[package.metadata.wasm-pack.profile.release]
+wasm-opt = false
+
+[profile.release]
+opt-level = "z"
+lto = true
+strip = true
+panic = "abort"

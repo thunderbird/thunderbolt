@@ -27,11 +27,11 @@ export type AcpTransport = {
   closed?: Promise<void>
 }
 
-/** Inputs to `openTransport(...)`. WebSocket is the only remote transport;
- *  the factory honours the proxy toggle (native socket vs subprotocol tunnel). */
+/** Inputs to `openTransport(...)`. WebSocket honours the proxy toggle (native
+ *  socket vs subprotocol tunnel); `iroh` dials a peer bridge over an n0 relay. */
 export type OpenTransportOptions = {
   url: string
-  transport: 'websocket'
+  transport: 'websocket' | 'iroh'
   /** AbortSignal that, when aborted, must close the transport and cancel any
    *  in-flight retries. The adapter owns this controller and aborts on
    *  `disconnect()`. */

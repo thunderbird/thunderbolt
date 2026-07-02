@@ -35,12 +35,13 @@ import { computeEffectiveProxyEnabled, createProxyWebSocket } from '@/lib/proxy-
 import { useLocalSettingsStore } from '@/stores/local-settings-store'
 import type { AgentType } from '@shared/acp-types'
 import { encodeWsBearer, wsBearerSubprotocolPrefix, wsCarrierSubprotocol } from '@shared/ws-bearer'
+import { openIrohTransport } from '../iroh/iroh-transport'
 import type { AcpTransport } from '../types'
 import { openWebSocketTransport, type WebSocketFactory, type WebSocketLike } from './websocket'
 
 export type OpenTransportInputs = {
   url: string
-  transport: 'websocket'
+  transport: 'websocket' | 'iroh'
   /** Agent type drives proxy routing — see file header. `built-in` never
    *  reaches the transport, but the union stays full for type-safety. */
   agentType: AgentType
@@ -88,6 +89,11 @@ export const isStandaloneTransport = (
  *  `new WebSocket()` — and unlike the URL/Referer, the subprotocol header is
  *  not logged by default. */
 export const openTransport = async (inputs: OpenTransportInputs): Promise<AcpTransport> => {
+  // iroh dials a peer bridge by NodeId/ticket over an n0 relay — no URL, proxy,
+  // or bearer routing applies. `inputs.url` carries the NodeId/ticket.
+  if (inputs.transport === 'iroh') {
+    return openIrohTransport({ target: inputs.url, signal: inputs.signal })
+  }
   const webSocketFactory = inputs.webSocketFactory ?? resolveWebSocketFactory(inputs)
   return openWebSocketTransport({
     url: inputs.url,

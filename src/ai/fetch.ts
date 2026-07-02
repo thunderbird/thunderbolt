@@ -292,6 +292,72 @@ export const mergeMcpTools = async (
   }
 }
 
+/** Raw OpenAI-compatible connection for a model: the three knobs every
+ *  OpenAI-wire provider construction needs ({@link createModel} for the legacy
+ *  Vercel SDK, the in-browser Pi harness for the built-in agent). `fetch` is the
+ *  provider-specific app fetch — the universal proxy fetch for
+ *  `openai`/`custom`/`openrouter`, or the SSO-aware fetch for `thunderbolt`. */
+export type OpenAiCompatConnection = {
+  baseURL: string
+  apiKey: string
+  fetch: FetchFn
+}
+
+/**
+ * Resolve the raw OpenAI-compatible connection for a model, mirroring the
+ * per-provider construction in {@link createModel}. Returns `null` for providers
+ * the OpenAI wire doesn't serve (`anthropic` has its own SDK; `tinfoil` needs the
+ * enclave client) or when required config is missing (no api key / url) — callers
+ * fall back to the legacy pipeline rather than crash.
+ *
+ * Centralizes the intricate `thunderbolt` SSO-fetch logic so the legacy and Pi
+ * paths can't drift.
+ *
+ * @param modelConfig - the model whose connection to resolve
+ * @param getProxyFetch - lazily resolved universal proxy fetch
+ * @returns the connection, or `null` when unsupported/unconfigured
+ */
+export const resolveOpenAiCompatConnection = (
+  modelConfig: Model,
+  getProxyFetch: () => FetchFn,
+): OpenAiCompatConnection | null => {
+  switch (modelConfig.provider) {
+    case 'thunderbolt': {
+      const cloudUrl = getLocalSetting('cloudUrl')
+      const token = getAuthToken() || 'thunderbolt'
+      // See the `thunderbolt` case in createModel for the SSO/token rationale:
+      // SSO web has no bearer token (cookie auth), so strip the placeholder
+      // Authorization and send credentials; Tauri SSO keeps its real bearer.
+      const sso = isSsoMode()
+      const hasRealToken = Boolean(getAuthToken())
+      const ssoFetch: typeof fetch = Object.assign(
+        (input: RequestInfo | URL, init?: RequestInit) => {
+          const headers = new Headers(init?.headers)
+          headers.delete('authorization')
+          return fetch(input, { ...init, headers, credentials: 'include' })
+        },
+        { preconnect: fetch.preconnect },
+      )
+      const providerFetch: FetchFn = sso && !hasRealToken ? ssoFetch : fetch
+      return { baseURL: cloudUrl, apiKey: token, fetch: providerFetch }
+    }
+    case 'openai':
+      return modelConfig.apiKey
+        ? { baseURL: 'https://api.openai.com/v1', apiKey: modelConfig.apiKey, fetch: getProxyFetch() }
+        : null
+    case 'custom':
+      return modelConfig.url
+        ? { baseURL: modelConfig.url, apiKey: modelConfig.apiKey ?? '', fetch: getProxyFetch() }
+        : null
+    case 'openrouter':
+      return modelConfig.apiKey
+        ? { baseURL: 'https://openrouter.ai/api/v1', apiKey: modelConfig.apiKey, fetch: getProxyFetch() }
+        : null
+    default:
+      return null
+  }
+}
+
 export const createModel = async (modelConfig: Model, getProxyFetch: () => FetchFn) => {
   // The thunderbolt provider goes through its own SSO-aware fetch below; all
   // other providers route through the universal proxy. We resolve the proxy
@@ -299,8 +365,6 @@ export const createModel = async (modelConfig: Model, getProxyFetch: () => Fetch
   // (e.g. cloudUrl, proxy_enabled toggle) is picked up.
   switch (modelConfig.provider) {
     case 'thunderbolt': {
-      const cloudUrl = getLocalSetting('cloudUrl')
-      const token = getAuthToken() || 'thunderbolt'
       // SSO web flow authenticates via session cookies — the SSO callback is a
       // browser redirect, not an XHR, so `set-auth-token` never reaches the
       // client and getAuthToken() returns null.  The AI SDKs require an apiKey
@@ -312,25 +376,23 @@ export const createModel = async (modelConfig: Model, getProxyFetch: () => Fetch
       // Tauri desktop SSO uses a loopback server that returns a real bearer
       // token (stored via setAuthToken).  In that case we must keep the
       // Authorization header because WKWebView can't send cross-origin cookies.
-      const sso = isSsoMode()
-      const hasRealToken = Boolean(getAuthToken())
-      const ssoFetch = (input: RequestInfo | URL, init?: RequestInit) => {
-        const headers = new Headers(init?.headers)
-        headers.delete('authorization')
-        return fetch(input, { ...init, headers, credentials: 'include' })
+      // The connection (baseURL/apiKey/SSO-fetch) lives in
+      // resolveOpenAiCompatConnection so the Pi harness reuses the same logic.
+      const conn = resolveOpenAiCompatConnection(modelConfig, getProxyFetch)
+      if (!conn) {
+        throw new Error('No connection resolved for thunderbolt provider')
       }
-      ssoFetch.preconnect = fetch.preconnect
-      const providerFetch: typeof fetch = sso && !hasRealToken ? ssoFetch : fetch
+      const { baseURL, apiKey, fetch: providerFetch } = conn
       // OpenAI-vendor thunderbolt models use createOpenAI with .chat() to force Chat Completions API
       // (AI SDK 5 defaults createOpenAI to Responses API which our backend doesn't support)
       if (modelConfig.vendor === 'openai') {
-        const provider = createOpenAI({ baseURL: cloudUrl, apiKey: token, fetch: providerFetch })
+        const provider = createOpenAI({ baseURL, apiKey, fetch: providerFetch })
         return provider.chat(modelConfig.model)
       }
       const provider = createOpenAICompatible({
         name: 'thunderbolt',
-        baseURL: cloudUrl,
-        apiKey: token,
+        baseURL,
+        apiKey,
         fetch: providerFetch,
       })
       return provider(modelConfig.model)
@@ -348,38 +410,41 @@ export const createModel = async (modelConfig: Model, getProxyFetch: () => Fetch
       return anthropic(modelConfig.model)
     }
     case 'openai': {
-      if (!modelConfig.apiKey) {
+      const conn = resolveOpenAiCompatConnection(modelConfig, getProxyFetch)
+      if (!conn) {
         throw new Error('No API key provided')
       }
       const openai = createOpenAI({
-        apiKey: modelConfig.apiKey,
-        fetch: getProxyFetch(),
+        apiKey: conn.apiKey,
+        fetch: conn.fetch,
       })
       return openai(modelConfig.model)
     }
     case 'custom': {
-      if (!modelConfig.url) {
+      const conn = resolveOpenAiCompatConnection(modelConfig, getProxyFetch)
+      if (!conn) {
         throw new Error('No URL provided for custom provider')
       }
       const openaiCompatible = createOpenAICompatible({
         name: 'custom',
-        baseURL: modelConfig.url,
-        apiKey: modelConfig.apiKey || undefined,
-        fetch: getProxyFetch(),
+        baseURL: conn.baseURL,
+        apiKey: conn.apiKey || undefined,
+        fetch: conn.fetch,
       })
       return openaiCompatible(modelConfig.model)
     }
     case 'openrouter': {
-      if (!modelConfig.apiKey) {
+      const conn = resolveOpenAiCompatConnection(modelConfig, getProxyFetch)
+      if (!conn) {
         throw new Error('No API key provided')
       }
       // Using OpenAI-compatible approach until @openrouter/ai-sdk-provider supports Vercel AI SDK v5
       // https://github.com/OpenRouterTeam/ai-sdk-provider/pull/77
       const openrouter = createOpenAICompatible({
         name: 'openrouter',
-        baseURL: 'https://openrouter.ai/api/v1',
-        apiKey: modelConfig.apiKey,
-        fetch: getProxyFetch(),
+        baseURL: conn.baseURL,
+        apiKey: conn.apiKey,
+        fetch: conn.fetch,
       })
       return openrouter(modelConfig.model)
     }

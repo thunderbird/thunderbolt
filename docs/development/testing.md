@@ -6,6 +6,9 @@
 # Run frontend tests (src/ + shared/*.test.ts + scripts/create-release.test.ts + .github/scripts/post-pr-metrics.test.js)
 bun run test
 
+# Run the isolated shared/agent-core module's unit tests (NOT part of `bun run test`; CI runs these only when shared/agent-core/** changes)
+bun run test:agent-core
+
 # Run frontend tests in watch mode (src/ only)
 bun run test:watch
 
@@ -21,6 +24,8 @@ bun run e2e:headed   # with a visible browser
 ```
 
 **Note**: Don't run `bun test` directly from the project root — Bun's positional args are substring filters (not paths), so a filter like `src/` matches `backend/src/...` and pulls in backend tests. The `test` script uses `bun test --cwd=src` to scope discovery to the frontend tree, then runs `shared/*.test.ts`, `scripts/create-release.test.ts`, and `.github/scripts/post-pr-metrics.test.js` by explicit path (`shared/` is outside `--cwd=src`, and Bun skips hidden dirs in discovery, so each path must be explicit).
+
+**`shared/agent-core` is an isolated module** with its own unit tests under `shared/agent-core/**` (nested subdirs the non-recursive `shared/*.test.ts` glob wouldn't reach). Because `src/` app changes can't affect it, those tests are intentionally **not** part of `bun run test`. Run them on their own with `bun run test:agent-core` (or `bun run test:agent-core:5x` for the 5x-stability gate), mirroring the `test:backend` split. In CI, a dedicated `agent-core` job in [`ci.yml`](../../.github/workflows/ci.yml) runs `bun run test:agent-core:5x` and is path-gated via the `detect-changes` `dorny/paths-filter` step (`agent-core: 'shared/agent-core/**'`) — same mechanism that gates the `rust` job — so it executes only when files under `shared/agent-core/**` change. (`cli/` also consumes agent-core; its own tests cover the cli→agent-core integration, so agent-core's unit tests stay gated on agent-core paths only.)
 
 ## Testing Guidelines
 

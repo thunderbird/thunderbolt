@@ -18,6 +18,8 @@ export type Device = {
   lastSeen: string | null
   createdAt: string | null
   revokedAt: string | null
+  nodeId: string | null
+  nodeIdAttestedAt: string | null
 }
 
 /**

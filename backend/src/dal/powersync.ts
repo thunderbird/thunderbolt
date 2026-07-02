@@ -17,7 +17,18 @@ const validTables = new Set<string>(powersyncTableNames)
 
 /** DB column names that clients cannot set via PowerSync upload (server-managed fields). */
 const uploadDenyColumns: Partial<Record<PowerSyncTableName, string[]>> = {
-  devices: ['revoked_at', 'trusted', 'public_key', 'mlkem_public_key', 'approval_pending', 'app_version'],
+  devices: [
+    'revoked_at',
+    'trusted',
+    'public_key',
+    'mlkem_public_key',
+    'approval_pending',
+    'app_version',
+    // node_id binds a device to a P2P identity — trust-sensitive. Only settable via the
+    // canary-gated PATCH /devices/:id/node-id route, never via a raw PowerSync upload.
+    'node_id',
+    'node_id_attested_at',
+  ],
 }
 
 /** Tables that cannot be deleted via PowerSync upload — must use dedicated API endpoints. */

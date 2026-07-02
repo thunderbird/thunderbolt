@@ -19,8 +19,9 @@ export const getAllMcpServers = (db: AnyDrizzleDatabase) => {
 }
 
 /**
- * Gets all remote (HTTP / SSE) MCP servers with non-null URLs from the database (excluding soft-deleted).
- * Local (stdio) servers are excluded — they have no URL and are connected via a different transport.
+ * Gets all remote (HTTP / SSE / iroh) MCP servers with non-null URLs from the database (excluding soft-deleted).
+ * Local (stdio) servers are excluded — they have no URL and are connected via a different transport. An iroh
+ * server's `url` carries the bridge NodeId/ticket, so it satisfies the non-null-url filter the same way.
  */
 export const getRemoteMcpServers = (db: AnyDrizzleDatabase) => {
   const query = db
@@ -28,7 +29,7 @@ export const getRemoteMcpServers = (db: AnyDrizzleDatabase) => {
     .from(mcpServersTable)
     .where(
       and(
-        inArray(mcpServersTable.type, ['http', 'sse']),
+        inArray(mcpServersTable.type, ['http', 'sse', 'iroh']),
         isNotNull(mcpServersTable.url),
         isNull(mcpServersTable.deletedAt),
       ),

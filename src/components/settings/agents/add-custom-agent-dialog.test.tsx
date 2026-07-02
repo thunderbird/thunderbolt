@@ -3,7 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import '@testing-library/jest-dom'
-import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, describe, expect, it, mock } from 'bun:test'
 import type { Agent } from '@/types/acp'
 import {
@@ -43,6 +43,26 @@ describe('inferTransport', () => {
     expect(inferTransport('not a url')).toBeNull()
     expect(inferTransport('')).toBeNull()
   })
+
+  it('returns iroh for a bare 52-char base32 NodeId', () => {
+    expect(inferTransport('a'.repeat(52))).toBe('iroh')
+  })
+
+  it('returns iroh for a longer node-prefixed EndpointTicket', () => {
+    expect(inferTransport('node' + 'b'.repeat(120))).toBe('iroh')
+  })
+
+  it('returns null for a base32 token shorter than a NodeId', () => {
+    expect(inferTransport('abcdef234567')).toBeNull()
+  })
+
+  it('returns null for an uppercased NodeId (iroh emits lowercase base32)', () => {
+    expect(inferTransport('A'.repeat(52))).toBeNull()
+  })
+
+  it('returns null for an out-of-alphabet base32 token (0/1/8/9 are excluded)', () => {
+    expect(inferTransport('a'.repeat(51) + '0')).toBeNull()
+  })
 })
 
 describe('validateAgentUrl', () => {
@@ -79,6 +99,14 @@ describe('validateAgentUrl', () => {
 
   it('still accepts wss:// on Tauri iOS', () => {
     expect(validateAgentUrl('wss://example.com', isIos)).toEqual({ transport: 'websocket' })
+  })
+
+  it('accepts a bare iroh NodeId as the iroh transport', () => {
+    expect(validateAgentUrl('a'.repeat(52), notIos)).toEqual({ transport: 'iroh' })
+  })
+
+  it('accepts an iroh target on iOS (QUIC over an encrypted relay — no ATS concern)', () => {
+    expect(validateAgentUrl('a'.repeat(52), isIos)).toEqual({ transport: 'iroh' })
   })
 })
 
@@ -405,6 +433,139 @@ describe('AddCustomAgentDialog — edit mode', () => {
       // Empty description is normalized to null, matching the create path.
       description: null,
       transport: 'websocket',
+    })
+    expect(onOpenChange).toHaveBeenCalledWith(false)
+  })
+})
+
+describe('AddCustomAgentDialog — iroh', () => {
+  const notIos = () => false
+  const irohTarget = 'a'.repeat(52)
+  const appNodeId = 'b'.repeat(52)
+  // Stable reference so the load effect's deps don't churn across renders.
+  const loadAppNodeId = async () => appNodeId
+
+  const renderIroh = () => {
+    const onSubmit = mock(async (_: AddCustomAgentPayload) => {})
+    const onOpenChange = mock(() => {})
+    render(
+      <AddCustomAgentDialog
+        open={true}
+        onOpenChange={onOpenChange}
+        onSubmit={onSubmit}
+        isIos={notIos}
+        testAcpConnection={async () => ({ success: true })}
+        loadAppNodeId={loadAppNodeId}
+      />,
+    )
+    return { onSubmit, onOpenChange }
+  }
+
+  it('hides Test Connection for an iroh target and gates Add on name + valid target only', async () => {
+    renderIroh()
+    const submit = screen.getByRole('button', { name: /add agent/i })
+
+    fireEvent.change(screen.getByLabelText(/name/i), { target: { value: 'Laptop Bridge' } })
+    expect(submit).toBeDisabled()
+
+    await act(async () => {
+      fireEvent.change(screen.getByLabelText(/url/i), { target: { value: irohTarget } })
+    })
+
+    // Test Connection is WebSocket-only — an iroh bridge is verified on first chat.
+    expect(screen.queryByRole('button', { name: /test connection/i })).not.toBeInTheDocument()
+    // No connection test is required for iroh, so Add is enabled directly.
+    expect(submit).not.toBeDisabled()
+  })
+
+  it('shows this app NodeId as an allow command with a copy button', async () => {
+    renderIroh()
+
+    await act(async () => {
+      fireEvent.change(screen.getByLabelText(/url/i), { target: { value: irohTarget } })
+    })
+
+    const panel = screen.getByTestId('iroh-pairing-panel')
+    await waitFor(() => expect(panel.textContent).toContain(`thunderbolt iroh allow ${appNodeId}`))
+    expect(screen.getByRole('button', { name: /copy allow command/i })).toBeInTheDocument()
+  })
+
+  it('surfaces an error when the app pairing identity fails to load', async () => {
+    const onSubmit = mock(async () => {})
+    render(
+      <AddCustomAgentDialog
+        open={true}
+        onOpenChange={() => {}}
+        onSubmit={onSubmit}
+        isIos={notIos}
+        loadAppNodeId={async () => {
+          throw new Error('relay unreachable')
+        }}
+      />,
+    )
+
+    await act(async () => {
+      fireEvent.change(screen.getByLabelText(/url/i), { target: { value: irohTarget } })
+    })
+
+    const panel = screen.getByTestId('iroh-pairing-panel')
+    await waitFor(() => expect(panel.textContent).toMatch(/relay unreachable/i))
+  })
+
+  it('re-loads the app NodeId after a reset and an iroh target is re-entered (no stuck "Loading")', async () => {
+    let calls = 0
+    const countingLoad = async () => {
+      calls += 1
+      return appNodeId
+    }
+    render(
+      <AddCustomAgentDialog
+        open={true}
+        onOpenChange={() => {}}
+        onSubmit={async () => {}}
+        isIos={notIos}
+        testAcpConnection={async () => ({ success: true })}
+        loadAppNodeId={countingLoad}
+      />,
+    )
+
+    await act(async () => {
+      fireEvent.change(screen.getByLabelText(/url/i), { target: { value: irohTarget } })
+    })
+    await waitFor(() => expect(screen.getByTestId('iroh-pairing-panel').textContent).toContain(appNodeId))
+    expect(calls).toBe(1)
+
+    // Cancel resets the form (RESET → appNodeId back to idle, url cleared).
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: /cancel/i }))
+    })
+
+    // Re-entering an iroh target must re-fire the load rather than strand on "Loading".
+    await act(async () => {
+      fireEvent.change(screen.getByLabelText(/url/i), { target: { value: irohTarget } })
+    })
+    await waitFor(() => expect(screen.getByTestId('iroh-pairing-panel').textContent).toContain(appNodeId))
+    expect(calls).toBe(2)
+  })
+
+  it('submits with transport: iroh and the target stored as url', async () => {
+    const { onSubmit, onOpenChange } = renderIroh()
+
+    fireEvent.change(screen.getByLabelText(/name/i), { target: { value: '  Laptop Bridge  ' } })
+    await act(async () => {
+      fireEvent.change(screen.getByLabelText(/url/i), { target: { value: `  ${irohTarget}  ` } })
+    })
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: /add agent/i }))
+    })
+
+    expect(onSubmit).toHaveBeenCalledTimes(1)
+    expect(onSubmit).toHaveBeenCalledWith({
+      name: 'Laptop Bridge',
+      url: irohTarget,
+      description: null,
+      transport: 'iroh',
     })
     expect(onOpenChange).toHaveBeenCalledWith(false)
   })

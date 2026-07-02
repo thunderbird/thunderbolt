@@ -57,6 +57,9 @@ const skipPathPatterns: RegExp[] = [
   /(^|\/)drizzle\/meta\//,
   /(^|\/)dist(-[^/]+)?\//,
   /(^|\/)node_modules\//,
+  // Generated wasm-bindgen glue for the iroh ACP client (build artifact).
+  /(^|\/)src\/acp\/iroh\/pkg\//,
+  /(^|\/)crates\/[^/]+\/target\//,
   /\.gen\.[a-z]+$/i,
 ]
 

@@ -1,0 +1,17 @@
+# Mirror the repo root's supply-chain quarantine: hold every new dependency
+# version for 7 days before it's installable (blunts a compromised-release window).
+# (Bun reads bunfig.toml from the current working directory, so install/build from
+# cli/ uses this file, not the root's — hence the duplication.)
+[install]
+minimumReleaseAge = 604800 # 7 days in seconds
+# The Pi harness packages are actively released and pinned to an exact version
+# (0.80.2), so the quarantine — meant to stop auto-pulling brand-new floating
+# versions — would otherwise block this exact pin. Scope the exemption to the
+# `@earendil-works/*` packages only; the quarantine stays in force for everything
+# else (including @number0/iroh, pinned exact in package.json at a >7-day-old
+# version so it installs cleanly without an exemption).
+minimumReleaseAgeExcludes = [
+  "@earendil-works/pi-agent-core",
+  "@earendil-works/pi-ai",
+  "@earendil-works/pi-coding-agent",
+]

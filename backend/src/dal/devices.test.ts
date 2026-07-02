@@ -7,7 +7,16 @@ import { devicesTable } from '@/db/schema'
 import { createTestDb } from '@/test-utils/db'
 import { eq } from 'drizzle-orm'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
-import { countActiveDevices, denyDevice, getDeviceById, markDeviceTrusted, revokeDevice, upsertDevice } from './devices'
+import {
+  countActiveDevices,
+  denyDevice,
+  getDeviceById,
+  markDeviceTrusted,
+  registerDevice,
+  revokeDevice,
+  setDeviceNodeId,
+  upsertDevice,
+} from './devices'
 
 describe('devices DAL', () => {
   let db: Awaited<ReturnType<typeof createTestDb>>['db']
@@ -88,6 +97,25 @@ describe('devices DAL', () => {
       const rows = await db.select().from(devicesTable).where(eq(devicesTable.id, 'd5'))
       expect(rows[0].revokedAt).toBeNull()
     })
+
+    it('clears the iroh node binding so a revoked endpoint stops syncing', async () => {
+      const now = new Date()
+      await db.insert(devicesTable).values({
+        id: 'd6',
+        userId,
+        name: 'Bound Laptop',
+        lastSeen: now,
+        createdAt: now,
+        trusted: true,
+        nodeId: 'node-abc',
+        nodeIdAttestedAt: now,
+      })
+      await revokeDevice(db, 'd6', userId)
+      const rows = await db.select().from(devicesTable).where(eq(devicesTable.id, 'd6'))
+      expect(rows[0].revokedAt).not.toBeNull()
+      expect(rows[0].nodeId).toBeNull()
+      expect(rows[0].nodeIdAttestedAt).toBeNull()
+    })
   })
 
   describe('countActiveDevices', () => {
@@ -156,6 +184,24 @@ describe('devices DAL', () => {
       expect(row!.revokedAt).toBeNull()
     })
 
+    it('clears the stale iroh node binding on deny, mirroring revoke', async () => {
+      const now = new Date()
+      await db.insert(devicesTable).values({
+        id: 'd-deny-node',
+        userId,
+        name: 'Pending Bound',
+        approvalPending: true,
+        nodeId: 'stale-deny-node',
+        nodeIdAttestedAt: now,
+        lastSeen: now,
+        createdAt: now,
+      })
+      const rows = await denyDevice(db, 'd-deny-node', userId)
+      expect(rows[0].approvalPending).toBe(false)
+      expect(rows[0].nodeId).toBeNull()
+      expect(rows[0].nodeIdAttestedAt).toBeNull()
+    })
+
     it('is a no-op on a trusted device (TOCTOU race guard)', async () => {
       const now = new Date()
       await db.insert(devicesTable).values({
@@ -207,6 +253,70 @@ describe('devices DAL', () => {
       const row = await getDeviceById(db, 'd-race')
       expect(row!.trusted).toBe(true)
       expect(row!.revokedAt).toBeNull()
+    })
+  })
+
+  describe('setDeviceNodeId', () => {
+    const seedDevice = (over: Record<string, unknown>) =>
+      db
+        .insert(devicesTable)
+        .values({ id: 'd-bind', userId, name: 'Bind', lastSeen: new Date(), createdAt: new Date(), ...over })
+
+    it('binds a node_id on a trusted device', async () => {
+      await seedDevice({ trusted: true, approvalPending: false })
+      const rows = await setDeviceNodeId(db, 'd-bind', userId, 'node-trusted')
+      expect(rows[0].nodeId).toBe('node-trusted')
+      expect(rows[0].nodeIdAttestedAt).not.toBeNull()
+    })
+
+    it('binds a node_id on a pending device (attestation during pairing)', async () => {
+      await seedDevice({ trusted: false, approvalPending: true })
+      const rows = await setDeviceNodeId(db, 'd-bind', userId, 'node-pending')
+      expect(rows[0].nodeId).toBe('node-pending')
+    })
+
+    it('refuses to (re-)bind a DENIED device so a denied peer cannot restore its P2P binding', async () => {
+      // The state denyDevice leaves: trusted=false, approvalPending=false, revokedAt=null.
+      await seedDevice({ trusted: false, approvalPending: false })
+      const rows = await setDeviceNodeId(db, 'd-bind', userId, 'node-denied')
+      expect(rows).toHaveLength(0)
+    })
+
+    it('refuses to bind a revoked device', async () => {
+      await seedDevice({ trusted: true, approvalPending: false, revokedAt: new Date() })
+      const rows = await setDeviceNodeId(db, 'd-bind', userId, 'node-revoked')
+      expect(rows).toHaveLength(0)
+    })
+  })
+
+  describe('registerDevice', () => {
+    it('clears the stale iroh node binding on re-registration, mirroring revoke', async () => {
+      const now = new Date()
+      await db.insert(devicesTable).values({
+        id: 'd-reg-rebind',
+        userId,
+        name: 'Old Bound',
+        trusted: true,
+        approvalPending: false,
+        publicKey: 'old-pk',
+        mlkemPublicKey: 'old-mlkem',
+        nodeId: 'stale-node-id',
+        nodeIdAttestedAt: now,
+        lastSeen: now,
+        createdAt: now,
+      })
+      const rows = await registerDevice(db, {
+        id: 'd-reg-rebind',
+        userId,
+        name: 'Old Bound',
+        publicKey: 'new-pk',
+        mlkemPublicKey: 'new-mlkem',
+      })
+      expect(rows[0].trusted).toBe(false)
+      expect(rows[0].approvalPending).toBe(true)
+      expect(rows[0].publicKey).toBe('new-pk')
+      expect(rows[0].nodeId).toBeNull()
+      expect(rows[0].nodeIdAttestedAt).toBeNull()
     })
   })
 

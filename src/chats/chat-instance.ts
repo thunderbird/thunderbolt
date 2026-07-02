@@ -170,11 +170,13 @@ export const createAgentRoutingFetch = (
       const requestBody = JSON.parse(init.body as string) as { messages: ThunderboltUIMessage[] }
       await saveMessages({ id, messages: requestBody.messages })
 
+      // Persist by `id`, not `chatThread.id`: on a brand-new chat the session's
+      // `chatThread` snapshot is still `null` here (PowerSync hasn't re-hydrated
+      // it yet), but `saveMessages` above just created the `chat_threads` row —
+      // so keying off `chatThread` would silently drop the fresh ACP id and
+      // break resume/load on the next reconnect. `id` is that same row's id.
       const persistAcpSessionId = async (newSessionId: string): Promise<void> => {
-        if (!chatThread) {
-          return
-        }
-        await updateChatThread(getDb(), chatThread.id, { acpSessionId: newSessionId })
+        await updateChatThread(getDb(), id, { acpSessionId: newSessionId })
       }
 
       // Surface `connecting` only when routing to a different agent than this

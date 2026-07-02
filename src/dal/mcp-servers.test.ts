@@ -202,6 +202,32 @@ describe('MCP Servers DAL', () => {
       expect(servers.map((s) => s.id)).toContain(sseId)
       expect(servers.map((s) => s.id)).not.toContain(stdioId)
     })
+
+    it('should include iroh servers (url carries the NodeId/ticket)', async () => {
+      const db = getDb()
+      const irohId = uuidv7()
+      const stdioId = uuidv7()
+
+      await db.insert(mcpServersTable).values([
+        {
+          id: irohId,
+          name: 'iroh Bridge',
+          type: 'iroh',
+          url: 'a'.repeat(52),
+          enabled: 1,
+        },
+        {
+          id: stdioId,
+          name: 'STDIO Server',
+          type: 'stdio',
+          enabled: 1,
+        },
+      ])
+
+      const servers = await getRemoteMcpServers(getDb())
+      expect(servers.map((s) => s.id)).toContain(irohId)
+      expect(servers.map((s) => s.id)).not.toContain(stdioId)
+    })
   })
 
   describe('deleteMcpServer', () => {

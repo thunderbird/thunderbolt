@@ -95,6 +95,23 @@ describe('agents DAL', () => {
       expect(row?.deletedAt).toBeNull()
     })
 
+    it('persists a custom agent on the iroh transport (NodeId/ticket in url)', async () => {
+      const db = getDb()
+      const nodeId = 'a'.repeat(52)
+      await createAgent(db, {
+        id: 'agent-iroh',
+        name: 'Laptop Bridge',
+        type: 'remote-acp',
+        transport: 'iroh',
+        url: nodeId,
+        userId: 'user-42',
+      })
+
+      const row = await db.select().from(agentsTable).get()
+      expect(row?.transport).toBe('iroh')
+      expect(row?.url).toBe(nodeId)
+    })
+
     it('defaults enabled = 1 when omitted', async () => {
       await createAgent(getDb(), {
         id: 'agent-default',

@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { getTransformer, hasTransformer } from '@/files/transformers'
+import { defaultDeliveryMode, getTransformer, hasTransformer } from '@/files/transformers'
 import { getAttachments, isAttachmentPart } from '@/lib/attachments'
 import { isContentRejectionError } from '@/lib/error-utils'
 import { getAttachment } from '@/lib/file-blob-storage'
@@ -50,13 +50,23 @@ const hasExtractableText = async (attachment: AttachmentData): Promise<boolean> 
   return 'text' in output && output.text.trim().length >= minUsefulTextLength
 }
 
+/** The delivery mode CURRENTLY in effect: an explicit remediation override, else
+ *  the type's default (plain-text mimes already go out as text via
+ *  `defaultDeliveryMode`). Using this — not the raw `deliverAs` — as the ladder's
+ *  starting rung means a plain-text file already delivered as text isn't treated
+ *  as an un-tried "native" rung, so we don't pointlessly re-send text→text and then
+ *  falsely mark it "couldn't read the file". */
+const currentMode = (attachment: AttachmentData): DeliverAs | undefined =>
+  attachment.deliverAs ?? defaultDeliveryMode(attachment.mimeType)
+
 /** Decide the next delivery mode for one attachment, inspecting its text layer on the first hop. */
 const pickTarget = async (attachment: AttachmentData): Promise<DeliverAs | null> => {
+  const mode = currentMode(attachment)
   const canText = hasTransformer(attachment.mimeType, 'text')
   const canImages = hasTransformer(attachment.mimeType, 'images')
   // Only the native→? hop needs to distinguish a digital doc from a scan.
-  const hasUsableText = canText && attachment.deliverAs === undefined ? await hasExtractableText(attachment) : false
-  return nextRemediationTarget(attachment.deliverAs, { canText, canImages, hasUsableText })
+  const hasUsableText = canText && mode === undefined ? await hasExtractableText(attachment) : false
+  return nextRemediationTarget(mode, { canText, canImages, hasUsableText })
 }
 
 /**
@@ -66,10 +76,11 @@ const pickTarget = async (attachment: AttachmentData): Promise<DeliverAs | null>
  * auto-remediation is coming — and suppress the error flash before it paints.
  */
 const canAdvance = (attachment: AttachmentData): boolean => {
-  if (attachment.deliverAs === 'images') {
+  const mode = currentMode(attachment)
+  if (mode === 'images') {
     return false
   }
-  if (attachment.deliverAs === 'text') {
+  if (mode === 'text') {
     return hasTransformer(attachment.mimeType, 'images')
   }
   return hasTransformer(attachment.mimeType, 'text') || hasTransformer(attachment.mimeType, 'images')
